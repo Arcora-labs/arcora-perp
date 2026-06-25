@@ -112,6 +112,40 @@ describe("MockDarkPerpClient position lifecycle", () => {
     await expect(c.closePosition(0)).resolves.toBeUndefined();
   });
 
+  it("enforces reduce-only: rejects orders that would increase, flip, or have nothing to reduce", async () => {
+    const c = new MockDarkPerpClient();
+    // reduce-only with no position → nothing to reduce
+    await expect(
+      c.placeOrder({ marketId: 0, side: "Sell", size: SIZE_SCALE, limitPrice: 0n, tif: "Ioc", reduceOnly: true }),
+    ).rejects.toThrow(/reduce-only/i);
+
+    // open a long 1
+    await c.placeOrder({
+      marketId: 0,
+      side: "Buy",
+      size: SIZE_SCALE,
+      limitPrice: 100_000n * PRICE_SCALE,
+      tif: "Gtc",
+      reduceOnly: false,
+    });
+    await vi.advanceTimersByTimeAsync(MATCH_MS);
+
+    // reduce-only BUY (same side → would increase the long) → rejected
+    await expect(
+      c.placeOrder({ marketId: 0, side: "Buy", size: SIZE_SCALE, limitPrice: 0n, tif: "Ioc", reduceOnly: true }),
+    ).rejects.toThrow(/reduce-only/i);
+    // reduce-only SELL 2 (would flip long-1 → short-1) → rejected
+    await expect(
+      c.placeOrder({ marketId: 0, side: "Sell", size: 2n * SIZE_SCALE, limitPrice: 0n, tif: "Ioc", reduceOnly: true }),
+    ).rejects.toThrow(/reduce-only/i);
+    // reduce-only SELL 0.5 (pure reduce) → allowed
+    await expect(
+      c.placeOrder({ marketId: 0, side: "Sell", size: SIZE_SCALE / 2n, limitPrice: 0n, tif: "Ioc", reduceOnly: true }),
+    ).resolves.toBeDefined();
+    // position is still open and reduced — closePosition (exact close) still works
+    await expect(c.closePosition(0)).resolves.toBeUndefined();
+  });
+
   it("blocks a FLIP (oversized opposite order) in close-only mode (§6)", async () => {
     const c = new MockDarkPerpClient();
     await c.placeOrder({

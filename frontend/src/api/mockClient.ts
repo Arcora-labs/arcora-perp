@@ -257,6 +257,12 @@ export class MockDarkPerpClient implements DarkPerpClient {
     if (this.state.mode === "CloseOnly" && opening) {
       throw new Error("System is in close-only mode — opening/increasing is blocked (§6).");
     }
+    // A reduce-only order must never grow or flip the position. `opening` is true
+    // exactly when the order increases exposure or crosses zero, so reject those;
+    // a pure reduce or exact close (incl. closePosition) passes through.
+    if (input.reduceOnly && opening) {
+      throw new Error("Reduce-only order would open or increase a position — rejected.");
+    }
     const id = `o${++counter}`;
     const orderHash = pseudoHash(id + JSON.stringify(input, (_k, v) => (typeof v === "bigint" ? v.toString() : v)));
     const receipt: Receipt = { orderHash, seqNo: counter, recvTimeMs: Date.now(), batchIdHint: Math.floor(counter / 4) };
