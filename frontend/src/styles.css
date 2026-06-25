@@ -120,6 +120,21 @@ body {
 
 .app__footer { margin-top: 48px; color: var(--text-mute); font-size: 12px; text-align: center; }
 
+/* ============================ error boundary ============================== */
+.errorboundary {
+  max-width: 560px; margin: 64px auto; padding: 28px;
+  background: linear-gradient(180deg, var(--bg-elev), var(--bg-2));
+  border: 1px solid var(--border-strong); border-radius: var(--radius);
+  box-shadow: 0 12px 32px -24px rgba(0, 0, 0, 0.9); text-align: center;
+}
+.errorboundary__title { margin: 0 0 8px; font-size: 18px; color: var(--text); }
+.errorboundary__msg { margin: 0 0 16px; color: var(--text-dim); font-size: 13px; line-height: 1.5; }
+.errorboundary__detail {
+  text-align: left; padding: 12px; border-radius: var(--radius-sm); margin: 0 0 16px;
+  background: var(--bg); border: 1px solid var(--border);
+  color: var(--danger); font-size: 12px; white-space: pre-wrap; word-break: break-word;
+}
+
 /* ============================ cards ======================================= */
 .card {
   background: linear-gradient(180deg, var(--bg-elev), var(--bg-2));
