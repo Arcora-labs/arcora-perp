@@ -38,14 +38,69 @@ the priority is accounting soundness. Do not deploy it as a real verifier.
 The guest program already exists: `perp_core` is `#![no_std]`, deterministic, and
 free of clocks/RNG/IO, so it compiles to a RISC-V zkVM guest unchanged.
 
-1. **Guest.** A thin `main` that reads `(initial_state, ops, manifest_hash)` from
-   the zkVM input, calls `run_transition`, and commits `PublicInputs` to the
-   journal. (The host seals the witness; the guest reads it inside the zkVM.)
-2. **Host.** Replace `CommitmentProver::prove` with the backend's prove call
-   (`sp1_sdk` / `risc0_zkvm`), returning the real receipt bytes; replace
-   `verify` with the backend verifier (or generate the Solidity verifier for L1).
-3. **Public inputs.** Map `PublicInputs::commitment` to the journal digest the
-   on-chain verifier checks. The contract in `contracts/` consumes this.
+> **Sandbox note (attempted).** `sp1up` was run in this environment: it installs
+> `cargo-prove`, but installing the succinct Rust toolchain fails because the
+> sandbox's git/network proxy is scoped to this single repo and denies
+> `api.github.com/repos/succinctlabs/rust/releases` (the same restriction that
+> blocks `forge-std`). So the real guest **cannot be compiled here** — it builds
+> in any unrestricted environment with `sp1up && cargo prove build`. That is the
+> only reason the `CommitmentProver` stand-in is still in place.
+
+1. **Guest.** A thin `main` that reads `(initial_state, ops, manifest_hash,
+   ordered_root, withdrawals_root)` from the zkVM input, runs the perp-core
+   transition, and commits the `PublicInputs` commitment to the journal:
+
+   ```rust
+   // zkvm/sp1-guest/src/main.rs  (built with the SP1 toolchain, not the workspace)
+   #![no_main]
+   sp1_zkvm::entrypoint!(main);
+   use perp_core::{DefaultState, engine::BatchOp, hash::{Domain, Hasher, Keccak256}};
+
+   fn main() {
+       // Witness is sealed to the attested measurement (see §10b) and read here
+       // inside the zkVM. Requires a serde/borsh witness encoding — add a
+       // `serde` feature to perp-core deriving (De)Serialize on the public types.
+       let mut state: DefaultState = sp1_zkvm::io::read();
+       let ops: Vec<BatchOp>       = sp1_zkvm::io::read();
+       let manifest_hash: [u8;32]  = sp1_zkvm::io::read();
+       let ordered_root: [u8;32]   = sp1_zkvm::io::read();
+       let withdrawals_root:[u8;32]= sp1_zkvm::io::read();
+
+       let prev = state.state_root();
+       state.apply_batch(&ops).expect("valid transition"); // constraints fail ⇒ no proof
+       let new = state.state_root();
+
+       // commitment == DarkPerpSettlement.publicCommitment == PublicInputs::commitment
+       let commit = Keccak256::hash_words(Domain::StateRoot,
+           &[prev, manifest_hash, new, ordered_root, withdrawals_root]);
+       sp1_zkvm::io::commit(&commit);
+   }
+   ```
+
+2. **Host.** Replace `CommitmentProver::prove` with the backend prove call:
+
+   ```rust
+   let client = sp1_sdk::ProverClient::new();
+   let (pk, vk) = client.setup(GUEST_ELF);
+   let mut stdin = sp1_sdk::SP1Stdin::new();
+   stdin.write(&state); stdin.write(&ops); stdin.write(&manifest_hash);
+   stdin.write(&ordered_root); stdin.write(&withdrawals_root);
+   let proof = client.prove(&pk, stdin).groth16().run()?; // on-chain-verifiable
+   ```
+
+   Generate the Solidity verifier with `client`/`sp1-contracts` and drop it in for
+   `MockZkVerifier`; its `verify(publicCommitment, proof)` then checks the real
+   Groth16 proof against the journal commitment.
+3. **Public inputs.** `PublicInputs::commitment` (Rust) == the guest journal
+   commitment == `DarkPerpSettlement.publicCommitment` (Solidity) — already locked
+   byte-for-byte by `crates/prover/tests/vectors.rs` ↔ `CrossLayer.t.sol`. So the
+   on-chain verifier and the off-chain prover agree the moment the real backend is
+   dropped in; no protocol change.
+
+**Prerequisite to wire it (one additive step):** a `serde` feature on `perp-core`
+deriving `(De)Serialize` on the public types, so the host can serialize the witness
+into `SP1Stdin` and the guest can read it. This is purely additive (feature-gated
+derives) and does not touch the state machine.
 
 Per §10b, the proving order is **SP1-first → hand-optimized Noir/Plonky3** for the
 hot circuits, *because* the confidential prover's enclave memory envelope forces
