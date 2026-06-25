@@ -2,3 +2,12 @@
 **/*.rs.bk
 Cargo.lock.orig
 .DS_Store
+
+# Foundry
+contracts/out/
+contracts/cache/
+contracts/broadcast/
+contracts/lib/
+/out/
+/cache/
+node_modules/

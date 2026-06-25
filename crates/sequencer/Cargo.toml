@@ -13,4 +13,7 @@ workspace = true
 [dependencies]
 perp-core = { path = "../perp-core" }
 matcher = { path = "../matcher" }
-ed25519-dalek = "2"
+# secp256k1 recoverable signatures so a receipt verifies BOTH off-chain and on
+# L1 via ecrecover (§2 inclusion-slashing path). See ADR-0009.
+k256 = { version = "0.13", features = ["ecdsa"] }
+sha3 = "0.10"

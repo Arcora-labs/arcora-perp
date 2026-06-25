@@ -69,7 +69,7 @@ fn receipt_is_signed_and_verifies() {
 
     // tamper with the signature
     let mut bad2 = r.clone();
-    bad2.signature[0] ^= 0xff;
+    bad2.r[0] ^= 0xff;
     assert!(!bad2.verify());
 }
 

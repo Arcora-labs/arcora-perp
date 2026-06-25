@@ -17,7 +17,9 @@
 
 use std::collections::BTreeMap;
 
-use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
+use k256::ecdsa::{RecoveryId, Signature, SigningKey, VerifyingKey};
+use sha3::{Digest as _, Keccak256 as RawKeccak};
+
 use matcher::{MatchingEngine, SubmitStatus};
 use perp_core::engine::BatchOp;
 use perp_core::hash::{Digest, Keccak256};
@@ -26,47 +28,78 @@ use perp_core::order::{BatchManifest, Finality, Order, Receipt, RejectReason};
 use perp_core::oracle::OracleTranscript;
 use perp_core::{DefaultState, EngineError};
 
-/// The enclave's signing identity: an Ed25519 key plus the attested measurement
-/// and key epoch that the manifest commits to (§2). In production the key lives
-/// only inside the enclave; here it is a normal key for the local/testnet build.
+/// Compute the Ethereum-style 20-byte address of a secp256k1 verifying key:
+/// `keccak256(uncompressed_pubkey[1..])[12..]` — exactly what L1 `ecrecover`
+/// yields, so a receipt verifies identically off-chain and on-chain.
+fn eth_address(vk: &VerifyingKey) -> [u8; 20] {
+    let point = vk.to_encoded_point(false); // 0x04 || X || Y (65 bytes)
+    let hash = RawKeccak::digest(&point.as_bytes()[1..]);
+    let mut addr = [0u8; 20];
+    addr.copy_from_slice(&hash[12..]);
+    addr
+}
+
+/// The enclave's signing identity: a **secp256k1** key (so receipts are
+/// L1-verifiable, §2) plus the attested measurement and key epoch the manifest
+/// commits to. In production the key lives only inside the enclave; here it is a
+/// normal key for the local/testnet build.
 pub struct EnclaveIdentity {
     signing: SigningKey,
     pub epoch: u64,
     pub measurement: Digest,
+    address: [u8; 20],
 }
 
 impl EnclaveIdentity {
-    /// Derive a deterministic identity from a 32-byte seed (testnet convenience).
+    /// Derive a deterministic identity from a 32-byte secp256k1 scalar seed.
     pub fn from_seed(seed: [u8; 32], epoch: u64, measurement: Digest) -> Self {
+        let signing = SigningKey::from_bytes((&seed).into()).expect("valid secp256k1 scalar");
+        let address = eth_address(signing.verifying_key());
         Self {
-            signing: SigningKey::from_bytes(&seed),
+            signing,
             epoch,
             measurement,
+            address,
         }
     }
 
-    pub fn verifying_key(&self) -> VerifyingKey {
-        self.signing.verifying_key()
+    /// The enclave's L1 address — deploy `DarkPerpSettlement(enclaveSigner = ...)`
+    /// with this so on-chain inclusion challenges recover to it.
+    pub fn eth_address(&self) -> [u8; 20] {
+        self.address
     }
 }
 
-/// A receipt with the enclave's signature over its signing digest (§2).
+/// A receipt with the enclave's recoverable secp256k1 signature (§2). The `(r, s,
+/// v)` triple is exactly what L1 `ecrecover` consumes, so the same receipt that
+/// proves ACCEPTED off-chain also drives on-chain slashing.
 #[derive(Clone, Debug)]
 pub struct SignedReceipt {
     pub receipt: Receipt,
-    pub signature: [u8; 64],
-    pub enclave_pubkey: [u8; 32],
+    pub r: [u8; 32],
+    pub s: [u8; 32],
+    /// Recovery id in Ethereum convention (27 or 28).
+    pub v: u8,
+    pub enclave_address: [u8; 20],
 }
 
 impl SignedReceipt {
-    /// Verify the signature binds this exact receipt to the given enclave key.
+    /// Recover the signer address from the receipt and check it matches.
     pub fn verify(&self) -> bool {
-        let Ok(vk) = VerifyingKey::from_bytes(&self.enclave_pubkey) else {
+        let digest = self.receipt.signing_digest::<Keccak256>();
+        let mut rs = [0u8; 64];
+        rs[..32].copy_from_slice(&self.r);
+        rs[32..].copy_from_slice(&self.s);
+        let Ok(sig) = Signature::from_slice(&rs) else {
             return false;
         };
-        let digest = self.receipt.signing_digest::<Keccak256>();
-        let sig = Signature::from_bytes(&self.signature);
-        vk.verify(&digest, &sig).is_ok()
+        let Some(recid) = self.v.checked_sub(27).and_then(RecoveryId::from_byte) else {
+            return false;
+        };
+        match VerifyingKey::recover_from_prehash(&digest, &sig, recid) {
+            Ok(vk) => eth_address(&vk) == self.enclave_address,
+            Err(_) => false,
+        }
     }
 }
 
@@ -164,7 +197,16 @@ impl Sequencer {
             batch_id_hint: self.next_batch_id,
         };
         let digest = receipt.signing_digest::<Keccak256>();
-        let signature: Signature = self.enclave.signing.sign(&digest);
+        let (signature, recid) = self
+            .enclave
+            .signing
+            .sign_prehash_recoverable(&digest)
+            .expect("sign");
+        let sig_bytes = signature.to_bytes();
+        let mut r = [0u8; 32];
+        let mut s = [0u8; 32];
+        r.copy_from_slice(&sig_bytes[..32]);
+        s.copy_from_slice(&sig_bytes[32..]);
         self.inclusion.entry(order_hash).or_insert(InclusionRecord {
             issued_batch: self.next_batch_id,
             seen_in_batch: None,
@@ -172,8 +214,10 @@ impl Sequencer {
         self.finality.entry(order_hash).or_insert(Finality::Accepted);
         SignedReceipt {
             receipt,
-            signature: signature.to_bytes(),
-            enclave_pubkey: self.enclave.verifying_key().to_bytes(),
+            r,
+            s,
+            v: 27 + recid.to_byte(),
+            enclave_address: self.enclave.address,
         }
     }
 

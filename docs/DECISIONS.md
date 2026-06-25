@@ -108,3 +108,39 @@ principle.
 **Why.** §3's core principle: "bağlayıcı olan SETTLED'dır; MATCHED iyi-niyet
 UX'idir, finansal kesinlik değil." Putting it in the types means the contract and
 UI layers can't accidentally treat a soft preconfirmation as withdrawable.
+
+## ADR-0009 — Receipts are secp256k1 (L1-verifiable), not Ed25519
+
+**Decision.** The enclave signs order receipts with **secp256k1 recoverable
+signatures** (`k256`), and the receipt carries `(r, s, v)`. The L1 settlement
+contract recovers the signer with `ecrecover` and compares against the configured
+`enclaveSigner` address.
+
+**Why.** §2 requires the user to *submit the receipt to L1* to trigger
+slashing/forced-exit. Ed25519 (the first cut in Mission 2) is not natively
+verifiable on Ethereum — there is no cheap precompile — so an Ed25519 receipt
+could prove ACCEPTED off-chain but never drive on-chain slashing, silently
+breaking the §2 accountability loop. secp256k1 gives **one** signature that
+verifies identically off-chain (`SignedReceipt::verify`) and on L1
+(`ecrecover`). This was caught by an adversarial cross-layer review and is locked
+by a test that signs a receipt in Rust and recovers it on-chain
+(`contracts/test/CrossLayer.t.sol::test_real_rust_receipt_passes_ecrecover`).
+
+**Consequence.** The receipt signing *digest* is identical on both sides
+(`perp-core::Receipt::signing_digest` ↔ `DarkPerpSettlement.receiptDigest`), and
+the public-input commitment likewise (`prover::PublicInputs::commitment` ↔
+`DarkPerpSettlement.publicCommitment`). Both are pinned by byte-exact test vectors
+(`crates/prover/tests/vectors.rs`) so any divergence fails CI on both sides.
+
+## ADR-0010 — The settlement contract holds no funds
+
+**Decision.** `DarkPerpSettlement` anchors roots, runs liveness/close-only, and
+the slashing game; **`CollateralVault` holds the funds** and releases them only
+against a withdrawals root published *by* a settled batch.
+
+**Why.** §0/§10's damage-containment: a compromised or stalled sequencer must be
+able to censor or halt but **never steal**. Separating the authority (settlement,
+fund-free) from custody (vault, settlement-gated) means fund release is a function
+of verified state, not operator action — withdrawals are only ever authorized from
+SETTLED state (§3) and survive into forced-exit (§6) against the last settled
+root.
