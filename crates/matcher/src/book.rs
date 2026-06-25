@@ -72,6 +72,16 @@ struct Resting {
     seq: u64,
     #[allow(dead_code)]
     reduce_only: bool,
+    /// Good-till-time bound carried from the order (0 = no expiry). A resting maker
+    /// whose expiry has passed relative to the batch clock is void and must not
+    /// provide liquidity, so matching prunes it instead of trading against it.
+    expiry_ms: u64,
+}
+
+/// Is this resting maker expired at the batch reference clock `now_ms`?
+/// (`expiry_ms == 0` means good-till-cancelled — never expires.)
+fn resting_expired(r: &Resting, now_ms: u64) -> bool {
+    r.expiry_ms != 0 && now_ms >= r.expiry_ms
 }
 
 /// One market's order book.
@@ -128,9 +138,18 @@ impl<H: perp_core::hash::Hasher> OrderBook<H> {
     }
 
     /// Liquidity crossable by a taker on `taker_side` at `limit`, excluding the
-    /// taker's own resting orders (those would be self-trade-prevented). Used for
-    /// the fill-or-kill all-or-nothing pre-check.
-    fn crossable_liquidity(&self, taker_side: Side, limit: i128, taker: &PubKey) -> i128 {
+    /// taker's own resting orders (those would be self-trade-prevented) and any
+    /// resting maker expired at `now_ms` (those are void and won't trade). Used for
+    /// the fill-or-kill all-or-nothing pre-check, so it must count exactly the
+    /// liquidity the matching loop can actually consume — no expired maker, or FOK
+    /// would pass the check and then under-fill.
+    fn crossable_liquidity(
+        &self,
+        taker_side: Side,
+        limit: i128,
+        taker: &PubKey,
+        now_ms: u64,
+    ) -> i128 {
         let book = match taker_side {
             Side::Buy => &self.asks,
             Side::Sell => &self.bids,
@@ -146,7 +165,7 @@ impl<H: perp_core::hash::Hasher> OrderBook<H> {
                 break;
             }
             for r in q {
-                if &r.owner != taker {
+                if &r.owner != taker && !resting_expired(r, now_ms) {
                     total = total.saturating_add(r.remaining);
                 }
             }
@@ -215,7 +234,7 @@ impl<H: perp_core::hash::Hasher> OrderBook<H> {
 
         // 3. fill-or-kill: all-or-nothing pre-check before mutating the book
         if order.tif == TimeInForce::Fok
-            && self.crossable_liquidity(side, limit, &order.owner) < order.size
+            && self.crossable_liquidity(side, limit, &order.owner, now_ms) < order.size
         {
             out.status = SubmitStatus::Rejected(RejectReason::FillOrKillUnfillable);
             return out;
@@ -235,9 +254,13 @@ impl<H: perp_core::hash::Hasher> OrderBook<H> {
                 Side::Sell => &mut self.bids,
             };
             let queue = opposite.get_mut(&level_price).expect("level exists");
-            // self-trade prevention: cancel the resting maker, do not match.
+            // drop makers at the front that cannot trade: self-trade prevention
+            // (own resting order is cancelled, not matched) and expired makers
+            // (good-till-time elapsed → void liquidity). Both are removed from the
+            // book; matching only ever consumes from the front, so a non-front
+            // own/expired maker is handled once it reaches the front.
             while let Some(front) = queue.front() {
-                if front.owner == order.owner {
+                if front.owner == order.owner || resting_expired(front, now_ms) {
                     queue.pop_front();
                 } else {
                     break;
@@ -328,6 +351,7 @@ impl<H: perp_core::hash::Hasher> OrderBook<H> {
                 price: order.limit_price,
                 seq,
                 reduce_only: order.reduce_only,
+                expiry_ms: order.expiry_ms,
             });
     }
 

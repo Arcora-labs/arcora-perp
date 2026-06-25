@@ -531,6 +531,74 @@ mod tests {
     }
 
     #[test]
+    fn expired_resting_maker_does_not_trade() {
+        // A good-till-time maker rests at t=100 with expiry=500. A taker crosses it
+        // at t=1000 — past the maker's expiry. The expired maker must NOT provide
+        // liquidity (it should be void), so the taker finds nothing to fill.
+        let mut e = engine();
+        let mut maker = order(
+            1,
+            Side::Sell,
+            SIZE_SCALE,
+            100_000 * PRICE_SCALE,
+            TimeInForce::Gtc,
+            1,
+        );
+        maker.expiry_ms = 500;
+        let r = e.submit(&maker, 100); // rests fine while still live
+        assert_eq!(r.outcome.status, SubmitStatus::Resting);
+
+        let taker = order(
+            2,
+            Side::Buy,
+            SIZE_SCALE,
+            100_000 * PRICE_SCALE,
+            TimeInForce::Gtc,
+            2,
+        );
+        let t = e.submit(&taker, 1000); // now past the maker's expiry
+        assert!(
+            t.outcome.fills.is_empty(),
+            "an expired resting maker must not trade"
+        );
+        // the taker (still live) rests instead of hitting the stale maker
+        assert_eq!(t.outcome.status, SubmitStatus::Resting);
+    }
+
+    #[test]
+    fn fok_ignores_expired_resting_liquidity() {
+        // FOK's all-or-nothing pre-check must not count expired makers as fillable
+        // liquidity, or it would pass the check and then under-fill at matching.
+        let mut e = engine();
+        let mut maker = order(
+            1,
+            Side::Sell,
+            SIZE_SCALE,
+            100_000 * PRICE_SCALE,
+            TimeInForce::Gtc,
+            1,
+        );
+        maker.expiry_ms = 500;
+        e.submit(&maker, 100);
+
+        let mut taker = order(
+            2,
+            Side::Buy,
+            SIZE_SCALE,
+            100_000 * PRICE_SCALE,
+            TimeInForce::Fok,
+            2,
+        );
+        taker.expiry_ms = 0;
+        let t = e.submit(&taker, 1000);
+        assert_eq!(
+            t.outcome.status,
+            SubmitStatus::Rejected(RejectReason::FillOrKillUnfillable),
+            "FOK must treat expired resting liquidity as unavailable"
+        );
+    }
+
+    #[test]
     fn stream_collects_manifest_lists() {
         let mut e = engine();
         let orders = [
