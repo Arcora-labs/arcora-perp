@@ -230,11 +230,25 @@ export class MockDarkPerpClient implements DarkPerpClient {
       if (newSize === 0n) {
         positions.splice(idx, 1);
       } else {
+        // A fill can grow, reduce, or FLIP the position (cross zero). On a flip the
+        // old side is fully closed and a fresh position opens at the fill price, so
+        // the entry must reset — keeping the old entry would mis-price the liq line
+        // and PnL (matches perp-core's increases_exposure flip handling).
+        const flipping = (p.size > 0n) !== (newSize > 0n);
         const increasing = (p.size > 0n) === (signed > 0n);
-        const entry = increasing
-          ? (p.entryPrice * abs(p.size) + o.avgFillPrice * abs(signed)) / (abs(p.size) + abs(signed))
-          : p.entryPrice;
-        positions[idx] = { ...p, size: newSize, entryPrice: entry, liquidationPrice: this.liqPrice(newSize, entry) };
+        const entry = flipping
+          ? o.avgFillPrice
+          : increasing
+            ? (p.entryPrice * abs(p.size) + o.avgFillPrice * abs(signed)) / (abs(p.size) + abs(signed))
+            : p.entryPrice;
+        positions[idx] = {
+          ...p,
+          size: newSize,
+          entryPrice: entry,
+          // re-derive margin against the new exposure so grow/reduce/flip all track
+          collateral: this.requiredMargin(abs(newSize), entry),
+          liquidationPrice: this.liqPrice(newSize, entry),
+        };
       }
     }
     this.state.account = {
