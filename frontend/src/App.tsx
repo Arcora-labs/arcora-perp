@@ -10,6 +10,7 @@ import { RecoveryPanel } from "./components/RecoveryPanel";
 import { FinalityLegend } from "./components/FinalityTracker";
 import { Toaster } from "./components/Toaster";
 import { MarketSelector } from "./components/MarketSelector";
+import { PriceChart } from "./components/PriceChart";
 
 type Tab = "trade" | "account" | "recover";
 
@@ -50,6 +51,7 @@ export default function App() {
           {tab === "trade" && (
             <section className="grid grid--trade">
               <div className="col col--book">
+                <PriceChart />
                 <OrderBook />
               </div>
               <div className="col col--ticket">

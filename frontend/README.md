@@ -41,6 +41,7 @@ A reskin touches none of this, so the suite stays green across design changes.
 | Mock client (finality progression, close-only, recovery) | `src/api/mockClient.ts` | §2, §3, §6, §7 |
 | Finality legend + per-order progress | `src/components/FinalityTracker.tsx` | §3 |
 | Order ticket (Buy/Sell, TIF, reduce-only) | `src/components/OrderTicket.tsx` | §1, §4 |
+| Live index price chart (dependency-free SVG sparkline) | `src/components/PriceChart.tsx` | §8 |
 | Order book (dark-book framing) | `src/components/OrderBook.tsx` | §15 |
 | Positions / orders tables | `src/components/Tables.tsx` | §3, §5 |
 | Account: deposit / withdraw (SETTLED-gated) | `src/components/AccountPanel.tsx` | §3, §6 |

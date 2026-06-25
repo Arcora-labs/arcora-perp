@@ -225,6 +225,18 @@ body {
 .orderbook__midlabel { color: var(--text-mute); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; }
 .orderbook__note { color: var(--text-mute); font-size: 11px; margin: 14px 0 0; line-height: 1.5; }
 
+/* ============================ price chart ================================= */
+.chart { margin-bottom: var(--gap); }
+.chart__head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 10px; }
+.chart__price { font-size: 18px; font-weight: 650; display: inline-flex; align-items: baseline; gap: 8px; }
+.chart__price.pos { color: var(--buy); }
+.chart__price.neg { color: var(--sell); }
+.chart__delta { font-size: 11px; font-weight: 600; opacity: 0.85; }
+.chart__svg { display: block; width: 100%; height: 168px; }
+.chart__empty { height: 168px; display: flex; align-items: center; justify-content: center; color: var(--text-mute); font-size: 12px; }
+.chart__axis { display: flex; justify-content: space-between; color: var(--text-mute); font-size: 10px; margin-top: 6px; }
+.chart__axislabel { color: var(--text-mute); opacity: 0.8; }
+
 /* ============================ tables ====================================== */
 .table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .table th { text-align: left; color: var(--text-mute); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; padding: 6px 8px; }
