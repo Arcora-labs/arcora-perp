@@ -377,6 +377,89 @@ fn invariant_liquidation_threshold() {
 }
 
 #[test]
+fn bad_debt_liquidation_conserves_and_cannot_be_escaped() {
+    // A gap-down past the maintenance buffer leaves a position underwater by MORE
+    // than its collateral (bad debt). The protocol must stay conservation-safe: the
+    // loss is parked as negative collateral and absorbed by the vault clearing pool,
+    // not silently zeroed — and the debtor must not be able to walk away from it.
+    let mut s = fresh_state();
+    let (a, b) = (pk(1), pk(2));
+    for (o, sk, amt) in [(a, 1u8, 6_000i128), (b, 2u8, 50_000)] {
+        let bl = [sk; 32];
+        let cm = deposit_commit(o, amt * QUOTE_SCALE, bl);
+        s.apply_batch(&[
+            BatchOp::Deposit {
+                owner: o,
+                asset_id: 0,
+                amount: amt * QUOTE_SCALE,
+                blinding: bl,
+            },
+            BatchOp::FundPosition {
+                owner: o,
+                market_id: 0,
+                note_commitment: cm,
+                spend_key: [sk; 32],
+            },
+        ])
+        .unwrap();
+    }
+    // A opens 0.5 BTC long at $100k ($5k initial, $6k collateral qualifies).
+    s.apply_op(&BatchOp::Fill {
+        taker: a,
+        maker: b,
+        market_id: 0,
+        taker_side: Side::Buy,
+        size: SIZE_SCALE / 2,
+        price: 100_000 * PRICE_SCALE,
+        oracle: oracle(100_000, 1_000),
+        now_ms: 1_000,
+    })
+    .unwrap();
+
+    // gap to $80k: A's 0.5 BTC loses $10k vs $6k collateral → equity -$4k (bad debt).
+    s.apply_op(&BatchOp::Liquidate {
+        owner: a,
+        market_id: 0,
+        oracle: oracle(80_000, 2_000),
+        now_ms: 2_000,
+    })
+    .unwrap();
+
+    let pos = s.position(&a, 0).unwrap();
+    assert_eq!(pos.size, 0, "bad-debt position is still fully closed");
+    assert!(
+        pos.collateral < 0,
+        "the shortfall is parked as negative collateral"
+    );
+    assert!(s.conservation_holds(), "bad debt is absorbed, not lost");
+
+    // the debtor cannot escape the shortfall by funding a fresh note: collateral
+    // merges (it does not reset), so a $1k top-up only reduces the debt.
+    let bl = [9u8; 32];
+    let cm = deposit_commit(a, 1_000 * QUOTE_SCALE, bl);
+    s.apply_batch(&[
+        BatchOp::Deposit {
+            owner: a,
+            asset_id: 0,
+            amount: 1_000 * QUOTE_SCALE,
+            blinding: bl,
+        },
+        BatchOp::FundPosition {
+            owner: a,
+            market_id: 0,
+            note_commitment: cm,
+            spend_key: [1u8; 32],
+        },
+    ])
+    .unwrap();
+    assert!(
+        s.position(&a, 0).unwrap().collateral < 0,
+        "a partial top-up reduces but does not erase the debt"
+    );
+    assert!(s.conservation_holds());
+}
+
+#[test]
 fn duplicate_commitment_deposit_rejected() {
     // two deposits with identical (owner, asset, amount, blinding) collide on the
     // commitment; the second must be rejected, not silently alias and lose value

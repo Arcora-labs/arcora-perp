@@ -391,6 +391,13 @@ impl<H: Hasher> State<H> {
             .checked_add(funding)
             .ok_or(EngineError::Overflow)?;
         // take liquidation penalty from remaining collateral into insurance.
+        // NOTE: the insurance fund is a one-way sink here — it collects penalties but
+        // is NOT yet drawn on to back-stop bad debt. If the close left the position
+        // underwater (collateral < 0, a gap-down past the maintenance buffer), the
+        // shortfall stays parked as negative collateral and is absorbed by the vault
+        // clearing pool above, so conservation and vault solvency still hold; the
+        // debt simply isn't socialized out of insurance (a deliberate Phase-0
+        // simplification — see `bad_debt_liquidation_conserves_and_cannot_be_escaped`).
         let pos = self.positions.get_mut(&key).unwrap();
         let take = penalty.min(pos.collateral.max(0));
         pos.collateral -= take;

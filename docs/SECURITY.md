@@ -103,6 +103,12 @@ no single failure is catastrophic.
 - **Confidentiality depends on hardware** until the committee/MPC hardening lands;
   a single compromised enclave (pre-committee) leaks confidentiality (but not
   funds).
+- **Insurance fund is a one-way penalty sink** (Phase 0): liquidation penalties flow
+  *into* it, but it is not yet drawn on to socialize bad debt. A gap-down past the
+  maintenance buffer parks the shortfall as negative collateral, absorbed by the
+  vault clearing pool — so conservation and vault solvency hold (a 10th review pass
+  verified and pinned this with `bad_debt_liquidation_conserves_and_cannot_be_escaped`),
+  but a production system needs the insurance back-stop + auto-deleverage cascade.
 
 ## Known design limitations (flagged for input, not yet fixed)
 
