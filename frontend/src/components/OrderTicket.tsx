@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useStore } from "../store";
-import { formatPrice, formatUsd, parsePrice, parseSize } from "../domain/format";
-import { orderRisk } from "../domain/risk";
+import { formatPrice, formatSize, formatUsd, parsePrice, parseSize } from "../domain/format";
+import { maxOrderSize, orderRisk } from "../domain/risk";
 import type { OrderInput, Side, TimeInForce } from "../domain/types";
 
 const TIFS: TimeInForce[] = ["Gtc", "Ioc", "Fok", "PostOnly"];
@@ -50,6 +50,8 @@ export function OrderTicket() {
   const previewSize = parseSize(sizeStr) ?? 0n;
   const parsedPrice = priceStr.trim() === "" ? null : parsePrice(priceStr);
   const previewMark = parsedPrice && parsedPrice > 0n ? parsedPrice : state.oracle.price;
+  // buying power for the quick-size buttons (free balance × max leverage / mark)
+  const maxSize = maxOrderSize(state.account.settledBalance, previewMark, state.market.maxLeverage);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -105,6 +107,20 @@ export function OrderTicket() {
         <span className="field__label">Size (BTC)</span>
         <input className="field__input" value={sizeStr} onChange={(e) => setSizeStr(e.target.value)} inputMode="decimal" />
       </label>
+
+      <div className="quicksize" role="group" aria-label="Size as a fraction of buying power">
+        {([25, 50, 75, 100] as const).map((pct) => (
+          <button
+            key={pct}
+            type="button"
+            className="quicksize__btn"
+            disabled={maxSize <= 0n}
+            onClick={() => setSizeStr(formatSize((maxSize * BigInt(pct)) / 100n))}
+          >
+            {pct === 100 ? "Max" : `${pct}%`}
+          </button>
+        ))}
+      </div>
 
       <label className="field">
         <span className="field__label">Limit price (blank = market)</span>

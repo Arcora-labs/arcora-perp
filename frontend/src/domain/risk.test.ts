@@ -1,8 +1,24 @@
 import { describe, it, expect } from "vitest";
-import { orderRisk } from "./risk";
+import { orderRisk, maxOrderSize } from "./risk";
 import { PRICE_SCALE, QUOTE_SCALE, SIZE_SCALE } from "./types";
 
 const MARK = 100_000n * PRICE_SCALE; // $100k
+
+describe("maxOrderSize", () => {
+  it("is buying power (balance × leverage) divided by mark", () => {
+    // $25k free × 10x = $250k buying power at $100k ⇒ 2.5 BTC
+    expect(maxOrderSize(25_000n * QUOTE_SCALE, MARK, 10)).toBe((SIZE_SCALE * 5n) / 2n);
+    // opening that exact size needs margin == the whole balance
+    const r = orderRisk(maxOrderSize(25_000n * QUOTE_SCALE, MARK, 10), MARK, "Buy", 0.1);
+    expect(r.margin).toBe(25_000n * QUOTE_SCALE);
+  });
+
+  it("returns 0 for empty balance, zero mark, or non-positive leverage", () => {
+    expect(maxOrderSize(0n, MARK, 10)).toBe(0n);
+    expect(maxOrderSize(10_000n * QUOTE_SCALE, 0n, 10)).toBe(0n);
+    expect(maxOrderSize(10_000n * QUOTE_SCALE, MARK, 0)).toBe(0n);
+  });
+});
 
 describe("orderRisk", () => {
   it("computes notional, margin, leverage, and liq for a long at 10x", () => {

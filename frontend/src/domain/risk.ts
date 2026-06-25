@@ -27,6 +27,15 @@ export const LIQ_BUFFER_PCT = 9n;
 /// Compute the pre-trade risk of opening `size` at `mark` on `side` under a market
 /// with initial-margin ratio `imr` (e.g. 0.1 for 10×). Returns zeroed risk for a
 /// non-positive size or mark so callers can render nothing.
+/// Maximum openable position size (base, size-scaled) given a free `settledBalance`
+/// (quote), the current `mark`, and the market's `maxLeverage`. Inverts the notional
+/// relation: buying power = balance × leverage, max size = buyingPower / mark.
+export function maxOrderSize(settledBalance: bigint, mark: bigint, maxLeverage: number): bigint {
+  if (mark <= 0n || maxLeverage <= 0 || settledBalance <= 0n) return 0n;
+  const buyingPower = settledBalance * BigInt(Math.round(maxLeverage));
+  return (buyingPower * NOTIONAL_DIV) / mark;
+}
+
 export function orderRisk(size: bigint, mark: bigint, side: Side, imr: number): OrderRisk {
   if (size <= 0n || mark <= 0n) {
     return { notional: 0n, margin: 0n, leverage: 0, liquidationPrice: 0n };
