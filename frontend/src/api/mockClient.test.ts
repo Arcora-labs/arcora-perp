@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { MockDarkPerpClient } from "./mockClient";
+import type { OrderEvent } from "./client";
 import { PRICE_SCALE, QUOTE_SCALE, SIZE_SCALE } from "../domain/types";
 
 // The mock advances finality on timers (MATCH at 900ms); drive it deterministically.
@@ -251,6 +252,39 @@ describe("MockDarkPerpClient collateral accounting", () => {
     await expect(
       c.placeOrder({ marketId: 0, side: "Buy", size: 3n * SIZE_SCALE, limitPrice: 100_000n * PRICE_SCALE, tif: "Gtc", reduceOnly: false }),
     ).rejects.toThrow(/insufficient free margin/i);
+  });
+});
+
+describe("MockDarkPerpClient cancelOrder", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  const place = (c: MockDarkPerpClient) =>
+    c.placeOrder({ marketId: 0, side: "Buy", size: SIZE_SCALE, limitPrice: 100_000n * PRICE_SCALE, tif: "Gtc", reduceOnly: false });
+
+  it("cancels an ACCEPTED order and emits a CANCELLED event", async () => {
+    const c = new MockDarkPerpClient();
+    const events: OrderEvent[] = [];
+    c.onOrderEvent((e) => events.push(e));
+    await place(c);
+    const id = c.getState().orders[0].id;
+    await c.cancelOrder(id);
+    expect(c.getState().orders.find((o) => o.id === id)).toBeUndefined();
+    expect(events.some((e) => e.kind === "CANCELLED" && e.orderId === id)).toBe(true);
+  });
+
+  it("rejects cancelling an unknown order", async () => {
+    const c = new MockDarkPerpClient();
+    await expect(c.cancelOrder("does-not-exist")).rejects.toThrow(/not found/i);
+  });
+
+  it("rejects cancelling once the order is MATCHED (binding)", async () => {
+    const c = new MockDarkPerpClient();
+    await place(c);
+    const id = c.getState().orders[0].id;
+    await vi.advanceTimersByTimeAsync(MATCH_MS); // ACCEPTED → MATCHED
+    expect(c.getState().orders.find((o) => o.id === id)?.finality).toBe("MATCHED");
+    await expect(c.cancelOrder(id)).rejects.toThrow(/only an accepted order/i);
   });
 });
 
