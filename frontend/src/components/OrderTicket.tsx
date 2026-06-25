@@ -1,9 +1,44 @@
 import { useState } from "react";
 import { useStore } from "../store";
-import { parsePrice, parseSize } from "../domain/format";
-import type { OrderInput, Side, TimeInForce } from "../domain/types";
+import { formatPrice, formatUsd, parsePrice, parseSize } from "../domain/format";
+import { PRICE_SCALE, QUOTE_SCALE, SIZE_SCALE, type OrderInput, type Side, type TimeInForce } from "../domain/types";
 
 const TIFS: TimeInForce[] = ["Gtc", "Ioc", "Fok", "PostOnly"];
+
+/// Pre-trade preview: notional, required initial margin, resulting leverage, and
+/// an estimated liquidation price — computed in bigint and matching the values the
+/// position will show once it fills, so the trader sees the risk before committing.
+function OrderPreview({ size, mark, side, imr }: { size: bigint; mark: bigint; side: Side; imr: number }) {
+  if (size <= 0n || mark <= 0n) return null;
+  const DIV = (SIZE_SCALE * PRICE_SCALE) / QUOTE_SCALE;
+  const notional = (size * mark) / DIV;
+  const imrBp = BigInt(Math.round(imr * 10_000));
+  const margin = (notional * imrBp) / 10_000n;
+  const leverage = imr > 0 ? 1 / imr : 0;
+  // est. liq mirrors the client's liqPrice (entry ± 9% buffer)
+  const delta = (mark * 9n) / 100n;
+  const liq = side === "Buy" ? mark - delta : mark + delta;
+  return (
+    <dl className="preview">
+      <div className="preview__row">
+        <dt>Notional</dt>
+        <dd className="mono">{formatUsd(notional)}</dd>
+      </div>
+      <div className="preview__row">
+        <dt>Margin required</dt>
+        <dd className="mono">{formatUsd(margin)}</dd>
+      </div>
+      <div className="preview__row">
+        <dt>Leverage</dt>
+        <dd className="mono">{leverage.toFixed(1)}×</dd>
+      </div>
+      <div className="preview__row">
+        <dt>Est. liquidation</dt>
+        <dd className="mono">{formatPrice(liq)}</dd>
+      </div>
+    </dl>
+  );
+}
 
 export function OrderTicket() {
   const { client, state } = useStore();
@@ -16,6 +51,10 @@ export function OrderTicket() {
   const [pending, setPending] = useState(false);
 
   const closeOnly = state.mode === "CloseOnly";
+  // preview inputs: parsed size, and the entry estimate (limit price, else mark)
+  const previewSize = parseSize(sizeStr) ?? 0n;
+  const parsedPrice = priceStr.trim() === "" ? null : parsePrice(priceStr);
+  const previewMark = parsedPrice && parsedPrice > 0n ? parsedPrice : state.oracle.price;
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -98,6 +137,10 @@ export function OrderTicket() {
         <input type="checkbox" checked={reduceOnly} onChange={(e) => setReduceOnly(e.target.checked)} />
         <span>Reduce-only</span>
       </label>
+
+      {!reduceOnly && (
+        <OrderPreview size={previewSize} mark={previewMark} side={side} imr={state.market.initialMarginRatio} />
+      )}
 
       {closeOnly && (
         <p className="notice notice--warn">Close-only mode: opening/increasing is blocked (§6).</p>

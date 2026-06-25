@@ -237,6 +237,12 @@ body {
 .chart__axis { display: flex; justify-content: space-between; color: var(--text-mute); font-size: 10px; margin-top: 6px; }
 .chart__axislabel { color: var(--text-mute); opacity: 0.8; }
 
+/* ============================ order preview ============================== */
+.preview { margin: 4px 0 2px; padding: 12px 14px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-elev-2); display: grid; gap: 7px; }
+.preview__row { display: flex; align-items: baseline; justify-content: space-between; }
+.preview__row dt { color: var(--text-dim); font-size: 11px; margin: 0; }
+.preview__row dd { margin: 0; font-size: 12px; font-weight: 550; }
+
 /* ============================ health bar ================================= */
 .health { display: flex; align-items: center; gap: 8px; min-width: 96px; }
 .health__track { position: relative; flex: 1; height: 6px; border-radius: 99px; background: var(--bg-elev-3); overflow: hidden; }
