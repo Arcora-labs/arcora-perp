@@ -497,3 +497,54 @@ fn rejected_for_cause_is_not_an_inclusion_violation() {
         "a justified rejection must not be mistaken for censorship"
     );
 }
+
+#[test]
+fn marking_a_height_settled_finalizes_every_prior_pending_batch() {
+    // A proof for batch N attests the state transition *through* batch N, and
+    // mark_settled(N) prunes the rollback snapshots for batch N AND everything
+    // before it — they become un-rollback-able (hard). §3 says a hard fill is
+    // SETTLED (withdrawable). So finalizing a height must drag every earlier
+    // still-pending batch to SETTLED too, not strand it at MATCHED.
+    let mut s = setup();
+
+    // batch 0: a crossing pair → MATCHED
+    let t0 = order(2, Side::Buy, SIZE_SCALE, 100_000 * PRICE_SCALE, 2);
+    let b0 = s.seal_batch(
+        &[
+            order(1, Side::Sell, SIZE_SCALE, 100_000 * PRICE_SCALE, 1),
+            t0,
+        ],
+        1_000,
+    );
+    let t0_hash = t0.order_hash::<Keccak256>();
+    assert_eq!(s.finality_of(&t0_hash), Some(Finality::Matched));
+
+    // batch 1: another crossing pair → MATCHED
+    let t1 = order(2, Side::Buy, SIZE_SCALE, 100_000 * PRICE_SCALE, 4);
+    let b1 = s.seal_batch(
+        &[
+            order(1, Side::Sell, SIZE_SCALE, 100_000 * PRICE_SCALE, 3),
+            t1,
+        ],
+        2_000,
+    );
+    let t1_hash = t1.order_hash::<Keccak256>();
+    assert_eq!(s.finality_of(&t1_hash), Some(Finality::Matched));
+
+    // a single proof finalizes the chain THROUGH batch 1 (skipping a per-batch
+    // mark_settled(0)). Batch 0 must not be left behind.
+    assert_eq!(b0.batch_id, 0);
+    assert_eq!(b1.batch_id, 1);
+    s.mark_settled(b1.batch_id);
+
+    assert_eq!(
+        s.finality_of(&t1_hash),
+        Some(Finality::Settled),
+        "the proven height itself settles"
+    );
+    assert_eq!(
+        s.finality_of(&t0_hash),
+        Some(Finality::Settled),
+        "an earlier batch made hard by the same proof must also settle, not strand at MATCHED"
+    );
+}

@@ -547,21 +547,34 @@ impl Sequencer {
         }
     }
 
-    /// Mark a previously sealed batch as SETTLED (its ZK proof verified on L1).
-    /// Until this is called, the batch's fills are only MATCHED — soft, not
-    /// withdrawable (§3). Proving a batch makes it (and everything before it)
-    /// hard, so its rollback snapshots are pruned.
+    /// Mark a sealed batch — and every still-pending batch before it — as SETTLED
+    /// (a ZK proof for this height verified on L1). Until this is called, the fills
+    /// are only MATCHED — soft, not withdrawable (§3). A proof attests the state
+    /// transition *through* `batch_id`, so it makes this batch AND everything
+    /// before it hard: their rollback snapshots are pruned and their orders advance
+    /// to SETTLED. Finalizing a height directly (without a per-batch call for each
+    /// earlier batch) must therefore not strand an earlier batch at MATCHED — hard
+    /// yet un-withdrawable would violate §3.
     pub fn mark_settled(&mut self, batch_id: u64) {
-        if let Some(orders) = self.batch_orders.get(&batch_id) {
-            let ohs: Vec<Digest> = orders.clone();
-            for oh in ohs {
-                self.finality.insert(oh, Finality::Settled);
+        // advance finality for this batch and every earlier one the proof hardens.
+        let hardened: Vec<u64> = self
+            .batch_orders
+            .range(..=batch_id)
+            .map(|(b, _)| *b)
+            .collect();
+        for b in hardened {
+            if let Some(orders) = self.batch_orders.get(&b) {
+                let ohs: Vec<Digest> = orders.clone();
+                for oh in ohs {
+                    self.finality.insert(oh, Finality::Settled);
+                }
             }
         }
-        // a proven batch can no longer be rolled back; drop snapshots ≤ batch_id
-        let keep: BTreeMap<u64, (DefaultState, MatchingEngine<Keccak256>)> =
-            self.snapshots.split_off(&(batch_id + 1));
-        self.snapshots = keep;
+        // a proven batch can no longer be rolled back; drop snapshots ≤ batch_id.
+        self.snapshots = self.snapshots.split_off(&(batch_id + 1));
+        // its per-batch order list is now immutable settled history that neither
+        // rollback nor re-settlement needs — drop it too so the map stays bounded.
+        self.batch_orders = self.batch_orders.split_off(&(batch_id + 1));
     }
 
     /// Roll back a sealed batch that FAILED to prove (§3 failure matrix): revert
