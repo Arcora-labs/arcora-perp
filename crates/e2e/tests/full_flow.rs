@@ -221,3 +221,88 @@ fn close_only_blocks_open_but_allows_exit() {
         "reducing fills settle in close-only"
     );
 }
+
+/// §3 failure matrix, end to end: a SETTLED batch is immutable, but a later
+/// still-pending batch that FAILS to prove rolls the live state fully back, reverts
+/// its fills from MATCHED to ACCEPTED (they were never binding), and leaves recovery
+/// intact. This is the sequencer's rollback composing with finality + the archive,
+/// not just the `mark_failed` unit.
+#[test]
+fn failed_batch_rolls_back_but_settled_history_and_recovery_survive() {
+    let alice = Wallet::from_seed([5u8; 32]);
+    let bob = Wallet::from_seed([6u8; 32]);
+    let enclave = EnclaveIdentity::from_seed([9u8; 32], 1, MEASUREMENT);
+    let mut node = Sequencer::new(enclave, 24);
+    node.add_market(Market::conservative(0));
+    node.set_oracle(0, oracle(100_000, 1_000));
+
+    let mut archive = NoteArchive::new();
+    deposit_and_fund(&mut node, &mut archive, &alice, 20_000, 0x51);
+    deposit_and_fund(&mut node, &mut archive, &bob, 20_000, 0x62);
+
+    // batch A: a crossing pair we PROVE + SETTLE (hard final, §3)
+    let a_taker = limit_order(&bob, Side::Buy, SIZE_SCALE / 2, 100_000 * PRICE_SCALE, 2);
+    let batch_a = node.seal_batch(
+        &[
+            limit_order(&alice, Side::Sell, SIZE_SCALE / 2, 100_000 * PRICE_SCALE, 1),
+            a_taker,
+        ],
+        1_000,
+    );
+    node.mark_settled(batch_a.batch_id);
+    let a_taker_hash = a_taker.order_hash::<Keccak256>();
+    assert_eq!(node.finality_of(&a_taker_hash), Some(Finality::Settled));
+    let root_after_a = node.state.state_root();
+    let bob_after_a = node.state.position(&bob.owner, 0).unwrap().size;
+
+    // batch B: another crossing pair, sealed → MATCHED but NOT yet proven
+    let b_taker = limit_order(&bob, Side::Buy, SIZE_SCALE / 2, 100_000 * PRICE_SCALE, 4);
+    let batch_b = node.seal_batch(
+        &[
+            limit_order(&alice, Side::Sell, SIZE_SCALE / 2, 100_000 * PRICE_SCALE, 3),
+            b_taker,
+        ],
+        2_000,
+    );
+    let b_taker_hash = b_taker.order_hash::<Keccak256>();
+    assert_eq!(node.finality_of(&b_taker_hash), Some(Finality::Matched));
+    assert_eq!(
+        node.state.position(&bob.owner, 0).unwrap().size,
+        SIZE_SCALE,
+        "B grew bob's position"
+    );
+
+    // --- batch B FAILS to prove → rollback (§3) -------------------------------
+    assert!(
+        node.mark_failed(batch_b.batch_id),
+        "a pending batch rolls back"
+    );
+
+    // live state reverts to exactly the post-A root; B's effect is gone
+    assert_eq!(
+        node.state.state_root(),
+        root_after_a,
+        "state reverted to post-A"
+    );
+    assert_eq!(
+        node.state.position(&bob.owner, 0).unwrap().size,
+        bob_after_a
+    );
+    assert!(
+        node.state.conservation_holds(),
+        "conservation holds after rollback"
+    );
+
+    // B's fills were never binding: MATCHED → ACCEPTED (only SETTLED is final)
+    assert_eq!(node.finality_of(&b_taker_hash), Some(Finality::Accepted));
+    // the already-SETTLED batch A is untouched — settled history is immutable
+    assert_eq!(node.finality_of(&a_taker_hash), Some(Finality::Settled));
+
+    // recovery still works against the surviving state (§7)
+    let recovered = archive.scan(&Wallet::from_seed([5u8; 32]).view_key);
+    assert_eq!(
+        recovered.len(),
+        1,
+        "alice still recovers her note after a rollback"
+    );
+}
