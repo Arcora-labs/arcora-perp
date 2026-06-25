@@ -1,40 +1,35 @@
 import { useState } from "react";
 import { useStore } from "../store";
 import { formatPrice, formatUsd, parsePrice, parseSize } from "../domain/format";
-import { PRICE_SCALE, QUOTE_SCALE, SIZE_SCALE, type OrderInput, type Side, type TimeInForce } from "../domain/types";
+import { orderRisk } from "../domain/risk";
+import type { OrderInput, Side, TimeInForce } from "../domain/types";
 
 const TIFS: TimeInForce[] = ["Gtc", "Ioc", "Fok", "PostOnly"];
 
 /// Pre-trade preview: notional, required initial margin, resulting leverage, and
-/// an estimated liquidation price — computed in bigint and matching the values the
-/// position will show once it fills, so the trader sees the risk before committing.
+/// an estimated liquidation price — matching the values the position will show once
+/// it fills, so the trader sees the risk before committing. Math lives in
+/// `domain/risk` (pure + unit-tested).
 function OrderPreview({ size, mark, side, imr }: { size: bigint; mark: bigint; side: Side; imr: number }) {
   if (size <= 0n || mark <= 0n) return null;
-  const DIV = (SIZE_SCALE * PRICE_SCALE) / QUOTE_SCALE;
-  const notional = (size * mark) / DIV;
-  const imrBp = BigInt(Math.round(imr * 10_000));
-  const margin = (notional * imrBp) / 10_000n;
-  const leverage = imr > 0 ? 1 / imr : 0;
-  // est. liq mirrors the client's liqPrice (entry ± 9% buffer)
-  const delta = (mark * 9n) / 100n;
-  const liq = side === "Buy" ? mark - delta : mark + delta;
+  const r = orderRisk(size, mark, side, imr);
   return (
     <dl className="preview">
       <div className="preview__row">
         <dt>Notional</dt>
-        <dd className="mono">{formatUsd(notional)}</dd>
+        <dd className="mono">{formatUsd(r.notional)}</dd>
       </div>
       <div className="preview__row">
         <dt>Margin required</dt>
-        <dd className="mono">{formatUsd(margin)}</dd>
+        <dd className="mono">{formatUsd(r.margin)}</dd>
       </div>
       <div className="preview__row">
         <dt>Leverage</dt>
-        <dd className="mono">{leverage.toFixed(1)}×</dd>
+        <dd className="mono">{r.leverage.toFixed(1)}×</dd>
       </div>
       <div className="preview__row">
         <dt>Est. liquidation</dt>
-        <dd className="mono">{formatPrice(liq)}</dd>
+        <dd className="mono">{formatPrice(r.liquidationPrice)}</dd>
       </div>
     </dl>
   );
