@@ -98,9 +98,11 @@ inclusion challenges, forced exit, and view-key recovery from the note archive.
 ## Repository status
 
 The protocol is built bottom-up across the [roadmap](docs/ROADMAP.md) phases — all
-six phases now have implemented deliverables. Tested end-to-end: **132 Rust + 31
-Solidity + 32 frontend tests** (green in debug *and* release), **13
-property/stateful fuzzers**, clippy `-D warnings` + `cargo fmt --check` clean, a
+six phases now have implemented deliverables. Tested end-to-end: **134 Rust + 31
+Solidity + 32 frontend tests** (green in debug *and* release) — including a
+CI-locked node-lifecycle test driving the full funding → liquidation →
+conservation loop — **13 property/stateful fuzzers**, clippy `-D warnings` +
+`cargo fmt --check` clean, a
 **real SP1 zkVM guest that executes and matches native byte-for-byte**
 ([`crates/sp1-guest`](crates/sp1-guest) + [`crates/sp1-host`](crates/sp1-host)), a
 **live Crypto.com oracle** wired at both the UI and the protocol layer
