@@ -156,4 +156,13 @@ the containment structure above:
 
 - real SP1/Risc0 verifier (replaces `MockZkVerifier`) — see `PROVING.md`;
 - real TDX/Nitro attestation (enclave measurement is currently a value);
-- real enclave sealing / note encryption / committee DKG / bridge VRF seed.
+- real enclave sealing / note encryption / committee DKG / bridge VRF seed;
+- **spend-key ↔ owner binding.** `consume_note` (engine) authorizes a spend by
+  checking `note.owner == expected_owner` and deriving the nullifier from a supplied
+  `spend_key`, but the key is **not** yet cryptographically bound to the owner (the
+  wallet derives `owner` and `spend_key` independently from the seed). In Phase 0 the
+  trusted enclave authenticates the user before constructing the op, so a note can
+  only be spent by its owner. Trustless operation requires the Proof-v1 circuit to
+  prove `owner == pubkey(spend_key)` (the §7 view/spend split) so the spend
+  authorization holds *without* trusting the enclave — until then, note-spend
+  authorization rests on the enclave, not the proof.
