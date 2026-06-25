@@ -182,6 +182,9 @@ impl<H: Hasher> State<H> {
         }
         let note = Note::new(*owner, asset_id, amount, *blinding);
         let cm = note.commitment::<H>();
+        if self.notes.contains_key(&cm) {
+            return Err(EngineError::DuplicateCommitment);
+        }
         self.tree.append(cm).map_err(|_| EngineError::Overflow)?;
         self.notes.insert(cm, note);
         self.external_in = self
@@ -440,6 +443,9 @@ impl<H: Hasher> State<H> {
         // value-preserving.
         let note = Note::new(*owner, 0, amount, *blinding);
         let cm = note.commitment::<H>();
+        if self.notes.contains_key(&cm) {
+            return Err(EngineError::DuplicateCommitment);
+        }
         self.tree.append(cm).map_err(|_| EngineError::Overflow)?;
         self.notes.insert(cm, note);
         self.positions.insert(key, pos);

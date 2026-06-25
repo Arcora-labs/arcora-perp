@@ -23,6 +23,10 @@ pub enum EngineError {
     CloseOnly,
     /// Amount is non-positive where a positive amount is required.
     NonPositiveAmount,
+    /// A note with this commitment already exists. Commitments must be unique
+    /// (the blinding factor is a unique nonce); minting a duplicate would alias
+    /// two notes in the unspent set and silently lose value. Rejected.
+    DuplicateCommitment,
     /// Counterparties of a fill must take opposite sides at one price.
     MismatchedFill,
     /// A fill's taker and maker are the same account (self-trade). The matcher

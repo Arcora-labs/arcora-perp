@@ -377,6 +377,26 @@ fn invariant_liquidation_threshold() {
 }
 
 #[test]
+fn duplicate_commitment_deposit_rejected() {
+    // two deposits with identical (owner, asset, amount, blinding) collide on the
+    // commitment; the second must be rejected, not silently alias and lose value
+    // (found by the conservation fuzzer).
+    let mut s = fresh_state();
+    let o = pk(1);
+    let bl = [9u8; 32];
+    let amt = 1_000 * QUOTE_SCALE;
+    s.apply_op(&BatchOp::Deposit { owner: o, asset_id: 0, amount: amt, blinding: bl }).unwrap();
+    let err = s
+        .apply_op(&BatchOp::Deposit { owner: o, asset_id: 0, amount: amt, blinding: bl })
+        .unwrap_err();
+    assert_eq!(err, EngineError::DuplicateCommitment);
+    assert!(s.conservation_holds());
+    // a different blinding is fine
+    s.apply_op(&BatchOp::Deposit { owner: o, asset_id: 0, amount: amt, blinding: [10u8; 32] }).unwrap();
+    assert!(s.conservation_holds());
+}
+
+#[test]
 fn self_trade_is_rejected_at_settlement() {
     // defensive: a fill whose taker == maker must be rejected (it would otherwise
     // drop a leg and break conservation). The matcher prevents this upstream.

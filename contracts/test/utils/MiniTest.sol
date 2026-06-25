@@ -13,6 +13,7 @@ interface Vm {
     function deal(address, uint256) external;
     function expectRevert() external;
     function expectRevert(bytes4) external;
+    function assume(bool) external;
     function addr(uint256 privateKey) external pure returns (address);
     function sign(uint256 privateKey, bytes32 digest) external pure returns (uint8 v, bytes32 r, bytes32 s);
     function label(address, string calldata) external;
