@@ -46,6 +46,8 @@ clippy clean):
 | ZK proving harness + §10b confidential-proving boundary | [`crates/prover`](crates/prover) | 2 | §4,§10b |
 | Encrypted note archive + view-key recovery | [`crates/note-archive`](crates/note-archive) | 2 | §7 |
 | L1 settlement: root anchoring, liveness/close-only, bond + inclusion slashing, vault | [`contracts/`](contracts) | 2 | §2,§3,§6 |
+| Committee-of-enclaves: Shamir t-of-n order keys + quorum preconf | [`crates/committee`](crates/committee) | 5 | §11 |
+| Privacy bridge: amount-bucketing + batching/mixing | [`crates/bridge`](crates/bridge) | 4 | §13,§9 |
 | End-to-end integration (deposit→match→settle→prove→recover) | [`crates/e2e`](crates/e2e) | — | all |
 | Web client skeleton (finality UX), design-ready | [`frontend/`](frontend) | — | §3,§6,§7 |
 

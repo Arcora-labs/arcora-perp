@@ -24,6 +24,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "bridge"
+version = "0.0.1"
+dependencies = [
+ "perp-core",
+]
+
+[[package]]
 name = "cfg-if"
 version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"

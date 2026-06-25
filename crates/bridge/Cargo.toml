@@ -1,0 +1,18 @@
+[package]
+name = "bridge"
+description = "Privacy bridge (Phase 4, §13): amount-bucket decomposition + batching/mixing so deposits/withdrawals share an anonymity set per denomination and exact amounts/linkage are hidden on-chain. Ethereum-direct model of the Aztec-style bridge."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+default = ["std"]
+std = ["perp-core/std"]
+
+[dependencies]
+perp-core = { path = "../perp-core", default-features = false }

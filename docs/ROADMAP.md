@@ -66,10 +66,17 @@ per batch size (the §10b memory-envelope data point).
 | Pre-trade risk (reject unmarginable before matching) | — | ⬜ |
 | **Proof-v2** matching determinism (price-time, STP, partial, expiry, order types) | — | ⬜ (matcher is deterministic + tested; ZK proof pending) |
 
-## Faz 4 — Aztec private bridge
+## Faz 4 — private bridge
 
-Private deposit/withdraw + padding / batching / relayer + amount-bucket strategy.
-Lightweight dependency, isolated to the bridge. §13, §15.
+| Deliverable | Where | Status |
+|---|---|---|
+| Amount-bucket decomposition (fixed denominations) | `bridge::decompose` | ✅ (model) |
+| Batching / mixing + per-denomination anonymity set | `bridge::MixBatch` | ✅ (model) |
+| Actual Aztec network integration | — | ⬜ (optional; Ethereum-direct ships first, §15) |
+
+Private deposit/withdraw via padding / batching / relayer + amount-bucket strategy
+(§13, §15). The model is Ethereum-direct; the Aztec dependency is lightweight and
+isolated to this bridge, and can wait for Alpha/v5 maturity.
 
 ## Faz 5 — Committee-of-enclaves
 
