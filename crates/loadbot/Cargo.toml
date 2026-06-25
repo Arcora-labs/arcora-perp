@@ -1,0 +1,13 @@
+[package]
+name = "loadbot"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "loadbot"
+path = "src/main.rs"
+
+[dependencies]
+perp-core = { path = "../perp-core" }
+matcher = { path = "../matcher" }
