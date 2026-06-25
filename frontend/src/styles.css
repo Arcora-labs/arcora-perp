@@ -167,6 +167,16 @@ body {
 .orderbook__midlabel { color: var(--text-mute); font-size: 11px; }
 .orderbook__note { color: var(--text-mute); font-size: 11px; margin: 12px 0 0; }
 
+/* ============================ market selector ============================= */
+.market-selector { display: flex; gap: 8px; margin-top: 14px; }
+.market-chip {
+  padding: 8px 16px; border-radius: var(--radius-sm); font: inherit; font-weight: 600;
+  background: var(--bg-elev); border: 1px solid var(--border); color: var(--text-dim);
+  cursor: pointer;
+}
+.market-chip:hover { color: var(--text); }
+.market-chip.is-active { background: var(--bg-elev-2); color: var(--text); border-color: var(--accent); }
+
 /* ============================ statsbar ==================================== */
 .statsbar { display: flex; align-items: center; gap: 28px; padding: 14px 18px; margin-top: 14px; background: var(--bg-elev); border: 1px solid var(--border); border-radius: var(--radius); overflow-x: auto; }
 .statsbar__market { display: flex; flex-direction: column; gap: 2px; padding-right: 24px; border-right: 1px solid var(--border); }

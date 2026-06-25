@@ -8,18 +8,20 @@ export function StatsBar() {
   const { state } = useStore();
   const mark = state.oracle.price;
 
-  // 24h change vs a $100k baseline (mock reference)
-  const baseline = 100_000n * PRICE_SCALE;
+  // 24h change vs the market's reference price (mock baseline)
+  const baseline = (state.market.symbol === "BTC-PERP" ? 100_000n : 3_000n) * PRICE_SCALE;
   const changeBps = Number(((mark - baseline) * 10_000n) / baseline) / 100;
 
   // funding rate (mock): premium of mark over baseline, clamped
   const fundingBps = Math.max(-5, Math.min(5, changeBps / 10));
 
-  // open interest = Σ |size| · mark
-  const oi = state.account.positions.reduce((acc, p) => {
-    const abs = p.size < 0n ? -p.size : p.size;
-    return acc + (abs * mark) / ((SIZE_SCALE * PRICE_SCALE) / QUOTE_SCALE);
-  }, 0n);
+  // open interest for THIS market = Σ |size| · mark over its positions
+  const oi = state.account.positions
+    .filter((p) => p.marketId === state.selectedMarketId)
+    .reduce((acc, p) => {
+      const abs = p.size < 0n ? -p.size : p.size;
+      return acc + (abs * mark) / ((SIZE_SCALE * PRICE_SCALE) / QUOTE_SCALE);
+    }, 0n);
 
   const up = changeBps >= 0;
 

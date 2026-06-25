@@ -9,6 +9,7 @@ import { AccountPanel } from "./components/AccountPanel";
 import { RecoveryPanel } from "./components/RecoveryPanel";
 import { FinalityLegend } from "./components/FinalityTracker";
 import { Toaster } from "./components/Toaster";
+import { MarketSelector } from "./components/MarketSelector";
 
 type Tab = "trade" | "account" | "recover";
 
@@ -42,6 +43,7 @@ export default function App() {
 
         <Toaster />
         <ModeBanner />
+        {tab === "trade" && <MarketSelector />}
         <StatsBar />
 
         <main className="app__main">

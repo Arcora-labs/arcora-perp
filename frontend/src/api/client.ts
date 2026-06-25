@@ -16,8 +16,14 @@ import type {
 } from "../domain/types";
 
 export interface ClientState {
+  /// all listed markets
+  markets: Market[];
+  /// the currently selected market's id
+  selectedMarketId: number;
+  /// the selected market (convenience; equals markets.find(selectedMarketId))
   market: Market;
   mode: SystemMode;
+  /// oracle + book for the SELECTED market
   oracle: OracleQuote;
   book: OrderBookSnapshot;
   account: AccountState;
@@ -50,6 +56,9 @@ export interface DarkPerpClient {
 
   /// Cancel an order that is still ACCEPTED (not yet matched).
   cancelOrder(orderId: string): Promise<void>;
+
+  /// Switch the active market.
+  selectMarket(marketId: number): void;
 
   /// Subscribe to order lifecycle events (for toasts). Returns an unsubscribe fn.
   onOrderEvent(cb: (e: OrderEvent) => void): () => void;
