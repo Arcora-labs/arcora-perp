@@ -101,15 +101,26 @@ impl Position {
         }
     }
 
-    /// Would applying `delta_size` increase absolute exposure (open or grow,
-    /// including a flip through zero to a larger opposite position)? Reducing /
-    /// closing returns false.
+    /// Does applying `delta_size` open new directional exposure — i.e. anything
+    /// that is NOT a pure same-direction reduction or a clean close? This is true
+    /// for opening from flat, growing a position, AND flipping direction (even to
+    /// a *smaller* opposite position, which still opens a fresh opposite leg).
+    /// Used for both the initial-margin gate and the close-only gate, so a flip
+    /// can neither escape margin nor sneak past close-only.
     pub fn increases_exposure(&self, delta_size: i128) -> bool {
         if self.size == 0 {
-            return true;
+            return true; // opening from flat
         }
         let new = self.size + delta_size;
-        (self.size > 0) == (delta_size > 0) || abs(new) > abs(self.size)
+        if new == 0 {
+            return false; // exact close
+        }
+        let same_direction = (self.size > 0) == (new > 0);
+        if same_direction {
+            abs(new) > abs(self.size) // grew in the same direction
+        } else {
+            true // flipped direction → opened opposite exposure
+        }
     }
 
     /// Pre-trade risk check (§12, Phase 3): if this order's full size filled at
@@ -292,6 +303,22 @@ mod tests {
         assert_eq!(funding, 0);
         assert_eq!(p.size, 0);
         assert_eq!(p.collateral, 30_000 * QUOTE_SCALE);
+    }
+
+    #[test]
+    fn flip_to_smaller_opposite_still_requires_margin() {
+        let m = Market::conservative(0);
+        let mark = 100_000 * PRICE_SCALE;
+        // long 2 BTC. delta -3 → flip to short 1 BTC: opens a fresh opposite leg.
+        let long2 = pos(2 * SIZE_SCALE, mark, 30_000 * QUOTE_SCALE);
+        assert!(long2.increases_exposure(-3 * SIZE_SCALE), "flip opens new exposure");
+        // a pure same-direction reduction does NOT
+        assert!(!long2.increases_exposure(-SIZE_SCALE));
+        // exact close does NOT
+        assert!(!long2.increases_exposure(-2 * SIZE_SCALE));
+        // the flip is margin-gated: with thin collateral it must fail pre-trade
+        let thin = pos(2 * SIZE_SCALE, mark, 1_000 * QUOTE_SCALE);
+        assert!(!thin.fits_initial_after(&m, -3 * SIZE_SCALE, mark, 0), "flip is margin-checked");
     }
 
     #[test]

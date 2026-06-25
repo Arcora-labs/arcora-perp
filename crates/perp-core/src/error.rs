@@ -25,6 +25,10 @@ pub enum EngineError {
     NonPositiveAmount,
     /// Counterparties of a fill must take opposite sides at one price.
     MismatchedFill,
+    /// A fill's taker and maker are the same account (self-trade). The matcher
+    /// prevents this upstream; the engine rejects it defensively because a
+    /// single-account two-leg fill would corrupt the position and conservation.
+    SelfTrade,
     /// Arithmetic overflow — hard reject, never wrap.
     Overflow,
     /// The conservation invariant would be violated (should be impossible;

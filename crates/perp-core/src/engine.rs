@@ -257,6 +257,12 @@ impl<H: Hasher> State<H> {
         if size <= 0 || price <= 0 {
             return Err(EngineError::NonPositiveAmount);
         }
+        // A self-trade would have both legs snapshot the same pre-state and the
+        // second commit clobber the first, dropping a leg and breaking
+        // conservation. The matcher prevents self-trades upstream; reject here too.
+        if taker == maker {
+            return Err(EngineError::SelfTrade);
+        }
         let market = *self
             .markets
             .get(&market_id)

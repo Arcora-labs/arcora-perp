@@ -377,6 +377,35 @@ fn invariant_liquidation_threshold() {
 }
 
 #[test]
+fn self_trade_is_rejected_at_settlement() {
+    // defensive: a fill whose taker == maker must be rejected (it would otherwise
+    // drop a leg and break conservation). The matcher prevents this upstream.
+    let mut s = fresh_state();
+    let a = pk(1);
+    let bl = [1u8; 32];
+    let cm = deposit_commit(a, 20_000 * QUOTE_SCALE, bl);
+    s.apply_batch(&[
+        BatchOp::Deposit { owner: a, asset_id: 0, amount: 20_000 * QUOTE_SCALE, blinding: bl },
+        BatchOp::FundPosition { owner: a, market_id: 0, note_commitment: cm, spend_key: [1; 32] },
+    ])
+    .unwrap();
+    let err = s
+        .apply_op(&BatchOp::Fill {
+            taker: a,
+            maker: a,
+            market_id: 0,
+            taker_side: Side::Buy,
+            size: SIZE_SCALE,
+            price: 100_000 * PRICE_SCALE,
+            oracle: oracle(100_000, 1_000),
+            now_ms: 1_000,
+        })
+        .unwrap_err();
+    assert_eq!(err, EngineError::SelfTrade);
+    assert!(s.conservation_holds());
+}
+
+#[test]
 fn forced_exit_close_only_blocks_increase() {
     let mut s = fresh_state();
     let (a, b) = (pk(1), pk(2));

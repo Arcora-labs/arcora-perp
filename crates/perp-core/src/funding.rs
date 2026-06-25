@@ -30,9 +30,13 @@ impl FundingState {
             return 0;
         }
         // premium fraction = (mark - index)/index, RATE_SCALE-scaled
-        let raw = match (mark - index_price).checked_mul(RATE_SCALE) {
+        let premium = mark - index_price;
+        let raw = match premium.checked_mul(RATE_SCALE) {
             Some(v) => v / index_price,
-            None => return MAX_FUNDING_RATE_PER_INTERVAL, // overflow ⇒ clamp
+            // overflow ⇒ clamp, but preserve the SIGN of the premium (a deep
+            // discount must clamp to −MAX, a deep premium to +MAX).
+            None if premium < 0 => return -MAX_FUNDING_RATE_PER_INTERVAL,
+            None => return MAX_FUNDING_RATE_PER_INTERVAL,
         };
         raw.clamp(
             -MAX_FUNDING_RATE_PER_INTERVAL,
@@ -76,6 +80,16 @@ mod tests {
         // 0.01% premium < 0.05% clamp
         let r = FundingState::funding_rate(100_010 * PRICE_SCALE, 100_000 * PRICE_SCALE);
         assert!(r > 0 && r < MAX_FUNDING_RATE_PER_INTERVAL);
+    }
+
+    #[test]
+    fn overflow_clamp_preserves_sign() {
+        // a deep discount whose premium*RATE_SCALE overflows must clamp to −MAX,
+        // not +MAX (the sign-blind bug).
+        let r = FundingState::funding_rate(1, i128::MAX);
+        assert_eq!(r, -MAX_FUNDING_RATE_PER_INTERVAL, "deep discount → -MAX");
+        let r2 = FundingState::funding_rate(i128::MAX, 1);
+        assert_eq!(r2, MAX_FUNDING_RATE_PER_INTERVAL, "deep premium → +MAX");
     }
 
     #[test]
