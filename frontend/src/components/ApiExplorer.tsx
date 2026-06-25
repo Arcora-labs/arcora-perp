@@ -54,6 +54,7 @@ export function ApiExplorer() {
             <button
               type="button"
               className={`seg__btn ${side === "Buy" ? "is-active seg__btn--buy" : ""}`}
+              aria-pressed={side === "Buy"}
               onClick={() => setSide("Buy")}
             >
               Buy
@@ -61,6 +62,7 @@ export function ApiExplorer() {
             <button
               type="button"
               className={`seg__btn ${side === "Sell" ? "is-active seg__btn--sell" : ""}`}
+              aria-pressed={side === "Sell"}
               onClick={() => setSide("Sell")}
             >
               Sell
@@ -167,8 +169,15 @@ export function ApiExplorer() {
       <div className="col">
         <div className="card">
           <h3 className="card__title">Response</h3>
-          {err && <p className="notice notice--error">{err}</p>}
-          <pre className="mono api-explorer__out">{out}</pre>
+          {err && (
+            <p className="notice notice--error" role="alert">
+              {err}
+            </p>
+          )}
+          {/* announce the response so a screen-reader user gets feedback after a call */}
+          <pre className="mono api-explorer__out" aria-live="polite" aria-label="API response">
+            {out}
+          </pre>
         </div>
         <div className="card">
           <h3 className="card__title">onOrderEvent stream (newest first)</h3>

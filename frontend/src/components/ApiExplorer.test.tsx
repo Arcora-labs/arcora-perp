@@ -33,6 +33,15 @@ describe("ApiExplorer", () => {
     renderEx();
     fireEvent.change(screen.getByLabelText(/amount/i), { target: { value: "999999999" } });
     fireEvent.click(screen.getByRole("button", { name: /requestWithdrawal/i }));
-    expect(await screen.findByText(/exceeds SETTLED/i)).toBeTruthy();
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toMatch(/exceeds SETTLED/i);
+  });
+
+  it("announces responses via a polite live region (a11y)", () => {
+    renderEx();
+    // the response output is a labelled live region, so a screen-reader user hears
+    // the result after invoking a method (it updates silently otherwise)
+    const out = screen.getByLabelText(/api response/i);
+    expect(out.getAttribute("aria-live")).toBe("polite");
   });
 });
