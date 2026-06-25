@@ -154,6 +154,22 @@ body {
 
 /* ============================ explorer =================================== */
 .explorer__suborder td { background: var(--bg); color: var(--text-dim); font-size: 12px; }
+.explorer__filters { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 12px; }
+.explorer__search {
+  flex: 1; min-width: 180px;
+  background: var(--bg); border: 1px solid var(--border); color: var(--text);
+  border-radius: var(--radius-sm); padding: 9px 12px; font: inherit; outline: none;
+  transition: border-color 0.18s, box-shadow 0.18s;
+}
+.explorer__search:focus { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 15%, transparent); }
+.explorer__chips { display: flex; gap: 4px; flex-wrap: wrap; }
+.chip {
+  padding: 7px 12px; border: 1px solid var(--border); background: var(--bg-elev-2);
+  color: var(--text-dim); border-radius: var(--radius-sm); font: inherit; font-size: 12px;
+  font-weight: 600; cursor: pointer; transition: all 0.18s;
+}
+.chip:hover { border-color: var(--border-strong); }
+.chip--on { background: var(--bg-elev-3); color: var(--text); border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
 
 /* ============================ health rows ================================ */
 .health-row {

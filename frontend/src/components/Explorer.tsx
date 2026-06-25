@@ -16,6 +16,19 @@ export function Explorer() {
   const symbolOf = (id: number) => state.markets.find((m) => m.id === id)?.symbol ?? `#${id}`;
   // batch drill-down: which batch's orders are expanded (null = none)
   const [openBatch, setOpenBatch] = useState<number | null>(null);
+  // order-log search + finality filter
+  const [query, setQuery] = useState("");
+  const [finalityFilter, setFinalityFilter] = useState<"ALL" | "ACCEPTED" | "MATCHED" | "SETTLED">("ALL");
+  const q = query.trim().toLowerCase();
+  const filteredOrders = orders.filter((o) => {
+    if (finalityFilter !== "ALL" && o.finality !== finalityFilter) return false;
+    if (q === "") return true;
+    return (
+      o.receipt.orderHash.toLowerCase().includes(q) ||
+      `#${o.receipt.seqNo}`.includes(q) ||
+      symbolOf(o.input.marketId).toLowerCase().includes(q)
+    );
+  });
 
   return (
     <div className="col">
@@ -122,36 +135,65 @@ export function Explorer() {
         {orders.length === 0 ? (
           <p className="muted">No orders yet. Each accepted order is an append-only, signed-receipt entry.</p>
         ) : (
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Seq</th>
-                <th>Order hash</th>
-                <th>Batch</th>
-                <th>Market</th>
-                <th>Size</th>
-                <th>Finality</th>
-              </tr>
-            </thead>
-            <tbody>
-              {orders.map((o) => (
-                <tr key={o.id}>
-                  <td className="mono">#{o.receipt.seqNo}</td>
-                  <td className="mono" title={o.receipt.orderHash}>
-                    {shortHash(o.receipt.orderHash)}
-                  </td>
-                  <td className="mono">#{o.receipt.batchIdHint}</td>
-                  <td>{symbolOf(o.input.marketId)}</td>
-                  <td className={`num ${o.input.side === "Buy" ? "pos" : "neg"}`}>
-                    {formatSignedSize(o.input.side === "Buy" ? o.input.size : -o.input.size)}
-                  </td>
-                  <td>
-                    <FinalityBadge finality={o.finality} />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <>
+            <div className="explorer__filters">
+              <input
+                className="input explorer__search"
+                type="search"
+                placeholder="Search hash, #seq, or market…"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                aria-label="Search order log"
+              />
+              <div className="explorer__chips" role="group" aria-label="Filter by finality">
+                {(["ALL", "ACCEPTED", "MATCHED", "SETTLED"] as const).map((f) => (
+                  <button
+                    key={f}
+                    type="button"
+                    className={`chip ${finalityFilter === f ? "chip--on" : ""}`}
+                    aria-pressed={finalityFilter === f}
+                    onClick={() => setFinalityFilter(f)}
+                  >
+                    {f === "ALL" ? "All" : f.charAt(0) + f.slice(1).toLowerCase()}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {filteredOrders.length === 0 ? (
+              <p className="muted">No orders match the current search/filter.</p>
+            ) : (
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Seq</th>
+                    <th>Order hash</th>
+                    <th>Batch</th>
+                    <th>Market</th>
+                    <th>Size</th>
+                    <th>Finality</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredOrders.map((o) => (
+                    <tr key={o.id}>
+                      <td className="mono">#{o.receipt.seqNo}</td>
+                      <td className="mono" title={o.receipt.orderHash}>
+                        {shortHash(o.receipt.orderHash)}
+                      </td>
+                      <td className="mono">#{o.receipt.batchIdHint}</td>
+                      <td>{symbolOf(o.input.marketId)}</td>
+                      <td className={`num ${o.input.side === "Buy" ? "pos" : "neg"}`}>
+                        {formatSignedSize(o.input.side === "Buy" ? o.input.size : -o.input.size)}
+                      </td>
+                      <td>
+                        <FinalityBadge finality={o.finality} />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </>
         )}
       </div>
     </div>

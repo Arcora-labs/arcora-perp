@@ -14,7 +14,7 @@ cd frontend
 pnpm install
 pnpm dev        # http://localhost:5173
 pnpm build      # type-check (strict) + production build
-pnpm test       # vitest — 16 unit tests
+pnpm test       # vitest — 83 unit + component tests
 ```
 
 The tests guard the correctness-critical, design-independent layer: the
