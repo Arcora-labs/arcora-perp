@@ -73,10 +73,15 @@ Lightweight dependency, isolated to the bridge. §13, §15.
 
 ## Faz 5 — Committee-of-enclaves
 
-Threshold order encryption, quorum preconfirmation, enclave diversity /
-cross-provider. Addresses confidentiality/integrity single-point-of-failure only
-(§10, §11) — *not* a substitute for protocol completeness, which is required in
-every version.
+| Deliverable | Where | Status |
+|---|---|---|
+| Threshold (t-of-n) order-key sharing — no single enclave decrypts an order | `committee::shamir` | ✅ (model) |
+| Quorum preconfirmation (t-of-n distinct enclave signatures) | `committee::QuorumCertificate` | ✅ (model) |
+| Wire quorum into the sequencer preconf path | — | ⬜ |
+| Real distributed key generation + enclave diversity / cross-provider | — | ⬜ |
+
+Addresses confidentiality/integrity single-point-of-failure only (§10, §11) —
+*not* a substitute for protocol completeness, which is required in every version.
 
 ---
 

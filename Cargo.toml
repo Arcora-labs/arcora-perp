@@ -6,6 +6,7 @@ members = [
     "crates/sequencer",
     "crates/prover",
     "crates/note-archive",
+    "crates/committee",
     "crates/e2e",
 ]
 

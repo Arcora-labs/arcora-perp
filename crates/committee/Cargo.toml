@@ -1,0 +1,16 @@
+[package]
+name = "committee"
+description = "Committee-of-enclaves (Phase 5, §11): Shamir t-of-n threshold order-key sharing (no single enclave decrypts orders alone) and quorum preconfirmation certificates (t-of-n enclave signatures). Confidentiality + integrity redundancy."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+perp-core = { path = "../perp-core" }
+k256 = { version = "0.13", features = ["ecdsa"] }
+sha3 = "0.10"
