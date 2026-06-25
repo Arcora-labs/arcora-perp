@@ -184,6 +184,61 @@ describe("MockDarkPerpClient position lifecycle", () => {
   });
 });
 
+describe("MockDarkPerpClient collateral accounting", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  const openLong = async (c: MockDarkPerpClient, px: bigint, size = SIZE_SCALE) => {
+    await c.placeOrder({ marketId: 0, side: "Buy", size, limitPrice: px, tif: "Gtc", reduceOnly: false });
+    await vi.advanceTimersByTimeAsync(MATCH_MS);
+  };
+
+  it("locks margin out of the free balance when a position opens", async () => {
+    const c = new MockDarkPerpClient();
+    const before = c.getState().account.settledBalance; // 25k
+    await openLong(c, 100_000n * PRICE_SCALE); // 1 BTC @ $100k ⇒ $10k margin
+    // free balance dropped by exactly the locked margin
+    expect(c.getState().account.settledBalance).toBe(before - 10_000n * QUOTE_SCALE);
+    expect(pos(c)!.collateral).toBe(10_000n * QUOTE_SCALE);
+  });
+
+  it("releases margin AND realizes PnL back to the balance on close", async () => {
+    const c = new MockDarkPerpClient();
+    const before = c.getState().account.settledBalance; // 25k
+    await openLong(c, 100_000n * PRICE_SCALE); // free → 15k, $10k margin locked
+    // close the long at $110k (a +$10k gain on 1 BTC) via an explicit reduce
+    await c.placeOrder({
+      marketId: 0,
+      side: "Sell",
+      size: SIZE_SCALE,
+      limitPrice: 110_000n * PRICE_SCALE,
+      tif: "Gtc",
+      reduceOnly: true,
+    });
+    await vi.advanceTimersByTimeAsync(MATCH_MS);
+    expect(pos(c)).toBeUndefined();
+    // balance = initial 25k + 10k realized profit (margin returned, gain realized)
+    expect(c.getState().account.settledBalance).toBe(before + 10_000n * QUOTE_SCALE);
+  });
+
+  it("does not let a withdrawal drain margin backing an open position", async () => {
+    const c = new MockDarkPerpClient();
+    await openLong(c, 100_000n * PRICE_SCALE); // free balance now 15k, 10k locked
+    // 20k exceeds the 15k free balance (the other 10k backs the position)
+    await expect(c.requestWithdrawal(20_000n * QUOTE_SCALE)).rejects.toThrow(/exceeds SETTLED/i);
+    // withdrawing exactly the free balance is fine
+    await expect(c.requestWithdrawal(15_000n * QUOTE_SCALE)).resolves.toBeUndefined();
+  });
+
+  it("rejects an open that exceeds free margin (buying-power guard)", async () => {
+    const c = new MockDarkPerpClient();
+    // 3 BTC @ $100k ⇒ $30k margin > $25k free balance
+    await expect(
+      c.placeOrder({ marketId: 0, side: "Buy", size: 3n * SIZE_SCALE, limitPrice: 100_000n * PRICE_SCALE, tif: "Gtc", reduceOnly: false }),
+    ).rejects.toThrow(/insufficient free margin/i);
+  });
+});
+
 describe("MockDarkPerpClient withdrawals", () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());

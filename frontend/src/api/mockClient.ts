@@ -263,6 +263,18 @@ export class MockDarkPerpClient implements DarkPerpClient {
     if (input.reduceOnly && opening) {
       throw new Error("Reduce-only order would open or increase a position — rejected.");
     }
+    // Buying-power guard: a fresh open or a same-direction increase locks new margin
+    // out of the free balance, so it must be affordable. (Flips net-release margin —
+    // old side closes before the new opens — so they are not gated here.)
+    const existing = this.state.account.positions.find((p) => p.marketId === input.marketId);
+    const signedReq = input.side === "Buy" ? input.size : -input.size;
+    const freshOrIncrease = !existing || existing.size === 0n || (existing.size > 0n) === (signedReq > 0n);
+    if (opening && freshOrIncrease) {
+      const px = input.limitPrice === 0n ? this.priceOf(input.marketId) : input.limitPrice;
+      if (this.requiredMargin(input.size, px) > this.state.account.settledBalance) {
+        throw new Error("Insufficient free margin to open this position (§3).");
+      }
+    }
     const id = `o${++counter}`;
     const orderHash = pseudoHash(id + JSON.stringify(input, (_k, v) => (typeof v === "bigint" ? v.toString() : v)));
     const receipt: Receipt = { orderHash, seqNo: counter, recvTimeMs: Date.now(), batchIdHint: Math.floor(counter / 4) };
@@ -321,46 +333,61 @@ export class MockDarkPerpClient implements DarkPerpClient {
 
   private applyFillToPosition(o: TrackedOrder) {
     const signed = o.input.side === "Buy" ? o.filledSize : -o.filledSize;
+    const fill = o.avgFillPrice;
+    const mkt = o.input.marketId;
     const positions = [...this.state.account.positions];
-    const idx = positions.findIndex((p) => p.marketId === o.input.marketId);
+    const idx = positions.findIndex((p) => p.marketId === mkt);
+    // Track collateral flowing between the free balance and the position: opening or
+    // increasing LOCKS margin out of the settled balance; reducing/closing RELEASES it
+    // and REALIZES the closed portion's PnL. Without this the margin was double-counted
+    // in equity and the "free" balance backing nothing — funds could be withdrawn from
+    // under an open position.
+    let balanceDelta = 0n;
     if (idx === -1) {
+      const collateral = this.requiredMargin(o.filledSize, fill);
+      balanceDelta = -collateral; // lock initial margin
       positions.push({
-        marketId: o.input.marketId,
+        marketId: mkt,
         size: signed,
-        entryPrice: o.avgFillPrice,
-        collateral: this.requiredMargin(o.filledSize, o.avgFillPrice),
+        entryPrice: fill,
+        collateral,
         unrealizedPnl: 0n,
-        liquidationPrice: this.liqPrice(signed, o.avgFillPrice, o.input.marketId),
+        liquidationPrice: this.liqPrice(signed, fill, mkt),
       });
     } else {
       const p = positions[idx];
       const newSize = p.size + signed;
+      const increasing = (p.size > 0n) === (signed > 0n);
       if (newSize === 0n) {
+        // exact close: realize full PnL at the fill, release all locked margin
+        balanceDelta = p.collateral + this.pnl(p.size, p.entryPrice, fill);
         positions.splice(idx, 1);
+      } else if (increasing) {
+        // grow: weighted-average entry, lock the additional margin
+        const entry = (p.entryPrice * abs(p.size) + fill * abs(signed)) / (abs(p.size) + abs(signed));
+        const collateral = this.requiredMargin(abs(newSize), entry);
+        balanceDelta = -(collateral - p.collateral);
+        positions[idx] = { ...p, size: newSize, entryPrice: entry, collateral, liquidationPrice: this.liqPrice(newSize, entry, mkt) };
+      } else if ((p.size > 0n) !== (newSize > 0n)) {
+        // flip: old side fully closed (realize its PnL, release its margin), a fresh
+        // position opens at the fill price with newly-locked margin
+        const realizedOld = this.pnl(p.size, p.entryPrice, fill);
+        const collateral = this.requiredMargin(abs(newSize), fill);
+        balanceDelta = p.collateral + realizedOld - collateral;
+        positions[idx] = { ...p, size: newSize, entryPrice: fill, collateral, liquidationPrice: this.liqPrice(newSize, fill, mkt) };
       } else {
-        // A fill can grow, reduce, or FLIP the position (cross zero). On a flip the
-        // old side is fully closed and a fresh position opens at the fill price, so
-        // the entry must reset — keeping the old entry would mis-price the liq line
-        // and PnL (matches perp-core's increases_exposure flip handling).
-        const flipping = (p.size > 0n) !== (newSize > 0n);
-        const increasing = (p.size > 0n) === (signed > 0n);
-        const entry = flipping
-          ? o.avgFillPrice
-          : increasing
-            ? (p.entryPrice * abs(p.size) + o.avgFillPrice * abs(signed)) / (abs(p.size) + abs(signed))
-            : p.entryPrice;
-        positions[idx] = {
-          ...p,
-          size: newSize,
-          entryPrice: entry,
-          // re-derive margin against the new exposure so grow/reduce/flip all track
-          collateral: this.requiredMargin(abs(newSize), entry),
-          liquidationPrice: this.liqPrice(newSize, entry, o.input.marketId),
-        };
+        // partial reduce: realize PnL on the closed quantity (in the old direction),
+        // release the freed margin, entry unchanged
+        const closed = p.size > 0n ? abs(signed) : -abs(signed);
+        const realized = this.pnl(closed, p.entryPrice, fill);
+        const collateral = this.requiredMargin(abs(newSize), p.entryPrice);
+        balanceDelta = p.collateral - collateral + realized;
+        positions[idx] = { ...p, size: newSize, entryPrice: p.entryPrice, collateral, liquidationPrice: this.liqPrice(newSize, p.entryPrice, mkt) };
       }
     }
     this.state.account = {
       ...this.state.account,
+      settledBalance: this.state.account.settledBalance + balanceDelta,
       positions: positions.map((p) => ({ ...p, unrealizedPnl: this.pnl(p.size, p.entryPrice, this.priceOf(p.marketId)) })),
     };
   }
