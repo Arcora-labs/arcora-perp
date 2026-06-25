@@ -17,3 +17,4 @@ matcher = { path = "../matcher" }
 sequencer = { path = "../sequencer" }
 prover = { path = "../prover" }
 note-archive = { path = "../note-archive" }
+oracle-feed = { path = "../oracle-feed" }

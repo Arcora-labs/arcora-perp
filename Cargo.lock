@@ -187,6 +187,7 @@ version = "0.0.1"
 dependencies = [
  "matcher",
  "note-archive",
+ "oracle-feed",
  "perp-core",
  "prover",
  "sequencer",
