@@ -274,6 +274,18 @@ body {
 .toast--cancelled { border-left-color: var(--text-mute); } .toast--cancelled .toast__kind { color: var(--text-mute); }
 .toast--rejected { border-left-color: var(--sell); } .toast--rejected .toast__kind { color: var(--sell); }
 
+/* ============================ live flash ================================== */
+.flash-up { animation: flash-up 0.5s var(--ease); }
+.flash-down { animation: flash-down 0.5s var(--ease); }
+@keyframes flash-up {
+  0% { color: var(--buy); text-shadow: 0 0 12px rgba(47, 211, 150, 0.55); }
+  100% { text-shadow: none; }
+}
+@keyframes flash-down {
+  0% { color: var(--sell); text-shadow: 0 0 12px rgba(255, 95, 109, 0.55); }
+  100% { text-shadow: none; }
+}
+
 /* ============================ misc ======================================== */
 .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-mute); }
 .dot--live { background: var(--ok); box-shadow: 0 0 0 3px rgba(47, 211, 150, 0.18); }

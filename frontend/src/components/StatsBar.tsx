@@ -1,12 +1,14 @@
 import { useStore } from "../store";
 import { PRICE_SCALE, QUOTE_SCALE, SIZE_SCALE } from "../domain/types";
 import { formatPrice, formatUsd } from "../domain/format";
+import { useFlash } from "../hooks/useFlash";
 
 /// Live market stats strip. Values are mock-derived; the design restyles the
 /// presentation, the data stays.
 export function StatsBar() {
   const { state } = useStore();
   const mark = state.oracle.price;
+  const flash = useFlash(mark);
 
   // 24h change vs the market's reference price (mock baseline)
   const baseline = (state.market.symbol === "BTC-PERP" ? 100_000n : 3_000n) * PRICE_SCALE;
@@ -29,7 +31,7 @@ export function StatsBar() {
     <div className="statsbar">
       <div className="statsbar__market">
         <span className="statsbar__symbol">{state.market.symbol}</span>
-        <span className={`statsbar__price ${up ? "pos" : "neg"}`}>{formatPrice(mark)}</span>
+        <span className={`statsbar__price ${up ? "pos" : "neg"} ${flash}`}>{formatPrice(mark)}</span>
       </div>
       <Stat label="24h" value={`${up ? "+" : ""}${changeBps.toFixed(2)}%`} tone={up ? "pos" : "neg"} />
       <Stat label="Index" value={formatPrice(state.oracle.price)} />

@@ -1,5 +1,6 @@
 import { useStore } from "../store";
 import { formatPrice, formatSize } from "../domain/format";
+import { useFlash } from "../hooks/useFlash";
 import type { BookLevel } from "../domain/types";
 
 /// Cumulative depth, for the background depth bars.
@@ -14,6 +15,7 @@ function cumulative(levels: BookLevel[]): { level: BookLevel; cum: bigint }[] {
 export function OrderBook() {
   const { state } = useStore();
   const { book, oracle } = state;
+  const flash = useFlash(oracle.price);
 
   const bids = cumulative(book.bids);
   const asks = cumulative(book.asks);
@@ -34,7 +36,7 @@ export function OrderBook() {
           <Row key={`a${i}`} kind="ask" level={r.level} width={pct(r.cum)} />
         ))}
         <div className="orderbook__mid">
-          <span className="orderbook__midprice">{formatPrice(oracle.price)}</span>
+          <span className={`orderbook__midprice ${flash}`}>{formatPrice(oracle.price)}</span>
           <span className="orderbook__midlabel">index price</span>
         </div>
         {bids.map((r, i) => (
