@@ -56,7 +56,7 @@ export function PriceChart() {
   const area = `${line} L ${x(history.length - 1).toFixed(1)},${H - PAD} L ${x(0).toFixed(1)},${H - PAD} Z`;
   const up = nums[nums.length - 1] >= nums[0];
   const tone = up ? "var(--buy)" : "var(--sell)";
-  const changeBps = ((nums[nums.length - 1] - nums[0]) / nums[0]) * 100;
+  const changePct = ((nums[nums.length - 1] - nums[0]) / nums[0]) * 100;
 
   return (
     <div className="card chart">
@@ -65,7 +65,7 @@ export function PriceChart() {
         <span className={`chart__price mono ${up ? "pos" : "neg"}`}>
           {formatPrice(oracle.price)}
           <span className="chart__delta">
-            {up ? "▲" : "▼"} {Math.abs(changeBps).toFixed(2)}%
+            {up ? "▲" : "▼"} {Math.abs(changePct).toFixed(2)}%
           </span>
         </span>
       </div>

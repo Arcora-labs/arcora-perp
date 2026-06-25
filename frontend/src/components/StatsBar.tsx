@@ -13,10 +13,10 @@ export function StatsBar() {
   // 24h change vs the market's reference price (the real 24h open once the live
   // oracle reports it, else the session seed).
   const baseline = state.market.referencePrice > 0n ? state.market.referencePrice : mark;
-  const changeBps = Number(((mark - baseline) * 10_000n) / baseline) / 100;
+  const changePct = Number(((mark - baseline) * 10_000n) / baseline) / 100;
 
   // funding rate (mock): premium of mark over baseline, clamped
-  const fundingBps = Math.max(-5, Math.min(5, changeBps / 10));
+  const fundingPct = Math.max(-5, Math.min(5, changePct / 10));
 
   // open interest for THIS market = Σ |size| · mark over its positions
   const oi = state.account.positions
@@ -26,7 +26,7 @@ export function StatsBar() {
       return acc + (abs * mark) / ((SIZE_SCALE * PRICE_SCALE) / QUOTE_SCALE);
     }, 0n);
 
-  const up = changeBps >= 0;
+  const up = changePct >= 0;
 
   return (
     <div className="statsbar">
@@ -40,9 +40,9 @@ export function StatsBar() {
           <span className="dot" /> {state.market.live ? "live oracle" : "sim"}
         </span>
       </div>
-      <Stat label="24h" value={`${up ? "+" : ""}${changeBps.toFixed(2)}%`} tone={up ? "pos" : "neg"} />
+      <Stat label="24h" value={`${up ? "+" : ""}${changePct.toFixed(2)}%`} tone={up ? "pos" : "neg"} />
       <Stat label="Index" value={formatPrice(state.oracle.price)} />
-      <Stat label="Funding / 1h" value={`${fundingBps >= 0 ? "+" : ""}${fundingBps.toFixed(3)}%`} tone={fundingBps >= 0 ? "pos" : "neg"} />
+      <Stat label="Funding / 1h" value={`${fundingPct >= 0 ? "+" : ""}${fundingPct.toFixed(3)}%`} tone={fundingPct >= 0 ? "pos" : "neg"} />
       <Stat label="Open interest" value={formatUsd(oi, 0)} />
       <Stat label="Max leverage" value={`${state.market.maxLeverage}×`} />
     </div>
