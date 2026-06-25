@@ -78,5 +78,27 @@ contract CollateralVaultTest is MiniTest {
         assertEq(alice.balance - before, 2 ether, "alice claimed via 2-leaf proof");
     }
 
+    function test_publishing_a_new_root_strands_an_unclaimed_leaf() public {
+        // Documents P6: publishWithdrawals OVERWRITES the root, so a withdrawal
+        // authorized in one batch is unclaimable once the next batch publishes a root
+        // that does not carry it forward. The cumulative-root invariant (prover-side)
+        // is what prevents this in production — see CollateralVault.publishWithdrawals.
+        vm.deal(address(this), 10 ether);
+        vault.deposit{value: 10 ether}();
+
+        uint256 amount = 2 ether;
+        uint256 nonce = 1;
+        bytes32 leaf = keccak256(abi.encodePacked(alice, amount, nonce));
+        vault.publishWithdrawals(leaf, 0); // batch 0 authorizes alice
+
+        // batch 1 settles with a root that does NOT include alice's (still-unclaimed) leaf
+        vault.publishWithdrawals(keccak256("batch-1-without-alice"), 1);
+
+        // alice can no longer claim — her authorized withdrawal is stranded
+        bytes32[] memory proof = new bytes32[](0);
+        vm.expectRevert(CollateralVault.BadWithdrawalProof.selector);
+        vault.claim(alice, amount, nonce, proof);
+    }
+
     receive() external payable {}
 }

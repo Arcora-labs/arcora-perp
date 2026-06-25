@@ -51,6 +51,15 @@ contract CollateralVault {
     /// @notice Called by the settlement contract when a batch settles, publishing
     /// that batch's authorized withdrawals (§3). Only a settled batch can reach
     /// here, so withdrawals are inherently gated on hard finality.
+    ///
+    /// @dev INVARIANT (prover-side): `root` MUST be the **cumulative** root of all
+    /// authorized-but-unclaimed withdrawals as of this batch — NOT just the new
+    /// withdrawals of this batch. This call overwrites the previous root, so any leaf
+    /// not carried forward becomes unclaimable and the user is stranded. Because
+    /// `claimed[leaf]` is on-chain, the proven transition can (and must) drop
+    /// already-claimed leaves while retaining every still-unclaimed one. (Withdrawal
+    /// sets are a `0x0` placeholder in this build; this invariant must hold once they
+    /// are wired — see SECURITY.md "Known design limitations".)
     function publishWithdrawals(bytes32 root, uint256 epoch) external onlySettlement {
         withdrawalsRoot = root;
         withdrawalsEpoch = epoch;

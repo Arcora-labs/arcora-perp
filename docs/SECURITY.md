@@ -148,6 +148,16 @@ no single failure is catastrophic.
   2. **Tier receipts**: make the on-chain-challengeable commitment cover only orders
      the enclave commits to *ordering*, with `accept_order`'s instant ACK as a
      distinct non-slashable acknowledgement. Cost: refines the §2 receipt semantics.
+- **Vault `withdrawalsRoot` must be cumulative (P6).** `CollateralVault.publishWithdrawals`
+  *overwrites* the root each settled batch, so the published root must be the
+  cumulative set of all authorized-but-unclaimed withdrawals — not just the new ones
+  — or a user who hasn't yet `claim`ed an older withdrawal is stranded when the next
+  batch publishes. The mechanism is sound (claims are gated on the proven root, never
+  the operator; double-claim is blocked by `claimed[leaf]`), but the cumulative
+  invariant is a *prover obligation* that isn't enforceable on-chain. It's latent
+  today — withdrawal sets are a `0x0` placeholder — and must hold once they are wired.
+  An on-chain alternative (accept claims against any historical root via a stored
+  accumulator) would remove the prover obligation at the cost of vault state.
 
 ## Production prerequisites (not yet real in this repo)
 
