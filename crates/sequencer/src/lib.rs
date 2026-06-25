@@ -155,8 +155,13 @@ pub struct Sequencer {
     matching_rule_version: u32,
     inclusion: BTreeMap<Digest, InclusionRecord>,
     finality: BTreeMap<Digest, Finality>,
-    /// order hashes settled per batch, for `mark_settled`.
+    /// order hashes settled per batch, for `mark_settled` / rollback.
     batch_orders: BTreeMap<u64, Vec<Digest>>,
+    /// Snapshot of (state, matcher) taken BEFORE each not-yet-proven batch, so a
+    /// batch that fails to prove can be rolled back to the last hard state (§3
+    /// failure matrix). Pruned as batches settle. Keeping a snapshot only per
+    /// *pending* batch bounds the memory.
+    snapshots: BTreeMap<u64, (DefaultState, MatchingEngine<Keccak256>)>,
 }
 
 impl Sequencer {
@@ -172,6 +177,7 @@ impl Sequencer {
             inclusion: BTreeMap::new(),
             finality: BTreeMap::new(),
             batch_orders: BTreeMap::new(),
+            snapshots: BTreeMap::new(),
         }
     }
 
@@ -377,6 +383,11 @@ impl Sequencer {
         let prev_state_root = self.state.state_root();
         let batch_id = self.next_batch_id;
 
+        // snapshot the pre-batch (state, matcher) so this batch can be rolled back
+        // if it later fails to prove (§3 failure matrix).
+        self.snapshots
+            .insert(batch_id, (self.state.clone(), self.matcher.clone()));
+
         // 0. pre-trade risk gate: drop unmarginable orders before matching, so a
         //    matched fill can never fail to settle on margin (§12, Phase 3).
         let mut pre_rejected: Vec<(Digest, RejectReason)> = Vec::new();
@@ -522,13 +533,58 @@ impl Sequencer {
 
     /// Mark a previously sealed batch as SETTLED (its ZK proof verified on L1).
     /// Until this is called, the batch's fills are only MATCHED — soft, not
-    /// withdrawable (§3).
+    /// withdrawable (§3). Proving a batch makes it (and everything before it)
+    /// hard, so its rollback snapshots are pruned.
     pub fn mark_settled(&mut self, batch_id: u64) {
         if let Some(orders) = self.batch_orders.get(&batch_id) {
-            for oh in orders {
-                self.finality.insert(*oh, Finality::Settled);
+            let ohs: Vec<Digest> = orders.clone();
+            for oh in ohs {
+                self.finality.insert(oh, Finality::Settled);
             }
         }
+        // a proven batch can no longer be rolled back; drop snapshots ≤ batch_id
+        let keep: BTreeMap<u64, (DefaultState, MatchingEngine<Keccak256>)> =
+            self.snapshots.split_off(&(batch_id + 1));
+        self.snapshots = keep;
+    }
+
+    /// Roll back a sealed batch that FAILED to prove (§3 failure matrix): revert
+    /// (state, matcher) to the snapshot taken before it, drop that batch and every
+    /// later still-pending batch, and revert their orders from MATCHED back to
+    /// ACCEPTED — those fills were never binding (only SETTLED is). Returns `true`
+    /// if a rollback happened. The user can then force-exit against the last hard
+    /// root (§6); an honest re-sequence can re-include the dropped orders.
+    pub fn mark_failed(&mut self, batch_id: u64) -> bool {
+        let Some((state, matcher)) = self.snapshots.get(&batch_id).cloned() else {
+            return false; // already proven/pruned or never existed
+        };
+        // revert live state + matcher to before the failed batch
+        self.state = state;
+        self.matcher = matcher;
+        // drop this and all later pending batches; revert their finality
+        let dropped: Vec<u64> = self.snapshots.range(batch_id..).map(|(k, _)| *k).collect();
+        for b in &dropped {
+            if let Some(orders) = self.batch_orders.remove(b) {
+                for oh in orders {
+                    // a rolled-back fill is no longer matched; back to ACCEPTED
+                    if self.finality.get(&oh) == Some(&Finality::Matched) {
+                        self.finality.insert(oh, Finality::Accepted);
+                    }
+                }
+            }
+            self.snapshots.remove(b);
+        }
+        // un-see inclusion records that were marked seen in a dropped batch, so a
+        // rolled-back order that is never re-included can still surface as an
+        // inclusion violation (§2).
+        for rec in self.inclusion.values_mut() {
+            if rec.seen_in_batch.is_some_and(|seen| seen >= batch_id) {
+                rec.seen_in_batch = None;
+            }
+        }
+        // the next batch to seal is the failed one (re-sequence from here)
+        self.next_batch_id = batch_id;
+        true
     }
 
     /// Receipts whose order hash never appeared in a sealed manifest within

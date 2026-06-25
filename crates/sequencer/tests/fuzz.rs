@@ -173,8 +173,24 @@ fn run_session(seed: u64, batches: usize) {
         let sealed = s.seal_batch(&orders, now);
         assert_invariants(&s, &sealed, &this_batch, seed);
 
-        // mark settled sometimes (proof landed)
-        if rng.below(2) == 0 {
+        // sometimes the batch fails to prove → rollback must restore the exact
+        // pre-batch root and keep conservation (§3 failure matrix).
+        if rng.below(5) == 0 {
+            assert!(
+                s.mark_failed(sealed.batch_id),
+                "seed={seed}: rollback should apply"
+            );
+            assert_eq!(
+                s.state.state_root(),
+                sealed.prev_state_root,
+                "seed={seed}: rollback must restore the pre-batch root"
+            );
+            assert!(
+                s.state.conservation_holds(),
+                "seed={seed}: conservation broke on rollback"
+            );
+        } else if rng.below(2) == 0 {
+            // proof landed
             s.mark_settled(sealed.batch_id);
         }
         // re-open from close-only so the session keeps trading

@@ -307,6 +307,66 @@ fn honest_flow_has_no_inclusion_violations() {
 }
 
 #[test]
+fn failed_batch_rolls_back_to_hard_state() {
+    // §3 failure matrix: a sealed batch that fails to prove is rolled back — state
+    // reverts, and its fills go from MATCHED back to ACCEPTED (never binding).
+    let mut s = setup();
+    let (a, b) = (word_u64(1), word_u64(2));
+
+    // batch 0: open positions, then prove it (hard).
+    s.seal_batch(
+        &[
+            order(1, Side::Sell, SIZE_SCALE, 100_000 * PRICE_SCALE, 1),
+            order(2, Side::Buy, SIZE_SCALE, 100_000 * PRICE_SCALE, 2),
+        ],
+        1_000,
+    );
+    s.mark_settled(0);
+    let hard_root = s.state.state_root();
+    let a_size_hard = s.state.position(&a, 0).unwrap().size;
+
+    // batch 1: more trading (provisional / MATCHED).
+    let o_taker = order(2, Side::Sell, SIZE_SCALE / 2, 100_000 * PRICE_SCALE, 3);
+    let sealed1 = s.seal_batch(
+        &[
+            order(1, Side::Buy, SIZE_SCALE / 2, 100_000 * PRICE_SCALE, 4),
+            o_taker,
+        ],
+        2_000,
+    );
+    assert_ne!(
+        s.state.state_root(),
+        hard_root,
+        "batch 1 advanced the live state"
+    );
+    let th = o_taker.order_hash::<Keccak256>();
+    assert_eq!(s.finality_of(&th), Some(Finality::Matched));
+
+    // batch 1 fails to prove → rollback.
+    assert!(s.mark_failed(sealed1.batch_id));
+    assert_eq!(
+        s.state.state_root(),
+        hard_root,
+        "state reverted to last hard root"
+    );
+    assert_eq!(
+        s.state.position(&a, 0).unwrap().size,
+        a_size_hard,
+        "positions reverted"
+    );
+    assert_eq!(
+        s.finality_of(&th),
+        Some(Finality::Accepted),
+        "matched fill reverted to accepted"
+    );
+    assert!(s.state.conservation_holds());
+    let _ = b;
+
+    // re-sequencing resumes from the failed batch id.
+    assert_eq!(s.current_batch_id(), sealed1.batch_id);
+}
+
+#[test]
 fn withheld_order_becomes_inclusion_violation() {
     let mut s = setup();
     // user's order is ACCEPTED (receipt issued) ...
