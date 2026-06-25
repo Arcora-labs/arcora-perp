@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/perp-core", "crates/matcher"]
+members = ["crates/perp-core", "crates/matcher", "crates/sequencer"]
 
 [workspace.package]
 version = "0.0.1"
