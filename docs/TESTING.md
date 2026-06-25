@@ -7,8 +7,11 @@ between Rust and Solidity is enforced by shared test vectors.
 ## Rust workspace
 
 ```bash
-cargo test            # all crates: 95 tests
+cargo test            # all crates: 98 tests
+cargo test --release  # also green (conservation guard works without debug_assert)
 cargo clippy --workspace --all-targets   # clean
+cargo build --release # LTO build clean
+cargo run -p demo     # narrated end-to-end run of the whole system
 # prove the settlement core compiles as a zkVM guest (no_std, no float/clock/IO):
 cargo build -p perp-core --no-default-features
 cargo build -p matcher --no-default-features
