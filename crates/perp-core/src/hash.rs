@@ -78,6 +78,11 @@ pub enum Domain {
     /// commitment (`NoteCommitment`) — the two are different purposes and must not
     /// share a preimage namespace. Not a cross-layer-committed value.
     BridgeCommitment = 14,
+    /// Committee Shamir secret-sharing coefficient stream (§5, Phase 5). A
+    /// dedicated tag so the polynomial coefficients that hide the shared secret are
+    /// never drawn from the same preimage structure as note nullifiers
+    /// (`Nullifier`) or any other purpose. Not a cross-layer-committed value.
+    ShamirShare = 15,
 }
 
 /// The default Phase 0 hasher: Keccak-256 with a 1-byte domain prefix.
@@ -152,6 +157,7 @@ mod tests {
             WitnessSeal,
             KeyDerivation,
             BridgeCommitment,
+            ShamirShare,
         ];
         let w = [word_u64(42)];
         for i in 0..all.len() {

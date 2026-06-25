@@ -81,8 +81,10 @@ pub fn split(secret: &[u8], t: usize, n: usize, seed: &[u8; 32]) -> Vec<Share> {
         let mut coeffs = Vec::with_capacity(t);
         coeffs.push(s);
         for k in 1..t {
+            // Dedicated tag — secret-sharing coefficients must not share a preimage
+            // structure with note nullifiers (one-domain-one-purpose).
             let h = Keccak256::hash_words(
-                Domain::Nullifier,
+                Domain::ShamirShare,
                 &[*seed, word_u64(bi as u64), word_u64(k as u64)],
             );
             coeffs.push(h[0]);
