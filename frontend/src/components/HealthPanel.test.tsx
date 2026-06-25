@@ -17,7 +17,7 @@ describe("HealthPanel", () => {
     expect(screen.getByText(/oracle feed/i)).toBeTruthy();
     expect(screen.getByText(/system mode/i)).toBeTruthy();
     expect(screen.getByText(/collateral conservation/i)).toBeTruthy();
-    // conservation holds by construction → the ✓ detail is shown
-    expect(screen.getByText(/equity = free \+ margin \+ uPnL/i)).toBeTruthy();
+    // a healthy default account satisfies the real invariants → the ✓ detail is shown
+    expect(screen.getByText(/free ≥ 0 · margin ≥ 0 · solvent ✓/i)).toBeTruthy();
   });
 });

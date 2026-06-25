@@ -30,14 +30,25 @@ export function HealthPanel() {
   const matched = orders.filter((o) => o.finality === "MATCHED").length;
   const settled = orders.filter((o) => o.finality === "SETTLED").length;
 
-  // accounting: equity = free + used margin + uPnL (conserved by construction)
+  // accounting (§4 — no collateral created or destroyed). equity = free + margin +
+  // uPnL is an identity inside accountSummary, so re-deriving it would be a tautology
+  // that can never fail. Instead check the invariants that CAN be violated by a bad
+  // state: free balance is non-negative (margin was never over-committed), no position
+  // carries negative collateral, and the account is solvent (equity ≥ 0).
   const s = accountSummary(
     state.account.positions,
     state.account.settledBalance,
     (id) => state.marks[id] ?? state.oracle.price,
   );
-  const reconstructed = s.freeBalance + s.usedMargin + s.upnl;
-  const conserved = reconstructed === s.equity;
+  const noNegativeMargin = state.account.positions.every((p) => p.collateral >= 0n);
+  const conserved = s.freeBalance >= 0n && s.equity >= 0n && noNegativeMargin;
+  const conservationDetail = conserved
+    ? "free ≥ 0 · margin ≥ 0 · solvent ✓"
+    : s.freeBalance < 0n
+      ? "MISMATCH — free balance negative (margin over-committed)"
+      : !noNegativeMargin
+        ? "MISMATCH — negative position collateral"
+        : "MISMATCH — insolvent (equity < 0)";
 
   // selected market oracle freshness
   const ageMs = Date.now() - state.oracle.publishTimeMs;
@@ -66,7 +77,7 @@ export function HealthPanel() {
           <StatusRow
             label="Collateral conservation (§4)"
             status={conserved ? "ok" : "down"}
-            detail={conserved ? "equity = free + margin + uPnL ✓" : "MISMATCH"}
+            detail={conservationDetail}
           />
         </div>
 
