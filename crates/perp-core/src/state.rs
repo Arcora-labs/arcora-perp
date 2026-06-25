@@ -73,8 +73,16 @@ impl<H: Hasher> State<H> {
         }
     }
 
-    /// Register a market (governance action).
+    /// Register a market (governance action). Markets must be internally coherent
+    /// (`maintenance < initial`, `fee < maintenance`, positive oracle bounds) — an
+    /// incoherent market would corrupt the margin/liquidation math, so we assert it
+    /// here rather than let a misconfiguration through. This is a setup-time check,
+    /// not part of the proven `apply_batch` transition.
     pub fn add_market(&mut self, market: Market) {
+        debug_assert!(
+            market.is_coherent(),
+            "refusing to register an incoherent market"
+        );
         self.funding.insert(market.id, FundingState::default());
         self.markets.insert(market.id, market);
     }

@@ -91,4 +91,15 @@ mod tests {
         m.maintenance_margin_ratio = m.initial_margin_ratio; // not strictly less
         assert!(!m.is_coherent());
     }
+
+    #[test]
+    fn liquidation_fee_must_be_below_maintenance() {
+        // a fee >= maintenance margin could consume more than the maintenance buffer
+        // at the liquidation threshold — reject it.
+        let mut m = Market::conservative(0);
+        m.liquidation_fee_ratio = m.maintenance_margin_ratio;
+        assert!(!m.is_coherent(), "fee == maintenance is incoherent");
+        m.liquidation_fee_ratio = m.maintenance_margin_ratio + 1;
+        assert!(!m.is_coherent(), "fee > maintenance is incoherent");
+    }
 }
