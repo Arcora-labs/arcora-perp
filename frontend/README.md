@@ -1,7 +1,9 @@
-# frontend — dark-perp web client (skeleton)
+# frontend — dark-perp web client
 
-A runnable Vite + React + TypeScript skeleton, **ready for the design to be
-applied**. It already encodes the protocol's domain model and the parts of the UX
+A runnable Vite + React + TypeScript app with a complete, polished default design,
+**ready for your design to be applied on top**.
+
+![dark-perp trade screen](../docs/screenshot-trade.png) It already encodes the protocol's domain model and the parts of the UX
 that the architecture pins down — most importantly the three-layer finality
 (§3) — so a reskin is a styling pass, not a rebuild.
 
