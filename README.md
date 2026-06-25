@@ -37,22 +37,28 @@ box. See §10 of the architecture.
 
 ## Repository status
 
-The protocol is built bottom-up across the [roadmap](docs/ROADMAP.md) phases. What
-exists today, end-to-end and tested (79 Rust tests + 16 Solidity tests, all green;
-clippy clean):
+The protocol is built bottom-up across the [roadmap](docs/ROADMAP.md) phases — all
+six phases now have implemented deliverables. Tested end-to-end: **114 Rust + 27
+Solidity tests** (green in debug *and* release), **9 property/stateful fuzzers**,
+clippy `-D warnings` + `cargo fmt --check` clean, `no_std` zkVM-guest builds, a
+runnable [`demo`](crates/demo), and a built+headless-verified frontend. The core
+math, services, and contracts were hardened through **four adversarial review
+passes** (two Rust, one full sequencer, one Solidity security audit) — every
+finding fixed with a regression test (see [`docs/SECURITY.md`](docs/SECURITY.md)).
 
 | Component | Crate / dir | Phase | Arch |
 |---|---|---|---|
 | Deterministic state-transition core (note tree, risk, Proof-v1 invariants) | [`crates/perp-core`](crates/perp-core) | 0 | §1,§4,§12 |
 | Price-time CLOB matcher (IOC/FOK/post-only/GTC, STP) | [`crates/matcher`](crates/matcher) | 1 | §1,§4 |
-| Sequencer spine: secp256k1 receipts, manifests, finality, inclusion accountability | [`crates/sequencer`](crates/sequencer) | 1–3 | §2,§3 |
+| Sequencer spine: receipts, manifests, finality, inclusion slashing, funding/liquidation loop, pre-trade risk, batch rollback | [`crates/sequencer`](crates/sequencer) | 1–3 | §2,§3,§5,§6 |
 | ZK proving harness + §10b confidential-proving boundary | [`crates/prover`](crates/prover) | 2 | §4,§10b |
 | Encrypted note archive + view-key recovery | [`crates/note-archive`](crates/note-archive) | 2 | §7 |
-| L1 settlement: root anchoring, liveness/close-only, bond + inclusion slashing, vault | [`contracts/`](contracts) | 2 | §2,§3,§6 |
+| L1 settlement: root anchoring, liveness/close-only, bonded inclusion slashing, vault, deploy script | [`contracts/`](contracts) | 2 | §2,§3,§6 |
 | Committee-of-enclaves: Shamir t-of-n order keys + quorum preconf | [`crates/committee`](crates/committee) | 5 | §11 |
 | Privacy bridge: amount-bucketing + batching/mixing | [`crates/bridge`](crates/bridge) | 4 | §13,§9 |
-| End-to-end integration (deposit→match→settle→prove→recover) | [`crates/e2e`](crates/e2e) | — | all |
-| Web client skeleton (finality UX), design-ready | [`frontend/`](frontend) | — | §3,§6,§7 |
+| End-to-end integration + narrated demo | [`crates/e2e`](crates/e2e), [`crates/demo`](crates/demo) | — | all |
+| Multi-market web client (finality UX, close/cancel, toasts, responsive), design-ready | [`frontend/`](frontend) | — | §3,§6,§7 |
+| CI (Rust + Foundry + frontend) | [`.github/workflows`](.github/workflows) | — | — |
 
 The Rust core and Solidity contracts are bound by **byte-exact cross-layer
 vectors** ([`crates/prover/tests/vectors.rs`](crates/prover/tests/vectors.rs) ↔
