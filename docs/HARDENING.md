@@ -40,9 +40,10 @@ where the incoming design lands as one self-contained file.
 | prover (§10b) | the opened-witness zeroization was a **dead store the optimizer may elide** — plaintext could linger in prover memory | `core::hint::black_box` barrier (safe, no dep) so the wipe can't be elided |
 | prover (§10b) | witness-seal keystream reused `Domain::OracleTranscript` | dedicated `Domain::WitnessSeal` |
 
-Domain separation is now one-domain-one-purpose across the codebase, and a test locks
-that **all 12 `Domain` tags hash distinctly** — so a duplicated discriminant or a
-hasher that dropped the prefix fails CI.
+Domain separation is one-domain-one-purpose, and a test locks that **every `Domain`
+tag hashes distinctly** — so a duplicated discriminant or a hasher that dropped the
+prefix fails CI. (The continuation pass below finished the sweep and grew the tag
+set to 16.)
 
 ## Frontend robustness & polish (design-independent, survives any reskin)
 
@@ -80,6 +81,37 @@ proven in the built bundle for both a single token and a full light theme), the 
   pending batch reverts state, flips fills MATCHED→ACCEPTED, and keeps recovery intact.
 - **Live-oracle fail-safe** (oracle-feed) — a manipulated feed is rejected by the §8
   gate, not silently marked.
+
+## Continuation pass — sequencer/matcher correctness + a finished domain sweep
+
+A second sweep on the protocol spine while the frontend awaited its design. Rust
+totals moved **139 → 146**, frontend **59 → 83** (component-test infra added:
+happy-dom + Testing Library; Explorer / Health / API-console pages). Each finding
+landed with a failing-test-first regression.
+
+| Crate | Finding | Fix |
+|---|---|---|
+| sequencer (§3) | `mark_settled(N)` pruned rollback snapshots for batch N **and every earlier batch** (making them hard) but advanced finality for only batch N — finalizing a height directly stranded earlier batches "hard yet MATCHED", un-withdrawable forever | settle every pending batch ≤ N; prune their order-lists too |
+| matcher (§1) | expiry was checked only for the **incoming** order — a good-till-time resting maker could still be hit past its expiry | matching prunes expired makers (with STP); FOK pre-check excludes them so it can't pass then under-fill |
+| matcher/sequencer (§8) | an expired maker no taker hit was never reaped → it lingered as `best_bid`/`best_ask`, anchoring the funding mark to a price no taker can reach | `reap_expired(now_ms)`, called before the mark is read each batch |
+| frontend Health (§4) | the "collateral conservation" row re-derived `equity` from the same summary that *defines* it — a tautology that could never report MISMATCH | check invariants a bad state can violate: free ≥ 0, no negative position margin, solvency |
+
+**Domain-separation sweep completed.** The earlier pass dedicated the keystream/
+shuffle/seal tags; this one found three more cross-purpose reuses of the
+*one-domain-one-purpose* rule and closed the last gap:
+
+| Reuse | Purpose | Dedicated tag |
+|---|---|---|
+| §7 wallet KDF (owner/view/**spend**) under `StateRoot` | seed→key derivation, the most secret in the system | `KeyDerivation` (13) |
+| bridge mix-bucket commitment under `NoteCommitment` | could collide with a **spendable** note commitment | `BridgeCommitment` (14) |
+| committee Shamir coefficients under `Nullifier` | secret-sharing PRNG sharing the nullifier namespace | `ShamirShare` (15) |
+| prover witness commitment under `BatchManifest` | a witness commitment is not a manifest hash | `WitnessCommitment` (16) |
+
+The pairwise-distinct test now locks **all 16 `Domain` tags** hashing distinctly.
+Every `hash_words` call site was audited; the only multi-use tag left is
+`StateRoot` for `PublicInputs::commitment` / the proof glue, which is deliberate —
+it is the cross-layer public commitment the Solidity verifier and the sp1 guest
+both recompute, so it must remain a shared constant.
 
 ## Verified correct (no fix needed)
 
