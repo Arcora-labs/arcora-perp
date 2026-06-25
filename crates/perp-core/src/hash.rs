@@ -1,0 +1,120 @@
+//! Pluggable hashing.
+//!
+//! Phase 0 prioritizes *accounting soundness*, not the final proving circuit, so
+//! we default to Keccak-256 — ubiquitous, audited, and identical to what the L1
+//! settlement contracts (§13, Faz 2) will use natively. The [`Hasher`] trait
+//! keeps every commitment, nullifier, and Merkle node hash-agnostic, so a
+//! ZK-friendly algebraic hash (Poseidon/Poseidon2 over the proving field) can be
+//! swapped in for the circuit phase **without touching the state-machine logic**.
+//!
+//! This is a deliberate decision, not a shortcut: the note tree's *shape* and the
+//! state transition are what Phase 0 must get right; the concrete hash is a
+//! parameter the prover phase pins down (see `docs/DECISIONS.md`).
+
+use tiny_keccak::{Hasher as _, Keccak};
+
+/// A 32-byte digest. Field elements / commitments / roots are all `Digest`.
+pub type Digest = [u8; 32];
+
+/// Domain-separated, fixed-arity hashing over 32-byte words.
+///
+/// Implementors MUST be deterministic and collision-resistant. Domain tags keep
+/// note commitments, nullifiers, and Merkle nodes in disjoint hash sub-spaces so
+/// a value valid in one role can never be reinterpreted in another.
+pub trait Hasher {
+    /// Hash an ordered list of 32-byte words under a domain tag.
+    fn hash_words(domain: Domain, words: &[Digest]) -> Digest;
+
+    /// Convenience: two-input compression for Merkle internal nodes.
+    fn compress(domain: Domain, left: &Digest, right: &Digest) -> Digest {
+        Self::hash_words(domain, &[*left, *right])
+    }
+}
+
+/// Domain-separation tags. Every hash call commits to exactly one of these.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum Domain {
+    /// Note commitment: `H(owner_pk, asset_id, amount, blinding)`.
+    NoteCommitment = 1,
+    /// Nullifier: `H(commitment, spend_key)`.
+    Nullifier = 2,
+    /// Merkle internal node.
+    MerkleNode = 3,
+    /// Empty/padding leaf for a sparse subtree level.
+    MerkleEmpty = 4,
+    /// Order hash for receipts (§2).
+    OrderHash = 5,
+    /// Batch manifest hash (§2).
+    BatchManifest = 6,
+    /// Global state root binding (§3).
+    StateRoot = 7,
+    /// Oracle transcript hash (§8).
+    OracleTranscript = 8,
+}
+
+/// The default Phase 0 hasher: Keccak-256 with a 1-byte domain prefix.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Keccak256;
+
+impl Hasher for Keccak256 {
+    fn hash_words(domain: Domain, words: &[Digest]) -> Digest {
+        let mut k = Keccak::v256();
+        k.update(&[domain as u8]);
+        for w in words {
+            k.update(w);
+        }
+        let mut out = [0u8; 32];
+        k.finalize(&mut out);
+        out
+    }
+}
+
+/// Encode a little-endian `i128` into a 32-byte word (sign-extended).
+///
+/// Used to fold scalar fields (amounts, ids, prices) into the word-oriented
+/// hash. Little-endian + sign-extension is canonical and matches how the future
+/// circuit will range-check these values.
+pub fn word_i128(v: i128) -> Digest {
+    let mut out = if v < 0 { [0xffu8; 32] } else { [0u8; 32] };
+    out[..16].copy_from_slice(&v.to_le_bytes());
+    out
+}
+
+/// Encode a little-endian `u64` into a 32-byte word.
+pub fn word_u64(v: u64) -> Digest {
+    let mut out = [0u8; 32];
+    out[..8].copy_from_slice(&v.to_le_bytes());
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn domains_separate() {
+        let w = [word_u64(42)];
+        assert_ne!(
+            Keccak256::hash_words(Domain::NoteCommitment, &w),
+            Keccak256::hash_words(Domain::Nullifier, &w),
+            "domain separation must change the digest"
+        );
+    }
+
+    #[test]
+    fn deterministic() {
+        let w = [word_i128(-5), word_u64(7)];
+        assert_eq!(
+            Keccak256::hash_words(Domain::OrderHash, &w),
+            Keccak256::hash_words(Domain::OrderHash, &w)
+        );
+    }
+
+    #[test]
+    fn sign_extension_distinguishes() {
+        assert_ne!(word_i128(-1), word_i128(i128::MAX));
+        assert_eq!(word_i128(1)[16], 0);
+        assert_eq!(word_i128(-1)[16], 0xff);
+    }
+}

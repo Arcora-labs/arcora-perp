@@ -1,0 +1,17 @@
+[workspace]
+resolver = "2"
+members = ["crates/perp-core"]
+
+[workspace.package]
+version = "0.0.1"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+authors = ["dark-perp contributors"]
+repository = "https://github.com/kubudak90/dark-perp"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[profile.release]
+lto = true
+codegen-units = 1
