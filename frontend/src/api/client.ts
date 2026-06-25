@@ -51,6 +51,10 @@ export interface DarkPerpClient {
   /// Simulate the liveness/forced-exit trigger → close-only (§6).
   triggerCloseOnly(): void;
 
+  /// Clear close-only and return to Normal (the breaker recovers / sequencer is
+  /// back). Lets the forced-exit simulation be toggled instead of being a dead-end.
+  resumeNormal(): void;
+
   /// Recover notes by scanning the archive with a seed-derived view-key (§7).
   recover(seedHex: string): Promise<RecoveredNote[]>;
 

@@ -146,6 +146,21 @@ describe("MockDarkPerpClient position lifecycle", () => {
     await expect(c.closePosition(0)).resolves.toBeUndefined();
   });
 
+  it("resumeNormal clears close-only and lets opening resume (toggle, not a dead-end)", async () => {
+    const c = new MockDarkPerpClient();
+    c.triggerCloseOnly();
+    expect(c.getState().mode).toBe("CloseOnly");
+    await expect(
+      c.placeOrder({ marketId: 0, side: "Buy", size: SIZE_SCALE, limitPrice: 100_000n * PRICE_SCALE, tif: "Gtc", reduceOnly: false }),
+    ).rejects.toThrow(/close-only/i);
+    c.resumeNormal();
+    expect(c.getState().mode).toBe("Normal");
+    // opening works again
+    await expect(
+      c.placeOrder({ marketId: 0, side: "Buy", size: SIZE_SCALE, limitPrice: 100_000n * PRICE_SCALE, tif: "Gtc", reduceOnly: false }),
+    ).resolves.toBeDefined();
+  });
+
   it("blocks a FLIP (oversized opposite order) in close-only mode (§6)", async () => {
     const c = new MockDarkPerpClient();
     await c.placeOrder({

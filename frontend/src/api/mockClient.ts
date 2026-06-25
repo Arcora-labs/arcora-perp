@@ -430,6 +430,11 @@ export class MockDarkPerpClient implements DarkPerpClient {
     this.emit();
   }
 
+  resumeNormal(): void {
+    this.state.mode = "Normal";
+    this.emit();
+  }
+
   async closePosition(marketId: number): Promise<void> {
     const pos = this.state.account.positions.find((p) => p.marketId === marketId);
     if (!pos || pos.size === 0n) throw new Error("No open position to close.");

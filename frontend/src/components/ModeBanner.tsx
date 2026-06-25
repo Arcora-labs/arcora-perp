@@ -7,9 +7,18 @@ export function ModeBanner() {
   if (state.mode === "CloseOnly") {
     return (
       <div className="banner banner--danger">
-        <strong>Close-only mode.</strong> The sequencer is unavailable or a breaker
-        tripped — you can reduce/close and withdraw against the last settled state, but
-        cannot open or increase (§6).
+        <span>
+          <strong>Close-only mode.</strong> The sequencer is unavailable or a breaker
+          tripped — you can reduce/close and withdraw against the last settled state, but
+          cannot open or increase (§6).
+        </span>
+        <button
+          className="btn btn--tiny"
+          onClick={() => client.resumeNormal()}
+          title="Simulate the breaker clearing / sequencer recovering"
+        >
+          Resume normal
+        </button>
       </div>
     );
   }
