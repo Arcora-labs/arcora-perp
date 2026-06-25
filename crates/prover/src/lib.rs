@@ -210,7 +210,7 @@ fn keystream(measurement: &Digest, nonce: &Digest, len: usize) -> Vec<u8> {
     let mut counter: u64 = 0;
     while out.len() < len {
         let block = Keccak256::hash_words(
-            Domain::OracleTranscript,
+            Domain::WitnessSeal,
             &[*measurement, *nonce, perp_core::hash::word_u64(counter)],
         );
         out.extend_from_slice(&block);
@@ -287,10 +287,16 @@ impl<P: Prover> AttestedProver<P> {
     ) -> Result<BatchProof, ProverError> {
         let mut witness = self.open(sealed)?;
         let proof_bytes = self.backend.prove(public, &witness);
-        // zeroize the opened witness
+        // Zeroize the opened witness, then force the optimizer to treat the buffer as
+        // observed via `black_box`: a plain `*b = 0` on a value dropped immediately
+        // after is a dead store the optimizer may elide, leaving the plaintext witness
+        // in prover memory — defeating the §10b "deleted after the job" guarantee.
+        // `black_box(&witness)` is a safe (no `unsafe`) optimization barrier that
+        // prevents the zeroing from being elided.
         for b in witness.iter_mut() {
             *b = 0;
         }
+        core::hint::black_box(&witness);
         drop(witness);
         Ok(BatchProof {
             public: *public,

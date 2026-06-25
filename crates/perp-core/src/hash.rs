@@ -64,6 +64,10 @@ pub enum Domain {
     /// Privacy-bridge mix-shuffle PRNG (§13). Dedicated tag for the Fisher–Yates
     /// stream so it is separated from state-root hashing. Not cross-layer-committed.
     MixShuffle = 11,
+    /// Confidential-prover witness-sealing keystream (§10b). Dedicated tag so the
+    /// measurement-bound seal stream is separated from oracle-transcript hashing.
+    /// Not a cross-layer-committed value.
+    WitnessSeal = 12,
 }
 
 /// The default Phase 0 hasher: Keccak-256 with a 1-byte domain prefix.
