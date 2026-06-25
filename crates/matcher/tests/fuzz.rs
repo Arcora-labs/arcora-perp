@@ -1,6 +1,7 @@
 //! Property fuzzer for the CLOB. Feeds long randomized order streams and asserts
 //! the matching invariants on every run: no self-trades, no order overfills,
-//! price-time monotonicity per taker, book non-negativity, and determinism.
+//! price-time monotonicity per taker, book non-negativity, no crossed book
+//! (best_bid < best_ask), and determinism.
 //! Deterministic xorshift PRNG so any failure reproduces from the printed seed.
 
 use matcher::{MatchingEngine, SubmitStatus};
@@ -114,6 +115,17 @@ fn run(seed: u64, n: usize) {
     let book = e.book(0).unwrap();
     assert!(book.resting_size(Side::Buy) >= 0);
     assert!(book.resting_size(Side::Sell) >= 0);
+
+    // 3b. the resting book is NEVER crossed: the best bid must sit strictly below
+    // the best ask. A crossed book means a marketable order was left resting instead
+    // of matched — the core CLOB invariant. (Asserted at loadbot runtime; locked into
+    // CI here so a regression fails `cargo test`, not just a manual stress run.)
+    if let (Some(b), Some(a)) = (book.best_bid(), book.best_ask()) {
+        assert!(
+            b < a,
+            "seed={seed}: resting book crossed (best_bid {b} >= best_ask {a})"
+        );
+    }
 
     // 4. accepted + rejected partition every order exactly once.
     let accepted_or_rejected = result
