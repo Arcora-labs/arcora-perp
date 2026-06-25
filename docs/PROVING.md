@@ -53,6 +53,23 @@ free of clocks/RNG/IO, so it compiles to a RISC-V zkVM guest unchanged.
 > *default* host backend only because full STARK proving + `sp1-sdk` are heavy and
 > not run in CI; the guest itself is now the genuine article, and the witness it
 > reads is the postcard encoding locked by the `serde_witness` test.
+>
+> **EXECUTED — native ⇄ zkVM equivalence verified.** [`crates/sp1-host`](../crates/sp1-host)
+> runs the guest in the SP1 RISC-V executor over a real witness and checks the
+> committed public value against the one native `perp-core` produces for the same
+> transition. They are **byte-for-byte identical**:
+>
+> ```text
+> cycles            = 248477
+> native commitment = 0xd4b958c34b6479983788d84133121bc23d4f98e49619ce4f3602552e9c4ee2f2
+> zkVM   commitment = 0xd4b958c34b6479983788d84133121bc23d4f98e49619ce4f3602552e9c4ee2f2
+> MATCH: native perp-core == SP1 guest
+> ```
+>
+> So "written once, run natively AND in the zkVM" is not just compiled but
+> *executed and verified equal* at the exact commitment the L1 verifier checks.
+> Generating the full STARK proof (vs. executing) is the same call with `.prove()`
+> instead of `.execute()` — heavier CPU, identical interface.
 
 1. **Guest.** A thin `main` that reads `(initial_state, ops, manifest_hash,
    ordered_root, withdrawals_root)` from the zkVM input, runs the perp-core

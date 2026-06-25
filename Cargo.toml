@@ -15,7 +15,7 @@ members = [
 # The SP1 zkVM guest is built only by `cargo prove` for the riscv32im target (it
 # depends on sp1-zkvm and has no host build), so it is excluded from the host
 # workspace — `cargo build --workspace` and CI never try to compile it.
-exclude = ["crates/sp1-guest"]
+exclude = ["crates/sp1-guest", "crates/sp1-host"]
 
 [workspace.package]
 version = "0.0.1"

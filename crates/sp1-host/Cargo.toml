@@ -1,0 +1,17 @@
+# SP1 host that EXECUTES the perp-core zkVM guest and checks its committed public
+# value equals the native perp-core commitment byte-for-byte. Standalone (heavy
+# sp1-sdk dep, not run in CI); excluded from the host workspace. Build the guest
+# first (`cd ../sp1-guest && cargo prove build`), then `cargo run --release` here.
+[package]
+name = "sp1-host"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+sp1-sdk = "6.0.0"
+tokio = { version = "1", features = ["full"] }
+perp-core = { path = "../perp-core", features = ["serde"] }
+postcard = { version = "1", features = ["alloc"] }
+
+[workspace]
