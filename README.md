@@ -98,14 +98,15 @@ inclusion challenges, forced exit, and view-key recovery from the note archive.
 ## Repository status
 
 The protocol is built bottom-up across the [roadmap](docs/ROADMAP.md) phases — all
-six phases now have implemented deliverables. Tested end-to-end: **117 Rust + 27
+six phases now have implemented deliverables. Tested end-to-end: **118 Rust + 27
 Solidity tests** (green in debug *and* release), **9 property/stateful fuzzers**,
 clippy `-D warnings` + `cargo fmt --check` clean, `no_std` zkVM-guest builds, a
 runnable [`demo`](crates/demo), and a built+headless-verified frontend. The core
-math, services, and contracts were hardened through **six adversarial review
+math, services, and contracts were hardened through **seven adversarial review
 passes** (two Rust core, one full sequencer, one Solidity security audit, one
-committee/bridge/note-archive pass, one matcher CLOB pass) — every finding fixed
-with a regression test (see [`docs/SECURITY.md`](docs/SECURITY.md)).
+committee/bridge/note-archive pass, one matcher CLOB pass, one prover boundary
+pass) — every finding fixed with a regression test (see
+[`docs/SECURITY.md`](docs/SECURITY.md)).
 
 | Component | Crate / dir | Phase | Arch |
 |---|---|---|---|

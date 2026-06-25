@@ -124,11 +124,16 @@ bare prover farm would see every position, fill, and margin in plaintext. So:
   network (SP1/Risc0 marketplaces)** — gets `MeasurementMismatch` and cannot open
   the witness. Hence: *private batches require a self-hosted attested prover.*
 
-The sealing in the harness (measurement-derived keystream XOR) is a **documented
-stand-in** for real enclave key-release bound to the measurement (TDX/Nitro). It
-models the *access boundary*, not production confidentiality. Replacing it with
-real attested sealing is a backend change; the typed boundary
-(`SealedWitness` + `AttestedProver` + zeroization) stays.
+The sealing in the harness (a `(measurement, nonce)`-derived keystream XOR) is a
+**documented stand-in** for real enclave key-release bound to the measurement
+(TDX/Nitro). It models the *access boundary*, not production confidentiality.
+The keystream is bound to a **per-seal nonce** (the batch public commitment), not
+the measurement alone: the measurement is constant across every batch, so a
+measurement-only pad would seal every batch's witness identically and XOR-ing two
+sealed witnesses would leak the XOR of two private ledgers (a two-time pad). The
+nonce uniqueness requirement is exactly what a real AEAD/key-release scheme also
+demands. Replacing the stand-in with real attested sealing is a backend change;
+the typed boundary (`SealedWitness` + `AttestedProver` + zeroization) stays.
 
 ### Future hardening (post-v1, §10b)
 

@@ -165,7 +165,8 @@ fn main() {
     let prover = AttestedProver::new(CommitmentProver::new(MEASUREMENT));
     let proof = prover
         .prove_sealed(
-            &SealedWitness::seal(b"sealed batch witness", MEASUREMENT),
+            // nonce = the batch manifest hash (unique per batch → no two-time pad)
+            &SealedWitness::seal(b"sealed batch witness", MEASUREMENT, sealed.manifest_hash),
             &public,
         )
         .unwrap();
@@ -177,7 +178,10 @@ fn main() {
     println!(
         "    a public proving network (wrong measurement) cannot open the witness: {}",
         rogue
-            .prove_sealed(&SealedWitness::seal(b"x", MEASUREMENT), &public)
+            .prove_sealed(
+                &SealedWitness::seal(b"x", MEASUREMENT, [0x99u8; 32]),
+                &public
+            )
             .is_err()
     );
 

@@ -24,7 +24,13 @@
 > self-trade prevention, and time-in-force handling keep the full-fill invariant
 > (`crossable_liquidity` and the match loop both exclude self-orders), and pinned
 > the deliberate post-only-vs-own-order semantics (reject as maker-or-nothing
-> rather than silently STP-cancelling the owner's existing maker) with a test.
+> rather than silently STP-cancelling the owner's existing maker) with a test. A
+> seventh pass audited the prover boundary (`prover`): it confirmed the public-input
+> commitment binds all five roots and the measurement-gated witness open/zeroize,
+> and fixed a **two-time-pad** in the sealing stand-in — the keystream was derived
+> from the (constant) prover measurement alone, so every batch's witness reused one
+> pad and XOR-ing two sealed witnesses leaked the XOR of two private ledgers. Sealing
+> now binds a per-seal nonce (the batch public commitment); regression test added.
 
 
 Synthesizes the architecture's honest failure analysis (§0, §10, §10b, §11) into

@@ -139,7 +139,10 @@ fn deposit_match_settle_prove_recover() {
     let witness = b"sealed batch witness: cross-user matching + margins";
     let prover = AttestedProver::new(CommitmentProver::new(MEASUREMENT));
     let proof = prover
-        .prove_sealed(&SealedWitness::seal(witness, MEASUREMENT), &public)
+        .prove_sealed(
+            &SealedWitness::seal(witness, MEASUREMENT, sealed.manifest_hash),
+            &public,
+        )
         .expect("attested prover produces a proof");
     assert!(
         CommitmentProver::new(MEASUREMENT).verify(&proof),
@@ -150,7 +153,10 @@ fn deposit_match_settle_prove_recover() {
     // a non-attested prover (public proving network) cannot open the witness
     let rogue = AttestedProver::new(CommitmentProver::new([0xCD; 32]));
     assert!(rogue
-        .prove_sealed(&SealedWitness::seal(witness, MEASUREMENT), &public)
+        .prove_sealed(
+            &SealedWitness::seal(witness, MEASUREMENT, sealed.manifest_hash),
+            &public
+        )
         .is_err());
 
     // --- proof verified on L1 ⇒ SETTLED (§3) ----------------------------------

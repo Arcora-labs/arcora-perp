@@ -187,19 +187,31 @@ impl Verifier for CommitmentProver {
 /// stand-in** for real enclave sealing (e.g. TDX/Nitro key-release bound to the
 /// measurement): a keystream derived from the measurement XORs the plaintext.
 /// It models the *access boundary*, not production confidentiality.
+///
+/// ## Per-seal nonce (no two-time pad)
+///
+/// The keystream is derived from `(measurement, nonce)`, **not the measurement
+/// alone**. The measurement is a constant attestation of the prover binary —
+/// identical for every batch — so a measurement-only keystream would XOR every
+/// batch's witness with the *same* pad, and two sealed witnesses would leak the
+/// XOR of two private ledgers (classic two-time pad). The caller **must** pass a
+/// `nonce` that is unique per seal (e.g. the batch's public commitment); the nonce
+/// is stored in the clear (it carries no secret) so the matching prover can
+/// reproduce the keystream.
 #[derive(Clone, Debug)]
 pub struct SealedWitness {
     ciphertext: Vec<u8>,
     measurement: Digest,
+    nonce: Digest,
 }
 
-fn keystream(measurement: &Digest, len: usize) -> Vec<u8> {
+fn keystream(measurement: &Digest, nonce: &Digest, len: usize) -> Vec<u8> {
     let mut out = Vec::with_capacity(len);
     let mut counter: u64 = 0;
     while out.len() < len {
         let block = Keccak256::hash_words(
             Domain::OracleTranscript,
-            &[*measurement, perp_core::hash::word_u64(counter)],
+            &[*measurement, *nonce, perp_core::hash::word_u64(counter)],
         );
         out.extend_from_slice(&block);
         counter += 1;
@@ -209,18 +221,25 @@ fn keystream(measurement: &Digest, len: usize) -> Vec<u8> {
 }
 
 impl SealedWitness {
-    /// Seal `plaintext` so only a prover with `measurement` can open it.
-    pub fn seal(plaintext: &[u8], measurement: Digest) -> Self {
-        let ks = keystream(&measurement, plaintext.len());
+    /// Seal `plaintext` so only a prover with `measurement` can open it. `nonce`
+    /// **must be unique per seal** (reuse under one measurement reopens the
+    /// two-time-pad leak) — the batch public commitment is a natural choice.
+    pub fn seal(plaintext: &[u8], measurement: Digest, nonce: Digest) -> Self {
+        let ks = keystream(&measurement, &nonce, plaintext.len());
         let ciphertext = plaintext.iter().zip(ks).map(|(p, k)| p ^ k).collect();
         Self {
             ciphertext,
             measurement,
+            nonce,
         }
     }
 
     pub fn measurement(&self) -> Digest {
         self.measurement
+    }
+
+    pub fn nonce(&self) -> Digest {
+        self.nonce
     }
 
     /// The proof output is public; the sealed witness never is.
@@ -249,7 +268,7 @@ impl<P: Prover> AttestedProver<P> {
         if sealed.measurement != self.backend.measurement() {
             return Err(ProverError::MeasurementMismatch);
         }
-        let ks = keystream(&sealed.measurement, sealed.ciphertext.len());
+        let ks = keystream(&sealed.measurement, &sealed.nonce, sealed.ciphertext.len());
         Ok(sealed
             .ciphertext
             .iter()
@@ -334,7 +353,7 @@ mod tests {
         let public = run_transition(&mut s, &ops, [1u8; 32], [0u8; 32], [0u8; 32]).unwrap();
         let prover = AttestedProver::new(CommitmentProver::new(M));
         let witness = b"sealed batch witness: positions, fills, margins";
-        let sealed = SealedWitness::seal(witness, M);
+        let sealed = SealedWitness::seal(witness, M, public.commitment::<Keccak256>());
         let proof = prover.prove_sealed(&sealed, &public).unwrap();
         assert!(CommitmentProver::new(M).verify(&proof));
         assert_eq!(proof.public, public);
@@ -345,7 +364,7 @@ mod tests {
         let (mut s, ops) = state_with_deposit();
         let public = run_transition(&mut s, &ops, [1u8; 32], [0u8; 32], [0u8; 32]).unwrap();
         let prover = AttestedProver::new(CommitmentProver::new(M));
-        let sealed = SealedWitness::seal(b"w", M);
+        let sealed = SealedWitness::seal(b"w", M, [0x77u8; 32]);
         let mut proof = prover.prove_sealed(&sealed, &public).unwrap();
         // flip the new_state_root in the public inputs without re-proving
         proof.public.new_state_root[0] ^= 0xff;
@@ -363,7 +382,7 @@ mod tests {
         let (mut s, ops) = state_with_deposit();
         let public = run_transition(&mut s, &ops, [1u8; 32], [0u8; 32], [0u8; 32]).unwrap();
         // witness sealed to M, but the prover has WRONG_M → cannot open (§10b)
-        let sealed = SealedWitness::seal(b"private ledger", M);
+        let sealed = SealedWitness::seal(b"private ledger", M, [0x01u8; 32]);
         let prover = AttestedProver::new(CommitmentProver::new(WRONG_M));
         assert_eq!(
             prover.prove_sealed(&sealed, &public),
@@ -375,7 +394,7 @@ mod tests {
     #[test]
     fn seal_actually_hides_plaintext() {
         let witness = b"position: +1 BTC @ 100k, margin 20k";
-        let sealed = SealedWitness::seal(witness, M);
+        let sealed = SealedWitness::seal(witness, M, [0x02u8; 32]);
         assert_eq!(sealed.ciphertext_len(), witness.len());
         // round-trip through the correct prover recovers nothing observable in
         // the proof bytes (proof is a 32-byte commitment, not the witness)
@@ -389,6 +408,30 @@ mod tests {
         };
         let proof = prover.prove_sealed(&sealed, &public).unwrap();
         assert_eq!(proof.proof_bytes.len(), 32);
+    }
+
+    #[test]
+    fn distinct_nonces_avoid_two_time_pad() {
+        // The same plaintext sealed under the same measurement but DIFFERENT nonces
+        // must produce different ciphertexts — otherwise every batch (which shares
+        // the constant prover measurement) would reuse one keystream and XOR-ing
+        // two sealed witnesses would leak the XOR of two private ledgers.
+        let pt = b"position: +1 BTC @ 100k, margin 20k";
+        let a = SealedWitness::seal(pt, M, [0x01u8; 32]);
+        let b = SealedWitness::seal(pt, M, [0x02u8; 32]);
+        // recover the two keystreams via the public XOR relation ks = ct ^ pt
+        let ks_a: Vec<u8> = a.ciphertext.iter().zip(pt).map(|(c, p)| c ^ p).collect();
+        let ks_b: Vec<u8> = b.ciphertext.iter().zip(pt).map(|(c, p)| c ^ p).collect();
+        assert_ne!(ks_a, ks_b, "distinct nonces must yield distinct keystreams");
+        assert_ne!(
+            a.ciphertext, b.ciphertext,
+            "no keystream reuse across seals"
+        );
+
+        // and the correct prover still round-trips each one back to the plaintext
+        let prover = AttestedProver::new(CommitmentProver::new(M));
+        assert_eq!(prover.open(&a).unwrap(), pt);
+        assert_eq!(prover.open(&b).unwrap(), pt);
     }
 
     #[test]
