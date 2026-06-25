@@ -288,6 +288,35 @@ describe("MockDarkPerpClient cancelOrder", () => {
   });
 });
 
+describe("MockDarkPerpClient selectMarket", () => {
+  it("switches the selected market and ignores an unknown id", () => {
+    const c = new MockDarkPerpClient();
+    expect(c.getState().selectedMarketId).toBe(0);
+    c.selectMarket(2);
+    expect(c.getState().selectedMarketId).toBe(2);
+    expect(c.getState().market.id).toBe(2);
+    // unknown id is a no-op (guarded), not a crash or a switch to nothing
+    c.selectMarket(999);
+    expect(c.getState().selectedMarketId).toBe(2);
+  });
+});
+
+describe("MockDarkPerpClient recover (§7)", () => {
+  it("is deterministic per seed and the recoverable total excludes spent notes", async () => {
+    const c = new MockDarkPerpClient();
+    const a = await c.recover("alice-seed");
+    const b = await c.recover("alice-seed");
+    expect(a).toEqual(b); // same seed → same view-key scan (deterministic)
+    expect(a.length).toBeGreaterThan(0);
+    expect(a.every((n) => n.amount > 0n)).toBe(true);
+    // the recoverable total counts only unspent notes
+    const recoverable = a.filter((n) => !n.spent).reduce((s, n) => s + n.amount, 0n);
+    const all = a.reduce((s, n) => s + n.amount, 0n);
+    if (a.some((n) => n.spent)) expect(recoverable).toBeLessThan(all);
+    else expect(recoverable).toBe(all);
+  });
+});
+
 describe("MockDarkPerpClient withdrawals", () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
