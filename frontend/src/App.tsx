@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { StoreProvider } from "./store";
+import { DocumentTitle } from "./components/DocumentTitle";
 import { ModeBanner } from "./components/ModeBanner";
 import { StatsBar } from "./components/StatsBar";
 import { OrderTicket } from "./components/OrderTicket";
@@ -19,6 +20,7 @@ export default function App() {
   const [tab, setTab] = useState<Tab>("trade");
   return (
     <StoreProvider>
+      <DocumentTitle />
       <div className="app">
         <header className="app__header">
           <div className="brand">
