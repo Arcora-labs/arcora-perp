@@ -158,6 +158,16 @@ no single failure is catastrophic.
   today — withdrawal sets are a `0x0` placeholder — and must hold once they are wired.
   An on-chain alternative (accept claims against any historical root via a stored
   accumulator) would remove the prover obligation at the cost of vault state.
+  - **Leaf format must match exactly.** `claim` derives the leaf as
+    `keccak256(abi.encodePacked(to, amount, nonce))` (address‖uint256‖uint256, all
+    fixed-width so `encodePacked` is unambiguous). The off-chain withdrawals tree MUST
+    build leaves byte-for-byte identically — same field order, same widths, same
+    *unprefixed* keccak — or every proof fails `verify` and **all** withdrawals strand,
+    independently of the cumulative-root invariant above. (This mirrors
+    `inclusionLeaf`'s "off-chain tree MUST be built over these same leaves" rule for the
+    already-wired `orderedRoot`. Note the withdrawals leaf is *not* `MerkleLeaf`-domain
+    tagged: second-preimage safety here comes from hashing the claimed fields, the same
+    way `inclusionLeaf` does — so the off-chain side must likewise NOT domain-tag it.)
 
 ## Production prerequisites (not yet real in this repo)
 
