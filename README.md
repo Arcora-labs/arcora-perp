@@ -13,7 +13,10 @@ liveness/recovery from forced exit + an encrypted note archive.
 
 The full architecture (v2, Turkish) lives in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 The design decisions taken while building are in [`docs/DECISIONS.md`](docs/DECISIONS.md),
-and the phased build plan in [`docs/ROADMAP.md`](docs/ROADMAP.md).
+the phased build plan in [`docs/ROADMAP.md`](docs/ROADMAP.md), the threat model in
+[`docs/SECURITY.md`](docs/SECURITY.md), the proving boundary in
+[`docs/PROVING.md`](docs/PROVING.md), and build/test instructions in
+[`docs/TESTING.md`](docs/TESTING.md).
 
 ## Three trust roots, three layers
 
