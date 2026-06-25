@@ -13,7 +13,7 @@ use perp_core::fixed::{PRICE_SCALE, QUOTE_SCALE, SIZE_SCALE};
 use perp_core::hash::{word_u64, Keccak256};
 use perp_core::market::Market;
 use perp_core::oracle::OracleTranscript;
-use perp_core::order::{Order, Side, TimeInForce};
+use perp_core::order::{Finality, Order, Side, TimeInForce};
 use perp_core::Note;
 use sequencer::{EnclaveIdentity, Sequencer};
 use std::collections::BTreeSet;
@@ -289,5 +289,110 @@ fn run_p3_session(seed: u64) {
 fn fuzz_rejected_orders_are_not_inclusion_violations() {
     for seed in 1..=200u64 {
         run_p3_session(seed.wrapping_mul(0x9E3779B97F4A7C15));
+    }
+}
+
+/// §3 height-finalization property: a proof for batch H finalizes H **and every
+/// still-pending batch before it** (the snapshots ≤ H are pruned, so they are
+/// hard — a hard fill is SETTLED, never stranded at MATCHED). Seal a run of
+/// batches that all stay pending (MATCHED), then settle ONE random height H and
+/// assert every order in a batch ≤ H is SETTLED while later batches stay MATCHED.
+fn run_height_settle(seed: u64) {
+    let enclave = EnclaveIdentity::from_seed([7u8; 32], 1, [0xAB; 32]);
+    let mut s = Sequencer::new(enclave, 22);
+    s.add_market(Market::conservative(0));
+    let mut rng = Rng(seed | 1);
+    let mut now = 1_000u64;
+    let price = 100_000i128;
+    s.set_oracle(0, oracle(price, now));
+    // fund two opposing traders
+    for i in 0..2u64 {
+        let o = word_u64(i);
+        let mut blind = [0u8; 32];
+        blind[..8].copy_from_slice(&(i + 1).to_le_bytes());
+        let amt = 1_000_000 * QUOTE_SCALE;
+        let cm = Note::new(o, 0, amt, blind).commitment::<Keccak256>();
+        s.apply(&BatchOp::Deposit {
+            owner: o,
+            asset_id: 0,
+            amount: amt,
+            blinding: blind,
+        })
+        .unwrap();
+        s.apply(&BatchOp::FundPosition {
+            owner: o,
+            market_id: 0,
+            note_commitment: cm,
+            spend_key: [i as u8; 32],
+        })
+        .unwrap();
+    }
+
+    // seal a run of crossing pairs; keep every batch PENDING (no settle/fail).
+    let n_batches = 2 + rng.below(8);
+    let mut hashes_by_batch: Vec<(u64, Vec<[u8; 32]>)> = Vec::new();
+    let mut nonce = 0u64;
+    for _ in 0..n_batches {
+        now += 1 + rng.below(5);
+        s.set_oracle(0, oracle(price, now));
+        nonce += 1;
+        let buy = Order {
+            owner: word_u64(0),
+            market_id: 0,
+            side: Side::Buy,
+            size: SIZE_SCALE / 10,
+            limit_price: price * PRICE_SCALE,
+            tif: TimeInForce::Gtc,
+            reduce_only: false,
+            nonce,
+            expiry_ms: 0,
+            ciphertext_commit: word_u64(nonce.wrapping_mul(7)),
+        };
+        nonce += 1;
+        let sell = Order {
+            owner: word_u64(1),
+            side: Side::Sell,
+            nonce,
+            ciphertext_commit: word_u64(nonce.wrapping_mul(7)),
+            ..buy
+        };
+        let sealed = s.seal_batch(&[buy, sell], now);
+        hashes_by_batch.push((sealed.batch_id, sealed.settled_order_hashes.clone()));
+    }
+
+    // every order is MATCHED while pending
+    for (_, hs) in &hashes_by_batch {
+        for h in hs {
+            assert_eq!(
+                s.finality_of(h),
+                Some(Finality::Matched),
+                "seed={seed}: pre-settle finality"
+            );
+        }
+    }
+
+    // settle ONE random height; everything ≤ H must become SETTLED, the rest MATCHED.
+    let h = hashes_by_batch[rng.below(hashes_by_batch.len() as u64) as usize].0;
+    s.mark_settled(h);
+    for (bid, hs) in &hashes_by_batch {
+        let expected = if *bid <= h {
+            Finality::Settled
+        } else {
+            Finality::Matched
+        };
+        for oh in hs {
+            assert_eq!(
+                s.finality_of(oh),
+                Some(expected),
+                "seed={seed}: batch {bid} vs settled height {h} — wrong finality"
+            );
+        }
+    }
+}
+
+#[test]
+fn fuzz_settling_a_height_finalizes_all_prior_batches() {
+    for seed in 1..=200u64 {
+        run_height_settle(seed.wrapping_mul(0x9E3779B97F4A7C15));
     }
 }
