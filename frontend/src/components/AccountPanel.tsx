@@ -1,6 +1,39 @@
 import { useState } from "react";
 import { useStore } from "../store";
 import { formatUsd, parseUsd } from "../domain/format";
+import { accountSummary } from "../domain/risk";
+
+/// Consolidated account health: equity, used vs free margin, unrealized PnL, and
+/// account-wide leverage — aggregated across the open positions and free balance.
+export function AccountSummary() {
+  const { state } = useStore();
+  const s = accountSummary(state.account.positions, state.account.settledBalance, state.oracle.price);
+  return (
+    <div className="card">
+      <h3 className="card__title">Margin</h3>
+      <div className="summary">
+        <SummaryStat label="Equity" value={formatUsd(s.equity)} />
+        <SummaryStat label="Free (withdrawable)" value={formatUsd(s.freeBalance)} />
+        <SummaryStat label="Used margin" value={formatUsd(s.usedMargin)} />
+        <SummaryStat
+          label="Unrealized PnL"
+          value={formatUsd(s.upnl)}
+          tone={s.upnl > 0n ? "pos" : s.upnl < 0n ? "neg" : undefined}
+        />
+        <SummaryStat label="Account leverage" value={`${s.leverage.toFixed(2)}×`} />
+      </div>
+    </div>
+  );
+}
+
+function SummaryStat({ label, value, tone }: { label: string; value: string; tone?: "pos" | "neg" }) {
+  return (
+    <div className="summary__stat">
+      <span className="summary__label">{label}</span>
+      <span className={`summary__value mono ${tone ?? ""}`}>{value}</span>
+    </div>
+  );
+}
 
 export function AccountPanel() {
   const { client, state } = useStore();

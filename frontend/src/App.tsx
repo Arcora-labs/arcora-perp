@@ -5,7 +5,7 @@ import { StatsBar } from "./components/StatsBar";
 import { OrderTicket } from "./components/OrderTicket";
 import { OrderBook } from "./components/OrderBook";
 import { OrdersTable, PositionsTable } from "./components/Tables";
-import { AccountPanel } from "./components/AccountPanel";
+import { AccountPanel, AccountSummary } from "./components/AccountPanel";
 import { RecoveryPanel } from "./components/RecoveryPanel";
 import { FinalityLegend } from "./components/FinalityTracker";
 import { Toaster } from "./components/Toaster";
@@ -67,7 +67,10 @@ export default function App() {
 
           {tab === "account" && (
             <section className="grid grid--two">
-              <AccountPanel />
+              <div className="col">
+                <AccountSummary />
+                <AccountPanel />
+              </div>
               <PositionsTable />
             </section>
           )}

@@ -1,8 +1,37 @@
 import { describe, it, expect } from "vitest";
-import { orderRisk, maxOrderSize } from "./risk";
-import { PRICE_SCALE, QUOTE_SCALE, SIZE_SCALE } from "./types";
+import { orderRisk, maxOrderSize, accountSummary } from "./risk";
+import { PRICE_SCALE, QUOTE_SCALE, SIZE_SCALE, type Position } from "./types";
 
 const MARK = 100_000n * PRICE_SCALE; // $100k
+
+function position(size: bigint, collateral: bigint, upnl: bigint): Position {
+  return { marketId: 0, size, entryPrice: MARK, collateral, unrealizedPnl: upnl, liquidationPrice: 0n };
+}
+
+describe("accountSummary", () => {
+  it("aggregates free balance, used margin, uPnL into equity", () => {
+    const positions = [
+      position(SIZE_SCALE, 10_000n * QUOTE_SCALE, 2_000n * QUOTE_SCALE),
+      position(-SIZE_SCALE / 2n, 5_000n * QUOTE_SCALE, -500n * QUOTE_SCALE),
+    ];
+    const s = accountSummary(positions, 8_000n * QUOTE_SCALE, MARK);
+    expect(s.usedMargin).toBe(15_000n * QUOTE_SCALE);
+    expect(s.upnl).toBe(1_500n * QUOTE_SCALE);
+    expect(s.freeBalance).toBe(8_000n * QUOTE_SCALE);
+    // equity = 8k free + 15k margin + 1.5k uPnL
+    expect(s.equity).toBe(24_500n * QUOTE_SCALE);
+    // notional = (1 + 0.5) BTC × $100k = $150k
+    expect(s.notional).toBe(150_000n * QUOTE_SCALE);
+    expect(s.leverage).toBeCloseTo(150_000 / 24_500, 4);
+  });
+
+  it("is flat (zero leverage) with no positions", () => {
+    const s = accountSummary([], 10_000n * QUOTE_SCALE, MARK);
+    expect(s.equity).toBe(10_000n * QUOTE_SCALE);
+    expect(s.notional).toBe(0n);
+    expect(s.leverage).toBe(0);
+  });
+});
 
 describe("maxOrderSize", () => {
   it("is buying power (balance × leverage) divided by mark", () => {

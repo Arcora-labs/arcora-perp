@@ -3,7 +3,7 @@
 // is unit-testable without a DOM and reusable across the ticket preview and any
 // future risk surfaces. All values are scaled bigints; no floats in money math.
 
-import { PRICE_SCALE, QUOTE_SCALE, SIZE_SCALE, type Side } from "./types";
+import { PRICE_SCALE, QUOTE_SCALE, SIZE_SCALE, type Position, type Side } from "./types";
 
 export interface OrderRisk {
   /// Position notional at `mark`, quote-scaled (micro-USD).
@@ -27,6 +27,40 @@ export const LIQ_BUFFER_PCT = 9n;
 /// Compute the pre-trade risk of opening `size` at `mark` on `side` under a market
 /// with initial-margin ratio `imr` (e.g. 0.1 for 10×). Returns zeroed risk for a
 /// non-positive size or mark so callers can render nothing.
+export interface AccountSummary {
+  /// Free, withdrawable settled balance (quote).
+  freeBalance: bigint;
+  /// Margin locked in open positions (Σ collateral, quote).
+  usedMargin: bigint;
+  /// Σ unrealized PnL across positions (quote).
+  upnl: bigint;
+  /// Account equity = freeBalance + usedMargin + uPnL (quote).
+  equity: bigint;
+  /// Σ |size| · mark notional (quote). Exact for a single-market account; uses the
+  /// supplied `mark` for every position, so cross-market totals are approximate.
+  notional: bigint;
+  /// Account-wide leverage = notional / equity (0 when flat or non-positive equity).
+  leverage: number;
+}
+
+/// Aggregate a free balance and open positions into an account-health summary.
+/// `freeBalance`, `collateral`, and `unrealizedPnl` are used verbatim (exact); only
+/// notional/leverage depend on `mark`.
+export function accountSummary(positions: Position[], freeBalance: bigint, mark: bigint): AccountSummary {
+  let usedMargin = 0n;
+  let upnl = 0n;
+  let notional = 0n;
+  for (const p of positions) {
+    usedMargin += p.collateral;
+    upnl += p.unrealizedPnl;
+    const abs = p.size < 0n ? -p.size : p.size;
+    notional += (abs * mark) / ((SIZE_SCALE * PRICE_SCALE) / QUOTE_SCALE);
+  }
+  const equity = freeBalance + usedMargin + upnl;
+  const leverage = equity > 0n ? Number(notional) / Number(equity) : 0;
+  return { freeBalance, usedMargin, upnl, equity, notional, leverage };
+}
+
 /// Maximum openable position size (base, size-scaled) given a free `settledBalance`
 /// (quote), the current `mark`, and the market's `maxLeverage`. Inverts the notional
 /// relation: buying power = balance × leverage, max size = buyingPower / mark.
