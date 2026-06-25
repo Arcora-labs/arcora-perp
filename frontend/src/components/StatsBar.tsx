@@ -10,8 +10,9 @@ export function StatsBar() {
   const mark = state.oracle.price;
   const flash = useFlash(mark);
 
-  // 24h change vs the market's reference price (mock baseline)
-  const baseline = (state.market.symbol === "BTC-PERP" ? 100_000n : 3_000n) * PRICE_SCALE;
+  // 24h change vs the market's reference price (the real 24h open once the live
+  // oracle reports it, else the session seed).
+  const baseline = state.market.referencePrice > 0n ? state.market.referencePrice : mark;
   const changeBps = Number(((mark - baseline) * 10_000n) / baseline) / 100;
 
   // funding rate (mock): premium of mark over baseline, clamped
@@ -32,6 +33,12 @@ export function StatsBar() {
       <div className="statsbar__market">
         <span className="statsbar__symbol">{state.market.symbol}</span>
         <span className={`statsbar__price ${up ? "pos" : "neg"} ${flash}`}>{formatPrice(mark)}</span>
+        <span
+          className={`oracle-tag ${state.market.live ? "oracle-tag--live" : "oracle-tag--sim"}`}
+          title={state.market.live ? "Tracking the live Crypto.com index" : "No external feed — simulated walk"}
+        >
+          <span className="dot" /> {state.market.live ? "live oracle" : "sim"}
+        </span>
       </div>
       <Stat label="24h" value={`${up ? "+" : ""}${changeBps.toFixed(2)}%`} tone={up ? "pos" : "neg"} />
       <Stat label="Index" value={formatPrice(state.oracle.price)} />

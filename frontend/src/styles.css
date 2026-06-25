@@ -227,6 +227,15 @@ body {
 .orderbook__midlabel { color: var(--text-mute); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; }
 .orderbook__note { color: var(--text-mute); font-size: 11px; margin: 14px 0 0; line-height: 1.5; }
 
+/* ============================ oracle tag ================================= */
+.oracle-tag { display: inline-flex; align-items: center; gap: 5px; font-size: 10px; font-weight: 600; padding: 3px 8px; border-radius: 99px; letter-spacing: 0.02em; }
+.oracle-tag .dot { width: 6px; height: 6px; border-radius: 99px; }
+.oracle-tag--live { color: var(--ok); background: rgba(47, 211, 150, 0.12); }
+.oracle-tag--live .dot { background: var(--ok); box-shadow: 0 0 8px var(--ok); animation: pulse 1.6s var(--ease) infinite; }
+.oracle-tag--sim { color: var(--text-mute); background: var(--bg-elev-2); }
+.oracle-tag--sim .dot { background: var(--text-mute); }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+
 /* ============================ price chart ================================= */
 .chart { margin-bottom: var(--gap); }
 .chart__head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 10px; }

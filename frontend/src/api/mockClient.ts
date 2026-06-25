@@ -7,6 +7,7 @@
 //   • the book is seeded by an internal market-maker (§15)
 
 import type { DarkPerpClient, ClientState, OrderEvent } from "./client";
+import { fetchLiveQuotes } from "./oracleFeed";
 import {
   PRICE_SCALE,
   QUOTE_SCALE,
@@ -59,17 +60,42 @@ function bookAround(marketId: number, mid: bigint): OrderBookSnapshot {
   };
 }
 
-function makeMarket(id: number, symbol: string, priceUsd: bigint): MarketData {
+/// The listed markets. `instrument` is the Crypto.com perp the live oracle polls
+/// (null = no external feed, runs on the internal walk). `seed` is the price the
+/// market opens at before the first live tick. Uniform 10× leverage keeps the
+/// mock's margin/liq math (notional/10, entry ± 9%) consistent across pairs.
+interface MarketCfg {
+  id: number;
+  symbol: string;
+  instrument: string | null;
+  seed: number;
+}
+const MARKETS: MarketCfg[] = [
+  { id: 0, symbol: "BTC/USDC", instrument: "BTCUSD-PERP", seed: 59_575.14 },
+  { id: 1, symbol: "ETH/USDC", instrument: "ETHUSD-PERP", seed: 1_570.61 },
+  { id: 2, symbol: "SOL/USDC", instrument: "SOLUSD-PERP", seed: 66.44 },
+  { id: 3, symbol: "HYPE/USDC", instrument: "HYPEUSD-PERP", seed: 63.124 },
+  { id: 4, symbol: "LIT/USDC", instrument: null, seed: 1.1 },
+];
+
+/// Decimal USD → PRICE_SCALE bigint (geometry/seed only; on-wire math stays bigint).
+function priceFromUsd(n: number): bigint {
+  return BigInt(Math.round(n * Number(PRICE_SCALE)));
+}
+
+function makeMarket(cfg: MarketCfg): MarketData {
+  const price = priceFromUsd(cfg.seed);
   const market: Market = {
-    id,
-    symbol,
+    id: cfg.id,
+    symbol: cfg.symbol,
     maxLeverage: 10,
     maintenanceMarginRatio: 0.05,
     initialMarginRatio: 0.1,
+    referencePrice: price,
+    live: false,
   };
-  const price = priceUsd * PRICE_SCALE;
-  const oracle: OracleQuote = { marketId: id, price, confidence: price / 10000n, publishTimeMs: Date.now() };
-  return { market, oracle, book: bookAround(id, price) };
+  const oracle: OracleQuote = { marketId: cfg.id, price, confidence: price / 10000n, publishTimeMs: Date.now() };
+  return { market, oracle, book: bookAround(cfg.id, price) };
 }
 
 export class MockDarkPerpClient implements DarkPerpClient {
@@ -80,12 +106,56 @@ export class MockDarkPerpClient implements DarkPerpClient {
   private eventSubs = new Set<(e: OrderEvent) => void>();
 
   constructor() {
-    this.data.set(0, makeMarket(0, "BTC-PERP", 100_000n));
-    this.data.set(1, makeMarket(1, "ETH-PERP", 3_000n));
+    for (const cfg of MARKETS) this.data.set(cfg.id, makeMarket(cfg));
     this.state = this.snapshot([]);
     if (typeof globalThis.setInterval === "function") {
       globalThis.setInterval(() => this.priceTick(), 1500);
+      // connect the real oracle: poll Crypto.com, fall back to the walk on failure.
+      // Skipped under the test runner so unit tests never touch the network.
+      if (import.meta.env?.MODE !== "test") {
+        void this.pollOracle();
+        globalThis.setInterval(() => void this.pollOracle(), 5000);
+      }
     }
+  }
+
+  /// Poll the live Crypto.com oracle and mark every tracked market to its real
+  /// index price. Best-effort: any failure (offline / CORS) leaves the internal
+  /// random-walk in charge, so the UI never stalls.
+  private async pollOracle() {
+    const instruments = MARKETS.map((m) => m.instrument).filter((x): x is string => x !== null);
+    let quotes;
+    try {
+      quotes = await fetchLiveQuotes(instruments);
+    } catch {
+      return; // keep the fallback walk
+    }
+    for (const cfg of MARKETS) {
+      if (!cfg.instrument) continue;
+      const q = quotes.get(cfg.instrument);
+      const md = this.data.get(cfg.id);
+      if (!q || !md) continue;
+      // on the first live tick, anchor the 24h baseline to the real open
+      if (!md.market.live) {
+        const denom = BigInt(Math.round((1 + q.change24h) * 1_000_000)) || 1_000_000n;
+        md.market = { ...md.market, live: true, referencePrice: (q.price * 1_000_000n) / denom };
+      }
+      md.oracle = { ...md.oracle, price: q.price, publishTimeMs: Date.now() };
+      md.book = bookAround(cfg.id, q.price);
+    }
+    this.remarkPositions();
+    this.emit();
+  }
+
+  /// Re-mark every open position against its market's current price.
+  private remarkPositions() {
+    this.state.account = {
+      ...this.state.account,
+      positions: this.state.account.positions.map((pos) => ({
+        ...pos,
+        unrealizedPnl: this.pnl(pos.size, pos.entryPrice, this.priceOf(pos.marketId)),
+      })),
+    };
   }
 
   private priceOf(marketId: number): bigint {
@@ -138,22 +208,17 @@ export class MockDarkPerpClient implements DarkPerpClient {
 
   private priceTick() {
     for (const md of this.data.values()) {
+      // markets tracking the live oracle are driven by pollOracle, not the walk
+      if (md.market.live) continue;
       const p = md.oracle.price;
-      const baseline = md.market.symbol === "BTC-PERP" ? 100_000n * PRICE_SCALE : 3_000n * PRICE_SCALE;
+      const baseline = md.market.referencePrice;
       const drift = (baseline - p) / 400n;
       const noise = BigInt(Math.floor((Math.random() - 0.5) * 160)) * (p / 100000n);
       const next = p + drift + noise;
       md.oracle = { ...md.oracle, price: next, publishTimeMs: Date.now() };
       md.book = bookAround(md.market.id, next);
     }
-    // re-mark every position against ITS market's price
-    this.state.account = {
-      ...this.state.account,
-      positions: this.state.account.positions.map((pos) => ({
-        ...pos,
-        unrealizedPnl: this.pnl(pos.size, pos.entryPrice, this.priceOf(pos.marketId)),
-      })),
-    };
+    this.remarkPositions();
     this.emit();
   }
 

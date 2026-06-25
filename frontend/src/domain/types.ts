@@ -41,6 +41,12 @@ export interface Market {
   maxLeverage: number;
   maintenanceMarginRatio: number; // fraction, e.g. 0.05
   initialMarginRatio: number;
+  /// Session reference price (the 24h open once the live oracle reports it),
+  /// price-scaled — the baseline the stats strip measures the change against.
+  referencePrice: bigint;
+  /// `true` when this market is tracking the live Crypto.com oracle feed; `false`
+  /// when it has no external feed and runs on the internal random-walk.
+  live: boolean;
 }
 
 export interface OrderInput {
