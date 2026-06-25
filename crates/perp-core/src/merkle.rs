@@ -15,17 +15,21 @@ use alloc::vec::Vec;
 
 /// An append-only Merkle accumulator of fixed depth.
 #[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = ""))]
 pub struct MerkleTree<H: Hasher> {
     depth: u8,
     /// Dense leaves appended so far.
     leaves: Vec<Digest>,
     /// `empty[i]` = root of an all-empty subtree of height `i`.
     empty: Vec<Digest>,
+    #[cfg_attr(feature = "serde", serde(skip))]
     _h: core::marker::PhantomData<H>,
 }
 
 /// A membership proof: the sibling path from a leaf up to the root.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct MerkleProof {
     pub leaf_index: u64,
     pub siblings: Vec<Digest>,

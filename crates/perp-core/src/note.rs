@@ -13,6 +13,7 @@ pub type PubKey = Digest;
 
 /// Plaintext note. Lives client-side and in the encrypted archive — never on-chain.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Note {
     /// Owner public key.
     pub owner: PubKey,

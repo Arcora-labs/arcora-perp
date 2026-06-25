@@ -14,6 +14,7 @@ pub type MarketId = u64;
 ///
 /// All `*_ratio` and `*_bound` fields are [`RATE_SCALE`]-scaled fractions.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Market {
     pub id: MarketId,
     /// Initial margin ratio: required equity / notional to OPEN or increase.

@@ -25,6 +25,7 @@ use alloc::vec::Vec;
 
 /// One settlement-level operation within a batch.
 #[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum BatchOp {
     /// Bring external collateral in from the L1 vault as a fresh shielded note.
     Deposit {

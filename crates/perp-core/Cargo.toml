@@ -15,8 +15,15 @@ workspace = true
 # Disable it (`--no-default-features`) to build the same logic for a zkVM guest.
 default = ["std"]
 std = []
+# `serde` enables (De)Serialize on the public types so a witness (state + ops)
+# can be encoded for the prover (the documented prerequisite for the real zkVM
+# guest, docs/PROVING.md). Purely additive; default off.
+serde = ["dep:serde"]
 
 [dependencies]
 tiny-keccak = { version = "2", features = ["keccak"] }
+serde = { version = "1", optional = true, default-features = false, features = ["derive", "alloc"] }
 
 [dev-dependencies]
+postcard = { version = "1", features = ["alloc"] }
+serde = { version = "1", default-features = false, features = ["derive", "alloc"] }

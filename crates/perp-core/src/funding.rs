@@ -12,6 +12,7 @@ use crate::fixed::{PRICE_SCALE, QUOTE_SCALE, RATE_SCALE};
 
 /// Per-market funding accumulator.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct FundingState {
     /// Cumulative funding index: micro-USD per 1.0 base unit.
     pub cumulative_index: i128,

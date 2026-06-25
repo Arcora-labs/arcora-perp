@@ -33,6 +33,7 @@ pub trait Hasher {
 
 /// Domain-separation tags. Every hash call commits to exactly one of these.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[repr(u8)]
 pub enum Domain {
     /// Note commitment: `H(owner_pk, asset_id, amount, blinding)`.

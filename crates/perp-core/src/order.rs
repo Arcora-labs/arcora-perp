@@ -14,6 +14,7 @@ use alloc::vec::Vec;
 
 /// Buy (long) or sell (short).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Side {
     Buy,
     Sell,
@@ -23,6 +24,7 @@ pub enum Side {
 /// (matching determinism, §4); the wire format exists from Phase 0 so manifests
 /// are forward-compatible.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum TimeInForce {
     /// Rests on the book until filled or expired.
     Gtc,
@@ -38,6 +40,7 @@ pub enum TimeInForce {
 /// pubkey; Phase 0 carries plaintext fields plus the *commitment* the receipt
 /// binds to, so the accountability math is exact.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Order {
     pub owner: PubKey,
     pub market_id: MarketId,
@@ -92,6 +95,7 @@ impl Order {
 /// slashing / forced-exit (§2, §6). The signature itself is produced by the TEE
 /// in Phase 1; Phase 0 fixes the *committed contents*.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Receipt {
     pub order_hash: Digest,
     pub seq_no: u64,
@@ -117,6 +121,7 @@ impl Receipt {
 /// Reason an order was not included / not filled, surfaced in the manifest (§2).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u16)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum RejectReason {
     Expired = 1,
     SelfTradePrevented = 2,
@@ -137,6 +142,7 @@ pub enum RejectReason {
 /// `order_hash` is in `ordered` (included) or `rejected` (with a reason). The
 /// hash is anchored on L1 with the proof, making inclusion auditable.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct BatchManifest {
     pub previous_state_root: Digest,
     pub batch_id: u64,
@@ -180,6 +186,7 @@ impl BatchManifest {
 /// **Binding finality is `Settled`.** `Matched` is a good-faith preconfirmation,
 /// not financial certainty — the UI and contracts state this explicitly.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Finality {
     /// Enclave received the order and issued a receipt + seq_no.
     Accepted,

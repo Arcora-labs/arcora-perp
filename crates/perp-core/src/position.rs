@@ -12,6 +12,7 @@ use crate::note::PubKey;
 
 /// An open perpetual position.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Position {
     pub owner: PubKey,
     pub market_id: MarketId,

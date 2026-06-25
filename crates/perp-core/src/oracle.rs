@@ -16,6 +16,7 @@ use crate::market::Market;
 
 /// A price observation as delivered to the enclave and committed in the manifest.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct OracleTranscript {
     /// Primary (Pyth) price, [`crate::fixed::PRICE_SCALE`]-scaled.
     pub price: i128,

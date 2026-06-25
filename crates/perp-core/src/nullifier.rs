@@ -11,6 +11,7 @@ use alloc::collections::BTreeSet;
 
 /// Append-only set of revealed nullifiers.
 #[derive(Clone, Debug, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct NullifierSet {
     spent: BTreeSet<Digest>,
 }

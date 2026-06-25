@@ -21,9 +21,12 @@ jobs:
         run: cargo clippy --workspace --all-targets -- -D warnings
       - name: test
         run: cargo test --workspace
-      - name: zkVM-guest builds (no_std)
+      - name: witness serialization (serde feature)
+        run: cargo test -p perp-core --features serde
+      - name: zkVM-guest builds (no_std, incl. serde witness)
         run: |
           cargo build -p perp-core --no-default-features
+          cargo build -p perp-core --no-default-features --features serde
           cargo build -p matcher --no-default-features
           cargo build -p note-archive --no-default-features
           cargo build -p bridge --no-default-features

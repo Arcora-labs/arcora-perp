@@ -97,10 +97,16 @@ free of clocks/RNG/IO, so it compiles to a RISC-V zkVM guest unchanged.
    on-chain verifier and the off-chain prover agree the moment the real backend is
    dropped in; no protocol change.
 
-**Prerequisite to wire it (one additive step):** a `serde` feature on `perp-core`
-deriving `(De)Serialize` on the public types, so the host can serialize the witness
-into `SP1Stdin` and the guest can read it. This is purely additive (feature-gated
-derives) and does not touch the state machine.
+**Prerequisite — DONE.** `perp-core` has a `serde` feature (default off) deriving
+`(De)Serialize` on the public types, so the host can serialize the witness into
+`SP1Stdin` and the guest reads it back identically. It compiles in both std and the
+`no_std` guest config (`--no-default-features --features serde`), and
+`crates/perp-core/tests/serde_witness.rs` proves a full `State` and the batch `ops`
+round-trip losslessly (state root preserved, ops replay to the same root) with the
+no_std-friendly `postcard` binary format — exactly the encoding an SP1/Risc0
+`io::read`/`io::commit` uses. So the only thing standing between this repo and a
+real proof is running `cargo prove build` with the SP1 toolchain in an
+unrestricted environment.
 
 Per §10b, the proving order is **SP1-first → hand-optimized Noir/Plonky3** for the
 hot circuits, *because* the confidential prover's enclave memory envelope forces

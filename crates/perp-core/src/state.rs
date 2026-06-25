@@ -18,6 +18,7 @@ use alloc::collections::BTreeMap;
 
 /// Operating mode. Close-only is the forced-exit emergency state (§6).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Mode {
     Normal,
     /// Opening/increasing blocked; only reduce/close/liquidate/withdraw (§6).
@@ -26,6 +27,8 @@ pub enum Mode {
 
 /// The full protocol state the engine transitions.
 #[derive(Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = ""))]
 pub struct State<H: Hasher> {
     pub tree: MerkleTree<H>,
     pub nullifiers: NullifierSet,
