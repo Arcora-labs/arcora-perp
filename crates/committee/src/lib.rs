@@ -79,12 +79,23 @@ pub struct Committee {
 }
 
 impl Committee {
-    /// `threshold`-of-`members.len()` quorum. Panics if threshold is out of range.
+    /// `threshold`-of-`members.len()` quorum. Panics if threshold is out of range
+    /// or the member set contains duplicates.
+    ///
+    /// Duplicate members are rejected because quorum [`verify`](QuorumCertificate::verify)
+    /// counts *distinct* signing addresses: a member listed twice would inflate
+    /// `size()` while contributing only one possible distinct signature, making
+    /// the threshold silently harder to reach than `t`-of-`n` advertises.
     pub fn new(members: Vec<[u8; 20]>, threshold: usize) -> Self {
         assert!(
             threshold >= 1 && threshold <= members.len(),
             "bad threshold"
         );
+        for i in 0..members.len() {
+            for j in (i + 1)..members.len() {
+                assert!(members[i] != members[j], "duplicate committee member");
+            }
+        }
         Self { members, threshold }
     }
 

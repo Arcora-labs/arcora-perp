@@ -9,6 +9,17 @@
 //! Coefficients here are derived deterministically from a caller seed via Keccak
 //! so tests are reproducible; **production must use a CSPRNG** for the non-constant
 //! coefficients. This is documented, not hidden.
+//!
+//! ## Why the seed must be secret AND fresh per secret
+//!
+//! The threshold guarantee assumes coefficients `a1..a_{t-1}` are *secret*. With a
+//! known seed they are recomputable, and then **a single share breaks
+//! confidentiality**: an attacker holding one share `(x, y)` and the seed can
+//! evaluate `a1·x + … + a_{t-1}·x^{t-1}` and solve `a0 = y ⊖ (…)` — recovering the
+//! secret with *one* share instead of `t`. So in production the seed must come from
+//! a CSPRNG, never be revealed, and never be reused across secrets (reuse leaks the
+//! difference of two secrets). The deterministic seed here is strictly a test
+//! affordance.
 
 use perp_core::hash::{word_u64, Domain, Hasher, Keccak256};
 

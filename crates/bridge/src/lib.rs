@@ -54,14 +54,28 @@ pub fn unit() -> i128 {
 }
 
 /// Greedy decomposition of `amount` into denomination counts (aligned to
-/// [`denominations`]), plus any sub-unit remainder that cannot be bucketed.
+/// [`denominations`]), plus any remainder that cannot be bucketed.
+///
+/// **Conservation-honest:** entries always sum with the remainder back to
+/// `amount` — nothing is silently dropped. A non-positive `amount` is surfaced
+/// *whole* as remainder (not zeroed away), and a per-denomination count that
+/// would exceed `u32` is clamped, with the unbucketed surplus left in the
+/// remainder rather than truncated via a lossy cast.
 pub fn decompose(amount: i128) -> (Vec<(i128, u32)>, i128) {
+    // Surface non-positive inputs as remainder instead of swallowing them — and
+    // this keeps `rem` strictly non-negative below, so the `u32` cast is safe.
+    if amount <= 0 {
+        return (Vec::new(), amount);
+    }
     let denoms = denominations();
     let mut out = Vec::new();
-    let mut rem = amount.max(0);
+    let mut rem = amount;
     for d in denoms {
-        let count = (rem / d) as u32;
-        if count > 0 {
+        let raw = rem / d; // >= 0 since rem > 0 and d > 0
+        if raw > 0 {
+            // Clamp instead of `as u32` truncation: any surplus that overflows a
+            // u32 count stays in `rem` and surfaces as remainder.
+            let count = u32::try_from(raw).unwrap_or(u32::MAX);
             out.push((d, count));
             rem -= d * count as i128;
         }
@@ -109,8 +123,15 @@ impl MixBatch {
     }
 
     /// Add a transfer: decompose it into bucket entries, each with a hiding
-    /// commitment `H(owner, denom, blinding, index)`. Returns the sub-unit
-    /// remainder that could not be bridged privately (0 if cleanly bucketed).
+    /// commitment `H(owner, denom, blinding, index)`. Returns the remainder that
+    /// could not be bridged privately (0 if cleanly bucketed).
+    ///
+    /// **Privacy caveat (model):** all buckets of one transfer share the same
+    /// `owner` and `blinding`, differing only by `index`. Once a bucket is opened
+    /// (e.g. on redemption, revealing `owner`+`blinding`), the remaining buckets of
+    /// that *same* transfer become recomputable and thus linkable, collapsing them
+    /// into one anonymity unit. A production scheme must draw **independent
+    /// randomness per bucket** (Tornado-style) so each note stands alone.
     pub fn add_transfer(
         &mut self,
         direction: Direction,
@@ -196,6 +217,32 @@ mod tests {
                 (QUOTE_SCALE, 7),
             ]
         );
+    }
+
+    #[test]
+    fn negative_amount_is_surfaced_not_swallowed() {
+        // A negative magnitude must NOT silently vanish (and must never reach the
+        // u32 cast, where -2 would wrap to ~4.29e9). It surfaces whole as remainder.
+        let amount = -2 * QUOTE_SCALE;
+        let (buckets, rem) = decompose(amount);
+        assert!(buckets.is_empty());
+        assert_eq!(rem, amount, "negative input surfaced verbatim");
+    }
+
+    #[test]
+    fn entries_plus_remainder_always_equal_amount() {
+        // Conservation: for any non-negative amount, Σ(denom·count) + remainder == amount.
+        for amount in [
+            0i128,
+            7,
+            QUOTE_SCALE / 2,
+            4_137 * QUOTE_SCALE,
+            999_999 * QUOTE_SCALE,
+        ] {
+            let (buckets, rem) = decompose(amount);
+            let sum: i128 = buckets.iter().map(|(d, c)| d * *c as i128).sum();
+            assert_eq!(sum + rem, amount, "decompose conserves value for {amount}");
+        }
     }
 
     #[test]

@@ -43,14 +43,16 @@ fn fuzz_decompose_is_value_exact() {
 }
 
 #[test]
-fn fuzz_negative_amount_is_inert() {
+fn fuzz_negative_amount_is_surfaced() {
     let mut rng = Rng(0xBEEF);
     for _ in 0..1000 {
         let amount = -((rng.next() % 1_000_000) as i128) - 1;
         let (buckets, remainder) = decompose(amount);
+        // Conservation-honest: a negative magnitude buckets nothing but is
+        // surfaced *whole* as remainder, never silently zeroed away.
         assert!(
-            buckets.is_empty() && remainder == 0,
-            "negatives bridge nothing"
+            buckets.is_empty() && remainder == amount,
+            "negatives surface as remainder"
         );
     }
 }
