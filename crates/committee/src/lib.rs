@@ -214,6 +214,52 @@ mod tests {
     }
 
     #[test]
+    fn malleated_signature_cannot_inflate_quorum_weight() {
+        // ECDSA is malleable: for a valid (r, s, v), the twin (r, n−s, v⊕1) is an
+        // equally valid signature that recovers to the SAME signer. Quorum counts
+        // DISTINCT recovered addresses, so a malicious enclave must not be able to
+        // submit a signature AND its malleated twin and be counted twice toward t.
+        use k256::elliptic_curve::ff::PrimeField;
+        let (committee, keys) = committee_of(5, 3);
+        let digest = [0x55u8; 32];
+        let orig = EnclaveSig::sign(&keys[0], &digest);
+
+        let s_scalar = k256::Scalar::from_repr(orig.s.into()).unwrap();
+        let s_twin: [u8; 32] = (-s_scalar).to_bytes().into();
+        assert_ne!(s_twin, orig.s, "the twin is a genuinely different (r,s,v)");
+        let twin = EnclaveSig {
+            r: orig.r,
+            s: s_twin,
+            v: if orig.v == 27 { 28 } else { 27 },
+        };
+        // Defence-in-depth: the recovery layer (k256) enforces low-s, so the
+        // high-s malleated twin does not even recover to an address —
+        assert_eq!(
+            orig.recover(&digest),
+            Some(eth_address(keys[0].verifying_key()))
+        );
+        assert_eq!(
+            twin.recover(&digest),
+            None,
+            "high-s twin is rejected at recovery"
+        );
+
+        // — and the certificate counts it for nothing: one enclave, weight 1, even
+        // though it submitted two distinct (r,s,v) tuples. (Address-dedup is the
+        // backstop if a future curve lib ever accepted the twin.)
+        let mut qc = QuorumCertificate::new(digest);
+        qc.add(orig);
+        qc.add(twin);
+        assert_eq!(
+            qc.weight(&committee),
+            1,
+            "malleability must not let one enclave count twice"
+        );
+        // with only that one real signer, a 3-of-5 quorum is NOT reached
+        assert!(!qc.verify(&committee));
+    }
+
+    #[test]
     fn non_member_signature_ignored() {
         let (committee, _) = committee_of(3, 2);
         let outsider = key(99);
