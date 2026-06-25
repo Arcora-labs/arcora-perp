@@ -121,6 +121,10 @@ fn deposit_match_settle_prove_recover() {
         prev_state_root: sealed.prev_state_root,
         batch_manifest_hash: sealed.manifest_hash,
         new_state_root: sealed.new_state_root,
+        // in a full node these are the batch's ordered-leaves and withdrawals
+        // Merkle roots; bound into the commitment so the L1 verifier checks them.
+        ordered_root: [0u8; 32],
+        withdrawals_root: [0u8; 32],
     };
     // the witness (positions/fills/margins) is sealed to the prover measurement
     let witness = b"sealed batch witness: cross-user matching + margins";

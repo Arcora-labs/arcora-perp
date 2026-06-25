@@ -33,9 +33,16 @@ contract DarkPerpSettlement {
     struct Challenge {
         address challenger;
         uint64 batchIdHint;
+        uint256 openedBlock;
         uint256 deadlineBlock;
+        uint256 bond; // challenger stake, anti-griefing (audit F3)
         bool open;
     }
+
+    /// secp256k1 group order ÷ 2; signatures with higher `s` are non-canonical
+    /// (malleable) and rejected (audit F3 hygiene).
+    uint256 internal constant SECP256K1_N_HALF =
+        0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF5D576E7357A4501DDFE92F46681B20A0;
 
     address public immutable sequencer;
     /// secp256k1 address whose key the enclave signs receipts with, so users can
@@ -55,6 +62,9 @@ contract DarkPerpSettlement {
 
     uint256 public immutable livenessTimeoutBlocks;
     uint256 public immutable challengeWindowBlocks;
+    /// Stake a challenger must post; returned if the challenge succeeds (sequencer
+    /// slashed), forfeited to the sequencer if it is answered (audit F3).
+    uint256 public immutable challengeBond;
 
     mapping(uint256 => Batch) public batches;
     mapping(bytes32 => Challenge) public challenges; // orderHash => challenge
@@ -78,6 +88,10 @@ contract DarkPerpSettlement {
     error ChallengeNotExpired();
     error ChallengeExpired();
     error NotIncluded();
+    error NonCanonicalSignature();
+    error WrongChallengeBond();
+    error BatchNotOlderThanChallenge();
+    error TransferFailed();
 
     modifier onlySequencer() {
         if (msg.sender != sequencer) revert NotSequencer();
@@ -90,7 +104,8 @@ contract DarkPerpSettlement {
         IZkVerifier _verifier,
         bytes32 _genesisRoot,
         uint256 _livenessTimeoutBlocks,
-        uint256 _challengeWindowBlocks
+        uint256 _challengeWindowBlocks,
+        uint256 _challengeBond
     ) {
         sequencer = _sequencer;
         enclaveSigner = _enclaveSigner;
@@ -99,6 +114,7 @@ contract DarkPerpSettlement {
         lastProgressBlock = block.number;
         livenessTimeoutBlocks = _livenessTimeoutBlocks;
         challengeWindowBlocks = _challengeWindowBlocks;
+        challengeBond = _challengeBond;
     }
 
     /// @notice Bind the collateral vault (once). Withdrawals published on every
@@ -115,13 +131,20 @@ contract DarkPerpSettlement {
     }
 
     /// @notice The public-input commitment the proof must satisfy. Mirrors
-    /// `crates/prover::PublicInputs::commitment`.
-    function publicCommitment(bytes32 prevRoot, bytes32 manifestHash, bytes32 newRoot)
-        public
-        pure
-        returns (bytes32)
-    {
-        return keccak256(abi.encodePacked(DOMAIN_STATE_ROOT, prevRoot, manifestHash, newRoot));
+    /// `crates/prover::PublicInputs::commitment`. `orderedRoot` and
+    /// `withdrawalsRoot` are bound here (audit F2) so the sequencer cannot supply
+    /// an arbitrary withdrawals root and drain the vault — both roots are now
+    /// outputs of the proven computation, not free calldata.
+    function publicCommitment(
+        bytes32 prevRoot,
+        bytes32 manifestHash,
+        bytes32 newRoot,
+        bytes32 orderedRoot,
+        bytes32 withdrawalsRoot
+    ) public pure returns (bytes32) {
+        return keccak256(
+            abi.encodePacked(DOMAIN_STATE_ROOT, prevRoot, manifestHash, newRoot, orderedRoot, withdrawalsRoot)
+        );
     }
 
     /// @notice Settle a batch: verify its validity proof and advance the root.
@@ -137,7 +160,7 @@ contract DarkPerpSettlement {
         if (closeOnly) revert InCloseOnly();
         if (slashed) revert AlreadySlashed();
         if (prevRoot != currentStateRoot) revert BadPrevRoot();
-        bytes32 commitment = publicCommitment(prevRoot, manifestHash, newRoot);
+        bytes32 commitment = publicCommitment(prevRoot, manifestHash, newRoot, orderedRoot, withdrawalsRoot);
         if (!verifier.verify(commitment, proof)) revert BadProof();
 
         uint256 batchId = batchCount;
@@ -180,9 +203,19 @@ contract DarkPerpSettlement {
         );
     }
 
+    /// @notice The domain-separated, batch-bound Merkle leaf an order occupies in
+    /// a batch's `orderedRoot`. Hashing the leaf (rather than using the raw
+    /// `orderHash`) closes the second-preimage / node-as-leaf forgery, and binding
+    /// `batchId` stops the sequencer answering against an unrelated batch (audit
+    /// F1). The off-chain tree MUST be built over these same leaves.
+    function inclusionLeaf(uint256 batchId, bytes32 orderHash) public pure returns (bytes32) {
+        return keccak256(abi.encodePacked(batchId, orderHash));
+    }
+
     /// @notice Open an inclusion challenge by submitting an enclave-signed receipt
-    /// for an order the user believes was withheld (§2). If the sequencer cannot
-    /// prove inclusion before the deadline, its bond is slashed.
+    /// for an order the user believes was withheld (§2). Requires a `challengeBond`
+    /// stake (anti-griefing, F3); if the sequencer cannot prove inclusion before
+    /// the deadline, its bond is slashed and the stake refunded.
     function challengeInclusion(
         bytes32 orderHash,
         uint64 seqNo,
@@ -191,8 +224,11 @@ contract DarkPerpSettlement {
         uint8 v,
         bytes32 r,
         bytes32 s
-    ) external {
+    ) external payable {
         if (challenges[orderHash].open) revert ChallengeExists();
+        if (msg.value != challengeBond) revert WrongChallengeBond();
+        // reject non-canonical (malleable) signatures (F3 hygiene)
+        if (uint256(s) > SECP256K1_N_HALF || (v != 27 && v != 28)) revert NonCanonicalSignature();
         bytes32 digest = receiptDigest(orderHash, seqNo, recvTimeMs, batchIdHint);
         address signer = ecrecover(digest, v, r, s);
         if (signer == address(0) || signer != enclaveSigner) revert BadReceiptSignature();
@@ -200,14 +236,19 @@ contract DarkPerpSettlement {
         challenges[orderHash] = Challenge({
             challenger: msg.sender,
             batchIdHint: batchIdHint,
+            openedBlock: block.number,
             deadlineBlock: block.number + challengeWindowBlocks,
+            bond: msg.value,
             open: true
         });
         emit InclusionChallenged(orderHash, msg.sender, block.number + challengeWindowBlocks);
     }
 
     /// @notice Sequencer answers a challenge by proving the order hash is a member
-    /// of a settled batch's ordered set (Merkle proof against `orderedRoot`).
+    /// of a batch that was **already settled when the challenge opened** (so it
+    /// cannot manufacture a fresh accommodating batch), via a Merkle proof over the
+    /// domain-separated `inclusionLeaf`. On success the challenger's stake is
+    /// forfeited to the sequencer (F1, F3).
     function answerChallenge(bytes32 orderHash, uint256 batchId, bytes32[] calldata proof)
         external
         onlySequencer
@@ -215,13 +256,23 @@ contract DarkPerpSettlement {
         Challenge memory c = challenges[orderHash];
         if (!c.open) revert NoSuchChallenge();
         if (block.number > c.deadlineBlock) revert ChallengeExpired();
-        if (!batches[batchId].orderedRoot.verify(orderHash, proof)) revert NotIncluded();
+        // the answering batch must have existed when the challenge was opened
+        uint256 settledAt = batches[batchId].settledAtBlock;
+        if (settledAt == 0 || settledAt > c.openedBlock) revert BatchNotOlderThanChallenge();
+        if (!batches[batchId].orderedRoot.verify(inclusionLeaf(batchId, orderHash), proof)) {
+            revert NotIncluded();
+        }
         delete challenges[orderHash];
         emit InclusionAnswered(orderHash, batchId);
+        // griefing deterrent: the challenger's stake goes to the sequencer
+        if (c.bond > 0) {
+            (bool ok,) = sequencer.call{value: c.bond}("");
+            if (!ok) revert TransferFailed();
+        }
     }
 
-    /// @notice After the window expires unanswered, slash the bond to the
-    /// challenger and force close-only (§2, §6).
+    /// @notice After the window expires unanswered, slash the sequencer bond to the
+    /// challenger, refund the challenger's stake, and force close-only (§2, §6).
     function slashUnanswered(bytes32 orderHash) external {
         Challenge memory c = challenges[orderHash];
         if (!c.open) revert NoSuchChallenge();
@@ -230,13 +281,13 @@ contract DarkPerpSettlement {
         delete challenges[orderHash];
         slashed = true;
         closeOnly = true;
-        uint256 amount = sequencerBond;
+        uint256 amount = sequencerBond + c.bond; // slashed bond + refunded stake
         sequencerBond = 0;
         emit SequencerSlashed(orderHash, c.challenger, amount);
         emit CloseOnlyEntered("inclusion slash");
         if (amount > 0) {
             (bool ok,) = c.challenger.call{value: amount}("");
-            require(ok, "bond transfer failed");
+            if (!ok) revert TransferFailed();
         }
     }
 

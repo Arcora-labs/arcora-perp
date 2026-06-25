@@ -31,16 +31,18 @@ fn receipt_signing_digest_vector() {
 
 #[test]
 fn public_commitment_vector() {
-    // prev = 0x01..01, manifest = 0x02..02, new = 0x03..03
+    // prev=0x01.., manifest=0x02.., new=0x03.., ordered=0x04.., withdrawals=0x05..
     let public = PublicInputs {
         prev_state_root: [0x01u8; 32],
         batch_manifest_hash: [0x02u8; 32],
         new_state_root: [0x03u8; 32],
+        ordered_root: [0x04u8; 32],
+        withdrawals_root: [0x05u8; 32],
     };
     let d = public.commitment::<Keccak256>();
     assert_eq!(
         hex(&d),
-        "76011f8462c59bfe80717d8a5ca8e4f6c64d46b53a0b9f89cbc17fce400d31ea",
+        "ae9d101e248e0d3710e0566057af9d8bdc7289f4e7435ef72cca1a94114303b1",
         "PUBLIC COMMITMENT VECTOR (update Solidity CrossLayer.t.sol to match): {}",
         hex(&d)
     );

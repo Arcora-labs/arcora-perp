@@ -1,5 +1,19 @@
 # Threat model
 
+> **Audit status (internal adversarial review).** The Rust core had two
+> review→fix passes (collateral conservation, margin/flip handling, self-trade,
+> funding-sign, maker-drift manifest honesty, receipt-seq). The Solidity contracts
+> had a security review that confirmed the vault `claim` CEI/anti-reentrancy, leaf
+> collisions, Merkle-forgery resistance, `_leWord`, and access control are sound,
+> and found three issues — all fixed with dedicated tests: **F2** (withdrawals/
+> ordered roots not bound by the proof → fund theft), **F1** (forge-proof slashing
+> escape via unconstrained batchId + raw Merkle leaf), **F3** (challenge griefing +
+> signature malleability). The roots are now in the public commitment, inclusion
+> answers use a domain-separated batch-bound leaf and must reference a batch
+> settled before the challenge, and challenges require a refundable bond + a
+> canonical-signature check.
+
+
 Synthesizes the architecture's honest failure analysis (§0, §10, §10b, §11) into
 one place: for each component that can be compromised, **what breaks** and **what
 contains the damage**. The guiding principle (§0): three separate trust roots, so

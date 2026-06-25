@@ -31,15 +31,27 @@ use perp_core::hash::{Digest, Domain, Hasher, Keccak256};
 use perp_core::{DefaultState, EngineError};
 
 /// The public inputs a batch proof commits to and the L1 verifier checks.
+///
+/// `ordered_root` and `withdrawals_root` are bound here (not just `manifest_hash`)
+/// because the settlement contract trusts them for inclusion answers and for
+/// authorizing vault withdrawals — if they weren't part of the proven commitment,
+/// a sequencer could supply an arbitrary `withdrawals_root` and drain the vault
+/// (audit finding F2). Binding them makes those roots outputs of the proven
+/// computation, not free sequencer calldata.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct PublicInputs {
     pub prev_state_root: Digest,
     pub batch_manifest_hash: Digest,
     pub new_state_root: Digest,
+    /// Merkle root of the manifest's ordered order-hash leaves (inclusion proofs).
+    pub ordered_root: Digest,
+    /// Merkle root of the withdrawals this batch authorizes (vault releases).
+    pub withdrawals_root: Digest,
 }
 
 impl PublicInputs {
     /// Canonical commitment over the public inputs (the proof's public digest).
+    /// MUST match `DarkPerpSettlement.publicCommitment`.
     pub fn commitment<H: Hasher>(&self) -> Digest {
         H::hash_words(
             Domain::StateRoot,
@@ -47,6 +59,8 @@ impl PublicInputs {
                 self.prev_state_root,
                 self.batch_manifest_hash,
                 self.new_state_root,
+                self.ordered_root,
+                self.withdrawals_root,
             ],
         )
     }
@@ -62,6 +76,8 @@ pub fn run_transition(
     state: &mut DefaultState,
     ops: &[BatchOp],
     batch_manifest_hash: Digest,
+    ordered_root: Digest,
+    withdrawals_root: Digest,
 ) -> Result<PublicInputs, EngineError> {
     let prev_state_root = state.state_root();
     state.apply_batch(ops)?;
@@ -70,6 +86,8 @@ pub fn run_transition(
         prev_state_root,
         batch_manifest_hash,
         new_state_root,
+        ordered_root,
+        withdrawals_root,
     })
 }
 
@@ -293,7 +311,7 @@ mod tests {
         let (mut s, ops) = state_with_deposit();
         let mh = [0x55u8; 32];
         let prev = s.state_root();
-        let public = run_transition(&mut s, &ops, mh).unwrap();
+        let public = run_transition(&mut s, &ops, mh, [0u8; 32], [0u8; 32]).unwrap();
         assert_eq!(public.prev_state_root, prev);
         assert_eq!(public.batch_manifest_hash, mh);
         assert_eq!(public.new_state_root, s.state_root());
@@ -303,7 +321,7 @@ mod tests {
     #[test]
     fn prove_and_verify_roundtrip() {
         let (mut s, ops) = state_with_deposit();
-        let public = run_transition(&mut s, &ops, [1u8; 32]).unwrap();
+        let public = run_transition(&mut s, &ops, [1u8; 32], [0u8; 32], [0u8; 32]).unwrap();
         let prover = AttestedProver::new(CommitmentProver::new(M));
         let witness = b"sealed batch witness: positions, fills, margins";
         let sealed = SealedWitness::seal(witness, M);
@@ -315,7 +333,7 @@ mod tests {
     #[test]
     fn tampered_public_inputs_break_verification() {
         let (mut s, ops) = state_with_deposit();
-        let public = run_transition(&mut s, &ops, [1u8; 32]).unwrap();
+        let public = run_transition(&mut s, &ops, [1u8; 32], [0u8; 32], [0u8; 32]).unwrap();
         let prover = AttestedProver::new(CommitmentProver::new(M));
         let sealed = SealedWitness::seal(b"w", M);
         let mut proof = prover.prove_sealed(&sealed, &public).unwrap();
@@ -330,7 +348,7 @@ mod tests {
     #[test]
     fn wrong_measurement_cannot_open_witness() {
         let (mut s, ops) = state_with_deposit();
-        let public = run_transition(&mut s, &ops, [1u8; 32]).unwrap();
+        let public = run_transition(&mut s, &ops, [1u8; 32], [0u8; 32], [0u8; 32]).unwrap();
         // witness sealed to M, but the prover has WRONG_M → cannot open (§10b)
         let sealed = SealedWitness::seal(b"private ledger", M);
         let prover = AttestedProver::new(CommitmentProver::new(WRONG_M));
@@ -349,7 +367,7 @@ mod tests {
         // round-trip through the correct prover recovers nothing observable in
         // the proof bytes (proof is a 32-byte commitment, not the witness)
         let prover = AttestedProver::new(CommitmentProver::new(M));
-        let public = PublicInputs { prev_state_root: [0; 32], batch_manifest_hash: [0; 32], new_state_root: [1; 32] };
+        let public = PublicInputs { prev_state_root: [0; 32], batch_manifest_hash: [0; 32], new_state_root: [1; 32], ordered_root: [0; 32], withdrawals_root: [0; 32] };
         let proof = prover.prove_sealed(&sealed, &public).unwrap();
         assert_eq!(proof.proof_bytes.len(), 32);
     }
@@ -365,7 +383,7 @@ mod tests {
             note_commitment: [7u8; 32],
             spend_key: [1; 32],
         }];
-        let err = run_transition(&mut s, &ops, [0u8; 32]).unwrap_err();
+        let err = run_transition(&mut s, &ops, [0u8; 32], [0u8; 32], [0u8; 32]).unwrap_err();
         assert_eq!(err, EngineError::UnknownOrSpentNote);
     }
 }

@@ -118,6 +118,8 @@ fn main() {
         prev_state_root: prev_root,
         batch_manifest_hash: sealed.manifest_hash,
         new_state_root: sealed.new_state_root,
+        ordered_root: [0u8; 32],
+        withdrawals_root: [0u8; 32],
     };
     let prover = AttestedProver::new(CommitmentProver::new(MEASUREMENT));
     let proof = prover

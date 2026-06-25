@@ -15,7 +15,7 @@ contract CrossLayerTest is MiniTest {
 
     function setUp() public {
         s = new DarkPerpSettlement(
-            address(this), address(0xE), new MockZkVerifier(), bytes32(0), 100, 50
+            address(this), address(0xE), new MockZkVerifier(), bytes32(0), 100, 50, 0
         );
     }
 
@@ -33,11 +33,13 @@ contract CrossLayerTest is MiniTest {
         bytes32 c = s.publicCommitment(
             bytes32(uint256(0x0101010101010101010101010101010101010101010101010101010101010101)),
             bytes32(uint256(0x0202020202020202020202020202020202020202020202020202020202020202)),
-            bytes32(uint256(0x0303030303030303030303030303030303030303030303030303030303030303))
+            bytes32(uint256(0x0303030303030303030303030303030303030303030303030303030303030303)),
+            bytes32(uint256(0x0404040404040404040404040404040404040404040404040404040404040404)),
+            bytes32(uint256(0x0505050505050505050505050505050505050505050505050505050505050505))
         );
         assertEq(
             c,
-            0x76011f8462c59bfe80717d8a5ca8e4f6c64d46b53a0b9f89cbc17fce400d31ea,
+            0xae9d101e248e0d3710e0566057af9d8bdc7289f4e7435ef72cca1a94114303b1,
             "public commitment must match crates/prover::PublicInputs::commitment"
         );
     }
@@ -49,7 +51,7 @@ contract CrossLayerTest is MiniTest {
     function test_real_rust_receipt_passes_ecrecover() public {
         address rustEnclave = 0x4a62316623ad457F02cDC5D997deD67a383EC569;
         DarkPerpSettlement d = new DarkPerpSettlement(
-            address(this), rustEnclave, new MockZkVerifier(), bytes32(0), 100, 50
+            address(this), rustEnclave, new MockZkVerifier(), bytes32(0), 100, 50, 0
         );
         bytes32 orderHash = 0x0c1646898f0e7370046e707059dd7cb9eba4b66af66f67671f69101d508231c5;
         uint8 v = 28;
@@ -60,9 +62,10 @@ contract CrossLayerTest is MiniTest {
         bytes32 digest = d.receiptDigest(orderHash, 0, 1000, 0);
         assertEq(ecrecover(digest, v, r, sg), rustEnclave, "rust receipt recovers to enclave");
 
-        // and the full challenge entrypoint accepts it (no revert)
+        // and the full challenge entrypoint accepts it (k256 produces canonical
+        // low-s signatures, so the canonical check passes). challengeBond is 0 here.
         d.challengeInclusion(orderHash, 0, 1000, 0, v, r, sg);
-        (address challenger,,, bool open) = d.challenges(orderHash);
+        (address challenger,,,,, bool open) = d.challenges(orderHash);
         assertTrue(open, "challenge opened from a real rust receipt");
         assertEq(challenger, address(this), "challenger recorded");
     }

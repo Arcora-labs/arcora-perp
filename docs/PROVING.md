@@ -5,11 +5,18 @@ yet, and exactly how a real zkVM backend slots in.
 
 ## The binding (stable, backend-independent)
 
-Every batch proof commits to three public values:
+Every batch proof commits to five public values:
 
 ```
-PublicInputs = (prev_state_root, batch_manifest_hash, new_state_root)
+PublicInputs = (prev_state_root, batch_manifest_hash, new_state_root,
+                ordered_root, withdrawals_root)
 ```
+
+`ordered_root` (Merkle root of the batch's ordered order-hash leaves) and
+`withdrawals_root` (Merkle root of the withdrawals this batch authorizes) are
+bound into the commitment — not left as free sequencer calldata — so the
+sequencer cannot publish an arbitrary withdrawals root to drain the vault, nor a
+fake ordered root to dodge inclusion challenges (security audit findings F1/F2).
 
 `run_transition()` runs the **perp-core engine** — the same `apply_batch` used on
 the hot path — over the batch's ops and returns this tuple. The L1 verifier (Faz
