@@ -458,12 +458,7 @@ impl<H: Hasher> State<H> {
 fn increases_exposure(pos: Option<&Position>, delta: i128) -> bool {
     match pos {
         None => true,
-        Some(p) if p.size == 0 => true,
-        Some(p) => {
-            let new = p.size + delta;
-            // same sign and larger magnitude, or flipped through zero to larger
-            (p.size > 0) == (delta > 0) || crate::fixed::abs(new) > crate::fixed::abs(p.size)
-        }
+        Some(p) => p.increases_exposure(delta),
     }
 }
 

@@ -101,6 +101,40 @@ impl Position {
         }
     }
 
+    /// Would applying `delta_size` increase absolute exposure (open or grow,
+    /// including a flip through zero to a larger opposite position)? Reducing /
+    /// closing returns false.
+    pub fn increases_exposure(&self, delta_size: i128) -> bool {
+        if self.size == 0 {
+            return true;
+        }
+        let new = self.size + delta_size;
+        (self.size > 0) == (delta_size > 0) || abs(new) > abs(self.size)
+    }
+
+    /// Pre-trade risk check (§12, Phase 3): if this order's full size filled at
+    /// `mark`, would the resulting position still satisfy INITIAL margin?
+    /// Reducing/closing orders always pass (they lower risk). Used by the
+    /// sequencer to reject unmarginable orders *before* matching, so no fill can
+    /// match-but-fail-to-settle.
+    pub fn fits_initial_after(
+        &self,
+        market: &Market,
+        delta_size: i128,
+        mark: i128,
+        funding_index_now: i128,
+    ) -> bool {
+        if !self.increases_exposure(delta_size) {
+            return true;
+        }
+        let mut sim = *self;
+        // simulate the fill at the conservative oracle mark
+        if sim.apply_fill(delta_size, mark, funding_index_now).is_err() {
+            return false;
+        }
+        sim.check_initial_margin(market, mark, funding_index_now).is_ok()
+    }
+
     /// Check the position satisfies INITIAL margin (post-open / post-increase).
     /// This is the Proof-v1 "post-fill margin sufficiency" obligation (§4).
     pub fn check_initial_margin(
@@ -258,6 +292,23 @@ mod tests {
         assert_eq!(funding, 0);
         assert_eq!(p.size, 0);
         assert_eq!(p.collateral, 30_000 * QUOTE_SCALE);
+    }
+
+    #[test]
+    fn pre_trade_blocks_overleverage_allows_reduce() {
+        let m = Market::conservative(0);
+        let mark = 100_000 * PRICE_SCALE;
+        // empty position with $5k collateral can't open 1 BTC ($10k initial)…
+        let mut empty = pos(0, 0, 5_000 * QUOTE_SCALE);
+        assert!(!empty.fits_initial_after(&m, SIZE_SCALE, mark, 0));
+        // …but can open 0.4 BTC ($4k initial).
+        assert!(empty.fits_initial_after(&m, 2 * SIZE_SCALE / 5, mark, 0));
+
+        // a long reducing its position always passes, even if underwater.
+        empty.size = SIZE_SCALE;
+        empty.entry_price = mark;
+        empty.collateral = 1_000 * QUOTE_SCALE; // thin
+        assert!(empty.fits_initial_after(&m, -SIZE_SCALE / 2, mark, 0), "reducing always allowed");
     }
 
     #[test]

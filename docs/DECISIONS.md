@@ -79,6 +79,22 @@ the interim by receipts + manifest + slashing (§2). The order/receipt/manifest
 types already exist so the Phase 1 TEE gateway and Phase 3 slashing have a stable
 wire format.
 
+## ADR-0011 — Pre-trade risk closes the match-but-unsettleable gap (Phase 3)
+
+**Decision.** The sequencer runs a **pre-trade risk check** before matching: an
+opening/increasing order that, filled in full at the oracle mark, would leave the
+trader below initial margin is rejected up front (manifest `rejected`,
+`InsufficientMargin`) and never enters the book. Reducing/closing orders always
+pass. (`Sequencer::pre_trade_check` + `Position::fits_initial_after`.)
+
+**Why.** Mission 2 left a wrinkle (ADR-0005 follow-up): a fill could match in the
+book yet fail settlement on margin, forcing settlement rejects that were either
+double-listed or silently dropped. Checking margin *before* matching means an
+admitted order is always marginable, so a matched fill never fails to settle —
+`ordered`/`rejected` stay disjoint and honest (§2), and `settlement_rejected` is
+empty in normal operation. The check uses the conservative oracle mark and the
+worst case (full size), matching standard venue pre-trade risk.
+
 ## ADR-0006 — Per-operation atomicity
 
 **Decision.** `Fill` and `Unbind` compute their result on copies and commit only

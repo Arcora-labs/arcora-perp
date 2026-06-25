@@ -26,6 +26,7 @@ use perp_core::hash::{Digest, Keccak256};
 use perp_core::market::{Market, MarketId};
 use perp_core::order::{BatchManifest, Finality, Order, Receipt, RejectReason};
 use perp_core::oracle::OracleTranscript;
+use perp_core::position::Position;
 use perp_core::{DefaultState, EngineError};
 
 /// Compute the Ethereum-style 20-byte address of a secp256k1 verifying key:
@@ -233,14 +234,57 @@ impl Sequencer {
         self.issue_receipt(order_hash, seq_no, now_ms)
     }
 
+    /// Pre-trade risk (§12, Phase 3): would this order, filled in full at the
+    /// oracle mark, leave the trader above initial margin? Reducing/closing
+    /// orders always pass. Rejecting here — *before* matching — guarantees no fill
+    /// can match-but-fail-to-settle, so `ordered`/`rejected` stay honest (§2).
+    pub fn pre_trade_check(&self, order: &Order, now_ms: u64) -> Result<(), RejectReason> {
+        let Some(market) = self.state.markets.get(&order.market_id) else {
+            return Err(RejectReason::ReduceOnlyViolation);
+        };
+        let Some(oracle) = self.oracles.get(&order.market_id) else {
+            return Err(RejectReason::OracleUnavailable);
+        };
+        let mark = oracle
+            .validate(market, now_ms)
+            .map_err(|_| RejectReason::OracleUnavailable)?;
+        let funding_index = self
+            .state
+            .funding
+            .get(&order.market_id)
+            .map(|f| f.cumulative_index)
+            .unwrap_or(0);
+        let base = self
+            .state
+            .position(&order.owner, order.market_id)
+            .copied()
+            .unwrap_or_else(|| Position::empty(order.owner, order.market_id));
+        if base.fits_initial_after(market, order.signed_size(), mark, funding_index) {
+            Ok(())
+        } else {
+            Err(RejectReason::InsufficientMargin)
+        }
+    }
+
     /// Run one batch: match `orders`, issue receipts, settle fills, publish a
     /// manifest, advance finality, and update inclusion tracking.
     pub fn seal_batch(&mut self, orders: &[Order], now_ms: u64) -> SealedBatch {
         let prev_state_root = self.state.state_root();
         let batch_id = self.next_batch_id;
 
-        // 1. match the arrival-ordered stream
-        let stream = self.matcher.process_stream(orders, now_ms);
+        // 0. pre-trade risk gate: drop unmarginable orders before matching, so a
+        //    matched fill can never fail to settle on margin (§12, Phase 3).
+        let mut pre_rejected: Vec<(Digest, RejectReason)> = Vec::new();
+        let mut admitted: Vec<Order> = Vec::new();
+        for o in orders {
+            match self.pre_trade_check(o, now_ms) {
+                Ok(()) => admitted.push(*o),
+                Err(reason) => pre_rejected.push((o.order_hash::<Keccak256>(), reason)),
+            }
+        }
+
+        // 1. match the arrival-ordered stream of admitted orders
+        let stream = self.matcher.process_stream(&admitted, now_ms);
 
         // 2. issue signed receipts for every accepted (non-rejected) order
         let mut receipts = Vec::new();
@@ -283,15 +327,13 @@ impl Sequencer {
             }
         }
 
-        // 4. build the manifest. `ordered` / `rejected` are the *matcher's*
-        //    sequencing view and are kept disjoint (§2). Settlement failures are
-        //    NOT folded into `rejected` — an order the matcher sequenced stays in
-        //    `ordered`. A fill that matched but failed settlement margin is a
-        //    symptom of the missing pre-trade risk check; closing that gap (so an
-        //    unmarginable order is rejected *before* matching) is Phase 3
-        //    hardening. Until then settlement rejects are surfaced separately on
-        //    the SealedBatch for the operator/insurance path, never double-listed.
-        let rejected = stream.rejected.clone();
+        // 4. build the manifest. `rejected` = pre-trade rejects (risk/oracle) +
+        //    the matcher's own rejects; `ordered` = matcher-sequenced. With the
+        //    pre-trade gate (step 0) an admitted order is marginable, so
+        //    `settlement_rejected` is empty in normal operation and `ordered` /
+        //    `rejected` stay disjoint and honest (§2).
+        let mut rejected = pre_rejected.clone();
+        rejected.extend_from_slice(&stream.rejected);
         let oracle_updates: Vec<Digest> = self
             .oracles
             .values()

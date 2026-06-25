@@ -117,23 +117,29 @@ fn manifest_hash_is_stable_and_binds_roots() {
 }
 
 #[test]
-fn settlement_reject_does_not_corrupt_state() {
-    // taker has no oracle for a second market → fill can't settle, but the
-    // matched order is reported as rejected and state stays consistent.
+fn pre_trade_risk_rejects_unmarginable_before_matching() {
+    // With pre-trade risk (Phase 3) an underfunded order is rejected BEFORE
+    // matching — so it never matches-but-fails-to-settle. It appears in the
+    // manifest's rejected list with InsufficientMargin, never opens a position,
+    // and settlement_rejected stays empty.
     let mut s = setup();
-    // an undercollateralized scenario: fund a third trader with too little, then
-    // have them open a large position they can't margin.
     fund(&mut s, 3, 1_000, 0x33); // only $1k
     let maker = order(1, Side::Sell, SIZE_SCALE, 100_000 * PRICE_SCALE, 10);
     let taker = order(3, Side::Buy, SIZE_SCALE, 100_000 * PRICE_SCALE, 11); // needs $10k initial
+    let taker_hash = taker.order_hash::<Keccak256>();
     let sealed = s.seal_batch(&[maker, taker], 1_000);
+
+    assert!(sealed.settlement_rejected.is_empty(), "no match-but-unsettleable fills");
     assert!(
-        !sealed.settlement_rejected.is_empty(),
-        "underfunded fill must be settlement-rejected"
+        sealed.manifest.rejected.iter().any(|(h, r)| *h == taker_hash
+            && *r == perp_core::order::RejectReason::InsufficientMargin),
+        "unmarginable order rejected pre-trade in the manifest"
     );
+    assert!(!sealed.manifest.ordered.contains(&taker_hash), "never sequenced");
     assert!(s.state.conservation_holds());
-    // the rejected taker has no open position
     assert!(s.state.position(&word_u64(3), 0).is_none_or(|p| p.size == 0));
+    // the maker (well-funded) rested fine and got a receipt
+    assert!(sealed.receipts.iter().any(|r| r.verify()));
 }
 
 #[test]
