@@ -120,6 +120,48 @@ mod tests {
     }
 
     #[test]
+    fn all_domains_pairwise_distinct() {
+        // Domain separation is only real if EVERY tag yields a different digest for
+        // the same input — the keystream/shuffle/seal hardening (note-archive, bridge,
+        // prover) all rely on this. A duplicated discriminant or a hasher that ignored
+        // the domain would collapse two purposes; this catches it. Keep in sync with
+        // the enum.
+        use Domain::*;
+        let all = [
+            NoteCommitment,
+            Nullifier,
+            MerkleNode,
+            MerkleEmpty,
+            OrderHash,
+            BatchManifest,
+            StateRoot,
+            OracleTranscript,
+            MerkleLeaf,
+            NoteKeystream,
+            MixShuffle,
+            WitnessSeal,
+        ];
+        let w = [word_u64(42)];
+        for i in 0..all.len() {
+            // the tag is also distinct as a u8 discriminant (no two share a value)
+            assert_eq!(
+                all[i] as u8,
+                i as u8 + 1,
+                "domain discriminants must be 1..=N dense"
+            );
+            for j in (i + 1)..all.len() {
+                assert_ne!(
+                    Keccak256::hash_words(all[i], &w),
+                    Keccak256::hash_words(all[j], &w),
+                    "domains {:?} and {:?} collide",
+                    all[i],
+                    all[j]
+                );
+            }
+        }
+    }
+
+    #[test]
     fn deterministic() {
         let w = [word_i128(-5), word_u64(7)];
         assert_eq!(
