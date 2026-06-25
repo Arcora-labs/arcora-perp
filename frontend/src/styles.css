@@ -212,7 +212,9 @@ body {
 .orderbook__head { display: flex; align-items: baseline; justify-content: space-between; }
 .orderbook__cols { display: flex; gap: 30px; color: var(--text-mute); font-size: 11px; }
 .orderbook__rows { display: flex; flex-direction: column; font-family: var(--mono); font-size: 12px; }
-.orderbook__row { position: relative; display: grid; grid-template-columns: 1fr auto; padding: 3.5px 8px; border-radius: 5px; overflow: hidden; }
+.orderbook__row { position: relative; display: grid; grid-template-columns: 1fr auto; padding: 3.5px 8px; border-radius: 5px; overflow: hidden; width: 100%; border: 0; background: transparent; font: inherit; color: inherit; text-align: left; cursor: pointer; transition: background 0.12s var(--ease); }
+.orderbook__row:hover { background: var(--bg-elev-2); }
+.orderbook__row:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
 .orderbook__depth { position: absolute; top: 0; bottom: 0; right: 0; opacity: 0.16; pointer-events: none; transition: width 0.45s var(--ease); }
 .orderbook__depth--ask { background: linear-gradient(90deg, transparent, var(--sell)); }
 .orderbook__depth--bid { background: linear-gradient(90deg, transparent, var(--buy)); }

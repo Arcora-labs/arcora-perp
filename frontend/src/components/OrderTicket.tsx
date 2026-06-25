@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useStore } from "../store";
 import { formatPrice, formatSize, formatUsd, parsePrice, parseSize } from "../domain/format";
 import { maxOrderSize, orderRisk } from "../domain/risk";
@@ -36,10 +36,18 @@ function OrderPreview({ size, mark, side, imr }: { size: bigint; mark: bigint; s
 }
 
 export function OrderTicket() {
-  const { client, state } = useStore();
+  const { client, state, prefillPrice, setPrefillPrice } = useStore();
   const [side, setSide] = useState<Side>("Buy");
   const [sizeStr, setSizeStr] = useState("0.10");
   const [priceStr, setPriceStr] = useState("");
+
+  // adopt a price clicked in the order book, then clear the signal
+  useEffect(() => {
+    if (prefillPrice !== null) {
+      setPriceStr(formatPrice(prefillPrice));
+      setPrefillPrice(null);
+    }
+  }, [prefillPrice, setPrefillPrice]);
   const [tif, setTif] = useState<TimeInForce>("Gtc");
   const [reduceOnly, setReduceOnly] = useState(false);
   const [error, setError] = useState<string | null>(null);
