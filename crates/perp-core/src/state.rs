@@ -111,6 +111,20 @@ impl<H: Hasher> State<H> {
         H::hash_words(Domain::StateRoot, &words)
     }
 
+    /// A deterministic digest over per-market funding state. The cumulative
+    /// funding index is applied to positions at settlement, so it MUST be part of
+    /// the committed root — otherwise a prover could misreport funding without
+    /// changing the state root.
+    pub fn funding_digest(&self) -> Digest {
+        let mut words = alloc::vec::Vec::new();
+        for (id, f) in &self.funding {
+            words.push(word_u64(*id));
+            words.push(word_i128(f.cumulative_index));
+            words.push(word_u64(f.last_update_ms));
+        }
+        H::hash_words(Domain::StateRoot, &words)
+    }
+
     /// The L1-anchored state root (§1, §3).
     pub fn state_root(&self) -> Digest {
         H::hash_words(
@@ -119,6 +133,7 @@ impl<H: Hasher> State<H> {
                 self.tree.root(),
                 word_u64(self.nullifiers.len() as u64),
                 self.positions_digest(),
+                self.funding_digest(),
                 word_i128(self.insurance_fund),
                 word_i128(self.vault_pool),
                 word_i128(self.external_in),

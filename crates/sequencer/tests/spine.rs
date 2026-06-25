@@ -143,6 +143,30 @@ fn pre_trade_risk_rejects_unmarginable_before_matching() {
 }
 
 #[test]
+fn maintenance_liquidates_underwater_position() {
+    let mut s = setup();
+    // A short 1 BTC, B long 1 BTC at $100k (each funded $20k, $10k initial).
+    s.seal_batch(
+        &[
+            order(1, Side::Sell, SIZE_SCALE, 100_000 * PRICE_SCALE, 1),
+            order(2, Side::Buy, SIZE_SCALE, 100_000 * PRICE_SCALE, 2),
+        ],
+        1_000,
+    );
+    assert_eq!(s.state.position(&word_u64(2), 0).unwrap().size, SIZE_SCALE);
+
+    // price crashes to $84k → B (long) equity ~$4k < ~$4.2k maintenance.
+    s.set_oracle(0, oracle(84_000, 5_000));
+    let sealed = s.seal_batch(&[], 5_000);
+
+    assert!(sealed.liquidations.contains(&word_u64(2)), "long B liquidated");
+    assert!(!sealed.liquidations.contains(&word_u64(1)), "short A healthy");
+    assert_eq!(s.state.position(&word_u64(2), 0).unwrap().size, 0, "B closed");
+    assert!(s.state.insurance_fund > 0, "liquidation fee funded insurance");
+    assert!(s.state.conservation_holds());
+}
+
+#[test]
 fn honest_flow_has_no_inclusion_violations() {
     let mut s = setup();
     s.seal_batch(

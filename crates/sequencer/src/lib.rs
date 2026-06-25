@@ -24,6 +24,7 @@ use matcher::{MatchingEngine, SubmitStatus};
 use perp_core::engine::BatchOp;
 use perp_core::hash::{Digest, Keccak256};
 use perp_core::market::{Market, MarketId};
+use perp_core::note::PubKey;
 use perp_core::order::{BatchManifest, Finality, Order, Receipt, RejectReason};
 use perp_core::oracle::OracleTranscript;
 use perp_core::position::Position;
@@ -124,6 +125,8 @@ pub struct SealedBatch {
     /// Fills that matched but failed settlement (e.g. margin) — reported, not applied.
     pub settlement_rejected: Vec<(Digest, RejectReason)>,
     pub receipts: Vec<SignedReceipt>,
+    /// Owners liquidated during this batch's maintenance pass (§5).
+    pub liquidations: Vec<PubKey>,
 }
 
 /// Why an order was rejected at settlement, mapped from an engine error.
@@ -266,8 +269,78 @@ impl Sequencer {
         }
     }
 
-    /// Run one batch: match `orders`, issue receipts, settle fills, publish a
-    /// manifest, advance finality, and update inclusion tracking.
+    /// Best book mid as the perp mark price; falls back to the oracle index if a
+    /// side is empty. Used as the funding mark (§8).
+    fn mark_price(&self, market_id: MarketId) -> Option<i128> {
+        let book = self.matcher.book(market_id)?;
+        match (book.best_bid(), book.best_ask()) {
+            (Some(bid), Some(ask)) => Some((bid + ask) / 2),
+            _ => self.oracles.get(&market_id).map(|o| o.price),
+        }
+    }
+
+    /// Per-batch maintenance (§5, §8): accrue funding from the mark-vs-index
+    /// premium, then liquidate every position that is underwater at the oracle
+    /// price. Runs regardless of user liveness — the enclave holds positions, so
+    /// an offline user is still liquidated. Returns the liquidated owners.
+    pub fn run_maintenance(&mut self, now_ms: u64) -> Vec<PubKey> {
+        let mut liquidated = Vec::new();
+        let market_ids: Vec<MarketId> = self.state.markets.keys().copied().collect();
+        for mid in market_ids {
+            let Some(oracle) = self.oracles.get(&mid).copied() else {
+                continue;
+            };
+            // funding accrual (best-effort; skip if oracle is out of bounds)
+            let mark = self.mark_price(mid).unwrap_or(oracle.price);
+            let _ = self.state.apply_op(&BatchOp::AccrueFunding {
+                market_id: mid,
+                mark,
+                oracle,
+                now_ms,
+            });
+            // liquidation pass at the oracle price
+            let Some(market) = self.state.markets.get(&mid).copied() else {
+                continue;
+            };
+            let Ok(price) = oracle.validate(&market, now_ms) else {
+                continue;
+            };
+            let funding_index = self
+                .state
+                .funding
+                .get(&mid)
+                .map(|f| f.cumulative_index)
+                .unwrap_or(0);
+            let candidates: Vec<PubKey> = self
+                .state
+                .positions
+                .iter()
+                .filter(|((_, m), p)| {
+                    *m == mid && p.is_open() && p.is_liquidatable(&market, price, funding_index)
+                })
+                .map(|((o, _), _)| *o)
+                .collect();
+            for owner in candidates {
+                if self
+                    .state
+                    .apply_op(&BatchOp::Liquidate {
+                        owner,
+                        market_id: mid,
+                        oracle,
+                        now_ms,
+                    })
+                    .is_ok()
+                {
+                    liquidated.push(owner);
+                }
+            }
+        }
+        liquidated
+    }
+
+    /// Run one batch: match `orders`, issue receipts, settle fills, run the
+    /// funding+liquidation maintenance pass, publish a manifest, advance finality,
+    /// and update inclusion tracking.
     pub fn seal_batch(&mut self, orders: &[Order], now_ms: u64) -> SealedBatch {
         let prev_state_root = self.state.state_root();
         let batch_id = self.next_batch_id;
@@ -327,6 +400,9 @@ impl Sequencer {
             }
         }
 
+        // 3b. maintenance: accrue funding + liquidate underwater positions (§5,§8).
+        let liquidations = self.run_maintenance(now_ms);
+
         // 4. build the manifest. `rejected` = pre-trade rejects (risk/oracle) +
         //    the matcher's own rejects; `ordered` = matcher-sequenced. With the
         //    pre-trade gate (step 0) an admitted order is marginable, so
@@ -374,6 +450,7 @@ impl Sequencer {
             settled_order_hashes,
             settlement_rejected,
             receipts,
+            liquidations,
         }
     }
 
