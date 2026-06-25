@@ -469,6 +469,49 @@ mod tests {
     }
 
     #[test]
+    fn post_only_rejects_even_against_own_order() {
+        // A post-only that would cross ONLY the taker's own resting order is still
+        // rejected (conservative: "maker or nothing"), not silently rested by
+        // self-trade-cancelling the owner's existing maker. Pins book.rs §2.
+        let mut e = engine();
+        // owner 1 rests an ask at 100k
+        e.submit(
+            &order(
+                1,
+                Side::Sell,
+                SIZE_SCALE,
+                100_000 * PRICE_SCALE,
+                TimeInForce::Gtc,
+                1,
+            ),
+            0,
+        );
+        // owner 1 sends a post-only buy at 100k — crosses only its own ask
+        let t = e.submit(
+            &order(
+                1,
+                Side::Buy,
+                SIZE_SCALE,
+                100_000 * PRICE_SCALE,
+                TimeInForce::PostOnly,
+                2,
+            ),
+            0,
+        );
+        assert_eq!(
+            t.outcome.status,
+            SubmitStatus::Rejected(RejectReason::PostOnlyWouldTake),
+            "post-only rejected rather than STP-cancelling the owner's own maker"
+        );
+        // and the owner's original resting ask is untouched
+        assert_eq!(
+            e.book(0).unwrap().resting_size(Side::Sell),
+            SIZE_SCALE,
+            "own resting maker preserved"
+        );
+    }
+
+    #[test]
     fn expired_order_rejected() {
         let mut e = engine();
         let mut o = order(

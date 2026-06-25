@@ -186,7 +186,16 @@ impl<H: perp_core::hash::Hasher> OrderBook<H> {
         let side = order.side;
         let limit = order.limit_price;
 
-        // 2. post-only must never take liquidity
+        // 2. post-only must never take liquidity.
+        //
+        // Deliberately conservative: we reject if the order crosses the best
+        // opposite price *even when that level holds only the taker's own resting
+        // order*. The matching path would self-trade-prevent (cancel that maker)
+        // rather than fill — so we could instead let the post-only rest. We choose
+        // rejection: a post-only is a "maker, or nothing" instruction, and silently
+        // cancelling the owner's existing resting order to honor a new post-only is
+        // more surprising than a clean PostOnlyWouldTake. See the
+        // `post_only_rejects_even_against_own_order` regression test.
         if order.tif == TimeInForce::PostOnly {
             if let Some(best) = self.best_opposite_key(side) {
                 if Self::price_crosses(side, limit, best) {
