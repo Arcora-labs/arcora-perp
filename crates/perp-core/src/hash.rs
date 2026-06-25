@@ -52,6 +52,11 @@ pub enum Domain {
     StateRoot = 7,
     /// Oracle transcript hash (§8).
     OracleTranscript = 8,
+    /// Merkle leaf domain. Level-0 entries are hashed under this tag so an inner
+    /// node (`MerkleNode`) can never be presented as a leaf — RFC-6962-style
+    /// second-preimage separation. Appended last so existing domain tags (and thus
+    /// every committed hash) are unchanged.
+    MerkleLeaf = 9,
 }
 
 /// The default Phase 0 hasher: Keccak-256 with a 1-byte domain prefix.

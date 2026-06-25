@@ -61,6 +61,17 @@
 > unprovable batch). Fixed to `checked_mul` with overflow treated as out-of-bounds
 > (reject), matching the "never wrap" rule the rest of the risk math already follows;
 > regression test feeds `i128::MAX` and asserts clean rejection in debug and release.
+> A twelfth pass audited the note commitment tree (`merkle.rs`) and found **P5**: a
+> classic RFC-6962 second-preimage gap — leaves were placed at level 0 *raw*, so
+> `MerkleTree::verify` accepted an inner node value (hashed under `MerkleNode`) as a
+> leaf and reconstructed the root, a proof-forgery primitive. Not yet reachable for
+> theft (spending uses the note-domain commitment map, and `verify` had no consumer),
+> but it is exactly the membership check the Proof-v1 circuit will rely on. Fixed by
+> hashing every level-0 entry under a new `Domain::MerkleLeaf` tag (appended last so
+> all existing committed hashes are unchanged), so an inner node can never be a leaf.
+> The cross-layer vectors use synthetic roots and no test pins an absolute root, so
+> the blast radius was contained; regression test offers a real inner node as a leaf
+> and asserts rejection.
 
 
 Synthesizes the architecture's honest failure analysis (§0, §10, §10b, §11) into

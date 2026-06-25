@@ -53,6 +53,15 @@ impl<H: Hasher> MerkleTree<H> {
         }
     }
 
+    /// Hash a stored leaf into its level-0 node under the dedicated leaf domain.
+    /// This is what makes the tree second-preimage safe: a level-0 node carries the
+    /// `MerkleLeaf` tag while inner nodes carry `MerkleNode`, so an inner node value
+    /// can never be replayed as a leaf (RFC-6962-style separation). Stored leaves
+    /// remain the raw note commitments (the archive maps `batch_id → commitment`).
+    fn leaf_node(leaf: &Digest) -> Digest {
+        H::hash_words(Domain::MerkleLeaf, &[*leaf])
+    }
+
     /// Maximum number of leaves this tree can hold.
     pub fn capacity(&self) -> u128 {
         1u128 << self.depth
@@ -83,7 +92,7 @@ impl<H: Hasher> MerkleTree<H> {
         if self.leaves.is_empty() {
             return self.empty[self.depth as usize];
         }
-        let mut level: Vec<Digest> = self.leaves.clone();
+        let mut level: Vec<Digest> = self.leaves.iter().map(Self::leaf_node).collect();
         for h in 0..self.depth as usize {
             let mut next = Vec::with_capacity(level.len().div_ceil(2));
             let mut i = 0;
@@ -108,7 +117,7 @@ impl<H: Hasher> MerkleTree<H> {
             return Err(MerkleError::OutOfRange);
         }
         let mut siblings = Vec::with_capacity(self.depth as usize);
-        let mut level: Vec<Digest> = self.leaves.clone();
+        let mut level: Vec<Digest> = self.leaves.iter().map(Self::leaf_node).collect();
         let mut idx = index as usize;
         for h in 0..self.depth as usize {
             let sibling = if idx ^ 1 < level.len() {
@@ -142,7 +151,9 @@ impl<H: Hasher> MerkleTree<H> {
     /// Verify a proof against a given root and leaf. Stateless w.r.t. `self`
     /// except for depth — this is the check the circuit will encode.
     pub fn verify(root: &Digest, leaf: &Digest, proof: &MerkleProof) -> bool {
-        let mut node = *leaf;
+        // hash the claimed leaf into its level-0 node under the leaf domain, so an
+        // inner node value can never be accepted as a leaf (second-preimage safety).
+        let mut node = Self::leaf_node(leaf);
         let mut idx = proof.leaf_index;
         for sib in &proof.siblings {
             node = if idx & 1 == 0 {
@@ -165,6 +176,7 @@ pub enum MerkleError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::hash::Domain;
     use crate::hash::{word_u64, Keccak256};
 
     type T = MerkleTree<Keccak256>;
@@ -198,6 +210,65 @@ mod tests {
             // wrong leaf must fail
             assert!(!T::verify(&root, &word_u64(999), &proof));
         }
+    }
+
+    #[test]
+    fn proof_is_bound_to_its_leaf_index() {
+        // The leaf index drives the left/right parity at every level, so a valid
+        // sibling path must not verify if re-pointed at a different index — this is
+        // what stops a proof for one slot being replayed for another.
+        let mut t = T::new(6);
+        for i in 0..10u64 {
+            t.append(word_u64(i + 1)).unwrap();
+        }
+        let root = t.root();
+        let mut p = t.prove(3).unwrap();
+        let leaf = word_u64(4); // the leaf stored at index 3
+        assert!(T::verify(&root, &leaf, &p));
+        p.leaf_index = 5;
+        assert!(!T::verify(&root, &leaf, &p), "proof bound to its index");
+    }
+
+    #[test]
+    fn tampered_sibling_rejected() {
+        let mut t = T::new(6);
+        for i in 0..10u64 {
+            t.append(word_u64(i + 1)).unwrap();
+        }
+        let root = t.root();
+        let mut p = t.prove(2).unwrap();
+        p.siblings[0] = word_u64(0xDEAD);
+        assert!(
+            !T::verify(&root, &word_u64(3), &p),
+            "tampered path rejected"
+        );
+    }
+
+    #[test]
+    fn internal_node_is_not_a_valid_leaf() {
+        // Second-preimage resistance: leaves (note commitments) and inner nodes are
+        // hashed under DIFFERENT domains, so an inner node value cannot be passed off
+        // as a leaf. Re-deriving the level-0 node and offering it as a leaf at the
+        // parent index must not verify against the root.
+        let mut t = T::new(4);
+        for i in 0..4u64 {
+            t.append(word_u64(i + 1)).unwrap();
+        }
+        let root = t.root();
+        // the actual inner node covering leaves 0,1 (its children are leaf-domained)
+        let l0 = Keccak256::hash_words(Domain::MerkleLeaf, &[word_u64(1)]);
+        let l1 = Keccak256::hash_words(Domain::MerkleLeaf, &[word_u64(2)]);
+        let inner = Keccak256::compress(Domain::MerkleNode, &l0, &l1);
+        // try to use that inner node as a leaf with the path from level 1 up
+        let p = t.prove(0).unwrap();
+        let forged = MerkleProof {
+            leaf_index: 0,
+            siblings: p.siblings[1..].to_vec(),
+        };
+        assert!(
+            !T::verify(&root, &inner, &forged),
+            "an inner node must not be accepted as a leaf (it is re-hashed under the leaf domain)"
+        );
     }
 
     #[test]
