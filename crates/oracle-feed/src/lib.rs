@@ -118,4 +118,47 @@ mod tests {
         assert!(transcript_from_ticker("-5", "1", "1", 1).is_none());
         assert!(transcript_from_ticker("bad", "1", "1", 1).is_none());
     }
+
+    // --- adversarial: a malformed/manipulated external feed must NEVER become a
+    // silently-trusted mark. The adapter does not "fix" the feed; it builds the
+    // transcript faithfully and lets the §8 gate reject it. These lock that the
+    // fail-safe actually triggers for adapter-produced transcripts, not just for
+    // hand-built ones in oracle.rs.
+
+    #[test]
+    fn fat_finger_last_outside_the_book_is_rejected_by_the_gate() {
+        use perp_core::oracle::OracleError;
+        // `last` is a stale / fat-finger print ~17% above a tight, current book.
+        // backup_twap = book mid, so the deviation gate refuses to mark against it.
+        let m = Market::conservative(0);
+        let t = transcript_from_ticker("70000", "59586.7", "59586.8", 1_000).unwrap();
+        assert_eq!(
+            t.validate(&m, 1_000),
+            Err(OracleError::DeviatesFromBackup),
+            "a last-trade far outside the current book must not become a mark"
+        );
+    }
+
+    #[test]
+    fn absurd_spread_book_is_rejected_by_the_gate() {
+        // a glitched / manipulated book with a giant spread → giant confidence
+        // band → the §8 confidence gate rejects it (garbage book never marks).
+        let m = Market::conservative(0);
+        let t = transcript_from_ticker("59585.6", "30000", "90000", 1_000).unwrap();
+        assert!(
+            t.validate(&m, 1_000).is_err(),
+            "a book with an absurd spread must be rejected, not marked"
+        );
+    }
+
+    #[test]
+    fn a_book_outage_falls_back_to_last_and_still_marks() {
+        // bid/ask unparseable (a book outage): the adapter falls back to `last`
+        // for both the band floor and the TWAP, so a healthy last still produces
+        // a transcript that clears the gate (graceful degradation, not a stall).
+        let m = Market::conservative(0);
+        let t = transcript_from_ticker("59585.6", "", "", 1_000).unwrap();
+        assert_eq!(t.backup_twap, t.price);
+        assert_eq!(t.validate(&m, 1_000), Ok(t.price));
+    }
 }
