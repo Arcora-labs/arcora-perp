@@ -8,6 +8,7 @@
 
 import type { DarkPerpClient, ClientState, OrderEvent } from "./client";
 import { fetchLiveQuotes } from "./oracleFeed";
+import { liquidationPrice } from "../domain/risk";
 import {
   PRICE_SCALE,
   QUOTE_SCALE,
@@ -316,7 +317,7 @@ export class MockDarkPerpClient implements DarkPerpClient {
         entryPrice: o.avgFillPrice,
         collateral: this.requiredMargin(o.filledSize, o.avgFillPrice),
         unrealizedPnl: 0n,
-        liquidationPrice: this.liqPrice(signed, o.avgFillPrice),
+        liquidationPrice: this.liqPrice(signed, o.avgFillPrice, o.input.marketId),
       });
     } else {
       const p = positions[idx];
@@ -341,7 +342,7 @@ export class MockDarkPerpClient implements DarkPerpClient {
           entryPrice: entry,
           // re-derive margin against the new exposure so grow/reduce/flip all track
           collateral: this.requiredMargin(abs(newSize), entry),
-          liquidationPrice: this.liqPrice(newSize, entry),
+          liquidationPrice: this.liqPrice(newSize, entry, o.input.marketId),
         };
       }
     }
@@ -358,9 +359,12 @@ export class MockDarkPerpClient implements DarkPerpClient {
   private pnl(size: bigint, entry: bigint, mark: bigint): bigint {
     return (size * (mark - entry)) / ((SIZE_SCALE * PRICE_SCALE) / QUOTE_SCALE);
   }
-  private liqPrice(size: bigint, entry: bigint): bigint {
-    const delta = (entry * 9n) / 100n;
-    return size > 0n ? entry - delta : entry + delta;
+  private liqPrice(size: bigint, entry: bigint, marketId: number): bigint {
+    // single source of truth with the pre-trade preview: the buffer is derived
+    // from THIS market's initial/maintenance ratios (domain/risk), so the position's
+    // liq line always matches what the ticket showed before the fill.
+    const m = this.data.get(marketId)!.market;
+    return liquidationPrice(entry, size > 0n, m.initialMarginRatio, m.maintenanceMarginRatio);
   }
 
   async deposit(amountQuote: bigint): Promise<void> {

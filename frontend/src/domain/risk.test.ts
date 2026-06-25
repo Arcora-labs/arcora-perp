@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { orderRisk, maxOrderSize, accountSummary } from "./risk";
+import { orderRisk, maxOrderSize, accountSummary, liqBufferBp, liquidationPrice } from "./risk";
 import { PRICE_SCALE, QUOTE_SCALE, SIZE_SCALE, type Position } from "./types";
 
 const MARK = 100_000n * PRICE_SCALE; // $100k
@@ -38,7 +38,7 @@ describe("maxOrderSize", () => {
     // $25k free × 10x = $250k buying power at $100k ⇒ 2.5 BTC
     expect(maxOrderSize(25_000n * QUOTE_SCALE, MARK, 10)).toBe((SIZE_SCALE * 5n) / 2n);
     // opening that exact size needs margin == the whole balance
-    const r = orderRisk(maxOrderSize(25_000n * QUOTE_SCALE, MARK, 10), MARK, "Buy", 0.1);
+    const r = orderRisk(maxOrderSize(25_000n * QUOTE_SCALE, MARK, 10), MARK, "Buy", 0.1, 0.05);
     expect(r.margin).toBe(25_000n * QUOTE_SCALE);
   });
 
@@ -49,25 +49,42 @@ describe("maxOrderSize", () => {
   });
 });
 
+describe("liquidation buffer is derived from the margin model", () => {
+  it("is the gap between initial and maintenance margin, in bp", () => {
+    expect(liqBufferBp(0.1, 0.05)).toBe(500n); // 10% initial − 5% maint = 5%
+    expect(liqBufferBp(0.05, 0.0)).toBe(500n); // 20x with 0 maint = 5% too
+    expect(liqBufferBp(0.1, 0.1)).toBe(0n); // no gap ⇒ no buffer
+  });
+
+  it("never goes negative if maintenance exceeds initial (degenerate config)", () => {
+    expect(liqBufferBp(0.05, 0.1)).toBe(0n);
+  });
+
+  it("puts a long's liq below entry and a short's above, by the buffer", () => {
+    expect(liquidationPrice(MARK, true, 0.1, 0.05)).toBe(95_000n * PRICE_SCALE);
+    expect(liquidationPrice(MARK, false, 0.1, 0.05)).toBe(105_000n * PRICE_SCALE);
+  });
+});
+
 describe("orderRisk", () => {
   it("computes notional, margin, leverage, and liq for a long at 10x", () => {
-    // 0.25 BTC at $100k, initial-margin ratio 0.1 (10x)
-    const r = orderRisk(SIZE_SCALE / 4n, MARK, "Buy", 0.1);
+    // 0.25 BTC at $100k, initial 0.1 (10x) / maintenance 0.05
+    const r = orderRisk(SIZE_SCALE / 4n, MARK, "Buy", 0.1, 0.05);
     expect(r.notional).toBe(25_000n * QUOTE_SCALE);
     expect(r.margin).toBe(2_500n * QUOTE_SCALE);
     expect(r.leverage).toBeCloseTo(10, 5);
-    // long liquidation sits 9% below the entry
-    expect(r.liquidationPrice).toBe(91_000n * PRICE_SCALE);
+    // liq sits at the margin-implied buffer (10%−5% = 5%) below entry
+    expect(r.liquidationPrice).toBe(95_000n * PRICE_SCALE);
   });
 
   it("places a short's liquidation ABOVE entry", () => {
-    const r = orderRisk(SIZE_SCALE, MARK, "Sell", 0.1);
-    expect(r.liquidationPrice).toBe(109_000n * PRICE_SCALE);
+    const r = orderRisk(SIZE_SCALE, MARK, "Sell", 0.1, 0.05);
+    expect(r.liquidationPrice).toBe(105_000n * PRICE_SCALE);
     expect(r.liquidationPrice > MARK).toBe(true);
   });
 
   it("scales margin with the initial-margin ratio (leverage)", () => {
-    const r20 = orderRisk(SIZE_SCALE, MARK, "Buy", 0.05); // 20x
+    const r20 = orderRisk(SIZE_SCALE, MARK, "Buy", 0.05, 0.025); // 20x
     expect(r20.margin).toBe(5_000n * QUOTE_SCALE); // 5% of $100k
     expect(r20.leverage).toBeCloseTo(20, 5);
   });
@@ -78,14 +95,14 @@ describe("orderRisk", () => {
       [-SIZE_SCALE, MARK],
       [SIZE_SCALE, 0n],
     ] as [bigint, bigint][]) {
-      const r = orderRisk(s, m, "Buy", 0.1);
+      const r = orderRisk(s, m, "Buy", 0.1, 0.05);
       expect(r).toEqual({ notional: 0n, margin: 0n, leverage: 0, liquidationPrice: 0n });
     }
   });
 
   it("notional is exact for fractional sizes (no float drift)", () => {
     // 1.5 BTC at $100k = $150k
-    const r = orderRisk(SIZE_SCALE + SIZE_SCALE / 2n, MARK, "Buy", 0.1);
+    const r = orderRisk(SIZE_SCALE + SIZE_SCALE / 2n, MARK, "Buy", 0.1, 0.05);
     expect(r.notional).toBe(150_000n * QUOTE_SCALE);
   });
 });

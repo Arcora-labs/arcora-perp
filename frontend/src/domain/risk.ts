@@ -20,9 +20,23 @@ export interface OrderRisk {
 /// Matches `perp-core::fixed::notional_quote`.
 const NOTIONAL_DIV = (SIZE_SCALE * PRICE_SCALE) / QUOTE_SCALE;
 
-/// Liquidation cushion used by the mock client (entry ± 9%). Centralized so the
-/// preview and any health display stay consistent with the post-fill value.
-export const LIQ_BUFFER_PCT = 9n;
+/// Liquidation buffer (in basis points of entry) IMPLIED by the margin model: a
+/// position is liquidated once its loss eats the gap between the initial margin it
+/// was opened with and the maintenance margin it must keep. Deriving it from the
+/// market's own ratios — rather than a magic constant — keeps the displayed liq
+/// price financially consistent with the advertised leverage/maintenance, and is
+/// the single source of truth shared by the preview and the mock client's fills.
+export function liqBufferBp(imr: number, mmr: number): bigint {
+  const bp = Math.round((imr - mmr) * 10_000);
+  return BigInt(bp > 0 ? bp : 0);
+}
+
+/// Liquidation price for a position entered at `entry`. Long liquidates below
+/// entry, short above, by the margin-implied buffer.
+export function liquidationPrice(entry: bigint, long: boolean, imr: number, mmr: number): bigint {
+  const delta = (entry * liqBufferBp(imr, mmr)) / 10_000n;
+  return long ? entry - delta : entry + delta;
+}
 
 /// Compute the pre-trade risk of opening `size` at `mark` on `side` under a market
 /// with initial-margin ratio `imr` (e.g. 0.1 for 10×). Returns zeroed risk for a
@@ -70,7 +84,7 @@ export function maxOrderSize(settledBalance: bigint, mark: bigint, maxLeverage: 
   return (buyingPower * NOTIONAL_DIV) / mark;
 }
 
-export function orderRisk(size: bigint, mark: bigint, side: Side, imr: number): OrderRisk {
+export function orderRisk(size: bigint, mark: bigint, side: Side, imr: number, mmr: number): OrderRisk {
   if (size <= 0n || mark <= 0n) {
     return { notional: 0n, margin: 0n, leverage: 0, liquidationPrice: 0n };
   }
@@ -78,7 +92,5 @@ export function orderRisk(size: bigint, mark: bigint, side: Side, imr: number): 
   const imrBp = BigInt(Math.round(imr * 10_000));
   const margin = (notional * imrBp) / 10_000n;
   const leverage = imr > 0 ? 1 / imr : 0;
-  const delta = (mark * LIQ_BUFFER_PCT) / 100n;
-  const liquidationPrice = side === "Buy" ? mark - delta : mark + delta;
-  return { notional, margin, leverage, liquidationPrice };
+  return { notional, margin, leverage, liquidationPrice: liquidationPrice(mark, side === "Buy", imr, mmr) };
 }

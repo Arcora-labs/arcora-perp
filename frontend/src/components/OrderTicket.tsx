@@ -10,9 +10,9 @@ const TIFS: TimeInForce[] = ["Gtc", "Ioc", "Fok", "PostOnly"];
 /// an estimated liquidation price — matching the values the position will show once
 /// it fills, so the trader sees the risk before committing. Math lives in
 /// `domain/risk` (pure + unit-tested).
-function OrderPreview({ size, mark, side, imr }: { size: bigint; mark: bigint; side: Side; imr: number }) {
+function OrderPreview({ size, mark, side, imr, mmr }: { size: bigint; mark: bigint; side: Side; imr: number; mmr: number }) {
   if (size <= 0n || mark <= 0n) return null;
-  const r = orderRisk(size, mark, side, imr);
+  const r = orderRisk(size, mark, side, imr, mmr);
   return (
     <dl className="preview">
       <div className="preview__row">
@@ -158,7 +158,7 @@ export function OrderTicket() {
       </label>
 
       {!reduceOnly && (
-        <OrderPreview size={previewSize} mark={previewMark} side={side} imr={state.market.initialMarginRatio} />
+        <OrderPreview size={previewSize} mark={previewMark} side={side} imr={state.market.initialMarginRatio} mmr={state.market.maintenanceMarginRatio} />
       )}
 
       {closeOnly && (
