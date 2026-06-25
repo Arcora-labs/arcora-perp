@@ -14,7 +14,14 @@ cd frontend
 pnpm install
 pnpm dev        # http://localhost:5173
 pnpm build      # type-check (strict) + production build
+pnpm test       # vitest — 16 unit tests
 ```
+
+The tests guard the correctness-critical, design-independent layer: the
+fixed-point `format`/`parse` round-trips (`src/domain/format.test.ts`) and the mock
+client's position lifecycle — open, **flip** (entry resets on a cross-zero fill),
+close-to-flat, close-only gating, withdrawal limits (`src/api/mockClient.test.ts`).
+A reskin touches none of this, so the suite stays green across design changes.
 
 ## How the design slots in
 
