@@ -98,16 +98,20 @@ inclusion challenges, forced exit, and view-key recovery from the note archive.
 ## Repository status
 
 The protocol is built bottom-up across the [roadmap](docs/ROADMAP.md) phases — all
-six phases now have implemented deliverables. Tested end-to-end: **128 Rust + 31
-Solidity + 29 frontend tests** (green in debug *and* release), **13
-property/stateful fuzzers**, clippy `-D warnings` + `cargo fmt --check` clean,
-`no_std` zkVM-guest builds, a runnable [`demo`](crates/demo), and a
-built+headless-verified frontend. The core
-math, services, and contracts were hardened through **fourteen adversarial review
+six phases now have implemented deliverables. Tested end-to-end: **132 Rust + 31
+Solidity + 32 frontend tests** (green in debug *and* release), **13
+property/stateful fuzzers**, clippy `-D warnings` + `cargo fmt --check` clean, a
+**real SP1 zkVM guest that executes and matches native byte-for-byte**
+([`crates/sp1-guest`](crates/sp1-guest) + [`crates/sp1-host`](crates/sp1-host)), a
+**live Crypto.com oracle** wired at both the UI and the protocol layer
+([`crates/oracle-feed`](crates/oracle-feed)), an order-book
+[stress-test bot](crates/loadbot), a runnable [`demo`](crates/demo), and a
+built+headless-verified frontend with 5 live USDC markets. The core
+math, services, and contracts were hardened through **fifteen adversarial review
 passes** covering every module (six Rust core, two sequencer, three Solidity, one
 committee/bridge/note-archive pass, one matcher CLOB pass, one prover boundary
-pass) — every finding fixed with a regression test (see
-[`docs/SECURITY.md`](docs/SECURITY.md)).
+pass, one on the new oracle/bot code) — every finding fixed with a regression test
+(see [`docs/SECURITY.md`](docs/SECURITY.md)).
 
 | Component | Crate / dir | Phase | Arch |
 |---|---|---|---|
