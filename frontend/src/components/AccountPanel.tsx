@@ -7,7 +7,11 @@ import { accountSummary } from "../domain/risk";
 /// account-wide leverage — aggregated across the open positions and free balance.
 export function AccountSummary() {
   const { state } = useStore();
-  const s = accountSummary(state.account.positions, state.account.settledBalance, state.oracle.price);
+  const s = accountSummary(
+    state.account.positions,
+    state.account.settledBalance,
+    (marketId) => state.marks[marketId] ?? state.oracle.price,
+  );
   return (
     <div className="card">
       <h3 className="card__title">Margin</h3>

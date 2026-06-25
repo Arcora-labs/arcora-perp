@@ -26,6 +26,9 @@ export interface ClientState {
   /// oracle + book for the SELECTED market
   oracle: OracleQuote;
   book: OrderBookSnapshot;
+  /// current index price per market id — so positions/health/notional in OTHER
+  /// markets are marked at THEIR own price, not the selected market's (§8).
+  marks: Record<number, bigint>;
   account: AccountState;
   orders: TrackedOrder[];
 }

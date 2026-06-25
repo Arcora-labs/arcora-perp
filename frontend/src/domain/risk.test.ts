@@ -4,9 +4,11 @@ import { PRICE_SCALE, QUOTE_SCALE, SIZE_SCALE, type Position } from "./types";
 
 const MARK = 100_000n * PRICE_SCALE; // $100k
 
-function position(size: bigint, collateral: bigint, upnl: bigint): Position {
-  return { marketId: 0, size, entryPrice: MARK, collateral, unrealizedPnl: upnl, liquidationPrice: 0n };
+function position(size: bigint, collateral: bigint, upnl: bigint, marketId = 0): Position {
+  return { marketId, size, entryPrice: MARK, collateral, unrealizedPnl: upnl, liquidationPrice: 0n };
 }
+
+const flat = () => MARK; // single-market mark lookup
 
 describe("accountSummary", () => {
   it("aggregates free balance, used margin, uPnL into equity", () => {
@@ -14,7 +16,7 @@ describe("accountSummary", () => {
       position(SIZE_SCALE, 10_000n * QUOTE_SCALE, 2_000n * QUOTE_SCALE),
       position(-SIZE_SCALE / 2n, 5_000n * QUOTE_SCALE, -500n * QUOTE_SCALE),
     ];
-    const s = accountSummary(positions, 8_000n * QUOTE_SCALE, MARK);
+    const s = accountSummary(positions, 8_000n * QUOTE_SCALE, flat);
     expect(s.usedMargin).toBe(15_000n * QUOTE_SCALE);
     expect(s.upnl).toBe(1_500n * QUOTE_SCALE);
     expect(s.freeBalance).toBe(8_000n * QUOTE_SCALE);
@@ -25,8 +27,20 @@ describe("accountSummary", () => {
     expect(s.leverage).toBeCloseTo(150_000 / 24_500, 4);
   });
 
+  it("marks each position at ITS OWN market price (cross-market notional)", () => {
+    // long 1 in market 0 @ $100k, long 1 in market 1 @ $2k
+    const positions = [
+      position(SIZE_SCALE, 10_000n * QUOTE_SCALE, 0n, 0),
+      position(SIZE_SCALE, 200n * QUOTE_SCALE, 0n, 1),
+    ];
+    const marks: Record<number, bigint> = { 0: 100_000n * PRICE_SCALE, 1: 2_000n * PRICE_SCALE };
+    const s = accountSummary(positions, 0n, (id) => marks[id]);
+    // notional = 1×$100k + 1×$2k = $102k (NOT 2×selected-market price)
+    expect(s.notional).toBe(102_000n * QUOTE_SCALE);
+  });
+
   it("is flat (zero leverage) with no positions", () => {
-    const s = accountSummary([], 10_000n * QUOTE_SCALE, MARK);
+    const s = accountSummary([], 10_000n * QUOTE_SCALE, flat);
     expect(s.equity).toBe(10_000n * QUOTE_SCALE);
     expect(s.notional).toBe(0n);
     expect(s.leverage).toBe(0);

@@ -194,6 +194,8 @@ export class MockDarkPerpClient implements DarkPerpClient {
 
   private snapshot(orders: TrackedOrder[]): ClientState {
     const md = this.data.get(this.selectedMarketId)!;
+    const marks: Record<number, bigint> = {};
+    for (const d of this.data.values()) marks[d.market.id] = d.oracle.price;
     return {
       markets: [...this.data.values()].map((d) => d.market),
       selectedMarketId: this.selectedMarketId,
@@ -201,6 +203,7 @@ export class MockDarkPerpClient implements DarkPerpClient {
       mode: this.state?.mode ?? "Normal",
       oracle: md.oracle,
       book: md.book,
+      marks,
       account: this.state?.account ?? { settledBalance: 25_000n * QUOTE_SCALE, positions: [] },
       orders,
     };

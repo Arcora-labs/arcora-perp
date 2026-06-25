@@ -25,7 +25,11 @@ function HealthCell({ liq, mark, long }: { liq: bigint; mark: bigint; long: bool
 export function PositionsTable() {
   const { client, state } = useStore();
   const positions = state.account.positions;
-  const mark = state.oracle.price;
+  // mark/symbol PER position's own market — not the selected one — so a BTC
+  // position's liq health and label stay correct while ETH is on screen.
+  const symbolOf = (marketId: number) =>
+    state.markets.find((m) => m.id === marketId)?.symbol ?? state.market.symbol;
+  const markOf = (marketId: number) => state.marks[marketId] ?? state.oracle.price;
   return (
     <div className="card">
       <h3 className="card__title">Positions</h3>
@@ -48,12 +52,12 @@ export function PositionsTable() {
           <tbody>
             {positions.map((p) => (
               <tr key={p.marketId}>
-                <td>{state.market.symbol}</td>
+                <td>{symbolOf(p.marketId)}</td>
                 <td className={p.size >= 0n ? "pos" : "neg"}>{formatSignedSize(p.size)}</td>
                 <td>{formatPrice(p.entryPrice)}</td>
                 <td>{formatPrice(p.liquidationPrice)}</td>
                 <td>
-                  <HealthCell liq={p.liquidationPrice} mark={mark} long={p.size >= 0n} />
+                  <HealthCell liq={p.liquidationPrice} mark={markOf(p.marketId)} long={p.size >= 0n} />
                 </td>
                 <td>{formatUsd(p.collateral)}</td>
                 <td className={p.unrealizedPnl >= 0n ? "pos" : "neg"}>{formatUsd(p.unrealizedPnl)}</td>

@@ -50,17 +50,22 @@ export interface AccountSummary {
   upnl: bigint;
   /// Account equity = freeBalance + usedMargin + uPnL (quote).
   equity: bigint;
-  /// Σ |size| · mark notional (quote). Exact for a single-market account; uses the
-  /// supplied `mark` for every position, so cross-market totals are approximate.
+  /// Σ |size| · mark notional (quote), each position marked at ITS OWN market price.
   notional: bigint;
   /// Account-wide leverage = notional / equity (0 when flat or non-positive equity).
   leverage: number;
 }
 
 /// Aggregate a free balance and open positions into an account-health summary.
-/// `freeBalance`, `collateral`, and `unrealizedPnl` are used verbatim (exact); only
-/// notional/leverage depend on `mark`.
-export function accountSummary(positions: Position[], freeBalance: bigint, mark: bigint): AccountSummary {
+/// `freeBalance`, `collateral`, and `unrealizedPnl` are used verbatim (exact).
+/// `markOf` returns each position's current index price by market id, so notional
+/// (and hence leverage) is correct for cross-market accounts — not approximated
+/// against a single selected-market price.
+export function accountSummary(
+  positions: Position[],
+  freeBalance: bigint,
+  markOf: (marketId: number) => bigint,
+): AccountSummary {
   let usedMargin = 0n;
   let upnl = 0n;
   let notional = 0n;
@@ -68,7 +73,7 @@ export function accountSummary(positions: Position[], freeBalance: bigint, mark:
     usedMargin += p.collateral;
     upnl += p.unrealizedPnl;
     const abs = p.size < 0n ? -p.size : p.size;
-    notional += (abs * mark) / ((SIZE_SCALE * PRICE_SCALE) / QUOTE_SCALE);
+    notional += (abs * markOf(p.marketId)) / ((SIZE_SCALE * PRICE_SCALE) / QUOTE_SCALE);
   }
   const equity = freeBalance + usedMargin + upnl;
   const leverage = equity > 0n ? Number(notional) / Number(equity) : 0;
