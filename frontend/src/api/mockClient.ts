@@ -66,8 +66,9 @@ function bookAround(marketId: number, mid: bigint, bestBid?: bigint, bestAsk?: b
 
 /// The listed markets. `instrument` is the Crypto.com perp the live oracle polls
 /// (null = no external feed, runs on the internal walk). `seed` is the price the
-/// market opens at before the first live tick. Uniform 10× leverage keeps the
-/// mock's margin/liq math (notional/10, entry ± 9%) consistent across pairs.
+/// market opens at before the first live tick. All margin/liq math derives from
+/// each market's initial/maintenance ratios (domain/risk), so it stays correct
+/// per-market rather than assuming a single hard-coded leverage.
 interface MarketCfg {
   id: number;
   symbol: string;
@@ -274,7 +275,7 @@ export class MockDarkPerpClient implements DarkPerpClient {
     const freshOrIncrease = !existing || existing.size === 0n || (existing.size > 0n) === (signedReq > 0n);
     if (opening && freshOrIncrease) {
       const px = input.limitPrice === 0n ? this.priceOf(input.marketId) : input.limitPrice;
-      if (this.requiredMargin(input.size, px) > this.state.account.settledBalance) {
+      if (this.requiredMargin(input.size, px, input.marketId) > this.state.account.settledBalance) {
         throw new Error("Insufficient free margin to open this position (§3).");
       }
     }
@@ -347,7 +348,7 @@ export class MockDarkPerpClient implements DarkPerpClient {
     // under an open position.
     let balanceDelta = 0n;
     if (idx === -1) {
-      const collateral = this.requiredMargin(o.filledSize, fill);
+      const collateral = this.requiredMargin(o.filledSize, fill, mkt);
       balanceDelta = -collateral; // lock initial margin
       positions.push({
         marketId: mkt,
@@ -368,14 +369,14 @@ export class MockDarkPerpClient implements DarkPerpClient {
       } else if (increasing) {
         // grow: weighted-average entry, lock the additional margin
         const entry = (p.entryPrice * abs(p.size) + fill * abs(signed)) / (abs(p.size) + abs(signed));
-        const collateral = this.requiredMargin(abs(newSize), entry);
+        const collateral = this.requiredMargin(abs(newSize), entry, mkt);
         balanceDelta = -(collateral - p.collateral);
         positions[idx] = { ...p, size: newSize, entryPrice: entry, collateral, liquidationPrice: this.liqPrice(newSize, entry, mkt) };
       } else if ((p.size > 0n) !== (newSize > 0n)) {
         // flip: old side fully closed (realize its PnL, release its margin), a fresh
         // position opens at the fill price with newly-locked margin
         const realizedOld = this.pnl(p.size, p.entryPrice, fill);
-        const collateral = this.requiredMargin(abs(newSize), fill);
+        const collateral = this.requiredMargin(abs(newSize), fill, mkt);
         balanceDelta = p.collateral + realizedOld - collateral;
         positions[idx] = { ...p, size: newSize, entryPrice: fill, collateral, liquidationPrice: this.liqPrice(newSize, fill, mkt) };
       } else {
@@ -383,7 +384,7 @@ export class MockDarkPerpClient implements DarkPerpClient {
         // release the freed margin, entry unchanged
         const closed = p.size > 0n ? abs(signed) : -abs(signed);
         const realized = this.pnl(closed, p.entryPrice, fill);
-        const collateral = this.requiredMargin(abs(newSize), p.entryPrice);
+        const collateral = this.requiredMargin(abs(newSize), p.entryPrice, mkt);
         balanceDelta = p.collateral - collateral + realized;
         positions[idx] = { ...p, size: newSize, entryPrice: p.entryPrice, collateral, liquidationPrice: this.liqPrice(newSize, p.entryPrice, mkt) };
       }
@@ -395,9 +396,12 @@ export class MockDarkPerpClient implements DarkPerpClient {
     };
   }
 
-  private requiredMargin(size: bigint, price: bigint): bigint {
+  private requiredMargin(size: bigint, price: bigint, marketId: number): bigint {
+    // initial margin = notional × the market's initial-margin ratio (same basis as
+    // domain/risk.orderRisk), not a hard-coded 10× — so a non-10× market is correct.
     const notional = (size * price) / ((SIZE_SCALE * PRICE_SCALE) / QUOTE_SCALE);
-    return notional / 10n;
+    const imrBp = BigInt(Math.round(this.data.get(marketId)!.market.initialMarginRatio * 10_000));
+    return (notional * imrBp) / 10_000n;
   }
   private pnl(size: bigint, entry: bigint, mark: bigint): bigint {
     return (size * (mark - entry)) / ((SIZE_SCALE * PRICE_SCALE) / QUOTE_SCALE);
