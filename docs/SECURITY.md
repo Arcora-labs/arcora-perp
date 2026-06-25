@@ -53,6 +53,14 @@
 > `seal_batch` now clears the still-unseen inclusion record of any order it commits
 > to `manifest.rejected` (a drifted resting maker already `seen` in an earlier batch
 > is left intact). Regression test added.
+> An eleventh pass audited the oracle sanity gates (`oracle.rs`, the §8 manipulation
+> defense that runs inside the zkVM guest) and found **P4**: the confidence and
+> backup-deviation checks multiplied attacker-influenced values (`price`,
+> `confidence`) with raw `i128` `*`. An extreme price overflows — wrapping in release
+> (so a manipulated price could slip past the gate) and panicking in the guest (an
+> unprovable batch). Fixed to `checked_mul` with overflow treated as out-of-bounds
+> (reject), matching the "never wrap" rule the rest of the risk math already follows;
+> regression test feeds `i128::MAX` and asserts clean rejection in debug and release.
 
 
 Synthesizes the architecture's honest failure analysis (§0, §10, §10b, §11) into

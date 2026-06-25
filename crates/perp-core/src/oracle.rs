@@ -53,15 +53,27 @@ impl OracleTranscript {
             return Err(OracleError::Stale);
         }
         // confidence: conf/price <= max_confidence_ratio
-        // rearranged to avoid division: conf * SCALE <= max_ratio * price
-        if abs(self.confidence) * RATE_SCALE > market.max_oracle_confidence_ratio * self.price {
-            return Err(OracleError::LowConfidence);
+        // rearranged to avoid division: conf * SCALE <= max_ratio * price.
+        // The price/confidence are attacker-influenced and this runs in the zkVM
+        // guest, so use checked math and treat ANY overflow as out-of-bounds (reject)
+        // — an extreme price must never wrap the gate and slip through, nor panic the
+        // circuit (consistent with the "never wrap" rule in the risk math).
+        match (
+            abs(self.confidence).checked_mul(RATE_SCALE),
+            market.max_oracle_confidence_ratio.checked_mul(self.price),
+        ) {
+            (Some(lhs), Some(rhs)) if lhs <= rhs => {}
+            _ => return Err(OracleError::LowConfidence),
         }
         // deviation vs backup: |price - twap|/price <= max_deviation_ratio
         if self.backup_twap > 0 {
             let dev = abs(self.price - self.backup_twap);
-            if dev * RATE_SCALE > market.max_oracle_deviation_ratio * self.price {
-                return Err(OracleError::DeviatesFromBackup);
+            match (
+                dev.checked_mul(RATE_SCALE),
+                market.max_oracle_deviation_ratio.checked_mul(self.price),
+            ) {
+                (Some(lhs), Some(rhs)) if lhs <= rhs => {}
+                _ => return Err(OracleError::DeviatesFromBackup),
             }
         }
         Ok(self.price)
@@ -120,6 +132,29 @@ mod tests {
         let mut t = good();
         t.confidence = 2_000 * PRICE_SCALE; // 2% > 1%
         assert_eq!(t.validate(&m, 1_005_000), Err(OracleError::LowConfidence));
+    }
+
+    #[test]
+    fn extreme_price_is_rejected_not_wrapped() {
+        // An extreme price must never overflow the gate arithmetic (which would
+        // wrap and could let a manipulated price slip through, or panic the guest).
+        // It is rejected cleanly via checked math.
+        let m = Market::conservative(0);
+        let mut t = good();
+        t.price = i128::MAX;
+        t.backup_twap = i128::MAX; // keep deviation 0 so we exercise the conf gate
+        assert!(
+            t.validate(&m, 1_005_000).is_err(),
+            "i128::MAX price rejected, not wrapped"
+        );
+        // and a huge price vs a normal backup trips the deviation gate without overflow
+        let mut t2 = good();
+        t2.price = i128::MAX;
+        t2.backup_twap = 100_000 * PRICE_SCALE;
+        assert!(
+            t2.validate(&m, 1_005_000).is_err(),
+            "no overflow panic/wrap"
+        );
     }
 
     #[test]
