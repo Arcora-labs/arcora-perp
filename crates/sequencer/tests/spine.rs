@@ -470,3 +470,30 @@ fn withheld_order_becomes_inclusion_violation() {
     s2.seal_batch(&[included], 1_000);
     assert!(s2.inclusion_violations(0).is_empty());
 }
+
+#[test]
+fn rejected_for_cause_is_not_an_inclusion_violation() {
+    // An order ACCEPTED (receipt issued) but then justly REJECTED at seal must NOT
+    // be flagged as withheld: the enclave handled it (it is in manifest.rejected,
+    // bound by manifest_hash), so flagging it would slash an honest sequencer.
+    let mut s = setup();
+    // owner 5 has no collateral → pre-trade margin check rejects this open order
+    let bad = order(5, Side::Buy, SIZE_SCALE, 100_000 * PRICE_SCALE, 7);
+    let oh = bad.order_hash::<Keccak256>();
+    let r = s.accept_order(&bad, 1_000); // instant ACCEPTED ack → inclusion record
+    assert!(r.verify());
+
+    let sealed = s.seal_batch(&[bad], 1_000);
+    // it was rejected, not ordered
+    assert!(sealed.manifest.rejected.iter().any(|(h, _)| *h == oh));
+    assert!(!sealed.manifest.ordered.contains(&oh));
+
+    // even far past the timeout, a rejected-for-cause order is NOT a violation
+    for _ in 0..3 {
+        s.seal_batch(&[], 2_000);
+    }
+    assert!(
+        !s.inclusion_violations(1).contains(&oh),
+        "a justified rejection must not be mistaken for censorship"
+    );
+}

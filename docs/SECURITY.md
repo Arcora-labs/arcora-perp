@@ -44,6 +44,15 @@
 > never-settled order can't be proven and is independently caught by the liveness
 > timeout. Two tests pin it: late-but-genuine inclusion answers; a settled batch
 > lacking the order still reverts `NotIncluded`.
+> A ninth pass (second sequencer) found **P3**: `accept_order` issues an ACCEPTED
+> receipt (and an inclusion record) unconditionally, but an order later rejected for
+> cause at seal (insufficient margin, post-only-would-take, FOK-unfillable, all
+> fills failed) lands in `manifest.rejected`, never in `ordered`, so its record's
+> `seen_in_batch` stayed `None` forever — `inclusion_violations` then mistook a
+> justified rejection for censorship and would trigger a wrongful slash. Fix:
+> `seal_batch` now clears the still-unseen inclusion record of any order it commits
+> to `manifest.rejected` (a drifted resting maker already `seen` in an earlier batch
+> is left intact). Regression test added.
 
 
 Synthesizes the architecture's honest failure analysis (§0, §10, §10b, §11) into

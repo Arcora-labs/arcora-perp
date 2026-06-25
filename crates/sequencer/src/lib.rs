@@ -512,6 +512,22 @@ impl Sequencer {
                 }
             }
         }
+        // 5b. an order the sequencer REJECTED for cause is resolved, not withheld:
+        //     it is committed in `manifest.rejected` (bound by manifest_hash), so the
+        //     enclave demonstrably handled it. Clear any still-unseen inclusion record
+        //     for it so `inclusion_violations` does not mistake a justified rejection
+        //     (insufficient margin, post-only-would-take, FOK-unfillable, all-fills-
+        //     failed) for censorship and trigger a wrongful slash. A record already
+        //     `seen` in an earlier batch (a drifted resting maker) is left intact.
+        for (oh, _) in &manifest.rejected {
+            if self
+                .inclusion
+                .get(oh)
+                .is_some_and(|rec| rec.seen_in_batch.is_none())
+            {
+                self.inclusion.remove(oh);
+            }
+        }
         self.batch_orders
             .insert(batch_id, settled_order_hashes.clone());
 
