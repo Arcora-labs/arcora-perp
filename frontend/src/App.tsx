@@ -11,6 +11,7 @@ import { FinalityLegend } from "./components/FinalityTracker";
 import { Toaster } from "./components/Toaster";
 import { MarketSelector } from "./components/MarketSelector";
 import { PriceChart } from "./components/PriceChart";
+import { ActivityFeed } from "./components/ActivityFeed";
 
 type Tab = "trade" | "account" | "recover";
 
@@ -61,6 +62,7 @@ export default function App() {
               <div className="col col--positions">
                 <PositionsTable />
                 <OrdersTable />
+                <ActivityFeed />
               </div>
             </section>
           )}
