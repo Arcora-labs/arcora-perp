@@ -57,6 +57,13 @@ pub enum Domain {
     /// second-preimage separation. Appended last so existing domain tags (and thus
     /// every committed hash) are unchanged.
     MerkleLeaf = 9,
+    /// Encrypted-note-archive keystream (§7). A dedicated tag so the view-key
+    /// keystream can never share a preimage structure with nullifiers or any other
+    /// hash purpose (one-domain-one-purpose). Not a cross-layer-committed value.
+    NoteKeystream = 10,
+    /// Privacy-bridge mix-shuffle PRNG (§13). Dedicated tag for the Fisher–Yates
+    /// stream so it is separated from state-root hashing. Not cross-layer-committed.
+    MixShuffle = 11,
 }
 
 /// The default Phase 0 hasher: Keccak-256 with a 1-byte domain prefix.

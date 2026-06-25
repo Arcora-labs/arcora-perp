@@ -112,7 +112,7 @@ fn keystream(view_key: &Digest, commitment: &Digest, len: usize) -> Vec<u8> {
     let mut counter = 0u64;
     while out.len() < len {
         let block = Keccak256::hash_words(
-            Domain::Nullifier,
+            Domain::NoteKeystream,
             &[*view_key, *commitment, word_u64(counter)],
         );
         out.extend_from_slice(&block);

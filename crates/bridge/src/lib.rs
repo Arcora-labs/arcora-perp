@@ -177,7 +177,7 @@ impl MixBatch {
             let mut attempt = 0u64;
             let j = loop {
                 let h = Keccak256::hash_words(
-                    Domain::StateRoot,
+                    Domain::MixShuffle,
                     &[*seed, word_u64(i as u64), word_u64(attempt)],
                 );
                 let mut b = [0u8; 8];
