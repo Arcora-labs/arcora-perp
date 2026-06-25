@@ -44,4 +44,20 @@ export interface DarkPerpClient {
 
   /// Recover notes by scanning the archive with a seed-derived view-key (§7).
   recover(seedHex: string): Promise<RecoveredNote[]>;
+
+  /// Close a position with a reduce-only market order.
+  closePosition(marketId: number): Promise<void>;
+
+  /// Cancel an order that is still ACCEPTED (not yet matched).
+  cancelOrder(orderId: string): Promise<void>;
+
+  /// Subscribe to order lifecycle events (for toasts). Returns an unsubscribe fn.
+  onOrderEvent(cb: (e: OrderEvent) => void): () => void;
+}
+
+/// An order lifecycle event surfaced for notifications.
+export interface OrderEvent {
+  orderId: string;
+  kind: "ACCEPTED" | "MATCHED" | "SETTLED" | "CANCELLED" | "REJECTED";
+  message: string;
 }

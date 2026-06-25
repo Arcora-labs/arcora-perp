@@ -8,6 +8,7 @@ import { OrdersTable, PositionsTable } from "./components/Tables";
 import { AccountPanel } from "./components/AccountPanel";
 import { RecoveryPanel } from "./components/RecoveryPanel";
 import { FinalityLegend } from "./components/FinalityTracker";
+import { Toaster } from "./components/Toaster";
 
 type Tab = "trade" | "account" | "recover";
 
@@ -38,6 +39,7 @@ export default function App() {
           </div>
         </header>
 
+        <Toaster />
         <ModeBanner />
         <StatsBar />
 

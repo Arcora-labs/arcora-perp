@@ -3,7 +3,7 @@ import { formatPrice, formatSignedSize, formatUsd, shortHash } from "../domain/f
 import { FinalityBadge, FinalityProgress } from "./FinalityTracker";
 
 export function PositionsTable() {
-  const { state } = useStore();
+  const { client, state } = useStore();
   const positions = state.account.positions;
   return (
     <div className="card">
@@ -20,6 +20,7 @@ export function PositionsTable() {
               <th>Liq. price</th>
               <th>Margin</th>
               <th>uPnL</th>
+              <th></th>
             </tr>
           </thead>
           <tbody>
@@ -31,6 +32,11 @@ export function PositionsTable() {
                 <td>{formatPrice(p.liquidationPrice)}</td>
                 <td>{formatUsd(p.collateral)}</td>
                 <td className={p.unrealizedPnl >= 0n ? "pos" : "neg"}>{formatUsd(p.unrealizedPnl)}</td>
+                <td>
+                  <button className="btn btn--tiny" onClick={() => void client.closePosition(p.marketId)}>
+                    Close
+                  </button>
+                </td>
               </tr>
             ))}
           </tbody>
@@ -41,7 +47,7 @@ export function PositionsTable() {
 }
 
 export function OrdersTable() {
-  const { state } = useStore();
+  const { client, state } = useStore();
   return (
     <div className="card">
       <h3 className="card__title">Orders</h3>
@@ -57,6 +63,7 @@ export function OrdersTable() {
               <th>Receipt</th>
               <th>Finality</th>
               <th></th>
+              <th></th>
             </tr>
           </thead>
           <tbody>
@@ -71,6 +78,13 @@ export function OrdersTable() {
                 </td>
                 <td>
                   <FinalityProgress finality={o.finality} />
+                </td>
+                <td>
+                  {o.finality === "ACCEPTED" && (
+                    <button className="btn btn--tiny" onClick={() => void client.cancelOrder(o.id)}>
+                      Cancel
+                    </button>
+                  )}
                 </td>
               </tr>
             ))}

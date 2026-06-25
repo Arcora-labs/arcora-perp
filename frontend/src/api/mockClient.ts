@@ -6,7 +6,7 @@
 //   • close-only blocks opening/increasing (§6)
 //   • the book is seeded by an internal market-maker (§15)
 
-import type { DarkPerpClient, ClientState } from "./client";
+import type { DarkPerpClient, ClientState, OrderEvent } from "./client";
 import {
   PRICE_SCALE,
   QUOTE_SCALE,
@@ -68,6 +68,7 @@ function initialState(): ClientState {
 export class MockDarkPerpClient implements DarkPerpClient {
   private state: ClientState = initialState();
   private subs = new Set<(s: ClientState) => void>();
+  private eventSubs = new Set<(e: OrderEvent) => void>();
   private tick = 0;
 
   constructor() {
@@ -129,6 +130,15 @@ export class MockDarkPerpClient implements DarkPerpClient {
     for (const cb of this.subs) cb(this.state);
   }
 
+  onOrderEvent(cb: (e: OrderEvent) => void): () => void {
+    this.eventSubs.add(cb);
+    return () => this.eventSubs.delete(cb);
+  }
+
+  private emitEvent(e: OrderEvent) {
+    for (const cb of this.eventSubs) cb(e);
+  }
+
   async placeOrder(input: OrderInput): Promise<Receipt> {
     const opening = this.isOpening(input);
     if (this.state.mode === "CloseOnly" && opening) {
@@ -153,6 +163,7 @@ export class MockDarkPerpClient implements DarkPerpClient {
     };
     this.state.orders = [order, ...this.state.orders];
     this.emit();
+    this.emitEvent({ orderId: id, kind: "ACCEPTED", message: `Order accepted — receipt #${receipt.seqNo}` });
 
     // ACCEPTED → MATCHED
     setTimeout(() => this.advanceToMatched(id), MATCH_DELAY_MS);
@@ -164,7 +175,7 @@ export class MockDarkPerpClient implements DarkPerpClient {
 
   private advanceToMatched(id: string) {
     const o = this.state.orders.find((x) => x.id === id);
-    if (!o || o.finality !== "ACCEPTED") return;
+    if (!o || o.finality !== "ACCEPTED") return; // cancelled orders are removed
     const fillPrice = o.input.limitPrice === 0n ? this.state.oracle.price : o.input.limitPrice;
     o.finality = "MATCHED";
     o.filledSize = o.input.size;
@@ -172,6 +183,7 @@ export class MockDarkPerpClient implements DarkPerpClient {
     this.applyFillToPosition(o);
     this.state.orders = [...this.state.orders];
     this.emit();
+    this.emitEvent({ orderId: id, kind: "MATCHED", message: "Matched (soft preconfirmation) — not yet withdrawable" });
   }
 
   private advanceToSettled(id: string) {
@@ -180,6 +192,31 @@ export class MockDarkPerpClient implements DarkPerpClient {
     o.finality = "SETTLED";
     this.state.orders = [...this.state.orders];
     this.emit();
+    this.emitEvent({ orderId: id, kind: "SETTLED", message: "Settled on L1 — withdrawable" });
+  }
+
+  async closePosition(marketId: number): Promise<void> {
+    const pos = this.state.account.positions.find((p) => p.marketId === marketId);
+    if (!pos || pos.size === 0n) throw new Error("No open position to close.");
+    await this.placeOrder({
+      marketId,
+      side: pos.size > 0n ? "Sell" : "Buy",
+      size: pos.size < 0n ? -pos.size : pos.size,
+      limitPrice: 0n,
+      tif: "Ioc",
+      reduceOnly: true,
+    });
+  }
+
+  async cancelOrder(orderId: string): Promise<void> {
+    const o = this.state.orders.find((x) => x.id === orderId);
+    if (!o) throw new Error("Order not found.");
+    if (o.finality !== "ACCEPTED") {
+      throw new Error("Only an ACCEPTED order can be cancelled (matched/settled are binding).");
+    }
+    this.state.orders = this.state.orders.filter((x) => x.id !== orderId);
+    this.emit();
+    this.emitEvent({ orderId, kind: "CANCELLED", message: "Order cancelled before matching" });
   }
 
   private isOpening(input: OrderInput): boolean {
