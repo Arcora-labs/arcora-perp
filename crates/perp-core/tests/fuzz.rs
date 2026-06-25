@@ -206,3 +206,73 @@ fn fuzz_state_root_is_deterministic() {
     };
     assert_eq!(root(42), root(42), "same seed ⇒ same state root");
 }
+
+/// Oracle gate property fuzzer (validates the P4 checked-math fix at scale).
+///
+/// Feeds wild prices/confidence/twaps — including i128 extremes — at random clocks
+/// and asserts the gate (1) NEVER panics (no overflow/wrap, since it must also run
+/// in the zkVM guest), and (2) only returns `Ok(p)` when p == price and EVERY bound
+/// genuinely holds. A single overflowing multiply slipping a bad price through, or
+/// panicking the circuit, would show up here.
+#[test]
+fn fuzz_oracle_validate_is_total_and_sound() {
+    use perp_core::fixed::{abs, RATE_SCALE};
+    let m = Market::conservative(0);
+    let mut rng = Rng(0xACE1);
+    // a spread of magnitudes incl. extremes that exercise the checked multiplies
+    let pool: [i128; 9] = [
+        0,
+        1,
+        -1,
+        100_000 * PRICE_SCALE,
+        i128::MAX,
+        i128::MIN,
+        i128::MAX / 2,
+        RATE_SCALE,
+        1_000_000_000_000,
+    ];
+    let pick = |rng: &mut Rng| pool[(rng.below(pool.len() as u64)) as usize];
+
+    for _ in 0..100_000 {
+        let price = pick(&mut rng);
+        let confidence = pick(&mut rng);
+        let backup_twap = pick(&mut rng);
+        let publish_time_ms = rng.next();
+        let now_ms = rng.next();
+        let t = OracleTranscript {
+            price,
+            publish_time_ms,
+            confidence,
+            backup_twap,
+        };
+        // (1) totality: must return a value, never panic/wrap.
+        let res = t.validate(&m, now_ms);
+        // (2) soundness: Ok ⇒ price returned verbatim AND every gate truly holds.
+        if let Ok(p) = res {
+            assert_eq!(p, price, "Ok must echo the price");
+            assert!(price > 0, "Ok price must be positive");
+            assert!(publish_time_ms <= now_ms, "Ok price not from the future");
+            assert!(
+                now_ms - publish_time_ms <= m.max_oracle_staleness_ms,
+                "Ok price within staleness"
+            );
+            // confidence and deviation bounds recomputed with i128 headroom (i256-ish
+            // via checked ops is overkill here; the pool values keep products in range
+            // EXCEPT the extremes, which the gate rejects — so Ok ⇒ products fit).
+            let conf_ok = abs(confidence)
+                .checked_mul(RATE_SCALE)
+                .zip(m.max_oracle_confidence_ratio.checked_mul(price))
+                .map(|(l, r)| l <= r)
+                .unwrap_or(false);
+            assert!(conf_ok, "Ok ⇒ confidence bound holds");
+            if backup_twap > 0 {
+                let dev_ok = abs(price - backup_twap)
+                    .checked_mul(RATE_SCALE)
+                    .zip(m.max_oracle_deviation_ratio.checked_mul(price))
+                    .map(|(l, r)| l <= r)
+                    .unwrap_or(false);
+                assert!(dev_ok, "Ok ⇒ deviation bound holds");
+            }
+        }
+    }
+}
