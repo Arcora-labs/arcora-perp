@@ -143,8 +143,10 @@ impl MixBatch {
         let mut idx = 0u64;
         for (denom, count) in buckets {
             for _ in 0..count {
+                // Dedicated bridge domain — a mix-bucket commitment must never share
+                // a preimage namespace with a spendable note commitment (§13).
                 let commitment = Keccak256::hash_words(
-                    Domain::NoteCommitment,
+                    Domain::BridgeCommitment,
                     &[owner, word_i128(denom), blinding, word_u64(idx)],
                 );
                 self.entries.push(Entry {
@@ -295,6 +297,32 @@ mod tests {
         assert_ne!(
             order_before, order_after,
             "mixing reorders entries (breaks linkage)"
+        );
+    }
+
+    #[test]
+    fn mix_commitment_is_domain_separated_from_note_commitment() {
+        // A bridge bucket commitment must NOT collide with a spendable note
+        // commitment built from the same word vector. Both are 4-word hashes; only
+        // the domain tag separates them, so if the bridge ever reverted to
+        // Domain::NoteCommitment the two would be equal for identical inputs.
+        let owner = [9u8; 32];
+        let blinding = [0xC; 32];
+        let denom = 100 * QUOTE_SCALE;
+        let mut batch = MixBatch::new();
+        batch.add_transfer(Direction::Deposit, owner, denom, blinding);
+        let bridge_cm = batch.entries()[0].commitment;
+
+        let words = [owner, word_i128(denom), blinding, word_u64(0)];
+        let as_note = Keccak256::hash_words(Domain::NoteCommitment, &words);
+        let as_bridge = Keccak256::hash_words(Domain::BridgeCommitment, &words);
+        assert_eq!(
+            bridge_cm, as_bridge,
+            "bridge uses the BridgeCommitment domain"
+        );
+        assert_ne!(
+            bridge_cm, as_note,
+            "a bridge commitment must not equal the note commitment of the same words"
         );
     }
 

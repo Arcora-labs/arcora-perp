@@ -73,6 +73,11 @@ pub enum Domain {
     /// never share a preimage structure with state-root binding (`StateRoot`) or
     /// any other hash purpose — one-domain-one-purpose. Not cross-layer-committed.
     KeyDerivation = 13,
+    /// Privacy-bridge mix-entry commitment (§13). A dedicated tag so a bridge
+    /// bucket's hiding commitment can never collide with a spendable note
+    /// commitment (`NoteCommitment`) — the two are different purposes and must not
+    /// share a preimage namespace. Not a cross-layer-committed value.
+    BridgeCommitment = 14,
 }
 
 /// The default Phase 0 hasher: Keccak-256 with a 1-byte domain prefix.
@@ -146,6 +151,7 @@ mod tests {
             MixShuffle,
             WitnessSeal,
             KeyDerivation,
+            BridgeCommitment,
         ];
         let w = [word_u64(42)];
         for i in 0..all.len() {
