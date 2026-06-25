@@ -15,13 +15,18 @@ import { PRICE_SCALE, QUOTE_SCALE, SIZE_SCALE } from "./types";
 
 describe("fixed-point formatting", () => {
   it("formats whole and fractional quote amounts", () => {
-    expect(formatUsd(20_000n * QUOTE_SCALE)).toBe("$20000.00");
+    expect(formatUsd(20_000n * QUOTE_SCALE)).toBe("$20,000.00"); // thousands separators
     expect(formatUsd(1_234_560n)).toBe("$1.23"); // 1.23456 truncated to 2dp
     expect(formatUsd(0n)).toBe("$0.00");
   });
 
+  it("groups the whole part with thousands separators", () => {
+    expect(formatUsd(1_234_567n * QUOTE_SCALE)).toBe("$1,234,567.00");
+    expect(formatPrice(59_575n * PRICE_SCALE + 14_000_000n)).toBe("59,575.14");
+  });
+
   it("formats prices at the requested precision", () => {
-    expect(formatPrice(100_000n * PRICE_SCALE)).toBe("100000.00");
+    expect(formatPrice(100_000n * PRICE_SCALE)).toBe("100,000.00");
     expect(formatPrice(99_999_500_000n, 2)).toBe("999.99"); // 999.995 truncates, not rounds
   });
 
@@ -59,9 +64,14 @@ describe("fixed-point parsing", () => {
   });
 
   it("rejects malformed input", () => {
-    for (const bad of ["", ".", "abc", "1.2.3", "-5", "1,000", " "]) {
+    for (const bad of ["", ".", "abc", "1.2.3", "-5", " "]) {
       expect(parseScaled(bad, QUOTE_SCALE)).toBeNull();
     }
+  });
+
+  it("accepts thousands separators (so display strings round-trip)", () => {
+    expect(parseUsd("1,234,567")).toBe(1_234_567n * QUOTE_SCALE);
+    expect(parsePrice("59,575.14")).toBe(59_575n * PRICE_SCALE + 14_000_000n);
   });
 
   it("round-trips format → parse for representative values", () => {

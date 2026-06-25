@@ -4,6 +4,12 @@
 
 import { PRICE_SCALE, QUOTE_SCALE, SIZE_SCALE } from "./types";
 
+/// Insert thousands separators into an unsigned integer-digit string
+/// ("1234567" → "1,234,567") — financial-UI readability, applied to the whole part.
+function groupThousands(intDigits: string): string {
+  return intDigits.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+}
+
 function fmtScaled(v: bigint, scale: bigint, decimals: number): string {
   const neg = v < 0n;
   let x = neg ? -v : v;
@@ -14,7 +20,8 @@ function fmtScaled(v: bigint, scale: bigint, decimals: number): string {
     .toString()
     .padStart(decimals, "0");
   const sign = neg ? "-" : "";
-  return decimals > 0 ? `${sign}${whole}.${fracStr}` : `${sign}${whole}`;
+  const wholeStr = groupThousands(whole.toString());
+  return decimals > 0 ? `${sign}${wholeStr}.${fracStr}` : `${sign}${wholeStr}`;
 }
 
 export function formatUsd(quote: bigint, decimals = 2): string {
@@ -40,7 +47,8 @@ export function formatPct(fraction: number): string {
 
 /// Parse a decimal string into a scaled bigint. Returns null on bad input.
 export function parseScaled(input: string, scale: bigint): bigint | null {
-  const t = input.trim();
+  // strip thousands separators so display strings (and pasted "1,000") round-trip
+  const t = input.trim().replace(/,/g, "");
   if (!/^\d*\.?\d*$/.test(t) || t === "" || t === ".") return null;
   const [whole, frac = ""] = t.split(".");
   const decimals = scale.toString().length - 1;
