@@ -11,7 +11,15 @@
 > signature malleability). The roots are now in the public commitment, inclusion
 > answers use a domain-separated batch-bound leaf and must reference a batch
 > settled before the challenge, and challenges require a refundable bond + a
-> canonical-signature check.
+> canonical-signature check. A fifth pass audited the redundancy/privacy crates
+> (`committee`, `bridge`, `note-archive`): it confirmed the Shamir GF(256)
+> reconstruction, distinct-signer quorum, and commitment-consistency trial
+> decryption are sound, and fixed a conservation bug in `bridge::decompose` — a
+> negative or `u32`-overflowing amount silently lost value instead of surfacing as
+> remainder (a negative would even wrap the `as u32` cast). It also added a
+> duplicate-member guard to `Committee::new` and documented two production-misuse
+> footguns: the Shamir seed must be secret and fresh (seed + one share recovers the
+> secret), and bridge buckets need independent per-bucket randomness.
 
 
 Synthesizes the architecture's honest failure analysis (§0, §10, §10b, §11) into
