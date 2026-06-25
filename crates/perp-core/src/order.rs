@@ -125,6 +125,10 @@ pub enum RejectReason {
     InsufficientMargin = 5,
     MarketCloseOnly = 6,
     OracleUnavailable = 7,
+    /// Fill-or-kill could not be filled in full against available liquidity.
+    FillOrKillUnfillable = 8,
+    /// Order expired before / at the matching instant.
+    Cancelled = 9,
 }
 
 /// Per-batch public commitment to exactly what was sequenced (§2).
