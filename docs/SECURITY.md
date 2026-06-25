@@ -104,6 +104,26 @@ no single failure is catastrophic.
   a single compromised enclave (pre-committee) leaks confidentiality (but not
   funds).
 
+## Known design limitations (flagged for input, not yet fixed)
+
+- **On-chain inclusion challenge has no rejection-proof path (P3b).** P3 fixed the
+  *off-chain* monitor so a justly-rejected order is not self-reported as censorship.
+  The *on-chain* `challengeInclusion` is the mirror image and still open: a user
+  holding an enclave-signed receipt for an order that was legitimately rejected
+  (insufficient margin, post-only-would-take, FOK-unfillable) can open a challenge,
+  and the sequencer cannot answer because the order is in `manifest.rejected`, not
+  the on-chain `orderedRoot` — so an honest sequencer is slashable. Two candidate
+  fixes, both touching the cross-layer trust anchor (hence deferred for design
+  input rather than changed unilaterally):
+  1. **Commit a `rejectedRoot`** alongside `orderedRoot` (the same pattern as the F2
+     fix that added `orderedRoot`/`withdrawalsRoot`), and add an
+     `answerByRejection(orderHash, batchId, proof)` path. Proving rejection
+     membership in a settled batch demonstrates the order was handled. Cost: a
+     6th field in `publicCommitment` / `PublicInputs`, re-locked byte-exact vectors.
+  2. **Tier receipts**: make the on-chain-challengeable commitment cover only orders
+     the enclave commits to *ordering*, with `accept_order`'s instant ACK as a
+     distinct non-slashable acknowledgement. Cost: refines the §2 receipt semantics.
+
 ## Production prerequisites (not yet real in this repo)
 
 The stand-ins below must be replaced before mainnet; none affect the accounting or
