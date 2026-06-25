@@ -160,10 +160,13 @@ cargo clippy --all-targets                       # clean
 
 ## What is intentionally NOT here yet
 
-- **Real ZK backend.** The prover is a documented commitment-based stand-in; the
-  SP1/Risc0 swap is specified in [`docs/PROVING.md`](docs/PROVING.md) (the guest is
-  already `no_std`). `MockZkVerifier` likewise stands in for the generated Solidity
-  verifier.
+- **Real ZK backend.** The host prover is still a documented commitment-based
+  stand-in, but the **real SP1 zkVM guest now exists and builds**: the unchanged
+  `perp-core` engine compiles to a `riscv32im-succinct-zkvm-elf` ELF
+  ([`crates/sp1-guest`](crates/sp1-guest), `cargo prove build`), committing the same
+  five-root public commitment the L1 verifier checks — see
+  [`docs/PROVING.md`](docs/PROVING.md). `MockZkVerifier` likewise stands in for the
+  generated Solidity verifier.
 - **TEE attestation.** Enclave keys/measurements are modelled as values; real
   TDX/Nitro attestation verification is Phase 1 production.
 - **Proof-v2 (matching determinism).** The matcher is deterministic and tested,

@@ -1,0 +1,17 @@
+# SP1 zkVM guest. Built with `cargo prove build` (Succinct SP1 toolchain), NOT the
+# host workspace — it targets riscv32im-succinct-zkvm-elf and depends on sp1-zkvm.
+# It is the deterministic perp-core engine compiled UNCHANGED into a zkVM circuit
+# (the Proof-v1 validity program). See docs/PROVING.md.
+[package]
+name = "perp-core-guest"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+sp1-zkvm = "5.0.0"
+perp-core = { path = "../perp-core", default-features = false, features = ["serde"] }
+postcard = { version = "1", default-features = false, features = ["alloc"] }
+
+# standalone: not part of the host workspace
+[workspace]

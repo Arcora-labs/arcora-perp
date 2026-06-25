@@ -38,13 +38,21 @@ the priority is accounting soundness. Do not deploy it as a real verifier.
 The guest program already exists: `perp_core` is `#![no_std]`, deterministic, and
 free of clocks/RNG/IO, so it compiles to a RISC-V zkVM guest unchanged.
 
-> **Sandbox note (attempted).** `sp1up` was run in this environment: it installs
-> `cargo-prove`, but installing the succinct Rust toolchain fails because the
-> sandbox's git/network proxy is scoped to this single repo and denies
-> `api.github.com/repos/succinctlabs/rust/releases` (the same restriction that
-> blocks `forge-std`). So the real guest **cannot be compiled here** — it builds
-> in any unrestricted environment with `sp1up && cargo prove build`. That is the
-> only reason the `CommitmentProver` stand-in is still in place.
+> **DONE — the guest builds for real.** The real SP1 guest now lives at
+> [`crates/sp1-guest`](../crates/sp1-guest) and **compiles `perp-core`'s engine,
+> unchanged, to a `riscv32im-succinct-zkvm-elf` ELF** with `cargo prove build`. It is
+> excluded from the host workspace (it targets RISC-V and depends on `sp1-zkvm`), so
+> `cargo build --workspace` and CI never touch it; build it with the SP1 toolchain.
+>
+> Getting here in the sandbox needed one workaround: `cargo-prove`'s toolchain
+> installer uses a reqwest+rustls client that ignores the proxy CA bundle, so
+> `install-toolchain` fails its `api.github.com` fetch. The fix is to download the
+> succinct Rust toolchain tarball with a CA-aware client (`curl`, which trusts
+> `/root/.ccr/ca-bundle.crt`) and `rustup toolchain link succinct <dir>` it — after
+> that `cargo prove build` works. The `CommitmentProver` stand-in remains the
+> *default* host backend only because full STARK proving + `sp1-sdk` are heavy and
+> not run in CI; the guest itself is now the genuine article, and the witness it
+> reads is the postcard encoding locked by the `serde_witness` test.
 
 1. **Guest.** A thin `main` that reads `(initial_state, ops, manifest_hash,
    ordered_root, withdrawals_root)` from the zkVM input, runs the perp-core
