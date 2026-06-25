@@ -84,14 +84,20 @@ proven in the built bundle for both a single token and a full light theme), the 
 
 ## Continuation pass — sequencer/matcher correctness + a finished domain sweep
 
-A second sweep on the protocol spine while the frontend awaited its design. Rust
-totals moved **139 → 146**, frontend **59 → 83** (component-test infra added:
-happy-dom + Testing Library; Explorer / Health / API-console pages). Each finding
-landed with a failing-test-first regression.
+A second full-codebase sweep — every crate and the frontend logic re-audited —
+while the frontend awaited its design. Rust totals moved **139 → 148**, frontend
+**59 → 88** (component-test infra added: happy-dom + Testing Library; Explorer /
+Health / API-console pages). Each finding landed with a failing-test-first
+regression; clean paths (loadbot, demo, sp1, format.ts, PriceChart/OrderBook
+geometry) were confirmed and, where untested, locked with a guard test.
 
 | Crate | Finding | Fix |
 |---|---|---|
 | sequencer (§3) | `mark_settled(N)` pruned rollback snapshots for batch N **and every earlier batch** (making them hard) but advanced finality for only batch N — finalizing a height directly stranded earlier batches "hard yet MATCHED", un-withdrawable forever | settle every pending batch ≤ N; prune their order-lists too |
+| oracle-feed (§8) | `parse_price("")` returned `Some(0)`, not `None`, so a ONE-sided book outage read the empty side as a literal 0 → giant spurious spread → the §8 gate rejected a healthy `last` | a digit-less string is absent (`None`); `unwrap_or(last)` now degrades gracefully |
+| frontend (§3) | the buying-power guard checked each open against the full balance, but margin only locks at MATCH — two quick opens each saw the whole balance and overcommitted (free balance went negative) | charge a new open against balance minus margin reserved by in-flight ACCEPTED opens |
+| committee (§5) | quorum counts distinct recovered addresses; no test proved ECDSA malleability (a `(r, n−s)` twin) couldn't double-count one enclave | regression test: the twin is rejected at recovery (k256 low-s), dedup is the backstop |
+| frontend a11y | the API console's response/error updated silently and its seg buttons lacked `aria-pressed` | `aria-live` response region, `role="alert"`, `aria-pressed` — matching the existing patterns |
 | matcher (§1) | expiry was checked only for the **incoming** order — a good-till-time resting maker could still be hit past its expiry | matching prunes expired makers (with STP); FOK pre-check excludes them so it can't pass then under-fill |
 | matcher/sequencer (§8) | an expired maker no taker hit was never reaped → it lingered as `best_bid`/`best_ask`, anchoring the funding mark to a price no taker can reach | `reap_expired(now_ms)`, called before the mark is read each batch |
 | frontend Health (§4) | the "collateral conservation" row re-derived `equity` from the same summary that *defines* it — a tautology that could never report MISMATCH | check invariants a bad state can violate: free ≥ 0, no negative position margin, solvency |
