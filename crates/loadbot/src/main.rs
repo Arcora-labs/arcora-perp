@@ -30,7 +30,8 @@ impl Rng {
 
 fn main() {
     let mut args = std::env::args().skip(1);
-    let n: usize = args.next().and_then(|s| s.parse().ok()).unwrap_or(200_000);
+    // clamp to >=1 so the latency percentile indexing can never underflow
+    let n: usize = args.next().and_then(|s| s.parse().ok()).unwrap_or(200_000).max(1);
     let seed: u64 = args.next().and_then(|s| s.parse().ok()).unwrap_or(42);
 
     println!("\n=== dark-perp order-book stress test ===");

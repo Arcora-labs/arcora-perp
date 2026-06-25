@@ -41,23 +41,39 @@ interface TickerRow {
 /// Fetch live quotes for the given Crypto.com instruments (e.g. "BTCUSD-PERP").
 /// Returns a map instrument → quote. Throws on network/HTTP failure so the caller
 /// can fall back. One request fetches every ticker; we filter to what we need.
-export async function fetchLiveQuotes(instruments: string[]): Promise<Map<string, LiveQuote>> {
+/// Bounded by `timeoutMs` so a hung connection can never leave a pending poll.
+export async function fetchLiveQuotes(
+  instruments: string[],
+  timeoutMs = 4000,
+): Promise<Map<string, LiveQuote>> {
   const want = new Set(instruments);
-  const res = await fetch(BASE, { headers: { accept: "application/json" } });
-  if (!res.ok) throw new Error(`oracle feed HTTP ${res.status}`);
-  const json = (await res.json()) as { result?: { data?: TickerRow[] } };
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  let json: { result?: { data?: TickerRow[] } };
+  try {
+    const res = await fetch(BASE, { headers: { accept: "application/json" }, signal: ctrl.signal });
+    if (!res.ok) throw new Error(`oracle feed HTTP ${res.status}`);
+    json = (await res.json()) as { result?: { data?: TickerRow[] } };
+  } finally {
+    clearTimeout(timer);
+  }
   const rows = json.result?.data ?? [];
   const out = new Map<string, LiveQuote>();
   for (const r of rows) {
     if (!want.has(r.i)) continue;
-    const price = scalePrice(r.a);
-    if (price <= 0n) continue;
-    out.set(r.i, {
-      price,
-      bid: r.b ? scalePrice(r.b) : price,
-      ask: r.k ? scalePrice(r.k) : price,
-      change24h: Number(r.c) || 0,
-    });
+    // a single malformed row must not poison the whole feed
+    try {
+      const price = scalePrice(r.a);
+      if (price <= 0n) continue;
+      out.set(r.i, {
+        price,
+        bid: r.b ? scalePrice(r.b) : price,
+        ask: r.k ? scalePrice(r.k) : price,
+        change24h: Number(r.c) || 0,
+      });
+    } catch {
+      continue;
+    }
   }
   return out;
 }
