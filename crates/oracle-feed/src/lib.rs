@@ -18,6 +18,13 @@ pub fn parse_price(s: &str) -> Option<i128> {
     let neg = s.starts_with('-');
     let body = s.strip_prefix('-').unwrap_or(s);
     let (whole, frac) = body.split_once('.').unwrap_or((body, ""));
+    // A string with no digits at all ("", "-", ".", "-.") is ABSENT, not zero —
+    // returning None lets callers (transcript_from_ticker) fall a missing bid/ask
+    // back to `last` via unwrap_or, instead of reading an empty side as a literal 0
+    // and computing a giant spurious spread that the §8 gate would reject.
+    if whole.is_empty() && frac.is_empty() {
+        return None;
+    }
     let whole: i128 = if whole.is_empty() {
         0
     } else {
@@ -96,6 +103,16 @@ mod tests {
         assert_eq!(parse_price("1.123456789"), Some(PRICE_SCALE + 12_345_678)); // 9th dropped
         assert_eq!(parse_price("bogus"), None);
         assert_eq!(parse_price("1.2x"), None);
+        // a digit-less string is ABSENT (None), not a silent zero — so a missing
+        // bid/ask falls back to `last` rather than reading as 0.
+        assert_eq!(parse_price(""), None);
+        assert_eq!(parse_price("   "), None);
+        assert_eq!(parse_price("."), None);
+        assert_eq!(parse_price("-"), None);
+        // but a real zero (with a digit) is still a valid 0
+        assert_eq!(parse_price("0"), Some(0));
+        assert_eq!(parse_price("0.0"), Some(0));
+        assert_eq!(parse_price(".5"), Some(PRICE_SCALE / 2));
     }
 
     #[test]
@@ -148,6 +165,22 @@ mod tests {
         assert!(
             t.validate(&m, 1_000).is_err(),
             "a book with an absurd spread must be rejected, not marked"
+        );
+    }
+
+    #[test]
+    fn one_sided_book_outage_falls_back_to_last_and_still_marks() {
+        // Only ONE side of the book drops (ask feed momentarily empty, bid present).
+        // Graceful degradation must fall the missing side back to `last`, not treat
+        // the empty string as a literal 0 — which would make spread = |0 − bid| a
+        // huge spurious band and get the whole transcript rejected by the §8 gate,
+        // stalling the mark on a perfectly healthy `last`.
+        let m = Market::conservative(0);
+        let t = transcript_from_ticker("59585.6", "59586.7", "", 1_000).unwrap();
+        assert_eq!(
+            t.validate(&m, 1_000),
+            Ok(t.price),
+            "a one-sided book outage must still mark against a healthy last"
         );
     }
 
