@@ -85,6 +85,9 @@ outside `:root` are theme-neutral white/black shadow overlays (depth, not brand)
 | Account: deposit / withdraw (SETTLED-gated) | `src/components/AccountPanel.tsx` | §3, §6 |
 | Recovery: seed → view-key scan | `src/components/RecoveryPanel.tsx` | §7 |
 | Close-only / forced-exit banner | `src/components/ModeBanner.tsx` | §6 |
+| Explorer: protocol browser — sealed batches (manifest + ordered root) + order log + marks | `src/components/Explorer.tsx` | §2, §3, §8 |
+| Health: status dashboard — service liveness, live conservation check, oracle freshness, pipeline | `src/components/HealthPanel.tsx` | §3, §4, §8 |
+| API console: invoke every `DarkPerpClient` method live (response + event stream) | `src/components/ApiExplorer.tsx` | §2 |
 
 ## Non-negotiable UX invariants (must survive any restyle)
 
