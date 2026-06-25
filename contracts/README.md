@@ -34,6 +34,23 @@ forge build
 forge test
 ```
 
+## Deploy (Phase 0 / Sepolia)
+
+`script/Deploy.s.sol` deploys and wires the stack (verifier → settlement → vault):
+
+```bash
+# dry-run simulation (no RPC needed)
+forge script script/Deploy.s.sol
+
+# broadcast to a testnet
+PRIVATE_KEY=0x... forge script script/Deploy.s.sol --rpc-url $SEPOLIA_RPC --broadcast
+```
+
+All parameters have env defaults (`ENCLAVE_SIGNER`, `GENESIS_ROOT`,
+`LIVENESS_BLOCKS`, `CHALLENGE_BLOCKS`, `CHALLENGE_BOND`). It ships with
+`MockZkVerifier` — swap in the real SP1/Risc0 verifier before a non-testnet
+deploy.
+
 ## Not production
 
 `MockZkVerifier` is **not sound** — it is the testnet stand-in for the real

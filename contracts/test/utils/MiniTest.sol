@@ -14,6 +14,10 @@ interface Vm {
     function expectRevert() external;
     function expectRevert(bytes4) external;
     function assume(bool) external;
+    function startBroadcast(uint256 privateKey) external;
+    function stopBroadcast() external;
+    function envOr(string calldata name, uint256 defaultValue) external view returns (uint256);
+    function envOr(string calldata name, address defaultValue) external view returns (address);
     function addr(uint256 privateKey) external pure returns (address);
     function sign(uint256 privateKey, bytes32 digest) external pure returns (uint8 v, bytes32 r, bytes32 s);
     function label(address, string calldata) external;
