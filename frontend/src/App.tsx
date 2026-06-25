@@ -13,8 +13,9 @@ import { Toaster } from "./components/Toaster";
 import { MarketSelector } from "./components/MarketSelector";
 import { PriceChart } from "./components/PriceChart";
 import { ActivityFeed } from "./components/ActivityFeed";
+import { ApiExplorer } from "./components/ApiExplorer";
 
-type Tab = "trade" | "account" | "recover";
+type Tab = "trade" | "account" | "recover" | "api";
 
 export default function App() {
   const [tab, setTab] = useState<Tab>("trade");
@@ -29,14 +30,14 @@ export default function App() {
             <span className="brand__tag">fast · dark · trustless</span>
           </div>
           <nav className="app__nav">
-            {(["trade", "account", "recover"] as Tab[]).map((t) => (
+            {(["trade", "account", "recover", "api"] as Tab[]).map((t) => (
               <button
                 key={t}
                 className={`app__navlink ${tab === t ? "is-active" : ""}`}
                 aria-current={tab === t ? "page" : undefined}
                 onClick={() => setTab(t)}
               >
-                {t[0].toUpperCase() + t.slice(1)}
+                {t === "api" ? "API" : t[0].toUpperCase() + t.slice(1)}
               </button>
             ))}
           </nav>
@@ -82,6 +83,12 @@ export default function App() {
           {tab === "recover" && (
             <section className="grid grid--single">
               <RecoveryPanel />
+            </section>
+          )}
+
+          {tab === "api" && (
+            <section className="grid grid--single">
+              <ApiExplorer />
             </section>
           )}
         </main>
