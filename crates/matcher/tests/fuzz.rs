@@ -148,6 +148,68 @@ fn fuzz_matcher_invariants() {
     }
 }
 
+/// Cross-batch expiry invariant: a good-till-time maker that has elapsed must
+/// NEVER appear as the maker side of a fill, and reaping it must leave the book
+/// uncrossed. Exercises the matching-loop prune + reap_expired together the way
+/// the sequencer drives them (rest at t1, maintain+match at a later t2).
+fn run_expiry(seed: u64) {
+    use perp_core::hash::Keccak256;
+    let mut e = MatchingEngine::<Keccak256>::new();
+    e.open_market(0);
+    let mut rng = Rng(seed | 1);
+    let t1 = 1_000u64;
+
+    // phase 1: rest a set of GTC limit makers at t1, each with a future expiry so
+    // none is rejected at submit; spread the expiries so some elapse by t2.
+    let mut expiry_of: BTreeMap<[u8; 32], u64> = BTreeMap::new();
+    for i in 0..50u64 {
+        let mut o = rand_order(&mut rng, i);
+        o.tif = TimeInForce::Gtc;
+        o.limit_price = ((99_500 + rng.below(1000)) as i128) * PRICE_SCALE; // never market
+        o.expiry_ms = t1 + 1 + rng.below(4000);
+        expiry_of.insert(o.order_hash::<Keccak256>(), o.expiry_ms);
+        e.submit(&o, t1);
+    }
+
+    // phase 2: a later clock past some expiries — reap (as run_maintenance does),
+    // then match a stream of live takers.
+    let t2 = t1 + 1 + rng.below(4000);
+    e.reap_expired(t2);
+    let takers: Vec<Order> = (50..100u64)
+        .map(|i| {
+            let mut o = rand_order(&mut rng, i);
+            o.expiry_ms = 0; // takers are always live
+            o
+        })
+        .collect();
+    let res = e.process_stream(&takers, t2);
+
+    // INVARIANT: no fill's maker was expired at t2.
+    for m in &res.fills {
+        if let Some(&exp) = expiry_of.get(&m.maker_order_hash) {
+            assert!(
+                exp == 0 || exp > t2,
+                "seed={seed}: an expired maker traded (expiry={exp}, t2={t2})"
+            );
+        }
+    }
+    // and the book is not left crossed once expired makers are reaped.
+    let book = e.book(0).unwrap();
+    if let (Some(b), Some(a)) = (book.best_bid(), book.best_ask()) {
+        assert!(
+            b < a,
+            "seed={seed}: book crossed after expiry reap ({b} >= {a})"
+        );
+    }
+}
+
+#[test]
+fn fuzz_expired_makers_never_trade() {
+    for seed in 1..=300u64 {
+        run_expiry(seed.wrapping_mul(0x9E3779B97F4A7C15));
+    }
+}
+
 #[test]
 fn fuzz_matcher_deterministic() {
     let go = |seed: u64| {
