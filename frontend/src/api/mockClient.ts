@@ -1,9 +1,11 @@
 // In-memory mock that encodes the protocol's observable semantics so the UI is
-// faithful before any backend exists. Now multi-market (BTC-PERP, ETH-PERP),
-// matching the protocol's per-MarketId state. Fidelity points unchanged:
+// faithful before any backend exists. Multi-market (5 USDC pairs, see MARKETS),
+// matching the protocol's per-MarketId state. Fidelity points:
 //   • every order returns a signed-style receipt immediately (ACCEPTED, §2)
 //   • finality advances ACCEPTED → MATCHED → SETTLED, only SETTLED is withdrawable
-//   • close-only blocks opening/increasing (§6)
+//   • close-only blocks opening/increasing/flipping; reduce-only can only reduce (§6)
+//   • opening locks initial margin out of the free balance; close releases it + realizes PnL
+//   • liq/margin derive from each market's initial/maintenance ratios (mirrors perp-core)
 //   • the book is seeded by an internal market-maker (§15)
 
 import type { DarkPerpClient, ClientState, OrderEvent } from "./client";
