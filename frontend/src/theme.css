@@ -1,0 +1,28 @@
+/* ============================================================================
+   theme.css — THE DESIGN DROP-SLOT.
+
+   This file is imported LAST (after styles.css), so anything here overrides the
+   default design tokens. It is intentionally empty by default: the polished
+   built-in theme lives in styles.css `:root`, and YOUR incoming design goes here
+   as a `:root { ... }` block overriding only the tokens you want to change.
+
+   Applying a design = paste your tokens below. Reverting = empty this file.
+   Nothing in styles.css or any component needs to change — every colour, font,
+   radius, and spacing value is a `var(--token)`, and translucent tints derive via
+   `color-mix(var(--token) …)`, so a single override here cascades everywhere.
+
+   The token contract (what each variable controls) is documented in
+   frontend/README.md → "Token map". Swap `--accent`/`--accent-2` alone to reskin
+   the brand; swap the surface + text ramps to reskin the whole shell.
+
+   Example (delete and replace with the real design):
+
+     :root {
+       --accent:   #5b8cff;
+       --accent-2: #3ddc97;
+       --bg:       #07080d;
+       --text:     #eef0f8;
+       --font:     "Inter", system-ui, sans-serif;
+       --radius:   14px;
+     }
+   ============================================================================ */

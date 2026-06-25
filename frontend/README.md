@@ -25,8 +25,12 @@ A reskin touches none of this, so the suite stays green across design changes.
 
 ## How the design slots in
 
+- **Drop your design in `src/theme.css`.** That file is imported *after*
+  `styles.css` (empty by default), so a `:root { … }` block there overrides only the
+  tokens you change — the polished default stays intact, and reverting is just
+  emptying the file. You never edit `styles.css` or any component.
 - **Tokens, not hard-coded values.** All colour/spacing/typography live as CSS
-  variables in `src/styles.css` `:root`. The design overrides those variables;
+  variables in `src/styles.css` `:root`. Your `theme.css` overrides those variables;
   components reference tokens only, so the structure is untouched.
 - **Components are presentational + dumb.** Each component in `src/components/`
   reads from the store and renders. Restyle freely; keep the data they show.
