@@ -112,7 +112,10 @@ impl<H: perp_core::hash::Hasher> OrderBook<H> {
             Side::Buy => &self.bids,
             Side::Sell => &self.asks,
         };
-        book.values().flat_map(|q| q.iter()).map(|r| r.remaining).sum()
+        book.values()
+            .flat_map(|q| q.iter())
+            .map(|r| r.remaining)
+            .sum()
     }
 
     /// Does `price` cross a resting order on `opposite`? `limit == 0` means a
@@ -267,7 +270,9 @@ impl<H: perp_core::hash::Hasher> OrderBook<H> {
                 if remaining == 0 {
                     SubmitStatus::FilledFull
                 } else if filled > 0 {
-                    SubmitStatus::FilledCancelled { cancelled: remaining }
+                    SubmitStatus::FilledCancelled {
+                        cancelled: remaining,
+                    }
                 } else {
                     SubmitStatus::CancelledNoFill
                 }
@@ -279,7 +284,9 @@ impl<H: perp_core::hash::Hasher> OrderBook<H> {
                     // a market GTC with leftover behaves like IOC (cannot rest
                     // without a price)
                     if filled > 0 {
-                        SubmitStatus::FilledCancelled { cancelled: remaining }
+                        SubmitStatus::FilledCancelled {
+                            cancelled: remaining,
+                        }
                     } else {
                         SubmitStatus::CancelledNoFill
                     }

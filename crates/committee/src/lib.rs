@@ -81,7 +81,10 @@ pub struct Committee {
 impl Committee {
     /// `threshold`-of-`members.len()` quorum. Panics if threshold is out of range.
     pub fn new(members: Vec<[u8; 20]>, threshold: usize) -> Self {
-        assert!(threshold >= 1 && threshold <= members.len(), "bad threshold");
+        assert!(
+            threshold >= 1 && threshold <= members.len(),
+            "bad threshold"
+        );
         Self { members, threshold }
     }
 
@@ -156,7 +159,10 @@ mod tests {
 
     fn committee_of(n: u8, t: usize) -> (Committee, Vec<SigningKey>) {
         let keys: Vec<SigningKey> = (1..=n).map(key).collect();
-        let members = keys.iter().map(|k| eth_address(k.verifying_key())).collect();
+        let members = keys
+            .iter()
+            .map(|k| eth_address(k.verifying_key()))
+            .collect();
         (Committee::new(members, t), keys)
     }
 
@@ -215,6 +221,10 @@ mod tests {
         // member signs a DIFFERENT digest → recovers to a different/again wrong addr
         qc.add(EnclaveSig::sign(&keys[0], &other));
         qc.add(EnclaveSig::sign(&keys[1], &digest));
-        assert_eq!(qc.weight(&committee), 1, "only the correct-digest sig counts");
+        assert_eq!(
+            qc.weight(&committee),
+            1,
+            "only the correct-digest sig counts"
+        );
     }
 }

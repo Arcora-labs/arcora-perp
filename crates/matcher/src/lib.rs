@@ -174,10 +174,30 @@ mod tests {
     fn resting_then_cross_produces_fill() {
         let mut e = engine();
         // maker sells 1 @ 100k
-        let r = e.submit(&order(1, Side::Sell, SIZE_SCALE, 100_000 * PRICE_SCALE, TimeInForce::Gtc, 1), 0);
+        let r = e.submit(
+            &order(
+                1,
+                Side::Sell,
+                SIZE_SCALE,
+                100_000 * PRICE_SCALE,
+                TimeInForce::Gtc,
+                1,
+            ),
+            0,
+        );
         assert_eq!(r.outcome.status, SubmitStatus::Resting);
         // taker buys 1 @ 100k → full fill at maker price
-        let t = e.submit(&order(2, Side::Buy, SIZE_SCALE, 100_000 * PRICE_SCALE, TimeInForce::Gtc, 2), 0);
+        let t = e.submit(
+            &order(
+                2,
+                Side::Buy,
+                SIZE_SCALE,
+                100_000 * PRICE_SCALE,
+                TimeInForce::Gtc,
+                2,
+            ),
+            0,
+        );
         assert_eq!(t.outcome.status, SubmitStatus::FilledFull);
         assert_eq!(t.outcome.fills.len(), 1);
         let f = t.outcome.fills[0];
@@ -191,12 +211,52 @@ mod tests {
     fn price_time_priority() {
         let mut e = engine();
         // two asks at same price; first one in (seq) has priority
-        e.submit(&order(1, Side::Sell, SIZE_SCALE, 100_000 * PRICE_SCALE, TimeInForce::Gtc, 1), 0);
-        e.submit(&order(2, Side::Sell, SIZE_SCALE, 100_000 * PRICE_SCALE, TimeInForce::Gtc, 2), 0);
+        e.submit(
+            &order(
+                1,
+                Side::Sell,
+                SIZE_SCALE,
+                100_000 * PRICE_SCALE,
+                TimeInForce::Gtc,
+                1,
+            ),
+            0,
+        );
+        e.submit(
+            &order(
+                2,
+                Side::Sell,
+                SIZE_SCALE,
+                100_000 * PRICE_SCALE,
+                TimeInForce::Gtc,
+                2,
+            ),
+            0,
+        );
         // a better-priced ask should fill first regardless of time
-        e.submit(&order(3, Side::Sell, SIZE_SCALE, 99_000 * PRICE_SCALE, TimeInForce::Gtc, 3), 0);
+        e.submit(
+            &order(
+                3,
+                Side::Sell,
+                SIZE_SCALE,
+                99_000 * PRICE_SCALE,
+                TimeInForce::Gtc,
+                3,
+            ),
+            0,
+        );
         // taker buys 2 @ 100k → fills best price (99k, owner 3) then earliest 100k (owner 1)
-        let t = e.submit(&order(9, Side::Buy, 2 * SIZE_SCALE, 100_000 * PRICE_SCALE, TimeInForce::Gtc, 9), 0);
+        let t = e.submit(
+            &order(
+                9,
+                Side::Buy,
+                2 * SIZE_SCALE,
+                100_000 * PRICE_SCALE,
+                TimeInForce::Gtc,
+                9,
+            ),
+            0,
+        );
         assert_eq!(t.outcome.fills.len(), 2);
         assert_eq!(t.outcome.fills[0].maker, word_u64(3)); // best price first
         assert_eq!(t.outcome.fills[0].price, 99_000 * PRICE_SCALE);
@@ -206,45 +266,169 @@ mod tests {
     #[test]
     fn partial_fill_rests_remainder() {
         let mut e = engine();
-        e.submit(&order(1, Side::Sell, SIZE_SCALE, 100_000 * PRICE_SCALE, TimeInForce::Gtc, 1), 0);
+        e.submit(
+            &order(
+                1,
+                Side::Sell,
+                SIZE_SCALE,
+                100_000 * PRICE_SCALE,
+                TimeInForce::Gtc,
+                1,
+            ),
+            0,
+        );
         // buy 3 but only 1 available → 1 fills, 2 rest as a bid
-        let t = e.submit(&order(2, Side::Buy, 3 * SIZE_SCALE, 100_000 * PRICE_SCALE, TimeInForce::Gtc, 2), 0);
-        assert_eq!(t.outcome.status, SubmitStatus::FilledResting { resting: 2 * SIZE_SCALE });
+        let t = e.submit(
+            &order(
+                2,
+                Side::Buy,
+                3 * SIZE_SCALE,
+                100_000 * PRICE_SCALE,
+                TimeInForce::Gtc,
+                2,
+            ),
+            0,
+        );
+        assert_eq!(
+            t.outcome.status,
+            SubmitStatus::FilledResting {
+                resting: 2 * SIZE_SCALE
+            }
+        );
         assert_eq!(e.book(0).unwrap().resting_size(Side::Buy), 2 * SIZE_SCALE);
     }
 
     #[test]
     fn ioc_cancels_remainder() {
         let mut e = engine();
-        e.submit(&order(1, Side::Sell, SIZE_SCALE, 100_000 * PRICE_SCALE, TimeInForce::Gtc, 1), 0);
-        let t = e.submit(&order(2, Side::Buy, 3 * SIZE_SCALE, 100_000 * PRICE_SCALE, TimeInForce::Ioc, 2), 0);
-        assert_eq!(t.outcome.status, SubmitStatus::FilledCancelled { cancelled: 2 * SIZE_SCALE });
-        assert_eq!(e.book(0).unwrap().resting_size(Side::Buy), 0, "IOC never rests");
+        e.submit(
+            &order(
+                1,
+                Side::Sell,
+                SIZE_SCALE,
+                100_000 * PRICE_SCALE,
+                TimeInForce::Gtc,
+                1,
+            ),
+            0,
+        );
+        let t = e.submit(
+            &order(
+                2,
+                Side::Buy,
+                3 * SIZE_SCALE,
+                100_000 * PRICE_SCALE,
+                TimeInForce::Ioc,
+                2,
+            ),
+            0,
+        );
+        assert_eq!(
+            t.outcome.status,
+            SubmitStatus::FilledCancelled {
+                cancelled: 2 * SIZE_SCALE
+            }
+        );
+        assert_eq!(
+            e.book(0).unwrap().resting_size(Side::Buy),
+            0,
+            "IOC never rests"
+        );
     }
 
     #[test]
     fn fok_all_or_nothing() {
         let mut e = engine();
-        e.submit(&order(1, Side::Sell, SIZE_SCALE, 100_000 * PRICE_SCALE, TimeInForce::Gtc, 1), 0);
+        e.submit(
+            &order(
+                1,
+                Side::Sell,
+                SIZE_SCALE,
+                100_000 * PRICE_SCALE,
+                TimeInForce::Gtc,
+                1,
+            ),
+            0,
+        );
         // FOK for 2 but only 1 available → rejected, book untouched
-        let t = e.submit(&order(2, Side::Buy, 2 * SIZE_SCALE, 100_000 * PRICE_SCALE, TimeInForce::Fok, 2), 0);
-        assert_eq!(t.outcome.status, SubmitStatus::Rejected(RejectReason::FillOrKillUnfillable));
+        let t = e.submit(
+            &order(
+                2,
+                Side::Buy,
+                2 * SIZE_SCALE,
+                100_000 * PRICE_SCALE,
+                TimeInForce::Fok,
+                2,
+            ),
+            0,
+        );
+        assert_eq!(
+            t.outcome.status,
+            SubmitStatus::Rejected(RejectReason::FillOrKillUnfillable)
+        );
         assert!(t.outcome.fills.is_empty());
-        assert_eq!(e.book(0).unwrap().resting_size(Side::Sell), SIZE_SCALE, "maker still there");
+        assert_eq!(
+            e.book(0).unwrap().resting_size(Side::Sell),
+            SIZE_SCALE,
+            "maker still there"
+        );
         // FOK for exactly 1 → fully fills
-        let t2 = e.submit(&order(3, Side::Buy, SIZE_SCALE, 100_000 * PRICE_SCALE, TimeInForce::Fok, 3), 0);
+        let t2 = e.submit(
+            &order(
+                3,
+                Side::Buy,
+                SIZE_SCALE,
+                100_000 * PRICE_SCALE,
+                TimeInForce::Fok,
+                3,
+            ),
+            0,
+        );
         assert_eq!(t2.outcome.status, SubmitStatus::FilledFull);
     }
 
     #[test]
     fn post_only_rejects_if_it_would_take() {
         let mut e = engine();
-        e.submit(&order(1, Side::Sell, SIZE_SCALE, 100_000 * PRICE_SCALE, TimeInForce::Gtc, 1), 0);
+        e.submit(
+            &order(
+                1,
+                Side::Sell,
+                SIZE_SCALE,
+                100_000 * PRICE_SCALE,
+                TimeInForce::Gtc,
+                1,
+            ),
+            0,
+        );
         // post-only buy at 100k would cross → reject
-        let t = e.submit(&order(2, Side::Buy, SIZE_SCALE, 100_000 * PRICE_SCALE, TimeInForce::PostOnly, 2), 0);
-        assert_eq!(t.outcome.status, SubmitStatus::Rejected(RejectReason::PostOnlyWouldTake));
+        let t = e.submit(
+            &order(
+                2,
+                Side::Buy,
+                SIZE_SCALE,
+                100_000 * PRICE_SCALE,
+                TimeInForce::PostOnly,
+                2,
+            ),
+            0,
+        );
+        assert_eq!(
+            t.outcome.status,
+            SubmitStatus::Rejected(RejectReason::PostOnlyWouldTake)
+        );
         // post-only buy at 99k does not cross → rests
-        let t2 = e.submit(&order(3, Side::Buy, SIZE_SCALE, 99_000 * PRICE_SCALE, TimeInForce::PostOnly, 3), 0);
+        let t2 = e.submit(
+            &order(
+                3,
+                Side::Buy,
+                SIZE_SCALE,
+                99_000 * PRICE_SCALE,
+                TimeInForce::PostOnly,
+                3,
+            ),
+            0,
+        );
         assert_eq!(t2.outcome.status, SubmitStatus::Resting);
         assert_eq!(e.book(0).unwrap().best_bid(), Some(99_000 * PRICE_SCALE));
     }
@@ -253,30 +437,85 @@ mod tests {
     fn self_trade_prevention_cancels_maker() {
         let mut e = engine();
         // owner 1 rests an ask
-        e.submit(&order(1, Side::Sell, SIZE_SCALE, 100_000 * PRICE_SCALE, TimeInForce::Gtc, 1), 0);
+        e.submit(
+            &order(
+                1,
+                Side::Sell,
+                SIZE_SCALE,
+                100_000 * PRICE_SCALE,
+                TimeInForce::Gtc,
+                1,
+            ),
+            0,
+        );
         // owner 1 sends a crossing buy → STP cancels its own resting ask, no fill
-        let t = e.submit(&order(1, Side::Buy, SIZE_SCALE, 100_000 * PRICE_SCALE, TimeInForce::Ioc, 2), 0);
+        let t = e.submit(
+            &order(
+                1,
+                Side::Buy,
+                SIZE_SCALE,
+                100_000 * PRICE_SCALE,
+                TimeInForce::Ioc,
+                2,
+            ),
+            0,
+        );
         assert!(t.outcome.fills.is_empty(), "no self-trade");
-        assert_eq!(e.book(0).unwrap().resting_size(Side::Sell), 0, "own maker cancelled");
+        assert_eq!(
+            e.book(0).unwrap().resting_size(Side::Sell),
+            0,
+            "own maker cancelled"
+        );
     }
 
     #[test]
     fn expired_order_rejected() {
         let mut e = engine();
-        let mut o = order(1, Side::Buy, SIZE_SCALE, 100_000 * PRICE_SCALE, TimeInForce::Gtc, 1);
+        let mut o = order(
+            1,
+            Side::Buy,
+            SIZE_SCALE,
+            100_000 * PRICE_SCALE,
+            TimeInForce::Gtc,
+            1,
+        );
         o.expiry_ms = 500;
         let t = e.submit(&o, 1000); // now past expiry
-        assert_eq!(t.outcome.status, SubmitStatus::Rejected(RejectReason::Expired));
+        assert_eq!(
+            t.outcome.status,
+            SubmitStatus::Rejected(RejectReason::Expired)
+        );
     }
 
     #[test]
     fn stream_collects_manifest_lists() {
         let mut e = engine();
         let orders = [
-            order(1, Side::Sell, SIZE_SCALE, 100_000 * PRICE_SCALE, TimeInForce::Gtc, 1),
-            order(2, Side::Buy, SIZE_SCALE, 100_000 * PRICE_SCALE, TimeInForce::Gtc, 2),
+            order(
+                1,
+                Side::Sell,
+                SIZE_SCALE,
+                100_000 * PRICE_SCALE,
+                TimeInForce::Gtc,
+                1,
+            ),
+            order(
+                2,
+                Side::Buy,
+                SIZE_SCALE,
+                100_000 * PRICE_SCALE,
+                TimeInForce::Gtc,
+                2,
+            ),
             {
-                let mut o = order(3, Side::Buy, SIZE_SCALE, 100_000 * PRICE_SCALE, TimeInForce::Gtc, 3);
+                let mut o = order(
+                    3,
+                    Side::Buy,
+                    SIZE_SCALE,
+                    100_000 * PRICE_SCALE,
+                    TimeInForce::Gtc,
+                    3,
+                );
                 o.expiry_ms = 1; // expired
                 o
             },
@@ -291,10 +530,33 @@ mod tests {
     #[test]
     fn market_buy_sweeps_multiple_levels() {
         let mut e = engine();
-        e.submit(&order(1, Side::Sell, SIZE_SCALE, 100_000 * PRICE_SCALE, TimeInForce::Gtc, 1), 0);
-        e.submit(&order(2, Side::Sell, SIZE_SCALE, 101_000 * PRICE_SCALE, TimeInForce::Gtc, 2), 0);
+        e.submit(
+            &order(
+                1,
+                Side::Sell,
+                SIZE_SCALE,
+                100_000 * PRICE_SCALE,
+                TimeInForce::Gtc,
+                1,
+            ),
+            0,
+        );
+        e.submit(
+            &order(
+                2,
+                Side::Sell,
+                SIZE_SCALE,
+                101_000 * PRICE_SCALE,
+                TimeInForce::Gtc,
+                2,
+            ),
+            0,
+        );
         // market buy (limit 0) for 2 → sweeps 100k then 101k
-        let t = e.submit(&order(9, Side::Buy, 2 * SIZE_SCALE, 0, TimeInForce::Ioc, 9), 0);
+        let t = e.submit(
+            &order(9, Side::Buy, 2 * SIZE_SCALE, 0, TimeInForce::Ioc, 9),
+            0,
+        );
         assert_eq!(t.outcome.status, SubmitStatus::FilledFull);
         assert_eq!(t.outcome.fills[0].price, 100_000 * PRICE_SCALE);
         assert_eq!(t.outcome.fills[1].price, 101_000 * PRICE_SCALE);
@@ -303,10 +565,40 @@ mod tests {
     #[test]
     fn sell_crosses_best_bid_first() {
         let mut e = engine();
-        e.submit(&order(1, Side::Buy, SIZE_SCALE, 99_000 * PRICE_SCALE, TimeInForce::Gtc, 1), 0);
-        e.submit(&order(2, Side::Buy, SIZE_SCALE, 100_000 * PRICE_SCALE, TimeInForce::Gtc, 2), 0);
+        e.submit(
+            &order(
+                1,
+                Side::Buy,
+                SIZE_SCALE,
+                99_000 * PRICE_SCALE,
+                TimeInForce::Gtc,
+                1,
+            ),
+            0,
+        );
+        e.submit(
+            &order(
+                2,
+                Side::Buy,
+                SIZE_SCALE,
+                100_000 * PRICE_SCALE,
+                TimeInForce::Gtc,
+                2,
+            ),
+            0,
+        );
         // seller hits highest bid (100k, owner 2) first
-        let t = e.submit(&order(9, Side::Sell, SIZE_SCALE, 99_000 * PRICE_SCALE, TimeInForce::Ioc, 9), 0);
+        let t = e.submit(
+            &order(
+                9,
+                Side::Sell,
+                SIZE_SCALE,
+                99_000 * PRICE_SCALE,
+                TimeInForce::Ioc,
+                9,
+            ),
+            0,
+        );
         assert_eq!(t.outcome.fills.len(), 1);
         assert_eq!(t.outcome.fills[0].maker, word_u64(2));
         assert_eq!(t.outcome.fills[0].price, 100_000 * PRICE_SCALE);
@@ -316,9 +608,32 @@ mod tests {
     fn fok_excludes_self_liquidity() {
         let mut e = engine();
         // the only ask is the taker's own resting order → FOK can't self-trade
-        e.submit(&order(7, Side::Sell, SIZE_SCALE, 100_000 * PRICE_SCALE, TimeInForce::Gtc, 1), 0);
-        let t = e.submit(&order(7, Side::Buy, SIZE_SCALE, 100_000 * PRICE_SCALE, TimeInForce::Fok, 2), 0);
-        assert_eq!(t.outcome.status, SubmitStatus::Rejected(RejectReason::FillOrKillUnfillable));
+        e.submit(
+            &order(
+                7,
+                Side::Sell,
+                SIZE_SCALE,
+                100_000 * PRICE_SCALE,
+                TimeInForce::Gtc,
+                1,
+            ),
+            0,
+        );
+        let t = e.submit(
+            &order(
+                7,
+                Side::Buy,
+                SIZE_SCALE,
+                100_000 * PRICE_SCALE,
+                TimeInForce::Fok,
+                2,
+            ),
+            0,
+        );
+        assert_eq!(
+            t.outcome.status,
+            SubmitStatus::Rejected(RejectReason::FillOrKillUnfillable)
+        );
         // and the resting maker is untouched (FOK rejected before matching)
         assert_eq!(e.book(0).unwrap().resting_size(Side::Sell), SIZE_SCALE);
     }
@@ -326,9 +641,30 @@ mod tests {
     #[test]
     fn deterministic_across_runs() {
         let orders = [
-            order(1, Side::Sell, SIZE_SCALE, 100_000 * PRICE_SCALE, TimeInForce::Gtc, 1),
-            order(2, Side::Sell, SIZE_SCALE, 101_000 * PRICE_SCALE, TimeInForce::Gtc, 2),
-            order(3, Side::Buy, 2 * SIZE_SCALE, 101_000 * PRICE_SCALE, TimeInForce::Ioc, 3),
+            order(
+                1,
+                Side::Sell,
+                SIZE_SCALE,
+                100_000 * PRICE_SCALE,
+                TimeInForce::Gtc,
+                1,
+            ),
+            order(
+                2,
+                Side::Sell,
+                SIZE_SCALE,
+                101_000 * PRICE_SCALE,
+                TimeInForce::Gtc,
+                2,
+            ),
+            order(
+                3,
+                Side::Buy,
+                2 * SIZE_SCALE,
+                101_000 * PRICE_SCALE,
+                TimeInForce::Ioc,
+                3,
+            ),
         ];
         let run = || {
             let mut e = engine();

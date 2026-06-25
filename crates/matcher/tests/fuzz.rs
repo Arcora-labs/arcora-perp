@@ -26,7 +26,11 @@ impl Rng {
 
 fn rand_order(rng: &mut Rng, nonce: u64) -> Order {
     let owner = word_u64(rng.below(6)); // small owner set ⇒ self-trades happen
-    let side = if rng.below(2) == 0 { Side::Buy } else { Side::Sell };
+    let side = if rng.below(2) == 0 {
+        Side::Buy
+    } else {
+        Side::Sell
+    };
     let size = (1 + rng.below(20)) as i128 * (SIZE_SCALE / 10);
     // price near 100k, sometimes 0 (market)
     let price = if rng.below(5) == 0 {
@@ -83,9 +87,13 @@ fn run(seed: u64, n: usize) {
         if let Some(prev) = last_price.get(&m.taker_order_hash) {
             match side_of.get(&m.taker_order_hash) {
                 // a buy taker sweeps asks low→high: prices non-decreasing
-                Some(Side::Buy) => assert!(m.price >= *prev, "seed={seed}: buy taker price went down"),
+                Some(Side::Buy) => {
+                    assert!(m.price >= *prev, "seed={seed}: buy taker price went down")
+                }
                 // a sell taker sweeps bids high→low: prices non-increasing
-                Some(Side::Sell) => assert!(m.price <= *prev, "seed={seed}: sell taker price went up"),
+                Some(Side::Sell) => {
+                    assert!(m.price <= *prev, "seed={seed}: sell taker price went up")
+                }
                 None => {}
             }
         }
@@ -94,7 +102,11 @@ fn run(seed: u64, n: usize) {
     for o in &orders {
         let h = o.order_hash::<perp_core::hash::Keccak256>();
         if let Some(f) = filled.get(&h) {
-            assert!(*f <= o.size, "seed={seed}: order overfilled ({f} > {})", o.size);
+            assert!(
+                *f <= o.size,
+                "seed={seed}: order overfilled ({f} > {})",
+                o.size
+            );
         }
     }
 
@@ -110,7 +122,11 @@ fn run(seed: u64, n: usize) {
         .filter(|p| !matches!(p.outcome.status, SubmitStatus::Rejected(_)))
         .count()
         + result.rejected.len();
-    assert_eq!(accepted_or_rejected, orders.len(), "seed={seed}: order accounting");
+    assert_eq!(
+        accepted_or_rejected,
+        orders.len(),
+        "seed={seed}: order accounting"
+    );
 }
 
 #[test]
@@ -130,6 +146,10 @@ fn fuzz_matcher_deterministic() {
         e.process_stream(&orders, 0).fills
     };
     for seed in 1..=50u64 {
-        assert_eq!(go(seed), go(seed), "matching must be deterministic (seed={seed})");
+        assert_eq!(
+            go(seed),
+            go(seed),
+            "matching must be deterministic (seed={seed})"
+        );
     }
 }

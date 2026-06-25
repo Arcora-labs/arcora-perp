@@ -5,8 +5,8 @@ use perp_core::engine::BatchOp;
 use perp_core::fixed::{PRICE_SCALE, QUOTE_SCALE, SIZE_SCALE};
 use perp_core::hash::{word_u64, Keccak256};
 use perp_core::market::Market;
-use perp_core::order::{Finality, Order, Side, TimeInForce};
 use perp_core::oracle::OracleTranscript;
+use perp_core::order::{Finality, Order, Side, TimeInForce};
 use perp_core::Note;
 use sequencer::{EnclaveIdentity, Sequencer};
 
@@ -43,8 +43,20 @@ fn fund(seq: &mut Sequencer, owner: u64, amount_usd: i128, blind: u8) {
     let o = word_u64(owner);
     let amount = amount_usd * QUOTE_SCALE;
     let cm = Note::new(o, 0, amount, [blind; 32]).commitment::<Keccak256>();
-    seq.apply(&BatchOp::Deposit { owner: o, asset_id: 0, amount, blinding: [blind; 32] }).unwrap();
-    seq.apply(&BatchOp::FundPosition { owner: o, market_id: 0, note_commitment: cm, spend_key: [owner as u8; 32] }).unwrap();
+    seq.apply(&BatchOp::Deposit {
+        owner: o,
+        asset_id: 0,
+        amount,
+        blinding: [blind; 32],
+    })
+    .unwrap();
+    seq.apply(&BatchOp::FundPosition {
+        owner: o,
+        market_id: 0,
+        note_commitment: cm,
+        spend_key: [owner as u8; 32],
+    })
+    .unwrap();
 }
 
 fn setup() -> Sequencer {
@@ -59,7 +71,10 @@ fn setup() -> Sequencer {
 #[test]
 fn receipt_is_signed_and_verifies() {
     let mut s = setup();
-    let r = s.accept_order(&order(1, Side::Buy, SIZE_SCALE, 100_000 * PRICE_SCALE, 1), 1_000);
+    let r = s.accept_order(
+        &order(1, Side::Buy, SIZE_SCALE, 100_000 * PRICE_SCALE, 1),
+        1_000,
+    );
     assert!(r.verify(), "honest receipt must verify");
 
     // tamper with the receipt body → signature no longer matches
@@ -81,7 +96,10 @@ fn match_settles_and_advances_finality() {
     let sealed = s.seal_batch(&[maker, taker], 1_000);
 
     assert_eq!(sealed.batch_id, 0);
-    assert_ne!(sealed.prev_state_root, sealed.new_state_root, "state advanced");
+    assert_ne!(
+        sealed.prev_state_root, sealed.new_state_root,
+        "state advanced"
+    );
     assert_eq!(sealed.settlement_rejected, vec![]);
     assert_eq!(sealed.manifest.ordered.len(), 2);
     assert_eq!(sealed.receipts.len(), 2);
@@ -129,15 +147,28 @@ fn pre_trade_risk_rejects_unmarginable_before_matching() {
     let taker_hash = taker.order_hash::<Keccak256>();
     let sealed = s.seal_batch(&[maker, taker], 1_000);
 
-    assert!(sealed.settlement_rejected.is_empty(), "no match-but-unsettleable fills");
     assert!(
-        sealed.manifest.rejected.iter().any(|(h, r)| *h == taker_hash
-            && *r == perp_core::order::RejectReason::InsufficientMargin),
+        sealed.settlement_rejected.is_empty(),
+        "no match-but-unsettleable fills"
+    );
+    assert!(
+        sealed
+            .manifest
+            .rejected
+            .iter()
+            .any(|(h, r)| *h == taker_hash
+                && *r == perp_core::order::RejectReason::InsufficientMargin),
         "unmarginable order rejected pre-trade in the manifest"
     );
-    assert!(!sealed.manifest.ordered.contains(&taker_hash), "never sequenced");
+    assert!(
+        !sealed.manifest.ordered.contains(&taker_hash),
+        "never sequenced"
+    );
     assert!(s.state.conservation_holds());
-    assert!(s.state.position(&word_u64(3), 0).is_none_or(|p| p.size == 0));
+    assert!(s
+        .state
+        .position(&word_u64(3), 0)
+        .is_none_or(|p| p.size == 0));
     // the maker (well-funded) rested fine and got a receipt
     assert!(sealed.receipts.iter().any(|r| r.verify()));
 }
@@ -159,10 +190,23 @@ fn maintenance_liquidates_underwater_position() {
     s.set_oracle(0, oracle(84_000, 5_000));
     let sealed = s.seal_batch(&[], 5_000);
 
-    assert!(sealed.liquidations.contains(&word_u64(2)), "long B liquidated");
-    assert!(!sealed.liquidations.contains(&word_u64(1)), "short A healthy");
-    assert_eq!(s.state.position(&word_u64(2), 0).unwrap().size, 0, "B closed");
-    assert!(s.state.insurance_fund > 0, "liquidation fee funded insurance");
+    assert!(
+        sealed.liquidations.contains(&word_u64(2)),
+        "long B liquidated"
+    );
+    assert!(
+        !sealed.liquidations.contains(&word_u64(1)),
+        "short A healthy"
+    );
+    assert_eq!(
+        s.state.position(&word_u64(2), 0).unwrap().size,
+        0,
+        "B closed"
+    );
+    assert!(
+        s.state.insurance_fund > 0,
+        "liquidation fee funded insurance"
+    );
     assert!(s.state.conservation_holds());
 }
 
@@ -180,23 +224,37 @@ fn liquidation_cancels_resting_orders() {
         ],
         1_000,
     );
-    assert_eq!(s.book(0).unwrap().resting_size(Side::Sell), SIZE_SCALE / 10, "ask resting");
+    assert_eq!(
+        s.book(0).unwrap().resting_size(Side::Sell),
+        SIZE_SCALE / 10,
+        "ask resting"
+    );
 
     // crash → trader 2 (long) is liquidated; its resting ask must be cancelled.
     s.set_oracle(0, oracle(84_000, 5_000));
     let sealed = s.seal_batch(&[], 5_000);
     assert!(sealed.liquidations.contains(&word_u64(2)));
-    assert_eq!(s.book(0).unwrap().resting_size(Side::Sell), 0, "resting order cancelled on liquidation");
+    assert_eq!(
+        s.book(0).unwrap().resting_size(Side::Sell),
+        0,
+        "resting order cancelled on liquidation"
+    );
 }
 
 /// The manifest's ordered set and rejected set must never overlap (§2).
 fn assert_disjoint(sealed: &sequencer::SealedBatch) {
     for (h, _) in &sealed.manifest.rejected {
-        assert!(!sealed.manifest.ordered.contains(h), "ordered/rejected must be disjoint");
+        assert!(
+            !sealed.manifest.ordered.contains(h),
+            "ordered/rejected must be disjoint"
+        );
     }
     // every settled order must be in `ordered`
     for h in &sealed.settled_order_hashes {
-        assert!(sealed.manifest.ordered.contains(h), "settled order must be ordered");
+        assert!(
+            sealed.manifest.ordered.contains(h),
+            "settled order must be ordered"
+        );
     }
 }
 
@@ -223,8 +281,15 @@ fn accept_then_seal_keeps_one_seq() {
     let o = order(1, Side::Buy, SIZE_SCALE, 99_000 * PRICE_SCALE, 7);
     let r1 = s.accept_order(&o, 1_000);
     let sealed = s.seal_batch(&[o], 1_000);
-    let r2 = sealed.receipts.iter().find(|r| r.receipt.order_hash == o.order_hash::<Keccak256>()).unwrap();
-    assert_eq!(r1.receipt.seq_no, r2.receipt.seq_no, "one stable seq across accept + seal");
+    let r2 = sealed
+        .receipts
+        .iter()
+        .find(|r| r.receipt.order_hash == o.order_hash::<Keccak256>())
+        .unwrap();
+    assert_eq!(
+        r1.receipt.seq_no, r2.receipt.seq_no,
+        "one stable seq across accept + seal"
+    );
     assert!(r1.verify() && r2.verify());
 }
 
@@ -256,7 +321,10 @@ fn withheld_order_becomes_inclusion_violation() {
     }
     // after the inclusion timeout, the withheld order surfaces as a violation
     let violations = s.inclusion_violations(2);
-    assert!(violations.contains(&oh), "withheld order must be flagged for slashing");
+    assert!(
+        violations.contains(&oh),
+        "withheld order must be flagged for slashing"
+    );
 
     // had it been included, no violation
     let mut s2 = setup();

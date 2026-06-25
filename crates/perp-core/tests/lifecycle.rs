@@ -385,14 +385,31 @@ fn duplicate_commitment_deposit_rejected() {
     let o = pk(1);
     let bl = [9u8; 32];
     let amt = 1_000 * QUOTE_SCALE;
-    s.apply_op(&BatchOp::Deposit { owner: o, asset_id: 0, amount: amt, blinding: bl }).unwrap();
+    s.apply_op(&BatchOp::Deposit {
+        owner: o,
+        asset_id: 0,
+        amount: amt,
+        blinding: bl,
+    })
+    .unwrap();
     let err = s
-        .apply_op(&BatchOp::Deposit { owner: o, asset_id: 0, amount: amt, blinding: bl })
+        .apply_op(&BatchOp::Deposit {
+            owner: o,
+            asset_id: 0,
+            amount: amt,
+            blinding: bl,
+        })
         .unwrap_err();
     assert_eq!(err, EngineError::DuplicateCommitment);
     assert!(s.conservation_holds());
     // a different blinding is fine
-    s.apply_op(&BatchOp::Deposit { owner: o, asset_id: 0, amount: amt, blinding: [10u8; 32] }).unwrap();
+    s.apply_op(&BatchOp::Deposit {
+        owner: o,
+        asset_id: 0,
+        amount: amt,
+        blinding: [10u8; 32],
+    })
+    .unwrap();
     assert!(s.conservation_holds());
 }
 
@@ -405,8 +422,18 @@ fn self_trade_is_rejected_at_settlement() {
     let bl = [1u8; 32];
     let cm = deposit_commit(a, 20_000 * QUOTE_SCALE, bl);
     s.apply_batch(&[
-        BatchOp::Deposit { owner: a, asset_id: 0, amount: 20_000 * QUOTE_SCALE, blinding: bl },
-        BatchOp::FundPosition { owner: a, market_id: 0, note_commitment: cm, spend_key: [1; 32] },
+        BatchOp::Deposit {
+            owner: a,
+            asset_id: 0,
+            amount: 20_000 * QUOTE_SCALE,
+            blinding: bl,
+        },
+        BatchOp::FundPosition {
+            owner: a,
+            market_id: 0,
+            note_commitment: cm,
+            spend_key: [1; 32],
+        },
     ])
     .unwrap();
     let err = s

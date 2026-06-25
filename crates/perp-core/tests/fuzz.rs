@@ -9,8 +9,8 @@ use perp_core::engine::BatchOp;
 use perp_core::fixed::{PRICE_SCALE, QUOTE_SCALE, SIZE_SCALE};
 use perp_core::hash::{word_u64, Keccak256};
 use perp_core::market::Market;
-use perp_core::order::Side;
 use perp_core::oracle::OracleTranscript;
+use perp_core::order::Side;
 use perp_core::{DefaultState, Note};
 
 struct Rng(u64);
@@ -55,8 +55,20 @@ fn run_session(seed: u64, steps: usize) {
         let blind = [(i as u8) | 0x80; 32];
         let amount = 50_000 * QUOTE_SCALE;
         let cm = Note::new(o, 0, amount, blind).commitment::<Keccak256>();
-        s.apply_op(&BatchOp::Deposit { owner: o, asset_id: 0, amount, blinding: blind }).unwrap();
-        s.apply_op(&BatchOp::FundPosition { owner: o, market_id: 0, note_commitment: cm, spend_key: [i as u8; 32] }).unwrap();
+        s.apply_op(&BatchOp::Deposit {
+            owner: o,
+            asset_id: 0,
+            amount,
+            blinding: blind,
+        })
+        .unwrap();
+        s.apply_op(&BatchOp::FundPosition {
+            owner: o,
+            market_id: 0,
+            note_commitment: cm,
+            spend_key: [i as u8; 32],
+        })
+        .unwrap();
         assert!(s.conservation_holds());
     }
 
@@ -73,7 +85,11 @@ fn run_session(seed: u64, steps: usize) {
                 let a = rng.below(N_OWNERS);
                 let b = (a + 1 + rng.below(N_OWNERS - 1)) % N_OWNERS;
                 let size = (1 + rng.below(8)) as i128 * (SIZE_SCALE / 10);
-                let side = if rng.below(2) == 0 { Side::Buy } else { Side::Sell };
+                let side = if rng.below(2) == 0 {
+                    Side::Buy
+                } else {
+                    Side::Sell
+                };
                 BatchOp::Fill {
                     taker: owner(a),
                     maker: owner(b),
@@ -100,7 +116,12 @@ fn run_session(seed: u64, steps: usize) {
             3 => {
                 let i = rng.below(N_OWNERS);
                 let amount = (1 + rng.below(5000)) as i128 * QUOTE_SCALE;
-                BatchOp::Deposit { owner: owner(i), asset_id: 0, amount, blinding: [(step as u8); 32] }
+                BatchOp::Deposit {
+                    owner: owner(i),
+                    asset_id: 0,
+                    amount,
+                    blinding: [(step as u8); 32],
+                }
             }
             4 => {
                 let i = rng.below(N_OWNERS);
@@ -152,8 +173,20 @@ fn fuzz_state_root_is_deterministic() {
             let blind = [(i as u8) | 0x80; 32];
             let amount = 50_000 * QUOTE_SCALE;
             let cm = Note::new(o, 0, amount, blind).commitment::<Keccak256>();
-            s.apply_op(&BatchOp::Deposit { owner: o, asset_id: 0, amount, blinding: blind }).unwrap();
-            s.apply_op(&BatchOp::FundPosition { owner: o, market_id: 0, note_commitment: cm, spend_key: [i as u8; 32] }).unwrap();
+            s.apply_op(&BatchOp::Deposit {
+                owner: o,
+                asset_id: 0,
+                amount,
+                blinding: blind,
+            })
+            .unwrap();
+            s.apply_op(&BatchOp::FundPosition {
+                owner: o,
+                market_id: 0,
+                note_commitment: cm,
+                spend_key: [i as u8; 32],
+            })
+            .unwrap();
         }
         for _ in 0..20 {
             let a = rng.below(4);

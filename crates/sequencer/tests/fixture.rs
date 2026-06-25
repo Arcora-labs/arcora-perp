@@ -35,7 +35,10 @@ fn emit_receipt_fixture() {
     let oh = order.order_hash::<Keccak256>();
     let receipt = s.accept_order(&order, 1000);
     assert!(receipt.verify(), "round-trip recover must succeed");
-    assert_eq!(receipt.enclave_address, EnclaveIdentity::from_seed([7u8; 32], 1, [0u8; 32]).eth_address());
+    assert_eq!(
+        receipt.enclave_address,
+        EnclaveIdentity::from_seed([7u8; 32], 1, [0u8; 32]).eth_address()
+    );
 
     // Locked fixture (regenerate by reading the panic message if it changes).
     assert_eq!(

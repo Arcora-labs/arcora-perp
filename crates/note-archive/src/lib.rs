@@ -111,8 +111,10 @@ fn keystream(view_key: &Digest, commitment: &Digest, len: usize) -> Vec<u8> {
     let mut out = Vec::with_capacity(len);
     let mut counter = 0u64;
     while out.len() < len {
-        let block =
-            Keccak256::hash_words(Domain::Nullifier, &[*view_key, *commitment, word_u64(counter)]);
+        let block = Keccak256::hash_words(
+            Domain::Nullifier,
+            &[*view_key, *commitment, word_u64(counter)],
+        );
         out.extend_from_slice(&block);
         counter += 1;
     }
@@ -251,9 +253,17 @@ mod tests {
         let mut archive = NoteArchive::new();
 
         // a few deposits across batches for both wallets
-        archive.record(0, &alice.note(0, 10_000 * QUOTE_SCALE, [1; 32]), &alice.view_key);
+        archive.record(
+            0,
+            &alice.note(0, 10_000 * QUOTE_SCALE, [1; 32]),
+            &alice.view_key,
+        );
         archive.record(1, &bob.note(0, 5_000 * QUOTE_SCALE, [2; 32]), &bob.view_key);
-        archive.record(2, &alice.note(0, 7_000 * QUOTE_SCALE, [3; 32]), &alice.view_key);
+        archive.record(
+            2,
+            &alice.note(0, 7_000 * QUOTE_SCALE, [3; 32]),
+            &alice.view_key,
+        );
 
         // Alice, on a new device, derives her view-key from seed and scans.
         let recovered = archive.scan(&Wallet::from_seed(seeded(1)).view_key);

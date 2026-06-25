@@ -12,8 +12,8 @@ use perp_core::engine::BatchOp;
 use perp_core::fixed::{PRICE_SCALE, QUOTE_SCALE, SIZE_SCALE};
 use perp_core::hash::{word_u64, Keccak256};
 use perp_core::market::Market;
-use perp_core::order::{Order, Side, TimeInForce};
 use perp_core::oracle::OracleTranscript;
+use perp_core::order::{Order, Side, TimeInForce};
 use perp_core::Note;
 use sequencer::{EnclaveIdentity, Sequencer};
 use std::collections::BTreeSet;
@@ -43,13 +43,21 @@ fn oracle(price_usd: i128, now: u64) -> OracleTranscript {
 }
 
 fn rand_order(rng: &mut Rng, n_owners: u64, price: i128, nonce: u64) -> Order {
-    let side = if rng.below(2) == 0 { Side::Buy } else { Side::Sell };
+    let side = if rng.below(2) == 0 {
+        Side::Buy
+    } else {
+        Side::Sell
+    };
     Order {
         owner: word_u64(rng.below(n_owners)),
         market_id: 0,
         side,
         size: (1 + rng.below(15)) as i128 * (SIZE_SCALE / 10),
-        limit_price: if rng.below(4) == 0 { 0 } else { (price - 50 + rng.below(100) as i128) * PRICE_SCALE },
+        limit_price: if rng.below(4) == 0 {
+            0
+        } else {
+            (price - 50 + rng.below(100) as i128) * PRICE_SCALE
+        },
         tif: match rng.below(4) {
             0 => TimeInForce::Ioc,
             1 => TimeInForce::Fok,
@@ -69,25 +77,41 @@ fn assert_invariants(
     this_batch: &BTreeSet<[u8; 32]>,
     seed: u64,
 ) {
-    assert!(s.state.conservation_holds(), "seed={seed}: conservation broke at batch {}", sealed.batch_id);
+    assert!(
+        s.state.conservation_holds(),
+        "seed={seed}: conservation broke at batch {}",
+        sealed.batch_id
+    );
     let ordered: BTreeSet<_> = sealed.manifest.ordered.iter().copied().collect();
     let rejected: BTreeSet<_> = sealed.manifest.rejected.iter().map(|(h, _)| *h).collect();
     // disjointness is an absolute manifest invariant
-    assert!(ordered.is_disjoint(&rejected), "seed={seed}: ordered∩rejected non-empty");
+    assert!(
+        ordered.is_disjoint(&rejected),
+        "seed={seed}: ordered∩rejected non-empty"
+    );
     // `ordered` only ever contains THIS batch's submitted orders (not cross-batch
     // resting makers that happen to settle here)
-    assert!(ordered.is_subset(this_batch), "seed={seed}: ordered has a non-this-batch hash");
+    assert!(
+        ordered.is_subset(this_batch),
+        "seed={seed}: ordered has a non-this-batch hash"
+    );
     // a settled order that was submitted THIS batch must be in `ordered`
     for h in &sealed.settled_order_hashes {
         if this_batch.contains(h) {
-            assert!(ordered.contains(h), "seed={seed}: this-batch settled order not in ordered");
+            assert!(
+                ordered.contains(h),
+                "seed={seed}: this-batch settled order not in ordered"
+            );
         }
     }
     // a this-batch order that did NOT settle but was settlement-rejected must not
     // remain in `ordered`
     for (h, _) in &sealed.settlement_rejected {
         if this_batch.contains(h) && !sealed.settled_order_hashes.contains(h) {
-            assert!(!ordered.contains(h), "seed={seed}: unsettled reject still in ordered");
+            assert!(
+                !ordered.contains(h),
+                "seed={seed}: unsettled reject still in ordered"
+            );
         }
     }
 }
@@ -111,8 +135,20 @@ fn run_session(seed: u64, batches: usize) {
         blind[..8].copy_from_slice(&blind_ctr.to_le_bytes());
         let amt = 100_000 * QUOTE_SCALE;
         let cm = Note::new(o, 0, amt, blind).commitment::<Keccak256>();
-        s.apply(&BatchOp::Deposit { owner: o, asset_id: 0, amount: amt, blinding: blind }).unwrap();
-        s.apply(&BatchOp::FundPosition { owner: o, market_id: 0, note_commitment: cm, spend_key: [i as u8; 32] }).unwrap();
+        s.apply(&BatchOp::Deposit {
+            owner: o,
+            asset_id: 0,
+            amount: amt,
+            blinding: blind,
+        })
+        .unwrap();
+        s.apply(&BatchOp::FundPosition {
+            owner: o,
+            market_id: 0,
+            note_commitment: cm,
+            spend_key: [i as u8; 32],
+        })
+        .unwrap();
     }
 
     let mut nonce = 0u64;
@@ -147,7 +183,10 @@ fn run_session(seed: u64, batches: usize) {
         }
     }
     // honest flow: with reasonable inclusion timeout, no censorship violations
-    assert!(s.inclusion_violations(1_000).is_empty(), "seed={seed}: spurious inclusion violation");
+    assert!(
+        s.inclusion_violations(1_000).is_empty(),
+        "seed={seed}: spurious inclusion violation"
+    );
 }
 
 #[test]

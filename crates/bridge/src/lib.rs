@@ -187,12 +187,15 @@ mod tests {
         assert_eq!(rem, 0);
         let sum: i128 = buckets.iter().map(|(d, c)| d * *c as i128).sum();
         assert_eq!(sum, amount);
-        assert_eq!(buckets, vec![
-            (1_000 * QUOTE_SCALE, 4),
-            (100 * QUOTE_SCALE, 1),
-            (10 * QUOTE_SCALE, 3),
-            (QUOTE_SCALE, 7),
-        ]);
+        assert_eq!(
+            buckets,
+            vec![
+                (1_000 * QUOTE_SCALE, 4),
+                (100 * QUOTE_SCALE, 1),
+                (10 * QUOTE_SCALE, 3),
+                (QUOTE_SCALE, 7),
+            ]
+        );
     }
 
     #[test]
@@ -227,7 +230,10 @@ mod tests {
         let after = batch.public_denominations();
         let order_after: Vec<Digest> = batch.entries().iter().map(|e| e.commitment).collect();
         assert_eq!(before, after, "mixing preserves the denomination multiset");
-        assert_ne!(order_before, order_after, "mixing reorders entries (breaks linkage)");
+        assert_ne!(
+            order_before, order_after,
+            "mixing reorders entries (breaks linkage)"
+        );
     }
 
     #[test]

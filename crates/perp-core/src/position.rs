@@ -143,7 +143,8 @@ impl Position {
         if sim.apply_fill(delta_size, mark, funding_index_now).is_err() {
             return false;
         }
-        sim.check_initial_margin(market, mark, funding_index_now).is_ok()
+        sim.check_initial_margin(market, mark, funding_index_now)
+            .is_ok()
     }
 
     /// Check the position satisfies INITIAL margin (post-open / post-increase).
@@ -311,14 +312,20 @@ mod tests {
         let mark = 100_000 * PRICE_SCALE;
         // long 2 BTC. delta -3 → flip to short 1 BTC: opens a fresh opposite leg.
         let long2 = pos(2 * SIZE_SCALE, mark, 30_000 * QUOTE_SCALE);
-        assert!(long2.increases_exposure(-3 * SIZE_SCALE), "flip opens new exposure");
+        assert!(
+            long2.increases_exposure(-3 * SIZE_SCALE),
+            "flip opens new exposure"
+        );
         // a pure same-direction reduction does NOT
         assert!(!long2.increases_exposure(-SIZE_SCALE));
         // exact close does NOT
         assert!(!long2.increases_exposure(-2 * SIZE_SCALE));
         // the flip is margin-gated: with thin collateral it must fail pre-trade
         let thin = pos(2 * SIZE_SCALE, mark, 1_000 * QUOTE_SCALE);
-        assert!(!thin.fits_initial_after(&m, -3 * SIZE_SCALE, mark, 0), "flip is margin-checked");
+        assert!(
+            !thin.fits_initial_after(&m, -3 * SIZE_SCALE, mark, 0),
+            "flip is margin-checked"
+        );
     }
 
     #[test]
@@ -335,7 +342,10 @@ mod tests {
         empty.size = SIZE_SCALE;
         empty.entry_price = mark;
         empty.collateral = 1_000 * QUOTE_SCALE; // thin
-        assert!(empty.fits_initial_after(&m, -SIZE_SCALE / 2, mark, 0), "reducing always allowed");
+        assert!(
+            empty.fits_initial_after(&m, -SIZE_SCALE / 2, mark, 0),
+            "reducing always allowed"
+        );
     }
 
     #[test]

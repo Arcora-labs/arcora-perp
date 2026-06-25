@@ -14,8 +14,8 @@ use perp_core::engine::BatchOp;
 use perp_core::fixed::{PRICE_SCALE, QUOTE_SCALE, SIZE_SCALE};
 use perp_core::hash::Keccak256;
 use perp_core::market::Market;
-use perp_core::order::{Finality, Order, Side, TimeInForce};
 use perp_core::oracle::OracleTranscript;
+use perp_core::order::{Finality, Order, Side, TimeInForce};
 use perp_core::Note;
 use prover::{AttestedProver, CommitmentProver, PublicInputs, SealedWitness, Verifier};
 use sequencer::{EnclaveIdentity, Sequencer};
@@ -104,12 +104,21 @@ fn deposit_match_settle_prove_recover() {
     assert_eq!(sealed.prev_state_root, prev_root);
     assert!(sealed.settlement_rejected.is_empty(), "both legs settle");
     assert_eq!(sealed.receipts.len(), 2);
-    assert!(sealed.receipts.iter().all(|r| r.verify()), "receipts verify (secp256k1)");
-    assert!(node.state.conservation_holds(), "value conserved across the batch");
+    assert!(
+        sealed.receipts.iter().all(|r| r.verify()),
+        "receipts verify (secp256k1)"
+    );
+    assert!(
+        node.state.conservation_holds(),
+        "value conserved across the batch"
+    );
 
     // positions opened on opposite sides
     assert_eq!(node.state.position(&bob.owner, 0).unwrap().size, SIZE_SCALE);
-    assert_eq!(node.state.position(&alice.owner, 0).unwrap().size, -SIZE_SCALE);
+    assert_eq!(
+        node.state.position(&alice.owner, 0).unwrap().size,
+        -SIZE_SCALE
+    );
 
     // both orders are MATCHED (soft) but not yet withdrawable (§3)
     let taker_hash = taker.order_hash::<Keccak256>();
@@ -132,7 +141,10 @@ fn deposit_match_settle_prove_recover() {
     let proof = prover
         .prove_sealed(&SealedWitness::seal(witness, MEASUREMENT), &public)
         .expect("attested prover produces a proof");
-    assert!(CommitmentProver::new(MEASUREMENT).verify(&proof), "proof verifies");
+    assert!(
+        CommitmentProver::new(MEASUREMENT).verify(&proof),
+        "proof verifies"
+    );
     assert_eq!(proof.public, public, "proof binds the sealed batch's roots");
 
     // a non-attested prover (public proving network) cannot open the witness
@@ -154,7 +166,10 @@ fn deposit_match_settle_prove_recover() {
     assert_eq!(recovered.len(), 1, "alice recovers her deposited note");
     assert_eq!(recovered[0].note.amount, 20_000 * QUOTE_SCALE);
     // bob's note is not readable with alice's view-key
-    assert!(archive.scan(&Wallet::from_seed([1u8; 32]).view_key).iter().all(|r| r.note.owner == alice.owner));
+    assert!(archive
+        .scan(&Wallet::from_seed([1u8; 32]).view_key)
+        .iter()
+        .all(|r| r.note.owner == alice.owner));
 }
 
 #[test]
@@ -195,5 +210,8 @@ fn close_only_blocks_open_but_allows_exit() {
     // positions closed back to zero
     assert_eq!(node.state.position(&bob.owner, 0).unwrap().size, 0);
     assert_eq!(node.state.position(&alice.owner, 0).unwrap().size, 0);
-    assert!(sealed.settlement_rejected.is_empty(), "reducing fills settle in close-only");
+    assert!(
+        sealed.settlement_rejected.is_empty(),
+        "reducing fills settle in close-only"
+    );
 }

@@ -26,8 +26,15 @@ fn fuzz_decompose_is_value_exact() {
         let amount = (rng.next() % (1_200_000 * QUOTE_SCALE as u64)) as i128;
         let (buckets, remainder) = decompose(amount);
         let sum: i128 = buckets.iter().map(|(d, c)| d * *c as i128).sum();
-        assert_eq!(sum + remainder, amount, "buckets + remainder must equal amount");
-        assert!(remainder >= 0 && remainder < unit(), "remainder in [0, unit)");
+        assert_eq!(
+            sum + remainder,
+            amount,
+            "buckets + remainder must equal amount"
+        );
+        assert!(
+            remainder >= 0 && remainder < unit(),
+            "remainder in [0, unit)"
+        );
         for (d, c) in &buckets {
             assert!(denoms.contains(d), "bucket uses a valid denomination");
             assert!(*c > 0, "bucket count positive");
@@ -41,7 +48,10 @@ fn fuzz_negative_amount_is_inert() {
     for _ in 0..1000 {
         let amount = -((rng.next() % 1_000_000) as i128) - 1;
         let (buckets, remainder) = decompose(amount);
-        assert!(buckets.is_empty() && remainder == 0, "negatives bridge nothing");
+        assert!(
+            buckets.is_empty() && remainder == 0,
+            "negatives bridge nothing"
+        );
     }
 }
 
@@ -53,7 +63,12 @@ fn fuzz_mix_preserves_multiset() {
         let k = 1 + (rng.next() % 8) as usize;
         for i in 0..k {
             let amt = (1 + rng.next() % 9999) as i128 * QUOTE_SCALE;
-            batch.add_transfer(Direction::Deposit, [(i as u8); 32], amt, [(round as u8); 32]);
+            batch.add_transfer(
+                Direction::Deposit,
+                [(i as u8); 32],
+                amt,
+                [(round as u8); 32],
+            );
         }
         let mut before: Vec<i128> = batch.public_denominations();
         batch.mix(&[(round as u8).wrapping_add(1); 32]);

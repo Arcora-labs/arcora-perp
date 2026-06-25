@@ -26,8 +26,8 @@ use perp_core::engine::BatchOp;
 use perp_core::hash::{Digest, Keccak256};
 use perp_core::market::{Market, MarketId};
 use perp_core::note::PubKey;
-use perp_core::order::{BatchManifest, Finality, Order, Receipt, RejectReason};
 use perp_core::oracle::OracleTranscript;
+use perp_core::order::{BatchManifest, Finality, Order, Receipt, RejectReason};
 use perp_core::position::Position;
 use perp_core::{DefaultState, EngineError};
 
@@ -245,7 +245,9 @@ impl Sequencer {
         let mut s = [0u8; 32];
         r.copy_from_slice(&sig_bytes[..32]);
         s.copy_from_slice(&sig_bytes[32..]);
-        self.finality.entry(order_hash).or_insert(Finality::Accepted);
+        self.finality
+            .entry(order_hash)
+            .or_insert(Finality::Accepted);
         SignedReceipt {
             receipt,
             r,
@@ -457,8 +459,7 @@ impl Sequencer {
         let settled_set: std::collections::BTreeSet<Digest> =
             settled_order_hashes.iter().copied().collect();
         let mut failed_unsettled: Vec<(Digest, RejectReason)> = Vec::new();
-        let mut seen_failed: std::collections::BTreeSet<Digest> =
-            std::collections::BTreeSet::new();
+        let mut seen_failed: std::collections::BTreeSet<Digest> = std::collections::BTreeSet::new();
         for (oh, reason) in &settlement_rejected {
             if !settled_set.contains(oh) && seen_failed.insert(*oh) {
                 failed_unsettled.push((*oh, *reason));

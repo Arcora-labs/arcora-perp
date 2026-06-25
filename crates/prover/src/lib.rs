@@ -300,8 +300,18 @@ mod tests {
         let amount = 10_000 * QUOTE_SCALE;
         let cm = Note::new(owner, 0, amount, blind).commitment::<Keccak256>();
         let ops = vec![
-            BatchOp::Deposit { owner, asset_id: 0, amount, blinding: blind },
-            BatchOp::FundPosition { owner, market_id: 0, note_commitment: cm, spend_key: [1; 32] },
+            BatchOp::Deposit {
+                owner,
+                asset_id: 0,
+                amount,
+                blinding: blind,
+            },
+            BatchOp::FundPosition {
+                owner,
+                market_id: 0,
+                note_commitment: cm,
+                spend_key: [1; 32],
+            },
         ];
         (s, ops)
     }
@@ -342,7 +352,10 @@ mod tests {
         // the proof bytes no longer match the (tampered) public commitment that a
         // real verifier would recompute; here we recompute and compare.
         let expected = CommitmentProver::new(M).prove(&proof.public, b"w");
-        assert_ne!(proof.proof_bytes, expected, "tampered public must not match");
+        assert_ne!(
+            proof.proof_bytes, expected,
+            "tampered public must not match"
+        );
     }
 
     #[test]
@@ -367,7 +380,13 @@ mod tests {
         // round-trip through the correct prover recovers nothing observable in
         // the proof bytes (proof is a 32-byte commitment, not the witness)
         let prover = AttestedProver::new(CommitmentProver::new(M));
-        let public = PublicInputs { prev_state_root: [0; 32], batch_manifest_hash: [0; 32], new_state_root: [1; 32], ordered_root: [0; 32], withdrawals_root: [0; 32] };
+        let public = PublicInputs {
+            prev_state_root: [0; 32],
+            batch_manifest_hash: [0; 32],
+            new_state_root: [1; 32],
+            ordered_root: [0; 32],
+            withdrawals_root: [0; 32],
+        };
         let proof = prover.prove_sealed(&sealed, &public).unwrap();
         assert_eq!(proof.proof_bytes.len(), 32);
     }

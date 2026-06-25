@@ -63,7 +63,10 @@ fn fuzz_recovery_is_exact_and_isolated() {
             );
             // every recovered note is actually owned by this wallet
             for r in &recovered {
-                assert_eq!(r.note.owner, w.owner, "seed={seed}: recovered a foreign note");
+                assert_eq!(
+                    r.note.owner, w.owner,
+                    "seed={seed}: recovered a foreign note"
+                );
             }
         }
     }
