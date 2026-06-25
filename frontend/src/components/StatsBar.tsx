@@ -18,8 +18,10 @@ export function StatsBar() {
   // funding rate (mock): premium of mark over baseline, clamped
   const fundingPct = Math.max(-5, Math.min(5, changePct / 10));
 
-  // open interest for THIS market = Σ |size| · mark over its positions
-  const oi = state.account.positions
+  // YOUR notional in this market = Σ |size| · mark over your positions. (True
+  // market-wide open interest needs every trader's positions, which a single-user
+  // mock doesn't have — so label this honestly as the user's own exposure.)
+  const myNotional = state.account.positions
     .filter((p) => p.marketId === state.selectedMarketId)
     .reduce((acc, p) => {
       const abs = p.size < 0n ? -p.size : p.size;
@@ -43,7 +45,7 @@ export function StatsBar() {
       <Stat label="24h" value={`${up ? "+" : ""}${changePct.toFixed(2)}%`} tone={up ? "pos" : "neg"} />
       <Stat label="Index" value={formatPrice(state.oracle.price)} />
       <Stat label="Funding / 1h" value={`${fundingPct >= 0 ? "+" : ""}${fundingPct.toFixed(3)}%`} tone={fundingPct >= 0 ? "pos" : "neg"} />
-      <Stat label="Open interest" value={formatUsd(oi, 0)} />
+      <Stat label="Your notional" value={formatUsd(myNotional, 0)} />
       <Stat label="Max leverage" value={`${state.market.maxLeverage}×`} />
     </div>
   );
