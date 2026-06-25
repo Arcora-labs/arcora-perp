@@ -50,4 +50,16 @@ describe("App smoke", () => {
     fireEvent.click(screen.getByRole("button", { name: /^trade$/i }));
     expect(screen.getByRole("button", { name: /buy btc\/usdc/i })).toBeTruthy();
   });
+
+  it("click-to-price: clicking an order-book level fills the ticket's limit price", () => {
+    render(<App />);
+    const limit = screen.getByLabelText(/limit price/i) as HTMLInputElement;
+    expect(limit.value).toBe(""); // starts as a market order (blank)
+    // each book level is a button titled "Use <price> as limit price"
+    const levels = screen.getAllByTitle(/as limit price/i);
+    expect(levels.length).toBeGreaterThan(0);
+    fireEvent.click(levels[0]);
+    // the ticket adopted the clicked price (cross-component via store.prefillPrice)
+    expect(limit.value).not.toBe("");
+  });
 });
