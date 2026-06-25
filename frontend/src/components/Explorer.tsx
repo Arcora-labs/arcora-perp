@@ -1,3 +1,4 @@
+import { Fragment, useState } from "react";
 import { useStore } from "../store";
 import { formatPrice, formatSignedSize, shortHash } from "../domain/format";
 import { FinalityBadge } from "./FinalityTracker";
@@ -13,6 +14,8 @@ export function Explorer() {
   const batches = state.batches;
   const settled = orders.filter((o) => o.finality === "SETTLED").length;
   const symbolOf = (id: number) => state.markets.find((m) => m.id === id)?.symbol ?? `#${id}`;
+  // batch drill-down: which batch's orders are expanded (null = none)
+  const [openBatch, setOpenBatch] = useState<number | null>(null);
 
   return (
     <div className="col">
@@ -64,21 +67,51 @@ export function Explorer() {
               </tr>
             </thead>
             <tbody>
-              {batches.map((b) => (
-                <tr key={b.batchId}>
-                  <td className="mono">#{b.batchId}</td>
-                  <td>{b.orderCount}</td>
-                  <td className="mono" title={b.manifestHash}>
-                    {shortHash(b.manifestHash)}
-                  </td>
-                  <td className="mono" title={b.orderedRoot}>
-                    {shortHash(b.orderedRoot)}
-                  </td>
-                  <td>
-                    <FinalityBadge finality={b.finality} />
-                  </td>
-                </tr>
-              ))}
+              {batches.map((b) => {
+                const open = openBatch === b.batchId;
+                const batchOrders = orders.filter((o) => o.receipt.batchIdHint === b.batchId);
+                return (
+                  <Fragment key={b.batchId}>
+                    <tr
+                      onClick={() => setOpenBatch(open ? null : b.batchId)}
+                      style={{ cursor: "pointer" }}
+                      aria-expanded={open}
+                      title="Click to expand this batch's orders"
+                    >
+                      <td className="mono">
+                        {open ? "▾" : "▸"} #{b.batchId}
+                      </td>
+                      <td>{b.orderCount}</td>
+                      <td className="mono" title={b.manifestHash}>
+                        {shortHash(b.manifestHash)}
+                      </td>
+                      <td className="mono" title={b.orderedRoot}>
+                        {shortHash(b.orderedRoot)}
+                      </td>
+                      <td>
+                        <FinalityBadge finality={b.finality} />
+                      </td>
+                    </tr>
+                    {open &&
+                      batchOrders.map((o) => (
+                        <tr key={o.id} className="explorer__suborder">
+                          <td className="mono" colSpan={2}>
+                            ↳ #{o.receipt.seqNo} {symbolOf(o.input.marketId)}
+                          </td>
+                          <td className="mono" title={o.receipt.orderHash} colSpan={2}>
+                            {shortHash(o.receipt.orderHash)} ·{" "}
+                            <span className={o.input.side === "Buy" ? "pos" : "neg"}>
+                              {formatSignedSize(o.input.side === "Buy" ? o.input.size : -o.input.size)}
+                            </span>
+                          </td>
+                          <td>
+                            <FinalityBadge finality={o.finality} />
+                          </td>
+                        </tr>
+                      ))}
+                  </Fragment>
+                );
+              })}
             </tbody>
           </table>
         )}
