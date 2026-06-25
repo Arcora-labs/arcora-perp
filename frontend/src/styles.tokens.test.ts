@@ -2,16 +2,16 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
+// Read the stylesheet source directly off disk. (Importing `./styles.css?raw` is
+// stubbed to '' by vitest's CSS handling, so fs is the reliable path; tsc resolves
+// node:fs/node:url via src/types/node-builtins.d.ts, no @types/node needed.)
+const css = readFileSync(fileURLToPath(new URL("./styles.css", import.meta.url)), "utf8");
+
 // Guard the "reskin = token swap" invariant (see frontend/README.md). Every brand
 // and semantic colour must live ONLY in the `:root` token block; everywhere else,
 // colours must be referenced as `var(--token)` or derived with `color-mix(... var(--token) ...)`.
 // A hard-coded copy outside `:root` would silently NOT follow a token override,
 // breaking the design handoff — this test fails the moment one is reintroduced.
-
-const css = readFileSync(
-  fileURLToPath(new URL("./styles.css", import.meta.url)),
-  "utf8",
-);
 
 /** The stylesheet with the single `:root { ... }` token block removed. */
 function bodyOutsideRoot(): string {
