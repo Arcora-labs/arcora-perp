@@ -276,3 +276,87 @@ fn fuzz_oracle_validate_is_total_and_sound() {
         }
     }
 }
+
+/// Merkle tree property fuzzer (validates the P5 leaf-domain fix at scale).
+///
+/// Appends random leaves to random-depth trees and asserts: (1) every appended
+/// leaf proves+verifies against the live root; (2) a wrong leaf, a tampered
+/// sibling, or a re-pointed index all FAIL; (3) the inner-node value of any pair
+/// is rejected when offered as a leaf (the second-preimage property the leaf
+/// domain enforces). Determinism is also checked: same leaves ⇒ same root.
+#[test]
+fn fuzz_merkle_proofs_sound_and_second_preimage_safe() {
+    use perp_core::hash::{Domain, Hasher};
+    use perp_core::merkle::{MerkleProof, MerkleTree};
+
+    let mut rng = Rng(0x5EED);
+    for _ in 0..400 {
+        let depth = (rng.below(6) + 2) as u8; // depth 2..=7 (cap 4..=128)
+        let cap = 1u64 << depth;
+        let n = 1 + rng.below(cap.min(40)); // at least one leaf
+        let mut t: MerkleTree<Keccak256> = MerkleTree::new(depth);
+        let mut leaves: Vec<[u8; 32]> = Vec::new();
+        for _ in 0..n {
+            let leaf = word_u64(rng.next());
+            if t.append(leaf).is_ok() {
+                leaves.push(leaf);
+            }
+        }
+        let root = t.root();
+        // determinism: rebuilding the same leaves gives the same root
+        let mut t2: MerkleTree<Keccak256> = MerkleTree::new(depth);
+        for l in &leaves {
+            let _ = t2.append(*l);
+        }
+        assert_eq!(root, t2.root(), "same leaves ⇒ same root");
+
+        for (i, leaf) in leaves.iter().enumerate() {
+            let p = t.prove(i as u64).unwrap();
+            assert!(
+                MerkleTree::<Keccak256>::verify(&root, leaf, &p),
+                "leaf verifies"
+            );
+            // wrong leaf rejected
+            assert!(!MerkleTree::<Keccak256>::verify(
+                &root,
+                &word_u64(0xDEAD_0000 + i as u64),
+                &p
+            ));
+            // tampered sibling rejected (if any siblings)
+            if !p.siblings.is_empty() {
+                let mut bad = p.clone();
+                bad.siblings[0] = word_u64(0xBAD);
+                assert!(
+                    !MerkleTree::<Keccak256>::verify(&root, leaf, &bad),
+                    "tampered rejected"
+                );
+            }
+            // re-pointed index rejected (unless it happens to collide, vanishingly rare)
+            if leaves.len() > 1 {
+                let mut moved = p.clone();
+                moved.leaf_index ^= 1;
+                assert!(
+                    !MerkleTree::<Keccak256>::verify(&root, leaf, &moved),
+                    "index-bound"
+                );
+            }
+        }
+        // second-preimage: the inner node over leaves 0,1 must not pass as a leaf
+        if leaves.len() >= 2 {
+            let l0 = Keccak256::hash_words(Domain::MerkleLeaf, &[leaves[0]]);
+            let l1 = Keccak256::hash_words(Domain::MerkleLeaf, &[leaves[1]]);
+            let inner = Keccak256::compress(Domain::MerkleNode, &l0, &l1);
+            let p0 = t.prove(0).unwrap();
+            if p0.siblings.len() >= 2 {
+                let forged = MerkleProof {
+                    leaf_index: 0,
+                    siblings: p0.siblings[1..].to_vec(),
+                };
+                assert!(
+                    !MerkleTree::<Keccak256>::verify(&root, &inner, &forged),
+                    "inner node rejected as leaf"
+                );
+            }
+        }
+    }
+}
