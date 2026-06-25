@@ -83,6 +83,11 @@ pub enum Domain {
     /// never drawn from the same preimage structure as note nullifiers
     /// (`Nullifier`) or any other purpose. Not a cross-layer-committed value.
     ShamirShare = 15,
+    /// Confidential-prover witness commitment (§10b). A dedicated tag so the
+    /// hiding commitment to a private witness can never share a preimage structure
+    /// with a batch-manifest hash (`BatchManifest`) — different purposes. Internal
+    /// to the proving stand-in; not a cross-layer-committed value.
+    WitnessCommitment = 16,
 }
 
 /// The default Phase 0 hasher: Keccak-256 with a 1-byte domain prefix.
@@ -158,6 +163,7 @@ mod tests {
             KeyDerivation,
             BridgeCommitment,
             ShamirShare,
+            WitnessCommitment,
         ];
         let w = [word_u64(42)];
         for i in 0..all.len() {

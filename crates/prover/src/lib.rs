@@ -144,14 +144,15 @@ impl CommitmentProver {
     }
 
     fn witness_commitment(witness: &[u8]) -> Digest {
-        // hash the witness in 32-byte chunks under a distinct role
+        // hash the witness in 32-byte chunks under its OWN domain — a witness
+        // commitment is not a batch-manifest hash, so it must not share that tag.
         let mut words = Vec::new();
         for chunk in witness.chunks(32) {
             let mut w = [0u8; 32];
             w[..chunk.len()].copy_from_slice(chunk);
             words.push(w);
         }
-        Keccak256::hash_words(Domain::BatchManifest, &words)
+        Keccak256::hash_words(Domain::WitnessCommitment, &words)
     }
 }
 
