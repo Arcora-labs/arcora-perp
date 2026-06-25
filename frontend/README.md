@@ -38,8 +38,9 @@ A reskin touches none of this, so the suite stays green across design changes.
 | Domain types + fixed-point scales | `src/domain/types.ts` | mirrors `perp-core` |
 | Formatting/parsing (no floats) | `src/domain/format.ts` | §12 |
 | Pre-trade risk math (notional/margin/leverage/liq/buying-power/equity) | `src/domain/risk.ts` | §12 |
+| Live oracle feed (Crypto.com index, graceful fallback) | `src/api/oracleFeed.ts` | §8 |
 | Client interface | `src/api/client.ts` | swap mock → real |
-| Mock client (finality progression, close-only, recovery) | `src/api/mockClient.ts` | §2, §3, §6, §7 |
+| Mock client (5 USDC markets, live oracle, finality, close-only, recovery) | `src/api/mockClient.ts` | §2, §3, §6, §7, §8 |
 | Finality legend + per-order progress | `src/components/FinalityTracker.tsx` | §3 |
 | Order ticket (Buy/Sell, TIF, reduce-only, quick-size, live risk preview, click-to-price) | `src/components/OrderTicket.tsx` | §1, §4 |
 | Live index price chart (dependency-free SVG) | `src/components/PriceChart.tsx` | §8 |
