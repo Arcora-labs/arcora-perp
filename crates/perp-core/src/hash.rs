@@ -68,6 +68,11 @@ pub enum Domain {
     /// measurement-bound seal stream is separated from oracle-transcript hashing.
     /// Not a cross-layer-committed value.
     WitnessSeal = 12,
+    /// Wallet key-derivation from a seed (§7 recovery root): owner / view-key /
+    /// spend-key. A dedicated tag so the most secret derivation in the system can
+    /// never share a preimage structure with state-root binding (`StateRoot`) or
+    /// any other hash purpose — one-domain-one-purpose. Not cross-layer-committed.
+    KeyDerivation = 13,
 }
 
 /// The default Phase 0 hasher: Keccak-256 with a 1-byte domain prefix.
@@ -140,6 +145,7 @@ mod tests {
             NoteKeystream,
             MixShuffle,
             WitnessSeal,
+            KeyDerivation,
         ];
         let w = [word_u64(42)];
         for i in 0..all.len() {

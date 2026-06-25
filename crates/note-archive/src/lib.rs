@@ -70,7 +70,9 @@ impl Wallet {
 }
 
 fn derive(seed: &[u8; 32], label: u64) -> Digest {
-    Keccak256::hash_words(Domain::StateRoot, &[*seed, word_u64(label)])
+    // §7 recovery root: derive owner / view / spend keys under a DEDICATED domain,
+    // never the state-root tag — one-domain-one-purpose (see Domain::KeyDerivation).
+    Keccak256::hash_words(Domain::KeyDerivation, &[*seed, word_u64(label)])
 }
 
 /// 88-byte canonical note serialization: owner(32) ‖ asset_id(8 LE) ‖
@@ -234,6 +236,28 @@ mod tests {
         let note = w.note(0, 12_345 * QUOTE_SCALE, [7u8; 32]);
         let bytes = serialize_note(&note);
         assert_eq!(deserialize_note(&bytes), note);
+    }
+
+    #[test]
+    fn key_derivation_is_domain_separated_from_state_root() {
+        // The §7 recovery root must derive under Domain::KeyDerivation, NOT the
+        // state-root tag (one-domain-one-purpose). If derive() ever reverted to
+        // Domain::StateRoot, the spend-key here would equal the StateRoot-domain
+        // hash of the same preimage — this pins the separation.
+        let seed = seeded(9);
+        let w = Wallet::from_seed(seed);
+        let under_state_root =
+            Keccak256::hash_words(Domain::StateRoot, &[seed, word_u64(LABEL_SPEND)]);
+        assert_ne!(
+            w.spend_key, under_state_root,
+            "spend-key must not be derivable under the state-root domain"
+        );
+        let under_kdf =
+            Keccak256::hash_words(Domain::KeyDerivation, &[seed, word_u64(LABEL_SPEND)]);
+        assert_eq!(
+            w.spend_key, under_kdf,
+            "spend-key uses the KeyDerivation domain"
+        );
     }
 
     #[test]
