@@ -255,6 +255,64 @@ describe("MockDarkPerpClient collateral accounting", () => {
   });
 });
 
+describe("MockDarkPerpClient collateral conservation through a journey", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  // The frontend analog of perp-core's conservation_holds: across an arbitrary
+  // sequence of ops, free balance + locked margin must only change by deposits,
+  // withdrawals, and REALIZED PnL — never leak. We drive fills at explicit limit
+  // prices so realized PnL is deterministic regardless of the oracle walk.
+  it("free balance + locked margin is conserved across deposit/open/reduce/flip/close", async () => {
+    const c = new MockDarkPerpClient();
+    const lockedMargin = () =>
+      c.getState().account.positions.reduce((s, p) => s + p.collateral, 0n);
+    // capital(account) = withdrawable free balance + margin locked in positions.
+    const capital = () => c.getState().account.settledBalance + lockedMargin();
+
+    let expected = capital(); // starts at the seed balance, no positions
+
+    const fill = async (side: "Buy" | "Sell", size: bigint, px: bigint, reduceOnly = false) => {
+      await c.placeOrder({ marketId: 0, side, size, limitPrice: px, tif: "Gtc", reduceOnly });
+      await vi.advanceTimersByTimeAsync(MATCH_MS);
+    };
+
+    // deposit moves capital up by exactly the deposit
+    await c.deposit(5_000n * QUOTE_SCALE);
+    expected += 5_000n * QUOTE_SCALE;
+    expect(capital()).toBe(expected);
+
+    // open long 1 @ $100k — capital unchanged (margin just moves free→locked)
+    await fill("Buy", SIZE_SCALE, 100_000n * PRICE_SCALE);
+    expect(capital()).toBe(expected);
+
+    // add 1 more @ $100k (increase) — still no realized PnL, capital unchanged
+    await fill("Buy", SIZE_SCALE, 100_000n * PRICE_SCALE);
+    expect(capital()).toBe(expected);
+
+    // partial reduce 0.5 @ $120k — realizes +$10k on the closed 0.5 (entry 100k)
+    await fill("Sell", SIZE_SCALE / 2n, 120_000n * PRICE_SCALE, true);
+    expected += 10_000n * QUOTE_SCALE;
+    expect(capital()).toBe(expected);
+
+    // flip: sell 2.5 @ $100k against the long 1.5 → realizes 1.5×(100k−100k)=0, opens short 1
+    await fill("Sell", (SIZE_SCALE * 5n) / 2n, 100_000n * PRICE_SCALE);
+    expect(pos(c)!.size).toBe(-SIZE_SCALE);
+    expect(capital()).toBe(expected);
+
+    // close the short 1 @ $100k — realizes 0, position gone
+    await fill("Buy", SIZE_SCALE, 100_000n * PRICE_SCALE, true);
+    expect(pos(c)).toBeUndefined();
+    expect(lockedMargin()).toBe(0n);
+    expect(capital()).toBe(expected);
+
+    // withdraw moves capital down by exactly the withdrawal
+    await c.requestWithdrawal(1_000n * QUOTE_SCALE);
+    expected -= 1_000n * QUOTE_SCALE;
+    expect(capital()).toBe(expected);
+  });
+});
+
 describe("MockDarkPerpClient cancelOrder", () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
