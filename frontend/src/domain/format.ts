@@ -57,3 +57,10 @@ export function shortHash(h: string): string {
   if (h.length <= 12) return h;
   return `${h.slice(0, 6)}…${h.slice(-4)}`;
 }
+
+/// Base asset of a market symbol ("BTC/USDC" → "BTC"). Used to label size inputs
+/// per-market so a multi-market UI never shows the wrong unit (e.g. "Size (BTC)"
+/// while ETH is selected). Falls back to the whole symbol if there is no "/".
+export function baseAsset(symbol: string): string {
+  return symbol.split("/")[0] || symbol;
+}

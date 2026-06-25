@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useStore } from "../store";
-import { formatPrice, formatSize, formatUsd, parsePrice, parseSize } from "../domain/format";
+import { baseAsset, formatPrice, formatSize, formatUsd, parsePrice, parseSize } from "../domain/format";
 import { maxOrderSize, orderRisk } from "../domain/risk";
 import type { OrderInput, Side, TimeInForce } from "../domain/types";
 
@@ -112,7 +112,7 @@ export function OrderTicket() {
       </div>
 
       <label className="field">
-        <span className="field__label">Size (BTC)</span>
+        <span className="field__label">Size ({baseAsset(state.market.symbol)})</span>
         <input className="field__input" value={sizeStr} onChange={(e) => setSizeStr(e.target.value)} inputMode="decimal" />
       </label>
 

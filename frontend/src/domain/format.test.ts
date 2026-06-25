@@ -9,6 +9,7 @@ import {
   parseUsd,
   parseScaled,
   shortHash,
+  baseAsset,
 } from "./format";
 import { PRICE_SCALE, QUOTE_SCALE, SIZE_SCALE } from "./types";
 
@@ -86,5 +87,20 @@ describe("shortHash", () => {
   it("abbreviates long hashes and leaves short ones intact", () => {
     expect(shortHash("0x1234567890abcdef")).toBe("0x1234…cdef");
     expect(shortHash("0xabcd")).toBe("0xabcd");
+  });
+});
+
+describe("baseAsset", () => {
+  it("extracts the base of each listed market symbol", () => {
+    expect(baseAsset("BTC/USDC")).toBe("BTC");
+    expect(baseAsset("ETH/USDC")).toBe("ETH");
+    expect(baseAsset("SOL/USDC")).toBe("SOL");
+    expect(baseAsset("HYPE/USDC")).toBe("HYPE");
+    expect(baseAsset("LIT/USDC")).toBe("LIT");
+  });
+
+  it("falls back to the whole symbol when there is no quote separator", () => {
+    expect(baseAsset("BTC")).toBe("BTC");
+    expect(baseAsset("")).toBe("");
   });
 });
