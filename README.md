@@ -100,7 +100,7 @@ inclusion challenges, forced exit, and view-key recovery from the note archive.
 
 The protocol is built bottom-up across the [roadmap](docs/ROADMAP.md) phases — all
 six phases now have implemented deliverables. Tested end-to-end: **139 Rust + 31
-Solidity + 79 frontend tests** (green in debug *and* release) — including a
+Solidity + 81 frontend tests** (green in debug *and* release) — including a
 CI-locked node-lifecycle test driving the full funding → liquidation →
 conservation loop, adversarial oracle-adapter tests proving a manipulated
 external feed is rejected by the §8 gate rather than silently marked, a

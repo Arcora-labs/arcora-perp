@@ -14,8 +14,19 @@ import { MarketSelector } from "./components/MarketSelector";
 import { PriceChart } from "./components/PriceChart";
 import { ActivityFeed } from "./components/ActivityFeed";
 import { ApiExplorer } from "./components/ApiExplorer";
+import { Explorer } from "./components/Explorer";
+import { HealthPanel } from "./components/HealthPanel";
 
-type Tab = "trade" | "account" | "recover" | "api";
+type Tab = "trade" | "account" | "recover" | "explorer" | "health" | "api";
+
+const TAB_LABEL: Record<Tab, string> = {
+  trade: "Trade",
+  account: "Account",
+  recover: "Recover",
+  explorer: "Explorer",
+  health: "Health",
+  api: "API",
+};
 
 export default function App() {
   const [tab, setTab] = useState<Tab>("trade");
@@ -30,14 +41,14 @@ export default function App() {
             <span className="brand__tag">fast · dark · trustless</span>
           </div>
           <nav className="app__nav">
-            {(["trade", "account", "recover", "api"] as Tab[]).map((t) => (
+            {(["trade", "account", "recover", "explorer", "health", "api"] as Tab[]).map((t) => (
               <button
                 key={t}
                 className={`app__navlink ${tab === t ? "is-active" : ""}`}
                 aria-current={tab === t ? "page" : undefined}
                 onClick={() => setTab(t)}
               >
-                {t === "api" ? "API" : t[0].toUpperCase() + t.slice(1)}
+                {TAB_LABEL[t]}
               </button>
             ))}
           </nav>
@@ -83,6 +94,18 @@ export default function App() {
           {tab === "recover" && (
             <section className="grid grid--single">
               <RecoveryPanel />
+            </section>
+          )}
+
+          {tab === "explorer" && (
+            <section className="grid grid--single">
+              <Explorer />
+            </section>
+          )}
+
+          {tab === "health" && (
+            <section className="grid grid--single">
+              <HealthPanel />
             </section>
           )}
 

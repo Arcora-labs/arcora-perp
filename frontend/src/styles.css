@@ -152,6 +152,19 @@ body {
   color: var(--danger); font-size: 12px; white-space: pre-wrap; word-break: break-word;
 }
 
+/* ============================ health rows ================================ */
+.health-row {
+  display: flex; align-items: center; gap: 10px; padding: 9px 0;
+  border-bottom: 1px solid var(--border); font-size: 13px;
+}
+.health-row:last-child { border-bottom: none; }
+.health-row__dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+.health-row__dot--ok { background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 18%, transparent); }
+.health-row__dot--warn { background: var(--warn); box-shadow: 0 0 0 3px color-mix(in srgb, var(--warn) 18%, transparent); }
+.health-row__dot--danger { background: var(--danger); box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 18%, transparent); }
+.health-row__label { color: var(--text); }
+.health-row__detail { margin-left: auto; color: var(--text-dim); font-family: var(--mono); font-size: 12px; }
+
 /* ============================ api explorer =============================== */
 .api-explorer__out {
   margin: 0; padding: 12px; border-radius: var(--radius-sm);
