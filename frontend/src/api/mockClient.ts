@@ -68,9 +68,54 @@ function initialState(): ClientState {
 export class MockDarkPerpClient implements DarkPerpClient {
   private state: ClientState = initialState();
   private subs = new Set<(s: ClientState) => void>();
+  private tick = 0;
+
+  constructor() {
+    // make the market feel alive: random-walk the index price and refresh the
+    // book + position marks on a timer.
+    if (typeof globalThis.setInterval === "function") {
+      globalThis.setInterval(() => this.priceTick(), 1500);
+    }
+  }
 
   getState(): ClientState {
     return this.state;
+  }
+
+  private priceTick() {
+    this.tick++;
+    // ±0.08% random walk, with a gentle mean-reversion toward $100k
+    const p = this.state.oracle.price;
+    const drift = (100_000n * PRICE_SCALE - p) / 400n;
+    const noise = BigInt(Math.floor((Math.random() - 0.5) * 160)) * (PRICE_SCALE / 1000n);
+    const next = p + drift + noise;
+    this.state.oracle = { ...this.state.oracle, price: next, publishTimeMs: Date.now() };
+    // re-mark positions
+    this.state.account = {
+      ...this.state.account,
+      positions: this.state.account.positions.map((pos) => ({
+        ...pos,
+        unrealizedPnl: this.pnl(pos.size, pos.entryPrice, next),
+      })),
+    };
+    // drift the book around the new mid
+    const mk = (off: bigint) => next + off;
+    this.state.book = {
+      marketId: 0,
+      bids: [
+        { price: mk(-10n * PRICE_SCALE), size: SIZE_SCALE / 2n },
+        { price: mk(-20n * PRICE_SCALE), size: SIZE_SCALE },
+        { price: mk(-50n * PRICE_SCALE), size: 2n * SIZE_SCALE },
+        { price: mk(-90n * PRICE_SCALE), size: 3n * SIZE_SCALE },
+      ],
+      asks: [
+        { price: mk(10n * PRICE_SCALE), size: SIZE_SCALE / 2n },
+        { price: mk(20n * PRICE_SCALE), size: SIZE_SCALE },
+        { price: mk(50n * PRICE_SCALE), size: 2n * SIZE_SCALE },
+        { price: mk(90n * PRICE_SCALE), size: 3n * SIZE_SCALE },
+      ],
+    };
+    this.emit();
   }
 
   subscribe(cb: (s: ClientState) => void): () => void {

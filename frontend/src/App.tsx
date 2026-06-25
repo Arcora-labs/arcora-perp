@@ -1,5 +1,7 @@
+import { useState } from "react";
 import { StoreProvider } from "./store";
 import { ModeBanner } from "./components/ModeBanner";
+import { StatsBar } from "./components/StatsBar";
 import { OrderTicket } from "./components/OrderTicket";
 import { OrderBook } from "./components/OrderBook";
 import { OrdersTable, PositionsTable } from "./components/Tables";
@@ -7,7 +9,10 @@ import { AccountPanel } from "./components/AccountPanel";
 import { RecoveryPanel } from "./components/RecoveryPanel";
 import { FinalityLegend } from "./components/FinalityTracker";
 
+type Tab = "trade" | "account" | "recover";
+
 export default function App() {
+  const [tab, setTab] = useState<Tab>("trade");
   return (
     <StoreProvider>
       <div className="app">
@@ -18,39 +23,60 @@ export default function App() {
             <span className="brand__tag">fast · dark · trustless</span>
           </div>
           <nav className="app__nav">
-            <a className="app__navlink is-active" href="#trade">Trade</a>
-            <a className="app__navlink" href="#account">Account</a>
-            <a className="app__navlink" href="#recover">Recover</a>
+            {(["trade", "account", "recover"] as Tab[]).map((t) => (
+              <button
+                key={t}
+                className={`app__navlink ${tab === t ? "is-active" : ""}`}
+                onClick={() => setTab(t)}
+              >
+                {t[0].toUpperCase() + t.slice(1)}
+              </button>
+            ))}
           </nav>
+          <div className="app__wallet">
+            <span className="dot dot--live" /> testnet · mock
+          </div>
         </header>
 
         <ModeBanner />
+        <StatsBar />
 
         <main className="app__main">
-          <section id="trade" className="grid grid--trade">
-            <div className="col col--book">
-              <OrderBook />
-            </div>
-            <div className="col col--ticket">
-              <OrderTicket />
-              <FinalityLegend />
-            </div>
-            <div className="col col--positions">
-              <PositionsTable />
-              <OrdersTable />
-            </div>
-          </section>
+          {tab === "trade" && (
+            <section className="grid grid--trade">
+              <div className="col col--book">
+                <OrderBook />
+              </div>
+              <div className="col col--ticket">
+                <OrderTicket />
+                <FinalityLegend />
+              </div>
+              <div className="col col--positions">
+                <PositionsTable />
+                <OrdersTable />
+              </div>
+            </section>
+          )}
 
-          <section id="account" className="grid grid--two">
-            <AccountPanel />
-            <div id="recover">
+          {tab === "account" && (
+            <section className="grid grid--two">
+              <AccountPanel />
+              <PositionsTable />
+            </section>
+          )}
+
+          {tab === "recover" && (
+            <section className="grid grid--single">
               <RecoveryPanel />
-            </div>
-          </section>
+            </section>
+          )}
         </main>
 
         <footer className="app__footer">
-          <span>Skeleton UI — apply the design here. Backed by a mock client encoding protocol semantics.</span>
+          <span>
+            Default UI for dark-perp · backed by a mock client encoding the protocol
+            semantics · swap <code>MockDarkPerpClient</code> for the real backend.
+          </span>
         </footer>
       </div>
     </StoreProvider>

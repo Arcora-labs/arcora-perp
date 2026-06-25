@@ -58,8 +58,9 @@ body {
 .brand__tag { color: var(--text-mute); font-size: 12px; }
 .app__nav { display: flex; gap: 6px; }
 .app__navlink {
-  color: var(--text-dim); text-decoration: none; padding: 6px 12px;
-  border-radius: var(--radius-sm); font-weight: 500;
+  color: var(--text-dim); text-decoration: none; padding: 6px 14px;
+  border-radius: var(--radius-sm); font: inherit; font-weight: 500;
+  background: transparent; border: none; cursor: pointer;
 }
 .app__navlink.is-active, .app__navlink:hover { color: var(--text); background: var(--bg-elev); }
 
@@ -130,13 +131,37 @@ body {
 .order-ticket__foot { color: var(--text-mute); font-size: 12px; margin: 10px 0 0; }
 
 /* ============================ orderbook =================================== */
+.orderbook__head { display: flex; align-items: baseline; justify-content: space-between; }
+.orderbook__cols { display: flex; gap: 28px; color: var(--text-mute); font-size: 11px; }
 .orderbook__rows { display: flex; flex-direction: column; font-family: var(--mono); font-size: 12px; }
-.orderbook__row { display: flex; justify-content: space-between; padding: 3px 6px; border-radius: 4px; }
+.orderbook__row { position: relative; display: grid; grid-template-columns: 1fr auto; padding: 3px 6px; border-radius: 4px; overflow: hidden; }
+.orderbook__depth { position: absolute; top: 0; bottom: 0; right: 0; opacity: 0.14; pointer-events: none; transition: width 0.4s ease; }
+.orderbook__depth--ask { background: var(--sell); }
+.orderbook__depth--bid { background: var(--buy); }
+.orderbook__price { position: relative; }
 .orderbook__row--ask .orderbook__price { color: var(--sell); }
 .orderbook__row--bid .orderbook__price { color: var(--buy); }
-.orderbook__size { color: var(--text-dim); }
-.orderbook__mid { display: flex; justify-content: space-between; padding: 8px 6px; margin: 6px 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); color: var(--text-dim); }
+.orderbook__size { position: relative; color: var(--text-dim); }
+.orderbook__mid { display: flex; align-items: baseline; justify-content: space-between; padding: 10px 6px; margin: 6px 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+.orderbook__midprice { font-family: var(--mono); font-size: 16px; font-weight: 700; }
+.orderbook__midlabel { color: var(--text-mute); font-size: 11px; }
 .orderbook__note { color: var(--text-mute); font-size: 11px; margin: 12px 0 0; }
+
+/* ============================ statsbar ==================================== */
+.statsbar { display: flex; align-items: center; gap: 28px; padding: 14px 18px; margin-top: 14px; background: var(--bg-elev); border: 1px solid var(--border); border-radius: var(--radius); overflow-x: auto; }
+.statsbar__market { display: flex; flex-direction: column; gap: 2px; padding-right: 24px; border-right: 1px solid var(--border); }
+.statsbar__symbol { font-weight: 700; letter-spacing: -0.01em; }
+.statsbar__price { font-family: var(--mono); font-size: 18px; font-weight: 700; }
+.statsbar__stat { display: flex; flex-direction: column; gap: 2px; white-space: nowrap; }
+.statsbar__label { color: var(--text-mute); font-size: 11px; }
+.statsbar__value { font-family: var(--mono); font-size: 13px; }
+
+/* ============================ misc ======================================== */
+.app__wallet { display: flex; align-items: center; gap: 8px; color: var(--text-dim); font-size: 12px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-mute); }
+.dot--live { background: var(--ok); box-shadow: 0 0 0 3px rgba(34, 201, 139, 0.18); }
+.grid--single { grid-template-columns: minmax(0, 560px); }
+code { font-family: var(--mono); font-size: 12px; background: var(--bg-elev-2); padding: 1px 5px; border-radius: 4px; }
 
 /* ============================ tables ====================================== */
 .table { width: 100%; border-collapse: collapse; font-size: 13px; }
