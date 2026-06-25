@@ -98,8 +98,8 @@ inclusion challenges, forced exit, and view-key recovery from the note archive.
 ## Repository status
 
 The protocol is built bottom-up across the [roadmap](docs/ROADMAP.md) phases — all
-six phases now have implemented deliverables. Tested end-to-end: **127 Rust + 31
-Solidity + 20 frontend tests** (green in debug *and* release), **12
+six phases now have implemented deliverables. Tested end-to-end: **128 Rust + 31
+Solidity + 20 frontend tests** (green in debug *and* release), **13
 property/stateful fuzzers**, clippy `-D warnings` + `cargo fmt --check` clean,
 `no_std` zkVM-guest builds, a runnable [`demo`](crates/demo), and a
 built+headless-verified frontend. The core

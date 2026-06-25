@@ -211,3 +211,83 @@ fn fuzz_sequencer_multi_batch_invariants() {
         run_session(seed.wrapping_mul(0x9E3779B97F4A7C15), 40);
     }
 }
+
+/// P3 property fuzzer: an order the sequencer REJECTED for cause must never be
+/// reported as an inclusion violation (censorship). Accept a batch of orders
+/// (issuing receipts), submit a random subset to a seal, then advance past the
+/// inclusion timeout and assert every surfaced violation is a genuinely WITHHELD
+/// order (accepted but never submitted) — never a submitted-then-rejected one.
+fn run_p3_session(seed: u64) {
+    const N: u64 = 5;
+    // fund only owners 0,1,2 — orders from 3,4 are pre-trade rejected at seal.
+    let enclave = EnclaveIdentity::from_seed([7u8; 32], 1, [0xAB; 32]);
+    let mut s = Sequencer::new(enclave, 22);
+    s.add_market(Market::conservative(0));
+    let now = 1_000u64;
+    s.set_oracle(0, oracle(100_000, now));
+    for i in 0..3u64 {
+        let o = word_u64(i);
+        let mut blind = [0u8; 32];
+        blind[..8].copy_from_slice(&(i + 1).to_le_bytes());
+        let amt = 100_000 * QUOTE_SCALE;
+        let cm = Note::new(o, 0, amt, blind).commitment::<Keccak256>();
+        s.apply(&BatchOp::Deposit {
+            owner: o,
+            asset_id: 0,
+            amount: amt,
+            blinding: blind,
+        })
+        .unwrap();
+        s.apply(&BatchOp::FundPosition {
+            owner: o,
+            market_id: 0,
+            note_commitment: cm,
+            spend_key: [i as u8; 32],
+        })
+        .unwrap();
+    }
+
+    let mut rng = Rng(seed | 1);
+    let mut submitted: BTreeSet<[u8; 32]> = BTreeSet::new();
+    let mut withheld: BTreeSet<[u8; 32]> = BTreeSet::new();
+    let mut to_submit = Vec::new();
+    let m = 4 + rng.below(8);
+    for n in 0..m {
+        let o = rand_order(&mut rng, N, 100_000, n + 1);
+        let h = o.order_hash::<Keccak256>();
+        // accept_order issues a receipt (and an inclusion record) for every order
+        let _ = s.accept_order(&o, now);
+        if rng.below(2) == 0 {
+            submitted.insert(h);
+            to_submit.push(o);
+        } else {
+            withheld.insert(h);
+        }
+    }
+    // a submitted order may share a hash with nothing else (unique nonces); seal them
+    s.seal_batch(&to_submit, now);
+    // advance well past the inclusion timeout with empty batches
+    let timeout = 2u64;
+    for _ in 0..(timeout + 2) {
+        s.seal_batch(&[], now);
+    }
+    let violations: BTreeSet<[u8; 32]> = s.inclusion_violations(timeout).into_iter().collect();
+    // CORE P3 PROPERTY: nothing the sequencer handled (ordered OR rejected) is a violation.
+    for v in &violations {
+        assert!(
+            !submitted.contains(v),
+            "seed={seed}: a submitted (handled) order surfaced as a censorship violation"
+        );
+        assert!(
+            withheld.contains(v),
+            "seed={seed}: a violation that was never an accepted+withheld order"
+        );
+    }
+}
+
+#[test]
+fn fuzz_rejected_orders_are_not_inclusion_violations() {
+    for seed in 1..=200u64 {
+        run_p3_session(seed.wrapping_mul(0x9E3779B97F4A7C15));
+    }
+}
