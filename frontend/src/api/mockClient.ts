@@ -301,9 +301,16 @@ export class MockDarkPerpClient implements DarkPerpClient {
 
   private isOpening(input: OrderInput): boolean {
     const pos = this.state.account.positions.find((p) => p.marketId === input.marketId);
-    if (!pos || pos.size === 0n) return true;
+    if (!pos || pos.size === 0n) return true; // no position → any order opens one
     const signed = input.side === "Buy" ? input.size : -input.size;
-    return (pos.size > 0n) === (signed > 0n);
+    // same direction → adds exposure (opening/increasing)
+    if ((pos.size > 0n) === (signed > 0n)) return true;
+    // opposite direction: a strict reduce toward zero is allowed, but an order
+    // LARGER than the position crosses zero and opens a fresh position on the
+    // other side — that is opening, and close-only (§6) must block it. (A pure
+    // reduce or exact close leaves newSize on the same side or flat.)
+    const newSize = pos.size + signed;
+    return newSize !== 0n && (pos.size > 0n) !== (newSize > 0n);
   }
 
   private applyFillToPosition(o: TrackedOrder) {

@@ -111,6 +111,43 @@ describe("MockDarkPerpClient position lifecycle", () => {
     // reducing the long is still allowed
     await expect(c.closePosition(0)).resolves.toBeUndefined();
   });
+
+  it("blocks a FLIP (oversized opposite order) in close-only mode (§6)", async () => {
+    const c = new MockDarkPerpClient();
+    await c.placeOrder({
+      marketId: 0,
+      side: "Buy",
+      size: SIZE_SCALE,
+      limitPrice: 100_000n * PRICE_SCALE,
+      tif: "Gtc",
+      reduceOnly: false,
+    });
+    await vi.advanceTimersByTimeAsync(MATCH_MS);
+    c.triggerCloseOnly();
+    // a long-1 holder selling 2 would flip to short-1: that OPENS fresh exposure on
+    // the other side, so close-only must reject it (it is not a pure reduce).
+    await expect(
+      c.placeOrder({
+        marketId: 0,
+        side: "Sell",
+        size: 2n * SIZE_SCALE,
+        limitPrice: 100_000n * PRICE_SCALE,
+        tif: "Gtc",
+        reduceOnly: false,
+      }),
+    ).rejects.toThrow(/close-only/i);
+    // but a partial reduce (sell 0.5 of the long-1) is still allowed
+    await expect(
+      c.placeOrder({
+        marketId: 0,
+        side: "Sell",
+        size: SIZE_SCALE / 2n,
+        limitPrice: 100_000n * PRICE_SCALE,
+        tif: "Ioc",
+        reduceOnly: true,
+      }),
+    ).resolves.toBeDefined();
+  });
 });
 
 describe("MockDarkPerpClient withdrawals", () => {
