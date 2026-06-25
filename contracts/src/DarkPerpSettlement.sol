@@ -90,7 +90,7 @@ contract DarkPerpSettlement {
     error NotIncluded();
     error NonCanonicalSignature();
     error WrongChallengeBond();
-    error BatchNotOlderThanChallenge();
+    error BatchNotSettled();
     error TransferFailed();
 
     modifier onlySequencer() {
@@ -245,10 +245,24 @@ contract DarkPerpSettlement {
     }
 
     /// @notice Sequencer answers a challenge by proving the order hash is a member
-    /// of a batch that was **already settled when the challenge opened** (so it
-    /// cannot manufacture a fresh accommodating batch), via a Merkle proof over the
+    /// of a **genuinely settled** batch, via a Merkle proof over the
     /// domain-separated `inclusionLeaf`. On success the challenger's stake is
-    /// forfeited to the sequencer (F1, F3).
+    /// forfeited to the sequencer (F3).
+    ///
+    /// The batch is NOT required to predate the challenge. Settlement is async
+    /// (ACCEPTED → MATCHED → SETTLED spans several blocks, and resting orders settle
+    /// in a later batch than the one their receipt was issued in), so requiring the
+    /// inclusion batch to be older than the challenge would misclassify normal
+    /// settlement latency as censorship: anyone holding a fresh receipt could
+    /// challenge before the order settled and free-slash the honest sequencer
+    /// (the bond is refunded on slash). Forced inclusion is the cure for
+    /// withholding — proving the order landed in a real settled batch (within the
+    /// window) is exactly that. Forgery is still impossible: the leaf is
+    /// `inclusionLeaf(batchId, orderHash)` over that batch's immutable `orderedRoot`,
+    /// so the sequencer cannot fabricate inclusion in a batch that does not contain
+    /// the order. A withholding sequencer that never settles the order at all simply
+    /// cannot produce a proof, and stalled settlement is independently punished by
+    /// the liveness timeout. (audit P2 — supersedes F1's over-strict predates rule.)
     function answerChallenge(bytes32 orderHash, uint256 batchId, bytes32[] calldata proof)
         external
         onlySequencer
@@ -256,9 +270,8 @@ contract DarkPerpSettlement {
         Challenge memory c = challenges[orderHash];
         if (!c.open) revert NoSuchChallenge();
         if (block.number > c.deadlineBlock) revert ChallengeExpired();
-        // the answering batch must have existed when the challenge was opened
-        uint256 settledAt = batches[batchId].settledAtBlock;
-        if (settledAt == 0 || settledAt > c.openedBlock) revert BatchNotOlderThanChallenge();
+        // the answering batch must be genuinely settled (its root is then immutable)
+        if (batches[batchId].settledAtBlock == 0) revert BatchNotSettled();
         if (!batches[batchId].orderedRoot.verify(inclusionLeaf(batchId, orderHash), proof)) {
             revert NotIncluded();
         }

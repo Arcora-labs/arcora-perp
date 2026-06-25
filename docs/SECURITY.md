@@ -9,9 +9,9 @@
 > ordered roots not bound by the proof → fund theft), **F1** (forge-proof slashing
 > escape via unconstrained batchId + raw Merkle leaf), **F3** (challenge griefing +
 > signature malleability). The roots are now in the public commitment, inclusion
-> answers use a domain-separated batch-bound leaf and must reference a batch
-> settled before the challenge, and challenges require a refundable bond + a
-> canonical-signature check. A fifth pass audited the redundancy/privacy crates
+> answers use a domain-separated batch-bound leaf, and challenges require a
+> refundable bond + a canonical-signature check. (F1 also added a "batch must
+> predate the challenge" rule, later **superseded by P2** below.) A fifth pass audited the redundancy/privacy crates
 > (`committee`, `bridge`, `note-archive`): it confirmed the Shamir GF(256)
 > reconstruction, distinct-signer quorum, and commitment-consistency trial
 > decryption are sound, and fixed a conservation bug in `bridge::decompose` — a
@@ -31,6 +31,19 @@
 > from the (constant) prover measurement alone, so every batch's witness reused one
 > pad and XOR-ing two sealed witnesses leaked the XOR of two private ledgers. Sealing
 > now binds a per-seal nonce (the batch public commitment); regression test added.
+> An eighth pass (second Solidity) re-audited the inclusion-challenge game and found
+> **P2**, a serious griefing bug introduced by F1's own fix: requiring the answering
+> batch to be *settled before the challenge opened* is incompatible with async
+> settlement (ACCEPTED→SETTLED spans blocks, and resting orders settle in a later
+> batch than their receipt's). Anyone holding a fresh enclave-signed receipt could
+> challenge before the order settled; the only valid inclusion proof would then be
+> in a batch settled *after* the challenge, which the rule rejected — so the honest
+> sequencer was un-answerably slashed (bond refunded to the griefer, making it free).
+> Fix: `answerChallenge` now accepts any **genuinely settled** batch (before the
+> deadline). Forgery stays impossible via the batch-bound `inclusionLeaf`, and a
+> never-settled order can't be proven and is independently caught by the liveness
+> timeout. Two tests pin it: late-but-genuine inclusion answers; a settled batch
+> lacking the order still reverts `NotIncluded`.
 
 
 Synthesizes the architecture's honest failure analysis (§0, §10, §10b, §11) into

@@ -113,8 +113,36 @@ contract DarkPerpSettlementTest is MiniTest {
         assertFalse(open, "challenge cleared");
     }
 
-    function test_answer_cannot_use_batch_settled_after_challenge() public {
-        // a censoring sequencer must not manufacture a fresh batch to escape (F1)
+    function test_answer_with_batch_settled_after_challenge_succeeds() public {
+        // P2: settlement is async, so an order routinely settles AFTER a fresh
+        // receipt could be challenged. Proving inclusion in that later (genuinely
+        // settled) batch must answer the challenge — otherwise anyone could
+        // free-slash the honest sequencer by challenging before the order settles.
+        bytes32 orderHash = keccak256("settles-late");
+        (uint8 v, bytes32 r, bytes32 sig) = vm.sign(ENCLAVE_PK, s.receiptDigest(orderHash, 1, 1, 0));
+        address challenger = address(0xBEEF);
+        vm.deal(challenger, CHALLENGE_BOND);
+        vm.prank(challenger);
+        s.challengeInclusion{value: CHALLENGE_BOND}(orderHash, 1, 1, 0, v, r, sig);
+
+        // the order's batch settles one block AFTER the challenge opened
+        vm.roll(block.number + 1);
+        bytes32 orderedRoot = s.inclusionLeaf(0, orderHash);
+        bytes32 newRoot = bytes32(uint256(2));
+        bytes32 manifest = keccak256("late");
+        s.settleBatch(GENESIS, manifest, newRoot, orderedRoot, bytes32(0), _proof(GENESIS, manifest, newRoot, orderedRoot, bytes32(0)));
+
+        // the sequencer answers with that batch — inclusion is the cure, not an escape
+        bytes32[] memory proof = new bytes32[](0);
+        s.answerChallenge(orderHash, 0, proof);
+        (,,,,, bool open) = s.challenges(orderHash);
+        assertFalse(open, "challenge answered by genuine late inclusion");
+    }
+
+    function test_answer_rejected_when_batch_lacks_order() public {
+        // anti-forge (the real F1 property, preserved): the leaf is bound to
+        // (batchId, orderHash) over the batch's immutable orderedRoot, so the
+        // sequencer cannot answer with a settled batch that does NOT contain the order.
         bytes32 orderHash = keccak256("withheld");
         (uint8 v, bytes32 r, bytes32 sig) = vm.sign(ENCLAVE_PK, s.receiptDigest(orderHash, 1, 1, 0));
         address challenger = address(0xBEEF);
@@ -122,16 +150,14 @@ contract DarkPerpSettlementTest is MiniTest {
         vm.prank(challenger);
         s.challengeInclusion{value: CHALLENGE_BOND}(orderHash, 1, 1, 0, v, r, sig);
 
-        // sequencer now settles a NEW batch containing the orderHash
-        vm.roll(block.number + 1);
-        bytes32 orderedRoot = s.inclusionLeaf(0, orderHash);
+        // settle a batch whose orderedRoot commits to a DIFFERENT order
+        bytes32 orderedRoot = s.inclusionLeaf(0, keccak256("some-other-order"));
         bytes32 newRoot = bytes32(uint256(2));
-        bytes32 manifest = keccak256("late");
+        bytes32 manifest = keccak256("unrelated");
         s.settleBatch(GENESIS, manifest, newRoot, orderedRoot, bytes32(0), _proof(GENESIS, manifest, newRoot, orderedRoot, bytes32(0)));
 
-        // answering against that fresh batch is rejected
         bytes32[] memory proof = new bytes32[](0);
-        vm.expectRevert(DarkPerpSettlement.BatchNotOlderThanChallenge.selector);
+        vm.expectRevert(DarkPerpSettlement.NotIncluded.selector);
         s.answerChallenge(orderHash, 0, proof);
     }
 
