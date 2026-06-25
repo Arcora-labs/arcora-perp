@@ -40,22 +40,25 @@ function pseudoHash(seed: string): string {
   return "0x" + h.toString(16).padStart(64, "0");
 }
 
-function bookAround(marketId: number, mid: bigint): OrderBookSnapshot {
-  const mk = (off: bigint) => mid + off;
-  const step = mid / 5000n; // ~0.02% ticks
+function bookAround(marketId: number, mid: bigint, bestBid?: bigint, bestAsk?: bigint): OrderBookSnapshot {
+  const step = mid / 5000n; // ~0.02% ticks, for the synthetic depth beyond top-of-book
+  // anchor the innermost levels to the REAL best bid/ask when the live oracle has
+  // them; the deeper levels are the internal market-maker seed (§15).
+  const b0 = bestBid && bestBid > 0n ? bestBid : mid - 2n * step;
+  const a0 = bestAsk && bestAsk > 0n ? bestAsk : mid + 2n * step;
   return {
     marketId,
     bids: [
-      { price: mk(-2n * step), size: SIZE_SCALE / 2n },
-      { price: mk(-4n * step), size: SIZE_SCALE },
-      { price: mk(-10n * step), size: 2n * SIZE_SCALE },
-      { price: mk(-18n * step), size: 3n * SIZE_SCALE },
+      { price: b0, size: SIZE_SCALE / 2n },
+      { price: b0 - 2n * step, size: SIZE_SCALE },
+      { price: b0 - 8n * step, size: 2n * SIZE_SCALE },
+      { price: b0 - 16n * step, size: 3n * SIZE_SCALE },
     ],
     asks: [
-      { price: mk(2n * step), size: SIZE_SCALE / 2n },
-      { price: mk(4n * step), size: SIZE_SCALE },
-      { price: mk(10n * step), size: 2n * SIZE_SCALE },
-      { price: mk(18n * step), size: 3n * SIZE_SCALE },
+      { price: a0, size: SIZE_SCALE / 2n },
+      { price: a0 + 2n * step, size: SIZE_SCALE },
+      { price: a0 + 8n * step, size: 2n * SIZE_SCALE },
+      { price: a0 + 16n * step, size: 3n * SIZE_SCALE },
     ],
   };
 }
@@ -141,7 +144,7 @@ export class MockDarkPerpClient implements DarkPerpClient {
         md.market = { ...md.market, live: true, referencePrice: (q.price * 1_000_000n) / denom };
       }
       md.oracle = { ...md.oracle, price: q.price, publishTimeMs: Date.now() };
-      md.book = bookAround(cfg.id, q.price);
+      md.book = bookAround(cfg.id, q.price, q.bid, q.ask);
     }
     this.remarkPositions();
     this.emit();
