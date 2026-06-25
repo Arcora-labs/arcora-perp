@@ -1,0 +1,54 @@
+# frontend — dark-perp web client (skeleton)
+
+A runnable Vite + React + TypeScript skeleton, **ready for the design to be
+applied**. It already encodes the protocol's domain model and the parts of the UX
+that the architecture pins down — most importantly the three-layer finality
+(§3) — so a reskin is a styling pass, not a rebuild.
+
+## Run
+
+```bash
+cd frontend
+pnpm install
+pnpm dev        # http://localhost:5173
+pnpm build      # type-check (strict) + production build
+```
+
+## How the design slots in
+
+- **Tokens, not hard-coded values.** All colour/spacing/typography live as CSS
+  variables in `src/styles.css` `:root`. The design overrides those variables;
+  components reference tokens only, so the structure is untouched.
+- **Components are presentational + dumb.** Each component in `src/components/`
+  reads from the store and renders. Restyle freely; keep the data they show.
+
+## What's wired (faithful to the protocol)
+
+| Area | File | Arch |
+|---|---|---|
+| Domain types + fixed-point scales | `src/domain/types.ts` | mirrors `perp-core` |
+| Formatting/parsing (no floats) | `src/domain/format.ts` | §12 |
+| Client interface | `src/api/client.ts` | swap mock → real |
+| Mock client (finality progression, close-only, recovery) | `src/api/mockClient.ts` | §2, §3, §6, §7 |
+| Finality legend + per-order progress | `src/components/FinalityTracker.tsx` | §3 |
+| Order ticket (Buy/Sell, TIF, reduce-only) | `src/components/OrderTicket.tsx` | §1, §4 |
+| Order book (dark-book framing) | `src/components/OrderBook.tsx` | §15 |
+| Positions / orders tables | `src/components/Tables.tsx` | §3, §5 |
+| Account: deposit / withdraw (SETTLED-gated) | `src/components/AccountPanel.tsx` | §3, §6 |
+| Recovery: seed → view-key scan | `src/components/RecoveryPanel.tsx` | §7 |
+| Close-only / forced-exit banner | `src/components/ModeBanner.tsx` | §6 |
+
+## Non-negotiable UX invariants (must survive any restyle)
+
+- **MATCHED ≠ SETTLED.** Only SETTLED is withdrawable; the UI must never imply a
+  matched order is final (§3). `isWithdrawable()` and `FINALITY_COPY` encode this.
+- **Close-only is loud.** When the system is close-only, opening is blocked and the
+  user is told they can only exit (§6).
+- **No floats in money math.** Amounts are scaled `bigint`; only display strings
+  are decimal (§12).
+
+## Replacing the mock
+
+Implement `DarkPerpClient` (`src/api/client.ts`) against the real sequencer
+(orders/receipts) and L1 + note archive (settlement/recovery), then swap the one
+line in `src/store.tsx`. No component changes required.

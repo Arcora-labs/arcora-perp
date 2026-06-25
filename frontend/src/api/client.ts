@@ -1,0 +1,47 @@
+// The client interface the UI talks to. The mock implements it now; a real
+// implementation later talks to the sequencer (orders, receipts) and reads L1 /
+// the note archive (settlement, recovery). Keeping the UI behind this interface
+// means the design + components never change when the backend lands.
+
+import type {
+  AccountState,
+  Market,
+  OracleQuote,
+  OrderBookSnapshot,
+  OrderInput,
+  RecoveredNote,
+  Receipt,
+  SystemMode,
+  TrackedOrder,
+} from "../domain/types";
+
+export interface ClientState {
+  market: Market;
+  mode: SystemMode;
+  oracle: OracleQuote;
+  book: OrderBookSnapshot;
+  account: AccountState;
+  orders: TrackedOrder[];
+}
+
+export interface DarkPerpClient {
+  getState(): ClientState;
+  subscribe(cb: (s: ClientState) => void): () => void;
+
+  /// Submit an order; resolves with the ACCEPTED receipt (§2). Finality then
+  /// advances ACCEPTED → MATCHED → SETTLED asynchronously (§3).
+  placeOrder(input: OrderInput): Promise<Receipt>;
+
+  /// Deposit collateral (mints a shielded note off-chain).
+  deposit(amountQuote: bigint): Promise<void>;
+
+  /// Request a withdrawal. Rejects unless the amount is backed by SETTLED balance
+  /// (§3 — only settled state is withdrawable).
+  requestWithdrawal(amountQuote: bigint): Promise<void>;
+
+  /// Simulate the liveness/forced-exit trigger → close-only (§6).
+  triggerCloseOnly(): void;
+
+  /// Recover notes by scanning the archive with a seed-derived view-key (§7).
+  recover(seedHex: string): Promise<RecoveredNote[]>;
+}

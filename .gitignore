@@ -11,3 +11,6 @@ contracts/lib/
 /out/
 /cache/
 node_modules/
+frontend/dist/
+frontend/node_modules/
+*.tsbuildinfo

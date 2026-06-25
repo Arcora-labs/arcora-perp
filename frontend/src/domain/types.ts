@@ -1,0 +1,117 @@
+// Domain model — mirrors the Rust protocol types so the UI speaks the protocol's
+// language exactly. Keep these in sync with crates/perp-core.
+
+/// Fixed-point scales (must match crates/perp-core::fixed).
+export const QUOTE_SCALE = 1_000_000n; // micro-USD
+export const PRICE_SCALE = 100_000_000n; // 1e8
+export const SIZE_SCALE = 100_000_000n; // 1e8
+
+export type Side = "Buy" | "Sell";
+
+export type TimeInForce = "Gtc" | "Ioc" | "Fok" | "PostOnly";
+
+/// The three-layer finality (§3). Binding finality is SETTLED; MATCHED is a
+/// soft good-faith preconfirmation, NOT financial certainty.
+export type Finality = "ACCEPTED" | "MATCHED" | "SETTLED";
+
+export function isWithdrawable(f: Finality): boolean {
+  return f === "SETTLED";
+}
+
+/// Human copy for each finality state — the UI must make MATCHED ≠ SETTLED
+/// unmistakable (§3).
+export const FINALITY_COPY: Record<Finality, { label: string; hint: string }> = {
+  ACCEPTED: {
+    label: "Accepted",
+    hint: "The enclave received your order and signed a receipt (your inclusion proof).",
+  },
+  MATCHED: {
+    label: "Matched",
+    hint: "Soft preconfirmation. Good-faith, not final — not yet withdrawable.",
+  },
+  SETTLED: {
+    label: "Settled",
+    hint: "ZK proof verified on Ethereum. Hard finality — withdrawable.",
+  },
+};
+
+export interface Market {
+  id: number;
+  symbol: string;
+  maxLeverage: number;
+  maintenanceMarginRatio: number; // fraction, e.g. 0.05
+  initialMarginRatio: number;
+}
+
+export interface OrderInput {
+  marketId: number;
+  side: Side;
+  /// size in base units, size-scaled (bigint)
+  size: bigint;
+  /// limit price, price-scaled; 0n = market order
+  limitPrice: bigint;
+  tif: TimeInForce;
+  reduceOnly: boolean;
+}
+
+export interface Receipt {
+  orderHash: string;
+  seqNo: number;
+  recvTimeMs: number;
+  batchIdHint: number;
+}
+
+/// An order as tracked in the UI, with its evolving finality.
+export interface TrackedOrder {
+  id: string;
+  input: OrderInput;
+  receipt: Receipt;
+  finality: Finality;
+  filledSize: bigint;
+  avgFillPrice: bigint;
+  createdMs: number;
+}
+
+export interface Position {
+  marketId: number;
+  /// signed size, size-scaled (>0 long, <0 short)
+  size: bigint;
+  entryPrice: bigint; // price-scaled
+  collateral: bigint; // quote-scaled
+  unrealizedPnl: bigint; // quote-scaled, at current mark
+  liquidationPrice: bigint; // price-scaled
+}
+
+export interface OracleQuote {
+  marketId: number;
+  price: bigint; // price-scaled
+  confidence: bigint;
+  publishTimeMs: number;
+}
+
+export interface BookLevel {
+  price: bigint; // price-scaled
+  size: bigint; // size-scaled
+}
+
+export interface OrderBookSnapshot {
+  marketId: number;
+  bids: BookLevel[]; // high → low
+  asks: BookLevel[]; // low → high
+}
+
+/// System-wide mode (§6). Close-only blocks opening/increasing.
+export type SystemMode = "Normal" | "CloseOnly";
+
+export interface AccountState {
+  /// free, settled shielded balance (quote-scaled) — withdrawable
+  settledBalance: bigint;
+  positions: Position[];
+}
+
+/// A note recovered by scanning the archive with a view-key (§7).
+export interface RecoveredNote {
+  batchId: number;
+  amount: bigint; // quote-scaled
+  spent: boolean;
+}
