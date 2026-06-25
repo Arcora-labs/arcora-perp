@@ -167,6 +167,68 @@ fn maintenance_liquidates_underwater_position() {
 }
 
 #[test]
+fn liquidation_cancels_resting_orders() {
+    // A liquidated owner's resting orders are cancelled, so they can't fill later
+    // as a bad-debt account and fail to settle (the maker-drift fix).
+    let mut s = setup();
+    // trader 2 goes long 1 BTC and also rests a (reducing) sell 0.1 @ $120k.
+    s.seal_batch(
+        &[
+            order(1, Side::Sell, SIZE_SCALE, 100_000 * PRICE_SCALE, 1),
+            order(2, Side::Buy, SIZE_SCALE, 100_000 * PRICE_SCALE, 2),
+            order(2, Side::Sell, SIZE_SCALE / 10, 120_000 * PRICE_SCALE, 3),
+        ],
+        1_000,
+    );
+    assert_eq!(s.book(0).unwrap().resting_size(Side::Sell), SIZE_SCALE / 10, "ask resting");
+
+    // crash → trader 2 (long) is liquidated; its resting ask must be cancelled.
+    s.set_oracle(0, oracle(84_000, 5_000));
+    let sealed = s.seal_batch(&[], 5_000);
+    assert!(sealed.liquidations.contains(&word_u64(2)));
+    assert_eq!(s.book(0).unwrap().resting_size(Side::Sell), 0, "resting order cancelled on liquidation");
+}
+
+/// The manifest's ordered set and rejected set must never overlap (§2).
+fn assert_disjoint(sealed: &sequencer::SealedBatch) {
+    for (h, _) in &sealed.manifest.rejected {
+        assert!(!sealed.manifest.ordered.contains(h), "ordered/rejected must be disjoint");
+    }
+    // every settled order must be in `ordered`
+    for h in &sealed.settled_order_hashes {
+        assert!(sealed.manifest.ordered.contains(h), "settled order must be ordered");
+    }
+}
+
+#[test]
+fn manifest_ordered_rejected_disjoint_invariant() {
+    let mut s = setup();
+    fund(&mut s, 3, 1_000, 0x33); // underfunded → pre-trade reject
+    let sealed = s.seal_batch(
+        &[
+            order(1, Side::Sell, SIZE_SCALE, 100_000 * PRICE_SCALE, 1),
+            order(2, Side::Buy, SIZE_SCALE, 100_000 * PRICE_SCALE, 2),
+            order(3, Side::Buy, SIZE_SCALE, 100_000 * PRICE_SCALE, 3), // rejected
+        ],
+        1_000,
+    );
+    assert_disjoint(&sealed);
+}
+
+#[test]
+fn accept_then_seal_keeps_one_seq() {
+    // accept_order issues a receipt; sealing the SAME order must reuse the seq and
+    // not emit a divergent second receipt seq (the accept_order seq fix).
+    let mut s = setup();
+    let o = order(1, Side::Buy, SIZE_SCALE, 99_000 * PRICE_SCALE, 7);
+    let r1 = s.accept_order(&o, 1_000);
+    let sealed = s.seal_batch(&[o], 1_000);
+    let r2 = sealed.receipts.iter().find(|r| r.receipt.order_hash == o.order_hash::<Keccak256>()).unwrap();
+    assert_eq!(r1.receipt.seq_no, r2.receipt.seq_no, "one stable seq across accept + seal");
+    assert!(r1.verify() && r2.verify());
+}
+
+#[test]
 fn honest_flow_has_no_inclusion_violations() {
     let mut s = setup();
     s.seal_batch(

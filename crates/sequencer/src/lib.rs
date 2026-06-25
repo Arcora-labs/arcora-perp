@@ -1,8 +1,9 @@
 //! # sequencer — the native settlement spine (§2, §3)
 //!
 //! This is the host-side component that ties the protocol together on the hot
-//! path: it accepts orders, runs the [`matcher`], issues **Ed25519-signed
-//! receipts** (the §2 inclusion proof a user keeps), settles the resulting fills
+//! path: it accepts orders, runs the [`matcher`], issues **secp256k1-signed
+//! receipts** (the §2 inclusion proof a user keeps, L1-verifiable via `ecrecover`),
+//! settles the resulting fills
 //! through [`perp_core`]'s engine, publishes a **batch manifest**, and tracks the
 //! three-layer finality (`ACCEPTED → MATCHED → SETTLED`, §3).
 //!
@@ -108,6 +109,10 @@ impl SignedReceipt {
 /// Inclusion-tracking record for one issued receipt (§2).
 #[derive(Clone, Copy, Debug)]
 struct InclusionRecord {
+    /// The authoritative sequencer-assigned receipt sequence number. Owned by the
+    /// sequencer (not the matcher) so an order has exactly ONE seq across an
+    /// out-of-band `accept_order` and a later `seal_batch`.
+    seq_no: u64,
     issued_batch: u64,
     seen_in_batch: Option<u64>,
 }
@@ -146,6 +151,7 @@ pub struct Sequencer {
     enclave: EnclaveIdentity,
     oracles: BTreeMap<MarketId, OracleTranscript>,
     next_batch_id: u64,
+    next_receipt_seq: u64,
     matching_rule_version: u32,
     inclusion: BTreeMap<Digest, InclusionRecord>,
     finality: BTreeMap<Digest, Finality>,
@@ -161,6 +167,7 @@ impl Sequencer {
             enclave,
             oracles: BTreeMap::new(),
             next_batch_id: 0,
+            next_receipt_seq: 0,
             matching_rule_version: 1,
             inclusion: BTreeMap::new(),
             finality: BTreeMap::new(),
@@ -189,11 +196,38 @@ impl Sequencer {
         self.next_batch_id
     }
 
+    /// Read access to a market's order book (inspection / tests).
+    pub fn book(&self, market_id: MarketId) -> Option<&matcher::OrderBook<Keccak256>> {
+        self.matcher.book(market_id)
+    }
+
     pub fn finality_of(&self, order_hash: &Digest) -> Option<Finality> {
         self.finality.get(order_hash).copied()
     }
 
-    fn issue_receipt(&mut self, order_hash: Digest, seq_no: u64, now_ms: u64) -> SignedReceipt {
+    /// Issue (or re-issue) the signed receipt for an order. **Idempotent**: the
+    /// first call assigns the order a sequencer-owned `seq_no` and records it; any
+    /// later call for the same order rebuilds the SAME receipt (same seq). This is
+    /// what keeps `accept_order` and `seal_batch` from emitting two receipts with
+    /// different seqs for one order. The seq is owned by the sequencer, not the
+    /// matcher (whose internal seq is only book-priority).
+    fn issue_receipt(&mut self, order_hash: Digest, now_ms: u64) -> SignedReceipt {
+        let seq_no = match self.inclusion.get(&order_hash) {
+            Some(rec) => rec.seq_no,
+            None => {
+                let seq = self.next_receipt_seq;
+                self.next_receipt_seq += 1;
+                self.inclusion.insert(
+                    order_hash,
+                    InclusionRecord {
+                        seq_no: seq,
+                        issued_batch: self.next_batch_id,
+                        seen_in_batch: None,
+                    },
+                );
+                seq
+            }
+        };
         let receipt = Receipt {
             order_hash,
             seq_no,
@@ -211,10 +245,6 @@ impl Sequencer {
         let mut s = [0u8; 32];
         r.copy_from_slice(&sig_bytes[..32]);
         s.copy_from_slice(&sig_bytes[32..]);
-        self.inclusion.entry(order_hash).or_insert(InclusionRecord {
-            issued_batch: self.next_batch_id,
-            seen_in_batch: None,
-        });
         self.finality.entry(order_hash).or_insert(Finality::Accepted);
         SignedReceipt {
             receipt,
@@ -230,11 +260,11 @@ impl Sequencer {
     /// honest enclave's instant acknowledgement; a subsequent failure to include
     /// the order in a manifest within the timeout is an inclusion violation
     /// (censorship/withholding) detectable via [`Sequencer::inclusion_violations`].
+    /// The receipt's `seq_no` is the authoritative sequencer seq and is preserved
+    /// if the same order is later sealed.
     pub fn accept_order(&mut self, order: &Order, now_ms: u64) -> SignedReceipt {
         let order_hash = order.order_hash::<Keccak256>();
-        // peek the seq the matcher would assign next, for the receipt.
-        let seq_no = self.matcher.peek_seq();
-        self.issue_receipt(order_hash, seq_no, now_ms)
+        self.issue_receipt(order_hash, now_ms)
     }
 
     /// Pre-trade risk (§12, Phase 3): would this order, filled in full at the
@@ -363,16 +393,24 @@ impl Sequencer {
         let mut receipts = Vec::new();
         for p in &stream.processed {
             if !matches!(p.outcome.status, SubmitStatus::Rejected(_)) {
-                receipts.push(self.issue_receipt(p.outcome.order_hash, p.seq_no, now_ms));
+                receipts.push(self.issue_receipt(p.outcome.order_hash, now_ms));
             }
         }
 
-        // 3. settle matched fills through the engine, attaching the oracle.
+        // 3. settle matched fills through the engine, attaching the oracle. The
+        //    pre-trade gate covers the *taker* against current state, but a
+        //    *resting maker* admitted in an earlier batch can have drifted below
+        //    initial margin since (funding / a prior liquidation), so a fill can
+        //    still fail to settle. We record BOTH legs of any failed fill and,
+        //    below, keep the manifest honest: an order whose fills ALL failed is
+        //    moved out of `ordered` into `rejected` (it did not settle).
         let mut settled_order_hashes = Vec::new();
-        let mut settlement_rejected = Vec::new();
+        let mut settlement_rejected: Vec<(Digest, RejectReason)> = Vec::new();
         for m in &stream.fills {
             let Some(oracle) = self.oracles.get(&m.market_id).copied() else {
-                settlement_rejected.push((m.taker_order_hash, RejectReason::OracleUnavailable));
+                for oh in [m.taker_order_hash, m.maker_order_hash] {
+                    settlement_rejected.push((oh, RejectReason::OracleUnavailable));
+                }
                 continue;
             };
             let op = BatchOp::Fill {
@@ -395,21 +433,48 @@ impl Sequencer {
                     }
                 }
                 Err(e) => {
-                    settlement_rejected.push((m.taker_order_hash, settlement_reason(&e)));
+                    let reason = settlement_reason(&e);
+                    for oh in [m.taker_order_hash, m.maker_order_hash] {
+                        settlement_rejected.push((oh, reason));
+                    }
                 }
             }
         }
 
         // 3b. maintenance: accrue funding + liquidate underwater positions (§5,§8).
+        //     Liquidating an owner also cancels its resting orders, so a
+        //     bad-debt account can't leave stale makers that would fail to settle.
         let liquidations = self.run_maintenance(now_ms);
+        for owner in &liquidations {
+            self.matcher.cancel_owner_orders(owner);
+        }
 
-        // 4. build the manifest. `rejected` = pre-trade rejects (risk/oracle) +
-        //    the matcher's own rejects; `ordered` = matcher-sequenced. With the
-        //    pre-trade gate (step 0) an admitted order is marginable, so
-        //    `settlement_rejected` is empty in normal operation and `ordered` /
-        //    `rejected` stay disjoint and honest (§2).
+        // 4. build the manifest, keeping `ordered`/`rejected` DISJOINT and HONEST.
+        //    `rejected` = pre-trade rejects + matcher rejects + orders whose fills
+        //    ALL failed settlement. An order with at least one settled fill (a
+        //    partial multi-counterparty fill) stays in `ordered` — it really did
+        //    trade. Orders moved here are removed from `ordered` below.
+        let settled_set: std::collections::BTreeSet<Digest> =
+            settled_order_hashes.iter().copied().collect();
+        let mut failed_unsettled: Vec<(Digest, RejectReason)> = Vec::new();
+        let mut seen_failed: std::collections::BTreeSet<Digest> =
+            std::collections::BTreeSet::new();
+        for (oh, reason) in &settlement_rejected {
+            if !settled_set.contains(oh) && seen_failed.insert(*oh) {
+                failed_unsettled.push((*oh, *reason));
+            }
+        }
+        let reject_set: std::collections::BTreeSet<Digest> =
+            failed_unsettled.iter().map(|(h, _)| *h).collect();
+        let ordered: Vec<Digest> = stream
+            .ordered
+            .iter()
+            .copied()
+            .filter(|h| !reject_set.contains(h))
+            .collect();
         let mut rejected = pre_rejected.clone();
         rejected.extend_from_slice(&stream.rejected);
+        rejected.extend_from_slice(&failed_unsettled);
         let oracle_updates: Vec<Digest> = self
             .oracles
             .values()
@@ -418,7 +483,7 @@ impl Sequencer {
         let manifest = BatchManifest {
             previous_state_root: prev_state_root,
             batch_id,
-            ordered: stream.ordered.clone(),
+            ordered,
             rejected,
             oracle_updates,
             matching_rule_version: self.matching_rule_version,

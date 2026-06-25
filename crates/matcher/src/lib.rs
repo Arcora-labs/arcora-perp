@@ -70,6 +70,12 @@ impl<H: Hasher> MatchingEngine<H> {
         self.books.get(&market_id)
     }
 
+    /// Cancel every resting order belonging to `owner` across all markets (e.g.
+    /// after liquidation). Returns the total number cancelled.
+    pub fn cancel_owner_orders(&mut self, owner: &perp_core::note::PubKey) -> usize {
+        self.books.values_mut().map(|b| b.cancel_owner(owner)).sum()
+    }
+
     /// The seq number that will be assigned to the next accepted order.
     pub fn peek_seq(&self) -> u64 {
         self.next_seq

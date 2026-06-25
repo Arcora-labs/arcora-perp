@@ -315,6 +315,27 @@ impl<H: perp_core::hash::Hasher> OrderBook<H> {
             });
     }
 
+    /// Cancel every resting order belonging to `owner` (e.g. after the owner is
+    /// liquidated). Returns the number of orders cancelled.
+    pub fn cancel_owner(&mut self, owner: &PubKey) -> usize {
+        let mut cancelled = 0;
+        for book in [&mut self.bids, &mut self.asks] {
+            let mut empty_keys = alloc::vec::Vec::new();
+            for (price, q) in book.iter_mut() {
+                let before = q.len();
+                q.retain(|r| &r.owner != owner);
+                cancelled += before - q.len();
+                if q.is_empty() {
+                    empty_keys.push(*price);
+                }
+            }
+            for k in empty_keys {
+                book.remove(&k);
+            }
+        }
+        cancelled
+    }
+
     /// Cancel a resting order by hash. Returns the cancelled remaining size.
     pub fn cancel(&mut self, order_hash: &Digest) -> Option<i128> {
         for book in [&mut self.bids, &mut self.asks] {
