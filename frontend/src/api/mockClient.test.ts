@@ -375,6 +375,25 @@ describe("MockDarkPerpClient recover (§7)", () => {
   });
 });
 
+describe("MockDarkPerpClient batch summary (§2/§3)", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it("seals orders into a batch with a manifest hash + ordered root, settling when all do", async () => {
+    const c = new MockDarkPerpClient();
+    await c.placeOrder({ marketId: 0, side: "Buy", size: SIZE_SCALE, limitPrice: 100_000n * PRICE_SCALE, tif: "Gtc", reduceOnly: false });
+    const b = c.getState().batches;
+    expect(b.length).toBe(1);
+    expect(b[0].orderCount).toBe(1);
+    expect(b[0].manifestHash).toMatch(/^0x[0-9a-f]{64}$/);
+    expect(b[0].orderedRoot).toMatch(/^0x[0-9a-f]{64}$/);
+    expect(b[0].finality).toBe("ACCEPTED"); // not settled until the order settles
+    // advance past MATCH (900ms) and SETTLE (4500ms)
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(c.getState().batches[0].finality).toBe("SETTLED");
+  });
+});
+
 describe("MockDarkPerpClient withdrawals", () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());

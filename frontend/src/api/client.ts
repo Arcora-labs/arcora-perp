@@ -5,6 +5,7 @@
 
 import type {
   AccountState,
+  BatchSummary,
   Market,
   OracleQuote,
   OrderBookSnapshot,
@@ -31,6 +32,8 @@ export interface ClientState {
   marks: Record<number, bigint>;
   account: AccountState;
   orders: TrackedOrder[];
+  /// sealed batches published to the order-commitment log (§2/§3), newest first.
+  batches: BatchSummary[];
 }
 
 export interface DarkPerpClient {

@@ -121,3 +121,16 @@ export interface RecoveredNote {
   amount: bigint; // quote-scaled
   spent: boolean;
 }
+
+/// A sealed batch as published to the order-commitment log (§2/§3). `manifestHash`
+/// binds the batch's contents; `orderedRoot` is the Merkle root of its ordered
+/// order-hash leaves (what inclusion challenges prove against). `finality` is the
+/// batch's overall state — SETTLED once every order in it has settled.
+export interface BatchSummary {
+  batchId: number;
+  orderCount: number;
+  manifestHash: string;
+  orderedRoot: string;
+  finality: Finality;
+  sealedMs: number;
+}

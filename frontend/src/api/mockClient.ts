@@ -15,6 +15,8 @@ import {
   PRICE_SCALE,
   QUOTE_SCALE,
   SIZE_SCALE,
+  type BatchSummary,
+  type Finality,
   type Market,
   type OracleQuote,
   type OrderBookSnapshot,
@@ -41,6 +43,39 @@ function pseudoHash(seed: string): string {
     h = (h * 0x100000001b3n) & ((1n << 256n) - 1n);
   }
   return "0x" + h.toString(16).padStart(64, "0");
+}
+
+const FINALITY_RANK: Record<Finality, number> = { ACCEPTED: 0, MATCHED: 1, SETTLED: 2 };
+
+/// Derive the sealed-batch view (§2/§3) from the order-commitment log: group orders
+/// by their settling batch, and per batch commit a manifest hash (over the ordered
+/// order-hash sequence) and an ordered root (over the SORTED leaves — what inclusion
+/// challenges prove against). A batch is only SETTLED once every order in it has.
+function batchesFromOrders(orders: TrackedOrder[]): BatchSummary[] {
+  const byBatch = new Map<number, TrackedOrder[]>();
+  for (const o of orders) {
+    const b = o.receipt.batchIdHint;
+    const arr = byBatch.get(b);
+    if (arr) arr.push(o);
+    else byBatch.set(b, [o]);
+  }
+  const out: BatchSummary[] = [];
+  for (const [batchId, os] of byBatch) {
+    const hashes = os.map((o) => o.receipt.orderHash);
+    const finality = os.reduce<Finality>(
+      (min, o) => (FINALITY_RANK[o.finality] < FINALITY_RANK[min] ? o.finality : min),
+      "SETTLED",
+    );
+    out.push({
+      batchId,
+      orderCount: os.length,
+      manifestHash: pseudoHash("manifest:" + hashes.join("")),
+      orderedRoot: pseudoHash("ordered:" + [...hashes].sort().join("")),
+      finality,
+      sealedMs: Math.min(...os.map((o) => o.receipt.recvTimeMs)),
+    });
+  }
+  return out.sort((a, b) => b.batchId - a.batchId);
 }
 
 function bookAround(marketId: number, mid: bigint, bestBid?: bigint, bestAsk?: bigint): OrderBookSnapshot {
@@ -209,6 +244,7 @@ export class MockDarkPerpClient implements DarkPerpClient {
       marks,
       account: this.state?.account ?? { settledBalance: 25_000n * QUOTE_SCALE, positions: [] },
       orders,
+      batches: batchesFromOrders(orders),
     };
   }
 

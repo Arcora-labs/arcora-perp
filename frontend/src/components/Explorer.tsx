@@ -1,27 +1,16 @@
 import { useStore } from "../store";
 import { formatPrice, formatSignedSize, shortHash } from "../domain/format";
 import { FinalityBadge } from "./FinalityTracker";
-import type { Finality, TrackedOrder } from "../domain/types";
-
-const FINALITIES: Finality[] = ["ACCEPTED", "MATCHED", "SETTLED"];
 
 /// A protocol / block explorer for dark-perp: browse the order-commitment log and the
-/// batches it settles into (§2/§3), live per-market index marks, and the system mode.
-/// Read-only, Etherscan-style — distinct from the trading UI and the API console. Reads
-/// the same ClientState, so against a real backend it shows the real on-chain activity.
+/// sealed batches it settles into (§2/§3), live per-market index marks, and the system
+/// mode. Read-only, Etherscan-style — distinct from the trading UI and the API console.
+/// Reads the same ClientState, so against a real backend it shows the real on-chain
+/// activity (the sequencer's batches/manifests/roots).
 export function Explorer() {
   const { state } = useStore();
   const orders = state.orders;
-
-  // group the order-commitment log by the batch that settles each order (§2)
-  const batches = new Map<number, TrackedOrder[]>();
-  for (const o of orders) {
-    const b = o.receipt.batchIdHint;
-    const arr = batches.get(b);
-    if (arr) arr.push(o);
-    else batches.set(b, [o]);
-  }
-  const batchRows = [...batches.entries()].sort((a, b) => b[0] - a[0]);
+  const batches = state.batches;
   const settled = orders.filter((o) => o.finality === "SETTLED").length;
   const symbolOf = (id: number) => state.markets.find((m) => m.id === id)?.symbol ?? `#${id}`;
 
@@ -60,8 +49,8 @@ export function Explorer() {
       </div>
 
       <div className="card">
-        <h3 className="card__title">Batches (§2/§3)</h3>
-        {batchRows.length === 0 ? (
+        <h3 className="card__title">Batches · manifest + ordered root (§2/§3)</h3>
+        {batches.length === 0 ? (
           <p className="muted">No batches yet — place an order to populate the order-commitment log.</p>
         ) : (
           <table className="table">
@@ -69,24 +58,27 @@ export function Explorer() {
               <tr>
                 <th>Batch</th>
                 <th>Orders</th>
-                <th>ACCEPTED</th>
-                <th>MATCHED</th>
-                <th>SETTLED</th>
+                <th>Manifest</th>
+                <th>Ordered root</th>
+                <th>Finality</th>
               </tr>
             </thead>
             <tbody>
-              {batchRows.map(([bid, os]) => {
-                const [a, m, s] = FINALITIES.map((f) => os.filter((o) => o.finality === f).length);
-                return (
-                  <tr key={bid}>
-                    <td className="mono">#{bid}</td>
-                    <td>{os.length}</td>
-                    <td>{a}</td>
-                    <td>{m}</td>
-                    <td className={s === os.length ? "pos" : ""}>{s}</td>
-                  </tr>
-                );
-              })}
+              {batches.map((b) => (
+                <tr key={b.batchId}>
+                  <td className="mono">#{b.batchId}</td>
+                  <td>{b.orderCount}</td>
+                  <td className="mono" title={b.manifestHash}>
+                    {shortHash(b.manifestHash)}
+                  </td>
+                  <td className="mono" title={b.orderedRoot}>
+                    {shortHash(b.orderedRoot)}
+                  </td>
+                  <td>
+                    <FinalityBadge finality={b.finality} />
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
         )}
