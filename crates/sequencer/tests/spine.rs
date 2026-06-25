@@ -68,6 +68,84 @@ fn setup() -> Sequencer {
     s
 }
 
+fn order_m(owner: u64, market: u64, side: Side, size: i128, price: i128, nonce: u64) -> Order {
+    let mut o = order(owner, side, size, price, nonce);
+    o.market_id = market;
+    o
+}
+
+#[test]
+fn multi_market_positions_are_isolated() {
+    let mut s = Sequencer::new(enclave(), 20);
+    s.add_market(Market::conservative(0)); // BTC-PERP
+    s.add_market(Market::conservative(1)); // ETH-PERP
+    s.set_oracle(0, oracle(100_000, 1_000));
+    s.set_oracle(1, oracle(3_000, 1_000));
+
+    // fund traders 1 & 2 on BOTH markets with distinct notes
+    for owner in [1u64, 2] {
+        for (mkt, blind) in [(0u64, 0xA0 | owner as u8), (1u64, 0xB0 | owner as u8)] {
+            let o = word_u64(owner);
+            let amt = 20_000 * QUOTE_SCALE;
+            let cm = Note::new(o, 0, amt, [blind; 32]).commitment::<Keccak256>();
+            s.apply(&BatchOp::Deposit {
+                owner: o,
+                asset_id: 0,
+                amount: amt,
+                blinding: [blind; 32],
+            })
+            .unwrap();
+            s.apply(&BatchOp::FundPosition {
+                owner: o,
+                market_id: mkt,
+                note_commitment: cm,
+                spend_key: [owner as u8; 32],
+            })
+            .unwrap();
+        }
+    }
+
+    // trade on BOTH markets in one batch
+    let sealed = s.seal_batch(
+        &[
+            order_m(1, 0, Side::Buy, SIZE_SCALE / 10, 100_000 * PRICE_SCALE, 1),
+            order_m(2, 0, Side::Sell, SIZE_SCALE / 10, 100_000 * PRICE_SCALE, 2),
+            order_m(1, 1, Side::Sell, SIZE_SCALE, 3_000 * PRICE_SCALE, 3),
+            order_m(2, 1, Side::Buy, SIZE_SCALE, 3_000 * PRICE_SCALE, 4),
+        ],
+        1_000,
+    );
+    assert!(sealed.settlement_rejected.is_empty());
+
+    // positions are isolated per market: trader 1 long BTC, short ETH; 2 opposite
+    assert_eq!(
+        s.state.position(&word_u64(1), 0).unwrap().size,
+        SIZE_SCALE / 10
+    );
+    assert_eq!(s.state.position(&word_u64(1), 1).unwrap().size, -SIZE_SCALE);
+    assert_eq!(
+        s.state.position(&word_u64(2), 0).unwrap().size,
+        -SIZE_SCALE / 10
+    );
+    assert_eq!(s.state.position(&word_u64(2), 1).unwrap().size, SIZE_SCALE);
+    assert!(s.state.conservation_holds());
+
+    // an ETH-only price move must not touch BTC positions
+    s.set_oracle(1, oracle(2_400, 5_000)); // ETH −20%
+    s.seal_batch(&[], 5_000);
+    assert_eq!(
+        s.state.position(&word_u64(1), 0).unwrap().size,
+        SIZE_SCALE / 10,
+        "BTC unaffected by ETH move"
+    );
+    assert_eq!(
+        s.state.position(&word_u64(2), 0).unwrap().size,
+        -SIZE_SCALE / 10,
+        "BTC unaffected by ETH move"
+    );
+    assert!(s.state.conservation_holds());
+}
+
 #[test]
 fn receipt_is_signed_and_verifies() {
     let mut s = setup();
