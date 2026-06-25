@@ -6,6 +6,11 @@
    components reference tokens only, so a reskin is a token swap.
    ========================================================================== */
 :root {
+  /* Tell the UA the page is dark so native controls (the <select> dropdown,
+     scrollbars, form autofill) render dark instead of light-on-dark. A light
+     design overrides this in theme.css with `color-scheme: light`. */
+  color-scheme: dark;
+
   /* surfaces (cool near-black → elevated) */
   --bg: #07080d;
   --bg-2: #090b12;
