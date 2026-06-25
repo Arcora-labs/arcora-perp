@@ -35,6 +35,66 @@ confidentiality, fair access, preconfirmation reliability and market integrity
 can. We label that honestly rather than calling the enclave an untouchable black
 box. See §10 of the architecture.
 
+## The hot path, at a glance
+
+How an order flows from a client to L1 settlement, and where each trust root
+sits. The ASCII version with full annotations is in
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) §1.
+
+```mermaid
+flowchart LR
+    subgraph CLIENT["Client"]
+        U["Trader<br/>shielded wallet"]
+    end
+
+    subgraph TEE["Attested TEE · trust root 1<br/>operator-blind"]
+        SEQ["Sequencer<br/>order-commitment log"]
+        MAT["Confidential CLOB<br/>price-time matcher"]
+        SEQ --> MAT
+    end
+
+    subgraph PROTO["Protocol · trust root 2"]
+        LOG[("Append-only<br/>ordered-root log")]
+        SLASH["Slashing<br/>+ forced exit"]
+    end
+
+    subgraph ZK["ZK · trust root 3"]
+        PRV["Attested prover<br/>Proof-v1 circuit"]
+    end
+
+    subgraph L1["Ethereum L1"]
+        VER["ZK verifier"]
+        VAULT["Collateral vault<br/>SETTLED → withdrawable"]
+        VER --> VAULT
+    end
+
+    U -->|"encrypted order"| SEQ
+    MAT -->|"signed receipt<br/>ACCEPTED→MATCHED"| U
+    MAT -->|"batch manifest"| LOG
+    LOG -->|"witness"| PRV
+    PRV -->|"validity proof<br/>+ public commitment"| VER
+    VAULT -->|"SETTLED"| U
+
+    ORC["Oracle · Pyth<br/>index / funding"] -.->|"signed price"| MAT
+    LOG -.->|"inclusion challenge"| SLASH
+    SLASH -.->|"censorship → exit"| VAULT
+    ARC[("Encrypted<br/>note archive")] -.->|"view-key recovery"| U
+    MAT -.->|"shielded notes"| ARC
+
+    classDef tee fill:#1a2332,stroke:#6c8cff,color:#dfe6ff;
+    classDef proto fill:#1a2620,stroke:#22c98b,color:#dfffe9;
+    classDef zk fill:#261a26,stroke:#c98bd0,color:#ffe9ff;
+    classDef l1 fill:#262214,stroke:#d0c98b,color:#fff9e9;
+    class SEQ,MAT tee;
+    class LOG,SLASH proto;
+    class PRV zk;
+    class VER,VAULT l1;
+```
+
+The solid path is the latency-critical loop; dashed edges are the side flows that
+keep the protocol honest when the TEE or operator misbehaves — oracle pricing,
+inclusion challenges, forced exit, and view-key recovery from the note archive.
+
 ## Repository status
 
 The protocol is built bottom-up across the [roadmap](docs/ROADMAP.md) phases — all
