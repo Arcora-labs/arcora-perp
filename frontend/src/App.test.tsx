@@ -37,4 +37,17 @@ describe("App smoke", () => {
     expect(screen.queryByText(/close-only mode/i)).toBeNull();
     expect(screen.getByText(/^normal\.?$/i)).toBeTruthy();
   });
+
+  it("navigates between the trade / account / recover tabs", () => {
+    render(<App />);
+    // Account tab → deposit/withdraw surface
+    fireEvent.click(screen.getByRole("button", { name: /^account$/i }));
+    expect(screen.getByRole("button", { name: /^deposit$/i })).toBeTruthy();
+    // Recover tab → seed-recovery surface
+    fireEvent.click(screen.getByRole("button", { name: /^recover$/i }));
+    expect(screen.getByText(/recover from seed/i)).toBeTruthy();
+    // back to Trade → the order ticket's submit button returns
+    fireEvent.click(screen.getByRole("button", { name: /^trade$/i }));
+    expect(screen.getByRole("button", { name: /buy btc\/usdc/i })).toBeTruthy();
+  });
 });
