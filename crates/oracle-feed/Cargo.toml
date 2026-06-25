@@ -14,3 +14,9 @@ http = ["dep:ureq", "dep:serde_json"]
 perp-core = { path = "../perp-core" }
 ureq = { version = "2", default-features = false, features = ["tls", "json"], optional = true }
 serde_json = { version = "1", optional = true }
+
+# Live probe: prints an OracleTranscript per market from the real Crypto.com feed.
+# Requires the `http` feature: cargo run -p oracle-feed --features http --bin probe
+[[bin]]
+name = "probe"
+required-features = ["http"]
