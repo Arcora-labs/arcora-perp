@@ -253,6 +253,20 @@ describe("MockDarkPerpClient collateral accounting", () => {
       c.placeOrder({ marketId: 0, side: "Buy", size: 3n * SIZE_SCALE, limitPrice: 100_000n * PRICE_SCALE, tif: "Gtc", reduceOnly: false }),
     ).rejects.toThrow(/insufficient free margin/i);
   });
+
+  it("counts in-flight (still-ACCEPTED) opens against buying power — no double-spend", async () => {
+    const c = new MockDarkPerpClient();
+    const open = (size: bigint) =>
+      c.placeOrder({ marketId: 0, side: "Buy", size, limitPrice: 100_000n * PRICE_SCALE, tif: "Gtc", reduceOnly: false });
+    // first 1.5 BTC open ($15k margin) is accepted but NOT yet matched (margin locks
+    // at MATCH, 900ms out). A second 1.5 BTC open ($15k) would total $30k > $25k free.
+    await open(15n * SIZE_SCALE / 10n);
+    await expect(open(15n * SIZE_SCALE / 10n)).rejects.toThrow(/insufficient free margin/i);
+    // and once the first matches and its margin is truly locked, the picture is
+    // consistent: free balance dropped by exactly the first order's $15k.
+    await vi.advanceTimersByTimeAsync(MATCH_MS);
+    expect(c.getState().account.settledBalance).toBe(25_000n * QUOTE_SCALE - 15_000n * QUOTE_SCALE);
+  });
 });
 
 describe("MockDarkPerpClient collateral conservation through a journey", () => {

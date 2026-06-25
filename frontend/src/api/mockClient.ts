@@ -308,12 +308,20 @@ export class MockDarkPerpClient implements DarkPerpClient {
     // Buying-power guard: a fresh open or a same-direction increase locks new margin
     // out of the free balance, so it must be affordable. (Flips net-release margin —
     // old side closes before the new opens — so they are not gated here.)
-    const existing = this.state.account.positions.find((p) => p.marketId === input.marketId);
-    const signedReq = input.side === "Buy" ? input.size : -input.size;
-    const freshOrIncrease = !existing || existing.size === 0n || (existing.size > 0n) === (signedReq > 0n);
-    if (opening && freshOrIncrease) {
+    if (this.locksNewMargin(input)) {
       const px = input.limitPrice === 0n ? this.priceOf(input.marketId) : input.limitPrice;
-      if (this.requiredMargin(input.size, px, input.marketId) > this.state.account.settledBalance) {
+      // Margin only locks at MATCH (a tick later), so the free balance hasn't moved
+      // yet for orders still ACCEPTED. Count the margin those in-flight opens WILL
+      // lock, or two quick opens each see the whole balance and together overcommit
+      // it (free balance goes negative). Cancelled orders leave the log; matched ones
+      // are no longer ACCEPTED (their margin is already in settledBalance), so neither
+      // is double-counted.
+      const reserved = this.state.orders.reduce((sum, o) => {
+        if (o.finality !== "ACCEPTED" || !this.locksNewMargin(o.input)) return sum;
+        const opx = o.input.limitPrice === 0n ? this.priceOf(o.input.marketId) : o.input.limitPrice;
+        return sum + this.requiredMargin(o.input.size, opx, o.input.marketId);
+      }, 0n);
+      if (this.requiredMargin(input.size, px, input.marketId) + reserved > this.state.account.settledBalance) {
         throw new Error("Insufficient free margin to open this position (§3).");
       }
     }
@@ -357,6 +365,17 @@ export class MockDarkPerpClient implements DarkPerpClient {
     this.state = this.snapshot([...this.state.orders]);
     this.emit();
     this.emitEvent({ orderId: id, kind: "SETTLED", message: "Settled on L1 — withdrawable" });
+  }
+
+  /// Would this order lock NEW initial margin out of the free balance? True for a
+  /// fresh open or a same-direction increase; false for a reduce, exact close, or a
+  /// flip (a flip net-releases the old side's margin before opening the new). This is
+  /// the exact set the buying-power guard must charge against the balance.
+  private locksNewMargin(input: OrderInput): boolean {
+    if (!this.isOpening(input)) return false;
+    const existing = this.state.account.positions.find((p) => p.marketId === input.marketId);
+    const signedReq = input.side === "Buy" ? input.size : -input.size;
+    return !existing || existing.size === 0n || (existing.size > 0n) === (signedReq > 0n);
   }
 
   private isOpening(input: OrderInput): boolean {
