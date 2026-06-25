@@ -19,7 +19,12 @@
 > remainder (a negative would even wrap the `as u32` cast). It also added a
 > duplicate-member guard to `Committee::new` and documented two production-misuse
 > footguns: the Shamir seed must be secret and fresh (seed + one share recovers the
-> secret), and bridge buckets need independent per-bucket randomness.
+> secret), and bridge buckets need independent per-bucket randomness. A sixth pass
+> audited the matcher CLOB hot path (`book.rs`): it confirmed the FOK pre-check,
+> self-trade prevention, and time-in-force handling keep the full-fill invariant
+> (`crossable_liquidity` and the match loop both exclude self-orders), and pinned
+> the deliberate post-only-vs-own-order semantics (reject as maker-or-nothing
+> rather than silently STP-cancelling the owner's existing maker) with a test.
 
 
 Synthesizes the architecture's honest failure analysis (§0, §10, §10b, §11) into
