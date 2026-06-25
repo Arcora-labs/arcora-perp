@@ -131,16 +131,29 @@ export class MockDarkPerpClient implements DarkPerpClient {
     try {
       quotes = await fetchLiveQuotes(instruments);
     } catch {
-      return; // keep the fallback walk
+      // total feed outage: hand every live market BACK to the internal walk so the
+      // UI keeps moving. Without this, priceTick() skips live markets and they would
+      // freeze on their last price for the whole outage — the opposite of the
+      // "never stalls" guarantee. A later successful poll re-anchors and re-marks live.
+      this.demoteLiveMarkets();
+      return;
     }
     for (const cfg of MARKETS) {
       if (!cfg.instrument) continue;
-      const q = quotes.get(cfg.instrument);
       const md = this.data.get(cfg.id);
-      if (!q || !md) continue;
-      // on the first live tick, anchor the 24h baseline to the real open
+      if (!md) continue;
+      const q = quotes.get(cfg.instrument);
+      if (!q) {
+        // this instrument dropped out of the feed — resume the walk for it alone
+        if (md.market.live) md.market = { ...md.market, live: false };
+        continue;
+      }
+      // on the first live tick (or after a reconnect), anchor the 24h baseline to
+      // the real open. Guard the denominator: a malformed change24h <= -1 would
+      // otherwise yield a zero/negative reference price.
       if (!md.market.live) {
-        const denom = BigInt(Math.round((1 + q.change24h) * 1_000_000)) || 1_000_000n;
+        const raw = BigInt(Math.round((1 + q.change24h) * 1_000_000));
+        const denom = raw > 0n ? raw : 1_000_000n;
         md.market = { ...md.market, live: true, referencePrice: (q.price * 1_000_000n) / denom };
       }
       md.oracle = { ...md.oracle, price: q.price, publishTimeMs: Date.now() };
@@ -148,6 +161,19 @@ export class MockDarkPerpClient implements DarkPerpClient {
     }
     this.remarkPositions();
     this.emit();
+  }
+
+  /// Revert every live-flagged market to the internal walk (used on feed outage),
+  /// so priceTick() resumes driving it instead of leaving a frozen "live" price.
+  private demoteLiveMarkets() {
+    let changed = false;
+    for (const md of this.data.values()) {
+      if (md.market.live) {
+        md.market = { ...md.market, live: false };
+        changed = true;
+      }
+    }
+    if (changed) this.emit();
   }
 
   /// Re-mark every open position against its market's current price.
