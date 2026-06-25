@@ -28,6 +28,7 @@ export default function App() {
               <button
                 key={t}
                 className={`app__navlink ${tab === t ? "is-active" : ""}`}
+                aria-current={tab === t ? "page" : undefined}
                 onClick={() => setTab(t)}
               >
                 {t[0].toUpperCase() + t.slice(1)}

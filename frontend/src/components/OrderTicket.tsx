@@ -52,6 +52,7 @@ export function OrderTicket() {
         <button
           type="button"
           className={`seg__btn ${side === "Buy" ? "is-active seg__btn--buy" : ""}`}
+          aria-pressed={side === "Buy"}
           onClick={() => setSide("Buy")}
         >
           Buy / Long
@@ -59,6 +60,7 @@ export function OrderTicket() {
         <button
           type="button"
           className={`seg__btn ${side === "Sell" ? "is-active seg__btn--sell" : ""}`}
+          aria-pressed={side === "Sell"}
           onClick={() => setSide("Sell")}
         >
           Sell / Short

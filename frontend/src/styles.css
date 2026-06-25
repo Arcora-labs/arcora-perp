@@ -40,6 +40,14 @@ body {
   font-size: 14px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+  overflow-x: hidden; /* no horizontal page scroll; wide strips scroll internally */
+}
+
+/* keyboard accessibility: a clear focus ring on interactive elements */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
 }
 
 /* ============================ layout ====================================== */
@@ -71,6 +79,18 @@ body {
 .col { display: flex; flex-direction: column; gap: var(--gap); }
 @media (max-width: 980px) {
   .grid--trade, .grid--two { grid-template-columns: 1fr; }
+}
+@media (max-width: 720px) {
+  .app { padding: 0 12px 48px; }
+  .app__header { flex-wrap: wrap; row-gap: 8px; padding: 14px 0; }
+  .app__nav { order: 3; width: 100%; justify-content: space-between; }
+  .grid--single { grid-template-columns: 1fr; }
+  /* wide tables scroll within their card instead of widening the page */
+  .card .table { display: block; overflow-x: auto; white-space: nowrap; }
+}
+@media (max-width: 480px) {
+  .brand__tag { display: none; }
+  .app__wallet { display: none; }
 }
 
 .app__footer { margin-top: 40px; color: var(--text-mute); font-size: 12px; text-align: center; }
