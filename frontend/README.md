@@ -31,6 +31,35 @@ A reskin touches none of this, so the suite stays green across design changes.
 - **Components are presentational + dumb.** Each component in `src/components/`
   reads from the store and renders. Restyle freely; keep the data they show.
 
+### Token map (set these, nothing else)
+
+When you send a design, applying it is overriding these variables in
+`src/styles.css` `:root`. Nothing in the components or logic needs to change.
+
+| Token(s) | Controls |
+|---|---|
+| `--bg`, `--bg-2` | page background (base + secondary) |
+| `--bg-elev`, `--bg-elev-2`, `--bg-elev-3` | raised surfaces (cards → popovers), low→high |
+| `--border`, `--border-strong` | hairlines and emphasised dividers |
+| `--text`, `--text-dim`, `--text-mute` | primary / secondary / tertiary text |
+| `--accent`, `--accent-2` | brand pair; `--grad` and `--glow` derive from them |
+| `--buy` / `--sell` | bid/ask, long/short, book sides |
+| `--ok` / `--warn` / `--danger` | health, alerts, liquidation risk |
+| `--accepted` / `--matched` / `--settled` | the three finality states (§3 — keep them visually distinct) |
+| `--radius`, `--radius-sm`, `--radius-lg` | corner rounding scale |
+| `--gap` | base layout spacing unit |
+| `--font`, `--mono` | UI typeface and the numeric/mono typeface |
+| `--ease` | shared motion curve |
+
+Swapping `--accent`/`--accent-2` alone reskins the brand (gradient + glow follow);
+swapping the surface + text ramps reskins the whole shell. A full design is just a
+bigger override of the same block.
+
+Translucent fills, glows, focus rings, and banner washes are **derived** from these
+tokens with `color-mix(in srgb, var(--token) N%, transparent)` — never hard-coded
+copies — so changing one token cascades to every tint of it. The only literals
+outside `:root` are theme-neutral white/black shadow overlays (depth, not brand).
+
 ## What's wired (faithful to the protocol)
 
 | Area | File | Arch |
