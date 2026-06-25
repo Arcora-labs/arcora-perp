@@ -376,6 +376,32 @@ impl<H: perp_core::hash::Hasher> OrderBook<H> {
         cancelled
     }
 
+    /// Drop every resting maker whose good-till-time has elapsed at `now_ms`,
+    /// returning the number reaped. Matching already refuses to trade against an
+    /// expired maker; this proactively removes them so they also stop polluting
+    /// `best_bid`/`best_ask` — which the sequencer reads as the perp mark for
+    /// funding (§8). Without it, an expired order could anchor the funding mark to
+    /// a price no taker can ever hit. Deterministic in `now_ms`, so it stays
+    /// zkVM-reproducible (§4).
+    pub fn reap_expired(&mut self, now_ms: u64) -> usize {
+        let mut reaped = 0;
+        for book in [&mut self.bids, &mut self.asks] {
+            let mut empty_keys = alloc::vec::Vec::new();
+            for (price, q) in book.iter_mut() {
+                let before = q.len();
+                q.retain(|r| !resting_expired(r, now_ms));
+                reaped += before - q.len();
+                if q.is_empty() {
+                    empty_keys.push(*price);
+                }
+            }
+            for k in empty_keys {
+                book.remove(&k);
+            }
+        }
+        reaped
+    }
+
     /// Cancel a resting order by hash. Returns the cancelled remaining size.
     pub fn cancel(&mut self, order_hash: &Digest) -> Option<i128> {
         for book in [&mut self.bids, &mut self.asks] {

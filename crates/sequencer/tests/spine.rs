@@ -548,3 +548,38 @@ fn marking_a_height_settled_finalizes_every_prior_pending_batch() {
         "an earlier batch made hard by the same proof must also settle, not strand at MATCHED"
     );
 }
+
+#[test]
+fn maintenance_reaps_expired_makers_so_they_do_not_anchor_the_mark() {
+    // A resting maker with a good-till-time bound must be reaped once the batch
+    // clock passes its expiry, so it stops showing as best_ask / anchoring the
+    // funding mark (§8). run_maintenance (called every seal_batch) does the reap.
+    let mut s = setup();
+
+    // owner 1 rests a lone sell with expiry=1_500 (no crossing bid → it rests).
+    // The setup oracle is published at t=1_000, so seal at/after that or the
+    // freshness gate (§8) would reject the order.
+    let mut maker = order(1, Side::Sell, SIZE_SCALE / 10, 100_000 * PRICE_SCALE, 1);
+    maker.expiry_ms = 1_500;
+    let sealed = s.seal_batch(&[maker], 1_000);
+    assert_eq!(
+        sealed.manifest.ordered.len(),
+        1,
+        "maker rested into the book"
+    );
+    assert_eq!(
+        s.book(0).unwrap().best_ask(),
+        Some(100_000 * PRICE_SCALE),
+        "expired-to-be maker is the best ask while still live"
+    );
+
+    // a later, empty batch whose clock is past the maker's expiry (refresh the
+    // oracle so the batch itself isn't gated on staleness)
+    s.set_oracle(0, oracle(100_000, 2_000));
+    s.seal_batch(&[], 2_000);
+    assert_eq!(
+        s.book(0).unwrap().best_ask(),
+        None,
+        "the expired maker was reaped and no longer anchors best_ask / the mark"
+    );
+}

@@ -76,6 +76,15 @@ impl<H: Hasher> MatchingEngine<H> {
         self.books.values_mut().map(|b| b.cancel_owner(owner)).sum()
     }
 
+    /// Reap expired resting makers across all markets at `now_ms` (good-till-time
+    /// maintenance). Returns the total reaped. See [`OrderBook::reap_expired`].
+    pub fn reap_expired(&mut self, now_ms: u64) -> usize {
+        self.books
+            .values_mut()
+            .map(|b| b.reap_expired(now_ms))
+            .sum()
+    }
+
     /// The seq number that will be assigned to the next accepted order.
     pub fn peek_seq(&self) -> u64 {
         self.next_seq
@@ -595,6 +604,43 @@ mod tests {
             t.outcome.status,
             SubmitStatus::Rejected(RejectReason::FillOrKillUnfillable),
             "FOK must treat expired resting liquidity as unavailable"
+        );
+    }
+
+    #[test]
+    fn reap_expired_clears_stale_makers_from_the_book() {
+        // An expired resting maker that no taker ever hits must still be removed so
+        // it stops anchoring best_bid/best_ask (the funding mark, §8).
+        let mut e = engine();
+        let mut maker = order(
+            1,
+            Side::Sell,
+            SIZE_SCALE,
+            100_000 * PRICE_SCALE,
+            TimeInForce::Gtc,
+            1,
+        );
+        maker.expiry_ms = 500;
+        e.submit(&maker, 100);
+        assert_eq!(e.book(0).unwrap().best_ask(), Some(100_000 * PRICE_SCALE));
+
+        // a live maker at a different price stays
+        let live = order(
+            2,
+            Side::Sell,
+            SIZE_SCALE,
+            101_000 * PRICE_SCALE,
+            TimeInForce::Gtc,
+            2,
+        );
+        e.submit(&live, 100);
+
+        let reaped = e.reap_expired(1000);
+        assert_eq!(reaped, 1, "exactly the expired maker is reaped");
+        assert_eq!(
+            e.book(0).unwrap().best_ask(),
+            Some(101_000 * PRICE_SCALE),
+            "best ask is now the still-live maker, not the expired one"
         );
     }
 

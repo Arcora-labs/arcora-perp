@@ -322,6 +322,10 @@ impl Sequencer {
     /// price. Runs regardless of user liveness — the enclave holds positions, so
     /// an offline user is still liquidated. Returns the liquidated owners.
     pub fn run_maintenance(&mut self, now_ms: u64) -> Vec<PubKey> {
+        // reap good-till-time makers that have expired before reading the book as
+        // the funding mark — an expired order must not anchor `best_bid`/`best_ask`
+        // (§8), and matching already refuses to trade against it.
+        self.matcher.reap_expired(now_ms);
         let mut liquidated = Vec::new();
         let market_ids: Vec<MarketId> = self.state.markets.keys().copied().collect();
         for mid in market_ids {
