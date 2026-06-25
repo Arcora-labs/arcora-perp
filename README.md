@@ -32,10 +32,28 @@ confidentiality, fair access, preconfirmation reliability and market integrity
 can. We label that honestly rather than calling the enclave an untouchable black
 box. See §10 of the architecture.
 
-## Repository status — Phase 0
+## Repository status
 
-This repo is at **Phase 0** of the [roadmap](docs/ROADMAP.md): the *local /
-Sepolia ZK perp core* — **no TEE, no Aztec yet**. What exists today:
+The protocol is built bottom-up across the [roadmap](docs/ROADMAP.md) phases. What
+exists today, end-to-end and tested (79 Rust tests + 16 Solidity tests, all green;
+clippy clean):
+
+| Component | Crate / dir | Phase | Arch |
+|---|---|---|---|
+| Deterministic state-transition core (note tree, risk, Proof-v1 invariants) | [`crates/perp-core`](crates/perp-core) | 0 | §1,§4,§12 |
+| Price-time CLOB matcher (IOC/FOK/post-only/GTC, STP) | [`crates/matcher`](crates/matcher) | 1 | §1,§4 |
+| Sequencer spine: secp256k1 receipts, manifests, finality, inclusion accountability | [`crates/sequencer`](crates/sequencer) | 1–3 | §2,§3 |
+| ZK proving harness + §10b confidential-proving boundary | [`crates/prover`](crates/prover) | 2 | §4,§10b |
+| Encrypted note archive + view-key recovery | [`crates/note-archive`](crates/note-archive) | 2 | §7 |
+| L1 settlement: root anchoring, liveness/close-only, bond + inclusion slashing, vault | [`contracts/`](contracts) | 2 | §2,§3,§6 |
+| End-to-end integration (deposit→match→settle→prove→recover) | [`crates/e2e`](crates/e2e) | — | all |
+| Web client skeleton (finality UX), design-ready | [`frontend/`](frontend) | — | §3,§6,§7 |
+
+The Rust core and Solidity contracts are bound by **byte-exact cross-layer
+vectors** ([`crates/prover/tests/vectors.rs`](crates/prover/tests/vectors.rs) ↔
+[`contracts/test/CrossLayer.t.sol`](contracts/test/CrossLayer.t.sol)): a receipt
+signed in Rust recovers on-chain via `ecrecover`, and the proof public-input
+commitment matches on both sides.
 
 ### [`crates/perp-core`](crates/perp-core) — deterministic state-transition core
 
@@ -68,9 +86,17 @@ cargo clippy --all-targets                       # clean
 
 ## What is intentionally NOT here yet
 
-CLOB matching fairness (price-time priority, self-trade prevention, order types)
-is **Proof-v2** (§4) — in the interim it is backed by receipts + manifest +
-slashing (§2). TEE attestation (Phase 1), L1 verifier + vault + note archive +
-confidential prover (Phase 2), fair-sequencing slashing (Phase 3), the Aztec
-privacy bridge (Phase 4), and committee-of-enclaves (Phase 5) are later phases.
-See [`docs/ROADMAP.md`](docs/ROADMAP.md).
+- **Real ZK backend.** The prover is a documented commitment-based stand-in; the
+  SP1/Risc0 swap is specified in [`docs/PROVING.md`](docs/PROVING.md) (the guest is
+  already `no_std`). `MockZkVerifier` likewise stands in for the generated Solidity
+  verifier.
+- **TEE attestation.** Enclave keys/measurements are modelled as values; real
+  TDX/Nitro attestation verification is Phase 1 production.
+- **Proof-v2 (matching determinism).** The matcher is deterministic and tested,
+  but matching fairness is not yet *proven* in ZK — in the interim it is backed by
+  receipts + manifest + slashing (§2). Phase 3.
+- **Pre-trade risk.** Margin is checked at settlement; rejecting unmarginable
+  orders *before* matching is Phase 3 (see `crates/sequencer`).
+- **Aztec privacy bridge** (Phase 4) and **committee-of-enclaves** (Phase 5).
+
+See [`docs/ROADMAP.md`](docs/ROADMAP.md) for the full phase map.

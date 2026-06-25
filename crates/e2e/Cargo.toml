@@ -1,0 +1,19 @@
+[package]
+name = "e2e"
+description = "End-to-end integration tests proving the dark-perp crates compose into the full flow: deposit → match → settle → prove → recover."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+perp-core = { path = "../perp-core" }
+matcher = { path = "../matcher" }
+sequencer = { path = "../sequencer" }
+prover = { path = "../prover" }
+note-archive = { path = "../note-archive" }

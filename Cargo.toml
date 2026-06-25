@@ -6,6 +6,7 @@ members = [
     "crates/sequencer",
     "crates/prover",
     "crates/note-archive",
+    "crates/e2e",
 ]
 
 [workspace.package]

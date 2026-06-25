@@ -6,7 +6,12 @@ discharges.
 
 Legend: ✅ done · 🟡 partial / scaffolding present · ⬜ not started
 
-## Faz 0 — Local / Sepolia ZK perp core (no TEE, no Aztec) — **current**
+> Status snapshot: Phases 0–2 are substantially built and tested end-to-end
+> (`crates/e2e`), with the L1 layer cross-bound to the Rust core by byte-exact
+> vectors. Remaining work is the real ZK backend, attestation, Proof-v2, and the
+> Aztec/committee phases — see the per-phase tables.
+
+## Faz 0 — Local / Sepolia ZK perp core (no TEE, no Aztec) — **done**
 
 The deterministic perp core + accounting soundness. Proving is done **in the
 open** (a Sepolia testnet has no real positions to protect, §10b "Faz timing").
@@ -32,29 +37,34 @@ per batch size (the §10b memory-envelope data point).
 
 ## Faz 1 — TEE order gateway + receipt + preconf
 
-| Deliverable | Notes |
-|---|---|
-| Enclave attestation verification (TDX / Nitro) | client checks measurement before encrypting (§1) |
-| Encrypted order ingress + enclave key epoch | `Order.ciphertext_commit` already in the wire format |
-| In-enclave in-memory CLOB (native match) | hot path (§1, §5) |
-| Signed receipt (ACCEPTED) + fill preconf (MATCHED) | `Receipt`/`Finality` types exist; add real enclave signing |
-| Append-only encrypted order log | feeds the manifest (§2) |
+| Deliverable | Where | Status |
+|---|---|---|
+| In-enclave in-memory CLOB (native match, price-time, order types, STP) | `matcher` | ✅ |
+| Signed receipt (ACCEPTED) — secp256k1, L1-verifiable | `sequencer` | ✅ |
+| Fill preconf (MATCHED) + finality state machine | `sequencer` | ✅ |
+| Encrypted order ingress + enclave key epoch | `Order.ciphertext_commit`, `EnclaveIdentity` | 🟡 (wire format + key; real encryption pending) |
+| Enclave attestation verification (TDX / Nitro) | — | ⬜ (modelled as measurement) |
+| Append-only encrypted order log | — | ⬜ |
 
 ## Faz 2 — ZK settlement + fund safety + confidential proving
 
-| Deliverable | Architecture |
-|---|---|
-| Ethereum verifier + collateral vault + withdrawal queue | §1, §3 |
-| Hard state root anchoring + EIP-4844 DA blob | §1, §3 |
-| Forced-exit / close-only L1 module | §6 |
-| **Encrypted note archive / indexer** | §7 (mandatory, not "hardening") |
-| **Attested confidential prover** (sealed witness → measurement decrypt) | §10b (real position privacy starts here) |
+| Deliverable | Where | Status |
+|---|---|---|
+| Ethereum verifier interface + state-root anchoring | `contracts/DarkPerpSettlement` | ✅ |
+| Collateral vault + settled-withdrawal claims | `contracts/CollateralVault` | ✅ |
+| Forced-exit / close-only L1 module | `DarkPerpSettlement` (liveness→close-only) | ✅ |
+| **Encrypted note archive / indexer** | `note-archive` | ✅ |
+| **Attested confidential prover** (sealed witness → measurement) | `prover` (§10b boundary) | ✅ (commitment stand-in; real zkVM = backend swap) |
+| Real SP1/Risc0 verifier + EIP-4844 DA blob | — | ⬜ (see `docs/PROVING.md`) |
 
 ## Faz 3 — Fair-sequencing hardening
 
-Inclusion timeout, slashing bond, batch-non-proving penalty, and **Proof-v2**
-(committed-log matching determinism: price-time priority, self-trade prevention,
-partial fill, expiry, order types). §2, §4.
+| Deliverable | Where | Status |
+|---|---|---|
+| Inclusion timeout detection | `sequencer::inclusion_violations` | ✅ |
+| Slashing bond + inclusion challenge/answer/slash | `contracts/DarkPerpSettlement` | ✅ |
+| Pre-trade risk (reject unmarginable before matching) | — | ⬜ |
+| **Proof-v2** matching determinism (price-time, STP, partial, expiry, order types) | — | ⬜ (matcher is deterministic + tested; ZK proof pending) |
 
 ## Faz 4 — Aztec private bridge
 

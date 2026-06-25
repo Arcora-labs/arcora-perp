@@ -95,6 +95,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "e2e"
+version = "0.0.1"
+dependencies = [
+ "matcher",
+ "note-archive",
+ "perp-core",
+ "prover",
+ "sequencer",
+]
+
+[[package]]
 name = "ecdsa"
 version = "0.16.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
