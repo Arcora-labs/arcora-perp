@@ -44,6 +44,30 @@ Domain separation is now one-domain-one-purpose across the codebase, and a test 
 that **all 12 `Domain` tags hash distinctly** — so a duplicated discriminant or a
 hasher that dropped the prefix fails CI.
 
+## Frontend robustness & polish (design-independent, survives any reskin)
+
+Found by asking "what does a production trading frontend need that's missing?" rather
+than hunting bugs in existing code — each is themeable/token-driven so the incoming
+design inherits it for free:
+
+- **Error boundary** — a single component fault showed a white screen; now a contained,
+  token-styled fallback ("a UI fault is not a protocol action — funds/orders unaffected")
+  with a reset.
+- **`color-scheme: dark`** — native controls (the `<select>`, scrollbars, autofill)
+  rendered light-on-dark; declared on `:root`, themeable (a light design sets `light`).
+- **`prefers-reduced-motion`** — ~19 animations/transitions always played; now near-instant
+  for users with vestibular sensitivity (WCAG).
+- **Thousands separators** — `$59575.14` → `$59,575.14` across every price/balance;
+  `parseScaled` strips them so display strings (and pasted `1,000`) round-trip. Money
+  math stays bigint.
+- **Live price in the tab title** — `BTC/USDC 59,575.14 · dark-perp`, so a trader watching
+  several tabs sees the price at a glance.
+- **`<noscript>` fallback** — a JS-disabled visitor got a blank page; now a clear message.
+
+Plus the design handoff itself: a `theme.css` drop-slot (imported last, override cascade
+proven in the built bundle for both a single token and a full light theme), the README
+"Token map" contract, and a CI-locked token-discipline test.
+
 ## Invariants locked into CI (were asserted only at runtime, or not at all)
 
 - **No crossed book** (`best_bid < best_ask`) — added to the matcher fuzzer (300 seeds);
