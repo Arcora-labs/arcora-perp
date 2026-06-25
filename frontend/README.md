@@ -37,10 +37,14 @@ A reskin touches none of this, so the suite stays green across design changes.
 |---|---|---|
 | Domain types + fixed-point scales | `src/domain/types.ts` | mirrors `perp-core` |
 | Formatting/parsing (no floats) | `src/domain/format.ts` | §12 |
+| Pre-trade risk math (notional/margin/leverage/liq/buying-power/equity) | `src/domain/risk.ts` | §12 |
 | Client interface | `src/api/client.ts` | swap mock → real |
 | Mock client (finality progression, close-only, recovery) | `src/api/mockClient.ts` | §2, §3, §6, §7 |
 | Finality legend + per-order progress | `src/components/FinalityTracker.tsx` | §3 |
-| Order ticket (Buy/Sell, TIF, reduce-only) | `src/components/OrderTicket.tsx` | §1, §4 |
+| Order ticket (Buy/Sell, TIF, reduce-only, quick-size, live risk preview, click-to-price) | `src/components/OrderTicket.tsx` | §1, §4 |
+| Live index price chart (dependency-free SVG) | `src/components/PriceChart.tsx` | §8 |
+| Account margin summary (equity/used/free/uPnL/leverage) | `src/components/AccountPanel.tsx` | §3 |
+| Persistent order-activity feed | `src/components/ActivityFeed.tsx` | §3 |
 | Live index price chart (dependency-free SVG sparkline) | `src/components/PriceChart.tsx` | §8 |
 | Order book (dark-book framing) | `src/components/OrderBook.tsx` | §15 |
 | Positions / orders tables | `src/components/Tables.tsx` | §3, §5 |
