@@ -167,12 +167,27 @@ impl MixBatch {
             return;
         }
         for i in (1..n).rev() {
-            // `i` is a unique per-iteration nonce for the PRNG stream.
-            let h = Keccak256::hash_words(Domain::StateRoot, &[*seed, word_u64(i as u64)]);
-            // take 8 bytes as a u64 index
-            let mut b = [0u8; 8];
-            b.copy_from_slice(&h[..8]);
-            let j = (u64::from_le_bytes(b) % (i as u64 + 1)) as usize;
+            let m = i as u64 + 1;
+            // Unbiased index in [0, i]. Plain `r % m` skews toward the low indices
+            // when m does not divide 2^64 (modulo bias) — a non-uniform shuffle is a
+            // non-uniform mix, which weakens the unlinkability the mixer exists for.
+            // Reject the short tail and redraw (fresh PRNG word per attempt) so every
+            // permutation is equally likely. (`zone` = largest multiple of m ≤ 2^64.)
+            let zone = (u64::MAX / m) * m;
+            let mut attempt = 0u64;
+            let j = loop {
+                let h = Keccak256::hash_words(
+                    Domain::StateRoot,
+                    &[*seed, word_u64(i as u64), word_u64(attempt)],
+                );
+                let mut b = [0u8; 8];
+                b.copy_from_slice(&h[..8]);
+                let r = u64::from_le_bytes(b);
+                if r < zone {
+                    break (r % m) as usize;
+                }
+                attempt += 1;
+            };
             self.entries.swap(i, j);
         }
     }
