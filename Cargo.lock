@@ -375,10 +375,14 @@ dependencies = [
 name = "dark-perp-attestation"
 version = "0.0.1"
 dependencies = [
+ "base64 0.22.1",
  "dcap-qvl",
  "hex",
  "perp-core",
+ "rsa",
+ "serde",
  "serde_json",
+ "sha2",
 ]
 
 [[package]]

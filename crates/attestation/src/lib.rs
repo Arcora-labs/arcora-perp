@@ -11,6 +11,8 @@
 
 use dcap_qvl::QuoteCollateralV3;
 
+pub mod vtpm;
+
 /// The verified, security-relevant outputs of a TDX DCAP quote.
 #[derive(Debug, Clone)]
 pub struct VerifiedAttestation {
@@ -140,7 +142,7 @@ impl VerifiedAttestation {
 
 /// Fold one 48-byte measurement register into two domain-hashed 32-byte words:
 /// the first 32 bytes, then the trailing 16 right-padded with zeros.
-fn fold48(words: &mut Vec<[u8; 32]>, b: &[u8; 48]) {
+pub(crate) fn fold48(words: &mut Vec<[u8; 32]>, b: &[u8; 48]) {
     let mut w0 = [0u8; 32];
     w0.copy_from_slice(&b[..32]);
     let mut w1 = [0u8; 32];

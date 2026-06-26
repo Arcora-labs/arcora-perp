@@ -13,10 +13,17 @@ workspace = true
 # `report` (the reqwest live-collateral fetcher) is dropped — we only ever verify
 # against pinned collateral, never the network.
 dcap-qvl = { version = "0.5.2", default-features = false, features = ["std", "rustcrypto", "default-x509"] }
+serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # Keccak256 + the `Measurement` domain tag, to fold the 48-byte MRTD into the
 # engine's 32-byte measurement `Digest`.
 perp-core = { path = "../perp-core" }
+# Azure vTPM trust-chain verification (#5b): SHA-256 (HCL runtime-data binding +
+# PCR digest), RSA RSASSA-PKCS1v1.5 (the vTPM AK signature over the TPM quote),
+# and base64url (the AK pubkey n/e in the HCL runtime-data JSON). All pure-Rust.
+rsa = "0.9"
+sha2 = "0.10"
+base64 = "0.22"
 
 [dev-dependencies]
 hex = "0.4"
