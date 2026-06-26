@@ -93,6 +93,13 @@ pub enum Domain {
     /// detected on open. A dedicated tag, separate from the seal keystream
     /// (`WitnessSeal`) — one-domain-one-purpose. Not a cross-layer-committed value.
     WitnessSealMac = 17,
+    /// Attested-enclave measurement fold (§10b). The 48-byte TDX MRTD folded into
+    /// the 32-byte `Digest` measurement domain so it can key measurement-bound
+    /// seal release (`SealKeyProvider`) and identify the enclave
+    /// (`EnclaveIdentity`). A dedicated tag so an enclave-identity digest can never
+    /// share a preimage structure with the witness seal stream/MAC or any other
+    /// hash purpose — one-domain-one-purpose. Not a cross-layer-committed value.
+    Measurement = 18,
 }
 
 /// The default Phase 0 hasher: Keccak-256 with a 1-byte domain prefix.
@@ -170,6 +177,7 @@ mod tests {
             ShamirShare,
             WitnessCommitment,
             WitnessSealMac,
+            Measurement,
         ];
         let w = [word_u64(42)];
         for i in 0..all.len() {

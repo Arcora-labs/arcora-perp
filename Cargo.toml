@@ -14,6 +14,7 @@ members = [
     "crates/oracle-feed",
     "crates/node",
     "crates/gateway",
+    "crates/attestation",
 ]
 # The SP1 zkVM guest is built only by `cargo prove` for the riscv32im target (it
 # depends on sp1-zkvm and has no host build), so it is excluded from the host

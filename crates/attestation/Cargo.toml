@@ -1,0 +1,22 @@
+[package]
+name = "dark-perp-attestation"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# Offline TDX DCAP quote verification. Pure-Rust backend (`rustcrypto`, no `ring`
+# asm) so this crate builds clean under the workspace `unsafe_code = "forbid"`;
+# `report` (the reqwest live-collateral fetcher) is dropped — we only ever verify
+# against pinned collateral, never the network.
+dcap-qvl = { version = "0.5.2", default-features = false, features = ["std", "rustcrypto", "default-x509"] }
+serde_json = "1"
+# Keccak256 + the `Measurement` domain tag, to fold the 48-byte MRTD into the
+# engine's 32-byte measurement `Digest`.
+perp-core = { path = "../perp-core" }
+
+[dev-dependencies]
+hex = "0.4"
