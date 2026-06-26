@@ -48,6 +48,9 @@ contract IntegrationTest is MiniTest {
         bytes32 leaf = keccak256(abi.encodePacked(alice, amount, nonce));
         bytes32 newRoot = bytes32(uint256(2));
         bytes32 manifest = keccak256("batch-0");
+        // the bond must cover the TVL at risk before settling (audit Q1).
+        vm.deal(address(this), 1 ether);
+        s.postBond{value: 1 ether}();
         s.settleBatch(GENESIS, manifest, newRoot, bytes32(0), leaf, _proof(GENESIS, manifest, newRoot, bytes32(0), leaf));
 
         // the vault now carries that settled withdrawals root
@@ -61,6 +64,40 @@ contract IntegrationTest is MiniTest {
 
         // the state root advanced on L1
         assertEq(s.currentStateRoot(), newRoot, "root advanced to settled batch");
+    }
+
+    function test_settle_requires_a_bond_scaled_to_tvl() public {
+        // The bond floor scales with custodied TVL (audit Q1): with 10 ETH in the
+        // vault the floor is 5% = 0.5 ETH. Settling under-bonded reverts; once the
+        // bond meets the floor it settles; and the floor grows as TVL grows.
+        vm.deal(alice, 100 ether);
+        vm.prank(alice);
+        vault.deposit{value: 10 ether}();
+        assertEq(s.requiredBond(), 0.5 ether, "floor = 5% of 10 ETH TVL");
+
+        bytes32 newRoot = bytes32(uint256(2));
+        bytes32 m = keccak256("b0");
+        bytes memory proof = _proof(GENESIS, m, newRoot, bytes32(0), bytes32(0));
+
+        // under-bonded → cannot advance state
+        vm.expectRevert(DarkPerpSettlement.UnderBonded.selector);
+        s.settleBatch(GENESIS, m, newRoot, bytes32(0), bytes32(0), proof);
+
+        // post exactly the floor → settles
+        vm.deal(address(this), 10 ether);
+        s.postBond{value: 0.5 ether}();
+        s.settleBatch(GENESIS, m, newRoot, bytes32(0), bytes32(0), proof);
+        assertEq(s.currentStateRoot(), newRoot, "settled once adequately bonded");
+
+        // TVL grows 10x → the floor grows past the posted bond again
+        vm.prank(alice);
+        vault.deposit{value: 90 ether}(); // TVL now 100 ETH → floor 5 ETH
+        assertEq(s.requiredBond(), 5 ether, "floor tracks TVL up");
+        bytes32 newRoot2 = bytes32(uint256(3));
+        bytes32 m2 = keccak256("b1");
+        bytes memory proof2 = _proof(newRoot, m2, newRoot2, bytes32(0), bytes32(0));
+        vm.expectRevert(DarkPerpSettlement.UnderBonded.selector);
+        s.settleBatch(newRoot, m2, newRoot2, bytes32(0), bytes32(0), proof2);
     }
 
     function test_withdrawals_only_from_settled_batches() public {

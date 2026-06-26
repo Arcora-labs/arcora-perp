@@ -44,6 +44,13 @@ contract DarkPerpSettlement {
     uint256 internal constant SECP256K1_N_HALF =
         0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF5D576E7357A4501DDFE92F46681B20A0;
 
+    /// Risk-based sequencer bond floor, in basis points of live custodied TVL
+    /// (the collateral vault's balance). The bond that backs honest sequencing
+    /// must scale with the value it secures, not be an arbitrary constant: a
+    /// batch cannot settle while `sequencerBond < requiredBond()` (§2, audit Q1).
+    /// 5% here is a governance choice (a constructor param in production).
+    uint256 public constant BOND_BPS = 500;
+
     address public immutable sequencer;
     /// secp256k1 address whose key the enclave signs receipts with, so users can
     /// submit receipts to L1 for slashing (§2). See ADR-0009.
@@ -92,6 +99,7 @@ contract DarkPerpSettlement {
     error WrongChallengeBond();
     error BatchNotSettled();
     error TransferFailed();
+    error UnderBonded();
 
     modifier onlySequencer() {
         if (msg.sender != sequencer) revert NotSequencer();
@@ -130,6 +138,15 @@ contract DarkPerpSettlement {
         emit BondPosted(msg.value, sequencerBond);
     }
 
+    /// @notice The minimum sequencer bond required to settle: `BOND_BPS` of the
+    /// live custodied TVL (the vault's balance). Scales the bond with the value it
+    /// secures rather than fixing it at an arbitrary constant (audit Q1). Zero
+    /// until the vault is wired.
+    function requiredBond() public view returns (uint256) {
+        if (vault == address(0)) return 0;
+        return (vault.balance * BOND_BPS) / 10_000;
+    }
+
     /// @notice The public-input commitment the proof must satisfy. Mirrors
     /// `crates/prover::PublicInputs::commitment`. `orderedRoot` and
     /// `withdrawalsRoot` are bound here (audit F2) so the sequencer cannot supply
@@ -159,6 +176,8 @@ contract DarkPerpSettlement {
     ) external onlySequencer {
         if (closeOnly) revert InCloseOnly();
         if (slashed) revert AlreadySlashed();
+        // The bond must cover the value at risk before state can advance (audit Q1).
+        if (sequencerBond < requiredBond()) revert UnderBonded();
         if (prevRoot != currentStateRoot) revert BadPrevRoot();
         bytes32 commitment = publicCommitment(prevRoot, manifestHash, newRoot, orderedRoot, withdrawalsRoot);
         if (!verifier.verify(commitment, proof)) revert BadProof();
