@@ -597,6 +597,88 @@ fn true_insolvency_trips_close_only_when_winners_have_exited() {
 }
 
 #[test]
+fn adl_distributes_pro_rata_across_multiple_winners() {
+    // A's bad debt is clawed from TWO winners — B (short 0.3) and C (short 0.2) —
+    // pro-rata to their profit: the bigger winner pays more, the takes exactly
+    // cover the loss (exercising the floor-pro-rata + remainder distribution), and
+    // neither winner is pushed underwater.
+    let mut s = fresh_state();
+    let (a, b, c) = (pk(1), pk(2), pk(3));
+    for (o, sk, amt) in [(a, 1u8, 6_000i128), (b, 2u8, 50_000), (c, 3u8, 50_000)] {
+        let bl = [sk; 32];
+        let cm = deposit_commit(o, amt * QUOTE_SCALE, bl);
+        s.apply_batch(&[
+            BatchOp::Deposit {
+                owner: o,
+                asset_id: 0,
+                amount: amt * QUOTE_SCALE,
+                blinding: bl,
+            },
+            BatchOp::FundPosition {
+                owner: o,
+                market_id: 0,
+                note_commitment: cm,
+                spend_key: [sk; 32],
+            },
+        ])
+        .unwrap();
+    }
+    // A longs 0.3 from B and 0.2 from C at $100k (A long 0.5 total).
+    s.apply_op(&BatchOp::Fill {
+        taker: a,
+        maker: b,
+        market_id: 0,
+        taker_side: Side::Buy,
+        size: 3 * SIZE_SCALE / 10,
+        price: 100_000 * PRICE_SCALE,
+        oracle: oracle(100_000, 1_000),
+        now_ms: 1_000,
+    })
+    .unwrap();
+    s.apply_op(&BatchOp::Fill {
+        taker: a,
+        maker: c,
+        market_id: 0,
+        taker_side: Side::Buy,
+        size: 2 * SIZE_SCALE / 10,
+        price: 100_000 * PRICE_SCALE,
+        oracle: oracle(100_000, 1_100),
+        now_ms: 1_100,
+    })
+    .unwrap();
+    let b0 = s.position(&b, 0).unwrap().collateral;
+    let c0 = s.position(&c, 0).unwrap().collateral;
+
+    // gap to $80k → A bad debt; no insurance → ADL claws across B and C.
+    s.apply_op(&BatchOp::Liquidate {
+        owner: a,
+        market_id: 0,
+        oracle: oracle(80_000, 2_000),
+        now_ms: 2_000,
+    })
+    .unwrap();
+
+    let b_take = b0 - s.position(&b, 0).unwrap().collateral;
+    let c_take = c0 - s.position(&c, 0).unwrap().collateral;
+    assert_eq!(
+        s.position(&a, 0).unwrap().collateral,
+        0,
+        "ADL fully covered the loss across both winners"
+    );
+    assert!(b_take > 0 && c_take > 0, "both winners contributed");
+    assert!(
+        b_take > c_take,
+        "the larger winner (B) pays more, pro-rata to profit"
+    );
+    assert!(
+        s.position(&b, 0).unwrap().collateral >= 0 && s.position(&c, 0).unwrap().collateral >= 0,
+        "ADL never pushes a winner underwater"
+    );
+    assert_eq!(s.mode, Mode::Normal);
+    assert!(s.conservation_holds());
+}
+
+#[test]
 fn duplicate_commitment_deposit_rejected() {
     // two deposits with identical (owner, asset, amount, blinding) collide on the
     // commitment; the second must be rejected, not silently alias and lose value

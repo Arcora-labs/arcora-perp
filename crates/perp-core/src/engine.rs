@@ -395,14 +395,9 @@ impl<H: Hasher> State<H> {
             .ok_or(EngineError::Overflow)?
             .checked_add(funding)
             .ok_or(EngineError::Overflow)?;
-        // take liquidation penalty from remaining collateral into insurance.
-        // NOTE: the insurance fund is a one-way sink here — it collects penalties but
-        // is NOT yet drawn on to back-stop bad debt. If the close left the position
-        // underwater (collateral < 0, a gap-down past the maintenance buffer), the
-        // shortfall stays parked as negative collateral and is absorbed by the vault
-        // clearing pool above, so conservation and vault solvency still hold; the
-        // debt simply isn't socialized out of insurance (a deliberate Phase-0
-        // simplification — see `bad_debt_liquidation_conserves_and_cannot_be_escaped`).
+        // Take the liquidation penalty from any remaining (positive) collateral
+        // into the insurance fund. Bad debt (a close that left collateral < 0) is
+        // then handled by the waterfall below: insurance backstop → ADL → close-only.
         let pos = self.positions.get_mut(&key).unwrap();
         let take = penalty.min(pos.collateral.max(0));
         pos.collateral -= take;
@@ -447,11 +442,17 @@ impl<H: Hasher> State<H> {
 
     /// Auto-deleverage cascade (§6, §9): when insurance can't fully absorb a
     /// liquidation's bad debt, claw the `residual` from the **profitable** open
-    /// positions in `market_id` (the winners), pro-rata to their unrealized profit
-    /// at `price` and each capped at its own profit. Conservation-neutral —
-    /// collateral only moves between positions, all inside the conservation
-    /// identity. Returns the amount actually recovered (≤ `residual`). BTreeMap
-    /// iteration is sorted, so the distribution is deterministic for the prover.
+    /// positions in `market_id` (the winners), pro-rata to each winner's
+    /// *clawable* = `min(unrealized profit at price, posted collateral)`, capped
+    /// there so ADL can never push a winner's collateral below zero (which would
+    /// mint fresh bad debt). Conservation-neutral — collateral only moves between
+    /// positions, all inside the conservation identity. Returns the amount actually
+    /// recovered (≤ `residual`). BTreeMap iteration is sorted, so the distribution
+    /// is deterministic for the prover. NOTE: this haircuts a winner's collateral
+    /// rather than reducing position size, so an ADL'd winner keeps full exposure
+    /// on a thinner base; the burden is also computed per-liquidation, so across
+    /// multiple bad-debt liquidations in one pass the split is order-dependent
+    /// (deterministic by key order). Both are Phase-0 simplifications.
     fn auto_deleverage(
         &mut self,
         market_id: MarketId,

@@ -8,7 +8,7 @@ use perp_core::market::Market;
 use perp_core::oracle::OracleTranscript;
 use perp_core::order::{Finality, Order, Side, TimeInForce};
 use perp_core::Note;
-use sequencer::{liquidation_tag, EnclaveIdentity, Sequencer};
+use sequencer::{liquidation_tag, liquidation_tag_key, EnclaveIdentity, Sequencer};
 
 fn enclave() -> EnclaveIdentity {
     EnclaveIdentity::from_seed([7u8; 32], 1, [0xABu8; 32])
@@ -268,24 +268,34 @@ fn maintenance_liquidates_underwater_position() {
     s.set_oracle(0, oracle(84_000, 5_000));
     let sealed = s.seal_batch(&[], 5_000);
 
-    // B detects its own liquidation by recomputing its tag from its owner key.
+    // B detects its own liquidation by recomputing its tag from its SECRET key
+    // (derived from B's spend key [2u8;32]), not from its public owner id.
+    let b_key = liquidation_tag_key(&[2u8; 32]);
     assert!(
         sealed
             .liquidation_tags
-            .contains(&liquidation_tag(&word_u64(2), 0, sealed.batch_id)),
-        "long B liquidated (detectable by B's own tag)"
+            .contains(&liquidation_tag(&b_key, 0, sealed.batch_id)),
+        "long B liquidated (detectable by B's own secret tag)"
+    );
+    assert!(
+        !sealed.liquidation_tags.contains(&liquidation_tag(
+            &liquidation_tag_key(&[1u8; 32]),
+            0,
+            sealed.batch_id
+        )),
+        "short A healthy"
+    );
+    // Privacy: an observer who knows only B's PUBLIC owner id cannot find B —
+    // neither the raw owner nor a tag keyed on the public owner id is present.
+    assert!(
+        !sealed.liquidation_tags.contains(&word_u64(2)),
+        "the published batch exposes a tag, not the account"
     );
     assert!(
         !sealed
             .liquidation_tags
-            .contains(&liquidation_tag(&word_u64(1), 0, sealed.batch_id)),
-        "short A healthy"
-    );
-    // Privacy: the sealed batch carries an opaque tag, never the cleartext owner
-    // — an observer cannot read who was liquidated.
-    assert!(
-        !sealed.liquidation_tags.contains(&word_u64(2)),
-        "the published batch exposes a tag, not the account"
+            .contains(&liquidation_tag(&word_u64(2), 0, sealed.batch_id)),
+        "a tag keyed on the public owner id must NOT match — the tag is secret-keyed"
     );
     assert_eq!(
         s.state.position(&word_u64(2), 0).unwrap().size,
@@ -322,9 +332,11 @@ fn liquidation_cancels_resting_orders() {
     // crash → trader 2 (long) is liquidated; its resting ask must be cancelled.
     s.set_oracle(0, oracle(84_000, 5_000));
     let sealed = s.seal_batch(&[], 5_000);
-    assert!(sealed
-        .liquidation_tags
-        .contains(&liquidation_tag(&word_u64(2), 0, sealed.batch_id)));
+    assert!(sealed.liquidation_tags.contains(&liquidation_tag(
+        &liquidation_tag_key(&[2u8; 32]),
+        0,
+        sealed.batch_id
+    )));
     assert_eq!(
         s.book(0).unwrap().resting_size(Side::Sell),
         0,

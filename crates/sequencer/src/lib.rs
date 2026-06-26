@@ -130,24 +130,36 @@ pub struct SealedBatch {
     /// Fills that matched but failed settlement (e.g. margin) — reported, not applied.
     pub settlement_rejected: Vec<(Digest, RejectReason)>,
     pub receipts: Vec<SignedReceipt>,
-    /// Per-liquidation **tags** for this batch's maintenance pass (§5, §7).
-    /// Each is `liquidation_tag(owner, market, batch)`: the liquidated account can
-    /// recompute its own tag to detect that it was liquidated, but an observer of
-    /// the sealed batch sees only opaque hashes and the count — never the cleartext
-    /// liquidated accounts. (The on-chain manifest already excludes liquidations.)
+    /// Per-liquidation **tags** for this batch's maintenance pass (§5, §7). Each is
+    /// `liquidation_tag(secret_tag_key, market, batch)`, keyed on a per-account
+    /// SECRET (derived from the account's spend key): the liquidated account
+    /// recomputes its own tag to detect it was liquidated, but an observer — even
+    /// one who knows the public owner id — cannot link a tag to an account without
+    /// the spend key. (The on-chain manifest already excludes liquidations.)
+    /// Residual: the tag COUNT per batch is still observable.
     pub liquidation_tags: Vec<Digest>,
 }
 
-/// A per-`(owner, market, batch)` liquidation tag. The liquidated account can
-/// recompute it from its own owner key plus the public `(market_id, batch_id)` to
-/// learn it was liquidated; an observer of the sealed batch cannot link a tag back
-/// to an account (it is a one-way, domain-separated hash). This replaces the
-/// cleartext liquidated-owner list so liquidation privacy survives at the
-/// sequencer layer, not just on L1 (§5, §7).
-pub fn liquidation_tag(owner: &PubKey, market_id: MarketId, batch_id: u64) -> Digest {
+/// The per-account SECRET liquidation-tag key, derived from the account's spend
+/// key. Only the account (which holds its spend key) and the enclave (which sees
+/// it at fund time) can compute it — a holder of the merely-public owner id
+/// cannot. This is the secret salt that makes the tag unlinkable, mirroring the
+/// note nullifier's `H(commitment, spend_key)` construction.
+pub fn liquidation_tag_key(spend_key: &Digest) -> Digest {
+    Keccak256::hash_words(Domain::Liquidation, &[*spend_key])
+}
+
+/// A per-`(account, market, batch)` liquidation tag keyed on the SECRET
+/// `tag_key` (see [`liquidation_tag_key`]). The liquidated account self-detects by
+/// recomputing `liquidation_tag(&liquidation_tag_key(spend_key), market, batch)`;
+/// an observer who knows only the public owner id cannot recompute it (it would
+/// need the spend key). This replaces the cleartext liquidated-owner list so
+/// liquidation privacy holds at the sequencer layer against a realistic
+/// known-pubkey adversary, not just a fully-blind observer (§5, §7).
+pub fn liquidation_tag(tag_key: &Digest, market_id: MarketId, batch_id: u64) -> Digest {
     Keccak256::hash_words(
         Domain::Liquidation,
-        &[*owner, word_u64(market_id), word_u64(batch_id)],
+        &[*tag_key, word_u64(market_id), word_u64(batch_id)],
     )
 }
 
@@ -179,6 +191,11 @@ pub struct Sequencer {
     /// failure matrix). Pruned as batches settle. Keeping a snapshot only per
     /// *pending* batch bounds the memory.
     snapshots: BTreeMap<u64, (DefaultState, MatchingEngine<Keccak256>)>,
+    /// Per-account secret liquidation-tag keys, derived from the spend key the
+    /// account presents when funding a position and captured inside the enclave.
+    /// Used to publish liquidation tags that only the account (which knows its own
+    /// spend key) can recompute — never a mere holder of the public owner id (§7).
+    liq_tag_keys: BTreeMap<PubKey, Digest>,
 }
 
 impl Sequencer {
@@ -195,6 +212,7 @@ impl Sequencer {
             finality: BTreeMap::new(),
             batch_orders: BTreeMap::new(),
             snapshots: BTreeMap::new(),
+            liq_tag_keys: BTreeMap::new(),
         }
     }
 
@@ -212,6 +230,15 @@ impl Sequencer {
     /// Apply a raw settlement op (deposits, funding, etc.) outside the matched
     /// flow. Thin passthrough used for setup and admin actions.
     pub fn apply(&mut self, op: &BatchOp) -> Result<(), EngineError> {
+        // Capture the account's secret liquidation-tag key from the spend key it
+        // presents at fund time, so a later liquidation can be tagged unlinkably.
+        if let BatchOp::FundPosition {
+            owner, spend_key, ..
+        } = op
+        {
+            self.liq_tag_keys
+                .insert(*owner, liquidation_tag_key(spend_key));
+        }
         self.state.apply_op(op)
     }
 
@@ -555,10 +582,16 @@ impl Sequencer {
         let new_state_root = self.state.state_root();
         self.next_batch_id += 1;
 
-        // Publish privacy-preserving liquidation TAGS, not cleartext owners.
+        // Publish privacy-preserving liquidation TAGS keyed on each account's
+        // secret tag key (captured at fund time), not cleartext owners. The
+        // fallback to the owner id only fires for a position funded outside this
+        // sequencer's `apply` (never in normal operation).
         let liquidation_tags: Vec<Digest> = liquidations
             .iter()
-            .map(|(owner, market)| liquidation_tag(owner, *market, batch_id))
+            .map(|(owner, market)| {
+                let tag_key = self.liq_tag_keys.get(owner).copied().unwrap_or(*owner);
+                liquidation_tag(&tag_key, *market, batch_id)
+            })
             .collect();
 
         SealedBatch {
