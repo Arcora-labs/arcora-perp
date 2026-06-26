@@ -72,6 +72,28 @@
 > The cross-layer vectors use synthetic roots and no test pins an absolute root, so
 > the blast radius was contained; regression test offers a real inner node as a leaf
 > and asserts rejection.
+> A continuation pass swept every crate again and fixed nine more issues, each
+> failing-test-first (full detail in `HARDENING.md`). Settlement-spine correctness:
+> `sequencer::mark_settled(N)` pruned the rollback snapshots for batch N *and every
+> earlier batch* (hardening them) but advanced finality for only N, so finalizing a
+> height directly left earlier batches "hard yet MATCHED" — un-withdrawable forever
+> (§3); now every pending batch ≤ N settles (200-seed fuzzer added). The matcher
+> enforced order expiry only at submit, so a good-till-time *resting maker* could
+> still trade past its expiry and, unreaped, anchor the funding mark (§1/§8); both
+> the match loop and the FOK pre-check now exclude expired makers and
+> `reap_expired` clears them before the mark is read (300-seed fuzzer added). The
+> live oracle adapter read an empty bid/ask string as a literal 0, so a one-sided
+> book outage produced a giant spurious spread that the §8 gate rejected — a healthy
+> `last` would stall; a digit-less string is now absent, falling back to `last`.
+> **Domain-hygiene sweep:** the one-domain-one-purpose rule had three more
+> cross-purpose reuses — the §7 wallet KDF (owner/view/**spend**) hashed under
+> `StateRoot`, the bridge mix commitment under `NoteCommitment` (collidable with a
+> spendable note commitment), and the committee Shamir coefficients under
+> `Nullifier` — each given a dedicated tag (`KeyDerivation`/`BridgeCommitment`/
+> `ShamirShare`, plus `WitnessCommitment` for the prover stand-in); the
+> pairwise-distinct test now spans 16 tags. The only multi-use tag left is
+> `StateRoot` for the cross-layer public commitment, which is deliberate (the
+> Solidity verifier and sp1 guest recompute it byte-for-byte — locked by the KAT).
 
 
 Synthesizes the architecture's honest failure analysis (§0, §10, §10b, §11) into
