@@ -16,8 +16,11 @@ The design decisions taken while building are in [`docs/DECISIONS.md`](docs/DECI
 the phased build plan in [`docs/ROADMAP.md`](docs/ROADMAP.md), the threat model in
 [`docs/SECURITY.md`](docs/SECURITY.md), the proving boundary in
 [`docs/PROVING.md`](docs/PROVING.md), build/test instructions in
-[`docs/TESTING.md`](docs/TESTING.md), and the full-codebase adversarial hardening
-pass (every fix + what was verified correct) in [`docs/HARDENING.md`](docs/HARDENING.md).
+[`docs/TESTING.md`](docs/TESTING.md), the full-codebase adversarial hardening
+pass (every fix + what was verified correct) in [`docs/HARDENING.md`](docs/HARDENING.md),
+and the economic-security audit (bond sizing, insurance backstop, auto-deleverage,
+maker incentives, liquidation privacy — seven hard questions answered head-on) in
+[`docs/ECONOMIC_SECURITY.md`](docs/ECONOMIC_SECURITY.md).
 
 ## Three trust roots, three layers
 
