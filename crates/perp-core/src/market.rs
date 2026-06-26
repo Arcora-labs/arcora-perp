@@ -91,6 +91,12 @@ impl Market {
             && self.max_oracle_confidence_ratio > 0
             && self.max_oracle_deviation_ratio > 0
             && self.taker_fee_ratio >= 0
+            // The taker fee, like the liquidation fee, must stay below the
+            // maintenance buffer (audit Q4): otherwise a fee on a reducing fill —
+            // which skips the initial-margin re-check — could push a still-open
+            // position into fee-induced bad debt, and a same-size maker rebate could
+            // fund an opening position's initial margin from the fee alone.
+            && self.taker_fee_ratio < self.maintenance_margin_ratio
             && self.maker_rebate_ratio >= 0
             && self.maker_rebate_ratio <= self.taker_fee_ratio
     }
@@ -126,5 +132,30 @@ mod tests {
         assert!(!m.is_coherent(), "fee == maintenance is incoherent");
         m.liquidation_fee_ratio = m.maintenance_margin_ratio + 1;
         assert!(!m.is_coherent(), "fee > maintenance is incoherent");
+    }
+
+    #[test]
+    fn taker_fee_must_be_below_maintenance() {
+        // A taker fee >= maintenance margin is two attacks at once (audit Q4):
+        //  - on a REDUCING fill (no initial-margin re-check) the fee could consume
+        //    more than the maintenance buffer and push a still-open position into
+        //    fee-induced bad debt; and
+        //  - a maker rebate that large (rebate <= fee) could satisfy a position's
+        //    INITIAL margin from the fee alone — a maker opening with no real
+        //    skin-in-the-game.
+        // Bounding the fee below maintenance (like the liquidation fee) defuses both:
+        // the fee can never zero out a maintenance-healthy position, and the rebate
+        // is always strictly less than the initial margin it would need to cover.
+        let mut m = Market::conservative(0);
+        m.taker_fee_ratio = m.maintenance_margin_ratio;
+        m.maker_rebate_ratio = 0;
+        assert!(!m.is_coherent(), "taker fee == maintenance is incoherent");
+        m.taker_fee_ratio = m.maintenance_margin_ratio + 1;
+        assert!(!m.is_coherent(), "taker fee > maintenance is incoherent");
+        // a realistic bps-scale fee stays coherent
+        assert!(
+            Market::with_fees(0, 10, 4).is_coherent(),
+            "10/4 bps is fine"
+        );
     }
 }
