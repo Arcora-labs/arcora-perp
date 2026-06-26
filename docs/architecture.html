@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>dark-perp · Mimari — Teknik Döküman</title>
+<style>
+  :root{
+    --bg:#0a0a0b; --bg2:#0c0c0e; --card:#111113; --elev:#161619; --line:#1f1f23; --line2:#27272a;
+    --tx:#ffffff; --dim:#8e9299; --mute:#5b606b;
+    --ac:#b0c4ff; --ac2:#8fa8ff; --buy:#34d399; --warn:#fbbf24; --sell:#fb7185;
+    --a10:rgba(176,196,255,.10); --a20:rgba(176,196,255,.20); --a30:rgba(176,196,255,.30); --a05:rgba(176,196,255,.05);
+    --sans:"Inter",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    --mono:"JetBrains Mono",ui-monospace,"SF Mono",Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  html{color-scheme:dark}
+  body{
+    margin:0;background:var(--bg);color:var(--tx);font-family:var(--sans);font-size:15px;line-height:1.65;
+    -webkit-font-smoothing:antialiased;
+    background-image:radial-gradient(circle at 50% 0%,rgba(176,196,255,.06) 0%,transparent 55%),
+      linear-gradient(rgba(255,255,255,.018) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.018) 1px,transparent 1px);
+    background-size:100% 100%,40px 40px,40px 40px;background-attachment:fixed;
+  }
+  .wrap{max-width:920px;margin:0 auto;padding:0 24px 96px}
+  header.top{padding:64px 0 28px;border-bottom:1px solid var(--line);margin-bottom:8px}
+  .logo{display:inline-flex;align-items:center;gap:12px;margin-bottom:18px}
+  .logo .tile{width:38px;height:38px;border-radius:8px;background:var(--a10);border:1px solid var(--a20);display:grid;place-items:center}
+  .logo b{font-size:15px;letter-spacing:.22em}
+  .logo span{font-family:var(--mono);font-size:9px;letter-spacing:.2em;color:var(--ac);text-transform:uppercase;display:block;margin-top:2px}
+  h1{font-size:34px;line-height:1.1;letter-spacing:-.02em;margin:.2em 0 .3em;background:linear-gradient(90deg,#fff,#b0c4ff);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+  .sub{color:var(--dim);font-size:16px;max-width:680px}
+  .meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:20px}
+  .pill{font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;padding:5px 11px;border:1px solid var(--line2);color:var(--dim)}
+  .pill.ac{color:var(--ac);border-color:var(--a30);background:var(--a10)}
+  h2{font-size:13px;font-family:var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--ac);margin:54px 0 4px}
+  h2 .n{color:var(--mute)}
+  h3{font-size:19px;letter-spacing:-.01em;margin:30px 0 8px}
+  p{color:#d6d8de}
+  a{color:var(--ac);text-decoration:none}a:hover{text-decoration:underline}
+  strong{color:#fff}
+  .lead{font-size:17px;color:#e3e5ea}
+  .card{position:relative;background:var(--card);border:1px solid var(--line);padding:22px 24px;margin:18px 0}
+  .card::before,.card::after{content:"";position:absolute;width:9px;height:9px;opacity:.55}
+  .card::before{top:-1px;left:-1px;border-top:1px solid var(--ac);border-left:1px solid var(--ac)}
+  .card::after{bottom:-1px;right:-1px;border-bottom:1px solid var(--ac);border-right:1px solid var(--ac)}
+  .card h3:first-child{margin-top:0}
+  table{width:100%;border-collapse:collapse;margin:16px 0;font-size:14px}
+  th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);font-weight:500}
+  td code,p code,li code{font-family:var(--mono);font-size:12.5px;background:var(--elev);padding:1px 6px;border:1px solid var(--line);color:var(--ac)}
+  pre{font-family:var(--mono);font-size:12.5px;line-height:1.55;background:var(--bg2);border:1px solid var(--line);padding:16px 18px;overflow:auto;color:#cfd2da;margin:14px 0}
+  pre .c{color:var(--ac)} pre .g{color:var(--buy)} pre .w{color:var(--warn)} pre .r{color:var(--sell)} pre .m{color:var(--mute)}
+  ul,ol{padding-left:20px;color:#d6d8de}li{margin:5px 0}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:680px){.grid2{grid-template-columns:1fr}}
+  .badge{display:inline-block;font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.05em;padding:3px 9px;text-transform:uppercase}
+  .b-ac{background:var(--a10);color:var(--ac)} .b-buy{background:rgba(52,211,153,.14);color:var(--buy)} .b-warn{background:rgba(251,191,36,.14);color:var(--warn)} .b-sell{background:rgba(251,113,133,.14);color:var(--sell)}
+  .fig{margin:22px 0;text-align:center}
+  .fig svg{max-width:100%;height:auto}
+  .figcap{font-family:var(--mono);font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--mute);margin-top:10px}
+  .note{border-left:2px solid var(--a30);background:var(--a05);padding:12px 16px;margin:16px 0;color:#cfd2da;font-size:14px}
+  .note.warn{border-color:rgba(251,191,36,.45);background:rgba(251,191,36,.06)}
+  .kpi{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:18px 0}
+  @media(max-width:680px){.kpi{grid-template-columns:repeat(2,1fr)}}
+  .kpi .k{border:1px solid var(--line);background:var(--card);padding:14px;text-align:center}
+  .kpi .v{font-family:var(--mono);font-size:22px;font-weight:700}
+  .kpi .l{font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);margin-top:4px}
+  footer{margin-top:64px;padding-top:20px;border-top:1px solid var(--line);color:var(--mute);font-size:13px;font-family:var(--mono)}
+  .toc{font-family:var(--mono);font-size:12.5px;columns:2;column-gap:32px;margin:8px 0 0}
+  @media(max-width:680px){.toc{columns:1}}
+  .toc a{color:var(--dim);display:block;padding:3px 0}.toc a:hover{color:var(--ac)}
+  .flow text{font-family:var(--mono);fill:var(--tx)} .flow .dim{fill:var(--dim)} .flow .ac{fill:var(--ac)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+  <div class="logo">
+    <span class="tile">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#b0c4ff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 2.4 20.3 7v10L12 21.6 3.7 17V7z"/><path d="M12 8.5v7"/><rect x="9.6" y="10.2" width="4.8" height="3.6" fill="#b0c4ff" stroke="none"/>
+      </svg>
+    </span>
+    <span><b>DARK-PERP</b><span>Celari · Dark CLOB Perp</span></span>
+  </div>
+  <h1>Mimari — Teknik Döküman</h1>
+  <p class="sub">Hız <strong>ve</strong> karanlık aynı anda: attested-TEE confidential CLOB, ZK validity-proof vault safety, protokol-seviyesi fairness/liveness, note-shielded state. Bu belge protokol tasarımını <strong>ve</strong> bu repoda inşa edilen sistemi (Rust motoru + axum gateway + React/Celari arayüz) bir arada anlatır.</p>
+  <div class="meta">
+    <span class="pill ac">v2 referans</span>
+    <span class="pill">Ethereum settlement</span>
+    <span class="pill">Aztec opsiyonel bridge</span>
+    <span class="pill">CELARI wallet</span>
+    <span class="pill">Faz 0 → Faz 1 (lokal)</span>
+  </div>
+</header>
+
+<nav class="toc">
+  <a href="#tez">0 · Tasarım tezi — üç güven kökü</a>
+  <a href="#katman">1 · Katman haritası (hot path)</a>
+  <a href="#finality">2 · Finality — ACCEPTED → MATCHED → SETTLED</a>
+  <a href="#inclusion">3 · Sequencing accountability</a>
+  <a href="#proof">4 · Proof obligations (v1 / v2)</a>
+  <a href="#riskcore">5 · Risk, likidasyon, forced-exit, recovery, oracle</a>
+  <a href="#impl">6 · Implementasyon — workspace crate'leri</a>
+  <a href="#built">7 · Bu repoda ne çalışıyor — gateway + arayüz</a>
+  <a href="#run">8 · Çalıştırma</a>
+  <a href="#roadmap">9 · İnşa sıralaması (fazlar)</a>
+</nav>
+
+<!-- 0 -->
+<h2 id="tez"><span class="n">§0 ·</span> Tasarım tezi</h2>
+<h3>Hız ve karanlık fiziksel olarak çekişir — üç ayrı güven kökü</h3>
+<p class="lead">Düşük latency'de gizliliği veren bileşen bir <strong>TEE</strong>'dir; ama TEE güveni <em>yok etmez, başka köke taşır</em>. Fairness, liveness ve recovery ayrı protokol yükümlülükleridir. Sistem bunu üç kökle dürüstçe ayırır:</p>
+<table>
+  <thead><tr><th>Güven kökü</th><th>Ne sağlar</th><th>Ne sağla<strong>maz</strong></th></tr></thead>
+  <tbody>
+    <tr><td><span class="badge b-ac">TEE</span><br>low-latency confidential execution</td><td>operatör-kör matching, native-hız continuous CLOB</td><td>liveness, fairness, censorship-resistance, recovery</td></tr>
+    <tr><td><span class="badge b-warn">PROTOKOL</span><br>order-commitment log + forced exit + slashing</td><td>sequencing accountability, liveness, fair access</td><td>gizlilik, fon validity</td></tr>
+    <tr><td><span class="badge b-buy">ZK</span><br>fund-safety / state-validity root</td><td>vault güvenliği, geçerli state geçişleri</td><td>inclusion / ordering / censorship (kendiliğinden)</td></tr>
+  </tbody>
+</table>
+<div class="note warn"><strong>Kritik incelik (§10):</strong> TEE kırılırsa vault'tan fon <strong>çalınamaz</strong> (ZK korur) — ama gizlilik, fair access, preconf güvenilirliği ve market integrity kırılabilir. Bu dürüstçe etiketlenir; enclave dokunulmaz bir kara kutu olarak sunulmaz.</div>
+
+<!-- 1 -->
+<h2 id="katman"><span class="n">§1 ·</span> Katman haritası</h2>
+<p>Sıcak yol (hot path): şifreli emir istemciden çıkar, TEE içinde operatöre kör eşleşir, attested prover soğukta ispatlar, Ethereum L1 hard-finalize eder; encrypted note archive kalıcı kurtarmayı besler.</p>
+<div class="fig">
+<svg class="flow" width="860" height="430" viewBox="0 0 860 430" role="img" aria-label="dark-perp katman haritası">
+  <defs>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#8fa8ff"/></marker>
+  </defs>
+  <!-- lanes -->
+  <g stroke="#1f1f23" stroke-width="1">
+    <line x1="30" y1="70" x2="830" y2="70"/><line x1="30" y1="360" x2="830" y2="360"/>
+  </g>
+  <!-- client -->
+  <rect x="40" y="150" width="150" height="110" rx="2" fill="#111113" stroke="#27272a"/>
+  <text x="115" y="180" text-anchor="middle" font-size="13" class="ac">CLIENT · CELARI</text>
+  <text x="115" y="202" text-anchor="middle" font-size="10.5" class="dim">encrypted order</text>
+  <text x="115" y="220" text-anchor="middle" font-size="10.5" class="dim">scan: view-key</text>
+  <text x="115" y="244" text-anchor="middle" font-size="10.5" class="dim">seed → recovery</text>
+  <!-- sequencer TEE -->
+  <rect x="245" y="110" width="190" height="190" rx="2" fill="#111113" stroke="#b0c4ff" stroke-opacity=".4"/>
+  <rect x="245" y="110" width="190" height="22" fill="rgba(176,196,255,.10)"/>
+  <text x="340" y="125" text-anchor="middle" font-size="11" class="ac">SEQUENCER / MATCHER · TEE</text>
+  <text x="340" y="152" text-anchor="middle" font-size="10.5" class="dim">decrypt → in-memory CLOB</text>
+  <text x="340" y="170" text-anchor="middle" font-size="10.5" class="dim">native price-time match</text>
+  <text x="340" y="194" text-anchor="middle" font-size="10.5"><tspan fill="#b0c4ff">ACCEPTED</tspan> <tspan fill="#8e9299">signed receipt</tspan></text>
+  <text x="340" y="212" text-anchor="middle" font-size="10.5"><tspan fill="#fbbf24">MATCHED</tspan> <tspan fill="#8e9299">preconf</tspan></text>
+  <text x="340" y="236" text-anchor="middle" font-size="10.5" class="dim">shielded state · solvency</text>
+  <text x="340" y="254" text-anchor="middle" font-size="10.5" class="dim">append-only order log</text>
+  <text x="340" y="284" text-anchor="middle" font-size="10.5" class="dim">→ sealed batch + manifest</text>
+  <!-- prover -->
+  <rect x="490" y="130" width="150" height="100" rx="2" fill="#111113" stroke="#27272a"/>
+  <text x="565" y="158" text-anchor="middle" font-size="12" class="ac">PROVER</text>
+  <text x="565" y="178" text-anchor="middle" font-size="10" class="dim">attested · SOĞUK</text>
+  <text x="565" y="196" text-anchor="middle" font-size="10" class="dim">witness → measurement</text>
+  <text x="565" y="214" text-anchor="middle" font-size="10" class="dim">proof + state root</text>
+  <!-- settlement -->
+  <rect x="690" y="120" width="140" height="120" rx="2" fill="#111113" stroke="#34d399" stroke-opacity=".35"/>
+  <text x="760" y="146" text-anchor="middle" font-size="12" fill="#34d399">SETTLEMENT · L1</text>
+  <text x="760" y="166" text-anchor="middle" font-size="10" class="dim">ZK verifier</text>
+  <text x="760" y="184" text-anchor="middle" font-size="10"><tspan fill="#34d399">SETTLED</tspan> <tspan fill="#8e9299">hard</tspan></text>
+  <text x="760" y="202" text-anchor="middle" font-size="10" class="dim">vault + withdrawals</text>
+  <text x="760" y="220" text-anchor="middle" font-size="10" class="dim">forced-exit · DA blob</text>
+  <!-- arrows -->
+  <g stroke="#8fa8ff" stroke-width="1.4" fill="none" marker-end="url(#ar)">
+    <line x1="190" y1="205" x2="243" y2="205"/>
+    <line x1="435" y1="200" x2="488" y2="180"/>
+    <line x1="640" y1="180" x2="688" y2="180"/>
+  </g>
+  <!-- oracle -->
+  <rect x="245" y="20" width="190" height="34" rx="2" fill="#0c0c0e" stroke="#27272a"/>
+  <text x="340" y="41" text-anchor="middle" font-size="10.5" class="dim">ORACLE · Pyth pull → transcript + sanity (§8)</text>
+  <line x1="340" y1="54" x2="340" y2="108" stroke="#8fa8ff" stroke-width="1.2" stroke-dasharray="3 3" marker-end="url(#ar)"/>
+  <!-- note archive loop -->
+  <rect x="245" y="376" width="395" height="34" rx="2" fill="#0c0c0e" stroke="#27272a"/>
+  <text x="442" y="397" text-anchor="middle" font-size="10.5" class="dim">ENCRYPTED NOTE ARCHIVE · ciphertext · view-key ile taranır (§7)</text>
+  <path d="M690 240 V393 H642" stroke="#8fa8ff" stroke-width="1.2" fill="none" stroke-dasharray="3 3" marker-end="url(#ar)"/>
+  <path d="M245 393 H120 V262" stroke="#8fa8ff" stroke-width="1.2" fill="none" stroke-dasharray="3 3" marker-end="url(#ar)"/>
+</svg>
+<div class="figcap">Şekil 1 — hot path: client → TEE sequencer → attested prover → L1 settlement; oracle besler, note archive kurtarmayı kapatır</div>
+</div>
+
+<!-- 2 -->
+<h2 id="finality"><span class="n">§3 ·</span> Finality semantics</h2>
+<p>Üç katmanlı finality, sistemin kalbidir. Arayüz <strong>MATCHED ≠ SETTLED</strong> ayrımını yanlış anlaşılmaz biçimde gösterir; bağlayıcı olan yalnızca <strong>SETTLED</strong>'dır.</p>
+<div class="grid2">
+  <div class="card">
+    <p><span class="badge b-ac">ACCEPTED</span></p>
+    <p style="margin:.4em 0 0">Enclave emri aldı, <code>seq_no</code> + imzalı receipt verdi. İnclusion proof'un.</p>
+  </div>
+  <div class="card">
+    <p><span class="badge b-warn">MATCHED</span></p>
+    <p style="margin:.4em 0 0">Fill preconfirmation imzalandı (soft). İyi niyetli, <strong>final değil</strong>, çekilemez.</p>
+  </div>
+</div>
+<div class="card">
+  <p><span class="badge b-buy">SETTLED</span></p>
+  <p style="margin:.4em 0 0">ZK proof Ethereum'da verify oldu (hard). <strong>Bağlayıcı ve çekilebilir.</strong></p>
+</div>
+<pre><span class="c">order_hash</span> = H(encrypted_order, user_ephemeral_key, nonce, expiry, market_id)
+<span class="c">receipt</span>   = Sign_enclave(order_hash, seq_no, recv_time, batch_id_hint)</pre>
+<h3>Failure matrisi (§3)</h3>
+<table>
+  <thead><tr><th>Durum</th><th>Sonuç</th></tr></thead>
+  <tbody>
+    <tr><td>MATCHED + batch prove edildi</td><td>Normal → <span class="badge b-buy">SETTLED</span></td></tr>
+    <tr><td>MATCHED + batch prove <em>edilemedi</em></td><td>Batch reddedilir; fill'ler <strong>rollback</strong>; insurance yalnızca kanıtlı protokol hatasında</td></tr>
+    <tr><td>MATCHED + enclave crash</td><td>Kullanıcı receipt + son hard root ile <strong>forced-exit</strong> (§6); SETTLED olmayan fill bağlayıcı değil</td></tr>
+    <tr><td>MATCHED var, L1 hard root yok</td><td>Withdraw <strong>mümkün değil</strong></td></tr>
+    <tr><td>Receipt var, MATCHED yok, timeout aşıldı</td><td>Inclusion ihlali → <strong>slashing</strong> + forced-exit</td></tr>
+  </tbody>
+</table>
+
+<!-- 3 -->
+<h2 id="inclusion"><span class="n">§2 ·</span> Sequencing accountability</h2>
+<p>ZK "bu batch içindeki state transition geçerli" der; "hangi emir hangi sırayla girdi, kim sansürlendi" demez. O boşluğu <strong>receipt + inclusion timeout + slashing</strong> kapatır. Her batch bir manifest yayınlar:</p>
+<pre><span class="c">batch_manifest</span> = {
+  previous_state_root, batch_id,
+  ordered_order_hashes[], rejected_order_hashes[] + reason_codes[],
+  oracle_update_hashes[], matching_rule_version,
+  enclave_measurement, sequencer_pubkey_epoch
+}</pre>
+<p>Boşluk paylaşımı: <strong>ZK</strong> → manifest'teki sıralı emirler altında fill doğruluğu (Proof-v2). <strong>Receipt + timeout + slashing</strong> → "receipt aldım ama T blok içinde manifest'e girmedim" cezası. İkisi <em>birlikte</em> censorship/withholding'i kapatır.</p>
+
+<!-- 4 -->
+<h2 id="proof"><span class="n">§4 ·</span> Proof obligations — staged</h2>
+<div class="grid2">
+  <div class="card">
+    <h3>Proof-v1 · invariant'lar <span class="badge b-buy">Faz 0'da kodlandı</span></h3>
+    <ul>
+      <li>collateral conservation</li>
+      <li>valid nullifiers (double-spend yok)</li>
+      <li>fill sonrası margin yeterliliği</li>
+      <li>oracle freshness + confidence (§8)</li>
+      <li>funding formülü · liquidation threshold</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h3>Proof-v2 · matching determinism</h3>
+    <ul>
+      <li>committed log üzerinde deterministic price-time priority</li>
+      <li>cancel/replace ordering, self-trade prevention</li>
+      <li>partial fill, expiry, order tipleri (IOC/FOK/post-only/reduce-only)</li>
+      <li>likidasyon emir önceliği</li>
+    </ul>
+  </div>
+</div>
+<p class="note">v1'de matching doğruluğu <code>receipt + manifest + slashing</code> ile; v2'de kriptografik determinism ile garanti edilir.</p>
+
+<!-- 5 -->
+<h2 id="riskcore"><span class="n">§5–9 ·</span> Risk · likidasyon · forced-exit · recovery · oracle</h2>
+<div class="grid2">
+  <div class="card"><h3>Likidasyon (§5)</h3><p>Enclave plaintext pozisyonları public oracle'a karşı sürekli değerlendirir → <strong>anında</strong> tetikler. Liveness varsayımı yok: kullanıcı offline olsa da likide edilir. Public'e per-position açıklama yok; yalnızca aggregate + ZK proof.</p></div>
+  <div class="card"><h3>Forced-exit (§6)</h3><p>Sequencer T blok yanıt vermezse kullanıcı son hard root'a karşı forced action başlatır → sistem <strong>CLOSE-ONLY</strong> moduna girer → açık perp'ler conservative oracle TWAP'a karşı kapanır. Açık pozisyon collateral'ı kapatılmadan çekilemez.</p></div>
+  <div class="card"><h3>Note recovery (§7)</h3><p>4844 blob'ları geçici. <strong>Encrypted Note Archive</strong> zorunlu: public ciphertext arşivi, view-key ile taranır (<code>batch_id → note_commitment → ciphertext</code>). Cihaz kaybında: seed → view-key → arşivi tara → pozisyonu yeniden kur.</p></div>
+  <div class="card"><h3>Oracle (§8)</h3><p>Transcript: <code>signed_price, publish_time, confidence, max_staleness, max_deviation_vs_backup</code>. ZK doğrular: zamanda; confidence ≤ threshold; |primary − backup_twap| ≤ sanity. Pyth-primary + TWAP backup + anomalide close-only breaker.</p></div>
+</div>
+<div class="note warn"><strong>Confidential proving boundary (§10b):</strong> ZK witness'ı <em>verifier</em>'dan gizler, <em>prover</em>'dan değil. Çıplak prover farm her fill'i plaintext görür → prover çıplak sunucu olamaz. v1: attested prover (TDX/Nitro), witness yalnızca attested measurement'ta açılır, job bitince silinir. <strong>Private batch'i public proving network ile üretemezsin.</strong></div>
+
+<!-- 6 -->
+<h2 id="impl"><span class="n">§ ·</span> Implementasyon — workspace</h2>
+<p>Protokol, <code>unsafe_code = "forbid"</code> kuralıyla deterministik Rust crate'lerine bölünmüştür. Risk çekirdeği (margin/likidasyon/funding/oracle) hem enclave içinde çalışır hem ZK'da yeniden kanıtlanır.</p>
+<table>
+  <thead><tr><th>Crate</th><th>Sorumluluk</th></tr></thead>
+  <tbody>
+    <tr><td><code>perp-core</code></td><td>Deterministik çekirdek: <code>market</code>, <code>position</code>, <code>funding</code>, <code>oracle</code>, <code>order</code>, shielded <code>state</code> + note/merkle, <code>engine</code> (BatchOp). Fixed-point i128 (QUOTE 1e6, PRICE/SIZE 1e8).</td></tr>
+    <tr><td><code>matcher</code></td><td>In-memory CLOB: price-time priority, STP, post-only/IOC/FOK, expiry; <code>book(), submit(), process_stream()</code>.</td></tr>
+    <tr><td><code>sequencer</code></td><td>Motor: <code>accept_order → SignedReceipt</code>, <code>seal_batch</code> (match + settle + maintenance), <code>finality_of</code>, <code>mark_settled/mark_failed</code> (rollback), inclusion takibi.</td></tr>
+    <tr><td><code>prover</code></td><td>Attested confidential prover; sealed witness → measurement'a decrypt → proof. SP1 zkVM guest/host (<code>sp1-guest</code>, <code>sp1-host</code>).</td></tr>
+    <tr><td><code>note-archive</code></td><td>Encrypted note arşivi + <code>Wallet::from_seed</code> recovery; <code>record/scan/recover_balance</code>.</td></tr>
+    <tr><td><code>committee</code></td><td>Committee-of-enclaves: t-of-n quorum certificate + Shamir threshold key (Faz 5).</td></tr>
+    <tr><td><code>bridge</code></td><td>Privacy bridge (Aztec opsiyonel, Faz 4): amount bucketing + anonymity set.</td></tr>
+    <tr><td><code>oracle-feed</code></td><td>Crypto.com/Pyth adaptörü → <code>OracleTranscript</code> (<code>fetch_transcript</code>).</td></tr>
+    <tr><td><code>node</code></td><td>Canlı işletim döngüsü (oracle → maintenance → seal), CLI status printer.</td></tr>
+    <tr><td><code>gateway</code> <span class="badge b-ac">yeni</span></td><td>axum HTTP + WebSocket sunucusu; gerçek <code>Sequencer</code> motorunu bellekte tutup web arayüzüne açar (Faz 1 order-gateway'in lokal hali).</td></tr>
+    <tr><td><code>demo · loadbot · e2e</code></td><td>Anlatımlı uçtan uca akış, yük botu, entegrasyon testleri.</td></tr>
+  </tbody>
+</table>
+
+<!-- 7 -->
+<h2 id="built"><span class="n">§ ·</span> Bu repoda ne çalışıyor</h2>
+<p class="lead">Arayüz artık <strong>gerçek Rust motorunu</strong> sürüyor. Zincir: React/Celari ← WebSocket/HTTP ← axum <code>gateway</code> ← <code>Sequencer</code> motoru (+ <code>NoteArchive</code>).</p>
+<div class="fig">
+<svg class="flow" width="820" height="220" viewBox="0 0 820 220" role="img" aria-label="çalışan sistem veri akışı">
+  <defs><marker id="ar2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#8fa8ff"/></marker></defs>
+  <rect x="20" y="60" width="200" height="110" rx="2" fill="#111113" stroke="#27272a"/>
+  <text x="120" y="86" text-anchor="middle" font-size="12" class="ac">BROWSER · React/Vite</text>
+  <text x="120" y="108" text-anchor="middle" font-size="10" class="dim">Celari UI (TS)</text>
+  <text x="120" y="126" text-anchor="middle" font-size="10" class="dim">RealDarkPerpClient</text>
+  <text x="120" y="144" text-anchor="middle" font-size="10" class="dim">candle chart · order ticket</text>
+  <rect x="320" y="60" width="200" height="110" rx="2" fill="#111113" stroke="#b0c4ff" stroke-opacity=".4"/>
+  <text x="420" y="86" text-anchor="middle" font-size="12" class="ac">axum GATEWAY</text>
+  <text x="420" y="108" text-anchor="middle" font-size="10" class="dim">tick loop · seal · settle</text>
+  <text x="420" y="126" text-anchor="middle" font-size="10" class="dim">market-maker likidite</text>
+  <text x="420" y="144" text-anchor="middle" font-size="10" class="dim">i128 → JSON string</text>
+  <rect x="620" y="60" width="180" height="110" rx="2" fill="#111113" stroke="#34d399" stroke-opacity=".35"/>
+  <text x="710" y="86" text-anchor="middle" font-size="12" fill="#34d399">Sequencer MOTOR</text>
+  <text x="710" y="108" text-anchor="middle" font-size="10" class="dim">accept · seal_batch</text>
+  <text x="710" y="126" text-anchor="middle" font-size="10" class="dim">positions · finality</text>
+  <text x="710" y="144" text-anchor="middle" font-size="10" class="dim">NoteArchive · recovery</text>
+  <g stroke="#8fa8ff" stroke-width="1.4" fill="none" marker-end="url(#ar2)">
+    <line x1="320" y1="100" x2="222" y2="100"/><!-- ws state push -->
+    <line x1="220" y1="135" x2="318" y2="135"/><!-- http cmds -->
+    <line x1="520" y1="115" x2="618" y2="115"/>
+  </g>
+  <text x="270" y="92" text-anchor="middle" font-size="9.5" class="ac">WS state push</text>
+  <text x="270" y="155" text-anchor="middle" font-size="9.5" class="dim">HTTP komut</text>
+  <text x="570" y="107" text-anchor="middle" font-size="9.5" class="dim">in-process</text>
+</svg>
+<div class="figcap">Şekil 2 — çalışan sistem: tarayıcı ⟷ axum gateway ⟷ gerçek Sequencer motoru</div>
+</div>
+<p>Gateway boot'ta 5 market açar, market-maker likidite tohumlar ve bir demo kullanıcıyı ≈$25.000'e fonlar; ~700 ms'lik tick döngüsü oracle'ları yürütür, bekleyen kullanıcı emirlerini bir maker karşı-emirle <code>seal_batch</code> içinde eşleştirir (<span class="badge b-ac">ACCEPTED</span>→<span class="badge b-warn">MATCHED</span>), birkaç tick sonra <code>mark_settled</code> ile <span class="badge b-buy">SETTLED</span>'a taşır, maintenance/likidasyonu çalıştırır ve state'i WebSocket'le yayınlar.</p>
+<div class="kpi">
+  <div class="k"><div class="v">5</div><div class="l">market</div></div>
+  <div class="k"><div class="v">3</div><div class="l">finality kat.</div></div>
+  <div class="k"><div class="v">90+2</div><div class="l">test (fe+gw)</div></div>
+  <div class="k"><div class="v">i128</div><div class="l">fixed-point</div></div>
+</div>
+<p class="note">Arayüz <code>VITE_API_URL</code> ile <strong>Mock ↔ Real</strong> arasında geçer: env yoksa tarayıcı-içi mock; varsa gerçek gateway. TEE attestation ve ZK proof'lar <strong>Faz-0 stand-in</strong>'dir (motor gerçek; donanım kökü simüle).</p>
+
+<!-- 8 -->
+<h2 id="run"><span class="n">§ ·</span> Çalıştırma</h2>
+<pre><span class="m"># Gerçek backend (Rust motoru sürer)</span>
+cargo run -p gateway                              <span class="m"># :8080 (PORT override)</span>
+cd frontend &amp;&amp; VITE_API_URL=http://localhost:8080 pnpm dev
+
+<span class="m"># Mock (backend'siz, anında)</span>
+cd frontend &amp;&amp; pnpm dev
+
+<span class="m"># Testler</span>
+pnpm test            <span class="g"># 90/90</span>
+cargo test -p gateway   <span class="g"># 2/2</span></pre>
+<div class="note"><strong>Deploy notu:</strong> bu sistem henüz hiçbir yere deploy edilmedi — her şey lokal çalışır; kod yalnızca GitHub'a push'lanmıştır. Production için gateway bir sunucuda host edilmeli, frontend static olarak yayınlanmalıdır.</div>
+
+<!-- 9 -->
+<h2 id="roadmap"><span class="n">§13 ·</span> İnşa sıralaması</h2>
+<table>
+  <thead><tr><th>Faz</th><th>Kapsam</th><th>Durum</th></tr></thead>
+  <tbody>
+    <tr><td>Faz 0</td><td>Lokal / Sepolia ZK perp core (TEE yok, proving açıkta): note tree, margin + funding + liquidation validity</td><td><span class="badge b-buy">şu an</span></td></tr>
+    <tr><td>Faz 1</td><td>TEE order gateway + receipt + preconf</td><td><span class="badge b-ac">lokal gateway hazır</span></td></tr>
+    <tr><td>Faz 2</td><td>Batch manifest + ZK settlement + fund safety + confidential proving + forced-exit + note archive</td><td>—</td></tr>
+    <tr><td>Faz 3</td><td>Fair-sequencing hardening (inclusion timeout, slashing, Proof-v2)</td><td>—</td></tr>
+    <tr><td>Faz 4</td><td>Aztec private bridge</td><td>—</td></tr>
+    <tr><td>Faz 5</td><td>Committee-of-enclaves</td><td>—</td></tr>
+  </tbody>
+</table>
+<div class="note warn"><strong>Asıl varoluşsal risk teknoloji değil, likidite (§15).</strong> LP'siz dark book = kriptografik mezarlık. v1 kitabı enclave-içi market-maker botuyla tohumlanır, spread riski dış venue'da hedge edilir.</div>
+
+<footer>
+  dark-perp · Mimari teknik döküman · kaynak: <code>docs/ARCHITECTURE.md</code> (v2) + repo implementasyonu<br>
+  Attested-TEE confidential execution · ZK vault safety · protocol-level fairness/liveness · note-shielded state
+</footer>
+
+</div>
+</body>
+</html>
