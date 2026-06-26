@@ -1,28 +1,108 @@
 /* ============================================================================
-   theme.css — THE DESIGN DROP-SLOT.
+   theme.css — CELARI PERP design system applied (Lumina Finance handoff).
 
-   This file is imported LAST (after styles.css), so anything here overrides the
-   default design tokens. It is intentionally empty by default: the polished
-   built-in theme lives in styles.css `:root`, and YOUR incoming design goes here
-   as a `:root { ... }` block overriding only the tokens you want to change.
-
-   Applying a design = paste your tokens below. Reverting = empty this file.
-   Nothing in styles.css or any component needs to change — every colour, font,
-   radius, and spacing value is a `var(--token)`, and translucent tints derive via
-   `color-mix(var(--token) …)`, so a single override here cascades everywhere.
-
-   The token contract (what each variable controls) is documented in
-   frontend/README.md → "Token map". Swap `--accent`/`--accent-2` alone to reskin
-   the brand; swap the surface + text ramps to reskin the whole shell.
-
-   Example (delete and replace with the real design):
-
-     :root {
-       --accent:   #5b8cff;
-       --accent-2: #3ddc97;
-       --bg:       #07080d;
-       --text:     #eef0f8;
-       --font:     "Inter", system-ui, sans-serif;
-       --radius:   14px;
-     }
+   A near-black "terminal" surface system with a single periwinkle accent
+   (#b0c4ff) and three financial signal hues — emerald (gain/long), amber
+   (caution/matched), rose (risk/short). Inter for UI, JetBrains Mono for every
+   figure. This file is imported LAST, so its :root overrides the built-in tokens
+   and reskins every page through the token contract — no component edits.
+   Source: Celari Perp design handoff (_ds/lumina-finance-2-design-system).
    ============================================================================ */
+
+/* ---------- Self-hosted webfonts (Inter UI · JetBrains Mono data) ----------
+   latin + latin-ext subsets so Turkish renders (İ U+0130 in latin-ext, ı U+0131
+   in latin). Variable weights; swap display so text paints immediately. */
+@font-face {
+  font-family: "Inter"; font-style: normal; font-weight: 100 900; font-display: swap;
+  src: url("/fonts/Inter-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Inter"; font-style: normal; font-weight: 100 900; font-display: swap;
+  src: url("/fonts/Inter-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "JetBrains Mono"; font-style: normal; font-weight: 100 800; font-display: swap;
+  src: url("/fonts/JetBrainsMono-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "JetBrains Mono"; font-style: normal; font-weight: 100 800; font-display: swap;
+  src: url("/fonts/JetBrainsMono-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+:root {
+  color-scheme: dark;
+
+  /* ---------- Surfaces — Celari near-black terminal stack ---------- */
+  --bg:        #0a0a0b;  /* lumina-black — app canvas        */
+  --bg-2:      #0c0c0e;  /* subtle secondary step             */
+  --bg-elev:   #111113;  /* lumina-near-black — cards/popover  */
+  --bg-elev-2: #161619;  /* raised fills                      */
+  --bg-elev-3: #202023;  /* lumina-charcoal — highest surface  */
+  --border:        #1f1f23;  /* lumina-line — hairline         */
+  --border-strong: #27272a;  /* lumina-input — emphasised      */
+
+  /* ---------- Text ---------- */
+  --text:      #ffffff;  /* lumina-white            */
+  --text-dim:  #8e9299;  /* lumina-slate            */
+  --text-mute: #5b606b;  /* dimmer tertiary         */
+
+  /* ---------- Brand — periwinkle accent ----------
+     Celari is single-accent; --accent-2 is a deeper periwinkle so the derived
+     --grad / --glow read as a periwinkle sheen rather than a two-hue brand. */
+  --accent:    #b0c4ff;  /* lumina-periwinkle       */
+  --accent-2:  #8fa8ff;  /* deeper periwinkle        */
+  --on-accent: #0a0a0b;  /* dark ink on bright accent (primary-foreground) */
+
+  /* ---------- Financial signal hues ---------- */
+  --buy:    #34d399;  /* emerald — long / bid / gain   */
+  --sell:   #fb7185;  /* rose — short / ask / loss     */
+  --warn:   #fbbf24;  /* amber — caution               */
+  --danger: #fb7185;  /* rose — liquidation risk       */
+  --ok:     #34d399;  /* emerald — healthy             */
+
+  /* ---------- Three-layer finality (§3 — kept visually distinct) ---------- */
+  --accepted: #b0c4ff;  /* periwinkle — acknowledged   */
+  --matched:  #fbbf24;  /* amber — soft preconfirmation */
+  --settled:  #34d399;  /* emerald — binding / final    */
+
+  /* ---------- Radii — tight, technical ---------- */
+  --radius:    8px;
+  --radius-sm: 6px;
+  --radius-lg: 12px;
+
+  --gap: 16px;
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
+
+  --font: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
+}
+
+/* ---------- Signature canvas ----------
+   A soft periwinkle glow at the top over a faint 40px engineering grid — the
+   "instrument panel" backdrop. Layered over --bg; the grid is theme-neutral
+   white at very low alpha. */
+body {
+  background-color: var(--bg);
+  background-image:
+    radial-gradient(circle at 50% 0%, color-mix(in srgb, var(--accent) 6%, transparent) 0%, transparent 50%),
+    linear-gradient(rgb(255 255 255 / 0.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(255 255 255 / 0.02) 1px, transparent 1px);
+  background-size: 100% 100%, 40px 40px, 40px 40px;
+  background-attachment: fixed;
+  /* Inter stylistic sets the system uses app-wide (alt 'a', open digits). */
+  font-feature-settings: "cv11", "ss01";
+}
+
+/* ---------- Signature label voice ----------
+   Card titles become uppercase tracked JetBrains Mono micro-labels — the
+   terminal "instrument" header treatment. (Our default is already uppercase +
+   tracked; this swaps it to the mono face Celari uses for all machine-read text.) */
+.card__title {
+  font-family: var(--mono);
+  font-weight: 600;
+  letter-spacing: 0.1em;
+}

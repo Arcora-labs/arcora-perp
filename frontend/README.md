@@ -1,11 +1,14 @@
 # frontend — dark-perp web client
 
-A runnable Vite + React + TypeScript app with a complete, polished default design,
-**ready for your design to be applied on top**.
+A runnable Vite + React + TypeScript app skinned with the **Celari Perp** design
+system (Lumina Finance handoff): a near-black terminal surface, a single
+periwinkle accent, emerald/amber/rose financial signal hues, and Inter +
+JetBrains Mono. The whole skin is applied through one token override in
+`src/theme.css` (plus self-hosted fonts in `public/fonts/`) — no component edits.
 
 ![dark-perp trade screen](../docs/screenshot-trade.png) It already encodes the protocol's domain model and the parts of the UX
 that the architecture pins down — most importantly the three-layer finality
-(§3) — so a reskin is a styling pass, not a rebuild.
+(§3) — so the reskin was a styling pass, not a rebuild.
 
 ## Run
 
@@ -14,7 +17,7 @@ cd frontend
 pnpm install
 pnpm dev        # http://localhost:5173
 pnpm build      # type-check (strict) + production build
-pnpm test       # vitest — 83 unit + component tests
+pnpm test       # vitest — 90 unit + component tests
 ```
 
 The tests guard the correctness-critical, design-independent layer: the
@@ -25,10 +28,12 @@ A reskin touches none of this, so the suite stays green across design changes.
 
 ## How the design slots in
 
-- **Drop your design in `src/theme.css`.** That file is imported *after*
-  `styles.css` (empty by default), so a `:root { … }` block there overrides only the
-  tokens you change — the polished default stays intact, and reverting is just
-  emptying the file. You never edit `styles.css` or any component.
+- **The design lives in `src/theme.css`.** That file is imported *after*
+  `styles.css`, so its `:root { … }` block overrides the tokens it changes — the
+  **Celari Perp** design currently occupies it (self-hosted fonts + the periwinkle
+  terminal palette). Reverting to the built-in default is just emptying the file;
+  swapping to another design is replacing the block. You never edit `styles.css`
+  or any component.
 - **Tokens, not hard-coded values.** All colour/spacing/typography live as CSS
   variables in `src/styles.css` `:root`. Your `theme.css` overrides those variables;
   components reference tokens only, so the structure is untouched.
