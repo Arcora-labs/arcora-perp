@@ -218,7 +218,7 @@ fn main() {
     let m = node.seal_batch(&[], 5_000);
     println!(
         "\n[6] price → $84,000. maintenance pass liquidated {} position(s); insurance = ${}",
-        m.liquidations.len(),
+        m.liquidation_tags.len(),
         formatd(node.state.insurance_fund, QUOTE_SCALE, 2)
     );
 

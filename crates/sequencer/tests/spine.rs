@@ -8,7 +8,7 @@ use perp_core::market::Market;
 use perp_core::oracle::OracleTranscript;
 use perp_core::order::{Finality, Order, Side, TimeInForce};
 use perp_core::Note;
-use sequencer::{EnclaveIdentity, Sequencer};
+use sequencer::{liquidation_tag, EnclaveIdentity, Sequencer};
 
 fn enclave() -> EnclaveIdentity {
     EnclaveIdentity::from_seed([7u8; 32], 1, [0xABu8; 32])
@@ -268,13 +268,24 @@ fn maintenance_liquidates_underwater_position() {
     s.set_oracle(0, oracle(84_000, 5_000));
     let sealed = s.seal_batch(&[], 5_000);
 
+    // B detects its own liquidation by recomputing its tag from its owner key.
     assert!(
-        sealed.liquidations.contains(&word_u64(2)),
-        "long B liquidated"
+        sealed
+            .liquidation_tags
+            .contains(&liquidation_tag(&word_u64(2), 0, sealed.batch_id)),
+        "long B liquidated (detectable by B's own tag)"
     );
     assert!(
-        !sealed.liquidations.contains(&word_u64(1)),
+        !sealed
+            .liquidation_tags
+            .contains(&liquidation_tag(&word_u64(1), 0, sealed.batch_id)),
         "short A healthy"
+    );
+    // Privacy: the sealed batch carries an opaque tag, never the cleartext owner
+    // — an observer cannot read who was liquidated.
+    assert!(
+        !sealed.liquidation_tags.contains(&word_u64(2)),
+        "the published batch exposes a tag, not the account"
     );
     assert_eq!(
         s.state.position(&word_u64(2), 0).unwrap().size,
@@ -311,7 +322,9 @@ fn liquidation_cancels_resting_orders() {
     // crash → trader 2 (long) is liquidated; its resting ask must be cancelled.
     s.set_oracle(0, oracle(84_000, 5_000));
     let sealed = s.seal_batch(&[], 5_000);
-    assert!(sealed.liquidations.contains(&word_u64(2)));
+    assert!(sealed
+        .liquidation_tags
+        .contains(&liquidation_tag(&word_u64(2), 0, sealed.batch_id)));
     assert_eq!(
         s.book(0).unwrap().resting_size(Side::Sell),
         0,

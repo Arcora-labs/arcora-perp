@@ -100,6 +100,13 @@ pub enum Domain {
     /// share a preimage structure with the witness seal stream/MAC or any other
     /// hash purpose — one-domain-one-purpose. Not a cross-layer-committed value.
     Measurement = 18,
+    /// Liquidation tag (§5, §7). A per-(owner, market, batch) tag the affected
+    /// account can recompute from its own owner key to detect "I was liquidated",
+    /// but which an observer of the sealed batch cannot link back to an account —
+    /// replacing the cleartext liquidated-owner list. A dedicated tag so it can
+    /// never share a preimage structure with a note nullifier or any other hash
+    /// purpose. Not a cross-layer-committed value.
+    Liquidation = 19,
 }
 
 /// The default Phase 0 hasher: Keccak-256 with a 1-byte domain prefix.
@@ -178,6 +185,7 @@ mod tests {
             WitnessCommitment,
             WitnessSealMac,
             Measurement,
+            Liquidation,
         ];
         let w = [word_u64(42)];
         for i in 0..all.len() {

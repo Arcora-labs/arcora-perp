@@ -23,7 +23,7 @@ use sha3::{Digest as _, Keccak256 as RawKeccak};
 
 use matcher::{MatchingEngine, SubmitStatus};
 use perp_core::engine::BatchOp;
-use perp_core::hash::{Digest, Keccak256};
+use perp_core::hash::{word_u64, Digest, Domain, Hasher, Keccak256};
 use perp_core::market::{Market, MarketId};
 use perp_core::note::PubKey;
 use perp_core::oracle::OracleTranscript;
@@ -130,8 +130,25 @@ pub struct SealedBatch {
     /// Fills that matched but failed settlement (e.g. margin) — reported, not applied.
     pub settlement_rejected: Vec<(Digest, RejectReason)>,
     pub receipts: Vec<SignedReceipt>,
-    /// Owners liquidated during this batch's maintenance pass (§5).
-    pub liquidations: Vec<PubKey>,
+    /// Per-liquidation **tags** for this batch's maintenance pass (§5, §7).
+    /// Each is `liquidation_tag(owner, market, batch)`: the liquidated account can
+    /// recompute its own tag to detect that it was liquidated, but an observer of
+    /// the sealed batch sees only opaque hashes and the count — never the cleartext
+    /// liquidated accounts. (The on-chain manifest already excludes liquidations.)
+    pub liquidation_tags: Vec<Digest>,
+}
+
+/// A per-`(owner, market, batch)` liquidation tag. The liquidated account can
+/// recompute it from its own owner key plus the public `(market_id, batch_id)` to
+/// learn it was liquidated; an observer of the sealed batch cannot link a tag back
+/// to an account (it is a one-way, domain-separated hash). This replaces the
+/// cleartext liquidated-owner list so liquidation privacy survives at the
+/// sequencer layer, not just on L1 (§5, §7).
+pub fn liquidation_tag(owner: &PubKey, market_id: MarketId, batch_id: u64) -> Digest {
+    Keccak256::hash_words(
+        Domain::Liquidation,
+        &[*owner, word_u64(market_id), word_u64(batch_id)],
+    )
 }
 
 /// Why an order was rejected at settlement, mapped from an engine error.
@@ -321,7 +338,7 @@ impl Sequencer {
     /// premium, then liquidate every position that is underwater at the oracle
     /// price. Runs regardless of user liveness — the enclave holds positions, so
     /// an offline user is still liquidated. Returns the liquidated owners.
-    pub fn run_maintenance(&mut self, now_ms: u64) -> Vec<PubKey> {
+    pub fn run_maintenance(&mut self, now_ms: u64) -> Vec<(PubKey, MarketId)> {
         // reap good-till-time makers that have expired before reading the book as
         // the funding mark — an expired order must not anchor `best_bid`/`best_ask`
         // (§8), and matching already refuses to trade against it.
@@ -373,7 +390,7 @@ impl Sequencer {
                     })
                     .is_ok()
                 {
-                    liquidated.push(owner);
+                    liquidated.push((owner, mid));
                 }
             }
         }
@@ -462,7 +479,7 @@ impl Sequencer {
         //     Liquidating an owner also cancels its resting orders, so a
         //     bad-debt account can't leave stale makers that would fail to settle.
         let liquidations = self.run_maintenance(now_ms);
-        for owner in &liquidations {
+        for (owner, _market) in &liquidations {
             self.matcher.cancel_owner_orders(owner);
         }
 
@@ -538,6 +555,12 @@ impl Sequencer {
         let new_state_root = self.state.state_root();
         self.next_batch_id += 1;
 
+        // Publish privacy-preserving liquidation TAGS, not cleartext owners.
+        let liquidation_tags: Vec<Digest> = liquidations
+            .iter()
+            .map(|(owner, market)| liquidation_tag(owner, *market, batch_id))
+            .collect();
+
         SealedBatch {
             batch_id,
             prev_state_root,
@@ -547,7 +570,7 @@ impl Sequencer {
             settled_order_hashes,
             settlement_rejected,
             receipts,
-            liquidations,
+            liquidation_tags,
         }
     }
 
