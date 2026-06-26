@@ -88,6 +88,11 @@ pub enum Domain {
     /// with a batch-manifest hash (`BatchManifest`) — different purposes. Internal
     /// to the proving stand-in; not a cross-layer-committed value.
     WitnessCommitment = 16,
+    /// Confidential-prover witness-seal MAC (§10b). Authenticates the sealed
+    /// witness ciphertext (encrypt-then-MAC), so tampering or a wrong seal key is
+    /// detected on open. A dedicated tag, separate from the seal keystream
+    /// (`WitnessSeal`) — one-domain-one-purpose. Not a cross-layer-committed value.
+    WitnessSealMac = 17,
 }
 
 /// The default Phase 0 hasher: Keccak-256 with a 1-byte domain prefix.
@@ -164,6 +169,7 @@ mod tests {
             BridgeCommitment,
             ShamirShare,
             WitnessCommitment,
+            WitnessSealMac,
         ];
         let w = [word_u64(42)];
         for i in 0..all.len() {

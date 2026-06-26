@@ -17,10 +17,12 @@ use perp_core::market::Market;
 use perp_core::oracle::OracleTranscript;
 use perp_core::order::{Finality, Order, Side, TimeInForce};
 use perp_core::Note;
-use prover::{AttestedProver, CommitmentProver, PublicInputs, SealedWitness, Verifier};
+use prover::{AttestedProver, CommitmentProver, PublicInputs, SealedWitness, SoftwareSealProvider, Verifier};
 use sequencer::{EnclaveIdentity, Sequencer};
 
 const MEASUREMENT: [u8; 32] = [0xAB; 32];
+/// Dev seal root — models the TEE-sealed key the attested matcher + prover share.
+const SEAL_ROOT: [u8; 32] = [0x5E; 32];
 
 fn oracle(price_usd: i128, now: u64) -> OracleTranscript {
     OracleTranscript {
@@ -137,10 +139,19 @@ fn deposit_match_settle_prove_recover() {
     };
     // the witness (positions/fills/margins) is sealed to the prover measurement
     let witness = b"sealed batch witness: cross-user matching + margins";
-    let prover = AttestedProver::new(CommitmentProver::new(MEASUREMENT));
+    let prover = AttestedProver::new(
+        CommitmentProver::new(MEASUREMENT),
+        SoftwareSealProvider::new(SEAL_ROOT, MEASUREMENT),
+    );
     let proof = prover
         .prove_sealed(
-            &SealedWitness::seal(witness, MEASUREMENT, sealed.manifest_hash),
+            &SealedWitness::seal(
+                witness,
+                &SoftwareSealProvider::new(SEAL_ROOT, MEASUREMENT),
+                MEASUREMENT,
+                sealed.manifest_hash,
+            )
+            .expect("authorized to seal"),
             &public,
         )
         .expect("attested prover produces a proof");
@@ -151,10 +162,19 @@ fn deposit_match_settle_prove_recover() {
     assert_eq!(proof.public, public, "proof binds the sealed batch's roots");
 
     // a non-attested prover (public proving network) cannot open the witness
-    let rogue = AttestedProver::new(CommitmentProver::new([0xCD; 32]));
+    let rogue = AttestedProver::new(
+        CommitmentProver::new([0xCD; 32]),
+        SoftwareSealProvider::new(SEAL_ROOT, [0xCD; 32]),
+    );
     assert!(rogue
         .prove_sealed(
-            &SealedWitness::seal(witness, MEASUREMENT, sealed.manifest_hash),
+            &SealedWitness::seal(
+                witness,
+                &SoftwareSealProvider::new(SEAL_ROOT, MEASUREMENT),
+                MEASUREMENT,
+                sealed.manifest_hash,
+            )
+            .expect("authorized to seal"),
             &public
         )
         .is_err());

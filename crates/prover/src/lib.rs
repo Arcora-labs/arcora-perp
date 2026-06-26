@@ -103,8 +103,13 @@ pub struct BatchProof {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ProverError {
-    /// Sealed witness measurement does not match this prover (§10b).
+    /// The prover's measurement is not authorized for this sealed witness — the
+    /// TEE key-release refused to hand out the seal key (§10b). A public/outsourced
+    /// proving network with the wrong measurement lands here.
     MeasurementMismatch,
+    /// The sealed witness failed authentication: the ciphertext was tampered with,
+    /// or the seal key is wrong. Encrypt-then-MAC catches this before decryption.
+    SealAuthFailed,
     /// The transition itself was rejected by the engine.
     Transition(EngineError),
 }
@@ -181,38 +186,93 @@ impl Verifier for CommitmentProver {
     }
 }
 
+/// Releases the SECRET per-seal key that the witness sealing now rests on (§10b).
+///
+/// In production the TEE platform (Intel TDX / AWS Nitro) performs a **key-release
+/// bound to the attested measurement**: only an enclave whose measurement matches
+/// the sealed program obtains the key. A public/outsourced proving network — the
+/// wrong measurement — never gets it, so it cannot open the witness.
+///
+/// This is the substantive upgrade over the earlier stand-in: that keyed the
+/// keystream off the *public* measurement, so anyone who knew the (public)
+/// measurement could derive the pad — an access *label*, not real confidentiality.
+/// Confidentiality now rests on a SECRET key this provider guards. The real
+/// provider (TDX/Nitro key-release) lands in the confidential-VM step and
+/// implements this same trait — the typed boundary does not change.
+pub trait SealKeyProvider {
+    /// The per-seal key for `(measurement, nonce)`, or `None` if this provider is
+    /// not authorized for that measurement (models the TEE refusing key-release to
+    /// a non-matching enclave). The key MUST vary with `nonce` (the caller binds a
+    /// unique per-seal nonce — see [`SealedWitness::seal`]).
+    fn seal_key(&self, measurement: &Digest, nonce: &Digest) -> Option<[u8; 32]>;
+}
+
+/// Dev/test stand-in for TEE key-release. Holds a secret `root` — modelling the
+/// TEE-sealed root key that only the attested binary can unseal — and releases a
+/// per-seal key only for its own `measurement`. Swapped for a real TDX/Nitro
+/// key-release provider in the confidential-VM step.
+pub struct SoftwareSealProvider {
+    root: [u8; 32],
+    measurement: Digest,
+}
+
+impl SoftwareSealProvider {
+    /// `root` is the secret the real TEE would seal to the measurement; keep it
+    /// out of any public surface. `measurement` is the attested program identity
+    /// this provider speaks for.
+    pub fn new(root: [u8; 32], measurement: Digest) -> Self {
+        Self { root, measurement }
+    }
+}
+
+impl SealKeyProvider for SoftwareSealProvider {
+    fn seal_key(&self, measurement: &Digest, nonce: &Digest) -> Option<[u8; 32]> {
+        if *measurement != self.measurement {
+            return None; // the TEE releases the key only to the matching measurement
+        }
+        // Secret-keyed, per-seal-nonce derivation under the key-derivation domain.
+        Some(Keccak256::hash_words(
+            Domain::KeyDerivation,
+            &[self.root, *measurement, *nonce],
+        ))
+    }
+}
+
 /// A witness sealed to a specific attested prover measurement (§10b).
 ///
 /// The plaintext (positions, fills, margins) is recoverable only by a prover that
-/// presents the matching measurement. The sealing here is a **documented
-/// stand-in** for real enclave sealing (e.g. TDX/Nitro key-release bound to the
-/// measurement): a keystream derived from the measurement XORs the plaintext.
-/// It models the *access boundary*, not production confidentiality.
+/// obtains the secret seal key from a [`SealKeyProvider`] authorized for the
+/// sealing measurement (TDX/Nitro key-release). Sealing is **encrypt-then-MAC**: a
+/// secret-keyed keystream hides the plaintext, and a keyed tag authenticates the
+/// ciphertext so tampering or a wrong key is rejected on open.
 ///
 /// ## Per-seal nonce (no two-time pad)
 ///
-/// The keystream is derived from `(measurement, nonce)`, **not the measurement
-/// alone**. The measurement is a constant attestation of the prover binary —
-/// identical for every batch — so a measurement-only keystream would XOR every
-/// batch's witness with the *same* pad, and two sealed witnesses would leak the
-/// XOR of two private ledgers (classic two-time pad). The caller **must** pass a
-/// `nonce` that is unique per seal (e.g. the batch's public commitment); the nonce
-/// is stored in the clear (it carries no secret) so the matching prover can
-/// reproduce the keystream.
+/// The keystream is derived from `(seal_key, nonce)`. The caller **must** pass a
+/// `nonce` unique per seal (e.g. the batch's public commitment): the seal key is
+/// otherwise stable across a measurement's batches, so a key-only keystream would
+/// XOR every batch's witness with the *same* pad and two sealed witnesses would
+/// leak the XOR of two private ledgers (classic two-time pad). The nonce is stored
+/// in the clear (it carries no secret) so the authorized prover can reproduce the
+/// keystream.
 #[derive(Clone, Debug)]
 pub struct SealedWitness {
     ciphertext: Vec<u8>,
     measurement: Digest,
     nonce: Digest,
+    /// Encrypt-then-MAC tag over the ciphertext, keyed by the secret seal key —
+    /// authenticates the witness so tampering / a wrong key is rejected on open.
+    tag: Digest,
 }
 
-fn keystream(measurement: &Digest, nonce: &Digest, len: usize) -> Vec<u8> {
+/// Keystream derived from the SECRET seal `key` and a per-seal `nonce`.
+fn keystream(key: &[u8; 32], nonce: &Digest, len: usize) -> Vec<u8> {
     let mut out = Vec::with_capacity(len);
     let mut counter: u64 = 0;
     while out.len() < len {
         let block = Keccak256::hash_words(
             Domain::WitnessSeal,
-            &[*measurement, *nonce, perp_core::hash::word_u64(counter)],
+            &[*key, *nonce, perp_core::hash::word_u64(counter)],
         );
         out.extend_from_slice(&block);
         counter += 1;
@@ -221,18 +281,54 @@ fn keystream(measurement: &Digest, nonce: &Digest, len: usize) -> Vec<u8> {
     out
 }
 
+/// Encrypt-then-MAC tag authenticating the sealed ciphertext under the secret key,
+/// binding `(key, measurement, nonce, len, ciphertext)`.
+fn seal_mac(key: &[u8; 32], measurement: &Digest, nonce: &Digest, ciphertext: &[u8]) -> Digest {
+    let mut words = vec![
+        *key,
+        *measurement,
+        *nonce,
+        perp_core::hash::word_u64(ciphertext.len() as u64),
+    ];
+    for chunk in ciphertext.chunks(32) {
+        let mut w = [0u8; 32];
+        w[..chunk.len()].copy_from_slice(chunk);
+        words.push(w);
+    }
+    Keccak256::hash_words(Domain::WitnessSealMac, &words)
+}
+
+/// Constant-time 32-byte tag comparison (no early exit on the first mismatch).
+fn ct_eq(a: &Digest, b: &Digest) -> bool {
+    let mut diff = 0u8;
+    for i in 0..32 {
+        diff |= a[i] ^ b[i];
+    }
+    diff == 0
+}
+
 impl SealedWitness {
-    /// Seal `plaintext` so only a prover with `measurement` can open it. `nonce`
-    /// **must be unique per seal** (reuse under one measurement reopens the
-    /// two-time-pad leak) — the batch public commitment is a natural choice.
-    pub fn seal(plaintext: &[u8], measurement: Digest, nonce: Digest) -> Self {
-        let ks = keystream(&measurement, &nonce, plaintext.len());
-        let ciphertext = plaintext.iter().zip(ks).map(|(p, k)| p ^ k).collect();
-        Self {
+    /// Seal `plaintext` so only a prover whose [`SealKeyProvider`] is authorized for
+    /// `measurement` can open it. Returns `None` if `provider` won't release a key
+    /// for `measurement` (the seal can't be produced without the secret key). `nonce`
+    /// **must be unique per seal** (reuse reopens the two-time-pad leak) — the batch
+    /// public commitment is a natural choice.
+    pub fn seal(
+        plaintext: &[u8],
+        provider: &dyn SealKeyProvider,
+        measurement: Digest,
+        nonce: Digest,
+    ) -> Option<Self> {
+        let key = provider.seal_key(&measurement, &nonce)?;
+        let ks = keystream(&key, &nonce, plaintext.len());
+        let ciphertext: Vec<u8> = plaintext.iter().zip(ks).map(|(p, k)| p ^ k).collect();
+        let tag = seal_mac(&key, &measurement, &nonce, &ciphertext);
+        Some(Self {
             ciphertext,
             measurement,
             nonce,
-        }
+            tag,
+        })
     }
 
     pub fn measurement(&self) -> Digest {
@@ -253,23 +349,38 @@ impl SealedWitness {
 /// measurement matches, runs the proof, and **zeroizes** the opened plaintext.
 pub struct AttestedProver<P: Prover> {
     backend: P,
+    /// The TEE key-release boundary: yields the seal key only for an authorized
+    /// measurement. A non-attested prover's provider won't release the key.
+    seal_provider: Box<dyn SealKeyProvider>,
 }
 
 impl<P: Prover> AttestedProver<P> {
-    pub fn new(backend: P) -> Self {
-        Self { backend }
+    pub fn new(backend: P, seal_provider: impl SealKeyProvider + 'static) -> Self {
+        Self {
+            backend,
+            seal_provider: Box::new(seal_provider),
+        }
     }
 
     pub fn measurement(&self) -> Digest {
         self.backend.measurement()
     }
 
-    /// Open a sealed witness; errors unless this prover's measurement matches.
+    /// Open a sealed witness. Fails with `MeasurementMismatch` if the key-release
+    /// provider won't hand out the seal key for this witness's measurement (a
+    /// non-attested prover), or `SealAuthFailed` if the authenticated ciphertext
+    /// doesn't verify (tampering or a wrong key).
     fn open(&self, sealed: &SealedWitness) -> Result<Vec<u8>, ProverError> {
-        if sealed.measurement != self.backend.measurement() {
-            return Err(ProverError::MeasurementMismatch);
+        let key = self
+            .seal_provider
+            .seal_key(&sealed.measurement, &sealed.nonce)
+            .ok_or(ProverError::MeasurementMismatch)?;
+        // Encrypt-then-MAC: authenticate BEFORE decrypting.
+        let expected = seal_mac(&key, &sealed.measurement, &sealed.nonce, &sealed.ciphertext);
+        if !ct_eq(&expected, &sealed.tag) {
+            return Err(ProverError::SealAuthFailed);
         }
-        let ks = keystream(&sealed.measurement, &sealed.nonce, sealed.ciphertext.len());
+        let ks = keystream(&key, &sealed.nonce, sealed.ciphertext.len());
         Ok(sealed
             .ciphertext
             .iter()
@@ -317,6 +428,13 @@ mod tests {
 
     const M: Digest = [0xAB; 32];
     const WRONG_M: Digest = [0xCD; 32];
+    /// Dev seal root (models the TEE-sealed key shared by the attested matcher +
+    /// prover binaries). Both the sealer and the authorized opener use it.
+    const ROOT: [u8; 32] = [0x5E; 32];
+
+    fn prov(measurement: Digest) -> SoftwareSealProvider {
+        SoftwareSealProvider::new(ROOT, measurement)
+    }
 
     fn state_with_deposit() -> (DefaultState, Vec<BatchOp>) {
         let mut s = DefaultState::new(16);
@@ -358,9 +476,9 @@ mod tests {
     fn prove_and_verify_roundtrip() {
         let (mut s, ops) = state_with_deposit();
         let public = run_transition(&mut s, &ops, [1u8; 32], [0u8; 32], [0u8; 32]).unwrap();
-        let prover = AttestedProver::new(CommitmentProver::new(M));
+        let prover = AttestedProver::new(CommitmentProver::new(M), prov(M));
         let witness = b"sealed batch witness: positions, fills, margins";
-        let sealed = SealedWitness::seal(witness, M, public.commitment::<Keccak256>());
+        let sealed = SealedWitness::seal(witness, &prov(M), M, public.commitment::<Keccak256>()).unwrap();
         let proof = prover.prove_sealed(&sealed, &public).unwrap();
         assert!(CommitmentProver::new(M).verify(&proof));
         assert_eq!(proof.public, public);
@@ -370,8 +488,8 @@ mod tests {
     fn tampered_public_inputs_break_verification() {
         let (mut s, ops) = state_with_deposit();
         let public = run_transition(&mut s, &ops, [1u8; 32], [0u8; 32], [0u8; 32]).unwrap();
-        let prover = AttestedProver::new(CommitmentProver::new(M));
-        let sealed = SealedWitness::seal(b"w", M, [0x77u8; 32]);
+        let prover = AttestedProver::new(CommitmentProver::new(M), prov(M));
+        let sealed = SealedWitness::seal(b"w", &prov(M), M, [0x77u8; 32]).unwrap();
         let mut proof = prover.prove_sealed(&sealed, &public).unwrap();
         // flip the new_state_root in the public inputs without re-proving
         proof.public.new_state_root[0] ^= 0xff;
@@ -388,9 +506,10 @@ mod tests {
     fn wrong_measurement_cannot_open_witness() {
         let (mut s, ops) = state_with_deposit();
         let public = run_transition(&mut s, &ops, [1u8; 32], [0u8; 32], [0u8; 32]).unwrap();
-        // witness sealed to M, but the prover has WRONG_M → cannot open (§10b)
-        let sealed = SealedWitness::seal(b"private ledger", M, [0x01u8; 32]);
-        let prover = AttestedProver::new(CommitmentProver::new(WRONG_M));
+        // witness sealed to M, but the prover's key-release is authorized only for
+        // WRONG_M → it never obtains the seal key → cannot open (§10b)
+        let sealed = SealedWitness::seal(b"private ledger", &prov(M), M, [0x01u8; 32]).unwrap();
+        let prover = AttestedProver::new(CommitmentProver::new(WRONG_M), prov(WRONG_M));
         assert_eq!(
             prover.prove_sealed(&sealed, &public),
             Err(ProverError::MeasurementMismatch),
@@ -399,13 +518,41 @@ mod tests {
     }
 
     #[test]
+    fn wrong_measurement_cannot_even_seal() {
+        // A key-release provider authorized only for WRONG_M cannot produce a seal
+        // bound to M — without the secret key there is no ciphertext to begin with.
+        assert!(
+            SealedWitness::seal(b"x", &prov(WRONG_M), M, [0x01u8; 32]).is_none(),
+            "sealing to M needs a provider authorized for M"
+        );
+    }
+
+    #[test]
+    fn tampered_ciphertext_fails_authentication() {
+        // Encrypt-then-MAC: flipping a ciphertext byte must be caught on open as a
+        // SealAuthFailed (before any decryption), not silently decrypted to garbage.
+        let mut sealed = SealedWitness::seal(b"position: +1 BTC", &prov(M), M, [0x03u8; 32]).unwrap();
+        sealed.ciphertext[0] ^= 0xff;
+        let prover = AttestedProver::new(CommitmentProver::new(M), prov(M));
+        assert_eq!(prover.open(&sealed), Err(ProverError::SealAuthFailed));
+    }
+
+    #[test]
+    fn correct_open_recovers_exact_plaintext() {
+        let pt = b"position: -2 ETH @ 1570, margin 314";
+        let sealed = SealedWitness::seal(pt, &prov(M), M, [0x04u8; 32]).unwrap();
+        let prover = AttestedProver::new(CommitmentProver::new(M), prov(M));
+        assert_eq!(prover.open(&sealed).unwrap(), pt);
+    }
+
+    #[test]
     fn seal_actually_hides_plaintext() {
         let witness = b"position: +1 BTC @ 100k, margin 20k";
-        let sealed = SealedWitness::seal(witness, M, [0x02u8; 32]);
+        let sealed = SealedWitness::seal(witness, &prov(M), M, [0x02u8; 32]).unwrap();
         assert_eq!(sealed.ciphertext_len(), witness.len());
         // round-trip through the correct prover recovers nothing observable in
         // the proof bytes (proof is a 32-byte commitment, not the witness)
-        let prover = AttestedProver::new(CommitmentProver::new(M));
+        let prover = AttestedProver::new(CommitmentProver::new(M), prov(M));
         let public = PublicInputs {
             prev_state_root: [0; 32],
             batch_manifest_hash: [0; 32],
@@ -424,8 +571,8 @@ mod tests {
         // the constant prover measurement) would reuse one keystream and XOR-ing
         // two sealed witnesses would leak the XOR of two private ledgers.
         let pt = b"position: +1 BTC @ 100k, margin 20k";
-        let a = SealedWitness::seal(pt, M, [0x01u8; 32]);
-        let b = SealedWitness::seal(pt, M, [0x02u8; 32]);
+        let a = SealedWitness::seal(pt, &prov(M), M, [0x01u8; 32]).unwrap();
+        let b = SealedWitness::seal(pt, &prov(M), M, [0x02u8; 32]).unwrap();
         // recover the two keystreams via the public XOR relation ks = ct ^ pt
         let ks_a: Vec<u8> = a.ciphertext.iter().zip(pt).map(|(c, p)| c ^ p).collect();
         let ks_b: Vec<u8> = b.ciphertext.iter().zip(pt).map(|(c, p)| c ^ p).collect();
@@ -436,7 +583,7 @@ mod tests {
         );
 
         // and the correct prover still round-trips each one back to the plaintext
-        let prover = AttestedProver::new(CommitmentProver::new(M));
+        let prover = AttestedProver::new(CommitmentProver::new(M), prov(M));
         assert_eq!(prover.open(&a).unwrap(), pt);
         assert_eq!(prover.open(&b).unwrap(), pt);
     }
