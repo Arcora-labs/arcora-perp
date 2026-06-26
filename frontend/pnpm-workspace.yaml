@@ -1,0 +1,4 @@
+# Skip pnpm's pre-run dependency re-verification so `pnpm dev/build/test` run without
+# re-triggering the global supply-chain (minimumReleaseAge) install gate. Dependencies
+# are already installed; this only disables the per-run recheck, not the install policy.
+verifyDepsBeforeRun: false
