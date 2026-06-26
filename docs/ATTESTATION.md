@@ -11,7 +11,19 @@ verify a genuine Intel **TDX DCAP quote**, extract + bind the enclave measuremen
 | **#4 Offline DCAP verification** | ✅ **Built + tested** — [`crates/attestation`](../crates/attestation) |
 | #4 → engine wiring (attested measurement → `EnclaveIdentity` + seal release) | ✅ **Built + tested** — [`crates/e2e/tests/attestation_binding.rs`](../crates/e2e/tests/attestation_binding.rs) |
 | #4 on-chain (`IDcapAttestation` + `MockDcapAttestation` + `AttestationRegistry`) | ✅ **Built + tested** — [`contracts/`](../contracts) |
-| **#5 Confidential-VM run + real key release** | ⬜ blocked on Azure provisioning |
+| **#5a Real Azure quote captured + verified offline** | ✅ **Done** — a genuine Azure TDX quote verifies through `crates/attestation` (pinned fixture `tests/fixtures/azure/`) |
+| #5b Real TEE key-release (`TeeSealProvider`) + vTPM app-binding | ⬜ next (see findings below) |
+
+### #5 findings from a REAL Azure TDX confidential VM
+
+A `Standard_DC2es_v6` CVM (Ubuntu 24.04 CVM image) was provisioned, a real TDX
+quote captured, and verified offline by our crate. What the live platform showed:
+
+- **Region:** Azure Free-Trial subscriptions reject new-customer deploys in saturated regions (westeurope → `RequestDisallowedByAzure: locationineligible`); **westus** worked. Only westus/westeurope expose `DC*es_v6` to this sub; quota `standardDCEV6Family` = 4 vCPU (offer won't raise it).
+- **Quote path:** the direct guest interface is gated off (`/dev/tdx_guest` absent, configfs-tsm `mkdir` → ENXIO even after `modprobe`). Quotes come via the **vTPM/HCL → IMDS** path: `az-tdx-vtpm` reads the TD report from the vTPM, then `POST http://169.254.169.254/acc/tdquote`. ⚠️ `az-tdx-vtpm 0.8.1`'s `send_json` sets `Content-Type: application/json; charset=utf-8` → IMDS returns **415**; a bare `application/json` header fixes it.
+- **report_data is NOT app-settable:** it carries the Azure HCL runtime-data hash (32 bytes + zero pad), confirming decision #3 — a key/nonce must bind transitively via the **vTPM AK**, not by writing report_data.
+- **All four RTMRs are ZERO:** Azure measures boot into the **vTPM PCRs**, not the TD RTMRs. So on Azure the TD measurement is MRTD (firmware) only; **application identity lives in the vTPM layer**. The MRTD+RTMR fold stays correct for general TDX and harmless here, but on Azure it binds firmware, not the app — #5b must add vTPM-PCR/AK binding for real application identity.
+- The captured quote verified **UpToDate** end-to-end (PCK chain → Intel Root CA, TCB) and is pinned as a regression fixture.
 
 ### What `crates/attestation` does (verified)
 
@@ -62,11 +74,12 @@ Cost: `DC2es_v6` ≈ $74/mo, `DC4es_v6` ≈ $148/mo (+ ~$5–10 disk).
 
 ## Open questions (confirm against a real Azure quote — deferred to #5)
 
-- **report_data → signer (biggest fork).** Does Azure GA Ubuntu 24.04 CVM expose an app-settable 64-byte REPORTDATA via `configfs-tsm`, or only the HCL-AK-bound hash? If not app-settable, the registry's `reportData[0..20] → enclaveSigner` binds a garbage signer; bind the signer transitively via the vTPM-AK chain instead. The first-20-bytes/left-aligned layout is also currently asserted only against a self-constructed test buffer — pin it against real #5 enclave output and require `reportData.length == 64`.
-- Does `/acc/tdquote` return a standard v4 ECDSA-P256 DCAP quote verifiable with Intel PCS collateral, or must collateral come from Azure THIM?
-- V4 (TD10) vs V5 (TD15) body emitted by the CVM (off-chain + on-chain decode must agree; `quote_version` is currently the body-variant, not the header version).
-- Are the captured RTMR0..3 stable across reboots of the same image (RTMR0 firmware config in particular)? If any legitimately varies, narrow the fold to the stable subset (e.g. RTMR1..3). Pin the real Azure MRTD+RTMR set as the production golden, replacing the Phala sample.
+- **#5b — application identity via the vTPM (the now-primary task).** Since Azure's TD RTMRs are zero and report_data is the HCL hash, the sequencer binary's identity is in the vTPM PCRs and the AK that signs them. `TeeSealProvider` must: verify the vTPM AK is bound to this TD (the AK pub is in the HCL runtime data, whose SHA-256 is the quote's report_data — chain it), read a PCR quote over the measured-boot PCRs, and key release off `MRTD ‖ PCR-set` rather than `MRTD ‖ RTMRs`. The on-chain `enclaveSigner ← reportData[0..20]` binding likewise needs reworking to derive from the AK, not the (HCL-hash) report_data; require `reportData.length == 64` and pin the layout against real output.
 - **Live-gate freshness:** the verifier takes a pinned `now_secs` + pinned collateral (correct for hermetic tests / replay-resistance). A live gate must drive `now` from a trusted clock and refresh collateral each `nextUpdate`, and re-check revocation.
 - **TCB policy:** `SwHardeningNeeded` is accepted regardless of the outstanding `advisory_ids` set. Decide whether to gate it on an allowlist of known-mitigated advisories.
 
-> Resolved (no longer open): the off-chain fold and the on-chain `keccak256(MRTD‖RTMR0..3)` are **intentionally distinct encodings of the same measurement set** — this is by design, not a form to be unified.
+> Resolved by the real Azure quote (#5a):
+> - report_data is **not** app-settable — it is the Azure HCL runtime-data hash. Bind via the vTPM AK (above), not by writing report_data.
+> - `/acc/tdquote` returns a **standard TDX v4** quote, offline-verifiable with Intel PCS collateral (status UpToDate).
+> - The Azure TD **RTMRs are zero** (vTPM-measured boot) — so on Azure the fold binds firmware (MRTD) only; app identity is the vTPM layer (#5b).
+> - The off-chain fold and the on-chain `keccak256(MRTD‖RTMR0..3)` are **intentionally distinct encodings** of the same set — by design, never unified.

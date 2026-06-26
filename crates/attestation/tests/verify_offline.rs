@@ -21,6 +21,15 @@ const OUTDATED_COLLATERAL: &[u8] = include_bytes!("fixtures/tdx_quote_outdated_c
 /// Midpoint of the outdated vector's window [2026-02-18 .. 2026-03-20].
 const OUTDATED_NOW: u64 = 1_772_708_331;
 
+// A REAL Azure TDX confidential-VM quote (DC2es_v6, westus, Ubuntu 24.04 CVM),
+// captured via the vTPM/HCL path → IMDS `/acc/tdquote`, with its live collateral.
+const AZURE_QUOTE: &[u8] = include_bytes!("fixtures/azure/quote.bin");
+const AZURE_COLLATERAL: &[u8] = include_bytes!("fixtures/azure/collateral.json");
+/// Midpoint of the Azure collateral window [2026-06-26 .. 2026-07-26].
+const AZURE_NOW: u64 = 1_783_775_325;
+/// The captured Azure platform's MRTD (its guest-firmware measurement).
+const AZURE_MRTD: &str = "7a27f95e1b4da54e7b67b1bf640c9e9914c29757fc49a168fed007a51db459042b0c685213dfe0796a706646c49205a5";
+
 /// Golden values from the pinned Phala TDX v4 vector.
 const GOLDEN_MRTD: &str = "91eb2b44d141d4ece09f0c75c2c53d247a3c68edd7fafe8a3520c942a604a407de03ae6dc5f87f27428b2538873118b7";
 const GOLDEN_RTMR0: &str = "44c0197b39157fdd7a4dcc44767f9d6b0bb3977c7a8e347b8492f827fe9d9e5c48aca29b220b80b6a540cf994b9bc9c0";
@@ -97,15 +106,17 @@ fn measurement_is_deterministic_and_binds_mrtd_and_rtmrs() {
         "a different MRTD yields a different measurement"
     );
 
-    // Bound to the RTMRs: changing the runtime-loaded code (kernel/initrd/app)
-    // changes the identity too — MRTD alone is the shared firmware on the Azure
-    // target, so binding RTMRs is what makes the digest application-bound.
+    // Bound to the RTMRs too: on TDX platforms that measure boot into the RTMRs
+    // (bare-metal / non-Azure), a different kernel/initrd/app changes the identity.
+    // (On Azure CVMs the RTMRs are ZERO and app-identity lives in the vTPM instead
+    // — see `verifies_a_real_azure_tdx_quote_offline`; folding RTMRs stays correct
+    // and harmless either way.)
     let mut other_rtmr = att.clone();
     other_rtmr.rtmr[1][0] ^= 0x01;
     assert_ne!(
         other_rtmr.enclave_measurement().unwrap(),
         m,
-        "a different RTMR yields a different measurement (application-bound)"
+        "a different RTMR yields a different measurement"
     );
 }
 
@@ -145,6 +156,43 @@ fn synthetic(status: TcbStatus) -> VerifiedAttestation {
         advisory_ids: Vec::new(),
         quote_version: 4,
     }
+}
+
+#[test]
+fn verifies_a_real_azure_tdx_quote_offline() {
+    // Proves the verifier works on a REAL Azure TDX quote (not just the Phala
+    // sample) — full PCK chain + TCB evaluation against its pinned collateral, no
+    // network. Documents two facts the real quote revealed:
+    //   1. report_data is the Azure HCL runtime-data hash (32 bytes + zero pad) —
+    //      NOT app-settable, so a key/nonce must bind transitively via the vTPM AK.
+    //   2. all four RTMRs are ZERO: Azure measures boot into the vTPM PCRs, not the
+    //      TD RTMRs, so on this platform MRTD is firmware identity and application
+    //      identity lives in the vTPM layer (folding RTMRs is harmless but adds
+    //      nothing here — see docs/ATTESTATION.md).
+    let collateral = Collateral::from_json(AZURE_COLLATERAL).expect("azure collateral parses");
+    let att =
+        verify_tdx_quote(AZURE_QUOTE, &collateral, AZURE_NOW).expect("real azure quote verifies");
+
+    assert_eq!(att.quote_version, 4);
+    assert_eq!(
+        att.tcb_status,
+        TcbStatus::UpToDate,
+        "captured platform was up to date"
+    );
+    assert_eq!(hex::encode(att.mr_td), AZURE_MRTD, "real Azure MRTD");
+    assert!(
+        att.rtmr.iter().all(|r| r == &[0u8; 48]),
+        "Azure leaves TD RTMRs zero (vTPM-measured boot)"
+    );
+    assert_ne!(
+        &att.report_data[..32],
+        &[0u8; 32],
+        "report_data carries the HCL runtime-data hash"
+    );
+    assert!(
+        att.enclave_measurement().is_ok(),
+        "acceptable TCB releases the measurement"
+    );
 }
 
 #[test]
