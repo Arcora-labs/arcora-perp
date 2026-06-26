@@ -69,8 +69,9 @@
   --matched:  #fbbf24;  /* amber — soft preconfirmation */
   --settled:  #34d399;  /* emerald — binding / final    */
 
-  /* ---------- Radii — tight, technical ---------- */
-  --radius:    8px;
+  /* ---------- Radii — SHARP by default (terminal sharpness). 6px only on nav
+     rows / logo tile / quick chips; pills (999px) on dots & the reduce switch. ---------- */
+  --radius:    0px;
   --radius-sm: 6px;
   --radius-lg: 12px;
 

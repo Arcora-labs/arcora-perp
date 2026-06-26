@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useStore } from "../store";
 import { formatUsd, parseUsd } from "../domain/format";
 import { accountSummary } from "../domain/risk";
@@ -12,29 +12,43 @@ export function AccountSummary() {
     state.account.settledBalance,
     (marketId) => state.marks[marketId] ?? state.oracle.price,
   );
+  const equityIcon = (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><circle cx="8" cy="8" r="6" /><path d="M18.09 10.37A6 6 0 1 1 10.34 18" /><path d="M7 6h1v4" /></svg>
+  );
+  const levIcon = (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" /></svg>
+  );
   return (
-    <div className="card">
-      <h3 className="card__title">Margin</h3>
-      <div className="summary">
-        <SummaryStat label="Equity" value={formatUsd(s.equity)} />
-        <SummaryStat label="Free (withdrawable)" value={formatUsd(s.freeBalance)} />
-        <SummaryStat label="Used margin" value={formatUsd(s.usedMargin)} />
-        <SummaryStat
-          label="Unrealized PnL"
-          value={formatUsd(s.upnl)}
-          tone={s.upnl > 0n ? "pos" : s.upnl < 0n ? "neg" : undefined}
-        />
-        <SummaryStat label="Account leverage" value={`${s.leverage.toFixed(2)}×`} />
-      </div>
+    <div className="statgrid">
+      <StatCard label="Equity" value={formatUsd(s.equity)} sub="Net account value" glow icon={equityIcon} />
+      <StatCard label="Free · Withdrawable" value={formatUsd(s.freeBalance)} sub="SETTLED · spendable now" glow tone="pos" />
+      <StatCard label="Used Margin" value={formatUsd(s.usedMargin)} sub="Locked by open positions" />
+      <StatCard
+        label="Unrealized PnL"
+        value={formatUsd(s.upnl)}
+        sub="At current mark"
+        tone={s.upnl > 0n ? "pos" : s.upnl < 0n ? "neg" : undefined}
+      />
+      <StatCard label="Acct Leverage" value={`${s.leverage.toFixed(2)}×`} sub="Notional ÷ equity" glow accent icon={levIcon} />
     </div>
   );
 }
 
-function SummaryStat({ label, value, tone }: { label: string; value: string; tone?: "pos" | "neg" }) {
+function StatCard({
+  label, value, sub, tone, glow, accent, icon,
+}: {
+  label: string; value: string; sub: string;
+  tone?: "pos" | "neg"; glow?: boolean; accent?: boolean; icon?: ReactNode;
+}) {
+  const color = accent ? "var(--accent)" : tone === "pos" ? "var(--buy)" : tone === "neg" ? "var(--sell)" : "var(--text)";
   return (
-    <div className="summary__stat">
-      <span className="summary__label">{label}</span>
-      <span className={`summary__value mono ${tone ?? ""}`}>{value}</span>
+    <div className="card">
+      <div className="statcard__head">
+        <span className="statcard__label">{label}</span>
+        {icon && <span className="statcard__icon">{icon}</span>}
+      </div>
+      <div className={`statcard__value ${glow ? "statcard__value--glow" : ""}`} style={{ color }}>{value}</div>
+      <div className="statcard__sub">{sub}</div>
     </div>
   );
 }

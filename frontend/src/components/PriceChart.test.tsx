@@ -10,40 +10,39 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-// The chart does real geometry on the price series (min/max/span, SVG coords).
-// These lock the degenerate-input guards a reskin must not break.
+// The chart builds candles client-side from the oracle tick stream and renders them on
+// a <canvas> with drawing tools. happy-dom has no 2d context, so these lock the
+// design-independent contract: it mounts, renders its chrome (symbol, timeframe tabs,
+// drawing tools), and survives ticks + its pulse interval without throwing — the
+// degenerate-input guards a reskin must not break.
 
 describe("PriceChart robustness", () => {
-  it("shows the collecting state with a single tick (no path math on length < 2)", () => {
-    render(
+  it("mounts and renders the chart chrome (canvas + timeframe tabs + tools) on first paint", () => {
+    const { container } = render(
       <StoreProvider>
         <PriceChart />
       </StoreProvider>,
     );
-    // a fresh series holds exactly one tick → the collecting state, no <path> drawn
-    expect(screen.getByText(/collecting ticks/i)).toBeTruthy();
-    expect(document.querySelector("path")).toBeNull();
+    expect(container.querySelector("canvas")).not.toBeNull();
+    // timeframe controls + the four drawing tools are present
+    expect(screen.getByRole("button", { name: "15m" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /trend line/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /erase/i })).toBeTruthy();
   });
 
-  it("draws a path with only finite coordinates once ticks accumulate", async () => {
-    render(
+  it("survives accumulating ticks and the pulse interval without crashing", async () => {
+    const { container } = render(
       <StoreProvider>
         <PriceChart />
       </StoreProvider>,
     );
-    // the mock client walks the price on a 1.5s interval; advance a few ticks so the
-    // series grows past the length-2 threshold and the SVG path renders.
-    for (let i = 0; i < 4; i++) {
+    // the mock walks the price on a 1.5s interval; advance several ticks + the chart's
+    // own pulse interval. The canvas-draw guards must keep this from throwing.
+    for (let i = 0; i < 5; i++) {
       await act(async () => {
         await vi.advanceTimersByTimeAsync(1500);
       });
     }
-    const path = document.querySelector("path");
-    expect(path, "a path should render once >= 2 ticks are buffered").not.toBeNull();
-    const d = path!.getAttribute("d") ?? "";
-    // the span/coord math must never emit NaN/Infinity (a flat or single-point
-    // series would otherwise poison the path and break the chart silently)
-    expect(d).not.toMatch(/NaN|Infinity/);
-    expect(d.length).toBeGreaterThan(0);
+    expect(container.querySelector("canvas")).not.toBeNull();
   });
 });

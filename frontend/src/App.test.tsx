@@ -10,18 +10,19 @@ describe("App smoke", () => {
     // render() throws if any component faults on mount — so this alone is the
     // integration smoke test the per-module unit tests can't provide.
     render(<App />);
-    // header is always present
-    expect(screen.getByText("dark-perp")).toBeTruthy();
+    // brand + primary nav are always present (Celari sidebar)
+    expect(screen.getByText("CELARI")).toBeTruthy();
     expect(screen.getByText("Trade")).toBeTruthy();
-    // the default trade view shows the market and the book
+    // the default trade view shows the selected market and the book
     expect(screen.getAllByText(/BTC\/USDC/).length).toBeGreaterThan(0);
     expect(screen.getByText(/order book/i)).toBeTruthy();
   });
 
   it("renders every market in the selector (multi-market)", () => {
     render(<App />);
+    // sidebar market list — each market is a selectable tab (accessible name = symbol)
     for (const sym of ["BTC/USDC", "ETH/USDC", "SOL/USDC", "HYPE/USDC", "LIT/USDC"]) {
-      expect(screen.getAllByText(new RegExp(sym.replace("/", "\\/"))).length).toBeGreaterThan(0);
+      expect(screen.getByRole("tab", { name: sym })).toBeTruthy();
     }
   });
 
