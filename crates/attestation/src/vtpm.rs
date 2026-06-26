@@ -62,7 +62,7 @@ struct Jwk {
     #[serde(default)]
     kid: String,
     #[serde(default)]
-    kty: String,
+    key_ops: Vec<String>,
     #[serde(default)]
     n: String,
     #[serde(default)]
@@ -102,18 +102,32 @@ impl<'a> Cur<'a> {
     }
 }
 
-/// Locate the HCL runtime-data JSON inside a raw HCL report — it begins at the
-/// first `{"` and ends at the last `}` (the TD report before it is binary).
+fn le_u32(b: &[u8], o: usize) -> Result<u32, VtpmError> {
+    let s = b.get(o..o + 4).ok_or(VtpmError::HclBinding)?;
+    Ok(u32::from_le_bytes(s.try_into().unwrap()))
+}
+
+/// Extract the HCL runtime-claims data (`var_data`) by its **fixed layout**, not
+/// by brace-scanning (a stray `{"`/`}` in the binary TD report or trailing bytes
+/// would otherwise corrupt the SHA-256 bound). The HCL attestation report is:
+/// `"HCLA"` signature @0, the TD hw_report, then an `IgvmRequestData` header whose
+/// `report_type` (TDX=4) / `report_data_hash_type` (SHA-256=1) / `variable_data_size`
+/// gate and bound the runtime-claims JSON at offset 1236. Confirmed against a real
+/// Azure DC2es_v6 capture.
 fn runtime_data(hcl: &[u8]) -> Result<&[u8], VtpmError> {
-    let start = hcl
-        .windows(2)
-        .position(|w| w == b"{\"")
-        .ok_or(VtpmError::HclBinding)?;
-    let end = hcl
-        .iter()
-        .rposition(|&b| b == b'}')
-        .ok_or(VtpmError::HclBinding)?;
-    hcl.get(start..=end).ok_or(VtpmError::HclBinding)
+    const VAR_DATA_OFFSET: usize = 1236;
+    if hcl.get(0..4) != Some(b"HCLA") {
+        return Err(VtpmError::HclBinding);
+    }
+    if le_u32(hcl, 1224)? != 4 {
+        return Err(VtpmError::HclBinding); // report_type: TDX
+    }
+    if le_u32(hcl, 1228)? != 1 {
+        return Err(VtpmError::HclBinding); // report_data_hash_type: SHA-256
+    }
+    let size = le_u32(hcl, 1232)? as usize; // variable_data_size
+    hcl.get(VAR_DATA_OFFSET..VAR_DATA_OFFSET + size)
+        .ok_or(VtpmError::HclBinding)
 }
 
 fn b64url(s: &str) -> Result<Vec<u8>, VtpmError> {
@@ -183,19 +197,24 @@ pub fn verify_azure_vtpm(
     ak_quote_sig: &[u8],
     pcr_values: &[[u8; 32]],
 ) -> Result<AzureVtpmReport, VtpmError> {
-    // 1. HCL binding: report_data == SHA-256(runtime_data).
+    // 1. HCL binding: report_data == SHA-256(runtime_data) ‖ zero pad.
     let runtime = runtime_data(hcl_report)?;
     if Sha256::digest(runtime).as_slice() != &td.report_data[..32] {
         return Err(VtpmError::HclBinding);
     }
+    if td.report_data[32..] != [0u8; 32] {
+        return Err(VtpmError::HclBinding); // fail-closed: the 32-byte zero pad
+    }
 
     // 2. Extract the vTPM AK public key from the (now TD-bound) runtime data.
+    //    Strictly the signing AK (`HCLAkPub` with a `sign` op) — never the HCL
+    //    *encryption* key (`HCLEkPub`), which would verify the quote under the
+    //    wrong key.
     let rd: RuntimeData = serde_json::from_slice(runtime).map_err(|_| VtpmError::AkParse)?;
     let ak = rd
         .keys
         .iter()
-        .find(|k| k.kid == "HCLAkPub")
-        .or_else(|| rd.keys.iter().find(|k| k.kty == "RSA"))
+        .find(|k| k.kid == "HCLAkPub" && k.key_ops.iter().any(|o| o == "sign"))
         .ok_or(VtpmError::AkParse)?;
     let ak_pub = RsaPublicKey::new(
         BigUint::from_bytes_be(&b64url(&ak.n)?),

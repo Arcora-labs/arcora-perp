@@ -80,6 +80,20 @@ fn a_different_measured_boot_pcr_breaks_the_chain() {
 }
 
 #[test]
+fn a_corrupt_hcl_header_is_rejected() {
+    // The fixed-layout parser validates the "HCLA" signature before trusting any
+    // offset — a corrupted header must fail closed, not mis-locate the runtime data.
+    let collateral = Collateral::from_json(AZURE_COLLATERAL).expect("collateral parses");
+    let td = verify_tdx_quote(AZURE_QUOTE, &collateral, AZURE_NOW).expect("td quote verifies");
+    let mut bad = HCL.to_vec();
+    bad[0] ^= 0x01; // break the "HCLA" magic
+    assert_eq!(
+        vtpm::verify_azure_vtpm(&td, &bad, AK_MSG, AK_SIG, &pcrs()),
+        Err(VtpmError::HclBinding),
+    );
+}
+
+#[test]
 fn a_tampered_hcl_report_breaks_the_td_binding() {
     let collateral = Collateral::from_json(AZURE_COLLATERAL).expect("collateral parses");
     let td = verify_tdx_quote(AZURE_QUOTE, &collateral, AZURE_NOW).expect("td quote verifies");
