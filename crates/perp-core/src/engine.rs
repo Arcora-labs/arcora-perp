@@ -424,14 +424,87 @@ impl<H: Hasher> State<H> {
             (-pos.collateral).max(0)
         };
         if bad_debt > 0 {
+            // 1. Insurance backstop.
             let cover = bad_debt.min(self.insurance_fund.max(0));
             self.insurance_fund -= cover;
             self.positions.get_mut(&key).unwrap().collateral += cover;
-            if cover < bad_debt {
+            // 2. Auto-deleverage cascade: claw any residual from the winners.
+            let residual = (bad_debt - cover).max(0);
+            if residual > 0 {
+                let recovered = self.auto_deleverage(market_id, owner, residual, price);
+                self.positions.get_mut(&key).unwrap().collateral += recovered;
+            }
+            // 3. If still underwater (insurance AND winners both insufficient — i.e.
+            //    the winning side already cashed out), it is true insolvency: the
+            //    residual stays parked (conservation-safe) and the system trips to
+            //    close-only (the depletion halt).
+            if self.positions.get(&key).unwrap().collateral < 0 {
                 self.mode = Mode::CloseOnly;
             }
         }
         Ok(())
+    }
+
+    /// Auto-deleverage cascade (§6, §9): when insurance can't fully absorb a
+    /// liquidation's bad debt, claw the `residual` from the **profitable** open
+    /// positions in `market_id` (the winners), pro-rata to their unrealized profit
+    /// at `price` and each capped at its own profit. Conservation-neutral —
+    /// collateral only moves between positions, all inside the conservation
+    /// identity. Returns the amount actually recovered (≤ `residual`). BTreeMap
+    /// iteration is sorted, so the distribution is deterministic for the prover.
+    fn auto_deleverage(
+        &mut self,
+        market_id: MarketId,
+        exclude: &PubKey,
+        residual: i128,
+        price: i128,
+    ) -> i128 {
+        if residual <= 0 {
+            return 0;
+        }
+        let mut winners: Vec<(PubKey, i128)> = Vec::new();
+        let mut total: i128 = 0;
+        for ((owner, mid), pos) in self.positions.iter() {
+            if *mid != market_id || owner == exclude || !pos.is_open() {
+                continue;
+            }
+            if let Some(profit) = pos.unrealized_pnl(price) {
+                // Claw only realized-able gains, and never more collateral than the
+                // winner actually holds (so ADL can't push a winner underwater).
+                let claimable = profit.min(pos.collateral.max(0));
+                if claimable > 0 {
+                    winners.push((*owner, claimable));
+                    total = total.saturating_add(claimable);
+                }
+            }
+        }
+        if total <= 0 {
+            return 0;
+        }
+        let coverable = residual.min(total);
+        // Floor pro-rata, then hand the rounding remainder to winners with headroom.
+        let mut takes: Vec<i128> = winners
+            .iter()
+            .map(|(_, p)| coverable.saturating_mul(*p) / total)
+            .collect();
+        let mut leftover = coverable - takes.iter().sum::<i128>();
+        for i in 0..winners.len() {
+            if leftover == 0 {
+                break;
+            }
+            let headroom = winners[i].1 - takes[i];
+            let add = leftover.min(headroom);
+            takes[i] += add;
+            leftover -= add;
+        }
+        let mut recovered = 0i128;
+        for (i, (owner, _)) in winners.iter().enumerate() {
+            if let Some(pos) = self.positions.get_mut(&(*owner, market_id)) {
+                pos.collateral -= takes[i];
+            }
+            recovered += takes[i];
+        }
+        recovered
     }
 
     /// Capitalize the insurance fund from external collateral (§6, §9). The fund

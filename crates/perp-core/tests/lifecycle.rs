@@ -377,46 +377,16 @@ fn invariant_liquidation_threshold() {
 }
 
 #[test]
-fn bad_debt_liquidation_conserves_and_cannot_be_escaped() {
-    // A gap-down past the maintenance buffer leaves a position underwater by MORE
-    // than its collateral (bad debt). The protocol must stay conservation-safe: the
-    // loss is parked as negative collateral and absorbed by the vault clearing pool,
-    // not silently zeroed — and the debtor must not be able to walk away from it.
-    let mut s = fresh_state();
+fn bad_debt_is_clawed_from_the_winners_via_adl() {
+    // A gap-down past A's maintenance buffer leaves A underwater by MORE than its
+    // collateral (bad debt). With no insurance seeded, the auto-deleverage cascade
+    // funds the shortfall from the WINNER (B, the profitable short) rather than
+    // parking it or silently socializing it onto the clearing pool. Conservation
+    // holds and the loser walks away flat (covered), not with a stranded debt.
+    let mut s = bad_debt_setup(0);
     let (a, b) = (pk(1), pk(2));
-    for (o, sk, amt) in [(a, 1u8, 6_000i128), (b, 2u8, 50_000)] {
-        let bl = [sk; 32];
-        let cm = deposit_commit(o, amt * QUOTE_SCALE, bl);
-        s.apply_batch(&[
-            BatchOp::Deposit {
-                owner: o,
-                asset_id: 0,
-                amount: amt * QUOTE_SCALE,
-                blinding: bl,
-            },
-            BatchOp::FundPosition {
-                owner: o,
-                market_id: 0,
-                note_commitment: cm,
-                spend_key: [sk; 32],
-            },
-        ])
-        .unwrap();
-    }
-    // A opens 0.5 BTC long at $100k ($5k initial, $6k collateral qualifies).
-    s.apply_op(&BatchOp::Fill {
-        taker: a,
-        maker: b,
-        market_id: 0,
-        taker_side: Side::Buy,
-        size: SIZE_SCALE / 2,
-        price: 100_000 * PRICE_SCALE,
-        oracle: oracle(100_000, 1_000),
-        now_ms: 1_000,
-    })
-    .unwrap();
+    let b_before = s.position(&b, 0).unwrap().collateral;
 
-    // gap to $80k: A's 0.5 BTC loses $10k vs $6k collateral → equity -$4k (bad debt).
     s.apply_op(&BatchOp::Liquidate {
         owner: a,
         market_id: 0,
@@ -425,43 +395,24 @@ fn bad_debt_liquidation_conserves_and_cannot_be_escaped() {
     })
     .unwrap();
 
-    let pos = s.position(&a, 0).unwrap();
-    assert_eq!(pos.size, 0, "bad-debt position is still fully closed");
-    assert!(
-        pos.collateral < 0,
-        "the shortfall is parked as negative collateral"
+    let a_pos = s.position(&a, 0).unwrap();
+    assert_eq!(a_pos.size, 0, "the bad-debt position is closed");
+    assert_eq!(
+        a_pos.collateral, 0,
+        "ADL covers the bad debt from the winner — nothing parked"
     );
-    assert!(s.conservation_holds(), "bad debt is absorbed, not lost");
+    let b_after = s.position(&b, 0).unwrap().collateral;
+    assert!(
+        b_after < b_before,
+        "the winning short funded the loser's shortfall"
+    );
     assert_eq!(
         s.mode,
-        Mode::CloseOnly,
-        "with no insurance the uncovered shortfall trips the depletion halt"
+        Mode::Normal,
+        "a fully-covered loss keeps the system open"
     );
-
-    // the debtor cannot escape the shortfall by funding a fresh note: collateral
-    // merges (it does not reset), so a $1k top-up only reduces the debt.
-    let bl = [9u8; 32];
-    let cm = deposit_commit(a, 1_000 * QUOTE_SCALE, bl);
-    s.apply_batch(&[
-        BatchOp::Deposit {
-            owner: a,
-            asset_id: 0,
-            amount: 1_000 * QUOTE_SCALE,
-            blinding: bl,
-        },
-        BatchOp::FundPosition {
-            owner: a,
-            market_id: 0,
-            note_commitment: cm,
-            spend_key: [1u8; 32],
-        },
-    ])
-    .unwrap();
-    assert!(
-        s.position(&a, 0).unwrap().collateral < 0,
-        "a partial top-up reduces but does not erase the debt"
-    );
-    assert!(s.conservation_holds());
+    assert_eq!(s.insurance_fund, 0, "no insurance was used (none seeded)");
+    assert!(s.conservation_holds(), "ADL is conservation-neutral");
 }
 
 /// Canonical bad-debt setup: A funds $6k and opens 0.5 BTC long at $100k; the
@@ -540,10 +491,12 @@ fn insurance_backstop_absorbs_bad_debt() {
 }
 
 #[test]
-fn insurance_depletion_trips_close_only() {
-    // Seed below the shortfall: insurance drains to zero, the residual stays parked
-    // (conservation-safe), and the system trips to close-only — the depletion halt.
+fn adl_covers_residual_after_insurance() {
+    // A small seed plus the auto-deleverage cascade together absorb the bad debt:
+    // insurance pays what it can, the winner (B) funds the rest, the loser walks
+    // away flat, and the system stays open.
     let mut s = bad_debt_setup(1_000);
+    let b_before = s.position(&pk(2), 0).unwrap().collateral;
     s.apply_op(&BatchOp::Liquidate {
         owner: pk(1),
         market_id: 0,
@@ -551,15 +504,94 @@ fn insurance_depletion_trips_close_only() {
         now_ms: 2_000,
     })
     .unwrap();
-    assert_eq!(s.insurance_fund, 0, "fund fully drawn");
+    assert_eq!(
+        s.position(&pk(1), 0).unwrap().collateral,
+        0,
+        "insurance + ADL cover the bad debt"
+    );
+    assert_eq!(s.insurance_fund, 0, "the small fund is fully drawn first");
     assert!(
-        s.position(&pk(1), 0).unwrap().collateral < 0,
-        "residual shortfall remains parked"
+        s.position(&pk(2), 0).unwrap().collateral < b_before,
+        "the winner funded the residual"
+    );
+    assert_eq!(s.mode, Mode::Normal, "fully covered → no halt");
+    assert!(s.conservation_holds());
+}
+
+#[test]
+fn true_insolvency_trips_close_only_when_winners_have_exited() {
+    // The one case ADL cannot cover: the winning side already cashed out before the
+    // loser blows up. B closes its profitable short against a fresh, flat maker (C)
+    // and exits; A is then liquidated into bad debt with no open winner to claw and
+    // no insurance — so the residual is parked (conservation-safe) and the system
+    // trips to close-only (the final depletion halt).
+    let mut s = fresh_state();
+    let (a, b, c) = (pk(1), pk(2), pk(3));
+    for (o, sk, amt) in [(a, 1u8, 6_000i128), (b, 2u8, 50_000), (c, 3u8, 10_000)] {
+        let bl = [sk; 32];
+        let cm = deposit_commit(o, amt * QUOTE_SCALE, bl);
+        s.apply_batch(&[
+            BatchOp::Deposit {
+                owner: o,
+                asset_id: 0,
+                amount: amt * QUOTE_SCALE,
+                blinding: bl,
+            },
+            BatchOp::FundPosition {
+                owner: o,
+                market_id: 0,
+                note_commitment: cm,
+                spend_key: [sk; 32],
+            },
+        ])
+        .unwrap();
+    }
+    // A longs 0.5 BTC at $100k, with B as the (short) maker.
+    s.apply_op(&BatchOp::Fill {
+        taker: a,
+        maker: b,
+        market_id: 0,
+        taker_side: Side::Buy,
+        size: SIZE_SCALE / 2,
+        price: 100_000 * PRICE_SCALE,
+        oracle: oracle(100_000, 1_000),
+        now_ms: 1_000,
+    })
+    .unwrap();
+    // Price drops to $80k; B closes its winning short against a fresh maker C (who
+    // enters flat at $80k) and is out of the market.
+    s.apply_op(&BatchOp::Fill {
+        taker: b,
+        maker: c,
+        market_id: 0,
+        taker_side: Side::Buy,
+        size: SIZE_SCALE / 2,
+        price: 80_000 * PRICE_SCALE,
+        oracle: oracle(80_000, 1_500),
+        now_ms: 1_500,
+    })
+    .unwrap();
+    assert_eq!(
+        s.position(&b, 0).unwrap().size,
+        0,
+        "B has exited the market"
+    );
+
+    s.apply_op(&BatchOp::Liquidate {
+        owner: a,
+        market_id: 0,
+        oracle: oracle(80_000, 2_000),
+        now_ms: 2_000,
+    })
+    .unwrap();
+    assert!(
+        s.position(&a, 0).unwrap().collateral < 0,
+        "no winner to claw and no insurance → the shortfall is parked"
     );
     assert_eq!(
         s.mode,
         Mode::CloseOnly,
-        "undercollateralized → halt new risk"
+        "true insolvency trips the depletion halt"
     );
     assert!(s.conservation_holds());
 }
