@@ -13,7 +13,7 @@
 //! conservation.
 
 use crate::error::EngineError;
-use crate::fixed::apply_rate;
+use crate::fixed::{apply_rate, notional_quote};
 use crate::hash::{Digest, Hasher};
 use crate::market::MarketId;
 use crate::note::{Note, PubKey};
@@ -297,6 +297,16 @@ impl<H: Hasher> State<H> {
             return Err(EngineError::CloseOnly);
         }
 
+        // Trading fee (§9): the taker pays `taker_fee` on the fill notional; the
+        // maker is rebated `maker_rebate` (the market-maker incentive); the rest
+        // funds the insurance fund. Zero on a fee-free market — so existing flows
+        // are unchanged.
+        let notional = notional_quote(size, price).ok_or(EngineError::Overflow)?;
+        let taker_fee =
+            apply_rate(notional, market.taker_fee_ratio).ok_or(EngineError::Overflow)?;
+        let maker_rebate =
+            apply_rate(notional, market.maker_rebate_ratio).ok_or(EngineError::Overflow)?;
+
         // Compute both legs on COPIES; commit only if both pass margin. This
         // makes the op atomic — a rejected fill leaves state untouched, exactly
         // as the prover's all-or-nothing constraint system would.
@@ -321,6 +331,18 @@ impl<H: Hasher> State<H> {
                 .ok_or(EngineError::Overflow)?
                 .checked_add(funding)
                 .ok_or(EngineError::Overflow)?;
+            // Charge this leg its trading fee BEFORE the margin check, so a taker
+            // that can't afford the fee on an opening fill is rejected (leg 0 =
+            // taker pays, leg 1 = maker is rebated).
+            pos.collateral = if i == 0 {
+                pos.collateral
+                    .checked_sub(taker_fee)
+                    .ok_or(EngineError::Overflow)?
+            } else {
+                pos.collateral
+                    .checked_add(maker_rebate)
+                    .ok_or(EngineError::Overflow)?
+            };
             if increasing {
                 pos.check_initial_margin(&market, mark, funding_index)?;
             }
@@ -334,6 +356,16 @@ impl<H: Hasher> State<H> {
         for (key, pos) in staged {
             self.positions.insert(key, pos);
         }
+        // Route the taker fee minus the maker rebate into the insurance fund.
+        // Conservation holds: taker −fee, maker +rebate, insurance +(fee−rebate).
+        self.insurance_fund = self
+            .insurance_fund
+            .checked_add(
+                taker_fee
+                    .checked_sub(maker_rebate)
+                    .ok_or(EngineError::Overflow)?,
+            )
+            .ok_or(EngineError::Overflow)?;
         Ok(())
     }
 

@@ -33,6 +33,14 @@ pub struct Market {
     /// Max |primary − backup_twap| / price tolerated before the price is rejected
     /// and the market enters close-only (§8).
     pub max_oracle_deviation_ratio: i128,
+    /// Taker trading fee as a fraction of fill notional (§9). The taker pays it on
+    /// every fill; `maker_rebate_ratio` of the notional is rebated to the maker (the
+    /// market-maker incentive), and the remainder funds the insurance fund.
+    pub taker_fee_ratio: i128,
+    /// Maker rebate as a fraction of fill notional, paid to the resting maker out of
+    /// the taker fee. Must be `<= taker_fee_ratio` so the insurance cut is never
+    /// negative. This is what pays a market-maker to provide liquidity (§9, audit Q4).
+    pub maker_rebate_ratio: i128,
 }
 
 impl Market {
@@ -47,6 +55,20 @@ impl Market {
             max_oracle_staleness_ms: 10_000,           // 10s
             max_oracle_confidence_ratio: RATE_SCALE / 100, // 1%
             max_oracle_deviation_ratio: RATE_SCALE / 50, // 2%
+            taker_fee_ratio: 0,                        // fee-free by default
+            maker_rebate_ratio: 0,
+        }
+    }
+
+    /// Like [`Self::conservative`] but with a taker fee + maker rebate enabled —
+    /// the market-maker incentive (§9, audit Q4). `taker_bps`/`maker_bps` are in
+    /// basis points of notional; the maker rebate must not exceed the taker fee.
+    pub fn with_fees(id: MarketId, taker_bps: i128, maker_bps: i128) -> Self {
+        let bps = RATE_SCALE / 10_000;
+        Self {
+            taker_fee_ratio: taker_bps * bps,
+            maker_rebate_ratio: maker_bps * bps,
+            ..Self::conservative(id)
         }
     }
 
@@ -68,6 +90,9 @@ impl Market {
             && self.liquidation_fee_ratio < self.maintenance_margin_ratio
             && self.max_oracle_confidence_ratio > 0
             && self.max_oracle_deviation_ratio > 0
+            && self.taker_fee_ratio >= 0
+            && self.maker_rebate_ratio >= 0
+            && self.maker_rebate_ratio <= self.taker_fee_ratio
     }
 }
 

@@ -679,6 +679,64 @@ fn adl_distributes_pro_rata_across_multiple_winners() {
 }
 
 #[test]
+fn trading_fees_pay_the_maker_and_fund_insurance() {
+    // A market with a 10 bps taker fee / 4 bps maker rebate: on a $100k fill the
+    // taker loses $100, the maker EARNS $40 (the LP incentive), and insurance
+    // collects the $60 remainder. Conservation holds.
+    let mut s = DefaultState::new(TREE_DEPTH);
+    s.add_market(Market::with_fees(0, 10, 4));
+    let (a, b) = (pk(1), pk(2));
+    for (o, sk) in [(a, 1u8), (b, 2u8)] {
+        let bl = [sk; 32];
+        let cm = deposit_commit(o, 20_000 * QUOTE_SCALE, bl);
+        s.apply_batch(&[
+            BatchOp::Deposit {
+                owner: o,
+                asset_id: 0,
+                amount: 20_000 * QUOTE_SCALE,
+                blinding: bl,
+            },
+            BatchOp::FundPosition {
+                owner: o,
+                market_id: 0,
+                note_commitment: cm,
+                spend_key: [sk; 32],
+            },
+        ])
+        .unwrap();
+    }
+    let ins0 = s.insurance_fund;
+    s.apply_op(&BatchOp::Fill {
+        taker: a,
+        maker: b,
+        market_id: 0,
+        taker_side: Side::Buy,
+        size: SIZE_SCALE,
+        price: 100_000 * PRICE_SCALE,
+        oracle: oracle(100_000, 1_000),
+        now_ms: 1_000,
+    })
+    .unwrap();
+
+    assert_eq!(
+        20_000 * QUOTE_SCALE - s.position(&a, 0).unwrap().collateral,
+        100 * QUOTE_SCALE,
+        "taker paid the 10 bps fee"
+    );
+    assert_eq!(
+        s.position(&b, 0).unwrap().collateral - 20_000 * QUOTE_SCALE,
+        40 * QUOTE_SCALE,
+        "maker earned the 4 bps rebate"
+    );
+    assert_eq!(
+        s.insurance_fund - ins0,
+        60 * QUOTE_SCALE,
+        "insurance got the remainder"
+    );
+    assert!(s.conservation_holds());
+}
+
+#[test]
 fn duplicate_commitment_deposit_rejected() {
     // two deposits with identical (owner, asset, amount, blinding) collide on the
     // commitment; the second must be rejected, not silently alias and lose value
