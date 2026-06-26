@@ -84,6 +84,10 @@ pub enum BatchOp {
     },
     /// Forced-exit / circuit-breaker: switch the system to close-only (§6, §8).
     EnterCloseOnly,
+    /// Capitalize the insurance fund with external collateral (§6, §9) — the
+    /// backstop that absorbs liquidation bad debt before it socializes onto the
+    /// clearing pool.
+    SeedInsurance { amount: i128 },
 }
 
 impl<H: Hasher> State<H> {
@@ -166,6 +170,7 @@ impl<H: Hasher> State<H> {
                 self.mode = Mode::CloseOnly;
                 Ok(())
             }
+            BatchOp::SeedInsurance { amount } => self.op_seed_insurance(*amount),
         }
     }
 
@@ -404,6 +409,45 @@ impl<H: Hasher> State<H> {
         self.insurance_fund = self
             .insurance_fund
             .checked_add(take)
+            .ok_or(EngineError::Overflow)?;
+
+        // Insurance backstop (§6, §9): if the close left the position underwater
+        // (bad debt — a gap-down past the maintenance buffer), draw from the
+        // insurance fund to cover it BEFORE it socializes onto the clearing pool.
+        // Conservation-neutral: `insurance_fund` and the position's `collateral`
+        // both sit in the conservation identity, so moving value between them
+        // leaves it intact. If the fund cannot absorb the whole shortfall, the
+        // residual is socialized and the system is undercollateralized — so it
+        // trips to close-only (the depletion halt the audit flagged as missing).
+        let bad_debt = {
+            let pos = self.positions.get(&key).unwrap();
+            (-pos.collateral).max(0)
+        };
+        if bad_debt > 0 {
+            let cover = bad_debt.min(self.insurance_fund.max(0));
+            self.insurance_fund -= cover;
+            self.positions.get_mut(&key).unwrap().collateral += cover;
+            if cover < bad_debt {
+                self.mode = Mode::CloseOnly;
+            }
+        }
+        Ok(())
+    }
+
+    /// Capitalize the insurance fund from external collateral (§6, §9). The fund
+    /// is the backstop drawn on by [`Self::op_liquidate`] to absorb bad debt.
+    /// Conservation-safe: `insurance_fund` and `external_in` rise together.
+    fn op_seed_insurance(&mut self, amount: i128) -> Result<(), EngineError> {
+        if amount <= 0 {
+            return Err(EngineError::NonPositiveAmount);
+        }
+        self.insurance_fund = self
+            .insurance_fund
+            .checked_add(amount)
+            .ok_or(EngineError::Overflow)?;
+        self.external_in = self
+            .external_in
+            .checked_add(amount)
             .ok_or(EngineError::Overflow)?;
         Ok(())
     }

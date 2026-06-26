@@ -432,6 +432,11 @@ fn bad_debt_liquidation_conserves_and_cannot_be_escaped() {
         "the shortfall is parked as negative collateral"
     );
     assert!(s.conservation_holds(), "bad debt is absorbed, not lost");
+    assert_eq!(
+        s.mode,
+        Mode::CloseOnly,
+        "with no insurance the uncovered shortfall trips the depletion halt"
+    );
 
     // the debtor cannot escape the shortfall by funding a fresh note: collateral
     // merges (it does not reset), so a $1k top-up only reduces the debt.
@@ -455,6 +460,106 @@ fn bad_debt_liquidation_conserves_and_cannot_be_escaped() {
     assert!(
         s.position(&a, 0).unwrap().collateral < 0,
         "a partial top-up reduces but does not erase the debt"
+    );
+    assert!(s.conservation_holds());
+}
+
+/// Canonical bad-debt setup: A funds $6k and opens 0.5 BTC long at $100k; the
+/// caller then liquidates after a gap-down. `seed_usd > 0` capitalizes insurance.
+fn bad_debt_setup(seed_usd: i128) -> DefaultState {
+    let mut s = fresh_state();
+    let (a, b) = (pk(1), pk(2));
+    for (o, sk, amt) in [(a, 1u8, 6_000i128), (b, 2u8, 50_000)] {
+        let bl = [sk; 32];
+        let cm = deposit_commit(o, amt * QUOTE_SCALE, bl);
+        s.apply_batch(&[
+            BatchOp::Deposit {
+                owner: o,
+                asset_id: 0,
+                amount: amt * QUOTE_SCALE,
+                blinding: bl,
+            },
+            BatchOp::FundPosition {
+                owner: o,
+                market_id: 0,
+                note_commitment: cm,
+                spend_key: [sk; 32],
+            },
+        ])
+        .unwrap();
+    }
+    if seed_usd > 0 {
+        s.apply_op(&BatchOp::SeedInsurance {
+            amount: seed_usd * QUOTE_SCALE,
+        })
+        .unwrap();
+    }
+    s.apply_op(&BatchOp::Fill {
+        taker: a,
+        maker: b,
+        market_id: 0,
+        taker_side: Side::Buy,
+        size: SIZE_SCALE / 2,
+        price: 100_000 * PRICE_SCALE,
+        oracle: oracle(100_000, 1_000),
+        now_ms: 1_000,
+    })
+    .unwrap();
+    s
+}
+
+#[test]
+fn insurance_backstop_absorbs_bad_debt() {
+    // Seed the fund above the shortfall: the ~$4k gap-down bad debt is fully drawn
+    // from insurance, the position closes flat (no parked debt), and the system
+    // stays open — the audit's "insurance is a one-way sink" is closed.
+    let mut s = bad_debt_setup(10_000);
+    let before = s.insurance_fund;
+    s.apply_op(&BatchOp::Liquidate {
+        owner: pk(1),
+        market_id: 0,
+        oracle: oracle(80_000, 2_000),
+        now_ms: 2_000,
+    })
+    .unwrap();
+    assert_eq!(
+        s.position(&pk(1), 0).unwrap().collateral,
+        0,
+        "bad debt fully covered by insurance"
+    );
+    assert!(
+        s.insurance_fund < before && s.insurance_fund > 0,
+        "fund drawn down, not exhausted"
+    );
+    assert_eq!(
+        s.mode,
+        Mode::Normal,
+        "a covered loss does not trip the halt"
+    );
+    assert!(s.conservation_holds());
+}
+
+#[test]
+fn insurance_depletion_trips_close_only() {
+    // Seed below the shortfall: insurance drains to zero, the residual stays parked
+    // (conservation-safe), and the system trips to close-only — the depletion halt.
+    let mut s = bad_debt_setup(1_000);
+    s.apply_op(&BatchOp::Liquidate {
+        owner: pk(1),
+        market_id: 0,
+        oracle: oracle(80_000, 2_000),
+        now_ms: 2_000,
+    })
+    .unwrap();
+    assert_eq!(s.insurance_fund, 0, "fund fully drawn");
+    assert!(
+        s.position(&pk(1), 0).unwrap().collateral < 0,
+        "residual shortfall remains parked"
+    );
+    assert_eq!(
+        s.mode,
+        Mode::CloseOnly,
+        "undercollateralized → halt new risk"
     );
     assert!(s.conservation_holds());
 }
