@@ -106,3 +106,20 @@ body {
   font-weight: 600;
   letter-spacing: 0.1em;
 }
+
+/* Celari mandates JetBrains Mono for ALL machine-read micro-labels (table heads,
+   eyebrows, stat captions) with wide tracking — the system's signature voice.
+   Our defaults already uppercase + track these; this swaps them to the mono face. */
+.table th,
+.statsbar__label,
+.summary__label,
+.stat__label,
+.activity__kind {
+  font-family: var(--mono);
+  letter-spacing: 0.1em;
+}
+.stat__label {
+  text-transform: uppercase;
+  font-size: 11px;
+  color: var(--text-dim);
+}
