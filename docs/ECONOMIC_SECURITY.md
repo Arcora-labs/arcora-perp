@@ -71,10 +71,25 @@ the loss, because the protocol's obligation is different for each.
 
 So "recovery" is fully specified — faults and protocol deficits are backstopped by
 slashing and insurance; trading P&L is not, and the design says so rather than
-implying otherwise. The remaining work on Q2 is **transparency**, not a new
-mechanism: surfacing the ADL/insurance attribution to users as a receipt they can
-read, so a socialized haircut is visible after the fact. The enforcement already
-exists; this is reporting on top of it.
+implying otherwise.
+
+**Transparency receipt (built).** The one remaining piece — making a socialized
+haircut *visible* rather than silent — is now a mechanism, not a TODO. The
+auto-deleverage cascade used to claw a winner's collateral and discard who was hit;
+it now returns the per-winner attribution (`AdlHaircut { owner, clawed }`), and the
+sealed batch publishes an **ADL receipt** for each: a secret-keyed tag
+`adl_tag(adl_tag_key(spend_key), market, batch)` paired with the amount clawed. The
+clawed account recomputes its own tag to find its haircut and read what it cost; an
+observer who knows only the public owner id cannot link it — the same
+privacy construction as the liquidation tag (Q6), under a distinct domain so the
+two events never collide. So a socialized loss is now recorded and self-detectable
+after the fact, while staying unlinkable. — `crates/perp-core/src/engine.rs`
+(`State::liquidate`, `auto_deleverage`), `crates/sequencer/src/lib.rs`
+(`AdlReceipt`, `adl_tag`); tests `adl_surfaces_the_per_winner_haircut_attribution`
+and `auto_deleverage_publishes_an_attributable_receipt`. Critically, this rode in
+on a *return value*, not new proven state: `BatchOp::Liquidate` still discards the
+attribution, so the zkVM replay path and every byte-locked cross-layer vector are
+unchanged.
 
 ## Q3 / Q7 — What feeds the insurance fund, and what happens when it's empty?
 
@@ -186,14 +201,14 @@ a hit list of soon-to-be-liquidated addresses.
 | # | Question | Status | Where |
 |---|----------|--------|-------|
 | Q1 | Bond sizing | **Done**, review: sound | `DarkPerpSettlement.sol` (`68dd03e`) |
-| Q2 | Loss recovery | **Specified** (layered); residual = transparency | this doc; relies on Q1/Q3/Q7 |
+| Q2 | Loss recovery | **Done** — layered model + ADL transparency receipt | this doc + `engine.rs`/`sequencer` (`4f972cc`) |
 | Q3 | Insurance feed | **Done** | `engine.rs` (`5500cc5`) |
 | Q4 | MM incentive | **Done** + review hardening | `market.rs`/`engine.rs` (`7cb9eea`,`1c1c34a`) |
 | Q5 | MM hedge / inventory | **Open** — needs a venue/custody direction decision | — |
 | Q6 | Liquidation privacy | **Done** + review fix | `sequencer/src/lib.rs` (`7e9186d`,`8aa3559`) |
 | Q7 | Bad-debt attribution | **Done** (ADL + halt) | `engine.rs` (`c3f2930`) |
 
-Five of the seven are enforced in code with tests and have each been through an
-adversarial review pass. Q2 is fully specified and rests on those mechanisms; its
-open part is reporting, not enforcement. Q5 is the one item that is a real product
-decision rather than a coding gap, and is left open on purpose.
+Six of the seven are now enforced in code with tests, each through an adversarial
+review pass; Q2's layered recovery model rests on those mechanisms and its
+transparency half (the ADL receipt) is built. Q5 is the one item that is a real
+product decision rather than a coding gap, and is left open on purpose.
