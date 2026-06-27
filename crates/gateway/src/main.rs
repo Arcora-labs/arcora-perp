@@ -79,6 +79,13 @@ const MARKETS: &[MarketCfg] = &[
 fn now_ms() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u64
 }
+/// 32 cryptographically secure random bytes (API keys + wallet seeds) from the OS
+/// CSPRNG — never the demo's predictable xorshift walk.
+fn csprng_bytes32() -> [u8; 32] {
+    let mut b = [0u8; 32];
+    getrandom::getrandom(&mut b).expect("OS CSPRNG");
+    b
+}
 fn usd(n: f64) -> i128 {
     (n * PRICE_SCALE as f64).round() as i128
 }
@@ -440,29 +447,18 @@ impl Gw {
         }
     }
 
-    /// Raw xorshift64 word (for API keys / wallet seeds). Advances `rng`.
-    fn rand_u64(&mut self) -> u64 {
-        let mut x = self.rng;
-        x ^= x << 13;
-        x ^= x >> 7;
-        x ^= x << 17;
-        self.rng = x;
-        x
-    }
-    fn rand_bytes32(&mut self) -> [u8; 32] {
-        let mut b = [0u8; 32];
-        for chunk in b.chunks_mut(8) {
-            chunk.copy_from_slice(&self.rand_u64().to_le_bytes());
-        }
-        b
-    }
-
     // ── multi-tenant `/v1` account operations ────────────────────────────────
     /// Register a fresh account: generate a custodied wallet + a secret API key.
-    /// Returns `(api_key, owner)`.
+    /// Returns `(api_key, owner)`. Both come from the OS CSPRNG (`csprng_bytes32`),
+    /// NOT the demo's predictable xorshift walk — keys must be unguessable.
+    ///
+    /// NOTE (Phase 0 custody): the account's spend key is held in process memory in
+    /// the clear, so a memory disclosure already exposes the real custody secret;
+    /// hashing the API key for storage would be inconsistent with that. The durable
+    /// fix is moving custody inside the enclave (the TEE milestone), not key hashing.
     fn register_account(&mut self) -> ([u8; 32], PubKey) {
-        let seed = self.rand_bytes32();
-        let api_key = self.rand_bytes32();
+        let seed = csprng_bytes32();
+        let api_key = csprng_bytes32();
         let wallet = Wallet::from_seed(seed);
         let owner = wallet.owner;
         self.accounts.insert(
