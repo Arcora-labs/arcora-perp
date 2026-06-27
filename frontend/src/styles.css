@@ -268,6 +268,7 @@ body {
   padding: 12px 18px; font-size: 13px; border: 1px solid var(--border); background: var(--bg-elev);
 }
 .banner__main { display: flex; align-items: center; gap: 12px; }
+.banner__actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
 .banner__dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 .banner__title { font-weight: 700; color: var(--text); }
 .banner__desc { color: var(--text-dim); }
@@ -497,6 +498,7 @@ body {
 .toast--settled { border-left-color: var(--settled); } .toast--settled .toast__kind { color: var(--settled); }
 .toast--cancelled { border-left-color: var(--text-mute); } .toast--cancelled .toast__kind { color: var(--text-dim); }
 .toast--rejected { border-left-color: var(--sell); } .toast--rejected .toast__kind { color: var(--sell); }
+.toast--adl { border-left-color: var(--sell); } .toast--adl .toast__kind { color: var(--sell); }
 
 /* ============================ live flash ================================== */
 .flash-up { animation: flash-up 0.5s var(--ease); }

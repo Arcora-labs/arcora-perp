@@ -95,6 +95,11 @@ export function HealthPanel() {
           <h3 className="card__title">Protocol reserve (§6/§9)</h3>
           <div className="summary">
             <Stat label="Insurance fund" value={formatUsd(state.insuranceFund)} tone="pos" />
+            <Stat
+              label="Your ADL haircuts"
+              value={formatUsd(state.userAdlClawed)}
+              tone={state.userAdlClawed > 0n ? "neg" : undefined}
+            />
           </div>
           <p className="small muted">
             The bad-debt backstop: a liquidation shortfall is absorbed here before any

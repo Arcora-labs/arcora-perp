@@ -38,6 +38,9 @@ export interface ClientState {
   /// liquidation shortfalls before they socialize (audit Q3/Q7). Grows from the
   /// per-fill insurance cut of the trading fee (audit Q4).
   insuranceFund: bigint;
+  /// Quote-scaled cumulative collateral the user has had auto-deleveraged — the
+  /// transparency surface for socialized losses (audit Q2).
+  userAdlClawed: bigint;
 }
 
 export interface DarkPerpClient {
@@ -62,6 +65,10 @@ export interface DarkPerpClient {
   /// back). Lets the forced-exit simulation be toggled instead of being a dead-end.
   resumeNormal(): void;
 
+  /// Demo: run a bad-debt cascade that auto-deleverages the user, surfacing the
+  /// resulting ADL receipt (audit Q2). Returns the quote-scaled amount clawed.
+  simulateAdl(): Promise<bigint>;
+
   /// Recover notes by scanning the archive with a seed-derived view-key (§7).
   recover(seedHex: string): Promise<RecoveredNote[]>;
 
@@ -81,6 +88,6 @@ export interface DarkPerpClient {
 /// An order lifecycle event surfaced for notifications.
 export interface OrderEvent {
   orderId: string;
-  kind: "ACCEPTED" | "MATCHED" | "SETTLED" | "CANCELLED" | "REJECTED";
+  kind: "ACCEPTED" | "MATCHED" | "SETTLED" | "CANCELLED" | "REJECTED" | "ADL";
   message: string;
 }

@@ -146,6 +146,7 @@ export class MockDarkPerpClient implements DarkPerpClient {
   private data = new Map<number, MarketData>();
   private selectedMarketId = 0;
   private state: ClientState;
+  private adlClawed = 0n;
   private subs = new Set<(s: ClientState) => void>();
   private eventSubs = new Set<(e: OrderEvent) => void>();
 
@@ -248,6 +249,7 @@ export class MockDarkPerpClient implements DarkPerpClient {
       orders,
       batches: batchesFromOrders(orders),
       insuranceFund: 25_000n * QUOTE_SCALE,
+      userAdlClawed: this.adlClawed,
     };
   }
 
@@ -497,6 +499,19 @@ export class MockDarkPerpClient implements DarkPerpClient {
   resumeNormal(): void {
     this.state.mode = "Normal";
     this.emit();
+  }
+
+  async simulateAdl(): Promise<bigint> {
+    const clawed = 1_975n * QUOTE_SCALE;
+    this.adlClawed += clawed;
+    this.emit();
+    this.emitEvent({
+      orderId: "adl-sim",
+      kind: "ADL",
+      message:
+        "Auto-deleveraged: $1,975 of your winning position was clawed to cover a counterparty's bad debt (audit Q2).",
+    });
+    return clawed;
   }
 
   async closePosition(marketId: number): Promise<void> {

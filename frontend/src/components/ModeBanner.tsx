@@ -27,9 +27,18 @@ export function ModeBanner() {
       <span>
         <strong>Normal.</strong> Continuous dark CLOB, operator-blind matching.
       </span>
-      <button className="btn btn--tiny" onClick={() => client.triggerCloseOnly()} title="Simulate liveness failure / circuit breaker">
-        Simulate forced exit
-      </button>
+      <span className="banner__actions">
+        <button
+          className="btn btn--tiny"
+          onClick={() => void client.simulateAdl()}
+          title="Simulate a bad-debt cascade that auto-deleverages your winning position (audit Q2)"
+        >
+          Simulate ADL
+        </button>
+        <button className="btn btn--tiny" onClick={() => client.triggerCloseOnly()} title="Simulate liveness failure / circuit breaker">
+          Simulate forced exit
+        </button>
+      </span>
     </div>
   );
 }

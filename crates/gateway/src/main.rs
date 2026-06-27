@@ -33,7 +33,7 @@ use perp_core::note::{Note, PubKey};
 use perp_core::oracle::OracleTranscript;
 use perp_core::order::{Finality, Order, Side, TimeInForce};
 use perp_core::state::Mode;
-use sequencer::{EnclaveIdentity, Sequencer};
+use sequencer::{adl_tag, adl_tag_key, EnclaveIdentity, SealedBatch, Sequencer};
 
 // ── constants ────────────────────────────────────────────────────────────────
 const IMR_BP: i128 = 1_000; // initial-margin 10% in basis points (matches Market::conservative)
@@ -210,6 +210,9 @@ struct WState {
     batches: Vec<WBatch>,
     /// Quote-scaled insurance-fund balance — the bad-debt backstop (audit Q3/Q7).
     insurance_fund: String,
+    /// Quote-scaled cumulative collateral the user has had auto-deleveraged — the
+    /// transparency surface for socialized losses (audit Q2).
+    user_adl_clawed: String,
 }
 #[derive(Serialize)]
 struct WEvent {
@@ -295,6 +298,9 @@ struct Gw {
     mm_nonce: u64,
     rng: u64,
     pending_settle: Vec<(u64, u64)>, // (batch_id, tick sealed)
+    /// Cumulative collateral the USER has had clawed by auto-deleverage (audit Q2),
+    /// recognized from the sealed batches' ADL receipts via the user's secret key.
+    user_adl_clawed: i128,
 }
 
 fn oracle_of(px: i128, now: u64) -> OracleTranscript {
@@ -359,7 +365,103 @@ impl Gw {
             mm_nonce: 1_000_000,
             rng: 0x2545F4914F6CDD1D,
             pending_settle: Vec::new(),
+            user_adl_clawed: 0,
         }
+    }
+
+    /// Sum the collateral the USER had auto-deleveraged in `sealed`, recognized by
+    /// recomputing the user's own secret ADL tag per market (audit Q2). An observer
+    /// without the user's spend key can't do this — privacy holds.
+    fn user_adl_in(&self, sealed: &SealedBatch) -> i128 {
+        let key = adl_tag_key(&self.user.spend_key);
+        let mut clawed = 0i128;
+        for m in &self.mkts {
+            let tag = adl_tag(&key, m.id, sealed.batch_id);
+            for r in &sealed.adl_receipts {
+                if r.tag == tag {
+                    clawed += r.clawed;
+                }
+            }
+        }
+        clawed
+    }
+
+    /// Demo: engineer a bad-debt liquidation whose shortfall outruns the insurance
+    /// fund, so the auto-deleverage cascade claws the USER (a winner) — then return
+    /// what the user lost. Shows Q2 transparency end-to-end: the socialized haircut
+    /// is recorded as a receipt the user detects, not silent. Self-contained; the
+    /// transient oracle spike is restored afterward.
+    fn simulate_adl(&mut self) -> Result<i128, String> {
+        let market = 0u64;
+        let now = now_ms();
+        let px = self.px_of(market);
+        if px <= 0 {
+            return Err("no market price".into());
+        }
+        // Per-call salt so repeated triggers never collide on a note commitment.
+        let n = self.seq.current_batch_id();
+        let bn = n as u8;
+        // 1. Make the user a clear winner: ensure margin for a 1 BTC long, then open.
+        let user = self.user.clone();
+        if self.market_free(market) < required_margin(SIZE_SCALE, px) {
+            fund(&mut self.seq, &mut self.archive, &user, market, 30_000, 0x71u8.wrapping_add(bn));
+        }
+        // 2. An under-funded victim shorts the other side — bound to go bad-debt. A
+        //    fresh victim per call (owner derived from the batch id) avoids reuse.
+        let mut vseed = [0x9Au8; 32];
+        vseed[..8].copy_from_slice(&n.to_le_bytes());
+        let victim = Wallet::from_seed(vseed);
+        let victim_margin_usd = required_margin(SIZE_SCALE, px) / QUOTE_SCALE + 1;
+        fund(
+            &mut self.seq,
+            &mut self.archive,
+            &victim,
+            market,
+            victim_margin_usd,
+            0x9Au8.wrapping_add(bn),
+        );
+        let oracle = oracle_of(px, now);
+        self.seq
+            .apply(&BatchOp::Fill {
+                taker: user.owner,
+                maker: victim.owner,
+                market_id: market,
+                taker_side: Side::Buy,
+                size: SIZE_SCALE,
+                price: px,
+                oracle,
+                now_ms: now,
+            })
+            .map_err(|e| format!("fill failed: {e:?}"))?;
+        // 3. Gap the oracle up so the victim's loss exceeds its margin AND the
+        //    insurance fund, leaving a residual the cascade must claw from winners.
+        //    Sized so the residual (~$2k) is well under the user's clawable margin,
+        //    so it never trips the system into close-only.
+        let residual_target = 2_000 * QUOTE_SCALE;
+        let loss_quote = self.seq.state.insurance_fund.max(0)
+            + residual_target
+            + victim_margin_usd * QUOTE_SCALE;
+        let gap_px = px + (loss_quote / QUOTE_SCALE) * PRICE_SCALE;
+        self.seq.set_oracle(market, oracle_of(gap_px, now));
+        let sealed = self.seq.seal_batch(&[], now);
+        // 4. restore the oracle so the spike is transient; the haircut is permanent.
+        self.seq.set_oracle(market, oracle_of(px, now));
+        // 5. replenish the insurance fund to its baseline so the backstop is shown
+        //    full again and the demo is repeatable (the draw-down happened within
+        //    the cascade seal above; the user's haircut below is what persists).
+        let target = INSURANCE_SEED_USD * QUOTE_SCALE;
+        let now_ins = self.seq.state.insurance_fund;
+        if now_ins < target {
+            let _ = self.seq.apply(&BatchOp::SeedInsurance {
+                amount: target - now_ins,
+            });
+        }
+        let clawed = self.user_adl_in(&sealed);
+        if clawed <= 0 {
+            return Err("the cascade did not claw the user this run".into());
+        }
+        self.user_adl_clawed += clawed;
+        Ok(clawed)
     }
 
     fn rand_unit(&mut self) -> f64 {
@@ -643,6 +745,11 @@ impl Gw {
             seal.push(*u);
         }
         let sealed = self.seq.seal_batch(&seal, now);
+        // recognize any auto-deleverage haircut that hit the user this batch (Q2)
+        let adl_clawed = self.user_adl_in(&sealed);
+        if adl_clawed > 0 {
+            self.user_adl_clawed += adl_clawed;
+        }
         if !pending.is_empty() {
             for &i in &pending {
                 self.orders[i].sealed = true;
@@ -686,6 +793,16 @@ impl Gw {
                 };
                 events.push(WEvent { order_id: o.id.clone(), kind: f.to_string(), message: msg.to_string() });
             }
+        }
+        if adl_clawed > 0 {
+            events.push(WEvent {
+                order_id: format!("adl-{}", sealed.batch_id),
+                kind: "ADL".into(),
+                message: format!(
+                    "Auto-deleveraged: ${} of your winning position was clawed to cover a counterparty's bad debt (audit Q2).",
+                    adl_clawed / QUOTE_SCALE
+                ),
+            });
         }
         events
     }
@@ -802,6 +919,7 @@ impl Gw {
             orders,
             batches,
             insurance_fund: self.seq.state.insurance_fund.to_string(),
+            user_adl_clawed: self.user_adl_clawed.to_string(),
         }
     }
 }
@@ -936,6 +1054,32 @@ async fn post_mode(State(app): State<Shared>, Json(req): Json<ModeReq>) -> impl 
     Json(serde_json::json!({}))
 }
 
+/// Demo trigger: run a bad-debt cascade that auto-deleverages the user, then push
+/// the resulting ADL receipt + refreshed state (audit Q2).
+async fn post_simulate_adl(State(app): State<Shared>) -> impl IntoResponse {
+    let res = {
+        let mut gw = app.gw.lock().await;
+        gw.simulate_adl()
+    };
+    match res {
+        Ok(clawed) => {
+            let gw = app.gw.lock().await;
+            app.broadcast(&gw).await;
+            app.broadcast_event(WEvent {
+                order_id: "adl-sim".into(),
+                kind: "ADL".into(),
+                message: format!(
+                    "Auto-deleveraged: ${} of your winning position was clawed to cover a counterparty's bad debt (audit Q2).",
+                    clawed / QUOTE_SCALE
+                ),
+            })
+            .await;
+            Json(serde_json::json!({ "clawed": (clawed / QUOTE_SCALE).to_string() })).into_response()
+        }
+        Err(e) => err400(e).into_response(),
+    }
+}
+
 async fn post_select(State(app): State<Shared>, Json(req): Json<MarketReq>) -> impl IntoResponse {
     {
         let mut gw = app.gw.lock().await;
@@ -1000,6 +1144,7 @@ async fn main() {
         .route("/api/close", post(post_close))
         .route("/api/cancel", post(post_cancel))
         .route("/api/mode", post(post_mode))
+        .route("/api/simulate-adl", post(post_simulate_adl))
         .route("/api/select-market", post(post_select))
         .route("/api/recover", post(post_recover))
         .route("/ws", get(ws_handler))

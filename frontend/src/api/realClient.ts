@@ -13,6 +13,7 @@ import type {
   AccountState, BatchSummary, BookLevel, Market, OracleQuote, OrderBookSnapshot,
   OrderInput, Position, RecoveredNote, Receipt, TrackedOrder,
 } from "../domain/types";
+import { QUOTE_SCALE } from "../domain/types";
 
 // ── wire types (bigints as strings) ──────────────────────────────────────────
 interface WireBookLevel { price: string; size: string }
@@ -35,7 +36,7 @@ interface WireState {
   markets: WireMarket[]; selectedMarketId: number; market: WireMarket; mode: ClientState["mode"];
   oracle: WireOracle; book: { marketId: number; bids: WireBookLevel[]; asks: WireBookLevel[] };
   marks: Record<string, string>; account: { settledBalance: string; positions: WirePosition[] };
-  orders: WireTrackedOrder[]; batches: BatchSummary[]; insuranceFund: string;
+  orders: WireTrackedOrder[]; batches: BatchSummary[]; insuranceFund: string; userAdlClawed: string;
 }
 
 const B = (s: string): bigint => BigInt(s);
@@ -83,6 +84,7 @@ function parseState(w: WireState): ClientState {
     orders: w.orders.map(pOrder),
     batches: w.batches,
     insuranceFund: B(w.insuranceFund),
+    userAdlClawed: B(w.userAdlClawed),
   };
 }
 
@@ -171,6 +173,10 @@ export class RealDarkPerpClient implements DarkPerpClient {
   async requestWithdrawal(amountQuote: bigint): Promise<void> { await this.post("/api/withdraw", { amount: s(amountQuote) }); }
   triggerCloseOnly(): void { void this.post("/api/mode", { mode: "CloseOnly" }); }
   resumeNormal(): void { void this.post("/api/mode", { mode: "Normal" }); }
+  async simulateAdl(): Promise<bigint> {
+    const r = await this.post<{ clawed: string }>("/api/simulate-adl", {});
+    return B(r.clawed) * QUOTE_SCALE; // gateway returns whole USD; scale to quote
+  }
   async closePosition(marketId: number): Promise<void> { await this.post("/api/close", { marketId }); }
   async cancelOrder(orderId: string): Promise<void> { await this.post("/api/cancel", { orderId }); }
   selectMarket(marketId: number): void { void this.post("/api/select-market", { marketId }); }
