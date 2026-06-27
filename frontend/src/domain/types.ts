@@ -56,6 +56,18 @@ export interface Market {
   makerRebateBps: number;
 }
 
+/// The market-maker's delta-hedging signal for one market (audit Q5): net
+/// inventory (signed, size-scaled), the offsetting `hedgeTarget` to take on an
+/// external venue for delta-neutrality, and the quote-scaled notional exposure.
+/// Venue-agnostic — the protocol emits this; an external keeper executes the hedge.
+export interface HedgeSignal {
+  marketId: number;
+  symbol: string;
+  inventory: bigint;
+  hedgeTarget: bigint;
+  notional: bigint;
+}
+
 export interface OrderInput {
   marketId: number;
   side: Side;

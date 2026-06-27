@@ -1,5 +1,5 @@
 import { useStore } from "../store";
-import { formatPrice, formatUsd } from "../domain/format";
+import { formatPrice, formatSize, formatUsd } from "../domain/format";
 import { accountSummary } from "../domain/risk";
 
 type Status = "ok" | "warn" | "down";
@@ -107,6 +107,42 @@ export function HealthPanel() {
             from the {fmtBps(state.market.takerFeeBps - state.market.makerRebateBps)} insurance
             cut of every fill on {state.market.symbol} — a {fmtBps(state.market.takerFeeBps)} taker
             fee less a {fmtBps(state.market.makerRebateBps)} maker rebate (audit Q4).
+          </p>
+        </div>
+
+        <div className="card">
+          <h3 className="card__title">Market-maker hedge (§9, audit Q5)</h3>
+          {state.mmHedge.length === 0 ? (
+            <p className="small muted">The market-maker is flat — no inventory to hedge.</p>
+          ) : (
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Market</th>
+                  <th>MM inventory</th>
+                  <th>Hedge target</th>
+                  <th>Notional</th>
+                </tr>
+              </thead>
+              <tbody>
+                {state.mmHedge.map((h) => (
+                  <tr key={h.marketId}>
+                    <td>{h.symbol}</td>
+                    <td className="num mono">{formatSize(h.inventory)}</td>
+                    <td className={`num mono ${h.hedgeTarget >= 0n ? "pos" : "neg"}`}>
+                      {h.hedgeTarget > 0n ? "+" : ""}
+                      {formatSize(h.hedgeTarget)}
+                    </td>
+                    <td className="num mono">{formatUsd(h.notional)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+          <p className="small muted">
+            The protocol emits the maker's net inventory; a delta-neutral keeper takes the
+            hedge target on an external venue (CEX/DEX) to flatten directional risk. The
+            protocol never custodies or routes the hedge — venue-agnostic by design (audit Q5).
           </p>
         </div>
       </div>

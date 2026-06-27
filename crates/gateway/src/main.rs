@@ -156,6 +156,17 @@ struct WAccount {
     settled_balance: String,
     positions: Vec<WPosition>,
 }
+/// The market-maker's net inventory + delta-neutral hedge target per market (audit
+/// Q5). The protocol emits this signal; an external keeper executes the hedge.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WHedge {
+    market_id: u64,
+    symbol: String,
+    inventory: String,    // signed, size-scaled — the MM's net exposure
+    hedge_target: String, // −inventory: the offset to take on an external venue
+    notional: String,     // quote-scaled exposure at mark
+}
 #[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 struct WOrderInput {
@@ -213,6 +224,9 @@ struct WState {
     /// Quote-scaled cumulative collateral the user has had auto-deleveraged — the
     /// transparency surface for socialized losses (audit Q2).
     user_adl_clawed: String,
+    /// The market-maker's net inventory + hedge target per market with open MM
+    /// exposure — the venue-agnostic delta-hedging signal (audit Q5).
+    mm_hedge: Vec<WHedge>,
 }
 #[derive(Serialize)]
 struct WEvent {
@@ -402,7 +416,7 @@ impl Gw {
         let n = self.seq.current_batch_id();
         let bn = n as u8;
         // 1. Make the user a clear winner: ensure margin for a 1 BTC long, then open.
-        let user = self.user.clone();
+        let user = self.user;
         if self.market_free(market) < required_margin(SIZE_SCALE, px) {
             fund(&mut self.seq, &mut self.archive, &user, market, 30_000, 0x71u8.wrapping_add(bn));
         }
@@ -902,6 +916,27 @@ impl Gw {
             .collect();
         batches.sort_by(|a, b| b.batch_id.cmp(&a.batch_id));
 
+        // the market-maker's per-market net inventory + delta-neutral hedge target
+        // (audit Q5) — only markets where the MM actually carries exposure.
+        let mm_hedge: Vec<WHedge> = self
+            .mkts
+            .iter()
+            .filter_map(|m| {
+                let p = self.seq.state.position(&self.mm.owner, m.id)?;
+                if p.size == 0 {
+                    return None;
+                }
+                let h = p.hedge_signal(m.px);
+                Some(WHedge {
+                    market_id: m.id,
+                    symbol: m.symbol.to_string(),
+                    inventory: h.inventory.to_string(),
+                    hedge_target: h.hedge_target.to_string(),
+                    notional: h.notional.to_string(),
+                })
+            })
+            .collect();
+
         WState {
             markets,
             selected_market_id: sel,
@@ -920,6 +955,7 @@ impl Gw {
             batches,
             insurance_fund: self.seq.state.insurance_fund.to_string(),
             user_adl_clawed: self.user_adl_clawed.to_string(),
+            mm_hedge,
         }
     }
 }

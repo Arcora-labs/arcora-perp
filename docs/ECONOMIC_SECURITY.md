@@ -156,19 +156,34 @@ solve the maker's *inventory* problem — that is Q5.
 
 ## Q5 — How is a market-maker protected from inventory/directional risk?
 
-**Open — and it needs a direction decision before it's built.** Fees (Q4) pay a
-maker to quote, but a maker who accumulates a one-sided book still carries
-directional risk that an on-chain perp cannot neutralize by itself. The real answer
-is an **external hedging subsystem**: a delta-neutral keeper that mirrors net
-inventory onto a hedge venue (a CEX or a deep DEX), plus the custody and
-settlement-risk handling that implies.
+Fees (Q4) pay a maker to quote, but a maker who accumulates a one-sided book still
+carries directional risk an on-chain perp cannot neutralize by itself. The split of
+responsibility here is the whole answer, and it is deliberate.
 
-That is a genuine product decision (which venue, who custodies the hedge margin,
-how the keeper proves it stayed neutral) rather than a mechanical gap to fill, so
-it is deliberately *not* stubbed in. Until it exists, the honest posture is: this
-venue suits makers who hedge **externally and independently**, and the protocol's
-contribution to their economics is the fee/rebate of Q4 plus the depth-protecting
-liquidation privacy of Q6.
+**What the protocol owns — the hedging signal (built).** The protocol emits a
+deterministic, provable **hedge signal** per market: `Position::hedge_signal(mark)`
+returns the maker's net `inventory` (signed base size), the `hedge_target`
+(its negation — the offset to take elsewhere for delta-neutrality), and the
+`notional` exposure. Any keeper, on any venue, hedges against this number; it is the
+"what to hedge", computed from state, not a venue integration. — `crates/perp-core/
+src/position.rs` (`HedgeSignal`), test
+`hedge_signal_reports_the_offsetting_external_position`; surfaced live in the
+gateway snapshot (`mmHedge`) and the Health panel's "Market-maker hedge" card.
+
+**What the protocol deliberately does NOT own — the hedge execution.** The actual
+hedge is an **external** delta-neutral keeper reading the signal and placing
+offsetting orders on another venue (a CEX or a deep DEX). The protocol never
+custodies or routes that hedge — doing so would make it a centralized hedge desk
+and import the very counterparty/custody risk the dark perp avoids. So the venue,
+the custody of the hedge margin, and the keeper's rebalance/neutrality-proof policy
+are the **operator's** choices, not protocol constants. The integration contract is
+exactly: read `mmHedge[market].hedge_target`, hold that position externally,
+re-read each batch.
+
+**Net.** The maker's protection is the sum of three protocol-owned pieces — the
+fee/rebate economics (Q4), the depth-protecting liquidation privacy (Q6), and now
+the hedging signal (Q5) — plus their own external keeper, which the venue-agnostic
+signal makes a thin, well-defined integration rather than a bespoke build.
 
 ## Q6 — Doesn't liquidating in a shallow market leak who's about to get hit?
 
@@ -204,11 +219,13 @@ a hit list of soon-to-be-liquidated addresses.
 | Q2 | Loss recovery | **Done** — layered model + ADL transparency receipt | this doc + `engine.rs`/`sequencer` (`4f972cc`) |
 | Q3 | Insurance feed | **Done** | `engine.rs` (`5500cc5`) |
 | Q4 | MM incentive | **Done** + review hardening | `market.rs`/`engine.rs` (`7cb9eea`,`1c1c34a`) |
-| Q5 | MM hedge / inventory | **Open** — needs a venue/custody direction decision | — |
+| Q5 | MM hedge / inventory | **Done (protocol side)** — hedge signal; external keeper is the operator's | `perp-core/src/position.rs` + gateway/UI |
 | Q6 | Liquidation privacy | **Done** + review fix | `sequencer/src/lib.rs` (`7e9186d`,`8aa3559`) |
 | Q7 | Bad-debt attribution | **Done** (ADL + halt) | `engine.rs` (`c3f2930`) |
 
-Six of the seven are now enforced in code with tests, each through an adversarial
-review pass; Q2's layered recovery model rests on those mechanisms and its
-transparency half (the ADL receipt) is built. Q5 is the one item that is a real
-product decision rather than a coding gap, and is left open on purpose.
+All seven now have their protocol-owned mechanism in code with tests, each through
+an adversarial review pass. Q2's layered recovery rests on those mechanisms with the
+ADL transparency receipt built; Q5's hedging *signal* is built and the hedge
+*execution* is, by design, an external keeper the operator runs against that signal
+— not a protocol gap. The only work that remains is intentionally outside the
+protocol boundary: the operator's choice of hedge venue and custody.

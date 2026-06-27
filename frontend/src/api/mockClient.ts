@@ -250,6 +250,7 @@ export class MockDarkPerpClient implements DarkPerpClient {
       batches: batchesFromOrders(orders),
       insuranceFund: 25_000n * QUOTE_SCALE,
       userAdlClawed: this.adlClawed,
+      mmHedge: [],
     };
   }
 

@@ -6,6 +6,7 @@
 import type {
   AccountState,
   BatchSummary,
+  HedgeSignal,
   Market,
   OracleQuote,
   OrderBookSnapshot,
@@ -41,6 +42,9 @@ export interface ClientState {
   /// Quote-scaled cumulative collateral the user has had auto-deleveraged — the
   /// transparency surface for socialized losses (audit Q2).
   userAdlClawed: bigint;
+  /// The market-maker's net inventory + delta-neutral hedge target per market with
+  /// open MM exposure — the venue-agnostic hedging signal (audit Q5).
+  mmHedge: HedgeSignal[];
 }
 
 export interface DarkPerpClient {

@@ -60,7 +60,7 @@ pub use market::{Market, MarketId};
 pub use note::{Note, PubKey};
 pub use oracle::{OracleError, OracleTranscript};
 pub use order::{BatchManifest, Finality, Order, Receipt, RejectReason, Side, TimeInForce};
-pub use position::{Position, RiskError};
+pub use position::{HedgeSignal, Position, RiskError};
 pub use state::{Mode, State};
 
 /// The default native state type using Keccak-256 (Phase 0). The proving phase

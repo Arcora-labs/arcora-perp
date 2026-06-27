@@ -37,6 +37,10 @@ interface WireState {
   oracle: WireOracle; book: { marketId: number; bids: WireBookLevel[]; asks: WireBookLevel[] };
   marks: Record<string, string>; account: { settledBalance: string; positions: WirePosition[] };
   orders: WireTrackedOrder[]; batches: BatchSummary[]; insuranceFund: string; userAdlClawed: string;
+  mmHedge: WireHedge[];
+}
+interface WireHedge {
+  marketId: number; symbol: string; inventory: string; hedgeTarget: string; notional: string;
 }
 
 const B = (s: string): bigint => BigInt(s);
@@ -85,6 +89,13 @@ function parseState(w: WireState): ClientState {
     batches: w.batches,
     insuranceFund: B(w.insuranceFund),
     userAdlClawed: B(w.userAdlClawed),
+    mmHedge: w.mmHedge.map((h) => ({
+      marketId: h.marketId,
+      symbol: h.symbol,
+      inventory: B(h.inventory),
+      hedgeTarget: B(h.hedgeTarget),
+      notional: B(h.notional),
+    })),
   };
 }
 

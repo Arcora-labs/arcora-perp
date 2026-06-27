@@ -26,6 +26,20 @@ pub struct Position {
     pub funding_entry: i128,
 }
 
+/// A delta-hedging signal for one position/market (audit Q5). `inventory` is the
+/// net signed base size held; `hedge_target` is its negation — the position a
+/// delta-neutral keeper takes on an EXTERNAL venue to flatten directional risk;
+/// `notional` is the quote-scaled exposure at mark. Venue-agnostic: the protocol
+/// emits the "what to hedge", the keeper executes the hedge externally (the
+/// protocol never custodies or routes it).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct HedgeSignal {
+    pub inventory: i128,
+    pub hedge_target: i128,
+    pub notional: i128,
+}
+
 /// Outcome of a margin check.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RiskError {
@@ -56,6 +70,18 @@ impl Position {
     /// Absolute notional at `mark`, quote-scaled.
     pub fn notional(&self, mark: i128) -> Option<i128> {
         notional_quote(abs(self.size), mark)
+    }
+
+    /// The delta-hedging signal for this position at `mark` (audit Q5): net
+    /// inventory, the offsetting size to take on an external venue for
+    /// delta-neutrality, and the notional exposure. The protocol emits this; the
+    /// hedge itself is the market-maker's own external keeper operation.
+    pub fn hedge_signal(&self, mark: i128) -> HedgeSignal {
+        HedgeSignal {
+            inventory: self.size,
+            hedge_target: -self.size,
+            notional: self.notional(mark).unwrap_or(0),
+        }
     }
 
     /// Unrealized PnL at `mark`, quote-scaled. Long profits as price rises.
@@ -273,6 +299,35 @@ mod tests {
         assert_eq!(
             p.unrealized_pnl(90_000 * PRICE_SCALE),
             Some(10_000 * QUOTE_SCALE)
+        );
+    }
+
+    #[test]
+    fn hedge_signal_reports_the_offsetting_external_position() {
+        // An MM net short 2 BTC at mark $100k: the delta-neutral hedge is +2 BTC on
+        // an external venue, on $200k of notional exposure (audit Q5).
+        let p = pos(-2 * SIZE_SCALE, 100_000 * PRICE_SCALE, 50_000 * QUOTE_SCALE);
+        let h = p.hedge_signal(100_000 * PRICE_SCALE);
+        assert_eq!(
+            h.inventory,
+            -2 * SIZE_SCALE,
+            "inventory is the signed size held"
+        );
+        assert_eq!(
+            h.hedge_target,
+            2 * SIZE_SCALE,
+            "hedge the opposite for delta-neutrality"
+        );
+        assert_eq!(
+            h.notional,
+            200_000 * QUOTE_SCALE,
+            "the notional exposure to hedge"
+        );
+        // a flat book needs no hedge
+        let flat = pos(0, 100_000 * PRICE_SCALE, 0).hedge_signal(100_000 * PRICE_SCALE);
+        assert_eq!(
+            (flat.inventory, flat.hedge_target, flat.notional),
+            (0, 0, 0)
         );
     }
 
