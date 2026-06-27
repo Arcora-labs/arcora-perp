@@ -42,6 +42,11 @@ const SETTLE_TICKS: u64 = 5; // ticks a batch waits (MATCHED) before mark_settle
 const USER_FUND_PER_MARKET: i128 = 5_000; // USD → $25k across 5 markets (≈ mock's settledBalance)
 const MM_FUND_PER_MARKET: i128 = 10_000_000; // USD; market-maker liquidity buffer
 const TICK_MS: u64 = 700;
+// Trading economics (audit Q4): every fill charges the taker a fee, rebates the
+// resting maker, and routes the remainder into the insurance fund (audit Q3).
+const TAKER_FEE_BPS: i128 = 10; // 0.10% taker fee
+const MAKER_REBATE_BPS: i128 = 4; // 0.04% maker rebate → 0.06% net to insurance
+const INSURANCE_SEED_USD: i128 = 25_000; // visible starting backstop; grows with volume
 
 struct MarketCfg {
     id: u64,
@@ -112,6 +117,8 @@ struct WMarket {
     initial_margin_ratio: f64,
     reference_price: String,
     live: bool,
+    taker_fee_bps: u32,
+    maker_rebate_bps: u32,
 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -201,6 +208,8 @@ struct WState {
     account: WAccount,
     orders: Vec<WTrackedOrder>,
     batches: Vec<WBatch>,
+    /// Quote-scaled insurance-fund balance — the bad-debt backstop (audit Q3/Q7).
+    insurance_fund: String,
 }
 #[derive(Serialize)]
 struct WEvent {
@@ -324,7 +333,7 @@ impl Gw {
 
         let mut mkts = Vec::new();
         for (i, cfg) in MARKETS.iter().enumerate() {
-            seq.add_market(Market::conservative(cfg.id));
+            seq.add_market(Market::with_fees(cfg.id, TAKER_FEE_BPS, MAKER_REBATE_BPS));
             let px = usd(cfg.seed);
             seq.set_oracle(cfg.id, oracle_of(px, now));
             // fund the market-maker (deep) and the user (≈$5k) into each market bucket
@@ -332,6 +341,10 @@ impl Gw {
             fund(&mut seq, &mut archive, &user, cfg.id, USER_FUND_PER_MARKET, 0x10 + i as u8);
             mkts.push(Mkt { id: cfg.id, symbol: cfg.symbol, reference_price: px, px, live: false });
         }
+        // capitalize the insurance fund so the backstop is visible from genesis; it
+        // then grows on its own from the per-fill insurance cut (audit Q3/Q4).
+        seq.apply(&BatchOp::SeedInsurance { amount: INSURANCE_SEED_USD * QUOTE_SCALE })
+            .expect("seed insurance fund");
 
         Gw {
             seq,
@@ -687,6 +700,8 @@ impl Gw {
             initial_margin_ratio: 0.10,
             reference_price: m.reference_price.to_string(),
             live: m.live,
+            taker_fee_bps: TAKER_FEE_BPS as u32,
+            maker_rebate_bps: MAKER_REBATE_BPS as u32,
         }
     }
     fn book_around(&self, market: u64, mid: i128) -> WBook {
@@ -786,6 +801,7 @@ impl Gw {
             account: WAccount { settled_balance: self.free_balance().to_string(), positions },
             orders,
             batches,
+            insurance_fund: self.seq.state.insurance_fund.to_string(),
         }
     }
 }

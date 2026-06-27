@@ -10,14 +10,21 @@ const TIFS: TimeInForce[] = ["Gtc", "Ioc", "Fok", "PostOnly"];
 /// an estimated liquidation price — matching the values the position will show once
 /// it fills, so the trader sees the risk before committing. Math lives in
 /// `domain/risk` (pure + unit-tested).
-function OrderPreview({ size, mark, side, imr, mmr }: { size: bigint; mark: bigint; side: Side; imr: number; mmr: number }) {
+function OrderPreview({ size, mark, side, imr, mmr, takerFeeBps }: { size: bigint; mark: bigint; side: Side; imr: number; mmr: number; takerFeeBps: number }) {
   if (size <= 0n || mark <= 0n) return null;
   const r = orderRisk(size, mark, side, imr, mmr);
+  // a marketable order crosses the book and pays the taker fee on its notional
+  // (audit Q4); a resting maker would instead earn the rebate.
+  const takerFee = (r.notional * BigInt(takerFeeBps)) / 10_000n;
   return (
     <dl className="preview">
       <div className="preview__row">
         <dt>Notional</dt>
         <dd className="mono">{formatUsd(r.notional)}</dd>
+      </div>
+      <div className="preview__row">
+        <dt>Taker fee ({(takerFeeBps / 100).toFixed(2)}%)</dt>
+        <dd className="mono">{formatUsd(takerFee)}</dd>
       </div>
       <div className="preview__row">
         <dt>Margin required</dt>
@@ -158,7 +165,7 @@ export function OrderTicket() {
       </label>
 
       {!reduceOnly && (
-        <OrderPreview size={previewSize} mark={previewMark} side={side} imr={state.market.initialMarginRatio} mmr={state.market.maintenanceMarginRatio} />
+        <OrderPreview size={previewSize} mark={previewMark} side={side} imr={state.market.initialMarginRatio} mmr={state.market.maintenanceMarginRatio} takerFeeBps={state.market.takerFeeBps} />
       )}
 
       {closeOnly && (

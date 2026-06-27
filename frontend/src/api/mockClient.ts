@@ -135,6 +135,8 @@ function makeMarket(cfg: MarketCfg): MarketData {
     initialMarginRatio: 0.1,
     referencePrice: price,
     live: false,
+    takerFeeBps: 10,
+    makerRebateBps: 4,
   };
   const oracle: OracleQuote = { marketId: cfg.id, price, confidence: price / 10000n, publishTimeMs: Date.now() };
   return { market, oracle, book: bookAround(cfg.id, price) };
@@ -245,6 +247,7 @@ export class MockDarkPerpClient implements DarkPerpClient {
       account: this.state?.account ?? { settledBalance: 25_000n * QUOTE_SCALE, positions: [] },
       orders,
       batches: batchesFromOrders(orders),
+      insuranceFund: 25_000n * QUOTE_SCALE,
     };
   }
 

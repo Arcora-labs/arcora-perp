@@ -34,6 +34,10 @@ export interface ClientState {
   orders: TrackedOrder[];
   /// sealed batches published to the order-commitment log (§2/§3), newest first.
   batches: BatchSummary[];
+  /// Quote-scaled insurance-fund balance — the bad-debt backstop that absorbs
+  /// liquidation shortfalls before they socialize (audit Q3/Q7). Grows from the
+  /// per-fill insurance cut of the trading fee (audit Q4).
+  insuranceFund: bigint;
 }
 
 export interface DarkPerpClient {

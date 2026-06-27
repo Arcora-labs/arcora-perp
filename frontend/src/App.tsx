@@ -106,7 +106,7 @@ export default function App() {
               ))}
             </nav>
             <div className="app__wallet">
-              <span className="app__net"><span className="dot dot--live" /> Testnet · Mock</span>
+              <span className="app__net"><span className="dot dot--live" /> Testnet · {import.meta.env.VITE_API_URL ? "Live engine" : "Mock"}</span>
               <button className="wallet-btn"><span className="dot dot--live" /> 0x7Cf4…A29B</button>
             </div>
           </header>

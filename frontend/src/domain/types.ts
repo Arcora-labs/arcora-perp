@@ -47,6 +47,13 @@ export interface Market {
   /// `true` when this market is tracking the live Crypto.com oracle feed; `false`
   /// when it has no external feed and runs on the internal random-walk.
   live: boolean;
+  /// Taker trading fee in basis points of notional (audit Q4). The taker pays it
+  /// on every fill; `makerRebateBps` is credited to the resting maker and the
+  /// remainder funds the insurance fund.
+  takerFeeBps: number;
+  /// Maker rebate in basis points — what the resting maker earns for providing
+  /// liquidity (audit Q4). Always `<= takerFeeBps`.
+  makerRebateBps: number;
 }
 
 export interface OrderInput {

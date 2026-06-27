@@ -90,6 +90,20 @@ export function HealthPanel() {
             <Stat label="uPnL" value={formatUsd(s.upnl)} tone={s.upnl >= 0n ? "pos" : "neg"} />
           </div>
         </div>
+
+        <div className="card">
+          <h3 className="card__title">Protocol reserve (§6/§9)</h3>
+          <div className="summary">
+            <Stat label="Insurance fund" value={formatUsd(state.insuranceFund)} tone="pos" />
+          </div>
+          <p className="small muted">
+            The bad-debt backstop: a liquidation shortfall is absorbed here before any
+            auto-deleverage, and it socializes only once this is empty (audit Q3/Q7). It grows
+            from the {fmtBps(state.market.takerFeeBps - state.market.makerRebateBps)} insurance
+            cut of every fill on {state.market.symbol} — a {fmtBps(state.market.takerFeeBps)} taker
+            fee less a {fmtBps(state.market.makerRebateBps)} maker rebate (audit Q4).
+          </p>
+        </div>
       </div>
 
       <div className="col">
@@ -135,6 +149,11 @@ export function HealthPanel() {
       </div>
     </div>
   );
+}
+
+/// basis points → a compact percent string (10 → "0.10%").
+function fmtBps(bps: number): string {
+  return `${(bps / 100).toFixed(2)}%`;
 }
 
 function Stat({ label, value, tone }: { label: string; value: string; tone?: "pos" | "neg" }) {

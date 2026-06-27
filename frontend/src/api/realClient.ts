@@ -20,6 +20,7 @@ interface WireOracle { marketId: number; price: string; confidence: string; publ
 interface WireMarket {
   id: number; symbol: string; maxLeverage: number; maintenanceMarginRatio: number;
   initialMarginRatio: number; referencePrice: string; live: boolean;
+  takerFeeBps: number; makerRebateBps: number;
 }
 interface WirePosition {
   marketId: number; size: string; entryPrice: string; collateral: string;
@@ -34,7 +35,7 @@ interface WireState {
   markets: WireMarket[]; selectedMarketId: number; market: WireMarket; mode: ClientState["mode"];
   oracle: WireOracle; book: { marketId: number; bids: WireBookLevel[]; asks: WireBookLevel[] };
   marks: Record<string, string>; account: { settledBalance: string; positions: WirePosition[] };
-  orders: WireTrackedOrder[]; batches: BatchSummary[];
+  orders: WireTrackedOrder[]; batches: BatchSummary[]; insuranceFund: string;
 }
 
 const B = (s: string): bigint => BigInt(s);
@@ -81,6 +82,7 @@ function parseState(w: WireState): ClientState {
     account: pAccount(w.account),
     orders: w.orders.map(pOrder),
     batches: w.batches,
+    insuranceFund: B(w.insuranceFund),
   };
 }
 
