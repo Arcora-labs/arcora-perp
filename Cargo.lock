@@ -719,6 +719,7 @@ name = "gateway"
 version = "0.0.1"
 dependencies = [
  "axum",
+ "dark-perp-attestation",
  "getrandom",
  "note-archive",
  "perp-core",

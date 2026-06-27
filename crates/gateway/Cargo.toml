@@ -12,6 +12,7 @@ path = "src/main.rs"
 perp-core = { path = "../perp-core" }
 sequencer = { path = "../sequencer" }
 note-archive = { path = "../note-archive", features = ["std"] }
+dark-perp-attestation = { path = "../attestation" }
 
 axum = { version = "0.7", features = ["ws"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }

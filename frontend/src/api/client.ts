@@ -5,6 +5,7 @@
 
 import type {
   AccountState,
+  Attestation,
   BatchSummary,
   HedgeSignal,
   L1Settlement,
@@ -49,6 +50,8 @@ export interface ClientState {
   /// The last on-chain L1 settlement (Base Sepolia), or null when the gateway runs
   /// without the L1 bridge (pure in-memory / mock).
   l1: L1Settlement | null;
+  /// The verified TEE attestation the enclave is bound to, or null (stub enclave).
+  attestation: Attestation | null;
 }
 
 export interface DarkPerpClient {

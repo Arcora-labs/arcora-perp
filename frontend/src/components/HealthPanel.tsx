@@ -171,6 +171,33 @@ export function HealthPanel() {
             </p>
           </div>
         )}
+
+        <div className="card">
+          <h3 className="card__title">Enclave attestation (TEE)</h3>
+          {state.attestation ? (
+            <>
+              <div className="summary">
+                <Stat label="TCB status" value={state.attestation.tcb} tone="pos" />
+                <Stat label="Quote version" value={`TD1.${state.attestation.quoteVersion === 5 ? 5 : 0}`} />
+              </div>
+              <p className="small muted">
+                The enclave identity is bound to a <strong className="pos">verified</strong>{" "}
+                Azure TDX + vTPM measurement{" "}
+                <span className="mono">
+                  {state.attestation.measurement.slice(0, 10)}…{state.attestation.measurement.slice(-6)}
+                </span>{" "}
+                (DCAP quote + measured-boot PCRs checked offline). Key release is bound to this
+                measurement (#4/#5). A live confidential-VM run needs the Azure TDX quota.
+              </p>
+            </>
+          ) : (
+            <p className="small muted">
+              Running with a <strong className="neg">stub</strong> enclave (no attestation
+              configured). Set <code>ATTESTATION_DIR</code> to a captured/live Azure TDX quote to
+              bind the enclave to a verified measurement.
+            </p>
+          )}
+        </div>
       </div>
 
       <div className="col">

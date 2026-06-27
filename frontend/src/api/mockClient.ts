@@ -252,6 +252,7 @@ export class MockDarkPerpClient implements DarkPerpClient {
       userAdlClawed: this.adlClawed,
       mmHedge: [],
       l1: null,
+      attestation: null,
     };
   }
 

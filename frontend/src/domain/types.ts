@@ -77,6 +77,14 @@ export interface L1Settlement {
   bondWei: bigint;
 }
 
+/// The verified TEE attestation the enclave identity is bound to — present only
+/// when the gateway boots with a real Azure TDX + vTPM attestation (else null/stub).
+export interface Attestation {
+  measurement: string;
+  tcb: string;
+  quoteVersion: number;
+}
+
 export interface OrderInput {
   marketId: number;
   side: Side;

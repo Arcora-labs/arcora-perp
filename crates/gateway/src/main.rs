@@ -86,6 +86,90 @@ fn csprng_bytes32() -> [u8; 32] {
     getrandom::getrandom(&mut b).expect("OS CSPRNG");
     b
 }
+
+/// A verified TEE attestation the gateway boots its enclave identity from.
+#[derive(Clone)]
+struct Attested {
+    measurement: Digest,
+    tcb: String,
+    quote_version: u16,
+}
+
+/// Verify a real Azure TDX + vTPM attestation and derive the enclave measurement,
+/// if `ATTESTATION_DIR` points at the captured artifacts (or a live VM's). Returns
+/// `None` (→ stub enclave) when unset or verification fails. On a real confidential
+/// VM, point `ATTESTATION_DIR` at the live quote; locally, at the captured fixtures
+/// (`crates/attestation/tests/fixtures/azure`) with `ATTESTATION_NOW` at capture time.
+fn attest_from_env() -> Option<Attested> {
+    use dark_perp_attestation::vtpm::{azure_app_measurement, verify_azure_vtpm};
+    use dark_perp_attestation::{verify_tdx_quote, Collateral};
+
+    let dir = std::env::var("ATTESTATION_DIR").ok()?;
+    let path = |f: &str| std::path::Path::new(&dir).join(f);
+    let quote = std::fs::read(path("quote.bin")).ok()?;
+    let collateral_json = std::fs::read(path("collateral.json")).ok()?;
+    let hcl = std::fs::read(path("hcl_report.bin")).ok()?;
+    let ak_msg = std::fs::read(path("ak_quote_msg.bin")).ok()?;
+    let ak_sig = std::fs::read(path("ak_quote_sig.bin")).ok()?;
+    let pcrs_txt = std::fs::read_to_string(path("pcrs.txt")).ok()?;
+
+    // parse PCR lines "    N : 0x<64 hex>" into index→value, then take the quoted
+    // measured-boot set (PCRs 0..=16, what the AK quote covers) in order.
+    let mut by_idx: std::collections::BTreeMap<u32, [u8; 32]> = std::collections::BTreeMap::new();
+    for line in pcrs_txt.lines() {
+        let Some(pos) = line.find("0x") else { continue };
+        // index token is "N" (single digit, " : ") or "N:" (double digit, "N:")
+        let Some(idx) = line
+            .split_whitespace()
+            .next()
+            .and_then(|t| t.trim_end_matches(':').parse::<u32>().ok())
+        else {
+            continue;
+        };
+        let hex = line[pos + 2..].trim();
+        if hex.len() < 64 {
+            continue;
+        }
+        let mut a = [0u8; 32];
+        let mut ok = true;
+        for (i, slot) in a.iter_mut().enumerate() {
+            match u8::from_str_radix(&hex[i * 2..i * 2 + 2], 16) {
+                Ok(b) => *slot = b,
+                Err(_) => {
+                    ok = false;
+                    break;
+                }
+            }
+        }
+        if ok {
+            by_idx.insert(idx, a);
+        }
+    }
+    let pcrs: Vec<[u8; 32]> = (0..17).filter_map(|i| by_idx.get(&i).copied()).collect();
+
+    let now = std::env::var("ATTESTATION_NOW")
+        .ok()
+        .and_then(|s| s.parse::<u64>().ok())
+        .unwrap_or_else(|| now_ms() / 1000);
+    let run = || -> Result<Attested, String> {
+        let collateral = Collateral::from_json(&collateral_json).map_err(|e| format!("collateral: {e:?}"))?;
+        let td = verify_tdx_quote(&quote, &collateral, now).map_err(|e| format!("tdx quote: {e:?}"))?;
+        let report =
+            verify_azure_vtpm(&td, &hcl, &ak_msg, &ak_sig, &pcrs).map_err(|e| format!("vtpm chain: {e:?}"))?;
+        Ok(Attested {
+            measurement: azure_app_measurement(&td, &report),
+            tcb: format!("{:?}", td.tcb_status),
+            quote_version: td.quote_version,
+        })
+    };
+    match run() {
+        Ok(a) => Some(a),
+        Err(e) => {
+            eprintln!("[attest] ATTESTATION_DIR set but verification failed: {e}");
+            None
+        }
+    }
+}
 fn usd(n: f64) -> i128 {
     (n * PRICE_SCALE as f64).round() as i128
 }
@@ -199,6 +283,15 @@ struct WL1 {
     last_tx: String,
     bond_wei: String,
 }
+/// The verified TEE attestation the enclave is bound to — present only when the
+/// gateway boots with a real Azure TDX + vTPM attestation (else null = stub).
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WAttestation {
+    measurement: String,
+    tcb: String,
+    quote_version: u16,
+}
 #[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 struct WOrderInput {
@@ -261,6 +354,8 @@ struct WState {
     mm_hedge: Vec<WHedge>,
     /// The last on-chain L1 settlement, if the L1 bridge is active (else null).
     l1: Option<WL1>,
+    /// The verified TEE attestation the enclave is bound to (else null = stub).
+    attestation: Option<WAttestation>,
 }
 #[derive(Serialize)]
 struct WEvent {
@@ -368,6 +463,8 @@ struct Gw {
     last_manifest: Digest,
     /// Last on-chain settlement the L1 bridge published (None until it settles once).
     l1_status: Option<L1Status>,
+    /// The verified TEE attestation the enclave identity is bound to (None = stub).
+    attestation: Option<Attested>,
 }
 
 fn oracle_of(px: i128, now: u64) -> OracleTranscript {
@@ -405,7 +502,14 @@ fn mk_order(owner: PubKey, market_id: u64, side: Side, size: i128, price: i128, 
 
 impl Gw {
     fn boot() -> Self {
-        let enclave = EnclaveIdentity::from_seed([7u8; 32], 1, [0xABu8; 32]);
+        // Bind the enclave identity to a REAL verified TEE measurement when an
+        // attestation is configured (Azure TDX + vTPM); else a stub for the demo.
+        let attestation = attest_from_env();
+        let measurement = attestation.as_ref().map(|a| a.measurement).unwrap_or([0xABu8; 32]);
+        if let Some(a) = &attestation {
+            println!("[attest] enclave bound to verified measurement {} (TCB {})", hex0x(&a.measurement), a.tcb);
+        }
+        let enclave = EnclaveIdentity::from_seed([7u8; 32], 1, measurement);
         let mut seq = Sequencer::new(enclave, 24);
         let mut archive = NoteArchive::new();
         let user = Wallet::from_seed([1u8; 32]);
@@ -444,6 +548,7 @@ impl Gw {
             accounts: std::collections::BTreeMap::new(),
             last_manifest: [0u8; 32],
             l1_status: None,
+            attestation,
         }
     }
 
@@ -1359,6 +1464,11 @@ impl Gw {
                 batch_count: s.batch_count,
                 last_tx: s.last_tx.clone(),
                 bond_wei: s.bond_wei.clone(),
+            }),
+            attestation: self.attestation.as_ref().map(|a| WAttestation {
+                measurement: hex0x(&a.measurement),
+                tcb: a.tcb.clone(),
+                quote_version: a.quote_version,
             }),
         }
     }

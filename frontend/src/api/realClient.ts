@@ -39,6 +39,7 @@ interface WireState {
   orders: WireTrackedOrder[]; batches: BatchSummary[]; insuranceFund: string; userAdlClawed: string;
   mmHedge: WireHedge[];
   l1: WireL1 | null;
+  attestation: { measurement: string; tcb: string; quoteVersion: number } | null;
 }
 interface WireHedge {
   marketId: number; symbol: string; inventory: string; hedgeTarget: string; notional: string;
@@ -108,6 +109,7 @@ function parseState(w: WireState): ClientState {
           bondWei: B(w.l1.bondWei),
         }
       : null,
+    attestation: w.attestation,
   };
 }
 
