@@ -62,6 +62,7 @@ const MAKER_REBATE_BPS: i128 = 4; // 0.04% maker rebate → 0.06% net to insuran
 const INSURANCE_SEED_USD: i128 = 25_000; // visible starting backstop; grows with volume
 const L1_SETTLE_SECS: u64 = 30; // how often the L1 bridge advances the on-chain root
 const L1_BOND_WEI: &str = "5000000000000000"; // 0.005 ETH sequencer bond posted once
+const V1_ORDER_RATE: u32 = 10; // max orders/sec per external account
 
 struct MarketCfg {
     id: u64,
@@ -438,6 +439,9 @@ struct Account {
     orders: Vec<GwOrder>,
     nonce: u64,
     deposit_counter: u64,
+    /// Per-account order rate limit (a sliding 1s window).
+    last_order_ms: u64,
+    orders_this_sec: u32,
 }
 
 struct Gw {
@@ -573,6 +577,8 @@ impl Gw {
                 orders: Vec::new(),
                 nonce: 1,
                 deposit_counter: 0,
+                last_order_ms: 0,
+                orders_this_sec: 0,
             },
         );
         (api_key, owner)
@@ -650,7 +656,18 @@ impl Gw {
             }
         }
         let tif = parse_tif(&req.tif);
+        let now_rate = now_ms();
         let acct = self.accounts.get_mut(key).unwrap();
+        // per-account sliding-1s rate limit
+        if now_rate.saturating_sub(acct.last_order_ms) < 1000 {
+            if acct.orders_this_sec >= V1_ORDER_RATE {
+                return Err(format!("RATE_LIMIT: exceeded {V1_ORDER_RATE} orders/sec for this account"));
+            }
+            acct.orders_this_sec += 1;
+        } else {
+            acct.last_order_ms = now_rate;
+            acct.orders_this_sec = 1;
+        }
         let nonce = acct.nonce;
         acct.nonce += 1;
         let order = mk_order(owner, req.market_id, side, size, px, nonce, tif);
@@ -745,6 +762,10 @@ impl Gw {
             }
         }
         v
+    }
+    /// Owner (hex) for an API key, for authenticating a /v1/ws connection.
+    fn owner_hex_for(&self, key: &[u8; 32]) -> Option<String> {
+        self.accounts.get(key).map(|a| hex0x(&a.wallet.owner))
     }
     fn v1_account(&self, key: &[u8; 32]) -> Option<serde_json::Value> {
         let a = self.accounts.get(key)?;
@@ -1169,7 +1190,7 @@ impl Gw {
     }
 
     // ── tick: oracle walk, seal pending + MM counters, settle, maintenance ───
-    fn tick(&mut self) -> Vec<WEvent> {
+    fn tick(&mut self) -> (Vec<WEvent>, Vec<String>) {
         self.tick += 1;
         let now = now_ms();
         // 1) walk oracles
@@ -1291,8 +1312,11 @@ impl Gw {
                 events.push(WEvent { order_id: o.id.clone(), kind: f.to_string(), message: msg.to_string() });
             }
         }
-        // advance /v1 account orders' finality (no demo toast; surfaced via REST/WS)
+        // advance /v1 account orders' finality + collect per-account events for the
+        // authenticated WS (own fills, order-finality transitions, ADL haircuts).
+        let mut acct_events: Vec<String> = Vec::new();
         for acct in self.accounts.values_mut() {
+            let owner_hex = hex0x(&acct.wallet.owner);
             for o in acct.orders.iter_mut() {
                 if o.last_finality == "SETTLED" {
                     continue;
@@ -1307,8 +1331,42 @@ impl Gw {
                     if f != "ACCEPTED" {
                         o.filled = o.order.size;
                         o.avg_fill = o.order.limit_price;
+                        acct_events.push(
+                            serde_json::json!({
+                                "owner": owner_hex, "type": "fill", "orderId": o.id,
+                                "marketId": o.order.market_id, "side": o.input.side,
+                                "size": o.input.size, "price": o.order.limit_price.to_string(),
+                            })
+                            .to_string(),
+                        );
+                    }
+                    acct_events.push(
+                        serde_json::json!({
+                            "owner": owner_hex, "type": "order", "orderId": o.id,
+                            "finality": f, "marketId": o.order.market_id,
+                        })
+                        .to_string(),
+                    );
+                }
+            }
+            // per-account ADL: the account recognizes its own secret-keyed receipt
+            let tag_key = adl_tag_key(&acct.wallet.spend_key);
+            let mut clawed = 0i128;
+            for m in &self.mkts {
+                let tag = adl_tag(&tag_key, m.id, sealed.batch_id);
+                for r in &sealed.adl_receipts {
+                    if r.tag == tag {
+                        clawed += r.clawed;
                     }
                 }
+            }
+            if clawed > 0 {
+                acct_events.push(
+                    serde_json::json!({
+                        "owner": owner_hex, "type": "adl", "clawed": (clawed / QUOTE_SCALE).to_string(),
+                    })
+                    .to_string(),
+                );
             }
         }
         if adl_clawed > 0 {
@@ -1321,7 +1379,7 @@ impl Gw {
                 ),
             });
         }
-        events
+        (events, acct_events)
     }
 
     // ── snapshot ──────────────────────────────────────────────────────────────
@@ -1493,6 +1551,9 @@ type Shared = Arc<App>;
 struct App {
     gw: Mutex<Gw>,
     tx: broadcast::Sender<String>,
+    /// Per-account event stream (own fills, order finality, ADL) — each JSON carries
+    /// an `owner` field; the authenticated /v1/ws filters by it.
+    events_tx: broadcast::Sender<String>,
 }
 
 impl App {
@@ -1517,24 +1578,29 @@ struct V1DepositReq {
     amount: String,
 }
 
-/// Authenticate a `/v1` request: read `X-Api-Key` (0x + 64 hex) → 32-byte key.
-fn api_key_from(headers: &HeaderMap) -> Result<[u8; 32], (StatusCode, Json<serde_json::Value>)> {
-    let unauth = || {
-        (
-            StatusCode::UNAUTHORIZED,
-            Json(serde_json::json!({ "error": "missing or invalid X-Api-Key" })),
-        )
-    };
-    let h = headers.get("x-api-key").and_then(|v| v.to_str().ok()).ok_or_else(unauth)?;
-    let h = h.strip_prefix("0x").unwrap_or(h);
+/// Parse a `0x`-optional 64-hex string into a 32-byte key.
+fn parse_hex32(s: &str) -> Option<[u8; 32]> {
+    let h = s.strip_prefix("0x").unwrap_or(s);
     if h.len() != 64 {
-        return Err(unauth());
+        return None;
     }
     let mut k = [0u8; 32];
     for (i, slot) in k.iter_mut().enumerate() {
-        *slot = u8::from_str_radix(&h[i * 2..i * 2 + 2], 16).map_err(|_| unauth())?;
+        *slot = u8::from_str_radix(&h[i * 2..i * 2 + 2], 16).ok()?;
     }
-    Ok(k)
+    Some(k)
+}
+
+/// Authenticate a `/v1` request: read `X-Api-Key` (0x + 64 hex) → 32-byte key.
+fn api_key_from(headers: &HeaderMap) -> Result<[u8; 32], (StatusCode, Json<serde_json::Value>)> {
+    headers
+        .get("x-api-key")
+        .and_then(|v| v.to_str().ok())
+        .and_then(parse_hex32)
+        .ok_or((
+            StatusCode::UNAUTHORIZED,
+            Json(serde_json::json!({ "error": "missing or invalid X-Api-Key" })),
+        ))
 }
 
 async fn post_v1_register(State(app): State<Shared>) -> impl IntoResponse {
@@ -1582,6 +1648,11 @@ async fn post_v1_order(
     let r = { app.gw.lock().await.account_place_order(&key, &req) };
     match r {
         Ok(receipt) => Json(serde_json::to_value(receipt).unwrap()).into_response(),
+        Err(e) if e.starts_with("RATE_LIMIT") => (
+            StatusCode::TOO_MANY_REQUESTS,
+            Json(serde_json::json!({ "error": e })),
+        )
+            .into_response(),
         Err(e) => err400(e).into_response(),
     }
 }
@@ -1648,18 +1719,64 @@ async fn get_v1_status(State(app): State<Shared>) -> impl IntoResponse {
 async fn ws_v1_handler(State(app): State<Shared>, ws: WebSocketUpgrade) -> impl IntoResponse {
     ws.on_upgrade(move |socket| ws_v1_loop(socket, app))
 }
-/// Public live-market WebSocket: pushes the market snapshot every tick. Per-account
-/// authenticated channels (own fills/finality) are a documented follow-on.
+/// `/v1/ws`: public live-market snapshots every tick, PLUS — after the client sends
+/// `{"type":"auth","apiKey":"0x.."}` — that account's own events (fills, order
+/// finality, ADL haircuts). Events are filtered to the authenticated owner; an
+/// unauthenticated connection sees only public market data.
 async fn ws_v1_loop(mut socket: WebSocket, app: Shared) {
-    let mut rx = app.tx.subscribe();
+    let mut ticks = app.tx.subscribe();
+    let mut accts = app.events_tx.subscribe();
+    let mut auth_owner: Option<String> = None;
     let initial = { serde_json::to_string(&app.gw.lock().await.v1_public_json()).unwrap() };
     if socket.send(Message::Text(initial)).await.is_err() {
         return;
     }
-    while rx.recv().await.is_ok() {
-        let msg = { serde_json::to_string(&app.gw.lock().await.v1_public_json()).unwrap() };
-        if socket.send(Message::Text(msg)).await.is_err() {
-            break;
+    loop {
+        tokio::select! {
+            client = socket.recv() => {
+                match client {
+                    Some(Ok(Message::Text(txt))) => {
+                        let v: serde_json::Value = match serde_json::from_str(&txt) {
+                            Ok(v) => v,
+                            Err(_) => continue,
+                        };
+                        if v.get("type").and_then(|t| t.as_str()) == Some("auth") {
+                            let key = v.get("apiKey").and_then(|a| a.as_str()).and_then(parse_hex32);
+                            let owner = match key {
+                                Some(k) => app.gw.lock().await.owner_hex_for(&k),
+                                None => None,
+                            };
+                            let reply = match &owner {
+                                Some(o) => serde_json::json!({ "type": "authOk", "owner": o }),
+                                None => serde_json::json!({ "type": "error", "message": "unknown api key" }),
+                            };
+                            auth_owner = owner;
+                            if socket.send(Message::Text(reply.to_string())).await.is_err() {
+                                break;
+                            }
+                        }
+                    }
+                    Some(Ok(_)) => {}
+                    _ => break,
+                }
+            }
+            tick = ticks.recv() => {
+                if tick.is_err() { continue; }
+                let msg = { serde_json::to_string(&app.gw.lock().await.v1_public_json()).unwrap() };
+                if socket.send(Message::Text(msg)).await.is_err() { break; }
+            }
+            ev = accts.recv() => {
+                let Ok(json) = ev else { continue; };
+                if let Some(owner) = &auth_owner {
+                    let is_mine = serde_json::from_str::<serde_json::Value>(&json)
+                        .ok()
+                        .and_then(|v| v.get("owner").and_then(|o| o.as_str()).map(|s| s == owner))
+                        .unwrap_or(false);
+                    if is_mine && socket.send(Message::Text(json)).await.is_err() {
+                        break;
+                    }
+                }
+            }
         }
     }
 }
@@ -1822,7 +1939,12 @@ async fn ws_loop(mut socket: WebSocket, app: Shared) {
 #[tokio::main]
 async fn main() {
     let (tx, _rx) = broadcast::channel::<String>(256);
-    let app = Arc::new(App { gw: Mutex::new(Gw::boot()), tx: tx.clone() });
+    let (events_tx, _erx) = broadcast::channel::<String>(1024);
+    let app = Arc::new(App {
+        gw: Mutex::new(Gw::boot()),
+        tx: tx.clone(),
+        events_tx,
+    });
 
     // background tick loop
     {
@@ -1831,11 +1953,15 @@ async fn main() {
             let mut iv = tokio::time::interval(Duration::from_millis(TICK_MS));
             loop {
                 iv.tick().await;
-                let events = { app.gw.lock().await.tick() };
+                let (events, acct_events) = { app.gw.lock().await.tick() };
                 let snap = { app.gw.lock().await.snapshot() };
                 let _ = app.tx.send(serde_json::to_string(&WsMsg::State { state: snap }).unwrap());
                 for ev in events {
                     let _ = app.tx.send(serde_json::to_string(&WsMsg::Event { event: ev }).unwrap());
+                }
+                // fan out per-account events to the authenticated /v1/ws subscribers
+                for ev in acct_events {
+                    let _ = app.events_tx.send(ev);
                 }
             }
         });

@@ -59,20 +59,33 @@ All token amounts are **decimal strings** of scaled integers: quote = micro-USD
 fill); `Gtc`/`PostOnly` rest in the matcher book so a maker can quote and be crossed
 by later takers. `limitPrice: "0"` means market (filled at the mark). Opening orders
 are margin-checked against the account's free balance; close-only mode blocks
-openers (§6).
+openers (§6). **Rate limit:** at most 10 orders/sec per account — over that returns
+`429` `{ "error": "RATE_LIMIT: ..." }`.
 
 ## WebSocket
 
-`GET /v1/ws` — a public live-market stream. On connect and every engine tick it
-pushes:
+`GET /v1/ws` — public live-market data, plus authenticated per-account events.
+
+On connect (and every engine tick) it pushes the public market snapshot:
 
 ```json
 { "type": "markets", "markets": [{ "id": 0, "symbol": "BTC/USDC", "price": "...", "book": { "marketId": 0, "bids": [...], "asks": [...] } }], "tsMs": 1719446400000 }
 ```
 
-Per-account authenticated channels (own fills, order finality transitions, ADL
-receipts) are a documented follow-on; today read your own account/orders/positions
-over REST.
+To also receive **your own** events, send:
+
+```json
+{ "type": "auth", "apiKey": "0x<64 hex>" }
+```
+
+→ `{ "type": "authOk", "owner": "0x..." }`. After auth the connection also gets,
+filtered to your account:
+
+- `{ "type": "order", "orderId": "o1", "finality": "MATCHED", "marketId": 0 }`
+- `{ "type": "fill", "orderId": "o1", "marketId": 0, "side": "Buy", "size": "...", "price": "..." }`
+- `{ "type": "adl", "clawed": "..." }` (your position was auto-deleveraged, audit Q2)
+
+An unauthenticated connection sees only public market data.
 
 ## Example (curl)
 
@@ -88,8 +101,9 @@ curl -s $B/v1/orders      -H "X-Api-Key: $KEY"      # your orders + finality
 curl -s $B/v1/markets/0/orderbook                    # public book
 ```
 
-## Limits (follow-ons)
+## Follow-ons
 
-Not yet implemented (tracked in `docs/NEXT_STEPS.md`): per-account/IP rate limiting,
-OpenAPI/AsyncAPI spec, caller-signed orders + on-chain enclave custody, real
-deposit/withdraw L1 flows, and per-account authenticated WS channels.
+Done: per-account order rate limiting + per-account authenticated WS channels.
+Still tracked in `docs/NEXT_STEPS.md`: per-IP rate limiting on registration,
+OpenAPI/AsyncAPI spec, caller-signed orders + on-chain enclave custody, and real
+deposit/withdraw L1 flows.

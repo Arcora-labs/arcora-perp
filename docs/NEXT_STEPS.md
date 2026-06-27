@@ -53,10 +53,11 @@ The multi-tenant `/v1` API now exists in the gateway: accounts register (API-key
 auth, Phase-0 server custody), deposit, place/cancel orders (Ioc/Fok takers +
 Gtc/PostOnly resting makers), and read their own account/positions/orders + public
 markets/orderbook/oracle/status — all isolated on the **same shared engine**, demo
-preserved. Public `/v1/ws` streams live market data. Follow-ons (below) remain:
-per-account/IP rate limiting, OpenAPI spec, caller-signed orders + enclave custody,
-real deposit/withdraw L1 flows, per-account authenticated WS channels. Reference:
-`docs/API.md`. Original gap analysis kept for context:
+preserved. `/v1/ws` streams live public market data AND, after auth, per-account
+events (own fills, order finality, ADL). Per-account order **rate limiting** (10/s →
+429) is in. Follow-ons that remain: per-IP rate limiting on registration, OpenAPI
+spec, caller-signed orders + enclave custody, real deposit/withdraw L1 flows.
+Reference: `docs/API.md`. Original gap analysis kept for context:
 
 **The gap.** A real perp DEX needs an external API that market-makers, bots, and
 integrations hit **without a browser** — place/cancel orders and read
