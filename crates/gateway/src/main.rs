@@ -9,12 +9,13 @@
 //! Frontend: set `VITE_API_URL=http://localhost:8080` and `pnpm dev`.
 
 use std::collections::HashMap;
+use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use axum::{
     extract::ws::{Message, WebSocket, WebSocketUpgrade},
-    extract::{Path, State},
+    extract::{ConnectInfo, Path, State},
     http::{HeaderMap, StatusCode},
     response::IntoResponse,
     routing::{delete, get, post},
@@ -63,6 +64,7 @@ const INSURANCE_SEED_USD: i128 = 25_000; // visible starting backstop; grows wit
 const L1_SETTLE_SECS: u64 = 30; // how often the L1 bridge advances the on-chain root
 const L1_BOND_WEI: &str = "5000000000000000"; // 0.005 ETH sequencer bond posted once
 const V1_ORDER_RATE: u32 = 10; // max orders/sec per external account
+const V1_REGISTER_RATE: u32 = 30; // max account registrations/min per IP
 
 struct MarketCfg {
     id: u64,
@@ -1554,6 +1556,8 @@ struct App {
     /// Per-account event stream (own fills, order finality, ADL) — each JSON carries
     /// an `owner` field; the authenticated /v1/ws filters by it.
     events_tx: broadcast::Sender<String>,
+    /// Per-IP registration counter (a sliding 60s window) to throttle account spam.
+    reg_limit: Mutex<HashMap<IpAddr, (u64, u32)>>,
 }
 
 impl App {
@@ -1603,9 +1607,29 @@ fn api_key_from(headers: &HeaderMap) -> Result<[u8; 32], (StatusCode, Json<serde
         ))
 }
 
-async fn post_v1_register(State(app): State<Shared>) -> impl IntoResponse {
+async fn post_v1_register(
+    State(app): State<Shared>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+) -> impl IntoResponse {
+    // throttle registrations per source IP (sliding 60s window)
+    {
+        let now = now_ms() / 1000;
+        let mut reg = app.reg_limit.lock().await;
+        let e = reg.entry(addr.ip()).or_insert((now, 0));
+        if now.saturating_sub(e.0) >= 60 {
+            *e = (now, 0);
+        }
+        if e.1 >= V1_REGISTER_RATE {
+            return (
+                StatusCode::TOO_MANY_REQUESTS,
+                Json(serde_json::json!({ "error": "RATE_LIMIT: too many registrations from this IP" })),
+            )
+                .into_response();
+        }
+        e.1 += 1;
+    }
     let (key, owner) = { app.gw.lock().await.register_account() };
-    Json(serde_json::json!({ "apiKey": hex0x(&key), "owner": hex0x(&owner) }))
+    Json(serde_json::json!({ "apiKey": hex0x(&key), "owner": hex0x(&owner) })).into_response()
 }
 async fn get_v1_account(State(app): State<Shared>, headers: HeaderMap) -> impl IntoResponse {
     let key = match api_key_from(&headers) {
@@ -1986,6 +2010,7 @@ async fn main() {
         gw: Mutex::new(Gw::boot()),
         tx: tx.clone(),
         events_tx,
+        reg_limit: Mutex::new(HashMap::new()),
     });
 
     // background tick loop
@@ -2113,7 +2138,12 @@ async fn main() {
     let addr = format!("0.0.0.0:{port}");
     let listener = tokio::net::TcpListener::bind(&addr).await.expect("bind");
     println!("dark-perp gateway listening on http://{addr}  (ws: /ws)");
-    axum::serve(listener, router).await.expect("serve");
+    axum::serve(
+        listener,
+        router.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .await
+    .expect("serve");
 }
 
 #[cfg(test)]

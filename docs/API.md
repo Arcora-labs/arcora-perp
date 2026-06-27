@@ -106,7 +106,7 @@ curl -s $B/v1/markets/0/orderbook                    # public book
 
 ## Follow-ons
 
-Done: per-account order rate limiting + per-account authenticated WS channels.
-Still tracked in `docs/NEXT_STEPS.md`: per-IP rate limiting on registration,
-OpenAPI/AsyncAPI spec, caller-signed orders + on-chain enclave custody, and real
+Done: per-account order rate limiting, per-IP registration rate limiting,
+per-account authenticated WS channels, and the OpenAPI spec.
+Still tracked in `docs/NEXT_STEPS.md`: caller-signed orders + on-chain enclave custody, and real
 deposit/withdraw L1 flows.
