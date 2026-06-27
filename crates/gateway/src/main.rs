@@ -35,6 +35,19 @@ use perp_core::order::{Finality, Order, Side, TimeInForce};
 use perp_core::state::Mode;
 use sequencer::{adl_tag, adl_tag_key, EnclaveIdentity, SealedBatch, Sequencer};
 
+mod l1;
+use l1::{L1Status, L1};
+
+/// 0x-prefixed lowercase hex of a 32-byte digest (for L1 calldata + display).
+fn hex32(d: &Digest) -> String {
+    let mut s = String::with_capacity(66);
+    s.push_str("0x");
+    for b in d {
+        s.push_str(&format!("{b:02x}"));
+    }
+    s
+}
+
 // ── constants ────────────────────────────────────────────────────────────────
 const IMR_BP: i128 = 1_000; // initial-margin 10% in basis points (matches Market::conservative)
 const MMR_BP: i128 = 500; // maintenance 5%
@@ -47,6 +60,8 @@ const TICK_MS: u64 = 700;
 const TAKER_FEE_BPS: i128 = 10; // 0.10% taker fee
 const MAKER_REBATE_BPS: i128 = 4; // 0.04% maker rebate → 0.06% net to insurance
 const INSURANCE_SEED_USD: i128 = 25_000; // visible starting backstop; grows with volume
+const L1_SETTLE_SECS: u64 = 30; // how often the L1 bridge advances the on-chain root
+const L1_BOND_WEI: &str = "5000000000000000"; // 0.005 ETH sequencer bond posted once
 
 struct MarketCfg {
     id: u64,
@@ -167,6 +182,16 @@ struct WHedge {
     hedge_target: String, // −inventory: the offset to take on an external venue
     notional: String,     // quote-scaled exposure at mark
 }
+/// The last on-chain L1 settlement the bridge published (audit/§3) — present only
+/// when the gateway runs with the L1 bridge configured.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WL1 {
+    settled_root: String,
+    batch_count: u64,
+    last_tx: String,
+    bond_wei: String,
+}
 #[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 struct WOrderInput {
@@ -227,6 +252,8 @@ struct WState {
     /// The market-maker's net inventory + hedge target per market with open MM
     /// exposure — the venue-agnostic delta-hedging signal (audit Q5).
     mm_hedge: Vec<WHedge>,
+    /// The last on-chain L1 settlement, if the L1 bridge is active (else null).
+    l1: Option<WL1>,
 }
 #[derive(Serialize)]
 struct WEvent {
@@ -315,6 +342,11 @@ struct Gw {
     /// Cumulative collateral the USER has had clawed by auto-deleverage (audit Q2),
     /// recognized from the sealed batches' ADL receipts via the user's secret key.
     user_adl_clawed: i128,
+    /// Manifest hash of the most recently sealed batch — published to L1 as the
+    /// settled batch's manifest when the L1 bridge is active.
+    last_manifest: Digest,
+    /// Last on-chain settlement the L1 bridge published (None until it settles once).
+    l1_status: Option<L1Status>,
 }
 
 fn oracle_of(px: i128, now: u64) -> OracleTranscript {
@@ -380,7 +412,18 @@ impl Gw {
             rng: 0x2545F4914F6CDD1D,
             pending_settle: Vec::new(),
             user_adl_clawed: 0,
+            last_manifest: [0u8; 32],
+            l1_status: None,
         }
+    }
+
+    /// The engine's live state root as 0x-hex — what the L1 bridge settles to.
+    fn state_root_hex(&self) -> String {
+        hex32(&self.seq.state.state_root())
+    }
+    /// The most recently sealed batch's manifest hash as 0x-hex.
+    fn last_manifest_hex(&self) -> String {
+        hex32(&self.last_manifest)
     }
 
     /// Sum the collateral the USER had auto-deleveraged in `sealed`, recognized by
@@ -759,6 +802,7 @@ impl Gw {
             seal.push(*u);
         }
         let sealed = self.seq.seal_batch(&seal, now);
+        self.last_manifest = sealed.manifest_hash;
         // recognize any auto-deleverage haircut that hit the user this batch (Q2)
         let adl_clawed = self.user_adl_in(&sealed);
         if adl_clawed > 0 {
@@ -956,6 +1000,12 @@ impl Gw {
             insurance_fund: self.seq.state.insurance_fund.to_string(),
             user_adl_clawed: self.user_adl_clawed.to_string(),
             mm_hedge,
+            l1: self.l1_status.as_ref().map(|s| WL1 {
+                settled_root: s.settled_root.clone(),
+                batch_count: s.batch_count,
+                last_tx: s.last_tx.clone(),
+                bond_wei: s.bond_wei.clone(),
+            }),
         }
     }
 }
@@ -1167,6 +1217,77 @@ async fn main() {
                 let _ = app.tx.send(serde_json::to_string(&WsMsg::State { state: snap }).unwrap());
                 for ev in events {
                     let _ = app.tx.send(serde_json::to_string(&WsMsg::Event { event: ev }).unwrap());
+                }
+            }
+        });
+    }
+
+    // optional L1 settlement bridge: post bond once, then advance the on-chain
+    // root to mirror the engine root on a slow timer (Base Sepolia).
+    if let Some(l1) = L1::from_env() {
+        println!("[l1] bridge ON → settlement {} every {L1_SETTLE_SECS}s", l1.settlement);
+        let app = app.clone();
+        tokio::spawn(async move {
+            {
+                let l1b = l1.clone();
+                match tokio::task::spawn_blocking(move || {
+                    if l1b.sequencer_bond().unwrap_or(0) == 0 {
+                        l1b.post_bond(L1_BOND_WEI)
+                    } else {
+                        Ok("already bonded".into())
+                    }
+                })
+                .await
+                {
+                    Ok(Ok(tx)) => println!("[l1] bond: {tx}"),
+                    Ok(Err(e)) => eprintln!("[l1] bond failed: {e}"),
+                    Err(e) => eprintln!("[l1] bond join: {e}"),
+                }
+            }
+            // start the first settle one period out, so it never races the bond's
+            // confirmation (tokio's plain `interval` would fire immediately).
+            let mut iv = tokio::time::interval_at(
+                tokio::time::Instant::now() + Duration::from_secs(L1_SETTLE_SECS),
+                Duration::from_secs(L1_SETTLE_SECS),
+            );
+            loop {
+                iv.tick().await;
+                let (new_root, manifest) = {
+                    let gw = app.gw.lock().await;
+                    (gw.state_root_hex(), gw.last_manifest_hex())
+                };
+                let l1c = l1.clone();
+                let res = tokio::task::spawn_blocking(move || {
+                    let prev = l1c.current_root()?;
+                    if prev.eq_ignore_ascii_case(&new_root) {
+                        return Ok::<Option<L1Status>, String>(None);
+                    }
+                    let tx = l1c.settle(&prev, &manifest, &new_root)?;
+                    Ok(Some(L1Status {
+                        settled_root: new_root,
+                        batch_count: l1c.batch_count().unwrap_or(0),
+                        last_tx: tx,
+                        bond_wei: l1c.sequencer_bond().unwrap_or(0).to_string(),
+                    }))
+                })
+                .await;
+                match res {
+                    Ok(Ok(Some(status))) => {
+                        println!(
+                            "[l1] settled root {} batch {} tx {}",
+                            status.settled_root, status.batch_count, status.last_tx
+                        );
+                        {
+                            app.gw.lock().await.l1_status = Some(status);
+                        }
+                        let snap = { app.gw.lock().await.snapshot() };
+                        let _ = app.tx.send(
+                            serde_json::to_string(&WsMsg::State { state: snap }).unwrap(),
+                        );
+                    }
+                    Ok(Ok(None)) => {}
+                    Ok(Err(e)) => eprintln!("[l1] settle failed: {e}"),
+                    Err(e) => eprintln!("[l1] settle join: {e}"),
                 }
             }
         });

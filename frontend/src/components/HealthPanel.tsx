@@ -145,6 +145,32 @@ export function HealthPanel() {
             protocol never custodies or routes the hedge — venue-agnostic by design (audit Q5).
           </p>
         </div>
+
+        {state.l1 && (
+          <div className="card">
+            <h3 className="card__title">L1 settlement — Base Sepolia (§3)</h3>
+            <div className="summary">
+              <Stat label="Batches settled on-chain" value={String(state.l1.batchCount)} tone="pos" />
+              <Stat label="Sequencer bond" value={`${(Number(state.l1.bondWei) / 1e18).toFixed(3)} ETH`} />
+            </div>
+            <p className="small muted">
+              Settled state root{" "}
+              <span className="mono">
+                {state.l1.settledRoot.slice(0, 10)}…{state.l1.settledRoot.slice(-6)}
+              </span>{" "}
+              advanced on-chain via <code>settleBatch</code>, gated on the bond (audit Q1).{" "}
+              <a
+                className="pos"
+                href={`https://sepolia.basescan.org/tx/${state.l1.lastTx}`}
+                target="_blank"
+                rel="noreferrer"
+              >
+                latest tx ↗
+              </a>
+              . Phase 0 uses MockZkVerifier — the real ZK proof replaces it later (§10b).
+            </p>
+          </div>
+        )}
       </div>
 
       <div className="col">

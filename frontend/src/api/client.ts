@@ -7,6 +7,7 @@ import type {
   AccountState,
   BatchSummary,
   HedgeSignal,
+  L1Settlement,
   Market,
   OracleQuote,
   OrderBookSnapshot,
@@ -45,6 +46,9 @@ export interface ClientState {
   /// The market-maker's net inventory + delta-neutral hedge target per market with
   /// open MM exposure — the venue-agnostic hedging signal (audit Q5).
   mmHedge: HedgeSignal[];
+  /// The last on-chain L1 settlement (Base Sepolia), or null when the gateway runs
+  /// without the L1 bridge (pure in-memory / mock).
+  l1: L1Settlement | null;
 }
 
 export interface DarkPerpClient {

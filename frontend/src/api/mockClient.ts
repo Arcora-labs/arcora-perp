@@ -251,6 +251,7 @@ export class MockDarkPerpClient implements DarkPerpClient {
       insuranceFund: 25_000n * QUOTE_SCALE,
       userAdlClawed: this.adlClawed,
       mmHedge: [],
+      l1: null,
     };
   }
 

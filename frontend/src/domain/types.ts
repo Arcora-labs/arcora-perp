@@ -68,6 +68,15 @@ export interface HedgeSignal {
   notional: bigint;
 }
 
+/// The last on-chain L1 settlement the gateway's bridge published (§3) — present
+/// only when the gateway runs with the L1 bridge configured (Base Sepolia).
+export interface L1Settlement {
+  settledRoot: string;
+  batchCount: number;
+  lastTx: string;
+  bondWei: bigint;
+}
+
 export interface OrderInput {
   marketId: number;
   side: Side;
