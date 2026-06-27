@@ -14,10 +14,10 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use axum::{
     extract::ws::{Message, WebSocket, WebSocketUpgrade},
-    extract::State,
-    http::StatusCode,
+    extract::{Path, State},
+    http::{HeaderMap, StatusCode},
     response::IntoResponse,
-    routing::{get, post},
+    routing::{delete, get, post},
     Json, Router,
 };
 use serde::{Deserialize, Serialize};
@@ -326,6 +326,18 @@ struct GwOrder {
     last_finality: String,
 }
 
+/// A registered external API account (multi-tenant `/v1`). Each is an independent
+/// trader on the SAME shared engine/order book, keyed by a secret API key. Phase 0:
+/// the gateway custodies the account's wallet (the real version moves spend keys
+/// into the enclave); the API key authenticates the caller and the server acts for
+/// them — the CEX-style API shape market-makers/bots expect.
+struct Account {
+    wallet: Wallet,
+    orders: Vec<GwOrder>,
+    nonce: u64,
+    deposit_counter: u64,
+}
+
 struct Gw {
     seq: Sequencer,
     archive: NoteArchive,
@@ -342,6 +354,8 @@ struct Gw {
     /// Cumulative collateral the USER has had clawed by auto-deleverage (audit Q2),
     /// recognized from the sealed batches' ADL receipts via the user's secret key.
     user_adl_clawed: i128,
+    /// Registered external `/v1` API accounts, keyed by their secret API key.
+    accounts: std::collections::BTreeMap<[u8; 32], Account>,
     /// Manifest hash of the most recently sealed batch — published to L1 as the
     /// settled batch's manifest when the L1 bridge is active.
     last_manifest: Digest,
@@ -355,6 +369,14 @@ fn oracle_of(px: i128, now: u64) -> OracleTranscript {
         publish_time_ms: now,
         confidence: (px / 1000).max(1),
         backup_twap: px,
+    }
+}
+fn parse_tif(s: &str) -> TimeInForce {
+    match s {
+        "Gtc" => TimeInForce::Gtc,
+        "Fok" => TimeInForce::Fok,
+        "PostOnly" => TimeInForce::PostOnly,
+        _ => TimeInForce::Ioc,
     }
 }
 fn mk_order(owner: PubKey, market_id: u64, side: Side, size: i128, price: i128, nonce: u64, tif: TimeInForce) -> Order {
@@ -412,9 +434,295 @@ impl Gw {
             rng: 0x2545F4914F6CDD1D,
             pending_settle: Vec::new(),
             user_adl_clawed: 0,
+            accounts: std::collections::BTreeMap::new(),
             last_manifest: [0u8; 32],
             l1_status: None,
         }
+    }
+
+    /// Raw xorshift64 word (for API keys / wallet seeds). Advances `rng`.
+    fn rand_u64(&mut self) -> u64 {
+        let mut x = self.rng;
+        x ^= x << 13;
+        x ^= x >> 7;
+        x ^= x << 17;
+        self.rng = x;
+        x
+    }
+    fn rand_bytes32(&mut self) -> [u8; 32] {
+        let mut b = [0u8; 32];
+        for chunk in b.chunks_mut(8) {
+            chunk.copy_from_slice(&self.rand_u64().to_le_bytes());
+        }
+        b
+    }
+
+    // ── multi-tenant `/v1` account operations ────────────────────────────────
+    /// Register a fresh account: generate a custodied wallet + a secret API key.
+    /// Returns `(api_key, owner)`.
+    fn register_account(&mut self) -> ([u8; 32], PubKey) {
+        let seed = self.rand_bytes32();
+        let api_key = self.rand_bytes32();
+        let wallet = Wallet::from_seed(seed);
+        let owner = wallet.owner;
+        self.accounts.insert(
+            api_key,
+            Account {
+                wallet,
+                orders: Vec::new(),
+                nonce: 1,
+                deposit_counter: 0,
+            },
+        );
+        (api_key, owner)
+    }
+
+    /// Per-owner free margin in a market (the multi-tenant analog of `market_free`).
+    fn market_free_of(&self, owner: &PubKey, market: u64) -> i128 {
+        let coll = self
+            .seq
+            .state
+            .position(owner, market)
+            .map(|p| p.collateral)
+            .unwrap_or(0);
+        let locked = match self.seq.state.position(owner, market) {
+            Some(p) if p.size != 0 => required_margin(p.size.abs(), self.px_of(market)),
+            _ => 0,
+        };
+        (coll - locked).max(0)
+    }
+    /// Does this order open/increase the owner's position (vs reduce/close)?
+    fn is_opening_of(&self, owner: &PubKey, market: u64, side: &str, size: i128) -> bool {
+        match self.seq.state.position(owner, market) {
+            Some(p) if p.size != 0 => {
+                let same = (p.size > 0) == (side == "Buy");
+                same || size > p.size.abs()
+            }
+            _ => true,
+        }
+    }
+
+    /// Deposit external collateral into an account's market bucket.
+    fn account_deposit(&mut self, key: &[u8; 32], market: u64, amount: i128) -> Result<(), String> {
+        if amount <= 0 {
+            return Err("Amount must be positive.".into());
+        }
+        if self.mkt(market).is_none() {
+            return Err("Unknown market.".into());
+        }
+        let (wallet, dc) = {
+            let a = self.accounts.get(key).ok_or("Unknown account.")?;
+            (a.wallet, a.deposit_counter)
+        };
+        let mut blind = [0xA0u8; 32];
+        blind[..8].copy_from_slice(&dc.to_le_bytes());
+        fund_amount(&mut self.seq, &mut self.archive, &wallet, market, amount, blind);
+        self.accounts.get_mut(key).unwrap().deposit_counter += 1;
+        Ok(())
+    }
+
+    /// Place an order for an account. Ioc/Fok are takers; Gtc/PostOnly rest in the
+    /// matcher book (so an MM bot can quote). Returns the signed receipt.
+    fn account_place_order(&mut self, key: &[u8; 32], req: &OrderReq) -> Result<WReceipt, String> {
+        let size: i128 = req.size.parse().map_err(|_| "bad size".to_string())?;
+        if size <= 0 {
+            return Err("Size must be positive.".into());
+        }
+        if self.mkt(req.market_id).is_none() {
+            return Err("Unknown market.".into());
+        }
+        let owner = self.accounts.get(key).ok_or("Unknown account.")?.wallet.owner;
+        let limit: i128 = req.limit_price.parse().unwrap_or(0);
+        let side = if req.side == "Buy" { Side::Buy } else { Side::Sell };
+        let opening = self.is_opening_of(&owner, req.market_id, &req.side, size);
+        if self.seq.state.mode == Mode::CloseOnly && opening {
+            return Err("System is in close-only mode — opening/increasing is blocked (§6).".into());
+        }
+        if req.reduce_only && opening {
+            return Err("Reduce-only order would open or increase a position — rejected.".into());
+        }
+        let px = if limit > 0 { limit } else { self.px_of(req.market_id) };
+        if opening {
+            let need = required_margin(size, px);
+            if need > self.market_free_of(&owner, req.market_id) {
+                return Err("Insufficient free margin to open this position (§3).".into());
+            }
+        }
+        let tif = parse_tif(&req.tif);
+        let acct = self.accounts.get_mut(key).unwrap();
+        let nonce = acct.nonce;
+        acct.nonce += 1;
+        let order = mk_order(owner, req.market_id, side, size, px, nonce, tif);
+        let oh = order.order_hash::<Keccak256>();
+        let now = now_ms();
+        let signed = self.seq.accept_order(&order, now);
+        let r = &signed.receipt;
+        let receipt = WReceipt {
+            order_hash: hex0x(&r.order_hash),
+            seq_no: r.seq_no,
+            recv_time_ms: r.recv_time_ms,
+            batch_id_hint: r.batch_id_hint,
+        };
+        let input = WOrderInput {
+            market_id: req.market_id,
+            side: req.side.clone(),
+            size: size.to_string(),
+            limit_price: limit.to_string(),
+            tif: req.tif.clone(),
+            reduce_only: req.reduce_only,
+        };
+        let acct = self.accounts.get_mut(key).unwrap();
+        acct.orders.insert(
+            0,
+            GwOrder {
+                id: format!("o{nonce}"),
+                order,
+                order_hash: oh,
+                input,
+                receipt: receipt.clone(),
+                filled: 0,
+                avg_fill: 0,
+                created_ms: now,
+                sealed: false,
+                last_finality: "ACCEPTED".into(),
+            },
+        );
+        Ok(receipt)
+    }
+
+    /// Cancel an account's still-ACCEPTED order.
+    fn account_cancel(&mut self, key: &[u8; 32], order_id: &str) -> Result<(), String> {
+        let acct = self.accounts.get_mut(key).ok_or("Unknown account.")?;
+        let idx = acct
+            .orders
+            .iter()
+            .position(|o| o.id == order_id)
+            .ok_or("Order not found.")?;
+        if acct.orders[idx].sealed || acct.orders[idx].last_finality != "ACCEPTED" {
+            return Err("Only an ACCEPTED order can be cancelled (matched/settled are binding).".into());
+        }
+        // ACCEPTED orders have not been sealed into a batch yet (not in the matcher
+        // book), so dropping them from tracking is enough — they are never submitted.
+        acct.orders.remove(idx);
+        Ok(())
+    }
+
+    // ── /v1 read views ───────────────────────────────────────────────────────
+    fn free_balance_of(&self, owner: &PubKey) -> i128 {
+        let mut free: i128 = self
+            .seq
+            .state
+            .notes
+            .values()
+            .filter(|n| &n.owner == owner)
+            .map(|n| n.amount)
+            .sum();
+        for m in &self.mkts {
+            let coll = self.seq.state.position(owner, m.id).map(|p| p.collateral).unwrap_or(0);
+            let locked = match self.seq.state.position(owner, m.id) {
+                Some(p) if p.size != 0 => required_margin(p.size.abs(), m.px),
+                _ => 0,
+            };
+            free += (coll - locked).max(0);
+        }
+        free
+    }
+    fn positions_json_of(&self, owner: &PubKey) -> Vec<serde_json::Value> {
+        let mut v = Vec::new();
+        for m in &self.mkts {
+            if let Some(p) = self.seq.state.position(owner, m.id) {
+                if p.size != 0 {
+                    v.push(serde_json::json!({
+                        "marketId": m.id,
+                        "size": p.size.to_string(),
+                        "entryPrice": p.entry_price.to_string(),
+                        "collateral": required_margin(p.size.abs(), m.px).to_string(),
+                        "unrealizedPnl": pnl(p.size, p.entry_price, m.px).to_string(),
+                        "liquidationPrice": liq_price(p.size, p.entry_price).to_string(),
+                    }));
+                }
+            }
+        }
+        v
+    }
+    fn v1_account(&self, key: &[u8; 32]) -> Option<serde_json::Value> {
+        let a = self.accounts.get(key)?;
+        let owner = a.wallet.owner;
+        Some(serde_json::json!({
+            "owner": hex0x(&owner),
+            "settledBalance": self.free_balance_of(&owner).to_string(),
+            "positions": self.positions_json_of(&owner),
+            "nextNonce": a.nonce,
+        }))
+    }
+    fn v1_orders_json(&self, key: &[u8; 32]) -> Option<serde_json::Value> {
+        let a = self.accounts.get(key)?;
+        let orders: Vec<_> = a
+            .orders
+            .iter()
+            .map(|o| {
+                serde_json::json!({
+                    "orderId": o.id,
+                    "marketId": o.order.market_id,
+                    "side": o.input.side,
+                    "size": o.input.size,
+                    "limitPrice": o.input.limit_price,
+                    "tif": o.input.tif,
+                    "reduceOnly": o.input.reduce_only,
+                    "orderHash": hex0x(&o.order_hash),
+                    "finality": o.last_finality,
+                    "filledSize": o.filled.to_string(),
+                    "avgFillPrice": o.avg_fill.to_string(),
+                    "createdMs": o.created_ms,
+                })
+            })
+            .collect();
+        Some(serde_json::json!({ "orders": orders }))
+    }
+    fn v1_positions_json(&self, key: &[u8; 32]) -> Option<serde_json::Value> {
+        let a = self.accounts.get(key)?;
+        Some(serde_json::json!({ "positions": self.positions_json_of(&a.wallet.owner) }))
+    }
+    fn v1_markets_json(&self) -> serde_json::Value {
+        let ms: Vec<_> = self.mkts.iter().map(|m| serde_json::to_value(self.wmarket(m)).unwrap()).collect();
+        serde_json::json!({ "markets": ms })
+    }
+    fn v1_orderbook_json(&self, market: u64) -> Option<serde_json::Value> {
+        let m = self.mkt(market)?;
+        Some(serde_json::to_value(self.book_around(market, m.px)).unwrap())
+    }
+    fn v1_oracle_json(&self, market: u64) -> Option<serde_json::Value> {
+        let m = self.mkt(market)?;
+        Some(serde_json::json!({
+            "marketId": market,
+            "price": m.px.to_string(),
+            "confidence": (m.px / 1000).max(1).to_string(),
+            "publishTimeMs": now_ms(),
+        }))
+    }
+    fn v1_status_json(&self) -> serde_json::Value {
+        serde_json::json!({
+            "mode": if self.seq.state.mode == Mode::CloseOnly { "CloseOnly" } else { "Normal" },
+            "insuranceFund": self.seq.state.insurance_fund.to_string(),
+            "nextBatchId": self.seq.current_batch_id(),
+            "accounts": self.accounts.len(),
+        })
+    }
+    /// A public live-market snapshot for the `/v1/ws` stream (no per-account data).
+    fn v1_public_json(&self) -> serde_json::Value {
+        let markets: Vec<_> = self
+            .mkts
+            .iter()
+            .map(|m| {
+                serde_json::json!({
+                    "id": m.id,
+                    "symbol": m.symbol,
+                    "price": m.px.to_string(),
+                    "book": serde_json::to_value(self.book_around(m.id, m.px)).unwrap(),
+                })
+            })
+            .collect();
+        serde_json::json!({ "type": "markets", "markets": markets, "tsMs": now_ms() })
     }
 
     /// The engine's live state root as 0x-hex — what the L1 bridge settles to.
@@ -775,10 +1083,13 @@ impl Gw {
             self.seq.set_oracle(self.mkts[i].id, oracle_of(next, now));
         }
 
-        // 2) seal a batch: every pending user order + a market-maker counter-order
-        let pending: Vec<usize> = self.orders.iter().enumerate().filter(|(_, o)| !o.sealed).map(|(i, _)| i).collect();
-        let mut batch: Vec<Order> = Vec::new();
-        let mut counters: Vec<Order> = Vec::new();
+        // 2) seal a batch: pending demo-user orders + all registered accounts'
+        //    pending orders. Ioc/Fok orders are takers and get a resting MM counter
+        //    (guaranteed fill); Gtc/PostOnly orders rest in the matcher book so a
+        //    market-maker bot can quote and be crossed by later takers.
+        let pending: Vec<usize> =
+            self.orders.iter().enumerate().filter(|(_, o)| !o.sealed).map(|(i, _)| i).collect();
+        let mut seal: Vec<Order> = Vec::new();
         for &i in &pending {
             let o = &self.orders[i];
             let opp = match o.order.side {
@@ -787,19 +1098,39 @@ impl Gw {
             };
             let price = if o.order.limit_price > 0 { o.order.limit_price } else { self.px_of(o.order.market_id) };
             let mut uo = o.order;
-            uo.limit_price = price; // make market orders marketable at the mark
+            uo.limit_price = price;
             let mmn = self.mm_nonce;
             self.mm_nonce += 1;
-            // market-maker posts a RESTING maker (Gtc); the user taker crosses it
-            let counter = mk_order(self.mm.owner, o.order.market_id, opp, o.order.size, price, mmn, TimeInForce::Gtc);
-            batch.push(uo);
-            counters.push(counter);
+            seal.push(mk_order(self.mm.owner, o.order.market_id, opp, o.order.size, price, mmn, TimeInForce::Gtc));
+            seal.push(uo);
         }
-        // maker first (rests), then the taker (crosses it) → a fill
-        let mut seal: Vec<Order> = Vec::new();
-        for (u, c) in batch.iter().zip(counters.iter()) {
-            seal.push(*c);
-            seal.push(*u);
+        // registered /v1 accounts
+        let account_keys: Vec<[u8; 32]> = self.accounts.keys().copied().collect();
+        let mut account_refs: Vec<([u8; 32], usize)> = Vec::new();
+        for k in &account_keys {
+            let pend: Vec<usize> = self.accounts[k]
+                .orders
+                .iter()
+                .enumerate()
+                .filter(|(_, o)| !o.sealed)
+                .map(|(i, _)| i)
+                .collect();
+            for i in pend {
+                let mut uo = self.accounts[k].orders[i].order; // Order: Copy
+                let price = if uo.limit_price > 0 { uo.limit_price } else { self.px_of(uo.market_id) };
+                uo.limit_price = price;
+                if matches!(uo.tif, TimeInForce::Ioc | TimeInForce::Fok) {
+                    let opp = match uo.side {
+                        Side::Buy => Side::Sell,
+                        Side::Sell => Side::Buy,
+                    };
+                    let mmn = self.mm_nonce;
+                    self.mm_nonce += 1;
+                    seal.push(mk_order(self.mm.owner, uo.market_id, opp, uo.size, price, mmn, TimeInForce::Gtc));
+                }
+                seal.push(uo);
+                account_refs.push((*k, i));
+            }
         }
         let sealed = self.seq.seal_batch(&seal, now);
         self.last_manifest = sealed.manifest_hash;
@@ -808,16 +1139,23 @@ impl Gw {
         if adl_clawed > 0 {
             self.user_adl_clawed += adl_clawed;
         }
-        if !pending.is_empty() {
-            for &i in &pending {
-                self.orders[i].sealed = true;
-                self.orders[i].filled = self.orders[i].order.size;
-                self.orders[i].avg_fill = if self.orders[i].order.limit_price > 0 {
-                    self.orders[i].order.limit_price
-                } else {
-                    self.px_of(self.orders[i].order.market_id)
-                };
+        let any_sealed = !pending.is_empty() || !account_refs.is_empty();
+        for &i in &pending {
+            self.orders[i].sealed = true;
+            self.orders[i].filled = self.orders[i].order.size;
+            self.orders[i].avg_fill = if self.orders[i].order.limit_price > 0 {
+                self.orders[i].order.limit_price
+            } else {
+                self.px_of(self.orders[i].order.market_id)
+            };
+        }
+        // account orders are submitted; their fill status is read from finality below
+        for (k, i) in &account_refs {
+            if let Some(a) = self.accounts.get_mut(k) {
+                a.orders[*i].sealed = true;
             }
+        }
+        if any_sealed {
             self.pending_settle.push((sealed.batch_id, self.tick));
         }
 
@@ -850,6 +1188,26 @@ impl Gw {
                     _ => "Order accepted",
                 };
                 events.push(WEvent { order_id: o.id.clone(), kind: f.to_string(), message: msg.to_string() });
+            }
+        }
+        // advance /v1 account orders' finality (no demo toast; surfaced via REST/WS)
+        for acct in self.accounts.values_mut() {
+            for o in acct.orders.iter_mut() {
+                if o.last_finality == "SETTLED" {
+                    continue;
+                }
+                let f = match self.seq.finality_of(&o.order_hash) {
+                    Some(Finality::Matched) => "MATCHED",
+                    Some(Finality::Settled) => "SETTLED",
+                    _ => "ACCEPTED",
+                };
+                if f != o.last_finality {
+                    o.last_finality = f.to_string();
+                    if f != "ACCEPTED" {
+                        o.filled = o.order.size;
+                        o.avg_fill = o.order.limit_price;
+                    }
+                }
             }
         }
         if adl_clawed > 0 {
@@ -1043,6 +1401,161 @@ impl App {
 
 fn err400(msg: String) -> (StatusCode, Json<serde_json::Value>) {
     (StatusCode::BAD_REQUEST, Json(serde_json::json!({ "error": msg })))
+}
+
+// ── multi-tenant external API (/v1) ──────────────────────────────────────────
+#[derive(Deserialize)]
+struct V1DepositReq {
+    #[serde(rename = "marketId")]
+    market_id: u64,
+    amount: String,
+}
+
+/// Authenticate a `/v1` request: read `X-Api-Key` (0x + 64 hex) → 32-byte key.
+fn api_key_from(headers: &HeaderMap) -> Result<[u8; 32], (StatusCode, Json<serde_json::Value>)> {
+    let unauth = || {
+        (
+            StatusCode::UNAUTHORIZED,
+            Json(serde_json::json!({ "error": "missing or invalid X-Api-Key" })),
+        )
+    };
+    let h = headers.get("x-api-key").and_then(|v| v.to_str().ok()).ok_or_else(unauth)?;
+    let h = h.strip_prefix("0x").unwrap_or(h);
+    if h.len() != 64 {
+        return Err(unauth());
+    }
+    let mut k = [0u8; 32];
+    for (i, slot) in k.iter_mut().enumerate() {
+        *slot = u8::from_str_radix(&h[i * 2..i * 2 + 2], 16).map_err(|_| unauth())?;
+    }
+    Ok(k)
+}
+
+async fn post_v1_register(State(app): State<Shared>) -> impl IntoResponse {
+    let (key, owner) = { app.gw.lock().await.register_account() };
+    Json(serde_json::json!({ "apiKey": hex0x(&key), "owner": hex0x(&owner) }))
+}
+async fn get_v1_account(State(app): State<Shared>, headers: HeaderMap) -> impl IntoResponse {
+    let key = match api_key_from(&headers) {
+        Ok(k) => k,
+        Err(e) => return e.into_response(),
+    };
+    match app.gw.lock().await.v1_account(&key) {
+        Some(v) => Json(v).into_response(),
+        None => (StatusCode::UNAUTHORIZED, Json(serde_json::json!({ "error": "unknown account" }))).into_response(),
+    }
+}
+async fn post_v1_deposit(
+    State(app): State<Shared>,
+    headers: HeaderMap,
+    Json(req): Json<V1DepositReq>,
+) -> impl IntoResponse {
+    let key = match api_key_from(&headers) {
+        Ok(k) => k,
+        Err(e) => return e.into_response(),
+    };
+    let amount: i128 = match req.amount.parse() {
+        Ok(v) => v,
+        Err(_) => return err400("bad amount".into()).into_response(),
+    };
+    let r = { app.gw.lock().await.account_deposit(&key, req.market_id, amount) };
+    match r {
+        Ok(()) => Json(app.gw.lock().await.v1_account(&key).unwrap_or(serde_json::json!({}))).into_response(),
+        Err(e) => err400(e).into_response(),
+    }
+}
+async fn post_v1_order(
+    State(app): State<Shared>,
+    headers: HeaderMap,
+    Json(req): Json<OrderReq>,
+) -> impl IntoResponse {
+    let key = match api_key_from(&headers) {
+        Ok(k) => k,
+        Err(e) => return e.into_response(),
+    };
+    let r = { app.gw.lock().await.account_place_order(&key, &req) };
+    match r {
+        Ok(receipt) => Json(serde_json::to_value(receipt).unwrap()).into_response(),
+        Err(e) => err400(e).into_response(),
+    }
+}
+async fn delete_v1_order(
+    State(app): State<Shared>,
+    headers: HeaderMap,
+    Path(order_id): Path<String>,
+) -> impl IntoResponse {
+    let key = match api_key_from(&headers) {
+        Ok(k) => k,
+        Err(e) => return e.into_response(),
+    };
+    let r = { app.gw.lock().await.account_cancel(&key, &order_id) };
+    match r {
+        Ok(()) => Json(serde_json::json!({ "orderId": order_id, "cancelled": true })).into_response(),
+        Err(e) => err400(e).into_response(),
+    }
+}
+async fn get_v1_orders(State(app): State<Shared>, headers: HeaderMap) -> impl IntoResponse {
+    let key = match api_key_from(&headers) {
+        Ok(k) => k,
+        Err(e) => return e.into_response(),
+    };
+    match app.gw.lock().await.v1_orders_json(&key) {
+        Some(v) => Json(v).into_response(),
+        None => (StatusCode::UNAUTHORIZED, Json(serde_json::json!({ "error": "unknown account" }))).into_response(),
+    }
+}
+async fn get_v1_positions(State(app): State<Shared>, headers: HeaderMap) -> impl IntoResponse {
+    let key = match api_key_from(&headers) {
+        Ok(k) => k,
+        Err(e) => return e.into_response(),
+    };
+    match app.gw.lock().await.v1_positions_json(&key) {
+        Some(v) => Json(v).into_response(),
+        None => (StatusCode::UNAUTHORIZED, Json(serde_json::json!({ "error": "unknown account" }))).into_response(),
+    }
+}
+async fn get_v1_markets(State(app): State<Shared>) -> impl IntoResponse {
+    Json(app.gw.lock().await.v1_markets_json())
+}
+async fn get_v1_market(State(app): State<Shared>, Path(id): Path<u64>) -> impl IntoResponse {
+    let gw = app.gw.lock().await;
+    match gw.mkt(id) {
+        Some(m) => Json(serde_json::to_value(gw.wmarket(m)).unwrap()).into_response(),
+        None => (StatusCode::NOT_FOUND, Json(serde_json::json!({ "error": "unknown market" }))).into_response(),
+    }
+}
+async fn get_v1_orderbook(State(app): State<Shared>, Path(id): Path<u64>) -> impl IntoResponse {
+    match app.gw.lock().await.v1_orderbook_json(id) {
+        Some(v) => Json(v).into_response(),
+        None => (StatusCode::NOT_FOUND, Json(serde_json::json!({ "error": "unknown market" }))).into_response(),
+    }
+}
+async fn get_v1_oracle(State(app): State<Shared>, Path(id): Path<u64>) -> impl IntoResponse {
+    match app.gw.lock().await.v1_oracle_json(id) {
+        Some(v) => Json(v).into_response(),
+        None => (StatusCode::NOT_FOUND, Json(serde_json::json!({ "error": "unknown market" }))).into_response(),
+    }
+}
+async fn get_v1_status(State(app): State<Shared>) -> impl IntoResponse {
+    Json(app.gw.lock().await.v1_status_json())
+}
+async fn ws_v1_handler(State(app): State<Shared>, ws: WebSocketUpgrade) -> impl IntoResponse {
+    ws.on_upgrade(move |socket| ws_v1_loop(socket, app))
+}
+/// Public live-market WebSocket: pushes the market snapshot every tick. Per-account
+/// authenticated channels (own fills/finality) are a documented follow-on.
+async fn ws_v1_loop(mut socket: WebSocket, app: Shared) {
+    let mut rx = app.tx.subscribe();
+    let initial = { serde_json::to_string(&app.gw.lock().await.v1_public_json()).unwrap() };
+    if socket.send(Message::Text(initial)).await.is_err() {
+        return;
+    }
+    while rx.recv().await.is_ok() {
+        let msg = { serde_json::to_string(&app.gw.lock().await.v1_public_json()).unwrap() };
+        if socket.send(Message::Text(msg)).await.is_err() {
+            break;
+        }
+    }
 }
 
 async fn get_state(State(app): State<Shared>) -> impl IntoResponse {
@@ -1305,6 +1818,19 @@ async fn main() {
         .route("/api/select-market", post(post_select))
         .route("/api/recover", post(post_recover))
         .route("/ws", get(ws_handler))
+        // ── multi-tenant external API (/v1) ──
+        .route("/v1/accounts", post(post_v1_register))
+        .route("/v1/accounts/me", get(get_v1_account))
+        .route("/v1/accounts/deposit", post(post_v1_deposit))
+        .route("/v1/orders", post(post_v1_order).get(get_v1_orders))
+        .route("/v1/orders/:order_id", delete(delete_v1_order))
+        .route("/v1/positions", get(get_v1_positions))
+        .route("/v1/markets", get(get_v1_markets))
+        .route("/v1/markets/:id", get(get_v1_market))
+        .route("/v1/markets/:id/orderbook", get(get_v1_orderbook))
+        .route("/v1/markets/:id/oracle", get(get_v1_oracle))
+        .route("/v1/system/status", get(get_v1_status))
+        .route("/v1/ws", get(ws_v1_handler))
         .layer(CorsLayer::permissive())
         .with_state(app);
 
@@ -1354,5 +1880,36 @@ mod tests {
             gw.tick();
         }
         assert_eq!(gw.finality_str(&gw.orders[0].order_hash), "SETTLED");
+    }
+
+    #[test]
+    fn v1_accounts_are_isolated_and_trade() {
+        let mut gw = Gw::boot();
+        let (a_key, a_owner) = gw.register_account();
+        let (b_key, b_owner) = gw.register_account();
+        assert_ne!(a_key, b_key, "distinct api keys");
+        assert_ne!(a_owner, b_owner, "distinct owners");
+        // A deposits $20k into market 0 and goes long 0.1 BTC
+        gw.account_deposit(&a_key, 0, 20_000 * QUOTE_SCALE).expect("deposit");
+        let req = OrderReq {
+            market_id: 0,
+            side: "Buy".into(),
+            size: (SIZE_SCALE / 10).to_string(),
+            limit_price: "0".into(),
+            tif: "Ioc".into(),
+            reduce_only: false,
+        };
+        gw.account_place_order(&a_key, &req).expect("order");
+        gw.tick();
+        // A is long; B has nothing — full isolation over the shared engine
+        let a_pos = gw.seq.state.position(&a_owner, 0).expect("A position");
+        assert!(a_pos.size > 0, "A is long after the seal");
+        assert!(gw.seq.state.position(&b_owner, 0).is_none(), "B has no position");
+        let a_orders = gw.v1_orders_json(&a_key).unwrap();
+        assert_eq!(a_orders["orders"].as_array().unwrap().len(), 1);
+        let b_orders = gw.v1_orders_json(&b_key).unwrap();
+        assert!(b_orders["orders"].as_array().unwrap().is_empty(), "B has no orders");
+        // an unknown key has no view
+        assert!(gw.v1_account(&[0xff; 32]).is_none());
     }
 }

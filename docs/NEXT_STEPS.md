@@ -47,7 +47,16 @@ Increments (the plan we set):
 
 Recommended decisions: TEE platform = **Azure TDX**; prover = SP1 network first; mainnet stance = single-enclave + full protocol-completeness beta (committee fast-follow).
 
-## Queued next: a real external trading API (REST + WebSocket)
+## External trading API (REST + WebSocket) — **core built** (see docs/API.md)
+
+The multi-tenant `/v1` API now exists in the gateway: accounts register (API-key
+auth, Phase-0 server custody), deposit, place/cancel orders (Ioc/Fok takers +
+Gtc/PostOnly resting makers), and read their own account/positions/orders + public
+markets/orderbook/oracle/status — all isolated on the **same shared engine**, demo
+preserved. Public `/v1/ws` streams live market data. Follow-ons (below) remain:
+per-account/IP rate limiting, OpenAPI spec, caller-signed orders + enclave custody,
+real deposit/withdraw L1 flows, per-account authenticated WS channels. Reference:
+`docs/API.md`. Original gap analysis kept for context:
 
 **The gap.** A real perp DEX needs an external API that market-makers, bots, and
 integrations hit **without a browser** — place/cancel orders and read
