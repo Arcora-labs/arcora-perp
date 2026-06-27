@@ -25,6 +25,9 @@ issued by `POST /v1/accounts`. A missing/invalid key returns `401`.
 All token amounts are **decimal strings** of scaled integers: quote = micro-USD
 (`* 1e6`), size = `* 1e8`, price = `* 1e8`.
 
+A machine-readable **OpenAPI 3.1** spec is served at `GET /v1/openapi.json` (point
+Swagger UI / a codegen at it).
+
 ## REST
 
 | Method | Path | Auth | Body / notes |

@@ -1716,6 +1716,48 @@ async fn get_v1_oracle(State(app): State<Shared>, Path(id): Path<u64>) -> impl I
 async fn get_v1_status(State(app): State<Shared>) -> impl IntoResponse {
     Json(app.gw.lock().await.v1_status_json())
 }
+/// Machine-readable OpenAPI 3.1 spec for the /v1 API, so bots/tools can codegen a
+/// client. Hand-authored + compact; the prose reference is docs/API.md.
+async fn get_v1_openapi() -> impl IntoResponse {
+    let auth = serde_json::json!({ "security": [{ "ApiKey": [] }] });
+    let ok = |desc: &str| serde_json::json!({ "200": { "description": desc } });
+    let order_body = serde_json::json!({
+        "required": true,
+        "content": { "application/json": { "schema": { "type": "object",
+            "required": ["marketId","side","size","limitPrice","tif","reduceOnly"],
+            "properties": {
+                "marketId": { "type": "integer" },
+                "side": { "type": "string", "enum": ["Buy","Sell"] },
+                "size": { "type": "string", "description": "size-scaled (*1e8) integer" },
+                "limitPrice": { "type": "string", "description": "price-scaled (*1e8); 0 = market" },
+                "tif": { "type": "string", "enum": ["Gtc","Ioc","Fok","PostOnly"] },
+                "reduceOnly": { "type": "boolean" }
+            } } } }
+    });
+    Json(serde_json::json!({
+        "openapi": "3.1.0",
+        "info": { "title": "dark-perp external API", "version": "1", "description": "Multi-tenant trading over the sequencer engine. Amounts are decimal strings of scaled integers (quote *1e6, size/price *1e8). See docs/API.md." },
+        "components": { "securitySchemes": { "ApiKey": { "type": "apiKey", "in": "header", "name": "X-Api-Key" } } },
+        "paths": {
+            "/v1/accounts": { "post": { "summary": "Register an account", "responses": ok("apiKey + owner") } },
+            "/v1/accounts/me": { "get": { "summary": "Own account (balance, positions, nextNonce)", "responses": ok("account"), "security": auth["security"] } },
+            "/v1/accounts/deposit": { "post": { "summary": "Deposit collateral", "security": auth["security"],
+                "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["marketId","amount"], "properties": { "marketId": { "type": "integer" }, "amount": { "type": "string" } } } } } },
+                "responses": ok("updated account") } },
+            "/v1/orders": {
+                "post": { "summary": "Place an order", "security": auth["security"], "requestBody": order_body, "responses": { "200": { "description": "signed receipt" }, "400": { "description": "rejected" }, "429": { "description": "rate limit (10/s)" } } },
+                "get": { "summary": "Own orders + finality", "security": auth["security"], "responses": ok("orders") }
+            },
+            "/v1/orders/{orderId}": { "delete": { "summary": "Cancel an ACCEPTED order", "security": auth["security"], "parameters": [{ "name": "orderId", "in": "path", "required": true, "schema": { "type": "string" } }], "responses": ok("cancelled") } },
+            "/v1/positions": { "get": { "summary": "Own open positions", "security": auth["security"], "responses": ok("positions") } },
+            "/v1/markets": { "get": { "summary": "All markets", "responses": ok("markets") } },
+            "/v1/markets/{id}": { "get": { "summary": "One market", "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }], "responses": ok("market") } },
+            "/v1/markets/{id}/orderbook": { "get": { "summary": "Order book", "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }], "responses": ok("book") } },
+            "/v1/markets/{id}/oracle": { "get": { "summary": "Oracle price", "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }], "responses": ok("oracle") } },
+            "/v1/system/status": { "get": { "summary": "System status", "responses": ok("status") } }
+        }
+    }))
+}
 async fn ws_v1_handler(State(app): State<Shared>, ws: WebSocketUpgrade) -> impl IntoResponse {
     ws.on_upgrade(move |socket| ws_v1_loop(socket, app))
 }
@@ -2062,6 +2104,7 @@ async fn main() {
         .route("/v1/markets/:id/orderbook", get(get_v1_orderbook))
         .route("/v1/markets/:id/oracle", get(get_v1_oracle))
         .route("/v1/system/status", get(get_v1_status))
+        .route("/v1/openapi.json", get(get_v1_openapi))
         .route("/v1/ws", get(ws_v1_handler))
         .layer(CorsLayer::permissive())
         .with_state(app);
