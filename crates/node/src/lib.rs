@@ -101,7 +101,7 @@ impl Node {
         self.price -= self.price / 100; // −1%/tick
         seed_oracle(&mut self.seq, self.price, self.now);
 
-        let liquidated = !self.seq.run_maintenance(self.now).is_empty();
+        let liquidated = !self.seq.run_maintenance(self.now).liquidated.is_empty();
         let sealed = self.seq.seal_batch(&[], self.now);
 
         let pos = self.seq.state.position(&word_u64(1), 0);

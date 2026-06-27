@@ -138,6 +138,30 @@ pub struct SealedBatch {
     /// the spend key. (The on-chain manifest already excludes liquidations.)
     /// Residual: the tag COUNT per batch is still observable.
     pub liquidation_tags: Vec<Digest>,
+    /// Per-haircut **auto-deleverage receipts** for this batch (§6, §9; audit Q2).
+    /// When a liquidation's bad debt is socialized onto the winning side, each
+    /// clawed account gets a receipt: a secret-keyed [`adl_tag`] only that account
+    /// can recognize, paired with the amount clawed. This is the transparency
+    /// surface — a socialized loss is recorded and self-detectable, not silent —
+    /// while staying unlinkable to an observer who knows only the public owner id.
+    pub adl_receipts: Vec<AdlReceipt>,
+}
+
+/// A published auto-deleverage haircut: the affected account recognizes `tag` by
+/// recomputing `adl_tag(&adl_tag_key(spend_key), market, batch)`, and reads how
+/// much of its profit was clawed from `clawed` (quote-scaled). Unlinkable to any
+/// other observer (audit Q2).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct AdlReceipt {
+    pub tag: Digest,
+    pub clawed: i128,
+}
+
+/// The liquidated owners and ADL haircuts produced by one [`Sequencer::run_maintenance`]
+/// pass. The haircuts carry `(owner, market, clawed)` so the seal can tag them.
+pub struct MaintenanceOutcome {
+    pub liquidated: Vec<(PubKey, MarketId)>,
+    pub adl: Vec<(PubKey, MarketId, i128)>,
 }
 
 /// The per-account SECRET liquidation-tag key, derived from the account's spend
@@ -159,6 +183,26 @@ pub fn liquidation_tag_key(spend_key: &Digest) -> Digest {
 pub fn liquidation_tag(tag_key: &Digest, market_id: MarketId, batch_id: u64) -> Digest {
     Keccak256::hash_words(
         Domain::Liquidation,
+        &[*tag_key, word_u64(market_id), word_u64(batch_id)],
+    )
+}
+
+/// The per-account SECRET auto-deleverage-tag key, derived from the account's
+/// spend key — the ADL analog of [`liquidation_tag_key`]. A distinct domain
+/// (`Domain::Adl`) so a liquidation tag and an ADL tag for the same account never
+/// collide, and only the account (or the enclave at fund time) can compute it.
+pub fn adl_tag_key(spend_key: &Digest) -> Digest {
+    Keccak256::hash_words(Domain::Adl, &[*spend_key])
+}
+
+/// A per-`(account, market, batch)` auto-deleverage tag keyed on the SECRET
+/// `tag_key` (see [`adl_tag_key`]). The clawed account self-detects its haircut by
+/// recomputing `adl_tag(&adl_tag_key(spend_key), market, batch)`; an observer who
+/// knows only the public owner id cannot (audit Q2). Published in [`AdlReceipt`]
+/// alongside the clawed amount.
+pub fn adl_tag(tag_key: &Digest, market_id: MarketId, batch_id: u64) -> Digest {
+    Keccak256::hash_words(
+        Domain::Adl,
         &[*tag_key, word_u64(market_id), word_u64(batch_id)],
     )
 }
@@ -196,6 +240,9 @@ pub struct Sequencer {
     /// Used to publish liquidation tags that only the account (which knows its own
     /// spend key) can recompute — never a mere holder of the public owner id (§7).
     liq_tag_keys: BTreeMap<PubKey, Digest>,
+    /// Parallel secret ADL-tag keys, captured the same way, for publishing
+    /// auto-deleverage receipts only the clawed account can recognize (audit Q2).
+    adl_tag_keys: BTreeMap<PubKey, Digest>,
 }
 
 impl Sequencer {
@@ -213,6 +260,7 @@ impl Sequencer {
             batch_orders: BTreeMap::new(),
             snapshots: BTreeMap::new(),
             liq_tag_keys: BTreeMap::new(),
+            adl_tag_keys: BTreeMap::new(),
         }
     }
 
@@ -238,6 +286,7 @@ impl Sequencer {
         {
             self.liq_tag_keys
                 .insert(*owner, liquidation_tag_key(spend_key));
+            self.adl_tag_keys.insert(*owner, adl_tag_key(spend_key));
         }
         self.state.apply_op(op)
     }
@@ -364,13 +413,15 @@ impl Sequencer {
     /// Per-batch maintenance (§5, §8): accrue funding from the mark-vs-index
     /// premium, then liquidate every position that is underwater at the oracle
     /// price. Runs regardless of user liveness — the enclave holds positions, so
-    /// an offline user is still liquidated. Returns the liquidated owners.
-    pub fn run_maintenance(&mut self, now_ms: u64) -> Vec<(PubKey, MarketId)> {
+    /// an offline user is still liquidated. Returns the liquidated owners and any
+    /// auto-deleverage haircuts the cascade applied (audit Q2/Q7).
+    pub fn run_maintenance(&mut self, now_ms: u64) -> MaintenanceOutcome {
         // reap good-till-time makers that have expired before reading the book as
         // the funding mark — an expired order must not anchor `best_bid`/`best_ask`
         // (§8), and matching already refuses to trade against it.
         self.matcher.reap_expired(now_ms);
         let mut liquidated = Vec::new();
+        let mut adl: Vec<(PubKey, MarketId, i128)> = Vec::new();
         let market_ids: Vec<MarketId> = self.state.markets.keys().copied().collect();
         for mid in market_ids {
             let Some(oracle) = self.oracles.get(&mid).copied() else {
@@ -407,21 +458,17 @@ impl Sequencer {
                 .map(|((o, _), _)| *o)
                 .collect();
             for owner in candidates {
-                if self
-                    .state
-                    .apply_op(&BatchOp::Liquidate {
-                        owner,
-                        market_id: mid,
-                        oracle,
-                        now_ms,
-                    })
-                    .is_ok()
-                {
+                if let Ok(haircuts) = self.state.liquidate(&owner, mid, &oracle, now_ms) {
                     liquidated.push((owner, mid));
+                    // Carry each auto-deleverage haircut up with its market so the
+                    // seal can publish an attributable receipt for it (audit Q2).
+                    for h in haircuts {
+                        adl.push((h.owner, mid, h.clawed));
+                    }
                 }
             }
         }
-        liquidated
+        MaintenanceOutcome { liquidated, adl }
     }
 
     /// Run one batch: match `orders`, issue receipts, settle fills, run the
@@ -505,7 +552,10 @@ impl Sequencer {
         // 3b. maintenance: accrue funding + liquidate underwater positions (§5,§8).
         //     Liquidating an owner also cancels its resting orders, so a
         //     bad-debt account can't leave stale makers that would fail to settle.
-        let liquidations = self.run_maintenance(now_ms);
+        let MaintenanceOutcome {
+            liquidated: liquidations,
+            adl: adl_haircuts,
+        } = self.run_maintenance(now_ms);
         for (owner, _market) in &liquidations {
             self.matcher.cancel_owner_orders(owner);
         }
@@ -594,6 +644,20 @@ impl Sequencer {
             })
             .collect();
 
+        // Publish each auto-deleverage haircut as a secret-keyed receipt the clawed
+        // account can recognize, paired with the amount (audit Q2). Same fallback
+        // to the owner id as above for positions funded outside `apply`.
+        let adl_receipts: Vec<AdlReceipt> = adl_haircuts
+            .iter()
+            .map(|(owner, market, clawed)| {
+                let tag_key = self.adl_tag_keys.get(owner).copied().unwrap_or(*owner);
+                AdlReceipt {
+                    tag: adl_tag(&tag_key, *market, batch_id),
+                    clawed: *clawed,
+                }
+            })
+            .collect();
+
         SealedBatch {
             batch_id,
             prev_state_root,
@@ -604,6 +668,7 @@ impl Sequencer {
             settlement_rejected,
             receipts,
             liquidation_tags,
+            adl_receipts,
         }
     }
 

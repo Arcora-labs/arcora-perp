@@ -2,7 +2,7 @@
 //! Proof-v1 invariants (§4) exercised through `apply_batch`, with the collateral
 //! conservation identity asserted at every step.
 
-use perp_core::engine::BatchOp;
+use perp_core::engine::{AdlHaircut, BatchOp};
 use perp_core::fixed::{PRICE_SCALE, QUOTE_SCALE, SIZE_SCALE};
 use perp_core::hash::{word_u64, Keccak256};
 use perp_core::oracle::OracleTranscript;
@@ -878,5 +878,102 @@ fn forced_exit_close_only_blocks_increase() {
     })
     .unwrap();
     assert_eq!(s.position(&a, 0).unwrap().size, 0);
+    assert!(s.conservation_holds());
+}
+
+#[test]
+fn adl_surfaces_the_per_winner_haircut_attribution() {
+    // The same gap-down that claws B and C (cf. adl_distributes_pro_rata...), but
+    // here we assert the engine RETURNS the attribution (audit Q2): each haircut
+    // names the winner and the exact amount clawed, so a socialized loss can be
+    // reported back to the affected account instead of vanishing silently.
+    let mut s = fresh_state();
+    let (a, b, c) = (pk(1), pk(2), pk(3));
+    for (o, sk, amt) in [(a, 1u8, 6_000i128), (b, 2u8, 50_000), (c, 3u8, 50_000)] {
+        let bl = [sk; 32];
+        let cm = deposit_commit(o, amt * QUOTE_SCALE, bl);
+        s.apply_batch(&[
+            BatchOp::Deposit {
+                owner: o,
+                asset_id: 0,
+                amount: amt * QUOTE_SCALE,
+                blinding: bl,
+            },
+            BatchOp::FundPosition {
+                owner: o,
+                market_id: 0,
+                note_commitment: cm,
+                spend_key: [sk; 32],
+            },
+        ])
+        .unwrap();
+    }
+    s.apply_op(&BatchOp::Fill {
+        taker: a,
+        maker: b,
+        market_id: 0,
+        taker_side: Side::Buy,
+        size: 3 * SIZE_SCALE / 10,
+        price: 100_000 * PRICE_SCALE,
+        oracle: oracle(100_000, 1_000),
+        now_ms: 1_000,
+    })
+    .unwrap();
+    s.apply_op(&BatchOp::Fill {
+        taker: a,
+        maker: c,
+        market_id: 0,
+        taker_side: Side::Buy,
+        size: 2 * SIZE_SCALE / 10,
+        price: 100_000 * PRICE_SCALE,
+        oracle: oracle(100_000, 1_100),
+        now_ms: 1_100,
+    })
+    .unwrap();
+    let b0 = s.position(&b, 0).unwrap().collateral;
+    let c0 = s.position(&c, 0).unwrap().collateral;
+
+    // the event-returning liquidation entry surfaces the ADL haircuts
+    let haircuts: Vec<AdlHaircut> = s.liquidate(&a, 0, &oracle(80_000, 2_000), 2_000).unwrap();
+
+    let b_take = b0 - s.position(&b, 0).unwrap().collateral;
+    let c_take = c0 - s.position(&c, 0).unwrap().collateral;
+    assert_eq!(haircuts.len(), 2, "both clawed winners are attributed");
+    let clawed_of = |o: &[u8; 32]| haircuts.iter().find(|h| &h.owner == o).map(|h| h.clawed);
+    assert_eq!(
+        clawed_of(&b),
+        Some(b_take),
+        "B's receipt matches the collateral taken"
+    );
+    assert_eq!(
+        clawed_of(&c),
+        Some(c_take),
+        "C's receipt matches the collateral taken"
+    );
+    assert!(
+        clawed_of(&b) > clawed_of(&c),
+        "the larger winner's receipt is larger"
+    );
+    let total: i128 = haircuts.iter().map(|h| h.clawed).sum();
+    assert_eq!(
+        total,
+        b_take + c_take,
+        "the receipts account for every clawed unit"
+    );
+    assert!(s.conservation_holds());
+}
+
+#[test]
+fn a_liquidation_absorbed_by_insurance_reports_no_adl_haircuts() {
+    // When the insurance fund covers the whole shortfall, no winner is clawed — so
+    // there is nothing to attribute and the returned receipt list is empty.
+    let mut s = bad_debt_setup(1_000_000); // deep insurance seed absorbs the gap
+    let haircuts = s
+        .liquidate(&pk(1), 0, &oracle(80_000, 2_000), 2_000)
+        .unwrap();
+    assert!(
+        haircuts.is_empty(),
+        "no ADL when insurance absorbs the bad debt"
+    );
     assert!(s.conservation_holds());
 }

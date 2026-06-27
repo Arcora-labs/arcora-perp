@@ -90,6 +90,19 @@ pub enum BatchOp {
     SeedInsurance { amount: i128 },
 }
 
+/// One auto-deleverage haircut: `clawed` of `owner`'s unrealized profit was taken
+/// to cover another position's liquidation bad debt (§6, §9; audit Q2/Q7). The
+/// engine surfaces these from [`State::liquidate`] so a socialized loss can be
+/// reported back to the affected account as an attributable receipt instead of
+/// vanishing silently — the transparency half of the bad-debt backstop. It carries
+/// no identifying salt itself; the sequencer publishes it under a secret-keyed tag.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct AdlHaircut {
+    pub owner: PubKey,
+    pub clawed: i128,
+}
+
 impl<H: Hasher> State<H> {
     /// Apply a whole batch, asserting conservation after each op. Stops at the
     /// first error (the prover reproduces the same stop point deterministically).
@@ -153,7 +166,9 @@ impl<H: Hasher> State<H> {
                 market_id,
                 oracle,
                 now_ms,
-            } => self.op_liquidate(owner, *market_id, oracle, *now_ms),
+            } => self
+                .op_liquidate(owner, *market_id, oracle, *now_ms)
+                .map(|_| ()),
             BatchOp::Unbind {
                 owner,
                 market_id,
@@ -172,6 +187,26 @@ impl<H: Hasher> State<H> {
             }
             BatchOp::SeedInsurance { amount } => self.op_seed_insurance(*amount),
         }
+    }
+
+    /// Liquidate `owner`'s position, returning the auto-deleverage haircuts the
+    /// cascade applied (empty when none — the penalty alone, or the insurance fund,
+    /// covered it). This is the SAME state transition as `BatchOp::Liquidate`
+    /// (which discards the attribution); the sequencer calls this entry so it can
+    /// report each socialized haircut back to the clawed account (audit Q2).
+    pub fn liquidate(
+        &mut self,
+        owner: &PubKey,
+        market_id: MarketId,
+        oracle: &OracleTranscript,
+        now_ms: u64,
+    ) -> Result<Vec<AdlHaircut>, EngineError> {
+        let haircuts = self.op_liquidate(owner, market_id, oracle, now_ms)?;
+        debug_assert!(
+            self.conservation_holds(),
+            "conservation invariant broken by liquidate"
+        );
+        Ok(haircuts)
     }
 
     // --- individual operations -------------------------------------------------
@@ -395,7 +430,7 @@ impl<H: Hasher> State<H> {
         market_id: MarketId,
         oracle: &OracleTranscript,
         now_ms: u64,
-    ) -> Result<(), EngineError> {
+    ) -> Result<Vec<AdlHaircut>, EngineError> {
         let market = *self
             .markets
             .get(&market_id)
@@ -450,15 +485,18 @@ impl<H: Hasher> State<H> {
             let pos = self.positions.get(&key).unwrap();
             (-pos.collateral).max(0)
         };
+        let mut haircuts: Vec<AdlHaircut> = Vec::new();
         if bad_debt > 0 {
             // 1. Insurance backstop.
             let cover = bad_debt.min(self.insurance_fund.max(0));
             self.insurance_fund -= cover;
             self.positions.get_mut(&key).unwrap().collateral += cover;
-            // 2. Auto-deleverage cascade: claw any residual from the winners.
+            // 2. Auto-deleverage cascade: claw any residual from the winners. Each
+            //    haircut is attributed (owner + amount) so it can be reported back.
             let residual = (bad_debt - cover).max(0);
             if residual > 0 {
-                let recovered = self.auto_deleverage(market_id, owner, residual, price);
+                haircuts = self.auto_deleverage(market_id, owner, residual, price);
+                let recovered: i128 = haircuts.iter().map(|h| h.clawed).sum();
                 self.positions.get_mut(&key).unwrap().collateral += recovered;
             }
             // 3. If still underwater (insurance AND winners both insufficient — i.e.
@@ -469,7 +507,7 @@ impl<H: Hasher> State<H> {
                 self.mode = Mode::CloseOnly;
             }
         }
-        Ok(())
+        Ok(haircuts)
     }
 
     /// Auto-deleverage cascade (§6, §9): when insurance can't fully absorb a
@@ -478,9 +516,11 @@ impl<H: Hasher> State<H> {
     /// *clawable* = `min(unrealized profit at price, posted collateral)`, capped
     /// there so ADL can never push a winner's collateral below zero (which would
     /// mint fresh bad debt). Conservation-neutral — collateral only moves between
-    /// positions, all inside the conservation identity. Returns the amount actually
-    /// recovered (≤ `residual`). BTreeMap iteration is sorted, so the distribution
-    /// is deterministic for the prover. NOTE: this haircuts a winner's collateral
+    /// positions, all inside the conservation identity. Returns one [`AdlHaircut`]
+    /// per clawed winner (their sum is the amount recovered, ≤ `residual`), so the
+    /// caller can report the socialized loss back to each account (audit Q2).
+    /// BTreeMap iteration is sorted, so the distribution and the returned order are
+    /// deterministic for the prover. NOTE: this haircuts a winner's collateral
     /// rather than reducing position size, so an ADL'd winner keeps full exposure
     /// on a thinner base; the burden is also computed per-liquidation, so across
     /// multiple bad-debt liquidations in one pass the split is order-dependent
@@ -491,9 +531,9 @@ impl<H: Hasher> State<H> {
         exclude: &PubKey,
         residual: i128,
         price: i128,
-    ) -> i128 {
+    ) -> Vec<AdlHaircut> {
         if residual <= 0 {
-            return 0;
+            return Vec::new();
         }
         let mut winners: Vec<(PubKey, i128)> = Vec::new();
         let mut total: i128 = 0;
@@ -512,7 +552,7 @@ impl<H: Hasher> State<H> {
             }
         }
         if total <= 0 {
-            return 0;
+            return Vec::new();
         }
         let coverable = residual.min(total);
         // Floor pro-rata, then hand the rounding remainder to winners with headroom.
@@ -530,14 +570,20 @@ impl<H: Hasher> State<H> {
             takes[i] += add;
             leftover -= add;
         }
-        let mut recovered = 0i128;
+        let mut haircuts: Vec<AdlHaircut> = Vec::new();
         for (i, (owner, _)) in winners.iter().enumerate() {
+            if takes[i] <= 0 {
+                continue;
+            }
             if let Some(pos) = self.positions.get_mut(&(*owner, market_id)) {
                 pos.collateral -= takes[i];
             }
-            recovered += takes[i];
+            haircuts.push(AdlHaircut {
+                owner: *owner,
+                clawed: takes[i],
+            });
         }
-        recovered
+        haircuts
     }
 
     /// Capitalize the insurance fund from external collateral (§6, §9). The fund

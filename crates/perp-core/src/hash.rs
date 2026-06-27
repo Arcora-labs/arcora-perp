@@ -107,6 +107,13 @@ pub enum Domain {
     /// never share a preimage structure with a note nullifier or any other hash
     /// purpose. Not a cross-layer-committed value.
     Liquidation = 19,
+    /// Auto-deleverage receipt tag (§6, §9; audit Q2). A per-(owner, market, batch)
+    /// tag the clawed account recomputes from its own secret to detect "my profit
+    /// was haircut to cover bad debt", paired in the sealed batch with the amount —
+    /// the transparency surface for socialized losses. Distinct from `Liquidation`
+    /// so the two events never share a preimage and an account can tell them apart.
+    /// Not a cross-layer-committed value.
+    Adl = 20,
 }
 
 /// The default Phase 0 hasher: Keccak-256 with a 1-byte domain prefix.
@@ -186,6 +193,7 @@ mod tests {
             WitnessSealMac,
             Measurement,
             Liquidation,
+            Adl,
         ];
         let w = [word_u64(42)];
         for i in 0..all.len() {

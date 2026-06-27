@@ -8,7 +8,9 @@ use perp_core::market::Market;
 use perp_core::oracle::OracleTranscript;
 use perp_core::order::{Finality, Order, Side, TimeInForce};
 use perp_core::Note;
-use sequencer::{liquidation_tag, liquidation_tag_key, EnclaveIdentity, Sequencer};
+use sequencer::{
+    adl_tag, adl_tag_key, liquidation_tag, liquidation_tag_key, EnclaveIdentity, Sequencer,
+};
 
 fn enclave() -> EnclaveIdentity {
     EnclaveIdentity::from_seed([7u8; 32], 1, [0xABu8; 32])
@@ -305,6 +307,59 @@ fn maintenance_liquidates_underwater_position() {
     assert!(
         s.state.insurance_fund > 0,
         "liquidation fee funded insurance"
+    );
+    assert!(s.state.conservation_holds());
+}
+
+#[test]
+fn auto_deleverage_publishes_an_attributable_receipt() {
+    // A (owner 1) short 1 BTC, B (owner 2) long 1 BTC at $100k, each funded $20k.
+    // A hard gap down to $75k wrecks B (long): a $25k loss past its $20k collateral
+    // is $5k of bad debt. With no insurance seeded, the cascade auto-deleverages it
+    // onto the winning short A — and the sealed batch must carry an ADL receipt that
+    // A can recognize as ITS OWN haircut, keyed on A's SECRET (audit Q2).
+    let mut s = setup();
+    s.seal_batch(
+        &[
+            order(1, Side::Sell, SIZE_SCALE, 100_000 * PRICE_SCALE, 1),
+            order(2, Side::Buy, SIZE_SCALE, 100_000 * PRICE_SCALE, 2),
+        ],
+        1_000,
+    );
+
+    s.set_oracle(0, oracle(75_000, 5_000));
+    let sealed = s.seal_batch(&[], 5_000);
+
+    // A recomputes its own ADL tag from its secret spend key ([1u8;32]) and finds
+    // its haircut + the amount clawed.
+    let a_key = adl_tag_key(&[1u8; 32]);
+    let a_tag = adl_tag(&a_key, 0, sealed.batch_id);
+    let mine = sealed.adl_receipts.iter().find(|r| r.tag == a_tag);
+    assert!(
+        mine.is_some(),
+        "A's ADL haircut is published as a tagged receipt"
+    );
+    assert!(
+        mine.unwrap().clawed > 0,
+        "the receipt carries the clawed amount"
+    );
+
+    // Privacy: an observer who knows only A's PUBLIC owner id cannot link the
+    // receipt — a tag keyed on the public owner id is NOT present.
+    assert!(
+        !sealed
+            .adl_receipts
+            .iter()
+            .any(|r| r.tag == adl_tag(&word_u64(1), 0, sealed.batch_id)),
+        "a tag keyed on the public owner id must NOT match — the tag is secret-keyed"
+    );
+    // The liquidated B is not a winner and is not clawed.
+    assert!(
+        !sealed
+            .adl_receipts
+            .iter()
+            .any(|r| r.tag == adl_tag(&adl_tag_key(&[2u8; 32]), 0, sealed.batch_id)),
+        "the liquidated long is not auto-deleveraged"
     );
     assert!(s.state.conservation_holds());
 }
