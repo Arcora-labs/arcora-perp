@@ -12,7 +12,13 @@ Branches:
   - `79b29f6` feat(prover): real authenticated witness sealing (measurement-bound key release)
 - Uncommitted (optional to commit): `docs/architecture.html` (the technical doc).
 
-Nothing is deployed anywhere — everything runs locally; only code is pushed to GitHub.
+**Live on testnet (2026-06-27):** the L1 settlement stack is deployed to **Base
+Sepolia** (chain 84532) — `DarkPerpSettlement` `0xF82F7676502935c4B86AAD36F405BfF7a3CA65D3`,
+`CollateralVault` `0x4b647D3E5c3Ed0FEE209dD9F00feC957b0157E0c`, `MockZkVerifier`
+`0x1022801D314258c79556C85973260d4F06C35ACB` (deployer 0xe8E5, genesisRoot=0,
+MockZkVerifier — real SP1 verifier before non-testnet). Record:
+`contracts/deployments/base-sepolia.json`. The running gateway is **not yet wired**
+to settle against these (it's still in-memory) — that wiring is the next L1 step.
 
 ## Active goal: **Real TEE** (Milestone C) — turn the 3 trust roots from stand-ins into real
 

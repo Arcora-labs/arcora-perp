@@ -1,0 +1,31 @@
+{
+  "network": "base-sepolia",
+  "chainId": 84532,
+  "rpc": "https://sepolia.base.org",
+  "explorer": "https://sepolia.basescan.org",
+  "deployedAt": "2026-06-27",
+  "deployer": "0xe8E5AAa3d8c705A07de02aADF98CE31F20A5754b",
+  "note": "Phase 0 testnet deploy. Ships with MockZkVerifier (real SP1/Risc0 verifier before any non-testnet deploy — see docs/PROVING.md). genesisRoot=0, enclaveSigner=deployer (placeholders until the gateway is wired to settle on-chain).",
+  "contracts": {
+    "DarkPerpSettlement": {
+      "address": "0xF82F7676502935c4B86AAD36F405BfF7a3CA65D3",
+      "tx": "0x0fd5fed3562917cb795412ab846d47a8d4f85b47c1f629e13938a3a3afff41d7"
+    },
+    "CollateralVault": {
+      "address": "0x4b647D3E5c3Ed0FEE209dD9F00feC957b0157E0c",
+      "tx": "0x3ef0d022de80c8be65a2a7d09feb63dd1e1bb7716164cfef7ee0fd83b90fd509"
+    },
+    "MockZkVerifier": {
+      "address": "0x1022801D314258c79556C85973260d4F06C35ACB",
+      "tx": "0x2a67bbbb3fbb40fe6e6f6164e9ca9e7c484152fb17c2f665a28b6458844d5337"
+    }
+  },
+  "params": {
+    "sequencer": "0xe8E5AAa3d8c705A07de02aADF98CE31F20A5754b",
+    "enclaveSigner": "0xe8E5AAa3d8c705A07de02aADF98CE31F20A5754b",
+    "genesisRoot": "0x0000000000000000000000000000000000000000000000000000000000000000",
+    "livenessBlocks": 7200,
+    "challengeBlocks": 300,
+    "challengeBondWei": "10000000000000000"
+  }
+}
