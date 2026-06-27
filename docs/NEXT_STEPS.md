@@ -34,6 +34,40 @@ Increments (the plan we set):
 
 Recommended decisions: TEE platform = **Azure TDX**; prover = SP1 network first; mainnet stance = single-enclave + full protocol-completeness beta (committee fast-follow).
 
+## Queued next: a real external trading API (REST + WebSocket)
+
+**The gap.** A real perp DEX needs an external API that market-makers, bots, and
+integrations hit **without a browser** — place/cancel orders and read
+account/positions/orderbook/fills programmatically. Today that layer does not
+exist as a product:
+- The frontend "API" tab (`ApiExplorer.tsx`) is an in-browser console that calls
+  the `MockDarkPerpClient` — in-memory, no network. A dev/demo tool, not an
+  endpoint an external bot can hit.
+- The `DarkPerpClient` interface (`frontend/src/api/client.ts`) is the UI↔backend
+  TypeScript seam; today only the mock + the demo gateway implement it.
+- The `gateway` crate **does** expose HTTP+WS over the real sequencer, **but** it
+  is a single-tenant DEMO: one hardcoded user + one market-maker, no auth, no
+  per-account isolation, not a public multi-account API.
+- The `sequencer` crate holds the real protocol logic (accept_order → signed
+  receipt §2, seal_batch, finality, inclusion challenge) as a **library**; the
+  `node` crate is just a loop.
+
+**What a real one needs.** A multi-tenant service over the sequencer:
+- REST: submit/cancel order, deposit/withdraw intents, read account, positions,
+  orderbook, fills, funding, batch/finality status.
+- WebSocket: live orderbook, trades, per-account fills + finality transitions,
+  oracle/mark updates.
+- Per-account **auth** (API key or signed request) and isolation — arbitrary
+  accounts, not the demo's fixed two.
+- External **order signing**: the order's `ciphertext_commit`/signature is
+  produced by the caller; the API verifies + forwards to `accept_order`.
+- Rate limits + OpenAPI/asyncapi docs so MMs/bots can integrate.
+
+**Where it plugs in.** Generalize the `gateway` (or a new `api`/`exchange-api`
+crate) from the single-user demo into a multi-account service over
+`sequencer::Sequencer`; the `DarkPerpClient` interface is the shape to mirror.
+This is a genuine missing layer — not yet built.
+
 ## Run / test
 
 ```bash
