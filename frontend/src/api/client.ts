@@ -41,6 +41,8 @@ export interface ClientState {
   /// liquidation shortfalls before they socialize (audit Q3/Q7). Grows from the
   /// per-fill insurance cut of the trading fee (audit Q4).
   insuranceFund: bigint;
+  /// Protocol-treasury balance — the operator's accrued trading-fee revenue (§9).
+  treasury: bigint;
   /// Quote-scaled cumulative collateral the user has had auto-deleveraged — the
   /// transparency surface for socialized losses (audit Q2).
   userAdlClawed: bigint;

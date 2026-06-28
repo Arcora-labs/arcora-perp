@@ -341,6 +341,10 @@ impl<H: Hasher> State<H> {
             apply_rate(notional, market.taker_fee_ratio).ok_or(EngineError::Overflow)?;
         let maker_rebate =
             apply_rate(notional, market.maker_rebate_ratio).ok_or(EngineError::Overflow)?;
+        // The treasury cut (operator revenue) comes out of the net fee; the remainder
+        // funds insurance. `is_coherent` bounds treasury ≤ taker − maker.
+        let treasury_fee =
+            apply_rate(notional, market.treasury_fee_ratio).ok_or(EngineError::Overflow)?;
 
         // Compute both legs on COPIES; commit only if both pass margin. This
         // makes the op atomic — a rejected fill leaves state untouched, exactly
@@ -391,13 +395,20 @@ impl<H: Hasher> State<H> {
         for (key, pos) in staged {
             self.positions.insert(key, pos);
         }
-        // Route the taker fee minus the maker rebate into the insurance fund.
-        // Conservation holds: taker −fee, maker +rebate, insurance +(fee−rebate).
+        // Route the treasury cut to the operator treasury and the remainder of the
+        // net fee into the insurance fund. Conservation holds: taker −fee, maker
+        // +rebate, treasury +treasury_fee, insurance +(fee−rebate−treasury_fee).
+        self.treasury = self
+            .treasury
+            .checked_add(treasury_fee)
+            .ok_or(EngineError::Overflow)?;
         self.insurance_fund = self
             .insurance_fund
             .checked_add(
                 taker_fee
                     .checked_sub(maker_rebate)
+                    .ok_or(EngineError::Overflow)?
+                    .checked_sub(treasury_fee)
                     .ok_or(EngineError::Overflow)?,
             )
             .ok_or(EngineError::Overflow)?;

@@ -92,8 +92,9 @@ export function HealthPanel() {
         </div>
 
         <div className="card">
-          <h3 className="card__title">Protocol reserve (§6/§9)</h3>
+          <h3 className="card__title">Protocol reserve &amp; treasury (§6/§9)</h3>
           <div className="summary">
+            <Stat label="Protocol treasury" value={formatUsd(state.treasury)} tone="pos" />
             <Stat label="Insurance fund" value={formatUsd(state.insuranceFund)} tone="pos" />
             <Stat
               label="Your ADL haircuts"
@@ -102,11 +103,11 @@ export function HealthPanel() {
             />
           </div>
           <p className="small muted">
-            The bad-debt backstop: a liquidation shortfall is absorbed here before any
-            auto-deleverage, and it socializes only once this is empty (audit Q3/Q7). It grows
-            from the {fmtBps(state.market.takerFeeBps - state.market.makerRebateBps)} insurance
-            cut of every fill on {state.market.symbol} — a {fmtBps(state.market.takerFeeBps)} taker
-            fee less a {fmtBps(state.market.makerRebateBps)} maker rebate (audit Q4).
+            Every fill on {state.market.symbol} charges a {fmtBps(state.market.takerFeeBps)} taker
+            fee: the bulk accrues to the <strong className="pos">protocol treasury</strong> (operator
+            revenue), and a thin slice funds the <strong>insurance fund</strong> — the bad-debt
+            backstop that absorbs a liquidation shortfall before any auto-deleverage and socializes
+            only once empty (audit Q3/Q7). The treasury is the final backstop after insurance + ADL.
           </p>
         </div>
 

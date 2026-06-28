@@ -61,7 +61,8 @@ const TICK_MS: u64 = 700;
 // Trading economics (audit Q4): every fill charges the taker a fee, rebates the
 // resting maker, and routes the remainder into the insurance fund (audit Q3).
 const TAKER_FEE_BPS: i128 = 10; // 0.10% taker fee
-const MAKER_REBATE_BPS: i128 = 4; // 0.04% maker rebate → 0.06% net to insurance
+const MAKER_REBATE_BPS: i128 = 0; // no maker rebate — the LP pool earns the house edge, not fees
+const TREASURY_FEE_BPS: i128 = 8; // 0.08% → protocol treasury (operator revenue); 0.02% → insurance
 const INSURANCE_SEED_USD: i128 = 25_000; // visible starting backstop; grows with volume
 const L1_SETTLE_SECS: u64 = 30; // how often the L1 bridge advances the on-chain root
 const V1_ORDER_RATE: u32 = 10; // max orders/sec per external account
@@ -385,6 +386,9 @@ struct WState {
     batches: Vec<WBatch>,
     /// Quote-scaled insurance-fund balance — the bad-debt backstop (audit Q3/Q7).
     insurance_fund: String,
+    /// Quote-scaled protocol-treasury balance — the operator's accrued trading-fee
+    /// revenue (§9); a 0.08% cut of every fill's notional.
+    treasury: String,
     /// Quote-scaled cumulative collateral the user has had auto-deleveraged — the
     /// transparency surface for socialized losses (audit Q2).
     user_adl_clawed: String,
@@ -630,7 +634,12 @@ impl Gw {
 
         let mut mkts = Vec::new();
         for (i, cfg) in MARKETS.iter().enumerate() {
-            seq.add_market(Market::with_fees(cfg.id, TAKER_FEE_BPS, MAKER_REBATE_BPS));
+            seq.add_market(Market::with_fees_treasury(
+                cfg.id,
+                TAKER_FEE_BPS,
+                MAKER_REBATE_BPS,
+                TREASURY_FEE_BPS,
+            ));
             let px = usd(cfg.seed);
             seq.set_oracle(cfg.id, oracle_of(px, now));
             // fund the market-maker (deep) and the user (≈$5k) into each market bucket
@@ -1218,6 +1227,7 @@ impl Gw {
         serde_json::json!({
             "mode": if self.seq.state.mode == Mode::CloseOnly { "CloseOnly" } else { "Normal" },
             "insuranceFund": self.seq.state.insurance_fund.to_string(),
+            "treasury": self.seq.state.treasury.to_string(),
             "nextBatchId": self.seq.current_batch_id(),
             "accounts": self.accounts.len(),
         })
@@ -2043,6 +2053,7 @@ impl Gw {
             orders,
             batches,
             insurance_fund: self.seq.state.insurance_fund.to_string(),
+            treasury: self.seq.state.treasury.to_string(),
             user_adl_clawed: self.user_adl_clawed.to_string(),
             mm_hedge,
             l1: self.l1_status.as_ref().map(|s| WL1 {

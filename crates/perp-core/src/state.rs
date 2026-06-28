@@ -46,6 +46,10 @@ pub struct State<H: Hasher> {
     /// close. This is what makes collateral conservation an exact integer
     /// identity in Phase 0 rather than an oracle-dependent approximation.
     pub vault_pool: i128,
+    /// Protocol-treasury balance: the operator's accrued trading-fee revenue (§9).
+    /// Grows by each fill's `treasury_fee`; can be paid out or injected into the
+    /// insurance fund as a final backstop (`TreasuryToInsurance`).
+    pub treasury: i128,
     pub external_in: i128,
     pub external_out: i128,
     pub mode: Mode,
@@ -65,6 +69,7 @@ impl<H: Hasher> State<H> {
             positions: BTreeMap::new(),
             insurance_fund: 0,
             vault_pool: 0,
+            treasury: 0,
             external_in: 0,
             external_out: 0,
             mode: Mode::Normal,
@@ -99,7 +104,11 @@ impl<H: Hasher> State<H> {
 
     /// Total value tracked inside the protocol.
     pub fn internal_value(&self) -> i128 {
-        self.notes_value() + self.positions_collateral() + self.insurance_fund + self.vault_pool
+        self.notes_value()
+            + self.positions_collateral()
+            + self.insurance_fund
+            + self.vault_pool
+            + self.treasury
     }
 
     /// The conservation identity. MUST hold after every operation (Proof-v1).
@@ -147,6 +156,7 @@ impl<H: Hasher> State<H> {
                 self.funding_digest(),
                 word_i128(self.insurance_fund),
                 word_i128(self.vault_pool),
+                word_i128(self.treasury),
                 word_i128(self.external_in),
                 word_i128(self.external_out),
             ],

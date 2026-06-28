@@ -36,7 +36,7 @@ interface WireState {
   markets: WireMarket[]; selectedMarketId: number; market: WireMarket; mode: ClientState["mode"];
   oracle: WireOracle; book: { marketId: number; bids: WireBookLevel[]; asks: WireBookLevel[] };
   marks: Record<string, string>; account: { settledBalance: string; positions: WirePosition[] };
-  orders: WireTrackedOrder[]; batches: BatchSummary[]; insuranceFund: string; userAdlClawed: string;
+  orders: WireTrackedOrder[]; batches: BatchSummary[]; insuranceFund: string; treasury: string; userAdlClawed: string;
   mmHedge: WireHedge[];
   l1: WireL1 | null;
   attestation: { measurement: string; tcb: string; quoteVersion: number } | null;
@@ -93,6 +93,7 @@ function parseState(w: WireState): ClientState {
     orders: w.orders.map(pOrder),
     batches: w.batches,
     insuranceFund: B(w.insuranceFund),
+    treasury: B(w.treasury),
     userAdlClawed: B(w.userAdlClawed),
     mmHedge: w.mmHedge.map((h) => ({
       marketId: h.marketId,
