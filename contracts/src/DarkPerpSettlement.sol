@@ -6,6 +6,14 @@ import {MerkleLib} from "./libraries/MerkleLib.sol";
 
 interface ICollateralVault {
     function publishWithdrawals(bytes32 root, uint256 epoch) external;
+    function tvl() external view returns (uint256);
+    function token() external view returns (address);
+}
+
+/// The ERC20 subset the settlement uses to custody the sequencer's USDC bond.
+interface IERC20Min {
+    function transfer(address to, uint256 amount) external returns (bool);
+    function transferFrom(address from, address to, uint256 amount) external returns (bool);
 }
 
 /// @title DarkPerpSettlement
@@ -60,6 +68,8 @@ contract DarkPerpSettlement {
     bytes32 public currentStateRoot;
     uint256 public lastProgressBlock;
     uint256 public batchCount;
+    /// The sequencer bond, denominated in the vault's collateral asset (USDC), so it
+    /// is dimensionally coherent with `requiredBond()` (5% of USDC TVL, audit Q1).
     uint256 public sequencerBond;
     bool public closeOnly;
     bool public slashed;
@@ -79,6 +89,7 @@ contract DarkPerpSettlement {
     event BatchSettled(uint256 indexed batchId, bytes32 prevRoot, bytes32 newRoot, bytes32 manifestHash);
     event CloseOnlyEntered(string reason);
     event BondPosted(uint256 amount, uint256 total);
+    event BondWithdrawn(uint256 amount, uint256 total);
     event InclusionChallenged(bytes32 indexed orderHash, address indexed challenger, uint256 deadlineBlock);
     event InclusionAnswered(bytes32 indexed orderHash, uint256 batchId);
     event SequencerSlashed(bytes32 indexed orderHash, address indexed challenger, uint256 amount);
@@ -100,6 +111,8 @@ contract DarkPerpSettlement {
     error BatchNotSettled();
     error TransferFailed();
     error UnderBonded();
+    error VaultNotSet();
+    error WithdrawExceedsExcess();
 
     modifier onlySequencer() {
         if (msg.sender != sequencer) revert NotSequencer();
@@ -132,19 +145,41 @@ contract DarkPerpSettlement {
         vault = _vault;
     }
 
-    /// @notice Stake / top up the sequencer bond that backs honest sequencing.
-    function postBond() external payable onlySequencer {
-        sequencerBond += msg.value;
-        emit BondPosted(msg.value, sequencerBond);
+    /// @notice Stake / top up the sequencer bond (in USDC) that backs honest
+    /// sequencing. The sequencer must `approve` the settlement for `amount` first.
+    /// USDC-denominated so the posted bond and the TVL-scaled floor share a unit.
+    function postBond(uint256 amount) external onlySequencer {
+        if (vault == address(0)) revert VaultNotSet();
+        IERC20Min tok = IERC20Min(ICollateralVault(vault).token());
+        if (!tok.transferFrom(msg.sender, address(this), amount)) revert TransferFailed();
+        sequencerBond += amount;
+        emit BondPosted(amount, sequencerBond);
+    }
+
+    /// @notice Reclaim sequencer bond ABOVE the current required floor (honest exit /
+    /// right-sizing as TVL shrinks). Disabled once slashed. Returns USDC to the
+    /// sequencer — without this the bonded USDC would be permanently locked for a
+    /// never-slashed sequencer (review fix). Only the *excess* over `requiredBond()`
+    /// is withdrawable, so the bond can never drop below what an honest settle needs.
+    function withdrawBond(uint256 amount) external onlySequencer {
+        if (slashed) revert AlreadySlashed();
+        uint256 floor = requiredBond();
+        uint256 excess = sequencerBond > floor ? sequencerBond - floor : 0;
+        if (amount > excess) revert WithdrawExceedsExcess();
+        sequencerBond -= amount;
+        IERC20Min tok = IERC20Min(ICollateralVault(vault).token());
+        if (!tok.transfer(sequencer, amount)) revert TransferFailed();
+        emit BondWithdrawn(amount, sequencerBond);
     }
 
     /// @notice The minimum sequencer bond required to settle: `BOND_BPS` of the
-    /// live custodied TVL (the vault's balance). Scales the bond with the value it
-    /// secures rather than fixing it at an arbitrary constant (audit Q1). Zero
-    /// until the vault is wired.
+    /// live custodied TVL (the vault's USDC balance). Scales the bond with the value
+    /// it secures rather than fixing it at an arbitrary constant (audit Q1). Zero
+    /// until the vault is wired. Reads the vault's `tvl()` (its USDC holdings), not
+    /// its native balance, since collateral is the ERC20 asset.
     function requiredBond() public view returns (uint256) {
         if (vault == address(0)) return 0;
-        return (vault.balance * BOND_BPS) / 10_000;
+        return (ICollateralVault(vault).tvl() * BOND_BPS) / 10_000;
     }
 
     /// @notice The public-input commitment the proof must satisfy. Mirrors
@@ -313,12 +348,19 @@ contract DarkPerpSettlement {
         delete challenges[orderHash];
         slashed = true;
         closeOnly = true;
-        uint256 amount = sequencerBond + c.bond; // slashed bond + refunded stake
+        uint256 slashedBond = sequencerBond; // USDC bond, slashed to the challenger
         sequencerBond = 0;
-        emit SequencerSlashed(orderHash, c.challenger, amount);
+        emit SequencerSlashed(orderHash, c.challenger, slashedBond);
         emit CloseOnlyEntered("inclusion slash");
-        if (amount > 0) {
-            (bool ok,) = c.challenger.call{value: amount}("");
+        // pay the slashed USDC bond, then refund the challenger's ETH stake. The two
+        // are different assets now (bond = USDC, anti-griefing stake = native), so
+        // they are released in separate transfers rather than summed.
+        if (slashedBond > 0) {
+            IERC20Min tok = IERC20Min(ICollateralVault(vault).token());
+            if (!tok.transfer(c.challenger, slashedBond)) revert TransferFailed();
+        }
+        if (c.bond > 0) {
+            (bool ok,) = c.challenger.call{value: c.bond}("");
             if (!ok) revert TransferFailed();
         }
     }

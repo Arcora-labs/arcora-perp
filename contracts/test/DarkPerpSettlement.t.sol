@@ -3,10 +3,14 @@ pragma solidity ^0.8.24;
 
 import {MiniTest} from "./utils/MiniTest.sol";
 import {DarkPerpSettlement} from "../src/DarkPerpSettlement.sol";
+import {CollateralVault} from "../src/CollateralVault.sol";
+import {MockUSDC} from "../src/mocks/MockUSDC.sol";
 import {MockZkVerifier} from "../src/mocks/MockZkVerifier.sol";
 
 contract DarkPerpSettlementTest is MiniTest {
     DarkPerpSettlement internal s;
+    CollateralVault internal vault;
+    MockUSDC internal usdc;
     MockZkVerifier internal verifier;
 
     uint256 internal constant ENCLAVE_PK = 0xA11CE;
@@ -15,6 +19,7 @@ contract DarkPerpSettlementTest is MiniTest {
     uint256 internal constant LIVENESS = 100;
     uint256 internal constant CHALLENGE_WINDOW = 50;
     uint256 internal constant CHALLENGE_BOND = 1 ether;
+    uint256 internal constant USD = 1e6;
 
     // this contract is the sequencer
     function setUp() public {
@@ -23,6 +28,18 @@ contract DarkPerpSettlementTest is MiniTest {
         s = new DarkPerpSettlement(
             address(this), enclaveSigner, verifier, GENESIS, LIVENESS, CHALLENGE_WINDOW, CHALLENGE_BOND
         );
+        // wire a vault so the USDC sequencer bond can be posted; left unfunded, so
+        // requiredBond() is 0 and the settle tests need no bond (audit Q1 floor = 0).
+        usdc = new MockUSDC();
+        vault = new CollateralVault(address(s), address(usdc));
+        s.setVault(address(vault));
+    }
+
+    /// The sequencer (this contract) posts a USDC bond of `amount`.
+    function _bond(uint256 amount) internal {
+        usdc.mint(address(this), amount);
+        usdc.approve(address(s), amount);
+        s.postBond(amount);
     }
 
     function _proof(bytes32 prev, bytes32 m, bytes32 n, bytes32 ord, bytes32 wd)
@@ -161,10 +178,49 @@ contract DarkPerpSettlementTest is MiniTest {
         s.answerChallenge(orderHash, 0, proof);
     }
 
+    function _depositToVault(uint256 amount) internal {
+        usdc.mint(address(this), amount);
+        usdc.approve(address(vault), amount);
+        vault.deposit(amount);
+    }
+
+    function test_withdraw_excess_bond() public {
+        // vault empty → requiredBond 0 → the whole bond is excess and reclaimable
+        _bond(5000 * USD);
+        uint256 before = usdc.balanceOf(address(this));
+        s.withdrawBond(2000 * USD);
+        assertEq(s.sequencerBond(), 3000 * USD, "bond reduced");
+        assertEq(usdc.balanceOf(address(this)) - before, 2000 * USD, "USDC returned to sequencer");
+    }
+
+    function test_cannot_withdraw_bond_below_required_floor() public {
+        _depositToVault(100_000 * USD); // TVL 100k → requiredBond 5k USDC
+        _bond(6000 * USD); // 1k USDC of excess over the 5k floor
+        assertEq(s.requiredBond(), 5000 * USD, "floor from TVL");
+        vm.expectRevert(DarkPerpSettlement.WithdrawExceedsExcess.selector);
+        s.withdrawBond(2000 * USD); // exceeds the 1k excess
+        s.withdrawBond(1000 * USD); // exactly the excess → leaves the floor
+        assertEq(s.sequencerBond(), 5000 * USD, "bond can't drop below the floor");
+    }
+
+    function test_cannot_withdraw_bond_after_slash() public {
+        _bond(5000 * USD);
+        // force a slash via an unanswered inclusion challenge
+        bytes32 orderHash = keccak256("withheld");
+        (uint8 v, bytes32 r, bytes32 sig) = vm.sign(ENCLAVE_PK, s.receiptDigest(orderHash, 1, 1, 0));
+        address challenger = address(0xCAFE);
+        vm.deal(challenger, CHALLENGE_BOND);
+        vm.prank(challenger);
+        s.challengeInclusion{value: CHALLENGE_BOND}(orderHash, 1, 1, 0, v, r, sig);
+        vm.roll(block.number + CHALLENGE_WINDOW + 1);
+        s.slashUnanswered(orderHash);
+        vm.expectRevert(DarkPerpSettlement.AlreadySlashed.selector);
+        s.withdrawBond(1);
+    }
+
     function test_inclusion_unanswered_slashes_bond() public {
-        uint256 bond = 5 ether;
-        vm.deal(address(this), bond);
-        s.postBond{value: bond}();
+        uint256 bond = 5000 * USD; // USDC bond
+        _bond(bond);
 
         bytes32 orderHash = keccak256("withheld");
         (uint8 v, bytes32 r, bytes32 sig) = vm.sign(ENCLAVE_PK, s.receiptDigest(orderHash, 1, 1, 0));
@@ -181,8 +237,9 @@ contract DarkPerpSettlementTest is MiniTest {
         assertTrue(s.slashed(), "sequencer slashed");
         assertTrue(s.closeOnly(), "slash forces close-only");
         assertEq(s.sequencerBond(), 0, "bond drained");
-        // challenger receives the slashed bond + its refunded stake
-        assertEq(challenger.balance, bond + CHALLENGE_BOND, "slashed bond + refunded stake");
+        // challenger receives the slashed USDC bond + its refunded ETH stake (two assets)
+        assertEq(usdc.balanceOf(challenger), bond, "slashed USDC bond paid to challenger");
+        assertEq(challenger.balance, CHALLENGE_BOND, "ETH anti-griefing stake refunded");
     }
 
     function test_challenge_requires_bond() public {

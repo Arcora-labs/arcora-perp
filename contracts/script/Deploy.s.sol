@@ -4,6 +4,7 @@ pragma solidity ^0.8.24;
 import {Vm} from "../test/utils/MiniTest.sol";
 import {DarkPerpSettlement} from "../src/DarkPerpSettlement.sol";
 import {CollateralVault} from "../src/CollateralVault.sol";
+import {MockUSDC} from "../src/mocks/MockUSDC.sol";
 import {MockZkVerifier} from "../src/mocks/MockZkVerifier.sol";
 import {IZkVerifier} from "../src/interfaces/IZkVerifier.sol";
 
@@ -35,7 +36,7 @@ contract Deploy {
 
     function run()
         external
-        returns (DarkPerpSettlement settlement, CollateralVault vault, IZkVerifier verifier)
+        returns (DarkPerpSettlement settlement, CollateralVault vault, IZkVerifier verifier, MockUSDC usdc)
     {
         uint256 pk = vm.envOr("PRIVATE_KEY", DEFAULT_PK);
         address sequencer = vm.addr(pk);
@@ -51,8 +52,15 @@ contract Deploy {
         settlement = new DarkPerpSettlement(
             sequencer, enclaveSigner, verifier, genesis, liveness, challengeWindow, challengeBond
         );
-        vault = new CollateralVault(address(settlement));
+        // USDC is the collateral asset (6 decimals). MockUSDC ships an open faucet
+        // for the testnet — replace with the canonical USDC address before mainnet.
+        usdc = new MockUSDC();
+        vault = new CollateralVault(address(settlement), address(usdc));
         settlement.setVault(address(vault));
+
+        // seed the deployer (sequencer) with 1,000,000 USDC so it can post the bond
+        // and the demo can fund accounts without an external faucet.
+        usdc.mint(sequencer, 1_000_000_000_000);
 
         vm.stopBroadcast();
     }

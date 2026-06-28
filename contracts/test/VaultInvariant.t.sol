@@ -3,6 +3,7 @@ pragma solidity ^0.8.24;
 
 import {MiniTest} from "./utils/MiniTest.sol";
 import {CollateralVault} from "../src/CollateralVault.sol";
+import {MockUSDC} from "../src/mocks/MockUSDC.sol";
 
 /// Drives random sequences of publish/claim against the vault. Foundry's
 /// invariant runner calls the handler's external functions in random order and
@@ -22,7 +23,7 @@ contract Handler {
 
     /// Publish a single-leaf withdrawals root authorizing THIS handler.
     function publish(uint256 amountRaw, uint256 nonce) external {
-        uint256 amount = (amountRaw % 5 ether) + 1;
+        uint256 amount = (amountRaw % 5_000_000_000) + 1; // up to ~5,000 USDC
         lastAmount = amount;
         lastNonce = nonce;
         havePublished = true;
@@ -38,21 +39,21 @@ contract Handler {
             totalClaimed += lastAmount;
         } catch {}
     }
-
-    receive() external payable {}
 }
 
 contract VaultInvariantTest is MiniTest {
     CollateralVault internal vault;
+    MockUSDC internal usdc;
     Handler internal handler;
-    uint256 internal constant INITIAL = 1000 ether;
+    uint256 internal constant INITIAL = 1_000_000_000_000; // 1,000,000 USDC
 
     function setUp() public {
         // the handler is the settlement authority so it can publish roots
         handler = new Handler();
-        vault = new CollateralVault(address(handler));
+        usdc = new MockUSDC();
+        vault = new CollateralVault(address(handler), address(usdc));
         handler.init(vault);
-        vm.deal(address(vault), INITIAL);
+        usdc.mint(address(vault), INITIAL);
     }
 
     /// Restrict the invariant fuzzer to the handler only (the intended state
@@ -65,15 +66,15 @@ contract VaultInvariantTest is MiniTest {
         t[0] = address(handler);
     }
 
-    /// The vault never creates or destroys value: its balance plus everything
+    /// The vault never creates or destroys value: its USDC balance plus everything
     /// successfully claimed always equals the initial funding. Catches double-pay,
     /// over-pay, and value leaks across any random publish/claim sequence.
     function invariant_vault_is_solvent() public view {
-        assertEq(address(vault).balance + handler.totalClaimed(), INITIAL, "vault solvency");
+        assertEq(usdc.balanceOf(address(vault)) + handler.totalClaimed(), INITIAL, "vault solvency");
     }
 
-    /// The vault balance never goes negative / underflows.
+    /// The vault USDC balance never goes negative / underflows.
     function invariant_balance_bounded() public view {
-        assertTrue(address(vault).balance <= INITIAL, "balance never exceeds initial");
+        assertTrue(usdc.balanceOf(address(vault)) <= INITIAL, "balance never exceeds initial");
     }
 }

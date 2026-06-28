@@ -3,6 +3,7 @@ pragma solidity ^0.8.24;
 
 import {MiniTest} from "./utils/MiniTest.sol";
 import {CollateralVault} from "../src/CollateralVault.sol";
+import {MockUSDC} from "../src/mocks/MockUSDC.sol";
 import {DarkPerpSettlement} from "../src/DarkPerpSettlement.sol";
 import {MockZkVerifier} from "../src/mocks/MockZkVerifier.sol";
 
@@ -12,14 +13,16 @@ import {MockZkVerifier} from "../src/mocks/MockZkVerifier.sol";
 /// ordered/withdrawals roots (audit F2).
 contract FuzzTest is MiniTest {
     CollateralVault internal vault;
+    MockUSDC internal usdc;
     DarkPerpSettlement internal s;
     MockZkVerifier internal verifier;
     bytes32 internal constant GENESIS = bytes32(uint256(1));
 
     // this contract is the settlement authority / sequencer
     function setUp() public {
-        vault = new CollateralVault(address(this));
-        vm.deal(address(vault), 1000 ether);
+        usdc = new MockUSDC();
+        vault = new CollateralVault(address(this), address(usdc));
+        usdc.mint(address(vault), 1_000_000_000_000); // 1,000,000 USDC
         verifier = new MockZkVerifier();
         s = new DarkPerpSettlement(address(this), address(0xE), verifier, GENESIS, 100, 50, 0);
     }
@@ -29,7 +32,7 @@ contract FuzzTest is MiniTest {
     function testFuzz_claim_only_exact_leaf(address to, uint96 amountRaw, uint96 nonce) public {
         vm.assume(uint160(to) > 20 && to != address(vault) && to != address(this));
         vm.assume(to.code.length == 0);
-        uint256 amount = (uint256(amountRaw) % 100 ether) + 1;
+        uint256 amount = (uint256(amountRaw) % 100_000_000) + 1; // up to 100 USDC
         bytes32 leaf = keccak256(abi.encodePacked(to, amount, uint256(nonce)));
         vault.publishWithdrawals(leaf, 0);
 
@@ -42,9 +45,9 @@ contract FuzzTest is MiniTest {
         vault.claim(to, amount, uint256(nonce) + 1, empty);
 
         // the exact leaf claims exactly the authorized amount, once
-        uint256 before = to.balance;
+        uint256 before = usdc.balanceOf(to);
         vault.claim(to, amount, nonce, empty);
-        assertEq(to.balance - before, amount, "claimed exactly authorized");
+        assertEq(usdc.balanceOf(to) - before, amount, "claimed exactly authorized");
         vm.expectRevert(CollateralVault.AlreadyClaimed.selector);
         vault.claim(to, amount, nonce, empty);
     }

@@ -3,29 +3,48 @@
   "chainId": 84532,
   "rpc": "https://sepolia.base.org",
   "explorer": "https://sepolia.basescan.org",
-  "deployedAt": "2026-06-27",
+  "deployedAt": "2026-06-28",
   "deployer": "0xe8E5AAa3d8c705A07de02aADF98CE31F20A5754b",
-  "note": "Phase 0 testnet deploy. Ships with MockZkVerifier (real SP1/Risc0 verifier before any non-testnet deploy — see docs/PROVING.md). genesisRoot=0, enclaveSigner=deployer (placeholders until the gateway is wired to settle on-chain).",
+  "note": "Phase 0 testnet deploy — USDC collateral, post-review-hardening build. The vault custodies MockUSDC (6-decimal ERC20, open faucet); the sequencer bond is USDC-denominated (requiredBond = 5% of vault.tvl(), audit Q1). Review hardening in this build: tvl() reads NET accounted deposits (totalDeposited - totalWithdrawn), not raw balanceOf, so donations can't inflate the bond floor; withdrawBond() lets an honest sequencer reclaim bond above the floor. Ships with MockZkVerifier (real SP1/Risc0 verifier before any non-testnet deploy). genesisRoot=0. enclaveSigner is the gateway's REAL enclave (secp256k1 seed 0x07..07). Full deposit -> withdraw -> claim flow + donation-immunity + withdrawBond verified live. Supersedes the earlier 2026-06-28 pre-hardening deploy.",
   "contracts": {
     "DarkPerpSettlement": {
-      "address": "0xF82F7676502935c4B86AAD36F405BfF7a3CA65D3",
-      "tx": "0x0fd5fed3562917cb795412ab846d47a8d4f85b47c1f629e13938a3a3afff41d7"
+      "address": "0x55dE870DcC2A620bA77F20e1FbC7Fb7E33e1A6a4",
+      "tx": "0xb075b8e6bf3637e0689bfc733cb9d5585aced2eab8a949cdef9a9899654e21a0"
     },
     "CollateralVault": {
-      "address": "0x4b647D3E5c3Ed0FEE209dD9F00feC957b0157E0c",
-      "tx": "0x3ef0d022de80c8be65a2a7d09feb63dd1e1bb7716164cfef7ee0fd83b90fd509"
+      "address": "0xF3Ee80BEBda210eAEe416D4A40B6CBe91FaB126B",
+      "tx": "0xb548a665fe9f8a452dab59defeb762096e7ba77a62954d186b0a3cc78c2cff5a"
     },
     "MockZkVerifier": {
-      "address": "0x1022801D314258c79556C85973260d4F06C35ACB",
-      "tx": "0x2a67bbbb3fbb40fe6e6f6164e9ca9e7c484152fb17c2f665a28b6458844d5337"
+      "address": "0x016F74f9FF565298Eb6eFF085354a1af5Fe13660",
+      "tx": "0xd96ceafe83b9b801758c768e4c05656f71fbcd05a8bfca5bf017d3179ce55a4c"
+    },
+    "MockUSDC": {
+      "address": "0xe906D3068c1BE526125BdC695A066E98ed246770",
+      "tx": "0x7931e39cefdef363135665674013540c7b52a94fefa6b78aee7a2b3f87bd2a88"
     }
   },
   "params": {
     "sequencer": "0xe8E5AAa3d8c705A07de02aADF98CE31F20A5754b",
-    "enclaveSigner": "0xe8E5AAa3d8c705A07de02aADF98CE31F20A5754b",
+    "enclaveSigner": "0x4a62316623ad457F02cDC5D997deD67a383EC569",
+    "collateralAsset": "USDC (MockUSDC, 6 decimals)",
     "genesisRoot": "0x0000000000000000000000000000000000000000000000000000000000000000",
     "livenessBlocks": 7200,
     "challengeBlocks": 300,
     "challengeBondWei": "10000000000000000"
-  }
+  },
+  "supersededDeploys": [
+    {
+      "note": "2026-06-28 USDC pre-hardening (tvl=balanceOf, no withdrawBond)",
+      "DarkPerpSettlement": "0x0329b356B51944616C47DFfc869F6f8F8e9dB872",
+      "CollateralVault": "0xB8941ED1057F7e881dC4534d2435CBF5d395Ffb6",
+      "MockUSDC": "0x967F498cf759F2CA8a43394a21f6b317A2c0d56c"
+    },
+    {
+      "note": "2026-06-27 native-ETH vault",
+      "DarkPerpSettlement": "0xF82F7676502935c4B86AAD36F405BfF7a3CA65D3",
+      "CollateralVault": "0x4b647D3E5c3Ed0FEE209dD9F00feC957b0157E0c",
+      "MockZkVerifier": "0x1022801D314258c79556C85973260d4F06C35ACB"
+    }
+  ]
 }
