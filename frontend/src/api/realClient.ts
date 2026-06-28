@@ -45,7 +45,7 @@ interface WireHedge {
   marketId: number; symbol: string; inventory: string; hedgeTarget: string; notional: string;
 }
 interface WireL1 {
-  settledRoot: string; batchCount: number; lastTx: string; bondWei: string;
+  settledRoot: string; batchCount: number; lastTx: string; bondUsdc: string; withdrawalsRoot: string;
 }
 
 const B = (s: string): bigint => BigInt(s);
@@ -106,7 +106,8 @@ function parseState(w: WireState): ClientState {
           settledRoot: w.l1.settledRoot,
           batchCount: w.l1.batchCount,
           lastTx: w.l1.lastTx,
-          bondWei: B(w.l1.bondWei),
+          bondUsdc: B(w.l1.bondUsdc),
+          withdrawalsRoot: w.l1.withdrawalsRoot,
         }
       : null,
     attestation: w.attestation,

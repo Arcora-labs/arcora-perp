@@ -170,26 +170,31 @@ no single failure is catastrophic.
   2. **Tier receipts**: make the on-chain-challengeable commitment cover only orders
      the enclave commits to *ordering*, with `accept_order`'s instant ACK as a
      distinct non-slashable acknowledgement. Cost: refines the §2 receipt semantics.
-- **Vault `withdrawalsRoot` must be cumulative (P6).** `CollateralVault.publishWithdrawals`
+- **Vault `withdrawalsRoot` must be cumulative (P6) — NOW WIRED.** `CollateralVault.publishWithdrawals`
   *overwrites* the root each settled batch, so the published root must be the
   cumulative set of all authorized-but-unclaimed withdrawals — not just the new ones
   — or a user who hasn't yet `claim`ed an older withdrawal is stranded when the next
   batch publishes. The mechanism is sound (claims are gated on the proven root, never
-  the operator; double-claim is blocked by `claimed[leaf]`), but the cumulative
-  invariant is a *prover obligation* that isn't enforceable on-chain. It's latent
-  today — withdrawal sets are a `0x0` placeholder — and must hold once they are wired.
-  An on-chain alternative (accept claims against any historical root via a stored
-  accumulator) would remove the prover obligation at the cost of vault state.
-  - **Leaf format must match exactly.** `claim` derives the leaf as
+  the operator; double-claim is blocked by `claimed[leaf]`), and the cumulative
+  invariant is a *prover obligation* not enforceable on-chain. **As of 2026-06-28 this
+  is implemented** in the gateway bridge (`crates/gateway/src/withdrawals.rs` +
+  `main.rs`): each settle it reads `vault.claimed(leaf)` for every pending withdrawal,
+  drops the claimed ones, and rebuilds the root over **every still-unclaimed leaf**,
+  honoring the invariant (the real ZK prover must reproduce exactly this transition).
+  The full deposit → withdraw → cumulative-root → `vault.claim` (USDC) flow is verified
+  live on Base Sepolia. An on-chain alternative (accept claims against any historical
+  root via a stored accumulator) would remove the prover obligation at the cost of
+  vault state; not needed while the bridge maintains the cumulative set.
+  - **Leaf format must match exactly — DONE.** `claim` derives the leaf as
     `keccak256(abi.encodePacked(to, amount, nonce))` (address‖uint256‖uint256, all
-    fixed-width so `encodePacked` is unambiguous). The off-chain withdrawals tree MUST
-    build leaves byte-for-byte identically — same field order, same widths, same
-    *unprefixed* keccak — or every proof fails `verify` and **all** withdrawals strand,
-    independently of the cumulative-root invariant above. (This mirrors
-    `inclusionLeaf`'s "off-chain tree MUST be built over these same leaves" rule for the
-    already-wired `orderedRoot`. Note the withdrawals leaf is *not* `MerkleLeaf`-domain
-    tagged: second-preimage safety here comes from hashing the claimed fields, the same
-    way `inclusionLeaf` does — so the off-chain side must likewise NOT domain-tag it.)
+    fixed-width so `encodePacked` is unambiguous). The off-chain withdrawals tree
+    builds leaves byte-for-byte identically (`withdrawals::withdrawal_leaf` — 20-byte
+    address ‖ 32-byte BE amount ‖ 32-byte BE nonce, *unprefixed* keccak, sorted-pair
+    nodes matching `MerkleLib`), **byte-locked to Solidity by `cast`-derived test
+    vectors** in `crates/gateway/src/withdrawals.rs`. (The withdrawals leaf is *not*
+    `MerkleLeaf`-domain tagged: second-preimage safety here comes from hashing the
+    claimed fields, the same way `inclusionLeaf` does — so the off-chain side likewise
+    does NOT domain-tag it.)
 
 ## Production prerequisites (not yet real in this repo)
 

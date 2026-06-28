@@ -151,14 +151,15 @@ export function HealthPanel() {
             <h3 className="card__title">L1 settlement — Base Sepolia (§3)</h3>
             <div className="summary">
               <Stat label="Batches settled on-chain" value={String(state.l1.batchCount)} tone="pos" />
-              <Stat label="Sequencer bond" value={`${(Number(state.l1.bondWei) / 1e18).toFixed(3)} ETH`} />
+              <Stat label="Sequencer bond" value={`${(Number(state.l1.bondUsdc) / 1e6).toFixed(2)} USDC`} />
             </div>
             <p className="small muted">
               Settled state root{" "}
               <span className="mono">
                 {state.l1.settledRoot.slice(0, 10)}…{state.l1.settledRoot.slice(-6)}
               </span>{" "}
-              advanced on-chain via <code>settleBatch</code>, gated on the bond (audit Q1).{" "}
+              advanced on-chain via <code>settleBatch</code>, gated on a USDC bond scaled to vault
+              TVL (audit Q1).{" "}
               <a
                 className="pos"
                 href={`https://sepolia.basescan.org/tx/${state.l1.lastTx}`}
@@ -167,6 +168,17 @@ export function HealthPanel() {
               >
                 latest tx ↗
               </a>
+              {state.l1.withdrawalsRoot && !/^0x0+$/.test(state.l1.withdrawalsRoot) && (
+                <>
+                  {" "}
+                  Withdrawals root{" "}
+                  <span className="mono">
+                    {state.l1.withdrawalsRoot.slice(0, 10)}…{state.l1.withdrawalsRoot.slice(-6)}
+                  </span>{" "}
+                  is published — users claim <strong className="pos">USDC</strong> from the vault on
+                  Base Sepolia.
+                </>
+              )}
               . Phase 0 uses MockZkVerifier — the real ZK proof replaces it later (§10b).
             </p>
           </div>

@@ -74,7 +74,10 @@ export interface L1Settlement {
   settledRoot: string;
   batchCount: number;
   lastTx: string;
-  bondWei: bigint;
+  /// Sequencer bond in USDC base units (the bond is USDC-denominated, audit Q1).
+  bondUsdc: bigint;
+  /// Cumulative withdrawals root last published to the vault (users claim against it).
+  withdrawalsRoot: string;
 }
 
 /// The verified TEE attestation the enclave identity is bound to — present only

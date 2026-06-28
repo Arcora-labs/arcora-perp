@@ -12,20 +12,22 @@ Branches:
   - `79b29f6` feat(prover): real authenticated witness sealing (measurement-bound key release)
 - Uncommitted (optional to commit): `docs/architecture.html` (the technical doc).
 
-**Live on testnet (2026-06-27):** the L1 settlement stack is deployed to **Base
-Sepolia** (chain 84532) — `DarkPerpSettlement` `0xF82F7676502935c4B86AAD36F405BfF7a3CA65D3`,
-`CollateralVault` `0x4b647D3E5c3Ed0FEE209dD9F00feC957b0157E0c`, `MockZkVerifier`
-`0x1022801D314258c79556C85973260d4F06C35ACB` (deployer 0xe8E5, genesisRoot=0,
-MockZkVerifier — real SP1 verifier before non-testnet). Record:
-`contracts/deployments/base-sepolia.json`. **The gateway now settles on-chain** via
-an opt-in L1 bridge (`crates/gateway/src/l1.rs`): with `L1_SETTLEMENT` +
-`L1_SEQUENCER_KEY` set it posts the sequencer bond once, then advances the on-chain
-`currentStateRoot` to mirror the engine root every 30s (`settleBatch`, gated on the
-bond; proof = the public commitment that MockZkVerifier checks). Verified live on
-Basescan (root advances, batchCount climbs). Remaining L1 half (next): real
-**deposit** (watch vault `Deposit` events → mint notes) and **withdraw** (publish a
-real withdrawals root → `vault.claim`) flows — today deposits are demo-funded and
-`withdrawalsRoot` is the `0x0` placeholder.
+**Live on testnet (2026-06-28) — USDC stack + full deposit/withdraw:** the L1
+settlement stack is deployed to **Base Sepolia** (chain 84532) with **USDC**
+collateral — `DarkPerpSettlement` `0x0329b356B51944616C47DFfc869F6f8F8e9dB872`,
+`CollateralVault` `0xB8941ED1057F7e881dC4534d2435CBF5d395Ffb6`, `MockZkVerifier`
+`0x9C13bD8d2E59d89AcA41aCF1DdFd4E8289e54253`, `MockUSDC`
+`0x967F498cf759F2CA8a43394a21f6b317A2c0d56c` (deployer 0xe8E5, genesisRoot=0,
+enclaveSigner = the real gateway enclave `0x4a62…C569`). Record:
+`contracts/deployments/base-sepolia.json`. **The gateway settles on-chain AND drives
+real USDC deposit/withdraw** via the opt-in L1 bridge (`crates/gateway/src/l1.rs`):
+with `L1_SETTLEMENT/L1_SEQUENCER_KEY/L1_USDC/L1_VAULT` set it keeps the USDC bond
+above the 5%-of-TVL floor, advances `currentStateRoot` every 30s, and publishes a
+**real cumulative withdrawals root**. The earlier "remaining L1 half" is **done**:
+real **deposit** (`POST /v1/accounts/deposit/onchain` verifies a `vault.deposit` tx →
+engine credit) and **withdraw** (engine debit → leaf → cumulative root → `vault.claim`
+releases USDC). The full deposit → withdraw → claim flow is **verified live on Base
+Sepolia**. `withdrawalsRoot` is no longer a `0x0` placeholder.
 
 ## Active goal: **Real TEE** (Milestone C) — turn the 3 trust roots from stand-ins into real
 
@@ -34,13 +36,13 @@ Increments (the plan we set):
 2. ⬜ **Order encryption** — client encrypts the order to the enclave's epoch key (X25519/HPKE, or a Keccak-based scheme consistent with the crate); wire `Order.ciphertext_commit` to a real ciphertext; the enclave decrypts inside. **Buildable locally, no cloud.** ← natural NEXT.
 3. ⬜ **Encrypted append-only order log** (§2). Buildable locally.
 4. ✅ **Attestation verification** — DONE. `crates/attestation` verifies a real Azure TDX DCAP quote (offline, pure-Rust dcap-qvl) + the vTPM measured-boot chain, with real captured fixtures. On-chain `AttestationRegistry` + `MockDcapAttestation`.
-5. 🟡 **Confidential-VM run + real attest** — attestation is now **wired into the running gateway**: with `ATTESTATION_DIR` (+ `ATTESTATION_NOW` for fixtures) it verifies the full Azure TDX + vTPM chain at boot and binds the enclave identity to the real measurement (surfaced in the Health "Enclave attestation" card); else a stub. The remaining piece is the **actual cloud run** — start the gateway inside an **Azure TDX confidential VM** so it verifies its OWN live quote, and back `SealKeyProvider` with real TEE key-release. **Blocked on the Azure TDX quota** (confidential-VM quota = 0; the user must request "Standard DCESv6 Family vCPUs" — see the memory/this doc's provisioning table).
+5. 🟡 **Confidential-VM run + real attest** — attestation is now **wired into the running gateway**: with `ATTESTATION_DIR` (+ `ATTESTATION_NOW` for fixtures) it verifies the full Azure TDX + vTPM chain at boot and binds the enclave identity to the real measurement (surfaced in the Health "Enclave attestation" card); else a stub. The remaining piece is the **actual cloud run** — start the gateway inside an **Azure TDX confidential VM** so it verifies its OWN live quote, and back `SealKeyProvider` with real TEE key-release. **Quota is no longer the blocker (rechecked 2026-06-28):** westeurope has `standardDCEV6Family` (DCesv6) limit 4 + Total Regional vCPUs 4, both unused, and `Standard_DC2es_v6` (2 vCPU) has **no SKU restrictions** → it's deployable now. A self-service headroom increase via `az quota update` is offer-gated (`ResourceNotAvailableForOffer` — needs a portal support ticket or a PAYG upgrade), but isn't needed for a single DC2es_v6. Remaining work is just provisioning the VM (hourly cost — confirm the spend) + installing the gateway + pointing `ATTESTATION_DIR` at its live quote.
 
 ## What the user must provide (and when)
 
 | Need | For | When (blocks) | Rough cost |
 |---|---|---|---|
-| **Azure TDX confidential VM** — subscription + TDX region (eastus2 / westeurope) + `Standard_DC*as_v5` or `EC*as_v5` quota | this goal (#5) | the "run + attest for real" step | ~$100–500/mo |
+| **Azure TDX confidential VM** — quota already sufficient (westeurope DCesv6 = 4 vCPU, DC2es_v6 deployable). Just provision + run; a >4-vCPU headroom increase needs a portal ticket / PAYG upgrade (offer-gated) | this goal (#5) | the "run + attest for real" step | ~$0.10–0.40/hr (DC2es_v6) |
 | SP1/Succinct prover-network key **or** a GPU box | later: real ZK (Milestone A) | when we do real proofs | proof: ¢–$ · GPU: ~$1–3/hr |
 | Sepolia RPC + deployer key + test ETH | later: L1 deploy (Milestone A/B) | Sepolia deploy | free (faucet) |
 | External security audit (ZK + Solidity + Rust) | later: mainnet (Milestone D) | before mainnet | ~$50k–200k+ |
