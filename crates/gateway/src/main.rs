@@ -71,32 +71,39 @@ struct MarketCfg {
     id: u64,
     symbol: &'static str,
     seed: f64,
+    /// Crypto.com instrument for a LIVE price feed (oracle-feed); `None` ⇒ sim walk.
+    feed: Option<&'static str>,
 }
 const MARKETS: &[MarketCfg] = &[
     MarketCfg {
         id: 0,
         symbol: "BTC/USDC",
         seed: 59_575.14,
+        feed: Some("BTC_USDT"),
     },
     MarketCfg {
         id: 1,
         symbol: "ETH/USDC",
         seed: 1_570.61,
+        feed: Some("ETH_USDT"),
     },
     MarketCfg {
         id: 2,
         symbol: "SOL/USDC",
         seed: 66.44,
+        feed: Some("SOL_USDT"),
     },
     MarketCfg {
         id: 3,
         symbol: "HYPE/USDC",
         seed: 63.124,
+        feed: None,
     },
     MarketCfg {
         id: 4,
         symbol: "LIT/USDC",
         seed: 1.10,
+        feed: None,
     },
 ];
 
@@ -454,6 +461,8 @@ struct Mkt {
     reference_price: i128,
     px: i128,
     live: bool,
+    /// Crypto.com instrument for a live feed (`None` ⇒ sim walk only).
+    feed: Option<&'static str>,
 }
 struct GwOrder {
     id: String,
@@ -647,6 +656,7 @@ impl Gw {
                 reference_price: px,
                 px,
                 live: false,
+                feed: cfg.feed,
             });
         }
         // capitalize the insurance fund so the backstop is visible from genesis; it
@@ -1340,6 +1350,16 @@ impl Gw {
         Ok(clawed)
     }
 
+    /// Apply a LIVE oracle price (fetched from the real feed) to a market: update the
+    /// mark, flag it `live` (the UI shows "live oracle"), and set the engine oracle.
+    fn apply_real_oracle(&mut self, market: u64, transcript: OracleTranscript) {
+        if let Some(m) = self.mkts.iter_mut().find(|m| m.id == market) {
+            m.px = transcript.price;
+            m.live = true;
+        }
+        self.seq.set_oracle(market, transcript);
+    }
+
     fn rand_unit(&mut self) -> f64 {
         // xorshift64
         let mut x = self.rng;
@@ -1638,8 +1658,16 @@ impl Gw {
     fn tick(&mut self) -> (Vec<WEvent>, Vec<String>) {
         self.tick += 1;
         let now = now_ms();
-        // 1) walk oracles
+        // 1) oracle update. Markets with a LIVE feed (real Crypto.com price, set by the
+        //    oracle task) are left untouched here — we only re-stamp their oracle with a
+        //    fresh timestamp so the §8 freshness gate keeps passing between fetches.
+        //    Feed-less markets keep the simulated random walk.
         for i in 0..self.mkts.len() {
+            if self.mkts[i].live {
+                let px = self.mkts[i].px;
+                self.seq.set_oracle(self.mkts[i].id, oracle_of(px, now));
+                continue;
+            }
             let m = &self.mkts[i];
             let p = m.px;
             let baseline = m.reference_price;
@@ -2902,6 +2930,35 @@ async fn main() {
                 // fan out per-account events to the authenticated /v1/ws subscribers
                 for ev in acct_events {
                     let _ = app.events_tx.send(ev);
+                }
+            }
+        });
+    }
+
+    // live oracle: pull real prices for feed-backed markets from Crypto.com every 5s
+    // and feed them into the engine (markets without a feed keep the sim walk).
+    {
+        let app = app.clone();
+        tokio::spawn(async move {
+            let feeds: Vec<(u64, &'static str)> = {
+                let gw = app.gw.lock().await;
+                gw.mkts.iter().filter_map(|m| m.feed.map(|f| (m.id, f))).collect()
+            };
+            if feeds.is_empty() {
+                return;
+            }
+            let mut iv = tokio::time::interval(Duration::from_secs(5));
+            loop {
+                iv.tick().await;
+                for &(id, inst) in &feeds {
+                    let now = now_ms();
+                    match tokio::task::spawn_blocking(move || oracle_feed::fetch_transcript(inst, now)).await {
+                        Ok(Ok(t)) => {
+                            app.gw.lock().await.apply_real_oracle(id, t);
+                        }
+                        Ok(Err(e)) => eprintln!("[oracle] {inst} fetch failed: {e}"),
+                        Err(e) => eprintln!("[oracle] {inst} join: {e}"),
+                    }
                 }
             }
         });

@@ -723,6 +723,7 @@ dependencies = [
  "getrandom",
  "k256",
  "note-archive",
+ "oracle-feed",
  "perp-core",
  "sequencer",
  "serde",
