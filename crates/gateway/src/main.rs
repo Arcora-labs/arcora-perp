@@ -37,7 +37,9 @@ use perp_core::state::Mode;
 use sequencer::{adl_tag, adl_tag_key, EnclaveIdentity, SealedBatch, Sequencer};
 
 mod l1;
+mod withdrawals;
 use l1::{L1Status, L1};
+use withdrawals::{merkle_proof, merkle_root, Withdrawal};
 
 /// 0x-prefixed lowercase hex of a 32-byte digest (for L1 calldata + display).
 fn hex32(d: &Digest) -> String {
@@ -62,7 +64,6 @@ const TAKER_FEE_BPS: i128 = 10; // 0.10% taker fee
 const MAKER_REBATE_BPS: i128 = 4; // 0.04% maker rebate → 0.06% net to insurance
 const INSURANCE_SEED_USD: i128 = 25_000; // visible starting backstop; grows with volume
 const L1_SETTLE_SECS: u64 = 30; // how often the L1 bridge advances the on-chain root
-const L1_BOND_WEI: &str = "5000000000000000"; // 0.005 ETH sequencer bond posted once
 const V1_ORDER_RATE: u32 = 10; // max orders/sec per external account
 const V1_REGISTER_RATE: u32 = 30; // max account registrations/min per IP
 
@@ -72,15 +73,38 @@ struct MarketCfg {
     seed: f64,
 }
 const MARKETS: &[MarketCfg] = &[
-    MarketCfg { id: 0, symbol: "BTC/USDC", seed: 59_575.14 },
-    MarketCfg { id: 1, symbol: "ETH/USDC", seed: 1_570.61 },
-    MarketCfg { id: 2, symbol: "SOL/USDC", seed: 66.44 },
-    MarketCfg { id: 3, symbol: "HYPE/USDC", seed: 63.124 },
-    MarketCfg { id: 4, symbol: "LIT/USDC", seed: 1.10 },
+    MarketCfg {
+        id: 0,
+        symbol: "BTC/USDC",
+        seed: 59_575.14,
+    },
+    MarketCfg {
+        id: 1,
+        symbol: "ETH/USDC",
+        seed: 1_570.61,
+    },
+    MarketCfg {
+        id: 2,
+        symbol: "SOL/USDC",
+        seed: 66.44,
+    },
+    MarketCfg {
+        id: 3,
+        symbol: "HYPE/USDC",
+        seed: 63.124,
+    },
+    MarketCfg {
+        id: 4,
+        symbol: "LIT/USDC",
+        seed: 1.10,
+    },
 ];
 
 fn now_ms() -> u64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u64
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64
 }
 /// 32 cryptographically secure random bytes (API keys + wallet seeds) from the OS
 /// CSPRNG — never the demo's predictable xorshift walk.
@@ -155,10 +179,12 @@ fn attest_from_env() -> Option<Attested> {
         .and_then(|s| s.parse::<u64>().ok())
         .unwrap_or_else(|| now_ms() / 1000);
     let run = || -> Result<Attested, String> {
-        let collateral = Collateral::from_json(&collateral_json).map_err(|e| format!("collateral: {e:?}"))?;
-        let td = verify_tdx_quote(&quote, &collateral, now).map_err(|e| format!("tdx quote: {e:?}"))?;
-        let report =
-            verify_azure_vtpm(&td, &hcl, &ak_msg, &ak_sig, &pcrs).map_err(|e| format!("vtpm chain: {e:?}"))?;
+        let collateral =
+            Collateral::from_json(&collateral_json).map_err(|e| format!("collateral: {e:?}"))?;
+        let td =
+            verify_tdx_quote(&quote, &collateral, now).map_err(|e| format!("tdx quote: {e:?}"))?;
+        let report = verify_azure_vtpm(&td, &hcl, &ak_msg, &ak_sig, &pcrs)
+            .map_err(|e| format!("vtpm chain: {e:?}"))?;
         Ok(Attested {
             measurement: azure_app_measurement(&td, &report),
             tcb: format!("{:?}", td.tcb_status),
@@ -284,7 +310,10 @@ struct WL1 {
     settled_root: String,
     batch_count: u64,
     last_tx: String,
-    bond_wei: String,
+    /// Sequencer bond in USDC base units (USDC-denominated, audit Q1).
+    bond_usdc: String,
+    /// Cumulative withdrawals root last published to the vault (users claim against it).
+    withdrawals_root: String,
 }
 /// The verified TEE attestation the enclave is bound to — present only when the
 /// gateway boots with a real Azure TDX + vTPM attestation (else null = stub).
@@ -386,6 +415,14 @@ struct OrderReq {
     tif: String,
     #[serde(rename = "reduceOnly")]
     reduce_only: bool,
+    /// Caller-signed accounts only: the order nonce the caller signed over (must
+    /// strictly increase). Ignored for Phase-0 server-custody accounts.
+    #[serde(default)]
+    nonce: Option<u64>,
+    /// Caller-signed accounts only: 65-byte secp256k1 signature (r‖s‖v) over the
+    /// order hash, recovering to the account's registered signer.
+    #[serde(default)]
+    signature: Option<String>,
 }
 #[derive(Deserialize)]
 struct AmountReq {
@@ -444,6 +481,17 @@ struct Account {
     /// Per-account order rate limit (a sliding 1s window).
     last_order_ms: u64,
     orders_this_sec: u32,
+    /// The external EOA the account funds from. Bound once; an on-chain USDC
+    /// `Deposit(from, amount)` is credited only when `from` matches this (so one
+    /// account can't claim another's deposit). `None` until bound.
+    deposit_address: Option<[u8; 20]>,
+    /// Caller-signed mode: if set, every order MUST carry a secp256k1 signature over
+    /// the order hash that recovers to this address (the caller's own key), so a
+    /// leaked API key alone cannot place orders. `None` ⇒ Phase-0 server custody.
+    signer: Option<[u8; 20]>,
+    /// Strictly-increasing nonce of the last accepted caller-signed order (replay
+    /// protection): a new signed order must carry a higher nonce than this.
+    last_signed_nonce: u64,
 }
 
 struct Gw {
@@ -464,6 +512,18 @@ struct Gw {
     user_adl_clawed: i128,
     /// Registered external `/v1` API accounts, keyed by their secret API key.
     accounts: std::collections::BTreeMap<[u8; 32], Account>,
+    /// Authorized-but-unclaimed withdrawals (§3). The L1 bridge prunes the ones the
+    /// vault already paid out and republishes the cumulative root every settle, so a
+    /// user can claim USDC on Base Sepolia via `vault.claim(to, amount, nonce, proof)`.
+    pending_withdrawals: Vec<Withdrawal>,
+    /// Monotonic nonce making each withdrawal leaf unique.
+    next_withdraw_nonce: u64,
+    /// Merkle proofs for the most recently PUBLISHED cumulative withdrawals root,
+    /// keyed by leaf — what a user needs to claim. A withdrawal not yet in here is
+    /// pending its first on-chain publish.
+    withdraw_proofs: std::collections::BTreeMap<[u8; 32], Vec<[u8; 32]>>,
+    /// On-chain deposit tx hashes already credited (idempotency / replay guard).
+    processed_deposit_txs: std::collections::BTreeSet<String>,
     /// Manifest hash of the most recently sealed batch — published to L1 as the
     /// settled batch's manifest when the L1 bridge is active.
     last_manifest: Digest,
@@ -489,9 +549,39 @@ fn parse_tif(s: &str) -> TimeInForce {
         _ => TimeInForce::Ioc,
     }
 }
-fn mk_order(owner: PubKey, market_id: u64, side: Side, size: i128, price: i128, nonce: u64, tif: TimeInForce) -> Order {
-    let mut cc = [0u8; 32];
-    cc[..8].copy_from_slice(&nonce.to_le_bytes());
+fn mk_order(
+    owner: PubKey,
+    market_id: u64,
+    side: Side,
+    size: i128,
+    price: i128,
+    nonce: u64,
+    tif: TimeInForce,
+) -> Order {
+    // Bind the economically-meaningful trade terms into `ciphertext_commit`. Because
+    // `Order::order_hash` hashes `ciphertext_commit`, this makes the order hash commit
+    // to side/size/price/tif/market/nonce — so a caller-signed account's signature
+    // (taken over the order hash) covers the ACTUAL trade: mutating any term in the
+    // request invalidates the signature (review fix, was nonce-only before).
+    use sha3::Digest as _;
+    let side_b: u8 = match side {
+        Side::Buy => 1,
+        Side::Sell => 2,
+    };
+    let tif_b: u8 = match tif {
+        TimeInForce::Gtc => 1,
+        TimeInForce::Ioc => 2,
+        TimeInForce::Fok => 3,
+        TimeInForce::PostOnly => 4,
+    };
+    let mut hh = sha3::Keccak256::new();
+    hh.update([side_b]);
+    hh.update(size.to_le_bytes());
+    hh.update(price.to_le_bytes());
+    hh.update([tif_b]);
+    hh.update(market_id.to_le_bytes());
+    hh.update(nonce.to_le_bytes());
+    let cc: [u8; 32] = hh.finalize().into();
     Order {
         owner,
         market_id,
@@ -511,9 +601,16 @@ impl Gw {
         // Bind the enclave identity to a REAL verified TEE measurement when an
         // attestation is configured (Azure TDX + vTPM); else a stub for the demo.
         let attestation = attest_from_env();
-        let measurement = attestation.as_ref().map(|a| a.measurement).unwrap_or([0xABu8; 32]);
+        let measurement = attestation
+            .as_ref()
+            .map(|a| a.measurement)
+            .unwrap_or([0xABu8; 32]);
         if let Some(a) = &attestation {
-            println!("[attest] enclave bound to verified measurement {} (TCB {})", hex0x(&a.measurement), a.tcb);
+            println!(
+                "[attest] enclave bound to verified measurement {} (TCB {})",
+                hex0x(&a.measurement),
+                a.tcb
+            );
         }
         let enclave = EnclaveIdentity::from_seed([7u8; 32], 1, measurement);
         let mut seq = Sequencer::new(enclave, 24);
@@ -528,14 +625,36 @@ impl Gw {
             let px = usd(cfg.seed);
             seq.set_oracle(cfg.id, oracle_of(px, now));
             // fund the market-maker (deep) and the user (≈$5k) into each market bucket
-            fund(&mut seq, &mut archive, &mm, cfg.id, MM_FUND_PER_MARKET, 0x40 + i as u8);
-            fund(&mut seq, &mut archive, &user, cfg.id, USER_FUND_PER_MARKET, 0x10 + i as u8);
-            mkts.push(Mkt { id: cfg.id, symbol: cfg.symbol, reference_price: px, px, live: false });
+            fund(
+                &mut seq,
+                &mut archive,
+                &mm,
+                cfg.id,
+                MM_FUND_PER_MARKET,
+                0x40 + i as u8,
+            );
+            fund(
+                &mut seq,
+                &mut archive,
+                &user,
+                cfg.id,
+                USER_FUND_PER_MARKET,
+                0x10 + i as u8,
+            );
+            mkts.push(Mkt {
+                id: cfg.id,
+                symbol: cfg.symbol,
+                reference_price: px,
+                px,
+                live: false,
+            });
         }
         // capitalize the insurance fund so the backstop is visible from genesis; it
         // then grows on its own from the per-fill insurance cut (audit Q3/Q4).
-        seq.apply(&BatchOp::SeedInsurance { amount: INSURANCE_SEED_USD * QUOTE_SCALE })
-            .expect("seed insurance fund");
+        seq.apply(&BatchOp::SeedInsurance {
+            amount: INSURANCE_SEED_USD * QUOTE_SCALE,
+        })
+        .expect("seed insurance fund");
 
         Gw {
             seq,
@@ -552,6 +671,10 @@ impl Gw {
             pending_settle: Vec::new(),
             user_adl_clawed: 0,
             accounts: std::collections::BTreeMap::new(),
+            pending_withdrawals: Vec::new(),
+            next_withdraw_nonce: 1,
+            withdraw_proofs: std::collections::BTreeMap::new(),
+            processed_deposit_txs: std::collections::BTreeSet::new(),
             last_manifest: [0u8; 32],
             l1_status: None,
             attestation,
@@ -567,7 +690,7 @@ impl Gw {
     /// the clear, so a memory disclosure already exposes the real custody secret;
     /// hashing the API key for storage would be inconsistent with that. The durable
     /// fix is moving custody inside the enclave (the TEE milestone), not key hashing.
-    fn register_account(&mut self) -> ([u8; 32], PubKey) {
+    fn register_account(&mut self, signer: Option<[u8; 20]>) -> ([u8; 32], PubKey) {
         let seed = csprng_bytes32();
         let api_key = csprng_bytes32();
         let wallet = Wallet::from_seed(seed);
@@ -581,9 +704,195 @@ impl Gw {
                 deposit_counter: 0,
                 last_order_ms: 0,
                 orders_this_sec: 0,
+                deposit_address: None,
+                signer,
+                last_signed_nonce: 0,
             },
         );
         (api_key, owner)
+    }
+
+    /// Bind the external EOA an account funds from (so its on-chain USDC deposits can
+    /// be attributed). Requires a secp256k1 signature **recovering to `addr`** over a
+    /// digest binding this account's owner — so only the controller of `addr` can bind
+    /// it. This closes a front-run where an attacker binds a victim's public deposit
+    /// EOA and steals the credit (review fix). An address binds to at most one account.
+    fn account_set_deposit_address(
+        &mut self,
+        key: &[u8; 32],
+        addr: [u8; 20],
+        sig: &[u8; 65],
+    ) -> Result<(), String> {
+        let owner = self
+            .accounts
+            .get(key)
+            .ok_or("Unknown account.")?
+            .wallet
+            .owner;
+        let digest = deposit_bind_digest(&owner, &addr);
+        match recover_eth_address(&digest, sig) {
+            Some(rec) if rec == addr => {}
+            _ => {
+                return Err(
+                    "deposit-address proof: signature must recover to the address being bound"
+                        .into(),
+                )
+            }
+        }
+        if self
+            .accounts
+            .iter()
+            .any(|(k, a)| k != key && a.deposit_address == Some(addr))
+        {
+            return Err("that address is already bound to another account".into());
+        }
+        self.accounts.get_mut(key).unwrap().deposit_address = Some(addr);
+        Ok(())
+    }
+
+    /// Credit a CONFIRMED on-chain USDC deposit to an account's market bucket. The
+    /// caller (handler) has already read `(from, amount)` from the vault's `Deposit`
+    /// log via the L1 bridge; here we enforce the binding (`from` == the account's
+    /// bound address), dedup by tx hash, and fund the engine. USDC base units map 1:1
+    /// to quote units (both 1e6), so `amount` credits directly.
+    fn account_confirm_deposit(
+        &mut self,
+        key: &[u8; 32],
+        from: [u8; 20],
+        amount: u128,
+        tx: &str,
+        market: u64,
+    ) -> Result<i128, String> {
+        if self.mkt(market).is_none() {
+            return Err("Unknown market.".into());
+        }
+        if self.processed_deposit_txs.contains(tx) {
+            return Err("This deposit tx was already credited.".into());
+        }
+        let (wallet, bound) = {
+            let a = self.accounts.get(key).ok_or("Unknown account.")?;
+            (a.wallet, a.deposit_address)
+        };
+        match bound {
+            Some(b) if b == from => {}
+            Some(_) => {
+                return Err(
+                    "Deposit `from` does not match this account's bound deposit address.".into(),
+                )
+            }
+            None => {
+                return Err(
+                    "Bind a deposit address first (POST /v1/accounts/deposit/address).".into(),
+                )
+            }
+        }
+        // checked u128 → i128 (a value above i128::MAX would sign-flip negative and
+        // then panic inside the engine's non-positive-amount guard — review fix).
+        let amt: i128 = amount
+            .try_into()
+            .map_err(|_| "deposit amount too large".to_string())?;
+        if amt <= 0 {
+            return Err("deposit amount must be positive".into());
+        }
+        let dc = self.accounts.get(key).unwrap().deposit_counter;
+        let mut blind = [0xB0u8; 32];
+        blind[..8].copy_from_slice(&dc.to_le_bytes());
+        fund_amount(
+            &mut self.seq,
+            &mut self.archive,
+            &wallet,
+            market,
+            amt,
+            blind,
+        );
+        let a = self.accounts.get_mut(key).unwrap();
+        a.deposit_counter += 1;
+        self.processed_deposit_txs.insert(tx.to_string());
+        Ok(amt)
+    }
+
+    /// Withdraw `amount` (quote units = USDC base units) from an account's market
+    /// bucket to the L1 address `to`: debit the engine (Unbind + burn the note, so the
+    /// off-chain balance really drops and can't be double-withdrawn) and record an
+    /// authorized withdrawal leaf. On the next L1 settle the cumulative root is
+    /// published and the user can `vault.claim` the USDC on Base Sepolia (§3).
+    fn account_withdraw(
+        &mut self,
+        key: &[u8; 32],
+        market: u64,
+        amount: i128,
+        to: [u8; 20],
+    ) -> Result<Withdrawal, String> {
+        if amount <= 0 {
+            return Err("Amount must be positive.".into());
+        }
+        if self.mkt(market).is_none() {
+            return Err("Unknown market.".into());
+        }
+        let wallet = self.accounts.get(key).ok_or("Unknown account.")?.wallet;
+        if amount > self.market_free_of(&wallet.owner, market) {
+            return Err(
+                "Not withdrawable: amount exceeds the SETTLED balance in this market (§3).".into(),
+            );
+        }
+        let nonce = self.next_withdraw_nonce;
+        let now = now_ms();
+        let oracle = oracle_of(self.px_of(market), now);
+        let mut blind = [0xD0u8; 32];
+        blind[..8].copy_from_slice(&nonce.to_le_bytes());
+        self.seq
+            .apply(&BatchOp::Unbind {
+                owner: wallet.owner,
+                market_id: market,
+                amount,
+                blinding: blind,
+                oracle,
+                now_ms: now,
+            })
+            .map_err(|e| format!("withdraw unbind failed: {e:?}"))?;
+        let note = Note::new(wallet.owner, 0, amount, blind);
+        let cm = note.commitment::<Keccak256>();
+        self.seq
+            .apply(&BatchOp::Withdraw {
+                note_commitment: cm,
+                spend_key: wallet.spend_key,
+            })
+            .map_err(|e| format!("withdraw burn failed: {e:?}"))?;
+        self.next_withdraw_nonce += 1;
+        let w = Withdrawal {
+            owner: wallet.owner,
+            to,
+            amount: amount as u128,
+            nonce,
+        };
+        self.pending_withdrawals.push(w.clone());
+        Ok(w)
+    }
+
+    /// An account's withdrawals with the claim data: each carries its leaf and, once
+    /// the cumulative root has been published on-chain, the Merkle `proof` to call
+    /// `vault.claim(to, amount, nonce, proof)`. `claimable=false` means it is recorded
+    /// but awaiting its first on-chain publish (the next settle).
+    fn v1_withdrawals_json(&self, key: &[u8; 32]) -> Option<serde_json::Value> {
+        let owner = self.accounts.get(key)?.wallet.owner;
+        let items: Vec<_> = self
+            .pending_withdrawals
+            .iter()
+            .filter(|w| w.owner == owner)
+            .map(|w| {
+                let leaf = w.leaf();
+                let proof = self.withdraw_proofs.get(&leaf);
+                serde_json::json!({
+                    "to": hex0x(&w.to),
+                    "amount": w.amount.to_string(),
+                    "nonce": w.nonce,
+                    "leaf": hex0x(&leaf),
+                    "claimable": proof.is_some(),
+                    "proof": proof.map(|p| p.iter().map(|n| hex0x(n)).collect::<Vec<_>>()).unwrap_or_default(),
+                })
+            })
+            .collect();
+        Some(serde_json::json!({ "withdrawals": items }))
     }
 
     /// Per-owner free margin in a market (the multi-tenant analog of `market_free`).
@@ -625,7 +934,14 @@ impl Gw {
         };
         let mut blind = [0xA0u8; 32];
         blind[..8].copy_from_slice(&dc.to_le_bytes());
-        fund_amount(&mut self.seq, &mut self.archive, &wallet, market, amount, blind);
+        fund_amount(
+            &mut self.seq,
+            &mut self.archive,
+            &wallet,
+            market,
+            amount,
+            blind,
+        );
         self.accounts.get_mut(key).unwrap().deposit_counter += 1;
         Ok(())
     }
@@ -640,17 +956,32 @@ impl Gw {
         if self.mkt(req.market_id).is_none() {
             return Err("Unknown market.".into());
         }
-        let owner = self.accounts.get(key).ok_or("Unknown account.")?.wallet.owner;
+        let owner = self
+            .accounts
+            .get(key)
+            .ok_or("Unknown account.")?
+            .wallet
+            .owner;
         let limit: i128 = req.limit_price.parse().unwrap_or(0);
-        let side = if req.side == "Buy" { Side::Buy } else { Side::Sell };
+        let side = if req.side == "Buy" {
+            Side::Buy
+        } else {
+            Side::Sell
+        };
         let opening = self.is_opening_of(&owner, req.market_id, &req.side, size);
         if self.seq.state.mode == Mode::CloseOnly && opening {
-            return Err("System is in close-only mode — opening/increasing is blocked (§6).".into());
+            return Err(
+                "System is in close-only mode — opening/increasing is blocked (§6).".into(),
+            );
         }
         if req.reduce_only && opening {
             return Err("Reduce-only order would open or increase a position — rejected.".into());
         }
-        let px = if limit > 0 { limit } else { self.px_of(req.market_id) };
+        let px = if limit > 0 {
+            limit
+        } else {
+            self.px_of(req.market_id)
+        };
         if opening {
             let need = required_margin(size, px);
             if need > self.market_free_of(&owner, req.market_id) {
@@ -663,17 +994,55 @@ impl Gw {
         // per-account sliding-1s rate limit
         if now_rate.saturating_sub(acct.last_order_ms) < 1000 {
             if acct.orders_this_sec >= V1_ORDER_RATE {
-                return Err(format!("RATE_LIMIT: exceeded {V1_ORDER_RATE} orders/sec for this account"));
+                return Err(format!(
+                    "RATE_LIMIT: exceeded {V1_ORDER_RATE} orders/sec for this account"
+                ));
             }
             acct.orders_this_sec += 1;
         } else {
             acct.last_order_ms = now_rate;
             acct.orders_this_sec = 1;
         }
-        let nonce = acct.nonce;
-        acct.nonce += 1;
+        // nonce selection + (caller-signed accounts) signature verification over the
+        // order hash. A caller-signed account requires the caller's own secp256k1
+        // signature on every order, so a leaked API key alone cannot trade.
+        let signer = acct.signer;
+        let nonce = match signer {
+            Some(_) => {
+                // the signed order hash binds the price, so caller-signed orders must
+                // carry a limit (the gateway-filled market price can't be pre-signed).
+                if limit <= 0 {
+                    return Err("caller-signed orders must specify a limit price (market price is not pre-signable)".into());
+                }
+                let n = match req.nonce {
+                    Some(n) => n,
+                    None => return Err("caller-signed account: `nonce` is required".into()),
+                };
+                if n <= acct.last_signed_nonce {
+                    return Err("nonce must strictly increase (replay protection)".into());
+                }
+                n
+            }
+            None => acct.nonce,
+        };
         let order = mk_order(owner, req.market_id, side, size, px, nonce, tif);
         let oh = order.order_hash::<Keccak256>();
+        if let Some(expected) = signer {
+            let sig_hex = match req.signature.as_deref() {
+                Some(s) => s,
+                None => return Err("caller-signed account: `signature` is required".into()),
+            };
+            let sig =
+                parse_hex65(sig_hex).ok_or("bad signature (expected 65-byte 0x hex r‖s‖v)")?;
+            let recovered =
+                recover_eth_address(&oh, &sig).ok_or("signature did not recover a key")?;
+            if recovered != expected {
+                return Err("signature does not match the account's registered signer".into());
+            }
+            acct.last_signed_nonce = nonce;
+        } else {
+            acct.nonce += 1;
+        }
         let now = now_ms();
         let signed = self.seq.accept_order(&order, now);
         let r = &signed.receipt;
@@ -719,7 +1088,9 @@ impl Gw {
             .position(|o| o.id == order_id)
             .ok_or("Order not found.")?;
         if acct.orders[idx].sealed || acct.orders[idx].last_finality != "ACCEPTED" {
-            return Err("Only an ACCEPTED order can be cancelled (matched/settled are binding).".into());
+            return Err(
+                "Only an ACCEPTED order can be cancelled (matched/settled are binding).".into(),
+            );
         }
         // ACCEPTED orders have not been sealed into a batch yet (not in the matcher
         // book), so dropping them from tracking is enough — they are never submitted.
@@ -738,7 +1109,12 @@ impl Gw {
             .map(|n| n.amount)
             .sum();
         for m in &self.mkts {
-            let coll = self.seq.state.position(owner, m.id).map(|p| p.collateral).unwrap_or(0);
+            let coll = self
+                .seq
+                .state
+                .position(owner, m.id)
+                .map(|p| p.collateral)
+                .unwrap_or(0);
             let locked = match self.seq.state.position(owner, m.id) {
                 Some(p) if p.size != 0 => required_margin(p.size.abs(), m.px),
                 _ => 0,
@@ -808,7 +1184,11 @@ impl Gw {
         Some(serde_json::json!({ "positions": self.positions_json_of(&a.wallet.owner) }))
     }
     fn v1_markets_json(&self) -> serde_json::Value {
-        let ms: Vec<_> = self.mkts.iter().map(|m| serde_json::to_value(self.wmarket(m)).unwrap()).collect();
+        let ms: Vec<_> = self
+            .mkts
+            .iter()
+            .map(|m| serde_json::to_value(self.wmarket(m)).unwrap())
+            .collect();
         serde_json::json!({ "markets": ms })
     }
     fn v1_orderbook_json(&self, market: u64) -> Option<serde_json::Value> {
@@ -893,7 +1273,14 @@ impl Gw {
         // 1. Make the user a clear winner: ensure margin for a 1 BTC long, then open.
         let user = self.user;
         if self.market_free(market) < required_margin(SIZE_SCALE, px) {
-            fund(&mut self.seq, &mut self.archive, &user, market, 30_000, 0x71u8.wrapping_add(bn));
+            fund(
+                &mut self.seq,
+                &mut self.archive,
+                &user,
+                market,
+                30_000,
+                0x71u8.wrapping_add(bn),
+            );
         }
         // 2. An under-funded victim shorts the other side — bound to go bad-debt. A
         //    fresh victim per call (owner derived from the batch id) avoids reuse.
@@ -970,10 +1357,20 @@ impl Gw {
         self.mkt(id).map(|m| m.px).unwrap_or(0)
     }
     fn user_collateral(&self, market: u64) -> i128 {
-        self.seq.state.position(&self.user.owner, market).map(|p| p.collateral).unwrap_or(0)
+        self.seq
+            .state
+            .position(&self.user.owner, market)
+            .map(|p| p.collateral)
+            .unwrap_or(0)
     }
     fn user_notes(&self) -> i128 {
-        self.seq.state.notes.values().filter(|n| n.owner == self.user.owner).map(|n| n.amount).sum()
+        self.seq
+            .state
+            .notes
+            .values()
+            .filter(|n| n.owner == self.user.owner)
+            .map(|n| n.amount)
+            .sum()
     }
     /// Free / withdrawable balance: per-market funded collateral minus the margin
     /// locked by each open position, plus any un-funded notes.
@@ -998,7 +1395,11 @@ impl Gw {
         (coll - locked).max(0)
     }
     fn user_signed_size(&self, market: u64) -> i128 {
-        self.seq.state.position(&self.user.owner, market).map(|p| p.size).unwrap_or(0)
+        self.seq
+            .state
+            .position(&self.user.owner, market)
+            .map(|p| p.size)
+            .unwrap_or(0)
     }
     /// Mock-parity "opening": opens from flat, increases same-direction, or flips.
     fn is_opening(&self, market: u64, side: &str, size: i128) -> bool {
@@ -1031,18 +1432,28 @@ impl Gw {
             return Err("Size must be positive.".into());
         }
         let limit: i128 = req.limit_price.parse().unwrap_or(0);
-        let side = if req.side == "Buy" { Side::Buy } else { Side::Sell };
+        let side = if req.side == "Buy" {
+            Side::Buy
+        } else {
+            Side::Sell
+        };
         if self.mkt(req.market_id).is_none() {
             return Err("Unknown market.".into());
         }
         let opening = self.is_opening(req.market_id, &req.side, size);
         if self.seq.state.mode == Mode::CloseOnly && opening {
-            return Err("System is in close-only mode — opening/increasing is blocked (§6).".into());
+            return Err(
+                "System is in close-only mode — opening/increasing is blocked (§6).".into(),
+            );
         }
         if req.reduce_only && opening {
             return Err("Reduce-only order would open or increase a position — rejected.".into());
         }
-        let px = if limit > 0 { limit } else { self.px_of(req.market_id) };
+        let px = if limit > 0 {
+            limit
+        } else {
+            self.px_of(req.market_id)
+        };
         if opening {
             let need = required_margin(size, px);
             if need > self.market_free(req.market_id) {
@@ -1053,7 +1464,15 @@ impl Gw {
         let nonce = self.user_nonce;
         self.user_nonce += 1;
         // user is the taker (Ioc) — crosses the resting market-maker maker each seal
-        let order = mk_order(self.user.owner, req.market_id, side, size, px, nonce, TimeInForce::Ioc);
+        let order = mk_order(
+            self.user.owner,
+            req.market_id,
+            side,
+            size,
+            px,
+            nonce,
+            TimeInForce::Ioc,
+        );
         let oh = order.order_hash::<Keccak256>();
         let now = now_ms();
         let signed = self.seq.accept_order(&order, now);
@@ -1101,7 +1520,14 @@ impl Gw {
             return Err("Amount must be positive.".into());
         }
         let blind = (0x80 + (self.tick % 60)) as u8;
-        fund_amount(&mut self.seq, &mut self.archive, &self.user, self.selected, amount, [blind; 32]);
+        fund_amount(
+            &mut self.seq,
+            &mut self.archive,
+            &self.user,
+            self.selected,
+            amount,
+            [blind; 32],
+        );
         Ok(())
     }
 
@@ -1110,7 +1536,9 @@ impl Gw {
             return Err("Amount must be positive.".into());
         }
         if amount > self.market_free(self.selected) {
-            return Err("Not withdrawable: amount exceeds the SETTLED balance in this market (§3).".into());
+            return Err(
+                "Not withdrawable: amount exceeds the SETTLED balance in this market (§3).".into(),
+            );
         }
         let now = now_ms();
         let oracle = oracle_of(self.px_of(self.selected), now);
@@ -1128,7 +1556,10 @@ impl Gw {
         let note = Note::new(self.user.owner, 0, amount, blind);
         let cm = note.commitment::<Keccak256>();
         self.seq
-            .apply(&BatchOp::Withdraw { note_commitment: cm, spend_key: self.user.spend_key })
+            .apply(&BatchOp::Withdraw {
+                note_commitment: cm,
+                spend_key: self.user.spend_key,
+            })
             .map_err(|e| format!("withdraw burn failed: {e:?}"))?;
         Ok(())
     }
@@ -1145,17 +1576,29 @@ impl Gw {
             limit_price: "0".into(),
             tif: "Ioc".into(),
             reduce_only: true,
+            nonce: None,
+            signature: None,
         };
         self.place_order(&req)
     }
 
     fn cancel(&mut self, order_id: &str) -> Result<Vec<WEvent>, String> {
-        let idx = self.orders.iter().position(|o| o.id == order_id).ok_or("Order not found.")?;
+        let idx = self
+            .orders
+            .iter()
+            .position(|o| o.id == order_id)
+            .ok_or("Order not found.")?;
         if self.orders[idx].sealed || self.orders[idx].last_finality != "ACCEPTED" {
-            return Err("Only an ACCEPTED order can be cancelled (matched/settled are binding).".into());
+            return Err(
+                "Only an ACCEPTED order can be cancelled (matched/settled are binding).".into(),
+            );
         }
         self.orders.remove(idx);
-        Ok(vec![WEvent { order_id: order_id.to_string(), kind: "CANCELLED".into(), message: "Order cancelled before matching".into() }])
+        Ok(vec![WEvent {
+            order_id: order_id.to_string(),
+            kind: "CANCELLED".into(),
+            message: "Order cancelled before matching".into(),
+        }])
     }
 
     fn set_mode(&mut self, mode: &str) {
@@ -1211,8 +1654,13 @@ impl Gw {
         //    pending orders. Ioc/Fok orders are takers and get a resting MM counter
         //    (guaranteed fill); Gtc/PostOnly orders rest in the matcher book so a
         //    market-maker bot can quote and be crossed by later takers.
-        let pending: Vec<usize> =
-            self.orders.iter().enumerate().filter(|(_, o)| !o.sealed).map(|(i, _)| i).collect();
+        let pending: Vec<usize> = self
+            .orders
+            .iter()
+            .enumerate()
+            .filter(|(_, o)| !o.sealed)
+            .map(|(i, _)| i)
+            .collect();
         let mut seal: Vec<Order> = Vec::new();
         for &i in &pending {
             let o = &self.orders[i];
@@ -1220,12 +1668,24 @@ impl Gw {
                 Side::Buy => Side::Sell,
                 Side::Sell => Side::Buy,
             };
-            let price = if o.order.limit_price > 0 { o.order.limit_price } else { self.px_of(o.order.market_id) };
+            let price = if o.order.limit_price > 0 {
+                o.order.limit_price
+            } else {
+                self.px_of(o.order.market_id)
+            };
             let mut uo = o.order;
             uo.limit_price = price;
             let mmn = self.mm_nonce;
             self.mm_nonce += 1;
-            seal.push(mk_order(self.mm.owner, o.order.market_id, opp, o.order.size, price, mmn, TimeInForce::Gtc));
+            seal.push(mk_order(
+                self.mm.owner,
+                o.order.market_id,
+                opp,
+                o.order.size,
+                price,
+                mmn,
+                TimeInForce::Gtc,
+            ));
             seal.push(uo);
         }
         // registered /v1 accounts
@@ -1241,7 +1701,11 @@ impl Gw {
                 .collect();
             for i in pend {
                 let mut uo = self.accounts[k].orders[i].order; // Order: Copy
-                let price = if uo.limit_price > 0 { uo.limit_price } else { self.px_of(uo.market_id) };
+                let price = if uo.limit_price > 0 {
+                    uo.limit_price
+                } else {
+                    self.px_of(uo.market_id)
+                };
                 uo.limit_price = price;
                 if matches!(uo.tif, TimeInForce::Ioc | TimeInForce::Fok) {
                     let opp = match uo.side {
@@ -1250,7 +1714,15 @@ impl Gw {
                     };
                     let mmn = self.mm_nonce;
                     self.mm_nonce += 1;
-                    seal.push(mk_order(self.mm.owner, uo.market_id, opp, uo.size, price, mmn, TimeInForce::Gtc));
+                    seal.push(mk_order(
+                        self.mm.owner,
+                        uo.market_id,
+                        opp,
+                        uo.size,
+                        price,
+                        mmn,
+                        TimeInForce::Gtc,
+                    ));
                 }
                 seal.push(uo);
                 account_refs.push((*k, i));
@@ -1311,7 +1783,11 @@ impl Gw {
                     "SETTLED" => "Settled on L1 — withdrawable",
                     _ => "Order accepted",
                 };
-                events.push(WEvent { order_id: o.id.clone(), kind: f.to_string(), message: msg.to_string() });
+                events.push(WEvent {
+                    order_id: o.id.clone(),
+                    kind: f.to_string(),
+                    message: msg.to_string(),
+                });
             }
         }
         // advance /v1 account orders' finality + collect per-account events for the
@@ -1402,12 +1878,27 @@ impl Gw {
         let step = (mid / 5000).max(1);
         let mut bids = Vec::new();
         let mut asks = Vec::new();
-        let levels = [(0i128, SIZE_SCALE / 2), (2, SIZE_SCALE), (8, 2 * SIZE_SCALE), (16, 3 * SIZE_SCALE)];
+        let levels = [
+            (0i128, SIZE_SCALE / 2),
+            (2, SIZE_SCALE),
+            (8, 2 * SIZE_SCALE),
+            (16, 3 * SIZE_SCALE),
+        ];
         for (mult, sz) in levels {
-            bids.push(WLevel { price: (mid - 2 * step - mult * step).to_string(), size: sz.to_string() });
-            asks.push(WLevel { price: (mid + 2 * step + mult * step).to_string(), size: sz.to_string() });
+            bids.push(WLevel {
+                price: (mid - 2 * step - mult * step).to_string(),
+                size: sz.to_string(),
+            });
+            asks.push(WLevel {
+                price: (mid + 2 * step + mult * step).to_string(),
+                size: sz.to_string(),
+            });
         }
-        WBook { market_id: market, bids, asks }
+        WBook {
+            market_id: market,
+            bids,
+            asks,
+        }
     }
     fn snapshot(&self) -> WState {
         let sel = self.selected;
@@ -1504,7 +1995,11 @@ impl Gw {
             markets,
             selected_market_id: sel,
             market: self.wmarket(sel_mkt),
-            mode: if self.seq.state.mode == Mode::CloseOnly { "CloseOnly".into() } else { "Normal".into() },
+            mode: if self.seq.state.mode == Mode::CloseOnly {
+                "CloseOnly".into()
+            } else {
+                "Normal".into()
+            },
             oracle: WOracle {
                 market_id: sel,
                 price: sel_mkt.px.to_string(),
@@ -1513,7 +2008,10 @@ impl Gw {
             },
             book: self.book_around(sel, sel_mkt.px),
             marks,
-            account: WAccount { settled_balance: self.free_balance().to_string(), positions },
+            account: WAccount {
+                settled_balance: self.free_balance().to_string(),
+                positions,
+            },
             orders,
             batches,
             insurance_fund: self.seq.state.insurance_fund.to_string(),
@@ -1523,7 +2021,8 @@ impl Gw {
                 settled_root: s.settled_root.clone(),
                 batch_count: s.batch_count,
                 last_tx: s.last_tx.clone(),
-                bond_wei: s.bond_wei.clone(),
+                bond_usdc: s.bond.clone(),
+                withdrawals_root: s.withdrawals_root.clone(),
             }),
             attestation: self.attestation.as_ref().map(|a| WAttestation {
                 measurement: hex0x(&a.measurement),
@@ -1535,17 +2034,49 @@ impl Gw {
 }
 
 /// Deposit `usd_amount` (whole USD) and fund it into a market's collateral bucket.
-fn fund(seq: &mut Sequencer, archive: &mut NoteArchive, w: &Wallet, market: u64, usd_amount: i128, blind: u8) {
-    fund_amount(seq, archive, w, market, usd_amount * QUOTE_SCALE, [blind; 32]);
+fn fund(
+    seq: &mut Sequencer,
+    archive: &mut NoteArchive,
+    w: &Wallet,
+    market: u64,
+    usd_amount: i128,
+    blind: u8,
+) {
+    fund_amount(
+        seq,
+        archive,
+        w,
+        market,
+        usd_amount * QUOTE_SCALE,
+        [blind; 32],
+    );
 }
 /// Deposit a quote-scaled `amount` as a note, archive it, and fund the position.
-fn fund_amount(seq: &mut Sequencer, archive: &mut NoteArchive, w: &Wallet, market: u64, amount: i128, blind: Digest) {
+fn fund_amount(
+    seq: &mut Sequencer,
+    archive: &mut NoteArchive,
+    w: &Wallet,
+    market: u64,
+    amount: i128,
+    blind: Digest,
+) {
     let note = Note::new(w.owner, 0, amount, blind);
     let cm = note.commitment::<Keccak256>();
-    seq.apply(&BatchOp::Deposit { owner: w.owner, asset_id: 0, amount, blinding: blind }).expect("deposit");
+    seq.apply(&BatchOp::Deposit {
+        owner: w.owner,
+        asset_id: 0,
+        amount,
+        blinding: blind,
+    })
+    .expect("deposit");
     archive.record(seq.current_batch_id(), &note, &w.view_key);
-    seq.apply(&BatchOp::FundPosition { owner: w.owner, market_id: market, note_commitment: cm, spend_key: w.spend_key })
-        .expect("fund");
+    seq.apply(&BatchOp::FundPosition {
+        owner: w.owner,
+        market_id: market,
+        note_commitment: cm,
+        spend_key: w.spend_key,
+    })
+    .expect("fund");
 }
 
 // ── HTTP/WS plumbing ─────────────────────────────────────────────────────────
@@ -1558,20 +2089,30 @@ struct App {
     events_tx: broadcast::Sender<String>,
     /// Per-IP registration counter (a sliding 60s window) to throttle account spam.
     reg_limit: Mutex<HashMap<IpAddr, (u64, u32)>>,
+    /// The L1 bridge (Base Sepolia), if configured — used by the deposit-confirm
+    /// handler to verify on-chain USDC deposits. `None` ⇒ pure in-memory mode.
+    l1: Option<L1>,
 }
 
 impl App {
     async fn broadcast(&self, gw: &Gw) {
-        let msg = WsMsg::State { state: gw.snapshot() };
+        let msg = WsMsg::State {
+            state: gw.snapshot(),
+        };
         let _ = self.tx.send(serde_json::to_string(&msg).unwrap());
     }
     async fn broadcast_event(&self, ev: WEvent) {
-        let _ = self.tx.send(serde_json::to_string(&WsMsg::Event { event: ev }).unwrap());
+        let _ = self
+            .tx
+            .send(serde_json::to_string(&WsMsg::Event { event: ev }).unwrap());
     }
 }
 
 fn err400(msg: String) -> (StatusCode, Json<serde_json::Value>) {
-    (StatusCode::BAD_REQUEST, Json(serde_json::json!({ "error": msg })))
+    (
+        StatusCode::BAD_REQUEST,
+        Json(serde_json::json!({ "error": msg })),
+    )
 }
 
 // ── multi-tenant external API (/v1) ──────────────────────────────────────────
@@ -1580,6 +2121,27 @@ struct V1DepositReq {
     #[serde(rename = "marketId")]
     market_id: u64,
     amount: String,
+}
+#[derive(Deserialize)]
+struct DepositAddrReq {
+    address: String,
+    /// secp256k1 signature (65-byte r‖s‖v) over `deposit_bind_digest(owner, address)`,
+    /// proving the caller controls `address`.
+    signature: String,
+}
+#[derive(Deserialize)]
+struct OnchainDepositReq {
+    #[serde(rename = "txHash")]
+    tx_hash: String,
+    #[serde(rename = "marketId")]
+    market_id: u64,
+}
+#[derive(Deserialize)]
+struct WithdrawReq {
+    #[serde(rename = "marketId")]
+    market_id: u64,
+    amount: String,
+    to: String,
 }
 
 /// Parse a `0x`-optional 64-hex string into a 32-byte key.
@@ -1593,6 +2155,77 @@ fn parse_hex32(s: &str) -> Option<[u8; 32]> {
         *slot = u8::from_str_radix(&h[i * 2..i * 2 + 2], 16).ok()?;
     }
     Some(k)
+}
+
+/// Parse a `0x`-optional 40-hex string into a 20-byte Ethereum address.
+fn parse_addr20_hex(s: &str) -> Option<[u8; 20]> {
+    let h = s.strip_prefix("0x").unwrap_or(s);
+    if h.len() != 40 {
+        return None;
+    }
+    let mut a = [0u8; 20];
+    for (i, slot) in a.iter_mut().enumerate() {
+        *slot = u8::from_str_radix(&h[i * 2..i * 2 + 2], 16).ok()?;
+    }
+    Some(a)
+}
+
+/// Parse a `0x`-optional 130-hex string into a 65-byte secp256k1 signature (r‖s‖v).
+fn parse_hex65(s: &str) -> Option<[u8; 65]> {
+    let h = s.strip_prefix("0x").unwrap_or(s);
+    if h.len() != 130 {
+        return None;
+    }
+    let mut sig = [0u8; 65];
+    for (i, slot) in sig.iter_mut().enumerate() {
+        *slot = u8::from_str_radix(&h[i * 2..i * 2 + 2], 16).ok()?;
+    }
+    Some(sig)
+}
+
+/// Recover the 20-byte Ethereum address that signed `prehash` with `sig` (r‖s‖v),
+/// exactly as the contract's `ecrecover` would — so a caller-signed order is
+/// authenticated identically off-chain and on-chain.
+fn recover_eth_address(prehash: &[u8; 32], sig: &[u8; 65]) -> Option<[u8; 20]> {
+    use k256::ecdsa::{RecoveryId, Signature, VerifyingKey};
+    use sha3::{Digest as _, Keccak256 as RawKeccak};
+    let s = Signature::from_slice(&sig[..64]).ok()?;
+    let v = sig[64];
+    let recid_byte = if v >= 27 { v - 27 } else { v };
+    let recid = RecoveryId::from_byte(recid_byte)?;
+    let vk = VerifyingKey::recover_from_prehash(prehash, &s, recid).ok()?;
+    let point = vk.to_encoded_point(false);
+    let hash = RawKeccak::digest(&point.as_bytes()[1..]);
+    let mut a = [0u8; 20];
+    a.copy_from_slice(&hash[12..]);
+    Some(a)
+}
+
+/// The digest a deposit-address bind signature must cover: `keccak256("dark-perp:
+/// bind-deposit:" ‖ owner ‖ addr)`. Binding the account owner stops the proof being
+/// replayed to bind the same address to a different account.
+fn deposit_bind_digest(owner: &PubKey, addr: &[u8; 20]) -> [u8; 32] {
+    use sha3::{Digest as _, Keccak256 as RawKeccak};
+    let mut h = RawKeccak::new();
+    h.update(b"dark-perp:bind-deposit:");
+    h.update(owner);
+    h.update(addr);
+    h.finalize().into()
+}
+
+/// Canonicalize a tx hash to `0x` + 64 **lowercase** hex, or `None` if malformed.
+/// Ethereum tx hashes are not checksummed, so case-permuted spellings denote the SAME
+/// tx — dedup must key on this canonical form (review fix), and the strict hex check
+/// also stops flag-injection into the positional `cast receipt <tx>` argument.
+fn canon_tx_hash(s: &str) -> Option<String> {
+    let h = s
+        .strip_prefix("0x")
+        .or_else(|| s.strip_prefix("0X"))
+        .unwrap_or(s);
+    if h.len() != 64 || !h.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return None;
+    }
+    Some(format!("0x{}", h.to_ascii_lowercase()))
 }
 
 /// Authenticate a `/v1` request: read `X-Api-Key` (0x + 64 hex) → 32-byte key.
@@ -1610,6 +2243,7 @@ fn api_key_from(headers: &HeaderMap) -> Result<[u8; 32], (StatusCode, Json<serde
 async fn post_v1_register(
     State(app): State<Shared>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    body: axum::body::Bytes,
 ) -> impl IntoResponse {
     // throttle registrations per source IP (sliding 60s window)
     {
@@ -1628,8 +2262,179 @@ async fn post_v1_register(
         }
         e.1 += 1;
     }
-    let (key, owner) = { app.gw.lock().await.register_account() };
-    Json(serde_json::json!({ "apiKey": hex0x(&key), "owner": hex0x(&owner) })).into_response()
+    // optional body `{ "signer": "0x<40 hex>" }` → caller-signed account (every order
+    // must carry the caller's signature). A bad signer value is rejected.
+    let signer = if body.is_empty() {
+        None
+    } else {
+        match serde_json::from_slice::<serde_json::Value>(&body)
+            .ok()
+            .and_then(|v| v.get("signer").and_then(|s| s.as_str()).map(String::from))
+        {
+            Some(s) => match parse_addr20_hex(&s) {
+                Some(a) => Some(a),
+                None => {
+                    return err400("bad signer address (expected 0x + 40 hex)".into())
+                        .into_response()
+                }
+            },
+            None => None,
+        }
+    };
+    let (key, owner) = { app.gw.lock().await.register_account(signer) };
+    Json(serde_json::json!({
+        "apiKey": hex0x(&key),
+        "owner": hex0x(&owner),
+        "callerSigned": signer.is_some(),
+    }))
+    .into_response()
+}
+
+/// Bind the external EOA an account funds from, so its on-chain USDC deposits can be
+/// attributed to it (and not stolen by another account submitting the same tx).
+async fn post_v1_deposit_address(
+    State(app): State<Shared>,
+    headers: HeaderMap,
+    Json(req): Json<DepositAddrReq>,
+) -> impl IntoResponse {
+    let key = match api_key_from(&headers) {
+        Ok(k) => k,
+        Err(e) => return e.into_response(),
+    };
+    let addr = match parse_addr20_hex(&req.address) {
+        Some(a) => a,
+        None => return err400("bad address (expected 0x + 40 hex)".into()).into_response(),
+    };
+    let sig = match parse_hex65(&req.signature) {
+        Some(s) => s,
+        None => {
+            return err400("bad signature (expected 65-byte 0x hex r‖s‖v)".into()).into_response()
+        }
+    };
+    match app
+        .gw
+        .lock()
+        .await
+        .account_set_deposit_address(&key, addr, &sig)
+    {
+        Ok(()) => Json(serde_json::json!({ "depositAddress": hex0x(&addr) })).into_response(),
+        Err(e) => err400(e).into_response(),
+    }
+}
+
+/// Credit a real on-chain USDC deposit: verify the `vault.deposit` tx via the L1
+/// bridge, enforce the `from`==bound-address binding + tx dedup, and fund the engine.
+async fn post_v1_deposit_onchain(
+    State(app): State<Shared>,
+    headers: HeaderMap,
+    Json(req): Json<OnchainDepositReq>,
+) -> impl IntoResponse {
+    let key = match api_key_from(&headers) {
+        Ok(k) => k,
+        Err(e) => return e.into_response(),
+    };
+    let l1 = match &app.l1 {
+        Some(l) => l.clone(),
+        None => {
+            return err400("L1 bridge not configured — on-chain deposits unavailable".into())
+                .into_response()
+        }
+    };
+    // canonicalize the tx hash so case-permuted spellings of the same tx can't bypass
+    // the dedup (they all resolve to one receipt on-chain) — review fix.
+    let tx = match canon_tx_hash(&req.tx_hash) {
+        Some(t) => t,
+        None => return err400("bad txHash (expected 0x + 64 hex)".into()).into_response(),
+    };
+    let txc = tx.clone();
+    let verified = tokio::task::spawn_blocking(move || l1.verify_deposit_tx(&txc)).await;
+    let (from, amount) = match verified {
+        Ok(Ok(v)) => v,
+        Ok(Err(e)) => return err400(format!("deposit not verified: {e}")).into_response(),
+        Err(e) => return err400(format!("verify task failed: {e}")).into_response(),
+    };
+    let r = {
+        app.gw
+            .lock()
+            .await
+            .account_confirm_deposit(&key, from, amount, &tx, req.market_id)
+    };
+    match r {
+        Ok(amt) => {
+            let acct = {
+                app.gw
+                    .lock()
+                    .await
+                    .v1_account(&key)
+                    .unwrap_or(serde_json::json!({}))
+            };
+            Json(serde_json::json!({ "credited": amt.to_string(), "account": acct }))
+                .into_response()
+        }
+        Err(e) => err400(e).into_response(),
+    }
+}
+
+/// Withdraw USDC: debit the engine and record an authorized withdrawal. The user
+/// then claims on Base Sepolia via `vault.claim` once the next settle publishes the
+/// cumulative root (GET /v1/accounts/withdrawals returns the proof).
+async fn post_v1_withdraw(
+    State(app): State<Shared>,
+    headers: HeaderMap,
+    Json(req): Json<WithdrawReq>,
+) -> impl IntoResponse {
+    let key = match api_key_from(&headers) {
+        Ok(k) => k,
+        Err(e) => return e.into_response(),
+    };
+    let amount: i128 = match req.amount.parse() {
+        Ok(v) => v,
+        Err(_) => return err400("bad amount".into()).into_response(),
+    };
+    let to = match parse_addr20_hex(&req.to) {
+        Some(a) => a,
+        None => return err400("bad `to` address (expected 0x + 40 hex)".into()).into_response(),
+    };
+    let r = {
+        app.gw
+            .lock()
+            .await
+            .account_withdraw(&key, req.market_id, amount, to)
+    };
+    match r {
+        Ok(w) => Json(serde_json::json!({
+            "to": hex0x(&w.to),
+            "amount": w.amount.to_string(),
+            "nonce": w.nonce,
+            "leaf": hex0x(&w.leaf()),
+            "status": "recorded — claimable on Base Sepolia after the next L1 settle; GET /v1/accounts/withdrawals for the Merkle proof",
+        }))
+        .into_response(),
+        Err(e) => err400(e).into_response(),
+    }
+}
+
+/// An account's withdrawals + claim data (Merkle proofs once published on-chain).
+async fn get_v1_withdrawals(State(app): State<Shared>, headers: HeaderMap) -> impl IntoResponse {
+    let key = match api_key_from(&headers) {
+        Ok(k) => k,
+        Err(e) => return e.into_response(),
+    };
+    let vault = app.l1.as_ref().and_then(|l| l.vault.clone());
+    let gw = app.gw.lock().await;
+    match gw.v1_withdrawals_json(&key) {
+        Some(mut v) => {
+            if let Some(vault) = vault {
+                v["vault"] = serde_json::json!(vault);
+            }
+            Json(v).into_response()
+        }
+        None => (
+            StatusCode::UNAUTHORIZED,
+            Json(serde_json::json!({ "error": "unknown account" })),
+        )
+            .into_response(),
+    }
 }
 async fn get_v1_account(State(app): State<Shared>, headers: HeaderMap) -> impl IntoResponse {
     let key = match api_key_from(&headers) {
@@ -1638,7 +2443,11 @@ async fn get_v1_account(State(app): State<Shared>, headers: HeaderMap) -> impl I
     };
     match app.gw.lock().await.v1_account(&key) {
         Some(v) => Json(v).into_response(),
-        None => (StatusCode::UNAUTHORIZED, Json(serde_json::json!({ "error": "unknown account" }))).into_response(),
+        None => (
+            StatusCode::UNAUTHORIZED,
+            Json(serde_json::json!({ "error": "unknown account" })),
+        )
+            .into_response(),
     }
 }
 async fn post_v1_deposit(
@@ -1654,9 +2463,21 @@ async fn post_v1_deposit(
         Ok(v) => v,
         Err(_) => return err400("bad amount".into()).into_response(),
     };
-    let r = { app.gw.lock().await.account_deposit(&key, req.market_id, amount) };
+    let r = {
+        app.gw
+            .lock()
+            .await
+            .account_deposit(&key, req.market_id, amount)
+    };
     match r {
-        Ok(()) => Json(app.gw.lock().await.v1_account(&key).unwrap_or(serde_json::json!({}))).into_response(),
+        Ok(()) => Json(
+            app.gw
+                .lock()
+                .await
+                .v1_account(&key)
+                .unwrap_or(serde_json::json!({})),
+        )
+        .into_response(),
         Err(e) => err400(e).into_response(),
     }
 }
@@ -1691,7 +2512,9 @@ async fn delete_v1_order(
     };
     let r = { app.gw.lock().await.account_cancel(&key, &order_id) };
     match r {
-        Ok(()) => Json(serde_json::json!({ "orderId": order_id, "cancelled": true })).into_response(),
+        Ok(()) => {
+            Json(serde_json::json!({ "orderId": order_id, "cancelled": true })).into_response()
+        }
         Err(e) => err400(e).into_response(),
     }
 }
@@ -1702,7 +2525,11 @@ async fn get_v1_orders(State(app): State<Shared>, headers: HeaderMap) -> impl In
     };
     match app.gw.lock().await.v1_orders_json(&key) {
         Some(v) => Json(v).into_response(),
-        None => (StatusCode::UNAUTHORIZED, Json(serde_json::json!({ "error": "unknown account" }))).into_response(),
+        None => (
+            StatusCode::UNAUTHORIZED,
+            Json(serde_json::json!({ "error": "unknown account" })),
+        )
+            .into_response(),
     }
 }
 async fn get_v1_positions(State(app): State<Shared>, headers: HeaderMap) -> impl IntoResponse {
@@ -1712,7 +2539,11 @@ async fn get_v1_positions(State(app): State<Shared>, headers: HeaderMap) -> impl
     };
     match app.gw.lock().await.v1_positions_json(&key) {
         Some(v) => Json(v).into_response(),
-        None => (StatusCode::UNAUTHORIZED, Json(serde_json::json!({ "error": "unknown account" }))).into_response(),
+        None => (
+            StatusCode::UNAUTHORIZED,
+            Json(serde_json::json!({ "error": "unknown account" })),
+        )
+            .into_response(),
     }
 }
 async fn get_v1_markets(State(app): State<Shared>) -> impl IntoResponse {
@@ -1722,19 +2553,31 @@ async fn get_v1_market(State(app): State<Shared>, Path(id): Path<u64>) -> impl I
     let gw = app.gw.lock().await;
     match gw.mkt(id) {
         Some(m) => Json(serde_json::to_value(gw.wmarket(m)).unwrap()).into_response(),
-        None => (StatusCode::NOT_FOUND, Json(serde_json::json!({ "error": "unknown market" }))).into_response(),
+        None => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({ "error": "unknown market" })),
+        )
+            .into_response(),
     }
 }
 async fn get_v1_orderbook(State(app): State<Shared>, Path(id): Path<u64>) -> impl IntoResponse {
     match app.gw.lock().await.v1_orderbook_json(id) {
         Some(v) => Json(v).into_response(),
-        None => (StatusCode::NOT_FOUND, Json(serde_json::json!({ "error": "unknown market" }))).into_response(),
+        None => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({ "error": "unknown market" })),
+        )
+            .into_response(),
     }
 }
 async fn get_v1_oracle(State(app): State<Shared>, Path(id): Path<u64>) -> impl IntoResponse {
     match app.gw.lock().await.v1_oracle_json(id) {
         Some(v) => Json(v).into_response(),
-        None => (StatusCode::NOT_FOUND, Json(serde_json::json!({ "error": "unknown market" }))).into_response(),
+        None => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({ "error": "unknown market" })),
+        )
+            .into_response(),
     }
 }
 async fn get_v1_status(State(app): State<Shared>) -> impl IntoResponse {
@@ -1755,7 +2598,9 @@ async fn get_v1_openapi() -> impl IntoResponse {
                 "size": { "type": "string", "description": "size-scaled (*1e8) integer" },
                 "limitPrice": { "type": "string", "description": "price-scaled (*1e8); 0 = market" },
                 "tif": { "type": "string", "enum": ["Gtc","Ioc","Fok","PostOnly"] },
-                "reduceOnly": { "type": "boolean" }
+                "reduceOnly": { "type": "boolean" },
+                "nonce": { "type": "integer", "description": "caller-signed accounts: strictly-increasing order nonce" },
+                "signature": { "type": "string", "description": "caller-signed accounts: 65-byte secp256k1 sig over the order hash" }
             } } } }
     });
     Json(serde_json::json!({
@@ -1763,11 +2608,21 @@ async fn get_v1_openapi() -> impl IntoResponse {
         "info": { "title": "dark-perp external API", "version": "1", "description": "Multi-tenant trading over the sequencer engine. Amounts are decimal strings of scaled integers (quote *1e6, size/price *1e8). See docs/API.md." },
         "components": { "securitySchemes": { "ApiKey": { "type": "apiKey", "in": "header", "name": "X-Api-Key" } } },
         "paths": {
-            "/v1/accounts": { "post": { "summary": "Register an account", "responses": ok("apiKey + owner") } },
+            "/v1/accounts": { "post": { "summary": "Register an account (optional { signer } for caller-signed)", "responses": ok("apiKey + owner + callerSigned") } },
             "/v1/accounts/me": { "get": { "summary": "Own account (balance, positions, nextNonce)", "responses": ok("account"), "security": auth["security"] } },
-            "/v1/accounts/deposit": { "post": { "summary": "Deposit collateral", "security": auth["security"],
+            "/v1/accounts/deposit": { "post": { "summary": "Deposit collateral (demo/in-memory credit)", "security": auth["security"],
                 "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["marketId","amount"], "properties": { "marketId": { "type": "integer" }, "amount": { "type": "string" } } } } } },
                 "responses": ok("updated account") } },
+            "/v1/accounts/deposit/address": { "post": { "summary": "Bind the external EOA you fund USDC from (ownership-proven)", "security": auth["security"],
+                "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["address","signature"], "properties": { "address": { "type": "string" }, "signature": { "type": "string", "description": "secp256k1 sig recovering to address over keccak256(\"dark-perp:bind-deposit:\"‖owner‖address)" } } } } } },
+                "responses": ok("bound address") } },
+            "/v1/accounts/deposit/onchain": { "post": { "summary": "Credit a real on-chain USDC deposit by tx hash", "security": auth["security"],
+                "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["txHash","marketId"], "properties": { "txHash": { "type": "string" }, "marketId": { "type": "integer" } } } } } },
+                "responses": ok("credited + account") } },
+            "/v1/accounts/withdraw": { "post": { "summary": "Withdraw USDC (record an authorized withdrawal)", "security": auth["security"],
+                "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["marketId","amount","to"], "properties": { "marketId": { "type": "integer" }, "amount": { "type": "string" }, "to": { "type": "string" } } } } } },
+                "responses": ok("recorded withdrawal + leaf") } },
+            "/v1/accounts/withdrawals": { "get": { "summary": "Own withdrawals + claim proofs", "security": auth["security"], "responses": ok("vault + withdrawals[]") } },
             "/v1/orders": {
                 "post": { "summary": "Place an order", "security": auth["security"], "requestBody": order_body, "responses": { "200": { "description": "signed receipt" }, "400": { "description": "rejected" }, "429": { "description": "rate limit (10/s)" } } },
                 "get": { "summary": "Own orders + finality", "security": auth["security"], "responses": ok("orders") }
@@ -1860,7 +2715,9 @@ async fn post_order(State(app): State<Shared>, Json(req): Json<OrderReq>) -> imp
     match res {
         Ok((receipt, events)) => {
             let snap = { app.gw.lock().await.snapshot() };
-            let _ = app.tx.send(serde_json::to_string(&WsMsg::State { state: snap }).unwrap());
+            let _ = app
+                .tx
+                .send(serde_json::to_string(&WsMsg::State { state: snap }).unwrap());
             for ev in events {
                 app.broadcast_event(ev).await;
             }
@@ -1907,7 +2764,9 @@ async fn post_close(State(app): State<Shared>, Json(req): Json<MarketReq>) -> im
     match res {
         Ok((_r, events)) => {
             let snap = { app.gw.lock().await.snapshot() };
-            let _ = app.tx.send(serde_json::to_string(&WsMsg::State { state: snap }).unwrap());
+            let _ = app
+                .tx
+                .send(serde_json::to_string(&WsMsg::State { state: snap }).unwrap());
             for ev in events {
                 app.broadcast_event(ev).await;
             }
@@ -1922,7 +2781,9 @@ async fn post_cancel(State(app): State<Shared>, Json(req): Json<CancelReq>) -> i
     match res {
         Ok(events) => {
             let snap = { app.gw.lock().await.snapshot() };
-            let _ = app.tx.send(serde_json::to_string(&WsMsg::State { state: snap }).unwrap());
+            let _ = app
+                .tx
+                .send(serde_json::to_string(&WsMsg::State { state: snap }).unwrap());
             for ev in events {
                 app.broadcast_event(ev).await;
             }
@@ -1962,7 +2823,8 @@ async fn post_simulate_adl(State(app): State<Shared>) -> impl IntoResponse {
                 ),
             })
             .await;
-            Json(serde_json::json!({ "clawed": (clawed / QUOTE_SCALE).to_string() })).into_response()
+            Json(serde_json::json!({ "clawed": (clawed / QUOTE_SCALE).to_string() }))
+                .into_response()
         }
         Err(e) => err400(e).into_response(),
     }
@@ -1991,7 +2853,12 @@ async fn ws_handler(State(app): State<Shared>, ws: WebSocketUpgrade) -> impl Int
 async fn ws_loop(mut socket: WebSocket, app: Shared) {
     let mut rx = app.tx.subscribe();
     // initial snapshot
-    let initial = { serde_json::to_string(&WsMsg::State { state: app.gw.lock().await.snapshot() }).unwrap() };
+    let initial = {
+        serde_json::to_string(&WsMsg::State {
+            state: app.gw.lock().await.snapshot(),
+        })
+        .unwrap()
+    };
     if socket.send(Message::Text(initial)).await.is_err() {
         return;
     }
@@ -2006,11 +2873,13 @@ async fn ws_loop(mut socket: WebSocket, app: Shared) {
 async fn main() {
     let (tx, _rx) = broadcast::channel::<String>(256);
     let (events_tx, _erx) = broadcast::channel::<String>(1024);
+    let l1 = L1::from_env();
     let app = Arc::new(App {
         gw: Mutex::new(Gw::boot()),
         tx: tx.clone(),
         events_tx,
         reg_limit: Mutex::new(HashMap::new()),
+        l1: l1.clone(),
     });
 
     // background tick loop
@@ -2022,9 +2891,13 @@ async fn main() {
                 iv.tick().await;
                 let (events, acct_events) = { app.gw.lock().await.tick() };
                 let snap = { app.gw.lock().await.snapshot() };
-                let _ = app.tx.send(serde_json::to_string(&WsMsg::State { state: snap }).unwrap());
+                let _ = app
+                    .tx
+                    .send(serde_json::to_string(&WsMsg::State { state: snap }).unwrap());
                 for ev in events {
-                    let _ = app.tx.send(serde_json::to_string(&WsMsg::Event { event: ev }).unwrap());
+                    let _ = app
+                        .tx
+                        .send(serde_json::to_string(&WsMsg::Event { event: ev }).unwrap());
                 }
                 // fan out per-account events to the authenticated /v1/ws subscribers
                 for ev in acct_events {
@@ -2034,28 +2907,21 @@ async fn main() {
         });
     }
 
-    // optional L1 settlement bridge: post bond once, then advance the on-chain
-    // root to mirror the engine root on a slow timer (Base Sepolia).
-    if let Some(l1) = L1::from_env() {
-        println!("[l1] bridge ON → settlement {} every {L1_SETTLE_SECS}s", l1.settlement);
+    // optional L1 settlement bridge: top up the USDC bond, advance the on-chain root
+    // to mirror the engine root, and publish the cumulative withdrawals root (so users
+    // claim USDC) on a slow timer (Base Sepolia).
+    if let Some(l1) = l1 {
+        println!(
+            "[l1] bridge ON → settlement {} every {L1_SETTLE_SECS}s",
+            l1.settlement
+        );
         let app = app.clone();
         tokio::spawn(async move {
-            {
-                let l1b = l1.clone();
-                match tokio::task::spawn_blocking(move || {
-                    if l1b.sequencer_bond().unwrap_or(0) == 0 {
-                        l1b.post_bond(L1_BOND_WEI)
-                    } else {
-                        Ok("already bonded".into())
-                    }
-                })
-                .await
-                {
-                    Ok(Ok(tx)) => println!("[l1] bond: {tx}"),
-                    Ok(Err(e)) => eprintln!("[l1] bond failed: {e}"),
-                    Err(e) => eprintln!("[l1] bond join: {e}"),
-                }
-            }
+            type SettleOut = (
+                L1Status,
+                Vec<[u8; 32]>,
+                std::collections::BTreeMap<[u8; 32], Vec<[u8; 32]>>,
+            );
             // start the first settle one period out, so it never races the bond's
             // confirmation (tokio's plain `interval` would fire immediately).
             let mut iv = tokio::time::interval_at(
@@ -2064,38 +2930,83 @@ async fn main() {
             );
             loop {
                 iv.tick().await;
-                let (new_root, manifest) = {
+                let (new_root, manifest, withdrawals) = {
                     let gw = app.gw.lock().await;
-                    (gw.state_root_hex(), gw.last_manifest_hex())
+                    (
+                        gw.state_root_hex(),
+                        gw.last_manifest_hex(),
+                        gw.pending_withdrawals.clone(),
+                    )
                 };
                 let l1c = l1.clone();
-                let res = tokio::task::spawn_blocking(move || {
-                    let prev = l1c.current_root()?;
-                    if prev.eq_ignore_ascii_case(&new_root) {
-                        return Ok::<Option<L1Status>, String>(None);
-                    }
-                    let tx = l1c.settle(&prev, &manifest, &new_root)?;
-                    Ok(Some(L1Status {
-                        settled_root: new_root,
-                        batch_count: l1c.batch_count().unwrap_or(0),
-                        last_tx: tx,
-                        bond_wei: l1c.sequencer_bond().unwrap_or(0).to_string(),
-                    }))
-                })
-                .await;
+                let res =
+                    tokio::task::spawn_blocking(move || -> Result<Option<SettleOut>, String> {
+                        // keep the USDC bond above the 5%-of-TVL floor as deposits grow (Q1)
+                        match l1c.ensure_bond() {
+                            Ok(Some(tx)) => println!("[l1] bond topped up: {tx}"),
+                            Ok(None) => {}
+                            Err(e) => eprintln!("[l1] bond top-up skipped: {e}"),
+                        }
+                        let prev = l1c.current_root()?;
+                        // prune withdrawals the vault already paid out, then build the
+                        // CUMULATIVE root over every still-unclaimed leaf (vault invariant).
+                        let mut surviving = Vec::new();
+                        let mut claimed = Vec::new();
+                        for w in withdrawals {
+                            let leaf = w.leaf();
+                            if l1c.claimed(&hex32(&leaf)).unwrap_or(false) {
+                                claimed.push(leaf);
+                            } else {
+                                surviving.push(w);
+                            }
+                        }
+                        let leaves: Vec<[u8; 32]> = surviving.iter().map(|w| w.leaf()).collect();
+                        let wroot = merkle_root(&leaves);
+                        let wroot_hex = hex32(&wroot);
+                        if prev.eq_ignore_ascii_case(&new_root) {
+                            return Ok(None); // engine root unchanged → nothing to settle
+                        }
+                        let tx = l1c.settle(&prev, &manifest, &new_root, &wroot_hex)?;
+                        let mut proofs = std::collections::BTreeMap::new();
+                        for (i, w) in surviving.iter().enumerate() {
+                            proofs.insert(w.leaf(), merkle_proof(&leaves, i));
+                        }
+                        Ok(Some((
+                            L1Status {
+                                settled_root: new_root,
+                                batch_count: l1c.batch_count().unwrap_or(0),
+                                last_tx: tx,
+                                bond: l1c.sequencer_bond().unwrap_or(0).to_string(),
+                                withdrawals_root: wroot_hex,
+                            },
+                            claimed,
+                            proofs,
+                        )))
+                    })
+                    .await;
                 match res {
-                    Ok(Ok(Some(status))) => {
+                    Ok(Ok(Some((status, claimed, proofs)))) => {
                         println!(
-                            "[l1] settled root {} batch {} tx {}",
-                            status.settled_root, status.batch_count, status.last_tx
+                            "[l1] settled root {} batch {} tx {} (withdrawals root {})",
+                            status.settled_root,
+                            status.batch_count,
+                            status.last_tx,
+                            status.withdrawals_root
                         );
                         {
-                            app.gw.lock().await.l1_status = Some(status);
+                            let mut gw = app.gw.lock().await;
+                            if !claimed.is_empty() {
+                                let cset: std::collections::BTreeSet<[u8; 32]> =
+                                    claimed.into_iter().collect();
+                                gw.pending_withdrawals.retain(|w| !cset.contains(&w.leaf()));
+                            }
+                            gw.withdraw_proofs = proofs;
+                            gw.l1_status = Some(status);
                         }
                         let snap = { app.gw.lock().await.snapshot() };
-                        let _ = app.tx.send(
-                            serde_json::to_string(&WsMsg::State { state: snap }).unwrap(),
-                        );
+                        let _ = app
+                            .tx
+                            .send(serde_json::to_string(&WsMsg::State { state: snap }).unwrap());
                     }
                     Ok(Ok(None)) => {}
                     Ok(Err(e)) => eprintln!("[l1] settle failed: {e}"),
@@ -2121,6 +3032,16 @@ async fn main() {
         .route("/v1/accounts", post(post_v1_register))
         .route("/v1/accounts/me", get(get_v1_account))
         .route("/v1/accounts/deposit", post(post_v1_deposit))
+        .route(
+            "/v1/accounts/deposit/address",
+            post(post_v1_deposit_address),
+        )
+        .route(
+            "/v1/accounts/deposit/onchain",
+            post(post_v1_deposit_onchain),
+        )
+        .route("/v1/accounts/withdraw", post(post_v1_withdraw))
+        .route("/v1/accounts/withdrawals", get(get_v1_withdrawals))
         .route("/v1/orders", post(post_v1_order).get(get_v1_orders))
         .route("/v1/orders/:order_id", delete(delete_v1_order))
         .route("/v1/positions", get(get_v1_positions))
@@ -2134,7 +3055,10 @@ async fn main() {
         .layer(CorsLayer::permissive())
         .with_state(app);
 
-    let port: u16 = std::env::var("PORT").ok().and_then(|p| p.parse().ok()).unwrap_or(8080);
+    let port: u16 = std::env::var("PORT")
+        .ok()
+        .and_then(|p| p.parse().ok())
+        .unwrap_or(8080);
     let addr = format!("0.0.0.0:{port}");
     let listener = tokio::net::TcpListener::bind(&addr).await.expect("bind");
     println!("dark-perp gateway listening on http://{addr}  (ws: /ws)");
@@ -2155,7 +3079,10 @@ mod tests {
         let gw = Gw::boot();
         // ≈ $25,000 * QUOTE_SCALE free across the 5 funded markets
         let free = gw.free_balance();
-        assert!(free >= 24_000 * QUOTE_SCALE && free <= 26_000 * QUOTE_SCALE, "free={free}");
+        assert!(
+            free >= 24_000 * QUOTE_SCALE && free <= 26_000 * QUOTE_SCALE,
+            "free={free}"
+        );
         assert_eq!(gw.snapshot().markets.len(), 5);
     }
 
@@ -2169,6 +3096,8 @@ mod tests {
             limit_price: "0".into(),
             tif: "Ioc".into(),
             reduce_only: false,
+            nonce: None,
+            signature: None,
         };
         let (_r, _ev) = gw.place_order(&req).expect("accepted");
         assert_eq!(gw.orders.len(), 1);
@@ -2179,7 +3108,10 @@ mod tests {
         let pos = gw.seq.state.position(&gw.user.owner, 0).expect("position");
         assert!(pos.size > 0, "user is long after the seal");
         let fin = gw.finality_str(&gw.orders[0].order_hash);
-        assert!(fin == "MATCHED" || fin == "SETTLED", "finality advanced: {fin}");
+        assert!(
+            fin == "MATCHED" || fin == "SETTLED",
+            "finality advanced: {fin}"
+        );
         // after SETTLE_TICKS more ticks → SETTLED
         for _ in 0..(SETTLE_TICKS + 1) {
             gw.tick();
@@ -2190,12 +3122,13 @@ mod tests {
     #[test]
     fn v1_accounts_are_isolated_and_trade() {
         let mut gw = Gw::boot();
-        let (a_key, a_owner) = gw.register_account();
-        let (b_key, b_owner) = gw.register_account();
+        let (a_key, a_owner) = gw.register_account(None);
+        let (b_key, b_owner) = gw.register_account(None);
         assert_ne!(a_key, b_key, "distinct api keys");
         assert_ne!(a_owner, b_owner, "distinct owners");
         // A deposits $20k into market 0 and goes long 0.1 BTC
-        gw.account_deposit(&a_key, 0, 20_000 * QUOTE_SCALE).expect("deposit");
+        gw.account_deposit(&a_key, 0, 20_000 * QUOTE_SCALE)
+            .expect("deposit");
         let req = OrderReq {
             market_id: 0,
             side: "Buy".into(),
@@ -2203,18 +3136,194 @@ mod tests {
             limit_price: "0".into(),
             tif: "Ioc".into(),
             reduce_only: false,
+            nonce: None,
+            signature: None,
         };
         gw.account_place_order(&a_key, &req).expect("order");
         gw.tick();
         // A is long; B has nothing — full isolation over the shared engine
         let a_pos = gw.seq.state.position(&a_owner, 0).expect("A position");
         assert!(a_pos.size > 0, "A is long after the seal");
-        assert!(gw.seq.state.position(&b_owner, 0).is_none(), "B has no position");
+        assert!(
+            gw.seq.state.position(&b_owner, 0).is_none(),
+            "B has no position"
+        );
         let a_orders = gw.v1_orders_json(&a_key).unwrap();
         assert_eq!(a_orders["orders"].as_array().unwrap().len(), 1);
         let b_orders = gw.v1_orders_json(&b_key).unwrap();
-        assert!(b_orders["orders"].as_array().unwrap().is_empty(), "B has no orders");
+        assert!(
+            b_orders["orders"].as_array().unwrap().is_empty(),
+            "B has no orders"
+        );
         // an unknown key has no view
         assert!(gw.v1_account(&[0xff; 32]).is_none());
+    }
+
+    #[test]
+    fn caller_signed_orders_require_a_valid_signature() {
+        use k256::ecdsa::SigningKey;
+        use sha3::{Digest as _, Keccak256 as RawKeccak};
+
+        fn eth_addr(sk: &SigningKey) -> [u8; 20] {
+            let point = sk.verifying_key().to_encoded_point(false);
+            let hash = RawKeccak::digest(&point.as_bytes()[1..]);
+            let mut a = [0u8; 20];
+            a.copy_from_slice(&hash[12..]);
+            a
+        }
+        fn sign(sk: &SigningKey, oh: &Digest) -> String {
+            let (sig, recid) = sk.sign_prehash_recoverable(oh).unwrap();
+            let mut s = [0u8; 65];
+            s[..64].copy_from_slice(&sig.to_bytes());
+            s[64] = 27 + recid.to_byte();
+            hex0x(&s)
+        }
+        fn req(
+            market: u64,
+            size: i128,
+            limit: i128,
+            nonce: Option<u64>,
+            sig: Option<String>,
+        ) -> OrderReq {
+            OrderReq {
+                market_id: market,
+                side: "Buy".into(),
+                size: size.to_string(),
+                limit_price: limit.to_string(),
+                tif: "Ioc".into(),
+                reduce_only: false,
+                nonce,
+                signature: sig,
+            }
+        }
+
+        let mut gw = Gw::boot();
+        let sk = SigningKey::from_bytes((&[9u8; 32]).into()).unwrap();
+        let (key, owner) = gw.register_account(Some(eth_addr(&sk)));
+        gw.account_deposit(&key, 0, 50_000 * QUOTE_SCALE).unwrap();
+
+        let market = 0u64;
+        let limit = gw.px_of(market); // caller-signed orders are limit orders (price is signed)
+        let size = SIZE_SCALE / 10;
+
+        // the exact order the gateway will reconstruct, signed by the caller's key
+        let order = mk_order(owner, market, Side::Buy, size, limit, 1, TimeInForce::Ioc);
+        let oh = order.order_hash::<Keccak256>();
+        assert!(
+            gw.account_place_order(
+                &key,
+                &req(market, size, limit, Some(1), Some(sign(&sk, &oh)))
+            )
+            .is_ok(),
+            "a valid caller signature is accepted",
+        );
+
+        // replay: reusing nonce 1 is rejected (strictly-increasing nonce)
+        assert!(
+            gw.account_place_order(
+                &key,
+                &req(market, size, limit, Some(1), Some(sign(&sk, &oh)))
+            )
+            .is_err(),
+            "nonce replay rejected",
+        );
+
+        // a missing signature on a caller-signed account is rejected
+        assert!(
+            gw.account_place_order(&key, &req(market, size, limit, Some(2), None))
+                .is_err(),
+            "missing signature rejected",
+        );
+
+        // a signature from a DIFFERENT key (wrong signer) is rejected
+        let wrong = SigningKey::from_bytes((&[10u8; 32]).into()).unwrap();
+        let order2 = mk_order(owner, market, Side::Buy, size, limit, 2, TimeInForce::Ioc);
+        let oh2 = order2.order_hash::<Keccak256>();
+        assert!(
+            gw.account_place_order(
+                &key,
+                &req(market, size, limit, Some(2), Some(sign(&wrong, &oh2)))
+            )
+            .is_err(),
+            "wrong-key signature rejected",
+        );
+
+        // FIELD-BINDING (review fix): a signature is bound to the EXACT trade terms.
+        // Sign a Buy of `size` @ limit (nonce 5), then submit size*2 with that same
+        // signature — it must be rejected (the size is bound into the order hash)…
+        let signed = mk_order(owner, market, Side::Buy, size, limit, 5, TimeInForce::Ioc);
+        let sig5 = sign(&sk, &signed.order_hash::<Keccak256>());
+        assert!(
+            gw.account_place_order(
+                &key,
+                &req(market, size * 2, limit, Some(5), Some(sig5.clone()))
+            )
+            .is_err(),
+            "a tampered size under a valid signature is rejected",
+        );
+        // …while the untampered order with that same signature IS accepted (proving
+        // the rejection was the tamper, not a bad signature).
+        assert!(
+            gw.account_place_order(&key, &req(market, size, limit, Some(5), Some(sig5)))
+                .is_ok(),
+            "the untampered order with that signature is accepted",
+        );
+
+        // a server-custody account (no signer) still trades without a signature
+        let (srv, _) = gw.register_account(None);
+        gw.account_deposit(&srv, 0, 50_000 * QUOTE_SCALE).unwrap();
+        assert!(
+            gw.account_place_order(&srv, &req(market, size, 0, None, None))
+                .is_ok(),
+            "server-custody account unaffected",
+        );
+    }
+
+    #[test]
+    fn deposit_address_bind_requires_ownership_proof() {
+        use k256::ecdsa::SigningKey;
+        use sha3::{Digest as _, Keccak256 as RawKeccak};
+        fn eth_addr(sk: &SigningKey) -> [u8; 20] {
+            let point = sk.verifying_key().to_encoded_point(false);
+            let hash = RawKeccak::digest(&point.as_bytes()[1..]);
+            let mut a = [0u8; 20];
+            a.copy_from_slice(&hash[12..]);
+            a
+        }
+        fn sign(sk: &SigningKey, digest: &[u8; 32]) -> [u8; 65] {
+            let (sig, recid) = sk.sign_prehash_recoverable(digest).unwrap();
+            let mut s = [0u8; 65];
+            s[..64].copy_from_slice(&sig.to_bytes());
+            s[64] = 27 + recid.to_byte();
+            s
+        }
+
+        let mut gw = Gw::boot();
+        let (key, owner) = gw.register_account(None);
+        let eoa = SigningKey::from_bytes((&[3u8; 32]).into()).unwrap();
+        let addr = eth_addr(&eoa);
+
+        // a proof signed by a DIFFERENT key (not the address being bound) is rejected
+        let wrong = SigningKey::from_bytes((&[4u8; 32]).into()).unwrap();
+        let bad = sign(&wrong, &deposit_bind_digest(&owner, &addr));
+        assert!(
+            gw.account_set_deposit_address(&key, addr, &bad).is_err(),
+            "a proof not from the bound address is rejected",
+        );
+
+        // the address's own key proves control → bind succeeds
+        let good = sign(&eoa, &deposit_bind_digest(&owner, &addr));
+        assert!(
+            gw.account_set_deposit_address(&key, addr, &good).is_ok(),
+            "valid ownership proof accepted",
+        );
+
+        // exclusivity: another account can't bind the same address (even controlling it)
+        let (key2, owner2) = gw.register_account(None);
+        let good2 = sign(&eoa, &deposit_bind_digest(&owner2, &addr));
+        assert!(
+            gw.account_set_deposit_address(&key2, addr, &good2).is_err(),
+            "an address already bound to another account is rejected",
+        );
     }
 }

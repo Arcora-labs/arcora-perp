@@ -721,11 +721,13 @@ dependencies = [
  "axum",
  "dark-perp-attestation",
  "getrandom",
+ "k256",
  "note-archive",
  "perp-core",
  "sequencer",
  "serde",
  "serde_json",
+ "sha3",
  "tokio",
  "tower-http",
 ]

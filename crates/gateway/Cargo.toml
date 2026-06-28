@@ -20,3 +20,7 @@ tower-http = { version = "0.5", features = ["cors"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 getrandom = "0.2"
+# raw keccak for the withdrawals Merkle tree (must match MerkleLib.sol) and
+# secp256k1 recovery for caller-signed orders (matches the contract's ecrecover).
+sha3 = "0.10"
+k256 = { version = "0.13", features = ["ecdsa"] }
