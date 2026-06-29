@@ -689,6 +689,9 @@ impl Gw {
                 feed: cfg.feed,
             });
         }
+        // give the demo user extra market-0 balance so the LP tab is demoable (LP
+        // deposits debit this real balance — no free mint).
+        fund(&mut seq, &mut archive, &user, 0, 2_000_000, 0x38);
         // capitalize the insurance fund so the backstop is visible from genesis; it
         // then grows on its own from the per-fill insurance cut (audit Q3/Q4).
         seq.apply(&BatchOp::SeedInsurance {
@@ -1420,11 +1423,42 @@ impl Gw {
         self.pool_equity().max(0) as f64 / self.lp_total_shares as f64
     }
 
-    /// Deposit `amount` (quote units) into the LP pool: add it to the MM pool's
-    /// market-0 capital and mint shares proportional to the pre-deposit equity.
-    fn lp_deposit(&mut self, who: [u8; 32], amount: i128) -> Result<u128, String> {
+    /// Move `value` of market-0 capital from `from` to `to` as a conserved transfer
+    /// (debit one, credit the other) — the engine has no native transfer, so this is
+    /// Unbind+Withdraw on `from` (external_out) then Deposit+Fund on `to` (external_in),
+    /// net-zero externally. `from` must have `value` free in market 0.
+    fn pool_transfer(&mut self, from: &Wallet, to: &Wallet, value: i128) -> Result<(), String> {
+        if value > self.market_free_of(&from.owner, 0) {
+            return Err("Insufficient market-0 free balance.".into());
+        }
+        let now = now_ms();
+        let oracle = oracle_of(self.px_of(0), now);
+        let c = self.lp_counter;
+        self.lp_counter += 1;
+        let mut db = [0xE0u8; 32];
+        db[..8].copy_from_slice(&c.to_le_bytes());
+        self.seq
+            .apply(&BatchOp::Unbind { owner: from.owner, market_id: 0, amount: value, blinding: db, oracle, now_ms: now })
+            .map_err(|e| format!("lp debit unbind: {e:?}"))?;
+        let dn = Note::new(from.owner, 0, value, db);
+        self.seq
+            .apply(&BatchOp::Withdraw { note_commitment: dn.commitment::<Keccak256>(), spend_key: from.spend_key })
+            .map_err(|e| format!("lp debit burn: {e:?}"))?;
+        let mut cb = [0xE1u8; 32];
+        cb[..8].copy_from_slice(&c.to_le_bytes());
+        fund_amount(&mut self.seq, &mut self.archive, to, 0, value, cb);
+        Ok(())
+    }
+
+    /// Deposit `amount` into the LP pool. The depositor's OWN market-0 balance is
+    /// debited and bound as pool capital (no free mint — shares represent real
+    /// provided capital), then shares are minted at the live NAV.
+    fn lp_deposit(&mut self, share_key: [u8; 32], depositor: &Wallet, amount: i128) -> Result<u128, String> {
         if amount <= 0 {
             return Err("Amount must be positive.".into());
+        }
+        if amount > self.market_free_of(&depositor.owner, 0) {
+            return Err("Insufficient market-0 balance — fund it before providing liquidity.".into());
         }
         let eq = self.pool_equity().max(1) as u128;
         let shares = if self.lp_total_shares == 0 {
@@ -1433,19 +1467,16 @@ impl Gw {
             (amount as u128).saturating_mul(self.lp_total_shares) / eq
         };
         let mm = self.mm;
-        let mut blind = [0xE0u8; 32];
-        blind[..8].copy_from_slice(&self.lp_counter.to_le_bytes());
-        self.lp_counter += 1;
-        fund_amount(&mut self.seq, &mut self.archive, &mm, 0, amount, blind);
+        self.pool_transfer(depositor, &mm, amount)?;
         self.lp_total_shares += shares;
-        *self.lp_shares.entry(who).or_insert(0) += shares;
+        *self.lp_shares.entry(share_key).or_insert(0) += shares;
         Ok(shares)
     }
 
-    /// Withdraw `shares` from the LP pool: pay out their value (shares × NAV) by
-    /// unbinding it from the MM pool's market-0 capital.
-    fn lp_withdraw(&mut self, who: &[u8; 32], shares: u128) -> Result<i128, String> {
-        let have = self.lp_shares.get(who).copied().unwrap_or(0);
+    /// Withdraw `shares` from the LP pool: pay out shares × NAV from the pool's
+    /// market-0 capital straight into the withdrawer's OWN market-0 balance.
+    fn lp_withdraw(&mut self, share_key: &[u8; 32], withdrawer: &Wallet, shares: u128) -> Result<i128, String> {
+        let have = self.lp_shares.get(share_key).copied().unwrap_or(0);
         if shares == 0 || shares > have {
             return Err("Insufficient LP shares.".into());
         }
@@ -1454,21 +1485,10 @@ impl Gw {
         if value > self.market_free_of(&self.mm.owner, 0) {
             return Err("Pool's market-0 free capital can't cover this right now (open positions tie up margin).".into());
         }
-        let now = now_ms();
-        let oracle = oracle_of(self.px_of(0), now);
-        let mut blind = [0xF0u8; 32];
-        blind[..8].copy_from_slice(&self.lp_counter.to_le_bytes());
-        self.lp_counter += 1;
-        self.seq
-            .apply(&BatchOp::Unbind { owner: self.mm.owner, market_id: 0, amount: value, blinding: blind, oracle, now_ms: now })
-            .map_err(|e| format!("lp unbind failed: {e:?}"))?;
-        let note = Note::new(self.mm.owner, 0, value, blind);
-        let cm = note.commitment::<Keccak256>();
-        self.seq
-            .apply(&BatchOp::Withdraw { note_commitment: cm, spend_key: self.mm.spend_key })
-            .map_err(|e| format!("lp burn failed: {e:?}"))?;
+        let mm = self.mm;
+        self.pool_transfer(&mm, withdrawer, value)?;
         self.lp_total_shares -= shares;
-        if let Some(s) = self.lp_shares.get_mut(who) {
+        if let Some(s) = self.lp_shares.get_mut(share_key) {
             *s -= shares;
         }
         Ok(value)
@@ -2639,7 +2659,14 @@ async fn post_v1_lp_deposit(
         Ok(v) => v,
         Err(_) => return err400("bad amount".into()).into_response(),
     };
-    match app.gw.lock().await.lp_deposit(key, amount) {
+    let r = {
+        let mut gw = app.gw.lock().await;
+        match gw.accounts.get(&key).map(|a| a.wallet) {
+            Some(w) => gw.lp_deposit(key, &w, amount),
+            None => Err("unknown account".into()),
+        }
+    };
+    match r {
         Ok(shares) => Json(serde_json::json!({ "sharesMinted": shares.to_string() })).into_response(),
         Err(e) => err400(e).into_response(),
     }
@@ -2658,7 +2685,14 @@ async fn post_v1_lp_withdraw(
         Ok(v) => v,
         Err(_) => return err400("bad shares".into()).into_response(),
     };
-    match app.gw.lock().await.lp_withdraw(&key, shares) {
+    let r = {
+        let mut gw = app.gw.lock().await;
+        match gw.accounts.get(&key).map(|a| a.wallet) {
+            Some(w) => gw.lp_withdraw(&key, &w, shares),
+            None => Err("unknown account".into()),
+        }
+    };
+    match r {
         Ok(value) => Json(serde_json::json!({ "withdrawnValue": value.to_string() })).into_response(),
         Err(e) => err400(e).into_response(),
     }
@@ -2995,7 +3029,8 @@ async fn post_lp_deposit(State(app): State<Shared>, Json(req): Json<AmountReq>) 
     let r = {
         let mut gw = app.gw.lock().await;
         let who = gw.user.owner;
-        gw.lp_deposit(who, amount)
+        let w = gw.user;
+        gw.lp_deposit(who, &w, amount)
     };
     match r {
         Ok(shares) => {
@@ -3020,7 +3055,8 @@ async fn post_lp_withdraw(State(app): State<Shared>, Json(req): Json<LpWithdrawR
     let r = {
         let mut gw = app.gw.lock().await;
         let who = gw.user.owner;
-        gw.lp_withdraw(&who, shares)
+        let w = gw.user;
+        gw.lp_withdraw(&who, &w, shares)
     };
     match r {
         Ok(value) => {
@@ -3384,10 +3420,10 @@ mod tests {
     #[test]
     fn boot_funds_user_to_25k() {
         let gw = Gw::boot();
-        // ≈ $25,000 * QUOTE_SCALE free across the 5 funded markets
+        // ≈ $25,000 across the 5 markets + a $2,000,000 market-0 LP allowance.
         let free = gw.free_balance();
         assert!(
-            free >= 24_000 * QUOTE_SCALE && free <= 26_000 * QUOTE_SCALE,
+            free >= 2_020_000 * QUOTE_SCALE && free <= 2_030_000 * QUOTE_SCALE,
             "free={free}"
         );
         assert_eq!(gw.snapshot().markets.len(), 5);
@@ -3584,6 +3620,30 @@ mod tests {
                 .is_ok(),
             "server-custody account unaffected",
         );
+    }
+
+    #[test]
+    fn lp_deposit_debits_the_depositor_no_free_mint() {
+        let mut gw = Gw::boot();
+        let who = gw.user.owner;
+        let w = gw.user;
+        let free0 = gw.market_free_of(&who, 0);
+        let pool0 = gw.pool_equity();
+
+        // depositing more than the depositor's market-0 balance is rejected (no free mint)
+        assert!(gw.lp_deposit(who, &w, free0 + 1).is_err(), "free-mint blocked");
+
+        // a valid deposit debits the depositor and grows the pool by the same amount
+        let dep = 500_000 * QUOTE_SCALE;
+        let shares = gw.lp_deposit(who, &w, dep).expect("deposit");
+        assert!(shares > 0);
+        assert_eq!(gw.market_free_of(&who, 0), free0 - dep, "depositor debited");
+        assert!((gw.pool_equity() - pool0 - dep).abs() < QUOTE_SCALE, "pool grew by the deposit");
+
+        // withdraw pays back into the depositor's balance (conserved, flat NAV)
+        let val = gw.lp_withdraw(&who, &w, shares).expect("withdraw");
+        assert!((val - dep).abs() < QUOTE_SCALE, "withdraw ≈ deposit at flat NAV");
+        assert!((gw.market_free_of(&who, 0) - free0).abs() < QUOTE_SCALE, "depositor made whole");
     }
 
     #[test]
