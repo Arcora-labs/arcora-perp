@@ -19,6 +19,19 @@ import type {
   TrackedOrder,
 } from "../domain/types";
 
+/// The LP pool (the MM-as-counterparty): LPs deposit USDC → mint shares of the
+/// pool's mark-to-market equity, earn the house edge (trader losses), bear pool PnL.
+export interface LpPool {
+  /// Pool TVL — its mark-to-market equity (quote-scaled).
+  tvl: bigint;
+  /// NAV per share (a "1.000000"-style string); 1.0 at genesis, drifts with pool PnL.
+  navPerShare: string;
+  totalShares: bigint;
+  /// The current user's LP shares + their value (quote-scaled).
+  myShares: bigint;
+  myValue: bigint;
+}
+
 export interface ClientState {
   /// all listed markets
   markets: Market[];
@@ -43,6 +56,8 @@ export interface ClientState {
   insuranceFund: bigint;
   /// Protocol-treasury balance — the operator's accrued trading-fee revenue (§9).
   treasury: bigint;
+  /// The LP pool (the MM-as-counterparty): TVL, NAV/share, and the user's own stake.
+  lp: LpPool;
   /// Quote-scaled cumulative collateral the user has had auto-deleveraged — the
   /// transparency surface for socialized losses (audit Q2).
   userAdlClawed: bigint;

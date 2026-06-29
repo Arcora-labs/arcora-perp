@@ -13,14 +13,16 @@ import { Toaster } from "./components/Toaster";
 import { MarketSelector } from "./components/MarketSelector";
 import { PriceChart } from "./components/PriceChart";
 import { ActivityFeed } from "./components/ActivityFeed";
-import { ApiExplorer } from "./components/ApiExplorer";
+import { ApiAccess } from "./components/ApiAccess";
+import { LpVault } from "./components/LpVault";
 import { Explorer } from "./components/Explorer";
 import { HealthPanel } from "./components/HealthPanel";
 
-type Tab = "trade" | "account" | "recover" | "explorer" | "health" | "api";
+type Tab = "trade" | "lp" | "account" | "recover" | "explorer" | "health" | "api";
 
 const TAB_LABEL: Record<Tab, string> = {
   trade: "Trade",
+  lp: "LP Pool",
   account: "Account",
   recover: "Recover",
   explorer: "Explorer",
@@ -32,6 +34,9 @@ const TAB_LABEL: Record<Tab, string> = {
 const ICON: Record<Tab, ReactNode> = {
   trade: (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17" /><polyline points="16 7 22 7 22 13" /></svg>
+  ),
+  lp: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z" /></svg>
   ),
   account: (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4" /><path d="M3 5v14a2 2 0 0 0 2 2h16v-5" /><path d="M18 12a2 2 0 0 0 0 4h4v-4Z" /></svg>
@@ -50,7 +55,7 @@ const ICON: Record<Tab, ReactNode> = {
   ),
 };
 
-const TABS: Tab[] = ["trade", "account", "recover", "explorer", "health", "api"];
+const TABS: Tab[] = ["trade", "lp", "account", "recover", "explorer", "health", "api"];
 
 export default function App() {
   const [tab, setTab] = useState<Tab>("trade");
@@ -161,15 +166,21 @@ export default function App() {
               </section>
             )}
 
+            {tab === "lp" && (
+              <section className="grid grid--single">
+                <LpVault />
+              </section>
+            )}
+
             {tab === "api" && (
               <section className="grid grid--single">
-                <ApiExplorer />
+                <ApiAccess />
               </section>
             )}
 
             <footer className="app__footer">
-              dark-perp · backed by a mock client encoding the protocol semantics · swap{" "}
-              <code>MockDarkPerpClient</code> for the real backend.
+              dark-perp · live engine settling on Base Sepolia · trade via the browser or the
+              external <code>/v1</code> API.
             </footer>
           </main>
         </div>

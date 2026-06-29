@@ -56,7 +56,7 @@ const IMR_BP: i128 = 1_000; // initial-margin 10% in basis points (matches Marke
 const MMR_BP: i128 = 500; // maintenance 5%
 const SETTLE_TICKS: u64 = 5; // ticks a batch waits (MATCHED) before mark_settled (SETTLED)
 const USER_FUND_PER_MARKET: i128 = 5_000; // USD → $25k across 5 markets (≈ mock's settledBalance)
-const MM_FUND_PER_MARKET: i128 = 10_000_000; // USD; market-maker liquidity buffer
+const MM_FUND_PER_MARKET: i128 = 6_000_000; // USD; the LP pool's seed (×5 markets = $30M)
 const TICK_MS: u64 = 700;
 // Trading economics (audit Q4): every fill charges the taker a fee, rebates the
 // resting maker, and routes the remainder into the insurance fund (audit Q3).
@@ -310,6 +310,16 @@ struct WHedge {
     hedge_target: String, // −inventory: the offset to take on an external venue
     notional: String,     // quote-scaled exposure at mark
 }
+/// The LP pool (the MM-as-counterparty) — public stats + the demo user's own stake.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WLp {
+    tvl: String,
+    nav_per_share: String,
+    total_shares: String,
+    my_shares: String,
+    my_value: String,
+}
 /// The last on-chain L1 settlement the bridge published (audit/§3) — present only
 /// when the gateway runs with the L1 bridge configured.
 #[derive(Serialize)]
@@ -399,6 +409,8 @@ struct WState {
     l1: Option<WL1>,
     /// The verified TEE attestation the enclave is bound to (else null = stub).
     attestation: Option<WAttestation>,
+    /// The LP pool (counterparty) — TVL, NAV/share, and the demo user's stake.
+    lp: WLp,
 }
 #[derive(Serialize)]
 struct WEvent {
@@ -544,6 +556,15 @@ struct Gw {
     l1_status: Option<L1Status>,
     /// The verified TEE attestation the enclave identity is bound to (None = stub).
     attestation: Option<Attested>,
+    /// LP pool shares per depositor (keyed by the demo user's owner or an account's
+    /// API key). The MM wallet IS the pool; LPs deposit USDC → mint shares of its
+    /// mark-to-market equity, earn the house edge (trader losses), bear pool PnL.
+    lp_shares: std::collections::BTreeMap<[u8; 32], u128>,
+    /// Total LP shares outstanding. Seeded to the boot pool equity so the initial
+    /// share price (equity / shares) is 1.0; the operator implicitly owns the seed.
+    lp_total_shares: u128,
+    /// Monotonic salt for LP deposit/withdraw note blindings.
+    lp_counter: u64,
 }
 
 fn oracle_of(px: i128, now: u64) -> OracleTranscript {
@@ -675,7 +696,7 @@ impl Gw {
         })
         .expect("seed insurance fund");
 
-        Gw {
+        let mut gw = Gw {
             seq,
             archive,
             user,
@@ -697,7 +718,14 @@ impl Gw {
             last_manifest: [0u8; 32],
             l1_status: None,
             attestation,
-        }
+            lp_shares: std::collections::BTreeMap::new(),
+            lp_total_shares: 0,
+            lp_counter: 0,
+        };
+        // seed total LP shares to the boot pool equity (the operator's stake), so the
+        // initial NAV per share is 1.0 and LP deposits price in proportionally.
+        gw.lp_total_shares = gw.pool_equity().max(0) as u128;
+        gw
     }
 
     // ── multi-tenant `/v1` account operations ────────────────────────────────
@@ -1362,6 +1390,106 @@ impl Gw {
 
     /// Apply a LIVE oracle price (fetched from the real feed) to a market: update the
     /// mark, flag it `live` (the UI shows "live oracle"), and set the engine oracle.
+    // ── LP pool (the MM wallet IS the pool; LPs own shares of its equity) ──────
+    /// The pool's mark-to-market equity: the MM's free notes + every open MM
+    /// position's collateral + uPnL. LP shares are priced against this.
+    fn pool_equity(&self) -> i128 {
+        let owner = self.mm.owner;
+        let mut eq: i128 = self
+            .seq
+            .state
+            .notes
+            .values()
+            .filter(|n| n.owner == owner)
+            .map(|n| n.amount)
+            .sum();
+        for m in &self.mkts {
+            if let Some(p) = self.seq.state.position(&owner, m.id) {
+                eq += p.collateral + pnl(p.size, p.entry_price, m.px);
+            }
+        }
+        eq
+    }
+
+    /// NAV per share (quote units / share). 1.0 at boot; rises as the pool earns the
+    /// house edge (traders lose net), falls if traders win net.
+    fn lp_nav(&self) -> f64 {
+        if self.lp_total_shares == 0 {
+            return 1.0;
+        }
+        self.pool_equity().max(0) as f64 / self.lp_total_shares as f64
+    }
+
+    /// Deposit `amount` (quote units) into the LP pool: add it to the MM pool's
+    /// market-0 capital and mint shares proportional to the pre-deposit equity.
+    fn lp_deposit(&mut self, who: [u8; 32], amount: i128) -> Result<u128, String> {
+        if amount <= 0 {
+            return Err("Amount must be positive.".into());
+        }
+        let eq = self.pool_equity().max(1) as u128;
+        let shares = if self.lp_total_shares == 0 {
+            amount as u128
+        } else {
+            (amount as u128).saturating_mul(self.lp_total_shares) / eq
+        };
+        let mm = self.mm;
+        let mut blind = [0xE0u8; 32];
+        blind[..8].copy_from_slice(&self.lp_counter.to_le_bytes());
+        self.lp_counter += 1;
+        fund_amount(&mut self.seq, &mut self.archive, &mm, 0, amount, blind);
+        self.lp_total_shares += shares;
+        *self.lp_shares.entry(who).or_insert(0) += shares;
+        Ok(shares)
+    }
+
+    /// Withdraw `shares` from the LP pool: pay out their value (shares × NAV) by
+    /// unbinding it from the MM pool's market-0 capital.
+    fn lp_withdraw(&mut self, who: &[u8; 32], shares: u128) -> Result<i128, String> {
+        let have = self.lp_shares.get(who).copied().unwrap_or(0);
+        if shares == 0 || shares > have {
+            return Err("Insufficient LP shares.".into());
+        }
+        let eq = self.pool_equity().max(0) as u128;
+        let value = (eq.saturating_mul(shares) / self.lp_total_shares.max(1)) as i128;
+        if value > self.market_free_of(&self.mm.owner, 0) {
+            return Err("Pool's market-0 free capital can't cover this right now (open positions tie up margin).".into());
+        }
+        let now = now_ms();
+        let oracle = oracle_of(self.px_of(0), now);
+        let mut blind = [0xF0u8; 32];
+        blind[..8].copy_from_slice(&self.lp_counter.to_le_bytes());
+        self.lp_counter += 1;
+        self.seq
+            .apply(&BatchOp::Unbind { owner: self.mm.owner, market_id: 0, amount: value, blinding: blind, oracle, now_ms: now })
+            .map_err(|e| format!("lp unbind failed: {e:?}"))?;
+        let note = Note::new(self.mm.owner, 0, value, blind);
+        let cm = note.commitment::<Keccak256>();
+        self.seq
+            .apply(&BatchOp::Withdraw { note_commitment: cm, spend_key: self.mm.spend_key })
+            .map_err(|e| format!("lp burn failed: {e:?}"))?;
+        self.lp_total_shares -= shares;
+        if let Some(s) = self.lp_shares.get_mut(who) {
+            *s -= shares;
+        }
+        Ok(value)
+    }
+
+    /// Pool stats for the UI: TVL (equity), NAV/share, total shares, and the caller's
+    /// own shares + current value.
+    fn lp_json(&self, who: &[u8; 32]) -> serde_json::Value {
+        let eq = self.pool_equity();
+        let my_shares = self.lp_shares.get(who).copied().unwrap_or(0);
+        let my_value =
+            (eq.max(0) as f64 * (my_shares as f64 / self.lp_total_shares.max(1) as f64)) as i128;
+        serde_json::json!({
+            "tvl": eq.to_string(),
+            "navPerShare": format!("{:.6}", self.lp_nav()),
+            "totalShares": self.lp_total_shares.to_string(),
+            "myShares": my_shares.to_string(),
+            "myValue": my_value.to_string(),
+        })
+    }
+
     fn apply_real_oracle(&mut self, market: u64, transcript: OracleTranscript) {
         if let Some(m) = self.mkts.iter_mut().find(|m| m.id == market) {
             m.px = transcript.price;
@@ -2068,6 +2196,19 @@ impl Gw {
                 tcb: a.tcb.clone(),
                 quote_version: a.quote_version,
             }),
+            lp: {
+                let eq = self.pool_equity();
+                let my_shares = self.lp_shares.get(&self.user.owner).copied().unwrap_or(0);
+                let my_value =
+                    (eq.max(0) as f64 * (my_shares as f64 / self.lp_total_shares.max(1) as f64)) as i128;
+                WLp {
+                    tvl: eq.to_string(),
+                    nav_per_share: format!("{:.6}", self.lp_nav()),
+                    total_shares: self.lp_total_shares.to_string(),
+                    my_shares: my_shares.to_string(),
+                    my_value: my_value.to_string(),
+                }
+            },
         }
     }
 }
@@ -2475,6 +2616,53 @@ async fn get_v1_withdrawals(State(app): State<Shared>, headers: HeaderMap) -> im
             .into_response(),
     }
 }
+
+/// LP pool stats + the account's own stake (authenticated).
+async fn get_v1_lp(State(app): State<Shared>, headers: HeaderMap) -> impl IntoResponse {
+    let key = match api_key_from(&headers) {
+        Ok(k) => k,
+        Err(e) => return e.into_response(),
+    };
+    Json(app.gw.lock().await.lp_json(&key)).into_response()
+}
+/// LP deposit for an account: stake USDC into the counterparty pool → mint shares.
+async fn post_v1_lp_deposit(
+    State(app): State<Shared>,
+    headers: HeaderMap,
+    Json(req): Json<AmountReq>,
+) -> impl IntoResponse {
+    let key = match api_key_from(&headers) {
+        Ok(k) => k,
+        Err(e) => return e.into_response(),
+    };
+    let amount: i128 = match req.amount.parse() {
+        Ok(v) => v,
+        Err(_) => return err400("bad amount".into()).into_response(),
+    };
+    match app.gw.lock().await.lp_deposit(key, amount) {
+        Ok(shares) => Json(serde_json::json!({ "sharesMinted": shares.to_string() })).into_response(),
+        Err(e) => err400(e).into_response(),
+    }
+}
+/// LP withdraw for an account: burn `shares` for their current pool value.
+async fn post_v1_lp_withdraw(
+    State(app): State<Shared>,
+    headers: HeaderMap,
+    Json(req): Json<LpWithdrawReq>,
+) -> impl IntoResponse {
+    let key = match api_key_from(&headers) {
+        Ok(k) => k,
+        Err(e) => return e.into_response(),
+    };
+    let shares: u128 = match req.shares.parse() {
+        Ok(v) => v,
+        Err(_) => return err400("bad shares".into()).into_response(),
+    };
+    match app.gw.lock().await.lp_withdraw(&key, shares) {
+        Ok(value) => Json(serde_json::json!({ "withdrawnValue": value.to_string() })).into_response(),
+        Err(e) => err400(e).into_response(),
+    }
+}
 async fn get_v1_account(State(app): State<Shared>, headers: HeaderMap) -> impl IntoResponse {
     let key = match api_key_from(&headers) {
         Ok(k) => k,
@@ -2798,6 +2986,52 @@ async fn post_withdraw(State(app): State<Shared>, Json(req): Json<AmountReq>) ->
     }
 }
 
+/// Demo-user LP deposit into the counterparty pool: mints shares of the pool equity.
+async fn post_lp_deposit(State(app): State<Shared>, Json(req): Json<AmountReq>) -> impl IntoResponse {
+    let amount: i128 = match req.amount.parse() {
+        Ok(v) => v,
+        Err(_) => return err400("bad amount".into()).into_response(),
+    };
+    let r = {
+        let mut gw = app.gw.lock().await;
+        let who = gw.user.owner;
+        gw.lp_deposit(who, amount)
+    };
+    match r {
+        Ok(shares) => {
+            let gw = app.gw.lock().await;
+            app.broadcast(&gw).await;
+            Json(serde_json::json!({ "sharesMinted": shares.to_string() })).into_response()
+        }
+        Err(e) => err400(e).into_response(),
+    }
+}
+
+#[derive(Deserialize)]
+struct LpWithdrawReq {
+    shares: String,
+}
+/// Demo-user LP withdraw: burns `shares` for their current value out of the pool.
+async fn post_lp_withdraw(State(app): State<Shared>, Json(req): Json<LpWithdrawReq>) -> impl IntoResponse {
+    let shares: u128 = match req.shares.parse() {
+        Ok(v) => v,
+        Err(_) => return err400("bad shares".into()).into_response(),
+    };
+    let r = {
+        let mut gw = app.gw.lock().await;
+        let who = gw.user.owner;
+        gw.lp_withdraw(&who, shares)
+    };
+    match r {
+        Ok(value) => {
+            let gw = app.gw.lock().await;
+            app.broadcast(&gw).await;
+            Json(serde_json::json!({ "withdrawnValue": value.to_string() })).into_response()
+        }
+        Err(e) => err400(e).into_response(),
+    }
+}
+
 async fn post_close(State(app): State<Shared>, Json(req): Json<MarketReq>) -> impl IntoResponse {
     let res = { app.gw.lock().await.close(req.market_id) };
     match res {
@@ -3089,6 +3323,8 @@ async fn main() {
         .route("/api/order", post(post_order))
         .route("/api/deposit", post(post_deposit))
         .route("/api/withdraw", post(post_withdraw))
+        .route("/api/lp/deposit", post(post_lp_deposit))
+        .route("/api/lp/withdraw", post(post_lp_withdraw))
         .route("/api/close", post(post_close))
         .route("/api/cancel", post(post_cancel))
         .route("/api/mode", post(post_mode))
@@ -3110,6 +3346,9 @@ async fn main() {
         )
         .route("/v1/accounts/withdraw", post(post_v1_withdraw))
         .route("/v1/accounts/withdrawals", get(get_v1_withdrawals))
+        .route("/v1/lp", get(get_v1_lp))
+        .route("/v1/lp/deposit", post(post_v1_lp_deposit))
+        .route("/v1/lp/withdraw", post(post_v1_lp_withdraw))
         .route("/v1/orders", post(post_v1_order).get(get_v1_orders))
         .route("/v1/orders/:order_id", delete(delete_v1_order))
         .route("/v1/positions", get(get_v1_positions))
