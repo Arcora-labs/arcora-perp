@@ -27,7 +27,11 @@ const DEPOSIT_TOPIC0: &str = "0xe1fffcc4923d04b559f4d29a8bfc6cda04eb5b0d3c460751
 pub struct L1 {
     pub rpc: String,
     pub settlement: String,
-    pub key: String,
+    /// Path to the V3 keystore encrypting the sequencer key, and to its (0600) password
+    /// file. `cast` signs via `--keystore`/`--password-file`, so the raw key never enters a
+    /// process argv (audit DP-013). A native in-process signer is the eventual full fix.
+    keystore_path: String,
+    password_file: String,
     /// USDC token (collateral asset) — needed for the bond top-up + deposit checks.
     pub usdc: Option<String>,
     /// CollateralVault — needed to read `claimed(leaf)` and match deposit logs.
@@ -61,10 +65,19 @@ impl L1 {
             .and_then(|s| s.trim().parse().ok())
             .unwrap_or(0);
         let allow_unsafe = std::env::var("L1_ALLOW_MOCK_PROOF").ok().as_deref() == Some("1");
+        // audit DP-013: encrypt the key into a keystore now, so it never enters a cast argv.
+        let (keystore_path, password_file) = match create_keystore(&key) {
+            Ok(k) => k,
+            Err(e) => {
+                eprintln!("[l1] REFUSING to start: could not create the sequencer keystore: {e}");
+                std::process::exit(1);
+            }
+        };
         let l1 = L1 {
             rpc: std::env::var("L1_RPC").unwrap_or_else(|_| "https://sepolia.base.org".into()),
             settlement,
-            key,
+            keystore_path,
+            password_file,
             usdc: std::env::var("L1_USDC").ok(),
             vault: std::env::var("L1_VAULT").ok(),
         };
@@ -108,7 +121,17 @@ impl L1 {
     fn send(&self, target: &str, sig: &str, args: &[&str]) -> Result<String, String> {
         let mut a: Vec<&str> = vec!["send", target, sig];
         a.extend_from_slice(args);
-        a.extend_from_slice(&["--private-key", &self.key, "--rpc-url", &self.rpc, "--json"]);
+        // audit DP-013: authenticate via the encrypted keystore + password FILE, never the
+        // raw key in argv. Both are file paths — the key never appears in /proc/<pid>/cmdline.
+        a.extend_from_slice(&[
+            "--keystore",
+            &self.keystore_path,
+            "--password-file",
+            &self.password_file,
+            "--rpc-url",
+            &self.rpc,
+            "--json",
+        ]);
         let out = self.cast(&a)?;
         Ok(tx_hash(&out))
     }
@@ -146,7 +169,14 @@ impl L1 {
 
     /// The sequencer key's address (the `cast wallet` derivation; no key is printed).
     fn sequencer_address(&self) -> Result<String, String> {
-        self.cast(&["wallet", "address", "--private-key", &self.key])
+        self.cast(&[
+            "wallet",
+            "address",
+            "--keystore",
+            &self.keystore_path,
+            "--password-file",
+            &self.password_file,
+        ])
     }
 
     /// Ensure the USDC sequencer bond covers `requiredBond()` plus headroom. On the
@@ -295,6 +325,74 @@ pub fn l1_chain_ok(declared: u64, actual: u64, allow_unsafe: bool) -> bool {
     actual != 0 && declared == actual && l1_chain_allowed(actual, false)
 }
 
+/// Encrypt `key_hex` (a 32-byte secp256k1 scalar) into a fresh V3 keystore plus a 0600
+/// password file, so `cast` can sign via `--keystore`/`--password-file` and the raw key
+/// never enters any process argv (audit DP-013). Returns (keystore_path, password_file).
+fn create_keystore(key_hex: &str) -> Result<(String, String), String> {
+    use std::io::Write as _;
+    let raw = key_hex.strip_prefix("0x").unwrap_or(key_hex).trim();
+    if raw.len() != 64 {
+        return Err("L1_SEQUENCER_KEY must be a 32-byte hex secp256k1 scalar".into());
+    }
+    let mut pk = [0u8; 32];
+    for (i, slot) in pk.iter_mut().enumerate() {
+        *slot = u8::from_str_radix(&raw[i * 2..i * 2 + 2], 16).map_err(|_| "bad key hex")?;
+    }
+    // a random keystore password (kept only in memory + a 0600 file, never in argv)
+    let mut pw = [0u8; 32];
+    getrandom::getrandom(&mut pw).map_err(|e| format!("rng: {e}"))?;
+    let password: String = pw.iter().map(|b| format!("{b:02x}")).collect();
+
+    // An UNPREDICTABLE, owner-only (0700), atomically-created directory: a random name (not
+    // the pid) plus a non-recursive create that FAILS if the path already exists, so an
+    // attacker cannot pre-plant a symlink or a readable dir at a guessable path.
+    let mut rnd = [0u8; 16];
+    getrandom::getrandom(&mut rnd).map_err(|e| format!("rng: {e}"))?;
+    let suffix: String = rnd.iter().map(|b| format!("{b:02x}")).collect();
+    let dir = std::env::temp_dir().join(format!("darkperp-keystore-{suffix}"));
+    {
+        let mut b = std::fs::DirBuilder::new();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::DirBuilderExt as _;
+            b.mode(0o700);
+        }
+        b.create(&dir).map_err(|e| format!("keystore dir: {e}"))?;
+    }
+
+    // encrypt_key writes the file to `dir/<name>` but RETURNS the uuid, so build the path
+    // from the fixed name we chose, not the return value.
+    let ksname = "sequencer";
+    eth_keystore::encrypt_key(&dir, &mut rand::rngs::OsRng, pk, &password, Some(ksname))
+        .map_err(|e| format!("encrypt keystore: {e}"))?;
+    let keystore_path = dir.join(ksname);
+
+    // Password file: create_new + 0600 in one step, so it is never briefly world-readable
+    // and cannot follow an attacker-planted symlink (create_new fails if the path exists).
+    let pw_path = dir.join("password");
+    let mut opts = std::fs::OpenOptions::new();
+    opts.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt as _;
+        opts.mode(0o600);
+    }
+    let mut f = opts.open(&pw_path).map_err(|e| format!("password file: {e}"))?;
+    f.write_all(password.as_bytes()).map_err(|e| format!("password write: {e}"))?;
+
+    // The keystore file lives inside the 0700 dir (already unreadable by other users);
+    // tighten it to 0600 as defense in depth.
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        let _ = std::fs::set_permissions(&keystore_path, std::fs::Permissions::from_mode(0o600));
+    }
+    Ok((
+        keystore_path.to_string_lossy().into_owned(),
+        pw_path.to_string_lossy().into_owned(),
+    ))
+}
+
 /// Pull `transactionHash` out of `cast send --json` output (falls back to raw).
 fn tx_hash(json: &str) -> String {
     serde_json::from_str::<serde_json::Value>(json)
@@ -369,5 +467,22 @@ mod tests {
         assert!(!l1_chain_ok(8453, 8453, false), "a matched mainnet is still refused");
         assert!(!l1_chain_ok(84532, 0, false), "an unresolved RPC chain fails closed");
         assert!(l1_chain_ok(8453, 8453, true), "override allows any chain");
+    }
+
+    // audit DP-013: the sequencer key is encrypted into a keystore that cast reads via file
+    // paths, so no `cast` command carries the raw key in argv (L1 no longer even stores it).
+    // Verify the keystore actually round-trips the key (so cast can sign with it).
+    #[test]
+    fn keystore_roundtrips_the_sequencer_key() {
+        let key = "ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
+        let (ks, pw) = create_keystore(key).expect("keystore created");
+        let password = std::fs::read_to_string(&pw).expect("password file");
+        let decrypted = eth_keystore::decrypt_key(&ks, password.trim()).expect("keystore decrypts");
+        let mut expected = [0u8; 32];
+        for (i, s) in expected.iter_mut().enumerate() {
+            *s = u8::from_str_radix(&key[i * 2..i * 2 + 2], 16).unwrap();
+        }
+        assert_eq!(decrypted.as_slice(), &expected[..], "keystore round-trips the sequencer key");
+        let _ = std::fs::remove_dir_all(std::path::Path::new(&ks).parent().unwrap());
     }
 }

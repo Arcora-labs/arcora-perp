@@ -25,6 +25,10 @@ getrandom = "0.2"
 # secp256k1 recovery for caller-signed orders (matches the contract's ecrecover).
 sha3 = "0.10"
 k256 = { version = "0.13", features = ["ecdsa"] }
+# audit DP-013: encrypt the L1 sequencer key into a V3 keystore in-process so the raw key
+# never appears in a `cast` argv (it is fed via --keystore + --password-file instead).
+eth-keystore = "0.5"
+rand = "0.8"
 
 [dev-dependencies]
 # router-level tests drive `build_router` via `ServiceExt::oneshot` (audit DP-010).
