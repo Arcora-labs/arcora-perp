@@ -1,11 +1,15 @@
 //! Global shielded state and the state root (§1, §3).
 //!
 //! The state root is the single value anchored on L1 by every settled batch. It
-//! binds: the note-commitment tree root, the nullifier count, the positions
-//! digest, the insurance fund, and the external in/out counters. The conservation
-//! identity — `Σ notes + Σ position collateral + insurance == external_in −
-//! external_out` — is an invariant maintained by *every* operation (Proof-v1:
-//! collateral conservation).
+//! binds every consensus-critical field: the note-commitment tree root, the
+//! nullifier-set contents, the unspent-note set, the positions and funding digests,
+//! the market parameters, the balance counters (insurance / vault pool / treasury /
+//! external in/out), the operating mode, and the batch/sequence counters. Binding
+//! the nullifier-set contents (not just its count) and the unspent-note set is what
+//! makes a forged pre-state unable to double-spend under an unchanged root (audit
+//! DP-002). The conservation identity — `Σ notes + Σ position collateral + insurance
+//! == external_in − external_out` — is an invariant maintained by *every* operation
+//! (Proof-v1: collateral conservation).
 
 use crate::funding::FundingState;
 use crate::hash::{word_i128, word_u64, Digest, Domain, Hasher};
@@ -145,20 +149,68 @@ impl<H: Hasher> State<H> {
         H::hash_words(Domain::StateRoot, &words)
     }
 
-    /// The L1-anchored state root (§1, §3).
+    /// A deterministic digest over the UNSPENT-note set (keyed by commitment). The
+    /// tree root commits every note ever appended, but not which remain spendable;
+    /// binding this set stops a forged pre-state from replaying a spent note as
+    /// unspent (audit DP-002). Order-independent via the `BTreeMap` ordering.
+    pub fn notes_digest(&self) -> Digest {
+        let mut words = alloc::vec::Vec::new();
+        for (cm, n) in &self.notes {
+            words.push(*cm);
+            words.push(n.owner);
+            words.push(word_u64(n.asset_id));
+            words.push(word_i128(n.amount));
+            words.push(n.blinding);
+        }
+        H::hash_words(Domain::StateRoot, &words)
+    }
+
+    /// A deterministic digest over per-market risk/fee parameters. Bound into the
+    /// root so a prover cannot silently alter margins, oracle bounds, or fees under
+    /// an unchanged state root (audit DP-002). Order-independent via the `BTreeMap`.
+    pub fn markets_digest(&self) -> Digest {
+        let mut words = alloc::vec::Vec::new();
+        for (id, m) in &self.markets {
+            words.push(word_u64(*id));
+            words.push(word_i128(m.initial_margin_ratio));
+            words.push(word_i128(m.maintenance_margin_ratio));
+            words.push(word_i128(m.liquidation_fee_ratio));
+            words.push(word_u64(m.max_oracle_staleness_ms));
+            words.push(word_i128(m.max_oracle_confidence_ratio));
+            words.push(word_i128(m.max_oracle_deviation_ratio));
+            words.push(word_i128(m.taker_fee_ratio));
+            words.push(word_i128(m.maker_rebate_ratio));
+            words.push(word_i128(m.treasury_fee_ratio));
+        }
+        H::hash_words(Domain::StateRoot, &words)
+    }
+
+    /// The L1-anchored state root (§1, §3). Binds every consensus-critical field:
+    /// the note-commitment tree, the nullifier-set contents, the unspent-note set,
+    /// positions, funding, market parameters, all balance counters, the operating
+    /// mode, and the batch/sequence counters (audit DP-002).
     pub fn state_root(&self) -> Digest {
+        let mode_word: u64 = match self.mode {
+            Mode::Normal => 0,
+            Mode::CloseOnly => 1,
+        };
         H::hash_words(
             Domain::StateRoot,
             &[
                 self.tree.root(),
-                word_u64(self.nullifiers.len() as u64),
+                self.nullifiers.digest::<H>(),
+                self.notes_digest(),
                 self.positions_digest(),
                 self.funding_digest(),
+                self.markets_digest(),
                 word_i128(self.insurance_fund),
                 word_i128(self.vault_pool),
                 word_i128(self.treasury),
                 word_i128(self.external_in),
                 word_i128(self.external_out),
+                word_u64(mode_word),
+                word_u64(self.next_batch_id),
+                word_u64(self.next_seq),
             ],
         )
     }
@@ -187,5 +239,76 @@ mod tests {
         let r0 = s.state_root();
         s.external_in += 1;
         assert_ne!(r0, s.state_root());
+    }
+
+    // audit DP-002: the root must bind the nullifier-set CONTENTS, not just its size —
+    // otherwise a prover can swap which notes were spent while keeping the same count.
+    #[test]
+    fn state_root_binds_nullifier_contents_not_just_count() {
+        let mut a: State<Keccak256> = State::new(16);
+        let mut b: State<Keccak256> = State::new(16);
+        assert!(a.nullifiers.insert([1u8; 32]));
+        assert!(b.nullifiers.insert([2u8; 32])); // equal count (1), different contents
+        assert_eq!(a.nullifiers.len(), b.nullifiers.len());
+        assert_ne!(
+            a.state_root(),
+            b.state_root(),
+            "nullifier sets of equal size but different contents must not share a root",
+        );
+    }
+
+    // audit DP-002: the emergency close-only mode is consensus-critical and must be bound.
+    #[test]
+    fn state_root_binds_mode() {
+        let mut a: State<Keccak256> = State::new(16);
+        let b: State<Keccak256> = State::new(16);
+        a.mode = Mode::CloseOnly;
+        assert_ne!(
+            a.state_root(),
+            b.state_root(),
+            "the close-only mode must be part of the committed root",
+        );
+    }
+
+    // audit DP-002: the set of unspent notes must be bound, else a spent note can be
+    // replayed as still-spendable in a forged witness pre-state.
+    #[test]
+    fn state_root_binds_unspent_notes() {
+        let mut a: State<Keccak256> = State::new(16);
+        let b: State<Keccak256> = State::new(16);
+        let n = Note::new([9u8; 32], 0, 1_000_000, [3u8; 32]);
+        a.notes.insert(n.commitment::<Keccak256>(), n);
+        assert_ne!(
+            a.state_root(),
+            b.state_root(),
+            "the unspent-note set must be bound into the root",
+        );
+    }
+
+    // audit DP-002: the batch/sequence counters order settlement and must be bound.
+    #[test]
+    fn state_root_binds_sequence_and_batch() {
+        let base: State<Keccak256> = State::new(16);
+        let mut with_seq = base.clone();
+        with_seq.next_seq += 1;
+        assert_ne!(base.state_root(), with_seq.state_root(), "next_seq must be bound");
+        let mut with_batch = base.clone();
+        with_batch.next_batch_id += 1;
+        assert_ne!(base.state_root(), with_batch.state_root(), "next_batch_id must be bound");
+    }
+
+    // audit DP-002: per-market risk/fee parameters must be bound so a prover cannot
+    // silently alter margins or fees under an unchanged root.
+    #[test]
+    fn state_root_binds_market_config() {
+        let mut a: State<Keccak256> = State::new(16);
+        let mut b: State<Keccak256> = State::new(16);
+        a.markets.insert(0, Market::conservative(0));
+        b.markets.insert(0, Market::with_fees(0, 10, 4)); // same id, different fee schedule
+        assert_ne!(
+            a.state_root(),
+            b.state_root(),
+            "market risk/fee parameters must be bound into the root",
+        );
     }
 }

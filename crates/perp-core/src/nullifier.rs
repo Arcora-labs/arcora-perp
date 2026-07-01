@@ -6,7 +6,7 @@
 //! accumulator; in Phase 0 we model it as an explicit set so the accounting tests
 //! are unambiguous.
 
-use crate::hash::Digest;
+use crate::hash::{Digest, Domain, Hasher};
 use alloc::collections::BTreeSet;
 
 /// Append-only set of revealed nullifiers.
@@ -40,6 +40,18 @@ impl NullifierSet {
     #[must_use]
     pub fn insert(&mut self, nf: Digest) -> bool {
         self.spent.insert(nf)
+    }
+
+    /// A deterministic digest binding the full spent-set CONTENTS (not just the
+    /// count). Committed into the state root so a forged pre-state cannot swap which
+    /// notes were spent while preserving the size (audit DP-002). Order-independent
+    /// via the `BTreeSet`'s sorted iteration.
+    pub fn digest<H: Hasher>(&self) -> Digest {
+        let mut words = alloc::vec::Vec::with_capacity(self.spent.len());
+        for nf in &self.spent {
+            words.push(*nf);
+        }
+        H::hash_words(Domain::StateRoot, &words)
     }
 }
 
