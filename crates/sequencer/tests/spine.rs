@@ -676,3 +676,44 @@ fn maintenance_reaps_expired_makers_so_they_do_not_anchor_the_mark() {
         "the expired maker was reaped and no longer anchors best_ask / the mark"
     );
 }
+
+// audit DP-009: a reduce_only order may only SHRINK its owner's position, never open or
+// grow it. Enforced at settlement — a reduce_only fill that would increase exposure is
+// rejected (dropped), so the position never opens.
+#[test]
+fn reduce_only_order_cannot_open_a_position() {
+    let mut s = setup();
+    // trader 2 is flat; a reduce_only BUY would OPEN a long
+    let maker = order(1, Side::Sell, SIZE_SCALE, 100_000 * PRICE_SCALE, 1);
+    let mut taker = order(2, Side::Buy, SIZE_SCALE, 100_000 * PRICE_SCALE, 2);
+    taker.reduce_only = true;
+    let sealed = s.seal_batch(&[maker, taker], 1_000);
+    assert!(
+        s.state.position(&owner_id(2), 0).map_or(true, |p| p.size == 0),
+        "a reduce_only order must not open a position",
+    );
+    assert!(
+        !sealed.settlement_rejected.is_empty(),
+        "the exposure-increasing reduce_only fill is rejected at settlement",
+    );
+}
+
+#[test]
+fn reduce_only_order_may_shrink_a_position() {
+    let mut s = setup();
+    // batch 0: trader 2 opens a long (not reduce_only)
+    let m0 = order(1, Side::Sell, SIZE_SCALE, 100_000 * PRICE_SCALE, 1);
+    let t0 = order(2, Side::Buy, SIZE_SCALE, 100_000 * PRICE_SCALE, 2);
+    s.seal_batch(&[m0, t0], 1_000);
+    assert_eq!(s.state.position(&owner_id(2), 0).unwrap().size, SIZE_SCALE, "opened long");
+    // batch 1: trader 2 submits a reduce_only SELL that shrinks the long — allowed
+    let m1 = order(1, Side::Buy, SIZE_SCALE, 100_000 * PRICE_SCALE, 3);
+    let mut t1 = order(2, Side::Sell, SIZE_SCALE, 100_000 * PRICE_SCALE, 4);
+    t1.reduce_only = true;
+    let sealed = s.seal_batch(&[m1, t1], 2_000);
+    assert_eq!(sealed.settlement_rejected, vec![], "a reducing reduce_only order settles");
+    assert!(
+        s.state.position(&owner_id(2), 0).map_or(true, |p| p.size == 0),
+        "the long is closed by the reduce_only sell",
+    );
+}

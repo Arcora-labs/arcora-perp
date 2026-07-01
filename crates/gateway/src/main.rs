@@ -1092,7 +1092,8 @@ impl Gw {
             }
             None => acct.nonce,
         };
-        let order = mk_order(owner, req.market_id, side, size, px, nonce, tif);
+        let mut order = mk_order(owner, req.market_id, side, size, px, nonce, tif);
+        order.reduce_only = req.reduce_only; // audit DP-009: carry reduce_only to the core
         let oh = order.order_hash::<Keccak256>();
         if let Some(expected) = signer {
             let sig_hex = match req.signature.as_deref() {
@@ -1659,7 +1660,7 @@ impl Gw {
         let nonce = self.user_nonce;
         self.user_nonce += 1;
         // user is the taker (Ioc) — crosses the resting market-maker maker each seal
-        let order = mk_order(
+        let mut order = mk_order(
             self.user.owner,
             req.market_id,
             side,
@@ -1668,6 +1669,7 @@ impl Gw {
             nonce,
             TimeInForce::Ioc,
         );
+        order.reduce_only = req.reduce_only; // audit DP-009: carry reduce_only to the core
         let oh = order.order_hash::<Keccak256>();
         let now = now_ms();
         let signed = self.seq.accept_order(&order, now);

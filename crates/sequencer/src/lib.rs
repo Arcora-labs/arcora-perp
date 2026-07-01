@@ -27,7 +27,7 @@ use perp_core::hash::{word_u64, Digest, Domain, Hasher, Keccak256};
 use perp_core::market::{Market, MarketId};
 use perp_core::note::PubKey;
 use perp_core::oracle::OracleTranscript;
-use perp_core::order::{BatchManifest, Finality, Order, Receipt, RejectReason};
+use perp_core::order::{BatchManifest, Finality, Order, Receipt, RejectReason, Side};
 use perp_core::position::Position;
 use perp_core::{DefaultState, EngineError};
 
@@ -400,6 +400,16 @@ impl Sequencer {
         }
     }
 
+    /// Whether a signed `delta` would INCREASE `owner`'s absolute exposure in `market`
+    /// (open from flat, grow in the same direction, or flip) — used to enforce reduce_only
+    /// at settlement (audit DP-009).
+    fn exposure_increases(&self, owner: &PubKey, market: MarketId, delta: i128) -> bool {
+        match self.state.position(owner, market) {
+            None => true,
+            Some(p) => p.increases_exposure(delta),
+        }
+    }
+
     /// Best book mid as the perp mark price; falls back to the oracle index if a
     /// side is empty. Used as the funding mark (§8).
     fn mark_price(&self, market_id: MarketId) -> Option<i128> {
@@ -521,6 +531,18 @@ impl Sequencer {
                 }
                 continue;
             };
+            // audit DP-009: a reduce_only order may only SHRINK its owner's position. Drop
+            // the fill if it would increase a reduce_only party's absolute exposure. (Matching
+            // is trusted in Phase 0; op_fill's margin checks still guard fund safety.)
+            let taker_delta = if m.taker_side == Side::Buy { m.size } else { -m.size };
+            let taker_opens = m.taker_reduce_only && self.exposure_increases(&m.taker, m.market_id, taker_delta);
+            let maker_opens = m.maker_reduce_only && self.exposure_increases(&m.maker, m.market_id, -taker_delta);
+            if taker_opens || maker_opens {
+                for oh in [m.taker_order_hash, m.maker_order_hash] {
+                    settlement_rejected.push((oh, RejectReason::ReduceOnlyViolation));
+                }
+                continue;
+            }
             let op = BatchOp::Fill {
                 taker: m.taker,
                 maker: m.maker,

@@ -29,6 +29,10 @@ pub struct Match {
     pub price: i128,
     pub taker_order_hash: Digest,
     pub maker_order_hash: Digest,
+    /// Whether each side's order is reduce-only — settlement rejects the fill if it would
+    /// increase a reduce-only party's absolute exposure (audit DP-009).
+    pub taker_reduce_only: bool,
+    pub maker_reduce_only: bool,
 }
 
 /// What happened to a submitted order.
@@ -280,6 +284,8 @@ impl<H: perp_core::hash::Hasher> OrderBook<H> {
                 price: front.price,
                 taker_order_hash: order_hash,
                 maker_order_hash: front.order_hash,
+                taker_reduce_only: order.reduce_only,
+                maker_reduce_only: front.reduce_only,
             });
             remaining -= trade;
             front.remaining -= trade;
