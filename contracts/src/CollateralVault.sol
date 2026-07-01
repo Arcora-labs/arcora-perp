@@ -94,7 +94,11 @@ contract CollateralVault {
     function publishWithdrawals(bytes32 root, uint256 epoch) external onlySettlement {
         withdrawalsRoot = root;
         withdrawalsEpoch = epoch;
-        rootPublished[root] = true; // audit DP-012: remember it so an older root can't strand a claim
+        // audit DP-012: remember every published root so an older one can't strand a claim — but
+        // NEVER register the empty-batch root bytes32(0) as claimable (review follow-up).
+        if (root != bytes32(0)) {
+            rootPublished[root] = true;
+        }
         emit WithdrawalsRootPublished(epoch, root);
     }
 
@@ -112,9 +116,11 @@ contract CollateralVault {
     {
         bytes32 leaf = keccak256(abi.encodePacked(to, amount, nonce));
         if (claimed[leaf]) revert AlreadyClaimed();
-        // audit DP-012: accept ANY published root, not just the latest — so a later
+        // audit DP-012: accept ANY published (non-zero) root, not just the latest — so a later
         // cumulative root that omits this (still-unclaimed) leaf cannot strand it.
-        if (!rootPublished[root] || !root.verify(leaf, proof)) revert BadWithdrawalProof();
+        if (root == bytes32(0) || !rootPublished[root] || !root.verify(leaf, proof)) {
+            revert BadWithdrawalProof();
+        }
         claimed[leaf] = true;
         totalWithdrawn += amount;
         if (!token.transfer(to, amount)) revert TransferFailed();

@@ -126,4 +126,14 @@ contract CollateralVaultTest is MiniTest {
         vm.expectRevert(CollateralVault.AlreadyClaimed.selector);
         vault.claim(alice, amount, nonce, batch0Root, proof);
     }
+
+    function test_zero_root_is_never_a_valid_claim_root() public {
+        // audit DP-012 review: an empty batch's cumulative root is bytes32(0); it must NOT be
+        // registered as a published root, and a claim against the zero root must always revert.
+        vault.publishWithdrawals(bytes32(0), 0);
+        assertFalse(vault.rootPublished(bytes32(0)), "the zero root is never registered as published");
+        bytes32[] memory proof = new bytes32[](0);
+        vm.expectRevert(CollateralVault.BadWithdrawalProof.selector);
+        vault.claim(alice, 1, 1, bytes32(0), proof);
+    }
 }
