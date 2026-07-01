@@ -30,8 +30,14 @@ impl FundingState {
         if index_price <= 0 {
             return 0;
         }
-        // premium fraction = (mark - index)/index, RATE_SCALE-scaled
-        let premium = mark - index_price;
+        // premium fraction = (mark - index)/index, RATE_SCALE-scaled. `index_price > 0`
+        // here, so the subtraction can only UNDERFLOW — an extreme-negative mark (e.g. an
+        // attacker's resting price near i128::MIN, audit DP-008). Clamp sign-preservingly
+        // to -MAX rather than panicking (debug) or wrapping to a bogus +MAX (release).
+        let premium = match mark.checked_sub(index_price) {
+            Some(p) => p,
+            None => return -MAX_FUNDING_RATE_PER_INTERVAL,
+        };
         let raw = match premium.checked_mul(RATE_SCALE) {
             Some(v) => v / index_price,
             // overflow ⇒ clamp, but preserve the SIGN of the premium (a deep
@@ -85,6 +91,16 @@ mod tests {
         // 0.01% premium < 0.05% clamp
         let r = FundingState::funding_rate(100_010 * PRICE_SCALE, 100_000 * PRICE_SCALE);
         assert!(r > 0 && r < MAX_FUNDING_RATE_PER_INTERVAL);
+    }
+
+    // audit DP-008 (adversarial follow-up): an attacker-rested price near i128::MIN
+    // reaches funding_rate as an extreme-negative mark; the premium subtraction must not
+    // panic (debug) or wrap to a bogus +MAX (release) — a deep discount clamps to -MAX.
+    #[test]
+    fn extreme_negative_mark_clamps_to_minus_max() {
+        let idx = 100_000 * PRICE_SCALE;
+        assert_eq!(FundingState::funding_rate(i128::MIN, idx), -MAX_FUNDING_RATE_PER_INTERVAL);
+        assert_eq!(FundingState::funding_rate(i128::MIN + 1, idx), -MAX_FUNDING_RATE_PER_INTERVAL);
     }
 
     #[test]

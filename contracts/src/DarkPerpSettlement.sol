@@ -366,10 +366,17 @@ contract DarkPerpSettlement {
     /// Without this, an honest sequencer could be slashed for an order it legitimately
     /// rejected (e.g. an unfillable FOK, a post-only that would take): the user still
     /// holds an enclave ACCEPTED receipt, but the order never entered any `orderedRoot`,
-    /// so `answerChallenge` cannot answer it (audit DP-004). Because `rejectedRoot` is
-    /// bound into the proven `publicCommitment`, the sequencer cannot fabricate a
-    /// rejection for an order it actually censored. Slashing therefore now requires that
-    /// the sequencer can prove NEITHER inclusion NOR valid rejection.
+    /// so `answerChallenge` cannot answer it (audit DP-004). Slashing now requires that the
+    /// sequencer can prove NEITHER inclusion NOR valid rejection.
+    ///
+    /// SOUNDNESS (Phase 0): `rejectedRoot` is bound into `publicCommitment`, but — exactly
+    /// like `orderedRoot` and `withdrawalsRoot` — that binding is only as strong as the
+    /// proof. Under the Phase-0 stand-in verifier (MockZkVerifier / CommitmentProver) the
+    /// rejected set is a TRUSTED-SEQUENCER value the circuit does not re-derive, so a
+    /// dishonest sequencer could still fabricate a rejection to dodge a legitimate slash.
+    /// This path removes the WRONGFUL slash of an HONEST sequencer; constraining a
+    /// DISHONEST one requires a real circuit that derives the rejected set from the
+    /// book / margin / order-type at seal (the same future work `orderedRoot` needs).
     function answerByRejection(bytes32 orderHash, uint256 batchId, bytes32[] calldata proof)
         external
         onlySequencer

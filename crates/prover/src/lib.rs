@@ -47,9 +47,12 @@ pub struct PublicInputs {
     pub ordered_root: Digest,
     /// Merkle root of the withdrawals this batch authorizes (vault releases).
     pub withdrawals_root: Digest,
-    /// Merkle root of the manifest's validly-rejected order-hash leaves. Bound so an
-    /// honest sequencer can prove a valid rejection against an inclusion-slash, and a
-    /// malicious one cannot fabricate which orders were rejected (audit DP-004).
+    /// Merkle root of the manifest's validly-rejected order-hash leaves. Bound into the
+    /// commitment so an honest sequencer can prove a valid rejection against a wrongful
+    /// inclusion-slash (audit DP-004). NOTE: like `ordered_root`/`withdrawals_root`, this
+    /// is currently a trusted-sequencer input — `run_transition` does NOT yet re-derive
+    /// the rejected set, so a real validity circuit is still needed to stop a DISHONEST
+    /// sequencer from fabricating a rejection.
     pub rejected_root: Digest,
 }
 
