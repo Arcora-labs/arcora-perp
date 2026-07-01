@@ -61,22 +61,36 @@ impl L1 {
             .and_then(|s| s.trim().parse().ok())
             .unwrap_or(0);
         let allow_unsafe = std::env::var("L1_ALLOW_MOCK_PROOF").ok().as_deref() == Some("1");
-        if !l1_chain_allowed(chain_id, allow_unsafe) {
-            eprintln!(
-                "[l1] REFUSING to start the settlement bridge: chain id {chain_id} is not an \
-                 allowlisted testnet, and this bridge only submits MockZkVerifier-shaped proofs. \
-                 Set L1_CHAIN_ID to a testnet (e.g. 84532 Base Sepolia), or L1_ALLOW_MOCK_PROOF=1 \
-                 to override — UNSAFE, never on a real-value chain."
-            );
-            std::process::exit(1);
-        }
-        Some(L1 {
+        let l1 = L1 {
             rpc: std::env::var("L1_RPC").unwrap_or_else(|_| "https://sepolia.base.org".into()),
             settlement,
             key,
             usdc: std::env::var("L1_USDC").ok(),
             vault: std::env::var("L1_VAULT").ok(),
-        })
+        };
+        // Cross-check the DECLARED chain id against the one the RPC actually serves — the
+        // declared value alone is spoofable (declare a testnet, point L1_RPC at mainnet).
+        let actual = l1.chain_id().unwrap_or(0);
+        if !l1_chain_ok(chain_id, actual, allow_unsafe) {
+            eprintln!(
+                "[l1] REFUSING to start the settlement bridge: declared L1_CHAIN_ID={chain_id} but \
+                 the RPC serves chain {actual}, and this bridge only submits MockZkVerifier-shaped \
+                 proofs. Set L1_CHAIN_ID to the RPC's real (allowlisted testnet) id, or \
+                 L1_ALLOW_MOCK_PROOF=1 to override — UNSAFE, never on a real-value chain."
+            );
+            std::process::exit(1);
+        }
+        Some(l1)
+    }
+
+    /// The chain id the configured RPC actually serves (ground truth for the DP-007 guard).
+    pub fn chain_id(&self) -> Result<u64, String> {
+        self.cast(&["chain-id", "--rpc-url", &self.rpc])?
+            .split_whitespace()
+            .next()
+            .unwrap_or("")
+            .parse::<u64>()
+            .map_err(|e| format!("chain-id parse: {e}"))
     }
 
     fn cast(&self, args: &[&str]) -> Result<String, String> {
@@ -268,6 +282,19 @@ pub fn l1_chain_allowed(chain_id: u64, allow_unsafe: bool) -> bool {
     )
 }
 
+/// Whether the bridge may run against the RPC's chain: the operator-declared `L1_CHAIN_ID`
+/// must EQUAL the chain the RPC actually serves AND be an allowlisted testnet. Trusting the
+/// declared id alone let an operator point `L1_RPC` at mainnet while declaring a testnet and
+/// still submit mock-shaped proofs (audit DP-007 follow-up). `allow_unsafe` overrides.
+pub fn l1_chain_ok(declared: u64, actual: u64, allow_unsafe: bool) -> bool {
+    if allow_unsafe {
+        return true;
+    }
+    // `actual == 0` means the RPC chain id was unresolved (unreachable / parse fail) — fail
+    // closed. Otherwise require the declared id to match ground truth AND be allowlisted.
+    actual != 0 && declared == actual && l1_chain_allowed(actual, false)
+}
+
 /// Pull `transactionHash` out of `cast send --json` output (falls back to raw).
 fn tx_hash(json: &str) -> String {
     serde_json::from_str::<serde_json::Value>(json)
@@ -331,5 +358,16 @@ mod tests {
         assert!(!l1_chain_allowed(0, false), "unset/unknown chain refused");
         // an explicit unsafe override lifts the guard (the operator's informed choice)
         assert!(l1_chain_allowed(1, true), "override allows any chain");
+    }
+
+    // audit DP-007 follow-up: the declared L1_CHAIN_ID must match the chain the RPC
+    // actually serves — declaring a testnet while pointing the RPC at mainnet is the bypass.
+    #[test]
+    fn bridge_cross_checks_declared_chain_against_the_rpc() {
+        assert!(l1_chain_ok(84532, 84532, false), "declared == RPC testnet is allowed");
+        assert!(!l1_chain_ok(84532, 8453, false), "declared testnet but RPC is Base mainnet is refused");
+        assert!(!l1_chain_ok(8453, 8453, false), "a matched mainnet is still refused");
+        assert!(!l1_chain_ok(84532, 0, false), "an unresolved RPC chain fails closed");
+        assert!(l1_chain_ok(8453, 8453, true), "override allows any chain");
     }
 }
