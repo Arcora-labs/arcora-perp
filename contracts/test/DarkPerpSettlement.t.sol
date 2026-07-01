@@ -229,6 +229,37 @@ contract DarkPerpSettlementTest is MiniTest {
         s.answerByRejection(orderHash, 0, proof);
     }
 
+    function test_answer_refund_is_pull_not_push() public {
+        // audit DP-011: the challenger stake is CREDITED to the sequencer's pull-payment
+        // balance on a successful answer, never pushed — so a non-payable sequencer can
+        // still answer a challenge instead of being bricked and then slashed.
+        bytes32 orderHash = keccak256("pull-order");
+        bytes32 orderedRoot = s.inclusionLeaf(0, orderHash);
+        bytes32 newRoot = bytes32(uint256(2));
+        bytes32 manifest = keccak256("m");
+        s.settleBatch(
+            GENESIS, manifest, newRoot, orderedRoot, bytes32(0), bytes32(0),
+            _proof(GENESIS, manifest, newRoot, orderedRoot, bytes32(0))
+        );
+
+        (uint8 v, bytes32 r, bytes32 sig) = vm.sign(ENCLAVE_PK, s.receiptDigest(orderHash, 7, 1000, 0));
+        address challenger = address(0xBEEF);
+        vm.deal(challenger, CHALLENGE_BOND);
+        vm.prank(challenger);
+        s.challengeInclusion{value: CHALLENGE_BOND}(orderHash, 7, 1000, 0, v, r, sig);
+
+        bytes32[] memory proof = new bytes32[](0);
+        s.answerChallenge(orderHash, 0, proof);
+        // credited for pull, not pushed
+        assertEq(s.pendingEth(address(this)), CHALLENGE_BOND, "stake credited to the sequencer");
+
+        // and the sequencer can pull it
+        uint256 balBefore = address(this).balance;
+        s.claimEth();
+        assertEq(address(this).balance, balBefore + CHALLENGE_BOND, "sequencer pulls the refund");
+        assertEq(s.pendingEth(address(this)), 0, "pending cleared after claim");
+    }
+
     function _depositToVault(uint256 amount) internal {
         usdc.mint(address(this), amount);
         usdc.approve(address(vault), amount);
@@ -288,9 +319,13 @@ contract DarkPerpSettlementTest is MiniTest {
         assertTrue(s.slashed(), "sequencer slashed");
         assertTrue(s.closeOnly(), "slash forces close-only");
         assertEq(s.sequencerBond(), 0, "bond drained");
-        // challenger receives the slashed USDC bond + its refunded ETH stake (two assets)
+        // challenger receives the slashed USDC bond directly; its native ETH stake is
+        // credited for pull (DP-011) and reclaimed via claimEth.
         assertEq(usdc.balanceOf(challenger), bond, "slashed USDC bond paid to challenger");
-        assertEq(challenger.balance, CHALLENGE_BOND, "ETH anti-griefing stake refunded");
+        assertEq(s.pendingEth(challenger), CHALLENGE_BOND, "ETH stake credited to challenger for pull");
+        vm.prank(challenger);
+        s.claimEth();
+        assertEq(challenger.balance, CHALLENGE_BOND, "challenger pulls its ETH stake");
     }
 
     function test_challenge_requires_bond() public {

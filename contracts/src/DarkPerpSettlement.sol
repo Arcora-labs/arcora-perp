@@ -86,6 +86,11 @@ contract DarkPerpSettlement {
 
     mapping(uint256 => Batch) public batches;
     mapping(bytes32 => Challenge) public challenges; // orderHash => challenge
+    /// Pull-payment ledger for native-token refunds (a challenger's stake returned to the
+    /// sequencer on a successful answer, or to the challenger on a slash). Credited rather
+    /// than pushed, so a non-payable recipient can never brick the challenge-answer or the
+    /// slash transition — the recipient pulls it via `claimEth` (audit DP-011).
+    mapping(address => uint256) public pendingEth;
 
     event BatchSettled(uint256 indexed batchId, bytes32 prevRoot, bytes32 newRoot, bytes32 manifestHash);
     event CloseOnlyEntered(string reason);
@@ -95,6 +100,7 @@ contract DarkPerpSettlement {
     event InclusionAnswered(bytes32 indexed orderHash, uint256 batchId);
     event RejectionAnswered(bytes32 indexed orderHash, uint256 batchId);
     event SequencerSlashed(bytes32 indexed orderHash, address indexed challenger, uint256 amount);
+    event EthClaimed(address indexed to, uint256 amount);
 
     error NotSequencer();
     error InCloseOnly();
@@ -354,11 +360,9 @@ contract DarkPerpSettlement {
         }
         delete challenges[orderHash];
         emit InclusionAnswered(orderHash, batchId);
-        // griefing deterrent: the challenger's stake goes to the sequencer
-        if (c.bond > 0) {
-            (bool ok,) = sequencer.call{value: c.bond}("");
-            if (!ok) revert TransferFailed();
-        }
+        // griefing deterrent: the challenger's stake is credited to the sequencer for pull —
+        // never pushed, so a non-payable sequencer cannot brick its own answer (audit DP-011).
+        pendingEth[sequencer] += c.bond;
     }
 
     /// @notice Sequencer answers a challenge by proving the order was VALIDLY REJECTED
@@ -391,11 +395,8 @@ contract DarkPerpSettlement {
         }
         delete challenges[orderHash];
         emit RejectionAnswered(orderHash, batchId);
-        // griefing deterrent: the challenger's stake goes to the sequencer, as with inclusion
-        if (c.bond > 0) {
-            (bool ok,) = sequencer.call{value: c.bond}("");
-            if (!ok) revert TransferFailed();
-        }
+        // griefing deterrent: credited to the sequencer for pull, as with inclusion (DP-011)
+        pendingEth[sequencer] += c.bond;
     }
 
     /// @notice After the window expires unanswered, slash the sequencer bond to the
@@ -412,16 +413,24 @@ contract DarkPerpSettlement {
         sequencerBond = 0;
         emit SequencerSlashed(orderHash, c.challenger, slashedBond);
         emit CloseOnlyEntered("inclusion slash");
-        // pay the slashed USDC bond, then refund the challenger's ETH stake. The two
-        // are different assets now (bond = USDC, anti-griefing stake = native), so
-        // they are released in separate transfers rather than summed.
+        // pay the slashed USDC bond now; credit the challenger's native ETH stake for pull
+        // (DP-011) so a non-payable challenger cannot brick the slash.
         if (slashedBond > 0) {
             IERC20Min tok = IERC20Min(ICollateralVault(vault).token());
             if (!tok.transfer(c.challenger, slashedBond)) revert TransferFailed();
         }
-        if (c.bond > 0) {
-            (bool ok,) = c.challenger.call{value: c.bond}("");
+        pendingEth[c.challenger] += c.bond;
+    }
+
+    /// @notice Withdraw a native-token refund credited to `msg.sender` (audit DP-011).
+    /// Checks-effects-interactions: zero the balance before the transfer.
+    function claimEth() external {
+        uint256 amount = pendingEth[msg.sender];
+        pendingEth[msg.sender] = 0;
+        if (amount > 0) {
+            (bool ok,) = msg.sender.call{value: amount}("");
             if (!ok) revert TransferFailed();
+            emit EthClaimed(msg.sender, amount);
         }
     }
 
