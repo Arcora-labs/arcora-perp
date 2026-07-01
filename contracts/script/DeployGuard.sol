@@ -9,6 +9,8 @@ pragma solidity ^0.8.24;
 /// `ALLOW_MOCK_VERIFIER=1` override at the deploy script.
 library DeployGuard {
     /// @return true if `chainId` is a testnet the mock verifier may be deployed to.
+    /// @dev KEEP IN SYNC with the Rust runtime allowlist `l1_chain_allowed`
+    /// (crates/gateway/src/l1.rs) — the two lists are maintained by hand and must not drift.
     function isTestnet(uint256 chainId) internal pure returns (bool) {
         return chainId == 84532 // Base Sepolia
             || chainId == 11155111 // Sepolia

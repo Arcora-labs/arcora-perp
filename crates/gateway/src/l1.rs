@@ -296,6 +296,9 @@ impl L1 {
 /// (`proof == publicCommitment`), which only `MockZkVerifier` accepts, so running
 /// it against a real-value chain is catastrophic (audit DP-007). Testnets are
 /// allowlisted; anything else requires an explicit unsafe override.
+///
+/// KEEP IN SYNC with `DeployGuard.isTestnet` (contracts/script/DeployGuard.sol) — Solidity
+/// can't call this, so the two allowlists are maintained by hand and must not drift.
 pub fn l1_chain_allowed(chain_id: u64, allow_unsafe: bool) -> bool {
     if allow_unsafe {
         return true;

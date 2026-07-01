@@ -204,12 +204,33 @@ the containment structure above:
 - real SP1/Risc0 verifier (replaces `MockZkVerifier`) — see `PROVING.md`;
 - real TDX/Nitro attestation (enclave measurement is currently a value);
 - real enclave sealing / note encryption / committee DKG / bridge VRF seed;
-- **spend-key ↔ owner binding.** `consume_note` (engine) authorizes a spend by
-  checking `note.owner == expected_owner` and deriving the nullifier from a supplied
-  `spend_key`, but the key is **not** yet cryptographically bound to the owner (the
-  wallet derives `owner` and `spend_key` independently from the seed). In Phase 0 the
-  trusted enclave authenticates the user before constructing the op, so a note can
-  only be spent by its owner. Trustless operation requires the Proof-v1 circuit to
-  prove `owner == pubkey(spend_key)` (the §7 view/spend split) so the spend
-  authorization holds *without* trusting the enclave — until then, note-spend
-  authorization rests on the enclave, not the proof.
+- **spend-key ↔ owner binding — DONE (audit DP-003).** `consume_note` now rejects a
+  spend unless `owner_from_spend_key(spend_key) == note.owner`, and `Wallet::from_seed`
+  derives `owner = H(spend_key)`, so a note can be consumed only by presenting its
+  owner's spend key — the authorization no longer rests on the enclave.
+
+## Post-audit remediation residuals (2026-07)
+
+All 13 Codex audit findings (DP-001..013) plus two adversarial-review rounds are fixed
+on `feat/real-tee`. Two items are intentionally deferred because they need larger,
+separate work rather than a point fix:
+
+- **DP-004 off-chain answering (inclusion/rejection roots not yet published).** The
+  on-chain mechanism is complete and tested — `answerByRejection` + `rejectedRoot` bound
+  into `publicCommitment` — but the gateway bridge still publishes
+  `orderedRoot = rejectedRoot = 0x0` (`crates/gateway/src/l1.rs`), and no background task
+  watches `InclusionChallenged`, builds the inclusion/rejection Merkle proof, and calls
+  `answerChallenge`/`answerByRejection`. Until that off-chain answering subsystem is
+  wired, an honest sequencer can still be wrongfully slashed for a validly-rejected order
+  (the original DP-004 harm) because it cannot answer. Publishing the real
+  ordered/rejected roots from the sealed manifest plus an answering loop is the remaining
+  operational half.
+
+- **`state_root` cost grows with history (perf).** Binding the nullifier-set contents and
+  the unspent-note set (audit DP-002) makes `state_root()` re-hash the whole append-only
+  nullifier set and the full note set on every call — O(N) in chain history, twice per
+  batch. Correct and fine at Phase-0 volumes, but settlement latency climbs unbounded as
+  the chain ages; the fix is an incrementally-maintained running digest/accumulator
+  (updated on each nullifier insert and note insert/remove) so `state_root()` reads O(1)
+  cached digests. Deferred to avoid touching the security-critical root computation
+  without a dedicated accumulator design.
