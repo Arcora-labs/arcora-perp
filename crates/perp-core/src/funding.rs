@@ -49,10 +49,14 @@ impl FundingState {
     /// index price. Returns the index delta applied (micro-USD per base).
     pub fn accrue(&mut self, mark: i128, index_price: i128, now_ms: u64) -> i128 {
         let rate = Self::funding_rate(mark, index_price);
-        // payment per 1.0 base = mark(in micro-USD) · rate
-        // mark micro-USD = mark · QUOTE_SCALE / PRICE_SCALE
-        let mark_quote = mark.saturating_mul(QUOTE_SCALE) / PRICE_SCALE;
-        let delta = mark_quote.saturating_mul(rate) / RATE_SCALE;
+        // audit DP-008: the payment notional is the VALIDATED oracle index, NOT the raw
+        // book mark. `funding_rate` already captures the (clamped) mark-vs-index premium,
+        // so a manipulated book mid can flip or max the rate but can NOT scale the
+        // payment — the notional is anchored to the sane index, which bounds the
+        // per-interval delta to `index_quote · MAX_FUNDING_RATE_PER_INTERVAL`.
+        // index micro-USD = index · QUOTE_SCALE / PRICE_SCALE
+        let index_quote = index_price.saturating_mul(QUOTE_SCALE) / PRICE_SCALE;
+        let delta = index_quote.saturating_mul(rate) / RATE_SCALE;
         self.cumulative_index = self.cumulative_index.saturating_add(delta);
         self.last_update_ms = now_ms;
         delta
@@ -100,5 +104,23 @@ mod tests {
         assert!(d > 0);
         assert_eq!(f.cumulative_index, d);
         assert_eq!(f.last_update_ms, 1000);
+    }
+
+    // audit DP-008: a manipulated book-mid mark must not scale the funding payment.
+    // Both a 1%-premium mark and a 100x mark hit the +MAX clamped rate; the per-interval
+    // delta is anchored to the validated index notional, so an extreme mark cannot
+    // produce a materially larger payment than a mark at the clamp boundary.
+    #[test]
+    fn manipulated_mark_cannot_inflate_the_funding_notional() {
+        let index = 100_000 * PRICE_SCALE;
+        let mut sane = FundingState::default();
+        let d_sane = sane.accrue(101_000 * PRICE_SCALE, index, 1000); // 1% premium → rate MAX
+        let mut manip = FundingState::default();
+        let d_manip = manip.accrue(100 * index, index, 1000); // 100x book mark → rate MAX
+        assert!(d_sane > 0);
+        assert_eq!(
+            d_manip, d_sane,
+            "funding delta is bounded by the index notional, not the manipulable mark",
+        );
     }
 }

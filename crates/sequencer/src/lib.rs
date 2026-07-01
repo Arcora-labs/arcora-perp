@@ -405,7 +405,7 @@ impl Sequencer {
     fn mark_price(&self, market_id: MarketId) -> Option<i128> {
         let book = self.matcher.book(market_id)?;
         match (book.best_bid(), book.best_ask()) {
-            (Some(bid), Some(ask)) => Some((bid + ask) / 2),
+            (Some(bid), Some(ask)) => Some(book_mid(bid, ask)),
             _ => self.oracles.get(&market_id).map(|o| o.price),
         }
     }
@@ -753,5 +753,29 @@ impl Sequencer {
             })
             .map(|(oh, _)| *oh)
             .collect()
+    }
+}
+
+/// Overflow-safe book midpoint used as the funding mark. Halving each side before
+/// summing keeps the mid from overflowing `i128` when an unvalidated resting price
+/// sits near the type bound (audit DP-008): a plain `(bid + ask) / 2` panics in a
+/// debug build and wraps in release. At most one unit of precision is lost.
+fn book_mid(bid: i128, ask: i128) -> i128 {
+    (bid / 2).saturating_add(ask / 2)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // audit DP-008: an unvalidated resting price near the i128 bound must not overflow
+    // the funding mark (a plain (bid+ask)/2 panics in debug / wraps in release).
+    #[test]
+    fn book_mid_is_overflow_safe_at_extreme_prices() {
+        let m = book_mid(i128::MAX, i128::MAX);
+        assert!(m > i128::MAX / 2, "an extreme two-sided book yields a large but finite mid");
+        // …and it stays a correct midpoint for normal prices
+        assert_eq!(book_mid(100, 200), 150);
+        assert_eq!(book_mid(-100, 100), 0);
     }
 }
