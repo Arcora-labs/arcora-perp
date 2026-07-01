@@ -34,6 +34,11 @@ contract CollateralVault {
 
     /// Spent withdrawal leaves (double-claim prevention).
     mapping(bytes32 => bool) public claimed;
+    /// Every withdrawals root ever published by a settled batch. A claim may prove against
+    /// ANY of these, so overwriting `withdrawalsRoot` with a later cumulative root can no
+    /// longer strand an older authorized-but-unclaimed leaf (audit DP-012); `claimed[leaf]`
+    /// still prevents double-claim.
+    mapping(bytes32 => bool) public rootPublished;
 
     event Deposit(address indexed from, uint256 amount);
     event WithdrawalsRootPublished(uint256 indexed epoch, bytes32 root);
@@ -89,6 +94,7 @@ contract CollateralVault {
     function publishWithdrawals(bytes32 root, uint256 epoch) external onlySettlement {
         withdrawalsRoot = root;
         withdrawalsEpoch = epoch;
+        rootPublished[root] = true; // audit DP-012: remember it so an older root can't strand a claim
         emit WithdrawalsRootPublished(epoch, root);
     }
 
@@ -98,11 +104,17 @@ contract CollateralVault {
     /// @param to recipient (the leaf binds the funds to this address)
     /// @param amount amount to release (USDC base units)
     /// @param nonce per-withdrawal uniqueness
-    /// @param proof Merkle proof against `withdrawalsRoot`
-    function claim(address to, uint256 amount, uint256 nonce, bytes32[] calldata proof) external {
+    /// @param root a published withdrawals root the leaf is a member of (any past root, so
+    ///        a later cumulative root omitting the leaf can no longer strand it — DP-012)
+    /// @param proof Merkle proof of `leaf` against `root`
+    function claim(address to, uint256 amount, uint256 nonce, bytes32 root, bytes32[] calldata proof)
+        external
+    {
         bytes32 leaf = keccak256(abi.encodePacked(to, amount, nonce));
         if (claimed[leaf]) revert AlreadyClaimed();
-        if (!withdrawalsRoot.verify(leaf, proof)) revert BadWithdrawalProof();
+        // audit DP-012: accept ANY published root, not just the latest — so a later
+        // cumulative root that omits this (still-unclaimed) leaf cannot strand it.
+        if (!rootPublished[root] || !root.verify(leaf, proof)) revert BadWithdrawalProof();
         claimed[leaf] = true;
         totalWithdrawn += amount;
         if (!token.transfer(to, amount)) revert TransferFailed();

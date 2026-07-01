@@ -35,7 +35,7 @@ contract Handler {
     function claimLast() external {
         if (!havePublished) return;
         bytes32[] memory empty = new bytes32[](0);
-        try vault.claim(address(this), lastAmount, lastNonce, empty) {
+        try vault.claim(address(this), lastAmount, lastNonce, vault.withdrawalsRoot(), empty) {
             totalClaimed += lastAmount;
         } catch {}
     }

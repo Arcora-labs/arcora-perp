@@ -932,6 +932,13 @@ impl Gw {
     /// but awaiting its first on-chain publish (the next settle).
     fn v1_withdrawals_json(&self, key: &[u8; 32]) -> Option<serde_json::Value> {
         let owner = self.accounts.get(key)?.wallet.owner;
+        // the published cumulative root the served proofs verify against — the caller
+        // passes it to CollateralVault.claim (which accepts any published root, audit DP-012).
+        let current_root = self
+            .l1_status
+            .as_ref()
+            .map(|s| s.withdrawals_root.clone())
+            .unwrap_or_default();
         let items: Vec<_> = self
             .pending_withdrawals
             .iter()
@@ -944,6 +951,7 @@ impl Gw {
                     "amount": w.amount.to_string(),
                     "nonce": w.nonce,
                     "leaf": hex0x(&leaf),
+                    "root": current_root,
                     "claimable": proof.is_some(),
                     "proof": proof.map(|p| p.iter().map(|n| hex0x(n)).collect::<Vec<_>>()).unwrap_or_default(),
                 })

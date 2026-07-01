@@ -63,13 +63,13 @@ contract CollateralVaultTest is MiniTest {
 
         bytes32[] memory proof = new bytes32[](0);
         uint256 before = usdc.balanceOf(alice);
-        vault.claim(alice, amount, nonce, proof);
+        vault.claim(alice, amount, nonce, vault.withdrawalsRoot(), proof);
         assertEq(usdc.balanceOf(alice) - before, amount, "alice received USDC");
         assertEq(vault.totalWithdrawn(), amount, "withdrawn tracked");
 
         // double-claim rejected
         vm.expectRevert(CollateralVault.AlreadyClaimed.selector);
-        vault.claim(alice, amount, nonce, proof);
+        vault.claim(alice, amount, nonce, leaf, proof);
     }
 
     function test_claim_with_bad_proof_rejected() public {
@@ -78,7 +78,7 @@ contract CollateralVaultTest is MiniTest {
 
         bytes32[] memory proof = new bytes32[](0);
         vm.expectRevert(CollateralVault.BadWithdrawalProof.selector);
-        vault.claim(bob, 1000 * USD, 1, proof);
+        vault.claim(bob, 1000 * USD, 1, keccak256("some-other-root"), proof);
     }
 
     function test_two_leaf_merkle_claim() public {
@@ -94,29 +94,36 @@ contract CollateralVaultTest is MiniTest {
         bytes32[] memory proof = new bytes32[](1);
         proof[0] = lb;
         uint256 before = usdc.balanceOf(alice);
-        vault.claim(alice, 2000 * USD, 1, proof);
+        vault.claim(alice, 2000 * USD, 1, vault.withdrawalsRoot(), proof);
         assertEq(usdc.balanceOf(alice) - before, 2000 * USD, "alice claimed via 2-leaf proof");
     }
 
-    function test_publishing_a_new_root_strands_an_unclaimed_leaf() public {
-        // Documents P6: publishWithdrawals OVERWRITES the root, so a withdrawal
-        // authorized in one batch is unclaimable once the next batch publishes a root
-        // that does not carry it forward. The cumulative-root invariant (prover-side)
-        // is what prevents this in production — see CollateralVault.publishWithdrawals
-        // and the gateway's cumulative-root builder.
+    function test_older_published_root_is_still_claimable() public {
+        // audit DP-012: publishing a LATER cumulative root that omits an older
+        // authorized-but-unclaimed leaf must NOT strand it. The claim proves against the
+        // older root (still remembered via rootPublished), so a lost/incomplete off-chain
+        // rebuild — or a mere overwrite — can no longer make an authorized withdrawal
+        // unclaimable; claimed[leaf] still prevents double-claim.
         _deposit(address(this), 10_000 * USD);
 
         uint256 amount = 2000 * USD;
         uint256 nonce = 1;
         bytes32 leaf = keccak256(abi.encodePacked(alice, amount, nonce));
-        vault.publishWithdrawals(leaf, 0); // batch 0 authorizes alice
+        bytes32 batch0Root = leaf; // single-leaf tree: the root IS the leaf
+        vault.publishWithdrawals(batch0Root, 0); // batch 0 authorizes alice
 
         // batch 1 settles with a root that does NOT carry alice's (unclaimed) leaf
         vault.publishWithdrawals(keccak256("batch-1-without-alice"), 1);
 
-        // alice can no longer claim — her authorized withdrawal is stranded
+        // alice claims against the batch-0 root she was published in — no longer stranded
         bytes32[] memory proof = new bytes32[](0);
-        vm.expectRevert(CollateralVault.BadWithdrawalProof.selector);
-        vault.claim(alice, amount, nonce, proof);
+        uint256 balBefore = usdc.balanceOf(alice);
+        vault.claim(alice, amount, nonce, batch0Root, proof);
+        assertEq(usdc.balanceOf(alice), balBefore + amount, "claimed against the older published root");
+        assertTrue(vault.claimed(leaf), "leaf marked claimed");
+
+        // and it cannot be double-claimed against any root
+        vm.expectRevert(CollateralVault.AlreadyClaimed.selector);
+        vault.claim(alice, amount, nonce, batch0Root, proof);
     }
 }

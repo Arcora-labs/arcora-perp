@@ -39,17 +39,17 @@ contract FuzzTest is MiniTest {
         bytes32[] memory empty = new bytes32[](0);
         // a different amount must not claim
         vm.expectRevert(CollateralVault.BadWithdrawalProof.selector);
-        vault.claim(to, amount + 1, nonce, empty);
+        vault.claim(to, amount + 1, nonce, leaf, empty);
         // a different nonce must not claim
         vm.expectRevert(CollateralVault.BadWithdrawalProof.selector);
-        vault.claim(to, amount, uint256(nonce) + 1, empty);
+        vault.claim(to, amount, uint256(nonce) + 1, leaf, empty);
 
         // the exact leaf claims exactly the authorized amount, once
         uint256 before = usdc.balanceOf(to);
-        vault.claim(to, amount, nonce, empty);
+        vault.claim(to, amount, nonce, vault.withdrawalsRoot(), empty);
         assertEq(usdc.balanceOf(to) - before, amount, "claimed exactly authorized");
         vm.expectRevert(CollateralVault.AlreadyClaimed.selector);
-        vault.claim(to, amount, nonce, empty);
+        vault.claim(to, amount, nonce, leaf, empty);
     }
 
     /// A proof valid for one (orderedRoot, withdrawalsRoot) must not settle a batch

@@ -77,7 +77,7 @@ contract IntegrationTest is MiniTest {
         // alice claims; USDC releases from the vault, gated on SETTLED state
         bytes32[] memory proof = new bytes32[](0);
         uint256 before = usdc.balanceOf(alice);
-        vault.claim(alice, amount, nonce, proof);
+        vault.claim(alice, amount, nonce, vault.withdrawalsRoot(), proof);
         assertEq(usdc.balanceOf(alice) - before, amount, "alice withdrew USDC from settled state");
 
         // the state root advanced on L1
@@ -131,7 +131,7 @@ contract IntegrationTest is MiniTest {
         _deposit(address(this), 10_000 * USD);
         bytes32[] memory proof = new bytes32[](0);
         vm.expectRevert(CollateralVault.BadWithdrawalProof.selector);
-        vault.claim(alice, 1000 * USD, 1, proof);
+        vault.claim(alice, 1000 * USD, 1, bytes32(0), proof);
     }
 
     receive() external payable {}
