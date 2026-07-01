@@ -565,6 +565,11 @@ struct Gw {
     lp_total_shares: u128,
     /// Monotonic salt for LP deposit/withdraw note blindings.
     lp_counter: u64,
+    /// Real-collateral / production posture. When true, self-service (unbacked)
+    /// deposits are refused — collateral may only enter via a verified on-chain
+    /// deposit (audit DP-001). Set from `production_mode()` in `main`; `false` in
+    /// the demo/test build.
+    prod: bool,
 }
 
 fn oracle_of(px: i128, now: u64) -> OracleTranscript {
@@ -724,6 +729,7 @@ impl Gw {
             lp_shares: std::collections::BTreeMap::new(),
             lp_total_shares: 0,
             lp_counter: 0,
+            prod: false,
         };
         // seed total LP shares to the boot pool equity (the operator's stake), so the
         // initial NAV per share is 1.0 and LP deposits price in proportionally.
@@ -972,6 +978,16 @@ impl Gw {
 
     /// Deposit external collateral into an account's market bucket.
     fn account_deposit(&mut self, key: &[u8; 32], market: u64, amount: i128) -> Result<(), String> {
+        if self.prod {
+            // audit DP-001: self-service in-memory credit would let anyone mint unbacked
+            // collateral and withdraw it against real vault funds. In production, collateral
+            // enters only via a verified on-chain deposit.
+            return Err(
+                "Self-service deposit is disabled in production; fund via a verified \
+                 on-chain deposit (POST /v1/accounts/deposit/onchain)."
+                    .into(),
+            );
+        }
         if amount <= 0 {
             return Err("Amount must be positive.".into());
         }
@@ -3178,13 +3194,86 @@ async fn ws_loop(mut socket: WebSocket, app: Shared) {
     }
 }
 
+/// Real-collateral / production posture. In this mode the gateway refuses
+/// self-service (unbacked) deposits (audit DP-001) and does not mount the legacy
+/// unauthenticated `/api/*` mutation routes (audit DP-010). Enabled whenever the L1
+/// settlement bridge is configured (real USDC at stake) or forced via `DARKPERP_PROD=1`.
+fn production_mode(l1_enabled: bool) -> bool {
+    l1_enabled || std::env::var("DARKPERP_PROD").ok().as_deref() == Some("1")
+}
+
+/// Assemble the HTTP router. In production mode the legacy, UNAUTHENTICATED `/api/*`
+/// mutation routes are omitted (audit DP-010) — only the read-only demo state/websocket
+/// and the API-key-authenticated `/v1` surface are exposed.
+fn build_router(app: Shared, prod: bool) -> Router {
+    let mut router = Router::new()
+        .route("/api/state", get(get_state))
+        .route("/ws", get(ws_handler));
+
+    if !prod {
+        // demo/dev build: the in-browser console drives these unauthenticated routes
+        // against a single shared demo account. Omitted in production (audit DP-010).
+        router = router
+            .route("/api/order", post(post_order))
+            .route("/api/deposit", post(post_deposit))
+            .route("/api/withdraw", post(post_withdraw))
+            .route("/api/lp/deposit", post(post_lp_deposit))
+            .route("/api/lp/withdraw", post(post_lp_withdraw))
+            .route("/api/close", post(post_close))
+            .route("/api/cancel", post(post_cancel))
+            .route("/api/mode", post(post_mode))
+            .route("/api/simulate-adl", post(post_simulate_adl))
+            .route("/api/select-market", post(post_select))
+            .route("/api/recover", post(post_recover));
+    }
+
+    router
+        // ── multi-tenant external API (/v1) ──
+        .route("/v1/accounts", post(post_v1_register))
+        .route("/v1/accounts/me", get(get_v1_account))
+        .route("/v1/accounts/deposit", post(post_v1_deposit))
+        .route(
+            "/v1/accounts/deposit/address",
+            post(post_v1_deposit_address),
+        )
+        .route(
+            "/v1/accounts/deposit/onchain",
+            post(post_v1_deposit_onchain),
+        )
+        .route("/v1/accounts/withdraw", post(post_v1_withdraw))
+        .route("/v1/accounts/withdrawals", get(get_v1_withdrawals))
+        .route("/v1/lp", get(get_v1_lp))
+        .route("/v1/lp/deposit", post(post_v1_lp_deposit))
+        .route("/v1/lp/withdraw", post(post_v1_lp_withdraw))
+        .route("/v1/orders", post(post_v1_order).get(get_v1_orders))
+        .route("/v1/orders/:order_id", delete(delete_v1_order))
+        .route("/v1/positions", get(get_v1_positions))
+        .route("/v1/markets", get(get_v1_markets))
+        .route("/v1/markets/:id", get(get_v1_market))
+        .route("/v1/markets/:id/orderbook", get(get_v1_orderbook))
+        .route("/v1/markets/:id/oracle", get(get_v1_oracle))
+        .route("/v1/system/status", get(get_v1_status))
+        .route("/v1/openapi.json", get(get_v1_openapi))
+        .route("/v1/ws", get(ws_v1_handler))
+        .layer(CorsLayer::permissive())
+        .with_state(app)
+}
+
 #[tokio::main]
 async fn main() {
     let (tx, _rx) = broadcast::channel::<String>(256);
     let (events_tx, _erx) = broadcast::channel::<String>(1024);
     let l1 = L1::from_env();
+    let prod = production_mode(l1.is_some());
+    if prod {
+        println!(
+            "[mode] production posture: self-service deposit + legacy /api mutation routes disabled"
+        );
+    }
+    let mut gw = Gw::boot();
+    gw.prod = prod;
     let app = Arc::new(App {
-        gw: Mutex::new(Gw::boot()),
+        gw: Mutex::new(gw),
         tx: tx.clone(),
         events_tx,
         reg_limit: Mutex::new(HashMap::new()),
@@ -3354,49 +3443,7 @@ async fn main() {
         });
     }
 
-    let router = Router::new()
-        .route("/api/state", get(get_state))
-        .route("/api/order", post(post_order))
-        .route("/api/deposit", post(post_deposit))
-        .route("/api/withdraw", post(post_withdraw))
-        .route("/api/lp/deposit", post(post_lp_deposit))
-        .route("/api/lp/withdraw", post(post_lp_withdraw))
-        .route("/api/close", post(post_close))
-        .route("/api/cancel", post(post_cancel))
-        .route("/api/mode", post(post_mode))
-        .route("/api/simulate-adl", post(post_simulate_adl))
-        .route("/api/select-market", post(post_select))
-        .route("/api/recover", post(post_recover))
-        .route("/ws", get(ws_handler))
-        // ── multi-tenant external API (/v1) ──
-        .route("/v1/accounts", post(post_v1_register))
-        .route("/v1/accounts/me", get(get_v1_account))
-        .route("/v1/accounts/deposit", post(post_v1_deposit))
-        .route(
-            "/v1/accounts/deposit/address",
-            post(post_v1_deposit_address),
-        )
-        .route(
-            "/v1/accounts/deposit/onchain",
-            post(post_v1_deposit_onchain),
-        )
-        .route("/v1/accounts/withdraw", post(post_v1_withdraw))
-        .route("/v1/accounts/withdrawals", get(get_v1_withdrawals))
-        .route("/v1/lp", get(get_v1_lp))
-        .route("/v1/lp/deposit", post(post_v1_lp_deposit))
-        .route("/v1/lp/withdraw", post(post_v1_lp_withdraw))
-        .route("/v1/orders", post(post_v1_order).get(get_v1_orders))
-        .route("/v1/orders/:order_id", delete(delete_v1_order))
-        .route("/v1/positions", get(get_v1_positions))
-        .route("/v1/markets", get(get_v1_markets))
-        .route("/v1/markets/:id", get(get_v1_market))
-        .route("/v1/markets/:id/orderbook", get(get_v1_orderbook))
-        .route("/v1/markets/:id/oracle", get(get_v1_oracle))
-        .route("/v1/system/status", get(get_v1_status))
-        .route("/v1/openapi.json", get(get_v1_openapi))
-        .route("/v1/ws", get(ws_v1_handler))
-        .layer(CorsLayer::permissive())
-        .with_state(app);
+    let router = build_router(app, prod);
 
     let port: u16 = std::env::var("PORT")
         .ok()
@@ -3416,6 +3463,101 @@ async fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A minimal `App` for router tests — no socket bound, pure in-memory (`l1: None`).
+    fn test_app() -> Shared {
+        let (tx, _rx) = broadcast::channel::<String>(16);
+        let (events_tx, _erx) = broadcast::channel::<String>(16);
+        Arc::new(App {
+            gw: Mutex::new(Gw::boot()),
+            tx,
+            events_tx,
+            reg_limit: Mutex::new(HashMap::new()),
+            l1: None,
+        })
+    }
+
+    // audit DP-001: in the production posture, the self-service (unbacked) deposit
+    // faucet must be refused — collateral may only enter via a verified on-chain deposit.
+    #[test]
+    fn production_mode_refuses_self_service_deposit() {
+        let mut gw = Gw::boot();
+        let (key, _owner) = gw.register_account(None);
+        // demo/dev build: the self-service faucet credit is allowed
+        assert!(
+            gw.account_deposit(&key, 0, 20_000 * QUOTE_SCALE).is_ok(),
+            "demo build allows the self-service deposit faucet",
+        );
+        // production posture: unbacked self-service credit is refused (audit DP-001)
+        gw.prod = true;
+        assert!(
+            gw.account_deposit(&key, 0, 20_000 * QUOTE_SCALE).is_err(),
+            "production build must reject self-service (unbacked) deposits",
+        );
+    }
+
+    // audit DP-010: the production router must not mount the legacy, unauthenticated
+    // `/api/*` mutation routes, while the API-key-authenticated `/v1` surface stays up.
+    #[tokio::test]
+    async fn production_mode_drops_legacy_unauthenticated_api_mutations() {
+        use axum::body::Body;
+        use axum::http::Request;
+        use tower::ServiceExt as _; // for `oneshot`
+
+        let post = |uri: &str| {
+            Request::builder()
+                .method("POST")
+                .uri(uri)
+                .body(Body::empty())
+                .unwrap()
+        };
+
+        // demo build: the legacy /api/order mutation route IS mounted (not 404)
+        let demo = build_router(test_app(), false);
+        let r = demo.oneshot(post("/api/order")).await.unwrap();
+        assert_ne!(
+            r.status(),
+            StatusCode::NOT_FOUND,
+            "legacy /api/order is mounted in the demo build",
+        );
+
+        // production build: the legacy unauthenticated mutation route is NOT mounted (404)
+        let prod = build_router(test_app(), true);
+        let r = prod.oneshot(post("/api/order")).await.unwrap();
+        assert_eq!(
+            r.status(),
+            StatusCode::NOT_FOUND,
+            "legacy /api/order must be gone in the production build",
+        );
+
+        // …but the authenticated /v1 surface is still served in production (public GET → not 404)
+        let prod2 = build_router(test_app(), true);
+        let r = prod2
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/markets")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_ne!(
+            r.status(),
+            StatusCode::NOT_FOUND,
+            "/v1 surface stays mounted in the production build",
+        );
+    }
+
+    // enabling the L1 settlement bridge (real USDC at stake) forces the production
+    // posture regardless of DARKPERP_PROD (short-circuits before reading the env).
+    #[test]
+    fn l1_enabled_implies_production_mode() {
+        assert!(
+            production_mode(true),
+            "L1-enabled deployments are always in the production posture",
+        );
+    }
 
     #[test]
     fn boot_funds_user_to_25k() {

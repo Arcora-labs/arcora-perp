@@ -25,3 +25,7 @@ getrandom = "0.2"
 # secp256k1 recovery for caller-signed orders (matches the contract's ecrecover).
 sha3 = "0.10"
 k256 = { version = "0.13", features = ["ecdsa"] }
+
+[dev-dependencies]
+# router-level tests drive `build_router` via `ServiceExt::oneshot` (audit DP-010).
+tower = { version = "0.5", features = ["util"] }
