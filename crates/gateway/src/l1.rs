@@ -32,6 +32,9 @@ pub struct L1 {
     /// process argv (audit DP-013). A native in-process signer is the eventual full fix.
     keystore_path: String,
     password_file: String,
+    /// RAII guard: removes the keystore temp dir when the LAST `L1` clone drops, so the
+    /// on-disk key material does not persist / accumulate across restarts (DP-013 review).
+    _keystore: std::sync::Arc<KeystoreDir>,
     /// USDC token (collateral asset) — needed for the bond top-up + deposit checks.
     pub usdc: Option<String>,
     /// CollateralVault — needed to read `claimed(leaf)` and match deposit logs.
@@ -65,25 +68,12 @@ impl L1 {
             .and_then(|s| s.trim().parse().ok())
             .unwrap_or(0);
         let allow_unsafe = std::env::var("L1_ALLOW_MOCK_PROOF").ok().as_deref() == Some("1");
-        // audit DP-013: encrypt the key into a keystore now, so it never enters a cast argv.
-        let (keystore_path, password_file) = match create_keystore(&key) {
-            Ok(k) => k,
-            Err(e) => {
-                eprintln!("[l1] REFUSING to start: could not create the sequencer keystore: {e}");
-                std::process::exit(1);
-            }
-        };
-        let l1 = L1 {
-            rpc: std::env::var("L1_RPC").unwrap_or_else(|_| "https://sepolia.base.org".into()),
-            settlement,
-            keystore_path,
-            password_file,
-            usdc: std::env::var("L1_USDC").ok(),
-            vault: std::env::var("L1_VAULT").ok(),
-        };
-        // Cross-check the DECLARED chain id against the one the RPC actually serves — the
-        // declared value alone is spoofable (declare a testnet, point L1_RPC at mainnet).
-        let actual = l1.chain_id().unwrap_or(0);
+        let rpc = std::env::var("L1_RPC").unwrap_or_else(|_| "https://sepolia.base.org".into());
+        // Cross-check the declared chain id against the one the RPC actually serves BEFORE
+        // creating any on-disk key material, so a refusal leaks no keystore (DP-007/013 review).
+        // NB: `actual` is the RPC's self-reported eth_chainId on the same operator endpoint —
+        // this closes accidental misconfig, not a deliberately proxied/MITM RPC.
+        let actual = query_chain_id(&rpc).unwrap_or(0);
         if !l1_chain_ok(chain_id, actual, allow_unsafe) {
             eprintln!(
                 "[l1] REFUSING to start the settlement bridge: declared L1_CHAIN_ID={chain_id} but \
@@ -93,17 +83,23 @@ impl L1 {
             );
             std::process::exit(1);
         }
-        Some(l1)
-    }
-
-    /// The chain id the configured RPC actually serves (ground truth for the DP-007 guard).
-    pub fn chain_id(&self) -> Result<u64, String> {
-        self.cast(&["chain-id", "--rpc-url", &self.rpc])?
-            .split_whitespace()
-            .next()
-            .unwrap_or("")
-            .parse::<u64>()
-            .map_err(|e| format!("chain-id parse: {e}"))
+        // audit DP-013: encrypt the key into a keystore, so it never enters a cast argv.
+        let (keystore_path, password_file, dir) = match create_keystore(&key) {
+            Ok(k) => k,
+            Err(e) => {
+                eprintln!("[l1] REFUSING to start: could not create the sequencer keystore: {e}");
+                std::process::exit(1);
+            }
+        };
+        Some(L1 {
+            rpc,
+            settlement,
+            keystore_path,
+            password_file,
+            _keystore: std::sync::Arc::new(KeystoreDir(dir)),
+            usdc: std::env::var("L1_USDC").ok(),
+            vault: std::env::var("L1_VAULT").ok(),
+        })
     }
 
     fn cast(&self, args: &[&str]) -> Result<String, String> {
@@ -328,7 +324,35 @@ pub fn l1_chain_ok(declared: u64, actual: u64, allow_unsafe: bool) -> bool {
 /// Encrypt `key_hex` (a 32-byte secp256k1 scalar) into a fresh V3 keystore plus a 0600
 /// password file, so `cast` can sign via `--keystore`/`--password-file` and the raw key
 /// never enters any process argv (audit DP-013). Returns (keystore_path, password_file).
-fn create_keystore(key_hex: &str) -> Result<(String, String), String> {
+/// RAII guard that removes the keystore temp dir on drop (audit DP-013 review — otherwise
+/// the encrypted key + password persist in $TMPDIR and accumulate one dir per restart).
+struct KeystoreDir(std::path::PathBuf);
+impl Drop for KeystoreDir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+/// The chain id the RPC serves — a free function (no keystore) so it can be checked BEFORE
+/// any on-disk key material is created, and so a refusal leaks nothing (DP-007/DP-013 review).
+fn query_chain_id(rpc: &str) -> Result<u64, String> {
+    let out = Command::new("cast")
+        .args(["chain-id", "--rpc-url", rpc])
+        .env("ETH_RPC_TIMEOUT", "15") // bound the startup stall on a black-hole RPC
+        .output()
+        .map_err(|e| format!("cast spawn failed (is Foundry installed?): {e}"))?;
+    if !out.status.success() {
+        return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
+    }
+    String::from_utf8_lossy(&out.stdout)
+        .split_whitespace()
+        .next()
+        .unwrap_or("")
+        .parse::<u64>()
+        .map_err(|e| format!("chain-id parse: {e}"))
+}
+
+fn create_keystore(key_hex: &str) -> Result<(String, String, std::path::PathBuf), String> {
     use std::io::Write as _;
     let raw = key_hex.strip_prefix("0x").unwrap_or(key_hex).trim();
     if raw.len() != 64 {
@@ -390,6 +414,7 @@ fn create_keystore(key_hex: &str) -> Result<(String, String), String> {
     Ok((
         keystore_path.to_string_lossy().into_owned(),
         pw_path.to_string_lossy().into_owned(),
+        dir,
     ))
 }
 
@@ -475,7 +500,7 @@ mod tests {
     #[test]
     fn keystore_roundtrips_the_sequencer_key() {
         let key = "ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
-        let (ks, pw) = create_keystore(key).expect("keystore created");
+        let (ks, pw, _dir) = create_keystore(key).expect("keystore created");
         let password = std::fs::read_to_string(&pw).expect("password file");
         let decrypted = eth_keystore::decrypt_key(&ks, password.trim()).expect("keystore decrypts");
         let mut expected = [0u8; 32];
