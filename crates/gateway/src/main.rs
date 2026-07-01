@@ -194,7 +194,7 @@ fn attest_from_env() -> Option<Attested> {
         let report = verify_azure_vtpm(&td, &hcl, &ak_msg, &ak_sig, &pcrs)
             .map_err(|e| format!("vtpm chain: {e:?}"))?;
         Ok(Attested {
-            measurement: azure_app_measurement(&td, &report),
+            measurement: azure_app_measurement(&td, &report).map_err(|e| format!("{e:?}"))?,
             tcb: format!("{:?}", td.tcb_status),
             quote_version: td.quote_version,
         })

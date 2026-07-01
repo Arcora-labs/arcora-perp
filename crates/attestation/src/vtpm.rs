@@ -253,10 +253,59 @@ pub fn verify_azure_vtpm(
 /// measured-boot PCR digest. This is the identity the engine should key seal
 /// release off on Azure — where the TD RTMRs are zero, the PCR digest is what
 /// carries the kernel / initrd / application identity.
-pub fn azure_app_measurement(td: &VerifiedAttestation, vtpm: &AzureVtpmReport) -> [u8; 32] {
+///
+/// Returns `Err(TcbRejected)` when the platform TCB is not acceptable — the SAME
+/// gate as [`crate::VerifiedAttestation::enclave_measurement`], so the Azure vTPM
+/// boot path can never seed an enclave identity from an out-of-date / revoked
+/// platform (audit DP-005).
+pub fn azure_app_measurement(
+    td: &VerifiedAttestation,
+    vtpm: &AzureVtpmReport,
+) -> Result<[u8; 32], crate::AttestationError> {
     use perp_core::hash::{Domain, Hasher, Keccak256};
+    // audit DP-005: fail closed on an unacceptable TCB, mirroring enclave_measurement.
+    if !td.tcb_status.is_acceptable() {
+        return Err(crate::AttestationError::TcbRejected(td.tcb_status.clone()));
+    }
     let mut words = Vec::with_capacity(3);
     crate::fold48(&mut words, &td.mr_td);
     words.push(vtpm.pcr_digest);
-    Keccak256::hash_words(Domain::Measurement, &words)
+    Ok(Keccak256::hash_words(Domain::Measurement, &words))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{TcbStatus, VerifiedAttestation};
+
+    fn att(tcb: TcbStatus) -> VerifiedAttestation {
+        VerifiedAttestation {
+            mr_td: [1u8; 48],
+            rtmr: [[0u8; 48]; 4],
+            report_data: [0u8; 64],
+            tcb_status: tcb,
+            advisory_ids: Vec::new(),
+            quote_version: 4,
+        }
+    }
+    fn report() -> AzureVtpmReport {
+        AzureVtpmReport {
+            pcr_digest: [2u8; 32],
+            nonce: Vec::new(),
+            pcr_select: Vec::new(),
+        }
+    }
+
+    // audit DP-005: the Azure vTPM measurement path must apply the SAME acceptable-TCB
+    // gate as the generic verified-attestation path — an out-of-date / revoked platform
+    // is refused, never seeding an enclave identity.
+    #[test]
+    fn app_measurement_applies_the_tcb_gate() {
+        assert!(azure_app_measurement(&att(TcbStatus::OutOfDate), &report()).is_err());
+        assert!(azure_app_measurement(&att(TcbStatus::Revoked), &report()).is_err());
+        assert!(azure_app_measurement(&att(TcbStatus::ConfigurationNeeded), &report()).is_err());
+        // an acceptable platform still yields a measurement
+        assert!(azure_app_measurement(&att(TcbStatus::UpToDate), &report()).is_ok());
+        assert!(azure_app_measurement(&att(TcbStatus::SwHardeningNeeded), &report()).is_ok());
+    }
 }

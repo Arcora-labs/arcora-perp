@@ -58,7 +58,8 @@ fn verifies_the_real_azure_vtpm_chain() {
         .expect("azure vTPM chain verifies");
 
     // The application measurement (MRTD ‖ PCR digest) is the real Azure identity.
-    let m = vtpm::azure_app_measurement(&td, &report);
+    // The captured platform is UpToDate, so the TCB gate (DP-005) releases it.
+    let m = vtpm::azure_app_measurement(&td, &report).expect("acceptable TCB releases the measurement");
     assert_ne!(m, [0u8; 32]);
     assert_ne!(
         &m[..],
