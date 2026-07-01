@@ -393,6 +393,13 @@ impl Sequencer {
             .position(&order.owner, order.market_id)
             .copied()
             .unwrap_or_else(|| Position::empty(order.owner, order.market_id));
+        // audit DP-009 (adversarial-review follow-up): reject a reduce_only order that
+        // would OPEN or GROW the owner's position BEFORE matching — otherwise the matcher
+        // consumes a counterparty's resting liquidity for a fill that is then dropped at
+        // settlement, destroying that liquidity and mis-tagging the innocent maker.
+        if order.reduce_only && base.increases_exposure(order.signed_size()) {
+            return Err(RejectReason::ReduceOnlyViolation);
+        }
         if base.fits_initial_after(market, order.signed_size(), mark, funding_index) {
             Ok(())
         } else {
@@ -534,12 +541,19 @@ impl Sequencer {
             // audit DP-009: a reduce_only order may only SHRINK its owner's position. Drop
             // the fill if it would increase a reduce_only party's absolute exposure. (Matching
             // is trusted in Phase 0; op_fill's margin checks still guard fund safety.)
+            // The pre-trade gate already rejects a reduce_only order that would open against
+            // the pre-batch position; this is the live backstop for an intra-batch change.
             let taker_delta = if m.taker_side == Side::Buy { m.size } else { -m.size };
             let taker_opens = m.taker_reduce_only && self.exposure_increases(&m.taker, m.market_id, taker_delta);
             let maker_opens = m.maker_reduce_only && self.exposure_increases(&m.maker, m.market_id, -taker_delta);
             if taker_opens || maker_opens {
-                for oh in [m.taker_order_hash, m.maker_order_hash] {
-                    settlement_rejected.push((oh, RejectReason::ReduceOnlyViolation));
+                // attribute the violation ONLY to the offending reduce_only order(s), never
+                // to an innocent counterparty (adversarial-review follow-up).
+                if taker_opens {
+                    settlement_rejected.push((m.taker_order_hash, RejectReason::ReduceOnlyViolation));
+                }
+                if maker_opens {
+                    settlement_rejected.push((m.maker_order_hash, RejectReason::ReduceOnlyViolation));
                 }
                 continue;
             }
