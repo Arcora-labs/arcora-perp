@@ -3226,11 +3226,26 @@ fn attestation_ok_for_mode(prod: bool, attested: bool) -> bool {
 /// scalar): the demo default [7u8; 32] is a public constant, so anyone could reconstruct
 /// it, forge an enclave-signed receipt for an unsequenced order, and slash the sequencer
 /// bond via challengeInclusion + slashUnanswered (audit DP-006 follow-up).
+/// The public demo signing seed — a well-known constant, so it must never seed a
+/// production enclave identity regardless of HOW it is supplied.
+const DEMO_ENCLAVE_SEED: [u8; 32] = [7u8; 32];
+
 fn enclave_seed_from_env() -> ([u8; 32], bool) {
-    match std::env::var("ENCLAVE_SEED").ok().and_then(|s| parse_hex32(&s)) {
-        Some(seed) => (seed, false),
-        None => ([7u8; 32], true),
-    }
+    let seed = std::env::var("ENCLAVE_SEED")
+        .ok()
+        .and_then(|s| parse_hex32(&s))
+        .unwrap_or(DEMO_ENCLAVE_SEED);
+    // VALUE-based: the public demo constant counts as "default" even when supplied via
+    // ENCLAVE_SEED, so production still refuses it (audit DP-006 review follow-up — a
+    // presence-only check let the known constant pass).
+    (seed, seed == DEMO_ENCLAVE_SEED)
+}
+
+/// Whether `seed` is a usable secp256k1 signing scalar (nonzero, below the curve order),
+/// so a malformed ENCLAVE_SEED fails closed with a clear message instead of panicking deep
+/// inside EnclaveIdentity::from_seed (audit DP-006 review follow-up).
+fn enclave_seed_is_valid(seed: [u8; 32]) -> bool {
+    k256::ecdsa::SigningKey::from_bytes((&seed).into()).is_ok()
 }
 
 /// Whether the gateway may boot given the enclave-seed provenance: production requires a
@@ -3323,6 +3338,25 @@ async fn main() {
             "[mode] production posture: self-service deposit + legacy /api mutation routes disabled"
         );
     }
+    // audit DP-006 (review follow-up): validate + guard the enclave seed BEFORE building the
+    // identity in boot(), so an invalid scalar or the public demo seed fails closed with a
+    // clear message rather than panicking inside EnclaveIdentity::from_seed.
+    let (enclave_seed, seed_is_default) = enclave_seed_from_env();
+    if !enclave_seed_is_valid(enclave_seed) {
+        eprintln!(
+            "[enclave] REFUSING to start: ENCLAVE_SEED is not a valid secp256k1 scalar \
+             (must be nonzero and below the curve order)."
+        );
+        std::process::exit(1);
+    }
+    if !enclave_seed_ok_for_mode(prod, !seed_is_default) {
+        eprintln!(
+            "[enclave] REFUSING to start in production with the public demo signing seed. \
+             Set ENCLAVE_SEED to a secret 32-byte hex secp256k1 scalar, and set the settlement \
+             contract's ENCLAVE_SIGNER to that key's address."
+        );
+        std::process::exit(1);
+    }
     let mut gw = Gw::boot();
     gw.prod = prod;
     // audit DP-006: in production the enclave identity must be bound to a verified TEE
@@ -3332,17 +3366,6 @@ async fn main() {
             "[attest] REFUSING to start in production without a verified TEE attestation. \
              Set ATTESTATION_DIR to a valid quote/collateral/vTPM bundle, or drop the production \
              posture (no L1 bridge and DARKPERP_PROD unset) to run the demo build."
-        );
-        std::process::exit(1);
-    }
-    // audit DP-006 follow-up: the enclave signing key must be a secret in production —
-    // the public demo seed lets anyone forge receipts and slash the sequencer bond.
-    let (_, seed_is_default) = enclave_seed_from_env();
-    if !enclave_seed_ok_for_mode(prod, !seed_is_default) {
-        eprintln!(
-            "[enclave] REFUSING to start in production with the public demo signing seed. \
-             Set ENCLAVE_SEED to a secret 32-byte hex secp256k1 scalar, and set the settlement \
-             contract's ENCLAVE_SIGNER to that key's address."
         );
         std::process::exit(1);
     }
@@ -3671,6 +3694,17 @@ mod tests {
             !enclave_seed_ok_for_mode(true, false),
             "production must reject the public demo enclave seed",
         );
+    }
+
+    // audit DP-006 review follow-up: a malformed ENCLAVE_SEED must be rejected cleanly, and
+    // the value-based demo-seed check flags the public constant even when supplied by value.
+    #[test]
+    fn enclave_seed_validation_and_demo_detection() {
+        assert!(enclave_seed_is_valid([7u8; 32]), "the demo scalar is a valid secp256k1 key");
+        assert!(!enclave_seed_is_valid([0u8; 32]), "zero is not a valid scalar (no panic)");
+        assert!(!enclave_seed_is_valid([0xffu8; 32]), "a value >= the curve order is rejected");
+        // the public demo constant is detected as the default regardless of provenance
+        assert_eq!(DEMO_ENCLAVE_SEED, [7u8; 32]);
     }
 
     // audit DP-006 follow-up: production must pin the expected enclave measurement, so a
