@@ -737,3 +737,33 @@ fn reduce_only_order_may_shrink_a_position() {
         "the long is closed by the reduce_only sell",
     );
 }
+
+#[test]
+fn reduce_only_behind_an_earlier_same_batch_order_is_rejected() {
+    // audit DP-009 review: a reduce_only order whose owner already has an earlier order this
+    // batch is rejected at admission — its position could shift intra-batch (via that earlier
+    // order's fill) and open at settlement, where the drop would consume an innocent maker.
+    let mut s = setup();
+    // trader 2 opens a long first
+    s.seal_batch(
+        &[
+            order(1, Side::Sell, SIZE_SCALE, 100_000 * PRICE_SCALE, 1),
+            order(2, Side::Buy, SIZE_SCALE, 100_000 * PRICE_SCALE, 2),
+        ],
+        1_000,
+    );
+    // batch 1: trader 2 submits a normal order and then a reduce_only order (same market)
+    let first = order(2, Side::Sell, SIZE_SCALE, 100_000 * PRICE_SCALE, 3);
+    let mut ro = order(2, Side::Sell, SIZE_SCALE / 2, 100_000 * PRICE_SCALE, 4);
+    ro.reduce_only = true;
+    let ro_hash = ro.order_hash::<Keccak256>();
+    let sealed = s.seal_batch(&[first, ro], 2_000);
+    assert!(
+        sealed
+            .manifest
+            .rejected
+            .iter()
+            .any(|(h, r)| *h == ro_hash && *r == RejectReason::ReduceOnlyViolation),
+        "the reduce_only order behind an earlier same-batch order is rejected up front",
+    );
+}

@@ -16,7 +16,7 @@
 //! holds enclave keys and real signatures), so it is plain `std`. The pieces it
 //! drives — the matcher and the settlement engine — remain zkVM-reproducible.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use k256::ecdsa::{RecoveryId, Signature, SigningKey, VerifyingKey};
 use sha3::{Digest as _, Keccak256 as RawKeccak};
@@ -504,9 +504,22 @@ impl Sequencer {
         //    matched fill can never fail to settle on margin (§12, Phase 3).
         let mut pre_rejected: Vec<(Digest, RejectReason)> = Vec::new();
         let mut admitted: Vec<Order> = Vec::new();
+        // owners with an already-admitted order for a market this batch. A reduce_only order
+        // whose owner is here could have its position shift intra-batch (via that earlier
+        // order's fill) and then OPEN at settlement — where the drop would consume an innocent
+        // maker's resting depth. Reject it up front instead (audit DP-009 review follow-up); the
+        // owner can resubmit in a later batch. The pre-trade gate below handles the pre-batch case.
+        let mut owners_with_order: BTreeSet<(PubKey, MarketId)> = BTreeSet::new();
         for o in orders {
+            if o.reduce_only && owners_with_order.contains(&(o.owner, o.market_id)) {
+                pre_rejected.push((o.order_hash::<Keccak256>(), RejectReason::ReduceOnlyViolation));
+                continue;
+            }
             match self.pre_trade_check(o, now_ms) {
-                Ok(()) => admitted.push(*o),
+                Ok(()) => {
+                    owners_with_order.insert((o.owner, o.market_id));
+                    admitted.push(*o);
+                }
                 Err(reason) => pre_rejected.push((o.order_hash::<Keccak256>(), reason)),
             }
         }
