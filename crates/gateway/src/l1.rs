@@ -60,28 +60,32 @@ impl L1 {
     pub fn from_env() -> Option<L1> {
         let settlement = std::env::var("L1_SETTLEMENT").ok()?;
         let key = std::env::var("L1_SEQUENCER_KEY").ok()?;
-        // audit DP-007: this bridge submits mock-shaped proofs (proof == publicCommitment),
-        // which only MockZkVerifier accepts. Refuse to settle against a real-value chain
-        // unless the operator declares an allowlisted testnet (or explicitly overrides).
-        let chain_id: u64 = std::env::var("L1_CHAIN_ID")
-            .ok()
-            .and_then(|s| s.trim().parse().ok())
-            .unwrap_or(0);
         let allow_unsafe = std::env::var("L1_ALLOW_MOCK_PROOF").ok().as_deref() == Some("1");
         let rpc = std::env::var("L1_RPC").unwrap_or_else(|_| "https://sepolia.base.org".into());
-        // Cross-check the declared chain id against the one the RPC actually serves BEFORE
-        // creating any on-disk key material, so a refusal leaks no keystore (DP-007/013 review).
-        // NB: `actual` is the RPC's self-reported eth_chainId on the same operator endpoint —
-        // this closes accidental misconfig, not a deliberately proxied/MITM RPC.
-        let actual = query_chain_id(&rpc).unwrap_or(0);
-        if !l1_chain_ok(chain_id, actual, allow_unsafe) {
-            eprintln!(
-                "[l1] REFUSING to start the settlement bridge: declared L1_CHAIN_ID={chain_id} but \
-                 the RPC serves chain {actual}, and this bridge only submits MockZkVerifier-shaped \
-                 proofs. Set L1_CHAIN_ID to the RPC's real (allowlisted testnet) id, or \
-                 L1_ALLOW_MOCK_PROOF=1 to override — UNSAFE, never on a real-value chain."
-            );
-            std::process::exit(1);
+        // audit DP-007 (+ code-review): this bridge submits mock-shaped proofs (proof ==
+        // publicCommitment), which only MockZkVerifier accepts, so it must run ONLY on an
+        // allowlisted testnet. Skip the RPC query entirely when explicitly overridden (its
+        // answer is unused). L1_CHAIN_ID is OPTIONAL: if set it must MATCH the RPC's real chain
+        // (extra assurance against a proxied endpoint); if unset the guard is just the allowlist
+        // on the RPC's actual chain — so upgrading without the new var no longer crashes boot.
+        // The chain check runs BEFORE creating any on-disk key material, so a refusal leaks no
+        // keystore, and the query retries so a transient RPC blip doesn't crash startup.
+        if !allow_unsafe {
+            let actual = query_chain_id_retry(&rpc);
+            let declared = std::env::var("L1_CHAIN_ID")
+                .ok()
+                .and_then(|s| s.trim().parse::<u64>().ok())
+                .unwrap_or(actual);
+            if !l1_chain_ok(declared, actual, false) {
+                eprintln!(
+                    "[l1] REFUSING to start the settlement bridge: the RPC serves chain {actual} \
+                     (declared L1_CHAIN_ID={declared}), not an allowlisted testnet this \
+                     MockZkVerifier-shaped bridge may run on. Point L1_RPC at a testnet (and match \
+                     L1_CHAIN_ID if set), or set L1_ALLOW_MOCK_PROOF=1 to override — UNSAFE, never \
+                     on a real-value chain."
+                );
+                std::process::exit(1);
+            }
         }
         // audit DP-013: encrypt the key into a keystore, so it never enters a cast argv.
         let (keystore_path, password_file, dir) = match create_keystore(&key) {
@@ -350,6 +354,24 @@ fn query_chain_id(rpc: &str) -> Result<u64, String> {
         .unwrap_or("")
         .parse::<u64>()
         .map_err(|e| format!("chain-id parse: {e}"))
+}
+
+/// `query_chain_id` with a few retries, so a TRANSIENT RPC blip at startup does not crash the
+/// whole gateway (code-review follow-up). Returns 0 if the chain stays unresolved — which the
+/// caller treats as fail-closed. Runs before the async server binds, so a brief block is fine.
+fn query_chain_id_retry(rpc: &str) -> u64 {
+    for attempt in 0..3 {
+        match query_chain_id(rpc) {
+            Ok(id) => return id,
+            Err(e) => {
+                eprintln!("[l1] chain-id query attempt {} failed: {e}", attempt + 1);
+                if attempt < 2 {
+                    std::thread::sleep(std::time::Duration::from_secs(2));
+                }
+            }
+        }
+    }
+    0
 }
 
 fn create_keystore(key_hex: &str) -> Result<(String, String, std::path::PathBuf), String> {

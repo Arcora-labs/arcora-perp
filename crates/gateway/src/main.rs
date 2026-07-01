@@ -651,7 +651,9 @@ impl Gw {
                 a.tcb
             );
         }
-        let (enclave_seed, _) = enclave_seed_from_env();
+        // main() validates the seed before boot in production; fall back to the (valid) demo
+        // seed here so a stray/malformed ENCLAVE_SEED in a test env can never panic from_seed.
+        let (enclave_seed, _) = enclave_seed_from_env().unwrap_or((DEMO_ENCLAVE_SEED, true));
         let enclave = EnclaveIdentity::from_seed(enclave_seed, 1, measurement);
         let mut seq = Sequencer::new(enclave, 24);
         let mut archive = NoteArchive::new();
@@ -3230,15 +3232,25 @@ fn attestation_ok_for_mode(prod: bool, attested: bool) -> bool {
 /// production enclave identity regardless of HOW it is supplied.
 const DEMO_ENCLAVE_SEED: [u8; 32] = [7u8; 32];
 
-fn enclave_seed_from_env() -> ([u8; 32], bool) {
-    let seed = std::env::var("ENCLAVE_SEED")
-        .ok()
-        .and_then(|s| parse_hex32(&s))
-        .unwrap_or(DEMO_ENCLAVE_SEED);
-    // VALUE-based: the public demo constant counts as "default" even when supplied via
-    // ENCLAVE_SEED, so production still refuses it (audit DP-006 review follow-up — a
-    // presence-only check let the known constant pass).
-    (seed, seed == DEMO_ENCLAVE_SEED)
+/// Resolve the enclave seed and whether it is the public demo default. `Err` distinguishes a
+/// SET-but-malformed/invalid ENCLAVE_SEED (bad hex/length, or not a valid secp256k1 scalar)
+/// from an UNSET one — so a mistyped secret is reported clearly instead of silently becoming
+/// the demo constant (code-review follow-up). VALUE-based demo detection: the public constant
+/// counts as "default" even when supplied via ENCLAVE_SEED (audit DP-006 review follow-up).
+fn enclave_seed_from_env() -> Result<([u8; 32], bool), String> {
+    match std::env::var("ENCLAVE_SEED") {
+        Err(_) => Ok((DEMO_ENCLAVE_SEED, true)), // unset → the demo build's default
+        Ok(s) => {
+            let seed = parse_hex32(&s)
+                .ok_or("ENCLAVE_SEED is set but is not a 32-byte hex value")?;
+            if !enclave_seed_is_valid(seed) {
+                return Err("ENCLAVE_SEED is not a valid secp256k1 scalar \
+                            (must be nonzero and below the curve order)"
+                    .into());
+            }
+            Ok((seed, seed == DEMO_ENCLAVE_SEED))
+        }
+    }
 }
 
 /// Whether `seed` is a usable secp256k1 signing scalar (nonzero, below the curve order),
@@ -3338,17 +3350,19 @@ async fn main() {
             "[mode] production posture: self-service deposit + legacy /api mutation routes disabled"
         );
     }
-    // audit DP-006 (review follow-up): validate + guard the enclave seed BEFORE building the
-    // identity in boot(), so an invalid scalar or the public demo seed fails closed with a
-    // clear message rather than panicking inside EnclaveIdentity::from_seed.
-    let (enclave_seed, seed_is_default) = enclave_seed_from_env();
-    if !enclave_seed_is_valid(enclave_seed) {
-        eprintln!(
-            "[enclave] REFUSING to start: ENCLAVE_SEED is not a valid secp256k1 scalar \
-             (must be nonzero and below the curve order)."
-        );
-        std::process::exit(1);
-    }
+    // audit DP-006 (+ review): resolve + validate the enclave seed BEFORE building the identity
+    // in boot(), so a malformed/invalid ENCLAVE_SEED fails closed with a CLEAR message (not a
+    // misleading "demo seed" one, and not a panic inside EnclaveIdentity::from_seed).
+    let (_enclave_seed, seed_is_default) = match enclave_seed_from_env() {
+        Ok(x) => x,
+        Err(e) => {
+            eprintln!(
+                "[enclave] REFUSING to start: {e}. Set ENCLAVE_SEED to a valid 32-byte hex \
+                 secp256k1 scalar, or unset it for the demo build."
+            );
+            std::process::exit(1);
+        }
+    };
     if !enclave_seed_ok_for_mode(prod, !seed_is_default) {
         eprintln!(
             "[enclave] REFUSING to start in production with the public demo signing seed. \
