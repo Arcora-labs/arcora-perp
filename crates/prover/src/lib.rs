@@ -47,6 +47,10 @@ pub struct PublicInputs {
     pub ordered_root: Digest,
     /// Merkle root of the withdrawals this batch authorizes (vault releases).
     pub withdrawals_root: Digest,
+    /// Merkle root of the manifest's validly-rejected order-hash leaves. Bound so an
+    /// honest sequencer can prove a valid rejection against an inclusion-slash, and a
+    /// malicious one cannot fabricate which orders were rejected (audit DP-004).
+    pub rejected_root: Digest,
 }
 
 impl PublicInputs {
@@ -61,6 +65,7 @@ impl PublicInputs {
                 self.new_state_root,
                 self.ordered_root,
                 self.withdrawals_root,
+                self.rejected_root,
             ],
         )
     }
@@ -78,6 +83,7 @@ pub fn run_transition(
     batch_manifest_hash: Digest,
     ordered_root: Digest,
     withdrawals_root: Digest,
+    rejected_root: Digest,
 ) -> Result<PublicInputs, EngineError> {
     let prev_state_root = state.state_root();
     state.apply_batch(ops)?;
@@ -88,6 +94,7 @@ pub fn run_transition(
         new_state_root,
         ordered_root,
         withdrawals_root,
+        rejected_root,
     })
 }
 
@@ -470,17 +477,39 @@ mod tests {
         let (mut s, ops) = state_with_deposit();
         let mh = [0x55u8; 32];
         let prev = s.state_root();
-        let public = run_transition(&mut s, &ops, mh, [0u8; 32], [0u8; 32]).unwrap();
+        let public = run_transition(&mut s, &ops, mh, [0u8; 32], [0u8; 32], [0u8; 32]).unwrap();
         assert_eq!(public.prev_state_root, prev);
         assert_eq!(public.batch_manifest_hash, mh);
         assert_eq!(public.new_state_root, s.state_root());
         assert_ne!(public.prev_state_root, public.new_state_root);
     }
 
+    // audit DP-004: two batches identical except for which orders were rejected must
+    // not share a public commitment — else a malicious sequencer could swap the
+    // committed rejected set to dodge an inclusion slash.
+    #[test]
+    fn commitment_binds_the_rejected_root() {
+        let base = PublicInputs {
+            prev_state_root: [1u8; 32],
+            batch_manifest_hash: [2u8; 32],
+            new_state_root: [3u8; 32],
+            ordered_root: [4u8; 32],
+            withdrawals_root: [5u8; 32],
+            rejected_root: [6u8; 32],
+        };
+        let mut other = base;
+        other.rejected_root = [7u8; 32];
+        assert_ne!(
+            base.commitment::<Keccak256>(),
+            other.commitment::<Keccak256>(),
+            "the rejected root must be bound into the public commitment",
+        );
+    }
+
     #[test]
     fn prove_and_verify_roundtrip() {
         let (mut s, ops) = state_with_deposit();
-        let public = run_transition(&mut s, &ops, [1u8; 32], [0u8; 32], [0u8; 32]).unwrap();
+        let public = run_transition(&mut s, &ops, [1u8; 32], [0u8; 32], [0u8; 32], [0u8; 32]).unwrap();
         let prover = AttestedProver::new(CommitmentProver::new(M), prov(M));
         let witness = b"sealed batch witness: positions, fills, margins";
         let sealed = SealedWitness::seal(witness, &prov(M), M, public.commitment::<Keccak256>()).unwrap();
@@ -492,7 +521,7 @@ mod tests {
     #[test]
     fn tampered_public_inputs_break_verification() {
         let (mut s, ops) = state_with_deposit();
-        let public = run_transition(&mut s, &ops, [1u8; 32], [0u8; 32], [0u8; 32]).unwrap();
+        let public = run_transition(&mut s, &ops, [1u8; 32], [0u8; 32], [0u8; 32], [0u8; 32]).unwrap();
         let prover = AttestedProver::new(CommitmentProver::new(M), prov(M));
         let sealed = SealedWitness::seal(b"w", &prov(M), M, [0x77u8; 32]).unwrap();
         let mut proof = prover.prove_sealed(&sealed, &public).unwrap();
@@ -510,7 +539,7 @@ mod tests {
     #[test]
     fn wrong_measurement_cannot_open_witness() {
         let (mut s, ops) = state_with_deposit();
-        let public = run_transition(&mut s, &ops, [1u8; 32], [0u8; 32], [0u8; 32]).unwrap();
+        let public = run_transition(&mut s, &ops, [1u8; 32], [0u8; 32], [0u8; 32], [0u8; 32]).unwrap();
         // witness sealed to M, but the prover's key-release is authorized only for
         // WRONG_M → it never obtains the seal key → cannot open (§10b)
         let sealed = SealedWitness::seal(b"private ledger", &prov(M), M, [0x01u8; 32]).unwrap();
@@ -564,6 +593,7 @@ mod tests {
             new_state_root: [1; 32],
             ordered_root: [0; 32],
             withdrawals_root: [0; 32],
+            rejected_root: [0; 32],
         };
         let proof = prover.prove_sealed(&sealed, &public).unwrap();
         assert_eq!(proof.proof_bytes.len(), 32);
@@ -604,7 +634,7 @@ mod tests {
             note_commitment: [7u8; 32],
             spend_key: [1; 32],
         }];
-        let err = run_transition(&mut s, &ops, [0u8; 32], [0u8; 32], [0u8; 32]).unwrap_err();
+        let err = run_transition(&mut s, &ops, [0u8; 32], [0u8; 32], [0u8; 32], [0u8; 32]).unwrap_err();
         assert_eq!(err, EngineError::UnknownOrSpentNote);
     }
 }

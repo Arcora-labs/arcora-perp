@@ -230,19 +230,20 @@ impl L1 {
         let commitment = self.cast(&[
             "call",
             &self.settlement,
-            "publicCommitment(bytes32,bytes32,bytes32,bytes32,bytes32)(bytes32)",
+            "publicCommitment(bytes32,bytes32,bytes32,bytes32,bytes32,bytes32)(bytes32)",
             prev,
             manifest,
             new,
             ZERO32,
             withdrawals,
+            ZERO32,
             "--rpc-url",
             &self.rpc,
         ])?;
         self.send(
             &self.settlement.clone(),
-            "settleBatch(bytes32,bytes32,bytes32,bytes32,bytes32,bytes)",
-            &[prev, manifest, new, ZERO32, withdrawals, &commitment],
+            "settleBatch(bytes32,bytes32,bytes32,bytes32,bytes32,bytes32,bytes)",
+            &[prev, manifest, new, ZERO32, withdrawals, ZERO32, &commitment],
         )
     }
 }

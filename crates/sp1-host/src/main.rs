@@ -27,17 +27,17 @@ async fn main() {
     let mut state = DefaultState::new(16);
     state.add_market(Market::conservative(0));
     let ops = vec![BatchOp::Deposit { owner: [7u8; 32], asset_id: 0, amount: 1_000_000, blinding: [9u8; 32] }];
-    let (mh, ord, wd) = ([0x55u8; 32], [0u8; 32], [0u8; 32]);
+    let (mh, ord, wd, rej) = ([0x55u8; 32], [0u8; 32], [0u8; 32], [0u8; 32]);
 
     // Native reference commitment (what the sequencer/prover compute).
     let mut native = state.clone();
     let prev = native.state_root();
     native.apply_batch(&ops).unwrap();
     let new = native.state_root();
-    let native_commit = Keccak256::hash_words(Domain::StateRoot, &[prev, mh, new, ord, wd]);
+    let native_commit = Keccak256::hash_words(Domain::StateRoot, &[prev, mh, new, ord, wd, rej]);
 
     // Serialize the witness exactly as the guest reads it (postcard).
-    let witness: (DefaultState, Vec<BatchOp>, [u8; 32], [u8; 32], [u8; 32]) = (state, ops, mh, ord, wd);
+    let witness: (DefaultState, Vec<BatchOp>, [u8; 32], [u8; 32], [u8; 32], [u8; 32]) = (state, ops, mh, ord, wd, rej);
     let bytes = postcard::to_allocvec(&witness).unwrap();
 
     let mut stdin = SP1Stdin::new();

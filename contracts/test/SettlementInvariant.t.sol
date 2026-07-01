@@ -49,8 +49,8 @@ contract Handler {
         bytes32 newRoot = keccak256(abi.encodePacked(prev, j));
         bytes32 manifest = keccak256(abi.encodePacked("m", j));
         bytes32 orderedRoot = s.inclusionLeaf(j, orderHash(j));
-        bytes memory proof = abi.encode(s.publicCommitment(prev, manifest, newRoot, orderedRoot, bytes32(0)));
-        s.settleBatch(prev, manifest, newRoot, orderedRoot, bytes32(0), proof);
+        bytes memory proof = abi.encode(s.publicCommitment(prev, manifest, newRoot, orderedRoot, bytes32(0), bytes32(0)));
+        s.settleBatch(prev, manifest, newRoot, orderedRoot, bytes32(0), bytes32(0), proof);
         root = newRoot;
         nextToSettle = j + 1;
     }

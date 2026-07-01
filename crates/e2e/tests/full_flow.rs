@@ -136,6 +136,7 @@ fn deposit_match_settle_prove_recover() {
         // Merkle roots; bound into the commitment so the L1 verifier checks them.
         ordered_root: [0u8; 32],
         withdrawals_root: [0u8; 32],
+        rejected_root: [0u8; 32],
     };
     // the witness (positions/fills/margins) is sealed to the prover measurement
     let witness = b"sealed batch witness: cross-user matching + margins";

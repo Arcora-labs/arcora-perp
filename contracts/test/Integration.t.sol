@@ -36,7 +36,7 @@ contract IntegrationTest is MiniTest {
         view
         returns (bytes memory)
     {
-        return abi.encode(s.publicCommitment(prev, m, n, ord, wd));
+        return abi.encode(s.publicCommitment(prev, m, n, ord, wd, bytes32(0)));
     }
 
     function _deposit(address who, uint256 amount) internal {
@@ -69,7 +69,7 @@ contract IntegrationTest is MiniTest {
         bytes32 leaf = keccak256(abi.encodePacked(alice, amount, nonce));
         bytes32 newRoot = bytes32(uint256(2));
         bytes32 manifest = keccak256("batch-0");
-        s.settleBatch(GENESIS, manifest, newRoot, bytes32(0), leaf, _proof(GENESIS, manifest, newRoot, bytes32(0), leaf));
+        s.settleBatch(GENESIS, manifest, newRoot, bytes32(0), leaf, bytes32(0), _proof(GENESIS, manifest, newRoot, bytes32(0), leaf));
 
         // the vault now carries that settled withdrawals root
         assertEq(vault.withdrawalsRoot(), leaf, "vault got the settled withdrawals root");
@@ -97,11 +97,11 @@ contract IntegrationTest is MiniTest {
 
         // under-bonded → cannot advance state
         vm.expectRevert(DarkPerpSettlement.UnderBonded.selector);
-        s.settleBatch(GENESIS, m, newRoot, bytes32(0), bytes32(0), proof);
+        s.settleBatch(GENESIS, m, newRoot, bytes32(0), bytes32(0), bytes32(0), proof);
 
         // post exactly the floor → settles
         _bond(500 * USD);
-        s.settleBatch(GENESIS, m, newRoot, bytes32(0), bytes32(0), proof);
+        s.settleBatch(GENESIS, m, newRoot, bytes32(0), bytes32(0), bytes32(0), proof);
         assertEq(s.currentStateRoot(), newRoot, "settled once adequately bonded");
 
         // TVL grows 10x → the floor grows past the posted bond again
@@ -111,7 +111,7 @@ contract IntegrationTest is MiniTest {
         bytes32 m2 = keccak256("b1");
         bytes memory proof2 = _proof(newRoot, m2, newRoot2, bytes32(0), bytes32(0));
         vm.expectRevert(DarkPerpSettlement.UnderBonded.selector);
-        s.settleBatch(newRoot, m2, newRoot2, bytes32(0), bytes32(0), proof2);
+        s.settleBatch(newRoot, m2, newRoot2, bytes32(0), bytes32(0), bytes32(0), proof2);
     }
 
     function test_bond_floor_immune_to_donations() public {

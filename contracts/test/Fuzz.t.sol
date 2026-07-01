@@ -60,14 +60,14 @@ contract FuzzTest is MiniTest {
         vm.assume(ordered != ordered2 || withdrawals != wd2);
         bytes32 newRoot = keccak256(abi.encodePacked(ordered, withdrawals));
         bytes32 manifest = keccak256("m");
-        bytes memory proof = abi.encode(s.publicCommitment(GENESIS, manifest, newRoot, ordered, withdrawals));
+        bytes memory proof = abi.encode(s.publicCommitment(GENESIS, manifest, newRoot, ordered, withdrawals, bytes32(0)));
 
         // swapping in any different roots breaks the proof
         vm.expectRevert(DarkPerpSettlement.BadProof.selector);
-        s.settleBatch(GENESIS, manifest, newRoot, ordered2, wd2, proof);
+        s.settleBatch(GENESIS, manifest, newRoot, ordered2, wd2, bytes32(0), proof);
 
         // the exact roots settle
-        s.settleBatch(GENESIS, manifest, newRoot, ordered, withdrawals, proof);
+        s.settleBatch(GENESIS, manifest, newRoot, ordered, withdrawals, bytes32(0), proof);
         assertEq(s.currentStateRoot(), newRoot, "settled with the bound roots");
     }
 

@@ -47,13 +47,13 @@ contract DarkPerpSettlementTest is MiniTest {
         view
         returns (bytes memory)
     {
-        return abi.encode(s.publicCommitment(prev, m, n, ord, wd));
+        return abi.encode(s.publicCommitment(prev, m, n, ord, wd, bytes32(0)));
     }
 
     function test_settle_advances_root() public {
         bytes32 newRoot = bytes32(uint256(2));
         bytes32 manifest = keccak256("m0");
-        s.settleBatch(GENESIS, manifest, newRoot, bytes32(0), bytes32(0), _proof(GENESIS, manifest, newRoot, bytes32(0), bytes32(0)));
+        s.settleBatch(GENESIS, manifest, newRoot, bytes32(0), bytes32(0), bytes32(0), _proof(GENESIS, manifest, newRoot, bytes32(0), bytes32(0)));
         assertEq(s.currentStateRoot(), newRoot, "root advanced");
         assertEq(s.batchCount(), 1, "batch counted");
     }
@@ -66,9 +66,9 @@ contract DarkPerpSettlementTest is MiniTest {
         bytes memory proof = _proof(GENESIS, manifest, newRoot, bytes32(0), keccak256("authorized"));
         // attacker swaps in a malicious withdrawals root with the same proof
         vm.expectRevert(DarkPerpSettlement.BadProof.selector);
-        s.settleBatch(GENESIS, manifest, newRoot, bytes32(0), keccak256("attacker"), proof);
+        s.settleBatch(GENESIS, manifest, newRoot, bytes32(0), keccak256("attacker"), bytes32(0), proof);
         // the correct withdrawals root settles
-        s.settleBatch(GENESIS, manifest, newRoot, bytes32(0), keccak256("authorized"), proof);
+        s.settleBatch(GENESIS, manifest, newRoot, bytes32(0), keccak256("authorized"), bytes32(0), proof);
         assertEq(s.currentStateRoot(), newRoot, "settled with bound withdrawals root");
     }
 
@@ -78,7 +78,7 @@ contract DarkPerpSettlementTest is MiniTest {
         bytes32 manifest = keccak256("m");
         bytes memory proof = _proof(wrongPrev, manifest, newRoot, bytes32(0), bytes32(0));
         vm.expectRevert(DarkPerpSettlement.BadPrevRoot.selector);
-        s.settleBatch(wrongPrev, manifest, newRoot, bytes32(0), bytes32(0), proof);
+        s.settleBatch(wrongPrev, manifest, newRoot, bytes32(0), bytes32(0), bytes32(0), proof);
     }
 
     function test_settle_rejects_bad_proof() public {
@@ -87,7 +87,7 @@ contract DarkPerpSettlementTest is MiniTest {
         bytes32 manifest = keccak256("m");
         bytes memory proof = _proof(GENESIS, manifest, newRoot, bytes32(0), bytes32(0));
         vm.expectRevert(DarkPerpSettlement.BadProof.selector);
-        s.settleBatch(GENESIS, manifest, newRoot, bytes32(0), bytes32(0), proof);
+        s.settleBatch(GENESIS, manifest, newRoot, bytes32(0), bytes32(0), bytes32(0), proof);
     }
 
     function test_liveness_triggers_close_only() public {
@@ -105,7 +105,7 @@ contract DarkPerpSettlementTest is MiniTest {
         bytes32 manifest = keccak256("m");
         bytes memory proof = _proof(GENESIS, manifest, newRoot, bytes32(0), bytes32(0));
         vm.expectRevert(DarkPerpSettlement.InCloseOnly.selector);
-        s.settleBatch(GENESIS, manifest, newRoot, bytes32(0), bytes32(0), proof);
+        s.settleBatch(GENESIS, manifest, newRoot, bytes32(0), bytes32(0), bytes32(0), proof);
     }
 
     function test_inclusion_answered_clears_challenge() public {
@@ -114,7 +114,7 @@ contract DarkPerpSettlementTest is MiniTest {
         bytes32 newRoot = bytes32(uint256(2));
         bytes32 manifest = keccak256("m");
         bytes32 orderedRoot = s.inclusionLeaf(0, orderHash);
-        s.settleBatch(GENESIS, manifest, newRoot, orderedRoot, bytes32(0), _proof(GENESIS, manifest, newRoot, orderedRoot, bytes32(0)));
+        s.settleBatch(GENESIS, manifest, newRoot, orderedRoot, bytes32(0), bytes32(0), _proof(GENESIS, manifest, newRoot, orderedRoot, bytes32(0)));
 
         // user challenges with an enclave-signed receipt (canonical via vm.sign)
         (uint8 v, bytes32 r, bytes32 sig) = vm.sign(ENCLAVE_PK, s.receiptDigest(orderHash, 7, 1000, 0));
@@ -147,7 +147,7 @@ contract DarkPerpSettlementTest is MiniTest {
         bytes32 orderedRoot = s.inclusionLeaf(0, orderHash);
         bytes32 newRoot = bytes32(uint256(2));
         bytes32 manifest = keccak256("late");
-        s.settleBatch(GENESIS, manifest, newRoot, orderedRoot, bytes32(0), _proof(GENESIS, manifest, newRoot, orderedRoot, bytes32(0)));
+        s.settleBatch(GENESIS, manifest, newRoot, orderedRoot, bytes32(0), bytes32(0), _proof(GENESIS, manifest, newRoot, orderedRoot, bytes32(0)));
 
         // the sequencer answers with that batch — inclusion is the cure, not an escape
         bytes32[] memory proof = new bytes32[](0);
@@ -171,11 +171,62 @@ contract DarkPerpSettlementTest is MiniTest {
         bytes32 orderedRoot = s.inclusionLeaf(0, keccak256("some-other-order"));
         bytes32 newRoot = bytes32(uint256(2));
         bytes32 manifest = keccak256("unrelated");
-        s.settleBatch(GENESIS, manifest, newRoot, orderedRoot, bytes32(0), _proof(GENESIS, manifest, newRoot, orderedRoot, bytes32(0)));
+        s.settleBatch(GENESIS, manifest, newRoot, orderedRoot, bytes32(0), bytes32(0), _proof(GENESIS, manifest, newRoot, orderedRoot, bytes32(0)));
 
         bytes32[] memory proof = new bytes32[](0);
         vm.expectRevert(DarkPerpSettlement.NotIncluded.selector);
         s.answerChallenge(orderHash, 0, proof);
+    }
+
+    function test_valid_rejection_answers_challenge() public {
+        // audit DP-004: an order the sequencer VALIDLY REJECTED (e.g. an unfillable FOK)
+        // still carries an enclave ACCEPTED receipt, so a user can open an inclusion
+        // challenge the sequencer cannot answer by inclusion. Proving the order is in the
+        // batch's committed rejectedRoot must clear the challenge — no wrongful slash.
+        bytes32 orderHash = keccak256("validly-rejected");
+        (uint8 v, bytes32 r, bytes32 sig) = vm.sign(ENCLAVE_PK, s.receiptDigest(orderHash, 1, 1, 0));
+        address challenger = address(0xBEEF);
+        vm.deal(challenger, CHALLENGE_BOND);
+        vm.prank(challenger);
+        s.challengeInclusion{value: CHALLENGE_BOND}(orderHash, 1, 1, 0, v, r, sig);
+
+        // settle a batch whose rejectedRoot is the single leaf for this order (it was
+        // rejected, not ordered — orderedRoot commits to a different, real order)
+        bytes32 rejectedRoot = s.rejectionLeaf(0, orderHash);
+        bytes32 orderedRoot = s.inclusionLeaf(0, keccak256("some-ordered-order"));
+        bytes32 newRoot = bytes32(uint256(2));
+        bytes32 manifest = keccak256("rej");
+        bytes memory proof0 =
+            abi.encode(s.publicCommitment(GENESIS, manifest, newRoot, orderedRoot, bytes32(0), rejectedRoot));
+        s.settleBatch(GENESIS, manifest, newRoot, orderedRoot, bytes32(0), rejectedRoot, proof0);
+
+        bytes32[] memory proof = new bytes32[](0);
+        s.answerByRejection(orderHash, 0, proof);
+        (,,,,, bool open) = s.challenges(orderHash);
+        assertFalse(open, "challenge answered by valid rejection, no wrongful slash");
+    }
+
+    function test_answer_by_rejection_requires_membership() public {
+        // a sequencer cannot fabricate a rejection: an order NOT in the batch's committed
+        // rejectedRoot cannot be answered by rejection, so real censorship stays slashable.
+        bytes32 orderHash = keccak256("actually-withheld");
+        (uint8 v, bytes32 r, bytes32 sig) = vm.sign(ENCLAVE_PK, s.receiptDigest(orderHash, 1, 1, 0));
+        address challenger = address(0xBEEF);
+        vm.deal(challenger, CHALLENGE_BOND);
+        vm.prank(challenger);
+        s.challengeInclusion{value: CHALLENGE_BOND}(orderHash, 1, 1, 0, v, r, sig);
+
+        // settle a batch whose rejectedRoot commits to a DIFFERENT order
+        bytes32 rejectedRoot = s.rejectionLeaf(0, keccak256("some-other-rejected"));
+        bytes32 newRoot = bytes32(uint256(2));
+        bytes32 manifest = keccak256("unrelated-rej");
+        bytes memory proof0 =
+            abi.encode(s.publicCommitment(GENESIS, manifest, newRoot, bytes32(0), bytes32(0), rejectedRoot));
+        s.settleBatch(GENESIS, manifest, newRoot, bytes32(0), bytes32(0), rejectedRoot, proof0);
+
+        bytes32[] memory proof = new bytes32[](0);
+        vm.expectRevert(DarkPerpSettlement.NotRejected.selector);
+        s.answerByRejection(orderHash, 0, proof);
     }
 
     function _depositToVault(uint256 amount) internal {

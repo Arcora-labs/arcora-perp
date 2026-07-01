@@ -35,6 +35,7 @@ contract DarkPerpSettlement {
     struct Batch {
         bytes32 manifestHash;
         bytes32 orderedRoot; // Merkle root of the manifest's ordered order hashes
+        bytes32 rejectedRoot; // Merkle root of the manifest's validly-rejected order hashes (audit DP-004)
         uint256 settledAtBlock;
     }
 
@@ -92,6 +93,7 @@ contract DarkPerpSettlement {
     event BondWithdrawn(uint256 amount, uint256 total);
     event InclusionChallenged(bytes32 indexed orderHash, address indexed challenger, uint256 deadlineBlock);
     event InclusionAnswered(bytes32 indexed orderHash, uint256 batchId);
+    event RejectionAnswered(bytes32 indexed orderHash, uint256 batchId);
     event SequencerSlashed(bytes32 indexed orderHash, address indexed challenger, uint256 amount);
 
     error NotSequencer();
@@ -106,6 +108,7 @@ contract DarkPerpSettlement {
     error ChallengeNotExpired();
     error ChallengeExpired();
     error NotIncluded();
+    error NotRejected();
     error NonCanonicalSignature();
     error WrongChallengeBond();
     error BatchNotSettled();
@@ -183,19 +186,23 @@ contract DarkPerpSettlement {
     }
 
     /// @notice The public-input commitment the proof must satisfy. Mirrors
-    /// `crates/prover::PublicInputs::commitment`. `orderedRoot` and
-    /// `withdrawalsRoot` are bound here (audit F2) so the sequencer cannot supply
-    /// an arbitrary withdrawals root and drain the vault — both roots are now
-    /// outputs of the proven computation, not free calldata.
+    /// `crates/prover::PublicInputs::commitment`. `orderedRoot`, `withdrawalsRoot`,
+    /// and `rejectedRoot` are bound here (audit F2, DP-004) so the sequencer cannot
+    /// supply an arbitrary withdrawals root and drain the vault, nor fabricate which
+    /// orders were rejected to dodge a slash — all are outputs of the proven
+    /// computation, not free calldata.
     function publicCommitment(
         bytes32 prevRoot,
         bytes32 manifestHash,
         bytes32 newRoot,
         bytes32 orderedRoot,
-        bytes32 withdrawalsRoot
+        bytes32 withdrawalsRoot,
+        bytes32 rejectedRoot
     ) public pure returns (bytes32) {
         return keccak256(
-            abi.encodePacked(DOMAIN_STATE_ROOT, prevRoot, manifestHash, newRoot, orderedRoot, withdrawalsRoot)
+            abi.encodePacked(
+                DOMAIN_STATE_ROOT, prevRoot, manifestHash, newRoot, orderedRoot, withdrawalsRoot, rejectedRoot
+            )
         );
     }
 
@@ -207,6 +214,7 @@ contract DarkPerpSettlement {
         bytes32 newRoot,
         bytes32 orderedRoot,
         bytes32 withdrawalsRoot,
+        bytes32 rejectedRoot,
         bytes calldata proof
     ) external onlySequencer {
         if (closeOnly) revert InCloseOnly();
@@ -214,11 +222,17 @@ contract DarkPerpSettlement {
         // The bond must cover the value at risk before state can advance (audit Q1).
         if (sequencerBond < requiredBond()) revert UnderBonded();
         if (prevRoot != currentStateRoot) revert BadPrevRoot();
-        bytes32 commitment = publicCommitment(prevRoot, manifestHash, newRoot, orderedRoot, withdrawalsRoot);
+        bytes32 commitment =
+            publicCommitment(prevRoot, manifestHash, newRoot, orderedRoot, withdrawalsRoot, rejectedRoot);
         if (!verifier.verify(commitment, proof)) revert BadProof();
 
         uint256 batchId = batchCount;
-        batches[batchId] = Batch({manifestHash: manifestHash, orderedRoot: orderedRoot, settledAtBlock: block.number});
+        batches[batchId] = Batch({
+            manifestHash: manifestHash,
+            orderedRoot: orderedRoot,
+            rejectedRoot: rejectedRoot,
+            settledAtBlock: block.number
+        });
         currentStateRoot = newRoot;
         lastProgressBlock = block.number;
         batchCount = batchId + 1;
@@ -264,6 +278,15 @@ contract DarkPerpSettlement {
     /// F1). The off-chain tree MUST be built over these same leaves.
     function inclusionLeaf(uint256 batchId, bytes32 orderHash) public pure returns (bytes32) {
         return keccak256(abi.encodePacked(batchId, orderHash));
+    }
+
+    /// @notice The batch-bound Merkle leaf an order occupies in a batch's
+    /// `rejectedRoot`. A distinct one-byte domain tag from `inclusionLeaf` so a
+    /// rejected leaf can never be replayed as an inclusion proof (or vice-versa) at
+    /// the same `(batchId, orderHash)` (audit DP-004). The off-chain rejected tree
+    /// MUST be built over these leaves.
+    function rejectionLeaf(uint256 batchId, bytes32 orderHash) public pure returns (bytes32) {
+        return keccak256(abi.encodePacked(uint8(0x01), batchId, orderHash));
     }
 
     /// @notice Open an inclusion challenge by submitting an enclave-signed receipt
@@ -332,6 +355,36 @@ contract DarkPerpSettlement {
         delete challenges[orderHash];
         emit InclusionAnswered(orderHash, batchId);
         // griefing deterrent: the challenger's stake goes to the sequencer
+        if (c.bond > 0) {
+            (bool ok,) = sequencer.call{value: c.bond}("");
+            if (!ok) revert TransferFailed();
+        }
+    }
+
+    /// @notice Sequencer answers a challenge by proving the order was VALIDLY REJECTED
+    /// — a member of a settled batch's committed `rejectedRoot` — rather than withheld.
+    /// Without this, an honest sequencer could be slashed for an order it legitimately
+    /// rejected (e.g. an unfillable FOK, a post-only that would take): the user still
+    /// holds an enclave ACCEPTED receipt, but the order never entered any `orderedRoot`,
+    /// so `answerChallenge` cannot answer it (audit DP-004). Because `rejectedRoot` is
+    /// bound into the proven `publicCommitment`, the sequencer cannot fabricate a
+    /// rejection for an order it actually censored. Slashing therefore now requires that
+    /// the sequencer can prove NEITHER inclusion NOR valid rejection.
+    function answerByRejection(bytes32 orderHash, uint256 batchId, bytes32[] calldata proof)
+        external
+        onlySequencer
+    {
+        Challenge memory c = challenges[orderHash];
+        if (!c.open) revert NoSuchChallenge();
+        if (block.number > c.deadlineBlock) revert ChallengeExpired();
+        // the answering batch must be genuinely settled (its rejectedRoot is then immutable)
+        if (batches[batchId].settledAtBlock == 0) revert BatchNotSettled();
+        if (!batches[batchId].rejectedRoot.verify(rejectionLeaf(batchId, orderHash), proof)) {
+            revert NotRejected();
+        }
+        delete challenges[orderHash];
+        emit RejectionAnswered(orderHash, batchId);
+        // griefing deterrent: the challenger's stake goes to the sequencer, as with inclusion
         if (c.bond > 0) {
             (bool ok,) = sequencer.call{value: c.bond}("");
             if (!ok) revert TransferFailed();
