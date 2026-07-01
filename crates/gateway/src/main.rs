@@ -651,7 +651,8 @@ impl Gw {
                 a.tcb
             );
         }
-        let enclave = EnclaveIdentity::from_seed([7u8; 32], 1, measurement);
+        let (enclave_seed, _) = enclave_seed_from_env();
+        let enclave = EnclaveIdentity::from_seed(enclave_seed, 1, measurement);
         let mut seq = Sequencer::new(enclave, 24);
         let mut archive = NoteArchive::new();
         let user = Wallet::from_seed([1u8; 32]);
@@ -3210,6 +3211,40 @@ fn attestation_ok_for_mode(prod: bool, attested: bool) -> bool {
     attested || !prod
 }
 
+/// The enclave signing seed, and whether it is still the PUBLIC demo default. In
+/// production the enclave key MUST be a secret (ENCLAVE_SEED, a 32-byte hex secp256k1
+/// scalar): the demo default [7u8; 32] is a public constant, so anyone could reconstruct
+/// it, forge an enclave-signed receipt for an unsequenced order, and slash the sequencer
+/// bond via challengeInclusion + slashUnanswered (audit DP-006 follow-up).
+fn enclave_seed_from_env() -> ([u8; 32], bool) {
+    match std::env::var("ENCLAVE_SEED").ok().and_then(|s| parse_hex32(&s)) {
+        Some(seed) => (seed, false),
+        None => ([7u8; 32], true),
+    }
+}
+
+/// Whether the gateway may boot given the enclave-seed provenance: production requires a
+/// secret seed, not the public demo default (audit DP-006 follow-up).
+fn enclave_seed_ok_for_mode(prod: bool, seed_is_secret: bool) -> bool {
+    seed_is_secret || !prod
+}
+
+/// Whether the attested measurement satisfies the production pin policy. In production the
+/// operator MUST pin the expected enclave measurement (ATTESTATION_EXPECTED_MEASUREMENT)
+/// and the attested measurement MUST equal it — otherwise ANY valid TDX quote (a different
+/// enclave's, or the in-repo test fixture's) would pass the mere presence check, so a
+/// captured bundle can be replayed on a non-TEE box (audit DP-006 follow-up). Demo skips it.
+fn measurement_matches_pin(prod: bool, attested: Option<[u8; 32]>, pin: Option<[u8; 32]>) -> bool {
+    if !prod {
+        return true;
+    }
+    match (attested, pin) {
+        (Some(m), Some(p)) => m == p,
+        // production requires BOTH a verified measurement AND an explicit pin
+        _ => false,
+    }
+}
+
 /// Assemble the HTTP router. In production mode the legacy, UNAUTHENTICATED `/api/*`
 /// mutation routes are omitted (audit DP-010) — only the read-only demo state/websocket
 /// and the API-key-authenticated `/v1` surface are exposed.
@@ -3287,6 +3322,30 @@ async fn main() {
             "[attest] REFUSING to start in production without a verified TEE attestation. \
              Set ATTESTATION_DIR to a valid quote/collateral/vTPM bundle, or drop the production \
              posture (no L1 bridge and DARKPERP_PROD unset) to run the demo build."
+        );
+        std::process::exit(1);
+    }
+    // audit DP-006 follow-up: the enclave signing key must be a secret in production —
+    // the public demo seed lets anyone forge receipts and slash the sequencer bond.
+    let (_, seed_is_default) = enclave_seed_from_env();
+    if !enclave_seed_ok_for_mode(prod, !seed_is_default) {
+        eprintln!(
+            "[enclave] REFUSING to start in production with the public demo signing seed. \
+             Set ENCLAVE_SEED to a secret 32-byte hex secp256k1 scalar, and set the settlement \
+             contract's ENCLAVE_SIGNER to that key's address."
+        );
+        std::process::exit(1);
+    }
+    // audit DP-006 follow-up: pin the expected measurement so a different or replayed valid
+    // quote (e.g. the in-repo test fixture) cannot pass the mere presence check.
+    let expected_measurement =
+        std::env::var("ATTESTATION_EXPECTED_MEASUREMENT").ok().and_then(|s| parse_hex32(&s));
+    let attested_measurement = gw.attestation.as_ref().map(|a| a.measurement);
+    if !measurement_matches_pin(prod, attested_measurement, expected_measurement) {
+        eprintln!(
+            "[attest] REFUSING to start: in production the attested measurement must equal a \
+             pinned ATTESTATION_EXPECTED_MEASUREMENT (32-byte hex). A merely-valid quote is not \
+             enough — pin the real enclave's measurement so a wrong/replayed quote is rejected."
         );
         std::process::exit(1);
     }
@@ -3590,6 +3649,33 @@ mod tests {
             !attestation_ok_for_mode(true, false),
             "production must fail closed without a verified attestation",
         );
+    }
+
+    // audit DP-006 follow-up: production must reject the public demo enclave seed (a
+    // constant key lets anyone forge receipts and slash the sequencer bond).
+    #[test]
+    fn production_requires_a_secret_enclave_seed() {
+        assert!(enclave_seed_ok_for_mode(false, false), "demo build boots with the default seed");
+        assert!(enclave_seed_ok_for_mode(true, true), "production boots with a secret seed");
+        assert!(
+            !enclave_seed_ok_for_mode(true, false),
+            "production must reject the public demo enclave seed",
+        );
+    }
+
+    // audit DP-006 follow-up: production must pin the expected enclave measurement, so a
+    // different/replayed valid quote (e.g. the in-repo fixture) cannot pass.
+    #[test]
+    fn production_pins_the_expected_measurement() {
+        let m = [0xAAu8; 32];
+        assert!(measurement_matches_pin(false, Some(m), None), "demo needs no pin");
+        assert!(measurement_matches_pin(true, Some(m), Some(m)), "prod accepts the pinned measurement");
+        assert!(
+            !measurement_matches_pin(true, Some(m), Some([0xBBu8; 32])),
+            "prod rejects a measurement that does not match the pin (wrong/replayed enclave)",
+        );
+        assert!(!measurement_matches_pin(true, Some(m), None), "prod requires an explicit pin");
+        assert!(!measurement_matches_pin(true, None, Some(m)), "prod requires a verified measurement");
     }
 
     #[test]
