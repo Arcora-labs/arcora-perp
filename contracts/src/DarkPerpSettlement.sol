@@ -192,11 +192,14 @@ contract DarkPerpSettlement {
     }
 
     /// @notice The public-input commitment the proof must satisfy. Mirrors
-    /// `crates/prover::PublicInputs::commitment`. `orderedRoot`, `withdrawalsRoot`,
-    /// and `rejectedRoot` are bound here (audit F2, DP-004) so the sequencer cannot
-    /// supply an arbitrary withdrawals root and drain the vault, nor fabricate which
-    /// orders were rejected to dodge a slash — all are outputs of the proven
-    /// computation, not free calldata.
+    /// `crates/prover::PublicInputs::commitment`. `orderedRoot`, `withdrawalsRoot`, and
+    /// `rejectedRoot` are bound here (audit F2, DP-004) so that — once a real soundness
+    /// circuit re-derives them — the sequencer cannot supply an arbitrary withdrawals root
+    /// and drain the vault, nor fabricate which orders were rejected to dodge a slash.
+    /// PHASE 0 caveat: under the stand-in verifier (MockZkVerifier / CommitmentProver) these
+    /// root VALUES are NOT re-derived from the computation; the binding only makes them
+    /// non-malleable against a fixed proof, so they remain trusted-sequencer inputs, NOT
+    /// "outputs of the proven computation," until a validity circuit constrains them.
     function publicCommitment(
         bytes32 prevRoot,
         bytes32 manifestHash,

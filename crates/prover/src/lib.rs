@@ -34,10 +34,12 @@ use perp_core::{DefaultState, EngineError};
 ///
 /// `ordered_root` and `withdrawals_root` are bound here (not just `manifest_hash`)
 /// because the settlement contract trusts them for inclusion answers and for
-/// authorizing vault withdrawals — if they weren't part of the proven commitment,
-/// a sequencer could supply an arbitrary `withdrawals_root` and drain the vault
-/// (audit finding F2). Binding them makes those roots outputs of the proven
-/// computation, not free sequencer calldata.
+/// authorizing vault withdrawals — if they weren't in the commitment, a sequencer
+/// could swap an arbitrary `withdrawals_root` against a fixed proof and drain the
+/// vault (audit finding F2). NOTE (Phase 0): `run_transition` does NOT yet re-derive
+/// these roots — under the stand-in verifier they remain trusted-sequencer inputs and
+/// the binding only makes them non-malleable-after-proving; a real circuit that derives
+/// them from the computation is still required to fully constrain their values.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct PublicInputs {
     pub prev_state_root: Digest,
