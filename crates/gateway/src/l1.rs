@@ -53,6 +53,23 @@ impl L1 {
     pub fn from_env() -> Option<L1> {
         let settlement = std::env::var("L1_SETTLEMENT").ok()?;
         let key = std::env::var("L1_SEQUENCER_KEY").ok()?;
+        // audit DP-007: this bridge submits mock-shaped proofs (proof == publicCommitment),
+        // which only MockZkVerifier accepts. Refuse to settle against a real-value chain
+        // unless the operator declares an allowlisted testnet (or explicitly overrides).
+        let chain_id: u64 = std::env::var("L1_CHAIN_ID")
+            .ok()
+            .and_then(|s| s.trim().parse().ok())
+            .unwrap_or(0);
+        let allow_unsafe = std::env::var("L1_ALLOW_MOCK_PROOF").ok().as_deref() == Some("1");
+        if !l1_chain_allowed(chain_id, allow_unsafe) {
+            eprintln!(
+                "[l1] REFUSING to start the settlement bridge: chain id {chain_id} is not an \
+                 allowlisted testnet, and this bridge only submits MockZkVerifier-shaped proofs. \
+                 Set L1_CHAIN_ID to a testnet (e.g. 84532 Base Sepolia), or L1_ALLOW_MOCK_PROOF=1 \
+                 to override — UNSAFE, never on a real-value chain."
+            );
+            std::process::exit(1);
+        }
         Some(L1 {
             rpc: std::env::var("L1_RPC").unwrap_or_else(|_| "https://sepolia.base.org".into()),
             settlement,
@@ -230,6 +247,26 @@ impl L1 {
     }
 }
 
+/// Chain ids this bridge may settle against. It submits mock-shaped proofs
+/// (`proof == publicCommitment`), which only `MockZkVerifier` accepts, so running
+/// it against a real-value chain is catastrophic (audit DP-007). Testnets are
+/// allowlisted; anything else requires an explicit unsafe override.
+pub fn l1_chain_allowed(chain_id: u64, allow_unsafe: bool) -> bool {
+    if allow_unsafe {
+        return true;
+    }
+    matches!(
+        chain_id,
+        84532        // Base Sepolia
+        | 11155111   // Sepolia
+        | 421614     // Arbitrum Sepolia
+        | 11155420   // OP Sepolia
+        | 80002      // Polygon Amoy
+        | 31337      // anvil / hardhat
+        | 1337 // ganache
+    )
+}
+
 /// Pull `transactionHash` out of `cast send --json` output (falls back to raw).
 fn tx_hash(json: &str) -> String {
     serde_json::from_str::<serde_json::Value>(json)
@@ -273,4 +310,25 @@ fn parse_u256_low128(s: &str) -> Option<u128> {
         return None;
     }
     u128::from_str_radix(&hex[32..], 16).ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // audit DP-007: the mock-proof bridge may only settle against testnets; real-value
+    // chains are refused unless the operator explicitly opts into the unsound verifier.
+    #[test]
+    fn mock_proof_bridge_allows_testnets_and_refuses_real_chains() {
+        // testnets the bridge may run against
+        assert!(l1_chain_allowed(84532, false), "Base Sepolia allowed");
+        assert!(l1_chain_allowed(11155111, false), "Sepolia allowed");
+        assert!(l1_chain_allowed(31337, false), "anvil allowed");
+        // real-value chains are refused (a mock proof there would drain the vault)
+        assert!(!l1_chain_allowed(1, false), "Ethereum mainnet refused");
+        assert!(!l1_chain_allowed(8453, false), "Base mainnet refused");
+        assert!(!l1_chain_allowed(0, false), "unset/unknown chain refused");
+        // an explicit unsafe override lifts the guard (the operator's informed choice)
+        assert!(l1_chain_allowed(1, true), "override allows any chain");
+    }
 }

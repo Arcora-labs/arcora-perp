@@ -3202,6 +3202,14 @@ fn production_mode(l1_enabled: bool) -> bool {
     l1_enabled || std::env::var("DARKPERP_PROD").ok().as_deref() == Some("1")
 }
 
+/// Whether the gateway may boot given the attestation state. In production the enclave
+/// identity must be bound to a verified TEE attestation — a missing/failed attestation
+/// must fail closed rather than silently fall back to the stub measurement (audit DP-006).
+/// The demo/dev build boots either way.
+fn attestation_ok_for_mode(prod: bool, attested: bool) -> bool {
+    attested || !prod
+}
+
 /// Assemble the HTTP router. In production mode the legacy, UNAUTHENTICATED `/api/*`
 /// mutation routes are omitted (audit DP-010) — only the read-only demo state/websocket
 /// and the API-key-authenticated `/v1` surface are exposed.
@@ -3272,6 +3280,16 @@ async fn main() {
     }
     let mut gw = Gw::boot();
     gw.prod = prod;
+    // audit DP-006: in production the enclave identity must be bound to a verified TEE
+    // attestation; refuse to serve traffic under the stub measurement.
+    if !attestation_ok_for_mode(prod, gw.attestation.is_some()) {
+        eprintln!(
+            "[attest] REFUSING to start in production without a verified TEE attestation. \
+             Set ATTESTATION_DIR to a valid quote/collateral/vTPM bundle, or drop the production \
+             posture (no L1 bridge and DARKPERP_PROD unset) to run the demo build."
+        );
+        std::process::exit(1);
+    }
     let app = Arc::new(App {
         gw: Mutex::new(gw),
         tx: tx.clone(),
@@ -3556,6 +3574,21 @@ mod tests {
         assert!(
             production_mode(true),
             "L1-enabled deployments are always in the production posture",
+        );
+    }
+
+    // audit DP-006: production must fail closed when the enclave has no verified
+    // attestation, instead of silently serving traffic under the stub measurement.
+    #[test]
+    fn production_requires_verified_attestation() {
+        // demo/dev build boots with or without attestation
+        assert!(attestation_ok_for_mode(false, false), "demo build boots un-attested");
+        // production boots only when attestation is present…
+        assert!(attestation_ok_for_mode(true, true), "production boots when attested");
+        // …and fails closed when it is missing/failed
+        assert!(
+            !attestation_ok_for_mode(true, false),
+            "production must fail closed without a verified attestation",
         );
     }
 

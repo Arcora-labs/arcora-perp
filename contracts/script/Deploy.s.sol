@@ -7,6 +7,7 @@ import {CollateralVault} from "../src/CollateralVault.sol";
 import {MockUSDC} from "../src/mocks/MockUSDC.sol";
 import {MockZkVerifier} from "../src/mocks/MockZkVerifier.sol";
 import {IZkVerifier} from "../src/interfaces/IZkVerifier.sol";
+import {DeployGuard} from "./DeployGuard.sol";
 
 /// @title Deploy
 /// @notice Deploys the dark-perp L1 stack (Phase 0 / Sepolia testnet) and wires
@@ -45,6 +46,15 @@ contract Deploy {
         uint256 liveness = vm.envOr("LIVENESS_BLOCKS", uint256(7200));
         uint256 challengeWindow = vm.envOr("CHALLENGE_BLOCKS", uint256(300));
         uint256 challengeBond = vm.envOr("CHALLENGE_BOND", uint256(0.01 ether));
+
+        // audit DP-007: MockZkVerifier accepts proof == publicCommitment (unsound). Never
+        // wire it on a real-value chain — the sequencer could publish any withdrawals root
+        // and drain the vault. Testnets only, unless the operator explicitly overrides.
+        require(
+            DeployGuard.isTestnet(block.chainid)
+                || vm.envOr("ALLOW_MOCK_VERIFIER", uint256(0)) == 1,
+            "Deploy: MockZkVerifier is unsound; refusing on a non-testnet chain (set ALLOW_MOCK_VERIFIER=1 to override, UNSAFE)"
+        );
 
         vm.startBroadcast(pk);
 
