@@ -9,8 +9,9 @@
 use oracle_feed::transcript_from_ticker;
 use perp_core::engine::BatchOp;
 use perp_core::fixed::{PRICE_SCALE, QUOTE_SCALE, SIZE_SCALE};
-use perp_core::hash::{word_u64, Keccak256};
+use perp_core::hash::Keccak256;
 use perp_core::market::Market;
+use perp_core::note::owner_from_spend_key;
 use perp_core::order::{Order, Side, TimeInForce};
 use perp_core::Note;
 use sequencer::{EnclaveIdentity, Sequencer};
@@ -73,7 +74,7 @@ impl Node {
         fund(&mut seq, 1, THIN_LONG_USD, 0x11);
         fund(&mut seq, 2, DEEP_SHORT_USD, 0x22);
         let mk = |owner: u64, side: Side, nonce: u64| Order {
-            owner: word_u64(owner),
+            owner: owner_from_spend_key::<Keccak256>(&[owner as u8; 32]),
             market_id: 0,
             side,
             size: SIZE_SCALE,
@@ -104,7 +105,7 @@ impl Node {
         let liquidated = !self.seq.run_maintenance(self.now).liquidated.is_empty();
         let sealed = self.seq.seal_batch(&[], self.now);
 
-        let pos = self.seq.state.position(&word_u64(1), 0);
+        let pos = self.seq.state.position(&owner_from_spend_key::<Keccak256>(&[1u8; 32]), 0);
         let long_open = pos.map(|p| p.is_open()) == Some(true);
         let long_pnl = pos
             .filter(|p| p.is_open())
@@ -134,7 +135,10 @@ fn seed_oracle(n: &mut Sequencer, price: i128, now: u64) {
 }
 
 fn fund(s: &mut Sequencer, owner: u64, usd: i128, blind: u8) {
-    let o = word_u64(owner);
+    // audit DP-003: the note owner MUST equal H(spend_key), so derive it from the
+    // spend key this note is later funded/spent with rather than a free literal.
+    let spend_key = [owner as u8; 32];
+    let o = owner_from_spend_key::<Keccak256>(&spend_key);
     let amount = usd * QUOTE_SCALE;
     let cm = Note::new(o, 0, amount, [blind; 32]).commitment::<Keccak256>();
     s.apply(&BatchOp::Deposit {
@@ -148,7 +152,7 @@ fn fund(s: &mut Sequencer, owner: u64, usd: i128, blind: u8) {
         owner: o,
         market_id: 0,
         note_commitment: cm,
-        spend_key: [owner as u8; 32],
+        spend_key,
     })
     .unwrap();
 }

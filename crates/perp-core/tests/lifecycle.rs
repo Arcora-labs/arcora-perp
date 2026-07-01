@@ -5,6 +5,7 @@
 use perp_core::engine::{AdlHaircut, BatchOp};
 use perp_core::fixed::{PRICE_SCALE, QUOTE_SCALE, SIZE_SCALE};
 use perp_core::hash::{word_u64, Keccak256};
+use perp_core::note::owner_from_spend_key;
 use perp_core::oracle::OracleTranscript;
 use perp_core::order::Side;
 use perp_core::{DefaultState, EngineError, Market, Mode, Note};
@@ -13,6 +14,13 @@ const TREE_DEPTH: u8 = 20;
 
 fn pk(n: u64) -> [u8; 32] {
     word_u64(n)
+}
+
+/// Owner id bound to spend key `[sk; 32]` (audit DP-003): the engine now requires a
+/// note's owner to equal `owner_from_spend_key(spend_key)`, so every fixture derives
+/// its owner from the `[sk; 32]` it later funds/withdraws that owner's note with.
+fn owner_of(sk: u8) -> [u8; 32] {
+    owner_from_spend_key::<Keccak256>(&[sk; 32])
 }
 
 fn oracle(price_usd: i128, now: u64) -> OracleTranscript {
@@ -38,7 +46,7 @@ fn fresh_state() -> DefaultState {
 #[test]
 fn full_lifecycle_conserves_throughout() {
     let mut s = fresh_state();
-    let (a, b) = (pk(1), pk(2));
+    let (a, b) = (owner_of(1), owner_of(2));
     let (ba, bb) = ([0x11u8; 32], [0x22u8; 32]);
 
     // Two traders each deposit $20k and fund a position.
@@ -134,7 +142,8 @@ fn full_lifecycle_conserves_throughout() {
 fn invariant_collateral_conservation_under_random_ops() {
     // Deterministic pseudo-sequence (no RNG: determinism is the point).
     let mut s = fresh_state();
-    let owners = [pk(10), pk(11), pk(12)];
+    // each owner is funded with spend key `[i; 32]` below, so its owner derives from it
+    let owners = [owner_of(0), owner_of(1), owner_of(2)];
     for (i, o) in owners.iter().enumerate() {
         let b = [(0x40 + i as u8); 32];
         let cm = deposit_commit(*o, 50_000 * QUOTE_SCALE, b);
@@ -184,7 +193,7 @@ fn invariant_collateral_conservation_under_random_ops() {
 #[test]
 fn invariant_no_double_spend() {
     let mut s = fresh_state();
-    let o = pk(5);
+    let o = owner_of(5);
     let b = [0x55u8; 32];
     let cm = deposit_commit(o, 10_000 * QUOTE_SCALE, b);
     s.apply_op(&BatchOp::Deposit {
@@ -218,7 +227,7 @@ fn invariant_no_double_spend() {
 #[test]
 fn invariant_post_fill_margin_sufficiency() {
     let mut s = fresh_state();
-    let (a, b) = (pk(7), pk(8));
+    let (a, b) = (owner_of(7), owner_of(8));
     // A funds only $5k; a 1 BTC position at $100k needs $10k initial → reject.
     for (o, sk) in [(a, 7u8), (b, 8u8)] {
         let bl = [sk; 32];
@@ -263,7 +272,7 @@ fn invariant_post_fill_margin_sufficiency() {
 #[test]
 fn invariant_oracle_freshness_enforced() {
     let mut s = fresh_state();
-    let (a, b) = (pk(7), pk(8));
+    let (a, b) = (owner_of(7), owner_of(8));
     for (o, sk) in [(a, 7u8), (b, 8u8)] {
         let bl = [sk; 32];
         let cm = deposit_commit(o, 20_000 * QUOTE_SCALE, bl);
@@ -308,7 +317,7 @@ fn invariant_oracle_freshness_enforced() {
 #[test]
 fn invariant_liquidation_threshold() {
     let mut s = fresh_state();
-    let (a, b) = (pk(1), pk(2));
+    let (a, b) = (owner_of(1), owner_of(2));
     // A long 1 BTC with only $6k margin (maintenance 5% = $5k).
     for (o, sk, amt) in [(a, 1u8, 6_000i128), (b, 2u8, 20_000)] {
         let bl = [sk; 32];
@@ -384,7 +393,7 @@ fn bad_debt_is_clawed_from_the_winners_via_adl() {
     // parking it or silently socializing it onto the clearing pool. Conservation
     // holds and the loser walks away flat (covered), not with a stranded debt.
     let mut s = bad_debt_setup(0);
-    let (a, b) = (pk(1), pk(2));
+    let (a, b) = (owner_of(1), owner_of(2));
     let b_before = s.position(&b, 0).unwrap().collateral;
 
     s.apply_op(&BatchOp::Liquidate {
@@ -419,7 +428,7 @@ fn bad_debt_is_clawed_from_the_winners_via_adl() {
 /// caller then liquidates after a gap-down. `seed_usd > 0` capitalizes insurance.
 fn bad_debt_setup(seed_usd: i128) -> DefaultState {
     let mut s = fresh_state();
-    let (a, b) = (pk(1), pk(2));
+    let (a, b) = (owner_of(1), owner_of(2));
     for (o, sk, amt) in [(a, 1u8, 6_000i128), (b, 2u8, 50_000)] {
         let bl = [sk; 32];
         let cm = deposit_commit(o, amt * QUOTE_SCALE, bl);
@@ -467,14 +476,14 @@ fn insurance_backstop_absorbs_bad_debt() {
     let mut s = bad_debt_setup(10_000);
     let before = s.insurance_fund;
     s.apply_op(&BatchOp::Liquidate {
-        owner: pk(1),
+        owner: owner_of(1),
         market_id: 0,
         oracle: oracle(80_000, 2_000),
         now_ms: 2_000,
     })
     .unwrap();
     assert_eq!(
-        s.position(&pk(1), 0).unwrap().collateral,
+        s.position(&owner_of(1), 0).unwrap().collateral,
         0,
         "bad debt fully covered by insurance"
     );
@@ -496,22 +505,22 @@ fn adl_covers_residual_after_insurance() {
     // insurance pays what it can, the winner (B) funds the rest, the loser walks
     // away flat, and the system stays open.
     let mut s = bad_debt_setup(1_000);
-    let b_before = s.position(&pk(2), 0).unwrap().collateral;
+    let b_before = s.position(&owner_of(2), 0).unwrap().collateral;
     s.apply_op(&BatchOp::Liquidate {
-        owner: pk(1),
+        owner: owner_of(1),
         market_id: 0,
         oracle: oracle(80_000, 2_000),
         now_ms: 2_000,
     })
     .unwrap();
     assert_eq!(
-        s.position(&pk(1), 0).unwrap().collateral,
+        s.position(&owner_of(1), 0).unwrap().collateral,
         0,
         "insurance + ADL cover the bad debt"
     );
     assert_eq!(s.insurance_fund, 0, "the small fund is fully drawn first");
     assert!(
-        s.position(&pk(2), 0).unwrap().collateral < b_before,
+        s.position(&owner_of(2), 0).unwrap().collateral < b_before,
         "the winner funded the residual"
     );
     assert_eq!(s.mode, Mode::Normal, "fully covered → no halt");
@@ -526,7 +535,7 @@ fn true_insolvency_trips_close_only_when_winners_have_exited() {
     // no insurance — so the residual is parked (conservation-safe) and the system
     // trips to close-only (the final depletion halt).
     let mut s = fresh_state();
-    let (a, b, c) = (pk(1), pk(2), pk(3));
+    let (a, b, c) = (owner_of(1), owner_of(2), owner_of(3));
     for (o, sk, amt) in [(a, 1u8, 6_000i128), (b, 2u8, 50_000), (c, 3u8, 10_000)] {
         let bl = [sk; 32];
         let cm = deposit_commit(o, amt * QUOTE_SCALE, bl);
@@ -603,7 +612,7 @@ fn adl_distributes_pro_rata_across_multiple_winners() {
     // cover the loss (exercising the floor-pro-rata + remainder distribution), and
     // neither winner is pushed underwater.
     let mut s = fresh_state();
-    let (a, b, c) = (pk(1), pk(2), pk(3));
+    let (a, b, c) = (owner_of(1), owner_of(2), owner_of(3));
     for (o, sk, amt) in [(a, 1u8, 6_000i128), (b, 2u8, 50_000), (c, 3u8, 50_000)] {
         let bl = [sk; 32];
         let cm = deposit_commit(o, amt * QUOTE_SCALE, bl);
@@ -685,7 +694,7 @@ fn trading_fees_pay_the_maker_and_fund_insurance() {
     // collects the $60 remainder. Conservation holds.
     let mut s = DefaultState::new(TREE_DEPTH);
     s.add_market(Market::with_fees(0, 10, 4));
-    let (a, b) = (pk(1), pk(2));
+    let (a, b) = (owner_of(1), owner_of(2));
     for (o, sk) in [(a, 1u8), (b, 2u8)] {
         let bl = [sk; 32];
         let cm = deposit_commit(o, 20_000 * QUOTE_SCALE, bl);
@@ -778,7 +787,7 @@ fn self_trade_is_rejected_at_settlement() {
     // defensive: a fill whose taker == maker must be rejected (it would otherwise
     // drop a leg and break conservation). The matcher prevents this upstream.
     let mut s = fresh_state();
-    let a = pk(1);
+    let a = owner_of(1);
     let bl = [1u8; 32];
     let cm = deposit_commit(a, 20_000 * QUOTE_SCALE, bl);
     s.apply_batch(&[
@@ -815,7 +824,7 @@ fn self_trade_is_rejected_at_settlement() {
 #[test]
 fn forced_exit_close_only_blocks_increase() {
     let mut s = fresh_state();
-    let (a, b) = (pk(1), pk(2));
+    let (a, b) = (owner_of(1), owner_of(2));
     for (o, sk) in [(a, 1u8), (b, 2u8)] {
         let bl = [sk; 32];
         let cm = deposit_commit(o, 20_000 * QUOTE_SCALE, bl);
@@ -888,7 +897,7 @@ fn adl_surfaces_the_per_winner_haircut_attribution() {
     // names the winner and the exact amount clawed, so a socialized loss can be
     // reported back to the affected account instead of vanishing silently.
     let mut s = fresh_state();
-    let (a, b, c) = (pk(1), pk(2), pk(3));
+    let (a, b, c) = (owner_of(1), owner_of(2), owner_of(3));
     for (o, sk, amt) in [(a, 1u8, 6_000i128), (b, 2u8, 50_000), (c, 3u8, 50_000)] {
         let bl = [sk; 32];
         let cm = deposit_commit(o, amt * QUOTE_SCALE, bl);
@@ -969,7 +978,7 @@ fn a_liquidation_absorbed_by_insurance_reports_no_adl_haircuts() {
     // there is nothing to attribute and the returned receipt list is empty.
     let mut s = bad_debt_setup(1_000_000); // deep insurance seed absorbs the gap
     let haircuts = s
-        .liquidate(&pk(1), 0, &oracle(80_000, 2_000), 2_000)
+        .liquidate(&owner_of(1), 0, &oracle(80_000, 2_000), 2_000)
         .unwrap();
     assert!(
         haircuts.is_empty(),

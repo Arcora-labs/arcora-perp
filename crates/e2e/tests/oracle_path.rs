@@ -6,14 +6,21 @@
 use oracle_feed::transcript_from_ticker;
 use perp_core::engine::BatchOp;
 use perp_core::fixed::{PRICE_SCALE, QUOTE_SCALE, SIZE_SCALE};
-use perp_core::hash::{word_u64, Keccak256};
+use perp_core::hash::Keccak256;
 use perp_core::market::Market;
+use perp_core::note::owner_from_spend_key;
 use perp_core::order::{Order, Side, TimeInForce};
 use perp_core::Note;
 use sequencer::{EnclaveIdentity, Sequencer};
 
+/// The note owner derived from trader `id`'s spend key (audit DP-003:
+/// `owner = H(spend_key)`), matching the `spend_key: [id as u8; 32]` used to fund.
+fn owner_of(id: u64) -> [u8; 32] {
+    owner_from_spend_key::<Keccak256>(&[id as u8; 32])
+}
+
 fn fund(s: &mut Sequencer, owner: u64, usd: i128, blind: u8) {
-    let o = word_u64(owner);
+    let o = owner_of(owner);
     let amount = usd * QUOTE_SCALE;
     let cm = Note::new(o, 0, amount, [blind; 32]).commitment::<Keccak256>();
     s.apply(&BatchOp::Deposit {
@@ -53,7 +60,7 @@ fn real_ticker_feeds_the_sequencer_and_a_trade_settles() {
     // a crossing trade at the real index price
     let px = transcript.price;
     let maker = Order {
-        owner: word_u64(1),
+        owner: owner_of(1),
         market_id: 0,
         side: Side::Sell,
         size: SIZE_SCALE / 2,
@@ -65,7 +72,7 @@ fn real_ticker_feeds_the_sequencer_and_a_trade_settles() {
         ciphertext_commit: [1u8; 32],
     };
     let taker = Order {
-        owner: word_u64(2),
+        owner: owner_of(2),
         market_id: 0,
         side: Side::Buy,
         size: SIZE_SCALE / 2,
@@ -85,7 +92,7 @@ fn real_ticker_feeds_the_sequencer_and_a_trade_settles() {
     // the taker's position is marked at the real index price, ~$29,792 notional
     let pos = node
         .state
-        .position(&word_u64(2), 0)
+        .position(&owner_of(2), 0)
         .expect("taker has a position");
     assert_eq!(pos.size, SIZE_SCALE / 2);
     assert_eq!(pos.entry_price, px);

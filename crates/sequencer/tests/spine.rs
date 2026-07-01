@@ -6,6 +6,7 @@ use perp_core::fixed::{PRICE_SCALE, QUOTE_SCALE, SIZE_SCALE};
 use perp_core::hash::{word_u64, Keccak256};
 use perp_core::market::Market;
 use perp_core::oracle::OracleTranscript;
+use perp_core::note::{owner_from_spend_key, PubKey};
 use perp_core::order::{Finality, Order, Side, TimeInForce};
 use perp_core::Note;
 use sequencer::{
@@ -14,6 +15,18 @@ use sequencer::{
 
 fn enclave() -> EnclaveIdentity {
     EnclaveIdentity::from_seed([7u8; 32], 1, [0xABu8; 32])
+}
+
+/// Trader `owner`'s spend key. Trader `n` funds/spends its notes with `[n; 32]`.
+fn spend_key(owner: u64) -> [u8; 32] {
+    [owner as u8; 32]
+}
+
+/// Trader `owner`'s public owner id, derived from its spend key (audit DP-003:
+/// a note's `owner` MUST equal `owner_from_spend_key(&spend_key)`). Used wherever
+/// the account is named: notes, deposits, positions, orders, and assertions.
+fn owner_id(owner: u64) -> PubKey {
+    owner_from_spend_key::<Keccak256>(&spend_key(owner))
 }
 
 fn oracle(price_usd: i128, now: u64) -> OracleTranscript {
@@ -27,7 +40,7 @@ fn oracle(price_usd: i128, now: u64) -> OracleTranscript {
 
 fn order(owner: u64, side: Side, size: i128, price: i128, nonce: u64) -> Order {
     Order {
-        owner: word_u64(owner),
+        owner: owner_id(owner),
         market_id: 0,
         side,
         size,
@@ -42,7 +55,7 @@ fn order(owner: u64, side: Side, size: i128, price: i128, nonce: u64) -> Order {
 
 /// Fund a trader: deposit a note and bind it to a market-0 position.
 fn fund(seq: &mut Sequencer, owner: u64, amount_usd: i128, blind: u8) {
-    let o = word_u64(owner);
+    let o = owner_id(owner);
     let amount = amount_usd * QUOTE_SCALE;
     let cm = Note::new(o, 0, amount, [blind; 32]).commitment::<Keccak256>();
     seq.apply(&BatchOp::Deposit {
@@ -87,7 +100,7 @@ fn multi_market_positions_are_isolated() {
     // fund traders 1 & 2 on BOTH markets with distinct notes
     for owner in [1u64, 2] {
         for (mkt, blind) in [(0u64, 0xA0 | owner as u8), (1u64, 0xB0 | owner as u8)] {
-            let o = word_u64(owner);
+            let o = owner_id(owner);
             let amt = 20_000 * QUOTE_SCALE;
             let cm = Note::new(o, 0, amt, [blind; 32]).commitment::<Keccak256>();
             s.apply(&BatchOp::Deposit {
@@ -121,27 +134,27 @@ fn multi_market_positions_are_isolated() {
 
     // positions are isolated per market: trader 1 long BTC, short ETH; 2 opposite
     assert_eq!(
-        s.state.position(&word_u64(1), 0).unwrap().size,
+        s.state.position(&owner_id(1), 0).unwrap().size,
         SIZE_SCALE / 10
     );
-    assert_eq!(s.state.position(&word_u64(1), 1).unwrap().size, -SIZE_SCALE);
+    assert_eq!(s.state.position(&owner_id(1), 1).unwrap().size, -SIZE_SCALE);
     assert_eq!(
-        s.state.position(&word_u64(2), 0).unwrap().size,
+        s.state.position(&owner_id(2), 0).unwrap().size,
         -SIZE_SCALE / 10
     );
-    assert_eq!(s.state.position(&word_u64(2), 1).unwrap().size, SIZE_SCALE);
+    assert_eq!(s.state.position(&owner_id(2), 1).unwrap().size, SIZE_SCALE);
     assert!(s.state.conservation_holds());
 
     // an ETH-only price move must not touch BTC positions
     s.set_oracle(1, oracle(2_400, 5_000)); // ETH −20%
     s.seal_batch(&[], 5_000);
     assert_eq!(
-        s.state.position(&word_u64(1), 0).unwrap().size,
+        s.state.position(&owner_id(1), 0).unwrap().size,
         SIZE_SCALE / 10,
         "BTC unaffected by ETH move"
     );
     assert_eq!(
-        s.state.position(&word_u64(2), 0).unwrap().size,
+        s.state.position(&owner_id(2), 0).unwrap().size,
         -SIZE_SCALE / 10,
         "BTC unaffected by ETH move"
     );
@@ -186,8 +199,8 @@ fn match_settles_and_advances_finality() {
     assert!(sealed.receipts.iter().all(|r| r.verify()));
 
     // both positions opened
-    assert_eq!(s.state.position(&word_u64(2), 0).unwrap().size, SIZE_SCALE);
-    assert_eq!(s.state.position(&word_u64(1), 0).unwrap().size, -SIZE_SCALE);
+    assert_eq!(s.state.position(&owner_id(2), 0).unwrap().size, SIZE_SCALE);
+    assert_eq!(s.state.position(&owner_id(1), 0).unwrap().size, -SIZE_SCALE);
     assert!(s.state.conservation_holds());
 
     // finality: MATCHED after sealing, SETTLED only after proof verified (§3)
@@ -247,7 +260,7 @@ fn pre_trade_risk_rejects_unmarginable_before_matching() {
     assert!(s.state.conservation_holds());
     assert!(s
         .state
-        .position(&word_u64(3), 0)
+        .position(&owner_id(3), 0)
         .is_none_or(|p| p.size == 0));
     // the maker (well-funded) rested fine and got a receipt
     assert!(sealed.receipts.iter().any(|r| r.verify()));
@@ -264,7 +277,7 @@ fn maintenance_liquidates_underwater_position() {
         ],
         1_000,
     );
-    assert_eq!(s.state.position(&word_u64(2), 0).unwrap().size, SIZE_SCALE);
+    assert_eq!(s.state.position(&owner_id(2), 0).unwrap().size, SIZE_SCALE);
 
     // price crashes to $84k → B (long) equity ~$4k < ~$4.2k maintenance.
     s.set_oracle(0, oracle(84_000, 5_000));
@@ -290,17 +303,17 @@ fn maintenance_liquidates_underwater_position() {
     // Privacy: an observer who knows only B's PUBLIC owner id cannot find B —
     // neither the raw owner nor a tag keyed on the public owner id is present.
     assert!(
-        !sealed.liquidation_tags.contains(&word_u64(2)),
+        !sealed.liquidation_tags.contains(&owner_id(2)),
         "the published batch exposes a tag, not the account"
     );
     assert!(
         !sealed
             .liquidation_tags
-            .contains(&liquidation_tag(&word_u64(2), 0, sealed.batch_id)),
+            .contains(&liquidation_tag(&owner_id(2), 0, sealed.batch_id)),
         "a tag keyed on the public owner id must NOT match — the tag is secret-keyed"
     );
     assert_eq!(
-        s.state.position(&word_u64(2), 0).unwrap().size,
+        s.state.position(&owner_id(2), 0).unwrap().size,
         0,
         "B closed"
     );
@@ -350,7 +363,7 @@ fn auto_deleverage_publishes_an_attributable_receipt() {
         !sealed
             .adl_receipts
             .iter()
-            .any(|r| r.tag == adl_tag(&word_u64(1), 0, sealed.batch_id)),
+            .any(|r| r.tag == adl_tag(&owner_id(1), 0, sealed.batch_id)),
         "a tag keyed on the public owner id must NOT match — the tag is secret-keyed"
     );
     // The liquidated B is not a winner and is not clawed.
@@ -469,7 +482,7 @@ fn failed_batch_rolls_back_to_hard_state() {
     // §3 failure matrix: a sealed batch that fails to prove is rolled back — state
     // reverts, and its fills go from MATCHED back to ACCEPTED (never binding).
     let mut s = setup();
-    let (a, b) = (word_u64(1), word_u64(2));
+    let (a, b) = (owner_id(1), owner_id(2));
 
     // batch 0: open positions, then prove it (hard).
     s.seal_batch(

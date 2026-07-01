@@ -35,10 +35,11 @@ extern crate std;
 
 use alloc::vec::Vec;
 use perp_core::hash::{word_u64, Digest, Domain, Hasher, Keccak256};
-use perp_core::note::{Note, PubKey};
+use perp_core::note::{owner_from_spend_key, Note, PubKey};
 
-/// Key-derivation labels (distinct constants → independent derived keys).
-const LABEL_OWNER: u64 = 1;
+/// Key-derivation labels (distinct constants → independent derived keys). The owner
+/// is NOT derived directly from the seed — it is derived from the spend key so that
+/// holding the spend key is exactly the authority to spend the wallet's notes (DP-003).
 const LABEL_VIEW: u64 = 2;
 const LABEL_SPEND: u64 = 3;
 
@@ -55,7 +56,9 @@ impl Wallet {
     pub fn from_seed(seed: [u8; 32]) -> Self {
         let spend_key = derive(&seed, LABEL_SPEND);
         let view_key = derive(&seed, LABEL_VIEW);
-        let owner = derive(&seed, LABEL_OWNER);
+        // audit DP-003: owner == H(spend_key), so possessing the spend key IS the
+        // authority to spend this wallet's notes; the engine re-derives and checks it.
+        let owner = owner_from_spend_key::<Keccak256>(&spend_key);
         Self {
             owner,
             view_key,

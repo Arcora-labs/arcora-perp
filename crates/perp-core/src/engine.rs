@@ -16,7 +16,7 @@ use crate::error::EngineError;
 use crate::fixed::{apply_rate, notional_quote};
 use crate::hash::{Digest, Hasher};
 use crate::market::MarketId;
-use crate::note::{Note, PubKey};
+use crate::note::{owner_from_spend_key, Note, PubKey};
 use crate::oracle::OracleTranscript;
 use crate::order::Side;
 use crate::position::Position;
@@ -246,6 +246,13 @@ impl<H: Hasher> State<H> {
             .notes
             .get(note_commitment)
             .ok_or(EngineError::UnknownOrSpentNote)?;
+        // audit DP-003: bind spend authority to ownership — the spend key MUST derive
+        // the note's owner (`owner == H(spend_key)`). This is the SOLE authorization on
+        // the withdraw path (expected_owner = None), and closes the hole where anyone
+        // knowing a note's public commitment could burn it with an arbitrary key.
+        if owner_from_spend_key::<H>(spend_key) != note.owner {
+            return Err(EngineError::BadSpendKey);
+        }
         if let Some(o) = expected_owner {
             if &note.owner != o {
                 return Err(EngineError::BadSpendKey);
@@ -255,9 +262,7 @@ impl<H: Hasher> State<H> {
         if self.nullifiers.contains(&nf) {
             return Err(EngineError::UnknownOrSpentNote);
         }
-        // bind spend_key to owner: owner must equal H-derived pubkey of the key.
-        // Phase 0 keeps owner == note.owner check above; nullifier secrecy is the
-        // real guard. Insert nullifier and drop the note from the unspent set.
+        // Insert nullifier and drop the note from the unspent set.
         let _ = self.nullifiers.insert(nf);
         self.notes.remove(note_commitment);
         Ok(note)

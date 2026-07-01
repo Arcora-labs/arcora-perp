@@ -114,6 +114,12 @@ pub enum Domain {
     /// so the two events never share a preimage and an account can tell them apart.
     /// Not a cross-layer-committed value.
     Adl = 20,
+    /// Note-owner id derived from a spend key: `owner = H(spend_key)`. Binds spend
+    /// authority to ownership — a note can only be consumed by presenting the spend
+    /// key whose derived owner matches the note's owner (audit DP-003). A dedicated
+    /// tag so an owner id can never share a preimage structure with a nullifier
+    /// (`Nullifier`) or the seed key-derivation (`KeyDerivation`).
+    OwnerKey = 21,
 }
 
 /// The default Phase 0 hasher: Keccak-256 with a 1-byte domain prefix.
@@ -194,6 +200,7 @@ mod tests {
             Measurement,
             Liquidation,
             Adl,
+            OwnerKey,
         ];
         let w = [word_u64(42)];
         for i in 0..all.len() {

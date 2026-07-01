@@ -9,6 +9,7 @@ use perp_core::engine::BatchOp;
 use perp_core::fixed::{PRICE_SCALE, QUOTE_SCALE, SIZE_SCALE};
 use perp_core::hash::{word_u64, Keccak256};
 use perp_core::market::Market;
+use perp_core::note::owner_from_spend_key;
 use perp_core::oracle::OracleTranscript;
 use perp_core::order::Side;
 use perp_core::{DefaultState, Note};
@@ -28,8 +29,11 @@ impl Rng {
     }
 }
 
+// Owner id derived from the spend key `[i as u8; 32]` this owner funds/withdraws with
+// (audit DP-003): the note owner must equal `owner_from_spend_key(spend_key)`, so the
+// generator binds the two instead of picking them as independent literals.
 fn owner(i: u64) -> [u8; 32] {
-    word_u64(i + 1)
+    owner_from_spend_key::<Keccak256>(&[i as u8; 32])
 }
 
 fn oracle(price_usd: i128, now: u64) -> OracleTranscript {

@@ -63,6 +63,16 @@ impl Note {
     }
 }
 
+/// Derive a note-owner id from its spend key: `owner = H(spend_key)`.
+///
+/// Binds spend authority to ownership: a note owned by `owner` can only be consumed
+/// by presenting the spend key whose derived owner is `owner` (audit DP-003). Wallets
+/// derive their `owner` this way, and the engine recomputes it on every spend to
+/// reject a spend key that does not correspond to the note's owner.
+pub fn owner_from_spend_key<H: Hasher>(spend_key: &Digest) -> PubKey {
+    H::hash_words(Domain::OwnerKey, &[*spend_key])
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

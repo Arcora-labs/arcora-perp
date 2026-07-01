@@ -424,6 +424,7 @@ mod tests {
     use perp_core::fixed::QUOTE_SCALE;
     use perp_core::hash::word_u64;
     use perp_core::market::Market;
+    use perp_core::note::owner_from_spend_key;
     use perp_core::Note;
 
     const M: Digest = [0xAB; 32];
@@ -439,7 +440,11 @@ mod tests {
     fn state_with_deposit() -> (DefaultState, Vec<BatchOp>) {
         let mut s = DefaultState::new(16);
         s.add_market(Market::conservative(0));
-        let owner = word_u64(1);
+        // DP-003: a note's owner must equal owner_from_spend_key(spend_key). The
+        // FundPosition below spends this note with spend_key [1; 32], so the deposited
+        // note (and its commitment) must be owned by the owner that key derives.
+        let spend_key = [1u8; 32];
+        let owner = owner_from_spend_key::<Keccak256>(&spend_key);
         let blind = [9u8; 32];
         let amount = 10_000 * QUOTE_SCALE;
         let cm = Note::new(owner, 0, amount, blind).commitment::<Keccak256>();
@@ -454,7 +459,7 @@ mod tests {
                 owner,
                 market_id: 0,
                 note_commitment: cm,
-                spend_key: [1; 32],
+                spend_key,
             },
         ];
         (s, ops)

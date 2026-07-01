@@ -9,9 +9,16 @@ use perp_core::engine::BatchOp;
 use perp_core::fixed::{PRICE_SCALE, QUOTE_SCALE, SIZE_SCALE};
 use perp_core::hash::{word_u64, Keccak256};
 use perp_core::market::Market;
+use perp_core::note::owner_from_spend_key;
 use perp_core::oracle::OracleTranscript;
 use perp_core::order::Side;
 use perp_core::{DefaultState, Note};
+
+/// Owner id bound to spend key `[i as u8; 32]` (audit DP-003): each owner funds its
+/// note with this key, so the note owner must derive from it.
+fn owner(i: u64) -> [u8; 32] {
+    owner_from_spend_key::<Keccak256>(&[i as u8; 32])
+}
 
 fn oracle(p: i128, now: u64) -> OracleTranscript {
     OracleTranscript {
@@ -27,7 +34,7 @@ fn built_state() -> DefaultState {
     s.add_market(Market::conservative(0));
     s.add_market(Market::conservative(1));
     for i in 1u64..=3 {
-        let o = word_u64(i);
+        let o = owner(i);
         let blind = [i as u8; 32];
         let amt = 50_000 * QUOTE_SCALE;
         let cm = Note::new(o, 0, amt, blind).commitment::<Keccak256>();
@@ -48,8 +55,8 @@ fn built_state() -> DefaultState {
     }
     // open a couple of positions so the state has interesting structure
     s.apply_op(&BatchOp::Fill {
-        taker: word_u64(1),
-        maker: word_u64(2),
+        taker: owner(1),
+        maker: owner(2),
         market_id: 0,
         taker_side: Side::Buy,
         size: SIZE_SCALE / 2,
@@ -74,8 +81,8 @@ fn state_round_trips_losslessly() {
     );
     assert_eq!(s.conservation_holds(), back.conservation_holds());
     assert_eq!(
-        s.position(&word_u64(1), 0).map(|p| p.size),
-        back.position(&word_u64(1), 0).map(|p| p.size),
+        s.position(&owner(1), 0).map(|p| p.size),
+        back.position(&owner(1), 0).map(|p| p.size),
     );
 }
 

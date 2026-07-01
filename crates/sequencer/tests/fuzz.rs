@@ -13,10 +13,18 @@ use perp_core::fixed::{PRICE_SCALE, QUOTE_SCALE, SIZE_SCALE};
 use perp_core::hash::{word_u64, Keccak256};
 use perp_core::market::Market;
 use perp_core::oracle::OracleTranscript;
+use perp_core::note::{owner_from_spend_key, PubKey};
 use perp_core::order::{Finality, Order, Side, TimeInForce};
 use perp_core::Note;
 use sequencer::{EnclaveIdentity, Sequencer};
 use std::collections::BTreeSet;
+
+/// Owner `i`'s public owner id, derived from the spend key `[i; 32]` used to fund
+/// and spend its notes (audit DP-003: a note's `owner` MUST equal
+/// `owner_from_spend_key(&spend_key)`). Used wherever the account is named.
+fn owner_id(i: u64) -> PubKey {
+    owner_from_spend_key::<Keccak256>(&[i as u8; 32])
+}
 
 struct Rng(u64);
 impl Rng {
@@ -49,7 +57,7 @@ fn rand_order(rng: &mut Rng, n_owners: u64, price: i128, nonce: u64) -> Order {
         Side::Sell
     };
     Order {
-        owner: word_u64(rng.below(n_owners)),
+        owner: owner_id(rng.below(n_owners)),
         market_id: 0,
         side,
         size: (1 + rng.below(15)) as i128 * (SIZE_SCALE / 10),
@@ -129,7 +137,7 @@ fn run_session(seed: u64, batches: usize) {
     // pre-fund all owners
     s.set_oracle(0, oracle(price, now));
     for i in 0..N {
-        let o = word_u64(i);
+        let o = owner_id(i);
         blind_ctr += 1;
         let mut blind = [0u8; 32];
         blind[..8].copy_from_slice(&blind_ctr.to_le_bytes());
@@ -226,7 +234,7 @@ fn run_p3_session(seed: u64) {
     let now = 1_000u64;
     s.set_oracle(0, oracle(100_000, now));
     for i in 0..3u64 {
-        let o = word_u64(i);
+        let o = owner_id(i);
         let mut blind = [0u8; 32];
         blind[..8].copy_from_slice(&(i + 1).to_le_bytes());
         let amt = 100_000 * QUOTE_SCALE;
@@ -307,7 +315,7 @@ fn run_height_settle(seed: u64) {
     s.set_oracle(0, oracle(price, now));
     // fund two opposing traders
     for i in 0..2u64 {
-        let o = word_u64(i);
+        let o = owner_id(i);
         let mut blind = [0u8; 32];
         blind[..8].copy_from_slice(&(i + 1).to_le_bytes());
         let amt = 1_000_000 * QUOTE_SCALE;
@@ -337,7 +345,7 @@ fn run_height_settle(seed: u64) {
         s.set_oracle(0, oracle(price, now));
         nonce += 1;
         let buy = Order {
-            owner: word_u64(0),
+            owner: owner_id(0),
             market_id: 0,
             side: Side::Buy,
             size: SIZE_SCALE / 10,
@@ -350,7 +358,7 @@ fn run_height_settle(seed: u64) {
         };
         nonce += 1;
         let sell = Order {
-            owner: word_u64(1),
+            owner: owner_id(1),
             side: Side::Sell,
             nonce,
             ciphertext_commit: word_u64(nonce.wrapping_mul(7)),
