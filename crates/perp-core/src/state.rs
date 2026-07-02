@@ -247,8 +247,8 @@ mod tests {
     fn state_root_binds_nullifier_contents_not_just_count() {
         let mut a: State<Keccak256> = State::new(16);
         let mut b: State<Keccak256> = State::new(16);
-        assert!(a.nullifiers.insert([1u8; 32]));
-        assert!(b.nullifiers.insert([2u8; 32])); // equal count (1), different contents
+        assert!(a.nullifiers.insert::<Keccak256>([1u8; 32]));
+        assert!(b.nullifiers.insert::<Keccak256>([2u8; 32])); // equal count (1), different contents
         assert_eq!(a.nullifiers.len(), b.nullifiers.len());
         assert_ne!(
             a.state_root(),

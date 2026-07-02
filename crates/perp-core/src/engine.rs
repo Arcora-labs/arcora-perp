@@ -263,7 +263,7 @@ impl<H: Hasher> State<H> {
             return Err(EngineError::UnknownOrSpentNote);
         }
         // Insert nullifier and drop the note from the unspent set.
-        let _ = self.nullifiers.insert(nf);
+        let _ = self.nullifiers.insert::<H>(nf);
         self.notes.remove(note_commitment);
         Ok(note)
     }
