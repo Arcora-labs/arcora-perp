@@ -211,22 +211,21 @@ the containment structure above:
 
 ## Post-audit remediation residuals (2026-07)
 
-All 13 Codex audit findings (DP-001..013) plus two adversarial-review rounds and a
-workflow code review are fixed on `feat/real-tee`. The DP-004 off-chain answering
-half is now also wired (the gateway publishes real ordered/rejected roots per settle
-and a background loop watches `InclusionChallenged` and calls
-`answerChallenge`/`answerByRejection` with a Merkle proof), so the wrongful-slash
-vector is closed end to end. One perf item is intentionally deferred:
+All 13 Codex audit findings (DP-001..013), two adversarial-review rounds, and a
+workflow code review are fixed on `feat/real-tee`, and both deferred residuals are now
+also closed:
 
-- **`state_root` cost grows with history (perf).** Binding the nullifier-set contents and
-  the unspent-note set (audit DP-002) makes `state_root()` re-hash the whole append-only
-  nullifier set and the full note set on every call — O(N) in chain history, twice per
-  batch. Correct and fine at Phase-0 volumes, but settlement latency climbs unbounded as
-  the chain ages. The fix is an incrementally-maintained set digest, but it MUST stay
-  collision-resistant AND order-independent (a state's root must depend on the *set*, not
-  insertion order). A naive commutative accumulator (XOR/sum of per-element hashes) is O(1)
-  but reintroduces a collision weakness — undoing DP-002 — so it is NOT acceptable. The
-  correct options are a sparse Merkle nullifier accumulator (O(log N) insert, O(1) root, and
-  the "non-membership proof" the nullifier module already anticipates) or a proven
-  incremental multiset hash (e.g. LtHASH/MuHASH). Deferred as a dedicated, carefully-tested
-  data-structure change rather than a hasty rewrite of the just-hardened root computation.
+- **DP-004 off-chain answering — DONE.** The gateway publishes real ordered/rejected roots
+  per settle and a background loop watches `InclusionChallenged` and calls
+  `answerChallenge`/`answerByRejection` with a Merkle proof, so the wrongful-slash vector is
+  closed end to end.
+
+- **`state_root` unbounded cost — DONE.** The nullifier digest (the only set that grows without
+  bound — it is append-only) is now an O(1) running hash-chain advanced on each insert, instead
+  of an O(N)-in-history re-hash (audit DP-002 perf follow-up, `crates/perp-core/src/nullifier.rs`).
+  A naive commutative accumulator (XOR/sum) was rejected — it would have reintroduced a collision
+  weakness, undoing DP-002. The chain is order-dependent, which is SOUND here because the sole
+  insert path is `consume_note` in deterministic transition order (identical native + zkVM guest)
+  and the field is serialized into the witness (never rebuilt by re-insert). The unspent-note
+  digest stays O(M) but M is bounded by *current* unspent notes (removed on spend), not chain
+  history, so it does not grow without bound.
