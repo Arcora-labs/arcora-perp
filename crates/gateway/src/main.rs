@@ -1329,6 +1329,27 @@ impl Gw {
         hex32(&self.last_manifest)
     }
 
+    /// Build the answer to an inclusion challenge for `order_hash` (audit DP-004): find the
+    /// settled on-chain batch that committed it and build the Merkle proof against that batch's
+    /// ordered root (matched) or rejected root (validly rejected). Returns
+    /// `(is_rejection, batch_id, proof)`; `None` if no retained batch holds the order (a genuine
+    /// withhold the sequencer cannot — and should not — answer).
+    fn build_challenge_answer(&self, order_hash: &Digest) -> Option<(bool, u64, Vec<[u8; 32]>)> {
+        for (&batch_id, (ordered, rejected)) in &self.batch_orders {
+            if let Some(i) = ordered.iter().position(|h| h == order_hash) {
+                let leaves: Vec<[u8; 32]> =
+                    ordered.iter().map(|h| inclusion_leaf(batch_id, h)).collect();
+                return Some((false, batch_id, merkle_proof(&leaves, i)));
+            }
+            if let Some(i) = rejected.iter().position(|h| h == order_hash) {
+                let leaves: Vec<[u8; 32]> =
+                    rejected.iter().map(|h| rejection_leaf(batch_id, h)).collect();
+                return Some((true, batch_id, merkle_proof(&leaves, i)));
+            }
+        }
+        None
+    }
+
     /// Sum the collateral the USER had auto-deleveraged in `sealed`, recognized by
     /// recomputing the user's own secret ADL tag per market (audit Q2). An observer
     /// without the user's spend key can't do this — privacy holds.
@@ -3484,6 +3505,70 @@ async fn main() {
             "[l1] bridge ON → settlement {} every {L1_SETTLE_SECS}s",
             l1.settlement
         );
+        // audit DP-004: answer inclusion challenges so an honest sequencer is not slashed for an
+        // order it matched or validly rejected. Watch InclusionChallenged, build the Merkle proof
+        // from the retained per-batch order hashes, and submit answerChallenge / answerByRejection.
+        {
+            let app = app.clone();
+            let l1a = l1.clone();
+            tokio::spawn(async move {
+                // start from the current block, skipping pre-boot history
+                let mut from_block = {
+                    let l1c = l1a.clone();
+                    tokio::task::spawn_blocking(move || l1c.block_number().unwrap_or(0))
+                        .await
+                        .unwrap_or(0)
+                };
+                let mut iv = tokio::time::interval(Duration::from_secs(L1_SETTLE_SECS));
+                loop {
+                    iv.tick().await;
+                    let l1c = l1a.clone();
+                    let (hashes, next) =
+                        match tokio::task::spawn_blocking(move || l1c.fetch_challenges(from_block))
+                            .await
+                        {
+                            Ok(Ok(x)) => x,
+                            Ok(Err(e)) => {
+                                eprintln!("[l1] challenge scan failed: {e}");
+                                continue;
+                            }
+                            Err(e) => {
+                                eprintln!("[l1] challenge scan join: {e}");
+                                continue;
+                            }
+                        };
+                    from_block = next;
+                    for oh in hashes {
+                        // build the answer under the gw lock, then submit off-lock
+                        let answer = {
+                            let gw = app.gw.lock().await;
+                            parse_hex32(&oh).and_then(|h| gw.build_challenge_answer(&h))
+                        };
+                        let Some((by_rejection, batch_id, proof)) = answer else {
+                            continue; // not in any retained batch — a genuine withhold, unanswerable
+                        };
+                        let l1c = l1a.clone();
+                        let oh2 = oh.clone();
+                        let res = tokio::task::spawn_blocking(move || {
+                            if l1c.challenge_open(&oh2)? {
+                                l1c.answer_challenge(&oh2, batch_id, &proof, by_rejection)
+                            } else {
+                                Ok(String::new()) // already answered / slashed
+                            }
+                        })
+                        .await;
+                        match res {
+                            Ok(Ok(tx)) if !tx.is_empty() => println!(
+                                "[l1] answered inclusion challenge {oh} (batch {batch_id}, rejection={by_rejection}) tx {tx}"
+                            ),
+                            Ok(Ok(_)) => {}
+                            Ok(Err(e)) => eprintln!("[l1] answer failed for {oh}: {e}"),
+                            Err(e) => eprintln!("[l1] answer join: {e}"),
+                        }
+                    }
+                }
+            });
+        }
         let app = app.clone();
         tokio::spawn(async move {
             type SettleOut = (
@@ -3744,6 +3829,33 @@ mod tests {
             !attestation_ok_for_mode(true, false),
             "production must fail closed without a verified attestation",
         );
+    }
+
+    // audit DP-004 (answering): the proof build_challenge_answer produces must verify against the
+    // same ordered/rejected root the settle loop publishes on-chain, for both an ordered and a
+    // validly-rejected order; an unknown order yields no answer.
+    #[test]
+    fn build_challenge_answer_produces_a_verifying_proof() {
+        let mut gw = Gw::boot();
+        let (o1, o2, r1) = ([1u8; 32], [2u8; 32], [3u8; 32]);
+        gw.batch_orders.insert(7, (vec![o1, o2], vec![r1]));
+
+        // an ORDERED order → inclusion answer whose proof verifies against the ordered root
+        let (is_rej, bid, proof) = gw.build_challenge_answer(&o1).expect("answer for ordered order");
+        assert!(!is_rej);
+        assert_eq!(bid, 7);
+        let ordered_leaves: Vec<_> = [o1, o2].iter().map(|h| inclusion_leaf(7, h)).collect();
+        assert!(withdrawals::verify(merkle_root(&ordered_leaves), inclusion_leaf(7, &o1), &proof));
+
+        // a REJECTED order → rejection answer whose proof verifies against the rejected root
+        let (is_rej, bid, proof) = gw.build_challenge_answer(&r1).expect("answer for rejected order");
+        assert!(is_rej);
+        assert_eq!(bid, 7);
+        let rejected_leaves: Vec<_> = [r1].iter().map(|h| rejection_leaf(7, h)).collect();
+        assert!(withdrawals::verify(merkle_root(&rejected_leaves), rejection_leaf(7, &r1), &proof));
+
+        // an order in no retained batch → no answer (a genuine withhold, correctly unanswerable)
+        assert!(gw.build_challenge_answer(&[9u8; 32]).is_none());
     }
 
     // audit DP-006 follow-up: production must reject the public demo enclave seed (a

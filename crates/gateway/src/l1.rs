@@ -291,6 +291,103 @@ impl L1 {
             &[prev, manifest, new, ordered, withdrawals, rejected, &commitment],
         )
     }
+
+    // ── inclusion-challenge answering (audit DP-004) ─────────────────────────────
+
+    /// The current block number — the answering loop starts watching from here, skipping history.
+    pub fn block_number(&self) -> Result<u64, String> {
+        self.cast(&["block-number", "--rpc-url", &self.rpc])?
+            .split_whitespace()
+            .next()
+            .unwrap_or("")
+            .parse::<u64>()
+            .map_err(|e| format!("block-number parse: {e}"))
+    }
+
+    /// Order hashes with an `InclusionChallenged` log at/after `from_block`, plus the block to
+    /// resume from next. The order hash is the first indexed topic.
+    pub fn fetch_challenges(&self, from_block: u64) -> Result<(Vec<String>, u64), String> {
+        let from = from_block.to_string();
+        let out = self.cast(&[
+            "logs",
+            "--from-block",
+            &from,
+            "--address",
+            &self.settlement,
+            "InclusionChallenged(bytes32,address,uint256)",
+            "--rpc-url",
+            &self.rpc,
+            "--json",
+        ])?;
+        let logs: serde_json::Value =
+            serde_json::from_str(&out).map_err(|e| format!("logs json: {e}"))?;
+        let mut hashes = Vec::new();
+        let mut next = from_block;
+        if let Some(arr) = logs.as_array() {
+            for log in arr {
+                if let Some(t1) = log
+                    .get("topics")
+                    .and_then(|t| t.as_array())
+                    .and_then(|t| t.get(1))
+                    .and_then(|t| t.as_str())
+                {
+                    hashes.push(t1.to_string());
+                }
+                if let Some(bn) = log.get("blockNumber").and_then(|b| b.as_str()) {
+                    if let Ok(n) = u64::from_str_radix(bn.trim_start_matches("0x"), 16) {
+                        next = next.max(n + 1);
+                    }
+                }
+            }
+        }
+        Ok((hashes, next))
+    }
+
+    /// Is this order's inclusion challenge still open (not yet answered or slashed)? The
+    /// `Challenge` tuple's last field is `open`.
+    pub fn challenge_open(&self, order_hash: &str) -> Result<bool, String> {
+        let out = self.cast(&[
+            "call",
+            &self.settlement,
+            "challenges(bytes32)(address,uint64,uint256,uint256,uint256,bool)",
+            order_hash,
+            "--rpc-url",
+            &self.rpc,
+        ])?;
+        Ok(out.split_whitespace().last() == Some("true"))
+    }
+
+    /// Answer an inclusion challenge: prove the order is in this batch's ordered root (matched,
+    /// `answerChallenge`) or rejected root (validly rejected, `answerByRejection`) — audit DP-004.
+    pub fn answer_challenge(
+        &self,
+        order_hash: &str,
+        batch_id: u64,
+        proof: &[[u8; 32]],
+        by_rejection: bool,
+    ) -> Result<String, String> {
+        let sig = if by_rejection {
+            "answerByRejection(bytes32,uint256,bytes32[])"
+        } else {
+            "answerChallenge(bytes32,uint256,bytes32[])"
+        };
+        let bid = batch_id.to_string();
+        let proof_arg = format!(
+            "[{}]",
+            proof.iter().map(|p| hex0x32(p)).collect::<Vec<_>>().join(",")
+        );
+        self.send(&self.settlement.clone(), sig, &[order_hash, &bid, &proof_arg])
+    }
+}
+
+/// A 32-byte value as `0x`+64 hex, for cast calldata.
+fn hex0x32(b: &[u8; 32]) -> String {
+    let mut s = String::with_capacity(66);
+    s.push_str("0x");
+    for byte in b {
+        s.push_str(&format!("{byte:02x}"));
+    }
+    s
 }
 
 /// Chain ids this bridge may settle against. It submits mock-shaped proofs
