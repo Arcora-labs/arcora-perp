@@ -211,26 +211,22 @@ the containment structure above:
 
 ## Post-audit remediation residuals (2026-07)
 
-All 13 Codex audit findings (DP-001..013) plus two adversarial-review rounds are fixed
-on `feat/real-tee`. Two items are intentionally deferred because they need larger,
-separate work rather than a point fix:
-
-- **DP-004 off-chain answering (inclusion/rejection roots not yet published).** The
-  on-chain mechanism is complete and tested — `answerByRejection` + `rejectedRoot` bound
-  into `publicCommitment` — but the gateway bridge still publishes
-  `orderedRoot = rejectedRoot = 0x0` (`crates/gateway/src/l1.rs`), and no background task
-  watches `InclusionChallenged`, builds the inclusion/rejection Merkle proof, and calls
-  `answerChallenge`/`answerByRejection`. Until that off-chain answering subsystem is
-  wired, an honest sequencer can still be wrongfully slashed for a validly-rejected order
-  (the original DP-004 harm) because it cannot answer. Publishing the real
-  ordered/rejected roots from the sealed manifest plus an answering loop is the remaining
-  operational half.
+All 13 Codex audit findings (DP-001..013) plus two adversarial-review rounds and a
+workflow code review are fixed on `feat/real-tee`. The DP-004 off-chain answering
+half is now also wired (the gateway publishes real ordered/rejected roots per settle
+and a background loop watches `InclusionChallenged` and calls
+`answerChallenge`/`answerByRejection` with a Merkle proof), so the wrongful-slash
+vector is closed end to end. One perf item is intentionally deferred:
 
 - **`state_root` cost grows with history (perf).** Binding the nullifier-set contents and
   the unspent-note set (audit DP-002) makes `state_root()` re-hash the whole append-only
   nullifier set and the full note set on every call — O(N) in chain history, twice per
   batch. Correct and fine at Phase-0 volumes, but settlement latency climbs unbounded as
-  the chain ages; the fix is an incrementally-maintained running digest/accumulator
-  (updated on each nullifier insert and note insert/remove) so `state_root()` reads O(1)
-  cached digests. Deferred to avoid touching the security-critical root computation
-  without a dedicated accumulator design.
+  the chain ages. The fix is an incrementally-maintained set digest, but it MUST stay
+  collision-resistant AND order-independent (a state's root must depend on the *set*, not
+  insertion order). A naive commutative accumulator (XOR/sum of per-element hashes) is O(1)
+  but reintroduces a collision weakness — undoing DP-002 — so it is NOT acceptable. The
+  correct options are a sparse Merkle nullifier accumulator (O(log N) insert, O(1) root, and
+  the "non-membership proof" the nullifier module already anticipates) or a proven
+  incremental multiset hash (e.g. LtHASH/MuHASH). Deferred as a dedicated, carefully-tested
+  data-structure change rather than a hasty rewrite of the just-hardened root computation.
