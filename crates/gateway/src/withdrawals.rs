@@ -43,6 +43,32 @@ pub fn withdrawal_leaf(to: &[u8; 20], amount: u128, nonce: u64) -> [u8; 32] {
     h.finalize().into()
 }
 
+/// `keccak256(abi.encodePacked(uint256 batchId, bytes32 orderHash))` — matches
+/// `DarkPerpSettlement.inclusionLeaf`. The ordered-tree leaf the sequencer proves against
+/// `answerChallenge`, so an inclusion challenge can be answered (audit DP-004).
+pub fn inclusion_leaf(batch_id: u64, order_hash: &[u8; 32]) -> [u8; 32] {
+    let mut h = Keccak256::new();
+    let mut bid = [0u8; 32];
+    bid[24..].copy_from_slice(&batch_id.to_be_bytes()); // u64 → low 8 bytes of the uint256
+    h.update(bid);
+    h.update(order_hash);
+    h.finalize().into()
+}
+
+/// `keccak256(abi.encodePacked(uint8(1), uint256 batchId, bytes32 orderHash))` — matches
+/// `DarkPerpSettlement.rejectionLeaf`. A distinct one-byte domain tag from `inclusion_leaf`
+/// so a rejected leaf can never be replayed as an inclusion proof; the rejected-tree leaf the
+/// sequencer proves against `answerByRejection` for a validly-rejected order (audit DP-004).
+pub fn rejection_leaf(batch_id: u64, order_hash: &[u8; 32]) -> [u8; 32] {
+    let mut h = Keccak256::new();
+    h.update([0x01u8]);
+    let mut bid = [0u8; 32];
+    bid[24..].copy_from_slice(&batch_id.to_be_bytes());
+    h.update(bid);
+    h.update(order_hash);
+    h.finalize().into()
+}
+
 fn hash_pair(a: [u8; 32], b: [u8; 32]) -> [u8; 32] {
     let (lo, hi) = if a <= b { (a, b) } else { (b, a) };
     let mut h = Keccak256::new();
@@ -139,6 +165,28 @@ mod tests {
             withdrawal_leaf(&[0u8; 20], 1, 1),
             h("0x4e641f195fa577e5e909e012d9b75354bf06ec15a5d1aa2dca05d496c62ab460"),
         );
+    }
+
+    /// inclusion/rejection leaves are byte-locked to DarkPerpSettlement.inclusionLeaf /
+    /// rejectionLeaf (audit DP-004). Vectors: cast keccak $(cast abi-encode --packed ...).
+    #[test]
+    fn challenge_leaves_match_solidity() {
+        let oh = [0x11u8; 32];
+        assert_eq!(
+            inclusion_leaf(0, &oh),
+            h("0x8e4b8e18156a1c7271055ce5b7ef53bb370294ebd631a3b95418a92da46e681f"),
+        );
+        assert_eq!(
+            rejection_leaf(0, &oh),
+            h("0x884449c1b00ce2ad1dffd35dd282d2b89cb69053ce7daf1ad5e319653887dfdb"),
+        );
+        // batchId is bound (a different batch → a different leaf)
+        assert_eq!(
+            inclusion_leaf(5, &oh),
+            h("0xf3308d64dd30200a981fbb01272a1f05b4cfb7ca1b636aed03d9bc7474b03f9e"),
+        );
+        // inclusion and rejection leaves never collide at the same (batch, order)
+        assert_ne!(inclusion_leaf(0, &oh), rejection_leaf(0, &oh));
     }
 
     #[test]

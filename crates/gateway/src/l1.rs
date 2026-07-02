@@ -18,7 +18,6 @@
 
 use std::process::Command;
 
-const ZERO32: &str = "0x0000000000000000000000000000000000000000000000000000000000000000";
 /// keccak256("Deposit(address,uint256)") — the vault's deposit log topic0.
 const DEPOSIT_TOPIC0: &str = "0xe1fffcc4923d04b559f4d29a8bfc6cda04eb5b0d3c460751c2402c5c5cc9109c";
 
@@ -259,17 +258,19 @@ impl L1 {
         Err("no Deposit log from the vault in this tx".into())
     }
 
-    /// Settle: advance the on-chain root from `prev` to `new` with `manifest`, and
-    /// publish the cumulative `withdrawals` root (so users can claim USDC). The
-    /// `ordered` root stays `0x0` (the inclusion-challenge tree is a separate user
-    /// path). The proof is the 32-byte public commitment itself (what MockZkVerifier
-    /// checks).
+    /// Settle: advance the on-chain root from `prev` to `new` with `manifest`, and publish the
+    /// cumulative `withdrawals` root (so users can claim USDC) plus this batch's `ordered` and
+    /// `rejected` order-hash roots — so the sequencer can answer an inclusion challenge for an
+    /// order it either matched (`answerChallenge`) or validly rejected (`answerByRejection`),
+    /// audit DP-004. The proof is the 32-byte public commitment itself (what MockZkVerifier checks).
     pub fn settle(
         &self,
         prev: &str,
         manifest: &str,
         new: &str,
+        ordered: &str,
         withdrawals: &str,
+        rejected: &str,
     ) -> Result<String, String> {
         let commitment = self.cast(&[
             "call",
@@ -278,16 +279,16 @@ impl L1 {
             prev,
             manifest,
             new,
-            ZERO32,
+            ordered,
             withdrawals,
-            ZERO32,
+            rejected,
             "--rpc-url",
             &self.rpc,
         ])?;
         self.send(
             &self.settlement.clone(),
             "settleBatch(bytes32,bytes32,bytes32,bytes32,bytes32,bytes32,bytes)",
-            &[prev, manifest, new, ZERO32, withdrawals, ZERO32, &commitment],
+            &[prev, manifest, new, ordered, withdrawals, rejected, &commitment],
         )
     }
 }

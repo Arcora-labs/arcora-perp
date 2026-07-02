@@ -39,7 +39,7 @@ use sequencer::{adl_tag, adl_tag_key, EnclaveIdentity, SealedBatch, Sequencer};
 mod l1;
 mod withdrawals;
 use l1::{L1Status, L1};
-use withdrawals::{merkle_proof, merkle_root, Withdrawal};
+use withdrawals::{inclusion_leaf, merkle_proof, merkle_root, rejection_leaf, Withdrawal};
 
 /// 0x-prefixed lowercase hex of a 32-byte digest (for L1 calldata + display).
 fn hex32(d: &Digest) -> String {
@@ -552,6 +552,15 @@ struct Gw {
     /// Manifest hash of the most recently sealed batch — published to L1 as the
     /// settled batch's manifest when the L1 bridge is active.
     last_manifest: Digest,
+    /// Order hashes matched / validly-rejected since the last L1 settle, accumulated across
+    /// engine batches. At settle they become this on-chain batch's ordered/rejected roots, so
+    /// the sequencer can answer an inclusion challenge for a matched or validly-rejected order
+    /// instead of being wrongfully slashed (audit DP-004).
+    pending_ordered: Vec<Digest>,
+    pending_rejected: Vec<Digest>,
+    /// Per ON-CHAIN batch id → the (ordered, rejected) order hashes it committed, retained so a
+    /// challenge for an order in that batch can be answered with a Merkle proof against its root.
+    batch_orders: std::collections::BTreeMap<u64, (Vec<Digest>, Vec<Digest>)>,
     /// Last on-chain settlement the L1 bridge published (None until it settles once).
     l1_status: Option<L1Status>,
     /// The verified TEE attestation the enclave identity is bound to (None = stub).
@@ -727,6 +736,9 @@ impl Gw {
             withdraw_proofs: std::collections::BTreeMap::new(),
             processed_deposit_txs: std::collections::BTreeSet::new(),
             last_manifest: [0u8; 32],
+            pending_ordered: Vec::new(),
+            pending_rejected: Vec::new(),
+            batch_orders: std::collections::BTreeMap::new(),
             l1_status: None,
             attestation,
             lp_shares: std::collections::BTreeMap::new(),
@@ -1945,6 +1957,12 @@ impl Gw {
         }
         let sealed = self.seq.seal_batch(&seal, now);
         self.last_manifest = sealed.manifest_hash;
+        // audit DP-004: accumulate this batch's matched + validly-rejected order hashes; at the
+        // next L1 settle they become this on-chain batch's ordered/rejected roots, so the
+        // sequencer can answer an inclusion challenge for either instead of being wrongfully slashed.
+        self.pending_ordered.extend(sealed.manifest.ordered.iter().copied());
+        self.pending_rejected
+            .extend(sealed.manifest.rejected.iter().map(|(h, _)| *h));
         // recognize any auto-deleverage haircut that hit the user this batch (Q2)
         let adl_clawed = self.user_adl_in(&sealed);
         if adl_clawed > 0 {
@@ -3472,6 +3490,9 @@ async fn main() {
                 L1Status,
                 Vec<[u8; 32]>,
                 std::collections::BTreeMap<[u8; 32], Vec<[u8; 32]>>,
+                u64,          // on-chain batch id these ordered/rejected hashes were committed under
+                Vec<[u8; 32]>, // ordered order hashes settled this batch (audit DP-004 retention)
+                Vec<[u8; 32]>, // rejected order hashes settled this batch
             );
             // start the first settle one period out, so it never races the bond's
             // confirmation (tokio's plain `interval` would fire immediately).
@@ -3481,12 +3502,14 @@ async fn main() {
             );
             loop {
                 iv.tick().await;
-                let (new_root, manifest, withdrawals) = {
+                let (new_root, manifest, withdrawals, ordered_h, rejected_h) = {
                     let gw = app.gw.lock().await;
                     (
                         gw.state_root_hex(),
                         gw.last_manifest_hex(),
                         gw.pending_withdrawals.clone(),
+                        gw.pending_ordered.clone(),
+                        gw.pending_rejected.clone(),
                     )
                 };
                 let l1c = l1.clone();
@@ -3517,7 +3540,19 @@ async fn main() {
                         if prev.eq_ignore_ascii_case(&new_root) {
                             return Ok(None); // engine root unchanged → nothing to settle
                         }
-                        let tx = l1c.settle(&prev, &manifest, &new_root, &wroot_hex)?;
+                        // audit DP-004: this settle becomes on-chain batch `batch_id` (the current
+                        // count, which settleBatch consumes then increments). Build the ordered and
+                        // rejected roots over THIS batch id, so a later `answerChallenge` /
+                        // `answerByRejection` proof (built with the same id) verifies on-chain.
+                        let batch_id = l1c.batch_count().unwrap_or(0);
+                        let ordered_leaves: Vec<[u8; 32]> =
+                            ordered_h.iter().map(|h| inclusion_leaf(batch_id, h)).collect();
+                        let rejected_leaves: Vec<[u8; 32]> =
+                            rejected_h.iter().map(|h| rejection_leaf(batch_id, h)).collect();
+                        let oroot_hex = hex32(&merkle_root(&ordered_leaves));
+                        let rroot_hex = hex32(&merkle_root(&rejected_leaves));
+                        let tx =
+                            l1c.settle(&prev, &manifest, &new_root, &oroot_hex, &wroot_hex, &rroot_hex)?;
                         let mut proofs = std::collections::BTreeMap::new();
                         for (i, w) in surviving.iter().enumerate() {
                             proofs.insert(w.leaf(), merkle_proof(&leaves, i));
@@ -3532,11 +3567,14 @@ async fn main() {
                             },
                             claimed,
                             proofs,
+                            batch_id,
+                            ordered_h,
+                            rejected_h,
                         )))
                     })
                     .await;
                 match res {
-                    Ok(Ok(Some((status, claimed, proofs)))) => {
+                    Ok(Ok(Some((status, claimed, proofs, batch_id, ordered_h, rejected_h)))) => {
                         println!(
                             "[l1] settled root {} batch {} tx {} (withdrawals root {})",
                             status.settled_root,
@@ -3553,6 +3591,16 @@ async fn main() {
                             }
                             gw.withdraw_proofs = proofs;
                             gw.l1_status = Some(status);
+                            // audit DP-004: retain the order hashes this on-chain batch committed so
+                            // a challenge can be answered against its root, then drop exactly the
+                            // ones just settled from the pending accumulators (any appended during
+                            // the settle stay, at the back).
+                            let (no, nr) = (ordered_h.len(), rejected_h.len());
+                            gw.batch_orders.insert(batch_id, (ordered_h, rejected_h));
+                            let po_len = gw.pending_ordered.len();
+                            gw.pending_ordered.drain(0..no.min(po_len));
+                            let pr_len = gw.pending_rejected.len();
+                            gw.pending_rejected.drain(0..nr.min(pr_len));
                         }
                         let snap = { app.gw.lock().await.snapshot() };
                         let _ = app
