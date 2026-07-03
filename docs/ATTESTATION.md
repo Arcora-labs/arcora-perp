@@ -12,7 +12,24 @@ verify a genuine Intel **TDX DCAP quote**, extract + bind the enclave measuremen
 | #4 → engine wiring (attested measurement → `EnclaveIdentity` + seal release) | ✅ **Built + tested** — [`crates/e2e/tests/attestation_binding.rs`](../crates/e2e/tests/attestation_binding.rs) |
 | #4 on-chain (`IDcapAttestation` + `MockDcapAttestation` + `AttestationRegistry`) | ✅ **Built + tested** — [`contracts/`](../contracts) |
 | **#5a Real Azure quote captured + verified offline** | ✅ **Done** — a genuine Azure TDX quote verifies through `crates/attestation` (pinned fixture `tests/fixtures/azure/`) |
-| #5b Real TEE key-release (`TeeSealProvider`) + vTPM app-binding | ⬜ next (see findings below) |
+| #5b vTPM app-binding (`verify_azure_vtpm` + `azure_app_measurement`) | ✅ **Done** — the full HCL→AK→PCR chain verifies and the measurement folds MRTD ‖ PCR digest |
+| **#5c Gateway live-boot on the CVM (its OWN quote)** | ✅ **Done (2026-07-03)** — see below |
+| #5d Real TEE key-release (`TeeSealProvider` backed by the vTPM) | ⬜ remaining — `SoftwareSealProvider` is still the stand-in |
+
+### #5c live-boot verification (2026-07-03, `perp-seq` DC2es_v6, westus)
+
+`scripts/tee-capture/capture.sh` captured the six live `ATTESTATION_DIR`
+artifacts on the running CVM (HCL report via owner-auth NV read of `0x01400001`,
+TD quote via IMDS with the bare `application/json` workaround, **fresh** PCS
+collateral — quote verified `UpToDate`, zero advisories). The gateway then booted
+against its **own live quote** (no `ATTESTATION_NOW`) and bound the enclave to
+`0x422890f6aa4e1e864d9ece858e13bc8f9dd2c24e3d8046127acd451e5faf55bd`. Production
+posture verified both ways: with the pinned measurement it serves `/v1`; with a
+wrong pin it refuses to start (exit 1). ⚠️ Ops note: the measurement covers the
+measured-boot PCRs, so a kernel/bootloader update + reboot **changes it** — after
+any reboot, re-run `capture.sh` and consciously re-pin
+`ATTESTATION_EXPECTED_MEASUREMENT` (verify the change is a legitimate update, not
+a platform swap).
 
 ### #5 findings from a REAL Azure TDX confidential VM
 
