@@ -185,9 +185,16 @@ impl L1 {
     pub fn ensure_bond(&self) -> Result<Option<String>, String> {
         let usdc = self.usdc.as_ref().ok_or("L1_USDC not set")?;
         let req = self.required_bond()?;
+        // No TVL yet ⇒ no bond required ⇒ post nothing. Forcing a floor here made the
+        // bridge re-`mint` every tick while the previous mint was still pending, colliding
+        // on the same nonce ("replacement transaction underpriced") — spurious churn that
+        // only ever *needs* to run once a deposit makes `requiredBond > 0`.
+        if req == 0 {
+            return Ok(None);
+        }
         let have = self.sequencer_bond()?;
-        // target a 2x-floor cushion (min 1 USDC) so TVL growth between settles is covered.
-        let target = req.saturating_add(req.max(1_000_000));
+        // target a 2x-floor cushion so TVL growth between settles stays covered.
+        let target = req.saturating_add(req);
         if have >= target {
             return Ok(None);
         }
