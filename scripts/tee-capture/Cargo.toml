@@ -1,0 +1,19 @@
+[package]
+name = "tee-capture"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# Deliberately NOT a member of the root workspace (same pattern as sp1-guest):
+# this tool runs on the Azure confidential VM next to tpm2-tools, and its
+# net-enabled dcap-qvl (Intel PCS fetch) must not leak into the offline-only
+# workspace attestation crate.
+[workspace]
+
+[dependencies]
+base64 = "0.22"
+dcap-qvl = "0.5"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+ureq = "3"
