@@ -8,8 +8,10 @@ OUT="${1:-$HOME/attestation-live}"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 mkdir -p "$OUT"
 
-# 1. HCL report — vTPM NV index 0x01400001 (see vtpm.rs::runtime_data).
-sudo tpm2_nvread 0x01400001 > "$OUT/hcl_report.bin"
+# 1. HCL report — vTPM NV index 0x01400001 (see vtpm.rs::runtime_data). The
+#    index is ownerread|authread; the index's own auth session is refused (0x9A2),
+#    so read under the owner hierarchy.
+sudo tpm2_nvread -C o 0x01400001 > "$OUT/hcl_report.bin"
 
 # 2+3. TD report → IMDS TD quote; fresh PCS collateral; offline verify sanity.
 cargo run --release --quiet --manifest-path "$HERE/Cargo.toml" -- "$OUT"
@@ -22,6 +24,11 @@ sudo tpm2_quote -c 0x81000003 \
 
 # 5. The PCR values themselves ("N : 0x…" lines, parsed by the gateway).
 sudo tpm2_pcrread sha256 > "$OUT/pcrs.txt"
+
+# The sudo'd tpm2 outputs land root-owned; the gateway reads these as the
+# service user.
+sudo chown "$(id -u):$(id -g)" "$OUT"/*
+chmod 640 "$OUT"/*
 
 echo "captured → $OUT"
 ls -l "$OUT"
