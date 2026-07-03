@@ -38,6 +38,15 @@ pub struct L1 {
     pub usdc: Option<String>,
     /// CollateralVault — needed to read `claimed(leaf)` and match deposit logs.
     pub vault: Option<String>,
+    /// Locally-tracked next transaction nonce, shared across clones. Base Sepolia's
+    /// public RPC lags its `pending` nonce, so relying on cast's default nonce source
+    /// makes back-to-back sends collide ("nonce too low" / "replacement underpriced"),
+    /// which stalled settlement the moment a deposit made the bond non-zero. We seed
+    /// from the confirmed chain nonce once, pass `--nonce` explicitly, and increment
+    /// per confirmed send; the mutex is held across each send so all L1 transactions
+    /// (settle loop + challenge-answer loop) serialize and never race. A failed send
+    /// resets it to re-seed from chain on the next attempt.
+    nonce: std::sync::Arc<std::sync::Mutex<Option<u64>>>,
 }
 
 /// What the bridge last published — surfaced to the UI so on-chain settlement is visible.
@@ -102,7 +111,19 @@ impl L1 {
             _keystore: std::sync::Arc::new(KeystoreDir(dir)),
             usdc: std::env::var("L1_USDC").ok(),
             vault: std::env::var("L1_VAULT").ok(),
+            nonce: std::sync::Arc::new(std::sync::Mutex::new(None)),
         })
+    }
+
+    /// The confirmed transaction count of the sequencer address = its next unused nonce.
+    fn chain_nonce(&self) -> Result<u64, String> {
+        let addr = self.sequencer_address()?;
+        let out = self.cast(&["nonce", &addr, "--rpc-url", &self.rpc])?;
+        out.split_whitespace()
+            .next()
+            .unwrap_or("")
+            .parse::<u64>()
+            .map_err(|e| format!("nonce parse: {e}"))
     }
 
     fn cast(&self, args: &[&str]) -> Result<String, String> {
@@ -117,12 +138,25 @@ impl L1 {
     }
 
     /// `cast send <target> <sig> [args..]` signed by the sequencer key, returning the tx hash.
+    ///
+    /// Holds the shared nonce lock across the whole send (which waits for the receipt),
+    /// so every L1 transaction serializes and gets an explicit, monotonic `--nonce` —
+    /// immune to the public RPC's lagging `pending` nonce (see the `nonce` field). A
+    /// failed send resets the tracker so the next attempt re-seeds from the chain.
     fn send(&self, target: &str, sig: &str, args: &[&str]) -> Result<String, String> {
+        let mut guard = self.nonce.lock().map_err(|_| "nonce lock poisoned")?;
+        let n = match *guard {
+            Some(n) => n,
+            None => self.chain_nonce()?,
+        };
+        let nonce_str = n.to_string();
         let mut a: Vec<&str> = vec!["send", target, sig];
         a.extend_from_slice(args);
         // audit DP-013: authenticate via the encrypted keystore + password FILE, never the
         // raw key in argv. Both are file paths — the key never appears in /proc/<pid>/cmdline.
         a.extend_from_slice(&[
+            "--nonce",
+            &nonce_str,
             "--keystore",
             &self.keystore_path,
             "--password-file",
@@ -131,8 +165,16 @@ impl L1 {
             &self.rpc,
             "--json",
         ]);
-        let out = self.cast(&a)?;
-        Ok(tx_hash(&out))
+        match self.cast(&a) {
+            Ok(out) => {
+                *guard = Some(n + 1);
+                Ok(tx_hash(&out))
+            }
+            Err(e) => {
+                *guard = None; // re-seed from chain next time
+                Err(e)
+            }
+        }
     }
 
     /// The on-chain `currentStateRoot` (the required `prev` for the next settle).
