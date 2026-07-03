@@ -3,25 +3,25 @@
   "chainId": 84532,
   "rpc": "https://sepolia.base.org",
   "explorer": "https://sepolia.basescan.org",
-  "deployedAt": "2026-06-28",
-  "deployer": "0xe8E5AAa3d8c705A07de02aADF98CE31F20A5754b",
-  "note": "Phase 0 testnet deploy — USDC collateral, post-review-hardening build. The vault custodies MockUSDC (6-decimal ERC20, open faucet); the sequencer bond is USDC-denominated (requiredBond = 5% of vault.tvl(), audit Q1). Review hardening in this build: tvl() reads NET accounted deposits (totalDeposited - totalWithdrawn), not raw balanceOf, so donations can't inflate the bond floor; withdrawBond() lets an honest sequencer reclaim bond above the floor. Ships with MockZkVerifier (real SP1/Risc0 verifier before any non-testnet deploy). genesisRoot=0. enclaveSigner is the gateway's REAL enclave (secp256k1 seed 0x07..07). Full deposit -> withdraw -> claim flow + donation-immunity + withdrawBond verified live. Supersedes the earlier 2026-06-28 pre-hardening deploy.",
+  "deployedAt": "2026-07-03",
+  "deployer": "0xed37B7fc534Cc93D4195b4F11ADc5C14237cd287",
+  "note": "Phase 0 PUBLIC TESTNET deploy - USDC collateral, sealed-persistence build. Supersedes the 2026-06-28 deploy: that stack's enclaveSigner was the DEMO seed's address (0x07..07), which the DP-006 production posture refuses; this deploy pins enclaveSigner to the REAL secret-seed enclave running inside the perp-seq Azure TDX CVM (live measurement 0x422890f6..faf55bd, see docs/ATTESTATION.md #5c). MockUSDC open mint is the faucet. MockZkVerifier still stands in for the real SP1/Risc0 verifier (testnet only).",
   "contracts": {
     "DarkPerpSettlement": {
-      "address": "0x55dE870DcC2A620bA77F20e1FbC7Fb7E33e1A6a4",
-      "tx": "0xb075b8e6bf3637e0689bfc733cb9d5585aced2eab8a949cdef9a9899654e21a0"
+      "address": "0x0e29D740D4C6B75d33EC2b81CfE70Cf045beD49B",
+      "tx": "0x9563019c391b9ac1ef1e2bca282452870d1566550fc5c30a09a399814dadcd88"
     },
     "CollateralVault": {
-      "address": "0xF3Ee80BEBda210eAEe416D4A40B6CBe91FaB126B",
-      "tx": "0xb548a665fe9f8a452dab59defeb762096e7ba77a62954d186b0a3cc78c2cff5a"
+      "address": "0x3A3939E1C5De10D41942a85D4A14ac8160779bF4",
+      "tx": "0x7b9b1a940d73ef29a03341421637d665fc704d974bdec668b2efa1a890693b4f"
     },
     "MockZkVerifier": {
-      "address": "0x016F74f9FF565298Eb6eFF085354a1af5Fe13660",
-      "tx": "0xd96ceafe83b9b801758c768e4c05656f71fbcd05a8bfca5bf017d3179ce55a4c"
+      "address": "0x20B5B044B60C9AACa8A85d62212589AE6CA264b2",
+      "tx": "0xaee202648a8b0d60c0aa468e8f7c4138394f6e090f248906351e980cf687636b"
     },
     "MockUSDC": {
-      "address": "0xe906D3068c1BE526125BdC695A066E98ed246770",
-      "tx": "0x7931e39cefdef363135665674013540c7b52a94fefa6b78aee7a2b3f87bd2a88"
+      "address": "0xF9bd3AD70bA831b92e9F07D08121c6A750B3612a",
+      "tx": "0xd9da5f1141a4e595ccb445180627d4ccea5851e1b80cc918b17093cf4598dc08"
     }
   },
   "params": {
@@ -46,5 +46,7 @@
       "CollateralVault": "0x4b647D3E5c3Ed0FEE209dD9F00feC957b0157E0c",
       "MockZkVerifier": "0x1022801D314258c79556C85973260d4F06C35ACB"
     }
-  ]
+  ],
+  "sequencer": "0xed37B7fc534Cc93D4195b4F11ADc5C14237cd287",
+  "enclaveSigner": "0x92173839C6B3b717179ba5505CCE31bD2131EbA0"
 }
