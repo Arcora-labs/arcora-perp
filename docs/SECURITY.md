@@ -196,13 +196,40 @@ no single failure is catastrophic.
     claimed fields, the same way `inclusionLeaf` does — so the off-chain side likewise
     does NOT domain-tag it.)
 
+## Public-testnet posture (Base Sepolia, 2026-07) — what the ZK caveat means
+
+A single-enclave public testnet is live (gateway inside a real Azure TDX CVM,
+settling to Base Sepolia). The threat model above assumes **all three trust roots
+hold**; on the testnet the **ZK root is a stand-in** (`MockZkVerifier` accepts
+`proof == publicCommitment`). So on the testnet specifically:
+
+- The "attacker can NEVER steal from the vault / advance the root without a valid
+  proof / mint value" guarantees above are **NOT in force** — they rest on the ZK
+  root, which is mocked. A compromised sequencer *could* publish an invalid
+  withdrawals/state root that the mock verifier accepts. This is why funds are
+  **test USDC only** and the UI says so.
+- What **is** genuinely exercised end to end: the TEE attestation (real live TDX +
+  vTPM quote, wrong-measurement boots refuse), the settlement/vault/withdrawal
+  plumbing, sequencing accountability (rate limits, caller-signed orders, inclusion
+  challenge answering), and sealed state persistence with an on-chain-continuity
+  boot gate.
+- Order bodies reach the gateway over TLS but are **not yet encrypted to the
+  enclave epoch key** (Milestone C #2/#3), and sealing uses the software
+  `SealKeyProvider` stand-in (#5d) — so "operator-blind" is partially, not fully,
+  realized on the testnet.
+
+Mainnet flips every stand-in below to real; the accounting and containment
+structure do not change.
+
 ## Production prerequisites (not yet real in this repo)
 
 The stand-ins below must be replaced before mainnet; none affect the accounting or
 the containment structure above:
 
 - real SP1/Risc0 verifier (replaces `MockZkVerifier`) — see `PROVING.md`;
-- real TDX/Nitro attestation (enclave measurement is currently a value);
+- real TDX/Nitro attestation — **live-boot DONE on the testnet** (the gateway
+  verifies its own Azure TDX + vTPM quote, `docs/ATTESTATION.md` #5c); real
+  vTPM-backed key-release (`TeeSealProvider`, #5d) is the remaining TEE item;
 - real enclave sealing / note encryption / committee DKG / bridge VRF seed;
 - **spend-key ↔ owner binding — DONE (audit DP-003).** `consume_note` now rejects a
   spend unless `owner_from_spend_key(spend_key) == note.owner`, and `Wallet::from_seed`

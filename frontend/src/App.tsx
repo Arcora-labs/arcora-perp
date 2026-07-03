@@ -17,6 +17,7 @@ import { ApiAccess } from "./components/ApiAccess";
 import { LpVault } from "./components/LpVault";
 import { Explorer } from "./components/Explorer";
 import { HealthPanel } from "./components/HealthPanel";
+import { TestnetNotice } from "./components/TestnetNotice";
 
 type Tab = "trade" | "lp" | "account" | "recover" | "explorer" | "health" | "api";
 
@@ -119,6 +120,7 @@ export default function App() {
           <Toaster />
 
           <main className="app__main">
+            <TestnetNotice />
             {tab === "trade" && (
               <>
                 <StatsBar />

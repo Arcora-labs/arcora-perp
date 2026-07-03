@@ -99,11 +99,39 @@ The solid path is the latency-critical loop; dashed edges are the side flows tha
 keep the protocol honest when the TEE or operator misbehaves — oracle pricing,
 inclusion challenges, forced exit, and view-key recovery from the note archive.
 
+## Live public testnet (Base Sepolia)
+
+A single-enclave public testnet is **live**: the gateway runs inside a real
+**Azure TDX confidential VM** (`Standard_DC2es_v6`), verifying its **own** live
+TDX + vTPM quote at boot and binding the enclave identity to the measured-boot
+measurement (`docs/ATTESTATION.md` #5c). It settles to Base Sepolia every 30s and
+persists engine state across restarts (sealed snapshots, on-chain-root continuity
+checked at boot). **Funds are test USDC and carry no value.**
+
+**What is real vs. what is a stand-in** (labelled honestly, in the UI too):
+
+| Surface | State on the testnet |
+|---|---|
+| Confidential matching in an attested TEE | **Real** — live Azure TDX quote verified at boot; wrong-measurement boots refuse |
+| L1 settlement + USDC deposit/withdraw/claim | **Real** — Base Sepolia, cumulative withdrawals root, `vault.claim` pays out |
+| State persistence across restarts | **Real** — sealed snapshot + graceful save + on-chain continuity gate |
+| Sequencing accountability (per-IP/-account rate limits, caller-signed orders) | **Real** — enforced in the gateway |
+| **ZK validity proof (fund safety)** | **Stand-in** — `MockZkVerifier` accepts `proof == publicCommitment`; the real SP1/Risc0 verifier is Milestone A |
+| **Order confidentiality on the wire** | **Partial** — orders reach the gateway over TLS but are **not yet encrypted to the enclave epoch key** (Milestone C #2/#3) |
+| **Enclave key-release for sealing** | **Stand-in** — `SoftwareSealProvider`; real vTPM-backed release is #5d |
+| Custody | **Phase-0 server custody** — the gateway holds account spend keys in memory (moves into the enclave later) |
+
+Because proofs are mocked, **do not treat testnet balances as protected by the ZK
+root** — a compromised sequencer could publish an invalid root that the mock
+verifier accepts. This is the whole reason it is a *labelled* testnet. Get test
+USDC via the in-app **"Get test USDC"** button (open-mint MockUSDC) or the faucet
+snippet in `docs/API.md`.
+
 ## Repository status
 
 The protocol is built bottom-up across the [roadmap](docs/ROADMAP.md) phases — all
-six phases now have implemented deliverables. Tested end-to-end: **150 Rust + 31
-Solidity + 90 frontend tests** (green in debug *and* release) — including a
+six phases now have implemented deliverables. Tested end-to-end: **224 Rust + 49
+Solidity + 89 frontend tests** (green in debug *and* release) — including a
 CI-locked node-lifecycle test driving the full funding → liquidation →
 conservation loop, adversarial oracle-adapter tests proving a manipulated
 external feed is rejected by the §8 gate rather than silently marked, a

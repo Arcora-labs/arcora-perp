@@ -282,6 +282,11 @@ body {
 .banner--ok .banner__dot { background: var(--ok); box-shadow: 0 0 8px var(--ok); animation: pulse 2s var(--ease) infinite; }
 .banner--danger { background: color-mix(in srgb, var(--danger) 8%, transparent); border-color: color-mix(in srgb, var(--danger) 35%, transparent); }
 .banner--danger .banner__dot { background: var(--danger); box-shadow: 0 0 8px var(--danger); }
+.banner--notice { flex-wrap: wrap; background: color-mix(in srgb, var(--accent) 6%, transparent); border-color: color-mix(in srgb, var(--accent) 28%, transparent); }
+.banner--notice .banner__dot { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+.banner__faucet { flex-basis: 100%; margin-top: 10px; padding-top: 12px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px; }
+.banner__code { font-family: var(--mono); font-size: 11px; line-height: 1.5; color: var(--text); background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; overflow-x: auto; white-space: pre; }
+.banner__faucet code { font-family: var(--mono); font-size: 11.5px; color: var(--accent); }
 
 /* ============================ market header bar (statsbar) ================ */
 .statsbar { display: flex; align-items: center; gap: 18px 28px; flex-wrap: wrap; }

@@ -74,6 +74,27 @@ are margin-checked against the account's free balance; close-only mode blocks
 openers (§6). **Rate limit:** at most 10 orders/sec per account — over that returns
 `429` `{ "error": "RATE_LIMIT: ..." }`.
 
+## Faucet — get test USDC
+
+The collateral asset is an **open-mint** MockUSDC (6 decimals) on Base Sepolia —
+anyone may mint. Addresses live in `contracts/deployments/base-sepolia.json`
+(`MockUSDC`, `CollateralVault`). Mint, then approve + deposit into the vault:
+
+```bash
+USDC=0xF9bd3AD70bA831b92e9F07D08121c6A750B3612a   # MockUSDC (base-sepolia.json)
+VAULT=0x3A3939E1C5De10D41942a85D4A14ac8160779bF4  # CollateralVault
+RPC=https://sepolia.base.org
+
+# 1,000 test USDC (6 decimals) to yourself
+cast send $USDC "mint(address,uint256)" <YOUR_ADDR> 1000000000 --rpc-url $RPC --private-key <KEY>
+# approve + deposit into the vault
+cast send $USDC "approve(address,uint256)" $VAULT 1000000000 --rpc-url $RPC --private-key <KEY>
+cast send $VAULT "deposit(uint256)" 1000000000 --rpc-url $RPC --private-key <KEY>
+```
+
+Then attribute the deposit to your API account (below). The UI exposes the same
+via the **"Get test USDC"** button.
+
 ## Real USDC deposits (on-chain → engine)
 
 A real deposit is funded on Base Sepolia and then attributed to your account:
