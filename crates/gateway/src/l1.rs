@@ -431,11 +431,7 @@ impl L1 {
         let bid = batch_id.to_string();
         let proof_arg = format!(
             "[{}]",
-            proof
-                .iter()
-                .map(|p| hex0x32(p))
-                .collect::<Vec<_>>()
-                .join(",")
+            proof.iter().map(hex0x32).collect::<Vec<_>>().join(",")
         );
         self.send(
             &self.settlement.clone(),

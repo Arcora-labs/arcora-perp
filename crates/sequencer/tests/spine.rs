@@ -695,7 +695,7 @@ fn reduce_only_order_cannot_open_a_position() {
     assert!(
         s.state
             .position(&owner_id(2), 0)
-            .map_or(true, |p| p.size == 0),
+            .is_none_or(|p| p.size == 0),
         "a reduce_only order must not open a position",
     );
     // the reduce_only order is rejected as a reduce_only violation…
@@ -749,7 +749,7 @@ fn reduce_only_order_may_shrink_a_position() {
     assert!(
         s.state
             .position(&owner_id(2), 0)
-            .map_or(true, |p| p.size == 0),
+            .is_none_or(|p| p.size == 0),
         "the long is closed by the reduce_only sell",
     );
 }

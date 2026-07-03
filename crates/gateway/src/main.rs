@@ -421,6 +421,11 @@ struct WEvent {
     kind: String,
     message: String,
 }
+// A transient WS frame: constructed, serialized to a string, and dropped immediately
+// (never stored in a collection). Boxing the large `State` variant would just add a
+// heap allocation on the every-tick hot path for no memory benefit, so the size
+// difference is deliberately allowed here.
+#[allow(clippy::large_enum_variant)]
 #[derive(Serialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
 enum WsMsg {
@@ -2321,7 +2326,7 @@ impl Gw {
                 }
             })
             .collect();
-        batches.sort_by(|a, b| b.batch_id.cmp(&a.batch_id));
+        batches.sort_by_key(|b| std::cmp::Reverse(b.batch_id));
 
         // the market-maker's per-market net inventory + delta-neutral hedge target
         // (audit Q5) — only markets where the MM actually carries exposure.
@@ -4262,7 +4267,7 @@ mod tests {
         // ≈ $25,000 across the 5 markets + a $2,000,000 market-0 LP allowance.
         let free = gw.free_balance();
         assert!(
-            free >= 2_020_000 * QUOTE_SCALE && free <= 2_030_000 * QUOTE_SCALE,
+            (2_020_000 * QUOTE_SCALE..=2_030_000 * QUOTE_SCALE).contains(&free),
             "free={free}"
         );
         assert_eq!(gw.snapshot().markets.len(), 5);
