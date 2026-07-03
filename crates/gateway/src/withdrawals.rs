@@ -16,7 +16,7 @@ use sha3::{Digest, Keccak256};
 /// One authorized withdrawal: `amount` USDC base units released to the 20-byte
 /// address `to` on L1, unique by `nonce`. `owner` is the off-chain engine account it
 /// belongs to (NOT part of the leaf) — used only to filter `/v1/accounts/withdrawals`.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Withdrawal {
     pub owner: [u8; 32],
     pub to: [u8; 20],

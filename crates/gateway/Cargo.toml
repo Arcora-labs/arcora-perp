@@ -9,14 +9,14 @@ name = "gateway"
 path = "src/main.rs"
 
 [dependencies]
-perp-core = { path = "../perp-core" }
+perp-core = { path = "../perp-core", features = ["serde"] }
 sequencer = { path = "../sequencer" }
-note-archive = { path = "../note-archive", features = ["std"] }
+note-archive = { path = "../note-archive", features = ["std", "serde"] }
 dark-perp-attestation = { path = "../attestation" }
 oracle-feed = { path = "../oracle-feed", features = ["http"] }
 
 axum = { version = "0.7", features = ["ws"] }
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "signal"] }
 tower-http = { version = "0.5", features = ["cors"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -29,6 +29,9 @@ k256 = { version = "0.13", features = ["ecdsa"] }
 # never appears in a `cast` argv (it is fed via --keystore + --password-file instead).
 eth-keystore = "0.5"
 rand = "0.8"
+# compact binary encoding for the sealed state snapshot (persistence across
+# restarts) — the same codec the prover witness already round-trips.
+postcard = { version = "1", features = ["alloc", "use-std"] }
 
 [dev-dependencies]
 # router-level tests drive `build_router` via `ServiceExt::oneshot` (audit DP-010).

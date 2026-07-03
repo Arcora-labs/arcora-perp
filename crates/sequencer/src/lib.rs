@@ -107,7 +107,7 @@ impl SignedReceipt {
 }
 
 /// Inclusion-tracking record for one issued receipt (§2).
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 struct InclusionRecord {
     /// The authoritative sequencer-assigned receipt sequence number. Owned by the
     /// sequencer (not the matcher) so an order has exactly ONE seq across an
@@ -217,10 +217,20 @@ fn settlement_reason(e: &EngineError) -> RejectReason {
     }
 }
 
+/// serde default for the skipped `enclave` field: a placeholder identity a
+/// restore MUST overwrite via [`Sequencer::set_enclave`] before serving. The
+/// snapshot deliberately never carries the enclave signing secret — it is
+/// rebuilt from `ENCLAVE_SEED` at boot (and may legitimately rotate).
+fn enclave_restore_placeholder() -> EnclaveIdentity {
+    EnclaveIdentity::from_seed([7u8; 32], 0, [0u8; 32])
+}
+
 /// The sequencer / matcher node.
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct Sequencer {
     pub state: DefaultState,
     matcher: MatchingEngine<Keccak256>,
+    #[serde(skip, default = "enclave_restore_placeholder")]
     enclave: EnclaveIdentity,
     oracles: BTreeMap<MarketId, OracleTranscript>,
     next_batch_id: u64,
@@ -262,6 +272,15 @@ impl Sequencer {
             liq_tag_keys: BTreeMap::new(),
             adl_tag_keys: BTreeMap::new(),
         }
+    }
+
+    /// Rebind the enclave identity after a snapshot restore. The snapshot skips
+    /// the enclave (its signing secret must never persist to disk and may
+    /// legitimately rotate), so a deserialized `Sequencer` signs with a public
+    /// placeholder until this is called — callers MUST invoke it with the real
+    /// identity before serving traffic.
+    pub fn set_enclave(&mut self, enclave: EnclaveIdentity) {
+        self.enclave = enclave;
     }
 
     /// Register a market in both settlement state and the matcher.

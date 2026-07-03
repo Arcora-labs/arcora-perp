@@ -41,7 +41,7 @@ pub struct L1 {
 }
 
 /// What the bridge last published — surfaced to the UI so on-chain settlement is visible.
-#[derive(Clone, Default)]
+#[derive(Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct L1Status {
     pub settled_root: String,
     pub batch_count: u64,

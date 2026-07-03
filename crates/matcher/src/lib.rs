@@ -33,6 +33,8 @@ use perp_core::order::{Order, RejectReason};
 /// A multi-market matching engine. Assigns a monotonic sequence number to every
 /// accepted order (the §2 receipt `seq_no`) and routes it to the right book.
 #[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = ""))]
 pub struct MatchingEngine<H: Hasher = Keccak256> {
     books: BTreeMap<MarketId, OrderBook<H>>,
     next_seq: u64,

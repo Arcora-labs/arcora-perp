@@ -11,8 +11,12 @@ repository.workspace = true
 workspace = true
 
 [dependencies]
-perp-core = { path = "../perp-core" }
-matcher = { path = "../matcher" }
+perp-core = { path = "../perp-core", features = ["serde"] }
+matcher = { path = "../matcher", features = ["serde"] }
+# (De)Serialize on the sequencer spine so the gateway can persist the full
+# engine state in the sealed snapshot. The enclave identity is deliberately
+# NOT serialized (rebuilt from ENCLAVE_SEED at restore).
+serde = { version = "1", features = ["derive"] }
 # secp256k1 recoverable signatures so a receipt verifies BOTH off-chain and on
 # L1 via ecrecover (§2 inclusion-slashing path). See ADR-0009.
 k256 = { version = "0.13", features = ["ecdsa"] }

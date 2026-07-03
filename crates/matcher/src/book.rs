@@ -62,6 +62,7 @@ pub struct SubmitOutcome {
 
 /// A resting order on the book.
 #[derive(Clone, Copy, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 struct Resting {
     order_hash: Digest,
     owner: PubKey,
@@ -90,6 +91,8 @@ fn resting_expired(r: &Resting, now_ms: u64) -> bool {
 
 /// One market's order book.
 #[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = ""))]
 pub struct OrderBook<H: perp_core::hash::Hasher> {
     market_id: MarketId,
     /// price → FIFO queue (by seq). Bids and asks both keyed by raw price.

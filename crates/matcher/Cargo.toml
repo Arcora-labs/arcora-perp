@@ -13,6 +13,10 @@ workspace = true
 [features]
 default = ["std"]
 std = ["perp-core/std"]
+# (De)Serialize on the book state so the gateway can persist it in the sealed
+# state snapshot. Purely additive; default off (mirrors perp-core's gate).
+serde = ["dep:serde", "perp-core/serde"]
 
 [dependencies]
 perp-core = { path = "../perp-core", default-features = false }
+serde = { version = "1", optional = true, default-features = false, features = ["derive", "alloc"] }

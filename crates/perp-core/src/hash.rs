@@ -120,6 +120,16 @@ pub enum Domain {
     /// tag so an owner id can never share a preimage structure with a nullifier
     /// (`Nullifier`) or the seed key-derivation (`KeyDerivation`).
     OwnerKey = 21,
+    /// Gateway state-snapshot seal keystream (persistence across restarts). A
+    /// dedicated tag so the snapshot pad can never share a preimage structure
+    /// with the witness seal stream (`WitnessSeal`) or any other hash purpose —
+    /// one-domain-one-purpose. Appended last so existing committed hashes are
+    /// unchanged. Not a cross-layer-committed value.
+    SnapshotSeal = 22,
+    /// Gateway state-snapshot seal MAC (encrypt-then-MAC over the snapshot
+    /// ciphertext). Distinct from the keystream tag and from `WitnessSealMac` —
+    /// one-domain-one-purpose. Not a cross-layer-committed value.
+    SnapshotSealMac = 23,
 }
 
 /// The default Phase 0 hasher: Keccak-256 with a 1-byte domain prefix.
@@ -201,6 +211,8 @@ mod tests {
             Liquidation,
             Adl,
             OwnerKey,
+            SnapshotSeal,
+            SnapshotSealMac,
         ];
         let w = [word_u64(42)];
         for i in 0..all.len() {

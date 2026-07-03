@@ -37,6 +37,7 @@ use perp_core::state::Mode;
 use sequencer::{adl_tag, adl_tag_key, EnclaveIdentity, SealedBatch, Sequencer};
 
 mod l1;
+mod snapshot;
 mod withdrawals;
 use l1::{L1Status, L1};
 use withdrawals::{inclusion_leaf, merkle_proof, merkle_root, rejection_leaf, Withdrawal};
@@ -67,6 +68,7 @@ const INSURANCE_SEED_USD: i128 = 25_000; // visible starting backstop; grows wit
 const L1_SETTLE_SECS: u64 = 30; // how often the L1 bridge advances the on-chain root
 const V1_ORDER_RATE: u32 = 10; // max orders/sec per external account
 const V1_REGISTER_RATE: u32 = 30; // max account registrations/min per IP
+const SNAPSHOT_SECS: u64 = 30; // sealed state-snapshot cadence (DARKPERP_STATE)
 
 struct MarketCfg {
     id: u64,
@@ -342,7 +344,7 @@ struct WAttestation {
     tcb: String,
     quote_version: u16,
 }
-#[derive(Serialize, Clone)]
+#[derive(Serialize, serde::Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 struct WOrderInput {
     market_id: u64,
@@ -352,7 +354,7 @@ struct WOrderInput {
     tif: String,
     reduce_only: bool,
 }
-#[derive(Serialize, Clone)]
+#[derive(Serialize, serde::Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 struct WReceipt {
     order_hash: String,
@@ -480,6 +482,7 @@ struct Mkt {
     /// Crypto.com instrument for a live feed (`None` ⇒ sim walk only).
     feed: Option<&'static str>,
 }
+#[derive(Serialize, serde::Deserialize)]
 struct GwOrder {
     id: String,
     order: Order,
@@ -498,6 +501,7 @@ struct GwOrder {
 /// the gateway custodies the account's wallet (the real version moves spend keys
 /// into the enclave); the API key authenticates the caller and the server acts for
 /// them — the CEX-style API shape market-makers/bots expect.
+#[derive(Serialize, serde::Deserialize)]
 struct Account {
     wallet: Wallet,
     orders: Vec<GwOrder>,
@@ -519,11 +523,16 @@ struct Account {
     last_signed_nonce: u64,
 }
 
+#[derive(Serialize, serde::Deserialize)]
 struct Gw {
     seq: Sequencer,
     archive: NoteArchive,
     user: Wallet,
     mm: Wallet,
+    /// Static market config (symbols/feeds are `&'static str`) — NOT persisted;
+    /// `boot_restored` rebuilds it from `MARKETS` and overlays the persisted
+    /// per-market dynamics (`reference_price`, `px`, `live`).
+    #[serde(skip)]
     mkts: Vec<Mkt>,
     selected: u64,
     orders: Vec<GwOrder>,
@@ -564,6 +573,8 @@ struct Gw {
     /// Last on-chain settlement the L1 bridge published (None until it settles once).
     l1_status: Option<L1Status>,
     /// The verified TEE attestation the enclave identity is bound to (None = stub).
+    /// NOT persisted — every boot re-verifies the live quote (`attest_from_env`).
+    #[serde(skip)]
     attestation: Option<Attested>,
     /// LP pool shares per depositor (keyed by the demo user's owner or an account's
     /// API key). The MM wallet IS the pool; LPs deposit USDC → mint shares of its
@@ -577,7 +588,8 @@ struct Gw {
     /// Real-collateral / production posture. When true, self-service (unbacked)
     /// deposits are refused — collateral may only enter via a verified on-chain
     /// deposit (audit DP-001). Set from `production_mode()` in `main`; `false` in
-    /// the demo/test build.
+    /// the demo/test build. NOT persisted — recomputed from the environment.
+    #[serde(skip)]
     prod: bool,
 }
 
@@ -750,6 +762,66 @@ impl Gw {
         // initial NAV per share is 1.0 and LP deposits price in proportionally.
         gw.lp_total_shares = gw.pool_equity().max(0) as u128;
         gw
+    }
+
+    // ── sealed state snapshot (persistence across restarts) ─────────────────
+    /// Serialize the persistable state: the `Gw` itself (serde skips the
+    /// runtime-only fields) plus the per-market dynamics of the static market
+    /// table (`(id, reference_price, px, live)` — symbols/feeds are `&'static`
+    /// config rebuilt at restore).
+    fn snapshot_plain(&self) -> Vec<u8> {
+        let mkt_px: Vec<(u64, i128, i128, bool)> = self
+            .mkts
+            .iter()
+            .map(|m| (m.id, m.reference_price, m.px, m.live))
+            .collect();
+        postcard::to_allocvec(&(self, mkt_px)).expect("snapshot encode")
+    }
+
+    /// Restore from snapshot plaintext, rebuilding the runtime-only parts exactly
+    /// as `boot()` does: the live attestation, the enclave identity (from
+    /// `ENCLAVE_SEED` — the snapshot never carries the signing secret), and the
+    /// static market table with the persisted dynamics overlaid.
+    fn boot_restored(plain: &[u8]) -> Result<Self, String> {
+        let (mut gw, mkt_px): (Gw, Vec<(u64, i128, i128, bool)>) =
+            postcard::from_bytes(plain).map_err(|e| format!("snapshot decode: {e}"))?;
+
+        let attestation = attest_from_env();
+        let measurement = attestation
+            .as_ref()
+            .map(|a| a.measurement)
+            .unwrap_or([0xABu8; 32]);
+        if let Some(a) = &attestation {
+            println!(
+                "[attest] enclave bound to verified measurement {} (TCB {})",
+                hex0x(&a.measurement),
+                a.tcb
+            );
+        }
+        let (enclave_seed, _) = enclave_seed_from_env().unwrap_or((DEMO_ENCLAVE_SEED, true));
+        gw.seq
+            .set_enclave(EnclaveIdentity::from_seed(enclave_seed, 1, measurement));
+        gw.attestation = attestation;
+
+        gw.mkts = MARKETS
+            .iter()
+            .map(|cfg| Mkt {
+                id: cfg.id,
+                symbol: cfg.symbol,
+                reference_price: usd(cfg.seed),
+                px: usd(cfg.seed),
+                live: false,
+                feed: cfg.feed,
+            })
+            .collect();
+        for (id, reference_price, px, live) in mkt_px {
+            if let Some(m) = gw.mkts.iter_mut().find(|m| m.id == id) {
+                m.reference_price = reference_price;
+                m.px = px;
+                m.live = live;
+            }
+        }
+        Ok(gw)
     }
 
     // ── multi-tenant `/v1` account operations ────────────────────────────────
@@ -3430,7 +3502,7 @@ async fn main() {
     // audit DP-006 (+ review): resolve + validate the enclave seed BEFORE building the identity
     // in boot(), so a malformed/invalid ENCLAVE_SEED fails closed with a CLEAR message (not a
     // misleading "demo seed" one, and not a panic inside EnclaveIdentity::from_seed).
-    let (_enclave_seed, seed_is_default) = match enclave_seed_from_env() {
+    let (enclave_seed, seed_is_default) = match enclave_seed_from_env() {
         Ok(x) => x,
         Err(e) => {
             eprintln!(
@@ -3448,7 +3520,36 @@ async fn main() {
         );
         std::process::exit(1);
     }
-    let mut gw = Gw::boot();
+    // Sealed state persistence: DARKPERP_STATE=<path> restores the engine across
+    // restarts. A present-but-unopenable snapshot is fail-closed (never silently
+    // wipe balances) — the operator deletes the file to consciously boot fresh.
+    let state_path = std::env::var("DARKPERP_STATE")
+        .ok()
+        .map(std::path::PathBuf::from);
+    let mut gw = match &state_path {
+        Some(p) if p.exists() => {
+            let restored = std::fs::read(p)
+                .map_err(|e| e.to_string())
+                .and_then(|sealed| snapshot::open(&sealed, &enclave_seed))
+                .and_then(|plain| Gw::boot_restored(&plain));
+            match restored {
+                Ok(gw) => {
+                    println!("[state] restored sealed snapshot from {}", p.display());
+                    gw
+                }
+                Err(e) => {
+                    eprintln!(
+                        "[state] REFUSING to start: DARKPERP_STATE={} exists but cannot be \
+                         restored ({e}). Restore the correct ENCLAVE_SEED/snapshot, or delete \
+                         the file to consciously boot fresh.",
+                        p.display()
+                    );
+                    std::process::exit(1);
+                }
+            }
+        }
+        _ => Gw::boot(),
+    };
     gw.prod = prod;
     // audit DP-006: in production the enclave identity must be bound to a verified TEE
     // attestation; refuse to serve traffic under the stub measurement.
@@ -3474,6 +3575,40 @@ async fn main() {
         );
         std::process::exit(1);
     }
+    // Restored-state ↔ L1 continuity: the snapshot's last settled root must equal
+    // the on-chain currentStateRoot, or this snapshot is stale / from a different
+    // deployment — settling from it would fork the withdrawal roots users hold.
+    // Fail closed; the operator resolves (right snapshot, right chain, or fresh).
+    if let (Some(l1c), Some(st)) = (&l1, gw.l1_status.as_ref()) {
+        let chain_root = {
+            let l1c = l1c.clone();
+            tokio::task::spawn_blocking(move || l1c.current_root())
+                .await
+                .unwrap_or_else(|e| Err(e.to_string()))
+        };
+        match chain_root {
+            Ok(r) if r.eq_ignore_ascii_case(&st.settled_root) => {
+                println!("[state] on-chain continuity OK (currentStateRoot {r})");
+            }
+            Ok(r) => {
+                eprintln!(
+                    "[state] REFUSING to start: restored snapshot last settled {} but the \
+                     chain's currentStateRoot is {r} — the snapshot is stale or from a \
+                     different deployment. Restore the latest snapshot or delete \
+                     DARKPERP_STATE to consciously boot fresh.",
+                    st.settled_root
+                );
+                std::process::exit(1);
+            }
+            Err(e) => {
+                eprintln!(
+                    "[state] REFUSING to start: cannot verify on-chain continuity of the \
+                     restored snapshot ({e})."
+                );
+                std::process::exit(1);
+            }
+        }
+    }
     let app = Arc::new(App {
         gw: Mutex::new(gw),
         tx: tx.clone(),
@@ -3481,6 +3616,68 @@ async fn main() {
         reg_limit: Mutex::new(HashMap::new()),
         l1: l1.clone(),
     });
+
+    // Periodic sealed-snapshot writer + graceful-shutdown save (SIGTERM/ctrl-c).
+    if let Some(path) = state_path.clone() {
+        let write = {
+            let app = app.clone();
+            let path = path.clone();
+            move || {
+                let app = app.clone();
+                let path = path.clone();
+                async move {
+                    let plain = { app.gw.lock().await.snapshot_plain() };
+                    let sealed = snapshot::seal(&plain, &enclave_seed);
+                    match snapshot::write_atomic(&path, &sealed) {
+                        Ok(()) => true,
+                        Err(e) => {
+                            eprintln!("[state] snapshot write failed: {e}");
+                            false
+                        }
+                    }
+                }
+            }
+        };
+        {
+            let write = write.clone();
+            tokio::spawn(async move {
+                let mut iv = tokio::time::interval(Duration::from_secs(SNAPSHOT_SECS));
+                iv.tick().await; // skip the immediate first tick
+                loop {
+                    iv.tick().await;
+                    write().await;
+                }
+            });
+        }
+        {
+            let write = write.clone();
+            tokio::spawn(async move {
+                let term = async {
+                    #[cfg(unix)]
+                    {
+                        let mut sig = tokio::signal::unix::signal(
+                            tokio::signal::unix::SignalKind::terminate(),
+                        )
+                        .expect("SIGTERM handler");
+                        sig.recv().await;
+                    }
+                    #[cfg(not(unix))]
+                    std::future::pending::<()>().await;
+                };
+                tokio::select! {
+                    _ = tokio::signal::ctrl_c() => {}
+                    _ = term => {}
+                }
+                let ok = write().await;
+                println!(
+                    "[state] shutdown snapshot {} — exiting",
+                    if ok { "saved" } else { "FAILED" }
+                );
+                std::process::exit(if ok { 0 } else { 1 });
+            });
+        }
+        println!("[state] sealed persistence ON → {}", path.display());
+    }
 
     // background tick loop
     {
@@ -3783,6 +3980,73 @@ mod tests {
             reg_limit: Mutex::new(HashMap::new()),
             l1: None,
         })
+    }
+
+    // ── sealed state persistence ─────────────────────────────────────────────
+
+    /// The full restart round trip: mutate state (register, deposit, rest a
+    /// maker order) → snapshot → seal → open → restore → the engine state is
+    /// identical (state root, accounts, orders, LP pool, market dynamics), with
+    /// the enclave identity rebuilt from the environment, never from disk.
+    #[test]
+    fn snapshot_restart_round_trip_preserves_state() {
+        let seed = [42u8; 32];
+        let mut gw = Gw::boot();
+        let (key, _owner) = gw.register_account(None);
+        gw.account_deposit(&key, 0, 20_000 * QUOTE_SCALE).unwrap();
+        // a far-from-market Gtc bid RESTS in the matcher book, so the round trip
+        // must also carry the book (not just settled state)
+        let receipt = gw
+            .account_place_order(
+                &key,
+                &OrderReq {
+                    market_id: 0,
+                    side: "Buy".into(),
+                    size: "1".into(),
+                    limit_price: "1".into(),
+                    tif: "Gtc".into(),
+                    reduce_only: false,
+                    nonce: None,
+                    signature: None,
+                },
+            )
+            .unwrap();
+        gw.mkts[0].px += 1234; // market dynamics must survive too
+        let root_before = gw.state_root_hex();
+        let px_before = gw.mkts[0].px;
+
+        let sealed = snapshot::seal(&gw.snapshot_plain(), &seed);
+        let plain = snapshot::open(&sealed, &seed).expect("authentic snapshot opens");
+        let restored = Gw::boot_restored(&plain).expect("restore");
+
+        assert_eq!(
+            restored.state_root_hex(),
+            root_before,
+            "state root survives"
+        );
+        assert_eq!(restored.accounts.len(), gw.accounts.len());
+        let acct = restored.accounts.get(&key).expect("account survives");
+        assert_eq!(acct.orders.len(), 1, "order history survives");
+        assert_eq!(
+            acct.orders[0].receipt.order_hash, receipt.order_hash,
+            "signed receipt survives"
+        );
+        assert_eq!(restored.lp_total_shares, gw.lp_total_shares);
+        assert_eq!(restored.next_withdraw_nonce, gw.next_withdraw_nonce);
+        assert_eq!(restored.mkts[0].px, px_before, "market px overlay survives");
+        assert_eq!(
+            restored.mkts[0].symbol, gw.mkts[0].symbol,
+            "static market config rebuilt"
+        );
+    }
+
+    /// A snapshot sealed under one enclave seed must not open under another —
+    /// the restore path is fail-closed on the wrong secret (no silent fresh boot).
+    #[test]
+    fn snapshot_wrong_enclave_seed_fails_closed() {
+        let gw = Gw::boot();
+        let sealed = snapshot::seal(&gw.snapshot_plain(), &[42u8; 32]);
+        assert!(snapshot::open(&sealed, &[43u8; 32]).is_err());
     }
 
     // audit DP-001: in the production posture, the self-service (unbacked) deposit

@@ -45,6 +45,7 @@ const LABEL_SPEND: u64 = 3;
 
 /// A wallet derived deterministically from a single seed (§7 recovery root).
 #[derive(Clone, Copy, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Wallet {
     pub owner: PubKey,
     pub view_key: Digest,
@@ -138,6 +139,7 @@ pub fn encrypt_note(note: &Note, view_key: &Digest) -> Vec<u8> {
 /// One archived record: the public commitment (the archive key) and the
 /// ciphertext. `batch_id` lets a scanner reconstruct ordering / retention (§7).
 #[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ArchivedNote {
     pub batch_id: u64,
     pub commitment: Digest,
@@ -146,6 +148,7 @@ pub struct ArchivedNote {
 
 /// The public encrypted-note archive / indexer (§7).
 #[derive(Clone, Debug, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct NoteArchive {
     records: Vec<ArchivedNote>,
 }
