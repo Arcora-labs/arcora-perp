@@ -288,7 +288,15 @@ impl L1 {
         self.send(
             &self.settlement.clone(),
             "settleBatch(bytes32,bytes32,bytes32,bytes32,bytes32,bytes32,bytes)",
-            &[prev, manifest, new, ordered, withdrawals, rejected, &commitment],
+            &[
+                prev,
+                manifest,
+                new,
+                ordered,
+                withdrawals,
+                rejected,
+                &commitment,
+            ],
         )
     }
 
@@ -374,9 +382,17 @@ impl L1 {
         let bid = batch_id.to_string();
         let proof_arg = format!(
             "[{}]",
-            proof.iter().map(|p| hex0x32(p)).collect::<Vec<_>>().join(",")
+            proof
+                .iter()
+                .map(|p| hex0x32(p))
+                .collect::<Vec<_>>()
+                .join(",")
         );
-        self.send(&self.settlement.clone(), sig, &[order_hash, &bid, &proof_arg])
+        self.send(
+            &self.settlement.clone(),
+            sig,
+            &[order_hash, &bid, &proof_arg],
+        )
     }
 }
 
@@ -524,8 +540,11 @@ fn create_keystore(key_hex: &str) -> Result<(String, String, std::path::PathBuf)
         use std::os::unix::fs::OpenOptionsExt as _;
         opts.mode(0o600);
     }
-    let mut f = opts.open(&pw_path).map_err(|e| format!("password file: {e}"))?;
-    f.write_all(password.as_bytes()).map_err(|e| format!("password write: {e}"))?;
+    let mut f = opts
+        .open(&pw_path)
+        .map_err(|e| format!("password file: {e}"))?;
+    f.write_all(password.as_bytes())
+        .map_err(|e| format!("password write: {e}"))?;
 
     // The keystore file lives inside the 0700 dir (already unreadable by other users);
     // tighten it to 0600 as defense in depth.
@@ -610,10 +629,22 @@ mod tests {
     // actually serves — declaring a testnet while pointing the RPC at mainnet is the bypass.
     #[test]
     fn bridge_cross_checks_declared_chain_against_the_rpc() {
-        assert!(l1_chain_ok(84532, 84532, false), "declared == RPC testnet is allowed");
-        assert!(!l1_chain_ok(84532, 8453, false), "declared testnet but RPC is Base mainnet is refused");
-        assert!(!l1_chain_ok(8453, 8453, false), "a matched mainnet is still refused");
-        assert!(!l1_chain_ok(84532, 0, false), "an unresolved RPC chain fails closed");
+        assert!(
+            l1_chain_ok(84532, 84532, false),
+            "declared == RPC testnet is allowed"
+        );
+        assert!(
+            !l1_chain_ok(84532, 8453, false),
+            "declared testnet but RPC is Base mainnet is refused"
+        );
+        assert!(
+            !l1_chain_ok(8453, 8453, false),
+            "a matched mainnet is still refused"
+        );
+        assert!(
+            !l1_chain_ok(84532, 0, false),
+            "an unresolved RPC chain fails closed"
+        );
         assert!(l1_chain_ok(8453, 8453, true), "override allows any chain");
     }
 
@@ -630,7 +661,11 @@ mod tests {
         for (i, s) in expected.iter_mut().enumerate() {
             *s = u8::from_str_radix(&key[i * 2..i * 2 + 2], 16).unwrap();
         }
-        assert_eq!(decrypted.as_slice(), &expected[..], "keystore round-trips the sequencer key");
+        assert_eq!(
+            decrypted.as_slice(),
+            &expected[..],
+            "keystore round-trips the sequencer key"
+        );
         let _ = std::fs::remove_dir_all(std::path::Path::new(&ks).parent().unwrap());
     }
 }

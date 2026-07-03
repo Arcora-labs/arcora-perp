@@ -512,7 +512,10 @@ impl Sequencer {
         let mut owners_with_order: BTreeSet<(PubKey, MarketId)> = BTreeSet::new();
         for o in orders {
             if o.reduce_only && owners_with_order.contains(&(o.owner, o.market_id)) {
-                pre_rejected.push((o.order_hash::<Keccak256>(), RejectReason::ReduceOnlyViolation));
+                pre_rejected.push((
+                    o.order_hash::<Keccak256>(),
+                    RejectReason::ReduceOnlyViolation,
+                ));
                 continue;
             }
             match self.pre_trade_check(o, now_ms) {
@@ -556,17 +559,25 @@ impl Sequencer {
             // is trusted in Phase 0; op_fill's margin checks still guard fund safety.)
             // The pre-trade gate already rejects a reduce_only order that would open against
             // the pre-batch position; this is the live backstop for an intra-batch change.
-            let taker_delta = if m.taker_side == Side::Buy { m.size } else { -m.size };
-            let taker_opens = m.taker_reduce_only && self.exposure_increases(&m.taker, m.market_id, taker_delta);
-            let maker_opens = m.maker_reduce_only && self.exposure_increases(&m.maker, m.market_id, -taker_delta);
+            let taker_delta = if m.taker_side == Side::Buy {
+                m.size
+            } else {
+                -m.size
+            };
+            let taker_opens =
+                m.taker_reduce_only && self.exposure_increases(&m.taker, m.market_id, taker_delta);
+            let maker_opens =
+                m.maker_reduce_only && self.exposure_increases(&m.maker, m.market_id, -taker_delta);
             if taker_opens || maker_opens {
                 // attribute the violation ONLY to the offending reduce_only order(s), never
                 // to an innocent counterparty (adversarial-review follow-up).
                 if taker_opens {
-                    settlement_rejected.push((m.taker_order_hash, RejectReason::ReduceOnlyViolation));
+                    settlement_rejected
+                        .push((m.taker_order_hash, RejectReason::ReduceOnlyViolation));
                 }
                 if maker_opens {
-                    settlement_rejected.push((m.maker_order_hash, RejectReason::ReduceOnlyViolation));
+                    settlement_rejected
+                        .push((m.maker_order_hash, RejectReason::ReduceOnlyViolation));
                 }
                 continue;
             }
@@ -822,7 +833,10 @@ mod tests {
     #[test]
     fn book_mid_is_overflow_safe_at_extreme_prices() {
         let m = book_mid(i128::MAX, i128::MAX);
-        assert!(m > i128::MAX / 2, "an extreme two-sided book yields a large but finite mid");
+        assert!(
+            m > i128::MAX / 2,
+            "an extreme two-sided book yields a large but finite mid"
+        );
         // …and it stays a correct midpoint for normal prices
         assert_eq!(book_mid(100, 200), 150);
         assert_eq!(book_mid(-100, 100), 0);

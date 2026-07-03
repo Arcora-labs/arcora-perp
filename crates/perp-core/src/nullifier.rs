@@ -103,7 +103,11 @@ mod tests {
         // a double-spend does not advance the chain (rejected insert leaves the digest unchanged)
         let before = a.digest::<Keccak256>();
         assert!(!a.insert::<Keccak256>([1u8; 32]));
-        assert_eq!(a.digest::<Keccak256>(), before, "a rejected insert must not move the chain");
+        assert_eq!(
+            a.digest::<Keccak256>(),
+            before,
+            "a rejected insert must not move the chain"
+        );
 
         // contents are still bound: adding a new member changes the digest (DP-002 preserved)
         assert!(a.insert::<Keccak256>([3u8; 32]));

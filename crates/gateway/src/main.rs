@@ -1337,13 +1337,17 @@ impl Gw {
     fn build_challenge_answer(&self, order_hash: &Digest) -> Option<(bool, u64, Vec<[u8; 32]>)> {
         for (&batch_id, (ordered, rejected)) in &self.batch_orders {
             if let Some(i) = ordered.iter().position(|h| h == order_hash) {
-                let leaves: Vec<[u8; 32]> =
-                    ordered.iter().map(|h| inclusion_leaf(batch_id, h)).collect();
+                let leaves: Vec<[u8; 32]> = ordered
+                    .iter()
+                    .map(|h| inclusion_leaf(batch_id, h))
+                    .collect();
                 return Some((false, batch_id, merkle_proof(&leaves, i)));
             }
             if let Some(i) = rejected.iter().position(|h| h == order_hash) {
-                let leaves: Vec<[u8; 32]> =
-                    rejected.iter().map(|h| rejection_leaf(batch_id, h)).collect();
+                let leaves: Vec<[u8; 32]> = rejected
+                    .iter()
+                    .map(|h| rejection_leaf(batch_id, h))
+                    .collect();
                 return Some((true, batch_id, merkle_proof(&leaves, i)));
             }
         }
@@ -1499,11 +1503,21 @@ impl Gw {
         let mut db = [0xE0u8; 32];
         db[..8].copy_from_slice(&c.to_le_bytes());
         self.seq
-            .apply(&BatchOp::Unbind { owner: from.owner, market_id: 0, amount: value, blinding: db, oracle, now_ms: now })
+            .apply(&BatchOp::Unbind {
+                owner: from.owner,
+                market_id: 0,
+                amount: value,
+                blinding: db,
+                oracle,
+                now_ms: now,
+            })
             .map_err(|e| format!("lp debit unbind: {e:?}"))?;
         let dn = Note::new(from.owner, 0, value, db);
         self.seq
-            .apply(&BatchOp::Withdraw { note_commitment: dn.commitment::<Keccak256>(), spend_key: from.spend_key })
+            .apply(&BatchOp::Withdraw {
+                note_commitment: dn.commitment::<Keccak256>(),
+                spend_key: from.spend_key,
+            })
             .map_err(|e| format!("lp debit burn: {e:?}"))?;
         let mut cb = [0xE1u8; 32];
         cb[..8].copy_from_slice(&c.to_le_bytes());
@@ -1514,12 +1528,19 @@ impl Gw {
     /// Deposit `amount` into the LP pool. The depositor's OWN market-0 balance is
     /// debited and bound as pool capital (no free mint — shares represent real
     /// provided capital), then shares are minted at the live NAV.
-    fn lp_deposit(&mut self, share_key: [u8; 32], depositor: &Wallet, amount: i128) -> Result<u128, String> {
+    fn lp_deposit(
+        &mut self,
+        share_key: [u8; 32],
+        depositor: &Wallet,
+        amount: i128,
+    ) -> Result<u128, String> {
         if amount <= 0 {
             return Err("Amount must be positive.".into());
         }
         if amount > self.market_free_of(&depositor.owner, 0) {
-            return Err("Insufficient market-0 balance — fund it before providing liquidity.".into());
+            return Err(
+                "Insufficient market-0 balance — fund it before providing liquidity.".into(),
+            );
         }
         let eq = self.pool_equity().max(1) as u128;
         let shares = if self.lp_total_shares == 0 {
@@ -1536,7 +1557,12 @@ impl Gw {
 
     /// Withdraw `shares` from the LP pool: pay out shares × NAV from the pool's
     /// market-0 capital straight into the withdrawer's OWN market-0 balance.
-    fn lp_withdraw(&mut self, share_key: &[u8; 32], withdrawer: &Wallet, shares: u128) -> Result<i128, String> {
+    fn lp_withdraw(
+        &mut self,
+        share_key: &[u8; 32],
+        withdrawer: &Wallet,
+        shares: u128,
+    ) -> Result<i128, String> {
         let have = self.lp_shares.get(share_key).copied().unwrap_or(0);
         if shares == 0 || shares > have {
             return Err("Insufficient LP shares.".into());
@@ -1981,7 +2007,8 @@ impl Gw {
         // audit DP-004: accumulate this batch's matched + validly-rejected order hashes; at the
         // next L1 settle they become this on-chain batch's ordered/rejected roots, so the
         // sequencer can answer an inclusion challenge for either instead of being wrongfully slashed.
-        self.pending_ordered.extend(sealed.manifest.ordered.iter().copied());
+        self.pending_ordered
+            .extend(sealed.manifest.ordered.iter().copied());
         self.pending_rejected
             .extend(sealed.manifest.rejected.iter().map(|(h, _)| *h));
         // recognize any auto-deleverage haircut that hit the user this batch (Q2)
@@ -2287,8 +2314,9 @@ impl Gw {
             lp: {
                 let eq = self.pool_equity();
                 let my_shares = self.lp_shares.get(&self.user.owner).copied().unwrap_or(0);
-                let my_value =
-                    (eq.max(0) as f64 * (my_shares as f64 / self.lp_total_shares.max(1) as f64)) as i128;
+                let my_value = (eq.max(0) as f64
+                    * (my_shares as f64 / self.lp_total_shares.max(1) as f64))
+                    as i128;
                 WLp {
                     tvl: eq.to_string(),
                     nav_per_share: format!("{:.6}", self.lp_nav()),
@@ -2735,7 +2763,9 @@ async fn post_v1_lp_deposit(
         }
     };
     match r {
-        Ok(shares) => Json(serde_json::json!({ "sharesMinted": shares.to_string() })).into_response(),
+        Ok(shares) => {
+            Json(serde_json::json!({ "sharesMinted": shares.to_string() })).into_response()
+        }
         Err(e) => err400(e).into_response(),
     }
 }
@@ -2761,7 +2791,9 @@ async fn post_v1_lp_withdraw(
         }
     };
     match r {
-        Ok(value) => Json(serde_json::json!({ "withdrawnValue": value.to_string() })).into_response(),
+        Ok(value) => {
+            Json(serde_json::json!({ "withdrawnValue": value.to_string() })).into_response()
+        }
         Err(e) => err400(e).into_response(),
     }
 }
@@ -3089,7 +3121,10 @@ async fn post_withdraw(State(app): State<Shared>, Json(req): Json<AmountReq>) ->
 }
 
 /// Demo-user LP deposit into the counterparty pool: mints shares of the pool equity.
-async fn post_lp_deposit(State(app): State<Shared>, Json(req): Json<AmountReq>) -> impl IntoResponse {
+async fn post_lp_deposit(
+    State(app): State<Shared>,
+    Json(req): Json<AmountReq>,
+) -> impl IntoResponse {
     let amount: i128 = match req.amount.parse() {
         Ok(v) => v,
         Err(_) => return err400("bad amount".into()).into_response(),
@@ -3115,7 +3150,10 @@ struct LpWithdrawReq {
     shares: String,
 }
 /// Demo-user LP withdraw: burns `shares` for their current value out of the pool.
-async fn post_lp_withdraw(State(app): State<Shared>, Json(req): Json<LpWithdrawReq>) -> impl IntoResponse {
+async fn post_lp_withdraw(
+    State(app): State<Shared>,
+    Json(req): Json<LpWithdrawReq>,
+) -> impl IntoResponse {
     let shares: u128 = match req.shares.parse() {
         Ok(v) => v,
         Err(_) => return err400("bad shares".into()).into_response(),
@@ -3280,8 +3318,8 @@ fn enclave_seed_from_env() -> Result<([u8; 32], bool), String> {
     match std::env::var("ENCLAVE_SEED") {
         Err(_) => Ok((DEMO_ENCLAVE_SEED, true)), // unset → the demo build's default
         Ok(s) => {
-            let seed = parse_hex32(&s)
-                .ok_or("ENCLAVE_SEED is set but is not a 32-byte hex value")?;
+            let seed =
+                parse_hex32(&s).ok_or("ENCLAVE_SEED is set but is not a 32-byte hex value")?;
             if !enclave_seed_is_valid(seed) {
                 return Err("ENCLAVE_SEED is not a valid secp256k1 scalar \
                             (must be nonzero and below the curve order)"
@@ -3424,8 +3462,9 @@ async fn main() {
     }
     // audit DP-006 follow-up: pin the expected measurement so a different or replayed valid
     // quote (e.g. the in-repo test fixture) cannot pass the mere presence check.
-    let expected_measurement =
-        std::env::var("ATTESTATION_EXPECTED_MEASUREMENT").ok().and_then(|s| parse_hex32(&s));
+    let expected_measurement = std::env::var("ATTESTATION_EXPECTED_MEASUREMENT")
+        .ok()
+        .and_then(|s| parse_hex32(&s));
     let attested_measurement = gw.attestation.as_ref().map(|a| a.measurement);
     if !measurement_matches_pin(prod, attested_measurement, expected_measurement) {
         eprintln!(
@@ -3475,7 +3514,10 @@ async fn main() {
         tokio::spawn(async move {
             let feeds: Vec<(u64, &'static str)> = {
                 let gw = app.gw.lock().await;
-                gw.mkts.iter().filter_map(|m| m.feed.map(|f| (m.id, f))).collect()
+                gw.mkts
+                    .iter()
+                    .filter_map(|m| m.feed.map(|f| (m.id, f)))
+                    .collect()
             };
             if feeds.is_empty() {
                 return;
@@ -3485,7 +3527,11 @@ async fn main() {
                 iv.tick().await;
                 for &(id, inst) in &feeds {
                     let now = now_ms();
-                    match tokio::task::spawn_blocking(move || oracle_feed::fetch_transcript(inst, now)).await {
+                    match tokio::task::spawn_blocking(move || {
+                        oracle_feed::fetch_transcript(inst, now)
+                    })
+                    .await
+                    {
                         Ok(Ok(t)) => {
                             app.gw.lock().await.apply_real_oracle(id, t);
                         }
@@ -3575,7 +3621,7 @@ async fn main() {
                 L1Status,
                 Vec<[u8; 32]>,
                 std::collections::BTreeMap<[u8; 32], Vec<[u8; 32]>>,
-                u64,          // on-chain batch id these ordered/rejected hashes were committed under
+                u64, // on-chain batch id these ordered/rejected hashes were committed under
                 Vec<[u8; 32]>, // ordered order hashes settled this batch (audit DP-004 retention)
                 Vec<[u8; 32]>, // rejected order hashes settled this batch
             );
@@ -3630,14 +3676,19 @@ async fn main() {
                         // rejected roots over THIS batch id, so a later `answerChallenge` /
                         // `answerByRejection` proof (built with the same id) verifies on-chain.
                         let batch_id = l1c.batch_count().unwrap_or(0);
-                        let ordered_leaves: Vec<[u8; 32]> =
-                            ordered_h.iter().map(|h| inclusion_leaf(batch_id, h)).collect();
-                        let rejected_leaves: Vec<[u8; 32]> =
-                            rejected_h.iter().map(|h| rejection_leaf(batch_id, h)).collect();
+                        let ordered_leaves: Vec<[u8; 32]> = ordered_h
+                            .iter()
+                            .map(|h| inclusion_leaf(batch_id, h))
+                            .collect();
+                        let rejected_leaves: Vec<[u8; 32]> = rejected_h
+                            .iter()
+                            .map(|h| rejection_leaf(batch_id, h))
+                            .collect();
                         let oroot_hex = hex32(&merkle_root(&ordered_leaves));
                         let rroot_hex = hex32(&merkle_root(&rejected_leaves));
-                        let tx =
-                            l1c.settle(&prev, &manifest, &new_root, &oroot_hex, &wroot_hex, &rroot_hex)?;
+                        let tx = l1c.settle(
+                            &prev, &manifest, &new_root, &oroot_hex, &wroot_hex, &rroot_hex,
+                        )?;
                         let mut proofs = std::collections::BTreeMap::new();
                         for (i, w) in surviving.iter().enumerate() {
                             proofs.insert(w.leaf(), merkle_proof(&leaves, i));
@@ -3821,9 +3872,15 @@ mod tests {
     #[test]
     fn production_requires_verified_attestation() {
         // demo/dev build boots with or without attestation
-        assert!(attestation_ok_for_mode(false, false), "demo build boots un-attested");
+        assert!(
+            attestation_ok_for_mode(false, false),
+            "demo build boots un-attested"
+        );
         // production boots only when attestation is present…
-        assert!(attestation_ok_for_mode(true, true), "production boots when attested");
+        assert!(
+            attestation_ok_for_mode(true, true),
+            "production boots when attested"
+        );
         // …and fails closed when it is missing/failed
         assert!(
             !attestation_ok_for_mode(true, false),
@@ -3841,18 +3898,30 @@ mod tests {
         gw.batch_orders.insert(7, (vec![o1, o2], vec![r1]));
 
         // an ORDERED order → inclusion answer whose proof verifies against the ordered root
-        let (is_rej, bid, proof) = gw.build_challenge_answer(&o1).expect("answer for ordered order");
+        let (is_rej, bid, proof) = gw
+            .build_challenge_answer(&o1)
+            .expect("answer for ordered order");
         assert!(!is_rej);
         assert_eq!(bid, 7);
         let ordered_leaves: Vec<_> = [o1, o2].iter().map(|h| inclusion_leaf(7, h)).collect();
-        assert!(withdrawals::verify(merkle_root(&ordered_leaves), inclusion_leaf(7, &o1), &proof));
+        assert!(withdrawals::verify(
+            merkle_root(&ordered_leaves),
+            inclusion_leaf(7, &o1),
+            &proof
+        ));
 
         // a REJECTED order → rejection answer whose proof verifies against the rejected root
-        let (is_rej, bid, proof) = gw.build_challenge_answer(&r1).expect("answer for rejected order");
+        let (is_rej, bid, proof) = gw
+            .build_challenge_answer(&r1)
+            .expect("answer for rejected order");
         assert!(is_rej);
         assert_eq!(bid, 7);
         let rejected_leaves: Vec<_> = [r1].iter().map(|h| rejection_leaf(7, h)).collect();
-        assert!(withdrawals::verify(merkle_root(&rejected_leaves), rejection_leaf(7, &r1), &proof));
+        assert!(withdrawals::verify(
+            merkle_root(&rejected_leaves),
+            rejection_leaf(7, &r1),
+            &proof
+        ));
 
         // an order in no retained batch → no answer (a genuine withhold, correctly unanswerable)
         assert!(gw.build_challenge_answer(&[9u8; 32]).is_none());
@@ -3862,8 +3931,14 @@ mod tests {
     // constant key lets anyone forge receipts and slash the sequencer bond).
     #[test]
     fn production_requires_a_secret_enclave_seed() {
-        assert!(enclave_seed_ok_for_mode(false, false), "demo build boots with the default seed");
-        assert!(enclave_seed_ok_for_mode(true, true), "production boots with a secret seed");
+        assert!(
+            enclave_seed_ok_for_mode(false, false),
+            "demo build boots with the default seed"
+        );
+        assert!(
+            enclave_seed_ok_for_mode(true, true),
+            "production boots with a secret seed"
+        );
         assert!(
             !enclave_seed_ok_for_mode(true, false),
             "production must reject the public demo enclave seed",
@@ -3874,9 +3949,18 @@ mod tests {
     // the value-based demo-seed check flags the public constant even when supplied by value.
     #[test]
     fn enclave_seed_validation_and_demo_detection() {
-        assert!(enclave_seed_is_valid([7u8; 32]), "the demo scalar is a valid secp256k1 key");
-        assert!(!enclave_seed_is_valid([0u8; 32]), "zero is not a valid scalar (no panic)");
-        assert!(!enclave_seed_is_valid([0xffu8; 32]), "a value >= the curve order is rejected");
+        assert!(
+            enclave_seed_is_valid([7u8; 32]),
+            "the demo scalar is a valid secp256k1 key"
+        );
+        assert!(
+            !enclave_seed_is_valid([0u8; 32]),
+            "zero is not a valid scalar (no panic)"
+        );
+        assert!(
+            !enclave_seed_is_valid([0xffu8; 32]),
+            "a value >= the curve order is rejected"
+        );
         // the public demo constant is detected as the default regardless of provenance
         assert_eq!(DEMO_ENCLAVE_SEED, [7u8; 32]);
     }
@@ -3886,14 +3970,26 @@ mod tests {
     #[test]
     fn production_pins_the_expected_measurement() {
         let m = [0xAAu8; 32];
-        assert!(measurement_matches_pin(false, Some(m), None), "demo needs no pin");
-        assert!(measurement_matches_pin(true, Some(m), Some(m)), "prod accepts the pinned measurement");
+        assert!(
+            measurement_matches_pin(false, Some(m), None),
+            "demo needs no pin"
+        );
+        assert!(
+            measurement_matches_pin(true, Some(m), Some(m)),
+            "prod accepts the pinned measurement"
+        );
         assert!(
             !measurement_matches_pin(true, Some(m), Some([0xBBu8; 32])),
             "prod rejects a measurement that does not match the pin (wrong/replayed enclave)",
         );
-        assert!(!measurement_matches_pin(true, Some(m), None), "prod requires an explicit pin");
-        assert!(!measurement_matches_pin(true, None, Some(m)), "prod requires a verified measurement");
+        assert!(
+            !measurement_matches_pin(true, Some(m), None),
+            "prod requires an explicit pin"
+        );
+        assert!(
+            !measurement_matches_pin(true, None, Some(m)),
+            "prod requires a verified measurement"
+        );
     }
 
     #[test]
@@ -4110,19 +4206,31 @@ mod tests {
         let pool0 = gw.pool_equity();
 
         // depositing more than the depositor's market-0 balance is rejected (no free mint)
-        assert!(gw.lp_deposit(who, &w, free0 + 1).is_err(), "free-mint blocked");
+        assert!(
+            gw.lp_deposit(who, &w, free0 + 1).is_err(),
+            "free-mint blocked"
+        );
 
         // a valid deposit debits the depositor and grows the pool by the same amount
         let dep = 500_000 * QUOTE_SCALE;
         let shares = gw.lp_deposit(who, &w, dep).expect("deposit");
         assert!(shares > 0);
         assert_eq!(gw.market_free_of(&who, 0), free0 - dep, "depositor debited");
-        assert!((gw.pool_equity() - pool0 - dep).abs() < QUOTE_SCALE, "pool grew by the deposit");
+        assert!(
+            (gw.pool_equity() - pool0 - dep).abs() < QUOTE_SCALE,
+            "pool grew by the deposit"
+        );
 
         // withdraw pays back into the depositor's balance (conserved, flat NAV)
         let val = gw.lp_withdraw(&who, &w, shares).expect("withdraw");
-        assert!((val - dep).abs() < QUOTE_SCALE, "withdraw ≈ deposit at flat NAV");
-        assert!((gw.market_free_of(&who, 0) - free0).abs() < QUOTE_SCALE, "depositor made whole");
+        assert!(
+            (val - dep).abs() < QUOTE_SCALE,
+            "withdraw ≈ deposit at flat NAV"
+        );
+        assert!(
+            (gw.market_free_of(&who, 0) - free0).abs() < QUOTE_SCALE,
+            "depositor made whole"
+        );
     }
 
     #[test]

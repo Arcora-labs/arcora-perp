@@ -17,7 +17,9 @@ use perp_core::market::Market;
 use perp_core::oracle::OracleTranscript;
 use perp_core::order::{Finality, Order, Side, TimeInForce};
 use perp_core::Note;
-use prover::{AttestedProver, CommitmentProver, PublicInputs, SealedWitness, SoftwareSealProvider, Verifier};
+use prover::{
+    AttestedProver, CommitmentProver, PublicInputs, SealedWitness, SoftwareSealProvider, Verifier,
+};
 use sequencer::{EnclaveIdentity, Sequencer};
 
 const MEASUREMENT: [u8; 32] = [0xAB; 32];

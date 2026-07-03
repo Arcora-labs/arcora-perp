@@ -514,10 +514,12 @@ mod tests {
     #[test]
     fn prove_and_verify_roundtrip() {
         let (mut s, ops) = state_with_deposit();
-        let public = run_transition(&mut s, &ops, [1u8; 32], [0u8; 32], [0u8; 32], [0u8; 32]).unwrap();
+        let public =
+            run_transition(&mut s, &ops, [1u8; 32], [0u8; 32], [0u8; 32], [0u8; 32]).unwrap();
         let prover = AttestedProver::new(CommitmentProver::new(M), prov(M));
         let witness = b"sealed batch witness: positions, fills, margins";
-        let sealed = SealedWitness::seal(witness, &prov(M), M, public.commitment::<Keccak256>()).unwrap();
+        let sealed =
+            SealedWitness::seal(witness, &prov(M), M, public.commitment::<Keccak256>()).unwrap();
         let proof = prover.prove_sealed(&sealed, &public).unwrap();
         assert!(CommitmentProver::new(M).verify(&proof));
         assert_eq!(proof.public, public);
@@ -526,7 +528,8 @@ mod tests {
     #[test]
     fn tampered_public_inputs_break_verification() {
         let (mut s, ops) = state_with_deposit();
-        let public = run_transition(&mut s, &ops, [1u8; 32], [0u8; 32], [0u8; 32], [0u8; 32]).unwrap();
+        let public =
+            run_transition(&mut s, &ops, [1u8; 32], [0u8; 32], [0u8; 32], [0u8; 32]).unwrap();
         let prover = AttestedProver::new(CommitmentProver::new(M), prov(M));
         let sealed = SealedWitness::seal(b"w", &prov(M), M, [0x77u8; 32]).unwrap();
         let mut proof = prover.prove_sealed(&sealed, &public).unwrap();
@@ -544,7 +547,8 @@ mod tests {
     #[test]
     fn wrong_measurement_cannot_open_witness() {
         let (mut s, ops) = state_with_deposit();
-        let public = run_transition(&mut s, &ops, [1u8; 32], [0u8; 32], [0u8; 32], [0u8; 32]).unwrap();
+        let public =
+            run_transition(&mut s, &ops, [1u8; 32], [0u8; 32], [0u8; 32], [0u8; 32]).unwrap();
         // witness sealed to M, but the prover's key-release is authorized only for
         // WRONG_M → it never obtains the seal key → cannot open (§10b)
         let sealed = SealedWitness::seal(b"private ledger", &prov(M), M, [0x01u8; 32]).unwrap();
@@ -570,7 +574,8 @@ mod tests {
     fn tampered_ciphertext_fails_authentication() {
         // Encrypt-then-MAC: flipping a ciphertext byte must be caught on open as a
         // SealAuthFailed (before any decryption), not silently decrypted to garbage.
-        let mut sealed = SealedWitness::seal(b"position: +1 BTC", &prov(M), M, [0x03u8; 32]).unwrap();
+        let mut sealed =
+            SealedWitness::seal(b"position: +1 BTC", &prov(M), M, [0x03u8; 32]).unwrap();
         sealed.ciphertext[0] ^= 0xff;
         let prover = AttestedProver::new(CommitmentProver::new(M), prov(M));
         assert_eq!(prover.open(&sealed), Err(ProverError::SealAuthFailed));
@@ -639,7 +644,8 @@ mod tests {
             note_commitment: [7u8; 32],
             spend_key: [1; 32],
         }];
-        let err = run_transition(&mut s, &ops, [0u8; 32], [0u8; 32], [0u8; 32], [0u8; 32]).unwrap_err();
+        let err =
+            run_transition(&mut s, &ops, [0u8; 32], [0u8; 32], [0u8; 32], [0u8; 32]).unwrap_err();
         assert_eq!(err, EngineError::UnknownOrSpentNote);
     }
 }

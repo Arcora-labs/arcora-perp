@@ -76,7 +76,12 @@ impl Market {
     /// Like [`Self::with_fees`] but also routes `treasury_bps` of notional out of the
     /// net fee to the protocol treasury (operator revenue); the rest funds insurance.
     /// `treasury_bps <= taker_bps − maker_bps`.
-    pub fn with_fees_treasury(id: MarketId, taker_bps: i128, maker_bps: i128, treasury_bps: i128) -> Self {
+    pub fn with_fees_treasury(
+        id: MarketId,
+        taker_bps: i128,
+        maker_bps: i128,
+        treasury_bps: i128,
+    ) -> Self {
         let bps = RATE_SCALE / 10_000;
         Self {
             taker_fee_ratio: taker_bps * bps,

@@ -5,8 +5,8 @@ use perp_core::engine::BatchOp;
 use perp_core::fixed::{PRICE_SCALE, QUOTE_SCALE, SIZE_SCALE};
 use perp_core::hash::{word_u64, Keccak256};
 use perp_core::market::Market;
-use perp_core::oracle::OracleTranscript;
 use perp_core::note::{owner_from_spend_key, PubKey};
+use perp_core::oracle::OracleTranscript;
 use perp_core::order::{Finality, Order, RejectReason, Side, TimeInForce};
 use perp_core::Note;
 use sequencer::{
@@ -693,7 +693,9 @@ fn reduce_only_order_cannot_open_a_position() {
 
     // trader 2 stays flat
     assert!(
-        s.state.position(&owner_id(2), 0).map_or(true, |p| p.size == 0),
+        s.state
+            .position(&owner_id(2), 0)
+            .map_or(true, |p| p.size == 0),
         "a reduce_only order must not open a position",
     );
     // the reduce_only order is rejected as a reduce_only violation…
@@ -708,7 +710,11 @@ fn reduce_only_order_cannot_open_a_position() {
     // …the innocent counterparty is NOT tagged, and its resting liquidity is preserved
     // (adversarial-review follow-up: rejecting before matching must not consume the maker).
     assert!(
-        !sealed.manifest.rejected.iter().any(|(h, _)| *h == maker_hash),
+        !sealed
+            .manifest
+            .rejected
+            .iter()
+            .any(|(h, _)| *h == maker_hash),
         "the innocent counterparty is not tagged rejected",
     );
     assert_eq!(
@@ -725,15 +731,25 @@ fn reduce_only_order_may_shrink_a_position() {
     let m0 = order(1, Side::Sell, SIZE_SCALE, 100_000 * PRICE_SCALE, 1);
     let t0 = order(2, Side::Buy, SIZE_SCALE, 100_000 * PRICE_SCALE, 2);
     s.seal_batch(&[m0, t0], 1_000);
-    assert_eq!(s.state.position(&owner_id(2), 0).unwrap().size, SIZE_SCALE, "opened long");
+    assert_eq!(
+        s.state.position(&owner_id(2), 0).unwrap().size,
+        SIZE_SCALE,
+        "opened long"
+    );
     // batch 1: trader 2 submits a reduce_only SELL that shrinks the long — allowed
     let m1 = order(1, Side::Buy, SIZE_SCALE, 100_000 * PRICE_SCALE, 3);
     let mut t1 = order(2, Side::Sell, SIZE_SCALE, 100_000 * PRICE_SCALE, 4);
     t1.reduce_only = true;
     let sealed = s.seal_batch(&[m1, t1], 2_000);
-    assert_eq!(sealed.settlement_rejected, vec![], "a reducing reduce_only order settles");
+    assert_eq!(
+        sealed.settlement_rejected,
+        vec![],
+        "a reducing reduce_only order settles"
+    );
     assert!(
-        s.state.position(&owner_id(2), 0).map_or(true, |p| p.size == 0),
+        s.state
+            .position(&owner_id(2), 0)
+            .map_or(true, |p| p.size == 0),
         "the long is closed by the reduce_only sell",
     );
 }

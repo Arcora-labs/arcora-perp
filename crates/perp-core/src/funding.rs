@@ -99,8 +99,14 @@ mod tests {
     #[test]
     fn extreme_negative_mark_clamps_to_minus_max() {
         let idx = 100_000 * PRICE_SCALE;
-        assert_eq!(FundingState::funding_rate(i128::MIN, idx), -MAX_FUNDING_RATE_PER_INTERVAL);
-        assert_eq!(FundingState::funding_rate(i128::MIN + 1, idx), -MAX_FUNDING_RATE_PER_INTERVAL);
+        assert_eq!(
+            FundingState::funding_rate(i128::MIN, idx),
+            -MAX_FUNDING_RATE_PER_INTERVAL
+        );
+        assert_eq!(
+            FundingState::funding_rate(i128::MIN + 1, idx),
+            -MAX_FUNDING_RATE_PER_INTERVAL
+        );
     }
 
     #[test]

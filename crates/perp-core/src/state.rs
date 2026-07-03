@@ -291,10 +291,18 @@ mod tests {
         let base: State<Keccak256> = State::new(16);
         let mut with_seq = base.clone();
         with_seq.next_seq += 1;
-        assert_ne!(base.state_root(), with_seq.state_root(), "next_seq must be bound");
+        assert_ne!(
+            base.state_root(),
+            with_seq.state_root(),
+            "next_seq must be bound"
+        );
         let mut with_batch = base.clone();
         with_batch.next_batch_id += 1;
-        assert_ne!(base.state_root(), with_batch.state_root(), "next_batch_id must be bound");
+        assert_ne!(
+            base.state_root(),
+            with_batch.state_root(),
+            "next_batch_id must be bound"
+        );
     }
 
     // audit DP-002: per-market risk/fee parameters must be bound so a prover cannot

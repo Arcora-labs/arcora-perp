@@ -105,7 +105,10 @@ impl Node {
         let liquidated = !self.seq.run_maintenance(self.now).liquidated.is_empty();
         let sealed = self.seq.seal_batch(&[], self.now);
 
-        let pos = self.seq.state.position(&owner_from_spend_key::<Keccak256>(&[1u8; 32]), 0);
+        let pos = self
+            .seq
+            .state
+            .position(&owner_from_spend_key::<Keccak256>(&[1u8; 32]), 0);
         let long_open = pos.map(|p| p.is_open()) == Some(true);
         let long_pnl = pos
             .filter(|p| p.is_open())
