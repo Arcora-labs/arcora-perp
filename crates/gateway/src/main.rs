@@ -1997,14 +1997,14 @@ impl Gw {
     fn tick(&mut self) -> (Vec<WEvent>, Vec<String>) {
         self.tick += 1;
         let now = now_ms();
-        // 1) oracle update. Markets with a LIVE feed (real Crypto.com price, set by the
-        //    oracle task) are left untouched here — we only re-stamp their oracle with a
-        //    fresh timestamp so the §8 freshness gate keeps passing between fetches.
+        // 1) oracle update. Markets with a LIVE feed keep the real transcript the
+        //    oracle task last set (its publish time is the EXCHANGE's own timestamp,
+        //    ≤ one fetch interval old). We deliberately do NOT re-stamp it fresh each
+        //    tick — that would mask a frozen/dead feed forever; instead a stalled feed
+        //    stops advancing the publish time and the §8 staleness gate trips (audit).
         //    Feed-less markets keep the simulated random walk.
         for i in 0..self.mkts.len() {
             if self.mkts[i].live {
-                let px = self.mkts[i].px;
-                self.seq.set_oracle(self.mkts[i].id, oracle_of(px, now));
                 continue;
             }
             let m = &self.mkts[i];

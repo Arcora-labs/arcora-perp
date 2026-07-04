@@ -69,8 +69,22 @@ pub fn transcript_from_ticker(
     })
 }
 
+/// Choose a transcript's publish time. Prefer the exchange's OWN ticker timestamp
+/// (`t`) so a frozen-but-responsive feed (HTTP 200, stale price) trips the §8
+/// staleness gate instead of being re-stamped fresh forever. Never let a
+/// clock-skewed future timestamp exceed local `now_ms` (the gate rejects a
+/// publish time in the future); fall back to `now_ms` when the exchange omits `t`.
+pub fn publish_ms(exchange_t: Option<u64>, now_ms: u64) -> u64 {
+    match exchange_t {
+        Some(t) => t.min(now_ms),
+        None => now_ms,
+    }
+}
+
 /// Live fetch (opt-in `http`): pull a single instrument's ticker from Crypto.com's
-/// public REST API and convert it to an [`OracleTranscript`]. `now_ms` stamps it.
+/// public REST API and convert it to an [`OracleTranscript`]. The transcript is
+/// stamped with the exchange's own ticker timestamp (falling back to `now_ms`), so
+/// a frozen feed goes stale rather than reading as perpetually fresh.
 #[cfg(feature = "http")]
 pub fn fetch_transcript(instrument: &str, now_ms: u64) -> Result<OracleTranscript, String> {
     let url = format!(
@@ -85,7 +99,8 @@ pub fn fetch_transcript(instrument: &str, now_ms: u64) -> Result<OracleTranscrip
         .get(0)
         .ok_or_else(|| "no ticker data".to_string())?;
     let get = |k: &str| row[k].as_str().unwrap_or("").to_string();
-    transcript_from_ticker(&get("a"), &get("b"), &get("k"), now_ms)
+    let publish = publish_ms(row["t"].as_u64(), now_ms);
+    transcript_from_ticker(&get("a"), &get("b"), &get("k"), publish)
         .ok_or_else(|| "unparseable ticker".to_string())
 }
 
@@ -191,6 +206,37 @@ mod tests {
         assert!(t.confidence > 0);
         // it must clear the engine's §8 sanity gate at its own publish time
         assert_eq!(t.validate(&Market::conservative(0), 1_000), Ok(t.price));
+    }
+
+    // AUDIT (oracle staleness): the transcript must be stamped with the exchange's
+    // own timestamp so a frozen-but-responsive feed goes stale, not re-stamped fresh.
+    #[test]
+    fn publish_time_prefers_exchange_timestamp_but_never_future() {
+        // a PAST exchange timestamp is used verbatim → a frozen feed will go stale
+        assert_eq!(publish_ms(Some(1_000), 9_000), 1_000);
+        // a FUTURE exchange timestamp (clock skew) is clamped to now (the gate rejects
+        // a publish time in the future)
+        assert_eq!(publish_ms(Some(9_000), 5_000), 5_000);
+        // no exchange timestamp → fall back to now
+        assert_eq!(publish_ms(None, 5_000), 5_000);
+    }
+
+    #[test]
+    fn a_frozen_exchange_timestamp_goes_stale_at_the_gate() {
+        use perp_core::oracle::OracleError;
+        let m = Market::conservative(0); // max_oracle_staleness_ms = 10s
+                                         // exchange published this tick at t = 1_000ms
+        let t = transcript_from_ticker("59585.6", "59586.7", "59586.8", 1_000).unwrap();
+        assert_eq!(
+            t.validate(&m, 6_000),
+            Ok(t.price),
+            "fresh within the 10s window"
+        );
+        assert_eq!(
+            t.validate(&m, 12_000),
+            Err(OracleError::Stale),
+            "a feed frozen at t=1000 is stale 11s later, even if it still returns HTTP 200",
+        );
     }
 
     #[test]
