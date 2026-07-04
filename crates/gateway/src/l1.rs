@@ -409,6 +409,26 @@ impl L1 {
             .map_err(|e| format!("block-number parse: {e}"))
     }
 
+    /// The on-chain inclusion-challenge window in blocks (`challengeWindowBlocks`, a
+    /// public immutable). A challenge is answerable only within this many blocks of
+    /// being raised, so the watcher rewinds this far on boot to catch challenges raised
+    /// while the gateway was down (audit #8).
+    pub fn challenge_window_blocks(&self) -> Result<u64, String> {
+        self.cast(&[
+            "call",
+            &self.settlement,
+            "challengeWindowBlocks()(uint256)",
+            "--rpc-url",
+            &self.rpc,
+        ])?
+        // cast may render a uint as "300" or "300 [3e2]"; take the leading integer.
+        .split_whitespace()
+        .next()
+        .unwrap_or("")
+        .parse::<u64>()
+        .map_err(|e| format!("challengeWindowBlocks parse: {e}"))
+    }
+
     /// Order hashes with an `InclusionChallenged` log at/after `from_block`, plus the block to
     /// resume from next. The order hash is the first indexed topic.
     pub fn fetch_challenges(&self, from_block: u64) -> Result<(Vec<String>, u64), String> {

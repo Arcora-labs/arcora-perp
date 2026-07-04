@@ -607,6 +607,15 @@ fn oracle_of(px: i128, now: u64) -> OracleTranscript {
         backup_twap: px,
     }
 }
+/// The block the inclusion-challenge watcher should (re)start scanning from: rewind
+/// 1.5× the challenge window behind `now_block` (min 64 blocks) so a restart that
+/// straddles a challenge still scans it. 1× the window already covers every
+/// still-answerable challenge (raised no more than `window` blocks ago); the extra
+/// half-window is margin, and over-scanning is a harmless no-op (audit #8).
+fn challenge_scan_start(now_block: u64, window_blocks: u64) -> u64 {
+    now_block.saturating_sub(window_blocks.saturating_add(window_blocks / 2).max(64))
+}
+
 fn parse_tif(s: &str) -> TimeInForce {
     match s {
         "Gtc" => TimeInForce::Gtc,
@@ -3954,12 +3963,22 @@ async fn main() {
             let app = app.clone();
             let l1a = l1.clone();
             tokio::spawn(async move {
-                // start from the current block, skipping pre-boot history
+                // audit #8: DON'T start at the current block — that silently skips any
+                // InclusionChallenged raised while we were restarting/down, letting an
+                // honest sequencer be slashed for a challenge it could have answered. A
+                // challenge is answerable only within `challengeWindowBlocks`, so rewind
+                // past that window (see challenge_scan_start); over-scanning older /
+                // already-answered challenges is a harmless no-op (challenge_open gates
+                // the answer). The data to answer is in the persisted batch_orders.
                 let mut from_block = {
                     let l1c = l1a.clone();
-                    tokio::task::spawn_blocking(move || l1c.block_number().unwrap_or(0))
-                        .await
-                        .unwrap_or(0)
+                    tokio::task::spawn_blocking(move || {
+                        let now = l1c.block_number().unwrap_or(0);
+                        let window = l1c.challenge_window_blocks().unwrap_or(300);
+                        challenge_scan_start(now, window)
+                    })
+                    .await
+                    .unwrap_or(0)
                 };
                 let mut iv = tokio::time::interval(Duration::from_secs(L1_SETTLE_SECS));
                 loop {
@@ -4858,6 +4877,20 @@ mod tests {
         gw.tick();
         let opened = gw.seq.state.position(&owner, 0).map_or(0, |p| p.size);
         assert_eq!(opened, 0, "off-market limit buy must NOT open a position");
+    }
+
+    /// AUDIT (#8): on boot the challenge watcher rewinds past the challenge window so
+    /// a restart doesn't skip challenges raised while it was down (→ wrongful slash).
+    #[test]
+    fn challenge_scan_start_rewinds_past_the_window() {
+        // rewinds 1.5x the window behind the current block
+        assert_eq!(challenge_scan_start(10_000, 300), 10_000 - 450);
+        // saturates at 0 near genesis rather than underflowing
+        assert_eq!(challenge_scan_start(100, 300), 0);
+        // a tiny/zero window still rewinds a 64-block floor (never starts at `now`,
+        // which is the pre-fix bug that skipped in-flight challenges)
+        assert_eq!(challenge_scan_start(10_000, 0), 10_000 - 64);
+        assert_eq!(challenge_scan_start(10_000, 10), 10_000 - 64);
     }
 
     /// AUDIT (rate-limit behind proxy): the register limiter must key on the real
