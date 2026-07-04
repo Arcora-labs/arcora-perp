@@ -42,18 +42,22 @@ contract DarkPerpSettlementTest is MiniTest {
         s.postBond(amount);
     }
 
-    function _proof(bytes32 prev, bytes32 m, bytes32 n, bytes32 ord, bytes32 wd)
-        internal
-        view
-        returns (bytes memory)
-    {
+    function _proof(bytes32 prev, bytes32 m, bytes32 n, bytes32 ord, bytes32 wd) internal view returns (bytes memory) {
         return abi.encode(s.publicCommitment(prev, m, n, ord, wd, bytes32(0)));
     }
 
     function test_settle_advances_root() public {
         bytes32 newRoot = bytes32(uint256(2));
         bytes32 manifest = keccak256("m0");
-        s.settleBatch(GENESIS, manifest, newRoot, bytes32(0), bytes32(0), bytes32(0), _proof(GENESIS, manifest, newRoot, bytes32(0), bytes32(0)));
+        s.settleBatch(
+            GENESIS,
+            manifest,
+            newRoot,
+            bytes32(0),
+            bytes32(0),
+            bytes32(0),
+            _proof(GENESIS, manifest, newRoot, bytes32(0), bytes32(0))
+        );
         assertEq(s.currentStateRoot(), newRoot, "root advanced");
         assertEq(s.batchCount(), 1, "batch counted");
     }
@@ -108,13 +112,37 @@ contract DarkPerpSettlementTest is MiniTest {
         s.settleBatch(GENESIS, manifest, newRoot, bytes32(0), bytes32(0), bytes32(0), proof);
     }
 
+    /// AUDIT (#11): once the system is in close-only, the vault must reject NEW deposits.
+    /// Otherwise a user could deposit into a dead/slashed system and have the funds
+    /// permanently locked — no settled withdrawals root will ever authorize them.
+    function test_deposit_blocked_in_close_only() public {
+        usdc.mint(address(this), 1000 * USD);
+        usdc.approve(address(vault), 1000 * USD);
+        // a deposit works while the system is live
+        vault.deposit(100 * USD);
+        // enter close-only via a liveness timeout
+        vm.roll(block.number + LIVENESS + 1);
+        s.triggerCloseOnly();
+        // a further deposit must now revert
+        vm.expectRevert(CollateralVault.InCloseOnly.selector);
+        vault.deposit(100 * USD);
+    }
+
     function test_inclusion_answered_clears_challenge() public {
         // settle a batch whose orderedRoot is the single domain-separated leaf
         bytes32 orderHash = keccak256("order-1");
         bytes32 newRoot = bytes32(uint256(2));
         bytes32 manifest = keccak256("m");
         bytes32 orderedRoot = s.inclusionLeaf(0, orderHash);
-        s.settleBatch(GENESIS, manifest, newRoot, orderedRoot, bytes32(0), bytes32(0), _proof(GENESIS, manifest, newRoot, orderedRoot, bytes32(0)));
+        s.settleBatch(
+            GENESIS,
+            manifest,
+            newRoot,
+            orderedRoot,
+            bytes32(0),
+            bytes32(0),
+            _proof(GENESIS, manifest, newRoot, orderedRoot, bytes32(0))
+        );
 
         // user challenges with an enclave-signed receipt (canonical via vm.sign)
         (uint8 v, bytes32 r, bytes32 sig) = vm.sign(ENCLAVE_PK, s.receiptDigest(orderHash, 7, 1000, 0));
@@ -147,7 +175,15 @@ contract DarkPerpSettlementTest is MiniTest {
         bytes32 orderedRoot = s.inclusionLeaf(0, orderHash);
         bytes32 newRoot = bytes32(uint256(2));
         bytes32 manifest = keccak256("late");
-        s.settleBatch(GENESIS, manifest, newRoot, orderedRoot, bytes32(0), bytes32(0), _proof(GENESIS, manifest, newRoot, orderedRoot, bytes32(0)));
+        s.settleBatch(
+            GENESIS,
+            manifest,
+            newRoot,
+            orderedRoot,
+            bytes32(0),
+            bytes32(0),
+            _proof(GENESIS, manifest, newRoot, orderedRoot, bytes32(0))
+        );
 
         // the sequencer answers with that batch — inclusion is the cure, not an escape
         bytes32[] memory proof = new bytes32[](0);
@@ -171,7 +207,15 @@ contract DarkPerpSettlementTest is MiniTest {
         bytes32 orderedRoot = s.inclusionLeaf(0, keccak256("some-other-order"));
         bytes32 newRoot = bytes32(uint256(2));
         bytes32 manifest = keccak256("unrelated");
-        s.settleBatch(GENESIS, manifest, newRoot, orderedRoot, bytes32(0), bytes32(0), _proof(GENESIS, manifest, newRoot, orderedRoot, bytes32(0)));
+        s.settleBatch(
+            GENESIS,
+            manifest,
+            newRoot,
+            orderedRoot,
+            bytes32(0),
+            bytes32(0),
+            _proof(GENESIS, manifest, newRoot, orderedRoot, bytes32(0))
+        );
 
         bytes32[] memory proof = new bytes32[](0);
         vm.expectRevert(DarkPerpSettlement.NotIncluded.selector);
@@ -238,7 +282,12 @@ contract DarkPerpSettlementTest is MiniTest {
         bytes32 newRoot = bytes32(uint256(2));
         bytes32 manifest = keccak256("m");
         s.settleBatch(
-            GENESIS, manifest, newRoot, orderedRoot, bytes32(0), bytes32(0),
+            GENESIS,
+            manifest,
+            newRoot,
+            orderedRoot,
+            bytes32(0),
+            bytes32(0),
             _proof(GENESIS, manifest, newRoot, orderedRoot, bytes32(0))
         );
 

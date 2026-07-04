@@ -50,8 +50,7 @@ contract DarkPerpSettlement {
 
     /// secp256k1 group order ÷ 2; signatures with higher `s` are non-canonical
     /// (malleable) and rejected (audit F3 hygiene).
-    uint256 internal constant SECP256K1_N_HALF =
-        0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF5D576E7357A4501DDFE92F46681B20A0;
+    uint256 internal constant SECP256K1_N_HALF = 0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF5D576E7357A4501DDFE92F46681B20A0;
 
     /// Risk-based sequencer bond floor, in basis points of live custodied TVL
     /// (the collateral vault's balance). The bond that backs honest sequencing
@@ -274,9 +273,7 @@ contract DarkPerpSettlement {
         returns (bytes32)
     {
         return keccak256(
-            abi.encodePacked(
-                DOMAIN_ORDER_HASH, orderHash, _leWord(seqNo), _leWord(recvTimeMs), _leWord(batchIdHint)
-            )
+            abi.encodePacked(DOMAIN_ORDER_HASH, orderHash, _leWord(seqNo), _leWord(recvTimeMs), _leWord(batchIdHint))
         );
     }
 
@@ -286,7 +283,11 @@ contract DarkPerpSettlement {
     /// `batchId` stops the sequencer answering against an unrelated batch (audit
     /// F1). The off-chain tree MUST be built over these same leaves.
     function inclusionLeaf(uint256 batchId, bytes32 orderHash) public pure returns (bytes32) {
-        return keccak256(abi.encodePacked(batchId, orderHash));
+        // The `uint8(0x00)` domain tag makes the preimage 65 bytes — structurally
+        // distinct from a 64-byte MerkleLib internal node (keccak of two bytes32) — so a
+        // crafted internal node can never be presented as an inclusion leaf (audit). A
+        // distinct tag from `rejectionLeaf` (0x01) also keeps the two leaf domains apart.
+        return keccak256(abi.encodePacked(uint8(0x00), batchId, orderHash));
     }
 
     /// @notice The batch-bound Merkle leaf an order occupies in a batch's
@@ -349,10 +350,7 @@ contract DarkPerpSettlement {
     /// the order. A withholding sequencer that never settles the order at all simply
     /// cannot produce a proof, and stalled settlement is independently punished by
     /// the liveness timeout. (audit P2 — supersedes F1's over-strict predates rule.)
-    function answerChallenge(bytes32 orderHash, uint256 batchId, bytes32[] calldata proof)
-        external
-        onlySequencer
-    {
+    function answerChallenge(bytes32 orderHash, uint256 batchId, bytes32[] calldata proof) external onlySequencer {
         Challenge memory c = challenges[orderHash];
         if (!c.open) revert NoSuchChallenge();
         if (block.number > c.deadlineBlock) revert ChallengeExpired();
@@ -384,10 +382,7 @@ contract DarkPerpSettlement {
     /// This path removes the WRONGFUL slash of an HONEST sequencer; constraining a
     /// DISHONEST one requires a real circuit that derives the rejected set from the
     /// book / margin / order-type at seal (the same future work `orderedRoot` needs).
-    function answerByRejection(bytes32 orderHash, uint256 batchId, bytes32[] calldata proof)
-        external
-        onlySequencer
-    {
+    function answerByRejection(bytes32 orderHash, uint256 batchId, bytes32[] calldata proof) external onlySequencer {
         Challenge memory c = challenges[orderHash];
         if (!c.open) revert NoSuchChallenge();
         if (block.number > c.deadlineBlock) revert ChallengeExpired();

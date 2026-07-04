@@ -54,13 +54,12 @@ contract FuzzTest is MiniTest {
 
     /// A proof valid for one (orderedRoot, withdrawalsRoot) must not settle a batch
     /// with any different roots — they're bound into the proven commitment (F2).
-    function testFuzz_settle_binds_roots(bytes32 ordered, bytes32 withdrawals, bytes32 ordered2, bytes32 wd2)
-        public
-    {
+    function testFuzz_settle_binds_roots(bytes32 ordered, bytes32 withdrawals, bytes32 ordered2, bytes32 wd2) public {
         vm.assume(ordered != ordered2 || withdrawals != wd2);
         bytes32 newRoot = keccak256(abi.encodePacked(ordered, withdrawals));
         bytes32 manifest = keccak256("m");
-        bytes memory proof = abi.encode(s.publicCommitment(GENESIS, manifest, newRoot, ordered, withdrawals, bytes32(0)));
+        bytes memory proof =
+            abi.encode(s.publicCommitment(GENESIS, manifest, newRoot, ordered, withdrawals, bytes32(0)));
 
         // swapping in any different roots breaks the proof
         vm.expectRevert(DarkPerpSettlement.BadProof.selector);
@@ -76,6 +75,20 @@ contract FuzzTest is MiniTest {
     function testFuzz_inclusion_leaf_distinct(uint256 b1, bytes32 h1, uint256 b2, bytes32 h2) public {
         vm.assume(b1 != b2 || h1 != h2);
         assertTrue(s.inclusionLeaf(b1, h1) != s.inclusionLeaf(b2, h2), "leaves distinct");
+    }
+
+    /// AUDIT (inclusionLeaf domain separation): the leaf preimage must be domain-tagged
+    /// so it can NEVER collide with a MerkleLib internal node, which is a bare
+    /// keccak256(abi.encodePacked(bytes32, bytes32)). Otherwise a censoring sequencer
+    /// could present a crafted internal node of the ordered tree as an "inclusion leaf"
+    /// for an order it never processed and evade the §2 slash. `rejectionLeaf` was
+    /// already tagged; `inclusionLeaf` must be too.
+    function testFuzz_inclusion_leaf_is_not_an_internal_node(uint256 batchId, bytes32 orderHash) public {
+        // the untagged 2x32-byte node shape the leaf must be distinct from
+        bytes32 nodeShape = keccak256(abi.encodePacked(bytes32(batchId), orderHash));
+        assertTrue(
+            s.inclusionLeaf(batchId, orderHash) != nodeShape, "inclusion leaf must not equal a bare internal-node hash"
+        );
     }
 
     receive() external payable {}
