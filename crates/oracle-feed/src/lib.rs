@@ -11,6 +11,14 @@
 use perp_core::fixed::PRICE_SCALE;
 use perp_core::oracle::OracleTranscript;
 
+/// Overall per-request timeout for a live fetch. ureq's default agent has NO read
+/// timeout, so a black-hole connection (TCP up, no response bytes) would block the
+/// poll thread forever; bounding it keeps a hung feed from stalling the poll loop
+/// (and, since freshness now advances only on a successful fetch, lets the market go
+/// cleanly stale instead of freezing the gateway) (audit review).
+#[cfg(feature = "http")]
+const FETCH_TIMEOUT_SECS: u64 = 5;
+
 /// Parse a decimal price string (e.g. "59585.60") into a [`PRICE_SCALE`] i128,
 /// without floats. Returns `None` on malformed input or overflow.
 pub fn parse_price(s: &str) -> Option<i128> {
@@ -91,6 +99,7 @@ pub fn fetch_transcript(instrument: &str, now_ms: u64) -> Result<OracleTranscrip
         "https://api.crypto.com/exchange/v1/public/get-tickers?instrument_name={instrument}"
     );
     let body: serde_json::Value = ureq::get(&url)
+        .timeout(std::time::Duration::from_secs(FETCH_TIMEOUT_SECS))
         .call()
         .map_err(|e| e.to_string())?
         .into_json()
@@ -161,6 +170,7 @@ pub fn fetch_candles(
         "https://api.crypto.com/exchange/v1/public/get-candlestick?instrument_name={instrument}&timeframe={timeframe}&count={count}"
     );
     let body: serde_json::Value = ureq::get(&url)
+        .timeout(std::time::Duration::from_secs(FETCH_TIMEOUT_SECS))
         .call()
         .map_err(|e| e.to_string())?
         .into_json()

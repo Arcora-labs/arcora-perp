@@ -487,6 +487,13 @@ struct Mkt {
     live: bool,
     /// Crypto.com instrument for a live feed (`None` ⇒ sim walk only).
     feed: Option<&'static str>,
+    /// Local ms when the feed's own (exchange) timestamp last ADVANCED — the freshness
+    /// clock the live oracle is stamped with. A frozen-but-200 feed (its timestamp
+    /// stops) and a dead/hung feed both stop advancing this and go stale, while the
+    /// exchange clock's absolute skew/lag never causes a false stall. Not serialized.
+    px_ms: u64,
+    /// Last exchange ticker timestamp seen, to detect the advance above.
+    feed_ts: u64,
 }
 #[derive(Serialize, serde::Deserialize)]
 struct GwOrder {
@@ -736,6 +743,8 @@ impl Gw {
                 px,
                 live: false,
                 feed: cfg.feed,
+                px_ms: 0,
+                feed_ts: 0,
             });
         }
         // give the demo user extra market-0 balance so the LP tab is demoable (LP
@@ -832,6 +841,8 @@ impl Gw {
                 px: usd(cfg.seed),
                 live: false,
                 feed: cfg.feed,
+                px_ms: 0,
+                feed_ts: 0,
             })
             .collect();
         for (id, reference_price, px, live) in mkt_px {
@@ -1208,12 +1219,17 @@ impl Gw {
         };
         // reduce_only is bound into the order hash (mk_order) so a caller signature
         // covers it — a leaked/relayed key can't flip it (audit DP-009 + follow-up).
+        // Pass the RAW limit (0 = market): market orders must keep limit_price == 0
+        // through to the seal so the matcher treats them as "cross at the mark" and the
+        // seal-loop off-market check doesn't reject a market order whose accept-time
+        // price has since drifted from the mark (audit review #5). `px` is only the
+        // margin-check price above.
         let order = mk_order(
             owner,
             req.market_id,
             side,
             size,
-            px,
+            limit,
             nonce,
             tif,
             req.reduce_only,
@@ -1700,11 +1716,27 @@ impl Gw {
     }
 
     fn apply_real_oracle(&mut self, market: u64, transcript: OracleTranscript) {
+        let now = now_ms();
         if let Some(m) = self.mkts.iter_mut().find(|m| m.id == market) {
+            // Advance the freshness clock ONLY when the exchange's own timestamp advances
+            // (recorded in local time): a frozen-but-200 feed and a dead/hung feed both
+            // stop advancing px_ms and go stale, while the exchange clock's absolute
+            // skew/lag never false-stalls a healthy feed (audit review of #7).
+            let exch_ts = transcript.publish_time_ms;
+            if exch_ts != m.feed_ts {
+                m.feed_ts = exch_ts;
+                m.px_ms = now;
+            }
             m.px = transcript.price;
             m.live = true;
+            // Keep the real confidence/backup_twap band, but stamp freshness from px_ms
+            // so tick() need not re-stamp (which would mask a frozen feed forever).
+            let mut t = transcript;
+            t.publish_time_ms = m.px_ms;
+            self.seq.set_oracle(market, t);
+        } else {
+            self.seq.set_oracle(market, transcript);
         }
-        self.seq.set_oracle(market, transcript);
     }
 
     fn rand_unit(&mut self) -> f64 {
@@ -1830,13 +1862,16 @@ impl Gw {
 
         let nonce = self.user_nonce;
         self.user_nonce += 1;
-        // user is the taker (Ioc) — crosses the resting market-maker maker each seal
+        // user is the taker (Ioc) — crosses the resting market-maker maker each seal.
+        // Pass the RAW limit (0 = market) so the seal loop can tell a market order (fill
+        // at the mark) from a caller-chosen limit and apply the off-market check to the
+        // latter only (audit review #2/#5). `px` is only the margin-check price above.
         let order = mk_order(
             self.user.owner,
             req.market_id,
             side,
             size,
-            px,
+            limit,
             nonce,
             TimeInForce::Ioc,
             req.reduce_only,
@@ -2040,30 +2075,37 @@ impl Gw {
             .collect();
         let mut seal: Vec<Order> = Vec::new();
         for &i in &pending {
-            let o = &self.orders[i];
-            let opp = match o.order.side {
-                Side::Buy => Side::Sell,
-                Side::Sell => Side::Buy,
-            };
-            let price = if o.order.limit_price > 0 {
-                o.order.limit_price
-            } else {
-                self.px_of(o.order.market_id)
-            };
-            let mut uo = o.order;
-            uo.limit_price = price;
-            let mmn = self.mm_nonce;
-            self.mm_nonce += 1;
-            seal.push(mk_order(
-                self.mm.owner,
-                o.order.market_id,
-                opp,
-                o.order.size,
-                price,
-                mmn,
-                TimeInForce::Gtc,
-                false,
-            ));
+            let uo = self.orders[i].order;
+            let mark = self.px_of(uo.market_id);
+            // Same off-market protection as the /v1 path: the house MM quotes at the mark,
+            // and only counters a market order (limit 0 → matcher crosses at any price) or
+            // a limit order whose price actually crosses the mark — so a demo taker can't
+            // name an off-market price and mint an off-market entry against the house MM
+            // (audit review #2). The taker order is pushed unchanged (hash-stable).
+            let is_market = uo.limit_price == 0;
+            let crosses = is_market
+                || match uo.side {
+                    Side::Buy => uo.limit_price >= mark,
+                    Side::Sell => uo.limit_price <= mark,
+                };
+            if crosses {
+                let opp = match uo.side {
+                    Side::Buy => Side::Sell,
+                    Side::Sell => Side::Buy,
+                };
+                let mmn = self.mm_nonce;
+                self.mm_nonce += 1;
+                seal.push(mk_order(
+                    self.mm.owner,
+                    uo.market_id,
+                    opp,
+                    uo.size,
+                    mark,
+                    mmn,
+                    TimeInForce::Gtc,
+                    false,
+                ));
+            }
             seal.push(uo);
         }
         // registered /v1 accounts
@@ -2078,21 +2120,21 @@ impl Gw {
                 .map(|(i, _)| i)
                 .collect();
             for i in pend {
-                let mut uo = self.accounts[k].orders[i].order; // Order: Copy
+                let uo = self.accounts[k].orders[i].order; // Order: Copy
                 let mark = self.px_of(uo.market_id);
-                // A market order (limit 0) trades at the mark; a limit order keeps its
-                // own price for the matcher's crossing check.
+                // A market order carries limit_price == 0 (kept through admission); the
+                // matcher treats it as crossing any price, so it fills at the MM's mark.
+                // A limit order keeps the caller's own price for its crossing check. Either
+                // way the taker order is pushed UNCHANGED so its seal-time order hash still
+                // matches the one accept_order recorded at admission.
                 let is_market = uo.limit_price == 0;
-                if is_market {
-                    uo.limit_price = mark;
-                }
                 if matches!(uo.tif, TimeInForce::Ioc | TimeInForce::Fok) {
                     // AUDIT (CRITICAL): the house MM quotes at the VALIDATED oracle mark,
                     // never at the taker's own limit, and only provides the counter-fill
-                    // when the taker's limit actually crosses the mark. Otherwise a taker
-                    // could name an off-market price (buy far below / sell far above the
-                    // mark), mint an off-market entry against the fabricated MM, and drain
-                    // the vault. A non-crossing Ioc/Fok simply finds no house liquidity.
+                    // when a limit order's price actually crosses the mark (a market order
+                    // always crosses). Otherwise a taker could name an off-market price (buy
+                    // far below / sell far above the mark), mint an off-market entry against
+                    // the fabricated MM, and drain the vault.
                     let crosses = is_market
                         || match uo.side {
                             Side::Buy => uo.limit_price >= mark,
@@ -5009,6 +5051,45 @@ mod tests {
         assert!(
             gw.account_place_order(&key, &tampered).is_err(),
             "flipping reduce_only under a valid signature must be rejected",
+        );
+    }
+
+    /// AUDIT (review #5): a /v1 MARKET order must still fill when the mark moves between
+    /// accept and seal. Market orders keep limit_price==0 to the seal, so the crossing
+    /// check never rejects them — unlike the regressed version that stamped the
+    /// accept-time price and dropped the order once the mark drifted away.
+    #[test]
+    fn market_order_fills_even_when_the_mark_moves_after_accept() {
+        let mut gw = Gw::boot();
+        let (key, owner) = gw.register_account(None);
+        gw.account_deposit(&key, 0, 200_000 * QUOTE_SCALE).unwrap();
+        gw.account_place_order(
+            &key,
+            &OrderReq {
+                market_id: 0,
+                side: "Buy".into(),
+                size: (SIZE_SCALE / 10).to_string(),
+                limit_price: "0".into(), // market order
+                tif: "Ioc".into(),
+                reduce_only: false,
+                nonce: None,
+                signature: None,
+            },
+        )
+        .expect("order admitted");
+        // The mark jumps sharply UP before the batch seals. A stamped-limit order whose
+        // accept-time price is now below the mark would fail the buy crossing check; a
+        // true market order must still fill at the (new) mark.
+        gw.mkts[0].px += 10_000 * PRICE_SCALE;
+        gw.tick();
+        let pos = gw
+            .seq
+            .state
+            .position(&owner, 0)
+            .expect("market order filled");
+        assert!(
+            pos.size > 0,
+            "market order fills despite the adverse mark move"
         );
     }
 
