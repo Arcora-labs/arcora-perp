@@ -11,6 +11,11 @@ interface IERC20 {
     function balanceOf(address account) external view returns (uint256);
 }
 
+/// The settlement subset the vault reads to reject deposits into a dead system.
+interface ISettlementCloseOnly {
+    function closeOnly() external view returns (bool);
+}
+
 /// @title CollateralVault
 /// @notice Holds pooled collateral (**USDC**, the chosen settlement asset) and
 /// releases it only against a withdrawals root published by the settlement contract
@@ -48,6 +53,7 @@ contract CollateralVault {
     error AlreadyClaimed();
     error BadWithdrawalProof();
     error TransferFailed();
+    error InCloseOnly();
 
     modifier onlySettlement() {
         if (msg.sender != settlement) revert NotSettlement();
@@ -63,6 +69,11 @@ contract CollateralVault {
     /// must have `approve`d the vault first. The off-chain protocol mints a shielded
     /// note for `msg.sender` of `amount`; the commitment enters the note tree (§1).
     function deposit(uint256 amount) external {
+        // audit #11: refuse deposits once the system is in close-only. In close-only no
+        // new batch settles, so a deposit made here would never be acknowledged into a
+        // settled withdrawals root and the funds would be permanently unclaimable. Users
+        // exit via `claim` against the last settled root, not by depositing more.
+        if (ISettlementCloseOnly(settlement).closeOnly()) revert InCloseOnly();
         if (!token.transferFrom(msg.sender, address(this), amount)) revert TransferFailed();
         totalDeposited += amount;
         emit Deposit(msg.sender, amount);
@@ -111,9 +122,7 @@ contract CollateralVault {
     /// @param root a published withdrawals root the leaf is a member of (any past root, so
     ///        a later cumulative root omitting the leaf can no longer strand it — DP-012)
     /// @param proof Merkle proof of `leaf` against `root`
-    function claim(address to, uint256 amount, uint256 nonce, bytes32 root, bytes32[] calldata proof)
-        external
-    {
+    function claim(address to, uint256 amount, uint256 nonce, bytes32 root, bytes32[] calldata proof) external {
         bytes32 leaf = keccak256(abi.encodePacked(to, amount, nonce));
         if (claimed[leaf]) revert AlreadyClaimed();
         // audit DP-012: accept ANY published (non-zero) root, not just the latest — so a later

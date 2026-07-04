@@ -20,6 +20,12 @@ contract CollateralVaultTest is MiniTest {
         vault = new CollateralVault(address(this), address(usdc));
     }
 
+    /// This contract stands in as the settlement authority; the vault reads its
+    /// close-only state on deposit, which stays false throughout these vault tests.
+    function closeOnly() external pure returns (bool) {
+        return false;
+    }
+
     /// Mint USDC to `who`, then (as `who`) approve + deposit `amount` into the vault.
     function _deposit(address who, uint256 amount) internal {
         usdc.mint(who, amount);
