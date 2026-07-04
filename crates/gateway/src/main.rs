@@ -36,6 +36,7 @@ use perp_core::order::{Finality, Order, Side, TimeInForce};
 use perp_core::state::Mode;
 use sequencer::{adl_tag, adl_tag_key, EnclaveIdentity, SealedBatch, Sequencer};
 
+mod candles;
 mod l1;
 mod snapshot;
 mod withdrawals;
@@ -2465,6 +2466,11 @@ struct App {
     /// The L1 bridge (Base Sepolia), if configured — used by the deposit-confirm
     /// handler to verify on-chain USDC deposits. `None` ⇒ pure in-memory mode.
     l1: Option<L1>,
+    /// REAL per-market price history (the chart's past bars): the engine's own
+    /// marks folded into per-timeframe OHLC rings each tick, plus a one-shot
+    /// exchange backfill for feed-backed markets at boot. Display data — not
+    /// part of the sealed snapshot (see `candles.rs`).
+    candles: Mutex<candles::CandleStore>,
 }
 
 impl App {
@@ -3018,6 +3024,58 @@ async fn get_v1_oracle(State(app): State<Shared>, Path(id): Path<u64>) -> impl I
             .into_response(),
     }
 }
+/// `GET /v1/markets/:id/candles?tf=15m&limit=120` — the REAL price history the
+/// engine marked against (see `candles.rs`): live-recorded OHLC bars, exchange-
+/// backfilled at boot for feed markets. Prices are `1e8`-scaled decimal strings
+/// like every other wire amount; `t` is the bucket start in unix ms.
+async fn get_v1_candles(
+    State(app): State<Shared>,
+    Path(id): Path<u64>,
+    axum::extract::Query(q): axum::extract::Query<std::collections::HashMap<String, String>>,
+) -> impl IntoResponse {
+    let tf = q.get("tf").map(String::as_str).unwrap_or("15m");
+    if candles::tf_index(tf).is_none() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "error": format!("unknown timeframe (valid: {})",
+                    candles::TFS.iter().map(|(n, _, _)| *n).collect::<Vec<_>>().join(", "))
+            })),
+        )
+            .into_response();
+    }
+    if app.gw.lock().await.mkt(id).is_none() {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({ "error": "unknown market" })),
+        )
+            .into_response();
+    }
+    let limit = q
+        .get("limit")
+        .and_then(|s| s.parse::<usize>().ok())
+        .unwrap_or(120)
+        .min(candles::CAP);
+    let bars = app
+        .candles
+        .lock()
+        .await
+        .get(id, tf, limit)
+        .unwrap_or_default();
+    let out: Vec<serde_json::Value> = bars
+        .iter()
+        .map(|c| {
+            serde_json::json!({
+                "t": c.start_ms,
+                "o": c.open.to_string(),
+                "h": c.high.to_string(),
+                "l": c.low.to_string(),
+                "c": c.close.to_string(),
+            })
+        })
+        .collect();
+    Json(serde_json::json!({ "marketId": id, "tf": tf, "candles": out })).into_response()
+}
 async fn get_v1_status(State(app): State<Shared>) -> impl IntoResponse {
     Json(app.gw.lock().await.v1_status_json())
 }
@@ -3070,6 +3128,11 @@ async fn get_v1_openapi() -> impl IntoResponse {
             "/v1/markets": { "get": { "summary": "All markets", "responses": ok("markets") } },
             "/v1/markets/{id}": { "get": { "summary": "One market", "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }], "responses": ok("market") } },
             "/v1/markets/{id}/orderbook": { "get": { "summary": "Order book", "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }], "responses": ok("book") } },
+            "/v1/markets/{id}/candles": { "get": { "summary": "REAL price history (engine marks; exchange-backfilled for feed markets)", "parameters": [
+                { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } },
+                { "name": "tf", "in": "query", "schema": { "type": "string", "enum": ["1m","5m","15m","1h","4h","1d"], "default": "15m" } },
+                { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 120, "maximum": 240 } }
+            ], "responses": ok("candles[] of { t, o, h, l, c } (1e8-scaled strings)") } },
             "/v1/markets/{id}/oracle": { "get": { "summary": "Oracle price", "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }], "responses": ok("oracle") } },
             "/v1/system/status": { "get": { "summary": "System status", "responses": ok("status") } }
         }
@@ -3485,6 +3548,7 @@ fn build_router(app: Shared, prod: bool) -> Router {
         .route("/v1/markets", get(get_v1_markets))
         .route("/v1/markets/:id", get(get_v1_market))
         .route("/v1/markets/:id/orderbook", get(get_v1_orderbook))
+        .route("/v1/markets/:id/candles", get(get_v1_candles))
         .route("/v1/markets/:id/oracle", get(get_v1_oracle))
         .route("/v1/system/status", get(get_v1_status))
         .route("/v1/openapi.json", get(get_v1_openapi))
@@ -3620,7 +3684,49 @@ async fn main() {
         events_tx,
         reg_limit: Mutex::new(HashMap::new()),
         l1: l1.clone(),
+        candles: Mutex::new(candles::CandleStore::new()),
     });
+
+    // One-shot REAL history backfill for feed-backed markets (chart past bars):
+    // exchange candles land under the live bars the tick loop records. Failures
+    // degrade to shorter history, never block boot.
+    {
+        let app = app.clone();
+        tokio::spawn(async move {
+            let feeds: Vec<(u64, &'static str)> = MARKETS
+                .iter()
+                .filter_map(|m| m.feed.map(|f| (m.id, f)))
+                .collect();
+            for (id, inst) in feeds {
+                for (tf_idx, (tf, _, cc_tf)) in candles::TFS.iter().enumerate() {
+                    let fetched = tokio::task::spawn_blocking(move || {
+                        oracle_feed::fetch_candles(inst, cc_tf, candles::CAP)
+                    })
+                    .await;
+                    match fetched {
+                        Ok(Ok(cs)) => {
+                            let history: Vec<candles::Candle> = cs
+                                .iter()
+                                .map(|c| candles::Candle {
+                                    start_ms: c.start_ms,
+                                    open: c.open,
+                                    high: c.high,
+                                    low: c.low,
+                                    close: c.close,
+                                })
+                                .collect();
+                            app.candles.lock().await.backfill(id, tf_idx, &history);
+                        }
+                        Ok(Err(e)) => eprintln!("[candles] backfill {inst} {tf}: {e}"),
+                        Err(e) => eprintln!("[candles] backfill join {inst} {tf}: {e}"),
+                    }
+                    // stay far under the public API's rate limits
+                    tokio::time::sleep(Duration::from_millis(150)).await;
+                }
+            }
+            println!("[candles] exchange backfill complete");
+        });
+    }
 
     // Periodic sealed-snapshot writer + graceful-shutdown save (SIGTERM/ctrl-c).
     if let Some(path) = state_path.clone() {
@@ -3692,6 +3798,23 @@ async fn main() {
             loop {
                 iv.tick().await;
                 let (events, acct_events) = { app.gw.lock().await.tick() };
+                // fold the fresh marks into the REAL candle history (chart past bars)
+                {
+                    let marks: Vec<(u64, i128)> = {
+                        app.gw
+                            .lock()
+                            .await
+                            .mkts
+                            .iter()
+                            .map(|m| (m.id, m.px))
+                            .collect()
+                    };
+                    let now = now_ms();
+                    let mut cs = app.candles.lock().await;
+                    for (id, px) in marks {
+                        cs.record(id, now, px);
+                    }
+                }
                 let snap = { app.gw.lock().await.snapshot() };
                 let _ = app
                     .tx
@@ -3984,6 +4107,7 @@ mod tests {
             events_tx,
             reg_limit: Mutex::new(HashMap::new()),
             l1: None,
+            candles: Mutex::new(candles::CandleStore::new()),
         })
     }
 
@@ -4043,6 +4167,50 @@ mod tests {
             restored.mkts[0].symbol, gw.mkts[0].symbol,
             "static market config rebuilt"
         );
+    }
+
+    /// `/v1/markets/:id/candles` serves the recorded engine history: real bars in,
+    /// real bars out (ascending, scaled strings), 400 on a bogus timeframe, 404 on
+    /// an unknown market.
+    #[tokio::test]
+    async fn candles_endpoint_serves_recorded_history() {
+        use axum::body::Body;
+        use axum::http::Request;
+        use tower::ServiceExt as _;
+
+        let app = test_app();
+        {
+            let mut cs = app.candles.lock().await;
+            cs.record(0, 60_000, 100_000_000);
+            cs.record(0, 90_000, 130_000_000);
+            cs.record(0, 120_000, 90_000_000);
+        }
+        let router = build_router(app.clone(), false);
+        let get = |uri: &str| Request::builder().uri(uri).body(Body::empty()).unwrap();
+
+        let r = router
+            .clone()
+            .oneshot(get("/v1/markets/0/candles?tf=1m&limit=10"))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(r.into_body(), 1 << 20).await.unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        let cs = v["candles"].as_array().unwrap();
+        assert_eq!(cs.len(), 2, "two 1m buckets were recorded");
+        assert_eq!(cs[0]["t"], 60_000, "ascending buckets");
+        assert_eq!(cs[0]["o"], "100000000");
+        assert_eq!(cs[0]["h"], "130000000");
+        assert_eq!(cs[1]["o"], "90000000");
+
+        let r = router
+            .clone()
+            .oneshot(get("/v1/markets/0/candles?tf=3m"))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::BAD_REQUEST, "unknown timeframe");
+        let r = router.oneshot(get("/v1/markets/99/candles")).await.unwrap();
+        assert_eq!(r.status(), StatusCode::NOT_FOUND, "unknown market");
     }
 
     /// A snapshot sealed under one enclave seed must not open under another —

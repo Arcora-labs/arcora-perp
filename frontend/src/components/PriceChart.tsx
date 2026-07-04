@@ -6,13 +6,16 @@ import { formatPrice } from "../domain/format";
 /// canvas with a price/time grid, last-price tag, crosshair + OHLC readout, and
 /// working drawing tools (trend line, horizontal line, eraser).
 ///
-/// dark-perp's client streams a single OracleQuote (no candle feed), so we build
-/// candles client-side: a deterministic backfill (seeded per market+timeframe so it
-/// is stable across renders) ending at the live price, then live ticks update the
-/// forming candle and roll new ones. Swapping in a real candle feed only changes the
-/// data source — the rendering + tools stay.
+/// Data source, two modes:
+/// - **Live gateway (`VITE_API_URL` set):** the past bars are REAL —
+///   `/v1/markets/:id/candles` serves the OHLC history the engine actually
+///   marked against (exchange-backfilled at boot for feed markets), and live
+///   ticks keep folding into the forming bar, rolling on timeframe boundaries.
+/// - **Mock mode:** no engine history exists, so candles are built client-side:
+///   a deterministic backfill (seeded per market+timeframe) ending at the live
+///   price. This synthetic path never runs against the real gateway.
 
-type Candle = { o: number; h: number; l: number; c: number };
+export type Candle = { o: number; h: number; l: number; c: number };
 type Drawing =
   | { type: "hline"; p: number }
   | { type: "trend"; x1f: number; p1: number; x2f: number; p2: number };
@@ -25,7 +28,22 @@ type Geo = {
 
 const TFS = ["1m", "5m", "15m", "1H", "4H", "1D"] as const;
 const TF_MIN: Record<string, number> = { "1m": 1, "5m": 5, "15m": 15, "1H": 60, "4H": 240, "1D": 1440 };
+/** The gateway's candle API uses lowercase h/d names. */
+const TF_API: Record<string, string> = { "1m": "1m", "5m": "5m", "15m": "15m", "1H": "1h", "4H": "4h", "1D": "1d" };
 const BARS = 80;
+
+const API = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "");
+
+type WireCandle = { t: number; o: string; h: string; l: string; c: string };
+/** Map the gateway's 1e8-scaled string candles to chart numbers. Exported for tests. */
+export function mapWireCandles(rows: WireCandle[]): Candle[] {
+  return rows.map((r) => ({
+    o: Number(r.o) / 1e8,
+    h: Number(r.h) / 1e8,
+    l: Number(r.l) / 1e8,
+    c: Number(r.c) / 1e8,
+  }));
+}
 
 /** mulberry32 — tiny deterministic PRNG so the backfill is stable per (market, tf). */
 function rng(seed: number) {
@@ -82,6 +100,10 @@ export function PriceChart() {
   const draggingRef = useRef(false);
   const draftRef = useRef<Drawing | null>(null);
   const tickRef = useRef(0);
+  /// The forming bar's bucket start ms (live mode — mirrors the server's buckets).
+  const bucketRef = useRef(0);
+  /// Monotonic fetch id so a slow candles response can't clobber a newer one.
+  const reqRef = useRef(0);
   const marketRef = useRef(selectedMarketId);
   // `draw` is a stable caller; drawRef.current is refreshed every render so it always
   // closes over the latest drawings/tool/timeframe without re-subscribing effects.
@@ -203,18 +225,53 @@ export function PriceChart() {
     }
   };
 
-  // backfill on market / timeframe change
+  // history on market / timeframe change: REAL bars from the gateway when live,
+  // the deterministic synthetic walk only in mock mode
   useEffect(() => {
     marketRef.current = selectedMarketId;
     tickRef.current = 0;
-    candlesRef.current = backfill(selectedMarketId, tf, Number(oracle.price) / 1e8);
+    if (!API) {
+      candlesRef.current = backfill(selectedMarketId, tf, Number(oracle.price) / 1e8);
+      draw();
+      return;
+    }
+    candlesRef.current = [];
+    bucketRef.current = 0;
     draw();
+    const req = ++reqRef.current;
+    fetch(`${API}/v1/markets/${selectedMarketId}/candles?tf=${TF_API[tf] || "15m"}&limit=${BARS + 40}`)
+      .then((r) => r.json())
+      .then((j: { candles?: WireCandle[] }) => {
+        // ignore a stale response after the user already switched market/tf
+        if (req !== reqRef.current) return;
+        const rows = j.candles ?? [];
+        candlesRef.current = mapWireCandles(rows);
+        if (rows.length) bucketRef.current = rows[rows.length - 1].t;
+        draw();
+      })
+      .catch(() => { /* unreachable endpoint → the chart fills from live ticks */ });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedMarketId, tf]);
 
-  // live tick → update the forming candle, roll a new one every few ticks
+  // live tick → fold into the forming candle; roll on the timeframe boundary
+  // (live mode, matching the server's buckets) or every few ticks (mock mode)
   useEffect(() => {
+    if (!Number.isFinite(priceNum) || priceNum <= 0) return;
     const cs = candlesRef.current;
+    if (API) {
+      const tfMs = (TF_MIN[tf] || 15) * 60000;
+      const bucket = Date.now() - (Date.now() % tfMs);
+      if (!cs.length || bucket > bucketRef.current) {
+        bucketRef.current = bucket;
+        cs.push({ o: priceNum, h: priceNum, l: priceNum, c: priceNum });
+        if (cs.length > BARS + 40) cs.shift();
+      } else {
+        const last = cs[cs.length - 1];
+        last.c = priceNum; last.h = Math.max(last.h, priceNum); last.l = Math.min(last.l, priceNum);
+      }
+      draw();
+      return;
+    }
     if (!cs.length) return;
     const last = cs[cs.length - 1];
     last.c = priceNum; last.h = Math.max(last.h, priceNum); last.l = Math.min(last.l, priceNum);

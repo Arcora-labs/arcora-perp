@@ -89,6 +89,70 @@ pub fn fetch_transcript(instrument: &str, now_ms: u64) -> Result<OracleTranscrip
         .ok_or_else(|| "unparseable ticker".to_string())
 }
 
+/// One historical OHLC bar from the exchange, [`PRICE_SCALE`]-scaled — the raw
+/// material for backfilling a market's REAL price history (the chart's past bars).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct FeedCandle {
+    /// Bar start, unix ms.
+    pub start_ms: u64,
+    pub open: i128,
+    pub high: i128,
+    pub low: i128,
+    pub close: i128,
+}
+
+/// Parse a Crypto.com `public/get-candlestick` response body into candles
+/// (ascending by time). Pure — hermetically testable without the network.
+#[cfg(feature = "http")]
+pub fn parse_candles(body: &serde_json::Value) -> Result<Vec<FeedCandle>, String> {
+    let rows = body["result"]["data"]
+        .as_array()
+        .ok_or_else(|| "no candlestick data".to_string())?;
+    let mut out = Vec::with_capacity(rows.len());
+    for row in rows {
+        let s = |k: &str| row[k].as_str().unwrap_or("");
+        let (Some(open), Some(high), Some(low), Some(close)) = (
+            parse_price(s("o")),
+            parse_price(s("h")),
+            parse_price(s("l")),
+            parse_price(s("c")),
+        ) else {
+            continue; // skip a malformed row rather than poisoning the whole backfill
+        };
+        let Some(start_ms) = row["t"].as_u64() else {
+            continue;
+        };
+        out.push(FeedCandle {
+            start_ms,
+            open,
+            high,
+            low,
+            close,
+        });
+    }
+    out.sort_by_key(|c| c.start_ms);
+    Ok(out)
+}
+
+/// Live fetch (opt-in `http`): historical candles for `instrument` at a Crypto.com
+/// `timeframe` (`M1`/`M5`/`M15`/`H1`/`H4`/`D1`), ascending, at most `count` bars.
+#[cfg(feature = "http")]
+pub fn fetch_candles(
+    instrument: &str,
+    timeframe: &str,
+    count: usize,
+) -> Result<Vec<FeedCandle>, String> {
+    let url = format!(
+        "https://api.crypto.com/exchange/v1/public/get-candlestick?instrument_name={instrument}&timeframe={timeframe}&count={count}"
+    );
+    let body: serde_json::Value = ureq::get(&url)
+        .call()
+        .map_err(|e| e.to_string())?
+        .into_json()
+        .map_err(|e| e.to_string())?;
+    parse_candles(&body)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -193,5 +257,25 @@ mod tests {
         let t = transcript_from_ticker("59585.6", "", "", 1_000).unwrap();
         assert_eq!(t.backup_twap, t.price);
         assert_eq!(t.validate(&m, 1_000), Ok(t.price));
+    }
+
+    #[cfg(feature = "http")]
+    #[test]
+    fn parses_candlesticks_ascending_and_skips_malformed_rows() {
+        // the real get-candlestick response layout, plus one malformed row that
+        // must be skipped (not poison the backfill), delivered out of order
+        let body: serde_json::Value = serde_json::from_str(
+            r#"{"code":0,"result":{"instrument_name":"BTC_USDT","interval":"M5","data":[
+                {"o":"59600.1","h":"59650.0","l":"59580.5","c":"59640.2","v":"12.3","t":1720000300000},
+                {"o":"59585.6","h":"59620.0","l":"59570.1","c":"59600.1","v":"10.1","t":1720000000000},
+                {"o":"bogus","h":"1","l":"1","c":"1","v":"0","t":1720000600000}
+            ]}}"#,
+        )
+        .unwrap();
+        let cs = parse_candles(&body).unwrap();
+        assert_eq!(cs.len(), 2, "the malformed row is skipped");
+        assert!(cs[0].start_ms < cs[1].start_ms, "ascending by time");
+        assert_eq!(cs[0].open, parse_price("59585.6").unwrap());
+        assert_eq!(cs[1].high, parse_price("59650.0").unwrap());
     }
 }

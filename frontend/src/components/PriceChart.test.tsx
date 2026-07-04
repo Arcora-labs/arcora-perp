@@ -2,7 +2,16 @@
 import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
 import { render, screen, cleanup, act } from "@testing-library/react";
 import { StoreProvider } from "../store";
-import { PriceChart } from "./PriceChart";
+import { PriceChart, mapWireCandles } from "./PriceChart";
+
+describe("mapWireCandles", () => {
+  it("maps the gateway's 1e8-scaled string candles to chart numbers", () => {
+    const out = mapWireCandles([
+      { t: 60000, o: "6221252000000", h: "6223300000000", l: "6218000000000", c: "6220000000000" },
+    ]);
+    expect(out).toEqual([{ o: 62212.52, h: 62233, l: 62180, c: 62200 }]);
+  });
+});
 
 beforeEach(() => vi.useFakeTimers());
 afterEach(() => {
