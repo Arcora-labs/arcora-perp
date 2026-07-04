@@ -227,3 +227,33 @@ fn fuzz_matcher_deterministic() {
         );
     }
 }
+
+/// AUDIT (Tier-3): a negative limit price is nonsensical (0 = market) and must be
+/// rejected at submit, not rested as a poison order that only yields a price<=0 fill
+/// the engine rejects at settlement (consuming a counterparty for nothing).
+#[test]
+fn negative_limit_price_is_rejected() {
+    let mut e = MatchingEngine::<perp_core::hash::Keccak256>::new();
+    e.open_market(0);
+    let order = Order {
+        owner: word_u64(1),
+        market_id: 0,
+        side: Side::Sell,
+        size: SIZE_SCALE,
+        limit_price: -100 * PRICE_SCALE,
+        tif: TimeInForce::Gtc,
+        reduce_only: false,
+        nonce: 1,
+        expiry_ms: 0,
+        ciphertext_commit: word_u64(42),
+    };
+    let result = e.process_stream(&[order], 0);
+    assert!(
+        matches!(
+            result.processed[0].outcome.status,
+            SubmitStatus::Rejected(_)
+        ),
+        "a negative limit price must be rejected, not rested"
+    );
+    assert!(result.fills.is_empty(), "no fills for a poison order");
+}

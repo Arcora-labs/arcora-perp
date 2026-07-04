@@ -208,6 +208,14 @@ impl<H: perp_core::hash::Hasher> OrderBook<H> {
             out.status = SubmitStatus::Rejected(RejectReason::Cancelled);
             return out;
         }
+        // A negative limit price is nonsensical — 0 means "market order" (no limit), and
+        // any real limit is positive. Reject it up front instead of letting it rest as a
+        // poison order that only produces a price<=0 fill the engine rejects at
+        // settlement (which would also consume a counterparty for nothing) (audit Tier-3).
+        if order.limit_price < 0 {
+            out.status = SubmitStatus::Rejected(RejectReason::Cancelled);
+            return out;
+        }
 
         let side = order.side;
         let limit = order.limit_price;

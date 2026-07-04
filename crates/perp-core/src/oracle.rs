@@ -65,16 +65,21 @@ impl OracleTranscript {
             (Some(lhs), Some(rhs)) if lhs <= rhs => {}
             _ => return Err(OracleError::LowConfidence),
         }
-        // deviation vs backup: |price - twap|/price <= max_deviation_ratio
-        if self.backup_twap > 0 {
-            let dev = abs(self.price - self.backup_twap);
-            match (
-                dev.checked_mul(RATE_SCALE),
-                market.max_oracle_deviation_ratio.checked_mul(self.price),
-            ) {
-                (Some(lhs), Some(rhs)) if lhs <= rhs => {}
-                _ => return Err(OracleError::DeviatesFromBackup),
-            }
+        // deviation vs backup: |price - twap|/price <= max_deviation_ratio. A
+        // non-positive backup TWAP is malformed — a real feed always carries a positive
+        // mid/price — so it must be REJECTED, never used to SKIP the deviation gate. The
+        // old `if backup_twap > 0` let a transcript with backup_twap = 0 clear validation
+        // on price alone, silently disabling the last sanity gate (audit Tier-3).
+        if self.backup_twap <= 0 {
+            return Err(OracleError::DeviatesFromBackup);
+        }
+        let dev = abs(self.price - self.backup_twap);
+        match (
+            dev.checked_mul(RATE_SCALE),
+            market.max_oracle_deviation_ratio.checked_mul(self.price),
+        ) {
+            (Some(lhs), Some(rhs)) if lhs <= rhs => {}
+            _ => return Err(OracleError::DeviatesFromBackup),
         }
         Ok(self.price)
     }
@@ -111,6 +116,22 @@ mod tests {
     fn accepts_fresh_tight_price() {
         let m = Market::conservative(0);
         assert_eq!(good().validate(&m, 1_005_000), Ok(100_000 * PRICE_SCALE));
+    }
+
+    // AUDIT (Tier-3): a malformed transcript with backup_twap = 0 (and confidence = 0)
+    // must NOT clear validation on price alone — the deviation gate must reject a
+    // non-positive TWAP rather than silently skip it.
+    #[test]
+    fn zero_backup_twap_is_rejected_not_skipped() {
+        let m = Market::conservative(0);
+        let mut t = good();
+        t.backup_twap = 0;
+        t.confidence = 0;
+        assert_eq!(
+            t.validate(&m, 1_005_000),
+            Err(OracleError::DeviatesFromBackup),
+            "a zero backup TWAP must be rejected, not skip the deviation gate"
+        );
     }
 
     #[test]
