@@ -70,6 +70,27 @@ const L1_SETTLE_SECS: u64 = 30; // how often the L1 bridge advances the on-chain
 const V1_ORDER_RATE: u32 = 10; // max orders/sec per external account
 const V1_REGISTER_RATE: u32 = 30; // max account registrations/min per IP
 const SNAPSHOT_SECS: u64 = 30; // sealed state-snapshot cadence (DARKPERP_STATE)
+/// Cap on retained per-account order history. SETTLED orders are terminal display data;
+/// without a bound the Vec (and every snapshot) grows forever on a long-lived deployment.
+const MAX_ACCOUNT_ORDER_HISTORY: usize = 500;
+
+/// Evict up to `len - max` of the OLDEST terminal entries (front-first) so a Vec stays
+/// bounded, never dropping a non-terminal (live/in-flight) entry. Generic over the
+/// "is terminal" predicate so the eviction rule is unit-testable without heavy fixtures.
+fn cap_history<T>(items: &mut Vec<T>, max: usize, is_terminal: impl Fn(&T) -> bool) {
+    if items.len() <= max {
+        return;
+    }
+    let mut excess = items.len() - max;
+    items.retain(|it| {
+        if excess > 0 && is_terminal(it) {
+            excess -= 1;
+            false
+        } else {
+            true
+        }
+    });
+}
 
 struct MarketCfg {
     id: u64,
@@ -2288,6 +2309,13 @@ impl Gw {
                     .to_string(),
                 );
             }
+            // audit Tier-3: bound the retained order history so it (and every snapshot)
+            // can't grow without limit. Runs AFTER the seal/finality passes above (which
+            // reference orders by index), and only evicts SETTLED (terminal, display-only)
+            // orders — live/pending orders and the account's replay nonce are untouched.
+            cap_history(&mut acct.orders, MAX_ACCOUNT_ORDER_HISTORY, |o| {
+                o.last_finality == "SETTLED"
+            });
         }
         if adl_clawed > 0 {
             events.push(WEvent {
@@ -4949,6 +4977,28 @@ mod tests {
         // which is the pre-fix bug that skipped in-flight challenges)
         assert_eq!(challenge_scan_start(10_000, 0), 10_000 - 64);
         assert_eq!(challenge_scan_start(10_000, 10), 10_000 - 64);
+    }
+
+    /// AUDIT (Tier-3): the order-history cap evicts the OLDEST terminal (SETTLED) entries
+    /// first and NEVER a live/in-flight one, bounding growth without losing pending orders.
+    #[test]
+    fn cap_history_evicts_oldest_terminal_only() {
+        // "S" = settled/terminal, "A" = live. Cap at 2.
+        let mut v = vec!["S", "S", "S", "A", "A"];
+        cap_history(&mut v, 2, |s| *s == "S");
+        assert_eq!(v, vec!["A", "A"], "oldest settled evicted down to the cap");
+        // live entries are never evicted, even if that leaves the Vec above the cap
+        let mut v2 = vec!["S", "A", "A", "A"];
+        cap_history(&mut v2, 2, |s| *s == "S");
+        assert_eq!(
+            v2,
+            vec!["A", "A", "A"],
+            "only the settled entry evicted; live kept"
+        );
+        // no-op when already within the cap
+        let mut v3 = vec!["S", "A"];
+        cap_history(&mut v3, 5, |s| *s == "S");
+        assert_eq!(v3, vec!["S", "A"]);
     }
 
     /// AUDIT (rate-limit behind proxy): the register limiter must key on the real
