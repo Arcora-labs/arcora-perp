@@ -623,12 +623,15 @@ fn mk_order(
     price: i128,
     nonce: u64,
     tif: TimeInForce,
+    reduce_only: bool,
 ) -> Order {
     // Bind the economically-meaningful trade terms into `ciphertext_commit`. Because
     // `Order::order_hash` hashes `ciphertext_commit`, this makes the order hash commit
-    // to side/size/price/tif/market/nonce — so a caller-signed account's signature
-    // (taken over the order hash) covers the ACTUAL trade: mutating any term in the
-    // request invalidates the signature (review fix, was nonce-only before).
+    // to side/size/price/tif/market/nonce/reduce_only — so a caller-signed account's
+    // signature (taken over the order hash) covers the ACTUAL trade: mutating any term
+    // in the request invalidates the signature (review fix, was nonce-only before;
+    // reduce_only added per audit — a leaked/relayed key must not flip a signed
+    // reduce-only order into a position-opening one).
     use sha3::Digest as _;
     let side_b: u8 = match side {
         Side::Buy => 1,
@@ -647,6 +650,7 @@ fn mk_order(
     hh.update([tif_b]);
     hh.update(market_id.to_le_bytes());
     hh.update(nonce.to_le_bytes());
+    hh.update([reduce_only as u8]);
     let cc: [u8; 32] = hh.finalize().into();
     Order {
         owner,
@@ -655,7 +659,7 @@ fn mk_order(
         size,
         limit_price: price,
         tif,
-        reduce_only: false,
+        reduce_only,
         nonce,
         expiry_ms: 0,
         ciphertext_commit: cc,
@@ -1192,8 +1196,18 @@ impl Gw {
             }
             None => acct.nonce,
         };
-        let mut order = mk_order(owner, req.market_id, side, size, px, nonce, tif);
-        order.reduce_only = req.reduce_only; // audit DP-009: carry reduce_only to the core
+        // reduce_only is bound into the order hash (mk_order) so a caller signature
+        // covers it — a leaked/relayed key can't flip it (audit DP-009 + follow-up).
+        let order = mk_order(
+            owner,
+            req.market_id,
+            side,
+            size,
+            px,
+            nonce,
+            tif,
+            req.reduce_only,
+        );
         let oh = order.order_hash::<Keccak256>();
         if let Some(expected) = signer {
             let sig_hex = match req.signature.as_deref() {
@@ -1807,7 +1821,7 @@ impl Gw {
         let nonce = self.user_nonce;
         self.user_nonce += 1;
         // user is the taker (Ioc) — crosses the resting market-maker maker each seal
-        let mut order = mk_order(
+        let order = mk_order(
             self.user.owner,
             req.market_id,
             side,
@@ -1815,8 +1829,8 @@ impl Gw {
             px,
             nonce,
             TimeInForce::Ioc,
+            req.reduce_only,
         );
-        order.reduce_only = req.reduce_only; // audit DP-009: carry reduce_only to the core
         let oh = order.order_hash::<Keccak256>();
         let now = now_ms();
         let signed = self.seq.accept_order(&order, now);
@@ -2037,6 +2051,7 @@ impl Gw {
                 price,
                 mmn,
                 TimeInForce::Gtc,
+                false,
             ));
             seal.push(uo);
         }
@@ -2087,6 +2102,7 @@ impl Gw {
                             mark,
                             mmn,
                             TimeInForce::Gtc,
+                            false,
                         ));
                     }
                 }
@@ -4576,7 +4592,16 @@ mod tests {
         let size = SIZE_SCALE / 10;
 
         // the exact order the gateway will reconstruct, signed by the caller's key
-        let order = mk_order(owner, market, Side::Buy, size, limit, 1, TimeInForce::Ioc);
+        let order = mk_order(
+            owner,
+            market,
+            Side::Buy,
+            size,
+            limit,
+            1,
+            TimeInForce::Ioc,
+            false,
+        );
         let oh = order.order_hash::<Keccak256>();
         assert!(
             gw.account_place_order(
@@ -4606,7 +4631,16 @@ mod tests {
 
         // a signature from a DIFFERENT key (wrong signer) is rejected
         let wrong = SigningKey::from_bytes((&[10u8; 32]).into()).unwrap();
-        let order2 = mk_order(owner, market, Side::Buy, size, limit, 2, TimeInForce::Ioc);
+        let order2 = mk_order(
+            owner,
+            market,
+            Side::Buy,
+            size,
+            limit,
+            2,
+            TimeInForce::Ioc,
+            false,
+        );
         let oh2 = order2.order_hash::<Keccak256>();
         assert!(
             gw.account_place_order(
@@ -4620,7 +4654,16 @@ mod tests {
         // FIELD-BINDING (review fix): a signature is bound to the EXACT trade terms.
         // Sign a Buy of `size` @ limit (nonce 5), then submit size*2 with that same
         // signature — it must be rejected (the size is bound into the order hash)…
-        let signed = mk_order(owner, market, Side::Buy, size, limit, 5, TimeInForce::Ioc);
+        let signed = mk_order(
+            owner,
+            market,
+            Side::Buy,
+            size,
+            limit,
+            5,
+            TimeInForce::Ioc,
+            false,
+        );
         let sig5 = sign(&sk, &signed.order_hash::<Keccak256>());
         assert!(
             gw.account_place_order(
@@ -4768,6 +4811,70 @@ mod tests {
         gw.tick();
         let opened = gw.seq.state.position(&owner, 0).map_or(0, |p| p.size);
         assert_eq!(opened, 0, "off-market limit buy must NOT open a position");
+    }
+
+    /// AUDIT (DP-009 follow-up): a caller-signed order's signature must bind
+    /// `reduce_only`. A relay / leaked-key holder that flips a signed reduce-only
+    /// order into a position-opening one (reduce_only true→false) must be rejected —
+    /// the signature covers the flag.
+    #[test]
+    fn caller_signed_orders_bind_reduce_only() {
+        use k256::ecdsa::SigningKey;
+        use sha3::{Digest as _, Keccak256 as RawKeccak};
+
+        fn eth_addr(sk: &SigningKey) -> [u8; 20] {
+            let point = sk.verifying_key().to_encoded_point(false);
+            let hash = RawKeccak::digest(&point.as_bytes()[1..]);
+            let mut a = [0u8; 20];
+            a.copy_from_slice(&hash[12..]);
+            a
+        }
+        fn sign(sk: &SigningKey, oh: &Digest) -> String {
+            let (sig, recid) = sk.sign_prehash_recoverable(oh).unwrap();
+            let mut s = [0u8; 65];
+            s[..64].copy_from_slice(&sig.to_bytes());
+            s[64] = 27 + recid.to_byte();
+            hex0x(&s)
+        }
+
+        let mut gw = Gw::boot();
+        let sk = SigningKey::from_bytes((&[11u8; 32]).into()).unwrap();
+        let (key, owner) = gw.register_account(Some(eth_addr(&sk)));
+        gw.account_deposit(&key, 0, 50_000 * QUOTE_SCALE).unwrap();
+        let market = 0u64;
+        let limit = gw.px_of(market);
+        let size = SIZE_SCALE / 10;
+
+        // The caller signs an order they intend as reduce_only = TRUE.
+        let signed = mk_order(
+            owner,
+            market,
+            Side::Buy,
+            size,
+            limit,
+            1,
+            TimeInForce::Ioc,
+            true,
+        );
+        let sig = sign(&sk, &signed.order_hash::<Keccak256>());
+
+        // A relay flips it to reduce_only = FALSE (an opening order) under the SAME
+        // signature. This must be rejected — otherwise the flag is unbound and the
+        // reduce-only safety guarantee the signer relied on is silently bypassed.
+        let tampered = OrderReq {
+            market_id: market,
+            side: "Buy".into(),
+            size: size.to_string(),
+            limit_price: limit.to_string(),
+            tif: "Ioc".into(),
+            reduce_only: false,
+            nonce: Some(1),
+            signature: Some(sig),
+        };
+        assert!(
+            gw.account_place_order(&key, &tampered).is_err(),
+            "flipping reduce_only under a valid signature must be rejected",
+        );
     }
 
     /// The symmetric direction: a Sell Ioc whose limit sits far ABOVE the mark does
