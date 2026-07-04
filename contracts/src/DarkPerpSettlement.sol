@@ -90,6 +90,12 @@ contract DarkPerpSettlement {
     /// than pushed, so a non-payable recipient can never brick the challenge-answer or the
     /// slash transition — the recipient pulls it via `claimEth` (audit DP-011).
     mapping(address => uint256) public pendingEth;
+    /// Pull-payment ledger for the slashed USDC bond. Credited to the challenger on a
+    /// slash rather than pushed, so a pausable/blacklisting USDC (or a challenger the
+    /// token blocks) can never brick `slashUnanswered` — which would otherwise leave the
+    /// order permanently unslashable and the sequencer un-punished. Pulled via
+    /// `claimUsdc` (audit Tier-3, mirrors the DP-011 ETH pattern).
+    mapping(address => uint256) public pendingUsdc;
 
     event BatchSettled(uint256 indexed batchId, bytes32 prevRoot, bytes32 newRoot, bytes32 manifestHash);
     event CloseOnlyEntered(string reason);
@@ -100,6 +106,7 @@ contract DarkPerpSettlement {
     event RejectionAnswered(bytes32 indexed orderHash, uint256 batchId);
     event SequencerSlashed(bytes32 indexed orderHash, address indexed challenger, uint256 amount);
     event EthClaimed(address indexed to, uint256 amount);
+    event UsdcClaimed(address indexed to, uint256 amount);
 
     error NotSequencer();
     error InCloseOnly();
@@ -411,12 +418,11 @@ contract DarkPerpSettlement {
         sequencerBond = 0;
         emit SequencerSlashed(orderHash, c.challenger, slashedBond);
         emit CloseOnlyEntered("inclusion slash");
-        // pay the slashed USDC bond now; credit the challenger's native ETH stake for pull
-        // (DP-011) so a non-payable challenger cannot brick the slash.
-        if (slashedBond > 0) {
-            IERC20Min tok = IERC20Min(ICollateralVault(vault).token());
-            if (!tok.transfer(c.challenger, slashedBond)) revert TransferFailed();
-        }
+        // Credit BOTH refunds for pull (never push): the slashed USDC bond and the
+        // challenger's native ETH stake. A pausable/blacklisting USDC or a non-payable
+        // challenger can no longer brick this transition — which would otherwise leave the
+        // order permanently unslashable (audit Tier-3 for USDC; DP-011 for ETH).
+        pendingUsdc[c.challenger] += slashedBond;
         pendingEth[c.challenger] += c.bond;
     }
 
@@ -429,6 +435,19 @@ contract DarkPerpSettlement {
             (bool ok,) = msg.sender.call{value: amount}("");
             if (!ok) revert TransferFailed();
             emit EthClaimed(msg.sender, amount);
+        }
+    }
+
+    /// @notice Withdraw a slashed-USDC-bond refund credited to `msg.sender` (audit Tier-3).
+    /// Checks-effects-interactions: zero the balance before the transfer. A recipient the
+    /// token blocks can only fail their OWN claim; the slash already completed.
+    function claimUsdc() external {
+        uint256 amount = pendingUsdc[msg.sender];
+        pendingUsdc[msg.sender] = 0;
+        if (amount > 0) {
+            IERC20Min tok = IERC20Min(ICollateralVault(vault).token());
+            if (!tok.transfer(msg.sender, amount)) revert TransferFailed();
+            emit UsdcClaimed(msg.sender, amount);
         }
     }
 

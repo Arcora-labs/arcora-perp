@@ -368,10 +368,16 @@ contract DarkPerpSettlementTest is MiniTest {
         assertTrue(s.slashed(), "sequencer slashed");
         assertTrue(s.closeOnly(), "slash forces close-only");
         assertEq(s.sequencerBond(), 0, "bond drained");
-        // challenger receives the slashed USDC bond directly; its native ETH stake is
-        // credited for pull (DP-011) and reclaimed via claimEth.
-        assertEq(usdc.balanceOf(challenger), bond, "slashed USDC bond paid to challenger");
+        // audit Tier-3: BOTH the slashed USDC bond and the ETH stake are credited for
+        // PULL, never pushed — so a pausable/blacklisting USDC or a non-payable challenger
+        // can never brick the slash (which would leave the order permanently unslashable).
+        assertEq(usdc.balanceOf(challenger), 0, "slashed USDC not pushed directly");
+        assertEq(s.pendingUsdc(challenger), bond, "slashed USDC credited to challenger for pull");
         assertEq(s.pendingEth(challenger), CHALLENGE_BOND, "ETH stake credited to challenger for pull");
+        // the challenger pulls each refund
+        vm.prank(challenger);
+        s.claimUsdc();
+        assertEq(usdc.balanceOf(challenger), bond, "challenger pulls the slashed USDC bond");
         vm.prank(challenger);
         s.claimEth();
         assertEq(challenger.balance, CHALLENGE_BOND, "challenger pulls its ETH stake");

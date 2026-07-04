@@ -213,7 +213,11 @@ fn settlement_reason(e: &EngineError) -> RejectReason {
         EngineError::Risk(_) => RejectReason::InsufficientMargin,
         EngineError::Oracle(_) => RejectReason::OracleUnavailable,
         EngineError::CloseOnly => RejectReason::MarketCloseOnly,
-        _ => RejectReason::ReduceOnlyViolation,
+        EngineError::SelfTrade => RejectReason::SelfTradePrevented,
+        // audit Tier-3: an HONEST catch-all for the remaining engine errors (UnknownMarket,
+        // NonPositiveAmount, Overflow, DuplicateCommitment, …) instead of mis-tagging them
+        // all as ReduceOnlyViolation in the manifest.
+        _ => RejectReason::InvalidOrder,
     }
 }
 
@@ -393,7 +397,8 @@ impl Sequencer {
     /// can match-but-fail-to-settle, so `ordered`/`rejected` stay honest (§2).
     pub fn pre_trade_check(&self, order: &Order, now_ms: u64) -> Result<(), RejectReason> {
         let Some(market) = self.state.markets.get(&order.market_id) else {
-            return Err(RejectReason::ReduceOnlyViolation);
+            // audit Tier-3: an unknown market is not a reduce-only violation.
+            return Err(RejectReason::InvalidOrder);
         };
         let Some(oracle) = self.oracles.get(&order.market_id) else {
             return Err(RejectReason::OracleUnavailable);
