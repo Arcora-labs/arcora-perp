@@ -783,3 +783,22 @@ fn reduce_only_behind_an_earlier_same_batch_order_is_rejected() {
         "the reduce_only order behind an earlier same-batch order is rejected up front",
     );
 }
+
+/// AUDIT (Tier-3): the manifest reject reason must be honest. An order on an unknown
+/// market is not a reduce-only violation — it must be tagged InvalidOrder.
+#[test]
+fn unknown_market_order_is_tagged_invalid_not_reduce_only() {
+    let mut s = setup();
+    let mut o = order(1, Side::Buy, SIZE_SCALE, 100_000 * PRICE_SCALE, 1);
+    o.market_id = 99; // only market 0 is registered
+    let oh = o.order_hash::<Keccak256>();
+    let sealed = s.seal_batch(&[o], 1_000);
+    assert!(
+        sealed
+            .manifest
+            .rejected
+            .iter()
+            .any(|(h, r)| *h == oh && *r == RejectReason::InvalidOrder),
+        "an unknown-market order must be tagged InvalidOrder, not ReduceOnlyViolation"
+    );
+}

@@ -134,6 +134,11 @@ pub enum RejectReason {
     FillOrKillUnfillable = 8,
     /// Order expired before / at the matching instant.
     Cancelled = 9,
+    /// The order/op was malformed or could not be applied for a reason with no more
+    /// specific code (unknown market, non-positive amount, self-trade at settlement,
+    /// arithmetic overflow, …). An honest catch-all — never the misleading
+    /// `ReduceOnlyViolation` the manifest used to report for these (audit Tier-3).
+    InvalidOrder = 10,
 }
 
 /// Per-batch public commitment to exactly what was sequenced (§2).
