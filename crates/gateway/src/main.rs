@@ -615,6 +615,7 @@ fn parse_tif(s: &str) -> TimeInForce {
         _ => TimeInForce::Ioc,
     }
 }
+#[allow(clippy::too_many_arguments)] // a flat order constructor; a params struct would only add ceremony
 fn mk_order(
     owner: PubKey,
     market_id: u64,
@@ -2649,16 +2650,49 @@ fn api_key_from(headers: &HeaderMap) -> Result<[u8; 32], (StatusCode, Json<serde
         ))
 }
 
+/// The client IP to rate-limit on. The gateway serves plain HTTP behind a
+/// same-host reverse proxy (Caddy), so the raw TCP peer is the proxy's loopback
+/// address — keying the limiter on it collapses every client into one bucket.
+/// Trust `X-Forwarded-For` / `X-Real-IP` ONLY when the direct peer is loopback
+/// (the trusted proxy); on a direct connection the peer IS the client and those
+/// headers are attacker-spoofable. With one trusted hop the proxy appends the real
+/// client to XFF, so the LAST parseable entry is the client as the proxy saw it.
+fn client_ip(peer: SocketAddr, headers: &HeaderMap) -> IpAddr {
+    if peer.ip().is_loopback() {
+        if let Some(ip) = headers
+            .get("x-forwarded-for")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|xff| {
+                xff.split(',')
+                    .rev()
+                    .find_map(|s| s.trim().parse::<IpAddr>().ok())
+            })
+        {
+            return ip;
+        }
+        if let Some(ip) = headers
+            .get("x-real-ip")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|s| s.trim().parse::<IpAddr>().ok())
+        {
+            return ip;
+        }
+    }
+    peer.ip()
+}
+
 async fn post_v1_register(
     State(app): State<Shared>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     body: axum::body::Bytes,
 ) -> impl IntoResponse {
-    // throttle registrations per source IP (sliding 60s window)
+    // throttle registrations per real client IP (sliding 60s window)
     {
         let now = now_ms() / 1000;
+        let ip = client_ip(addr, &headers);
         let mut reg = app.reg_limit.lock().await;
-        let e = reg.entry(addr.ip()).or_insert((now, 0));
+        let e = reg.entry(ip).or_insert((now, 0));
         if now.saturating_sub(e.0) >= 60 {
             *e = (now, 0);
         }
@@ -4030,7 +4064,11 @@ async fn main() {
                         // count, which settleBatch consumes then increments). Build the ordered and
                         // rejected roots over THIS batch id, so a later `answerChallenge` /
                         // `answerByRejection` proof (built with the same id) verifies on-chain.
-                        let batch_id = l1c.batch_count().unwrap_or(0);
+                        // audit (fail-closed): propagate a batch_count RPC error instead of
+                        // defaulting to 0 — a transient failure that silently keyed the roots to
+                        // batch 0 would make every challenge for this batch unanswerable and get an
+                        // honest sequencer slashed. Aborting here just retries the settle next tick.
+                        let batch_id = l1c.batch_count()?;
                         let ordered_leaves: Vec<[u8; 32]> = ordered_h
                             .iter()
                             .map(|h| inclusion_leaf(batch_id, h))
@@ -4051,7 +4089,9 @@ async fn main() {
                         Ok(Some((
                             L1Status {
                                 settled_root: new_root,
-                                batch_count: l1c.batch_count().unwrap_or(0),
+                                // settleBatch consumed `batch_id` then incremented, so the new
+                                // on-chain count is known — no need to re-query (and never show 0).
+                                batch_count: batch_id + 1,
                                 last_tx: tx,
                                 bond: l1c.sequencer_bond().unwrap_or(0).to_string(),
                                 withdrawals_root: wroot_hex,
@@ -4811,6 +4851,45 @@ mod tests {
         gw.tick();
         let opened = gw.seq.state.position(&owner, 0).map_or(0, |p| p.size);
         assert_eq!(opened, 0, "off-market limit buy must NOT open a position");
+    }
+
+    /// AUDIT (rate-limit behind proxy): the register limiter must key on the real
+    /// client IP, trusting forwarding headers only from a loopback proxy peer and
+    /// ignoring them on a direct (spoofable) connection.
+    #[test]
+    fn client_ip_trusts_proxy_only_from_loopback() {
+        let mk = |xff: Option<&str>, xri: Option<&str>| {
+            let mut h = HeaderMap::new();
+            if let Some(v) = xff {
+                h.insert("x-forwarded-for", v.parse().unwrap());
+            }
+            if let Some(v) = xri {
+                h.insert("x-real-ip", v.parse().unwrap());
+            }
+            h
+        };
+        let loop_peer: SocketAddr = "127.0.0.1:5000".parse().unwrap();
+        let pub_peer: SocketAddr = "203.0.113.9:5000".parse().unwrap();
+        let ip = |s: &str| s.parse::<IpAddr>().unwrap();
+
+        // behind the proxy: the LAST XFF entry (the client as the proxy saw it) wins,
+        // even when the client prepends a spoofed value.
+        assert_eq!(
+            client_ip(loop_peer, &mk(Some("9.9.9.9, 1.2.3.4"), None)),
+            ip("1.2.3.4"),
+        );
+        // X-Real-IP is the fallback when there's no XFF.
+        assert_eq!(
+            client_ip(loop_peer, &mk(None, Some("5.6.7.8"))),
+            ip("5.6.7.8")
+        );
+        // a direct (non-loopback) peer: headers are attacker-controlled → ignore them.
+        assert_eq!(
+            client_ip(pub_peer, &mk(Some("1.2.3.4"), None)),
+            ip("203.0.113.9")
+        );
+        // loopback peer with no forwarding headers → fall back to the peer itself.
+        assert_eq!(client_ip(loop_peer, &mk(None, None)), ip("127.0.0.1"));
     }
 
     /// AUDIT (DP-009 follow-up): a caller-signed order's signature must bind
