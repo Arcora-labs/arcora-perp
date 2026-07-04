@@ -136,11 +136,10 @@ impl L1 {
     }
 
     fn cast(&self, args: &[&str]) -> Result<String, String> {
+        use std::io::Read;
         // Spawn with piped output and a hard wall-clock deadline: a black-hole RPC must
         // not hang forever holding the nonce lock (see CAST_WALL_TIMEOUT_SECS). ETH_RPC_
-        // TIMEOUT additionally bounds each individual JSON-RPC call. cast's outputs here
-        // (nonce, tx hash, a bytes32, a small --json receipt) are far under the pipe
-        // buffer, so not draining stdout while polling can't deadlock the child.
+        // TIMEOUT additionally bounds each individual JSON-RPC call.
         let mut child = Command::new("cast")
             .args(args)
             .env("ETH_RPC_TIMEOUT", CAST_RPC_TIMEOUT_SECS.to_string())
@@ -148,15 +147,35 @@ impl L1 {
             .stderr(std::process::Stdio::piped())
             .spawn()
             .map_err(|e| format!("cast spawn failed (is Foundry installed?): {e}"))?;
+        // Drain stdout/stderr on their OWN threads: a large child output (e.g. a
+        // `cast logs --json` over many events) can exceed the ~64KB OS pipe buffer, and
+        // if we only polled try_wait() without reading, the child would block on write()
+        // and never exit — a deadlock until the kill deadline. Concurrent readers keep
+        // the pipes drained so the child can always make progress and exit.
+        let mut stdout_pipe = child.stdout.take().ok_or("cast: no stdout pipe")?;
+        let mut stderr_pipe = child.stderr.take().ok_or("cast: no stderr pipe")?;
+        let out_reader = std::thread::spawn(move || {
+            let mut buf = Vec::new();
+            let _ = stdout_pipe.read_to_end(&mut buf);
+            buf
+        });
+        let err_reader = std::thread::spawn(move || {
+            let mut buf = Vec::new();
+            let _ = stderr_pipe.read_to_end(&mut buf);
+            buf
+        });
         let deadline =
             std::time::Instant::now() + std::time::Duration::from_secs(CAST_WALL_TIMEOUT_SECS);
-        loop {
+        let status = loop {
             match child.try_wait() {
-                Ok(Some(_)) => break,
+                Ok(Some(s)) => break s,
                 Ok(None) => {
                     if std::time::Instant::now() >= deadline {
                         let _ = child.kill();
                         let _ = child.wait();
+                        // killing closes the pipes, so the readers unblock and finish
+                        let _ = out_reader.join();
+                        let _ = err_reader.join();
                         return Err(format!(
                             "cast timed out after {CAST_WALL_TIMEOUT_SECS}s (RPC wedged)"
                         ));
@@ -165,14 +184,13 @@ impl L1 {
                 }
                 Err(e) => return Err(format!("cast wait failed: {e}")),
             }
+        };
+        let stdout = out_reader.join().unwrap_or_default();
+        let stderr = err_reader.join().unwrap_or_default();
+        if !status.success() {
+            return Err(String::from_utf8_lossy(&stderr).trim().to_string());
         }
-        let out = child
-            .wait_with_output()
-            .map_err(|e| format!("cast output failed: {e}"))?;
-        if !out.status.success() {
-            return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
-        }
-        Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+        Ok(String::from_utf8_lossy(&stdout).trim().to_string())
     }
 
     /// `cast send <target> <sig> [args..]` signed by the sequencer key, returning the tx hash.
