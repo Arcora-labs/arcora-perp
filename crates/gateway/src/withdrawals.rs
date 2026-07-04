@@ -43,11 +43,14 @@ pub fn withdrawal_leaf(to: &[u8; 20], amount: u128, nonce: u64) -> [u8; 32] {
     h.finalize().into()
 }
 
-/// `keccak256(abi.encodePacked(uint256 batchId, bytes32 orderHash))` — matches
-/// `DarkPerpSettlement.inclusionLeaf`. The ordered-tree leaf the sequencer proves against
-/// `answerChallenge`, so an inclusion challenge can be answered (audit DP-004).
+/// `keccak256(abi.encodePacked(uint8(0), uint256 batchId, bytes32 orderHash))` — matches
+/// `DarkPerpSettlement.inclusionLeaf`. The `0x00` domain tag makes the preimage 65 bytes so
+/// it can never collide with a MerkleLib internal node (a bare 64-byte keccak of two
+/// bytes32) — closing the node-as-leaf forgery (audit). The ordered-tree leaf the sequencer
+/// proves against `answerChallenge`, so an inclusion challenge can be answered (audit DP-004).
 pub fn inclusion_leaf(batch_id: u64, order_hash: &[u8; 32]) -> [u8; 32] {
     let mut h = Keccak256::new();
+    h.update([0x00u8]);
     let mut bid = [0u8; 32];
     bid[24..].copy_from_slice(&batch_id.to_be_bytes()); // u64 → low 8 bytes of the uint256
     h.update(bid);
@@ -172,9 +175,10 @@ mod tests {
     #[test]
     fn challenge_leaves_match_solidity() {
         let oh = [0x11u8; 32];
+        // domain-tagged (0x00) inclusion leaf — cast keccak of 0x00 ‖ uint256(batch) ‖ oh
         assert_eq!(
             inclusion_leaf(0, &oh),
-            h("0x8e4b8e18156a1c7271055ce5b7ef53bb370294ebd631a3b95418a92da46e681f"),
+            h("0xfb6a66d6de8cab574609df74afac535939f6f57d848897c36747dffe5af12286"),
         );
         assert_eq!(
             rejection_leaf(0, &oh),
@@ -183,7 +187,7 @@ mod tests {
         // batchId is bound (a different batch → a different leaf)
         assert_eq!(
             inclusion_leaf(5, &oh),
-            h("0xf3308d64dd30200a981fbb01272a1f05b4cfb7ca1b636aed03d9bc7474b03f9e"),
+            h("0xc1a2bf30c99f52c794d4af1ccfd5a858a8fd85e10cd59fdcd7d1cfc2634fc14b"),
         );
         // inclusion and rejection leaves never collide at the same (batch, order)
         assert_ne!(inclusion_leaf(0, &oh), rejection_leaf(0, &oh));
