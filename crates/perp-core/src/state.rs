@@ -88,7 +88,11 @@ impl<H: Hasher> State<H> {
     /// here rather than let a misconfiguration through. This is a setup-time check,
     /// not part of the proven `apply_batch` transition.
     pub fn add_market(&mut self, market: Market) {
-        debug_assert!(
+        // HARD assert (not debug_assert): an incoherent market silently corrupts the
+        // fee/margin/liquidation math (e.g. a treasury cut > net fee drives the insurance
+        // fund negative), so it must fail-fast at setup even in a release build, not be
+        // compiled out. Setup-time config, not the proven transition.
+        assert!(
             market.is_coherent(),
             "refusing to register an incoherent market"
         );

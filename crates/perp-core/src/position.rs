@@ -138,7 +138,13 @@ impl Position {
         if self.size == 0 {
             return true; // opening from flat
         }
-        let new = self.size + delta_size;
+        // Never wrap (crate rule): an overflowing add can only be an astronomically
+        // large delta, which by definition opens exposure — treat it as increasing so it
+        // stays subject to the initial-margin / close-only gates rather than panicking
+        // (debug) or wrapping to a bogus "reduction" (release).
+        let Some(new) = self.size.checked_add(delta_size) else {
+            return true;
+        };
         if new == 0 {
             return false; // exact close
         }
@@ -281,6 +287,20 @@ mod tests {
             collateral: coll,
             funding_entry: 0,
         }
+    }
+
+    // AUDIT (Tier-3): increases_exposure must not overflow on the raw add. A near-max
+    // position plus a positive delta overflows i128 — the old `self.size + delta_size`
+    // panicked under debug overflow-checks; the checked version returns true (opening).
+    #[test]
+    fn increases_exposure_does_not_overflow_at_the_size_bound() {
+        let p = pos(i128::MAX, 100_000 * PRICE_SCALE, 20_000 * QUOTE_SCALE);
+        assert!(
+            p.increases_exposure(1),
+            "an overflowing delta is treated as increasing exposure, not a panic/wrap"
+        );
+        let short = pos(i128::MIN, 100_000 * PRICE_SCALE, 20_000 * QUOTE_SCALE);
+        assert!(short.increases_exposure(-1), "symmetric on the short bound");
     }
 
     #[test]
