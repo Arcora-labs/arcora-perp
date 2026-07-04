@@ -21,6 +21,15 @@ use std::process::Command;
 /// keccak256("Deposit(address,uint256)") — the vault's deposit log topic0.
 const DEPOSIT_TOPIC0: &str = "0xe1fffcc4923d04b559f4d29a8bfc6cda04eb5b0d3c460751c2402c5c5cc9109c";
 
+/// Per-RPC timeout handed to every `cast` invocation (bounds each JSON-RPC call).
+const CAST_RPC_TIMEOUT_SECS: u64 = 15;
+/// Hard wall-clock bound on a whole `cast` subprocess. `send()` holds the nonce lock
+/// across the entire call (which waits for the receipt), so a wedged RPC or a receipt
+/// wait that never returns would otherwise freeze settlement AND inclusion-challenge
+/// answering indefinitely (risking a bond slash). On timeout the child is killed and
+/// the call fails, so `send()` re-seeds the nonce from chain and the loop retries.
+const CAST_WALL_TIMEOUT_SECS: u64 = 90;
+
 /// L1 bridge configuration, read from env. `None` ⇒ L1 mode off (pure in-memory).
 #[derive(Clone)]
 pub struct L1 {
@@ -127,10 +136,39 @@ impl L1 {
     }
 
     fn cast(&self, args: &[&str]) -> Result<String, String> {
-        let out = Command::new("cast")
+        // Spawn with piped output and a hard wall-clock deadline: a black-hole RPC must
+        // not hang forever holding the nonce lock (see CAST_WALL_TIMEOUT_SECS). ETH_RPC_
+        // TIMEOUT additionally bounds each individual JSON-RPC call. cast's outputs here
+        // (nonce, tx hash, a bytes32, a small --json receipt) are far under the pipe
+        // buffer, so not draining stdout while polling can't deadlock the child.
+        let mut child = Command::new("cast")
             .args(args)
-            .output()
+            .env("ETH_RPC_TIMEOUT", CAST_RPC_TIMEOUT_SECS.to_string())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
             .map_err(|e| format!("cast spawn failed (is Foundry installed?): {e}"))?;
+        let deadline =
+            std::time::Instant::now() + std::time::Duration::from_secs(CAST_WALL_TIMEOUT_SECS);
+        loop {
+            match child.try_wait() {
+                Ok(Some(_)) => break,
+                Ok(None) => {
+                    if std::time::Instant::now() >= deadline {
+                        let _ = child.kill();
+                        let _ = child.wait();
+                        return Err(format!(
+                            "cast timed out after {CAST_WALL_TIMEOUT_SECS}s (RPC wedged)"
+                        ));
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(50));
+                }
+                Err(e) => return Err(format!("cast wait failed: {e}")),
+            }
+        }
+        let out = child
+            .wait_with_output()
+            .map_err(|e| format!("cast output failed: {e}"))?;
         if !out.status.success() {
             return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
         }
@@ -175,6 +213,16 @@ impl L1 {
                 Err(e)
             }
         }
+    }
+
+    /// Explicitly remove the keystore temp dir (encrypted key + 0600 password file) NOW.
+    /// The RAII `Drop` on `KeystoreDir` only fires when the last `L1` clone drops on a
+    /// NORMAL return, but the gateway exits via `std::process::exit` from its signal
+    /// handler — which skips destructors — so the shutdown path must call this or the key
+    /// material persists in $TMPDIR and accumulates one dir per restart (audit #6 /
+    /// DP-013 review).
+    pub fn cleanup_keystore(&self) {
+        let _ = std::fs::remove_dir_all(&self._keystore.0);
     }
 
     /// The on-chain `currentStateRoot` (the required `prev` for the next settle).

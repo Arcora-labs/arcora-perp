@@ -3826,6 +3826,7 @@ async fn main() {
         }
         {
             let write = write.clone();
+            let l1_ks = l1.clone();
             tokio::spawn(async move {
                 let term = async {
                     #[cfg(unix)]
@@ -3844,6 +3845,12 @@ async fn main() {
                     _ = term => {}
                 }
                 let ok = write().await;
+                // audit #6: process::exit skips Drop, so the KeystoreDir RAII guard never
+                // fires on a graceful stop — remove the keystore temp dir (encrypted key +
+                // 0600 password) explicitly here so it doesn't persist / accumulate.
+                if let Some(l1) = &l1_ks {
+                    l1.cleanup_keystore();
+                }
                 println!(
                     "[state] shutdown snapshot {} — exiting",
                     if ok { "saved" } else { "FAILED" }
