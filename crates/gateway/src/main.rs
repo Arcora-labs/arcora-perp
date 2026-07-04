@@ -1982,15 +1982,16 @@ impl Gw {
         for (i, b) in seed.bytes().enumerate() {
             s[i % 32] ^= b;
         }
+        // Derive the wallet and scan ONLY with its own view-key. Audit #3: we no longer
+        // fall back to the gateway user's archive when the caller's view-key matches
+        // nothing — that fallback returned the house account's note amounts to ANY caller
+        // submitting a random seed (a confidentiality break). A non-matching seed now
+        // correctly recovers nothing. (Follow-up: derive the view-key in the browser and
+        // send only that, so the seed/spend-key never reach the server — needs frontend
+        // keccak, which the UI does not yet ship.)
         let w = Wallet::from_seed(s);
-        // scan with the seed-derived view-key; for the demo, if that finds nothing,
-        // fall back to the gateway user's archive so any seed surfaces a recoverable
-        // balance (the real recovery flow would use the account's own seed).
-        let mut notes = self.archive.scan(&w.view_key);
-        if notes.is_empty() {
-            notes = self.archive.scan(&self.user.view_key);
-        }
-        notes
+        self.archive
+            .scan(&w.view_key)
             .into_iter()
             .map(|rn| {
                 serde_json::json!({
@@ -4877,6 +4878,21 @@ mod tests {
         gw.tick();
         let opened = gw.seq.state.position(&owner, 0).map_or(0, |p| p.size);
         assert_eq!(opened, 0, "off-market limit buy must NOT open a position");
+    }
+
+    /// AUDIT (#3): recovery must never surface another account's notes. Boot funds the
+    /// demo user + MM into the archive; a caller submitting a random seed that derives a
+    /// DIFFERENT view-key must recover NOTHING (the removed cross-account fallback used
+    /// to return the house account's note amounts to any such caller).
+    #[test]
+    fn recover_does_not_leak_another_accounts_notes() {
+        let gw = Gw::boot();
+        let recovered = gw.recover("a-random-seed-that-matches-no-wallet-in-this-gateway");
+        assert!(
+            recovered.is_empty(),
+            "a non-matching seed must recover nothing, got {} notes",
+            recovered.len()
+        );
     }
 
     /// AUDIT (#8): on boot the challenge watcher rewinds past the challenge window so
