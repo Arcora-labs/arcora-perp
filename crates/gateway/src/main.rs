@@ -2053,28 +2053,42 @@ impl Gw {
                 .collect();
             for i in pend {
                 let mut uo = self.accounts[k].orders[i].order; // Order: Copy
-                let price = if uo.limit_price > 0 {
-                    uo.limit_price
-                } else {
-                    self.px_of(uo.market_id)
-                };
-                uo.limit_price = price;
+                let mark = self.px_of(uo.market_id);
+                // A market order (limit 0) trades at the mark; a limit order keeps its
+                // own price for the matcher's crossing check.
+                let is_market = uo.limit_price == 0;
+                if is_market {
+                    uo.limit_price = mark;
+                }
                 if matches!(uo.tif, TimeInForce::Ioc | TimeInForce::Fok) {
-                    let opp = match uo.side {
-                        Side::Buy => Side::Sell,
-                        Side::Sell => Side::Buy,
-                    };
-                    let mmn = self.mm_nonce;
-                    self.mm_nonce += 1;
-                    seal.push(mk_order(
-                        self.mm.owner,
-                        uo.market_id,
-                        opp,
-                        uo.size,
-                        price,
-                        mmn,
-                        TimeInForce::Gtc,
-                    ));
+                    // AUDIT (CRITICAL): the house MM quotes at the VALIDATED oracle mark,
+                    // never at the taker's own limit, and only provides the counter-fill
+                    // when the taker's limit actually crosses the mark. Otherwise a taker
+                    // could name an off-market price (buy far below / sell far above the
+                    // mark), mint an off-market entry against the fabricated MM, and drain
+                    // the vault. A non-crossing Ioc/Fok simply finds no house liquidity.
+                    let crosses = is_market
+                        || match uo.side {
+                            Side::Buy => uo.limit_price >= mark,
+                            Side::Sell => uo.limit_price <= mark,
+                        };
+                    if crosses {
+                        let opp = match uo.side {
+                            Side::Buy => Side::Sell,
+                            Side::Sell => Side::Buy,
+                        };
+                        let mmn = self.mm_nonce;
+                        self.mm_nonce += 1;
+                        seal.push(mk_order(
+                            self.mm.owner,
+                            uo.market_id,
+                            opp,
+                            uo.size,
+                            mark,
+                            mmn,
+                            TimeInForce::Gtc,
+                        ));
+                    }
                 }
                 seal.push(uo);
                 account_refs.push((*k, i));
@@ -4715,6 +4729,108 @@ mod tests {
         assert!(
             gw.account_set_deposit_address(&key2, addr, &good2).is_err(),
             "an address already bound to another account is rejected",
+        );
+    }
+
+    /// AUDIT (CRITICAL — off-market fill-price vault drain): the gateway's house
+    /// market-maker must quote at the validated oracle mark, never at the taker's
+    /// own limit. A Buy Ioc whose limit sits far below the mark does not cross and
+    /// must NOT open a position — otherwise a taker mints an off-market entry
+    /// (buy 1 @ $1 while mark is ~$59.5k → equity ≈ +mark), closes it against the
+    /// house at another off-market price, and withdraws the difference from the vault.
+    #[test]
+    fn ioc_taker_cannot_open_a_position_below_the_oracle_mark() {
+        let mut gw = Gw::boot();
+        let (key, owner) = gw.register_account(None);
+        gw.account_deposit(&key, 0, 20_000 * QUOTE_SCALE).unwrap();
+        let mark = gw.px_of(0);
+        assert!(
+            mark > PRICE_SCALE,
+            "sanity: BTC mark is far above 1 price-unit"
+        );
+        // Offer to BUY 0.1 BTC at a limit of 1 price-unit (~$1e-8) — wildly below the
+        // ~$59.5k mark. No rational counterparty sells here; only the fabricated house
+        // MM could, and at this price it must not.
+        gw.account_place_order(
+            &key,
+            &OrderReq {
+                market_id: 0,
+                side: "Buy".into(),
+                size: (SIZE_SCALE / 10).to_string(),
+                limit_price: "1".into(),
+                tif: "Ioc".into(),
+                reduce_only: false,
+                nonce: None,
+                signature: None,
+            },
+        )
+        .expect("order admitted");
+        gw.tick();
+        let opened = gw.seq.state.position(&owner, 0).map_or(0, |p| p.size);
+        assert_eq!(opened, 0, "off-market limit buy must NOT open a position");
+    }
+
+    /// The symmetric direction: a Sell Ioc whose limit sits far ABOVE the mark does
+    /// not cross the house MM and must NOT open a short at that off-market price.
+    #[test]
+    fn ioc_taker_cannot_open_a_short_above_the_oracle_mark() {
+        let mut gw = Gw::boot();
+        let (key, owner) = gw.register_account(None);
+        // Fund enough that the (limit-priced) admission margin check passes — a
+        // well-capitalized attacker reaches the seal loop, where the fix must still
+        // deny the off-market counter-fill.
+        gw.account_deposit(&key, 0, 200_000 * QUOTE_SCALE).unwrap();
+        let mark = gw.px_of(0);
+        // Offer to SELL 0.1 BTC at 2× the mark — favorable off-market short entry.
+        gw.account_place_order(
+            &key,
+            &OrderReq {
+                market_id: 0,
+                side: "Sell".into(),
+                size: (SIZE_SCALE / 10).to_string(),
+                limit_price: (mark * 2).to_string(),
+                tif: "Ioc".into(),
+                reduce_only: false,
+                nonce: None,
+                signature: None,
+            },
+        )
+        .expect("order admitted");
+        gw.tick();
+        let opened = gw.seq.state.position(&owner, 0).map_or(0, |p| p.size);
+        assert_eq!(opened, 0, "off-market limit sell must NOT open a position");
+    }
+
+    /// Regression guard: a market order (limit 0) still fills at the mark — the fix
+    /// only blocks OFF-market fills, it must not break normal trading.
+    #[test]
+    fn market_order_still_fills_at_the_mark() {
+        let mut gw = Gw::boot();
+        let (key, owner) = gw.register_account(None);
+        gw.account_deposit(&key, 0, 20_000 * QUOTE_SCALE).unwrap();
+        let mark = gw.px_of(0);
+        gw.account_place_order(
+            &key,
+            &OrderReq {
+                market_id: 0,
+                side: "Buy".into(),
+                size: (SIZE_SCALE / 10).to_string(),
+                limit_price: "0".into(),
+                tif: "Ioc".into(),
+                reduce_only: false,
+                nonce: None,
+                signature: None,
+            },
+        )
+        .expect("order admitted");
+        gw.tick();
+        let pos = gw.seq.state.position(&owner, 0).expect("position opened");
+        assert!(pos.size > 0, "market buy opens a long");
+        // entry is at the mark, not some off-market price
+        assert!(
+            pos.entry_price >= mark - PRICE_SCALE && pos.entry_price <= mark + PRICE_SCALE,
+            "entry {} is at the mark {mark}",
+            pos.entry_price
         );
     }
 }
