@@ -487,6 +487,13 @@ struct Mkt {
     live: bool,
     /// Crypto.com instrument for a live feed (`None` ⇒ sim walk only).
     feed: Option<&'static str>,
+    /// Local ms when the feed's own (exchange) timestamp last ADVANCED — the freshness
+    /// clock the live oracle is stamped with. A frozen-but-200 feed (its timestamp
+    /// stops) and a dead/hung feed both stop advancing this and go stale, while the
+    /// exchange clock's absolute skew/lag never causes a false stall. Not serialized.
+    px_ms: u64,
+    /// Last exchange ticker timestamp seen, to detect the advance above.
+    feed_ts: u64,
 }
 #[derive(Serialize, serde::Deserialize)]
 struct GwOrder {
@@ -607,6 +614,15 @@ fn oracle_of(px: i128, now: u64) -> OracleTranscript {
         backup_twap: px,
     }
 }
+/// The block the inclusion-challenge watcher should (re)start scanning from: rewind
+/// 1.5× the challenge window behind `now_block` (min 64 blocks) so a restart that
+/// straddles a challenge still scans it. 1× the window already covers every
+/// still-answerable challenge (raised no more than `window` blocks ago); the extra
+/// half-window is margin, and over-scanning is a harmless no-op (audit #8).
+fn challenge_scan_start(now_block: u64, window_blocks: u64) -> u64 {
+    now_block.saturating_sub(window_blocks.saturating_add(window_blocks / 2).max(64))
+}
+
 fn parse_tif(s: &str) -> TimeInForce {
     match s {
         "Gtc" => TimeInForce::Gtc,
@@ -615,6 +631,7 @@ fn parse_tif(s: &str) -> TimeInForce {
         _ => TimeInForce::Ioc,
     }
 }
+#[allow(clippy::too_many_arguments)] // a flat order constructor; a params struct would only add ceremony
 fn mk_order(
     owner: PubKey,
     market_id: u64,
@@ -623,12 +640,15 @@ fn mk_order(
     price: i128,
     nonce: u64,
     tif: TimeInForce,
+    reduce_only: bool,
 ) -> Order {
     // Bind the economically-meaningful trade terms into `ciphertext_commit`. Because
     // `Order::order_hash` hashes `ciphertext_commit`, this makes the order hash commit
-    // to side/size/price/tif/market/nonce — so a caller-signed account's signature
-    // (taken over the order hash) covers the ACTUAL trade: mutating any term in the
-    // request invalidates the signature (review fix, was nonce-only before).
+    // to side/size/price/tif/market/nonce/reduce_only — so a caller-signed account's
+    // signature (taken over the order hash) covers the ACTUAL trade: mutating any term
+    // in the request invalidates the signature (review fix, was nonce-only before;
+    // reduce_only added per audit — a leaked/relayed key must not flip a signed
+    // reduce-only order into a position-opening one).
     use sha3::Digest as _;
     let side_b: u8 = match side {
         Side::Buy => 1,
@@ -647,6 +667,7 @@ fn mk_order(
     hh.update([tif_b]);
     hh.update(market_id.to_le_bytes());
     hh.update(nonce.to_le_bytes());
+    hh.update([reduce_only as u8]);
     let cc: [u8; 32] = hh.finalize().into();
     Order {
         owner,
@@ -655,7 +676,7 @@ fn mk_order(
         size,
         limit_price: price,
         tif,
-        reduce_only: false,
+        reduce_only,
         nonce,
         expiry_ms: 0,
         ciphertext_commit: cc,
@@ -722,6 +743,8 @@ impl Gw {
                 px,
                 live: false,
                 feed: cfg.feed,
+                px_ms: 0,
+                feed_ts: 0,
             });
         }
         // give the demo user extra market-0 balance so the LP tab is demoable (LP
@@ -818,6 +841,8 @@ impl Gw {
                 px: usd(cfg.seed),
                 live: false,
                 feed: cfg.feed,
+                px_ms: 0,
+                feed_ts: 0,
             })
             .collect();
         for (id, reference_price, px, live) in mkt_px {
@@ -1192,8 +1217,23 @@ impl Gw {
             }
             None => acct.nonce,
         };
-        let mut order = mk_order(owner, req.market_id, side, size, px, nonce, tif);
-        order.reduce_only = req.reduce_only; // audit DP-009: carry reduce_only to the core
+        // reduce_only is bound into the order hash (mk_order) so a caller signature
+        // covers it — a leaked/relayed key can't flip it (audit DP-009 + follow-up).
+        // Pass the RAW limit (0 = market): market orders must keep limit_price == 0
+        // through to the seal so the matcher treats them as "cross at the mark" and the
+        // seal-loop off-market check doesn't reject a market order whose accept-time
+        // price has since drifted from the mark (audit review #5). `px` is only the
+        // margin-check price above.
+        let order = mk_order(
+            owner,
+            req.market_id,
+            side,
+            size,
+            limit,
+            nonce,
+            tif,
+            req.reduce_only,
+        );
         let oh = order.order_hash::<Keccak256>();
         if let Some(expected) = signer {
             let sig_hex = match req.signature.as_deref() {
@@ -1676,11 +1716,27 @@ impl Gw {
     }
 
     fn apply_real_oracle(&mut self, market: u64, transcript: OracleTranscript) {
+        let now = now_ms();
         if let Some(m) = self.mkts.iter_mut().find(|m| m.id == market) {
+            // Advance the freshness clock ONLY when the exchange's own timestamp advances
+            // (recorded in local time): a frozen-but-200 feed and a dead/hung feed both
+            // stop advancing px_ms and go stale, while the exchange clock's absolute
+            // skew/lag never false-stalls a healthy feed (audit review of #7).
+            let exch_ts = transcript.publish_time_ms;
+            if exch_ts != m.feed_ts {
+                m.feed_ts = exch_ts;
+                m.px_ms = now;
+            }
             m.px = transcript.price;
             m.live = true;
+            // Keep the real confidence/backup_twap band, but stamp freshness from px_ms
+            // so tick() need not re-stamp (which would mask a frozen feed forever).
+            let mut t = transcript;
+            t.publish_time_ms = m.px_ms;
+            self.seq.set_oracle(market, t);
+        } else {
+            self.seq.set_oracle(market, transcript);
         }
-        self.seq.set_oracle(market, transcript);
     }
 
     fn rand_unit(&mut self) -> f64 {
@@ -1806,17 +1862,20 @@ impl Gw {
 
         let nonce = self.user_nonce;
         self.user_nonce += 1;
-        // user is the taker (Ioc) — crosses the resting market-maker maker each seal
-        let mut order = mk_order(
+        // user is the taker (Ioc) — crosses the resting market-maker maker each seal.
+        // Pass the RAW limit (0 = market) so the seal loop can tell a market order (fill
+        // at the mark) from a caller-chosen limit and apply the off-market check to the
+        // latter only (audit review #2/#5). `px` is only the margin-check price above.
+        let order = mk_order(
             self.user.owner,
             req.market_id,
             side,
             size,
-            px,
+            limit,
             nonce,
             TimeInForce::Ioc,
+            req.reduce_only,
         );
-        order.reduce_only = req.reduce_only; // audit DP-009: carry reduce_only to the core
         let oh = order.order_hash::<Keccak256>();
         let now = now_ms();
         let signed = self.seq.accept_order(&order, now);
@@ -1958,15 +2017,16 @@ impl Gw {
         for (i, b) in seed.bytes().enumerate() {
             s[i % 32] ^= b;
         }
+        // Derive the wallet and scan ONLY with its own view-key. Audit #3: we no longer
+        // fall back to the gateway user's archive when the caller's view-key matches
+        // nothing — that fallback returned the house account's note amounts to ANY caller
+        // submitting a random seed (a confidentiality break). A non-matching seed now
+        // correctly recovers nothing. (Follow-up: derive the view-key in the browser and
+        // send only that, so the seed/spend-key never reach the server — needs frontend
+        // keccak, which the UI does not yet ship.)
         let w = Wallet::from_seed(s);
-        // scan with the seed-derived view-key; for the demo, if that finds nothing,
-        // fall back to the gateway user's archive so any seed surfaces a recoverable
-        // balance (the real recovery flow would use the account's own seed).
-        let mut notes = self.archive.scan(&w.view_key);
-        if notes.is_empty() {
-            notes = self.archive.scan(&self.user.view_key);
-        }
-        notes
+        self.archive
+            .scan(&w.view_key)
             .into_iter()
             .map(|rn| {
                 serde_json::json!({
@@ -1982,14 +2042,14 @@ impl Gw {
     fn tick(&mut self) -> (Vec<WEvent>, Vec<String>) {
         self.tick += 1;
         let now = now_ms();
-        // 1) oracle update. Markets with a LIVE feed (real Crypto.com price, set by the
-        //    oracle task) are left untouched here — we only re-stamp their oracle with a
-        //    fresh timestamp so the §8 freshness gate keeps passing between fetches.
+        // 1) oracle update. Markets with a LIVE feed keep the real transcript the
+        //    oracle task last set (its publish time is the EXCHANGE's own timestamp,
+        //    ≤ one fetch interval old). We deliberately do NOT re-stamp it fresh each
+        //    tick — that would mask a frozen/dead feed forever; instead a stalled feed
+        //    stops advancing the publish time and the §8 staleness gate trips (audit).
         //    Feed-less markets keep the simulated random walk.
         for i in 0..self.mkts.len() {
             if self.mkts[i].live {
-                let px = self.mkts[i].px;
-                self.seq.set_oracle(self.mkts[i].id, oracle_of(px, now));
                 continue;
             }
             let m = &self.mkts[i];
@@ -2015,29 +2075,37 @@ impl Gw {
             .collect();
         let mut seal: Vec<Order> = Vec::new();
         for &i in &pending {
-            let o = &self.orders[i];
-            let opp = match o.order.side {
-                Side::Buy => Side::Sell,
-                Side::Sell => Side::Buy,
-            };
-            let price = if o.order.limit_price > 0 {
-                o.order.limit_price
-            } else {
-                self.px_of(o.order.market_id)
-            };
-            let mut uo = o.order;
-            uo.limit_price = price;
-            let mmn = self.mm_nonce;
-            self.mm_nonce += 1;
-            seal.push(mk_order(
-                self.mm.owner,
-                o.order.market_id,
-                opp,
-                o.order.size,
-                price,
-                mmn,
-                TimeInForce::Gtc,
-            ));
+            let uo = self.orders[i].order;
+            let mark = self.px_of(uo.market_id);
+            // Same off-market protection as the /v1 path: the house MM quotes at the mark,
+            // and only counters a market order (limit 0 → matcher crosses at any price) or
+            // a limit order whose price actually crosses the mark — so a demo taker can't
+            // name an off-market price and mint an off-market entry against the house MM
+            // (audit review #2). The taker order is pushed unchanged (hash-stable).
+            let is_market = uo.limit_price == 0;
+            let crosses = is_market
+                || match uo.side {
+                    Side::Buy => uo.limit_price >= mark,
+                    Side::Sell => uo.limit_price <= mark,
+                };
+            if crosses {
+                let opp = match uo.side {
+                    Side::Buy => Side::Sell,
+                    Side::Sell => Side::Buy,
+                };
+                let mmn = self.mm_nonce;
+                self.mm_nonce += 1;
+                seal.push(mk_order(
+                    self.mm.owner,
+                    uo.market_id,
+                    opp,
+                    uo.size,
+                    mark,
+                    mmn,
+                    TimeInForce::Gtc,
+                    false,
+                ));
+            }
             seal.push(uo);
         }
         // registered /v1 accounts
@@ -2052,29 +2120,44 @@ impl Gw {
                 .map(|(i, _)| i)
                 .collect();
             for i in pend {
-                let mut uo = self.accounts[k].orders[i].order; // Order: Copy
-                let price = if uo.limit_price > 0 {
-                    uo.limit_price
-                } else {
-                    self.px_of(uo.market_id)
-                };
-                uo.limit_price = price;
+                let uo = self.accounts[k].orders[i].order; // Order: Copy
+                let mark = self.px_of(uo.market_id);
+                // A market order carries limit_price == 0 (kept through admission); the
+                // matcher treats it as crossing any price, so it fills at the MM's mark.
+                // A limit order keeps the caller's own price for its crossing check. Either
+                // way the taker order is pushed UNCHANGED so its seal-time order hash still
+                // matches the one accept_order recorded at admission.
+                let is_market = uo.limit_price == 0;
                 if matches!(uo.tif, TimeInForce::Ioc | TimeInForce::Fok) {
-                    let opp = match uo.side {
-                        Side::Buy => Side::Sell,
-                        Side::Sell => Side::Buy,
-                    };
-                    let mmn = self.mm_nonce;
-                    self.mm_nonce += 1;
-                    seal.push(mk_order(
-                        self.mm.owner,
-                        uo.market_id,
-                        opp,
-                        uo.size,
-                        price,
-                        mmn,
-                        TimeInForce::Gtc,
-                    ));
+                    // AUDIT (CRITICAL): the house MM quotes at the VALIDATED oracle mark,
+                    // never at the taker's own limit, and only provides the counter-fill
+                    // when a limit order's price actually crosses the mark (a market order
+                    // always crosses). Otherwise a taker could name an off-market price (buy
+                    // far below / sell far above the mark), mint an off-market entry against
+                    // the fabricated MM, and drain the vault.
+                    let crosses = is_market
+                        || match uo.side {
+                            Side::Buy => uo.limit_price >= mark,
+                            Side::Sell => uo.limit_price <= mark,
+                        };
+                    if crosses {
+                        let opp = match uo.side {
+                            Side::Buy => Side::Sell,
+                            Side::Sell => Side::Buy,
+                        };
+                        let mmn = self.mm_nonce;
+                        self.mm_nonce += 1;
+                        seal.push(mk_order(
+                            self.mm.owner,
+                            uo.market_id,
+                            opp,
+                            uo.size,
+                            mark,
+                            mmn,
+                            TimeInForce::Gtc,
+                            false,
+                        ));
+                    }
                 }
                 seal.push(uo);
                 account_refs.push((*k, i));
@@ -2619,16 +2702,49 @@ fn api_key_from(headers: &HeaderMap) -> Result<[u8; 32], (StatusCode, Json<serde
         ))
 }
 
+/// The client IP to rate-limit on. The gateway serves plain HTTP behind a
+/// same-host reverse proxy (Caddy), so the raw TCP peer is the proxy's loopback
+/// address — keying the limiter on it collapses every client into one bucket.
+/// Trust `X-Forwarded-For` / `X-Real-IP` ONLY when the direct peer is loopback
+/// (the trusted proxy); on a direct connection the peer IS the client and those
+/// headers are attacker-spoofable. With one trusted hop the proxy appends the real
+/// client to XFF, so the LAST parseable entry is the client as the proxy saw it.
+fn client_ip(peer: SocketAddr, headers: &HeaderMap) -> IpAddr {
+    if peer.ip().is_loopback() {
+        if let Some(ip) = headers
+            .get("x-forwarded-for")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|xff| {
+                xff.split(',')
+                    .rev()
+                    .find_map(|s| s.trim().parse::<IpAddr>().ok())
+            })
+        {
+            return ip;
+        }
+        if let Some(ip) = headers
+            .get("x-real-ip")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|s| s.trim().parse::<IpAddr>().ok())
+        {
+            return ip;
+        }
+    }
+    peer.ip()
+}
+
 async fn post_v1_register(
     State(app): State<Shared>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     body: axum::body::Bytes,
 ) -> impl IntoResponse {
-    // throttle registrations per source IP (sliding 60s window)
+    // throttle registrations per real client IP (sliding 60s window)
     {
         let now = now_ms() / 1000;
+        let ip = client_ip(addr, &headers);
         let mut reg = app.reg_limit.lock().await;
-        let e = reg.entry(addr.ip()).or_insert((now, 0));
+        let e = reg.entry(ip).or_insert((now, 0));
         if now.saturating_sub(e.0) >= 60 {
             *e = (now, 0);
         }
@@ -3762,6 +3878,7 @@ async fn main() {
         }
         {
             let write = write.clone();
+            let l1_ks = l1.clone();
             tokio::spawn(async move {
                 let term = async {
                     #[cfg(unix)]
@@ -3780,6 +3897,12 @@ async fn main() {
                     _ = term => {}
                 }
                 let ok = write().await;
+                // audit #6: process::exit skips Drop, so the KeystoreDir RAII guard never
+                // fires on a graceful stop — remove the keystore temp dir (encrypted key +
+                // 0600 password) explicitly here so it doesn't persist / accumulate.
+                if let Some(l1) = &l1_ks {
+                    l1.cleanup_keystore();
+                }
                 println!(
                     "[state] shutdown snapshot {} — exiting",
                     if ok { "saved" } else { "FAILED" }
@@ -3883,12 +4006,22 @@ async fn main() {
             let app = app.clone();
             let l1a = l1.clone();
             tokio::spawn(async move {
-                // start from the current block, skipping pre-boot history
+                // audit #8: DON'T start at the current block — that silently skips any
+                // InclusionChallenged raised while we were restarting/down, letting an
+                // honest sequencer be slashed for a challenge it could have answered. A
+                // challenge is answerable only within `challengeWindowBlocks`, so rewind
+                // past that window (see challenge_scan_start); over-scanning older /
+                // already-answered challenges is a harmless no-op (challenge_open gates
+                // the answer). The data to answer is in the persisted batch_orders.
                 let mut from_block = {
                     let l1c = l1a.clone();
-                    tokio::task::spawn_blocking(move || l1c.block_number().unwrap_or(0))
-                        .await
-                        .unwrap_or(0)
+                    tokio::task::spawn_blocking(move || {
+                        let now = l1c.block_number().unwrap_or(0);
+                        let window = l1c.challenge_window_blocks().unwrap_or(300);
+                        challenge_scan_start(now, window)
+                    })
+                    .await
+                    .unwrap_or(0)
                 };
                 let mut iv = tokio::time::interval(Duration::from_secs(L1_SETTLE_SECS));
                 loop {
@@ -4000,7 +4133,11 @@ async fn main() {
                         // count, which settleBatch consumes then increments). Build the ordered and
                         // rejected roots over THIS batch id, so a later `answerChallenge` /
                         // `answerByRejection` proof (built with the same id) verifies on-chain.
-                        let batch_id = l1c.batch_count().unwrap_or(0);
+                        // audit (fail-closed): propagate a batch_count RPC error instead of
+                        // defaulting to 0 — a transient failure that silently keyed the roots to
+                        // batch 0 would make every challenge for this batch unanswerable and get an
+                        // honest sequencer slashed. Aborting here just retries the settle next tick.
+                        let batch_id = l1c.batch_count()?;
                         let ordered_leaves: Vec<[u8; 32]> = ordered_h
                             .iter()
                             .map(|h| inclusion_leaf(batch_id, h))
@@ -4021,7 +4158,9 @@ async fn main() {
                         Ok(Some((
                             L1Status {
                                 settled_root: new_root,
-                                batch_count: l1c.batch_count().unwrap_or(0),
+                                // settleBatch consumed `batch_id` then incremented, so the new
+                                // on-chain count is known — no need to re-query (and never show 0).
+                                batch_count: batch_id + 1,
                                 last_tx: tx,
                                 bond: l1c.sequencer_bond().unwrap_or(0).to_string(),
                                 withdrawals_root: wroot_hex,
@@ -4562,7 +4701,16 @@ mod tests {
         let size = SIZE_SCALE / 10;
 
         // the exact order the gateway will reconstruct, signed by the caller's key
-        let order = mk_order(owner, market, Side::Buy, size, limit, 1, TimeInForce::Ioc);
+        let order = mk_order(
+            owner,
+            market,
+            Side::Buy,
+            size,
+            limit,
+            1,
+            TimeInForce::Ioc,
+            false,
+        );
         let oh = order.order_hash::<Keccak256>();
         assert!(
             gw.account_place_order(
@@ -4592,7 +4740,16 @@ mod tests {
 
         // a signature from a DIFFERENT key (wrong signer) is rejected
         let wrong = SigningKey::from_bytes((&[10u8; 32]).into()).unwrap();
-        let order2 = mk_order(owner, market, Side::Buy, size, limit, 2, TimeInForce::Ioc);
+        let order2 = mk_order(
+            owner,
+            market,
+            Side::Buy,
+            size,
+            limit,
+            2,
+            TimeInForce::Ioc,
+            false,
+        );
         let oh2 = order2.order_hash::<Keccak256>();
         assert!(
             gw.account_place_order(
@@ -4606,7 +4763,16 @@ mod tests {
         // FIELD-BINDING (review fix): a signature is bound to the EXACT trade terms.
         // Sign a Buy of `size` @ limit (nonce 5), then submit size*2 with that same
         // signature — it must be rejected (the size is bound into the order hash)…
-        let signed = mk_order(owner, market, Side::Buy, size, limit, 5, TimeInForce::Ioc);
+        let signed = mk_order(
+            owner,
+            market,
+            Side::Buy,
+            size,
+            limit,
+            5,
+            TimeInForce::Ioc,
+            false,
+        );
         let sig5 = sign(&sk, &signed.order_hash::<Keccak256>());
         assert!(
             gw.account_place_order(
@@ -4715,6 +4881,279 @@ mod tests {
         assert!(
             gw.account_set_deposit_address(&key2, addr, &good2).is_err(),
             "an address already bound to another account is rejected",
+        );
+    }
+
+    /// AUDIT (CRITICAL — off-market fill-price vault drain): the gateway's house
+    /// market-maker must quote at the validated oracle mark, never at the taker's
+    /// own limit. A Buy Ioc whose limit sits far below the mark does not cross and
+    /// must NOT open a position — otherwise a taker mints an off-market entry
+    /// (buy 1 @ $1 while mark is ~$59.5k → equity ≈ +mark), closes it against the
+    /// house at another off-market price, and withdraws the difference from the vault.
+    #[test]
+    fn ioc_taker_cannot_open_a_position_below_the_oracle_mark() {
+        let mut gw = Gw::boot();
+        let (key, owner) = gw.register_account(None);
+        gw.account_deposit(&key, 0, 20_000 * QUOTE_SCALE).unwrap();
+        let mark = gw.px_of(0);
+        assert!(
+            mark > PRICE_SCALE,
+            "sanity: BTC mark is far above 1 price-unit"
+        );
+        // Offer to BUY 0.1 BTC at a limit of 1 price-unit (~$1e-8) — wildly below the
+        // ~$59.5k mark. No rational counterparty sells here; only the fabricated house
+        // MM could, and at this price it must not.
+        gw.account_place_order(
+            &key,
+            &OrderReq {
+                market_id: 0,
+                side: "Buy".into(),
+                size: (SIZE_SCALE / 10).to_string(),
+                limit_price: "1".into(),
+                tif: "Ioc".into(),
+                reduce_only: false,
+                nonce: None,
+                signature: None,
+            },
+        )
+        .expect("order admitted");
+        gw.tick();
+        let opened = gw.seq.state.position(&owner, 0).map_or(0, |p| p.size);
+        assert_eq!(opened, 0, "off-market limit buy must NOT open a position");
+    }
+
+    /// AUDIT (#3): recovery must never surface another account's notes. Boot funds the
+    /// demo user + MM into the archive; a caller submitting a random seed that derives a
+    /// DIFFERENT view-key must recover NOTHING (the removed cross-account fallback used
+    /// to return the house account's note amounts to any such caller).
+    #[test]
+    fn recover_does_not_leak_another_accounts_notes() {
+        let gw = Gw::boot();
+        let recovered = gw.recover("a-random-seed-that-matches-no-wallet-in-this-gateway");
+        assert!(
+            recovered.is_empty(),
+            "a non-matching seed must recover nothing, got {} notes",
+            recovered.len()
+        );
+    }
+
+    /// AUDIT (#8): on boot the challenge watcher rewinds past the challenge window so
+    /// a restart doesn't skip challenges raised while it was down (→ wrongful slash).
+    #[test]
+    fn challenge_scan_start_rewinds_past_the_window() {
+        // rewinds 1.5x the window behind the current block
+        assert_eq!(challenge_scan_start(10_000, 300), 10_000 - 450);
+        // saturates at 0 near genesis rather than underflowing
+        assert_eq!(challenge_scan_start(100, 300), 0);
+        // a tiny/zero window still rewinds a 64-block floor (never starts at `now`,
+        // which is the pre-fix bug that skipped in-flight challenges)
+        assert_eq!(challenge_scan_start(10_000, 0), 10_000 - 64);
+        assert_eq!(challenge_scan_start(10_000, 10), 10_000 - 64);
+    }
+
+    /// AUDIT (rate-limit behind proxy): the register limiter must key on the real
+    /// client IP, trusting forwarding headers only from a loopback proxy peer and
+    /// ignoring them on a direct (spoofable) connection.
+    #[test]
+    fn client_ip_trusts_proxy_only_from_loopback() {
+        let mk = |xff: Option<&str>, xri: Option<&str>| {
+            let mut h = HeaderMap::new();
+            if let Some(v) = xff {
+                h.insert("x-forwarded-for", v.parse().unwrap());
+            }
+            if let Some(v) = xri {
+                h.insert("x-real-ip", v.parse().unwrap());
+            }
+            h
+        };
+        let loop_peer: SocketAddr = "127.0.0.1:5000".parse().unwrap();
+        let pub_peer: SocketAddr = "203.0.113.9:5000".parse().unwrap();
+        let ip = |s: &str| s.parse::<IpAddr>().unwrap();
+
+        // behind the proxy: the LAST XFF entry (the client as the proxy saw it) wins,
+        // even when the client prepends a spoofed value.
+        assert_eq!(
+            client_ip(loop_peer, &mk(Some("9.9.9.9, 1.2.3.4"), None)),
+            ip("1.2.3.4"),
+        );
+        // X-Real-IP is the fallback when there's no XFF.
+        assert_eq!(
+            client_ip(loop_peer, &mk(None, Some("5.6.7.8"))),
+            ip("5.6.7.8")
+        );
+        // a direct (non-loopback) peer: headers are attacker-controlled → ignore them.
+        assert_eq!(
+            client_ip(pub_peer, &mk(Some("1.2.3.4"), None)),
+            ip("203.0.113.9")
+        );
+        // loopback peer with no forwarding headers → fall back to the peer itself.
+        assert_eq!(client_ip(loop_peer, &mk(None, None)), ip("127.0.0.1"));
+    }
+
+    /// AUDIT (DP-009 follow-up): a caller-signed order's signature must bind
+    /// `reduce_only`. A relay / leaked-key holder that flips a signed reduce-only
+    /// order into a position-opening one (reduce_only true→false) must be rejected —
+    /// the signature covers the flag.
+    #[test]
+    fn caller_signed_orders_bind_reduce_only() {
+        use k256::ecdsa::SigningKey;
+        use sha3::{Digest as _, Keccak256 as RawKeccak};
+
+        fn eth_addr(sk: &SigningKey) -> [u8; 20] {
+            let point = sk.verifying_key().to_encoded_point(false);
+            let hash = RawKeccak::digest(&point.as_bytes()[1..]);
+            let mut a = [0u8; 20];
+            a.copy_from_slice(&hash[12..]);
+            a
+        }
+        fn sign(sk: &SigningKey, oh: &Digest) -> String {
+            let (sig, recid) = sk.sign_prehash_recoverable(oh).unwrap();
+            let mut s = [0u8; 65];
+            s[..64].copy_from_slice(&sig.to_bytes());
+            s[64] = 27 + recid.to_byte();
+            hex0x(&s)
+        }
+
+        let mut gw = Gw::boot();
+        let sk = SigningKey::from_bytes((&[11u8; 32]).into()).unwrap();
+        let (key, owner) = gw.register_account(Some(eth_addr(&sk)));
+        gw.account_deposit(&key, 0, 50_000 * QUOTE_SCALE).unwrap();
+        let market = 0u64;
+        let limit = gw.px_of(market);
+        let size = SIZE_SCALE / 10;
+
+        // The caller signs an order they intend as reduce_only = TRUE.
+        let signed = mk_order(
+            owner,
+            market,
+            Side::Buy,
+            size,
+            limit,
+            1,
+            TimeInForce::Ioc,
+            true,
+        );
+        let sig = sign(&sk, &signed.order_hash::<Keccak256>());
+
+        // A relay flips it to reduce_only = FALSE (an opening order) under the SAME
+        // signature. This must be rejected — otherwise the flag is unbound and the
+        // reduce-only safety guarantee the signer relied on is silently bypassed.
+        let tampered = OrderReq {
+            market_id: market,
+            side: "Buy".into(),
+            size: size.to_string(),
+            limit_price: limit.to_string(),
+            tif: "Ioc".into(),
+            reduce_only: false,
+            nonce: Some(1),
+            signature: Some(sig),
+        };
+        assert!(
+            gw.account_place_order(&key, &tampered).is_err(),
+            "flipping reduce_only under a valid signature must be rejected",
+        );
+    }
+
+    /// AUDIT (review #5): a /v1 MARKET order must still fill when the mark moves between
+    /// accept and seal. Market orders keep limit_price==0 to the seal, so the crossing
+    /// check never rejects them — unlike the regressed version that stamped the
+    /// accept-time price and dropped the order once the mark drifted away.
+    #[test]
+    fn market_order_fills_even_when_the_mark_moves_after_accept() {
+        let mut gw = Gw::boot();
+        let (key, owner) = gw.register_account(None);
+        gw.account_deposit(&key, 0, 200_000 * QUOTE_SCALE).unwrap();
+        gw.account_place_order(
+            &key,
+            &OrderReq {
+                market_id: 0,
+                side: "Buy".into(),
+                size: (SIZE_SCALE / 10).to_string(),
+                limit_price: "0".into(), // market order
+                tif: "Ioc".into(),
+                reduce_only: false,
+                nonce: None,
+                signature: None,
+            },
+        )
+        .expect("order admitted");
+        // The mark jumps sharply UP before the batch seals. A stamped-limit order whose
+        // accept-time price is now below the mark would fail the buy crossing check; a
+        // true market order must still fill at the (new) mark.
+        gw.mkts[0].px += 10_000 * PRICE_SCALE;
+        gw.tick();
+        let pos = gw
+            .seq
+            .state
+            .position(&owner, 0)
+            .expect("market order filled");
+        assert!(
+            pos.size > 0,
+            "market order fills despite the adverse mark move"
+        );
+    }
+
+    /// The symmetric direction: a Sell Ioc whose limit sits far ABOVE the mark does
+    /// not cross the house MM and must NOT open a short at that off-market price.
+    #[test]
+    fn ioc_taker_cannot_open_a_short_above_the_oracle_mark() {
+        let mut gw = Gw::boot();
+        let (key, owner) = gw.register_account(None);
+        // Fund enough that the (limit-priced) admission margin check passes — a
+        // well-capitalized attacker reaches the seal loop, where the fix must still
+        // deny the off-market counter-fill.
+        gw.account_deposit(&key, 0, 200_000 * QUOTE_SCALE).unwrap();
+        let mark = gw.px_of(0);
+        // Offer to SELL 0.1 BTC at 2× the mark — favorable off-market short entry.
+        gw.account_place_order(
+            &key,
+            &OrderReq {
+                market_id: 0,
+                side: "Sell".into(),
+                size: (SIZE_SCALE / 10).to_string(),
+                limit_price: (mark * 2).to_string(),
+                tif: "Ioc".into(),
+                reduce_only: false,
+                nonce: None,
+                signature: None,
+            },
+        )
+        .expect("order admitted");
+        gw.tick();
+        let opened = gw.seq.state.position(&owner, 0).map_or(0, |p| p.size);
+        assert_eq!(opened, 0, "off-market limit sell must NOT open a position");
+    }
+
+    /// Regression guard: a market order (limit 0) still fills at the mark — the fix
+    /// only blocks OFF-market fills, it must not break normal trading.
+    #[test]
+    fn market_order_still_fills_at_the_mark() {
+        let mut gw = Gw::boot();
+        let (key, owner) = gw.register_account(None);
+        gw.account_deposit(&key, 0, 20_000 * QUOTE_SCALE).unwrap();
+        let mark = gw.px_of(0);
+        gw.account_place_order(
+            &key,
+            &OrderReq {
+                market_id: 0,
+                side: "Buy".into(),
+                size: (SIZE_SCALE / 10).to_string(),
+                limit_price: "0".into(),
+                tif: "Ioc".into(),
+                reduce_only: false,
+                nonce: None,
+                signature: None,
+            },
+        )
+        .expect("order admitted");
+        gw.tick();
+        let pos = gw.seq.state.position(&owner, 0).expect("position opened");
+        assert!(pos.size > 0, "market buy opens a long");
+        // entry is at the mark, not some off-market price
+        assert!(
+            pos.entry_price >= mark - PRICE_SCALE && pos.entry_price <= mark + PRICE_SCALE,
+            "entry {} is at the mark {mark}",
+            pos.entry_price
         );
     }
 }

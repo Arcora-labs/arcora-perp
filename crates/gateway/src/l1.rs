@@ -21,6 +21,15 @@ use std::process::Command;
 /// keccak256("Deposit(address,uint256)") — the vault's deposit log topic0.
 const DEPOSIT_TOPIC0: &str = "0xe1fffcc4923d04b559f4d29a8bfc6cda04eb5b0d3c460751c2402c5c5cc9109c";
 
+/// Per-RPC timeout handed to every `cast` invocation (bounds each JSON-RPC call).
+const CAST_RPC_TIMEOUT_SECS: u64 = 15;
+/// Hard wall-clock bound on a whole `cast` subprocess. `send()` holds the nonce lock
+/// across the entire call (which waits for the receipt), so a wedged RPC or a receipt
+/// wait that never returns would otherwise freeze settlement AND inclusion-challenge
+/// answering indefinitely (risking a bond slash). On timeout the child is killed and
+/// the call fails, so `send()` re-seeds the nonce from chain and the loop retries.
+const CAST_WALL_TIMEOUT_SECS: u64 = 90;
+
 /// L1 bridge configuration, read from env. `None` ⇒ L1 mode off (pure in-memory).
 #[derive(Clone)]
 pub struct L1 {
@@ -127,14 +136,61 @@ impl L1 {
     }
 
     fn cast(&self, args: &[&str]) -> Result<String, String> {
-        let out = Command::new("cast")
+        use std::io::Read;
+        // Spawn with piped output and a hard wall-clock deadline: a black-hole RPC must
+        // not hang forever holding the nonce lock (see CAST_WALL_TIMEOUT_SECS). ETH_RPC_
+        // TIMEOUT additionally bounds each individual JSON-RPC call.
+        let mut child = Command::new("cast")
             .args(args)
-            .output()
+            .env("ETH_RPC_TIMEOUT", CAST_RPC_TIMEOUT_SECS.to_string())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
             .map_err(|e| format!("cast spawn failed (is Foundry installed?): {e}"))?;
-        if !out.status.success() {
-            return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
+        // Drain stdout/stderr on their OWN threads: a large child output (e.g. a
+        // `cast logs --json` over many events) can exceed the ~64KB OS pipe buffer, and
+        // if we only polled try_wait() without reading, the child would block on write()
+        // and never exit — a deadlock until the kill deadline. Concurrent readers keep
+        // the pipes drained so the child can always make progress and exit.
+        let mut stdout_pipe = child.stdout.take().ok_or("cast: no stdout pipe")?;
+        let mut stderr_pipe = child.stderr.take().ok_or("cast: no stderr pipe")?;
+        let out_reader = std::thread::spawn(move || {
+            let mut buf = Vec::new();
+            let _ = stdout_pipe.read_to_end(&mut buf);
+            buf
+        });
+        let err_reader = std::thread::spawn(move || {
+            let mut buf = Vec::new();
+            let _ = stderr_pipe.read_to_end(&mut buf);
+            buf
+        });
+        let deadline =
+            std::time::Instant::now() + std::time::Duration::from_secs(CAST_WALL_TIMEOUT_SECS);
+        let status = loop {
+            match child.try_wait() {
+                Ok(Some(s)) => break s,
+                Ok(None) => {
+                    if std::time::Instant::now() >= deadline {
+                        let _ = child.kill();
+                        let _ = child.wait();
+                        // killing closes the pipes, so the readers unblock and finish
+                        let _ = out_reader.join();
+                        let _ = err_reader.join();
+                        return Err(format!(
+                            "cast timed out after {CAST_WALL_TIMEOUT_SECS}s (RPC wedged)"
+                        ));
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(50));
+                }
+                Err(e) => return Err(format!("cast wait failed: {e}")),
+            }
+        };
+        let stdout = out_reader.join().unwrap_or_default();
+        let stderr = err_reader.join().unwrap_or_default();
+        if !status.success() {
+            return Err(String::from_utf8_lossy(&stderr).trim().to_string());
         }
-        Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+        Ok(String::from_utf8_lossy(&stdout).trim().to_string())
     }
 
     /// `cast send <target> <sig> [args..]` signed by the sequencer key, returning the tx hash.
@@ -175,6 +231,16 @@ impl L1 {
                 Err(e)
             }
         }
+    }
+
+    /// Explicitly remove the keystore temp dir (encrypted key + 0600 password file) NOW.
+    /// The RAII `Drop` on `KeystoreDir` only fires when the last `L1` clone drops on a
+    /// NORMAL return, but the gateway exits via `std::process::exit` from its signal
+    /// handler — which skips destructors — so the shutdown path must call this or the key
+    /// material persists in $TMPDIR and accumulates one dir per restart (audit #6 /
+    /// DP-013 review).
+    pub fn cleanup_keystore(&self) {
+        let _ = std::fs::remove_dir_all(&self._keystore.0);
     }
 
     /// The on-chain `currentStateRoot` (the required `prev` for the next settle).
@@ -359,6 +425,26 @@ impl L1 {
             .unwrap_or("")
             .parse::<u64>()
             .map_err(|e| format!("block-number parse: {e}"))
+    }
+
+    /// The on-chain inclusion-challenge window in blocks (`challengeWindowBlocks`, a
+    /// public immutable). A challenge is answerable only within this many blocks of
+    /// being raised, so the watcher rewinds this far on boot to catch challenges raised
+    /// while the gateway was down (audit #8).
+    pub fn challenge_window_blocks(&self) -> Result<u64, String> {
+        self.cast(&[
+            "call",
+            &self.settlement,
+            "challengeWindowBlocks()(uint256)",
+            "--rpc-url",
+            &self.rpc,
+        ])?
+        // cast may render a uint as "300" or "300 [3e2]"; take the leading integer.
+        .split_whitespace()
+        .next()
+        .unwrap_or("")
+        .parse::<u64>()
+        .map_err(|e| format!("challengeWindowBlocks parse: {e}"))
     }
 
     /// Order hashes with an `InclusionChallenged` log at/after `from_block`, plus the block to
