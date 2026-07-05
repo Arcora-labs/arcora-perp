@@ -2038,7 +2038,7 @@ impl Gw {
         // keccak, which the UI does not yet ship.)
         let w = Wallet::from_seed(s);
         self.archive
-            .scan(&w.view_key)
+            .scan(&w.view_x25519_secret())
             .into_iter()
             .map(|rn| {
                 serde_json::json!({
@@ -2545,7 +2545,14 @@ fn fund_amount(
         blinding: blind,
     })
     .expect("deposit");
-    archive.record(seq.current_batch_id(), &note, &w.view_key);
+    // Seal to the owner's X25519 viewing PUBLIC key (real note encryption); the
+    // recorder needs no decryption capability. OsRng: fresh ephemeral + nonce.
+    archive.record(
+        seq.current_batch_id(),
+        &note,
+        &w.view_x25519_public(),
+        rand::rngs::OsRng,
+    );
     seq.apply(&BatchOp::FundPosition {
         owner: w.owner,
         market_id: market,

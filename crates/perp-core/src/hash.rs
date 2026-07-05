@@ -57,9 +57,11 @@ pub enum Domain {
     /// second-preimage separation. Appended last so existing domain tags (and thus
     /// every committed hash) are unchanged.
     MerkleLeaf = 9,
-    /// Encrypted-note-archive keystream (§7). A dedicated tag so the view-key
-    /// keystream can never share a preimage structure with nullifiers or any other
-    /// hash purpose (one-domain-one-purpose). Not a cross-layer-committed value.
+    /// RESERVED / unused — formerly the encrypted-note-archive XOR keystream
+    /// (§7), replaced by real sealed-box note encryption (`X25519ViewKey` +
+    /// `NoteEncryptAad`). The variant is kept (never deleted, never reused for a
+    /// new purpose) so domain discriminants stay 1..=N dense and every existing
+    /// tag value is unchanged.
     NoteKeystream = 10,
     /// Privacy-bridge mix-shuffle PRNG (§13). Dedicated tag for the Fisher–Yates
     /// stream so it is separated from state-root hashing. Not cross-layer-committed.

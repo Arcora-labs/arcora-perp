@@ -518,6 +518,7 @@ dependencies = [
  "note-archive",
  "perp-core",
  "prover",
+ "rand_core",
  "sequencer",
 ]
 
@@ -621,6 +622,7 @@ dependencies = [
  "oracle-feed",
  "perp-core",
  "prover",
+ "rand_core",
  "sequencer",
 ]
 
@@ -1289,6 +1291,8 @@ name = "note-archive"
 version = "0.0.1"
 dependencies = [
  "perp-core",
+ "rand_core",
+ "sealed-box",
  "serde",
 ]
 
