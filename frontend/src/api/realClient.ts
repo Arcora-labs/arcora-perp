@@ -7,13 +7,27 @@
 // in JSON — JSON numbers can't hold i128 precisely — and parsed back to bigint here, so
 // the UI keeps doing exact bigint money math. State arrives both as a GET /api/state
 // snapshot (initial) and as live pushes over the WebSocket.
+//
+// SEALED ORDER INGRESS (Task 11): every order is ENCRYPTED end-to-end to the
+// enclave's attested order-epoch X25519 key before it leaves the browser — the
+// wire body carries ONLY `{epochId, sealed}`, never plaintext trade terms. The
+// epoch key is fetched from `GET /v1/enclave/epoch` and verified against the
+// enclave's secp256k1 identity (see `verifyEnclaveEpoch`) before anything is
+// sealed to it. Orders POST to `/v1/orders` (the only surface that decrypts;
+// the legacy demo `/api/order` route is plaintext-only and removed in prod), so
+// the client self-provisions a `/v1` account at bootstrap — its `owner` pubkey
+// is what the sealed-order AAD binds to.
 
 import type { DarkPerpClient, ClientState, OrderEvent } from "./client";
 import type {
   AccountState, BatchSummary, BookLevel, Market, OracleQuote, OrderBookSnapshot,
-  OrderInput, Position, RecoveredNote, Receipt, TrackedOrder,
+  OrderInput, Position, RecoveredNote, Receipt, Side, TimeInForce, TrackedOrder,
 } from "../domain/types";
 import { QUOTE_SCALE } from "../domain/types";
+import { seal, domainAad } from "./sealedBox";
+import { secp256k1 } from "@noble/curves/secp256k1";
+import { keccak_256 } from "@noble/hashes/sha3";
+import { bytesToHex, hexToBytes } from "@noble/hashes/utils";
 
 // ── wire types (bigints as strings) ──────────────────────────────────────────
 interface WireBookLevel { price: string; size: string }
@@ -125,6 +139,190 @@ function parseState(w: WireState): ClientState {
 
 const s = (v: bigint) => v.toString();
 
+// ── sealed order ingress: cross-language contracts (Tasks 9/10 ↔ 11) ─────────
+
+/// Domain-separation tags — MUST equal `perp_core::hash::Domain` discriminants.
+const DOMAIN_X25519_ORDER_EPOCH = 25; // Domain::X25519OrderEpoch
+const DOMAIN_ORDER_ENCRYPT_AAD = 28; // Domain::OrderEncryptAad
+
+/// Wire length of the canonical order terms (mirrors gateway ORDER_TERMS_LEN).
+const ORDER_TERMS_LEN = 51;
+
+const U64_MAX = 0xffff_ffff_ffff_ffffn;
+const I128_MIN = -(1n << 127n);
+const I128_MAX = (1n << 127n) - 1n;
+
+/** u64 → 8 little-endian bytes (throws out-of-range; never truncates). */
+function u64le(v: bigint): Uint8Array {
+  if (v < 0n || v > U64_MAX) throw new Error(`u64 out of range: ${v}`);
+  const out = new Uint8Array(8);
+  let x = v;
+  for (let i = 0; i < 8; i++) { out[i] = Number(x & 0xffn); x >>= 8n; }
+  return out;
+}
+
+/** i128 → 16 little-endian bytes, two's complement (throws out-of-range). */
+function i128le(v: bigint): Uint8Array {
+  if (v < I128_MIN || v > I128_MAX) throw new Error(`i128 out of range: ${v}`);
+  const out = new Uint8Array(16);
+  let x = BigInt.asUintN(128, v);
+  for (let i = 0; i < 16; i++) { out[i] = Number(x & 0xffn); x >>= 8n; }
+  return out;
+}
+
+/** Strict 0x-hex decode of EXACTLY `len` bytes (rejects odd/short/non-hex). */
+function strictHex(sHex: string, len: number): Uint8Array {
+  const h = sHex.startsWith("0x") || sHex.startsWith("0X") ? sHex.slice(2) : sHex;
+  if (h.length !== len * 2 || !/^[0-9a-fA-F]*$/.test(h)) {
+    throw new Error(`expected ${len}-byte 0x-hex, got ${sHex.length > 80 ? sHex.slice(0, 80) + "…" : sHex}`);
+  }
+  return hexToBytes(h.toLowerCase());
+}
+
+/// side/tif numeric mapping — IDENTICAL to the gateway's `mk_order` /
+/// `deserialize_order_terms` encoding. Do not invent a different one.
+const SIDE_BYTE: Record<Side, number> = { Buy: 1, Sell: 2 };
+const TIF_BYTE: Record<TimeInForce, number> = { Gtc: 1, Ioc: 2, Fok: 3, PostOnly: 4 };
+
+export interface OrderTermsFields {
+  marketId: bigint;
+  side: Side;
+  size: bigint;
+  limitPrice: bigint;
+  tif: TimeInForce;
+  reduceOnly: boolean;
+  nonce: bigint;
+}
+
+/**
+ * Serialize order terms to the canonical cross-language byte layout the enclave
+ * decrypts (gateway `deserialize_order_terms` — Task 10/11 contract). All
+ * integers little-endian; total 51 bytes:
+ *
+ * | offset | field       | type     | bytes | notes                                           |
+ * |--------|-------------|----------|-------|-------------------------------------------------|
+ * | 0      | marketId    | u64  LE  | 8     |                                                 |
+ * | 8      | side        | u8       | 1     | `1 = Buy`, `2 = Sell`                           |
+ * | 9      | size        | i128 LE  | 16    | size-scaled, must be > 0                        |
+ * | 25     | limitPrice  | i128 LE  | 16    | price-scaled, `0` = market order                |
+ * | 41     | tif         | u8       | 1     | `1 = Gtc`, `2 = Ioc`, `3 = Fok`, `4 = PostOnly` |
+ * | 42     | reduceOnly  | u8       | 1     | `0 = false`, `1 = true`                         |
+ * | 43     | nonce       | u64  LE  | 8     |                                                 |
+ *
+ * Pinned byte-for-byte against Rust `serialize_order_terms` in realClient.test.ts.
+ */
+export function serializeOrderTerms(t: OrderTermsFields): Uint8Array {
+  const side = SIDE_BYTE[t.side];
+  const tif = TIF_BYTE[t.tif];
+  if (side === undefined) throw new Error(`unknown side: ${t.side}`);
+  if (tif === undefined) throw new Error(`unknown tif: ${t.tif}`);
+  const b = new Uint8Array(ORDER_TERMS_LEN);
+  b.set(u64le(t.marketId), 0);
+  b[8] = side;
+  b.set(i128le(t.size), 9);
+  b.set(i128le(t.limitPrice), 25);
+  b[41] = tif;
+  b[42] = t.reduceOnly ? 1 : 0;
+  b.set(u64le(t.nonce), 43);
+  return b;
+}
+
+/**
+ * The signed digest of a published order-ingress epoch key (gateway
+ * `enclave_epoch::epoch_signing_digest` — Task 9/11 contract):
+ * `keccak256( u8(25) ‖ epochId u64 LE (8) ‖ x25519Pub (32) ‖ notAfterMs u64 LE (8) )`
+ * — a 49-byte little-endian preimage. Pinned against the Rust output in tests.
+ */
+export function epochSigningDigest(epochId: bigint, x25519Pub: Uint8Array, notAfterMs: bigint): Uint8Array {
+  if (x25519Pub.length !== 32) throw new Error("x25519Pub must be 32 bytes");
+  const pre = new Uint8Array(49);
+  pre[0] = DOMAIN_X25519_ORDER_EPOCH;
+  pre.set(u64le(epochId), 1);
+  pre.set(x25519Pub, 9);
+  pre.set(u64le(notAfterMs), 41);
+  return keccak_256(pre);
+}
+
+/** A verified enclave order-epoch key the client may seal orders to. */
+export interface VerifiedEpoch {
+  epochId: number;
+  /** X25519 recipient public key (32 bytes). */
+  pub: Uint8Array;
+  /** Advisory expiry (ms) — refetch the epoch once passed. */
+  notAfterMs: number;
+}
+
+export interface VerifyEpochOptions {
+  /** Pinned enclave signer 0x-address (VITE_ENCLAVE_SIGNER). Unset ⇒ dev mode: warn, don't gate. */
+  expectedSigner?: string | null;
+  /** Pinned attestation measurement 0x-hex (VITE_ENCLAVE_MEASUREMENT). Unset ⇒ skip. */
+  expectedMeasurement?: string | null;
+}
+
+/**
+ * Verify a `GET /v1/enclave/epoch` response: the 65-byte `r‖s‖v` secp256k1
+ * signature (v ∈ {27,28}) over `epochSigningDigest` must RECOVER to the pinned
+ * enclave signer address (keccak256(uncompressed pubkey)[12..]). With no pinned
+ * signer (dev) the recovery must still succeed, but the address gate is skipped
+ * with a loud warning. Throws on ANY failure — the caller must treat a throw as
+ * "do not seal to this key".
+ */
+export function verifyEnclaveEpoch(raw: unknown, opts: VerifyEpochOptions = {}): VerifiedEpoch {
+  const r = raw as { epochId?: unknown; x25519Pub?: unknown; notAfterMs?: unknown; measurement?: unknown; sig?: unknown };
+  if (
+    typeof r !== "object" || r === null ||
+    typeof r.epochId !== "number" || !Number.isSafeInteger(r.epochId) || r.epochId < 0 ||
+    typeof r.notAfterMs !== "number" || !Number.isSafeInteger(r.notAfterMs) || r.notAfterMs < 0 ||
+    typeof r.x25519Pub !== "string" || typeof r.measurement !== "string" || typeof r.sig !== "string"
+  ) {
+    throw new Error("enclave epoch: malformed response");
+  }
+  const pub = strictHex(r.x25519Pub, 32);
+  const measurement = strictHex(r.measurement, 32);
+  const sig = strictHex(r.sig, 65);
+
+  const v = sig[64];
+  if (v !== 27 && v !== 28) throw new Error(`enclave epoch: bad sig v byte ${v} (expected 27/28)`);
+
+  const digest = epochSigningDigest(BigInt(r.epochId), pub, BigInt(r.notAfterMs));
+  let recovered: Uint8Array;
+  try {
+    const signature = secp256k1.Signature.fromCompact(sig.subarray(0, 64)).addRecoveryBit(v - 27);
+    recovered = signature.recoverPublicKey(digest).toRawBytes(false); // 65B uncompressed, 0x04-tagged
+  } catch (e) {
+    throw new Error(`enclave epoch: signature recovery failed (${e instanceof Error ? e.message : e})`);
+  }
+  const addr = "0x" + bytesToHex(keccak_256(recovered.subarray(1)).subarray(12));
+
+  const expectedSigner = opts.expectedSigner?.toLowerCase() || null;
+  if (expectedSigner) {
+    if (addr !== expectedSigner) {
+      throw new Error(`enclave epoch: sig recovers to ${addr}, not the pinned enclave signer ${expectedSigner}`);
+    }
+  } else {
+    console.warn(
+      "[dark-perp] VITE_ENCLAVE_SIGNER not set — enclave epoch signer UNPINNED (dev mode). Recovered signer:",
+      addr,
+    );
+  }
+
+  const expectedMeasurement = opts.expectedMeasurement || null;
+  if (expectedMeasurement && bytesToHex(measurement) !== bytesToHex(strictHex(expectedMeasurement, 32))) {
+    throw new Error("enclave epoch: measurement does not match the pinned attestation measurement");
+  }
+
+  return { epochId: r.epochId, pub, notAfterMs: r.notAfterMs };
+}
+
+/// localStorage key for the self-provisioned `/v1` trading account.
+const LS_ACCOUNT_KEY = "darkperp.v1Account";
+
+interface SealingAccount {
+  apiKey: string;
+  /** The account's 32-byte owner pubkey — the sealed-order AAD binds to it. */
+  owner: Uint8Array;
+}
+
 export class RealDarkPerpClient implements DarkPerpClient {
   private base: string;
   private wsUrl: string;
@@ -133,6 +331,16 @@ export class RealDarkPerpClient implements DarkPerpClient {
   private eventSubs = new Set<(e: OrderEvent) => void>();
   private ws: WebSocket | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+
+  // ── sealed order ingress state ─────────────────────────────────────────────
+  /** The verified enclave order-epoch key (refetched once notAfterMs passes). */
+  private epoch: VerifiedEpoch | null = null;
+  private epochFetch: Promise<VerifiedEpoch> | null = null;
+  /** The self-provisioned `/v1` trading account sealed orders trade as. */
+  private sealing: SealingAccount | null = null;
+  private acctFetch: Promise<SealingAccount> | null = null;
+  /** Strictly-increasing per-session order nonce carried inside the sealed terms. */
+  private lastNonce = 0n;
 
   constructor(baseUrl: string, initial: ClientState) {
     this.base = baseUrl.replace(/\/$/, "");
@@ -147,7 +355,107 @@ export class RealDarkPerpClient implements DarkPerpClient {
     const res = await fetch(base + "/api/state");
     if (!res.ok) throw new Error(`gateway /api/state ${res.status}`);
     const initial = parseState((await res.json()) as WireState);
-    return new RealDarkPerpClient(base, initial);
+    const client = new RealDarkPerpClient(base, initial);
+    // Prepare the sealed-order path (verified epoch key + /v1 trading account) up
+    // front so the first order doesn't pay the round trips. A failure here is
+    // non-fatal for the read-only UI — placeOrder retries and FAILS CLOSED (an
+    // order is never sent in plaintext).
+    try {
+      await client.prepareSealing();
+    } catch (e) {
+      console.warn("[dark-perp] sealed-order setup failed at bootstrap (will retry on first order):", e);
+    }
+    return client;
+  }
+
+  /** Fetch+verify the epoch key and ensure the /v1 account exists (idempotent). */
+  async prepareSealing(): Promise<void> {
+    await Promise.all([this.ensureAccount(), this.ensureEpoch()]);
+  }
+
+  /**
+   * The verified enclave epoch key, from cache while fresh; refetched + REVERIFIED
+   * once `notAfterMs` passes. Concurrent callers share one in-flight fetch.
+   */
+  private ensureEpoch(): Promise<VerifiedEpoch> {
+    if (this.epoch && Date.now() < this.epoch.notAfterMs) return Promise.resolve(this.epoch);
+    if (!this.epochFetch) {
+      this.epochFetch = this.fetchAndVerifyEpoch().finally(() => { this.epochFetch = null; });
+    }
+    return this.epochFetch;
+  }
+
+  private async fetchAndVerifyEpoch(): Promise<VerifiedEpoch> {
+    const res = await fetch(this.base + "/v1/enclave/epoch");
+    if (!res.ok) throw new Error(`/v1/enclave/epoch ${res.status}`);
+    const env = import.meta.env as Record<string, string | undefined>;
+    const ep = verifyEnclaveEpoch(await res.json(), {
+      expectedSigner: env.VITE_ENCLAVE_SIGNER,
+      expectedMeasurement: env.VITE_ENCLAVE_MEASUREMENT,
+    });
+    if (Date.now() >= ep.notAfterMs) {
+      // notAfterMs is ADVISORY (the gateway's rotation timer isn't wired yet, so a
+      // long-lived gateway keeps serving its boot epoch). The key is still signed
+      // by the pinned enclave identity, so sealing to it stays safe — worst case
+      // the enclave dropped the secret and rejects the order server-side.
+      console.warn("[dark-perp] enclave epoch is past notAfterMs (advisory); proceeding with the signed key");
+    }
+    this.epoch = ep;
+    return ep;
+  }
+
+  /**
+   * The `/v1` trading account sealed orders trade as: reuse the localStorage one
+   * (revalidated against the gateway) or register a fresh account. Its `owner`
+   * pubkey is bound into every sealed order's AAD.
+   */
+  private ensureAccount(): Promise<SealingAccount> {
+    if (this.sealing) return Promise.resolve(this.sealing);
+    if (!this.acctFetch) {
+      this.acctFetch = this.initAccount().finally(() => { this.acctFetch = null; });
+    }
+    return this.acctFetch;
+  }
+
+  private async initAccount(): Promise<SealingAccount> {
+    const stored = this.readStoredAccount();
+    if (stored) {
+      try {
+        const res = await fetch(this.base + "/v1/accounts/me", { headers: { "X-Api-Key": stored.apiKey } });
+        if (res.ok) { this.sealing = stored; return stored; }
+      } catch { /* unreachable/reset gateway — fall through and re-register */ }
+    }
+    const res = await fetch(this.base + "/v1/accounts", { method: "POST" });
+    if (!res.ok) throw new Error(`/v1/accounts registration failed (${res.status})`);
+    const j = (await res.json()) as { apiKey?: unknown; owner?: unknown };
+    if (typeof j.apiKey !== "string" || typeof j.owner !== "string") {
+      throw new Error("/v1/accounts: malformed registration response");
+    }
+    const acct: SealingAccount = { apiKey: j.apiKey, owner: strictHex(j.owner, 32) };
+    try {
+      localStorage.setItem(LS_ACCOUNT_KEY, JSON.stringify({ apiKey: j.apiKey, owner: j.owner }));
+    } catch { /* storage unavailable (private mode) — account lives for this session only */ }
+    this.sealing = acct;
+    return acct;
+  }
+
+  private readStoredAccount(): SealingAccount | null {
+    try {
+      const raw = localStorage.getItem(LS_ACCOUNT_KEY);
+      if (!raw) return null;
+      const j = JSON.parse(raw) as { apiKey?: unknown; owner?: unknown };
+      if (typeof j.apiKey !== "string" || typeof j.owner !== "string") return null;
+      return { apiKey: j.apiKey, owner: strictHex(j.owner, 32) };
+    } catch {
+      return null;
+    }
+  }
+
+  /** Strictly-increasing order nonce (wall clock, bumped on collision). */
+  private nextNonce(): bigint {
+    const now = BigInt(Date.now());
+    this.lastNonce = now > this.lastNonce ? now : this.lastNonce + 1n;
+    return this.lastNonce;
   }
 
   private connect() {
@@ -179,10 +487,10 @@ export class RealDarkPerpClient implements DarkPerpClient {
     this.reconnectTimer = setTimeout(() => { this.reconnectTimer = null; this.connect(); }, 1500);
   }
 
-  private async post<T>(path: string, body: unknown): Promise<T> {
+  private async post<T>(path: string, body: unknown, headers?: Record<string, string>): Promise<T> {
     const res = await fetch(this.base + path, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", ...(headers ?? {}) },
       body: JSON.stringify(body ?? {}),
     });
     const text = await res.text();
@@ -198,13 +506,52 @@ export class RealDarkPerpClient implements DarkPerpClient {
   subscribe(cb: (s: ClientState) => void): () => void { this.subs.add(cb); return () => this.subs.delete(cb); }
   onOrderEvent(cb: (e: OrderEvent) => void): () => void { this.eventSubs.add(cb); return () => this.eventSubs.delete(cb); }
 
+  /**
+   * Seal-and-submit an order. The trade terms NEVER travel in plaintext: they are
+   * serialized to the canonical 51-byte layout, sealed to the VERIFIED enclave
+   * epoch key with AAD `domainAad(28, epochId u64 LE ‖ owner)` (binding the
+   * ciphertext to this epoch AND this account), and POSTed as `{epochId, sealed}`
+   * to `/v1/orders`. Any epoch-verification failure rejects the order (fail
+   * closed) — there is no plaintext fallback.
+   */
   async placeOrder(input: OrderInput): Promise<Receipt> {
-    return this.post<Receipt>("/api/order", {
-      marketId: input.marketId, side: input.side, size: s(input.size),
-      limitPrice: s(input.limitPrice), tif: input.tif, reduceOnly: input.reduceOnly,
+    const [acct, epoch] = await Promise.all([this.ensureAccount(), this.ensureEpoch()]);
+    const terms = serializeOrderTerms({
+      marketId: BigInt(input.marketId),
+      side: input.side,
+      size: input.size,
+      limitPrice: input.limitPrice,
+      tif: input.tif,
+      reduceOnly: input.reduceOnly,
+      nonce: this.nextNonce(),
     });
+    const extra = new Uint8Array(8 + 32);
+    extra.set(u64le(BigInt(epoch.epochId)), 0);
+    extra.set(acct.owner, 8);
+    const aad = domainAad(DOMAIN_ORDER_ENCRYPT_AAD, extra);
+    const sealed = seal(epoch.pub, terms, aad);
+    return this.post<Receipt>(
+      "/v1/orders",
+      { epochId: epoch.epochId, sealed: "0x" + bytesToHex(sealed) },
+      { "X-Api-Key": acct.apiKey },
+    );
   }
-  async deposit(amountQuote: bigint): Promise<void> { await this.post("/api/deposit", { amount: s(amountQuote) }); }
+  async deposit(amountQuote: bigint): Promise<void> {
+    await this.post("/api/deposit", { amount: s(amountQuote) });
+    // Mirror the deposit into the /v1 trading account the SEALED orders trade as,
+    // so they clear the margin check (demo in-memory credit; the prod gateway
+    // refuses unbacked deposits and funds on-chain instead). Best-effort.
+    try {
+      const acct = await this.ensureAccount();
+      await this.post(
+        "/v1/accounts/deposit",
+        { marketId: this.state?.selectedMarketId ?? 0, amount: s(amountQuote) },
+        { "X-Api-Key": acct.apiKey },
+      );
+    } catch (e) {
+      console.warn("[dark-perp] /v1 mirror deposit failed (sealed orders may lack margin):", e);
+    }
+  }
   async requestWithdrawal(amountQuote: bigint): Promise<void> { await this.post("/api/withdraw", { amount: s(amountQuote) }); }
   triggerCloseOnly(): void { void this.post("/api/mode", { mode: "CloseOnly" }); }
   resumeNormal(): void { void this.post("/api/mode", { mode: "Normal" }); }
