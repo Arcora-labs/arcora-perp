@@ -448,16 +448,24 @@ enum WsMsg {
 }
 
 // ── request bodies ───────────────────────────────────────────────────────────
+// The six plaintext trade-term fields are `#[serde(default)]` so a SEALED order
+// can carry ONLY `{epochId, sealed}` on the wire (Task 11 contract) without the
+// JSON extractor 422-ing before `account_place_order` ever runs. The sealed path
+// overwrites them from the decrypted terms; the plaintext path still fails closed
+// on the empty defaults (`""` size → "bad size").
 #[derive(Deserialize, Default)]
 struct OrderReq {
-    #[serde(rename = "marketId")]
+    #[serde(rename = "marketId", default)]
     market_id: u64,
+    #[serde(default)]
     side: String,
+    #[serde(default)]
     size: String,
-    #[serde(rename = "limitPrice")]
+    #[serde(rename = "limitPrice", default)]
     limit_price: String,
+    #[serde(default)]
     tif: String,
-    #[serde(rename = "reduceOnly")]
+    #[serde(rename = "reduceOnly", default)]
     reduce_only: bool,
     /// Caller-signed accounts only: the order nonce the caller signed over (must
     /// strictly increase). Ignored for Phase-0 server-custody accounts.
@@ -5488,6 +5496,58 @@ mod tests {
         let aad = sealed_box::domain_aad(Domain::OrderEncryptAad as u8, &extra);
         let sb = sealed_box::seal_with_ephemeral(epoch_pub, &pt, &aad, &[7u8; 32], &[9u8; 24]);
         hex0x(&sb.to_bytes())
+    }
+
+    /// Task 11 wire-shape regression (found by the client's live e2e): a sealed
+    /// order carries ONLY `{epochId, sealed}` in the JSON body — no plaintext
+    /// trade-term fields. The `/v1/orders` extractor must PARSE that body (the
+    /// six plaintext `OrderReq` fields are `#[serde(default)]`) and the full
+    /// HTTP round trip must decrypt + accept the order. Before the fix this
+    /// 422'd at the Json extractor, so every spec-conform sealed client broke.
+    #[tokio::test]
+    async fn sealed_only_wire_body_parses_and_places_the_order() {
+        use axum::body::Body;
+        use axum::http::Request;
+        use tower::ServiceExt as _; // for `oneshot`
+
+        let app = test_app();
+        let (key, wire, epoch_id) = {
+            let mut gw = app.gw.lock().await;
+            let (key, owner) = gw.register_account(None);
+            gw.account_deposit(&key, 0, 20_000 * QUOTE_SCALE).expect("deposit");
+            let epoch_id = gw.epochs.current().epoch_id;
+            let epoch_pub = gw.epochs.current().public;
+            let wire = seal_order_wire(
+                &epoch_pub,
+                epoch_id,
+                &owner,
+                &OrderTerms {
+                    market_id: 0,
+                    side: Side::Buy,
+                    size: SIZE_SCALE / 10,
+                    limit_price: 0,
+                    tif: TimeInForce::Ioc,
+                    reduce_only: false,
+                    nonce: 1,
+                },
+            );
+            (key, wire, epoch_id)
+        };
+
+        let body = serde_json::json!({ "epochId": epoch_id, "sealed": wire }).to_string();
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/orders")
+            .header("content-type", "application/json")
+            .header("X-Api-Key", hex0x(&key))
+            .body(Body::from(body))
+            .unwrap();
+        let res = build_router(app, false).oneshot(req).await.unwrap();
+        assert_eq!(
+            res.status(),
+            StatusCode::OK,
+            "a sealed-only {{epochId, sealed}} body must round-trip through the HTTP layer",
+        );
     }
 
     /// A client-SEALED order decrypts inside the enclave, opens the position the

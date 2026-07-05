@@ -494,8 +494,15 @@ export class RealDarkPerpClient implements DarkPerpClient {
       body: JSON.stringify(body ?? {}),
     });
     const text = await res.text();
-    const json = text ? JSON.parse(text) : null;
-    if (!res.ok) throw new Error(json?.error ?? `${path} failed (${res.status})`);
+    // Error bodies aren't always JSON (axum extractor rejections are text/plain) —
+    // never let JSON.parse mask the real failure.
+    let json: { error?: string } | null = null;
+    try {
+      json = text ? JSON.parse(text) : null;
+    } catch {
+      json = null;
+    }
+    if (!res.ok) throw new Error(json?.error ?? `${path} failed (${res.status}): ${text.slice(0, 200)}`);
     return json as T;
   }
 
