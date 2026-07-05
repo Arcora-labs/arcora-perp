@@ -57,8 +57,8 @@ fn hex32(d: &Digest) -> String {
 const IMR_BP: i128 = 1_000; // initial-margin 10% in basis points (matches Market::conservative)
 const MMR_BP: i128 = 500; // maintenance 5%
 const SETTLE_TICKS: u64 = 5; // ticks a batch waits (MATCHED) before mark_settled (SETTLED)
-const USER_FUND_PER_MARKET: i128 = 5_000; // USD → $25k across 5 markets (≈ mock's settledBalance)
-const MM_FUND_PER_MARKET: i128 = 6_000_000; // USD; the LP pool's seed (×5 markets = $30M)
+const USER_FUND_PER_MARKET: i128 = 5_000; // USD → $15k across 3 markets (≈ mock's settledBalance)
+const MM_FUND_PER_MARKET: i128 = 6_000_000; // USD; the LP pool's seed (×3 markets = $18M)
 const TICK_MS: u64 = 700;
 // Trading economics (audit Q4): every fill charges the taker a fee, rebates the
 // resting maker, and routes the remainder into the insurance fund (audit Q3).
@@ -118,18 +118,9 @@ const MARKETS: &[MarketCfg] = &[
         seed: 66.44,
         feed: Some("SOL_USDT"),
     },
-    MarketCfg {
-        id: 3,
-        symbol: "HYPE/USDC",
-        seed: 63.124,
-        feed: None,
-    },
-    MarketCfg {
-        id: 4,
-        symbol: "LIT/USDC",
-        seed: 1.10,
-        feed: None,
-    },
+    // HYPE/USDC and LIT/USDC were removed 2026-07-05: they had no real oracle feed
+    // (`feed: None` ⇒ sim walk only), so they don't belong on a testnet meant to mirror
+    // real settlement. They'll be listed on mainnet once a genuine oracle source exists.
 ];
 
 fn now_ms() -> u64 {
@@ -4597,15 +4588,15 @@ mod tests {
     }
 
     #[test]
-    fn boot_funds_user_to_25k() {
+    fn boot_funds_user_to_15k() {
         let gw = Gw::boot();
-        // ≈ $25,000 across the 5 markets + a $2,000,000 market-0 LP allowance.
+        // ≈ $15,000 across the 3 markets + a $2,000,000 market-0 LP allowance.
         let free = gw.free_balance();
         assert!(
-            (2_020_000 * QUOTE_SCALE..=2_030_000 * QUOTE_SCALE).contains(&free),
+            (2_010_000 * QUOTE_SCALE..=2_020_000 * QUOTE_SCALE).contains(&free),
             "free={free}"
         );
-        assert_eq!(gw.snapshot().markets.len(), 5);
+        assert_eq!(gw.snapshot().markets.len(), 3);
     }
 
     #[test]

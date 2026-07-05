@@ -42,9 +42,9 @@ so the TypeScript side keeps exact `BigInt` math. The shapes match
 
 ## How it maps to the engine
 
-- **Boot**: `EnclaveIdentity::from_seed` → `Sequencer::new(.., 24)`; adds 5 markets
+- **Boot**: `EnclaveIdentity::from_seed` → `Sequencer::new(.., 24)`; adds 3 markets
   (`Market::conservative`) seeded from real-ish prices; funds a deep market-maker
-  and the demo user (≈ $5k into each of the 5 markets → `settledBalance` ≈ $25k).
+  and the demo user (≈ $5k into each of the 3 markets → `settledBalance` ≈ $15k).
 - **Order → fill**: `accept_order` issues the ACCEPTED receipt immediately. A
   ~700ms tick walks the oracles, then `seal_batch`es each pending user order
   together with a resting market-maker counter-order (`Gtc` maker first, user

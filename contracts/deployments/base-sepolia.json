@@ -4,25 +4,25 @@
   "rpc": "https://sepolia.base.org",
   "explorer": "https://sepolia.basescan.org",
   "deployedAt": "2026-07-05",
-  "deployBlock": 43736191,
+  "deployBlock": 43745352,
   "deployer": "0xed37B7fc534Cc93D4195b4F11ADc5C14237cd287",
-  "note": "Phase 0 PUBLIC TESTNET redeploy - carries the full 2026-07-04/05 audit remediation (CRITICAL off-market fill drain, funding per-elapsed-time, all Tier-1/2/3 fixes). Redeploy was MANDATORY because inclusionLeaf is now domain-separated (b2ff899, forks the leaf layout), the vault rejects deposits in close-only (fe1e29a), and the slashed USDC bond is pull-payment (c529d3f) - all ABI/leaf-layout forks that the previous stack cannot serve in lockstep with the new gateway. enclaveSigner unchanged = the REAL secret-seed enclave inside the perp-seq Azure TDX CVM (live measurement 0x422890f6..faf55bd, see docs/ATTESTATION.md #5c). MockUSDC open mint is the faucet. MockZkVerifier still stands in for the real SP1/Risc0 verifier (testnet only). Fresh genesis: state reset on the CVM (old state.snap referenced the superseded settlement's batch history).",
+  "note": "Phase 0 PUBLIC TESTNET redeploy #2 (same day) — carries the full audit remediation AND drops the HYPE/USDC + LIT/USDC markets (they had no real oracle feed → sim-walk only; deferred to mainnet). Removing markets changes the gateway's genesis state root, so a fresh contract stack (genesis 0) was needed to match the fresh 3-market gateway genesis in lockstep (settleBatch enforces prev==currentStateRoot; the old advanced 5-market-lineage root could not continue a 3-market lineage). Markets now: BTC/USDC, ETH/USDC, SOL/USDC — all Crypto.com feed-backed (health = all markets live). enclaveSigner unchanged = the REAL secret-seed enclave inside the perp-seq Azure TDX CVM (measurement 0x422890f6..faf55bd). MockUSDC open mint is the faucet. MockZkVerifier still stands in for the real SP1/Risc0 verifier (testnet only). Served at https://perp.arcoralabs.xyz (+ sslip.io fallback).",
   "contracts": {
     "DarkPerpSettlement": {
-      "address": "0xf95edd79e59483aBab5385f66236Bb93bb867523",
-      "tx": "0xa2ea5ab057b90598b6c5dc41029945596147c2083d6d033fe20e99dd2f73269a"
+      "address": "0x27Fc1bDa0B04163ABDf310ABC1391AD9778cfA82",
+      "tx": "0x36e9b318012fa31e868563638c5b2fa45c9b39767093c90f5fbe5533cf59160c"
     },
     "CollateralVault": {
-      "address": "0x452ACa1FC8268EEF5b221F564837D441EEfDf1F4",
-      "tx": "0x34f9ed7c8bf225c3e9a56e2cecaca169fbc70fb8a8df4b1c43e5f24bdda32d82"
+      "address": "0x71a19b16F400752a1c0761dEF7bBA208eDFf37EA",
+      "tx": "0x592f21d596fe5c3e28971ad1f6d366c30fd121707ce4f76df9a99d506541fff2"
     },
     "MockZkVerifier": {
-      "address": "0x13D718DcFC2E5d97AA60D79248a7526cb8061B88",
-      "tx": "0x95dba4ddecc074f926da128c5fd94c96da041a9a8d560ac5c26318633ff358ee"
+      "address": "0xC0a6F6E5311b93fCeA29410a53e07a512b167c32",
+      "tx": "0x29ad93cd401800643f7de989a1040b6d84cb2f9b49fbd7a6f7f1cbb570c034bc"
     },
     "MockUSDC": {
-      "address": "0x039dAC29b85253EA76Dd2A58163d3E9F44b76C19",
-      "tx": "0xaddcaee062a867c19ec1b9effffc77ffeb97ccfc8667de4f68adb40208e6f234"
+      "address": "0x5DCd457B723F81531753fE92B82696e771671557",
+      "tx": "0x8a3649ccf60bed136ef7a7a98466d6ea926db3505735b0f0bb39f0227f89d407"
     }
   },
   "params": {
@@ -35,6 +35,13 @@
     "challengeBondWei": "10000000000000000"
   },
   "supersededDeploys": [
+    {
+      "note": "2026-07-05 redeploy #1 — full audit remediation, 5 markets (incl. oracle-less HYPE/LIT). Superseded same day by the 3-market redeploy above.",
+      "DarkPerpSettlement": "0xf95edd79e59483aBab5385f66236Bb93bb867523",
+      "CollateralVault": "0x452ACa1FC8268EEF5b221F564837D441EEfDf1F4",
+      "MockZkVerifier": "0x13D718DcFC2E5d97AA60D79248a7526cb8061B88",
+      "MockUSDC": "0x039dAC29b85253EA76Dd2A58163d3E9F44b76C19"
+    },
     {
       "note": "2026-07-03 pre-audit-remediation (off-market fill drain + 5000x funding live; inclusionLeaf not domain-separated; deposit not close-only-gated; slash push-payment)",
       "DarkPerpSettlement": "0x0e29D740D4C6B75d33EC2b81CfE70Cf045beD49B",

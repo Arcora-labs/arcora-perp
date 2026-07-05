@@ -1,5 +1,5 @@
 // In-memory mock that encodes the protocol's observable semantics so the UI is
-// faithful before any backend exists. Multi-market (5 USDC pairs, see MARKETS),
+// faithful before any backend exists. Multi-market (3 USDC pairs, see MARKETS),
 // matching the protocol's per-MarketId state. Fidelity points:
 //   • every order returns a signed-style receipt immediately (ACCEPTED, §2)
 //   • finality advances ACCEPTED → MATCHED → SETTLED, only SETTLED is withdrawable
@@ -116,8 +116,7 @@ const MARKETS: MarketCfg[] = [
   { id: 0, symbol: "BTC/USDC", instrument: "BTCUSD-PERP", seed: 59_575.14 },
   { id: 1, symbol: "ETH/USDC", instrument: "ETHUSD-PERP", seed: 1_570.61 },
   { id: 2, symbol: "SOL/USDC", instrument: "SOLUSD-PERP", seed: 66.44 },
-  { id: 3, symbol: "HYPE/USDC", instrument: "HYPEUSD-PERP", seed: 63.124 },
-  { id: 4, symbol: "LIT/USDC", instrument: null, seed: 1.1 },
+  // HYPE/USDC + LIT/USDC removed 2026-07-05 (no real oracle feed → mainnet-only).
 ];
 
 /// Decimal USD → PRICE_SCALE bigint (geometry/seed only; on-wire math stays bigint).

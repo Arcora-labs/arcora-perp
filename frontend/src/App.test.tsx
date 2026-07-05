@@ -21,7 +21,7 @@ describe("App smoke", () => {
   it("renders every market in the selector (multi-market)", () => {
     render(<App />);
     // sidebar market list — each market is a selectable tab (accessible name = symbol)
-    for (const sym of ["BTC/USDC", "ETH/USDC", "SOL/USDC", "HYPE/USDC", "LIT/USDC"]) {
+    for (const sym of ["BTC/USDC", "ETH/USDC", "SOL/USDC"]) {
       expect(screen.getByRole("tab", { name: sym })).toBeTruthy();
     }
   });

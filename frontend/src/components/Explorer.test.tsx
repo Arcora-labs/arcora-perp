@@ -38,7 +38,7 @@ describe("Explorer", () => {
     expect(screen.getByRole("heading", { name: /^Batches/i })).toBeTruthy();
     expect(screen.getByRole("heading", { name: /order-commitment log/i })).toBeTruthy();
     // every market appears in the marks table
-    for (const sym of ["BTC/USDC", "ETH/USDC", "SOL/USDC", "HYPE/USDC", "LIT/USDC"]) {
+    for (const sym of ["BTC/USDC", "ETH/USDC", "SOL/USDC"]) {
       expect(screen.getAllByText(new RegExp(sym.replace("/", "\\/"))).length).toBeGreaterThan(0);
     }
   });
