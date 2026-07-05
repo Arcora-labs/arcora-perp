@@ -42,9 +42,9 @@ per batch size (the §10b memory-envelope data point).
 | In-enclave in-memory CLOB (native match, price-time, order types, STP) | `matcher` | ✅ |
 | Signed receipt (ACCEPTED) — secp256k1, L1-verifiable | `sequencer` | ✅ |
 | Fill preconf (MATCHED) + finality state machine | `sequencer` | ✅ |
-| Encrypted order ingress + enclave key epoch | `Order.ciphertext_commit`, `EnclaveIdentity` | 🟡 (wire format + key; real encryption pending) |
+| Encrypted order ingress + enclave key epoch | `gateway::enclave_epoch`, `sealed-box`, `realClient.ts` | ✅ (client seals to the attested enclave epoch key at `GET /v1/enclave/epoch`; the enclave decrypts inside `account_place_order`; depth stays public) |
 | Enclave attestation verification (TDX / Nitro) | — | ⬜ (modelled as measurement) |
-| Append-only encrypted order log | — | ⬜ |
+| Append-only encrypted order log | `gateway::order_log` | ✅ (hash-chained, sealed to the enclave log X25519 key; on-chain manifest anchoring deferred to the ZK-verifier workstream — the log is the prover witness) |
 
 ## Faz 2 — ZK settlement + fund safety + confidential proving
 
@@ -53,7 +53,7 @@ per batch size (the §10b memory-envelope data point).
 | Ethereum verifier interface + state-root anchoring | `contracts/DarkPerpSettlement` | ✅ |
 | Collateral vault + settled-withdrawal claims | `contracts/CollateralVault` | ✅ |
 | Forced-exit / close-only L1 module | `DarkPerpSettlement` (liveness→close-only) | ✅ |
-| **Encrypted note archive / indexer** | `note-archive` | ✅ |
+| **Encrypted note archive / indexer** | `note-archive` | ✅ (real AEAD — X25519 + HKDF + XChaCha20-Poly1305 via `sealed-box`; the earlier XOR stand-in is gone, and the host cannot read a note without the view key) |
 | **Attested confidential prover** (sealed witness → measurement) | `prover` (§10b boundary) | ✅ (commitment stand-in; real zkVM = backend swap) |
 | Real SP1/Risc0 verifier + EIP-4844 DA blob | — | ⬜ (see `docs/PROVING.md`) |
 
