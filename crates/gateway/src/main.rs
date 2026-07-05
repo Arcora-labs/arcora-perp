@@ -451,8 +451,11 @@ enum WsMsg {
 // The six plaintext trade-term fields are `#[serde(default)]` so a SEALED order
 // can carry ONLY `{epochId, sealed}` on the wire (Task 11 contract) without the
 // JSON extractor 422-ing before `account_place_order` ever runs. The sealed path
-// overwrites them from the decrypted terms; the plaintext path still fails closed
-// on the empty defaults (`""` size → "bad size").
+// overwrites them from the decrypted terms. The plaintext (dev/demo) path does NOT
+// trust those serde defaults to be safe: it explicitly REQUIRES every core field
+// (side/size/limitPrice/tif) via `require_core_order_fields` and parses side/tif
+// STRICTLY, so a partial body like `{"size":"100"}` is rejected outright instead of
+// silently defaulting into a wrong-direction market order.
 #[derive(Deserialize, Default)]
 struct OrderReq {
     #[serde(rename = "marketId", default)]
@@ -669,13 +672,55 @@ fn challenge_scan_start(now_block: u64, window_blocks: u64) -> u64 {
     now_block.saturating_sub(window_blocks.saturating_add(window_blocks / 2).max(64))
 }
 
-fn parse_tif(s: &str) -> TimeInForce {
+/// Strict `time-in-force` parse: exactly one of the four documented values.
+/// Unlike a lenient `_ => Ioc` fallback, an empty or unrecognized value is an
+/// ERROR — a malformed plaintext order must be REJECTED, not silently reinterpreted
+/// under a defaulted policy (audit follow-up to the `#[serde(default)]` widening).
+fn parse_tif_strict(s: &str) -> Result<TimeInForce, String> {
     match s {
-        "Gtc" => TimeInForce::Gtc,
-        "Fok" => TimeInForce::Fok,
-        "PostOnly" => TimeInForce::PostOnly,
-        _ => TimeInForce::Ioc,
+        "Gtc" => Ok(TimeInForce::Gtc),
+        "Ioc" => Ok(TimeInForce::Ioc),
+        "Fok" => Ok(TimeInForce::Fok),
+        "PostOnly" => Ok(TimeInForce::PostOnly),
+        other => Err(format!(
+            "unknown time-in-force `{other}` (expected Gtc, Ioc, Fok, or PostOnly)"
+        )),
     }
+}
+
+/// Strict `side` parse: exactly `Buy` or `Sell`. Unlike the historical lenient
+/// `if s == "Buy" { Buy } else { Sell }`, an empty or unrecognized value is an
+/// ERROR, not a silent `Sell` — a malformed plaintext order must be rejected, not
+/// re-interpreted as a (wrong-direction) trade.
+fn parse_side_strict(s: &str) -> Result<Side, String> {
+    match s {
+        "Buy" => Ok(Side::Buy),
+        "Sell" => Ok(Side::Sell),
+        other => Err(format!(
+            "unknown order side `{other}` (expected `Buy` or `Sell`)"
+        )),
+    }
+}
+
+/// Enforce that a PLAINTEXT order carries every core trade-term field. `OrderReq`'s
+/// trade fields are `#[serde(default)]` so a SEALED order can be just
+/// `{epochId, sealed}` on the wire (Task 11 contract) — but that default must never
+/// leak into a plaintext order, where an absent field would otherwise become a real
+/// order (side "" → Sell, limitPrice "" → market, tif "" → Ioc). Both plaintext
+/// entry points call this before parsing, so a partial body is REJECTED, not
+/// silently defaulted.
+fn require_core_order_fields(req: &OrderReq) -> Result<(), String> {
+    if req.side.is_empty()
+        || req.size.is_empty()
+        || req.limit_price.is_empty()
+        || req.tif.is_empty()
+    {
+        return Err(
+            "plaintext order is missing a required field (side, size, limitPrice, and tif must all be present)"
+                .into(),
+        );
+    }
+    Ok(())
 }
 #[allow(clippy::too_many_arguments)] // a flat order constructor; a params struct would only add ceremony
 fn mk_order(
@@ -1390,6 +1435,13 @@ impl Gw {
             if self.prod {
                 return Err("production requires sealed order ingress".into());
             }
+            // Dev/demo plaintext ingress. The trade-term fields are `#[serde(default)]`
+            // (so the sealed branch above can omit them); enforce their PRESENCE here
+            // so a partial body like `{"size":"100"}` is REJECTED instead of silently
+            // defaulting into a wrong-direction market order (side "" → Sell,
+            // limitPrice "" → market, tif "" → Ioc). Strict side/tif parsing below
+            // then rejects any present-but-unrecognized value too.
+            require_core_order_fields(req)?;
             req
         };
 
@@ -1401,11 +1453,10 @@ impl Gw {
             return Err("Unknown market.".into());
         }
         let limit: i128 = req.limit_price.parse().unwrap_or(0);
-        let side = if req.side == "Buy" {
-            Side::Buy
-        } else {
-            Side::Sell
-        };
+        // Strict: an empty/unknown side is an error (the plaintext guard already
+        // required presence; the sealed branch always supplies "Buy"/"Sell"). No
+        // silent `else → Sell` default that could flip a malformed order's direction.
+        let side = parse_side_strict(&req.side)?;
         let opening = self.is_opening_of(&owner, req.market_id, &req.side, size);
         if self.seq.state.mode == Mode::CloseOnly && opening {
             return Err(
@@ -1426,7 +1477,7 @@ impl Gw {
                 return Err("Insufficient free margin to open this position (§3).".into());
             }
         }
-        let tif = parse_tif(&req.tif);
+        let tif = parse_tif_strict(&req.tif)?;
         let now_rate = now_ms();
         let acct = self.accounts.get_mut(key).unwrap();
         // per-account sliding-1s rate limit
@@ -2072,16 +2123,20 @@ impl Gw {
 
     // ── mutations ───────────────────────────────────────────────────────────
     fn place_order(&mut self, req: &OrderReq) -> Result<(WReceipt, Vec<WEvent>), String> {
+        // Legacy dev/demo plaintext ingress (this route is mounted only in the demo
+        // build). It shares `OrderReq` — whose fields are `#[serde(default)]` for the
+        // sealed wire — so it must enforce the SAME core-field presence as
+        // `account_place_order`'s plaintext branch, or a partial body would silently
+        // default into a real (wrong-direction) order. Tif is required for uniform
+        // malformed-rejection even though this path always takes as Ioc below.
+        require_core_order_fields(req)?;
         let size: i128 = req.size.parse().map_err(|_| "bad size".to_string())?;
         if size <= 0 {
             return Err("Size must be positive.".into());
         }
         let limit: i128 = req.limit_price.parse().unwrap_or(0);
-        let side = if req.side == "Buy" {
-            Side::Buy
-        } else {
-            Side::Sell
-        };
+        // Strict side parse: no silent `else → Sell` that could flip direction.
+        let side = parse_side_strict(&req.side)?;
         if self.mkt(req.market_id).is_none() {
             return Err("Unknown market.".into());
         }
@@ -5759,6 +5814,116 @@ mod tests {
         assert!(
             err.contains("production requires sealed order ingress"),
             "unexpected error: {err}",
+        );
+    }
+
+    /// Regression for the `#[serde(default)]` widening (commit 76b94a5): that change
+    /// let a partial plaintext body like `{"size":"100000000"}` PARSE and reach the
+    /// dev/demo plaintext branch, where the missing fields silently defaulted into a
+    /// real Sell / market-0 / Ioc order. The plaintext branch must now REJECT any
+    /// order missing a core field, restoring pre-commit strictness.
+    #[test]
+    fn plaintext_order_missing_side_is_rejected() {
+        let mut gw = Gw::boot();
+        let (key, owner) = gw.register_account(None);
+        gw.account_deposit(&key, 0, 20_000 * QUOTE_SCALE).unwrap();
+        // valid size, everything else absent → serde defaults every other field to "".
+        let partial = OrderReq {
+            size: (SIZE_SCALE / 10).to_string(),
+            ..Default::default()
+        };
+        assert!(
+            gw.account_place_order(&key, &partial).is_err(),
+            "a plaintext order with only `size` set must be rejected, not defaulted",
+        );
+        assert_eq!(
+            gw.seq.state.position(&owner, 0).map_or(0, |p| p.size),
+            0,
+            "a rejected partial order must open nothing",
+        );
+    }
+
+    /// Strict tif: an EMPTY tif (required-field guard) and an UNKNOWN tif (strict
+    /// parse) are both rejected on the plaintext branch — no silent fallback to Ioc.
+    #[test]
+    fn plaintext_order_with_empty_or_unknown_tif_is_rejected() {
+        let mut gw = Gw::boot();
+        let (key, _owner) = gw.register_account(None);
+        gw.account_deposit(&key, 0, 20_000 * QUOTE_SCALE).unwrap();
+        let empty_tif = OrderReq {
+            market_id: 0,
+            side: "Buy".into(),
+            size: (SIZE_SCALE / 10).to_string(),
+            limit_price: "0".into(),
+            tif: String::new(),
+            ..Default::default()
+        };
+        assert!(
+            gw.account_place_order(&key, &empty_tif).is_err(),
+            "an empty tif must be rejected, not defaulted to Ioc",
+        );
+        let unknown_tif = OrderReq {
+            tif: "Whenever".into(),
+            ..empty_tif
+        };
+        assert!(
+            gw.account_place_order(&key, &unknown_tif).is_err(),
+            "an unrecognized tif must be rejected, not silently defaulted to Ioc",
+        );
+    }
+
+    /// Strict side: an UNKNOWN side value is rejected on the plaintext branch — no
+    /// silent `else → Sell` that would flip a malformed order's direction.
+    #[test]
+    fn plaintext_order_with_unknown_side_is_rejected() {
+        let mut gw = Gw::boot();
+        let (key, owner) = gw.register_account(None);
+        gw.account_deposit(&key, 0, 20_000 * QUOTE_SCALE).unwrap();
+        let bad_side = OrderReq {
+            market_id: 0,
+            side: "Longgg".into(),
+            size: (SIZE_SCALE / 10).to_string(),
+            limit_price: "0".into(),
+            tif: "Ioc".into(),
+            ..Default::default()
+        };
+        assert!(
+            gw.account_place_order(&key, &bad_side).is_err(),
+            "an unrecognized side must be rejected, not silently defaulted to Sell",
+        );
+        assert_eq!(
+            gw.seq.state.position(&owner, 0).map_or(0, |p| p.size),
+            0,
+            "a rejected unknown-side order must open nothing",
+        );
+    }
+
+    /// The tightening must not regress the happy path: a COMPLETE plaintext order
+    /// still places on the legacy demo `/api/order` (`place_order`) route, while a
+    /// partial body on that SAME route is now rejected.
+    #[test]
+    fn complete_plaintext_order_still_succeeds_in_demo() {
+        let mut gw = Gw::boot();
+        let ok = OrderReq {
+            market_id: 0,
+            side: "Buy".into(),
+            size: (SIZE_SCALE / 10).to_string(),
+            limit_price: "0".into(),
+            tif: "Ioc".into(),
+            reduce_only: false,
+            ..Default::default()
+        };
+        assert!(
+            gw.place_order(&ok).is_ok(),
+            "a complete plaintext order must still be accepted in demo mode",
+        );
+        let partial = OrderReq {
+            size: (SIZE_SCALE / 10).to_string(),
+            ..Default::default()
+        };
+        assert!(
+            gw.place_order(&partial).is_err(),
+            "a partial plaintext order must be rejected on the demo /api/order path too",
         );
     }
 
