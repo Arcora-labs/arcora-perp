@@ -52,23 +52,38 @@ fn derive_key(shared: &[u8; 32], epk: &[u8; 32], rpk: &[u8; 32]) -> [u8; 32] {
     key
 }
 
+/// Deterministic core of `seal`: the caller supplies the ephemeral secret and
+/// nonce instead of drawing them from an rng. Used only for cross-language test
+/// vectors; production code should use `seal`, which draws fresh randomness.
+pub fn seal_with_ephemeral(
+    recipient_pub: &[u8; 32],
+    plaintext: &[u8],
+    aad: &[u8],
+    esk_bytes: &[u8; 32],
+    nonce: &[u8; 24],
+) -> SealedBox {
+    let esk = StaticSecret::from(*esk_bytes);
+    let epk = PublicKey::from(&esk).to_bytes();
+    let shared = esk.diffie_hellman(&PublicKey::from(*recipient_pub)).to_bytes();
+    let key = derive_key(&shared, &epk, recipient_pub);
+    let cipher = XChaCha20Poly1305::new((&key).into());
+    let ct = cipher
+        .encrypt(XNonce::from_slice(nonce), Payload { msg: plaintext, aad })
+        .expect("encrypt");
+    SealedBox { epk, nonce: *nonce, ct }
+}
+
 pub fn seal(
     recipient_pub: &[u8; 32],
     plaintext: &[u8],
     aad: &[u8],
     mut rng: impl RngCore + CryptoRng,
 ) -> SealedBox {
-    let esk = StaticSecret::random_from_rng(&mut rng);
-    let epk = PublicKey::from(&esk).to_bytes();
-    let shared = esk.diffie_hellman(&PublicKey::from(*recipient_pub)).to_bytes();
-    let key = derive_key(&shared, &epk, recipient_pub);
+    let mut esk = [0u8; 32];
     let mut nonce = [0u8; 24];
+    rng.fill_bytes(&mut esk);
     rng.fill_bytes(&mut nonce);
-    let cipher = XChaCha20Poly1305::new((&key).into());
-    let ct = cipher
-        .encrypt(XNonce::from_slice(&nonce), Payload { msg: plaintext, aad })
-        .expect("encrypt");
-    SealedBox { epk, nonce, ct }
+    seal_with_ephemeral(recipient_pub, plaintext, aad, &esk, &nonce)
 }
 
 pub fn unseal(recipient_secret: &[u8; 32], sb: &SealedBox, aad: &[u8]) -> Option<Vec<u8>> {
