@@ -39,6 +39,7 @@ use sequencer::{adl_tag, adl_tag_key, EnclaveIdentity, SealedBatch, Sequencer};
 mod candles;
 mod enclave_epoch;
 mod l1;
+mod order_log;
 mod snapshot;
 mod withdrawals;
 use l1::{L1Status, L1};
@@ -648,12 +649,30 @@ struct Gw {
     /// seed exactly as they re-derive the enclave signing identity.
     #[serde(skip)]
     epochs: enclave_epoch::EnclaveEpochs,
+    /// Hash-chained, encrypted, append-only log of every ACCEPTED order (Task 12).
+    /// Entries are sealed to the enclave's log X25519 PUBLIC key (seed-derived
+    /// under `Domain::X25519LogKey`); the gateway never holds the log secret, so
+    /// it can never read an entry back. Entries + head ARE persisted in the
+    /// sealed snapshot; the recipient pubkey inside is `#[serde(skip)]`ped and
+    /// re-derived from `ENCLAVE_SEED` on restore, like `epochs`.
+    order_log: order_log::OrderLog,
 }
 
 /// Advisory lifetime of a published order-ingress epoch key (§5.1). Clients should
 /// refetch `GET /v1/enclave/epoch` before `notAfterMs`; the previous epoch's secret
 /// is retained one grace window past a rotation so in-flight orders still decrypt.
 const ORDER_EPOCH_TTL_MS: u64 = 24 * 60 * 60 * 1000;
+
+/// Derive the order-log recipient PUBLIC key from the enclave seed under the
+/// dedicated `Domain::X25519LogKey` label. The secret half of the pair is
+/// intentionally discarded right here: the gateway only ever SEALS log entries
+/// (write-only log); the secret stays derivable from `ENCLAVE_SEED` and is to be
+/// released only to an attested prover (future zk workstream — spec §9).
+fn derive_log_pub(enclave_seed: &[u8; 32]) -> [u8; 32] {
+    let (_secret_discarded, log_pub) =
+        sealed_box::x25519_keypair_from_ikm(enclave_seed, &[Domain::X25519LogKey as u8]);
+    log_pub
+}
 
 fn oracle_of(px: i128, now: u64) -> OracleTranscript {
     OracleTranscript {
@@ -791,10 +810,11 @@ const ORDER_TERMS_LEN: usize = 51;
 
 /// Serialize order terms to the canonical cross-language byte layout. The inverse
 /// of [`deserialize_order_terms`]; see that function's doc comment for the exact,
-/// authoritative layout the TS client (Task 11) must reproduce. The enclave only
-/// ever DESERIALIZES (it opens what the client sealed), so this direction is
-/// exercised only by the cross-language parity tests.
-#[cfg(test)]
+/// authoritative layout the TS client (Task 11) must reproduce. On ingress the
+/// enclave only DESERIALIZES (it opens what the client sealed); this direction is
+/// exercised by the encrypted order log (Task 12) — which re-canonicalizes every
+/// ACCEPTED order's terms before sealing them into a log entry — and by the
+/// cross-language parity tests.
 fn serialize_order_terms(t: &OrderTerms) -> [u8; ORDER_TERMS_LEN] {
     let mut b = [0u8; ORDER_TERMS_LEN];
     b[0..8].copy_from_slice(&t.market_id.to_le_bytes());
@@ -1007,6 +1027,7 @@ impl Gw {
             // Derive the first order-ingress epoch from the SAME seed the enclave
             // signing identity derives from, so a reboot/re-pin keeps the key stable.
             epochs: enclave_epoch::EnclaveEpochs::derive(enclave_seed, 1, now, ORDER_EPOCH_TTL_MS),
+            order_log: order_log::OrderLog::new(derive_log_pub(&enclave_seed)),
         };
         // seed total LP shares to the boot pool equity (the operator's stake), so the
         // initial NAV per share is 1.0 and LP deposits price in proportionally.
@@ -1056,6 +1077,10 @@ impl Gw {
         // (the snapshot serde-skips it — the epoch secret must never persist to disk).
         gw.epochs =
             enclave_epoch::EnclaveEpochs::derive(enclave_seed, 1, now_ms(), ORDER_EPOCH_TTL_MS);
+        // Re-arm the order-log recipient pubkey (also serde-skipped) from the same
+        // seed: the persisted entries + head restore as-is, but no key material —
+        // public or secret — is ever read from the snapshot.
+        gw.order_log.set_recipient(derive_log_pub(&enclave_seed));
 
         gw.mkts = MARKETS
             .iter()
@@ -1550,6 +1575,26 @@ impl Gw {
         }
         let now = now_ms();
         let signed = self.seq.accept_order(&order, now);
+        // ── hash-chained encrypted order log (Task 12) ───────────────────────
+        // The order is ACCEPTED as of the receipt above — append it to the
+        // append-only log: the SAME canonical 51-byte terms layout a sealed
+        // client submits (re-serialized from the admitted working order, so the
+        // plaintext and sealed ingress paths log identically), keyed by the
+        // terms commitment `mk_order` already bound into the order. The entry is
+        // sealed to the log pubkey (this gateway cannot read it back) and
+        // chained into `order_log.head()`; OsRng is threaded in here — the
+        // module itself never hardcodes an entropy source.
+        let canonical = serialize_order_terms(&OrderTerms {
+            market_id: req.market_id,
+            side,
+            size,
+            limit_price: limit,
+            tif,
+            reduce_only: req.reduce_only,
+            nonce,
+        });
+        self.order_log
+            .append(&order.ciphertext_commit, &canonical, rand::rngs::OsRng);
         let r = &signed.receipt;
         let receipt = WReceipt {
             order_hash: hex0x(&r.order_hash),
@@ -4627,6 +4672,8 @@ mod tests {
         gw.mkts[0].px += 1234; // market dynamics must survive too
         let root_before = gw.state_root_hex();
         let px_before = gw.mkts[0].px;
+        let log_head_before = gw.order_log.head();
+        assert_ne!(log_head_before, [0u8; 32], "the accepted order was logged");
 
         let sealed = snapshot::seal(&gw.snapshot_plain(), &seed);
         let plain = snapshot::open(&sealed, &seed).expect("authentic snapshot opens");
@@ -4651,6 +4698,66 @@ mod tests {
             restored.mkts[0].symbol, gw.mkts[0].symbol,
             "static market config rebuilt"
         );
+        // The encrypted order log survives the restart intact: same entries, same
+        // head, chain still verifies …
+        assert_eq!(restored.order_log.len(), 1, "order-log entry survives");
+        assert_eq!(restored.order_log.head(), log_head_before, "log head survives");
+        assert_eq!(
+            restored.order_log.recompute_head(),
+            log_head_before,
+            "restored chain re-folds to the same head"
+        );
+        // … and the recipient pubkey was NOT read from disk (it is serde-skipped):
+        // boot_restored re-derived the SAME key boot() derived from ENCLAVE_SEED,
+        // so the restored gateway keeps sealing to the identical log key.
+        assert_eq!(
+            restored.order_log.recipient(),
+            gw.order_log.recipient(),
+            "log pubkey re-derived from the seed, not persisted"
+        );
+    }
+
+    /// Task 12: every ACCEPTED `/v1` order is appended to the hash-chained
+    /// encrypted order log (sealed entry + advancing, recomputable head), and a
+    /// REJECTED order is not.
+    #[test]
+    fn accepted_order_appends_to_encrypted_order_log() {
+        let mut gw = Gw::boot();
+        let (key, _owner) = gw.register_account(None);
+        gw.account_deposit(&key, 0, 20_000 * QUOTE_SCALE).unwrap();
+        assert!(gw.order_log.is_empty(), "log starts empty");
+        assert_eq!(gw.order_log.head(), [0u8; 32], "head starts at zero");
+
+        // far-from-market Gtc bid: accepted, rests on the book
+        let req = |market_id: u64| OrderReq {
+            market_id,
+            side: "Buy".into(),
+            size: "1".into(),
+            limit_price: "1".into(),
+            tif: "Gtc".into(),
+            reduce_only: false,
+            nonce: None,
+            signature: None,
+            ..Default::default()
+        };
+        gw.account_place_order(&key, &req(0)).expect("order accepted");
+        assert_eq!(gw.order_log.len(), 1, "accepted order appended");
+        let head = gw.order_log.head();
+        assert_ne!(head, [0u8; 32], "head advanced");
+        assert_eq!(gw.order_log.recompute_head(), head, "chain verifies");
+
+        // A rejected order (unknown market) must NOT touch the log.
+        assert!(gw.account_place_order(&key, &req(999)).is_err());
+        assert_eq!(gw.order_log.len(), 1, "rejected order not logged");
+        assert_eq!(gw.order_log.head(), head, "head unchanged by a reject");
+
+        // A second accept chains onto the first (the encryption property itself —
+        // plaintext absent from the stored entry, opens only under the seed-derived
+        // log secret — is proven by the order_log.rs module tests).
+        gw.account_place_order(&key, &req(0)).expect("second order");
+        assert_eq!(gw.order_log.len(), 2);
+        assert_ne!(gw.order_log.head(), head, "each accept advances the chain");
+        assert_eq!(gw.order_log.recompute_head(), gw.order_log.head());
     }
 
     /// `/v1/markets/:id/candles` serves the recorded engine history: real bars in,
