@@ -71,6 +71,22 @@ impl Wallet {
     pub fn note(&self, asset_id: u64, amount: i128, blinding: Digest) -> Note {
         Note::new(self.owner, asset_id, amount, blinding)
     }
+
+    /// X25519 viewing *secret* — the note-decryption capability (Task 8 note
+    /// encryption). Derived from `view_key` (itself the seed-derived scan secret)
+    /// under a dedicated `X25519ViewKey` domain, so the view/spend split is kept
+    /// intact and no new seed material is stored on the wallet.
+    pub fn view_x25519_secret(&self) -> [u8; 32] {
+        let info = [Domain::X25519ViewKey as u8];
+        sealed_box::x25519_keypair_from_ikm(&self.view_key, &info).0
+    }
+
+    /// X25519 viewing *public* key — the address others encrypt notes to. Pairs
+    /// with [`Wallet::view_x25519_secret`] and is deterministic from the seed.
+    pub fn view_x25519_public(&self) -> [u8; 32] {
+        let info = [Domain::X25519ViewKey as u8];
+        sealed_box::x25519_keypair_from_ikm(&self.view_key, &info).1
+    }
 }
 
 fn derive(seed: &[u8; 32], label: u64) -> Digest {
@@ -263,6 +279,19 @@ mod tests {
         assert_eq!(
             w.spend_key, under_kdf,
             "spend-key uses the KeyDerivation domain"
+        );
+    }
+
+    #[test]
+    fn viewing_keypair_is_deterministic_and_scoped() {
+        let w = Wallet::from_seed([7u8; 32]);
+        assert_eq!(
+            w.view_x25519_public(),
+            Wallet::from_seed([7u8; 32]).view_x25519_public()
+        );
+        assert_ne!(
+            w.view_x25519_public(),
+            Wallet::from_seed([8u8; 32]).view_x25519_public()
         );
     }
 
