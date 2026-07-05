@@ -37,6 +37,7 @@ use perp_core::state::Mode;
 use sequencer::{adl_tag, adl_tag_key, EnclaveIdentity, SealedBatch, Sequencer};
 
 mod candles;
+mod enclave_epoch;
 mod l1;
 mod snapshot;
 mod withdrawals;
@@ -616,7 +617,18 @@ struct Gw {
     /// the demo/test build. NOT persisted — recomputed from the environment.
     #[serde(skip)]
     prod: bool,
+    /// Order-ingress X25519 epoch keys (Task 9). Seed-derived from `ENCLAVE_SEED`,
+    /// published (signed) via `GET /v1/enclave/epoch`. NOT persisted — the epoch
+    /// secret must never touch disk; `boot`/`boot_restored` re-derive it from the
+    /// seed exactly as they re-derive the enclave signing identity.
+    #[serde(skip)]
+    epochs: enclave_epoch::EnclaveEpochs,
 }
+
+/// Advisory lifetime of a published order-ingress epoch key (§5.1). Clients should
+/// refetch `GET /v1/enclave/epoch` before `notAfterMs`; the previous epoch's secret
+/// is retained one grace window past a rotation so in-flight orders still decrypt.
+const ORDER_EPOCH_TTL_MS: u64 = 24 * 60 * 60 * 1000;
 
 fn oracle_of(px: i128, now: u64) -> OracleTranscript {
     OracleTranscript {
@@ -798,6 +810,9 @@ impl Gw {
             lp_total_shares: 0,
             lp_counter: 0,
             prod: false,
+            // Derive the first order-ingress epoch from the SAME seed the enclave
+            // signing identity derives from, so a reboot/re-pin keeps the key stable.
+            epochs: enclave_epoch::EnclaveEpochs::derive(enclave_seed, 1, now, ORDER_EPOCH_TTL_MS),
         };
         // seed total LP shares to the boot pool equity (the operator's stake), so the
         // initial NAV per share is 1.0 and LP deposits price in proportionally.
@@ -843,6 +858,10 @@ impl Gw {
         gw.seq
             .set_enclave(EnclaveIdentity::from_seed(enclave_seed, 1, measurement));
         gw.attestation = attestation;
+        // Re-derive the order-ingress epoch from ENCLAVE_SEED exactly as boot() does
+        // (the snapshot serde-skips it — the epoch secret must never persist to disk).
+        gw.epochs =
+            enclave_epoch::EnclaveEpochs::derive(enclave_seed, 1, now_ms(), ORDER_EPOCH_TTL_MS);
 
         gw.mkts = MARKETS
             .iter()
@@ -3221,6 +3240,33 @@ async fn get_v1_candles(
 async fn get_v1_status(State(app): State<Shared>) -> impl IntoResponse {
     Json(app.gw.lock().await.v1_status_json())
 }
+/// Publish the enclave's current order-ingress X25519 epoch public key, SIGNED by
+/// the enclave's secp256k1 identity and bound to the attested `measurement` (§5.1).
+///
+/// A client (Task 11) seals an order to `x25519Pub` after verifying `sig` recovers
+/// to the enclave's pinned signer AND `measurement` equals the pinned attestation
+/// measurement — proving the key belongs to the real attested enclave, not a MITM.
+/// The signed digest layout is [`enclave_epoch::epoch_signing_digest`] (a
+/// cross-component contract). `sig` is 65 bytes `r‖s‖v` (v in 27/28 convention).
+async fn get_v1_enclave_epoch(State(app): State<Shared>) -> impl IntoResponse {
+    let gw = app.gw.lock().await;
+    let ek = gw.epochs.current();
+    let measurement = gw.seq.enclave().measurement;
+    let digest = enclave_epoch::epoch_signing_digest(ek.epoch_id, &ek.public, ek.not_after_ms);
+    // Reuse the REAL enclave secp256k1 identity (the receipt signer) — no new key.
+    let (r, s, v) = gw.seq.enclave().sign_prehash(&digest);
+    let mut sig = [0u8; 65];
+    sig[..32].copy_from_slice(&r);
+    sig[32..64].copy_from_slice(&s);
+    sig[64] = v;
+    Json(serde_json::json!({
+        "epochId": ek.epoch_id,
+        "x25519Pub": hex0x(&ek.public),
+        "notAfterMs": ek.not_after_ms,
+        "measurement": hex0x(&measurement),
+        "sig": hex0x(&sig),
+    }))
+}
 /// Machine-readable OpenAPI 3.1 spec for the /v1 API, so bots/tools can codegen a
 /// client. Hand-authored + compact; the prose reference is docs/API.md.
 async fn get_v1_openapi() -> impl IntoResponse {
@@ -3693,6 +3739,7 @@ fn build_router(app: Shared, prod: bool) -> Router {
         .route("/v1/markets/:id/candles", get(get_v1_candles))
         .route("/v1/markets/:id/oracle", get(get_v1_oracle))
         .route("/v1/system/status", get(get_v1_status))
+        .route("/v1/enclave/epoch", get(get_v1_enclave_epoch))
         .route("/v1/openapi.json", get(get_v1_openapi))
         .route("/v1/ws", get(ws_v1_handler))
         .layer(CorsLayer::permissive())

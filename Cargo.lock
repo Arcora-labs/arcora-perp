@@ -827,6 +827,7 @@ dependencies = [
  "perp-core",
  "postcard",
  "rand",
+ "sealed-box",
  "sequencer",
  "serde",
  "serde_json",

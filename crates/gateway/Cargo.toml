@@ -12,6 +12,7 @@ path = "src/main.rs"
 perp-core = { path = "../perp-core", features = ["serde"] }
 sequencer = { path = "../sequencer" }
 note-archive = { path = "../note-archive", features = ["std", "serde"] }
+sealed-box = { path = "../sealed-box", default-features = false }
 dark-perp-attestation = { path = "../attestation" }
 oracle-feed = { path = "../oracle-feed", features = ["http"] }
 
