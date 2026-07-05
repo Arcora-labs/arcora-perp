@@ -10,8 +10,8 @@ describe("App smoke", () => {
     // render() throws if any component faults on mount — so this alone is the
     // integration smoke test the per-module unit tests can't provide.
     render(<App />);
-    // brand + primary nav are always present (Celari sidebar)
-    expect(screen.getByText("CELARI")).toBeTruthy();
+    // brand + primary nav are always present (Arcora sidebar)
+    expect(screen.getByText("ARCORA")).toBeTruthy();
     expect(screen.getByText("Trade")).toBeTruthy();
     // the default trade view shows the selected market and the book
     expect(screen.getAllByText(/BTC\/USDC/).length).toBeGreaterThan(0);

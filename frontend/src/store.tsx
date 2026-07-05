@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useMemo, useState, type ReactNode
 import type { ClientState, DarkPerpClient } from "./api/client";
 import { MockDarkPerpClient } from "./api/mockClient";
 import { RealDarkPerpClient } from "./api/realClient";
+import { IS_LIVE, API_BASE } from "./api/apiBase";
 
 interface Store {
   client: DarkPerpClient;
@@ -17,8 +18,7 @@ const Ctx = createContext<Store | null>(null);
 /// Pick the backend: with VITE_API_URL set, talk to the real `gateway` (Rust engine
 /// over HTTP + WebSocket); otherwise run the in-browser mock. Same interface either way.
 export function StoreProvider({ children }: { children: ReactNode }) {
-  const apiUrl = import.meta.env.VITE_API_URL as string | undefined;
-  if (apiUrl) return <RealStoreProvider url={apiUrl}>{children}</RealStoreProvider>;
+  if (IS_LIVE && API_BASE) return <RealStoreProvider url={API_BASE}>{children}</RealStoreProvider>;
   return <MockStoreProvider>{children}</MockStoreProvider>;
 }
 
@@ -59,7 +59,7 @@ function RealStoreProvider({ url, children }: { url: string; children: ReactNode
         <div className="card" style={{ maxWidth: 480, textAlign: "center" }}>
           <h3 className="card__title">Gateway unreachable</h3>
           <p className="muted small" style={{ margin: 0 }}>
-            Could not reach the dark-perp gateway at <code>{url}</code> — {err}.<br />
+            Could not reach the Arcora Perp gateway at <code>{url}</code> — {err}.<br />
             Start it with <code>cargo run -p gateway</code>, or unset <code>VITE_API_URL</code> to use the mock.
           </p>
         </div>

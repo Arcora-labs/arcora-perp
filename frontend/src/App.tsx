@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { StoreProvider } from "./store";
+import { IS_LIVE } from "./api/apiBase";
 import { DocumentTitle } from "./components/DocumentTitle";
 import { ModeBanner } from "./components/ModeBanner";
 import { StatsBar } from "./components/StatsBar";
@@ -74,7 +75,7 @@ export default function App() {
               </svg>
             </span>
             <span className="sidebar__wordmark">
-              <span className="sidebar__name">CELARI</span>
+              <span className="sidebar__name">ARCORA</span>
               <span className="sidebar__sub">Perp · Dark CLOB</span>
             </span>
           </div>
@@ -112,7 +113,7 @@ export default function App() {
               ))}
             </nav>
             <div className="app__wallet">
-              <span className="app__net"><span className="dot dot--live" /> Testnet · {import.meta.env.VITE_API_URL ? "Live engine" : "Mock"}</span>
+              <span className="app__net"><span className="dot dot--live" /> Testnet · {IS_LIVE ? "Live engine" : "Mock"}</span>
               <button className="wallet-btn"><span className="dot dot--live" /> 0x7Cf4…A29B</button>
             </div>
           </header>
@@ -181,7 +182,7 @@ export default function App() {
             )}
 
             <footer className="app__footer">
-              dark-perp · live engine settling on Base Sepolia · trade via the browser or the
+              Arcora Perp · live engine settling on Base Sepolia · trade via the browser or the
               external <code>/v1</code> API.
             </footer>
           </main>

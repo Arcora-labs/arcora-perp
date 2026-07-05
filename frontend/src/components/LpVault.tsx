@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { useStore } from "../store";
 import { formatUsd } from "../domain/format";
+import { API_BASE } from "../api/apiBase";
 
-const API = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "");
+const API = API_BASE;
 
 function Stat({ label, value, tone }: { label: string; value: string; tone?: "pos" | "neg" }) {
   return (

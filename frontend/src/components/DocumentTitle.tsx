@@ -10,7 +10,7 @@ export function DocumentTitle() {
   const symbol = state.market.symbol;
   const price = formatPrice(state.oracle.price);
   useEffect(() => {
-    document.title = `${symbol} ${price} · dark-perp`;
+    document.title = `${symbol} ${price} · Arcora Perp`;
   }, [symbol, price]);
   return null;
 }

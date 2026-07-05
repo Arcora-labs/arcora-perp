@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useStore } from "../store";
 import { formatPrice } from "../domain/format";
+import { API_BASE } from "../api/apiBase";
 
 /// TradingView-style index-price chart (Celari design): candles/line/area on a
 /// canvas with a price/time grid, last-price tag, crosshair + OHLC readout, and
@@ -32,7 +33,7 @@ const TF_MIN: Record<string, number> = { "1m": 1, "5m": 5, "15m": 15, "1H": 60, 
 const TF_API: Record<string, string> = { "1m": "1m", "5m": "5m", "15m": "15m", "1H": "1h", "4H": "4h", "1D": "1d" };
 const BARS = 80;
 
-const API = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "");
+const API = API_BASE;
 
 type WireCandle = { t: number; o: string; h: string; l: string; c: string };
 /** Map the gateway's 1e8-scaled string candles to chart numbers. Exported for tests. */

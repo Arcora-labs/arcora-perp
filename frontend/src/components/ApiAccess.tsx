@@ -1,8 +1,9 @@
 import { useState } from "react";
+import { API_BASE } from "../api/apiBase";
 
-/// Live gateway base URL (set at build time). Empty in mock mode → key creation is
-/// disabled with a hint.
-const API = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "");
+/// Live gateway base URL (same-origin in production). Undefined in mock mode → key
+/// creation is disabled with a hint.
+const API = API_BASE;
 
 function Copy({ text }: { text: string }) {
   const [done, setDone] = useState(false);
