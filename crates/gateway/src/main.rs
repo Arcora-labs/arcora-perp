@@ -827,12 +827,24 @@ fn deserialize_order_terms(b: &[u8]) -> Option<OrderTerms> {
 /// variable-length sealed-order wire (`1 + 32 + 24 + ct`). `None` on odd length or
 /// a non-hex nibble.
 fn decode_hex(s: &str) -> Option<Vec<u8>> {
-    let h = s.strip_prefix("0x").unwrap_or(s);
+    // Operate on BYTES, not `&str` slices: `sealed` is attacker-controlled request
+    // JSON, so a multi-byte UTF-8 codepoint could make the char length even while a
+    // byte-offset slice landed mid-codepoint and PANICKED. Byte-based nibble decode
+    // returns a clean `None` for any non-hex input (any byte >= 0x80 fails `hexval`).
+    let h = s.strip_prefix("0x").unwrap_or(s).as_bytes();
     if !h.len().is_multiple_of(2) {
         return None;
     }
-    (0..h.len() / 2)
-        .map(|i| u8::from_str_radix(&h[i * 2..i * 2 + 2], 16).ok())
+    let hexval = |b: u8| -> Option<u8> {
+        match b {
+            b'0'..=b'9' => Some(b - b'0'),
+            b'a'..=b'f' => Some(b - b'a' + 10),
+            b'A'..=b'F' => Some(b - b'A' + 10),
+            _ => None,
+        }
+    };
+    h.chunks(2)
+        .map(|c| Some(hexval(c[0])? << 4 | hexval(c[1])?))
         .collect()
 }
 
@@ -5616,6 +5628,50 @@ mod tests {
         // deposit leaves a zero-size collateral position; no rejected order fills).
         let opened = gw.seq.state.position(&owner, 0).map_or(0, |p| p.size);
         assert_eq!(opened, 0, "no rejected sealed order may open a position");
+    }
+
+    /// `decode_hex` must be BYTE-safe: any `&str` (including non-ASCII / multi-byte
+    /// UTF-8) returns `Some`/`None`, never panics. Regression for the sealed-order
+    /// dark-ingress path, where a client could otherwise send a multi-byte char that
+    /// made the char length even while a byte-offset slice fell mid-codepoint →
+    /// `str` slicing PANIC instead of a clean 400.
+    #[test]
+    fn decode_hex_rejects_non_ascii_without_panic() {
+        // multi-byte codepoints that previously panicked (byte-len even, slice
+        // boundary lands mid-codepoint) now return a clean `None`.
+        assert_eq!(decode_hex("0xé0"), None, "mid-codepoint slice must not panic");
+        assert_eq!(decode_hex("—"), None, "em dash (3 bytes) must reject cleanly");
+        assert_eq!(decode_hex("é"), None); // single 2-byte char: even byte len, non-hex
+        assert_eq!(decode_hex("0x00é"), None);
+        // odd length still rejected; non-hex ASCII nibble still rejected.
+        assert_eq!(decode_hex("0xabc"), None);
+        assert_eq!(decode_hex("0xzz"), None);
+        // valid hex still decodes, with and without the `0x` prefix.
+        assert_eq!(decode_hex("0x01ff"), Some(vec![1, 255]));
+        assert_eq!(decode_hex("01FF"), Some(vec![1, 255]));
+        assert_eq!(decode_hex(""), Some(vec![]));
+    }
+
+    /// End-to-end: a non-ASCII `sealed` field on the order-ingress path is a clean
+    /// `Err` (bad 0x-hex wire) with NO position opened and NO panic.
+    #[test]
+    fn sealed_order_non_ascii_wire_is_cleanly_rejected() {
+        let mut gw = Gw::boot();
+        let (key, owner) = gw.register_account(None);
+        gw.account_deposit(&key, 0, 20_000 * QUOTE_SCALE).unwrap();
+        let epoch_id = gw.epochs.current().epoch_id;
+        let bad = OrderReq {
+            market_id: 0,
+            epoch_id: Some(epoch_id),
+            sealed: Some("0x—é".into()), // multi-byte UTF-8 in the sealed hex wire
+            ..Default::default()
+        };
+        assert!(
+            gw.account_place_order(&key, &bad).is_err(),
+            "a non-ASCII sealed wire must be rejected, not panic",
+        );
+        let opened = gw.seq.state.position(&owner, 0).map_or(0, |p| p.size);
+        assert_eq!(opened, 0, "a rejected non-ASCII sealed order must open nothing");
     }
 
     /// Production posture refuses an UNSEALED (plaintext) order — sealed ingress is
