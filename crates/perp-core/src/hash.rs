@@ -130,6 +130,18 @@ pub enum Domain {
     /// ciphertext). Distinct from the keystream tag and from `WitnessSealMac` —
     /// one-domain-one-purpose. Not a cross-layer-committed value.
     SnapshotSealMac = 23,
+    /// X25519 note-viewing keypair derivation label.
+    X25519ViewKey = 24,
+    /// X25519 enclave order-ingress epoch keypair derivation label.
+    X25519OrderEpoch = 25,
+    /// X25519 enclave order-log keypair derivation label.
+    X25519LogKey = 26,
+    /// AEAD AAD domain tag for note ciphertexts.
+    NoteEncryptAad = 27,
+    /// AEAD AAD domain tag for order ciphertexts.
+    OrderEncryptAad = 28,
+    /// AEAD AAD domain tag for order-log entries.
+    LogEncryptAad = 29,
 }
 
 /// The default Phase 0 hasher: Keccak-256 with a 1-byte domain prefix.
@@ -248,5 +260,11 @@ mod tests {
         assert_ne!(word_i128(-1), word_i128(i128::MAX));
         assert_eq!(word_i128(1)[16], 0);
         assert_eq!(word_i128(-1)[16], 0xff);
+    }
+
+    #[test]
+    fn new_encryption_domains_are_stable() {
+        assert_eq!(Domain::X25519ViewKey as u8, 24);
+        assert_eq!(Domain::LogEncryptAad as u8, 29);
     }
 }
