@@ -1,3 +1,7 @@
+# pnpm 11 home of the old package.json `pnpm.onlyBuiltDependencies` setting:
+# esbuild's postinstall (binary setup) is the only build script we allow.
+allowBuilds:
+  esbuild: true
 # Skip pnpm's pre-run dependency re-verification so `pnpm dev/build/test` run without
 # re-triggering the global supply-chain (minimumReleaseAge) install gate. Dependencies
 # are already installed; this only disables the per-run recheck, not the install policy.
