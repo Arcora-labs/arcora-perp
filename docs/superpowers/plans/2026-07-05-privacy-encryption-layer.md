@@ -397,7 +397,7 @@ Create `tests/fixtures/sealed-box-vectors.json` with fields as lowercase hex (re
 ```json
 {
   "recipient_ikm": "726563697069656e74",
-  "recipient_info": "6374780",
+  "recipient_info": "637478",
   "esk": "0101010101010101010101010101010101010101010101010101010101010101",
   "nonce": "020202020202020202020202020202020202020202020202",
   "domain": 27,
