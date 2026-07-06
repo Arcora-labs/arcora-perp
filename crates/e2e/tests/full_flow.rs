@@ -69,7 +69,7 @@ fn deposit_and_fund(
         blinding: [blind; 32],
     })
     .unwrap();
-    archive.record(0, &note, &w.view_key);
+    archive.record(0, &note, &w.view_x25519_public(), rand_core::OsRng);
     s.apply(&BatchOp::FundPosition {
         owner: w.owner,
         market_id: 0,
@@ -191,12 +191,12 @@ fn deposit_match_settle_prove_recover() {
     assert!(node.inclusion_violations(1).is_empty());
 
     // --- recovery: alice loses her device, recovers from seed alone (§7) ------
-    let recovered = archive.scan(&Wallet::from_seed([1u8; 32]).view_key);
+    let recovered = archive.scan(&Wallet::from_seed([1u8; 32]).view_x25519_secret());
     assert_eq!(recovered.len(), 1, "alice recovers her deposited note");
     assert_eq!(recovered[0].note.amount, 20_000 * QUOTE_SCALE);
     // bob's note is not readable with alice's view-key
     assert!(archive
-        .scan(&Wallet::from_seed([1u8; 32]).view_key)
+        .scan(&Wallet::from_seed([1u8; 32]).view_x25519_secret())
         .iter()
         .all(|r| r.note.owner == alice.owner));
 }
@@ -322,7 +322,7 @@ fn failed_batch_rolls_back_but_settled_history_and_recovery_survive() {
     assert_eq!(node.finality_of(&a_taker_hash), Some(Finality::Settled));
 
     // recovery still works against the surviving state (§7)
-    let recovered = archive.scan(&Wallet::from_seed([5u8; 32]).view_key);
+    let recovered = archive.scan(&Wallet::from_seed([5u8; 32]).view_x25519_secret());
     assert_eq!(
         recovered.len(),
         1,

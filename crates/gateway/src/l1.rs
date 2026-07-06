@@ -628,9 +628,15 @@ fn create_keystore(key_hex: &str) -> Result<(String, String, std::path::PathBuf)
     if raw.len() != 64 {
         return Err("L1_SEQUENCER_KEY must be a 32-byte hex secp256k1 scalar".into());
     }
+    // Byte-safe nibble parse (same posture as main.rs `decode_hex`): a non-ASCII
+    // byte in the env var errors cleanly instead of a mid-codepoint slice panic.
+    let raw = raw.as_bytes();
     let mut pk = [0u8; 32];
     for (i, slot) in pk.iter_mut().enumerate() {
-        *slot = u8::from_str_radix(&raw[i * 2..i * 2 + 2], 16).map_err(|_| "bad key hex")?;
+        *slot = match (crate::hex_nibble(raw[i * 2]), crate::hex_nibble(raw[i * 2 + 1])) {
+            (Some(hi), Some(lo)) => hi << 4 | lo,
+            _ => return Err("bad key hex".into()),
+        };
     }
     // a random keystore password (kept only in memory + a 0600 file, never in argv)
     let mut pw = [0u8; 32];
@@ -704,36 +710,46 @@ fn tx_hash(json: &str) -> String {
 }
 
 /// Parse a 32-byte-padded hex topic into the low 20 bytes (an address).
+/// Byte-safe: RPC log topics are external data, so a non-ASCII byte returns a
+/// clean `None` (never a mid-codepoint `&str` slice panic).
 fn parse_addr20(s: &str) -> Option<[u8; 20]> {
-    let h = s.strip_prefix("0x").unwrap_or(s);
+    let h = s.strip_prefix("0x").unwrap_or(s).as_bytes();
     if h.len() < 40 {
         return None;
     }
     let start = h.len() - 40;
     let mut a = [0u8; 20];
     for (i, slot) in a.iter_mut().enumerate() {
-        *slot = u8::from_str_radix(&h[start + i * 2..start + i * 2 + 2], 16).ok()?;
+        *slot = crate::hex_nibble(h[start + i * 2])? << 4 | crate::hex_nibble(h[start + i * 2 + 1])?;
     }
     Some(a)
 }
 
 /// Parse a uint256 hex word into u128 (USDC amounts fit comfortably); rejects overflow.
+/// Byte-safe: operates on bytes (RPC data is external), so a non-ASCII byte returns a
+/// clean `None` instead of a mid-codepoint `&str` slice panic.
 fn parse_u256_low128(s: &str) -> Option<u128> {
-    let h = s.strip_prefix("0x").unwrap_or(s);
-    let h = h.trim();
+    let h = s.strip_prefix("0x").unwrap_or(s).trim().as_bytes();
     if h.is_empty() {
         return None;
     }
-    // high bytes beyond 16 must be zero (no overflow of a real USDC amount)
-    let hex = if h.len() <= 64 {
-        format!("{:0>64}", h)
+    // Right-align into a 64-nibble window (matching the old zero-pad/truncate):
+    // everything above the low 32 nibbles must be '0' (no overflow of a real
+    // USDC amount), and the low 32 nibbles parse as the u128.
+    let window = if h.len() > 64 { &h[h.len() - 64..] } else { h };
+    let (high, low) = if window.len() > 32 {
+        window.split_at(window.len() - 32)
     } else {
-        h[h.len() - 64..].to_string()
+        (&[][..], window)
     };
-    if hex[..32].chars().any(|c| c != '0') {
+    if high.iter().any(|&b| b != b'0') {
         return None;
     }
-    u128::from_str_radix(&hex[32..], 16).ok()
+    let mut v: u128 = 0;
+    for &b in low {
+        v = v << 4 | u128::from(crate::hex_nibble(b)?);
+    }
+    Some(v)
 }
 
 #[cfg(test)]
@@ -798,5 +814,28 @@ mod tests {
             "keystore round-trips the sequencer key"
         );
         let _ = std::fs::remove_dir_all(std::path::Path::new(&ks).parent().unwrap());
+    }
+
+    /// Byte-safety regression (pre-merge hygiene): non-ASCII input to the L1 hex
+    /// parsers must fail CLEANLY. A 2-byte UTF-8 char at an odd byte offset used to
+    /// make the old `&str`-slice loops panic mid-codepoint; the keystore key comes
+    /// from an env var and the topic/amount parsers eat external RPC data.
+    #[test]
+    fn l1_hex_parsers_reject_non_ascii_without_panic() {
+        // 64 BYTES with é straddling the first nibble-pair slice boundary.
+        let bad_key = format!("aé{}", "a".repeat(61));
+        assert!(create_keystore(&bad_key).is_err(), "bad key hex must be a clean Err");
+        // 40-byte topic tail with the same straddle → clean None.
+        let bad_topic = format!("aé{}", "a".repeat(37));
+        assert_eq!(parse_addr20(&bad_topic), None);
+        // amount word: non-ASCII in the low 32 nibbles → clean None.
+        let bad_amount = format!("{}aé{}", "0".repeat(33), "0".repeat(29));
+        assert_eq!(parse_u256_low128(&bad_amount), None);
+        // sane inputs still parse.
+        assert_eq!(
+            parse_addr20(&format!("0x{}{}", "00".repeat(12), "ab".repeat(20))),
+            Some([0xab; 20]),
+        );
+        assert_eq!(parse_u256_low128("0x0de0b6b3a7640000"), Some(1_000_000_000_000_000_000));
     }
 }

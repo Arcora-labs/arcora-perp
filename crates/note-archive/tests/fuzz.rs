@@ -43,7 +43,12 @@ fn fuzz_recovery_is_exact_and_isolated() {
             let mut blind = [0u8; 32];
             blind[..8].copy_from_slice(&blind_ctr.to_le_bytes());
             let note = wallets[w].note(0, amount, blind);
-            archive.record(blind_ctr, &note, &wallets[w].view_key);
+            archive.record(
+                blind_ctr,
+                &note,
+                &wallets[w].view_x25519_public(),
+                rand_core::OsRng,
+            );
             *expected.entry(w).or_insert(0) += amount;
         }
 
@@ -54,7 +59,7 @@ fn fuzz_recovery_is_exact_and_isolated() {
                 s[..8].copy_from_slice(&((i as u64) ^ seed).to_le_bytes());
                 Wallet::from_seed(s)
             };
-            let recovered = archive.scan(&re.view_key);
+            let recovered = archive.scan(&re.view_x25519_secret());
             let total: i128 = recovered.iter().map(|r| r.note.amount).sum();
             assert_eq!(
                 total,

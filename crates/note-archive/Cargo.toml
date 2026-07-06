@@ -19,4 +19,11 @@ serde = ["dep:serde", "perp-core/serde"]
 
 [dependencies]
 perp-core = { path = "../perp-core", default-features = false }
+sealed-box = { path = "../sealed-box", default-features = false }
+# Trait bounds only (RngCore + CryptoRng) — the rng is THREADED in by callers, so
+# the no_std lib path never pulls in getrandom/std. Tests use OsRng via dev-deps.
+rand_core = { version = "0.6", default-features = false }
 serde = { version = "1", optional = true, default-features = false, features = ["derive", "alloc"] }
+
+[dev-dependencies]
+rand_core = { version = "0.6", features = ["getrandom"] }

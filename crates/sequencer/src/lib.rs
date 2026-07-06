@@ -71,6 +71,24 @@ impl EnclaveIdentity {
     pub fn eth_address(&self) -> [u8; 20] {
         self.address
     }
+
+    /// Sign a 32-byte prehash with the enclave's **secp256k1** identity, returning
+    /// a recoverable `(r, s, v)` with `v` in Ethereum convention (27/28). This is
+    /// the SAME key and recovery scheme used for receipts (§2, [`Sequencer::issue_receipt`]),
+    /// reused so any off-chain artifact signed here (e.g. the published order-ingress
+    /// epoch key) recovers to the enclave's attested L1 signer — no separate key.
+    pub fn sign_prehash(&self, digest: &[u8; 32]) -> ([u8; 32], [u8; 32], u8) {
+        let (signature, recid) = self
+            .signing
+            .sign_prehash_recoverable(digest)
+            .expect("sign");
+        let sig_bytes = signature.to_bytes();
+        let mut r = [0u8; 32];
+        let mut s = [0u8; 32];
+        r.copy_from_slice(&sig_bytes[..32]);
+        s.copy_from_slice(&sig_bytes[32..]);
+        (r, s, 27 + recid.to_byte())
+    }
 }
 
 /// A receipt with the enclave's recoverable secp256k1 signature (§2). The `(r, s,
@@ -285,6 +303,13 @@ impl Sequencer {
     /// identity before serving traffic.
     pub fn set_enclave(&mut self, enclave: EnclaveIdentity) {
         self.enclave = enclave;
+    }
+
+    /// The bound enclave signing identity (attested `measurement` + secp256k1
+    /// signer). The gateway uses this to publish the signed order-ingress epoch
+    /// key ([`EnclaveIdentity::sign_prehash`]) bound to the attested measurement.
+    pub fn enclave(&self) -> &EnclaveIdentity {
+        &self.enclave
     }
 
     /// Register a market in both settlement state and the matcher.

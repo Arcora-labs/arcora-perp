@@ -75,7 +75,7 @@ fn fund(s: &mut Sequencer, a: &mut NoteArchive, w: &Wallet, usd: i128, blind: u8
         blinding: [blind; 32],
     })
     .unwrap();
-    a.record(0, &note, &w.view_key);
+    a.record(0, &note, &w.view_x25519_public(), rand_core::OsRng);
     s.apply(&BatchOp::FundPosition {
         owner: w.owner,
         market_id: 0,
@@ -226,7 +226,7 @@ fn main() {
     );
 
     // device-loss recovery from seed alone
-    let recovered = archive.scan(&Wallet::from_seed([1u8; 32]).view_key);
+    let recovered = archive.scan(&Wallet::from_seed([1u8; 32]).view_x25519_secret());
     let total: i128 = recovered.iter().map(|r| r.note.amount).sum();
     println!(
         "\n[7] recovery: alice's seed → view-key → scanned archive → {} note(s), ${}",

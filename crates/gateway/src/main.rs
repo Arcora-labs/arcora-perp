@@ -28,7 +28,7 @@ use tower_http::cors::CorsLayer;
 use note_archive::{NoteArchive, Wallet};
 use perp_core::engine::BatchOp;
 use perp_core::fixed::{PRICE_SCALE, QUOTE_SCALE, SIZE_SCALE};
-use perp_core::hash::{Digest, Keccak256};
+use perp_core::hash::{Digest, Domain, Keccak256};
 use perp_core::market::Market;
 use perp_core::note::{Note, PubKey};
 use perp_core::oracle::OracleTranscript;
@@ -37,7 +37,9 @@ use perp_core::state::Mode;
 use sequencer::{adl_tag, adl_tag_key, EnclaveIdentity, SealedBatch, Sequencer};
 
 mod candles;
+mod enclave_epoch;
 mod l1;
+mod order_log;
 mod snapshot;
 mod withdrawals;
 use l1::{L1Status, L1};
@@ -176,16 +178,18 @@ fn attest_from_env() -> Option<Attested> {
         else {
             continue;
         };
-        let hex = line[pos + 2..].trim();
+        // Byte-safe nibble parse (same posture as `decode_hex`): a non-ASCII byte
+        // in the PCR file yields a skipped line, not a mid-codepoint slice panic.
+        let hex = line[pos + 2..].trim().as_bytes();
         if hex.len() < 64 {
             continue;
         }
         let mut a = [0u8; 32];
         let mut ok = true;
         for (i, slot) in a.iter_mut().enumerate() {
-            match u8::from_str_radix(&hex[i * 2..i * 2 + 2], 16) {
-                Ok(b) => *slot = b,
-                Err(_) => {
+            match (hex_nibble(hex[i * 2]), hex_nibble(hex[i * 2 + 1])) {
+                (Some(hi), Some(lo)) => *slot = hi << 4 | lo,
+                _ => {
                     ok = false;
                     break;
                 }
@@ -447,25 +451,52 @@ enum WsMsg {
 }
 
 // ── request bodies ───────────────────────────────────────────────────────────
-#[derive(Deserialize)]
+// The six plaintext trade-term fields are `#[serde(default)]` so a SEALED order
+// can carry ONLY `{epochId, sealed}` on the wire (Task 11 contract) without the
+// JSON extractor 422-ing before `account_place_order` ever runs. The sealed path
+// overwrites them from the decrypted terms. The plaintext (dev/demo) path does NOT
+// trust those serde defaults to be safe: it explicitly REQUIRES every core field
+// (side/size/limitPrice/tif) via `require_core_order_fields` and parses side/tif
+// STRICTLY, so a partial body like `{"size":"100"}` is rejected outright instead of
+// silently defaulting into a wrong-direction market order.
+#[derive(Deserialize, Default)]
 struct OrderReq {
-    #[serde(rename = "marketId")]
+    #[serde(rename = "marketId", default)]
     market_id: u64,
+    #[serde(default)]
     side: String,
+    #[serde(default)]
     size: String,
-    #[serde(rename = "limitPrice")]
+    #[serde(rename = "limitPrice", default)]
     limit_price: String,
+    #[serde(default)]
     tif: String,
-    #[serde(rename = "reduceOnly")]
+    #[serde(rename = "reduceOnly", default)]
     reduce_only: bool,
-    /// Caller-signed accounts only: the order nonce the caller signed over (must
-    /// strictly increase). Ignored for Phase-0 server-custody accounts.
+    /// Caller-signed accounts: the order nonce the caller signed over (must
+    /// strictly increase). For server-custody accounts the plaintext field is
+    /// ignored — but a SEALED order's decrypted terms nonce IS enforced strictly
+    /// increasing per account (replay protection; see `Account::last_sealed_nonce`).
     #[serde(default)]
     nonce: Option<u64>,
     /// Caller-signed accounts only: 65-byte secp256k1 signature (r‖s‖v) over the
     /// order hash, recovering to the account's registered signer.
     #[serde(default)]
     signature: Option<String>,
+    /// Sealed order ingress (Task 10): the enclave order-epoch this order was
+    /// encrypted to. Required whenever `sealed` is present; the enclave looks up
+    /// the matching X25519 secret (current epoch OR the grace-window previous) to
+    /// decrypt. Fetched by the client from `GET /v1/enclave/epoch`.
+    #[serde(rename = "epochId", default)]
+    epoch_id: Option<u64>,
+    /// Sealed order ingress (Task 10): the 0x-hex `SealedBox` wire (X25519-sealed,
+    /// XChaCha20-Poly1305) carrying the canonical order terms. When present the
+    /// plaintext `side/size/limitPrice/tif/reduceOnly/marketId/nonce` fields above
+    /// are IGNORED and the working order is derived from the decrypted payload; the
+    /// caller `signature` (if any) still covers the order hash of the decrypted
+    /// terms. In production posture an UNSEALED order is refused.
+    #[serde(default)]
+    sealed: Option<String>,
 }
 #[derive(Deserialize)]
 struct AmountReq {
@@ -546,6 +577,15 @@ struct Account {
     /// Strictly-increasing nonce of the last accepted caller-signed order (replay
     /// protection): a new signed order must carry a higher nonce than this.
     last_signed_nonce: u64,
+    /// Strictly-increasing nonce of the last accepted SEALED order for a
+    /// server-custody (`signer: None`) account (replay protection): the decrypted
+    /// canonical terms carry a client-chosen `nonce`, and a new sealed order must
+    /// carry a higher one — so re-POSTing a captured `{epochId, sealed}` body is
+    /// rejected instead of duplicating the position. Rides the sealed snapshot
+    /// (`serde(default)` keeps pre-upgrade snapshots loadable; fresh genesis on
+    /// redeploy is fine).
+    #[serde(default)]
+    last_sealed_nonce: u64,
 }
 
 #[derive(Serialize, serde::Deserialize)]
@@ -616,6 +656,35 @@ struct Gw {
     /// the demo/test build. NOT persisted — recomputed from the environment.
     #[serde(skip)]
     prod: bool,
+    /// Order-ingress X25519 epoch keys (Task 9). Seed-derived from `ENCLAVE_SEED`,
+    /// published (signed) via `GET /v1/enclave/epoch`. NOT persisted — the epoch
+    /// secret must never touch disk; `boot`/`boot_restored` re-derive it from the
+    /// seed exactly as they re-derive the enclave signing identity.
+    #[serde(skip)]
+    epochs: enclave_epoch::EnclaveEpochs,
+    /// Hash-chained, encrypted, append-only log of every ACCEPTED order (Task 12).
+    /// Entries are sealed to the enclave's log X25519 PUBLIC key (seed-derived
+    /// under `Domain::X25519LogKey`); the gateway never holds the log secret, so
+    /// it can never read an entry back. Entries + head ARE persisted in the
+    /// sealed snapshot; the recipient pubkey inside is `#[serde(skip)]`ped and
+    /// re-derived from `ENCLAVE_SEED` on restore, like `epochs`.
+    order_log: order_log::OrderLog,
+}
+
+/// Advisory lifetime of a published order-ingress epoch key (§5.1). Clients should
+/// refetch `GET /v1/enclave/epoch` before `notAfterMs`; the previous epoch's secret
+/// is retained one grace window past a rotation so in-flight orders still decrypt.
+const ORDER_EPOCH_TTL_MS: u64 = 24 * 60 * 60 * 1000;
+
+/// Derive the order-log recipient PUBLIC key from the enclave seed under the
+/// dedicated `Domain::X25519LogKey` label. The secret half of the pair is
+/// intentionally discarded right here: the gateway only ever SEALS log entries
+/// (write-only log); the secret stays derivable from `ENCLAVE_SEED` and is to be
+/// released only to an attested prover (future zk workstream — spec §9).
+fn derive_log_pub(enclave_seed: &[u8; 32]) -> [u8; 32] {
+    let (_secret_discarded, log_pub) =
+        sealed_box::x25519_keypair_from_ikm(enclave_seed, &[Domain::X25519LogKey as u8]);
+    log_pub
 }
 
 fn oracle_of(px: i128, now: u64) -> OracleTranscript {
@@ -635,13 +704,55 @@ fn challenge_scan_start(now_block: u64, window_blocks: u64) -> u64 {
     now_block.saturating_sub(window_blocks.saturating_add(window_blocks / 2).max(64))
 }
 
-fn parse_tif(s: &str) -> TimeInForce {
+/// Strict `time-in-force` parse: exactly one of the four documented values.
+/// Unlike a lenient `_ => Ioc` fallback, an empty or unrecognized value is an
+/// ERROR — a malformed plaintext order must be REJECTED, not silently reinterpreted
+/// under a defaulted policy (audit follow-up to the `#[serde(default)]` widening).
+fn parse_tif_strict(s: &str) -> Result<TimeInForce, String> {
     match s {
-        "Gtc" => TimeInForce::Gtc,
-        "Fok" => TimeInForce::Fok,
-        "PostOnly" => TimeInForce::PostOnly,
-        _ => TimeInForce::Ioc,
+        "Gtc" => Ok(TimeInForce::Gtc),
+        "Ioc" => Ok(TimeInForce::Ioc),
+        "Fok" => Ok(TimeInForce::Fok),
+        "PostOnly" => Ok(TimeInForce::PostOnly),
+        other => Err(format!(
+            "unknown time-in-force `{other}` (expected Gtc, Ioc, Fok, or PostOnly)"
+        )),
     }
+}
+
+/// Strict `side` parse: exactly `Buy` or `Sell`. Unlike the historical lenient
+/// `if s == "Buy" { Buy } else { Sell }`, an empty or unrecognized value is an
+/// ERROR, not a silent `Sell` — a malformed plaintext order must be rejected, not
+/// re-interpreted as a (wrong-direction) trade.
+fn parse_side_strict(s: &str) -> Result<Side, String> {
+    match s {
+        "Buy" => Ok(Side::Buy),
+        "Sell" => Ok(Side::Sell),
+        other => Err(format!(
+            "unknown order side `{other}` (expected `Buy` or `Sell`)"
+        )),
+    }
+}
+
+/// Enforce that a PLAINTEXT order carries every core trade-term field. `OrderReq`'s
+/// trade fields are `#[serde(default)]` so a SEALED order can be just
+/// `{epochId, sealed}` on the wire (Task 11 contract) — but that default must never
+/// leak into a plaintext order, where an absent field would otherwise become a real
+/// order (side "" → Sell, limitPrice "" → market, tif "" → Ioc). Both plaintext
+/// entry points call this before parsing, so a partial body is REJECTED, not
+/// silently defaulted.
+fn require_core_order_fields(req: &OrderReq) -> Result<(), String> {
+    if req.side.is_empty()
+        || req.size.is_empty()
+        || req.limit_price.is_empty()
+        || req.tif.is_empty()
+    {
+        return Err(
+            "plaintext order is missing a required field (side, size, limitPrice, and tif must all be present)"
+                .into(),
+        );
+    }
+    Ok(())
 }
 #[allow(clippy::too_many_arguments)] // a flat order constructor; a params struct would only add ceremony
 fn mk_order(
@@ -693,6 +804,134 @@ fn mk_order(
         expiry_ms: 0,
         ciphertext_commit: cc,
     }
+}
+
+/// The economically-meaningful terms of an order, decoded from a client's sealed
+/// payload (Task 10). This is the plaintext the enclave recovers after `unseal`.
+struct OrderTerms {
+    market_id: u64,
+    side: Side,
+    size: i128,
+    limit_price: i128,
+    tif: TimeInForce,
+    reduce_only: bool,
+    nonce: u64,
+}
+
+/// Wire length of a serialized `OrderTerms` (see [`deserialize_order_terms`]).
+const ORDER_TERMS_LEN: usize = 51;
+
+/// Serialize order terms to the canonical cross-language byte layout. The inverse
+/// of [`deserialize_order_terms`]; see that function's doc comment for the exact,
+/// authoritative layout the TS client (Task 11) must reproduce. On ingress the
+/// enclave only DESERIALIZES (it opens what the client sealed); this direction is
+/// exercised by the encrypted order log (Task 12) — which re-canonicalizes every
+/// ACCEPTED order's terms before sealing them into a log entry — and by the
+/// cross-language parity tests.
+fn serialize_order_terms(t: &OrderTerms) -> [u8; ORDER_TERMS_LEN] {
+    let mut b = [0u8; ORDER_TERMS_LEN];
+    b[0..8].copy_from_slice(&t.market_id.to_le_bytes());
+    b[8] = match t.side {
+        Side::Buy => 1,
+        Side::Sell => 2,
+    };
+    b[9..25].copy_from_slice(&t.size.to_le_bytes());
+    b[25..41].copy_from_slice(&t.limit_price.to_le_bytes());
+    b[41] = match t.tif {
+        TimeInForce::Gtc => 1,
+        TimeInForce::Ioc => 2,
+        TimeInForce::Fok => 3,
+        TimeInForce::PostOnly => 4,
+    };
+    b[42] = t.reduce_only as u8;
+    b[43..51].copy_from_slice(&t.nonce.to_le_bytes());
+    b
+}
+
+/// Deserialize the canonical sealed-order-terms byte layout (Task 10/11 contract).
+///
+/// A client seals EXACTLY these bytes to the enclave's current order-epoch X25519
+/// key; the enclave decrypts them here (inside the gateway) before matching. The
+/// TypeScript client (Task 11) MUST reproduce this layout byte-for-byte — copy the
+/// table below verbatim.
+///
+/// All integers are little-endian. Total length is 51 bytes:
+///
+/// | offset | field       | type     | bytes | notes                                    |
+/// |--------|-------------|----------|-------|------------------------------------------|
+/// | 0      | marketId    | u64  LE  | 8     |                                          |
+/// | 8      | side        | u8       | 1     | `1 = Buy`, `2 = Sell`                     |
+/// | 9      | size        | i128 LE  | 16    | size-scaled, must be > 0                  |
+/// | 25     | limitPrice  | i128 LE  | 16    | price-scaled, `0` = market order         |
+/// | 41     | tif         | u8       | 1     | `1 = Gtc`, `2 = Ioc`, `3 = Fok`, `4 = PostOnly` |
+/// | 42     | reduceOnly  | u8       | 1     | `0 = false`, `1 = true`                  |
+/// | 43     | nonce       | u64  LE  | 8     |                                          |
+///
+/// The `side` and `tif` numeric mappings are IDENTICAL to the ones `mk_order`
+/// folds into `ciphertext_commit` (Buy=1/Sell=2, Gtc=1/Ioc=2/Fok=3/PostOnly=4), so
+/// the terms recovered here hash to the same order the caller signature (if any)
+/// covers — no separate encoding is invented for the wire.
+///
+/// Returns `None` on a wrong length or an out-of-range side/tif/reduceOnly byte.
+fn deserialize_order_terms(b: &[u8]) -> Option<OrderTerms> {
+    if b.len() != ORDER_TERMS_LEN {
+        return None;
+    }
+    let market_id = u64::from_le_bytes(b[0..8].try_into().ok()?);
+    let side = match b[8] {
+        1 => Side::Buy,
+        2 => Side::Sell,
+        _ => return None,
+    };
+    let size = i128::from_le_bytes(b[9..25].try_into().ok()?);
+    let limit_price = i128::from_le_bytes(b[25..41].try_into().ok()?);
+    let tif = match b[41] {
+        1 => TimeInForce::Gtc,
+        2 => TimeInForce::Ioc,
+        3 => TimeInForce::Fok,
+        4 => TimeInForce::PostOnly,
+        _ => return None,
+    };
+    let reduce_only = match b[42] {
+        0 => false,
+        1 => true,
+        _ => return None,
+    };
+    let nonce = u64::from_le_bytes(b[43..51].try_into().ok()?);
+    Some(OrderTerms {
+        market_id,
+        side,
+        size,
+        limit_price,
+        tif,
+        reduce_only,
+        nonce,
+    })
+}
+
+/// Decode arbitrary-length hex (optionally `0x`-prefixed) into bytes. Used for the
+/// variable-length sealed-order wire (`1 + 32 + 24 + ct`). `None` on odd length or
+/// a non-hex nibble.
+fn decode_hex(s: &str) -> Option<Vec<u8>> {
+    // Operate on BYTES, not `&str` slices: `sealed` is attacker-controlled request
+    // JSON, so a multi-byte UTF-8 codepoint could make the char length even while a
+    // byte-offset slice landed mid-codepoint and PANICKED. Byte-based nibble decode
+    // returns a clean `None` for any non-hex input (any byte >= 0x80 fails `hexval`).
+    let h = s.strip_prefix("0x").unwrap_or(s).as_bytes();
+    if !h.len().is_multiple_of(2) {
+        return None;
+    }
+    let hexval = |b: u8| -> Option<u8> {
+        match b {
+            b'0'..=b'9' => Some(b - b'0'),
+            b'a'..=b'f' => Some(b - b'a' + 10),
+            b'A'..=b'F' => Some(b - b'A' + 10),
+            _ => None,
+        }
+    };
+    h.chunks(2)
+        .map(|c| Some(hexval(c[0])? << 4 | hexval(c[1])?))
+        .collect()
 }
 
 impl Gw {
@@ -798,6 +1037,10 @@ impl Gw {
             lp_total_shares: 0,
             lp_counter: 0,
             prod: false,
+            // Derive the first order-ingress epoch from the SAME seed the enclave
+            // signing identity derives from, so a reboot/re-pin keeps the key stable.
+            epochs: enclave_epoch::EnclaveEpochs::derive(enclave_seed, 1, now, ORDER_EPOCH_TTL_MS),
+            order_log: order_log::OrderLog::new(derive_log_pub(&enclave_seed)),
         };
         // seed total LP shares to the boot pool equity (the operator's stake), so the
         // initial NAV per share is 1.0 and LP deposits price in proportionally.
@@ -843,6 +1086,14 @@ impl Gw {
         gw.seq
             .set_enclave(EnclaveIdentity::from_seed(enclave_seed, 1, measurement));
         gw.attestation = attestation;
+        // Re-derive the order-ingress epoch from ENCLAVE_SEED exactly as boot() does
+        // (the snapshot serde-skips it — the epoch secret must never persist to disk).
+        gw.epochs =
+            enclave_epoch::EnclaveEpochs::derive(enclave_seed, 1, now_ms(), ORDER_EPOCH_TTL_MS);
+        // Re-arm the order-log recipient pubkey (also serde-skipped) from the same
+        // seed: the persisted entries + head restore as-is, but no key material —
+        // public or secret — is ever read from the snapshot.
+        gw.order_log.set_recipient(derive_log_pub(&enclave_seed));
 
         gw.mkts = MARKETS
             .iter()
@@ -893,6 +1144,7 @@ impl Gw {
                 deposit_address: None,
                 signer,
                 last_signed_nonce: 0,
+                last_sealed_nonce: 0,
             },
         );
         (api_key, owner)
@@ -1153,6 +1405,86 @@ impl Gw {
     /// Place an order for an account. Ioc/Fok are takers; Gtc/PostOnly rest in the
     /// matcher book (so an MM bot can quote). Returns the signed receipt.
     fn account_place_order(&mut self, key: &[u8; 32], req: &OrderReq) -> Result<WReceipt, String> {
+        // The account's 32-byte owner pubkey — needed UP FRONT to build the sealed
+        // order AAD (which binds the ciphertext to this epoch AND this owner), and
+        // reused for the margin/opening checks below.
+        let owner = self
+            .accounts
+            .get(key)
+            .ok_or("Unknown account.")?
+            .wallet
+            .owner;
+
+        // ── sealed order ingress: decrypt inside the enclave (Task 10) ────────
+        // A client may send its order ENCRYPTED to the enclave's current order-epoch
+        // X25519 key instead of in plaintext. When `sealed` is present we decrypt it
+        // here — inside the gateway (the enclave) — and derive the working order from
+        // the decrypted canonical terms; the plaintext `OrderReq` fields are IGNORED.
+        // The AAD binds the ciphertext to (epoch_id ‖ owner), so an order sealed to a
+        // different epoch or for a different account cannot be replayed here. In
+        // production posture an UNSEALED order is refused outright; demo/dev keeps the
+        // plaintext path for backward-compat. Exactly one `unseal` runs per order.
+        let was_sealed = req.sealed.is_some();
+        let decoded;
+        let req: &OrderReq = if let Some(sealed_hex) = req.sealed.as_deref() {
+            let epoch_id = req.epoch_id.ok_or("sealed order requires `epochId`")?;
+            let secret = self
+                .epochs
+                .secret_for(epoch_id)
+                .ok_or("sealed order: unknown or expired epoch")?;
+            let raw = decode_hex(sealed_hex).ok_or("sealed order: bad 0x-hex wire")?;
+            let sb = sealed_box::SealedBox::from_bytes(&raw)
+                .ok_or("sealed order: malformed sealed box")?;
+            let mut extra = Vec::with_capacity(8 + 32);
+            extra.extend_from_slice(&epoch_id.to_le_bytes());
+            extra.extend_from_slice(&owner);
+            let aad = sealed_box::domain_aad(Domain::OrderEncryptAad as u8, &extra);
+            let pt = sealed_box::unseal(secret, &sb, &aad)
+                .ok_or("sealed order: decryption failed (tampered, wrong key, or wrong epoch)")?;
+            let t =
+                deserialize_order_terms(&pt).ok_or("sealed order: malformed order terms")?;
+            // Re-materialize the decrypted terms as an `OrderReq` so the rest of the
+            // flow (margin, opening/reduce-only, nonce, order-hash + caller-signature)
+            // is IDENTICAL to the plaintext path. The caller `signature` (if any)
+            // travels in the clear and still covers the order hash of these decrypted
+            // terms; `epoch_id`/`sealed` are cleared so nothing re-reads them.
+            decoded = OrderReq {
+                market_id: t.market_id,
+                side: match t.side {
+                    Side::Buy => "Buy",
+                    Side::Sell => "Sell",
+                }
+                .to_string(),
+                size: t.size.to_string(),
+                limit_price: t.limit_price.to_string(),
+                tif: match t.tif {
+                    TimeInForce::Gtc => "Gtc",
+                    TimeInForce::Ioc => "Ioc",
+                    TimeInForce::Fok => "Fok",
+                    TimeInForce::PostOnly => "PostOnly",
+                }
+                .to_string(),
+                reduce_only: t.reduce_only,
+                nonce: Some(t.nonce),
+                signature: req.signature.clone(),
+                epoch_id: None,
+                sealed: None,
+            };
+            &decoded
+        } else {
+            if self.prod {
+                return Err("production requires sealed order ingress".into());
+            }
+            // Dev/demo plaintext ingress. The trade-term fields are `#[serde(default)]`
+            // (so the sealed branch above can omit them); enforce their PRESENCE here
+            // so a partial body like `{"size":"100"}` is REJECTED instead of silently
+            // defaulting into a wrong-direction market order (side "" → Sell,
+            // limitPrice "" → market, tif "" → Ioc). Strict side/tif parsing below
+            // then rejects any present-but-unrecognized value too.
+            require_core_order_fields(req)?;
+            req
+        };
+
         let size: i128 = req.size.parse().map_err(|_| "bad size".to_string())?;
         if size <= 0 {
             return Err("Size must be positive.".into());
@@ -1160,18 +1492,11 @@ impl Gw {
         if self.mkt(req.market_id).is_none() {
             return Err("Unknown market.".into());
         }
-        let owner = self
-            .accounts
-            .get(key)
-            .ok_or("Unknown account.")?
-            .wallet
-            .owner;
         let limit: i128 = req.limit_price.parse().unwrap_or(0);
-        let side = if req.side == "Buy" {
-            Side::Buy
-        } else {
-            Side::Sell
-        };
+        // Strict: an empty/unknown side is an error (the plaintext guard already
+        // required presence; the sealed branch always supplies "Buy"/"Sell"). No
+        // silent `else → Sell` default that could flip a malformed order's direction.
+        let side = parse_side_strict(&req.side)?;
         let opening = self.is_opening_of(&owner, req.market_id, &req.side, size);
         if self.seq.state.mode == Mode::CloseOnly && opening {
             return Err(
@@ -1192,7 +1517,7 @@ impl Gw {
                 return Err("Insufficient free margin to open this position (§3).".into());
             }
         }
-        let tif = parse_tif(&req.tif);
+        let tif = parse_tif_strict(&req.tif)?;
         let now_rate = now_ms();
         let acct = self.accounts.get_mut(key).unwrap();
         // per-account sliding-1s rate limit
@@ -1224,6 +1549,22 @@ impl Gw {
                 };
                 if n <= acct.last_signed_nonce {
                     return Err("nonce must strictly increase (replay protection)".into());
+                }
+                n
+            }
+            // Server-custody account, SEALED ingress: the decrypted canonical terms
+            // carry the client's nonce (the sealed branch always sets `req.nonce`).
+            // Enforce strict monotonicity per account and USE it as the order nonce,
+            // so a captured `{epochId, sealed}` body replayed verbatim decrypts to a
+            // stale nonce and is rejected — no duplicated position (pre-merge FIX 1).
+            None if was_sealed => {
+                let n = req
+                    .nonce
+                    .expect("sealed branch always sets nonce from the decrypted terms");
+                if n <= acct.last_sealed_nonce {
+                    return Err(
+                        "sealed order: nonce must strictly increase (replay protection)".into(),
+                    );
                 }
                 n
             }
@@ -1260,11 +1601,38 @@ impl Gw {
                 return Err("signature does not match the account's registered signer".into());
             }
             acct.last_signed_nonce = nonce;
+        } else if was_sealed {
+            // Commit the accepted sealed nonce (the strictly-increasing check above
+            // passed) — a verbatim replay of this body is now permanently stale.
+            acct.last_sealed_nonce = nonce;
+            // Keep the auto-nonce ahead of client-chosen nonces so a later dev/demo
+            // plaintext order can't mint a duplicate `o{nonce}` order id.
+            acct.nonce = acct.nonce.max(nonce.saturating_add(1));
         } else {
             acct.nonce += 1;
         }
         let now = now_ms();
         let signed = self.seq.accept_order(&order, now);
+        // ── hash-chained encrypted order log (Task 12) ───────────────────────
+        // The order is ACCEPTED as of the receipt above — append it to the
+        // append-only log: the SAME canonical 51-byte terms layout a sealed
+        // client submits (re-serialized from the admitted working order, so the
+        // plaintext and sealed ingress paths log identically), keyed by the
+        // terms commitment `mk_order` already bound into the order. The entry is
+        // sealed to the log pubkey (this gateway cannot read it back) and
+        // chained into `order_log.head()`; OsRng is threaded in here — the
+        // module itself never hardcodes an entropy source.
+        let canonical = serialize_order_terms(&OrderTerms {
+            market_id: req.market_id,
+            side,
+            size,
+            limit_price: limit,
+            tif,
+            reduce_only: req.reduce_only,
+            nonce,
+        });
+        self.order_log
+            .append(&order.ciphertext_commit, &canonical, rand::rngs::OsRng);
         let r = &signed.receipt;
         let receipt = WReceipt {
             order_hash: hex0x(&r.order_hash),
@@ -1838,16 +2206,20 @@ impl Gw {
 
     // ── mutations ───────────────────────────────────────────────────────────
     fn place_order(&mut self, req: &OrderReq) -> Result<(WReceipt, Vec<WEvent>), String> {
+        // Legacy dev/demo plaintext ingress (this route is mounted only in the demo
+        // build). It shares `OrderReq` — whose fields are `#[serde(default)]` for the
+        // sealed wire — so it must enforce the SAME core-field presence as
+        // `account_place_order`'s plaintext branch, or a partial body would silently
+        // default into a real (wrong-direction) order. Tif is required for uniform
+        // malformed-rejection even though this path always takes as Ioc below.
+        require_core_order_fields(req)?;
         let size: i128 = req.size.parse().map_err(|_| "bad size".to_string())?;
         if size <= 0 {
             return Err("Size must be positive.".into());
         }
         let limit: i128 = req.limit_price.parse().unwrap_or(0);
-        let side = if req.side == "Buy" {
-            Side::Buy
-        } else {
-            Side::Sell
-        };
+        // Strict side parse: no silent `else → Sell` that could flip direction.
+        let side = parse_side_strict(&req.side)?;
         if self.mkt(req.market_id).is_none() {
             return Err("Unknown market.".into());
         }
@@ -1993,6 +2365,7 @@ impl Gw {
             reduce_only: true,
             nonce: None,
             signature: None,
+            ..Default::default()
         };
         self.place_order(&req)
     }
@@ -2038,7 +2411,7 @@ impl Gw {
         // keccak, which the UI does not yet ship.)
         let w = Wallet::from_seed(s);
         self.archive
-            .scan(&w.view_key)
+            .scan(&w.view_x25519_secret())
             .into_iter()
             .map(|rn| {
                 serde_json::json!({
@@ -2545,7 +2918,14 @@ fn fund_amount(
         blinding: blind,
     })
     .expect("deposit");
-    archive.record(seq.current_batch_id(), &note, &w.view_key);
+    // Seal to the owner's X25519 viewing PUBLIC key (real note encryption); the
+    // recorder needs no decryption capability. OsRng: fresh ephemeral + nonce.
+    archive.record(
+        seq.current_batch_id(),
+        &note,
+        &w.view_x25519_public(),
+        rand::rngs::OsRng,
+    );
     seq.apply(&BatchOp::FundPosition {
         owner: w.owner,
         market_id: market,
@@ -2625,43 +3005,47 @@ struct WithdrawReq {
     to: String,
 }
 
-/// Parse a `0x`-optional 64-hex string into a 32-byte key.
-fn parse_hex32(s: &str) -> Option<[u8; 32]> {
-    let h = s.strip_prefix("0x").unwrap_or(s);
-    if h.len() != 64 {
+/// One hex nibble, byte-safe: `None` for anything outside `[0-9a-fA-F]` —
+/// including every byte of a multi-byte UTF-8 codepoint (all >= 0x80).
+pub(crate) fn hex_nibble(b: u8) -> Option<u8> {
+    match b {
+        b'0'..=b'9' => Some(b - b'0'),
+        b'a'..=b'f' => Some(b - b'a' + 10),
+        b'A'..=b'F' => Some(b - b'A' + 10),
+        _ => None,
+    }
+}
+
+/// Byte-safe fixed-length hex parse: `0x`-optional, exactly `N` bytes. Operates on
+/// BYTES (same posture as `decode_hex`): these strings arrive in attacker-controlled
+/// request JSON (api keys, deposit txHash/address, order signatures), so a
+/// non-ASCII codepoint must yield a clean `None` — never the mid-codepoint `&str`
+/// slice panic the old `&h[i*2..i*2+2]` loops had.
+fn parse_hex_exact<const N: usize>(s: &str) -> Option<[u8; N]> {
+    let h = s.strip_prefix("0x").unwrap_or(s).as_bytes();
+    if h.len() != N * 2 {
         return None;
     }
-    let mut k = [0u8; 32];
-    for (i, slot) in k.iter_mut().enumerate() {
-        *slot = u8::from_str_radix(&h[i * 2..i * 2 + 2], 16).ok()?;
+    let mut out = [0u8; N];
+    for (i, slot) in out.iter_mut().enumerate() {
+        *slot = hex_nibble(h[i * 2])? << 4 | hex_nibble(h[i * 2 + 1])?;
     }
-    Some(k)
+    Some(out)
+}
+
+/// Parse a `0x`-optional 64-hex string into a 32-byte key.
+fn parse_hex32(s: &str) -> Option<[u8; 32]> {
+    parse_hex_exact::<32>(s)
 }
 
 /// Parse a `0x`-optional 40-hex string into a 20-byte Ethereum address.
 fn parse_addr20_hex(s: &str) -> Option<[u8; 20]> {
-    let h = s.strip_prefix("0x").unwrap_or(s);
-    if h.len() != 40 {
-        return None;
-    }
-    let mut a = [0u8; 20];
-    for (i, slot) in a.iter_mut().enumerate() {
-        *slot = u8::from_str_radix(&h[i * 2..i * 2 + 2], 16).ok()?;
-    }
-    Some(a)
+    parse_hex_exact::<20>(s)
 }
 
 /// Parse a `0x`-optional 130-hex string into a 65-byte secp256k1 signature (r‖s‖v).
 fn parse_hex65(s: &str) -> Option<[u8; 65]> {
-    let h = s.strip_prefix("0x").unwrap_or(s);
-    if h.len() != 130 {
-        return None;
-    }
-    let mut sig = [0u8; 65];
-    for (i, slot) in sig.iter_mut().enumerate() {
-        *slot = u8::from_str_radix(&h[i * 2..i * 2 + 2], 16).ok()?;
-    }
-    Some(sig)
+    parse_hex_exact::<65>(s)
 }
 
 /// Recover the 20-byte Ethereum address that signed `prehash` with `sig` (r‖s‖v),
@@ -3214,6 +3598,33 @@ async fn get_v1_candles(
 async fn get_v1_status(State(app): State<Shared>) -> impl IntoResponse {
     Json(app.gw.lock().await.v1_status_json())
 }
+/// Publish the enclave's current order-ingress X25519 epoch public key, SIGNED by
+/// the enclave's secp256k1 identity and bound to the attested `measurement` (§5.1).
+///
+/// A client (Task 11) seals an order to `x25519Pub` after verifying `sig` recovers
+/// to the enclave's pinned signer AND `measurement` equals the pinned attestation
+/// measurement — proving the key belongs to the real attested enclave, not a MITM.
+/// The signed digest layout is [`enclave_epoch::epoch_signing_digest`] (a
+/// cross-component contract). `sig` is 65 bytes `r‖s‖v` (v in 27/28 convention).
+async fn get_v1_enclave_epoch(State(app): State<Shared>) -> impl IntoResponse {
+    let gw = app.gw.lock().await;
+    let ek = gw.epochs.current();
+    let measurement = gw.seq.enclave().measurement;
+    let digest = enclave_epoch::epoch_signing_digest(ek.epoch_id, &ek.public, ek.not_after_ms);
+    // Reuse the REAL enclave secp256k1 identity (the receipt signer) — no new key.
+    let (r, s, v) = gw.seq.enclave().sign_prehash(&digest);
+    let mut sig = [0u8; 65];
+    sig[..32].copy_from_slice(&r);
+    sig[32..64].copy_from_slice(&s);
+    sig[64] = v;
+    Json(serde_json::json!({
+        "epochId": ek.epoch_id,
+        "x25519Pub": hex0x(&ek.public),
+        "notAfterMs": ek.not_after_ms,
+        "measurement": hex0x(&measurement),
+        "sig": hex0x(&sig),
+    }))
+}
 /// Machine-readable OpenAPI 3.1 spec for the /v1 API, so bots/tools can codegen a
 /// client. Hand-authored + compact; the prose reference is docs/API.md.
 async fn get_v1_openapi() -> impl IntoResponse {
@@ -3222,16 +3633,18 @@ async fn get_v1_openapi() -> impl IntoResponse {
     let order_body = serde_json::json!({
         "required": true,
         "content": { "application/json": { "schema": { "type": "object",
-            "required": ["marketId","side","size","limitPrice","tif","reduceOnly"],
+            "description": "Two ingress forms. SEALED (production; the only form prod accepts): send ONLY { epochId, sealed } — the canonical 51-byte order terms encrypted to the enclave's order-epoch X25519 key from GET /v1/enclave/epoch; the plaintext fields are ignored. PLAINTEXT (dev/demo only): send marketId/side/size/limitPrice/tif/reduceOnly.",
             "properties": {
-                "marketId": { "type": "integer" },
-                "side": { "type": "string", "enum": ["Buy","Sell"] },
-                "size": { "type": "string", "description": "size-scaled (*1e8) integer" },
-                "limitPrice": { "type": "string", "description": "price-scaled (*1e8); 0 = market" },
-                "tif": { "type": "string", "enum": ["Gtc","Ioc","Fok","PostOnly"] },
-                "reduceOnly": { "type": "boolean" },
-                "nonce": { "type": "integer", "description": "caller-signed accounts: strictly-increasing order nonce" },
-                "signature": { "type": "string", "description": "caller-signed accounts: 65-byte secp256k1 sig over the order hash" }
+                "marketId": { "type": "integer", "description": "plaintext (dev) ingress; ignored when `sealed` is present" },
+                "side": { "type": "string", "enum": ["Buy","Sell"], "description": "plaintext (dev) ingress" },
+                "size": { "type": "string", "description": "size-scaled (*1e8) integer; plaintext (dev) ingress" },
+                "limitPrice": { "type": "string", "description": "price-scaled (*1e8); 0 = market; plaintext (dev) ingress" },
+                "tif": { "type": "string", "enum": ["Gtc","Ioc","Fok","PostOnly"], "description": "plaintext (dev) ingress" },
+                "reduceOnly": { "type": "boolean", "description": "plaintext (dev) ingress" },
+                "nonce": { "type": "integer", "description": "caller-signed accounts: strictly-increasing order nonce (sealed orders carry the nonce INSIDE the sealed terms; it must strictly increase per account)" },
+                "signature": { "type": "string", "description": "caller-signed accounts: 65-byte secp256k1 sig over the order hash" },
+                "epochId": { "type": "integer", "description": "sealed ingress: the enclave order-epoch the terms were sealed to (required with `sealed`)" },
+                "sealed": { "type": "string", "description": "sealed ingress: 0x-hex sealed-box wire (0x01 ‖ epk32 ‖ nonce24 ‖ ct‖tag) over the canonical order terms, AAD = OrderEncryptAad ‖ epochId(u64 LE) ‖ owner" }
             } } } }
     });
     Json(serde_json::json!({
@@ -3269,6 +3682,7 @@ async fn get_v1_openapi() -> impl IntoResponse {
                 { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 120, "maximum": 240 } }
             ], "responses": ok("candles[] of { t, o, h, l, c } (1e8-scaled strings)") } },
             "/v1/markets/{id}/oracle": { "get": { "summary": "Oracle price", "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }], "responses": ok("oracle") } },
+            "/v1/enclave/epoch": { "get": { "summary": "Enclave order-ingress epoch key (X25519), signed by the enclave's secp256k1 identity — verify `sig` recovers to the pinned enclave signer before sealing orders to `x25519Pub`", "responses": ok("{ epochId, x25519Pub, notAfterMs, measurement, sig }") } },
             "/v1/system/status": { "get": { "summary": "System status", "responses": ok("status") } }
         }
     }))
@@ -3686,6 +4100,7 @@ fn build_router(app: Shared, prod: bool) -> Router {
         .route("/v1/markets/:id/candles", get(get_v1_candles))
         .route("/v1/markets/:id/oracle", get(get_v1_oracle))
         .route("/v1/system/status", get(get_v1_status))
+        .route("/v1/enclave/epoch", get(get_v1_enclave_epoch))
         .route("/v1/openapi.json", get(get_v1_openapi))
         .route("/v1/ws", get(ws_v1_handler))
         .layer(CorsLayer::permissive())
@@ -4295,12 +4710,15 @@ mod tests {
                     reduce_only: false,
                     nonce: None,
                     signature: None,
+                    ..Default::default()
                 },
             )
             .unwrap();
         gw.mkts[0].px += 1234; // market dynamics must survive too
         let root_before = gw.state_root_hex();
         let px_before = gw.mkts[0].px;
+        let log_head_before = gw.order_log.head();
+        assert_ne!(log_head_before, [0u8; 32], "the accepted order was logged");
 
         let sealed = snapshot::seal(&gw.snapshot_plain(), &seed);
         let plain = snapshot::open(&sealed, &seed).expect("authentic snapshot opens");
@@ -4325,6 +4743,66 @@ mod tests {
             restored.mkts[0].symbol, gw.mkts[0].symbol,
             "static market config rebuilt"
         );
+        // The encrypted order log survives the restart intact: same entries, same
+        // head, chain still verifies …
+        assert_eq!(restored.order_log.len(), 1, "order-log entry survives");
+        assert_eq!(restored.order_log.head(), log_head_before, "log head survives");
+        assert_eq!(
+            restored.order_log.recompute_head(),
+            log_head_before,
+            "restored chain re-folds to the same head"
+        );
+        // … and the recipient pubkey was NOT read from disk (it is serde-skipped):
+        // boot_restored re-derived the SAME key boot() derived from ENCLAVE_SEED,
+        // so the restored gateway keeps sealing to the identical log key.
+        assert_eq!(
+            restored.order_log.recipient(),
+            gw.order_log.recipient(),
+            "log pubkey re-derived from the seed, not persisted"
+        );
+    }
+
+    /// Task 12: every ACCEPTED `/v1` order is appended to the hash-chained
+    /// encrypted order log (sealed entry + advancing, recomputable head), and a
+    /// REJECTED order is not.
+    #[test]
+    fn accepted_order_appends_to_encrypted_order_log() {
+        let mut gw = Gw::boot();
+        let (key, _owner) = gw.register_account(None);
+        gw.account_deposit(&key, 0, 20_000 * QUOTE_SCALE).unwrap();
+        assert!(gw.order_log.is_empty(), "log starts empty");
+        assert_eq!(gw.order_log.head(), [0u8; 32], "head starts at zero");
+
+        // far-from-market Gtc bid: accepted, rests on the book
+        let req = |market_id: u64| OrderReq {
+            market_id,
+            side: "Buy".into(),
+            size: "1".into(),
+            limit_price: "1".into(),
+            tif: "Gtc".into(),
+            reduce_only: false,
+            nonce: None,
+            signature: None,
+            ..Default::default()
+        };
+        gw.account_place_order(&key, &req(0)).expect("order accepted");
+        assert_eq!(gw.order_log.len(), 1, "accepted order appended");
+        let head = gw.order_log.head();
+        assert_ne!(head, [0u8; 32], "head advanced");
+        assert_eq!(gw.order_log.recompute_head(), head, "chain verifies");
+
+        // A rejected order (unknown market) must NOT touch the log.
+        assert!(gw.account_place_order(&key, &req(999)).is_err());
+        assert_eq!(gw.order_log.len(), 1, "rejected order not logged");
+        assert_eq!(gw.order_log.head(), head, "head unchanged by a reject");
+
+        // A second accept chains onto the first (the encryption property itself —
+        // plaintext absent from the stored entry, opens only under the seed-derived
+        // log secret — is proven by the order_log.rs module tests).
+        gw.account_place_order(&key, &req(0)).expect("second order");
+        assert_eq!(gw.order_log.len(), 2);
+        assert_ne!(gw.order_log.head(), head, "each accept advances the chain");
+        assert_eq!(gw.order_log.recompute_head(), gw.order_log.head());
     }
 
     /// `/v1/markets/:id/candles` serves the recorded engine history: real bars in,
@@ -4611,6 +5089,7 @@ mod tests {
             reduce_only: false,
             nonce: None,
             signature: None,
+            ..Default::default()
         };
         let (_r, _ev) = gw.place_order(&req).expect("accepted");
         assert_eq!(gw.orders.len(), 1);
@@ -4651,6 +5130,7 @@ mod tests {
             reduce_only: false,
             nonce: None,
             signature: None,
+            ..Default::default()
         };
         gw.account_place_order(&a_key, &req).expect("order");
         gw.tick();
@@ -4707,6 +5187,7 @@ mod tests {
                 reduce_only: false,
                 nonce,
                 signature: sig,
+                ..Default::default()
             }
         }
 
@@ -4933,6 +5414,7 @@ mod tests {
                 reduce_only: false,
                 nonce: None,
                 signature: None,
+                ..Default::default()
             },
         )
         .expect("order admitted");
@@ -5088,6 +5570,7 @@ mod tests {
             reduce_only: false,
             nonce: Some(1),
             signature: Some(sig),
+            ..Default::default()
         };
         assert!(
             gw.account_place_order(&key, &tampered).is_err(),
@@ -5115,6 +5598,7 @@ mod tests {
                 reduce_only: false,
                 nonce: None,
                 signature: None,
+                ..Default::default()
             },
         )
         .expect("order admitted");
@@ -5157,6 +5641,7 @@ mod tests {
                 reduce_only: false,
                 nonce: None,
                 signature: None,
+                ..Default::default()
             },
         )
         .expect("order admitted");
@@ -5184,6 +5669,7 @@ mod tests {
                 reduce_only: false,
                 nonce: None,
                 signature: None,
+                ..Default::default()
             },
         )
         .expect("order admitted");
@@ -5196,5 +5682,525 @@ mod tests {
             "entry {} is at the mark {mark}",
             pos.entry_price
         );
+    }
+
+    // ── sealed order ingress (Task 10) ───────────────────────────────────────
+
+    /// Seal an order client-side EXACTLY as the TS client (Task 11) will:
+    /// serialize the canonical terms, seal them to the enclave epoch key with
+    /// AAD = domain_aad(OrderEncryptAad, epoch_id_le ‖ owner), and 0x-hex the wire.
+    /// A fixed ephemeral secret/nonce keeps the vector deterministic (test-only).
+    fn seal_order_wire(
+        epoch_pub: &[u8; 32],
+        epoch_id: u64,
+        owner: &PubKey,
+        terms: &OrderTerms,
+    ) -> String {
+        let pt = serialize_order_terms(terms);
+        let mut extra = Vec::with_capacity(8 + 32);
+        extra.extend_from_slice(&epoch_id.to_le_bytes());
+        extra.extend_from_slice(owner);
+        let aad = sealed_box::domain_aad(Domain::OrderEncryptAad as u8, &extra);
+        let sb = sealed_box::seal_with_ephemeral(epoch_pub, &pt, &aad, &[7u8; 32], &[9u8; 24]);
+        hex0x(&sb.to_bytes())
+    }
+
+    /// Task 11 wire-shape regression (found by the client's live e2e): a sealed
+    /// order carries ONLY `{epochId, sealed}` in the JSON body — no plaintext
+    /// trade-term fields. The `/v1/orders` extractor must PARSE that body (the
+    /// six plaintext `OrderReq` fields are `#[serde(default)]`) and the full
+    /// HTTP round trip must decrypt + accept the order. Before the fix this
+    /// 422'd at the Json extractor, so every spec-conform sealed client broke.
+    #[tokio::test]
+    async fn sealed_only_wire_body_parses_and_places_the_order() {
+        use axum::body::Body;
+        use axum::http::Request;
+        use tower::ServiceExt as _; // for `oneshot`
+
+        let app = test_app();
+        let (key, wire, epoch_id) = {
+            let mut gw = app.gw.lock().await;
+            let (key, owner) = gw.register_account(None);
+            gw.account_deposit(&key, 0, 20_000 * QUOTE_SCALE).expect("deposit");
+            let epoch_id = gw.epochs.current().epoch_id;
+            let epoch_pub = gw.epochs.current().public;
+            let wire = seal_order_wire(
+                &epoch_pub,
+                epoch_id,
+                &owner,
+                &OrderTerms {
+                    market_id: 0,
+                    side: Side::Buy,
+                    size: SIZE_SCALE / 10,
+                    limit_price: 0,
+                    tif: TimeInForce::Ioc,
+                    reduce_only: false,
+                    nonce: 1,
+                },
+            );
+            (key, wire, epoch_id)
+        };
+
+        let body = serde_json::json!({ "epochId": epoch_id, "sealed": wire }).to_string();
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/orders")
+            .header("content-type", "application/json")
+            .header("X-Api-Key", hex0x(&key))
+            .body(Body::from(body))
+            .unwrap();
+        let res = build_router(app, false).oneshot(req).await.unwrap();
+        assert_eq!(
+            res.status(),
+            StatusCode::OK,
+            "a sealed-only {{epochId, sealed}} body must round-trip through the HTTP layer",
+        );
+    }
+
+    /// A client-SEALED order decrypts inside the enclave, opens the position the
+    /// DECRYPTED terms describe (not the bogus plaintext fields), and leaves the
+    /// public depth untouched.
+    #[test]
+    fn sealed_order_decrypts_and_opens_position() {
+        let mut gw = Gw::boot();
+        let (key, owner) = gw.register_account(None);
+        gw.account_deposit(&key, 0, 20_000 * QUOTE_SCALE).expect("deposit");
+
+        // the client fetches the enclave's CURRENT epoch (GET /v1/enclave/epoch)
+        let epoch_id = gw.epochs.current().epoch_id;
+        let epoch_pub = gw.epochs.current().public;
+
+        // seal a Buy 0.1 BTC market order to that epoch key
+        let wire = seal_order_wire(
+            &epoch_pub,
+            epoch_id,
+            &owner,
+            &OrderTerms {
+                market_id: 0,
+                side: Side::Buy,
+                size: SIZE_SCALE / 10,
+                limit_price: 0,
+                tif: TimeInForce::Ioc,
+                reduce_only: false,
+                nonce: 1,
+            },
+        );
+
+        // the PLAINTEXT fields are deliberately the OPPOSITE trade (a Sell): if the
+        // enclave used them instead of the sealed body it would open a SHORT.
+        let req = OrderReq {
+            market_id: 0,
+            side: "Sell".into(),
+            size: (SIZE_SCALE / 10).to_string(),
+            limit_price: "0".into(),
+            tif: "Ioc".into(),
+            reduce_only: false,
+            epoch_id: Some(epoch_id),
+            sealed: Some(wire),
+            ..Default::default()
+        };
+        gw.account_place_order(&key, &req).expect("sealed order accepted");
+
+        // depth is still served (public) — sealed ingress never touches the book
+        let book = gw.v1_orderbook_json(0).expect("depth served");
+        assert!(
+            !book["bids"].as_array().unwrap().is_empty()
+                && !book["asks"].as_array().unwrap().is_empty(),
+            "public depth still populated after a sealed order",
+        );
+
+        let mark = gw.px_of(0);
+        gw.tick();
+        // the DECRYPTED Buy opened a LONG (proving the sealed body, not the Sell
+        // plaintext, drove the trade), and it filled at the mark.
+        let pos = gw
+            .seq
+            .state
+            .position(&owner, 0)
+            .expect("position opened from decrypted terms");
+        assert!(
+            pos.size > 0,
+            "decrypted Buy opened a long, not the plaintext Sell short",
+        );
+        assert!(
+            pos.entry_price >= mark - PRICE_SCALE && pos.entry_price <= mark + PRICE_SCALE,
+            "entry {} is at the mark {mark}",
+            pos.entry_price,
+        );
+    }
+
+    /// The negative surface: an unknown/expired epoch, an AAD bound to a different
+    /// epoch, and a tampered ciphertext all fail cleanly (Err → 400) — nothing
+    /// opens.
+    #[test]
+    fn sealed_order_wrong_or_expired_epoch_is_rejected() {
+        let mut gw = Gw::boot();
+        let (key, owner) = gw.register_account(None);
+        gw.account_deposit(&key, 0, 20_000 * QUOTE_SCALE).unwrap();
+        let epoch_id = gw.epochs.current().epoch_id;
+        let epoch_pub = gw.epochs.current().public;
+        let good = OrderTerms {
+            market_id: 0,
+            side: Side::Buy,
+            size: SIZE_SCALE / 10,
+            limit_price: 0,
+            tif: TimeInForce::Ioc,
+            reduce_only: false,
+            nonce: 1,
+        };
+
+        // (a) an UNKNOWN epoch id: secret_for → None → clean rejection.
+        let unknown = OrderReq {
+            market_id: 0,
+            epoch_id: Some(epoch_id + 9_999),
+            sealed: Some(seal_order_wire(&epoch_pub, epoch_id, &owner, &good)),
+            ..Default::default()
+        };
+        assert!(
+            gw.account_place_order(&key, &unknown).is_err(),
+            "an unknown/expired epoch must be rejected",
+        );
+
+        // (b) AAD/epoch binding: seal with AAD bound to epoch_id+1 but present it as
+        // the (valid) current epoch. secret_for returns the RIGHT key, but the AAD
+        // the enclave rebuilds (epoch_id ‖ owner) ≠ the sealed AAD (epoch_id+1 ‖
+        // owner) → unseal fails. Proves the AAD binds the epoch.
+        let aad_mismatch = OrderReq {
+            market_id: 0,
+            epoch_id: Some(epoch_id),
+            sealed: Some(seal_order_wire(&epoch_pub, epoch_id + 1, &owner, &good)),
+            ..Default::default()
+        };
+        assert!(
+            gw.account_place_order(&key, &aad_mismatch).is_err(),
+            "an order whose AAD is bound to a different epoch must fail to decrypt",
+        );
+
+        // (c) tamper: flip a ciphertext byte → Poly1305 tag fails → rejection.
+        let mut raw = decode_hex(&seal_order_wire(&epoch_pub, epoch_id, &owner, &good)).unwrap();
+        let last = raw.len() - 1;
+        raw[last] ^= 0xff;
+        let tampered = OrderReq {
+            market_id: 0,
+            epoch_id: Some(epoch_id),
+            sealed: Some(hex0x(&raw)),
+            ..Default::default()
+        };
+        assert!(
+            gw.account_place_order(&key, &tampered).is_err(),
+            "a tampered sealed order must be rejected",
+        );
+
+        // nothing opened a position through the whole negative surface (the
+        // deposit leaves a zero-size collateral position; no rejected order fills).
+        let opened = gw.seq.state.position(&owner, 0).map_or(0, |p| p.size);
+        assert_eq!(opened, 0, "no rejected sealed order may open a position");
+    }
+
+    /// `decode_hex` must be BYTE-safe: any `&str` (including non-ASCII / multi-byte
+    /// UTF-8) returns `Some`/`None`, never panics. Regression for the sealed-order
+    /// dark-ingress path, where a client could otherwise send a multi-byte char that
+    /// made the char length even while a byte-offset slice fell mid-codepoint →
+    /// `str` slicing PANIC instead of a clean 400.
+    #[test]
+    fn decode_hex_rejects_non_ascii_without_panic() {
+        // multi-byte codepoints that previously panicked (byte-len even, slice
+        // boundary lands mid-codepoint) now return a clean `None`.
+        assert_eq!(decode_hex("0xé0"), None, "mid-codepoint slice must not panic");
+        assert_eq!(decode_hex("—"), None, "em dash (3 bytes) must reject cleanly");
+        assert_eq!(decode_hex("é"), None); // single 2-byte char: even byte len, non-hex
+        assert_eq!(decode_hex("0x00é"), None);
+        // odd length still rejected; non-hex ASCII nibble still rejected.
+        assert_eq!(decode_hex("0xabc"), None);
+        assert_eq!(decode_hex("0xzz"), None);
+        // valid hex still decodes, with and without the `0x` prefix.
+        assert_eq!(decode_hex("0x01ff"), Some(vec![1, 255]));
+        assert_eq!(decode_hex("01FF"), Some(vec![1, 255]));
+        assert_eq!(decode_hex(""), Some(vec![]));
+    }
+
+    /// The fixed-length hex parsers share `decode_hex`'s byte-safety obligation:
+    /// they parse attacker-controlled request JSON (api keys, deposit
+    /// txHash/address, order signatures). A 2-byte UTF-8 char straddling an odd
+    /// byte offset makes the BYTE length pass the length gate while the old
+    /// `&h[i*2..i*2+2]` `&str` slice landed mid-codepoint and PANICKED; all must
+    /// now return a clean `None`.
+    #[test]
+    fn fixed_len_hex_parsers_reject_non_ascii_without_panic() {
+        // "aé…" puts é (2 bytes) at bytes 1..3, so the first nibble-pair slice
+        // [0..2) would have split the codepoint in the old parsers.
+        let bad64 = format!("aé{}", "a".repeat(61)); // 64 bytes
+        assert_eq!(parse_hex32(&bad64), None);
+        let bad40 = format!("aé{}", "a".repeat(37)); // 40 bytes
+        assert_eq!(parse_addr20_hex(&bad40), None);
+        let bad130 = format!("aé{}", "a".repeat(127)); // 130 bytes
+        assert_eq!(parse_hex65(&bad130), None);
+        // valid inputs still parse, with and without the 0x prefix.
+        assert_eq!(parse_hex32(&format!("0x{}", "ab".repeat(32))), Some([0xab; 32]));
+        assert_eq!(parse_addr20_hex(&"cd".repeat(20)), Some([0xcd; 20]));
+        assert_eq!(parse_hex65(&format!("0x{}", "0F".repeat(65))), Some([0x0f; 65]));
+        // wrong length still rejected.
+        assert_eq!(parse_hex32("ab"), None);
+    }
+
+    /// End-to-end: a non-ASCII `sealed` field on the order-ingress path is a clean
+    /// `Err` (bad 0x-hex wire) with NO position opened and NO panic.
+    #[test]
+    fn sealed_order_non_ascii_wire_is_cleanly_rejected() {
+        let mut gw = Gw::boot();
+        let (key, owner) = gw.register_account(None);
+        gw.account_deposit(&key, 0, 20_000 * QUOTE_SCALE).unwrap();
+        let epoch_id = gw.epochs.current().epoch_id;
+        let bad = OrderReq {
+            market_id: 0,
+            epoch_id: Some(epoch_id),
+            sealed: Some("0x—é".into()), // multi-byte UTF-8 in the sealed hex wire
+            ..Default::default()
+        };
+        assert!(
+            gw.account_place_order(&key, &bad).is_err(),
+            "a non-ASCII sealed wire must be rejected, not panic",
+        );
+        let opened = gw.seq.state.position(&owner, 0).map_or(0, |p| p.size);
+        assert_eq!(opened, 0, "a rejected non-ASCII sealed order must open nothing");
+    }
+
+    /// Pre-merge FIX 1 (sealed-order replay): a captured `{epochId, sealed}` body
+    /// re-POSTed VERBATIM must be rejected. The decrypted canonical terms carry the
+    /// client's nonce; for a server-custody account the gateway now enforces it
+    /// strictly increasing (`Account::last_sealed_nonce`) and uses it as the order
+    /// nonce — so the replay decrypts to a stale nonce and never duplicates the
+    /// position, even within one (currently unrotated) epoch.
+    #[test]
+    fn sealed_order_replay_of_same_body_is_rejected() {
+        let mut gw = Gw::boot();
+        let (key, owner) = gw.register_account(None);
+        gw.account_deposit(&key, 0, 20_000 * QUOTE_SCALE).expect("deposit");
+        let epoch_id = gw.epochs.current().epoch_id;
+        let epoch_pub = gw.epochs.current().public;
+        let terms = |nonce: u64| OrderTerms {
+            market_id: 0,
+            side: Side::Buy,
+            size: SIZE_SCALE / 10,
+            limit_price: 0,
+            tif: TimeInForce::Ioc,
+            reduce_only: false,
+            nonce,
+        };
+        let req = |wire: String| OrderReq {
+            epoch_id: Some(epoch_id),
+            sealed: Some(wire),
+            ..Default::default()
+        };
+
+        let wire7 = seal_order_wire(&epoch_pub, epoch_id, &owner, &terms(7));
+        gw.account_place_order(&key, &req(wire7.clone()))
+            .expect("first sealed order accepted");
+        assert_eq!(gw.accounts.get(&key).unwrap().orders.len(), 1);
+        assert_eq!(gw.accounts.get(&key).unwrap().last_sealed_nonce, 7);
+
+        // the SAME sealed body replayed → decrypts to nonce 7 again → stale → 400.
+        let err = match gw.account_place_order(&key, &req(wire7)) {
+            Ok(_) => panic!("a verbatim replay must be rejected"),
+            Err(e) => e,
+        };
+        assert!(
+            err.contains("strictly increase"),
+            "replay must fail the nonce monotonicity check, got: {err}",
+        );
+        assert_eq!(
+            gw.accounts.get(&key).unwrap().orders.len(),
+            1,
+            "the replay must not record a second order",
+        );
+
+        // a LOWER fresh nonce is equally stale …
+        let wire3 = seal_order_wire(&epoch_pub, epoch_id, &owner, &terms(3));
+        assert!(
+            gw.account_place_order(&key, &req(wire3)).is_err(),
+            "a stale (lower) sealed nonce must be rejected",
+        );
+        // … while a HIGHER nonce is a legitimately new order and is accepted.
+        let wire8 = seal_order_wire(&epoch_pub, epoch_id, &owner, &terms(8));
+        gw.account_place_order(&key, &req(wire8))
+            .expect("a strictly higher sealed nonce is accepted");
+        assert_eq!(gw.accounts.get(&key).unwrap().orders.len(), 2);
+        assert_eq!(gw.accounts.get(&key).unwrap().last_sealed_nonce, 8);
+    }
+
+    /// Production posture refuses an UNSEALED (plaintext) order — sealed ingress is
+    /// mandatory in prod; demo/dev keeps plaintext for backward-compat.
+    #[test]
+    fn prod_posture_rejects_unsealed_plaintext_order() {
+        let mut gw = Gw::boot();
+        let (key, _owner) = gw.register_account(None);
+        // enter production posture AFTER registering (self-service deposits, and now
+        // plaintext orders, are refused in prod).
+        gw.prod = true;
+        let plaintext = OrderReq {
+            market_id: 0,
+            side: "Buy".into(),
+            size: (SIZE_SCALE / 10).to_string(),
+            limit_price: "0".into(),
+            tif: "Ioc".into(),
+            reduce_only: false,
+            ..Default::default()
+        };
+        let err = match gw.account_place_order(&key, &plaintext) {
+            Ok(_) => panic!("production must refuse an unsealed order"),
+            Err(e) => e,
+        };
+        assert!(
+            err.contains("production requires sealed order ingress"),
+            "unexpected error: {err}",
+        );
+    }
+
+    /// Regression for the `#[serde(default)]` widening (commit 76b94a5): that change
+    /// let a partial plaintext body like `{"size":"100000000"}` PARSE and reach the
+    /// dev/demo plaintext branch, where the missing fields silently defaulted into a
+    /// real Sell / market-0 / Ioc order. The plaintext branch must now REJECT any
+    /// order missing a core field, restoring pre-commit strictness.
+    #[test]
+    fn plaintext_order_missing_side_is_rejected() {
+        let mut gw = Gw::boot();
+        let (key, owner) = gw.register_account(None);
+        gw.account_deposit(&key, 0, 20_000 * QUOTE_SCALE).unwrap();
+        // valid size, everything else absent → serde defaults every other field to "".
+        let partial = OrderReq {
+            size: (SIZE_SCALE / 10).to_string(),
+            ..Default::default()
+        };
+        assert!(
+            gw.account_place_order(&key, &partial).is_err(),
+            "a plaintext order with only `size` set must be rejected, not defaulted",
+        );
+        assert_eq!(
+            gw.seq.state.position(&owner, 0).map_or(0, |p| p.size),
+            0,
+            "a rejected partial order must open nothing",
+        );
+    }
+
+    /// Strict tif: an EMPTY tif (required-field guard) and an UNKNOWN tif (strict
+    /// parse) are both rejected on the plaintext branch — no silent fallback to Ioc.
+    #[test]
+    fn plaintext_order_with_empty_or_unknown_tif_is_rejected() {
+        let mut gw = Gw::boot();
+        let (key, _owner) = gw.register_account(None);
+        gw.account_deposit(&key, 0, 20_000 * QUOTE_SCALE).unwrap();
+        let empty_tif = OrderReq {
+            market_id: 0,
+            side: "Buy".into(),
+            size: (SIZE_SCALE / 10).to_string(),
+            limit_price: "0".into(),
+            tif: String::new(),
+            ..Default::default()
+        };
+        assert!(
+            gw.account_place_order(&key, &empty_tif).is_err(),
+            "an empty tif must be rejected, not defaulted to Ioc",
+        );
+        let unknown_tif = OrderReq {
+            tif: "Whenever".into(),
+            ..empty_tif
+        };
+        assert!(
+            gw.account_place_order(&key, &unknown_tif).is_err(),
+            "an unrecognized tif must be rejected, not silently defaulted to Ioc",
+        );
+    }
+
+    /// Strict side: an UNKNOWN side value is rejected on the plaintext branch — no
+    /// silent `else → Sell` that would flip a malformed order's direction.
+    #[test]
+    fn plaintext_order_with_unknown_side_is_rejected() {
+        let mut gw = Gw::boot();
+        let (key, owner) = gw.register_account(None);
+        gw.account_deposit(&key, 0, 20_000 * QUOTE_SCALE).unwrap();
+        let bad_side = OrderReq {
+            market_id: 0,
+            side: "Longgg".into(),
+            size: (SIZE_SCALE / 10).to_string(),
+            limit_price: "0".into(),
+            tif: "Ioc".into(),
+            ..Default::default()
+        };
+        assert!(
+            gw.account_place_order(&key, &bad_side).is_err(),
+            "an unrecognized side must be rejected, not silently defaulted to Sell",
+        );
+        assert_eq!(
+            gw.seq.state.position(&owner, 0).map_or(0, |p| p.size),
+            0,
+            "a rejected unknown-side order must open nothing",
+        );
+    }
+
+    /// The tightening must not regress the happy path: a COMPLETE plaintext order
+    /// still places on the legacy demo `/api/order` (`place_order`) route, while a
+    /// partial body on that SAME route is now rejected.
+    #[test]
+    fn complete_plaintext_order_still_succeeds_in_demo() {
+        let mut gw = Gw::boot();
+        let ok = OrderReq {
+            market_id: 0,
+            side: "Buy".into(),
+            size: (SIZE_SCALE / 10).to_string(),
+            limit_price: "0".into(),
+            tif: "Ioc".into(),
+            reduce_only: false,
+            ..Default::default()
+        };
+        assert!(
+            gw.place_order(&ok).is_ok(),
+            "a complete plaintext order must still be accepted in demo mode",
+        );
+        let partial = OrderReq {
+            size: (SIZE_SCALE / 10).to_string(),
+            ..Default::default()
+        };
+        assert!(
+            gw.place_order(&partial).is_err(),
+            "a partial plaintext order must be rejected on the demo /api/order path too",
+        );
+    }
+
+    /// The canonical order-terms layout round-trips and is exactly 51 bytes with the
+    /// documented side/tif byte mapping — the Task 11 cross-language contract.
+    #[test]
+    fn order_terms_layout_is_stable_and_51_bytes() {
+        let t = OrderTerms {
+            market_id: 0x0102_0304_0506_0708,
+            side: Side::Sell,
+            size: 1_234_567,
+            limit_price: -42,
+            tif: TimeInForce::Fok,
+            reduce_only: true,
+            nonce: 0xAABB,
+        };
+        let b = serialize_order_terms(&t);
+        assert_eq!(b.len(), ORDER_TERMS_LEN);
+        assert_eq!(ORDER_TERMS_LEN, 51);
+        assert_eq!(&b[0..8], &t.market_id.to_le_bytes(), "marketId u64 LE @0");
+        assert_eq!(b[8], 2, "Sell encodes as 2");
+        assert_eq!(&b[9..25], &t.size.to_le_bytes(), "size i128 LE @9");
+        assert_eq!(&b[25..41], &t.limit_price.to_le_bytes(), "limitPrice i128 LE @25");
+        assert_eq!(b[41], 3, "Fok encodes as 3");
+        assert_eq!(b[42], 1, "reduceOnly true = 1");
+        assert_eq!(&b[43..51], &t.nonce.to_le_bytes(), "nonce u64 LE @43");
+        let d = deserialize_order_terms(&b).expect("round trip");
+        assert_eq!(d.market_id, t.market_id);
+        assert_eq!(d.side, t.side);
+        assert_eq!(d.size, t.size);
+        assert_eq!(d.limit_price, t.limit_price);
+        assert_eq!(d.tif, t.tif);
+        assert_eq!(d.reduce_only, t.reduce_only);
+        assert_eq!(d.nonce, t.nonce);
+        // wrong length and out-of-range discriminants are rejected
+        assert!(deserialize_order_terms(&b[..50]).is_none());
+        let mut bad = b;
+        bad[8] = 0;
+        assert!(deserialize_order_terms(&bad).is_none(), "side 0 is invalid");
     }
 }

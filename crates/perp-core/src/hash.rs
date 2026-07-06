@@ -57,9 +57,11 @@ pub enum Domain {
     /// second-preimage separation. Appended last so existing domain tags (and thus
     /// every committed hash) are unchanged.
     MerkleLeaf = 9,
-    /// Encrypted-note-archive keystream (§7). A dedicated tag so the view-key
-    /// keystream can never share a preimage structure with nullifiers or any other
-    /// hash purpose (one-domain-one-purpose). Not a cross-layer-committed value.
+    /// RESERVED / unused — formerly the encrypted-note-archive XOR keystream
+    /// (§7), replaced by real sealed-box note encryption (`X25519ViewKey` +
+    /// `NoteEncryptAad`). The variant is kept (never deleted, never reused for a
+    /// new purpose) so domain discriminants stay 1..=N dense and every existing
+    /// tag value is unchanged.
     NoteKeystream = 10,
     /// Privacy-bridge mix-shuffle PRNG (§13). Dedicated tag for the Fisher–Yates
     /// stream so it is separated from state-root hashing. Not cross-layer-committed.
@@ -130,6 +132,26 @@ pub enum Domain {
     /// ciphertext). Distinct from the keystream tag and from `WitnessSealMac` —
     /// one-domain-one-purpose. Not a cross-layer-committed value.
     SnapshotSealMac = 23,
+    /// X25519 note-viewing keypair derivation label.
+    X25519ViewKey = 24,
+    /// X25519 enclave order-ingress epoch keypair derivation label.
+    X25519OrderEpoch = 25,
+    /// X25519 enclave order-log keypair derivation label.
+    X25519LogKey = 26,
+    /// AEAD AAD domain tag for note ciphertexts.
+    NoteEncryptAad = 27,
+    /// AEAD AAD domain tag for order ciphertexts.
+    OrderEncryptAad = 28,
+    /// AEAD AAD domain tag for order-log entries.
+    LogEncryptAad = 29,
+    /// Order-log hash-chain link: `keccak256(tag ‖ prev_head ‖ commitment ‖
+    /// entry_ct)` (gateway `order_log::chain`). A dedicated tag so a chain link
+    /// can never share a preimage structure with an order hash, a manifest hash,
+    /// or any other raw-keccak use. The head is persisted in the sealed snapshot,
+    /// so the tag is added BEFORE merge (retro-tagging later would be a snapshot
+    /// format migration). Not (yet) a cross-layer-committed value — manifest
+    /// anchoring of the head is deferred to the zk workstream.
+    OrderLogChain = 30,
 }
 
 /// The default Phase 0 hasher: Keccak-256 with a 1-byte domain prefix.
@@ -213,6 +235,13 @@ mod tests {
             OwnerKey,
             SnapshotSeal,
             SnapshotSealMac,
+            X25519ViewKey,
+            X25519OrderEpoch,
+            X25519LogKey,
+            NoteEncryptAad,
+            OrderEncryptAad,
+            LogEncryptAad,
+            OrderLogChain,
         ];
         let w = [word_u64(42)];
         for i in 0..all.len() {
@@ -248,5 +277,12 @@ mod tests {
         assert_ne!(word_i128(-1), word_i128(i128::MAX));
         assert_eq!(word_i128(1)[16], 0);
         assert_eq!(word_i128(-1)[16], 0xff);
+    }
+
+    #[test]
+    fn new_encryption_domains_are_stable() {
+        assert_eq!(Domain::X25519ViewKey as u8, 24);
+        assert_eq!(Domain::LogEncryptAad as u8, 29);
+        assert_eq!(Domain::OrderLogChain as u8, 30);
     }
 }
