@@ -336,7 +336,11 @@ impl Sequencer {
                 .insert(*owner, liquidation_tag_key(spend_key));
             self.adl_tag_keys.insert(*owner, adl_tag_key(spend_key));
         }
-        self.state.apply_op(op)
+        // Discard any withdrawal output: the sealed-batch path derives
+        // `withdrawals_root` from `apply_batch`'s `BatchOutputs`; this thin
+        // passthrough is used for setup/admin ops and returns only success/failure.
+        self.state.apply_op(op)?;
+        Ok(())
     }
 
     pub fn current_batch_id(&self) -> u64 {
@@ -641,7 +645,8 @@ impl Sequencer {
                 now_ms,
             };
             match self.state.apply_op(&op) {
-                Ok(()) => {
+                // A Fill never yields a withdrawal output, so discard it.
+                Ok(_) => {
                     for oh in [m.taker_order_hash, m.maker_order_hash] {
                         self.finality.insert(oh, Finality::Matched);
                         if !settled_order_hashes.contains(&oh) {

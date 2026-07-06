@@ -2,10 +2,12 @@
 //!
 //! Two things live here:
 //!
-//! 1. **The public-input binding** every batch proof commits to:
-//!    `(prev_state_root, batch_manifest_hash, new_state_root)`. This is the tuple
-//!    the L1 verifier checks (Faz 2), and it is independent of which proving
-//!    backend produces it.
+//! 1. **The public-input binding** every batch proof commits to — the six roots
+//!    `(prev_state_root, batch_manifest_hash, new_state_root, ordered_root,
+//!    withdrawals_root, rejected_root)`, all now DERIVED by [`run_transition`] (via
+//!    `perp_core::commitment::derive_roots`) and hashed under `Domain::StateRoot`
+//!    into the single commitment the L1 verifier checks (Faz 2), independent of
+//!    which proving backend produces it.
 //!
 //! 2. **The §10b confidential-proving boundary.** A ZK proof hides the witness
 //!    from the *verifier*, never from the *prover* — a bare prover farm would see
@@ -28,18 +30,18 @@
 
 use perp_core::engine::BatchOp;
 use perp_core::hash::{Digest, Domain, Hasher, Keccak256};
+use perp_core::order::BatchManifest;
 use perp_core::{DefaultState, EngineError};
 
 /// The public inputs a batch proof commits to and the L1 verifier checks.
 ///
-/// `ordered_root` and `withdrawals_root` are bound here (not just `manifest_hash`)
-/// because the settlement contract trusts them for inclusion answers and for
-/// authorizing vault withdrawals — if they weren't in the commitment, a sequencer
-/// could swap an arbitrary `withdrawals_root` against a fixed proof and drain the
-/// vault (audit finding F2). NOTE (Phase 0): `run_transition` does NOT yet re-derive
-/// these roots — under the stand-in verifier they remain trusted-sequencer inputs and
-/// the binding only makes them non-malleable-after-proving; a real circuit that derives
-/// them from the computation is still required to fully constrain their values.
+/// All six roots are now DERIVED by `run_transition` (via
+/// `perp_core::commitment::derive_roots`): `withdrawals_root` from the batch's burned
+/// notes (a prover cannot invent a withdrawal without a real burn — audit F2), and
+/// `ordered_root`/`rejected_root` by merklizing the manifest's committed order-hash
+/// lists. CAVEAT (Proof-v2): the ordered-vs-rejected SPLIT itself — whether the
+/// matcher's inclusion/rejection decisions obey the matching rule — is NOT proven
+/// here; that is Proof-v2, backed in the interim by receipts + inclusion slashing.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct PublicInputs {
     pub prev_state_root: Digest,
@@ -49,12 +51,9 @@ pub struct PublicInputs {
     pub ordered_root: Digest,
     /// Merkle root of the withdrawals this batch authorizes (vault releases).
     pub withdrawals_root: Digest,
-    /// Merkle root of the manifest's validly-rejected order-hash leaves. Bound into the
-    /// commitment so an honest sequencer can prove a valid rejection against a wrongful
-    /// inclusion-slash (audit DP-004). NOTE: like `ordered_root`/`withdrawals_root`, this
-    /// is currently a trusted-sequencer input — `run_transition` does NOT yet re-derive
-    /// the rejected set, so a real validity circuit is still needed to stop a DISHONEST
-    /// sequencer from fabricating a rejection.
+    /// Merkle root of the manifest's rejected order-hash leaves, bound so an honest
+    /// sequencer can prove a valid rejection against a wrongful inclusion-slash
+    /// (audit DP-004).
     pub rejected_root: Digest,
 }
 
@@ -76,30 +75,22 @@ impl PublicInputs {
     }
 }
 
-/// Run the batch state transition — **this is the zkVM guest program**.
-///
-/// Applies `ops` to `state` (mutating it to the post-state) and returns the
-/// public inputs binding the pre-root, the manifest hash, and the post-root. Any
-/// engine rejection is returned verbatim; a real circuit encodes the same
-/// all-or-nothing constraint system.
+/// Run the batch state transition and DERIVE the public inputs — **this is the zkVM
+/// guest program's host-side twin**. Delegates to `perp_core::commitment::derive_roots`
+/// so the prover, the guest, and the host compute byte-identical roots.
 pub fn run_transition(
     state: &mut DefaultState,
     ops: &[BatchOp],
-    batch_manifest_hash: Digest,
-    ordered_root: Digest,
-    withdrawals_root: Digest,
-    rejected_root: Digest,
+    manifest: &BatchManifest,
 ) -> Result<PublicInputs, EngineError> {
-    let prev_state_root = state.state_root();
-    state.apply_batch(ops)?;
-    let new_state_root = state.state_root();
+    let d = perp_core::commitment::derive_roots(state, ops, manifest)?;
     Ok(PublicInputs {
-        prev_state_root,
-        batch_manifest_hash,
-        new_state_root,
-        ordered_root,
-        withdrawals_root,
-        rejected_root,
+        prev_state_root: d.prev_state_root,
+        batch_manifest_hash: d.manifest_hash,
+        new_state_root: d.new_state_root,
+        ordered_root: d.ordered_root,
+        withdrawals_root: d.withdrawals_root,
+        rejected_root: d.rejected_root,
     })
 }
 
@@ -449,6 +440,21 @@ mod tests {
         SoftwareSealProvider::new(ROOT, measurement)
     }
 
+    /// The minimal honest manifest for `s`'s next batch: tied to the pre-state
+    /// (`previous_state_root`/`batch_id`) with no ordered/rejected/oracle entries.
+    fn empty_manifest(s: &DefaultState) -> BatchManifest {
+        BatchManifest {
+            previous_state_root: s.state_root(),
+            batch_id: s.next_batch_id,
+            ordered: vec![],
+            rejected: vec![],
+            oracle_updates: vec![],
+            matching_rule_version: 0,
+            enclave_measurement: [0u8; 32],
+            sequencer_pubkey_epoch: 0,
+        }
+    }
+
     fn state_with_deposit() -> (DefaultState, Vec<BatchOp>) {
         let mut s = DefaultState::new(16);
         s.add_market(Market::conservative(0));
@@ -478,13 +484,13 @@ mod tests {
     }
 
     #[test]
-    fn transition_binds_roots() {
+    fn transition_derives_roots_from_manifest() {
         let (mut s, ops) = state_with_deposit();
-        let mh = [0x55u8; 32];
         let prev = s.state_root();
-        let public = run_transition(&mut s, &ops, mh, [0u8; 32], [0u8; 32], [0u8; 32]).unwrap();
+        let manifest = empty_manifest(&s);
+        let public = run_transition(&mut s, &ops, &manifest).unwrap();
         assert_eq!(public.prev_state_root, prev);
-        assert_eq!(public.batch_manifest_hash, mh);
+        assert_eq!(public.batch_manifest_hash, manifest.hash::<Keccak256>());
         assert_eq!(public.new_state_root, s.state_root());
         assert_ne!(public.prev_state_root, public.new_state_root);
     }
@@ -514,8 +520,8 @@ mod tests {
     #[test]
     fn prove_and_verify_roundtrip() {
         let (mut s, ops) = state_with_deposit();
-        let public =
-            run_transition(&mut s, &ops, [1u8; 32], [0u8; 32], [0u8; 32], [0u8; 32]).unwrap();
+        let manifest = empty_manifest(&s);
+        let public = run_transition(&mut s, &ops, &manifest).unwrap();
         let prover = AttestedProver::new(CommitmentProver::new(M), prov(M));
         let witness = b"sealed batch witness: positions, fills, margins";
         let sealed =
@@ -528,8 +534,8 @@ mod tests {
     #[test]
     fn tampered_public_inputs_break_verification() {
         let (mut s, ops) = state_with_deposit();
-        let public =
-            run_transition(&mut s, &ops, [1u8; 32], [0u8; 32], [0u8; 32], [0u8; 32]).unwrap();
+        let manifest = empty_manifest(&s);
+        let public = run_transition(&mut s, &ops, &manifest).unwrap();
         let prover = AttestedProver::new(CommitmentProver::new(M), prov(M));
         let sealed = SealedWitness::seal(b"w", &prov(M), M, [0x77u8; 32]).unwrap();
         let mut proof = prover.prove_sealed(&sealed, &public).unwrap();
@@ -547,8 +553,8 @@ mod tests {
     #[test]
     fn wrong_measurement_cannot_open_witness() {
         let (mut s, ops) = state_with_deposit();
-        let public =
-            run_transition(&mut s, &ops, [1u8; 32], [0u8; 32], [0u8; 32], [0u8; 32]).unwrap();
+        let manifest = empty_manifest(&s);
+        let public = run_transition(&mut s, &ops, &manifest).unwrap();
         // witness sealed to M, but the prover's key-release is authorized only for
         // WRONG_M → it never obtains the seal key → cannot open (§10b)
         let sealed = SealedWitness::seal(b"private ledger", &prov(M), M, [0x01u8; 32]).unwrap();
@@ -644,8 +650,10 @@ mod tests {
             note_commitment: [7u8; 32],
             spend_key: [1; 32],
         }];
-        let err =
-            run_transition(&mut s, &ops, [0u8; 32], [0u8; 32], [0u8; 32], [0u8; 32]).unwrap_err();
+        // the manifest matches the pre-state (correct previous_state_root/batch_id),
+        // so the error comes from `apply_batch` on the bad op, not ManifestMismatch
+        let manifest = empty_manifest(&s);
+        let err = run_transition(&mut s, &ops, &manifest).unwrap_err();
         assert_eq!(err, EngineError::UnknownOrSpentNote);
     }
 }

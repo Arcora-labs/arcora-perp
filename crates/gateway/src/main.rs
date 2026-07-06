@@ -1294,6 +1294,10 @@ impl Gw {
             .apply(&BatchOp::Withdraw {
                 note_commitment: cm,
                 spend_key: wallet.spend_key,
+                // Real L1 withdrawal: bind the burned value to the same (to, nonce)
+                // leaf pushed to `pending_withdrawals` below (enters withdrawals_root).
+                to: Some(to),
+                nonce,
             })
             .map_err(|e| format!("withdraw burn failed: {e:?}"))?;
         self.next_withdraw_nonce += 1;
@@ -2015,6 +2019,10 @@ impl Gw {
             .apply(&BatchOp::Withdraw {
                 note_commitment: dn.commitment::<Keccak256>(),
                 spend_key: from.spend_key,
+                // Internal burn: value is re-funded internally (fund_amount below),
+                // never becomes an L1 vault claim, so it must NOT enter withdrawals_root.
+                to: None,
+                nonce: 0,
             })
             .map_err(|e| format!("lp debit burn: {e:?}"))?;
         let mut cb = [0xE1u8; 32];
@@ -2346,6 +2354,10 @@ impl Gw {
             .apply(&BatchOp::Withdraw {
                 note_commitment: cm,
                 spend_key: self.user.spend_key,
+                // Legacy demo withdraw: never pushed to pending_withdrawals, so it is
+                // an internal burn and must NOT enter withdrawals_root.
+                to: None,
+                nonce: 0,
             })
             .map_err(|e| format!("withdraw burn failed: {e:?}"))?;
         Ok(())

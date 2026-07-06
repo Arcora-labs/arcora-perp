@@ -68,6 +68,8 @@ fn withdraw_rejects_a_spend_key_that_does_not_derive_the_owner() {
         s.apply_op(&BatchOp::Withdraw {
             note_commitment: cm,
             spend_key: wrong,
+            to: None,
+            nonce: 0,
         })
         .is_err(),
         "withdraw with a non-deriving spend key must be rejected (DP-003)",
@@ -76,6 +78,8 @@ fn withdraw_rejects_a_spend_key_that_does_not_derive_the_owner() {
         s.apply_op(&BatchOp::Withdraw {
             note_commitment: cm,
             spend_key: good,
+            to: None,
+            nonce: 0,
         })
         .is_ok(),
         "the owner's own spend key withdraws the note",
