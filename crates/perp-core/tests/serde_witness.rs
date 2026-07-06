@@ -121,3 +121,40 @@ fn ops_round_trip_and_replay_identically() {
         "decoded ops replay to the same root"
     );
 }
+
+#[test]
+fn full_witness_round_trips_and_rederives_commitment() {
+    use perp_core::commitment::derive_roots;
+    use perp_core::order::BatchManifest;
+
+    let mut s = built_state();
+    let ops = vec![BatchOp::AccrueFunding {
+        market_id: 0,
+        mark: 100_050 * PRICE_SCALE,
+        oracle: oracle(100_000, 2_000),
+        now_ms: 2_000,
+    }];
+    let manifest = BatchManifest {
+        previous_state_root: s.state_root(),
+        batch_id: s.next_batch_id,
+        ordered: vec![],
+        rejected: vec![],
+        oracle_updates: vec![],
+        matching_rule_version: 0,
+        enclave_measurement: [0u8; 32],
+        sequencer_pubkey_epoch: 0,
+    };
+    let witness: (DefaultState, Vec<BatchOp>, BatchManifest) =
+        (s.clone(), ops.clone(), manifest.clone());
+    let bytes = postcard::to_allocvec(&witness).expect("serialize witness");
+    let (mut s2, ops2, manifest2): (DefaultState, Vec<BatchOp>, BatchManifest) =
+        postcard::from_bytes(&bytes).expect("deserialize witness");
+
+    let a = derive_roots(&mut s, &ops, &manifest)
+        .unwrap()
+        .commitment::<Keccak256>();
+    let b = derive_roots(&mut s2, &ops2, &manifest2)
+        .unwrap()
+        .commitment::<Keccak256>();
+    assert_eq!(a, b, "decoded witness re-derives the identical commitment");
+}
