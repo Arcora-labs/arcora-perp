@@ -2,10 +2,12 @@
 //!
 //! Two things live here:
 //!
-//! 1. **The public-input binding** every batch proof commits to:
-//!    `(prev_state_root, batch_manifest_hash, new_state_root)`. This is the tuple
-//!    the L1 verifier checks (Faz 2), and it is independent of which proving
-//!    backend produces it.
+//! 1. **The public-input binding** every batch proof commits to — the six roots
+//!    `(prev_state_root, batch_manifest_hash, new_state_root, ordered_root,
+//!    withdrawals_root, rejected_root)`, all now DERIVED by [`run_transition`] (via
+//!    `perp_core::commitment::derive_roots`) and hashed under `Domain::StateRoot`
+//!    into the single commitment the L1 verifier checks (Faz 2), independent of
+//!    which proving backend produces it.
 //!
 //! 2. **The §10b confidential-proving boundary.** A ZK proof hides the witness
 //!    from the *verifier*, never from the *prover* — a bare prover farm would see

@@ -136,6 +136,18 @@ mod tests {
     }
 
     #[test]
+    fn rejects_manifest_with_wrong_batch_id() {
+        let mut s = DefaultState::new(16);
+        // correct previous_state_root (from `manifest_for`), but wrong batch_id
+        let mut manifest = manifest_for(&s, vec![]);
+        manifest.batch_id = s.next_batch_id + 1; // wrong
+        assert_eq!(
+            derive_roots(&mut s, &[], &manifest).unwrap_err(),
+            EngineError::ManifestMismatch
+        );
+    }
+
+    #[test]
     fn commitment_is_six_field_state_root_domain() {
         let d = DerivedRoots {
             prev_state_root: [1u8; 32],

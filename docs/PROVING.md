@@ -5,24 +5,35 @@ yet, and exactly how a real zkVM backend slots in.
 
 ## The binding (stable, backend-independent)
 
-Every batch proof commits to five public values:
+Every batch proof commits to six public values, hashed under `Domain::StateRoot`
+(tag 7) into the single commitment the L1 verifier checks:
 
 ```
 PublicInputs = (prev_state_root, batch_manifest_hash, new_state_root,
-                ordered_root, withdrawals_root)
+                ordered_root, withdrawals_root, rejected_root)
 ```
 
-`ordered_root` (Merkle root of the batch's ordered order-hash leaves) and
-`withdrawals_root` (Merkle root of the withdrawals this batch authorizes) are
-bound into the commitment — not left as free sequencer calldata — so the
-sequencer cannot publish an arbitrary withdrawals root to drain the vault, nor a
-fake ordered root to dodge inclusion challenges (security audit findings F1/F2).
+All six roots are now **DERIVED** inside the circuit by
+`perp_core::commitment::derive_roots` — the guest, the prover's `run_transition`,
+and the SP1 host all call it, so they compute byte-identical roots. They are **not**
+trusted-sequencer calldata: `withdrawals_root` is derived from the batch's burned
+notes (a prover cannot invent a withdrawal without a real burn — audit F2), and
+`ordered_root` / `rejected_root` by merklizing the manifest's committed order-hash
+lists. So the sequencer cannot publish an arbitrary withdrawals root to drain the
+vault, nor a fake ordered root to dodge inclusion challenges (security audit
+findings F1/F2).
+
+CAVEAT (Proof-v2): the ordered-vs-rejected SPLIT itself — whether the matcher's
+inclusion/rejection decisions obey the matching rule — is **not** proven here; that
+is Proof-v2, constrained in the interim by receipts + inclusion slashing. And this
+derivation only *enforces* anything under a real verifier + vkey binding (the P2
+gate); under `MockZkVerifier` it is a stand-in, not on-chain enforcement today.
 
 `run_transition()` runs the **perp-core engine** — the same `apply_batch` used on
-the hot path — over the batch's ops and returns this tuple. The L1 verifier (Faz
-2) will check a proof against exactly these inputs and, on success, advance the
-anchored state root from `prev` to `new`. Nothing about this tuple depends on the
-proving system, so it is fixed now.
+the hot path — over the batch's ops and returns these derived public inputs. The L1
+verifier (Faz 2) will check a proof against exactly these inputs and, on success,
+advance the anchored state root from `prev` to `new`. Nothing about this commitment
+depends on the proving system, so it is fixed now.
 
 ## What the harness is NOT (yet)
 
