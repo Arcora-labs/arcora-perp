@@ -108,43 +108,69 @@ A minimal no_std leaf type — `WithdrawalLeaf { to:[u8;20], amount:u128, nonce:
 ### 4.2 `BatchOp::Withdraw` extension + incremental withdrawals (the F2 fix)
 
 `op_withdraw` (`engine.rs:675`) calls `consume_note(...)` which returns the note, so
-**`note.amount` is recoverable in-circuit**. Extend the op so the transition also
-knows the destination:
+**`note.amount` is recoverable in-circuit**. Extend the op so a *real L1* withdrawal
+also carries its destination:
 
 ```
-BatchOp::Withdraw { note_commitment: Digest, spend_key: Digest, to: [u8;20], nonce: u64 }
+BatchOp::Withdraw { note_commitment: Digest, spend_key: Digest, to: Option<[u8;20]>, nonce: u64 }
 ```
 
-`apply_batch` collects, per `Withdraw`, a `WithdrawalOut { to, amount: note.amount,
-nonce }` — amount bound to the actual burned note, so the prover cannot lie about it.
+**Why `to` is optional — `Withdraw` is overloaded.** Only the v1 `account_withdraw`
+path (`gateway/src/main.rs:1294`) creates a vault-claimable L1 withdrawal (the only
+site that pushes to `pending_withdrawals`, `:1306`). Two other sites use `Withdraw`
+as an **internal note-burn** — LP debit (`:2015`, immediately re-funds another
+account) and the legacy withdraw (`:2346`) — with no L1 destination and no vault
+claim, yet they still go through the sequencer, so a proven batch can contain both.
+`to = Some(addr)` marks a real L1 withdrawal; `to = None` marks an internal burn.
+Only `Some` withdrawals enter `withdrawals_root` — internal burns must NOT pollute
+it. (`nonce` is only meaningful when `to.is_some()`; internal sites pass `nonce: 0`.)
+
+`apply_batch` collects, per `Withdraw` **with `to = Some(addr)`**, a
+`WithdrawalOut { to: addr, amount: note.amount, nonce }` — amount bound to the actual
+burned note, so the prover cannot lie about it. A `to = None` burn emits nothing.
 Change `apply_batch`'s signature from `Result<(), EngineError>` to
 `Result<BatchOutputs, EngineError>` where `BatchOutputs { withdrawals:
 Vec<WithdrawalOut> }` (the plan picks the least-invasive concrete shape — return
 value vs `&mut` accumulator; most callers just `?;` and ignore it).
 
-**`withdrawals_root` is the merkle root of THIS batch's `WithdrawalOut` leaves only —
-an incremental, per-batch root, derived entirely from the `Withdraw` ops.** Because
-every leaf is engine-emitted from a real burned note, a prover cannot add a leaf
-without a corresponding real burn in `ops`. **This is the complete F2 closure** — no
-prior-root witness, no accumulator, no anchor.
+**`withdrawals_root` is the merkle root of THIS engine batch's `WithdrawalOut` leaves
+only — an incremental, per-batch root, derived entirely from the `Withdraw` ops.**
+Because every leaf is engine-emitted from a real burned note, a prover cannot add a
+leaf without a corresponding real burn in `ops`. This is the **circuit-side F2
+closure mechanism** — no prior-root witness, no accumulator, no anchor. Enforcement
+of that derived value on-chain requires the real verifier and the matching on-chain
+publish path, which land in **P2** (see below and §7); under P1's MockZkVerifier
+nothing on-chain is enforced yet — P1 makes the pipeline real-verifier-ready.
 
 **Why incremental is safe (the vault already supports it):**
 `CollateralVault` (`contracts/src/CollateralVault.sol`) records
 `rootPublished[root] = true` for **every** published root and `claim` accepts a proof
 against **any** past published root (audit DP-012); `claimed[leaf]` prevents
 double-claim and `nonce` is globally unique, so each leaf lives in exactly one
-batch's root. A user claims against the root of the batch their withdrawal settled
-in. No cumulative carry-forward is needed and nothing strands. **No vault logic
-change** — only a NatSpec update (§4.6).
+batch's root. So an incremental per-batch publish path needs **no vault logic
+change**. Wiring the gateway to actually publish per-batch incremental roots is P2.
 
-**Ripple (all updated in lockstep):**
-- `crates/gateway/src/main.rs` `Withdraw` construction sites (≈`:1294`, `:2015`,
-  `:2346`) pass `to`/`nonce` (already available — `account_withdraw` has `to` and
-  `next_withdraw_nonce`).
-- `crates/gateway/src/withdrawals.rs` / the batch-settle path: build the **per-batch
-  incremental** withdrawals root (simpler than today's cumulative prune+rebuild) and
-  record which batch each `Withdrawal` settled in, so `v1_withdrawals_json`
-  (`main.rs:1314`) serves the claim proof against that batch's root.
+**Batch-granularity note (why the gateway publish path is P2, not P1):** the
+prover/host/guest each prove **one engine batch** (one `BatchManifest`, one `ops`
+list — `run_transition` takes a single manifest). The gateway's L1 settle loop
+(`crates/gateway/src/main.rs:4526-4638`), however, **aggregates every engine batch
+since the last settle** into one `settleBatch` call and builds the withdrawals root
+**cumulatively** over `pending_withdrawals`, keyed to the *L1* batch counter. Making
+the on-chain published root match a per-engine-batch circuit derivation therefore
+requires reconciling L1-vs-engine batch granularity — which is exactly the
+on-chain-binding work of P2 (real verifier + settle path). P1 does **not** touch the
+gateway's cumulative publish path.
+
+**P1 ripple (all updated in lockstep):**
+- `crates/perp-core/src/engine.rs` — `BatchOp::Withdraw` gains `to`/`nonce`;
+  `apply_batch` returns `BatchOutputs`; `op_withdraw` emits `WithdrawalOut`.
+- `crates/gateway/src/main.rs` `Withdraw` construction sites: `account_withdraw`
+  (`:1294`) passes `to: Some(to)` + its `next_withdraw_nonce` (real L1 withdrawal);
+  the LP-debit (`:2015`) and legacy (`:2346`) internal burns pass `to: None,
+  nonce: 0` (excluded from `withdrawals_root`).
+- `crates/gateway/src/withdrawals.rs` re-exports the moved perp-core merkle so its
+  existing Solidity-vector tests lock the moved code. **Cumulative publish path
+  unchanged** (its `merkle_root` calls now hit the re-exported no_std version).
 - `crates/sequencer/src/lib.rs` batch build consumes `apply_batch`'s `BatchOutputs`.
 - Any `Withdraw` in `crates/demo`, `crates/e2e`, `crates/sequencer` tests.
 
@@ -219,23 +245,25 @@ now **derived**, keeping ONE honest caveat: the ordered/rejected *split* honesty
   `answerByRejection` / `settleBatch` "PHASE 0 caveat" comments — update "these root
   VALUES are NOT re-derived" to reflect that P1 now derives them (retaining the honest
   matching-fairness caveat on the ordered/rejected split).
-- `contracts/src/CollateralVault.sol::publishWithdrawals` NatSpec — the current
-  "INVARIANT: root MUST be the cumulative root" text describes the old off-chain
-  model. Update it to: each batch publishes its **own** withdrawals root; DP-012's
-  `rootPublished` mapping makes every batch root permanently claimable, so no
-  cumulative carry-forward is required. **No logic change** — the contract already
-  behaves correctly for incremental roots.
+- `contracts/src/CollateralVault.sol::publishWithdrawals` NatSpec is **left as-is in
+  P1** — the gateway still publishes cumulative roots in P1, so the "cumulative root"
+  invariant is still accurate. It is rewritten in **P2**, when the gateway switches
+  to incremental publishing.
 - **No Solidity logic changes in P1.** `settleBatch` still takes the six roots as
   params and binds them; the guest now proves they are the derived values.
 
 ## 5. Testing (the equivalence gate)
 
-- **Cross-check equivalence (the key test):** on a real sealed batch produced by the
-  sequencer, assert the guest/prover-derived `manifest_hash`, `ordered_root`,
-  `rejected_root`, `withdrawals_root` are **byte-identical** to what the sequencer /
-  gateway publish off-chain (`SealedBatch.manifest_hash`, the gateway's ordered tree,
-  the gateway's per-batch withdrawals tree). "The circuit derives exactly what the
-  honest sequencer publishes." This is the merge gate.
+- **Cross-check equivalence (the key test):**
+  - `manifest_hash`: the guest/prover derivation IS `BatchManifest::hash` — assert it
+    equals a real `SealedBatch.manifest_hash` produced by the sequencer.
+  - `ordered_root`/`rejected_root`/`withdrawals_root`: the moved no_std leaf +
+    `merkle_root` builders must be **byte-identical** to the old gateway ones — a
+    golden test hashing the old vs moved output, PLUS the existing Solidity-vector
+    tests (`leaf_matches_solidity_abi_encode_packed`, `challenge_leaves_match_solidity`
+    in `crates/gateway/src/withdrawals.rs`) now exercising the re-exported moved code.
+    The guest/prover call these exact functions, so "the circuit derives exactly what
+    the honest sequencer publishes." This is the merge gate.
 - **Host equivalence** (`crates/sp1-host/src/main.rs`): update the native-reference
   commitment + witness to the new derivation; native and (executor) guest commit the
   same 6-field digest.
@@ -266,21 +294,27 @@ now **derived**, keeping ONE honest caveat: the ordered/rejected *split* honesty
 - `crates/prover/src/lib.rs` — `run_transition` derives roots; doc/caveat rewrite.
 - `crates/sp1-guest/src/main.rs` — derive all four + consistency checks.
 - `crates/sp1-host/src/main.rs` — new witness + native reference.
-- `crates/gateway/src/withdrawals.rs` — re-export perp-core merkle; per-batch
-  (incremental) root builder; keep `merkle_proof`/`verify`.
+- `crates/gateway/src/withdrawals.rs` — re-export perp-core merkle (delete the moved
+  bodies, keep `merkle_proof`/`verify` + the Solidity-vector tests). Cumulative
+  publish path unchanged.
 - `crates/gateway/src/main.rs` — `Withdraw` sites pass `to`/`nonce`; consume
-  `apply_batch` outputs; track each withdrawal's batch for claim-proof serving.
+  `apply_batch` `BatchOutputs`. (No publish-path change in P1.)
 - `crates/sequencer/src/lib.rs` — consume `apply_batch` `BatchOutputs` in the batch
   build.
 - `crates/demo`, `crates/e2e` — `Withdraw` construction + any `apply_batch` callers.
 - `contracts/src/interfaces/IZkVerifier.sol`,
-  `contracts/src/DarkPerpSettlement.sol`, `contracts/src/CollateralVault.sol` —
-  NatSpec only.
+  `contracts/src/DarkPerpSettlement.sol` — NatSpec only. (`CollateralVault.sol`
+  NatSpec is P2.)
 
 ## 7. Non-goals (P1)
 
 - No real zkVM backend, no `cargo prove` in CI, no on-chain verifier swap (P2).
+- No gateway on-chain **publish-path** change: the cumulative withdrawals publish,
+  per-batch claim-proof serving, and the L1-vs-engine batch-granularity
+  reconciliation all stay as-is in P1 and land in **P2** (the enforcement boundary).
+  P1's gateway change is only the mechanical `Withdraw`-signature fix + re-exporting
+  the moved merkle module.
 - No matching-fairness / order-stream re-derivation (Proof-v2).
 - No real-TEE key release (P3).
-- No `settleBatch` / vault logic change (incremental roots need none).
+- No `settleBatch` / vault logic change.
 - No change to the 6-field public-commitment shape or `Domain::StateRoot` tag.
