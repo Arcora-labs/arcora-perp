@@ -11,7 +11,17 @@
 //! `CollateralVault.publishWithdrawals` (a new root must carry forward every leaf
 //! that is still unclaimed, else it strands the user).
 
-use sha3::{Digest, Keccak256};
+// The leaf + merkle builders now live in perp-core (no_std) so the zkVM guest and
+// the gateway share one implementation — byte-identical trees off-chain and
+// in-circuit. The tests below pin them to Solidity vectors, proving the moved code
+// hashes exactly what the contracts verify.
+pub use perp_core::merkle::{
+    inclusion_leaf, merkle_proof, merkle_root, rejection_leaf, withdrawal_leaf,
+};
+// `verify` is only exercised from #[cfg(test)] code (the original local fn carried
+// #[allow(dead_code)] for the same reason: it exists as a self-check + test oracle).
+#[allow(unused_imports)]
+pub use perp_core::merkle::verify;
 
 /// One authorized withdrawal: `amount` USDC base units released to the 20-byte
 /// address `to` on L1, unique by `nonce`. `owner` is the off-chain engine account it
@@ -30,117 +40,10 @@ impl Withdrawal {
     }
 }
 
-/// `keccak256(abi.encodePacked(to(20), amount(uint256 big-endian), nonce(uint256 big-endian)))`.
-pub fn withdrawal_leaf(to: &[u8; 20], amount: u128, nonce: u64) -> [u8; 32] {
-    let mut h = Keccak256::new();
-    h.update(to);
-    let mut amt = [0u8; 32];
-    amt[16..].copy_from_slice(&amount.to_be_bytes()); // u128 → low 16 bytes of the uint256
-    h.update(amt);
-    let mut non = [0u8; 32];
-    non[24..].copy_from_slice(&nonce.to_be_bytes()); // u64 → low 8 bytes of the uint256
-    h.update(non);
-    h.finalize().into()
-}
-
-/// `keccak256(abi.encodePacked(uint8(0), uint256 batchId, bytes32 orderHash))` — matches
-/// `DarkPerpSettlement.inclusionLeaf`. The `0x00` domain tag makes the preimage 65 bytes so
-/// it can never collide with a MerkleLib internal node (a bare 64-byte keccak of two
-/// bytes32) — closing the node-as-leaf forgery (audit). The ordered-tree leaf the sequencer
-/// proves against `answerChallenge`, so an inclusion challenge can be answered (audit DP-004).
-pub fn inclusion_leaf(batch_id: u64, order_hash: &[u8; 32]) -> [u8; 32] {
-    let mut h = Keccak256::new();
-    h.update([0x00u8]);
-    let mut bid = [0u8; 32];
-    bid[24..].copy_from_slice(&batch_id.to_be_bytes()); // u64 → low 8 bytes of the uint256
-    h.update(bid);
-    h.update(order_hash);
-    h.finalize().into()
-}
-
-/// `keccak256(abi.encodePacked(uint8(1), uint256 batchId, bytes32 orderHash))` — matches
-/// `DarkPerpSettlement.rejectionLeaf`. A distinct one-byte domain tag from `inclusion_leaf`
-/// so a rejected leaf can never be replayed as an inclusion proof; the rejected-tree leaf the
-/// sequencer proves against `answerByRejection` for a validly-rejected order (audit DP-004).
-pub fn rejection_leaf(batch_id: u64, order_hash: &[u8; 32]) -> [u8; 32] {
-    let mut h = Keccak256::new();
-    h.update([0x01u8]);
-    let mut bid = [0u8; 32];
-    bid[24..].copy_from_slice(&batch_id.to_be_bytes());
-    h.update(bid);
-    h.update(order_hash);
-    h.finalize().into()
-}
-
-fn hash_pair(a: [u8; 32], b: [u8; 32]) -> [u8; 32] {
-    let (lo, hi) = if a <= b { (a, b) } else { (b, a) };
-    let mut h = Keccak256::new();
-    h.update(lo);
-    h.update(hi);
-    h.finalize().into()
-}
-
-fn next_level(level: &[[u8; 32]]) -> Vec<[u8; 32]> {
-    let mut next = Vec::with_capacity(level.len().div_ceil(2));
-    let mut i = 0;
-    while i < level.len() {
-        if i + 1 < level.len() {
-            next.push(hash_pair(level[i], level[i + 1]));
-            i += 2;
-        } else {
-            next.push(level[i]); // odd node promoted unchanged
-            i += 1;
-        }
-    }
-    next
-}
-
-/// Sorted-pair Merkle root over `leaves` (odd node promoted). Empty → `0x0`, which
-/// matches the contract's unset `withdrawalsRoot` (nothing is claimable).
-pub fn merkle_root(leaves: &[[u8; 32]]) -> [u8; 32] {
-    if leaves.is_empty() {
-        return [0u8; 32];
-    }
-    let mut level = leaves.to_vec();
-    while level.len() > 1 {
-        level = next_level(&level);
-    }
-    level[0]
-}
-
-/// Merkle proof (sibling path) for `leaves[index]`, verifiable by `MerkleLib.verify`.
-pub fn merkle_proof(leaves: &[[u8; 32]], index: usize) -> Vec<[u8; 32]> {
-    let mut proof = Vec::new();
-    let mut idx = index;
-    let mut level = leaves.to_vec();
-    while level.len() > 1 {
-        let sib = if idx.is_multiple_of(2) {
-            idx + 1
-        } else {
-            idx.wrapping_sub(1)
-        };
-        if sib < level.len() {
-            proof.push(level[sib]);
-        }
-        idx /= 2;
-        level = next_level(&level);
-    }
-    proof
-}
-
-/// `MerkleLib.verify`, replicated for tests and a self-check before publishing a root.
-#[allow(dead_code)]
-pub fn verify(root: [u8; 32], leaf: [u8; 32], proof: &[[u8; 32]]) -> bool {
-    let mut computed = leaf;
-    for p in proof {
-        computed = hash_pair(computed, *p);
-    }
-    computed == root
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use sha3::{Digest, Keccak256};
 
     fn h(s: &str) -> [u8; 32] {
         let h = s.strip_prefix("0x").unwrap_or(s);
@@ -149,6 +52,17 @@ mod tests {
             *slot = u8::from_str_radix(&h[i * 2..i * 2 + 2], 16).unwrap();
         }
         out
+    }
+
+    /// Test-local replica of MerkleLib's sorted-pair node (`keccak(min||max)`), kept
+    /// INDEPENDENT of perp-core so `two_leaf_round_trip` still asserts the internal
+    /// node shape from first principles rather than trusting the code under test.
+    fn hash_pair(a: [u8; 32], b: [u8; 32]) -> [u8; 32] {
+        let (lo, hi) = if a <= b { (a, b) } else { (b, a) };
+        let mut h = Keccak256::new();
+        h.update(lo);
+        h.update(hi);
+        h.finalize().into()
     }
 
     /// The leaf encoding is byte-locked to Solidity's `abi.encodePacked` — these

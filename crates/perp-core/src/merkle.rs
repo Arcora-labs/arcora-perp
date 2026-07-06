@@ -14,7 +14,8 @@
 //!
 //! This module is also the SINGLE source of truth for the withdrawals, ordered, and
 //! rejected trees: [`withdrawal_leaf`], [`inclusion_leaf`], [`rejection_leaf`],
-//! [`merkle_root`], [`ordered_root`], [`rejected_root`], [`withdrawals_root`].
+//! [`merkle_root`], [`merkle_proof`], [`verify`], [`ordered_root`], [`rejected_root`],
+//! [`withdrawals_root`].
 //! Byte-for-byte identical to the shapes the L1 contracts verify (CollateralVault /
 //! DarkPerpSettlement / MerkleLib): sorted-pair internal node (`keccak(min||max)`, no
 //! tag), 65-byte domain-tagged challenge leaves, `keccak(to||amount||nonce)`
@@ -265,6 +266,36 @@ pub fn merkle_root(leaves: &[Digest]) -> Digest {
     level[0]
 }
 
+/// Merkle proof (sibling path) for `leaves[index]`, verifiable by `MerkleLib.verify`.
+pub fn merkle_proof(leaves: &[Digest], index: usize) -> Vec<Digest> {
+    let mut proof = Vec::new();
+    let mut idx = index;
+    let mut level = leaves.to_vec();
+    while level.len() > 1 {
+        let sib = if idx.is_multiple_of(2) {
+            idx + 1
+        } else {
+            idx.wrapping_sub(1)
+        };
+        if sib < level.len() {
+            proof.push(level[sib]);
+        }
+        idx /= 2;
+        level = next_level(&level);
+    }
+    proof
+}
+
+/// `MerkleLib.verify`, replicated for tests and an off-chain self-check before
+/// publishing a root: fold the sorted-pair hash over the sibling path.
+pub fn verify(root: Digest, leaf: Digest, proof: &[Digest]) -> bool {
+    let mut computed = leaf;
+    for p in proof {
+        computed = hash_pair(computed, *p);
+    }
+    computed == root
+}
+
 /// Merkle root of a batch's ordered order-hashes (the `orderedRoot` in the commitment).
 pub fn ordered_root(batch_id: u64, ordered: &[Digest]) -> Digest {
     let leaves: Vec<Digest> = ordered
@@ -508,6 +539,25 @@ mod settlement_tests {
         let b = h("b");
         let manual = merkle_root(&[inclusion_leaf(3, &a), inclusion_leaf(3, &b)]);
         assert_eq!(ordered_root(3, &[a, b]), manual);
+    }
+
+    /// `merkle_proof`/`verify` round-trip against `merkle_root` for tree sizes that
+    /// cover odd-node promotion at multiple levels — the same MerkleLib.verify shape
+    /// the gateway's `n_leaf_proofs_all_verify` test locks via re-export.
+    #[test]
+    fn settlement_proofs_round_trip() {
+        for n in 1..=9usize {
+            let leaves: Vec<Digest> = (0..n)
+                .map(|i| withdrawal_leaf(&[i as u8; 20], (i as u128 + 1) * 1_000_000, i as u64))
+                .collect();
+            let root = merkle_root(&leaves);
+            for (i, leaf) in leaves.iter().enumerate() {
+                let proof = merkle_proof(&leaves, i);
+                assert!(verify(root, *leaf, &proof), "n={n} i={i} proof must verify");
+            }
+            // a wrong leaf must not verify against any proof
+            assert!(!verify(root, [0xEEu8; 32], &merkle_proof(&leaves, 0)));
+        }
     }
 
     #[test]
