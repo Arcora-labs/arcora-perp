@@ -38,6 +38,7 @@ extern crate alloc;
 #[cfg(feature = "std")]
 extern crate std;
 
+pub mod commitment;
 pub mod engine;
 pub mod error;
 pub mod fixed;

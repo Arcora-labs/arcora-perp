@@ -38,6 +38,11 @@ pub enum EngineError {
     /// The conservation invariant would be violated (should be impossible;
     /// surfaced defensively).
     ConservationViolated,
+    /// The batch manifest's `previous_state_root` or `batch_id` does not match the
+    /// pre-state — the manifest is not the one that produced this transition. Only
+    /// reachable via `commitment::derive_roots` (root derivation), not the hot-path
+    /// settlement ops.
+    ManifestMismatch,
 }
 
 impl From<RiskError> for EngineError {
