@@ -6,10 +6,10 @@
 //!
 //! * **confidential** — the plaintext terms are never stored; the gateway holds
 //!   only the log PUBLIC key and can never read an entry back, and
-//! * **tamper-evident** — `entry_hash = keccak256(prev_head ‖ commitment ‖
-//!   entry_ct)` with the chain starting at the zero digest, so mutating,
-//!   reordering, or dropping any entry diverges [`OrderLog::recompute_head`]
-//!   from the stored head.
+//! * **tamper-evident** — `entry_hash = keccak256(Domain::OrderLogChain ‖
+//!   prev_head ‖ commitment ‖ entry_ct)` with the chain starting at the zero
+//!   digest, so mutating, reordering, or dropping any entry diverges
+//!   [`OrderLog::recompute_head`] from the stored head.
 //!
 //! The log keypair derives from `ENCLAVE_SEED` under the dedicated
 //! `Domain::X25519LogKey` label (`sealed_box::x25519_keypair_from_ikm(seed,
@@ -32,7 +32,8 @@ pub struct LogEntry {
     /// `aad = domain_aad(Domain::LogEncryptAad, seq.to_le_bytes())` — the entry
     /// index is AAD-bound, so a ciphertext cannot be replayed at another slot.
     pub entry_ct: Vec<u8>,
-    /// `keccak256(prev_head ‖ commitment ‖ entry_ct)` — the chain link.
+    /// `keccak256(Domain::OrderLogChain ‖ prev_head ‖ commitment ‖ entry_ct)` —
+    /// the chain link.
     pub entry_hash: Digest,
 }
 
@@ -88,8 +89,8 @@ impl OrderLog {
     }
 
     /// Seal `canonical` (the accepted order's canonical terms bytes) to the log
-    /// pubkey and chain it: `entry_hash = keccak256(head ‖ commitment ‖
-    /// entry_ct)` becomes the new head, which is returned. The new entry's
+    /// pubkey and chain it: `entry_hash = keccak256(Domain::OrderLogChain ‖ head
+    /// ‖ commitment ‖ entry_ct)` becomes the new head, which is returned. The new entry's
     /// index is bound into the AEAD AAD (`Domain::LogEncryptAad ‖ seq_le`), so
     /// an entry ciphertext is only valid at the position it was minted for.
     ///
@@ -141,14 +142,19 @@ impl OrderLog {
     }
 }
 
-/// One chain link: `keccak256(prev ‖ commitment ‖ entry_ct)`. Raw keccak over
-/// the byte concatenation (the gateway's `sha3` — same primitive style as
-/// `mk_order`'s terms commitment and `epoch_signing_digest`); `prev` and
-/// `commitment` are fixed 32-byte fields, so the variable-length ciphertext
-/// tail is unambiguous.
+/// One chain link: `keccak256(Domain::OrderLogChain ‖ prev ‖ commitment ‖
+/// entry_ct)`. Raw keccak over the byte concatenation (the gateway's `sha3` —
+/// same primitive style as `mk_order`'s terms commitment and
+/// `epoch_signing_digest`) with a leading 1-byte domain tag, so a chain link
+/// lives in its own hash sub-space and can never be reinterpreted as an order
+/// hash / manifest hash / any other raw-keccak value. `prev` and `commitment`
+/// are fixed 32-byte fields, so the variable-length ciphertext tail is
+/// unambiguous. [`OrderLog::recompute_head`] folds through this same function,
+/// so append and verify can never diverge on the tag.
 fn chain(prev: &Digest, commitment: &Digest, entry_ct: &[u8]) -> Digest {
     use sha3::Digest as _;
     let mut k = sha3::Keccak256::new();
+    k.update([Domain::OrderLogChain as u8]);
     k.update(prev);
     k.update(commitment);
     k.update(entry_ct);
@@ -196,6 +202,41 @@ mod tests {
         // … and a tampered COMMITMENT is equally evident.
         log.entries[1].commitment[0] ^= 0x01;
         assert_ne!(log.recompute_head(), log.head());
+    }
+
+    /// The chain link must be `keccak256(Domain::OrderLogChain ‖ prev ‖
+    /// commitment ‖ entry_ct)` — a silent revert to the untagged pre-merge
+    /// formula would move every persisted head into the shared raw-keccak
+    /// preimage space. Pins the tag byte into the link.
+    #[test]
+    fn chain_link_is_domain_tagged() {
+        use sha3::Digest as _;
+        let (_, pk) = log_keypair(&[9u8; 32]);
+        let mut log = OrderLog::new(pk);
+        let commitment = [1u8; 32];
+        let head = log.append(&commitment, b"order-a", OsRng);
+        let ct = &log.entries[0].entry_ct;
+
+        let mut tagged = sha3::Keccak256::new();
+        tagged.update([Domain::OrderLogChain as u8]);
+        tagged.update([0u8; 32]); // zero-digest chain start
+        tagged.update(commitment);
+        tagged.update(ct);
+        assert_eq!(
+            head,
+            <[u8; 32]>::from(tagged.finalize()),
+            "chain link is the DOMAIN-TAGGED keccak"
+        );
+
+        let mut untagged = sha3::Keccak256::new();
+        untagged.update([0u8; 32]);
+        untagged.update(commitment);
+        untagged.update(ct);
+        assert_ne!(
+            head,
+            <[u8; 32]>::from(untagged.finalize()),
+            "the untagged (pre-merge) formula must no longer match"
+        );
     }
 
     #[test]

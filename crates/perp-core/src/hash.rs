@@ -144,6 +144,14 @@ pub enum Domain {
     OrderEncryptAad = 28,
     /// AEAD AAD domain tag for order-log entries.
     LogEncryptAad = 29,
+    /// Order-log hash-chain link: `keccak256(tag ‖ prev_head ‖ commitment ‖
+    /// entry_ct)` (gateway `order_log::chain`). A dedicated tag so a chain link
+    /// can never share a preimage structure with an order hash, a manifest hash,
+    /// or any other raw-keccak use. The head is persisted in the sealed snapshot,
+    /// so the tag is added BEFORE merge (retro-tagging later would be a snapshot
+    /// format migration). Not (yet) a cross-layer-committed value — manifest
+    /// anchoring of the head is deferred to the zk workstream.
+    OrderLogChain = 30,
 }
 
 /// The default Phase 0 hasher: Keccak-256 with a 1-byte domain prefix.
@@ -227,6 +235,13 @@ mod tests {
             OwnerKey,
             SnapshotSeal,
             SnapshotSealMac,
+            X25519ViewKey,
+            X25519OrderEpoch,
+            X25519LogKey,
+            NoteEncryptAad,
+            OrderEncryptAad,
+            LogEncryptAad,
+            OrderLogChain,
         ];
         let w = [word_u64(42)];
         for i in 0..all.len() {
@@ -268,5 +283,6 @@ mod tests {
     fn new_encryption_domains_are_stable() {
         assert_eq!(Domain::X25519ViewKey as u8, 24);
         assert_eq!(Domain::LogEncryptAad as u8, 29);
+        assert_eq!(Domain::OrderLogChain as u8, 30);
     }
 }
