@@ -77,10 +77,16 @@ pub enum BatchOp {
         oracle: OracleTranscript,
         now_ms: u64,
     },
-    /// Burn a note and send its value out to the L1 vault (withdrawal).
+    /// Burn a note. A REAL L1 withdrawal sets `to = Some(addr)` — the burned value is
+    /// bound to its `withdrawals_root` leaf `(addr, note.amount, nonce)` inside the
+    /// transition. An INTERNAL burn (LP debit / legacy re-fund) sets `to = None` and
+    /// emits no withdrawal (it never becomes a vault claim). `nonce` is only
+    /// meaningful when `to.is_some()`.
     Withdraw {
         note_commitment: Digest,
         spend_key: Digest,
+        to: Option<[u8; 20]>,
+        nonce: u64,
     },
     /// Forced-exit / circuit-breaker: switch the system to close-only (§6, §8).
     EnterCloseOnly,
@@ -103,12 +109,42 @@ pub struct AdlHaircut {
     pub clawed: i128,
 }
 
+/// One withdrawal this batch authorizes: value `amount` (bound to the burned note)
+/// released to L1 address `to`, unique by `nonce`. Its leaf enters the batch's
+/// `withdrawals_root`. amount is the note's value — the transition, not the prover,
+/// determines it (F2 closure).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct WithdrawalOut {
+    pub to: [u8; 20],
+    pub amount: i128,
+    pub nonce: u64,
+}
+
+/// The observable outputs of applying a batch that the proof roots are derived from.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct BatchOutputs {
+    pub withdrawals: alloc::vec::Vec<WithdrawalOut>,
+}
+
+impl From<&WithdrawalOut> for crate::merkle::WithdrawalLeaf {
+    fn from(w: &WithdrawalOut) -> Self {
+        // engine note amounts are non-negative; a withdrawal of a real settled note
+        // is always ≥ 0. Saturating cast keeps this total (a negative would be a bug
+        // upstream, not a silently-huge leaf).
+        crate::merkle::WithdrawalLeaf { to: w.to, amount: w.amount.max(0) as u128, nonce: w.nonce }
+    }
+}
+
 impl<H: Hasher> State<H> {
     /// Apply a whole batch, asserting conservation after each op. Stops at the
     /// first error (the prover reproduces the same stop point deterministically).
-    pub fn apply_batch(&mut self, ops: &[BatchOp]) -> Result<(), EngineError> {
+    pub fn apply_batch(&mut self, ops: &[BatchOp]) -> Result<BatchOutputs, EngineError> {
+        let mut outputs = BatchOutputs::default();
         for op in ops {
-            self.apply_op(op)?;
+            if let Some(w) = self.apply_op(op)? {
+                outputs.withdrawals.push(w);
+            }
             debug_assert!(
                 self.conservation_holds(),
                 "conservation invariant broken by {op:?}"
@@ -118,11 +154,26 @@ impl<H: Hasher> State<H> {
             }
         }
         self.next_batch_id += 1;
-        Ok(())
+        Ok(outputs)
     }
 
-    /// Apply a single operation.
-    pub fn apply_op(&mut self, op: &BatchOp) -> Result<(), EngineError> {
+    /// Apply a single operation. Returns the withdrawal output it produced (only a
+    /// real L1 `Withdraw` with `to = Some` does; every other op returns `None`).
+    pub fn apply_op(&mut self, op: &BatchOp) -> Result<Option<WithdrawalOut>, EngineError> {
+        match op {
+            BatchOp::Withdraw {
+                note_commitment,
+                spend_key,
+                to,
+                nonce,
+            } => self.op_withdraw(note_commitment, spend_key, to, *nonce),
+            other => self.apply_settlement_op(other).map(|()| None),
+        }
+    }
+
+    /// Apply a non-withdraw settlement op. These are value-preserving within the
+    /// shielded pool (or bring value in) and never produce an L1 withdrawal output.
+    fn apply_settlement_op(&mut self, op: &BatchOp) -> Result<(), EngineError> {
         match op {
             BatchOp::Deposit {
                 owner,
@@ -177,15 +228,14 @@ impl<H: Hasher> State<H> {
                 oracle,
                 now_ms,
             } => self.op_unbind(owner, *market_id, *amount, blinding, oracle, *now_ms),
-            BatchOp::Withdraw {
-                note_commitment,
-                spend_key,
-            } => self.op_withdraw(note_commitment, spend_key),
             BatchOp::EnterCloseOnly => {
                 self.mode = Mode::CloseOnly;
                 Ok(())
             }
             BatchOp::SeedInsurance { amount } => self.op_seed_insurance(*amount),
+            BatchOp::Withdraw { .. } => {
+                unreachable!("Withdraw is handled by apply_op, never delegated here")
+            }
         }
     }
 
@@ -676,13 +726,17 @@ impl<H: Hasher> State<H> {
         &mut self,
         note_commitment: &Digest,
         spend_key: &Digest,
-    ) -> Result<(), EngineError> {
+        to: &Option<[u8; 20]>,
+        nonce: u64,
+    ) -> Result<Option<WithdrawalOut>, EngineError> {
         let note = self.consume_note(note_commitment, spend_key, None)?;
         self.external_out = self
             .external_out
             .checked_add(note.amount)
             .ok_or(EngineError::Overflow)?;
-        Ok(())
+        // Only a real L1 withdrawal (`to = Some`) produces a withdrawals_root leaf;
+        // an internal burn (`to = None`) burns value without an L1 exit.
+        Ok(to.map(|addr| WithdrawalOut { to: addr, amount: note.amount, nonce }))
     }
 }
 
@@ -704,4 +758,43 @@ pub fn _touched_owners(ops: &[BatchOp]) -> Vec<PubKey> {
         }
     }
     v
+}
+
+#[cfg(test)]
+mod tests {
+    use super::BatchOp;
+    use crate::hash::Keccak256;
+    use crate::note::Note;
+    use crate::DefaultState;
+
+    #[test]
+    fn apply_batch_emits_only_real_l1_withdrawal_outputs() {
+        use crate::fixed::QUOTE_SCALE;
+        use crate::note::owner_from_spend_key;
+        let spend_key = [3u8; 32];
+        let owner = owner_from_spend_key::<Keccak256>(&spend_key);
+        let amount = 4_000 * QUOTE_SCALE;
+        let mut s = DefaultState::new(16);
+
+        // real L1 withdrawal → one WithdrawalOut bound to the note
+        let blind1 = [7u8; 32];
+        let cm1 = Note::new(owner, 0, amount, blind1).commitment::<Keccak256>();
+        // internal burn (to: None) → no WithdrawalOut, must not pollute the root
+        let blind2 = [8u8; 32];
+        let cm2 = Note::new(owner, 0, amount, blind2).commitment::<Keccak256>();
+
+        let to = [0xAB; 20];
+        let out = s
+            .apply_batch(&[
+                BatchOp::Deposit { owner, asset_id: 0, amount, blinding: blind1 },
+                BatchOp::Deposit { owner, asset_id: 0, amount, blinding: blind2 },
+                BatchOp::Withdraw { note_commitment: cm1, spend_key, to: Some(to), nonce: 42 },
+                BatchOp::Withdraw { note_commitment: cm2, spend_key, to: None, nonce: 0 },
+            ])
+            .unwrap();
+        assert_eq!(out.withdrawals.len(), 1, "internal burn (to:None) must not emit");
+        assert_eq!(out.withdrawals[0].amount, amount); // bound to the real burned note
+        assert_eq!(out.withdrawals[0].to, to);
+        assert_eq!(out.withdrawals[0].nonce, 42);
+    }
 }

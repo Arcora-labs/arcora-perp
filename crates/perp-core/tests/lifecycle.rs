@@ -131,6 +131,8 @@ fn full_lifecycle_conserves_throughout() {
         BatchOp::Withdraw {
             note_commitment: cm_w,
             spend_key: [1; 32],
+            to: Some([0xCC; 20]),
+            nonce: 0,
         },
     ])
     .unwrap();
