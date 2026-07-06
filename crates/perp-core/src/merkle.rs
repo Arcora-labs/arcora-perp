@@ -9,9 +9,21 @@
 //!
 //! Generic over [`Hasher`] so the same structure proves out under Keccak now and
 //! Poseidon in the circuit. Empty subtree roots are precomputed per level.
+//!
+//! # L1-settlement trees (no_std)
+//!
+//! This module is also the SINGLE source of truth for the withdrawals, ordered, and
+//! rejected trees: [`withdrawal_leaf`], [`inclusion_leaf`], [`rejection_leaf`],
+//! [`merkle_root`], [`ordered_root`], [`rejected_root`], [`withdrawals_root`].
+//! Byte-for-byte identical to the shapes the L1 contracts verify (CollateralVault /
+//! DarkPerpSettlement / MerkleLib): sorted-pair internal node (`keccak(min||max)`, no
+//! tag), 65-byte domain-tagged challenge leaves, `keccak(to||amount||nonce)`
+//! withdrawal leaves. `crates/gateway/src/withdrawals.rs` re-exports these so
+//! off-chain and in-circuit trees are provably the same code.
 
 use crate::hash::{Digest, Domain, Hasher};
 use alloc::vec::Vec;
+use tiny_keccak::{Hasher as _, Keccak};
 
 /// An append-only Merkle accumulator of fixed depth.
 #[derive(Clone, Debug)]
@@ -173,6 +185,113 @@ pub enum MerkleError {
     OutOfRange,
 }
 
+// ---------------------------------------------------------------------------
+// L1-settlement trees — no_std Merkle tree + domain-separated leaves, moved from
+// `crates/gateway/src/withdrawals.rs` so the zkVM guest and the gateway share one
+// implementation. See the module docs ("L1-settlement trees") for the byte layout.
+// ---------------------------------------------------------------------------
+
+fn keccak(parts: &[&[u8]]) -> Digest {
+    let mut k = Keccak::v256();
+    for p in parts {
+        k.update(p);
+    }
+    let mut out = [0u8; 32];
+    k.finalize(&mut out);
+    out
+}
+
+/// A withdrawal tree leaf: `keccak(to(20) || amount(uint256 BE) || nonce(uint256 BE))`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct WithdrawalLeaf {
+    pub to: [u8; 20],
+    pub amount: u128,
+    pub nonce: u64,
+}
+
+/// `keccak256(abi.encodePacked(address to, uint256 amount, uint256 nonce))`.
+pub fn withdrawal_leaf(to: &[u8; 20], amount: u128, nonce: u64) -> Digest {
+    let mut amt = [0u8; 32];
+    amt[16..].copy_from_slice(&amount.to_be_bytes()); // u128 → low 16 bytes
+    let mut non = [0u8; 32];
+    non[24..].copy_from_slice(&nonce.to_be_bytes()); // u64 → low 8 bytes
+    keccak(&[to, &amt, &non])
+}
+
+/// `keccak256(abi.encodePacked(uint8(0), uint256 batchId, bytes32 orderHash))`.
+pub fn inclusion_leaf(batch_id: u64, order_hash: &Digest) -> Digest {
+    let mut bid = [0u8; 32];
+    bid[24..].copy_from_slice(&batch_id.to_be_bytes());
+    keccak(&[&[0x00u8], &bid, order_hash])
+}
+
+/// `keccak256(abi.encodePacked(uint8(1), uint256 batchId, bytes32 orderHash))`.
+pub fn rejection_leaf(batch_id: u64, order_hash: &Digest) -> Digest {
+    let mut bid = [0u8; 32];
+    bid[24..].copy_from_slice(&batch_id.to_be_bytes());
+    keccak(&[&[0x01u8], &bid, order_hash])
+}
+
+fn hash_pair(a: Digest, b: Digest) -> Digest {
+    let (lo, hi) = if a <= b { (a, b) } else { (b, a) };
+    keccak(&[&lo, &hi])
+}
+
+fn next_level(level: &[Digest]) -> Vec<Digest> {
+    let mut next = Vec::with_capacity(level.len().div_ceil(2));
+    let mut i = 0;
+    while i < level.len() {
+        if i + 1 < level.len() {
+            next.push(hash_pair(level[i], level[i + 1]));
+            i += 2;
+        } else {
+            next.push(level[i]); // odd node promoted unchanged
+            i += 1;
+        }
+    }
+    next
+}
+
+/// Sorted-pair Merkle root (odd node promoted). Empty → `0x0`, matching the contract's
+/// unset `withdrawalsRoot` (nothing claimable).
+pub fn merkle_root(leaves: &[Digest]) -> Digest {
+    if leaves.is_empty() {
+        return [0u8; 32];
+    }
+    let mut level = leaves.to_vec();
+    while level.len() > 1 {
+        level = next_level(&level);
+    }
+    level[0]
+}
+
+/// Merkle root of a batch's ordered order-hashes (the `orderedRoot` in the commitment).
+pub fn ordered_root(batch_id: u64, ordered: &[Digest]) -> Digest {
+    let leaves: Vec<Digest> = ordered
+        .iter()
+        .map(|oh| inclusion_leaf(batch_id, oh))
+        .collect();
+    merkle_root(&leaves)
+}
+
+/// Merkle root of a batch's validly-rejected order-hashes (the `rejectedRoot`).
+pub fn rejected_root(batch_id: u64, rejected: &[Digest]) -> Digest {
+    let leaves: Vec<Digest> = rejected
+        .iter()
+        .map(|oh| rejection_leaf(batch_id, oh))
+        .collect();
+    merkle_root(&leaves)
+}
+
+/// Merkle root of this batch's withdrawal leaves (the incremental `withdrawalsRoot`).
+pub fn withdrawals_root(leaves: &[WithdrawalLeaf]) -> Digest {
+    let hashed: Vec<Digest> = leaves
+        .iter()
+        .map(|w| withdrawal_leaf(&w.to, w.amount, w.nonce))
+        .collect();
+    merkle_root(&hashed)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -278,5 +397,132 @@ mod tests {
             t.append(word_u64(i)).unwrap();
         }
         assert_eq!(t.append(word_u64(5)), Err(MerkleError::Full));
+    }
+}
+
+/// Byte-identity tests for the L1-settlement tree builders. Every pinned literal is
+/// copied VERBATIM from `crates/gateway/src/withdrawals.rs`'s tests
+/// (`leaf_matches_solidity_abi_encode_packed`, `challenge_leaves_match_solidity`),
+/// which are themselves locked to the Solidity contracts via
+/// `cast keccak $(cast abi-encode --packed ...)`.
+#[cfg(test)]
+mod settlement_tests {
+    use super::*;
+
+    fn h(s: &str) -> Digest {
+        // deterministic 32-byte fixture from an ascii label
+        let mut out = [0u8; 32];
+        let b = s.as_bytes();
+        out[..b.len().min(32)].copy_from_slice(&b[..b.len().min(32)]);
+        out
+    }
+
+    // keccak256(abi.encodePacked(address(0x..A11c), uint256(2_000_000_000), uint256(7)))
+    // = 0x23364960683ed6fd90133ecd0211d3fdf2945779e400729471f69c45cb699932
+    // (gateway test `leaf_matches_solidity_abi_encode_packed`, first vector).
+    const EXPECTED_WITHDRAWAL_LEAF: Digest = [
+        0x23, 0x36, 0x49, 0x60, 0x68, 0x3e, 0xd6, 0xfd, 0x90, 0x13, 0x3e, 0xcd, 0x02, 0x11, 0xd3,
+        0xfd, 0xf2, 0x94, 0x57, 0x79, 0xe4, 0x00, 0x72, 0x94, 0x71, 0xf6, 0x9c, 0x45, 0xcb, 0x69,
+        0x99, 0x32,
+    ];
+
+    // keccak256(abi.encodePacked(address(0), uint256(1), uint256(1)))
+    // = 0x4e641f195fa577e5e909e012d9b75354bf06ec15a5d1aa2dca05d496c62ab460
+    // (gateway test `leaf_matches_solidity_abi_encode_packed`, second vector).
+    const EXPECTED_WITHDRAWAL_LEAF_ZERO_1_1: Digest = [
+        0x4e, 0x64, 0x1f, 0x19, 0x5f, 0xa5, 0x77, 0xe5, 0xe9, 0x09, 0xe0, 0x12, 0xd9, 0xb7, 0x53,
+        0x54, 0xbf, 0x06, 0xec, 0x15, 0xa5, 0xd1, 0xaa, 0x2d, 0xca, 0x05, 0xd4, 0x96, 0xc6, 0x2a,
+        0xb4, 0x60,
+    ];
+
+    // Locked against contracts/src/CollateralVault.sol `keccak256(abi.encodePacked(
+    // address to, uint256 amount, uint256 nonce))` — the same vector the gateway's
+    // `leaf_matches_solidity_abi_encode_packed` test asserts.
+    #[test]
+    fn withdrawal_leaf_matches_solidity_vector() {
+        // to = address(0x..A11c), amount = 2_000_000_000 (2,000 USDC), nonce = 7
+        let mut to = [0u8; 20];
+        to[18] = 0xA1;
+        to[19] = 0x1c;
+        assert_eq!(
+            withdrawal_leaf(&to, 2_000_000_000, 7),
+            EXPECTED_WITHDRAWAL_LEAF
+        );
+        // address(0), amount = 1, nonce = 1
+        assert_eq!(
+            withdrawal_leaf(&[0u8; 20], 1, 1),
+            EXPECTED_WITHDRAWAL_LEAF_ZERO_1_1
+        );
+    }
+
+    /// inclusion/rejection leaves byte-locked to `DarkPerpSettlement.inclusionLeaf` /
+    /// `rejectionLeaf` — the same pinned vectors as the gateway's
+    /// `challenge_leaves_match_solidity` test.
+    #[test]
+    fn challenge_leaves_match_solidity_vectors() {
+        let oh = [0x11u8; 32];
+        // keccak256(abi.encodePacked(uint8(0), uint256(0), oh))
+        assert_eq!(
+            inclusion_leaf(0, &oh),
+            [
+                0xfb, 0x6a, 0x66, 0xd6, 0xde, 0x8c, 0xab, 0x57, 0x46, 0x09, 0xdf, 0x74, 0xaf, 0xac,
+                0x53, 0x59, 0x39, 0xf6, 0xf5, 0x7d, 0x84, 0x88, 0x97, 0xc3, 0x67, 0x47, 0xdf, 0xfe,
+                0x5a, 0xf1, 0x22, 0x86,
+            ]
+        );
+        // keccak256(abi.encodePacked(uint8(1), uint256(0), oh))
+        assert_eq!(
+            rejection_leaf(0, &oh),
+            [
+                0x88, 0x44, 0x49, 0xc1, 0xb0, 0x0c, 0xe2, 0xad, 0x1d, 0xff, 0xd3, 0x5d, 0xd2, 0x82,
+                0xd2, 0xb8, 0x9c, 0xb6, 0x90, 0x53, 0xce, 0x7d, 0xaf, 0x1a, 0xd5, 0xe3, 0x19, 0x65,
+                0x38, 0x87, 0xdf, 0xdb,
+            ]
+        );
+        // keccak256(abi.encodePacked(uint8(0), uint256(5), oh)) — batchId is bound
+        assert_eq!(
+            inclusion_leaf(5, &oh),
+            [
+                0xc1, 0xa2, 0xbf, 0x30, 0xc9, 0x9f, 0x52, 0xc7, 0x94, 0xd4, 0xaf, 0x1c, 0xcf, 0xd5,
+                0xa8, 0x58, 0xa8, 0xfd, 0x85, 0xe1, 0x0c, 0xd5, 0x9f, 0xdc, 0xd7, 0xd1, 0xcf, 0xc2,
+                0x63, 0x4f, 0xc1, 0x4b,
+            ]
+        );
+    }
+
+    #[test]
+    fn challenge_leaves_domain_separated() {
+        let oh = h("order-1");
+        assert_ne!(inclusion_leaf(0, &oh), rejection_leaf(0, &oh));
+        assert_ne!(inclusion_leaf(0, &oh), inclusion_leaf(5, &oh)); // batch-bound
+    }
+
+    #[test]
+    fn empty_merkle_root_is_zero() {
+        assert_eq!(merkle_root(&[]), [0u8; 32]);
+    }
+
+    #[test]
+    fn ordered_root_matches_manual_tree() {
+        let a = h("a");
+        let b = h("b");
+        let manual = merkle_root(&[inclusion_leaf(3, &a), inclusion_leaf(3, &b)]);
+        assert_eq!(ordered_root(3, &[a, b]), manual);
+    }
+
+    #[test]
+    fn rejected_and_withdrawals_roots_compose_their_leaves() {
+        let a = h("rejected-1");
+        // single-leaf tree: root == the (domain-tagged) leaf
+        assert_eq!(rejected_root(9, &[a]), rejection_leaf(9, &a));
+        let w = WithdrawalLeaf {
+            to: [0x22u8; 20],
+            amount: 5_000_000,
+            nonce: 42,
+        };
+        assert_eq!(
+            withdrawals_root(&[w]),
+            withdrawal_leaf(&w.to, w.amount, w.nonce)
+        );
     }
 }
