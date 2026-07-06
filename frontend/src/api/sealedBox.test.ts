@@ -47,4 +47,16 @@ describe("sealed-box cross-language parity", () => {
     zeroEpk.fill(0, 1, 33);
     expect(unseal(secret, zeroEpk, aad)).toBeNull();
   });
+
+  it("domainAad rejects a non-byte domain tag instead of truncating mod 256", () => {
+    // 284 & 0xff === 28 (OrderEncryptAad): silent truncation would collide two
+    // distinct "domains" — it must throw, matching the 1-byte wire contract.
+    expect(() => domainAad(284, new Uint8Array())).toThrow(RangeError);
+    expect(() => domainAad(-1, new Uint8Array())).toThrow(RangeError);
+    expect(() => domainAad(1.5, new Uint8Array())).toThrow(RangeError);
+    expect(() => domainAad(256, new Uint8Array())).toThrow(RangeError);
+    // the full byte range stays accepted
+    expect(domainAad(0, new Uint8Array([9]))).toEqual(new Uint8Array([0, 9]));
+    expect(domainAad(255, new Uint8Array())).toEqual(new Uint8Array([255]));
+  });
 });

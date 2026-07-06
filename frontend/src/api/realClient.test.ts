@@ -209,6 +209,26 @@ describe("enclave epoch verification (contract 1)", () => {
     expect(v.epochId).toBe(1);
     expect(warn).toHaveBeenCalled();
   });
+
+  it("rejects an EMPTY/whitespace signer pin (no silent downgrade to unpinned)", () => {
+    // present-but-empty VITE_ENCLAVE_SIGNER is a config bug, never dev mode
+    expect(() => verifyEnclaveEpoch(signedEpoch(), { expectedSigner: "" })).toThrow(/empty/i);
+    expect(() => verifyEnclaveEpoch(signedEpoch(), { expectedSigner: "   " })).toThrow(/empty/i);
+  });
+
+  it("rejects a malformed signer pin (must be a 20-byte 0x-hex address)", () => {
+    expect(() => verifyEnclaveEpoch(signedEpoch(), { expectedSigner: "0x1234" })).toThrow(/address/i);
+    expect(() =>
+      verifyEnclaveEpoch(signedEpoch(), { expectedSigner: ENCLAVE_ADDR.slice(2) }), // no 0x
+    ).toThrow(/address/i);
+  });
+
+  it("production build without a signer pin is a hard error (unpinned is dev-only)", () => {
+    expect(() => verifyEnclaveEpoch(signedEpoch(), { prod: true })).toThrow(/production|pinned/i);
+    // with the pin set, prod verifies normally
+    const v = verifyEnclaveEpoch(signedEpoch(), { prod: true, expectedSigner: ENCLAVE_ADDR });
+    expect(v.epochId).toBe(1);
+  });
 });
 
 // ── CONTRACT 2: canonical 51-byte order-terms layout ─────────────────────────

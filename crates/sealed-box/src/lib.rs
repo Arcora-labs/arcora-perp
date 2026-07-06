@@ -1,7 +1,12 @@
 #![no_std]
 extern crate alloc;
 
-/// Placeholder to prove the crate builds; replaced in Task 2.
+/// Wire-format version byte — the first byte of every serialized [`SealedBox`]
+/// (`version ‖ epk(32) ‖ nonce(24) ‖ ct‖tag`). [`SealedBox::from_bytes`] rejects
+/// any other value, so the construction (X25519 ECDH → HKDF-SHA256 with
+/// `info = "arcora/sealed-box/v1"` → XChaCha20-Poly1305) can be evolved behind a
+/// version bump without silently misparsing old wires. Mirrored byte-for-byte by
+/// the TS client (`frontend/src/api/sealedBox.ts`).
 pub const SEALED_BOX_VERSION: u8 = 0x01;
 
 use alloc::vec::Vec;
@@ -98,14 +103,14 @@ pub fn unseal(recipient_secret: &[u8; 32], sb: &SealedBox, aad: &[u8]) -> Option
 impl SealedBox {
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut v = Vec::with_capacity(1 + 32 + 24 + self.ct.len());
-        v.push(0x01);
+        v.push(SEALED_BOX_VERSION);
         v.extend_from_slice(&self.epk);
         v.extend_from_slice(&self.nonce);
         v.extend_from_slice(&self.ct);
         v
     }
     pub fn from_bytes(b: &[u8]) -> Option<SealedBox> {
-        if b.len() < 1 + 32 + 24 + 16 || b[0] != 0x01 {
+        if b.len() < 1 + 32 + 24 + 16 || b[0] != SEALED_BOX_VERSION {
             return None;
         }
         let mut epk = [0u8; 32];

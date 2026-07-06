@@ -253,10 +253,20 @@ export interface VerifiedEpoch {
 }
 
 export interface VerifyEpochOptions {
-  /** Pinned enclave signer 0x-address (VITE_ENCLAVE_SIGNER). Unset ⇒ dev mode: warn, don't gate. */
+  /**
+   * Pinned enclave signer 0x-address (VITE_ENCLAVE_SIGNER). UNSET in dev ⇒ warn,
+   * don't gate. Present-but-empty/whitespace ⇒ hard error (a broken deployment
+   * config must never silently downgrade to unpinned mode), and any set value
+   * must be a 20-byte 0x-hex address.
+   */
   expectedSigner?: string | null;
   /** Pinned attestation measurement 0x-hex (VITE_ENCLAVE_MEASUREMENT). Unset ⇒ skip. */
   expectedMeasurement?: string | null;
+  /**
+   * Production build (import.meta.env.PROD). In prod a MISSING signer pin is a
+   * hard error too — unpinned epoch verification is a dev-only posture.
+   */
+  prod?: boolean;
 }
 
 /**
@@ -294,11 +304,29 @@ export function verifyEnclaveEpoch(raw: unknown, opts: VerifyEpochOptions = {}):
   }
   const addr = "0x" + bytesToHex(keccak_256(recovered.subarray(1)).subarray(12));
 
-  const expectedSigner = opts.expectedSigner?.toLowerCase() || null;
+  // Signer pin: an EMPTY/whitespace VITE_ENCLAVE_SIGNER is a config bug, not
+  // "dev mode" — it must never silently downgrade to unpinned verification.
+  let expectedSigner: string | null = null;
+  if (typeof opts.expectedSigner === "string") {
+    const pin = opts.expectedSigner.trim().toLowerCase();
+    if (pin === "") {
+      throw new Error(
+        "enclave epoch: VITE_ENCLAVE_SIGNER is set but EMPTY — refusing the silent downgrade to unpinned mode; set the enclave signer address (or unset the var entirely in dev)",
+      );
+    }
+    if (!/^0x[0-9a-f]{40}$/.test(pin)) {
+      throw new Error("enclave epoch: VITE_ENCLAVE_SIGNER is not a 20-byte 0x-hex address");
+    }
+    expectedSigner = pin;
+  }
   if (expectedSigner) {
     if (addr !== expectedSigner) {
       throw new Error(`enclave epoch: sig recovers to ${addr}, not the pinned enclave signer ${expectedSigner}`);
     }
+  } else if (opts.prod) {
+    throw new Error(
+      "enclave epoch: production build without a pinned enclave signer (VITE_ENCLAVE_SIGNER) — refusing unpinned epoch verification",
+    );
   } else {
     console.warn(
       "[dark-perp] VITE_ENCLAVE_SIGNER not set — enclave epoch signer UNPINNED (dev mode). Recovered signer:",
@@ -339,7 +367,13 @@ export class RealDarkPerpClient implements DarkPerpClient {
   /** The self-provisioned `/v1` trading account sealed orders trade as. */
   private sealing: SealingAccount | null = null;
   private acctFetch: Promise<SealingAccount> | null = null;
-  /** Strictly-increasing per-session order nonce carried inside the sealed terms. */
+  /**
+   * Strictly-increasing order nonce carried inside the sealed terms. The gateway
+   * ENFORCES strict monotonicity per account on the decrypted terms (replay
+   * protection: a captured `{epochId, sealed}` body re-POSTed is rejected), so
+   * this must never repeat or decrease for the account — wall-clock ms (bumped
+   * on collision) keeps it increasing across page reloads too.
+   */
   private lastNonce = 0n;
 
   constructor(baseUrl: string, initial: ClientState) {
@@ -388,10 +422,11 @@ export class RealDarkPerpClient implements DarkPerpClient {
   private async fetchAndVerifyEpoch(): Promise<VerifiedEpoch> {
     const res = await fetch(this.base + "/v1/enclave/epoch");
     if (!res.ok) throw new Error(`/v1/enclave/epoch ${res.status}`);
-    const env = import.meta.env as Record<string, string | undefined>;
+    const env = import.meta.env as Record<string, string | undefined> & { PROD?: boolean };
     const ep = verifyEnclaveEpoch(await res.json(), {
       expectedSigner: env.VITE_ENCLAVE_SIGNER,
       expectedMeasurement: env.VITE_ENCLAVE_MEASUREMENT,
+      prod: env.PROD === true,
     });
     if (Date.now() >= ep.notAfterMs) {
       // notAfterMs is ADVISORY (the gateway's rotation timer isn't wired yet, so a
@@ -451,7 +486,11 @@ export class RealDarkPerpClient implements DarkPerpClient {
     }
   }
 
-  /** Strictly-increasing order nonce (wall clock, bumped on collision). */
+  /**
+   * Strictly-increasing order nonce (wall clock, bumped on collision). Gateway-
+   * enforced: a sealed order whose decrypted nonce does not strictly increase is
+   * rejected with 400 (replay protection).
+   */
   private nextNonce(): bigint {
     const now = BigInt(Date.now());
     this.lastNonce = now > this.lastNonce ? now : this.lastNonce + 1n;

@@ -3633,16 +3633,18 @@ async fn get_v1_openapi() -> impl IntoResponse {
     let order_body = serde_json::json!({
         "required": true,
         "content": { "application/json": { "schema": { "type": "object",
-            "required": ["marketId","side","size","limitPrice","tif","reduceOnly"],
+            "description": "Two ingress forms. SEALED (production; the only form prod accepts): send ONLY { epochId, sealed } — the canonical 51-byte order terms encrypted to the enclave's order-epoch X25519 key from GET /v1/enclave/epoch; the plaintext fields are ignored. PLAINTEXT (dev/demo only): send marketId/side/size/limitPrice/tif/reduceOnly.",
             "properties": {
-                "marketId": { "type": "integer" },
-                "side": { "type": "string", "enum": ["Buy","Sell"] },
-                "size": { "type": "string", "description": "size-scaled (*1e8) integer" },
-                "limitPrice": { "type": "string", "description": "price-scaled (*1e8); 0 = market" },
-                "tif": { "type": "string", "enum": ["Gtc","Ioc","Fok","PostOnly"] },
-                "reduceOnly": { "type": "boolean" },
-                "nonce": { "type": "integer", "description": "caller-signed accounts: strictly-increasing order nonce" },
-                "signature": { "type": "string", "description": "caller-signed accounts: 65-byte secp256k1 sig over the order hash" }
+                "marketId": { "type": "integer", "description": "plaintext (dev) ingress; ignored when `sealed` is present" },
+                "side": { "type": "string", "enum": ["Buy","Sell"], "description": "plaintext (dev) ingress" },
+                "size": { "type": "string", "description": "size-scaled (*1e8) integer; plaintext (dev) ingress" },
+                "limitPrice": { "type": "string", "description": "price-scaled (*1e8); 0 = market; plaintext (dev) ingress" },
+                "tif": { "type": "string", "enum": ["Gtc","Ioc","Fok","PostOnly"], "description": "plaintext (dev) ingress" },
+                "reduceOnly": { "type": "boolean", "description": "plaintext (dev) ingress" },
+                "nonce": { "type": "integer", "description": "caller-signed accounts: strictly-increasing order nonce (sealed orders carry the nonce INSIDE the sealed terms; it must strictly increase per account)" },
+                "signature": { "type": "string", "description": "caller-signed accounts: 65-byte secp256k1 sig over the order hash" },
+                "epochId": { "type": "integer", "description": "sealed ingress: the enclave order-epoch the terms were sealed to (required with `sealed`)" },
+                "sealed": { "type": "string", "description": "sealed ingress: 0x-hex sealed-box wire (0x01 ‖ epk32 ‖ nonce24 ‖ ct‖tag) over the canonical order terms, AAD = OrderEncryptAad ‖ epochId(u64 LE) ‖ owner" }
             } } } }
     });
     Json(serde_json::json!({
@@ -3680,6 +3682,7 @@ async fn get_v1_openapi() -> impl IntoResponse {
                 { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 120, "maximum": 240 } }
             ], "responses": ok("candles[] of { t, o, h, l, c } (1e8-scaled strings)") } },
             "/v1/markets/{id}/oracle": { "get": { "summary": "Oracle price", "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }], "responses": ok("oracle") } },
+            "/v1/enclave/epoch": { "get": { "summary": "Enclave order-ingress epoch key (X25519), signed by the enclave's secp256k1 identity — verify `sig` recovers to the pinned enclave signer before sealing orders to `x25519Pub`", "responses": ok("{ epochId, x25519Pub, notAfterMs, measurement, sig }") } },
             "/v1/system/status": { "get": { "summary": "System status", "responses": ok("status") } }
         }
     }))

@@ -335,6 +335,52 @@ mod tests {
         assert!(!raw.windows(8).any(|win| win == &42i128.to_le_bytes()[..8]));
     }
 
+    /// The genuinely-NEW property of the sealed-box archive vs the old XOR
+    /// keystream: the AAD binds each ciphertext to ITS archive commitment, so a
+    /// host that swaps a (perfectly valid) ciphertext under a different
+    /// commitment key produces an entry that fails the AEAD open outright —
+    /// scan never even sees a plaintext to commitment-check. (Under the XOR
+    /// scheme the swap still DECRYPTED and only the downstream recompute check
+    /// caught it; here `unseal` itself must return `None`.)
+    #[test]
+    fn swapped_commitment_ciphertext_is_rejected_by_aad_binding() {
+        let w = Wallet::from_seed(seeded(4));
+        let note = w.note(0, 1_234 * QUOTE_SCALE, [5u8; 32]);
+        let real_commitment = note.commitment::<Keccak256>();
+        let ciphertext = seal_note(&note, &w.view_x25519_public(), OsRng);
+
+        // a DIFFERENT (also plausible) commitment the host files the ct under
+        let other_commitment = w
+            .note(0, 999 * QUOTE_SCALE, [6u8; 32])
+            .commitment::<Keccak256>();
+        assert_ne!(real_commitment, other_commitment);
+
+        // Direct AEAD-level assertion: the same wire opens under its own
+        // commitment AAD and REFUSES the swapped one.
+        let sb = sealed_box::SealedBox::from_bytes(&ciphertext).expect("wire parses");
+        let own_aad = sealed_box::domain_aad(Domain::NoteEncryptAad as u8, &real_commitment);
+        assert!(sealed_box::unseal(&w.view_x25519_secret(), &sb, &own_aad).is_some());
+        let swapped_aad = sealed_box::domain_aad(Domain::NoteEncryptAad as u8, &other_commitment);
+        assert_eq!(
+            sealed_box::unseal(&w.view_x25519_secret(), &sb, &swapped_aad),
+            None,
+            "AAD binding must reject the ciphertext under a swapped commitment"
+        );
+
+        // And end-to-end: an archive carrying the swapped entry yields NOTHING
+        // on scan — the owner cannot be fooled into recovering a mis-keyed note.
+        let mut archive = NoteArchive::new();
+        archive.records.push(ArchivedNote {
+            batch_id: 0,
+            commitment: other_commitment,
+            ciphertext,
+        });
+        assert!(
+            archive.scan(&w.view_x25519_secret()).is_empty(),
+            "scan must not return a swapped-commitment entry"
+        );
+    }
+
     #[test]
     fn recover_my_notes_from_seed() {
         let alice = Wallet::from_seed(seeded(1));

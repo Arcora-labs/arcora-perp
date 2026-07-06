@@ -27,8 +27,16 @@ export function x25519KeypairFromIkm(ikm: Uint8Array, info: Uint8Array) {
   return { secret, public: pub };
 }
 
-/** AAD = one domain-tag byte followed by the caller's context bytes. */
+/**
+ * AAD = one domain-tag byte followed by the caller's context bytes.
+ * The tag must be a real single byte: Uint8Array assignment silently truncates
+ * mod 256, which would let two distinct "domains" (e.g. 28 and 284) collide —
+ * so anything outside an integer 0..=255 throws instead.
+ */
 export function domainAad(domain: number, extra: Uint8Array): Uint8Array {
+  if (!Number.isInteger(domain) || domain < 0 || domain > 255) {
+    throw new RangeError(`domainAad: domain tag must be an integer in 0..=255, got ${domain}`);
+  }
   const out = new Uint8Array(1 + extra.length);
   out[0] = domain;
   out.set(extra, 1);
