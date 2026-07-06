@@ -178,16 +178,18 @@ fn attest_from_env() -> Option<Attested> {
         else {
             continue;
         };
-        let hex = line[pos + 2..].trim();
+        // Byte-safe nibble parse (same posture as `decode_hex`): a non-ASCII byte
+        // in the PCR file yields a skipped line, not a mid-codepoint slice panic.
+        let hex = line[pos + 2..].trim().as_bytes();
         if hex.len() < 64 {
             continue;
         }
         let mut a = [0u8; 32];
         let mut ok = true;
         for (i, slot) in a.iter_mut().enumerate() {
-            match u8::from_str_radix(&hex[i * 2..i * 2 + 2], 16) {
-                Ok(b) => *slot = b,
-                Err(_) => {
+            match (hex_nibble(hex[i * 2]), hex_nibble(hex[i * 2 + 1])) {
+                (Some(hi), Some(lo)) => *slot = hi << 4 | lo,
+                _ => {
                     ok = false;
                     break;
                 }
@@ -471,8 +473,10 @@ struct OrderReq {
     tif: String,
     #[serde(rename = "reduceOnly", default)]
     reduce_only: bool,
-    /// Caller-signed accounts only: the order nonce the caller signed over (must
-    /// strictly increase). Ignored for Phase-0 server-custody accounts.
+    /// Caller-signed accounts: the order nonce the caller signed over (must
+    /// strictly increase). For server-custody accounts the plaintext field is
+    /// ignored — but a SEALED order's decrypted terms nonce IS enforced strictly
+    /// increasing per account (replay protection; see `Account::last_sealed_nonce`).
     #[serde(default)]
     nonce: Option<u64>,
     /// Caller-signed accounts only: 65-byte secp256k1 signature (r‖s‖v) over the
@@ -573,6 +577,15 @@ struct Account {
     /// Strictly-increasing nonce of the last accepted caller-signed order (replay
     /// protection): a new signed order must carry a higher nonce than this.
     last_signed_nonce: u64,
+    /// Strictly-increasing nonce of the last accepted SEALED order for a
+    /// server-custody (`signer: None`) account (replay protection): the decrypted
+    /// canonical terms carry a client-chosen `nonce`, and a new sealed order must
+    /// carry a higher one — so re-POSTing a captured `{epochId, sealed}` body is
+    /// rejected instead of duplicating the position. Rides the sealed snapshot
+    /// (`serde(default)` keeps pre-upgrade snapshots loadable; fresh genesis on
+    /// redeploy is fine).
+    #[serde(default)]
+    last_sealed_nonce: u64,
 }
 
 #[derive(Serialize, serde::Deserialize)]
@@ -1131,6 +1144,7 @@ impl Gw {
                 deposit_address: None,
                 signer,
                 last_signed_nonce: 0,
+                last_sealed_nonce: 0,
             },
         );
         (api_key, owner)
@@ -1410,6 +1424,7 @@ impl Gw {
         // different epoch or for a different account cannot be replayed here. In
         // production posture an UNSEALED order is refused outright; demo/dev keeps the
         // plaintext path for backward-compat. Exactly one `unseal` runs per order.
+        let was_sealed = req.sealed.is_some();
         let decoded;
         let req: &OrderReq = if let Some(sealed_hex) = req.sealed.as_deref() {
             let epoch_id = req.epoch_id.ok_or("sealed order requires `epochId`")?;
@@ -1537,6 +1552,22 @@ impl Gw {
                 }
                 n
             }
+            // Server-custody account, SEALED ingress: the decrypted canonical terms
+            // carry the client's nonce (the sealed branch always sets `req.nonce`).
+            // Enforce strict monotonicity per account and USE it as the order nonce,
+            // so a captured `{epochId, sealed}` body replayed verbatim decrypts to a
+            // stale nonce and is rejected — no duplicated position (pre-merge FIX 1).
+            None if was_sealed => {
+                let n = req
+                    .nonce
+                    .expect("sealed branch always sets nonce from the decrypted terms");
+                if n <= acct.last_sealed_nonce {
+                    return Err(
+                        "sealed order: nonce must strictly increase (replay protection)".into(),
+                    );
+                }
+                n
+            }
             None => acct.nonce,
         };
         // reduce_only is bound into the order hash (mk_order) so a caller signature
@@ -1570,6 +1601,13 @@ impl Gw {
                 return Err("signature does not match the account's registered signer".into());
             }
             acct.last_signed_nonce = nonce;
+        } else if was_sealed {
+            // Commit the accepted sealed nonce (the strictly-increasing check above
+            // passed) — a verbatim replay of this body is now permanently stale.
+            acct.last_sealed_nonce = nonce;
+            // Keep the auto-nonce ahead of client-chosen nonces so a later dev/demo
+            // plaintext order can't mint a duplicate `o{nonce}` order id.
+            acct.nonce = acct.nonce.max(nonce.saturating_add(1));
         } else {
             acct.nonce += 1;
         }
@@ -2967,43 +3005,47 @@ struct WithdrawReq {
     to: String,
 }
 
-/// Parse a `0x`-optional 64-hex string into a 32-byte key.
-fn parse_hex32(s: &str) -> Option<[u8; 32]> {
-    let h = s.strip_prefix("0x").unwrap_or(s);
-    if h.len() != 64 {
+/// One hex nibble, byte-safe: `None` for anything outside `[0-9a-fA-F]` —
+/// including every byte of a multi-byte UTF-8 codepoint (all >= 0x80).
+pub(crate) fn hex_nibble(b: u8) -> Option<u8> {
+    match b {
+        b'0'..=b'9' => Some(b - b'0'),
+        b'a'..=b'f' => Some(b - b'a' + 10),
+        b'A'..=b'F' => Some(b - b'A' + 10),
+        _ => None,
+    }
+}
+
+/// Byte-safe fixed-length hex parse: `0x`-optional, exactly `N` bytes. Operates on
+/// BYTES (same posture as `decode_hex`): these strings arrive in attacker-controlled
+/// request JSON (api keys, deposit txHash/address, order signatures), so a
+/// non-ASCII codepoint must yield a clean `None` — never the mid-codepoint `&str`
+/// slice panic the old `&h[i*2..i*2+2]` loops had.
+fn parse_hex_exact<const N: usize>(s: &str) -> Option<[u8; N]> {
+    let h = s.strip_prefix("0x").unwrap_or(s).as_bytes();
+    if h.len() != N * 2 {
         return None;
     }
-    let mut k = [0u8; 32];
-    for (i, slot) in k.iter_mut().enumerate() {
-        *slot = u8::from_str_radix(&h[i * 2..i * 2 + 2], 16).ok()?;
+    let mut out = [0u8; N];
+    for (i, slot) in out.iter_mut().enumerate() {
+        *slot = hex_nibble(h[i * 2])? << 4 | hex_nibble(h[i * 2 + 1])?;
     }
-    Some(k)
+    Some(out)
+}
+
+/// Parse a `0x`-optional 64-hex string into a 32-byte key.
+fn parse_hex32(s: &str) -> Option<[u8; 32]> {
+    parse_hex_exact::<32>(s)
 }
 
 /// Parse a `0x`-optional 40-hex string into a 20-byte Ethereum address.
 fn parse_addr20_hex(s: &str) -> Option<[u8; 20]> {
-    let h = s.strip_prefix("0x").unwrap_or(s);
-    if h.len() != 40 {
-        return None;
-    }
-    let mut a = [0u8; 20];
-    for (i, slot) in a.iter_mut().enumerate() {
-        *slot = u8::from_str_radix(&h[i * 2..i * 2 + 2], 16).ok()?;
-    }
-    Some(a)
+    parse_hex_exact::<20>(s)
 }
 
 /// Parse a `0x`-optional 130-hex string into a 65-byte secp256k1 signature (r‖s‖v).
 fn parse_hex65(s: &str) -> Option<[u8; 65]> {
-    let h = s.strip_prefix("0x").unwrap_or(s);
-    if h.len() != 130 {
-        return None;
-    }
-    let mut sig = [0u8; 65];
-    for (i, slot) in sig.iter_mut().enumerate() {
-        *slot = u8::from_str_radix(&h[i * 2..i * 2 + 2], 16).ok()?;
-    }
-    Some(sig)
+    parse_hex_exact::<65>(s)
 }
 
 /// Recover the 20-byte Ethereum address that signed `prehash` with `sig` (r‖s‖v),
@@ -5874,6 +5916,30 @@ mod tests {
         assert_eq!(decode_hex(""), Some(vec![]));
     }
 
+    /// The fixed-length hex parsers share `decode_hex`'s byte-safety obligation:
+    /// they parse attacker-controlled request JSON (api keys, deposit
+    /// txHash/address, order signatures). A 2-byte UTF-8 char straddling an odd
+    /// byte offset makes the BYTE length pass the length gate while the old
+    /// `&h[i*2..i*2+2]` `&str` slice landed mid-codepoint and PANICKED; all must
+    /// now return a clean `None`.
+    #[test]
+    fn fixed_len_hex_parsers_reject_non_ascii_without_panic() {
+        // "aé…" puts é (2 bytes) at bytes 1..3, so the first nibble-pair slice
+        // [0..2) would have split the codepoint in the old parsers.
+        let bad64 = format!("aé{}", "a".repeat(61)); // 64 bytes
+        assert_eq!(parse_hex32(&bad64), None);
+        let bad40 = format!("aé{}", "a".repeat(37)); // 40 bytes
+        assert_eq!(parse_addr20_hex(&bad40), None);
+        let bad130 = format!("aé{}", "a".repeat(127)); // 130 bytes
+        assert_eq!(parse_hex65(&bad130), None);
+        // valid inputs still parse, with and without the 0x prefix.
+        assert_eq!(parse_hex32(&format!("0x{}", "ab".repeat(32))), Some([0xab; 32]));
+        assert_eq!(parse_addr20_hex(&"cd".repeat(20)), Some([0xcd; 20]));
+        assert_eq!(parse_hex65(&format!("0x{}", "0F".repeat(65))), Some([0x0f; 65]));
+        // wrong length still rejected.
+        assert_eq!(parse_hex32("ab"), None);
+    }
+
     /// End-to-end: a non-ASCII `sealed` field on the order-ingress path is a clean
     /// `Err` (bad 0x-hex wire) with NO position opened and NO panic.
     #[test]
@@ -5894,6 +5960,69 @@ mod tests {
         );
         let opened = gw.seq.state.position(&owner, 0).map_or(0, |p| p.size);
         assert_eq!(opened, 0, "a rejected non-ASCII sealed order must open nothing");
+    }
+
+    /// Pre-merge FIX 1 (sealed-order replay): a captured `{epochId, sealed}` body
+    /// re-POSTed VERBATIM must be rejected. The decrypted canonical terms carry the
+    /// client's nonce; for a server-custody account the gateway now enforces it
+    /// strictly increasing (`Account::last_sealed_nonce`) and uses it as the order
+    /// nonce — so the replay decrypts to a stale nonce and never duplicates the
+    /// position, even within one (currently unrotated) epoch.
+    #[test]
+    fn sealed_order_replay_of_same_body_is_rejected() {
+        let mut gw = Gw::boot();
+        let (key, owner) = gw.register_account(None);
+        gw.account_deposit(&key, 0, 20_000 * QUOTE_SCALE).expect("deposit");
+        let epoch_id = gw.epochs.current().epoch_id;
+        let epoch_pub = gw.epochs.current().public;
+        let terms = |nonce: u64| OrderTerms {
+            market_id: 0,
+            side: Side::Buy,
+            size: SIZE_SCALE / 10,
+            limit_price: 0,
+            tif: TimeInForce::Ioc,
+            reduce_only: false,
+            nonce,
+        };
+        let req = |wire: String| OrderReq {
+            epoch_id: Some(epoch_id),
+            sealed: Some(wire),
+            ..Default::default()
+        };
+
+        let wire7 = seal_order_wire(&epoch_pub, epoch_id, &owner, &terms(7));
+        gw.account_place_order(&key, &req(wire7.clone()))
+            .expect("first sealed order accepted");
+        assert_eq!(gw.accounts.get(&key).unwrap().orders.len(), 1);
+        assert_eq!(gw.accounts.get(&key).unwrap().last_sealed_nonce, 7);
+
+        // the SAME sealed body replayed → decrypts to nonce 7 again → stale → 400.
+        let err = match gw.account_place_order(&key, &req(wire7)) {
+            Ok(_) => panic!("a verbatim replay must be rejected"),
+            Err(e) => e,
+        };
+        assert!(
+            err.contains("strictly increase"),
+            "replay must fail the nonce monotonicity check, got: {err}",
+        );
+        assert_eq!(
+            gw.accounts.get(&key).unwrap().orders.len(),
+            1,
+            "the replay must not record a second order",
+        );
+
+        // a LOWER fresh nonce is equally stale …
+        let wire3 = seal_order_wire(&epoch_pub, epoch_id, &owner, &terms(3));
+        assert!(
+            gw.account_place_order(&key, &req(wire3)).is_err(),
+            "a stale (lower) sealed nonce must be rejected",
+        );
+        // … while a HIGHER nonce is a legitimately new order and is accepted.
+        let wire8 = seal_order_wire(&epoch_pub, epoch_id, &owner, &terms(8));
+        gw.account_place_order(&key, &req(wire8))
+            .expect("a strictly higher sealed nonce is accepted");
+        assert_eq!(gw.accounts.get(&key).unwrap().orders.len(), 2);
+        assert_eq!(gw.accounts.get(&key).unwrap().last_sealed_nonce, 8);
     }
 
     /// Production posture refuses an UNSEALED (plaintext) order — sealed ingress is
