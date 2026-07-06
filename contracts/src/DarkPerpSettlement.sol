@@ -199,13 +199,13 @@ contract DarkPerpSettlement {
 
     /// @notice The public-input commitment the proof must satisfy. Mirrors
     /// `crates/prover::PublicInputs::commitment`. `orderedRoot`, `withdrawalsRoot`, and
-    /// `rejectedRoot` are bound here (audit F2, DP-004) so that — once a real soundness
-    /// circuit re-derives them — the sequencer cannot supply an arbitrary withdrawals root
-    /// and drain the vault, nor fabricate which orders were rejected to dodge a slash.
-    /// PHASE 0 caveat: under the stand-in verifier (MockZkVerifier / CommitmentProver) these
-    /// root VALUES are NOT re-derived from the computation; the binding only makes them
-    /// non-malleable against a fixed proof, so they remain trusted-sequencer inputs, NOT
-    /// "outputs of the proven computation," until a validity circuit constrains them.
+    /// `rejectedRoot` are DERIVED by the guest circuit (P1: `perp_core::commitment::
+    /// derive_roots`) — `withdrawalsRoot` from the batch's burned notes (audit F2),
+    /// `orderedRoot`/`rejectedRoot` by merklizing the manifest's committed order-hash
+    /// lists. CAVEAT (Proof-v2): the ordered-vs-rejected SPLIT is not itself proven —
+    /// a dishonest matcher's split is constrained by receipts + inclusion slashing
+    /// until Proof-v2. Enforcement of the derived values requires the real verifier
+    /// (P2); under MockZkVerifier the check is a stand-in.
     function publicCommitment(
         bytes32 prevRoot,
         bytes32 manifestHash,
@@ -381,14 +381,13 @@ contract DarkPerpSettlement {
     /// so `answerChallenge` cannot answer it (audit DP-004). Slashing now requires that the
     /// sequencer can prove NEITHER inclusion NOR valid rejection.
     ///
-    /// SOUNDNESS (Phase 0): `rejectedRoot` is bound into `publicCommitment`, but — exactly
-    /// like `orderedRoot` and `withdrawalsRoot` — that binding is only as strong as the
-    /// proof. Under the Phase-0 stand-in verifier (MockZkVerifier / CommitmentProver) the
-    /// rejected set is a TRUSTED-SEQUENCER value the circuit does not re-derive, so a
-    /// dishonest sequencer could still fabricate a rejection to dodge a legitimate slash.
-    /// This path removes the WRONGFUL slash of an HONEST sequencer; constraining a
-    /// DISHONEST one requires a real circuit that derives the rejected set from the
-    /// book / margin / order-type at seal (the same future work `orderedRoot` needs).
+    /// SOUNDNESS (P1): `rejectedRoot` is DERIVED by the guest circuit
+    /// (`perp_core::commitment::derive_roots`, by merklizing the manifest's committed
+    /// rejected order-hash list), so this path removes the WRONGFUL slash of an HONEST
+    /// sequencer. CAVEAT (Proof-v2): the ordered-vs-rejected SPLIT is not itself proven —
+    /// a dishonest matcher's split is constrained by receipts + inclusion slashing until
+    /// Proof-v2. Enforcement of the derived value requires the real verifier (P2); under
+    /// MockZkVerifier the check is a stand-in.
     function answerByRejection(bytes32 orderHash, uint256 batchId, bytes32[] calldata proof) external onlySequencer {
         Challenge memory c = challenges[orderHash];
         if (!c.open) revert NoSuchChallenge();
