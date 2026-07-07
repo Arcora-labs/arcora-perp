@@ -180,6 +180,9 @@ pub struct AdlReceipt {
 pub struct MaintenanceOutcome {
     pub liquidated: Vec<(PubKey, MarketId)>,
     pub adl: Vec<(PubKey, MarketId, i128)>,
+    /// The AccrueFunding + Liquidate ops applied this pass, in application order —
+    /// the maintenance half of the batch's replayable op-log (Slice 3a).
+    pub ops: Vec<BatchOp>,
 }
 
 /// The per-account SECRET liquidation-tag key, derived from the account's spend
@@ -492,6 +495,12 @@ impl Sequencer {
         self.matcher.reap_expired(now_ms);
         let mut liquidated = Vec::new();
         let mut adl: Vec<(PubKey, MarketId, i128)> = Vec::new();
+        // The replayable op-log for this maintenance pass: every AccrueFunding/Liquidate
+        // we actually apply is recorded here, in application order, so the proof can
+        // reproduce the maintenance transition (Slice 3a). An op is pushed ONLY when its
+        // application succeeded — a skipped/failed op must not enter the log or replay
+        // would diverge.
+        let mut ops: Vec<BatchOp> = Vec::new();
         let market_ids: Vec<MarketId> = self.state.markets.keys().copied().collect();
         for mid in market_ids {
             let Some(oracle) = self.oracles.get(&mid).copied() else {
@@ -499,12 +508,15 @@ impl Sequencer {
             };
             // funding accrual (best-effort; skip if oracle is out of bounds)
             let mark = self.mark_price(mid).unwrap_or(oracle.price);
-            let _ = self.state.apply_op(&BatchOp::AccrueFunding {
+            let funding_op = BatchOp::AccrueFunding {
                 market_id: mid,
                 mark,
                 oracle,
                 now_ms,
-            });
+            };
+            if self.state.apply_op(&funding_op).is_ok() {
+                ops.push(funding_op);
+            }
             // liquidation pass at the oracle price
             let Some(market) = self.state.markets.get(&mid).copied() else {
                 continue;
@@ -530,6 +542,16 @@ impl Sequencer {
             for owner in candidates {
                 if let Ok(haircuts) = self.state.liquidate(&owner, mid, &oracle, now_ms) {
                     liquidated.push((owner, mid));
+                    // `state.liquidate` is the SAME transition as `BatchOp::Liquidate`
+                    // (both dispatch to `op_liquidate`, incl. the ADL cascade), so record
+                    // the op right where it was applied — after this market's funding op
+                    // and in owner order — to keep the log's order == application order.
+                    ops.push(BatchOp::Liquidate {
+                        owner,
+                        market_id: mid,
+                        oracle,
+                        now_ms,
+                    });
                     // Carry each auto-deleverage haircut up with its market so the
                     // seal can publish an attributable receipt for it (audit Q2).
                     for h in haircuts {
@@ -538,7 +560,11 @@ impl Sequencer {
                 }
             }
         }
-        MaintenanceOutcome { liquidated, adl }
+        MaintenanceOutcome {
+            liquidated,
+            adl,
+            ops,
+        }
     }
 
     /// Run one batch: match `orders`, issue receipts, settle fills, run the
@@ -669,6 +695,7 @@ impl Sequencer {
         let MaintenanceOutcome {
             liquidated: liquidations,
             adl: adl_haircuts,
+            ops: _,
         } = self.run_maintenance(now_ms);
         for (owner, _market) in &liquidations {
             self.matcher.cancel_owner_orders(owner);

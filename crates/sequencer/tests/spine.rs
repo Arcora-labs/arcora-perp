@@ -784,6 +784,75 @@ fn reduce_only_behind_an_earlier_same_batch_order_is_rejected() {
     );
 }
 
+/// Slice 3a: `run_maintenance` must emit the exact `AccrueFunding`/`Liquidate` ops it
+/// applies, in application order — the maintenance half of the batch's replayable
+/// op-log. Replaying those ops onto the pre-maintenance state must reproduce the
+/// maintenance state transition (funding accrual + liquidation + ADL cascade).
+#[test]
+fn run_maintenance_ops_replay_reproduces_state() {
+    // ---- setup (adapted from `maintenance_liquidates_underwater_position`): a
+    // sequencer whose state holds an OPEN long that is underwater at the current
+    // oracle. A (owner 1) short 1 BTC, B (owner 2) long 1 BTC at $100k, each funded
+    // $20k. A crash to $84k puts B (long) below maintenance margin.
+    let mut seq = setup();
+    seq.seal_batch(
+        &[
+            order(1, Side::Sell, SIZE_SCALE, 100_000 * PRICE_SCALE, 1),
+            order(2, Side::Buy, SIZE_SCALE, 100_000 * PRICE_SCALE, 2),
+        ],
+        1_000,
+    );
+    assert_eq!(seq.state.position(&owner_id(2), 0).unwrap().size, SIZE_SCALE);
+
+    let now_ms = 5_000;
+    seq.set_oracle(0, oracle(84_000, now_ms));
+
+    // snapshot the pre-maintenance state so we can replay the emitted ops onto it
+    let pre = seq.state.clone();
+
+    // ---- act
+    let outcome = seq.run_maintenance(now_ms);
+
+    // ---- the ops must cover funding AND liquidation (else the gate proves nothing)
+    assert!(
+        outcome
+            .ops
+            .iter()
+            .any(|o| matches!(o, BatchOp::AccrueFunding { .. })),
+        "maintenance must emit AccrueFunding"
+    );
+    assert!(
+        outcome
+            .ops
+            .iter()
+            .any(|o| matches!(o, BatchOp::Liquidate { .. })),
+        "the scenario must actually liquidate a position"
+    );
+
+    // ---- faithfulness: replaying the emitted ops onto the pre-state reproduces
+    // exactly what run_maintenance did to the live state.
+    let mut replay = pre;
+    replay.apply_batch(&outcome.ops).expect("replay applies");
+    // `apply_batch` is the guest's whole-batch primitive: it advances the per-batch
+    // counter exactly once. `run_maintenance` is a SUB-step of a batch (its ops are the
+    // tail of the full batch op-log the guest replays), so it legitimately leaves the
+    // counter untouched. That counter is batch bookkeeping, not part of the maintenance
+    // transition — assert the one expected delta, then align it so the state_root
+    // comparison isolates the transition the ops actually encode (positions, funding,
+    // insurance/vault balances, ...).
+    assert_eq!(
+        replay.next_batch_id,
+        seq.state.next_batch_id + 1,
+        "apply_batch advances the per-batch counter exactly once"
+    );
+    replay.next_batch_id = seq.state.next_batch_id;
+    assert_eq!(
+        replay.state_root(),
+        seq.state.state_root(),
+        "emitted maintenance ops must reproduce the maintenance state transition"
+    );
+}
+
 /// AUDIT (Tier-3): the manifest reject reason must be honest. An order on an unknown
 /// market is not a reduce-only violation — it must be tagged InvalidOrder.
 #[test]
