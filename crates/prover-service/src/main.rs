@@ -97,10 +97,10 @@ async fn measurement_ep(State(app): State<Arc<App>>) -> Json<serde_json::Value> 
 async fn main() {
     let m = measurement();
     let backend = Sp1GnarkProver::new(m).await;
-    let vkey = backend.vkey();
+    let program_vkey = backend.vkey();
     let app = Arc::new(App {
         prover: AttestedProver::new(backend, SoftwareSealProvider::new(seal_root(), m)),
-        vkey,
+        vkey: program_vkey,
         measurement: m,
     });
     let router = Router::new()
