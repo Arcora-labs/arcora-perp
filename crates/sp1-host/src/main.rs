@@ -12,9 +12,9 @@
 //! F2). The batch includes a real `Withdraw { to: Some(..) }` so the derived
 //! `withdrawals_root` is exercised end-to-end.
 //!
-//! Build the guest first, then run:
-//!   cd ../sp1-guest && cargo prove build
-//!   cd ../sp1-host  && cargo run --release
+//! The host's `build.rs` auto-builds the guest via `sp1-build`, so
+//! `cargo run --release` here builds and runs it in one step. (A standalone
+//! `cd ../sp1-guest && cargo prove build` is optional — verification only.)
 
 use perp_core::commitment::derive_roots;
 use perp_core::engine::BatchOp;
