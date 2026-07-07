@@ -784,6 +784,167 @@ fn reduce_only_behind_an_earlier_same_batch_order_is_rejected() {
     );
 }
 
+/// Slice 3a: `run_maintenance` must emit the exact `AccrueFunding`/`Liquidate` ops it
+/// applies, in application order — the maintenance half of the batch's replayable
+/// op-log. Replaying those ops onto the pre-maintenance state must reproduce the
+/// maintenance state transition (funding accrual + liquidation + ADL cascade).
+#[test]
+fn run_maintenance_ops_replay_reproduces_state() {
+    // ---- setup (adapted from `maintenance_liquidates_underwater_position`): a
+    // sequencer whose state holds an OPEN long that is underwater at the current
+    // oracle. A (owner 1) short 1 BTC, B (owner 2) long 1 BTC at $100k, each funded
+    // $20k. A crash to $84k puts B (long) below maintenance margin.
+    let mut seq = setup();
+    seq.seal_batch(
+        &[
+            order(1, Side::Sell, SIZE_SCALE, 100_000 * PRICE_SCALE, 1),
+            order(2, Side::Buy, SIZE_SCALE, 100_000 * PRICE_SCALE, 2),
+        ],
+        1_000,
+    );
+    assert_eq!(seq.state.position(&owner_id(2), 0).unwrap().size, SIZE_SCALE);
+
+    let now_ms = 5_000;
+    seq.set_oracle(0, oracle(84_000, now_ms));
+
+    // snapshot the pre-maintenance state so we can replay the emitted ops onto it
+    let pre = seq.state.clone();
+
+    // ---- act
+    let outcome = seq.run_maintenance(now_ms);
+
+    // ---- the ops must cover funding AND liquidation (else the gate proves nothing)
+    assert!(
+        outcome
+            .ops
+            .iter()
+            .any(|o| matches!(o, BatchOp::AccrueFunding { .. })),
+        "maintenance must emit AccrueFunding"
+    );
+    assert!(
+        outcome
+            .ops
+            .iter()
+            .any(|o| matches!(o, BatchOp::Liquidate { .. })),
+        "the scenario must actually liquidate a position"
+    );
+
+    // ---- faithfulness: replaying the emitted ops onto the pre-state reproduces
+    // exactly what run_maintenance did to the live state.
+    let mut replay = pre;
+    replay.apply_batch(&outcome.ops).expect("replay applies");
+    // `apply_batch` is the guest's whole-batch primitive: it advances the per-batch
+    // counter exactly once. `run_maintenance` is a SUB-step of a batch (its ops are the
+    // tail of the full batch op-log the guest replays), so it legitimately leaves the
+    // counter untouched. That counter is batch bookkeeping, not part of the maintenance
+    // transition — assert the one expected delta, then align it so the state_root
+    // comparison isolates the transition the ops actually encode (positions, funding,
+    // insurance/vault balances, ...).
+    assert_eq!(
+        replay.next_batch_id,
+        seq.state.next_batch_id + 1,
+        "apply_batch advances the per-batch counter exactly once"
+    );
+    replay.next_batch_id = seq.state.next_batch_id;
+    assert_eq!(
+        replay.state_root(),
+        seq.state.state_root(),
+        "emitted maintenance ops must reproduce the maintenance state transition"
+    );
+}
+
+/// Slice 3a MERGE GATE: a single sealed batch that carries a FILL, a FUNDING accrual
+/// AND a LIQUIDATION retains a `(pre_state, ops, manifest)` witness that replays,
+/// through `derive_roots` (the exact primitive the zkVM guest runs), to *exactly* the
+/// sealed `new_state_root` and `manifest_hash`. This is the whole point of the slice:
+/// the live sealer and the prover agree bit-for-bit. Because this is batch 1 (not 0),
+/// it also exercises the per-batch `state.next_batch_id` bump — without it,
+/// `derive_roots` would reject the witness (`manifest.batch_id != next_batch_id`).
+#[test]
+fn batch_witness_replays_to_sealed_roots_with_fill_funding_liquidation() {
+    // ---- setup: traders 1 (short) & 2 (long) open 1 BTC at $100k in batch 0; traders
+    // 3 & 4 are funded so their fresh orders settle a FILL in the liquidation batch.
+    let mut seq = setup();
+    fund(&mut seq, 3, 20_000, 0x33);
+    fund(&mut seq, 4, 20_000, 0x44);
+    seq.seal_batch(
+        &[
+            order(1, Side::Sell, SIZE_SCALE, 100_000 * PRICE_SCALE, 1),
+            order(2, Side::Buy, SIZE_SCALE, 100_000 * PRICE_SCALE, 2),
+        ],
+        1_000,
+    );
+    assert_eq!(seq.state.position(&owner_id(2), 0).unwrap().size, SIZE_SCALE);
+
+    // price crashes to $84k → B (long, owner 2) is underwater and is liquidated this
+    // batch, while 3 & 4 trade a fresh 0.1 BTC fill at the new mark.
+    let now_ms = 5_000;
+    seq.set_oracle(0, oracle(84_000, now_ms));
+    let orders = [
+        order(4, Side::Sell, SIZE_SCALE / 10, 84_000 * PRICE_SCALE, 3),
+        order(3, Side::Buy, SIZE_SCALE / 10, 84_000 * PRICE_SCALE, 4),
+    ];
+
+    // ---- act
+    let sealed = seq.seal_batch(&orders, now_ms);
+
+    // ---- the retained witness
+    let (pre_state, ops, manifest) = seq
+        .batch_witness(sealed.batch_id)
+        .expect("witness retained for a pending batch");
+
+    // the op-log must cover all three op kinds (else the gate is hollow)
+    assert!(
+        ops.iter().any(|o| matches!(o, BatchOp::Fill { .. })),
+        "batch had a fill"
+    );
+    assert!(
+        ops.iter().any(|o| matches!(o, BatchOp::AccrueFunding { .. })),
+        "funding accrued"
+    );
+    assert!(
+        ops.iter().any(|o| matches!(o, BatchOp::Liquidate { .. })),
+        "a position liquidated"
+    );
+
+    // ---- faithfulness: derive_roots over (pre_state, ops, manifest) reproduces
+    // exactly what the sealer computed.
+    let derived = perp_core::commitment::derive_roots(&mut pre_state.clone(), &ops, &manifest)
+        .expect("derive_roots accepts the retained witness");
+    assert_eq!(
+        derived.new_state_root, sealed.new_state_root,
+        "op-log must reproduce new_state_root"
+    );
+    assert_eq!(
+        derived.manifest_hash, sealed.manifest_hash,
+        "manifest hash must match"
+    );
+    assert_eq!(
+        derived.prev_state_root, sealed.prev_state_root,
+        "pre_state is the batch's prev_state"
+    );
+}
+
+/// A batch with matching orders but NO maintenance liquidation still round-trips: the
+/// fills-only op-log replays through `derive_roots` to the sealed `new_state_root`.
+#[test]
+fn batch_witness_round_trips_fills_only() {
+    let mut seq = setup();
+    let orders = [
+        order(1, Side::Sell, SIZE_SCALE, 100_000 * PRICE_SCALE, 1),
+        order(2, Side::Buy, SIZE_SCALE, 100_000 * PRICE_SCALE, 2),
+    ];
+    let sealed = seq.seal_batch(&orders, 1_000);
+    let (pre_state, ops, manifest) = seq.batch_witness(sealed.batch_id).unwrap();
+    assert!(
+        ops.iter().any(|o| matches!(o, BatchOp::Fill { .. })),
+        "batch had a fill"
+    );
+    let derived =
+        perp_core::commitment::derive_roots(&mut pre_state.clone(), &ops, &manifest).unwrap();
+    assert_eq!(derived.new_state_root, sealed.new_state_root);
+}
+
 /// AUDIT (Tier-3): the manifest reject reason must be honest. An order on an unknown
 /// market is not a reduce-only violation — it must be tagged InvalidOrder.
 #[test]

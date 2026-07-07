@@ -163,6 +163,11 @@ pub struct SealedBatch {
     /// surface — a socialized loss is recorded and self-detectable, not silent —
     /// while staying unlinkable to an observer who knows only the public owner id.
     pub adl_receipts: Vec<AdlReceipt>,
+    /// The batch's replayable op-log: `[applied fills] ++ [maintenance AccrueFunding/
+    /// Liquidate]`, in application order. Replaying it against the batch's pre-state
+    /// (the retained snapshot) via `apply_batch` reproduces `new_state_root` — the
+    /// witness a real ZK proof attests (Slice 3a).
+    pub ops: Vec<BatchOp>,
 }
 
 /// A published auto-deleverage haircut: the affected account recognizes `tag` by
@@ -180,6 +185,9 @@ pub struct AdlReceipt {
 pub struct MaintenanceOutcome {
     pub liquidated: Vec<(PubKey, MarketId)>,
     pub adl: Vec<(PubKey, MarketId, i128)>,
+    /// The AccrueFunding + Liquidate ops applied this pass, in application order —
+    /// the maintenance half of the batch's replayable op-log (Slice 3a).
+    pub ops: Vec<BatchOp>,
 }
 
 /// The per-account SECRET liquidation-tag key, derived from the account's spend
@@ -267,6 +275,11 @@ pub struct Sequencer {
     /// failure matrix). Pruned as batches settle. Keeping a snapshot only per
     /// *pending* batch bounds the memory.
     snapshots: BTreeMap<u64, (DefaultState, MatchingEngine<Keccak256>)>,
+    /// Per-pending-batch (ops, manifest), retained alongside `snapshots[batch_id].0`
+    /// (the pre-state) so `batch_witness` can hand out the replayable
+    /// `(pre_state, ops, manifest)` triple. Pruned in lock-step with `snapshots`.
+    #[serde(default)]
+    batch_ops: BTreeMap<u64, (Vec<BatchOp>, BatchManifest)>,
     /// Per-account secret liquidation-tag keys, derived from the spend key the
     /// account presents when funding a position and captured inside the enclave.
     /// Used to publish liquidation tags that only the account (which knows its own
@@ -291,6 +304,7 @@ impl Sequencer {
             finality: BTreeMap::new(),
             batch_orders: BTreeMap::new(),
             snapshots: BTreeMap::new(),
+            batch_ops: BTreeMap::new(),
             liq_tag_keys: BTreeMap::new(),
             adl_tag_keys: BTreeMap::new(),
         }
@@ -345,6 +359,18 @@ impl Sequencer {
 
     pub fn current_batch_id(&self) -> u64 {
         self.next_batch_id
+    }
+
+    /// The replayable witness for a still-pending batch: `(pre_state, ops, manifest)`
+    /// where `derive_roots(pre_state, ops, manifest).new_state_root` == the sealed
+    /// `new_state_root`. `None` once the batch is settled/failed (pruned) or unknown.
+    pub fn batch_witness(
+        &self,
+        batch_id: u64,
+    ) -> Option<(DefaultState, Vec<BatchOp>, BatchManifest)> {
+        let (state, _matcher) = self.snapshots.get(&batch_id)?;
+        let (ops, manifest) = self.batch_ops.get(&batch_id)?;
+        Some((state.clone(), ops.clone(), manifest.clone()))
     }
 
     /// Read access to a market's order book (inspection / tests).
@@ -492,6 +518,12 @@ impl Sequencer {
         self.matcher.reap_expired(now_ms);
         let mut liquidated = Vec::new();
         let mut adl: Vec<(PubKey, MarketId, i128)> = Vec::new();
+        // The replayable op-log for this maintenance pass: every AccrueFunding/Liquidate
+        // we actually apply is recorded here, in application order, so the proof can
+        // reproduce the maintenance transition (Slice 3a). An op is pushed ONLY when its
+        // application succeeded — a skipped/failed op must not enter the log or replay
+        // would diverge.
+        let mut ops: Vec<BatchOp> = Vec::new();
         let market_ids: Vec<MarketId> = self.state.markets.keys().copied().collect();
         for mid in market_ids {
             let Some(oracle) = self.oracles.get(&mid).copied() else {
@@ -499,12 +531,15 @@ impl Sequencer {
             };
             // funding accrual (best-effort; skip if oracle is out of bounds)
             let mark = self.mark_price(mid).unwrap_or(oracle.price);
-            let _ = self.state.apply_op(&BatchOp::AccrueFunding {
+            let funding_op = BatchOp::AccrueFunding {
                 market_id: mid,
                 mark,
                 oracle,
                 now_ms,
-            });
+            };
+            if self.state.apply_op(&funding_op).is_ok() {
+                ops.push(funding_op);
+            }
             // liquidation pass at the oracle price
             let Some(market) = self.state.markets.get(&mid).copied() else {
                 continue;
@@ -530,6 +565,16 @@ impl Sequencer {
             for owner in candidates {
                 if let Ok(haircuts) = self.state.liquidate(&owner, mid, &oracle, now_ms) {
                     liquidated.push((owner, mid));
+                    // `state.liquidate` is the SAME transition as `BatchOp::Liquidate`
+                    // (both dispatch to `op_liquidate`, incl. the ADL cascade), so record
+                    // the op right where it was applied — after this market's funding op
+                    // and in owner order — to keep the log's order == application order.
+                    ops.push(BatchOp::Liquidate {
+                        owner,
+                        market_id: mid,
+                        oracle,
+                        now_ms,
+                    });
                     // Carry each auto-deleverage haircut up with its market so the
                     // seal can publish an attributable receipt for it (audit Q2).
                     for h in haircuts {
@@ -538,7 +583,11 @@ impl Sequencer {
                 }
             }
         }
-        MaintenanceOutcome { liquidated, adl }
+        MaintenanceOutcome {
+            liquidated,
+            adl,
+            ops,
+        }
     }
 
     /// Run one batch: match `orders`, issue receipts, settle fills, run the
@@ -600,6 +649,10 @@ impl Sequencer {
         //    moved out of `ordered` into `rejected` (it did not settle).
         let mut settled_order_hashes = Vec::new();
         let mut settlement_rejected: Vec<(Digest, RejectReason)> = Vec::new();
+        // The batch's replayable op-log: `[applied fills] ++ [maintenance ops]`, in
+        // application order. Only ops whose application SUCCEEDED are logged, so
+        // replaying it via `apply_batch` reproduces the sealed `new_state_root` (Slice 3a).
+        let mut ops: Vec<BatchOp> = Vec::new();
         for m in &stream.fills {
             let Some(oracle) = self.oracles.get(&m.market_id).copied() else {
                 for oh in [m.taker_order_hash, m.maker_order_hash] {
@@ -653,6 +706,9 @@ impl Sequencer {
                             settled_order_hashes.push(oh);
                         }
                     }
+                    // log the fill only after it settled — a failed fill (Err arm) is
+                    // dropped, so it never enters the replayable op-log.
+                    ops.push(op);
                 }
                 Err(e) => {
                     let reason = settlement_reason(&e);
@@ -669,7 +725,9 @@ impl Sequencer {
         let MaintenanceOutcome {
             liquidated: liquidations,
             adl: adl_haircuts,
+            ops: maintenance_ops,
         } = self.run_maintenance(now_ms);
+        ops.extend(maintenance_ops);
         for (owner, _market) in &liquidations {
             self.matcher.cancel_owner_orders(owner);
         }
@@ -743,6 +801,11 @@ impl Sequencer {
         self.batch_orders
             .insert(batch_id, settled_order_hashes.clone());
 
+        // Mirror apply_batch's single per-batch counter bump (engine.rs:156): the guest
+        // proves via apply_batch, which advances state.next_batch_id once; seal_batch
+        // applies ops via apply_op (no bump), so advance it here or the live sealed root
+        // diverges from derive_roots and batch>=1 fails manifest.batch_id==next_batch_id.
+        self.state.next_batch_id += 1;
         let new_state_root = self.state.state_root();
         self.next_batch_id += 1;
 
@@ -772,6 +835,12 @@ impl Sequencer {
             })
             .collect();
 
+        // Retain the replayable witness for this pending batch, keyed exactly like
+        // `snapshots[batch_id].0` (the pre-state), so `batch_witness` can hand out the
+        // `(pre_state, ops, manifest)` triple. Pruned in lock-step with `snapshots`.
+        self.batch_ops
+            .insert(batch_id, (ops.clone(), manifest.clone()));
+
         SealedBatch {
             batch_id,
             prev_state_root,
@@ -783,6 +852,7 @@ impl Sequencer {
             receipts,
             liquidation_tags,
             adl_receipts,
+            ops,
         }
     }
 
@@ -814,6 +884,9 @@ impl Sequencer {
         // its per-batch order list is now immutable settled history that neither
         // rollback nor re-settlement needs — drop it too so the map stays bounded.
         self.batch_orders = self.batch_orders.split_off(&(batch_id + 1));
+        // the replayable witness is only needed while a batch is unproven; drop it in
+        // lock-step with the snapshots so retention lifetime == snapshot lifetime.
+        self.batch_ops = self.batch_ops.split_off(&(batch_id + 1));
     }
 
     /// Roll back a sealed batch that FAILED to prove (§3 failure matrix): revert
@@ -841,6 +914,8 @@ impl Sequencer {
                 }
             }
             self.snapshots.remove(b);
+            // drop this dropped batch's replayable witness too (lock-step with snapshots).
+            self.batch_ops.remove(b);
         }
         // un-see inclusion records that were marked seen in a dropped batch, so a
         // rolled-back order that is never re-included can still surface as an
