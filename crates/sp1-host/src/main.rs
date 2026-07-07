@@ -12,9 +12,9 @@
 //! F2). The batch includes a real `Withdraw { to: Some(..) }` so the derived
 //! `withdrawals_root` is exercised end-to-end.
 //!
-//! Build the guest first, then run:
-//!   cd ../sp1-guest && cargo prove build
-//!   cd ../sp1-host  && cargo run --release
+//! The host's `build.rs` auto-builds the guest via `sp1-build`, so
+//! `cargo run --release` here builds and runs it in one step. (A standalone
+//! `cd ../sp1-guest && cargo prove build` is optional — verification only.)
 
 use perp_core::commitment::derive_roots;
 use perp_core::engine::BatchOp;
@@ -23,12 +23,9 @@ use perp_core::market::Market;
 use perp_core::note::{owner_from_spend_key, Note};
 use perp_core::order::BatchManifest;
 use perp_core::DefaultState;
-use sp1_sdk::{Elf, Prover, ProverClient, SP1Stdin};
+use sp1_sdk::{include_elf, Elf, Prover, ProverClient, SP1Stdin};
 
-const ELF: &[u8] = include_bytes!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../sp1-guest/target/elf-compilation/riscv64im-succinct-zkvm-elf/release/perp-core-guest"
-));
+const ELF: Elf = include_elf!("perp-core-guest");
 
 #[tokio::main]
 async fn main() {
@@ -70,7 +67,7 @@ async fn main() {
     stdin.write_vec(bytes);
 
     let client = ProverClient::builder().cpu().build().await;
-    let (public_values, report) = client.execute(Elf::Static(ELF), stdin).await.expect("guest executes");
+    let (public_values, report) = client.execute(ELF, stdin).await.expect("guest executes");
     let zk_commit: [u8; 32] = public_values.as_slice().try_into().expect("32-byte commitment");
 
     println!("cycles            = {}", report.total_instruction_count());
