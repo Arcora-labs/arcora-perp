@@ -4,7 +4,7 @@
 //! returns the 6 roots, the commitment, and the real Groth16 proof.
 mod sp1_prover;
 
-use axum::{extract::State, routing::{get, post}, Json, Router};
+use axum::{extract::State, http::StatusCode, routing::{get, post}, Json, Router};
 use perp_core::hash::Digest;
 use prover::{AttestedProver, SealedWitness, SoftwareSealProvider};
 use serde::{Deserialize, Serialize};
@@ -55,15 +55,24 @@ fn hx(b: &[u8]) -> String {
     format!("0x{}", hex::encode(b))
 }
 
-async fn prove(State(app): State<Arc<App>>, Json(req): Json<ProveReq>) -> Result<Json<ProveResp>, String> {
-    let raw = hex::decode(req.sealed.trim_start_matches("0x")).map_err(|e| e.to_string())?;
-    let sealed: SealedWitness = postcard::from_bytes(&raw).map_err(|e| e.to_string())?;
+async fn prove(
+    State(app): State<Arc<App>>,
+    Json(req): Json<ProveReq>,
+) -> Result<Json<ProveResp>, (StatusCode, String)> {
+    // Bad hex / bad postcard are caller errors: 400 so a client checking the status
+    // sees the failure (axum's `IntoResponse for String` would 200 the error text).
+    let raw = hex::decode(req.sealed.trim_start_matches("0x"))
+        .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
+    let sealed: SealedWitness =
+        postcard::from_bytes(&raw).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
     // The SP1 prove blocks; run the whole open+derive+prove off the async worker.
     let app2 = app.clone();
     let bp = tokio::task::spawn_blocking(move || app2.prover.prove_batch(&sealed))
         .await
-        .map_err(|e| e.to_string())?
-        .map_err(|e| format!("{e:?}"))?;
+        // A panicked/cancelled blocking task is a server fault: 500.
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        // A rejected witness / prove failure is unprocessable input: 422.
+        .map_err(|e| (StatusCode::UNPROCESSABLE_ENTITY, format!("{e:?}")))?;
     let p = &bp.public;
     Ok(Json(ProveResp {
         prev_root: hx(&p.prev_state_root),

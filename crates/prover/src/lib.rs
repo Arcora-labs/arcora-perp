@@ -357,11 +357,15 @@ pub struct AttestedProver<P: Prover> {
     backend: P,
     /// The TEE key-release boundary: yields the seal key only for an authorized
     /// measurement. A non-attested prover's provider won't release the key.
-    seal_provider: Box<dyn SealKeyProvider>,
+    ///
+    /// `Send + Sync` so `AttestedProver` (and an `Arc<AttestedProver>`) can be held
+    /// across threads by the async prover-service (`Router::with_state`,
+    /// `spawn_blocking`), which both require the state to be `Send + Sync`.
+    seal_provider: Box<dyn SealKeyProvider + Send + Sync>,
 }
 
 impl<P: Prover> AttestedProver<P> {
-    pub fn new(backend: P, seal_provider: impl SealKeyProvider + 'static) -> Self {
+    pub fn new(backend: P, seal_provider: impl SealKeyProvider + Send + Sync + 'static) -> Self {
         Self {
             backend,
             seal_provider: Box::new(seal_provider),
@@ -458,6 +462,15 @@ mod tests {
 
     fn prov(measurement: Digest) -> SoftwareSealProvider {
         SoftwareSealProvider::new(ROOT, measurement)
+    }
+
+    /// The async prover-service holds an `Arc<AttestedProver<_>>` as axum state and
+    /// captures it into `spawn_blocking`; both require `Send + Sync`. Boxing the
+    /// `SealKeyProvider` as a bare `dyn` would silently break that. Regression guard.
+    #[test]
+    fn attested_prover_is_send_sync() {
+        fn assert_send_sync<T: Send + Sync>() {}
+        assert_send_sync::<AttestedProver<CommitmentProver>>();
     }
 
     /// The minimal honest manifest for `s`'s next batch: tied to the pre-state
