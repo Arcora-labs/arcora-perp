@@ -14,7 +14,8 @@
 
 - **Collect while applying — no second code path.** Funding/liquidation keep executing exactly as today (`state.apply_op(AccrueFunding)`, `state.liquidate(...)` which still returns `Vec<AdlHaircut>` for the ADL receipts); the emitted op is ALSO pushed. Push an op ONLY when its application succeeded (a failed/ skipped op must not enter the log).
 - **Log order == application order.** Fills first (in fill-loop order), then per-market `AccrueFunding` then that market's `Liquidate`s (the existing `MarketId` BTreeMap iteration order in `run_maintenance`).
-- **pre_state = the existing snapshot.** `snapshots[batch_id].0` (taken at `seal_batch` start, `lib.rs:553-554`) is the witness pre-state; its root already equals `manifest.previous_state_root` and its `next_batch_id` equals `manifest.batch_id`, so `derive_roots` (which asserts both, `commitment.rs:56-58`) accepts it. Do NOT change snapshot timing, `manifest.previous_state_root`, or rollback semantics.
+- **pre_state = the existing snapshot.** `snapshots[batch_id].0` (taken at `seal_batch` start, `lib.rs:553-554`) is the witness pre-state; its root already equals `manifest.previous_state_root`, so `derive_roots` (which asserts `manifest.previous_state_root == state.state_root()`, `commitment.rs:56-58`) accepts it. Do NOT change snapshot timing, `manifest.previous_state_root`, or rollback semantics.
+- **`seal_batch` MUST advance `state.next_batch_id` once (latent-bug fix, Task 2).** `state.next_batch_id` is bound in `state_root` (`state.rs:216`) and `apply_batch` (what the guest / `derive_roots` runs) bumps it once per batch (`engine.rs:156`). But `seal_batch` applies ops via `apply_op` (which does NOT bump it) and today never advances `state.next_batch_id` — only the separate *sequencer* `next_batch_id` field climbs. So `state.next_batch_id` is stuck at 0 while `manifest.batch_id` climbs: for batch ≥1 `derive_roots` fails its `manifest.batch_id == state.next_batch_id` precondition AND the live sealed root diverges from the guest's derived root (the mock verifier hid this; real proofs would break). Task 2 adds `self.state.next_batch_id += 1;` in `seal_batch` immediately before `let new_state_root = self.state.state_root();` (`lib.rs:746`), mirroring `apply_batch`'s final bump — so the pre-state snapshot's `next_batch_id == batch_id == manifest.batch_id` and the live root == the derived root. The merge gate then asserts FULL `new_state_root` equality with no counter workaround.
 - **Retention lifetime == snapshot lifetime.** The new `batch_ops` map is pruned in the SAME places, on the SAME key ranges, as `snapshots` (`mark_settled` split_off, `mark_failed` per-dropped remove) — never unbounded.
 - **Out of scope (do NOT touch):** deposits are not logged (they live in pre_state — Slice 3b folds them into the window witness); no gateway/network/contract change; matcher `cancel_owner_orders` stays off the op-log; matching-fairness stays Proof-v2.
 - `BatchOp` derives `Clone, Debug` (`engine.rs:27`). The `Sequencer` struct derives `serde::Serialize/Deserialize` — any new field MUST carry `#[serde(default)]` so existing persisted sequencers still deserialize.
@@ -295,6 +296,19 @@ Expected: FAIL to compile — `batch_witness` and `SealedBatch.ops` don't exist.
         } = self.run_maintenance(now_ms);
         ops.extend(maintenance_ops);
 ```
+
+(c2) **Advance `state.next_batch_id` once** (the latent-bug fix — see Global Constraints). `apply_batch` bumps this counter once per batch and it is bound in `state_root`; `seal_batch`'s `apply_op`-based application does not, so without this the live sealed root diverges from the guest's derived root and batch ≥1 fails `derive_roots`'s `manifest.batch_id == state.next_batch_id` precondition. Add, **immediately before** `let new_state_root = self.state.state_root();` (`lib.rs:746`):
+
+```rust
+        // Mirror apply_batch's single per-batch counter bump (engine.rs:156): the guest
+        // proves via apply_batch, which advances state.next_batch_id once; seal_batch
+        // applies ops via apply_op (no bump), so advance it here or the live sealed root
+        // diverges from derive_roots and batch>=1 fails manifest.batch_id==next_batch_id.
+        self.state.next_batch_id += 1;
+        let new_state_root = self.state.state_root();
+```
+
+(The existing `self.next_batch_id += 1;` at `lib.rs:774` advances the separate *sequencer* field and stays.) Update any existing test that asserts a sealed `new_state_root` or round-trips a `Sequencer` expecting `state.next_batch_id == 0` — the counter now advances per batch.
 
 (d) Retain the triple + add `ops` to the returned `SealedBatch`. Just before the `SealedBatch { ... }` literal (`:775`), insert the retention (clone `manifest`/`ops` since both are moved/used after), and add `ops` to the struct:
 
