@@ -33,7 +33,11 @@ cd crates/sp1-host && cargo run --release
 ```
 Asserts `native derive_roots(...).commitment == the guest's committed value`. This is
 the first execution of the P1 circuit in the SP1 zkVM. Must print the equality/success
-before proceeding. (If the ELF isn't found, see Task 2's fallback path note.)
+before proceeding. (If include_elf! can't find the guest ELF, run the standalone build
+first — `cd crates/sp1-guest && cargo prove build` — and if it still isn't found, as a
+last resort edit `crates/sp1-host/src/main.rs` to embed it directly with `include_bytes!`
+of `target/elf-compilation/riscv32im-succinct-zkvm-elf/release/perp-core-guest`, the
+guest's real SP1 target path.)
 
 ## 4. Get the vkey + a real Groth16 proof
 In an `sp1-sdk` script (or extend `sp1-host` with a `--prove` mode on your machine):
