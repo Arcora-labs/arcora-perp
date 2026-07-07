@@ -1,7 +1,8 @@
 //! `Sp1GnarkProver` — a real SP1 Groth16 backend implementing `prover::Prover`. Caches
 //! the SP1 proving key (setup is expensive) and blocks on the async SP1 client from the
 //! sync trait method. Runs where the SP1 toolchain + (emulated) gnark are (the prover
-//! machine), NOT in the workspace. Pattern validated by `crates/sp1-host/src/bin/prove.rs`.
+//! machine), NOT in the workspace. SP1 v6.x Groth16 API — validated on the SP1 prover
+//! machine (GB10); build steps in `docs/PROVING-RUNBOOK.md`.
 use perp_core::hash::{Digest, Hasher, Keccak256};
 use prover::{Prover, PublicInputs};
 use sp1_sdk::{
@@ -11,7 +12,8 @@ use std::sync::Arc;
 
 const ELF: Elf = include_elf!("perp-core-guest");
 
-/// Type aliases for the concrete SP1 CPU client + proving key (see prove.rs).
+/// Type aliases for the concrete SP1 CPU client + proving key. The `CpuProver`/
+/// `SP1ProvingKey` types are confirmed at build time on the SP1 prover machine (GB10).
 type Client = sp1_sdk::cpu::CpuProver;
 type Pk = sp1_sdk::SP1ProvingKey;
 

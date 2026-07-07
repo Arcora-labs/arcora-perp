@@ -97,6 +97,9 @@ the workspace) turns a sealed witness into a real Groth16 proof the on-chain
 
 ### Build + run
 ```bash
+# one-time on an arm64 host: register the amd64 emulator for the gnark (amd64-only) image
+docker run --privileged --rm tonistiigi/binfmt --install amd64
+
 cd crates/prover-service
 DOCKER_DEFAULT_PLATFORM=linux/amd64 cargo run --release   # amd64 gnark under qemu (arm64 host)
 # serves on 127.0.0.1:8091 by default (override with PROVER_BIND=host:port)
@@ -116,6 +119,27 @@ POSTs it:
 `POST /prove {"sealed":"0x<hex postcard-encoded SealedWitness>"}` →
 `{prev_root, manifest_hash, new_root, ordered_root, withdrawals_root, rejected_root,
 commitment, proof}` (all hex-prefixed).
+
+### Seal + POST (client side)
+The service opens a witness sealed to its measurement (`0xAB…AB`, the stand-in) with the
+seal root (`PROVER_SEAL_ROOT`, default `0x5E…5E`). A client builds the batch witness, seals it,
+and POSTs the hex:
+```rust
+// (in a small client bin or extend sp1-host) — build the (state, ops, manifest) witness bytes,
+// then:
+let m = [0xABu8; 32];
+let sealed = prover::SealedWitness::seal(
+    &witness_bytes,
+    &prover::SoftwareSealProvider::new([0x5Eu8; 32], m),  // must match the service's root+measurement
+    m,
+    nonce,
+).unwrap();
+let hex = format!("0x{}", hex::encode(postcard::to_allocvec(&sealed).unwrap()));
+// curl -s localhost:8091/prove -H 'content-type: application/json' -d "{\"sealed\":\"$hex\"}"
+```
+The response's 6 roots + `proof` go straight into `settleBatch` (below).
+
+(If `PROVER_SEAL_ROOT` is unset the service uses `0x5E…`; if set, the client must use the same value.)
 
 ### e2e verify on-chain (the merge gate)
 Submit the returned 6 roots + proof to a fresh `DarkPerpSettlement` wired to the Slice-1
