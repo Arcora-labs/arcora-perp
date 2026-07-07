@@ -261,7 +261,7 @@ impl SealKeyProvider for SoftwareSealProvider {
 /// leak the XOR of two private ledgers (classic two-time pad). The nonce is stored
 /// in the clear (it carries no secret) so the authorized prover can reproduce the
 /// keystream.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct SealedWitness {
     ciphertext: Vec<u8>,
     measurement: Digest,
@@ -734,5 +734,21 @@ mod tests {
             SealedWitness::seal(b"not a witness", &SoftwareSealProvider::new(root, m), m, [0x02u8; 32]).unwrap();
         let prover = AttestedProver::new(CommitmentProver::new(m), SoftwareSealProvider::new(root, m));
         assert_eq!(prover.prove_batch(&sealed), Err(ProverError::WitnessDecode));
+    }
+
+    // The prover service sends a `SealedWitness` over HTTP as postcard bytes
+    // (`postcard::from_bytes::<SealedWitness>`) — this proves that wire path
+    // round-trips: seal, encode, decode, re-encode, and the bytes are stable.
+    #[test]
+    fn sealed_witness_postcard_round_trips() {
+        let m = [0xAB; 32];
+        let root = [0x5E; 32];
+        let sealed =
+            SealedWitness::seal(b"batch witness bytes", &SoftwareSealProvider::new(root, m), m, [0x07u8; 32])
+                .unwrap();
+        let bytes = postcard::to_allocvec(&sealed).expect("serialize");
+        let back: SealedWitness = postcard::from_bytes(&bytes).expect("deserialize");
+        let bytes2 = postcard::to_allocvec(&back).unwrap();
+        assert_eq!(bytes, bytes2, "SealedWitness survives a postcard round-trip");
     }
 }

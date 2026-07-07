@@ -13,3 +13,4 @@ workspace = true
 [dependencies]
 perp-core = { path = "../perp-core", features = ["serde"] }
 postcard = { version = "1", features = ["alloc"] }
+serde = { version = "1", features = ["derive"] }
