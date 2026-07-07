@@ -88,3 +88,70 @@ commitment is now enforced on-chain by real ZK.
   `withdrawalsRoot` to match the proof, the gateway must switch to per-engine-batch
   settlement (Slice 2) — until then, a real proof only matches if you settle one engine
   batch at a time with its own incremental root.
+
+## Prover service (Slice 2) — real proofs on demand
+
+On the SP1 machine (GB10), the prover service (`crates/prover-service`, excluded from
+the workspace) turns a sealed witness into a real Groth16 proof the on-chain
+`SP1ZkVerifier` accepts.
+
+### Build + run
+```bash
+# one-time on an arm64 host: register the amd64 emulator for the gnark (amd64-only) image
+docker run --privileged --rm tonistiigi/binfmt --install amd64
+
+cd crates/prover-service
+DOCKER_DEFAULT_PLATFORM=linux/amd64 cargo run --release   # amd64 gnark under qemu (arm64 host)
+# serves on 127.0.0.1:8091 by default (override with PROVER_BIND=host:port)
+curl -s localhost:8091/vkey          # -> {"vkey":"0x00f4a7109bcff4e78a6f5e2a6d30ed39582f4386d58b71c025e0822fdc8c9024"}
+curl -s localhost:8091/measurement   # -> {"measurement":"0xabab…"}  (SoftwareSeal stand-in, all-0xAB)
+```
+`vkey` is the `programVKey` the service's SP1 setup derives for the guest ELF — it must
+match the deployed `SP1ZkVerifier`'s immutable `programVKey`
+(`0x00f4a7109bcff4e78a6f5e2a6d30ed39582f4386d58b71c025e0822fdc8c9024` for the Slice-1
+Base Sepolia deploy below). The seal root the service opens sealed witnesses against is
+`PROVER_SEAL_ROOT` (env, hex; defaults to all-`0x5E` if unset) — must match whatever the
+caller sealed the witness to.
+
+### Prove a batch
+A client seals the witness to the service's `/measurement` (SoftwareSeal stand-in) and
+POSTs it:
+`POST /prove {"sealed":"0x<hex postcard-encoded SealedWitness>"}` →
+`{prev_root, manifest_hash, new_root, ordered_root, withdrawals_root, rejected_root,
+commitment, proof}` (all hex-prefixed).
+
+### Seal + POST (client side)
+The service opens a witness sealed to its measurement (`0xAB…AB`, the stand-in) with the
+seal root (`PROVER_SEAL_ROOT`, default `0x5E…5E`). A client builds the batch witness, seals it,
+and POSTs the hex:
+```rust
+// (in a small client bin or extend sp1-host) — build the (state, ops, manifest) witness bytes,
+// then:
+let m = [0xABu8; 32];
+let sealed = prover::SealedWitness::seal(
+    &witness_bytes,
+    &prover::SoftwareSealProvider::new([0x5Eu8; 32], m),  // must match the service's root+measurement
+    m,
+    nonce,
+).unwrap();
+let hex = format!("0x{}", hex::encode(postcard::to_allocvec(&sealed).unwrap()));
+// curl -s localhost:8091/prove -H 'content-type: application/json' -d "{\"sealed\":\"$hex\"}"
+```
+The response's 6 roots + `proof` go straight into `settleBatch` (below).
+
+(If `PROVER_SEAL_ROOT` is unset the service uses `0x5E…`; if set, the client must use the same value.)
+
+### e2e verify on-chain (the merge gate)
+Submit the returned 6 roots + proof to a fresh `DarkPerpSettlement` wired to the Slice-1
+`SP1ZkVerifier` (`0xCbdD7381766f3021C5fae2a5bBeAe5CF0Fc20bcF` on Base Sepolia), genesis =
+`prev_root`:
+```bash
+cast send <SETTLEMENT> "settleBatch(bytes32,bytes32,bytes32,bytes32,bytes32,bytes32,bytes)" \
+  <prev_root> <manifest_hash> <new_root> <ordered_root> <withdrawals_root> <rejected_root> <proof> \
+  --rpc-url https://sepolia.base.org --private-key $KEY
+```
+`$KEY` must be the deployed settlement's `sequencer` (`settleBatch` is `onlySequencer`).
+Status 1 = the service's real proof was verified on-chain by `SP1ZkVerifier`. (Privacy:
+for real batches the service must run on a self-hosted **ATTESTED** x86_64 prover — the
+gnark image is amd64-only, so the arm64 GB10 is a dev/test prover, not a production
+attested one; P3 adds real TDX/Nitro key-release.)

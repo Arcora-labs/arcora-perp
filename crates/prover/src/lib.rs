@@ -115,6 +115,9 @@ pub enum ProverError {
     SealAuthFailed,
     /// The transition itself was rejected by the engine.
     Transition(EngineError),
+    /// The opened witness did not decode as the postcard `(DefaultState, Vec<BatchOp>,
+    /// BatchManifest)` tuple the guest reads (a malformed or wrong-format witness).
+    WitnessDecode,
 }
 
 impl From<EngineError> for ProverError {
@@ -258,7 +261,7 @@ impl SealKeyProvider for SoftwareSealProvider {
 /// leak the XOR of two private ledgers (classic two-time pad). The nonce is stored
 /// in the clear (it carries no secret) so the authorized prover can reproduce the
 /// keystream.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct SealedWitness {
     ciphertext: Vec<u8>,
     measurement: Digest,
@@ -354,11 +357,15 @@ pub struct AttestedProver<P: Prover> {
     backend: P,
     /// The TEE key-release boundary: yields the seal key only for an authorized
     /// measurement. A non-attested prover's provider won't release the key.
-    seal_provider: Box<dyn SealKeyProvider>,
+    ///
+    /// `Send + Sync` so `AttestedProver` (and an `Arc<AttestedProver>`) can be held
+    /// across threads by the async prover-service (`Router::with_state`,
+    /// `spawn_blocking`), which both require the state to be `Send + Sync`.
+    seal_provider: Box<dyn SealKeyProvider + Send + Sync>,
 }
 
 impl<P: Prover> AttestedProver<P> {
-    pub fn new(backend: P, seal_provider: impl SealKeyProvider + 'static) -> Self {
+    pub fn new(backend: P, seal_provider: impl SealKeyProvider + Send + Sync + 'static) -> Self {
         Self {
             backend,
             seal_provider: Box::new(seal_provider),
@@ -392,32 +399,49 @@ impl<P: Prover> AttestedProver<P> {
             .collect())
     }
 
-    /// Prove a transition over a sealed witness. The witness is opened only here
-    /// (measurement-gated), used, and zeroized before returning — modelling
-    /// "witness opens at the attested measurement, deleted after the job" (§10b).
+    /// Prove a transition over a sealed witness whose public inputs are already known.
+    /// The witness is opened only here (measurement-gated), used, and zeroized (§10b).
     pub fn prove_sealed(
         &self,
         sealed: &SealedWitness,
         public: &PublicInputs,
     ) -> Result<BatchProof, ProverError> {
-        let mut witness = self.open(sealed)?;
+        let witness = self.open(sealed)?;
+        Ok(self.prove_opened(witness, public))
+    }
+
+    /// Open a sealed witness, DERIVE its public inputs from the batch itself (F2-safe:
+    /// the prover derives the roots, never trusts an external claim), prove, and zeroize.
+    /// The witness is postcard `(DefaultState, Vec<BatchOp>, BatchManifest)`.
+    pub fn prove_batch(&self, sealed: &SealedWitness) -> Result<BatchProof, ProverError> {
+        let witness = self.open(sealed)?;
+        let (mut state, ops, manifest): (DefaultState, Vec<BatchOp>, BatchManifest) =
+            postcard::from_bytes(&witness).map_err(|_| ProverError::WitnessDecode)?;
+        let public = run_transition(&mut state, &ops, &manifest)?;
+        Ok(self.prove_opened(witness, &public))
+    }
+
+    /// Prove over an already-opened witness and zeroize it before returning. The zeroing
+    /// is followed by a `black_box` optimization barrier so it is not elided (§10b).
+    ///
+    /// Zeroize the opened witness, then force the optimizer to treat the buffer as
+    /// observed via `black_box`: a plain `*b = 0` on a value dropped immediately after is
+    /// a dead store the optimizer may elide, leaving the plaintext witness in prover
+    /// memory — defeating the §10b "deleted after the job" guarantee. `black_box(&witness)`
+    /// is a safe (no `unsafe`) optimization barrier that prevents the zeroing from being
+    /// elided.
+    fn prove_opened(&self, mut witness: Vec<u8>, public: &PublicInputs) -> BatchProof {
         let proof_bytes = self.backend.prove(public, &witness);
-        // Zeroize the opened witness, then force the optimizer to treat the buffer as
-        // observed via `black_box`: a plain `*b = 0` on a value dropped immediately
-        // after is a dead store the optimizer may elide, leaving the plaintext witness
-        // in prover memory — defeating the §10b "deleted after the job" guarantee.
-        // `black_box(&witness)` is a safe (no `unsafe`) optimization barrier that
-        // prevents the zeroing from being elided.
         for b in witness.iter_mut() {
             *b = 0;
         }
         core::hint::black_box(&witness);
         drop(witness);
-        Ok(BatchProof {
+        BatchProof {
             public: *public,
             proof_bytes,
             prover_measurement: self.backend.measurement(),
-        })
+        }
     }
 }
 
@@ -438,6 +462,15 @@ mod tests {
 
     fn prov(measurement: Digest) -> SoftwareSealProvider {
         SoftwareSealProvider::new(ROOT, measurement)
+    }
+
+    /// The async prover-service holds an `Arc<AttestedProver<_>>` as axum state and
+    /// captures it into `spawn_blocking`; both require `Send + Sync`. Boxing the
+    /// `SealKeyProvider` as a bare `dyn` would silently break that. Regression guard.
+    #[test]
+    fn attested_prover_is_send_sync() {
+        fn assert_send_sync<T: Send + Sync>() {}
+        assert_send_sync::<AttestedProver<CommitmentProver>>();
     }
 
     /// The minimal honest manifest for `s`'s next batch: tied to the pre-state
@@ -655,5 +688,80 @@ mod tests {
         let manifest = empty_manifest(&s);
         let err = run_transition(&mut s, &ops, &manifest).unwrap_err();
         assert_eq!(err, EngineError::UnknownOrSpentNote);
+    }
+
+    use perp_core::order::BatchManifest;
+
+    fn sealed_test_witness(m: Digest, root: [u8; 32]) -> (SealedWitness, PublicInputs) {
+        let (s, ops) = state_with_deposit();
+        let manifest = BatchManifest {
+            previous_state_root: s.state_root(),
+            batch_id: s.next_batch_id,
+            ordered: vec![],
+            rejected: vec![],
+            oracle_updates: vec![],
+            matching_rule_version: 0,
+            enclave_measurement: [0u8; 32],
+            sequencer_pubkey_epoch: 0,
+        };
+        let expected = run_transition(&mut s.clone(), &ops, &manifest).unwrap();
+        let witness = (s, ops, manifest);
+        let bytes = postcard::to_allocvec(&witness).unwrap();
+        let sealed =
+            SealedWitness::seal(&bytes, &SoftwareSealProvider::new(root, m), m, [0x01u8; 32]).unwrap();
+        (sealed, expected)
+    }
+
+    #[test]
+    fn prove_batch_opens_derives_and_proves() {
+        let m = [0xAB; 32];
+        let root = [0x5E; 32];
+        let (sealed, expected) = sealed_test_witness(m, root);
+        let prover = AttestedProver::new(CommitmentProver::new(m), SoftwareSealProvider::new(root, m));
+        let bp = prover.prove_batch(&sealed).unwrap();
+        // the derived public inputs match run_transition — prover derived, not trusted
+        assert_eq!(
+            bp.public.commitment::<Keccak256>(),
+            expected.commitment::<Keccak256>(),
+            "prove_batch must DERIVE the public commitment from the witness"
+        );
+        assert_eq!(bp.proof_bytes.len(), 32, "CommitmentProver stand-in proof is 32 bytes");
+        assert_eq!(bp.prover_measurement, m);
+    }
+
+    #[test]
+    fn prove_batch_wrong_measurement_cannot_open() {
+        let (sealed, _) = sealed_test_witness([0xAB; 32], [0x5E; 32]);
+        // prover authorized only for a DIFFERENT measurement → key-release refuses
+        let prover =
+            AttestedProver::new(CommitmentProver::new([0xCD; 32]), SoftwareSealProvider::new([0x5E; 32], [0xCD; 32]));
+        assert_eq!(prover.prove_batch(&sealed), Err(ProverError::MeasurementMismatch));
+    }
+
+    #[test]
+    fn prove_batch_garbage_witness_is_witness_decode() {
+        // seal random non-postcard bytes → opens fine (right key) but decode fails
+        let m = [0xAB; 32];
+        let root = [0x5E; 32];
+        let sealed =
+            SealedWitness::seal(b"not a witness", &SoftwareSealProvider::new(root, m), m, [0x02u8; 32]).unwrap();
+        let prover = AttestedProver::new(CommitmentProver::new(m), SoftwareSealProvider::new(root, m));
+        assert_eq!(prover.prove_batch(&sealed), Err(ProverError::WitnessDecode));
+    }
+
+    // The prover service sends a `SealedWitness` over HTTP as postcard bytes
+    // (`postcard::from_bytes::<SealedWitness>`) — this proves that wire path
+    // round-trips: seal, encode, decode, re-encode, and the bytes are stable.
+    #[test]
+    fn sealed_witness_postcard_round_trips() {
+        let m = [0xAB; 32];
+        let root = [0x5E; 32];
+        let sealed =
+            SealedWitness::seal(b"batch witness bytes", &SoftwareSealProvider::new(root, m), m, [0x07u8; 32])
+                .unwrap();
+        let bytes = postcard::to_allocvec(&sealed).expect("serialize");
+        let back: SealedWitness = postcard::from_bytes(&bytes).expect("deserialize");
+        let bytes2 = postcard::to_allocvec(&back).unwrap();
+        assert_eq!(bytes, bytes2, "SealedWitness survives a postcard round-trip");
     }
 }
