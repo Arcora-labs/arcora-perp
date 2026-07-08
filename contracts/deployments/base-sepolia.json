@@ -3,38 +3,48 @@
   "chainId": 84532,
   "rpc": "https://sepolia.base.org",
   "explorer": "https://sepolia.basescan.org",
-  "deployedAt": "2026-07-05",
-  "deployBlock": 43745352,
+  "deployedAt": "2026-07-09",
+  "deployBlock": 43891305,
   "deployer": "0xed37B7fc534Cc93D4195b4F11ADc5C14237cd287",
-  "note": "Phase 0 PUBLIC TESTNET redeploy #2 (same day) — carries the full audit remediation AND drops the HYPE/USDC + LIT/USDC markets (they had no real oracle feed → sim-walk only; deferred to mainnet). Removing markets changes the gateway's genesis state root, so a fresh contract stack (genesis 0) was needed to match the fresh 3-market gateway genesis in lockstep (settleBatch enforces prev==currentStateRoot; the old advanced 5-market-lineage root could not continue a 3-market lineage). Markets now: BTC/USDC, ETH/USDC, SOL/USDC — all Crypto.com feed-backed (health = all markets live). enclaveSigner unchanged = the REAL secret-seed enclave inside the perp-seq Azure TDX CVM (measurement 0x422890f6..faf55bd). MockUSDC open mint is the faucet. MockZkVerifier still stands in for the real SP1/Risc0 verifier (testnet only). Served at https://perp.arcoralabs.xyz (+ sslip.io fallback).",
+  "note": "ZK P2 LIVE MIGRATION — the public testnet now runs the window-settle path with REAL Groth16 proofs (SP1 via the succinctlabs gnark prover on GB10, reached over an SSH reverse tunnel), settled against a fresh DarkPerpSettlement bound to a real SP1ZkVerifier. This replaces the MockZkVerifier stack (0x27Fc1bDa, now superseded). The guest ELF's programVKey drifted since the previously-deployed SP1ZkVerifier 0xCbdD (vkey 0x00f4a710), so a fresh SP1ZkVerifier 0x8012F3b3 was deployed bound to the current guest vkey 0x000a2f9bc04612ca95b3b26dc65f5dc463bba65ce1dff5eb3725545679bda5ed (reusing the same SP1VerifierGateway 0x397A5f7f). genesisRoot = the fresh gateway boot engine root 0x4d1ae1d2... (3-market state incl. the 25,000 USDC seeded insurance fund) — deployed in lockstep with the CVM gateway's boot genesis (settleBatch enforces prev==currentStateRoot). Snapshot schema changed (3b-4 window_id/tick_window) so the state.snap was wiped: testnet state reset to genesis on cutover. enclaveSigner unchanged = the REAL secret-seed enclave inside the perp-seq Azure TDX CVM (measurement 0x422890f6..faf55bd, TCB UpToDate). MockUSDC open mint is the faucet. Served at https://perp.arcoralabs.xyz (same CVM, no DNS repoint).",
   "contracts": {
     "DarkPerpSettlement": {
-      "address": "0x27Fc1bDa0B04163ABDf310ABC1391AD9778cfA82",
-      "tx": "0x36e9b318012fa31e868563638c5b2fa45c9b39767093c90f5fbe5533cf59160c"
+      "address": "0xEa1115905b2a6b538D11b521959457FEd8C24Eb8",
+      "tx": "0x1c8104356005a33f98580065a3f79e45ecb839e63fa74dba1369b34f9487c49a"
     },
     "CollateralVault": {
-      "address": "0x71a19b16F400752a1c0761dEF7bBA208eDFf37EA",
-      "tx": "0x592f21d596fe5c3e28971ad1f6d366c30fd121707ce4f76df9a99d506541fff2"
+      "address": "0xa0B5CeBE4552536170B8e60999FAfD8DA491208b",
+      "tx": "0x12c4861df7ac96560dbd9bc21881f469016c483a95d276ca11180005643edde5"
     },
-    "MockZkVerifier": {
-      "address": "0xC0a6F6E5311b93fCeA29410a53e07a512b167c32",
-      "tx": "0x29ad93cd401800643f7de989a1040b6d84cb2f9b49fbd7a6f7f1cbb570c034bc"
+    "SP1ZkVerifier": {
+      "address": "0x8012F3b35B9884f86a3F8f39B79e82eC410E1160",
+      "tx": "0xfc1ac395e97073a176f49b0739220eb5edaf5e84ce9a30a6c97951dc0a1cb237",
+      "programVKey": "0x000a2f9bc04612ca95b3b26dc65f5dc463bba65ce1dff5eb3725545679bda5ed",
+      "sp1VerifierGateway": "0x397A5f7f3dBd538f23DE225B51f532c34448dA9B"
     },
     "MockUSDC": {
-      "address": "0x5DCd457B723F81531753fE92B82696e771671557",
-      "tx": "0x8a3649ccf60bed136ef7a7a98466d6ea926db3505735b0f0bb39f0227f89d407"
+      "address": "0xBc7a6fAB19C469B0d5633f165D98FBc4817540f2",
+      "tx": "0xf1bb0e951cc92a40663c949c383fd7af6f41605a416fdcf44d18e4d65130cc2a"
     }
   },
   "params": {
     "sequencer": "0xed37B7fc534Cc93D4195b4F11ADc5C14237cd287",
     "enclaveSigner": "0x92173839C6B3b717179ba5505CCE31bD2131EbA0",
     "collateralAsset": "USDC (MockUSDC, 6 decimals)",
-    "genesisRoot": "0x0000000000000000000000000000000000000000000000000000000000000000",
+    "genesisRoot": "0x4d1ae1d249453ecde8a1827185d5bdca62f7f5f178bc2d31a2a3984c146b3071",
     "livenessBlocks": 7200,
     "challengeBlocks": 300,
-    "challengeBondWei": "10000000000000000"
+    "challengeBondWei": "10000000000000000",
+    "verifier": "SP1ZkVerifier 0x8012F3b3 (real Groth16, dev prover on GB10)"
   },
   "supersededDeploys": [
+    {
+      "note": "2026-07-05 redeploy #2 — MockZkVerifier 3-market stack (BTC/ETH/SOL). The live stack until the 2026-07-09 ZK P2 real-Groth16 migration above. genesisRoot 0x0000 (insurance seeded via batch 1, advancing to 0x4d1ae1d2). Verifier was MockZkVerifier 0xC0a6F6E5.",
+      "DarkPerpSettlement": "0x27Fc1bDa0B04163ABDf310ABC1391AD9778cfA82",
+      "CollateralVault": "0x71a19b16F400752a1c0761dEF7bBA208eDFf37EA",
+      "MockZkVerifier": "0xC0a6F6E5311b93fCeA29410a53e07a512b167c32",
+      "MockUSDC": "0x5DCd457B723F81531753fE92B82696e771671557"
+    },
     {
       "note": "2026-07-05 redeploy #1 — full audit remediation, 5 markets (incl. oracle-less HYPE/LIT). Superseded same day by the 3-market redeploy above.",
       "DarkPerpSettlement": "0xf95edd79e59483aBab5385f66236Bb93bb867523",
