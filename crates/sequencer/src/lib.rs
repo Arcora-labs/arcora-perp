@@ -170,6 +170,16 @@ pub struct SealedBatch {
     pub ops: Vec<BatchOp>,
 }
 
+/// The replayable witness for one settle window: `derive_roots(pre_state, ops, manifest)
+/// .new_state_root` equals the live state root after this `seal_window`. This is the tuple
+/// Slice 3b-2 seals and POSTs to the prover-service.
+pub struct WindowWitness {
+    pub batch_id: u64,
+    pub pre_state: DefaultState,
+    pub ops: Vec<BatchOp>,
+    pub manifest: BatchManifest,
+}
+
 /// A published auto-deleverage haircut: the affected account recognizes `tag` by
 /// recomputing `adl_tag(&adl_tag_key(spend_key), market, batch)`, and reads how
 /// much of its profit was clawed from `clawed` (quote-scaled). Unlinkable to any
@@ -275,11 +285,20 @@ pub struct Sequencer {
     /// failure matrix). Pruned as batches settle. Keeping a snapshot only per
     /// *pending* batch bounds the memory.
     snapshots: BTreeMap<u64, (DefaultState, MatchingEngine<Keccak256>)>,
-    /// Per-pending-batch (ops, manifest), retained alongside `snapshots[batch_id].0`
-    /// (the pre-state) so `batch_witness` can hand out the replayable
-    /// `(pre_state, ops, manifest)` triple. Pruned in lock-step with `snapshots`.
+    /// Every op applied since the current window opened, in application order — the
+    /// replayable op-log the window proof attests. Fed by `Sequencer::apply` (deposits)
+    /// and each `seal_batch` (its `[fills] ++ maintenance` ops). Drained by `seal_window`.
     #[serde(default)]
-    batch_ops: BTreeMap<u64, (Vec<BatchOp>, BatchManifest)>,
+    window_ops: Vec<BatchOp>,
+    /// Union of the window's ticks' settled/rejected order hashes, for the combined manifest.
+    #[serde(default)]
+    window_ordered: Vec<Digest>,
+    #[serde(default)]
+    window_rejected: Vec<(Digest, RejectReason)>,
+    /// The state at the current window's open — the witness pre-state. Re-captured after
+    /// each `seal_window`. (Not `#[serde(default)]`: `DefaultState` has no `Default`; the
+    /// Sequencer is not persisted, so no missing-field case arises.)
+    window_start_state: DefaultState,
     /// Per-account secret liquidation-tag keys, derived from the spend key the
     /// account presents when funding a position and captured inside the enclave.
     /// Used to publish liquidation tags that only the account (which knows its own
@@ -304,7 +323,10 @@ impl Sequencer {
             finality: BTreeMap::new(),
             batch_orders: BTreeMap::new(),
             snapshots: BTreeMap::new(),
-            batch_ops: BTreeMap::new(),
+            window_ops: Vec::new(),
+            window_ordered: Vec::new(),
+            window_rejected: Vec::new(),
+            window_start_state: DefaultState::new(tree_depth),
             liq_tag_keys: BTreeMap::new(),
             adl_tag_keys: BTreeMap::new(),
         }
@@ -330,6 +352,23 @@ impl Sequencer {
     pub fn add_market(&mut self, market: Market) {
         self.matcher.open_market(market.id);
         self.state.add_market(market);
+        // Market registration is boot-time CONFIG, not a replayable `BatchOp` (there is
+        // no `AddMarket` op), so it can never live in the window op-log. Re-capture the
+        // window baseline to include it, or the window witness would replay from a
+        // market-less pre-state and fail (`UnknownMarket`) on the first fill/fund. This
+        // is only ever called before any window ops (deposits/orders), so `window_ops`
+        // is empty here and re-cloning the state is the true window-open baseline.
+        //
+        // The window witness's pre-state must carry markets (they mutate state.markets,
+        // bound in state_root, with no BatchOp). Re-capturing window_start_state here is
+        // only sound while no window ops have accumulated — markets are genesis/setup
+        // config, registered before any deposit/order. A mid-window add_market would strand
+        // the accumulated ops (they'd be in both pre_state and window_ops → double-apply).
+        debug_assert!(
+            self.window_ops.is_empty(),
+            "add_market must run before any window ops (markets are setup config, not mid-window)"
+        );
+        self.window_start_state = self.state.clone();
     }
 
     /// Set / refresh the oracle transcript a market settles against (§8).
@@ -354,23 +393,14 @@ impl Sequencer {
         // `withdrawals_root` from `apply_batch`'s `BatchOutputs`; this thin
         // passthrough is used for setup/admin ops and returns only success/failure.
         self.state.apply_op(op)?;
+        // Log the op at its real position in the open window's op-log so out-of-band
+        // deposits/funds land in the replayable witness `seal_window` drains.
+        self.window_ops.push(op.clone());
         Ok(())
     }
 
     pub fn current_batch_id(&self) -> u64 {
         self.next_batch_id
-    }
-
-    /// The replayable witness for a still-pending batch: `(pre_state, ops, manifest)`
-    /// where `derive_roots(pre_state, ops, manifest).new_state_root` == the sealed
-    /// `new_state_root`. `None` once the batch is settled/failed (pruned) or unknown.
-    pub fn batch_witness(
-        &self,
-        batch_id: u64,
-    ) -> Option<(DefaultState, Vec<BatchOp>, BatchManifest)> {
-        let (state, _matcher) = self.snapshots.get(&batch_id)?;
-        let (ops, manifest) = self.batch_ops.get(&batch_id)?;
-        Some((state.clone(), ops.clone(), manifest.clone()))
     }
 
     /// Read access to a market's order book (inspection / tests).
@@ -801,11 +831,9 @@ impl Sequencer {
         self.batch_orders
             .insert(batch_id, settled_order_hashes.clone());
 
-        // Mirror apply_batch's single per-batch counter bump (engine.rs:156): the guest
-        // proves via apply_batch, which advances state.next_batch_id once; seal_batch
-        // applies ops via apply_op (no bump), so advance it here or the live sealed root
-        // diverges from derive_roots and batch>=1 fails manifest.batch_id==next_batch_id.
-        self.state.next_batch_id += 1;
+        // The per-window batch counter now advances once in `seal_window` (mirroring
+        // apply_batch's single bump over the whole window op-log), NOT per tick — so
+        // `state.next_batch_id` stays == the open window's batch_id across every tick.
         let new_state_root = self.state.state_root();
         self.next_batch_id += 1;
 
@@ -835,11 +863,13 @@ impl Sequencer {
             })
             .collect();
 
-        // Retain the replayable witness for this pending batch, keyed exactly like
-        // `snapshots[batch_id].0` (the pre-state), so `batch_witness` can hand out the
-        // `(pre_state, ops, manifest)` triple. Pruned in lock-step with `snapshots`.
-        self.batch_ops
-            .insert(batch_id, (ops.clone(), manifest.clone()));
+        // Append this tick's ops + settled/rejected hashes to the open window's
+        // accumulators, in application order. `seal_window` drains these into the
+        // per-window `WindowWitness`; `ops`/`manifest` are still moved into `SealedBatch`
+        // below (the internal per-tick record stays for rollback/inclusion).
+        self.window_ops.extend_from_slice(&ops);
+        self.window_ordered.extend_from_slice(&manifest.ordered);
+        self.window_rejected.extend_from_slice(&manifest.rejected);
 
         SealedBatch {
             batch_id,
@@ -853,6 +883,41 @@ impl Sequencer {
             liquidation_tags,
             adl_receipts,
             ops,
+        }
+    }
+
+    /// Close the current settle window: build the combined manifest over the window's
+    /// accumulated ordered/rejected hashes, advance the batch counter once (mirroring
+    /// `apply_batch`), drain the window op-log into the witness, and reopen a fresh
+    /// window from the current (post-bump) state. `derive_roots(pre_state, ops, manifest)
+    /// .new_state_root` equals the live state root after this call.
+    pub fn seal_window(&mut self) -> WindowWitness {
+        let batch_id = self.state.next_batch_id;
+        let oracle_updates: Vec<Digest> =
+            self.oracles.values().map(|t| t.hash::<Keccak256>()).collect();
+        let manifest = BatchManifest {
+            previous_state_root: self.window_start_state.state_root(),
+            batch_id,
+            ordered: self.window_ordered.clone(),
+            rejected: self.window_rejected.clone(),
+            oracle_updates,
+            matching_rule_version: self.matching_rule_version,
+            enclave_measurement: self.enclave.measurement,
+            sequencer_pubkey_epoch: self.enclave.epoch,
+        };
+        // the single per-window counter bump (mirrors apply_batch's engine.rs:156)
+        self.state.next_batch_id += 1;
+        let pre_state = self.window_start_state.clone();
+        let ops = core::mem::take(&mut self.window_ops);
+        // reopen the next window from the post-bump state
+        self.window_ordered.clear();
+        self.window_rejected.clear();
+        self.window_start_state = self.state.clone();
+        WindowWitness {
+            batch_id,
+            pre_state,
+            ops,
+            manifest,
         }
     }
 
@@ -884,9 +949,6 @@ impl Sequencer {
         // its per-batch order list is now immutable settled history that neither
         // rollback nor re-settlement needs — drop it too so the map stays bounded.
         self.batch_orders = self.batch_orders.split_off(&(batch_id + 1));
-        // the replayable witness is only needed while a batch is unproven; drop it in
-        // lock-step with the snapshots so retention lifetime == snapshot lifetime.
-        self.batch_ops = self.batch_ops.split_off(&(batch_id + 1));
     }
 
     /// Roll back a sealed batch that FAILED to prove (§3 failure matrix): revert
@@ -914,8 +976,6 @@ impl Sequencer {
                 }
             }
             self.snapshots.remove(b);
-            // drop this dropped batch's replayable witness too (lock-step with snapshots).
-            self.batch_ops.remove(b);
         }
         // un-see inclusion records that were marked seen in a dropped batch, so a
         // rolled-back order that is never re-included can still surface as an

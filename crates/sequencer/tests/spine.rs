@@ -853,96 +853,106 @@ fn run_maintenance_ops_replay_reproduces_state() {
     );
 }
 
-/// Slice 3a MERGE GATE: a single sealed batch that carries a FILL, a FUNDING accrual
-/// AND a LIQUIDATION retains a `(pre_state, ops, manifest)` witness that replays,
-/// through `derive_roots` (the exact primitive the zkVM guest runs), to *exactly* the
-/// sealed `new_state_root` and `manifest_hash`. This is the whole point of the slice:
-/// the live sealer and the prover agree bit-for-bit. Because this is batch 1 (not 0),
-/// it also exercises the per-batch `state.next_batch_id` bump — without it,
-/// `derive_roots` would reject the witness (`manifest.batch_id != next_batch_id`).
+/// Slice 3b-1 MERGE GATE: a multi-tick settle window — a matched FILL in tick 1, a
+/// mid-window out-of-band DEPOSIT, then FUNDING accrual + a LIQUIDATION in tick 2 —
+/// produces ONE `WindowWitness` whose combined op-log replays, through `derive_roots`
+/// (the exact primitive the zkVM guest runs), to *exactly* the live window-end state
+/// root. The batch counter advances ONCE per window (not per tick), so `pre_state
+/// .next_batch_id == batch_id` and `derive_roots` accepts the witness. This is the
+/// whole point of the slice: one proof per settle window, live sealer and prover
+/// agree bit-for-bit across every tick and out-of-band op in the window.
 #[test]
-fn batch_witness_replays_to_sealed_roots_with_fill_funding_liquidation() {
-    // ---- setup: traders 1 (short) & 2 (long) open 1 BTC at $100k in batch 0; traders
-    // 3 & 4 are funded so their fresh orders settle a FILL in the liquidation batch.
+fn seal_window_replays_multi_tick_window_to_live_root() {
+    // ---- setup: traders 1 (short) & 2 (long) open 1 BTC at $100k in tick 1; trader 5
+    // makes a mid-window deposit. Price then crashes so trader 2's long goes underwater
+    // and is liquidated in tick 2's maintenance pass.
     let mut seq = setup();
-    fund(&mut seq, 3, 20_000, 0x33);
-    fund(&mut seq, 4, 20_000, 0x44);
-    seq.seal_batch(
-        &[
-            order(1, Side::Sell, SIZE_SCALE, 100_000 * PRICE_SCALE, 1),
-            order(2, Side::Buy, SIZE_SCALE, 100_000 * PRICE_SCALE, 2),
-        ],
-        1_000,
-    );
-    assert_eq!(seq.state.position(&owner_id(2), 0).unwrap().size, SIZE_SCALE);
 
-    // price crashes to $84k → B (long, owner 2) is underwater and is liquidated this
-    // batch, while 3 & 4 trade a fresh 0.1 BTC fill at the new mark.
-    let now_ms = 5_000;
-    seq.set_oracle(0, oracle(84_000, now_ms));
-    let orders = [
-        order(4, Side::Sell, SIZE_SCALE / 10, 84_000 * PRICE_SCALE, 3),
-        order(3, Side::Buy, SIZE_SCALE / 10, 84_000 * PRICE_SCALE, 4),
-    ];
-
-    // ---- act
-    let sealed = seq.seal_batch(&orders, now_ms);
-
-    // ---- the retained witness
-    let (pre_state, ops, manifest) = seq
-        .batch_witness(sealed.batch_id)
-        .expect("witness retained for a pending batch");
-
-    // the op-log must cover all three op kinds (else the gate is hollow)
-    assert!(
-        ops.iter().any(|o| matches!(o, BatchOp::Fill { .. })),
-        "batch had a fill"
-    );
-    assert!(
-        ops.iter().any(|o| matches!(o, BatchOp::AccrueFunding { .. })),
-        "funding accrued"
-    );
-    assert!(
-        ops.iter().any(|o| matches!(o, BatchOp::Liquidate { .. })),
-        "a position liquidated"
-    );
-
-    // ---- faithfulness: derive_roots over (pre_state, ops, manifest) reproduces
-    // exactly what the sealer computed.
-    let derived = perp_core::commitment::derive_roots(&mut pre_state.clone(), &ops, &manifest)
-        .expect("derive_roots accepts the retained witness");
-    assert_eq!(
-        derived.new_state_root, sealed.new_state_root,
-        "op-log must reproduce new_state_root"
-    );
-    assert_eq!(
-        derived.manifest_hash, sealed.manifest_hash,
-        "manifest hash must match"
-    );
-    assert_eq!(
-        derived.prev_state_root, sealed.prev_state_root,
-        "pre_state is the batch's prev_state"
-    );
-}
-
-/// A batch with matching orders but NO maintenance liquidation still round-trips: the
-/// fills-only op-log replays through `derive_roots` to the sealed `new_state_root`.
-#[test]
-fn batch_witness_round_trips_fills_only() {
-    let mut seq = setup();
-    let orders = [
+    // ---- tick 1: a matched fill (seal_batch), window still open
+    seq.set_oracle(0, oracle(100_000, 20_000));
+    let orders_tick1 = [
         order(1, Side::Sell, SIZE_SCALE, 100_000 * PRICE_SCALE, 1),
         order(2, Side::Buy, SIZE_SCALE, 100_000 * PRICE_SCALE, 2),
     ];
-    let sealed = seq.seal_batch(&orders, 1_000);
-    let (pre_state, ops, manifest) = seq.batch_witness(sealed.batch_id).unwrap();
+    let _ = seq.seal_batch(&orders_tick1, 20_000);
+    assert_eq!(seq.state.position(&owner_id(2), 0).unwrap().size, SIZE_SCALE);
+
+    // ---- mid-window: an out-of-band deposit (must land in window_ops)
+    let dep_owner = owner_id(5);
+    seq.apply(&BatchOp::Deposit {
+        owner: dep_owner,
+        asset_id: 0,
+        amount: 500_000,
+        blinding: [7u8; 32],
+    })
+    .unwrap();
+
+    // ---- tick 2: oracle already crashed → maintenance accrues funding + liquidates
+    seq.set_oracle(0, oracle(84_000, 20_700));
+    let _ = seq.seal_batch(&[], 20_700);
+
+    // ---- close the window
+    let w = seq.seal_window();
+
+    // the window op-log must span all four op kinds (else the gate is hollow)
     assert!(
-        ops.iter().any(|o| matches!(o, BatchOp::Fill { .. })),
-        "batch had a fill"
+        w.ops.iter().any(|o| matches!(o, BatchOp::Deposit { .. })),
+        "mid-window deposit logged"
     );
+    assert!(
+        w.ops.iter().any(|o| matches!(o, BatchOp::Fill { .. })),
+        "a fill this window"
+    );
+    assert!(
+        w.ops.iter().any(|o| matches!(o, BatchOp::AccrueFunding { .. })),
+        "funding accrued"
+    );
+    assert!(
+        w.ops.iter().any(|o| matches!(o, BatchOp::Liquidate { .. })),
+        "a liquidation"
+    );
+
+    // faithfulness: replay the window witness onto its pre-state == the live window-end state
+    let live_root = seq.state.state_root();
+    let derived = perp_core::commitment::derive_roots(&mut w.pre_state.clone(), &w.ops, &w.manifest)
+        .expect("derive_roots accepts the window witness");
+    assert_eq!(
+        derived.new_state_root, live_root,
+        "window op-log must reproduce the live window-end root"
+    );
+    assert_eq!(
+        derived.manifest_hash,
+        w.manifest.hash::<Keccak256>(),
+        "manifest hash matches"
+    );
+    assert_eq!(
+        w.pre_state.next_batch_id, w.batch_id,
+        "pre_state counter == window batch_id"
+    );
+}
+
+/// Slice 3b-1: a two-tick window of fills only (no liquidation) round-trips — the
+/// combined op-log replays through `derive_roots` to the live window-end root.
+#[test]
+fn seal_window_two_tick_fills_only_round_trips() {
+    let mut seq = setup();
+    seq.set_oracle(0, oracle(100_000, 21_000));
+    let orders_a = [
+        order(1, Side::Sell, SIZE_SCALE / 10, 100_000 * PRICE_SCALE, 1),
+        order(2, Side::Buy, SIZE_SCALE / 10, 100_000 * PRICE_SCALE, 2),
+    ];
+    let _ = seq.seal_batch(&orders_a, 21_000);
+    seq.set_oracle(0, oracle(100_000, 21_700));
+    let orders_b = [
+        order(1, Side::Sell, SIZE_SCALE / 10, 100_000 * PRICE_SCALE, 3),
+        order(2, Side::Buy, SIZE_SCALE / 10, 100_000 * PRICE_SCALE, 4),
+    ];
+    let _ = seq.seal_batch(&orders_b, 21_700);
+    let w = seq.seal_window();
+    let live_root = seq.state.state_root();
     let derived =
-        perp_core::commitment::derive_roots(&mut pre_state.clone(), &ops, &manifest).unwrap();
-    assert_eq!(derived.new_state_root, sealed.new_state_root);
+        perp_core::commitment::derive_roots(&mut w.pre_state.clone(), &w.ops, &w.manifest).unwrap();
+    assert_eq!(derived.new_state_root, live_root);
 }
 
 /// AUDIT (Tier-3): the manifest reject reason must be honest. An order on an unknown
