@@ -6432,13 +6432,16 @@ mod tests {
         let mut gw = Gw::boot();
         let (key, _o) = gw.register_account(None);
         gw.account_deposit(&key, 0, 40_000 * QUOTE_SCALE).unwrap();
-        // two real-exit withdrawals in the window → a non-trivial withdrawals tree
+        // THREE real-exit withdrawals in the window → a non-trivial withdrawals tree
+        // that also pins op-ORDER (a 2-leaf sorted-pair tree is permutation-invariant,
+        // so two leaves alone couldn't tell "same set" from "same order")
         gw.account_withdraw(&key, 0, 5_000 * QUOTE_SCALE, [7u8; 20]).unwrap();
         gw.account_withdraw(&key, 0, 3_000 * QUOTE_SCALE, [8u8; 20]).unwrap();
+        gw.account_withdraw(&key, 0, 2_000 * QUOTE_SCALE, [9u8; 20]).unwrap();
         let bc = gw.seq.state.next_batch_id;
 
         let (witness, ww) = gw.begin_window_settle(bc).unwrap().expect("some");
-        assert_eq!(ww.len(), 2);
+        assert_eq!(ww.len(), 3);
 
         let prepared = prove_and_prepare(&MockProverClient, &witness, &ww).expect("prepare");
 
@@ -6488,5 +6491,93 @@ mod tests {
         assert!(gw.batch_orders.contains_key(&batch_id));
         assert!(gw.pending_ordered.is_empty());
         assert!(gw.l1_status.is_some());
+    }
+
+    #[test]
+    fn prove_and_prepare_rejects_withdrawals_root_mismatch() {
+        use crate::prover_client::{
+            prove_and_prepare, MockProverClient, ProveOutcome, ProverClient, ProverClientError,
+        };
+        use sequencer::WindowWitness;
+
+        // a client that derives correctly but corrupts the withdrawals_root
+        struct TamperedClient;
+        impl ProverClient for TamperedClient {
+            fn prove(&self, w: &WindowWitness) -> Result<ProveOutcome, ProverClientError> {
+                let mut out = MockProverClient.prove(w)?;
+                out.withdrawals_root = [0xFFu8; 32]; // != the gateway's tree
+                Ok(out)
+            }
+        }
+
+        let mut gw = Gw::boot();
+        let (key, _o) = gw.register_account(None);
+        gw.account_deposit(&key, 0, 40_000 * QUOTE_SCALE).unwrap();
+        gw.account_withdraw(&key, 0, 5_000 * QUOTE_SCALE, [7u8; 20]).unwrap();
+        let bc = gw.seq.state.next_batch_id;
+        let (witness, ww) = gw.begin_window_settle(bc).unwrap().expect("some");
+        assert!(!ww.is_empty());
+
+        // the tampered root must be rejected — a wrong root is NEVER published
+        let res = prove_and_prepare(&TamperedClient, &witness, &ww);
+        assert!(res.is_err(), "mismatched withdrawals_root must be a hard error");
+    }
+
+    #[test]
+    fn commit_window_settle_extends_proofs_across_windows() {
+        use crate::prover_client::{prove_and_prepare, MockProverClient};
+
+        let mut gw = Gw::boot();
+        let (key, _o) = gw.register_account(None);
+        gw.account_deposit(&key, 0, 40_000 * QUOTE_SCALE).unwrap();
+
+        // ── window 1: withdrawal → begin → prove → commit ────────────────────
+        gw.account_withdraw(&key, 0, 5_000 * QUOTE_SCALE, [7u8; 20]).unwrap();
+        let bc1 = gw.seq.state.next_batch_id;
+        let (witness1, ww1) = gw.begin_window_settle(bc1).unwrap().expect("some");
+        let ordered1 = witness1.manifest.ordered.clone();
+        let rejected1: Vec<_> = witness1.manifest.rejected.iter().map(|(h, _)| *h).collect();
+        let batch_id1 = witness1.batch_id;
+        let leaf_w1 = ww1[0].leaf();
+        let prepared1 = prove_and_prepare(&MockProverClient, &witness1, &ww1).unwrap();
+        let status1 = L1Status {
+            settled_root: hex32(&prepared1.outcome.new_root),
+            batch_count: batch_id1 + 1,
+            last_tx: "0xtx1".into(),
+            bond: "0".into(),
+            withdrawals_root: hex32(&prepared1.outcome.withdrawals_root),
+        };
+        gw.commit_window_settle(batch_id1, ordered1, rejected1, prepared1, status1);
+        assert!(gw.withdraw_proofs.contains_key(&leaf_w1));
+
+        // ── window 2: another withdrawal (root changes) → begin → commit ─────
+        gw.account_withdraw(&key, 0, 3_000 * QUOTE_SCALE, [8u8; 20]).unwrap();
+        let bc2 = gw.seq.state.next_batch_id;
+        let (witness2, ww2) = gw.begin_window_settle(bc2).unwrap().expect("some");
+        let ordered2 = witness2.manifest.ordered.clone();
+        let rejected2: Vec<_> = witness2.manifest.rejected.iter().map(|(h, _)| *h).collect();
+        let batch_id2 = witness2.batch_id;
+        assert_eq!(batch_id2, batch_id1 + 1); // windows advance
+        let leaf_w2 = ww2[0].leaf();
+        let prepared2 = prove_and_prepare(&MockProverClient, &witness2, &ww2).unwrap();
+        let new_root2 = prepared2.outcome.new_root;
+        let status2 = L1Status {
+            settled_root: hex32(&new_root2),
+            batch_count: batch_id2 + 1,
+            last_tx: "0xtx2".into(),
+            bond: "0".into(),
+            withdrawals_root: hex32(&prepared2.outcome.withdrawals_root),
+        };
+        gw.commit_window_settle(batch_id2, ordered2, rejected2, prepared2, status2);
+
+        // EXTEND semantics: window 1's claim proof SURVIVES window 2's commit
+        assert!(
+            gw.withdraw_proofs.contains_key(&leaf_w1),
+            "window-1 withdraw proof must survive a window-2 commit (extend, not replace)"
+        );
+        assert!(gw.withdraw_proofs.contains_key(&leaf_w2));
+        assert!(gw.batch_orders.contains_key(&batch_id1));
+        assert!(gw.batch_orders.contains_key(&batch_id2));
+        assert_eq!(gw.last_settled_root, new_root2);
     }
 }
