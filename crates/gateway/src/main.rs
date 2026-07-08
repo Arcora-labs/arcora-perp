@@ -1408,6 +1408,14 @@ impl Gw {
         }
     }
 
+    /// Slice 3b-3: re-inject a failed window's drained withdrawals AHEAD of any accumulated
+    /// since, mirroring `Sequencer::rollback_window`'s op prepend, so the re-seal's withdrawal
+    /// set is `[failed ++ intervening]` and no withdrawal is lost on a settle failure.
+    fn rollback_window_withdrawals(&mut self, mut ww: Vec<Withdrawal>) {
+        ww.append(&mut self.window_withdrawals);
+        self.window_withdrawals = ww;
+    }
+
     /// An account's withdrawals with the claim data: each carries its leaf and, once
     /// the cumulative root has been published on-chain, the Merkle `proof` to call
     /// `vault.claim(to, amount, nonce, proof)`. `claimable=false` means it is recorded
@@ -4716,6 +4724,10 @@ async fn main() {
                     let rejected: Vec<Digest> =
                         witness.manifest.rejected.iter().map(|(h, _)| *h).collect();
                     let batch_id = witness.batch_id;
+                    // keep rollback copies for the failure path (a per-settle DefaultState
+                    // clone — far rarer than the per-tick snapshot clone, so negligible).
+                    let witness_rb = witness.clone();
+                    let ww_rb = ww.clone();
                     // (C) prove + settle (lock-free)
                     let l1c = l1.clone();
                     #[allow(clippy::type_complexity)] // one-shot (prepared, tx, bond, claimed) tuple
@@ -4757,8 +4769,18 @@ async fn main() {
                                 serde_json::to_string(&WsMsg::State { state: snap }).unwrap(),
                             );
                         }
-                        Ok(Err(e)) => eprintln!("[l1] window settle failed: {e}"),
-                        Err(e) => eprintln!("[l1] window settle join: {e}"),
+                        Ok(Err(e)) => {
+                            eprintln!("[l1] window settle failed: {e} — rolling the window back");
+                            let mut gw = app.gw.lock().await;
+                            gw.seq.rollback_window(&witness_rb);
+                            gw.rollback_window_withdrawals(ww_rb);
+                        }
+                        Err(e) => {
+                            eprintln!("[l1] window settle join: {e} — rolling the window back");
+                            let mut gw = app.gw.lock().await;
+                            gw.seq.rollback_window(&witness_rb);
+                            gw.rollback_window_withdrawals(ww_rb);
+                        }
                     }
                     continue; // new path handled this tick; skip the legacy body
                 }
@@ -6539,6 +6561,27 @@ mod tests {
         assert!(gw.pending_withdrawals.iter().any(|w| w.leaf() == w2.leaf()));
         assert!(!gw.withdraw_proofs.contains_key(&w1.leaf()));
         assert!(gw.withdraw_proofs.contains_key(&w2.leaf()));
+    }
+
+    // ── Slice 3b-3: Gw::rollback_window_withdrawals ─────────────────────────
+
+    #[test]
+    fn rollback_window_withdrawals_prepends() {
+        let mut gw = Gw::boot();
+        let (key, _o) = gw.register_account(None);
+        gw.account_deposit(&key, 0, 40_000 * QUOTE_SCALE).unwrap();
+        // one withdrawal accumulated since the (failed) seal drained the window's set
+        let after = gw.account_withdraw(&key, 0, 3_000 * QUOTE_SCALE, [8u8; 20]).unwrap();
+        // the failed window's withdrawals, captured before the seal
+        let failed = vec![Withdrawal { owner: [1u8; 32], to: [7u8; 20], amount: 5_000, nonce: 1 }];
+
+        gw.rollback_window_withdrawals(failed.clone());
+
+        // the failed window's withdrawals are re-injected AHEAD of the accumulated one
+        assert_eq!(gw.window_withdrawals.len(), 2);
+        assert_eq!(gw.window_withdrawals[0].nonce, failed[0].nonce);
+        assert_eq!(gw.window_withdrawals[0].to, [7u8; 20]);
+        assert_eq!(gw.window_withdrawals[1].nonce, after.nonce);
     }
 
     // ── Slice 3b-2a: Gw::begin_window_settle ────────────────────────────────

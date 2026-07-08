@@ -930,6 +930,7 @@ impl Sequencer {
     /// desync guard is satisfied. Leaves the per-tick soft-finality (Counter A / snapshots /
     /// finality / inclusion) untouched.
     pub fn rollback_window(&mut self, w: &WindowWitness) {
+        debug_assert_eq!(self.state.next_batch_id, w.batch_id + 1, "rollback_window is at-most-once: expects exactly one un-settled seal (Counter B == batch_id+1) — a double rollback or stale-witness rollback trips this");
         // seal_window bumped Counter B once; ticks never touch it, so restore the pre-seal id.
         self.state.next_batch_id = w.batch_id;
         // prepend the failed window's ops/orders before anything accumulated since the seal.

@@ -1002,6 +1002,7 @@ fn rollback_window_restores_and_reseals_to_live_root() {
         blinding: [7u8; 32],
     })
     .unwrap();
+    // NOTE: mis-order falsifiability couples to the NON-ZERO funding this tick accrues off the crashed oracle — a timing/oracle edit that zeroes it silently darkens the ordering arm.
     let _ = seq.seal_batch(&[], 20_700);
 
     // roll the failed window back.
