@@ -266,6 +266,14 @@ fn enclave_restore_placeholder() -> EnclaveIdentity {
     EnclaveIdentity::from_seed([7u8; 32], 0, [0u8; 32])
 }
 
+/// Keep tick→window map entries for this many settled windows past the on-chain batchCount, so
+/// `/v1/batch/:id` + `WBatch.window_id` reconciliation (and `settled:true`) stay observable for a
+/// grace period after a window settles — decoupled from the much faster per-tick soft-finality.
+const TICK_WINDOW_GRACE_WINDOWS: u64 = 8;
+/// Hard backstop on the tick→window map so no path can leak (the legacy path never settles a
+/// window, so it has no window-settle prune event) — evict the oldest entries beyond this cap.
+const TICK_WINDOW_MAX: usize = 16_384;
+
 /// The sequencer / matcher node.
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct Sequencer {
@@ -283,8 +291,11 @@ pub struct Sequencer {
     batch_orders: BTreeMap<u64, Vec<Digest>>,
     /// Maps each per-tick Counter-A batch id to the Counter-B window id (`state.next_batch_id`)
     /// it settles into, so a bare tick id (a `WBatch`, a log line) without a receipt can be
-    /// reconciled to its on-chain window. Shares the finality lifecycle of `batch_orders`
-    /// (pruned in `mark_settled`/`mark_failed`) so it stays bounded (Slice 3b-4).
+    /// reconciled to its on-chain window. Pruned on WINDOW settle (Counter B) by
+    /// `prune_tick_window_settled` with a [`TICK_WINDOW_GRACE_WINDOWS`] grace — NOT on the
+    /// ~10x-faster per-tick soft-finality, which would drop entries before their window even
+    /// seals — plus the [`TICK_WINDOW_MAX`] size-cap backstop in `seal_batch`, so it stays
+    /// bounded on every path (Slice 3b-4).
     ///
     /// Persistence: this map IS part of the gateway's postcard boot snapshot — `Gw` derives
     /// Serialize/Deserialize and its `seq: Sequencer` field is not serde-skipped, so the whole
@@ -426,9 +437,28 @@ impl Sequencer {
     }
 
     /// The on-chain window (Counter B) a per-tick batch (Counter A) settled into, if still
-    /// mapped. `None` once pruned (its soft-finality settled), or for an unknown/future tick.
+    /// mapped. `None` once pruned (its window settled more than the grace period ago, or the
+    /// size cap evicted it), or for an unknown/future tick.
     pub fn window_for_tick(&self, tick_batch: u64) -> Option<u64> {
         self.tick_window.get(&tick_batch).copied()
+    }
+
+    /// Evict the oldest tick→window entries beyond the hard cap (a leak backstop; the primary
+    /// bound is `prune_tick_window_settled` on window settle).
+    fn enforce_tick_window_cap(&mut self) {
+        while self.tick_window.len() > TICK_WINDOW_MAX {
+            let oldest = *self.tick_window.keys().next().expect("non-empty above cap");
+            self.tick_window.remove(&oldest);
+        }
+    }
+
+    /// Prune the tick→window map on WINDOW settle (Counter B), keeping entries whose window is
+    /// within `TICK_WINDOW_GRACE_WINDOWS` of `settled_batch_count` (the on-chain batchCount AFTER
+    /// the settle) so a settled tick's window stays queryable for a grace period. Unsettled
+    /// windows (`w >= settled_batch_count`) are always kept.
+    pub fn prune_tick_window_settled(&mut self, settled_batch_count: u64) {
+        let cutoff = settled_batch_count.saturating_sub(TICK_WINDOW_GRACE_WINDOWS);
+        self.tick_window.retain(|_, w| *w >= cutoff);
     }
 
     /// Read access to a market's order book (inspection / tests).
@@ -863,6 +893,7 @@ impl Sequencer {
         // into, for off-chain receipt/inclusion reconciliation (Slice 3b-4). state.next_batch_id
         // is the open window and is stable across the window's ticks.
         self.tick_window.insert(batch_id, self.state.next_batch_id);
+        self.enforce_tick_window_cap();
 
         // The per-window batch counter now advances once in `seal_window` (mirroring
         // apply_batch's single bump over the whole window op-log), NOT per tick — so
@@ -1007,8 +1038,6 @@ impl Sequencer {
         // its per-batch order list is now immutable settled history that neither
         // rollback nor re-settlement needs — drop it too so the map stays bounded.
         self.batch_orders = self.batch_orders.split_off(&(batch_id + 1));
-        // the A→B map shares that finality lifecycle — drop settled tick ids too.
-        self.tick_window = self.tick_window.split_off(&(batch_id + 1));
     }
 
     /// Roll back a sealed batch that FAILED to prove (§3 failure matrix): revert
@@ -1036,8 +1065,6 @@ impl Sequencer {
                 }
             }
             self.snapshots.remove(b);
-            // the dropped ticks are being re-sequenced; drop their stale window mapping.
-            self.tick_window.remove(b);
         }
         // un-see inclusion records that were marked seen in a dropped batch, so a
         // rolled-back order that is never re-included can still surface as an
@@ -1212,21 +1239,59 @@ mod tests {
     }
 
     #[test]
-    fn mark_settled_prunes_the_window_map() {
+    fn mark_settled_no_longer_prunes_the_window_map() {
         let mut seq = test_sequencer();
         let s = seq.seal_batch(&sample_orders(1), now());
         assert!(seq.window_for_tick(s.batch_id).is_some());
         seq.mark_settled(s.batch_id);
-        assert!(seq.window_for_tick(s.batch_id).is_none()); // pruned with batch_orders
+        // per-tick soft-finality is decoupled from the A→B map: the entry survives until
+        // its WINDOW settles (`prune_tick_window_settled`) or the size cap evicts it —
+        // soft-finality fires ~10x faster than the window horizon and must not drop it.
+        assert!(seq.window_for_tick(s.batch_id).is_some());
     }
 
     #[test]
-    fn mark_failed_prunes_the_window_map() {
+    fn mark_failed_no_longer_prunes_the_window_map() {
         let mut seq = test_sequencer();
         let s = seq.seal_batch(&sample_orders(1), now());
         assert!(seq.window_for_tick(s.batch_id).is_some());
         // a pre-batch snapshot exists for this batch, so the rollback must happen.
         assert!(seq.mark_failed(s.batch_id));
-        assert!(seq.window_for_tick(s.batch_id).is_none()); // pruned with batch_orders
+        // the mapping survives the per-tick rollback (the re-sealed tick maps to the same
+        // still-open window); pruning is window-settle + size-cap only now.
+        assert!(seq.window_for_tick(s.batch_id).is_some());
+    }
+
+    #[test]
+    fn prune_tick_window_settled_keeps_grace_drops_old() {
+        let mut seq = test_sequencer();
+        seq.tick_window.insert(100, 2); // old settled window
+        seq.tick_window.insert(101, 5); // still old (< cutoff)
+        seq.tick_window.insert(102, 15); // within grace
+        seq.tick_window.insert(103, 25); // unsettled (>= count)
+        // settled batchCount = 20, TICK_WINDOW_GRACE_WINDOWS = 8 -> cutoff = 12: keep
+        // window >= 12 (pins the const's current value).
+        seq.prune_tick_window_settled(20);
+        assert_eq!(seq.window_for_tick(100), None);
+        assert_eq!(seq.window_for_tick(101), None);
+        assert_eq!(seq.window_for_tick(102), Some(15));
+        assert_eq!(seq.window_for_tick(103), Some(25));
+    }
+
+    #[test]
+    fn enforce_tick_window_cap_bounds_the_map() {
+        let mut seq = test_sequencer();
+        let n = TICK_WINDOW_MAX as u64 + 50;
+        for i in 0..n {
+            seq.tick_window.insert(i, i);
+        }
+        seq.enforce_tick_window_cap();
+        assert_eq!(seq.tick_window.len(), TICK_WINDOW_MAX);
+        // the smallest-keyed (oldest) entries were the ones evicted…
+        assert_eq!(seq.window_for_tick(0), None);
+        assert_eq!(seq.window_for_tick(49), None);
+        // …and the newest survive.
+        assert_eq!(seq.window_for_tick(50), Some(50));
+        assert_eq!(seq.window_for_tick(n - 1), Some(n - 1));
     }
 }

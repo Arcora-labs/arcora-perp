@@ -1415,6 +1415,11 @@ impl Gw {
         // per-tick accumulators are unused by the new path — clear them so they can't grow.
         self.pending_ordered.clear();
         self.pending_rejected.clear();
+        // Slice 3b-4 (Finding-1 fix): prune the tick->window map on WINDOW settle (Counter B),
+        // not the ~10x-faster per-tick soft-finality, so /v1/batch/:id + WBatch.window_id survive
+        // until their window settles + a grace (settled:true observable). batch_id just settled,
+        // so the on-chain batchCount is now batch_id + 1.
+        self.seq.prune_tick_window_settled(batch_id + 1);
         self.l1_status = Some(l1_status);
     }
 
