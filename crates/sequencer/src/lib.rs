@@ -1267,13 +1267,18 @@ mod tests {
         let mut seq = test_sequencer();
         seq.tick_window.insert(100, 2); // old settled window
         seq.tick_window.insert(101, 5); // still old (< cutoff)
+        seq.tick_window.insert(104, 11); // one below cutoff -> dropped
+        seq.tick_window.insert(105, 12); // exactly at cutoff -> kept
         seq.tick_window.insert(102, 15); // within grace
         seq.tick_window.insert(103, 25); // unsettled (>= count)
         // settled batchCount = 20, TICK_WINDOW_GRACE_WINDOWS = 8 -> cutoff = 12: keep
-        // window >= 12 (pins the const's current value).
+        // window >= 12. The w=11/w=12 probes straddle the exact boundary, so this test
+        // fails if GRACE changes or the retain flips >= to > (pins the off-by-one).
         seq.prune_tick_window_settled(20);
         assert_eq!(seq.window_for_tick(100), None);
         assert_eq!(seq.window_for_tick(101), None);
+        assert_eq!(seq.window_for_tick(104), None); // 11 < 12 cutoff
+        assert_eq!(seq.window_for_tick(105), Some(12)); // 12 == cutoff, kept
         assert_eq!(seq.window_for_tick(102), Some(15));
         assert_eq!(seq.window_for_tick(103), Some(25));
     }
