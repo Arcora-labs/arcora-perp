@@ -6725,18 +6725,31 @@ mod tests {
     }
 
     #[test]
-    fn prove_and_prepare_rejects_withdrawals_root_mismatch() {
+    fn prove_and_prepare_rejects_wroot_mismatch() {
         use crate::prover_client::{
             prove_and_prepare, MockProverClient, ProveOutcome, ProverClient, ProverClientError,
         };
+        use perp_core::commitment::DerivedRoots;
+        use perp_core::Keccak256;
         use sequencer::WindowWitness;
 
-        // a client that derives correctly but corrupts the withdrawals_root
-        struct TamperedClient;
-        impl ProverClient for TamperedClient {
+        // corrupts withdrawals_root AND recomputes commitment over the tampered roots, so
+        // the commitment cross-check PASSES and the failure lands on the withdrawal-tree
+        // byte-match branch.
+        struct WrootTamper;
+        impl ProverClient for WrootTamper {
             fn prove(&self, w: &WindowWitness) -> Result<ProveOutcome, ProverClientError> {
                 let mut out = MockProverClient.prove(w)?;
-                out.withdrawals_root = [0xFFu8; 32]; // != the gateway's tree
+                out.withdrawals_root = [0xFFu8; 32];
+                out.commitment = DerivedRoots {
+                    prev_state_root: out.prev_root,
+                    manifest_hash: out.manifest_hash,
+                    new_state_root: out.new_root,
+                    ordered_root: out.ordered_root,
+                    withdrawals_root: out.withdrawals_root,
+                    rejected_root: out.rejected_root,
+                }
+                .commitment::<Keccak256>();
                 Ok(out)
             }
         }
@@ -6749,9 +6762,43 @@ mod tests {
         let (witness, ww) = gw.begin_window_settle(bc).unwrap().expect("some");
         assert!(!ww.is_empty());
 
-        // the tampered root must be rejected — a wrong root is NEVER published
-        let res = prove_and_prepare(&TamperedClient, &witness, &ww);
-        assert!(res.is_err(), "mismatched withdrawals_root must be a hard error");
+        // (PreparedSettle is not Debug, so no unwrap_err here)
+        let Err(err) = prove_and_prepare(&WrootTamper, &witness, &ww) else {
+            panic!("tampered withdrawals_root must be a hard error");
+        };
+        assert!(err.contains("withdrawals root mismatch"), "got: {err}");
+    }
+
+    #[test]
+    fn prove_and_prepare_rejects_commitment_mismatch() {
+        use crate::prover_client::{
+            prove_and_prepare, MockProverClient, ProveOutcome, ProverClient, ProverClientError,
+        };
+        use sequencer::WindowWitness;
+
+        // corrupts only the commitment (roots stay consistent with the gateway tree) → the
+        // commitment cross-check branch fires first.
+        struct CommitTamper;
+        impl ProverClient for CommitTamper {
+            fn prove(&self, w: &WindowWitness) -> Result<ProveOutcome, ProverClientError> {
+                let mut out = MockProverClient.prove(w)?;
+                out.commitment = [0xFFu8; 32];
+                Ok(out)
+            }
+        }
+
+        let mut gw = Gw::boot();
+        let (key, _o) = gw.register_account(None);
+        gw.account_deposit(&key, 0, 40_000 * QUOTE_SCALE).unwrap();
+        gw.account_withdraw(&key, 0, 5_000 * QUOTE_SCALE, [7u8; 20]).unwrap();
+        let bc = gw.seq.state.next_batch_id;
+        let (witness, ww) = gw.begin_window_settle(bc).unwrap().expect("some");
+
+        // (PreparedSettle is not Debug, so no unwrap_err here)
+        let Err(err) = prove_and_prepare(&CommitTamper, &witness, &ww) else {
+            panic!("tampered commitment must be a hard error");
+        };
+        assert!(err.contains("commitment mismatch"), "got: {err}");
     }
 
     #[test]
