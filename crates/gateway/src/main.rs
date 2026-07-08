@@ -960,8 +960,12 @@ impl Gw {
         let mm = Wallet::from_seed([2u8; 32]);
         let now = now_ms();
 
+        // Pass 1 (registration): register EVERY market + its oracle before ANY funding.
+        // add_market re-captures window_start_state and is sound only while window_ops is
+        // empty; funding pushes ops into window_ops, so all add_market calls must complete
+        // first (markets are boot config, not mid-window). See sequencer::add_market.
         let mut mkts = Vec::new();
-        for (i, cfg) in MARKETS.iter().enumerate() {
+        for cfg in MARKETS.iter() {
             seq.add_market(Market::with_fees_treasury(
                 cfg.id,
                 TAKER_FEE_BPS,
@@ -970,6 +974,19 @@ impl Gw {
             ));
             let px = usd(cfg.seed);
             seq.set_oracle(cfg.id, oracle_of(px, now));
+            mkts.push(Mkt {
+                id: cfg.id,
+                symbol: cfg.symbol,
+                reference_price: px,
+                px,
+                live: false,
+                feed: cfg.feed,
+                px_ms: 0,
+                feed_ts: 0,
+            });
+        }
+        // Pass 2 (funding): all markets now exist, so fund each bucket.
+        for (i, cfg) in MARKETS.iter().enumerate() {
             // fund the market-maker (deep) and the user (≈$5k) into each market bucket
             fund(
                 &mut seq,
@@ -987,16 +1004,6 @@ impl Gw {
                 USER_FUND_PER_MARKET,
                 0x10 + i as u8,
             );
-            mkts.push(Mkt {
-                id: cfg.id,
-                symbol: cfg.symbol,
-                reference_price: px,
-                px,
-                live: false,
-                feed: cfg.feed,
-                px_ms: 0,
-                feed_ts: 0,
-            });
         }
         // give the demo user extra market-0 balance so the LP tab is demoable (LP
         // deposits debit this real balance — no free mint).

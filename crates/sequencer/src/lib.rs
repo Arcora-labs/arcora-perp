@@ -358,6 +358,16 @@ impl Sequencer {
         // market-less pre-state and fail (`UnknownMarket`) on the first fill/fund. This
         // is only ever called before any window ops (deposits/orders), so `window_ops`
         // is empty here and re-cloning the state is the true window-open baseline.
+        //
+        // The window witness's pre-state must carry markets (they mutate state.markets,
+        // bound in state_root, with no BatchOp). Re-capturing window_start_state here is
+        // only sound while no window ops have accumulated — markets are genesis/setup
+        // config, registered before any deposit/order. A mid-window add_market would strand
+        // the accumulated ops (they'd be in both pre_state and window_ops → double-apply).
+        debug_assert!(
+            self.window_ops.is_empty(),
+            "add_market must run before any window ops (markets are setup config, not mid-window)"
+        );
         self.window_start_state = self.state.clone();
     }
 
