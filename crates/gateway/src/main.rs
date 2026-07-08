@@ -1393,6 +1393,21 @@ impl Gw {
         self.l1_status = Some(l1_status);
     }
 
+    /// Slice 3b-2b: drop withdrawals the vault has already paid (claimed[leaf]) from both
+    /// the listing (`pending_withdrawals`) and the served proofs (`withdraw_proofs`), so
+    /// the new (per-window) settle path stays bounded and paid notes stop being listed —
+    /// the same claimed-pruning the legacy cumulative path does at settle.
+    fn prune_claimed_withdrawals(&mut self, claimed: &[[u8; 32]]) {
+        if claimed.is_empty() {
+            return;
+        }
+        let cset: std::collections::BTreeSet<[u8; 32]> = claimed.iter().copied().collect();
+        self.pending_withdrawals.retain(|w| !cset.contains(&w.leaf()));
+        for leaf in &cset {
+            self.withdraw_proofs.remove(leaf);
+        }
+    }
+
     /// An account's withdrawals with the claim data: each carries its leaf and, once
     /// the cumulative root has been published on-chain, the Merkle `proof` to call
     /// `vault.claim(to, amount, nonce, proof)`. `claimable=false` means it is recorded
@@ -4081,18 +4096,16 @@ fn production_mode(l1_enabled: bool) -> bool {
     l1_enabled || std::env::var("DARKPERP_PROD").ok().as_deref() == Some("1")
 }
 
-/// Slice 3b-2a: select the settle path's prover client from `PROVER_URL`.
+/// Select the settle path's prover client from `PROVER_URL`.
 /// unset/empty → legacy path (None); "mock" → in-process MockProverClient;
-/// any URL → error (HttpProverClient is Slice 3b-2b).
+/// any URL → HttpProverClient (seal → POST /prove → real Groth16 proof).
 fn prover_from_str(
     v: Option<&str>,
 ) -> Result<Option<std::sync::Arc<dyn prover_client::ProverClient>>, String> {
     match v {
         None | Some("") => Ok(None),
         Some("mock") => Ok(Some(std::sync::Arc::new(prover_client::MockProverClient))),
-        Some(url) => Err(format!(
-            "PROVER_URL={url}: HttpProverClient is Slice 3b-2b (not implemented); use `mock` or unset"
-        )),
+        Some(url) => Ok(Some(std::sync::Arc::new(prover_client::HttpProverClient::from_env(url)))),
     }
 }
 
@@ -4685,7 +4698,11 @@ async fn main() {
                     let begun = {
                         let mut gw = app.gw.lock().await;
                         match gw.begin_window_settle(bc) {
-                            Ok(Some(x)) => Some(x),
+                            Ok(Some(x)) => {
+                                let cand: Vec<[u8; 32]> =
+                                    gw.pending_withdrawals.iter().map(|w| w.leaf()).collect();
+                                Some((x, cand))
+                            }
                             Ok(None) => None,
                             Err(e) => {
                                 eprintln!("[l1] window settle skipped: {e}");
@@ -4693,7 +4710,7 @@ async fn main() {
                             }
                         }
                     };
-                    let Some((witness, ww)) = begun else { continue };
+                    let Some(((witness, ww), prune_candidates)) = begun else { continue };
                     // capture the manifest's ordered/rejected for the DP-004 challenge store
                     let ordered = witness.manifest.ordered.clone();
                     let rejected: Vec<Digest> =
@@ -4701,18 +4718,24 @@ async fn main() {
                     let batch_id = witness.batch_id;
                     // (C) prove + settle (lock-free)
                     let l1c = l1.clone();
+                    #[allow(clippy::type_complexity)] // one-shot (prepared, tx, bond, claimed) tuple
                     let res = tokio::task::spawn_blocking(
-                        move || -> Result<(prover_client::PreparedSettle, String, u128), String> {
+                        move || -> Result<(prover_client::PreparedSettle, String, u128, Vec<[u8; 32]>), String> {
                             let prepared =
                                 prover_client::prove_and_prepare(client.as_ref(), &witness, &ww)?;
                             let tx = l1c.settle_proved(&prepared.outcome)?;
                             let bond = l1c.sequencer_bond().unwrap_or(0);
-                            Ok((prepared, tx, bond))
+                            // mirror the legacy path: drop leaves the vault already paid.
+                            let claimed: Vec<[u8; 32]> = prune_candidates
+                                .into_iter()
+                                .filter(|leaf| l1c.claimed(&hex32(leaf)).unwrap_or(false))
+                                .collect();
+                            Ok((prepared, tx, bond, claimed))
                         },
                     )
                     .await;
                     match res {
-                        Ok(Ok((prepared, tx, bond))) => {
+                        Ok(Ok((prepared, tx, bond, claimed))) => {
                             let status = L1Status {
                                 settled_root: hex32(&prepared.outcome.new_root),
                                 batch_count: batch_id + 1,
@@ -4727,6 +4750,7 @@ async fn main() {
                             {
                                 let mut gw = app.gw.lock().await;
                                 gw.commit_window_settle(batch_id, ordered, rejected, prepared, status);
+                                gw.prune_claimed_withdrawals(&claimed);
                             }
                             let snap = { app.gw.lock().await.snapshot() };
                             let _ = app.tx.send(
@@ -5324,12 +5348,7 @@ mod tests {
         assert!(prover_from_str(None).unwrap().is_none());
         assert!(prover_from_str(Some("")).unwrap().is_none());
         assert!(prover_from_str(Some("mock")).unwrap().is_some());
-        // `.err()` instead of `.unwrap_err()`: the Ok side (`Arc<dyn ProverClient>`) is
-        // intentionally not Debug, and Option::expect needs no Debug bound on it.
-        let err = prover_from_str(Some("http://prover.local:8091"))
-            .err()
-            .expect("a URL must error until HttpProverClient lands (3b-2b)");
-        assert!(err.contains("3b-2b"));
+        assert!(prover_from_str(Some("http://prover.local:8091")).unwrap().is_some());
     }
 
     #[test]
@@ -6500,6 +6519,28 @@ mod tests {
         assert_eq!(item["proof"], serde_json::json!([hex0x(&[0xBBu8; 32])]));
     }
 
+    // ── Slice 3b-2b: Gw::prune_claimed_withdrawals ──────────────────────────
+
+    #[test]
+    fn prune_claimed_withdrawals_removes_only_claimed() {
+        let mut gw = Gw::boot();
+        let (key, _o) = gw.register_account(None);
+        gw.account_deposit(&key, 0, 40_000 * QUOTE_SCALE).unwrap();
+        let w1 = gw.account_withdraw(&key, 0, 5_000 * QUOTE_SCALE, [7u8; 20]).unwrap();
+        let w2 = gw.account_withdraw(&key, 0, 3_000 * QUOTE_SCALE, [8u8; 20]).unwrap();
+        // seed proofs for both leaves as a settle would
+        gw.withdraw_proofs.insert(w1.leaf(), ([0xAAu8; 32], vec![[0xBBu8; 32]]));
+        gw.withdraw_proofs.insert(w2.leaf(), ([0xAAu8; 32], vec![[0xCCu8; 32]]));
+
+        // claim w1 only
+        gw.prune_claimed_withdrawals(&[w1.leaf()]);
+
+        assert!(!gw.pending_withdrawals.iter().any(|w| w.leaf() == w1.leaf()));
+        assert!(gw.pending_withdrawals.iter().any(|w| w.leaf() == w2.leaf()));
+        assert!(!gw.withdraw_proofs.contains_key(&w1.leaf()));
+        assert!(gw.withdraw_proofs.contains_key(&w2.leaf()));
+    }
+
     // ── Slice 3b-2a: Gw::begin_window_settle ────────────────────────────────
 
     #[test]
@@ -6550,6 +6591,67 @@ mod tests {
             .ops
             .iter()
             .any(|op| matches!(op, BatchOp::Withdraw { to: Some(_), .. })));
+    }
+
+    #[test]
+    fn seal_witness_is_well_formed_and_addressed() {
+        use crate::prover_client::seal_witness;
+        use prover::SealedWitness;
+
+        let mut gw = Gw::boot();
+        let (key, _o) = gw.register_account(None);
+        gw.account_deposit(&key, 0, 40_000 * QUOTE_SCALE).unwrap();
+        gw.account_withdraw(&key, 0, 5_000 * QUOTE_SCALE, [7u8; 20]).unwrap();
+        let bc = gw.seq.state.next_batch_id;
+        let (witness, _ww) = gw.begin_window_settle(bc).unwrap().expect("some");
+
+        let root = [0x5Eu8; 32];
+        let measurement = [0xABu8; 32];
+        let hexed = seal_witness(&witness, &root, &measurement).expect("seal");
+        assert!(hexed.starts_with("0x"));
+
+        // it must postcard-decode back into a SealedWitness addressed to the right
+        // measurement, with the batch_id-derived nonce and the full plaintext length.
+        let raw = decode_hex(&hexed).expect("hex");
+        let sealed: SealedWitness = postcard::from_bytes(&raw).expect("decode sealed");
+        assert_eq!(sealed.measurement(), measurement);
+        let mut expect_nonce = [0u8; 32];
+        expect_nonce[24..].copy_from_slice(&witness.batch_id.to_be_bytes());
+        assert_eq!(sealed.nonce(), expect_nonce);
+        let plaintext =
+            postcard::to_allocvec(&(&witness.pre_state, &witness.ops, &witness.manifest)).unwrap();
+        assert_eq!(sealed.ciphertext_len(), plaintext.len());
+    }
+
+    #[test]
+    fn parse_prove_resp_decodes_all_fields() {
+        use crate::prover_client::parse_prove_resp;
+        let r32 = |b: u8| format!("0x{}", crate::hex32(&[b; 32]).trim_start_matches("0x"));
+        let json = format!(
+            r#"{{"prev_root":"{}","manifest_hash":"{}","new_root":"{}","ordered_root":"{}","withdrawals_root":"{}","rejected_root":"{}","commitment":"{}","proof":"0xdeadbeef"}}"#,
+            r32(1), r32(2), r32(3), r32(4), r32(5), r32(6), r32(7)
+        );
+        let out = parse_prove_resp(&json).expect("parse");
+        assert_eq!(out.prev_root, [1u8; 32]);
+        assert_eq!(out.manifest_hash, [2u8; 32]);
+        assert_eq!(out.new_root, [3u8; 32]);
+        assert_eq!(out.ordered_root, [4u8; 32]);
+        assert_eq!(out.withdrawals_root, [5u8; 32]);
+        assert_eq!(out.rejected_root, [6u8; 32]);
+        assert_eq!(out.commitment, [7u8; 32]);
+        assert_eq!(out.proof, vec![0xde, 0xad, 0xbe, 0xef]);
+    }
+
+    #[test]
+    fn parse_prove_resp_rejects_malformed() {
+        use crate::prover_client::parse_prove_resp;
+        // not JSON
+        assert!(parse_prove_resp("not json").is_err());
+        // missing a field (no commitment/proof)
+        assert!(parse_prove_resp(r#"{"prev_root":"0x00"}"#).is_err());
+        // a root that isn't 32 bytes
+        let bad = r#"{"prev_root":"0x1234","manifest_hash":"0x00","new_root":"0x00","ordered_root":"0x00","withdrawals_root":"0x00","rejected_root":"0x00","commitment":"0x00","proof":"0x00"}"#;
+        assert!(parse_prove_resp(bad).is_err());
     }
 
     // ── Slice 3b-2a: prove_and_prepare + Gw::commit_window_settle ───────────
@@ -6623,18 +6725,31 @@ mod tests {
     }
 
     #[test]
-    fn prove_and_prepare_rejects_withdrawals_root_mismatch() {
+    fn prove_and_prepare_rejects_wroot_mismatch() {
         use crate::prover_client::{
             prove_and_prepare, MockProverClient, ProveOutcome, ProverClient, ProverClientError,
         };
+        use perp_core::commitment::DerivedRoots;
+        use perp_core::Keccak256;
         use sequencer::WindowWitness;
 
-        // a client that derives correctly but corrupts the withdrawals_root
-        struct TamperedClient;
-        impl ProverClient for TamperedClient {
+        // corrupts withdrawals_root AND recomputes commitment over the tampered roots, so
+        // the commitment cross-check PASSES and the failure lands on the withdrawal-tree
+        // byte-match branch.
+        struct WrootTamper;
+        impl ProverClient for WrootTamper {
             fn prove(&self, w: &WindowWitness) -> Result<ProveOutcome, ProverClientError> {
                 let mut out = MockProverClient.prove(w)?;
-                out.withdrawals_root = [0xFFu8; 32]; // != the gateway's tree
+                out.withdrawals_root = [0xFFu8; 32];
+                out.commitment = DerivedRoots {
+                    prev_state_root: out.prev_root,
+                    manifest_hash: out.manifest_hash,
+                    new_state_root: out.new_root,
+                    ordered_root: out.ordered_root,
+                    withdrawals_root: out.withdrawals_root,
+                    rejected_root: out.rejected_root,
+                }
+                .commitment::<Keccak256>();
                 Ok(out)
             }
         }
@@ -6647,9 +6762,43 @@ mod tests {
         let (witness, ww) = gw.begin_window_settle(bc).unwrap().expect("some");
         assert!(!ww.is_empty());
 
-        // the tampered root must be rejected — a wrong root is NEVER published
-        let res = prove_and_prepare(&TamperedClient, &witness, &ww);
-        assert!(res.is_err(), "mismatched withdrawals_root must be a hard error");
+        // (PreparedSettle is not Debug, so no unwrap_err here)
+        let Err(err) = prove_and_prepare(&WrootTamper, &witness, &ww) else {
+            panic!("tampered withdrawals_root must be a hard error");
+        };
+        assert!(err.contains("withdrawals root mismatch"), "got: {err}");
+    }
+
+    #[test]
+    fn prove_and_prepare_rejects_commitment_mismatch() {
+        use crate::prover_client::{
+            prove_and_prepare, MockProverClient, ProveOutcome, ProverClient, ProverClientError,
+        };
+        use sequencer::WindowWitness;
+
+        // corrupts only the commitment (roots stay consistent with the gateway tree) → the
+        // commitment cross-check branch fires first.
+        struct CommitTamper;
+        impl ProverClient for CommitTamper {
+            fn prove(&self, w: &WindowWitness) -> Result<ProveOutcome, ProverClientError> {
+                let mut out = MockProverClient.prove(w)?;
+                out.commitment = [0xFFu8; 32];
+                Ok(out)
+            }
+        }
+
+        let mut gw = Gw::boot();
+        let (key, _o) = gw.register_account(None);
+        gw.account_deposit(&key, 0, 40_000 * QUOTE_SCALE).unwrap();
+        gw.account_withdraw(&key, 0, 5_000 * QUOTE_SCALE, [7u8; 20]).unwrap();
+        let bc = gw.seq.state.next_batch_id;
+        let (witness, ww) = gw.begin_window_settle(bc).unwrap().expect("some");
+
+        // (PreparedSettle is not Debug, so no unwrap_err here)
+        let Err(err) = prove_and_prepare(&CommitTamper, &witness, &ww) else {
+            panic!("tampered commitment must be a hard error");
+        };
+        assert!(err.contains("commitment mismatch"), "got: {err}");
     }
 
     #[test]

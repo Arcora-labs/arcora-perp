@@ -25,10 +25,19 @@ pub struct ProveOutcome {
 }
 
 #[derive(Debug)]
+// All variants are live (Derive by MockProverClient; Seal/Http/Decode by HttpProverClient
+// and its helpers), but their payloads are only ever read via `{e:?}` in prove_and_prepare,
+// and dead-code analysis does not count derived-Debug as a read — hence the allow.
+#[allow(dead_code)]
 pub enum ProverClientError {
     /// The window witness failed to replay (should not happen for a live-sealed window).
     Derive(EngineError),
-    // Slice 3b-2b adds: Http(String), Decode(String), Seal.
+    /// Sealing refused (provider returned None for the measurement/nonce).
+    Seal,
+    /// Transport failure talking to the prover-service (curl error / non-2xx / timeout).
+    Http(String),
+    /// Malformed prover-service response (bad JSON, missing field, or bad hex).
+    Decode(String),
 }
 
 /// Turns a sealed window into its six roots + a proof.
@@ -72,9 +81,7 @@ pub fn prove_and_prepare(
     witness: &WindowWitness,
     ww: &[Withdrawal],
 ) -> Result<PreparedSettle, String> {
-    let outcome = client.prove(witness).map_err(|e| match e {
-        ProverClientError::Derive(err) => format!("prove: window replay failed: {err:?}"),
-    })?;
+    let outcome = client.prove(witness).map_err(|e| format!("prove: {e:?}"))?;
 
     // The prover's claimed commitment must be THE commitment of the six roots it returned
     // — that binding is what the on-chain verifier checks the proof against, so a client
@@ -112,4 +119,136 @@ pub fn prove_and_prepare(
         withdraw_proofs.insert(w.leaf(), (outcome.withdrawals_root, merkle_proof(&leaves, i)));
     }
     Ok(PreparedSettle { outcome, withdraw_proofs })
+}
+
+/// Seal a window witness exactly as the prover-service's seal-client does, so the service
+/// (same SoftwareSealProvider params) can open it. Plaintext is the postcard-encoded
+/// `(pre_state, ops, manifest)` triple; the nonce is derived from the window batch_id
+/// (unique per window). Returns 0x-prefixed hex of the postcard-encoded SealedWitness.
+pub fn seal_witness(
+    w: &WindowWitness,
+    root: &[u8; 32],
+    measurement: &Digest,
+) -> Result<String, ProverClientError> {
+    let bytes = postcard::to_allocvec(&(&w.pre_state, &w.ops, &w.manifest))
+        .map_err(|e| ProverClientError::Decode(format!("witness encode: {e}")))?;
+    let mut nonce = [0u8; 32];
+    nonce[24..].copy_from_slice(&w.batch_id.to_be_bytes());
+    let provider = prover::SoftwareSealProvider::new(*root, *measurement);
+    let sealed = prover::SealedWitness::seal(&bytes, &provider, *measurement, nonce)
+        .ok_or(ProverClientError::Seal)?;
+    let out = postcard::to_allocvec(&sealed)
+        .map_err(|e| ProverClientError::Decode(format!("sealed encode: {e}")))?;
+    let mut hexed = String::with_capacity(2 + out.len() * 2);
+    hexed.push_str("0x");
+    for b in &out {
+        hexed.push_str(&format!("{b:02x}"));
+    }
+    Ok(hexed)
+}
+
+/// Parse the prover-service /prove JSON into a ProveOutcome. The six roots + commitment
+/// are 32-byte hex (parse_hex32); the proof is variable-length hex (decode_hex). The
+/// returned outcome is validated downstream by prove_and_prepare (commitment cross-check
+/// + withdrawal-tree byte-match), so a tampered response is rejected before settleBatch.
+pub fn parse_prove_resp(json: &str) -> Result<ProveOutcome, ProverClientError> {
+    #[derive(serde::Deserialize)]
+    struct Resp {
+        prev_root: String,
+        manifest_hash: String,
+        new_root: String,
+        ordered_root: String,
+        withdrawals_root: String,
+        rejected_root: String,
+        commitment: String,
+        proof: String,
+    }
+    let r: Resp =
+        serde_json::from_str(json).map_err(|e| ProverClientError::Decode(format!("json: {e}")))?;
+    let root = |s: &str, name: &str| -> Result<Digest, ProverClientError> {
+        crate::parse_hex32(s).ok_or_else(|| ProverClientError::Decode(format!("bad {name}: {s}")))
+    };
+    Ok(ProveOutcome {
+        prev_root: root(&r.prev_root, "prev_root")?,
+        manifest_hash: root(&r.manifest_hash, "manifest_hash")?,
+        new_root: root(&r.new_root, "new_root")?,
+        ordered_root: root(&r.ordered_root, "ordered_root")?,
+        withdrawals_root: root(&r.withdrawals_root, "withdrawals_root")?,
+        rejected_root: root(&r.rejected_root, "rejected_root")?,
+        commitment: root(&r.commitment, "commitment")?,
+        proof: crate::decode_hex(&r.proof)
+            .ok_or_else(|| ProverClientError::Decode(format!("bad proof: {}", r.proof)))?,
+    })
+}
+
+/// POST `body` as application/json to `<url>/prove` via curl (mirrors L1::cast: a
+/// subprocess with a wall-clock cap), piping the body on stdin so a large sealed witness
+/// never hits an argv limit. The stdin write runs on its own thread to avoid a pipe
+/// deadlock when the body exceeds the OS pipe buffer.
+fn http_post(url: &str, body: &str, timeout_secs: u64) -> Result<String, ProverClientError> {
+    use std::io::Write;
+    use std::process::{Command, Stdio};
+    let endpoint = format!("{}/prove", url.trim_end_matches('/'));
+    let mut child = Command::new("curl")
+        .args([
+            "-s", "-S", "--fail", "--max-time", &timeout_secs.to_string(),
+            "-X", "POST", "-H", "Content-Type: application/json",
+            "--data-binary", "@-", &endpoint,
+        ])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| ProverClientError::Http(format!("curl spawn: {e}")))?;
+    let mut stdin = child.stdin.take().expect("piped stdin");
+    let body_owned = body.to_string();
+    let writer = std::thread::spawn(move || {
+        let _ = stdin.write_all(body_owned.as_bytes());
+    });
+    let out = child
+        .wait_with_output()
+        .map_err(|e| ProverClientError::Http(format!("curl wait: {e}")))?;
+    let _ = writer.join();
+    if !out.status.success() {
+        return Err(ProverClientError::Http(format!(
+            "curl exit {}: {}",
+            out.status,
+            String::from_utf8_lossy(&out.stderr)
+        )));
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+}
+
+/// The real transport: seal the window and POST it to the attested prover-service.
+pub struct HttpProverClient {
+    url: String,
+    seal_root: [u8; 32],
+    measurement: Digest,
+    timeout_secs: u64,
+}
+
+impl HttpProverClient {
+    /// Build from PROVER_URL, matching the prover-service's seal params: PROVER_SEAL_ROOT
+    /// (64-hex, default 0x5E..) and the 0xAB.. stand-in measurement; PROVER_TIMEOUT_SECS
+    /// (default 900 — a real Groth16 proof under qemu takes minutes).
+    pub fn from_env(url: &str) -> Self {
+        let seal_root = std::env::var("PROVER_SEAL_ROOT")
+            .ok()
+            .and_then(|s| crate::parse_hex32(&s))
+            .unwrap_or([0x5Eu8; 32]);
+        let timeout_secs = std::env::var("PROVER_TIMEOUT_SECS")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(900);
+        Self { url: url.to_string(), seal_root, measurement: [0xABu8; 32], timeout_secs }
+    }
+}
+
+impl ProverClient for HttpProverClient {
+    fn prove(&self, w: &WindowWitness) -> Result<ProveOutcome, ProverClientError> {
+        let sealed_hex = seal_witness(w, &self.seal_root, &self.measurement)?;
+        let body = serde_json::json!({ "sealed": sealed_hex }).to_string();
+        let resp = http_post(&self.url, &body, self.timeout_secs)?;
+        parse_prove_resp(&resp)
+    }
 }
