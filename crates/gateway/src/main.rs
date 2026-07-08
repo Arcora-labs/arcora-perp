@@ -34,7 +34,7 @@ use perp_core::note::{Note, PubKey};
 use perp_core::oracle::OracleTranscript;
 use perp_core::order::{Finality, Order, Side, TimeInForce};
 use perp_core::state::Mode;
-use sequencer::{adl_tag, adl_tag_key, EnclaveIdentity, SealedBatch, Sequencer};
+use sequencer::{adl_tag, adl_tag_key, EnclaveIdentity, SealedBatch, Sequencer, WindowWitness};
 
 mod candles;
 mod enclave_epoch;
@@ -1336,6 +1336,33 @@ impl Gw {
         // tree byte-matches the circuit's withdrawals_root.
         self.window_withdrawals.push(w.clone());
         Ok(w)
+    }
+
+    /// Slice 3b-2a: begin a new-path window settle. Returns `None` if the engine root is
+    /// unchanged since the last settle (nothing to prove). Errors WITHOUT mutating if the
+    /// window's batch id would not match the on-chain `batchCount` (a desync a prior fault
+    /// left behind — recovery is Slice 3b-3). Otherwise seals the window and takes its
+    /// incremental withdrawal set.
+    /// (dead_code until the PROVER_URL settle loop wires it — same deal as prover_client.rs.)
+    #[allow(dead_code)]
+    fn begin_window_settle(
+        &mut self,
+        chain_batch_count: u64,
+    ) -> Result<Option<(WindowWitness, Vec<Withdrawal>)>, String> {
+        if self.seq.state.state_root() == self.last_settled_root {
+            return Ok(None); // no net state change since the last settle
+        }
+        // Pre-check the counter BEFORE sealing (which bumps it), so a desync leaves the
+        // sequencer untouched instead of stranded ahead of the chain.
+        let expected = self.seq.state.next_batch_id;
+        if expected != chain_batch_count {
+            return Err(format!(
+                "batch_id desync: window {expected} vs chain {chain_batch_count} (recovery is 3b-3)"
+            ));
+        }
+        let witness = self.seq.seal_window();
+        let ww = core::mem::take(&mut self.window_withdrawals);
+        Ok(Some((witness, ww)))
     }
 
     /// An account's withdrawals with the claim data: each carries its leaf and, once
@@ -6314,5 +6341,57 @@ mod tests {
         assert_eq!(item["claimable"], serde_json::json!(true));
         assert_eq!(item["root"], serde_json::json!(hex0x(&root)));
         assert_eq!(item["proof"], serde_json::json!([hex0x(&[0xBBu8; 32])]));
+    }
+
+    // ── Slice 3b-2a: Gw::begin_window_settle ────────────────────────────────
+
+    #[test]
+    fn begin_window_settle_none_when_unchanged() {
+        let mut gw = Gw::boot();
+        // Force "no change since last settle": mark the current engine root as settled.
+        gw.last_settled_root = gw.seq.state.state_root();
+        let bc = gw.seq.state.next_batch_id;
+        assert!(gw.begin_window_settle(bc).unwrap().is_none());
+    }
+
+    #[test]
+    fn begin_window_settle_errors_on_desync_without_mutating() {
+        let mut gw = Gw::boot();
+        let (key, _o) = gw.register_account(None);
+        gw.account_deposit(&key, 0, 20_000 * QUOTE_SCALE).unwrap();
+        gw.account_withdraw(&key, 0, 5_000 * QUOTE_SCALE, [7u8; 20])
+            .unwrap();
+        let before_next = gw.seq.state.next_batch_id;
+        let before_ww = gw.window_withdrawals.len();
+
+        // chain count that does NOT match the window's next id → desync error, no mutation.
+        // (`.err().expect(..)` instead of `.unwrap_err()`: WindowWitness has no Debug impl.)
+        let err = gw
+            .begin_window_settle(before_next + 99)
+            .err()
+            .expect("desync must error");
+        assert!(err.contains("desync"));
+        assert_eq!(gw.seq.state.next_batch_id, before_next); // not sealed
+        assert_eq!(gw.window_withdrawals.len(), before_ww); // not drained
+    }
+
+    #[test]
+    fn begin_window_settle_seals_and_takes_withdrawals() {
+        let mut gw = Gw::boot();
+        let (key, _o) = gw.register_account(None);
+        gw.account_deposit(&key, 0, 20_000 * QUOTE_SCALE).unwrap();
+        gw.account_withdraw(&key, 0, 5_000 * QUOTE_SCALE, [7u8; 20])
+            .unwrap();
+        let bc = gw.seq.state.next_batch_id;
+
+        let (witness, ww) = gw.begin_window_settle(bc).unwrap().expect("some");
+        assert_eq!(witness.batch_id, bc);
+        assert_eq!(ww.len(), 1); // the withdrawal was taken
+        assert!(gw.window_withdrawals.is_empty()); // drained
+        // the window op-log contains the real-exit withdraw op
+        assert!(witness
+            .ops
+            .iter()
+            .any(|op| matches!(op, BatchOp::Withdraw { to: Some(_), .. })));
     }
 }
