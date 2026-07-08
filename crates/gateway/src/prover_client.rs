@@ -123,8 +123,9 @@ pub fn prove_and_prepare(
 
 /// Seal a window witness exactly as the prover-service's seal-client does, so the service
 /// (same SoftwareSealProvider params) can open it. Plaintext is the postcard-encoded
-/// `(pre_state, ops, manifest)` triple; the nonce is derived from the window batch_id
-/// (unique per window). Returns 0x-prefixed hex of the postcard-encoded SealedWitness.
+/// `(pre_state, ops, manifest)` triple; the nonce is `keccak256` of the plaintext
+/// (content-derived; reuse-proof across rollback re-seals). Returns 0x-prefixed hex of
+/// the postcard-encoded SealedWitness.
 pub fn seal_witness(
     w: &WindowWitness,
     root: &[u8; 32],
@@ -132,8 +133,11 @@ pub fn seal_witness(
 ) -> Result<String, ProverClientError> {
     let bytes = postcard::to_allocvec(&(&w.pre_state, &w.ops, &w.manifest))
         .map_err(|e| ProverClientError::Decode(format!("witness encode: {e}")))?;
-    let mut nonce = [0u8; 32];
-    nonce[24..].copy_from_slice(&w.batch_id.to_be_bytes());
+    // nonce = keccak256(plaintext): different plaintext (any window / any rollback re-seal)
+    // yields a different nonce, so a re-seal under the same batch_id can never reuse a
+    // keystream; an identical retry yields the same nonce (identical ciphertext, no leak).
+    use sha3::{Digest as _, Keccak256 as RawKeccak};
+    let nonce: [u8; 32] = RawKeccak::digest(&bytes).into();
     let provider = prover::SoftwareSealProvider::new(*root, *measurement);
     let sealed = prover::SealedWitness::seal(&bytes, &provider, *measurement, nonce)
         .ok_or(ProverClientError::Seal)?;

@@ -6611,15 +6611,17 @@ mod tests {
         assert!(hexed.starts_with("0x"));
 
         // it must postcard-decode back into a SealedWitness addressed to the right
-        // measurement, with the batch_id-derived nonce and the full plaintext length.
+        // measurement, with the content-derived nonce and the full plaintext length.
         let raw = decode_hex(&hexed).expect("hex");
         let sealed: SealedWitness = postcard::from_bytes(&raw).expect("decode sealed");
         assert_eq!(sealed.measurement(), measurement);
-        let mut expect_nonce = [0u8; 32];
-        expect_nonce[24..].copy_from_slice(&witness.batch_id.to_be_bytes());
-        assert_eq!(sealed.nonce(), expect_nonce);
         let plaintext =
             postcard::to_allocvec(&(&witness.pre_state, &witness.ops, &witness.manifest)).unwrap();
+        // Slice 3b-3: the nonce is keccak256 of the plaintext (content-derived), so a
+        // rollback+re-seal under the same batch_id never reuses a keystream.
+        use sha3::{Digest as _, Keccak256 as RawKeccak};
+        let expect_nonce: [u8; 32] = RawKeccak::digest(&plaintext).into();
+        assert_eq!(sealed.nonce(), expect_nonce);
         assert_eq!(sealed.ciphertext_len(), plaintext.len());
     }
 
