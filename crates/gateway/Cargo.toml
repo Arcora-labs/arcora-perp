@@ -11,6 +11,9 @@ path = "src/main.rs"
 [dependencies]
 perp-core = { path = "../perp-core", features = ["serde"] }
 sequencer = { path = "../sequencer" }
+# Slice 3b-2b: SealedWitness + SoftwareSealProvider to seal the window witness for the
+# prover-service. Workspace-internal — does NOT pull in sp1-sdk (that's prover-service only).
+prover = { path = "../prover" }
 note-archive = { path = "../note-archive", features = ["std", "serde"] }
 sealed-box = { path = "../sealed-box", default-features = false }
 dark-perp-attestation = { path = "../attestation" }

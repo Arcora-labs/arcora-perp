@@ -6552,6 +6552,36 @@ mod tests {
             .any(|op| matches!(op, BatchOp::Withdraw { to: Some(_), .. })));
     }
 
+    #[test]
+    fn seal_witness_is_well_formed_and_addressed() {
+        use crate::prover_client::seal_witness;
+        use prover::SealedWitness;
+
+        let mut gw = Gw::boot();
+        let (key, _o) = gw.register_account(None);
+        gw.account_deposit(&key, 0, 40_000 * QUOTE_SCALE).unwrap();
+        gw.account_withdraw(&key, 0, 5_000 * QUOTE_SCALE, [7u8; 20]).unwrap();
+        let bc = gw.seq.state.next_batch_id;
+        let (witness, _ww) = gw.begin_window_settle(bc).unwrap().expect("some");
+
+        let root = [0x5Eu8; 32];
+        let measurement = [0xABu8; 32];
+        let hexed = seal_witness(&witness, &root, &measurement).expect("seal");
+        assert!(hexed.starts_with("0x"));
+
+        // it must postcard-decode back into a SealedWitness addressed to the right
+        // measurement, with the batch_id-derived nonce and the full plaintext length.
+        let raw = decode_hex(&hexed).expect("hex");
+        let sealed: SealedWitness = postcard::from_bytes(&raw).expect("decode sealed");
+        assert_eq!(sealed.measurement(), measurement);
+        let mut expect_nonce = [0u8; 32];
+        expect_nonce[24..].copy_from_slice(&witness.batch_id.to_be_bytes());
+        assert_eq!(sealed.nonce(), expect_nonce);
+        let plaintext =
+            postcard::to_allocvec(&(&witness.pre_state, &witness.ops, &witness.manifest)).unwrap();
+        assert_eq!(sealed.ciphertext_len(), plaintext.len());
+    }
+
     // ── Slice 3b-2a: prove_and_prepare + Gw::commit_window_settle ───────────
 
     #[test]

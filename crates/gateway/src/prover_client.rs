@@ -25,10 +25,18 @@ pub struct ProveOutcome {
 }
 
 #[derive(Debug)]
+// Http is first constructed by the next task's HttpProverClient; the variant payloads are
+// surfaced via `{e:?}` in prove_and_prepare, which dead-code analysis intentionally ignores.
+#[allow(dead_code)]
 pub enum ProverClientError {
     /// The window witness failed to replay (should not happen for a live-sealed window).
     Derive(EngineError),
-    // Slice 3b-2b adds: Http(String), Decode(String), Seal.
+    /// Sealing refused (provider returned None for the measurement/nonce).
+    Seal,
+    /// Transport failure talking to the prover-service (curl error / non-2xx / timeout).
+    Http(String),
+    /// Malformed prover-service response (bad JSON, missing field, or bad hex).
+    Decode(String),
 }
 
 /// Turns a sealed window into its six roots + a proof.
@@ -72,9 +80,7 @@ pub fn prove_and_prepare(
     witness: &WindowWitness,
     ww: &[Withdrawal],
 ) -> Result<PreparedSettle, String> {
-    let outcome = client.prove(witness).map_err(|e| match e {
-        ProverClientError::Derive(err) => format!("prove: window replay failed: {err:?}"),
-    })?;
+    let outcome = client.prove(witness).map_err(|e| format!("prove: {e:?}"))?;
 
     // The prover's claimed commitment must be THE commitment of the six roots it returned
     // — that binding is what the on-chain verifier checks the proof against, so a client
@@ -112,4 +118,31 @@ pub fn prove_and_prepare(
         withdraw_proofs.insert(w.leaf(), (outcome.withdrawals_root, merkle_proof(&leaves, i)));
     }
     Ok(PreparedSettle { outcome, withdraw_proofs })
+}
+
+/// Seal a window witness exactly as the prover-service's seal-client does, so the service
+/// (same SoftwareSealProvider params) can open it. Plaintext is the postcard-encoded
+/// `(pre_state, ops, manifest)` triple; the nonce is derived from the window batch_id
+/// (unique per window). Returns 0x-prefixed hex of the postcard-encoded SealedWitness.
+#[allow(dead_code)] // exercised by the round-trip test; wired into HttpProverClient next task
+pub fn seal_witness(
+    w: &WindowWitness,
+    root: &[u8; 32],
+    measurement: &Digest,
+) -> Result<String, ProverClientError> {
+    let bytes = postcard::to_allocvec(&(&w.pre_state, &w.ops, &w.manifest))
+        .map_err(|e| ProverClientError::Decode(format!("witness encode: {e}")))?;
+    let mut nonce = [0u8; 32];
+    nonce[24..].copy_from_slice(&w.batch_id.to_be_bytes());
+    let provider = prover::SoftwareSealProvider::new(*root, *measurement);
+    let sealed = prover::SealedWitness::seal(&bytes, &provider, *measurement, nonce)
+        .ok_or(ProverClientError::Seal)?;
+    let out = postcard::to_allocvec(&sealed)
+        .map_err(|e| ProverClientError::Decode(format!("sealed encode: {e}")))?;
+    let mut hexed = String::with_capacity(2 + out.len() * 2);
+    hexed.push_str("0x");
+    for b in &out {
+        hexed.push_str(&format!("{b:02x}"));
+    }
+    Ok(hexed)
 }
