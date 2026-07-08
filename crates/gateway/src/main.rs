@@ -6582,6 +6582,37 @@ mod tests {
         assert_eq!(sealed.ciphertext_len(), plaintext.len());
     }
 
+    #[test]
+    fn parse_prove_resp_decodes_all_fields() {
+        use crate::prover_client::parse_prove_resp;
+        let r32 = |b: u8| format!("0x{}", crate::hex32(&[b; 32]).trim_start_matches("0x"));
+        let json = format!(
+            r#"{{"prev_root":"{}","manifest_hash":"{}","new_root":"{}","ordered_root":"{}","withdrawals_root":"{}","rejected_root":"{}","commitment":"{}","proof":"0xdeadbeef"}}"#,
+            r32(1), r32(2), r32(3), r32(4), r32(5), r32(6), r32(7)
+        );
+        let out = parse_prove_resp(&json).expect("parse");
+        assert_eq!(out.prev_root, [1u8; 32]);
+        assert_eq!(out.manifest_hash, [2u8; 32]);
+        assert_eq!(out.new_root, [3u8; 32]);
+        assert_eq!(out.ordered_root, [4u8; 32]);
+        assert_eq!(out.withdrawals_root, [5u8; 32]);
+        assert_eq!(out.rejected_root, [6u8; 32]);
+        assert_eq!(out.commitment, [7u8; 32]);
+        assert_eq!(out.proof, vec![0xde, 0xad, 0xbe, 0xef]);
+    }
+
+    #[test]
+    fn parse_prove_resp_rejects_malformed() {
+        use crate::prover_client::parse_prove_resp;
+        // not JSON
+        assert!(parse_prove_resp("not json").is_err());
+        // missing a field (no commitment/proof)
+        assert!(parse_prove_resp(r#"{"prev_root":"0x00"}"#).is_err());
+        // a root that isn't 32 bytes
+        let bad = r#"{"prev_root":"0x1234","manifest_hash":"0x00","new_root":"0x00","ordered_root":"0x00","withdrawals_root":"0x00","rejected_root":"0x00","commitment":"0x00","proof":"0x00"}"#;
+        assert!(parse_prove_resp(bad).is_err());
+    }
+
     // ── Slice 3b-2a: prove_and_prepare + Gw::commit_window_settle ───────────
 
     #[test]

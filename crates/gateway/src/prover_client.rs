@@ -146,3 +146,38 @@ pub fn seal_witness(
     }
     Ok(hexed)
 }
+
+/// Parse the prover-service /prove JSON into a ProveOutcome. The six roots + commitment
+/// are 32-byte hex (parse_hex32); the proof is variable-length hex (decode_hex). The
+/// returned outcome is validated downstream by prove_and_prepare (commitment cross-check
+/// + withdrawal-tree byte-match), so a tampered response is rejected before settleBatch.
+#[allow(dead_code)] // exercised by tests; wired into HttpProverClient::prove next task
+pub fn parse_prove_resp(json: &str) -> Result<ProveOutcome, ProverClientError> {
+    #[derive(serde::Deserialize)]
+    struct Resp {
+        prev_root: String,
+        manifest_hash: String,
+        new_root: String,
+        ordered_root: String,
+        withdrawals_root: String,
+        rejected_root: String,
+        commitment: String,
+        proof: String,
+    }
+    let r: Resp =
+        serde_json::from_str(json).map_err(|e| ProverClientError::Decode(format!("json: {e}")))?;
+    let root = |s: &str, name: &str| -> Result<Digest, ProverClientError> {
+        crate::parse_hex32(s).ok_or_else(|| ProverClientError::Decode(format!("bad {name}: {s}")))
+    };
+    Ok(ProveOutcome {
+        prev_root: root(&r.prev_root, "prev_root")?,
+        manifest_hash: root(&r.manifest_hash, "manifest_hash")?,
+        new_root: root(&r.new_root, "new_root")?,
+        ordered_root: root(&r.ordered_root, "ordered_root")?,
+        withdrawals_root: root(&r.withdrawals_root, "withdrawals_root")?,
+        rejected_root: root(&r.rejected_root, "rejected_root")?,
+        commitment: root(&r.commitment, "commitment")?,
+        proof: crate::decode_hex(&r.proof)
+            .ok_or_else(|| ProverClientError::Decode(format!("bad proof: {}", r.proof)))?,
+    })
+}
