@@ -4656,9 +4656,21 @@ async fn main() {
             loop {
                 iv.tick().await;
                 if let Some(client) = app.prover.clone() {
-                    // (A) read the on-chain batch count (RPC, no lock)
+                    // (A) top up the sequencer bond (as the legacy path does) + read the
+                    // on-chain batch count (RPC, no lock). The bond top-up runs BEFORE the
+                    // window is sealed, so an underbond settleBatch revert cannot strand the
+                    // sequencer past the desync guard.
                     let l1c = l1.clone();
-                    let bc = match tokio::task::spawn_blocking(move || l1c.batch_count()).await {
+                    let bc = match tokio::task::spawn_blocking(move || -> Result<u64, String> {
+                        match l1c.ensure_bond() {
+                            Ok(Some(tx)) => println!("[l1] bond topped up: {tx}"),
+                            Ok(None) => {}
+                            Err(e) => eprintln!("[l1] bond top-up skipped: {e}"),
+                        }
+                        l1c.batch_count()
+                    })
+                    .await
+                    {
                         Ok(Ok(bc)) => bc,
                         Ok(Err(e)) => {
                             eprintln!("[l1] batch_count: {e}");
