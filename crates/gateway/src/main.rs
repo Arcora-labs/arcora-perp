@@ -1058,6 +1058,10 @@ impl Gw {
         .expect("seed insurance fund");
 
         let genesis_root = seq.state.state_root();
+        // Live-migration tooling: the runbook reads this line off a throwaway boot to
+        // deploy the L1 contract with a matching GENESIS_ROOT (deterministic in the
+        // boot config). Log-only — no behavior change.
+        println!("[state] genesis engine root {}", hex32(&genesis_root));
         let mut gw = Gw {
             seq,
             archive,
