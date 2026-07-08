@@ -56,6 +56,31 @@ fn hex32(d: &Digest) -> String {
     s
 }
 
+/// What to do with a sealed-but-settle-failed window, given the on-chain batchCount
+/// re-read AFTER the failure. `seal_window` bumped the local per-window counter to
+/// `sealed_batch_id + 1`, so `chain_batch_count == sealed_batch_id` means the tx never
+/// landed (undo the seal), `== sealed_batch_id + 1` means it landed despite the cast
+/// error (commit the bookkeeping), and anything else is unexpected (hold, let the
+/// operator reconcile — a rollback there could strand the sequencer either way).
+#[allow(dead_code)] // Task 2 (settle-failure handler) consumes this; remove the allow there.
+#[derive(Debug, PartialEq, Eq)]
+enum RollAction {
+    RollBack,
+    RollForward,
+    Hold,
+}
+
+#[allow(dead_code)] // Task 2 (settle-failure handler) consumes this; remove the allow there.
+fn settle_failure_action(sealed_batch_id: u64, chain_batch_count: u64) -> RollAction {
+    if chain_batch_count == sealed_batch_id {
+        RollAction::RollBack
+    } else if chain_batch_count == sealed_batch_id + 1 {
+        RollAction::RollForward
+    } else {
+        RollAction::Hold
+    }
+}
+
 // ── constants ────────────────────────────────────────────────────────────────
 const IMR_BP: i128 = 1_000; // initial-margin 10% in basis points (matches Market::conservative)
 const MMR_BP: i128 = 500; // maintenance 5%
@@ -4943,6 +4968,21 @@ mod tests {
             prover: None,
             candles: Mutex::new(candles::CandleStore::new()),
         })
+    }
+
+    // ── ambiguous landed-tx recovery ─────────────────────────────────────────
+
+    #[test]
+    fn settle_failure_action_decides_by_batch_count() {
+        use crate::RollAction;
+        // chain still at the pre-seal count -> the tx did not land -> roll back.
+        assert_eq!(crate::settle_failure_action(5, 5), RollAction::RollBack);
+        // chain advanced by exactly one -> the tx landed despite the error -> roll forward.
+        assert_eq!(crate::settle_failure_action(5, 6), RollAction::RollForward);
+        // anything else is unexpected -> hold (no mutation).
+        assert_eq!(crate::settle_failure_action(5, 7), RollAction::Hold);
+        assert_eq!(crate::settle_failure_action(5, 4), RollAction::Hold);
+        assert_eq!(crate::settle_failure_action(0, 0), RollAction::RollBack);
     }
 
     // ── sealed state persistence ─────────────────────────────────────────────
