@@ -40,6 +40,7 @@ mod candles;
 mod enclave_epoch;
 mod l1;
 mod order_log;
+mod prover_client;
 mod snapshot;
 mod withdrawals;
 use l1::{L1Status, L1};
@@ -5094,6 +5095,33 @@ mod tests {
             "free={free}"
         );
         assert_eq!(gw.snapshot().markets.len(), 3);
+    }
+
+    #[test]
+    fn mock_prover_client_matches_derive_roots() {
+        use crate::prover_client::{MockProverClient, ProverClient};
+        use perp_core::commitment::derive_roots;
+        use perp_core::Keccak256;
+
+        // A realistic non-empty window: boot registers markets + funds (those ops land
+        // in window_ops), so the first seal_window yields a valid, non-trivial witness.
+        let mut gw = Gw::boot();
+        let witness = gw.seq.seal_window();
+
+        let out = MockProverClient.prove(&witness).expect("mock prove");
+
+        // Independently derive the same roots and assert byte-equality.
+        let mut state = witness.pre_state.clone();
+        let d = derive_roots(&mut state, &witness.ops, &witness.manifest).expect("derive");
+        assert_eq!(out.prev_root, d.prev_state_root);
+        assert_eq!(out.manifest_hash, d.manifest_hash);
+        assert_eq!(out.new_root, d.new_state_root);
+        assert_eq!(out.ordered_root, d.ordered_root);
+        assert_eq!(out.withdrawals_root, d.withdrawals_root);
+        assert_eq!(out.rejected_root, d.rejected_root);
+        assert_eq!(out.commitment, d.commitment::<Keccak256>());
+        // MockZkVerifier accepts proof == commitment.
+        assert_eq!(out.proof, out.commitment.to_vec());
     }
 
     #[test]
