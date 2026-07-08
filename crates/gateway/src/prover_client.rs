@@ -8,9 +8,12 @@
 // consumer; until it lands only the Task-1 test exercises this module. Remove then.
 #![allow(dead_code)]
 
+use crate::withdrawals::Withdrawal;
 use perp_core::commitment::derive_roots;
+use perp_core::merkle::{merkle_proof, merkle_root};
 use perp_core::{Digest, EngineError, Keccak256};
 use sequencer::WindowWitness;
+use std::collections::BTreeMap;
 
 /// The six on-chain roots + commitment + proof for one window's `settleBatch`.
 #[derive(Clone, Debug)]
@@ -56,4 +59,37 @@ impl ProverClient for MockProverClient {
             proof: commitment.to_vec(),
         })
     }
+}
+
+/// The proven outcome plus the per-note claim proofs the gateway serves.
+pub struct PreparedSettle {
+    pub outcome: ProveOutcome,
+    pub withdraw_proofs: BTreeMap<[u8; 32], (Digest, Vec<[u8; 32]>)>,
+}
+
+/// Prove a sealed window and prepare its claim proofs. Builds the window's withdrawal
+/// tree from `ww` (op-application order) and asserts its root byte-matches the prover's
+/// derived `withdrawals_root` — the two are the same `merkle_root` over the same
+/// `withdrawal_leaf`s, so any divergence is a hard error, never silently published.
+pub fn prove_and_prepare(
+    client: &dyn ProverClient,
+    witness: &WindowWitness,
+    ww: &[Withdrawal],
+) -> Result<PreparedSettle, String> {
+    let outcome = client.prove(witness).map_err(|e| format!("prove: {e:?}"))?;
+
+    let leaves: Vec<[u8; 32]> = ww.iter().map(|w| w.leaf()).collect();
+    let wroot = merkle_root(&leaves);
+    if wroot != outcome.withdrawals_root {
+        return Err(format!(
+            "withdrawals root mismatch: gateway tree {} vs prover {}",
+            crate::hex32(&wroot),
+            crate::hex32(&outcome.withdrawals_root)
+        ));
+    }
+    let mut withdraw_proofs = BTreeMap::new();
+    for (i, w) in ww.iter().enumerate() {
+        withdraw_proofs.insert(w.leaf(), (outcome.withdrawals_root, merkle_proof(&leaves, i)));
+    }
+    Ok(PreparedSettle { outcome, withdraw_proofs })
 }

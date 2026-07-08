@@ -1365,6 +1365,34 @@ impl Gw {
         Ok(Some((witness, ww)))
     }
 
+    /// Slice 3b-2a: apply a completed new-path window settle to gateway state. Accumulates
+    /// the window's per-note claim proofs (each window root is permanently claimable, so we
+    /// EXTEND, never replace); advances `last_settled_root`; retains this batch's ordered/
+    /// rejected hashes for DP-004 challenge answers (keyed by the on-chain batch id, which
+    /// equals the window id); clears the now-redundant legacy pending accumulators; and
+    /// records the published L1 status.
+    /// (dead_code until the PROVER_URL settle loop wires it — same deal as prover_client.rs.)
+    #[allow(dead_code)]
+    fn commit_window_settle(
+        &mut self,
+        batch_id: u64,
+        ordered: Vec<Digest>,
+        rejected: Vec<Digest>,
+        prepared: prover_client::PreparedSettle,
+        l1_status: L1Status,
+    ) {
+        for (leaf, entry) in prepared.withdraw_proofs {
+            self.withdraw_proofs.insert(leaf, entry);
+        }
+        self.last_settled_root = prepared.outcome.new_root;
+        self.batch_orders.insert(batch_id, (ordered, rejected));
+        // the window manifest is the source of truth for this batch's roots; the legacy
+        // per-tick accumulators are unused by the new path — clear them so they can't grow.
+        self.pending_ordered.clear();
+        self.pending_rejected.clear();
+        self.l1_status = Some(l1_status);
+    }
+
     /// An account's withdrawals with the claim data: each carries its leaf and, once
     /// the cumulative root has been published on-chain, the Merkle `proof` to call
     /// `vault.claim(to, amount, nonce, proof)`. `claimable=false` means it is recorded
@@ -6393,5 +6421,72 @@ mod tests {
             .ops
             .iter()
             .any(|op| matches!(op, BatchOp::Withdraw { to: Some(_), .. })));
+    }
+
+    // ── Slice 3b-2a: prove_and_prepare + Gw::commit_window_settle ───────────
+
+    #[test]
+    fn prove_and_prepare_withdrawal_tree_byte_matches_circuit() {
+        use crate::prover_client::{prove_and_prepare, MockProverClient};
+
+        let mut gw = Gw::boot();
+        let (key, _o) = gw.register_account(None);
+        gw.account_deposit(&key, 0, 40_000 * QUOTE_SCALE).unwrap();
+        // two real-exit withdrawals in the window → a non-trivial withdrawals tree
+        gw.account_withdraw(&key, 0, 5_000 * QUOTE_SCALE, [7u8; 20]).unwrap();
+        gw.account_withdraw(&key, 0, 3_000 * QUOTE_SCALE, [8u8; 20]).unwrap();
+        let bc = gw.seq.state.next_batch_id;
+
+        let (witness, ww) = gw.begin_window_settle(bc).unwrap().expect("some");
+        assert_eq!(ww.len(), 2);
+
+        let prepared = prove_and_prepare(&MockProverClient, &witness, &ww).expect("prepare");
+
+        // the byte-match invariant: the gateway tree root == the circuit's derived root
+        let leaves: Vec<[u8; 32]> = ww.iter().map(|w| w.leaf()).collect();
+        assert_eq!(merkle_root(&leaves), prepared.outcome.withdrawals_root);
+        assert!(prepared.outcome.withdrawals_root != [0u8; 32]); // non-empty
+
+        // each served proof verifies against that root the way the vault does
+        for (i, w) in ww.iter().enumerate() {
+            let (root, proof) = prepared.withdraw_proofs.get(&w.leaf()).expect("proof");
+            assert_eq!(*root, prepared.outcome.withdrawals_root);
+            assert!(withdrawals::verify(*root, w.leaf(), proof));
+            assert_eq!(*proof, merkle_proof(&leaves, i));
+        }
+    }
+
+    #[test]
+    fn commit_window_settle_accumulates_and_advances() {
+        use crate::prover_client::{prove_and_prepare, MockProverClient};
+
+        let mut gw = Gw::boot();
+        let (key, _o) = gw.register_account(None);
+        gw.account_deposit(&key, 0, 40_000 * QUOTE_SCALE).unwrap();
+        gw.account_withdraw(&key, 0, 5_000 * QUOTE_SCALE, [7u8; 20]).unwrap();
+        let bc = gw.seq.state.next_batch_id;
+
+        let (witness, ww) = gw.begin_window_settle(bc).unwrap().expect("some");
+        let ordered = witness.manifest.ordered.clone();
+        let rejected: Vec<_> = witness.manifest.rejected.iter().map(|(h, _)| *h).collect();
+        let batch_id = witness.batch_id;
+        let leaf0 = ww[0].leaf();
+        let prepared = prove_and_prepare(&MockProverClient, &witness, &ww).unwrap();
+        let new_root = prepared.outcome.new_root;
+
+        let status = L1Status {
+            settled_root: hex32(&new_root),
+            batch_count: batch_id + 1,
+            last_tx: "0xtx".into(),
+            bond: "0".into(),
+            withdrawals_root: hex32(&prepared.outcome.withdrawals_root),
+        };
+        gw.commit_window_settle(batch_id, ordered, rejected, prepared, status);
+
+        assert_eq!(gw.last_settled_root, new_root);
+        assert!(gw.withdraw_proofs.contains_key(&leaf0));
+        assert!(gw.batch_orders.contains_key(&batch_id));
+        assert!(gw.pending_ordered.is_empty());
+        assert!(gw.l1_status.is_some());
     }
 }
