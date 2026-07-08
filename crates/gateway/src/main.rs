@@ -4081,18 +4081,16 @@ fn production_mode(l1_enabled: bool) -> bool {
     l1_enabled || std::env::var("DARKPERP_PROD").ok().as_deref() == Some("1")
 }
 
-/// Slice 3b-2a: select the settle path's prover client from `PROVER_URL`.
+/// Select the settle path's prover client from `PROVER_URL`.
 /// unset/empty → legacy path (None); "mock" → in-process MockProverClient;
-/// any URL → error (HttpProverClient is Slice 3b-2b).
+/// any URL → HttpProverClient (seal → POST /prove → real Groth16 proof).
 fn prover_from_str(
     v: Option<&str>,
 ) -> Result<Option<std::sync::Arc<dyn prover_client::ProverClient>>, String> {
     match v {
         None | Some("") => Ok(None),
         Some("mock") => Ok(Some(std::sync::Arc::new(prover_client::MockProverClient))),
-        Some(url) => Err(format!(
-            "PROVER_URL={url}: HttpProverClient is Slice 3b-2b (not implemented); use `mock` or unset"
-        )),
+        Some(url) => Ok(Some(std::sync::Arc::new(prover_client::HttpProverClient::from_env(url)))),
     }
 }
 
@@ -5324,12 +5322,7 @@ mod tests {
         assert!(prover_from_str(None).unwrap().is_none());
         assert!(prover_from_str(Some("")).unwrap().is_none());
         assert!(prover_from_str(Some("mock")).unwrap().is_some());
-        // `.err()` instead of `.unwrap_err()`: the Ok side (`Arc<dyn ProverClient>`) is
-        // intentionally not Debug, and Option::expect needs no Debug bound on it.
-        let err = prover_from_str(Some("http://prover.local:8091"))
-            .err()
-            .expect("a URL must error until HttpProverClient lands (3b-2b)");
-        assert!(err.contains("3b-2b"));
+        assert!(prover_from_str(Some("http://prover.local:8091")).unwrap().is_some());
     }
 
     #[test]
