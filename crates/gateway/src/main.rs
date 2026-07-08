@@ -618,10 +618,22 @@ struct Gw {
     pending_withdrawals: Vec<Withdrawal>,
     /// Monotonic nonce making each withdrawal leaf unique.
     next_withdraw_nonce: u64,
-    /// Merkle proofs for the most recently PUBLISHED cumulative withdrawals root,
-    /// keyed by leaf — what a user needs to claim. A withdrawal not yet in here is
-    /// pending its first on-chain publish.
-    withdraw_proofs: std::collections::BTreeMap<[u8; 32], Vec<[u8; 32]>>,
+    /// Claim data per withdrawal leaf: (published root, sibling path). The root lets a
+    /// note carry the specific window (incremental) or cumulative (legacy) root it was
+    /// published under — CollateralVault.claim(to, amount, nonce, root, proof) accepts any
+    /// published root (DP-012).
+    withdraw_proofs: std::collections::BTreeMap<[u8; 32], (Digest, Vec<[u8; 32]>)>,
+    /// Slice 3b-2a: withdrawals created since the current window opened, in op-application
+    /// order — the incremental per-window withdrawal set the circuit's `withdrawals_root`
+    /// is derived from. Drained by the new (PROVER_URL) settle path. `#[serde(default)]`
+    /// keeps pre-upgrade snapshots loadable.
+    #[serde(default)]
+    window_withdrawals: Vec<Withdrawal>,
+    /// Slice 3b-2a: the state root of the last on-chain settle (genesis at boot). The new
+    /// settle path uses `seq.state.state_root() != last_settled_root` as its RPC-free
+    /// "is there anything to settle?" signal.
+    #[serde(default)]
+    last_settled_root: Digest,
     /// On-chain deposit tx hashes already credited (idempotency / replay guard).
     processed_deposit_txs: std::collections::BTreeSet<String>,
     /// Manifest hash of the most recently sealed batch — published to L1 as the
@@ -1016,6 +1028,7 @@ impl Gw {
         })
         .expect("seed insurance fund");
 
+        let genesis_root = seq.state.state_root();
         let mut gw = Gw {
             seq,
             archive,
@@ -1034,6 +1047,8 @@ impl Gw {
             pending_withdrawals: Vec::new(),
             next_withdraw_nonce: 1,
             withdraw_proofs: std::collections::BTreeMap::new(),
+            window_withdrawals: Vec::new(),
+            last_settled_root: genesis_root,
             processed_deposit_txs: std::collections::BTreeSet::new(),
             last_manifest: [0u8; 32],
             pending_ordered: Vec::new(),
@@ -1316,6 +1331,10 @@ impl Gw {
             nonce,
         };
         self.pending_withdrawals.push(w.clone());
+        // Slice 3b-2a: also record it in the current window's incremental set (same order
+        // the BatchOp::Withdraw was applied), so the new settle path's window withdrawal
+        // tree byte-matches the circuit's withdrawals_root.
+        self.window_withdrawals.push(w.clone());
         Ok(w)
     }
 
@@ -1338,15 +1357,19 @@ impl Gw {
             .filter(|w| w.owner == owner)
             .map(|w| {
                 let leaf = w.leaf();
-                let proof = self.withdraw_proofs.get(&leaf);
+                let entry = self.withdraw_proofs.get(&leaf);
                 serde_json::json!({
                     "to": hex0x(&w.to),
                     "amount": w.amount.to_string(),
                     "nonce": w.nonce,
                     "leaf": hex0x(&leaf),
-                    "root": current_root,
-                    "claimable": proof.is_some(),
-                    "proof": proof.map(|p| p.iter().map(|n| hex0x(n)).collect::<Vec<_>>()).unwrap_or_default(),
+                    // per-note published root (window root in the new path; the cumulative
+                    // root in legacy); fall back to the last published root pre-publish.
+                    "root": entry.map(|(r, _)| hex0x(r)).unwrap_or_else(|| current_root.clone()),
+                    "claimable": entry.is_some(),
+                    "proof": entry
+                        .map(|(_, p)| p.iter().map(|n| hex0x(n)).collect::<Vec<_>>())
+                        .unwrap_or_default(),
                 })
             })
             .collect();
@@ -4532,7 +4555,7 @@ async fn main() {
             type SettleOut = (
                 L1Status,
                 Vec<[u8; 32]>,
-                std::collections::BTreeMap<[u8; 32], Vec<[u8; 32]>>,
+                std::collections::BTreeMap<[u8; 32], (Digest, Vec<[u8; 32]>)>,
                 u64, // on-chain batch id these ordered/rejected hashes were committed under
                 Vec<[u8; 32]>, // ordered order hashes settled this batch (audit DP-004 retention)
                 Vec<[u8; 32]>, // rejected order hashes settled this batch
@@ -4607,7 +4630,8 @@ async fn main() {
                         )?;
                         let mut proofs = std::collections::BTreeMap::new();
                         for (i, w) in surviving.iter().enumerate() {
-                            proofs.insert(w.leaf(), merkle_proof(&leaves, i));
+                            // legacy: every note shares the one cumulative root published this settle.
+                            proofs.insert(w.leaf(), (wroot, merkle_proof(&leaves, i)));
                         }
                         Ok(Some((
                             L1Status {
@@ -6249,5 +6273,46 @@ mod tests {
         let mut bad = b;
         bad[8] = 0;
         assert!(deserialize_order_terms(&bad).is_none(), "side 0 is invalid");
+    }
+
+    // ── Slice 3b-2a: window withdrawal set + per-note (root, proof) ──────────
+
+    #[test]
+    fn account_withdraw_records_window_withdrawal() {
+        let mut gw = Gw::boot();
+        let (key, _owner) = gw.register_account(None);
+        gw.account_deposit(&key, 0, 20_000 * QUOTE_SCALE).unwrap();
+        assert!(gw.window_withdrawals.is_empty());
+
+        let to = [7u8; 20];
+        let w = gw
+            .account_withdraw(&key, 0, 5_000 * QUOTE_SCALE, to)
+            .expect("withdraw");
+
+        assert_eq!(gw.window_withdrawals.len(), 1);
+        assert_eq!(gw.window_withdrawals[0].to, to);
+        assert_eq!(gw.window_withdrawals[0].nonce, w.nonce);
+    }
+
+    #[test]
+    fn v1_withdrawals_json_serves_root_and_proof() {
+        let mut gw = Gw::boot();
+        let (key, owner) = gw.register_account(None);
+        gw.account_deposit(&key, 0, 20_000 * QUOTE_SCALE).unwrap();
+        let w = gw
+            .account_withdraw(&key, 0, 5_000 * QUOTE_SCALE, [7u8; 20])
+            .unwrap();
+
+        // seed a published (root, proof) for this leaf as the settle path would
+        let leaf = w.leaf();
+        let root = [0xAAu8; 32];
+        gw.withdraw_proofs.insert(leaf, (root, vec![[0xBBu8; 32]]));
+        let _ = owner;
+
+        let json = gw.v1_withdrawals_json(&key).expect("json");
+        let item = &json["withdrawals"][0];
+        assert_eq!(item["claimable"], serde_json::json!(true));
+        assert_eq!(item["root"], serde_json::json!(hex0x(&root)));
+        assert_eq!(item["proof"], serde_json::json!([hex0x(&[0xBBu8; 32])]));
     }
 }
