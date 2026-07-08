@@ -4,12 +4,8 @@
 //! on-chain MockZkVerifier (proof == commitment). Slice 3b-2b adds `HttpProverClient`
 //! (seal → POST /prove → real Groth16 proof); this module's trait is that seam.
 
-// Transitional: the gateway settle loop (next task in Slice 3b-2a) is the non-test
-// consumer; until it lands only the Task-1 test exercises this module. Remove then.
-#![allow(dead_code)]
-
 use crate::withdrawals::Withdrawal;
-use perp_core::commitment::derive_roots;
+use perp_core::commitment::{derive_roots, DerivedRoots};
 use perp_core::merkle::{merkle_proof, merkle_root};
 use perp_core::{Digest, EngineError, Keccak256};
 use sequencer::WindowWitness;
@@ -76,7 +72,31 @@ pub fn prove_and_prepare(
     witness: &WindowWitness,
     ww: &[Withdrawal],
 ) -> Result<PreparedSettle, String> {
-    let outcome = client.prove(witness).map_err(|e| format!("prove: {e:?}"))?;
+    let outcome = client.prove(witness).map_err(|e| match e {
+        ProverClientError::Derive(err) => format!("prove: window replay failed: {err:?}"),
+    })?;
+
+    // The prover's claimed commitment must be THE commitment of the six roots it returned
+    // — that binding is what the on-chain verifier checks the proof against, so a client
+    // that returns mismatched roots/commitment is broken and must never reach settleBatch.
+    // (Trivially true for MockProverClient; a real trust-boundary check for 3b-2b's
+    // HttpProverClient.)
+    let expect = DerivedRoots {
+        prev_state_root: outcome.prev_root,
+        manifest_hash: outcome.manifest_hash,
+        new_state_root: outcome.new_root,
+        ordered_root: outcome.ordered_root,
+        withdrawals_root: outcome.withdrawals_root,
+        rejected_root: outcome.rejected_root,
+    }
+    .commitment::<Keccak256>();
+    if expect != outcome.commitment {
+        return Err(format!(
+            "commitment mismatch: prover claims {} but its roots commit to {}",
+            crate::hex32(&outcome.commitment),
+            crate::hex32(&expect)
+        ));
+    }
 
     let leaves: Vec<[u8; 32]> = ww.iter().map(|w| w.leaf()).collect();
     let wroot = merkle_root(&leaves);

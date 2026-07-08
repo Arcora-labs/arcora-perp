@@ -625,13 +625,17 @@ struct Gw {
     withdraw_proofs: std::collections::BTreeMap<[u8; 32], (Digest, Vec<[u8; 32]>)>,
     /// Slice 3b-2a: withdrawals created since the current window opened, in op-application
     /// order — the incremental per-window withdrawal set the circuit's `withdrawals_root`
-    /// is derived from. Drained by the new (PROVER_URL) settle path. `#[serde(default)]`
-    /// keeps pre-upgrade snapshots loadable.
+    /// is derived from. Drained by the new (PROVER_URL) settle path. `serde(default)` is
+    /// forward-additive struct hygiene (matches crate precedent); NOTE: postcard is
+    /// positional (non-self-describing), so cross-version snapshot load still requires a
+    /// state reset/migration — handled by the migration slice.
     #[serde(default)]
     window_withdrawals: Vec<Withdrawal>,
     /// Slice 3b-2a: the state root of the last on-chain settle (genesis at boot). The new
     /// settle path uses `seq.state.state_root() != last_settled_root` as its RPC-free
-    /// "is there anything to settle?" signal.
+    /// "is there anything to settle?" signal. `serde(default)` is forward-additive struct
+    /// hygiene (matches crate precedent); NOTE: postcard is positional, so cross-version
+    /// snapshot load still requires a state reset/migration — handled by the migration slice.
     #[serde(default)]
     last_settled_root: Digest,
     /// On-chain deposit tx hashes already credited (idempotency / replay guard).
@@ -1343,8 +1347,6 @@ impl Gw {
     /// window's batch id would not match the on-chain `batchCount` (a desync a prior fault
     /// left behind — recovery is Slice 3b-3). Otherwise seals the window and takes its
     /// incremental withdrawal set.
-    /// (dead_code until the PROVER_URL settle loop wires it — same deal as prover_client.rs.)
-    #[allow(dead_code)]
     fn begin_window_settle(
         &mut self,
         chain_batch_count: u64,
@@ -1371,8 +1373,6 @@ impl Gw {
     /// rejected hashes for DP-004 challenge answers (keyed by the on-chain batch id, which
     /// equals the window id); clears the now-redundant legacy pending accumulators; and
     /// records the published L1 status.
-    /// (dead_code until the PROVER_URL settle loop wires it — same deal as prover_client.rs.)
-    #[allow(dead_code)]
     fn commit_window_settle(
         &mut self,
         batch_id: u64,
@@ -3046,6 +3046,8 @@ struct App {
     /// The L1 bridge (Base Sepolia), if configured — used by the deposit-confirm
     /// handler to verify on-chain USDC deposits. `None` ⇒ pure in-memory mode.
     l1: Option<L1>,
+    /// Slice 3b-2a: the settle path's prover client (None ⇒ legacy cumulative+mock path).
+    prover: Option<std::sync::Arc<dyn prover_client::ProverClient>>,
     /// REAL per-market price history (the chart's past bars): the engine's own
     /// marks folded into per-timeframe OHLC rings each tick, plus a one-shot
     /// exchange backfill for feed-backed markets at boot. Display data — not
@@ -4079,6 +4081,25 @@ fn production_mode(l1_enabled: bool) -> bool {
     l1_enabled || std::env::var("DARKPERP_PROD").ok().as_deref() == Some("1")
 }
 
+/// Slice 3b-2a: select the settle path's prover client from `PROVER_URL`.
+/// unset/empty → legacy path (None); "mock" → in-process MockProverClient;
+/// any URL → error (HttpProverClient is Slice 3b-2b).
+fn prover_from_str(
+    v: Option<&str>,
+) -> Result<Option<std::sync::Arc<dyn prover_client::ProverClient>>, String> {
+    match v {
+        None | Some("") => Ok(None),
+        Some("mock") => Ok(Some(std::sync::Arc::new(prover_client::MockProverClient))),
+        Some(url) => Err(format!(
+            "PROVER_URL={url}: HttpProverClient is Slice 3b-2b (not implemented); use `mock` or unset"
+        )),
+    }
+}
+
+fn prover_from_env() -> Result<Option<std::sync::Arc<dyn prover_client::ProverClient>>, String> {
+    prover_from_str(std::env::var("PROVER_URL").ok().as_deref())
+}
+
 /// Whether the gateway may boot given the attestation state. In production the enclave
 /// identity must be bound to a verified TEE attestation — a missing/failed attestation
 /// must fail closed rather than silently fall back to the stub measurement (audit DP-006).
@@ -4210,6 +4231,16 @@ async fn main() {
     let (tx, _rx) = broadcast::channel::<String>(256);
     let (events_tx, _erx) = broadcast::channel::<String>(1024);
     let l1 = L1::from_env();
+    let prover = match prover_from_env() {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("[prover] {e}");
+            std::process::exit(1);
+        }
+    };
+    if prover.is_some() {
+        println!("[prover] window-settle path ON (PROVER_URL)");
+    }
     let prod = production_mode(l1.is_some());
     if prod {
         println!(
@@ -4332,6 +4363,7 @@ async fn main() {
         events_tx,
         reg_limit: Mutex::new(HashMap::new()),
         l1: l1.clone(),
+        prover: prover.clone(),
         candles: Mutex::new(candles::CandleStore::new()),
     });
 
@@ -4623,6 +4655,77 @@ async fn main() {
             );
             loop {
                 iv.tick().await;
+                if let Some(client) = app.prover.clone() {
+                    // (A) read the on-chain batch count (RPC, no lock)
+                    let l1c = l1.clone();
+                    let bc = match tokio::task::spawn_blocking(move || l1c.batch_count()).await {
+                        Ok(Ok(bc)) => bc,
+                        Ok(Err(e)) => {
+                            eprintln!("[l1] batch_count: {e}");
+                            continue;
+                        }
+                        Err(e) => {
+                            eprintln!("[l1] batch_count join: {e}");
+                            continue;
+                        }
+                    };
+                    // (B) seal the window under the lock (or skip)
+                    let begun = {
+                        let mut gw = app.gw.lock().await;
+                        match gw.begin_window_settle(bc) {
+                            Ok(Some(x)) => Some(x),
+                            Ok(None) => None,
+                            Err(e) => {
+                                eprintln!("[l1] window settle skipped: {e}");
+                                None
+                            }
+                        }
+                    };
+                    let Some((witness, ww)) = begun else { continue };
+                    // capture the manifest's ordered/rejected for the DP-004 challenge store
+                    let ordered = witness.manifest.ordered.clone();
+                    let rejected: Vec<Digest> =
+                        witness.manifest.rejected.iter().map(|(h, _)| *h).collect();
+                    let batch_id = witness.batch_id;
+                    // (C) prove + settle (lock-free)
+                    let l1c = l1.clone();
+                    let res = tokio::task::spawn_blocking(
+                        move || -> Result<(prover_client::PreparedSettle, String, u128), String> {
+                            let prepared =
+                                prover_client::prove_and_prepare(client.as_ref(), &witness, &ww)?;
+                            let tx = l1c.settle_proved(&prepared.outcome)?;
+                            let bond = l1c.sequencer_bond().unwrap_or(0);
+                            Ok((prepared, tx, bond))
+                        },
+                    )
+                    .await;
+                    match res {
+                        Ok(Ok((prepared, tx, bond))) => {
+                            let status = L1Status {
+                                settled_root: hex32(&prepared.outcome.new_root),
+                                batch_count: batch_id + 1,
+                                last_tx: tx.clone(),
+                                bond: bond.to_string(),
+                                withdrawals_root: hex32(&prepared.outcome.withdrawals_root),
+                            };
+                            println!(
+                                "[l1] window settled root {} batch {} tx {} (withdrawals root {})",
+                                status.settled_root, status.batch_count, tx, status.withdrawals_root
+                            );
+                            {
+                                let mut gw = app.gw.lock().await;
+                                gw.commit_window_settle(batch_id, ordered, rejected, prepared, status);
+                            }
+                            let snap = { app.gw.lock().await.snapshot() };
+                            let _ = app.tx.send(
+                                serde_json::to_string(&WsMsg::State { state: snap }).unwrap(),
+                            );
+                        }
+                        Ok(Err(e)) => eprintln!("[l1] window settle failed: {e}"),
+                        Err(e) => eprintln!("[l1] window settle join: {e}"),
+                    }
+                    continue; // new path handled this tick; skip the legacy body
+                }
                 let (new_root, manifest, withdrawals, ordered_h, rejected_h) = {
                     let gw = app.gw.lock().await;
                     (
@@ -4779,6 +4882,7 @@ mod tests {
             events_tx,
             reg_limit: Mutex::new(HashMap::new()),
             l1: None,
+            prover: None,
             candles: Mutex::new(candles::CandleStore::new()),
         })
     }
@@ -5201,6 +5305,19 @@ mod tests {
         assert_eq!(out.commitment, d.commitment::<Keccak256>());
         // MockZkVerifier accepts proof == commitment.
         assert_eq!(out.proof, out.commitment.to_vec());
+    }
+
+    #[test]
+    fn prover_from_str_selects_path() {
+        assert!(prover_from_str(None).unwrap().is_none());
+        assert!(prover_from_str(Some("")).unwrap().is_none());
+        assert!(prover_from_str(Some("mock")).unwrap().is_some());
+        // `.err()` instead of `.unwrap_err()`: the Ok side (`Arc<dyn ProverClient>`) is
+        // intentionally not Debug, and Option::expect needs no Debug bound on it.
+        let err = prover_from_str(Some("http://prover.local:8091"))
+            .err()
+            .expect("a URL must error until HttpProverClient lands (3b-2b)");
+        assert!(err.contains("3b-2b"));
     }
 
     #[test]

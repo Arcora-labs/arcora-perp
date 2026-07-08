@@ -415,6 +415,33 @@ impl L1 {
         )
     }
 
+    /// Slice 3b-2a: submit prover-derived roots + a real (or mock) proof directly — no
+    /// `publicCommitment` synthesis. `out.proof` is the ZK proof (== the commitment bytes
+    /// for MockProverClient, which the on-chain MockZkVerifier accepts).
+    pub fn settle_proved(&self, out: &crate::prover_client::ProveOutcome) -> Result<String, String> {
+        let proof_hex = {
+            let mut s = String::with_capacity(2 + out.proof.len() * 2);
+            s.push_str("0x");
+            for byte in &out.proof {
+                s.push_str(&format!("{byte:02x}"));
+            }
+            s
+        };
+        self.send(
+            &self.settlement.clone(),
+            "settleBatch(bytes32,bytes32,bytes32,bytes32,bytes32,bytes32,bytes)",
+            &[
+                &crate::hex32(&out.prev_root),
+                &crate::hex32(&out.manifest_hash),
+                &crate::hex32(&out.new_root),
+                &crate::hex32(&out.ordered_root),
+                &crate::hex32(&out.withdrawals_root),
+                &crate::hex32(&out.rejected_root),
+                &proof_hex,
+            ],
+        )
+    }
+
     // ── inclusion-challenge answering (audit DP-004) ─────────────────────────────
 
     /// The current block number — the answering loop starts watching from here, skipping history.
