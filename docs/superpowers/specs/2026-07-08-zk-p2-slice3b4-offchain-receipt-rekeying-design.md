@@ -18,18 +18,27 @@ The user-facing `Receipt` is **enclave-signed** (`batch_id_hint` is bound into `
 
 ## 2. Goal
 
-A user can reconcile their receipt against the on-chain window/challenge. Achieve it **additively** (Approach B): the receipt keeps its per-tick `batch_id_hint` (Counter A — unchanged UI grouping, soft-finality, censorship tracking) **and** gains an enclave-signed `window_id` (Counter B) naming the on-chain window it settles into. A finality-pruned A→B map lets any bare Counter-A id (a `WBatch`, `nextBatchId`, a log line) that lacks a receipt be reconciled to its window, surfaced via a `WBatch.window_id` annotation, a `GET /v1/batch/{id}` endpoint, and an `openWindowId` in the status JSON that is comparable to `l1.batchCount`. Internal Counter-A machinery is untouched; the note-archive keying is out of scope.
+A user can reconcile their receipt against the on-chain window/challenge. Achieve it **additively** (Approach B): the receipt keeps its per-tick `batch_id_hint` (Counter A — unchanged UI grouping, soft-finality, censorship tracking) **and** gains an **unsigned** `window_id` (Counter B) naming the on-chain window it settles into. (**Design correction, 2026-07-08:** `window_id` is a plaintext reconciliation *hint*, NOT enclave-signed — see §3.5. Signing it would force a Solidity contract change for zero on-chain value and would misrepresent it as a guarantee the protocol does not make.) A finality-pruned A→B map lets any bare Counter-A id (a `WBatch`, `nextBatchId`, a log line) that lacks a receipt be reconciled to its window, surfaced via a `WBatch.window_id` annotation, a `GET /v1/batch/{id}` endpoint, and an `openWindowId` in the status JSON that is comparable to `l1.batchCount`. Internal Counter-A machinery is untouched; the note-archive keying is out of scope.
 
 ## 3. Why `state.next_batch_id` at issue time is the correct window id
 
 `issue_receipt` runs inside `seal_batch` (a tick). At that moment `self.state.next_batch_id` (Counter B) is the **currently open window** M, and it stays == M across every tick of the window (`seal_window` bumps it to M+1 only when the window closes, `lib.rs:909-910`). Every order sequenced during window M's ticks therefore settles in window M, and `rollback_window` restores Counter B to M on a failed window so a re-sealed window keeps the same id (`lib.rs:933-935`). So `state.next_batch_id` read at issue time is exactly — and rollback-stably — the on-chain window the order settles into. It is the right value to sign and to key the A→B map on.
 
+## 3.5 Why `window_id` is UNSIGNED (design correction, 2026-07-08)
+
+The on-chain inclusion-challenge game already decouples the two counters, so signing `window_id` is both valueless and misleading:
+
+- `challengeInclusion(orderHash, seqNo, recvTimeMs, batchIdHint, v, r, s)` (`DarkPerpSettlement.sol:313-339`) uses the receipt's `batchIdHint` (Counter A) **only** to reconstruct `receiptDigest(...)` and `ecrecover` it against `enclaveSigner` — i.e. purely to authenticate the receipt. It does not use `batchIdHint` for any root lookup.
+- `answerChallenge(orderHash, batchId, proof)` proves inclusion via `inclusionLeaf(batchId, orderHash)` with `batchId` = **Counter B** (the window that actually settled the order), and the contract **explicitly allows** the settling batch to be *later* than the receipt's hint (`DarkPerpSettlement.sol:346-348`: "resting orders settle in a later batch than the one their receipt was issued in").
+
+Consequences: (1) signing `window_id` would add **zero** on-chain accountability — the answer never consults it — while **forcing** a Solidity change (`receiptDigest`/`challengeInclusion` to hash 5 words + re-locking `CrossLayer.t.sol`); (2) worse, a signed `window_id` would imply a "settle-in-window-N" **guarantee the protocol intentionally does not make**. So `window_id` is an unsigned lower-bound **hint** (the open window at sequencing time; the order settles in that window or a later one). This keeps 3b-4 truly off-chain: perp-core/sequencer/gateway only, **no contract change**, `signing_digest` unchanged.
+
 ## 4. Architecture
 
 ### 4.1 Signed `window_id` on the receipt (perp-core + sequencer + gateway)
 
-- **`perp-core Receipt`** (`order.rs:99-104`): add `pub window_id: u64`.
-- **`signing_digest`** (`order.rs:108-118`): include `window_id` in the hashed pre-image (append after `batch_id_hint`), so the enclave signature binds it. (A protocol change; pre-live, the migration resets snapshots, so no compatibility concern.)
+- **`perp-core Receipt`** (`order.rs:99-104`): add `pub window_id: u64` — an **unsigned** plaintext field.
+- **`signing_digest`** (`order.rs:108-118`): **unchanged** (4 words). `window_id` is deliberately NOT in the hashed pre-image (see §3.5).
 - **`issue_receipt`** (`lib.rs:422-459`): populate `window_id: self.state.next_batch_id` (Counter B) alongside the existing `batch_id_hint: self.next_batch_id` (Counter A). `InclusionRecord.issued_batch`/`seen_in_batch` stay Counter A (censorship tracking is per-tick — untouched).
 - **`SignedReceipt`** (`lib.rs:98-105`) and **`WReceipt`** (`main.rs:400-405`, JSON field `windowId`): carry `window_id` through. Every site that constructs a `WReceipt` — the WS/state path plus the gateway order-accept re-emit paths (`main.rs:1772-1803`, `:2406-2442`) — must source `window_id` from the same signed receipt (never fabricate it). `batch_id_hint` is preserved everywhere it exists today.
 
@@ -61,7 +70,7 @@ A user with a receipt reads its signed `window_id = M` and checks the on-chain `
 ## 6. Testing
 
 - **`window_id` == open window at issue** (sequencer unit): after sequencing across a window, every issued receipt's `window_id == state.next_batch_id` at issue time; after `seal_window`, new receipts carry the incremented window id.
-- **`signing_digest` binds `window_id`** (perp-core unit): two receipts identical but for `window_id` produce different signing digests.
+- **`signing_digest` ignores `window_id`** (perp-core unit): two receipts identical but for `window_id` produce the **same** signing digest (window_id is unsigned; the digest stays byte-identical to the pre-slice 4-word digest, so the locked cross-layer vectors are unchanged).
 - **`tick_window` exactness** (sequencer unit): N ticks in window M ⇒ every Counter-A id → M; after `seal_window` (M→M+1), subsequent ticks → M+1.
 - **Rollback keeps the map correct** (sequencer unit): a failed window's ticks still map to M after re-seal.
 - **Prune bounds the map** (sequencer unit): `mark_settled`/`mark_failed` drop the settled Counter-A entries; the map does not grow without bound.
