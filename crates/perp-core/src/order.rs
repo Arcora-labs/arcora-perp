@@ -101,9 +101,11 @@ pub struct Receipt {
     pub seq_no: u64,
     pub recv_time_ms: u64,
     pub batch_id_hint: u64,
-    /// The on-chain window id (Counter B, `state.next_batch_id` at issue time) this order
-    /// settles into — the id space of the on-chain `batchCount` / inclusion challenge.
-    /// Enclave-signed (bound in `signing_digest`), so it is a verifiable promise (Slice 3b-4).
+    /// UNSIGNED plaintext reconciliation hint (Slice 3b-4): the open window
+    /// (Counter B, `state.next_batch_id`) when the order was sequenced. The order
+    /// may settle in this window OR a later one — this is a lower-bound hint for
+    /// off-chain reconciliation, NOT an enclave-signed guarantee. It is deliberately
+    /// excluded from `signing_digest`.
     pub window_id: u64,
 }
 
@@ -117,7 +119,6 @@ impl Receipt {
                 word_u64(self.seq_no),
                 word_u64(self.recv_time_ms),
                 word_u64(self.batch_id_hint),
-                word_u64(self.window_id),
             ],
         )
     }
@@ -266,7 +267,7 @@ mod tests {
     }
 
     #[test]
-    fn signing_digest_binds_window_id() {
+    fn signing_digest_ignores_window_id() {
         let base = Receipt {
             order_hash: [1u8; 32],
             seq_no: 7,
@@ -275,7 +276,8 @@ mod tests {
             window_id: 1,
         };
         let other = Receipt { window_id: 2, ..base };
-        assert_ne!(
+        // window_id is UNSIGNED — it must NOT affect the enclave signing digest.
+        assert_eq!(
             base.signing_digest::<Keccak256>(),
             other.signing_digest::<Keccak256>()
         );

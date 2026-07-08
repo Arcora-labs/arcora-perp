@@ -13,9 +13,9 @@ fn hex(d: &[u8; 32]) -> String {
 
 #[test]
 fn receipt_signing_digest_vector() {
-    // orderHash = 0x1212..12, seq=7, recv=1000, hint=0, window=1
-    // (Slice 3b-4: `signing_digest` binds `window_id`; the Solidity `receiptDigest`
-    // must gain the windowId word and re-lock this vector to match.)
+    // orderHash = 0x1212..12, seq=7, recv=1000, hint=0
+    // (Slice 3b-4: `window_id` is an UNSIGNED plaintext hint — it is NOT part of
+    // `signing_digest`, so its value here is irrelevant to the locked vector.)
     let receipt = Receipt {
         order_hash: [0x12u8; 32],
         seq_no: 7,
@@ -26,7 +26,7 @@ fn receipt_signing_digest_vector() {
     let d = receipt.signing_digest::<Keccak256>();
     assert_eq!(
         hex(&d),
-        "102331dccb4ef4be6a1759b880ece2c2c73c6781b797298882b7cd6372c9486c",
+        "ea97e0063439108b01114aef8136d5c7f4cad5d900f8a3c3e48cfbc583a4ae24",
         "RECEIPT DIGEST VECTOR (update Solidity CrossLayer.t.sol to match): {}",
         hex(&d)
     );
