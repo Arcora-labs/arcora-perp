@@ -42,13 +42,13 @@ Consequences: (1) signing `window_id` would add **zero** on-chain accountability
 - **`issue_receipt`** (`lib.rs:422-459`): populate `window_id: self.state.next_batch_id` (Counter B) alongside the existing `batch_id_hint: self.next_batch_id` (Counter A). `InclusionRecord.issued_batch`/`seen_in_batch` stay Counter A (censorship tracking is per-tick — untouched).
 - **`SignedReceipt`** (`lib.rs:98-105`) and **`WReceipt`** (`main.rs:400-405`, JSON field `windowId`): carry `window_id` through. Every site that constructs a `WReceipt` — the WS/state path plus the gateway order-accept re-emit paths (`main.rs:1772-1803`, `:2406-2442`) — must source `window_id` from the same signed receipt (never fabricate it). `batch_id_hint` is preserved everywhere it exists today.
 
-### 4.2 The A→B map (sequencer, in-memory, finality-pruned)
+### 4.2 The A→B map (sequencer, finality-pruned)
 
 - **Field** on `Sequencer`: `tick_window: BTreeMap<u64, u64>` (Counter-A tick id → Counter-B window id).
 - **Populate** in `seal_batch`, where both the tick's local `batch_id` (Counter A, `lib.rs:629`) and `self.state.next_batch_id` (Counter B) are in scope, before the Counter-A bump (`lib.rs:838-839`): `self.tick_window.insert(batch_id, self.state.next_batch_id);`. Exact and per-tick; no range inference.
 - **Prune** with the existing Counter-A finality lifecycle: `mark_settled` (`lib.rs:958-978`, which already ranges `..=batch_id` over `batch_orders`/`snapshots`) and `mark_failed` (`lib.rs:986-1017`) also drop the corresponding `tick_window` entries. Bounded (consistent with the recent per-account order-history bounding fix, `c01d9ab`).
 - **Rollback**: `rollback_window` restores Counter B to M (`lib.rs:933-935`), so the failed window's ticks (whose `tick_window` entries already point to M) and any re-sealed ticks all still map to M — the map stays correct with no rollback-specific handling.
-- **Persistence**: **in-memory only** (deliberate). Not added to the boot-persisted snapshot: it rebuilds from new ticks after a restart, and every receipt already self-describes its `window_id`, so a bare-Counter-A lookup for a pre-restart tick simply returns "unknown" (§4.3) — acceptable, and it avoids a snapshot-schema change.
+- **Persistence**: `tick_window` **IS serialized as part of the `Gw` postcard boot snapshot** — `Gw` derives Serialize/Deserialize (`main.rs:615`), its `seq: Sequencer` field (`:617`) is not serde-skipped, and `snapshot_plain` (`:1112`) serializes the whole `Gw`. Under positional (non-self-describing) postcard, `#[serde(default)]` gives no tolerance for a snapshot that lacks the field, so adding `tick_window` is a snapshot wire-format change: old snapshots fail to decode (fail-closed on boot). This is the same kind of change as Slice 3b-1's `window_ops`/`window_ordered`/`window_rejected` additions and is covered by the live migration's already-required snapshot reset. The map is finality-pruned (with `batch_orders` in `mark_settled`/`mark_failed`), so it stays bounded.
 
 ### 4.3 Surfacing (gateway)
 
@@ -80,5 +80,5 @@ A user with a receipt reads its signed `window_id = M` and checks the on-chain `
 ## 7. Non-goals
 
 - No collapse of user-facing batches to per-window (that was Approach A — rejected in favor of preserving the per-tick view).
-- No boot-persisted A→B map (in-memory only; rebuilds after restart; receipts self-describe).
+- No separate persistence mechanism for the A→B map (it rides along in the existing `Gw` boot snapshot — see §4.2 Persistence; receipts self-describe their `window_id` in any case).
 - No note-archive re-keying; no contract change; no change to the internal Counter-A finality/censorship machinery.

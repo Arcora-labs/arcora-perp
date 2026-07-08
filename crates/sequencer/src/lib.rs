@@ -283,8 +283,16 @@ pub struct Sequencer {
     batch_orders: BTreeMap<u64, Vec<Digest>>,
     /// Maps each per-tick Counter-A batch id to the Counter-B window id (`state.next_batch_id`)
     /// it settles into, so a bare tick id (a `WBatch`, a log line) without a receipt can be
-    /// reconciled to its on-chain window. In-memory only; shares the finality lifecycle of
-    /// `batch_orders` (pruned in `mark_settled`/`mark_failed`) so it stays bounded (Slice 3b-4).
+    /// reconciled to its on-chain window. Shares the finality lifecycle of `batch_orders`
+    /// (pruned in `mark_settled`/`mark_failed`) so it stays bounded (Slice 3b-4).
+    ///
+    /// Persistence: this map IS part of the gateway's postcard boot snapshot — `Gw` derives
+    /// Serialize/Deserialize and its `seq: Sequencer` field is not serde-skipped, so the whole
+    /// `Sequencer` (this field included) is serialized by `snapshot_plain`. Under positional
+    /// (non-self-describing) postcard, `#[serde(default)]` gives no tolerance for a snapshot
+    /// that lacks the field, so adding it is a snapshot wire-format change: old snapshots fail
+    /// to decode (fail-closed on boot). Same as the Slice 3b-1 `window_*` additions, and
+    /// covered by the live migration's already-required snapshot reset.
     #[serde(default)]
     tick_window: BTreeMap<u64, u64>,
     /// Snapshot of (state, matcher) taken BEFORE each not-yet-proven batch, so a
@@ -1209,6 +1217,16 @@ mod tests {
         let s = seq.seal_batch(&sample_orders(1), now());
         assert!(seq.window_for_tick(s.batch_id).is_some());
         seq.mark_settled(s.batch_id);
+        assert!(seq.window_for_tick(s.batch_id).is_none()); // pruned with batch_orders
+    }
+
+    #[test]
+    fn mark_failed_prunes_the_window_map() {
+        let mut seq = test_sequencer();
+        let s = seq.seal_batch(&sample_orders(1), now());
+        assert!(seq.window_for_tick(s.batch_id).is_some());
+        // a pre-batch snapshot exists for this batch, so the rollback must happen.
+        assert!(seq.mark_failed(s.batch_id));
         assert!(seq.window_for_tick(s.batch_id).is_none()); // pruned with batch_orders
     }
 }
