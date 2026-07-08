@@ -34,12 +34,13 @@ use perp_core::note::{Note, PubKey};
 use perp_core::oracle::OracleTranscript;
 use perp_core::order::{Finality, Order, Side, TimeInForce};
 use perp_core::state::Mode;
-use sequencer::{adl_tag, adl_tag_key, EnclaveIdentity, SealedBatch, Sequencer};
+use sequencer::{adl_tag, adl_tag_key, EnclaveIdentity, SealedBatch, Sequencer, WindowWitness};
 
 mod candles;
 mod enclave_epoch;
 mod l1;
 mod order_log;
+mod prover_client;
 mod snapshot;
 mod withdrawals;
 use l1::{L1Status, L1};
@@ -617,10 +618,26 @@ struct Gw {
     pending_withdrawals: Vec<Withdrawal>,
     /// Monotonic nonce making each withdrawal leaf unique.
     next_withdraw_nonce: u64,
-    /// Merkle proofs for the most recently PUBLISHED cumulative withdrawals root,
-    /// keyed by leaf — what a user needs to claim. A withdrawal not yet in here is
-    /// pending its first on-chain publish.
-    withdraw_proofs: std::collections::BTreeMap<[u8; 32], Vec<[u8; 32]>>,
+    /// Claim data per withdrawal leaf: (published root, sibling path). The root lets a
+    /// note carry the specific window (incremental) or cumulative (legacy) root it was
+    /// published under — CollateralVault.claim(to, amount, nonce, root, proof) accepts any
+    /// published root (DP-012).
+    withdraw_proofs: std::collections::BTreeMap<[u8; 32], (Digest, Vec<[u8; 32]>)>,
+    /// Slice 3b-2a: withdrawals created since the current window opened, in op-application
+    /// order — the incremental per-window withdrawal set the circuit's `withdrawals_root`
+    /// is derived from. Drained by the new (PROVER_URL) settle path. `serde(default)` is
+    /// forward-additive struct hygiene (matches crate precedent); NOTE: postcard is
+    /// positional (non-self-describing), so cross-version snapshot load still requires a
+    /// state reset/migration — handled by the migration slice.
+    #[serde(default)]
+    window_withdrawals: Vec<Withdrawal>,
+    /// Slice 3b-2a: the state root of the last on-chain settle (genesis at boot). The new
+    /// settle path uses `seq.state.state_root() != last_settled_root` as its RPC-free
+    /// "is there anything to settle?" signal. `serde(default)` is forward-additive struct
+    /// hygiene (matches crate precedent); NOTE: postcard is positional, so cross-version
+    /// snapshot load still requires a state reset/migration — handled by the migration slice.
+    #[serde(default)]
+    last_settled_root: Digest,
     /// On-chain deposit tx hashes already credited (idempotency / replay guard).
     processed_deposit_txs: std::collections::BTreeSet<String>,
     /// Manifest hash of the most recently sealed batch — published to L1 as the
@@ -1015,6 +1032,7 @@ impl Gw {
         })
         .expect("seed insurance fund");
 
+        let genesis_root = seq.state.state_root();
         let mut gw = Gw {
             seq,
             archive,
@@ -1033,6 +1051,8 @@ impl Gw {
             pending_withdrawals: Vec::new(),
             next_withdraw_nonce: 1,
             withdraw_proofs: std::collections::BTreeMap::new(),
+            window_withdrawals: Vec::new(),
+            last_settled_root: genesis_root,
             processed_deposit_txs: std::collections::BTreeSet::new(),
             last_manifest: [0u8; 32],
             pending_ordered: Vec::new(),
@@ -1315,7 +1335,62 @@ impl Gw {
             nonce,
         };
         self.pending_withdrawals.push(w.clone());
+        // Slice 3b-2a: also record it in the current window's incremental set (same order
+        // the BatchOp::Withdraw was applied), so the new settle path's window withdrawal
+        // tree byte-matches the circuit's withdrawals_root.
+        self.window_withdrawals.push(w.clone());
         Ok(w)
+    }
+
+    /// Slice 3b-2a: begin a new-path window settle. Returns `None` if the engine root is
+    /// unchanged since the last settle (nothing to prove). Errors WITHOUT mutating if the
+    /// window's batch id would not match the on-chain `batchCount` (a desync a prior fault
+    /// left behind — recovery is Slice 3b-3). Otherwise seals the window and takes its
+    /// incremental withdrawal set.
+    fn begin_window_settle(
+        &mut self,
+        chain_batch_count: u64,
+    ) -> Result<Option<(WindowWitness, Vec<Withdrawal>)>, String> {
+        if self.seq.state.state_root() == self.last_settled_root {
+            return Ok(None); // no net state change since the last settle
+        }
+        // Pre-check the counter BEFORE sealing (which bumps it), so a desync leaves the
+        // sequencer untouched instead of stranded ahead of the chain.
+        let expected = self.seq.state.next_batch_id;
+        if expected != chain_batch_count {
+            return Err(format!(
+                "batch_id desync: window {expected} vs chain {chain_batch_count} (recovery is 3b-3)"
+            ));
+        }
+        let witness = self.seq.seal_window();
+        let ww = core::mem::take(&mut self.window_withdrawals);
+        Ok(Some((witness, ww)))
+    }
+
+    /// Slice 3b-2a: apply a completed new-path window settle to gateway state. Accumulates
+    /// the window's per-note claim proofs (each window root is permanently claimable, so we
+    /// EXTEND, never replace); advances `last_settled_root`; retains this batch's ordered/
+    /// rejected hashes for DP-004 challenge answers (keyed by the on-chain batch id, which
+    /// equals the window id); clears the now-redundant legacy pending accumulators; and
+    /// records the published L1 status.
+    fn commit_window_settle(
+        &mut self,
+        batch_id: u64,
+        ordered: Vec<Digest>,
+        rejected: Vec<Digest>,
+        prepared: prover_client::PreparedSettle,
+        l1_status: L1Status,
+    ) {
+        for (leaf, entry) in prepared.withdraw_proofs {
+            self.withdraw_proofs.insert(leaf, entry);
+        }
+        self.last_settled_root = prepared.outcome.new_root;
+        self.batch_orders.insert(batch_id, (ordered, rejected));
+        // the window manifest is the source of truth for this batch's roots; the legacy
+        // per-tick accumulators are unused by the new path — clear them so they can't grow.
+        self.pending_ordered.clear();
+        self.pending_rejected.clear();
+        self.l1_status = Some(l1_status);
     }
 
     /// An account's withdrawals with the claim data: each carries its leaf and, once
@@ -1337,15 +1412,19 @@ impl Gw {
             .filter(|w| w.owner == owner)
             .map(|w| {
                 let leaf = w.leaf();
-                let proof = self.withdraw_proofs.get(&leaf);
+                let entry = self.withdraw_proofs.get(&leaf);
                 serde_json::json!({
                     "to": hex0x(&w.to),
                     "amount": w.amount.to_string(),
                     "nonce": w.nonce,
                     "leaf": hex0x(&leaf),
-                    "root": current_root,
-                    "claimable": proof.is_some(),
-                    "proof": proof.map(|p| p.iter().map(|n| hex0x(n)).collect::<Vec<_>>()).unwrap_or_default(),
+                    // per-note published root (window root in the new path; the cumulative
+                    // root in legacy); fall back to the last published root pre-publish.
+                    "root": entry.map(|(r, _)| hex0x(r)).unwrap_or_else(|| current_root.clone()),
+                    "claimable": entry.is_some(),
+                    "proof": entry
+                        .map(|(_, p)| p.iter().map(|n| hex0x(n)).collect::<Vec<_>>())
+                        .unwrap_or_default(),
                 })
             })
             .collect();
@@ -2967,6 +3046,8 @@ struct App {
     /// The L1 bridge (Base Sepolia), if configured — used by the deposit-confirm
     /// handler to verify on-chain USDC deposits. `None` ⇒ pure in-memory mode.
     l1: Option<L1>,
+    /// Slice 3b-2a: the settle path's prover client (None ⇒ legacy cumulative+mock path).
+    prover: Option<std::sync::Arc<dyn prover_client::ProverClient>>,
     /// REAL per-market price history (the chart's past bars): the engine's own
     /// marks folded into per-timeframe OHLC rings each tick, plus a one-shot
     /// exchange backfill for feed-backed markets at boot. Display data — not
@@ -4000,6 +4081,25 @@ fn production_mode(l1_enabled: bool) -> bool {
     l1_enabled || std::env::var("DARKPERP_PROD").ok().as_deref() == Some("1")
 }
 
+/// Slice 3b-2a: select the settle path's prover client from `PROVER_URL`.
+/// unset/empty → legacy path (None); "mock" → in-process MockProverClient;
+/// any URL → error (HttpProverClient is Slice 3b-2b).
+fn prover_from_str(
+    v: Option<&str>,
+) -> Result<Option<std::sync::Arc<dyn prover_client::ProverClient>>, String> {
+    match v {
+        None | Some("") => Ok(None),
+        Some("mock") => Ok(Some(std::sync::Arc::new(prover_client::MockProverClient))),
+        Some(url) => Err(format!(
+            "PROVER_URL={url}: HttpProverClient is Slice 3b-2b (not implemented); use `mock` or unset"
+        )),
+    }
+}
+
+fn prover_from_env() -> Result<Option<std::sync::Arc<dyn prover_client::ProverClient>>, String> {
+    prover_from_str(std::env::var("PROVER_URL").ok().as_deref())
+}
+
 /// Whether the gateway may boot given the attestation state. In production the enclave
 /// identity must be bound to a verified TEE attestation — a missing/failed attestation
 /// must fail closed rather than silently fall back to the stub measurement (audit DP-006).
@@ -4131,6 +4231,16 @@ async fn main() {
     let (tx, _rx) = broadcast::channel::<String>(256);
     let (events_tx, _erx) = broadcast::channel::<String>(1024);
     let l1 = L1::from_env();
+    let prover = match prover_from_env() {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("[prover] {e}");
+            std::process::exit(1);
+        }
+    };
+    if prover.is_some() {
+        println!("[prover] window-settle path ON (PROVER_URL)");
+    }
     let prod = production_mode(l1.is_some());
     if prod {
         println!(
@@ -4253,6 +4363,7 @@ async fn main() {
         events_tx,
         reg_limit: Mutex::new(HashMap::new()),
         l1: l1.clone(),
+        prover: prover.clone(),
         candles: Mutex::new(candles::CandleStore::new()),
     });
 
@@ -4531,7 +4642,7 @@ async fn main() {
             type SettleOut = (
                 L1Status,
                 Vec<[u8; 32]>,
-                std::collections::BTreeMap<[u8; 32], Vec<[u8; 32]>>,
+                std::collections::BTreeMap<[u8; 32], (Digest, Vec<[u8; 32]>)>,
                 u64, // on-chain batch id these ordered/rejected hashes were committed under
                 Vec<[u8; 32]>, // ordered order hashes settled this batch (audit DP-004 retention)
                 Vec<[u8; 32]>, // rejected order hashes settled this batch
@@ -4544,6 +4655,89 @@ async fn main() {
             );
             loop {
                 iv.tick().await;
+                if let Some(client) = app.prover.clone() {
+                    // (A) top up the sequencer bond (as the legacy path does) + read the
+                    // on-chain batch count (RPC, no lock). The bond top-up runs BEFORE the
+                    // window is sealed, so an underbond settleBatch revert cannot strand the
+                    // sequencer past the desync guard.
+                    let l1c = l1.clone();
+                    let bc = match tokio::task::spawn_blocking(move || -> Result<u64, String> {
+                        match l1c.ensure_bond() {
+                            Ok(Some(tx)) => println!("[l1] bond topped up: {tx}"),
+                            Ok(None) => {}
+                            Err(e) => eprintln!("[l1] bond top-up skipped: {e}"),
+                        }
+                        l1c.batch_count()
+                    })
+                    .await
+                    {
+                        Ok(Ok(bc)) => bc,
+                        Ok(Err(e)) => {
+                            eprintln!("[l1] batch_count: {e}");
+                            continue;
+                        }
+                        Err(e) => {
+                            eprintln!("[l1] batch_count join: {e}");
+                            continue;
+                        }
+                    };
+                    // (B) seal the window under the lock (or skip)
+                    let begun = {
+                        let mut gw = app.gw.lock().await;
+                        match gw.begin_window_settle(bc) {
+                            Ok(Some(x)) => Some(x),
+                            Ok(None) => None,
+                            Err(e) => {
+                                eprintln!("[l1] window settle skipped: {e}");
+                                None
+                            }
+                        }
+                    };
+                    let Some((witness, ww)) = begun else { continue };
+                    // capture the manifest's ordered/rejected for the DP-004 challenge store
+                    let ordered = witness.manifest.ordered.clone();
+                    let rejected: Vec<Digest> =
+                        witness.manifest.rejected.iter().map(|(h, _)| *h).collect();
+                    let batch_id = witness.batch_id;
+                    // (C) prove + settle (lock-free)
+                    let l1c = l1.clone();
+                    let res = tokio::task::spawn_blocking(
+                        move || -> Result<(prover_client::PreparedSettle, String, u128), String> {
+                            let prepared =
+                                prover_client::prove_and_prepare(client.as_ref(), &witness, &ww)?;
+                            let tx = l1c.settle_proved(&prepared.outcome)?;
+                            let bond = l1c.sequencer_bond().unwrap_or(0);
+                            Ok((prepared, tx, bond))
+                        },
+                    )
+                    .await;
+                    match res {
+                        Ok(Ok((prepared, tx, bond))) => {
+                            let status = L1Status {
+                                settled_root: hex32(&prepared.outcome.new_root),
+                                batch_count: batch_id + 1,
+                                last_tx: tx.clone(),
+                                bond: bond.to_string(),
+                                withdrawals_root: hex32(&prepared.outcome.withdrawals_root),
+                            };
+                            println!(
+                                "[l1] window settled root {} batch {} tx {} (withdrawals root {})",
+                                status.settled_root, status.batch_count, tx, status.withdrawals_root
+                            );
+                            {
+                                let mut gw = app.gw.lock().await;
+                                gw.commit_window_settle(batch_id, ordered, rejected, prepared, status);
+                            }
+                            let snap = { app.gw.lock().await.snapshot() };
+                            let _ = app.tx.send(
+                                serde_json::to_string(&WsMsg::State { state: snap }).unwrap(),
+                            );
+                        }
+                        Ok(Err(e)) => eprintln!("[l1] window settle failed: {e}"),
+                        Err(e) => eprintln!("[l1] window settle join: {e}"),
+                    }
+                    continue; // new path handled this tick; skip the legacy body
+                }
                 let (new_root, manifest, withdrawals, ordered_h, rejected_h) = {
                     let gw = app.gw.lock().await;
                     (
@@ -4606,7 +4800,8 @@ async fn main() {
                         )?;
                         let mut proofs = std::collections::BTreeMap::new();
                         for (i, w) in surviving.iter().enumerate() {
-                            proofs.insert(w.leaf(), merkle_proof(&leaves, i));
+                            // legacy: every note shares the one cumulative root published this settle.
+                            proofs.insert(w.leaf(), (wroot, merkle_proof(&leaves, i)));
                         }
                         Ok(Some((
                             L1Status {
@@ -4699,6 +4894,7 @@ mod tests {
             events_tx,
             reg_limit: Mutex::new(HashMap::new()),
             l1: None,
+            prover: None,
             candles: Mutex::new(candles::CandleStore::new()),
         })
     }
@@ -5094,6 +5290,46 @@ mod tests {
             "free={free}"
         );
         assert_eq!(gw.snapshot().markets.len(), 3);
+    }
+
+    #[test]
+    fn mock_prover_client_matches_derive_roots() {
+        use crate::prover_client::{MockProverClient, ProverClient};
+        use perp_core::commitment::derive_roots;
+        use perp_core::Keccak256;
+
+        // A realistic non-empty window: boot registers markets + funds (those ops land
+        // in window_ops), so the first seal_window yields a valid, non-trivial witness.
+        let mut gw = Gw::boot();
+        let witness = gw.seq.seal_window();
+
+        let out = MockProverClient.prove(&witness).expect("mock prove");
+
+        // Independently derive the same roots and assert byte-equality.
+        let mut state = witness.pre_state.clone();
+        let d = derive_roots(&mut state, &witness.ops, &witness.manifest).expect("derive");
+        assert_eq!(out.prev_root, d.prev_state_root);
+        assert_eq!(out.manifest_hash, d.manifest_hash);
+        assert_eq!(out.new_root, d.new_state_root);
+        assert_eq!(out.ordered_root, d.ordered_root);
+        assert_eq!(out.withdrawals_root, d.withdrawals_root);
+        assert_eq!(out.rejected_root, d.rejected_root);
+        assert_eq!(out.commitment, d.commitment::<Keccak256>());
+        // MockZkVerifier accepts proof == commitment.
+        assert_eq!(out.proof, out.commitment.to_vec());
+    }
+
+    #[test]
+    fn prover_from_str_selects_path() {
+        assert!(prover_from_str(None).unwrap().is_none());
+        assert!(prover_from_str(Some("")).unwrap().is_none());
+        assert!(prover_from_str(Some("mock")).unwrap().is_some());
+        // `.err()` instead of `.unwrap_err()`: the Ok side (`Arc<dyn ProverClient>`) is
+        // intentionally not Debug, and Option::expect needs no Debug bound on it.
+        let err = prover_from_str(Some("http://prover.local:8091"))
+            .err()
+            .expect("a URL must error until HttpProverClient lands (3b-2b)");
+        assert!(err.contains("3b-2b"));
     }
 
     #[test]
@@ -6221,5 +6457,256 @@ mod tests {
         let mut bad = b;
         bad[8] = 0;
         assert!(deserialize_order_terms(&bad).is_none(), "side 0 is invalid");
+    }
+
+    // ── Slice 3b-2a: window withdrawal set + per-note (root, proof) ──────────
+
+    #[test]
+    fn account_withdraw_records_window_withdrawal() {
+        let mut gw = Gw::boot();
+        let (key, _owner) = gw.register_account(None);
+        gw.account_deposit(&key, 0, 20_000 * QUOTE_SCALE).unwrap();
+        assert!(gw.window_withdrawals.is_empty());
+
+        let to = [7u8; 20];
+        let w = gw
+            .account_withdraw(&key, 0, 5_000 * QUOTE_SCALE, to)
+            .expect("withdraw");
+
+        assert_eq!(gw.window_withdrawals.len(), 1);
+        assert_eq!(gw.window_withdrawals[0].to, to);
+        assert_eq!(gw.window_withdrawals[0].nonce, w.nonce);
+    }
+
+    #[test]
+    fn v1_withdrawals_json_serves_root_and_proof() {
+        let mut gw = Gw::boot();
+        let (key, owner) = gw.register_account(None);
+        gw.account_deposit(&key, 0, 20_000 * QUOTE_SCALE).unwrap();
+        let w = gw
+            .account_withdraw(&key, 0, 5_000 * QUOTE_SCALE, [7u8; 20])
+            .unwrap();
+
+        // seed a published (root, proof) for this leaf as the settle path would
+        let leaf = w.leaf();
+        let root = [0xAAu8; 32];
+        gw.withdraw_proofs.insert(leaf, (root, vec![[0xBBu8; 32]]));
+        let _ = owner;
+
+        let json = gw.v1_withdrawals_json(&key).expect("json");
+        let item = &json["withdrawals"][0];
+        assert_eq!(item["claimable"], serde_json::json!(true));
+        assert_eq!(item["root"], serde_json::json!(hex0x(&root)));
+        assert_eq!(item["proof"], serde_json::json!([hex0x(&[0xBBu8; 32])]));
+    }
+
+    // ── Slice 3b-2a: Gw::begin_window_settle ────────────────────────────────
+
+    #[test]
+    fn begin_window_settle_none_when_unchanged() {
+        let mut gw = Gw::boot();
+        // Force "no change since last settle": mark the current engine root as settled.
+        gw.last_settled_root = gw.seq.state.state_root();
+        let bc = gw.seq.state.next_batch_id;
+        assert!(gw.begin_window_settle(bc).unwrap().is_none());
+    }
+
+    #[test]
+    fn begin_window_settle_errors_on_desync_without_mutating() {
+        let mut gw = Gw::boot();
+        let (key, _o) = gw.register_account(None);
+        gw.account_deposit(&key, 0, 20_000 * QUOTE_SCALE).unwrap();
+        gw.account_withdraw(&key, 0, 5_000 * QUOTE_SCALE, [7u8; 20])
+            .unwrap();
+        let before_next = gw.seq.state.next_batch_id;
+        let before_ww = gw.window_withdrawals.len();
+
+        // chain count that does NOT match the window's next id → desync error, no mutation.
+        // (`.err().expect(..)` instead of `.unwrap_err()`: WindowWitness has no Debug impl.)
+        let err = gw
+            .begin_window_settle(before_next + 99)
+            .err()
+            .expect("desync must error");
+        assert!(err.contains("desync"));
+        assert_eq!(gw.seq.state.next_batch_id, before_next); // not sealed
+        assert_eq!(gw.window_withdrawals.len(), before_ww); // not drained
+    }
+
+    #[test]
+    fn begin_window_settle_seals_and_takes_withdrawals() {
+        let mut gw = Gw::boot();
+        let (key, _o) = gw.register_account(None);
+        gw.account_deposit(&key, 0, 20_000 * QUOTE_SCALE).unwrap();
+        gw.account_withdraw(&key, 0, 5_000 * QUOTE_SCALE, [7u8; 20])
+            .unwrap();
+        let bc = gw.seq.state.next_batch_id;
+
+        let (witness, ww) = gw.begin_window_settle(bc).unwrap().expect("some");
+        assert_eq!(witness.batch_id, bc);
+        assert_eq!(ww.len(), 1); // the withdrawal was taken
+        assert!(gw.window_withdrawals.is_empty()); // drained
+        // the window op-log contains the real-exit withdraw op
+        assert!(witness
+            .ops
+            .iter()
+            .any(|op| matches!(op, BatchOp::Withdraw { to: Some(_), .. })));
+    }
+
+    // ── Slice 3b-2a: prove_and_prepare + Gw::commit_window_settle ───────────
+
+    #[test]
+    fn prove_and_prepare_withdrawal_tree_byte_matches_circuit() {
+        use crate::prover_client::{prove_and_prepare, MockProverClient};
+
+        let mut gw = Gw::boot();
+        let (key, _o) = gw.register_account(None);
+        gw.account_deposit(&key, 0, 40_000 * QUOTE_SCALE).unwrap();
+        // THREE real-exit withdrawals in the window → a non-trivial withdrawals tree
+        // that also pins op-ORDER (a 2-leaf sorted-pair tree is permutation-invariant,
+        // so two leaves alone couldn't tell "same set" from "same order")
+        gw.account_withdraw(&key, 0, 5_000 * QUOTE_SCALE, [7u8; 20]).unwrap();
+        gw.account_withdraw(&key, 0, 3_000 * QUOTE_SCALE, [8u8; 20]).unwrap();
+        gw.account_withdraw(&key, 0, 2_000 * QUOTE_SCALE, [9u8; 20]).unwrap();
+        let bc = gw.seq.state.next_batch_id;
+
+        let (witness, ww) = gw.begin_window_settle(bc).unwrap().expect("some");
+        assert_eq!(ww.len(), 3);
+
+        let prepared = prove_and_prepare(&MockProverClient, &witness, &ww).expect("prepare");
+
+        // the byte-match invariant: the gateway tree root == the circuit's derived root
+        let leaves: Vec<[u8; 32]> = ww.iter().map(|w| w.leaf()).collect();
+        assert_eq!(merkle_root(&leaves), prepared.outcome.withdrawals_root);
+        assert!(prepared.outcome.withdrawals_root != [0u8; 32]); // non-empty
+
+        // each served proof verifies against that root the way the vault does
+        for (i, w) in ww.iter().enumerate() {
+            let (root, proof) = prepared.withdraw_proofs.get(&w.leaf()).expect("proof");
+            assert_eq!(*root, prepared.outcome.withdrawals_root);
+            assert!(withdrawals::verify(*root, w.leaf(), proof));
+            assert_eq!(*proof, merkle_proof(&leaves, i));
+        }
+    }
+
+    #[test]
+    fn commit_window_settle_accumulates_and_advances() {
+        use crate::prover_client::{prove_and_prepare, MockProverClient};
+
+        let mut gw = Gw::boot();
+        let (key, _o) = gw.register_account(None);
+        gw.account_deposit(&key, 0, 40_000 * QUOTE_SCALE).unwrap();
+        gw.account_withdraw(&key, 0, 5_000 * QUOTE_SCALE, [7u8; 20]).unwrap();
+        let bc = gw.seq.state.next_batch_id;
+
+        let (witness, ww) = gw.begin_window_settle(bc).unwrap().expect("some");
+        let ordered = witness.manifest.ordered.clone();
+        let rejected: Vec<_> = witness.manifest.rejected.iter().map(|(h, _)| *h).collect();
+        let batch_id = witness.batch_id;
+        let leaf0 = ww[0].leaf();
+        let prepared = prove_and_prepare(&MockProverClient, &witness, &ww).unwrap();
+        let new_root = prepared.outcome.new_root;
+
+        let status = L1Status {
+            settled_root: hex32(&new_root),
+            batch_count: batch_id + 1,
+            last_tx: "0xtx".into(),
+            bond: "0".into(),
+            withdrawals_root: hex32(&prepared.outcome.withdrawals_root),
+        };
+        gw.commit_window_settle(batch_id, ordered, rejected, prepared, status);
+
+        assert_eq!(gw.last_settled_root, new_root);
+        assert!(gw.withdraw_proofs.contains_key(&leaf0));
+        assert!(gw.batch_orders.contains_key(&batch_id));
+        assert!(gw.pending_ordered.is_empty());
+        assert!(gw.l1_status.is_some());
+    }
+
+    #[test]
+    fn prove_and_prepare_rejects_withdrawals_root_mismatch() {
+        use crate::prover_client::{
+            prove_and_prepare, MockProverClient, ProveOutcome, ProverClient, ProverClientError,
+        };
+        use sequencer::WindowWitness;
+
+        // a client that derives correctly but corrupts the withdrawals_root
+        struct TamperedClient;
+        impl ProverClient for TamperedClient {
+            fn prove(&self, w: &WindowWitness) -> Result<ProveOutcome, ProverClientError> {
+                let mut out = MockProverClient.prove(w)?;
+                out.withdrawals_root = [0xFFu8; 32]; // != the gateway's tree
+                Ok(out)
+            }
+        }
+
+        let mut gw = Gw::boot();
+        let (key, _o) = gw.register_account(None);
+        gw.account_deposit(&key, 0, 40_000 * QUOTE_SCALE).unwrap();
+        gw.account_withdraw(&key, 0, 5_000 * QUOTE_SCALE, [7u8; 20]).unwrap();
+        let bc = gw.seq.state.next_batch_id;
+        let (witness, ww) = gw.begin_window_settle(bc).unwrap().expect("some");
+        assert!(!ww.is_empty());
+
+        // the tampered root must be rejected — a wrong root is NEVER published
+        let res = prove_and_prepare(&TamperedClient, &witness, &ww);
+        assert!(res.is_err(), "mismatched withdrawals_root must be a hard error");
+    }
+
+    #[test]
+    fn commit_window_settle_extends_proofs_across_windows() {
+        use crate::prover_client::{prove_and_prepare, MockProverClient};
+
+        let mut gw = Gw::boot();
+        let (key, _o) = gw.register_account(None);
+        gw.account_deposit(&key, 0, 40_000 * QUOTE_SCALE).unwrap();
+
+        // ── window 1: withdrawal → begin → prove → commit ────────────────────
+        gw.account_withdraw(&key, 0, 5_000 * QUOTE_SCALE, [7u8; 20]).unwrap();
+        let bc1 = gw.seq.state.next_batch_id;
+        let (witness1, ww1) = gw.begin_window_settle(bc1).unwrap().expect("some");
+        let ordered1 = witness1.manifest.ordered.clone();
+        let rejected1: Vec<_> = witness1.manifest.rejected.iter().map(|(h, _)| *h).collect();
+        let batch_id1 = witness1.batch_id;
+        let leaf_w1 = ww1[0].leaf();
+        let prepared1 = prove_and_prepare(&MockProverClient, &witness1, &ww1).unwrap();
+        let status1 = L1Status {
+            settled_root: hex32(&prepared1.outcome.new_root),
+            batch_count: batch_id1 + 1,
+            last_tx: "0xtx1".into(),
+            bond: "0".into(),
+            withdrawals_root: hex32(&prepared1.outcome.withdrawals_root),
+        };
+        gw.commit_window_settle(batch_id1, ordered1, rejected1, prepared1, status1);
+        assert!(gw.withdraw_proofs.contains_key(&leaf_w1));
+
+        // ── window 2: another withdrawal (root changes) → begin → commit ─────
+        gw.account_withdraw(&key, 0, 3_000 * QUOTE_SCALE, [8u8; 20]).unwrap();
+        let bc2 = gw.seq.state.next_batch_id;
+        let (witness2, ww2) = gw.begin_window_settle(bc2).unwrap().expect("some");
+        let ordered2 = witness2.manifest.ordered.clone();
+        let rejected2: Vec<_> = witness2.manifest.rejected.iter().map(|(h, _)| *h).collect();
+        let batch_id2 = witness2.batch_id;
+        assert_eq!(batch_id2, batch_id1 + 1); // windows advance
+        let leaf_w2 = ww2[0].leaf();
+        let prepared2 = prove_and_prepare(&MockProverClient, &witness2, &ww2).unwrap();
+        let new_root2 = prepared2.outcome.new_root;
+        let status2 = L1Status {
+            settled_root: hex32(&new_root2),
+            batch_count: batch_id2 + 1,
+            last_tx: "0xtx2".into(),
+            bond: "0".into(),
+            withdrawals_root: hex32(&prepared2.outcome.withdrawals_root),
+        };
+        gw.commit_window_settle(batch_id2, ordered2, rejected2, prepared2, status2);
+
+        // EXTEND semantics: window 1's claim proof SURVIVES window 2's commit
+        assert!(
+            gw.withdraw_proofs.contains_key(&leaf_w1),
+            "window-1 withdraw proof must survive a window-2 commit (extend, not replace)"
+        );
+        assert!(gw.withdraw_proofs.contains_key(&leaf_w2));
+        assert!(gw.batch_orders.contains_key(&batch_id1));
+        assert!(gw.batch_orders.contains_key(&batch_id2));
+        assert_eq!(gw.last_settled_root, new_root2);
     }
 }
