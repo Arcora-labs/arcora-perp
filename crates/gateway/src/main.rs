@@ -4819,17 +4819,19 @@ async fn main() {
                             gw.rollback_window_withdrawals(ww_rb);
                         }
                         Ok(SettleAttempt::SettleFailed { err, prepared }) => {
-                            // ambiguous: re-read batchCount (+ bond for a roll-forward status).
+                            // ambiguous: re-read batchCount (+ currentStateRoot to confirm WHICH
+                            // window landed, + bond for a roll-forward status).
                             let l1c = l1.clone();
                             let recheck =
-                                tokio::task::spawn_blocking(move || -> Result<(u64, u128), String> {
+                                tokio::task::spawn_blocking(move || -> Result<(u64, String, u128), String> {
                                     let bc = l1c.batch_count()?;
+                                    let root = l1c.current_root()?;
                                     let bond = l1c.sequencer_bond().unwrap_or(0);
-                                    Ok((bc, bond))
+                                    Ok((bc, root, bond))
                                 })
                                 .await;
                             match recheck {
-                                Ok(Ok((now_bc, bond))) => match settle_failure_action(batch_id, now_bc) {
+                                Ok(Ok((now_bc, now_root, bond))) => match settle_failure_action(batch_id, now_bc) {
                                     RollAction::RollBack => {
                                         eprintln!("[l1] settle failed: {err} — tx did not land (batchCount still {batch_id}); rolled back");
                                         let mut gw = app.gw.lock().await;
@@ -4837,22 +4839,31 @@ async fn main() {
                                         gw.rollback_window_withdrawals(ww_rb);
                                     }
                                     RollAction::RollForward => {
-                                        let status = L1Status {
-                                            settled_root: hex32(&prepared.outcome.new_root),
-                                            batch_count: batch_id + 1,
-                                            last_tx: "(recovered: landed despite cast error)".to_string(),
-                                            bond: bond.to_string(),
-                                            withdrawals_root: hex32(&prepared.outcome.withdrawals_root),
-                                        };
-                                        eprintln!("[l1] settle reported '{err}' but the tx LANDED (batchCount {batch_id}->{now_bc}); rolled forward + committed bookkeeping");
-                                        {
-                                            let mut gw = app.gw.lock().await;
-                                            gw.commit_window_settle(batch_id, ordered, rejected, prepared, status);
+                                        // The tx landed (batchCount advanced), but confirm it
+                                        // settled OUR window's root — not a re-sealed one from a
+                                        // rare re-seal-then-old-tx-mines interleaving. Compare
+                                        // case-insensitively (cast hex casing), like the boot guard.
+                                        let our_root = hex32(&prepared.outcome.new_root);
+                                        if !now_root.eq_ignore_ascii_case(&our_root) {
+                                            eprintln!("[l1] settle reported '{err}' and batchCount advanced to {now_bc}, but currentStateRoot {now_root} != our new_root {our_root} — a DIFFERENT window settled; HOLDING (no commit); operator must reconcile");
+                                        } else {
+                                            let status = L1Status {
+                                                settled_root: hex32(&prepared.outcome.new_root),
+                                                batch_count: batch_id + 1,
+                                                last_tx: "(recovered: landed despite cast error)".to_string(),
+                                                bond: bond.to_string(),
+                                                withdrawals_root: hex32(&prepared.outcome.withdrawals_root),
+                                            };
+                                            eprintln!("[l1] settle reported '{err}' but the tx LANDED (batchCount {batch_id}->{now_bc}); rolled forward + committed bookkeeping");
+                                            {
+                                                let mut gw = app.gw.lock().await;
+                                                gw.commit_window_settle(batch_id, ordered, rejected, prepared, status);
+                                            }
+                                            let snap = { app.gw.lock().await.snapshot() };
+                                            let _ = app.tx.send(
+                                                serde_json::to_string(&WsMsg::State { state: snap }).unwrap(),
+                                            );
                                         }
-                                        let snap = { app.gw.lock().await.snapshot() };
-                                        let _ = app.tx.send(
-                                            serde_json::to_string(&WsMsg::State { state: snap }).unwrap(),
-                                        );
                                     }
                                     RollAction::Hold => {
                                         eprintln!("[l1] settle failed AND on-chain batchCount is {now_bc} for window {batch_id} — HOLDING (no rollback/commit); operator must reconcile");
