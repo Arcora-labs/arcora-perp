@@ -41,6 +41,8 @@ fn emit_receipt_fixture() {
     );
 
     // Locked fixture (regenerate by reading the panic message if it changes).
+    // (Slice 3b-4: `window_id` is UNSIGNED — not in `signing_digest` — so the
+    // receipt signature and this fixture are unchanged from the pre-3b-4 layout.)
     assert_eq!(
         format!(
             "addr={} order_hash={} seq={} v={} r={} s={}",

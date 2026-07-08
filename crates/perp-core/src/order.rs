@@ -101,6 +101,12 @@ pub struct Receipt {
     pub seq_no: u64,
     pub recv_time_ms: u64,
     pub batch_id_hint: u64,
+    /// UNSIGNED plaintext reconciliation hint (Slice 3b-4): the open window
+    /// (Counter B, `state.next_batch_id`) when the order was sequenced. The order
+    /// may settle in this window OR a later one — this is a lower-bound hint for
+    /// off-chain reconciliation, NOT an enclave-signed guarantee. It is deliberately
+    /// excluded from `signing_digest`.
+    pub window_id: u64,
 }
 
 impl Receipt {
@@ -258,5 +264,22 @@ mod tests {
         assert!(!Finality::Accepted.is_withdrawable());
         assert!(!Finality::Matched.is_withdrawable());
         assert!(Finality::Settled.is_withdrawable());
+    }
+
+    #[test]
+    fn signing_digest_ignores_window_id() {
+        let base = Receipt {
+            order_hash: [1u8; 32],
+            seq_no: 7,
+            recv_time_ms: 100,
+            batch_id_hint: 3,
+            window_id: 1,
+        };
+        let other = Receipt { window_id: 2, ..base };
+        // window_id is UNSIGNED — it must NOT affect the enclave signing digest.
+        assert_eq!(
+            base.signing_digest::<Keccak256>(),
+            other.signing_digest::<Keccak256>()
+        );
     }
 }

@@ -402,6 +402,7 @@ struct WReceipt {
     seq_no: u64,
     recv_time_ms: u64,
     batch_id_hint: u64,
+    window_id: u64,
 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -418,6 +419,7 @@ struct WTrackedOrder {
 #[serde(rename_all = "camelCase")]
 struct WBatch {
     batch_id: u64,
+    window_id: Option<u64>,
     order_count: usize,
     manifest_hash: String,
     ordered_root: String,
@@ -1413,6 +1415,11 @@ impl Gw {
         // per-tick accumulators are unused by the new path — clear them so they can't grow.
         self.pending_ordered.clear();
         self.pending_rejected.clear();
+        // Slice 3b-4 (Finding-1 fix): prune the tick->window map on WINDOW settle (Counter B),
+        // not the ~10x-faster per-tick soft-finality, so /v1/batch/:id + WBatch.window_id survive
+        // until their window settles + a grace (settled:true observable). batch_id just settled,
+        // so the on-chain batchCount is now batch_id + 1.
+        self.seq.prune_tick_window_settled(batch_id + 1);
         self.l1_status = Some(l1_status);
     }
 
@@ -1775,6 +1782,7 @@ impl Gw {
             seq_no: r.seq_no,
             recv_time_ms: r.recv_time_ms,
             batch_id_hint: r.batch_id_hint,
+            window_id: r.window_id,
         };
         let input = WOrderInput {
             market_id: req.market_id,
@@ -1934,7 +1942,20 @@ impl Gw {
             "insuranceFund": self.seq.state.insurance_fund.to_string(),
             "treasury": self.seq.state.treasury.to_string(),
             "nextBatchId": self.seq.current_batch_id(),
+            "openWindowId": self.seq.current_window_id(),
             "accounts": self.accounts.len(),
+        })
+    }
+    /// Reconcile a per-tick Counter-A batch id to its on-chain window (Counter B) + settle state.
+    fn v1_batch_json(&self, tick_batch: u64) -> serde_json::Value {
+        let window = self.seq.window_for_tick(tick_batch);
+        let batch_count = self.l1_status.as_ref().map(|s| s.batch_count).unwrap_or(0);
+        // window M has settled on-chain once batchCount has advanced past it.
+        let settled = window.is_some_and(|m| m < batch_count);
+        serde_json::json!({
+            "counterA": tick_batch,
+            "windowId": window,
+            "settled": settled,
         })
     }
     /// A public live-market snapshot for the `/v1/ws` stream (no per-account data).
@@ -2409,6 +2430,7 @@ impl Gw {
             seq_no: r.seq_no,
             recv_time_ms: r.recv_time_ms,
             batch_id_hint: r.batch_id_hint,
+            window_id: r.window_id,
         };
         let id = format!("o{nonce}");
         let input = WOrderInput {
@@ -2938,6 +2960,7 @@ impl Gw {
                 let sealed_ms = os.iter().map(|o| o.receipt.recv_time_ms).min().unwrap_or(0);
                 WBatch {
                     batch_id: bid,
+                    window_id: self.seq.window_for_tick(bid),
                     order_count: os.len(),
                     manifest_hash: pseudo_hash(&format!("manifest:{hashes}")),
                     ordered_root: pseudo_hash(&format!("ordered:{hashes}")),
@@ -3744,6 +3767,9 @@ async fn get_v1_candles(
 async fn get_v1_status(State(app): State<Shared>) -> impl IntoResponse {
     Json(app.gw.lock().await.v1_status_json())
 }
+async fn get_v1_batch(State(app): State<Shared>, Path(id): Path<u64>) -> impl IntoResponse {
+    Json(app.gw.lock().await.v1_batch_json(id))
+}
 /// Publish the enclave's current order-ingress X25519 epoch public key, SIGNED by
 /// the enclave's secp256k1 identity and bound to the attested `measurement` (§5.1).
 ///
@@ -4263,6 +4289,7 @@ fn build_router(app: Shared, prod: bool) -> Router {
         .route("/v1/markets/:id/candles", get(get_v1_candles))
         .route("/v1/markets/:id/oracle", get(get_v1_oracle))
         .route("/v1/system/status", get(get_v1_status))
+        .route("/v1/batch/:id", get(get_v1_batch))
         .route("/v1/enclave/epoch", get(get_v1_enclave_epoch))
         .route("/v1/openapi.json", get(get_v1_openapi))
         .route("/v1/ws", get(ws_v1_handler))
@@ -5069,6 +5096,42 @@ mod tests {
         assert_eq!(crate::settle_failure_action(5, 7), RollAction::Hold);
         assert_eq!(crate::settle_failure_action(5, 4), RollAction::Hold);
         assert_eq!(crate::settle_failure_action(0, 0), RollAction::RollBack);
+    }
+
+    // ── off-chain receipt reconciliation (Slice 3b-4) ────────────────────────
+
+    /// `GET /v1/batch/:id` reconciliation: a sealed tick (Counter A) maps to its
+    /// on-chain window (Counter B); `settled` flips only once the chain's
+    /// `batchCount` advances past that window; unknown ticks are null/unsettled.
+    #[test]
+    fn v1_batch_json_reconciles_tick_to_window() {
+        let mut gw = Gw::boot();
+        // seal a tick so the sequencer records a tick->window entry.
+        let s = gw.seq.seal_batch(&[], now_ms());
+        let window = gw.seq.window_for_tick(s.batch_id).unwrap();
+        // no L1 status yet (batch_count defaults to 0) -> not settled.
+        let v = gw.v1_batch_json(s.batch_id);
+        assert_eq!(v["counterA"], s.batch_id);
+        assert_eq!(v["windowId"], window);
+        assert_eq!(v["settled"], false);
+        // an unknown tick id -> windowId null, settled false.
+        let u = gw.v1_batch_json(s.batch_id + 9999);
+        assert!(u["windowId"].is_null());
+        assert_eq!(u["settled"], false);
+        // once the chain's batchCount advances PAST the window, it reads settled.
+        gw.l1_status = Some(L1Status {
+            batch_count: window + 1,
+            ..Default::default()
+        });
+        let sv = gw.v1_batch_json(s.batch_id);
+        assert_eq!(sv["windowId"], window);
+        assert_eq!(sv["settled"], true);
+        // batchCount == window (not yet past it) -> still unsettled.
+        gw.l1_status = Some(L1Status {
+            batch_count: window,
+            ..Default::default()
+        });
+        assert_eq!(gw.v1_batch_json(s.batch_id)["settled"], false);
     }
 
     // ── sealed state persistence ─────────────────────────────────────────────

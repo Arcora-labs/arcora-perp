@@ -14,11 +14,14 @@ fn hex(d: &[u8; 32]) -> String {
 #[test]
 fn receipt_signing_digest_vector() {
     // orderHash = 0x1212..12, seq=7, recv=1000, hint=0
+    // (Slice 3b-4: `window_id` is an UNSIGNED plaintext hint — it is NOT part of
+    // `signing_digest`, so its value here is irrelevant to the locked vector.)
     let receipt = Receipt {
         order_hash: [0x12u8; 32],
         seq_no: 7,
         recv_time_ms: 1000,
         batch_id_hint: 0,
+        window_id: 1,
     };
     let d = receipt.signing_digest::<Keccak256>();
     assert_eq!(
