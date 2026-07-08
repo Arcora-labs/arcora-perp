@@ -25,9 +25,11 @@ import {DeployGuard} from "./DeployGuard.sol";
 ///   LIVENESS_BLOCKS  close-only liveness timeout (default 7200 ≈ 1 day)
 ///   CHALLENGE_BLOCKS inclusion challenge window (default 300 ≈ 1 hr)
 ///   CHALLENGE_BOND   challenger stake in wei (default 0.01 ether)
+///   VERIFIER         address of an already-deployed real verifier (e.g. the
+///                    SP1ZkVerifier) to bind; unset/zero deploys MockZkVerifier
 ///
-/// NOTE: ships with MockZkVerifier — replace with the real SP1/Risc0 verifier
-/// before any non-testnet deploy (see docs/PROVING.md).
+/// NOTE: without VERIFIER this ships MockZkVerifier — set VERIFIER to the real
+/// SP1/Risc0 verifier before any non-testnet deploy (see docs/PROVING.md).
 contract Deploy {
     Vm internal constant vm = Vm(0x7109709ECfa91a80626fF3989D68f67F5b1DD12D);
 
@@ -47,18 +49,26 @@ contract Deploy {
         uint256 challengeWindow = vm.envOr("CHALLENGE_BLOCKS", uint256(300));
         uint256 challengeBond = vm.envOr("CHALLENGE_BOND", uint256(0.01 ether));
 
-        // audit DP-007: MockZkVerifier accepts proof == publicCommitment (unsound). Never
-        // wire it on a real-value chain — the sequencer could publish any withdrawals root
-        // and drain the vault. Testnets only, unless the operator explicitly overrides.
-        require(
-            DeployGuard.isTestnet(block.chainid)
-                || vm.envOr("ALLOW_MOCK_VERIFIER", uint256(0)) == 1,
-            "Deploy: MockZkVerifier is unsound; refusing on a non-testnet chain (set ALLOW_MOCK_VERIFIER=1 to override, UNSAFE)"
-        );
+        // Verifier selection: a set VERIFIER binds a real (e.g. SP1) verifier;
+        // unset/zero deploys MockZkVerifier (dev/testnet only).
+        address verifierEnv = vm.envOr("VERIFIER", address(0));
+        if (verifierEnv == address(0)) {
+            // audit DP-007: MockZkVerifier accepts proof == publicCommitment (unsound). Never
+            // wire it on a real-value chain — the sequencer could publish any withdrawals root
+            // and drain the vault. Testnets only, unless the operator explicitly overrides.
+            // (A real VERIFIER needs no Mock guard.)
+            require(
+                DeployGuard.isTestnet(block.chainid)
+                    || vm.envOr("ALLOW_MOCK_VERIFIER", uint256(0)) == 1,
+                "Deploy: MockZkVerifier is unsound; refusing on a non-testnet chain (set ALLOW_MOCK_VERIFIER=1 to override, UNSAFE)"
+            );
+        }
 
         vm.startBroadcast(pk);
 
-        verifier = new MockZkVerifier();
+        verifier = verifierEnv == address(0)
+            ? IZkVerifier(address(new MockZkVerifier()))
+            : IZkVerifier(verifierEnv);
         settlement = new DarkPerpSettlement(
             sequencer, enclaveSigner, verifier, genesis, liveness, challengeWindow, challengeBond
         );
