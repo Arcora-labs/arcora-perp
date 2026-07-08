@@ -41,6 +41,10 @@ fn emit_receipt_fixture() {
     );
 
     // Locked fixture (regenerate by reading the panic message if it changes).
+    // Re-locked for Slice 3b-4: `signing_digest` now binds `window_id` (here 0 —
+    // no window sealed yet), so the signature changed. The Solidity side
+    // (CrossLayer.t.sol::test_real_receipt_* + receiptDigest) must gain the
+    // windowId word before it can verify receipts signed under this layout.
     assert_eq!(
         format!(
             "addr={} order_hash={} seq={} v={} r={} s={}",
@@ -53,9 +57,9 @@ fn emit_receipt_fixture() {
         ),
         "addr=4a62316623ad457f02cdc5d997ded67a383ec569 \
          order_hash=0c1646898f0e7370046e707059dd7cb9eba4b66af66f67671f69101d508231c5 \
-         seq=0 v=28 \
-         r=fb8daee4e013cc0fc4a472efd1ff4acf96719a1325690f4aa714d5c6c0f07704 \
-         s=797b44171434e2623f60b97ff3bd8975979761b7bce805ab84c6f27bd31bdae1",
+         seq=0 v=27 \
+         r=e30b965fbe730da9994ffb0d677b3a1796077fe9b4acd25acc14bd1a7d886781 \
+         s=53da11b1436d795aa1160409d43f681c684ac8f8e7a32594878ce45ba56f6fb2",
         "RECEIPT FIXTURE (copy into Solidity CrossLayer.t.sol)"
     );
 }

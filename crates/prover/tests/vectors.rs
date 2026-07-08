@@ -13,17 +13,20 @@ fn hex(d: &[u8; 32]) -> String {
 
 #[test]
 fn receipt_signing_digest_vector() {
-    // orderHash = 0x1212..12, seq=7, recv=1000, hint=0
+    // orderHash = 0x1212..12, seq=7, recv=1000, hint=0, window=1
+    // (Slice 3b-4: `signing_digest` binds `window_id`; the Solidity `receiptDigest`
+    // must gain the windowId word and re-lock this vector to match.)
     let receipt = Receipt {
         order_hash: [0x12u8; 32],
         seq_no: 7,
         recv_time_ms: 1000,
         batch_id_hint: 0,
+        window_id: 1,
     };
     let d = receipt.signing_digest::<Keccak256>();
     assert_eq!(
         hex(&d),
-        "ea97e0063439108b01114aef8136d5c7f4cad5d900f8a3c3e48cfbc583a4ae24",
+        "102331dccb4ef4be6a1759b880ece2c2c73c6781b797298882b7cd6372c9486c",
         "RECEIPT DIGEST VECTOR (update Solidity CrossLayer.t.sol to match): {}",
         hex(&d)
     );

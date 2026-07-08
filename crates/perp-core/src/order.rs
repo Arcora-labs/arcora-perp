@@ -101,6 +101,10 @@ pub struct Receipt {
     pub seq_no: u64,
     pub recv_time_ms: u64,
     pub batch_id_hint: u64,
+    /// The on-chain window id (Counter B, `state.next_batch_id` at issue time) this order
+    /// settles into — the id space of the on-chain `batchCount` / inclusion challenge.
+    /// Enclave-signed (bound in `signing_digest`), so it is a verifiable promise (Slice 3b-4).
+    pub window_id: u64,
 }
 
 impl Receipt {
@@ -113,6 +117,7 @@ impl Receipt {
                 word_u64(self.seq_no),
                 word_u64(self.recv_time_ms),
                 word_u64(self.batch_id_hint),
+                word_u64(self.window_id),
             ],
         )
     }
@@ -258,5 +263,21 @@ mod tests {
         assert!(!Finality::Accepted.is_withdrawable());
         assert!(!Finality::Matched.is_withdrawable());
         assert!(Finality::Settled.is_withdrawable());
+    }
+
+    #[test]
+    fn signing_digest_binds_window_id() {
+        let base = Receipt {
+            order_hash: [1u8; 32],
+            seq_no: 7,
+            recv_time_ms: 100,
+            batch_id_hint: 3,
+            window_id: 1,
+        };
+        let other = Receipt { window_id: 2, ..base };
+        assert_ne!(
+            base.signing_digest::<Keccak256>(),
+            other.signing_digest::<Keccak256>()
+        );
     }
 }
