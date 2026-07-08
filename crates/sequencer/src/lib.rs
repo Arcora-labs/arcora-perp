@@ -173,6 +173,7 @@ pub struct SealedBatch {
 /// The replayable witness for one settle window: `derive_roots(pre_state, ops, manifest)
 /// .new_state_root` equals the live state root after this `seal_window`. This is the tuple
 /// Slice 3b-2 seals and POSTs to the prover-service.
+#[derive(Clone)]
 pub struct WindowWitness {
     pub batch_id: u64,
     pub pre_state: DefaultState,
@@ -919,6 +920,30 @@ impl Sequencer {
             ops,
             manifest,
         }
+    }
+
+    /// Undo an optimistic `seal_window` whose off-chain settle failed: restore the
+    /// per-window counter and re-inject the failed window's ops/orders AHEAD of anything the
+    /// 700ms tick loop appended since the seal, and restore the window baseline. The next
+    /// `seal_window` then re-seals `[failed ops ++ intervening ops]` from the old baseline
+    /// under the SAME batch_id (== the unchanged on-chain batchCount) — no op is lost and the
+    /// desync guard is satisfied. Leaves the per-tick soft-finality (Counter A / snapshots /
+    /// finality / inclusion) untouched.
+    pub fn rollback_window(&mut self, w: &WindowWitness) {
+        // seal_window bumped Counter B once; ticks never touch it, so restore the pre-seal id.
+        self.state.next_batch_id = w.batch_id;
+        // prepend the failed window's ops/orders before anything accumulated since the seal.
+        let mut ops = w.ops.clone();
+        ops.append(&mut self.window_ops);
+        self.window_ops = ops;
+        let mut ordered = w.manifest.ordered.clone();
+        ordered.append(&mut self.window_ordered);
+        self.window_ordered = ordered;
+        let mut rejected = w.manifest.rejected.clone();
+        rejected.append(&mut self.window_rejected);
+        self.window_rejected = rejected;
+        // restore the window baseline (seal_window re-captured it to the post-bump state).
+        self.window_start_state = w.pre_state.clone();
     }
 
     /// Mark a sealed batch — and every still-pending batch before it — as SETTLED

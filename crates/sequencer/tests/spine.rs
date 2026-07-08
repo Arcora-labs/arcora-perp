@@ -973,3 +973,56 @@ fn unknown_market_order_is_tagged_invalid_not_reduce_only() {
         "an unknown-market order must be tagged InvalidOrder, not ReduceOnlyViolation"
     );
 }
+
+/// Slice 3b-3 MERGE GATE: a failed settle's window can be rolled back and re-sealed.
+/// `rollback_window` restores the per-window counter and baseline and re-injects the
+/// failed window's ops AHEAD of anything the tick loop appended since, so the re-seal
+/// is `[failed ++ intervening]` under the SAME batch_id and its witness replays,
+/// through `derive_roots`, to the live window-end root.
+#[test]
+fn rollback_window_restores_and_reseals_to_live_root() {
+    let mut seq = setup();
+
+    // window 1: tick 1 has a matched fill, then the window is sealed (a settle attempt).
+    seq.set_oracle(0, oracle(100_000, 20_000));
+    let orders = [
+        order(1, Side::Sell, SIZE_SCALE, 100_000 * PRICE_SCALE, 1),
+        order(2, Side::Buy, SIZE_SCALE, 100_000 * PRICE_SCALE, 2),
+    ];
+    let _ = seq.seal_batch(&orders, 20_000);
+    let w = seq.seal_window();
+    let sealed_id = w.batch_id;
+    assert_eq!(seq.state.next_batch_id, sealed_id + 1, "seal_window bumped Counter B");
+
+    // the settle "fails" — meanwhile the 700ms tick loop keeps adding ops to the new window.
+    seq.apply(&BatchOp::Deposit {
+        owner: owner_id(5),
+        asset_id: 0,
+        amount: 500_000,
+        blinding: [7u8; 32],
+    })
+    .unwrap();
+    let _ = seq.seal_batch(&[], 20_700);
+
+    // roll the failed window back.
+    seq.rollback_window(&w);
+    assert_eq!(seq.state.next_batch_id, sealed_id, "Counter B restored to the pre-seal id");
+
+    // re-seal: same on-chain batch_id, and the witness replays [failed ++ intervening] from
+    // the restored baseline to the LIVE window-end root (falsifiable: a dropped/mis-ordered
+    // op diverges the root).
+    let w2 = seq.seal_window();
+    assert_eq!(w2.batch_id, sealed_id, "re-seal uses the same batch_id (== on-chain batchCount)");
+    let live_root = seq.state.state_root();
+    let derived = perp_core::commitment::derive_roots(&mut w2.pre_state.clone(), &w2.ops, &w2.manifest)
+        .expect("derive_roots accepts the rolled-back re-seal");
+    assert_eq!(derived.new_state_root, live_root, "rolled-back re-seal reproduces the live root");
+    assert!(
+        w2.ops.iter().any(|o| matches!(o, BatchOp::Fill { .. })),
+        "the failed window's fill is re-included"
+    );
+    assert!(
+        w2.ops.iter().any(|o| matches!(o, BatchOp::Deposit { .. })),
+        "the intervening deposit is included, after the failed window's ops"
+    );
+}
