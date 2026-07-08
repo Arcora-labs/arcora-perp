@@ -1393,6 +1393,21 @@ impl Gw {
         self.l1_status = Some(l1_status);
     }
 
+    /// Slice 3b-2b: drop withdrawals the vault has already paid (claimed[leaf]) from both
+    /// the listing (`pending_withdrawals`) and the served proofs (`withdraw_proofs`), so
+    /// the new (per-window) settle path stays bounded and paid notes stop being listed —
+    /// the same claimed-pruning the legacy cumulative path does at settle.
+    fn prune_claimed_withdrawals(&mut self, claimed: &[[u8; 32]]) {
+        if claimed.is_empty() {
+            return;
+        }
+        let cset: std::collections::BTreeSet<[u8; 32]> = claimed.iter().copied().collect();
+        self.pending_withdrawals.retain(|w| !cset.contains(&w.leaf()));
+        for leaf in &cset {
+            self.withdraw_proofs.remove(leaf);
+        }
+    }
+
     /// An account's withdrawals with the claim data: each carries its leaf and, once
     /// the cumulative root has been published on-chain, the Merkle `proof` to call
     /// `vault.claim(to, amount, nonce, proof)`. `claimable=false` means it is recorded
@@ -4683,7 +4698,11 @@ async fn main() {
                     let begun = {
                         let mut gw = app.gw.lock().await;
                         match gw.begin_window_settle(bc) {
-                            Ok(Some(x)) => Some(x),
+                            Ok(Some(x)) => {
+                                let cand: Vec<[u8; 32]> =
+                                    gw.pending_withdrawals.iter().map(|w| w.leaf()).collect();
+                                Some((x, cand))
+                            }
                             Ok(None) => None,
                             Err(e) => {
                                 eprintln!("[l1] window settle skipped: {e}");
@@ -4691,7 +4710,7 @@ async fn main() {
                             }
                         }
                     };
-                    let Some((witness, ww)) = begun else { continue };
+                    let Some(((witness, ww), prune_candidates)) = begun else { continue };
                     // capture the manifest's ordered/rejected for the DP-004 challenge store
                     let ordered = witness.manifest.ordered.clone();
                     let rejected: Vec<Digest> =
@@ -4699,18 +4718,24 @@ async fn main() {
                     let batch_id = witness.batch_id;
                     // (C) prove + settle (lock-free)
                     let l1c = l1.clone();
+                    #[allow(clippy::type_complexity)] // one-shot (prepared, tx, bond, claimed) tuple
                     let res = tokio::task::spawn_blocking(
-                        move || -> Result<(prover_client::PreparedSettle, String, u128), String> {
+                        move || -> Result<(prover_client::PreparedSettle, String, u128, Vec<[u8; 32]>), String> {
                             let prepared =
                                 prover_client::prove_and_prepare(client.as_ref(), &witness, &ww)?;
                             let tx = l1c.settle_proved(&prepared.outcome)?;
                             let bond = l1c.sequencer_bond().unwrap_or(0);
-                            Ok((prepared, tx, bond))
+                            // mirror the legacy path: drop leaves the vault already paid.
+                            let claimed: Vec<[u8; 32]> = prune_candidates
+                                .into_iter()
+                                .filter(|leaf| l1c.claimed(&hex32(leaf)).unwrap_or(false))
+                                .collect();
+                            Ok((prepared, tx, bond, claimed))
                         },
                     )
                     .await;
                     match res {
-                        Ok(Ok((prepared, tx, bond))) => {
+                        Ok(Ok((prepared, tx, bond, claimed))) => {
                             let status = L1Status {
                                 settled_root: hex32(&prepared.outcome.new_root),
                                 batch_count: batch_id + 1,
@@ -4725,6 +4750,7 @@ async fn main() {
                             {
                                 let mut gw = app.gw.lock().await;
                                 gw.commit_window_settle(batch_id, ordered, rejected, prepared, status);
+                                gw.prune_claimed_withdrawals(&claimed);
                             }
                             let snap = { app.gw.lock().await.snapshot() };
                             let _ = app.tx.send(
@@ -6491,6 +6517,28 @@ mod tests {
         assert_eq!(item["claimable"], serde_json::json!(true));
         assert_eq!(item["root"], serde_json::json!(hex0x(&root)));
         assert_eq!(item["proof"], serde_json::json!([hex0x(&[0xBBu8; 32])]));
+    }
+
+    // ── Slice 3b-2b: Gw::prune_claimed_withdrawals ──────────────────────────
+
+    #[test]
+    fn prune_claimed_withdrawals_removes_only_claimed() {
+        let mut gw = Gw::boot();
+        let (key, _o) = gw.register_account(None);
+        gw.account_deposit(&key, 0, 40_000 * QUOTE_SCALE).unwrap();
+        let w1 = gw.account_withdraw(&key, 0, 5_000 * QUOTE_SCALE, [7u8; 20]).unwrap();
+        let w2 = gw.account_withdraw(&key, 0, 3_000 * QUOTE_SCALE, [8u8; 20]).unwrap();
+        // seed proofs for both leaves as a settle would
+        gw.withdraw_proofs.insert(w1.leaf(), ([0xAAu8; 32], vec![[0xBBu8; 32]]));
+        gw.withdraw_proofs.insert(w2.leaf(), ([0xAAu8; 32], vec![[0xCCu8; 32]]));
+
+        // claim w1 only
+        gw.prune_claimed_withdrawals(&[w1.leaf()]);
+
+        assert!(!gw.pending_withdrawals.iter().any(|w| w.leaf() == w1.leaf()));
+        assert!(gw.pending_withdrawals.iter().any(|w| w.leaf() == w2.leaf()));
+        assert!(!gw.withdraw_proofs.contains_key(&w1.leaf()));
+        assert!(gw.withdraw_proofs.contains_key(&w2.leaf()));
     }
 
     // ── Slice 3b-2a: Gw::begin_window_settle ────────────────────────────────
