@@ -35,7 +35,7 @@ Consequences: (1) signing `window_id` would add **zero** on-chain accountability
 
 ## 4. Architecture
 
-### 4.1 Signed `window_id` on the receipt (perp-core + sequencer + gateway)
+### 4.1 Unsigned `window_id` on the receipt (perp-core + sequencer + gateway)
 
 - **`perp-core Receipt`** (`order.rs:99-104`): add `pub window_id: u64` — an **unsigned** plaintext field.
 - **`signing_digest`** (`order.rs:108-118`): **unchanged** (4 words). `window_id` is deliberately NOT in the hashed pre-image (see §3.5).
