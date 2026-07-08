@@ -62,7 +62,6 @@ fn hex32(d: &Digest) -> String {
 /// landed (undo the seal), `== sealed_batch_id + 1` means it landed despite the cast
 /// error (commit the bookkeeping), and anything else is unexpected (hold, let the
 /// operator reconcile — a rollback there could strand the sequencer either way).
-#[allow(dead_code)] // Task 2 (settle-failure handler) consumes this; remove the allow there.
 #[derive(Debug, PartialEq, Eq)]
 enum RollAction {
     RollBack,
@@ -70,7 +69,6 @@ enum RollAction {
     Hold,
 }
 
-#[allow(dead_code)] // Task 2 (settle-failure handler) consumes this; remove the allow there.
 fn settle_failure_action(sealed_batch_id: u64, chain_batch_count: u64) -> RollAction {
     if chain_batch_count == sealed_batch_id {
         RollAction::RollBack
@@ -4753,26 +4751,46 @@ async fn main() {
                     // clone — far rarer than the per-tick snapshot clone, so negligible).
                     let witness_rb = witness.clone();
                     let ww_rb = ww.clone();
-                    // (C) prove + settle (lock-free)
-                    let l1c = l1.clone();
-                    #[allow(clippy::type_complexity)] // one-shot (prepared, tx, bond, claimed) tuple
-                    let res = tokio::task::spawn_blocking(
-                        move || -> Result<(prover_client::PreparedSettle, String, u128, Vec<[u8; 32]>), String> {
-                            let prepared =
-                                prover_client::prove_and_prepare(client.as_ref(), &witness, &ww)?;
-                            let tx = l1c.settle_proved(&prepared.outcome)?;
-                            let bond = l1c.sequencer_bond().unwrap_or(0);
-                            // mirror the legacy path: drop leaves the vault already paid.
-                            let claimed: Vec<[u8; 32]> = prune_candidates
-                                .into_iter()
-                                .filter(|leaf| l1c.claimed(&hex32(leaf)).unwrap_or(false))
-                                .collect();
-                            Ok((prepared, tx, bond, claimed))
+                    // (C) prove + settle (lock-free). Distinguish a prove failure (no tx
+                    // was ever broadcast -> unconditional rollback) from a settle failure
+                    // (cast send broadcasts THEN waits for the receipt, so a 90s-kill/RPC
+                    // error is AMBIGUOUS: the tx may have landed -> keep `prepared` so we
+                    // can roll forward and commit the bookkeeping if batch_count advanced).
+                    enum SettleAttempt {
+                        Ok {
+                            prepared: prover_client::PreparedSettle,
+                            tx: String,
+                            bond: u128,
+                            claimed: Vec<[u8; 32]>,
                         },
-                    )
+                        ProveFailed(String),
+                        SettleFailed {
+                            err: String,
+                            prepared: prover_client::PreparedSettle,
+                        },
+                    }
+                    let l1c = l1.clone();
+                    let res = tokio::task::spawn_blocking(move || -> SettleAttempt {
+                        let prepared =
+                            match prover_client::prove_and_prepare(client.as_ref(), &witness, &ww) {
+                                Ok(p) => p,
+                                Err(e) => return SettleAttempt::ProveFailed(e),
+                            };
+                        match l1c.settle_proved(&prepared.outcome) {
+                            Ok(tx) => {
+                                let bond = l1c.sequencer_bond().unwrap_or(0);
+                                let claimed: Vec<[u8; 32]> = prune_candidates
+                                    .into_iter()
+                                    .filter(|leaf| l1c.claimed(&hex32(leaf)).unwrap_or(false))
+                                    .collect();
+                                SettleAttempt::Ok { prepared, tx, bond, claimed }
+                            }
+                            Err(err) => SettleAttempt::SettleFailed { err, prepared },
+                        }
+                    })
                     .await;
                     match res {
-                        Ok(Ok((prepared, tx, bond, claimed))) => {
+                        Ok(SettleAttempt::Ok { prepared, tx, bond, claimed }) => {
                             let status = L1Status {
                                 settled_root: hex32(&prepared.outcome.new_root),
                                 batch_count: batch_id + 1,
@@ -4794,17 +4812,74 @@ async fn main() {
                                 serde_json::to_string(&WsMsg::State { state: snap }).unwrap(),
                             );
                         }
-                        Ok(Err(e)) => {
-                            eprintln!("[l1] window settle failed: {e} — rolling the window back");
+                        Ok(SettleAttempt::ProveFailed(e)) => {
+                            eprintln!("[l1] prove failed: {e} — rolling back (no tx was broadcast)");
                             let mut gw = app.gw.lock().await;
                             gw.seq.rollback_window(&witness_rb);
                             gw.rollback_window_withdrawals(ww_rb);
                         }
-                        Err(e) => {
-                            eprintln!("[l1] window settle join: {e} — rolling the window back");
-                            let mut gw = app.gw.lock().await;
-                            gw.seq.rollback_window(&witness_rb);
-                            gw.rollback_window_withdrawals(ww_rb);
+                        Ok(SettleAttempt::SettleFailed { err, prepared }) => {
+                            // ambiguous: re-read batchCount (+ bond for a roll-forward status).
+                            let l1c = l1.clone();
+                            let recheck =
+                                tokio::task::spawn_blocking(move || -> Result<(u64, u128), String> {
+                                    let bc = l1c.batch_count()?;
+                                    let bond = l1c.sequencer_bond().unwrap_or(0);
+                                    Ok((bc, bond))
+                                })
+                                .await;
+                            match recheck {
+                                Ok(Ok((now_bc, bond))) => match settle_failure_action(batch_id, now_bc) {
+                                    RollAction::RollBack => {
+                                        eprintln!("[l1] settle failed: {err} — tx did not land (batchCount still {batch_id}); rolled back");
+                                        let mut gw = app.gw.lock().await;
+                                        gw.seq.rollback_window(&witness_rb);
+                                        gw.rollback_window_withdrawals(ww_rb);
+                                    }
+                                    RollAction::RollForward => {
+                                        let status = L1Status {
+                                            settled_root: hex32(&prepared.outcome.new_root),
+                                            batch_count: batch_id + 1,
+                                            last_tx: "(recovered: landed despite cast error)".to_string(),
+                                            bond: bond.to_string(),
+                                            withdrawals_root: hex32(&prepared.outcome.withdrawals_root),
+                                        };
+                                        eprintln!("[l1] settle reported '{err}' but the tx LANDED (batchCount {batch_id}->{now_bc}); rolled forward + committed bookkeeping");
+                                        {
+                                            let mut gw = app.gw.lock().await;
+                                            gw.commit_window_settle(batch_id, ordered, rejected, prepared, status);
+                                        }
+                                        let snap = { app.gw.lock().await.snapshot() };
+                                        let _ = app.tx.send(
+                                            serde_json::to_string(&WsMsg::State { state: snap }).unwrap(),
+                                        );
+                                    }
+                                    RollAction::Hold => {
+                                        eprintln!("[l1] settle failed AND on-chain batchCount is {now_bc} for window {batch_id} — HOLDING (no rollback/commit); operator must reconcile");
+                                    }
+                                },
+                                _ => {
+                                    eprintln!("[l1] settle failed ({err}) and the batchCount re-read failed — HOLDING (no rollback/commit); operator must reconcile");
+                                }
+                            }
+                        }
+                        Err(join) => {
+                            // the settle task panicked — `prepared` is lost, so we cannot roll
+                            // forward. Re-read batchCount and roll back ONLY if it confirms the
+                            // tx did not land; otherwise hold.
+                            let l1c = l1.clone();
+                            let re = tokio::task::spawn_blocking(move || l1c.batch_count()).await;
+                            match re {
+                                Ok(Ok(now_bc)) if now_bc == batch_id => {
+                                    eprintln!("[l1] settle task join error: {join} — tx did not land; rolled back");
+                                    let mut gw = app.gw.lock().await;
+                                    gw.seq.rollback_window(&witness_rb);
+                                    gw.rollback_window_withdrawals(ww_rb);
+                                }
+                                _ => {
+                                    eprintln!("[l1] settle task join error: {join} — cannot confirm the tx did not land (no prepared to roll forward); HOLDING; operator must reconcile");
+                                }
+                            }
                         }
                     }
                     continue; // new path handled this tick; skip the legacy body
