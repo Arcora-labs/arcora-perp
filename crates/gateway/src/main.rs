@@ -1430,15 +1430,20 @@ impl Gw {
             .ok_or("Unknown account.")?
             .wallet
             .owner;
+        // Accept the signature over ANY of the three deterministic shapes of the
+        // bind digest (raw / EIP-191 over bytes / EIP-191 over hex string) so both
+        // CLI signers and browser-wallet `personal_sign` work — see
+        // `deposit_bind_prehash_candidates` for the WHY of each and the security
+        // invariant (all shapes commit to the same (owner, addr), so this widens
+        // signer ergonomics, never authorization).
         let digest = deposit_bind_digest(&owner, &addr);
-        match recover_eth_address(&digest, sig) {
-            Some(rec) if rec == addr => {}
-            _ => {
-                return Err(
-                    "deposit-address proof: signature must recover to the address being bound"
-                        .into(),
-                )
-            }
+        let proven = deposit_bind_prehash_candidates(&digest)
+            .iter()
+            .any(|prehash| recover_eth_address(prehash, sig) == Some(addr));
+        if !proven {
+            return Err(
+                "deposit-address proof: signature must recover to the address being bound".into(),
+            );
         }
         if self
             .accounts
@@ -3378,8 +3383,10 @@ struct V1DepositReq {
 #[derive(Deserialize)]
 struct DepositAddrReq {
     address: String,
-    /// secp256k1 signature (65-byte r‖s‖v) over `deposit_bind_digest(owner, address)`,
-    /// proving the caller controls `address`.
+    /// secp256k1 signature (65-byte r‖s‖v) proving the caller controls `address`.
+    /// Accepted over any of three shapes of `deposit_bind_digest(owner, address)`:
+    /// the raw digest, EIP-191 `personal_sign` over its 32 bytes, or EIP-191 over
+    /// its "0x<64 hex>" string — see `deposit_bind_prehash_candidates`.
     signature: String,
 }
 #[derive(Deserialize)]
@@ -3468,6 +3475,51 @@ fn deposit_bind_digest(owner: &PubKey, addr: &[u8; 20]) -> [u8; 32] {
     h.update(owner);
     h.update(addr);
     h.finalize().into()
+}
+
+/// The three prehashes a deposit-address bind signature may cover, in the order
+/// they are tried. SECURITY INVARIANT: every candidate is a deterministic
+/// transform of the SAME `deposit_bind_digest(owner, addr)` — no attacker-chosen
+/// message ever enters a preimage — so accepting any of them leaves the
+/// authorization semantics unchanged: a valid signature still proves the signer
+/// controls `addr` and consented to binding it to exactly this `owner`.
+fn deposit_bind_prehash_candidates(digest: &[u8; 32]) -> [[u8; 32]; 3] {
+    use sha3::{Digest as _, Keccak256 as RawKeccak};
+    // (a) The raw digest itself. WHY: CLI signers (`cast wallet sign --no-hash`)
+    //     sign the 32 digest bytes directly — the original form, kept byte-identical.
+    let raw = *digest;
+    // (b) EIP-191 `personal_sign` over the 32 raw digest bytes:
+    //     keccak256("\x19Ethereum Signed Message:\n32" ‖ digest). WHY: browser
+    //     wallets (MetaMask etc.) refuse to sign raw digests — `personal_sign`
+    //     always prepends the EIP-191 prefix + decimal byte-length before hashing.
+    //     This is what the wallet-connect frontend produces when it passes the
+    //     32 digest bytes to `personal_sign`.
+    let eip191_raw: [u8; 32] = {
+        let mut h = RawKeccak::new();
+        h.update(b"\x19Ethereum Signed Message:\n32");
+        h.update(digest);
+        h.finalize().into()
+    };
+    // (c) EIP-191 over the ASCII hex STRING of the digest:
+    //     keccak256("\x19Ethereum Signed Message:\n66" ‖ "0x<64 lowercase hex>")
+    //     (66 = len("0x") + 64 hex chars). WHY: some wallets treat a hex-string
+    //     `personal_sign` argument as text and sign its UTF-8 bytes instead of
+    //     decoding them to the 32 raw bytes.
+    let eip191_hex: [u8; 32] = {
+        let mut hex = [0u8; 66];
+        hex[0] = b'0';
+        hex[1] = b'x';
+        const TAB: &[u8; 16] = b"0123456789abcdef";
+        for (i, b) in digest.iter().enumerate() {
+            hex[2 + i * 2] = TAB[(b >> 4) as usize];
+            hex[3 + i * 2] = TAB[(b & 0x0f) as usize];
+        }
+        let mut h = RawKeccak::new();
+        h.update(b"\x19Ethereum Signed Message:\n66");
+        h.update(hex);
+        h.finalize().into()
+    };
+    [raw, eip191_raw, eip191_hex]
 }
 
 /// Canonicalize a tx hash to `0x` + 64 **lowercase** hex, or `None` if malformed.
@@ -4053,7 +4105,7 @@ async fn get_v1_openapi() -> impl IntoResponse {
                 "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["marketId","amount"], "properties": { "marketId": { "type": "integer" }, "amount": { "type": "string" } } } } } },
                 "responses": ok("updated account") } },
             "/v1/accounts/deposit/address": { "post": { "summary": "Bind the external EOA you fund USDC from (ownership-proven)", "security": auth["security"],
-                "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["address","signature"], "properties": { "address": { "type": "string" }, "signature": { "type": "string", "description": "secp256k1 sig recovering to address over keccak256(\"dark-perp:bind-deposit:\"‖owner‖address)" } } } } } },
+                "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["address","signature"], "properties": { "address": { "type": "string" }, "signature": { "type": "string", "description": "secp256k1 sig recovering to address over the bind digest keccak256(\"dark-perp:bind-deposit:\"‖owner‖address) — raw, or EIP-191 personal_sign over its 32 bytes or its 0x-hex string" } } } } } },
                 "responses": ok("bound address") } },
             "/v1/accounts/deposit/onchain": { "post": { "summary": "Credit a real on-chain USDC deposit by tx hash", "security": auth["security"],
                 "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["txHash","marketId"], "properties": { "txHash": { "type": "string" }, "marketId": { "type": "integer" } } } } } },
@@ -6376,6 +6428,97 @@ mod tests {
             gw.account_set_deposit_address(&key2, addr, &good2).is_err(),
             "an address already bound to another account is rejected",
         );
+    }
+
+    /// Browser wallets (MetaMask etc.) cannot sign a raw 32-byte digest —
+    /// `personal_sign` always wraps the message with the EIP-191 prefix before
+    /// hashing. The bind endpoint must therefore accept, besides the raw-digest
+    /// form pinned above, the two `personal_sign` shapes a wallet can produce
+    /// from the SAME `deposit_bind_digest`: over its 32 raw bytes, and over its
+    /// ASCII "0x<64 lowercase hex>" string. A signature from any other key must
+    /// stay rejected in every form.
+    #[test]
+    fn deposit_address_bind_accepts_eip191_personal_sign_forms() {
+        use k256::ecdsa::SigningKey;
+        use sha3::{Digest as _, Keccak256 as RawKeccak};
+        fn eth_addr(sk: &SigningKey) -> [u8; 20] {
+            let point = sk.verifying_key().to_encoded_point(false);
+            let hash = RawKeccak::digest(&point.as_bytes()[1..]);
+            let mut a = [0u8; 20];
+            a.copy_from_slice(&hash[12..]);
+            a
+        }
+        fn sign(sk: &SigningKey, prehash: &[u8; 32]) -> [u8; 65] {
+            let (sig, recid) = sk.sign_prehash_recoverable(prehash).unwrap();
+            let mut s = [0u8; 65];
+            s[..64].copy_from_slice(&sig.to_bytes());
+            s[64] = 27 + recid.to_byte();
+            s
+        }
+        /// What `personal_sign` actually hashes: EIP-191 prefix + decimal
+        /// byte-length + the message bytes.
+        fn eip191_prehash(msg: &[u8]) -> [u8; 32] {
+            let mut h = RawKeccak::new();
+            h.update(b"\x19Ethereum Signed Message:\n");
+            h.update(msg.len().to_string().as_bytes());
+            h.update(msg);
+            h.finalize().into()
+        }
+        fn hex_string(digest: &[u8; 32]) -> String {
+            let mut s = String::from("0x");
+            for b in digest {
+                s.push_str(&format!("{b:02x}"));
+            }
+            s
+        }
+
+        let mut gw = Gw::boot();
+
+        // (2) EIP-191 over the 32 raw digest bytes — the frontend calls
+        // `personal_sign` with the digest bytes, the wallet prefixes "\n32".
+        let (key, owner) = gw.register_account(None);
+        let eoa = SigningKey::from_bytes((&[5u8; 32]).into()).unwrap();
+        let addr = eth_addr(&eoa);
+        let digest = deposit_bind_digest(&owner, &addr);
+        let sig = sign(&eoa, &eip191_prehash(&digest));
+        assert!(
+            gw.account_set_deposit_address(&key, addr, &sig).is_ok(),
+            "EIP-191 personal_sign over the raw digest bytes accepted",
+        );
+
+        // (3) EIP-191 over the ASCII hex STRING of the digest — some wallets
+        // sign the UTF-8 text "0x<64 hex>" (66 bytes) instead of the raw bytes.
+        let (key2, owner2) = gw.register_account(None);
+        let eoa2 = SigningKey::from_bytes((&[6u8; 32]).into()).unwrap();
+        let addr2 = eth_addr(&eoa2);
+        let digest2 = deposit_bind_digest(&owner2, &addr2);
+        let hex_msg = hex_string(&digest2);
+        assert_eq!(hex_msg.len(), 66, "sanity: 0x + 64 hex chars");
+        let sig2 = sign(&eoa2, &eip191_prehash(hex_msg.as_bytes()));
+        assert!(
+            gw.account_set_deposit_address(&key2, addr2, &sig2).is_ok(),
+            "EIP-191 personal_sign over the digest's hex string accepted",
+        );
+
+        // (4) a DIFFERENT key is rejected in ALL three forms — accepting the
+        // extra digest shapes must not widen who can authorize a bind.
+        let (key3, owner3) = gw.register_account(None);
+        let eoa3 = SigningKey::from_bytes((&[7u8; 32]).into()).unwrap();
+        let addr3 = eth_addr(&eoa3);
+        let wrong = SigningKey::from_bytes((&[8u8; 32]).into()).unwrap();
+        let digest3 = deposit_bind_digest(&owner3, &addr3);
+        let forms: [[u8; 32]; 3] = [
+            digest3,
+            eip191_prehash(&digest3),
+            eip191_prehash(hex_string(&digest3).as_bytes()),
+        ];
+        for (i, prehash) in forms.iter().enumerate() {
+            let bad = sign(&wrong, prehash);
+            assert!(
+                gw.account_set_deposit_address(&key3, addr3, &bad).is_err(),
+                "wrong-key signature rejected for digest form {i}",
+            );
+        }
     }
 
     /// AUDIT (CRITICAL — off-market fill-price vault drain): the gateway's house
