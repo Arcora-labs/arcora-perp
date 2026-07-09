@@ -41,6 +41,7 @@ mod enclave_epoch;
 mod l1;
 mod order_log;
 mod prover_client;
+mod rollback_journal;
 mod snapshot;
 mod withdrawals;
 use l1::{L1Status, L1};
@@ -77,6 +78,196 @@ fn settle_failure_action(sealed_batch_id: u64, chain_batch_count: u64) -> RollAc
     } else {
         RollAction::Hold
     }
+}
+
+/// Fix round 2 (final-review TOCTOU): whether the boot-recovery chain read must
+/// be CONFIRMED by a delayed second read before feeding the recovery decision.
+///
+/// The settle loop journals `prepared` (stage 2) strictly BEFORE the tx
+/// broadcast, so `has_prepared == false` PROVES no tx was ever sent — the first
+/// read is authoritative and RollBack is immediately safe. With `prepared`
+/// present, a first read of `batch_count == j.batch_id` is ambiguous: the crash
+/// may sit in the ~2-4 s window between the broadcast and its mining, and a
+/// RollBack decided on that stale read rewinds Counter B and deletes the journal
+/// (the only `prepared` copy) right before the tx lands — chain J+1 vs local J,
+/// the unreconcilable wedge this recovery exists to kill. Any other first read
+/// already disambiguates (landed → RollForward row, weirder → Hold), so no wait.
+fn needs_confirm_delay(has_prepared: bool, first_bc: u64, j_batch: u64) -> bool {
+    has_prepared && first_bc == j_batch
+}
+
+/// How long the boot-recovery block waits before the confirming re-read when
+/// `needs_confirm_delay` fires — comfortably past Base Sepolia's ~2 s blocks and
+/// the observed 2-4 s propagation window, cheap enough for a boot path.
+const RECOVERY_CONFIRM_DELAY_SECS: u64 = 15;
+
+/// Task 3 (crash recovery): what `apply_boot_recovery` decided about the journal
+/// FILE. The function itself only mutates the `Gw` — it is pure of file I/O, so
+/// the boot call site (and the tests, which have no journal file) own the delete.
+#[derive(Debug, PartialEq, Eq)]
+enum BootRecoveryOutcome {
+    /// The journaled window is resolved (stale, never persisted, rolled back, or
+    /// rolled forward) — the caller deletes the journal. `mutated` says whether
+    /// the resolution CHANGED the `Gw` (RollBack / RollForward): those exist only
+    /// in memory until a snapshot write, so the caller must persist the
+    /// post-recovery snapshot BEFORE the delete (`finish_boot_recovery`) — a hard
+    /// crash in the gap would otherwise restore the PRE-recovery snapshot with no
+    /// journal left to re-resolve it. Non-mutating rows (Stale /
+    /// SealNeverPersisted) resolve to the state already on disk, so they delete
+    /// without a write.
+    DeleteJournal { mutated: bool },
+    /// HOLD: keep the journal for the operator / a later boot. The boot
+    /// continuity check remains the final arbiter of whether startup proceeds.
+    KeepJournal,
+}
+
+/// Task 3 (crash recovery): resolve a journaled in-flight window settle against
+/// the restored snapshot and the chain, per the spec's boot-recovery table. The
+/// pure decision is `rollback_journal::recovery_action`; this applies it to the
+/// `Gw` (rollback: rewind Counter B + re-inject the drained withdrawals;
+/// roll-forward: re-commit the bookkeeping from the journal's `prepared`).
+/// Every HOLD prints a line containing "HOLDING" — the ops health alert greps
+/// for that substring.
+fn apply_boot_recovery(
+    gw: &mut Gw,
+    j: rollback_journal::RollbackJournal,
+    chain_bc: u64,
+    chain_root: &str,
+    bond: u128,
+) -> BootRecoveryOutcome {
+    use rollback_journal::RecoveryAction;
+    let b_snap = gw.seq.state.next_batch_id;
+    // Root comparisons are case-insensitive (cast hex casing), like the boot
+    // continuity check.
+    let root_matches_prepared = j
+        .prepared
+        .as_ref()
+        .is_some_and(|p| chain_root.eq_ignore_ascii_case(&hex32(&p.outcome.new_root)));
+    let root_matches_settled = gw
+        .l1_status
+        .as_ref()
+        .is_some_and(|st| chain_root.eq_ignore_ascii_case(&st.settled_root));
+    match rollback_journal::recovery_action(
+        j.batch_id,
+        j.prepared.is_some(),
+        b_snap,
+        chain_bc,
+        root_matches_prepared,
+        root_matches_settled,
+    ) {
+        RecoveryAction::Stale => {
+            println!(
+                "[recovery] rollback journal for window {} is stale (its commit was already \
+                 persisted) — resolved, nothing to do",
+                j.batch_id
+            );
+            BootRecoveryOutcome::DeleteJournal { mutated: false }
+        }
+        RecoveryAction::SealNeverPersisted => {
+            println!(
+                "[recovery] rollback journal for window {}: pre-seal snapshot restored and the \
+                 tx never landed — the seal effectively never happened; resolved, nothing to do",
+                j.batch_id
+            );
+            BootRecoveryOutcome::DeleteJournal { mutated: false }
+        }
+        RecoveryAction::RollBack => {
+            gw.seq.rollback_window(&j.witness);
+            gw.rollback_window_withdrawals(j.ww);
+            println!(
+                "[recovery] rolled back window {} at boot (seal persisted, tx never landed) — \
+                 the next settle re-seals it under the same batch id",
+                j.batch_id
+            );
+            BootRecoveryOutcome::DeleteJournal { mutated: true }
+        }
+        RecoveryAction::RollForward => {
+            // `recovery_action` returns RollForward only when `has_prepared`, so this
+            // is unreachable — but a boot path must never panic: fall back to HOLD.
+            let Some(prepared) = j.prepared else {
+                eprintln!(
+                    "[recovery] HOLDING: roll-forward decision without a prepared outcome for \
+                     window {} — keeping the journal; operator must reconcile",
+                    j.batch_id
+                );
+                return BootRecoveryOutcome::KeepJournal;
+            };
+            let ordered = j.witness.manifest.ordered.clone();
+            let rejected: Vec<Digest> =
+                j.witness.manifest.rejected.iter().map(|(h, _)| *h).collect();
+            let status = L1Status {
+                settled_root: hex32(&prepared.outcome.new_root),
+                batch_count: j.batch_id + 1,
+                last_tx: "(recovered at boot)".into(),
+                bond: bond.to_string(),
+                withdrawals_root: hex32(&prepared.outcome.withdrawals_root),
+            };
+            gw.commit_window_settle(j.batch_id, ordered, rejected, prepared, status);
+            println!(
+                "[recovery] rolled forward window {} at boot (tx landed, commit lost) — \
+                 bookkeeping re-committed from the journal",
+                j.batch_id
+            );
+            BootRecoveryOutcome::DeleteJournal { mutated: true }
+        }
+        RecoveryAction::Hold => {
+            eprintln!(
+                "[recovery] HOLDING: rollback journal window {} matches no recovery row \
+                 (snapshot Counter B {b_snap}, chain batchCount {chain_bc}, chain root \
+                 {chain_root}) — keeping the journal; operator must reconcile (the continuity \
+                 check decides whether boot proceeds)",
+                j.batch_id
+            );
+            BootRecoveryOutcome::KeepJournal
+        }
+    }
+}
+
+/// Task 3 fix (review): synchronously persist the post-recovery snapshot — the
+/// persistence block's exact three calls (`snapshot_plain` → `seal` →
+/// `write_atomic`). At this point in boot the snapshot writer task is not spawned
+/// yet, so the snapshot file still has exactly one writer (this call); there is
+/// no `.tmp`-rename race to worry about.
+fn persist_recovery(gw: &Gw, path: &std::path::Path, seed: &[u8; 32]) -> Result<(), String> {
+    let plain = gw.snapshot_plain();
+    let sealed = snapshot::seal(&plain, seed);
+    snapshot::write_atomic(path, &sealed).map_err(|e| format!("snapshot write: {e}"))
+}
+
+/// Task 3 fix (review): the post-`apply_boot_recovery` call-site glue, extracted
+/// so the ordering is testable. A MUTATING resolution (RollBack / RollForward)
+/// exists only in memory here, and the first periodic durability is ~SNAPSHOT_SECS
+/// away (the writer task — spawned later — skips its first tick), so it must hit
+/// disk BEFORE the journal (the only other copy of the rollback inputs) is
+/// deleted. A hard crash in that gap would otherwise restore the PRE-recovery
+/// snapshot with NO journal: the rollback case leaves Counter B at J+1 and the
+/// settle desync guard skips settles forever (the exact wedge this recovery
+/// exists to kill); the roll-forward case leaves a stale settled_root with
+/// `prepared` gone, and the continuity check refuses to start. If the persist
+/// FAILS, keep the journal — it is still the recovery source, and the next boot
+/// re-resolves the same row idempotently (the on-disk snapshot is unchanged, so
+/// the recovery table reads identically). Non-mutating resolutions (Stale /
+/// SealNeverPersisted) delete without a write — they resolve to the state
+/// already on disk (proven safe in the review's crash walk).
+fn finish_boot_recovery(
+    gw: &Gw,
+    mutated: bool,
+    state_path: &std::path::Path,
+    journal_path: &std::path::Path,
+    seed: &[u8; 32],
+) {
+    if mutated {
+        if let Err(e) = persist_recovery(gw, state_path, seed) {
+            eprintln!(
+                "[recovery] HOLDING: window recovery applied in memory but the post-recovery \
+                 snapshot could not be persisted ({e}) — keeping the rollback journal {} as \
+                 the recovery source (the next boot re-resolves it); fix the snapshot path",
+                journal_path.display()
+            );
+            return;
+        }
+    }
+    rollback_journal::delete(journal_path);
 }
 
 // ── constants ────────────────────────────────────────────────────────────────
@@ -698,6 +889,14 @@ struct Gw {
     /// the demo/test build. NOT persisted — recomputed from the environment.
     #[serde(skip)]
     prod: bool,
+    /// Task 5: honest finality reporting on the window-settle path. When the prover
+    /// is configured (PROVER_URL), the tick loop must NOT simulate SETTLED after
+    /// `SETTLE_TICKS` — orders stay MATCHED until their window's proof verifies on
+    /// L1 (`commit_window_settle` → `mark_window_settled`). Set from `main()` right
+    /// after `prod`; NOT persisted — recomputed from the environment every boot, so
+    /// the snapshot wire format is untouched.
+    #[serde(skip)]
+    window_settle_mode: bool,
     /// Order-ingress X25519 epoch keys (Task 9). Seed-derived from `ENCLAVE_SEED`,
     /// published (signed) via `GET /v1/enclave/epoch`. NOT persisted — the epoch
     /// secret must never touch disk; `boot`/`boot_restored` re-derive it from the
@@ -1100,6 +1299,7 @@ impl Gw {
             lp_total_shares: 0,
             lp_counter: 0,
             prod: false,
+            window_settle_mode: false,
             // Derive the first order-ingress epoch from the SAME seed the enclave
             // signing identity derives from, so a reboot/re-pin keeps the key stable.
             epochs: enclave_epoch::EnclaveEpochs::derive(enclave_seed, 1, now, ORDER_EPOCH_TTL_MS),
@@ -1426,6 +1626,11 @@ impl Gw {
         // per-tick accumulators are unused by the new path — clear them so they can't grow.
         self.pending_ordered.clear();
         self.pending_rejected.clear();
+        // Task 5: the verified proof just hardened every tick batch sealed into windows
+        // ≤ batch_id — advance their orders MATCHED → SETTLED (and prune their rollback
+        // snapshots). MUST run before the map prune below: the prune keeps a grace
+        // window today, but honest finality must not depend on that grace.
+        self.seq.mark_window_settled(batch_id);
         // Slice 3b-4 (Finding-1 fix): prune the tick->window map on WINDOW settle (Counter B),
         // not the ~10x-faster per-tick soft-finality, so /v1/batch/:id + WBatch.window_id survive
         // until their window settles + a grace (settled:true observable). batch_id just settled,
@@ -2755,21 +2960,28 @@ impl Gw {
                 a.orders[*i].sealed = true;
             }
         }
-        if any_sealed {
+        // Task 5: the SETTLE_TICKS queue is the LEGACY (demo/no-prover) finality
+        // simulation. In window-settle mode SETTLED is earned by the real on-chain
+        // settle (`commit_window_settle` → `mark_window_settled`), so neither feed
+        // nor drain the queue — a tick-count simulation would report SETTLED while
+        // the Groth16 proof is still proving (or wedged).
+        if any_sealed && !self.window_settle_mode {
             self.pending_settle.push((sealed.batch_id, self.tick));
         }
 
-        // 3) settle batches older than SETTLE_TICKS (MATCHED → SETTLED)
-        let tick = self.tick;
-        let mut still = Vec::new();
-        for (bid, t) in self.pending_settle.drain(..).collect::<Vec<_>>() {
-            if tick - t >= SETTLE_TICKS {
-                self.seq.mark_settled(bid);
-            } else {
-                still.push((bid, t));
+        // 3) settle batches older than SETTLE_TICKS (MATCHED → SETTLED) — legacy only.
+        if !self.window_settle_mode {
+            let tick = self.tick;
+            let mut still = Vec::new();
+            for (bid, t) in self.pending_settle.drain(..).collect::<Vec<_>>() {
+                if tick - t >= SETTLE_TICKS {
+                    self.seq.mark_settled(bid);
+                } else {
+                    still.push((bid, t));
+                }
             }
+            self.pending_settle = still;
         }
-        self.pending_settle = still;
 
         // 4) emit finality-transition events for toasts
         let mut events = Vec::new();
@@ -4356,6 +4568,10 @@ async fn main() {
     let state_path = std::env::var("DARKPERP_STATE")
         .ok()
         .map(std::path::PathBuf::from);
+    // Task 3 (crash recovery): whether a sealed snapshot was actually restored —
+    // a rollback journal is only meaningful against the state it was written
+    // beside; on a fresh boot a leftover journal is deleted below, unapplied.
+    let mut restored_from_snapshot = false;
     let mut gw = match &state_path {
         Some(p) if p.exists() => {
             let restored = std::fs::read(p)
@@ -4365,6 +4581,7 @@ async fn main() {
             match restored {
                 Ok(gw) => {
                     println!("[state] restored sealed snapshot from {}", p.display());
+                    restored_from_snapshot = true;
                     gw
                 }
                 Err(e) => {
@@ -4381,6 +4598,24 @@ async fn main() {
         _ => Gw::boot(),
     };
     gw.prod = prod;
+    // Task 5: with a prover configured, the tick loop's SETTLE_TICKS simulation is OFF —
+    // finality advances only when a window's proof verifies on L1. Set BEFORE the
+    // boot-recovery block below, so a roll-forward re-commit already runs under the
+    // honest-finality posture (its `commit_window_settle` marks the recovered window's
+    // orders SETTLED either way — the flag gates only the tick-loop simulation).
+    gw.window_settle_mode = prover.is_some();
+    if gw.window_settle_mode {
+        // Task 5 fix round 1 (report Concern 1, memory): the window path never
+        // consumes the per-tick rollback snapshots, and with the SETTLE_TICKS
+        // simulation off nothing prunes them until the window settles — a full
+        // state clone per 700ms tick (~1100 per ~13-min proof, unbounded if
+        // settles wedge). Skip retaining them entirely.
+        gw.seq.set_retain_tick_snapshots(false);
+        // Report Concern 3: a legacy-era snapshot restored into window mode can
+        // carry stale queue entries the (now-gated) drain never consumes — drop
+        // them once here.
+        gw.pending_settle.clear();
+    }
     // audit DP-006: in production the enclave identity must be bound to a verified TEE
     // attestation; refuse to serve traffic under the stub measurement.
     if !attestation_ok_for_mode(prod, gw.attestation.is_some()) {
@@ -4404,6 +4639,146 @@ async fn main() {
              enough — pin the real enclave's measurement so a wrong/replayed quote is rejected."
         );
         std::process::exit(1);
+    }
+    // Task 3 (crash recovery): resolve any in-flight window settle the rollback
+    // journal recorded. The settle loop journals every seal and NEVER deletes
+    // (the journal is a WAL for the latest sealed window; resolving arms only
+    // poke the snapshot writer) — BOOT is the only deleter, via the recovery
+    // table. This runs BEFORE the continuity check below and leaves it untouched
+    // as the final arbiter: a roll-forward re-commit advances
+    // l1_status.settled_root so an interrupted-but-landed settle passes it, and
+    // a rollback rewinds Counter B so the desync guard stops skipping settles.
+    if let Some(sp) = &state_path {
+        let jp = rollback_journal::journal_path(sp);
+        if !restored_from_snapshot {
+            // FRESH boot (no snapshot restored): a leftover journal references a
+            // state that no longer exists (e.g. the operator wiped the snapshot
+            // but not the sidecar) — meaningless; drop it so a later boot cannot
+            // misapply it to unrelated state.
+            if jp.exists() {
+                eprintln!(
+                    "[recovery] rollback journal {} found on a FRESH boot (no snapshot \
+                     restored) — deleting the meaningless leftover",
+                    jp.display()
+                );
+                rollback_journal::delete(&jp);
+            }
+        } else {
+            match rollback_journal::read(&jp, &enclave_seed) {
+                Ok(None) => {} // no journal — nothing was in flight
+                Err(e) => {
+                    // present but unreadable: never delete data the operator may
+                    // need, never guess — HOLD and fall through.
+                    eprintln!(
+                        "[recovery] HOLDING: rollback journal {} exists but is unreadable \
+                         ({e}) — keeping the file; operator must reconcile (the continuity \
+                         check decides whether boot proceeds)",
+                        jp.display()
+                    );
+                }
+                Ok(Some(j)) => match &l1 {
+                    None => {
+                        // can't resolve the journal against a chain we can't read.
+                        eprintln!(
+                            "[recovery] HOLDING: rollback journal present (window {}) but no \
+                             L1 bridge is configured — cannot resolve it against the chain; \
+                             keeping the file",
+                            j.batch_id
+                        );
+                    }
+                    Some(l1c) => {
+                        // chain reads exactly like the continuity check below
+                        // (spawn_blocking — the L1 client is blocking).
+                        let reads = {
+                            let l1c = l1c.clone();
+                            tokio::task::spawn_blocking(
+                                move || -> Result<(u64, String, u128), String> {
+                                    let bc = l1c.batch_count()?;
+                                    let root = l1c.current_root()?;
+                                    let bond = l1c.sequencer_bond().unwrap_or(0);
+                                    Ok((bc, root, bond))
+                                },
+                            )
+                            .await
+                            .unwrap_or_else(|e| Err(e.to_string()))
+                        };
+                        // Fix round 2 (final-review TOCTOU): if the journal has a
+                        // `prepared` outcome (a settle tx MAY have been broadcast)
+                        // and the chain still reads the pre-settle batchCount, the
+                        // crash may sit between the broadcast and its mining — a
+                        // RollBack decided on this first read would delete the only
+                        // `prepared` copy right before the tx lands. Wait out the
+                        // propagation window and let a SECOND read decide; a failed
+                        // re-read proves nothing and flows into the HOLD arm below,
+                        // exactly like any other failed chain read.
+                        let reads = match reads {
+                            Ok((bc, _, bond))
+                                if needs_confirm_delay(j.prepared.is_some(), bc, j.batch_id) =>
+                            {
+                                eprintln!(
+                                    "[recovery] journal window {} has a prepared outcome and the \
+                                     chain still reads batchCount {bc} — the settle tx may be \
+                                     broadcast but not yet mined; waiting \
+                                     {RECOVERY_CONFIRM_DELAY_SECS}s and re-reading the chain \
+                                     before deciding",
+                                    j.batch_id
+                                );
+                                tokio::time::sleep(Duration::from_secs(
+                                    RECOVERY_CONFIRM_DELAY_SECS,
+                                ))
+                                .await;
+                                let l1c = l1c.clone();
+                                tokio::task::spawn_blocking(
+                                    move || -> Result<(u64, String, u128), String> {
+                                        let bc = l1c.batch_count()?;
+                                        let root = l1c.current_root()?;
+                                        Ok((bc, root, bond))
+                                    },
+                                )
+                                .await
+                                .unwrap_or_else(|e| Err(e.to_string()))
+                                .map_err(|e| {
+                                    format!(
+                                        "confirming re-read after the {RECOVERY_CONFIRM_DELAY_SECS}s \
+                                         in-flight-tx wait failed: {e}"
+                                    )
+                                })
+                            }
+                            other => other,
+                        };
+                        match reads {
+                            Ok((chain_bc, chain_root, bond)) => {
+                                match apply_boot_recovery(&mut gw, j, chain_bc, &chain_root, bond)
+                                {
+                                    // Task 3 fix: a MUTATED resolution is persisted
+                                    // synchronously BEFORE the journal is deleted
+                                    // (and a failed persist keeps the journal) —
+                                    // see finish_boot_recovery.
+                                    BootRecoveryOutcome::DeleteJournal { mutated } => {
+                                        finish_boot_recovery(
+                                            &gw,
+                                            mutated,
+                                            sp,
+                                            &jp,
+                                            &enclave_seed,
+                                        );
+                                    }
+                                    BootRecoveryOutcome::KeepJournal => {}
+                                }
+                            }
+                            Err(e) => {
+                                // a failed read proves nothing — HOLD, never guess.
+                                eprintln!(
+                                    "[recovery] HOLDING: cannot read the chain to resolve the \
+                                     rollback journal ({e}) — keeping the file; the continuity \
+                                     check decides whether boot proceeds"
+                                );
+                            }
+                        }
+                    }
+                },
+            }
+        }
     }
     // Restored-state ↔ L1 continuity: the snapshot's last settled root must equal
     // the on-chain currentStateRoot, or this snapshot is stale / from a different
@@ -4490,6 +4865,16 @@ async fn main() {
         });
     }
 
+    // Task 2 (crash recovery): the settle loop asks for an immediate snapshot right
+    // after journaling a freshly sealed window (stage 1), so the on-disk pair
+    // (post-seal snapshot + rollback journal) is consistent at seal time instead of
+    // up to SNAPSHOT_SECS later. The snapshot FILE keeps exactly one writer — the
+    // persistence block's `write` closure below (two writers would race the shared
+    // `.tmp` rename and lose a snapshot); this Notify is only a wake-up. Created
+    // unconditionally so the settle loop compiles and runs identically when
+    // persistence is off (`notify_one` with no listener is a no-op).
+    let snapshot_notify = Arc::new(tokio::sync::Notify::new());
+
     // Periodic sealed-snapshot writer + graceful-shutdown save (SIGTERM/ctrl-c).
     if let Some(path) = state_path.clone() {
         let write = {
@@ -4513,11 +4898,19 @@ async fn main() {
         };
         {
             let write = write.clone();
+            let notify = snapshot_notify.clone();
             tokio::spawn(async move {
                 let mut iv = tokio::time::interval(Duration::from_secs(SNAPSHOT_SECS));
                 iv.tick().await; // skip the immediate first tick
                 loop {
-                    iv.tick().await;
+                    // Task 2: wake on the timer OR on demand (the settle loop's
+                    // stage-1 journal write). Notify stores a permit if we're
+                    // mid-write, so a wake-up is never lost — at worst it costs one
+                    // extra snapshot.
+                    tokio::select! {
+                        _ = iv.tick() => {}
+                        _ = notify.notified() => {}
+                    }
                     write().await;
                 }
             });
@@ -4720,6 +5113,17 @@ async fn main() {
             });
         }
         let app = app.clone();
+        // Task 2 (crash recovery): journal in-flight window settles to the sealed
+        // sidecar `<DARKPERP_STATE>.rollback` so Task-3 boot recovery can resolve a
+        // restart mid-settle. Task 3 (WAL model): the loop NEVER deletes the journal
+        // — it only overwrites it at the next stage-1. Every resolving arm instead
+        // pokes the snapshot writer so the in-memory resolution persists promptly;
+        // BOOT is the only deleter (deleting here would leave a crash inside the
+        // resolution→snapshot window with a restored pre-resolution state and no
+        // journal to reconcile it — the Task-2 residual wedge). No persistence path
+        // (`None`) = no journal — the settle loop behaves exactly as before.
+        let jpath = state_path.as_deref().map(rollback_journal::journal_path);
+        let snapshot_notify = snapshot_notify.clone();
         tokio::spawn(async move {
             type SettleOut = (
                 L1Status,
@@ -4789,6 +5193,29 @@ async fn main() {
                     // clone — far rarer than the per-tick snapshot clone, so negligible).
                     let witness_rb = witness.clone();
                     let ww_rb = ww.clone();
+                    // Task 2 stage 1: the seal just bumped Counter B in memory — persist
+                    // the rollback inputs BEFORE anything can crash, then ask the single
+                    // snapshot writer for an immediate snapshot so the on-disk pair
+                    // (post-seal snapshot + journal) is consistent at seal time. The
+                    // journal takes ownership of witness/ww (no extra DefaultState clone)
+                    // and carries them into the prove closure below. Best-effort: a failed
+                    // write only logs — the settle must behave exactly as the un-journaled
+                    // path did. (A crash in the ~ms before the triggered snapshot lands
+                    // restores a pre-seal snapshot → SEAL-NEVER-PERSISTED at boot — safe.)
+                    let mut journal = rollback_journal::RollbackJournal {
+                        batch_id,
+                        witness,
+                        ww,
+                        prepared: None,
+                    };
+                    if let Some(jp) = &jpath {
+                        match rollback_journal::write(jp, &journal, &enclave_seed) {
+                            Ok(()) => snapshot_notify.notify_one(),
+                            Err(e) => eprintln!(
+                                "[recovery] stage-1 rollback journal write failed (settle continues unjournaled): {e}"
+                            ),
+                        }
+                    }
                     // (C) prove + settle (lock-free). Distinguish a prove failure (no tx
                     // was ever broadcast -> unconditional rollback) from a settle failure
                     // (cast send broadcasts THEN waits for the receipt, so a 90s-kill/RPC
@@ -4808,12 +5235,29 @@ async fn main() {
                         },
                     }
                     let l1c = l1.clone();
+                    let jpath_bg = jpath.clone();
                     let res = tokio::task::spawn_blocking(move || -> SettleAttempt {
-                        let prepared =
-                            match prover_client::prove_and_prepare(client.as_ref(), &witness, &ww) {
-                                Ok(p) => p,
-                                Err(e) => return SettleAttempt::ProveFailed(e),
-                            };
+                        let prepared = match prover_client::prove_and_prepare(
+                            client.as_ref(),
+                            &journal.witness,
+                            &journal.ww,
+                        ) {
+                            Ok(p) => p,
+                            Err(e) => return SettleAttempt::ProveFailed(e),
+                        };
+                        // Task 2 stage 2: the prove came back — rewrite the journal with
+                        // `prepared` BEFORE the tx can broadcast, so a crash between
+                        // broadcast and commit leaves boot the exact new_root/claim
+                        // proofs a roll-forward re-commits. Same best-effort posture as
+                        // stage 1 (and no snapshot poke: nothing in-memory changed since).
+                        if let Some(jp) = &jpath_bg {
+                            journal.prepared = Some(prepared.clone());
+                            if let Err(e) = rollback_journal::write(jp, &journal, &enclave_seed) {
+                                eprintln!(
+                                    "[recovery] stage-2 rollback journal write failed (settle continues): {e}"
+                                );
+                            }
+                        }
                         match l1c.settle_proved(&prepared.outcome) {
                             Ok(tx) => {
                                 let bond = l1c.sequencer_bond().unwrap_or(0);
@@ -4845,6 +5289,12 @@ async fn main() {
                                 gw.commit_window_settle(batch_id, ordered, rejected, prepared, status);
                                 gw.prune_claimed_withdrawals(&claimed);
                             }
+                            // Task 3 (WAL): the journal outlives the commit — boot's STALE
+                            // row resolves it. Poke the single snapshot writer instead, so
+                            // the committed l1_status/settled_root persists promptly and a
+                            // crash inside the old ≤SNAPSHOT_SECS window no longer wedges
+                            // the boot continuity check.
+                            snapshot_notify.notify_one();
                             let snap = { app.gw.lock().await.snapshot() };
                             let _ = app.tx.send(
                                 serde_json::to_string(&WsMsg::State { state: snap }).unwrap(),
@@ -4852,9 +5302,15 @@ async fn main() {
                         }
                         Ok(SettleAttempt::ProveFailed(e)) => {
                             eprintln!("[l1] prove failed: {e} — rolling back (no tx was broadcast)");
-                            let mut gw = app.gw.lock().await;
-                            gw.seq.rollback_window(&witness_rb);
-                            gw.rollback_window_withdrawals(ww_rb);
+                            {
+                                let mut gw = app.gw.lock().await;
+                                gw.seq.rollback_window(&witness_rb);
+                                gw.rollback_window_withdrawals(ww_rb);
+                            }
+                            // Task 3 (WAL): keep the journal (boot's SEAL-NEVER-PERSISTED
+                            // row resolves it once the rolled-back state persists); poke
+                            // the writer so that happens promptly.
+                            snapshot_notify.notify_one();
                         }
                         Ok(SettleAttempt::SettleFailed { err, prepared }) => {
                             // ambiguous: re-read batchCount (+ currentStateRoot to confirm WHICH
@@ -4872,9 +5328,15 @@ async fn main() {
                                 Ok(Ok((now_bc, now_root, bond))) => match settle_failure_action(batch_id, now_bc) {
                                     RollAction::RollBack => {
                                         eprintln!("[l1] settle failed: {err} — tx did not land (batchCount still {batch_id}); rolled back");
-                                        let mut gw = app.gw.lock().await;
-                                        gw.seq.rollback_window(&witness_rb);
-                                        gw.rollback_window_withdrawals(ww_rb);
+                                        {
+                                            let mut gw = app.gw.lock().await;
+                                            gw.seq.rollback_window(&witness_rb);
+                                            gw.rollback_window_withdrawals(ww_rb);
+                                        }
+                                        // Task 3 (WAL): keep the journal (boot's
+                                        // SEAL-NEVER-PERSISTED row resolves it once the
+                                        // rolled-back state persists); poke the writer.
+                                        snapshot_notify.notify_one();
                                     }
                                     RollAction::RollForward => {
                                         // The tx landed (batchCount advanced), but confirm it
@@ -4883,6 +5345,8 @@ async fn main() {
                                         // case-insensitively (cast hex casing), like the boot guard.
                                         let our_root = hex32(&prepared.outcome.new_root);
                                         if !now_root.eq_ignore_ascii_case(&our_root) {
+                                            // Task 2: HOLD keeps the journal — the operator (and
+                                            // Task-3 boot recovery) still needs the rollback inputs.
                                             eprintln!("[l1] settle reported '{err}' and batchCount advanced to {now_bc}, but currentStateRoot {now_root} != our new_root {our_root} — a DIFFERENT window settled; HOLDING (no commit); operator must reconcile");
                                         } else {
                                             let status = L1Status {
@@ -4897,6 +5361,10 @@ async fn main() {
                                                 let mut gw = app.gw.lock().await;
                                                 gw.commit_window_settle(batch_id, ordered, rejected, prepared, status);
                                             }
+                                            // Task 3 (WAL): the journal outlives the commit —
+                                            // boot's STALE row resolves it; poke the writer so
+                                            // the commit persists promptly.
+                                            snapshot_notify.notify_one();
                                             let snap = { app.gw.lock().await.snapshot() };
                                             let _ = app.tx.send(
                                                 serde_json::to_string(&WsMsg::State { state: snap }).unwrap(),
@@ -4904,10 +5372,13 @@ async fn main() {
                                         }
                                     }
                                     RollAction::Hold => {
+                                        // Task 2: HOLD keeps the journal (rollback inputs preserved
+                                        // for the operator / Task-3 boot recovery).
                                         eprintln!("[l1] settle failed AND on-chain batchCount is {now_bc} for window {batch_id} — HOLDING (no rollback/commit); operator must reconcile");
                                     }
                                 },
                                 _ => {
+                                    // Task 2: HOLD keeps the journal.
                                     eprintln!("[l1] settle failed ({err}) and the batchCount re-read failed — HOLDING (no rollback/commit); operator must reconcile");
                                 }
                             }
@@ -4921,11 +5392,18 @@ async fn main() {
                             match re {
                                 Ok(Ok(now_bc)) if now_bc == batch_id => {
                                     eprintln!("[l1] settle task join error: {join} — tx did not land; rolled back");
-                                    let mut gw = app.gw.lock().await;
-                                    gw.seq.rollback_window(&witness_rb);
-                                    gw.rollback_window_withdrawals(ww_rb);
+                                    {
+                                        let mut gw = app.gw.lock().await;
+                                        gw.seq.rollback_window(&witness_rb);
+                                        gw.rollback_window_withdrawals(ww_rb);
+                                    }
+                                    // Task 3 (WAL): keep the journal (boot's
+                                    // SEAL-NEVER-PERSISTED row resolves it once the
+                                    // rolled-back state persists); poke the writer.
+                                    snapshot_notify.notify_one();
                                 }
                                 _ => {
+                                    // Task 2: HOLD keeps the journal.
                                     eprintln!("[l1] settle task join error: {join} — cannot confirm the tx did not land (no prepared to roll forward); HOLDING; operator must reconcile");
                                 }
                             }
@@ -5107,6 +5585,26 @@ mod tests {
         assert_eq!(crate::settle_failure_action(5, 7), RollAction::Hold);
         assert_eq!(crate::settle_failure_action(5, 4), RollAction::Hold);
         assert_eq!(crate::settle_failure_action(0, 0), RollAction::RollBack);
+    }
+
+    /// Fix round 2 (final-review TOCTOU): the boot-recovery confirm-delay fires
+    /// ONLY in the ambiguous row — `prepared` journaled (so a settle tx may have
+    /// been broadcast) AND the first chain read still shows the pre-settle
+    /// batchCount (so the tx may be mined-but-not-yet-visible). `prepared`
+    /// absent PROVES no broadcast ever happened (stage-2 journal write precedes
+    /// the broadcast), and any other batchCount already disambiguates — no wait.
+    #[test]
+    fn needs_confirm_delay_only_for_ambiguous_prepared_row() {
+        // ambiguous: prepared present + chain still at the journal's window id.
+        assert!(crate::needs_confirm_delay(true, 5, 5));
+        assert!(crate::needs_confirm_delay(true, 0, 0));
+        // no prepared -> no tx was ever broadcast -> first read is authoritative.
+        assert!(!crate::needs_confirm_delay(false, 5, 5));
+        assert!(!crate::needs_confirm_delay(false, 0, 0));
+        // chain already advanced (or is otherwise off) -> already disambiguated.
+        assert!(!crate::needs_confirm_delay(true, 6, 5));
+        assert!(!crate::needs_confirm_delay(true, 4, 5));
+        assert!(!crate::needs_confirm_delay(false, 6, 5));
     }
 
     // ── off-chain receipt reconciliation (Slice 3b-4) ────────────────────────
@@ -6836,6 +7334,343 @@ mod tests {
             .any(|op| matches!(op, BatchOp::Withdraw { to: Some(_), .. })));
     }
 
+    // ── Task 2/3: settle-loop rollback-journal lifecycle (WAL model) ────────
+
+    /// The settle loop's journal lifecycle against a REAL sealed window:
+    /// stage 1 (seal → journal with `prepared: None`) → stage 2 (prove →
+    /// rewrite at the same path with `prepared: Some`, cloning like the settle
+    /// closure does so the original still reaches `settle_proved`) → the
+    /// rollback arm (`rollback_window` + `rollback_window_withdrawals`) KEEPS
+    /// the journal (Task 3 WAL: the loop never deletes — boot is the only
+    /// deleter), a re-seal reproduces the window under the SAME batch id, and
+    /// boot recovery's SEAL-NEVER-PERSISTED row is what finally deletes it.
+    #[test]
+    fn settle_loop_journal_lifecycle() {
+        use crate::prover_client::{prove_and_prepare, MockProverClient};
+
+        let mut gw = Gw::boot();
+        let (key, _o) = gw.register_account(None);
+        gw.account_deposit(&key, 0, 20_000 * QUOTE_SCALE).unwrap();
+        gw.account_withdraw(&key, 0, 5_000 * QUOTE_SCALE, [7u8; 20])
+            .unwrap();
+        let bc = gw.seq.state.next_batch_id;
+        let (witness, ww) = gw.begin_window_settle(bc).unwrap().expect("sealed");
+        let ww_leaves: Vec<[u8; 32]> = ww.iter().map(|w| w.leaf()).collect();
+
+        // unpredictable per-test scratch path (the rollback_journal test pattern),
+        // derived from a fake DARKPERP_STATE exactly like the settle loop does.
+        let mut rnd = [0u8; 8];
+        getrandom::getrandom(&mut rnd).expect("OS CSPRNG");
+        let sfx: String = rnd.iter().map(|b| format!("{b:02x}")).collect();
+        let state = std::env::temp_dir().join(format!("darkperp-lifecycle-{sfx}.snap"));
+        let jp = rollback_journal::journal_path(&state);
+        let seed = [42u8; 32];
+
+        // stage 1: journal the freshly sealed window, pre-prove.
+        let mut journal = rollback_journal::RollbackJournal {
+            batch_id: bc,
+            witness,
+            ww,
+            prepared: None,
+        };
+        rollback_journal::write(&jp, &journal, &seed).expect("stage-1 write");
+        let s1 = rollback_journal::read(&jp, &seed).expect("read").expect("present");
+        assert_eq!(s1.batch_id, bc);
+        assert!(s1.prepared.is_none(), "stage 1 journals pre-prove");
+
+        // stage 2: rewrite the SAME path with the prove outcome — round-trips.
+        let prepared =
+            prove_and_prepare(&MockProverClient, &journal.witness, &journal.ww).expect("prove");
+        journal.prepared = Some(prepared.clone());
+        rollback_journal::write(&jp, &journal, &seed).expect("stage-2 write");
+        let s2 = rollback_journal::read(&jp, &seed).expect("read").expect("present");
+        assert_eq!(s2.batch_id, bc);
+        let s2p = s2.prepared.expect("stage 2 carries the prove outcome");
+        assert_eq!(s2p.outcome.new_root, prepared.outcome.new_root);
+        assert_eq!(s2p.withdraw_proofs, prepared.withdraw_proofs);
+
+        // the rollback arm: undo the seal + re-inject the withdrawals — and KEEP
+        // the journal (Task 3 WAL: a resolving arm only pokes the snapshot writer;
+        // deleting here would leave a crash-before-that-snapshot unreconcilable).
+        gw.seq.rollback_window(&journal.witness);
+        gw.rollback_window_withdrawals(journal.ww);
+        assert!(jp.exists(), "the journal survives the rollback arm (WAL)");
+
+        // BOOT is the deleter: with the rolled-back state persisted (Counter B
+        // back at `bc`) and the tx never landed (chain batchCount == bc), the
+        // recovery table reads SEAL-NEVER-PERSISTED → resolve, no mutation, and
+        // the call site drops the file.
+        let j = rollback_journal::read(&jp, &seed).expect("read").expect("present");
+        let out = apply_boot_recovery(&mut gw, j, bc, "0x00", 0);
+        // SEAL-NEVER-PERSISTED is a NON-mutating resolution: delete without a
+        // pre-delete snapshot write (the state on disk is already the one it
+        // resolves to).
+        assert_eq!(out, BootRecoveryOutcome::DeleteJournal { mutated: false });
+        rollback_journal::delete(&jp);
+        assert!(!jp.exists(), "boot recovery resolved the journal");
+        assert!(matches!(rollback_journal::read(&jp, &seed), Ok(None)));
+
+        // a re-seal reproduces the window: same on-chain id, same withdrawal set.
+        let (w2, ww2) = gw.begin_window_settle(bc).unwrap().expect("re-sealed");
+        assert_eq!(w2.batch_id, bc, "re-seal keeps the on-chain window id");
+        let leaves2: Vec<[u8; 32]> = ww2.iter().map(|w| w.leaf()).collect();
+        assert_eq!(leaves2, ww_leaves, "the drained withdrawals were re-injected");
+    }
+
+    // ── Task 3: boot-time crash recovery (apply_boot_recovery) ──────────────
+
+    /// The ROLLBACK row end-to-end across a simulated restart: seal a window,
+    /// journal it, persist + restore the POST-seal snapshot (Counter B advanced,
+    /// rollback clones lost with the process), then apply boot recovery with the
+    /// chain still at the pre-seal count. Counter B rewinds to the journaled
+    /// window and a fresh `begin_window_settle(bc)` re-seals the SAME ops (same
+    /// batch id, same withdrawal leaves) — the wedge that killed the 0xEa11 stack.
+    #[test]
+    fn boot_recovery_rollback_restores_reseal() {
+        let seed = [42u8; 32];
+        let mut gw = Gw::boot();
+        let (key, _o) = gw.register_account(None);
+        gw.account_deposit(&key, 0, 20_000 * QUOTE_SCALE).unwrap();
+        gw.account_withdraw(&key, 0, 5_000 * QUOTE_SCALE, [7u8; 20])
+            .unwrap();
+        let bc = gw.seq.state.next_batch_id;
+        let (witness, ww) = gw.begin_window_settle(bc).unwrap().expect("sealed");
+        let ww_leaves: Vec<[u8; 32]> = ww.iter().map(|w| w.leaf()).collect();
+        let journal = rollback_journal::RollbackJournal {
+            batch_id: bc,
+            witness,
+            ww,
+            prepared: None,
+        };
+
+        // simulate the restart: the post-seal snapshot is what boot restores
+        // (the `snapshot_restart_round_trip_preserves_state` pattern).
+        let sealed = snapshot::seal(&gw.snapshot_plain(), &seed);
+        let plain = snapshot::open(&sealed, &seed).expect("open");
+        let mut restored = Gw::boot_restored(&plain).expect("restore");
+        assert_eq!(
+            restored.seq.state.next_batch_id,
+            bc + 1,
+            "the post-seal snapshot persisted the Counter B bump"
+        );
+
+        // a HOLD shape first (chain advanced BEYOND the window): journal kept,
+        // and — the Hold contract — NO state mutation.
+        let hold_j = rollback_journal::RollbackJournal {
+            batch_id: bc,
+            witness: journal.witness.clone(),
+            ww: journal.ww.clone(),
+            prepared: None,
+        };
+        assert_eq!(
+            apply_boot_recovery(&mut restored, hold_j, bc + 2, "0x00", 0),
+            BootRecoveryOutcome::KeepJournal
+        );
+        assert_eq!(restored.seq.state.next_batch_id, bc + 1, "HOLD never mutates");
+
+        // the ROLLBACK row: seal persisted (B == bc+1), tx never landed (chain == bc).
+        // A MUTATING resolution — the caller must persist before deleting.
+        let out = apply_boot_recovery(&mut restored, journal, bc, "0x00", 0);
+        assert_eq!(out, BootRecoveryOutcome::DeleteJournal { mutated: true });
+        assert_eq!(
+            restored.seq.state.next_batch_id,
+            bc,
+            "Counter B rewound to the journaled window"
+        );
+
+        // a fresh begin_window_settle(bc) re-seals the same window: the desync
+        // guard passes and the drained withdrawals were re-injected.
+        let (w2, ww2) = restored.begin_window_settle(bc).unwrap().expect("re-sealed");
+        assert_eq!(w2.batch_id, bc, "re-seal keeps the on-chain window id");
+        let leaves2: Vec<[u8; 32]> = ww2.iter().map(|w| w.leaf()).collect();
+        assert_eq!(leaves2, ww_leaves, "same withdrawal leaves after recovery");
+    }
+
+    /// The ROLL-FORWARD row end-to-end across a simulated restart: the tx landed
+    /// but the commit died with the process. Boot recovery re-commits from the
+    /// journal's `prepared`: l1_status matches the chain, the claim proof is
+    /// served, and `begin_window_settle(bc+1)` passes the desync guard. A second
+    /// application of the same journal (the crash-after-commit shape) resolves
+    /// STALE — delete again, but never double-apply.
+    #[test]
+    fn boot_recovery_roll_forward_commits() {
+        use crate::prover_client::{prove_and_prepare, MockProverClient};
+
+        let seed = [42u8; 32];
+        let mut gw = Gw::boot();
+        let (key, _o) = gw.register_account(None);
+        gw.account_deposit(&key, 0, 20_000 * QUOTE_SCALE).unwrap();
+        gw.account_withdraw(&key, 0, 5_000 * QUOTE_SCALE, [7u8; 20])
+            .unwrap();
+        let bc = gw.seq.state.next_batch_id;
+        let (witness, ww) = gw.begin_window_settle(bc).unwrap().expect("sealed");
+        let leaf0 = ww[0].leaf();
+        let prepared = prove_and_prepare(&MockProverClient, &witness, &ww).expect("prove");
+        let new_root = prepared.outcome.new_root;
+        let wroot = prepared.outcome.withdrawals_root;
+        // two owned journal copies: one to roll forward, one to prove the STALE
+        // row is a no-op on a second pass (recovery must be idempotent against a
+        // journal whose delete raced a crash).
+        let j1 = rollback_journal::RollbackJournal {
+            batch_id: bc,
+            witness: witness.clone(),
+            ww: ww.clone(),
+            prepared: Some(prepared.clone()),
+        };
+        let j2 = rollback_journal::RollbackJournal {
+            batch_id: bc,
+            witness,
+            ww,
+            prepared: Some(prepared),
+        };
+
+        // simulate the restart: post-seal snapshot restored, commit LOST.
+        let sealed = snapshot::seal(&gw.snapshot_plain(), &seed);
+        let plain = snapshot::open(&sealed, &seed).expect("open");
+        let mut restored = Gw::boot_restored(&plain).expect("restore");
+        assert!(restored.l1_status.is_none(), "the commit died with the crash");
+
+        // the ROLL-FORWARD row: tx landed (chain == bc+1) and the chain root is
+        // exactly our prepared new_root. Passed in MIXED case: root comparisons
+        // must be case-insensitive like the continuity check (cast hex casing).
+        let chain_root = hex32(&new_root);
+        let out = apply_boot_recovery(
+            &mut restored,
+            j1,
+            bc + 1,
+            &chain_root.to_ascii_uppercase(),
+            77,
+        );
+        // ROLL-FORWARD is a MUTATING resolution — persist before delete.
+        assert_eq!(out, BootRecoveryOutcome::DeleteJournal { mutated: true });
+        let st = restored.l1_status.clone().expect("bookkeeping re-committed");
+        assert_eq!(st.settled_root, chain_root);
+        assert_eq!(st.batch_count, bc + 1);
+        assert_eq!(st.last_tx, "(recovered at boot)");
+        assert_eq!(st.bond, "77");
+        assert_eq!(st.withdrawals_root, hex32(&wroot));
+        let (root, proof) = restored
+            .withdraw_proofs
+            .get(&leaf0)
+            .expect("claim proof served after recovery");
+        assert_eq!(*root, wroot);
+        assert!(withdrawals::verify(*root, leaf0, proof));
+
+        // STALE idempotence: the same journal against the now-persisted commit
+        // resolves to delete WITHOUT re-applying anything. The proofs alone can't
+        // prove that (re-inserting the same leaves is idempotent), so plant a
+        // marker a second roll-forward would clobber back to "(recovered at boot)".
+        restored.l1_status.as_mut().unwrap().last_tx = "(already committed)".into();
+        let proofs_before = restored.withdraw_proofs.len();
+        assert_eq!(
+            apply_boot_recovery(&mut restored, j2, bc + 1, &chain_root, 77),
+            BootRecoveryOutcome::DeleteJournal { mutated: false }
+        );
+        assert_eq!(
+            restored.l1_status.clone().unwrap().last_tx,
+            "(already committed)",
+            "STALE never re-applies (a roll-forward would rewrite last_tx)"
+        );
+        assert_eq!(restored.withdraw_proofs.len(), proofs_before);
+
+        // Counter B (bc+1) now matches the chain: the NEXT window passes the
+        // desync guard and seals (new state so there is something to settle).
+        restored
+            .account_withdraw(&key, 0, 1_000 * QUOTE_SCALE, [9u8; 20])
+            .unwrap();
+        let (w2, _ww2) = restored
+            .begin_window_settle(bc + 1)
+            .unwrap()
+            .expect("next window seals");
+        assert_eq!(w2.batch_id, bc + 1);
+    }
+
+    /// Task 3 fix round 1: a MUTATING recovery resolution (RollBack / RollForward)
+    /// must be durable on disk BEFORE the journal is deleted. At that point in
+    /// boot the snapshot writer task is not spawned yet and its first tick is
+    /// ~SNAPSHOT_SECS away, so crash-after-delete would otherwise restore the
+    /// PRE-recovery snapshot with NO journal — the rollback case re-wedges the
+    /// desync guard forever (the exact failure this plan exists to kill), the
+    /// roll-forward case loses `prepared` (the only copy) and the continuity
+    /// check refuses to start. `finish_boot_recovery` is the extracted call-site
+    /// glue: persist (mutating rows only) THEN delete; a failed persist keeps
+    /// the journal.
+    #[test]
+    fn boot_recovery_persists_before_journal_delete() {
+        let seed = [42u8; 32];
+        let mut gw = Gw::boot();
+        let (key, _o) = gw.register_account(None);
+        gw.account_deposit(&key, 0, 20_000 * QUOTE_SCALE).unwrap();
+        gw.account_withdraw(&key, 0, 5_000 * QUOTE_SCALE, [7u8; 20])
+            .unwrap();
+        let bc = gw.seq.state.next_batch_id;
+        let (witness, ww) = gw.begin_window_settle(bc).unwrap().expect("sealed");
+        let journal = rollback_journal::RollbackJournal {
+            batch_id: bc,
+            witness: witness.clone(),
+            ww: ww.clone(),
+            prepared: None,
+        };
+        let journal2 = rollback_journal::RollbackJournal {
+            batch_id: bc,
+            witness,
+            ww,
+            prepared: None,
+        };
+
+        // the on-disk pair exactly as a crash leaves it: post-seal snapshot + journal
+        // (unpredictable per-test scratch path — the rollback_journal test pattern).
+        let mut rnd = [0u8; 8];
+        getrandom::getrandom(&mut rnd).expect("OS CSPRNG");
+        let sfx: String = rnd.iter().map(|b| format!("{b:02x}")).collect();
+        let state = std::env::temp_dir().join(format!("darkperp-persist-first-{sfx}.snap"));
+        let jp = rollback_journal::journal_path(&state);
+        snapshot::write_atomic(&state, &snapshot::seal(&gw.snapshot_plain(), &seed))
+            .expect("pre-crash snapshot write");
+        rollback_journal::write(&jp, &journal, &seed).expect("journal write");
+
+        // restart: boot restores the POST-seal snapshot (Counter B advanced).
+        let plain = snapshot::open(&std::fs::read(&state).unwrap(), &seed).expect("open");
+        let mut restored = Gw::boot_restored(&plain).expect("restore");
+        assert_eq!(restored.seq.state.next_batch_id, bc + 1);
+
+        // the ROLLBACK row — a MUTATING resolution.
+        let j = rollback_journal::read(&jp, &seed).expect("read").expect("present");
+        let out = apply_boot_recovery(&mut restored, j, bc, "0x00", 0);
+        assert_eq!(out, BootRecoveryOutcome::DeleteJournal { mutated: true });
+
+        // the call-site glue: persist the post-recovery snapshot, THEN delete.
+        finish_boot_recovery(&restored, true, &state, &jp, &seed);
+        // (a) the snapshot on disk now decodes to the ROLLED-BACK Counter B — a
+        // hard crash right here re-resolves from the snapshot alone.
+        let plain2 = snapshot::open(&std::fs::read(&state).unwrap(), &seed).expect("open post");
+        let after = Gw::boot_restored(&plain2).expect("restore post");
+        assert_eq!(
+            after.seq.state.next_batch_id,
+            bc,
+            "the rolled-back Counter B was persisted before the journal delete"
+        );
+        // (b) only then is the journal deleted.
+        assert!(!jp.exists(), "journal deleted after the snapshot hit disk");
+
+        // failure branch: an unwritable snapshot path (missing parent dir) keeps
+        // the journal — it is still the only recovery source; the next boot
+        // re-resolves the same row idempotently.
+        rollback_journal::write(&jp, &journal2, &seed).expect("journal re-write");
+        let bad_state = std::env::temp_dir()
+            .join(format!("darkperp-no-such-dir-{sfx}"))
+            .join("state.snap");
+        finish_boot_recovery(&after, true, &bad_state, &jp, &seed);
+        assert!(jp.exists(), "failed persist keeps the journal");
+
+        // non-mutating resolutions stay delete-without-write: the same unwritable
+        // snapshot path does not block the delete (nothing changed to persist).
+        finish_boot_recovery(&after, false, &bad_state, &jp, &seed);
+        assert!(!jp.exists(), "non-mutating rows delete without a snapshot write");
+
+        std::fs::remove_file(&state).ok();
+    }
+
     #[test]
     fn seal_witness_is_well_formed_and_addressed() {
         use crate::prover_client::seal_witness;
@@ -6968,6 +7803,85 @@ mod tests {
         assert!(gw.batch_orders.contains_key(&batch_id));
         assert!(gw.pending_ordered.is_empty());
         assert!(gw.l1_status.is_some());
+    }
+
+    // Task 5: with the prover configured, SETTLED must be EARNED by the on-chain window
+    // settle — the legacy SETTLE_TICKS simulation must not fire, and the commit is what
+    // advances finality (honest reporting; the TestnetNotice says SETTLED lags a proof).
+    #[test]
+    fn window_mode_defers_settled_until_commit() {
+        use crate::prover_client::{prove_and_prepare, MockProverClient};
+
+        let mut gw = Gw::boot();
+        gw.window_settle_mode = true;
+        // mirror main()'s pairing: window mode also turns off per-tick rollback-
+        // snapshot retention (Task 5 fix round 1) — the commit path below must
+        // harden finality with no snapshots present.
+        gw.seq.set_retain_tick_snapshots(false);
+        let req = OrderReq {
+            market_id: 0,
+            side: "Buy".into(),
+            size: (SIZE_SCALE / 10).to_string(),
+            limit_price: "0".into(),
+            tif: "Ioc".into(),
+            reduce_only: false,
+            nonce: None,
+            signature: None,
+            ..Default::default()
+        };
+        let (_r, _ev) = gw.place_order(&req).expect("accepted");
+        // run well past the legacy horizon: finality must STAY matched — no simulation.
+        for _ in 0..(SETTLE_TICKS * 3) {
+            gw.tick();
+        }
+        assert_eq!(gw.finality_str(&gw.orders[0].order_hash), "MATCHED");
+        assert!(
+            gw.pending_settle.is_empty(),
+            "window mode must not accumulate the legacy settle queue"
+        );
+
+        // the real settle: begin → prove → commit (the commit_window_settle shape).
+        let bc = gw.seq.state.next_batch_id;
+        let (witness, ww) = gw.begin_window_settle(bc).unwrap().expect("some");
+        let ordered = witness.manifest.ordered.clone();
+        let rejected: Vec<_> = witness.manifest.rejected.iter().map(|(h, _)| *h).collect();
+        let batch_id = witness.batch_id;
+        let prepared = prove_and_prepare(&MockProverClient, &witness, &ww).unwrap();
+        let status = L1Status {
+            settled_root: hex32(&prepared.outcome.new_root),
+            batch_count: batch_id + 1,
+            last_tx: "0xtx".into(),
+            bond: "0".into(),
+            withdrawals_root: hex32(&prepared.outcome.withdrawals_root),
+        };
+        gw.commit_window_settle(batch_id, ordered, rejected, prepared, status);
+        assert_eq!(gw.finality_str(&gw.orders[0].order_hash), "SETTLED");
+    }
+
+    // Task 5: without a prover (flag defaults false) the demo-era tick simulation is
+    // byte-identical — batches still advance MATCHED → SETTLED after SETTLE_TICKS.
+    #[test]
+    fn legacy_mode_settles_after_ticks_unchanged() {
+        let mut gw = Gw::boot();
+        assert!(!gw.window_settle_mode, "legacy path is the default");
+        let req = OrderReq {
+            market_id: 0,
+            side: "Buy".into(),
+            size: (SIZE_SCALE / 10).to_string(),
+            limit_price: "0".into(),
+            tif: "Ioc".into(),
+            reduce_only: false,
+            nonce: None,
+            signature: None,
+            ..Default::default()
+        };
+        let (_r, _ev) = gw.place_order(&req).expect("accepted");
+        gw.tick(); // seals the fill → MATCHED
+        assert_eq!(gw.finality_str(&gw.orders[0].order_hash), "MATCHED");
+        for _ in 0..(SETTLE_TICKS + 1) {
+            gw.tick();
+        }
+        assert_eq!(gw.finality_str(&gw.orders[0].order_hash), "SETTLED");
     }
 
     #[test]

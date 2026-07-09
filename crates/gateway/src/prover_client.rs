@@ -13,7 +13,9 @@ use sequencer::WindowWitness;
 use std::collections::BTreeMap;
 
 /// The six on-chain roots + commitment + proof for one window's `settleBatch`.
-#[derive(Clone, Debug)]
+/// Serde: persisted (sealed) in the rollback journal once the prove returns, so a boot
+/// after a crash between prove and commit can roll the landed settle forward.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct ProveOutcome {
     pub prev_root: Digest,
     pub manifest_hash: Digest,
@@ -68,6 +70,12 @@ impl ProverClient for MockProverClient {
 }
 
 /// The proven outcome plus the per-note claim proofs the gateway serves.
+/// Serde: journaled alongside `ProveOutcome` so a roll-forward at boot can re-commit the
+/// exact claim proofs the crashed process would have served (never recomputed from a
+/// possibly-drifted state).
+/// Clone: the settle loop's stage-2 journal write clones a copy into the journal while
+/// the original proceeds to `settle_proved`/`commit_window_settle` (Task 2).
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub struct PreparedSettle {
     pub outcome: ProveOutcome,
     pub withdraw_proofs: BTreeMap<[u8; 32], (Digest, Vec<[u8; 32]>)>,

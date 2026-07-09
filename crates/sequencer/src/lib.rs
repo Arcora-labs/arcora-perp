@@ -172,8 +172,10 @@ pub struct SealedBatch {
 
 /// The replayable witness for one settle window: `derive_roots(pre_state, ops, manifest)
 /// .new_state_root` equals the live state root after this `seal_window`. This is the tuple
-/// Slice 3b-2 seals and POSTs to the prover-service.
-#[derive(Clone)]
+/// Slice 3b-2 seals and POSTs to the prover-service. Serde: the gateway also persists it
+/// (sealed) in its crash-recovery rollback journal, so a restart mid-settle can replay the
+/// exact in-flight window instead of wedging on a counter/root desync.
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub struct WindowWitness {
     pub batch_id: u64,
     pub pre_state: DefaultState,
@@ -266,6 +268,12 @@ fn enclave_restore_placeholder() -> EnclaveIdentity {
     EnclaveIdentity::from_seed([7u8; 32], 0, [0u8; 32])
 }
 
+/// serde default for the skipped `retain_tick_snapshots` flag: legacy per-tick
+/// retention stays on for any restore not explicitly switched to window mode.
+fn retain_tick_snapshots_default() -> bool {
+    true
+}
+
 /// Keep tick→window map entries for this many settled windows past the on-chain batchCount, so
 /// `/v1/batch/:id` + `WBatch.window_id` reconciliation (and `settled:true`) stay observable for a
 /// grace period after a window settles — decoupled from the much faster per-tick soft-finality.
@@ -309,8 +317,23 @@ pub struct Sequencer {
     /// Snapshot of (state, matcher) taken BEFORE each not-yet-proven batch, so a
     /// batch that fails to prove can be rolled back to the last hard state (§3
     /// failure matrix). Pruned as batches settle. Keeping a snapshot only per
-    /// *pending* batch bounds the memory.
+    /// *pending* batch bounds the memory. NOTE: this map is NOT serde-skipped, so
+    /// retained entries also serialize into the gateway's postcard boot snapshot —
+    /// bounding it bounds both memory and disk.
     snapshots: BTreeMap<u64, (DefaultState, MatchingEngine<Keccak256>)>,
+    /// Runtime-only switch for the per-tick rollback snapshots above (Task 5 fix
+    /// round 1). The WINDOW settle path never consumes them (`mark_failed` is
+    /// legacy/test-only; window recovery is `rollback_window` + `window_start_state`),
+    /// yet Task 5 turned off the tick-loop SETTLE_TICKS simulation whose
+    /// `mark_settled` used to prune them every ~3.5s — leaving a full (state,
+    /// matcher) clone per 700ms tick retained for a whole ~13-min proof interval
+    /// (~1100 clones), unbounded if settles wedge. The gateway sets this `false`
+    /// alongside `window_settle_mode` so `seal_batch` skips the insert entirely.
+    /// `#[serde(skip)]` + a `true` default: NOT part of the snapshot wire format
+    /// (postcard is positional; a skipped field is never written or read), and a
+    /// legacy restore keeps legacy retention byte-identical.
+    #[serde(skip, default = "retain_tick_snapshots_default")]
+    retain_tick_snapshots: bool,
     /// Every op applied since the current window opened, in application order — the
     /// replayable op-log the window proof attests. Fed by `Sequencer::apply` (deposits)
     /// and each `seal_batch` (its `[fills] ++ maintenance` ops). Drained by `seal_window`.
@@ -350,6 +373,7 @@ impl Sequencer {
             batch_orders: BTreeMap::new(),
             tick_window: BTreeMap::new(),
             snapshots: BTreeMap::new(),
+            retain_tick_snapshots: true,
             window_ops: Vec::new(),
             window_ordered: Vec::new(),
             window_rejected: Vec::new(),
@@ -366,6 +390,19 @@ impl Sequencer {
     /// identity before serving traffic.
     pub fn set_enclave(&mut self, enclave: EnclaveIdentity) {
         self.enclave = enclave;
+    }
+
+    /// Turn per-tick rollback-snapshot retention off (window-settle mode) or back
+    /// on (the legacy default). Turning it off also drops anything already
+    /// retained — including entries restored from a snapshot persisted under the
+    /// legacy default — since the window path never reads them; `mark_failed`
+    /// tolerates the absence (returns `false`, rolls nothing back), and the
+    /// `mark_settled` / `mark_window_settled` prunes are remove-if-present.
+    pub fn set_retain_tick_snapshots(&mut self, retain: bool) {
+        self.retain_tick_snapshots = retain;
+        if !retain {
+            self.snapshots.clear();
+        }
     }
 
     /// The bound enclave signing identity (attested `measurement` + secp256k1
@@ -687,9 +724,14 @@ impl Sequencer {
         let batch_id = self.next_batch_id;
 
         // snapshot the pre-batch (state, matcher) so this batch can be rolled back
-        // if it later fails to prove (§3 failure matrix).
-        self.snapshots
-            .insert(batch_id, (self.state.clone(), self.matcher.clone()));
+        // if it later fails to prove (§3 failure matrix). Skipped in window-settle
+        // mode: nothing on the window path consumes per-tick snapshots, and without
+        // the legacy tick-loop prune each one is a full state clone retained until
+        // the window's ~13-min proof lands (Task 5 fix round 1).
+        if self.retain_tick_snapshots {
+            self.snapshots
+                .insert(batch_id, (self.state.clone(), self.matcher.clone()));
+        }
 
         // 0. pre-trade risk gate: drop unmarginable orders before matching, so a
         //    matched fill can never fail to settle on margin (§12, Phase 3).
@@ -1060,6 +1102,28 @@ impl Sequencer {
         self.batch_orders = self.batch_orders.split_off(&(batch_id + 1));
     }
 
+    /// Task 5: advance per-tick finality from an ON-CHAIN window settle (Counter B).
+    /// A verified window proof attests every tick batch (Counter A) sealed into
+    /// windows ≤ `window_id`, so harden through the NEWEST tick batch mapped
+    /// at-or-before that window via `mark_settled` (which settles it and everything
+    /// earlier). Scanning from the newest entry also covers the window-rollback
+    /// interleaving: ticks sealed while a failed settle was proving map to W+1 in
+    /// `tick_window`, but `rollback_window` folds their ops into window W's re-seal —
+    /// they sit BELOW W's newest post-rollback tick, so the settle of W honestly
+    /// hardens them too. No-op when no tick batch maps that far (e.g. a
+    /// deposits-only window) — there is nothing new to harden.
+    pub fn mark_window_settled(&mut self, window_id: u64) {
+        let newest = self
+            .tick_window
+            .iter()
+            .rev()
+            .find(|&(_, w)| *w <= window_id)
+            .map(|(a, _)| *a);
+        if let Some(a) = newest {
+            self.mark_settled(a);
+        }
+    }
+
     /// Roll back a sealed batch that FAILED to prove (§3 failure matrix): revert
     /// (state, matcher) to the snapshot taken before it, drop that batch and every
     /// later still-pending batch, and revert their orders from MATCHED back to
@@ -1268,6 +1332,105 @@ mod tests {
         // its WINDOW settles (`prune_tick_window_settled`) or the size cap evicts it —
         // soft-finality fires ~10x faster than the window horizon and must not drop it.
         assert!(seq.window_for_tick(s.batch_id).is_some());
+    }
+
+    // Task 5: an on-chain WINDOW settle (Counter B) is what hardens per-tick finality
+    // on the real-proof path — every tick batch sealed into windows ≤ the settled
+    // window advances MATCHED → SETTLED; ticks in a later window stay soft.
+    #[test]
+    fn mark_window_settled_hardens_through_window() {
+        let mut seq = test_sequencer();
+        // no tick batch sealed yet → the helper is a no-op (must not panic).
+        seq.mark_window_settled(u64::MAX);
+        let w = seq.current_window_id();
+        // two tick batches in window W, each settling a crossing fill.
+        let s0 = seq.seal_batch(&sample_orders(1), now());
+        let s1 = seq.seal_batch(&sample_orders(3), now());
+        assert!(!s0.settled_order_hashes.is_empty());
+        assert!(!s1.settled_order_hashes.is_empty());
+        for oh in s0
+            .settled_order_hashes
+            .iter()
+            .chain(&s1.settled_order_hashes)
+        {
+            assert_eq!(seq.finality_of(oh), Some(Finality::Matched));
+        }
+        // close window W; a tick sealed after it belongs to window W+1.
+        let _witness = seq.seal_window();
+        let s2 = seq.seal_batch(&sample_orders(5), now());
+        assert!(!s2.settled_order_hashes.is_empty());
+
+        // window W's proof verified on L1 → both of W's tick batches harden…
+        seq.mark_window_settled(w);
+        for oh in s0
+            .settled_order_hashes
+            .iter()
+            .chain(&s1.settled_order_hashes)
+        {
+            assert_eq!(seq.finality_of(oh), Some(Finality::Settled));
+        }
+        // …while the W+1 tick stays MATCHED (its window has not settled).
+        for oh in &s2.settled_order_hashes {
+            assert_eq!(seq.finality_of(oh), Some(Finality::Matched));
+        }
+    }
+
+    // Task 5 fix round 1: in window-settle mode the per-tick rollback snapshots are
+    // never consumed (mark_failed is legacy/test-only; window recovery is
+    // rollback_window + window_start_state), and with the tick-loop simulation off
+    // nothing prunes them until the window settles — so the gateway turns retention
+    // off and seal_batch must skip the insert while every other piece of per-tick
+    // bookkeeping (ids, receipts, finality, tick_window) advances identically.
+    #[test]
+    fn window_mode_skips_tick_rollback_snapshots() {
+        // Legacy default: seal_batch retains one snapshot per tick…
+        let mut seq = test_sequencer();
+        let s0 = seq.seal_batch(&sample_orders(1), now());
+        assert_eq!(seq.snapshots.len(), 1, "legacy default retains per tick");
+        // …and mark_settled prunes it, exactly as before.
+        seq.mark_settled(s0.batch_id);
+        assert!(seq.snapshots.is_empty(), "legacy prune-on-settle unchanged");
+
+        // Turning retention off also reclaims anything already held (covers a
+        // persisted legacy snapshot restored into window mode).
+        let s1 = seq.seal_batch(&sample_orders(3), now());
+        assert_eq!(seq.snapshots.len(), 1);
+        seq.set_retain_tick_snapshots(false);
+        assert!(seq.snapshots.is_empty(), "disable reclaims retained entries");
+
+        // Window mode: several ticks, zero snapshots retained.
+        let s2 = seq.seal_batch(&sample_orders(5), now());
+        let s3 = seq.seal_batch(&sample_orders(7), now());
+        assert!(
+            seq.snapshots.is_empty(),
+            "window mode must not retain per-tick rollback snapshots"
+        );
+        // All other per-tick bookkeeping advances identically.
+        assert_eq!(s2.batch_id, s1.batch_id + 1);
+        assert_eq!(s3.batch_id, s2.batch_id + 1);
+        assert!(!s2.settled_order_hashes.is_empty());
+        for oh in s2
+            .settled_order_hashes
+            .iter()
+            .chain(&s3.settled_order_hashes)
+        {
+            assert_eq!(seq.finality_of(oh), Some(Finality::Matched));
+        }
+        let w = seq.current_window_id();
+        assert_eq!(seq.window_for_tick(s2.batch_id), Some(w));
+        assert_eq!(seq.window_for_tick(s3.batch_id), Some(w));
+
+        // The window settle still hardens finality with no snapshots present
+        // (mark_settled's prune tolerates the absent entries).
+        let _witness = seq.seal_window();
+        seq.mark_window_settled(w);
+        for oh in s2
+            .settled_order_hashes
+            .iter()
+            .chain(&s3.settled_order_hashes)
+        {
+            assert_eq!(seq.finality_of(oh), Some(Finality::Settled));
+        }
     }
 
     #[test]

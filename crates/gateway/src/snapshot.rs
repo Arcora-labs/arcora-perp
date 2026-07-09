@@ -113,11 +113,24 @@ pub fn open(sealed: &[u8], seed: &[u8; 32]) -> Result<Vec<u8>, String> {
     Ok(ciphertext.iter().zip(ks).map(|(c, k)| c ^ k).collect())
 }
 
+/// The sibling tmp path for an atomic write: the FULL file name + ".tmp".
+/// APPENDED (like `journal_path` builds its sidecar name) — never
+/// `with_extension`, which REPLACES the last extension and collides siblings
+/// sharing a stem: for an extensionless state path, the snapshot `state` and
+/// the rollback journal `state.rollback` would BOTH map to `state.tmp`, letting
+/// the two writers race one shared tmp and rename each other's bytes over the
+/// wrong target (Task 3 fix).
+fn tmp_path(path: &Path) -> std::path::PathBuf {
+    let mut os = path.as_os_str().to_os_string();
+    os.push(".tmp");
+    std::path::PathBuf::from(os)
+}
+
 /// Write `bytes` to `path` atomically: a 0600 sibling tmp file is fully written
 /// and fsynced, then renamed over the target — a crash mid-write never leaves a
 /// torn snapshot, only the previous intact one.
 pub fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
-    let tmp = path.with_extension("tmp");
+    let tmp = tmp_path(path);
     {
         let mut opts = std::fs::OpenOptions::new();
         opts.write(true).create(true).truncate(true);
@@ -185,5 +198,49 @@ mod tests {
         let sealed = seal(&plain, &[9u8; 32]);
         // no window of the sealed file equals the plaintext
         assert!(!sealed.windows(plain.len()).any(|w| w == plain.as_slice()));
+    }
+
+    /// Task 3 regression: the atomic-write tmp name must be APPENDED to the full
+    /// file name, never `with_extension`-replaced — for an extensionless state
+    /// path, `state` and its sidecar journal `state.rollback` would otherwise
+    /// BOTH map to `state.tmp` (with_extension replaces `.rollback`), letting the
+    /// snapshot writer and the journal writer race one shared tmp file and rename
+    /// each other's bytes over the wrong target.
+    #[test]
+    fn write_atomic_tmp_names_distinct_per_target() {
+        // the naming rule itself, on both shapes the gateway uses
+        assert_eq!(tmp_path(Path::new("/x/state")), Path::new("/x/state.tmp"));
+        assert_eq!(
+            tmp_path(Path::new("/x/state.rollback")),
+            Path::new("/x/state.rollback.tmp")
+        );
+        assert_ne!(
+            tmp_path(Path::new("/x/state")),
+            tmp_path(Path::new("/x/state.rollback")),
+            "an extensionless snapshot and its journal must never share a tmp"
+        );
+        assert_eq!(
+            tmp_path(Path::new("/x/state.snap")),
+            Path::new("/x/state.snap.tmp")
+        );
+        assert_ne!(
+            tmp_path(Path::new("/x/state.snap")),
+            tmp_path(Path::new("/x/state.snap.rollback"))
+        );
+
+        // and the writes land on the right finals, with no stray tmp left behind
+        let mut rnd = [0u8; 8];
+        getrandom::getrandom(&mut rnd).expect("OS CSPRNG");
+        let sfx: String = rnd.iter().map(|b| format!("{b:02x}")).collect();
+        let dir = std::env::temp_dir().join(format!("darkperp-atomic-{sfx}"));
+        std::fs::create_dir_all(&dir).unwrap();
+        let a = dir.join("state");
+        let b = dir.join("state.rollback");
+        write_atomic(&a, b"AAA").unwrap();
+        write_atomic(&b, b"BBB").unwrap();
+        assert_eq!(std::fs::read(&a).unwrap(), b"AAA");
+        assert_eq!(std::fs::read(&b).unwrap(), b"BBB");
+        assert!(!tmp_path(&a).exists() && !tmp_path(&b).exists());
+        std::fs::remove_dir_all(&dir).ok();
     }
 }
