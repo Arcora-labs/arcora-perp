@@ -200,27 +200,38 @@ impl L1 {
     /// immune to the public RPC's lagging `pending` nonce (see the `nonce` field). A
     /// failed send resets the tracker so the next attempt re-seeds from the chain.
     fn send(&self, target: &str, sig: &str, args: &[&str]) -> Result<String, String> {
+        // No gas limit ⇒ cast estimates as before, so every pre-existing call site
+        // produces a byte-identical argv.
+        self.send_opts(target, sig, args, None)
+    }
+
+    /// `send` with an optional explicit `--gas-limit`, which makes cast SKIP
+    /// `eth_estimateGas`. Needed when a tx's success depends on an earlier same-sender
+    /// tx that a load-balanced read backend may not have seen yet (see `ensure_bond`):
+    /// execution is nonce-ordered and correct, only the estimate races.
+    fn send_opts(
+        &self,
+        target: &str,
+        sig: &str,
+        args: &[&str],
+        gas_limit: Option<&str>,
+    ) -> Result<String, String> {
         let mut guard = self.nonce.lock().map_err(|_| "nonce lock poisoned")?;
         let n = match *guard {
             Some(n) => n,
             None => self.chain_nonce()?,
         };
-        let nonce_str = n.to_string();
-        let mut a: Vec<&str> = vec!["send", target, sig];
-        a.extend_from_slice(args);
-        // audit DP-013: authenticate via the encrypted keystore + password FILE, never the
-        // raw key in argv. Both are file paths — the key never appears in /proc/<pid>/cmdline.
-        a.extend_from_slice(&[
-            "--nonce",
-            &nonce_str,
-            "--keystore",
+        let a = send_args(
+            target,
+            sig,
+            args,
+            &n.to_string(),
             &self.keystore_path,
-            "--password-file",
             &self.password_file,
-            "--rpc-url",
             &self.rpc,
-            "--json",
-        ]);
+            gas_limit,
+        );
+        let a: Vec<&str> = a.iter().map(String::as_str).collect();
         match self.cast(&a) {
             Ok(out) => {
                 *guard = Some(n + 1);
@@ -314,7 +325,19 @@ impl L1 {
             "approve(address,uint256)",
             &[&self.settlement, &short],
         )?;
-        let tx = self.send(&self.settlement.clone(), "postBond(uint256)", &[&short])?;
+        // Explicit gas limit: drpc load-balances reads across backends, so postBond's
+        // eth_estimateGas can hit a node that hasn't seen the just-mined approve and
+        // revert "InsufficientAllowance" — even though same-sender nonce order makes
+        // EXECUTION correct (observed live; the current bond was posted manually).
+        // Skipping estimation puts the tx straight in the pool, where it executes
+        // after approve. postBond = transferFrom + storage ≈ 120k worst case; 300k is
+        // comfortable headroom and unused gas is refunded.
+        let tx = self.send_opts(
+            &self.settlement.clone(),
+            "postBond(uint256)",
+            &[&short],
+            Some("300000"),
+        )?;
         Ok(Some(tx))
     }
 
@@ -561,6 +584,41 @@ impl L1 {
             &[order_hash, &bid, &proof_arg],
         )
     }
+}
+
+/// Build the full `cast send` argv. Pure (no subprocess, no `&self`) so the flag
+/// layout is unit-testable — in particular that ONLY a gas-limited send carries
+/// `--gas-limit`, and that it lands before `--rpc-url`.
+///
+/// audit DP-013: authenticate via the encrypted keystore + password FILE, never the
+/// raw key in argv. Both are file paths — the key never appears in /proc/<pid>/cmdline.
+#[allow(clippy::too_many_arguments)] // a flat argv spec; bundling into a struct adds nothing
+fn send_args(
+    target: &str,
+    sig: &str,
+    args: &[&str],
+    nonce: &str,
+    keystore: &str,
+    password_file: &str,
+    rpc: &str,
+    gas_limit: Option<&str>,
+) -> Vec<String> {
+    let mut a: Vec<String> = vec!["send".into(), target.into(), sig.into()];
+    a.extend(args.iter().map(|s| (*s).into()));
+    a.extend([
+        "--nonce".into(),
+        nonce.into(),
+        "--keystore".into(),
+        keystore.into(),
+        "--password-file".into(),
+        password_file.into(),
+    ]);
+    // An explicit gas limit makes cast skip eth_estimateGas entirely (see send_opts).
+    if let Some(g) = gas_limit {
+        a.extend(["--gas-limit".into(), g.into()]);
+    }
+    a.extend(["--rpc-url".into(), rpc.into(), "--json".into()]);
+    a
 }
 
 /// A 32-byte value as `0x`+64 hex, for cast calldata.
@@ -850,6 +908,69 @@ mod tests {
             "keystore round-trips the sequencer key"
         );
         let _ = std::fs::remove_dir_all(std::path::Path::new(&ks).parent().unwrap());
+    }
+
+    // Settle-crash-recovery spec, Design 2: drpc load-balances reads across backends,
+    // so postBond's `eth_estimateGas` can hit a node that hasn't seen the just-mined
+    // approve → "InsufficientAllowance" — even though same-sender nonce order makes
+    // execution correct. The fix skips estimation with an explicit `--gas-limit` on
+    // postBond ONLY; every other send keeps estimating with a byte-identical argv.
+    #[test]
+    fn post_bond_send_has_an_explicit_gas_limit_and_plain_sends_are_unchanged() {
+        // postBond-shaped call: --gas-limit 300000 present, placed before --rpc-url.
+        let bond = send_args(
+            "0xSETTLEMENT",
+            "postBond(uint256)",
+            &["12345"],
+            "7",
+            "/tmp/ks",
+            "/tmp/pw",
+            "http://rpc.example",
+            Some("300000"),
+        );
+        let gl = bond
+            .iter()
+            .position(|a| a == "--gas-limit")
+            .expect("postBond argv carries --gas-limit");
+        assert_eq!(bond[gl + 1], "300000", "gas limit value follows the flag");
+        let rpc = bond
+            .iter()
+            .position(|a| a == "--rpc-url")
+            .expect("argv carries --rpc-url");
+        assert!(gl < rpc, "--gas-limit must precede --rpc-url");
+
+        // A plain send: NO --gas-limit anywhere, and the flag layout is exactly what
+        // every pre-existing call site produced (nonce → keystore → password-file →
+        // rpc-url → json), so refactoring `send` changed no other transaction.
+        let plain = send_args(
+            "0xUSDC",
+            "mint(address,uint256)",
+            &["0xSEQ", "12345"],
+            "7",
+            "/tmp/ks",
+            "/tmp/pw",
+            "http://rpc.example",
+            None,
+        );
+        assert_eq!(
+            plain,
+            [
+                "send",
+                "0xUSDC",
+                "mint(address,uint256)",
+                "0xSEQ",
+                "12345",
+                "--nonce",
+                "7",
+                "--keystore",
+                "/tmp/ks",
+                "--password-file",
+                "/tmp/pw",
+                "--rpc-url",
+                "http://rpc.example",
+                "--json",
+            ]
+        );
     }
 
     /// Byte-safety regression (pre-merge hygiene): non-ASCII input to the L1 hex
