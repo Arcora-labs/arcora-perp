@@ -4583,6 +4583,18 @@ async fn main() {
     // honest-finality posture (its `commit_window_settle` marks the recovered window's
     // orders SETTLED either way — the flag gates only the tick-loop simulation).
     gw.window_settle_mode = prover.is_some();
+    if gw.window_settle_mode {
+        // Task 5 fix round 1 (report Concern 1, memory): the window path never
+        // consumes the per-tick rollback snapshots, and with the SETTLE_TICKS
+        // simulation off nothing prunes them until the window settles — a full
+        // state clone per 700ms tick (~1100 per ~13-min proof, unbounded if
+        // settles wedge). Skip retaining them entirely.
+        gw.seq.set_retain_tick_snapshots(false);
+        // Report Concern 3: a legacy-era snapshot restored into window mode can
+        // carry stale queue entries the (now-gated) drain never consumes — drop
+        // them once here.
+        gw.pending_settle.clear();
+    }
     // audit DP-006: in production the enclave identity must be bound to a verified TEE
     // attestation; refuse to serve traffic under the stub measurement.
     if !attestation_ok_for_mode(prod, gw.attestation.is_some()) {
@@ -7717,6 +7729,10 @@ mod tests {
 
         let mut gw = Gw::boot();
         gw.window_settle_mode = true;
+        // mirror main()'s pairing: window mode also turns off per-tick rollback-
+        // snapshot retention (Task 5 fix round 1) — the commit path below must
+        // harden finality with no snapshots present.
+        gw.seq.set_retain_tick_snapshots(false);
         let req = OrderReq {
             market_id: 0,
             side: "Buy".into(),
