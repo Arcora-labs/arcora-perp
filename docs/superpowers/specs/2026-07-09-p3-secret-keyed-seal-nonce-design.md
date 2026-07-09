@@ -65,8 +65,9 @@ re-derives or validates the nonce against the plaintext (`SealedWitness::open`, 
 
 ## Files
 
-- `crates/perp-core/src/hash.rs` — add `Domain::SealNonce = 22` (next after `OwnerKey = 21`), with a
-  one-line doc noting it's a non-cross-layer-committed off-chain seal value (like `WitnessSeal`/
+- `crates/perp-core/src/hash.rs` — add `Domain::SealNonce = 31` (appended last, after the current
+  final variant `OrderLogChain = 30`, so no existing committed hash is renumbered), with a one-line
+  doc noting it's a non-cross-layer-committed off-chain seal value (like `WitnessSeal`/
   `WitnessSealMac`).
 - `crates/gateway/src/prover_client.rs` — in `seal_witness(w, seal_root, measurement)`, replace
   `let nonce = keccak256(bytes)` with `plaintext_hash = keccak256(bytes)` then
