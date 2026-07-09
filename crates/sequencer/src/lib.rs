@@ -172,8 +172,10 @@ pub struct SealedBatch {
 
 /// The replayable witness for one settle window: `derive_roots(pre_state, ops, manifest)
 /// .new_state_root` equals the live state root after this `seal_window`. This is the tuple
-/// Slice 3b-2 seals and POSTs to the prover-service.
-#[derive(Clone)]
+/// Slice 3b-2 seals and POSTs to the prover-service. Serde: the gateway also persists it
+/// (sealed) in its crash-recovery rollback journal, so a restart mid-settle can replay the
+/// exact in-flight window instead of wedging on a counter/root desync.
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub struct WindowWitness {
     pub batch_id: u64,
     pub pre_state: DefaultState,

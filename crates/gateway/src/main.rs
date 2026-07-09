@@ -41,6 +41,10 @@ mod enclave_epoch;
 mod l1;
 mod order_log;
 mod prover_client;
+// dead_code: the journal is built + matrix-tested here (Task 1) but only consumed by the
+// settle loop's write/delete points and boot recovery (Tasks 2-3) — drop the allow there.
+#[allow(dead_code)]
+mod rollback_journal;
 mod snapshot;
 mod withdrawals;
 use l1::{L1Status, L1};
