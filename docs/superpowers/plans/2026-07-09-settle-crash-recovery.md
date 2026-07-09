@@ -103,6 +103,21 @@ pub fn recovery_action(j_batch: u64, has_prepared: bool, b_snap: u64, chain_bc: 
 - [ ] Test: if arg construction isn't directly testable without a child process, factor the argv-building into a pure helper and assert `--gas-limit 300000` present for postBond and absent for plain sends.
 - [ ] `cargo test -p gateway` green; commit.
 
+### Task 5: honest SETTLED finality in window mode
+
+**Problem (found live 2026-07-09):** the tick loop marks batches SETTLED after `SETTLE_TICKS = 5` ticks (~3.5 s) — a demo-era simulation (`crates/gateway/src/main.rs:2763-2773`). On the real-Groth16 window path, users see "SETTLED" while the proof is still proving (or even if settles are wedged), contradicting the public TestnetNotice ("SETTLED lags ~a proof interval"). Withdrawals are NOT affected (they gate on real claim proofs); this is finality reporting.
+
+**Files:**
+- Modify: `crates/sequencer/src/lib.rs` — new `pub fn mark_window_settled(&mut self, window_id: u64)`: find the max tick-batch id `A` with `tick_window[A] <= window_id` and call `self.mark_settled(A)` (no-op when none). `tick_window` is private — this is the accessor.
+- Modify: `crates/gateway/src/main.rs`:
+  - `Gw` gains `#[serde(skip)] window_settle_mode: bool` (default false — snapshot format untouched; set from `main()` right after boot/restore when the prover is configured, next to `gw.prod = prod`).
+  - Tick loop: gate BOTH the `pending_settle.push(...)` and the `SETTLE_TICKS` drain/mark block behind `!self.window_settle_mode` (legacy path byte-identical; window mode must not leak a growing `pending_settle`).
+  - `commit_window_settle`: call `self.seq.mark_window_settled(batch_id)` BEFORE `prune_tick_window_settled(batch_id + 1)` (prune keeps a grace, but mark first anyway — ordering must not depend on the grace).
+
+**Steps (TDD):**
+- [ ] Failing tests: sequencer `mark_window_settled_hardens_through_window` (seal two tick batches in window W, `mark_window_settled(W)` → both orders SETTLED; a tick batch in window W+1 stays MATCHED); gateway `window_mode_defers_settled_until_commit` (with `window_settle_mode = true`, run > SETTLE_TICKS ticks after a fill → finality still MATCHED; then the `commit_window_settle` test-shape from `commit_window_settle_accumulates_and_advances` → SETTLED) and `legacy_mode_settles_after_ticks_unchanged` (flag false → old behavior).
+- [ ] Implement; `cargo test -p gateway -p sequencer` green; commit.
+
 ### Final gate
 
 - [ ] `cargo test --workspace` green, `cargo clippy --workspace --all-targets` clean, whole-branch review, merge to main.
