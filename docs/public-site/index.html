@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Arcora Perp Docs — Overview</title>
+<meta name="description" content="Arcora Perp is a privacy-preserving perpetual futures DEX: TEE matching in milliseconds, zk-proven settlement on Base Sepolia.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="topbar">
+  <a class="brand" href="index.html">Arcora Perp <span>Docs</span></a>
+  <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="sidenav">Menu</button>
+</header>
+<aside class="sidenav" id="sidenav">
+  <a class="brand" href="index.html">Arcora Perp <span>Docs</span></a>
+  <nav>
+    <a href="index.html" class="current">Overview</a>
+    <a href="quickstart.html">Quickstart</a>
+    <a href="trading.html">Trading</a>
+    <a href="api.html">API Reference</a>
+    <a href="architecture.html">Architecture</a>
+    <a href="security.html">Security &amp; Trust</a>
+  </nav>
+  <div class="nav-foot"><a href="https://perp.arcoralabs.xyz">Open the app &rarr;</a></div>
+</aside>
+<main>
+<div class="content">
+
+<h1>Arcora Perp</h1>
+<p class="lede">A privacy-preserving perpetual futures DEX, running as an application-specific rollup. Orders are matched inside a hardware enclave in milliseconds; every settled state transition is re-executed inside a zkVM and proven on-chain.</p>
+
+<div class="callout warn">
+  <p class="callout-title">Testnet alpha</p>
+  <p>Arcora Perp is live as a <strong>public testnet alpha</strong> on Base Sepolia at <a href="https://perp.arcoralabs.xyz">perp.arcoralabs.xyz</a>. All funds are test funds (open-mint MockUSDC). The system has known limitations and no third-party audit — read the <a href="security.html">trust model</a> before forming expectations.</p>
+</div>
+
+<h2>What it is</h2>
+<p>Arcora Perp trades <strong>BTC, ETH, and SOL perpetual futures</strong> on a price-time-priority central limit order book, collateralized in USDC. Two things distinguish it from a typical DEX:</p>
+<ul>
+  <li><strong>Privacy.</strong> Order terms are encrypted in your browser to the matching enclave's key — the HTTP request carries no plaintext trade terms. Account balances and positions live as encrypted notes; the public sees aggregate book depth, not your account.</li>
+  <li><strong>Proven settlement.</strong> The operator cannot simply assert a new state. Every settlement window is re-executed inside an SP1 zkVM — fills, funding, liquidations, ADL, deposits, withdrawals — and the resulting Groth16 proof is verified by a contract on Base Sepolia before the state root advances.</li>
+</ul>
+
+<h2>The TEE + zk hybrid, in one pass</h2>
+<p>A TEE gives speed and privacy; a zk proof gives verifiability. Arcora Perp chains them:</p>
+
+<div class="flow">
+  <div class="flow-step">
+    <div class="flow-num">1</div>
+    <div>
+      <h3>Match in a TEE <span class="lat">milliseconds</span></h3>
+      <p>The order book and sequencer run inside an Intel TDX confidential VM. The enclave identity is attestation-bound (DCAP quote, measurement pinned at boot).</p>
+    </div>
+  </div>
+  <div class="flow-step">
+    <div class="flow-num">2</div>
+    <div>
+      <h3>Sign a receipt <span class="lat">milliseconds</span></h3>
+      <p>Every accepted order returns an enclave-signed receipt — soft finality, and your evidence in the on-chain challenge game if the operator ever drops your order.</p>
+    </div>
+  </div>
+  <div class="flow-step">
+    <div class="flow-num">3</div>
+    <div>
+      <h3>Prove the window <span class="lat">~10&ndash;20 min</span></h3>
+      <p>Activity is sealed into windows. An SP1 zkVM proof re-executes the entire engine transition from the previous state root to the new one; the proof is wrapped into Groth16.</p>
+    </div>
+  </div>
+  <div class="flow-step">
+    <div class="flow-num">4</div>
+    <div>
+      <h3>Verify on-chain <span class="lat">hard finality</span></h3>
+      <p>The settlement contract on Base Sepolia verifies the proof and enforces state-root continuity. Withdrawals become permissionless Merkle claims against the vault.</p>
+    </div>
+  </div>
+</div>
+
+<div class="cards">
+  <div class="card">
+    <h3>TEE provides</h3>
+    <ul>
+      <li>Millisecond matching</li>
+      <li>Order &amp; balance privacy</li>
+      <li>Attested enclave identity</li>
+      <li>Signed inclusion receipts</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h3>zk proof provides</h3>
+    <ul>
+      <li>Unforgeable state transitions</li>
+      <li>No inflated balances or fake fills</li>
+      <li>All commitment roots derived in-proof</li>
+      <li>Trustless Merkle withdrawals</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h3>Chain provides</h3>
+    <ul>
+      <li>USDC custody in the vault</li>
+      <li>Proof verification per window</li>
+      <li>Challenge game + operator bond</li>
+      <li>Forced exit on liveness failure</li>
+    </ul>
+  </div>
+</div>
+
+<p class="dim">The full pipeline — windows, the challenge game, the privacy layer, crash recovery — is on the <a href="architecture.html">Architecture</a> page.</p>
+
+<h2>Current status</h2>
+<div class="table-wrap">
+<table>
+  <tr><th>App</th><td><a href="https://perp.arcoralabs.xyz">https://perp.arcoralabs.xyz</a></td></tr>
+  <tr><th>Stage</th><td>Public testnet alpha</td></tr>
+  <tr><th>Settlement chain</th><td>Base Sepolia (chain ID 84532, <a href="https://sepolia.basescan.org">sepolia.basescan.org</a>)</td></tr>
+  <tr><th>Markets</th><td>BTC-PERP, ETH-PERP, SOL-PERP</td></tr>
+  <tr><th>Collateral</th><td>Test USDC (open-mint MockUSDC, 6 decimals)</td></tr>
+  <tr><th>Order finality</th><td>ACCEPTED / MATCHED in milliseconds; SETTLED when the window's zk proof lands (~10&ndash;20 min)</td></tr>
+  <tr><th>Audit status</th><td>Internally audited (13 findings remediated pre-alpha); <strong>no third-party audit yet</strong></td></tr>
+</table>
+</div>
+
+<p>Known alpha limitations — a non-attested development prover, operator liveness as a single point of failure, ordering fairness not yet zk-proven, and the 10&ndash;20&nbsp;minute proof cadence — are listed honestly and in full on the <a href="security.html">Security &amp; Trust</a> page.</p>
+
+<h2>Where to go next</h2>
+<ul class="next-links">
+  <li><a href="quickstart.html">Quickstart — fund, trade, withdraw</a></li>
+  <li><a href="trading.html">Trading — orders &amp; finality</a></li>
+  <li><a href="api.html">API — endpoints &amp; sealed orders</a></li>
+  <li><a href="architecture.html">Architecture — the full pipeline</a></li>
+  <li><a href="security.html">Security — the honest trust model</a></li>
+</ul>
+
+<footer>
+  <p>Arcora Perp is a <strong>public testnet alpha</strong> on Base Sepolia (chain ID 84532). All funds are test funds (open-mint MockUSDC). The contracts have not been audited by a third party — do not treat this as production software.</p>
+  <p><a href="https://perp.arcoralabs.xyz">perp.arcoralabs.xyz</a> &middot; <a href="security.html">Trust model &amp; current gaps</a></p>
+</footer>
+
+</div>
+</main>
+<script>
+(function () {
+  var t = document.querySelector(".nav-toggle");
+  var n = document.getElementById("sidenav");
+  t.addEventListener("click", function () {
+    var open = n.classList.toggle("open");
+    t.setAttribute("aria-expanded", open ? "true" : "false");
+  });
+})();
+</script>
+</body>
+</html>

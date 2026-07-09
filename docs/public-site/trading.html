@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Trading — Arcora Perp Docs</title>
+<meta name="description" content="Markets, order types, the house market maker, margin and liquidation, and the ACCEPTED / MATCHED / SETTLED finality model on Arcora Perp.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="topbar">
+  <a class="brand" href="index.html">Arcora Perp <span>Docs</span></a>
+  <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="sidenav">Menu</button>
+</header>
+<aside class="sidenav" id="sidenav">
+  <a class="brand" href="index.html">Arcora Perp <span>Docs</span></a>
+  <nav>
+    <a href="index.html">Overview</a>
+    <a href="quickstart.html">Quickstart</a>
+    <a href="trading.html" class="current">Trading</a>
+    <a href="api.html">API Reference</a>
+    <a href="architecture.html">Architecture</a>
+    <a href="security.html">Security &amp; Trust</a>
+  </nav>
+  <div class="nav-foot"><a href="https://perp.arcoralabs.xyz">Open the app &rarr;</a></div>
+</aside>
+<main>
+<div class="content">
+
+<h1>Trading</h1>
+<p class="lede">Markets, order types, the house market maker, margin mechanics — and the finality model you must understand before trusting a fill.</p>
+
+<h2>Markets</h2>
+<div class="table-wrap">
+<table>
+  <thead><tr><th>marketId</th><th>Market</th><th>Oracle source</th></tr></thead>
+  <tbody>
+    <tr><td><code>0</code></td><td>BTC-PERP</td><td>crypto.com exchange ticker</td></tr>
+    <tr><td><code>1</code></td><td>ETH-PERP</td><td>crypto.com exchange ticker</td></tr>
+    <tr><td><code>2</code></td><td>SOL-PERP</td><td>crypto.com exchange ticker</td></tr>
+  </tbody>
+</table>
+</div>
+<p>All three are USDC-collateralized perpetual futures traded on a <strong>price-time-priority central limit order book</strong>. Prices and sizes are fixed-point integers: price and size are scaled by <code>1e8</code>, quote (USDC) amounts by <code>1e6</code> (USDC base units).</p>
+
+<h2>Order types</h2>
+<p>An order is a side (buy/sell), a size, an optional limit price, a time-in-force, and a reduce-only flag.</p>
+<ul>
+  <li><strong>Limit order</strong> — executes at your limit price or better. A non-crossing GTC limit rests on the book.</li>
+  <li><strong>Market order</strong> — a limit price of <code>0</code> means &ldquo;market&rdquo;: execute at the prevailing price. Use with IOC or FOK.</li>
+</ul>
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Time in force</th><th>Behavior</th></tr></thead>
+  <tbody>
+    <tr><td><code>GTC</code></td><td>Good-til-canceled. Fills what crosses; the remainder rests on the book until filled or canceled.</td></tr>
+    <tr><td><code>IOC</code></td><td>Immediate-or-cancel. Fills what it can immediately; any remainder is canceled, nothing rests.</td></tr>
+    <tr><td><code>FOK</code></td><td>Fill-or-kill. Fills completely and immediately, or is rejected in full.</td></tr>
+    <tr><td><code>PostOnly</code></td><td>Rests as a maker order only. Rejected if it would cross and take immediately.</td></tr>
+  </tbody>
+</table>
+</div>
+<p><strong>Reduce-only</strong> orders can only decrease your open position in that market — they can never open or grow exposure. Useful for take-profit and stop-style exits.</p>
+
+<h2>The house market maker</h2>
+<p>A gateway-internal &ldquo;house market maker&rdquo; — the counterparty backed by the LP pool — quotes at the <strong>validated oracle mark</strong> against IOC/FOK market orders and crossing limit orders. Practically, this means takers always have a counterparty at the oracle price even when the resting book is thin. GTC limit orders rest on the book as usual and match against other traders under price-time priority.</p>
+<p>The LP pool is open: you can stake USDC into the market maker's equity pool and hold shares of its PnL (see the <a href="api.html#lp">LP endpoints</a>).</p>
+
+<h2>Leverage, liquidation, insurance, ADL</h2>
+<ul>
+  <li><strong>Leverage</strong> is margin-based: your USDC balance collateralizes your positions, and position size is bounded by margin requirements checked at order time.</li>
+  <li><strong>Liquidation</strong> closes under-margined positions.</li>
+  <li>An <strong>insurance fund</strong> (seeded with 25,000 USDC) absorbs losses that liquidations cannot cover.</li>
+  <li>If the insurance fund is insufficient, <strong>auto-deleveraging (ADL)</strong> trims the most profitable opposing positions. ADL haircuts are delivered as receipts that are unlinkable to third parties — outsiders cannot tell whose positions were trimmed.</li>
+</ul>
+<p class="dim">Liquidations, funding, and ADL are part of the proven engine transition — a settled state root attests they were applied exactly per the rules, not at the operator's discretion. See <a href="architecture.html">Architecture</a>.</p>
+
+<h2 id="finality">The finality model: ACCEPTED &rarr; MATCHED &rarr; SETTLED</h2>
+<p>Arcora Perp separates <em>speed</em> from <em>certainty</em>. Every order moves through three states, and they are <strong>not interchangeable</strong>:</p>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th>State</th><th>When</th><th>What it means</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><span class="pill accepted">ACCEPTED</span></td>
+      <td>milliseconds</td>
+      <td>The enclave took your order and returned a <strong>signed receipt</strong> (secp256k1, recovering to the enclave signer). The receipt is your inclusion proof: if the operator later settles a window that omits your order, you can open an on-chain challenge with it and slash the operator's bond.</td>
+    </tr>
+    <tr>
+      <td><span class="pill matched">MATCHED</span></td>
+      <td>milliseconds</td>
+      <td>Your order filled inside the enclave. This is <strong>soft finality</strong>: the fill is real in the engine's state and the app shows it immediately, but it is not yet proven on-chain. It is backed by the TEE's integrity and the operator's bond — not yet by a zk proof.</td>
+    </tr>
+    <tr>
+      <td><span class="pill settled">SETTLED</span></td>
+      <td>~10&ndash;20 min</td>
+      <td>The settlement window containing your fill was re-executed inside the SP1 zkVM, and the Groth16 proof was verified by the settlement contract on Base Sepolia. This is <strong>hard finality</strong>: the state transition is now cryptographically attested and cannot be forged or rolled back by the operator.</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<div class="callout danger">
+  <p class="callout-title">MATCHED is not SETTLED</p>
+  <p>A MATCHED fill is a millisecond-latency <em>preconfirmation</em>, not an on-chain fact. Until the window containing it is SETTLED (~10&ndash;20 minutes later), the fill is attested only by the TEE and secured economically by the operator's bond. Only <strong>settled</strong> state is trustlessly withdrawable. If your strategy assumes finality — for example, withdrawing profits or bridging out — wait for SETTLED.</p>
+</div>
+
+<h3>What is withdrawable, when</h3>
+<ol>
+  <li>You request a withdrawal (<code>POST /v1/accounts/withdraw</code> or the Account tab). It is recorded off-chain and enters the current settlement window.</li>
+  <li>When that window's proof lands on-chain, the withdrawal is included in the window's on-chain <strong>withdrawals Merkle root</strong>.</li>
+  <li>From that moment it is claimable by <strong>anyone</strong>, permissionlessly, via <code>claim(to, amount, nonce, root, proof)</code> on the vault — funds can only go to the address bound into the leaf. Any historically published root remains claimable forever; a later root can never strand a withdrawal.</li>
+</ol>
+<p>So the practical rule: a withdrawal takes up to one proof interval (~10&ndash;20 minutes) to become claimable. Track it via <code>GET /v1/accounts/withdrawals</code> (returns claim proofs) or the Account tab's status.</p>
+
+<h3>Watching finality</h3>
+<ul>
+  <li><code>GET /v1/orders</code> — your orders with their current finality state.</li>
+  <li><code>GET /v1/batch/:id</code> — <code>{windowId, settled}</code> for a settlement window.</li>
+  <li><code>GET /v1/system/status</code> — overall system status, including settlement progress.</li>
+</ul>
+
+<footer>
+  <p>Arcora Perp is a <strong>public testnet alpha</strong> on Base Sepolia (chain ID 84532). All funds are test funds (open-mint MockUSDC). The contracts have not been audited by a third party — do not treat this as production software.</p>
+  <p><a href="https://perp.arcoralabs.xyz">perp.arcoralabs.xyz</a> &middot; <a href="security.html">Trust model &amp; current gaps</a></p>
+</footer>
+
+</div>
+</main>
+<script>
+(function () {
+  var t = document.querySelector(".nav-toggle");
+  var n = document.getElementById("sidenav");
+  t.addEventListener("click", function () {
+    var open = n.classList.toggle("open");
+    t.setAttribute("aria-expanded", open ? "true" : "false");
+  });
+})();
+</script>
+</body>
+</html>

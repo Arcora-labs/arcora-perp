@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Architecture — Arcora Perp Docs</title>
+<meta name="description" content="The Arcora Perp pipeline: TDX enclave matching, signed receipts, windowed sealing, SP1 zkVM re-execution, Groth16 verification, Merkle withdrawals, challenge game, privacy layer, crash safety.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="topbar">
+  <a class="brand" href="index.html">Arcora Perp <span>Docs</span></a>
+  <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="sidenav">Menu</button>
+</header>
+<aside class="sidenav" id="sidenav">
+  <a class="brand" href="index.html">Arcora Perp <span>Docs</span></a>
+  <nav>
+    <a href="index.html">Overview</a>
+    <a href="quickstart.html">Quickstart</a>
+    <a href="trading.html">Trading</a>
+    <a href="api.html">API Reference</a>
+    <a href="architecture.html" class="current">Architecture</a>
+    <a href="security.html">Security &amp; Trust</a>
+  </nav>
+  <div class="nav-foot"><a href="https://perp.arcoralabs.xyz">Open the app &rarr;</a></div>
+</aside>
+<main>
+<div class="content">
+
+<h1>Architecture</h1>
+<p class="lede">Arcora Perp is an application-specific rollup: a TEE gives millisecond matching and privacy, a zkVM proof makes every settlement verifiable, and Base Sepolia holds custody. This page walks the full pipeline.</p>
+
+<h2>The settlement pipeline</h2>
+
+<div class="flow">
+  <div class="flow-step">
+    <div class="flow-num">1</div>
+    <div>
+      <h3>Matching in a TEE <span class="lat">milliseconds</span></h3>
+      <p>The order-matching engine and sequencer run inside an <strong>Azure TDX confidential VM</strong> (Intel TDX). The enclave identity is attestation-bound: a DCAP quote with the measurement pinned at boot (TCB UpToDate). Orders are matched off-chain in milliseconds on a price-time-priority book.</p>
+    </div>
+  </div>
+  <div class="flow-step">
+    <div class="flow-num">2</div>
+    <div>
+      <h3>Signed receipts — soft finality <span class="lat">milliseconds</span></h3>
+      <p>Every accepted order returns an <strong>enclave-signed receipt</strong> (secp256k1, recovering to the enclave signer). The receipt doubles as an inclusion proof the user can later wield in the on-chain challenge game. Order states: ACCEPTED &rarr; MATCHED (filled, soft) &rarr; SETTLED (hard).</p>
+    </div>
+  </div>
+  <div class="flow-step">
+    <div class="flow-num">3</div>
+    <div>
+      <h3>Windowed sealing</h3>
+      <p>The sequencer seals trading activity into <strong>windows</strong>. A window is the unit of proving: all fills, funding payments, liquidations, ADL events, deposits, and withdrawals that happened since the last settled root.</p>
+    </div>
+  </div>
+  <div class="flow-step">
+    <div class="flow-num">4</div>
+    <div>
+      <h3>SP1 zkVM re-execution <span class="lat">~10&ndash;20 min</span></h3>
+      <p>For each window, an <strong>SP1 zkVM proof re-executes the entire engine transition</strong> from the previous state root to the new one. All six commitment roots — state, manifest, ordered, withdrawals, rejected, plus the commitment — are <strong>derived inside the zk guest</strong> from the replayed operations, never trusted from the operator.</p>
+    </div>
+  </div>
+  <div class="flow-step">
+    <div class="flow-num">5</div>
+    <div>
+      <h3>Groth16 verification on-chain</h3>
+      <p>The SP1 proof is wrapped into a <strong>Groth16</strong> proof and verified by <code>SP1ZkVerifier</code> inside <code>DarkPerpSettlement.settleBatch</code> on Base Sepolia. The contract enforces previous-root continuity — the operator <em>cannot</em> settle a state transition the proof doesn't attest.</p>
+    </div>
+  </div>
+  <div class="flow-step">
+    <div class="flow-num">6</div>
+    <div>
+      <h3>Merkle withdrawals</h3>
+      <p>USDC sits in <code>CollateralVault</code>. Withdrawals are recorded off-chain, included in the window's <strong>withdrawals Merkle root</strong>, and once the window settles, <strong>anyone</strong> can execute <code>claim(to, amount, nonce, root, proof)</code> permissionlessly — funds can only go to the leaf-bound address, and any historically published root stays claimable (a later root can never strand a withdrawal).</p>
+    </div>
+  </div>
+</div>
+
+<h2 id="challenge">Challenge game, bonding, liveness</h2>
+<p>The zk proof makes settled state unforgeable, but a malicious operator could still try to <em>drop</em> orders it accepted. The challenge game closes that hole:</p>
+<ul>
+  <li><strong>Operator bond.</strong> The operator posts a USDC bond with a floor of <strong>5% of vault TVL</strong> (<code>requiredBond()</code>, BOND_BPS = 500).</li>
+  <li><strong>Inclusion challenges.</strong> Anyone holding an enclave-signed receipt can open an on-chain inclusion challenge against a settled window. Challenges are themselves bonded at <strong>0.01 ETH</strong> to prevent griefing, with a <strong>300-block</strong> challenge window to answer.</li>
+  <li><strong>Slashing.</strong> If the sequencer cannot prove that the receipt's order was included in a settled window, the operator's bond is slashed to the challenger (pull-payment).</li>
+  <li><strong>Liveness / forced exit.</strong> If the sequencer stops settling for <strong>7,200 blocks</strong>, the system enters forced-exit / close-only mode. The settled state remains withdrawable — an offline operator can halt trading, but cannot trap settled funds.</li>
+</ul>
+
+<h2>Privacy layer</h2>
+<h3>Sealed order ingress</h3>
+<p>Order terms are encrypted in the browser to the enclave's rotating X25519 epoch key using a sealed box: X25519 ECDH &rarr; HKDF-SHA256 &rarr; XChaCha20-Poly1305, wire format <code>0x01 &#8214; epk &#8214; nonce24 &#8214; ct</code>. The HTTP body carries only <code>{epochId, sealed}</code> — no plaintext trade terms on the wire (TLS on top). The epoch key is served <em>signed by the enclave identity</em> (<code>GET /v1/enclave/epoch</code>) so clients verify before sealing, and the AAD binds each ciphertext to (epoch &#8214; account owner), ruling out cross-account replay. In production posture, unsealed orders are refused. Full byte-level detail: <a href="api.html#sealed">sealed order wire format</a>.</p>
+
+<h3>Shielded balances</h3>
+<p>Account state lives as <strong>encrypted notes</strong>. The public can see aggregate book depth — enough to trade against — but not per-account balances or positions.</p>
+
+<h3>Encrypted order log &amp; unlinkable ADL</h3>
+<p>The order log is encrypted, and ADL haircut receipts are unlinkable to third parties: outsiders cannot reconstruct who was deleveraged or map order flow to accounts.</p>
+
+<h2>Crash safety</h2>
+<p>The enclave is designed to fail without losing or corrupting state:</p>
+<ul>
+  <li><strong>Sealed snapshots.</strong> State snapshots are encrypt-then-MAC'd under the enclave seed — readable and verifiable only by an enclave with the right measurement.</li>
+  <li><strong>Rollback journal (WAL).</strong> The in-flight settle window is covered by a sealed write-ahead journal. A restart mid-settle self-recovers at boot: the sequencer rolls the window back or forward, reconciled against what actually landed on-chain.</li>
+  <li>This path is <strong>verified live</strong> with a restart-during-proof drill on the running testnet.</li>
+</ul>
+
+<h2>Trust boundaries, summarized</h2>
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Property</th><th>Secured by</th></tr></thead>
+  <tbody>
+    <tr><td>Settled state transitions (fills, funding, liquidations, ADL, balances)</td><td>SP1 zkVM proof, Groth16-verified on-chain</td></tr>
+    <tr><td>Withdrawals from settled state</td><td>Permissionless Merkle claims against the vault</td></tr>
+    <tr><td>Order inclusion (accepted orders make it into windows)</td><td>Signed receipts + bonded challenge game</td></tr>
+    <tr><td>Matching integrity &amp; privacy before settlement</td><td>Intel TDX attestation (enclave identity sealed to the measurement)</td></tr>
+    <tr><td>Funds safety if the operator disappears</td><td>Liveness timeout &rarr; forced-exit / close-only on settled state</td></tr>
+  </tbody>
+</table>
+</div>
+<p class="dim">What the current alpha does <em>not</em> yet guarantee is just as important — see <a href="security.html">Security &amp; Trust</a>.</p>
+
+<footer>
+  <p>Arcora Perp is a <strong>public testnet alpha</strong> on Base Sepolia (chain ID 84532). All funds are test funds (open-mint MockUSDC). The contracts have not been audited by a third party — do not treat this as production software.</p>
+  <p><a href="https://perp.arcoralabs.xyz">perp.arcoralabs.xyz</a> &middot; <a href="security.html">Trust model &amp; current gaps</a></p>
+</footer>
+
+</div>
+</main>
+<script>
+(function () {
+  var t = document.querySelector(".nav-toggle");
+  var n = document.getElementById("sidenav");
+  t.addEventListener("click", function () {
+    var open = n.classList.toggle("open");
+    t.setAttribute("aria-expanded", open ? "true" : "false");
+  });
+})();
+</script>
+</body>
+</html>
