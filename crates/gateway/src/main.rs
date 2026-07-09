@@ -868,6 +868,14 @@ struct Gw {
     /// the demo/test build. NOT persisted — recomputed from the environment.
     #[serde(skip)]
     prod: bool,
+    /// Task 5: honest finality reporting on the window-settle path. When the prover
+    /// is configured (PROVER_URL), the tick loop must NOT simulate SETTLED after
+    /// `SETTLE_TICKS` — orders stay MATCHED until their window's proof verifies on
+    /// L1 (`commit_window_settle` → `mark_window_settled`). Set from `main()` right
+    /// after `prod`; NOT persisted — recomputed from the environment every boot, so
+    /// the snapshot wire format is untouched.
+    #[serde(skip)]
+    window_settle_mode: bool,
     /// Order-ingress X25519 epoch keys (Task 9). Seed-derived from `ENCLAVE_SEED`,
     /// published (signed) via `GET /v1/enclave/epoch`. NOT persisted — the epoch
     /// secret must never touch disk; `boot`/`boot_restored` re-derive it from the
@@ -1270,6 +1278,7 @@ impl Gw {
             lp_total_shares: 0,
             lp_counter: 0,
             prod: false,
+            window_settle_mode: false,
             // Derive the first order-ingress epoch from the SAME seed the enclave
             // signing identity derives from, so a reboot/re-pin keeps the key stable.
             epochs: enclave_epoch::EnclaveEpochs::derive(enclave_seed, 1, now, ORDER_EPOCH_TTL_MS),
@@ -1596,6 +1605,11 @@ impl Gw {
         // per-tick accumulators are unused by the new path — clear them so they can't grow.
         self.pending_ordered.clear();
         self.pending_rejected.clear();
+        // Task 5: the verified proof just hardened every tick batch sealed into windows
+        // ≤ batch_id — advance their orders MATCHED → SETTLED (and prune their rollback
+        // snapshots). MUST run before the map prune below: the prune keeps a grace
+        // window today, but honest finality must not depend on that grace.
+        self.seq.mark_window_settled(batch_id);
         // Slice 3b-4 (Finding-1 fix): prune the tick->window map on WINDOW settle (Counter B),
         // not the ~10x-faster per-tick soft-finality, so /v1/batch/:id + WBatch.window_id survive
         // until their window settles + a grace (settled:true observable). batch_id just settled,
@@ -2925,21 +2939,28 @@ impl Gw {
                 a.orders[*i].sealed = true;
             }
         }
-        if any_sealed {
+        // Task 5: the SETTLE_TICKS queue is the LEGACY (demo/no-prover) finality
+        // simulation. In window-settle mode SETTLED is earned by the real on-chain
+        // settle (`commit_window_settle` → `mark_window_settled`), so neither feed
+        // nor drain the queue — a tick-count simulation would report SETTLED while
+        // the Groth16 proof is still proving (or wedged).
+        if any_sealed && !self.window_settle_mode {
             self.pending_settle.push((sealed.batch_id, self.tick));
         }
 
-        // 3) settle batches older than SETTLE_TICKS (MATCHED → SETTLED)
-        let tick = self.tick;
-        let mut still = Vec::new();
-        for (bid, t) in self.pending_settle.drain(..).collect::<Vec<_>>() {
-            if tick - t >= SETTLE_TICKS {
-                self.seq.mark_settled(bid);
-            } else {
-                still.push((bid, t));
+        // 3) settle batches older than SETTLE_TICKS (MATCHED → SETTLED) — legacy only.
+        if !self.window_settle_mode {
+            let tick = self.tick;
+            let mut still = Vec::new();
+            for (bid, t) in self.pending_settle.drain(..).collect::<Vec<_>>() {
+                if tick - t >= SETTLE_TICKS {
+                    self.seq.mark_settled(bid);
+                } else {
+                    still.push((bid, t));
+                }
             }
+            self.pending_settle = still;
         }
-        self.pending_settle = still;
 
         // 4) emit finality-transition events for toasts
         let mut events = Vec::new();
@@ -4556,6 +4577,12 @@ async fn main() {
         _ => Gw::boot(),
     };
     gw.prod = prod;
+    // Task 5: with a prover configured, the tick loop's SETTLE_TICKS simulation is OFF —
+    // finality advances only when a window's proof verifies on L1. Set BEFORE the
+    // boot-recovery block below, so a roll-forward re-commit already runs under the
+    // honest-finality posture (its `commit_window_settle` marks the recovered window's
+    // orders SETTLED either way — the flag gates only the tick-loop simulation).
+    gw.window_settle_mode = prover.is_some();
     // audit DP-006: in production the enclave identity must be bound to a verified TEE
     // attestation; refuse to serve traffic under the stub measurement.
     if !attestation_ok_for_mode(prod, gw.attestation.is_some()) {
@@ -7679,6 +7706,81 @@ mod tests {
         assert!(gw.batch_orders.contains_key(&batch_id));
         assert!(gw.pending_ordered.is_empty());
         assert!(gw.l1_status.is_some());
+    }
+
+    // Task 5: with the prover configured, SETTLED must be EARNED by the on-chain window
+    // settle — the legacy SETTLE_TICKS simulation must not fire, and the commit is what
+    // advances finality (honest reporting; the TestnetNotice says SETTLED lags a proof).
+    #[test]
+    fn window_mode_defers_settled_until_commit() {
+        use crate::prover_client::{prove_and_prepare, MockProverClient};
+
+        let mut gw = Gw::boot();
+        gw.window_settle_mode = true;
+        let req = OrderReq {
+            market_id: 0,
+            side: "Buy".into(),
+            size: (SIZE_SCALE / 10).to_string(),
+            limit_price: "0".into(),
+            tif: "Ioc".into(),
+            reduce_only: false,
+            nonce: None,
+            signature: None,
+            ..Default::default()
+        };
+        let (_r, _ev) = gw.place_order(&req).expect("accepted");
+        // run well past the legacy horizon: finality must STAY matched — no simulation.
+        for _ in 0..(SETTLE_TICKS * 3) {
+            gw.tick();
+        }
+        assert_eq!(gw.finality_str(&gw.orders[0].order_hash), "MATCHED");
+        assert!(
+            gw.pending_settle.is_empty(),
+            "window mode must not accumulate the legacy settle queue"
+        );
+
+        // the real settle: begin → prove → commit (the commit_window_settle shape).
+        let bc = gw.seq.state.next_batch_id;
+        let (witness, ww) = gw.begin_window_settle(bc).unwrap().expect("some");
+        let ordered = witness.manifest.ordered.clone();
+        let rejected: Vec<_> = witness.manifest.rejected.iter().map(|(h, _)| *h).collect();
+        let batch_id = witness.batch_id;
+        let prepared = prove_and_prepare(&MockProverClient, &witness, &ww).unwrap();
+        let status = L1Status {
+            settled_root: hex32(&prepared.outcome.new_root),
+            batch_count: batch_id + 1,
+            last_tx: "0xtx".into(),
+            bond: "0".into(),
+            withdrawals_root: hex32(&prepared.outcome.withdrawals_root),
+        };
+        gw.commit_window_settle(batch_id, ordered, rejected, prepared, status);
+        assert_eq!(gw.finality_str(&gw.orders[0].order_hash), "SETTLED");
+    }
+
+    // Task 5: without a prover (flag defaults false) the demo-era tick simulation is
+    // byte-identical — batches still advance MATCHED → SETTLED after SETTLE_TICKS.
+    #[test]
+    fn legacy_mode_settles_after_ticks_unchanged() {
+        let mut gw = Gw::boot();
+        assert!(!gw.window_settle_mode, "legacy path is the default");
+        let req = OrderReq {
+            market_id: 0,
+            side: "Buy".into(),
+            size: (SIZE_SCALE / 10).to_string(),
+            limit_price: "0".into(),
+            tif: "Ioc".into(),
+            reduce_only: false,
+            nonce: None,
+            signature: None,
+            ..Default::default()
+        };
+        let (_r, _ev) = gw.place_order(&req).expect("accepted");
+        gw.tick(); // seals the fill → MATCHED
+        assert_eq!(gw.finality_str(&gw.orders[0].order_hash), "MATCHED");
+        for _ in 0..(SETTLE_TICKS + 1) {
+            gw.tick();
+        }
+        assert_eq!(gw.finality_str(&gw.orders[0].order_hash), "SETTLED");
     }
 
     #[test]

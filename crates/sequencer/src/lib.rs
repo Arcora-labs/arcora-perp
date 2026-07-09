@@ -1062,6 +1062,28 @@ impl Sequencer {
         self.batch_orders = self.batch_orders.split_off(&(batch_id + 1));
     }
 
+    /// Task 5: advance per-tick finality from an ON-CHAIN window settle (Counter B).
+    /// A verified window proof attests every tick batch (Counter A) sealed into
+    /// windows ≤ `window_id`, so harden through the NEWEST tick batch mapped
+    /// at-or-before that window via `mark_settled` (which settles it and everything
+    /// earlier). Scanning from the newest entry also covers the window-rollback
+    /// interleaving: ticks sealed while a failed settle was proving map to W+1 in
+    /// `tick_window`, but `rollback_window` folds their ops into window W's re-seal —
+    /// they sit BELOW W's newest post-rollback tick, so the settle of W honestly
+    /// hardens them too. No-op when no tick batch maps that far (e.g. a
+    /// deposits-only window) — there is nothing new to harden.
+    pub fn mark_window_settled(&mut self, window_id: u64) {
+        let newest = self
+            .tick_window
+            .iter()
+            .rev()
+            .find(|&(_, w)| *w <= window_id)
+            .map(|(a, _)| *a);
+        if let Some(a) = newest {
+            self.mark_settled(a);
+        }
+    }
+
     /// Roll back a sealed batch that FAILED to prove (§3 failure matrix): revert
     /// (state, matcher) to the snapshot taken before it, drop that batch and every
     /// later still-pending batch, and revert their orders from MATCHED back to
@@ -1270,6 +1292,47 @@ mod tests {
         // its WINDOW settles (`prune_tick_window_settled`) or the size cap evicts it —
         // soft-finality fires ~10x faster than the window horizon and must not drop it.
         assert!(seq.window_for_tick(s.batch_id).is_some());
+    }
+
+    // Task 5: an on-chain WINDOW settle (Counter B) is what hardens per-tick finality
+    // on the real-proof path — every tick batch sealed into windows ≤ the settled
+    // window advances MATCHED → SETTLED; ticks in a later window stay soft.
+    #[test]
+    fn mark_window_settled_hardens_through_window() {
+        let mut seq = test_sequencer();
+        // no tick batch sealed yet → the helper is a no-op (must not panic).
+        seq.mark_window_settled(u64::MAX);
+        let w = seq.current_window_id();
+        // two tick batches in window W, each settling a crossing fill.
+        let s0 = seq.seal_batch(&sample_orders(1), now());
+        let s1 = seq.seal_batch(&sample_orders(3), now());
+        assert!(!s0.settled_order_hashes.is_empty());
+        assert!(!s1.settled_order_hashes.is_empty());
+        for oh in s0
+            .settled_order_hashes
+            .iter()
+            .chain(&s1.settled_order_hashes)
+        {
+            assert_eq!(seq.finality_of(oh), Some(Finality::Matched));
+        }
+        // close window W; a tick sealed after it belongs to window W+1.
+        let _witness = seq.seal_window();
+        let s2 = seq.seal_batch(&sample_orders(5), now());
+        assert!(!s2.settled_order_hashes.is_empty());
+
+        // window W's proof verified on L1 → both of W's tick batches harden…
+        seq.mark_window_settled(w);
+        for oh in s0
+            .settled_order_hashes
+            .iter()
+            .chain(&s1.settled_order_hashes)
+        {
+            assert_eq!(seq.finality_of(oh), Some(Finality::Settled));
+        }
+        // …while the W+1 tick stays MATCHED (its window has not settled).
+        for oh in &s2.settled_order_hashes {
+            assert_eq!(seq.finality_of(oh), Some(Finality::Matched));
+        }
     }
 
     #[test]
