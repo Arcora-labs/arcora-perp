@@ -1,15 +1,19 @@
-# dark-perp
+# Arcora Perp
 
-**A fast + dark perpetual-futures protocol.** Low-latency confidential matching
-inside an attested TEE, fund safety from ZK validity proofs on Ethereum,
+**A privacy-preserving perpetual-futures DEX.** Low-latency confidential matching
+inside an attested TEE, fund safety from **real ZK validity proofs on Ethereum**,
 sequencing accountability from an order-commitment log + slashing, and
 liveness/recovery from forced exit + an encrypted note archive.
 
-> Tek cümle: *Attested TEE içinde low-latency confidential CLOB (hız +
-> operatör-kör dark), append-only order-commitment log + slashing ile sequencing
-> accountability, forced-exit + note archive ile liveness/recovery, attested
-> confidential prover ile witness gizliliği, asenkron ZK validity proof ile L1
-> vault safety, shielded note state ile public privacy.*
+> **Live public testnet alpha** — [perp.arcoralabs.xyz](https://perp.arcoralabs.xyz)
+> (Base Sepolia). Docs: [perpdocs.arcoralabs.xyz](https://perpdocs.arcoralabs.xyz) ·
+> Technical brief: [`docs/litepaper`](docs/litepaper/arcora-perp-litepaper.md).
+> Codename in-repo: `dark-perp`.
+
+One line: *confidential matching in an attested TEE (fast + operator-blind),
+public settlement under a zk validity proof so the operator is cryptographically
+incapable of forging state, permissionless Merkle withdrawals from settled state,
+sequencing accountability from signed receipts + slashing, and shielded balances.*
 
 The full architecture (v2, Turkish) lives in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 The design decisions taken while building are in [`docs/DECISIONS.md`](docs/DECISIONS.md),
@@ -63,23 +67,23 @@ flowchart LR
     end
 
     subgraph ZK["ZK · trust root 3"]
-        PRV["Attested prover<br/>Proof-v1 circuit"]
+        PRV["SP1 zkVM prover<br/>full-engine re-execution"]
     end
 
-    subgraph L1["Ethereum L1"]
-        VER["ZK verifier"]
+    subgraph L1["Ethereum L1 · Base Sepolia"]
+        VER["SP1ZkVerifier<br/>Groth16 on-chain"]
         VAULT["Collateral vault<br/>SETTLED → withdrawable"]
         VER --> VAULT
     end
 
-    U -->|"encrypted order"| SEQ
+    U -->|"sealed order (X25519)"| SEQ
     MAT -->|"signed receipt<br/>ACCEPTED→MATCHED"| U
-    MAT -->|"batch manifest"| LOG
+    MAT -->|"window manifest"| LOG
     LOG -->|"witness"| PRV
-    PRV -->|"validity proof<br/>+ public commitment"| VER
+    PRV -->|"Groth16 proof<br/>+ derived roots"| VER
     VAULT -->|"SETTLED"| U
 
-    ORC["Oracle · Pyth<br/>index / funding"] -.->|"signed price"| MAT
+    ORC["Oracle · Crypto.com<br/>index / funding"] -.->|"signed price"| MAT
     LOG -.->|"inclusion challenge"| SLASH
     SLASH -.->|"censorship → exit"| VAULT
     ARC[("Encrypted<br/>note archive")] -.->|"view-key recovery"| U
@@ -99,57 +103,75 @@ The solid path is the latency-critical loop; dashed edges are the side flows tha
 keep the protocol honest when the TEE or operator misbehaves — oracle pricing,
 inclusion challenges, forced exit, and view-key recovery from the note archive.
 
-## Live public testnet (Base Sepolia)
+## Live public testnet alpha (Base Sepolia)
 
-A single-enclave public testnet is **live**: the gateway runs inside a real
+A single-enclave public testnet is **live** at
+[perp.arcoralabs.xyz](https://perp.arcoralabs.xyz): the gateway runs inside a real
 **Azure TDX confidential VM** (`Standard_DC2es_v6`), verifying its **own** live
 TDX + vTPM quote at boot and binding the enclave identity to the measured-boot
-measurement (`docs/ATTESTATION.md` #5c). It settles to Base Sepolia every 30s and
-persists engine state across restarts (sealed snapshots, on-chain-root continuity
-checked at boot). **Funds are test USDC and carry no value.**
+measurement (`docs/ATTESTATION.md`). Each ~window it seals trading activity, a
+**real SP1 zkVM proof re-executes the whole engine** into a **Groth16** proof
+verified on-chain in `settleBatch`, and it persists engine state across restarts
+(sealed snapshots + a rollback-journal WAL, on-chain-root continuity checked at
+boot). **Funds are test USDC and carry no value.**
 
 **What is real vs. what is a stand-in** (labelled honestly, in the UI too):
 
 | Surface | State on the testnet |
 |---|---|
 | Confidential matching in an attested TEE | **Real** — live Azure TDX quote verified at boot; wrong-measurement boots refuse |
-| L1 settlement + USDC deposit/withdraw/claim | **Real** — Base Sepolia, cumulative withdrawals root, `vault.claim` pays out |
-| State persistence across restarts | **Real** — sealed snapshot + graceful save + on-chain continuity gate |
-| Sequencing accountability (per-IP/-account rate limits, caller-signed orders) | **Real** — enforced in the gateway |
-| **ZK validity proof (fund safety)** | **Stand-in** — `MockZkVerifier` accepts `proof == publicCommitment`; the real SP1/Risc0 verifier is Milestone A |
-| **Order confidentiality on the wire** | **Partial** — orders reach the gateway over TLS but are **not yet encrypted to the enclave epoch key** (Milestone C #2/#3) |
-| **Enclave key-release for sealing** | **Stand-in** — `SoftwareSealProvider`; real vTPM-backed release is #5d |
-| Custody | **Phase-0 server custody** — the gateway holds account spend keys in memory (moves into the enclave later) |
+| **ZK validity proof (fund safety)** | **Real** — SP1 zkVM full-engine re-execution → Groth16 verified on-chain by `SP1ZkVerifier`; the operator cannot settle a transition the proof does not attest (prev-root continuity + six roots derived in-guest) |
+| **Order confidentiality on the wire** | **Real** — orders are sealed client-side to the enclave's rotating X25519 epoch key (sealed-box); the wire carries only ciphertext, TLS on top |
+| L1 settlement + USDC deposit/withdraw/claim | **Real** — Base Sepolia; withdrawals root; permissionless `vault.claim` pays out to the leaf-bound address |
+| State persistence + crash recovery | **Real** — sealed snapshot + rollback-journal WAL; a restart mid-settle self-recovers at boot (drilled live) |
+| Sequencing accountability (rate limits, caller-signed orders, inclusion challenges) | **Real** — enforced in the gateway + on-chain challenge game / bond slashing |
+| **ZK prover attestation** | **Stand-in** — the prover runs on a development machine (stub measurement); the witness leaves the enclave sealed but the prover host is **not yet TEE-attested** (roadmap: attested x86_64 prover) |
+| **Operator liveness** | **Single point of failure** — if the sequencer stops, trading halts; settled funds stay withdrawable via forced-exit after the liveness window |
+| **Matching-fairness proof** | **Not yet** — the proof attests correct *execution* of the sequenced ops; the *ordering* itself is enclave-attested only (roadmap: Proof v2) |
 
-Because proofs are mocked, **do not treat testnet balances as protected by the ZK
-root** — a compromised sequencer could publish an invalid root that the mock
-verifier accepts. This is the whole reason it is a *labelled* testnet. Get test
-USDC via the in-app **"Get test USDC"** button (open-mint MockUSDC) or the faucet
+Fund safety is now cryptographic: an invalid state root cannot pass the on-chain
+verifier. The honest limits — a non-attested dev prover, operator liveness as a
+SPOF, ordering fairness not yet zk-proven, ~10–20 min proof cadence, and no
+third-party audit — are documented in full on the
+[Security & Trust](https://perpdocs.arcoralabs.xyz/security.html) page. Get test
+USDC via the in-app **"Get test USDC"** button (open-mint MockUSDC), the docs
+[quickstart](https://perpdocs.arcoralabs.xyz/quickstart.html), or the faucet
 snippet in `docs/API.md`.
+
+**Live contracts** (Base Sepolia, deployed 2026-07-09):
+
+| Contract | Address |
+|---|---|
+| `DarkPerpSettlement` | [`0xf5D6Aa9CC96E2ac8AC5564df5E8475bDb13BCDCF`](https://sepolia.basescan.org/address/0xf5D6Aa9CC96E2ac8AC5564df5E8475bDb13BCDCF) |
+| `CollateralVault` | [`0xC3EBc0f7301D5a914b01b8d2a1B5574764330c05`](https://sepolia.basescan.org/address/0xC3EBc0f7301D5a914b01b8d2a1B5574764330c05) |
+| `SP1ZkVerifier` | [`0x8012F3b35B9884f86a3F8f39B79e82eC410E1160`](https://sepolia.basescan.org/address/0x8012F3b35B9884f86a3F8f39B79e82eC410E1160) |
+| `MockUSDC` (open mint, 6dp) | [`0x9F5365c947eCaBaf62f42EF0Fe92ab909f709bDA`](https://sepolia.basescan.org/address/0x9F5365c947eCaBaf62f42EF0Fe92ab909f709bDA) |
+
+Markets: BTC / ETH / SOL perpetuals. See
+[`contracts/deployments/base-sepolia.json`](contracts/deployments/base-sepolia.json)
+for the canonical record (incl. superseded deploys).
 
 ## Repository status
 
-The protocol is built bottom-up across the [roadmap](docs/ROADMAP.md) phases — all
-six phases now have implemented deliverables. Tested end-to-end: **224 Rust + 49
-Solidity + 89 frontend tests** (green in debug *and* release) — including a
-CI-locked node-lifecycle test driving the full funding → liquidation →
-conservation loop, adversarial oracle-adapter tests proving a manipulated
-external feed is rejected by the §8 gate rather than silently marked, a
-self-healing live-oracle fallback (an outage hands markets back to the internal
-walk instead of freezing), and a design-token discipline test that fails CI if
-any brand colour is hard-coded outside the themeable `:root` block — **13 property/stateful fuzzers**, clippy `-D warnings` +
-`cargo fmt --check` clean, a
+The protocol is built bottom-up across the [roadmap](docs/ROADMAP.md) phases and
+now runs as a live testnet alpha with **real Groth16 settlement on-chain**. Tested
+end-to-end: **351 Rust + Solidity workspace tests + 161 frontend tests** (green in
+debug *and* release) — including proof-replay merge gates (a sealed window replays
+to the settled state root), crash-recovery drills (a restart mid-settle rolls back
+or forward from the sealed WAL and reconciles against the chain), a CI-locked
+node-lifecycle test driving the full funding → liquidation → conservation loop,
+adversarial oracle-adapter tests, and a self-healing live-oracle fallback. Property
+& stateful fuzzers, clippy `-D warnings` + `cargo fmt --check` clean, a
 **real SP1 zkVM guest that executes and matches native byte-for-byte**
-([`crates/sp1-guest`](crates/sp1-guest) + [`crates/sp1-host`](crates/sp1-host)), a
-**live Crypto.com oracle** wired at both the UI and the protocol layer
+([`crates/sp1-guest`](crates/sp1-guest) + [`crates/sp1-host`](crates/sp1-host)) now
+wired end-to-end through the attested [`prover-service`](crates/prover-service) to
+on-chain verification, a **live Crypto.com oracle**
 ([`crates/oracle-feed`](crates/oracle-feed)), an order-book
 [stress-test bot](crates/loadbot), a runnable [`demo`](crates/demo), and a
-built+headless-verified frontend with 5 live USDC markets. The core
-math, services, and contracts were hardened through **fifteen adversarial review
-passes** covering every module (six Rust core, two sequencer, three Solidity, one
-committee/bridge/note-archive pass, one matcher CLOB pass, one prover boundary
-pass, one on the new oracle/bot code) — every finding fixed with a regression test
-(see [`docs/SECURITY.md`](docs/SECURITY.md)).
+built+deployed frontend (BTC/ETH/SOL markets, wallet-connect deposit & claim). The
+core math, services, and contracts were hardened through many adversarial review
+passes covering every module — every finding fixed with a regression test (see
+[`docs/SECURITY.md`](docs/SECURITY.md) and [`docs/HARDENING.md`](docs/HARDENING.md)).
 
 | Component | Crate / dir | Phase | Arch |
 |---|---|---|---|
@@ -198,29 +220,39 @@ SETTLED is withdrawable** (§3), and a **close-only / forced-exit** mode (§6).
 ## Build & test
 
 ```bash
-cargo test                                       # native: 44 tests (unit + lifecycle)
+cargo test --workspace                           # 351 tests (engine, sequencer, gateway, e2e)
 cargo build -p perp-core --no-default-features   # proves the no_std zkVM-guest build
-cargo clippy --all-targets                       # clean
+cargo clippy --workspace --all-targets           # clean (-D warnings)
+cd frontend && npm test && npm run build         # 161 frontend tests + vite build
 ```
 
-## What is intentionally NOT here yet
+The prover-service is a standalone workspace (SP1 SDK isolation); build it from
+its own directory: `cd crates/prover-service && cargo build --release`.
 
-- **Real ZK backend.** The host prover is still a documented commitment-based
-  stand-in, but the **real SP1 zkVM guest exists, builds, and runs**: the unchanged
-  `perp-core` engine compiles to a `riscv32im-succinct-zkvm-elf`
-  ([`crates/sp1-guest`](crates/sp1-guest), `cargo prove build`), and
-  [`crates/sp1-host`](crates/sp1-host) **executes it and verifies the committed
-  value is byte-for-byte identical to native `perp-core`** (248,477 cycles, same
-  commitment — see [`docs/PROVING.md`](docs/PROVING.md)). Full STARK proving is the
-  same call with `.prove()`. `MockZkVerifier` likewise stands in for the generated
-  Solidity verifier.
-- **TEE attestation.** Enclave keys/measurements are modelled as values; real
-  TDX/Nitro attestation verification is Phase 1 production.
-- **Proof-v2 (matching determinism).** The matcher is deterministic and tested,
-  but matching fairness is not yet *proven* in ZK — in the interim it is backed by
-  receipts + manifest + slashing (§2). Phase 3.
-- **Pre-trade risk.** Margin is checked at settlement; rejecting unmarginable
-  orders *before* matching is Phase 3 (see `crates/sequencer`).
-- **Aztec privacy bridge** (Phase 4) and **committee-of-enclaves** (Phase 5).
+## Known limitations (honest, and on the roadmap)
 
-See [`docs/ROADMAP.md`](docs/ROADMAP.md) for the full phase map.
+Fund safety is cryptographic today, but the alpha has real gaps — stated plainly
+here and on the [Security & Trust](https://perpdocs.arcoralabs.xyz/security.html) page:
+
+- **The zk prover is not yet TEE-attested.** Real SP1/Groth16 proofs settle on-chain,
+  but the prover runs on a development machine with a stub measurement. The witness
+  leaves the sequencer enclave sealed, yet the prover host's integrity isn't
+  hardware-attested — so "even the operator can't see balances" does not yet hold for
+  the prover. No fund risk (an invalid proof can't pass the verifier); a privacy gap.
+  Roadmap: attestation-gated key release to an x86_64 TDX prover.
+- **Operator liveness is a single point of failure.** If the sequencer stops, trading
+  halts; settled funds remain withdrawable via forced-exit after the liveness window.
+  Roadmap: cloud deployment + hot-standby.
+- **Matching fairness is not yet proven in ZK.** The proof attests correct *execution*
+  of the sequenced ops; the *ordering* is enclave-attested only, backed by signed
+  receipts + inclusion challenges + slashing. Roadmap: Proof v2.
+- **Proof cadence ~10–20 min.** One full-state-witness proof per window. Roadmap:
+  GPU proving + sparse witness (proof cost independent of total account count).
+- **No third-party audit yet.** Contracts + circuits were hardened through internal
+  adversarial passes (findings fixed with regression tests); an external audit is a
+  mainnet prerequisite.
+- **Aztec privacy bridge** (Phase 4) and **committee-of-enclaves** (Phase 5) remain
+  future phases.
+
+See [`docs/ROADMAP.md`](docs/ROADMAP.md) for the full phase map and the
+[technical brief](docs/litepaper/arcora-perp-litepaper.md) for the design in depth.
