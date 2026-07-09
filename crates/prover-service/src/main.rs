@@ -107,6 +107,13 @@ async fn main() {
         .route("/prove", post(prove))
         .route("/vkey", get(vkey))
         .route("/measurement", get(measurement_ep))
+        // The /prove body is the sealed witness, which embeds the full engine pre_state
+        // (hex-encoded) and grows with the number of accounts — it exceeds axum's 2 MB
+        // default once the state is non-trivial (413 Payload Too Large → settles wedge).
+        // Raise the cap generously; the witness is trusted, gateway-produced input.
+        // NOTE: the full-state witness is a scaling limit (proof cost grows with total
+        // accounts, not window activity) — a sparse-witness redesign is post-alpha.
+        .layer(axum::extract::DefaultBodyLimit::max(512 * 1024 * 1024))
         .with_state(app);
     let bind = std::env::var("PROVER_BIND").unwrap_or_else(|_| "127.0.0.1:8091".into());
     println!("prover-service on {bind}");
