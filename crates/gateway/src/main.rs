@@ -1056,6 +1056,13 @@ impl Gw {
             amount: INSURANCE_SEED_USD * QUOTE_SCALE,
         })
         .expect("seed insurance fund");
+        // Pass-2 funding + SeedInsurance mutated state and pushed ops into the open
+        // window AFTER add_market last captured window_start_state. The L1 contract
+        // is deployed with GENESIS_ROOT = the FULL boot state root (computed below),
+        // so fold the boot ops into the genesis baseline: window 0 must open from
+        // genesis, or its pre_state (post-Pass-1, pre-funding) != the on-chain
+        // GENESIS_ROOT and the first settle reverts with BadPrevRoot.
+        seq.seal_genesis_baseline();
 
         let genesis_root = seq.state.state_root();
         // Live-migration tooling: the runbook reads this line off a throwaway boot to

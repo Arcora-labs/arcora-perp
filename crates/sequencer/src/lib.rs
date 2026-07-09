@@ -950,6 +950,26 @@ impl Sequencer {
         }
     }
 
+    /// Fold boot-time ops into the genesis baseline: the deployed `GENESIS_ROOT` is
+    /// `state.state_root()` AFTER boot funding + insurance seeding, so those ops are
+    /// part of the trusted deploy-time genesis, not a pending window-0 op-log. Reset
+    /// the window baseline to the current full state and drop the accumulated boot
+    /// ops so window 0 opens FROM genesis — its `pre_state` root equals the deployed
+    /// `GENESIS_ROOT` (otherwise the first settle submits the post-`add_market`,
+    /// pre-funding baseline as `prev` and reverts with `BadPrevRoot`). Must NOT
+    /// change `self.state` and must NOT bump `state.next_batch_id`: this closes no
+    /// window, it only re-bases the open one.
+    pub fn seal_genesis_baseline(&mut self) {
+        // Drop every per-window accumulator `seal_window` would drain for the open
+        // window (op-log + ordered/rejected manifest unions): the boot ops are baked
+        // into the genesis root, not provable window-0 ops.
+        self.window_ops.clear();
+        self.window_ordered.clear();
+        self.window_rejected.clear();
+        // Re-open the window from the full boot state (== the deployed genesis).
+        self.window_start_state = self.state.clone();
+    }
+
     /// Close the current settle window: build the combined manifest over the window's
     /// accumulated ordered/rejected hashes, advance the batch counter once (mirroring
     /// `apply_batch`), drain the window op-log into the witness, and reopen a fresh
@@ -1298,5 +1318,52 @@ mod tests {
         // …and the newest survive.
         assert_eq!(seq.window_for_tick(50), Some(50));
         assert_eq!(seq.window_for_tick(n - 1), Some(n - 1));
+    }
+
+    // BadPrevRoot fix: boot funding + SeedInsurance run AFTER add_market's last
+    // window_start_state capture, so without re-basing, window 0's pre_state is the
+    // pre-funding state while the deployed GENESIS_ROOT is the FULL boot state root.
+    // seal_genesis_baseline folds the boot ops into the trusted genesis baseline.
+    #[test]
+    fn seal_genesis_baseline_rebases_window_zero_to_full_boot_state() {
+        // mirrors Gw::boot: add_market + oracle (test_sequencer), then funding
+        // (Deposit + FundPosition per account) and an insurance seed.
+        let mut seq = test_sequencer();
+        seq.apply(&BatchOp::SeedInsurance {
+            amount: 1_000 * QUOTE_SCALE,
+        })
+        .unwrap();
+        // the bug precondition: boot ops accumulated after the last baseline capture,
+        // so the window baseline (the would-be submitted `prev`) lags the boot state.
+        assert!(!seq.window_ops.is_empty());
+        assert_ne!(
+            seq.window_start_state.state_root(),
+            seq.state.state_root(),
+            "harness must reproduce the drifted baseline the fix targets"
+        );
+        let batch_id_before = seq.state.next_batch_id;
+        let root_before = seq.state.state_root();
+
+        seq.seal_genesis_baseline();
+
+        // (a) the window baseline now equals the full boot state (== deployed
+        // GENESIS_ROOT)… and the live state itself was untouched.
+        assert_eq!(seq.window_start_state.state_root(), seq.state.state_root());
+        assert_eq!(seq.state.state_root(), root_before);
+        // (b) every per-window accumulator seal_window drains is empty again.
+        assert!(seq.window_ops.is_empty());
+        assert!(seq.window_ordered.is_empty());
+        assert!(seq.window_rejected.is_empty());
+        // no window was closed: Counter B is unchanged.
+        assert_eq!(seq.state.next_batch_id, batch_id_before);
+
+        // the first REAL window now opens from genesis: a post-boot deposit seals
+        // into a witness whose pre_state (the submitted `prev`) == the genesis root.
+        let genesis_root = seq.state.state_root();
+        fund(&mut seq, 3, 1_000, 0x33);
+        let w = seq.seal_window();
+        assert_eq!(w.batch_id, batch_id_before);
+        assert_eq!(w.pre_state.state_root(), genesis_root);
+        assert_eq!(w.manifest.previous_state_root, genesis_root);
     }
 }
