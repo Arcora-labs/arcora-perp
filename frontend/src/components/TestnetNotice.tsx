@@ -71,6 +71,13 @@ export function TestnetNotice() {
             Then register an API key on the <strong>API</strong> tab and POST the deposit tx
             hash to <code>/v1/accounts/deposit/onchain</code> to credit your account.
           </p>
+          <p className="banner__desc">
+            You'll also need a little <strong>Base Sepolia ETH</strong> for gas (the deposit
+            and later the withdrawal claim are on-chain). Grab some from a faucet such as{" "}
+            <a href="https://www.alchemy.com/faucets/base-sepolia" target="_blank" rel="noreferrer">
+              alchemy.com/faucets/base-sepolia
+            </a>.
+          </p>
         </div>
       )}
     </div>
