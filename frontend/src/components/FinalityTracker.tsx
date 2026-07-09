@@ -27,7 +27,9 @@ export function FinalityLegend() {
       </ol>
       <p className="finality-legend__warn">
         Binding finality is <strong>SETTLED</strong>. “Matched” is a good-faith
-        preconfirmation — not financial certainty, and not withdrawable.
+        preconfirmation — not financial certainty, and not withdrawable. Orders
+        typically reach SETTLED within ~10–20 minutes — one zk-proof interval —
+        so an order sitting in MATCHED that long is normal.
       </p>
     </div>
   );

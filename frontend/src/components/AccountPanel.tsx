@@ -1,7 +1,8 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useStore } from "../store";
-import { formatUsd, parseUsd } from "../domain/format";
+import { formatUsd, parseUsd, shortHash } from "../domain/format";
 import { accountSummary } from "../domain/risk";
+import type { WithdrawalEntry } from "../domain/types";
 
 /// Consolidated account health: equity, used vs free margin, unrealized PnL, and
 /// account-wide leverage — aggregated across the open positions and free balance.
@@ -101,7 +102,100 @@ export function AccountPanel() {
       {err && <p className="notice notice--error">{err}</p>}
       <p className="muted small">
         Withdrawals release only from SETTLED state (§3). Open-position collateral
-        cannot be withdrawn until the position is closed (§6).
+        cannot be withdrawn until the position is closed (§6). A requested
+        withdrawal becomes claimable on-chain once its window settles (~10–20 min).
+      </p>
+
+      <WithdrawalsSection />
+    </div>
+  );
+}
+
+/// The full on-chain claim call for one settled withdrawal — pure so the exact
+/// command shape is unit-testable. ANYONE may send it (the vault pays `to`, not
+/// the sender), so the private key stays a placeholder: the UI must NEVER ask
+/// for or handle a real key.
+export function buildClaimCommand(w: WithdrawalEntry, vault: string): string {
+  return [
+    "cast send",
+    vault,
+    '"claim(address,uint256,uint256,bytes32,bytes32[])"',
+    w.to,
+    w.amount.toString(),
+    String(w.nonce),
+    w.root,
+    `"[${w.proof.join(",")}]"`,
+    "--rpc-url https://sepolia.base.org",
+    "--private-key <YOUR_KEY>",
+  ].join(" ");
+}
+
+/// Requested withdrawals with their settle→claim lifecycle. The withdrawal flow
+/// used to dead-end at "requested" — this closes it: while the window is proving
+/// the entry shows the ~10–20 min expectation, and once `claimable` the user gets
+/// the copy-pasteable on-chain claim command. Hidden entirely when the client
+/// reports null (mock mode / no provisioned account).
+function WithdrawalsSection() {
+  const { client } = useStore();
+  const [data, setData] = useState<{ withdrawals: WithdrawalEntry[]; vault: string } | null>(null);
+  const [copiedNonce, setCopiedNonce] = useState<number | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    const load = () => {
+      client
+        .listWithdrawals()
+        .then((d) => { if (alive) setData(d); })
+        .catch(() => { /* transient fetch failure — keep the last good list, the poll retries */ });
+    };
+    load();
+    // Poll: claimability flips server-side when the window settles (~10–20 min),
+    // with no push channel for it — 30 s keeps the flip visible without load.
+    const timer = setInterval(load, 30_000);
+    return () => { alive = false; clearInterval(timer); };
+  }, [client]);
+
+  if (!data || data.withdrawals.length === 0) return null;
+  // Newest first — the per-account nonce is strictly increasing per request.
+  const entries = [...data.withdrawals].sort((a, b) => b.nonce - a.nonce);
+
+  async function copy(w: WithdrawalEntry) {
+    try {
+      await navigator.clipboard.writeText(buildClaimCommand(w, data!.vault));
+      setCopiedNonce(w.nonce);
+      setTimeout(() => setCopiedNonce((n) => (n === w.nonce ? null : n)), 2000);
+    } catch { /* clipboard unavailable (permissions) — the button simply stays */ }
+  }
+
+  return (
+    <div className="withdrawals">
+      <h3 className="card__title">Withdrawals</h3>
+      <ul className="withdrawals__list">
+        {entries.map((w) => (
+          <li key={w.nonce} className="withdrawals__item">
+            <div className="withdrawals__row">
+              <span className="stat__value">{formatUsd(w.amount)}</span>
+              <span className={`badge badge--${w.claimable ? "settled" : "matched"}`}>
+                {w.claimable ? "Claimable" : "Settling on-chain… (~10–20 min)"}
+              </span>
+            </div>
+            <div className="withdrawals__row muted small mono">
+              <span>to {shortHash(w.to)}</span>
+              <span>nonce {w.nonce}</span>
+            </div>
+            {w.claimable && (
+              <button type="button" className="btn btn--ghost" onClick={() => copy(w)}>
+                {copiedNonce === w.nonce ? "Copied" : "Copy claim command"}
+              </button>
+            )}
+          </li>
+        ))}
+      </ul>
+      <p className="muted small">
+        Claimable entries are paid by the on-chain vault: run the copied{" "}
+        <code>cast send</code> command from any funded wallet (replace{" "}
+        <code>&lt;YOUR_KEY&gt;</code> — anyone can send the claim; funds always go
+        to the withdrawal address).
       </p>
     </div>
   );

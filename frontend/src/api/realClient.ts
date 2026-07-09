@@ -22,6 +22,7 @@ import type { DarkPerpClient, ClientState, OrderEvent } from "./client";
 import type {
   AccountState, BatchSummary, BookLevel, Market, OracleQuote, OrderBookSnapshot,
   OrderInput, Position, RecoveredNote, Receipt, Side, TimeInForce, TrackedOrder,
+  WithdrawalEntry,
 } from "../domain/types";
 import { QUOTE_SCALE } from "../domain/types";
 import { seal, domainAad } from "./sealedBox";
@@ -61,6 +62,10 @@ interface WireHedge {
 }
 interface WireL1 {
   settledRoot: string; batchCount: number; lastTx: string; bondUsdc: string; withdrawalsRoot: string;
+}
+interface WireWithdrawal {
+  to: string; amount: string; nonce: number; leaf: string; root: string;
+  claimable: boolean; proof: string[];
 }
 
 const B = (s: string): bigint => BigInt(s);
@@ -611,6 +616,62 @@ export class RealDarkPerpClient implements DarkPerpClient {
   async recover(seedHex: string): Promise<RecoveredNote[]> {
     const notes = await this.post<{ batchId: number; amount: string; spent: boolean }[]>("/api/recover", { seed: seedHex });
     return notes.map((n) => ({ batchId: n.batchId, amount: B(n.amount), spent: n.spent }));
+  }
+
+  /**
+   * The account's requested withdrawals from `GET /v1/accounts/withdrawals`, keyed
+   * by the self-provisioned account's apiKey. Returns null (⇒ the UI hides the
+   * surface) when no account exists yet — a browser that never provisioned one
+   * cannot have withdrawals — or when the gateway doesn't serve the endpoint.
+   * Parsed defensively (like the rest of this file's wire handling): a single
+   * malformed entry is dropped rather than breaking the whole list.
+   */
+  async listWithdrawals(): Promise<{ withdrawals: WithdrawalEntry[]; vault: string } | null> {
+    const acct = this.sealing ?? this.readStoredAccount();
+    if (!acct) return null;
+    let res: Response;
+    try {
+      res = await fetch(this.base + "/v1/accounts/withdrawals", { headers: { "X-Api-Key": acct.apiKey } });
+    } catch {
+      return null; // gateway unreachable — treat like "nothing to show", the poll retries
+    }
+    if (!res.ok) return null; // older gateway (404) or a reset account (401) — hide, don't error
+    let j: { withdrawals?: unknown; vault?: unknown };
+    try {
+      j = (await res.json()) as { withdrawals?: unknown; vault?: unknown };
+    } catch {
+      return null;
+    }
+    if (typeof j !== "object" || j === null || !Array.isArray(j.withdrawals) || typeof j.vault !== "string") {
+      return null;
+    }
+    const withdrawals: WithdrawalEntry[] = [];
+    for (const raw of j.withdrawals as Partial<WireWithdrawal>[]) {
+      try {
+        if (
+          typeof raw !== "object" || raw === null ||
+          typeof raw.to !== "string" || typeof raw.amount !== "string" ||
+          typeof raw.nonce !== "number" || !Number.isSafeInteger(raw.nonce) ||
+          typeof raw.leaf !== "string" || typeof raw.root !== "string" ||
+          typeof raw.claimable !== "boolean" || !Array.isArray(raw.proof) ||
+          !raw.proof.every((p): p is string => typeof p === "string")
+        ) {
+          continue;
+        }
+        withdrawals.push({
+          to: raw.to,
+          amount: B(raw.amount), // throws on a non-decimal string → entry dropped
+          nonce: raw.nonce,
+          leaf: raw.leaf,
+          root: raw.root,
+          claimable: raw.claimable,
+          proof: raw.proof,
+        });
+      } catch {
+        /* drop the malformed entry, keep the rest */
+      }
+    }
+    return { withdrawals, vault: j.vault };
   }
 }
 

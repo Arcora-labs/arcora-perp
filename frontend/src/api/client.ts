@@ -17,6 +17,7 @@ import type {
   Receipt,
   SystemMode,
   TrackedOrder,
+  WithdrawalEntry,
 } from "../domain/types";
 
 /// The LP pool (the MM-as-counterparty): LPs deposit USDC → mint shares of the
@@ -85,6 +86,12 @@ export interface DarkPerpClient {
   /// Request a withdrawal. Rejects unless the amount is backed by SETTLED balance
   /// (§3 — only settled state is withdrawable).
   requestWithdrawal(amountQuote: bigint): Promise<void>;
+
+  /// The account's requested withdrawals + the vault they claim against — so the
+  /// UI can show settling→claimable status and the on-chain `claim` call instead
+  /// of dead-ending after `requestWithdrawal`. `null` = unsupported (mock) or no
+  /// account provisioned yet; the UI hides the surface entirely then.
+  listWithdrawals(): Promise<{ withdrawals: WithdrawalEntry[]; vault: string } | null>;
 
   /// Simulate the liveness/forced-exit trigger → close-only (§6).
   triggerCloseOnly(): void;

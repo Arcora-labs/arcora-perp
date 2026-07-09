@@ -27,11 +27,11 @@ export const FINALITY_COPY: Record<Finality, { label: string; hint: string }> = 
   },
   MATCHED: {
     label: "Matched",
-    hint: "Soft preconfirmation. Good-faith, not final — not yet withdrawable.",
+    hint: "Soft preconfirmation. Good-faith, not final — not yet withdrawable. Typically settles on-chain within ~10–20 min (one proof interval).",
   },
   SETTLED: {
     label: "Settled",
-    hint: "ZK proof verified on Ethereum. Hard finality — withdrawable.",
+    hint: "ZK proof verified on-chain (Base Sepolia). Hard finality — withdrawable.",
   },
 };
 
@@ -159,6 +159,28 @@ export interface RecoveredNote {
   batchId: number;
   amount: bigint; // quote-scaled
   spent: boolean;
+}
+
+/// One requested withdrawal as reported by `GET /v1/accounts/withdrawals`. Until
+/// its window settles on-chain, `claimable` is false and `root`/`proof` are
+/// placeholders; once settled they become the real vault Merkle root + inclusion
+/// proof, and ANYONE can execute the on-chain `claim(...)` with them — the UI
+/// surfaces the command instead of dead-ending after the request.
+export interface WithdrawalEntry {
+  /// L1 recipient address (0x…, 20 bytes).
+  to: string;
+  /// USDC base units (6 dp) — same scale as QUOTE_SCALE, so formatUsd applies.
+  amount: bigint;
+  /// Per-account withdrawal nonce (also orders entries newest-first).
+  nonce: number;
+  /// Withdrawal leaf hash (0x…, 32 bytes).
+  leaf: string;
+  /// Withdrawals Merkle root — zero until the window settles on-chain.
+  root: string;
+  /// True once the root is published on-chain and `claim` can be sent.
+  claimable: boolean;
+  /// Merkle inclusion proof (32-byte 0x-hex nodes; may be empty).
+  proof: string[];
 }
 
 /// A sealed batch as published to the order-commitment log (§2/§3). `manifestHash`

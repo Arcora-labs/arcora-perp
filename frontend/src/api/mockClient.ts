@@ -24,6 +24,7 @@ import {
   type RecoveredNote,
   type Receipt,
   type TrackedOrder,
+  type WithdrawalEntry,
 } from "../domain/types";
 
 const MATCH_DELAY_MS = 900;
@@ -499,6 +500,13 @@ export class MockDarkPerpClient implements DarkPerpClient {
     }
     this.state.account = { ...this.state.account, settledBalance: this.state.account.settledBalance - amountQuote };
     this.emit();
+  }
+
+  /// null on purpose: the mock has no L1 vault, so a simulated "claimable" entry
+  /// would surface a cast command that cannot work anywhere. The UI treats null
+  /// as "no withdrawals surface" and hides the section.
+  async listWithdrawals(): Promise<{ withdrawals: WithdrawalEntry[]; vault: string } | null> {
+    return null;
   }
 
   triggerCloseOnly(): void {

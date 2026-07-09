@@ -177,7 +177,8 @@ export function OrderTicket() {
         {pending ? "Submitting…" : `${side} ${state.market.symbol}`}
       </button>
       <p className="order-ticket__foot">
-        Your order returns a signed receipt (ACCEPTED). It is binding only when SETTLED.
+        Your order returns a signed receipt (ACCEPTED). It is binding only when
+        SETTLED — that lands with the next zk proof, typically ~10–20 min.
       </p>
     </form>
   );
