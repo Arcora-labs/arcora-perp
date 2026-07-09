@@ -3,9 +3,11 @@ import { useState } from "react";
 /// Honest public-testnet disclosure: what is REAL and what is a STAND-IN, plus how
 /// to get test USDC. Dismissible (persisted), but shown on first visit so no one
 /// mistakes the testnet for a mainnet with real funds. Kept deliberately blunt.
-const MOCK_USDC = "0xF9bd3AD70bA831b92e9F07D08121c6A750B3612a";
-const VAULT = "0x3A3939E1C5De10D41942a85D4A14ac8160779bF4";
-const DISMISS_KEY = "dp_testnet_notice_dismissed_v1";
+const MOCK_USDC = "0xBc7a6fAB19C469B0d5633f165D98FBc4817540f2";
+const VAULT = "0xa0B5CeBE4552536170B8e60999FAfD8DA491208b";
+// Bumped to v2 for the real-Groth16 migration (2026-07-09): the disclosure and the
+// faucet addresses materially changed, so returning users should see it once more.
+const DISMISS_KEY = "dp_testnet_notice_dismissed_v2";
 
 export function TestnetNotice() {
   const [open, setOpen] = useState(
@@ -31,9 +33,12 @@ export function TestnetNotice() {
           <strong className="banner__title">Public testnet — funds are not real.</strong>{" "}
           <span className="banner__desc">
             Settlement runs on Base Sepolia with <strong>test USDC</strong>. Matching runs
-            in a real Azure TDX enclave (attested), but fund-safety proofs are{" "}
-            <strong>mocked</strong> (MockZkVerifier) and orders reach the gateway over TLS,
-            not yet encrypted to the enclave. Don't send anything you can't lose.
+            in a real Azure TDX enclave (attested), and settlement is now enforced by{" "}
+            <strong>real zk validity proofs</strong> (SP1/Groth16, verified on-chain) —
+            produced by a dev prover that is not yet TEE-attested. Deposits and orders
+            confirm instantly (soft finality); on-chain <strong>SETTLED</strong> finality
+            and withdrawals lag <strong>~a proof interval (~10–20&nbsp;min)</strong>. Orders
+            reach the gateway over TLS. Don't send anything you can't lose.
           </span>
         </span>
       </div>
