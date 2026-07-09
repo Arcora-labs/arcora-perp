@@ -77,9 +77,16 @@ pub fn recovery_action(j_batch: u64, has_prepared: bool, b_snap: u64, chain_bc: 
 - [ ] Test `settle_loop_journal_lifecycle` (or nearest feasible unit): seal via `begin_window_settle`, write stage-1 journal, simulate the rollback arm (call `rollback_window` + `rollback_window_withdrawals` + `delete`), assert file gone and a re-seal reproduces the window (existing rollback test shape).
 - [ ] `cargo test -p gateway` green; commit.
 
-### Task 3: boot recovery in `main()`
+### Task 3: boot recovery in `main()` + WAL delete model
 
-**Files:** Modify `crates/gateway/src/main.rs` (between snapshot restore ~4382 and the continuity check ~4408).
+**Design amendment (Task-2 review carry-forward):** deleting the journal on the settle loop's resolving arms leaves a residual wedge — a crash between the in-memory commit/rollback and the next snapshot write (≤30 s) restores a state the (already-deleted) journal was needed to reconcile. Fix: the settle loop **never deletes the journal** (it only overwrites at the next stage-1); every resolving arm instead `notify_one()`s the snapshot writer so the resolution persists promptly. The journal becomes a WAL for the latest sealed window; BOOT is the only deleter, via the decision table (each residual-crash state maps to exactly one row):
+- crash after commit, snapshot stale → restored B==J+1, bc==J+1, prepared Some, chain root==prepared.new_root → ROLL-FORWARD re-commits at boot.
+- crash after commit, snapshot fresh → STALE → delete.
+- crash after rollback, snapshot stale → restored B==J+1, bc==J → ROLLBACK re-rolls-back at boot.
+- crash after rollback, snapshot fresh → restored B==J (rewound), bc==J → SEAL-NEVER-PERSISTED → delete.
+Task 3 therefore ALSO: removes the 5 resolving-arm `delete` calls Task 2 added, replaces each with a `notify_one()` on the snapshot Notify, and updates `settle_loop_journal_lifecycle` to the WAL semantics (journal survives the rollback arm; boot rows delete). A journal found on a FRESH boot (no snapshot restored) is meaningless — log + delete it before the normal boot path.
+
+**Files:** Modify `crates/gateway/src/main.rs` (settle-loop arms ~4831-4933, and between snapshot restore ~4382 and the continuity check ~4408).
 
 **Consumes:** Task 1's `read`/`recovery_action`/`delete`; existing `gw.seq.rollback_window`, `gw.rollback_window_withdrawals`, `gw.commit_window_settle`, `l1.batch_count()`, `l1.current_root()`, `l1.sequencer_bond()`.
 
