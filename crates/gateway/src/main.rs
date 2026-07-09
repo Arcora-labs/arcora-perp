@@ -80,6 +80,27 @@ fn settle_failure_action(sealed_batch_id: u64, chain_batch_count: u64) -> RollAc
     }
 }
 
+/// Fix round 2 (final-review TOCTOU): whether the boot-recovery chain read must
+/// be CONFIRMED by a delayed second read before feeding the recovery decision.
+///
+/// The settle loop journals `prepared` (stage 2) strictly BEFORE the tx
+/// broadcast, so `has_prepared == false` PROVES no tx was ever sent — the first
+/// read is authoritative and RollBack is immediately safe. With `prepared`
+/// present, a first read of `batch_count == j.batch_id` is ambiguous: the crash
+/// may sit in the ~2-4 s window between the broadcast and its mining, and a
+/// RollBack decided on that stale read rewinds Counter B and deletes the journal
+/// (the only `prepared` copy) right before the tx lands — chain J+1 vs local J,
+/// the unreconcilable wedge this recovery exists to kill. Any other first read
+/// already disambiguates (landed → RollForward row, weirder → Hold), so no wait.
+fn needs_confirm_delay(has_prepared: bool, first_bc: u64, j_batch: u64) -> bool {
+    has_prepared && first_bc == j_batch
+}
+
+/// How long the boot-recovery block waits before the confirming re-read when
+/// `needs_confirm_delay` fires — comfortably past Base Sepolia's ~2 s blocks and
+/// the observed 2-4 s propagation window, cheap enough for a boot path.
+const RECOVERY_CONFIRM_DELAY_SECS: u64 = 15;
+
 /// Task 3 (crash recovery): what `apply_boot_recovery` decided about the journal
 /// FILE. The function itself only mutates the `Gw` — it is pure of file I/O, so
 /// the boot call site (and the tests, which have no journal file) own the delete.
@@ -4681,6 +4702,50 @@ async fn main() {
                             .await
                             .unwrap_or_else(|e| Err(e.to_string()))
                         };
+                        // Fix round 2 (final-review TOCTOU): if the journal has a
+                        // `prepared` outcome (a settle tx MAY have been broadcast)
+                        // and the chain still reads the pre-settle batchCount, the
+                        // crash may sit between the broadcast and its mining — a
+                        // RollBack decided on this first read would delete the only
+                        // `prepared` copy right before the tx lands. Wait out the
+                        // propagation window and let a SECOND read decide; a failed
+                        // re-read proves nothing and flows into the HOLD arm below,
+                        // exactly like any other failed chain read.
+                        let reads = match reads {
+                            Ok((bc, _, bond))
+                                if needs_confirm_delay(j.prepared.is_some(), bc, j.batch_id) =>
+                            {
+                                eprintln!(
+                                    "[recovery] journal window {} has a prepared outcome and the \
+                                     chain still reads batchCount {bc} — the settle tx may be \
+                                     broadcast but not yet mined; waiting \
+                                     {RECOVERY_CONFIRM_DELAY_SECS}s and re-reading the chain \
+                                     before deciding",
+                                    j.batch_id
+                                );
+                                tokio::time::sleep(Duration::from_secs(
+                                    RECOVERY_CONFIRM_DELAY_SECS,
+                                ))
+                                .await;
+                                let l1c = l1c.clone();
+                                tokio::task::spawn_blocking(
+                                    move || -> Result<(u64, String, u128), String> {
+                                        let bc = l1c.batch_count()?;
+                                        let root = l1c.current_root()?;
+                                        Ok((bc, root, bond))
+                                    },
+                                )
+                                .await
+                                .unwrap_or_else(|e| Err(e.to_string()))
+                                .map_err(|e| {
+                                    format!(
+                                        "confirming re-read after the {RECOVERY_CONFIRM_DELAY_SECS}s \
+                                         in-flight-tx wait failed: {e}"
+                                    )
+                                })
+                            }
+                            other => other,
+                        };
                         match reads {
                             Ok((chain_bc, chain_root, bond)) => {
                                 match apply_boot_recovery(&mut gw, j, chain_bc, &chain_root, bond)
@@ -5520,6 +5585,26 @@ mod tests {
         assert_eq!(crate::settle_failure_action(5, 7), RollAction::Hold);
         assert_eq!(crate::settle_failure_action(5, 4), RollAction::Hold);
         assert_eq!(crate::settle_failure_action(0, 0), RollAction::RollBack);
+    }
+
+    /// Fix round 2 (final-review TOCTOU): the boot-recovery confirm-delay fires
+    /// ONLY in the ambiguous row — `prepared` journaled (so a settle tx may have
+    /// been broadcast) AND the first chain read still shows the pre-settle
+    /// batchCount (so the tx may be mined-but-not-yet-visible). `prepared`
+    /// absent PROVES no broadcast ever happened (stage-2 journal write precedes
+    /// the broadcast), and any other batchCount already disambiguates — no wait.
+    #[test]
+    fn needs_confirm_delay_only_for_ambiguous_prepared_row() {
+        // ambiguous: prepared present + chain still at the journal's window id.
+        assert!(crate::needs_confirm_delay(true, 5, 5));
+        assert!(crate::needs_confirm_delay(true, 0, 0));
+        // no prepared -> no tx was ever broadcast -> first read is authoritative.
+        assert!(!crate::needs_confirm_delay(false, 5, 5));
+        assert!(!crate::needs_confirm_delay(false, 0, 0));
+        // chain already advanced (or is otherwise off) -> already disambiguated.
+        assert!(!crate::needs_confirm_delay(true, 6, 5));
+        assert!(!crate::needs_confirm_delay(true, 4, 5));
+        assert!(!crate::needs_confirm_delay(false, 6, 5));
     }
 
     // ── off-chain receipt reconciliation (Slice 3b-4) ────────────────────────
