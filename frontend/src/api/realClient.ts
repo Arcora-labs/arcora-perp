@@ -641,6 +641,49 @@ export class RealDarkPerpClient implements DarkPerpClient {
     return notes.map((n) => ({ batchId: n.batchId, amount: B(n.amount), spent: n.spent }));
   }
 
+  // ── injected-wallet deposit flow (see api/wallet.ts) ────────────────────────
+  // These three methods make this client a `WalletDepositClient`: the wallet UI
+  // is gated on their presence (the mock client lacks them ⇒ no wallet UI).
+
+  /**
+   * The self-provisioned `/v1` account's identity — the wallet flow binds the
+   * connected EOA to this `owner` (it is the 32-byte pubkey inside the gateway's
+   * `deposit_bind_digest`). Provisions the account on first call.
+   */
+  async depositAccount(): Promise<{ apiKey: string; owner: Uint8Array }> {
+    const acct = await this.ensureAccount();
+    return { apiKey: acct.apiKey, owner: acct.owner };
+  }
+
+  /**
+   * `POST /v1/accounts/deposit/address` — bind the external EOA the account
+   * funds from. `signature` must recover to `address` over the bind digest
+   * (raw or EIP-191 `personal_sign` form — the gateway accepts both).
+   */
+  async bindDepositAddress(address: string, signature: string): Promise<void> {
+    const acct = await this.ensureAccount();
+    await this.post(
+      "/v1/accounts/deposit/address",
+      { address, signature },
+      { "X-Api-Key": acct.apiKey },
+    );
+  }
+
+  /**
+   * `POST /v1/accounts/deposit/onchain` — credit a CONFIRMED on-chain
+   * `vault.deposit` tx (the gateway verifies the receipt + `from`==bound EOA +
+   * dedups by hash). Returns the credited amount in USDC base units.
+   */
+  async creditOnchainDeposit(txHash: string): Promise<bigint> {
+    const acct = await this.ensureAccount();
+    const r = await this.post<{ credited?: unknown }>(
+      "/v1/accounts/deposit/onchain",
+      { txHash, marketId: this.state?.selectedMarketId ?? 0 },
+      { "X-Api-Key": acct.apiKey },
+    );
+    return typeof r.credited === "string" ? B(r.credited) : 0n;
+  }
+
   /**
    * The account's requested withdrawals from `GET /v1/accounts/withdrawals`, keyed
    * by the self-provisioned account's apiKey. Returns null (⇒ the UI hides the

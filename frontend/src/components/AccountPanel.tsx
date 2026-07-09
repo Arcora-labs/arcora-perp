@@ -3,6 +3,27 @@ import { useStore } from "../store";
 import { formatUsd, parseUsd, shortHash } from "../domain/format";
 import { accountSummary } from "../domain/risk";
 import type { WithdrawalEntry } from "../domain/types";
+import type { DarkPerpClient } from "../api/client";
+import {
+  COLLATERAL_VAULT,
+  EXPLORER_TX,
+  MOCK_USDC,
+  bindDepositDigest,
+  connect,
+  encodeApprove,
+  encodeClaim,
+  encodeDeposit,
+  encodeMint,
+  ensureBaseSepolia,
+  hasInjected,
+  personalSign,
+  sendTx,
+  supportsWalletDeposit,
+  useWalletAddress,
+  waitForTx,
+  type WalletDepositClient,
+} from "../api/wallet";
+import { bytesToHex } from "@noble/hashes/utils";
 
 /// Consolidated account health: equity, used vs free margin, unrealized PnL, and
 /// account-wide leverage — aggregated across the open positions and free balance.
@@ -73,6 +94,21 @@ export function AccountPanel() {
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
+  // Live gateway ⇒ collateral enters via a REAL on-chain deposit (the demo
+  // self-credit is refused by the prod gateway), so the wallet card replaces
+  // the demo Deposit button. The mock client lacks the wallet surface ⇒ the
+  // demo flow stays as-is.
+  const walletCapable = supportsWalletDeposit(client);
+  const wallet = useWalletAddress();
+
+  // Suggest the connected wallet as the withdrawal destination — prefill only
+  // an EMPTY field (never clobber something the user typed / persisted).
+  useEffect(() => {
+    if (wallet) {
+      setTo((cur) => (cur.trim() === "" ? wallet : cur));
+    }
+  }, [wallet]);
+
   async function run(kind: "deposit" | "withdraw") {
     setMsg(null);
     setErr(null);
@@ -107,6 +143,8 @@ export function AccountPanel() {
         <span className="stat__value">{formatUsd(state.account.settledBalance)}</span>
       </div>
 
+      {walletCapable && <WalletDepositCard client={client as DarkPerpClient & WalletDepositClient} />}
+
       <label className="field">
         <span className="field__label">Amount (USD)</span>
         <input className="field__input" value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="decimal" />
@@ -122,10 +160,17 @@ export function AccountPanel() {
           autoComplete="off"
         />
       </label>
-      <div className="row">
-        <button className="btn btn--ghost" onClick={() => run("deposit")}>
-          Deposit
+      {wallet && to.trim().toLowerCase() !== wallet && (
+        <button type="button" className="btn btn--ghost" onClick={() => setTo(wallet)}>
+          Use connected wallet ({shortHash(wallet)})
         </button>
+      )}
+      <div className="row">
+        {!walletCapable && (
+          <button className="btn btn--ghost" onClick={() => run("deposit")}>
+            Deposit
+          </button>
+        )}
         <button className="btn btn--ghost" onClick={() => run("withdraw")}>
           Withdraw
         </button>
@@ -138,7 +183,225 @@ export function AccountPanel() {
         withdrawal becomes claimable on-chain once its window settles (~10–20 min).
       </p>
 
-      <WithdrawalsSection />
+      <WithdrawalsSection client={client} />
+    </div>
+  );
+}
+
+// ── injected-wallet deposit pipeline ─────────────────────────────────────────
+
+type StepId = "chain" | "mint" | "approve" | "deposit" | "bind" | "credit";
+type StepStatus = "idle" | "pending" | "done" | "error";
+
+const WALLET_STEPS: { id: StepId; label: string }[] = [
+  { id: "chain", label: "Switch wallet to Base Sepolia" },
+  { id: "mint", label: "Mint test USDC to your wallet" },
+  { id: "approve", label: "Approve the vault to pull USDC" },
+  { id: "deposit", label: "Deposit USDC into the vault" },
+  { id: "bind", label: "Bind wallet to trading account (one-time signature)" },
+  { id: "credit", label: "Credit the trading account" },
+];
+
+const idleSteps = (): Record<StepId, StepStatus> => ({
+  chain: "idle", mint: "idle", approve: "idle", deposit: "idle", bind: "idle", credit: "idle",
+});
+
+/// localStorage key remembering that `address` is already bound to the account
+/// whose owner pubkey is `ownerHex` — so re-deposits skip the signature prompt.
+/// (Re-binding the same pair is idempotent server-side; this is purely UX.)
+export function boundStorageKey(ownerHex: string, address: string): string {
+  return `darkperp.walletBound.${ownerHex.toLowerCase()}.${address.toLowerCase()}`;
+}
+
+const STEP_GLYPH: Record<StepStatus, string> = { idle: "○", pending: "…", done: "✓", error: "✕" };
+const STEP_COLOR: Record<StepStatus, string> = {
+  idle: "var(--muted, inherit)", pending: "var(--accent)", done: "var(--buy)", error: "var(--sell)",
+};
+
+/**
+ * The full on-chain deposit pipeline driven by an injected wallet (MetaMask-
+ * class): [1] ensure Base Sepolia [2] mint test USDC (open mint — testnet
+ * convenience) [3] approve the vault [4] `vault.deposit` [5] bind the EOA to
+ * the /v1 account (one `personal_sign`, remembered per account+address)
+ * [6] credit via `POST /v1/accounts/deposit/onchain`.
+ *
+ * Recoverability: per-step progress is kept across attempts, so a re-run after
+ * an error SKIPS the already-done steps (e.g. the deposit tx landed but the
+ * gateway credit failed → the retry only re-binds/credits, reusing the tx
+ * hash). Editing the amount before the deposit landed resets the run — mint/
+ * approve simply redo with the new amount (both are idempotent enough).
+ */
+export function WalletDepositCard({ client }: { client: WalletDepositClient }) {
+  const address = useWalletAddress();
+  const [amount, setAmount] = useState("1000");
+  const [steps, setSteps] = useState<Record<StepId, StepStatus>>(idleSteps);
+  const [txs, setTxs] = useState<Partial<Record<StepId, string>>>({});
+  const [running, setRunning] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [ok, setOk] = useState<string | null>(null);
+
+  if (!hasInjected()) {
+    return (
+      <div className="walletflow">
+        <p className="muted small">
+          <strong>No browser wallet detected.</strong> Install{" "}
+          <a href="https://metamask.io" target="_blank" rel="noreferrer">MetaMask</a> to
+          deposit from the UI, or fund via the CLI path in the{" "}
+          <a href="https://docs.arcoralabs.xyz/quickstart.html" target="_blank" rel="noreferrer">
+            quickstart
+          </a>{" "}
+          (mint → approve → deposit with <code>cast</code>).
+        </p>
+      </div>
+    );
+  }
+
+  async function onConnect() {
+    setErr(null);
+    try {
+      await connect();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  function onAmountChange(v: string) {
+    setAmount(v);
+    // A new amount restarts the pipeline — UNLESS the deposit tx already
+    // landed (then the remaining bind/credit steps don't depend on the amount,
+    // and resetting would orphan the on-chain deposit).
+    if (!running && !txs.deposit) {
+      setSteps(idleSteps());
+      setTxs({});
+    }
+  }
+
+  async function run() {
+    if (!address || running) return;
+    const v = parseUsd(amount); // QUOTE_SCALE == USDC base units (both 1e6)
+    if (v === null || v <= 0n) return setErr("Enter a valid amount.");
+    setErr(null);
+    setOk(null);
+    setRunning(true);
+    // Local copies so the sequential loop sees its own progress synchronously
+    // (React state updates are async).
+    const st = { ...steps };
+    const tx = { ...txs };
+    const mark = (id: StepId, s: StepStatus) => { st[id] = s; setSteps({ ...st }); };
+    const sendAndWait = async (id: StepId, to: string, data: string) => {
+      const h = await sendTx({ from: address, to, data });
+      tx[id] = h;
+      setTxs({ ...tx });
+      await waitForTx(h);
+    };
+    const executors: [StepId, () => Promise<void>][] = [
+      ["chain", () => ensureBaseSepolia()],
+      ["mint", () => sendAndWait("mint", MOCK_USDC, encodeMint(address, v))],
+      ["approve", () => sendAndWait("approve", MOCK_USDC, encodeApprove(COLLATERAL_VAULT, v))],
+      ["deposit", () => sendAndWait("deposit", COLLATERAL_VAULT, encodeDeposit(v))],
+      ["bind", async () => {
+        const acct = await client.depositAccount();
+        const key = boundStorageKey(bytesToHex(acct.owner), address);
+        let bound = false;
+        try { bound = localStorage.getItem(key) === "1"; } catch { /* private mode */ }
+        if (!bound) {
+          const digest = bindDepositDigest(acct.owner, address);
+          const sig = await personalSign("0x" + bytesToHex(digest), address);
+          await client.bindDepositAddress(address, sig);
+          try { localStorage.setItem(key, "1"); } catch { /* private mode — re-bind next time (idempotent) */ }
+        }
+      }],
+      ["credit", async () => {
+        const dep = tx.deposit;
+        if (!dep) throw new Error("internal: missing deposit tx hash");
+        const credited = await client.creditOnchainDeposit(dep);
+        setOk(`Deposited ${formatUsd(credited)} — credited to your trading account.`);
+      }],
+    ];
+    try {
+      for (const [id, fn] of executors) {
+        if (st[id] === "done") continue; // recovered run — skip what already succeeded
+        mark(id, "pending");
+        try {
+          await fn();
+        } catch (e) {
+          mark(id, "error");
+          const m = e instanceof Error ? e.message : String(e);
+          setErr(
+            tx.deposit && (id === "bind" || id === "credit")
+              ? `${m} — your deposit tx ${shortHash(tx.deposit)} IS on-chain; press Deposit again to finish (completed steps are skipped).`
+              : m,
+          );
+          return;
+        }
+        mark(id, "done");
+      }
+      // Full success → fresh slate for the next deposit.
+      setSteps(idleSteps());
+      setTxs({});
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  const anyProgress = WALLET_STEPS.some(({ id }) => steps[id] !== "idle");
+  return (
+    <div className="walletflow">
+      {!address ? (
+        <>
+          <p className="muted small">
+            Collateral enters through a <strong>real on-chain USDC deposit</strong>. Connect
+            your wallet to mint test USDC, deposit into the vault and credit your
+            trading account in one flow.
+          </p>
+          <button type="button" className="btn btn--ghost" onClick={onConnect}>
+            Connect wallet
+          </button>
+        </>
+      ) : (
+        <>
+          <div className="withdrawals__row muted small mono">
+            <span>wallet {shortHash(address)}</span>
+            <span>Base Sepolia</span>
+          </div>
+          <label className="field">
+            <span className="field__label">Deposit amount (USDC)</span>
+            <input
+              className="field__input"
+              value={amount}
+              onChange={(e) => onAmountChange(e.target.value)}
+              inputMode="decimal"
+              disabled={running}
+            />
+          </label>
+          <button type="button" className="btn btn--ghost" onClick={run} disabled={running}>
+            {running ? "Working…" : "Deposit"}
+          </button>
+          {(anyProgress || running) && (
+            <ol className="walletflow__steps" style={{ listStyle: "none", margin: "8px 0 0", padding: 0 }}>
+              {WALLET_STEPS.map(({ id, label }, i) => {
+                const s = steps[id];
+                const h = txs[id];
+                return (
+                  <li key={id} className="mono small" style={{ color: STEP_COLOR[s] }}>
+                    <span aria-hidden>{STEP_GLYPH[s]}</span> [{i + 1}] {label}
+                    {h && (
+                      <>
+                        {" "}
+                        <a href={`${EXPLORER_TX}${h}`} target="_blank" rel="noreferrer">
+                          {shortHash(h)}
+                        </a>
+                      </>
+                    )}
+                  </li>
+                );
+              })}
+            </ol>
+          )}
+        </>
+      )}
+      {ok && <p className="notice notice--ok">{ok}</p>}
+      {err && <p className="notice notice--error">{err}</p>}
     </div>
   );
 }
@@ -162,15 +425,25 @@ export function buildClaimCommand(w: WithdrawalEntry, vault: string): string {
   ].join(" ");
 }
 
+/// One claim tx's lifecycle, keyed by the withdrawal nonce.
+interface ClaimTxState {
+  status: "pending" | "done" | "error";
+  hash?: string;
+  err?: string;
+}
+
 /// Requested withdrawals with their settle→claim lifecycle. The withdrawal flow
 /// used to dead-end at "requested" — this closes it: while the window is proving
 /// the entry shows the ~10–20 min expectation, and once `claimable` the user gets
-/// the copy-pasteable on-chain claim command. Hidden entirely when the client
-/// reports null (mock mode / no provisioned account).
-function WithdrawalsSection() {
-  const { client } = useStore();
+/// the on-chain claim — sent directly from a connected wallet, with the
+/// copy-pasteable `cast` command kept as the fallback. Hidden entirely when the
+/// client reports null (mock mode / no provisioned account).
+/// Exported for tests (takes the client as a prop so a fake can drive it).
+export function WithdrawalsSection({ client }: { client: DarkPerpClient }) {
   const [data, setData] = useState<{ withdrawals: WithdrawalEntry[]; vault: string } | null>(null);
   const [copiedNonce, setCopiedNonce] = useState<number | null>(null);
+  const wallet = useWalletAddress();
+  const [claims, setClaims] = useState<Record<number, ClaimTxState>>({});
 
   useEffect(() => {
     let alive = true;
@@ -199,11 +472,33 @@ function WithdrawalsSection() {
     } catch { /* clipboard unavailable (permissions) — the button simply stays */ }
   }
 
+  /// Send the on-chain `claim` directly from the connected wallet. The vault
+  /// pays `w.to` regardless of the sender, so ANY connected account may send it.
+  async function claimWithWallet(w: WithdrawalEntry) {
+    if (!wallet || !data) return;
+    const set = (s: ClaimTxState) => setClaims((c) => ({ ...c, [w.nonce]: s }));
+    set({ status: "pending" });
+    try {
+      await ensureBaseSepolia();
+      const hash = await sendTx({ from: wallet, to: data.vault, data: encodeClaim(w) });
+      set({ status: "pending", hash });
+      await waitForTx(hash);
+      set({ status: "done", hash });
+    } catch (e) {
+      setClaims((c) => ({
+        ...c,
+        [w.nonce]: { ...c[w.nonce], status: "error", err: e instanceof Error ? e.message : String(e) },
+      }));
+    }
+  }
+
   return (
     <div className="withdrawals">
       <h3 className="card__title">Withdrawals</h3>
       <ul className="withdrawals__list">
-        {entries.map((w) => (
+        {entries.map((w) => {
+          const claim = claims[w.nonce];
+          return (
           <li key={w.nonce} className="withdrawals__item">
             <div className="withdrawals__row">
               <span className="stat__value">{formatUsd(w.amount)}</span>
@@ -216,18 +511,42 @@ function WithdrawalsSection() {
               <span>nonce {w.nonce}</span>
             </div>
             {w.claimable && (
-              <button type="button" className="btn btn--ghost" onClick={() => copy(w)}>
-                {copiedNonce === w.nonce ? "Copied" : "Copy claim command"}
-              </button>
+              <div className="row">
+                {wallet && hasInjected() && claim?.status !== "done" && (
+                  <button
+                    type="button"
+                    className="btn btn--ghost"
+                    onClick={() => claimWithWallet(w)}
+                    disabled={claim?.status === "pending"}
+                  >
+                    {claim?.status === "pending" ? "Claiming…" : "Claim with wallet"}
+                  </button>
+                )}
+                <button type="button" className="btn btn--ghost" onClick={() => copy(w)}>
+                  {copiedNonce === w.nonce ? "Copied" : "Copy claim command"}
+                </button>
+              </div>
+            )}
+            {claim?.hash && (
+              <p className="muted small mono">
+                {claim.status === "done" ? "Claimed ✓" : claim.status === "error" ? "Claim tx" : "Claiming…"}{" "}
+                <a href={`${EXPLORER_TX}${claim.hash}`} target="_blank" rel="noreferrer">
+                  {shortHash(claim.hash)}
+                </a>
+              </p>
+            )}
+            {claim?.status === "error" && claim.err && (
+              <p className="notice notice--error">{claim.err}</p>
             )}
           </li>
-        ))}
+          );
+        })}
       </ul>
       <p className="muted small">
-        Claimable entries are paid by the on-chain vault: run the copied{" "}
-        <code>cast send</code> command from any funded wallet (replace{" "}
-        <code>&lt;YOUR_KEY&gt;</code> — anyone can send the claim; funds always go
-        to the withdrawal address).
+        Claimable entries are paid by the on-chain vault: send the claim from the
+        connected wallet, or run the copied <code>cast send</code> command from any
+        funded wallet (replace <code>&lt;YOUR_KEY&gt;</code> — anyone can send the
+        claim; funds always go to the withdrawal address).
       </p>
     </div>
   );
