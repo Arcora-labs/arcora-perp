@@ -81,7 +81,20 @@ pub fn read(path: &Path, seed: &[u8; 32]) -> Result<Option<RollbackJournal>, Str
     let body = plain
         .strip_prefix(MAGIC.as_slice())
         .ok_or("journal magic/version mismatch")?;
-    let j = postcard::from_bytes(body).map_err(|e| format!("journal decode: {e}"))?;
+    let j: RollbackJournal =
+        postcard::from_bytes(body).map_err(|e| format!("journal decode: {e}"))?;
+    // Defense-in-depth: the window id lives in the journal twice — `batch_id`
+    // (what the boot recovery table keys on) and `witness.batch_id` (what
+    // `rollback_window` asserts on). They are written equal; a decoded journal
+    // where they disagree is corrupt/tampered in a way the seal + postcard framing
+    // happened not to catch — fail closed like any other unreadable journal (the
+    // caller HOLDs), never hand recovery a self-inconsistent journal.
+    if j.batch_id != j.witness.batch_id {
+        return Err(format!(
+            "journal batch_id mismatch: batch_id {} != witness.batch_id {}",
+            j.batch_id, j.witness.batch_id
+        ));
+    }
     Ok(Some(j))
 }
 
@@ -243,6 +256,33 @@ mod tests {
         // Err — NOT Ok(None): the file exists, so a wrong seed must read as
         // "unreadable journal → HOLD", never as "no journal → clean boot".
         assert!(read(&path, &[43u8; 32]).is_err());
+        std::fs::remove_file(&path).ok();
+    }
+
+    /// Defense-in-depth (Task 3 fix round 1): the journal carries the window id
+    /// twice — `batch_id` (keyed on by the recovery table) and `witness.batch_id`
+    /// (asserted by `rollback_window`). A journal where they disagree is
+    /// corrupt/tampered in a way postcard can't catch; `read` fails closed (Err →
+    /// the caller HOLDs), never handing recovery a self-inconsistent journal.
+    #[test]
+    fn journal_batch_id_mismatch_fails_closed() {
+        let (witness, ww) = sealed_window();
+        let j = RollbackJournal {
+            batch_id: witness.batch_id + 1, // disagrees with witness.batch_id
+            witness,
+            ww,
+            prepared: None,
+        };
+        let path = scratch_path("id-mismatch");
+        let seed = [42u8; 32];
+        write(&path, &j, &seed).expect("journal write");
+        // Err — NOT Ok: a self-inconsistent journal must read as unreadable.
+        // (no expect_err: RollbackJournal carries a full WindowWitness, no Debug)
+        let err = match read(&path, &seed) {
+            Err(e) => e,
+            Ok(_) => panic!("mismatched window ids must fail closed"),
+        };
+        assert!(err.contains("batch_id mismatch"), "unexpected error text: {err}");
         std::fs::remove_file(&path).ok();
     }
 

@@ -86,8 +86,15 @@ fn settle_failure_action(sealed_batch_id: u64, chain_batch_count: u64) -> RollAc
 #[derive(Debug, PartialEq, Eq)]
 enum BootRecoveryOutcome {
     /// The journaled window is resolved (stale, never persisted, rolled back, or
-    /// rolled forward) — the caller deletes the journal.
-    DeleteJournal,
+    /// rolled forward) — the caller deletes the journal. `mutated` says whether
+    /// the resolution CHANGED the `Gw` (RollBack / RollForward): those exist only
+    /// in memory until a snapshot write, so the caller must persist the
+    /// post-recovery snapshot BEFORE the delete (`finish_boot_recovery`) — a hard
+    /// crash in the gap would otherwise restore the PRE-recovery snapshot with no
+    /// journal left to re-resolve it. Non-mutating rows (Stale /
+    /// SealNeverPersisted) resolve to the state already on disk, so they delete
+    /// without a write.
+    DeleteJournal { mutated: bool },
     /// HOLD: keep the journal for the operator / a later boot. The boot
     /// continuity check remains the final arbiter of whether startup proceeds.
     KeepJournal,
@@ -133,7 +140,7 @@ fn apply_boot_recovery(
                  persisted) — resolved, nothing to do",
                 j.batch_id
             );
-            BootRecoveryOutcome::DeleteJournal
+            BootRecoveryOutcome::DeleteJournal { mutated: false }
         }
         RecoveryAction::SealNeverPersisted => {
             println!(
@@ -141,7 +148,7 @@ fn apply_boot_recovery(
                  tx never landed — the seal effectively never happened; resolved, nothing to do",
                 j.batch_id
             );
-            BootRecoveryOutcome::DeleteJournal
+            BootRecoveryOutcome::DeleteJournal { mutated: false }
         }
         RecoveryAction::RollBack => {
             gw.seq.rollback_window(&j.witness);
@@ -151,7 +158,7 @@ fn apply_boot_recovery(
                  the next settle re-seals it under the same batch id",
                 j.batch_id
             );
-            BootRecoveryOutcome::DeleteJournal
+            BootRecoveryOutcome::DeleteJournal { mutated: true }
         }
         RecoveryAction::RollForward => {
             // `recovery_action` returns RollForward only when `has_prepared`, so this
@@ -180,7 +187,7 @@ fn apply_boot_recovery(
                  bookkeeping re-committed from the journal",
                 j.batch_id
             );
-            BootRecoveryOutcome::DeleteJournal
+            BootRecoveryOutcome::DeleteJournal { mutated: true }
         }
         RecoveryAction::Hold => {
             eprintln!(
@@ -193,6 +200,53 @@ fn apply_boot_recovery(
             BootRecoveryOutcome::KeepJournal
         }
     }
+}
+
+/// Task 3 fix (review): synchronously persist the post-recovery snapshot — the
+/// persistence block's exact three calls (`snapshot_plain` → `seal` →
+/// `write_atomic`). At this point in boot the snapshot writer task is not spawned
+/// yet, so the snapshot file still has exactly one writer (this call); there is
+/// no `.tmp`-rename race to worry about.
+fn persist_recovery(gw: &Gw, path: &std::path::Path, seed: &[u8; 32]) -> Result<(), String> {
+    let plain = gw.snapshot_plain();
+    let sealed = snapshot::seal(&plain, seed);
+    snapshot::write_atomic(path, &sealed).map_err(|e| format!("snapshot write: {e}"))
+}
+
+/// Task 3 fix (review): the post-`apply_boot_recovery` call-site glue, extracted
+/// so the ordering is testable. A MUTATING resolution (RollBack / RollForward)
+/// exists only in memory here, and the first periodic durability is ~SNAPSHOT_SECS
+/// away (the writer task — spawned later — skips its first tick), so it must hit
+/// disk BEFORE the journal (the only other copy of the rollback inputs) is
+/// deleted. A hard crash in that gap would otherwise restore the PRE-recovery
+/// snapshot with NO journal: the rollback case leaves Counter B at J+1 and the
+/// settle desync guard skips settles forever (the exact wedge this recovery
+/// exists to kill); the roll-forward case leaves a stale settled_root with
+/// `prepared` gone, and the continuity check refuses to start. If the persist
+/// FAILS, keep the journal — it is still the recovery source, and the next boot
+/// re-resolves the same row idempotently (the on-disk snapshot is unchanged, so
+/// the recovery table reads identically). Non-mutating resolutions (Stale /
+/// SealNeverPersisted) delete without a write — they resolve to the state
+/// already on disk (proven safe in the review's crash walk).
+fn finish_boot_recovery(
+    gw: &Gw,
+    mutated: bool,
+    state_path: &std::path::Path,
+    journal_path: &std::path::Path,
+    seed: &[u8; 32],
+) {
+    if mutated {
+        if let Err(e) = persist_recovery(gw, state_path, seed) {
+            eprintln!(
+                "[recovery] HOLDING: window recovery applied in memory but the post-recovery \
+                 snapshot could not be persisted ({e}) — keeping the rollback journal {} as \
+                 the recovery source (the next boot re-resolves it); fix the snapshot path",
+                journal_path.display()
+            );
+            return;
+        }
+    }
+    rollback_journal::delete(journal_path);
 }
 
 // ── constants ────────────────────────────────────────────────────────────────
@@ -4590,10 +4644,22 @@ async fn main() {
                         };
                         match reads {
                             Ok((chain_bc, chain_root, bond)) => {
-                                if apply_boot_recovery(&mut gw, j, chain_bc, &chain_root, bond)
-                                    == BootRecoveryOutcome::DeleteJournal
+                                match apply_boot_recovery(&mut gw, j, chain_bc, &chain_root, bond)
                                 {
-                                    rollback_journal::delete(&jp);
+                                    // Task 3 fix: a MUTATED resolution is persisted
+                                    // synchronously BEFORE the journal is deleted
+                                    // (and a failed persist keeps the journal) —
+                                    // see finish_boot_recovery.
+                                    BootRecoveryOutcome::DeleteJournal { mutated } => {
+                                        finish_boot_recovery(
+                                            &gw,
+                                            mutated,
+                                            sp,
+                                            &jp,
+                                            &enclave_seed,
+                                        );
+                                    }
+                                    BootRecoveryOutcome::KeepJournal => {}
                                 }
                             }
                             Err(e) => {
@@ -7212,7 +7278,10 @@ mod tests {
         // the call site drops the file.
         let j = rollback_journal::read(&jp, &seed).expect("read").expect("present");
         let out = apply_boot_recovery(&mut gw, j, bc, "0x00", 0);
-        assert_eq!(out, BootRecoveryOutcome::DeleteJournal);
+        // SEAL-NEVER-PERSISTED is a NON-mutating resolution: delete without a
+        // pre-delete snapshot write (the state on disk is already the one it
+        // resolves to).
+        assert_eq!(out, BootRecoveryOutcome::DeleteJournal { mutated: false });
         rollback_journal::delete(&jp);
         assert!(!jp.exists(), "boot recovery resolved the journal");
         assert!(matches!(rollback_journal::read(&jp, &seed), Ok(None)));
@@ -7276,8 +7345,9 @@ mod tests {
         assert_eq!(restored.seq.state.next_batch_id, bc + 1, "HOLD never mutates");
 
         // the ROLLBACK row: seal persisted (B == bc+1), tx never landed (chain == bc).
+        // A MUTATING resolution — the caller must persist before deleting.
         let out = apply_boot_recovery(&mut restored, journal, bc, "0x00", 0);
-        assert_eq!(out, BootRecoveryOutcome::DeleteJournal);
+        assert_eq!(out, BootRecoveryOutcome::DeleteJournal { mutated: true });
         assert_eq!(
             restored.seq.state.next_batch_id,
             bc,
@@ -7347,7 +7417,8 @@ mod tests {
             &chain_root.to_ascii_uppercase(),
             77,
         );
-        assert_eq!(out, BootRecoveryOutcome::DeleteJournal);
+        // ROLL-FORWARD is a MUTATING resolution — persist before delete.
+        assert_eq!(out, BootRecoveryOutcome::DeleteJournal { mutated: true });
         let st = restored.l1_status.clone().expect("bookkeeping re-committed");
         assert_eq!(st.settled_root, chain_root);
         assert_eq!(st.batch_count, bc + 1);
@@ -7369,7 +7440,7 @@ mod tests {
         let proofs_before = restored.withdraw_proofs.len();
         assert_eq!(
             apply_boot_recovery(&mut restored, j2, bc + 1, &chain_root, 77),
-            BootRecoveryOutcome::DeleteJournal
+            BootRecoveryOutcome::DeleteJournal { mutated: false }
         );
         assert_eq!(
             restored.l1_status.clone().unwrap().last_tx,
@@ -7388,6 +7459,92 @@ mod tests {
             .unwrap()
             .expect("next window seals");
         assert_eq!(w2.batch_id, bc + 1);
+    }
+
+    /// Task 3 fix round 1: a MUTATING recovery resolution (RollBack / RollForward)
+    /// must be durable on disk BEFORE the journal is deleted. At that point in
+    /// boot the snapshot writer task is not spawned yet and its first tick is
+    /// ~SNAPSHOT_SECS away, so crash-after-delete would otherwise restore the
+    /// PRE-recovery snapshot with NO journal — the rollback case re-wedges the
+    /// desync guard forever (the exact failure this plan exists to kill), the
+    /// roll-forward case loses `prepared` (the only copy) and the continuity
+    /// check refuses to start. `finish_boot_recovery` is the extracted call-site
+    /// glue: persist (mutating rows only) THEN delete; a failed persist keeps
+    /// the journal.
+    #[test]
+    fn boot_recovery_persists_before_journal_delete() {
+        let seed = [42u8; 32];
+        let mut gw = Gw::boot();
+        let (key, _o) = gw.register_account(None);
+        gw.account_deposit(&key, 0, 20_000 * QUOTE_SCALE).unwrap();
+        gw.account_withdraw(&key, 0, 5_000 * QUOTE_SCALE, [7u8; 20])
+            .unwrap();
+        let bc = gw.seq.state.next_batch_id;
+        let (witness, ww) = gw.begin_window_settle(bc).unwrap().expect("sealed");
+        let journal = rollback_journal::RollbackJournal {
+            batch_id: bc,
+            witness: witness.clone(),
+            ww: ww.clone(),
+            prepared: None,
+        };
+        let journal2 = rollback_journal::RollbackJournal {
+            batch_id: bc,
+            witness,
+            ww,
+            prepared: None,
+        };
+
+        // the on-disk pair exactly as a crash leaves it: post-seal snapshot + journal
+        // (unpredictable per-test scratch path — the rollback_journal test pattern).
+        let mut rnd = [0u8; 8];
+        getrandom::getrandom(&mut rnd).expect("OS CSPRNG");
+        let sfx: String = rnd.iter().map(|b| format!("{b:02x}")).collect();
+        let state = std::env::temp_dir().join(format!("darkperp-persist-first-{sfx}.snap"));
+        let jp = rollback_journal::journal_path(&state);
+        snapshot::write_atomic(&state, &snapshot::seal(&gw.snapshot_plain(), &seed))
+            .expect("pre-crash snapshot write");
+        rollback_journal::write(&jp, &journal, &seed).expect("journal write");
+
+        // restart: boot restores the POST-seal snapshot (Counter B advanced).
+        let plain = snapshot::open(&std::fs::read(&state).unwrap(), &seed).expect("open");
+        let mut restored = Gw::boot_restored(&plain).expect("restore");
+        assert_eq!(restored.seq.state.next_batch_id, bc + 1);
+
+        // the ROLLBACK row — a MUTATING resolution.
+        let j = rollback_journal::read(&jp, &seed).expect("read").expect("present");
+        let out = apply_boot_recovery(&mut restored, j, bc, "0x00", 0);
+        assert_eq!(out, BootRecoveryOutcome::DeleteJournal { mutated: true });
+
+        // the call-site glue: persist the post-recovery snapshot, THEN delete.
+        finish_boot_recovery(&restored, true, &state, &jp, &seed);
+        // (a) the snapshot on disk now decodes to the ROLLED-BACK Counter B — a
+        // hard crash right here re-resolves from the snapshot alone.
+        let plain2 = snapshot::open(&std::fs::read(&state).unwrap(), &seed).expect("open post");
+        let after = Gw::boot_restored(&plain2).expect("restore post");
+        assert_eq!(
+            after.seq.state.next_batch_id,
+            bc,
+            "the rolled-back Counter B was persisted before the journal delete"
+        );
+        // (b) only then is the journal deleted.
+        assert!(!jp.exists(), "journal deleted after the snapshot hit disk");
+
+        // failure branch: an unwritable snapshot path (missing parent dir) keeps
+        // the journal — it is still the only recovery source; the next boot
+        // re-resolves the same row idempotently.
+        rollback_journal::write(&jp, &journal2, &seed).expect("journal re-write");
+        let bad_state = std::env::temp_dir()
+            .join(format!("darkperp-no-such-dir-{sfx}"))
+            .join("state.snap");
+        finish_boot_recovery(&after, true, &bad_state, &jp, &seed);
+        assert!(jp.exists(), "failed persist keeps the journal");
+
+        // non-mutating resolutions stay delete-without-write: the same unwritable
+        // snapshot path does not block the delete (nothing changed to persist).
+        finish_boot_recovery(&after, false, &bad_state, &jp, &seed);
+        assert!(!jp.exists(), "non-mutating rows delete without a snapshot write");
+
+        std::fs::remove_file(&state).ok();
     }
 
     #[test]
