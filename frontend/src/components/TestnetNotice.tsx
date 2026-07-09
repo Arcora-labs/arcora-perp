@@ -3,11 +3,11 @@ import { useState } from "react";
 /// Honest public-testnet disclosure: what is REAL and what is a STAND-IN, plus how
 /// to get test USDC. Dismissible (persisted), but shown on first visit so no one
 /// mistakes the testnet for a mainnet with real funds. Kept deliberately blunt.
-const MOCK_USDC = "0xBc7a6fAB19C469B0d5633f165D98FBc4817540f2";
-const VAULT = "0xa0B5CeBE4552536170B8e60999FAfD8DA491208b";
-// Bumped to v2 for the real-Groth16 migration (2026-07-09): the disclosure and the
-// faucet addresses materially changed, so returning users should see it once more.
-const DISMISS_KEY = "dp_testnet_notice_dismissed_v2";
+const MOCK_USDC = "0x9F5365c947eCaBaf62f42EF0Fe92ab909f709bDA";
+const VAULT = "0xC3EBc0f7301D5a914b01b8d2a1B5574764330c05";
+// v3: clean pre-alpha redeploy (2026-07-09) — fresh stack, so the faucet addresses
+// changed again; re-show once so returning users mint into the live vault.
+const DISMISS_KEY = "dp_testnet_notice_dismissed_v3";
 
 export function TestnetNotice() {
   const [open, setOpen] = useState(

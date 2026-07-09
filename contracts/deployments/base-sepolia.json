@@ -6,25 +6,26 @@
   "deployedAt": "2026-07-09",
   "deployBlock": 43891305,
   "deployer": "0xed37B7fc534Cc93D4195b4F11ADc5C14237cd287",
-  "note": "ZK P2 LIVE MIGRATION — the public testnet now runs the window-settle path with REAL Groth16 proofs (SP1 via the succinctlabs gnark prover on GB10, reached over an SSH reverse tunnel), settled against a fresh DarkPerpSettlement bound to a real SP1ZkVerifier. This replaces the MockZkVerifier stack (0x27Fc1bDa, now superseded). The guest ELF's programVKey drifted since the previously-deployed SP1ZkVerifier 0xCbdD (vkey 0x00f4a710), so a fresh SP1ZkVerifier 0x8012F3b3 was deployed bound to the current guest vkey 0x000a2f9bc04612ca95b3b26dc65f5dc463bba65ce1dff5eb3725545679bda5ed (reusing the same SP1VerifierGateway 0x397A5f7f). genesisRoot = the fresh gateway boot engine root 0x4d1ae1d2... (3-market state incl. the 25,000 USDC seeded insurance fund) — deployed in lockstep with the CVM gateway's boot genesis (settleBatch enforces prev==currentStateRoot). Snapshot schema changed (3b-4 window_id/tick_window) so the state.snap was wiped: testnet state reset to genesis on cutover. enclaveSigner unchanged = the REAL secret-seed enclave inside the perp-seq Azure TDX CVM (measurement 0x422890f6..faf55bd, TCB UpToDate). MockUSDC open mint is the faucet. Served at https://perp.arcoralabs.xyz (same CVM, no DNS repoint).",
+  "note": "CLEAN PRE-ALPHA REDEPLOY (2026-07-09) — a fresh stack to reset the testnet state before opening the alpha. The prior 0xEa11 stack (real-Groth16 migration, now superseded) had accumulated test-account bloat AND a batch_id desync (from repeated gateway restarts during prover OOM/413 debugging), so fresh Settlement/Vault/USDC were deployed at the SAME genesis 0x4d1ae1d2 (3-market state incl. the 25,000 USDC seeded insurance), REUSING the real SP1ZkVerifier 0x8012F3b3 (guest vkey 0x000a2f9bc04612ca95b3b26dc65f5dc463bba65ce1dff5eb3725545679bda5ed, SP1VerifierGateway 0x397A5f7f — verifier is state-independent so no re-deploy). Gateway env repointed + state.snap wiped -> clean genesis, aligned with the fresh Settlement (batchCount 0), small state (no prover OOM). enclaveSigner + sequencer unchanged = the REAL secret-seed enclave inside the perp-seq Azure TDX CVM (measurement 0x422890f6..faf55bd, TCB UpToDate). Prover = GB10 (dev, real Groth16) via SSH reverse tunnel; gateway L1_RPC = drpc.live. MockUSDC open mint is the faucet. Served at https://perp.arcoralabs.xyz (same CVM, no DNS repoint).",
   "contracts": {
     "DarkPerpSettlement": {
-      "address": "0xEa1115905b2a6b538D11b521959457FEd8C24Eb8",
-      "tx": "0x1c8104356005a33f98580065a3f79e45ecb839e63fa74dba1369b34f9487c49a"
+      "address": "0xf5D6Aa9CC96E2ac8AC5564df5E8475bDb13BCDCF",
+      "tx": "0x4226a0f08a7cf7467e49091a25c0205d100ca1f8309375ce5004afa267d26d02"
     },
     "CollateralVault": {
-      "address": "0xa0B5CeBE4552536170B8e60999FAfD8DA491208b",
-      "tx": "0x12c4861df7ac96560dbd9bc21881f469016c483a95d276ca11180005643edde5"
+      "address": "0xC3EBc0f7301D5a914b01b8d2a1B5574764330c05",
+      "tx": "0x154d896759a0d6eced47ae505c066ce6af1fddf3a9aede6f414aec99479d1b66"
     },
     "SP1ZkVerifier": {
       "address": "0x8012F3b35B9884f86a3F8f39B79e82eC410E1160",
       "tx": "0xfc1ac395e97073a176f49b0739220eb5edaf5e84ce9a30a6c97951dc0a1cb237",
       "programVKey": "0x000a2f9bc04612ca95b3b26dc65f5dc463bba65ce1dff5eb3725545679bda5ed",
-      "sp1VerifierGateway": "0x397A5f7f3dBd538f23DE225B51f532c34448dA9B"
+      "sp1VerifierGateway": "0x397A5f7f3dBd538f23DE225B51f532c34448dA9B",
+      "note": "reused across the 0xEa11 and 0xf5D6 stacks — state-independent"
     },
     "MockUSDC": {
-      "address": "0xBc7a6fAB19C469B0d5633f165D98FBc4817540f2",
-      "tx": "0xf1bb0e951cc92a40663c949c383fd7af6f41605a416fdcf44d18e4d65130cc2a"
+      "address": "0x9F5365c947eCaBaf62f42EF0Fe92ab909f709bDA",
+      "tx": "0x8426148a2901bb9af8b4eba5fcd655b1e67163d9c910300a4781974272b965d1"
     }
   },
   "params": {
@@ -38,6 +39,13 @@
     "verifier": "SP1ZkVerifier 0x8012F3b3 (real Groth16, dev prover on GB10)"
   },
   "supersededDeploys": [
+    {
+      "note": "2026-07-09 ZK P2 real-Groth16 migration stack — first real-proof stack (SP1ZkVerifier 0x8012F3b3, genesis 0x4d1ae1d2). Settled 2 real Groth16 batches live (tx 0x188af911 batch1, 0x18d6f1e9 batch2). Superseded SAME DAY by the clean pre-alpha redeploy above after test-account bloat (prover OOM) + a batch_id desync (restarts mid-settle) wedged it. Verifier 0x8012F3b3 carried forward (reused).",
+      "DarkPerpSettlement": "0xEa1115905b2a6b538D11b521959457FEd8C24Eb8",
+      "CollateralVault": "0xa0B5CeBE4552536170B8e60999FAfD8DA491208b",
+      "SP1ZkVerifier": "0x8012F3b35B9884f86a3F8f39B79e82eC410E1160",
+      "MockUSDC": "0xBc7a6fAB19C469B0d5633f165D98FBc4817540f2"
+    },
     {
       "note": "2026-07-05 redeploy #2 — MockZkVerifier 3-market stack (BTC/ETH/SOL). The live stack until the 2026-07-09 ZK P2 real-Groth16 migration above. genesisRoot 0x0000 (insurance seeded via batch 1, advancing to 0x4d1ae1d2). Verifier was MockZkVerifier 0xC0a6F6E5.",
       "DarkPerpSettlement": "0x27Fc1bDa0B04163ABDf310ABC1391AD9778cfA82",
