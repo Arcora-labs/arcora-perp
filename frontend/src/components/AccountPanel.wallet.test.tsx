@@ -2,8 +2,9 @@
 //
 // WalletDepositCard / claim-with-wallet flows against a scripted EIP-1193
 // provider and a fake gateway client: happy-path pipeline order + payloads,
-// user rejection, recovery (re-run skips completed steps), bind memoization,
-// and mock-mode hiding.
+// user rejection, recovery (re-run skips completed steps — but always re-runs
+// the chain ensure, and resumes recorded tx hashes instead of re-sending),
+// bind memoization, and mock-mode hiding.
 
 import { describe, it, expect, afterEach } from "vitest";
 import { render, screen, fireEvent, cleanup, waitFor } from "@testing-library/react";
@@ -224,13 +225,83 @@ describe("WalletDepositCard", () => {
     expect(await screen.findByText(/Transaction rejected in the wallet/i)).toBeTruthy();
     expect(p.switches().length).toBe(1);
 
-    // Second attempt succeeds — and does NOT redo the chain switch.
+    // Second attempt succeeds — the chain step re-runs (it is NEVER skipped:
+    // the user may have manually switched networks between attempts).
     fireEvent.click(screen.getByRole("button", { name: /^deposit$/i }));
     expect(await screen.findByText(/credited to your trading account/i)).toBeTruthy();
-    expect(p.switches().length).toBe(1); // chain step was skipped on the re-run
+    expect(p.switches().length).toBe(2);
     // sends: rejected-mint attempt + mint + approve + deposit = 4 calls,
     // deposit hash = 4th successful-numbering (call count based)
     expect(creditCalls.length).toBe(1);
+  });
+
+  it("re-invokes ensureBaseSepolia on a re-run after a chain-step error (never skipped)", async () => {
+    let rejectSwitch = true;
+    const p = makeProvider({
+      wallet_switchEthereumChain: () => {
+        if (rejectSwitch) {
+          rejectSwitch = false;
+          throw { code: 4001 };
+        }
+        return null;
+      },
+    });
+    install(p.provider);
+    const { client, creditCalls } = makeClient();
+    render(<WalletDepositCard client={client} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /connect wallet/i }));
+    await screen.findByText(/0xabcd…ef01/);
+
+    // First attempt: the network switch is rejected → nothing sent on-chain.
+    fireEvent.click(screen.getByRole("button", { name: /^deposit$/i }));
+    expect(await screen.findByText(/Network switch rejected in the wallet/i)).toBeTruthy();
+    expect(p.switches().length).toBe(1);
+    expect(p.sent().length).toBe(0);
+
+    // Re-run: ensureBaseSepolia is invoked AGAIN and the pipeline completes.
+    fireEvent.click(screen.getByRole("button", { name: /^deposit$/i }));
+    expect(await screen.findByText(/credited to your trading account/i)).toBeTruthy();
+    expect(p.switches().length).toBe(2);
+    expect(creditCalls.length).toBe(1);
+  });
+
+  it("resumes a timed-out deposit wait on the SAME tx hash instead of re-sending", async () => {
+    // Hashes are sequential: mint=1, approve=2, deposit=3.
+    const DEPOSIT_HASH = "0x" + (3).toString(16).padStart(64, "0");
+    let failDepositReceipt = true;
+    const p = makeProvider({
+      eth_getTransactionReceipt: (call) => {
+        const [hash] = call.params as [string];
+        if (hash === DEPOSIT_HASH && failDepositReceipt) {
+          failDepositReceipt = false; // one RPC hiccup while waiting for the deposit
+          throw new Error("rpc hiccup");
+        }
+        return { status: "0x1" };
+      },
+    });
+    install(p.provider);
+    const { client, creditCalls } = makeClient();
+    render(<WalletDepositCard client={client} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /connect wallet/i }));
+    await screen.findByText(/0xabcd…ef01/);
+
+    // First attempt: the deposit tx is SENT (hash recorded) but the wait fails.
+    fireEvent.click(screen.getByRole("button", { name: /^deposit$/i }));
+    expect(await screen.findByText(/Could not read the transaction receipt/i)).toBeTruthy();
+    expect(p.sent().length).toBe(3); // mint + approve + deposit all sent
+
+    // Re-run: NO second deposit tx — the runner resumes waitForTx on the
+    // recorded hash, and the credit is keyed to that same confirmed hash.
+    fireEvent.click(screen.getByRole("button", { name: /^deposit$/i }));
+    expect(await screen.findByText(/credited to your trading account/i)).toBeTruthy();
+    expect(p.sent().length).toBe(3); // still 3 — sendTx was NOT called again
+    const depositPolls = p.calls.filter(
+      (c) => c.method === "eth_getTransactionReceipt" && c.params?.[0] === DEPOSIT_HASH,
+    );
+    expect(depositPolls.length).toBe(2); // failed wait + resumed wait, same hash
+    expect(creditCalls).toEqual([DEPOSIT_HASH]);
   });
 });
 

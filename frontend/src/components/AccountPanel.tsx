@@ -228,8 +228,12 @@ const STEP_COLOR: Record<StepStatus, string> = {
  * Recoverability: per-step progress is kept across attempts, so a re-run after
  * an error SKIPS the already-done steps (e.g. the deposit tx landed but the
  * gateway credit failed → the retry only re-binds/credits, reusing the tx
- * hash). Editing the amount before the deposit landed resets the run — mint/
- * approve simply redo with the new amount (both are idempotent enough).
+ * hash) — with two guards: the chain step ALWAYS re-runs (the user may have
+ * manually switched networks between attempts; ensureBaseSepolia is a no-op
+ * when already on Base Sepolia), and a tx-sending step whose hash was recorded
+ * but not confirmed RESUMES by waiting on that hash instead of sending a
+ * duplicate tx. Editing the amount before the deposit landed resets the run —
+ * mint/approve simply redo with the new amount (both are idempotent enough).
  */
 export function WalletDepositCard({ client }: { client: WalletDepositClient }) {
   const address = useWalletAddress();
@@ -289,6 +293,15 @@ export function WalletDepositCard({ client }: { client: WalletDepositClient }) {
     const tx = { ...txs };
     const mark = (id: StepId, s: StepStatus) => { st[id] = s; setSteps({ ...st }); };
     const sendAndWait = async (id: StepId, to: string, data: string) => {
+      // Resume, don't resend: a prior attempt may have SENT this step's tx but
+      // failed while waiting for it (RPC hiccup / confirmation timeout). The
+      // hash is already recorded, so re-await the SAME tx instead of proposing
+      // a second one (a duplicate vault.deposit would double-deposit).
+      const prior = tx[id];
+      if (prior) {
+        await waitForTx(prior);
+        return;
+      }
       const h = await sendTx({ from: address, to, data });
       tx[id] = h;
       setTxs({ ...tx });
@@ -320,7 +333,10 @@ export function WalletDepositCard({ client }: { client: WalletDepositClient }) {
     ];
     try {
       for (const [id, fn] of executors) {
-        if (st[id] === "done") continue; // recovered run — skip what already succeeded
+        // Recovered run — skip what already succeeded. EXCEPT the chain step:
+        // the user may have manually switched networks between attempts, so it
+        // must ALWAYS re-run (a cheap no-op when already on Base Sepolia).
+        if (st[id] === "done" && id !== "chain") continue;
         mark(id, "pending");
         try {
           await fn();
