@@ -7,10 +7,13 @@ afterEach(cleanup);
 beforeEach(() => localStorage.clear());
 
 describe("TestnetNotice", () => {
-  it("discloses that funds are not real and proofs are mocked", () => {
+  it("discloses that funds are not real and settlement is real zk proofs", () => {
     render(<TestnetNotice />);
     expect(screen.getByText(/funds are not real/i)).toBeTruthy();
-    expect(screen.getByText(/mocked/i)).toBeTruthy();
+    // The 2026-07-09 live migration replaced mocked proofs with real Groth16 —
+    // the notice must disclose the real-proof posture and its settle lag.
+    expect(screen.getByText(/real zk validity proofs/i)).toBeTruthy();
+    expect(screen.getByText(/~10–20 min/)).toBeTruthy();
   });
 
   it("reveals the test-USDC mint instructions on demand", () => {
