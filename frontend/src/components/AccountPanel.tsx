@@ -54,9 +54,22 @@ function StatCard({
   );
 }
 
+/// localStorage key for the last-used withdrawal destination ADDRESS (a public
+/// 0x address only — never key material; the claim's private key never enters
+/// this UI).
+const LS_WITHDRAW_TO_KEY = "darkperp.withdrawTo";
+
+/// Strict 20-byte EVM address shape: `0x` + exactly 40 hex chars.
+export function isEvmAddress(v: string): boolean {
+  return /^0x[0-9a-fA-F]{40}$/.test(v);
+}
+
 export function AccountPanel() {
   const { client, state } = useStore();
   const [amount, setAmount] = useState("1000");
+  const [to, setTo] = useState(() => {
+    try { return localStorage.getItem(LS_WITHDRAW_TO_KEY) ?? ""; } catch { return ""; }
+  });
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
@@ -70,8 +83,16 @@ export function AccountPanel() {
         await client.deposit(v);
         setMsg(`Deposited ${formatUsd(v)} — a shielded note was minted.`);
       } else {
-        await client.requestWithdrawal(v);
-        setMsg(`Withdrawal of ${formatUsd(v)} requested against SETTLED balance.`);
+        const dest = to.trim();
+        if (!isEvmAddress(dest)) {
+          return setErr("Enter a valid destination address (0x + 40 hex) — the on-chain claim pays out there.");
+        }
+        await client.requestWithdrawal(v, dest);
+        try { localStorage.setItem(LS_WITHDRAW_TO_KEY, dest); } catch { /* private mode — convenience only */ }
+        setMsg(
+          `Withdrawal of ${formatUsd(v)} to ${shortHash(dest)} requested — it appears below as ` +
+            `“Settling on-chain…” and becomes Claimable in ~10–20 min (one proof interval).`,
+        );
       }
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
@@ -89,6 +110,17 @@ export function AccountPanel() {
       <label className="field">
         <span className="field__label">Amount (USD)</span>
         <input className="field__input" value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="decimal" />
+      </label>
+      <label className="field">
+        <span className="field__label">Withdrawal address (claim pays out here)</span>
+        <input
+          className="field__input"
+          value={to}
+          onChange={(e) => setTo(e.target.value)}
+          placeholder="0x…"
+          spellCheck={false}
+          autoComplete="off"
+        />
       </label>
       <div className="row">
         <button className="btn btn--ghost" onClick={() => run("deposit")}>

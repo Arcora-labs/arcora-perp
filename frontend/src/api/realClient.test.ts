@@ -91,6 +91,8 @@ let calls: Captured[] = [];
 let epochResponse: () => unknown = () => signedEpoch();
 let epochHits = 0;
 let registrations = 0;
+let v1WithdrawStatus = 200; // per-test override: gateway rejection of the REAL path
+let demoWithdrawStatus = 200; // per-test override: legacy demo-mirror failure
 
 function installFetch() {
   vi.stubGlobal(
@@ -115,6 +117,16 @@ function installFetch() {
         return json({ orderHash: "0x" + "00".repeat(32), seqNo: 1, recvTimeMs: 0, batchIdHint: 1 });
       }
       if (path === "/api/deposit" || path === "/v1/accounts/deposit") return json({});
+      if (path === "/v1/accounts/withdraw" && method === "POST") {
+        if (v1WithdrawStatus !== 200) {
+          return json({ error: "Not withdrawable: amount exceeds the SETTLED balance in this market (§3)." }, v1WithdrawStatus);
+        }
+        return json({ to: "0x" + "ab".repeat(20), amount: "5000000", nonce: 0, leaf: "0x" + "aa".repeat(32), status: "recorded" });
+      }
+      if (path === "/api/withdraw" && method === "POST") {
+        if (demoWithdrawStatus !== 200) return json({ error: "demo state unavailable" }, demoWithdrawStatus);
+        return json({});
+      }
       throw new Error(`unexpected fetch ${method} ${path}`);
     }),
   );
@@ -138,6 +150,8 @@ beforeEach(() => {
   calls = [];
   epochHits = 0;
   registrations = 0;
+  v1WithdrawStatus = 200;
+  demoWithdrawStatus = 200;
   epochResponse = () => signedEpoch();
   localStorage.clear();
   installFetch();
@@ -357,5 +371,40 @@ describe("RealDarkPerpClient sealed order flow", () => {
     expect(demo?.body).toEqual({ amount: "5000000" });
     expect(v1?.body).toEqual({ marketId: 0, amount: "5000000" });
     expect(v1?.headers["X-Api-Key"]).toBe(ACCT_KEY);
+  });
+});
+
+// ── withdrawals: /v1 PRIMARY (real claimable leaf), demo mirror cosmetic ──────
+describe("RealDarkPerpClient.requestWithdrawal", () => {
+  const TO = "0x" + "cd".repeat(20);
+
+  it("posts the REAL /v1 withdrawal FIRST (keyed {marketId, amount, to}), then mirrors the legacy demo path", async () => {
+    const client = await bootstrapClient();
+    await client.requestWithdrawal(5_000_000n, TO);
+    const v1Idx = calls.findIndex((c) => c.path === "/v1/accounts/withdraw");
+    const demoIdx = calls.findIndex((c) => c.path === "/api/withdraw");
+    expect(v1Idx).toBeGreaterThan(-1);
+    expect(demoIdx).toBeGreaterThan(-1);
+    // Priority inversion vs deposit: the /v1 call is the money path and runs first.
+    expect(v1Idx).toBeLessThan(demoIdx);
+    expect(calls[v1Idx].body).toEqual({ marketId: 0, amount: "5000000", to: TO });
+    expect(calls[v1Idx].headers["X-Api-Key"]).toBe(ACCT_KEY);
+    expect(calls[demoIdx].body).toEqual({ amount: "5000000" });
+  });
+
+  it("surfaces a /v1 rejection and SKIPS the demo mirror (no silent fallback — demo cannot mint a claimable leaf)", async () => {
+    const client = await bootstrapClient();
+    v1WithdrawStatus = 400;
+    await expect(client.requestWithdrawal(5_000_000n, TO)).rejects.toThrow(/exceeds the SETTLED/i);
+    expect(calls.some((c) => c.path === "/api/withdraw")).toBe(false);
+  });
+
+  it("swallows a demo-mirror failure with a warning — the real withdrawal already landed", async () => {
+    const client = await bootstrapClient();
+    demoWithdrawStatus = 500;
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    await expect(client.requestWithdrawal(5_000_000n, TO)).resolves.toBeUndefined();
+    expect(calls.some((c) => c.path === "/v1/accounts/withdraw")).toBe(true);
+    expect(warn).toHaveBeenCalledWith(expect.stringMatching(/mirror/i), expect.anything());
   });
 });

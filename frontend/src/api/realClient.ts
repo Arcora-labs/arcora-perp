@@ -603,7 +603,30 @@ export class RealDarkPerpClient implements DarkPerpClient {
       console.warn("[dark-perp] /v1 mirror deposit failed (sealed orders may lack margin):", e);
     }
   }
-  async requestWithdrawal(amountQuote: bigint): Promise<void> { await this.post("/api/withdraw", { amount: s(amountQuote) }); }
+  /**
+   * Withdraw = /v1 FIRST — the inverse of deposit's priorities (demo primary /
+   * v1 mirror there). Only `POST /v1/accounts/withdraw` debits the per-browser
+   * account the sealed orders trade as AND records the withdrawal leaf that the
+   * next window-settle publishes into the vault's Merkle root — i.e. the entry
+   * `listWithdrawals` shows and the on-chain `claim` pays out. The legacy shared
+   * demo `/api/withdraw` is cosmetic (in-memory demo balances shown elsewhere),
+   * so it is mirrored best-effort AFTER the real path. A /v1 failure must THROW
+   * so the form surfaces the gateway's error: silently falling back to the demo
+   * path would report success while never producing a real claimable leaf.
+   */
+  async requestWithdrawal(amountQuote: bigint, to: string): Promise<void> {
+    const acct = await this.ensureAccount(); // no /v1 account ⇒ throw (fail closed)
+    await this.post(
+      "/v1/accounts/withdraw",
+      { marketId: this.state?.selectedMarketId ?? 0, amount: s(amountQuote), to },
+      { "X-Api-Key": acct.apiKey },
+    );
+    try {
+      await this.post("/api/withdraw", { amount: s(amountQuote) });
+    } catch (e) {
+      console.warn("[dark-perp] legacy demo withdraw mirror failed (display-only):", e);
+    }
+  }
   triggerCloseOnly(): void { void this.post("/api/mode", { mode: "CloseOnly" }); }
   resumeNormal(): void { void this.post("/api/mode", { mode: "Normal" }); }
   async simulateAdl(): Promise<bigint> {

@@ -2,10 +2,15 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { render, screen, fireEvent, cleanup } from "@testing-library/react";
 import { StoreProvider } from "../store";
-import { AccountPanel, buildClaimCommand } from "./AccountPanel";
+import { AccountPanel, buildClaimCommand, isEvmAddress } from "./AccountPanel";
 import type { WithdrawalEntry } from "../domain/types";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  localStorage.clear(); // the panel persists the last withdrawal address
+});
+
+const DEST = "0x" + "ab".repeat(20);
 
 const renderPanel = () =>
   render(
@@ -14,10 +19,14 @@ const renderPanel = () =>
     </StoreProvider>,
   );
 
+const fillAddress = (value = DEST) =>
+  fireEvent.change(screen.getByLabelText(/withdrawal address/i), { target: { value } });
+
 describe("AccountPanel deposit/withdraw", () => {
   it("rejects withdrawing more than the settled balance (§3)", async () => {
     renderPanel();
     fireEvent.change(screen.getByLabelText(/amount/i), { target: { value: "999999999" } });
+    fillAddress();
     fireEvent.click(screen.getByRole("button", { name: /^withdraw$/i }));
     expect(await screen.findByText(/exceeds SETTLED/i)).toBeTruthy();
   });
@@ -41,6 +50,37 @@ describe("AccountPanel deposit/withdraw", () => {
     // Let the mount fetch resolve; the mock client returns null ⇒ no section.
     await screen.findByText(/settled balance/i);
     expect(screen.queryByText(/^withdrawals$/i)).toBeNull();
+  });
+
+  it("requires a valid destination address before withdrawing (claim pays out there)", async () => {
+    renderPanel();
+    fireEvent.change(screen.getByLabelText(/amount/i), { target: { value: "100" } });
+    fillAddress("0x1234"); // too short — not a 20-byte address
+    fireEvent.click(screen.getByRole("button", { name: /^withdraw$/i }));
+    expect(await screen.findByText(/valid destination address/i)).toBeTruthy();
+  });
+
+  it("on success: sets the settling→claimable expectation and persists the address", async () => {
+    renderPanel();
+    fireEvent.change(screen.getByLabelText(/amount/i), { target: { value: "100" } });
+    fillAddress();
+    fireEvent.click(screen.getByRole("button", { name: /^withdraw$/i }));
+    expect(await screen.findByText(/Settling on-chain/i)).toBeTruthy();
+    expect(screen.getByText(/Claimable in ~10–20 min/i)).toBeTruthy();
+    // Last-used ADDRESS is persisted for convenience — never key material.
+    expect(localStorage.getItem("darkperp.withdrawTo")).toBe(DEST);
+  });
+});
+
+describe("isEvmAddress", () => {
+  it("accepts exactly 0x + 40 hex and rejects everything else", () => {
+    expect(isEvmAddress(DEST)).toBe(true);
+    expect(isEvmAddress("0x" + "AB".repeat(20))).toBe(true); // checksum-case ok
+    expect(isEvmAddress("")).toBe(false);
+    expect(isEvmAddress("0x1234")).toBe(false); // too short
+    expect(isEvmAddress("0x" + "ab".repeat(20) + "ab")).toBe(false); // too long
+    expect(isEvmAddress("ab".repeat(20))).toBe(false); // missing 0x
+    expect(isEvmAddress("0x" + "zz".repeat(20))).toBe(false); // non-hex
   });
 });
 
