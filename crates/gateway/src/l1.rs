@@ -474,14 +474,27 @@ impl L1 {
         .map_err(|e| format!("challengeWindowBlocks parse: {e}"))
     }
 
-    /// Order hashes with an `InclusionChallenged` log at/after `from_block`, plus the block to
-    /// resume from next. The order hash is the first indexed topic.
+    /// Order hashes with an `InclusionChallenged` log in `[from_block, latest]`, plus the
+    /// block to resume from next. Bounds the scan to the current chain tip and ALWAYS
+    /// advances the cursor to `latest + 1` — even when NO log is found — so the scanned
+    /// range stays small (≈ one settle interval of blocks) instead of growing without
+    /// bound. The previous version left the cursor at `from_block` whenever a scan found
+    /// no challenges, so with zero challenges the `from_block → latest` range grew every
+    /// cycle until it tripped the RPC's `getLogs` block-range cap and wedged the scan
+    /// (spamming "query exceeds max block range"). The order hash is the first indexed topic.
     pub fn fetch_challenges(&self, from_block: u64) -> Result<(Vec<String>, u64), String> {
+        let latest = self.block_number()?;
+        if from_block > latest {
+            return Ok((Vec::new(), from_block)); // no new blocks since the last scan
+        }
         let from = from_block.to_string();
+        let to = latest.to_string();
         let out = self.cast(&[
             "logs",
             "--from-block",
             &from,
+            "--to-block",
+            &to,
             "--address",
             &self.settlement,
             "InclusionChallenged(bytes32,address,uint256)",
@@ -492,7 +505,6 @@ impl L1 {
         let logs: serde_json::Value =
             serde_json::from_str(&out).map_err(|e| format!("logs json: {e}"))?;
         let mut hashes = Vec::new();
-        let mut next = from_block;
         if let Some(arr) = logs.as_array() {
             for log in arr {
                 if let Some(t1) = log
@@ -503,14 +515,11 @@ impl L1 {
                 {
                     hashes.push(t1.to_string());
                 }
-                if let Some(bn) = log.get("blockNumber").and_then(|b| b.as_str()) {
-                    if let Ok(n) = u64::from_str_radix(bn.trim_start_matches("0x"), 16) {
-                        next = next.max(n + 1);
-                    }
-                }
             }
         }
-        Ok((hashes, next))
+        // Advance to the scanned tip regardless of whether a log was found, so the next
+        // scan queries only new blocks (bounded range) instead of re-scanning from `from`.
+        Ok((hashes, latest + 1))
     }
 
     /// Is this order's inclusion challenge still open (not yet answered or slashed)? The
