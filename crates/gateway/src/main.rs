@@ -6860,10 +6860,11 @@ mod tests {
         assert_eq!(sealed.measurement(), measurement);
         let plaintext =
             postcard::to_allocvec(&(&witness.pre_state, &witness.ops, &witness.manifest)).unwrap();
-        // Slice 3b-3: the nonce is keccak256 of the plaintext (content-derived), so a
-        // rollback+re-seal under the same batch_id never reuses a keystream.
-        use sha3::{Digest as _, Keccak256 as RawKeccak};
-        let expect_nonce: [u8; 32] = RawKeccak::digest(&plaintext).into();
+        // P3 Slice A: the nonce is the secret-keyed seal_nonce(root, plaintext)
+        // (content-derived, so a rollback+re-seal under the same batch_id never reuses
+        // a keystream; keyed with the seal root, so the clear nonce is not a
+        // plaintext-confirmation oracle).
+        let expect_nonce = crate::prover_client::seal_nonce(&root, &plaintext);
         assert_eq!(sealed.nonce(), expect_nonce);
         assert_eq!(sealed.ciphertext_len(), plaintext.len());
     }

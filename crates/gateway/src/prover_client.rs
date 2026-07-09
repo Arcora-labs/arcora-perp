@@ -6,6 +6,7 @@
 
 use crate::withdrawals::Withdrawal;
 use perp_core::commitment::{derive_roots, DerivedRoots};
+use perp_core::hash::{Domain, Hasher};
 use perp_core::merkle::{merkle_proof, merkle_root};
 use perp_core::{Digest, EngineError, Keccak256};
 use sequencer::WindowWitness;
@@ -121,11 +122,25 @@ pub fn prove_and_prepare(
     Ok(PreparedSettle { outcome, withdraw_proofs })
 }
 
+/// The clear per-seal nonce, secret-keyed with `seal_root`:
+/// `keccak_words(SealNonce, [seal_root, keccak256(plaintext)])`. Still deterministic
+/// in the plaintext (identical rollback re-seal / retry reproduces it — no two-time
+/// pad; different plaintext → different nonce), but no longer a public function of the
+/// plaintext, so an interceptor of the sealed witness cannot confirm a guessed witness
+/// by matching the clear nonce. Its strength scales with `seal_root`'s secrecy (P3
+/// Slice B — attested key-release — hardens that secret).
+pub(crate) fn seal_nonce(seal_root: &[u8; 32], plaintext: &[u8]) -> Digest {
+    use sha3::{Digest as _, Keccak256 as RawKeccak};
+    let plaintext_hash: Digest = RawKeccak::digest(plaintext).into();
+    Keccak256::hash_words(Domain::SealNonce, &[*seal_root, plaintext_hash])
+}
+
 /// Seal a window witness exactly as the prover-service's seal-client does, so the service
 /// (same SoftwareSealProvider params) can open it. Plaintext is the postcard-encoded
-/// `(pre_state, ops, manifest)` triple; the nonce is `keccak256` of the plaintext
-/// (content-derived; reuse-proof across rollback re-seals). Returns 0x-prefixed hex of
-/// the postcard-encoded SealedWitness.
+/// `(pre_state, ops, manifest)` triple; the nonce is the secret-keyed
+/// `seal_nonce(root, plaintext)` (content-derived and reuse-proof across rollback
+/// re-seals, but keyed with `root` so the clear nonce can't confirm a guessed witness).
+/// Returns 0x-prefixed hex of the postcard-encoded SealedWitness.
 pub fn seal_witness(
     w: &WindowWitness,
     root: &[u8; 32],
@@ -133,11 +148,10 @@ pub fn seal_witness(
 ) -> Result<String, ProverClientError> {
     let bytes = postcard::to_allocvec(&(&w.pre_state, &w.ops, &w.manifest))
         .map_err(|e| ProverClientError::Decode(format!("witness encode: {e}")))?;
-    // nonce = keccak256(plaintext): different plaintext (any window / any rollback re-seal)
-    // yields a different nonce, so a re-seal under the same batch_id can never reuse a
-    // keystream; an identical retry yields the same nonce (identical ciphertext, no leak).
-    use sha3::{Digest as _, Keccak256 as RawKeccak};
-    let nonce: [u8; 32] = RawKeccak::digest(&bytes).into();
+    // Secret-keyed, content-derived nonce (see `seal_nonce`): keyed with `root` so the
+    // clear nonce is not a plaintext-confirmation oracle, while identical re-seals still
+    // reproduce it (rollback/retry-safe, no two-time pad).
+    let nonce = seal_nonce(root, &bytes);
     let provider = prover::SoftwareSealProvider::new(*root, *measurement);
     let sealed = prover::SealedWitness::seal(&bytes, &provider, *measurement, nonce)
         .ok_or(ProverClientError::Seal)?;
@@ -254,5 +268,42 @@ impl ProverClient for HttpProverClient {
         let body = serde_json::json!({ "sealed": sealed_hex }).to_string();
         let resp = http_post(&self.url, &body, self.timeout_secs)?;
         parse_prove_resp(&resp)
+    }
+}
+
+#[cfg(test)]
+mod seal_nonce_tests {
+    use super::seal_nonce;
+
+    fn raw_keccak(bytes: &[u8]) -> [u8; 32] {
+        use sha3::{Digest as _, Keccak256 as RawKeccak};
+        RawKeccak::digest(bytes).into()
+    }
+
+    #[test]
+    fn nonce_is_not_the_public_plaintext_hash() {
+        // The whole point: the clear nonce must NOT equal keccak256(plaintext),
+        // or an interceptor could confirm a guessed witness by matching it.
+        let root = [0x5Eu8; 32];
+        let pt = b"positions/fills/margins for one window";
+        assert_ne!(seal_nonce(&root, pt), raw_keccak(pt));
+    }
+
+    #[test]
+    fn nonce_is_deterministic_for_same_root_and_plaintext() {
+        // Rollback/retry safety: an identical re-seal must reproduce the nonce.
+        let root = [0x5Eu8; 32];
+        let pt = b"same witness bytes";
+        assert_eq!(seal_nonce(&root, pt), seal_nonce(&root, pt));
+    }
+
+    #[test]
+    fn nonce_varies_with_plaintext_and_with_root() {
+        let root = [0x5Eu8; 32];
+        let other_root = [0x11u8; 32];
+        let pt1 = b"witness A";
+        let pt2 = b"witness B";
+        assert_ne!(seal_nonce(&root, pt1), seal_nonce(&root, pt2), "different plaintext");
+        assert_ne!(seal_nonce(&root, pt1), seal_nonce(&other_root, pt1), "different root");
     }
 }

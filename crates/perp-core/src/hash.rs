@@ -152,6 +152,14 @@ pub enum Domain {
     /// format migration). Not (yet) a cross-layer-committed value — manifest
     /// anchoring of the head is deferred to the zk workstream.
     OrderLogChain = 30,
+    /// Secret-keyed seal-witness nonce: `keccak_words(SealNonce, [seal_root,
+    /// keccak256(plaintext)])`. Keying the (clear) nonce with the secret seal root
+    /// removes the plaintext-confirmation oracle a public `keccak256(plaintext)`
+    /// nonce would expose, while staying content-derived (rollback/retry-safe). A
+    /// dedicated tag so it never shares a preimage structure with the witness seal
+    /// stream (`WitnessSeal`) or key derivation. Appended last so existing committed
+    /// hashes are unchanged. Not a cross-layer-committed value.
+    SealNonce = 31,
 }
 
 /// The default Phase 0 hasher: Keccak-256 with a 1-byte domain prefix.
@@ -242,6 +250,7 @@ mod tests {
             OrderEncryptAad,
             LogEncryptAad,
             OrderLogChain,
+            SealNonce,
         ];
         let w = [word_u64(42)];
         for i in 0..all.len() {
