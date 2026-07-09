@@ -73,7 +73,9 @@ impl ProverClient for MockProverClient {
 /// Serde: journaled alongside `ProveOutcome` so a roll-forward at boot can re-commit the
 /// exact claim proofs the crashed process would have served (never recomputed from a
 /// possibly-drifted state).
-#[derive(serde::Serialize, serde::Deserialize)]
+/// Clone: the settle loop's stage-2 journal write clones a copy into the journal while
+/// the original proceeds to `settle_proved`/`commit_window_settle` (Task 2).
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub struct PreparedSettle {
     pub outcome: ProveOutcome,
     pub withdraw_proofs: BTreeMap<[u8; 32], (Digest, Vec<[u8; 32]>)>,

@@ -69,6 +69,8 @@ pub fn write(path: &Path, j: &RollbackJournal, seed: &[u8; 32]) -> Result<(), St
 /// (clean shutdown — the common case), `Ok(Some)` = an in-flight window to resolve,
 /// `Err` = a journal EXISTS but is unreadable (wrong seed / tampered / truncated /
 /// future format) — the caller must HOLD, never treat it as absent.
+// dead_code: consumed by Task-3 boot recovery; until then only tests call it.
+#[allow(dead_code)]
 pub fn read(path: &Path, seed: &[u8; 32]) -> Result<Option<RollbackJournal>, String> {
     let sealed = match std::fs::read(path) {
         Ok(bytes) => bytes,
@@ -98,6 +100,8 @@ pub fn delete(path: &Path) {
 
 /// What boot recovery must do about the journaled window (the spec's
 /// recovery_action table, normative).
+// dead_code: consumed by Task-3 boot recovery; until then only the matrix test uses it.
+#[allow(dead_code)]
 #[derive(Debug, PartialEq, Eq)]
 pub enum RecoveryAction {
     /// Commit already happened and was persisted — delete the journal.
@@ -123,6 +127,8 @@ pub enum RecoveryAction {
 /// `root_matches_prepared` = chain `currentStateRoot == prepared.new_root` (false
 /// when `prepared` is None), `root_matches_settled` = chain `currentStateRoot ==`
 /// restored `l1_status.settled_root`.
+// dead_code: consumed by Task-3 boot recovery; until then only the matrix test calls it.
+#[allow(dead_code)]
 pub fn recovery_action(
     j_batch: u64,
     has_prepared: bool,
