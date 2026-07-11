@@ -31,9 +31,9 @@ export const BASE_SEPOLIA_PARAMS = {
 } as const;
 
 /// Open-mint test collateral token (6 decimals) — anyone may call `mint`.
-export const MOCK_USDC = "0x9F5365c947eCaBaf62f42EF0Fe92ab909f709bDA";
+export const MOCK_USDC = "0x8a52d127b556465F613766b903B717e19b3eaE7B";
 /// The collateral vault deposits enter (and withdrawal claims pay out of).
-export const COLLATERAL_VAULT = "0xC3EBc0f7301D5a914b01b8d2a1B5574764330c05";
+export const COLLATERAL_VAULT = "0x57e951F6a378E00e4F1b26510380E089D7c07b8B";
 
 export const EXPLORER_TX = "https://sepolia.basescan.org/tx/";
 

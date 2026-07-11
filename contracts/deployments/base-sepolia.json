@@ -3,29 +3,26 @@
   "chainId": 84532,
   "rpc": "https://sepolia.base.org",
   "explorer": "https://sepolia.basescan.org",
-  "deployedAt": "2026-07-09",
+  "deployedAt": "2026-07-11",
   "deployBlock": 43891305,
   "deployer": "0xed37B7fc534Cc93D4195b4F11ADc5C14237cd287",
-  "note": "CLEAN PRE-ALPHA REDEPLOY (2026-07-09) — a fresh stack to reset the testnet state before opening the alpha. The prior 0xEa11 stack (real-Groth16 migration, now superseded) had accumulated test-account bloat AND a batch_id desync (from repeated gateway restarts during prover OOM/413 debugging), so fresh Settlement/Vault/USDC were deployed at the SAME genesis 0x4d1ae1d2 (3-market state incl. the 25,000 USDC seeded insurance), REUSING the real SP1ZkVerifier 0x8012F3b3 (guest vkey 0x000a2f9bc04612ca95b3b26dc65f5dc463bba65ce1dff5eb3725545679bda5ed, SP1VerifierGateway 0x397A5f7f — verifier is state-independent so no re-deploy). Gateway env repointed + state.snap wiped -> clean genesis, aligned with the fresh Settlement (batchCount 0), small state (no prover OOM). enclaveSigner + sequencer unchanged = the REAL secret-seed enclave inside the perp-seq Azure TDX CVM (measurement 0x422890f6..faf55bd, TCB UpToDate). Prover = GB10 (dev, real Groth16) via SSH reverse tunnel; gateway L1_RPC = drpc.live. MockUSDC open mint is the faucet. Served at https://perp.arcoralabs.xyz (same CVM, no DNS repoint).",
+  "note": "RAM-FIT CLEAN REDEPLOY (2026-07-11) — a fresh stack that resets the testnet state so the full-state SP1 proof FITS GB10's RAM. The prior 0xf5D6 stack had accumulated ~11 test accounts; the full-state witness proof grew to an ~86GB peak while a 30GB co-tenant process on the shared GB10 workstation left only ~16GB free, so proofs crashed mid-compute ('Empty reply from server') and NO window could settle (openWindowId stuck ahead of batchCount). Fresh Settlement/Vault/USDC deployed at the SAME genesis 0x4d1ae1d2 (3-market state incl. the 25,000 USDC seeded insurance, boot root re-verified this session), REUSING the real SP1ZkVerifier 0x8012F3b3 (state-independent). Gateway env repointed + state.snap + rollback journal wiped -> clean genesis (batchCount 0, accounts 0); a clean-state proof is ~10-14GB RSS (verified), fitting alongside the co-tenant. enclaveSigner + sequencer unchanged (REAL enclave, measurement 0x422890f6..faf55bd). Also live this session: prove-curl transport hardening (--connect-timeout + --keepalive-time) + a settle-stall health alert (openWindowId>batchCount). MockUSDC open mint is the faucet. Served at https://perp.arcoralabs.xyz (same CVM).",
   "contracts": {
     "DarkPerpSettlement": {
-      "address": "0xf5D6Aa9CC96E2ac8AC5564df5E8475bDb13BCDCF",
-      "tx": "0x4226a0f08a7cf7467e49091a25c0205d100ca1f8309375ce5004afa267d26d02"
+      "address": "0x08695Aa7127AA50E164042Dc1328E8079A3a4f6F"
     },
     "CollateralVault": {
-      "address": "0xC3EBc0f7301D5a914b01b8d2a1B5574764330c05",
-      "tx": "0x154d896759a0d6eced47ae505c066ce6af1fddf3a9aede6f414aec99479d1b66"
+      "address": "0x57e951F6a378E00e4F1b26510380E089D7c07b8B"
     },
     "SP1ZkVerifier": {
       "address": "0x8012F3b35B9884f86a3F8f39B79e82eC410E1160",
       "tx": "0xfc1ac395e97073a176f49b0739220eb5edaf5e84ce9a30a6c97951dc0a1cb237",
       "programVKey": "0x000a2f9bc04612ca95b3b26dc65f5dc463bba65ce1dff5eb3725545679bda5ed",
       "sp1VerifierGateway": "0x397A5f7f3dBd538f23DE225B51f532c34448dA9B",
-      "note": "reused across the 0xEa11 and 0xf5D6 stacks — state-independent"
+      "note": "reused across the 0xEa11 / 0xf5D6 / 0x0869 stacks — state-independent"
     },
     "MockUSDC": {
-      "address": "0x9F5365c947eCaBaf62f42EF0Fe92ab909f709bDA",
-      "tx": "0x8426148a2901bb9af8b4eba5fcd655b1e67163d9c910300a4781974272b965d1"
+      "address": "0x8a52d127b556465F613766b903B717e19b3eaE7B"
     }
   },
   "params": {
@@ -39,6 +36,13 @@
     "verifier": "SP1ZkVerifier 0x8012F3b3 (real Groth16, dev prover on GB10)"
   },
   "supersededDeploys": [
+    {
+      "note": "2026-07-09 clean pre-alpha redeploy (0xf5D6 stack, genesis 0x4d1ae1d2, verifier 0x8012F3b3 reused). Settled real Groth16 batches live (e.g. tx 0x99e23c53 batch1). Superseded 2026-07-11 by the RAM-fit redeploy above after ~11 test accounts pushed the full-state proof to ~86GB, exceeding GB10's free RAM alongside a 30GB co-tenant, so settles stalled.",
+      "DarkPerpSettlement": "0xf5D6Aa9CC96E2ac8AC5564df5E8475bDb13BCDCF",
+      "CollateralVault": "0xC3EBc0f7301D5a914b01b8d2a1B5574764330c05",
+      "SP1ZkVerifier": "0x8012F3b35B9884f86a3F8f39B79e82eC410E1160",
+      "MockUSDC": "0x9F5365c947eCaBaf62f42EF0Fe92ab909f709bDA"
+    },
     {
       "note": "2026-07-09 ZK P2 real-Groth16 migration stack — first real-proof stack (SP1ZkVerifier 0x8012F3b3, genesis 0x4d1ae1d2). Settled 2 real Groth16 batches live (tx 0x188af911 batch1, 0x18d6f1e9 batch2). Superseded SAME DAY by the clean pre-alpha redeploy above after test-account bloat (prover OOM) + a batch_id desync (restarts mid-settle) wedged it. Verifier 0x8012F3b3 carried forward (reused).",
       "DarkPerpSettlement": "0xEa1115905b2a6b538D11b521959457FEd8C24Eb8",

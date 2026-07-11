@@ -102,9 +102,12 @@ describe("calldata builders (pinned)", () => {
   });
 
   it("approve(vault, 1000000000)", () => {
+    // Expected value derived from the constant so a vault redeploy doesn't break the
+    // pin — what's pinned is the ENCODING (selector + left-padded address word + amount).
+    const vaultWord = COLLATERAL_VAULT.slice(2).toLowerCase().padStart(64, "0");
     expect(encodeApprove(COLLATERAL_VAULT, 1_000_000_000n)).toBe(
       "0x095ea7b3" +
-        "000000000000000000000000c3ebc0f7301d5a914b01b8d2a1b5574764330c05" +
+        vaultWord +
         "000000000000000000000000000000000000000000000000000000003b9aca00",
     );
   });

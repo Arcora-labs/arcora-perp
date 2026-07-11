@@ -5,9 +5,9 @@ import { MOCK_USDC, COLLATERAL_VAULT as VAULT } from "../api/wallet";
 /// to get test USDC. Dismissible (persisted), but shown on first visit so no one
 /// mistakes the testnet for a mainnet with real funds. Kept deliberately blunt.
 /// Contract addresses come from api/wallet.ts — ONE place to update on redeploy.
-// v3: clean pre-alpha redeploy (2026-07-09) — fresh stack, so the faucet addresses
-// changed again; re-show once so returning users mint into the live vault.
-const DISMISS_KEY = "dp_testnet_notice_dismissed_v3";
+// v4: RAM-fit clean redeploy (2026-07-11) — fresh stack again (reset so the
+// full-state proof fits GB10 RAM), faucet addresses changed; re-show once.
+const DISMISS_KEY = "dp_testnet_notice_dismissed_v4";
 
 export function TestnetNotice() {
   const [open, setOpen] = useState(
