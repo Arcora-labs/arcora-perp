@@ -76,15 +76,29 @@ const wireMarket = {
   initialMarginRatio: 0.1, referencePrice: "6450000000000", live: false,
   takerFeeBps: 8, makerRebateBps: 2,
 };
+const wireEthMarket = {
+  id: 1, symbol: "ETH/USDC", maxLeverage: 20, maintenanceMarginRatio: 0.05,
+  initialMarginRatio: 0.1, referencePrice: "350000000000", live: false,
+  takerFeeBps: 8, makerRebateBps: 2,
+};
+// The WS/snapshot frame mirrors the shared prod gateway: book/oracle/selected
+// are the SERVER's market (0), while `markets` + `marks` cover every market.
 const wireState = {
-  markets: [wireMarket], selectedMarketId: 0, market: wireMarket, mode: "Normal",
+  markets: [wireMarket, wireEthMarket], selectedMarketId: 0, market: wireMarket, mode: "Normal",
   oracle: { marketId: 0, price: "6450000000000", confidence: "1", publishTimeMs: 0 },
   book: { marketId: 0, bids: [], asks: [] },
-  marks: {}, account: { settledBalance: "0", positions: [] },
+  marks: { "0": "6450000000000", "1": "350000000000" }, account: { settledBalance: "0", positions: [] },
   orders: [], batches: [], insuranceFund: "0", treasury: "0", userAdlClawed: "0",
   lp: { tvl: "0", navPerShare: "1.000000", totalShares: "0", myShares: "0", myValue: "0" },
   mmHedge: [], l1: null, attestation: null,
 };
+// Per-market PUBLIC endpoints (the client-side market switch fetches these).
+const ethBook = {
+  marketId: 1,
+  bids: [{ price: "351000000000", size: "200000000" }],
+  asks: [{ price: "352000000000", size: "300000000" }],
+};
+const ethOracle = { marketId: 1, price: "351500000000", confidence: "5", publishTimeMs: 1234 };
 
 interface Captured { path: string; method: string; headers: Record<string, string>; body: unknown }
 let calls: Captured[] = [];
@@ -127,17 +141,28 @@ function installFetch() {
         if (demoWithdrawStatus !== 200) return json({ error: "demo state unavailable" }, demoWithdrawStatus);
         return json({});
       }
+      if (path === "/v1/markets/0/orderbook") return json({ marketId: 0, bids: [], asks: [] });
+      if (path === "/v1/markets/0/oracle") return json({ marketId: 0, price: "6450000000000", confidence: "1", publishTimeMs: 0 });
+      if (path === "/v1/markets/1/orderbook") return json(ethBook);
+      if (path === "/v1/markets/1/oracle") return json(ethOracle);
       throw new Error(`unexpected fetch ${method} ${path}`);
     }),
   );
 }
 
+let lastWs: FakeWebSocket | null = null;
+
 class FakeWebSocket {
-  onmessage: unknown = null;
-  onclose: unknown = null;
-  onerror: unknown = null;
-  constructor(_url: string) {}
+  onmessage: ((ev: { data: string }) => void) | null = null;
+  onclose: (() => void) | null = null;
+  onerror: (() => void) | null = null;
+  constructor(_url: string) { lastWs = this; }
   close() {}
+}
+
+/** Push a server state frame (market 0 selected) through the client's WS. */
+function pushStateFrame() {
+  lastWs!.onmessage!({ data: JSON.stringify({ type: "state", state: wireState }) });
 }
 
 const ordersPosted = () => calls.filter((c) => c.path === "/v1/orders" && c.method === "POST");
@@ -150,6 +175,7 @@ beforeEach(() => {
   calls = [];
   epochHits = 0;
   registrations = 0;
+  lastWs = null;
   v1WithdrawStatus = 200;
   demoWithdrawStatus = 200;
   epochResponse = () => signedEpoch();
@@ -406,5 +432,70 @@ describe("RealDarkPerpClient.requestWithdrawal", () => {
     await expect(client.requestWithdrawal(5_000_000n, TO)).resolves.toBeUndefined();
     expect(calls.some((c) => c.path === "/v1/accounts/withdraw")).toBe(true);
     expect(warn).toHaveBeenCalledWith(expect.stringMatching(/mirror/i), expect.anything());
+  });
+});
+
+// ── CONTRACT: client-side market selection ───────────────────────────────────
+// The legacy POST /api/select-market is 404 in prod AND was a global toggle;
+// which market a browser views is client-local. selectMarket switches instantly
+// (metadata + marks are already per-market) and fetches the market's live
+// book/oracle, which the WS (server's market only) would otherwise never refresh.
+describe("client-side market selection (contract)", () => {
+  /** Let queued microtasks (the refreshSelected fetch chain) settle. */
+  const flush = async () => { await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); };
+
+  it("switches selectedMarketId + market metadata INSTANTLY, before the book fetch resolves", async () => {
+    const client = await bootstrapClient();
+    expect(client.getState().selectedMarketId).toBe(0);
+    client.selectMarket(1);
+    // synchronous: no await — the switch is immediate off marks/markets
+    const st = client.getState();
+    expect(st.selectedMarketId).toBe(1);
+    expect(st.market.symbol).toBe("ETH/USDC");
+    client.dispose();
+  });
+
+  it("fetches the selected market's live book + oracle and applies them once resolved", async () => {
+    const client = await bootstrapClient();
+    client.selectMarket(1);
+    await flush();
+    const st = client.getState();
+    expect(st.book.bids[0]?.price).toBe(351_000_000_000n);
+    expect(st.book.asks[0]?.price).toBe(352_000_000_000n);
+    expect(st.oracle.price).toBe(351_500_000_000n);
+    // it fetched the per-market public endpoints, never the dead /api route
+    expect(calls.some((c) => c.path === "/v1/markets/1/orderbook")).toBe(true);
+    expect(calls.some((c) => c.path === "/api/select-market")).toBe(false);
+    client.dispose();
+  });
+
+  it("a later server WS frame (market 0) does NOT reset the client's selection", async () => {
+    const client = await bootstrapClient();
+    client.selectMarket(1);
+    await flush();
+    pushStateFrame(); // server frame carries selectedMarketId 0 + market-0 book
+    const st = client.getState();
+    expect(st.selectedMarketId).toBe(1);
+    expect(st.market.symbol).toBe("ETH/USDC");
+    expect(st.book.bids[0]?.price).toBe(351_000_000_000n); // still ETH's book, not the frame's empty market-0 book
+    client.dispose();
+  });
+
+  it("ignores an unknown market id", async () => {
+    const client = await bootstrapClient();
+    client.selectMarket(999);
+    expect(client.getState().selectedMarketId).toBe(0);
+    expect(calls.some((c) => c.path === "/v1/markets/999/orderbook")).toBe(false);
+    client.dispose();
+  });
+
+  it("targets the selected market for deposits/withdrawals (not the server's)", async () => {
+    const client = await bootstrapClient();
+    client.selectMarket(1);
+    await flush();
+    await client.requestWithdrawal(1_000_000n, "0x" + "cd".repeat(20));
+    const v1 = calls.find((c) => c.path === "/v1/accounts/withdraw");
+    expect((v1!.body as { marketId: number }).marketId).toBe(1);
+    client.dispose();
   });
 });

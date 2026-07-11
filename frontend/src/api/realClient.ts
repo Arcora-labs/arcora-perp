@@ -365,6 +365,22 @@ export class RealDarkPerpClient implements DarkPerpClient {
   private ws: WebSocket | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
+  // ── client-side market selection ───────────────────────────────────────────
+  // The gateway's WS frame carries book/oracle/selectedMarketId for the SERVER's
+  // selected market only (market 0 on the shared prod gateway) — but `marks` and
+  // `markets` cover every market. Which market THIS user is looking at is a
+  // per-browser concern, so it lives here (the legacy `POST /api/select-market`
+  // demo route is 404 in prod AND was a global toggle shared by all users).
+  /** The market this browser has selected (default 0 — the server's market). */
+  private clientSelectedMarket = 0;
+  /** Fetched book for the client-selected market (null until the fetch lands). */
+  private selBook: OrderBookSnapshot | null = null;
+  /** Fetched oracle for the client-selected market (null until the fetch lands). */
+  private selOracle: OracleQuote | null = null;
+  /** Freshness poll for the selected market — the WS only refreshes the server's. */
+  private pollTimer: ReturnType<typeof setInterval> | null = null;
+  private disposed = false;
+
   // ── sealed order ingress state ─────────────────────────────────────────────
   /** The verified enclave order-epoch key (refetched once notAfterMs passes). */
   private epoch: VerifiedEpoch | null = null;
@@ -503,6 +519,7 @@ export class RealDarkPerpClient implements DarkPerpClient {
   }
 
   private connect() {
+    if (this.disposed) return;
     try {
       if (this.ws) { try { this.ws.close(); } catch { /* noop */ } }
       this.ws = new WebSocket(this.wsUrl);
@@ -512,8 +529,7 @@ export class RealDarkPerpClient implements DarkPerpClient {
             | { type: "state"; state: WireState }
             | { type: "event"; event: OrderEvent };
           if (msg.type === "state") {
-            this.state = parseState(msg.state);
-            for (const cb of this.subs) cb(this.state);
+            this.setState(parseState(msg.state));
           } else if (msg.type === "event") {
             for (const cb of this.eventSubs) cb(msg.event);
           }
@@ -527,8 +543,78 @@ export class RealDarkPerpClient implements DarkPerpClient {
   }
 
   private scheduleReconnect() {
-    if (this.reconnectTimer) return;
+    if (this.reconnectTimer || this.disposed) return;
     this.reconnectTimer = setTimeout(() => { this.reconnectTimer = null; this.connect(); }, 1500);
+  }
+
+  /**
+   * Single choke point between raw gateway state and the UI: every emitted state
+   * gets the CLIENT-side market selection applied. The base frame's book/oracle
+   * belong to the SERVER's selected market, so when a fetched per-market cache
+   * exists for the client's selection it overrides them; until the fetch lands,
+   * the base data falls through (exactly right when the client selection IS the
+   * server's market; briefly the previous market's book otherwise — `marks` and
+   * `market` metadata are already correct instantly).
+   */
+  private emit(base: ClientState): ClientState {
+    const id = this.clientSelectedMarket;
+    return {
+      ...base,
+      selectedMarketId: id,
+      market: base.markets.find((m) => m.id === id) ?? base.market,
+      book: this.selBook ?? base.book,
+      oracle: this.selOracle ?? base.oracle,
+    };
+  }
+
+  /** Apply the selection override and notify subscribers. */
+  private setState(base: ClientState): void {
+    this.state = this.emit(base);
+    for (const cb of this.subs) cb(this.state);
+  }
+
+  /**
+   * Fetch the selected market's PUBLIC book + oracle (`GET /v1/markets/:id/…`)
+   * and re-emit. Responses that arrive late — after a further switch or after
+   * dispose — are dropped so a slow fetch can never clobber the current market.
+   */
+  private async refreshSelected(marketId: number): Promise<void> {
+    try {
+      const [bRes, oRes] = await Promise.all([
+        fetch(`${this.base}/v1/markets/${marketId}/orderbook`),
+        fetch(`${this.base}/v1/markets/${marketId}/oracle`),
+      ]);
+      if (!bRes.ok || !oRes.ok) return;
+      const book = pBook((await bRes.json()) as WireState["book"]);
+      const oracle = pOracle((await oRes.json()) as WireOracle);
+      if (this.disposed || marketId !== this.clientSelectedMarket) return; // stale response
+      this.selBook = book;
+      this.selOracle = oracle;
+      if (this.state) this.setState(this.state);
+    } catch { /* gateway hiccup — the poll retries */ }
+  }
+
+  /**
+   * Keep the selected market's book/oracle fresh: the WS push only refreshes the
+   * server's market, so a non-default selection would otherwise freeze. Started
+   * lazily on the first market switch; cleared in dispose().
+   */
+  private ensurePoll(): void {
+    if (this.pollTimer || this.disposed) return;
+    this.pollTimer = setInterval(() => { void this.refreshSelected(this.clientSelectedMarket); }, 1500);
+  }
+
+  /** Tear down socket + timers. The page-lifetime app never calls this; tests do. */
+  dispose(): void {
+    this.disposed = true;
+    if (this.reconnectTimer) { clearTimeout(this.reconnectTimer); this.reconnectTimer = null; }
+    if (this.pollTimer) { clearInterval(this.pollTimer); this.pollTimer = null; }
+    const ws = this.ws;
+    this.ws = null;
+    if (ws) {
+      ws.onmessage = null; ws.onclose = null; ws.onerror = null;
+      try { ws.close(); } catch { /* noop */ }
+    }
   }
 
   private async post<T>(path: string, body: unknown, headers?: Record<string, string>): Promise<T> {
@@ -596,7 +682,7 @@ export class RealDarkPerpClient implements DarkPerpClient {
       const acct = await this.ensureAccount();
       await this.post(
         "/v1/accounts/deposit",
-        { marketId: this.state?.selectedMarketId ?? 0, amount: s(amountQuote) },
+        { marketId: this.clientSelectedMarket, amount: s(amountQuote) },
         { "X-Api-Key": acct.apiKey },
       );
     } catch (e) {
@@ -618,7 +704,7 @@ export class RealDarkPerpClient implements DarkPerpClient {
     const acct = await this.ensureAccount(); // no /v1 account ⇒ throw (fail closed)
     await this.post(
       "/v1/accounts/withdraw",
-      { marketId: this.state?.selectedMarketId ?? 0, amount: s(amountQuote), to },
+      { marketId: this.clientSelectedMarket, amount: s(amountQuote), to },
       { "X-Api-Key": acct.apiKey },
     );
     try {
@@ -635,7 +721,27 @@ export class RealDarkPerpClient implements DarkPerpClient {
   }
   async closePosition(marketId: number): Promise<void> { await this.post("/api/close", { marketId }); }
   async cancelOrder(orderId: string): Promise<void> { await this.post("/api/cancel", { orderId }); }
-  selectMarket(marketId: number): void { void this.post("/api/select-market", { marketId }); }
+  /**
+   * CLIENT-SIDE market switch. The old implementation POSTed the legacy demo
+   * `/api/select-market` route — 404 in prod (silently swallowed) and, even
+   * where it existed, a GLOBAL server-side selection that moved EVERY user's
+   * view on the shared gateway. Instead: re-emit immediately with the selection
+   * override (markets metadata + `marks[id]` already price every market), then
+   * fetch the market's live book/oracle and keep them fresh on a light poll.
+   * Never round-trips to /api.
+   */
+  selectMarket(marketId: number): void {
+    const st = this.state;
+    if (!st || !st.markets.some((m) => m.id === marketId)) return; // unknown id — ignore
+    if (marketId === this.clientSelectedMarket) return;
+    this.clientSelectedMarket = marketId;
+    // The previous market's fetched data must never render under the new one.
+    this.selBook = null;
+    this.selOracle = null;
+    this.setState(st); // instant switch (book/oracle catch up when the fetch lands)
+    void this.refreshSelected(marketId);
+    this.ensurePoll();
+  }
   async recover(seedHex: string): Promise<RecoveredNote[]> {
     const notes = await this.post<{ batchId: number; amount: string; spent: boolean }[]>("/api/recover", { seed: seedHex });
     return notes.map((n) => ({ batchId: n.batchId, amount: B(n.amount), spent: n.spent }));
@@ -678,7 +784,7 @@ export class RealDarkPerpClient implements DarkPerpClient {
     const acct = await this.ensureAccount();
     const r = await this.post<{ credited?: unknown }>(
       "/v1/accounts/deposit/onchain",
-      { txHash, marketId: this.state?.selectedMarketId ?? 0 },
+      { txHash, marketId: this.clientSelectedMarket },
       { "X-Api-Key": acct.apiKey },
     );
     return typeof r.credited === "string" ? B(r.credited) : 0n;

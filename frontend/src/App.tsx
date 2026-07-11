@@ -16,6 +16,7 @@ import { PriceChart } from "./components/PriceChart";
 import { ActivityFeed } from "./components/ActivityFeed";
 import { ApiAccess } from "./components/ApiAccess";
 import { LpVault } from "./components/LpVault";
+import { WalletButton } from "./components/WalletButton";
 import { Explorer } from "./components/Explorer";
 import { HealthPanel } from "./components/HealthPanel";
 import { TestnetNotice } from "./components/TestnetNotice";
@@ -114,7 +115,7 @@ export default function App() {
             </nav>
             <div className="app__wallet">
               <span className="app__net"><span className="dot dot--live" /> Testnet · {IS_LIVE ? "Live engine" : "Mock"}</span>
-              <button className="wallet-btn"><span className="dot dot--live" /> 0x7Cf4…A29B</button>
+              <WalletButton />
             </div>
           </header>
 
