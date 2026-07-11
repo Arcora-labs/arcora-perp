@@ -207,6 +207,28 @@ pub fn parse_prove_resp(json: &str) -> Result<ProveOutcome, ProverClientError> {
     })
 }
 
+/// Curl argv for a `/prove` POST. Factored out so the transport-hardening flags are
+/// unit-testable. Beyond the wall-clock `--max-time`:
+/// - `--connect-timeout 20`: a dead prover / down reverse-tunnel is detected on CONNECT
+///   in 20s instead of blocking the settle loop for the full `--max-time` (a half-open
+///   connection to a killed prover once hung a settle for the entire 30-min cap, wedging
+///   `openWindowId` ahead of the chain until the timeout let the loop roll back).
+/// - `--keepalive-time 30`: the HTTP connection sits IDLE for the whole multi-minute
+///   proof (request sent, awaiting the response), so without TCP keepalives a NAT /
+///   tunnel / firewall idle-timeout silently RSTs it mid-proof ("Recv failure: Connection
+///   reset by peer"), wasting the proof. Keepalives every 30s hold it open.
+fn prove_curl_args(endpoint: &str, timeout_secs: u64) -> Vec<String> {
+    vec![
+        "-s".into(), "-S".into(), "--fail".into(),
+        "--connect-timeout".into(), "20".into(),
+        "--keepalive-time".into(), "30".into(),
+        "--max-time".into(), timeout_secs.to_string(),
+        "-X".into(), "POST".into(),
+        "-H".into(), "Content-Type: application/json".into(),
+        "--data-binary".into(), "@-".into(), endpoint.into(),
+    ]
+}
+
 /// POST `body` as application/json to `<url>/prove` via curl (mirrors L1::cast: a
 /// subprocess with a wall-clock cap), piping the body on stdin so a large sealed witness
 /// never hits an argv limit. The stdin write runs on its own thread to avoid a pipe
@@ -216,11 +238,7 @@ fn http_post(url: &str, body: &str, timeout_secs: u64) -> Result<String, ProverC
     use std::process::{Command, Stdio};
     let endpoint = format!("{}/prove", url.trim_end_matches('/'));
     let mut child = Command::new("curl")
-        .args([
-            "-s", "-S", "--fail", "--max-time", &timeout_secs.to_string(),
-            "-X", "POST", "-H", "Content-Type: application/json",
-            "--data-binary", "@-", &endpoint,
-        ])
+        .args(prove_curl_args(&endpoint, timeout_secs))
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -313,5 +331,26 @@ mod seal_nonce_tests {
         let pt2 = b"witness B";
         assert_ne!(seal_nonce(&root, pt1), seal_nonce(&root, pt2), "different plaintext");
         assert_ne!(seal_nonce(&root, pt1), seal_nonce(&other_root, pt1), "different root");
+    }
+}
+
+#[cfg(test)]
+mod prove_curl_tests {
+    use super::prove_curl_args;
+
+    #[test]
+    fn args_carry_the_transport_hardening_flags_in_pairs() {
+        let a = prove_curl_args("http://127.0.0.1:8091/prove", 1800);
+        // helper: the value immediately following a flag token
+        let val = |flag: &str| {
+            a.iter().position(|s| s == flag).map(|i| a[i + 1].clone())
+        };
+        assert_eq!(val("--connect-timeout").as_deref(), Some("20"), "fail fast on a dead prover / down tunnel");
+        assert_eq!(val("--keepalive-time").as_deref(), Some("30"), "hold the idle connection open through the long proof");
+        assert_eq!(val("--max-time").as_deref(), Some("1800"), "overall wall-clock cap from the env timeout");
+        // endpoint is last; body streams on stdin (POST + @-)
+        assert_eq!(a.last().unwrap(), "http://127.0.0.1:8091/prove");
+        assert!(a.iter().any(|s| s == "--data-binary"));
+        assert!(a.iter().any(|s| s == "POST"));
     }
 }
