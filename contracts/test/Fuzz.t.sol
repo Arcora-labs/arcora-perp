@@ -24,7 +24,7 @@ contract FuzzTest is MiniTest {
         vault = new CollateralVault(address(this), address(usdc));
         usdc.mint(address(vault), 1_000_000_000_000); // 1,000,000 USDC
         verifier = new MockZkVerifier();
-        s = new DarkPerpSettlement(address(this), address(0xE), verifier, GENESIS, 100, 50, 0);
+        s = new DarkPerpSettlement(address(this), address(0xE), verifier, GENESIS, 100, 50, 0, 0);
     }
 
     /// A claim succeeds only for the exact authorized (to, amount, nonce); any

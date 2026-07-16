@@ -34,8 +34,7 @@ contract Deploy {
     Vm internal constant vm = Vm(0x7109709ECfa91a80626fF3989D68f67F5b1DD12D);
 
     // default anvil account #0 (well-known; testnet only)
-    uint256 internal constant DEFAULT_PK =
-        0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80;
+    uint256 internal constant DEFAULT_PK = 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80;
 
     function run()
         external
@@ -48,6 +47,7 @@ contract Deploy {
         uint256 liveness = vm.envOr("LIVENESS_BLOCKS", uint256(7200));
         uint256 challengeWindow = vm.envOr("CHALLENGE_BLOCKS", uint256(300));
         uint256 challengeBond = vm.envOr("CHALLENGE_BOND", uint256(0.01 ether));
+        uint256 inclusionDeadline = vm.envOr("INCLUSION_DEADLINE_SECS", uint256(600));
 
         // Verifier selection: a set VERIFIER binds a real (e.g. SP1) verifier;
         // unset/zero deploys MockZkVerifier (dev/testnet only).
@@ -58,19 +58,16 @@ contract Deploy {
             // and drain the vault. Testnets only, unless the operator explicitly overrides.
             // (A real VERIFIER needs no Mock guard.)
             require(
-                DeployGuard.isTestnet(block.chainid)
-                    || vm.envOr("ALLOW_MOCK_VERIFIER", uint256(0)) == 1,
+                DeployGuard.isTestnet(block.chainid) || vm.envOr("ALLOW_MOCK_VERIFIER", uint256(0)) == 1,
                 "Deploy: MockZkVerifier is unsound; refusing on a non-testnet chain (set ALLOW_MOCK_VERIFIER=1 to override, UNSAFE)"
             );
         }
 
         vm.startBroadcast(pk);
 
-        verifier = verifierEnv == address(0)
-            ? IZkVerifier(address(new MockZkVerifier()))
-            : IZkVerifier(verifierEnv);
+        verifier = verifierEnv == address(0) ? IZkVerifier(address(new MockZkVerifier())) : IZkVerifier(verifierEnv);
         settlement = new DarkPerpSettlement(
-            sequencer, enclaveSigner, verifier, genesis, liveness, challengeWindow, challengeBond
+            sequencer, enclaveSigner, verifier, genesis, liveness, challengeWindow, challengeBond, inclusionDeadline
         );
         // USDC is the collateral asset (6 decimals). MockUSDC ships an open faucet
         // for the testnet — replace with the canonical USDC address before mainnet.

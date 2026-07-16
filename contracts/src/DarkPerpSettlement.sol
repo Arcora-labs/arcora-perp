@@ -82,6 +82,14 @@ contract DarkPerpSettlement {
     /// Stake a challenger must post; returned if the challenge succeeds (sequencer
     /// slashed), forfeited to the sequencer if it is answered (audit F3).
     uint256 public immutable challengeBond;
+    /// Seconds after a receipt's signed `recvTimeMs` before its order becomes
+    /// challengeable — the §2 inclusion SLA. A fresh order cannot be challenged,
+    /// so an honest sequencer's normal async settlement latency can never be
+    /// free-griefed by a spam challenge (audit-P2 reconciliation, see
+    /// `answerChallenge`). `recvTimeMs` is enclave-self-reported: an honest-accept-
+    /// then-withhold sequencer is defended (the timestamp is fixed before the
+    /// withhold decision); a fully-compromised enclave is out of scope (SEC-019).
+    uint256 public immutable inclusionDeadlineSecs;
 
     mapping(uint256 => Batch) public batches;
     mapping(bytes32 => Challenge) public challenges; // orderHash => challenge
@@ -123,6 +131,7 @@ contract DarkPerpSettlement {
     error NotRejected();
     error NonCanonicalSignature();
     error WrongChallengeBond();
+    error NotRipe();
     error BatchNotSettled();
     error TransferFailed();
     error UnderBonded();
@@ -141,7 +150,8 @@ contract DarkPerpSettlement {
         bytes32 _genesisRoot,
         uint256 _livenessTimeoutBlocks,
         uint256 _challengeWindowBlocks,
-        uint256 _challengeBond
+        uint256 _challengeBond,
+        uint256 _inclusionDeadlineSecs
     ) {
         sequencer = _sequencer;
         enclaveSigner = _enclaveSigner;
@@ -151,6 +161,7 @@ contract DarkPerpSettlement {
         livenessTimeoutBlocks = _livenessTimeoutBlocks;
         challengeWindowBlocks = _challengeWindowBlocks;
         challengeBond = _challengeBond;
+        inclusionDeadlineSecs = _inclusionDeadlineSecs;
     }
 
     /// @notice Bind the collateral vault (once). Withdrawals published on every
@@ -326,6 +337,10 @@ contract DarkPerpSettlement {
         bytes32 digest = receiptDigest(orderHash, seqNo, recvTimeMs, batchIdHint);
         address signer = ecrecover(digest, v, r, s);
         if (signer == address(0) || signer != enclaveSigner) revert BadReceiptSignature();
+
+        // §2 ripeness SLA: the order must be overdue by `inclusionDeadlineSecs`
+        // before it can be challenged (recvTimeMs is milliseconds).
+        if (block.timestamp < recvTimeMs / 1000 + inclusionDeadlineSecs) revert NotRipe();
 
         challenges[orderHash] = Challenge({
             challenger: msg.sender,

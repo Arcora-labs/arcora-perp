@@ -19,6 +19,7 @@ contract DarkPerpSettlementTest is MiniTest {
     uint256 internal constant LIVENESS = 100;
     uint256 internal constant CHALLENGE_WINDOW = 50;
     uint256 internal constant CHALLENGE_BOND = 1 ether;
+    uint256 internal constant INCLUSION_DEADLINE = 600;
     uint256 internal constant USD = 1e6;
 
     // this contract is the sequencer
@@ -26,7 +27,14 @@ contract DarkPerpSettlementTest is MiniTest {
         verifier = new MockZkVerifier();
         enclaveSigner = vm.addr(ENCLAVE_PK);
         s = new DarkPerpSettlement(
-            address(this), enclaveSigner, verifier, GENESIS, LIVENESS, CHALLENGE_WINDOW, CHALLENGE_BOND
+            address(this),
+            enclaveSigner,
+            verifier,
+            GENESIS,
+            LIVENESS,
+            CHALLENGE_WINDOW,
+            CHALLENGE_BOND,
+            INCLUSION_DEADLINE
         );
         // wire a vault so the USDC sequencer bond can be posted; left unfunded, so
         // requiredBond() is 0 and the settle tests need no bond (audit Q1 floor = 0).
@@ -149,6 +157,7 @@ contract DarkPerpSettlementTest is MiniTest {
         address challenger = address(0xBEEF);
         vm.deal(challenger, CHALLENGE_BOND);
         vm.prank(challenger);
+        vm.warp(block.timestamp + INCLUSION_DEADLINE + 1);
         s.challengeInclusion{value: CHALLENGE_BOND}(orderHash, 7, 1000, 0, v, r, sig);
 
         // sequencer answers with an empty proof (single-leaf tree); stake forfeits
@@ -168,6 +177,7 @@ contract DarkPerpSettlementTest is MiniTest {
         address challenger = address(0xBEEF);
         vm.deal(challenger, CHALLENGE_BOND);
         vm.prank(challenger);
+        vm.warp(block.timestamp + INCLUSION_DEADLINE + 1);
         s.challengeInclusion{value: CHALLENGE_BOND}(orderHash, 1, 1, 0, v, r, sig);
 
         // the order's batch settles one block AFTER the challenge opened
@@ -201,6 +211,7 @@ contract DarkPerpSettlementTest is MiniTest {
         address challenger = address(0xBEEF);
         vm.deal(challenger, CHALLENGE_BOND);
         vm.prank(challenger);
+        vm.warp(block.timestamp + INCLUSION_DEADLINE + 1);
         s.challengeInclusion{value: CHALLENGE_BOND}(orderHash, 1, 1, 0, v, r, sig);
 
         // settle a batch whose orderedRoot commits to a DIFFERENT order
@@ -232,6 +243,7 @@ contract DarkPerpSettlementTest is MiniTest {
         address challenger = address(0xBEEF);
         vm.deal(challenger, CHALLENGE_BOND);
         vm.prank(challenger);
+        vm.warp(block.timestamp + INCLUSION_DEADLINE + 1);
         s.challengeInclusion{value: CHALLENGE_BOND}(orderHash, 1, 1, 0, v, r, sig);
 
         // settle a batch whose rejectedRoot is the single leaf for this order (it was
@@ -258,6 +270,7 @@ contract DarkPerpSettlementTest is MiniTest {
         address challenger = address(0xBEEF);
         vm.deal(challenger, CHALLENGE_BOND);
         vm.prank(challenger);
+        vm.warp(block.timestamp + INCLUSION_DEADLINE + 1);
         s.challengeInclusion{value: CHALLENGE_BOND}(orderHash, 1, 1, 0, v, r, sig);
 
         // settle a batch whose rejectedRoot commits to a DIFFERENT order
@@ -295,6 +308,7 @@ contract DarkPerpSettlementTest is MiniTest {
         address challenger = address(0xBEEF);
         vm.deal(challenger, CHALLENGE_BOND);
         vm.prank(challenger);
+        vm.warp(block.timestamp + INCLUSION_DEADLINE + 1);
         s.challengeInclusion{value: CHALLENGE_BOND}(orderHash, 7, 1000, 0, v, r, sig);
 
         bytes32[] memory proof = new bytes32[](0);
@@ -342,6 +356,7 @@ contract DarkPerpSettlementTest is MiniTest {
         address challenger = address(0xCAFE);
         vm.deal(challenger, CHALLENGE_BOND);
         vm.prank(challenger);
+        vm.warp(block.timestamp + INCLUSION_DEADLINE + 1);
         s.challengeInclusion{value: CHALLENGE_BOND}(orderHash, 1, 1, 0, v, r, sig);
         vm.roll(block.number + CHALLENGE_WINDOW + 1);
         s.slashUnanswered(orderHash);
@@ -358,6 +373,7 @@ contract DarkPerpSettlementTest is MiniTest {
         address challenger = address(0xCAFE);
         vm.deal(challenger, CHALLENGE_BOND);
         vm.prank(challenger);
+        vm.warp(block.timestamp + INCLUSION_DEADLINE + 1);
         s.challengeInclusion{value: CHALLENGE_BOND}(orderHash, 1, 1, 0, v, r, sig);
 
         vm.expectRevert(DarkPerpSettlement.ChallengeNotExpired.selector);
@@ -398,6 +414,7 @@ contract DarkPerpSettlementTest is MiniTest {
         bytes32 highS = bytes32(n - uint256(sig));
         uint8 flippedV = v == 27 ? 28 : 27;
         vm.deal(address(this), CHALLENGE_BOND);
+        vm.warp(block.timestamp + INCLUSION_DEADLINE + 1);
         vm.expectRevert(DarkPerpSettlement.NonCanonicalSignature.selector);
         s.challengeInclusion{value: CHALLENGE_BOND}(orderHash, 1, 1, 0, flippedV, r, highS);
     }
@@ -406,8 +423,30 @@ contract DarkPerpSettlementTest is MiniTest {
         bytes32 orderHash = keccak256("x");
         (uint8 v, bytes32 r, bytes32 sig) = vm.sign(0xBADBAD, s.receiptDigest(orderHash, 1, 1, 0));
         vm.deal(address(this), CHALLENGE_BOND);
+        vm.warp(block.timestamp + INCLUSION_DEADLINE + 1);
         vm.expectRevert(DarkPerpSettlement.BadReceiptSignature.selector);
         s.challengeInclusion{value: CHALLENGE_BOND}(orderHash, 1, 1, 0, v, r, sig);
+    }
+
+    function test_challenge_reverts_before_ripe() public {
+        bytes32 orderHash = keccak256("ripe-order");
+        uint64 recvTimeMs = 1000; // receipt "issued" at t=1s
+        bytes32 digest = s.receiptDigest(orderHash, 1, recvTimeMs, 0);
+        (uint8 v, bytes32 r, bytes32 sig) = vm.sign(ENCLAVE_PK, digest);
+        // block.timestamp is still 1 (< 1 + INCLUSION_DEADLINE): not yet ripe.
+        vm.expectRevert(DarkPerpSettlement.NotRipe.selector);
+        s.challengeInclusion{value: CHALLENGE_BOND}(orderHash, 1, recvTimeMs, 0, v, r, sig);
+    }
+
+    function test_challenge_allowed_after_ripe() public {
+        bytes32 orderHash = keccak256("ripe-order");
+        uint64 recvTimeMs = 1000;
+        bytes32 digest = s.receiptDigest(orderHash, 1, recvTimeMs, 0);
+        (uint8 v, bytes32 r, bytes32 sig) = vm.sign(ENCLAVE_PK, digest);
+        vm.warp(recvTimeMs / 1000 + INCLUSION_DEADLINE + 1); // now ripe
+        s.challengeInclusion{value: CHALLENGE_BOND}(orderHash, 1, recvTimeMs, 0, v, r, sig);
+        (,,,,, bool open) = s.challenges(orderHash);
+        assertTrue(open, "challenge opened once ripe");
     }
 
     receive() external payable {}
