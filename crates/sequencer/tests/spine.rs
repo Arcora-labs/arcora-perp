@@ -409,6 +409,42 @@ fn auto_deleverage_publishes_an_attributable_receipt() {
 }
 
 #[test]
+fn missing_adl_key_falls_back_to_secret_not_public_owner() {
+    // Same ADL scenario as `auto_deleverage_publishes_an_attributable_receipt`:
+    // A (owner 1) short, B (owner 2) long, each funded $20k at $100k. A hard gap
+    // down to $75k wrecks B and, with no insurance seeded, auto-deleverages the
+    // bad debt onto the winning short A.
+    let mut s = setup();
+    s.seal_batch(
+        &[
+            order(1, Side::Sell, SIZE_SCALE, 100_000 * PRICE_SCALE, 1),
+            order(2, Side::Buy, SIZE_SCALE, 100_000 * PRICE_SCALE, 2),
+        ],
+        1_000,
+    );
+    // Simulate A's position funded "outside apply": drop its captured secret
+    // ADL tag-key so the sealing path hits the fail-closed fallback.
+    s.forget_adl_key(&owner_id(1));
+
+    s.set_oracle(0, oracle(75_000, 5_000));
+    let sealed = s.seal_batch(&[], 5_000);
+
+    // A WAS clawed, so the ADL receipt is still published.
+    assert!(
+        !sealed.adl_receipts.is_empty(),
+        "A auto-deleveraged despite the missing key"
+    );
+    // Fail-closed: no receipt tag is recomputable from A's PUBLIC owner id.
+    assert!(
+        !sealed
+            .adl_receipts
+            .iter()
+            .any(|r| r.tag == adl_tag(&owner_id(1), 0, sealed.batch_id)),
+        "missing-key fallback must NOT key on the public owner id"
+    );
+}
+
+#[test]
 fn liquidation_cancels_resting_orders() {
     // A liquidated owner's resting orders are cancelled, so they can't fill later
     // as a bad-debt account and fail to settle (the maker-drift fix).

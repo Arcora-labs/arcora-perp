@@ -504,6 +504,14 @@ impl Sequencer {
         self.liq_tag_keys.remove(owner);
     }
 
+    /// ADL analog of [`Sequencer::forget_liq_key`]: test-only, drop a captured
+    /// ADL tag-key to exercise the fail-closed fallback. Same rationale for not
+    /// being `#[cfg(test)]` (unreachable from `tests/spine.rs` otherwise) and same
+    /// harmlessness in production (no gateway RPC surface reaches it).
+    pub fn forget_adl_key(&mut self, owner: &PubKey) {
+        self.adl_tag_keys.remove(owner);
+    }
+
     pub fn current_batch_id(&self) -> u64 {
         self.next_batch_id
     }
@@ -985,9 +993,11 @@ impl Sequencer {
         self.next_batch_id += 1;
 
         // Publish privacy-preserving liquidation TAGS keyed on each account's
-        // secret tag key (captured at fund time), not cleartext owners. The
-        // fallback to the owner id only fires for a position funded outside this
-        // sequencer's `apply` (never in normal operation).
+        // secret tag key (captured at fund time), not cleartext owners. If that
+        // key is absent (a position funded outside this sequencer's `apply`,
+        // never in normal operation), the tag falls closed onto `liq_fallback_key`
+        // — a key derived from the enclave's secret salt, never the public owner
+        // id — so it stays unlinkable to a known-pubkey observer.
         let liquidation_tags: Vec<Digest> = liquidations
             .iter()
             .map(|(owner, market)| {
@@ -1001,8 +1011,9 @@ impl Sequencer {
             .collect();
 
         // Publish each auto-deleverage haircut as a secret-keyed receipt the clawed
-        // account can recognize, paired with the amount (audit Q2). Same fallback
-        // to the owner id as above for positions funded outside `apply`.
+        // account can recognize, paired with the amount (audit Q2). Same fail-closed
+        // fallback as above: an absent key falls onto `adl_fallback_key` (secret-salt
+        // derived), never the public owner id.
         let adl_receipts: Vec<AdlReceipt> = adl_haircuts
             .iter()
             .map(|(owner, market, clawed)| {
