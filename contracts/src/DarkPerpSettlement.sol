@@ -21,8 +21,9 @@ interface IERC20Min {
 /// state root only via a verified ZK validity proof (§3 SETTLED), (2) falls into
 /// close-only on sequencer liveness failure (§6), and (3) runs the inclusion
 /// challenge game that slashes the sequencer bond for censorship/withholding
-/// (§2). It deliberately holds NO funds — collateral lives in CollateralVault —
-/// so a broken sequencer can stall or censor but never steal (§0, §10).
+/// (§2). It holds no USER collateral — that lives in CollateralVault; it custodies
+/// only its own sequencer bond + challenge stakes — so a broken sequencer can stall
+/// or censor but never steal user funds (§0, §10).
 contract DarkPerpSettlement {
     using MerkleLib for bytes32;
 

@@ -148,15 +148,18 @@ the public-input commitment likewise (`prover::PublicInputs::commitment` ↔
 `DarkPerpSettlement.publicCommitment`). Both are pinned by byte-exact test vectors
 (`crates/prover/tests/vectors.rs`) so any divergence fails CI on both sides.
 
-## ADR-0010 — The settlement contract holds no funds
+## ADR-0010 — The settlement contract holds no user collateral
 
 **Decision.** `DarkPerpSettlement` anchors roots, runs liveness/close-only, and
-the slashing game; **`CollateralVault` holds the funds** and releases them only
-against a withdrawals root published *by* a settled batch.
+the slashing game (custodying only its own sequencer bond + challenge stakes);
+**`CollateralVault` holds the user collateral** and releases it only against a
+withdrawals root published *by* a settled batch.
 
 **Why.** §0/§10's damage-containment: a compromised or stalled sequencer must be
-able to censor or halt but **never steal**. Separating the authority (settlement,
-fund-free) from custody (vault, settlement-gated) means fund release is a function
+able to censor or halt but **never steal user funds**. Separating the authority
+(settlement — which custodies only its own bond + challenge stakes, never user
+collateral) from custody of user funds (vault, settlement-gated) means fund release
+is a function
 of verified state, not operator action — withdrawals are only ever authorized from
 SETTLED state (§3) and survive into forced-exit (§6) against the last settled
 root.

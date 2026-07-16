@@ -117,7 +117,7 @@ no single failure is catastrophic.
 | **TEE integrity** (bad matching, preconf lies) | wrong fills, unreliable MATCHED preconfs, market-integrity abuse | quorum preconf (`committee`), Proof-v2 matching determinism (future); MATCHED is non-binding (§3) |
 | **Sequencer liveness** (halts) | no new batches | anyone triggers close-only after the timeout; users force-exit against the last settled root (§6, `DarkPerpSettlement.triggerCloseOnly`) |
 | **Sequencer censors an order** | a user's order is withheld | signed receipt + inclusion timeout → on-chain challenge → bond slashed, close-only (§2, `challengeInclusion`/`slashUnanswered`) |
-| **Sequencer tries to steal funds** | — | it can't: the vault releases only against a SETTLED withdrawals root; the settlement contract holds no funds (§0, ADR-0010) |
+| **Sequencer tries to steal funds** | — | it can't: the vault releases only against a SETTLED withdrawals root; the settlement contract has no authority over the vault's collateral — it custodies only its own sequencer bond + challenge stakes (§0, ADR-0010) |
 | **Prover sees the witness** (bare prover farm, §10b) | positions/fills/margins leak to the prover | sealed witness opens only at the attested measurement, zeroized after the job (`prover::AttestedProver`); public proving networks can't open it |
 | **Oracle manipulation** (§8) | bad liquidations / funding | transcript sanity gates (staleness, confidence, backup-deviation) re-proven in ZK; anomaly → close-only breaker (`oracle.rs`, `Market` bounds) |
 | **Invalid state transition** (any of the above) | — | ZK validity proof: the L1 verifier rejects it, the root never advances (§3, `IZkVerifier`) |
@@ -125,14 +125,19 @@ no single failure is catastrophic.
 
 ## What an attacker can NEVER do (given the ZK root holds)
 
-- **Steal funds from the vault.** Withdrawals require a Merkle proof against a
+- **Steal user funds from the vault.** Withdrawals require a Merkle proof against a
   withdrawals root published only by a *settled* batch; the settlement contract has
-  no fund-movement authority. A broken sequencer can stall or censor, never steal.
+  no authority over the vault's collateral (it custodies only its own sequencer bond
+  and challenge stakes, moved via pull-payment). A broken sequencer can stall or
+  censor, never steal user funds.
 - **Advance the state root without a valid proof.** `settleBatch` checks the proof
   against the public-input commitment binding `(prevRoot, manifestHash, newRoot)`.
 - **Mint value.** Collateral conservation is an exact integer identity re-proven in
-  ZK (Proof-v1): `Σ notes + Σ collateral + insurance + vault_pool == external_in −
-  external_out`.
+  ZK (Proof-v1): `Σ notes + Σ collateral + insurance + vault_pool + treasury ==
+  external_in − external_out`. *(Residual: this binds `external_in` internally but
+  not yet to real L1 deposit events — a compromised enclave can inflate `external_in`
+  via a fabricated `op_deposit` and mint against it; deposit-event-root binding is a
+  tracked P3 item, SEC-019.)*
 
 ## Residual / honestly-acknowledged leakage
 
@@ -200,19 +205,31 @@ no single failure is catastrophic.
 
 A single-enclave public testnet is live (gateway inside a real Azure TDX CVM,
 settling to Base Sepolia). The threat model above assumes **all three trust roots
-hold**; on the testnet the **ZK root is a stand-in** (`MockZkVerifier` accepts
-`proof == publicCommitment`). So on the testnet specifically:
+hold**. On the testnet the **ZK root is now REAL**: a full SP1 zkVM re-execution of
+the engine is proven to Groth16 and verified on-chain by `SP1ZkVerifier`
+(`0x8012F3b3…`, live on Base Sepolia since 2026-07-09, replacing the earlier
+`MockZkVerifier`). So on the testnet specifically:
 
-- The "attacker can NEVER steal from the vault / advance the root without a valid
-  proof / mint value" guarantees above are **NOT in force** — they rest on the ZK
-  root, which is mocked. A compromised sequencer *could* publish an invalid
-  withdrawals/state root that the mock verifier accepts. This is why funds are
-  **test USDC only** and the UI says so.
-- What **is** genuinely exercised end to end: the TEE attestation (real live TDX +
-  vTPM quote, wrong-measurement boots refuse), the settlement/vault/withdrawal
-  plumbing, sequencing accountability (rate limits, caller-signed orders, inclusion
-  challenge answering), and sealed state persistence with an on-chain-continuity
-  boot gate.
+- The "advance the state root without a valid proof / steal from a settled
+  withdrawals root" guarantees ARE now enforced on-chain — an invalid state or
+  withdrawals root fails `settleBatch` at the real verifier. Funds remain **test
+  USDC only** while the remaining stand-ins below are in place.
+- Remaining ZK-adjacent stand-ins (why the mint/steal guarantees are not yet *fully*
+  airtight): **(a)** the **attested-proving boundary is a stub** — the prover runs
+  with a fixed `0xAB` measurement and a public `0x5E` seal-root, not a real
+  DCAP-attested key-release, so "the witness opens only at the attested measurement"
+  is not yet enforced (SEC-020 / P3); **(b)** **deposit integrity is enclave-rooted,
+  not ZK-bound** — `external_in` is not tied to real L1 deposit events, so a
+  compromised enclave can mint via a fabricated deposit (SEC-019 / P3); **(c)**
+  **gateway key-custody is Phase-0** — wallet spend keys are generated server-side
+  and held in plaintext process memory (sealed at rest under `ENCLAVE_SEED`, not yet
+  a vTPM-released key), so a live-process compromise is a fund-loss path until
+  `TeeSealProvider` (#5d).
+- What **is** genuinely exercised end to end: the real ZK verifier + Groth16 proving,
+  the TEE attestation (real live TDX + vTPM quote, wrong-measurement boots refuse),
+  the settlement/vault/withdrawal plumbing, sequencing accountability (rate limits,
+  caller-signed orders, inclusion challenge answering), and sealed state persistence
+  with an on-chain-continuity boot gate.
 - Order bodies reach the gateway over TLS but are **not yet encrypted to the
   enclave epoch key** (Milestone C #2/#3), and sealing uses the software
   `SealKeyProvider` stand-in (#5d) — so "operator-blind" is partially, not fully,
@@ -226,15 +243,21 @@ structure do not change.
 The stand-ins below must be replaced before mainnet; none affect the accounting or
 the containment structure above:
 
-- real SP1/Risc0 verifier (replaces `MockZkVerifier`) — see `PROVING.md`;
+- real SP1/Risc0 verifier — **DONE (live)**: the real `SP1ZkVerifier` (`0x8012F3b3`)
+  verifies Groth16 on Base Sepolia (replaced `MockZkVerifier`, 2026-07-09); the
+  remaining prover item is the **attested-proving boundary** — real DCAP attestation
+  replacing the `0xAB`/`0x5E` stub (SEC-020) — see `PROVING.md`;
 - real TDX/Nitro attestation — **live-boot DONE on the testnet** (the gateway
   verifies its own Azure TDX + vTPM quote, `docs/ATTESTATION.md` #5c); real
   vTPM-backed key-release (`TeeSealProvider`, #5d) is the remaining TEE item;
 - real enclave sealing / note encryption / committee DKG / bridge VRF seed;
-- **spend-key ↔ owner binding — DONE (audit DP-003).** `consume_note` now rejects a
-  spend unless `owner_from_spend_key(spend_key) == note.owner`, and `Wallet::from_seed`
-  derives `owner = H(spend_key)`, so a note can be consumed only by presenting its
-  owner's spend key — the authorization no longer rests on the enclave.
+- **spend-key ↔ owner binding — DONE at the engine layer (audit DP-003).** `consume_note`
+  now rejects a spend unless `owner_from_spend_key(spend_key) == note.owner`, and
+  `Wallet::from_seed` derives `owner = H(spend_key)`, so a note can be consumed only by
+  presenting its owner's spend key — the *engine-layer* authorization no longer rests on
+  the enclave. (Caveat: the **gateway still custodies** each account's spend key
+  server-side in plaintext process memory — Phase-0 custody, see the testnet posture
+  above — so end-to-end non-custodial key handling awaits `TeeSealProvider` #5d.)
 
 ## Post-audit remediation residuals (2026-07)
 
