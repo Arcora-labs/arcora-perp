@@ -3136,6 +3136,10 @@ impl Gw {
         for m in &self.mkts {
             marks.insert(m.id.to_string(), m.px.to_string());
         }
+        // PUBLIC feed invariant (LIQ-001): the public /api/state + /ws snapshot exposes
+        // ONLY the shared demo `user` account, NEVER a real /v1 tenant. This loop reads
+        // `self.user.owner` alone; do not extend it to iterate real accounts. `/v1`
+        // per-owner data is served only on the authenticated, owner-filtered `/v1/ws`.
         // positions (open only), displayed collateral = locked margin (mock parity)
         let mut positions = Vec::new();
         for m in &self.mkts {
@@ -3201,24 +3205,29 @@ impl Gw {
 
         // the market-maker's per-market net inventory + delta-neutral hedge target
         // (audit Q5) — only markets where the MM actually carries exposure.
-        let mm_hedge: Vec<WHedge> = self
-            .mkts
-            .iter()
-            .filter_map(|m| {
-                let p = self.seq.state.position(&self.mm.owner, m.id)?;
-                if p.size == 0 {
-                    return None;
-                }
-                let h = p.hedge_signal(m.px);
-                Some(WHedge {
-                    market_id: m.id,
-                    symbol: m.symbol.to_string(),
-                    inventory: h.inventory.to_string(),
-                    hedge_target: h.hedge_target.to_string(),
-                    notional: h.notional.to_string(),
+        // mm_hedge exposes the market-maker's net inventory + hedge target — useful
+        // in dev, but front-runnable, so never on the public prod feed (LIQ-001).
+        let mm_hedge: Vec<WHedge> = if self.prod {
+            Vec::new()
+        } else {
+            self.mkts
+                .iter()
+                .filter_map(|m| {
+                    let p = self.seq.state.position(&self.mm.owner, m.id)?;
+                    if p.size == 0 {
+                        return None;
+                    }
+                    let h = p.hedge_signal(m.px);
+                    Some(WHedge {
+                        market_id: m.id,
+                        symbol: m.symbol.to_string(),
+                        inventory: h.inventory.to_string(),
+                        hedge_target: h.hedge_target.to_string(),
+                        notional: h.notional.to_string(),
+                    })
                 })
-            })
-            .collect();
+                .collect()
+        };
 
         WState {
             markets,
@@ -5885,6 +5894,44 @@ mod tests {
         assert!(
             gw.account_deposit(&key, 0, 20_000 * QUOTE_SCALE).is_err(),
             "production build must reject self-service (unbacked) deposits",
+        );
+    }
+
+    // audit LIQ-001b: the public /api/state + /ws snapshot must never expose the
+    // market-maker's inventory in production — mm_hedge is dev-only detail.
+    #[test]
+    fn prod_snapshot_omits_mm_hedge() {
+        let mut gw = Gw::boot();
+        // Open a real MM position via the same live-order path the demo boot uses:
+        // the demo user's Ioc order crosses at the mark, and the seal loop counters
+        // it with an opposite MM order (see `tick`), so mm_hedge WOULD be populated
+        // when not in prod.
+        let req = OrderReq {
+            market_id: 0,
+            side: "Buy".into(),
+            size: (SIZE_SCALE / 10).to_string(), // 0.1 BTC
+            limit_price: "0".into(),
+            tif: "Ioc".into(),
+            reduce_only: false,
+            nonce: None,
+            signature: None,
+            ..Default::default()
+        };
+        gw.place_order(&req).expect("accepted");
+        gw.tick();
+        assert!(
+            gw.seq
+                .state
+                .position(&gw.mm.owner, 0)
+                .is_some_and(|p| p.size != 0),
+            "MM opened a countering position after the seal",
+        );
+
+        gw.prod = true;
+        let snap = gw.snapshot();
+        assert!(
+            snap.mm_hedge.is_empty(),
+            "prod public snapshot must not expose MM inventory",
         );
     }
 
