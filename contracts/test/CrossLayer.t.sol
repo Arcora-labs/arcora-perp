@@ -14,7 +14,9 @@ contract CrossLayerTest is MiniTest {
     DarkPerpSettlement internal s;
 
     function setUp() public {
-        s = new DarkPerpSettlement(address(this), address(0xE), new MockZkVerifier(), bytes32(0), 100, 50, 0, 0);
+        s = new DarkPerpSettlement(
+            address(this), address(0xE), new MockZkVerifier(), bytes32(0), 100, 50, 0, 0, address(this), 0
+        );
     }
 
     function test_receipt_digest_matches_rust() public view {
@@ -51,8 +53,9 @@ contract CrossLayerTest is MiniTest {
     /// the language boundary with a real signature, not a vm.sign() stand-in.
     function test_real_rust_receipt_passes_ecrecover() public {
         address rustEnclave = 0x4a62316623ad457F02cDC5D997deD67a383EC569;
-        DarkPerpSettlement d =
-            new DarkPerpSettlement(address(this), rustEnclave, new MockZkVerifier(), bytes32(0), 100, 50, 0, 0);
+        DarkPerpSettlement d = new DarkPerpSettlement(
+            address(this), rustEnclave, new MockZkVerifier(), bytes32(0), 100, 50, 0, 0, address(this), 0
+        );
         bytes32 orderHash = 0x0c1646898f0e7370046e707059dd7cb9eba4b66af66f67671f69101d508231c5;
         uint8 v = 28;
         bytes32 r = 0xfb8daee4e013cc0fc4a472efd1ff4acf96719a1325690f4aa714d5c6c0f07704;

@@ -25,8 +25,12 @@ import {DeployGuard} from "./DeployGuard.sol";
 ///   LIVENESS_BLOCKS  close-only liveness timeout (default 7200 ≈ 1 day)
 ///   CHALLENGE_BLOCKS inclusion challenge window (default 300 ≈ 1 hr)
 ///   CHALLENGE_BOND   challenger stake in wei (default 0.01 ether)
+///   INCLUSION_DEADLINE_SECS  §2 inclusion SLA before an order is challengeable (default 600)
 ///   VERIFIER         address of an already-deployed real verifier (e.g. the
 ///                    SP1ZkVerifier) to bind; unset/zero deploys MockZkVerifier
+///   GOVERNANCE       address allowed to call `finalSettle` (default: sequencer)
+///   FINAL_SETTLE_GRACE_BLOCKS  blocks after close-only before `finalSettle` is
+///                    allowed (default 300)
 ///
 /// NOTE: without VERIFIER this ships MockZkVerifier — set VERIFIER to the real
 /// SP1/Risc0 verifier before any non-testnet deploy (see docs/PROVING.md).
@@ -48,6 +52,8 @@ contract Deploy {
         uint256 challengeWindow = vm.envOr("CHALLENGE_BLOCKS", uint256(300));
         uint256 challengeBond = vm.envOr("CHALLENGE_BOND", uint256(0.01 ether));
         uint256 inclusionDeadline = vm.envOr("INCLUSION_DEADLINE_SECS", uint256(600));
+        address governance = vm.envOr("GOVERNANCE", sequencer);
+        uint256 finalSettleGrace = vm.envOr("FINAL_SETTLE_GRACE_BLOCKS", uint256(300));
 
         // Verifier selection: a set VERIFIER binds a real (e.g. SP1) verifier;
         // unset/zero deploys MockZkVerifier (dev/testnet only).
@@ -67,7 +73,16 @@ contract Deploy {
 
         verifier = verifierEnv == address(0) ? IZkVerifier(address(new MockZkVerifier())) : IZkVerifier(verifierEnv);
         settlement = new DarkPerpSettlement(
-            sequencer, enclaveSigner, verifier, genesis, liveness, challengeWindow, challengeBond, inclusionDeadline
+            sequencer,
+            enclaveSigner,
+            verifier,
+            genesis,
+            liveness,
+            challengeWindow,
+            challengeBond,
+            inclusionDeadline,
+            governance,
+            finalSettleGrace
         );
         // USDC is the collateral asset (6 decimals). MockUSDC ships an open faucet
         // for the testnet — replace with the canonical USDC address before mainnet.

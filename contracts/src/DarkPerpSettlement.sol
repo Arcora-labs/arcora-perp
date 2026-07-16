@@ -91,6 +91,17 @@ contract DarkPerpSettlement {
     /// withhold decision); a fully-compromised enclave is out of scope (SEC-019).
     uint256 public immutable inclusionDeadlineSecs;
 
+    /// The block close-only was entered (0 while live), so `finalSettle`'s grace
+    /// window can be measured (§6 wind-down).
+    uint256 public closeOnlyBlock;
+    /// The address allowed to push a wind-down `finalSettle` while close-only.
+    /// Alpha: the deployer. Escape stays proof-gated — governance can only land
+    /// proof-valid transitions, never fabricate balances.
+    address public immutable governance;
+    /// Blocks after `closeOnlyBlock` before `finalSettle` is allowed — a grace
+    /// window so users/watchers can react before a governance wind-down.
+    uint256 public immutable finalSettleGraceBlocks;
+
     mapping(uint256 => Batch) public batches;
     mapping(bytes32 => Challenge) public challenges; // orderHash => challenge
     /// Pull-payment ledger for native-token refunds (a challenger's stake returned to the
@@ -106,6 +117,7 @@ contract DarkPerpSettlement {
     mapping(address => uint256) public pendingUsdc;
 
     event BatchSettled(uint256 indexed batchId, bytes32 prevRoot, bytes32 newRoot, bytes32 manifestHash);
+    event FinalSettle(uint256 indexed batchId, bytes32 prevRoot, bytes32 newRoot, bytes32 manifestHash);
     event CloseOnlyEntered(string reason);
     event BondPosted(uint256 amount, uint256 total);
     event BondWithdrawn(uint256 amount, uint256 total);
@@ -137,6 +149,9 @@ contract DarkPerpSettlement {
     error UnderBonded();
     error VaultNotSet();
     error WithdrawExceedsExcess();
+    error NotGovernance();
+    error NotCloseOnly();
+    error GraceNotExpired();
 
     modifier onlySequencer() {
         if (msg.sender != sequencer) revert NotSequencer();
@@ -151,7 +166,9 @@ contract DarkPerpSettlement {
         uint256 _livenessTimeoutBlocks,
         uint256 _challengeWindowBlocks,
         uint256 _challengeBond,
-        uint256 _inclusionDeadlineSecs
+        uint256 _inclusionDeadlineSecs,
+        address _governance,
+        uint256 _finalSettleGraceBlocks
     ) {
         sequencer = _sequencer;
         enclaveSigner = _enclaveSigner;
@@ -162,6 +179,8 @@ contract DarkPerpSettlement {
         challengeWindowBlocks = _challengeWindowBlocks;
         challengeBond = _challengeBond;
         inclusionDeadlineSecs = _inclusionDeadlineSecs;
+        governance = _governance;
+        finalSettleGraceBlocks = _finalSettleGraceBlocks;
     }
 
     /// @notice Bind the collateral vault (once). Withdrawals published on every
@@ -271,12 +290,53 @@ contract DarkPerpSettlement {
         }
     }
 
+    /// @notice Governance wind-down settlement that can land EVEN in close-only
+    /// (EXIT-001). While `settleBatch` reverts in close-only, open positions closed
+    /// by users (reduce-only is allowed off-chain in close-only) would otherwise have
+    /// no way to become claimable withdrawals. This provides the landing pad: it skips
+    /// the close-only/slashed/bond guards but keeps the ZK proof and prev-root
+    /// continuity, so governance can only advance proof-valid state, never fabricate
+    /// balances. Gated on close-only + a grace window + `governance`. Repeatable.
+    function finalSettle(
+        bytes32 prevRoot,
+        bytes32 manifestHash,
+        bytes32 newRoot,
+        bytes32 orderedRoot,
+        bytes32 withdrawalsRoot,
+        bytes32 rejectedRoot,
+        bytes calldata proof
+    ) external {
+        if (msg.sender != governance) revert NotGovernance();
+        if (!closeOnly) revert NotCloseOnly();
+        if (block.number < closeOnlyBlock + finalSettleGraceBlocks) revert GraceNotExpired();
+        if (prevRoot != currentStateRoot) revert BadPrevRoot();
+        bytes32 commitment =
+            publicCommitment(prevRoot, manifestHash, newRoot, orderedRoot, withdrawalsRoot, rejectedRoot);
+        if (!verifier.verify(commitment, proof)) revert BadProof();
+
+        uint256 batchId = batchCount;
+        batches[batchId] = Batch({
+            manifestHash: manifestHash,
+            orderedRoot: orderedRoot,
+            rejectedRoot: rejectedRoot,
+            settledAtBlock: block.number
+        });
+        currentStateRoot = newRoot;
+        lastProgressBlock = block.number;
+        batchCount = batchId + 1;
+        emit FinalSettle(batchId, prevRoot, newRoot, manifestHash);
+        if (vault != address(0)) {
+            ICollateralVault(vault).publishWithdrawals(withdrawalsRoot, batchId);
+        }
+    }
+
     /// @notice Anyone can force close-only if the sequencer has not progressed
     /// the root within the liveness timeout (§6).
     function triggerCloseOnly() external {
         if (closeOnly) return;
         if (block.number - lastProgressBlock <= livenessTimeoutBlocks) revert LivenessNotExpired();
         closeOnly = true;
+        closeOnlyBlock = block.number;
         emit CloseOnlyEntered("liveness timeout");
     }
 
@@ -440,6 +500,7 @@ contract DarkPerpSettlement {
         delete challenges[orderHash];
         slashed = true;
         closeOnly = true;
+        closeOnlyBlock = block.number;
         uint256 slashedBond = sequencerBond; // USDC bond, slashed to the challenger
         sequencerBond = 0;
         emit SequencerSlashed(orderHash, c.challenger, slashedBond);

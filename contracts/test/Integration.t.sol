@@ -25,7 +25,7 @@ contract IntegrationTest is MiniTest {
     // this contract is the sequencer
     function setUp() public {
         verifier = new MockZkVerifier();
-        s = new DarkPerpSettlement(address(this), address(0xE), verifier, GENESIS, 100, 50, 0, 0);
+        s = new DarkPerpSettlement(address(this), address(0xE), verifier, GENESIS, 100, 50, 0, 0, address(this), 0);
         usdc = new MockUSDC();
         vault = new CollateralVault(address(s), address(usdc));
         s.setVault(address(vault));

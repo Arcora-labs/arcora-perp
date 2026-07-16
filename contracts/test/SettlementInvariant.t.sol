@@ -109,7 +109,16 @@ contract SettlementInvariantTest is MiniTest {
         // a large challenge window so in-window answers dominate; the honest
         // sequencer is the handler.
         s = new DarkPerpSettlement(
-            address(handler), vm.addr(ENCLAVE_PK), verifier, GENESIS, 100_000, 1_000, CHALLENGE_BOND, 0
+            address(handler),
+            vm.addr(ENCLAVE_PK),
+            verifier,
+            GENESIS,
+            100_000,
+            1_000,
+            CHALLENGE_BOND,
+            0,
+            address(handler),
+            0
         );
         handler.init(s, GENESIS, CHALLENGE_BOND);
         vm.deal(address(handler), 1000 ether);
