@@ -383,9 +383,19 @@ contract DarkPerpSettlement {
         }
         delete challenges[orderHash];
         emit InclusionAnswered(orderHash, batchId);
-        // griefing deterrent: the challenger's stake is credited to the sequencer for pull —
-        // never pushed, so a non-payable sequencer cannot brick its own answer (audit DP-011).
-        pendingEth[sequencer] += c.bond;
+        // SEQ-001 (audit-P2 reconciliation): route the challenger's stake by WHEN the
+        // order settled. If it settled only AFTER this (ripe) challenge opened, the
+        // challenge forced a withheld order in — make the victim whole (refund). If it
+        // was already settled when challenged, the challenge was noise/griefing — forfeit
+        // to the sequencer. This is a REFUND gate, not a slash gate, so P2's free-slash
+        // concern does not apply; the ripeness gate (see `challengeInclusion`) already
+        // makes normal-latency orders unchallengeable. No slash on answer — slashing
+        // stays exclusively in `slashUnanswered`. Credited for pull, never pushed (DP-011).
+        if (batches[batchId].settledAtBlock > c.openedBlock) {
+            pendingEth[c.challenger] += c.bond;
+        } else {
+            pendingEth[sequencer] += c.bond;
+        }
     }
 
     /// @notice Sequencer answers a challenge by proving the order was VALIDLY REJECTED
@@ -414,7 +424,9 @@ contract DarkPerpSettlement {
         }
         delete challenges[orderHash];
         emit RejectionAnswered(orderHash, batchId);
-        // griefing deterrent: credited to the sequencer for pull, as with inclusion (DP-011)
+        // A valid rejection proves the challenger was mistaken (the order was never
+        // withheld, just legitimately rejected), so the stake always forfeits to the
+        // sequencer here — unlike `answerChallenge`, there is no forced-inclusion refund.
         pendingEth[sequencer] += c.bond;
     }
 

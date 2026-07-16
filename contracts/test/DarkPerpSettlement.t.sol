@@ -54,6 +54,19 @@ contract DarkPerpSettlementTest is MiniTest {
         return abi.encode(s.publicCommitment(prev, m, n, ord, wd, bytes32(0)));
     }
 
+    /// Settles a fresh batch whose `orderedRoot` is a single-leaf tree containing
+    /// `orderHash`, and returns the (batchId, proof) an inclusion answer can use.
+    function _settleBatchWithOrder(bytes32 orderHash) internal returns (uint256 batchId, bytes32[] memory proof) {
+        batchId = s.batchCount();
+        bytes32 ordered = s.inclusionLeaf(batchId, orderHash); // single-leaf root
+        bytes32 prev = s.currentStateRoot();
+        bytes32 newRoot = keccak256(abi.encodePacked("next", batchId));
+        // MockZkVerifier accepts proof == publicCommitment; mirror the existing settle helpers.
+        bytes32 commitment = s.publicCommitment(prev, bytes32("m"), newRoot, ordered, bytes32(0), bytes32(0));
+        s.settleBatch(prev, bytes32("m"), newRoot, ordered, bytes32(0), bytes32(0), abi.encodePacked(commitment));
+        proof = new bytes32[](0);
+    }
+
     function test_settle_advances_root() public {
         bytes32 newRoot = bytes32(uint256(2));
         bytes32 manifest = keccak256("m0");
@@ -321,6 +334,77 @@ contract DarkPerpSettlementTest is MiniTest {
         s.claimEth();
         assertEq(address(this).balance, balBefore + CHALLENGE_BOND, "sequencer pulls the refund");
         assertEq(s.pendingEth(address(this)), 0, "pending cleared after claim");
+    }
+
+    function test_answer_forced_inclusion_refunds_challenger() public {
+        // ripe challenge, then the order settles in a batch that post-dates the challenge.
+        bytes32 orderHash = keccak256("withheld");
+        uint64 recvTimeMs = 1000;
+        bytes32 digest = s.receiptDigest(orderHash, 1, recvTimeMs, 0);
+        (uint8 v, bytes32 r, bytes32 sig) = vm.sign(ENCLAVE_PK, digest);
+        address challenger = address(0xC0FFEE);
+        vm.deal(challenger, CHALLENGE_BOND);
+        vm.warp(recvTimeMs / 1000 + INCLUSION_DEADLINE + 1);
+        vm.prank(challenger);
+        s.challengeInclusion{value: CHALLENGE_BOND}(orderHash, 1, recvTimeMs, 0, v, r, sig);
+
+        // settle a batch AFTER the challenge opened (block-advance so settledAtBlock
+        // genuinely postdates openedBlock, mirroring
+        // test_answer_with_batch_settled_after_challenge_succeeds), containing
+        // orderHash in orderedRoot.
+        vm.roll(block.number + 1);
+        (uint256 batchId, bytes32[] memory proof) = _settleBatchWithOrder(orderHash);
+
+        s.answerChallenge(orderHash, batchId, proof);
+
+        assertEq(s.pendingEth(challenger), CHALLENGE_BOND, "victim refunded");
+        assertEq(s.pendingEth(address(this)), 0, "sequencer not paid");
+        assertFalse(s.slashed(), "answer never slashes");
+        assertFalse(s.closeOnly(), "answer never trips close-only");
+    }
+
+    function test_answer_presettled_forfeits_to_sequencer() public {
+        // the order is already in a settled batch BEFORE the challenge opens.
+        bytes32 orderHash = keccak256("already-in");
+        (uint256 batchId, bytes32[] memory proof) = _settleBatchWithOrder(orderHash);
+
+        uint64 recvTimeMs = 1000;
+        bytes32 digest = s.receiptDigest(orderHash, 1, recvTimeMs, 0);
+        (uint8 v, bytes32 r, bytes32 sig) = vm.sign(ENCLAVE_PK, digest);
+        address challenger = address(0xBEEF);
+        vm.deal(challenger, CHALLENGE_BOND);
+        vm.warp(recvTimeMs / 1000 + INCLUSION_DEADLINE + 1);
+        vm.prank(challenger);
+        s.challengeInclusion{value: CHALLENGE_BOND}(orderHash, 1, recvTimeMs, 0, v, r, sig);
+
+        s.answerChallenge(orderHash, batchId, proof);
+        assertEq(s.pendingEth(address(this)), CHALLENGE_BOND, "griefer forfeits to sequencer");
+        assertEq(s.pendingEth(challenger), 0, "challenger not refunded");
+    }
+
+    function test_rejection_answer_always_forfeits() public {
+        // Even if the rejection batch post-dates the challenge, answerByRejection pays the sequencer.
+        bytes32 orderHash = keccak256("rejected-order");
+        uint64 recvTimeMs = 1000;
+        bytes32 digest = s.receiptDigest(orderHash, 1, recvTimeMs, 0);
+        (uint8 v, bytes32 r, bytes32 sig) = vm.sign(ENCLAVE_PK, digest);
+        address challenger = address(0xD00D);
+        vm.deal(challenger, CHALLENGE_BOND);
+        vm.warp(recvTimeMs / 1000 + INCLUSION_DEADLINE + 1);
+        vm.prank(challenger);
+        s.challengeInclusion{value: CHALLENGE_BOND}(orderHash, 1, recvTimeMs, 0, v, r, sig);
+
+        // settle a batch (after the challenge) whose rejectedRoot contains orderHash.
+        uint256 batchId = s.batchCount();
+        bytes32 rejected = s.rejectionLeaf(batchId, orderHash);
+        bytes32 prev = s.currentStateRoot();
+        bytes32 newRoot = keccak256(abi.encodePacked("rej", batchId));
+        bytes32 commitment = s.publicCommitment(prev, bytes32("m"), newRoot, bytes32(0), bytes32(0), rejected);
+        s.settleBatch(prev, bytes32("m"), newRoot, bytes32(0), bytes32(0), rejected, abi.encodePacked(commitment));
+
+        s.answerByRejection(orderHash, batchId, new bytes32[](0));
+        assertEq(s.pendingEth(address(this)), CHALLENGE_BOND, "rejection forfeits to sequencer");
+        assertEq(s.pendingEth(challenger), 0, "challenger not refunded on valid rejection");
     }
 
     function _depositToVault(uint256 amount) internal {
