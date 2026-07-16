@@ -78,16 +78,22 @@ impl EnclaveIdentity {
     /// reused so any off-chain artifact signed here (e.g. the published order-ingress
     /// epoch key) recovers to the enclave's attested L1 signer — no separate key.
     pub fn sign_prehash(&self, digest: &[u8; 32]) -> ([u8; 32], [u8; 32], u8) {
-        let (signature, recid) = self
-            .signing
-            .sign_prehash_recoverable(digest)
-            .expect("sign");
+        let (signature, recid) = self.signing.sign_prehash_recoverable(digest).expect("sign");
         let sig_bytes = signature.to_bytes();
         let mut r = [0u8; 32];
         let mut s = [0u8; 32];
         r.copy_from_slice(&sig_bytes[..32]);
         s.copy_from_slice(&sig_bytes[32..]);
         (r, s, 27 + recid.to_byte())
+    }
+
+    /// A stable secret salt bound to this enclave key, for keying off-chain privacy
+    /// artifacts (e.g. the fail-closed liquidation-tag fallback) that must be
+    /// unpredictable to a public-key-only observer. The raw scalar never leaves this
+    /// method — only its domain-separated hash is returned.
+    pub fn secret_salt(&self, domain: Domain) -> Digest {
+        let sk: [u8; 32] = self.signing.to_bytes().into();
+        Keccak256::hash_words(domain, &[sk])
     }
 }
 
@@ -356,10 +362,17 @@ pub struct Sequencer {
     /// Parallel secret ADL-tag keys, captured the same way, for publishing
     /// auto-deleverage receipts only the clawed account can recognize (audit Q2).
     adl_tag_keys: BTreeMap<PubKey, Digest>,
+    /// Secret salt for the fail-closed liquidation/ADL tag fallback (§7). When a
+    /// position's per-account secret key is somehow absent (funded outside `apply`),
+    /// the tag is keyed on `H(domain, [salt, owner])` — never on the public owner id,
+    /// which any known-pubkey observer could recompute. Derived from the enclave key,
+    /// refreshed on `set_enclave`. Off-chain only (tags are not in the proof).
+    liq_fallback_salt: Digest,
 }
 
 impl Sequencer {
     pub fn new(enclave: EnclaveIdentity, tree_depth: u8) -> Self {
+        let liq_fallback_salt = enclave.secret_salt(Domain::Liquidation);
         Self {
             state: DefaultState::new(tree_depth),
             matcher: MatchingEngine::new(),
@@ -380,6 +393,7 @@ impl Sequencer {
             window_start_state: DefaultState::new(tree_depth),
             liq_tag_keys: BTreeMap::new(),
             adl_tag_keys: BTreeMap::new(),
+            liq_fallback_salt,
         }
     }
 
@@ -389,6 +403,7 @@ impl Sequencer {
     /// placeholder until this is called — callers MUST invoke it with the real
     /// identity before serving traffic.
     pub fn set_enclave(&mut self, enclave: EnclaveIdentity) {
+        self.liq_fallback_salt = enclave.secret_salt(Domain::Liquidation);
         self.enclave = enclave;
     }
 
@@ -461,6 +476,32 @@ impl Sequencer {
         // deposits/funds land in the replayable witness `seal_window` drains.
         self.window_ops.push(op.clone());
         Ok(())
+    }
+
+    /// Fail-closed fallback liquidation-tag key for an account whose captured
+    /// secret key is missing (funded outside `apply`, §7). Keyed on the enclave's
+    /// secret salt — NOT the public owner id, which any known-pubkey observer
+    /// could recompute and use to link the tag back to the account.
+    fn liq_fallback_key(&self, owner: &PubKey) -> Digest {
+        Keccak256::hash_words(Domain::Liquidation, &[self.liq_fallback_salt, *owner])
+    }
+
+    /// ADL analog of [`Sequencer::liq_fallback_key`].
+    fn adl_fallback_key(&self, owner: &PubKey) -> Digest {
+        Keccak256::hash_words(Domain::Adl, &[self.liq_fallback_salt, *owner])
+    }
+
+    /// Test-only: drop a captured liquidation tag-key to exercise the fail-closed
+    /// fallback (a position "funded outside apply"). Not `#[cfg(test)]`: that gate
+    /// only compiles into this crate's own unit-test build, not the normal rlib
+    /// integration tests in `tests/spine.rs` link against, so it would be
+    /// unreachable there. Mirrors the existing `mark_failed` precedent in this file
+    /// (legacy/test-only, always compiled). Harmless in production: it only forces
+    /// an account onto the fail-closed fallback path this task makes safe (still
+    /// deterministic, never keyed on the public owner id) — it exposes no secret
+    /// and cannot be reached from any gateway RPC surface.
+    pub fn forget_liq_key(&mut self, owner: &PubKey) {
+        self.liq_tag_keys.remove(owner);
     }
 
     pub fn current_batch_id(&self) -> u64 {
@@ -950,7 +991,11 @@ impl Sequencer {
         let liquidation_tags: Vec<Digest> = liquidations
             .iter()
             .map(|(owner, market)| {
-                let tag_key = self.liq_tag_keys.get(owner).copied().unwrap_or(*owner);
+                let tag_key = self
+                    .liq_tag_keys
+                    .get(owner)
+                    .copied()
+                    .unwrap_or_else(|| self.liq_fallback_key(owner));
                 liquidation_tag(&tag_key, *market, batch_id)
             })
             .collect();
@@ -961,7 +1006,11 @@ impl Sequencer {
         let adl_receipts: Vec<AdlReceipt> = adl_haircuts
             .iter()
             .map(|(owner, market, clawed)| {
-                let tag_key = self.adl_tag_keys.get(owner).copied().unwrap_or(*owner);
+                let tag_key = self
+                    .adl_tag_keys
+                    .get(owner)
+                    .copied()
+                    .unwrap_or_else(|| self.adl_fallback_key(owner));
                 AdlReceipt {
                     tag: adl_tag(&tag_key, *market, batch_id),
                     clawed: *clawed,
@@ -1019,8 +1068,11 @@ impl Sequencer {
     /// .new_state_root` equals the live state root after this call.
     pub fn seal_window(&mut self) -> WindowWitness {
         let batch_id = self.state.next_batch_id;
-        let oracle_updates: Vec<Digest> =
-            self.oracles.values().map(|t| t.hash::<Keccak256>()).collect();
+        let oracle_updates: Vec<Digest> = self
+            .oracles
+            .values()
+            .map(|t| t.hash::<Keccak256>())
+            .collect();
         let manifest = BatchManifest {
             previous_state_root: self.window_start_state.state_root(),
             batch_id,
@@ -1240,10 +1292,7 @@ mod tests {
     }
 
     fn test_sequencer() -> Sequencer {
-        let mut s = Sequencer::new(
-            EnclaveIdentity::from_seed([7u8; 32], 1, [0xABu8; 32]),
-            20,
-        );
+        let mut s = Sequencer::new(EnclaveIdentity::from_seed([7u8; 32], 1, [0xABu8; 32]), 20);
         s.add_market(Market::conservative(0));
         s.set_oracle(
             0,
@@ -1396,7 +1445,10 @@ mod tests {
         let s1 = seq.seal_batch(&sample_orders(3), now());
         assert_eq!(seq.snapshots.len(), 1);
         seq.set_retain_tick_snapshots(false);
-        assert!(seq.snapshots.is_empty(), "disable reclaims retained entries");
+        assert!(
+            seq.snapshots.is_empty(),
+            "disable reclaims retained entries"
+        );
 
         // Window mode: several ticks, zero snapshots retained.
         let s2 = seq.seal_batch(&sample_orders(5), now());
@@ -1454,9 +1506,9 @@ mod tests {
         seq.tick_window.insert(105, 12); // exactly at cutoff -> kept
         seq.tick_window.insert(102, 15); // within grace
         seq.tick_window.insert(103, 25); // unsettled (>= count)
-        // settled batchCount = 20, TICK_WINDOW_GRACE_WINDOWS = 8 -> cutoff = 12: keep
-        // window >= 12. The w=11/w=12 probes straddle the exact boundary, so this test
-        // fails if GRACE changes or the retain flips >= to > (pins the off-by-one).
+                                         // settled batchCount = 20, TICK_WINDOW_GRACE_WINDOWS = 8 -> cutoff = 12: keep
+                                         // window >= 12. The w=11/w=12 probes straddle the exact boundary, so this test
+                                         // fails if GRACE changes or the retain flips >= to > (pins the off-by-one).
         seq.prune_tick_window_settled(20);
         assert_eq!(seq.window_for_tick(100), None);
         assert_eq!(seq.window_for_tick(101), None);

@@ -325,6 +325,37 @@ fn maintenance_liquidates_underwater_position() {
 }
 
 #[test]
+fn missing_liq_key_falls_back_to_secret_not_public_owner() {
+    let mut s = setup();
+    s.seal_batch(
+        &[
+            order(1, Side::Sell, SIZE_SCALE, 100_000 * PRICE_SCALE, 1),
+            order(2, Side::Buy, SIZE_SCALE, 100_000 * PRICE_SCALE, 2),
+        ],
+        1_000,
+    );
+    // Simulate a position funded "outside apply": drop B's captured secret tag-key
+    // so the sealing path hits the fail-closed fallback.
+    s.forget_liq_key(&owner_id(2));
+
+    s.set_oracle(0, oracle(84_000, 5_000));
+    let sealed = s.seal_batch(&[], 5_000);
+
+    // B WAS liquidated, so exactly one liquidation tag is published.
+    assert_eq!(sealed.liquidation_tags.len(), 1, "B liquidated");
+    // Fail-closed: the tag is NOT recomputable from B's PUBLIC owner id.
+    assert!(
+        !sealed
+            .liquidation_tags
+            .contains(&liquidation_tag(&owner_id(2), 0, sealed.batch_id)),
+        "missing-key fallback must NOT key on the public owner id"
+    );
+    // deterministic: recomputing from the same sequencer state yields the same tag set.
+    let salt_tag = sealed.liquidation_tags.clone();
+    assert!(!salt_tag.is_empty());
+}
+
+#[test]
 fn auto_deleverage_publishes_an_attributable_receipt() {
     // A (owner 1) short 1 BTC, B (owner 2) long 1 BTC at $100k, each funded $20k.
     // A hard gap down to $75k wrecks B (long): a $25k loss past its $20k collateral
@@ -802,7 +833,10 @@ fn run_maintenance_ops_replay_reproduces_state() {
         ],
         1_000,
     );
-    assert_eq!(seq.state.position(&owner_id(2), 0).unwrap().size, SIZE_SCALE);
+    assert_eq!(
+        seq.state.position(&owner_id(2), 0).unwrap().size,
+        SIZE_SCALE
+    );
 
     let now_ms = 5_000;
     seq.set_oracle(0, oracle(84_000, now_ms));
@@ -875,7 +909,10 @@ fn seal_window_replays_multi_tick_window_to_live_root() {
         order(2, Side::Buy, SIZE_SCALE, 100_000 * PRICE_SCALE, 2),
     ];
     let _ = seq.seal_batch(&orders_tick1, 20_000);
-    assert_eq!(seq.state.position(&owner_id(2), 0).unwrap().size, SIZE_SCALE);
+    assert_eq!(
+        seq.state.position(&owner_id(2), 0).unwrap().size,
+        SIZE_SCALE
+    );
 
     // ---- mid-window: an out-of-band deposit (must land in window_ops)
     let dep_owner = owner_id(5);
@@ -904,7 +941,9 @@ fn seal_window_replays_multi_tick_window_to_live_root() {
         "a fill this window"
     );
     assert!(
-        w.ops.iter().any(|o| matches!(o, BatchOp::AccrueFunding { .. })),
+        w.ops
+            .iter()
+            .any(|o| matches!(o, BatchOp::AccrueFunding { .. })),
         "funding accrued"
     );
     assert!(
@@ -914,8 +953,9 @@ fn seal_window_replays_multi_tick_window_to_live_root() {
 
     // faithfulness: replay the window witness onto its pre-state == the live window-end state
     let live_root = seq.state.state_root();
-    let derived = perp_core::commitment::derive_roots(&mut w.pre_state.clone(), &w.ops, &w.manifest)
-        .expect("derive_roots accepts the window witness");
+    let derived =
+        perp_core::commitment::derive_roots(&mut w.pre_state.clone(), &w.ops, &w.manifest)
+            .expect("derive_roots accepts the window witness");
     assert_eq!(
         derived.new_state_root, live_root,
         "window op-log must reproduce the live window-end root"
@@ -992,7 +1032,11 @@ fn rollback_window_restores_and_reseals_to_live_root() {
     let _ = seq.seal_batch(&orders, 20_000);
     let w = seq.seal_window();
     let sealed_id = w.batch_id;
-    assert_eq!(seq.state.next_batch_id, sealed_id + 1, "seal_window bumped Counter B");
+    assert_eq!(
+        seq.state.next_batch_id,
+        sealed_id + 1,
+        "seal_window bumped Counter B"
+    );
 
     // the settle "fails" — meanwhile the 700ms tick loop keeps adding ops to the new window.
     seq.apply(&BatchOp::Deposit {
@@ -1007,17 +1051,27 @@ fn rollback_window_restores_and_reseals_to_live_root() {
 
     // roll the failed window back.
     seq.rollback_window(&w);
-    assert_eq!(seq.state.next_batch_id, sealed_id, "Counter B restored to the pre-seal id");
+    assert_eq!(
+        seq.state.next_batch_id, sealed_id,
+        "Counter B restored to the pre-seal id"
+    );
 
     // re-seal: same on-chain batch_id, and the witness replays [failed ++ intervening] from
     // the restored baseline to the LIVE window-end root (falsifiable: a dropped/mis-ordered
     // op diverges the root).
     let w2 = seq.seal_window();
-    assert_eq!(w2.batch_id, sealed_id, "re-seal uses the same batch_id (== on-chain batchCount)");
+    assert_eq!(
+        w2.batch_id, sealed_id,
+        "re-seal uses the same batch_id (== on-chain batchCount)"
+    );
     let live_root = seq.state.state_root();
-    let derived = perp_core::commitment::derive_roots(&mut w2.pre_state.clone(), &w2.ops, &w2.manifest)
-        .expect("derive_roots accepts the rolled-back re-seal");
-    assert_eq!(derived.new_state_root, live_root, "rolled-back re-seal reproduces the live root");
+    let derived =
+        perp_core::commitment::derive_roots(&mut w2.pre_state.clone(), &w2.ops, &w2.manifest)
+            .expect("derive_roots accepts the rolled-back re-seal");
+    assert_eq!(
+        derived.new_state_root, live_root,
+        "rolled-back re-seal reproduces the live root"
+    );
     assert!(
         w2.ops.iter().any(|o| matches!(o, BatchOp::Fill { .. })),
         "the failed window's fill is re-included"
