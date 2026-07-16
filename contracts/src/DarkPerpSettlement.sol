@@ -500,7 +500,12 @@ contract DarkPerpSettlement {
         delete challenges[orderHash];
         slashed = true;
         closeOnly = true;
-        closeOnlyBlock = block.number;
+        // Latch on first entry only — `closeOnlyBlock` marks when close-only was FIRST
+        // entered, the anchor the `finalSettle` grace deadline counts from. A repeat
+        // slash (e.g. a subsequent challenge opened while already in close-only) must
+        // NOT push this forward, or an attacker could grief the EXIT-001 escape hatch
+        // by perpetually re-arming the grace clock at gas-only cost.
+        if (closeOnlyBlock == 0) closeOnlyBlock = block.number;
         uint256 slashedBond = sequencerBond; // USDC bond, slashed to the challenger
         sequencerBond = 0;
         emit SequencerSlashed(orderHash, c.challenger, slashedBond);

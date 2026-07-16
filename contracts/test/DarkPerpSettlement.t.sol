@@ -642,5 +642,40 @@ contract DarkPerpSettlementTest is MiniTest {
         assertEq(s.batchCount(), before + 1, "wind-down lands even when slashed");
     }
 
+    /// I-1 (whole-branch review): a slash that happens while ALREADY in close-only
+    /// must not push `closeOnlyBlock` forward — it latches to the FIRST close-only
+    /// transition, which is what `finalSettle`'s grace deadline is anchored to.
+    /// Before the fix, `slashUnanswered` set `closeOnlyBlock = block.number`
+    /// unconditionally; since `challengeInclusion` has no close-only guard and a
+    /// slash refunds the challenger's stake and frees the order (`delete
+    /// challenges[orderHash]`), an attacker already in close-only could repeatedly
+    /// open a challenge, wait the window, and call `slashUnanswered` — each time
+    /// pushing the grace deadline out at gas-only cost and griefing the EXIT-001
+    /// escape hatch's liveness.
+    function test_slash_after_closeOnly_does_not_reset_grace() public {
+        // enter close-only via the liveness path FIRST — this is the transition
+        // closeOnlyBlock (and the grace deadline) must be anchored to.
+        _enterCloseOnlyViaLiveness();
+        uint256 entry = s.closeOnlyBlock();
+
+        // open a ripe inclusion challenge while already in close-only and let its
+        // window expire (rolls block.number strictly forward past entry), then slash.
+        _openAndExpireChallenge();
+        assertTrue(block.number > entry, "slash happens strictly after the original close-only entry");
+        s.slashUnanswered(keccak256("withheld-order"));
+        assertTrue(s.slashed(), "sequencer slashed");
+        assertTrue(s.closeOnly(), "still close-only after the second slash");
+
+        // the latch: closeOnlyBlock must still read the FIRST entry, not the later slash block.
+        assertEq(s.closeOnlyBlock(), entry, "closeOnlyBlock latched to first close-only entry, not the later slash");
+
+        // the grace deadline computed from that original entry already holds by the
+        // time of the slash (current block > entry + GRACE) — finalSettle succeeds
+        // per the ORIGINAL deadline despite the later slash re-arming close-only.
+        uint256 before = s.batchCount();
+        _governanceFinalSettle();
+        assertEq(s.batchCount(), before + 1, "wind-down lands per the original grace deadline despite the later slash");
+    }
+
     receive() external payable {}
 }
