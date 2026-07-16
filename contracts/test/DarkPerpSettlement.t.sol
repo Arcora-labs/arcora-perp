@@ -19,14 +19,25 @@ contract DarkPerpSettlementTest is MiniTest {
     uint256 internal constant LIVENESS = 100;
     uint256 internal constant CHALLENGE_WINDOW = 50;
     uint256 internal constant CHALLENGE_BOND = 1 ether;
+    uint256 internal constant INCLUSION_DEADLINE = 600;
     uint256 internal constant USD = 1e6;
+    uint256 internal constant GRACE = 10;
 
     // this contract is the sequencer
     function setUp() public {
         verifier = new MockZkVerifier();
         enclaveSigner = vm.addr(ENCLAVE_PK);
         s = new DarkPerpSettlement(
-            address(this), enclaveSigner, verifier, GENESIS, LIVENESS, CHALLENGE_WINDOW, CHALLENGE_BOND
+            address(this),
+            enclaveSigner,
+            verifier,
+            GENESIS,
+            LIVENESS,
+            CHALLENGE_WINDOW,
+            CHALLENGE_BOND,
+            INCLUSION_DEADLINE,
+            address(this),
+            GRACE
         );
         // wire a vault so the USDC sequencer bond can be posted; left unfunded, so
         // requiredBond() is 0 and the settle tests need no bond (audit Q1 floor = 0).
@@ -44,6 +55,19 @@ contract DarkPerpSettlementTest is MiniTest {
 
     function _proof(bytes32 prev, bytes32 m, bytes32 n, bytes32 ord, bytes32 wd) internal view returns (bytes memory) {
         return abi.encode(s.publicCommitment(prev, m, n, ord, wd, bytes32(0)));
+    }
+
+    /// Settles a fresh batch whose `orderedRoot` is a single-leaf tree containing
+    /// `orderHash`, and returns the (batchId, proof) an inclusion answer can use.
+    function _settleBatchWithOrder(bytes32 orderHash) internal returns (uint256 batchId, bytes32[] memory proof) {
+        batchId = s.batchCount();
+        bytes32 ordered = s.inclusionLeaf(batchId, orderHash); // single-leaf root
+        bytes32 prev = s.currentStateRoot();
+        bytes32 newRoot = keccak256(abi.encodePacked("next", batchId));
+        // MockZkVerifier accepts proof == publicCommitment; mirror the existing settle helpers.
+        bytes32 commitment = s.publicCommitment(prev, bytes32("m"), newRoot, ordered, bytes32(0), bytes32(0));
+        s.settleBatch(prev, bytes32("m"), newRoot, ordered, bytes32(0), bytes32(0), abi.encodePacked(commitment));
+        proof = new bytes32[](0);
     }
 
     function test_settle_advances_root() public {
@@ -149,6 +173,7 @@ contract DarkPerpSettlementTest is MiniTest {
         address challenger = address(0xBEEF);
         vm.deal(challenger, CHALLENGE_BOND);
         vm.prank(challenger);
+        vm.warp(block.timestamp + INCLUSION_DEADLINE + 1);
         s.challengeInclusion{value: CHALLENGE_BOND}(orderHash, 7, 1000, 0, v, r, sig);
 
         // sequencer answers with an empty proof (single-leaf tree); stake forfeits
@@ -168,6 +193,7 @@ contract DarkPerpSettlementTest is MiniTest {
         address challenger = address(0xBEEF);
         vm.deal(challenger, CHALLENGE_BOND);
         vm.prank(challenger);
+        vm.warp(block.timestamp + INCLUSION_DEADLINE + 1);
         s.challengeInclusion{value: CHALLENGE_BOND}(orderHash, 1, 1, 0, v, r, sig);
 
         // the order's batch settles one block AFTER the challenge opened
@@ -201,6 +227,7 @@ contract DarkPerpSettlementTest is MiniTest {
         address challenger = address(0xBEEF);
         vm.deal(challenger, CHALLENGE_BOND);
         vm.prank(challenger);
+        vm.warp(block.timestamp + INCLUSION_DEADLINE + 1);
         s.challengeInclusion{value: CHALLENGE_BOND}(orderHash, 1, 1, 0, v, r, sig);
 
         // settle a batch whose orderedRoot commits to a DIFFERENT order
@@ -232,6 +259,7 @@ contract DarkPerpSettlementTest is MiniTest {
         address challenger = address(0xBEEF);
         vm.deal(challenger, CHALLENGE_BOND);
         vm.prank(challenger);
+        vm.warp(block.timestamp + INCLUSION_DEADLINE + 1);
         s.challengeInclusion{value: CHALLENGE_BOND}(orderHash, 1, 1, 0, v, r, sig);
 
         // settle a batch whose rejectedRoot is the single leaf for this order (it was
@@ -258,6 +286,7 @@ contract DarkPerpSettlementTest is MiniTest {
         address challenger = address(0xBEEF);
         vm.deal(challenger, CHALLENGE_BOND);
         vm.prank(challenger);
+        vm.warp(block.timestamp + INCLUSION_DEADLINE + 1);
         s.challengeInclusion{value: CHALLENGE_BOND}(orderHash, 1, 1, 0, v, r, sig);
 
         // settle a batch whose rejectedRoot commits to a DIFFERENT order
@@ -295,6 +324,7 @@ contract DarkPerpSettlementTest is MiniTest {
         address challenger = address(0xBEEF);
         vm.deal(challenger, CHALLENGE_BOND);
         vm.prank(challenger);
+        vm.warp(block.timestamp + INCLUSION_DEADLINE + 1);
         s.challengeInclusion{value: CHALLENGE_BOND}(orderHash, 7, 1000, 0, v, r, sig);
 
         bytes32[] memory proof = new bytes32[](0);
@@ -307,6 +337,77 @@ contract DarkPerpSettlementTest is MiniTest {
         s.claimEth();
         assertEq(address(this).balance, balBefore + CHALLENGE_BOND, "sequencer pulls the refund");
         assertEq(s.pendingEth(address(this)), 0, "pending cleared after claim");
+    }
+
+    function test_answer_forced_inclusion_refunds_challenger() public {
+        // ripe challenge, then the order settles in a batch that post-dates the challenge.
+        bytes32 orderHash = keccak256("withheld");
+        uint64 recvTimeMs = 1000;
+        bytes32 digest = s.receiptDigest(orderHash, 1, recvTimeMs, 0);
+        (uint8 v, bytes32 r, bytes32 sig) = vm.sign(ENCLAVE_PK, digest);
+        address challenger = address(0xC0FFEE);
+        vm.deal(challenger, CHALLENGE_BOND);
+        vm.warp(recvTimeMs / 1000 + INCLUSION_DEADLINE + 1);
+        vm.prank(challenger);
+        s.challengeInclusion{value: CHALLENGE_BOND}(orderHash, 1, recvTimeMs, 0, v, r, sig);
+
+        // settle a batch AFTER the challenge opened (block-advance so settledAtBlock
+        // genuinely postdates openedBlock, mirroring
+        // test_answer_with_batch_settled_after_challenge_succeeds), containing
+        // orderHash in orderedRoot.
+        vm.roll(block.number + 1);
+        (uint256 batchId, bytes32[] memory proof) = _settleBatchWithOrder(orderHash);
+
+        s.answerChallenge(orderHash, batchId, proof);
+
+        assertEq(s.pendingEth(challenger), CHALLENGE_BOND, "victim refunded");
+        assertEq(s.pendingEth(address(this)), 0, "sequencer not paid");
+        assertFalse(s.slashed(), "answer never slashes");
+        assertFalse(s.closeOnly(), "answer never trips close-only");
+    }
+
+    function test_answer_presettled_forfeits_to_sequencer() public {
+        // the order is already in a settled batch BEFORE the challenge opens.
+        bytes32 orderHash = keccak256("already-in");
+        (uint256 batchId, bytes32[] memory proof) = _settleBatchWithOrder(orderHash);
+
+        uint64 recvTimeMs = 1000;
+        bytes32 digest = s.receiptDigest(orderHash, 1, recvTimeMs, 0);
+        (uint8 v, bytes32 r, bytes32 sig) = vm.sign(ENCLAVE_PK, digest);
+        address challenger = address(0xBEEF);
+        vm.deal(challenger, CHALLENGE_BOND);
+        vm.warp(recvTimeMs / 1000 + INCLUSION_DEADLINE + 1);
+        vm.prank(challenger);
+        s.challengeInclusion{value: CHALLENGE_BOND}(orderHash, 1, recvTimeMs, 0, v, r, sig);
+
+        s.answerChallenge(orderHash, batchId, proof);
+        assertEq(s.pendingEth(address(this)), CHALLENGE_BOND, "griefer forfeits to sequencer");
+        assertEq(s.pendingEth(challenger), 0, "challenger not refunded");
+    }
+
+    function test_rejection_answer_always_forfeits() public {
+        // Even if the rejection batch post-dates the challenge, answerByRejection pays the sequencer.
+        bytes32 orderHash = keccak256("rejected-order");
+        uint64 recvTimeMs = 1000;
+        bytes32 digest = s.receiptDigest(orderHash, 1, recvTimeMs, 0);
+        (uint8 v, bytes32 r, bytes32 sig) = vm.sign(ENCLAVE_PK, digest);
+        address challenger = address(0xD00D);
+        vm.deal(challenger, CHALLENGE_BOND);
+        vm.warp(recvTimeMs / 1000 + INCLUSION_DEADLINE + 1);
+        vm.prank(challenger);
+        s.challengeInclusion{value: CHALLENGE_BOND}(orderHash, 1, recvTimeMs, 0, v, r, sig);
+
+        // settle a batch (after the challenge) whose rejectedRoot contains orderHash.
+        uint256 batchId = s.batchCount();
+        bytes32 rejected = s.rejectionLeaf(batchId, orderHash);
+        bytes32 prev = s.currentStateRoot();
+        bytes32 newRoot = keccak256(abi.encodePacked("rej", batchId));
+        bytes32 commitment = s.publicCommitment(prev, bytes32("m"), newRoot, bytes32(0), bytes32(0), rejected);
+        s.settleBatch(prev, bytes32("m"), newRoot, bytes32(0), bytes32(0), rejected, abi.encodePacked(commitment));
+
+        s.answerByRejection(orderHash, batchId, new bytes32[](0));
+        assertEq(s.pendingEth(address(this)), CHALLENGE_BOND, "rejection forfeits to sequencer");
+        assertEq(s.pendingEth(challenger), 0, "challenger not refunded on valid rejection");
     }
 
     function _depositToVault(uint256 amount) internal {
@@ -342,6 +443,7 @@ contract DarkPerpSettlementTest is MiniTest {
         address challenger = address(0xCAFE);
         vm.deal(challenger, CHALLENGE_BOND);
         vm.prank(challenger);
+        vm.warp(block.timestamp + INCLUSION_DEADLINE + 1);
         s.challengeInclusion{value: CHALLENGE_BOND}(orderHash, 1, 1, 0, v, r, sig);
         vm.roll(block.number + CHALLENGE_WINDOW + 1);
         s.slashUnanswered(orderHash);
@@ -358,6 +460,7 @@ contract DarkPerpSettlementTest is MiniTest {
         address challenger = address(0xCAFE);
         vm.deal(challenger, CHALLENGE_BOND);
         vm.prank(challenger);
+        vm.warp(block.timestamp + INCLUSION_DEADLINE + 1);
         s.challengeInclusion{value: CHALLENGE_BOND}(orderHash, 1, 1, 0, v, r, sig);
 
         vm.expectRevert(DarkPerpSettlement.ChallengeNotExpired.selector);
@@ -398,6 +501,7 @@ contract DarkPerpSettlementTest is MiniTest {
         bytes32 highS = bytes32(n - uint256(sig));
         uint8 flippedV = v == 27 ? 28 : 27;
         vm.deal(address(this), CHALLENGE_BOND);
+        vm.warp(block.timestamp + INCLUSION_DEADLINE + 1);
         vm.expectRevert(DarkPerpSettlement.NonCanonicalSignature.selector);
         s.challengeInclusion{value: CHALLENGE_BOND}(orderHash, 1, 1, 0, flippedV, r, highS);
     }
@@ -406,8 +510,171 @@ contract DarkPerpSettlementTest is MiniTest {
         bytes32 orderHash = keccak256("x");
         (uint8 v, bytes32 r, bytes32 sig) = vm.sign(0xBADBAD, s.receiptDigest(orderHash, 1, 1, 0));
         vm.deal(address(this), CHALLENGE_BOND);
+        vm.warp(block.timestamp + INCLUSION_DEADLINE + 1);
         vm.expectRevert(DarkPerpSettlement.BadReceiptSignature.selector);
         s.challengeInclusion{value: CHALLENGE_BOND}(orderHash, 1, 1, 0, v, r, sig);
+    }
+
+    function test_challenge_reverts_before_ripe() public {
+        bytes32 orderHash = keccak256("ripe-order");
+        uint64 recvTimeMs = 1000; // receipt "issued" at t=1s
+        bytes32 digest = s.receiptDigest(orderHash, 1, recvTimeMs, 0);
+        (uint8 v, bytes32 r, bytes32 sig) = vm.sign(ENCLAVE_PK, digest);
+        // block.timestamp is still 1 (< 1 + INCLUSION_DEADLINE): not yet ripe.
+        vm.expectRevert(DarkPerpSettlement.NotRipe.selector);
+        s.challengeInclusion{value: CHALLENGE_BOND}(orderHash, 1, recvTimeMs, 0, v, r, sig);
+    }
+
+    function test_challenge_allowed_after_ripe() public {
+        bytes32 orderHash = keccak256("ripe-order");
+        uint64 recvTimeMs = 1000;
+        bytes32 digest = s.receiptDigest(orderHash, 1, recvTimeMs, 0);
+        (uint8 v, bytes32 r, bytes32 sig) = vm.sign(ENCLAVE_PK, digest);
+        vm.warp(recvTimeMs / 1000 + INCLUSION_DEADLINE + 1); // now ripe
+        s.challengeInclusion{value: CHALLENGE_BOND}(orderHash, 1, recvTimeMs, 0, v, r, sig);
+        (,,,,, bool open) = s.challenges(orderHash);
+        assertTrue(open, "challenge opened once ripe");
+    }
+
+    // --- EXIT-001: governance finalSettle wind-down escape --------------------
+
+    function _enterCloseOnlyViaLiveness() internal {
+        vm.roll(block.number + LIVENESS + 1);
+        s.triggerCloseOnly();
+        assertTrue(s.closeOnly(), "close-only entered via liveness timeout");
+    }
+
+    /// Builds a fixed (prev, manifest, newRoot, wroot, proof) finalSettle fixture.
+    /// Split out from `_governanceFinalSettle` so callers wrapping the actual
+    /// `finalSettle` call in `vm.expectRevert` can compute these args (which are
+    /// themselves external view calls into `s`) BEFORE arming the cheatcode —
+    /// `vm.expectRevert` binds to the very next external call, so any read here
+    /// made after arming it would be mistaken for the call under test.
+    function _finalSettleArgs()
+        internal
+        view
+        returns (bytes32 prev, bytes32 manifestHash, bytes32 newRoot, bytes32 wroot, bytes memory proof)
+    {
+        prev = s.currentStateRoot();
+        manifestHash = bytes32("m");
+        newRoot = keccak256("wind-down");
+        wroot = keccak256("withdrawals");
+        bytes32 commitment = s.publicCommitment(prev, manifestHash, newRoot, bytes32(0), wroot, bytes32(0));
+        proof = abi.encodePacked(commitment);
+    }
+
+    function _governanceFinalSettle() internal {
+        (bytes32 prev, bytes32 manifestHash, bytes32 newRoot, bytes32 wroot, bytes memory proof) = _finalSettleArgs();
+        s.finalSettle(prev, manifestHash, newRoot, bytes32(0), wroot, bytes32(0), proof);
+    }
+
+    /// Opens a ripe inclusion challenge for `keccak256("withheld-order")` and rolls
+    /// past the challenge window, leaving it ready for `slashUnanswered` (models
+    /// `test_inclusion_unanswered_slashes_bond`).
+    function _openAndExpireChallenge() internal {
+        bytes32 orderHash = keccak256("withheld-order");
+        (uint8 v, bytes32 r, bytes32 sig) = vm.sign(ENCLAVE_PK, s.receiptDigest(orderHash, 1, 1, 0));
+        address challenger = address(0xCAFE);
+        vm.deal(challenger, CHALLENGE_BOND);
+        vm.prank(challenger);
+        vm.warp(block.timestamp + INCLUSION_DEADLINE + 1);
+        s.challengeInclusion{value: CHALLENGE_BOND}(orderHash, 1, 1, 0, v, r, sig);
+        vm.roll(block.number + CHALLENGE_WINDOW + 1);
+    }
+
+    function test_finalSettle_reverts_when_not_closeOnly() public {
+        (bytes32 prev, bytes32 manifestHash, bytes32 newRoot, bytes32 wroot, bytes memory proof) = _finalSettleArgs();
+        vm.expectRevert(DarkPerpSettlement.NotCloseOnly.selector);
+        s.finalSettle(prev, manifestHash, newRoot, bytes32(0), wroot, bytes32(0), proof);
+    }
+
+    function test_finalSettle_reverts_before_grace() public {
+        _enterCloseOnlyViaLiveness();
+        // grace not yet elapsed
+        (bytes32 prev, bytes32 manifestHash, bytes32 newRoot, bytes32 wroot, bytes memory proof) = _finalSettleArgs();
+        vm.expectRevert(DarkPerpSettlement.GraceNotExpired.selector);
+        s.finalSettle(prev, manifestHash, newRoot, bytes32(0), wroot, bytes32(0), proof);
+    }
+
+    function test_finalSettle_reverts_non_governance() public {
+        _enterCloseOnlyViaLiveness();
+        vm.roll(block.number + GRACE + 1);
+        (bytes32 prev, bytes32 manifestHash, bytes32 newRoot, bytes32 wroot, bytes memory proof) = _finalSettleArgs();
+        vm.prank(address(0xBAD));
+        vm.expectRevert(DarkPerpSettlement.NotGovernance.selector);
+        s.finalSettle(prev, manifestHash, newRoot, bytes32(0), wroot, bytes32(0), proof);
+    }
+
+    function test_finalSettle_publish_then_claim() public {
+        // fund the vault BEFORE close-only (deposits revert once the system trips
+        // close-only, per test_deposit_blocked_in_close_only).
+        address to = address(0xFEED);
+        uint256 amount = 100 * USD;
+        _depositToVault(amount);
+
+        _enterCloseOnlyViaLiveness();
+        vm.roll(block.number + GRACE + 1);
+        uint256 before = s.batchCount();
+
+        // publish a withdrawals root that is itself a real single-leaf claim, so the
+        // escape is verified end-to-end through the vault, not just via batchCount.
+        uint256 nonce = 1;
+        bytes32 leaf = keccak256(abi.encodePacked(to, amount, nonce));
+        bytes32 prev = s.currentStateRoot();
+        bytes32 newRoot = keccak256("wind-down");
+        bytes32 commitment = s.publicCommitment(prev, bytes32("m"), newRoot, bytes32(0), leaf, bytes32(0));
+        s.finalSettle(prev, bytes32("m"), newRoot, bytes32(0), leaf, bytes32(0), abi.encodePacked(commitment));
+        assertEq(s.batchCount(), before + 1, "final settle advanced batchCount");
+
+        bytes32[] memory proof = new bytes32[](0);
+        vault.claim(to, amount, nonce, leaf, proof);
+        assertEq(usdc.balanceOf(to), amount, "withdrawal claimable via the vault after finalSettle");
+    }
+
+    function test_finalSettle_works_when_slashed() public {
+        // slash the sequencer, then governance winds down after grace despite `slashed`.
+        _openAndExpireChallenge();
+        s.slashUnanswered(keccak256("withheld-order"));
+        assertTrue(s.slashed(), "sequencer slashed");
+        vm.roll(block.number + GRACE + 1);
+        uint256 before = s.batchCount();
+        _governanceFinalSettle();
+        assertEq(s.batchCount(), before + 1, "wind-down lands even when slashed");
+    }
+
+    /// I-1 (whole-branch review): a slash that happens while ALREADY in close-only
+    /// must not push `closeOnlyBlock` forward — it latches to the FIRST close-only
+    /// transition, which is what `finalSettle`'s grace deadline is anchored to.
+    /// Before the fix, `slashUnanswered` set `closeOnlyBlock = block.number`
+    /// unconditionally; since `challengeInclusion` has no close-only guard and a
+    /// slash refunds the challenger's stake and frees the order (`delete
+    /// challenges[orderHash]`), an attacker already in close-only could repeatedly
+    /// open a challenge, wait the window, and call `slashUnanswered` — each time
+    /// pushing the grace deadline out at gas-only cost and griefing the EXIT-001
+    /// escape hatch's liveness.
+    function test_slash_after_closeOnly_does_not_reset_grace() public {
+        // enter close-only via the liveness path FIRST — this is the transition
+        // closeOnlyBlock (and the grace deadline) must be anchored to.
+        _enterCloseOnlyViaLiveness();
+        uint256 entry = s.closeOnlyBlock();
+
+        // open a ripe inclusion challenge while already in close-only and let its
+        // window expire (rolls block.number strictly forward past entry), then slash.
+        _openAndExpireChallenge();
+        assertTrue(block.number > entry, "slash happens strictly after the original close-only entry");
+        s.slashUnanswered(keccak256("withheld-order"));
+        assertTrue(s.slashed(), "sequencer slashed");
+        assertTrue(s.closeOnly(), "still close-only after the second slash");
+
+        // the latch: closeOnlyBlock must still read the FIRST entry, not the later slash block.
+        assertEq(s.closeOnlyBlock(), entry, "closeOnlyBlock latched to first close-only entry, not the later slash");
+
+        // the grace deadline computed from that original entry already holds by the
+        // time of the slash (current block > entry + GRACE) — finalSettle succeeds
+        // per the ORIGINAL deadline despite the later slash re-arming close-only.
+        uint256 before = s.batchCount();
+        _governanceFinalSettle();
+        assertEq(s.batchCount(), before + 1, "wind-down lands per the original grace deadline despite the later slash");
     }
 
     receive() external payable {}

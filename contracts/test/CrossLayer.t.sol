@@ -15,13 +15,15 @@ contract CrossLayerTest is MiniTest {
 
     function setUp() public {
         s = new DarkPerpSettlement(
-            address(this), address(0xE), new MockZkVerifier(), bytes32(0), 100, 50, 0
+            address(this), address(0xE), new MockZkVerifier(), bytes32(0), 100, 50, 0, 0, address(this), 0
         );
     }
 
     function test_receipt_digest_matches_rust() public view {
         // orderHash = 0x12..12, seq=7, recv=1000, hint=0
-        bytes32 d = s.receiptDigest(bytes32(uint256(0x1212121212121212121212121212121212121212121212121212121212121212)), 7, 1000, 0);
+        bytes32 d = s.receiptDigest(
+            bytes32(uint256(0x1212121212121212121212121212121212121212121212121212121212121212)), 7, 1000, 0
+        );
         assertEq(
             d,
             0xea97e0063439108b01114aef8136d5c7f4cad5d900f8a3c3e48cfbc583a4ae24,
@@ -52,7 +54,7 @@ contract CrossLayerTest is MiniTest {
     function test_real_rust_receipt_passes_ecrecover() public {
         address rustEnclave = 0x4a62316623ad457F02cDC5D997deD67a383EC569;
         DarkPerpSettlement d = new DarkPerpSettlement(
-            address(this), rustEnclave, new MockZkVerifier(), bytes32(0), 100, 50, 0
+            address(this), rustEnclave, new MockZkVerifier(), bytes32(0), 100, 50, 0, 0, address(this), 0
         );
         bytes32 orderHash = 0x0c1646898f0e7370046e707059dd7cb9eba4b66af66f67671f69101d508231c5;
         uint8 v = 28;

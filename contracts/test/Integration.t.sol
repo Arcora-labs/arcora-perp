@@ -25,17 +25,13 @@ contract IntegrationTest is MiniTest {
     // this contract is the sequencer
     function setUp() public {
         verifier = new MockZkVerifier();
-        s = new DarkPerpSettlement(address(this), address(0xE), verifier, GENESIS, 100, 50, 0);
+        s = new DarkPerpSettlement(address(this), address(0xE), verifier, GENESIS, 100, 50, 0, 0, address(this), 0);
         usdc = new MockUSDC();
         vault = new CollateralVault(address(s), address(usdc));
         s.setVault(address(vault));
     }
 
-    function _proof(bytes32 prev, bytes32 m, bytes32 n, bytes32 ord, bytes32 wd)
-        internal
-        view
-        returns (bytes memory)
-    {
+    function _proof(bytes32 prev, bytes32 m, bytes32 n, bytes32 ord, bytes32 wd) internal view returns (bytes memory) {
         return abi.encode(s.publicCommitment(prev, m, n, ord, wd, bytes32(0)));
     }
 
@@ -69,7 +65,15 @@ contract IntegrationTest is MiniTest {
         bytes32 leaf = keccak256(abi.encodePacked(alice, amount, nonce));
         bytes32 newRoot = bytes32(uint256(2));
         bytes32 manifest = keccak256("batch-0");
-        s.settleBatch(GENESIS, manifest, newRoot, bytes32(0), leaf, bytes32(0), _proof(GENESIS, manifest, newRoot, bytes32(0), leaf));
+        s.settleBatch(
+            GENESIS,
+            manifest,
+            newRoot,
+            bytes32(0),
+            leaf,
+            bytes32(0),
+            _proof(GENESIS, manifest, newRoot, bytes32(0), leaf)
+        );
 
         // the vault now carries that settled withdrawals root
         assertEq(vault.withdrawalsRoot(), leaf, "vault got the settled withdrawals root");

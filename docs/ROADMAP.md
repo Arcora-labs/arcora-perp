@@ -54,7 +54,7 @@ per batch size (the §10b memory-envelope data point).
 | Collateral vault + settled-withdrawal claims | `contracts/CollateralVault` | ✅ |
 | Forced-exit / close-only L1 module | `DarkPerpSettlement` (liveness→close-only) | ✅ |
 | **Encrypted note archive / indexer** | `note-archive` | ✅ (real AEAD — X25519 + HKDF + XChaCha20-Poly1305 via `sealed-box`; the earlier XOR stand-in is gone, and the host cannot read a note without the view key) |
-| **Attested confidential prover** (sealed witness → measurement) | `prover` (§10b boundary) | ✅ (commitment stand-in; real zkVM = backend swap) |
+| **Attested confidential prover** (sealed witness → measurement) | `prover` (§10b boundary) | 🟡 (the sealing-boundary abstraction ships — real Groth16 proving + a sealed-witness handshake over `crates/gateway/src/prover_client.rs` — but "attestation" is a stub: a fixed `0xAB` measurement + a public default seal-root `0x5E`, not real TDX/Nitro attestation; see the `⬜` row above, SEC-020) |
 | Real SP1/Risc0 verifier + EIP-4844 DA blob | — | ⬜ (see `docs/PROVING.md`) |
 
 ## Faz 3 — Fair-sequencing hardening

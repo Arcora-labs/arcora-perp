@@ -29,6 +29,13 @@ hangi emirler girdi/girmedi, hangi sırayla, kim sansürlendi" demez. O boşluğ
 **çalınamaz** (ZK korur), ama gizlilik + fair access + preconf güvenilirliği +
 market integrity kırılabilir (§10).
 
+**Dürüstlük notu (SEC-019):** yukarıdaki "ZK = fund safety" satırının bir istisnası
+var — deposit bütünlüğü bugün **enclave-köklü, ZK-köklü değil**. `BatchOp::Deposit`
+proof commitment'ında bir L1 deposit-event root'una bağlanmaz (kod:
+`perp-core::commitment::derive_roots`), bu yüzden sequencer key'ini elinde tutan
+çökmüş bir enclave arkasız bir not (unbacked note) basabilir. ZK deposit-binding
+**P3** (planlandı, henüz teslim edilmedi).
+
 ---
 
 ## 1. Katman haritası
@@ -80,11 +87,21 @@ batch_manifest = {
 ```
 
 **Boşluk paylaşımı:** ZK → manifest'teki sıralı emirler altında fill doğruluğu
-(Proof-v2). Receipt + inclusion timeout + slashing → "receipt aldım ama T blok
-içinde manifest'e girmedim" cezası. İkisi *birlikte* censorship/withholding'i
+(Proof-v2). Inclusion açığı **ripeness gate + challenge/answer + slashUnanswered**
+ile kapanır (SEQ-001, implemente edildi): imzalı `recvTimeMs`'den
+`inclusionDeadlineSecs` sonra bir emir challenge edilebilir hale gelir (erken/spam
+challenge açılamaz — `DarkPerpSettlement.challengeInclusion`). Sequencer
+`answerChallenge` ile emri gerçekten SETTLED bir batch'in `orderedRoot`'unda
+kanıtlarsa: inclusion challenge açıldıktan SONRA gerçekleştiyse (forced inclusion)
+challenger'ın stake'i challenger'a **refund** edilir (slash YOK); challenge
+açılmadan ÖNCE zaten dahil edilmişse (gürültü/griefing) stake sequencer'a kalır.
+Hiçbir cevap gelmezse `slashUnanswered` sequencer bond'unu challenger'a **slash**
+eder ve sistemi close-only'e sokar. İkisi *birlikte* censorship/withholding'i
 kapatır.
 
-*(Kod: `order.rs` — `Order::order_hash`, `Receipt`, `BatchManifest`.)*
+*(Kod: `order.rs` — `Order::order_hash`, `Receipt`, `BatchManifest`;
+`contracts/DarkPerpSettlement.sol` — `challengeInclusion`, `answerChallenge`,
+`slashUnanswered`.)*
 
 ---
 
@@ -114,6 +131,13 @@ SETTLED  = ZK proof Ethereum'da verify oldu (hard)
 valid nullifiers (double-spend yok); fill sonrası margin yeterliliği; oracle price
 freshness + confidence (§8); funding formülü; liquidation threshold.
 
+**Dürüstlük notu (ZK-001/ORA-001):** oracle price bugün **imzasız bir prover
+witness'ı** — `OracleTranscript` publisher imzası taşımaz, `derive_roots` onu
+authenticated bir kaynağa bağlamaz; yani yukarıdaki freshness/confidence
+"invariant"'ları bugün **prover-satisfiable** (prover transcript'i istediği gibi
+kurup geçirebilir). Publisher-signature binding **P3** (planlandı, henüz teslim
+edilmedi).
+
 **Proof-v2 (matching determinism):** committed order log üzerinde deterministic
 price-time priority; cancel/replace ordering, self-trade prevention, partial fill,
 expiry; order tipleri (IOC/FOK/post-only/reduce-only); likidasyon emir önceliği.
@@ -139,12 +163,25 @@ Withdrawals only from hard-finalized state.
 Sequencer/enclave unavailable for T blocks
    → user initiates forced action against last hard root
    → system enters CLOSE-ONLY emergency mode
-   → open perps settle against CONSERVATIVE oracle TWAP
+   → settled balances stay claimable (CollateralVault.claim) against any published
+     withdrawals root; open perps wind down via reduce-only closes + a governance
+     finalSettle landing pad
    → insurance fund covers protocol-fault shortfall, not market loss
 ```
-Açık pozisyon collateral'ı **pozisyon kapatılmadan** çekilemez. Forced-close fiyatı
-= pencere TWAP. Kullanıcı **son hard state'e** döner. *(Kod: `state.rs` —
-`Mode::CloseOnly`; `engine.rs` — `EnterCloseOnly`.)*
+Açık pozisyon collateral'ı **pozisyon kapatılmadan** çekilemez. **Bugün teslim
+edilen mekanizma (EXIT-001):** `CollateralVault.claim()` close-only'de de açık
+kalır — herhangi bir yayınlanmış withdrawals root'una karşı, settle edilmiş
+bakiyeler her zaman çekilebilir (yetki hep verified state'te, operatörde değil).
+Açık pozisyonlar close-only'de reduce-only kapanışlarla küçülür; bu kapanışların
+withdrawals root'a girmesi için governance-only `DarkPerpSettlement.finalSettle`
+bir landing pad sağlar (close-only + `closeOnlyBlock + finalSettleGraceBlocks`
+grace penceresi + proof-gated — bkz. `docs/FINAL_SETTLE_RUNBOOK.md`).
+**Muhafazakâr-TWAP forced-close (pencere TWAP'ında otomatik kapanış) henüz
+implemente değil** — kullanıcı/operatör pozisyonu reduce-only ile manuel kapatır.
+Tam trustless forced-close **P3**. Kullanıcı **son hard state'e** döner. *(Kod:
+`state.rs` — `Mode::CloseOnly`; `engine.rs` — `EnterCloseOnly`;
+`contracts/DarkPerpSettlement.sol` — `finalSettle`; `contracts/CollateralVault.sol`
+— `claim`.)*
 
 ---
 
@@ -162,12 +199,17 @@ commitment tree, `merkle.rs`; Faz 2'de arşiv servisi.)*
 
 ```
 oracle_transcript = { signed_price, publish_time, confidence_interval,
-  max_staleness_ms, max_deviation_vs_backup, liquidation_price_guard }
+  max_staleness_ms, max_deviation_vs_backup }
 ```
 ZK (Proof-v1): publish_time pencerede; confidence ≤ threshold; |primary −
 backup_twap| ≤ sanity_bound; likidasyon kabul edilen snapshot'ı kullandı.
 **Kalibrasyon:** Pyth-primary + TWAP backup sanity bound + anomalide close-only
-breaker. *(Kod: `oracle.rs` — `OracleTranscript::validate`.)*
+breaker. **Dürüstlük notu (ZK-001/ORA-001):** `signed_price` adı yanıltıcı — bugün
+fiilen **imzasız**. `OracleTranscript` (kod: `oracle.rs`) publisher imzası taşımaz
+ve `derive_roots` onu authenticated bir kaynağa bağlamaz, yani yukarıdaki
+freshness/confidence kontrolleri bugün **prover-satisfiable**. Publisher-signature
+binding **P3** (planlandı, henüz teslim edilmedi). *(Kod: `oracle.rs` —
+`OracleTranscript::validate`.)*
 
 ---
 
@@ -201,6 +243,13 @@ pozisyonu/fill'i plaintext görür → **prover layer çıplak sunucu olamaz.**
 **v1 policy (attested prover):** matcher enclave → sealed witness package →
 ATTESTED PROVER (TDX/Nitro) measurement'a decrypt → ZK proof → Ethereum verifier;
 witness yalnızca attested measurement'ında açılır; job bitince silinir.
+
+**Bugünkü durum (SEC-020):** prover'a bugün bir localhost SSH reverse tunnel
+üzerinden ulaşılıyor ve attestation bir **stub** — sabit `0xAB` measurement +
+public seal-root default'u (`0x5E`), gerçek bir TDX/Nitro quote/attestation
+DEĞİL (kod: `crates/gateway/src/prover_client.rs`). Gerçek TDX/Nitro attestation
+verification **P3** (bkz. `docs/ROADMAP.md` Faz 1 "Enclave attestation
+verification").
 
 **Sonuç:** Private batch'i public proving network / outsourced GPU proving ile
 üretemezsin. Self-hosted attested prover şart.

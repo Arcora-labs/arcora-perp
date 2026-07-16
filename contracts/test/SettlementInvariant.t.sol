@@ -49,7 +49,8 @@ contract Handler {
         bytes32 newRoot = keccak256(abi.encodePacked(prev, j));
         bytes32 manifest = keccak256(abi.encodePacked("m", j));
         bytes32 orderedRoot = s.inclusionLeaf(j, orderHash(j));
-        bytes memory proof = abi.encode(s.publicCommitment(prev, manifest, newRoot, orderedRoot, bytes32(0), bytes32(0)));
+        bytes memory proof =
+            abi.encode(s.publicCommitment(prev, manifest, newRoot, orderedRoot, bytes32(0), bytes32(0)));
         s.settleBatch(prev, manifest, newRoot, orderedRoot, bytes32(0), bytes32(0), proof);
         root = newRoot;
         nextToSettle = j + 1;
@@ -108,7 +109,16 @@ contract SettlementInvariantTest is MiniTest {
         // a large challenge window so in-window answers dominate; the honest
         // sequencer is the handler.
         s = new DarkPerpSettlement(
-            address(handler), vm.addr(ENCLAVE_PK), verifier, GENESIS, 100_000, 1_000, CHALLENGE_BOND
+            address(handler),
+            vm.addr(ENCLAVE_PK),
+            verifier,
+            GENESIS,
+            100_000,
+            1_000,
+            CHALLENGE_BOND,
+            0,
+            address(handler),
+            0
         );
         handler.init(s, GENESIS, CHALLENGE_BOND);
         vm.deal(address(handler), 1000 ether);
