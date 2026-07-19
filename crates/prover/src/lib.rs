@@ -247,6 +247,39 @@ impl SealKeyProvider for SoftwareSealProvider {
     }
 }
 
+/// SEC-020 §5: the attested provider — the seal key rests on the mutual-attestation
+/// SESSION SECRET (from the boot handshake) plus the attested prover measurement,
+/// replacing the earlier fail-open public `[0x5E]` seal-root constant. Only a party
+/// holding the same `session_secret` (both the gateway sealer and this prover derive
+/// it from the identical, order-bound attestation transcript) and speaking for the
+/// same measurement can produce or open the seal.
+///
+/// This is a real improvement over the public-constant root, but note the honest
+/// bound in the C3 comment below: in Phase 1 the `session_secret` is only as strong
+/// as the /attest transcript it is folded from. Phase 2 (real GB10 CC key-release)
+/// swaps `session_secret` for a DH-bound shared secret — same trait, same derivation
+/// shape, so nothing upstream changes when it lands.
+pub struct AttestedSealProvider {
+    pub session_secret: [u8; 32],
+    pub measurement: Digest,
+}
+
+impl SealKeyProvider for AttestedSealProvider {
+    fn seal_key(&self, measurement: &Digest, nonce: &Digest) -> Option<[u8; 32]> {
+        if *measurement != self.measurement {
+            return None; // key released only for the attested measurement
+        }
+        // PHASE 2 (C3): the seal key is only as strong as session_secret, which is
+        // recomputable from the public /attest transcript today; Phase 2 must derive
+        // session_secret from a DH shared secret bound into the attested
+        // report_data/AK-extraData before this key is a real secret.
+        Some(Keccak256::hash_words(
+            Domain::KeyDerivation,
+            &[self.session_secret, *measurement, *nonce],
+        ))
+    }
+}
+
 /// A witness sealed to a specific attested prover measurement (§10b).
 ///
 /// The plaintext (positions, fills, margins) is recoverable only by a prover that
@@ -372,6 +405,18 @@ impl<P: Prover> AttestedProver<P> {
         Self {
             backend,
             seal_provider: Box::new(seal_provider),
+        }
+    }
+
+    /// Build from an ALREADY-boxed provider. Lets a caller (prover-service `main`)
+    /// pick the concrete `SealKeyProvider` — `AttestedSealProvider` when an attested
+    /// session exists, `SoftwareSealProvider` only under DEV_INSECURE — at runtime
+    /// (SEC-020 §5 fail-closed provider selection) without a generic explosion.
+    /// `new` remains for the static, single-provider case.
+    pub fn from_boxed(backend: P, seal_provider: Box<dyn SealKeyProvider + Send + Sync>) -> Self {
+        Self {
+            backend,
+            seal_provider,
         }
     }
 
@@ -629,6 +674,55 @@ mod tests {
         let sealed = SealedWitness::seal(pt, &prov(M), M, [0x04u8; 32]).unwrap();
         let prover = AttestedProver::new(CommitmentProver::new(M), prov(M));
         assert_eq!(prover.open(&sealed).unwrap(), pt);
+    }
+
+    // SEC-020 Task 6: the AttestedSealProvider seal/open round-trip. The seal key is
+    // bound to the mutual-attestation SESSION SECRET plus the prover measurement (not a
+    // public constant), so the gateway (sealer) and prover (opener) round-trip only when
+    // they share the same secret AND measurement. This locks the Phase-2-active derivation
+    // contract in Phase 1 (see the C3 note at the derivation).
+    #[test]
+    fn attested_seal_roundtrip_binds_measurement_and_secret() {
+        let (secret, m, nonce) = ([9u8; 32], [7u8; 32], [3u8; 32]);
+        // Gateway-side provider (session_secret + measurement); the mirrored prover-side
+        // provider with the SAME secret + measurement opens what it sealed.
+        let gw = AttestedSealProvider {
+            session_secret: secret,
+            measurement: m,
+        };
+        let sealed = SealedWitness::seal(b"positions+fills", &gw, m, nonce).expect("seal");
+
+        let good = AttestedProver::new(
+            CommitmentProver::new(m),
+            AttestedSealProvider {
+                session_secret: secret,
+                measurement: m,
+            },
+        );
+        assert_eq!(good.open(&sealed).expect("open"), b"positions+fills");
+
+        // wrong secret ⇒ a DIFFERENT seal key ⇒ encrypt-then-MAC rejects on open.
+        let bad = AttestedProver::new(
+            CommitmentProver::new(m),
+            AttestedSealProvider {
+                session_secret: [0u8; 32],
+                measurement: m,
+            },
+        );
+        assert!(matches!(
+            bad.open(&sealed),
+            Err(ProverError::SealAuthFailed)
+        ));
+
+        // wrong measurement ⇒ the provider refuses the key (None) ⇒ MeasurementMismatch.
+        let wrong_m = AttestedProver::new(
+            CommitmentProver::new(m),
+            AttestedSealProvider {
+                session_secret: secret,
+                measurement: [1u8; 32],
+            },
+        );
+        assert!(wrong_m.open(&sealed).is_err());
     }
 
     #[test]

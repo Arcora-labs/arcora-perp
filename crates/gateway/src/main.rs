@@ -506,7 +506,13 @@ fn expected_measurement_env(var: &str) -> Result<Digest, String> {
 /// CC-off GB10 the `NvidiaCcAttestor::verify` below is `Err(CcNotEnabled)`, so
 /// in production this ALWAYS refuses — independently of whether the Azure-side
 /// verify (the prover's half) would have passed.
-fn prover_handshake(prover_url: &str, gw_nonce: &[u8; 32]) -> Result<String, String> {
+///
+/// SEC-020 Task 6: returns BOTH the `/prove` session token AND the raw
+/// `session_secret` — the gateway's attested seal key rests on that secret (mirrors
+/// the prover's `AttestedSealProvider`). The secret is never logged or served; it is
+/// threaded only into the `HttpProverClient` to build the seal provider. On any `Err`
+/// the caller gets neither, so the attested seal is never built from a partial handshake.
+fn prover_handshake(prover_url: &str, gw_nonce: &[u8; 32]) -> Result<(String, [u8; 32]), String> {
     let gw_expected = expected_measurement_env("GATEWAY_EXPECTED_MEASUREMENT")?;
     let pv_expected = expected_measurement_env("PROVER_EXPECTED_MEASUREMENT")?;
     let url = format!(
@@ -543,7 +549,7 @@ fn prover_handshake(prover_url: &str, gw_nonce: &[u8; 32]) -> Result<String, Str
     // `pv_expected`; `gw_expected` stands in for our own measurement (the
     // prover's Azure-side verify enforces the same pin on its half).
     let secret = session_secret(gw_nonce, &pv_nonce, &gw_expected, &pv_meas);
-    Ok(session_token(&secret, epoch))
+    Ok((session_token(&secret, epoch), secret))
 }
 
 #[derive(Deserialize)]
@@ -4631,6 +4637,7 @@ fn prover_from_str(
 fn prover_from_env_attested(
     prod: bool,
     session_token: Option<String>,
+    session_secret: Option<[u8; 32]>,
     hs_nonce: [u8; 32],
     dev_insecure: bool,
 ) -> Result<Option<std::sync::Arc<dyn prover_client::ProverClient>>, String> {
@@ -4642,14 +4649,20 @@ fn prover_from_env_attested(
             // reproduces the prover's current token; a fresh nonce would derive a
             // different secret and never match. `dev_insecure` short-circuits to the
             // fixed dev token (never a real quote); prod exits before reaching here.
+            //
+            // SEC-020 Task 6: the re-handshake refreshes the /prove TOKEN only — the
+            // attested seal path is not live in Phase 1 (session_secret is None on
+            // both the dev and refused-prod paths). Phase 2 must also refresh the
+            // client's session_secret here when a rotated prover re-hands-shakes.
             let rehandshake: prover_client::ReHandshake = Box::new(move || {
                 if dev_insecure {
                     return Ok(DEV_INSECURE_SESSION_TOKEN.to_string());
                 }
-                prover_handshake(&url_owned, &hs_nonce)
+                prover_handshake(&url_owned, &hs_nonce).map(|(token, _secret)| token)
             });
             let client = prover_client::HttpProverClient::from_env(url, prod)?
                 .with_session_token(session_token)
+                .with_session_secret(session_secret)
                 .with_rehandshake(rehandshake);
             Ok(Some(std::sync::Arc::new(client)))
         }
@@ -4817,43 +4830,51 @@ async fn main() {
     // prover's advertised epoch is what keys the /prove token; see
     // `prover_handshake`).
     let hs_epoch = now_ms() / 1000 / 3600;
-    let prover_session_token = match std::env::var("PROVER_URL").ok().as_deref() {
-        // Only a real HTTP prover has an /attest to shake hands with ("mock" is
-        // in-process and the legacy path has no prover at all).
-        Some(url) if !url.is_empty() && url != "mock" => {
-            if dev_insecure {
-                // Non-prod only (prod exits above): skip BOTH verifications and
-                // use the FIXED dev token — never derived from real quotes.
-                eprintln!(
-                    "WARN gateway: INSECURE: attestation handshake skipped — never production"
-                );
-                Some(DEV_INSECURE_SESSION_TOKEN.to_string())
-            } else {
-                match prover_handshake(url, &hs_nonce) {
-                    Ok(t) => {
-                        println!("[attest] prover handshake OK — session token minted");
-                        Some(t)
-                    }
-                    Err(e) => {
-                        // Expected on today's hardware (GB10 CC off ⇒ the NVIDIA
-                        // verify is CcNotEnabled): no token, proving stays closed.
-                        eprintln!(
-                            "[attest] prover handshake REFUSED ({e}) — no session token; \
-                             proving stays closed once /prove is gated (SEC-020 fail-closed)"
-                        );
-                        None
+    // SEC-020 Task 6: capture the raw `session_secret` alongside the token — the
+    // attested seal key rests on it (never logged/served). `None` on both the dev
+    // and refused-prod paths ⇒ the gateway seals with the DEV_INSECURE
+    // SoftwareSealProvider; the attested seal is Phase-2-active.
+    let (prover_session_token, prover_session_secret): (Option<String>, Option<[u8; 32]>) =
+        match std::env::var("PROVER_URL").ok().as_deref() {
+            // Only a real HTTP prover has an /attest to shake hands with ("mock" is
+            // in-process and the legacy path has no prover at all).
+            Some(url) if !url.is_empty() && url != "mock" => {
+                if dev_insecure {
+                    // Non-prod only (prod exits above): skip BOTH verifications and
+                    // use the FIXED dev token — never derived from real quotes. No real
+                    // session secret ⇒ the dev SoftwareSealProvider seal path.
+                    eprintln!(
+                        "WARN gateway: INSECURE: attestation handshake skipped — never production"
+                    );
+                    (Some(DEV_INSECURE_SESSION_TOKEN.to_string()), None)
+                } else {
+                    match prover_handshake(url, &hs_nonce) {
+                        Ok((t, secret)) => {
+                            println!("[attest] prover handshake OK — session token minted");
+                            (Some(t), Some(secret))
+                        }
+                        Err(e) => {
+                            // Expected on today's hardware (GB10 CC off ⇒ the NVIDIA
+                            // verify is CcNotEnabled): no token/secret, proving stays closed.
+                            eprintln!(
+                                "[attest] prover handshake REFUSED ({e}) — no session token; \
+                                 proving stays closed once /prove is gated (SEC-020 fail-closed)"
+                            );
+                            (None, None)
+                        }
                     }
                 }
             }
-        }
-        _ => None,
-    };
+            _ => (None, None),
+        };
     // Build the settle path's prover client, injecting the SEC-020 session token +
-    // the 401 re-handshake (HTTP prover only). The seal root is resolved fail-closed
-    // inside `from_env`, so a prod boot with an unset PROVER_SEAL_ROOT still refuses.
+    // secret + the 401 re-handshake (HTTP prover only). The seal root is resolved
+    // fail-closed inside `from_env`, so a prod boot with an unset PROVER_SEAL_ROOT
+    // still refuses.
     let prover = match prover_from_env_attested(
         prod,
         prover_session_token.clone(),
+        prover_session_secret,
         hs_nonce,
         dev_insecure,
     ) {
@@ -8188,7 +8209,8 @@ mod tests {
 
         let root = [0x5Eu8; 32];
         let measurement = [0xABu8; 32];
-        let hexed = seal_witness(&witness, &root, &measurement).expect("seal");
+        // DEV_INSECURE seal path (session_secret = None ⇒ SoftwareSealProvider).
+        let hexed = seal_witness(&witness, &root, &measurement, None).expect("seal");
         assert!(hexed.starts_with("0x"));
 
         // it must postcard-decode back into a SealedWitness addressed to the right

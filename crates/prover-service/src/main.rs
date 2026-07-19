@@ -19,7 +19,9 @@ use dark_perp_attestation::{
     DEV_INSECURE_SESSION_TOKEN,
 };
 use perp_core::hash::Digest;
-use prover::{AttestedProver, SealedWitness, SoftwareSealProvider};
+use prover::{
+    AttestedProver, AttestedSealProvider, SealKeyProvider, SealedWitness, SoftwareSealProvider,
+};
 use serde::{Deserialize, Serialize};
 use sp1_prover::Sp1GnarkProver;
 use std::sync::Arc;
@@ -218,7 +220,13 @@ fn expected_measurement_env(var: &str) -> Result<Digest, String> {
 /// collateral, unreachable peer, malformed response, failed verify) aborts the
 /// WHOLE handshake — the caller leaves the session token unset and the /prove
 /// gate stays closed. A token is never minted from a partial transcript.
-fn boot_handshake(pv_nonce: &[u8; 32], epoch: u64) -> Result<String, String> {
+///
+/// SEC-020 Task 6: returns BOTH the `/prove` session token AND the raw
+/// `session_secret` — the attested seal key rests on that secret (see
+/// `AttestedSealProvider`). The secret must never be logged or served; it stays in
+/// process memory only to build the provider. On any `Err` the caller gets neither,
+/// so the attested provider is never built from a partial handshake.
+fn boot_handshake(pv_nonce: &[u8; 32], epoch: u64) -> Result<(String, [u8; 32]), String> {
     let gw_url = std::env::var("GATEWAY_URL")
         .map_err(|_| "GATEWAY_URL unset — cannot reach the gateway's /attest".to_string())?;
     let gw_expected = expected_measurement_env("GATEWAY_EXPECTED_MEASUREMENT")?;
@@ -273,7 +281,7 @@ fn boot_handshake(pv_nonce: &[u8; 32], epoch: u64) -> Result<String, String> {
     // `gw_expected`; `pv_expected` stands in for our own measurement (the
     // gateway's NVIDIA-side verify enforces the same pin on its half).
     let secret = session_secret(&gw_nonce, pv_nonce, &gw_meas, &pv_expected);
-    Ok(session_token(&secret, epoch))
+    Ok((session_token(&secret, epoch), secret))
 }
 
 #[derive(Deserialize)]
@@ -360,33 +368,61 @@ async fn main() {
         .expect("clock")
         .as_secs()
         / 3600;
-    let session_token = if dev_insecure {
+    // SEC-020 Task 6: the handshake now yields the raw `session_secret` too (never
+    // logged/served) — the attested seal key rests on it. `session_secret = None` ⇒
+    // no attested session (dev-insecure skips the handshake; a refused prod handshake
+    // returns Err) ⇒ the attested provider is NOT built (fail-closed selection below).
+    let (session_token, session_secret): (Option<String>, Option<[u8; 32]>) = if dev_insecure {
         // Non-prod only (prod exits above): skip BOTH verifications and use the
-        // FIXED dev token — never derived from real quotes.
+        // FIXED dev token — never derived from real quotes. No real session secret:
+        // the dev seal path uses SoftwareSealProvider (branch 2 below), NOT attested.
         eprintln!(
             "WARN prover-service: INSECURE: attestation handshake skipped — never production"
         );
-        Some(DEV_INSECURE_SESSION_TOKEN.to_string())
+        (Some(DEV_INSECURE_SESSION_TOKEN.to_string()), None)
     } else {
         match boot_handshake(&hs_nonce, hs_epoch) {
-            Ok(t) => {
+            Ok((t, secret)) => {
                 println!("prover-service: attestation handshake OK — session token minted");
-                Some(t)
+                (Some(t), Some(secret))
             }
             Err(e) => {
-                // Fail-closed: no token. Expected on today's hardware (the static
-                // Azure TD quote cannot bind our fresh nonce, and our own side is
-                // CcNotEnabled) — proving stays closed until Phase 2.
+                // Fail-closed: no token, no secret. Expected on today's hardware (the
+                // static Azure TD quote cannot bind our fresh nonce, and our own side
+                // is CcNotEnabled) — proving stays closed until Phase 2.
                 eprintln!(
                     "prover-service: attestation handshake REFUSED ({e}) — no session token; \
                      /prove stays closed once gated (SEC-020 fail-closed)"
                 );
-                None
+                (None, None)
             }
         }
     };
+    // ── SEC-020 Task 6: fail-closed seal-provider selection ──
+    // 1. attested session present ⇒ AttestedSealProvider (seal key bound to the
+    //    session secret + measurement). Phase-2-active: today the prod handshake
+    //    refuses, so this branch is reached only once GB10 CC enables the handshake.
+    // 2. else if !prod && DEV_INSECURE ⇒ SoftwareSealProvider (dev-only stand-in).
+    // 3. else ⇒ refuse to start. There is NO path where prod builds a
+    //    SoftwareSealProvider or any public-constant-rooted provider.
+    let seal_provider: Box<dyn SealKeyProvider + Send + Sync> = if let Some(secret) = session_secret
+    {
+        Box::new(AttestedSealProvider {
+            session_secret: secret,
+            measurement: m,
+        })
+    } else if !prod && dev_insecure {
+        eprintln!("WARN prover-service: SoftwareSealProvider (DEV_INSECURE) — NEVER production");
+        Box::new(SoftwareSealProvider::new(root, m))
+    } else {
+        eprintln!(
+            "prover-service: SEC-020 no attested session and not DEV_INSECURE — \
+             refusing to start (no fail-open software seal provider in production)"
+        );
+        std::process::exit(1);
+    };
     let app = Arc::new(App {
-        prover: AttestedProver::new(backend, SoftwareSealProvider::new(root, m)),
+        prover: AttestedProver::from_boxed(backend, seal_provider),
         vkey: program_vkey,
         measurement: m,
         session_token,

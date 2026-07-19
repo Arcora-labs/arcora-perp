@@ -155,15 +155,25 @@ pub(crate) fn seal_nonce(seal_root: &[u8; 32], plaintext: &[u8]) -> Digest {
 }
 
 /// Seal a window witness exactly as the prover-service's seal-client does, so the service
-/// (same SoftwareSealProvider params) can open it. Plaintext is the postcard-encoded
-/// `(pre_state, ops, manifest)` triple; the nonce is the secret-keyed
-/// `seal_nonce(root, plaintext)` (content-derived and reuse-proof across rollback
-/// re-seals, but keyed with `root` so the clear nonce can't confirm a guessed witness).
-/// Returns 0x-prefixed hex of the postcard-encoded SealedWitness.
+/// (same seal params) can open it. Plaintext is the postcard-encoded `(pre_state, ops,
+/// manifest)` triple; the nonce is the secret-keyed `seal_nonce(root, plaintext)`
+/// (content-derived and reuse-proof across rollback re-seals, but keyed with `root` so
+/// the clear nonce can't confirm a guessed witness). Returns 0x-prefixed hex of the
+/// postcard-encoded SealedWitness.
+///
+/// SEC-020 Task 6: fail-closed seal-provider selection, MIRRORING the prover-service:
+/// - `session_secret = Some` (an attested session) ⇒ `AttestedSealProvider`, so the seal
+///   key rests on the mutual-attestation session secret + measurement (Phase-2-active).
+/// - `session_secret = None` (DEV_INSECURE, non-prod) ⇒ `SoftwareSealProvider` keyed with
+///   the dev `root` — the dev-only stand-in the prover opens with on its matching branch.
+///
+/// The prover reads the nonce off the wire (`SealedWitness.nonce`), so the `root`-keyed
+/// nonce derivation stays purely local and needs no agreement across the boundary.
 pub fn seal_witness(
     w: &WindowWitness,
     root: &[u8; 32],
     measurement: &Digest,
+    session_secret: Option<&[u8; 32]>,
 ) -> Result<String, ProverClientError> {
     let bytes = postcard::to_allocvec(&(&w.pre_state, &w.ops, &w.manifest))
         .map_err(|e| ProverClientError::Decode(format!("witness encode: {e}")))?;
@@ -171,9 +181,20 @@ pub fn seal_witness(
     // clear nonce is not a plaintext-confirmation oracle, while identical re-seals still
     // reproduce it (rollback/retry-safe, no two-time pad).
     let nonce = seal_nonce(root, &bytes);
-    let provider = prover::SoftwareSealProvider::new(*root, *measurement);
-    let sealed = prover::SealedWitness::seal(&bytes, &provider, *measurement, nonce)
-        .ok_or(ProverClientError::Seal)?;
+    let sealed = match session_secret {
+        Some(secret) => {
+            let provider = prover::AttestedSealProvider {
+                session_secret: *secret,
+                measurement: *measurement,
+            };
+            prover::SealedWitness::seal(&bytes, &provider, *measurement, nonce)
+        }
+        None => {
+            let provider = prover::SoftwareSealProvider::new(*root, *measurement);
+            prover::SealedWitness::seal(&bytes, &provider, *measurement, nonce)
+        }
+    }
+    .ok_or(ProverClientError::Seal)?;
     let out = postcard::to_allocvec(&sealed)
         .map_err(|e| ProverClientError::Decode(format!("sealed encode: {e}")))?;
     let mut hexed = String::with_capacity(2 + out.len() * 2);
@@ -344,6 +365,14 @@ pub struct HttpProverClient {
     /// refresh the token in place (the trait's `prove` is `&self`). The lock is only
     /// ever held to read/replace the token, never across the long-blocking POST.
     session_token: std::sync::Mutex<Option<String>>,
+    /// SEC-020 Task 6: the raw mutual-attestation `session_secret` the attested seal
+    /// key rests on (see `AttestedSealProvider`). `Some` ⇒ seal with the attested
+    /// provider (Phase-2-active); `None` ⇒ the DEV_INSECURE fallback seals with
+    /// `SoftwareSealProvider` keyed on `seal_root`. Never logged/served. Held plainly
+    /// (not behind the token `Mutex`): it is fixed for the process lifetime — the
+    /// Phase-1 401 re-handshake refreshes only the token, and the attested seal path
+    /// is not live until Phase-2 (a Phase-2 rotation must also refresh this secret).
+    session_secret: Option<[u8; 32]>,
     /// SEC-020 Task 5: re-runs the mutual-attestation handshake on a 401 (a rotated /
     /// rebooted prover) and yields a fresh token. `None` ⇒ no re-handshake wired
     /// (mock/dev construction) — a 401 is then terminal (still fail-closed).
@@ -376,6 +405,7 @@ impl HttpProverClient {
             measurement: [0xABu8; 32],
             timeout_secs,
             session_token: std::sync::Mutex::new(None),
+            session_secret: None,
             rehandshake: None,
         })
     }
@@ -384,6 +414,14 @@ impl HttpProverClient {
     /// fail-closed: no bearer is sent and every `/prove` 401s).
     pub fn with_session_token(mut self, token: Option<String>) -> Self {
         self.session_token = std::sync::Mutex::new(token);
+        self
+    }
+
+    /// SEC-020 Task 6: set the boot-derived `session_secret` (`None` ⇒ no attested
+    /// session ⇒ the DEV_INSECURE `SoftwareSealProvider` seal path). Mirrors the
+    /// prover-service's attested-vs-dev provider selection so seal/open round-trips.
+    pub fn with_session_secret(mut self, secret: Option<[u8; 32]>) -> Self {
+        self.session_secret = secret;
         self
     }
 
@@ -423,7 +461,12 @@ fn prove_with_reauth(
 
 impl ProverClient for HttpProverClient {
     fn prove(&self, w: &WindowWitness) -> Result<ProveOutcome, ProverClientError> {
-        let sealed_hex = seal_witness(w, &self.seal_root, &self.measurement)?;
+        let sealed_hex = seal_witness(
+            w,
+            &self.seal_root,
+            &self.measurement,
+            self.session_secret.as_ref(),
+        )?;
         let body = serde_json::json!({ "sealed": sealed_hex }).to_string();
         // Snapshot the token (lock released immediately — never held across the
         // multi-minute POST). `None` ⇒ no bearer sent ⇒ the prover 401s (fail-closed).
