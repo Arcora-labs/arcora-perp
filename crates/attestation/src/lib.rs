@@ -11,7 +11,10 @@
 
 use dcap_qvl::QuoteCollateralV3;
 
+mod nvidia_cc;
 pub mod vtpm;
+
+pub use nvidia_cc::NvidiaCcAttestor;
 
 /// The verified, security-relevant outputs of a TDX DCAP quote.
 #[derive(Debug, Clone)]
