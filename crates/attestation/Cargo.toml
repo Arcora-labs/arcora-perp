@@ -24,6 +24,5 @@ perp-core = { path = "../perp-core" }
 rsa = "0.9"
 sha2 = "0.10"
 base64 = "0.22"
-
-[dev-dependencies]
+# SEC-020 handshake: hex-encode the session token (also used by the tests).
 hex = "0.4"

@@ -11,9 +11,11 @@
 
 use dcap_qvl::QuoteCollateralV3;
 
+mod handshake;
 mod nvidia_cc;
 pub mod vtpm;
 
+pub use handshake::{session_secret, session_token, DEV_INSECURE_SESSION_TOKEN};
 pub use nvidia_cc::NvidiaCcAttestor;
 
 /// The verified, security-relevant outputs of a TDX DCAP quote.

@@ -15,11 +15,17 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use axum::{
     extract::ws::{Message, WebSocket, WebSocketUpgrade},
-    extract::{ConnectInfo, Path, State},
+    extract::{ConnectInfo, Path, Query, State},
     http::{HeaderMap, StatusCode},
     response::IntoResponse,
     routing::{delete, get, post},
     Json, Router,
+};
+// SEC-020 Task 4: mutual-attestation handshake — quote/verify backends + the
+// pure transcript math (session secret/token) shared with the prover-service.
+use dark_perp_attestation::{
+    session_secret, session_token, Attestor as _, AzureTdxAttestor, NvidiaCcAttestor,
+    DEV_INSECURE_SESSION_TOKEN,
 };
 use serde::{Deserialize, Serialize};
 use tokio::sync::{broadcast, Mutex};
@@ -441,6 +447,148 @@ fn attest_from_env() -> Option<Attested> {
         }
     }
 }
+
+// ── SEC-020 Task 4: mutual-attestation handshake (gateway side) ──────────────
+
+/// GET `url` via a curl subprocess (the repo's HTTP transport pattern — see
+/// `prover_client::http_post` / `L1::cast`) and parse the JSON body. Boot-time
+/// only; short timeouts so a dead peer fails the handshake fast (fail-closed),
+/// never wedges startup.
+fn http_get_json(url: &str) -> Result<serde_json::Value, String> {
+    let out = std::process::Command::new("curl")
+        .args([
+            "-s",
+            "-S",
+            "--fail",
+            "--connect-timeout",
+            "10",
+            "--max-time",
+            "30",
+            url,
+        ])
+        .output()
+        .map_err(|e| format!("curl spawn: {e}"))?;
+    if !out.status.success() {
+        return Err(format!(
+            "curl exit {}: {}",
+            out.status,
+            String::from_utf8_lossy(&out.stderr)
+        ));
+    }
+    serde_json::from_slice(&out.stdout).map_err(|e| format!("json: {e}"))
+}
+
+/// A pinned expected-measurement env var (32-byte hex): required for the
+/// attestation handshake unless `DEV_INSECURE` — unset/malformed refuses the
+/// handshake (fail-closed), never a default.
+///
+/// PHASE 2: these pins must be APP-level identities (see the C1 note at the
+/// prover-service's gateway-verify call site): `GATEWAY_EXPECTED_MEASUREMENT` =
+/// this CVM's `azure_app_measurement` (MRTD‖pcr_digest, `vtpm.rs`), and
+/// `PROVER_EXPECTED_MEASUREMENT` = the GB10 prover's CC measurement.
+fn expected_measurement_env(var: &str) -> Result<Digest, String> {
+    let s = std::env::var(var).map_err(|_| {
+        format!("{var} unset — required for the attestation handshake unless DEV_INSECURE")
+    })?;
+    parse_hex32(&s).ok_or_else(|| format!("{var} is not 32-byte hex"))
+}
+
+/// SEC-020 Task 4: the gateway's side of the mutual-attestation handshake, run
+/// once at settle-path init. Fetches the prover's `/attest` quote over OUR fresh
+/// per-boot nonce, verifies it against the pinned `PROVER_EXPECTED_MEASUREMENT`
+/// via the NVIDIA CC backend, and mints the session token from the shared
+/// transcript.
+///
+/// Fail-closed by construction: ANY `Err` at ANY step (env pin unset,
+/// unreachable peer, malformed response, failed verify) aborts the WHOLE
+/// handshake — the caller leaves the token unset and proving stays closed. A
+/// token is never minted from a partial transcript. Phase-1 reality: on today's
+/// CC-off GB10 the `NvidiaCcAttestor::verify` below is `Err(CcNotEnabled)`, so
+/// in production this ALWAYS refuses — independently of whether the Azure-side
+/// verify (the prover's half) would have passed.
+fn prover_handshake(prover_url: &str, gw_nonce: &[u8; 32]) -> Result<String, String> {
+    let gw_expected = expected_measurement_env("GATEWAY_EXPECTED_MEASUREMENT")?;
+    let pv_expected = expected_measurement_env("PROVER_EXPECTED_MEASUREMENT")?;
+    let url = format!(
+        "{}/attest?nonce={}",
+        prover_url.trim_end_matches('/'),
+        hex32(gw_nonce)
+    );
+    let resp = http_get_json(&url)?;
+    let quote = resp
+        .get("quote")
+        .and_then(|v| v.as_str())
+        .and_then(decode_hex)
+        .ok_or("no hex `quote` in the prover /attest response")?;
+    // The prover's own per-boot handshake nonce + token epoch ride the /attest
+    // response so both sides derive the identical transcript (and the gateway
+    // mints its token under the PROVER's epoch — the value /prove will compare).
+    let pv_nonce = resp
+        .get("nonce")
+        .and_then(|v| v.as_str())
+        .and_then(parse_hex32)
+        .ok_or("no 32-byte `nonce` in the prover /attest response")?;
+    let epoch = resp
+        .get("epoch")
+        .and_then(|v| v.as_u64())
+        .ok_or("no `epoch` in the prover /attest response")?;
+    // Phase-1 fail-closed pivot: CC is off on today's GB10, so this verify is
+    // `Err(CcNotEnabled)` and the handshake refuses HERE — token unset, proving
+    // closed — regardless of anything else in the transcript.
+    let pv_meas = NvidiaCcAttestor::detect()
+        .verify(&quote, &pv_expected, gw_nonce)
+        .map_err(|e| format!("prover quote verify: {e:?}"))?;
+    // Shared transcript orientation (both sides identical): gateway nonce +
+    // measurement first, prover second. `pv_meas` is verify-enforced ==
+    // `pv_expected`; `gw_expected` stands in for our own measurement (the
+    // prover's Azure-side verify enforces the same pin on its half).
+    let secret = session_secret(gw_nonce, &pv_nonce, &gw_expected, &pv_meas);
+    Ok(session_token(&secret, epoch))
+}
+
+#[derive(Deserialize)]
+struct AttestQuery {
+    nonce: String,
+}
+
+/// `GET /attest?nonce=0x…` — this gateway's TD quote, for the prover's side of
+/// the SEC-020 mutual-attestation handshake. Serves `AzureTdxAttestor::quote`
+/// (the §5c `ATTESTATION_DIR` capture) plus this host's per-boot handshake
+/// nonce + epoch. No quote source ⇒ 503 — never a fabricated quote.
+///
+/// PHASE 2 (C2): per-handshake freshness must ride the vTPM AK quote extraData
+/// (AzureVtpmReport.nonce, vtpm.rs), and /attest must carry the full tee-capture
+/// vTPM bundle (hcl_report.bin/ak_quote_msg.bin/ak_quote_sig.bin/pcrs.txt), not
+/// just quote.bin. TD-quote report_data is a per-boot static value — no
+/// standalone replay protection.
+async fn get_attest(
+    State(app): State<Shared>,
+    Query(q): Query<AttestQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let Some(nonce) = parse_hex32(&q.nonce) else {
+        return Err(err400("nonce must be 32-byte hex".into()));
+    };
+    let unavailable = |msg: String| {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(serde_json::json!({ "error": msg })),
+        )
+    };
+    let Some(att) = app.attestor.as_ref() else {
+        return Err(unavailable(
+            "attestation not ready: no ATTESTATION_DIR quote/collateral bundle".into(),
+        ));
+    };
+    match att.quote(&nonce) {
+        Ok(quote) => Ok(Json(serde_json::json!({
+            "quote": hex0x(&quote),
+            "nonce": hex32(&app.hs_nonce),
+            "epoch": app.hs_epoch,
+        }))),
+        Err(e) => Err(unavailable(format!("attestation not ready: {e:?}"))),
+    }
+}
+
 fn usd(n: f64) -> i128 {
     (n * PRICE_SCALE as f64).round() as i128
 }
@@ -3359,6 +3507,22 @@ struct App {
     /// exchange backfill for feed-backed markets at boot. Display data — not
     /// part of the sealed snapshot (see `candles.rs`).
     candles: Mutex<candles::CandleStore>,
+    /// SEC-020 Task 4: the Azure TDX attestor whose self-quote `GET /attest`
+    /// serves (pinned collateral + the §5c `ATTESTATION_DIR` capture). `None`
+    /// (no bundle configured) ⇒ /attest answers 503 — never a fabricated quote.
+    attestor: Option<AzureTdxAttestor>,
+    /// SEC-020 Task 4: this gateway's per-boot handshake nonce — the SAME value
+    /// is served in the /attest response (so the prover derives the shared
+    /// transcript) and used in the outbound settle-path-init handshake.
+    hs_nonce: [u8; 32],
+    /// SEC-020 Task 4: this host's per-boot token epoch, served in /attest
+    /// (informational for the peer; the PROVER's epoch keys the /prove token).
+    hs_epoch: u64,
+    /// SEC-020 Task 4: the session token minted by the settle-path-init mutual-
+    /// attestation handshake with the prover. `None` ⇒ the handshake refused or
+    /// failed (fail-closed) and no proof request may be authorized.
+    #[allow(dead_code)] // Task 6 reads it: HttpProverClient's /prove Authorization header
+    prover_session_token: Option<String>,
 }
 
 impl App {
@@ -4535,6 +4699,9 @@ fn measurement_matches_pin(prod: bool, attested: Option<[u8; 32]>, pin: Option<[
 fn build_router(app: Shared, prod: bool) -> Router {
     let mut router = Router::new()
         .route("/api/state", get(get_state))
+        // SEC-020 Task 4: this host's quote for the peer's handshake half —
+        // read-only, unauthenticated by design (a quote is public evidence).
+        .route("/attest", get(get_attest))
         .route("/ws", get(ws_handler));
 
     if !prod {
@@ -4598,6 +4765,14 @@ async fn main() {
     // posture, so compute `prod` BEFORE building the client — a prod boot with an
     // unset PROVER_SEAL_ROOT (or a DEV_INSECURE escape) must refuse to start.
     let prod = production_mode(l1.is_some());
+    // SEC-020 Task 4: the DEV_INSECURE escape is refused outright in production
+    // (Task-1 posture). `resolve_seal_root` only refuses it when the seal root
+    // is ALSO unset; the handshake escape must be prod-forbidden unconditionally.
+    let dev_insecure = std::env::var("DEV_INSECURE").as_deref() == Ok("1");
+    if prod && dev_insecure {
+        eprintln!("[attest] REFUSING to start: DEV_INSECURE is forbidden in production");
+        std::process::exit(1);
+    }
     let prover = match prover_from_env(prod) {
         Ok(p) => p,
         Err(e) => {
@@ -4608,6 +4783,63 @@ async fn main() {
     if prover.is_some() {
         println!("[prover] window-settle path ON (PROVER_URL)");
     }
+    // ── SEC-020 Task 4: mutual-attestation handshake at settle-path init ──
+    // Fail-closed structure: ANY `Err` from ANY attestation step aborts the
+    // handshake with the token unset — a token is never minted from a partial
+    // or failed handshake. Task 4 only mints + stores the token; the /prove
+    // gate that consumes it is a later task.
+    let hs_nonce = csprng_bytes32();
+    // Hour-granularity epoch for OUR /attest response (informational — the
+    // prover's advertised epoch is what keys the /prove token; see
+    // `prover_handshake`). Rotation/expiry lands with the /prove gate.
+    let hs_epoch = now_ms() / 1000 / 3600;
+    let prover_session_token = match std::env::var("PROVER_URL").ok().as_deref() {
+        // Only a real HTTP prover has an /attest to shake hands with ("mock" is
+        // in-process and the legacy path has no prover at all).
+        Some(url) if !url.is_empty() && url != "mock" => {
+            if dev_insecure {
+                // Non-prod only (prod exits above): skip BOTH verifications and
+                // use the FIXED dev token — never derived from real quotes.
+                eprintln!(
+                    "WARN gateway: INSECURE: attestation handshake skipped — never production"
+                );
+                Some(DEV_INSECURE_SESSION_TOKEN.to_string())
+            } else {
+                match prover_handshake(url, &hs_nonce) {
+                    Ok(t) => {
+                        println!("[attest] prover handshake OK — session token minted");
+                        Some(t)
+                    }
+                    Err(e) => {
+                        // Expected on today's hardware (GB10 CC off ⇒ the NVIDIA
+                        // verify is CcNotEnabled): no token, proving stays closed.
+                        eprintln!(
+                            "[attest] prover handshake REFUSED ({e}) — no session token; \
+                             proving stays closed once /prove is gated (SEC-020 fail-closed)"
+                        );
+                        None
+                    }
+                }
+            }
+        }
+        _ => None,
+    };
+    // The attestor whose self-quote `GET /attest` serves: pinned collateral +
+    // the same §5c ATTESTATION_DIR capture `attest_from_env` verifies. Absent
+    // or unparsable ⇒ None ⇒ /attest answers 503 (fail-closed, loudly).
+    let attestor = std::env::var("ATTESTATION_DIR").ok().and_then(|dir| {
+        let p = std::path::Path::new(&dir).join("collateral.json");
+        match std::fs::read(&p)
+            .map_err(|e| e.to_string())
+            .and_then(|b| AzureTdxAttestor::from_collateral_json(&b).map_err(|e| format!("{e:?}")))
+        {
+            Ok(a) => Some(a),
+            Err(e) => {
+                eprintln!("[attest] /attest quote source unavailable ({e}) — will answer 503");
+                None
+            }
+        }
+    });
     if prod {
         println!(
             "[mode] production posture: self-service deposit + legacy /api mutation routes disabled"
@@ -4894,6 +5126,10 @@ async fn main() {
         l1: l1.clone(),
         prover: prover.clone(),
         candles: Mutex::new(candles::CandleStore::new()),
+        attestor,
+        hs_nonce,
+        hs_epoch,
+        prover_session_token,
     });
 
     // One-shot REAL history backfill for feed-backed markets (chart past bars):
@@ -5641,6 +5877,10 @@ mod tests {
             l1: None,
             prover: None,
             candles: Mutex::new(candles::CandleStore::new()),
+            attestor: None,
+            hs_nonce: [0u8; 32],
+            hs_epoch: 0,
+            prover_session_token: None,
         })
     }
 
