@@ -11,6 +11,7 @@ repository.workspace = true
 workspace = true
 
 [dependencies]
+hex = "0.4"
 perp-core = { path = "../perp-core", features = ["serde"] }
 postcard = { version = "1", features = ["alloc"] }
 serde = { version = "1", features = ["derive"] }

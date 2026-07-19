@@ -273,18 +273,27 @@ pub struct HttpProverClient {
 
 impl HttpProverClient {
     /// Build from PROVER_URL, matching the prover-service's seal params: PROVER_SEAL_ROOT
-    /// (64-hex, default 0x5E..) and the 0xAB.. stand-in measurement; PROVER_TIMEOUT_SECS
-    /// (default 900 — a real Groth16 proof under qemu takes minutes).
-    pub fn from_env(url: &str) -> Self {
-        let seal_root = std::env::var("PROVER_SEAL_ROOT")
-            .ok()
-            .and_then(|s| crate::parse_hex32(&s))
-            .unwrap_or([0x5Eu8; 32]);
+    /// (64-hex) resolved FAIL-CLOSED by `prover::resolve_seal_root` (SEC-020: no public
+    /// default; unset refuses to boot the settle path, `DEV_INSECURE=1` only outside
+    /// production) and the 0xAB.. stand-in measurement; PROVER_TIMEOUT_SECS (default 900
+    /// — a real Groth16 proof under qemu takes minutes).
+    pub fn from_env(url: &str, prod: bool) -> Result<Self, String> {
+        let seal_root = prover::resolve_seal_root(prod).map_err(|e| format!("seal root: {e}"))?;
+        if std::env::var("PROVER_SEAL_ROOT").is_err() {
+            // resolve_seal_root succeeds without PROVER_SEAL_ROOT only on the
+            // DEV_INSECURE non-prod path — make that loud.
+            eprintln!("WARN gateway: DEV_INSECURE seal root in use — NEVER production");
+        }
         let timeout_secs = std::env::var("PROVER_TIMEOUT_SECS")
             .ok()
             .and_then(|s| s.parse().ok())
             .unwrap_or(900);
-        Self { url: url.to_string(), seal_root, measurement: [0xABu8; 32], timeout_secs }
+        Ok(Self {
+            url: url.to_string(),
+            seal_root,
+            measurement: [0xABu8; 32],
+            timeout_secs,
+        })
     }
 }
 

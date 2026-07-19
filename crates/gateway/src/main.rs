@@ -4440,18 +4440,26 @@ fn production_mode(l1_enabled: bool) -> bool {
 /// Select the settle path's prover client from `PROVER_URL`.
 /// unset/empty → legacy path (None); "mock" → in-process MockProverClient;
 /// any URL → HttpProverClient (seal → POST /prove → real Groth16 proof).
+/// The HTTP client's seal root is resolved FAIL-CLOSED (SEC-020): an unset
+/// PROVER_SEAL_ROOT (without a non-prod DEV_INSECURE=1) is an `Err` that
+/// refuses to boot the window-settle path, never a silent public default.
 fn prover_from_str(
     v: Option<&str>,
+    prod: bool,
 ) -> Result<Option<std::sync::Arc<dyn prover_client::ProverClient>>, String> {
     match v {
         None | Some("") => Ok(None),
         Some("mock") => Ok(Some(std::sync::Arc::new(prover_client::MockProverClient))),
-        Some(url) => Ok(Some(std::sync::Arc::new(prover_client::HttpProverClient::from_env(url)))),
+        Some(url) => Ok(Some(std::sync::Arc::new(
+            prover_client::HttpProverClient::from_env(url, prod)?,
+        ))),
     }
 }
 
-fn prover_from_env() -> Result<Option<std::sync::Arc<dyn prover_client::ProverClient>>, String> {
-    prover_from_str(std::env::var("PROVER_URL").ok().as_deref())
+fn prover_from_env(
+    prod: bool,
+) -> Result<Option<std::sync::Arc<dyn prover_client::ProverClient>>, String> {
+    prover_from_str(std::env::var("PROVER_URL").ok().as_deref(), prod)
 }
 
 /// Whether the gateway may boot given the attestation state. In production the enclave
@@ -4586,7 +4594,11 @@ async fn main() {
     let (tx, _rx) = broadcast::channel::<String>(256);
     let (events_tx, _erx) = broadcast::channel::<String>(1024);
     let l1 = L1::from_env();
-    let prover = match prover_from_env() {
+    // SEC-020: the prover client's seal root is resolved against the production
+    // posture, so compute `prod` BEFORE building the client — a prod boot with an
+    // unset PROVER_SEAL_ROOT (or a DEV_INSECURE escape) must refuse to start.
+    let prod = production_mode(l1.is_some());
+    let prover = match prover_from_env(prod) {
         Ok(p) => p,
         Err(e) => {
             eprintln!("[prover] {e}");
@@ -4596,7 +4608,6 @@ async fn main() {
     if prover.is_some() {
         println!("[prover] window-settle path ON (PROVER_URL)");
     }
-    let prod = production_mode(l1.is_some());
     if prod {
         println!(
             "[mode] production posture: self-service deposit + legacy /api mutation routes disabled"
@@ -6164,10 +6175,30 @@ mod tests {
 
     #[test]
     fn prover_from_str_selects_path() {
-        assert!(prover_from_str(None).unwrap().is_none());
-        assert!(prover_from_str(Some("")).unwrap().is_none());
-        assert!(prover_from_str(Some("mock")).unwrap().is_some());
-        assert!(prover_from_str(Some("http://prover.local:8091")).unwrap().is_some());
+        assert!(prover_from_str(None, false).unwrap().is_none());
+        assert!(prover_from_str(Some(""), false).unwrap().is_none());
+        assert!(prover_from_str(Some("mock"), false).unwrap().is_some());
+        // SEC-020 fail-closed: an HTTP prover needs an explicit seal root — with
+        // PROVER_SEAL_ROOT unset (and no DEV_INSECURE) it must refuse, never
+        // default to the old repo-public [0x5E; 32] constant. No other test
+        // touches these env vars, so this test owns them without racing.
+        std::env::remove_var("PROVER_SEAL_ROOT");
+        std::env::remove_var("DEV_INSECURE");
+        assert!(
+            prover_from_str(Some("http://prover.local:8091"), false).is_err(),
+            "unset seal root must refuse the HTTP prover path (fail-closed)"
+        );
+        std::env::set_var("PROVER_SEAL_ROOT", "11".repeat(32));
+        assert!(prover_from_str(Some("http://prover.local:8091"), false)
+            .unwrap()
+            .is_some());
+        assert!(
+            prover_from_str(Some("http://prover.local:8091"), true)
+                .unwrap()
+                .is_some(),
+            "an explicit seal root serves prod too"
+        );
+        std::env::remove_var("PROVER_SEAL_ROOT");
     }
 
     #[test]

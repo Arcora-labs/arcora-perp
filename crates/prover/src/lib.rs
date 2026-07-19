@@ -33,6 +33,9 @@ use perp_core::hash::{Digest, Domain, Hasher, Keccak256};
 use perp_core::order::BatchManifest;
 use perp_core::{DefaultState, EngineError};
 
+mod seal_root;
+pub use seal_root::{resolve_seal_root, SealRootError};
+
 /// The public inputs a batch proof commits to and the L1 verifier checks.
 ///
 /// All six roots are now DERIVED by `run_transition` (via

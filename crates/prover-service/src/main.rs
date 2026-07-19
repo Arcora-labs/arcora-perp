@@ -11,20 +11,11 @@ use serde::{Deserialize, Serialize};
 use sp1_prover::Sp1GnarkProver;
 use std::sync::Arc;
 
-/// Stand-in measurement + seal root (env-overridable). P3 supplies the real attested
-/// measurement + TDX/Nitro key-release; here both sides share a software root.
+/// Stand-in measurement (env-overridable). P3 supplies the real attested
+/// measurement + TDX/Nitro key-release; here both sides share a software root
+/// resolved fail-closed by `prover::resolve_seal_root` (SEC-020).
 fn measurement() -> Digest {
     [0xABu8; 32]
-}
-fn seal_root() -> [u8; 32] {
-    let hex = std::env::var("PROVER_SEAL_ROOT").unwrap_or_default();
-    let mut root = [0x5Eu8; 32];
-    if let Ok(bytes) = hex::decode(hex.trim_start_matches("0x")) {
-        if bytes.len() == 32 {
-            root.copy_from_slice(&bytes);
-        }
-    }
-    root
 }
 
 struct App {
@@ -98,8 +89,19 @@ async fn main() {
     let m = measurement();
     let backend = Sp1GnarkProver::new(m).await;
     let program_vkey = backend.vkey();
+    let prod = std::env::var("PROD").as_deref() != Ok("0"); // released binary defaults prod
+    let root = match prover::resolve_seal_root(prod) {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("prover-service: {e}");
+            std::process::exit(1);
+        }
+    };
+    if !prod || std::env::var("DEV_INSECURE").as_deref() == Ok("1") {
+        eprintln!("WARN prover-service: DEV_INSECURE seal root in use — NEVER production");
+    }
     let app = Arc::new(App {
-        prover: AttestedProver::new(backend, SoftwareSealProvider::new(seal_root(), m)),
+        prover: AttestedProver::new(backend, SoftwareSealProvider::new(root, m)),
         vkey: program_vkey,
         measurement: m,
     });
