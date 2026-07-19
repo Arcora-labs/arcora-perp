@@ -35,11 +35,10 @@ struct App {
     prover: AttestedProver<Sp1GnarkProver>,
     vkey: String,
     measurement: Digest,
-    /// SEC-020 Task 4: the session token minted by the boot mutual-attestation
+    /// SEC-020 Task 4/5: the session token minted by the boot mutual-attestation
     /// handshake. `None` ⇒ the handshake refused or failed (fail-closed) — the
-    /// /prove gate must then reject every caller. Task 4 mints + stores only;
-    /// the gate that reads it on /prove is a later task.
-    #[allow(dead_code)] // the /prove gate (next task) is the reader
+    /// `/prove` gate then rejects every caller (see `session_authorized`). Task 5
+    /// makes `prove` read this to authorize `Authorization: Bearer` requests.
     session_token: Option<String>,
     /// This host's per-boot handshake nonce: served in the /attest response
     /// (so the gateway derives the shared transcript) and used in our own boot
@@ -77,10 +76,52 @@ fn hx(b: &[u8]) -> String {
     format!("0x{}", hex::encode(b))
 }
 
+/// SEC-020 Task 5: does the request carry the live attestation session token?
+///
+/// Fail-closed on an absent/empty stored token. When the boot mutual-attestation
+/// handshake refused (Phase-1 prod: NVIDIA CC off), `App.session_token` is `None`,
+/// so there is NO bearer that can authorize `/prove` — reject BEFORE any
+/// comparison. An empty stored token is treated identically, so a caller sending
+/// `Bearer ` (empty) can never match. Only a present, non-empty stored token is
+/// compared against the presented bearer.
+fn session_authorized(stored: Option<&str>, headers: &axum::http::HeaderMap) -> bool {
+    // No minted token (handshake refused) or an empty one ⇒ closed: nothing can
+    // authorize /prove. This guard MUST run before the compare so an absent/empty
+    // stored token never matches any caller-supplied bearer.
+    let Some(stored) = stored.filter(|t| !t.is_empty()) else {
+        return false;
+    };
+    let Some(bearer) = headers
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|h| h.to_str().ok())
+        .and_then(|s| s.strip_prefix("Bearer "))
+    else {
+        return false;
+    };
+    // TODO(SEC-020 C3): constant-time compare once the session token is a real
+    // secret (today it is recomputable from the public /attest transcript, so
+    // timing secrecy is moot until the DH-bound token lands in Phase 2). The
+    // `subtle` crate is not a dependency of this standalone workspace, so we keep
+    // the plain `==` until the token is a secret worth constant-time handling.
+    bearer == stored
+}
+
 async fn prove(
     State(app): State<Arc<App>>,
+    headers: axum::http::HeaderMap,
     Json(req): Json<ProveReq>,
 ) -> Result<Json<ProveResp>, (StatusCode, String)> {
+    // SEC-020 Task 5: gate /prove behind the session token minted by the boot
+    // mutual-attestation handshake. A missing/invalid `Authorization: Bearer` ⇒
+    // 401. Fail-closed: when the handshake refused, `session_token` is `None` and
+    // EVERY request is rejected here (see `session_authorized`) — proving stays
+    // closed until Phase-2 CC key-release makes a real handshake succeed.
+    if !session_authorized(app.session_token.as_deref(), &headers) {
+        return Err((
+            StatusCode::UNAUTHORIZED,
+            "attestation session required".into(),
+        ));
+    }
     // Bad hex / bad postcard are caller errors: 400 so a client checking the status
     // sees the failure (axum's `IntoResponse for String` would 200 the error text).
     let raw = hex::decode(req.sealed.trim_start_matches("0x"))
@@ -371,4 +412,143 @@ async fn main() {
     println!("prover-service on {bind}");
     let listener = tokio::net::TcpListener::bind(&bind).await.unwrap();
     axum::serve(listener, router).await.unwrap();
+}
+
+#[cfg(test)]
+mod prove_gate {
+    //! SEC-020 Task 5: the `/prove` session-token gate.
+    //!
+    //! NOTE: `prover-service` is a standalone workspace whose `build.rs` runs the
+    //! SP1 program build, so it does not compile in the host CI/dev environment
+    //! (Task-1/Task-4 precedent). These tests were RUN in a scratch crate that
+    //! provides a same-API `Sp1GnarkProver` stub delegating to `CommitmentProver`
+    //! (the lightweight `Prover` impl from `crates/prover`), per the task brief.
+    //! On the GB10 prover machine they run against the real SP1 backend unchanged
+    //! (the gate rejects before any proving, so the backend is never exercised).
+    use super::*;
+    use axum::extract::State;
+    use axum::http::{header::AUTHORIZATION, HeaderMap, StatusCode};
+
+    fn headers_with(auth: Option<&str>) -> HeaderMap {
+        let mut h = HeaderMap::new();
+        if let Some(v) = auth {
+            h.insert(AUTHORIZATION, v.parse().unwrap());
+        }
+        h
+    }
+
+    // ── the security core: `session_authorized` fail-closed table ─────────────
+
+    #[test]
+    fn present_token_matches_only_its_exact_bearer() {
+        let h = headers_with(Some("Bearer s3cret"));
+        assert!(session_authorized(Some("s3cret"), &h));
+        assert!(!session_authorized(Some("other"), &h));
+    }
+
+    #[test]
+    fn no_bearer_is_rejected() {
+        assert!(!session_authorized(Some("s3cret"), &headers_with(None)));
+    }
+
+    #[test]
+    fn non_bearer_scheme_is_rejected() {
+        assert!(!session_authorized(
+            Some("s3cret"),
+            &headers_with(Some("Basic s3cret"))
+        ));
+    }
+
+    /// THE most important assertion (SEC-020 fail-closed): an absent stored token
+    /// can never be matched — a caller WITH some bearer is still rejected.
+    #[test]
+    fn absent_stored_token_never_matches_any_bearer() {
+        assert!(!session_authorized(
+            None,
+            &headers_with(Some("Bearer s3cret"))
+        ));
+        // an empty `Bearer ` must not sneak past an absent token either
+        assert!(!session_authorized(None, &headers_with(Some("Bearer "))));
+        assert!(!session_authorized(None, &headers_with(None)));
+    }
+
+    /// An EMPTY stored token must never match — not even an empty `Bearer `.
+    #[test]
+    fn empty_stored_token_never_matches() {
+        assert!(!session_authorized(
+            Some(""),
+            &headers_with(Some("Bearer "))
+        ));
+        assert!(!session_authorized(
+            Some(""),
+            &headers_with(Some("Bearer s3cret"))
+        ));
+        assert!(!session_authorized(Some(""), &headers_with(None)));
+    }
+
+    // ── handler-level: the /prove gate returns 401 / lets a valid bearer in ────
+
+    async fn app_with_token(tok: Option<String>) -> Arc<App> {
+        let m = measurement();
+        let backend = Sp1GnarkProver::new(m).await;
+        Arc::new(App {
+            prover: AttestedProver::new(backend, SoftwareSealProvider::new([0x5Eu8; 32], m)),
+            vkey: "vk-test".into(),
+            measurement: m,
+            session_token: tok,
+            hs_nonce: [0u8; 32],
+            hs_epoch: 0,
+            dev_insecure: false,
+            nv: NvidiaCcAttestor::detect(),
+        })
+    }
+
+    #[tokio::test]
+    async fn prove_without_bearer_is_401() {
+        let app = app_with_token(Some("tok".into())).await;
+        let res = prove(
+            State(app),
+            headers_with(None),
+            axum::Json(ProveReq {
+                sealed: "0x00".into(),
+            }),
+        )
+        .await;
+        assert!(matches!(res, Err((StatusCode::UNAUTHORIZED, _))));
+    }
+
+    /// Fail-closed: even WITH a bearer, an empty stored token (handshake refused)
+    /// must 401 — the empty token can never authorize a request.
+    #[tokio::test]
+    async fn prove_with_empty_stored_token_is_401_even_with_bearer() {
+        let app = app_with_token(Some(String::new())).await;
+        let res = prove(
+            State(app),
+            headers_with(Some("Bearer anything")),
+            axum::Json(ProveReq {
+                sealed: "0x00".into(),
+            }),
+        )
+        .await;
+        assert!(matches!(res, Err((StatusCode::UNAUTHORIZED, _))));
+    }
+
+    #[tokio::test]
+    async fn prove_with_valid_bearer_reaches_handler() {
+        let app = app_with_token(Some("tok".into())).await;
+        let res = prove(
+            State(app),
+            headers_with(Some("Bearer tok")),
+            axum::Json(ProveReq {
+                sealed: "0x00".into(),
+            }),
+        )
+        .await;
+        // Gate passed → body decoding runs → the dummy `0x00` fails to postcard-
+        // decode into a SealedWitness → 400, NOT 401. The gate let it through.
+        match res {
+            Err((code, _)) => assert_eq!(code, StatusCode::BAD_REQUEST),
+            Ok(_) => panic!("a dummy body must not produce a proof"),
+        }
+    }
 }

@@ -41,7 +41,18 @@ pub enum ProverClientError {
     Http(String),
     /// Malformed prover-service response (bad JSON, missing field, or bad hex).
     Decode(String),
+    /// SEC-020 Task 5: the prover's `/prove` gate rejected our bearer (HTTP 401) —
+    /// the attestation session token is stale/absent. `HttpProverClient::prove`
+    /// re-handshakes ONCE and retries; a second 401 (or no re-handshake wired)
+    /// surfaces here and proving stays closed (fail-closed).
+    Unauthorized,
 }
+
+/// SEC-020 Task 5: re-runs the mutual-attestation handshake with the prover and
+/// returns a fresh session token (or an error). Boxed so the attestation
+/// machinery stays in `main.rs` while `HttpProverClient` can refresh its token on
+/// a 401. `Send + Sync` so the client stays `Send + Sync` behind an `Arc`.
+pub type ReHandshake = Box<dyn Fn() -> Result<String, String> + Send + Sync>;
 
 /// Turns a sealed window into its six roots + a proof.
 pub trait ProverClient: Send + Sync {
@@ -207,6 +218,15 @@ pub fn parse_prove_resp(json: &str) -> Result<ProveOutcome, ProverClientError> {
     })
 }
 
+/// SEC-020 Task 5: the marker the `-w` HTTP status is appended under, so `http_post`
+/// can split the body from the status code regardless of the body's contents (the
+/// prover's `/prove` JSON is single-line, so a leading newline + this marker never
+/// collides). We deliberately DROP curl's `--fail`: `--fail` collapses every 4xx/5xx
+/// into a bare non-zero exit, but the 401 from the `/prove` gate must be
+/// distinguishable from a 5xx (401 ⇒ re-handshake + retry), so we read the status
+/// ourselves instead.
+const STATUS_SENTINEL: &str = "__DPHTTP_STATUS__";
+
 /// Curl argv for a `/prove` POST. Factored out so the transport-hardening flags are
 /// unit-testable. Beyond the wall-clock `--max-time`:
 /// - `--connect-timeout 20`: a dead prover / down reverse-tunnel is detected on CONNECT
@@ -217,28 +237,65 @@ pub fn parse_prove_resp(json: &str) -> Result<ProveOutcome, ProverClientError> {
 ///   proof (request sent, awaiting the response), so without TCP keepalives a NAT /
 ///   tunnel / firewall idle-timeout silently RSTs it mid-proof ("Recv failure: Connection
 ///   reset by peer"), wasting the proof. Keepalives every 30s hold it open.
-fn prove_curl_args(endpoint: &str, timeout_secs: u64) -> Vec<String> {
-    vec![
-        "-s".into(), "-S".into(), "--fail".into(),
+///
+/// SEC-020 Task 5: when `bearer` is `Some`, attach `Authorization: Bearer <token>` so
+/// the prover's `/prove` gate authorizes the request. When `None` (the boot handshake
+/// refused — Phase-1 prod), NO auth header is sent: the prover 401s (fail-closed). We
+/// never fabricate an empty bearer that could accidentally pass a mis-implemented gate.
+fn prove_curl_args(endpoint: &str, timeout_secs: u64, bearer: Option<&str>) -> Vec<String> {
+    let mut args = vec![
+        "-s".into(), "-S".into(),
         "--connect-timeout".into(), "20".into(),
         "--keepalive-time".into(), "30".into(),
         "--max-time".into(), timeout_secs.to_string(),
         "-X".into(), "POST".into(),
         "-H".into(), "Content-Type: application/json".into(),
-        "--data-binary".into(), "@-".into(), endpoint.into(),
-    ]
+    ];
+    if let Some(token) = bearer {
+        args.push("-H".into());
+        args.push(format!("Authorization: Bearer {token}"));
+    }
+    // Append the HTTP status after the body under STATUS_SENTINEL (see `split_status`).
+    args.push("-w".into());
+    args.push(format!("\n{STATUS_SENTINEL}%{{http_code}}"));
+    args.push("--data-binary".into());
+    args.push("@-".into());
+    args.push(endpoint.into());
+    args
+}
+
+/// SEC-020 Task 5: split the curl stdout (`<body>\n__DPHTTP_STATUS__<code>`, from the
+/// `-w` sentinel) into the response body and the numeric HTTP status. `rfind` on the
+/// marker so any body content is safe. Returns a `Decode`-style error if the marker or
+/// a numeric status is missing (a curl/flag regression, never a normal prover response).
+fn split_status(raw: &str) -> Result<(String, u16), ProverClientError> {
+    let marker = format!("\n{STATUS_SENTINEL}");
+    let idx = raw
+        .rfind(&marker)
+        .ok_or_else(|| ProverClientError::Http("curl -w status marker missing".into()))?;
+    let body = raw[..idx].to_string();
+    let code = raw[idx + marker.len()..].trim();
+    let status = code
+        .parse::<u16>()
+        .map_err(|_| ProverClientError::Http(format!("non-numeric http_code: {code:?}")))?;
+    Ok((body, status))
 }
 
 /// POST `body` as application/json to `<url>/prove` via curl (mirrors L1::cast: a
 /// subprocess with a wall-clock cap), piping the body on stdin so a large sealed witness
 /// never hits an argv limit. The stdin write runs on its own thread to avoid a pipe
 /// deadlock when the body exceeds the OS pipe buffer.
-fn http_post(url: &str, body: &str, timeout_secs: u64) -> Result<String, ProverClientError> {
+fn http_post(
+    url: &str,
+    body: &str,
+    timeout_secs: u64,
+    bearer: Option<&str>,
+) -> Result<String, ProverClientError> {
     use std::io::Write;
     use std::process::{Command, Stdio};
     let endpoint = format!("{}/prove", url.trim_end_matches('/'));
     let mut child = Command::new("curl")
-        .args(prove_curl_args(&endpoint, timeout_secs))
+        .args(prove_curl_args(&endpoint, timeout_secs, bearer))
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -253,6 +310,8 @@ fn http_post(url: &str, body: &str, timeout_secs: u64) -> Result<String, ProverC
         .wait_with_output()
         .map_err(|e| ProverClientError::Http(format!("curl wait: {e}")))?;
     let _ = writer.join();
+    // Without `--fail`, a non-zero curl exit now means a TRANSPORT failure (connect
+    // timeout, DNS, tunnel down) — the HTTP status itself rides the `-w` sentinel.
     if !out.status.success() {
         return Err(ProverClientError::Http(format!(
             "curl exit {}: {}",
@@ -260,7 +319,16 @@ fn http_post(url: &str, body: &str, timeout_secs: u64) -> Result<String, ProverC
             String::from_utf8_lossy(&out.stderr)
         )));
     }
-    Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+    let (resp_body, status) = split_status(&String::from_utf8_lossy(&out.stdout))?;
+    match status {
+        200..=299 => Ok(resp_body),
+        // SEC-020 Task 5: the /prove gate rejected the bearer — surface as a typed
+        // 401 so `prove` can re-handshake once and retry (fail-closed on a second 401).
+        401 => Err(ProverClientError::Unauthorized),
+        s => Err(ProverClientError::Http(format!(
+            "prover /prove HTTP {s}: {resp_body}"
+        ))),
+    }
 }
 
 /// The real transport: seal the window and POST it to the attested prover-service.
@@ -269,6 +337,17 @@ pub struct HttpProverClient {
     seal_root: [u8; 32],
     measurement: Digest,
     timeout_secs: u64,
+    /// SEC-020 Task 5: the attestation session token from the boot mutual-attestation
+    /// handshake, sent as `Authorization: Bearer <token>` on every `/prove`. `None` ⇒
+    /// the handshake refused (Phase-1 prod) ⇒ no bearer is sent and the prover's gate
+    /// 401s (fail-closed). `Mutex` for interior mutability so a 401 re-handshake can
+    /// refresh the token in place (the trait's `prove` is `&self`). The lock is only
+    /// ever held to read/replace the token, never across the long-blocking POST.
+    session_token: std::sync::Mutex<Option<String>>,
+    /// SEC-020 Task 5: re-runs the mutual-attestation handshake on a 401 (a rotated /
+    /// rebooted prover) and yields a fresh token. `None` ⇒ no re-handshake wired
+    /// (mock/dev construction) — a 401 is then terminal (still fail-closed).
+    rehandshake: Option<ReHandshake>,
 }
 
 impl HttpProverClient {
@@ -277,6 +356,9 @@ impl HttpProverClient {
     /// default; unset refuses to boot the settle path, `DEV_INSECURE=1` only outside
     /// production) and the 0xAB.. stand-in measurement; PROVER_TIMEOUT_SECS (default 900
     /// — a real Groth16 proof under qemu takes minutes).
+    ///
+    /// The client is built token-less; `with_session_token` / `with_rehandshake` inject
+    /// the SEC-020 handshake state (main.rs wires them after the boot handshake).
     pub fn from_env(url: &str, prod: bool) -> Result<Self, String> {
         let seal_root = prover::resolve_seal_root(prod).map_err(|e| format!("seal root: {e}"))?;
         if std::env::var("PROVER_SEAL_ROOT").is_err() {
@@ -293,7 +375,49 @@ impl HttpProverClient {
             seal_root,
             measurement: [0xABu8; 32],
             timeout_secs,
+            session_token: std::sync::Mutex::new(None),
+            rehandshake: None,
         })
+    }
+
+    /// SEC-020 Task 5: set the boot-minted session token (`None` ⇒ handshake refused ⇒
+    /// fail-closed: no bearer is sent and every `/prove` 401s).
+    pub fn with_session_token(mut self, token: Option<String>) -> Self {
+        self.session_token = std::sync::Mutex::new(token);
+        self
+    }
+
+    /// SEC-020 Task 5: wire the re-handshake used to refresh the token on a 401.
+    pub fn with_rehandshake(mut self, rehandshake: ReHandshake) -> Self {
+        self.rehandshake = Some(rehandshake);
+        self
+    }
+}
+
+/// SEC-020 Task 5: run `post` with the current bearer; on a 401 (a stale session —
+/// e.g. the prover rebooted with a new epoch) call `rehandshake` ONCE to mint a fresh
+/// token, persist it via `store`, and retry the POST. A second 401, a missing
+/// re-handshake, or a re-handshake error is terminal — proving stays closed
+/// (fail-closed). Factored out (no I/O of its own) so the retry control flow is
+/// unit-testable without a live prover.
+fn prove_with_reauth(
+    token: Option<String>,
+    rehandshake: Option<&ReHandshake>,
+    mut post: impl FnMut(Option<&str>) -> Result<ProveOutcome, ProverClientError>,
+    store: impl FnOnce(String),
+) -> Result<ProveOutcome, ProverClientError> {
+    match post(token.as_deref()) {
+        Err(ProverClientError::Unauthorized) => {
+            let Some(rehandshake) = rehandshake else {
+                return Err(ProverClientError::Unauthorized);
+            };
+            let fresh = rehandshake().map_err(|e| {
+                ProverClientError::Http(format!("re-handshake after 401 failed: {e}"))
+            })?;
+            store(fresh.clone());
+            post(Some(&fresh))
+        }
+        other => other,
     }
 }
 
@@ -301,8 +425,18 @@ impl ProverClient for HttpProverClient {
     fn prove(&self, w: &WindowWitness) -> Result<ProveOutcome, ProverClientError> {
         let sealed_hex = seal_witness(w, &self.seal_root, &self.measurement)?;
         let body = serde_json::json!({ "sealed": sealed_hex }).to_string();
-        let resp = http_post(&self.url, &body, self.timeout_secs)?;
-        parse_prove_resp(&resp)
+        // Snapshot the token (lock released immediately — never held across the
+        // multi-minute POST). `None` ⇒ no bearer sent ⇒ the prover 401s (fail-closed).
+        let token = self.session_token.lock().unwrap().clone();
+        prove_with_reauth(
+            token,
+            self.rehandshake.as_ref(),
+            |bearer| {
+                let resp = http_post(&self.url, &body, self.timeout_secs, bearer)?;
+                parse_prove_resp(&resp)
+            },
+            |fresh| *self.session_token.lock().unwrap() = Some(fresh),
+        )
     }
 }
 
@@ -345,11 +479,11 @@ mod seal_nonce_tests {
 
 #[cfg(test)]
 mod prove_curl_tests {
-    use super::prove_curl_args;
+    use super::{prove_curl_args, split_status, ProverClientError};
 
     #[test]
     fn args_carry_the_transport_hardening_flags_in_pairs() {
-        let a = prove_curl_args("http://127.0.0.1:8091/prove", 1800);
+        let a = prove_curl_args("http://127.0.0.1:8091/prove", 1800, None);
         // helper: the value immediately following a flag token
         let val = |flag: &str| {
             a.iter().position(|s| s == flag).map(|i| a[i + 1].clone())
@@ -361,5 +495,157 @@ mod prove_curl_tests {
         assert_eq!(a.last().unwrap(), "http://127.0.0.1:8091/prove");
         assert!(a.iter().any(|s| s == "--data-binary"));
         assert!(a.iter().any(|s| s == "POST"));
+    }
+
+    // ── SEC-020 Task 5: the /prove Authorization bearer + status capture ───────
+
+    /// A flag/value pair is present adjacently in the argv.
+    fn has_pair(a: &[String], flag: &str, value: &str) -> bool {
+        a.windows(2).any(|w| w[0] == flag && w[1] == value)
+    }
+
+    #[test]
+    fn bearer_is_attached_when_present() {
+        let a = prove_curl_args("http://x/prove", 900, Some("s3cret-token"));
+        assert!(
+            has_pair(&a, "-H", "Authorization: Bearer s3cret-token"),
+            "a present session token must ride the /prove request as a bearer"
+        );
+        assert_eq!(a.last().unwrap(), "http://x/prove", "endpoint stays last");
+    }
+
+    #[test]
+    fn no_bearer_header_when_token_absent() {
+        // Fail-closed: with no token the gateway must NOT fabricate an Authorization
+        // header — the prover then 401s (never an empty bearer that could slip past).
+        let a = prove_curl_args("http://x/prove", 900, None);
+        assert!(
+            !a.iter().any(|s| s.starts_with("Authorization:")),
+            "no session token ⇒ no Authorization header"
+        );
+    }
+
+    #[test]
+    fn status_is_captured_via_write_out() {
+        // The `-w` template must emit the http_code so a 401 is distinguishable.
+        let a = prove_curl_args("http://x/prove", 900, None);
+        assert!(
+            a.iter().any(|s| s.contains("http_code")),
+            "curl -w must capture the HTTP status for gate 401 detection"
+        );
+        // and we must NOT use --fail (it would collapse 401 into a bare exit code).
+        assert!(!a.iter().any(|s| s == "--fail"));
+    }
+
+    #[test]
+    fn split_status_separates_body_and_code() {
+        let raw = format!("{{\"proof\":\"0x00\"}}\n{}200", super::STATUS_SENTINEL);
+        let (body, code) = split_status(&raw).unwrap();
+        assert_eq!(body, "{\"proof\":\"0x00\"}");
+        assert_eq!(code, 200);
+        // 401 rides through cleanly for the gate-retry path
+        let raw401 = format!("attestation session required\n{}401", super::STATUS_SENTINEL);
+        assert_eq!(split_status(&raw401).unwrap().1, 401);
+        // a missing marker is a curl/flag regression, surfaced as an error
+        assert!(matches!(
+            split_status("no marker here"),
+            Err(ProverClientError::Http(_))
+        ));
+    }
+}
+
+#[cfg(test)]
+mod reauth_tests {
+    use super::*;
+    use std::cell::RefCell;
+
+    fn dummy_outcome() -> ProveOutcome {
+        ProveOutcome {
+            prev_root: [0u8; 32],
+            manifest_hash: [0u8; 32],
+            new_root: [0u8; 32],
+            ordered_root: [0u8; 32],
+            withdrawals_root: [0u8; 32],
+            rejected_root: [0u8; 32],
+            commitment: [0u8; 32],
+            proof: vec![],
+        }
+    }
+
+    /// A 401 triggers ONE re-handshake, then the retry succeeds. The refreshed token
+    /// is persisted and used on the retry.
+    #[test]
+    fn re_handshakes_once_and_retries_on_401() {
+        let calls = RefCell::new(Vec::<Option<String>>::new());
+        let stored = RefCell::new(None::<String>);
+        let rehandshake: ReHandshake = Box::new(|| Ok("fresh-token".to_string()));
+        let out = prove_with_reauth(
+            Some("stale-token".to_string()),
+            Some(&rehandshake),
+            |bearer| {
+                calls.borrow_mut().push(bearer.map(str::to_string));
+                if calls.borrow().len() == 1 {
+                    Err(ProverClientError::Unauthorized) // first attempt: stale ⇒ 401
+                } else {
+                    Ok(dummy_outcome()) // retry with the fresh token: OK
+                }
+            },
+            |t| *stored.borrow_mut() = Some(t),
+        );
+        assert!(out.is_ok());
+        assert_eq!(
+            *calls.borrow(),
+            vec![Some("stale-token".to_string()), Some("fresh-token".to_string())],
+            "posts with the stale token, then retries with the refreshed one"
+        );
+        assert_eq!(stored.borrow().as_deref(), Some("fresh-token"));
+    }
+
+    /// A second 401 after the re-handshake is terminal — proving stays closed.
+    #[test]
+    fn second_401_is_terminal() {
+        let n = RefCell::new(0);
+        let rehandshake: ReHandshake = Box::new(|| Ok("fresh-token".to_string()));
+        let out = prove_with_reauth(
+            Some("stale".to_string()),
+            Some(&rehandshake),
+            |_| {
+                *n.borrow_mut() += 1;
+                Err(ProverClientError::Unauthorized)
+            },
+            |_| {},
+        );
+        assert!(matches!(out, Err(ProverClientError::Unauthorized)));
+        assert_eq!(*n.borrow(), 2, "one original attempt + one retry, then give up");
+    }
+
+    /// With no re-handshake wired, a 401 is terminal after a single attempt (no retry).
+    #[test]
+    fn no_rehandshake_means_401_is_terminal() {
+        let n = RefCell::new(0);
+        let out = prove_with_reauth(
+            None,
+            None,
+            |_| {
+                *n.borrow_mut() += 1;
+                Err(ProverClientError::Unauthorized)
+            },
+            |_| panic!("must not store a token without a re-handshake"),
+        );
+        assert!(matches!(out, Err(ProverClientError::Unauthorized)));
+        assert_eq!(*n.borrow(), 1, "no re-handshake ⇒ no retry");
+    }
+
+    /// A successful first attempt never triggers a re-handshake.
+    #[test]
+    fn success_does_not_rehandshake() {
+        let rehandshake: ReHandshake = Box::new(|| panic!("must not re-handshake on success"));
+        let out = prove_with_reauth(
+            Some("good".to_string()),
+            Some(&rehandshake),
+            |_| Ok(dummy_outcome()),
+            |_| panic!("must not store on success"),
+        );
+        assert!(out.is_ok());
     }
 }

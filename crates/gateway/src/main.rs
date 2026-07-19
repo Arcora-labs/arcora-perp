@@ -3518,10 +3518,13 @@ struct App {
     /// SEC-020 Task 4: this host's per-boot token epoch, served in /attest
     /// (informational for the peer; the PROVER's epoch keys the /prove token).
     hs_epoch: u64,
-    /// SEC-020 Task 4: the session token minted by the settle-path-init mutual-
+    /// SEC-020 Task 4/5: the session token minted by the settle-path-init mutual-
     /// attestation handshake with the prover. `None` ⇒ the handshake refused or
-    /// failed (fail-closed) and no proof request may be authorized.
-    #[allow(dead_code)] // Task 6 reads it: HttpProverClient's /prove Authorization header
+    /// failed (fail-closed) and no proof request may be authorized. Task 5 injects
+    /// the live copy into the `HttpProverClient` (which sends it as
+    /// `Authorization: Bearer` on `/prove`); this field is retained for boot
+    /// observability — hence still `#[allow(dead_code)]` (no in-App reader).
+    #[allow(dead_code)]
     prover_session_token: Option<String>,
 }
 
@@ -4620,10 +4623,39 @@ fn prover_from_str(
     }
 }
 
-fn prover_from_env(
+/// SEC-020 Task 5: like `prover_from_str` for the None/"mock" cases, but for a real
+/// HTTP prover it ALSO injects the boot-minted `session_token` (sent as
+/// `Authorization: Bearer` on every `/prove`) and a re-handshake closure used to
+/// refresh the token on a 401 (a rebooted / rotated prover). `session_token = None`
+/// ⇒ the client sends no bearer and the prover 401s (fail-closed).
+fn prover_from_env_attested(
     prod: bool,
+    session_token: Option<String>,
+    hs_nonce: [u8; 32],
+    dev_insecure: bool,
 ) -> Result<Option<std::sync::Arc<dyn prover_client::ProverClient>>, String> {
-    prover_from_str(std::env::var("PROVER_URL").ok().as_deref(), prod)
+    match std::env::var("PROVER_URL").ok().as_deref() {
+        Some(url) if !url.is_empty() && url != "mock" => {
+            let url_owned = url.to_string();
+            // The 401 re-handshake reuses THIS gateway's per-boot nonce (the value the
+            // prover fetched at its boot to derive the shared secret), so a refresh
+            // reproduces the prover's current token; a fresh nonce would derive a
+            // different secret and never match. `dev_insecure` short-circuits to the
+            // fixed dev token (never a real quote); prod exits before reaching here.
+            let rehandshake: prover_client::ReHandshake = Box::new(move || {
+                if dev_insecure {
+                    return Ok(DEV_INSECURE_SESSION_TOKEN.to_string());
+                }
+                prover_handshake(&url_owned, &hs_nonce)
+            });
+            let client = prover_client::HttpProverClient::from_env(url, prod)?
+                .with_session_token(session_token)
+                .with_rehandshake(rehandshake);
+            Ok(Some(std::sync::Arc::new(client)))
+        }
+        // None / "" ⇒ legacy path (None); "mock" ⇒ in-process MockProverClient.
+        other => prover_from_str(other, prod),
+    }
 }
 
 /// Whether the gateway may boot given the attestation state. In production the enclave
@@ -4773,25 +4805,17 @@ async fn main() {
         eprintln!("[attest] REFUSING to start: DEV_INSECURE is forbidden in production");
         std::process::exit(1);
     }
-    let prover = match prover_from_env(prod) {
-        Ok(p) => p,
-        Err(e) => {
-            eprintln!("[prover] {e}");
-            std::process::exit(1);
-        }
-    };
-    if prover.is_some() {
-        println!("[prover] window-settle path ON (PROVER_URL)");
-    }
-    // ── SEC-020 Task 4: mutual-attestation handshake at settle-path init ──
+    // ── SEC-020 Task 4/5: mutual-attestation handshake at settle-path init ──
     // Fail-closed structure: ANY `Err` from ANY attestation step aborts the
-    // handshake with the token unset — a token is never minted from a partial
-    // or failed handshake. Task 4 only mints + stores the token; the /prove
-    // gate that consumes it is a later task.
+    // handshake with the token unset — a token is never minted from a partial or
+    // failed handshake. The minted token is injected into the HttpProverClient
+    // (Task 5, below) so it rides every /prove as `Authorization: Bearer`; a `None`
+    // token ⇒ the client sends no bearer and the prover 401s (fail-closed). The
+    // handshake runs BEFORE the client is built because the client needs the token.
     let hs_nonce = csprng_bytes32();
     // Hour-granularity epoch for OUR /attest response (informational — the
     // prover's advertised epoch is what keys the /prove token; see
-    // `prover_handshake`). Rotation/expiry lands with the /prove gate.
+    // `prover_handshake`).
     let hs_epoch = now_ms() / 1000 / 3600;
     let prover_session_token = match std::env::var("PROVER_URL").ok().as_deref() {
         // Only a real HTTP prover has an /attest to shake hands with ("mock" is
@@ -4824,6 +4848,24 @@ async fn main() {
         }
         _ => None,
     };
+    // Build the settle path's prover client, injecting the SEC-020 session token +
+    // the 401 re-handshake (HTTP prover only). The seal root is resolved fail-closed
+    // inside `from_env`, so a prod boot with an unset PROVER_SEAL_ROOT still refuses.
+    let prover = match prover_from_env_attested(
+        prod,
+        prover_session_token.clone(),
+        hs_nonce,
+        dev_insecure,
+    ) {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("[prover] {e}");
+            std::process::exit(1);
+        }
+    };
+    if prover.is_some() {
+        println!("[prover] window-settle path ON (PROVER_URL)");
+    }
     // The attestor whose self-quote `GET /attest` serves: pinned collateral +
     // the same §5c ATTESTATION_DIR capture `attest_from_env` verifies. Absent
     // or unparsable ⇒ None ⇒ /attest answers 503 (fail-closed, loudly).
