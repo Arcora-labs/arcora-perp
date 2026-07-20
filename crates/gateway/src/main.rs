@@ -798,6 +798,16 @@ struct WState {
     mm_hedge: Vec<WHedge>,
     /// The last on-chain L1 settlement, if the L1 bridge is active (else null).
     l1: Option<WL1>,
+    /// FIN-001 settle-loop health for operators/monitors: "HEALTHY"|"DEGRADED"|"HELD".
+    settlement_health: String,
+    /// Consecutive settle failures behind `settlement_health` (0 when healthy).
+    settlement_consecutive_failures: u32,
+    /// Most recent settle error while unhealthy (omitted when none).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    settlement_last_error: Option<String>,
+    /// Wall-clock ms the settle loop entered HELD (omitted unless currently HELD).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    settlement_held_since_ms: Option<u64>,
     /// The verified TEE attestation the enclave is bound to (else null = stub).
     attestation: Option<WAttestation>,
     /// The LP pool (counterparty) — TVL, NAV/share, and the demo user's stake.
@@ -960,6 +970,14 @@ struct Account {
     last_sealed_nonce: u64,
 }
 
+/// serde `default` for `Gw::settle_health` on the restore (postcard) path. Settlement
+/// health is ephemeral runtime state — a restored `Gw` starts a fresh `from_env` breaker
+/// just as a cold `boot()` does. `SettleHealth` isn't (de)serializable, so the field is
+/// `#[serde(skip)]` and this supplies its value (also reused by `boot()` to stay DRY).
+fn default_settle_health() -> crate::settle_health::SettleHealth {
+    crate::settle_health::SettleHealth::from_env(std::time::Duration::from_secs(L1_SETTLE_SECS))
+}
+
 #[derive(Serialize, serde::Deserialize)]
 struct Gw {
     seq: Sequencer,
@@ -1025,6 +1043,15 @@ struct Gw {
     batch_orders: std::collections::BTreeMap<u64, (Vec<Digest>, Vec<Digest>)>,
     /// Last on-chain settlement the L1 bridge published (None until it settles once).
     l1_status: Option<L1Status>,
+    /// FIN-001 settle-loop health (bounded-retry → HELD circuit breaker). Runtime-only:
+    /// settlement failures are ephemeral, so a reboot/restore starts fresh (`from_env`),
+    /// exactly like `attestation` — hence `#[serde(skip)]` + a from_env default.
+    #[serde(skip, default = "default_settle_health")]
+    settle_health: crate::settle_health::SettleHealth,
+    /// Wall-clock ms when the settle loop last entered HELD (None unless currently HELD).
+    /// Runtime-only, resets on reboot in lockstep with `settle_health`.
+    #[serde(skip)]
+    settlement_held_since_ms: Option<u64>,
     /// The verified TEE attestation the enclave identity is bound to (None = stub).
     /// NOT persisted — every boot re-verifies the live quote (`attest_from_env`).
     #[serde(skip)]
@@ -1449,6 +1476,8 @@ impl Gw {
             pending_rejected: Vec::new(),
             batch_orders: std::collections::BTreeMap::new(),
             l1_status: None,
+            settle_health: default_settle_health(),
+            settlement_held_since_ms: None,
             attestation,
             lp_shares: std::collections::BTreeMap::new(),
             lp_total_shares: 0,
@@ -3418,6 +3447,10 @@ impl Gw {
                 bond_usdc: s.bond.clone(),
                 withdrawals_root: s.withdrawals_root.clone(),
             }),
+            settlement_health: self.settle_health.health().as_str().to_string(),
+            settlement_consecutive_failures: self.settle_health.consecutive_failures(),
+            settlement_last_error: self.settle_health.last_error().map(|s| s.to_string()),
+            settlement_held_since_ms: self.settlement_held_since_ms,
             attestation: self.attestation.as_ref().map(|a| WAttestation {
                 measurement: hex0x(&a.measurement),
                 tcb: a.tcb.clone(),
@@ -6017,6 +6050,34 @@ mod tests {
             ..Default::default()
         });
         assert_eq!(gw.v1_batch_json(s.batch_id)["settled"], false);
+    }
+
+    // ── FIN-001 settlement health on the status snapshot ─────────────────────
+
+    /// The status snapshot surfaces the settle loop's circuit-breaker health so
+    /// operators/monitors can see HEALTHY → DEGRADED → HELD, the failure streak,
+    /// the last error, and when it entered HELD.
+    #[test]
+    fn snapshot_exposes_settlement_health() {
+        let mut gw = Gw::boot();
+        // healthy by default
+        let s = gw.snapshot();
+        assert_eq!(s.settlement_health, "HEALTHY");
+        assert_eq!(s.settlement_consecutive_failures, 0);
+        assert_eq!(s.settlement_last_error, None);
+        assert_eq!(s.settlement_held_since_ms, None);
+        // drive to HELD (default threshold 3)
+        gw.settle_health.on_failure("e1".into());
+        gw.settle_health.on_failure("e2".into());
+        let (_, just_held) = gw.settle_health.on_failure("e3".into());
+        if just_held {
+            gw.settlement_held_since_ms = Some(1_700_000_000_000);
+        }
+        let s2 = gw.snapshot();
+        assert_eq!(s2.settlement_health, "HELD");
+        assert_eq!(s2.settlement_consecutive_failures, 3);
+        assert_eq!(s2.settlement_last_error.as_deref(), Some("e3"));
+        assert_eq!(s2.settlement_held_since_ms, Some(1_700_000_000_000));
     }
 
     // ── sealed state persistence ─────────────────────────────────────────────
