@@ -12,7 +12,7 @@
 
 - **Leaf/chain format is byte-identical Rust ↔ Solidity** (any drift silently breaks settlement): `deposit_leaf = keccak256(from(20 bytes) ‖ owner(32 bytes) ‖ amount(uint256 BE, 32 bytes) ‖ id(uint256 BE, 32 bytes))`; `fold(tip, leaf) = keccak256(tip(32) ‖ leaf(32))`; genesis tip `= bytes32(0)`. No domain tag on leaf or fold. `id` is the pre-increment `depositCount`.
 - **`deposits_root` is the 7th commitment word, appended LAST**, in BOTH `perp_core::commitment()` and Solidity `publicCommitment(...)` (`keccak256(abi.encodePacked(DOMAIN_STATE_ROOT, prev, manifestHash, new, ordered, withdrawals, rejected, deposits))`).
-- **Fail-closed ordering:** a `Deposit` op with `deposit_id != state.consumed_deposit_count` ⇒ `EngineError::DepositOutOfOrder`; a settle with `newDepositCount != vault.depositCount()` or `depositsRoot != vault.depositChainTip()` ⇒ revert.
+- **Fail-closed ordering:** a `Deposit` op with `deposit_id != state.consumed_deposit_count` ⇒ `EngineError::DepositOutOfOrder`; a settle whose `depositsRoot != vault.depositTipAt(newDepositCount)` ⇒ revert (prefix-pinned, see Task 6b — NOT pinned to the live head).
 - **Conservation identity is UNCHANGED** (`internal_value() == external_in - external_out`); we only constrain what may enter `external_in`. Do not edit `conservation_holds`/`internal_value`.
 - **Breaking protocol change is expected** (new commitment arity + new `state_root` words + new `deposit` signature) — testnet redeploy; do not add back-compat shims.
 - **Cross-parity constants:** Task 1 pins the canonical Rust known-answer hashes; later Solidity/commitment tasks MUST reproduce the exact same hex (the controller threads Task 1's pinned values into their dispatches).
@@ -476,6 +476,85 @@ Expected: PASS (whole contracts suite; update any other test constructing a 6-ar
 ```bash
 git add contracts/src/DarkPerpSettlement.sol contracts/test/DarkPerpSettlement.t.sol
 git commit -m "feat(contracts): SEC-019 7-word commitment + settleBatch deposit-root binding"
+```
+
+---
+
+### Task 6b: Prefix-settle — close the consume-all-to-head DoS
+
+**Rationale:** Task 6 pinned the settle to the vault's LIVE head (`newDepositCount == vault.depositCount()` + `depositsRoot == vault.depositChainTip()`). Empirically verified: a zero-value `vault.deposit(0, junk)` from any address advances `depositCount` for gas only and reverts an in-flight settle — so an adversary repeating it once per settle interval halts settlement, L1 finality, and withdrawal claims indefinitely at negligible cost. Fail-safe but a real liveness DoS **introduced by this mechanism**. Fix: pin the proven **prefix** instead. Spec §3.
+
+**Files:**
+- Modify: `contracts/src/CollateralVault.sol` (record `depositTipAt[n]`)
+- Modify: `contracts/src/DarkPerpSettlement.sol` (replace the two head requires with one prefix check; extend the vault interface)
+- Test: `contracts/test/CollateralVault.t.sol`, `contracts/test/DarkPerpSettlement.t.sol`
+
+**Interfaces:**
+- Produces: `mapping(uint64 => bytes32) public depositTipAt;` — `depositTipAt[n]` = chain tip after the vault's first `n` deposits; `depositTipAt[0] == bytes32(0)` (genesis) for free via the mapping default.
+- Consumes: the Task-5/5b chain (`depositChainTip`, `depositCount`, unchanged and still exposed for the sequencer to read the head).
+
+- [ ] **Step 1: Write the failing tests**
+
+```solidity
+function test_depositTipAt_records_every_prefix() public {
+    assertEq(vault.depositTipAt(0), bytes32(0));            // genesis, before any deposit
+    _depositAs(KAT_FROM_0, 1000, KAT_OWNER_0);
+    bytes32 t1 = vault.depositChainTip();
+    assertEq(vault.depositTipAt(1), t1);
+    _depositAs(KAT_FROM_1, 500, KAT_OWNER_1);
+    assertEq(vault.depositTipAt(2), vault.depositChainTip());
+    assertEq(vault.depositTipAt(2), KAT_TIP2);              // canonical vector still holds
+    assertEq(vault.depositTipAt(1), t1);                    // earlier prefix preserved, not overwritten
+}
+
+function test_settle_accepts_a_proven_prefix_while_head_moved() public {
+    // settle for prefix N while the vault head has already advanced past N — must SUCCEED
+    // (this is the exact scenario the old consume-all rule reverted on, and the DoS vector)
+}
+
+function test_settle_reverts_on_wrong_prefix_root() public {
+    // depositsRoot that does not equal depositTipAt(newDepositCount) ⇒ revert
+}
+
+function test_zero_value_deposit_cannot_stall_settlement() public {
+    // build a settle for prefix N; have a griefer call deposit(0, junk); the settle STILL succeeds
+}
+```
+
+- [ ] **Step 2: Run to verify they fail**
+
+Run: `cd contracts && forge test --match-contract "CollateralVault|DarkPerpSettlement"`
+Expected: FAIL — `depositTipAt` undefined; the prefix settle reverts under the current head-pinned rule.
+
+- [ ] **Step 3: Implement**
+
+In `CollateralVault.deposit(...)`, after computing the new tip and BEFORE/with the count bump, record the prefix:
+```solidity
+    depositChainTip = keccak256(abi.encodePacked(depositChainTip, leaf));
+    emit Deposit(msg.sender, ownerCommit, amount, depositCount, depositChainTip);
+    depositCount += 1;
+    depositTipAt[depositCount] = depositChainTip;   // tip after `depositCount` deposits
+```
+(`depositTipAt[0]` is never written — the mapping default `bytes32(0)` IS the genesis tip.)
+
+In `DarkPerpSettlement`, replace the two head requires (the shared `_requireDepositHead` helper Task 6 introduced) with the prefix check:
+```solidity
+    require(depositsRoot == vault.depositTipAt(newDepositCount), "deposits: root != L1 chain prefix");
+```
+Keep it in the shared helper (Task 6 hoisted it there for a real stack-limit reason — do not re-inline). Keep Task 6's **fail-closed unset-vault** behaviour: with no vault wired, treat the chain as genesis, i.e. the check passes only for `depositsRoot == bytes32(0)`. Extend the vault interface with `depositTipAt(uint64) returns (bytes32)`; `depositCount()`/`depositChainTip()` stay (the sequencer reads the head).
+
+**Do NOT** add a monotonicity/no-skip check — it is already implied: `consumed_deposit_tip`/`consumed_deposit_count` are inside `state_root`, `prevRoot == currentStateRoot` pins where the fold began, and `op_deposit` only increments contiguously. A settle cannot go backward, skip, or double-consume.
+
+- [ ] **Step 4: Run to verify they pass**
+
+Run: `cd contracts && forge build && forge test`
+Expected: PASS — whole suite, including the untouched KATs (`KAT-LEAF`, `KAT-TIP2`, `KAT-COMMIT7`) and the re-pinned `CrossLayer`.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add contracts/src/CollateralVault.sol contracts/src/DarkPerpSettlement.sol contracts/test/CollateralVault.t.sol contracts/test/DarkPerpSettlement.t.sol
+git commit -m "fix(contracts): SEC-019 settle a proven deposit prefix (depositTipAt) — closes the settle-stall DoS"
 ```
 
 ---
