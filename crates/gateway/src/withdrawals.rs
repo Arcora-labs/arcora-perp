@@ -18,6 +18,14 @@
 pub use perp_core::merkle::{
     inclusion_leaf, merkle_proof, merkle_root, rejection_leaf, withdrawal_leaf,
 };
+// SEC-019: the blinded owner binding `ownerCommit = keccak(owner ‖ deposit_blind)`, used
+// by the gateway credit path (misattribution guard) and the authorization endpoint.
+pub use perp_core::merkle::owner_commit;
+// The deposit hash-chain leaf/fold are exercised only from #[cfg(test)] (the credit-path
+// vault-fold parity test); the re-export exists as a shared test oracle so a byte-drift
+// between the gateway fold and the vault chain is caught locally — same posture as `verify`.
+#[allow(unused_imports)]
+pub use perp_core::merkle::{deposit_chain_fold, deposit_leaf};
 // `verify` is only exercised from #[cfg(test)] code (the original local fn carried
 // #[allow(dead_code)] for the same reason: it exists as a self-check + test oracle).
 #[allow(unused_imports)]

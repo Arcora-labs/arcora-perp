@@ -18,8 +18,14 @@
 
 use std::process::Command;
 
-/// keccak256("Deposit(address,uint256)") — the vault's deposit log topic0.
-const DEPOSIT_TOPIC0: &str = "0xe1fffcc4923d04b559f4d29a8bfc6cda04eb5b0d3c460751c2402c5c5cc9109c";
+/// keccak256("Deposit(address,bytes32,uint256,uint64,bytes32)") — the vault's deposit
+/// log topic0 for the SEC-019 event `Deposit(address indexed from, bytes32 indexed
+/// ownerCommit, uint256 amount, uint64 id, bytes32 newTip)`. Recomputed for the new
+/// signature (the old `Deposit(address,uint256)` topic `0xe1fffcc4…` now matches nothing):
+/// a STALE topic0 means the log matcher never fires and EVERY deposit silently fails to
+/// credit, so this is load-bearing. The `deposit_topic0_matches_event_signature` test
+/// recomputes it from the signature string and guards against drift.
+const DEPOSIT_TOPIC0: &str = "0xdf3f00354434921901d8a49f26c4b0e4a907d497e57f2e9478e9ba4ea43eb0f9";
 
 /// Per-RPC timeout handed to every `cast` invocation (bounds each JSON-RPC call).
 const CAST_RPC_TIMEOUT_SECS: u64 = 15;
@@ -356,44 +362,19 @@ impl L1 {
         Ok(out.trim() == "true")
     }
 
-    /// Verify a confirmed `vault.deposit` tx and return `(from20, amount)`: scan the
-    /// receipt for a `Deposit(from, amount)` log emitted by the configured vault. The
-    /// caller binds `from` to the account and dedups by tx hash before crediting.
-    pub fn verify_deposit_tx(&self, tx: &str) -> Result<([u8; 20], u128), String> {
+    /// Verify a confirmed `vault.deposit` tx and return `(from20, owner_commit, amount,
+    /// id)`: scan the receipt for the SEC-019 `Deposit(from, ownerCommit, amount, id,
+    /// newTip)` log emitted by the configured vault. The caller binds `from` to the
+    /// account, recomputes `keccak(owner ‖ deposit_blind)` against the on-chain
+    /// `owner_commit` (misattribution guard), and dedups by tx hash before crediting.
+    pub fn verify_deposit_tx(&self, tx: &str) -> Result<([u8; 20], [u8; 32], u128, u64), String> {
         let vault = self
             .vault
             .as_ref()
             .ok_or("L1_VAULT not set")?
             .to_lowercase();
         let json = self.cast(&["receipt", tx, "--rpc-url", &self.rpc, "--json"])?;
-        let v: serde_json::Value =
-            serde_json::from_str(&json).map_err(|e| format!("receipt json: {e}"))?;
-        let logs = v
-            .get("logs")
-            .and_then(|l| l.as_array())
-            .ok_or("no logs in receipt")?;
-        for log in logs {
-            let addr = log
-                .get("address")
-                .and_then(|a| a.as_str())
-                .unwrap_or("")
-                .to_lowercase();
-            let topics = log.get("topics").and_then(|t| t.as_array());
-            let (Some(topics), true) = (topics, addr == vault) else {
-                continue;
-            };
-            let t0 = topics.first().and_then(|t| t.as_str()).unwrap_or("");
-            if !t0.eq_ignore_ascii_case(DEPOSIT_TOPIC0) || topics.len() < 2 {
-                continue;
-            }
-            // from = indexed topic1 (last 20 bytes); amount = data (uint256)
-            let from_hex = topics[1].as_str().unwrap_or("");
-            let from = parse_addr20(from_hex).ok_or("bad from topic")?;
-            let data = log.get("data").and_then(|d| d.as_str()).unwrap_or("");
-            let amount = parse_u256_low128(data).ok_or("bad amount data")?;
-            return Ok((from, amount));
-        }
-        Err("no Deposit log from the vault in this tx".into())
+        parse_deposit_receipt(&json, &vault)
     }
 
     /// Settle: advance the on-chain root from `prev` to `new` with `manifest`, and publish the
@@ -819,6 +800,78 @@ fn parse_addr20(s: &str) -> Option<[u8; 20]> {
     Some(a)
 }
 
+/// Parse a 32-byte hex word (an event topic or a `bytes32` field) into `[u8; 32]`.
+/// Byte-safe (external RPC data): a non-ASCII byte returns a clean `None`. Accepts a
+/// leading `0x` and requires exactly 64 hex nibbles.
+fn parse_bytes32(s: &str) -> Option<[u8; 32]> {
+    let h = s.strip_prefix("0x").unwrap_or(s).trim().as_bytes();
+    if h.len() != 64 {
+        return None;
+    }
+    let mut out = [0u8; 32];
+    for (i, slot) in out.iter_mut().enumerate() {
+        *slot = crate::hex_nibble(h[i * 2])? << 4 | crate::hex_nibble(h[i * 2 + 1])?;
+    }
+    Some(out)
+}
+
+/// Slice the `n`-th 32-byte (64-nibble) ABI word out of a log `data` hex string.
+/// `data` is `0x`-optional and holds the non-indexed event fields packed as full
+/// 32-byte words. Returns the word's 64-hex substring, or `None` if `data` is too short.
+fn data_word(data: &str, n: usize) -> Option<&str> {
+    let h = data.strip_prefix("0x").unwrap_or(data);
+    let start = n * 64;
+    let end = start + 64;
+    h.get(start..end)
+}
+
+/// Parse the SEC-019 `Deposit(address indexed from, bytes32 indexed ownerCommit,
+/// uint256 amount, uint64 id, bytes32 newTip)` log out of a `cast receipt --json`
+/// body, returning `(from, owner_commit, amount, id)`. Pure (no subprocess) so the
+/// parse is unit-testable against a canned receipt fixture. `vault` is the lowercased
+/// vault address the log must originate from — a `Deposit` log from any other contract
+/// is ignored.
+fn parse_deposit_receipt(
+    json: &str,
+    vault: &str,
+) -> Result<([u8; 20], [u8; 32], u128, u64), String> {
+    let v: serde_json::Value =
+        serde_json::from_str(json).map_err(|e| format!("receipt json: {e}"))?;
+    let logs = v
+        .get("logs")
+        .and_then(|l| l.as_array())
+        .ok_or("no logs in receipt")?;
+    for log in logs {
+        let addr = log
+            .get("address")
+            .and_then(|a| a.as_str())
+            .unwrap_or("")
+            .to_lowercase();
+        let topics = log.get("topics").and_then(|t| t.as_array());
+        let (Some(topics), true) = (topics, addr == vault) else {
+            continue;
+        };
+        let t0 = topics.first().and_then(|t| t.as_str()).unwrap_or("");
+        // topic0 = event sig, topic1 = indexed `from`, topic2 = indexed `ownerCommit`.
+        if !t0.eq_ignore_ascii_case(DEPOSIT_TOPIC0) || topics.len() < 3 {
+            continue;
+        }
+        // from = indexed topic1 (low 20 bytes); owner_commit = indexed topic2 (full 32).
+        let from = parse_addr20(topics[1].as_str().unwrap_or("")).ok_or("bad from topic")?;
+        let owner_commit =
+            parse_bytes32(topics[2].as_str().unwrap_or("")).ok_or("bad ownerCommit topic")?;
+        // data = amount(uint256) ‖ id(uint64, right-aligned in a word) ‖ newTip(bytes32).
+        let data = log.get("data").and_then(|d| d.as_str()).unwrap_or("");
+        let amount = parse_u256_low128(data_word(data, 0).ok_or("deposit data too short: amount")?)
+            .ok_or("bad amount data")?;
+        let id_word = parse_u256_low128(data_word(data, 1).ok_or("deposit data too short: id")?)
+            .ok_or("bad id data")?;
+        let id: u64 = id_word.try_into().map_err(|_| "deposit id overflows u64")?;
+        return Ok((from, owner_commit, amount, id));
+    }
+    Err("no Deposit log from the vault in this tx".into())
+}
+
 /// Parse a uint256 hex word into u128 (USDC amounts fit comfortably); rejects overflow.
 /// Byte-safe: operates on bytes (RPC data is external), so a non-ASCII byte returns a
 /// clean `None` instead of a mid-codepoint `&str` slice panic.
@@ -849,6 +902,66 @@ fn parse_u256_low128(s: &str) -> Option<u128> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // SEC-019 Task 7b: DEPOSIT_TOPIC0 MUST equal keccak256 of the new event signature.
+    // A stale topic0 silently stops every deposit from crediting (the log matcher never
+    // fires), so this guard recomputes the hash from the signature string with the same
+    // keccak the rest of the stack uses and pins the constant to it.
+    #[test]
+    fn deposit_topic0_matches_event_signature() {
+        use sha3::{Digest as _, Keccak256};
+        let h = Keccak256::digest(b"Deposit(address,bytes32,uint256,uint64,bytes32)");
+        let mut expected = String::from("0x");
+        for b in h {
+            expected.push_str(&format!("{b:02x}"));
+        }
+        assert_eq!(
+            DEPOSIT_TOPIC0, expected,
+            "DEPOSIT_TOPIC0 must be keccak256(\"Deposit(address,bytes32,uint256,uint64,bytes32)\")"
+        );
+        // and it must NOT be the stale old-signature topic that matches nothing now.
+        assert_ne!(
+            DEPOSIT_TOPIC0, "0xe1fffcc4923d04b559f4d29a8bfc6cda04eb5b0d3c460751c2402c5c5cc9109c",
+            "must not be the stale Deposit(address,uint256) topic"
+        );
+    }
+
+    // SEC-019 Task 7b: the receipt parser extracts (from, ownerCommit, amount, id) from
+    // the new indexed-from / indexed-ownerCommit event, reading amount+id out of `data`.
+    #[test]
+    fn verify_deposit_tx_extracts_from_ownercommit_amount_id() {
+        let vault = "0x00000000000000000000000000000000000000aa";
+        // data = amount(5_000_000) ‖ id(3) ‖ newTip, each a full 32-byte ABI word.
+        let amount_word = "00000000000000000000000000000000000000000000000000000000004c4b40";
+        let id_word = "0000000000000000000000000000000000000000000000000000000000000003";
+        let tip_word = "3333333333333333333333333333333333333333333333333333333333333333";
+        let data = format!("0x{amount_word}{id_word}{tip_word}");
+        // A receipt with an unrelated log first (wrong address), then the real Deposit log.
+        let json = format!(
+            r#"{{"logs":[
+                {{"address":"0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+                  "topics":["0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"],
+                  "data":"0x"}},
+                {{"address":"{vault}",
+                  "topics":[
+                    "{DEPOSIT_TOPIC0}",
+                    "0x0000000000000000000000001111111111111111111111111111111111111111",
+                    "0x2222222222222222222222222222222222222222222222222222222222222222"
+                  ],
+                  "data":"{data}"}}
+            ]}}"#
+        );
+        let (from, owner_commit, amount, id) =
+            parse_deposit_receipt(&json, vault).expect("parses the Deposit log");
+        assert_eq!(from, [0x11u8; 20], "from = indexed topic1 low 20 bytes");
+        assert_eq!(owner_commit, [0x22u8; 32], "ownerCommit = indexed topic2");
+        assert_eq!(amount, 5_000_000u128, "amount = data word 0");
+        assert_eq!(id, 3u64, "id = data word 1");
+        // A wrong vault address ⇒ no matching log ⇒ error (deposit from another contract).
+        assert!(
+            parse_deposit_receipt(&json, "0x00000000000000000000000000000000000000bb").is_err()
+        );
+    }
 
     // audit DP-007: the mock-proof bridge may only settle against testnets; real-value
     // chains are refused unless the operator explicitly opts into the unsound verifier.

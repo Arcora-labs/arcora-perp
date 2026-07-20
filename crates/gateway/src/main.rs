@@ -52,7 +52,9 @@ mod settle_health;
 mod snapshot;
 mod withdrawals;
 use l1::{L1Status, L1};
-use withdrawals::{inclusion_leaf, merkle_proof, merkle_root, rejection_leaf, Withdrawal};
+use withdrawals::{
+    inclusion_leaf, merkle_proof, merkle_root, owner_commit, rejection_leaf, Withdrawal,
+};
 
 /// 0x-prefixed lowercase hex of a 32-byte digest (for L1 calldata + display).
 fn hex32(d: &Digest) -> String {
@@ -968,6 +970,17 @@ struct Account {
     /// redeploy is fine).
     #[serde(default)]
     last_sealed_nonce: u64,
+    /// SEC-019 (Task 7b): gateway-issued deposit authorizations awaiting their on-chain
+    /// landing, keyed by `ownerCommit = keccak(owner ‖ deposit_blind)`. The value is the
+    /// SECRET per-deposit `deposit_blind` (a fresh 32-byte CSPRNG value); `owner` is this
+    /// account's `wallet.owner`. On the matching `Deposit` event the gateway looks the
+    /// blind up by the on-chain `ownerCommit`, recomputes `keccak(owner ‖ blind)`, and
+    /// credits only on a match (the misattribution guard). The blind is NEVER served
+    /// publicly (only `ownerCommit` + `sig` leave the gateway) but IS persisted — it must
+    /// be reproducible at credit time, and it rides the existing sealed snapshot.
+    /// `serde(default)` keeps pre-upgrade snapshots loadable.
+    #[serde(default)]
+    deposit_authorizations: std::collections::BTreeMap<[u8; 32], [u8; 32]>,
 }
 
 /// serde `default` for `Gw::settle_health` on the restore (postcard) path. Settlement
@@ -1592,6 +1605,7 @@ impl Gw {
                 signer,
                 last_signed_nonce: 0,
                 last_sealed_nonce: 0,
+                deposit_authorizations: std::collections::BTreeMap::new(),
             },
         );
         (api_key, owner)
@@ -1640,16 +1654,70 @@ impl Gw {
         Ok(())
     }
 
-    /// Credit a CONFIRMED on-chain USDC deposit to an account's market bucket. The
-    /// caller (handler) has already read `(from, amount)` from the vault's `Deposit`
-    /// log via the L1 bridge; here we enforce the binding (`from` == the account's
-    /// bound address), dedup by tx hash, and fund the engine. USDC base units map 1:1
-    /// to quote units (both 1e6), so `amount` credits directly.
-    fn account_confirm_deposit(
+    /// SEC-019 (Task 7b): authorize a deposit of `amount` from L1 address `from` for
+    /// this account. Generates a FRESH 32-byte CSPRNG `deposit_blind`, computes
+    /// `ownerCommit = keccak(owner ‖ deposit_blind)`, records `(ownerCommit → blind)` in
+    /// the account's authorization set (so the eventual `Deposit` event is creditable by
+    /// construction — no uncreditable leaf can head-of-line-block the queue, spec §1b),
+    /// and returns `ownerCommit`. The caller signs `keccak256(chainid ‖ vault ‖ from ‖
+    /// ownerCommit ‖ amount)` with the gateway key and hands the user `(ownerCommit, sig)`
+    /// to submit as `deposit(amount, ownerCommit, sig)` on L1. The blind is per-deposit,
+    /// high-entropy, secret, and reproducible (stored) — the four §5 requirements.
+    fn account_authorize_deposit(
         &mut self,
         key: &[u8; 32],
         from: [u8; 20],
         amount: u128,
+    ) -> Result<[u8; 32], String> {
+        // `from` must be the account's bound deposit address, mirroring the credit-side
+        // binding — a signature is only ever issued for the payer the account owns.
+        let (owner, bound) = {
+            let a = self.accounts.get(key).ok_or("Unknown account.")?;
+            (a.wallet.owner, a.deposit_address)
+        };
+        match bound {
+            Some(b) if b == from => {}
+            Some(_) => {
+                return Err("`from` does not match this account's bound deposit address.".into())
+            }
+            None => {
+                return Err(
+                    "Bind a deposit address first (POST /v1/accounts/deposit/address).".into(),
+                )
+            }
+        }
+        if amount == 0 {
+            return Err("deposit amount must be positive".into());
+        }
+        // Fresh CSPRNG blind per authorization (never derived from public data — a
+        // public-derived blind would let an observer brute-force keccak(owner ‖ blind)
+        // against the on-chain commit and de-anonymize the payer↔owner link, spec §5).
+        let deposit_blind = csprng_bytes32();
+        let commit = owner_commit(&owner, &deposit_blind);
+        self.accounts
+            .get_mut(key)
+            .unwrap()
+            .deposit_authorizations
+            .insert(commit, deposit_blind);
+        Ok(commit)
+    }
+
+    /// Credit a CONFIRMED on-chain USDC deposit to an account's market bucket. The
+    /// caller (handler) has already read `(from, ownerCommit, amount, id)` from the
+    /// vault's SEC-019 `Deposit` log via the L1 bridge; here we enforce the binding
+    /// (`from` == the account's bound address), the SEC-019 misattribution guard (the
+    /// stored blind for `ownerCommit` must reproduce the on-chain commit), dedup by tx
+    /// hash, and fund the engine with the REAL L1-leaf fields so the resulting
+    /// `consumed_deposit_tip` fold matches the vault's `depositChainTip` for this
+    /// `(from, ownerCommit, amount, id)`. USDC base units map 1:1 to quote units.
+    #[allow(clippy::too_many_arguments)] // the L1 `Deposit` event's fields, threaded flat; a struct adds only ceremony
+    fn account_confirm_deposit(
+        &mut self,
+        key: &[u8; 32],
+        from: [u8; 20],
+        owner_commit_onchain: [u8; 32],
+        amount: u128,
+        deposit_id: u64,
         tx: &str,
         market: u64,
     ) -> Result<i128, String> {
@@ -1676,6 +1744,26 @@ impl Gw {
                 )
             }
         }
+        // SEC-019 misattribution guard (FAIL-CLOSED): the on-chain `ownerCommit` is
+        // authoritative. Look up the SECRET blind we authorized for it and REJECT — do
+        // NOT credit — unless `keccak(owner ‖ blind)` reproduces the on-chain commit. An
+        // ABSENT record (a deposit whose commit we never authorized) or a stored blind
+        // that fails to reproduce the commit is refused: crediting it would let a real L1
+        // deposit be attributed to an owner the payer did not commit to (or fold a leaf
+        // the vault chain does not contain).
+        let deposit_blind = *self
+            .accounts
+            .get(key)
+            .unwrap()
+            .deposit_authorizations
+            .get(&owner_commit_onchain)
+            .ok_or("no gateway authorization for this ownerCommit — deposit refused")?;
+        if owner_commit(&wallet.owner, &deposit_blind) != owner_commit_onchain {
+            return Err(
+                "stored deposit_blind does not reproduce the on-chain ownerCommit — deposit refused"
+                    .into(),
+            );
+        }
         // checked u128 → i128 (a value above i128::MAX would sign-flip negative and
         // then panic inside the engine's non-positive-amount guard — review fix).
         let amt: i128 = amount
@@ -1684,19 +1772,40 @@ impl Gw {
         if amt <= 0 {
             return Err("deposit amount must be positive".into());
         }
+        // Host-boundary in-order guard (fail-closed): `op_deposit` only credits when
+        // `deposit_id == consumed_deposit_count`, and `fund_amount` `.expect`s that
+        // apply. Confirm the id is next-in-line HERE so an out-of-order confirm returns a
+        // clean error (and does not consume the authorization) instead of panicking under
+        // the account lock. The host must feed deposits in ascending L1 `id` (spec §5).
+        if deposit_id != self.seq.state.consumed_deposit_count {
+            return Err(format!(
+                "deposit id {deposit_id} is not next-in-line (expected {}); confirm deposits in L1 order",
+                self.seq.state.consumed_deposit_count
+            ));
+        }
         let dc = self.accounts.get(key).unwrap().deposit_counter;
-        let mut blind = [0xB0u8; 32];
-        blind[..8].copy_from_slice(&dc.to_le_bytes());
+        let mut note_blind = [0xB0u8; 32];
+        note_blind[..8].copy_from_slice(&dc.to_le_bytes());
+        // Fund with the REAL L1-leaf fields: the payer `from`, the L1 `id`, and the
+        // authorized `deposit_blind` — so `consumed_deposit_tip` folds the SAME leaf the
+        // vault chained on-chain (`deposit_leaf(from, keccak(owner‖blind), amount, id)`).
         fund_amount(
             &mut self.seq,
             &mut self.archive,
             &wallet,
             market,
             amt,
-            blind,
+            note_blind,
+            from,
+            deposit_id,
+            deposit_blind,
         );
         let a = self.accounts.get_mut(key).unwrap();
         a.deposit_counter += 1;
+        // One-shot: consume the authorization so a second event for the same ownerCommit
+        // can't double-credit (the tx-hash dedup already guards replays; this is defense
+        // in depth and keeps the SECRET blind from lingering past its single use).
+        a.deposit_authorizations.remove(&owner_commit_onchain);
         self.processed_deposit_txs.insert(tx.to_string());
         Ok(amt)
     }
@@ -1954,14 +2063,7 @@ impl Gw {
         };
         let mut blind = [0xA0u8; 32];
         blind[..8].copy_from_slice(&dc.to_le_bytes());
-        fund_amount(
-            &mut self.seq,
-            &mut self.archive,
-            &wallet,
-            market,
-            amount,
-            blind,
-        );
+        fund_amount_unbacked(&mut self.seq, &mut self.archive, &wallet, market, amount, blind);
         self.accounts.get_mut(key).unwrap().deposit_counter += 1;
         Ok(())
     }
@@ -2601,7 +2703,7 @@ impl Gw {
             .map_err(|e| format!("lp debit burn: {e:?}"))?;
         let mut cb = [0xE1u8; 32];
         cb[..8].copy_from_slice(&c.to_le_bytes());
-        fund_amount(&mut self.seq, &mut self.archive, to, 0, value, cb);
+        fund_amount_unbacked(&mut self.seq, &mut self.archive, to, 0, value, cb);
         Ok(())
     }
 
@@ -2890,7 +2992,7 @@ impl Gw {
             return Err("Amount must be positive.".into());
         }
         let blind = (0x80 + (self.tick % 60)) as u8;
-        fund_amount(
+        fund_amount_unbacked(
             &mut self.seq,
             &mut self.archive,
             &self.user,
@@ -3499,17 +3601,18 @@ fn fund(
     usd_amount: i128,
     blind: u8,
 ) {
-    fund_amount(
-        seq,
-        archive,
-        w,
-        market,
-        usd_amount * QUOTE_SCALE,
-        [blind; 32],
-    );
+    fund_amount_unbacked(seq, archive, w, market, usd_amount * QUOTE_SCALE, [blind; 32]);
 }
-/// Deposit a quote-scaled `amount` as a note, archive it, and fund the position.
-fn fund_amount(
+
+/// SEC-019 (Task 7b): an UNBACKED credit — a `Deposit` op with SENTINEL L1-leaf fields
+/// (`from=[0;20]`, `deposit_blind=[0;32]`, `deposit_id` = the live consumed count so the
+/// strict in-order gate passes). Used ONLY by the demo/LP/self-service seed paths that
+/// fabricate collateral without a real L1 deposit event; those fold a `consumed_deposit_tip`
+/// the on-chain vault chain will NOT match, so they can never settle in `prod` (self-service
+/// is disabled there — audit DP-001). The REAL L1-credit path
+/// (`account_confirm_deposit`) calls `fund_amount` with the payer's real `from`, the
+/// deposit's L1 `id`, and the authorized `deposit_blind`, so its fold DOES match the vault.
+fn fund_amount_unbacked(
     seq: &mut Sequencer,
     archive: &mut NoteArchive,
     w: &Wallet,
@@ -3517,22 +3620,36 @@ fn fund_amount(
     amount: i128,
     blind: Digest,
 ) {
-    let note = Note::new(w.owner, 0, amount, blind);
-    let cm = note.commitment::<Keccak256>();
-    // TODO(SEC-019 Task 7b): real from/deposit_id/deposit_blind for the L1-credit path.
-    // Placeholder leaf: `from=[0;20]`, `deposit_blind=[0;32]` fold a deposit tip the
-    // on-chain vault chain will NOT match (a real deposit carries the payer `from`, its
-    // `ownerCommit`, and its L1 `id`). `deposit_id` reads the live consumed count so the
-    // strict in-order gate passes; 7b wires the real values.
     let deposit_id = seq.state.consumed_deposit_count;
+    fund_amount(seq, archive, w, market, amount, blind, [0u8; 20], deposit_id, [0u8; 32]);
+}
+
+/// Deposit a quote-scaled `amount` as a note, archive it, and fund the position. The
+/// note is committed under its own `note_blind`; the L1-leaf fields (`from`, `deposit_id`,
+/// `deposit_blind`) are folded into `consumed_deposit_tip` so a REAL deposit reproduces
+/// the vault's on-chain `depositChainTip` for `(from, ownerCommit, amount, id)`.
+#[allow(clippy::too_many_arguments)] // a flat funding spec; a params struct adds only ceremony
+fn fund_amount(
+    seq: &mut Sequencer,
+    archive: &mut NoteArchive,
+    w: &Wallet,
+    market: u64,
+    amount: i128,
+    note_blind: Digest,
+    from: [u8; 20],
+    deposit_id: u64,
+    deposit_blind: Digest,
+) {
+    let note = Note::new(w.owner, 0, amount, note_blind);
+    let cm = note.commitment::<Keccak256>();
     seq.apply(&BatchOp::Deposit {
         owner: w.owner,
         asset_id: 0,
         amount,
-        blinding: blind,
-        from: [0u8; 20],
+        blinding: note_blind,
+        from,
         deposit_id,
-        deposit_blind: [0u8; 32],
+        deposit_blind,
     })
     .expect("deposit");
     // Seal to the owner's X25519 viewing PUBLIC key (real note encryption); the
@@ -3565,6 +3682,11 @@ struct App {
     /// The L1 bridge (Base Sepolia), if configured — used by the deposit-confirm
     /// handler to verify on-chain USDC deposits. `None` ⇒ pure in-memory mode.
     l1: Option<L1>,
+    /// SEC-019 (Task 7b): the gateway deposit-authorization signer. Its ADDRESS is what
+    /// the deployed `CollateralVault.gatewaySigner` must equal; `POST /v1/accounts/
+    /// deposit/authorize` signs `keccak256(chainid ‖ vault ‖ from ‖ ownerCommit ‖ amount)`
+    /// with it so a user may enter a deposit (a liveness gate on entry, not a mint key).
+    gateway_signer: GatewaySigner,
     /// Slice 3b-2a: the settle path's prover client (None ⇒ legacy cumulative+mock path).
     prover: Option<std::sync::Arc<dyn prover_client::ProverClient>>,
     /// REAL per-market price history (the chart's past bars): the engine's own
@@ -3643,6 +3765,18 @@ struct OnchainDepositReq {
     #[serde(rename = "marketId")]
     market_id: u64,
 }
+/// SEC-019 (Task 7b): request to authorize a deposit — the gateway generates the blind,
+/// records `(ownerCommit → blind)`, and returns `(ownerCommit, sig)` for the user to
+/// submit as `deposit(amount, ownerCommit, sig)` on L1.
+#[derive(Deserialize)]
+struct DepositAuthorizeReq {
+    /// The L1 address the deposit will be sent `from` (must equal the account's bound
+    /// deposit address). Also the `msg.sender` the on-chain digest binds.
+    from: String,
+    /// USDC base units to be deposited — bound into the signed digest (a sig for one
+    /// amount cannot authorize another).
+    amount: String,
+}
 #[derive(Deserialize)]
 struct WithdrawReq {
     #[serde(rename = "marketId")]
@@ -3710,6 +3844,113 @@ fn recover_eth_address(prehash: &[u8; 32], sig: &[u8; 65]) -> Option<[u8; 20]> {
     let mut a = [0u8; 20];
     a.copy_from_slice(&hash[12..]);
     Some(a)
+}
+
+/// SEC-019 (Task 7b) demo/test default for the gateway deposit-authorization key. NEVER
+/// use it on a real deployment — the deployed `CollateralVault.gatewaySigner` must be the
+/// ADDRESS of a SECRET production key set via `GATEWAY_SIGNER_KEY`. This fixed scalar only
+/// exists so the demo build + unit tests have a working signer (Anvil account #0's key).
+const DEMO_GATEWAY_SIGNER_KEY: [u8; 32] = [
+    0xac, 0x09, 0x74, 0xbe, 0xc3, 0x9a, 0x17, 0xe3, 0x6b, 0xa4, 0xa6, 0xb4, 0xd2, 0x38, 0xff, 0x94,
+    0x4b, 0xac, 0xb4, 0x78, 0xcb, 0xed, 0x5e, 0xfc, 0xae, 0x78, 0x4d, 0x7b, 0xf4, 0xf2, 0xff, 0x80,
+];
+
+/// SEC-019 (Task 7b): the gateway's deposit-authorization signer. Holds the secret
+/// `gatewaySigner` key whose ADDRESS the deployed `CollateralVault` pins, plus the chain
+/// id + vault address needed to reproduce the contract's digest BYTE-IDENTICALLY. It signs
+/// `keccak256(abi.encodePacked(chainid, vault, from, ownerCommit, amount))` so a user may
+/// ENTER a deposit; the signature only gates entry (every deposit still performs a real
+/// `transferFrom` and settlement still pins `depositsRoot`), so it is a liveness gate, NOT
+/// a mint authority (spec §1b). A compromised signer can authorize deposits but cannot
+/// conjure collateral.
+struct GatewaySigner {
+    key: k256::ecdsa::SigningKey,
+    chain_id: u64,
+    vault: [u8; 20],
+}
+
+impl GatewaySigner {
+    /// Build from a raw 32-byte secp256k1 scalar + the chain id and vault address the
+    /// contract's digest is bound to. Errors if the scalar is not a valid signing key.
+    fn from_parts(key: [u8; 32], chain_id: u64, vault: [u8; 20]) -> Result<Self, String> {
+        let key = k256::ecdsa::SigningKey::from_slice(&key)
+            .map_err(|e| format!("GATEWAY_SIGNER_KEY is not a valid secp256k1 scalar: {e}"))?;
+        Ok(Self {
+            key,
+            chain_id,
+            vault,
+        })
+    }
+
+    /// Load from env: `GATEWAY_SIGNER_KEY` (32-byte hex scalar), `L1_CHAIN_ID`, `L1_VAULT`.
+    /// Falls back to the demo key / a dev chain id (Base Sepolia) / a zero vault when a var
+    /// is unset — fine for the demo build and unit tests (live-key provisioning + the real
+    /// vault/chain wiring are the deferred deploy phase). A SET-but-malformed key fails
+    /// closed (the caller exits) rather than silently signing with the demo key.
+    fn from_env() -> Result<Self, String> {
+        let key = match std::env::var("GATEWAY_SIGNER_KEY") {
+            Ok(s) => parse_hex32(&s)
+                .ok_or("GATEWAY_SIGNER_KEY is set but is not a 32-byte hex value")?,
+            Err(_) => DEMO_GATEWAY_SIGNER_KEY,
+        };
+        let chain_id = std::env::var("L1_CHAIN_ID")
+            .ok()
+            .and_then(|s| s.trim().parse::<u64>().ok())
+            .unwrap_or(84532);
+        let vault = std::env::var("L1_VAULT")
+            .ok()
+            .and_then(|s| parse_addr20_hex(&s))
+            .unwrap_or([0u8; 20]);
+        Self::from_parts(key, chain_id, vault)
+    }
+
+    /// The 20-byte Ethereum address of this signer — the value the deployed
+    /// `CollateralVault.gatewaySigner` must equal for the on-chain gate to accept our sigs.
+    fn address(&self) -> [u8; 20] {
+        use sha3::{Digest as _, Keccak256 as RawKeccak};
+        let point = self.key.verifying_key().to_encoded_point(false);
+        let hash = RawKeccak::digest(&point.as_bytes()[1..]);
+        let mut a = [0u8; 20];
+        a.copy_from_slice(&hash[12..]);
+        a
+    }
+
+    /// The digest the contract recomputes and `ecrecover`s in `deposit(...)`:
+    /// `keccak256(abi.encodePacked(uint256 chainid, address vault, address from,
+    /// bytes32 ownerCommit, uint256 amount))`. Byte-identical to
+    /// `CollateralVault.deposit`'s digest (chainid + amount as 32-byte BE words, vault +
+    /// from as their 20 address bytes, ownerCommit as its 32 bytes) — verified by the KAT
+    /// in `gateway_signature_round_trips_and_matches_solidity_digest`.
+    fn digest(&self, from: &[u8; 20], owner_commit: &[u8; 32], amount: u128) -> [u8; 32] {
+        use sha3::{Digest as _, Keccak256 as RawKeccak};
+        let mut chain = [0u8; 32];
+        chain[24..].copy_from_slice(&self.chain_id.to_be_bytes()); // uint256, low 8 bytes
+        let mut amt = [0u8; 32];
+        amt[16..].copy_from_slice(&amount.to_be_bytes()); // uint256, low 16 bytes (< 2^128)
+        let mut h = RawKeccak::new();
+        h.update(chain);
+        h.update(self.vault);
+        h.update(from);
+        h.update(owner_commit);
+        h.update(amt);
+        h.finalize().into()
+    }
+
+    /// Sign the deposit-authorization digest, returning a 65-byte `r‖s‖v` signature that
+    /// the contract's `ecrecover` accepts: low-`s` (k256 normalizes S) and `v ∈ {27, 28}`
+    /// — mirroring `recover_eth_address`'s conventions, inverted. The user submits this as
+    /// `deposit(amount, ownerCommit, sig)` on L1.
+    fn sign(&self, from: &[u8; 20], owner_commit: &[u8; 32], amount: u128) -> Result<[u8; 65], String> {
+        let digest = self.digest(from, owner_commit, amount);
+        let (sig, recid) = self
+            .key
+            .sign_prehash_recoverable(&digest)
+            .map_err(|e| format!("gateway sign failed: {e}"))?;
+        let mut out = [0u8; 65];
+        out[..64].copy_from_slice(&sig.to_bytes());
+        out[64] = 27 + recid.to_byte();
+        Ok(out)
+    }
 }
 
 /// The digest a deposit-address bind signature must cover: `keccak256("dark-perp:
@@ -4024,7 +4265,7 @@ async fn post_v1_deposit_onchain(
     };
     let txc = tx.clone();
     let verified = tokio::task::spawn_blocking(move || l1.verify_deposit_tx(&txc)).await;
-    let (from, amount) = match verified {
+    let (from, owner_commit, amount, id) = match verified {
         Ok(Ok(v)) => v,
         Ok(Err(e)) => return err400(format!("deposit not verified: {e}")).into_response(),
         Err(e) => return err400(format!("verify task failed: {e}")).into_response(),
@@ -4033,7 +4274,7 @@ async fn post_v1_deposit_onchain(
         app.gw
             .lock()
             .await
-            .account_confirm_deposit(&key, from, amount, &tx, req.market_id)
+            .account_confirm_deposit(&key, from, owner_commit, amount, id, &tx, req.market_id)
     };
     match r {
         Ok(amt) => {
@@ -4048,6 +4289,53 @@ async fn post_v1_deposit_onchain(
                 .into_response()
         }
         Err(e) => err400(e).into_response(),
+    }
+}
+
+/// SEC-019 (Task 7b): authorize an L1 deposit. Records a fresh per-deposit blind under
+/// `ownerCommit = keccak(owner ‖ blind)` and returns `{ ownerCommit, sig }` where `sig`
+/// is the gateway's ECDSA signature over `keccak256(chainid ‖ vault ‖ from ‖ ownerCommit
+/// ‖ amount)`. The user submits `deposit(amount, ownerCommit, sig)` on L1; without this
+/// signature the vault refuses the deposit (so every on-chain leaf is creditable by
+/// construction — spec §1b). The SECRET blind is never returned, only `ownerCommit`.
+async fn post_v1_deposit_authorize(
+    State(app): State<Shared>,
+    headers: HeaderMap,
+    Json(req): Json<DepositAuthorizeReq>,
+) -> impl IntoResponse {
+    let key = match api_key_from(&headers) {
+        Ok(k) => k,
+        Err(e) => return e.into_response(),
+    };
+    let from = match parse_addr20_hex(&req.from) {
+        Some(a) => a,
+        None => return err400("bad `from` address (expected 0x + 40 hex)".into()).into_response(),
+    };
+    let amount: u128 = match req.amount.parse() {
+        Ok(v) => v,
+        Err(_) => return err400("bad amount (expected a u128 of USDC base units)".into())
+            .into_response(),
+    };
+    // Record the authorization (generates + stores the blind) under the account lock,
+    // then sign — the signer needs only the resulting ownerCommit.
+    let commit = {
+        match app
+            .gw
+            .lock()
+            .await
+            .account_authorize_deposit(&key, from, amount)
+        {
+            Ok(c) => c,
+            Err(e) => return err400(e).into_response(),
+        }
+    };
+    match app.gateway_signer.sign(&from, &commit, amount) {
+        Ok(sig) => Json(serde_json::json!({
+            "ownerCommit": hex0x(&commit),
+            "sig": hex0x(&sig),
+        }))
+        .into_response(),
+        Err(e) => err400(format!("gateway sign failed: {e}")).into_response(),
     }
 }
 
@@ -4441,6 +4729,9 @@ async fn get_v1_openapi() -> impl IntoResponse {
             "/v1/accounts/deposit/address": { "post": { "summary": "Bind the external EOA you fund USDC from (ownership-proven)", "security": auth["security"],
                 "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["address","signature"], "properties": { "address": { "type": "string" }, "signature": { "type": "string", "description": "secp256k1 sig recovering to address over the bind digest keccak256(\"dark-perp:bind-deposit:\"‖owner‖address) — raw, or EIP-191 personal_sign over its 32 bytes or its 0x-hex string" } } } } } },
                 "responses": ok("bound address") } },
+            "/v1/accounts/deposit/authorize": { "post": { "summary": "Authorize an L1 deposit (SEC-019): get ownerCommit + gateway sig for deposit(amount, ownerCommit, sig)", "security": auth["security"],
+                "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["from","amount"], "properties": { "from": { "type": "string", "description": "the L1 address the deposit is sent from (your bound deposit address)" }, "amount": { "type": "string", "description": "USDC base units to deposit" } } } } } },
+                "responses": ok("ownerCommit + sig") } },
             "/v1/accounts/deposit/onchain": { "post": { "summary": "Credit a real on-chain USDC deposit by tx hash", "security": auth["security"],
                 "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["txHash","marketId"], "properties": { "txHash": { "type": "string" }, "marketId": { "type": "integer" } } } } } },
                 "responses": ok("credited + account") } },
@@ -4928,6 +5219,10 @@ fn build_router(app: Shared, prod: bool) -> Router {
             post(post_v1_deposit_address),
         )
         .route(
+            "/v1/accounts/deposit/authorize",
+            post(post_v1_deposit_authorize),
+        )
+        .route(
             "/v1/accounts/deposit/onchain",
             post(post_v1_deposit_onchain),
         )
@@ -5334,12 +5629,30 @@ async fn main() {
             }
         }
     }
+    // SEC-019 (Task 7b): load the deposit-authorization signer. A SET-but-malformed
+    // GATEWAY_SIGNER_KEY fails closed with a clear message (never silently signs with
+    // the demo key); unset falls back to the demo key for the demo build.
+    let gateway_signer = match GatewaySigner::from_env() {
+        Ok(gs) => {
+            println!(
+                "[sec-019] gateway deposit-authorization signer address {} (must equal the \
+                 deployed CollateralVault.gatewaySigner)",
+                hex0x(&gs.address())
+            );
+            gs
+        }
+        Err(e) => {
+            eprintln!("[sec-019] REFUSING to start: {e}");
+            std::process::exit(1);
+        }
+    };
     let app = Arc::new(App {
         gw: Mutex::new(gw),
         tx: tx.clone(),
         events_tx,
         reg_limit: Mutex::new(HashMap::new()),
         l1: l1.clone(),
+        gateway_signer,
         prover: prover.clone(),
         candles: Mutex::new(candles::CandleStore::new()),
         attestor,
@@ -6150,6 +6463,7 @@ mod tests {
             events_tx,
             reg_limit: Mutex::new(HashMap::new()),
             l1: None,
+            gateway_signer: GatewaySigner::from_env().expect("demo gateway signer"),
             prover: None,
             candles: Mutex::new(candles::CandleStore::new()),
             attestor: None,
@@ -6158,6 +6472,134 @@ mod tests {
             prover_session_token: None,
             force_settle: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
         })
+    }
+
+    // ── SEC-019 (Task 7b): real L1-bound deposit crediting + gateway auth signing ──
+
+    /// The gateway's deposit-authorization signature recovers to the gateway address
+    /// under the SAME verifier the contract mirrors, and its digest is BYTE-IDENTICAL to
+    /// Solidity's `keccak256(abi.encodePacked(chainid, vault, from, ownerCommit, amount))`
+    /// (KAT from `cast keccak $(cast abi-encode --packed ...)`). If this drifts, the
+    /// deployed vault's `ecrecover` would reject every gateway-issued deposit signature.
+    #[test]
+    fn gateway_signature_round_trips_and_matches_solidity_digest() {
+        let vault = [0x11u8; 20];
+        let from = [0x22u8; 20];
+        let oc = [0x33u8; 32];
+        let gs = GatewaySigner::from_parts(DEMO_GATEWAY_SIGNER_KEY, 84532, vault).unwrap();
+        // digest byte-parity with Solidity abi.encodePacked (chainid=84532, amount=1000).
+        let expected = parse_hex32(
+            "0x616596ebb8fceaa76501abebf569187adcbc045cda51a9e3023a217d9e8c440b",
+        )
+        .unwrap();
+        assert_eq!(
+            gs.digest(&from, &oc, 1000),
+            expected,
+            "gateway digest must match Solidity abi.encodePacked"
+        );
+        // sign → recover round-trip: the gateway's sig recovers to its OWN address.
+        let sig = gs.sign(&from, &oc, 1000).unwrap();
+        assert_eq!(
+            recover_eth_address(&gs.digest(&from, &oc, 1000), &sig),
+            Some(gs.address()),
+            "gateway signature must recover to the gateway address"
+        );
+        // contract accepts only low-s + v ∈ {27,28}.
+        assert!(sig[64] == 27 || sig[64] == 28, "v must be 27 or 28");
+        // a sig for (from, oc, amount) must NOT verify for a different amount.
+        assert_ne!(
+            recover_eth_address(&gs.digest(&from, &oc, 999), &sig),
+            Some(gs.address()),
+            "the signature is bound to the amount"
+        );
+    }
+
+    /// A deposit whose stored blind reproduces the on-chain `ownerCommit` is credited,
+    /// and the post-credit `consumed_deposit_tip` equals the vault-matching fold
+    /// `deposit_chain_fold(prev, deposit_leaf(from, ownerCommit, amount, id))` — the
+    /// whole point of SEC-019: the gateway's fold reproduces the vault's `depositChainTip`.
+    #[test]
+    fn confirm_deposit_matching_blind_advances_tip_to_vault_fold() {
+        use crate::withdrawals::{deposit_chain_fold, deposit_leaf};
+        let mut gw = Gw::boot();
+        let (key, _owner) = gw.register_account(None);
+        let from = [0x42u8; 20];
+        gw.accounts.get_mut(&key).unwrap().deposit_address = Some(from);
+        let amount = 5_000_000u128;
+        // authorize → gateway stores the blind and returns ownerCommit.
+        let commit = gw.account_authorize_deposit(&key, from, amount).unwrap();
+        // snapshot the pre-credit chain; the real event's id is the live consumed count.
+        let prev_tip = gw.seq.state.consumed_deposit_tip;
+        let id = gw.seq.state.consumed_deposit_count;
+        let ext_in_before = gw.seq.state.external_in;
+        let credited = gw
+            .account_confirm_deposit(&key, from, commit, amount, id, "0xdeadbeef", 0)
+            .expect("matching blind must credit");
+        assert_eq!(credited, amount as i128);
+        assert_eq!(gw.seq.state.consumed_deposit_count, id + 1, "count bumps by one");
+        assert_eq!(
+            gw.seq.state.external_in,
+            ext_in_before + amount as i128,
+            "external_in grows by the deposit"
+        );
+        let expected_tip =
+            deposit_chain_fold(&prev_tip, &deposit_leaf(&from, &commit, amount, id));
+        assert_eq!(
+            gw.seq.state.consumed_deposit_tip, expected_tip,
+            "post-credit tip must equal the vault-matching fold of (from, ownerCommit, amount, id)"
+        );
+        // the one-shot authorization is consumed after crediting.
+        assert!(
+            !gw.accounts[&key]
+                .deposit_authorizations
+                .contains_key(&commit),
+            "authorization is consumed after a successful credit"
+        );
+    }
+
+    /// FAIL-CLOSED misattribution guard: a deposit with NO authorization record, or with
+    /// a stored blind that does not reproduce the on-chain `ownerCommit`, is REFUSED — no
+    /// credit, no state advance. This is the security guard, not an error to smooth over.
+    #[test]
+    fn confirm_deposit_absent_or_mismatched_blind_is_refused() {
+        let mut gw = Gw::boot();
+        let (key, _owner) = gw.register_account(None);
+        let from = [0x42u8; 20];
+        gw.accounts.get_mut(&key).unwrap().deposit_address = Some(from);
+        let amount = 5_000_000u128;
+        let id = gw.seq.state.consumed_deposit_count;
+        let tip_before = gw.seq.state.consumed_deposit_tip;
+        let count_before = gw.seq.state.consumed_deposit_count;
+        let ext_before = gw.seq.state.external_in;
+
+        // (1) ABSENT record: an ownerCommit we never authorized is refused.
+        let never_authorized = [0x99u8; 32];
+        let r = gw.account_confirm_deposit(&key, from, never_authorized, amount, id, "0xtx1", 0);
+        assert!(r.is_err(), "absent authorization must be refused");
+
+        // (2) MISMATCHED record: a stored blind that does NOT reproduce the commit key.
+        // keccak(owner ‖ wrong_blind) != bogus_commit, so the recompute guard rejects.
+        let bogus_commit = [0x77u8; 32];
+        gw.accounts
+            .get_mut(&key)
+            .unwrap()
+            .deposit_authorizations
+            .insert(bogus_commit, [0x01u8; 32]); // blind that won't reproduce bogus_commit
+        let r2 = gw.account_confirm_deposit(&key, from, bogus_commit, amount, id, "0xtx2", 0);
+        assert!(r2.is_err(), "a blind that fails to reproduce the commit must be refused");
+
+        // (3) OUT-OF-ORDER id: a validly-authorized deposit whose id is not next-in-line
+        // is refused CLEANLY (no panic under the lock) — the host must confirm in L1 order.
+        let commit = gw.account_authorize_deposit(&key, from, amount).unwrap();
+        let r3 = gw.account_confirm_deposit(&key, from, commit, amount, id + 99, "0xtx3", 0);
+        assert!(r3.is_err(), "an out-of-order deposit id must be refused");
+
+        // NEITHER refusal advanced the chain, external_in, or the tx dedup set.
+        assert_eq!(gw.seq.state.consumed_deposit_tip, tip_before, "tip unchanged");
+        assert_eq!(gw.seq.state.consumed_deposit_count, count_before, "count unchanged");
+        assert_eq!(gw.seq.state.external_in, ext_before, "external_in unchanged");
+        assert!(!gw.processed_deposit_txs.contains("0xtx1"));
+        assert!(!gw.processed_deposit_txs.contains("0xtx2"));
     }
 
     // ── ambiguous landed-tx recovery ─────────────────────────────────────────

@@ -109,7 +109,7 @@ pub fn prove_and_prepare(
 ) -> Result<PreparedSettle, String> {
     let outcome = client.prove(witness).map_err(|e| format!("prove: {e:?}"))?;
 
-    // The prover's claimed commitment must be THE commitment of the six roots it returned
+    // The prover's claimed commitment must be THE commitment of the seven roots it returned
     // — that binding is what the on-chain verifier checks the proof against, so a client
     // that returns mismatched roots/commitment is broken and must never reach settleBatch.
     // (Trivially true for MockProverClient; a real trust-boundary check for 3b-2b's
