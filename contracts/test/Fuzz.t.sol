@@ -21,7 +21,9 @@ contract FuzzTest is MiniTest {
     // this contract is the settlement authority / sequencer
     function setUp() public {
         usdc = new MockUSDC();
-        vault = new CollateralVault(address(this), address(usdc));
+        // no deposits are exercised here (the vault is funded directly), so the SEC-019
+        // gateway signer is an unused placeholder.
+        vault = new CollateralVault(address(this), address(usdc), address(0x6A7E));
         usdc.mint(address(vault), 1_000_000_000_000); // 1,000,000 USDC
         verifier = new MockZkVerifier();
         s = new DarkPerpSettlement(address(this), address(0xE), verifier, GENESIS, 100, 50, 0, 0, address(this), 0);

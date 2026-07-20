@@ -20,6 +20,11 @@ contract CollateralVaultTest is MiniTest {
     /// *some* well-formed 32-byte field; the vault never interprets it).
     bytes32 internal constant DEFAULT_TEST_OWNER_COMMIT = keccak256("dark-perp.test.default-owner");
 
+    /// SEC-019 (Task 6c): the gateway's ECDSA signing key (test only). The vault is
+    /// deployed with `gatewaySigner = vm.addr(GW_PK)`, so a deposit is only accepted if
+    /// it carries a gateway signature over `(chainid, vault, from, ownerCommit, amount)`.
+    uint256 internal constant GW_PK = 0x6A7E;
+
     // ---------------------------------------------------------------------
     // SEC-019 canonical known-answer vectors. These are pinned by the Rust side
     // (`crates/perp-core/src/merkle.rs`, KAT_DEPOSIT_LEAF / KAT_DEPOSIT_TIP2) and
@@ -43,7 +48,29 @@ contract CollateralVaultTest is MiniTest {
 
     function setUp() public {
         usdc = new MockUSDC();
-        vault = new CollateralVault(address(this), address(usdc));
+        vault = new CollateralVault(address(this), address(usdc), vm.addr(GW_PK));
+    }
+
+    /// Gateway signature over the canonical deposit digest, signed with `pk`, for a
+    /// deposit of `amount`/`commit` by `from` into vault `v`. Mirrors the digest the
+    /// vault recomputes: `keccak256(abi.encodePacked(chainid, vault, from, commit, amount))`.
+    function _sigWith(uint256 pk, CollateralVault v, address from, uint256 amount, bytes32 commit)
+        internal
+        view
+        returns (bytes memory)
+    {
+        bytes32 digest = keccak256(abi.encodePacked(block.chainid, address(v), from, commit, amount));
+        (uint8 sv, bytes32 r, bytes32 s) = vm.sign(pk, digest);
+        return abi.encodePacked(r, s, sv);
+    }
+
+    /// The same, signed by the configured gateway key (`GW_PK`).
+    function _gwSig(CollateralVault v, address from, uint256 amount, bytes32 commit)
+        internal
+        view
+        returns (bytes memory)
+    {
+        return _sigWith(GW_PK, v, from, amount, commit);
     }
 
     /// This contract stands in as the settlement authority; the vault reads its
@@ -56,9 +83,10 @@ contract CollateralVaultTest is MiniTest {
     /// crediting the shielded note to the owner committed to by `ownerCommit`.
     function _depositAs(address who, uint256 amount, bytes32 ownerCommit) internal {
         usdc.mint(who, amount);
+        bytes memory sig = _gwSig(vault, who, amount, ownerCommit);
         vm.startPrank(who);
         usdc.approve(address(vault), amount);
-        vault.deposit(amount, ownerCommit);
+        vault.deposit(amount, ownerCommit, sig);
         vm.stopPrank();
     }
 
@@ -76,10 +104,12 @@ contract CollateralVaultTest is MiniTest {
 
     function test_deposit_requires_approval() public {
         usdc.mint(alice, 100 * USD);
+        // a valid gateway signature, so the sig gate passes and we reach transferFrom
+        bytes memory sig = _gwSig(vault, alice, 100 * USD, DEFAULT_TEST_OWNER_COMMIT);
         vm.prank(alice);
         // no approval → transferFrom reverts inside deposit
         vm.expectRevert(MockUSDC.InsufficientAllowance.selector);
-        vault.deposit(100 * USD, DEFAULT_TEST_OWNER_COMMIT);
+        vault.deposit(100 * USD, DEFAULT_TEST_OWNER_COMMIT, sig);
     }
 
     function test_only_settlement_publishes_root() public {
@@ -235,16 +265,18 @@ contract CollateralVaultTest is MiniTest {
     /// NOT produce KAT_TIP2. Ordering is the whole point of a hash chain over a set
     /// commitment — it is what stops a sequencer from reordering or replaying credits.
     function test_deposit_chain_is_order_sensitive() public {
-        CollateralVault other = new CollateralVault(address(this), address(usdc));
+        CollateralVault other = new CollateralVault(address(this), address(usdc), vm.addr(GW_PK));
         usdc.mint(KAT_FROM_1, KAT_AMOUNT_1);
+        bytes memory sig1 = _gwSig(other, KAT_FROM_1, KAT_AMOUNT_1, KAT_OWNER_COMMIT_1);
         vm.startPrank(KAT_FROM_1);
         usdc.approve(address(other), KAT_AMOUNT_1);
-        other.deposit(KAT_AMOUNT_1, KAT_OWNER_COMMIT_1);
+        other.deposit(KAT_AMOUNT_1, KAT_OWNER_COMMIT_1, sig1);
         vm.stopPrank();
         usdc.mint(KAT_FROM_0, KAT_AMOUNT_0);
+        bytes memory sig0 = _gwSig(other, KAT_FROM_0, KAT_AMOUNT_0, KAT_OWNER_COMMIT_0);
         vm.startPrank(KAT_FROM_0);
         usdc.approve(address(other), KAT_AMOUNT_0);
-        other.deposit(KAT_AMOUNT_0, KAT_OWNER_COMMIT_0);
+        other.deposit(KAT_AMOUNT_0, KAT_OWNER_COMMIT_0, sig0);
         vm.stopPrank();
 
         assertEq(other.depositCount(), 2, "two deposits folded");
@@ -279,10 +311,98 @@ contract CollateralVaultTest is MiniTest {
     /// exactly the credited deposits, never attempted ones.
     function test_failed_deposit_does_not_advance_chain() public {
         usdc.mint(alice, 100 * USD);
+        // gateway-authorized, but no approval → transferFrom reverts after the sig check
+        bytes memory sig = _gwSig(vault, alice, 100 * USD, DEFAULT_TEST_OWNER_COMMIT);
         vm.prank(alice);
         vm.expectRevert(MockUSDC.InsufficientAllowance.selector);
-        vault.deposit(100 * USD, DEFAULT_TEST_OWNER_COMMIT);
+        vault.deposit(100 * USD, DEFAULT_TEST_OWNER_COMMIT, sig);
         assertEq(vault.depositChainTip(), bytes32(0), "tip unchanged after failed deposit");
         assertEq(vault.depositCount(), 0, "count unchanged after failed deposit");
+    }
+
+    // =====================================================================
+    // SEC-019 (Task 6c): gateway-authorized deposit entry (`sig`)
+    // =====================================================================
+    // The vault accepts a deposit ONLY if the gateway pre-authorized this exact
+    // (from, ownerCommit, amount) tuple for THIS vault on THIS chain. This is a liveness
+    // gate on entry — it guarantees every leaf that can enter the chain is creditable
+    // (the gateway recorded the (owner, blind) before signing), so an uncreditable leaf
+    // can never head-of-line-block the circuit's contiguous deposit consumption (spec
+    // §1b). It is NOT a mint authority: a real transferFrom still happens and settlement
+    // still pins the prefix. The sig is verified then DISCARDED — it does not enter the
+    // leaf or the chain, so the three KATs above are unchanged.
+
+    /// A deposit with no / garbage signature is rejected (`BadGatewaySig`), and a
+    /// well-formed signature from a NON-gateway key is rejected too. A rejected deposit
+    /// must leave the chain untouched.
+    function test_deposit_requires_gateway_signature() public {
+        usdc.mint(KAT_FROM_0, KAT_AMOUNT_0);
+        vm.startPrank(KAT_FROM_0);
+        usdc.approve(address(vault), KAT_AMOUNT_0);
+        // garbage (non-65-byte) signature
+        bytes memory bad = hex"00";
+        vm.expectRevert(CollateralVault.BadGatewaySig.selector);
+        vault.deposit(KAT_AMOUNT_0, KAT_OWNER_COMMIT_0, bad);
+        vm.stopPrank();
+
+        // a syntactically-valid signature over the right tuple but from the WRONG key
+        bytes memory wrongKey = _sigWith(0xBEEF, vault, KAT_FROM_0, KAT_AMOUNT_0, KAT_OWNER_COMMIT_0);
+        vm.prank(KAT_FROM_0);
+        vm.expectRevert(CollateralVault.BadGatewaySig.selector);
+        vault.deposit(KAT_AMOUNT_0, KAT_OWNER_COMMIT_0, wrongKey);
+
+        assertEq(vault.depositChainTip(), bytes32(0), "tip unchanged after unauthorized deposit");
+        assertEq(vault.depositCount(), 0, "count unchanged after unauthorized deposit");
+    }
+
+    /// Signing the canonical digest with the gateway key and depositing as KAT_FROM_0
+    /// with KAT_OWNER_COMMIT_0/KAT_AMOUNT_0 reproduces the SAME chain tip as the no-sig
+    /// KAT: the signature is verified then discarded, it does NOT enter the leaf. A
+    /// second signed deposit reaches the pinned two-leaf KAT tip.
+    function test_deposit_with_valid_gateway_sig_advances_chain_to_KAT() public {
+        _depositAs(KAT_FROM_0, KAT_AMOUNT_0, KAT_OWNER_COMMIT_0);
+        assertEq(vault.depositCount(), 1, "one gateway-signed deposit folded");
+        assertEq(
+            vault.depositChainTip(),
+            keccak256(abi.encodePacked(bytes32(0), KAT_LEAF)),
+            "gateway-signed deposit folds the SAME leaf as the KAT (sig excluded)"
+        );
+
+        _depositAs(KAT_FROM_1, KAT_AMOUNT_1, KAT_OWNER_COMMIT_1);
+        assertEq(vault.depositChainTip(), KAT_TIP2, "two signed deposits reproduce Rust KAT_DEPOSIT_TIP2");
+    }
+
+    /// The signature binds all four fields: a sig valid for (from, ownerCommit, amount)
+    /// must NOT authorize a deposit with a different `from`, `ownerCommit`, or `amount`.
+    /// Otherwise the gate would be porous.
+    function test_sig_is_bound_to_from_ownerCommit_amount() public {
+        // sig issued for (KAT_FROM_0, KAT_OWNER_COMMIT_0, KAT_AMOUNT_0)
+        bytes memory sig = _gwSig(vault, KAT_FROM_0, KAT_AMOUNT_0, KAT_OWNER_COMMIT_0);
+
+        // wrong `from`: the same sig replayed by a different sender is rejected
+        usdc.mint(KAT_FROM_1, KAT_AMOUNT_0);
+        vm.startPrank(KAT_FROM_1);
+        usdc.approve(address(vault), KAT_AMOUNT_0);
+        vm.expectRevert(CollateralVault.BadGatewaySig.selector);
+        vault.deposit(KAT_AMOUNT_0, KAT_OWNER_COMMIT_0, sig);
+        vm.stopPrank();
+
+        // fund KAT_FROM_0 so only the sig binding (not a balance/allowance error) can revert
+        usdc.mint(KAT_FROM_0, KAT_AMOUNT_0 + 1);
+        vm.startPrank(KAT_FROM_0);
+        usdc.approve(address(vault), KAT_AMOUNT_0 + 1);
+
+        // wrong `ownerCommit`
+        vm.expectRevert(CollateralVault.BadGatewaySig.selector);
+        vault.deposit(KAT_AMOUNT_0, KAT_OWNER_COMMIT_1, sig);
+
+        // wrong `amount`
+        vm.expectRevert(CollateralVault.BadGatewaySig.selector);
+        vault.deposit(KAT_AMOUNT_0 + 1, KAT_OWNER_COMMIT_0, sig);
+
+        // sanity: the exact tuple the sig was issued for DOES authorize entry
+        vault.deposit(KAT_AMOUNT_0, KAT_OWNER_COMMIT_0, sig);
+        vm.stopPrank();
+        assertEq(vault.depositCount(), 1, "the correctly-bound tuple is authorized");
     }
 }

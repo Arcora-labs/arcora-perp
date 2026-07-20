@@ -51,7 +51,9 @@ contract VaultInvariantTest is MiniTest {
         // the handler is the settlement authority so it can publish roots
         handler = new Handler();
         usdc = new MockUSDC();
-        vault = new CollateralVault(address(handler), address(usdc));
+        // the handler drives only publish/claim (never deposit), so the SEC-019 gateway
+        // signer is an unused placeholder here.
+        vault = new CollateralVault(address(handler), address(usdc), address(0x6A7E));
         handler.init(vault);
         usdc.mint(address(vault), INITIAL);
     }

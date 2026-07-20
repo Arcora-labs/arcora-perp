@@ -25,6 +25,9 @@ contract DarkPerpSettlementTest is MiniTest {
     /// Stand-in shielded-note owner: these tests exercise settlement/bonding, not the
     /// SEC-019 deposit hash chain (see CollateralVault.t.sol for that).
     bytes32 internal constant TEST_OWNER_COMMIT = keccak256("dark-perp.test.note-owner");
+    /// SEC-019 (Task 6c): the gateway signing key the vault is deployed with, so deposits
+    /// in these tests carry a valid gateway authorization.
+    uint256 internal constant GW_PK = 0x6A7E;
 
     // this contract is the sequencer
     function setUp() public {
@@ -45,8 +48,16 @@ contract DarkPerpSettlementTest is MiniTest {
         // wire a vault so the USDC sequencer bond can be posted; left unfunded, so
         // requiredBond() is 0 and the settle tests need no bond (audit Q1 floor = 0).
         usdc = new MockUSDC();
-        vault = new CollateralVault(address(s), address(usdc));
+        vault = new CollateralVault(address(s), address(usdc), vm.addr(GW_PK));
         s.setVault(address(vault));
+    }
+
+    /// SEC-019 (Task 6c): gateway signature over the canonical deposit digest for a
+    /// deposit of `amount`/`commit` by `from` into `vault`.
+    function _gwSig(address from, uint256 amount, bytes32 commit) internal view returns (bytes memory) {
+        bytes32 digest = keccak256(abi.encodePacked(block.chainid, address(vault), from, commit, amount));
+        (uint8 v, bytes32 r, bytes32 sg) = vm.sign(GW_PK, digest);
+        return abi.encodePacked(r, sg, v);
     }
 
     /// The sequencer (this contract) posts a USDC bond of `amount`.
@@ -162,13 +173,15 @@ contract DarkPerpSettlementTest is MiniTest {
         usdc.mint(address(this), 1000 * USD);
         usdc.approve(address(vault), 1000 * USD);
         // a deposit works while the system is live
-        vault.deposit(100 * USD, TEST_OWNER_COMMIT);
+        vault.deposit(100 * USD, TEST_OWNER_COMMIT, _gwSig(address(this), 100 * USD, TEST_OWNER_COMMIT));
         // enter close-only via a liveness timeout
         vm.roll(block.number + LIVENESS + 1);
         s.triggerCloseOnly();
-        // a further deposit must now revert
+        // a further deposit must now revert — closeOnly is checked before the sig gate,
+        // so it reverts InCloseOnly even with a valid gateway signature
+        bytes memory sig = _gwSig(address(this), 100 * USD, TEST_OWNER_COMMIT);
         vm.expectRevert(CollateralVault.InCloseOnly.selector);
-        vault.deposit(100 * USD, TEST_OWNER_COMMIT);
+        vault.deposit(100 * USD, TEST_OWNER_COMMIT, sig);
     }
 
     function test_inclusion_answered_clears_challenge() public {
@@ -405,7 +418,7 @@ contract DarkPerpSettlementTest is MiniTest {
     function _depositToVault(uint256 amount) internal {
         usdc.mint(address(this), amount);
         usdc.approve(address(vault), amount);
-        vault.deposit(amount, TEST_OWNER_COMMIT);
+        vault.deposit(amount, TEST_OWNER_COMMIT, _gwSig(address(this), amount, TEST_OWNER_COMMIT));
     }
 
     // --- SEC-019: credited deposits are pinned to the L1 deposit hash chain ----
@@ -524,10 +537,14 @@ contract DarkPerpSettlementTest is MiniTest {
         bytes memory proof =
             abi.encode(s.publicCommitment(GENESIS, manifest, newRoot, bytes32(0), bytes32(0), bytes32(0), prefixTip));
 
-        // a griefer front-runs it with a free, zero-value deposit
+        // a mid-flight, gateway-authorized deposit front-runs the settle (zero-value, but
+        // it still advances the head). With the SEC-019 (Task 6c) gate a random third
+        // party can no longer do this un-authorized; the point here is that even an
+        // authorized deposit landing between build and settle does not stall settlement.
         address griefer = address(0x6217EF);
+        bytes memory gsig = _gwSig(griefer, 0, keccak256("junk"));
         vm.prank(griefer);
-        vault.deposit(0, keccak256("junk"));
+        vault.deposit(0, keccak256("junk"), gsig);
         assertEq(uint256(vault.depositCount()), uint256(prefixCount) + 1, "griefing deposit did advance the head");
         assertTrue(vault.depositChainTip() != prefixTip, "and did move the head tip");
 

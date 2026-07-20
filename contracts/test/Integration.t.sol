@@ -24,14 +24,23 @@ contract IntegrationTest is MiniTest {
     /// Stand-in shielded-note owner: these tests exercise the end-to-end flow, not the
     /// SEC-019 deposit hash chain (see CollateralVault.t.sol for that).
     bytes32 internal constant TEST_OWNER_COMMIT = keccak256("dark-perp.test.note-owner");
+    /// SEC-019 (Task 6c): the gateway signing key the vault is deployed with.
+    uint256 internal constant GW_PK = 0x6A7E;
 
     // this contract is the sequencer
     function setUp() public {
         verifier = new MockZkVerifier();
         s = new DarkPerpSettlement(address(this), address(0xE), verifier, GENESIS, 100, 50, 0, 0, address(this), 0);
         usdc = new MockUSDC();
-        vault = new CollateralVault(address(s), address(usdc));
+        vault = new CollateralVault(address(s), address(usdc), vm.addr(GW_PK));
         s.setVault(address(vault));
+    }
+
+    /// SEC-019 (Task 6c): gateway signature over the canonical deposit digest.
+    function _gwSig(address from, uint256 amount, bytes32 commit) internal view returns (bytes memory) {
+        bytes32 digest = keccak256(abi.encodePacked(block.chainid, address(vault), from, commit, amount));
+        (uint8 v, bytes32 r, bytes32 sg) = vm.sign(GW_PK, digest);
+        return abi.encodePacked(r, sg, v);
     }
 
     function _proof(bytes32 prev, bytes32 m, bytes32 n, bytes32 ord, bytes32 wd) internal view returns (bytes memory) {
@@ -56,9 +65,10 @@ contract IntegrationTest is MiniTest {
 
     function _deposit(address who, uint256 amount) internal {
         usdc.mint(who, amount);
+        bytes memory sig = _gwSig(who, amount, TEST_OWNER_COMMIT);
         vm.startPrank(who);
         usdc.approve(address(vault), amount);
-        vault.deposit(amount, TEST_OWNER_COMMIT);
+        vault.deposit(amount, TEST_OWNER_COMMIT, sig);
         vm.stopPrank();
     }
 

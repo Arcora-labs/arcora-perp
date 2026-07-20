@@ -21,6 +21,8 @@ import {DeployGuard} from "./DeployGuard.sol";
 /// Env (all optional, with defaults):
 ///   PRIVATE_KEY      deployer key (default: a well-known anvil key)
 ///   ENCLAVE_SIGNER   secp256k1 address the enclave signs receipts with
+///   GATEWAY_SIGNER   secp256k1 address the gateway signs deposit authorizations with
+///                    (SEC-019 Task 6c; default: sequencer)
 ///   GENESIS_ROOT     initial state root
 ///   LIVENESS_BLOCKS  close-only liveness timeout (default 7200 ≈ 1 day)
 ///   CHALLENGE_BLOCKS inclusion challenge window (default 300 ≈ 1 hr)
@@ -87,7 +89,11 @@ contract Deploy {
         // USDC is the collateral asset (6 decimals). MockUSDC ships an open faucet
         // for the testnet — replace with the canonical USDC address before mainnet.
         usdc = new MockUSDC();
-        vault = new CollateralVault(address(settlement), address(usdc));
+        // SEC-019 (Task 6c): the gateway key that authorizes deposit entry. Read inline
+        // (not via a named local) to stay under the non-viaIR stack limit. Defaults to the
+        // sequencer for a clean local dry run; set GATEWAY_SIGNER to the real gateway
+        // signer address for any shared/testnet deploy.
+        vault = new CollateralVault(address(settlement), address(usdc), vm.envOr("GATEWAY_SIGNER", sequencer));
         settlement.setVault(address(vault));
 
         // seed the deployer (sequencer) with 1,000,000 USDC so it can post the bond
