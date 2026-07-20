@@ -108,6 +108,12 @@ contract CollateralVault {
     /// SEC-019 (Task 6c): the deposit was not authorized by the gateway (missing,
     /// malformed, or wrong-tuple signature).
     error BadGatewaySig();
+    /// SEC-019 (Task 6c): a zero `gatewaySigner` would make the deposit gate
+    /// fail-OPEN — `_recover` returns `address(0)` for a malformed-but-guard-passing
+    /// signature (e.g. r=s=0, v=27), so `_recover(...) != gatewaySigner` would be
+    /// `address(0) != address(0)` == false and let an unauthorized deposit through.
+    /// Reject it at construction so the gate can never be bypassed.
+    error ZeroGatewaySigner();
 
     modifier onlySettlement() {
         if (msg.sender != settlement) revert NotSettlement();
@@ -115,6 +121,10 @@ contract CollateralVault {
     }
 
     constructor(address _settlement, address _token, address _gatewaySigner) {
+        // SEC-019 (Task 6c): a zero signer makes the deposit gate fail-open (see
+        // `ZeroGatewaySigner`), so a deploy passing `GATEWAY_SIGNER=0x0` would ship a
+        // wide-open vault. Reject it here rather than silently disable the gate.
+        if (_gatewaySigner == address(0)) revert ZeroGatewaySigner();
         settlement = _settlement;
         token = IERC20(_token);
         gatewaySigner = _gatewaySigner;

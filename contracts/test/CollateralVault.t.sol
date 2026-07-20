@@ -405,4 +405,15 @@ contract CollateralVaultTest is MiniTest {
         vm.stopPrank();
         assertEq(vault.depositCount(), 1, "the correctly-bound tuple is authorized");
     }
+
+    /// SEC-019 (Task 6c): a zero `gatewaySigner` makes the gate fail-OPEN — `_recover`
+    /// returns `address(0)` for a malformed-but-guard-passing signature (r=s=0, v=27),
+    /// so `_recover(...) != gatewaySigner` becomes `address(0) != address(0)` == false
+    /// and an unauthorized deposit slips through. The constructor must reject it so a
+    /// deploy with `GATEWAY_SIGNER=0x0` can never ship a wide-open vault. Same arg
+    /// list/order as `setUp`, only the signer is `address(0)`.
+    function test_constructor_rejects_zero_gateway_signer() public {
+        vm.expectRevert(CollateralVault.ZeroGatewaySigner.selector);
+        new CollateralVault(address(this), address(usdc), address(0));
+    }
 }
