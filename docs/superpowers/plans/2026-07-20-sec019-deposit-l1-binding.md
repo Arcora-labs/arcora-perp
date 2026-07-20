@@ -559,6 +559,79 @@ git commit -m "fix(contracts): SEC-019 settle a proven deposit prefix (depositTi
 
 ---
 
+### Task 6c: Gateway-authorized deposit entry (`sig`) — close deposit-queue head-of-line blocking
+
+**Rationale (spec §1b):** blinding (§1a) + contiguous consumption means a leaf whose `owner_commit` preimage the gateway doesn't know is uncreditable, and consumption can't skip it, so it permanently blocks every deposit queued behind it (a free `deposit(0, junkCommit)` triggers it; so does an honest user who never registered their `(owner, blind)`). Fix: the vault accepts a deposit only if the gateway pre-authorized it, so every on-chain leaf is creditable by construction. This is a **liveness gate on entry, NOT a mint authority** — a signature only permits entry; each deposit still does a real `transferFrom` and settlement still pins the prefix, so the signer key cannot inflate `external_in`.
+
+**Files:**
+- Modify: `contracts/src/CollateralVault.sol` (`gatewaySigner` + `sig` param + verify)
+- Test: `contracts/test/CollateralVault.t.sol`
+- Modify: `contracts/test/utils/MiniTest.sol` if it lacks `vm.sign`/`vm.addr` (declare the standard Foundry cheatcodes on the vendored `Vm` interface — they are supported by the underlying cheatcode VM regardless)
+
+**Interfaces:**
+- Produces: `address public gatewaySigner` (constructor arg / governance-set); `deposit(uint256 amount, bytes32 ownerCommit, bytes calldata sig)`; the signed digest = `keccak256(abi.encodePacked(block.chainid, address(this), msg.sender, ownerCommit, amount))`, recovered via `ecrecover` and required to equal `gatewaySigner`.
+- Consumes: the Task-5/5b/6b chain + `depositTipAt` (unchanged).
+
+- [ ] **Step 1: Write the failing tests**
+
+```solidity
+function test_deposit_requires_gateway_signature() public {
+    // a deposit with NO / wrong signature reverts
+    bytes memory bad = hex"00";
+    vm.prank(KAT_FROM_0);
+    vm.expectRevert();
+    vault.deposit(1000, KAT_OWNER_0, bad);
+}
+function test_deposit_with_valid_gateway_sig_advances_chain_to_KAT() public {
+    // sign the canonical digest with the test gateway key, deposit, assert depositChainTip == KAT_TIP after 1
+    // (KAT-LEAF/KAT-TIP2 must still be reproduced — the sig does not enter the leaf)
+}
+function test_sig_is_bound_to_from_ownerCommit_amount() public {
+    // a sig valid for (from,ownerCommit,amount) must NOT authorize a different from / ownerCommit / amount
+}
+```
+Use `vm.addr(pk)` for the gateway signer and `vm.sign(pk, digest)` to produce `sig` (add both to the vendored `Vm` interface if absent). Set `gatewaySigner = vm.addr(GW_PK)` in `setUp`.
+
+- [ ] **Step 2: Run to verify they fail**
+
+Run: `cd contracts && forge test --match-contract CollateralVault`
+Expected: FAIL — `deposit` has no `sig` param / no signer check yet.
+
+- [ ] **Step 3: Implement**
+
+Add `address public gatewaySigner;` (set in the constructor alongside the existing args — grep the ctor). In `deposit`:
+```solidity
+function deposit(uint256 amount, bytes32 ownerCommit, bytes calldata sig) external {
+    if (ISettlementCloseOnly(settlement).closeOnly()) revert InCloseOnly();
+    bytes32 digest = keccak256(abi.encodePacked(block.chainid, address(this), msg.sender, ownerCommit, amount));
+    if (_recover(digest, sig) != gatewaySigner) revert BadGatewaySig();
+    if (!token.transferFrom(msg.sender, address(this), amount)) revert TransferFailed();
+    totalDeposited += amount;
+    bytes32 leaf = keccak256(abi.encodePacked(msg.sender, ownerCommit, amount, uint256(depositCount)));
+    depositChainTip = keccak256(abi.encodePacked(depositChainTip, leaf));
+    emit Deposit(msg.sender, ownerCommit, amount, depositCount, depositChainTip);
+    depositCount += 1;
+    depositTipAt[depositCount] = depositChainTip;
+}
+```
+Add a minimal `_recover(bytes32,bytes)` (split r/s/v + `ecrecover`, revert on malleable/zero — or reuse an existing recovery helper in the repo if one is used elsewhere; grep `ecrecover`). Add `error BadGatewaySig();`. Keep the leaf/fold EXACTLY as is (KATs unchanged) — the `sig` is verified then dropped.
+
+Update EVERY existing `vault.deposit(...)` call site in `contracts/test/` to sign with the test gateway key (they all break — that's expected; a shared test helper `_signedDeposit(from, amount, commit)` keeps it DRY).
+
+- [ ] **Step 4: Run to verify they pass**
+
+Run: `cd contracts && forge build && forge test`
+Expected: PASS — whole suite, all three KATs still green and unmodified.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add contracts/src/CollateralVault.sol contracts/test/CollateralVault.t.sol contracts/test/utils/MiniTest.sol
+git commit -m "feat(contracts): SEC-019 gateway-authorized deposit entry (sig) — every on-chain leaf is creditable by construction"
+```
+
+---
+
 ### Task 7: Host plumbing — thread L1 `from`+`id`+`owner`
 
 **Files:**
@@ -594,7 +667,8 @@ Expected: FAIL.
 
 - `l1.rs`: update `DEPOSIT_TOPIC0` to the new `Deposit(address,bytes32,uint256,uint64,bytes32)` signature hash (**a stale topic0 silently stops every deposit from crediting** — recompute it, do not hand-edit); parse `ownerCommit` (topic[2], indexed) + `id` (from data) + `amount` (from data) + `from` (topic[1]); `verify_deposit_tx` returns `(from, owner_commit, amount, id)`.
 - **Blinded binding (Task 5b):** the gateway must obtain/derive `deposit_blind`, recompute `keccak(owner ‖ deposit_blind)`, and **reject the credit unless it equals the on-chain `owner_commit`**. Choose ONE host-side source for `deposit_blind` and document it: user-supplied at confirm time, or deterministically derived from the account's existing key material (must be reproducible, else the deposit can never be credited).
-- **Frontend:** `frontend/src/api/wallet.ts` (stale `deposit(uint256)` selector — tx reverts) and `frontend/src/components/TestnetNotice.tsx` (wrong user-facing `cast` instructions) must be updated to `deposit(uint256,bytes32)` + computing `ownerCommit`.
+- **Gateway signing endpoint (Task 6c):** the gateway must expose an endpoint that, given a requested `(from, owner, amount)`, records the `(owner, deposit_blind)` for `ownerCommit = keccak(owner ‖ deposit_blind)` and returns the gateway's ECDSA signature over `keccak256(abi.encodePacked(chainid, vault, from, ownerCommit, amount))`. The gateway holds the `gatewaySigner` key. The user cannot deposit without it — this is what guarantees every on-chain leaf is creditable.
+- **Frontend:** `frontend/src/api/wallet.ts` (stale `deposit(uint256)` selector — tx reverts) and `frontend/src/components/TestnetNotice.tsx` (wrong user-facing `cast` instructions) must be updated to `deposit(uint256,bytes32,bytes)` — first request the gateway signature (which fixes the blind-generation point: the blind is chosen SECRETLY by the gateway per §5, not by public-data derivation on the client), then submit `deposit(amount, ownerCommit, sig)`. Also `frontend/src/api/wallet.test.ts`.
 - **Also compile-broken by earlier tasks, fix here:** `crates/gateway/src/prover_client.rs` (`DerivedRoots` literal + `ProveOutcome` needs a `deposits_root` field — it re-derives the commitment), `crates/gateway/src/main.rs` (`DerivedRoots` literal), `crates/demo/src/main.rs`, plus any `BatchOp::Deposit` literals in `node`/`e2e`/`sequencer`.
 - `main.rs`: `account_confirm_deposit` receives `owner`+`id`; assert the account's credited `owner` equals the event `owner` (reject mismatch — on-chain attribution is authoritative). `fund_amount` signature gains `from`+`deposit_id` and builds `BatchOp::Deposit { owner, asset_id:0, amount, blinding, from, deposit_id }`.
 - `sequencer/src/lib.rs` + any other `BatchOp::Deposit { .. }` construction: supply the real `from`/`deposit_id` (or, for admin/test-seed paths that have no L1 deposit, either route them through a distinct non-deposit op or feed a documented sentinel — grep every `BatchOp::Deposit` and resolve each; a seed path that fabricates `external_in` without an L1 event is exactly what SEC-019 forbids, so such paths must be gated behind a test/dev flag or removed).
