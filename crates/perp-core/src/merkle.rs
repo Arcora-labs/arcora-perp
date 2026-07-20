@@ -233,6 +233,30 @@ pub fn rejection_leaf(batch_id: u64, order_hash: &Digest) -> Digest {
     keccak(&[&[0x01u8], &bid, order_hash])
 }
 
+/// SEC-019 deposit leaf: `keccak256(abi.encodePacked(address from, bytes32 owner,
+/// uint256 amount, uint256 id))` — the L1 `Deposited` event bound into the on-chain
+/// hash-chain accumulator, reproduced byte-for-byte here and in-circuit. No domain tag.
+pub fn deposit_leaf(from: &[u8; 20], owner: &[u8; 32], amount: u128, id: u64) -> Digest {
+    let mut amt = [0u8; 32];
+    amt[16..].copy_from_slice(&amount.to_be_bytes()); // u128 → low 16 bytes
+    let mut idb = [0u8; 32];
+    idb[24..].copy_from_slice(&id.to_be_bytes()); // u64 → low 8 bytes
+    keccak(&[from, owner, &amt, &idb])
+}
+
+/// Fold one deposit leaf onto the running hash-chain tip:
+/// `keccak256(abi.encodePacked(bytes32 tip, bytes32 leaf))`. Genesis tip is `[0u8; 32]`.
+pub fn deposit_chain_fold(tip: &Digest, leaf: &Digest) -> Digest {
+    keccak(&[tip, leaf])
+}
+
+/// Fold `leaves` (in id order) onto `prev_tip`; returns the new tip. Empty ⇒ `prev_tip`.
+pub fn deposit_chain_root(prev_tip: &Digest, leaves: &[Digest]) -> Digest {
+    leaves
+        .iter()
+        .fold(*prev_tip, |tip, leaf| deposit_chain_fold(&tip, leaf))
+}
+
 fn hash_pair(a: Digest, b: Digest) -> Digest {
     let (lo, hi) = if a <= b { (a, b) } else { (b, a) };
     keccak(&[&lo, &hi])
@@ -574,5 +598,73 @@ mod settlement_tests {
             withdrawals_root(&[w]),
             withdrawal_leaf(&w.to, w.amount, w.nonce)
         );
+    }
+
+    // SEC-019 deposit leaf, byte-locked to Solidity
+    // `keccak256(abi.encodePacked(address from, bytes32 owner, uint256 amount,
+    // uint256 id))`. The on-chain accumulator (Solidity Task 5/6) reproduces this
+    // exact vector, so it is pinned as a known-answer test.
+    // KAT-LEAF = deposit_leaf(0x11*20, 0x22*32, 1000, 0)
+    // = 0xc73050f50b59f4f5e979a977daca61b851dde0b8783079f19612eaa372eea829
+    const KAT_DEPOSIT_LEAF: Digest = [
+        0xc7, 0x30, 0x50, 0xf5, 0x0b, 0x59, 0xf4, 0xf5, 0xe9, 0x79, 0xa9, 0x77, 0xda, 0xca, 0x61,
+        0xb8, 0x51, 0xdd, 0xe0, 0xb8, 0x78, 0x30, 0x79, 0xf1, 0x96, 0x12, 0xea, 0xa3, 0x72, 0xee,
+        0xa8, 0x29,
+    ];
+
+    // KAT-TIP2 = deposit_chain_root([0;32], [leaf0, leaf1]) for the canonical vector
+    // leaf0 = deposit_leaf(0x11*20, 0x22*32, 1000, 0)
+    // leaf1 = deposit_leaf(0x33*20, 0x44*32,  500, 1)
+    // = 0x5b73a880215f57b806542be075aff06956e28269482bf9b0db854b480e7ee5ca
+    const KAT_DEPOSIT_TIP2: Digest = [
+        0x5b, 0x73, 0xa8, 0x80, 0x21, 0x5f, 0x57, 0xb8, 0x06, 0x54, 0x2b, 0xe0, 0x75, 0xaf, 0xf0,
+        0x69, 0x56, 0xe2, 0x82, 0x69, 0x48, 0x2b, 0xf9, 0xb0, 0xdb, 0x85, 0x4b, 0x48, 0x0e, 0x7e,
+        0xe5, 0xca,
+    ];
+
+    #[test]
+    fn deposit_leaf_matches_abi_encodepacked() {
+        // keccak256(abi.encodePacked(address from, bytes32 owner, uint256 amount, uint256 id))
+        let from = [0x11u8; 20];
+        let owner = [0x22u8; 32];
+        let leaf = deposit_leaf(&from, &owner, 1000u128, 0u64);
+        // Manual re-pack must match the helper's layout.
+        let mut buf = Vec::new();
+        buf.extend_from_slice(&from);
+        buf.extend_from_slice(&owner);
+        buf.extend_from_slice(&{
+            let mut a = [0u8; 32];
+            a[16..].copy_from_slice(&1000u128.to_be_bytes());
+            a
+        });
+        buf.extend_from_slice(&{
+            let mut a = [0u8; 32];
+            a[24..].copy_from_slice(&0u64.to_be_bytes());
+            a
+        });
+        assert_eq!(leaf, keccak(&[&buf]));
+        // Determinism.
+        assert_eq!(leaf, deposit_leaf(&from, &owner, 1000u128, 0u64));
+        // Pinned known-answer (Solidity reproduces this exact hash).
+        assert_eq!(leaf, KAT_DEPOSIT_LEAF);
+    }
+
+    #[test]
+    fn deposit_chain_fold_and_root_are_ordered() {
+        let g = [0u8; 32];
+        let l0 = deposit_leaf(&[0x11; 20], &[0x22; 32], 1000, 0);
+        let l1 = deposit_leaf(&[0x33; 20], &[0x44; 32], 500, 1);
+        let t1 = deposit_chain_fold(&g, &l0);
+        let t2 = deposit_chain_fold(&t1, &l1);
+        // fold is keccak(tip || leaf).
+        assert_eq!(t1, keccak(&[&g, &l0]));
+        // deposit_chain_root == iterated fold, in id order.
+        assert_eq!(deposit_chain_root(&g, &[l0, l1]), t2);
+        // order matters: swapping leaves changes the tip.
+        assert_ne!(deposit_chain_root(&g, &[l1, l0]), t2);
+        // empty leaf set leaves the tip unchanged.
+        assert_eq!(deposit_chain_root(&g, &[]), g);
+        // Pinned known-answer for the 2-deposit tip.
+        assert_eq!(t2, KAT_DEPOSIT_TIP2);
     }
 }
