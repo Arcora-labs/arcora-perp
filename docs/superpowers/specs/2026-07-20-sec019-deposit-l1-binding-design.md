@@ -13,7 +13,7 @@ This design binds every credited deposit to a real, ordered L1 deposit event —
 
 **Non-goals / deferred:**
 
-- **Race-free partial consumption.** This design uses **consume-all-to-head** (a settle must credit every L1 deposit up to the current `depositCount`). A deposit landing between window-seal and settle-mining makes the settle tx **revert** (tip/count moved); this surfaces as the settle loop's existing `SettleFailed` path, whose on-chain reconcile re-reads `batchCount`/`currentStateRoot`, sees the tx did not land, rolls back, and the sequencer re-seals including the new deposit. Sound, but a bounded liveness cost. A checkpointed/watermarked partial-consumption variant (race-free) is a **Phase-2 optimization**, deliberately out of scope.
+- ~~Race-free partial consumption~~ — **now IN scope** (§3). The original consume-all-to-head rule was found to introduce a cheap settlement-halting DoS, so the design pins a proven **prefix** via `depositTipAt[n]` instead. A settle is no longer invalidated by concurrent deposits.
 - No change to the conservation identity itself, to withdrawals, to matching, or to the oracle path (ZK-001 is separate).
 - The end-to-end **real proof** (does the SP1 guest enforce the new constraint) is a GB10/SP1 smoke-test — not local. The guest has no logic of its own (it runs `perp_core::derive_roots`/`apply_batch`), so correct + unit-tested `perp-core` logic is enforced by construction; only proof generation + a Base-Sepolia settle need the box.
 
@@ -84,12 +84,15 @@ The depositor computes `owner_commit` off-chain and passes it to `deposit(amount
 
 - `publicCommitment(...)` gains a 7th argument `depositsRoot` appended LAST:
   `keccak256(abi.encodePacked(DOMAIN_STATE_ROOT, prevRoot, manifestHash, newRoot, orderedRoot, withdrawalsRoot, rejectedRoot, depositsRoot))`.
-- `settleBatch` / `finalSettle` gain a `bytes32 depositsRoot` + `uint64 newDepositCount` public input and, before/with proof verification, enforce **consume-all-to-head**:
+- `settleBatch` / `finalSettle` gain a `bytes32 depositsRoot` + `uint64 newDepositCount` public input and enforce, before proof verification, that the proof's deposit fold matches the vault's own chain **at that prefix**:
   ```solidity
-  require(newDepositCount == vault.depositCount(), "deposits: must consume all pending");
-  require(depositsRoot == vault.depositChainTip(),  "deposits: root != L1 chain tip");
+  require(depositsRoot == vault.depositTipAt(newDepositCount), "deposits: root != L1 chain prefix");
   ```
-  The starting point is already bound: `prevRoot == currentStateRoot` and `consumed_deposit_tip`/`consumed_deposit_count` live inside `new/prev_state_root`, so the proof cannot lie about where its fold began. The vault exposes `depositCount()`/`depositChainTip()` (public getters, no new storage in settlement beyond the two public inputs).
+  The vault records `depositTipAt[n]` = the chain tip after its first `n` deposits (`depositTipAt[0] == bytes32(0)`, the genesis tip, for free via the mapping default).
+
+  **Why a prefix, not the live head.** An earlier revision required `newDepositCount == vault.depositCount()` ("consume all pending"). That pins the batch to the *live* head, so ANY deposit landing between proof-build and tx-mine invalidates it — and since a zero-value `deposit(0, junk)` from any address advances `depositCount` for gas only, an adversary repeating it once per settle interval halts settlement (and therefore L1 finality and withdrawal claims) indefinitely, at negligible cost. Fail-safe (revert, never loss) but a real liveness DoS **introduced by this very mechanism**. Pinning the proven prefix instead removes the vector entirely: concurrent deposits simply land in a later batch.
+
+  **Monotonicity and no-skip come for free**, so no extra check is needed: `consumed_deposit_tip`/`consumed_deposit_count` live inside `state_root`, `prevRoot == currentStateRoot` pins where the fold began, and `op_deposit` only ever increments contiguously (`deposit_id == consumed_deposit_count`). A settle can therefore never go backward, skip, or double-consume. `depositChainTip()`/`depositCount()` remain as getters for the sequencer to see the head.
 
 ### 4. In-circuit constraint — `perp-core`
 
@@ -125,10 +128,10 @@ A derivation from **secret** account key material (e.g. an HKDF over the account
 | Condition | Result |
 |---|---|
 | `Deposit` with `deposit_id != consumed_deposit_count` | `EngineError::DepositOutOfOrder` → batch invalid (fail-closed) |
-| Proof credits fewer than all L1 deposits (`newDepositCount < vault.depositCount()`) | `settleBatch` reverts ("must consume all pending") |
+| Proof credits fewer than all L1 deposits | **OK** — settles the proven prefix; the rest land in a later batch |
 | Fabricated deposit (no L1 event) | its `(from,owner,amount,id)` isn't in the vault chain ⇒ `deposits_root != vault.depositChainTip()` ⇒ revert |
 | Real deposit credited to wrong owner | leaf's `owner` differs ⇒ chain tip differs ⇒ revert |
-| Deposit lands between seal and settle | tip/count moved ⇒ settle tx reverts ⇒ existing `SettleFailed` reconcile rolls back ⇒ re-seal including it (bounded liveness cost) |
+| Deposit lands between seal and settle | **OK** — the batch's prefix is unaffected; the new deposit is credited in a later batch (no revert, no DoS vector) |
 | First-ever deposit | folds onto genesis `[0;32]`, `id == 0 == consumed_deposit_count` |
 
 ## Components & interfaces (files)
@@ -156,4 +159,4 @@ Deferred to the GB10/SP1 box (tracked, not local): generate a real proof over a 
 
 ## Deferred to Phase 2 (tracked)
 
-Race-free partial consumption (checkpointed deposit watermarks so a settle need not consume all pending), if deposit volume makes the consume-all re-seal cost material. No interface change to the leaf/chain — only the settlement's consume rule and a vault tip-checkpoint would change.
+(Race-free partial consumption was originally deferred here; it was promoted into scope — see §3 — after consume-all-to-head was found to be cheaply griefable.)
