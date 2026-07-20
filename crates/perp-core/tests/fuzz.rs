@@ -66,6 +66,7 @@ fn run_session(seed: u64, steps: usize) {
             blinding: blind,
             from: [i as u8; 20],
             deposit_id: i,
+            deposit_blind: [0xDBu8; 32],
         })
         .unwrap();
         s.apply_op(&BatchOp::FundPosition {
@@ -133,6 +134,7 @@ fn run_session(seed: u64, steps: usize) {
                     blinding: [(step as u8); 32],
                     from: [i as u8; 20],
                     deposit_id: s.consumed_deposit_count,
+                    deposit_blind: [(step as u8) ^ 0xFFu8; 32],
                 }
             }
             4 => {
@@ -192,6 +194,7 @@ fn fuzz_state_root_is_deterministic() {
                 blinding: blind,
                 from: [i as u8; 20],
                 deposit_id: i,
+                deposit_blind: [0xDBu8; 32],
             })
             .unwrap();
             s.apply_op(&BatchOp::FundPosition {

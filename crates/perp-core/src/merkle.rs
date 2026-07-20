@@ -233,9 +233,31 @@ pub fn rejection_leaf(batch_id: u64, order_hash: &Digest) -> Digest {
     keccak(&[&[0x01u8], &bid, order_hash])
 }
 
+/// SEC-019 blinded owner binding: `keccak256(owner ‖ deposit_blind)`.
+///
+/// Published on L1 (as `CollateralVault.deposit`'s `ownerCommit` argument and the
+/// `Deposit` event's indexed commit) in PLACE of the raw shielded owner, so that a
+/// deposit does not publicly and permanently link the L1 payer to the internal note
+/// owner — which would destroy the unlinkability this system exists to provide
+/// (spec §1a). Both SEC-019 guarantees survive: the chain still pins the exact
+/// `(from, amount, id)` sequence (inflation), and crediting a different owner still
+/// requires a different commit — hence a broken chain match or a keccak
+/// second-preimage (misattribution).
+///
+/// `deposit_blind` is DISTINCT from a note's `blinding` (which hides the note
+/// commitment); do not conflate the two. The contract treats the commit as an opaque
+/// `bytes32`, so the leaf/fold encoding — and both cross-layer KATs — are unchanged.
+pub fn owner_commit(owner: &Digest, deposit_blind: &Digest) -> Digest {
+    keccak(&[owner, deposit_blind])
+}
+
 /// SEC-019 deposit leaf: `keccak256(abi.encodePacked(address from, bytes32 owner,
 /// uint256 amount, uint256 id))` — the L1 `Deposited` event bound into the on-chain
 /// hash-chain accumulator, reproduced byte-for-byte here and in-circuit. No domain tag.
+///
+/// The second word is an OPAQUE 32-byte owner field: callers pass [`owner_commit`]
+/// (the blinded binding), never the raw shielded owner — see spec §1a. The encoding
+/// here is unaffected by that choice, which is why both KATs below are unchanged.
 pub fn deposit_leaf(from: &[u8; 20], owner: &[u8; 32], amount: u128, id: u64) -> Digest {
     let mut amt = [0u8; 32];
     amt[16..].copy_from_slice(&amount.to_be_bytes()); // u128 → low 16 bytes
@@ -647,6 +669,22 @@ mod settlement_tests {
         assert_eq!(leaf, deposit_leaf(&from, &owner, 1000u128, 0u64));
         // Pinned known-answer (Solidity reproduces this exact hash).
         assert_eq!(leaf, KAT_DEPOSIT_LEAF);
+    }
+
+    /// SEC-019 privacy (spec §1a): the field published on L1 is the BLINDED binding
+    /// `keccak(owner ‖ deposit_blind)`, never the raw shielded owner. It must be the
+    /// same packed-keccak primitive as the rest of this module, and bound to BOTH
+    /// arguments in position (else a blind/owner swap or a re-used blind would let a
+    /// different pair claim the same commit).
+    #[test]
+    fn owner_commit_is_keccak_owner_blind() {
+        let owner = [0xAAu8; 32];
+        let blind = [0xBBu8; 32];
+        let c = owner_commit(&owner, &blind);
+        // packed keccak over the two 32-byte words, same primitive as deposit_leaf.
+        assert_eq!(c, keccak(&[&owner, &blind]));
+        assert_ne!(c, owner_commit(&blind, &owner), "order-bound");
+        assert_ne!(c, owner_commit(&owner, &[0xCCu8; 32]), "blind-bound");
     }
 
     #[test]

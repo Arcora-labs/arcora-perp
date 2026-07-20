@@ -49,21 +49,25 @@ contract CollateralVault {
     /// Genesis is `bytes32(0)`. This is the AUTHORITATIVE record of what was actually
     /// paid into the vault; the settlement contract pins a proof's `deposits_root`
     /// against it, so the sequencer cannot credit a deposit that never happened,
-    /// reorder deposits, replay one, or alter an amount/owner. A chain (not a Merkle
-    /// set) is used deliberately: order is part of the commitment.
+    /// reorder deposits, replay one, or alter an amount/owner-commit. A chain (not a
+    /// Merkle set) is used deliberately: order is part of the commitment.
     bytes32 public depositChainTip;
     /// Number of leaves folded into `depositChainTip`. Doubles as the next deposit's
     /// `id`, which is bound into the leaf so an otherwise-identical repeat deposit
-    /// (same sender, owner and amount) still produces a distinct leaf.
+    /// (same sender, owner commit and amount) still produces a distinct leaf.
     uint64 public depositCount;
 
     /// @param from L1 payer (bound into the leaf; the funds' provenance).
-    /// @param owner shielded-note owner the off-chain protocol must credit.
+    /// @param ownerCommit BLINDED binding to the shielded-note owner the off-chain
+    ///        protocol must credit: `keccak256(owner ‖ blind)`. Opaque to this
+    ///        contract, and deliberately NOT the raw owner — publishing that here
+    ///        (a permanent, indexed topic) would publicly link this L1 payer to the
+    ///        internal note owner, which is exactly the linkage this system hides.
     /// @param amount USDC base units.
     /// @param id the deposit's index in the chain (pre-increment `depositCount`).
     /// @param newTip `depositChainTip` after folding this deposit — indexers and the
     ///        sequencer replay from these without re-deriving the chain themselves.
-    event Deposit(address indexed from, bytes32 indexed owner, uint256 amount, uint64 id, bytes32 newTip);
+    event Deposit(address indexed from, bytes32 indexed ownerCommit, uint256 amount, uint64 id, bytes32 newTip);
     event WithdrawalsRootPublished(uint256 indexed epoch, bytes32 root);
     event Withdrawn(address indexed to, uint256 amount, uint256 nonce);
 
@@ -85,11 +89,12 @@ contract CollateralVault {
 
     /// @notice Deposit `amount` (USDC base units) into the pooled vault. The caller
     /// must have `approve`d the vault first. The off-chain protocol mints a shielded
-    /// note of `amount` for `owner`; the commitment enters the note tree (§1).
+    /// note of `amount` for the owner committed to by `ownerCommit`; the commitment
+    /// enters the note tree (§1).
     ///
     /// @dev SEC-019: the deposit is folded into `depositChainTip` BEFORE it can be
     /// credited off-chain. The leaf is
-    /// `keccak256(abi.encodePacked(address from, bytes32 owner, uint256 amount, uint256 id))`
+    /// `keccak256(abi.encodePacked(address from, bytes32 ownerCommit, uint256 amount, uint256 id))`
     /// and the fold is `keccak256(abi.encodePacked(bytes32 tip, bytes32 leaf))` — both
     /// reproduced byte-for-byte by `crates/perp-core/src/merkle.rs`
     /// (`deposit_leaf` / `deposit_chain_fold`) and in-circuit, and pinned on both sides
@@ -98,9 +103,15 @@ contract CollateralVault {
     /// same commit: any divergence silently breaks the binding this whole mechanism exists
     /// to provide.
     /// @param amount USDC base units to pull from `msg.sender`.
-    /// @param owner shielded-note owner to credit off-chain. Bound into the leaf, so the
-    ///        sequencer cannot redirect the note to a different owner than the payer chose.
-    function deposit(uint256 amount, bytes32 owner) external {
+    /// @param ownerCommit BLINDED commitment to the shielded-note owner to credit
+    ///        off-chain: `keccak256(owner ‖ blind)`, computed by the depositor. This
+    ///        contract treats it as an opaque 32-byte word and only folds it. Bound
+    ///        into the leaf, so the sequencer cannot redirect the note to a different
+    ///        owner than the payer committed to — crediting another owner would need a
+    ///        different commit (breaking the chain match against this tip) or a keccak
+    ///        second-preimage. Passing the RAW owner here would forfeit the payer↔owner
+    ///        unlinkability for no added integrity; see spec §1a.
+    function deposit(uint256 amount, bytes32 ownerCommit) external {
         // audit #11: refuse deposits once the system is in close-only. In close-only no
         // new batch settles, so a deposit made here would never be acknowledged into a
         // settled withdrawals root and the funds would be permanently unclaimable. Users
@@ -111,9 +122,9 @@ contract CollateralVault {
         // `id` is the PRE-increment count, so the first deposit is id 0 (matching the
         // Rust vectors). Folded only after the transfer succeeded — a reverted deposit
         // must leave the chain untouched.
-        bytes32 leaf = keccak256(abi.encodePacked(msg.sender, owner, amount, uint256(depositCount)));
+        bytes32 leaf = keccak256(abi.encodePacked(msg.sender, ownerCommit, amount, uint256(depositCount)));
         depositChainTip = keccak256(abi.encodePacked(depositChainTip, leaf));
-        emit Deposit(msg.sender, owner, amount, depositCount, depositChainTip);
+        emit Deposit(msg.sender, ownerCommit, amount, depositCount, depositChainTip);
         depositCount += 1;
     }
 

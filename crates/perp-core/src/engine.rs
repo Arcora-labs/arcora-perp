@@ -32,6 +32,12 @@ pub enum BatchOp {
     /// is its position in the L1 deposit stream (SEC-019) — together they are the
     /// leaf folded into the in-circuit deposit hash-chain accumulator, and
     /// `deposit_id` binds the op to strict L1 order (see `EngineError::DepositOutOfOrder`).
+    ///
+    /// `deposit_blind` is the privacy blind the depositor chose (spec §1a): the leaf
+    /// binds `owner_commit = keccak(owner ‖ deposit_blind)`, NOT the raw `owner`, so
+    /// the on-chain record never links the L1 payer to the shielded owner. It is a
+    /// separate value from `blinding` (which hides the note commitment) — the two must
+    /// not be conflated or re-used for each other.
     Deposit {
         owner: PubKey,
         asset_id: u64,
@@ -39,6 +45,7 @@ pub enum BatchOp {
         blinding: Digest,
         from: [u8; 20],
         deposit_id: u64,
+        deposit_blind: Digest,
     },
     /// Consume a note and move its value into a position's margin (open/fund).
     FundPosition {
@@ -218,8 +225,17 @@ impl<H: Hasher> State<H> {
                 blinding,
                 from,
                 deposit_id,
+                deposit_blind,
             } => self
-                .op_deposit(owner, *asset_id, *amount, blinding, from, *deposit_id)
+                .op_deposit(
+                    owner,
+                    *asset_id,
+                    *amount,
+                    blinding,
+                    from,
+                    *deposit_id,
+                    deposit_blind,
+                )
                 .map(|d| OpOutput {
                     withdrawal: None,
                     deposit: Some(d),
@@ -317,6 +333,9 @@ impl<H: Hasher> State<H> {
 
     // --- individual operations -------------------------------------------------
 
+    // these are exactly the `BatchOp::Deposit` fields, destructured; a params struct
+    // would only re-declare the enum variant (same house rule as `op_fill` above)
+    #[allow(clippy::too_many_arguments)]
     fn op_deposit(
         &mut self,
         owner: &PubKey,
@@ -325,6 +344,7 @@ impl<H: Hasher> State<H> {
         blinding: &Digest,
         from: &[u8; 20],
         deposit_id: u64,
+        deposit_blind: &Digest,
     ) -> Result<DepositIn, EngineError> {
         // SEC-019: bind this deposit to strict L1 order BEFORE any state mutation.
         // `deposit_id` must be exactly the next unconsumed L1 leaf index — this
@@ -352,7 +372,13 @@ impl<H: Hasher> State<H> {
         // is safe: it is verified `> 0` above. This is the SAME leaf/fold the
         // on-chain vault computes (byte-parity via `merkle::deposit_leaf`), so the
         // committed `consumed_deposit_tip` tracks the real, ordered event stream.
-        let leaf = crate::merkle::deposit_leaf(from, owner, amount as u128, deposit_id);
+        //
+        // What is bound is the BLINDED owner commit, not the raw `owner` (spec §1a):
+        // the raw owner is published nowhere on L1, yet crediting a different owner
+        // still needs a different commit — which breaks the chain match against the
+        // vault's tip. Misattribution stays closed; the payer↔owner link stays private.
+        let commit = crate::merkle::owner_commit(owner, deposit_blind);
+        let leaf = crate::merkle::deposit_leaf(from, &commit, amount as u128, deposit_id);
         self.consumed_deposit_tip =
             crate::merkle::deposit_chain_fold(&self.consumed_deposit_tip, &leaf);
         self.consumed_deposit_count += 1;
@@ -872,6 +898,7 @@ mod tests {
                     blinding: blind1,
                     from: [0u8; 20],
                     deposit_id: 0,
+                    deposit_blind: [0x71u8; 32],
                 },
                 BatchOp::Deposit {
                     owner,
@@ -880,6 +907,7 @@ mod tests {
                     blinding: blind2,
                     from: [0u8; 20],
                     deposit_id: 1,
+                    deposit_blind: [0x81u8; 32],
                 },
                 BatchOp::Withdraw {
                     note_commitment: cm1,
@@ -904,12 +932,13 @@ mod tests {
     #[test]
     fn deposit_binds_order_and_folds_chain() {
         use crate::error::EngineError;
-        use crate::merkle::{deposit_chain_fold, deposit_leaf};
+        use crate::merkle::{deposit_chain_fold, deposit_leaf, owner_commit};
         // No `State::default()` exists (a State needs a tree depth); use the
         // canonical `DefaultState::new(16)` constructor as every other test does.
         let mut st = DefaultState::new(16);
         let owner = [9u8; 32];
         let from = [1u8; 20];
+        let deposit_blind = [0x3Au8; 32];
         let op0 = BatchOp::Deposit {
             owner,
             asset_id: 0,
@@ -917,12 +946,16 @@ mod tests {
             blinding: [3u8; 32],
             from,
             deposit_id: 0,
+            deposit_blind,
         };
         let out = st.apply_batch(&[op0]).expect("apply");
         assert_eq!(st.consumed_deposit_count, 1);
         assert_eq!(
             st.consumed_deposit_tip,
-            deposit_chain_fold(&[0u8; 32], &deposit_leaf(&from, &owner, 1000, 0))
+            deposit_chain_fold(
+                &[0u8; 32],
+                &deposit_leaf(&from, &owner_commit(&owner, &deposit_blind), 1000, 0)
+            )
         );
         assert_eq!(st.external_in, 1000);
         assert_eq!(out.deposits.len(), 1);
@@ -935,10 +968,48 @@ mod tests {
             blinding: [4u8; 32],
             from,
             deposit_id: 7,
+            deposit_blind: [0x4Au8; 32],
         };
         assert!(matches!(
             st.apply_batch(&[bad]),
             Err(EngineError::DepositOutOfOrder)
         ));
+    }
+
+    /// SEC-019 privacy (spec §1a): what gets folded into the L1-bound hash-chain is
+    /// the BLINDED binding `keccak(owner ‖ deposit_blind)`, never the raw shielded
+    /// owner pubkey — publishing the raw owner as an L1 call arg + indexed event
+    /// topic would permanently link the L1 payer to the internal note owner. The
+    /// `assert_ne!` is the whole point: it proves the raw owner is no longer bound.
+    #[test]
+    fn deposit_folds_blinded_owner_commit_not_raw_owner() {
+        use crate::merkle::{deposit_chain_fold, deposit_leaf, owner_commit};
+        let mut st = DefaultState::new(16);
+        let owner = [9u8; 32];
+        // deliberately DIFFERENT from the note `blinding` below: the two serve
+        // different purposes and a swap must be caught by this test.
+        let deposit_blind = [5u8; 32];
+        let from = [1u8; 20];
+        let op = BatchOp::Deposit {
+            owner,
+            asset_id: 0,
+            amount: 1000,
+            blinding: [3u8; 32],
+            from,
+            deposit_id: 0,
+            deposit_blind,
+        };
+        st.apply_batch(&[op]).expect("apply");
+        let commit = owner_commit(&owner, &deposit_blind);
+        assert_eq!(
+            st.consumed_deposit_tip,
+            deposit_chain_fold(&[0u8; 32], &deposit_leaf(&from, &commit, 1000, 0)),
+            "the chain must bind the blinded owner commit"
+        );
+        assert_ne!(
+            st.consumed_deposit_tip,
+            deposit_chain_fold(&[0u8; 32], &deposit_leaf(&from, &owner, 1000, 0)),
+            "the RAW owner must not be what is bound (privacy: spec §1a)"
+        );
     }
 }

@@ -60,6 +60,7 @@ fn full_lifecycle_conserves_throughout() {
             blinding: ba,
             from: [0xA1u8; 20],
             deposit_id: 0,
+            deposit_blind: [0xDBu8; 32],
         },
         BatchOp::Deposit {
             owner: b,
@@ -68,6 +69,7 @@ fn full_lifecycle_conserves_throughout() {
             blinding: bb,
             from: [0xB2u8; 20],
             deposit_id: 1,
+            deposit_blind: [0xDBu8; 32],
         },
         BatchOp::FundPosition {
             owner: a,
@@ -161,6 +163,7 @@ fn invariant_collateral_conservation_under_random_ops() {
                 blinding: b,
                 from: [i as u8; 20],
                 deposit_id: i as u64,
+                deposit_blind: [0xDBu8; 32],
             },
             BatchOp::FundPosition {
                 owner: *o,
@@ -211,6 +214,7 @@ fn invariant_no_double_spend() {
         blinding: b,
         from: [0u8; 20],
         deposit_id: 0,
+        deposit_blind: [0xDBu8; 32],
     })
     .unwrap();
     // first fund consumes the note
@@ -250,6 +254,7 @@ fn invariant_post_fill_margin_sufficiency() {
                 blinding: bl,
                 from: [sk; 20],
                 deposit_id: s.consumed_deposit_count,
+                deposit_blind: [0xDBu8; 32],
             },
             BatchOp::FundPosition {
                 owner: o,
@@ -296,6 +301,7 @@ fn invariant_oracle_freshness_enforced() {
                 blinding: bl,
                 from: [sk; 20],
                 deposit_id: s.consumed_deposit_count,
+                deposit_blind: [0xDBu8; 32],
             },
             BatchOp::FundPosition {
                 owner: o,
@@ -344,6 +350,7 @@ fn invariant_liquidation_threshold() {
                 blinding: bl,
                 from: [sk; 20],
                 deposit_id: s.consumed_deposit_count,
+                deposit_blind: [0xDBu8; 32],
             },
             BatchOp::FundPosition {
                 owner: o,
@@ -456,6 +463,7 @@ fn bad_debt_setup(seed_usd: i128) -> DefaultState {
                 blinding: bl,
                 from: [sk; 20],
                 deposit_id: s.consumed_deposit_count,
+                deposit_blind: [0xDBu8; 32],
             },
             BatchOp::FundPosition {
                 owner: o,
@@ -565,6 +573,7 @@ fn true_insolvency_trips_close_only_when_winners_have_exited() {
                 blinding: bl,
                 from: [sk; 20],
                 deposit_id: s.consumed_deposit_count,
+                deposit_blind: [0xDBu8; 32],
             },
             BatchOp::FundPosition {
                 owner: o,
@@ -644,6 +653,7 @@ fn adl_distributes_pro_rata_across_multiple_winners() {
                 blinding: bl,
                 from: [sk; 20],
                 deposit_id: s.consumed_deposit_count,
+                deposit_blind: [0xDBu8; 32],
             },
             BatchOp::FundPosition {
                 owner: o,
@@ -728,6 +738,7 @@ fn trading_fees_pay_the_maker_and_fund_insurance() {
                 blinding: bl,
                 from: [sk; 20],
                 deposit_id: s.consumed_deposit_count,
+                deposit_blind: [0xDBu8; 32],
             },
             BatchOp::FundPosition {
                 owner: o,
@@ -785,6 +796,7 @@ fn duplicate_commitment_deposit_rejected() {
         blinding: bl,
         from: [0u8; 20],
         deposit_id: 0,
+        deposit_blind: [0xDBu8; 32],
     })
     .unwrap();
     let err = s
@@ -797,6 +809,7 @@ fn duplicate_commitment_deposit_rejected() {
             // in-order id (1 == count): the order gate passes, so the DUPLICATE
             // COMMITMENT check is what rejects this — the property under test.
             deposit_id: 1,
+            deposit_blind: [0xDBu8; 32],
         })
         .unwrap_err();
     assert_eq!(err, EngineError::DuplicateCommitment);
@@ -811,6 +824,7 @@ fn duplicate_commitment_deposit_rejected() {
         // the rejected duplicate above never advanced the count, so the next
         // in-order id is still 1.
         deposit_id: 1,
+        deposit_blind: [0xDBu8; 32],
     })
     .unwrap();
     assert!(s.conservation_holds());
@@ -832,6 +846,7 @@ fn self_trade_is_rejected_at_settlement() {
             blinding: bl,
             from: [0u8; 20],
             deposit_id: 0,
+            deposit_blind: [0xDBu8; 32],
         },
         BatchOp::FundPosition {
             owner: a,
@@ -872,6 +887,7 @@ fn forced_exit_close_only_blocks_increase() {
                 blinding: bl,
                 from: [sk; 20],
                 deposit_id: s.consumed_deposit_count,
+                deposit_blind: [0xDBu8; 32],
             },
             BatchOp::FundPosition {
                 owner: o,
@@ -947,6 +963,7 @@ fn adl_surfaces_the_per_winner_haircut_attribution() {
                 blinding: bl,
                 from: [sk; 20],
                 deposit_id: s.consumed_deposit_count,
+                deposit_blind: [0xDBu8; 32],
             },
             BatchOp::FundPosition {
                 owner: o,

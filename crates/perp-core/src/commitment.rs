@@ -126,6 +126,7 @@ mod tests {
                 blinding: blind,
                 from: [0u8; 20],
                 deposit_id: 0,
+                deposit_blind: [0x77u8; 32],
             },
             BatchOp::Withdraw {
                 note_commitment: cm,
@@ -173,6 +174,8 @@ mod tests {
         let owner = owner_from_spend_key::<Keccak256>(&[9u8; 32]);
         let amount = 1_000 * QUOTE_SCALE;
         let from = [0xCDu8; 20];
+        // distinct from the note `blinding` below — the two must never be conflated.
+        let deposit_blind = [0xB1u8; 32];
         let mut s = DefaultState::new(16);
         s.add_market(Market::conservative(0));
         let ops = vec![BatchOp::Deposit {
@@ -182,6 +185,7 @@ mod tests {
             blinding: [11u8; 32],
             from,
             deposit_id: 0,
+            deposit_blind,
         }];
         let manifest = manifest_for(&s, vec![]);
 
@@ -189,7 +193,9 @@ mod tests {
         let roots = derive_roots(&mut post, &ops, &manifest).expect("derive");
 
         // deposits_root is the tip AFTER this batch's deposits folded, not the pre-tip.
-        let leaf = crate::merkle::deposit_leaf(&from, &owner, amount as u128, 0);
+        // The leaf binds the BLINDED owner commit, never the raw owner (spec §1a).
+        let commit = crate::merkle::owner_commit(&owner, &deposit_blind);
+        let leaf = crate::merkle::deposit_leaf(&from, &commit, amount as u128, 0);
         let expected = crate::merkle::deposit_chain_fold(&[0u8; 32], &leaf);
         assert_eq!(roots.deposits_root, expected);
         assert_eq!(roots.deposits_root, post.consumed_deposit_tip);

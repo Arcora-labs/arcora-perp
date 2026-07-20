@@ -15,6 +15,7 @@ fn deposit(s: &mut State<Keccak256>, owner: [u8; 32], amount: i128, blind: [u8; 
         blinding: blind,
         from: [0u8; 20],
         deposit_id: 0,
+        deposit_blind: [0xDBu8; 32],
     })
     .expect("deposit");
     Note::new(owner, 0, amount, blind).commitment::<Keccak256>()

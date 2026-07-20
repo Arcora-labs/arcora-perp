@@ -566,6 +566,9 @@ mod tests {
                 // SEC-019: first deposit against a fresh state — L1 ordering index 0.
                 from: [0u8; 20],
                 deposit_id: 0,
+                // distinct from the note `blinding` above: this blinds the ON-CHAIN
+                // owner commit (spec §1a), a different purpose entirely.
+                deposit_blind: [0xDBu8; 32],
             },
             BatchOp::FundPosition {
                 owner,

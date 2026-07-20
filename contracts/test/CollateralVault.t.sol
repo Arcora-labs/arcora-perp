@@ -15,24 +15,25 @@ contract CollateralVaultTest is MiniTest {
     // USDC has 6 decimals; use whole-dollar units scaled by 1e6.
     uint256 internal constant USD = 1e6;
 
-    /// Shielded-note owner used by the vault tests that are not about the SEC-019
-    /// deposit hash-chain itself (they only need *some* well-formed owner field).
-    bytes32 internal constant DEFAULT_TEST_OWNER = keccak256("dark-perp.test.default-owner");
+    /// Stand-in owner COMMIT (`keccak256(owner ‖ blind)`, spec §1a) for the vault
+    /// tests that are not about the SEC-019 deposit hash-chain itself (they only need
+    /// *some* well-formed 32-byte field; the vault never interprets it).
+    bytes32 internal constant DEFAULT_TEST_OWNER_COMMIT = keccak256("dark-perp.test.default-owner");
 
     // ---------------------------------------------------------------------
     // SEC-019 canonical known-answer vectors. These are pinned by the Rust side
     // (`crates/perp-core/src/merkle.rs`, KAT_DEPOSIT_LEAF / KAT_DEPOSIT_TIP2) and
     // MUST be reproduced byte-for-byte here: the in-circuit `deposits_root` is only
     // a binding to real L1 deposits if L1 and the circuit fold the *same* bytes.
-    // Leaf: keccak256(abi.encodePacked(address from, bytes32 owner, uint256 amount, uint256 id))
+    // Leaf: keccak256(abi.encodePacked(address from, bytes32 ownerCommit, uint256 amount, uint256 id))
     // Fold: keccak256(abi.encodePacked(bytes32 tip, bytes32 leaf)), genesis tip = bytes32(0)
     // ---------------------------------------------------------------------
     address internal constant KAT_FROM_0 = address(0x1111111111111111111111111111111111111111);
-    bytes32 internal constant KAT_OWNER_0 = bytes32(uint256(0x2222222222222222222222222222222222222222222222222222222222222222));
+    bytes32 internal constant KAT_OWNER_COMMIT_0 = bytes32(uint256(0x2222222222222222222222222222222222222222222222222222222222222222));
     uint256 internal constant KAT_AMOUNT_0 = 1000;
 
     address internal constant KAT_FROM_1 = address(0x3333333333333333333333333333333333333333);
-    bytes32 internal constant KAT_OWNER_1 = bytes32(uint256(0x4444444444444444444444444444444444444444444444444444444444444444));
+    bytes32 internal constant KAT_OWNER_COMMIT_1 = bytes32(uint256(0x4444444444444444444444444444444444444444444444444444444444444444));
     uint256 internal constant KAT_AMOUNT_1 = 500;
 
     /// deposit_leaf(0x11*20, 0x22*32, 1000, id=0) — Rust KAT_DEPOSIT_LEAF.
@@ -52,18 +53,18 @@ contract CollateralVaultTest is MiniTest {
     }
 
     /// Mint USDC to `who`, then (as `who`) approve + deposit `amount` into the vault,
-    /// crediting the shielded note to `owner`.
-    function _depositAs(address who, uint256 amount, bytes32 owner) internal {
+    /// crediting the shielded note to the owner committed to by `ownerCommit`.
+    function _depositAs(address who, uint256 amount, bytes32 ownerCommit) internal {
         usdc.mint(who, amount);
         vm.startPrank(who);
         usdc.approve(address(vault), amount);
-        vault.deposit(amount, owner);
+        vault.deposit(amount, ownerCommit);
         vm.stopPrank();
     }
 
-    /// `_depositAs` with a stand-in owner, for tests that don't exercise the hash chain.
+    /// `_depositAs` with a stand-in commit, for tests that don't exercise the hash chain.
     function _deposit(address who, uint256 amount) internal {
-        _depositAs(who, amount, DEFAULT_TEST_OWNER);
+        _depositAs(who, amount, DEFAULT_TEST_OWNER_COMMIT);
     }
 
     function test_deposit_accrues_total() public {
@@ -78,7 +79,7 @@ contract CollateralVaultTest is MiniTest {
         vm.prank(alice);
         // no approval → transferFrom reverts inside deposit
         vm.expectRevert(MockUSDC.InsufficientAllowance.selector);
-        vault.deposit(100 * USD, DEFAULT_TEST_OWNER);
+        vault.deposit(100 * USD, DEFAULT_TEST_OWNER_COMMIT);
     }
 
     function test_only_settlement_publishes_root() public {
@@ -185,14 +186,14 @@ contract CollateralVaultTest is MiniTest {
     /// fails here rather than desyncing L1 from the circuit at settlement time.
     function test_deposit_leaf_encoding() public pure {
         bytes memory preimage = abi.encodePacked(
-            bytes20(KAT_FROM_0), KAT_OWNER_0, bytes32(KAT_AMOUNT_0), bytes32(uint256(0))
+            bytes20(KAT_FROM_0), KAT_OWNER_COMMIT_0, bytes32(KAT_AMOUNT_0), bytes32(uint256(0))
         );
         assertEq(preimage.length, 116, "packed leaf preimage is 20+32+32+32 bytes");
         assertEq(keccak256(preimage), KAT_LEAF, "hand-packed leaf matches Rust KAT_DEPOSIT_LEAF");
 
         // ...and the exact expression the vault uses agrees with that hand-packing.
         assertEq(
-            keccak256(abi.encodePacked(KAT_FROM_0, KAT_OWNER_0, KAT_AMOUNT_0, uint256(0))),
+            keccak256(abi.encodePacked(KAT_FROM_0, KAT_OWNER_COMMIT_0, KAT_AMOUNT_0, uint256(0))),
             KAT_LEAF,
             "vault leaf expression matches Rust KAT_DEPOSIT_LEAF"
         );
@@ -205,7 +206,7 @@ contract CollateralVaultTest is MiniTest {
         assertEq(vault.depositChainTip(), bytes32(0), "genesis tip is zero");
         assertEq(vault.depositCount(), 0, "genesis count is zero");
 
-        _depositAs(KAT_FROM_0, KAT_AMOUNT_0, KAT_OWNER_0);
+        _depositAs(KAT_FROM_0, KAT_AMOUNT_0, KAT_OWNER_COMMIT_0);
         assertEq(vault.depositCount(), 1, "one deposit folded");
         assertEq(
             vault.depositChainTip(),
@@ -213,7 +214,7 @@ contract CollateralVaultTest is MiniTest {
             "tip after one deposit is fold(0, KAT_LEAF)"
         );
 
-        _depositAs(KAT_FROM_1, KAT_AMOUNT_1, KAT_OWNER_1);
+        _depositAs(KAT_FROM_1, KAT_AMOUNT_1, KAT_OWNER_COMMIT_1);
         assertEq(vault.depositCount(), 2, "two deposits folded");
         assertEq(vault.depositChainTip(), KAT_TIP2, "tip matches Rust KAT_DEPOSIT_TIP2");
     }
@@ -221,7 +222,7 @@ contract CollateralVaultTest is MiniTest {
     /// `id` is the PRE-increment `depositCount`, so the first deposit carries id 0.
     /// If it were post-increment the KAT above would fail, but pin it directly too.
     function test_deposit_id_is_pre_increment_count() public {
-        _depositAs(KAT_FROM_0, KAT_AMOUNT_0, KAT_OWNER_0);
+        _depositAs(KAT_FROM_0, KAT_AMOUNT_0, KAT_OWNER_COMMIT_0);
         // leaf with id=0 is the one that was folded; id=1 would give a different tip
         assertEq(
             vault.depositChainTip(),
@@ -238,12 +239,12 @@ contract CollateralVaultTest is MiniTest {
         usdc.mint(KAT_FROM_1, KAT_AMOUNT_1);
         vm.startPrank(KAT_FROM_1);
         usdc.approve(address(other), KAT_AMOUNT_1);
-        other.deposit(KAT_AMOUNT_1, KAT_OWNER_1);
+        other.deposit(KAT_AMOUNT_1, KAT_OWNER_COMMIT_1);
         vm.stopPrank();
         usdc.mint(KAT_FROM_0, KAT_AMOUNT_0);
         vm.startPrank(KAT_FROM_0);
         usdc.approve(address(other), KAT_AMOUNT_0);
-        other.deposit(KAT_AMOUNT_0, KAT_OWNER_0);
+        other.deposit(KAT_AMOUNT_0, KAT_OWNER_COMMIT_0);
         vm.stopPrank();
 
         assertEq(other.depositCount(), 2, "two deposits folded");
@@ -256,7 +257,7 @@ contract CollateralVaultTest is MiniTest {
         usdc.mint(alice, 100 * USD);
         vm.prank(alice);
         vm.expectRevert(MockUSDC.InsufficientAllowance.selector);
-        vault.deposit(100 * USD, DEFAULT_TEST_OWNER);
+        vault.deposit(100 * USD, DEFAULT_TEST_OWNER_COMMIT);
         assertEq(vault.depositChainTip(), bytes32(0), "tip unchanged after failed deposit");
         assertEq(vault.depositCount(), 0, "count unchanged after failed deposit");
     }
