@@ -49,9 +49,11 @@ contract Handler {
         bytes32 newRoot = keccak256(abi.encodePacked(prev, j));
         bytes32 manifest = keccak256(abi.encodePacked("m", j));
         bytes32 orderedRoot = s.inclusionLeaf(j, orderHash(j));
+        // no vault is wired to `s` in this harness, so the SEC-019 deposit head stays
+        // at genesis (bytes32(0), 0) for every batch the handler settles.
         bytes memory proof =
-            abi.encode(s.publicCommitment(prev, manifest, newRoot, orderedRoot, bytes32(0), bytes32(0)));
-        s.settleBatch(prev, manifest, newRoot, orderedRoot, bytes32(0), bytes32(0), proof);
+            abi.encode(s.publicCommitment(prev, manifest, newRoot, orderedRoot, bytes32(0), bytes32(0), bytes32(0)));
+        s.settleBatch(prev, manifest, newRoot, orderedRoot, bytes32(0), bytes32(0), bytes32(0), 0, proof);
         root = newRoot;
         nextToSettle = j + 1;
     }

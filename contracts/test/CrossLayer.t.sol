@@ -31,6 +31,11 @@ contract CrossLayerTest is MiniTest {
         );
     }
 
+    /// SEC-019 re-pin: the commitment is now SEVEN words, with the derived
+    /// `depositsRoot` appended LAST. The previous expectation
+    /// (`0x5fcf2d93…2062`) was the six-word preimage and is stale — the Rust side
+    /// (`crates/prover/tests/vectors.rs`) folds the deposit chain into the same
+    /// vector, so both layers move together or neither settles.
     function test_public_commitment_matches_rust() public view {
         bytes32 c = s.publicCommitment(
             bytes32(uint256(0x0101010101010101010101010101010101010101010101010101010101010101)),
@@ -38,11 +43,12 @@ contract CrossLayerTest is MiniTest {
             bytes32(uint256(0x0303030303030303030303030303030303030303030303030303030303030303)),
             bytes32(uint256(0x0404040404040404040404040404040404040404040404040404040404040404)),
             bytes32(uint256(0x0505050505050505050505050505050505050505050505050505050505050505)),
-            bytes32(uint256(0x0606060606060606060606060606060606060606060606060606060606060606))
+            bytes32(uint256(0x0606060606060606060606060606060606060606060606060606060606060606)),
+            bytes32(uint256(0x0707070707070707070707070707070707070707070707070707070707070707))
         );
         assertEq(
             c,
-            0x5fcf2d935c94f53f10bda9e8383ac4564a464ca35d2d794806dc9410d2ba2062,
+            0x27e3e52688359d5759ff4c7b0bea4d25a14b3c81652a4083d531592f827d8902,
             "public commitment must match crates/prover::PublicInputs::commitment"
         );
     }

@@ -23,7 +23,7 @@ contract IntegrationTest is MiniTest {
     uint256 internal constant USD = 1e6;
     /// Stand-in shielded-note owner: these tests exercise the end-to-end flow, not the
     /// SEC-019 deposit hash chain (see CollateralVault.t.sol for that).
-    bytes32 internal constant TEST_NOTE_OWNER = keccak256("dark-perp.test.note-owner");
+    bytes32 internal constant TEST_OWNER_COMMIT = keccak256("dark-perp.test.note-owner");
 
     // this contract is the sequencer
     function setUp() public {
@@ -35,14 +35,30 @@ contract IntegrationTest is MiniTest {
     }
 
     function _proof(bytes32 prev, bytes32 m, bytes32 n, bytes32 ord, bytes32 wd) internal view returns (bytes memory) {
-        return abi.encode(s.publicCommitment(prev, m, n, ord, wd, bytes32(0)));
+        return abi.encode(s.publicCommitment(prev, m, n, ord, wd, bytes32(0), vault.depositChainTip()));
+    }
+
+    /// The vault's live SEC-019 deposit head, which `settleBatch` now pins against.
+    /// Read into locals BEFORE arming `vm.expectRevert` — these are external
+    /// staticcalls, and the cheatcode binds to the very next external call.
+    function _head() internal view returns (bytes32 tip, uint64 count) {
+        return (vault.depositChainTip(), vault.depositCount());
+    }
+
+    /// Settles a batch with the given roots at the vault's live deposit head, building
+    /// the matching proof. Extracted so the (now 9-argument) settle call does not blow
+    /// the stack in tests that already hold many locals.
+    function _settle(bytes32 prev, bytes32 manifest, bytes32 newRoot, bytes32 ord, bytes32 wd) internal {
+        (bytes32 dTip, uint64 dCount) = _head();
+        bytes32 commitment = s.publicCommitment(prev, manifest, newRoot, ord, wd, bytes32(0), dTip);
+        s.settleBatch(prev, manifest, newRoot, ord, wd, bytes32(0), dTip, dCount, abi.encode(commitment));
     }
 
     function _deposit(address who, uint256 amount) internal {
         usdc.mint(who, amount);
         vm.startPrank(who);
         usdc.approve(address(vault), amount);
-        vault.deposit(amount, TEST_NOTE_OWNER);
+        vault.deposit(amount, TEST_OWNER_COMMIT);
         vm.stopPrank();
     }
 
@@ -68,15 +84,8 @@ contract IntegrationTest is MiniTest {
         bytes32 leaf = keccak256(abi.encodePacked(alice, amount, nonce));
         bytes32 newRoot = bytes32(uint256(2));
         bytes32 manifest = keccak256("batch-0");
-        s.settleBatch(
-            GENESIS,
-            manifest,
-            newRoot,
-            bytes32(0),
-            leaf,
-            bytes32(0),
-            _proof(GENESIS, manifest, newRoot, bytes32(0), leaf)
-        );
+        // the batch credits alice's real deposit, so it settles exactly at the L1 head
+        _settle(GENESIS, manifest, newRoot, bytes32(0), leaf);
 
         // the vault now carries that settled withdrawals root
         assertEq(vault.withdrawalsRoot(), leaf, "vault got the settled withdrawals root");
@@ -101,14 +110,16 @@ contract IntegrationTest is MiniTest {
         bytes32 newRoot = bytes32(uint256(2));
         bytes32 m = keccak256("b0");
         bytes memory proof = _proof(GENESIS, m, newRoot, bytes32(0), bytes32(0));
+        (bytes32 dTip, uint64 dCount) = _head();
 
-        // under-bonded → cannot advance state
+        // under-bonded → cannot advance state (the bond floor is checked before the
+        // SEC-019 deposit pin, and these args satisfy the pin anyway)
         vm.expectRevert(DarkPerpSettlement.UnderBonded.selector);
-        s.settleBatch(GENESIS, m, newRoot, bytes32(0), bytes32(0), bytes32(0), proof);
+        s.settleBatch(GENESIS, m, newRoot, bytes32(0), bytes32(0), bytes32(0), dTip, dCount, proof);
 
         // post exactly the floor → settles
         _bond(500 * USD);
-        s.settleBatch(GENESIS, m, newRoot, bytes32(0), bytes32(0), bytes32(0), proof);
+        s.settleBatch(GENESIS, m, newRoot, bytes32(0), bytes32(0), bytes32(0), dTip, dCount, proof);
         assertEq(s.currentStateRoot(), newRoot, "settled once adequately bonded");
 
         // TVL grows 10x → the floor grows past the posted bond again
@@ -117,8 +128,10 @@ contract IntegrationTest is MiniTest {
         bytes32 newRoot2 = bytes32(uint256(3));
         bytes32 m2 = keccak256("b1");
         bytes memory proof2 = _proof(newRoot, m2, newRoot2, bytes32(0), bytes32(0));
+        // the second deposit advanced the L1 head, so re-read it
+        (bytes32 dTip2, uint64 dCount2) = _head();
         vm.expectRevert(DarkPerpSettlement.UnderBonded.selector);
-        s.settleBatch(newRoot, m2, newRoot2, bytes32(0), bytes32(0), bytes32(0), proof2);
+        s.settleBatch(newRoot, m2, newRoot2, bytes32(0), bytes32(0), bytes32(0), dTip2, dCount2, proof2);
     }
 
     function test_bond_floor_immune_to_donations() public {

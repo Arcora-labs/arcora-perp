@@ -8,6 +8,10 @@ interface ICollateralVault {
     function publishWithdrawals(bytes32 root, uint256 epoch) external;
     function tvl() external view returns (uint256);
     function token() external view returns (address);
+    /// SEC-019: the vault's authoritative deposit hash-chain head. A settling batch
+    /// must pin its proven `depositsRoot` to exactly this value.
+    function depositChainTip() external view returns (bytes32);
+    function depositCount() external view returns (uint64);
 }
 
 /// The ERC20 subset the settlement uses to custody the sequencer's USDC bond.
@@ -237,19 +241,53 @@ contract DarkPerpSettlement {
     /// a dishonest matcher's split is constrained by receipts + inclusion slashing
     /// until Proof-v2. Enforcement of the derived values requires the real verifier
     /// (P2); under MockZkVerifier the check is a stand-in.
+    /// `depositsRoot` (SEC-019) is likewise DERIVED by the guest circuit, by folding
+    /// the same keccak hash chain over exactly the deposits the batch credits. It is
+    /// appended LAST, matching the Rust word order in `PublicInputs::commitment`; the
+    /// 225-byte preimage is pinned on both sides by a shared known-answer vector
+    /// (`crates/prover/tests/vectors.rs` ↔ `CrossLayer.t.sol`). Unlike the other
+    /// derived roots this one is ALSO checkable on L1 — `settleBatch` pins it to the
+    /// vault's live chain tip — so it holds even under the mock verifier.
     function publicCommitment(
         bytes32 prevRoot,
         bytes32 manifestHash,
         bytes32 newRoot,
         bytes32 orderedRoot,
         bytes32 withdrawalsRoot,
-        bytes32 rejectedRoot
+        bytes32 rejectedRoot,
+        bytes32 depositsRoot
     ) public pure returns (bytes32) {
         return keccak256(
             abi.encodePacked(
-                DOMAIN_STATE_ROOT, prevRoot, manifestHash, newRoot, orderedRoot, withdrawalsRoot, rejectedRoot
+                DOMAIN_STATE_ROOT,
+                prevRoot,
+                manifestHash,
+                newRoot,
+                orderedRoot,
+                withdrawalsRoot,
+                rejectedRoot,
+                depositsRoot
             )
         );
+    }
+
+    /// @dev SEC-019 L1 pin, shared by both settle entrypoints (kept in one place so
+    /// the two can never drift apart, and to hold the settle functions under the
+    /// stack limit). Requires the batch to have consumed EXACTLY the deposits that
+    /// actually landed in the vault: same count, same chain tip.
+    ///
+    /// With no vault wired there is no custodied collateral, so no deposit may be
+    /// credited and the head is the genesis `(bytes32(0), 0)` — the check stays
+    /// fail-CLOSED rather than being skipped when `vault` is unset.
+    function _requireDepositHead(bytes32 depositsRoot, uint64 newDepositCount) internal view {
+        bytes32 tip;
+        uint64 count;
+        if (vault != address(0)) {
+            tip = ICollateralVault(vault).depositChainTip();
+            count = ICollateralVault(vault).depositCount();
+        }
+        require(newDepositCount == count, "deposits: must consume all pending");
+        require(depositsRoot == tip, "deposits: root != L1 chain tip");
     }
 
     /// @notice Settle a batch: verify its validity proof and advance the root.
@@ -261,6 +299,8 @@ contract DarkPerpSettlement {
         bytes32 orderedRoot,
         bytes32 withdrawalsRoot,
         bytes32 rejectedRoot,
+        bytes32 depositsRoot,
+        uint64 newDepositCount,
         bytes calldata proof
     ) external onlySequencer {
         if (closeOnly) revert InCloseOnly();
@@ -268,8 +308,17 @@ contract DarkPerpSettlement {
         // The bond must cover the value at risk before state can advance (audit Q1).
         if (sequencerBond < requiredBond()) revert UnderBonded();
         if (prevRoot != currentStateRoot) revert BadPrevRoot();
+        // SEC-019: pin the batch's credited deposits to the L1 deposit hash chain
+        // BEFORE verifying the proof. The circuit only proves it folded SOME chain
+        // consistently; nothing inside it can know which deposits really landed on
+        // L1. Without this pin a sequencer could prove a perfectly valid batch over
+        // a chain containing a deposit that never happened and mint collateral from
+        // nothing. Requiring equality with the live tip (not mere prefix-ness) also
+        // forces consume-all-to-head, so a genuine deposit cannot be indefinitely
+        // withheld from credit while batches settle around it.
+        _requireDepositHead(depositsRoot, newDepositCount);
         bytes32 commitment =
-            publicCommitment(prevRoot, manifestHash, newRoot, orderedRoot, withdrawalsRoot, rejectedRoot);
+            publicCommitment(prevRoot, manifestHash, newRoot, orderedRoot, withdrawalsRoot, rejectedRoot, depositsRoot);
         if (!verifier.verify(commitment, proof)) revert BadProof();
 
         uint256 batchId = batchCount;
@@ -305,14 +354,22 @@ contract DarkPerpSettlement {
         bytes32 orderedRoot,
         bytes32 withdrawalsRoot,
         bytes32 rejectedRoot,
+        bytes32 depositsRoot,
+        uint64 newDepositCount,
         bytes calldata proof
     ) external {
         if (msg.sender != governance) revert NotGovernance();
         if (!closeOnly) revert NotCloseOnly();
         if (block.number < closeOnlyBlock + finalSettleGraceBlocks) revert GraceNotExpired();
         if (prevRoot != currentStateRoot) revert BadPrevRoot();
+        // SEC-019: the wind-down path skips the close-only/slashed/bond guards but
+        // NOT this one. Governance may only land proof-valid state over deposits that
+        // genuinely happened — otherwise the escape hatch would become the very hole
+        // the pin exists to close. Deposits are refused in close-only, so the chain is
+        // frozen here and this is simply the final head.
+        _requireDepositHead(depositsRoot, newDepositCount);
         bytes32 commitment =
-            publicCommitment(prevRoot, manifestHash, newRoot, orderedRoot, withdrawalsRoot, rejectedRoot);
+            publicCommitment(prevRoot, manifestHash, newRoot, orderedRoot, withdrawalsRoot, rejectedRoot, depositsRoot);
         if (!verifier.verify(commitment, proof)) revert BadProof();
 
         uint256 batchId = batchCount;

@@ -24,7 +24,7 @@ contract DarkPerpSettlementTest is MiniTest {
     uint256 internal constant GRACE = 10;
     /// Stand-in shielded-note owner: these tests exercise settlement/bonding, not the
     /// SEC-019 deposit hash chain (see CollateralVault.t.sol for that).
-    bytes32 internal constant TEST_NOTE_OWNER = keccak256("dark-perp.test.note-owner");
+    bytes32 internal constant TEST_OWNER_COMMIT = keccak256("dark-perp.test.note-owner");
 
     // this contract is the sequencer
     function setUp() public {
@@ -57,7 +57,24 @@ contract DarkPerpSettlementTest is MiniTest {
     }
 
     function _proof(bytes32 prev, bytes32 m, bytes32 n, bytes32 ord, bytes32 wd) internal view returns (bytes memory) {
-        return abi.encode(s.publicCommitment(prev, m, n, ord, wd, bytes32(0)));
+        return abi.encode(s.publicCommitment(prev, m, n, ord, wd, bytes32(0), vault.depositChainTip()));
+    }
+
+    /// The vault's live SEC-019 deposit head, which `settleBatch`/`finalSettle` now
+    /// pin against. Read into locals BEFORE arming `vm.expectRevert` — these are
+    /// external staticcalls, and the cheatcode binds to the very next external call,
+    /// so reading them inline as settle arguments would consume the expectation.
+    function _head() internal view returns (bytes32 tip, uint64 count) {
+        return (vault.depositChainTip(), vault.depositCount());
+    }
+
+    /// Settles a batch with the given roots at the vault's live SEC-019 deposit head,
+    /// building the matching proof. Extracted into a helper so the (now 9-argument)
+    /// settle call does not blow the stack in tests that already hold many locals.
+    function _settle(bytes32 prev, bytes32 manifest, bytes32 newRoot, bytes32 ord, bytes32 wd, bytes32 rej) internal {
+        (bytes32 dTip, uint64 dCount) = _head();
+        bytes32 commitment = s.publicCommitment(prev, manifest, newRoot, ord, wd, rej, dTip);
+        s.settleBatch(prev, manifest, newRoot, ord, wd, rej, dTip, dCount, abi.encode(commitment));
     }
 
     /// Settles a fresh batch whose `orderedRoot` is a single-leaf tree containing
@@ -67,24 +84,19 @@ contract DarkPerpSettlementTest is MiniTest {
         bytes32 ordered = s.inclusionLeaf(batchId, orderHash); // single-leaf root
         bytes32 prev = s.currentStateRoot();
         bytes32 newRoot = keccak256(abi.encodePacked("next", batchId));
+        (bytes32 dTip, uint64 dCount) = _head();
         // MockZkVerifier accepts proof == publicCommitment; mirror the existing settle helpers.
-        bytes32 commitment = s.publicCommitment(prev, bytes32("m"), newRoot, ordered, bytes32(0), bytes32(0));
-        s.settleBatch(prev, bytes32("m"), newRoot, ordered, bytes32(0), bytes32(0), abi.encodePacked(commitment));
+        bytes32 commitment = s.publicCommitment(prev, bytes32("m"), newRoot, ordered, bytes32(0), bytes32(0), dTip);
+        s.settleBatch(
+            prev, bytes32("m"), newRoot, ordered, bytes32(0), bytes32(0), dTip, dCount, abi.encodePacked(commitment)
+        );
         proof = new bytes32[](0);
     }
 
     function test_settle_advances_root() public {
         bytes32 newRoot = bytes32(uint256(2));
         bytes32 manifest = keccak256("m0");
-        s.settleBatch(
-            GENESIS,
-            manifest,
-            newRoot,
-            bytes32(0),
-            bytes32(0),
-            bytes32(0),
-            _proof(GENESIS, manifest, newRoot, bytes32(0), bytes32(0))
-        );
+        _settle(GENESIS, manifest, newRoot, bytes32(0), bytes32(0), bytes32(0));
         assertEq(s.currentStateRoot(), newRoot, "root advanced");
         assertEq(s.batchCount(), 1, "batch counted");
     }
@@ -95,11 +107,12 @@ contract DarkPerpSettlementTest is MiniTest {
         bytes32 newRoot = bytes32(uint256(2));
         bytes32 manifest = keccak256("m");
         bytes memory proof = _proof(GENESIS, manifest, newRoot, bytes32(0), keccak256("authorized"));
+        (bytes32 dTip, uint64 dCount) = _head();
         // attacker swaps in a malicious withdrawals root with the same proof
         vm.expectRevert(DarkPerpSettlement.BadProof.selector);
-        s.settleBatch(GENESIS, manifest, newRoot, bytes32(0), keccak256("attacker"), bytes32(0), proof);
+        s.settleBatch(GENESIS, manifest, newRoot, bytes32(0), keccak256("attacker"), bytes32(0), dTip, dCount, proof);
         // the correct withdrawals root settles
-        s.settleBatch(GENESIS, manifest, newRoot, bytes32(0), keccak256("authorized"), bytes32(0), proof);
+        s.settleBatch(GENESIS, manifest, newRoot, bytes32(0), keccak256("authorized"), bytes32(0), dTip, dCount, proof);
         assertEq(s.currentStateRoot(), newRoot, "settled with bound withdrawals root");
     }
 
@@ -108,8 +121,9 @@ contract DarkPerpSettlementTest is MiniTest {
         bytes32 newRoot = bytes32(uint256(2));
         bytes32 manifest = keccak256("m");
         bytes memory proof = _proof(wrongPrev, manifest, newRoot, bytes32(0), bytes32(0));
+        (bytes32 dTip, uint64 dCount) = _head();
         vm.expectRevert(DarkPerpSettlement.BadPrevRoot.selector);
-        s.settleBatch(wrongPrev, manifest, newRoot, bytes32(0), bytes32(0), bytes32(0), proof);
+        s.settleBatch(wrongPrev, manifest, newRoot, bytes32(0), bytes32(0), bytes32(0), dTip, dCount, proof);
     }
 
     function test_settle_rejects_bad_proof() public {
@@ -117,8 +131,9 @@ contract DarkPerpSettlementTest is MiniTest {
         bytes32 newRoot = bytes32(uint256(2));
         bytes32 manifest = keccak256("m");
         bytes memory proof = _proof(GENESIS, manifest, newRoot, bytes32(0), bytes32(0));
+        (bytes32 dTip, uint64 dCount) = _head();
         vm.expectRevert(DarkPerpSettlement.BadProof.selector);
-        s.settleBatch(GENESIS, manifest, newRoot, bytes32(0), bytes32(0), bytes32(0), proof);
+        s.settleBatch(GENESIS, manifest, newRoot, bytes32(0), bytes32(0), bytes32(0), dTip, dCount, proof);
     }
 
     function test_liveness_triggers_close_only() public {
@@ -135,8 +150,9 @@ contract DarkPerpSettlementTest is MiniTest {
         bytes32 newRoot = bytes32(uint256(2));
         bytes32 manifest = keccak256("m");
         bytes memory proof = _proof(GENESIS, manifest, newRoot, bytes32(0), bytes32(0));
+        (bytes32 dTip, uint64 dCount) = _head();
         vm.expectRevert(DarkPerpSettlement.InCloseOnly.selector);
-        s.settleBatch(GENESIS, manifest, newRoot, bytes32(0), bytes32(0), bytes32(0), proof);
+        s.settleBatch(GENESIS, manifest, newRoot, bytes32(0), bytes32(0), bytes32(0), dTip, dCount, proof);
     }
 
     /// AUDIT (#11): once the system is in close-only, the vault must reject NEW deposits.
@@ -146,13 +162,13 @@ contract DarkPerpSettlementTest is MiniTest {
         usdc.mint(address(this), 1000 * USD);
         usdc.approve(address(vault), 1000 * USD);
         // a deposit works while the system is live
-        vault.deposit(100 * USD, TEST_NOTE_OWNER);
+        vault.deposit(100 * USD, TEST_OWNER_COMMIT);
         // enter close-only via a liveness timeout
         vm.roll(block.number + LIVENESS + 1);
         s.triggerCloseOnly();
         // a further deposit must now revert
         vm.expectRevert(CollateralVault.InCloseOnly.selector);
-        vault.deposit(100 * USD, TEST_NOTE_OWNER);
+        vault.deposit(100 * USD, TEST_OWNER_COMMIT);
     }
 
     function test_inclusion_answered_clears_challenge() public {
@@ -161,15 +177,7 @@ contract DarkPerpSettlementTest is MiniTest {
         bytes32 newRoot = bytes32(uint256(2));
         bytes32 manifest = keccak256("m");
         bytes32 orderedRoot = s.inclusionLeaf(0, orderHash);
-        s.settleBatch(
-            GENESIS,
-            manifest,
-            newRoot,
-            orderedRoot,
-            bytes32(0),
-            bytes32(0),
-            _proof(GENESIS, manifest, newRoot, orderedRoot, bytes32(0))
-        );
+        _settle(GENESIS, manifest, newRoot, orderedRoot, bytes32(0), bytes32(0));
 
         // user challenges with an enclave-signed receipt (canonical via vm.sign)
         (uint8 v, bytes32 r, bytes32 sig) = vm.sign(ENCLAVE_PK, s.receiptDigest(orderHash, 7, 1000, 0));
@@ -204,15 +212,7 @@ contract DarkPerpSettlementTest is MiniTest {
         bytes32 orderedRoot = s.inclusionLeaf(0, orderHash);
         bytes32 newRoot = bytes32(uint256(2));
         bytes32 manifest = keccak256("late");
-        s.settleBatch(
-            GENESIS,
-            manifest,
-            newRoot,
-            orderedRoot,
-            bytes32(0),
-            bytes32(0),
-            _proof(GENESIS, manifest, newRoot, orderedRoot, bytes32(0))
-        );
+        _settle(GENESIS, manifest, newRoot, orderedRoot, bytes32(0), bytes32(0));
 
         // the sequencer answers with that batch — inclusion is the cure, not an escape
         bytes32[] memory proof = new bytes32[](0);
@@ -237,15 +237,7 @@ contract DarkPerpSettlementTest is MiniTest {
         bytes32 orderedRoot = s.inclusionLeaf(0, keccak256("some-other-order"));
         bytes32 newRoot = bytes32(uint256(2));
         bytes32 manifest = keccak256("unrelated");
-        s.settleBatch(
-            GENESIS,
-            manifest,
-            newRoot,
-            orderedRoot,
-            bytes32(0),
-            bytes32(0),
-            _proof(GENESIS, manifest, newRoot, orderedRoot, bytes32(0))
-        );
+        _settle(GENESIS, manifest, newRoot, orderedRoot, bytes32(0), bytes32(0));
 
         bytes32[] memory proof = new bytes32[](0);
         vm.expectRevert(DarkPerpSettlement.NotIncluded.selector);
@@ -271,9 +263,10 @@ contract DarkPerpSettlementTest is MiniTest {
         bytes32 orderedRoot = s.inclusionLeaf(0, keccak256("some-ordered-order"));
         bytes32 newRoot = bytes32(uint256(2));
         bytes32 manifest = keccak256("rej");
+        (bytes32 dTip, uint64 dCount) = _head();
         bytes memory proof0 =
-            abi.encode(s.publicCommitment(GENESIS, manifest, newRoot, orderedRoot, bytes32(0), rejectedRoot));
-        s.settleBatch(GENESIS, manifest, newRoot, orderedRoot, bytes32(0), rejectedRoot, proof0);
+            abi.encode(s.publicCommitment(GENESIS, manifest, newRoot, orderedRoot, bytes32(0), rejectedRoot, dTip));
+        s.settleBatch(GENESIS, manifest, newRoot, orderedRoot, bytes32(0), rejectedRoot, dTip, dCount, proof0);
 
         bytes32[] memory proof = new bytes32[](0);
         s.answerByRejection(orderHash, 0, proof);
@@ -296,9 +289,10 @@ contract DarkPerpSettlementTest is MiniTest {
         bytes32 rejectedRoot = s.rejectionLeaf(0, keccak256("some-other-rejected"));
         bytes32 newRoot = bytes32(uint256(2));
         bytes32 manifest = keccak256("unrelated-rej");
+        (bytes32 dTip, uint64 dCount) = _head();
         bytes memory proof0 =
-            abi.encode(s.publicCommitment(GENESIS, manifest, newRoot, bytes32(0), bytes32(0), rejectedRoot));
-        s.settleBatch(GENESIS, manifest, newRoot, bytes32(0), bytes32(0), rejectedRoot, proof0);
+            abi.encode(s.publicCommitment(GENESIS, manifest, newRoot, bytes32(0), bytes32(0), rejectedRoot, dTip));
+        s.settleBatch(GENESIS, manifest, newRoot, bytes32(0), bytes32(0), rejectedRoot, dTip, dCount, proof0);
 
         bytes32[] memory proof = new bytes32[](0);
         vm.expectRevert(DarkPerpSettlement.NotRejected.selector);
@@ -313,15 +307,7 @@ contract DarkPerpSettlementTest is MiniTest {
         bytes32 orderedRoot = s.inclusionLeaf(0, orderHash);
         bytes32 newRoot = bytes32(uint256(2));
         bytes32 manifest = keccak256("m");
-        s.settleBatch(
-            GENESIS,
-            manifest,
-            newRoot,
-            orderedRoot,
-            bytes32(0),
-            bytes32(0),
-            _proof(GENESIS, manifest, newRoot, orderedRoot, bytes32(0))
-        );
+        _settle(GENESIS, manifest, newRoot, orderedRoot, bytes32(0), bytes32(0));
 
         (uint8 v, bytes32 r, bytes32 sig) = vm.sign(ENCLAVE_PK, s.receiptDigest(orderHash, 7, 1000, 0));
         address challenger = address(0xBEEF);
@@ -405,8 +391,11 @@ contract DarkPerpSettlementTest is MiniTest {
         bytes32 rejected = s.rejectionLeaf(batchId, orderHash);
         bytes32 prev = s.currentStateRoot();
         bytes32 newRoot = keccak256(abi.encodePacked("rej", batchId));
-        bytes32 commitment = s.publicCommitment(prev, bytes32("m"), newRoot, bytes32(0), bytes32(0), rejected);
-        s.settleBatch(prev, bytes32("m"), newRoot, bytes32(0), bytes32(0), rejected, abi.encodePacked(commitment));
+        (bytes32 dTip, uint64 dCount) = _head();
+        bytes32 commitment = s.publicCommitment(prev, bytes32("m"), newRoot, bytes32(0), bytes32(0), rejected, dTip);
+        s.settleBatch(
+            prev, bytes32("m"), newRoot, bytes32(0), bytes32(0), rejected, dTip, dCount, abi.encodePacked(commitment)
+        );
 
         s.answerByRejection(orderHash, batchId, new bytes32[](0));
         assertEq(s.pendingEth(address(this)), CHALLENGE_BOND, "rejection forfeits to sequencer");
@@ -416,7 +405,102 @@ contract DarkPerpSettlementTest is MiniTest {
     function _depositToVault(uint256 amount) internal {
         usdc.mint(address(this), amount);
         usdc.approve(address(vault), amount);
-        vault.deposit(amount, TEST_NOTE_OWNER);
+        vault.deposit(amount, TEST_OWNER_COMMIT);
+    }
+
+    // --- SEC-019: credited deposits are pinned to the L1 deposit hash chain ----
+
+    /// Known-answer vector shared byte-for-byte with `crates/prover/tests/vectors.rs`
+    /// (`public_commitment_vector`): the SEVEN-word commitment over
+    /// prev=0x01.., manifest=0x02.., new=0x03.., ordered=0x04.., withdrawals=0x05..,
+    /// rejected=0x06.., deposits=0x07.. — `depositsRoot` appended LAST. If this ever
+    /// drifts from Rust, the circuit's public input and this contract's recomputation
+    /// disagree and no genuine proof can settle at all.
+    bytes32 internal constant KAT_COMMIT7 = 0x27e3e52688359d5759ff4c7b0bea4d25a14b3c81652a4083d531592f827d8902;
+
+    function test_public_commitment_7word_matches_rust() public view {
+        bytes32 c = s.publicCommitment(
+            bytes32(uint256(0x0101010101010101010101010101010101010101010101010101010101010101)),
+            bytes32(uint256(0x0202020202020202020202020202020202020202020202020202020202020202)),
+            bytes32(uint256(0x0303030303030303030303030303030303030303030303030303030303030303)),
+            bytes32(uint256(0x0404040404040404040404040404040404040404040404040404040404040404)),
+            bytes32(uint256(0x0505050505050505050505050505050505050505050505050505050505050505)),
+            bytes32(uint256(0x0606060606060606060606060606060606060606060606060606060606060606)),
+            bytes32(uint256(0x0707070707070707070707070707070707070707070707070707070707070707))
+        );
+        assertEq(c, KAT_COMMIT7, "7-word public commitment must match crates/prover::PublicInputs::commitment");
+    }
+
+    /// The core SEC-019 property: a batch may only credit deposits that ACTUALLY
+    /// HAPPENED on L1. Here the sequencer holds a proof that is internally valid for
+    /// a FABRICATED deposit chain (the mock verifier accepts it), so the ZK layer
+    /// offers no protection whatsoever — the only thing standing between the attacker
+    /// and minting collateral out of thin air is the pin to the vault's live tip.
+    function test_settle_reverts_on_deposit_root_mismatch() public {
+        _depositToVault(1000 * USD);
+        _bond(s.requiredBond());
+
+        bytes32 fabricatedTip = keccak256("deposit-that-never-happened");
+        uint64 count = vault.depositCount();
+        bytes32 newRoot = bytes32(uint256(2));
+        bytes32 manifest = keccak256("m");
+        // a proof the verifier ACCEPTS for the fabricated chain — everything except
+        // the L1 pin passes. Computed before arming the cheatcode (external calls).
+        bytes memory proof = abi.encode(
+            s.publicCommitment(GENESIS, manifest, newRoot, bytes32(0), bytes32(0), bytes32(0), fabricatedTip)
+        );
+
+        vm.expectRevert(abi.encodeWithSignature("Error(string)", "deposits: root != L1 chain tip"));
+        s.settleBatch(GENESIS, manifest, newRoot, bytes32(0), bytes32(0), bytes32(0), fabricatedTip, count, proof);
+        // and nothing moved
+        assertEq(s.currentStateRoot(), GENESIS, "fabricated deposit chain never advances the root");
+        assertEq(s.batchCount(), 0, "no batch settled");
+    }
+
+    /// Consume-all-to-head: settling while LEAVING a real L1 deposit unconsumed is
+    /// rejected. Without this a sequencer could indefinitely withhold credit for a
+    /// user's genuine deposit while still settling batches around it — the funds are
+    /// in the vault but never become a spendable note.
+    function test_settle_reverts_on_incomplete_consumption() public {
+        _depositToVault(1000 * USD);
+        _depositToVault(500 * USD);
+        _bond(s.requiredBond());
+
+        bytes32 tip = vault.depositChainTip();
+        uint64 count = vault.depositCount();
+        assertEq(uint256(count), 2, "two deposits genuinely pending on L1");
+
+        bytes32 newRoot = bytes32(uint256(2));
+        bytes32 manifest = keccak256("m");
+        bytes memory proof =
+            abi.encode(s.publicCommitment(GENESIS, manifest, newRoot, bytes32(0), bytes32(0), bytes32(0), tip));
+
+        // claiming to have consumed only the first of the two
+        vm.expectRevert(abi.encodeWithSignature("Error(string)", "deposits: must consume all pending"));
+        s.settleBatch(GENESIS, manifest, newRoot, bytes32(0), bytes32(0), bytes32(0), tip, count - 1, proof);
+        assertEq(s.batchCount(), 0, "no batch settled short of the L1 head");
+    }
+
+    /// The happy path over a NON-EMPTY chain: settling exactly at the L1 head passes
+    /// both new requires and lands end-to-end. Guards against a fix that simply makes
+    /// every settle revert.
+    function test_settle_at_l1_deposit_head_succeeds() public {
+        _depositToVault(1000 * USD);
+        _depositToVault(500 * USD);
+        _bond(s.requiredBond());
+
+        bytes32 tip = vault.depositChainTip();
+        uint64 count = vault.depositCount();
+        assertTrue(tip != bytes32(0), "chain tip is non-genesis, so the pin is meaningful");
+
+        bytes32 newRoot = bytes32(uint256(2));
+        bytes32 manifest = keccak256("m");
+        bytes memory proof =
+            abi.encode(s.publicCommitment(GENESIS, manifest, newRoot, bytes32(0), bytes32(0), bytes32(0), tip));
+
+        s.settleBatch(GENESIS, manifest, newRoot, bytes32(0), bytes32(0), bytes32(0), tip, count, proof);
+        assertEq(s.currentStateRoot(), newRoot, "settled at the L1 deposit head");
+        assertEq(s.batchCount(), 1, "batch counted");
     }
 
     function test_withdraw_excess_bond() public {
@@ -556,19 +640,38 @@ contract DarkPerpSettlementTest is MiniTest {
     function _finalSettleArgs()
         internal
         view
-        returns (bytes32 prev, bytes32 manifestHash, bytes32 newRoot, bytes32 wroot, bytes memory proof)
+        returns (
+            bytes32 prev,
+            bytes32 manifestHash,
+            bytes32 newRoot,
+            bytes32 wroot,
+            bytes32 dTip,
+            uint64 dCount,
+            bytes memory proof
+        )
     {
         prev = s.currentStateRoot();
         manifestHash = bytes32("m");
         newRoot = keccak256("wind-down");
         wroot = keccak256("withdrawals");
-        bytes32 commitment = s.publicCommitment(prev, manifestHash, newRoot, bytes32(0), wroot, bytes32(0));
+        // the SEC-019 head is read here too, for exactly the reason above: these are
+        // external staticcalls that must not be made after `vm.expectRevert` is armed.
+        (dTip, dCount) = _head();
+        bytes32 commitment = s.publicCommitment(prev, manifestHash, newRoot, bytes32(0), wroot, bytes32(0), dTip);
         proof = abi.encodePacked(commitment);
     }
 
     function _governanceFinalSettle() internal {
-        (bytes32 prev, bytes32 manifestHash, bytes32 newRoot, bytes32 wroot, bytes memory proof) = _finalSettleArgs();
-        s.finalSettle(prev, manifestHash, newRoot, bytes32(0), wroot, bytes32(0), proof);
+        (
+            bytes32 prev,
+            bytes32 manifestHash,
+            bytes32 newRoot,
+            bytes32 wroot,
+            bytes32 dTip,
+            uint64 dCount,
+            bytes memory proof
+        ) = _finalSettleArgs();
+        s.finalSettle(prev, manifestHash, newRoot, bytes32(0), wroot, bytes32(0), dTip, dCount, proof);
     }
 
     /// Opens a ripe inclusion challenge for `keccak256("withheld-order")` and rolls
@@ -586,26 +689,29 @@ contract DarkPerpSettlementTest is MiniTest {
     }
 
     function test_finalSettle_reverts_when_not_closeOnly() public {
-        (bytes32 prev, bytes32 manifestHash, bytes32 newRoot, bytes32 wroot, bytes memory proof) = _finalSettleArgs();
+        (bytes32 p, bytes32 mh, bytes32 nr, bytes32 wr, bytes32 dTip, uint64 dCount, bytes memory pf) =
+            _finalSettleArgs();
         vm.expectRevert(DarkPerpSettlement.NotCloseOnly.selector);
-        s.finalSettle(prev, manifestHash, newRoot, bytes32(0), wroot, bytes32(0), proof);
+        s.finalSettle(p, mh, nr, bytes32(0), wr, bytes32(0), dTip, dCount, pf);
     }
 
     function test_finalSettle_reverts_before_grace() public {
         _enterCloseOnlyViaLiveness();
         // grace not yet elapsed
-        (bytes32 prev, bytes32 manifestHash, bytes32 newRoot, bytes32 wroot, bytes memory proof) = _finalSettleArgs();
+        (bytes32 p, bytes32 mh, bytes32 nr, bytes32 wr, bytes32 dTip, uint64 dCount, bytes memory pf) =
+            _finalSettleArgs();
         vm.expectRevert(DarkPerpSettlement.GraceNotExpired.selector);
-        s.finalSettle(prev, manifestHash, newRoot, bytes32(0), wroot, bytes32(0), proof);
+        s.finalSettle(p, mh, nr, bytes32(0), wr, bytes32(0), dTip, dCount, pf);
     }
 
     function test_finalSettle_reverts_non_governance() public {
         _enterCloseOnlyViaLiveness();
         vm.roll(block.number + GRACE + 1);
-        (bytes32 prev, bytes32 manifestHash, bytes32 newRoot, bytes32 wroot, bytes memory proof) = _finalSettleArgs();
+        (bytes32 p, bytes32 mh, bytes32 nr, bytes32 wr, bytes32 dTip, uint64 dCount, bytes memory pf) =
+            _finalSettleArgs();
         vm.prank(address(0xBAD));
         vm.expectRevert(DarkPerpSettlement.NotGovernance.selector);
-        s.finalSettle(prev, manifestHash, newRoot, bytes32(0), wroot, bytes32(0), proof);
+        s.finalSettle(p, mh, nr, bytes32(0), wr, bytes32(0), dTip, dCount, pf);
     }
 
     function test_finalSettle_publish_then_claim() public {
@@ -625,8 +731,14 @@ contract DarkPerpSettlementTest is MiniTest {
         bytes32 leaf = keccak256(abi.encodePacked(to, amount, nonce));
         bytes32 prev = s.currentStateRoot();
         bytes32 newRoot = keccak256("wind-down");
-        bytes32 commitment = s.publicCommitment(prev, bytes32("m"), newRoot, bytes32(0), leaf, bytes32(0));
-        s.finalSettle(prev, bytes32("m"), newRoot, bytes32(0), leaf, bytes32(0), abi.encodePacked(commitment));
+        // a real deposit was made above, so the wind-down must pin a NON-genesis
+        // chain tip — this exercises finalSettle's SEC-019 check against live state.
+        (bytes32 dTip, uint64 dCount) = _head();
+        assertTrue(dTip != bytes32(0), "wind-down pins a non-genesis deposit chain");
+        bytes32 commitment = s.publicCommitment(prev, bytes32("m"), newRoot, bytes32(0), leaf, bytes32(0), dTip);
+        s.finalSettle(
+            prev, bytes32("m"), newRoot, bytes32(0), leaf, bytes32(0), dTip, dCount, abi.encodePacked(commitment)
+        );
         assertEq(s.batchCount(), before + 1, "final settle advanced batchCount");
 
         bytes32[] memory proof = new bytes32[](0);
