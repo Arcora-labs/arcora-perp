@@ -341,6 +341,89 @@ git commit -m "feat(contracts): SEC-019 CollateralVault deposit hash-chain accum
 
 ---
 
+### Task 5b: Blinded owner binding (privacy) — `owner_commit`
+
+**Rationale:** publishing the raw shielded `owner` pubkey on L1 would permanently link the depositing L1 address to the internal owner, destroying the unlinkability this DEX exists for. Bind `keccak(owner ‖ deposit_blind)` instead — both SEC-019 guarantees survive (see spec §1a), and the Solidity encoding + both cross-layer KATs are UNCHANGED (the contract folds an opaque `bytes32`).
+
+**Files:**
+- Modify: `crates/perp-core/src/merkle.rs` (add `owner_commit`)
+- Modify: `crates/perp-core/src/engine.rs` (`BatchOp::Deposit` gains `deposit_blind`; `op_deposit` folds the commit)
+- Modify: `contracts/src/CollateralVault.sol` + `contracts/test/CollateralVault.t.sol` (rename `owner` → `ownerCommit` in the param + event; cosmetic)
+- Test: `crates/perp-core/src/merkle.rs`, `crates/perp-core/src/engine.rs` (`#[cfg(test)]`)
+
+**Interfaces:**
+- Produces: `pub fn owner_commit(owner: &[u8;32], deposit_blind: &[u8;32]) -> Digest = keccak256(owner ‖ deposit_blind)`; `BatchOp::Deposit { owner, asset_id, amount, blinding, from, deposit_id, deposit_blind }`.
+- Consumes: `deposit_leaf`/`deposit_chain_fold` (Task 1), `State.consumed_deposit_*` (Task 2), `op_deposit` (Task 3).
+
+- [ ] **Step 1: Write the failing tests**
+
+```rust
+#[test]
+fn owner_commit_is_keccak_owner_blind() {
+    let owner = [0xAAu8; 32]; let blind = [0xBBu8; 32];
+    let c = owner_commit(&owner, &blind);
+    // packed keccak over the two 32-byte words, same primitive as deposit_leaf
+    assert_eq!(c, keccak_two_words(&owner, &blind));       // recompute with the module's keccak
+    assert_ne!(c, owner_commit(&blind, &owner));            // order-bound
+    assert_ne!(c, owner_commit(&owner, &[0xCCu8; 32]));     // blind-bound
+}
+```
+```rust
+#[test]
+fn deposit_folds_blinded_owner_commit_not_raw_owner() {
+    let mut st = DefaultState::new(16);
+    let (owner, blind, from) = ([9u8;32], [5u8;32], [1u8;20]);
+    let op = BatchOp::Deposit { owner, asset_id: 0, amount: 1000, blinding: [3u8;32],
+                                from, deposit_id: 0, deposit_blind: blind };
+    st.apply_batch(&[op]).expect("apply");
+    let commit = owner_commit(&owner, &blind);
+    assert_eq!(st.consumed_deposit_tip,
+        deposit_chain_fold(&[0u8;32], &deposit_leaf(&from, &commit, 1000, 0)));
+    // and specifically NOT the raw-owner leaf
+    assert_ne!(st.consumed_deposit_tip,
+        deposit_chain_fold(&[0u8;32], &deposit_leaf(&from, &owner, 1000, 0)));
+}
+```
+
+- [ ] **Step 2: Run to verify they fail**
+
+Run: `cargo test -p perp-core owner_commit deposit_folds_blinded`
+Expected: FAIL — `owner_commit` / the `deposit_blind` field undefined.
+
+- [ ] **Step 3: Implement**
+
+In `merkle.rs`, using the SAME module keccak primitive `deposit_leaf` uses:
+```rust
+/// SEC-019 blinded owner binding: keccak256(owner ‖ deposit_blind).
+/// Published on L1 in place of the raw shielded owner so a deposit does not
+/// publicly link the L1 payer to the internal note owner (spec §1a).
+pub fn owner_commit(owner: &Digest, deposit_blind: &Digest) -> Digest {
+    keccak(&[owner, deposit_blind])   // match deposit_chain_fold's call shape
+}
+```
+In `engine.rs`: add `deposit_blind: Digest` to `BatchOp::Deposit` (fix every in-crate literal — grep `BatchOp::Deposit`), thread it into `op_deposit`, and change the fold to use the commit:
+```rust
+    let commit = crate::merkle::owner_commit(owner, deposit_blind);
+    let leaf = crate::merkle::deposit_leaf(from, &commit, amount as u128, deposit_id);
+```
+Keep the order-gate, `external_in`, note-append, and `DepositIn` behavior exactly as they are (`DepositIn` keeps carrying the raw `owner` — it is internal, never published).
+
+In `contracts/`: rename the `deposit`'s second parameter and the `Deposit` event's second field `owner` → `ownerCommit` (+ update the NatSpec to say it is `keccak256(owner‖blind)`, opaque to the contract). **No encoding change** — the KATs must still pass untouched.
+
+- [ ] **Step 4: Run to verify they pass**
+
+Run: `cargo test -p perp-core` (all green) and `cd contracts && forge test` (73+ green, KATs unchanged).
+Expected: PASS. `cargo clippy -p perp-core --all-targets` clean.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add crates/perp-core/src/merkle.rs crates/perp-core/src/engine.rs contracts/src/CollateralVault.sol contracts/test/CollateralVault.t.sol
+git commit -m "feat(sec-019): blind the on-chain owner binding (keccak(owner||blind)) for deposit privacy"
+```
+
+---
+
 ### Task 6: Solidity `DarkPerpSettlement` — 7-word commitment + deposit check
 
 **Files:**
@@ -430,7 +513,10 @@ Expected: FAIL.
 
 - [ ] **Step 3: Implement**
 
-- `l1.rs`: update `DEPOSIT_TOPIC0` to the new `Deposit(address,bytes32,uint256,uint64,bytes32)` signature hash; parse `owner` (topic[2], indexed) + `id` (from data) + `amount` (from data) + `from` (topic[1]); `verify_deposit_tx` returns `(from, owner, amount, id)`.
+- `l1.rs`: update `DEPOSIT_TOPIC0` to the new `Deposit(address,bytes32,uint256,uint64,bytes32)` signature hash (**a stale topic0 silently stops every deposit from crediting** — recompute it, do not hand-edit); parse `ownerCommit` (topic[2], indexed) + `id` (from data) + `amount` (from data) + `from` (topic[1]); `verify_deposit_tx` returns `(from, owner_commit, amount, id)`.
+- **Blinded binding (Task 5b):** the gateway must obtain/derive `deposit_blind`, recompute `keccak(owner ‖ deposit_blind)`, and **reject the credit unless it equals the on-chain `owner_commit`**. Choose ONE host-side source for `deposit_blind` and document it: user-supplied at confirm time, or deterministically derived from the account's existing key material (must be reproducible, else the deposit can never be credited).
+- **Frontend:** `frontend/src/api/wallet.ts` (stale `deposit(uint256)` selector — tx reverts) and `frontend/src/components/TestnetNotice.tsx` (wrong user-facing `cast` instructions) must be updated to `deposit(uint256,bytes32)` + computing `ownerCommit`.
+- **Also compile-broken by earlier tasks, fix here:** `crates/gateway/src/prover_client.rs` (`DerivedRoots` literal + `ProveOutcome` needs a `deposits_root` field — it re-derives the commitment), `crates/gateway/src/main.rs` (`DerivedRoots` literal), `crates/demo/src/main.rs`, plus any `BatchOp::Deposit` literals in `node`/`e2e`/`sequencer`.
 - `main.rs`: `account_confirm_deposit` receives `owner`+`id`; assert the account's credited `owner` equals the event `owner` (reject mismatch — on-chain attribution is authoritative). `fund_amount` signature gains `from`+`deposit_id` and builds `BatchOp::Deposit { owner, asset_id:0, amount, blinding, from, deposit_id }`.
 - `sequencer/src/lib.rs` + any other `BatchOp::Deposit { .. }` construction: supply the real `from`/`deposit_id` (or, for admin/test-seed paths that have no L1 deposit, either route them through a distinct non-deposit op or feed a documented sentinel — grep every `BatchOp::Deposit` and resolve each; a seed path that fabricates `external_in` without an L1 event is exactly what SEC-019 forbids, so such paths must be gated behind a test/dev flag or removed).
 

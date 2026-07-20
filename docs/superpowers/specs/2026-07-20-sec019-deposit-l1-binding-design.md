@@ -34,8 +34,8 @@ This design binds every credited deposit to a real, ordered L1 deposit event —
 New functions in `crates/perp-core/src/merkle.rs` (an ordered hash-CHAIN, distinct from the withdrawals sorted-pair tree):
 
 ```
-deposit_leaf(from: [u8;20], owner: [u8;32], amount: u128, id: u64) -> Digest
-    = keccak256( from(20) || owner(32) || amount(u256 BE, 32) || id(u256 BE, 32) )
+deposit_leaf(from: [u8;20], owner_commit: [u8;32], amount: u128, id: u64) -> Digest
+    = keccak256( from(20) || owner_commit(32) || amount(u256 BE, 32) || id(u256 BE, 32) )
         // == Solidity keccak256(abi.encodePacked(address, bytes32, uint256, uint256))
 
 deposit_chain_fold(tip: Digest, leaf: Digest) -> Digest
@@ -44,7 +44,28 @@ deposit_chain_fold(tip: Digest, leaf: Digest) -> Digest
 genesis tip = [0u8; 32]
 ```
 
-There is no domain tag on the fold (matches the on-chain accumulator). `owner` is `PubKey`'s 32 bytes; `amount` is the positive deposit value as `u256` big-endian (same encoding as `withdrawal_leaf`'s amount).
+There is no domain tag on the fold (matches the on-chain accumulator). `amount` is the positive deposit value as `u256` big-endian (same encoding as `withdrawal_leaf`'s amount).
+
+**`owner_commit` is a BLINDED owner binding, not the raw owner pubkey** (privacy decision, see §1a):
+
+```
+owner_commit(owner: PubKey, deposit_blind: Digest) -> Digest
+    = keccak256( owner(32) || deposit_blind(32) )
+        // == Solidity keccak256(abi.encodePacked(bytes32, bytes32))
+```
+
+### 1a. Why blinded (privacy)
+
+Publishing the raw shielded-note `owner` pubkey as an L1 call argument + indexed event topic would permanently and publicly link the depositing L1 address to the internal shielded owner — destroying, for every deposit, exactly the unlinkability this "dark" DEX exists to provide. Previously that link lived only inside the gateway.
+
+Binding `owner_commit = keccak(owner ‖ deposit_blind)` instead keeps **both** SEC-019 guarantees intact while publishing nothing about the owner:
+
+- **Inflation** — unchanged: the chain still pins the exact `(from, amount, id)` sequence.
+- **Misattribution** — still closed: to credit a different owner the circuit would have to produce a leaf containing a different `owner_commit` (breaking the chain match), or find `(owner', blind')` with `keccak(owner'‖blind') == owner_commit` — a second-preimage attack on keccak.
+
+The depositor computes `owner_commit` off-chain and passes it to `deposit(amount, ownerCommit)`. The circuit is given `owner` + `deposit_blind` in the op and recomputes the commit, so it can only credit the owner the depositor committed to. `deposit_blind` is distinct from the note's existing `blinding` field (different purpose; do not conflate).
+
+**Solidity is unaffected by this choice** — the contract folds an opaque `bytes32`; only the parameter/event name changes (`owner` → `ownerCommit`). The leaf/fold encoding and both cross-layer KATs are unchanged.
 
 ### 2. On-chain accumulator — `CollateralVault.sol`
 
@@ -73,10 +94,11 @@ There is no domain tag on the fold (matches the on-chain accumulator). `owner` i
 ### 4. In-circuit constraint — `perp-core`
 
 - **State** (`state.rs`): add `consumed_deposit_tip: Digest` (init `[0;32]`), `consumed_deposit_count: u64` (init 0); fold BOTH into `state_root()` (14 → 16 words), placed immediately after `external_in`/`external_out`. Conservation math unchanged.
-- **`BatchOp::Deposit`** (`engine.rs`): add `from: [u8;20]` and `deposit_id: u64`. New shape: `Deposit { owner, asset_id, amount, blinding, from, deposit_id }`.
-- **`op_deposit`** (`engine.rs`): before crediting, require `deposit_id == self.consumed_deposit_count` (`EngineError::DepositOutOfOrder`) — contiguous, in-order, no skip/dup. Then: credit the note (as today), `external_in += amount`, and fold:
+- **`BatchOp::Deposit`** (`engine.rs`): add `from: [u8;20]`, `deposit_id: u64`, and `deposit_blind: Digest`. New shape: `Deposit { owner, asset_id, amount, blinding, from, deposit_id, deposit_blind }`.
+- **`op_deposit`** (`engine.rs`): before crediting, require `deposit_id == self.consumed_deposit_count` (`EngineError::DepositOutOfOrder`) — contiguous, in-order, no skip/dup. Then: credit the note (as today), `external_in += amount`, and fold the BLINDED binding:
   ```
-  let leaf = deposit_leaf(from, owner_bytes, amount as u128, deposit_id);
+  let commit = owner_commit(owner, deposit_blind);
+  let leaf   = deposit_leaf(from, commit, amount as u128, deposit_id);
   self.consumed_deposit_tip = deposit_chain_fold(self.consumed_deposit_tip, leaf);
   self.consumed_deposit_count += 1;
   ```
@@ -86,8 +108,9 @@ There is no domain tag on the fold (matches the on-chain accumulator). `owner` i
 
 ### 5. Host plumbing — `gateway` / `sequencer`
 
-- `verify_deposit_tx` (`l1.rs`) also returns the `deposit_id` (the `depositCount` from the `Deposit` event) and `owner` (the indexed owner from the event); the `Deposit` event ABI/topic constant updates for the new signature.
-- `account_confirm_deposit` / `fund_amount` (`main.rs`) thread `from` + `deposit_id` into the extended `BatchOp::Deposit`; the credited `owner` must equal the event's `owner` (reject mismatch — the on-chain attribution is now authoritative, superseding the off-chain `deposit_address` trust for the credit itself).
+- `verify_deposit_tx` (`l1.rs`) also returns the `deposit_id` (the `depositCount` from the `Deposit` event) and `owner_commit` (the indexed commit from the event); **`DEPOSIT_TOPIC0` must be recomputed for the new event signature** — a stale topic silently stops every deposit from crediting.
+- `account_confirm_deposit` / `fund_amount` (`main.rs`) thread `from` + `deposit_id` + `deposit_blind` into the extended `BatchOp::Deposit`; the gateway must recompute `keccak(owner ‖ deposit_blind)` and **reject unless it equals the on-chain `owner_commit`** (the on-chain commitment is authoritative for attribution). How the gateway obtains `deposit_blind` (user-supplied at confirm time, or deterministically derived from the account's key material) is a host-side key-management choice made in that task; it must be reproducible for the credit to succeed.
+- Frontend call sites of the old `deposit(uint256)` ABI (`frontend/src/api/wallet.ts`, `frontend/src/components/TestnetNotice.tsx`) must be updated to the new signature and to compute `ownerCommit`.
 - At window seal, the settle path reads `vault.depositChainTip()`/`depositCount()` and carries `deposits_root`/`newDepositCount` into the `settleBatch` call. `WindowWitness` needs no new field — the extended `Deposit` ops already ride in `ops`.
 - **Ordering:** the host must feed deposits in ascending `deposit_id` (the L1 order); `op_deposit`'s `deposit_id == consumed_deposit_count` check enforces it and fails closed on any gap/reorder.
 
