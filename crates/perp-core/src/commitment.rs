@@ -13,7 +13,7 @@ use crate::order::BatchManifest;
 use crate::{DefaultState, EngineError};
 use alloc::vec::Vec;
 
-/// The six roots the batch proof commits to (byte-identical to the L1
+/// The seven roots the batch proof commits to (byte-identical to the L1
 /// `DarkPerpSettlement.publicCommitment`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct DerivedRoots {
@@ -23,10 +23,14 @@ pub struct DerivedRoots {
     pub ordered_root: Digest,
     pub withdrawals_root: Digest,
     pub rejected_root: Digest,
+    /// SEC-019: the post-batch deposit hash-chain tip. L1 compares this against the
+    /// vault's own `depositChainTip` for the same count, so a batch cannot credit a
+    /// deposit that no `Deposited` event produced.
+    pub deposits_root: Digest,
 }
 
 impl DerivedRoots {
-    /// The proof's public commitment: `keccak_words(StateRoot, [six roots])`.
+    /// The proof's public commitment: `keccak_words(StateRoot, [seven roots])`.
     pub fn commitment<H: Hasher>(&self) -> Digest {
         H::hash_words(
             Domain::StateRoot,
@@ -37,6 +41,7 @@ impl DerivedRoots {
                 self.ordered_root,
                 self.withdrawals_root,
                 self.rejected_root,
+                self.deposits_root,
             ],
         )
     }
@@ -58,6 +63,9 @@ pub fn derive_roots(
     }
     let outputs = state.apply_batch(ops)?;
     let new_state_root = state.state_root();
+    // SEC-019: the POST-apply tip — every deposit this batch consumed is already
+    // folded in (`op_deposit`), so the 7th commitment word is what L1 must match.
+    let deposits_root = state.consumed_deposit_tip;
 
     let manifest_hash = manifest.hash::<crate::hash::Keccak256>();
     let ordered_root = ordered_root(batch_id, &manifest.ordered);
@@ -73,6 +81,7 @@ pub fn derive_roots(
         ordered_root,
         withdrawals_root,
         rejected_root,
+        deposits_root,
     })
 }
 
@@ -160,7 +169,43 @@ mod tests {
     }
 
     #[test]
-    fn commitment_is_six_field_state_root_domain() {
+    fn deposits_root_is_post_batch_tip_and_in_commitment() {
+        let owner = owner_from_spend_key::<Keccak256>(&[9u8; 32]);
+        let amount = 1_000 * QUOTE_SCALE;
+        let from = [0xCDu8; 20];
+        let mut s = DefaultState::new(16);
+        s.add_market(Market::conservative(0));
+        let ops = vec![BatchOp::Deposit {
+            owner,
+            asset_id: 0,
+            amount,
+            blinding: [11u8; 32],
+            from,
+            deposit_id: 0,
+        }];
+        let manifest = manifest_for(&s, vec![]);
+
+        let mut post = s.clone();
+        let roots = derive_roots(&mut post, &ops, &manifest).expect("derive");
+
+        // deposits_root is the tip AFTER this batch's deposits folded, not the pre-tip.
+        let leaf = crate::merkle::deposit_leaf(&from, &owner, amount as u128, 0);
+        let expected = crate::merkle::deposit_chain_fold(&[0u8; 32], &leaf);
+        assert_eq!(roots.deposits_root, expected);
+        assert_eq!(roots.deposits_root, post.consumed_deposit_tip);
+        assert_ne!(roots.deposits_root, s.consumed_deposit_tip, "pre-state tip");
+
+        // the 7th word really enters the commitment
+        let mut r2 = roots;
+        r2.deposits_root = [1u8; 32];
+        assert_ne!(
+            r2.commitment::<Keccak256>(),
+            roots.commitment::<Keccak256>()
+        );
+    }
+
+    #[test]
+    fn commitment_is_seven_field_state_root_domain() {
         let d = DerivedRoots {
             prev_state_root: [1u8; 32],
             manifest_hash: [2u8; 32],
@@ -168,11 +213,26 @@ mod tests {
             ordered_root: [4u8; 32],
             withdrawals_root: [5u8; 32],
             rejected_root: [6u8; 32],
+            deposits_root: [7u8; 32],
         };
         let expected = Keccak256::hash_words(
             crate::hash::Domain::StateRoot,
-            &[[1u8; 32], [2u8; 32], [3u8; 32], [4u8; 32], [5u8; 32], [6u8; 32]],
+            &[
+                [1u8; 32], [2u8; 32], [3u8; 32], [4u8; 32], [5u8; 32], [6u8; 32], [7u8; 32],
+            ],
         );
         assert_eq!(d.commitment::<Keccak256>(), expected);
+
+        // KAT-COMMIT7 — the canonical 7-word known-answer. The L1
+        // `DarkPerpSettlement.publicCommitment` MUST reproduce this byte-for-byte for
+        // the same seven roots ([0x01;32]..[0x07;32]); preimage is the one-byte
+        // `DOMAIN_STATE_ROOT` tag (0x07) followed by the seven 32-byte words, in order.
+        // 0x27e3e52688359d5759ff4c7b0bea4d25a14b3c81652a4083d531592f827d8902
+        const KAT_COMMIT7: Digest = [
+            0x27, 0xe3, 0xe5, 0x26, 0x88, 0x35, 0x9d, 0x57, 0x59, 0xff, 0x4c, 0x7b, 0x0b, 0xea,
+            0x4d, 0x25, 0xa1, 0x4b, 0x3c, 0x81, 0x65, 0x2a, 0x40, 0x83, 0xd5, 0x31, 0x59, 0x2f,
+            0x82, 0x7d, 0x89, 0x02,
+        ];
+        assert_eq!(d.commitment::<Keccak256>(), KAT_COMMIT7);
     }
 }
