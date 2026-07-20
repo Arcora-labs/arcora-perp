@@ -59,6 +59,13 @@ pub struct State<H: Hasher> {
     pub mode: Mode,
     pub next_batch_id: u64,
     pub next_seq: u64,
+    /// SEC-019: running tip of the in-circuit deposit hash-chain accumulator — the
+    /// fold over every L1 deposit leaf the engine has consumed. Bound into the root
+    /// (alongside `consumed_deposit_count`) so the in-circuit fold is incremental and
+    /// a prover cannot advance it off-chain without changing the committed state.
+    pub consumed_deposit_tip: Digest,
+    /// SEC-019: number of L1 deposit leaves folded into `consumed_deposit_tip`.
+    pub consumed_deposit_count: u64,
 }
 
 impl<H: Hasher> State<H> {
@@ -79,6 +86,8 @@ impl<H: Hasher> State<H> {
             mode: Mode::Normal,
             next_batch_id: 0,
             next_seq: 0,
+            consumed_deposit_tip: [0u8; 32],
+            consumed_deposit_count: 0,
         }
     }
 
@@ -212,6 +221,10 @@ impl<H: Hasher> State<H> {
                 word_i128(self.treasury),
                 word_i128(self.external_in),
                 word_i128(self.external_out),
+                // SEC-019: deposit-accumulator words (raw tip digest + u64 count),
+                // encoded like the other u64 counters below via `word_u64`.
+                self.consumed_deposit_tip,
+                word_u64(self.consumed_deposit_count),
                 word_u64(mode_word),
                 word_u64(self.next_batch_id),
                 word_u64(self.next_seq),
@@ -307,6 +320,22 @@ mod tests {
             with_batch.state_root(),
             "next_batch_id must be bound"
         );
+    }
+
+    // SEC-019: the in-circuit deposit-accumulator words (consumed tip + count) must be
+    // bound into the root so a prover cannot advance the deposit fold off-chain without
+    // changing the committed state. Genesis has an empty accumulator (tip=0, count=0).
+    #[test]
+    fn state_root_binds_deposit_accumulator() {
+        let mut a: State<Keccak256> = State::new(16);
+        let r0 = a.state_root();
+        a.consumed_deposit_count = 1;
+        assert_ne!(a.state_root(), r0, "count must be in the root");
+        let mut b: State<Keccak256> = State::new(16);
+        b.consumed_deposit_tip = [7u8; 32];
+        assert_ne!(b.state_root(), r0, "tip must be in the root");
+        assert_eq!(State::<Keccak256>::new(16).consumed_deposit_count, 0);
+        assert_eq!(State::<Keccak256>::new(16).consumed_deposit_tip, [0u8; 32]);
     }
 
     // audit DP-002: per-market risk/fee parameters must be bound so a prover cannot
