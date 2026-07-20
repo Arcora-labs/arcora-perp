@@ -77,6 +77,8 @@ The vault therefore accepts a deposit only if the **gateway pre-authorized** it:
 
 The signature is verified then discarded — it does **not** enter the leaf or the chain, so the leaf/fold encoding and all three KATs are unchanged.
 
+**`gatewaySigner` MUST be non-zero** (constructor `require`). A zero signer is fail-OPEN, not fail-closed: `ecrecover` returns `address(0)` on a malformed-but-guard-passing signature (`r=s=0, v=27`), so `recovered != gatewaySigner` would be `0 != 0 == false` and the gate would pass — re-opening the head-of-line hazard. (This corrects an earlier note that wrongly assumed a zero signer bricks deposits.)
+
 ### 2. On-chain accumulator — `CollateralVault.sol`
 
 - Add `bytes32 public depositChainTip;` (starts `bytes32(0)`), `uint64 public depositCount;` (starts 0).
