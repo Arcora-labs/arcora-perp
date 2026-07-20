@@ -22,6 +22,9 @@ contract DarkPerpSettlementTest is MiniTest {
     uint256 internal constant INCLUSION_DEADLINE = 600;
     uint256 internal constant USD = 1e6;
     uint256 internal constant GRACE = 10;
+    /// Stand-in shielded-note owner: these tests exercise settlement/bonding, not the
+    /// SEC-019 deposit hash chain (see CollateralVault.t.sol for that).
+    bytes32 internal constant TEST_NOTE_OWNER = keccak256("dark-perp.test.note-owner");
 
     // this contract is the sequencer
     function setUp() public {
@@ -143,13 +146,13 @@ contract DarkPerpSettlementTest is MiniTest {
         usdc.mint(address(this), 1000 * USD);
         usdc.approve(address(vault), 1000 * USD);
         // a deposit works while the system is live
-        vault.deposit(100 * USD);
+        vault.deposit(100 * USD, TEST_NOTE_OWNER);
         // enter close-only via a liveness timeout
         vm.roll(block.number + LIVENESS + 1);
         s.triggerCloseOnly();
         // a further deposit must now revert
         vm.expectRevert(CollateralVault.InCloseOnly.selector);
-        vault.deposit(100 * USD);
+        vault.deposit(100 * USD, TEST_NOTE_OWNER);
     }
 
     function test_inclusion_answered_clears_challenge() public {
@@ -413,7 +416,7 @@ contract DarkPerpSettlementTest is MiniTest {
     function _depositToVault(uint256 amount) internal {
         usdc.mint(address(this), amount);
         usdc.approve(address(vault), amount);
-        vault.deposit(amount);
+        vault.deposit(amount, TEST_NOTE_OWNER);
     }
 
     function test_withdraw_excess_bond() public {

@@ -45,7 +45,25 @@ contract CollateralVault {
     /// still prevents double-claim.
     mapping(bytes32 => bool) public rootPublished;
 
-    event Deposit(address indexed from, uint256 amount);
+    /// SEC-019: running keccak hash-chain over every credited deposit, in L1 order.
+    /// Genesis is `bytes32(0)`. This is the AUTHORITATIVE record of what was actually
+    /// paid into the vault; the settlement contract pins a proof's `deposits_root`
+    /// against it, so the sequencer cannot credit a deposit that never happened,
+    /// reorder deposits, replay one, or alter an amount/owner. A chain (not a Merkle
+    /// set) is used deliberately: order is part of the commitment.
+    bytes32 public depositChainTip;
+    /// Number of leaves folded into `depositChainTip`. Doubles as the next deposit's
+    /// `id`, which is bound into the leaf so an otherwise-identical repeat deposit
+    /// (same sender, owner and amount) still produces a distinct leaf.
+    uint64 public depositCount;
+
+    /// @param from L1 payer (bound into the leaf; the funds' provenance).
+    /// @param owner shielded-note owner the off-chain protocol must credit.
+    /// @param amount USDC base units.
+    /// @param id the deposit's index in the chain (pre-increment `depositCount`).
+    /// @param newTip `depositChainTip` after folding this deposit — indexers and the
+    ///        sequencer replay from these without re-deriving the chain themselves.
+    event Deposit(address indexed from, bytes32 indexed owner, uint256 amount, uint64 id, bytes32 newTip);
     event WithdrawalsRootPublished(uint256 indexed epoch, bytes32 root);
     event Withdrawn(address indexed to, uint256 amount, uint256 nonce);
 
@@ -67,8 +85,22 @@ contract CollateralVault {
 
     /// @notice Deposit `amount` (USDC base units) into the pooled vault. The caller
     /// must have `approve`d the vault first. The off-chain protocol mints a shielded
-    /// note for `msg.sender` of `amount`; the commitment enters the note tree (§1).
-    function deposit(uint256 amount) external {
+    /// note of `amount` for `owner`; the commitment enters the note tree (§1).
+    ///
+    /// @dev SEC-019: the deposit is folded into `depositChainTip` BEFORE it can be
+    /// credited off-chain. The leaf is
+    /// `keccak256(abi.encodePacked(address from, bytes32 owner, uint256 amount, uint256 id))`
+    /// and the fold is `keccak256(abi.encodePacked(bytes32 tip, bytes32 leaf))` — both
+    /// reproduced byte-for-byte by `crates/perp-core/src/merkle.rs`
+    /// (`deposit_leaf` / `deposit_chain_fold`) and in-circuit, and pinned on both sides
+    /// by the same known-answer vectors. Do NOT change this encoding (no domain tag, no
+    /// padded `from`, `id` as a full uint256 word) without changing the Rust side in the
+    /// same commit: any divergence silently breaks the binding this whole mechanism exists
+    /// to provide.
+    /// @param amount USDC base units to pull from `msg.sender`.
+    /// @param owner shielded-note owner to credit off-chain. Bound into the leaf, so the
+    ///        sequencer cannot redirect the note to a different owner than the payer chose.
+    function deposit(uint256 amount, bytes32 owner) external {
         // audit #11: refuse deposits once the system is in close-only. In close-only no
         // new batch settles, so a deposit made here would never be acknowledged into a
         // settled withdrawals root and the funds would be permanently unclaimable. Users
@@ -76,7 +108,13 @@ contract CollateralVault {
         if (ISettlementCloseOnly(settlement).closeOnly()) revert InCloseOnly();
         if (!token.transferFrom(msg.sender, address(this), amount)) revert TransferFailed();
         totalDeposited += amount;
-        emit Deposit(msg.sender, amount);
+        // `id` is the PRE-increment count, so the first deposit is id 0 (matching the
+        // Rust vectors). Folded only after the transfer succeeded — a reverted deposit
+        // must leave the chain untouched.
+        bytes32 leaf = keccak256(abi.encodePacked(msg.sender, owner, amount, uint256(depositCount)));
+        depositChainTip = keccak256(abi.encodePacked(depositChainTip, leaf));
+        emit Deposit(msg.sender, owner, amount, depositCount, depositChainTip);
+        depositCount += 1;
     }
 
     /// @notice Net ACCOUNTED collateral the bond floor scales off (audit Q1): the sum

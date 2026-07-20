@@ -21,6 +21,9 @@ contract IntegrationTest is MiniTest {
     address internal alice = address(0xA11CE);
     bytes32 internal constant GENESIS = bytes32(uint256(1));
     uint256 internal constant USD = 1e6;
+    /// Stand-in shielded-note owner: these tests exercise the end-to-end flow, not the
+    /// SEC-019 deposit hash chain (see CollateralVault.t.sol for that).
+    bytes32 internal constant TEST_NOTE_OWNER = keccak256("dark-perp.test.note-owner");
 
     // this contract is the sequencer
     function setUp() public {
@@ -39,7 +42,7 @@ contract IntegrationTest is MiniTest {
         usdc.mint(who, amount);
         vm.startPrank(who);
         usdc.approve(address(vault), amount);
-        vault.deposit(amount);
+        vault.deposit(amount, TEST_NOTE_OWNER);
         vm.stopPrank();
     }
 
