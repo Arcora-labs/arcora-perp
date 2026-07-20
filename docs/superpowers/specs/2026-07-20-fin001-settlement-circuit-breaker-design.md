@@ -154,14 +154,22 @@ unset ⇒ log-only. No new required dependency.
 
 ### 5. Admin resume endpoint
 
-`POST /v1/admin/settlement/resume`, gated by the existing `ApiKey` auth scheme (`:4260`) —
-the same guard privileged endpoints already use; unauthenticated ⇒ 401. Effect: set a shared
-**force signal** the settle loop owns (an `AtomicBool` / `Notify` shared between the endpoint
-task and the loop task — `SettleHealth` stays clock-free and holds no force state); on the
-next tick the loop treats the signal as `next_attempt = now`, attempts a settle, and clears
-the signal. It does **not** fake HEALTHY — health clears only when a real settle succeeds.
-Response reports the current `settlement_health` so the operator sees whether the forced
-attempt cleared it. Idempotent; safe to call when already HEALTHY (no-op).
+`POST /v1/admin/settlement/resume` — an **operator-only** action. NOTE: the gateway's existing
+`X-Api-Key` scheme (`api_key_from`, `:3722`) is **per-user** (maps a key → a registered owner
+account), not an operator credential, so it must NOT gate this endpoint (any registered user
+could otherwise force settlement). Instead this endpoint requires a dedicated operator key:
+a boot-time env `FIN_ADMIN_KEY` (0x + 64 hex, like the user keys), presented as an
+`X-Admin-Key` header and compared **constant-time**. **Fail-closed:** if `FIN_ADMIN_KEY` is
+unset the endpoint is disabled — it returns `503` and takes no action (an operator must
+configure a key to use it); a missing/wrong header ⇒ `401`.
+
+Effect (on success): set a shared **force signal** the settle loop owns (an
+`Arc<AtomicBool>` shared between the endpoint handler and the loop task — `SettleHealth` stays
+clock-free and holds no force state); on the next tick the loop sees the flag, treats it as
+`next_attempt = now`, attempts a settle, and clears the flag. It does **not** fake HEALTHY —
+health clears only when a real settle succeeds. Response reports the current
+`settlement_health` so the operator sees whether the forced attempt cleared it. Idempotent;
+safe to call when already HEALTHY (no-op that just un-gates the next tick).
 
 ### Configuration (env, with defaults)
 
@@ -170,6 +178,7 @@ attempt cleared it. Idempotent; safe to call when already HEALTHY (no-op).
 | `FIN_HELD_THRESHOLD` | `3` | `N` consecutive `ProveFailed`s before HELD |
 | `FIN_BACKOFF_CAP_SECS` | `300` | backoff / HELD-probe ceiling |
 | `FIN_ALERT_NTFY_TOPIC` | unset | optional ntfy topic for the HELD alert |
+| `FIN_ADMIN_KEY` | unset | operator key (0x+64hex) for `POST /v1/admin/settlement/resume`; unset ⇒ endpoint disabled (503) |
 
 Backoff base is `L1_SETTLE_SECS`. Values are read once at boot; invalid ⇒ default + WARN.
 
