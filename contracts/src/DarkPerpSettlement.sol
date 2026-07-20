@@ -8,8 +8,11 @@ interface ICollateralVault {
     function publishWithdrawals(bytes32 root, uint256 epoch) external;
     function tvl() external view returns (uint256);
     function token() external view returns (address);
-    /// SEC-019: the vault's authoritative deposit hash-chain head. A settling batch
-    /// must pin its proven `depositsRoot` to exactly this value.
+    /// SEC-019: the vault's authoritative deposit hash chain. `depositTipAt(n)` is the
+    /// tip after the vault's first `n` deposits — a settling batch pins its proven
+    /// `depositsRoot` to the PREFIX it credited. The head getters remain for the
+    /// sequencer to see how far the chain has run.
+    function depositTipAt(uint64 n) external view returns (bytes32);
     function depositChainTip() external view returns (bytes32);
     function depositCount() external view returns (uint64);
 }
@@ -247,7 +250,8 @@ contract DarkPerpSettlement {
     /// 225-byte preimage is pinned on both sides by a shared known-answer vector
     /// (`crates/prover/tests/vectors.rs` ↔ `CrossLayer.t.sol`). Unlike the other
     /// derived roots this one is ALSO checkable on L1 — `settleBatch` pins it to the
-    /// vault's live chain tip — so it holds even under the mock verifier.
+    /// vault's own deposit chain at the credited prefix — so it holds even under the
+    /// mock verifier.
     function publicCommitment(
         bytes32 prevRoot,
         bytes32 manifestHash,
@@ -273,21 +277,33 @@ contract DarkPerpSettlement {
 
     /// @dev SEC-019 L1 pin, shared by both settle entrypoints (kept in one place so
     /// the two can never drift apart, and to hold the settle functions under the
-    /// stack limit). Requires the batch to have consumed EXACTLY the deposits that
-    /// actually landed in the vault: same count, same chain tip.
+    /// stack limit). Requires the batch's proven deposit fold to equal the vault's own
+    /// chain at the PREFIX the batch claims to have credited: `newDepositCount` selects
+    /// the prefix, `depositsRoot` must be that prefix's tip. Both together — a genuine
+    /// tip presented against the wrong count fails just as a fabricated tip does.
+    ///
+    /// A PREFIX, deliberately, not the live head. Pinning to the head made every settle
+    /// race every concurrent deposit, and because `deposit(0, junk)` costs nothing but
+    /// gas, any address could advance the head once per settle interval and stall
+    /// settlement — hence L1 finality and all withdrawal claims — indefinitely. Deposits
+    /// landing after the proof was built now simply belong to a later batch.
+    ///
+    /// Monotonicity/no-skip/no-replay need no check here: `consumed_deposit_tip` and
+    /// `consumed_deposit_count` live inside `state_root`, `prevRoot == currentStateRoot`
+    /// pins where this batch's fold began, and the circuit's `op_deposit` only increments
+    /// contiguously (`deposit_id == consumed_deposit_count`). A settle therefore cannot
+    /// go backward, skip a deposit, or double-consume one.
     ///
     /// With no vault wired there is no custodied collateral, so no deposit may be
-    /// credited and the head is the genesis `(bytes32(0), 0)` — the check stays
-    /// fail-CLOSED rather than being skipped when `vault` is unset.
-    function _requireDepositHead(bytes32 depositsRoot, uint64 newDepositCount) internal view {
-        bytes32 tip;
-        uint64 count;
+    /// credited and the chain is the genesis `bytes32(0)` at every prefix — the check
+    /// stays fail-CLOSED (only a genesis `depositsRoot` passes) rather than being
+    /// skipped when `vault` is unset.
+    function _requireDepositPrefix(bytes32 depositsRoot, uint64 newDepositCount) internal view {
+        bytes32 prefixTip;
         if (vault != address(0)) {
-            tip = ICollateralVault(vault).depositChainTip();
-            count = ICollateralVault(vault).depositCount();
+            prefixTip = ICollateralVault(vault).depositTipAt(newDepositCount);
         }
-        require(newDepositCount == count, "deposits: must consume all pending");
-        require(depositsRoot == tip, "deposits: root != L1 chain tip");
+        require(depositsRoot == prefixTip, "deposits: root != L1 chain prefix");
     }
 
     /// @notice Settle a batch: verify its validity proof and advance the root.
@@ -313,10 +329,9 @@ contract DarkPerpSettlement {
         // consistently; nothing inside it can know which deposits really landed on
         // L1. Without this pin a sequencer could prove a perfectly valid batch over
         // a chain containing a deposit that never happened and mint collateral from
-        // nothing. Requiring equality with the live tip (not mere prefix-ness) also
-        // forces consume-all-to-head, so a genuine deposit cannot be indefinitely
-        // withheld from credit while batches settle around it.
-        _requireDepositHead(depositsRoot, newDepositCount);
+        // nothing. The pin is to the proven PREFIX, so a deposit landing between
+        // proof-build and mine cannot invalidate (or be used to stall) this settle.
+        _requireDepositPrefix(depositsRoot, newDepositCount);
         bytes32 commitment =
             publicCommitment(prevRoot, manifestHash, newRoot, orderedRoot, withdrawalsRoot, rejectedRoot, depositsRoot);
         if (!verifier.verify(commitment, proof)) revert BadProof();
@@ -366,8 +381,8 @@ contract DarkPerpSettlement {
         // NOT this one. Governance may only land proof-valid state over deposits that
         // genuinely happened — otherwise the escape hatch would become the very hole
         // the pin exists to close. Deposits are refused in close-only, so the chain is
-        // frozen here and this is simply the final head.
-        _requireDepositHead(depositsRoot, newDepositCount);
+        // frozen here and the prefix being settled can only be one of its own.
+        _requireDepositPrefix(depositsRoot, newDepositCount);
         bytes32 commitment =
             publicCommitment(prevRoot, manifestHash, newRoot, orderedRoot, withdrawalsRoot, rejectedRoot, depositsRoot);
         if (!verifier.verify(commitment, proof)) revert BadProof();

@@ -56,6 +56,18 @@ contract CollateralVault {
     /// `id`, which is bound into the leaf so an otherwise-identical repeat deposit
     /// (same sender, owner commit and amount) still produces a distinct leaf.
     uint64 public depositCount;
+    /// SEC-019: every PREFIX of that chain, kept forever — `depositTipAt[n]` is the tip
+    /// after the vault's first `n` deposits, so `depositTipAt[depositCount] ==
+    /// depositChainTip`. `depositTipAt[0]` is never written: the mapping default
+    /// `bytes32(0)` IS the genesis tip.
+    ///
+    /// @dev This exists so settlement can pin a batch to the prefix it actually PROVED
+    /// rather than to the live head. Pinning to the head made settlement race every
+    /// concurrent deposit, and since `deposit(0, ...)` costs only gas, anyone could
+    /// advance the head once per settle interval and halt settlement — and with it L1
+    /// finality and all withdrawal claims — indefinitely. With prefixes recorded, a
+    /// deposit landing mid-flight simply lands in a later batch.
+    mapping(uint64 => bytes32) public depositTipAt;
 
     /// @param from L1 payer (bound into the leaf; the funds' provenance).
     /// @param ownerCommit BLINDED binding to the shielded-note owner the off-chain
@@ -126,6 +138,10 @@ contract CollateralVault {
         depositChainTip = keccak256(abi.encodePacked(depositChainTip, leaf));
         emit Deposit(msg.sender, ownerCommit, amount, depositCount, depositChainTip);
         depositCount += 1;
+        // record the new PREFIX tip (after `depositCount` deposits). Written after the
+        // increment, so index n always means "n deposits folded"; index 0 stays unwritten
+        // and reads back as the genesis tip via the mapping default.
+        depositTipAt[depositCount] = depositChainTip;
     }
 
     /// @notice Net ACCOUNTED collateral the bond floor scales off (audit Q1): the sum

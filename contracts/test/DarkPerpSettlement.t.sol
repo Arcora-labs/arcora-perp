@@ -450,40 +450,96 @@ contract DarkPerpSettlementTest is MiniTest {
             s.publicCommitment(GENESIS, manifest, newRoot, bytes32(0), bytes32(0), bytes32(0), fabricatedTip)
         );
 
-        vm.expectRevert(abi.encodeWithSignature("Error(string)", "deposits: root != L1 chain tip"));
+        vm.expectRevert(abi.encodeWithSignature("Error(string)", "deposits: root != L1 chain prefix"));
         s.settleBatch(GENESIS, manifest, newRoot, bytes32(0), bytes32(0), bytes32(0), fabricatedTip, count, proof);
         // and nothing moved
         assertEq(s.currentStateRoot(), GENESIS, "fabricated deposit chain never advances the root");
         assertEq(s.batchCount(), 0, "no batch settled");
     }
 
-    /// Consume-all-to-head: settling while LEAVING a real L1 deposit unconsumed is
-    /// rejected. Without this a sequencer could indefinitely withhold credit for a
-    /// user's genuine deposit while still settling batches around it — the funds are
-    /// in the vault but never become a spendable note.
-    function test_settle_reverts_on_incomplete_consumption() public {
+    /// The tip must belong to the prefix being claimed. Presenting a REAL chain tip
+    /// against the wrong `newDepositCount` is still a lie about what was credited, and
+    /// is rejected — the pin is (count, tip) as a pair, not a tip floating free.
+    function test_settle_reverts_on_wrong_prefix_root() public {
         _depositToVault(1000 * USD);
         _depositToVault(500 * USD);
         _bond(s.requiredBond());
 
-        bytes32 tip = vault.depositChainTip();
-        uint64 count = vault.depositCount();
-        assertEq(uint256(count), 2, "two deposits genuinely pending on L1");
+        bytes32 headTip = vault.depositChainTip(); // the genuine tip at prefix 2
+        assertEq(uint256(vault.depositCount()), 2, "two deposits landed on L1");
 
         bytes32 newRoot = bytes32(uint256(2));
         bytes32 manifest = keccak256("m");
         bytes memory proof =
-            abi.encode(s.publicCommitment(GENESIS, manifest, newRoot, bytes32(0), bytes32(0), bytes32(0), tip));
+            abi.encode(s.publicCommitment(GENESIS, manifest, newRoot, bytes32(0), bytes32(0), bytes32(0), headTip));
 
-        // claiming to have consumed only the first of the two
-        vm.expectRevert(abi.encodeWithSignature("Error(string)", "deposits: must consume all pending"));
-        s.settleBatch(GENESIS, manifest, newRoot, bytes32(0), bytes32(0), bytes32(0), tip, count - 1, proof);
-        assertEq(s.batchCount(), 0, "no batch settled short of the L1 head");
+        // claiming prefix 1 while presenting prefix 2's tip
+        vm.expectRevert(abi.encodeWithSignature("Error(string)", "deposits: root != L1 chain prefix"));
+        s.settleBatch(GENESIS, manifest, newRoot, bytes32(0), bytes32(0), bytes32(0), headTip, 1, proof);
+        assertEq(s.batchCount(), 0, "no batch settled on a mismatched prefix");
+        assertEq(s.currentStateRoot(), GENESIS, "root untouched");
     }
 
-    /// The happy path over a NON-EMPTY chain: settling exactly at the L1 head passes
-    /// both new requires and lands end-to-end. Guards against a fix that simply makes
-    /// every settle revert.
+    /// SEC-019 Task 6b: a batch proven over prefix N settles even though the vault head
+    /// has ALREADY moved past N. This is the exact scenario the earlier consume-all-to-head
+    /// rule reverted on: any deposit landing between proof-build and tx-mine invalidated
+    /// the in-flight settle. Concurrent deposits must simply land in a later batch.
+    function test_settle_accepts_a_proven_prefix_while_head_moved() public {
+        _depositToVault(1000 * USD);
+        // the sequencer builds its proof here, over prefix 1
+        bytes32 prefixTip = vault.depositChainTip();
+        uint64 prefixCount = vault.depositCount();
+
+        // ...and a genuine user deposit lands while the settle tx is in flight
+        _depositToVault(500 * USD);
+        _bond(s.requiredBond());
+        assertEq(uint256(vault.depositCount()), 2, "head advanced past the proven prefix");
+        assertTrue(vault.depositChainTip() != prefixTip, "head tip now differs from the proven prefix");
+
+        bytes32 newRoot = bytes32(uint256(2));
+        bytes32 manifest = keccak256("m");
+        bytes memory proof =
+            abi.encode(s.publicCommitment(GENESIS, manifest, newRoot, bytes32(0), bytes32(0), bytes32(0), prefixTip));
+
+        s.settleBatch(GENESIS, manifest, newRoot, bytes32(0), bytes32(0), bytes32(0), prefixTip, prefixCount, proof);
+        assertEq(s.currentStateRoot(), newRoot, "a proven prefix settles even after the head moved");
+        assertEq(s.batchCount(), 1, "batch counted");
+    }
+
+    /// REGRESSION GUARD for the settle-stall DoS the consume-all-to-head rule introduced.
+    /// `deposit(0, junk)` costs only gas — no USDC, no approval, any address — yet it
+    /// advances `depositCount`/`depositChainTip`. Under the old live-head pin, an
+    /// adversary repeating it once per settle interval halted settlement (and therefore
+    /// L1 finality and every withdrawal claim) indefinitely. Under the prefix pin the
+    /// in-flight settle is untouched by it.
+    function test_zero_value_deposit_cannot_stall_settlement() public {
+        _depositToVault(1000 * USD);
+        _bond(s.requiredBond());
+
+        // the sequencer builds and signs its settle over the current prefix
+        bytes32 prefixTip = vault.depositChainTip();
+        uint64 prefixCount = vault.depositCount();
+        bytes32 newRoot = bytes32(uint256(2));
+        bytes32 manifest = keccak256("m");
+        bytes memory proof =
+            abi.encode(s.publicCommitment(GENESIS, manifest, newRoot, bytes32(0), bytes32(0), bytes32(0), prefixTip));
+
+        // a griefer front-runs it with a free, zero-value deposit
+        address griefer = address(0x6217EF);
+        vm.prank(griefer);
+        vault.deposit(0, keccak256("junk"));
+        assertEq(uint256(vault.depositCount()), uint256(prefixCount) + 1, "griefing deposit did advance the head");
+        assertTrue(vault.depositChainTip() != prefixTip, "and did move the head tip");
+
+        // ...and the settle lands anyway
+        s.settleBatch(GENESIS, manifest, newRoot, bytes32(0), bytes32(0), bytes32(0), prefixTip, prefixCount, proof);
+        assertEq(s.currentStateRoot(), newRoot, "settlement is immune to head-advancing griefing");
+        assertEq(s.batchCount(), 1, "batch counted despite the griefing deposit");
+    }
+
+    /// The happy path over a NON-EMPTY chain: settling exactly at the L1 head (the
+    /// longest prefix) passes and lands end-to-end. Guards against a fix that simply
+    /// makes every settle revert.
     function test_settle_at_l1_deposit_head_succeeds() public {
         _depositToVault(1000 * USD);
         _depositToVault(500 * USD);

@@ -251,6 +251,30 @@ contract CollateralVaultTest is MiniTest {
         assertTrue(other.depositChainTip() != KAT_TIP2, "reordered deposits give a different tip");
     }
 
+    /// SEC-019 (Task 6b): every PREFIX of the chain stays readable forever, not just
+    /// the live head. This is what lets a batch settle the deposits it actually proved
+    /// while later deposits keep landing — without it, settlement is pinned to a moving
+    /// target and any third party can stall it by advancing the head (see
+    /// `test_zero_value_deposit_cannot_stall_settlement` in DarkPerpSettlement.t.sol).
+    function test_depositTipAt_records_every_prefix() public {
+        // genesis: never written, the mapping default IS the genesis tip
+        assertEq(vault.depositTipAt(0), bytes32(0), "prefix 0 is the genesis tip");
+
+        _depositAs(KAT_FROM_0, KAT_AMOUNT_0, KAT_OWNER_COMMIT_0);
+        bytes32 t1 = vault.depositChainTip();
+        assertEq(vault.depositTipAt(1), t1, "prefix 1 recorded as the tip after one deposit");
+
+        _depositAs(KAT_FROM_1, KAT_AMOUNT_1, KAT_OWNER_COMMIT_1);
+        assertEq(vault.depositTipAt(2), vault.depositChainTip(), "prefix 2 is the live head");
+        assertEq(vault.depositTipAt(2), KAT_TIP2, "prefix 2 still matches Rust KAT_DEPOSIT_TIP2");
+
+        // the earlier prefix must survive the later deposit — an in-flight batch proven
+        // over prefix 1 must still be settleable after the head moves on.
+        assertEq(vault.depositTipAt(1), t1, "earlier prefix preserved, not overwritten");
+        assertTrue(t1 != KAT_TIP2, "the two prefixes are genuinely distinct tips");
+        assertEq(vault.depositTipAt(0), bytes32(0), "genesis prefix never written over");
+    }
+
     /// A reverted deposit must not advance the chain: the accumulator has to track
     /// exactly the credited deposits, never attempted ones.
     function test_failed_deposit_does_not_advance_chain() public {
