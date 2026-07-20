@@ -67,6 +67,16 @@ The depositor computes `owner_commit` off-chain and passes it to `deposit(amount
 
 **Solidity is unaffected by this choice** — the contract folds an opaque `bytes32`; only the parameter/event name changes (`owner` → `ownerCommit`). The leaf/fold encoding and both cross-layer KATs are unchanged.
 
+### 1b. Why gateway-authorized deposit entry (`sig`)
+
+Blinding the owner (§1a) + the circuit's **contiguous** consumption (`deposit_id == consumed_deposit_count`, no skip path) together create a head-of-line hazard: a leaf whose `owner_commit` preimage the gateway does not know is **uncreditable** — the gateway can never reproduce `keccak(owner ‖ blind)` to build the op — and because consumption cannot skip it, every genuine deposit queued behind it becomes permanently uncreditable (funds in the vault, notes never minted). A free `deposit(0, junkCommit)` from anyone triggers this; so does an honest user who never told the gateway their `(owner, blind)`.
+
+The vault therefore accepts a deposit only if the **gateway pre-authorized** it: `deposit(amount, ownerCommit, sig)` where `sig` is the gateway's ECDSA signature over `(chainid, vault, from, ownerCommit, amount)`. The gateway signs only AFTER recording the `(owner, deposit_blind)` for that `ownerCommit`, so **every leaf that can enter the chain is creditable by construction** — head-of-line blocking is impossible.
+
+**This does NOT re-introduce a mint authority / does NOT weaken SEC-019's core.** The signer key cannot inflate `external_in`: a signature only permits *entry*; each deposit still performs a real `transferFrom`, and settlement still pins `depositsRoot == vault.depositTipAt(n)`, so `external_in` can only grow by leaves backed by real on-chain transfers. A compromised signer can authorize deposits but cannot conjure collateral — it is a **liveness gate on deposit entry**, not a mint key. The tradeoff it does add is deposit-entry **censorship** (a signer refusing to sign blocks that deposit) — the same refuse-service class as sequencer order-censorship, acceptable for a gateway that already custodies the system; a governance re-key / escape is the mitigation, tracked with the other liveness escapes.
+
+The signature is verified then discarded — it does **not** enter the leaf or the chain, so the leaf/fold encoding and all three KATs are unchanged.
+
 ### 2. On-chain accumulator — `CollateralVault.sol`
 
 - Add `bytes32 public depositChainTip;` (starts `bytes32(0)`), `uint64 public depositCount;` (starts 0).
