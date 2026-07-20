@@ -48,6 +48,7 @@ mod l1;
 mod order_log;
 mod prover_client;
 mod rollback_journal;
+mod settle_health;
 mod snapshot;
 mod withdrawals;
 use l1::{L1Status, L1};
