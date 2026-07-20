@@ -1,10 +1,5 @@
 //! FIN-001: bounded-retry + HELD circuit-breaker policy for the L1 settle loop.
 //! Pure and clock-free — the settle loop owns all timing and feeds outcomes in.
-// Part of this module's public surface (from_env, NextAction::delay, Health::as_str,
-// the DEFAULT_* constants, and the env parse helpers) is exercised only once the
-// settle loop is wired up in the following FIN-001 tasks. Allow dead_code for now so
-// the state machine can land clippy-clean ahead of that wiring.
-#![allow(dead_code)]
 use std::time::Duration;
 
 pub const DEFAULT_HELD_THRESHOLD: u32 = 3;
@@ -132,6 +127,37 @@ fn parse_env_u64(key: &str, default: u64) -> u64 {
     }
 }
 
+/// The single greppable HELD alert line.
+pub fn held_alert_message(consecutive: u32, last_error: &str) -> String {
+    format!(
+        "[l1][HELD] settlement halted after {consecutive} consecutive prove failures: {last_error} \
+         — trading continues, L1 finality paused; fix the prover or POST /v1/admin/settlement/resume"
+    )
+}
+
+/// Best-effort HELD alert to an optional ntfy topic (FIN_ALERT_NTFY_TOPIC). Never blocks the
+/// caller and never fails the loop: detached `curl`, errors ignored.
+pub fn maybe_ntfy(msg: &str) {
+    if let Ok(topic) = std::env::var("FIN_ALERT_NTFY_TOPIC") {
+        if topic.is_empty() {
+            return;
+        }
+        let msg = msg.to_string();
+        std::thread::spawn(move || {
+            let _ = std::process::Command::new("curl")
+                .args([
+                    "-s",
+                    "-m",
+                    "5",
+                    "-d",
+                    &msg,
+                    &format!("https://ntfy.sh/{topic}"),
+                ])
+                .status();
+        });
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -216,5 +242,15 @@ mod tests {
         assert_eq!(a, NextAction::Hold(Duration::from_secs(300)));
         assert!(just_held);
         assert_eq!(h.health(), Health::Held);
+    }
+
+    #[test]
+    fn alert_message_names_count_error_and_remedy() {
+        let m = held_alert_message(3, "prover 503");
+        assert!(m.contains("[l1][HELD]"));
+        assert!(m.contains('3'));
+        assert!(m.contains("prover 503"));
+        assert!(m.contains("/v1/admin/settlement/resume"));
+        assert!(m.contains("trading continues"));
     }
 }

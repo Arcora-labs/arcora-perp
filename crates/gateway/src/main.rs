@@ -5544,8 +5544,16 @@ async fn main() {
                 tokio::time::Instant::now() + Duration::from_secs(L1_SETTLE_SECS),
                 Duration::from_secs(L1_SETTLE_SECS),
             );
+            // FIN-001: gate settle attempts on a backoff deadline. The base cadence is
+            // the L1_SETTLE_SECS interval above; after a prove failure the SettleHealth
+            // machine dictates the next delay (exponential → HELD cap). `next_attempt`
+            // starts open (now) so the first tick attempts normally.
+            let mut next_attempt = tokio::time::Instant::now();
             loop {
                 iv.tick().await;
+                if tokio::time::Instant::now() < next_attempt {
+                    continue;
+                }
                 if let Some(client) = app.prover.clone() {
                     // (A) top up the sequencer bond (as the legacy path does) + read the
                     // on-chain batch count (RPC, no lock). The bond top-up runs BEFORE the
@@ -5693,7 +5701,19 @@ async fn main() {
                                 let mut gw = app.gw.lock().await;
                                 gw.commit_window_settle(batch_id, ordered, rejected, prepared, status);
                                 gw.prune_claimed_withdrawals(&claimed);
+                                // FIN-001: this window settled — clear any failure/HELD state
+                                // and (below) resume the normal settle cadence.
+                                let was_held = matches!(
+                                    gw.settle_health.health(),
+                                    crate::settle_health::Health::Held
+                                );
+                                gw.settle_health.on_success();
+                                gw.settlement_held_since_ms = None;
+                                if was_held {
+                                    println!("[l1] settlement recovered → HEALTHY");
+                                }
                             }
+                            next_attempt = tokio::time::Instant::now();
                             // Task 3 (WAL): the journal outlives the commit — boot's STALE
                             // row resolves it. Poke the single snapshot writer instead, so
                             // the committed l1_status/settled_root persists promptly and a
@@ -5707,10 +5727,32 @@ async fn main() {
                         }
                         Ok(SettleAttempt::ProveFailed(e)) => {
                             eprintln!("[l1] prove failed: {e} — rolling back (no tx was broadcast)");
-                            {
+                            // FIN-001: keep the existing rollback, and under the same lock
+                            // feed the failure to the circuit breaker so the next attempt is
+                            // backed off (exponential → HELD cap). Capture the decision to act
+                            // on off-lock.
+                            let (action, just_held, n, last) = {
                                 let mut gw = app.gw.lock().await;
                                 gw.seq.rollback_window(&witness_rb);
                                 gw.rollback_window_withdrawals(ww_rb);
+                                let (action, just_held) = gw.settle_health.on_failure(e);
+                                if just_held {
+                                    gw.settlement_held_since_ms = Some(now_ms());
+                                }
+                                (
+                                    action,
+                                    just_held,
+                                    gw.settle_health.consecutive_failures(),
+                                    gw.settle_health.last_error().unwrap_or("").to_string(),
+                                )
+                            };
+                            next_attempt = tokio::time::Instant::now() + action.delay();
+                            // Emit the greppable HELD alert exactly once per episode (the
+                            // machine only reports `just_held` on the crossing failure).
+                            if just_held {
+                                let msg = crate::settle_health::held_alert_message(n, &last);
+                                eprintln!("{msg}");
+                                crate::settle_health::maybe_ntfy(&msg);
                             }
                             // Task 3 (WAL): keep the journal (boot's SEAL-NEVER-PERSISTED
                             // row resolves it once the rolled-back state persists); poke
