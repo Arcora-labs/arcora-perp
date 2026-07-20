@@ -35,7 +35,10 @@ fn receipt_signing_digest_vector() {
 #[test]
 fn public_commitment_vector() {
     // prev=0x01.., manifest=0x02.., new=0x03.., ordered=0x04.., withdrawals=0x05..,
-    // rejected=0x06.. (audit DP-004: the 6th bound root)
+    // rejected=0x06.. (audit DP-004: the 6th bound root), deposits=0x07..
+    // (SEC-019: the 7th bound root — the post-batch deposit hash-chain tip).
+    // This is KAT-COMMIT7: keccak256 over the one-byte `Domain::StateRoot` tag (0x07)
+    // followed by the seven 32-byte words in order — a 225-byte preimage.
     let public = PublicInputs {
         prev_state_root: [0x01u8; 32],
         batch_manifest_hash: [0x02u8; 32],
@@ -43,11 +46,12 @@ fn public_commitment_vector() {
         ordered_root: [0x04u8; 32],
         withdrawals_root: [0x05u8; 32],
         rejected_root: [0x06u8; 32],
+        deposits_root: [0x07u8; 32],
     };
     let d = public.commitment::<Keccak256>();
     assert_eq!(
         hex(&d),
-        "5fcf2d935c94f53f10bda9e8383ac4564a464ca35d2d794806dc9410d2ba2062",
+        "27e3e52688359d5759ff4c7b0bea4d25a14b3c81652a4083d531592f827d8902",
         "PUBLIC COMMITMENT VECTOR (update Solidity CrossLayer.t.sol to match): {}",
         hex(&d)
     );

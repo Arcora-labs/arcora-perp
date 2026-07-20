@@ -47,7 +47,7 @@ impl DerivedRoots {
     }
 }
 
-/// Execute the batch transition and DERIVE all six roots. Mutates `state` to the
+/// Execute the batch transition and DERIVE all seven roots. Mutates `state` to the
 /// post-state. Fails `ManifestMismatch` if the manifest is not the one for this
 /// pre-state, or propagates any engine rejection.
 pub fn derive_roots(

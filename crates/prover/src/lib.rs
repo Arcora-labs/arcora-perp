@@ -2,9 +2,9 @@
 //!
 //! Two things live here:
 //!
-//! 1. **The public-input binding** every batch proof commits to — the six roots
+//! 1. **The public-input binding** every batch proof commits to — the seven roots
 //!    `(prev_state_root, batch_manifest_hash, new_state_root, ordered_root,
-//!    withdrawals_root, rejected_root)`, all now DERIVED by [`run_transition`] (via
+//!    withdrawals_root, rejected_root, deposits_root)`, all now DERIVED by [`run_transition`] (via
 //!    `perp_core::commitment::derive_roots`) and hashed under `Domain::StateRoot`
 //!    into the single commitment the L1 verifier checks (Faz 2), independent of
 //!    which proving backend produces it.
@@ -38,7 +38,7 @@ pub use seal_root::{resolve_seal_root, SealRootError};
 
 /// The public inputs a batch proof commits to and the L1 verifier checks.
 ///
-/// All six roots are now DERIVED by `run_transition` (via
+/// All seven roots are now DERIVED by `run_transition` (via
 /// `perp_core::commitment::derive_roots`): `withdrawals_root` from the batch's burned
 /// notes (a prover cannot invent a withdrawal without a real burn — audit F2), and
 /// `ordered_root`/`rejected_root` by merklizing the manifest's committed order-hash
@@ -58,11 +58,19 @@ pub struct PublicInputs {
     /// sequencer can prove a valid rejection against a wrongful inclusion-slash
     /// (audit DP-004).
     pub rejected_root: Digest,
+    /// SEC-019: the post-batch deposit hash-chain tip. L1 compares this against the
+    /// vault's own `depositChainTip` for the same count, so a batch cannot credit a
+    /// deposit that no `Deposited` event produced. Ordered LAST, mirroring
+    /// `perp_core::commitment::DerivedRoots`.
+    pub deposits_root: Digest,
 }
 
 impl PublicInputs {
     /// Canonical commitment over the public inputs (the proof's public digest).
-    /// MUST match `DarkPerpSettlement.publicCommitment`.
+    /// MUST match `DarkPerpSettlement.publicCommitment` — and must stay byte-for-byte
+    /// identical to `perp_core::commitment::DerivedRoots::commitment()`, which is the
+    /// canonical implementation of this same seven-word hash. `commitment_matches_
+    /// perp_core_derived_roots` below is the anti-drift guard tying the two together.
     pub fn commitment<H: Hasher>(&self) -> Digest {
         H::hash_words(
             Domain::StateRoot,
@@ -73,6 +81,7 @@ impl PublicInputs {
                 self.ordered_root,
                 self.withdrawals_root,
                 self.rejected_root,
+                self.deposits_root,
             ],
         )
     }
@@ -94,6 +103,7 @@ pub fn run_transition(
         ordered_root: d.ordered_root,
         withdrawals_root: d.withdrawals_root,
         rejected_root: d.rejected_root,
+        deposits_root: d.deposits_root,
     })
 }
 
@@ -553,6 +563,9 @@ mod tests {
                 asset_id: 0,
                 amount,
                 blinding: blind,
+                // SEC-019: first deposit against a fresh state — L1 ordering index 0.
+                from: [0u8; 20],
+                deposit_id: 0,
             },
             BatchOp::FundPosition {
                 owner,
@@ -588,14 +601,79 @@ mod tests {
             ordered_root: [4u8; 32],
             withdrawals_root: [5u8; 32],
             rejected_root: [6u8; 32],
+            deposits_root: [7u8; 32],
         };
         let mut other = base;
-        other.rejected_root = [7u8; 32];
+        other.rejected_root = [0x99u8; 32];
         assert_ne!(
             base.commitment::<Keccak256>(),
             other.commitment::<Keccak256>(),
             "the rejected root must be bound into the public commitment",
         );
+    }
+
+    // SEC-019 ANTI-DRIFT GUARD. `PublicInputs::commitment` and
+    // `perp_core::commitment::DerivedRoots::commitment` are two independent
+    // implementations of the SAME seven-word hash, and nothing but this test stops them
+    // from silently diverging — which is exactly what happened when `deposits_root` was
+    // added to `DerivedRoots` alone while this side kept hashing six words, leaving two
+    // contradictory "canonical" commitments both green. Any future word added to one
+    // side must be added to the other or this fails.
+    #[test]
+    fn commitment_matches_perp_core_derived_roots() {
+        use perp_core::commitment::DerivedRoots;
+
+        // Several distinct root sets, not just the canonical fixture: with all-different
+        // words a divergence in ORDER is caught, not merely a divergence in arity.
+        let cases: [[u8; 7]; 3] = [
+            [1, 2, 3, 4, 5, 6, 7],
+            [7, 6, 5, 4, 3, 2, 1],
+            [0xAA, 0x00, 0xFF, 0x11, 0x22, 0x33, 0x44],
+        ];
+        for c in cases {
+            let public = PublicInputs {
+                prev_state_root: [c[0]; 32],
+                batch_manifest_hash: [c[1]; 32],
+                new_state_root: [c[2]; 32],
+                ordered_root: [c[3]; 32],
+                withdrawals_root: [c[4]; 32],
+                rejected_root: [c[5]; 32],
+                deposits_root: [c[6]; 32],
+            };
+            let derived = DerivedRoots {
+                prev_state_root: [c[0]; 32],
+                manifest_hash: [c[1]; 32],
+                new_state_root: [c[2]; 32],
+                ordered_root: [c[3]; 32],
+                withdrawals_root: [c[4]; 32],
+                rejected_root: [c[5]; 32],
+                deposits_root: [c[6]; 32],
+            };
+            assert_eq!(
+                public.commitment::<Keccak256>(),
+                derived.commitment::<Keccak256>(),
+                "PublicInputs and DerivedRoots must agree byte-for-byte (case {c:?})",
+            );
+        }
+
+        // ...and both must equal KAT-COMMIT7, the canonical seven-word known-answer for
+        // roots [0x01;32]..[0x07;32] (the same value `perp_core::commitment` asserts and
+        // `tests/vectors.rs` pins for the Solidity side).
+        const KAT_COMMIT7: Digest = [
+            0x27, 0xe3, 0xe5, 0x26, 0x88, 0x35, 0x9d, 0x57, 0x59, 0xff, 0x4c, 0x7b, 0x0b, 0xea,
+            0x4d, 0x25, 0xa1, 0x4b, 0x3c, 0x81, 0x65, 0x2a, 0x40, 0x83, 0xd5, 0x31, 0x59, 0x2f,
+            0x82, 0x7d, 0x89, 0x02,
+        ];
+        let canonical = PublicInputs {
+            prev_state_root: [1u8; 32],
+            batch_manifest_hash: [2u8; 32],
+            new_state_root: [3u8; 32],
+            ordered_root: [4u8; 32],
+            withdrawals_root: [5u8; 32],
+            rejected_root: [6u8; 32],
+            deposits_root: [7u8; 32],
+        };
+        assert_eq!(canonical.commitment::<Keccak256>(), KAT_COMMIT7);
     }
 
     #[test]
@@ -740,6 +818,7 @@ mod tests {
             ordered_root: [0; 32],
             withdrawals_root: [0; 32],
             rejected_root: [0; 32],
+            deposits_root: [0; 32],
         };
         let proof = prover.prove_sealed(&sealed, &public).unwrap();
         assert_eq!(proof.proof_bytes.len(), 32);
