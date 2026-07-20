@@ -9,7 +9,7 @@ This design binds every credited deposit to a real, ordered L1 deposit event —
 - **On-chain (Solidity):** `CollateralVault` gains a deposit hash-chain accumulator; `DarkPerpSettlement`'s public commitment gains a 7th word `depositsRoot`, and `settleBatch`/`finalSettle` pin it to the vault's live chain tip.
 - **In-circuit (`perp-core`, re-executed verbatim by the SP1 guest):** a 7th derived root `deposits_root`; two new `State` words `consumed_deposit_tip`/`consumed_deposit_count` (so the fold is incremental, not O(all-deposits)); `BatchOp::Deposit` carries the L1 `from` address + `deposit_id`; `op_deposit` verifies ordering and folds the leaf; `derive_roots` produces `deposits_root`.
 - **Host (`gateway`/`sequencer`):** thread `from`+`deposit_id` from the L1 event into the op; read the vault's tip/count at seal; pass `deposits_root` to the settle tx.
-- **Deposit UX change:** `deposit(amount)` → `deposit(amount, bytes32 owner)` so the depositor commits their internal owner pubkey on L1 (needed to bind attribution in the leaf).
+- **Deposit UX change:** `deposit(amount)` → `deposit(amount, bytes32 ownerCommit)` so the depositor commits (in blinded form, §1a) to the internal owner being credited — needed to bind attribution in the leaf.
 
 **Non-goals / deferred:**
 
