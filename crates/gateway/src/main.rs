@@ -1828,6 +1828,22 @@ impl Gw {
         self.l1_status = Some(l1_status);
     }
 
+    /// FIN-001: clear the settlement circuit-breaker after a genuine settlement
+    /// success — i.e. ANY path that reaches on-chain finality (the clean settle,
+    /// or the ambiguous-but-landed roll-forward). Resets the failure streak/health
+    /// and drops the HELD timestamp. Returns whether we were HELD, so the caller
+    /// can emit the one-shot recovery log. Kept as a single shared method so the
+    /// two success sites in the settle loop cannot drift apart again.
+    fn settle_breaker_recovered(&mut self) -> bool {
+        let was_held = matches!(
+            self.settle_health.health(),
+            crate::settle_health::Health::Held
+        );
+        self.settle_health.on_success();
+        self.settlement_held_since_ms = None;
+        was_held
+    }
+
     /// Slice 3b-2b: drop withdrawals the vault has already paid (claimed[leaf]) from both
     /// the listing (`pending_withdrawals`) and the served proofs (`withdraw_proofs`), so
     /// the new (per-window) settle path stays bounded and paid notes stop being listed —
@@ -5807,12 +5823,7 @@ async fn main() {
                                 gw.prune_claimed_withdrawals(&claimed);
                                 // FIN-001: this window settled — clear any failure/HELD state
                                 // and (below) resume the normal settle cadence.
-                                let was_held = matches!(
-                                    gw.settle_health.health(),
-                                    crate::settle_health::Health::Held
-                                );
-                                gw.settle_health.on_success();
-                                gw.settlement_held_since_ms = None;
+                                let was_held = gw.settle_breaker_recovered();
                                 if was_held {
                                     println!("[l1] settlement recovered → HEALTHY");
                                 }
@@ -5911,7 +5922,19 @@ async fn main() {
                                             {
                                                 let mut gw = app.gw.lock().await;
                                                 gw.commit_window_settle(batch_id, ordered, rejected, prepared, status);
+                                                // FIN-001: this ambiguous-but-landed settle
+                                                // reached finality — clear any failure/HELD
+                                                // state, exactly like the clean Ok path (else
+                                                // the breaker reports HELD forever after a
+                                                // recovery via this path).
+                                                let was_held = gw.settle_breaker_recovered();
+                                                if was_held {
+                                                    println!("[l1] settlement recovered → HEALTHY");
+                                                }
                                             }
+                                            // a landed settlement is a success — resume the
+                                            // normal settle cadence (mirror the clean Ok arm).
+                                            next_attempt = tokio::time::Instant::now();
                                             // Task 3 (WAL): the journal outlives the commit —
                                             // boot's STALE row resolves it; poke the writer so
                                             // the commit persists promptly.
@@ -6225,6 +6248,31 @@ mod tests {
         assert_eq!(s2.settlement_consecutive_failures, 3);
         assert_eq!(s2.settlement_last_error.as_deref(), Some("e3"));
         assert_eq!(s2.settlement_held_since_ms, Some(1_700_000_000_000));
+    }
+
+    /// FIN-001 (final-review): the shared breaker-recovery helper both success
+    /// paths call clears the HELD state and reports `was_held` for the one-shot
+    /// recovery log — so the ambiguous-but-landed roll-forward path recovers the
+    /// circuit breaker exactly like the clean Ok path (no HELD-forever surface).
+    #[test]
+    fn settle_breaker_recovered_clears_held_state() {
+        let mut gw = Gw::boot();
+        gw.settle_health.on_failure("e1".into());
+        gw.settle_health.on_failure("e2".into());
+        gw.settle_health.on_failure("e3".into()); // default threshold 3 ⇒ HELD
+        gw.settlement_held_since_ms = Some(1_700_000_000_000);
+        assert_eq!(gw.settle_health.health().as_str(), "HELD");
+
+        // recovery from HELD clears every failure/HELD surface and reports was_held
+        assert!(gw.settle_breaker_recovered());
+        assert_eq!(gw.settle_health.health().as_str(), "HEALTHY");
+        assert_eq!(gw.settle_health.consecutive_failures(), 0);
+        assert_eq!(gw.settlement_held_since_ms, None);
+
+        // idempotent: already healthy ⇒ not "was held", state stays clear
+        assert!(!gw.settle_breaker_recovered());
+        assert_eq!(gw.settle_health.health().as_str(), "HEALTHY");
+        assert_eq!(gw.settlement_held_since_ms, None);
     }
 
     // ── sealed state persistence ─────────────────────────────────────────────
