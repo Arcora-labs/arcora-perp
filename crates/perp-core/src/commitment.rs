@@ -110,8 +110,20 @@ mod tests {
         s.add_market(Market::conservative(0));
         let cm = Note::new(owner, 0, amount, blind).commitment::<Keccak256>();
         let ops = vec![
-            BatchOp::Deposit { owner, asset_id: 0, amount, blinding: blind },
-            BatchOp::Withdraw { note_commitment: cm, spend_key, to: Some([0xAB; 20]), nonce: 42 },
+            BatchOp::Deposit {
+                owner,
+                asset_id: 0,
+                amount,
+                blinding: blind,
+                from: [0u8; 20],
+                deposit_id: 0,
+            },
+            BatchOp::Withdraw {
+                note_commitment: cm,
+                spend_key,
+                to: Some([0xAB; 20]),
+                nonce: 42,
+            },
         ];
         let manifest = manifest_for(&s, vec![]);
         let d = derive_roots(&mut s.clone(), &ops, &manifest).unwrap();

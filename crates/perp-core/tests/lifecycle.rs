@@ -58,12 +58,16 @@ fn full_lifecycle_conserves_throughout() {
             asset_id: 0,
             amount: 20_000 * QUOTE_SCALE,
             blinding: ba,
+            from: [0xA1u8; 20],
+            deposit_id: 0,
         },
         BatchOp::Deposit {
             owner: b,
             asset_id: 0,
             amount: 20_000 * QUOTE_SCALE,
             blinding: bb,
+            from: [0xB2u8; 20],
+            deposit_id: 1,
         },
         BatchOp::FundPosition {
             owner: a,
@@ -155,6 +159,8 @@ fn invariant_collateral_conservation_under_random_ops() {
                 asset_id: 0,
                 amount: 50_000 * QUOTE_SCALE,
                 blinding: b,
+                from: [i as u8; 20],
+                deposit_id: i as u64,
             },
             BatchOp::FundPosition {
                 owner: *o,
@@ -203,6 +209,8 @@ fn invariant_no_double_spend() {
         asset_id: 0,
         amount: 10_000 * QUOTE_SCALE,
         blinding: b,
+        from: [0u8; 20],
+        deposit_id: 0,
     })
     .unwrap();
     // first fund consumes the note
@@ -240,6 +248,8 @@ fn invariant_post_fill_margin_sufficiency() {
                 asset_id: 0,
                 amount: 5_000 * QUOTE_SCALE,
                 blinding: bl,
+                from: [sk; 20],
+                deposit_id: s.consumed_deposit_count,
             },
             BatchOp::FundPosition {
                 owner: o,
@@ -284,6 +294,8 @@ fn invariant_oracle_freshness_enforced() {
                 asset_id: 0,
                 amount: 20_000 * QUOTE_SCALE,
                 blinding: bl,
+                from: [sk; 20],
+                deposit_id: s.consumed_deposit_count,
             },
             BatchOp::FundPosition {
                 owner: o,
@@ -330,6 +342,8 @@ fn invariant_liquidation_threshold() {
                 asset_id: 0,
                 amount: amt * QUOTE_SCALE,
                 blinding: bl,
+                from: [sk; 20],
+                deposit_id: s.consumed_deposit_count,
             },
             BatchOp::FundPosition {
                 owner: o,
@@ -440,6 +454,8 @@ fn bad_debt_setup(seed_usd: i128) -> DefaultState {
                 asset_id: 0,
                 amount: amt * QUOTE_SCALE,
                 blinding: bl,
+                from: [sk; 20],
+                deposit_id: s.consumed_deposit_count,
             },
             BatchOp::FundPosition {
                 owner: o,
@@ -547,6 +563,8 @@ fn true_insolvency_trips_close_only_when_winners_have_exited() {
                 asset_id: 0,
                 amount: amt * QUOTE_SCALE,
                 blinding: bl,
+                from: [sk; 20],
+                deposit_id: s.consumed_deposit_count,
             },
             BatchOp::FundPosition {
                 owner: o,
@@ -624,6 +642,8 @@ fn adl_distributes_pro_rata_across_multiple_winners() {
                 asset_id: 0,
                 amount: amt * QUOTE_SCALE,
                 blinding: bl,
+                from: [sk; 20],
+                deposit_id: s.consumed_deposit_count,
             },
             BatchOp::FundPosition {
                 owner: o,
@@ -706,6 +726,8 @@ fn trading_fees_pay_the_maker_and_fund_insurance() {
                 asset_id: 0,
                 amount: 20_000 * QUOTE_SCALE,
                 blinding: bl,
+                from: [sk; 20],
+                deposit_id: s.consumed_deposit_count,
             },
             BatchOp::FundPosition {
                 owner: o,
@@ -761,6 +783,8 @@ fn duplicate_commitment_deposit_rejected() {
         asset_id: 0,
         amount: amt,
         blinding: bl,
+        from: [0u8; 20],
+        deposit_id: 0,
     })
     .unwrap();
     let err = s
@@ -769,6 +793,10 @@ fn duplicate_commitment_deposit_rejected() {
             asset_id: 0,
             amount: amt,
             blinding: bl,
+            from: [0u8; 20],
+            // in-order id (1 == count): the order gate passes, so the DUPLICATE
+            // COMMITMENT check is what rejects this — the property under test.
+            deposit_id: 1,
         })
         .unwrap_err();
     assert_eq!(err, EngineError::DuplicateCommitment);
@@ -779,6 +807,10 @@ fn duplicate_commitment_deposit_rejected() {
         asset_id: 0,
         amount: amt,
         blinding: [10u8; 32],
+        from: [0u8; 20],
+        // the rejected duplicate above never advanced the count, so the next
+        // in-order id is still 1.
+        deposit_id: 1,
     })
     .unwrap();
     assert!(s.conservation_holds());
@@ -798,6 +830,8 @@ fn self_trade_is_rejected_at_settlement() {
             asset_id: 0,
             amount: 20_000 * QUOTE_SCALE,
             blinding: bl,
+            from: [0u8; 20],
+            deposit_id: 0,
         },
         BatchOp::FundPosition {
             owner: a,
@@ -836,6 +870,8 @@ fn forced_exit_close_only_blocks_increase() {
                 asset_id: 0,
                 amount: 20_000 * QUOTE_SCALE,
                 blinding: bl,
+                from: [sk; 20],
+                deposit_id: s.consumed_deposit_count,
             },
             BatchOp::FundPosition {
                 owner: o,
@@ -909,6 +945,8 @@ fn adl_surfaces_the_per_winner_haircut_attribution() {
                 asset_id: 0,
                 amount: amt * QUOTE_SCALE,
                 blinding: bl,
+                from: [sk; 20],
+                deposit_id: s.consumed_deposit_count,
             },
             BatchOp::FundPosition {
                 owner: o,

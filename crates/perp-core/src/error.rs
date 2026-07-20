@@ -23,6 +23,12 @@ pub enum EngineError {
     CloseOnly,
     /// Amount is non-positive where a positive amount is required.
     NonPositiveAmount,
+    /// SEC-019: a deposit's `deposit_id` does not equal the number of L1 deposit
+    /// leaves already consumed (`consumed_deposit_count`). Deposits MUST be applied
+    /// in strict L1 order with no gaps — this rejects a replayed, skipped, or
+    /// reordered deposit before any state is touched, so the in-circuit hash-chain
+    /// fold stays bound to the real, ordered L1 `Deposited` event stream.
+    DepositOutOfOrder,
     /// A note with this commitment already exists. Commitments must be unique
     /// (the blinding factor is a unique nonce); minting a duplicate would alias
     /// two notes in the unspent set and silently lose value. Rejected.

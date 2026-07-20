@@ -43,6 +43,8 @@ fn built_state() -> DefaultState {
             asset_id: 0,
             amount: amt,
             blinding: blind,
+            from: [i as u8; 20],
+            deposit_id: i - 1,
         })
         .unwrap();
         s.apply_op(&BatchOp::FundPosition {
@@ -95,6 +97,9 @@ fn ops_round_trip_and_replay_identically() {
             asset_id: 0,
             amount: 1_000 * QUOTE_SCALE,
             blinding: [9; 32],
+            from: [9u8; 20],
+            // built_state() consumes 3 L1 deposits (ids 0..2); this is the next one.
+            deposit_id: 3,
         },
         BatchOp::AccrueFunding {
             market_id: 0,

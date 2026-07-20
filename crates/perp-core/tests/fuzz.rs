@@ -64,6 +64,8 @@ fn run_session(seed: u64, steps: usize) {
             asset_id: 0,
             amount,
             blinding: blind,
+            from: [i as u8; 20],
+            deposit_id: i,
         })
         .unwrap();
         s.apply_op(&BatchOp::FundPosition {
@@ -120,11 +122,17 @@ fn run_session(seed: u64, steps: usize) {
             3 => {
                 let i = rng.below(N_OWNERS);
                 let amount = (1 + rng.below(5000)) as i128 * QUOTE_SCALE;
+                // SEC-019: deposits must arrive in strict L1 order — feed the next
+                // unconsumed id so the fuzzer still exercises *successful* deposits
+                // (a hardcoded id would be rejected out-of-order after setup, still
+                // conservation-safe but never advancing the accumulator).
                 BatchOp::Deposit {
                     owner: owner(i),
                     asset_id: 0,
                     amount,
                     blinding: [(step as u8); 32],
+                    from: [i as u8; 20],
+                    deposit_id: s.consumed_deposit_count,
                 }
             }
             4 => {
@@ -182,6 +190,8 @@ fn fuzz_state_root_is_deterministic() {
                 asset_id: 0,
                 amount,
                 blinding: blind,
+                from: [i as u8; 20],
+                deposit_id: i,
             })
             .unwrap();
             s.apply_op(&BatchOp::FundPosition {

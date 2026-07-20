@@ -28,11 +28,17 @@ use alloc::vec::Vec;
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum BatchOp {
     /// Bring external collateral in from the L1 vault as a fresh shielded note.
+    /// `from` is the L1 address that emitted the `Deposited` event and `deposit_id`
+    /// is its position in the L1 deposit stream (SEC-019) — together they are the
+    /// leaf folded into the in-circuit deposit hash-chain accumulator, and
+    /// `deposit_id` binds the op to strict L1 order (see `EngineError::DepositOutOfOrder`).
     Deposit {
         owner: PubKey,
         asset_id: u64,
         amount: i128,
         blinding: Digest,
+        from: [u8; 20],
+        deposit_id: u64,
     },
     /// Consume a note and move its value into a position's margin (open/fund).
     FundPosition {
@@ -121,10 +127,37 @@ pub struct WithdrawalOut {
     pub nonce: u64,
 }
 
+/// One deposit this batch consumed: external collateral `amount` credited to `owner`
+/// as a fresh note, bound to the L1 `Deposited` event emitted by address `from` at
+/// L1 position `deposit_id` (SEC-019). Its leaf (`merkle::deposit_leaf`) is folded, in
+/// `deposit_id` order, into `State::consumed_deposit_tip`; the engine — not the prover
+/// — determines these from the ordered op stream, so a deposit cannot be replayed,
+/// skipped, or reordered without breaking the committed accumulator.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct DepositIn {
+    pub from: [u8; 20],
+    pub owner: PubKey,
+    pub amount: u128,
+    pub deposit_id: u64,
+}
+
 /// The observable outputs of applying a batch that the proof roots are derived from.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct BatchOutputs {
     pub withdrawals: alloc::vec::Vec<WithdrawalOut>,
+    pub deposits: alloc::vec::Vec<DepositIn>,
+}
+
+/// The optional per-op contributions a single applied op makes to [`BatchOutputs`].
+/// An op contributes at most one of each: a real `Withdraw { to: Some }` yields a
+/// [`WithdrawalOut`]; a `Deposit` yields a [`DepositIn`]; every other op yields
+/// neither. `apply_batch` drains these into the batch outputs (mirrors the two
+/// output roots the proof derives).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct OpOutput {
+    pub withdrawal: Option<WithdrawalOut>,
+    pub deposit: Option<DepositIn>,
 }
 
 impl From<&WithdrawalOut> for crate::merkle::WithdrawalLeaf {
@@ -142,8 +175,12 @@ impl<H: Hasher> State<H> {
     pub fn apply_batch(&mut self, ops: &[BatchOp]) -> Result<BatchOutputs, EngineError> {
         let mut outputs = BatchOutputs::default();
         for op in ops {
-            if let Some(w) = self.apply_op(op)? {
+            let out = self.apply_op(op)?;
+            if let Some(w) = out.withdrawal {
                 outputs.withdrawals.push(w);
+            }
+            if let Some(d) = out.deposit {
+                outputs.deposits.push(d);
             }
             debug_assert!(
                 self.conservation_holds(),
@@ -157,17 +194,39 @@ impl<H: Hasher> State<H> {
         Ok(outputs)
     }
 
-    /// Apply a single operation. Returns the withdrawal output it produced (only a
-    /// real L1 `Withdraw` with `to = Some` does; every other op returns `None`).
-    pub fn apply_op(&mut self, op: &BatchOp) -> Result<Option<WithdrawalOut>, EngineError> {
+    /// Apply a single operation, returning what it contributed to the batch outputs
+    /// (an [`OpOutput`]). A real L1 `Withdraw` with `to = Some` yields a withdrawal; a
+    /// `Deposit` yields a deposit; every other op yields an empty [`OpOutput`]. Both
+    /// output-producing ops are special-cased here so their leaves reach `apply_batch`.
+    pub fn apply_op(&mut self, op: &BatchOp) -> Result<OpOutput, EngineError> {
         match op {
             BatchOp::Withdraw {
                 note_commitment,
                 spend_key,
                 to,
                 nonce,
-            } => self.op_withdraw(note_commitment, spend_key, to, *nonce),
-            other => self.apply_settlement_op(other).map(|()| None),
+            } => self
+                .op_withdraw(note_commitment, spend_key, to, *nonce)
+                .map(|w| OpOutput {
+                    withdrawal: w,
+                    deposit: None,
+                }),
+            BatchOp::Deposit {
+                owner,
+                asset_id,
+                amount,
+                blinding,
+                from,
+                deposit_id,
+            } => self
+                .op_deposit(owner, *asset_id, *amount, blinding, from, *deposit_id)
+                .map(|d| OpOutput {
+                    withdrawal: None,
+                    deposit: Some(d),
+                }),
+            other => self
+                .apply_settlement_op(other)
+                .map(|()| OpOutput::default()),
         }
     }
 
@@ -175,12 +234,6 @@ impl<H: Hasher> State<H> {
     /// shielded pool (or bring value in) and never produce an L1 withdrawal output.
     fn apply_settlement_op(&mut self, op: &BatchOp) -> Result<(), EngineError> {
         match op {
-            BatchOp::Deposit {
-                owner,
-                asset_id,
-                amount,
-                blinding,
-            } => self.op_deposit(owner, *asset_id, *amount, blinding),
             BatchOp::FundPosition {
                 owner,
                 market_id,
@@ -233,6 +286,9 @@ impl<H: Hasher> State<H> {
                 Ok(())
             }
             BatchOp::SeedInsurance { amount } => self.op_seed_insurance(*amount),
+            BatchOp::Deposit { .. } => {
+                unreachable!("Deposit is handled by apply_op, never delegated here")
+            }
             BatchOp::Withdraw { .. } => {
                 unreachable!("Withdraw is handled by apply_op, never delegated here")
             }
@@ -267,7 +323,17 @@ impl<H: Hasher> State<H> {
         asset_id: u64,
         amount: i128,
         blinding: &Digest,
-    ) -> Result<(), EngineError> {
+        from: &[u8; 20],
+        deposit_id: u64,
+    ) -> Result<DepositIn, EngineError> {
+        // SEC-019: bind this deposit to strict L1 order BEFORE any state mutation.
+        // `deposit_id` must be exactly the next unconsumed L1 leaf index — this
+        // rejects a replayed, skipped, or reordered deposit with no partial credit
+        // (nothing below has run yet), keeping the hash-chain fold bound to the real
+        // L1 `Deposited` stream.
+        if deposit_id != self.consumed_deposit_count {
+            return Err(EngineError::DepositOutOfOrder);
+        }
         if amount <= 0 {
             return Err(EngineError::NonPositiveAmount);
         }
@@ -282,7 +348,20 @@ impl<H: Hasher> State<H> {
             .external_in
             .checked_add(amount)
             .ok_or(EngineError::Overflow)?;
-        Ok(())
+        // Fold the L1 deposit leaf onto the in-circuit accumulator. `amount as u128`
+        // is safe: it is verified `> 0` above. This is the SAME leaf/fold the
+        // on-chain vault computes (byte-parity via `merkle::deposit_leaf`), so the
+        // committed `consumed_deposit_tip` tracks the real, ordered event stream.
+        let leaf = crate::merkle::deposit_leaf(from, owner, amount as u128, deposit_id);
+        self.consumed_deposit_tip =
+            crate::merkle::deposit_chain_fold(&self.consumed_deposit_tip, &leaf);
+        self.consumed_deposit_count += 1;
+        Ok(DepositIn {
+            from: *from,
+            owner: *owner,
+            amount: amount as u128,
+            deposit_id,
+        })
     }
 
     /// Consume a note: verify ownership, mark nullifier, remove from unspent set.
@@ -786,15 +865,80 @@ mod tests {
         let to = [0xAB; 20];
         let out = s
             .apply_batch(&[
-                BatchOp::Deposit { owner, asset_id: 0, amount, blinding: blind1 },
-                BatchOp::Deposit { owner, asset_id: 0, amount, blinding: blind2 },
-                BatchOp::Withdraw { note_commitment: cm1, spend_key, to: Some(to), nonce: 42 },
-                BatchOp::Withdraw { note_commitment: cm2, spend_key, to: None, nonce: 0 },
+                BatchOp::Deposit {
+                    owner,
+                    asset_id: 0,
+                    amount,
+                    blinding: blind1,
+                    from: [0u8; 20],
+                    deposit_id: 0,
+                },
+                BatchOp::Deposit {
+                    owner,
+                    asset_id: 0,
+                    amount,
+                    blinding: blind2,
+                    from: [0u8; 20],
+                    deposit_id: 1,
+                },
+                BatchOp::Withdraw {
+                    note_commitment: cm1,
+                    spend_key,
+                    to: Some(to),
+                    nonce: 42,
+                },
+                BatchOp::Withdraw {
+                    note_commitment: cm2,
+                    spend_key,
+                    to: None,
+                    nonce: 0,
+                },
             ])
             .unwrap();
         assert_eq!(out.withdrawals.len(), 1, "internal burn (to:None) must not emit");
         assert_eq!(out.withdrawals[0].amount, amount); // bound to the real burned note
         assert_eq!(out.withdrawals[0].to, to);
         assert_eq!(out.withdrawals[0].nonce, 42);
+    }
+
+    #[test]
+    fn deposit_binds_order_and_folds_chain() {
+        use crate::error::EngineError;
+        use crate::merkle::{deposit_chain_fold, deposit_leaf};
+        // No `State::default()` exists (a State needs a tree depth); use the
+        // canonical `DefaultState::new(16)` constructor as every other test does.
+        let mut st = DefaultState::new(16);
+        let owner = [9u8; 32];
+        let from = [1u8; 20];
+        let op0 = BatchOp::Deposit {
+            owner,
+            asset_id: 0,
+            amount: 1000,
+            blinding: [3u8; 32],
+            from,
+            deposit_id: 0,
+        };
+        let out = st.apply_batch(&[op0]).expect("apply");
+        assert_eq!(st.consumed_deposit_count, 1);
+        assert_eq!(
+            st.consumed_deposit_tip,
+            deposit_chain_fold(&[0u8; 32], &deposit_leaf(&from, &owner, 1000, 0))
+        );
+        assert_eq!(st.external_in, 1000);
+        assert_eq!(out.deposits.len(), 1);
+        assert!(st.conservation_holds());
+        // out-of-order id ⇒ error
+        let bad = BatchOp::Deposit {
+            owner,
+            asset_id: 0,
+            amount: 5,
+            blinding: [4u8; 32],
+            from,
+            deposit_id: 7,
+        };
+        assert!(matches!(
+            st.apply_batch(&[bad]),
+            Err(EngineError::DepositOutOfOrder)
+        ));
     }
 }
