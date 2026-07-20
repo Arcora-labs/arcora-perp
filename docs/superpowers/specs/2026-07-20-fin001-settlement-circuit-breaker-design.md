@@ -136,10 +136,11 @@ deadline (a `tokio::time::Instant`):
 Add to the gateway snapshot / status payload (and thus the status API + WS `State`):
 
 ```
-settlement_health: "HEALTHY" | "DEGRADED" | "HELD"
-settlement_consecutive_failures: u32
-settlement_last_error: string | null
-settlement_held_since_ms: u64 | null   // set when entering HELD, cleared on recovery
+// serialized under WState's rename_all="camelCase":
+settlementHealth: "HEALTHY" | "DEGRADED" | "HELD"
+settlementConsecutiveFailures: u32
+settlementLastError: string | null
+settlementHeldSinceMs: u64 | null   // set when entering HELD, cleared on recovery
 ```
 
 `DEGRADED` = ≥1 consecutive failure but below threshold (backing off); `HELD` = at/over
