@@ -3519,11 +3519,20 @@ fn fund_amount(
 ) {
     let note = Note::new(w.owner, 0, amount, blind);
     let cm = note.commitment::<Keccak256>();
+    // TODO(SEC-019 Task 7b): real from/deposit_id/deposit_blind for the L1-credit path.
+    // Placeholder leaf: `from=[0;20]`, `deposit_blind=[0;32]` fold a deposit tip the
+    // on-chain vault chain will NOT match (a real deposit carries the payer `from`, its
+    // `ownerCommit`, and its L1 `id`). `deposit_id` reads the live consumed count so the
+    // strict in-order gate passes; 7b wires the real values.
+    let deposit_id = seq.state.consumed_deposit_count;
     seq.apply(&BatchOp::Deposit {
         owner: w.owner,
         asset_id: 0,
         amount,
         blinding: blind,
+        from: [0u8; 20],
+        deposit_id,
+        deposit_blind: [0u8; 32],
     })
     .expect("deposit");
     // Seal to the owner's X25519 viewing PUBLIC key (real note encryption); the
@@ -8593,8 +8602,8 @@ mod tests {
         use crate::prover_client::parse_prove_resp;
         let r32 = |b: u8| format!("0x{}", crate::hex32(&[b; 32]).trim_start_matches("0x"));
         let json = format!(
-            r#"{{"prev_root":"{}","manifest_hash":"{}","new_root":"{}","ordered_root":"{}","withdrawals_root":"{}","rejected_root":"{}","commitment":"{}","proof":"0xdeadbeef"}}"#,
-            r32(1), r32(2), r32(3), r32(4), r32(5), r32(6), r32(7)
+            r#"{{"prev_root":"{}","manifest_hash":"{}","new_root":"{}","ordered_root":"{}","withdrawals_root":"{}","rejected_root":"{}","deposits_root":"{}","commitment":"{}","proof":"0xdeadbeef"}}"#,
+            r32(1), r32(2), r32(3), r32(4), r32(5), r32(6), r32(8), r32(7)
         );
         let out = parse_prove_resp(&json).expect("parse");
         assert_eq!(out.prev_root, [1u8; 32]);
@@ -8603,6 +8612,8 @@ mod tests {
         assert_eq!(out.ordered_root, [4u8; 32]);
         assert_eq!(out.withdrawals_root, [5u8; 32]);
         assert_eq!(out.rejected_root, [6u8; 32]);
+        // SEC-019: the prover-service response now carries the 7th commitment word.
+        assert_eq!(out.deposits_root, [8u8; 32]);
         assert_eq!(out.commitment, [7u8; 32]);
         assert_eq!(out.proof, vec![0xde, 0xad, 0xbe, 0xef]);
     }
@@ -8792,6 +8803,7 @@ mod tests {
                     ordered_root: out.ordered_root,
                     withdrawals_root: out.withdrawals_root,
                     rejected_root: out.rejected_root,
+                    deposits_root: out.deposits_root,
                 }
                 .commitment::<Keccak256>();
                 Ok(out)

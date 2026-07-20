@@ -1286,11 +1286,17 @@ mod tests {
         let o = owner_id(owner);
         let amount = amount_usd * QUOTE_SCALE;
         let cm = Note::new(o, 0, amount, [blind; 32]).commitment::<Keccak256>();
+        // SEC-019: test path — placeholder L1 binding; deposit_id reads the live consumed
+        // count so the strict in-order gate passes across successive funds.
+        let deposit_id = seq.state.consumed_deposit_count;
         seq.apply(&BatchOp::Deposit {
             owner: o,
             asset_id: 0,
             amount,
             blinding: [blind; 32],
+            from: [0u8; 20],
+            deposit_id,
+            deposit_blind: [0u8; 32],
         })
         .unwrap();
         seq.apply(&BatchOp::FundPosition {

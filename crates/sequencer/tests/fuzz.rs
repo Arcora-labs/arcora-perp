@@ -143,11 +143,15 @@ fn run_session(seed: u64, batches: usize) {
         blind[..8].copy_from_slice(&blind_ctr.to_le_bytes());
         let amt = 100_000 * QUOTE_SCALE;
         let cm = Note::new(o, 0, amt, blind).commitment::<Keccak256>();
+        let deposit_id = s.state.consumed_deposit_count;
         s.apply(&BatchOp::Deposit {
             owner: o,
             asset_id: 0,
             amount: amt,
             blinding: blind,
+            from: [0u8; 20],
+            deposit_id,
+            deposit_blind: [0u8; 32],
         })
         .unwrap();
         s.apply(&BatchOp::FundPosition {
@@ -239,11 +243,15 @@ fn run_p3_session(seed: u64) {
         blind[..8].copy_from_slice(&(i + 1).to_le_bytes());
         let amt = 100_000 * QUOTE_SCALE;
         let cm = Note::new(o, 0, amt, blind).commitment::<Keccak256>();
+        let deposit_id = s.state.consumed_deposit_count;
         s.apply(&BatchOp::Deposit {
             owner: o,
             asset_id: 0,
             amount: amt,
             blinding: blind,
+            from: [0u8; 20],
+            deposit_id,
+            deposit_blind: [0u8; 32],
         })
         .unwrap();
         s.apply(&BatchOp::FundPosition {
@@ -320,11 +328,15 @@ fn run_height_settle(seed: u64) {
         blind[..8].copy_from_slice(&(i + 1).to_le_bytes());
         let amt = 1_000_000 * QUOTE_SCALE;
         let cm = Note::new(o, 0, amt, blind).commitment::<Keccak256>();
+        let deposit_id = s.state.consumed_deposit_count;
         s.apply(&BatchOp::Deposit {
             owner: o,
             asset_id: 0,
             amount: amt,
             blinding: blind,
+            from: [0u8; 20],
+            deposit_id,
+            deposit_blind: [0u8; 32],
         })
         .unwrap();
         s.apply(&BatchOp::FundPosition {

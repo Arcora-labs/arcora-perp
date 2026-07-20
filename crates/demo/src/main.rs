@@ -68,11 +68,17 @@ fn fund(s: &mut Sequencer, a: &mut NoteArchive, w: &Wallet, usd: i128, blind: u8
     let amount = usd * QUOTE_SCALE;
     let note = Note::new(w.owner, 0, amount, [blind; 32]);
     let cm = note.commitment::<Keccak256>();
+    // SEC-019: demo path — placeholder L1 binding (from=[0;20], deposit_blind=[0;32]);
+    // deposit_id reads the live consumed count so the strict in-order gate passes.
+    let deposit_id = s.state.consumed_deposit_count;
     s.apply(&BatchOp::Deposit {
         owner: w.owner,
         asset_id: 0,
         amount,
         blinding: [blind; 32],
+        from: [0u8; 20],
+        deposit_id,
+        deposit_blind: [0u8; 32],
     })
     .unwrap();
     a.record(0, &note, &w.view_x25519_public(), rand_core::OsRng);
@@ -166,6 +172,9 @@ fn main() {
         ordered_root: [0u8; 32],
         withdrawals_root: [0u8; 32],
         rejected_root: [0u8; 32],
+        // demo scaffold: sibling roots are placeholder zeros (not real derivations), so
+        // the deposits_root matches — prove/verify here is self-consistent, not on-chain.
+        deposits_root: [0u8; 32],
     };
     let prover = AttestedProver::new(
         CommitmentProver::new(MEASUREMENT),

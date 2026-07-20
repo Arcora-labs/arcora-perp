@@ -62,11 +62,17 @@ fn deposit_and_fund(
     let amount = amount_usd * QUOTE_SCALE;
     let note = Note::new(w.owner, 0, amount, [blind; 32]);
     let cm = note.commitment::<Keccak256>();
+    // SEC-019: test path — placeholder L1 binding; deposit_id reads the live consumed
+    // count so the strict in-order gate passes across successive funds.
+    let deposit_id = s.state.consumed_deposit_count;
     s.apply(&BatchOp::Deposit {
         owner: w.owner,
         asset_id: 0,
         amount,
         blinding: [blind; 32],
+        from: [0u8; 20],
+        deposit_id,
+        deposit_blind: [0u8; 32],
     })
     .unwrap();
     archive.record(0, &note, &w.view_x25519_public(), rand_core::OsRng);
@@ -139,6 +145,9 @@ fn deposit_match_settle_prove_recover() {
         ordered_root: [0u8; 32],
         withdrawals_root: [0u8; 32],
         rejected_root: [0u8; 32],
+        // scaffold: sibling roots are placeholder zeros, so deposits_root matches —
+        // prove/verify here is self-consistent, not an on-chain commitment.
+        deposits_root: [0u8; 32],
     };
     // the witness (positions/fills/margins) is sealed to the prover measurement
     let witness = b"sealed batch witness: cross-user matching + margins";

@@ -23,11 +23,17 @@ fn fund(s: &mut Sequencer, owner: u64, usd: i128, blind: u8) {
     let o = owner_of(owner);
     let amount = usd * QUOTE_SCALE;
     let cm = Note::new(o, 0, amount, [blind; 32]).commitment::<Keccak256>();
+    // SEC-019: test path — placeholder L1 binding; deposit_id reads the live consumed
+    // count so the strict in-order gate passes across successive funds.
+    let deposit_id = s.state.consumed_deposit_count;
     s.apply(&BatchOp::Deposit {
         owner: o,
         asset_id: 0,
         amount,
         blinding: [blind; 32],
+        from: [0u8; 20],
+        deposit_id,
+        deposit_blind: [0u8; 32],
     })
     .unwrap();
     s.apply(&BatchOp::FundPosition {

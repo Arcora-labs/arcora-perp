@@ -58,11 +58,15 @@ fn fund(seq: &mut Sequencer, owner: u64, amount_usd: i128, blind: u8) {
     let o = owner_id(owner);
     let amount = amount_usd * QUOTE_SCALE;
     let cm = Note::new(o, 0, amount, [blind; 32]).commitment::<Keccak256>();
+    let deposit_id = seq.state.consumed_deposit_count;
     seq.apply(&BatchOp::Deposit {
         owner: o,
         asset_id: 0,
         amount,
         blinding: [blind; 32],
+        from: [0u8; 20],
+        deposit_id,
+        deposit_blind: [0u8; 32],
     })
     .unwrap();
     seq.apply(&BatchOp::FundPosition {
@@ -103,11 +107,15 @@ fn multi_market_positions_are_isolated() {
             let o = owner_id(owner);
             let amt = 20_000 * QUOTE_SCALE;
             let cm = Note::new(o, 0, amt, [blind; 32]).commitment::<Keccak256>();
+            let deposit_id = s.state.consumed_deposit_count;
             s.apply(&BatchOp::Deposit {
                 owner: o,
                 asset_id: 0,
                 amount: amt,
                 blinding: [blind; 32],
+                from: [0u8; 20],
+                deposit_id,
+                deposit_blind: [0u8; 32],
             })
             .unwrap();
             s.apply(&BatchOp::FundPosition {
@@ -952,11 +960,15 @@ fn seal_window_replays_multi_tick_window_to_live_root() {
 
     // ---- mid-window: an out-of-band deposit (must land in window_ops)
     let dep_owner = owner_id(5);
+    let deposit_id = seq.state.consumed_deposit_count;
     seq.apply(&BatchOp::Deposit {
         owner: dep_owner,
         asset_id: 0,
         amount: 500_000,
         blinding: [7u8; 32],
+        from: [0u8; 20],
+        deposit_id,
+        deposit_blind: [0u8; 32],
     })
     .unwrap();
 
@@ -1075,11 +1087,15 @@ fn rollback_window_restores_and_reseals_to_live_root() {
     );
 
     // the settle "fails" — meanwhile the 700ms tick loop keeps adding ops to the new window.
+    let deposit_id = seq.state.consumed_deposit_count;
     seq.apply(&BatchOp::Deposit {
         owner: owner_id(5),
         asset_id: 0,
         amount: 500_000,
         blinding: [7u8; 32],
+        from: [0u8; 20],
+        deposit_id,
+        deposit_blind: [0u8; 32],
     })
     .unwrap();
     // NOTE: mis-order falsifiability couples to the NON-ZERO funding this tick accrues off the crashed oracle — a timing/oracle edit that zeroes it silently darkens the ordering arm.

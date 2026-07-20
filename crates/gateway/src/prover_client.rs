@@ -23,6 +23,11 @@ pub struct ProveOutcome {
     pub ordered_root: Digest,
     pub withdrawals_root: Digest,
     pub rejected_root: Digest,
+    /// SEC-019: the post-batch deposit hash-chain tip — the 7th commitment word. Carried
+    /// from the prover's derived roots (Mock) or its `/prove` response (Http) so the
+    /// gateway's independent commitment re-derivation in `prove_and_prepare` includes it
+    /// (a 6-word re-derivation would mismatch every settle).
+    pub deposits_root: Digest,
     pub commitment: Digest,
     pub proof: Vec<u8>,
 }
@@ -74,6 +79,7 @@ impl ProverClient for MockProverClient {
             ordered_root: d.ordered_root,
             withdrawals_root: d.withdrawals_root,
             rejected_root: d.rejected_root,
+            deposits_root: d.deposits_root,
             commitment,
             proof: commitment.to_vec(),
         })
@@ -115,6 +121,7 @@ pub fn prove_and_prepare(
         ordered_root: outcome.ordered_root,
         withdrawals_root: outcome.withdrawals_root,
         rejected_root: outcome.rejected_root,
+        deposits_root: outcome.deposits_root,
     }
     .commitment::<Keccak256>();
     if expect != outcome.commitment {
@@ -218,6 +225,9 @@ pub fn parse_prove_resp(json: &str) -> Result<ProveOutcome, ProverClientError> {
         ordered_root: String,
         withdrawals_root: String,
         rejected_root: String,
+        // SEC-019: the prover-service must emit the 7th commitment word so the gateway's
+        // commitment cross-check in `prove_and_prepare` re-derives the same 7-word digest.
+        deposits_root: String,
         commitment: String,
         proof: String,
     }
@@ -233,6 +243,7 @@ pub fn parse_prove_resp(json: &str) -> Result<ProveOutcome, ProverClientError> {
         ordered_root: root(&r.ordered_root, "ordered_root")?,
         withdrawals_root: root(&r.withdrawals_root, "withdrawals_root")?,
         rejected_root: root(&r.rejected_root, "rejected_root")?,
+        deposits_root: root(&r.deposits_root, "deposits_root")?,
         commitment: root(&r.commitment, "commitment")?,
         proof: crate::decode_hex(&r.proof)
             .ok_or_else(|| ProverClientError::Decode(format!("bad proof: {}", r.proof)))?,
@@ -610,6 +621,7 @@ mod reauth_tests {
             ordered_root: [0u8; 32],
             withdrawals_root: [0u8; 32],
             rejected_root: [0u8; 32],
+            deposits_root: [0u8; 32],
             commitment: [0u8; 32],
             proof: vec![],
         }
