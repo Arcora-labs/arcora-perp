@@ -3566,6 +3566,12 @@ struct App {
     /// observability — hence still `#[allow(dead_code)]` (no in-App reader).
     #[allow(dead_code)]
     prover_session_token: Option<String>,
+    /// FIN-001 Task 4: an operator-set one-shot flag. `POST /v1/admin/settlement/resume`
+    /// (gated by `FIN_ADMIN_KEY`) sets it; the settle loop `swap`s it to `false` at the top of
+    /// each tick and, when it was set, resets its backoff deadline to now so a fixed prover is
+    /// retried immediately instead of waiting out the HELD backoff. Setting it NEVER fakes
+    /// health — health clears only when a real settle succeeds.
+    force_settle: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl App {
@@ -3754,6 +3760,93 @@ fn canon_tx_hash(s: &str) -> Option<String> {
 }
 
 /// Authenticate a `/v1` request: read `X-Api-Key` (0x + 64 hex) → 32-byte key.
+/// FIN-001 Task 4: the settlement-resume authorization decision.
+/// `Disabled` ⇒ no operator key configured (endpoint off, fail-closed 503);
+/// `Unauthorized` ⇒ key configured but the presented `X-Admin-Key` is absent or wrong (401);
+/// `Ok` ⇒ exact match (200 + force flag). This is a DEDICATED operator gate — it deliberately
+/// does NOT reuse `api_key_from`/`X-Api-Key` (that authenticates a registered USER, which would
+/// let any user force settlement).
+#[derive(Debug, PartialEq, Eq)]
+enum AdminAuthz {
+    Ok,
+    Unauthorized,
+    Disabled,
+}
+
+/// Constant-time compare of the presented `X-Admin-Key` against the configured `FIN_ADMIN_KEY`.
+/// `configured` = env value (None ⇒ endpoint disabled); `presented` = header value.
+/// The fold is length-independent and never early-returns on the first mismatching byte, so it
+/// leaks neither the key length nor a matching-prefix length through timing.
+fn admin_resume_authz(configured: Option<&str>, presented: Option<&str>) -> AdminAuthz {
+    let Some(cfg) = configured else {
+        return AdminAuthz::Disabled;
+    };
+    let Some(got) = presented else {
+        return AdminAuthz::Unauthorized;
+    };
+    let (a, b) = (cfg.as_bytes(), got.as_bytes());
+    // Seed the accumulator with the length difference so a shorter/longer presentation can
+    // never fold to zero, then OR every positional byte-xor (padding the short side with 0).
+    let mut diff = (a.len() ^ b.len()) as u8;
+    let n = a.len().max(b.len());
+    for i in 0..n {
+        let x = *a.get(i).unwrap_or(&0);
+        let y = *b.get(i).unwrap_or(&0);
+        diff |= x ^ y;
+    }
+    if diff == 0 {
+        AdminAuthz::Ok
+    } else {
+        AdminAuthz::Unauthorized
+    }
+}
+
+/// FIN-001 Task 4: `POST /v1/admin/settlement/resume` — an OPERATOR (not user) action that,
+/// once the prover is fixed, forces an immediate settle attempt instead of waiting out the
+/// HELD backoff. It is gated by the dedicated `FIN_ADMIN_KEY` (0x+64hex) via the `X-Admin-Key`
+/// header, compared constant-time. Fail-closed: no key configured ⇒ 503 (disabled, no action);
+/// missing/wrong key ⇒ 401 (no action). On an exact match it sets the shared `force_settle`
+/// flag ONLY — it must NOT call `on_success` or flip health; the 200 body just REPORTS the
+/// current settlement health so the operator sees the real state (which clears only when a
+/// real settle succeeds).
+async fn post_v1_admin_resume(State(app): State<Shared>, headers: HeaderMap) -> impl IntoResponse {
+    let configured = std::env::var("FIN_ADMIN_KEY").ok();
+    let presented = headers.get("x-admin-key").and_then(|v| v.to_str().ok());
+    match admin_resume_authz(configured.as_deref(), presented) {
+        AdminAuthz::Disabled => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(serde_json::json!({ "error": "settlement resume disabled — set FIN_ADMIN_KEY" })),
+        )
+            .into_response(),
+        AdminAuthz::Unauthorized => (
+            StatusCode::UNAUTHORIZED,
+            Json(serde_json::json!({ "error": "missing or invalid X-Admin-Key" })),
+        )
+            .into_response(),
+        AdminAuthz::Ok => {
+            app.force_settle
+                .store(true, std::sync::atomic::Ordering::SeqCst);
+            let health = {
+                app.gw
+                    .lock()
+                    .await
+                    .settle_health
+                    .health()
+                    .as_str()
+                    .to_string()
+            };
+            (
+                StatusCode::OK,
+                Json(serde_json::json!({
+                    "status": "settlement retry forced on next tick",
+                    "settlement_health": health
+                })),
+            )
+                .into_response()
+        }
+    }
+}
+
 fn api_key_from(headers: &HeaderMap) -> Result<[u8; 32], (StatusCode, Json<serde_json::Value>)> {
     headers
         .get("x-api-key")
@@ -4827,6 +4920,7 @@ fn build_router(app: Shared, prod: bool) -> Router {
         .route("/v1/markets/:id/candles", get(get_v1_candles))
         .route("/v1/markets/:id/oracle", get(get_v1_oracle))
         .route("/v1/system/status", get(get_v1_status))
+        .route("/v1/admin/settlement/resume", post(post_v1_admin_resume))
         .route("/v1/batch/:id", get(get_v1_batch))
         .route("/v1/enclave/epoch", get(get_v1_enclave_epoch))
         .route("/v1/openapi.json", get(get_v1_openapi))
@@ -5227,6 +5321,7 @@ async fn main() {
         hs_nonce,
         hs_epoch,
         prover_session_token,
+        force_settle: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
     });
 
     // One-shot REAL history backfill for feed-backed markets (chart past bars):
@@ -5551,6 +5646,15 @@ async fn main() {
             let mut next_attempt = tokio::time::Instant::now();
             loop {
                 iv.tick().await;
+                // FIN-001 Task 4: an operator forced a resume (POST /v1/admin/settlement/resume) —
+                // collapse the backoff deadline to now so this tick attempts a settle immediately
+                // instead of waiting out the HELD backoff. `swap` consumes the one-shot flag.
+                if app
+                    .force_settle
+                    .swap(false, std::sync::atomic::Ordering::SeqCst)
+                {
+                    next_attempt = tokio::time::Instant::now();
+                }
                 if tokio::time::Instant::now() < next_attempt {
                     continue;
                 }
@@ -6020,6 +6124,7 @@ mod tests {
             hs_nonce: [0u8; 32],
             hs_epoch: 0,
             prover_session_token: None,
+            force_settle: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
         })
     }
 
@@ -6285,6 +6390,94 @@ mod tests {
         assert_eq!(r.status(), StatusCode::BAD_REQUEST, "unknown timeframe");
         let r = router.oneshot(get("/v1/markets/99/candles")).await.unwrap();
         assert_eq!(r.status(), StatusCode::NOT_FOUND, "unknown market");
+    }
+
+    // FIN-001 Task 4: the operator-gated settlement-resume auth matrix, exercised as
+    // a pure function (no env, no I/O) — the primary, deterministic evidence.
+    #[test]
+    fn admin_key_check_is_fail_closed_and_constant_shape() {
+        let k = "0x".to_string() + &"aa".repeat(32);
+        let wrong = "0x".to_string() + &"bb".repeat(32);
+        // unset config ⇒ endpoint disabled (fail-closed), regardless of what's presented
+        assert_eq!(admin_resume_authz(None, None), AdminAuthz::Disabled);
+        assert_eq!(admin_resume_authz(None, Some(&k)), AdminAuthz::Disabled);
+        // configured but no header presented ⇒ unauthorized
+        assert_eq!(admin_resume_authz(Some(&k), None), AdminAuthz::Unauthorized);
+        // wrong presented ⇒ unauthorized
+        assert_eq!(
+            admin_resume_authz(Some(&k), Some(&wrong)),
+            AdminAuthz::Unauthorized
+        );
+        // a length-only prefix must NOT authorize (the fold folds the length too)
+        assert_eq!(
+            admin_resume_authz(Some(&k), Some("0xaa")),
+            AdminAuthz::Unauthorized
+        );
+        // exact match ⇒ ok
+        assert_eq!(admin_resume_authz(Some(&k), Some(&k)), AdminAuthz::Ok);
+    }
+
+    // FIN-001 Task 4: the async handler flips the shared force flag ONLY on an exact
+    // FIN_ADMIN_KEY match; wrong/absent key ⇒ 401 (no action); key unset ⇒ 503.
+    // Env is process-global; no other gateway test reads FIN_ADMIN_KEY, so this test
+    // owns that var (set + remove within), matching the existing PROVER_SEAL_ROOT test.
+    #[tokio::test]
+    async fn resume_sets_force_flag_when_authorized() {
+        use axum::http::HeaderMap;
+        use std::sync::atomic::Ordering;
+
+        let app = test_app();
+        let key = "0x".to_string() + &"aa".repeat(32);
+        std::env::set_var("FIN_ADMIN_KEY", &key);
+        app.force_settle.store(false, Ordering::SeqCst);
+
+        // exact admin key ⇒ 200 + force flag set (health is only REPORTED, not flipped)
+        let mut ok_headers = HeaderMap::new();
+        ok_headers.insert("x-admin-key", key.parse().unwrap());
+        let resp = post_v1_admin_resume(State(app.clone()), ok_headers)
+            .await
+            .into_response();
+        assert_eq!(resp.status(), StatusCode::OK);
+        assert!(
+            app.force_settle.load(Ordering::SeqCst),
+            "force flag set on 200"
+        );
+
+        // wrong key ⇒ 401, flag NOT set
+        app.force_settle.store(false, Ordering::SeqCst);
+        let mut bad_headers = HeaderMap::new();
+        bad_headers.insert(
+            "x-admin-key",
+            ("0x".to_string() + &"bb".repeat(32)).parse().unwrap(),
+        );
+        let resp = post_v1_admin_resume(State(app.clone()), bad_headers)
+            .await
+            .into_response();
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+        assert!(
+            !app.force_settle.load(Ordering::SeqCst),
+            "wrong key must not force"
+        );
+
+        // missing header ⇒ 401
+        let resp = post_v1_admin_resume(State(app.clone()), HeaderMap::new())
+            .await
+            .into_response();
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+        assert!(!app.force_settle.load(Ordering::SeqCst));
+
+        // FIN_ADMIN_KEY unset ⇒ 503 (disabled), even with a header present
+        std::env::remove_var("FIN_ADMIN_KEY");
+        let mut hdr = HeaderMap::new();
+        hdr.insert("x-admin-key", key.parse().unwrap());
+        let resp = post_v1_admin_resume(State(app.clone()), hdr)
+            .await
+            .into_response();
+        assert_eq!(resp.status(), StatusCode::SERVICE_UNAVAILABLE);
+        assert!(
+            !app.force_settle.load(Ordering::SeqCst),
+            "disabled must not force"
+        );
     }
 
     /// A snapshot sealed under one enclave seed must not open under another —
