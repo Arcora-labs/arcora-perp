@@ -3778,7 +3778,7 @@ enum AdminAuthz {
 /// The fold is length-independent and never early-returns on the first mismatching byte, so it
 /// leaks neither the key length nor a matching-prefix length through timing.
 fn admin_resume_authz(configured: Option<&str>, presented: Option<&str>) -> AdminAuthz {
-    let Some(cfg) = configured else {
+    let Some(cfg) = configured.filter(|c| !c.is_empty()) else {
         return AdminAuthz::Disabled;
     };
     let Some(got) = presented else {
@@ -6415,6 +6415,20 @@ mod tests {
         );
         // exact match ⇒ ok
         assert_eq!(admin_resume_authz(Some(&k), Some(&k)), AdminAuthz::Ok);
+    }
+
+    #[test]
+    fn empty_configured_admin_key_is_disabled_not_authorizing() {
+        // blank configured key ⇒ disabled, even with a blank presented header
+        assert_eq!(admin_resume_authz(Some(""), Some("")), AdminAuthz::Disabled);
+        assert_eq!(admin_resume_authz(Some(""), None), AdminAuthz::Disabled);
+        // a real key still works and still rejects a blank/wrong header
+        let k = "0x".to_string() + &"aa".repeat(32);
+        assert_eq!(admin_resume_authz(Some(&k), Some(&k)), AdminAuthz::Ok);
+        assert_eq!(
+            admin_resume_authz(Some(&k), Some("")),
+            AdminAuthz::Unauthorized
+        );
     }
 
     // FIN-001 Task 4: the async handler flips the shared force flag ONLY on an exact
