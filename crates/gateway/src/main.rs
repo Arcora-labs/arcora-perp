@@ -5236,6 +5236,17 @@ fn enclave_seed_ok_for_mode(prod: bool, seed_is_secret: bool) -> bool {
     seed_is_secret || !prod
 }
 
+/// Whether the gateway may boot given the oracle-signer provenance: production requires a
+/// SECRET oracle-publisher key, not the public `oracle_feed::DEV_ORACLE_SIGNER_KEY`
+/// (well-known Anvil account #1, a PUBLISHED scalar). Booting prod on the dev default pins
+/// every `Market.oracle_pubkey` to a PUBLIC address — anyone could then sign fabricated
+/// oracle transcripts that recover to it and clear the fail-closed §8 signature gate,
+/// re-opening the exact prover-price-fabrication hole ZK-001 closes. Mirrors
+/// `enclave_seed_ok_for_mode` (ZK-001 follow-up); the demo/dev build boots either way.
+fn oracle_signer_ok_for_mode(prod: bool, is_default: bool) -> bool {
+    !is_default || !prod
+}
+
 /// Whether the attested measurement satisfies the production pin policy. In production the
 /// operator MUST pin the expected enclave measurement (ATTESTATION_EXPECTED_MEASUREMENT)
 /// and the attested measurement MUST equal it — otherwise ANY valid TDX quote (a different
@@ -5447,6 +5458,43 @@ async fn main() {
              contract's ENCLAVE_SIGNER to that key's address."
         );
         std::process::exit(1);
+    }
+    // ZK-001 follow-up: production requires a SECRET oracle-publisher key. Resolve it up
+    // front (mirrors enclave_seed_from_env), so a SET-but-malformed ORACLE_SIGNER_KEY fails
+    // closed HERE with a clear message, and — critically — an UNSET key in production is
+    // refused BEFORE boot pins every Market.oracle_pubkey to the public dev address. Without
+    // this, a prod gateway booted without ORACLE_SIGNER_KEY would trust a well-known scalar,
+    // letting anyone sign fabricated oracle transcripts that clear the §8 gate (re-opening
+    // the price-fabrication hole ZK-001 closes). The signer VALUE is not needed here — boot
+    // re-derives it via boot_oracle_signer, which logs the address for on-chain pinning.
+    let oracle_signer_is_default = match oracle_feed::signer_from_env_checked() {
+        Ok((_signer, is_default)) => is_default,
+        Err(e) => {
+            eprintln!(
+                "[oracle] REFUSING to start: {e}. Set ORACLE_SIGNER_KEY to a valid 32-byte hex \
+                 secp256k1 scalar, or unset it for the demo build."
+            );
+            std::process::exit(1);
+        }
+    };
+    if !oracle_signer_ok_for_mode(prod, oracle_signer_is_default) {
+        eprintln!(
+            "[oracle] REFUSING to start: ORACLE_SIGNER_KEY must be set in production — refusing \
+             to boot with the public dev oracle key. Every Market.oracle_pubkey would be pinned \
+             to a well-known address, letting anyone sign fabricated oracle transcripts that \
+             clear the §8 signature gate. Set ORACLE_SIGNER_KEY to a secret 32-byte hex \
+             secp256k1 scalar and pin its address as each Market.oracle_pubkey."
+        );
+        std::process::exit(1);
+    }
+    if oracle_signer_is_default {
+        // non-prod only (prod exits above): the public dev oracle key is fine for the demo
+        // build / tests, but must never sign on a real deployment (mirrors the enclave-seed
+        // posture and the DEV_INSECURE WARN).
+        eprintln!(
+            "WARN gateway: oracle publisher signer is the PUBLIC dev default (ORACLE_SIGNER_KEY \
+             unset) — demo/test only, never production"
+        );
     }
     // Sealed state persistence: DARKPERP_STATE=<path> restores the engine across
     // restarts. A present-but-unopenable snapshot is fail-closed (never silently
@@ -7314,6 +7362,30 @@ mod tests {
         assert!(
             !enclave_seed_ok_for_mode(true, false),
             "production must reject the public demo enclave seed",
+        );
+    }
+
+    // ZK-001 follow-up: production must reject the public dev oracle signer key (the
+    // well-known Anvil account #1). Booting prod on it pins every Market.oracle_pubkey to a
+    // PUBLIC address, so anyone could sign fabricated oracle transcripts that clear the §8
+    // signature gate — re-opening the price-fabrication hole ZK-001 closes.
+    #[test]
+    fn production_requires_a_secret_oracle_signer() {
+        assert!(
+            !oracle_signer_ok_for_mode(true, true),
+            "production must reject the public dev oracle key"
+        );
+        assert!(
+            oracle_signer_ok_for_mode(true, false),
+            "production boots with a secret oracle key"
+        );
+        assert!(
+            oracle_signer_ok_for_mode(false, true),
+            "demo build boots with the dev oracle default"
+        );
+        assert!(
+            oracle_signer_ok_for_mode(false, false),
+            "demo build boots with a real oracle key too"
         );
     }
 

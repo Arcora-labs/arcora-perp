@@ -34,21 +34,40 @@ pub fn signer_address(signer: &SigningKey) -> [u8; 20] {
         .expect("a freshly-produced signature always recovers")
 }
 
+/// Resolve the oracle-publisher signing key AND whether the public dev default was
+/// taken — the fail-closed, boot-time provenance check (mirrors the gateway's
+/// `enclave_seed_from_env`). `is_default == true` iff `ORACLE_SIGNER_KEY` was UNSET and
+/// the [`DEV_ORACLE_SIGNER_KEY`] fallback (well-known Anvil account #1, a PUBLISHED
+/// scalar) was used. A SET-but-malformed / invalid key STILL fails closed with an `Err`
+/// (the caller exits) — it is NOT reported as `is_default` — so a mistyped secret is
+/// refused, never silently swapped for the dev key. This lets a caller refuse an UNSET
+/// key in production BEFORE it pins every `Market.oracle_pubkey` to a public address.
+/// Silent by design (no boot log): the address is logged by [`signer_from_env`] at the
+/// actual load, so this up-front check does not double-print it.
+pub fn signer_from_env_checked() -> Result<(SigningKey, bool), String> {
+    let (key, is_default) = match std::env::var("ORACLE_SIGNER_KEY") {
+        Ok(s) => (
+            parse_hex32(&s).ok_or("ORACLE_SIGNER_KEY is set but is not a 32-byte hex value")?,
+            false,
+        ),
+        Err(_) => (DEV_ORACLE_SIGNER_KEY, true),
+    };
+    let signer = SigningKey::from_slice(&key)
+        .map_err(|e| format!("ORACLE_SIGNER_KEY is not a valid secp256k1 scalar: {e}"))?;
+    Ok((signer, is_default))
+}
+
 /// Load the oracle-publisher signing key from the environment (mirrors SEC-019's
 /// `GatewaySigner::from_env`): `ORACLE_SIGNER_KEY` is a `0x`-optional 32-byte hex
 /// secp256k1 scalar. Unset ⇒ the documented [`DEV_ORACLE_SIGNER_KEY`] (fine for the
 /// demo build / tests); SET-but-malformed fails closed with an `Err` (the caller
 /// exits) rather than silently signing with the dev key. Prints the derived address
 /// at construction so the operator can pin it as `Market.oracle_pubkey`.
+///
+/// Whether the dev default was taken is dropped here — a caller that must REFUSE the
+/// public dev key in production (the gateway) uses [`signer_from_env_checked`] instead.
 pub fn signer_from_env() -> Result<SigningKey, String> {
-    let key = match std::env::var("ORACLE_SIGNER_KEY") {
-        Ok(s) => {
-            parse_hex32(&s).ok_or("ORACLE_SIGNER_KEY is set but is not a 32-byte hex value")?
-        }
-        Err(_) => DEV_ORACLE_SIGNER_KEY,
-    };
-    let signer = SigningKey::from_slice(&key)
-        .map_err(|e| format!("ORACLE_SIGNER_KEY is not a valid secp256k1 scalar: {e}"))?;
+    let (signer, _is_default) = signer_from_env_checked()?;
     println!(
         "[oracle-feed] publisher signer address 0x{} — set each Market.oracle_pubkey to this",
         hex20(&signer_address(&signer))
