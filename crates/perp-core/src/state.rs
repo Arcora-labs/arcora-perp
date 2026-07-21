@@ -382,4 +382,26 @@ mod tests {
             "oracle_pubkey must be bound into markets_digest",
         );
     }
+
+    // ZK-001 (Task 4, carry-forward M1): the per-market mark band is consumed by the
+    // funding path to bound `AccrueFunding.mark` against the signed index. Task 2 folded
+    // `max_mark_deviation_ratio` into `markets_digest`, but never asserted it — so a
+    // prover could swap the band under an unchanged state root, loosening (or nulling)
+    // the funding-mark constraint. Two states differing ONLY in the mark band must not
+    // share a markets_digest.
+    #[test]
+    fn market_binds_max_mark_deviation_ratio_in_digest() {
+        let mut a: State<Keccak256> = State::new(16);
+        let mut b: State<Keccak256> = State::new(16);
+        let ma = Market::conservative(1); // max_mark_deviation_ratio = 5%
+        a.add_market(ma);
+        let mut mb = Market::conservative(1);
+        mb.max_mark_deviation_ratio = 80_000; // same market, wider (8%) mark band
+        b.add_market(mb);
+        assert_ne!(
+            a.markets_digest(),
+            b.markets_digest(),
+            "max_mark_deviation_ratio must be bound into markets_digest",
+        );
+    }
 }

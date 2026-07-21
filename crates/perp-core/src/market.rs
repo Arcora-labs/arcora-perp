@@ -132,6 +132,10 @@ impl Market {
             // the treasury cut comes out of the net fee, so insurance never goes negative
             && self.treasury_fee_ratio >= 0
             && self.treasury_fee_ratio <= self.taker_fee_ratio - self.maker_rebate_ratio
+            // ZK-001 (Task 4): the mark band, like the sibling oracle `*_ratio` bounds,
+            // must be strictly positive — a zero band would reject ALL marks (only
+            // mark == index passes) and a negative one is nonsense.
+            && self.max_mark_deviation_ratio > 0
     }
 }
 
@@ -190,5 +194,20 @@ mod tests {
             Market::with_fees(0, 10, 4).is_coherent(),
             "10/4 bps is fine"
         );
+    }
+
+    #[test]
+    fn mark_deviation_ratio_must_be_positive() {
+        // ZK-001 (Task 4, carry-forward M2): the mark band gates `AccrueFunding.mark`
+        // against the signed index. A ZERO band would reject ALL marks (only mark == index
+        // clears `|mark − index| · SCALE <= 0`), stalling funding; a NEGATIVE band is
+        // nonsense. Reject both at setup, like the sibling oracle `*_ratio` bounds.
+        let mut m = Market::conservative(0);
+        m.max_mark_deviation_ratio = 0;
+        assert!(!m.is_coherent(), "zero mark band is incoherent");
+        m.max_mark_deviation_ratio = -1;
+        assert!(!m.is_coherent(), "negative mark band is incoherent");
+        // the conservative default (5%) stays coherent
+        assert!(Market::conservative(0).is_coherent());
     }
 }

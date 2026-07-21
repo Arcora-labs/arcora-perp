@@ -49,6 +49,12 @@ pub enum EngineError {
     /// reachable via `commitment::derive_roots` (root derivation), not the hot-path
     /// settlement ops.
     ManifestMismatch,
+    /// ZK-001 (Task 4): an `AccrueFunding.mark` (the sequencer's raw book-mid witness)
+    /// lies outside `max_mark_deviation_ratio` of the SIGNED oracle index. The mark is
+    /// otherwise unconstrained, so it is bound to a symmetric band around the validated
+    /// index before it can steer the funding rate; a mark out of band — or an overflow in
+    /// the checked band arithmetic — is rejected fail-closed (never wrapped or panicked).
+    MarkOutOfBand,
 }
 
 impl From<RiskError> for EngineError {

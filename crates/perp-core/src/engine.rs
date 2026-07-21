@@ -13,7 +13,7 @@
 //! conservation.
 
 use crate::error::EngineError;
-use crate::fixed::{apply_rate, notional_quote};
+use crate::fixed::{abs, apply_rate, notional_quote, RATE_SCALE};
 use crate::hash::{Digest, Hasher};
 use crate::market::MarketId;
 use crate::note::{owner_from_spend_key, Note, PubKey};
@@ -587,6 +587,26 @@ impl<H: Hasher> State<H> {
             .get(&market_id)
             .ok_or(EngineError::UnknownMarket)?;
         let index_price = oracle.validate(&market, now_ms)?;
+        // ZK-001 (Task 4) — bound the raw `mark` witness (the sequencer's book mid) to a
+        // symmetric band around the SIGNED index: |mark − index| · RATE_SCALE
+        // <= max_mark_deviation_ratio · index. Without this the mark is completely
+        // unconstrained and a prover could pick any value to steer the funding rate. This
+        // mirrors the checked-mul idiom of `oracle::validate`'s confidence/deviation gates
+        // (same RATE_SCALE scaling; ANY overflow ⇒ reject, never wrap/panic). `index > 0`
+        // is guaranteed by `validate`, but `mark` is an arbitrary prover witness — so, like
+        // `funding_rate`, the difference is `checked_sub` and an i128::MIN mark rejects
+        // cleanly with an `EngineError` instead of panicking the guest.
+        let dev = match mark.checked_sub(index_price) {
+            Some(d) => abs(d),
+            None => return Err(EngineError::MarkOutOfBand),
+        };
+        match (
+            dev.checked_mul(RATE_SCALE),
+            market.max_mark_deviation_ratio.checked_mul(index_price),
+        ) {
+            (Some(lhs), Some(rhs)) if lhs <= rhs => {}
+            _ => return Err(EngineError::MarkOutOfBand),
+        }
         let f = self
             .funding
             .get_mut(&market_id)
@@ -1010,6 +1030,62 @@ mod tests {
             st.consumed_deposit_tip,
             deposit_chain_fold(&[0u8; 32], &deposit_leaf(&from, &owner, 1000, 0)),
             "the RAW owner must not be what is bound (privacy: spec §1a)"
+        );
+    }
+
+    // ZK-001 (Task 4): `AccrueFunding.mark` is a raw prover witness (the sequencer's
+    // book mid) that is otherwise unconstrained — a prover could set it arbitrarily to
+    // steer the funding rate. `op_accrue_funding` now bounds it to
+    // `market.max_mark_deviation_ratio` around the SIGNED index price (the value
+    // `validate()` returns AFTER the fail-closed publisher-signature gate). A valid
+    // signature is required to even REACH the band check, and the band is measured
+    // against the signed index — so a prover cannot widen it by inflating `mark`.
+    #[test]
+    fn accrue_funding_bounds_mark_against_signed_index() {
+        use crate::error::EngineError;
+        use crate::fixed::PRICE_SCALE;
+        use crate::market::Market;
+        use crate::oracle::{oracle_digest, OracleSig, OracleTranscript};
+        use k256::ecdsa::SigningKey;
+
+        let key = SigningKey::from_bytes((&[7u8; 32]).into()).unwrap();
+        let now = 1_000_000u64;
+        let index = 100_000 * PRICE_SCALE;
+        // Sign over the exact tuple `validate()` re-derives, so the transcript clears the
+        // ZK-001 signature gate (Task 3) and we genuinely reach the mark band.
+        let d = oracle_digest(0, index, now, 10 * PRICE_SCALE, index);
+        let signed = OracleTranscript {
+            price: index,
+            publish_time_ms: now,
+            confidence: 10 * PRICE_SCALE, // 0.01% of $100k, well inside 1%
+            backup_twap: index,
+            signature: OracleSig::sign(&key, &d),
+        };
+        let mut m = Market::conservative(0); // max_mark_deviation_ratio = 5%
+        m.oracle_pubkey = signed.signature.recover(&d).unwrap();
+
+        let mut s = DefaultState::new(16);
+        s.add_market(m);
+
+        // in-band: mark = index * 101/100 (1% premium ⊂ the 5% band) ⇒ Ok.
+        s.apply_op(&BatchOp::AccrueFunding {
+            market_id: 0,
+            mark: index * 101 / 100,
+            oracle: signed,
+            now_ms: now,
+        })
+        .expect("a mark within the band accrues");
+
+        // out-of-band: mark = index * 2 (100% away ≫ 5%) ⇒ MarkOutOfBand. The band is
+        // anchored to the SIGNED index, so a doubled mark cannot widen it.
+        assert_eq!(
+            s.apply_op(&BatchOp::AccrueFunding {
+                market_id: 0,
+                mark: index * 2,
+                oracle: signed,
+                now_ms: now,
+            }),
+            Err(EngineError::MarkOutOfBand),
         );
     }
 }
