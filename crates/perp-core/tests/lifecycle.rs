@@ -2,11 +2,12 @@
 //! Proof-v1 invariants (§4) exercised through `apply_batch`, with the collateral
 //! conservation identity asserted at every step.
 
+use k256::ecdsa::SigningKey;
 use perp_core::engine::{AdlHaircut, BatchOp};
 use perp_core::fixed::{PRICE_SCALE, QUOTE_SCALE, SIZE_SCALE};
 use perp_core::hash::{word_u64, Keccak256};
 use perp_core::note::owner_from_spend_key;
-use perp_core::oracle::OracleTranscript;
+use perp_core::oracle::{oracle_digest, OracleSig, OracleTranscript};
 use perp_core::order::Side;
 use perp_core::{DefaultState, EngineError, Market, Mode, Note};
 
@@ -23,13 +24,54 @@ fn owner_of(sk: u8) -> [u8; 32] {
     owner_from_spend_key::<Keccak256>(&[sk; 32])
 }
 
-fn oracle(price_usd: i128, now: u64) -> OracleTranscript {
+/// ZK-001: the fixed publisher key the fixtures sign oracle transcripts with. Every
+/// market these tests build sets its `oracle_pubkey` to this key's address (see
+/// [`signed_market`]), so transcripts run through the REAL fail-closed signature gate.
+fn oracle_key() -> SigningKey {
+    SigningKey::from_bytes((&[7u8; 32]).into()).unwrap()
+}
+
+/// The publisher's eth address, recovered via the public API (the raw `eth_address`
+/// helper is private to `perp_core::oracle`).
+fn oracle_addr() -> [u8; 20] {
+    let d = oracle_digest(0, 1, 1, 0, 1);
+    OracleSig::sign(&oracle_key(), &d).recover(&d).unwrap()
+}
+
+/// A market with its `oracle_pubkey` set to the fixture publisher, so signed
+/// transcripts validate.
+fn signed_market(m: Market) -> Market {
+    let mut m = m;
+    m.oracle_pubkey = oracle_addr();
+    m
+}
+
+/// A transcript signed by the fixture publisher over `oracle_digest(market_id, ..)`.
+fn signed_oracle(
+    market_id: u64,
+    price: i128,
+    publish_time_ms: u64,
+    confidence: i128,
+    backup_twap: i128,
+) -> OracleTranscript {
+    let d = oracle_digest(market_id, price, publish_time_ms, confidence, backup_twap);
     OracleTranscript {
-        price: price_usd * PRICE_SCALE,
-        publish_time_ms: now,
-        confidence: 10 * PRICE_SCALE, // $10, well inside 1%
-        backup_twap: price_usd * PRICE_SCALE,
+        price,
+        publish_time_ms,
+        confidence,
+        backup_twap,
+        signature: OracleSig::sign(&oracle_key(), &d),
     }
+}
+
+fn oracle(price_usd: i128, now: u64) -> OracleTranscript {
+    signed_oracle(
+        0,
+        price_usd * PRICE_SCALE,
+        now,
+        10 * PRICE_SCALE, // $10, well inside 1%
+        price_usd * PRICE_SCALE,
+    )
 }
 
 /// Commitment of a deposited note, so we can later fund/withdraw with it.
@@ -39,7 +81,7 @@ fn deposit_commit(owner: [u8; 32], amount: i128, blinding: [u8; 32]) -> [u8; 32]
 
 fn fresh_state() -> DefaultState {
     let mut s = DefaultState::new(TREE_DEPTH);
-    s.add_market(Market::conservative(0));
+    s.add_market(signed_market(Market::conservative(0)));
     s
 }
 
@@ -312,13 +354,15 @@ fn invariant_oracle_freshness_enforced() {
         ])
         .unwrap();
     }
-    // oracle published 30s before now (max staleness 10s) → rejected
-    let stale = OracleTranscript {
-        price: 100_000 * PRICE_SCALE,
-        publish_time_ms: 1_000,
-        confidence: 10 * PRICE_SCALE,
-        backup_twap: 100_000 * PRICE_SCALE,
-    };
+    // oracle published 30s before now (max staleness 10s) → rejected. Properly signed
+    // so it clears the (first) signature gate and is refused specifically for staleness.
+    let stale = signed_oracle(
+        0,
+        100_000 * PRICE_SCALE,
+        1_000,
+        10 * PRICE_SCALE,
+        100_000 * PRICE_SCALE,
+    );
     let err = s
         .apply_op(&BatchOp::Fill {
             taker: a,
@@ -725,7 +769,7 @@ fn trading_fees_pay_the_maker_and_fund_insurance() {
     // taker loses $100, the maker EARNS $40 (the LP incentive), and insurance
     // collects the $60 remainder. Conservation holds.
     let mut s = DefaultState::new(TREE_DEPTH);
-    s.add_market(Market::with_fees(0, 10, 4));
+    s.add_market(signed_market(Market::with_fees(0, 10, 4)));
     let (a, b) = (owner_of(1), owner_of(2));
     for (o, sk) in [(a, 1u8), (b, 2u8)] {
         let bl = [sk; 32];

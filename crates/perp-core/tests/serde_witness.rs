@@ -5,12 +5,13 @@
 //! the prover and the guest can read it back identically.
 #![cfg(feature = "serde")]
 
+use k256::ecdsa::SigningKey;
 use perp_core::engine::BatchOp;
 use perp_core::fixed::{PRICE_SCALE, QUOTE_SCALE, SIZE_SCALE};
 use perp_core::hash::{word_u64, Keccak256};
 use perp_core::market::Market;
 use perp_core::note::owner_from_spend_key;
-use perp_core::oracle::OracleTranscript;
+use perp_core::oracle::{oracle_digest, OracleSig, OracleTranscript};
 use perp_core::order::Side;
 use perp_core::{DefaultState, Note};
 
@@ -20,19 +21,39 @@ fn owner(i: u64) -> [u8; 32] {
     owner_from_spend_key::<Keccak256>(&[i as u8; 32])
 }
 
+/// ZK-001: fixture publisher key; markets set `oracle_pubkey` to its address so the
+/// signed transcripts clear the real fail-closed gate on apply.
+fn oracle_key() -> SigningKey {
+    SigningKey::from_bytes((&[7u8; 32]).into()).unwrap()
+}
+
+fn oracle_addr() -> [u8; 20] {
+    let d = oracle_digest(0, 1, 1, 0, 1);
+    OracleSig::sign(&oracle_key(), &d).recover(&d).unwrap()
+}
+
+fn signed_market(m: Market) -> Market {
+    let mut m = m;
+    m.oracle_pubkey = oracle_addr();
+    m
+}
+
 fn oracle(p: i128, now: u64) -> OracleTranscript {
+    let (price, confidence, backup_twap) = (p * PRICE_SCALE, 10 * PRICE_SCALE, p * PRICE_SCALE);
+    let d = oracle_digest(0, price, now, confidence, backup_twap);
     OracleTranscript {
-        price: p * PRICE_SCALE,
+        price,
         publish_time_ms: now,
-        confidence: 10 * PRICE_SCALE,
-        backup_twap: p * PRICE_SCALE,
+        confidence,
+        backup_twap,
+        signature: OracleSig::sign(&oracle_key(), &d),
     }
 }
 
 fn built_state() -> DefaultState {
     let mut s = DefaultState::new(20);
-    s.add_market(Market::conservative(0));
-    s.add_market(Market::conservative(1));
+    s.add_market(signed_market(Market::conservative(0)));
+    s.add_market(signed_market(Market::conservative(1)));
     for i in 1u64..=3 {
         let o = owner(i);
         let blind = [i as u8; 32];

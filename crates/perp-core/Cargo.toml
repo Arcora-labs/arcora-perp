@@ -32,3 +32,7 @@ k256 = { version = "0.13", default-features = false, features = ["ecdsa"] }
 [dev-dependencies]
 postcard = { version = "1", features = ["alloc"] }
 serde = { version = "1", default-features = false, features = ["derive", "alloc"] }
+# ZK-001: integration tests build a publisher `SigningKey` to sign the oracle
+# transcripts they feed the engine, so they exercise the REAL fail-closed signature
+# gate (a test crate can't reach the library's own non-dev dependency).
+k256 = { version = "0.13", default-features = false, features = ["ecdsa"] }

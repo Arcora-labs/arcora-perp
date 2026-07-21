@@ -5,12 +5,13 @@
 //! fuzzer hammers exactly that. No external crates: a small xorshift PRNG keeps
 //! the run deterministic and reproducible from the seed printed on failure.
 
+use k256::ecdsa::SigningKey;
 use perp_core::engine::BatchOp;
 use perp_core::fixed::{PRICE_SCALE, QUOTE_SCALE, SIZE_SCALE};
 use perp_core::hash::{word_u64, Keccak256};
 use perp_core::market::Market;
 use perp_core::note::owner_from_spend_key;
-use perp_core::oracle::OracleTranscript;
+use perp_core::oracle::{oracle_digest, OracleSig, OracleTranscript};
 use perp_core::order::Side;
 use perp_core::{DefaultState, Note};
 
@@ -36,13 +37,50 @@ fn owner(i: u64) -> [u8; 32] {
     owner_from_spend_key::<Keccak256>(&[i as u8; 32])
 }
 
-fn oracle(price_usd: i128, now: u64) -> OracleTranscript {
+/// ZK-001: fixture publisher key. Markets set their `oracle_pubkey` to its address
+/// (via [`signed_market`]) so transcripts run through the REAL signature gate.
+fn oracle_key() -> SigningKey {
+    SigningKey::from_bytes((&[7u8; 32]).into()).unwrap()
+}
+
+/// The publisher's eth address, recovered via the public API.
+fn oracle_addr() -> [u8; 20] {
+    let d = oracle_digest(0, 1, 1, 0, 1);
+    OracleSig::sign(&oracle_key(), &d).recover(&d).unwrap()
+}
+
+fn signed_market(m: Market) -> Market {
+    let mut m = m;
+    m.oracle_pubkey = oracle_addr();
+    m
+}
+
+/// A transcript signed by the fixture publisher over `oracle_digest(market_id, ..)`.
+fn signed_oracle(
+    market_id: u64,
+    price: i128,
+    publish_time_ms: u64,
+    confidence: i128,
+    backup_twap: i128,
+) -> OracleTranscript {
+    let d = oracle_digest(market_id, price, publish_time_ms, confidence, backup_twap);
     OracleTranscript {
-        price: price_usd * PRICE_SCALE,
-        publish_time_ms: now,
-        confidence: 5 * PRICE_SCALE,
-        backup_twap: price_usd * PRICE_SCALE,
+        price,
+        publish_time_ms,
+        confidence,
+        backup_twap,
+        signature: OracleSig::sign(&oracle_key(), &d),
     }
+}
+
+fn oracle(price_usd: i128, now: u64) -> OracleTranscript {
+    signed_oracle(
+        0,
+        price_usd * PRICE_SCALE,
+        now,
+        5 * PRICE_SCALE,
+        price_usd * PRICE_SCALE,
+    )
 }
 
 /// Run one randomized session from `seed`, asserting conservation after each op.
@@ -179,7 +217,7 @@ fn fuzz_state_root_is_deterministic() {
     // same seed ⇒ identical final state root (determinism is load-bearing for ZK)
     let root = |seed: u64| {
         let mut s = DefaultState::new(20);
-        s.add_market(Market::conservative(0));
+        s.add_market(signed_market(Market::conservative(0)));
         // mirror run_session setup deterministically, then a few ops
         let mut rng = Rng(seed | 1);
         for i in 0..4u64 {
@@ -234,7 +272,10 @@ fn fuzz_state_root_is_deterministic() {
 #[test]
 fn fuzz_oracle_validate_is_total_and_sound() {
     use perp_core::fixed::{abs, RATE_SCALE};
-    let m = Market::conservative(0);
+    // Signed market: each transcript below is signed over its own random fields, so it
+    // clears the (first) fail-closed signature gate and the random inputs genuinely
+    // reach the price/freshness/confidence/deviation math this fuzzer targets.
+    let m = signed_market(Market::conservative(0));
     let mut rng = Rng(0xACE1);
     // a spread of magnitudes incl. extremes that exercise the checked multiplies
     let pool: [i128; 9] = [
@@ -250,18 +291,18 @@ fn fuzz_oracle_validate_is_total_and_sound() {
     ];
     let pick = |rng: &mut Rng| pool[(rng.below(pool.len() as u64)) as usize];
 
-    for _ in 0..100_000 {
+    // The pool has 9 values across each of price/confidence/backup_twap (9^3 = 729
+    // combos); 20k signed iterations at random clocks cover them densely. (Lower than
+    // the pre-ZK-001 100k because every iteration now also signs+recovers a real
+    // secp256k1 signature to clear the fail-closed gate; the downstream-gate coverage
+    // is unchanged.)
+    for _ in 0..20_000 {
         let price = pick(&mut rng);
         let confidence = pick(&mut rng);
         let backup_twap = pick(&mut rng);
         let publish_time_ms = rng.next();
         let now_ms = rng.next();
-        let t = OracleTranscript {
-            price,
-            publish_time_ms,
-            confidence,
-            backup_twap,
-        };
+        let t = signed_oracle(m.id, price, publish_time_ms, confidence, backup_twap);
         // (1) totality: must return a value, never panic/wrap.
         let res = t.validate(&m, now_ms);
         // (2) soundness: Ok ⇒ price returned verbatim AND every gate truly holds.
