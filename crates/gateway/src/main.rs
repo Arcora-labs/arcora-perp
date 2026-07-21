@@ -37,7 +37,7 @@ use perp_core::fixed::{PRICE_SCALE, QUOTE_SCALE, SIZE_SCALE};
 use perp_core::hash::{Digest, Domain, Keccak256};
 use perp_core::market::Market;
 use perp_core::note::{Note, PubKey};
-use perp_core::oracle::OracleTranscript;
+use perp_core::oracle::{oracle_digest, OracleSig, OracleTranscript};
 use perp_core::order::{Finality, Order, Side, TimeInForce};
 use perp_core::state::Mode;
 use sequencer::{adl_tag, adl_tag_key, EnclaveIdentity, SealedBatch, Sequencer, WindowWitness};
@@ -1105,6 +1105,30 @@ struct Gw {
     /// sealed snapshot; the recipient pubkey inside is `#[serde(skip)]`ped and
     /// re-derived from `ENCLAVE_SEED` on restore, like `epochs`.
     order_log: order_log::OrderLog,
+    /// ZK-001: the operator's oracle-publisher signing key (from `ORACLE_SIGNER_KEY`,
+    /// else the documented oracle-feed dev key). Every `Market.oracle_pubkey` is pinned
+    /// to this signer's address at boot, so every synthetic/live transcript the gateway
+    /// produces recovers to it and clears the fail-closed §8 signature gate. A secp256k1
+    /// secret must NEVER touch the sealed snapshot, so this is runtime-only — re-derived
+    /// from the environment on boot/restore exactly like the enclave identity and
+    /// `epochs` (`#[serde(skip)]` + a from_env default). Since the derivation is
+    /// deterministic, a restored gateway re-derives the SAME address the persisted
+    /// markets were pinned to.
+    #[serde(skip, default = "boot_oracle_signer")]
+    oracle_signer: k256::ecdsa::SigningKey,
+}
+
+/// The oracle-publisher signer every market's `oracle_pubkey` is pinned to (ZK-001).
+/// Mirrors `default_settle_health`: a restored `Gw` re-derives it from the same env
+/// the original boot used, so the persisted `Market.oracle_pubkey` still matches. A
+/// SET-but-malformed `ORACLE_SIGNER_KEY` fails closed (exit) rather than silently
+/// signing with the dev key — `main()` validates it up front, so this only fires on
+/// a genuinely broken restore environment.
+fn boot_oracle_signer() -> k256::ecdsa::SigningKey {
+    oracle_feed::signer_from_env().unwrap_or_else(|e| {
+        eprintln!("[fatal] oracle publisher signer: {e}");
+        std::process::exit(1);
+    })
 }
 
 /// Advisory lifetime of a published order-ingress epoch key (§5.1). Clients should
@@ -1123,12 +1147,29 @@ fn derive_log_pub(enclave_seed: &[u8; 32]) -> [u8; 32] {
     log_pub
 }
 
-fn oracle_of(px: i128, now: u64) -> OracleTranscript {
+/// Build a synthetic (non-live) oracle transcript for `market_id` and SIGN it with
+/// the operator's oracle key (ZK-001). Every market's `oracle_pubkey` is pinned to
+/// this signer's address at boot, so the simulated price clears the fail-closed §8
+/// in-circuit signature gate exactly as a live one does. The digest is produced by
+/// CALLING [`perp_core::oracle::oracle_digest`] over the FINAL field values (never
+/// hand-rolled), so the guest's re-hash is byte-identical.
+fn oracle_of(
+    px: i128,
+    now: u64,
+    market_id: u64,
+    signer: &k256::ecdsa::SigningKey,
+) -> OracleTranscript {
+    let price = px;
+    let publish_time_ms = now;
+    let confidence = (px / 1000).max(1);
+    let backup_twap = px;
+    let digest = oracle_digest(market_id, price, publish_time_ms, confidence, backup_twap);
     OracleTranscript {
-        price: px,
-        publish_time_ms: now,
-        confidence: (px / 1000).max(1),
-        backup_twap: px,
+        price,
+        publish_time_ms,
+        confidence,
+        backup_twap,
+        signature: OracleSig::sign(signer, &digest),
     }
 }
 /// The block the inclusion-challenge watcher should (re)start scanning from: rewind
@@ -1396,20 +1437,30 @@ impl Gw {
         let mm = Wallet::from_seed([2u8; 32]);
         let now = now_ms();
 
+        // ZK-001: the single oracle-publisher key every market trusts. Its address is
+        // logged (by `signer_from_env`) so the operator can pin it on-chain, and is set
+        // as each `Market.oracle_pubkey` below — without this, even correctly-signed
+        // transcripts fail `WrongOraclePublisher`.
+        let oracle_signer = boot_oracle_signer();
+        let oracle_addr = oracle_feed::signer_address(&oracle_signer);
+
         // Pass 1 (registration): register EVERY market + its oracle before ANY funding.
         // add_market re-captures window_start_state and is sound only while window_ops is
         // empty; funding pushes ops into window_ops, so all add_market calls must complete
         // first (markets are boot config, not mid-window). See sequencer::add_market.
         let mut mkts = Vec::new();
         for cfg in MARKETS.iter() {
-            seq.add_market(Market::with_fees_treasury(
+            let mut market = Market::with_fees_treasury(
                 cfg.id,
                 TAKER_FEE_BPS,
                 MAKER_REBATE_BPS,
                 TREASURY_FEE_BPS,
-            ));
+            );
+            // Pin the market's trusted oracle publisher to the operator's signer (ZK-001).
+            market.oracle_pubkey = oracle_addr;
+            seq.add_market(market);
             let px = usd(cfg.seed);
-            seq.set_oracle(cfg.id, oracle_of(px, now));
+            seq.set_oracle(cfg.id, oracle_of(px, now, cfg.id, &oracle_signer));
             mkts.push(Mkt {
                 id: cfg.id,
                 symbol: cfg.symbol,
@@ -1501,6 +1552,7 @@ impl Gw {
             // signing identity derives from, so a reboot/re-pin keeps the key stable.
             epochs: enclave_epoch::EnclaveEpochs::derive(enclave_seed, 1, now, ORDER_EPOCH_TTL_MS),
             order_log: order_log::OrderLog::new(derive_log_pub(&enclave_seed)),
+            oracle_signer,
         };
         // seed total LP shares to the boot pool equity (the operator's stake), so the
         // initial NAV per share is 1.0 and LP deposits price in proportionally.
@@ -1836,7 +1888,7 @@ impl Gw {
         }
         let nonce = self.next_withdraw_nonce;
         let now = now_ms();
-        let oracle = oracle_of(self.px_of(market), now);
+        let oracle = oracle_of(self.px_of(market), now, market, &self.oracle_signer);
         let mut blind = [0xD0u8; 32];
         blind[..8].copy_from_slice(&nonce.to_le_bytes());
         self.seq
@@ -2590,7 +2642,7 @@ impl Gw {
             victim_margin_usd,
             0x9Au8.wrapping_add(bn),
         );
-        let oracle = oracle_of(px, now);
+        let oracle = oracle_of(px, now, market, &self.oracle_signer);
         self.seq
             .apply(&BatchOp::Fill {
                 taker: user.owner,
@@ -2612,10 +2664,12 @@ impl Gw {
             + residual_target
             + victim_margin_usd * QUOTE_SCALE;
         let gap_px = px + (loss_quote / QUOTE_SCALE) * PRICE_SCALE;
-        self.seq.set_oracle(market, oracle_of(gap_px, now));
+        self.seq
+            .set_oracle(market, oracle_of(gap_px, now, market, &self.oracle_signer));
         let sealed = self.seq.seal_batch(&[], now);
         // 4. restore the oracle so the spike is transient; the haircut is permanent.
-        self.seq.set_oracle(market, oracle_of(px, now));
+        self.seq
+            .set_oracle(market, oracle_of(px, now, market, &self.oracle_signer));
         // 5. replenish the insurance fund to its baseline so the backstop is shown
         //    full again and the demo is repeatable (the draw-down happened within
         //    the cascade seal above; the user's haircut below is what persists).
@@ -2675,7 +2729,7 @@ impl Gw {
             return Err("Insufficient market-0 free balance.".into());
         }
         let now = now_ms();
-        let oracle = oracle_of(self.px_of(0), now);
+        let oracle = oracle_of(self.px_of(0), now, 0, &self.oracle_signer);
         let c = self.lp_counter;
         self.lp_counter += 1;
         let mut db = [0xE0u8; 32];
@@ -2797,6 +2851,21 @@ impl Gw {
             // so tick() need not re-stamp (which would mask a frozen feed forever).
             let mut t = transcript;
             t.publish_time_ms = m.px_ms;
+            // ZK-001 (Hazard #1): we just MUTATED a signed field (`publish_time_ms`) —
+            // remapping it onto the local freshness clock (audit review of #7: immune to
+            // exchange-clock skew, and a frozen feed still goes stale). That invalidates
+            // the feed's original signature, so re-sign over the FINAL field values with
+            // the operator's oracle key (the market's `oracle_pubkey` is this signer's
+            // address) — otherwise the §8 in-circuit gate rejects EVERY live price. The
+            // digest is produced by CALLING `oracle_digest`, never hand-rolled.
+            let digest = oracle_digest(
+                market,
+                t.price,
+                t.publish_time_ms,
+                t.confidence,
+                t.backup_twap,
+            );
+            t.signature = OracleSig::sign(&self.oracle_signer, &digest);
             self.seq.set_oracle(market, t);
         } else {
             self.seq.set_oracle(market, transcript);
@@ -3013,7 +3082,7 @@ impl Gw {
             );
         }
         let now = now_ms();
-        let oracle = oracle_of(self.px_of(self.selected), now);
+        let oracle = oracle_of(self.px_of(self.selected), now, self.selected, &self.oracle_signer);
         let blind = [(0xC0 + (self.tick % 60)) as u8; 32];
         self.seq
             .apply(&BatchOp::Unbind {
@@ -3133,7 +3202,9 @@ impl Gw {
             let noise = (((self.rand_unit() - 0.5) * 2.0) * (p as f64) * 0.0008) as i128;
             let next = (p + drift + noise).max(1);
             self.mkts[i].px = next;
-            self.seq.set_oracle(self.mkts[i].id, oracle_of(next, now));
+            let id = self.mkts[i].id;
+            let oracle = oracle_of(next, now, id, &self.oracle_signer);
+            self.seq.set_oracle(id, oracle);
         }
 
         // 2) seal a batch: pending demo-user orders + all registered accounts'
@@ -5837,12 +5908,16 @@ async fn main() {
     {
         let app = app.clone();
         tokio::spawn(async move {
-            let feeds: Vec<(u64, &'static str)> = {
+            let (feeds, oracle_signer): (Vec<(u64, &'static str)>, k256::ecdsa::SigningKey) = {
                 let gw = app.gw.lock().await;
-                gw.mkts
+                let feeds = gw
+                    .mkts
                     .iter()
                     .filter_map(|m| m.feed.map(|f| (m.id, f)))
-                    .collect()
+                    .collect();
+                // The operator's oracle-publisher key: fetched transcripts are signed
+                // with it (ZK-001) so they recover to each market's pinned `oracle_pubkey`.
+                (feeds, gw.oracle_signer.clone())
             };
             if feeds.is_empty() {
                 return;
@@ -5852,8 +5927,9 @@ async fn main() {
                 iv.tick().await;
                 for &(id, inst) in &feeds {
                     let now = now_ms();
+                    let signer = oracle_signer.clone();
                     match tokio::task::spawn_blocking(move || {
-                        oracle_feed::fetch_transcript(inst, now)
+                        oracle_feed::fetch_transcript(inst, now, id, &signer)
                     })
                     .await
                     {
@@ -6452,6 +6528,47 @@ async fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ZK-001 (Hazard #1): a transcript pushed through the LIVE oracle path
+    // (`apply_real_oracle`, which remaps `publish_time_ms` onto the local freshness
+    // clock) must STILL recover to the market's `oracle_pubkey` — i.e. the gateway
+    // re-signs after mutating the signed field, so the stored price clears the
+    // in-circuit §8 signature gate. If this regresses, EVERY live price on the
+    // market is silently rejected (`WrongOraclePublisher`/`BadOracleSig`).
+    #[test]
+    fn gateway_oracle_path_produces_a_validatable_signed_transcript() {
+        let mut gw = Gw::boot();
+        let market_id = 0u64;
+        let now = now_ms();
+        // Build the transcript exactly as the live feed does: signed by the gateway's
+        // OWN oracle signer over the exchange timestamp (the fetch path, offline).
+        let signer = gw.oracle_signer.clone();
+        let fetched = oracle_feed::transcript_from_ticker(
+            "59585.6", "59586.7", "59586.8", now, market_id, &signer,
+        )
+        .expect("ticker → signed transcript");
+        // Drive the live path — it remaps publish_time_ms and MUST re-sign.
+        gw.apply_real_oracle(market_id, fetched);
+        // The STORED transcript must validate under the market whose `oracle_pubkey`
+        // the gateway pinned at boot, at its own (remapped) publish time.
+        let stored = *gw.seq.oracle(market_id).expect("oracle stored for market");
+        let market = *gw
+            .seq
+            .state
+            .markets
+            .get(&market_id)
+            .expect("market registered");
+        assert_eq!(
+            market.oracle_pubkey,
+            oracle_feed::signer_address(&signer),
+            "boot must pin the market's oracle_pubkey to the gateway's oracle signer"
+        );
+        assert_eq!(
+            stored.validate(&market, stored.publish_time_ms),
+            Ok(stored.price),
+            "a live-path transcript must recover to the market's oracle_pubkey (re-signed after remap)"
+        );
+    }
 
     /// A minimal `App` for router tests — no socket bound, pure in-memory (`l1: None`).
     fn test_app() -> Shared {

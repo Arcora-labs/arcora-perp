@@ -8,12 +8,13 @@
 //!  * no order hash appears in both `ordered` and `settlement_rejected`;
 //!  * the honest flow surfaces no inclusion violations.
 
+use k256::ecdsa::SigningKey;
 use perp_core::engine::BatchOp;
 use perp_core::fixed::{PRICE_SCALE, QUOTE_SCALE, SIZE_SCALE};
 use perp_core::hash::{word_u64, Keccak256};
 use perp_core::market::Market;
 use perp_core::note::{owner_from_spend_key, PubKey};
-use perp_core::oracle::OracleTranscript;
+use perp_core::oracle::{oracle_digest, OracleSig, OracleTranscript};
 use perp_core::order::{Finality, Order, Side, TimeInForce};
 use perp_core::Note;
 use sequencer::{EnclaveIdentity, Sequencer};
@@ -41,12 +42,35 @@ impl Rng {
     }
 }
 
+// ZK-001: a fixed dev oracle-publisher key every seeded transcript is signed with;
+// the market's `oracle_pubkey` is pinned to its address (see `test_market`) so the
+// price clears the fail-closed §8 in-circuit signature gate.
+fn oracle_key() -> SigningKey {
+    SigningKey::from_bytes((&[7u8; 32]).into()).expect("valid dev scalar")
+}
+fn oracle_addr() -> [u8; 20] {
+    let probe = oracle_digest(0, 0, 0, 0, 0);
+    OracleSig::sign(&oracle_key(), &probe)
+        .recover(&probe)
+        .expect("fresh signature recovers")
+}
+/// A conservative market whose `oracle_pubkey` is the shared test signer's address.
+fn test_market(id: u64) -> Market {
+    let mut m = Market::conservative(id);
+    m.oracle_pubkey = oracle_addr();
+    m
+}
 fn oracle(price_usd: i128, now: u64) -> OracleTranscript {
+    let price = price_usd * PRICE_SCALE;
+    let confidence = 5 * PRICE_SCALE;
+    // Sign over the FINAL field values for market 0 (`oracle_digest`, never hand-rolled).
+    let d = oracle_digest(0, price, now, confidence, price);
     OracleTranscript {
-        price: price_usd * PRICE_SCALE,
+        price,
         publish_time_ms: now,
-        confidence: 5 * PRICE_SCALE,
-        backup_twap: price_usd * PRICE_SCALE,
+        confidence,
+        backup_twap: price,
+        signature: OracleSig::sign(&oracle_key(), &d),
     }
 }
 
@@ -128,7 +152,7 @@ fn run_session(seed: u64, batches: usize) {
     const N: u64 = 5;
     let enclave = EnclaveIdentity::from_seed([7u8; 32], 1, [0xAB; 32]);
     let mut s = Sequencer::new(enclave, 22);
-    s.add_market(Market::conservative(0));
+    s.add_market(test_market(0));
     let mut rng = Rng(seed | 1);
     let mut now = 1_000u64;
     let mut price = 100_000i128;
@@ -234,7 +258,7 @@ fn run_p3_session(seed: u64) {
     // fund only owners 0,1,2 — orders from 3,4 are pre-trade rejected at seal.
     let enclave = EnclaveIdentity::from_seed([7u8; 32], 1, [0xAB; 32]);
     let mut s = Sequencer::new(enclave, 22);
-    s.add_market(Market::conservative(0));
+    s.add_market(test_market(0));
     let now = 1_000u64;
     s.set_oracle(0, oracle(100_000, now));
     for i in 0..3u64 {
@@ -316,7 +340,7 @@ fn fuzz_rejected_orders_are_not_inclusion_violations() {
 fn run_height_settle(seed: u64) {
     let enclave = EnclaveIdentity::from_seed([7u8; 32], 1, [0xAB; 32]);
     let mut s = Sequencer::new(enclave, 22);
-    s.add_market(Market::conservative(0));
+    s.add_market(test_market(0));
     let mut rng = Rng(seed | 1);
     let mut now = 1_000u64;
     let price = 100_000i128;

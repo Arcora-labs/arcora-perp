@@ -9,12 +9,13 @@
 //! (contracts/test/CrossLayer.t.sol) which pin the contract hashing to the exact
 //! Rust producers exercised here.
 
+use k256::ecdsa::SigningKey;
 use note_archive::{NoteArchive, Wallet};
 use perp_core::engine::BatchOp;
 use perp_core::fixed::{PRICE_SCALE, QUOTE_SCALE, SIZE_SCALE};
 use perp_core::hash::Keccak256;
 use perp_core::market::Market;
-use perp_core::oracle::OracleTranscript;
+use perp_core::oracle::{oracle_digest, OracleSig, OracleTranscript};
 use perp_core::order::{Finality, Order, Side, TimeInForce};
 use perp_core::Note;
 use prover::{
@@ -26,12 +27,35 @@ const MEASUREMENT: [u8; 32] = [0xAB; 32];
 /// Dev seal root — models the TEE-sealed key the attested matcher + prover share.
 const SEAL_ROOT: [u8; 32] = [0x5E; 32];
 
+// ZK-001: a fixed dev oracle-publisher key every seeded transcript is signed with;
+// each test market's `oracle_pubkey` is pinned to its address (see `mkt0`) so the
+// price clears the fail-closed §8 in-circuit signature gate.
+fn oracle_key() -> SigningKey {
+    SigningKey::from_bytes((&[7u8; 32]).into()).expect("valid dev scalar")
+}
+fn oracle_addr() -> [u8; 20] {
+    let probe = oracle_digest(0, 0, 0, 0, 0);
+    OracleSig::sign(&oracle_key(), &probe)
+        .recover(&probe)
+        .expect("fresh signature recovers")
+}
+/// Market 0 with its `oracle_pubkey` pinned to the shared test oracle signer.
+fn mkt0() -> Market {
+    let mut m = Market::conservative(0);
+    m.oracle_pubkey = oracle_addr();
+    m
+}
 fn oracle(price_usd: i128, now: u64) -> OracleTranscript {
+    let price = price_usd * PRICE_SCALE;
+    let confidence = 10 * PRICE_SCALE;
+    // Sign over the FINAL field values for market 0 (`oracle_digest`, never hand-rolled).
+    let d = oracle_digest(0, price, now, confidence, price);
     OracleTranscript {
-        price: price_usd * PRICE_SCALE,
+        price,
         publish_time_ms: now,
-        confidence: 10 * PRICE_SCALE,
-        backup_twap: price_usd * PRICE_SCALE,
+        confidence,
+        backup_twap: price,
+        signature: OracleSig::sign(&oracle_key(), &d),
     }
 }
 
@@ -94,7 +118,7 @@ fn deposit_match_settle_prove_recover() {
     // --- node: sequencer + matcher + settlement state -------------------------
     let enclave = EnclaveIdentity::from_seed([7u8; 32], 1, MEASUREMENT);
     let mut node = Sequencer::new(enclave, 24);
-    node.add_market(Market::conservative(0));
+    node.add_market(mkt0());
     node.set_oracle(0, oracle(100_000, 1_000));
 
     // --- deposits (collateral notes recorded to the archive) ------------------
@@ -216,7 +240,7 @@ fn close_only_blocks_open_but_allows_exit() {
     let bob = Wallet::from_seed([4u8; 32]);
     let enclave = EnclaveIdentity::from_seed([8u8; 32], 1, MEASUREMENT);
     let mut node = Sequencer::new(enclave, 24);
-    node.add_market(Market::conservative(0));
+    node.add_market(mkt0());
     node.set_oracle(0, oracle(100_000, 1_000));
 
     let mut archive = NoteArchive::new();
@@ -265,7 +289,7 @@ fn failed_batch_rolls_back_but_settled_history_and_recovery_survive() {
     let bob = Wallet::from_seed([6u8; 32]);
     let enclave = EnclaveIdentity::from_seed([9u8; 32], 1, MEASUREMENT);
     let mut node = Sequencer::new(enclave, 24);
-    node.add_market(Market::conservative(0));
+    node.add_market(mkt0());
     node.set_oracle(0, oracle(100_000, 1_000));
 
     let mut archive = NoteArchive::new();

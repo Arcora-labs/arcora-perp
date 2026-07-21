@@ -1,12 +1,13 @@
 //! End-to-end sequencer tests: signed receipts (§2), match→settle→manifest flow,
 //! finality transitions (§3), and inclusion-violation detection (§2).
 
+use k256::ecdsa::SigningKey;
 use perp_core::engine::BatchOp;
 use perp_core::fixed::{PRICE_SCALE, QUOTE_SCALE, SIZE_SCALE};
 use perp_core::hash::{word_u64, Keccak256};
 use perp_core::market::Market;
 use perp_core::note::{owner_from_spend_key, PubKey};
-use perp_core::oracle::OracleTranscript;
+use perp_core::oracle::{oracle_digest, OracleSig, OracleTranscript};
 use perp_core::order::{Finality, Order, RejectReason, Side, TimeInForce};
 use perp_core::Note;
 use sequencer::{
@@ -29,13 +30,40 @@ fn owner_id(owner: u64) -> PubKey {
     owner_from_spend_key::<Keccak256>(&spend_key(owner))
 }
 
-fn oracle(price_usd: i128, now: u64) -> OracleTranscript {
+// ZK-001: a fixed dev oracle-publisher key every seeded transcript is signed with;
+// each market's `oracle_pubkey` is pinned to its address (see `test_market`) so the
+// price clears the fail-closed §8 in-circuit signature gate.
+fn oracle_key() -> SigningKey {
+    SigningKey::from_bytes((&[7u8; 32]).into()).expect("valid dev scalar")
+}
+fn oracle_addr() -> [u8; 20] {
+    let probe = oracle_digest(0, 0, 0, 0, 0);
+    OracleSig::sign(&oracle_key(), &probe)
+        .recover(&probe)
+        .expect("fresh signature recovers")
+}
+/// A conservative market whose `oracle_pubkey` is the shared test signer's address.
+fn test_market(id: u64) -> Market {
+    let mut m = Market::conservative(id);
+    m.oracle_pubkey = oracle_addr();
+    m
+}
+/// A signed transcript for `market_id`, over the FINAL field values (`oracle_digest`,
+/// never hand-rolled). `oracle(price, now)` is the market-0 shorthand.
+fn oracle_on(market_id: u64, price_usd: i128, now: u64) -> OracleTranscript {
+    let price = price_usd * PRICE_SCALE;
+    let confidence = 10 * PRICE_SCALE;
+    let d = oracle_digest(market_id, price, now, confidence, price);
     OracleTranscript {
-        price: price_usd * PRICE_SCALE,
+        price,
         publish_time_ms: now,
-        confidence: 10 * PRICE_SCALE,
-        backup_twap: price_usd * PRICE_SCALE,
+        confidence,
+        backup_twap: price,
+        signature: OracleSig::sign(&oracle_key(), &d),
     }
+}
+fn oracle(price_usd: i128, now: u64) -> OracleTranscript {
+    oracle_on(0, price_usd, now)
 }
 
 fn order(owner: u64, side: Side, size: i128, price: i128, nonce: u64) -> Order {
@@ -80,7 +108,7 @@ fn fund(seq: &mut Sequencer, owner: u64, amount_usd: i128, blind: u8) {
 
 fn setup() -> Sequencer {
     let mut s = Sequencer::new(enclave(), 20);
-    s.add_market(Market::conservative(0));
+    s.add_market(test_market(0));
     s.set_oracle(0, oracle(100_000, 1_000));
     fund(&mut s, 1, 20_000, 0x11);
     fund(&mut s, 2, 20_000, 0x22);
@@ -96,10 +124,10 @@ fn order_m(owner: u64, market: u64, side: Side, size: i128, price: i128, nonce: 
 #[test]
 fn multi_market_positions_are_isolated() {
     let mut s = Sequencer::new(enclave(), 20);
-    s.add_market(Market::conservative(0)); // BTC-PERP
-    s.add_market(Market::conservative(1)); // ETH-PERP
+    s.add_market(test_market(0)); // BTC-PERP
+    s.add_market(test_market(1)); // ETH-PERP
     s.set_oracle(0, oracle(100_000, 1_000));
-    s.set_oracle(1, oracle(3_000, 1_000));
+    s.set_oracle(1, oracle_on(1, 3_000, 1_000));
 
     // fund traders 1 & 2 on BOTH markets with distinct notes
     for owner in [1u64, 2] {
@@ -154,7 +182,7 @@ fn multi_market_positions_are_isolated() {
     assert!(s.state.conservation_holds());
 
     // an ETH-only price move must not touch BTC positions
-    s.set_oracle(1, oracle(2_400, 5_000)); // ETH −20%
+    s.set_oracle(1, oracle_on(1, 2_400, 5_000)); // ETH −20%
     s.seal_batch(&[], 5_000);
     assert_eq!(
         s.state.position(&owner_id(1), 0).unwrap().size,

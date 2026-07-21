@@ -617,6 +617,7 @@ name = "e2e"
 version = "0.0.1"
 dependencies = [
  "dark-perp-attestation",
+ "k256",
  "matcher",
  "note-archive",
  "oracle-feed",
@@ -1283,6 +1284,7 @@ dependencies = [
 name = "node"
 version = "0.0.1"
 dependencies = [
+ "k256",
  "oracle-feed",
  "perp-core",
  "sequencer",

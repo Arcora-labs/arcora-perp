@@ -12,3 +12,6 @@ path = "src/main.rs"
 perp-core = { path = "../perp-core" }
 sequencer = { path = "../sequencer" }
 oracle-feed = { path = "../oracle-feed" }
+# ZK-001: secp256k1 signing key for the node's dev oracle publisher (seeds signed
+# transcripts that clear the in-circuit §8 signature gate).
+k256 = { version = "0.13", features = ["ecdsa"] }

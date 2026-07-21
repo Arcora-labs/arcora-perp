@@ -29,8 +29,11 @@ fn main() {
     println!("\n=== dark-perp live oracle probe (Crypto.com) ===\n");
     for (symbol, instrument) in MARKETS {
         match oracle_feed::fetch_transcript(instrument, now_ms, market_id, &signer) {
-            Ok(mut t) => {
-                t.publish_time_ms = now_ms;
+            Ok(t) => {
+                // NB: do NOT re-stamp `publish_time_ms` here — it is a SIGNED field
+                // (ZK-001), and `fetch_transcript` already stamped it via
+                // `publish_ms(exchange_t, now_ms)`; mutating it would break the signature
+                // and the §8 gate would reject the price.
                 let gate = match t.validate(&market, now_ms) {
                     Ok(_) => "passes §8 gate",
                     Err(e) => {

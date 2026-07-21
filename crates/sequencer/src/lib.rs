@@ -455,6 +455,14 @@ impl Sequencer {
         self.oracles.insert(market_id, transcript);
     }
 
+    /// The oracle transcript currently set for `market_id` (§8) — the exact value the
+    /// engine marks/settles against. Read-only accessor so the host can re-observe what
+    /// it stored (e.g. ZK-001: verify a live-path transcript still validates after the
+    /// gateway re-stamps + re-signs it).
+    pub fn oracle(&self, market_id: MarketId) -> Option<&OracleTranscript> {
+        self.oracles.get(&market_id)
+    }
+
     /// Apply a raw settlement op (deposits, funding, etc.) outside the matched
     /// flow. Thin passthrough used for setup and admin actions.
     pub fn apply(&mut self, op: &BatchOp) -> Result<(), EngineError> {
@@ -1254,8 +1262,49 @@ mod tests {
     use super::*;
     use perp_core::fixed::{PRICE_SCALE, QUOTE_SCALE, SIZE_SCALE};
     use perp_core::note::owner_from_spend_key;
+    use perp_core::oracle::{oracle_digest, OracleSig};
     use perp_core::order::TimeInForce;
     use perp_core::Note;
+
+    // ZK-001: a fixed dev oracle-publisher key every test transcript is signed with,
+    // and the address its signatures recover to. A market whose `oracle_pubkey` is this
+    // address admits these transcripts through the fail-closed §8 signature gate.
+    fn oracle_key() -> SigningKey {
+        SigningKey::from_bytes((&[7u8; 32]).into()).expect("valid dev scalar")
+    }
+    fn oracle_addr() -> [u8; 20] {
+        // Recover through the REAL perp-core path (sign a fixed probe digest, then
+        // recover) so it is byte-identical to what `validate` compares against.
+        let probe = oracle_digest(0, 0, 0, 0, 0);
+        OracleSig::sign(&oracle_key(), &probe)
+            .recover(&probe)
+            .expect("fresh signature recovers")
+    }
+    /// A conservative market whose `oracle_pubkey` is the shared test signer's address,
+    /// so a transcript signed by [`signed_oracle`] clears the ZK-001 gate.
+    fn test_market(id: MarketId) -> Market {
+        let mut m = Market::conservative(id);
+        m.oracle_pubkey = oracle_addr();
+        m
+    }
+    /// A publisher-signed transcript for `market_id`, signed over the FINAL field values
+    /// via `oracle_digest` (never hand-rolled) so it recovers to [`oracle_addr`].
+    fn signed_oracle(
+        market_id: MarketId,
+        price: i128,
+        publish_time_ms: u64,
+        confidence: i128,
+        backup_twap: i128,
+    ) -> OracleTranscript {
+        let d = oracle_digest(market_id, price, publish_time_ms, confidence, backup_twap);
+        OracleTranscript {
+            price,
+            publish_time_ms,
+            confidence,
+            backup_twap,
+            signature: OracleSig::sign(&oracle_key(), &d),
+        }
+    }
 
     // audit DP-008: an unvalidated resting price near the i128 bound must not overflow
     // the funding mark (a plain (bid+ask)/2 panics in debug / wraps in release).
@@ -1310,15 +1359,16 @@ mod tests {
 
     fn test_sequencer() -> Sequencer {
         let mut s = Sequencer::new(EnclaveIdentity::from_seed([7u8; 32], 1, [0xABu8; 32]), 20);
-        s.add_market(Market::conservative(0));
+        s.add_market(test_market(0));
         s.set_oracle(
             0,
-            OracleTranscript {
-                price: 100_000 * PRICE_SCALE,
-                publish_time_ms: now(),
-                confidence: 10 * PRICE_SCALE,
-                backup_twap: 100_000 * PRICE_SCALE,
-            },
+            signed_oracle(
+                0,
+                100_000 * PRICE_SCALE,
+                now(),
+                10 * PRICE_SCALE,
+                100_000 * PRICE_SCALE,
+            ),
         );
         fund(&mut s, 1, 20_000, 0x11);
         fund(&mut s, 2, 20_000, 0x22);

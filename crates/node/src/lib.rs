@@ -6,6 +6,7 @@
 //! `tests/lifecycle.rs` instead of only being asserted at runtime when someone
 //! happens to `cargo run` the binary.
 
+use k256::ecdsa::SigningKey;
 use oracle_feed::transcript_from_ticker;
 use perp_core::engine::BatchOp;
 use perp_core::fixed::{PRICE_SCALE, QUOTE_SCALE, SIZE_SCALE};
@@ -65,7 +66,11 @@ impl Node {
     pub fn boot() -> Self {
         let enclave = EnclaveIdentity::from_seed([7u8; 32], 1, [0xAB; 32]);
         let mut seq = Sequencer::new(enclave, 24);
-        seq.add_market(Market::conservative(0));
+        // ZK-001: pin market 0's trusted oracle publisher to the node's dev signer, so
+        // the seeded signed transcripts clear the fail-closed §8 signature gate.
+        let mut market = Market::conservative(0);
+        market.oracle_pubkey = oracle_feed::signer_address(&oracle_signer());
+        seq.add_market(market);
 
         let price = START_PRICE;
         let now = 1_000u64;
@@ -130,10 +135,27 @@ impl Node {
     }
 }
 
+/// ZK-001 dev oracle-publisher key the node signs its seeded transcripts with (the
+/// same fixed `[7; 32]` scalar the sibling crates' tests use). Market 0's
+/// `oracle_pubkey` is pinned to its address, so the seeded price recovers to the
+/// trusted publisher and clears the §8 in-circuit signature gate.
+fn oracle_signer() -> SigningKey {
+    SigningKey::from_bytes((&[7u8; 32]).into()).expect("valid dev scalar")
+}
+
 fn seed_oracle(n: &mut Sequencer, price: i128, now: u64) {
+    // Sign the transcript for market 0 with the node's oracle key (never hand-roll the
+    // digest — `transcript_from_ticker` calls `perp_core::oracle::oracle_digest`).
     let spread = price / 10_000; // ~1bp
-    let t = transcript_from_ticker(&px(price), &px(price - spread), &px(price + spread), now)
-        .expect("ticker → transcript");
+    let t = transcript_from_ticker(
+        &px(price),
+        &px(price - spread),
+        &px(price + spread),
+        now,
+        0,
+        &oracle_signer(),
+    )
+    .expect("ticker → transcript");
     n.set_oracle(0, t);
 }
 

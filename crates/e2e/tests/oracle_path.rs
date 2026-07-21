@@ -49,14 +49,20 @@ fn fund(s: &mut Sequencer, owner: u64, usd: i128, blind: u8) {
 fn real_ticker_feeds_the_sequencer_and_a_trade_settles() {
     // captured BTCUSD-PERP snapshot: last 59585.6, bid 59586.7, ask 59586.8
     let now = 1_000u64;
-    let transcript = transcript_from_ticker("59585.6", "59586.7", "59586.8", now)
+    // ZK-001: the adapter signs the transcript for market 0 with the operator's oracle
+    // publisher key; the market's `oracle_pubkey` is pinned to that signer's address so
+    // the live-derived price clears the fail-closed §8 signature gate.
+    let signer = oracle_feed::signer_from_env().expect("oracle publisher signer");
+    let transcript = transcript_from_ticker("59585.6", "59586.7", "59586.8", now, 0, &signer)
         .expect("real ticker converts to a transcript");
     // the adapter produced exactly the price the engine will mark against
     assert_eq!(transcript.price, 5_958_560_000_000);
 
     let enclave = EnclaveIdentity::from_seed([7u8; 32], 1, [0xAB; 32]);
     let mut node = Sequencer::new(enclave, 24);
-    node.add_market(Market::conservative(0));
+    let mut market = Market::conservative(0);
+    market.oracle_pubkey = oracle_feed::signer_address(&signer);
+    node.add_market(market);
     // feed the LIVE-derived transcript into the protocol oracle
     node.set_oracle(0, transcript);
 

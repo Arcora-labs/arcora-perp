@@ -19,5 +19,8 @@ prover = { path = "../prover" }
 note-archive = { path = "../note-archive" }
 oracle-feed = { path = "../oracle-feed" }
 dark-perp-attestation = { path = "../attestation" }
+# ZK-001: secp256k1 signing key for the shared dev oracle publisher (seeds signed
+# transcripts that clear the in-circuit §8 signature gate).
+k256 = { version = "0.13", features = ["ecdsa"] }
 # OsRng for sealing archive notes to the wallet's X25519 viewing key (Task 8).
 rand_core = { version = "0.6", features = ["getrandom"] }
