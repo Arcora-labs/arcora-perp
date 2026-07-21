@@ -194,6 +194,14 @@ impl<H: Hasher> State<H> {
             words.push(word_i128(m.taker_fee_ratio));
             words.push(word_i128(m.maker_rebate_ratio));
             words.push(word_i128(m.treasury_fee_ratio));
+            // ZK-001: the per-market oracle trust anchor + mark band. `oracle_pubkey` is
+            // packed into a 32-byte word (its 20 address bytes in the low positions, like
+            // the little-endian `word_u64`/`word_i128` encoders above); the mark-deviation
+            // ratio folds via `word_i128`, exactly like the sibling `*_ratio` bounds.
+            let mut pk = [0u8; 32];
+            pk[..20].copy_from_slice(&m.oracle_pubkey);
+            words.push(pk);
+            words.push(word_i128(m.max_mark_deviation_ratio));
         }
         H::hash_words(Domain::StateRoot, &words)
     }
@@ -350,6 +358,28 @@ mod tests {
             a.state_root(),
             b.state_root(),
             "market risk/fee parameters must be bound into the root",
+        );
+    }
+
+    // ZK-001: the per-market oracle publisher key is the trust anchor `validate()` will
+    // require a signature under. It MUST be bound into markets_digest — otherwise a prover
+    // could swap which key a market trusts under an unchanged state root, defeating the
+    // in-circuit signature check. Two states differing ONLY in `oracle_pubkey` must not
+    // share a markets_digest.
+    #[test]
+    fn market_binds_oracle_pubkey_in_digest() {
+        let mut a: State<Keccak256> = State::new(16);
+        let mut b: State<Keccak256> = State::new(16);
+        let mut ma = Market::conservative(1);
+        ma.oracle_pubkey = [0xAB; 20];
+        a.add_market(ma);
+        let mut mb = Market::conservative(1);
+        mb.oracle_pubkey = [0xCD; 20]; // same market, different publisher key
+        b.add_market(mb);
+        assert_ne!(
+            a.markets_digest(),
+            b.markets_digest(),
+            "oracle_pubkey must be bound into markets_digest",
         );
     }
 }

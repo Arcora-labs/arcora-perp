@@ -46,6 +46,15 @@ pub struct Market {
     /// fund. This is the operator's revenue. Must be `<= taker_fee_ratio −
     /// maker_rebate_ratio` so the insurance cut is never negative.
     pub treasury_fee_ratio: i128,
+    /// ZK-001: the eth-address of this market's authorized oracle publisher — the
+    /// trust anchor a signed price must recover to before the engine accepts it. The
+    /// zero address is FAIL-CLOSED: a real ECDSA signature never recovers to the zero
+    /// address, so an unset key refuses every price. Real deployments MUST set it.
+    pub oracle_pubkey: [u8; 20],
+    /// ZK-001: max |mark − oracle| / oracle tolerated before a mark price is rejected,
+    /// as a [`RATE_SCALE`]-scaled fraction (the mark band for funding). Sibling of the
+    /// `max_oracle_*` bounds; consumed by the funding path (Task 4).
+    pub max_mark_deviation_ratio: i128,
 }
 
 impl Market {
@@ -63,6 +72,8 @@ impl Market {
             taker_fee_ratio: 0,                        // fee-free by default
             maker_rebate_ratio: 0,
             treasury_fee_ratio: 0,
+            oracle_pubkey: [0u8; 20], // fail-closed: unset key refuses all prices
+            max_mark_deviation_ratio: RATE_SCALE / 20, // 5%
         }
     }
 
