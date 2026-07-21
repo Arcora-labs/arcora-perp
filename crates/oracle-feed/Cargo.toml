@@ -12,6 +12,11 @@ http = ["dep:ureq", "dep:serde_json"]
 
 [dependencies]
 perp-core = { path = "../perp-core" }
+# ZK-001 (Task 5): host-side publisher signing key. `oracle-feed` is not the guest,
+# so `std` / default features are fine (the guest re-verifies via perp-core's no_std
+# k256). Must resolve to the SAME k256 0.13 as perp-core so `SigningKey`/`OracleSig`
+# are one type across the crates (cargo unifies to the union of features).
+k256 = { version = "0.13", features = ["ecdsa"] }
 ureq = { version = "2", default-features = false, features = ["tls", "json"], optional = true }
 serde_json = { version = "1", optional = true }
 

@@ -8,8 +8,86 @@
 //! SAME `OracleTranscript` shape, so swapping the source (Crypto.com now, Pyth /
 //! committee-attested later) is a parser change, not an architecture change.
 
+use k256::ecdsa::SigningKey;
 use perp_core::fixed::PRICE_SCALE;
-use perp_core::oracle::OracleTranscript;
+use perp_core::oracle::{oracle_digest, OracleSig, OracleTranscript};
+
+/// ZK-001 (Task 5) dev/test default for the oracle-publisher signing key. NEVER use
+/// it on a real deployment — the operator must set `ORACLE_SIGNER_KEY` to a SECRET
+/// scalar and pin its address as each `Market.oracle_pubkey`. This fixed scalar
+/// (well-known Anvil account #1) only exists so the demo probe + unit tests have a
+/// working publisher signer without provisioning secrets.
+const DEV_ORACLE_SIGNER_KEY: [u8; 32] = [
+    0x59, 0xc6, 0x99, 0x5e, 0x99, 0x8f, 0x97, 0xa5, 0xa0, 0x04, 0x49, 0x66, 0xf0, 0x94, 0x53, 0x89,
+    0xdc, 0x9e, 0x86, 0xda, 0xe8, 0x8c, 0x7a, 0x84, 0x12, 0xf4, 0x60, 0x3b, 0x6b, 0x78, 0x69, 0x0d,
+];
+
+/// The 20-byte Ethereum address a publisher `signer`'s signatures recover to — the
+/// value the operator must set as `Market.oracle_pubkey` for the §8 gate to admit
+/// this feed's prices. Derived through the REAL perp-core path (sign a fixed probe
+/// digest, then [`OracleSig::recover`]) so it is byte-identical to the address
+/// `OracleTranscript::validate` compares against — no separate keccak re-derivation.
+pub fn signer_address(signer: &SigningKey) -> [u8; 20] {
+    let probe = oracle_digest(0, 0, 0, 0, 0);
+    OracleSig::sign(signer, &probe)
+        .recover(&probe)
+        .expect("a freshly-produced signature always recovers")
+}
+
+/// Load the oracle-publisher signing key from the environment (mirrors SEC-019's
+/// `GatewaySigner::from_env`): `ORACLE_SIGNER_KEY` is a `0x`-optional 32-byte hex
+/// secp256k1 scalar. Unset ⇒ the documented [`DEV_ORACLE_SIGNER_KEY`] (fine for the
+/// demo build / tests); SET-but-malformed fails closed with an `Err` (the caller
+/// exits) rather than silently signing with the dev key. Prints the derived address
+/// at construction so the operator can pin it as `Market.oracle_pubkey`.
+pub fn signer_from_env() -> Result<SigningKey, String> {
+    let key = match std::env::var("ORACLE_SIGNER_KEY") {
+        Ok(s) => {
+            parse_hex32(&s).ok_or("ORACLE_SIGNER_KEY is set but is not a 32-byte hex value")?
+        }
+        Err(_) => DEV_ORACLE_SIGNER_KEY,
+    };
+    let signer = SigningKey::from_slice(&key)
+        .map_err(|e| format!("ORACLE_SIGNER_KEY is not a valid secp256k1 scalar: {e}"))?;
+    println!(
+        "[oracle-feed] publisher signer address 0x{} — set each Market.oracle_pubkey to this",
+        hex20(&signer_address(&signer))
+    );
+    Ok(signer)
+}
+
+/// Byte-safe `0x`-optional 64-hex → 32-byte parse (same posture as the gateway's
+/// `parse_hex32`): a non-ASCII / wrong-length string yields a clean `None`.
+fn parse_hex32(s: &str) -> Option<[u8; 32]> {
+    let h = s.strip_prefix("0x").unwrap_or(s).as_bytes();
+    if h.len() != 64 {
+        return None;
+    }
+    let mut out = [0u8; 32];
+    for (i, slot) in out.iter_mut().enumerate() {
+        *slot = hex_nibble(h[i * 2])? << 4 | hex_nibble(h[i * 2 + 1])?;
+    }
+    Some(out)
+}
+
+fn hex_nibble(b: u8) -> Option<u8> {
+    match b {
+        b'0'..=b'9' => Some(b - b'0'),
+        b'a'..=b'f' => Some(b - b'a' + 10),
+        b'A'..=b'F' => Some(b - b'A' + 10),
+        _ => None,
+    }
+}
+
+/// Lowercase hex of a 20-byte address, for the boot-log line.
+fn hex20(a: &[u8; 20]) -> String {
+    use std::fmt::Write as _;
+    let mut s = String::with_capacity(40);
+    for b in a {
+        let _ = write!(s, "{b:02x}");
+    }
+    s
+}
 
 /// Overall per-request timeout for a live fetch. ureq's default agent has NO read
 /// timeout, so a black-hole connection (TCP up, no response bytes) would block the
@@ -54,11 +132,21 @@ pub fn parse_price(s: &str) -> Option<i128> {
 /// Build an [`OracleTranscript`] from a ticker's last/bid/ask decimal strings at
 /// `now_ms`. Confidence is the bid/ask spread (the live uncertainty band); the
 /// backup TWAP is the mid. Returns `None` if the last price is unparseable / ≤ 0.
+///
+/// ZK-001 (Task 5): the produced transcript carries the publisher's signature over
+/// `oracle_digest(market_id, price, publish_time_ms, confidence, backup_twap)` —
+/// signed LAST, over the FINAL field values, with the operator-held `signer` — so
+/// the price handed to the prover already recovers to the market's `oracle_pubkey`
+/// and clears [`OracleTranscript::validate`]'s fail-closed signature gate. The
+/// digest is produced by CALLING [`perp_core::oracle::oracle_digest`] (never
+/// re-implemented) so the guest's in-circuit re-hash is byte-identical.
 pub fn transcript_from_ticker(
     last: &str,
     bid: &str,
     ask: &str,
     now_ms: u64,
+    market_id: u64,
+    signer: &SigningKey,
 ) -> Option<OracleTranscript> {
     let price = parse_price(last)?;
     if price <= 0 {
@@ -68,12 +156,20 @@ pub fn transcript_from_ticker(
     let a = parse_price(ask).unwrap_or(price);
     let spread = (a - b).abs();
     let mid = if a > 0 && b > 0 { (a + b) / 2 } else { price };
+    let publish_time_ms = now_ms;
+    // a tiny floor so a zero-spread snapshot still has a non-zero band
+    let confidence = spread.max(price / 1_000_000);
+    let backup_twap = mid;
+    // Sign LAST, over the digest of the FINAL field values (signing stale/pre-mutation
+    // values would make `validate` reject). The digest comes from perp-core's own
+    // word-encoding — a hand-rolled keccak here would recover to the wrong address.
+    let digest = oracle_digest(market_id, price, publish_time_ms, confidence, backup_twap);
     Some(OracleTranscript {
         price,
-        publish_time_ms: now_ms,
-        // a tiny floor so a zero-spread snapshot still has a non-zero band
-        confidence: spread.max(price / 1_000_000),
-        backup_twap: mid,
+        publish_time_ms,
+        confidence,
+        backup_twap,
+        signature: OracleSig::sign(signer, &digest),
     })
 }
 
@@ -94,7 +190,12 @@ pub fn publish_ms(exchange_t: Option<u64>, now_ms: u64) -> u64 {
 /// stamped with the exchange's own ticker timestamp (falling back to `now_ms`), so
 /// a frozen feed goes stale rather than reading as perpetually fresh.
 #[cfg(feature = "http")]
-pub fn fetch_transcript(instrument: &str, now_ms: u64) -> Result<OracleTranscript, String> {
+pub fn fetch_transcript(
+    instrument: &str,
+    now_ms: u64,
+    market_id: u64,
+    signer: &SigningKey,
+) -> Result<OracleTranscript, String> {
     let url = format!(
         "https://api.crypto.com/exchange/v1/public/get-tickers?instrument_name={instrument}"
     );
@@ -109,7 +210,7 @@ pub fn fetch_transcript(instrument: &str, now_ms: u64) -> Result<OracleTranscrip
         .ok_or_else(|| "no ticker data".to_string())?;
     let get = |k: &str| row[k].as_str().unwrap_or("").to_string();
     let publish = publish_ms(row["t"].as_u64(), now_ms);
-    transcript_from_ticker(&get("a"), &get("b"), &get("k"), publish)
+    transcript_from_ticker(&get("a"), &get("b"), &get("k"), publish, market_id, signer)
         .ok_or_else(|| "unparseable ticker".to_string())
 }
 
@@ -183,6 +284,68 @@ mod tests {
     use super::*;
     use perp_core::market::Market;
 
+    // A fixed dev/test signing key + market id every transcript-building test signs
+    // with, so the produced signature is deterministic and the assertions stay DRY.
+    const TEST_MARKET_ID: u64 = 0;
+
+    fn test_signer() -> SigningKey {
+        SigningKey::from_slice(&DEV_ORACLE_SIGNER_KEY).expect("valid dev scalar")
+    }
+
+    /// Build a transcript signed by the shared test key for `TEST_MARKET_ID`.
+    fn signed_transcript(
+        last: &str,
+        bid: &str,
+        ask: &str,
+        now_ms: u64,
+    ) -> Option<OracleTranscript> {
+        transcript_from_ticker(last, bid, ask, now_ms, TEST_MARKET_ID, &test_signer())
+    }
+
+    /// A conservative market whose `oracle_pubkey` is the shared test signer's address,
+    /// so the ZK-001 signature gate PASSES and the price-sanity gates (which these tests
+    /// actually exercise) are what decides the outcome.
+    fn test_market() -> Market {
+        let mut m = Market::conservative(TEST_MARKET_ID);
+        m.oracle_pubkey = signer_address(&test_signer());
+        m
+    }
+
+    // ZK-001 (Task 5): the adapter must attach a publisher signature the §8 gate
+    // accepts — the price fed to the prover already carries the publisher's
+    // attestation. Round-trips through the REAL perp-core path: the produced
+    // signature recovers to the signer's address AND the transcript validates under
+    // a market whose `oracle_pubkey` is that address.
+    #[test]
+    fn produced_transcript_signature_recovers_to_signer() {
+        let key = test_signer();
+        let addr = signer_address(&key);
+        let t =
+            transcript_from_ticker("59585.6", "59586.7", "59586.8", 1_000, TEST_MARKET_ID, &key)
+                .unwrap();
+        // recompute the digest exactly as the guest would, from the FINAL field values
+        let d = perp_core::oracle::oracle_digest(
+            TEST_MARKET_ID,
+            t.price,
+            t.publish_time_ms,
+            t.confidence,
+            t.backup_twap,
+        );
+        assert_eq!(
+            t.signature.recover(&d),
+            Some(addr),
+            "the produced signature must recover to the signer's address"
+        );
+        // and it validates under a market whose oracle_pubkey == addr
+        let mut m = Market::conservative(TEST_MARKET_ID);
+        m.oracle_pubkey = addr;
+        assert_eq!(
+            t.validate(&m, t.publish_time_ms),
+            Ok(t.price),
+            "a matching oracle_pubkey admits the price through the §8 gate"
+        );
+    }
+
     #[test]
     fn parses_decimal_prices_exactly() {
         assert_eq!(parse_price("59585.60"), Some(5_958_560_000_000));
@@ -207,7 +370,7 @@ mod tests {
     #[test]
     fn builds_a_valid_transcript_that_passes_the_oracle_gate() {
         // real BTCUSD-PERP snapshot: last 59585.6, bid 59586.7, ask 59586.8
-        let t = transcript_from_ticker("59585.6", "59586.7", "59586.8", 1_000).unwrap();
+        let t = signed_transcript("59585.6", "59586.7", "59586.8", 1_000).unwrap();
         assert_eq!(t.price, 5_958_560_000_000);
         assert_eq!(
             t.backup_twap,
@@ -215,7 +378,7 @@ mod tests {
         );
         assert!(t.confidence > 0);
         // it must clear the engine's §8 sanity gate at its own publish time
-        assert_eq!(t.validate(&Market::conservative(0), 1_000), Ok(t.price));
+        assert_eq!(t.validate(&test_market(), 1_000), Ok(t.price));
     }
 
     // AUDIT (oracle staleness): the transcript must be stamped with the exchange's
@@ -234,9 +397,9 @@ mod tests {
     #[test]
     fn a_frozen_exchange_timestamp_goes_stale_at_the_gate() {
         use perp_core::oracle::OracleError;
-        let m = Market::conservative(0); // max_oracle_staleness_ms = 10s
-                                         // exchange published this tick at t = 1_000ms
-        let t = transcript_from_ticker("59585.6", "59586.7", "59586.8", 1_000).unwrap();
+        let m = test_market(); // max_oracle_staleness_ms = 10s
+                               // exchange published this tick at t = 1_000ms
+        let t = signed_transcript("59585.6", "59586.7", "59586.8", 1_000).unwrap();
         assert_eq!(
             t.validate(&m, 6_000),
             Ok(t.price),
@@ -251,9 +414,9 @@ mod tests {
 
     #[test]
     fn rejects_nonpositive_or_unparseable_last() {
-        assert!(transcript_from_ticker("0", "1", "1", 1).is_none());
-        assert!(transcript_from_ticker("-5", "1", "1", 1).is_none());
-        assert!(transcript_from_ticker("bad", "1", "1", 1).is_none());
+        assert!(signed_transcript("0", "1", "1", 1).is_none());
+        assert!(signed_transcript("-5", "1", "1", 1).is_none());
+        assert!(signed_transcript("bad", "1", "1", 1).is_none());
     }
 
     // --- adversarial: a malformed/manipulated external feed must NEVER become a
@@ -267,8 +430,8 @@ mod tests {
         use perp_core::oracle::OracleError;
         // `last` is a stale / fat-finger print ~17% above a tight, current book.
         // backup_twap = book mid, so the deviation gate refuses to mark against it.
-        let m = Market::conservative(0);
-        let t = transcript_from_ticker("70000", "59586.7", "59586.8", 1_000).unwrap();
+        let m = test_market();
+        let t = signed_transcript("70000", "59586.7", "59586.8", 1_000).unwrap();
         assert_eq!(
             t.validate(&m, 1_000),
             Err(OracleError::DeviatesFromBackup),
@@ -280,8 +443,8 @@ mod tests {
     fn absurd_spread_book_is_rejected_by_the_gate() {
         // a glitched / manipulated book with a giant spread → giant confidence
         // band → the §8 confidence gate rejects it (garbage book never marks).
-        let m = Market::conservative(0);
-        let t = transcript_from_ticker("59585.6", "30000", "90000", 1_000).unwrap();
+        let m = test_market();
+        let t = signed_transcript("59585.6", "30000", "90000", 1_000).unwrap();
         assert!(
             t.validate(&m, 1_000).is_err(),
             "a book with an absurd spread must be rejected, not marked"
@@ -295,8 +458,8 @@ mod tests {
         // the empty string as a literal 0 — which would make spread = |0 − bid| a
         // huge spurious band and get the whole transcript rejected by the §8 gate,
         // stalling the mark on a perfectly healthy `last`.
-        let m = Market::conservative(0);
-        let t = transcript_from_ticker("59585.6", "59586.7", "", 1_000).unwrap();
+        let m = test_market();
+        let t = signed_transcript("59585.6", "59586.7", "", 1_000).unwrap();
         assert_eq!(
             t.validate(&m, 1_000),
             Ok(t.price),
@@ -309,8 +472,8 @@ mod tests {
         // bid/ask unparseable (a book outage): the adapter falls back to `last`
         // for both the band floor and the TWAP, so a healthy last still produces
         // a transcript that clears the gate (graceful degradation, not a stall).
-        let m = Market::conservative(0);
-        let t = transcript_from_ticker("59585.6", "", "", 1_000).unwrap();
+        let m = test_market();
+        let t = signed_transcript("59585.6", "", "", 1_000).unwrap();
         assert_eq!(t.backup_twap, t.price);
         assert_eq!(t.validate(&m, 1_000), Ok(t.price));
     }

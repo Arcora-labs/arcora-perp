@@ -19,10 +19,16 @@ const MARKETS: &[(&str, &str)] = &[
 
 fn main() {
     let now_ms = 0u64;
-    let market = Market::conservative(0);
+    let market_id = 0u64;
+    // ZK-001: the probe signs each transcript with the operator publisher key and
+    // pins the market's oracle_pubkey to that signer, so the fetched price clears the
+    // §8 signature gate exactly as it will in production.
+    let signer = oracle_feed::signer_from_env().expect("oracle publisher signer");
+    let mut market = Market::conservative(market_id);
+    market.oracle_pubkey = oracle_feed::signer_address(&signer);
     println!("\n=== dark-perp live oracle probe (Crypto.com) ===\n");
     for (symbol, instrument) in MARKETS {
-        match oracle_feed::fetch_transcript(instrument, now_ms) {
+        match oracle_feed::fetch_transcript(instrument, now_ms, market_id, &signer) {
             Ok(mut t) => {
                 t.publish_time_ms = now_ms;
                 let gate = match t.validate(&market, now_ms) {
