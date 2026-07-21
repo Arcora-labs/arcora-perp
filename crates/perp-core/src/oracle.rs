@@ -11,8 +11,9 @@
 //! which would tax the very latency we optimize for.
 
 use crate::fixed::{abs, RATE_SCALE};
-use crate::hash::{word_i128, word_u64, Digest, Domain, Hasher};
+use crate::hash::{word_i128, word_u64, Digest, Domain, Hasher, Keccak256};
 use crate::market::Market;
+use k256::ecdsa::VerifyingKey;
 
 /// A price observation as delivered to the enclave and committed in the manifest.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -98,10 +99,137 @@ impl OracleTranscript {
     }
 }
 
+/// Ethereum-style address of a secp256k1 verifying key (matches L1 `ecrecover`):
+/// the low 20 bytes of `keccak256(uncompressed_pubkey[1..])`.
+///
+/// Mirrors `committee::eth_address` but uses the crate's own no_std `tiny_keccak`
+/// (not `sha3`) so it compiles unchanged inside the zkVM guest. Kept private —
+/// callers recover an address via [`OracleSig::recover`].
+fn eth_address(vk: &VerifyingKey) -> [u8; 20] {
+    use tiny_keccak::{Hasher as _, Keccak};
+    let point = vk.to_encoded_point(false);
+    let mut k = Keccak::v256();
+    k.update(&point.as_bytes()[1..]);
+    let mut hash = [0u8; 32];
+    k.finalize(&mut hash);
+    let mut a = [0u8; 20];
+    a.copy_from_slice(&hash[12..]);
+    a
+}
+
+/// A per-market publisher's recoverable secp256k1 signature over an
+/// [`oracle_digest`] (ZK-001).
+///
+/// Same shape/semantics as `committee::EnclaveSig`: `v = 27 + recovery_id`, and
+/// [`recover`](OracleSig::recover) returns the signer's [`eth_address`]. The
+/// recover path is verify-only (`recover_from_prehash`, no RNG) so it runs
+/// unchanged inside the no_std zkVM guest, where the price attestation is
+/// re-verified in circuit.
+#[derive(Clone, Copy, Debug)]
+pub struct OracleSig {
+    pub r: [u8; 32],
+    pub s: [u8; 32],
+    pub v: u8,
+}
+
+impl OracleSig {
+    /// Sign a prehashed digest (host / test convenience — deterministic RFC-6979,
+    /// no RNG). The guest never signs; it only [`recover`](OracleSig::recover)s.
+    pub fn sign(key: &k256::ecdsa::SigningKey, digest: &Digest) -> Self {
+        let (sig, recid) = key.sign_prehash_recoverable(digest).expect("sign");
+        let b = sig.to_bytes();
+        let mut r = [0u8; 32];
+        let mut s = [0u8; 32];
+        r.copy_from_slice(&b[..32]);
+        s.copy_from_slice(&b[32..]);
+        Self {
+            r,
+            s,
+            v: 27 + recid.to_byte(),
+        }
+    }
+
+    /// Recover the signer's eth address, or `None` if the signature is malformed
+    /// or (via k256's enforced low-`s`) a malleated high-`s` twin. This is the
+    /// only path the guest needs.
+    pub fn recover(&self, digest: &Digest) -> Option<[u8; 20]> {
+        use k256::ecdsa::{RecoveryId, Signature};
+        let mut rs = [0u8; 64];
+        rs[..32].copy_from_slice(&self.r);
+        rs[32..].copy_from_slice(&self.s);
+        let sig = Signature::from_slice(&rs).ok()?;
+        let recid = self.v.checked_sub(27).and_then(RecoveryId::from_byte)?;
+        let vk = VerifyingKey::recover_from_prehash(digest, &sig, recid).ok()?;
+        Some(eth_address(&vk))
+    }
+}
+
+/// The per-market oracle-attestation digest a publisher signs, and which the
+/// guest re-verifies in circuit (§8, ZK-001).
+///
+/// Domain-separated under [`Domain::OracleAttest`] and bound to `market_id`, so a
+/// signature over one market's price can never be replayed as another market's.
+/// The tuple mirrors [`OracleTranscript`] (price / publish_time / confidence /
+/// backup_twap) with `market_id` prepended.
+pub fn oracle_digest(
+    market_id: u64,
+    price: i128,
+    publish_time_ms: u64,
+    confidence: i128,
+    backup_twap: i128,
+) -> Digest {
+    Keccak256::hash_words(
+        Domain::OracleAttest,
+        &[
+            word_u64(market_id),
+            word_i128(price),
+            word_u64(publish_time_ms),
+            word_i128(confidence),
+            word_i128(backup_twap),
+        ],
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::fixed::PRICE_SCALE;
+    use k256::ecdsa::SigningKey;
+
+    // ZK-001: the oracle price fed into proving must be bound to a per-market
+    // publisher signature that the guest re-verifies. This pins the primitive:
+    // sign → recover round-trips to the signer's eth address, the digest is
+    // bound to `market_id` (a sig over market 1 does NOT recover the signer over
+    // market 2), and the digest bytes are frozen as a KAT for host cross-checks.
+    #[test]
+    fn oracle_sig_round_trips_and_binds_digest() {
+        let key = SigningKey::from_bytes((&[7u8; 32]).into()).unwrap();
+        let addr = eth_address(key.verifying_key());
+
+        let d = oracle_digest(1, 100_000, 1_700_000_000_000, 500, 100_000);
+        let sig = OracleSig::sign(&key, &d);
+        assert_eq!(sig.recover(&d), Some(addr), "recovers to the signer");
+
+        // market_id binding: the same signature over a different market's digest
+        // must not recover the signer.
+        let d2 = oracle_digest(2, 100_000, 1_700_000_000_000, 500, 100_000);
+        assert_ne!(d, d2, "market_id changes the digest");
+        assert_ne!(
+            sig.recover(&d2),
+            Some(addr),
+            "a market-1 sig must not verify over market-2's digest"
+        );
+
+        // Pinned KAT — a host re-impl / future cross-check reuses this exact
+        // digest for oracle_digest(1, 100_000, 1_700_000_000_000, 500, 100_000).
+        // 0x37f39f942463637b7823ce4f7712e17a116bd56275473abcd531f4ea0af9bb0d
+        let kat: Digest = [
+            0x37, 0xf3, 0x9f, 0x94, 0x24, 0x63, 0x63, 0x7b, 0x78, 0x23, 0xce, 0x4f, 0x77, 0x12,
+            0xe1, 0x7a, 0x11, 0x6b, 0xd5, 0x62, 0x75, 0x47, 0x3a, 0xbc, 0xd5, 0x31, 0xf4, 0xea,
+            0x0a, 0xf9, 0xbb, 0x0d,
+        ];
+        assert_eq!(d, kat, "oracle_digest KAT is frozen");
+    }
 
     fn good() -> OracleTranscript {
         OracleTranscript {

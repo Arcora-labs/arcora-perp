@@ -23,6 +23,11 @@ serde = ["dep:serde"]
 [dependencies]
 tiny-keccak = { version = "2", features = ["keccak"] }
 serde = { version = "1", optional = true, default-features = false, features = ["derive", "alloc"] }
+# ZK-001: recoverable-ECDSA over the oracle-attestation digest, verified IN the
+# guest. `default-features = false` (no `std`) is mandatory — this crate is
+# re-run unmodified inside the no_std zkVM guest; the `ecdsa` feature carries the
+# verify-only `recover_from_prehash` path (no RNG) the guest needs.
+k256 = { version = "0.13", default-features = false, features = ["ecdsa"] }
 
 [dev-dependencies]
 postcard = { version = "1", features = ["alloc"] }

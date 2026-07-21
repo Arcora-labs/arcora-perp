@@ -160,6 +160,15 @@ pub enum Domain {
     /// stream (`WitnessSeal`) or key derivation. Appended last so existing committed
     /// hashes are unchanged. Not a cross-layer-committed value.
     SealNonce = 31,
+    /// Per-market oracle-attestation digest (§8, ZK-001). The price fed into
+    /// proving is otherwise an unsigned prover witness; this tag binds the
+    /// (market_id, price, publish_time, confidence, backup_twap) tuple into the
+    /// digest a market's publisher signs, and which the guest re-verifies in
+    /// circuit (`oracle::oracle_digest` / `oracle::OracleSig`). A dedicated tag,
+    /// distinct from the manifest `OracleTranscript` hash, so a signed
+    /// attestation can never share a preimage structure with the transcript
+    /// commitment. Appended last so existing committed hashes are unchanged.
+    OracleAttest = 32,
 }
 
 /// The default Phase 0 hasher: Keccak-256 with a 1-byte domain prefix.
@@ -251,6 +260,7 @@ mod tests {
             LogEncryptAad,
             OrderLogChain,
             SealNonce,
+            OracleAttest,
         ];
         let w = [word_u64(42)];
         for i in 0..all.len() {
