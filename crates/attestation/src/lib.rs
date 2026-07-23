@@ -205,6 +205,8 @@ pub enum AttestError {
     MeasurementMismatch,
     /// The quote verified but does not bind the caller's freshness nonce.
     NonceMismatch,
+    /// The Azure vTPM chain (HCL binding / AK signature / PCR digest) failed.
+    VtpmChain(String),
     /// The attestation backend itself failed (no quote source, unreadable
     /// artifacts, malformed collateral metadata).
     Backend(String),
@@ -222,17 +224,6 @@ pub trait Attestor {
         expected: &Digest,
         nonce: &[u8; 32],
     ) -> Result<Digest, AttestError>;
-}
-
-/// The nonce value a verified Azure TD quote binds: `report_data[..32]`, which
-/// the HCL places as `SHA-256(runtime_data)` (§5c — the caller's challenge rides
-/// inside `runtime_data`, transitively via the vTPM chain; `report_data` is not
-/// app-settable on Azure). `Attestor::verify` checks the caller's nonce against
-/// this SAME field, so a handshake passes the runtime-data hash it expects.
-pub fn nonce_from_report_data(att: &VerifiedAttestation) -> [u8; 32] {
-    let mut n = [0u8; 32];
-    n.copy_from_slice(&att.report_data[..32]);
-    n
 }
 
 /// Parse an Intel PCS UTC timestamp (`YYYY-MM-DDTHH:MM:SSZ`, as in collateral
@@ -302,6 +293,19 @@ fn collateral_pinned_now(c: &Collateral) -> Result<u64, AttestError> {
     Ok(lo + (hi - lo) / 2)
 }
 
+/// The serialized tee-capture evidence one side sends the other: the TD quote
+/// plus the full vTPM chain (HCL report, AK quote msg+sig, PCR list). Binary
+/// fields are hex; `pcrs` is the raw `pcrs.txt` text. `quote()` assembles it from
+/// `ATTESTATION_DIR`; `verify()` parses + checks the whole chain fail-closed.
+#[derive(serde::Serialize, serde::Deserialize)]
+struct AttestationBundle {
+    quote: String,
+    hcl_report: String,
+    ak_quote_msg: String,
+    ak_quote_sig: String,
+    pcrs: String,
+}
+
 /// The Azure TDX attestation backend: verifies peer TD quotes against pinned
 /// collateral, and serves this host's quote from the same source the §5c boot
 /// self-attest uses (`ATTESTATION_DIR` — a live CVM points it at a fresh
@@ -332,38 +336,62 @@ impl AzureTdxAttestor {
 }
 
 impl Attestor for AzureTdxAttestor {
-    /// This host's TD quote, from the §5c self-attest artifacts. On Azure the
-    /// TD quote's `report_data` is the HCL runtime-data hash — NOT app-settable
-    /// — so the caller's `nonce` cannot be injected here; it binds transitively
-    /// via the vTPM AK quote (`extraData`, see `vtpm.rs`), and the verifier-side
-    /// rule is enforced by [`Attestor::verify`]. No quote source ⇒ fail closed.
-    fn quote(&self, _nonce: &[u8; 32]) -> Result<Vec<u8>, AttestError> {
+    // `_challenge` (the local ephemeral pubkey) is bound into the AK-extraData by
+    // a LIVE `tee-capture` on a real CVM; here we read the STATIC captured bundle,
+    // whose extraData is fixed, so the arg is a documented no-op locally. (This is
+    // why a real-binary handshake is window-deferred, not asserted in local tests.)
+    fn quote(&self, _challenge: &[u8; 32]) -> Result<Vec<u8>, AttestError> {
         let dir = self.quote_dir.as_ref().ok_or_else(|| {
             AttestError::Backend("no live quote source: ATTESTATION_DIR is not set".into())
         })?;
-        std::fs::read(dir.join("quote.bin"))
-            .map_err(|e| AttestError::Backend(format!("read {}/quote.bin: {e}", dir.display())))
+        let rd = |name: &str| -> Result<Vec<u8>, AttestError> {
+            std::fs::read(dir.join(name))
+                .map_err(|e| AttestError::Backend(format!("read {}/{name}: {e}", dir.display())))
+        };
+        let bundle = AttestationBundle {
+            quote: hex::encode(rd("quote.bin")?),
+            hcl_report: hex::encode(rd("hcl_report.bin")?),
+            ak_quote_msg: hex::encode(rd("ak_quote_msg.bin")?),
+            ak_quote_sig: hex::encode(rd("ak_quote_sig.bin")?),
+            pcrs: String::from_utf8(rd("pcrs.txt")?)
+                .map_err(|e| AttestError::Backend(format!("pcrs.txt not utf8: {e}")))?,
+        };
+        serde_json::to_vec(&bundle)
+            .map_err(|e| AttestError::Backend(format!("serialize bundle: {e}")))
     }
 
     fn verify(
         &self,
-        quote: &[u8],
+        bundle: &[u8],
         expected: &Digest,
-        nonce: &[u8; 32],
+        challenge: &[u8; 32],
     ) -> Result<Digest, AttestError> {
-        let att =
-            verify_tdx_quote(quote, &self.collateral, self.now_secs).map_err(AttestError::Tdx)?;
-        // TCB gate + measurement in one fail-closed step: `enclave_measurement`
-        // refuses an unacceptable TCB (`TcbRejected`), surfaced as `Tdx(..)` —
-        // an out-of-date / revoked platform can never reach `Ok`.
-        let m = att.enclave_measurement().map_err(AttestError::Tdx)?;
+        let b: AttestationBundle = serde_json::from_slice(bundle)
+            .map_err(|e| AttestError::Backend(format!("bundle parse: {e}")))?;
+        let dec = |h: &str, what: &str| -> Result<Vec<u8>, AttestError> {
+            hex::decode(h).map_err(|e| AttestError::Backend(format!("bundle {what}: {e}")))
+        };
+        let quote = dec(&b.quote, "quote")?;
+        let hcl = dec(&b.hcl_report, "hcl_report")?;
+        let ak_msg = dec(&b.ak_quote_msg, "ak_quote_msg")?;
+        let ak_sig = dec(&b.ak_quote_sig, "ak_quote_sig")?;
+        let pcrs = crate::vtpm::parse_pcrs_txt(&b.pcrs)
+            .map_err(|e| AttestError::Backend(format!("bundle pcrs: {e:?}")))?;
+
+        // 1. TD quote crypto + TCB gate.
+        let td =
+            verify_tdx_quote(&quote, &self.collateral, self.now_secs).map_err(AttestError::Tdx)?;
+        // 2. Full vTPM chain (HCL binding, AK sig, pcrDigest).
+        let report = crate::vtpm::verify_azure_vtpm(&td, &hcl, &ak_msg, &ak_sig, &pcrs)
+            .map_err(|e| AttestError::VtpmChain(format!("{e:?}")))?;
+        // 3. C1: APP-level measurement (MRTD‖pcr_digest), not the firmware fold.
+        let m = crate::vtpm::azure_app_measurement(&td, &report).map_err(AttestError::Tdx)?;
         if &m != expected {
             return Err(AttestError::MeasurementMismatch);
         }
-        // §5c binding: `report_data = SHA-256(runtime_data) ‖ 0*32`. The caller's
-        // nonce must equal the bound hash AND the zero pad must hold (the same
-        // fail-closed pad check as `vtpm.rs` step 1).
-        if att.report_data[..32] != nonce[..] || att.report_data[32..] != [0u8; 32] {
+        // 4. C2/C3: the AK-extraData freshness value must equal the caller's
+        //    challenge (the peer's ephemeral pubkey on a live handshake).
+        if report.nonce.len() != 32 || report.nonce[..] != challenge[..] {
             return Err(AttestError::NonceMismatch);
         }
         Ok(m)
@@ -381,92 +409,128 @@ mod tests {
     /// Midpoint of the Azure collateral window [2026-06-26 .. 2026-07-26].
     const AZURE_NOW: u64 = 1_783_775_325;
 
-    /// (quote, collateral_json, nonce, expected measurement) from the captured
-    /// fixture. The captured TD quote carries no caller-chosen nonce — on Azure
-    /// `report_data = SHA-256(HCL runtime_data) ‖ 0*32` and is not app-settable
-    /// (§5c) — so the nonce is the bound runtime-data hash extracted by
-    /// `nonce_from_report_data`, the SAME rule `Attestor::verify` checks.
-    fn tdx_fixture() -> (Vec<u8>, Vec<u8>, [u8; 32], [u8; 32]) {
-        let collateral = Collateral::from_json(AZURE_COLLATERAL).expect("collateral parses");
-        let att = verify_tdx_quote(AZURE_QUOTE, &collateral, AZURE_NOW).expect("fixture verifies");
-        let nonce = nonce_from_report_data(&att);
-        let expected = att.enclave_measurement().expect("acceptable TCB");
-        (
-            AZURE_QUOTE.to_vec(),
-            AZURE_COLLATERAL.to_vec(),
-            nonce,
-            expected,
-        )
+    // The five tee-capture files that make an Azure evidence bundle.
+    const AZURE_HCL: &[u8] = include_bytes!("../tests/fixtures/azure/hcl_report.bin");
+    const AZURE_AK_MSG: &[u8] = include_bytes!("../tests/fixtures/azure/ak_quote_msg.bin");
+    const AZURE_AK_SIG: &[u8] = include_bytes!("../tests/fixtures/azure/ak_quote_sig.bin");
+    const AZURE_PCRS: &str = include_str!("../tests/fixtures/azure/pcrs.txt");
+
+    /// Serialize the fixture into an AttestationBundle exactly as `quote()` would.
+    fn azure_bundle() -> Vec<u8> {
+        serde_json::to_vec(&AttestationBundle {
+            quote: hex::encode(AZURE_QUOTE),
+            hcl_report: hex::encode(AZURE_HCL),
+            ak_quote_msg: hex::encode(AZURE_AK_MSG),
+            ak_quote_sig: hex::encode(AZURE_AK_SIG),
+            pcrs: AZURE_PCRS.to_string(),
+        })
+        .unwrap()
+    }
+
+    /// The app-level measurement + the AK-extraData nonce the fixture carries —
+    /// the values a correct verify must key off (NOT the firmware-only fold).
+    fn azure_app_expected() -> ([u8; 32], Vec<u8>) {
+        let collateral = Collateral::from_json(AZURE_COLLATERAL).unwrap();
+        let td = verify_tdx_quote(AZURE_QUOTE, &collateral, AZURE_NOW).unwrap();
+        let pcrs = crate::vtpm::parse_pcrs_txt(AZURE_PCRS).unwrap();
+        let report =
+            crate::vtpm::verify_azure_vtpm(&td, AZURE_HCL, AZURE_AK_MSG, AZURE_AK_SIG, &pcrs)
+                .unwrap();
+        let m = crate::vtpm::azure_app_measurement(&td, &report).unwrap();
+        (m, report.nonce)
     }
 
     #[test]
-    fn azure_verify_accepts_fixture_with_pinned_measurement() {
-        let (quote, collateral_json, nonce, expected_measurement) = tdx_fixture();
-        let att = AzureTdxAttestor::from_collateral_json(&collateral_json).unwrap();
-        let m = att.verify(&quote, &expected_measurement, &nonce).unwrap();
-        assert_eq!(m, expected_measurement);
+    fn azure_verify_accepts_the_bundle_at_app_level_with_matching_challenge() {
+        let (expected, extradata) = azure_app_expected();
+        // The challenge the peer proves it bound is the AK-extraData value; on a
+        // live handshake that is the peer's ephemeral pubkey. Here it is the
+        // fixture's captured extraData (32 bytes).
+        let mut challenge = [0u8; 32];
+        challenge.copy_from_slice(&extradata[..32]);
+        let att = AzureTdxAttestor::from_collateral_json(AZURE_COLLATERAL).unwrap();
+        let m = att.verify(&azure_bundle(), &expected, &challenge).unwrap();
+        assert_eq!(m, expected, "verify returns the APP-level measurement");
     }
 
     #[test]
-    fn azure_verify_rejects_wrong_measurement() {
-        let (quote, collateral_json, nonce, _m) = tdx_fixture();
-        let att = AzureTdxAttestor::from_collateral_json(&collateral_json).unwrap();
+    fn azure_verify_rejects_a_firmware_only_expected_measurement() {
+        // The C1 regression: the firmware-only enclave_measurement (MRTD‖RTMR0..3)
+        // must NOT be what verify accepts — pinning it would let two app binaries
+        // on one SKU cross-verify. Passing it as `expected` must MeasurementMismatch.
+        let collateral = Collateral::from_json(AZURE_COLLATERAL).unwrap();
+        let td = verify_tdx_quote(AZURE_QUOTE, &collateral, AZURE_NOW).unwrap();
+        let firmware_only = td.enclave_measurement().unwrap();
+        let (app_level, extradata) = azure_app_expected();
+        assert_ne!(firmware_only, app_level, "the two measurements differ");
+        let mut challenge = [0u8; 32];
+        challenge.copy_from_slice(&extradata[..32]);
+        let att = AzureTdxAttestor::from_collateral_json(AZURE_COLLATERAL).unwrap();
         assert!(matches!(
-            att.verify(&quote, &[0u8; 32], &nonce),
+            att.verify(&azure_bundle(), &firmware_only, &challenge),
             Err(AttestError::MeasurementMismatch)
         ));
     }
 
     #[test]
-    fn azure_verify_rejects_wrong_nonce() {
-        let (quote, collateral_json, nonce, m) = tdx_fixture();
-        let att = AzureTdxAttestor::from_collateral_json(&collateral_json).unwrap();
-        let mut bad = nonce;
-        bad[0] ^= 0x01;
+    fn azure_verify_rejects_a_mismatched_challenge() {
+        let (expected, _extradata) = azure_app_expected();
+        let att = AzureTdxAttestor::from_collateral_json(AZURE_COLLATERAL).unwrap();
         assert!(matches!(
-            att.verify(&quote, &m, &bad),
+            att.verify(&azure_bundle(), &expected, &[0x55u8; 32]),
             Err(AttestError::NonceMismatch)
         ));
     }
 
     #[test]
-    fn azure_verify_rejects_a_tampered_quote() {
-        // Same tamper as `tests/verify_offline.rs::rejects_a_tampered_quote`: a
-        // byte flip inside the signed TD report must fail the ECDSA check, and
-        // the crate error must surface wrapped — not swallowed into a string.
-        let (quote, collateral_json, nonce, m) = tdx_fixture();
-        let att = AzureTdxAttestor::from_collateral_json(&collateral_json).unwrap();
-        let mut tampered = quote;
-        tampered[184] ^= 0x01;
+    fn azure_verify_rejects_a_malformed_bundle() {
+        let (expected, _e) = azure_app_expected();
+        let att = AzureTdxAttestor::from_collateral_json(AZURE_COLLATERAL).unwrap();
         assert!(matches!(
-            att.verify(&tampered, &m, &nonce),
+            att.verify(b"not json", &expected, &[0u8; 32]),
+            Err(AttestError::Backend(_))
+        ));
+    }
+
+    #[test]
+    fn azure_verify_rejects_a_tampered_quote_in_the_bundle() {
+        let (expected, extradata) = azure_app_expected();
+        let mut challenge = [0u8; 32];
+        challenge.copy_from_slice(&extradata[..32]);
+        let mut b: AttestationBundle = serde_json::from_slice(&azure_bundle()).unwrap();
+        let mut q = hex::decode(&b.quote).unwrap();
+        q[184] ^= 0x01; // flip a byte inside the signed TD report
+        b.quote = hex::encode(q);
+        let att = AzureTdxAttestor::from_collateral_json(AZURE_COLLATERAL).unwrap();
+        assert!(matches!(
+            att.verify(&serde_json::to_vec(&b).unwrap(), &expected, &challenge),
             Err(AttestError::Tdx(AttestationError::Verify(_)))
         ));
     }
 
     #[test]
-    fn azure_quote_reads_the_captured_artifacts_and_round_trips() {
-        // `quote()` reuses the §5c boot self-attest source: the ATTESTATION_DIR
-        // artifacts (a live CVM points it at a fresh capture; here, the pinned
-        // fixture capture). No live TDX is required for this path.
-        let (_, collateral_json, nonce, m) = tdx_fixture();
-        let mut att = AzureTdxAttestor::from_collateral_json(&collateral_json).unwrap();
+    fn azure_quote_assembles_the_full_bundle_and_round_trips() {
+        let (expected, extradata) = azure_app_expected();
+        let mut challenge = [0u8; 32];
+        challenge.copy_from_slice(&extradata[..32]);
+        let mut att = AzureTdxAttestor::from_collateral_json(AZURE_COLLATERAL).unwrap();
         att.quote_dir = Some(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/azure").into());
-        let q = att.quote(&nonce).expect("captured artifacts are readable");
-        assert_eq!(q, AZURE_QUOTE, "quote() returns the captured TD quote");
+        // quote() reads all five files and serializes them; verify() round-trips.
+        let bundle = att.quote(&challenge).expect("assembles the bundle");
         assert_eq!(
-            att.verify(&q, &m, &nonce).unwrap(),
-            m,
-            "self-quote round-trips"
+            att.verify(&bundle, &expected, &challenge).unwrap(),
+            expected
         );
     }
 
     #[test]
     fn azure_quote_without_a_live_source_fails_closed() {
-        let (_, collateral_json, nonce, _m) = tdx_fixture();
-        let mut att = AzureTdxAttestor::from_collateral_json(&collateral_json).unwrap();
+        let mut att = AzureTdxAttestor::from_collateral_json(AZURE_COLLATERAL).unwrap();
         att.quote_dir = None;
-        assert!(matches!(att.quote(&nonce), Err(AttestError::Backend(_))));
+        assert!(matches!(
+            att.quote(&[0u8; 32]),
+            Err(AttestError::Backend(_))
+        ));
     }
 
     #[test]

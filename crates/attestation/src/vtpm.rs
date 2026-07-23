@@ -249,6 +249,44 @@ pub fn verify_azure_vtpm(
     })
 }
 
+/// Parse a `pcrs.txt` capture — the raw `tpm2_pcrread sha256` output the
+/// tee-capture writes (`capture.sh` step 5): an `sha256:` bank header followed
+/// by one `N : 0x<64 hex>` line per PCR — into the quoted measured-boot PCR set:
+/// PCRs 0..=16 in ascending index order, exactly the selection the capture's AK
+/// quote covers (`tpm2_quote -l sha256:0,…,16`), which is what
+/// [`verify_azure_vtpm`] folds into `pcrDigest`.
+///
+/// Strict, fail-closed — never skipped, never defaulted: a malformed line, a
+/// non-`sha256` bank header (a foreign bank's values must not enter the digest
+/// fold), a duplicate index, or a missing PCR in 0..=16 is `Err(AttestParse)`.
+pub fn parse_pcrs_txt(txt: &str) -> Result<Vec<[u8; 32]>, VtpmError> {
+    let mut by_idx = std::collections::BTreeMap::new();
+    for line in txt.lines() {
+        let t = line.trim();
+        if t.is_empty() {
+            continue;
+        }
+        if t == "sha256:" {
+            continue; // the (only acceptable) bank header
+        }
+        let (idx, val) = t.split_once(':').ok_or(VtpmError::AttestParse)?;
+        let idx: u32 = idx.trim().parse().map_err(|_| VtpmError::AttestParse)?;
+        let h = val
+            .trim()
+            .strip_prefix("0x")
+            .ok_or(VtpmError::AttestParse)?;
+        let mut a = [0u8; 32];
+        // Exactly 64 hex chars — `decode_to_slice` refuses any other length.
+        hex::decode_to_slice(h, &mut a).map_err(|_| VtpmError::AttestParse)?;
+        if by_idx.insert(idx, a).is_some() {
+            return Err(VtpmError::AttestParse);
+        }
+    }
+    (0..17)
+        .map(|i| by_idx.remove(&i).ok_or(VtpmError::AttestParse))
+        .collect()
+}
+
 /// The Azure application measurement: folds the firmware MRTD together with the
 /// measured-boot PCR digest. This is the identity the engine should key seal
 /// release off on Azure — where the TD RTMRs are zero, the PCR digest is what
@@ -294,6 +332,59 @@ mod tests {
             nonce: Vec::new(),
             pcr_select: Vec::new(),
         }
+    }
+
+    #[test]
+    fn parses_the_fixture_pcrs_txt() {
+        let txt = include_str!("../tests/fixtures/azure/pcrs.txt");
+        let pcrs = parse_pcrs_txt(txt).expect("fixture pcrs.txt parses");
+        assert!(!pcrs.is_empty());
+        // Round-trips the real chain: these PCRs satisfy the AK quote's pcrDigest.
+        let collateral =
+            crate::Collateral::from_json(include_bytes!("../tests/fixtures/azure/collateral.json"))
+                .unwrap();
+        let td = crate::verify_tdx_quote(
+            include_bytes!("../tests/fixtures/azure/quote.bin"),
+            &collateral,
+            1_783_775_325,
+        )
+        .unwrap();
+        let report = verify_azure_vtpm(
+            &td,
+            include_bytes!("../tests/fixtures/azure/hcl_report.bin"),
+            include_bytes!("../tests/fixtures/azure/ak_quote_msg.bin"),
+            include_bytes!("../tests/fixtures/azure/ak_quote_sig.bin"),
+            &pcrs,
+        )
+        .expect("real vTPM chain verifies with the parsed PCRs");
+        assert_eq!(report.pcr_digest.len(), 32);
+    }
+
+    // Fail-closed parsing: a malformed capture is refused, never partially used.
+    #[test]
+    fn parse_pcrs_txt_rejects_malformed_captures() {
+        let good_line = |i: u32| format!("    {i} : 0x{}\n", "11".repeat(32));
+        let full: String = (0..17).map(good_line).collect();
+        assert!(parse_pcrs_txt(&format!("  sha256:\n{full}")).is_ok());
+        // A foreign bank header must not slip its values into the fold.
+        assert_eq!(
+            parse_pcrs_txt(&format!("  sm3_256:\n{full}")),
+            Err(VtpmError::AttestParse)
+        );
+        // Truncated hex, a duplicate index, and a missing quoted PCR are refused.
+        assert_eq!(
+            parse_pcrs_txt("  sha256:\n    0 : 0x1111\n"),
+            Err(VtpmError::AttestParse)
+        );
+        assert_eq!(
+            parse_pcrs_txt(&format!("  sha256:\n{full}{}", good_line(16))),
+            Err(VtpmError::AttestParse)
+        );
+        let missing: String = (0..16).map(good_line).collect();
+        assert_eq!(
+            parse_pcrs_txt(&format!("  sha256:\n{missing}")),
+            Err(VtpmError::AttestParse)
+        );
     }
 
     // audit DP-005: the Azure vTPM measurement path must apply the SAME acceptable-TCB
