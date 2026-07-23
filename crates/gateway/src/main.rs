@@ -3771,9 +3771,11 @@ struct App {
     /// SEC-020 Phase-2 (C3): this gateway's per-boot ephemeral x25519 DH
     /// SECRET. It never leaves the process and is never logged/served — it
     /// exists so the session secret requires a private key, not just the public
-    /// /attest transcript. Held on the App for the Phase-2 re-handshake refresh
-    /// (D6, a later task); until then the boot-built 401-refresh closure
-    /// carries its own clone — hence `#[allow(dead_code)]` (no in-App reader).
+    /// /attest transcript. The boot handshake consumes it before the App is
+    /// built, and the 401 re-handshake (C4) mints a FRESH ephemeral keypair per
+    /// call instead of reusing this one — hence `#[allow(dead_code)]` (no
+    /// in-App reader; retained so the private half of the `/attest`-served
+    /// `gw_pub` lives exactly as long as the process advertising it).
     #[allow(dead_code)]
     gw_eph_secret: StaticSecret,
     /// SEC-020 Phase-2 (C3): the matching PUBLIC half — served in `/attest`
@@ -5150,41 +5152,42 @@ fn prover_from_str(
 
 /// SEC-020 Task 5: like `prover_from_str` for the None/"mock" cases, but for a real
 /// HTTP prover it ALSO injects the boot-minted `session_token` (sent as
-/// `Authorization: Bearer` on every `/prove`) and a re-handshake closure used to
-/// refresh the token on a 401 (a rebooted / rotated prover). `session_token = None`
-/// ⇒ the client sends no bearer and the prover 401s (fail-closed).
+/// `Authorization: Bearer` on every `/prove`), the boot `session_secret` +
+/// `not_after`, and a re-handshake closure used to refresh ALL THREE on a 401 (C4:
+/// a rebooted / rotated prover mints a NEW secret — refreshing only the token would
+/// leave the gateway sealing under the stale one while the bearer gate passed).
+/// `session_token = None` ⇒ the client sends no bearer and the prover 401s
+/// (fail-closed).
 fn prover_from_env_attested(
     prod: bool,
     session_token: Option<String>,
     session_secret: Option<[u8; 32]>,
-    gw_sk: StaticSecret,
-    gw_pub: [u8; 32],
+    session_not_after: u64,
     dev_insecure: bool,
 ) -> Result<Option<std::sync::Arc<dyn prover_client::ProverClient>>, String> {
     match std::env::var("PROVER_URL").ok().as_deref() {
         Some(url) if !url.is_empty() && url != "mock" => {
             let url_owned = url.to_string();
-            // The 401 re-handshake reuses THIS gateway's per-boot ephemeral
-            // keypair (the pubkey the prover fetched at ITS boot to derive the
-            // shared secret): a REBOOTED prover advertises a fresh `eph_pub` +
-            // `not_after`, and re-running the DH against it re-derives that
-            // prover's current token. `dev_insecure` short-circuits to the fixed
-            // dev token (never a real quote); prod exits before reaching here.
-            //
-            // SEC-020 D6 (a later task): the re-handshake refreshes the /prove
-            // TOKEN only — it must ALSO refresh the client's session_secret +
-            // not_after (with a FRESH keypair) when a rotated prover
-            // re-hands-shakes; the attested seal path is not live until then.
+            // SEC-020 C4: each 401 re-handshake runs a WHOLE fresh DH exchange —
+            // a NEW ephemeral keypair per call (single-use ephemerals are the
+            // handshake's freshness), never a reuse of the boot keypair — and
+            // yields the full `(token, secret, not_after)` triple so the client
+            // refreshes its session as one unit. A REBOOTED prover advertises a
+            // fresh `eph_pub` + `not_after`, and the fresh DH against it derives
+            // that prover's CURRENT secret (the one its seal-open uses).
+            // `dev_insecure` short-circuits to the fixed dev token (never a real
+            // quote; the secret is unused on the dev seal path); prod exits
+            // before reaching here.
             let rehandshake: prover_client::ReHandshake = Box::new(move || {
                 if dev_insecure {
-                    return Ok(DEV_INSECURE_SESSION_TOKEN.to_string());
+                    return Ok((DEV_INSECURE_SESSION_TOKEN.to_string(), [0u8; 32], u64::MAX));
                 }
-                prover_handshake(&url_owned, &gw_sk, &gw_pub)
-                    .map(|(token, _secret, _not_after)| token)
+                let (fresh_sk, fresh_pub) = ephemeral_keypair(&csprng_bytes32());
+                prover_handshake(&url_owned, &fresh_sk, &fresh_pub)
             });
             let client = prover_client::HttpProverClient::from_env(url, prod)?
                 .with_session_token(session_token)
-                .with_session_secret(session_secret)
+                .with_session_secret(session_secret, session_not_after)
                 .with_rehandshake(rehandshake);
             Ok(Some(std::sync::Arc::new(client)))
         }
@@ -5373,45 +5376,49 @@ async fn main() {
     // attested seal key rests on it (never logged/served). `None` on both the dev
     // and refused-prod paths ⇒ the gateway seals with the DEV_INSECURE
     // SoftwareSealProvider; the attested seal is Phase-2-active.
-    let (prover_session_token, prover_session_secret): (Option<String>, Option<[u8; 32]>) =
-        match std::env::var("PROVER_URL").ok().as_deref() {
-            // Only a real HTTP prover has an /attest to shake hands with ("mock" is
-            // in-process and the legacy path has no prover at all).
-            Some(url) if !url.is_empty() && url != "mock" => {
-                if dev_insecure {
-                    // Non-prod only (prod exits above): skip BOTH verifications and
-                    // use the FIXED dev token — never derived from real quotes. No real
-                    // session secret ⇒ the dev SoftwareSealProvider seal path.
-                    eprintln!(
-                        "WARN gateway: INSECURE: attestation handshake skipped — never production"
-                    );
-                    (Some(DEV_INSECURE_SESSION_TOKEN.to_string()), None)
-                } else {
-                    match prover_handshake(url, &gw_eph_secret, &gw_pub) {
-                        // `not_after` (the prover-owned expiry) is already bound
-                        // into the token; D6 (a later task) threads it into the
-                        // client for expiry-aware refresh.
-                        Ok((t, secret, not_after)) => {
-                            println!(
-                                "[attest] prover handshake OK — session token minted \
-                                 (not_after {not_after} ms)"
-                            );
-                            (Some(t), Some(secret))
-                        }
-                        Err(e) => {
-                            // Expected on today's hardware (GB10 CC off ⇒ the NVIDIA
-                            // verify is CcNotEnabled): no token/secret, proving stays closed.
-                            eprintln!(
-                                "[attest] prover handshake REFUSED ({e}) — no session token; \
-                                 proving stays closed once /prove is gated (SEC-020 fail-closed)"
-                            );
-                            (None, None)
-                        }
+    let (prover_session_token, prover_session_secret, prover_session_not_after): (
+        Option<String>,
+        Option<[u8; 32]>,
+        u64,
+    ) = match std::env::var("PROVER_URL").ok().as_deref() {
+        // Only a real HTTP prover has an /attest to shake hands with ("mock" is
+        // in-process and the legacy path has no prover at all).
+        Some(url) if !url.is_empty() && url != "mock" => {
+            if dev_insecure {
+                // Non-prod only (prod exits above): skip BOTH verifications and
+                // use the FIXED dev token — never derived from real quotes. No real
+                // session secret ⇒ the dev SoftwareSealProvider seal path (and no
+                // real expiry — the dev token never rotates).
+                eprintln!(
+                    "WARN gateway: INSECURE: attestation handshake skipped — never production"
+                );
+                (Some(DEV_INSECURE_SESSION_TOKEN.to_string()), None, u64::MAX)
+            } else {
+                match prover_handshake(url, &gw_eph_secret, &gw_pub) {
+                    // `not_after` (the prover-owned expiry) is bound into the
+                    // token AND threaded into the client alongside the secret,
+                    // so a C4 re-handshake refreshes a complete session.
+                    Ok((t, secret, not_after)) => {
+                        println!(
+                            "[attest] prover handshake OK — session token minted \
+                             (not_after {not_after} ms)"
+                        );
+                        (Some(t), Some(secret), not_after)
+                    }
+                    Err(e) => {
+                        // Expected on today's hardware (GB10 CC off ⇒ the NVIDIA
+                        // verify is CcNotEnabled): no token/secret, proving stays closed.
+                        eprintln!(
+                            "[attest] prover handshake REFUSED ({e}) — no session token; \
+                             proving stays closed once /prove is gated (SEC-020 fail-closed)"
+                        );
+                        (None, None, 0)
                     }
                 }
             }
-            _ => (None, None),
-        };
+        }
+        _ => (None, None, 0),
+    };
     // Build the settle path's prover client, injecting the SEC-020 session token +
     // secret + the 401 re-handshake (HTTP prover only). The seal root is resolved
     // fail-closed inside `from_env`, so a prod boot with an unset PROVER_SEAL_ROOT
@@ -5420,10 +5427,7 @@ async fn main() {
         prod,
         prover_session_token.clone(),
         prover_session_secret,
-        // The refresh closure owns its own CLONE of the ephemeral secret; the
-        // App keeps the original for the Phase-2 re-handshake refresh (D6).
-        gw_eph_secret.clone(),
-        gw_pub,
+        prover_session_not_after,
         dev_insecure,
     ) {
         Ok(p) => p,

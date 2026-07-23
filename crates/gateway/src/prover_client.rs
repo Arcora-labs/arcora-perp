@@ -53,11 +53,16 @@ pub enum ProverClientError {
     Unauthorized,
 }
 
-/// SEC-020 Task 5: re-runs the mutual-attestation handshake with the prover and
-/// returns a fresh session token (or an error). Boxed so the attestation
-/// machinery stays in `main.rs` while `HttpProverClient` can refresh its token on
-/// a 401. `Send + Sync` so the client stays `Send + Sync` behind an `Arc`.
-pub type ReHandshake = Box<dyn Fn() -> Result<String, String> + Send + Sync>;
+/// SEC-020 Task 5 / C4: re-runs the mutual-attestation handshake with the prover
+/// and returns a fresh `(session_token, session_secret, not_after)` triple (or an
+/// error). ALL THREE ride the refresh: a rebooted prover derives a NEW session
+/// secret, so refreshing only the token would leave the gateway sealing under the
+/// STALE secret — the /prove bearer would pass while every seal failed to open
+/// (`SealAuthFailed`), wedging proving until a gateway restart (the C4 bug).
+/// Boxed so the attestation machinery stays in `main.rs` while `HttpProverClient`
+/// can refresh its session on a 401. `Send + Sync` so the client stays
+/// `Send + Sync` behind an `Arc`.
+pub type ReHandshake = Box<dyn Fn() -> Result<(String, [u8; 32], u64), String> + Send + Sync>;
 
 /// Turns a sealed window into its six roots + a proof.
 pub trait ProverClient: Send + Sync {
@@ -363,30 +368,43 @@ fn http_post(
     }
 }
 
+/// SEC-020 Task 5 / C4: the mutual-attestation session state, refreshed as ONE
+/// unit by the 401 re-handshake. A single `Mutex` over all three fields (not one
+/// per field) so no interleaving can ever observe a fresh token next to a stale
+/// secret — exactly the seal/open mismatch C4 is about. The lock is only ever
+/// held to read/replace the fields, never across the long-blocking POST.
+struct SessionState {
+    /// The /prove bearer from the (re-)handshake, sent as `Authorization:
+    /// Bearer <token>`. `None` ⇒ the handshake refused (Phase-1 prod) ⇒ no
+    /// bearer is sent and the prover's gate 401s (fail-closed).
+    token: Option<String>,
+    /// The raw mutual-attestation `session_secret` the attested seal key rests
+    /// on (see `AttestedSealProvider`). `Some` ⇒ seal with the attested provider
+    /// (Phase-2-active); `None` ⇒ the DEV_INSECURE fallback seals with
+    /// `SoftwareSealProvider` keyed on `seal_root`. Never logged/served.
+    secret: Option<[u8; 32]>,
+    /// The PROVER-owned session expiry (unix ms) the current token was minted
+    /// under. Stored so the refreshed session is complete; nothing reads it yet
+    /// — D6's expiry-aware (pre-401) refresh will.
+    #[allow(dead_code)]
+    not_after: u64,
+}
+
 /// The real transport: seal the window and POST it to the attested prover-service.
 pub struct HttpProverClient {
     url: String,
     seal_root: [u8; 32],
     measurement: Digest,
     timeout_secs: u64,
-    /// SEC-020 Task 5: the attestation session token from the boot mutual-attestation
-    /// handshake, sent as `Authorization: Bearer <token>` on every `/prove`. `None` ⇒
-    /// the handshake refused (Phase-1 prod) ⇒ no bearer is sent and the prover's gate
-    /// 401s (fail-closed). `Mutex` for interior mutability so a 401 re-handshake can
-    /// refresh the token in place (the trait's `prove` is `&self`). The lock is only
-    /// ever held to read/replace the token, never across the long-blocking POST.
-    session_token: std::sync::Mutex<Option<String>>,
-    /// SEC-020 Task 6: the raw mutual-attestation `session_secret` the attested seal
-    /// key rests on (see `AttestedSealProvider`). `Some` ⇒ seal with the attested
-    /// provider (Phase-2-active); `None` ⇒ the DEV_INSECURE fallback seals with
-    /// `SoftwareSealProvider` keyed on `seal_root`. Never logged/served. Held plainly
-    /// (not behind the token `Mutex`): it is fixed for the process lifetime — the
-    /// Phase-1 401 re-handshake refreshes only the token, and the attested seal path
-    /// is not live until Phase-2 (a Phase-2 rotation must also refresh this secret).
-    session_secret: Option<[u8; 32]>,
+    /// SEC-020 Task 5 / C4: the attestation session from the boot handshake
+    /// (token + secret + not_after), refreshed IN PLACE — all three together —
+    /// by the 401 re-handshake. `Mutex` for interior mutability (the trait's
+    /// `prove` is `&self`); see `SessionState` for the per-field contracts.
+    session: std::sync::Mutex<SessionState>,
     /// SEC-020 Task 5: re-runs the mutual-attestation handshake on a 401 (a rotated /
-    /// rebooted prover) and yields a fresh token. `None` ⇒ no re-handshake wired
-    /// (mock/dev construction) — a 401 is then terminal (still fail-closed).
+    /// rebooted prover) and yields a fresh `(token, secret, not_after)`. `None` ⇒ no
+    /// re-handshake wired (mock/dev construction) — a 401 is then terminal (still
+    /// fail-closed).
     rehandshake: Option<ReHandshake>,
 }
 
@@ -397,8 +415,9 @@ impl HttpProverClient {
     /// production) and the 0xAB.. stand-in measurement; PROVER_TIMEOUT_SECS (default 900
     /// — a real Groth16 proof under qemu takes minutes).
     ///
-    /// The client is built token-less; `with_session_token` / `with_rehandshake` inject
-    /// the SEC-020 handshake state (main.rs wires them after the boot handshake).
+    /// The client is built session-less; `with_session_token` / `with_session_secret` /
+    /// `with_rehandshake` inject the SEC-020 handshake state (main.rs wires them after
+    /// the boot handshake).
     pub fn from_env(url: &str, prod: bool) -> Result<Self, String> {
         let seal_root = prover::resolve_seal_root(prod).map_err(|e| format!("seal root: {e}"))?;
         if std::env::var("PROVER_SEAL_ROOT").is_err() {
@@ -415,8 +434,11 @@ impl HttpProverClient {
             seal_root,
             measurement: [0xABu8; 32],
             timeout_secs,
-            session_token: std::sync::Mutex::new(None),
-            session_secret: None,
+            session: std::sync::Mutex::new(SessionState {
+                token: None,
+                secret: None,
+                not_after: 0,
+            }),
             rehandshake: None,
         })
     }
@@ -424,15 +446,18 @@ impl HttpProverClient {
     /// SEC-020 Task 5: set the boot-minted session token (`None` ⇒ handshake refused ⇒
     /// fail-closed: no bearer is sent and every `/prove` 401s).
     pub fn with_session_token(mut self, token: Option<String>) -> Self {
-        self.session_token = std::sync::Mutex::new(token);
+        self.session.get_mut().unwrap().token = token;
         self
     }
 
-    /// SEC-020 Task 6: set the boot-derived `session_secret` (`None` ⇒ no attested
+    /// SEC-020 Task 6 / C4: set the boot-derived `session_secret` plus the
+    /// prover-owned `not_after` it was minted under (`None` secret ⇒ no attested
     /// session ⇒ the DEV_INSECURE `SoftwareSealProvider` seal path). Mirrors the
     /// prover-service's attested-vs-dev provider selection so seal/open round-trips.
-    pub fn with_session_secret(mut self, secret: Option<[u8; 32]>) -> Self {
-        self.session_secret = secret;
+    pub fn with_session_secret(mut self, secret: Option<[u8; 32]>, not_after: u64) -> Self {
+        let s = self.session.get_mut().unwrap();
+        s.secret = secret;
+        s.not_after = not_after;
         self
     }
 
@@ -443,28 +468,32 @@ impl HttpProverClient {
     }
 }
 
-/// SEC-020 Task 5: run `post` with the current bearer; on a 401 (a stale session —
-/// e.g. the prover rebooted with a new epoch) call `rehandshake` ONCE to mint a fresh
-/// token, persist it via `store`, and retry the POST. A second 401, a missing
-/// re-handshake, or a re-handshake error is terminal — proving stays closed
-/// (fail-closed). Factored out (no I/O of its own) so the retry control flow is
-/// unit-testable without a live prover.
+/// SEC-020 Task 5 / C4: run `post` with the current bearer; on a 401 (a stale
+/// session — e.g. the prover rebooted with a new epoch) call `rehandshake` ONCE to
+/// mint a fresh `(token, secret, not_after)`, persist ALL THREE via `store`, and
+/// retry the POST. `store` runs BEFORE the retry so the retry's re-seal is keyed
+/// by the REFRESHED secret — refreshing only the token would pass the bearer gate
+/// while every seal still failed to open on the rebooted prover (the C4 wedge).
+/// Still bounded to exactly ONE retry: a second 401, a missing re-handshake, or a
+/// re-handshake error is terminal — proving stays closed (fail-closed). Factored
+/// out (no I/O of its own) so the retry control flow is unit-testable without a
+/// live prover.
 fn prove_with_reauth(
     token: Option<String>,
     rehandshake: Option<&ReHandshake>,
     mut post: impl FnMut(Option<&str>) -> Result<ProveOutcome, ProverClientError>,
-    store: impl FnOnce(String),
+    store: impl FnOnce(String, [u8; 32], u64),
 ) -> Result<ProveOutcome, ProverClientError> {
     match post(token.as_deref()) {
         Err(ProverClientError::Unauthorized) => {
             let Some(rehandshake) = rehandshake else {
                 return Err(ProverClientError::Unauthorized);
             };
-            let fresh = rehandshake().map_err(|e| {
+            let (fresh_token, fresh_secret, fresh_not_after) = rehandshake().map_err(|e| {
                 ProverClientError::Http(format!("re-handshake after 401 failed: {e}"))
             })?;
-            store(fresh.clone());
-            post(Some(&fresh))
+            store(fresh_token.clone(), fresh_secret, fresh_not_after);
+            post(Some(&fresh_token))
         }
         other => other,
     }
@@ -472,24 +501,31 @@ fn prove_with_reauth(
 
 impl ProverClient for HttpProverClient {
     fn prove(&self, w: &WindowWitness) -> Result<ProveOutcome, ProverClientError> {
-        let sealed_hex = seal_witness(
-            w,
-            &self.seal_root,
-            &self.measurement,
-            self.session_secret.as_ref(),
-        )?;
-        let body = serde_json::json!({ "sealed": sealed_hex }).to_string();
-        // Snapshot the token (lock released immediately — never held across the
-        // multi-minute POST). `None` ⇒ no bearer sent ⇒ the prover 401s (fail-closed).
-        let token = self.session_token.lock().unwrap().clone();
+        // Snapshot the token (lock released at the end of this statement — never
+        // held across the multi-minute POST). `None` ⇒ no bearer sent ⇒ the
+        // prover 401s (fail-closed).
+        let token = self.session.lock().unwrap().token.clone();
         prove_with_reauth(
             token,
             self.rehandshake.as_ref(),
             |bearer| {
+                // Re-read the CURRENT secret on every attempt (copied out under
+                // the lock, released before sealing): after a 401 → re-handshake
+                // the retry must seal under the REFRESHED secret, or the rebooted
+                // prover (new secret) rejects the stale-keyed seal (C4).
+                let secret = self.session.lock().unwrap().secret;
+                let sealed_hex =
+                    seal_witness(w, &self.seal_root, &self.measurement, secret.as_ref())?;
+                let body = serde_json::json!({ "sealed": sealed_hex }).to_string();
                 let resp = http_post(&self.url, &body, self.timeout_secs, bearer)?;
                 parse_prove_resp(&resp)
             },
-            |fresh| *self.session_token.lock().unwrap() = Some(fresh),
+            |fresh_token, fresh_secret, fresh_not_after| {
+                let mut s = self.session.lock().unwrap();
+                s.token = Some(fresh_token);
+                s.secret = Some(fresh_secret);
+                s.not_after = fresh_not_after;
+            },
         )
     }
 }
@@ -627,13 +663,14 @@ mod reauth_tests {
         }
     }
 
-    /// A 401 triggers ONE re-handshake, then the retry succeeds. The refreshed token
-    /// is persisted and used on the retry.
+    /// A 401 triggers ONE re-handshake, then the retry succeeds. The refreshed
+    /// triple is persisted and the fresh token is used on the retry.
     #[test]
     fn re_handshakes_once_and_retries_on_401() {
         let calls = RefCell::new(Vec::<Option<String>>::new());
-        let stored = RefCell::new(None::<String>);
-        let rehandshake: ReHandshake = Box::new(|| Ok("fresh-token".to_string()));
+        let stored = RefCell::new(None::<(String, [u8; 32], u64)>);
+        let rehandshake: ReHandshake =
+            Box::new(|| Ok(("fresh-token".to_string(), [0xAAu8; 32], 5_000)));
         let out = prove_with_reauth(
             Some("stale-token".to_string()),
             Some(&rehandshake),
@@ -645,7 +682,7 @@ mod reauth_tests {
                     Ok(dummy_outcome()) // retry with the fresh token: OK
                 }
             },
-            |t| *stored.borrow_mut() = Some(t),
+            |t, s, na| *stored.borrow_mut() = Some((t, s, na)),
         );
         assert!(out.is_ok());
         assert_eq!(
@@ -653,14 +690,19 @@ mod reauth_tests {
             vec![Some("stale-token".to_string()), Some("fresh-token".to_string())],
             "posts with the stale token, then retries with the refreshed one"
         );
-        assert_eq!(stored.borrow().as_deref(), Some("fresh-token"));
+        assert_eq!(
+            *stored.borrow(),
+            Some(("fresh-token".to_string(), [0xAAu8; 32], 5_000)),
+            "the WHOLE triple (token, secret, not_after) is persisted"
+        );
     }
 
     /// A second 401 after the re-handshake is terminal — proving stays closed.
     #[test]
     fn second_401_is_terminal() {
         let n = RefCell::new(0);
-        let rehandshake: ReHandshake = Box::new(|| Ok("fresh-token".to_string()));
+        let rehandshake: ReHandshake =
+            Box::new(|| Ok(("fresh-token".to_string(), [0xAAu8; 32], 5_000)));
         let out = prove_with_reauth(
             Some("stale".to_string()),
             Some(&rehandshake),
@@ -668,7 +710,7 @@ mod reauth_tests {
                 *n.borrow_mut() += 1;
                 Err(ProverClientError::Unauthorized)
             },
-            |_| {},
+            |_, _, _| {},
         );
         assert!(matches!(out, Err(ProverClientError::Unauthorized)));
         assert_eq!(*n.borrow(), 2, "one original attempt + one retry, then give up");
@@ -685,10 +727,116 @@ mod reauth_tests {
                 *n.borrow_mut() += 1;
                 Err(ProverClientError::Unauthorized)
             },
-            |_| panic!("must not store a token without a re-handshake"),
+            |_, _, _| panic!("must not store a session without a re-handshake"),
         );
         assert!(matches!(out, Err(ProverClientError::Unauthorized)));
         assert_eq!(*n.borrow(), 1, "no re-handshake ⇒ no retry");
+    }
+
+    /// SEC-020 C4 (Phase-2): the 401 re-handshake must refresh the STORED session
+    /// secret + not_after, not only the token. A rebooted prover derives a NEW
+    /// session secret; if only the token were refreshed the gateway would keep
+    /// sealing under the STALE secret — the bearer gate would pass while every
+    /// seal failed to open (`SealAuthFailed`), wedging proving until a gateway
+    /// restart.
+    #[test]
+    fn rehandshake_refreshes_the_stored_secret_not_only_the_token() {
+        let stale_secret = [0x11u8; 32];
+        let fresh_secret = [0x22u8; 32];
+
+        // The client-side session state, shaped exactly as `HttpProverClient`
+        // holds it: one lock over (token, secret, not_after).
+        let session = std::sync::Mutex::new(SessionState {
+            token: Some("stale-token".to_string()),
+            secret: Some(stale_secret),
+            not_after: 1_000,
+        });
+
+        // The re-handshake against the REBOOTED prover yields a whole fresh triple.
+        let rehandshake: ReHandshake =
+            Box::new(move || Ok(("fresh-token".to_string(), fresh_secret, 2_000)));
+
+        let attempts = RefCell::new(0u32);
+        // Snapshot the token OUTSIDE the call (as `prove` does) so no guard is
+        // alive while the closures re-lock the session.
+        let boot_token = session.lock().unwrap().token.clone();
+        let out = prove_with_reauth(
+            boot_token,
+            Some(&rehandshake),
+            |bearer| {
+                *attempts.borrow_mut() += 1;
+                if *attempts.borrow() == 1 {
+                    // Stale session: the rebooted prover's /prove gate 401s.
+                    Err(ProverClientError::Unauthorized)
+                } else {
+                    // The RETRY must observe the refreshed secret — this is what
+                    // the re-seal reads, so a stale value here IS the C4 wedge.
+                    assert_eq!(
+                        session.lock().unwrap().secret,
+                        Some(fresh_secret),
+                        "retry must seal under the refreshed secret"
+                    );
+                    assert_eq!(bearer, Some("fresh-token"));
+                    Ok(dummy_outcome())
+                }
+            },
+            |t, s, na| {
+                let mut g = session.lock().unwrap();
+                g.token = Some(t);
+                g.secret = Some(s);
+                g.not_after = na;
+            },
+        );
+        assert!(out.is_ok());
+        let g = session.lock().unwrap();
+        assert_eq!(g.token.as_deref(), Some("fresh-token"));
+        assert_eq!(
+            g.secret,
+            Some(fresh_secret),
+            "stored secret must be the FRESH one"
+        );
+        assert_ne!(
+            g.secret,
+            Some(stale_secret),
+            "the stale secret must be gone"
+        );
+        assert_eq!(
+            g.not_after, 2_000,
+            "the prover-owned expiry rides the refresh"
+        );
+
+        // Seal-key contract (mirrors the prover crate's Task-6 round-trip): a seal
+        // keyed by the STORED (post-refresh) secret byte-matches what the rebooted
+        // prover (fresh secret) derives, while the stale secret's seal does not —
+        // i.e. the stale-keyed seal would fail encrypt-then-MAC auth over there.
+        let m = [0xABu8; 32];
+        let nonce = [0x03u8; 32];
+        let seal = |secret: [u8; 32]| {
+            postcard::to_allocvec(
+                &prover::SealedWitness::seal(
+                    b"window witness",
+                    &prover::AttestedSealProvider {
+                        session_secret: secret,
+                        measurement: m,
+                    },
+                    m,
+                    nonce,
+                )
+                .expect("seal"),
+            )
+            .expect("encode")
+        };
+        let stored = g.secret.expect("refreshed secret present");
+        assert_eq!(
+            seal(stored),
+            seal(fresh_secret),
+            "a post-refresh seal opens on the rebooted prover"
+        );
+        assert_ne!(
+            seal(stored),
+            seal(stale_secret),
+            "a stale-keyed seal would fail auth on the rebooted prover"
+        );
     }
 
     /// A successful first attempt never triggers a re-handshake.
@@ -699,7 +847,7 @@ mod reauth_tests {
             Some("good".to_string()),
             Some(&rehandshake),
             |_| Ok(dummy_outcome()),
-            |_| panic!("must not store on success"),
+            |_, _, _| panic!("must not store on success"),
         );
         assert!(out.is_ok());
     }
