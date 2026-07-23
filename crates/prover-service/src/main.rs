@@ -16,8 +16,8 @@ use axum::{
 // DH transcript math is shared with the gateway. `StaticSecret` is the
 // attestation crate's re-export of the ephemeral x25519 secret type.
 use dark_perp_attestation::{
-    dh_shared, ephemeral_keypair, session_secret, session_token, Attestor as _, AzureTdxAttestor,
-    NvidiaCcAttestor, StaticSecret, DEV_INSECURE_SESSION_TOKEN,
+    ct_eq, dh_shared, ephemeral_keypair, session_secret, session_token, Attestor as _,
+    AzureTdxAttestor, NvidiaCcAttestor, StaticSecret, DEV_INSECURE_SESSION_TOKEN,
 };
 use perp_core::hash::Digest;
 use prover::{
@@ -83,15 +83,24 @@ fn hx(b: &[u8]) -> String {
     format!("0x{}", hex::encode(b))
 }
 
-/// SEC-020 Task 5: does the request carry the live attestation session token?
+/// SEC-020 Task 5 + C5: does the request carry the live, UNEXPIRED attestation
+/// session token?
 ///
 /// Fail-closed on an absent/empty stored token. When the boot mutual-attestation
 /// handshake refused (Phase-1 prod: NVIDIA CC off), `App.session_token` is `None`,
 /// so there is NO bearer that can authorize `/prove` — reject BEFORE any
 /// comparison. An empty stored token is treated identically, so a caller sending
 /// `Bearer ` (empty) can never match. Only a present, non-empty stored token is
-/// compared against the presented bearer.
-fn session_authorized(stored: Option<&str>, headers: &axum::http::HeaderMap) -> bool {
+/// compared against the presented bearer — in constant time (`ct_eq`) now that
+/// the token is a real DH-bound secret — and even a matching token is rejected
+/// once past `stored_not_after` (`now_ms > stored_not_after` ⇒ expired ⇒ 401;
+/// a token exactly AT `not_after` is still valid).
+fn session_authorized(
+    stored: Option<&str>,
+    stored_not_after: u64,
+    headers: &axum::http::HeaderMap,
+    now_ms: u64,
+) -> bool {
     // No minted token (handshake refused) or an empty one ⇒ closed: nothing can
     // authorize /prove. This guard MUST run before the compare so an absent/empty
     // stored token never matches any caller-supplied bearer.
@@ -105,12 +114,9 @@ fn session_authorized(stored: Option<&str>, headers: &axum::http::HeaderMap) -> 
     else {
         return false;
     };
-    // TODO(SEC-020 C3): constant-time compare once the session token is a real
-    // secret (today it is recomputable from the public /attest transcript, so
-    // timing secrecy is moot until the DH-bound token lands in Phase 2). The
-    // `subtle` crate is not a dependency of this standalone workspace, so we keep
-    // the plain `==` until the token is a secret worth constant-time handling.
-    bearer == stored
+    // C5: constant-time compare (the token is now a real DH-bound secret) AND
+    // reject a token past its advertised not_after.
+    ct_eq(bearer.as_bytes(), stored.as_bytes()) && now_ms <= stored_not_after
 }
 
 async fn prove(
@@ -118,12 +124,23 @@ async fn prove(
     headers: axum::http::HeaderMap,
     Json(req): Json<ProveReq>,
 ) -> Result<Json<ProveResp>, (StatusCode, String)> {
-    // SEC-020 Task 5: gate /prove behind the session token minted by the boot
-    // mutual-attestation handshake. A missing/invalid `Authorization: Bearer` ⇒
-    // 401. Fail-closed: when the handshake refused, `session_token` is `None` and
-    // EVERY request is rejected here (see `session_authorized`) — proving stays
-    // closed until Phase-2 CC key-release makes a real handshake succeed.
-    if !session_authorized(app.session_token.as_deref(), &headers) {
+    // SEC-020 Task 5 + C5: gate /prove behind the session token minted by the
+    // boot mutual-attestation handshake. A missing/invalid/EXPIRED
+    // `Authorization: Bearer` ⇒ 401. Fail-closed: when the handshake refused,
+    // `session_token` is `None` and EVERY request is rejected here (see
+    // `session_authorized`) — proving stays closed until Phase-2 CC key-release
+    // makes a real handshake succeed.
+    // (C5) One real clock read per request; a pre-epoch clock reads as u64::MAX
+    // so the expiry check fails closed (401) instead of panicking the handler.
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(u64::MAX, |d| d.as_millis() as u64);
+    if !session_authorized(
+        app.session_token.as_deref(),
+        app.session_not_after,
+        &headers,
+        now_ms,
+    ) {
         return Err((
             StatusCode::UNAUTHORIZED,
             "attestation session required".into(),
@@ -374,12 +391,18 @@ async fn main() {
     let (pv_sk, pv_pub) = ephemeral_keypair(&ikm);
     // (C5) The PROVER owns session expiry: `not_after` is computed ONCE at
     // boot, advertised on /attest, and bound into both sides' tokens — the
-    // /prove gate compares against it. This is the only clock read here.
-    let session_not_after = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .expect("clock")
-        .as_millis() as u64
-        + SESSION_TTL_MS;
+    // /prove gate compares against it. This is the only boot-time clock read.
+    // DEV_INSECURE (non-prod only; prod exits above): the FIXED dev token
+    // never expires — `u64::MAX` keeps the dev gate open for the whole run.
+    let session_not_after = if dev_insecure {
+        u64::MAX
+    } else {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("clock")
+            .as_millis() as u64
+            + SESSION_TTL_MS
+    };
     // SEC-020 Task 6: the handshake now yields the raw `session_secret` too (never
     // logged/served) — the attested seal key rests on it. `session_secret = None` ⇒
     // no attested session (dev-insecure skips the handshake; a refused prod handshake
@@ -488,25 +511,58 @@ mod prove_gate {
         h
     }
 
+    fn hdr(bearer: &str) -> axum::http::HeaderMap {
+        let mut h = axum::http::HeaderMap::new();
+        h.insert(
+            axum::http::header::AUTHORIZATION,
+            format!("Bearer {bearer}").parse().unwrap(),
+        );
+        h
+    }
+
     // ── the security core: `session_authorized` fail-closed table ─────────────
+
+    /// SEC-020 C5 (Task 4): the gate enforces `not_after` and the constant-time
+    /// compare — valid+unexpired passes; expired, wrong-same-length, and
+    /// absent/empty stored all fail closed.
+    #[test]
+    fn gate_accepts_valid_unexpired_and_rejects_expired_or_wrong() {
+        let tok = "0xabc123";
+        // valid + unexpired
+        assert!(session_authorized(Some(tok), 1_000, &hdr(tok), 500));
+        // expired
+        assert!(!session_authorized(Some(tok), 1_000, &hdr(tok), 1_001));
+        // wrong token, same length (constant-time path)
+        assert!(!session_authorized(Some(tok), 1_000, &hdr("0xabc124"), 500));
+        // absent/empty stored
+        assert!(!session_authorized(None, 1_000, &hdr(tok), 500));
+        assert!(!session_authorized(Some(""), 1_000, &hdr(tok), 500));
+    }
 
     #[test]
     fn present_token_matches_only_its_exact_bearer() {
         let h = headers_with(Some("Bearer s3cret"));
-        assert!(session_authorized(Some("s3cret"), &h));
-        assert!(!session_authorized(Some("other"), &h));
+        assert!(session_authorized(Some("s3cret"), 1_000, &h, 500));
+        assert!(!session_authorized(Some("other"), 1_000, &h, 500));
     }
 
     #[test]
     fn no_bearer_is_rejected() {
-        assert!(!session_authorized(Some("s3cret"), &headers_with(None)));
+        assert!(!session_authorized(
+            Some("s3cret"),
+            1_000,
+            &headers_with(None),
+            500
+        ));
     }
 
     #[test]
     fn non_bearer_scheme_is_rejected() {
         assert!(!session_authorized(
             Some("s3cret"),
-            &headers_with(Some("Basic s3cret"))
+            1_000,
+            &headers_with(Some("Basic s3cret")),
+            500
         ));
     }
 
@@ -516,11 +572,18 @@ mod prove_gate {
     fn absent_stored_token_never_matches_any_bearer() {
         assert!(!session_authorized(
             None,
-            &headers_with(Some("Bearer s3cret"))
+            1_000,
+            &headers_with(Some("Bearer s3cret")),
+            500
         ));
         // an empty `Bearer ` must not sneak past an absent token either
-        assert!(!session_authorized(None, &headers_with(Some("Bearer "))));
-        assert!(!session_authorized(None, &headers_with(None)));
+        assert!(!session_authorized(
+            None,
+            1_000,
+            &headers_with(Some("Bearer ")),
+            500
+        ));
+        assert!(!session_authorized(None, 1_000, &headers_with(None), 500));
     }
 
     /// An EMPTY stored token must never match — not even an empty `Bearer `.
@@ -528,18 +591,36 @@ mod prove_gate {
     fn empty_stored_token_never_matches() {
         assert!(!session_authorized(
             Some(""),
-            &headers_with(Some("Bearer "))
+            1_000,
+            &headers_with(Some("Bearer ")),
+            500
         ));
         assert!(!session_authorized(
             Some(""),
-            &headers_with(Some("Bearer s3cret"))
+            1_000,
+            &headers_with(Some("Bearer s3cret")),
+            500
         ));
-        assert!(!session_authorized(Some(""), &headers_with(None)));
+        assert!(!session_authorized(
+            Some(""),
+            1_000,
+            &headers_with(None),
+            500
+        ));
+    }
+
+    /// (C5) Expiry boundary: `not_after` is INCLUSIVE — a token presented exactly
+    /// AT `not_after` is still valid; one tick after is expired.
+    #[test]
+    fn expiry_boundary_is_inclusive() {
+        let h = headers_with(Some("Bearer s3cret"));
+        assert!(session_authorized(Some("s3cret"), 1_000, &h, 1_000));
+        assert!(!session_authorized(Some("s3cret"), 1_000, &h, 1_001));
     }
 
     // ── handler-level: the /prove gate returns 401 / lets a valid bearer in ────
 
-    async fn app_with_token(tok: Option<String>) -> Arc<App> {
+    async fn app_with_token(tok: Option<String>, not_after: u64) -> Arc<App> {
         let m = measurement();
         let backend = Sp1GnarkProver::new(m).await;
         Arc::new(App {
@@ -548,7 +629,7 @@ mod prove_gate {
             measurement: m,
             session_token: tok,
             pv_pub: [0u8; 32],
-            session_not_after: 0,
+            session_not_after: not_after,
             dev_insecure: false,
             nv: NvidiaCcAttestor::detect(),
         })
@@ -556,7 +637,7 @@ mod prove_gate {
 
     #[tokio::test]
     async fn prove_without_bearer_is_401() {
-        let app = app_with_token(Some("tok".into())).await;
+        let app = app_with_token(Some("tok".into()), u64::MAX).await;
         let res = prove(
             State(app),
             headers_with(None),
@@ -572,7 +653,7 @@ mod prove_gate {
     /// must 401 — the empty token can never authorize a request.
     #[tokio::test]
     async fn prove_with_empty_stored_token_is_401_even_with_bearer() {
-        let app = app_with_token(Some(String::new())).await;
+        let app = app_with_token(Some(String::new()), u64::MAX).await;
         let res = prove(
             State(app),
             headers_with(Some("Bearer anything")),
@@ -584,9 +665,25 @@ mod prove_gate {
         assert!(matches!(res, Err((StatusCode::UNAUTHORIZED, _))));
     }
 
+    /// (C5) An EXPIRED session must 401 even with the exactly-matching bearer:
+    /// `not_after: 0` is in the past for the handler's real clock read.
+    #[tokio::test]
+    async fn prove_with_expired_session_is_401_even_with_matching_bearer() {
+        let app = app_with_token(Some("tok".into()), 0).await;
+        let res = prove(
+            State(app),
+            headers_with(Some("Bearer tok")),
+            axum::Json(ProveReq {
+                sealed: "0x00".into(),
+            }),
+        )
+        .await;
+        assert!(matches!(res, Err((StatusCode::UNAUTHORIZED, _))));
+    }
+
     #[tokio::test]
     async fn prove_with_valid_bearer_reaches_handler() {
-        let app = app_with_token(Some("tok".into())).await;
+        let app = app_with_token(Some("tok".into()), u64::MAX).await;
         let res = prove(
             State(app),
             headers_with(Some("Bearer tok")),
