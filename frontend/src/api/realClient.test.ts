@@ -545,3 +545,47 @@ describe("client-side market selection (contract)", () => {
     client.dispose();
   });
 });
+
+describe("settlement health (FIN-001)", () => {
+  it("parses the camelCase settlement fields from a state frame", async () => {
+    const client = await bootstrapClient();
+    lastWs!.onmessage!({
+      data: JSON.stringify({
+        type: "state",
+        state: {
+          ...wireState,
+          settlementHealth: "HELD",
+          settlementConsecutiveFailures: 5,
+          settlementLastError: "prover 503",
+          settlementHeldSinceMs: 1234,
+        },
+      }),
+    });
+    expect(client.getState().settlement).toEqual({
+      health: "HELD", consecutiveFailures: 5, lastError: "prover 503", heldSinceMs: 1234,
+    });
+  });
+
+  it("defaults the omitted optionals (serde skip_serializing_if)", async () => {
+    const client = await bootstrapClient();
+    lastWs!.onmessage!({
+      data: JSON.stringify({
+        type: "state",
+        state: { ...wireState, settlementHealth: "DEGRADED", settlementConsecutiveFailures: 2 },
+      }),
+    });
+    expect(client.getState().settlement).toEqual({
+      health: "DEGRADED", consecutiveFailures: 2, lastError: null, heldSinceMs: null,
+    });
+  });
+
+  it("null for an old gateway (fields absent) and for a malformed health", async () => {
+    const client = await bootstrapClient();
+    pushStateFrame(); // the base fixture carries no settlement fields
+    expect(client.getState().settlement).toBeNull();
+    lastWs!.onmessage!({
+      data: JSON.stringify({ type: "state", state: { ...wireState, settlementHealth: "BANANA" } }),
+    });
+    expect(client.getState().settlement).toBeNull();
+  });
+});

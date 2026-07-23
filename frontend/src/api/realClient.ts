@@ -18,7 +18,7 @@
 // the client self-provisions a `/v1` account at bootstrap — its `owner` pubkey
 // is what the sealed-order AAD binds to.
 
-import type { DarkPerpClient, ClientState, OrderEvent } from "./client";
+import type { DarkPerpClient, ClientState, OrderEvent, SettlementHealth } from "./client";
 import type {
   AccountState, BatchSummary, BookLevel, Market, OracleQuote, OrderBookSnapshot,
   OrderInput, Position, RecoveredNote, Receipt, Side, TimeInForce, TrackedOrder,
@@ -56,6 +56,11 @@ interface WireState {
   mmHedge: WireHedge[];
   l1: WireL1 | null;
   attestation: { measurement: string; tcb: string; quoteVersion: number } | null;
+  /// FIN-001 (absent on an old gateway) — validated field-by-field at parse time.
+  settlementHealth?: unknown;
+  settlementConsecutiveFailures?: unknown;
+  settlementLastError?: unknown;
+  settlementHeldSinceMs?: unknown;
 }
 interface WireHedge {
   marketId: number; symbol: string; inventory: string; hedgeTarget: string; notional: string;
@@ -98,6 +103,19 @@ function pOrder(o: WireTrackedOrder): TrackedOrder {
 function pAccount(a: WireState["account"]): AccountState {
   return { settledBalance: B(a.settledBalance), positions: a.positions.map(pPosition) };
 }
+/// FIN-001, defensively: an old gateway (fields absent) or a malformed frame
+/// parses to null — the UI simply hides the row, never crashes.
+function pSettlement(w: WireState): SettlementHealth | null {
+  const h = w.settlementHealth;
+  if (h !== "HEALTHY" && h !== "DEGRADED" && h !== "HELD") return null;
+  return {
+    health: h,
+    consecutiveFailures:
+      typeof w.settlementConsecutiveFailures === "number" ? w.settlementConsecutiveFailures : 0,
+    lastError: typeof w.settlementLastError === "string" ? w.settlementLastError : null,
+    heldSinceMs: typeof w.settlementHeldSinceMs === "number" ? w.settlementHeldSinceMs : null,
+  };
+}
 function parseState(w: WireState): ClientState {
   const marks: Record<number, bigint> = {};
   for (const [k, v] of Object.entries(w.marks)) marks[Number(k)] = B(v);
@@ -139,6 +157,7 @@ function parseState(w: WireState): ClientState {
         }
       : null,
     attestation: w.attestation,
+    settlement: pSettlement(w),
   };
 }
 

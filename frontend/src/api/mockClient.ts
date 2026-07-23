@@ -261,6 +261,7 @@ export class MockDarkPerpClient implements DarkPerpClient {
       mmHedge: [],
       l1: null,
       attestation: null,
+      settlement: null,
     };
   }
 

@@ -1,6 +1,7 @@
 import { useStore } from "../store";
 import { formatPrice, formatSize, formatUsd } from "../domain/format";
 import { accountSummary } from "../domain/risk";
+import type { SettlementHealth } from "../api/client";
 
 type Status = "ok" | "warn" | "down";
 
@@ -13,6 +14,21 @@ function StatusRow({ label, status, detail }: { label: string; status: Status; d
       <span className={`health-row__detail ${tone === "ok" ? "" : tone === "warn" ? "" : "neg"}`}>{detail}</span>
     </div>
   );
+}
+
+/// Exported for tests: the status/detail pair the FIN-001 settle-loop row shows.
+export function settlementRowModel(s: SettlementHealth): { status: Status; detail: string } {
+  if (s.health === "HEALTHY") return { status: "ok", detail: "settling — breaker closed" };
+  if (s.health === "DEGRADED") {
+    return { status: "warn", detail: `${s.consecutiveFailures} consecutive settle failures — backing off` };
+  }
+  const mins =
+    s.heldSinceMs === null ? null : Math.max(0, Math.round((Date.now() - s.heldSinceMs) / 60_000));
+  const err = s.lastError ? ` — ${s.lastError.slice(0, 80)}` : "";
+  return {
+    status: "down",
+    detail: `HELD${mins !== null ? ` for ${mins}m` : ""}${err} — operator resume required`,
+  };
 }
 
 /// System health / status dashboard: service liveness, oracle freshness per market,
@@ -57,6 +73,9 @@ export function HealthPanel() {
   const oracleStatus: Status = liveCount === markets.length ? "ok" : "warn";
   const modeStatus: Status = state.mode === "CloseOnly" ? "warn" : "ok";
 
+  // FIN-001: the settle-loop breaker (null = old gateway / mock → row hidden)
+  const settleRow = state.settlement ? settlementRowModel(state.settlement) : null;
+
   return (
     <div className="grid grid--two">
       <div className="col">
@@ -69,6 +88,9 @@ export function HealthPanel() {
             detail={oracleStatus === "ok" ? "all markets live" : `${liveCount}/${markets.length} live · rest on sim walk`}
           />
           <StatusRow label="Matching / settlement (§2/§3)" status="ok" detail={`${settled} settled · ${matched + accepted} in flight`} />
+          {settleRow && (
+            <StatusRow label="L1 settle loop (FIN-001)" status={settleRow.status} detail={settleRow.detail} />
+          )}
           <StatusRow
             label="System mode (§6)"
             status={modeStatus}

@@ -33,6 +33,17 @@ export interface LpPool {
   myValue: bigint;
 }
 
+/// FIN-001: the gateway settle-loop breaker state, from the status snapshot.
+export interface SettlementHealth {
+  health: "HEALTHY" | "DEGRADED" | "HELD";
+  /// Consecutive settle failures behind `health` (0 when healthy).
+  consecutiveFailures: number;
+  /// Most recent settle error while unhealthy, or null.
+  lastError: string | null;
+  /// Wall-clock ms the loop entered HELD, or null unless currently HELD.
+  heldSinceMs: number | null;
+}
+
 export interface ClientState {
   /// all listed markets
   markets: Market[];
@@ -70,6 +81,8 @@ export interface ClientState {
   l1: L1Settlement | null;
   /// The verified TEE attestation the enclave is bound to, or null (stub enclave).
   attestation: Attestation | null;
+  /// FIN-001 settle-loop health, or null when the gateway predates it (or mock).
+  settlement: SettlementHealth | null;
 }
 
 export interface DarkPerpClient {
