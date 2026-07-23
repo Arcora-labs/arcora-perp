@@ -66,7 +66,7 @@ SEC-020 Phase-1 (merged) built the attested-prover structure: a mutual-attestati
 ### D6 — Re-handshake refreshes secret (C4) · `crates/gateway/src/prover_client.rs` + `main.rs`
 
 - `ReHandshake` returns `(token, secret, not_after)` (was `token` only). `HttpProverClient` holds `session_token`, `session_secret`, `session_not_after` all in a `Mutex` (secret was immutable). `prove_with_reauth`: on `Unauthorized`, call the re-handshake once, store all three, retry. Still bounded to exactly one retry, fail-closed on a second 401.
-- The gateway's re-handshake closure (`main.rs`) is updated to generate a fresh ephemeral keypair, redo the DH handshake, and return the fresh `(token, secret, not_after)` — not reuse the boot values. `seal_witness` uses the refreshed secret.
+- The gateway's re-handshake closure (`main.rs`) REUSES the gateway's boot ephemeral keypair (`gw_eph_secret`/`gw_pub`) and re-fetches the prover's new `eph_pub` from `/attest`, then redoes the DH and returns the fresh `(token, secret, not_after)`. Reuse is mandatory, not optional: `/attest` advertises the boot `gw_pub` for the whole process lifetime (D7 — no mid-run re-advertise), so a rebooted prover derives its secret from `ECDH(pv_sk_new, gw_pub_boot)`; only re-deriving with the same boot key (against the prover's new `pv_pub`) converges both sides on the identical secret + token so the one bounded retry succeeds and proving recovers. `seal_witness` uses the refreshed secret.
 
 ### D7 — Handshake orchestration wiring · `crates/gateway/src/main.rs` + `crates/prover-service/src/main.rs`
 

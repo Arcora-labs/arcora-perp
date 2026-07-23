@@ -3772,10 +3772,13 @@ struct App {
     /// SECRET. It never leaves the process and is never logged/served — it
     /// exists so the session secret requires a private key, not just the public
     /// /attest transcript. The boot handshake consumes it before the App is
-    /// built, and the 401 re-handshake (C4) mints a FRESH ephemeral keypair per
-    /// call instead of reusing this one — hence `#[allow(dead_code)]` (no
-    /// in-App reader; retained so the private half of the `/attest`-served
-    /// `gw_pub` lives exactly as long as the process advertising it).
+    /// built, and the 401 re-handshake (C4) REUSES it via a clone captured in
+    /// the re-handshake closure at boot (so the gateway re-derives against the
+    /// same `/attest`-advertised `gw_pub` a rebooted prover uses). The closure
+    /// captures its own clone before the App exists, so this FIELD still has no
+    /// in-App reader — hence `#[allow(dead_code)]` (retained so the private
+    /// half of the `/attest`-served `gw_pub` lives exactly as long as the
+    /// process advertising it).
     #[allow(dead_code)]
     gw_eph_secret: StaticSecret,
     /// SEC-020 Phase-2 (C3): the matching PUBLIC half — served in `/attest`
@@ -5164,17 +5167,22 @@ fn prover_from_env_attested(
     session_secret: Option<[u8; 32]>,
     session_not_after: u64,
     dev_insecure: bool,
+    gw_eph_secret: StaticSecret,
+    gw_pub: [u8; 32],
 ) -> Result<Option<std::sync::Arc<dyn prover_client::ProverClient>>, String> {
     match std::env::var("PROVER_URL").ok().as_deref() {
         Some(url) if !url.is_empty() && url != "mock" => {
             let url_owned = url.to_string();
-            // SEC-020 C4: each 401 re-handshake runs a WHOLE fresh DH exchange —
-            // a NEW ephemeral keypair per call (single-use ephemerals are the
-            // handshake's freshness), never a reuse of the boot keypair — and
-            // yields the full `(token, secret, not_after)` triple so the client
-            // refreshes its session as one unit. A REBOOTED prover advertises a
-            // fresh `eph_pub` + `not_after`, and the fresh DH against it derives
-            // that prover's CURRENT secret (the one its seal-open uses).
+            // SEC-020 C4: the 401 re-handshake REUSES the gateway's BOOT
+            // ephemeral keypair. `GET /attest` serves the boot `gw_pub` for the
+            // whole process lifetime (no mid-run re-advertise), so a rebooted
+            // prover derives its new secret from ECDH(pv_sk_new, gw_pub_boot) —
+            // only re-deriving with the SAME boot key (against the prover's
+            // newly fetched `pv_pub`) makes both sides converge on the identical
+            // secret + token; a fresh gateway keypair would diverge and wedge
+            // the retry. The closure re-fetches the prover's current `eph_pub` +
+            // `not_after` and yields the full `(token, secret, not_after)`
+            // triple so the client refreshes its session as one unit.
             // `dev_insecure` short-circuits to the fixed dev token (never a real
             // quote; the secret is unused on the dev seal path); prod exits
             // before reaching here.
@@ -5182,8 +5190,7 @@ fn prover_from_env_attested(
                 if dev_insecure {
                     return Ok((DEV_INSECURE_SESSION_TOKEN.to_string(), [0u8; 32], u64::MAX));
                 }
-                let (fresh_sk, fresh_pub) = ephemeral_keypair(&csprng_bytes32());
-                prover_handshake(&url_owned, &fresh_sk, &fresh_pub)
+                prover_handshake(&url_owned, &gw_eph_secret, &gw_pub)
             });
             let client = prover_client::HttpProverClient::from_env(url, prod)?
                 .with_session_token(session_token)
@@ -5429,6 +5436,12 @@ async fn main() {
         prover_session_secret,
         prover_session_not_after,
         dev_insecure,
+        // C4: the re-handshake must reuse the BOOT keypair — /attest keeps
+        // advertising the boot `gw_pub`, so a rebooted prover derives against
+        // it; only the same key re-derives the same secret (clone: the App
+        // below takes ownership of the original).
+        gw_eph_secret.clone(),
+        gw_pub,
     ) {
         Ok(p) => p,
         Err(e) => {
