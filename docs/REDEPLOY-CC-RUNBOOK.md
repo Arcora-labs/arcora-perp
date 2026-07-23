@@ -37,15 +37,52 @@ Real keys are not optional in this window.
 
 ## Phase 0 — Pre-window prep (no downtime; days before)
 
-**0a. SEC-020 Phase-2 hardening package — GATES THE CC LEG (new code).**
-The Phase-2 gate list (SDD ledger + darkperp memory): C1 app-level
-`azure_app_measurement` pinning, C2 per-handshake vTPM freshness, C3 DH-bound
-session token, C4 re-handshake refreshes `session_secret`, C5 token TTL, plus
-constant-time bearer compare and a real `measurement()` (currently `[0xAB]`
-stub). These are inert today ONLY because prod mints no token; enabling CC makes
-them live. **Do not enable CC before this package is merged.** Run it as its own
-SDD spec→plan→implement cycle. If it isn't done by window day, run the window
-with the CC leg dropped (Phase 1 skipped).
+**0a. SEC-020 Phase-2 hardening package — CODE DONE on
+`feat/sec020-phase2-local`; four live items below still GATE THE CC LEG.**
+
+DONE on the branch (local-soundness, TDD'd against the captured Azure fixture):
+- **C1** — `AzureTdxAttestor::verify` anchors on the APP-level
+  `azure_app_measurement` (MRTD‖pcr_digest), not the firmware-only
+  `enclave_measurement`; regression-tested that the firmware fold ≠ app fold
+  and is rejected.
+- **C2** — full vTPM chain verified + AK-extraData freshness gate
+  (`nonce == challenge`); `/attest` carries the full evidence bundle (quote +
+  hcl_report + ak_quote_msg + ak_quote_sig + pcrs).
+- **C3** — DH-bound session secret: ephemeral x25519 per boot,
+  `session_secret` folds the ECDH shared point → not derivable from the public
+  transcript; proven by the public-transcript-cannot-derive test and the
+  mock-Attestor orchestration test (both sides derive the identical
+  secret+token).
+- **C4** — the 401 re-handshake refreshes `session_secret` + `not_after` (not
+  only the token) and REUSES the boot ephemeral keypair, so a rebooted prover
+  and the gateway re-derive the identical secret (convergence proven in
+  re-review).
+- **C5** — `not_after` token TTL enforced on `/prove` (inclusive `<=`) +
+  constant-time bearer compare (`ct_eq`).
+
+DEFERRED to the window smoke — each still gates CC-enable and must be
+exercised live (none droppable):
+- (a) `tee-capture`/`capture.sh` must emit the full five-file bundle into
+  `ATTESTATION_DIR` AND pass `tpm2_quote -q <eph_pub>` so the live
+  AK-extraData binds the caller's fresh ephemeral pubkey. Today capture.sh
+  passes no `-q`, so a live fresh capture has empty extraData → `verify()`
+  correctly fails closed `NonceMismatch`. The fixture (extraData = 0xAB×32) is
+  unaffected; this is a live-capture wiring task.
+- (b) The prover's real NVIDIA CC `measurement()` value — still the `[0xAB]`
+  stub; the `AttestedSealProvider` measurement-binding is vacuous until CC is
+  enabled and a real GB10 CC measurement replaces it.
+- (c) A live fresh Azure capture proving `eph_pub` lands in AK-`extraData`
+  (the committed fixture is static, so this can only be confirmed on a live
+  CVM).
+- (d) CC-on end-to-end gateway↔prover DH handshake — locally the gateway
+  handshake fail-closes at `NvidiaCcAttestor` (`CcNotEnabled`) and
+  `AzureTdxAttestor::quote` reads the static fixture whose extraData can't
+  bind a fresh `eph_pub`, so a real-binary end-to-end handshake cannot pass
+  locally; it is a window smoke.
+
+**Do not enable CC before the branch is merged AND (a)–(d) pass live in the
+window.** If the branch isn't merged by window day, run the window with the CC
+leg dropped (Phase 1 skipped).
 
 **0b. GB10 CC-enable procedure investigation.**
 `nvidia-smi conf-compute` is absent on the GB10; the enable path is likely
@@ -159,7 +196,7 @@ run` (183) so the only window-day delta is the constants.
 
 | # | Decision | Recommendation |
 |---|---|---|
-| 1 | CC leg in or out of this window | In ONLY if 0a (Phase-2 hardening) is merged and 0b confirmed a procedure; else redeploy-only window |
+| 1 | CC leg in or out of this window | In ONLY if the 0a branch (`feat/sec020-phase2-local`, code done) is merged and 0b confirmed a procedure; the 0a deferred items (a)–(d) run IN the window and gate CC-enable; else redeploy-only window |
 | 2 | Wind down the old stack via finalSettle | Yes (honest exit; cheap on testnet) |
 | 3 | Reuse `MockUSDC 0x8a52` | Yes, if `Deploy.s.sol` accepts an existing token address at dry-run |
 | 4 | llama-server during window | Down until Phase 2 smoke passes (RAM headroom), then restore |
