@@ -15,8 +15,12 @@ import { keccak_256 } from "@noble/hashes/sha3";
 import { bytesToHex, hexToBytes, utf8ToBytes, concatBytes } from "@noble/hashes/utils";
 
 // ── chain + contract facts (Base Sepolia public testnet) ─────────────────────
-// Deployed 2026-07-09 (clean pre-alpha stack). Must match TestnetNotice.tsx and
-// deployments/base-sepolia.json — update BOTH on any redeploy.
+// Deployed 2026-07-09 (clean pre-alpha stack — PRE-SEC-019 contracts).
+// ⚠ REDEPLOY GATE: the SEC-019/ZK-001 redeploy replaces BOTH addresses (new
+// CollateralVault arity deposit(uint256,bytes32,bytes) + clean prod genesis).
+// Until then the deposit flow below cannot land on-chain (old vault, new
+// calldata). Must match TestnetNotice.tsx and deployments/base-sepolia.json —
+// update BOTH on any redeploy.
 
 /// Base Sepolia chainId 84532, as the 0x-hex EIP-695 form wallets speak.
 export const BASE_SEPOLIA_CHAIN_ID = "0x14a34";
@@ -315,9 +319,27 @@ export function encodeApprove(spender: string, amount: bigint): string {
   return calldata("approve(address,uint256)", [encodeAddress(spender), encodeUint256(amount)]);
 }
 
-/// `deposit(uint256)` — CollateralVault deposit (emits `Deposit(from, amount)`).
-export function encodeDeposit(amount: bigint): string {
-  return calldata("deposit(uint256)", [encodeUint256(amount)]);
+/**
+ * `deposit(uint256,bytes32,bytes)` — SEC-019 CollateralVault deposit: amount,
+ * the gateway-issued blinded owner commitment, and the gateway's 65-byte
+ * authorization signature (r‖s‖v) over keccak256(chainid ‖ vault ‖ from ‖
+ * ownerCommit ‖ amount). `sig` is the one dynamic argument: its head word is
+ * the tail offset (3 args × 32 = 0x60), the tail is length (65) ‖ the bytes
+ * zero-padded to 96.
+ */
+export function encodeDeposit(amount: bigint, ownerCommit: string, sig: string): string {
+  if (!/^0x[0-9a-fA-F]{130}$/.test(sig)) {
+    throw new Error("gateway sig must be 65-byte 0x hex (r‖s‖v)");
+  }
+  const tail = new Uint8Array(96); // 65 sig bytes zero-padded to 3 words
+  tail.set(hexToBytes(sig.slice(2).toLowerCase()));
+  return calldata("deposit(uint256,bytes32,bytes)", [
+    encodeUint256(amount),
+    encodeBytes32(ownerCommit), // throws on non-32-byte hex
+    encodeUint256(3n * 32n), // offset of the bytes tail
+    encodeUint256(65n), // bytes length
+    tail,
+  ]);
 }
 
 /**

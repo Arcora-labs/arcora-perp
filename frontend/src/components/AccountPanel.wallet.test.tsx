@@ -123,10 +123,10 @@ describe("WalletDepositCard", () => {
     expect(screen.queryByRole("button", { name: /connect wallet/i })).toBeNull();
   });
 
-  it("happy path: connect → deposit runs the 6-step pipeline in order", async () => {
+  it("happy path: connect → deposit runs the 7-step pipeline in order", async () => {
     const p = makeProvider();
     install(p.provider);
-    const { client, bindCalls, creditCalls } = makeClient();
+    const { client, bindCalls, authorizeCalls, creditCalls } = makeClient();
     render(<WalletDepositCard client={client} />);
 
     fireEvent.click(screen.getByRole("button", { name: /connect wallet/i }));
@@ -140,7 +140,7 @@ describe("WalletDepositCard", () => {
     // [1] chain ensured
     expect(p.switches().length).toBe(1);
 
-    // [2..4] mint → approve → deposit, correct targets + calldata
+    // [2..3] mint → approve, correct targets + calldata
     const txs = p.sent();
     expect(txs.length).toBe(3);
     expect(txField(txs[0], "to")).toBe(MOCK_USDC);
@@ -149,18 +149,24 @@ describe("WalletDepositCard", () => {
     expect(txField(txs[1], "to")).toBe(MOCK_USDC);
     expect(txField(txs[1], "data").startsWith("0x095ea7b3")).toBe(true);
     expect(txField(txs[1], "data")).toContain(COLLATERAL_VAULT.slice(2).toLowerCase());
-    expect(txField(txs[2], "to")).toBe(COLLATERAL_VAULT);
-    expect(txField(txs[2], "data").startsWith("0xb6b55f25")).toBe(true);
-    for (const t of txs) expect(txField(t, "from")).toBe(addr);
 
-    // [5] bind: personal_sign over the exact bind digest, then POSTed
+    // [4] bind BEFORE the deposit: personal_sign over the exact bind digest, POSTed
     const signs = p.signs();
     expect(signs.length).toBe(1);
     expect(signs[0].params).toEqual(["0x" + bytesToHex(bindDepositDigest(OWNER, addr)), addr]);
     expect(bindCalls).toEqual([[addr, SIG]]);
     expect(localStorage.getItem(boundStorageKey(bytesToHex(OWNER), addr))).toBe("1");
 
-    // [6] credit with the DEPOSIT tx hash (the 3rd fake hash the provider issued)
+    // [5] SEC-019 authorization for the exact (from, amount)
+    expect(authorizeCalls).toEqual([[addr, 1_000_000_000n]]);
+
+    // [6] deposit tx carries the NEW calldata: selector + the gateway ownerCommit
+    expect(txField(txs[2], "to")).toBe(COLLATERAL_VAULT);
+    expect(txField(txs[2], "data").startsWith("0x2b681307")).toBe(true);
+    expect(txField(txs[2], "data")).toContain(COMMIT.slice(2));
+    for (const t of txs) expect(txField(t, "from")).toBe(addr);
+
+    // [7] credit with the DEPOSIT tx hash (the 3rd fake hash the provider issued)
     expect(creditCalls).toEqual(["0x" + (3).toString(16).padStart(64, "0")]);
   });
 
@@ -242,6 +248,77 @@ describe("WalletDepositCard", () => {
     expect(creditCalls.length).toBe(1);
   });
 
+  it("re-authorizes on a re-run when the deposit tx was never sent (sig binds the amount)", async () => {
+    let rejectDeposit = true;
+    const p = makeProvider({
+      eth_sendTransaction: (_call, calls) => {
+        const n = calls.filter((c) => c.method === "eth_sendTransaction").length;
+        if (n === 3 && rejectDeposit) {
+          rejectDeposit = false; // reject only the FIRST deposit attempt
+          throw { code: 4001 };
+        }
+        return "0x" + n.toString(16).padStart(64, "0");
+      },
+    });
+    install(p.provider);
+    const { client, authorizeCalls, creditCalls } = makeClient();
+    render(<WalletDepositCard client={client} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /connect wallet/i }));
+    await screen.findByText(/0xabcd…ef01/);
+
+    // First attempt: mint + approve land, bind + authorize succeed, the DEPOSIT
+    // send is rejected — no hash recorded.
+    fireEvent.click(screen.getByRole("button", { name: /^deposit$/i }));
+    expect(await screen.findByText(/Transaction rejected in the wallet/i)).toBeTruthy();
+    expect(authorizeCalls.length).toBe(1);
+
+    // Re-run: mint/approve/bind are skipped (done) but authorize runs AGAIN —
+    // a fresh gateway sig for the re-sent deposit.
+    fireEvent.click(screen.getByRole("button", { name: /^deposit$/i }));
+    expect(await screen.findByText(/credited to your trading account/i)).toBeTruthy();
+    expect(authorizeCalls.length).toBe(2);
+    expect(p.sent().length).toBe(4); // mint, approve, rejected deposit, re-sent deposit
+    expect(creditCalls).toEqual(["0x" + (4).toString(16).padStart(64, "0")]);
+  });
+
+  it("amount edit before the deposit landed resets the run — authorize uses the NEW amount", async () => {
+    let rejectDeposit = true;
+    const p = makeProvider({
+      eth_sendTransaction: (_call, calls) => {
+        const n = calls.filter((c) => c.method === "eth_sendTransaction").length;
+        if (n === 3 && rejectDeposit) {
+          rejectDeposit = false; // reject only the FIRST deposit attempt
+          throw { code: 4001 };
+        }
+        return "0x" + n.toString(16).padStart(64, "0");
+      },
+    });
+    install(p.provider);
+    const { client, authorizeCalls, creditCalls } = makeClient();
+    render(<WalletDepositCard client={client} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /connect wallet/i }));
+    await screen.findByText(/0xabcd…ef01/);
+
+    // First attempt at 1000 USDC: deposit send rejected, NO hash recorded.
+    fireEvent.click(screen.getByRole("button", { name: /^deposit$/i }));
+    await screen.findByText(/Transaction rejected in the wallet/i);
+    expect(authorizeCalls).toEqual([[addr, 1_000_000_000n]]);
+
+    // No deposit tx recorded → editing the amount resets the whole pipeline.
+    fireEvent.change(screen.getByLabelText(/deposit amount/i), { target: { value: "500" } });
+    fireEvent.click(screen.getByRole("button", { name: /^deposit$/i }));
+    await screen.findByText(/credited to your trading account/i);
+
+    // Fresh run: mint(4) → approve(5) → deposit(6), and the authorization is
+    // for the NEW amount — the old sig (bound to 1000) was never reusable.
+    expect(authorizeCalls.length).toBe(2);
+    expect(authorizeCalls[1]).toEqual([addr, 500_000_000n]);
+    expect(p.sent().length).toBe(6);
+    expect(creditCalls).toEqual(["0x" + (6).toString(16).padStart(64, "0")]);
+  });
+
   it("re-invokes ensureBaseSepolia on a re-run after a chain-step error (never skipped)", async () => {
     let rejectSwitch = true;
     const p = makeProvider({
@@ -288,7 +365,7 @@ describe("WalletDepositCard", () => {
       },
     });
     install(p.provider);
-    const { client, creditCalls } = makeClient();
+    const { client, authorizeCalls, creditCalls } = makeClient();
     render(<WalletDepositCard client={client} />);
 
     fireEvent.click(screen.getByRole("button", { name: /connect wallet/i }));
@@ -309,6 +386,9 @@ describe("WalletDepositCard", () => {
     );
     expect(depositPolls.length).toBe(2); // failed wait + resumed wait, same hash
     expect(creditCalls).toEqual([DEPOSIT_HASH]);
+    // The recorded hash also means authorize is NOT re-run — the on-chain sig
+    // was already consumed by the sent tx; only the wait + credit resume.
+    expect(authorizeCalls.length).toBe(1);
   });
 });
 

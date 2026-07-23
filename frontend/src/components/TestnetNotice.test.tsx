@@ -21,6 +21,10 @@ describe("TestnetNotice", () => {
     expect(screen.queryByText(/mint\(address,uint256\)/)).toBeNull();
     fireEvent.click(screen.getByText(/get test usdc/i));
     expect(screen.getByText(/mint\(address,uint256\)/)).toBeTruthy();
+    // SEC-019: the bare-cast deposit command is GONE (the vault would revert
+    // it) — the notice must point at the gateway-authorized in-app flow instead.
+    expect(screen.queryByText(/deposit\(uint256\)/)).toBeNull();
+    expect(screen.getByText(/deposit\/authorize/)).toBeTruthy();
   });
 
   it("stays dismissed once acknowledged", () => {

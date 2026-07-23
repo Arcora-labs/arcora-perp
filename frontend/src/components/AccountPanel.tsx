@@ -190,20 +190,21 @@ export function AccountPanel() {
 
 // ── injected-wallet deposit pipeline ─────────────────────────────────────────
 
-type StepId = "chain" | "mint" | "approve" | "deposit" | "bind" | "credit";
+type StepId = "chain" | "mint" | "approve" | "bind" | "authorize" | "deposit" | "credit";
 type StepStatus = "idle" | "pending" | "done" | "error";
 
 const WALLET_STEPS: { id: StepId; label: string }[] = [
   { id: "chain", label: "Switch wallet to Base Sepolia" },
   { id: "mint", label: "Mint test USDC to your wallet" },
   { id: "approve", label: "Approve the vault to pull USDC" },
-  { id: "deposit", label: "Deposit USDC into the vault" },
   { id: "bind", label: "Bind wallet to trading account (one-time signature)" },
+  { id: "authorize", label: "Authorize the deposit with the gateway (SEC-019)" },
+  { id: "deposit", label: "Deposit USDC into the vault" },
   { id: "credit", label: "Credit the trading account" },
 ];
 
 const idleSteps = (): Record<StepId, StepStatus> => ({
-  chain: "idle", mint: "idle", approve: "idle", deposit: "idle", bind: "idle", credit: "idle",
+  chain: "idle", mint: "idle", approve: "idle", bind: "idle", authorize: "idle", deposit: "idle", credit: "idle",
 });
 
 /// localStorage key remembering that `address` is already bound to the account
@@ -221,19 +222,22 @@ const STEP_COLOR: Record<StepStatus, string> = {
 /**
  * The full on-chain deposit pipeline driven by an injected wallet (MetaMask-
  * class): [1] ensure Base Sepolia [2] mint test USDC (open mint — testnet
- * convenience) [3] approve the vault [4] `vault.deposit` [5] bind the EOA to
- * the /v1 account (one `personal_sign`, remembered per account+address)
- * [6] credit via `POST /v1/accounts/deposit/onchain`.
+ * convenience) [3] approve the vault [4] bind the EOA to the /v1 account (one
+ * `personal_sign`, remembered per account+address — MUST precede authorize:
+ * the gateway only authorizes a bound payer) [5] SEC-019 gateway authorization
+ * (`ownerCommit` + sig for this exact amount) [6] `vault.deposit(amount,
+ * ownerCommit, sig)` [7] credit via `POST /v1/accounts/deposit/onchain`.
  *
  * Recoverability: per-step progress is kept across attempts, so a re-run after
- * an error SKIPS the already-done steps (e.g. the deposit tx landed but the
- * gateway credit failed → the retry only re-binds/credits, reusing the tx
- * hash) — with two guards: the chain step ALWAYS re-runs (the user may have
- * manually switched networks between attempts; ensureBaseSepolia is a no-op
- * when already on Base Sepolia), and a tx-sending step whose hash was recorded
- * but not confirmed RESUMES by waiting on that hash instead of sending a
- * duplicate tx. Editing the amount before the deposit landed resets the run —
- * mint/approve simply redo with the new amount (both are idempotent enough).
+ * an error SKIPS the already-done steps — with three guards: the chain step
+ * ALWAYS re-runs (the user may have manually switched networks; a no-op when
+ * already on Base Sepolia); the authorize step re-runs whenever the deposit tx
+ * was NOT yet sent (the sig binds the amount, and the authorization lives only
+ * in the run closure — a fresh run needs a fresh sig; re-authorizing is free
+ * server-side); and a tx-sending step whose hash was recorded but not confirmed
+ * RESUMES by waiting on that hash instead of sending a duplicate tx. Editing
+ * the amount before the deposit landed resets the run — mint/approve simply
+ * redo with the new amount (both are idempotent enough).
  */
 export function WalletDepositCard({ client }: { client: WalletDepositClient }) {
   const address = useWalletAddress();
@@ -272,7 +276,7 @@ export function WalletDepositCard({ client }: { client: WalletDepositClient }) {
   function onAmountChange(v: string) {
     setAmount(v);
     // A new amount restarts the pipeline — UNLESS the deposit tx already
-    // landed (then the remaining bind/credit steps don't depend on the amount,
+    // landed (then the remaining credit step doesn't depend on the amount,
     // and resetting would orphan the on-chain deposit).
     if (!running && !txs.deposit) {
       setSteps(idleSteps());
@@ -292,26 +296,30 @@ export function WalletDepositCard({ client }: { client: WalletDepositClient }) {
     const st = { ...steps };
     const tx = { ...txs };
     const mark = (id: StepId, s: StepStatus) => { st[id] = s; setSteps({ ...st }); };
-    const sendAndWait = async (id: StepId, to: string, data: string) => {
+    // SEC-019: the gateway authorization for THIS run — consumed by the deposit
+    // step's calldata. Never persisted: a run that must re-send the deposit
+    // always re-authorizes first (see the loop's re-run guards).
+    let auth: { ownerCommit: string; sig: string } | null = null;
+    const sendAndWait = async (id: StepId, to: string, data: () => string) => {
       // Resume, don't resend: a prior attempt may have SENT this step's tx but
       // failed while waiting for it (RPC hiccup / confirmation timeout). The
       // hash is already recorded, so re-await the SAME tx instead of proposing
-      // a second one (a duplicate vault.deposit would double-deposit).
+      // a second one (a duplicate vault.deposit would double-deposit). `data`
+      // is lazy so a resumed step never rebuilds calldata it doesn't need.
       const prior = tx[id];
       if (prior) {
         await waitForTx(prior);
         return;
       }
-      const h = await sendTx({ from: address, to, data });
+      const h = await sendTx({ from: address, to, data: data() });
       tx[id] = h;
       setTxs({ ...tx });
       await waitForTx(h);
     };
     const executors: [StepId, () => Promise<void>][] = [
       ["chain", () => ensureBaseSepolia()],
-      ["mint", () => sendAndWait("mint", MOCK_USDC, encodeMint(address, v))],
-      ["approve", () => sendAndWait("approve", MOCK_USDC, encodeApprove(COLLATERAL_VAULT, v))],
-      ["deposit", () => sendAndWait("deposit", COLLATERAL_VAULT, encodeDeposit(v))],
+      ["mint", () => sendAndWait("mint", MOCK_USDC, () => encodeMint(address, v))],
+      ["approve", () => sendAndWait("approve", MOCK_USDC, () => encodeApprove(COLLATERAL_VAULT, v))],
       ["bind", async () => {
         const acct = await client.depositAccount();
         const key = boundStorageKey(bytesToHex(acct.owner), address);
@@ -324,6 +332,13 @@ export function WalletDepositCard({ client }: { client: WalletDepositClient }) {
           try { localStorage.setItem(key, "1"); } catch { /* private mode — re-bind next time (idempotent) */ }
         }
       }],
+      ["authorize", async () => {
+        auth = await client.authorizeDeposit(address, v);
+      }],
+      ["deposit", () => sendAndWait("deposit", COLLATERAL_VAULT, () => {
+        if (!auth) throw new Error("internal: missing gateway authorization");
+        return encodeDeposit(v, auth.ownerCommit, auth.sig);
+      })],
       ["credit", async () => {
         const dep = tx.deposit;
         if (!dep) throw new Error("internal: missing deposit tx hash");
@@ -333,10 +348,14 @@ export function WalletDepositCard({ client }: { client: WalletDepositClient }) {
     ];
     try {
       for (const [id, fn] of executors) {
-        // Recovered run — skip what already succeeded. EXCEPT the chain step:
-        // the user may have manually switched networks between attempts, so it
-        // must ALWAYS re-run (a cheap no-op when already on Base Sepolia).
-        if (st[id] === "done" && id !== "chain") continue;
+        // Recovered run — skip what already succeeded, EXCEPT: the chain step
+        // ALWAYS re-runs (the user may have switched networks between
+        // attempts), and the authorize step re-runs whenever the deposit tx
+        // was NOT yet sent (`auth` lives only in this closure and the sig
+        // binds the amount — a fresh run must fetch a fresh authorization
+        // before it can build the deposit calldata).
+        const mustRerun = id === "chain" || (id === "authorize" && !tx.deposit);
+        if (st[id] === "done" && !mustRerun) continue;
         mark(id, "pending");
         try {
           await fn();
@@ -344,7 +363,7 @@ export function WalletDepositCard({ client }: { client: WalletDepositClient }) {
           mark(id, "error");
           const m = e instanceof Error ? e.message : String(e);
           setErr(
-            tx.deposit && (id === "bind" || id === "credit")
+            tx.deposit && id === "credit"
               ? `${m} — your deposit tx ${shortHash(tx.deposit)} IS on-chain; press Deposit again to finish (completed steps are skipped).`
               : m,
           );

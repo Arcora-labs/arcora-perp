@@ -61,12 +61,17 @@ export function TestnetNotice() {
             {`cast send ${MOCK_USDC} \\\n`}
             {`  "mint(address,uint256)" <YOUR_ADDR> 1000000000 \\\n`}
             {`  --rpc-url https://sepolia.base.org --private-key <YOUR_KEY>\n\n`}
-            {`# 2. approve + deposit into the vault\n`}
+            {`# 2. approve the vault\n`}
             {`cast send ${MOCK_USDC} "approve(address,uint256)" ${VAULT} 1000000000 \\\n`}
-            {`  --rpc-url https://sepolia.base.org --private-key <YOUR_KEY>\n`}
-            {`cast send ${VAULT} "deposit(uint256)" 1000000000 \\\n`}
             {`  --rpc-url https://sepolia.base.org --private-key <YOUR_KEY>`}
           </pre>
+          <p className="banner__desc">
+            The deposit itself is <strong>gateway-authorized</strong> (SEC-019): the vault
+            requires an <code>ownerCommit</code> + signature issued by{" "}
+            <code>POST /v1/accounts/deposit/authorize</code>, so a bare{" "}
+            <code>cast send</code> can no longer enter the vault. Use the in-app flow
+            (<strong>Connect wallet → Deposit</strong>) — it authorizes and deposits for you.
+          </p>
           <p className="banner__desc">
             Then register an API key on the <strong>API</strong> tab and POST the deposit tx
             hash to <code>/v1/accounts/deposit/onchain</code> to credit your account.

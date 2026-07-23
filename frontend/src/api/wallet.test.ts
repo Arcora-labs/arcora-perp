@@ -51,12 +51,12 @@ describe("function selectors", () => {
   it("computes the canonical 4-byte selectors", () => {
     expect(selectorHex("mint(address,uint256)")).toBe("0x40c10f19");
     expect(selectorHex("approve(address,uint256)")).toBe("0x095ea7b3");
-    expect(selectorHex("deposit(uint256)")).toBe("0xb6b55f25");
+    expect(selectorHex("deposit(uint256,bytes32,bytes)")).toBe("0x2b681307");
     expect(selectorHex("claim(address,uint256,uint256,bytes32,bytes32[])")).toBe("0xe1b656ae");
   });
 
   it("selector really is keccak256(signature)[0..4] (recomputed independently)", () => {
-    for (const sig of ["mint(address,uint256)", "deposit(uint256)"]) {
+    for (const sig of ["mint(address,uint256)", "deposit(uint256,bytes32,bytes)"]) {
       const expected = "0x" + bytesToHex(keccak_256(utf8ToBytes(sig)).subarray(0, 4));
       expect(selectorHex(sig)).toBe(expected);
     }
@@ -112,10 +112,24 @@ describe("calldata builders (pinned)", () => {
     );
   });
 
-  it("deposit(1000000000)", () => {
-    expect(encodeDeposit(1_000_000_000n)).toBe(
-      "0xb6b55f25" + "000000000000000000000000000000000000000000000000000000003b9aca00",
+  it("deposit(1000000000, commit, sig) — SEC-019, dynamic sig tail at offset 0x60", () => {
+    expect(
+      encodeDeposit(1_000_000_000n, "0x" + "ab".repeat(32), "0x" + "cd".repeat(65)),
+    ).toBe(
+      "0x2b681307" +
+        "000000000000000000000000000000000000000000000000000000003b9aca00" +
+        "ab".repeat(32) +
+        "0000000000000000000000000000000000000000000000000000000000000060" +
+        "0000000000000000000000000000000000000000000000000000000000000041" +
+        "cd".repeat(65) +
+        "00".repeat(31),
     );
+  });
+
+  it("deposit rejects a malformed ownerCommit or a non-65-byte sig", () => {
+    expect(() => encodeDeposit(1n, "0x1234", "0x" + "cd".repeat(65))).toThrow(/32-byte/);
+    expect(() => encodeDeposit(1n, "0x" + "ab".repeat(32), "0x" + "cd".repeat(64))).toThrow(/65-byte/);
+    expect(() => encodeDeposit(1n, "0x" + "ab".repeat(32), "0xzz")).toThrow(/65-byte/);
   });
 
   const claimArgs = {
