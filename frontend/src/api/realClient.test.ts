@@ -107,6 +107,8 @@ let epochHits = 0;
 let registrations = 0;
 let v1WithdrawStatus = 200; // per-test override: gateway rejection of the REAL path
 let demoWithdrawStatus = 200; // per-test override: legacy demo-mirror failure
+let authorizeStatus = 200; // per-test override: gateway rejection (bind-first etc.)
+let authorizeBody: unknown = null; // per-test override of the response body (null ⇒ well-formed default)
 
 function installFetch() {
   vi.stubGlobal(
@@ -136,6 +138,15 @@ function installFetch() {
           return json({ error: "Not withdrawable: amount exceeds the SETTLED balance in this market (§3)." }, v1WithdrawStatus);
         }
         return json({ to: "0x" + "ab".repeat(20), amount: "5000000", nonce: 0, leaf: "0x" + "aa".repeat(32), status: "recorded" });
+      }
+      if (path === "/v1/accounts/deposit/authorize" && method === "POST") {
+        if (authorizeStatus !== 200) {
+          return json(
+            { error: "Bind a deposit address first (POST /v1/accounts/deposit/address)." },
+            authorizeStatus,
+          );
+        }
+        return json(authorizeBody ?? { ownerCommit: "0x" + "ab".repeat(32), sig: "0x" + "cd".repeat(65) });
       }
       if (path === "/api/withdraw" && method === "POST") {
         if (demoWithdrawStatus !== 200) return json({ error: "demo state unavailable" }, demoWithdrawStatus);
@@ -178,6 +189,8 @@ beforeEach(() => {
   lastWs = null;
   v1WithdrawStatus = 200;
   demoWithdrawStatus = 200;
+  authorizeStatus = 200;
+  authorizeBody = null;
   epochResponse = () => signedEpoch();
   localStorage.clear();
   installFetch();
@@ -432,6 +445,39 @@ describe("RealDarkPerpClient.requestWithdrawal", () => {
     await expect(client.requestWithdrawal(5_000_000n, TO)).resolves.toBeUndefined();
     expect(calls.some((c) => c.path === "/v1/accounts/withdraw")).toBe(true);
     expect(warn).toHaveBeenCalledWith(expect.stringMatching(/mirror/i), expect.anything());
+  });
+});
+
+describe("authorizeDeposit (SEC-019)", () => {
+  const FROM = "0x" + "22".repeat(20);
+
+  it("POSTs from+amount under the account key and returns ownerCommit+sig", async () => {
+    const client = await bootstrapClient();
+    const r = await client.authorizeDeposit(FROM, 1_000_000_000n);
+    expect(r).toEqual({ ownerCommit: "0x" + "ab".repeat(32), sig: "0x" + "cd".repeat(65) });
+    const call = calls.find((c) => c.path === "/v1/accounts/deposit/authorize");
+    expect(call).toBeTruthy();
+    expect(call!.method).toBe("POST");
+    expect(call!.headers["X-Api-Key"]).toBe(ACCT_KEY);
+    expect(call!.body).toEqual({ from: FROM, amount: "1000000000" });
+  });
+
+  it("surfaces the gateway's bind-first error text verbatim", async () => {
+    authorizeStatus = 400;
+    const client = await bootstrapClient();
+    await expect(client.authorizeDeposit(FROM, 1n)).rejects.toThrow(/Bind a deposit address first/);
+  });
+
+  it("rejects a malformed ownerCommit from the gateway", async () => {
+    authorizeBody = { ownerCommit: "0x1234", sig: "0x" + "cd".repeat(65) };
+    const client = await bootstrapClient();
+    await expect(client.authorizeDeposit(FROM, 1n)).rejects.toThrow(/ownerCommit/);
+  });
+
+  it("rejects a malformed signature from the gateway", async () => {
+    authorizeBody = { ownerCommit: "0x" + "ab".repeat(32), sig: "0x1234" };
+    const client = await bootstrapClient();
+    await expect(client.authorizeDeposit(FROM, 1n)).rejects.toThrow(/65-byte/);
   });
 });
 

@@ -32,6 +32,8 @@ const ADDR = "0xAbCdEF0123456789AbCdEF0123456789AbCdEF01";
 const addr = ADDR.toLowerCase();
 const OWNER = new Uint8Array(32).fill(0x11);
 const SIG = "0x" + "ab".repeat(65);
+const COMMIT = "0x" + "ab".repeat(32); // gateway-issued blinded ownerCommit (fake)
+const GWSIG = "0x" + "cd".repeat(65); // gateway 65-byte authorization sig (fake)
 
 interface Call {
   method: string;
@@ -81,18 +83,23 @@ function install(provider: Eip1193Provider) {
 /// A fake gateway client implementing only the wallet-deposit surface.
 function makeClient() {
   const bindCalls: [string, string][] = [];
+  const authorizeCalls: [string, bigint][] = [];
   const creditCalls: string[] = [];
   const client = {
     depositAccount: async () => ({ apiKey: "0x" + "aa".repeat(32), owner: OWNER }),
     bindDepositAddress: async (a: string, s: string) => {
       bindCalls.push([a, s]);
     },
+    authorizeDeposit: async (from: string, amount: bigint) => {
+      authorizeCalls.push([from, amount]);
+      return { ownerCommit: COMMIT, sig: GWSIG };
+    },
     creditOnchainDeposit: async (txHash: string) => {
       creditCalls.push(txHash);
       return 1_000_000_000n;
     },
   };
-  return { client, bindCalls, creditCalls };
+  return { client, bindCalls, authorizeCalls, creditCalls };
 }
 
 function txField(call: Call, field: "to" | "data" | "from"): string {

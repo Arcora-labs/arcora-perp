@@ -748,7 +748,7 @@ export class RealDarkPerpClient implements DarkPerpClient {
   }
 
   // ── injected-wallet deposit flow (see api/wallet.ts) ────────────────────────
-  // These three methods make this client a `WalletDepositClient`: the wallet UI
+  // These four methods make this client a `WalletDepositClient`: the wallet UI
   // is gated on their presence (the mock client lacks them ⇒ no wallet UI).
 
   /**
@@ -773,6 +773,33 @@ export class RealDarkPerpClient implements DarkPerpClient {
       { address, signature },
       { "X-Api-Key": acct.apiKey },
     );
+  }
+
+  /**
+   * `POST /v1/accounts/deposit/authorize` — SEC-019: the gateway pre-authorizes
+   * this exact (from, amount) for the vault, returning the blinded `ownerCommit`
+   * + the 65-byte gateway signature that `deposit(amount, ownerCommit, sig)`
+   * requires on-chain. The gateway refuses unless `from` is the account's bound
+   * deposit address — its error text ("Bind a deposit address first…") is
+   * surfaced verbatim so the pipeline shows the real reason.
+   */
+  async authorizeDeposit(
+    from: string,
+    amount: bigint,
+  ): Promise<{ ownerCommit: string; sig: string }> {
+    const acct = await this.ensureAccount();
+    const r = await this.post<{ ownerCommit?: unknown; sig?: unknown }>(
+      "/v1/accounts/deposit/authorize",
+      { from, amount: s(amount) },
+      { "X-Api-Key": acct.apiKey },
+    );
+    if (typeof r.ownerCommit !== "string" || !/^0x[0-9a-fA-F]{64}$/.test(r.ownerCommit)) {
+      throw new Error("authorize: gateway returned a malformed ownerCommit (expected 32-byte 0x hex)");
+    }
+    if (typeof r.sig !== "string" || !/^0x[0-9a-fA-F]{130}$/.test(r.sig)) {
+      throw new Error("authorize: gateway returned a malformed signature (expected 65-byte 0x hex r‖s‖v)");
+    }
+    return { ownerCommit: r.ownerCommit, sig: r.sig };
   }
 
   /**

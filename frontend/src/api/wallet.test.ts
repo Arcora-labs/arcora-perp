@@ -334,16 +334,20 @@ describe("personalSign", () => {
 });
 
 describe("supportsWalletDeposit", () => {
-  it("true only when all three wallet-deposit methods exist", () => {
+  it("true only when all four wallet-deposit methods exist", () => {
     const full = {
       depositAccount: vi.fn(),
       bindDepositAddress: vi.fn(),
+      authorizeDeposit: vi.fn(),
       creditOnchainDeposit: vi.fn(),
     };
     expect(supportsWalletDeposit(full)).toBe(true);
     expect(supportsWalletDeposit({})).toBe(false);
     expect(supportsWalletDeposit(null)).toBe(false);
     expect(supportsWalletDeposit({ depositAccount: vi.fn() })).toBe(false);
+    // SEC-019: a client without the authorize call must NOT pass the gate —
+    // it could only build the pre-SEC-019 deposit the vault now rejects.
+    expect(supportsWalletDeposit({ ...full, authorizeDeposit: undefined })).toBe(false);
   });
 
   it("the REAL gateway client passes the gate; the mock does not", async () => {

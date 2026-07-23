@@ -374,6 +374,11 @@ export interface WalletDepositClient {
   depositAccount(): Promise<{ apiKey: string; owner: Uint8Array }>;
   /** POST /v1/accounts/deposit/address — bind the EOA (ownership-proven). */
   bindDepositAddress(address: string, signature: string): Promise<void>;
+  /** POST /v1/accounts/deposit/authorize — SEC-019: the gateway pre-authorizes
+   *  this exact (from, amount), returning the blinded ownerCommit + 65-byte
+   *  gateway sig that `deposit(amount, ownerCommit, sig)` requires on-chain.
+   *  `from` must be the account's already-bound deposit address. */
+  authorizeDeposit(from: string, amount: bigint): Promise<{ ownerCommit: string; sig: string }>;
   /** POST /v1/accounts/deposit/onchain — credit a confirmed deposit tx. Returns
    *  the credited amount in USDC base units. */
   creditOnchainDeposit(txHash: string): Promise<bigint>;
@@ -386,6 +391,7 @@ export function supportsWalletDeposit(c: unknown): c is WalletDepositClient {
     x !== null &&
     typeof x.depositAccount === "function" &&
     typeof x.bindDepositAddress === "function" &&
+    typeof x.authorizeDeposit === "function" &&
     typeof x.creditOnchainDeposit === "function"
   );
 }
