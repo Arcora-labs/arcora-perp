@@ -19,6 +19,10 @@ pub use handshake::{
     ct_eq, dh_shared, ephemeral_keypair, session_secret, session_token, DEV_INSECURE_SESSION_TOKEN,
 };
 pub use nvidia_cc::NvidiaCcAttestor;
+/// Re-exported so handshake callers (gateway, prover-service, tests) can NAME
+/// the ephemeral-DH secret type `ephemeral_keypair` returns without taking a
+/// direct x25519-dalek dependency of their own.
+pub use x25519_dalek::StaticSecret;
 
 /// The verified, security-relevant outputs of a TDX DCAP quote.
 #[derive(Debug, Clone)]

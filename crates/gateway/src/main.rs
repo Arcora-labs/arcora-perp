@@ -15,17 +15,19 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use axum::{
     extract::ws::{Message, WebSocket, WebSocketUpgrade},
-    extract::{ConnectInfo, Path, Query, State},
+    extract::{ConnectInfo, Path, State},
     http::{HeaderMap, StatusCode},
     response::IntoResponse,
     routing::{delete, get, post},
     Json, Router,
 };
-// SEC-020 Task 4: mutual-attestation handshake — quote/verify backends + the
-// pure transcript math (session secret/token) shared with the prover-service.
+// SEC-020 mutual-attestation handshake — quote/verify backends + the pure
+// transcript math (ephemeral DH + session secret/token) shared with the
+// prover-service. `StaticSecret` is the attestation crate's re-export of the
+// ephemeral x25519 secret type (no direct x25519-dalek dependency here).
 use dark_perp_attestation::{
-    session_secret, session_token, Attestor as _, AzureTdxAttestor, NvidiaCcAttestor,
-    DEV_INSECURE_SESSION_TOKEN,
+    dh_shared, ephemeral_keypair, session_secret, session_token, Attestor as _, AzureTdxAttestor,
+    NvidiaCcAttestor, StaticSecret, DEV_INSECURE_SESSION_TOKEN,
 };
 use serde::{Deserialize, Serialize};
 use tokio::sync::{broadcast, Mutex};
@@ -496,87 +498,85 @@ fn expected_measurement_env(var: &str) -> Result<Digest, String> {
     parse_hex32(&s).ok_or_else(|| format!("{var} is not 32-byte hex"))
 }
 
-/// SEC-020 Task 4: the gateway's side of the mutual-attestation handshake, run
-/// once at settle-path init. Fetches the prover's `/attest` quote over OUR fresh
-/// per-boot nonce, verifies it against the pinned `PROVER_EXPECTED_MEASUREMENT`
-/// via the NVIDIA CC backend, and mints the session token from the shared
-/// transcript.
+/// SEC-020 Phase-2 (C3): the gateway's side of the ephemeral-DH mutual-
+/// attestation handshake, run once at settle-path init. No query nonce —
+/// freshness is the single-use ephemeral keypair each side binds into its OWN
+/// attested evidence. Fetches the prover's `/attest` `{bundle, eph_pub,
+/// not_after}`, verifies the bundle over the prover's advertised `eph_pub`
+/// against the pinned `PROVER_EXPECTED_MEASUREMENT` via the NVIDIA CC backend,
+/// folds the x25519 ECDH shared point into the session secret, and mints the
+/// token under the PROVER's advertised `not_after` (the prover owns expiry, C5).
 ///
 /// Fail-closed by construction: ANY `Err` at ANY step (env pin unset,
 /// unreachable peer, malformed response, failed verify) aborts the WHOLE
 /// handshake — the caller leaves the token unset and proving stays closed. A
-/// token is never minted from a partial transcript. Phase-1 reality: on today's
-/// CC-off GB10 the `NvidiaCcAttestor::verify` below is `Err(CcNotEnabled)`, so
-/// in production this ALWAYS refuses — independently of whether the Azure-side
-/// verify (the prover's half) would have passed.
+/// token is never minted from a partial transcript. Phase-1 pivot INTACT: on
+/// today's CC-off GB10 the `NvidiaCcAttestor::verify` below is
+/// `Err(CcNotEnabled)`, so in production this ALWAYS refuses — independently of
+/// whether the Azure-side verify (the prover's half) would have passed.
 ///
-/// SEC-020 Task 6: returns BOTH the `/prove` session token AND the raw
-/// `session_secret` — the gateway's attested seal key rests on that secret (mirrors
-/// the prover's `AttestedSealProvider`). The secret is never logged or served; it is
-/// threaded only into the `HttpProverClient` to build the seal provider. On any `Err`
-/// the caller gets neither, so the attested seal is never built from a partial handshake.
-fn prover_handshake(prover_url: &str, gw_nonce: &[u8; 32]) -> Result<(String, [u8; 32]), String> {
+/// Returns the `/prove` session token, the raw `session_secret` (the attested
+/// seal key rests on it — never logged or served; threaded only into the
+/// `HttpProverClient`), and the prover's `not_after`. On any `Err` the caller
+/// gets none of them, so nothing is ever built from a partial handshake.
+fn prover_handshake(
+    prover_url: &str,
+    gw_sk: &StaticSecret,
+    gw_pub: &[u8; 32],
+) -> Result<(String, [u8; 32], u64), String> {
     let gw_expected = expected_measurement_env("GATEWAY_EXPECTED_MEASUREMENT")?;
     let pv_expected = expected_measurement_env("PROVER_EXPECTED_MEASUREMENT")?;
-    let url = format!(
-        "{}/attest?nonce={}",
-        prover_url.trim_end_matches('/'),
-        hex32(gw_nonce)
-    );
+    let url = format!("{}/attest", prover_url.trim_end_matches('/'));
     let resp = http_get_json(&url)?;
-    let quote = resp
-        .get("quote")
+    let bundle = resp
+        .get("bundle")
         .and_then(|v| v.as_str())
         .and_then(decode_hex)
-        .ok_or("no hex `quote` in the prover /attest response")?;
-    // The prover's own per-boot handshake nonce + token epoch ride the /attest
-    // response so both sides derive the identical transcript (and the gateway
-    // mints its token under the PROVER's epoch — the value /prove will compare).
-    let pv_nonce = resp
-        .get("nonce")
+        .ok_or("no hex `bundle` in the prover /attest response")?;
+    // The prover's own per-boot ephemeral DH pubkey + session expiry ride its
+    // /attest response: `eph_pub` is the challenge its evidence must bind, and
+    // the gateway mints its token under the PROVER's `not_after` (the value the
+    // /prove gate will compare — the prover owns expiry).
+    let pv_pub = resp
+        .get("eph_pub")
         .and_then(|v| v.as_str())
         .and_then(parse_hex32)
-        .ok_or("no 32-byte `nonce` in the prover /attest response")?;
-    let epoch = resp
-        .get("epoch")
+        .ok_or("no 32-byte `eph_pub` in the prover /attest response")?;
+    let not_after = resp
+        .get("not_after")
         .and_then(|v| v.as_u64())
-        .ok_or("no `epoch` in the prover /attest response")?;
+        .ok_or("no `not_after` in the prover /attest response")?;
     // Phase-1 fail-closed pivot: CC is off on today's GB10, so this verify is
     // `Err(CcNotEnabled)` and the handshake refuses HERE — token unset, proving
-    // closed — regardless of anything else in the transcript.
+    // closed — regardless of anything else in the transcript. The challenge is
+    // the PROVER's own advertised `eph_pub`: a passing verify proves the peer's
+    // evidence binds the DH key we are about to derive the secret from.
     let pv_meas = NvidiaCcAttestor::detect()
-        .verify(&quote, &pv_expected, gw_nonce)
+        .verify(&bundle, &pv_expected, &pv_pub)
         .map_err(|e| format!("prover quote verify: {e:?}"))?;
-    // Shared transcript orientation (both sides identical): gateway nonce +
-    // measurement first, prover second. `pv_meas` is verify-enforced ==
-    // `pv_expected`; `gw_expected` stands in for our own measurement (the
-    // prover's Azure-side verify enforces the same pin on its half).
-    let secret = session_secret(gw_nonce, &pv_nonce, &gw_expected, &pv_meas);
-    Ok((session_token(&secret, epoch), secret))
+    // Shared transcript orientation (both sides identical): gateway fields
+    // first, prover second. `pv_meas` is verify-enforced == `pv_expected`;
+    // `gw_expected` stands in for our own measurement (the prover's Azure-side
+    // verify enforces the same pin on its half). The ECDH `shared` requires OUR
+    // ephemeral PRIVATE key, so the secret is not derivable from the public
+    // /attest transcript (C3).
+    let shared = dh_shared(gw_sk, &pv_pub);
+    let secret = session_secret(&shared, &gw_expected, &pv_meas, gw_pub, &pv_pub);
+    Ok((session_token(&secret, not_after), secret, not_after))
 }
 
-#[derive(Deserialize)]
-struct AttestQuery {
-    nonce: String,
-}
-
-/// `GET /attest?nonce=0x…` — this gateway's TD quote, for the prover's side of
-/// the SEC-020 mutual-attestation handshake. Serves `AzureTdxAttestor::quote`
-/// (the §5c `ATTESTATION_DIR` capture) plus this host's per-boot handshake
-/// nonce + epoch. No quote source ⇒ 503 — never a fabricated quote.
-///
-/// PHASE 2 (C2): per-handshake freshness must ride the vTPM AK quote extraData
-/// (AzureVtpmReport.nonce, vtpm.rs), and /attest must carry the full tee-capture
-/// vTPM bundle (hcl_report.bin/ak_quote_msg.bin/ak_quote_sig.bin/pcrs.txt), not
-/// just quote.bin. TD-quote report_data is a per-boot static value — no
-/// standalone replay protection.
+/// `GET /attest` — this gateway's attestation evidence bundle + per-boot
+/// ephemeral DH pubkey, for the prover's side of the SEC-020 mutual-attestation
+/// handshake. No `?nonce=` query (C2/C3): freshness IS the single-use `eph_pub`
+/// this boot bound into its own evidence — a replayed `{bundle, eph_pub}` is
+/// useless without the matching ephemeral PRIVATE key. `quote()` binds `gw_pub`
+/// as the challenge on a live CVM (tee-capture AK-extraData); the static local
+/// fixture ignores it, which is why the real-binary handshake is window-deferred.
+/// NO `not_after` here — the PROVER owns session expiry (C5). No quote source ⇒
+/// 503 — never a fabricated bundle.
 async fn get_attest(
     State(app): State<Shared>,
-    Query(q): Query<AttestQuery>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
-    let Some(nonce) = parse_hex32(&q.nonce) else {
-        return Err(err400("nonce must be 32-byte hex".into()));
-    };
     let unavailable = |msg: String| {
         (
             StatusCode::SERVICE_UNAVAILABLE,
@@ -588,11 +588,10 @@ async fn get_attest(
             "attestation not ready: no ATTESTATION_DIR quote/collateral bundle".into(),
         ));
     };
-    match att.quote(&nonce) {
-        Ok(quote) => Ok(Json(serde_json::json!({
-            "quote": hex0x(&quote),
-            "nonce": hex32(&app.hs_nonce),
-            "epoch": app.hs_epoch,
+    match att.quote(&app.gw_pub) {
+        Ok(bundle) => Ok(Json(serde_json::json!({
+            "bundle": hex0x(&bundle),
+            "eph_pub": hex32(&app.gw_pub),
         }))),
         Err(e) => Err(unavailable(format!("attestation not ready: {e:?}"))),
     }
@@ -3769,13 +3768,19 @@ struct App {
     /// serves (pinned collateral + the §5c `ATTESTATION_DIR` capture). `None`
     /// (no bundle configured) ⇒ /attest answers 503 — never a fabricated quote.
     attestor: Option<AzureTdxAttestor>,
-    /// SEC-020 Task 4: this gateway's per-boot handshake nonce — the SAME value
-    /// is served in the /attest response (so the prover derives the shared
-    /// transcript) and used in the outbound settle-path-init handshake.
-    hs_nonce: [u8; 32],
-    /// SEC-020 Task 4: this host's per-boot token epoch, served in /attest
-    /// (informational for the peer; the PROVER's epoch keys the /prove token).
-    hs_epoch: u64,
+    /// SEC-020 Phase-2 (C3): this gateway's per-boot ephemeral x25519 DH
+    /// SECRET. It never leaves the process and is never logged/served — it
+    /// exists so the session secret requires a private key, not just the public
+    /// /attest transcript. Held on the App for the Phase-2 re-handshake refresh
+    /// (D6, a later task); until then the boot-built 401-refresh closure
+    /// carries its own clone — hence `#[allow(dead_code)]` (no in-App reader).
+    #[allow(dead_code)]
+    gw_eph_secret: StaticSecret,
+    /// SEC-020 Phase-2 (C3): the matching PUBLIC half — served in `/attest`
+    /// (and bound as the self-quote challenge on a live CVM) so the prover
+    /// derives the shared transcript. Freshness = this single-use key; no
+    /// fetcher-supplied nonce exists anymore.
+    gw_pub: [u8; 32],
     /// SEC-020 Task 4/5: the session token minted by the settle-path-init mutual-
     /// attestation handshake with the prover. `None` ⇒ the handshake refused or
     /// failed (fail-closed) and no proof request may be authorized. Task 5 injects
@@ -5152,27 +5157,30 @@ fn prover_from_env_attested(
     prod: bool,
     session_token: Option<String>,
     session_secret: Option<[u8; 32]>,
-    hs_nonce: [u8; 32],
+    gw_sk: StaticSecret,
+    gw_pub: [u8; 32],
     dev_insecure: bool,
 ) -> Result<Option<std::sync::Arc<dyn prover_client::ProverClient>>, String> {
     match std::env::var("PROVER_URL").ok().as_deref() {
         Some(url) if !url.is_empty() && url != "mock" => {
             let url_owned = url.to_string();
-            // The 401 re-handshake reuses THIS gateway's per-boot nonce (the value the
-            // prover fetched at its boot to derive the shared secret), so a refresh
-            // reproduces the prover's current token; a fresh nonce would derive a
-            // different secret and never match. `dev_insecure` short-circuits to the
-            // fixed dev token (never a real quote); prod exits before reaching here.
+            // The 401 re-handshake reuses THIS gateway's per-boot ephemeral
+            // keypair (the pubkey the prover fetched at ITS boot to derive the
+            // shared secret): a REBOOTED prover advertises a fresh `eph_pub` +
+            // `not_after`, and re-running the DH against it re-derives that
+            // prover's current token. `dev_insecure` short-circuits to the fixed
+            // dev token (never a real quote); prod exits before reaching here.
             //
-            // SEC-020 Task 6: the re-handshake refreshes the /prove TOKEN only — the
-            // attested seal path is not live in Phase 1 (session_secret is None on
-            // both the dev and refused-prod paths). Phase 2 must also refresh the
-            // client's session_secret here when a rotated prover re-hands-shakes.
+            // SEC-020 D6 (a later task): the re-handshake refreshes the /prove
+            // TOKEN only — it must ALSO refresh the client's session_secret +
+            // not_after (with a FRESH keypair) when a rotated prover
+            // re-hands-shakes; the attested seal path is not live until then.
             let rehandshake: prover_client::ReHandshake = Box::new(move || {
                 if dev_insecure {
                     return Ok(DEV_INSECURE_SESSION_TOKEN.to_string());
                 }
-                prover_handshake(&url_owned, &hs_nonce).map(|(token, _secret)| token)
+                prover_handshake(&url_owned, &gw_sk, &gw_pub)
+                    .map(|(token, _secret, _not_after)| token)
             });
             let client = prover_client::HttpProverClient::from_env(url, prod)?
                 .with_session_token(session_token)
@@ -5355,11 +5363,12 @@ async fn main() {
     // (Task 5, below) so it rides every /prove as `Authorization: Bearer`; a `None`
     // token ⇒ the client sends no bearer and the prover 401s (fail-closed). The
     // handshake runs BEFORE the client is built because the client needs the token.
-    let hs_nonce = csprng_bytes32();
-    // Hour-granularity epoch for OUR /attest response (informational — the
-    // prover's advertised epoch is what keys the /prove token; see
-    // `prover_handshake`).
-    let hs_epoch = now_ms() / 1000 / 3600;
+    // SEC-020 Phase-2 (C3): the per-boot ephemeral x25519 keypair — the
+    // freshness for BOTH directions of the handshake. The public half rides our
+    // /attest (and is the challenge a live self-quote binds); the SECRET half is
+    // what makes the session secret underivable from the public transcript. It
+    // is never logged or served.
+    let (gw_eph_secret, gw_pub) = ephemeral_keypair(&csprng_bytes32());
     // SEC-020 Task 6: capture the raw `session_secret` alongside the token — the
     // attested seal key rests on it (never logged/served). `None` on both the dev
     // and refused-prod paths ⇒ the gateway seals with the DEV_INSECURE
@@ -5378,9 +5387,15 @@ async fn main() {
                     );
                     (Some(DEV_INSECURE_SESSION_TOKEN.to_string()), None)
                 } else {
-                    match prover_handshake(url, &hs_nonce) {
-                        Ok((t, secret)) => {
-                            println!("[attest] prover handshake OK — session token minted");
+                    match prover_handshake(url, &gw_eph_secret, &gw_pub) {
+                        // `not_after` (the prover-owned expiry) is already bound
+                        // into the token; D6 (a later task) threads it into the
+                        // client for expiry-aware refresh.
+                        Ok((t, secret, not_after)) => {
+                            println!(
+                                "[attest] prover handshake OK — session token minted \
+                                 (not_after {not_after} ms)"
+                            );
                             (Some(t), Some(secret))
                         }
                         Err(e) => {
@@ -5405,7 +5420,10 @@ async fn main() {
         prod,
         prover_session_token.clone(),
         prover_session_secret,
-        hs_nonce,
+        // The refresh closure owns its own CLONE of the ephemeral secret; the
+        // App keeps the original for the Phase-2 re-handshake refresh (D6).
+        gw_eph_secret.clone(),
+        gw_pub,
         dev_insecure,
     ) {
         Ok(p) => p,
@@ -5775,8 +5793,8 @@ async fn main() {
         prover: prover.clone(),
         candles: Mutex::new(candles::CandleStore::new()),
         attestor,
-        hs_nonce,
-        hs_epoch,
+        gw_eph_secret,
+        gw_pub,
         prover_session_token,
         force_settle: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
     });
@@ -6622,6 +6640,9 @@ mod tests {
     fn test_app() -> Shared {
         let (tx, _rx) = broadcast::channel::<String>(16);
         let (events_tx, _erx) = broadcast::channel::<String>(16);
+        // A fixed-IKM ephemeral keypair — deterministic, fine for router tests
+        // (no handshake runs; /attest 503s on `attestor: None` anyway).
+        let (gw_eph_secret, gw_pub) = ephemeral_keypair(&[0u8; 32]);
         Arc::new(App {
             gw: Mutex::new(Gw::boot()),
             tx,
@@ -6632,8 +6653,8 @@ mod tests {
             prover: None,
             candles: Mutex::new(candles::CandleStore::new()),
             attestor: None,
-            hs_nonce: [0u8; 32],
-            hs_epoch: 0,
+            gw_eph_secret,
+            gw_pub,
             prover_session_token: None,
             force_settle: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
         })

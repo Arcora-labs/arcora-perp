@@ -5,18 +5,19 @@
 mod sp1_prover;
 
 use axum::{
-    extract::{Query, State},
+    extract::State,
     http::StatusCode,
     routing::{get, post},
     Json, Router,
 };
-// SEC-020 Task 4: mutual-attestation handshake — AzureTdxAttestor verifies the
-// GATEWAY's TD quote, NvidiaCcAttestor produces OUR self-quote (fail-closed
-// CcNotEnabled until GB10 CC mode is on), and the pure session secret/token
-// math is shared with the gateway.
+// SEC-020 mutual-attestation handshake — AzureTdxAttestor verifies the
+// GATEWAY's evidence bundle, NvidiaCcAttestor produces OUR self-quote
+// (fail-closed CcNotEnabled until GB10 CC mode is on), and the pure ephemeral-
+// DH transcript math is shared with the gateway. `StaticSecret` is the
+// attestation crate's re-export of the ephemeral x25519 secret type.
 use dark_perp_attestation::{
-    session_secret, session_token, Attestor as _, AzureTdxAttestor, NvidiaCcAttestor,
-    DEV_INSECURE_SESSION_TOKEN,
+    dh_shared, ephemeral_keypair, session_secret, session_token, Attestor as _, AzureTdxAttestor,
+    NvidiaCcAttestor, StaticSecret, DEV_INSECURE_SESSION_TOKEN,
 };
 use perp_core::hash::Digest;
 use prover::{
@@ -42,13 +43,17 @@ struct App {
     /// `/prove` gate then rejects every caller (see `session_authorized`). Task 5
     /// makes `prove` read this to authorize `Authorization: Bearer` requests.
     session_token: Option<String>,
-    /// This host's per-boot handshake nonce: served in the /attest response
-    /// (so the gateway derives the shared transcript) and used in our own boot
-    /// fetch of the gateway's /attest.
-    hs_nonce: [u8; 32],
-    /// Per-boot token epoch, advertised in /attest — the gateway mints ITS copy
-    /// of the token under this epoch, so both sides compare equal on /prove.
-    hs_epoch: u64,
+    /// SEC-020 Phase-2 (C3): this prover's per-boot ephemeral x25519 DH PUBLIC
+    /// key — served in /attest (and bound as our self-quote challenge) so the
+    /// gateway derives the shared transcript. Freshness = this single-use key;
+    /// no fetcher-supplied nonce exists anymore. The matching SECRET is
+    /// consumed by `boot_handshake` at boot and dropped — it never lands here.
+    pv_pub: [u8; 32],
+    /// SEC-020 Phase-2 (C5): the session expiry this boot advertises and mints
+    /// under — `now + SESSION_TTL_MS`, computed ONCE at boot. The PROVER owns
+    /// expiry; the gateway echoes this value into its own token so both sides
+    /// compare equal on /prove.
+    session_not_after: u64,
     /// DEV_INSECURE mode (non-prod only; prod refuses to boot with it).
     dev_insecure: bool,
     /// The NVIDIA CC self-quote backend — fail-closed (`CcNotEnabled`) until
@@ -211,29 +216,43 @@ fn expected_measurement_env(var: &str) -> Result<Digest, String> {
     parse_hex32(&s).ok_or_else(|| format!("{var} is not 32-byte hex"))
 }
 
-/// SEC-020 Task 4: the prover's side of the boot mutual-attestation handshake.
-/// Fetches the gateway's `/attest` quote over OUR fresh per-boot nonce, verifies
-/// it against the pinned `GATEWAY_EXPECTED_MEASUREMENT`, and mints the session
-/// token from the shared transcript.
+/// SEC-020 Phase-2 (C5): how long a boot-minted attestation session lives. The
+/// PROVER owns expiry (it enforces the /prove gate): `not_after = now +
+/// SESSION_TTL_MS` is computed ONCE at boot, advertised on /attest, and bound
+/// into both sides' tokens. This is the ONLY clock read in the token path.
+const SESSION_TTL_MS: u64 = 15 * 60 * 1000;
+
+/// SEC-020 Phase-2 (C3): the prover's side of the boot mutual-attestation
+/// handshake — the ephemeral-DH flow. No query nonce: freshness is the
+/// single-use ephemeral keypair each side binds into its OWN attested evidence.
+/// Fetches the gateway's `/attest` `{bundle, eph_pub}` (NO `not_after` there —
+/// WE own expiry), verifies the bundle over the gateway's advertised `eph_pub`
+/// against the pinned `GATEWAY_EXPECTED_MEASUREMENT`, folds the x25519 ECDH
+/// shared point into the session secret, and mints the token under OUR
+/// `not_after` (the caller computed it once at boot and already holds it).
 ///
 /// Fail-closed by construction: ANY `Err` at ANY step (env pin unset, no pinned
 /// collateral, unreachable peer, malformed response, failed verify) aborts the
 /// WHOLE handshake — the caller leaves the session token unset and the /prove
 /// gate stays closed. A token is never minted from a partial transcript.
 ///
-/// SEC-020 Task 6: returns BOTH the `/prove` session token AND the raw
-/// `session_secret` — the attested seal key rests on that secret (see
-/// `AttestedSealProvider`). The secret must never be logged or served; it stays in
-/// process memory only to build the provider. On any `Err` the caller gets neither,
-/// so the attested provider is never built from a partial handshake.
-fn boot_handshake(pv_nonce: &[u8; 32], epoch: u64) -> Result<(String, [u8; 32]), String> {
+/// Returns BOTH the `/prove` session token AND the raw `session_secret` — the
+/// attested seal key rests on that secret (see `AttestedSealProvider`). The
+/// secret must never be logged or served; it stays in process memory only to
+/// build the provider. On any `Err` the caller gets neither, so the attested
+/// provider is never built from a partial handshake.
+fn boot_handshake(
+    pv_sk: &StaticSecret,
+    pv_pub: &[u8; 32],
+    not_after: u64,
+) -> Result<(String, [u8; 32]), String> {
     let gw_url = std::env::var("GATEWAY_URL")
         .map_err(|_| "GATEWAY_URL unset — cannot reach the gateway's /attest".to_string())?;
     let gw_expected = expected_measurement_env("GATEWAY_EXPECTED_MEASUREMENT")?;
     let pv_expected = expected_measurement_env("PROVER_EXPECTED_MEASUREMENT")?;
-    // The pinned DCAP collateral the gateway's TD quote is verified against —
-    // the same ATTESTATION_DIR bundle layout the gateway's §5c self-attest uses
-    // (this box carries a pinned copy).
+    // The pinned DCAP collateral the gateway's evidence bundle is verified
+    // against — the same ATTESTATION_DIR bundle layout the gateway's §5c
+    // self-attest uses (this box carries a pinned copy).
     let dir = std::env::var("ATTESTATION_DIR").map_err(|_| {
         "ATTESTATION_DIR unset — no pinned collateral to verify the gateway quote".to_string()
     })?;
@@ -242,81 +261,68 @@ fn boot_handshake(pv_nonce: &[u8; 32], epoch: u64) -> Result<(String, [u8; 32]),
     let azure =
         AzureTdxAttestor::from_collateral_json(&collateral).map_err(|e| format!("{e:?}"))?;
 
-    let url = format!(
-        "{}/attest?nonce=0x{}",
-        gw_url.trim_end_matches('/'),
-        hex::encode(pv_nonce)
-    );
+    let url = format!("{}/attest", gw_url.trim_end_matches('/'));
     let resp = http_get_json(&url)?;
-    let quote = resp
-        .get("quote")
+    let bundle = resp
+        .get("bundle")
         .and_then(|v| v.as_str())
         .map(|s| hex::decode(s.trim_start_matches("0x")))
         .and_then(Result::ok)
-        .ok_or("no hex `quote` in the gateway /attest response")?;
-    // The gateway's own per-boot handshake nonce rides its /attest response so
-    // both sides derive the identical transcript.
-    let gw_nonce = resp
-        .get("nonce")
+        .ok_or("no hex `bundle` in the gateway /attest response")?;
+    // The gateway's own per-boot ephemeral DH pubkey rides its /attest response;
+    // its evidence must bind that key (verify's challenge below), so a MITM
+    // cannot substitute its own DH key without failing the verify.
+    let gw_pub = resp
+        .get("eph_pub")
         .and_then(|v| v.as_str())
         .and_then(parse_hex32)
-        .ok_or("no 32-byte `nonce` in the gateway /attest response")?;
+        .ok_or("no 32-byte `eph_pub` in the gateway /attest response")?;
 
-    // PHASE 2 (C2): per-handshake freshness must ride the vTPM AK quote extraData
-    // (AzureVtpmReport.nonce, vtpm.rs), and /attest must carry the full tee-capture
-    // vTPM bundle (hcl_report.bin/ak_quote_msg.bin/ak_quote_sig.bin/pcrs.txt), not
-    // just quote.bin. TD-quote report_data is a per-boot static value — no
-    // standalone replay protection.
-    //
-    // PHASE 2 (C1): GATEWAY_EXPECTED_MEASUREMENT must be the APP-level
-    // azure_app_measurement (MRTD‖pcr_digest, see vtpm.rs), NOT the firmware-only
-    // TD-quote fold; AzureTdxAttestor::verify pins firmware-level today. Do NOT
-    // enable CC until this is app-level or two app binaries on one SKU cross-verify.
+    // Local reality: the STATIC Azure fixture's AK-extraData cannot bind our
+    // fresh gw_pub, so this verify is NonceMismatch locally — the real-binary
+    // handshake is window-deferred (a live tee-capture binds eph_pub on the CVM).
     let gw_meas = azure
-        .verify(&quote, &gw_expected, pv_nonce)
+        .verify(&bundle, &gw_expected, &gw_pub)
         .map_err(|e| format!("gateway quote verify: {e:?}"))?;
 
-    // Shared transcript orientation (both sides identical): gateway nonce +
-    // measurement first, prover second. `gw_meas` is verify-enforced ==
-    // `gw_expected`; `pv_expected` stands in for our own measurement (the
-    // gateway's NVIDIA-side verify enforces the same pin on its half).
-    let secret = session_secret(&gw_nonce, pv_nonce, &gw_meas, &pv_expected);
-    Ok((session_token(&secret, epoch), secret))
+    // Shared transcript orientation (both sides identical): gateway fields
+    // first, prover second — the SAME call shape as the gateway's
+    // `prover_handshake`. `gw_meas` is verify-enforced == `gw_expected`;
+    // `pv_expected` stands in for our own measurement (the gateway's
+    // NVIDIA-side verify enforces the same pin on its half). The ECDH `shared`
+    // requires OUR ephemeral PRIVATE key, so the secret is not derivable from
+    // the public /attest transcript (C3).
+    let shared = dh_shared(pv_sk, &gw_pub);
+    let secret = session_secret(&shared, &gw_meas, &pv_expected, &gw_pub, pv_pub);
+    Ok((session_token(&secret, not_after), secret))
 }
 
-#[derive(Deserialize)]
-struct AttestQuery {
-    nonce: String,
-}
-
-/// `GET /attest?nonce=0x…` — this prover's self-quote, for the gateway's side of
-/// the SEC-020 mutual-attestation handshake. The quote is
-/// `NvidiaCcAttestor::quote(nonce)`: on today's CC-off GB10 that is
-/// `Err(CcNotEnabled)`, so this endpoint answers 503 (attestation not ready)
-/// rather than fabricating a quote — fail-closed. The response also carries this
-/// host's per-boot handshake nonce + token epoch so the caller derives the
-/// shared transcript (and mints under OUR epoch — the value /prove compares).
+/// `GET /attest` — this prover's self-quote evidence, for the gateway's side of
+/// the SEC-020 mutual-attestation handshake. No `?nonce=` query (C2/C3):
+/// freshness IS the single-use `eph_pub` this boot bound into its own evidence
+/// (`NvidiaCcAttestor::quote(&pv_pub)`) — a replayed `{bundle, eph_pub}` is
+/// useless without the matching ephemeral PRIVATE key. On today's CC-off GB10
+/// the quote is `Err(CcNotEnabled)`, so this endpoint answers 503 (attestation
+/// not ready) rather than fabricating evidence — fail-closed. The response also
+/// carries `not_after` — WE own session expiry (C5); the gateway mints its
+/// token under this value, so both sides compare equal on /prove.
 async fn attest(
     State(app): State<Arc<App>>,
-    Query(q): Query<AttestQuery>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
-    let Some(nonce) = parse_hex32(&q.nonce) else {
-        return Err((StatusCode::BAD_REQUEST, "nonce must be 32-byte hex".into()));
-    };
     if app.dev_insecure {
         // DEV_INSECURE (non-prod only — prod refuses to boot with it): a clearly
-        // labeled placeholder, never mistakable for a real quote.
+        // labeled placeholder, never mistakable for a real evidence bundle.
         return Ok(Json(serde_json::json!({
-            "quote": "dev-insecure-placeholder-quote",
-            "nonce": hx(&app.hs_nonce),
-            "epoch": app.hs_epoch,
+            "bundle": "dev-insecure-placeholder-bundle",
+            "eph_pub": hx(&app.pv_pub),
+            "not_after": app.session_not_after,
         })));
     }
-    match app.nv.quote(&nonce) {
-        Ok(quote) => Ok(Json(serde_json::json!({
-            "quote": hx(&quote),
-            "nonce": hx(&app.hs_nonce),
-            "epoch": app.hs_epoch,
+    match app.nv.quote(&app.pv_pub) {
+        Ok(bundle) => Ok(Json(serde_json::json!({
+            "bundle": hx(&bundle),
+            "eph_pub": hx(&app.pv_pub),
+            "not_after": app.session_not_after,
         }))),
         // CcNotEnabled / Backend: this prover cannot attest itself yet — 503 and
         // the gateway's handshake refuses (fail-closed); never a fabricated quote.
@@ -358,16 +364,22 @@ async fn main() {
         eprintln!("prover-service: DEV_INSECURE is forbidden when PROD is set — refusing to start");
         std::process::exit(1);
     }
-    let mut hs_nonce = [0u8; 32];
-    getrandom::getrandom(&mut hs_nonce).expect("OS CSPRNG");
-    // Per-boot token epoch (hour granularity), advertised in /attest so the
-    // gateway mints the token /prove will compare. Rotation/expiry lands with
-    // the /prove gate.
-    let hs_epoch = std::time::SystemTime::now()
+    // SEC-020 Phase-2 (C3): the per-boot ephemeral x25519 keypair — the
+    // freshness for BOTH directions of the handshake. The public half rides our
+    // /attest (and is the challenge our self-quote binds); the SECRET half is
+    // consumed by boot_handshake below and dropped (zeroize-on-drop) — it is
+    // never stored, logged, or served.
+    let mut ikm = [0u8; 32];
+    getrandom::getrandom(&mut ikm).expect("OS CSPRNG");
+    let (pv_sk, pv_pub) = ephemeral_keypair(&ikm);
+    // (C5) The PROVER owns session expiry: `not_after` is computed ONCE at
+    // boot, advertised on /attest, and bound into both sides' tokens — the
+    // /prove gate compares against it. This is the only clock read here.
+    let session_not_after = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .expect("clock")
-        .as_secs()
-        / 3600;
+        .as_millis() as u64
+        + SESSION_TTL_MS;
     // SEC-020 Task 6: the handshake now yields the raw `session_secret` too (never
     // logged/served) — the attested seal key rests on it. `session_secret = None` ⇒
     // no attested session (dev-insecure skips the handshake; a refused prod handshake
@@ -381,7 +393,7 @@ async fn main() {
         );
         (Some(DEV_INSECURE_SESSION_TOKEN.to_string()), None)
     } else {
-        match boot_handshake(&hs_nonce, hs_epoch) {
+        match boot_handshake(&pv_sk, &pv_pub, session_not_after) {
             Ok((t, secret)) => {
                 println!("prover-service: attestation handshake OK — session token minted");
                 (Some(t), Some(secret))
@@ -398,6 +410,9 @@ async fn main() {
             }
         }
     };
+    // Single-use ephemeral: the DH secret's job ended with the handshake —
+    // drop it now (StaticSecret zeroizes on drop) so it never outlives boot.
+    drop(pv_sk);
     // ── SEC-020 Task 6: fail-closed seal-provider selection ──
     // 1. attested session present ⇒ AttestedSealProvider (seal key bound to the
     //    session secret + measurement). Phase-2-active: today the prod handshake
@@ -426,8 +441,8 @@ async fn main() {
         vkey: program_vkey,
         measurement: m,
         session_token,
-        hs_nonce,
-        hs_epoch,
+        pv_pub,
+        session_not_after,
         dev_insecure,
         nv: NvidiaCcAttestor::detect(),
     });
@@ -532,8 +547,8 @@ mod prove_gate {
             vkey: "vk-test".into(),
             measurement: m,
             session_token: tok,
-            hs_nonce: [0u8; 32],
-            hs_epoch: 0,
+            pv_pub: [0u8; 32],
+            session_not_after: 0,
             dev_insecure: false,
             nv: NvidiaCcAttestor::detect(),
         })
