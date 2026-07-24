@@ -2,16 +2,20 @@
 
 **Written:** 2026-07-23. **Owner:** operator. **Status:** pre-window prep not started.
 
-One combined window, because both legs touch the same GX10 (NVIDIA GB10) box: the
-Base-Sepolia contract redeploy needs an in-zkVM proof smoke on GX10, and SEC-020
-Phase-2 needs a CC-enable reboot of GX10. The box also hosts **Quetzal DEX**
-(aggregator/faucet behind the reverse tunnel to box 161) and the operator's
-**llama-server** (port 8091 tunnel) — both go down during the reboot, so one
-window beats two.
+**UPDATE 2026-07-24 — the CC leg no longer touches GX10.** GB10 cannot do
+Confidential Computing (NVIDIA-confirmed, §0b), so SEC-020's attested prover
+moves to a **CC-capable H100 host** (Phala / Azure NCC H100 v5), NOT a GX10
+reboot. The two legs are now cleanly decoupled:
+- **CC-prover leg** — provision a CC-H100, deploy the prover there, wire real
+  NVIDIA GPU attestation. GX10 stays up (Quetzal + llama-server undisturbed).
+  No reboot, no co-tenant downtime for this leg. Plan: `docs/PROVER-CC-H100-MIGRATION.md`.
+- **Redeploy leg** — Azure TDX gateway + Base-Sepolia contracts (new VK / clean
+  genesis) + frontend. Its in-zkVM proof smoke runs on whichever prover is live
+  (the new CC-H100 once migrated, else GX10 un-attested). Independent of CC.
 
-The two legs are **independent**: if CC-enable fails or its gate work isn't done,
-the redeploy leg can still run (posture unchanged — the prover keeps working
-un-attested exactly as today). Never block the redeploy on CC.
+Neither blocks the other; the redeploy can ship with the prover still un-attested
+on GX10 exactly as today, and the CC-prover migration can happen on its own
+schedule. Combine them into one window only if convenient.
 
 ---
 
@@ -84,13 +88,23 @@ exercised live (none droppable):
 window.** If the branch isn't merged by window day, run the window with the CC
 leg dropped (Phase 1 skipped).
 
-**0b. GB10 CC-enable procedure investigation.**
-`nvidia-smi conf-compute` is absent on the GB10; the enable path is likely
-BIOS/firmware + reboot but **unconfirmed** (2026-07-19 session). Before
-scheduling: identify the exact toggle (CC vs PPCIE mode), confirm a rollback
-path (disable + reboot restores today's behavior), and verify
-`~/nvattest-venv` (`nv-attestation-sdk` + `nv-local-gpu-verifier`) still runs.
-If no procedure can be confirmed, drop the CC leg from the window.
+**0b. GB10 CANNOT do Confidential Computing — the prover must move to a CC-capable H100 (DECISIVE, 2026-07-24).**
+NVIDIA staff on the official developer forum, specifically about the GB10:
+*"Confidential Compute is not supported on the DGX Spark … This is specific to
+the GB10."* It is a **hardware/product limitation**, not a `nvidia-smi
+conf-compute` toggle or a driver/OpenRM issue — the ARM+Blackwell GB10 has no CC
+silicon. So the 2026-07-19 `confidential compute = False` was never a missing
+toggle; GX10 can **never** report `True`. `nvidia_gpu_tools.py --set-cc-mode=on`
+(the real enable path for H100 / datacenter Blackwell) is unsupported on GB10.
+→ **There is no "enable CC on GX10" step. The prover-service migrates to a
+CC-capable H100 host; GX10 stays as-is for Quetzal + llama-server (no reboot for
+dark-perp).** See the migration plan `docs/PROVER-CC-H100-MIGRATION.md`.
+- Provider shortlist (all give real NVIDIA GPU CC attestation the `NvidiaCcAttestor` consumes, except where noted):
+  - **Phala GPU TEE** — H100 in NVIDIA CC mode + Intel-TDX CPU (same TEE family as the Azure gateway) + separate NVIDIA-signed GPU quote. **~$2.38/hr reserved, $3.08 trial.** Best price + arch fit; confirm the tenant-facing attestation API (direct `nv-local-gpu-verifier` vs Phala's combined verifier) before committing.
+  - **Azure NCC H100 v5** (`Standard_NCC40ads_H100_v5`) — H100 NVL 94GB + confidential-GPU driver + NVIDIA GPU attestation (cgpu onboarding `aka.ms/cgpu-onboarding-steps`), AMD SEV-SNP CPU. **~$5.60/hr**, GA East US2 / West Europe. Safest code-fit (reference model, zero prover code change).
+  - **VoltageGPU** — ~$2.75/hr but Intel TDX + **TEE-IO** (GPU inside the CPU TDX trust domain, attested via the TDX quote) — a DIFFERENT model that likely needs prover attestation-path adaptation. Cheapest, least certain.
+  - **AWS Nitro** — CPU-side only, no GPU attestation → **unusable** for the prover.
+- Sanity-verify on the chosen host: `nvidia-smi conf-compute -f` (or the provider's attestation flow) reports CC ON, and `nv-attestation-sdk`/`nv-local-gpu-verifier` yields `confidential compute = True` + a GPU measurement (→ this becomes `PROVER_EXPECTED_MEASUREMENT`).
 
 **0c. Mint + stage prod keys** (secure storage; these must survive restarts —
 a changed `ORACLE_SIGNER_KEY` after genesis = fail-closed oracle outage, see
@@ -133,21 +147,34 @@ run` (183) so the only window-day delta is the constants.
 
 ---
 
-## Phase 1 — GX10 CC-enable reboot (window start; skippable)
+## Phase 1 — CC-H100 prover provisioning (off-GX10; skippable, can run BEFORE the window)
 
-1. Gracefully stop Quetzal aggregator/faucet, llama-server, and the dark-perp
-   prover-service on GX10.
-2. Enable CC per the 0b procedure; reboot.
-3. Verify: `nv-attestation-sdk` local verifier now reports
-   `confidential compute = True` and a verifiable GPU quote.
-4. Bring Quetzal back up; verify `aggregator.quetzaldex.xyz` /
-   `faucet.quetzaldex.xyz` respond through the tunnel. Restart llama-server
-   (or defer to after Phase 2 for RAM headroom).
-5. **Failure path:** revert the toggle, reboot, confirm Quetzal + prover healthy
-   — the window continues with Phase 2 regardless.
-6. Only with 0a merged AND step 3 green: flip the prover-service to the
-   `NvidiaCcAttestor` path and run the SEC-020 smoke (handshake REFUSED ⇒
-   `/attest` 503; `/prove` without token ⇒ 401; with session ⇒ 200).
+Full detail: `docs/PROVER-CC-H100-MIGRATION.md`. Window-level steps:
+
+1. Provision the chosen CC-H100 host (§0b: Phala reserved / Azure NCC H100 v5),
+   complete the confidential-GPU driver + attestation onboarding. **GX10 is NOT
+   touched — Quetzal + llama-server keep running.**
+2. Verify on the host: `nv-attestation-sdk` / `nv-local-gpu-verifier` reports
+   `confidential compute = True` + a verifiable GPU quote → record the real GPU
+   measurement as `PROVER_EXPECTED_MEASUREMENT`.
+3. Deploy the prover-service on the CC-H100 (SP1/gnark Groth16; ~10–14 GB proof
+   RSS fits the 94 GB H100 easily). Set `PROVER_SEAL_ROOT`/attestation env; the
+   `AttestedSealProvider` now builds from a REAL attested seal (no `DEV_INSECURE`).
+4. Point the Azure TDX gateway's `PROVER_URL` at the new host; run the SEC-020
+   smoke — the DH mutual-attestation handshake now COMPLETES (both sides attested)
+   instead of fail-closing at `CcNotEnabled`: gateway↔prover `/attest` exchange →
+   `/prove` without a valid session ⇒ 401, with the DH-bound session token ⇒ 200,
+   and `deferred (b)/(c)/(d)` (real NVIDIA measurement + live `eph_pub` binding +
+   CC-on e2e) are exercised for the first time.
+5. **Failure path:** the prover stays un-attested on GX10 exactly as today; the
+   redeploy leg proceeds regardless. No rollback needed — the CC-H100 is a new
+   host, not a mutation of GX10.
+
+> **Deferred item (a) — Azure-gateway-side, separate from the prover host:** the
+> gateway's live fresh capture needs `capture.sh` to pass `tpm2_quote -q <eph_pub>`
+> so the AK-extraData binds the caller's ephemeral pubkey (else `verify()` fails
+> closed `NonceMismatch`). This runs on the Azure TDX CVM, independent of the
+> CC-H100 provisioning.
 
 ## Phase 2 — Base-Sepolia redeploy (dark-perp trading paused)
 
