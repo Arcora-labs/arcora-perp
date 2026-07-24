@@ -172,7 +172,11 @@ impl From<&WithdrawalOut> for crate::merkle::WithdrawalLeaf {
         // engine note amounts are non-negative; a withdrawal of a real settled note
         // is always ≥ 0. Saturating cast keeps this total (a negative would be a bug
         // upstream, not a silently-huge leaf).
-        crate::merkle::WithdrawalLeaf { to: w.to, amount: w.amount.max(0) as u128, nonce: w.nonce }
+        crate::merkle::WithdrawalLeaf {
+            to: w.to,
+            amount: w.amount.max(0) as u128,
+            nonce: w.nonce,
+        }
     }
 }
 
@@ -861,7 +865,11 @@ impl<H: Hasher> State<H> {
             .ok_or(EngineError::Overflow)?;
         // Only a real L1 withdrawal (`to = Some`) produces a withdrawals_root leaf;
         // an internal burn (`to = None`) burns value without an L1 exit.
-        Ok(to.map(|addr| WithdrawalOut { to: addr, amount: note.amount, nonce }))
+        Ok(to.map(|addr| WithdrawalOut {
+            to: addr,
+            amount: note.amount,
+            nonce,
+        }))
     }
 }
 
@@ -943,7 +951,11 @@ mod tests {
                 },
             ])
             .unwrap();
-        assert_eq!(out.withdrawals.len(), 1, "internal burn (to:None) must not emit");
+        assert_eq!(
+            out.withdrawals.len(),
+            1,
+            "internal burn (to:None) must not emit"
+        );
         assert_eq!(out.withdrawals[0].amount, amount); // bound to the real burned note
         assert_eq!(out.withdrawals[0].to, to);
         assert_eq!(out.withdrawals[0].nonce, 42);

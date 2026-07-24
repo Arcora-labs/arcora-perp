@@ -148,9 +148,15 @@ pub fn prove_and_prepare(
     }
     let mut withdraw_proofs = BTreeMap::new();
     for (i, w) in ww.iter().enumerate() {
-        withdraw_proofs.insert(w.leaf(), (outcome.withdrawals_root, merkle_proof(&leaves, i)));
+        withdraw_proofs.insert(
+            w.leaf(),
+            (outcome.withdrawals_root, merkle_proof(&leaves, i)),
+        );
     }
-    Ok(PreparedSettle { outcome, withdraw_proofs })
+    Ok(PreparedSettle {
+        outcome,
+        withdraw_proofs,
+    })
 }
 
 /// The clear per-seal nonce, secret-keyed with `seal_root`:
@@ -281,12 +287,18 @@ const STATUS_SENTINEL: &str = "__DPHTTP_STATUS__";
 /// never fabricate an empty bearer that could accidentally pass a mis-implemented gate.
 fn prove_curl_args(endpoint: &str, timeout_secs: u64, bearer: Option<&str>) -> Vec<String> {
     let mut args = vec![
-        "-s".into(), "-S".into(),
-        "--connect-timeout".into(), "20".into(),
-        "--keepalive-time".into(), "30".into(),
-        "--max-time".into(), timeout_secs.to_string(),
-        "-X".into(), "POST".into(),
-        "-H".into(), "Content-Type: application/json".into(),
+        "-s".into(),
+        "-S".into(),
+        "--connect-timeout".into(),
+        "20".into(),
+        "--keepalive-time".into(),
+        "30".into(),
+        "--max-time".into(),
+        timeout_secs.to_string(),
+        "-X".into(),
+        "POST".into(),
+        "-H".into(),
+        "Content-Type: application/json".into(),
     ];
     if let Some(token) = bearer {
         args.push("-H".into());
@@ -562,8 +574,16 @@ mod seal_nonce_tests {
         let other_root = [0x11u8; 32];
         let pt1 = b"witness A";
         let pt2 = b"witness B";
-        assert_ne!(seal_nonce(&root, pt1), seal_nonce(&root, pt2), "different plaintext");
-        assert_ne!(seal_nonce(&root, pt1), seal_nonce(&other_root, pt1), "different root");
+        assert_ne!(
+            seal_nonce(&root, pt1),
+            seal_nonce(&root, pt2),
+            "different plaintext"
+        );
+        assert_ne!(
+            seal_nonce(&root, pt1),
+            seal_nonce(&other_root, pt1),
+            "different root"
+        );
     }
 }
 
@@ -575,12 +595,22 @@ mod prove_curl_tests {
     fn args_carry_the_transport_hardening_flags_in_pairs() {
         let a = prove_curl_args("http://127.0.0.1:8091/prove", 1800, None);
         // helper: the value immediately following a flag token
-        let val = |flag: &str| {
-            a.iter().position(|s| s == flag).map(|i| a[i + 1].clone())
-        };
-        assert_eq!(val("--connect-timeout").as_deref(), Some("20"), "fail fast on a dead prover / down tunnel");
-        assert_eq!(val("--keepalive-time").as_deref(), Some("30"), "hold the idle connection open through the long proof");
-        assert_eq!(val("--max-time").as_deref(), Some("1800"), "overall wall-clock cap from the env timeout");
+        let val = |flag: &str| a.iter().position(|s| s == flag).map(|i| a[i + 1].clone());
+        assert_eq!(
+            val("--connect-timeout").as_deref(),
+            Some("20"),
+            "fail fast on a dead prover / down tunnel"
+        );
+        assert_eq!(
+            val("--keepalive-time").as_deref(),
+            Some("30"),
+            "hold the idle connection open through the long proof"
+        );
+        assert_eq!(
+            val("--max-time").as_deref(),
+            Some("1800"),
+            "overall wall-clock cap from the env timeout"
+        );
         // endpoint is last; body streams on stdin (POST + @-)
         assert_eq!(a.last().unwrap(), "http://127.0.0.1:8091/prove");
         assert!(a.iter().any(|s| s == "--data-binary"));
@@ -634,7 +664,10 @@ mod prove_curl_tests {
         assert_eq!(body, "{\"proof\":\"0x00\"}");
         assert_eq!(code, 200);
         // 401 rides through cleanly for the gate-retry path
-        let raw401 = format!("attestation session required\n{}401", super::STATUS_SENTINEL);
+        let raw401 = format!(
+            "attestation session required\n{}401",
+            super::STATUS_SENTINEL
+        );
         assert_eq!(split_status(&raw401).unwrap().1, 401);
         // a missing marker is a curl/flag regression, surfaced as an error
         assert!(matches!(
@@ -687,7 +720,10 @@ mod reauth_tests {
         assert!(out.is_ok());
         assert_eq!(
             *calls.borrow(),
-            vec![Some("stale-token".to_string()), Some("fresh-token".to_string())],
+            vec![
+                Some("stale-token".to_string()),
+                Some("fresh-token".to_string())
+            ],
             "posts with the stale token, then retries with the refreshed one"
         );
         assert_eq!(
@@ -713,7 +749,11 @@ mod reauth_tests {
             |_, _, _| {},
         );
         assert!(matches!(out, Err(ProverClientError::Unauthorized)));
-        assert_eq!(*n.borrow(), 2, "one original attempt + one retry, then give up");
+        assert_eq!(
+            *n.borrow(),
+            2,
+            "one original attempt + one retry, then give up"
+        );
     }
 
     /// With no re-handshake wired, a 401 is terminal after a single attempt (no retry).

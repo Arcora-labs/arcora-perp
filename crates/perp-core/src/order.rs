@@ -275,7 +275,10 @@ mod tests {
             batch_id_hint: 3,
             window_id: 1,
         };
-        let other = Receipt { window_id: 2, ..base };
+        let other = Receipt {
+            window_id: 2,
+            ..base
+        };
         // window_id is UNSIGNED — it must NOT affect the enclave signing digest.
         assert_eq!(
             base.signing_digest::<Keccak256>(),

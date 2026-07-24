@@ -422,7 +422,10 @@ impl L1 {
     /// Slice 3b-2a: submit prover-derived roots + a real (or mock) proof directly — no
     /// `publicCommitment` synthesis. `out.proof` is the ZK proof (== the commitment bytes
     /// for MockProverClient, which the on-chain MockZkVerifier accepts).
-    pub fn settle_proved(&self, out: &crate::prover_client::ProveOutcome) -> Result<String, String> {
+    pub fn settle_proved(
+        &self,
+        out: &crate::prover_client::ProveOutcome,
+    ) -> Result<String, String> {
         let proof_hex = {
             let mut s = String::with_capacity(2 + out.proof.len() * 2);
             s.push_str("0x");
@@ -708,7 +711,10 @@ fn create_keystore(key_hex: &str) -> Result<(String, String, std::path::PathBuf)
     let raw = raw.as_bytes();
     let mut pk = [0u8; 32];
     for (i, slot) in pk.iter_mut().enumerate() {
-        *slot = match (crate::hex_nibble(raw[i * 2]), crate::hex_nibble(raw[i * 2 + 1])) {
+        *slot = match (
+            crate::hex_nibble(raw[i * 2]),
+            crate::hex_nibble(raw[i * 2 + 1]),
+        ) {
             (Some(hi), Some(lo)) => hi << 4 | lo,
             _ => return Err("bad key hex".into()),
         };
@@ -795,7 +801,8 @@ fn parse_addr20(s: &str) -> Option<[u8; 20]> {
     let start = h.len() - 40;
     let mut a = [0u8; 20];
     for (i, slot) in a.iter_mut().enumerate() {
-        *slot = crate::hex_nibble(h[start + i * 2])? << 4 | crate::hex_nibble(h[start + i * 2 + 1])?;
+        *slot =
+            crate::hex_nibble(h[start + i * 2])? << 4 | crate::hex_nibble(h[start + i * 2 + 1])?;
     }
     Some(a)
 }
@@ -1094,7 +1101,10 @@ mod tests {
     fn l1_hex_parsers_reject_non_ascii_without_panic() {
         // 64 BYTES with é straddling the first nibble-pair slice boundary.
         let bad_key = format!("aé{}", "a".repeat(61));
-        assert!(create_keystore(&bad_key).is_err(), "bad key hex must be a clean Err");
+        assert!(
+            create_keystore(&bad_key).is_err(),
+            "bad key hex must be a clean Err"
+        );
         // 40-byte topic tail with the same straddle → clean None.
         let bad_topic = format!("aé{}", "a".repeat(37));
         assert_eq!(parse_addr20(&bad_topic), None);
@@ -1106,6 +1116,9 @@ mod tests {
             parse_addr20(&format!("0x{}{}", "00".repeat(12), "ab".repeat(20))),
             Some([0xab; 20]),
         );
-        assert_eq!(parse_u256_low128("0x0de0b6b3a7640000"), Some(1_000_000_000_000_000_000));
+        assert_eq!(
+            parse_u256_low128("0x0de0b6b3a7640000"),
+            Some(1_000_000_000_000_000_000)
+        );
     }
 }

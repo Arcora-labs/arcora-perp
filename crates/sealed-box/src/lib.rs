@@ -24,7 +24,8 @@ use x25519_dalek::{PublicKey, StaticSecret};
 pub fn x25519_keypair_from_ikm(ikm: &[u8], info: &[u8]) -> ([u8; 32], [u8; 32]) {
     let hk = Hkdf::<Sha256>::new(None, ikm);
     let mut okm = [0u8; 32];
-    hk.expand(info, &mut okm).expect("32 is a valid HKDF length");
+    hk.expand(info, &mut okm)
+        .expect("32 is a valid HKDF length");
     // StaticSecret::from clamps to a valid X25519 scalar.
     let secret = StaticSecret::from(okm);
     let public = PublicKey::from(&secret);
@@ -69,13 +70,25 @@ pub fn seal_with_ephemeral(
 ) -> SealedBox {
     let esk = StaticSecret::from(*esk_bytes);
     let epk = PublicKey::from(&esk).to_bytes();
-    let shared = esk.diffie_hellman(&PublicKey::from(*recipient_pub)).to_bytes();
+    let shared = esk
+        .diffie_hellman(&PublicKey::from(*recipient_pub))
+        .to_bytes();
     let key = derive_key(&shared, &epk, recipient_pub);
     let cipher = XChaCha20Poly1305::new((&key).into());
     let ct = cipher
-        .encrypt(XNonce::from_slice(nonce), Payload { msg: plaintext, aad })
+        .encrypt(
+            XNonce::from_slice(nonce),
+            Payload {
+                msg: plaintext,
+                aad,
+            },
+        )
         .expect("encrypt");
-    SealedBox { epk, nonce: *nonce, ct }
+    SealedBox {
+        epk,
+        nonce: *nonce,
+        ct,
+    }
 }
 
 pub fn seal(
@@ -97,7 +110,9 @@ pub fn unseal(recipient_secret: &[u8; 32], sb: &SealedBox, aad: &[u8]) -> Option
     let rpk = PublicKey::from(&rsk).to_bytes();
     let key = derive_key(&shared, &sb.epk, &rpk);
     let cipher = XChaCha20Poly1305::new((&key).into());
-    cipher.decrypt(XNonce::from_slice(&sb.nonce), Payload { msg: &sb.ct, aad }).ok()
+    cipher
+        .decrypt(XNonce::from_slice(&sb.nonce), Payload { msg: &sb.ct, aad })
+        .ok()
 }
 
 impl SealedBox {
@@ -117,7 +132,11 @@ impl SealedBox {
         let mut nonce = [0u8; 24];
         epk.copy_from_slice(&b[1..33]);
         nonce.copy_from_slice(&b[33..57]);
-        Some(SealedBox { epk, nonce, ct: b[57..].to_vec() })
+        Some(SealedBox {
+            epk,
+            nonce,
+            ct: b[57..].to_vec(),
+        })
     }
 }
 
@@ -139,7 +158,10 @@ mod seal_tests {
     fn roundtrip() {
         let (rsk, rpk) = x25519_keypair_from_ikm(b"recipient", b"ctx");
         let sb = seal(&rpk, b"hello dark", b"aad-1", OsRng);
-        assert_eq!(unseal(&rsk, &sb, b"aad-1").as_deref(), Some(&b"hello dark"[..]));
+        assert_eq!(
+            unseal(&rsk, &sb, b"aad-1").as_deref(),
+            Some(&b"hello dark"[..])
+        );
     }
     #[test]
     fn wrong_key_fails() {

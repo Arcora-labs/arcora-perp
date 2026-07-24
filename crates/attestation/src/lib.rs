@@ -16,7 +16,8 @@ mod nvidia_cc;
 pub mod vtpm;
 
 pub use handshake::{
-    ct_eq, dh_shared, ephemeral_keypair, session_secret, session_token, DEV_INSECURE_SESSION_TOKEN,
+    ct_eq, derive_session, dh_shared, ephemeral_keypair, session_secret, session_token,
+    DEV_INSECURE_SESSION_TOKEN,
 };
 pub use nvidia_cc::NvidiaCcAttestor;
 /// Re-exported so handshake callers (gateway, prover-service, tests) can NAME

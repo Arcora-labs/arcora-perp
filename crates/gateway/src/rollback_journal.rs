@@ -224,13 +224,20 @@ mod tests {
         assert_eq!(back.batch_id, batch_id);
         assert_eq!(back.witness.batch_id, batch_id);
         assert_eq!(back.witness.ops.len(), ops_len);
-        assert_eq!(back.witness.pre_state.state_root(), pre_root, "pre_state survives");
+        assert_eq!(
+            back.witness.pre_state.state_root(),
+            pre_root,
+            "pre_state survives"
+        );
         let back_leaves: Vec<[u8; 32]> = back.ww.iter().map(|w| w.leaf()).collect();
         assert_eq!(back_leaves, ww_leaves, "withdrawal set survives byte-exact");
         // the strongest witness check: the restored witness REPLAYS to the same
         // commitment the original prove produced (pre_state + ops + manifest all intact)
         let replay = MockProverClient.prove(&back.witness).expect("replay");
-        assert_eq!(replay.commitment, commitment, "restored witness replays identically");
+        assert_eq!(
+            replay.commitment, commitment,
+            "restored witness replays identically"
+        );
 
         let bp = back.prepared.expect("prepared survives");
         assert_eq!(bp.outcome.new_root, new_root);
@@ -282,7 +289,10 @@ mod tests {
             Err(e) => e,
             Ok(_) => panic!("mismatched window ids must fail closed"),
         };
-        assert!(err.contains("batch_id mismatch"), "unexpected error text: {err}");
+        assert!(
+            err.contains("batch_id mismatch"),
+            "unexpected error text: {err}"
+        );
         std::fs::remove_file(&path).ok();
     }
 

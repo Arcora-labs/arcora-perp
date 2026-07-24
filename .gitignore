@@ -16,3 +16,8 @@ frontend/node_modules/
 *.tsbuildinfo
 .superpowers/
 .vercel/
+
+# prover-service is a workspace-EXCLUDED standalone crate; its build cache + lock
+# are typecheck byproducts, never repo content (accidental git add -A swept them once).
+crates/prover-service/target/
+crates/prover-service/Cargo.lock

@@ -71,7 +71,11 @@ pub fn derive_roots(
     let ordered_root = ordered_root(batch_id, &manifest.ordered);
     let rejected_hashes: Vec<Digest> = manifest.rejected.iter().map(|(h, _)| *h).collect();
     let rejected_root = rejected_root(batch_id, &rejected_hashes);
-    let wl: Vec<WithdrawalLeaf> = outputs.withdrawals.iter().map(WithdrawalLeaf::from).collect();
+    let wl: Vec<WithdrawalLeaf> = outputs
+        .withdrawals
+        .iter()
+        .map(WithdrawalLeaf::from)
+        .collect();
     let withdrawals_root = withdrawals_root(&wl);
 
     Ok(DerivedRoots {

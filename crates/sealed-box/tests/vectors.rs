@@ -17,9 +17,10 @@ fn h(s: &str) -> Vec<u8> {
 
 #[test]
 fn cross_language_vector() {
-    let v: Vec1 =
-        serde_json::from_str(include_str!("../../../tests/fixtures/sealed-box-vectors.json"))
-            .unwrap();
+    let v: Vec1 = serde_json::from_str(include_str!(
+        "../../../tests/fixtures/sealed-box-vectors.json"
+    ))
+    .unwrap();
     let (_, rpk) = x25519_keypair_from_ikm(&h(&v.recipient_ikm), &h(&v.recipient_info));
     let aad = domain_aad(v.domain, &h(&v.aad_extra));
     let esk: [u8; 32] = h(&v.esk).try_into().unwrap();

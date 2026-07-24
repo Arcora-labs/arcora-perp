@@ -26,7 +26,7 @@ use axum::{
 // prover-service. `StaticSecret` is the attestation crate's re-export of the
 // ephemeral x25519 secret type (no direct x25519-dalek dependency here).
 use dark_perp_attestation::{
-    dh_shared, ephemeral_keypair, session_secret, session_token, Attestor as _, AzureTdxAttestor,
+    derive_session, dh_shared, ephemeral_keypair, Attestor as _, AzureTdxAttestor,
     NvidiaCcAttestor, StaticSecret, DEV_INSECURE_SESSION_TOKEN,
 };
 use serde::{Deserialize, Serialize};
@@ -204,8 +204,13 @@ fn apply_boot_recovery(
                 return BootRecoveryOutcome::KeepJournal;
             };
             let ordered = j.witness.manifest.ordered.clone();
-            let rejected: Vec<Digest> =
-                j.witness.manifest.rejected.iter().map(|(h, _)| *h).collect();
+            let rejected: Vec<Digest> = j
+                .witness
+                .manifest
+                .rejected
+                .iter()
+                .map(|(h, _)| *h)
+                .collect();
             let status = L1Status {
                 settled_root: hex32(&prepared.outcome.new_root),
                 batch_count: j.batch_id + 1,
@@ -561,8 +566,9 @@ fn prover_handshake(
     // ephemeral PRIVATE key, so the secret is not derivable from the public
     // /attest transcript (C3).
     let shared = dh_shared(gw_sk, &pv_pub);
-    let secret = session_secret(&shared, &gw_expected, &pv_meas, gw_pub, &pv_pub);
-    Ok((session_token(&secret, not_after), secret, not_after))
+    let (secret, token) =
+        derive_session(&shared, &gw_expected, &pv_meas, gw_pub, &pv_pub, not_after);
+    Ok((token, secret, not_after))
 }
 
 /// `GET /attest` — this gateway's attestation evidence bundle + per-boot
@@ -2013,7 +2019,8 @@ impl Gw {
             return;
         }
         let cset: std::collections::BTreeSet<[u8; 32]> = claimed.iter().copied().collect();
-        self.pending_withdrawals.retain(|w| !cset.contains(&w.leaf()));
+        self.pending_withdrawals
+            .retain(|w| !cset.contains(&w.leaf()));
         for leaf in &cset {
             self.withdraw_proofs.remove(leaf);
         }
@@ -2114,7 +2121,14 @@ impl Gw {
         };
         let mut blind = [0xA0u8; 32];
         blind[..8].copy_from_slice(&dc.to_le_bytes());
-        fund_amount_unbacked(&mut self.seq, &mut self.archive, &wallet, market, amount, blind);
+        fund_amount_unbacked(
+            &mut self.seq,
+            &mut self.archive,
+            &wallet,
+            market,
+            amount,
+            blind,
+        );
         self.accounts.get_mut(key).unwrap().deposit_counter += 1;
         Ok(())
     }
@@ -2158,8 +2172,7 @@ impl Gw {
             let aad = sealed_box::domain_aad(Domain::OrderEncryptAad as u8, &extra);
             let pt = sealed_box::unseal(secret, &sb, &aad)
                 .ok_or("sealed order: decryption failed (tampered, wrong key, or wrong epoch)")?;
-            let t =
-                deserialize_order_terms(&pt).ok_or("sealed order: malformed order terms")?;
+            let t = deserialize_order_terms(&pt).ok_or("sealed order: malformed order terms")?;
             // Re-materialize the decrypted terms as an `OrderReq` so the rest of the
             // flow (margin, opening/reduce-only, nonce, order-hash + caller-signature)
             // is IDENTICAL to the plaintext path. The caller `signature` (if any)
@@ -3081,7 +3094,12 @@ impl Gw {
             );
         }
         let now = now_ms();
-        let oracle = oracle_of(self.px_of(self.selected), now, self.selected, &self.oracle_signer);
+        let oracle = oracle_of(
+            self.px_of(self.selected),
+            now,
+            self.selected,
+            &self.oracle_signer,
+        );
         let blind = [(0xC0 + (self.tick % 60)) as u8; 32];
         self.seq
             .apply(&BatchOp::Unbind {
@@ -3671,7 +3689,14 @@ fn fund(
     usd_amount: i128,
     blind: u8,
 ) {
-    fund_amount_unbacked(seq, archive, w, market, usd_amount * QUOTE_SCALE, [blind; 32]);
+    fund_amount_unbacked(
+        seq,
+        archive,
+        w,
+        market,
+        usd_amount * QUOTE_SCALE,
+        [blind; 32],
+    );
 }
 
 /// SEC-019 (Task 7b): an UNBACKED credit — a `Deposit` op with SENTINEL L1-leaf fields
@@ -3691,7 +3716,9 @@ fn fund_amount_unbacked(
     blind: Digest,
 ) {
     let deposit_id = seq.state.consumed_deposit_count;
-    fund_amount(seq, archive, w, market, amount, blind, [0u8; 20], deposit_id, [0u8; 32]);
+    fund_amount(
+        seq, archive, w, market, amount, blind, [0u8; 20], deposit_id, [0u8; 32],
+    );
 }
 
 /// Deposit a quote-scaled `amount` as a note, archive it, and fund the position. The
@@ -3970,8 +3997,9 @@ impl GatewaySigner {
     /// closed (the caller exits) rather than silently signing with the demo key.
     fn from_env() -> Result<Self, String> {
         let key = match std::env::var("GATEWAY_SIGNER_KEY") {
-            Ok(s) => parse_hex32(&s)
-                .ok_or("GATEWAY_SIGNER_KEY is set but is not a 32-byte hex value")?,
+            Ok(s) => {
+                parse_hex32(&s).ok_or("GATEWAY_SIGNER_KEY is set but is not a 32-byte hex value")?
+            }
             Err(_) => DEMO_GATEWAY_SIGNER_KEY,
         };
         let chain_id = std::env::var("L1_CHAIN_ID")
@@ -4021,7 +4049,12 @@ impl GatewaySigner {
     /// the contract's `ecrecover` accepts: low-`s` (k256 normalizes S) and `v ∈ {27, 28}`
     /// — mirroring `recover_eth_address`'s conventions, inverted. The user submits this as
     /// `deposit(amount, ownerCommit, sig)` on L1.
-    fn sign(&self, from: &[u8; 20], owner_commit: &[u8; 32], amount: u128) -> Result<[u8; 65], String> {
+    fn sign(
+        &self,
+        from: &[u8; 20],
+        owner_commit: &[u8; 32],
+        amount: u128,
+    ) -> Result<[u8; 65], String> {
         let digest = self.digest(from, owner_commit, amount);
         let (sig, recid) = self
             .key
@@ -4352,10 +4385,15 @@ async fn post_v1_deposit_onchain(
         Err(e) => return err400(format!("verify task failed: {e}")).into_response(),
     };
     let r = {
-        app.gw
-            .lock()
-            .await
-            .account_confirm_deposit(&key, from, owner_commit, amount, id, &tx, req.market_id)
+        app.gw.lock().await.account_confirm_deposit(
+            &key,
+            from,
+            owner_commit,
+            amount,
+            id,
+            &tx,
+            req.market_id,
+        )
     };
     match r {
         Ok(amt) => {
@@ -4394,8 +4432,9 @@ async fn post_v1_deposit_authorize(
     };
     let amount: u128 = match req.amount.parse() {
         Ok(v) => v,
-        Err(_) => return err400("bad amount (expected a u128 of USDC base units)".into())
-            .into_response(),
+        Err(_) => {
+            return err400("bad amount (expected a u128 of USDC base units)".into()).into_response()
+        }
     };
     // Record the authorization (generates + stores the blind) under the account lock,
     // then sign — the signer needs only the resulting ownerCommit.
@@ -5717,20 +5756,13 @@ async fn main() {
                         };
                         match reads {
                             Ok((chain_bc, chain_root, bond)) => {
-                                match apply_boot_recovery(&mut gw, j, chain_bc, &chain_root, bond)
-                                {
+                                match apply_boot_recovery(&mut gw, j, chain_bc, &chain_root, bond) {
                                     // Task 3 fix: a MUTATED resolution is persisted
                                     // synchronously BEFORE the journal is deleted
                                     // (and a failed persist keeps the journal) —
                                     // see finish_boot_recovery.
                                     BootRecoveryOutcome::DeleteJournal { mutated } => {
-                                        finish_boot_recovery(
-                                            &gw,
-                                            mutated,
-                                            sp,
-                                            &jp,
-                                            &enclave_seed,
-                                        );
+                                        finish_boot_recovery(&gw, mutated, sp, &jp, &enclave_seed);
                                     }
                                     BootRecoveryOutcome::KeepJournal => {}
                                 }
@@ -6197,7 +6229,9 @@ async fn main() {
                             }
                         }
                     };
-                    let Some(((witness, ww), prune_candidates)) = begun else { continue };
+                    let Some(((witness, ww), prune_candidates)) = begun else {
+                        continue;
+                    };
                     // capture the manifest's ordered/rejected for the DP-004 challenge store
                     let ordered = witness.manifest.ordered.clone();
                     let rejected: Vec<Digest> =
@@ -6286,7 +6320,12 @@ async fn main() {
                     })
                     .await;
                     match res {
-                        Ok(SettleAttempt::Ok { prepared, tx, bond, claimed }) => {
+                        Ok(SettleAttempt::Ok {
+                            prepared,
+                            tx,
+                            bond,
+                            claimed,
+                        }) => {
                             let status = L1Status {
                                 settled_root: hex32(&prepared.outcome.new_root),
                                 batch_count: batch_id + 1,
@@ -6296,11 +6335,16 @@ async fn main() {
                             };
                             println!(
                                 "[l1] window settled root {} batch {} tx {} (withdrawals root {})",
-                                status.settled_root, status.batch_count, tx, status.withdrawals_root
+                                status.settled_root,
+                                status.batch_count,
+                                tx,
+                                status.withdrawals_root
                             );
                             {
                                 let mut gw = app.gw.lock().await;
-                                gw.commit_window_settle(batch_id, ordered, rejected, prepared, status);
+                                gw.commit_window_settle(
+                                    batch_id, ordered, rejected, prepared, status,
+                                );
                                 gw.prune_claimed_withdrawals(&claimed);
                                 // FIN-001: this window settled — clear any failure/HELD state
                                 // and (below) resume the normal settle cadence.
@@ -6322,7 +6366,9 @@ async fn main() {
                             );
                         }
                         Ok(SettleAttempt::ProveFailed(e)) => {
-                            eprintln!("[l1] prove failed: {e} — rolling back (no tx was broadcast)");
+                            eprintln!(
+                                "[l1] prove failed: {e} — rolling back (no tx was broadcast)"
+                            );
                             // FIN-001: keep the existing rollback, and under the same lock
                             // feed the failure to the circuit breaker so the next attempt is
                             // backed off (exponential → HELD cap). Capture the decision to act
@@ -6359,79 +6405,94 @@ async fn main() {
                             // ambiguous: re-read batchCount (+ currentStateRoot to confirm WHICH
                             // window landed, + bond for a roll-forward status).
                             let l1c = l1.clone();
-                            let recheck =
-                                tokio::task::spawn_blocking(move || -> Result<(u64, String, u128), String> {
+                            let recheck = tokio::task::spawn_blocking(
+                                move || -> Result<(u64, String, u128), String> {
                                     let bc = l1c.batch_count()?;
                                     let root = l1c.current_root()?;
                                     let bond = l1c.sequencer_bond().unwrap_or(0);
                                     Ok((bc, root, bond))
-                                })
-                                .await;
+                                },
+                            )
+                            .await;
                             match recheck {
-                                Ok(Ok((now_bc, now_root, bond))) => match settle_failure_action(batch_id, now_bc) {
-                                    RollAction::RollBack => {
-                                        eprintln!("[l1] settle failed: {err} — tx did not land (batchCount still {batch_id}); rolled back");
-                                        {
-                                            let mut gw = app.gw.lock().await;
-                                            gw.seq.rollback_window(&witness_rb);
-                                            gw.rollback_window_withdrawals(ww_rb);
-                                        }
-                                        // Task 3 (WAL): keep the journal (boot's
-                                        // SEAL-NEVER-PERSISTED row resolves it once the
-                                        // rolled-back state persists); poke the writer.
-                                        snapshot_notify.notify_one();
-                                    }
-                                    RollAction::RollForward => {
-                                        // The tx landed (batchCount advanced), but confirm it
-                                        // settled OUR window's root — not a re-sealed one from a
-                                        // rare re-seal-then-old-tx-mines interleaving. Compare
-                                        // case-insensitively (cast hex casing), like the boot guard.
-                                        let our_root = hex32(&prepared.outcome.new_root);
-                                        if !now_root.eq_ignore_ascii_case(&our_root) {
-                                            // Task 2: HOLD keeps the journal — the operator (and
-                                            // Task-3 boot recovery) still needs the rollback inputs.
-                                            eprintln!("[l1] settle reported '{err}' and batchCount advanced to {now_bc}, but currentStateRoot {now_root} != our new_root {our_root} — a DIFFERENT window settled; HOLDING (no commit); operator must reconcile");
-                                        } else {
-                                            let status = L1Status {
-                                                settled_root: hex32(&prepared.outcome.new_root),
-                                                batch_count: batch_id + 1,
-                                                last_tx: "(recovered: landed despite cast error)".to_string(),
-                                                bond: bond.to_string(),
-                                                withdrawals_root: hex32(&prepared.outcome.withdrawals_root),
-                                            };
-                                            eprintln!("[l1] settle reported '{err}' but the tx LANDED (batchCount {batch_id}->{now_bc}); rolled forward + committed bookkeeping");
+                                Ok(Ok((now_bc, now_root, bond))) => {
+                                    match settle_failure_action(batch_id, now_bc) {
+                                        RollAction::RollBack => {
+                                            eprintln!("[l1] settle failed: {err} — tx did not land (batchCount still {batch_id}); rolled back");
                                             {
                                                 let mut gw = app.gw.lock().await;
-                                                gw.commit_window_settle(batch_id, ordered, rejected, prepared, status);
-                                                // FIN-001: this ambiguous-but-landed settle
-                                                // reached finality — clear any failure/HELD
-                                                // state, exactly like the clean Ok path (else
-                                                // the breaker reports HELD forever after a
-                                                // recovery via this path).
-                                                let was_held = gw.settle_breaker_recovered();
-                                                if was_held {
-                                                    println!("[l1] settlement recovered → HEALTHY");
-                                                }
+                                                gw.seq.rollback_window(&witness_rb);
+                                                gw.rollback_window_withdrawals(ww_rb);
                                             }
-                                            // a landed settlement is a success — resume the
-                                            // normal settle cadence (mirror the clean Ok arm).
-                                            next_attempt = tokio::time::Instant::now();
-                                            // Task 3 (WAL): the journal outlives the commit —
-                                            // boot's STALE row resolves it; poke the writer so
-                                            // the commit persists promptly.
+                                            // Task 3 (WAL): keep the journal (boot's
+                                            // SEAL-NEVER-PERSISTED row resolves it once the
+                                            // rolled-back state persists); poke the writer.
                                             snapshot_notify.notify_one();
-                                            let snap = { app.gw.lock().await.snapshot() };
-                                            let _ = app.tx.send(
-                                                serde_json::to_string(&WsMsg::State { state: snap }).unwrap(),
-                                            );
+                                        }
+                                        RollAction::RollForward => {
+                                            // The tx landed (batchCount advanced), but confirm it
+                                            // settled OUR window's root — not a re-sealed one from a
+                                            // rare re-seal-then-old-tx-mines interleaving. Compare
+                                            // case-insensitively (cast hex casing), like the boot guard.
+                                            let our_root = hex32(&prepared.outcome.new_root);
+                                            if !now_root.eq_ignore_ascii_case(&our_root) {
+                                                // Task 2: HOLD keeps the journal — the operator (and
+                                                // Task-3 boot recovery) still needs the rollback inputs.
+                                                eprintln!("[l1] settle reported '{err}' and batchCount advanced to {now_bc}, but currentStateRoot {now_root} != our new_root {our_root} — a DIFFERENT window settled; HOLDING (no commit); operator must reconcile");
+                                            } else {
+                                                let status = L1Status {
+                                                    settled_root: hex32(&prepared.outcome.new_root),
+                                                    batch_count: batch_id + 1,
+                                                    last_tx:
+                                                        "(recovered: landed despite cast error)"
+                                                            .to_string(),
+                                                    bond: bond.to_string(),
+                                                    withdrawals_root: hex32(
+                                                        &prepared.outcome.withdrawals_root,
+                                                    ),
+                                                };
+                                                eprintln!("[l1] settle reported '{err}' but the tx LANDED (batchCount {batch_id}->{now_bc}); rolled forward + committed bookkeeping");
+                                                {
+                                                    let mut gw = app.gw.lock().await;
+                                                    gw.commit_window_settle(
+                                                        batch_id, ordered, rejected, prepared,
+                                                        status,
+                                                    );
+                                                    // FIN-001: this ambiguous-but-landed settle
+                                                    // reached finality — clear any failure/HELD
+                                                    // state, exactly like the clean Ok path (else
+                                                    // the breaker reports HELD forever after a
+                                                    // recovery via this path).
+                                                    let was_held = gw.settle_breaker_recovered();
+                                                    if was_held {
+                                                        println!(
+                                                            "[l1] settlement recovered → HEALTHY"
+                                                        );
+                                                    }
+                                                }
+                                                // a landed settlement is a success — resume the
+                                                // normal settle cadence (mirror the clean Ok arm).
+                                                next_attempt = tokio::time::Instant::now();
+                                                // Task 3 (WAL): the journal outlives the commit —
+                                                // boot's STALE row resolves it; poke the writer so
+                                                // the commit persists promptly.
+                                                snapshot_notify.notify_one();
+                                                let snap = { app.gw.lock().await.snapshot() };
+                                                let _ = app.tx.send(
+                                                    serde_json::to_string(&WsMsg::State {
+                                                        state: snap,
+                                                    })
+                                                    .unwrap(),
+                                                );
+                                            }
+                                        }
+                                        RollAction::Hold => {
+                                            // Task 2: HOLD keeps the journal (rollback inputs preserved
+                                            // for the operator / Task-3 boot recovery).
+                                            eprintln!("[l1] settle failed AND on-chain batchCount is {now_bc} for window {batch_id} — HOLDING (no rollback/commit); operator must reconcile");
                                         }
                                     }
-                                    RollAction::Hold => {
-                                        // Task 2: HOLD keeps the journal (rollback inputs preserved
-                                        // for the operator / Task-3 boot recovery).
-                                        eprintln!("[l1] settle failed AND on-chain batchCount is {now_bc} for window {batch_id} — HOLDING (no rollback/commit); operator must reconcile");
-                                    }
-                                },
+                                }
                                 _ => {
                                     // Task 2: HOLD keeps the journal.
                                     eprintln!("[l1] settle failed ({err}) and the batchCount re-read failed — HOLDING (no rollback/commit); operator must reconcile");
@@ -6691,10 +6752,9 @@ mod tests {
         let oc = [0x33u8; 32];
         let gs = GatewaySigner::from_parts(DEMO_GATEWAY_SIGNER_KEY, 84532, vault).unwrap();
         // digest byte-parity with Solidity abi.encodePacked (chainid=84532, amount=1000).
-        let expected = parse_hex32(
-            "0x616596ebb8fceaa76501abebf569187adcbc045cda51a9e3023a217d9e8c440b",
-        )
-        .unwrap();
+        let expected =
+            parse_hex32("0x616596ebb8fceaa76501abebf569187adcbc045cda51a9e3023a217d9e8c440b")
+                .unwrap();
         assert_eq!(
             gs.digest(&from, &oc, 1000),
             expected,
@@ -6739,14 +6799,17 @@ mod tests {
             .account_confirm_deposit(&key, from, commit, amount, id, "0xdeadbeef", 0)
             .expect("matching blind must credit");
         assert_eq!(credited, amount as i128);
-        assert_eq!(gw.seq.state.consumed_deposit_count, id + 1, "count bumps by one");
+        assert_eq!(
+            gw.seq.state.consumed_deposit_count,
+            id + 1,
+            "count bumps by one"
+        );
         assert_eq!(
             gw.seq.state.external_in,
             ext_in_before + amount as i128,
             "external_in grows by the deposit"
         );
-        let expected_tip =
-            deposit_chain_fold(&prev_tip, &deposit_leaf(&from, &commit, amount, id));
+        let expected_tip = deposit_chain_fold(&prev_tip, &deposit_leaf(&from, &commit, amount, id));
         assert_eq!(
             gw.seq.state.consumed_deposit_tip, expected_tip,
             "post-credit tip must equal the vault-matching fold of (from, ownerCommit, amount, id)"
@@ -6789,7 +6852,10 @@ mod tests {
             .deposit_authorizations
             .insert(bogus_commit, [0x01u8; 32]); // blind that won't reproduce bogus_commit
         let r2 = gw.account_confirm_deposit(&key, from, bogus_commit, amount, id, "0xtx2", 0);
-        assert!(r2.is_err(), "a blind that fails to reproduce the commit must be refused");
+        assert!(
+            r2.is_err(),
+            "a blind that fails to reproduce the commit must be refused"
+        );
 
         // (3) OUT-OF-ORDER id: a validly-authorized deposit whose id is not next-in-line
         // is refused CLEANLY (no panic under the lock) — the host must confirm in L1 order.
@@ -6798,9 +6864,18 @@ mod tests {
         assert!(r3.is_err(), "an out-of-order deposit id must be refused");
 
         // NEITHER refusal advanced the chain, external_in, or the tx dedup set.
-        assert_eq!(gw.seq.state.consumed_deposit_tip, tip_before, "tip unchanged");
-        assert_eq!(gw.seq.state.consumed_deposit_count, count_before, "count unchanged");
-        assert_eq!(gw.seq.state.external_in, ext_before, "external_in unchanged");
+        assert_eq!(
+            gw.seq.state.consumed_deposit_tip, tip_before,
+            "tip unchanged"
+        );
+        assert_eq!(
+            gw.seq.state.consumed_deposit_count, count_before,
+            "count unchanged"
+        );
+        assert_eq!(
+            gw.seq.state.external_in, ext_before,
+            "external_in unchanged"
+        );
         assert!(!gw.processed_deposit_txs.contains("0xtx1"));
         assert!(!gw.processed_deposit_txs.contains("0xtx2"));
     }
@@ -6991,7 +7066,11 @@ mod tests {
         // The encrypted order log survives the restart intact: same entries, same
         // head, chain still verifies …
         assert_eq!(restored.order_log.len(), 1, "order-log entry survives");
-        assert_eq!(restored.order_log.head(), log_head_before, "log head survives");
+        assert_eq!(
+            restored.order_log.head(),
+            log_head_before,
+            "log head survives"
+        );
         assert_eq!(
             restored.order_log.recompute_head(),
             log_head_before,
@@ -7030,7 +7109,8 @@ mod tests {
             signature: None,
             ..Default::default()
         };
-        gw.account_place_order(&key, &req(0)).expect("order accepted");
+        gw.account_place_order(&key, &req(0))
+            .expect("order accepted");
         assert_eq!(gw.order_log.len(), 1, "accepted order appended");
         let head = gw.order_log.head();
         assert_ne!(head, [0u8; 32], "head advanced");
@@ -8276,7 +8356,8 @@ mod tests {
         let (key, wire, epoch_id) = {
             let mut gw = app.gw.lock().await;
             let (key, owner) = gw.register_account(None);
-            gw.account_deposit(&key, 0, 20_000 * QUOTE_SCALE).expect("deposit");
+            gw.account_deposit(&key, 0, 20_000 * QUOTE_SCALE)
+                .expect("deposit");
             let epoch_id = gw.epochs.current().epoch_id;
             let epoch_pub = gw.epochs.current().public;
             let wire = seal_order_wire(
@@ -8319,7 +8400,8 @@ mod tests {
     fn sealed_order_decrypts_and_opens_position() {
         let mut gw = Gw::boot();
         let (key, owner) = gw.register_account(None);
-        gw.account_deposit(&key, 0, 20_000 * QUOTE_SCALE).expect("deposit");
+        gw.account_deposit(&key, 0, 20_000 * QUOTE_SCALE)
+            .expect("deposit");
 
         // the client fetches the enclave's CURRENT epoch (GET /v1/enclave/epoch)
         let epoch_id = gw.epochs.current().epoch_id;
@@ -8354,7 +8436,8 @@ mod tests {
             sealed: Some(wire),
             ..Default::default()
         };
-        gw.account_place_order(&key, &req).expect("sealed order accepted");
+        gw.account_place_order(&key, &req)
+            .expect("sealed order accepted");
 
         // depth is still served (public) — sealed ingress never touches the book
         let book = gw.v1_orderbook_json(0).expect("depth served");
@@ -8461,8 +8544,16 @@ mod tests {
     fn decode_hex_rejects_non_ascii_without_panic() {
         // multi-byte codepoints that previously panicked (byte-len even, slice
         // boundary lands mid-codepoint) now return a clean `None`.
-        assert_eq!(decode_hex("0xé0"), None, "mid-codepoint slice must not panic");
-        assert_eq!(decode_hex("—"), None, "em dash (3 bytes) must reject cleanly");
+        assert_eq!(
+            decode_hex("0xé0"),
+            None,
+            "mid-codepoint slice must not panic"
+        );
+        assert_eq!(
+            decode_hex("—"),
+            None,
+            "em dash (3 bytes) must reject cleanly"
+        );
         assert_eq!(decode_hex("é"), None); // single 2-byte char: even byte len, non-hex
         assert_eq!(decode_hex("0x00é"), None);
         // odd length still rejected; non-hex ASCII nibble still rejected.
@@ -8491,9 +8582,15 @@ mod tests {
         let bad130 = format!("aé{}", "a".repeat(127)); // 130 bytes
         assert_eq!(parse_hex65(&bad130), None);
         // valid inputs still parse, with and without the 0x prefix.
-        assert_eq!(parse_hex32(&format!("0x{}", "ab".repeat(32))), Some([0xab; 32]));
+        assert_eq!(
+            parse_hex32(&format!("0x{}", "ab".repeat(32))),
+            Some([0xab; 32])
+        );
         assert_eq!(parse_addr20_hex(&"cd".repeat(20)), Some([0xcd; 20]));
-        assert_eq!(parse_hex65(&format!("0x{}", "0F".repeat(65))), Some([0x0f; 65]));
+        assert_eq!(
+            parse_hex65(&format!("0x{}", "0F".repeat(65))),
+            Some([0x0f; 65])
+        );
         // wrong length still rejected.
         assert_eq!(parse_hex32("ab"), None);
     }
@@ -8517,7 +8614,10 @@ mod tests {
             "a non-ASCII sealed wire must be rejected, not panic",
         );
         let opened = gw.seq.state.position(&owner, 0).map_or(0, |p| p.size);
-        assert_eq!(opened, 0, "a rejected non-ASCII sealed order must open nothing");
+        assert_eq!(
+            opened, 0,
+            "a rejected non-ASCII sealed order must open nothing"
+        );
     }
 
     /// Pre-merge FIX 1 (sealed-order replay): a captured `{epochId, sealed}` body
@@ -8530,7 +8630,8 @@ mod tests {
     fn sealed_order_replay_of_same_body_is_rejected() {
         let mut gw = Gw::boot();
         let (key, owner) = gw.register_account(None);
-        gw.account_deposit(&key, 0, 20_000 * QUOTE_SCALE).expect("deposit");
+        gw.account_deposit(&key, 0, 20_000 * QUOTE_SCALE)
+            .expect("deposit");
         let epoch_id = gw.epochs.current().epoch_id;
         let epoch_pub = gw.epochs.current().public;
         let terms = |nonce: u64| OrderTerms {
@@ -8740,7 +8841,11 @@ mod tests {
         assert_eq!(&b[0..8], &t.market_id.to_le_bytes(), "marketId u64 LE @0");
         assert_eq!(b[8], 2, "Sell encodes as 2");
         assert_eq!(&b[9..25], &t.size.to_le_bytes(), "size i128 LE @9");
-        assert_eq!(&b[25..41], &t.limit_price.to_le_bytes(), "limitPrice i128 LE @25");
+        assert_eq!(
+            &b[25..41],
+            &t.limit_price.to_le_bytes(),
+            "limitPrice i128 LE @25"
+        );
         assert_eq!(b[41], 3, "Fok encodes as 3");
         assert_eq!(b[42], 1, "reduceOnly true = 1");
         assert_eq!(&b[43..51], &t.nonce.to_le_bytes(), "nonce u64 LE @43");
@@ -8807,11 +8912,17 @@ mod tests {
         let mut gw = Gw::boot();
         let (key, _o) = gw.register_account(None);
         gw.account_deposit(&key, 0, 40_000 * QUOTE_SCALE).unwrap();
-        let w1 = gw.account_withdraw(&key, 0, 5_000 * QUOTE_SCALE, [7u8; 20]).unwrap();
-        let w2 = gw.account_withdraw(&key, 0, 3_000 * QUOTE_SCALE, [8u8; 20]).unwrap();
+        let w1 = gw
+            .account_withdraw(&key, 0, 5_000 * QUOTE_SCALE, [7u8; 20])
+            .unwrap();
+        let w2 = gw
+            .account_withdraw(&key, 0, 3_000 * QUOTE_SCALE, [8u8; 20])
+            .unwrap();
         // seed proofs for both leaves as a settle would
-        gw.withdraw_proofs.insert(w1.leaf(), ([0xAAu8; 32], vec![[0xBBu8; 32]]));
-        gw.withdraw_proofs.insert(w2.leaf(), ([0xAAu8; 32], vec![[0xCCu8; 32]]));
+        gw.withdraw_proofs
+            .insert(w1.leaf(), ([0xAAu8; 32], vec![[0xBBu8; 32]]));
+        gw.withdraw_proofs
+            .insert(w2.leaf(), ([0xAAu8; 32], vec![[0xCCu8; 32]]));
 
         // claim w1 only
         gw.prune_claimed_withdrawals(&[w1.leaf()]);
@@ -8830,9 +8941,16 @@ mod tests {
         let (key, _o) = gw.register_account(None);
         gw.account_deposit(&key, 0, 40_000 * QUOTE_SCALE).unwrap();
         // one withdrawal accumulated since the (failed) seal drained the window's set
-        let after = gw.account_withdraw(&key, 0, 3_000 * QUOTE_SCALE, [8u8; 20]).unwrap();
+        let after = gw
+            .account_withdraw(&key, 0, 3_000 * QUOTE_SCALE, [8u8; 20])
+            .unwrap();
         // the failed window's withdrawals, captured before the seal
-        let failed = vec![Withdrawal { owner: [1u8; 32], to: [7u8; 20], amount: 5_000, nonce: 1 }];
+        let failed = vec![Withdrawal {
+            owner: [1u8; 32],
+            to: [7u8; 20],
+            amount: 5_000,
+            nonce: 1,
+        }];
 
         gw.rollback_window_withdrawals(failed.clone());
 
@@ -8888,7 +9006,7 @@ mod tests {
         assert_eq!(witness.batch_id, bc);
         assert_eq!(ww.len(), 1); // the withdrawal was taken
         assert!(gw.window_withdrawals.is_empty()); // drained
-        // the window op-log contains the real-exit withdraw op
+                                                   // the window op-log contains the real-exit withdraw op
         assert!(witness
             .ops
             .iter()
@@ -8935,7 +9053,9 @@ mod tests {
             prepared: None,
         };
         rollback_journal::write(&jp, &journal, &seed).expect("stage-1 write");
-        let s1 = rollback_journal::read(&jp, &seed).expect("read").expect("present");
+        let s1 = rollback_journal::read(&jp, &seed)
+            .expect("read")
+            .expect("present");
         assert_eq!(s1.batch_id, bc);
         assert!(s1.prepared.is_none(), "stage 1 journals pre-prove");
 
@@ -8944,7 +9064,9 @@ mod tests {
             prove_and_prepare(&MockProverClient, &journal.witness, &journal.ww).expect("prove");
         journal.prepared = Some(prepared.clone());
         rollback_journal::write(&jp, &journal, &seed).expect("stage-2 write");
-        let s2 = rollback_journal::read(&jp, &seed).expect("read").expect("present");
+        let s2 = rollback_journal::read(&jp, &seed)
+            .expect("read")
+            .expect("present");
         assert_eq!(s2.batch_id, bc);
         let s2p = s2.prepared.expect("stage 2 carries the prove outcome");
         assert_eq!(s2p.outcome.new_root, prepared.outcome.new_root);
@@ -8961,7 +9083,9 @@ mod tests {
         // back at `bc`) and the tx never landed (chain batchCount == bc), the
         // recovery table reads SEAL-NEVER-PERSISTED → resolve, no mutation, and
         // the call site drops the file.
-        let j = rollback_journal::read(&jp, &seed).expect("read").expect("present");
+        let j = rollback_journal::read(&jp, &seed)
+            .expect("read")
+            .expect("present");
         let out = apply_boot_recovery(&mut gw, j, bc, "0x00", 0);
         // SEAL-NEVER-PERSISTED is a NON-mutating resolution: delete without a
         // pre-delete snapshot write (the state on disk is already the one it
@@ -8975,7 +9099,10 @@ mod tests {
         let (w2, ww2) = gw.begin_window_settle(bc).unwrap().expect("re-sealed");
         assert_eq!(w2.batch_id, bc, "re-seal keeps the on-chain window id");
         let leaves2: Vec<[u8; 32]> = ww2.iter().map(|w| w.leaf()).collect();
-        assert_eq!(leaves2, ww_leaves, "the drained withdrawals were re-injected");
+        assert_eq!(
+            leaves2, ww_leaves,
+            "the drained withdrawals were re-injected"
+        );
     }
 
     // ── Task 3: boot-time crash recovery (apply_boot_recovery) ──────────────
@@ -9027,21 +9154,27 @@ mod tests {
             apply_boot_recovery(&mut restored, hold_j, bc + 2, "0x00", 0),
             BootRecoveryOutcome::KeepJournal
         );
-        assert_eq!(restored.seq.state.next_batch_id, bc + 1, "HOLD never mutates");
+        assert_eq!(
+            restored.seq.state.next_batch_id,
+            bc + 1,
+            "HOLD never mutates"
+        );
 
         // the ROLLBACK row: seal persisted (B == bc+1), tx never landed (chain == bc).
         // A MUTATING resolution — the caller must persist before deleting.
         let out = apply_boot_recovery(&mut restored, journal, bc, "0x00", 0);
         assert_eq!(out, BootRecoveryOutcome::DeleteJournal { mutated: true });
         assert_eq!(
-            restored.seq.state.next_batch_id,
-            bc,
+            restored.seq.state.next_batch_id, bc,
             "Counter B rewound to the journaled window"
         );
 
         // a fresh begin_window_settle(bc) re-seals the same window: the desync
         // guard passes and the drained withdrawals were re-injected.
-        let (w2, ww2) = restored.begin_window_settle(bc).unwrap().expect("re-sealed");
+        let (w2, ww2) = restored
+            .begin_window_settle(bc)
+            .unwrap()
+            .expect("re-sealed");
         assert_eq!(w2.batch_id, bc, "re-seal keeps the on-chain window id");
         let leaves2: Vec<[u8; 32]> = ww2.iter().map(|w| w.leaf()).collect();
         assert_eq!(leaves2, ww_leaves, "same withdrawal leaves after recovery");
@@ -9089,7 +9222,10 @@ mod tests {
         let sealed = snapshot::seal(&gw.snapshot_plain(), &seed);
         let plain = snapshot::open(&sealed, &seed).expect("open");
         let mut restored = Gw::boot_restored(&plain).expect("restore");
-        assert!(restored.l1_status.is_none(), "the commit died with the crash");
+        assert!(
+            restored.l1_status.is_none(),
+            "the commit died with the crash"
+        );
 
         // the ROLL-FORWARD row: tx landed (chain == bc+1) and the chain root is
         // exactly our prepared new_root. Passed in MIXED case: root comparisons
@@ -9104,7 +9240,10 @@ mod tests {
         );
         // ROLL-FORWARD is a MUTATING resolution — persist before delete.
         assert_eq!(out, BootRecoveryOutcome::DeleteJournal { mutated: true });
-        let st = restored.l1_status.clone().expect("bookkeeping re-committed");
+        let st = restored
+            .l1_status
+            .clone()
+            .expect("bookkeeping re-committed");
         assert_eq!(st.settled_root, chain_root);
         assert_eq!(st.batch_count, bc + 1);
         assert_eq!(st.last_tx, "(recovered at boot)");
@@ -9196,7 +9335,9 @@ mod tests {
         assert_eq!(restored.seq.state.next_batch_id, bc + 1);
 
         // the ROLLBACK row — a MUTATING resolution.
-        let j = rollback_journal::read(&jp, &seed).expect("read").expect("present");
+        let j = rollback_journal::read(&jp, &seed)
+            .expect("read")
+            .expect("present");
         let out = apply_boot_recovery(&mut restored, j, bc, "0x00", 0);
         assert_eq!(out, BootRecoveryOutcome::DeleteJournal { mutated: true });
 
@@ -9207,8 +9348,7 @@ mod tests {
         let plain2 = snapshot::open(&std::fs::read(&state).unwrap(), &seed).expect("open post");
         let after = Gw::boot_restored(&plain2).expect("restore post");
         assert_eq!(
-            after.seq.state.next_batch_id,
-            bc,
+            after.seq.state.next_batch_id, bc,
             "the rolled-back Counter B was persisted before the journal delete"
         );
         // (b) only then is the journal deleted.
@@ -9227,7 +9367,10 @@ mod tests {
         // non-mutating resolutions stay delete-without-write: the same unwritable
         // snapshot path does not block the delete (nothing changed to persist).
         finish_boot_recovery(&after, false, &bad_state, &jp, &seed);
-        assert!(!jp.exists(), "non-mutating rows delete without a snapshot write");
+        assert!(
+            !jp.exists(),
+            "non-mutating rows delete without a snapshot write"
+        );
 
         std::fs::remove_file(&state).ok();
     }
@@ -9240,7 +9383,8 @@ mod tests {
         let mut gw = Gw::boot();
         let (key, _o) = gw.register_account(None);
         gw.account_deposit(&key, 0, 40_000 * QUOTE_SCALE).unwrap();
-        gw.account_withdraw(&key, 0, 5_000 * QUOTE_SCALE, [7u8; 20]).unwrap();
+        gw.account_withdraw(&key, 0, 5_000 * QUOTE_SCALE, [7u8; 20])
+            .unwrap();
         let bc = gw.seq.state.next_batch_id;
         let (witness, _ww) = gw.begin_window_settle(bc).unwrap().expect("some");
 
@@ -9272,7 +9416,14 @@ mod tests {
         let r32 = |b: u8| format!("0x{}", crate::hex32(&[b; 32]).trim_start_matches("0x"));
         let json = format!(
             r#"{{"prev_root":"{}","manifest_hash":"{}","new_root":"{}","ordered_root":"{}","withdrawals_root":"{}","rejected_root":"{}","deposits_root":"{}","commitment":"{}","proof":"0xdeadbeef"}}"#,
-            r32(1), r32(2), r32(3), r32(4), r32(5), r32(6), r32(8), r32(7)
+            r32(1),
+            r32(2),
+            r32(3),
+            r32(4),
+            r32(5),
+            r32(6),
+            r32(8),
+            r32(7)
         );
         let out = parse_prove_resp(&json).expect("parse");
         assert_eq!(out.prev_root, [1u8; 32]);
@@ -9311,9 +9462,12 @@ mod tests {
         // THREE real-exit withdrawals in the window → a non-trivial withdrawals tree
         // that also pins op-ORDER (a 2-leaf sorted-pair tree is permutation-invariant,
         // so two leaves alone couldn't tell "same set" from "same order")
-        gw.account_withdraw(&key, 0, 5_000 * QUOTE_SCALE, [7u8; 20]).unwrap();
-        gw.account_withdraw(&key, 0, 3_000 * QUOTE_SCALE, [8u8; 20]).unwrap();
-        gw.account_withdraw(&key, 0, 2_000 * QUOTE_SCALE, [9u8; 20]).unwrap();
+        gw.account_withdraw(&key, 0, 5_000 * QUOTE_SCALE, [7u8; 20])
+            .unwrap();
+        gw.account_withdraw(&key, 0, 3_000 * QUOTE_SCALE, [8u8; 20])
+            .unwrap();
+        gw.account_withdraw(&key, 0, 2_000 * QUOTE_SCALE, [9u8; 20])
+            .unwrap();
         let bc = gw.seq.state.next_batch_id;
 
         let (witness, ww) = gw.begin_window_settle(bc).unwrap().expect("some");
@@ -9342,7 +9496,8 @@ mod tests {
         let mut gw = Gw::boot();
         let (key, _o) = gw.register_account(None);
         gw.account_deposit(&key, 0, 40_000 * QUOTE_SCALE).unwrap();
-        gw.account_withdraw(&key, 0, 5_000 * QUOTE_SCALE, [7u8; 20]).unwrap();
+        gw.account_withdraw(&key, 0, 5_000 * QUOTE_SCALE, [7u8; 20])
+            .unwrap();
         let bc = gw.seq.state.next_batch_id;
 
         let (witness, ww) = gw.begin_window_settle(bc).unwrap().expect("some");
@@ -9482,7 +9637,8 @@ mod tests {
         let mut gw = Gw::boot();
         let (key, _o) = gw.register_account(None);
         gw.account_deposit(&key, 0, 40_000 * QUOTE_SCALE).unwrap();
-        gw.account_withdraw(&key, 0, 5_000 * QUOTE_SCALE, [7u8; 20]).unwrap();
+        gw.account_withdraw(&key, 0, 5_000 * QUOTE_SCALE, [7u8; 20])
+            .unwrap();
         let bc = gw.seq.state.next_batch_id;
         let (witness, ww) = gw.begin_window_settle(bc).unwrap().expect("some");
         assert!(!ww.is_empty());
@@ -9515,7 +9671,8 @@ mod tests {
         let mut gw = Gw::boot();
         let (key, _o) = gw.register_account(None);
         gw.account_deposit(&key, 0, 40_000 * QUOTE_SCALE).unwrap();
-        gw.account_withdraw(&key, 0, 5_000 * QUOTE_SCALE, [7u8; 20]).unwrap();
+        gw.account_withdraw(&key, 0, 5_000 * QUOTE_SCALE, [7u8; 20])
+            .unwrap();
         let bc = gw.seq.state.next_batch_id;
         let (witness, ww) = gw.begin_window_settle(bc).unwrap().expect("some");
 
@@ -9535,7 +9692,8 @@ mod tests {
         gw.account_deposit(&key, 0, 40_000 * QUOTE_SCALE).unwrap();
 
         // ── window 1: withdrawal → begin → prove → commit ────────────────────
-        gw.account_withdraw(&key, 0, 5_000 * QUOTE_SCALE, [7u8; 20]).unwrap();
+        gw.account_withdraw(&key, 0, 5_000 * QUOTE_SCALE, [7u8; 20])
+            .unwrap();
         let bc1 = gw.seq.state.next_batch_id;
         let (witness1, ww1) = gw.begin_window_settle(bc1).unwrap().expect("some");
         let ordered1 = witness1.manifest.ordered.clone();
@@ -9554,7 +9712,8 @@ mod tests {
         assert!(gw.withdraw_proofs.contains_key(&leaf_w1));
 
         // ── window 2: another withdrawal (root changes) → begin → commit ─────
-        gw.account_withdraw(&key, 0, 3_000 * QUOTE_SCALE, [8u8; 20]).unwrap();
+        gw.account_withdraw(&key, 0, 3_000 * QUOTE_SCALE, [8u8; 20])
+            .unwrap();
         let bc2 = gw.seq.state.next_batch_id;
         let (witness2, ww2) = gw.begin_window_settle(bc2).unwrap().expect("some");
         let ordered2 = witness2.manifest.ordered.clone();

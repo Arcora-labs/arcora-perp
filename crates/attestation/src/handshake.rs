@@ -66,6 +66,25 @@ pub fn session_token(secret: &Digest, not_after_ms: u64) -> String {
     format!("0x{}", hex::encode(d))
 }
 
+/// Derive the session secret AND the /prove token from a completed DH-handshake
+/// transcript, in ONE place — the single source of truth for the convergence
+/// property. The gateway, the prover, and the orchestration test all call this
+/// with (shared, gateway-measurement, prover-measurement, gw_ephpub, pv_ephpub,
+/// not_after) — gateway fields first — so all three fold the identical tuple and
+/// mint the identical (secret, token). Orientation cannot drift between them.
+pub fn derive_session(
+    shared: &[u8; 32],
+    gw_meas: &Digest,
+    pv_meas: &Digest,
+    gw_ephpub: &[u8; 32],
+    pv_ephpub: &[u8; 32],
+    not_after_ms: u64,
+) -> (Digest, String) {
+    let secret = session_secret(shared, gw_meas, pv_meas, gw_ephpub, pv_ephpub);
+    let token = session_token(&secret, not_after_ms);
+    (secret, token)
+}
+
 /// Constant-time byte equality for the bearer-token compare (prover `/prove`
 /// gate, C5). Length is not secret (the token is fixed-length hex), so a length
 /// mismatch short-circuits; equal-length inputs are compared in constant time.

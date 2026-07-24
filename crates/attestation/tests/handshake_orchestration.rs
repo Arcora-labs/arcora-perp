@@ -7,8 +7,9 @@
 //! locally (that end-to-end is window-deferred). The mock's `quote` DOES echo
 //! the challenge, so this file exercises the exact orchestration both binaries
 //! run — generate ephemeral key → verify peer bundle over the peer's advertised
-//! `eph_pub` → `dh_shared` → `session_secret` (gateway fields first on BOTH
-//! sides) → `session_token` — without any TEE evidence, and proves:
+//! `eph_pub` → `dh_shared` → `derive_session` (the ONE shared secret+token
+//! derivation, gateway fields first on BOTH sides) — without any TEE evidence,
+//! and proves:
 //!   1. both sides derive the IDENTICAL secret + token (the orientation check);
 //!   2. a tampered / malformed peer bundle fails closed (no token);
 //!   3. a wrong peer measurement fails closed (`MeasurementMismatch`);
@@ -19,7 +20,7 @@
 //! `prover_half` mirrors `boot_handshake` (crates/prover-service/src/main.rs).
 
 use dark_perp_attestation::{
-    dh_shared, ephemeral_keypair, session_secret, session_token, AttestError, Attestor, Digest,
+    derive_session, dh_shared, ephemeral_keypair, session_token, AttestError, Attestor, Digest,
     StaticSecret,
 };
 
@@ -88,8 +89,8 @@ fn gateway_half(
 ) -> Result<(String, Digest), AttestError> {
     let pv_meas = verifier.verify(pv_bundle, pv_expected, pv_pub)?;
     let shared = dh_shared(gw_sk, pv_pub);
-    let secret = session_secret(&shared, gw_expected, &pv_meas, gw_pub, pv_pub);
-    Ok((session_token(&secret, not_after), secret))
+    let (secret, token) = derive_session(&shared, gw_expected, &pv_meas, gw_pub, pv_pub, not_after);
+    Ok((token, secret))
 }
 
 /// The PROVER's half (mirrors `boot_handshake`): verify the gateway's
@@ -111,8 +112,8 @@ fn prover_half(
 ) -> Result<(String, Digest), AttestError> {
     let gw_meas = verifier.verify(gw_bundle, gw_expected, gw_pub)?;
     let shared = dh_shared(pv_sk, gw_pub);
-    let secret = session_secret(&shared, &gw_meas, pv_expected, gw_pub, pv_pub);
-    Ok((session_token(&secret, not_after), secret))
+    let (secret, token) = derive_session(&shared, &gw_meas, pv_expected, gw_pub, pv_pub, not_after);
+    Ok((token, secret))
 }
 
 #[test]

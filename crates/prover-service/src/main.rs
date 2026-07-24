@@ -16,8 +16,8 @@ use axum::{
 // DH transcript math is shared with the gateway. `StaticSecret` is the
 // attestation crate's re-export of the ephemeral x25519 secret type.
 use dark_perp_attestation::{
-    ct_eq, dh_shared, ephemeral_keypair, session_secret, session_token, Attestor as _,
-    AzureTdxAttestor, NvidiaCcAttestor, StaticSecret, DEV_INSECURE_SESSION_TOKEN,
+    ct_eq, derive_session, dh_shared, ephemeral_keypair, Attestor as _, AzureTdxAttestor,
+    NvidiaCcAttestor, StaticSecret, DEV_INSECURE_SESSION_TOKEN,
 };
 use perp_core::hash::Digest;
 use prover::{
@@ -310,8 +310,9 @@ fn boot_handshake(
     // requires OUR ephemeral PRIVATE key, so the secret is not derivable from
     // the public /attest transcript (C3).
     let shared = dh_shared(pv_sk, &gw_pub);
-    let secret = session_secret(&shared, &gw_meas, &pv_expected, &gw_pub, pv_pub);
-    Ok((session_token(&secret, not_after), secret))
+    let (secret, token) =
+        derive_session(&shared, &gw_meas, &pv_expected, &gw_pub, pv_pub, not_after);
+    Ok((token, secret))
 }
 
 /// `GET /attest` — this prover's self-quote evidence, for the gateway's side of

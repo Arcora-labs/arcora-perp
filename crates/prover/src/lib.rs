@@ -887,7 +887,8 @@ mod tests {
         let witness = (s, ops, manifest);
         let bytes = postcard::to_allocvec(&witness).unwrap();
         let sealed =
-            SealedWitness::seal(&bytes, &SoftwareSealProvider::new(root, m), m, [0x01u8; 32]).unwrap();
+            SealedWitness::seal(&bytes, &SoftwareSealProvider::new(root, m), m, [0x01u8; 32])
+                .unwrap();
         (sealed, expected)
     }
 
@@ -896,7 +897,8 @@ mod tests {
         let m = [0xAB; 32];
         let root = [0x5E; 32];
         let (sealed, expected) = sealed_test_witness(m, root);
-        let prover = AttestedProver::new(CommitmentProver::new(m), SoftwareSealProvider::new(root, m));
+        let prover =
+            AttestedProver::new(CommitmentProver::new(m), SoftwareSealProvider::new(root, m));
         let bp = prover.prove_batch(&sealed).unwrap();
         // the derived public inputs match run_transition — prover derived, not trusted
         assert_eq!(
@@ -904,7 +906,11 @@ mod tests {
             expected.commitment::<Keccak256>(),
             "prove_batch must DERIVE the public commitment from the witness"
         );
-        assert_eq!(bp.proof_bytes.len(), 32, "CommitmentProver stand-in proof is 32 bytes");
+        assert_eq!(
+            bp.proof_bytes.len(),
+            32,
+            "CommitmentProver stand-in proof is 32 bytes"
+        );
         assert_eq!(bp.prover_measurement, m);
     }
 
@@ -912,9 +918,14 @@ mod tests {
     fn prove_batch_wrong_measurement_cannot_open() {
         let (sealed, _) = sealed_test_witness([0xAB; 32], [0x5E; 32]);
         // prover authorized only for a DIFFERENT measurement → key-release refuses
-        let prover =
-            AttestedProver::new(CommitmentProver::new([0xCD; 32]), SoftwareSealProvider::new([0x5E; 32], [0xCD; 32]));
-        assert_eq!(prover.prove_batch(&sealed), Err(ProverError::MeasurementMismatch));
+        let prover = AttestedProver::new(
+            CommitmentProver::new([0xCD; 32]),
+            SoftwareSealProvider::new([0x5E; 32], [0xCD; 32]),
+        );
+        assert_eq!(
+            prover.prove_batch(&sealed),
+            Err(ProverError::MeasurementMismatch)
+        );
     }
 
     #[test]
@@ -922,9 +933,15 @@ mod tests {
         // seal random non-postcard bytes → opens fine (right key) but decode fails
         let m = [0xAB; 32];
         let root = [0x5E; 32];
-        let sealed =
-            SealedWitness::seal(b"not a witness", &SoftwareSealProvider::new(root, m), m, [0x02u8; 32]).unwrap();
-        let prover = AttestedProver::new(CommitmentProver::new(m), SoftwareSealProvider::new(root, m));
+        let sealed = SealedWitness::seal(
+            b"not a witness",
+            &SoftwareSealProvider::new(root, m),
+            m,
+            [0x02u8; 32],
+        )
+        .unwrap();
+        let prover =
+            AttestedProver::new(CommitmentProver::new(m), SoftwareSealProvider::new(root, m));
         assert_eq!(prover.prove_batch(&sealed), Err(ProverError::WitnessDecode));
     }
 
@@ -935,12 +952,19 @@ mod tests {
     fn sealed_witness_postcard_round_trips() {
         let m = [0xAB; 32];
         let root = [0x5E; 32];
-        let sealed =
-            SealedWitness::seal(b"batch witness bytes", &SoftwareSealProvider::new(root, m), m, [0x07u8; 32])
-                .unwrap();
+        let sealed = SealedWitness::seal(
+            b"batch witness bytes",
+            &SoftwareSealProvider::new(root, m),
+            m,
+            [0x07u8; 32],
+        )
+        .unwrap();
         let bytes = postcard::to_allocvec(&sealed).expect("serialize");
         let back: SealedWitness = postcard::from_bytes(&bytes).expect("deserialize");
         let bytes2 = postcard::to_allocvec(&back).unwrap();
-        assert_eq!(bytes, bytes2, "SealedWitness survives a postcard round-trip");
+        assert_eq!(
+            bytes, bytes2,
+            "SealedWitness survives a postcard round-trip"
+        );
     }
 }
