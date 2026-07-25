@@ -1419,7 +1419,9 @@ The frontend cannot implement the signed-withdrawal flow without this: it persis
 - Test: `crates/gateway/src/main.rs` test module
 
 **Interfaces:**
-- Produces: `/v1/accounts/me` response gains `depositAddress` (string or null), `callerSigned` (bool), `nextWithdrawNonce` (u64), `chainId` (u64), `vault` (0x-hex string)
+- Produces: `/v1/accounts/me` response gains `depositAddress` (string or null), `callerSigned` (bool), `nextWithdrawNonce` (u64), `rebindCounter` (u64), `chainId` (u64), `vault` (0x-hex string)
+
+`rebindCounter` is needed for the same reason as the others: it is mixed into `rebind_auth_digest`, so a client rotating its deposit address cannot build a valid signature without it. Task 4 documented the derivation rule (0 at creation, +1 per *accepted* rebind, rejected attempts do not count) but left clients to track it themselves — serving it is the friendlier and less error-prone contract.
 
 `chainId` and `vault` are part of the signed digest, so the client must read them from the gateway rather than hardcoding them — a client compiled against the wrong deployment would otherwise produce signatures that are silently rejected.
 
@@ -1475,6 +1477,7 @@ Replace `v1_account` (`main.rs:2467-2476`):
             "depositAddress": a.deposit_address.map(|d| hex0x(&d)),
             "callerSigned": a.signer.is_some(),
             "nextWithdrawNonce": a.last_withdraw_nonce + 1,
+            "rebindCounter": a.rebind_counter,
             "chainId": self.chain_id,
             "vault": hex0x(&self.vault),
         }))
@@ -1677,6 +1680,13 @@ Extend the withdrawal section with the signature/nonce requirement for **both** 
 - [ ] **Step 3: Record both findings in `docs/SECURITY.md`**
 
 Add SEC-021 and SEC-021b with their resolutions, matching the format used for SEC-019/ZK-001.
+
+- [ ] **Step 3b: Document the two user-visible consequences of the rebind lock**
+
+Both follow from decisions taken deliberately, and both are surprising enough that users must not discover them live. Cover them in `docs/API.md`, `docs/SECURITY.md`, and the alpha release notes:
+
+1. **There is no recovery path for a lost bound-address key.** The binding can only be moved by a signature from the address currently bound, and the design explicitly rejects a timelocked or operator-mediated rebind. Combined with the server-custody `to` pin, losing that key makes the account's funds permanently unwithdrawable. State it plainly — "keep the key you deposited from" is the whole mitigation.
+2. **First bind wins, permanently.** An attacker holding only a leaked API key can bind their own address to an account that has never bound one, and the victim can no longer overwrite it. The account holds no funds in that state (crediting requires `from == bound address`), so this is griefing rather than theft — but the failure mode inverted relative to the old behavior, where the victim could simply rebind.
 
 - [ ] **Step 4: Update the public site**
 
