@@ -2,15 +2,13 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { render, screen, fireEvent, cleanup } from "@testing-library/react";
 import { StoreProvider } from "../store";
-import { AccountPanel, buildClaimCommand, isEvmAddress } from "./AccountPanel";
+import { AccountPanel, buildClaimCommand } from "./AccountPanel";
 import type { WithdrawalEntry } from "../domain/types";
 
 afterEach(() => {
   cleanup();
-  localStorage.clear(); // the panel persists the last withdrawal address
+  localStorage.clear();
 });
-
-const DEST = "0x" + "ab".repeat(20);
 
 const renderPanel = () =>
   render(
@@ -19,14 +17,13 @@ const renderPanel = () =>
     </StoreProvider>,
   );
 
-const fillAddress = (value = DEST) =>
-  fireEvent.change(screen.getByLabelText(/withdrawal address/i), { target: { value } });
-
+// SEC-021: the free-text destination is GONE — on the real gateway withdrawals
+// always pay the bound deposit address (signed by its key); the mock has no
+// binding concept, so the panel shows no destination UI at all in mock mode.
 describe("AccountPanel deposit/withdraw", () => {
   it("rejects withdrawing more than the settled balance (§3)", async () => {
     renderPanel();
     fireEvent.change(screen.getByLabelText(/amount/i), { target: { value: "999999999" } });
-    fillAddress();
     fireEvent.click(screen.getByRole("button", { name: /^withdraw$/i }));
     expect(await screen.findByText(/exceeds SETTLED/i)).toBeTruthy();
   });
@@ -52,35 +49,21 @@ describe("AccountPanel deposit/withdraw", () => {
     expect(screen.queryByText(/^withdrawals$/i)).toBeNull();
   });
 
-  it("requires a valid destination address before withdrawing (claim pays out there)", async () => {
+  it("shows no destination UI in mock mode (no binding concept) and no free-text address field", async () => {
     renderPanel();
-    fireEvent.change(screen.getByLabelText(/amount/i), { target: { value: "100" } });
-    fillAddress("0x1234"); // too short — not a 20-byte address
-    fireEvent.click(screen.getByRole("button", { name: /^withdraw$/i }));
-    expect(await screen.findByText(/valid destination address/i)).toBeTruthy();
+    await screen.findByText(/settled balance/i);
+    expect(screen.queryByLabelText(/withdrawal address/i)).toBeNull();
+    expect(screen.queryByText(/bound deposit address/i)).toBeNull();
   });
 
-  it("on success: sets the settling→claimable expectation and persists the address", async () => {
+  it("on success: sets the settling→claimable expectation", async () => {
     renderPanel();
     fireEvent.change(screen.getByLabelText(/amount/i), { target: { value: "100" } });
-    fillAddress();
     fireEvent.click(screen.getByRole("button", { name: /^withdraw$/i }));
     expect(await screen.findByText(/Settling on-chain/i)).toBeTruthy();
     expect(screen.getByText(/Claimable in ~10–20 min/i)).toBeTruthy();
-    // Last-used ADDRESS is persisted for convenience — never key material.
-    expect(localStorage.getItem("darkperp.withdrawTo")).toBe(DEST);
-  });
-});
-
-describe("isEvmAddress", () => {
-  it("accepts exactly 0x + 40 hex and rejects everything else", () => {
-    expect(isEvmAddress(DEST)).toBe(true);
-    expect(isEvmAddress("0x" + "AB".repeat(20))).toBe(true); // checksum-case ok
-    expect(isEvmAddress("")).toBe(false);
-    expect(isEvmAddress("0x1234")).toBe(false); // too short
-    expect(isEvmAddress("0x" + "ab".repeat(20) + "ab")).toBe(false); // too long
-    expect(isEvmAddress("ab".repeat(20))).toBe(false); // missing 0x
-    expect(isEvmAddress("0x" + "zz".repeat(20))).toBe(false); // non-hex
+    // SEC-021 removed the free-text destination — nothing address-like persists.
+    expect(localStorage.getItem("darkperp.withdrawTo")).toBeNull();
   });
 });
 

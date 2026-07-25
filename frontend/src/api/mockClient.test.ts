@@ -3,10 +3,6 @@ import { MockDarkPerpClient } from "./mockClient";
 import type { OrderEvent } from "./client";
 import { PRICE_SCALE, QUOTE_SCALE, SIZE_SCALE } from "../domain/types";
 
-// Dummy claim destination — the mock ignores it (no L1 vault), but the interface
-// now requires the address the on-chain claim would pay out to.
-const MOCK_TO = "0x" + "ab".repeat(20);
-
 // The mock advances finality on timers (MATCH at 900ms); drive it deterministically.
 const MATCH_MS = 900;
 
@@ -245,9 +241,9 @@ describe("MockDarkPerpClient collateral accounting", () => {
     const c = new MockDarkPerpClient();
     await openLong(c, 100_000n * PRICE_SCALE); // free balance now 15k, 10k locked
     // 20k exceeds the 15k free balance (the other 10k backs the position)
-    await expect(c.requestWithdrawal(20_000n * QUOTE_SCALE, MOCK_TO)).rejects.toThrow(/exceeds SETTLED/i);
+    await expect(c.requestWithdrawal(20_000n * QUOTE_SCALE)).rejects.toThrow(/exceeds SETTLED/i);
     // withdrawing exactly the free balance is fine
-    await expect(c.requestWithdrawal(15_000n * QUOTE_SCALE, MOCK_TO)).resolves.toBeUndefined();
+    await expect(c.requestWithdrawal(15_000n * QUOTE_SCALE)).resolves.toBeUndefined();
   });
 
   it("rejects an open that exceeds free margin (buying-power guard)", async () => {
@@ -325,7 +321,7 @@ describe("MockDarkPerpClient collateral conservation through a journey", () => {
     expect(capital()).toBe(expected);
 
     // withdraw moves capital down by exactly the withdrawal
-    await c.requestWithdrawal(1_000n * QUOTE_SCALE, MOCK_TO);
+    await c.requestWithdrawal(1_000n * QUOTE_SCALE);
     expected -= 1_000n * QUOTE_SCALE;
     expect(capital()).toBe(expected);
   });
@@ -419,7 +415,7 @@ describe("MockDarkPerpClient withdrawals", () => {
   it("rejects withdrawing more than the settled balance", async () => {
     const c = new MockDarkPerpClient();
     const bal = c.getState().account.settledBalance;
-    await expect(c.requestWithdrawal(bal + 1n, MOCK_TO)).rejects.toThrow(/exceeds SETTLED/i);
-    await expect(c.requestWithdrawal(0n, MOCK_TO)).rejects.toThrow(/positive/i);
+    await expect(c.requestWithdrawal(bal + 1n)).rejects.toThrow(/exceeds SETTLED/i);
+    await expect(c.requestWithdrawal(0n)).rejects.toThrow(/positive/i);
   });
 });

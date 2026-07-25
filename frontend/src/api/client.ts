@@ -96,11 +96,18 @@ export interface DarkPerpClient {
   /// Deposit collateral (mints a shielded note off-chain).
   deposit(amountQuote: bigint): Promise<void>;
 
-  /// Request a withdrawal paid to `to` (a 20-byte 0x address — the on-chain
-  /// `claim` pays out THERE, not to whoever sends the claim tx). Rejects unless
-  /// the amount is backed by SETTLED balance (§3 — only settled state is
-  /// withdrawable).
-  requestWithdrawal(amountQuote: bigint, to: string): Promise<void>;
+  /// Request a withdrawal of SETTLED balance (§3 — only settled state is
+  /// withdrawable). SEC-021: the destination is NOT a parameter — on the real
+  /// gateway funds always pay to the account's bound deposit address, and the
+  /// request carries that address's wallet signature over the gateway's
+  /// withdraw digest. Rejects when no deposit address is bound (fail closed).
+  requestWithdrawal(amountQuote: bigint): Promise<void>;
+
+  /// SEC-021 (optional — the real client implements it, the mock has no binding
+  /// concept): the bound withdrawal destination (null = not bound yet, so a
+  /// withdrawal would be refused) and whether the account is caller-signed (the
+  /// advanced API mode whose registered signer key the web UI does not hold).
+  withdrawAuthInfo?(): Promise<{ depositAddress: string | null; callerSigned: boolean }>;
 
   /// The account's requested withdrawals + the vault they claim against — so the
   /// UI can show settling→claimable status and the on-chain `claim` call instead

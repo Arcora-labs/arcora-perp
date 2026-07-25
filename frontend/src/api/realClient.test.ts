@@ -15,6 +15,7 @@ import {
   serializeOrderTerms,
   epochSigningDigest,
   verifyEnclaveEpoch,
+  withdrawAuthDigest,
 } from "./realClient";
 
 // ── Rust-extracted contract vectors (source of truth) ────────────────────────
@@ -26,6 +27,12 @@ const RUST_TERMS_1 =
 // serialize_order_terms{market_id:0, side:Buy, size:-1, limit_price:0, tif:Gtc, reduce_only:false, nonce:u64::MAX}
 const RUST_TERMS_2 =
   "000000000000000001ffffffffffffffffffffffffffffffff000000000000000000000000000000000100ffffffffffffffff";
+// SEC-021 — gateway `auth_digests_match_known_answer_vectors` (crates/gateway/src/main.rs):
+// withdraw_auth_digest(84532, &[0x22;20], &[0x07;32], 0, 1_000, &[0x11;20], 1)
+const RUST_WITHDRAW_DIGEST = "297d6fcc305700b679a59a06cb0d990a70157fcc314f93f69ed36bb1eec6ff97";
+// withdraw_auth_digest(84532, &[0x22;20], &[0x07;32], 0, -1, &[0x11;20], 1)
+// — pins the i128 two's-complement big-endian amount encoding (16 bytes of 0xFF)
+const RUST_WITHDRAW_DIGEST_NEG = "e9285454ef17c530a4a32577d234bbace2d0fc1177f7a9a677a88f63474f695e";
 
 // ── fixtures: enclave signer (secp256k1) + epoch X25519 keypair ──────────────
 const ENCLAVE_SK = new Uint8Array(32).fill(7);
@@ -110,6 +117,36 @@ let demoWithdrawStatus = 200; // per-test override: legacy demo-mirror failure
 let authorizeStatus = 200; // per-test override: gateway rejection (bind-first etc.)
 let authorizeBody: unknown = null; // per-test override of the response body (null ⇒ well-formed default)
 
+// ── SEC-021 withdrawal-authorization fixtures ────────────────────────────────
+// The bound deposit address withdrawals pay to (and whose key signs).
+const BOUND = "0x" + "cd".repeat(20);
+const VAULT = "0x" + "22".repeat(20);
+const CHAIN_ID = 84532;
+// Per-test override of the SEC-021 fields GET /v1/accounts/me serves.
+let meFields: Record<string, unknown> = {};
+const defaultMeFields = () => ({
+  depositAddress: BOUND, callerSigned: false, nextWithdrawNonce: 1,
+  rebindCounter: 0, chainId: CHAIN_ID, vault: VAULT,
+});
+
+// A fake EIP-1193 wallet answering `personal_sign` — records what it was asked
+// to sign (and as which account) so tests can assert the EXACT digest. Injected
+// onto `window` directly (the pattern AccountPanel.wallet.test.tsx uses):
+// wallet.ts reads `window.ethereum`, which stubGlobal does not reliably reach.
+const FAKE_SIG = "0x" + "ef".repeat(65);
+let personalSigns: { digestHex: string; address: string }[] = [];
+function installWallet() {
+  (window as unknown as { ethereum?: unknown }).ethereum = {
+    request: async ({ method, params }: { method: string; params?: unknown[] }) => {
+      if (method === "personal_sign") {
+        personalSigns.push({ digestHex: params?.[0] as string, address: params?.[1] as string });
+        return FAKE_SIG;
+      }
+      throw new Error(`unexpected wallet method ${method}`);
+    },
+  };
+}
+
 function installFetch() {
   vi.stubGlobal(
     "fetch",
@@ -128,7 +165,7 @@ function installFetch() {
         registrations++;
         return json({ apiKey: ACCT_KEY, owner: OWNER_HEX, callerSigned: false });
       }
-      if (path === "/v1/accounts/me") return json({ owner: OWNER_HEX });
+      if (path === "/v1/accounts/me") return json({ owner: OWNER_HEX, ...meFields });
       if (path === "/v1/orders" && method === "POST") {
         return json({ orderHash: "0x" + "00".repeat(32), seqNo: 1, recvTimeMs: 0, batchIdHint: 1 });
       }
@@ -191,15 +228,19 @@ beforeEach(() => {
   demoWithdrawStatus = 200;
   authorizeStatus = 200;
   authorizeBody = null;
+  meFields = defaultMeFields();
+  personalSigns = [];
   epochResponse = () => signedEpoch();
   localStorage.clear();
   installFetch();
+  installWallet();
   vi.stubGlobal("WebSocket", FakeWebSocket);
   vi.stubEnv("VITE_ENCLAVE_SIGNER", ENCLAVE_ADDR);
   vi.stubEnv("VITE_ENCLAVE_MEASUREMENT", MEASUREMENT);
 });
 
 afterEach(() => {
+  delete (window as unknown as { ethereum?: unknown }).ethereum;
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
   vi.restoreAllMocks();
@@ -413,28 +454,108 @@ describe("RealDarkPerpClient sealed order flow", () => {
   });
 });
 
-// ── withdrawals: /v1 PRIMARY (real claimable leaf), demo mirror cosmetic ──────
-describe("RealDarkPerpClient.requestWithdrawal", () => {
-  const TO = "0x" + "cd".repeat(20);
+// ── CONTRACT 3: SEC-021 withdrawal-authorization digest ──────────────────────
+// The gateway concatenates fixed-width BIG-endian fields with no separators, so
+// a wrong field width silently produces a different digest and the signature is
+// rejected with no clue why — hence the hard-coded Rust known-answer pins
+// (gateway test `auth_digests_match_known_answer_vectors`). If these fail, fix
+// the TS mirror, never the pins.
+describe("withdrawAuthDigest (contract 3)", () => {
+  const KAT_VAULT = "0x" + "22".repeat(20);
+  const KAT_OWNER = new Uint8Array(32).fill(7);
+  const KAT_TO = "0x" + "11".repeat(20);
 
-  it("posts the REAL /v1 withdrawal FIRST (keyed {marketId, amount, to}), then mirrors the legacy demo path", async () => {
+  it("matches the Rust gateway KAT byte-for-byte", () => {
+    const d = withdrawAuthDigest(84532n, KAT_VAULT, KAT_OWNER, 0n, 1_000n, KAT_TO, 1n);
+    expect(bytesToHex(d)).toBe(RUST_WITHDRAW_DIGEST);
+  });
+
+  it("pins the i128 two's-complement big-endian amount encoding (negative KAT)", () => {
+    const d = withdrawAuthDigest(84532n, KAT_VAULT, KAT_OWNER, 0n, -1n, KAT_TO, 1n);
+    expect(bytesToHex(d)).toBe(RUST_WITHDRAW_DIGEST_NEG);
+  });
+
+  it("rejects malformed inputs instead of hashing garbage", () => {
+    expect(() => withdrawAuthDigest(-1n, KAT_VAULT, KAT_OWNER, 0n, 1n, KAT_TO, 1n)).toThrow(/u64/);
+    expect(() => withdrawAuthDigest(1n << 64n, KAT_VAULT, KAT_OWNER, 0n, 1n, KAT_TO, 1n)).toThrow(/u64/);
+    expect(() => withdrawAuthDigest(84532n, "0x1234", KAT_OWNER, 0n, 1n, KAT_TO, 1n)).toThrow(/20-byte/);
+    expect(() => withdrawAuthDigest(84532n, KAT_VAULT, new Uint8Array(31), 0n, 1n, KAT_TO, 1n)).toThrow(/32/);
+    expect(() => withdrawAuthDigest(84532n, KAT_VAULT, KAT_OWNER, 0n, 1n << 127n, KAT_TO, 1n)).toThrow(/i128/);
+    expect(() => withdrawAuthDigest(84532n, KAT_VAULT, KAT_OWNER, 0n, 1n, "0x1234", 1n)).toThrow(/20-byte/);
+    expect(() => withdrawAuthDigest(84532n, KAT_VAULT, KAT_OWNER, 0n, 1n, KAT_TO, 1n << 64n)).toThrow(/u64/);
+  });
+});
+
+// ── withdrawals: /v1 PRIMARY (real claimable leaf), demo mirror cosmetic ──────
+// SEC-021: the destination is ALWAYS the bound deposit address, and the request
+// carries that address's personal_sign over the gateway's withdraw digest.
+describe("RealDarkPerpClient.requestWithdrawal", () => {
+  it("signs the EXACT gateway digest with the bound address and posts {marketId, amount, to, nonce, signature}, then mirrors the legacy demo path", async () => {
     const client = await bootstrapClient();
-    await client.requestWithdrawal(5_000_000n, TO);
+    await client.requestWithdrawal(5_000_000n);
     const v1Idx = calls.findIndex((c) => c.path === "/v1/accounts/withdraw");
     const demoIdx = calls.findIndex((c) => c.path === "/api/withdraw");
     expect(v1Idx).toBeGreaterThan(-1);
     expect(demoIdx).toBeGreaterThan(-1);
     // Priority inversion vs deposit: the /v1 call is the money path and runs first.
     expect(v1Idx).toBeLessThan(demoIdx);
-    expect(calls[v1Idx].body).toEqual({ marketId: 0, amount: "5000000", to: TO });
+    expect(calls[v1Idx].body).toEqual({
+      marketId: 0, amount: "5000000", to: BOUND, nonce: 1, signature: FAKE_SIG,
+    });
     expect(calls[v1Idx].headers["X-Api-Key"]).toBe(ACCT_KEY);
     expect(calls[demoIdx].body).toEqual({ amount: "5000000" });
+
+    // The wallet was asked to sign EXACTLY withdraw_auth_digest — with the
+    // gateway-served chainId/vault/owner/nonce, never hardcoded ones — as the
+    // BOUND address (its key is the authorizing key for server-custody accounts).
+    expect(personalSigns.length).toBe(1);
+    expect(personalSigns[0].address).toBe(BOUND);
+    const expected = withdrawAuthDigest(
+      BigInt(CHAIN_ID), VAULT, hexToBytes(OWNER_HEX.slice(2)), 0n, 5_000_000n, BOUND, 1n,
+    );
+    expect(personalSigns[0].digestHex).toBe("0x" + bytesToHex(expected));
+  });
+
+  it("uses nextWithdrawNonce VERBATIM — it is already the next acceptable nonce (never +1 again)", async () => {
+    meFields = { ...defaultMeFields(), nextWithdrawNonce: 7 };
+    const client = await bootstrapClient();
+    await client.requestWithdrawal(5_000_000n);
+    const v1 = calls.find((c) => c.path === "/v1/accounts/withdraw");
+    expect((v1!.body as { nonce: number }).nonce).toBe(7);
+    const expected = withdrawAuthDigest(
+      BigInt(CHAIN_ID), VAULT, hexToBytes(OWNER_HEX.slice(2)), 0n, 5_000_000n, BOUND, 7n,
+    );
+    expect(personalSigns[0].digestHex).toBe("0x" + bytesToHex(expected));
+  });
+
+  it("refuses to withdraw when no deposit address is bound — nothing signed, nothing submitted", async () => {
+    meFields = { ...defaultMeFields(), depositAddress: null };
+    const client = await bootstrapClient();
+    await expect(client.requestWithdrawal(5_000_000n)).rejects.toThrow(/Bind a deposit address/);
+    expect(calls.some((c) => c.path === "/v1/accounts/withdraw")).toBe(false);
+    expect(personalSigns.length).toBe(0);
+  });
+
+  it("refuses a caller-signed account instead of producing a signature the gateway rejects", async () => {
+    meFields = { ...defaultMeFields(), callerSigned: true };
+    const client = await bootstrapClient();
+    await expect(client.requestWithdrawal(5_000_000n)).rejects.toThrow(/caller-signed/i);
+    expect(calls.some((c) => c.path === "/v1/accounts/withdraw")).toBe(false);
+    expect(personalSigns.length).toBe(0);
+  });
+
+  it("refuses when the gateway does not serve the SEC-021 fields (too old) — never signs a guessed digest", async () => {
+    meFields = {}; // an old gateway: only `owner` comes back
+    const client = await bootstrapClient();
+    await expect(client.requestWithdrawal(5_000_000n)).rejects.toThrow(/SEC-021|gateway too old/i);
+    expect(calls.some((c) => c.path === "/v1/accounts/withdraw")).toBe(false);
+    expect(personalSigns.length).toBe(0);
   });
 
   it("surfaces a /v1 rejection and SKIPS the demo mirror (no silent fallback — demo cannot mint a claimable leaf)", async () => {
     const client = await bootstrapClient();
     v1WithdrawStatus = 400;
-    await expect(client.requestWithdrawal(5_000_000n, TO)).rejects.toThrow(/exceeds the SETTLED/i);
+    await expect(client.requestWithdrawal(5_000_000n)).rejects.toThrow(/exceeds the SETTLED/i);
     expect(calls.some((c) => c.path === "/api/withdraw")).toBe(false);
   });
 
@@ -442,9 +563,16 @@ describe("RealDarkPerpClient.requestWithdrawal", () => {
     const client = await bootstrapClient();
     demoWithdrawStatus = 500;
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    await expect(client.requestWithdrawal(5_000_000n, TO)).resolves.toBeUndefined();
+    await expect(client.requestWithdrawal(5_000_000n)).resolves.toBeUndefined();
     expect(calls.some((c) => c.path === "/v1/accounts/withdraw")).toBe(true);
     expect(warn).toHaveBeenCalledWith(expect.stringMatching(/mirror/i), expect.anything());
+  });
+
+  it("withdrawAuthInfo exposes the bound address + callerSigned for the UI gate", async () => {
+    const client = await bootstrapClient();
+    await expect(client.withdrawAuthInfo()).resolves.toEqual({ depositAddress: BOUND, callerSigned: false });
+    meFields = { ...defaultMeFields(), depositAddress: null };
+    await expect(client.withdrawAuthInfo()).resolves.toEqual({ depositAddress: null, callerSigned: false });
   });
 });
 
@@ -539,9 +667,14 @@ describe("client-side market selection (contract)", () => {
     const client = await bootstrapClient();
     client.selectMarket(1);
     await flush();
-    await client.requestWithdrawal(1_000_000n, "0x" + "cd".repeat(20));
+    await client.requestWithdrawal(1_000_000n);
     const v1 = calls.find((c) => c.path === "/v1/accounts/withdraw");
     expect((v1!.body as { marketId: number }).marketId).toBe(1);
+    // the signed digest binds the SELECTED market too
+    const expected = withdrawAuthDigest(
+      BigInt(CHAIN_ID), VAULT, hexToBytes(OWNER_HEX.slice(2)), 1n, 1_000_000n, BOUND, 1n,
+    );
+    expect(personalSigns[0].digestHex).toBe("0x" + bytesToHex(expected));
     client.dispose();
   });
 });

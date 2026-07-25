@@ -494,10 +494,10 @@ export class MockDarkPerpClient implements DarkPerpClient {
     this.emit();
   }
 
-  // `_to` is accepted for interface parity but ignored: the mock has no L1 vault
-  // to claim from (`listWithdrawals` is null for the same reason), so it only
-  // simulates the settled-balance debit.
-  async requestWithdrawal(amountQuote: bigint, _to: string): Promise<void> {
+  // The mock has no L1 vault to claim from (`listWithdrawals` is null for the
+  // same reason) and no deposit-address binding (SEC-021 lives gateway-side),
+  // so it only simulates the settled-balance debit.
+  async requestWithdrawal(amountQuote: bigint): Promise<void> {
     if (amountQuote <= 0n) throw new Error("Amount must be positive.");
     if (amountQuote > this.state.account.settledBalance) {
       throw new Error("Not withdrawable: amount exceeds SETTLED balance (§3).");

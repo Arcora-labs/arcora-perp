@@ -26,9 +26,10 @@ import type {
 } from "../domain/types";
 import { QUOTE_SCALE } from "../domain/types";
 import { seal, domainAad } from "./sealedBox";
+import { personalSign } from "./wallet";
 import { secp256k1 } from "@noble/curves/secp256k1";
 import { keccak_256 } from "@noble/hashes/sha3";
-import { bytesToHex, hexToBytes } from "@noble/hashes/utils";
+import { bytesToHex, hexToBytes, utf8ToBytes, concatBytes } from "@noble/hashes/utils";
 
 // ── wire types (bigints as strings) ──────────────────────────────────────────
 interface WireBookLevel { price: string; size: string }
@@ -192,6 +193,67 @@ function i128le(v: bigint): Uint8Array {
   let x = BigInt.asUintN(128, v);
   for (let i = 0; i < 16; i++) { out[i] = Number(x & 0xffn); x >>= 8n; }
   return out;
+}
+
+/** u64 → 8 BIG-endian bytes (throws out-of-range; never truncates). */
+function u64be(v: bigint): Uint8Array {
+  if (v < 0n || v > U64_MAX) throw new Error(`u64 out of range: ${v}`);
+  const out = new Uint8Array(8);
+  let x = v;
+  for (let i = 7; i >= 0; i--) { out[i] = Number(x & 0xffn); x >>= 8n; }
+  return out;
+}
+
+/** i128 → 16 BIG-endian bytes, two's complement (throws out-of-range). */
+function i128be(v: bigint): Uint8Array {
+  if (v < I128_MIN || v > I128_MAX) throw new Error(`i128 out of range: ${v}`);
+  const out = new Uint8Array(16);
+  let x = BigInt.asUintN(128, v);
+  for (let i = 15; i >= 0; i--) { out[i] = Number(x & 0xffn); x >>= 8n; }
+  return out;
+}
+
+/**
+ * SEC-021: the digest a withdrawal authorization signature must cover — byte-
+ * identical to the gateway's `withdraw_auth_digest` (crates/gateway/src/main.rs):
+ * `keccak256("dark-perp:withdraw:" ‖ chainId ‖ vault ‖ owner ‖ marketId ‖ amount ‖ to ‖ nonce)`
+ *
+ * Every field is fixed-width BIG-endian, no length prefixes, no separators — a
+ * wrong width silently produces a different digest, so the layout is pinned
+ * against the Rust known-answer vectors in realClient.test.ts:
+ * ```text
+ * offset  len  field
+ *      0   19  "dark-perp:withdraw:"  (ASCII, no trailing space)
+ *     19    8  chainId    u64 BE      (EIGHT bytes — NOT the 32-byte Solidity
+ *                                      word the on-chain deposit digest uses)
+ *     27   20  vault
+ *     47   32  owner
+ *     79    8  marketId   u64 BE
+ *     87   16  amount     i128 BE (two's complement)
+ *    103   20  to
+ *    123    8  nonce      u64 BE      (total preimage: 131 bytes)
+ * ```
+ */
+export function withdrawAuthDigest(
+  chainId: bigint,
+  vault: string,
+  owner: Uint8Array,
+  marketId: bigint,
+  amount: bigint,
+  to: string,
+  nonce: bigint,
+): Uint8Array {
+  if (owner.length !== 32) throw new Error("owner pubkey must be 32 bytes");
+  return keccak_256(concatBytes(
+    utf8ToBytes("dark-perp:withdraw:"),
+    u64be(chainId),
+    strictHex(vault, 20),
+    owner,
+    u64be(marketId),
+    i128be(amount),
+    strictHex(to, 20),
+    u64be(nonce),
+  ));
 }
 
 /** Strict 0x-hex decode of EXACTLY `len` bytes (rejects odd/short/non-hex). */
@@ -709,6 +771,64 @@ export class RealDarkPerpClient implements DarkPerpClient {
     }
   }
   /**
+   * SEC-021 fields of `GET /v1/accounts/me` — everything a withdrawal signature
+   * needs: which address must sign, the next acceptable auth nonce, and the
+   * deployment (chainId, vault) the digest binds. NEVER hardcode chainId/vault
+   * client-side — a client built against the wrong deployment signs digests the
+   * gateway silently rejects. Validated strictly: a digest built from a
+   * malformed field would produce a garbage signature with no clue why.
+   */
+  private async fetchWithdrawAuth(acct: SealingAccount): Promise<{
+    owner: Uint8Array;
+    depositAddress: string | null;
+    callerSigned: boolean;
+    nextWithdrawNonce: number;
+    chainId: bigint;
+    vault: string;
+  }> {
+    const res = await fetch(this.base + "/v1/accounts/me", { headers: { "X-Api-Key": acct.apiKey } });
+    if (!res.ok) throw new Error(`/v1/accounts/me ${res.status}`);
+    const j = (await res.json()) as {
+      owner?: unknown; depositAddress?: unknown; callerSigned?: unknown;
+      nextWithdrawNonce?: unknown; chainId?: unknown; vault?: unknown;
+    };
+    if (
+      typeof j !== "object" || j === null || typeof j.owner !== "string" ||
+      typeof j.callerSigned !== "boolean" ||
+      typeof j.nextWithdrawNonce !== "number" || !Number.isSafeInteger(j.nextWithdrawNonce) || j.nextWithdrawNonce < 0 ||
+      typeof j.chainId !== "number" || !Number.isSafeInteger(j.chainId) || j.chainId < 0 ||
+      typeof j.vault !== "string" ||
+      (j.depositAddress != null && typeof j.depositAddress !== "string")
+    ) {
+      throw new Error(
+        "/v1/accounts/me does not serve the SEC-021 withdrawal-authorization fields — gateway too old or malformed response",
+      );
+    }
+    return {
+      owner: strictHex(j.owner, 32),
+      // normalized lowercase 0x form — it becomes both the wire `to` and the
+      // `personal_sign` account parameter.
+      depositAddress: j.depositAddress == null ? null : "0x" + bytesToHex(strictHex(j.depositAddress, 20)),
+      callerSigned: j.callerSigned,
+      // Already the next ACCEPTABLE nonce (the gateway serves last+1) — use verbatim.
+      nextWithdrawNonce: j.nextWithdrawNonce,
+      chainId: BigInt(j.chainId),
+      vault: "0x" + bytesToHex(strictHex(j.vault, 20)),
+    };
+  }
+
+  /**
+   * SEC-021 UI surface: the bound withdrawal destination (null = not bound yet
+   * ⇒ withdrawals are refused) and whether the account is caller-signed (the
+   * advanced mode whose registered key this UI does not hold).
+   */
+  async withdrawAuthInfo(): Promise<{ depositAddress: string | null; callerSigned: boolean }> {
+    const acct = await this.ensureAccount();
+    const me = await this.fetchWithdrawAuth(acct);
+    return { depositAddress: me.depositAddress, callerSigned: me.callerSigned };
+  }
+
+  /**
    * Withdraw = /v1 FIRST — the inverse of deposit's priorities (demo primary /
    * v1 mirror there). Only `POST /v1/accounts/withdraw` debits the per-browser
    * account the sealed orders trade as AND records the withdrawal leaf that the
@@ -718,12 +838,39 @@ export class RealDarkPerpClient implements DarkPerpClient {
    * so it is mirrored best-effort AFTER the real path. A /v1 failure must THROW
    * so the form surfaces the gateway's error: silently falling back to the demo
    * path would report success while never producing a real claimable leaf.
+   *
+   * SEC-021: the gateway rejects any withdrawal without a signature over
+   * `withdraw_auth_digest`, and for server-custody accounts the destination
+   * MUST equal the bound deposit address — so the destination is no longer a
+   * parameter: funds always return to the address the user deposited from,
+   * and that address's key signs (the same `personal_sign` path the deposit
+   * bind uses; the gateway accepts the EIP-191 shape it produces). Fail
+   * closed: no bound address ⇒ refuse client-side rather than POST a 400.
    */
-  async requestWithdrawal(amountQuote: bigint, to: string): Promise<void> {
+  async requestWithdrawal(amountQuote: bigint): Promise<void> {
     const acct = await this.ensureAccount(); // no /v1 account ⇒ throw (fail closed)
+    const me = await this.fetchWithdrawAuth(acct);
+    if (me.callerSigned) {
+      // The registered signer key authorizes this account's withdrawals; this
+      // UI does not hold it — signing with the wallet would produce a signature
+      // the gateway rejects. Refuse loudly instead.
+      throw new Error(
+        "This account is caller-signed: withdrawals must be authorized by its registered signer key via the API.",
+      );
+    }
+    if (!me.depositAddress) {
+      throw new Error("Bind a deposit address before withdrawing (make one wallet deposit first).");
+    }
+    const to = me.depositAddress;
+    const nonce = me.nextWithdrawNonce;
+    const digest = withdrawAuthDigest(
+      me.chainId, me.vault, me.owner,
+      BigInt(this.clientSelectedMarket), amountQuote, to, BigInt(nonce),
+    );
+    const signature = await personalSign("0x" + bytesToHex(digest), to);
     await this.post(
       "/v1/accounts/withdraw",
-      { marketId: this.clientSelectedMarket, amount: s(amountQuote), to },
+      { marketId: this.clientSelectedMarket, amount: s(amountQuote), to, nonce, signature },
       { "X-Api-Key": acct.apiKey },
     );
     try {
