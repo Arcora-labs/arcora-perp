@@ -955,9 +955,12 @@ struct Account {
     /// Per-account order rate limit (a sliding 1s window).
     last_order_ms: u64,
     orders_this_sec: u32,
-    /// The external EOA the account funds from. Bound once; an on-chain USDC
-    /// `Deposit(from, amount)` is credited only when `from` matches this (so one
-    /// account can't claim another's deposit). `None` until bound.
+    /// The external EOA the account funds from. An on-chain USDC `Deposit(from, amount)`
+    /// is credited only when `from` matches this (so one account can't claim another's
+    /// deposit). `None` until bound. NOT immutable: it may be REBOUND, but SEC-021b
+    /// requires the currently bound address to sign the change — the API key alone is
+    /// not sufficient, because proving control of the new address is free for whoever
+    /// chose it.
     deposit_address: Option<[u8; 20]>,
     /// Caller-signed mode: if set, every order MUST carry a secp256k1 signature over
     /// the order hash that recovers to this address (the caller's own key), so a
@@ -1741,24 +1744,25 @@ impl Gw {
     /// digest binding this account's owner — so only the controller of `addr` can bind
     /// it. This closes a front-run where an attacker binds a victim's public deposit
     /// EOA and steals the credit (review fix). An address binds to at most one account.
+    /// SEC-021b: a REBIND must additionally carry `current_sig` — the CURRENTLY bound
+    /// address's signature over `rebind_auth_digest` — see the body for the WHY.
     fn account_set_deposit_address(
         &mut self,
         key: &[u8; 32],
         addr: [u8; 20],
         sig: &[u8; 65],
+        current_sig: Option<&[u8; 65]>,
     ) -> Result<(), String> {
-        let owner = self
-            .accounts
-            .get(key)
-            .ok_or("Unknown account.")?
-            .wallet
-            .owner;
-        // Accept the signature over ANY of the three deterministic shapes of the
-        // bind digest (raw / EIP-191 over bytes / EIP-191 over hex string) so both
-        // CLI signers and browser-wallet `personal_sign` work — see
-        // `eip191_prehash_candidates` for the WHY of each and the security
-        // invariant (all shapes commit to the same (owner, addr), so this widens
-        // signer ergonomics, never authorization).
+        let (owner, bound, rebinds) = {
+            let a = self.accounts.get(key).ok_or("Unknown account.")?;
+            (a.wallet.owner, a.deposit_address, a.rebind_counter)
+        };
+        // Proof of control over the address being bound (unchanged). Accept the
+        // signature over ANY of the three deterministic shapes of the bind digest
+        // (raw / EIP-191 over bytes / EIP-191 over hex string) so both CLI signers
+        // and browser-wallet `personal_sign` work — see `eip191_prehash_candidates`
+        // for the WHY of each and the security invariant (all shapes commit to the
+        // same (owner, addr), so this widens signer ergonomics, never authorization).
         let digest = deposit_bind_digest(&owner, &addr);
         let proven = eip191_prehash_candidates(&digest)
             .iter()
@@ -1768,6 +1772,29 @@ impl Gw {
                 "deposit-address proof: signature must recover to the address being bound".into(),
             );
         }
+        // SEC-021b: a REBIND must additionally be authorized by the address currently
+        // bound. Proving control of the NEW address is free for an attacker (it is
+        // their own address), so without this a leaked API key alone could redirect
+        // the binding and drain every future withdrawal to it.
+        if let Some(old) = bound {
+            if old == addr {
+                return Ok(()); // idempotent re-bind of the same address: no-op
+            }
+            let cur = current_sig.ok_or(
+                "rebinding requires `currentSignature` from the account's current deposit address",
+            )?;
+            let rebind_digest =
+                rebind_auth_digest(self.chain_id, &self.vault, &owner, rebinds, &old, &addr);
+            let authorized = eip191_prehash_candidates(&rebind_digest)
+                .iter()
+                .any(|prehash| recover_eth_address(prehash, cur) == Some(old));
+            if !authorized {
+                return Err(
+                    "rebind not authorized: `currentSignature` must recover to the current deposit address"
+                        .into(),
+                );
+            }
+        }
         if self
             .accounts
             .iter()
@@ -1775,7 +1802,13 @@ impl Gw {
         {
             return Err("that address is already bound to another account".into());
         }
-        self.accounts.get_mut(key).unwrap().deposit_address = Some(addr);
+        let a = self.accounts.get_mut(key).unwrap();
+        a.deposit_address = Some(addr);
+        if bound.is_some() {
+            // SEC-021b: burn the authorization just consumed. Only a REBIND increments —
+            // the first-time bind carries no `currentSignature` to invalidate.
+            a.rebind_counter += 1;
+        }
         Ok(())
     }
 
@@ -3933,6 +3966,13 @@ struct DepositAddrReq {
     /// the raw digest, EIP-191 `personal_sign` over its 32 bytes, or EIP-191 over
     /// its "0x<64 hex>" string — see `eip191_prehash_candidates`.
     signature: String,
+    /// SEC-021b: REBIND ONLY. When the account already has a bound address, this
+    /// must additionally carry that CURRENT address's signature over
+    /// `rebind_auth_digest(chain_id, vault, owner, old, new)`. Absent/ignored on a
+    /// first-time bind. Without it, a leaked API key alone could redirect the
+    /// binding — and therefore every future withdrawal — to an attacker's address.
+    #[serde(rename = "currentSignature", default)]
+    current_signature: Option<String>,
 }
 #[derive(Deserialize)]
 struct OnchainDepositReq {
@@ -4273,8 +4313,8 @@ fn lp_withdraw_auth_digest(
 ///
 /// Binding BOTH addresses (in this order) stops a signature authorizing old→new being
 /// reused to authorize old→someone-else, or replayed in reverse. `rebind_counter` —
-/// the account's rebind generation, incremented on every ACCEPTED rebind (the
-/// `Account.rebind_counter` field lands in Task 3 and is enforced in Task 4) — closes
+/// the account's rebind generation, incremented on every ACCEPTED rebind
+/// (`Account.rebind_counter`, enforced by `account_set_deposit_address`) — closes
 /// the CYCLE replay the address pair alone cannot: without it, a signature over
 /// `(chain, vault, owner, A, B)` stays valid ANY time the bound address is `A` again.
 /// Bind A → rotate A→B → later rotate B→A, and the ORIGINAL A→B signature replays,
@@ -4282,7 +4322,6 @@ fn lp_withdraw_auth_digest(
 /// most — rotating away from a COMPROMISED address, whose old rotation signatures the
 /// attacker may hold. With the counter, every accepted rebind bumps the generation, so
 /// each signature authorizes at most one specific rotation and then dies.
-#[cfg_attr(not(test), expect(dead_code))] // consumed by the withdrawal-verification tasks (SEC-021 Task 3+)
 fn rebind_auth_digest(
     chain_id: u64,
     vault: &[u8; 20],
@@ -4568,11 +4607,21 @@ async fn post_v1_deposit_address(
             return err400("bad signature (expected 65-byte 0x hex r‖s‖v)".into()).into_response()
         }
     };
+    let current_sig = match req.current_signature.as_deref() {
+        Some(s) => match parse_hex65(s) {
+            Some(v) => Some(v),
+            None => {
+                return err400("bad `currentSignature` (expected 65-byte 0x hex r‖s‖v)".into())
+                    .into_response()
+            }
+        },
+        None => None,
+    };
     match app
         .gw
         .lock()
         .await
-        .account_set_deposit_address(&key, addr, &sig)
+        .account_set_deposit_address(&key, addr, &sig, current_sig.as_ref())
     {
         Ok(()) => Json(serde_json::json!({ "depositAddress": hex0x(&addr) })).into_response(),
         Err(e) => err400(e).into_response(),
@@ -8216,14 +8265,16 @@ mod tests {
         let wrong = SigningKey::from_bytes((&[4u8; 32]).into()).unwrap();
         let bad = sign(&wrong, &deposit_bind_digest(&owner, &addr));
         assert!(
-            gw.account_set_deposit_address(&key, addr, &bad).is_err(),
+            gw.account_set_deposit_address(&key, addr, &bad, None)
+                .is_err(),
             "a proof not from the bound address is rejected",
         );
 
         // the address's own key proves control → bind succeeds
         let good = sign(&eoa, &deposit_bind_digest(&owner, &addr));
         assert!(
-            gw.account_set_deposit_address(&key, addr, &good).is_ok(),
+            gw.account_set_deposit_address(&key, addr, &good, None)
+                .is_ok(),
             "valid ownership proof accepted",
         );
 
@@ -8231,7 +8282,8 @@ mod tests {
         let (key2, owner2) = gw.register_account(None);
         let good2 = sign(&eoa, &deposit_bind_digest(&owner2, &addr));
         assert!(
-            gw.account_set_deposit_address(&key2, addr, &good2).is_err(),
+            gw.account_set_deposit_address(&key2, addr, &good2, None)
+                .is_err(),
             "an address already bound to another account is rejected",
         );
     }
@@ -8288,7 +8340,8 @@ mod tests {
         let digest = deposit_bind_digest(&owner, &addr);
         let sig = sign(&eoa, &eip191_prehash(&digest));
         assert!(
-            gw.account_set_deposit_address(&key, addr, &sig).is_ok(),
+            gw.account_set_deposit_address(&key, addr, &sig, None)
+                .is_ok(),
             "EIP-191 personal_sign over the raw digest bytes accepted",
         );
 
@@ -8302,7 +8355,8 @@ mod tests {
         assert_eq!(hex_msg.len(), 66, "sanity: 0x + 64 hex chars");
         let sig2 = sign(&eoa2, &eip191_prehash(hex_msg.as_bytes()));
         assert!(
-            gw.account_set_deposit_address(&key2, addr2, &sig2).is_ok(),
+            gw.account_set_deposit_address(&key2, addr2, &sig2, None)
+                .is_ok(),
             "EIP-191 personal_sign over the digest's hex string accepted",
         );
 
@@ -8321,10 +8375,141 @@ mod tests {
         for (i, prehash) in forms.iter().enumerate() {
             let bad = sign(&wrong, prehash);
             assert!(
-                gw.account_set_deposit_address(&key3, addr3, &bad).is_err(),
+                gw.account_set_deposit_address(&key3, addr3, &bad, None)
+                    .is_err(),
                 "wrong-key signature rejected for digest form {i}",
             );
         }
+    }
+
+    /// Shared by the SEC-021b rebind tests below: sign a 32-byte digest directly
+    /// (the raw-digest shape (a) of `eip191_prehash_candidates`).
+    fn sign_digest(sk: &k256::ecdsa::SigningKey, digest: &[u8; 32]) -> [u8; 65] {
+        let (sig, recid) = sk.sign_prehash_recoverable(digest).unwrap();
+        let mut s = [0u8; 65];
+        s[..64].copy_from_slice(&sig.to_bytes());
+        s[64] = 27 + recid.to_byte();
+        s
+    }
+    /// The Ethereum address of a secp256k1 key (keccak of the uncompressed point).
+    fn eth_addr(sk: &k256::ecdsa::SigningKey) -> [u8; 20] {
+        use sha3::{Digest as _, Keccak256 as RawKeccak};
+        let point = sk.verifying_key().to_encoded_point(false);
+        let hash = RawKeccak::digest(&point.as_bytes()[1..]);
+        let mut a = [0u8; 20];
+        a.copy_from_slice(&hash[12..]);
+        a
+    }
+
+    /// SEC-021b: an attacker holding ONLY the API key must not be able to move the
+    /// account's deposit-address binding to an address they control. Before the fix,
+    /// account_set_deposit_address proved control only of the NEW address and
+    /// overwrote an existing binding unconditionally — so a leaked key plus the
+    /// attacker's own signature was enough to redirect every future withdrawal.
+    #[test]
+    fn leaked_api_key_alone_cannot_rebind_deposit_address() {
+        use k256::ecdsa::SigningKey;
+        let mut gw = Gw::boot();
+        let victim_sk = SigningKey::from_slice(&[9u8; 32]).unwrap();
+        let victim_eoa = eth_addr(&victim_sk);
+        let attacker_sk = SigningKey::from_slice(&[0xA5u8; 32]).unwrap();
+        let attacker_eoa = eth_addr(&attacker_sk);
+
+        let (key, owner) = gw.register_account(None);
+
+        // Victim binds their own address — one signature, unchanged flow.
+        let bind_sig = sign_digest(&victim_sk, &deposit_bind_digest(&owner, &victim_eoa));
+        gw.account_set_deposit_address(&key, victim_eoa, &bind_sig, None)
+            .expect("first bind succeeds");
+
+        // Attacker has the API key and their own key. They can sign for their OWN
+        // address trivially — that was the whole bypass.
+        let attacker_bind_sig =
+            sign_digest(&attacker_sk, &deposit_bind_digest(&owner, &attacker_eoa));
+        let err = gw
+            .account_set_deposit_address(&key, attacker_eoa, &attacker_bind_sig, None)
+            .expect_err("rebind without the current address's signature must be refused");
+        assert!(err.contains("current"), "unexpected error: {err}");
+
+        // Binding is untouched.
+        assert_eq!(
+            gw.accounts.get(&key).unwrap().deposit_address,
+            Some(victim_eoa)
+        );
+
+        // A rebind signed by the CURRENT address is allowed (legitimate rotation).
+        let rotate_sig = sign_digest(
+            &victim_sk,
+            &rebind_auth_digest(
+                gw.chain_id,
+                &gw.vault,
+                &owner,
+                0,
+                &victim_eoa,
+                &attacker_eoa,
+            ),
+        );
+        gw.account_set_deposit_address(&key, attacker_eoa, &attacker_bind_sig, Some(&rotate_sig))
+            .expect("rebind authorized by the current address succeeds");
+        assert_eq!(
+            gw.accounts.get(&key).unwrap().deposit_address,
+            Some(attacker_eoa)
+        );
+        assert_eq!(
+            gw.accounts.get(&key).unwrap().rebind_counter,
+            1,
+            "rebind burns the authorization"
+        );
+    }
+
+    /// SEC-021b: a rebind authorization is SINGLE-USE. Without the counter in the digest,
+    /// a signature over (owner, A, B) stays valid any time the bound address is A — so a
+    /// user who rotates A->B and later back to A hands anyone holding the old signature
+    /// (plus a leaked API key) the power to force the binding back to B. That is worst
+    /// exactly when it matters most: rotating away from a compromised address.
+    #[test]
+    fn a_rebind_authorization_cannot_be_replayed_after_returning_to_the_old_address() {
+        use k256::ecdsa::SigningKey;
+        let mut gw = Gw::boot();
+        let a_sk = SigningKey::from_slice(&[9u8; 32]).unwrap();
+        let b_sk = SigningKey::from_slice(&[0xB5u8; 32]).unwrap();
+        let a = eth_addr(&a_sk);
+        let b = eth_addr(&b_sk);
+        let (key, owner) = gw.register_account(None);
+        let bind_a = sign_digest(&a_sk, &deposit_bind_digest(&owner, &a));
+        let bind_b = sign_digest(&b_sk, &deposit_bind_digest(&owner, &b));
+        gw.account_set_deposit_address(&key, a, &bind_a, None)
+            .unwrap();
+
+        // Rotate A -> B (counter 0), then B -> A (counter 1).
+        let a_to_b = sign_digest(
+            &a_sk,
+            &rebind_auth_digest(gw.chain_id, &gw.vault, &owner, 0, &a, &b),
+        );
+        gw.account_set_deposit_address(&key, b, &bind_b, Some(&a_to_b))
+            .unwrap();
+        let b_to_a = sign_digest(
+            &b_sk,
+            &rebind_auth_digest(gw.chain_id, &gw.vault, &owner, 1, &b, &a),
+        );
+        gw.account_set_deposit_address(&key, a, &bind_a, Some(&b_to_a))
+            .unwrap();
+        assert_eq!(gw.accounts.get(&key).unwrap().deposit_address, Some(a));
+        assert_eq!(gw.accounts.get(&key).unwrap().rebind_counter, 2);
+
+        // The account is bound to A again — replay the ORIGINAL A->B authorization.
+        let err = gw
+            .account_set_deposit_address(&key, b, &bind_b, Some(&a_to_b))
+            .expect_err("a spent rebind authorization must not work a second time");
+        assert!(
+            err.contains("rebind not authorized"),
+            "unexpected error: {err}"
+        );
+        assert_eq!(
+            gw.accounts.get(&key).unwrap().deposit_address,
+            Some(a),
+            "binding unchanged"
+        );
     }
 
     #[test]
