@@ -1687,6 +1687,7 @@ Both follow from decisions taken deliberately, and both are surprising enough th
 
 1. **There is no recovery path for a lost bound-address key.** The binding can only be moved by a signature from the address currently bound, and the design explicitly rejects a timelocked or operator-mediated rebind. Combined with the server-custody `to` pin, losing that key makes the account's funds permanently unwithdrawable. State it plainly — "keep the key you deposited from" is the whole mitigation.
 2. **First bind wins, permanently.** An attacker holding only a leaked API key can bind their own address to an account that has never bound one, and the victim can no longer overwrite it. The account holds no funds in that state (crediting requires `from == bound address`), so this is griefing rather than theft — but the failure mode inverted relative to the old behavior, where the victim could simply rebind.
+3. **For a caller-signed account, the registered `signer` is the *only* key that can withdraw** — even if the account has also bound a deposit address. `authorizing_address` gives `signer` precedence, deliberately, so registering a signer narrows authorization rather than widening it. The consequence: losing the signer key strands the funds even though the deposit-address key is perfectly safe. Say so where caller-signed mode is documented, next to the existing note that a caller-signed account's orders need that same key.
 
 - [ ] **Step 4: Update the public site**
 
