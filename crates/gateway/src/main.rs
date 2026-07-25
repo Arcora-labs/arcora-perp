@@ -1128,9 +1128,9 @@ struct Gw {
     /// EVERY deserialize path yields the same identity a fresh `boot()` does; `main()`
     /// then overwrites both from `GatewaySigner` (the same env source the on-chain
     /// deposit digest is bound to), and a prod boot with a zero vault is refused
-    /// (`vault_binding_ok_for_mode`). Read by the withdrawal-verification tasks
-    /// (SEC-021 Task 3+); until then only tests read them (no dead_code marker needed —
-    /// the serde `default` reference keeps the fields live).
+    /// (`vault_binding_ok_for_mode`). Read at runtime by `account_set_deposit_address`
+    /// (the SEC-021b rebind digest, Task 4 — the first non-test reader) and next by
+    /// the withdrawal-verification paths as Tasks 5-6 land.
     #[serde(skip, default = "dev_fallback_chain_id")]
     chain_id: u64,
     #[serde(skip, default = "dev_fallback_vault")]
@@ -1746,6 +1746,13 @@ impl Gw {
     /// EOA and steals the credit (review fix). An address binds to at most one account.
     /// SEC-021b: a REBIND must additionally carry `current_sig` — the CURRENTLY bound
     /// address's signature over `rebind_auth_digest` — see the body for the WHY.
+    ///
+    /// NO RECOVERY PATH (accepted product decision, to be DOCUMENTED not engineered
+    /// around — Task 9: docs/API.md, docs/SECURITY.md, alpha release notes): if the
+    /// key for the currently bound address is lost, the binding is permanently
+    /// frozen — there is no unbind, override, or admin escape hatch — and once
+    /// withdrawals are pinned to the bound address (Task 5), the account's funds
+    /// become unwithdrawable. Keep the bound key safe.
     fn account_set_deposit_address(
         &mut self,
         key: &[u8; 32],
@@ -3968,9 +3975,15 @@ struct DepositAddrReq {
     signature: String,
     /// SEC-021b: REBIND ONLY. When the account already has a bound address, this
     /// must additionally carry that CURRENT address's signature over
-    /// `rebind_auth_digest(chain_id, vault, owner, old, new)`. Absent/ignored on a
-    /// first-time bind. Without it, a leaked API key alone could redirect the
-    /// binding — and therefore every future withdrawal — to an attacker's address.
+    /// `rebind_auth_digest(chain_id, vault, owner, rebind_counter, old_addr, new_addr)`
+    /// — see that function's doc for the exact 133-byte preimage. `rebind_counter`
+    /// is the account's rebind generation: 0 at account creation, untouched by the
+    /// first-time bind and by REJECTED attempts, +1 on every ACCEPTED rebind. It is
+    /// not surfaced by any endpoint yet, so a client obtains the current value by
+    /// counting the rebinds this account has successfully performed. Absent/ignored
+    /// on a first-time bind. Without this signature, a leaked API key alone could
+    /// redirect the binding — and therefore every future withdrawal — to an
+    /// attacker's address.
     #[serde(rename = "currentSignature", default)]
     current_signature: Option<String>,
 }
@@ -8429,7 +8442,10 @@ mod tests {
         let err = gw
             .account_set_deposit_address(&key, attacker_eoa, &attacker_bind_sig, None)
             .expect_err("rebind without the current address's signature must be refused");
-        assert!(err.contains("current"), "unexpected error: {err}");
+        assert!(
+            err.contains("rebinding requires"),
+            "expected the MISSING-`currentSignature` rejection (not the bad-signature one): {err}"
+        );
 
         // Binding is untouched.
         assert_eq!(
@@ -8509,6 +8525,119 @@ mod tests {
             gw.accounts.get(&key).unwrap().deposit_address,
             Some(a),
             "binding unchanged"
+        );
+        // A REJECTED rebind must not advance the generation. If it did, an attacker
+        // holding only the API key could spam garbage `currentSignature`s to burn
+        // the generation and silently invalidate a legitimate rotation signature
+        // the user already holds — a rotation DoS, worst exactly when the user is
+        // rotating away from a compromised address.
+        assert_eq!(
+            gw.accounts.get(&key).unwrap().rebind_counter,
+            2,
+            "a rejected rebind must not burn the generation"
+        );
+    }
+
+    /// SEC-021b: re-binding the SAME already-bound address is an idempotent no-op —
+    /// it succeeds without a `currentSignature`, leaves the binding unchanged, and
+    /// must NOT advance `rebind_counter` (only an ACCEPTED move to a DIFFERENT
+    /// address burns a generation).
+    #[test]
+    fn rebinding_the_same_address_is_a_no_op_and_burns_no_generation() {
+        use k256::ecdsa::SigningKey;
+        let mut gw = Gw::boot();
+        let sk = SigningKey::from_slice(&[9u8; 32]).unwrap();
+        let a = eth_addr(&sk);
+        let (key, owner) = gw.register_account(None);
+        let bind = sign_digest(&sk, &deposit_bind_digest(&owner, &a));
+        gw.account_set_deposit_address(&key, a, &bind, None)
+            .expect("first bind succeeds");
+
+        gw.account_set_deposit_address(&key, a, &bind, None)
+            .expect("re-binding the already-bound address is an idempotent Ok");
+        let acct = gw.accounts.get(&key).unwrap();
+        assert_eq!(acct.deposit_address, Some(a), "binding unchanged");
+        assert_eq!(
+            acct.rebind_counter, 0,
+            "an idempotent same-address re-bind must not burn a generation"
+        );
+    }
+
+    /// SEC-021b ordering pin: the proof-of-control check runs BEFORE the idempotent
+    /// same-address short-circuit. Hoisted above the proof, that short-circuit would
+    /// hand an API-key-only attacker an oracle: call with a GUESSED address and a
+    /// garbage signature — an `Ok` confirms the guess is the bound address, without
+    /// controlling it or holding any signature at all.
+    #[test]
+    fn same_address_short_circuit_still_requires_the_control_proof() {
+        use k256::ecdsa::SigningKey;
+        let mut gw = Gw::boot();
+        let sk = SigningKey::from_slice(&[9u8; 32]).unwrap();
+        let a = eth_addr(&sk);
+        let (key, owner) = gw.register_account(None);
+        let bind = sign_digest(&sk, &deposit_bind_digest(&owner, &a));
+        gw.account_set_deposit_address(&key, a, &bind, None)
+            .expect("first bind succeeds");
+
+        // Same (currently bound) address, garbage signature: the proof must be
+        // checked first, so this is an Err — never an idempotent Ok.
+        let garbage = [0u8; 65];
+        assert!(
+            gw.account_set_deposit_address(&key, a, &garbage, None)
+                .is_err(),
+            "a garbage signature must fail even when `addr` equals the bound address"
+        );
+        assert_eq!(
+            gw.accounts.get(&key).unwrap().rebind_counter,
+            0,
+            "the rejected probe must not burn a generation either"
+        );
+    }
+
+    /// SEC-021b: every field of the rebind digest is public (owner, chain_id, vault,
+    /// rebind_counter, both addresses), so an attacker CAN compute the exact digest
+    /// the current address would sign. Authorization must therefore hinge on WHO
+    /// signed: the correct digest signed by the attacker's OWN key is rejected.
+    #[test]
+    fn a_correct_rebind_digest_signed_by_the_wrong_key_is_rejected() {
+        use k256::ecdsa::SigningKey;
+        let mut gw = Gw::boot();
+        let victim_sk = SigningKey::from_slice(&[9u8; 32]).unwrap();
+        let victim_eoa = eth_addr(&victim_sk);
+        let attacker_sk = SigningKey::from_slice(&[0xA5u8; 32]).unwrap();
+        let attacker_eoa = eth_addr(&attacker_sk);
+        let (key, owner) = gw.register_account(None);
+        let bind = sign_digest(&victim_sk, &deposit_bind_digest(&owner, &victim_eoa));
+        gw.account_set_deposit_address(&key, victim_eoa, &bind, None)
+            .expect("first bind succeeds");
+
+        // The attacker computes the CORRECT current rebind digest — everything in
+        // it is public — but can only sign it with their own key.
+        let attacker_bind =
+            sign_digest(&attacker_sk, &deposit_bind_digest(&owner, &attacker_eoa));
+        let forged = sign_digest(
+            &attacker_sk,
+            &rebind_auth_digest(
+                gw.chain_id,
+                &gw.vault,
+                &owner,
+                0,
+                &victim_eoa,
+                &attacker_eoa,
+            ),
+        );
+        let err = gw
+            .account_set_deposit_address(&key, attacker_eoa, &attacker_bind, Some(&forged))
+            .expect_err("a `currentSignature` from the wrong key must be rejected");
+        assert!(
+            err.contains("rebind not authorized"),
+            "unexpected error: {err}"
+        );
+        let acct = gw.accounts.get(&key).unwrap();
+        assert_eq!(acct.deposit_address, Some(victim_eoa), "binding unchanged");
+        assert_eq!(
+            acct.rebind_counter, 0,
+            "the rejected forgery must not burn a generation"
         );
     }
 
