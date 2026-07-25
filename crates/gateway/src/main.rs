@@ -2661,7 +2661,10 @@ impl Gw {
             // against the wrong deployment would sign digests that silently fail).
             "depositAddress": a.deposit_address.map(|d| hex0x(&d)),
             "callerSigned": a.signer.is_some(),
-            "nextWithdrawNonce": a.last_withdraw_nonce + 1,
+            // Saturating: `u64::MAX` means "no acceptable nonce remains" (the
+            // account is already permanently un-withdrawable at that point), so
+            // saturate rather than panic (debug) / wrap to a never-valid 0 (release).
+            "nextWithdrawNonce": a.last_withdraw_nonce.saturating_add(1),
             "rebindCounter": a.rebind_counter,
             "chainId": self.chain_id,
             "vault": hex0x(&self.vault),
@@ -8851,6 +8854,10 @@ mod tests {
     fn v1_account_exposes_withdrawal_authorization_state() {
         use k256::ecdsa::SigningKey;
         let mut gw = Gw::boot();
+        // A distinctive vault: `DEV_FALLBACK_VAULT` is the all-zero address, so
+        // asserting against the boot default could not tell the real field from a
+        // hardcoded zero. Every digest below reads `gw.vault`, so this stays coherent.
+        gw.vault = [0x77u8; 20];
         let sk = SigningKey::from_slice(&[9u8; 32]).unwrap();
         let eoa = eth_addr(&sk);
         let (key, owner) = gw.register_account(None);
@@ -8869,6 +8876,37 @@ mod tests {
         let v = gw.v1_account(&key).unwrap();
         assert_eq!(v["depositAddress"], hex0x(&eoa));
         assert_eq!(v["rebindCounter"], 0, "a first-time bind is not a rebind");
+        // Binding an address does NOT make the account caller-signed: `signer`
+        // (None here) — not `deposit_address` — decides, and that precedence is
+        // exactly what the client keys off to pick which key must sign.
+        assert_eq!(v["callerSigned"], false);
+
+        // One REAL authorized withdrawal: the served nonce must track
+        // `last_withdraw_nonce` (the withdrawal-auth counter) — not any other
+        // per-account counter, which all still read 0 here.
+        fund_test_account(&mut gw, &key, 10_000);
+        signed_withdraw(&mut gw, &key, &sk, 0, 5_000, eoa).expect("authorized withdrawal");
+        let v = gw.v1_account(&key).unwrap();
+        assert_eq!(
+            v["nextWithdrawNonce"], 2,
+            "the served nonce advances with the withdrawal-auth counter"
+        );
+
+        // An ACCEPTED rebind (authorized by the currently bound address) must be
+        // surfaced as the incremented generation — the client signs the NEXT
+        // rebind digest over this value.
+        let b_sk = SigningKey::from_slice(&[0xB7u8; 32]).unwrap();
+        let b = eth_addr(&b_sk);
+        let bind_b = sign_digest(&b_sk, &deposit_bind_digest(&owner, &b));
+        let rotate = sign_digest(
+            &sk,
+            &rebind_auth_digest(gw.chain_id, &gw.vault, &owner, 0, &eoa, &b),
+        );
+        gw.account_set_deposit_address(&key, b, &bind_b, Some(&rotate))
+            .expect("rebind authorized by the current address");
+        let v = gw.v1_account(&key).unwrap();
+        assert_eq!(v["depositAddress"], hex0x(&b));
+        assert_eq!(v["rebindCounter"], 1, "an accepted rebind burns a generation");
 
         // A caller-signed account reports callerSigned=true, so the client knows the
         // registered signer — not the bound deposit address — must sign withdrawals.
