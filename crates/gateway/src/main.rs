@@ -2655,6 +2655,16 @@ impl Gw {
             "settledBalance": self.free_balance_of(&owner).to_string(),
             "positions": self.positions_json_of(&owner),
             "nextNonce": a.nonce,
+            // SEC-021: everything the client needs to build a withdrawal signature —
+            // which address must sign, which nonce is next, and the deployment the
+            // digest is bound to (never hardcode these client-side: a client built
+            // against the wrong deployment would sign digests that silently fail).
+            "depositAddress": a.deposit_address.map(|d| hex0x(&d)),
+            "callerSigned": a.signer.is_some(),
+            "nextWithdrawNonce": a.last_withdraw_nonce + 1,
+            "rebindCounter": a.rebind_counter,
+            "chainId": self.chain_id,
+            "vault": hex0x(&self.vault),
         }))
     }
     fn v1_orders_json(&self, key: &[u8; 32]) -> Option<serde_json::Value> {
@@ -5274,7 +5284,7 @@ async fn get_v1_openapi() -> impl IntoResponse {
         "components": { "securitySchemes": { "ApiKey": { "type": "apiKey", "in": "header", "name": "X-Api-Key" } } },
         "paths": {
             "/v1/accounts": { "post": { "summary": "Register an account (optional { signer } for caller-signed)", "responses": ok("apiKey + owner + callerSigned") } },
-            "/v1/accounts/me": { "get": { "summary": "Own account (balance, positions, nextNonce)", "responses": ok("account"), "security": auth["security"] } },
+            "/v1/accounts/me": { "get": { "summary": "Own account (balance, positions, nextNonce; SEC-021 withdrawal-auth state: depositAddress, callerSigned, nextWithdrawNonce, rebindCounter, chainId, vault — read these from here, never hardcode)", "responses": ok("account"), "security": auth["security"] } },
             "/v1/accounts/deposit": { "post": { "summary": "Deposit collateral (demo/in-memory credit)", "security": auth["security"],
                 "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["marketId","amount"], "properties": { "marketId": { "type": "integer" }, "amount": { "type": "string" } } } } } },
                 "responses": ok("updated account") } },
@@ -5288,7 +5298,9 @@ async fn get_v1_openapi() -> impl IntoResponse {
                 "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["txHash","marketId"], "properties": { "txHash": { "type": "string" }, "marketId": { "type": "integer" } } } } } },
                 "responses": ok("credited + account") } },
             "/v1/accounts/withdraw": { "post": { "summary": "Withdraw USDC (record an authorized withdrawal)", "security": auth["security"],
-                "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["marketId","amount","to"], "properties": { "marketId": { "type": "integer" }, "amount": { "type": "string" }, "to": { "type": "string" } } } } } },
+                "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["marketId","amount","to"], "properties": { "marketId": { "type": "integer" }, "amount": { "type": "string" }, "to": { "type": "string" },
+                    "nonce": { "type": "integer", "description": "strictly-increasing withdrawal auth nonce — use nextWithdrawNonce from GET /v1/accounts/me" },
+                    "signature": { "type": "string", "description": "65-byte secp256k1 sig over the withdraw auth digest, recovering to the registered signer (caller-signed) or the bound deposit address" } } } } } },
                 "responses": ok("recorded withdrawal + leaf") } },
             "/v1/accounts/withdrawals": { "get": { "summary": "Own withdrawals + claim proofs", "security": auth["security"], "responses": ok("vault + withdrawals[]") } },
             "/v1/orders": {
@@ -8828,6 +8840,41 @@ mod tests {
             acct.rebind_counter, 0,
             "the rejected forgery must not burn a generation"
         );
+    }
+
+    /// SEC-021: the client needs the binding state to build a withdrawal signature.
+    /// It persists only `{apiKey, owner}`, so after a reload `/v1/accounts/me` is its
+    /// only source for which key must sign (`callerSigned` / `depositAddress`), the
+    /// next auth nonce, the rebind generation, and the deployment (`chainId`, `vault`)
+    /// every digest is bound to.
+    #[test]
+    fn v1_account_exposes_withdrawal_authorization_state() {
+        use k256::ecdsa::SigningKey;
+        let mut gw = Gw::boot();
+        let sk = SigningKey::from_slice(&[9u8; 32]).unwrap();
+        let eoa = eth_addr(&sk);
+        let (key, owner) = gw.register_account(None);
+
+        let v = gw.v1_account(&key).unwrap();
+        assert_eq!(v["depositAddress"], serde_json::Value::Null);
+        assert_eq!(v["callerSigned"], false);
+        assert_eq!(v["nextWithdrawNonce"], 1);
+        assert_eq!(v["rebindCounter"], 0);
+        // The client cannot build a valid digest without these.
+        assert_eq!(v["chainId"], gw.chain_id);
+        assert_eq!(v["vault"], hex0x(&gw.vault));
+
+        let bind = sign_digest(&sk, &deposit_bind_digest(&owner, &eoa));
+        gw.account_set_deposit_address(&key, eoa, &bind, None).unwrap();
+        let v = gw.v1_account(&key).unwrap();
+        assert_eq!(v["depositAddress"], hex0x(&eoa));
+        assert_eq!(v["rebindCounter"], 0, "a first-time bind is not a rebind");
+
+        // A caller-signed account reports callerSigned=true, so the client knows the
+        // registered signer — not the bound deposit address — must sign withdrawals.
+        let (key2, _owner2) = gw.register_account(Some(eth_addr(&sk)));
+        let v2 = gw.v1_account(&key2).unwrap();
+        assert_eq!(v2["callerSigned"], true);
     }
 
     /// SEC-021: the regression test for the reported finding. A caller-signed account
