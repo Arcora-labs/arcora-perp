@@ -56,6 +56,24 @@ describe("AccountPanel deposit/withdraw", () => {
     expect(screen.queryByText(/bound deposit address/i)).toBeNull();
   });
 
+  it("double-click guard: the Withdraw button disables while a withdrawal is in flight (one debit, not two)", async () => {
+    renderPanel();
+    fireEvent.change(screen.getByLabelText(/amount/i), { target: { value: "100" } });
+    fireEvent.click(screen.getByRole("button", { name: /^withdraw$/i }));
+    // In flight: disabled + relabeled (the WalletDepositCard `running` convention)…
+    const working = screen.getByRole("button", { name: /working/i }) as HTMLButtonElement;
+    expect(working.disabled).toBe(true);
+    // …so the second click of a double-click is a no-op, not a second request
+    // (two in flight would reuse the same nextWithdrawNonce on a real gateway).
+    fireEvent.click(working);
+    expect(await screen.findByText(/Settling on-chain/i)).toBeTruthy();
+    // Exactly ONE $100 debit landed: 25,000 → 24,900 (a leaked second one ⇒ 24,800).
+    expect(screen.getByText("$24,900.00")).toBeTruthy();
+    // And the control is live again for the next withdrawal.
+    const again = screen.getByRole("button", { name: /^withdraw$/i }) as HTMLButtonElement;
+    expect(again.disabled).toBe(false);
+  });
+
   it("on success: sets the settling→claimable expectation", async () => {
     renderPanel();
     fireEvent.change(screen.getByLabelText(/amount/i), { target: { value: "100" } });

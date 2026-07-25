@@ -117,11 +117,19 @@ export function AccountPanel() {
   // loading it stays enabled and requestWithdrawal itself refuses cleanly.
   const withdrawBlocked = auth !== undefined && (auth.callerSigned || !auth.depositAddress);
 
+  // In-flight guard (the WalletDepositCard `running` convention): two Withdraw
+  // clicks in flight would both read the same nextWithdrawNonce off
+  // /v1/accounts/me, so the second is rejected with a baffling "nonce must
+  // strictly increase" — disable the buttons until the first settles instead.
+  const [busy, setBusy] = useState<"deposit" | "withdraw" | null>(null);
+
   async function run(kind: "deposit" | "withdraw") {
+    if (busy) return;
     setMsg(null);
     setErr(null);
     const v = parseUsd(amount);
     if (v === null || v <= 0n) return setErr("Enter a valid amount.");
+    setBusy(kind);
     try {
       if (kind === "deposit") {
         await client.deposit(v);
@@ -136,6 +144,8 @@ export function AccountPanel() {
       }
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(null);
     }
   }
 
@@ -177,12 +187,16 @@ export function AccountPanel() {
       )}
       <div className="row">
         {!walletCapable && (
-          <button className="btn btn--ghost" onClick={() => run("deposit")}>
-            Deposit
+          <button className="btn btn--ghost" onClick={() => run("deposit")} disabled={busy !== null}>
+            {busy === "deposit" ? "Working…" : "Deposit"}
           </button>
         )}
-        <button className="btn btn--ghost" onClick={() => run("withdraw")} disabled={withdrawBlocked}>
-          Withdraw
+        <button
+          className="btn btn--ghost"
+          onClick={() => run("withdraw")}
+          disabled={withdrawBlocked || busy !== null}
+        >
+          {busy === "withdraw" ? "Working…" : "Withdraw"}
         </button>
       </div>
       {msg && <p className="notice notice--ok">{msg}</p>}

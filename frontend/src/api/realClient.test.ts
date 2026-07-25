@@ -120,8 +120,14 @@ let authorizeBody: unknown = null; // per-test override of the response body (nu
 // ── SEC-021 withdrawal-authorization fixtures ────────────────────────────────
 // The bound deposit address withdrawals pay to (and whose key signs).
 const BOUND = "0x" + "cd".repeat(20);
-const VAULT = "0x" + "22".repeat(20);
-const CHAIN_ID = 84532;
+// Deliberately DISTINCTIVE fixture values: NOT the Rust KAT vault (0x2222…)
+// and NOT the real Base Sepolia chain id (84532). If realClient ever hardcodes
+// either instead of reading them off /v1/accounts/me, the digest assertions
+// below diverge and fail. (With KAT-coincident values, a hardcode passed —
+// which is exactly what these fixtures must catch. The KAT tests keep their
+// own 84532/0x2222… inputs: those pin the Rust vectors, not this property.)
+const VAULT = "0x" + "3b".repeat(20);
+const CHAIN_ID = 4242;
 // Per-test override of the SEC-021 fields GET /v1/accounts/me serves.
 let meFields: Record<string, unknown> = {};
 const defaultMeFields = () => ({
@@ -506,8 +512,10 @@ describe("RealDarkPerpClient.requestWithdrawal", () => {
     expect(calls[demoIdx].body).toEqual({ amount: "5000000" });
 
     // The wallet was asked to sign EXACTLY withdraw_auth_digest — with the
-    // gateway-served chainId/vault/owner/nonce, never hardcoded ones — as the
-    // BOUND address (its key is the authorizing key for server-custody accounts).
+    // gateway-served chainId/vault/owner/nonce, never hardcoded ones (the
+    // fixture's distinctive 4242/0x3b3b… make a hardcoded 84532/KAT-vault
+    // fail here) — as the BOUND address (its key is the authorizing key for
+    // server-custody accounts).
     expect(personalSigns.length).toBe(1);
     expect(personalSigns[0].address).toBe(BOUND);
     const expected = withdrawAuthDigest(
