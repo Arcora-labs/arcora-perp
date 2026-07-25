@@ -3012,6 +3012,47 @@ impl Gw {
         Ok(value)
     }
 
+    /// SEC-021: the authorized, account-scoped LP withdrawal — the entry point `/v1`
+    /// uses. `lp_withdraw` itself stays an unauthenticated engine primitive because
+    /// the legacy demo handler calls it with the demo wallet's owner, which is not a
+    /// registered account; putting the check there would break that path, and
+    /// skipping the check for non-account keys would hollow it out.
+    ///
+    /// The withdrawer wallet is DERIVED from the account rather than accepted as a
+    /// parameter, so a caller cannot pair one account's share key with another
+    /// account's wallet.
+    fn account_lp_withdraw(
+        &mut self,
+        key: &[u8; 32],
+        shares: u128,
+        auth_nonce: u64,
+        sig: &[u8; 65],
+    ) -> Result<i128, String> {
+        let (wallet, last_nonce) = {
+            let a = self.accounts.get(key).ok_or("unknown account")?;
+            (a.wallet, a.last_withdraw_nonce)
+        };
+        if auth_nonce <= last_nonce {
+            return Err("withdrawal nonce must strictly increase (replay protection)".into());
+        }
+        let expected = self.authorizing_address(key)?;
+        let digest =
+            lp_withdraw_auth_digest(self.chain_id, &self.vault, &wallet.owner, shares, auth_nonce);
+        let authorized = eip191_prehash_candidates(&digest)
+            .iter()
+            .any(|prehash| recover_eth_address(prehash, sig) == Some(expected));
+        if !authorized {
+            return Err(
+                "LP withdrawal signature does not recover to this account's authorizing address"
+                    .into(),
+            );
+        }
+        let value = self.lp_withdraw(key, &wallet, shares)?;
+        // Commit only after success, for the same reason as `account_withdraw`.
+        self.accounts.get_mut(key).unwrap().last_withdraw_nonce = auth_nonce;
+        Ok(value)
+    }
+
     /// Pool stats for the UI: TVL (equity), NAV/share, total shares, and the caller's
     /// own shares + current value.
     fn lp_json(&self, who: &[u8; 32]) -> serde_json::Value {
@@ -4370,7 +4411,6 @@ fn withdraw_auth_digest(
 ///     98    8  nonce     u64 BE   (total preimage: 106 bytes)
 /// ```
 /// Layout frozen by `auth_digests_match_known_answer_vectors`.
-#[cfg_attr(not(test), expect(dead_code))] // consumed by the withdrawal-verification tasks (SEC-021 Task 3+)
 fn lp_withdraw_auth_digest(
     chain_id: u64,
     vault: &[u8; 20],
@@ -4956,13 +4996,20 @@ async fn post_v1_lp_withdraw(
         Ok(v) => v,
         Err(_) => return err400("bad shares".into()).into_response(),
     };
-    let r = {
-        let mut gw = app.gw.lock().await;
-        match gw.accounts.get(&key).map(|a| a.wallet) {
-            Some(w) => gw.lp_withdraw(&key, &w, shares),
-            None => Err("unknown account".into()),
+    // SEC-021: every LP withdrawal must carry its authorization nonce + signature —
+    // the engine method verifies them; the handler only refuses absent/unparseable
+    // fields early with a clear message.
+    let nonce = match req.nonce {
+        Some(n) => n,
+        None => return err400("`nonce` is required".into()).into_response(),
+    };
+    let sig = match req.signature.as_deref().and_then(parse_hex65) {
+        Some(s) => s,
+        None => {
+            return err400("`signature` is required (65-byte 0x hex r‖s‖v)".into()).into_response()
         }
     };
+    let r = { app.gw.lock().await.account_lp_withdraw(&key, shares, nonce, &sig) };
     match r {
         Ok(value) => {
             Json(serde_json::json!({ "withdrawnValue": value.to_string() })).into_response()
@@ -5414,6 +5461,12 @@ async fn post_lp_deposit(
 #[derive(Deserialize)]
 struct LpWithdrawReq {
     shares: String,
+    /// SEC-021: required on `/v1/lp/withdraw`. Ignored by the legacy demo handler,
+    /// which is omitted in production (audit DP-010).
+    #[serde(default)]
+    nonce: Option<u64>,
+    #[serde(default)]
+    signature: Option<String>,
 }
 /// Demo-user LP withdraw: burns `shares` for their current value out of the pool.
 async fn post_lp_withdraw(
@@ -9009,6 +9062,107 @@ mod tests {
             .account_withdraw(&key, 0, 5_000, eoa, 1, &foreign)
             .expect_err("a signature for another deployment must be refused");
         assert!(err.contains("signature"), "unexpected error: {err}");
+    }
+
+    /// SEC-021: the /v1 LP withdrawal is authorized like any other withdrawal, and a
+    /// withdrawal signature cannot be carried across into it.
+    #[test]
+    fn account_lp_withdraw_requires_its_own_signature() {
+        use k256::ecdsa::SigningKey;
+        let mut gw = Gw::boot();
+        let sk = SigningKey::from_slice(&[9u8; 32]).unwrap();
+        let eoa = eth_addr(&sk);
+        let (key, owner) = gw.register_account(None);
+        let bind = sign_digest(&sk, &deposit_bind_digest(&owner, &eoa));
+        gw.account_set_deposit_address(&key, eoa, &bind, None).unwrap();
+        fund_test_account(&mut gw, &key, 10_000);
+        let wallet = gw.accounts.get(&key).unwrap().wallet;
+        let shares = gw.lp_deposit(key, &wallet, 5_000).expect("stake");
+
+        // A signature over the ACCOUNT-withdrawal digest must not authorize an LP
+        // withdrawal — the two digests are domain-separated.
+        let wrong = sign_digest(
+            &sk,
+            &withdraw_auth_digest(gw.chain_id, &gw.vault, &owner, 0, shares as i128, &eoa, 1),
+        );
+        let err = gw
+            .account_lp_withdraw(&key, shares, 1, &wrong)
+            .expect_err("cross-flow signature must be refused");
+        assert!(err.contains("signature"), "unexpected error: {err}");
+
+        let sig = sign_digest(
+            &sk,
+            &lp_withdraw_auth_digest(gw.chain_id, &gw.vault, &owner, shares, 1),
+        );
+        gw.account_lp_withdraw(&key, shares, 1, &sig).expect("accepted");
+        assert_eq!(gw.accounts.get(&key).unwrap().last_withdraw_nonce, 1);
+    }
+
+    /// SEC-021: the legacy demo LP handler calls the raw primitive with a key that is
+    /// not a registered account. That path must keep working — authorization lives in
+    /// the wrapper, not in `lp_withdraw`.
+    #[test]
+    fn legacy_lp_withdraw_primitive_still_works_for_the_demo_wallet() {
+        let mut gw = Gw::boot();
+        let who = gw.user.owner;
+        let w = gw.user;
+        let shares = gw.lp_deposit(who, &w, 1_000).expect("stake");
+        gw.lp_withdraw(&who, &w, shares)
+            .expect("legacy primitive is unauthenticated by contract");
+    }
+
+    /// SEC-021: a validly signed LP withdrawal that then fails inside the delegated
+    /// primitive (here: more shares than held) must NOT burn its nonce — the nonce
+    /// commits only after `lp_withdraw` succeeds, so the same nonce is still usable
+    /// and a later replay of a SPENT nonce is still refused. Mirrors
+    /// `failed_withdrawal_does_not_burn_its_nonce` for the LP flow.
+    #[test]
+    fn rejected_lp_withdrawal_does_not_burn_its_nonce() {
+        use k256::ecdsa::SigningKey;
+        let mut gw = Gw::boot();
+        let sk = SigningKey::from_slice(&[9u8; 32]).unwrap();
+        let eoa = eth_addr(&sk);
+        let (key, owner) = gw.register_account(None);
+        let bind = sign_digest(&sk, &deposit_bind_digest(&owner, &eoa));
+        gw.account_set_deposit_address(&key, eoa, &bind, None).unwrap();
+        fund_test_account(&mut gw, &key, 10_000);
+        let wallet = gw.accounts.get(&key).unwrap().wallet;
+        let shares = gw.lp_deposit(key, &wallet, 5_000).expect("stake");
+
+        // Validly signed, but for more shares than the account holds.
+        let over = sign_digest(
+            &sk,
+            &lp_withdraw_auth_digest(gw.chain_id, &gw.vault, &owner, shares + 1, 1),
+        );
+        let err = gw
+            .account_lp_withdraw(&key, shares + 1, 1, &over)
+            .expect_err("over-shares LP withdrawal fails");
+        assert!(err.contains("Insufficient LP shares"), "unexpected error: {err}");
+        assert_eq!(
+            gw.accounts.get(&key).unwrap().last_withdraw_nonce,
+            0,
+            "nonce must survive a post-verification failure"
+        );
+        assert_eq!(
+            gw.lp_shares.get(&key).copied().unwrap_or(0),
+            shares,
+            "no shares burned by the rejection"
+        );
+
+        // Nonce 1 is still spendable — proof the rejection committed nothing.
+        let sig = sign_digest(
+            &sk,
+            &lp_withdraw_auth_digest(gw.chain_id, &gw.vault, &owner, shares, 1),
+        );
+        gw.account_lp_withdraw(&key, shares, 1, &sig)
+            .expect("the un-burned nonce is still valid");
+        assert_eq!(gw.accounts.get(&key).unwrap().last_withdraw_nonce, 1);
+
+        // A SPENT nonce is refused (replay protection).
+        let err = gw
+            .account_lp_withdraw(&key, shares, 1, &sig)
+            .expect_err("replay must be refused");
+        assert!(err.contains("nonce"), "unexpected error: {err}");
     }
 
     #[test]
