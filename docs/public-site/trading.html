@@ -109,7 +109,7 @@
 
 <h3>What is withdrawable, when</h3>
 <ol>
-  <li>You request a withdrawal (<code>POST /v1/accounts/withdraw</code> or the Account tab). It is recorded off-chain and enters the current settlement window.</li>
+  <li>You request a withdrawal (<code>POST /v1/accounts/withdraw</code> or the Account tab). Every withdrawal is <strong>wallet-signed</strong>: it must carry a strictly-increasing nonce and a secp256k1 signature from your bound deposit address (or the registered signer, for caller-signed accounts) — the API key alone can never move funds, and a server-custody account can only withdraw <em>to</em> its bound deposit address (so keep that key safe: there is no operator recovery for a lost bound key). See the <a href="api.html">API reference</a> for the exact digest. The withdrawal is recorded off-chain and enters the current settlement window.</li>
   <li>When that window's proof lands on-chain, the withdrawal is included in the window's on-chain <strong>withdrawals Merkle root</strong>.</li>
   <li>From that moment it is claimable by <strong>anyone</strong>, permissionlessly, via <code>claim(to, amount, nonce, root, proof)</code> on the vault — funds can only go to the address bound into the leaf. Any historically published root remains claimable forever; a later root can never strand a withdrawal.</li>
 </ol>

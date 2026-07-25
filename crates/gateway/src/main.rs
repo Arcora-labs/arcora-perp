@@ -4107,12 +4107,11 @@ struct DepositAddrReq {
     /// `rebind_auth_digest(chain_id, vault, owner, rebind_counter, old_addr, new_addr)`
     /// — see that function's doc for the exact 133-byte preimage. `rebind_counter`
     /// is the account's rebind generation: 0 at account creation, untouched by the
-    /// first-time bind and by REJECTED attempts, +1 on every ACCEPTED rebind. It is
-    /// not surfaced by any endpoint yet, so a client obtains the current value by
-    /// counting the rebinds this account has successfully performed. Absent/ignored
-    /// on a first-time bind. Without this signature, a leaked API key alone could
-    /// redirect the binding — and therefore every future withdrawal — to an
-    /// attacker's address.
+    /// first-time bind and by REJECTED attempts, +1 on every ACCEPTED rebind. Read
+    /// the current value as `rebindCounter` from `GET /v1/accounts/me` (`v1_account`).
+    /// Absent/ignored on a first-time bind. Without this signature, a leaked API key
+    /// alone could redirect the binding — and therefore every future withdrawal — to
+    /// an attacker's address.
     #[serde(rename = "currentSignature", default)]
     current_signature: Option<String>,
 }
@@ -4196,9 +4195,14 @@ fn parse_hex65(s: &str) -> Option<[u8; 65]> {
     parse_hex_exact::<65>(s)
 }
 
-/// Recover the 20-byte Ethereum address that signed `prehash` with `sig` (r‖s‖v),
-/// exactly as the contract's `ecrecover` would — so a caller-signed order is
-/// authenticated identically off-chain and on-chain.
+/// Recover the 20-byte Ethereum address that signed `prehash` with `sig` (r‖s‖v).
+/// NOTE: this is deliberately more permissive than the Solidity side on `v` — it
+/// accepts 0..3 as well as 27..30, whereas `CollateralVault`/`DarkPerpSettlement`
+/// accept only 27/28. That is safe for gateway-local authorization (these signatures
+/// never reach a contract), but it is NOT byte-identical to on-chain `ecrecover`.
+/// High-`s` (malleable) signatures are rejected inside k256's recovery primitive
+/// (`recover_from_prehash` ends by re-verifying, and secp256k1's `verify_prehashed`
+/// refuses a high-`s` signature).
 fn recover_eth_address(prehash: &[u8; 32], sig: &[u8; 65]) -> Option<[u8; 20]> {
     use k256::ecdsa::{RecoveryId, Signature, VerifyingKey};
     use sha3::{Digest as _, Keccak256 as RawKeccak};
@@ -5291,8 +5295,9 @@ async fn get_v1_openapi() -> impl IntoResponse {
             "/v1/accounts/deposit": { "post": { "summary": "Deposit collateral (demo/in-memory credit)", "security": auth["security"],
                 "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["marketId","amount"], "properties": { "marketId": { "type": "integer" }, "amount": { "type": "string" } } } } } },
                 "responses": ok("updated account") } },
-            "/v1/accounts/deposit/address": { "post": { "summary": "Bind the external EOA you fund USDC from (ownership-proven)", "security": auth["security"],
-                "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["address","signature"], "properties": { "address": { "type": "string" }, "signature": { "type": "string", "description": "secp256k1 sig recovering to address over the bind digest keccak256(\"dark-perp:bind-deposit:\"‖owner‖address) — raw, or EIP-191 personal_sign over its 32 bytes or its 0x-hex string" } } } } } },
+            "/v1/accounts/deposit/address": { "post": { "summary": "Bind the external EOA you fund USDC from (ownership-proven; a REBIND additionally requires currentSignature)", "security": auth["security"],
+                "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["address","signature"], "properties": { "address": { "type": "string" }, "signature": { "type": "string", "description": "secp256k1 sig recovering to address over the bind digest keccak256(\"dark-perp:bind-deposit:\"‖owner‖address) — raw, or EIP-191 personal_sign over its 32 bytes or its 0x-hex string" },
+                    "currentSignature": { "type": "string", "description": "REBIND ONLY (SEC-021b): the CURRENTLY bound address's sig over the rebind digest keccak256(\"dark-perp:rebind-deposit:\"‖chainId(u64 BE)‖vault‖owner‖rebindCounter(u64 BE)‖oldAddr‖newAddr) — rebindCounter from GET /v1/accounts/me; same three accepted shapes as `signature`. Absent/ignored on a first-time bind; without it a rebind is refused. There is NO operator or timelock override: losing the bound key permanently freezes the binding" } } } } } },
                 "responses": ok("bound address") } },
             "/v1/accounts/deposit/authorize": { "post": { "summary": "Authorize an L1 deposit (SEC-019): get ownerCommit + gateway sig for deposit(amount, ownerCommit, sig)", "security": auth["security"],
                 "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["from","amount"], "properties": { "from": { "type": "string", "description": "the L1 address the deposit is sent from (your bound deposit address)" }, "amount": { "type": "string", "description": "USDC base units to deposit" } } } } } },
@@ -5300,12 +5305,21 @@ async fn get_v1_openapi() -> impl IntoResponse {
             "/v1/accounts/deposit/onchain": { "post": { "summary": "Credit a real on-chain USDC deposit by tx hash", "security": auth["security"],
                 "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["txHash","marketId"], "properties": { "txHash": { "type": "string" }, "marketId": { "type": "integer" } } } } } },
                 "responses": ok("credited + account") } },
-            "/v1/accounts/withdraw": { "post": { "summary": "Withdraw USDC (record an authorized withdrawal)", "security": auth["security"],
-                "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["marketId","amount","to"], "properties": { "marketId": { "type": "integer" }, "amount": { "type": "string" }, "to": { "type": "string" },
-                    "nonce": { "type": "integer", "description": "strictly-increasing withdrawal auth nonce — use nextWithdrawNonce from GET /v1/accounts/me" },
-                    "signature": { "type": "string", "description": "65-byte secp256k1 sig over the withdraw auth digest, recovering to the registered signer (caller-signed) or the bound deposit address" } } } } } },
+            "/v1/accounts/withdraw": { "post": { "summary": "Withdraw USDC (record an authorized withdrawal; SEC-021: every withdrawal is wallet-signed — the API key alone can never move funds)", "security": auth["security"],
+                "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["marketId","amount","to","nonce","signature"], "properties": { "marketId": { "type": "integer" }, "amount": { "type": "string" }, "to": { "type": "string", "description": "destination L1 address. Server-custody accounts (no registered signer) MUST set this to their bound deposit address; caller-signed accounts may use any address" },
+                    "nonce": { "type": "integer", "description": "strictly-increasing withdrawal auth nonce, shared with /v1/lp/withdraw — use nextWithdrawNonce from GET /v1/accounts/me; committed only when the withdrawal succeeds (a rejected request does not burn it)" },
+                    "signature": { "type": "string", "description": "65-byte secp256k1 sig (r‖s‖v) over the withdraw auth digest keccak256(\"dark-perp:withdraw:\"‖chainId(u64 BE)‖vault(20)‖owner(32)‖marketId(u64 BE)‖amount(i128 BE)‖to(20)‖nonce(u64 BE)), recovering to the registered signer (caller-signed) or else the bound deposit address. Accepted over any of THREE shapes: the raw 32-byte digest, EIP-191 personal_sign over those 32 bytes, or EIP-191 over their lowercase 0x-hex string — so both CLI signers and browser-wallet personal_sign work. chainId/vault/owner: read them from GET /v1/accounts/me" } } } } } },
                 "responses": ok("recorded withdrawal + leaf") } },
-            "/v1/accounts/withdrawals": { "get": { "summary": "Own withdrawals + claim proofs", "security": auth["security"], "responses": ok("vault + withdrawals[]") } },
+            "/v1/accounts/withdrawals": { "get": { "summary": "Own withdrawals + claim proofs (NOTE: this endpoint's `vault` echoes the raw L1_VAULT env string, possibly EIP-55 mixed-case; for building signing digests use the normalized lowercase `vault` from GET /v1/accounts/me — those are the exact bytes hashed)", "security": auth["security"], "responses": ok("vault + withdrawals[]") } },
+            "/v1/lp": { "get": { "summary": "LP pool stats + own stake", "security": auth["security"], "responses": ok("{ tvl, navPerShare, totalShares, myShares, myValue }") } },
+            "/v1/lp/deposit": { "post": { "summary": "Stake USDC into the counterparty pool (mint LP shares)", "security": auth["security"],
+                "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["amount"], "properties": { "amount": { "type": "string", "description": "USDC base units (1e6-scaled string) staked from the account's market-0 balance" } } } } } },
+                "responses": ok("{ sharesMinted }") } },
+            "/v1/lp/withdraw": { "post": { "summary": "Burn LP shares for their pool value (SEC-021: wallet-signed like /v1/accounts/withdraw; pays into the account's OWN market-0 balance — no `to`)", "security": auth["security"],
+                "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["shares","nonce","signature"], "properties": { "shares": { "type": "string" },
+                    "nonce": { "type": "integer", "description": "strictly-increasing withdrawal auth nonce, shared with /v1/accounts/withdraw — use nextWithdrawNonce from GET /v1/accounts/me" },
+                    "signature": { "type": "string", "description": "65-byte secp256k1 sig (r‖s‖v) over the LP withdraw auth digest keccak256(\"dark-perp:lp-withdraw:\"‖chainId(u64 BE)‖vault(20)‖owner(32)‖shares(u128 BE)‖nonce(u64 BE)), recovering to the registered signer (caller-signed) or else the bound deposit address — same three accepted shapes as /v1/accounts/withdraw" } } } } } },
+                "responses": ok("{ withdrawnValue }") } },
             "/v1/orders": {
                 "post": { "summary": "Place an order", "security": auth["security"], "requestBody": order_body, "responses": { "200": { "description": "signed receipt" }, "400": { "description": "rejected" }, "429": { "description": "rate limit (10/s)" } } },
                 "get": { "summary": "Own orders + finality", "security": auth["security"], "responses": ok("orders") }

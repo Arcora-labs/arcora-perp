@@ -17,6 +17,12 @@ Base URL (testnet demo): the gateway's `http://<host>:<port>` (e.g. `:8088`).
 > signer** (§ Caller-signed orders) so every order must carry the caller's own
 > secp256k1 signature — a leaked API key alone then cannot place orders. The
 > production version moves spend keys inside the TEE (see `docs/SECURITY.md`).
+>
+> **The API key alone can never move funds** (SEC-021): every withdrawal — both
+> `POST /v1/accounts/withdraw` and `POST /v1/lp/withdraw` — must carry a
+> strictly-increasing `nonce` and a secp256k1 `signature` from the account's
+> **authorizing address** (the registered caller-signed `signer` if there is one,
+> otherwise the bound deposit address). See § Withdrawal authorization.
 
 ## Auth
 
@@ -38,12 +44,15 @@ A machine-readable **OpenAPI 3.1** spec is served at `GET /v1/openapi.json`.
 | Method | Path | Auth | Body / notes |
 |--------|------|------|--------------|
 | POST | `/v1/accounts` | – | optional `{ signer }` → `{ apiKey, owner, callerSigned }` |
-| GET  | `/v1/accounts/me` | ✓ | `{ owner, settledBalance, positions[], nextNonce }` |
+| GET  | `/v1/accounts/me` | ✓ | `{ owner, settledBalance, positions[], nextNonce, depositAddress, callerSigned, nextWithdrawNonce, rebindCounter, chainId, vault }` |
 | POST | `/v1/accounts/deposit` | ✓ | `{ marketId, amount }` — demo/in-memory credit |
-| POST | `/v1/accounts/deposit/address` | ✓ | `{ address, signature }` — bind the EOA you fund from (ownership-proven) |
+| POST | `/v1/accounts/deposit/address` | ✓ | `{ address, signature, currentSignature? }` — bind the EOA you fund from (ownership-proven; a **rebind** additionally requires `currentSignature`, § Withdrawal authorization) |
 | POST | `/v1/accounts/deposit/onchain` | ✓ | `{ txHash, marketId }` — credit a real USDC deposit |
-| POST | `/v1/accounts/withdraw` | ✓ | `{ marketId, amount, to }` → authorized withdrawal |
+| POST | `/v1/accounts/withdraw` | ✓ | `{ marketId, amount, to, nonce, signature }` → authorized withdrawal (wallet-signed, § Withdrawal authorization) |
 | GET  | `/v1/accounts/withdrawals` | ✓ | `{ vault, withdrawals[] }` with claim proofs |
+| GET  | `/v1/lp` | ✓ | `{ tvl, navPerShare, totalShares, myShares, myValue }` |
+| POST | `/v1/lp/deposit` | ✓ | `{ amount }` → `{ sharesMinted }` — stake into the counterparty pool |
+| POST | `/v1/lp/withdraw` | ✓ | `{ shares, nonce, signature }` → `{ withdrawnValue }` (wallet-signed, § Withdrawal authorization) |
 | POST | `/v1/orders` | ✓ | order body (below) → signed receipt |
 | GET  | `/v1/orders` | ✓ | `{ orders[] }` (own orders + finality) |
 | DELETE | `/v1/orders/:orderId` | ✓ | cancel a still-`ACCEPTED` order |
@@ -103,8 +112,12 @@ A real deposit is funded on Base Sepolia and then attributed to your account:
    — bind the external wallet you will deposit from. The `signature` is a secp256k1
    signature **recovering to `address`** over `keccak256("dark-perp:bind-deposit:" ‖
    owner ‖ address)` (so only the controller of the EOA can bind it, and an address
-   binds to at most one account). Only `Deposit` logs whose `from` matches the bound
-   address are credited to you.
+   binds to at most one account) — accepted over any of the three shapes in
+   § Accepted signature shapes. Only `Deposit` logs whose `from` matches the bound
+   address are credited to you. **Changing an existing binding (a rebind) requires
+   the consent of the currently bound address** via `currentSignature` — see
+   § Rebinding the deposit address. Re-binding the same address is an idempotent
+   no-op (no `currentSignature` needed).
 2. On Base Sepolia, from that EOA: `usdc.approve(vault, amount)` then
    `vault.deposit(amount)`.
 3. `POST /v1/accounts/deposit/onchain { "txHash": "0x..", "marketId": 0 }` — the
@@ -117,9 +130,11 @@ A real deposit is funded on Base Sepolia and then attributed to your account:
 Funds release only from **settled** state, via the vault, never by the sequencer
 directly:
 
-1. `POST /v1/accounts/withdraw { "marketId": 0, "amount": "40000000", "to": "0x<dest>" }`
-   — debits the engine immediately (so it can't be double-spent) and records an
-   authorized withdrawal leaf `keccak256(to, amount, nonce)`.
+1. `POST /v1/accounts/withdraw { "marketId": 0, "amount": "40000000", "to": "0x<dest>",
+   "nonce": 1, "signature": "0x<130 hex>" }` — debits the engine immediately (so it
+   can't be double-spent) and records an authorized withdrawal leaf
+   `keccak256(to, amount, nonce)`. `nonce` + `signature` are **required** — see
+   § Withdrawal authorization for who must sign, what they sign, and the `to` rule.
 2. On the next L1 settle (~30s) the gateway publishes the **cumulative** withdrawals
    root (every still-unclaimed leaf) to the vault.
 3. `GET /v1/accounts/withdrawals` → `{ vault, withdrawals: [{ to, amount, nonce, leaf,
@@ -129,6 +144,138 @@ directly:
 
 This is the forced-exit path too (§6): even in close-only the authority is the
 settled root, so funds can be stalled but not stolen.
+
+## Withdrawal authorization (SEC-021)
+
+Every withdrawal — `POST /v1/accounts/withdraw` **and** `POST /v1/lp/withdraw` —
+must carry a strictly-increasing `nonce` and a 65-byte secp256k1 `signature`
+(`r‖s‖v` hex). A request without them is a `400`; the API key alone can never
+move funds.
+
+**Who must sign.** The account's *authorizing address*:
+
+- a **caller-signed** account's registered `signer` — always, even if the account
+  has *also* bound a deposit address (the signer takes precedence deliberately, so
+  registering a signer **narrows** authorization to that one key);
+- otherwise the **bound deposit address**;
+- an account with neither cannot withdraw at all (bind an address first).
+
+**Destination rule.** A server-custody account (no registered signer) may only
+withdraw **to its bound deposit address** — `to` must equal it exactly. A
+caller-signed account keeps a free `to` (it consented cryptographically: deposit
+from a hot wallet, withdraw to a cold one).
+
+**Nonce.** One counter per account, shared by both withdraw endpoints. It must
+strictly increase; read the next acceptable value as `nextWithdrawNonce` from
+`GET /v1/accounts/me`. The nonce commits only when the withdrawal fully succeeds
+— a rejected request (bad balance, bad signature, …) does not burn it, so the
+same signed request can be retried.
+
+**Digest layouts** — every field fixed-width big-endian, no length prefixes, no
+separators; `chainId`, `vault`, and your 32-byte `owner` come from
+`GET /v1/accounts/me` (never hardcode them — the digest binds the deployment, so
+a signature for one deployment is not portable to another):
+
+`POST /v1/accounts/withdraw` signs `keccak256` of the 131-byte preimage:
+
+```text
+offset  len  field
+     0   19  "dark-perp:withdraw:"  (ASCII, no trailing space)
+    19    8  chainId    u64 BE
+    27   20  vault
+    47   32  owner
+    79    8  marketId   u64 BE
+    87   16  amount     i128 BE (two's complement)
+   103   20  to
+   123    8  nonce      u64 BE
+```
+
+`POST /v1/lp/withdraw` signs `keccak256` of the 106-byte preimage (no `to`: LP
+value lands in the account's **own** market-0 balance, never on L1):
+
+```text
+offset  len  field
+     0   22  "dark-perp:lp-withdraw:"  (ASCII, no trailing space)
+    22    8  chainId    u64 BE
+    30   20  vault
+    50   32  owner
+    82   16  shares     u128 BE
+    98    8  nonce      u64 BE
+```
+
+### Accepted signature shapes
+
+Withdrawal, bind, and rebind signatures are accepted over any of **three**
+deterministic shapes of the digest, tried in order:
+
+1. the **raw 32-byte digest** itself (CLI signers: `cast wallet sign --no-hash`);
+2. EIP-191 `personal_sign` over the 32 digest bytes:
+   `keccak256("\x19Ethereum Signed Message:\n32" ‖ digest)`;
+3. EIP-191 over the digest's ASCII hex string:
+   `keccak256("\x19Ethereum Signed Message:\n66" ‖ "0x<64 lowercase hex>")` —
+   some wallets sign the hex string's UTF-8 bytes instead of decoding it. Note
+   the server computes this shape with **lowercase** hex, so pass the digest to
+   `personal_sign` as lowercase `0x…`.
+
+All three commit to the same fields, so this widens signer ergonomics, never
+authorization. `v` ∈ {27, 28} as wallets produce it (0/1 are also accepted);
+high-`s` (malleable) signatures are rejected.
+
+**⚠ Order signatures are different.** A caller-signed **order** signature is over
+the **raw** 32-byte order hash only — no EIP-191 prefix, and the EIP-191 shapes
+are *not* accepted there (§ Caller-signed orders). A browser wallet's
+`personal_sign` therefore cannot produce a valid *order* signature, while it can
+produce a valid *withdrawal* one.
+
+### Rebinding the deposit address
+
+The first bind only proves control of the address being bound. **Changing** an
+existing binding additionally requires `currentSignature` — a signature from the
+address **currently bound** — over `keccak256` of the 133-byte preimage:
+
+```text
+offset  len  field
+     0   25  "dark-perp:rebind-deposit:"  (ASCII, no trailing space)
+    25    8  chainId        u64 BE
+    33   20  vault
+    53   32  owner
+    85    8  rebindCounter  u64 BE
+    93   20  oldAddr
+   113   20  newAddr
+```
+
+`rebindCounter` is the account's rebind generation: `0` at creation, `+1` on
+every **accepted** rebind (a first-time bind and rejected attempts don't touch
+it). Read the current value as `rebindCounter` from `GET /v1/accounts/me`. It
+makes every rebind signature single-use: an old rotation signature can never be
+replayed after the binding has moved again.
+
+### ⚠ Consequences you must plan for (deliberate design decisions)
+
+- **There is no recovery path for a lost bound-address key.** The binding moves
+  only with a signature from the address currently bound — no timelock, no
+  operator unbind, no admin escape hatch. Because a server-custody account can
+  also only withdraw *to* that address, losing that key makes the account's
+  funds **permanently unwithdrawable**. Keep the key you deposited from.
+- **First bind wins, permanently.** An attacker holding only your API key can
+  bind *their* address to your account **if you never bound one**, and you
+  cannot overwrite it. Such an account holds no funds (crediting requires the
+  deposit to come *from* the bound address), so this is griefing, not theft —
+  but you cannot rebind your way out of it. Bind your deposit address
+  immediately after registering.
+- **Registering a caller-signed `signer` makes it the only withdrawal key.**
+  Even with a deposit address bound, withdrawals must be signed by the `signer`.
+  Losing the signer key strands the funds even though the deposit-address key is
+  safe.
+
+### One field, two spellings: `vault`
+
+`GET /v1/accounts/me` serves `vault` **normalized to lowercase** `0x` + 40 hex —
+these are the exact bytes hashed into the digests above, so it is the
+authoritative value for signing. `GET /v1/accounts/withdrawals` echoes the raw
+`L1_VAULT` environment string, which may be EIP-55 mixed-case. Same address,
+same source of truth — but don't compare the two as strings, and don't build
+digests from the withdrawals endpoint's spelling.
 
 ## Caller-signed orders
 
@@ -147,11 +294,24 @@ Then each `POST /v1/orders` must include a strictly-increasing `nonce` and a 65-
   "tif": "Ioc", "reduceOnly": false, "nonce": 1, "signature": "0x<130 hex>" }
 ```
 
-The gateway recovers the signer (the same `ecrecover` the contracts use) and rejects
-the order unless it matches the registered address; the nonce must exceed the last
-accepted one (replay protection). Caller-signed orders must carry a **limit price**
-(the gateway-filled market price isn't pre-signable). Server-custody accounts
-(registered with no signer) are unchanged.
+The order `signature` is over the **raw 32-byte order hash** — no EIP-191
+`"\x19Ethereum Signed Message"` prefix. This is *unlike* withdrawal and bind
+signatures, which also accept the EIP-191 `personal_sign` shapes (§ Accepted
+signature shapes): a browser wallet's `personal_sign` cannot produce a valid
+order signature — use a signer that signs raw digests (e.g.
+`cast wallet sign --no-hash`). The gateway recovers the signer with standard
+secp256k1 recovery and rejects the order unless it matches the registered
+address; the nonce must exceed the last accepted one (replay protection).
+Caller-signed orders must carry a **limit price** (the gateway-filled market
+price isn't pre-signable). Server-custody accounts (registered with no signer)
+are unchanged.
+
+**Withdrawals from a caller-signed account must be signed by this same `signer`
+key** — it takes precedence over a bound deposit address, deliberately, so
+registering a signer *narrows* authorization to that one key (a caller-signed
+account does keep a free withdrawal `to`). Losing the signer key strands the
+account's funds even if the deposit-address key is safe — see § Withdrawal
+authorization.
 
 ## WebSocket
 
@@ -182,10 +342,13 @@ curl -s -XPOST $B/v1/accounts/deposit -H "X-Api-Key: $KEY" \
   -d '{"marketId":0,"amount":"20000000000"}'
 curl -s -XPOST $B/v1/orders -H "X-Api-Key: $KEY" \
   -d '{"marketId":0,"side":"Buy","size":"10000000","limitPrice":"0","tif":"Ioc","reduceOnly":false}'
-curl -s $B/v1/accounts/me -H "X-Api-Key: $KEY"      # balance + positions
-# withdraw → claim on Base Sepolia
+curl -s $B/v1/accounts/me -H "X-Api-Key: $KEY"      # balance + positions + withdrawal-auth state
+# withdraw → claim on Base Sepolia (SEC-021: wallet-signed, § Withdrawal authorization)
+# Build the 131-byte withdraw preimage (chainId/vault/owner + nextWithdrawNonce from
+# /v1/accounts/me), keccak256 it, and sign the raw digest with the bound EOA's key:
+SIG=$(cast wallet sign --no-hash <0xdigest> --private-key <BOUND_EOA_KEY>)
 curl -s -XPOST $B/v1/accounts/withdraw -H "X-Api-Key: $KEY" \
-  -d '{"marketId":0,"amount":"40000000","to":"0x<dest>"}'
+  -d '{"marketId":0,"amount":"40000000","to":"0x<bound EOA>","nonce":1,"signature":"'$SIG'"}'
 curl -s $B/v1/accounts/withdrawals -H "X-Api-Key: $KEY"   # → proof once published
 ```
 
@@ -193,7 +356,8 @@ curl -s $B/v1/accounts/withdrawals -H "X-Api-Key: $KEY"   # → proof once publi
 
 Built and verified: per-account + per-IP rate limiting, per-account authenticated WS
 channels, the OpenAPI spec, **real on-chain USDC deposits**, **real withdrawals with
-cumulative Merkle roots claimable on Base Sepolia**, and **caller-signed orders**.
+cumulative Merkle roots claimable on Base Sepolia** (every withdrawal wallet-signed,
+SEC-021), and **caller-signed orders**.
 The full deposit → withdraw → claim flow is verified live on Base Sepolia. Remaining
 toward fully non-custodial: on-chain enclave custody of spend keys (the TEE
 milestone) — see `docs/NEXT_STEPS.md`.

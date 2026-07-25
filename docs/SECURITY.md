@@ -279,3 +279,71 @@ also closed:
   and the field is serialized into the witness (never rebuilt by re-insert). The unspent-note
   digest stays O(M) but M is bounded by *current* unspent notes (removed on spend), not chain
   history, so it does not grow without bound.
+
+## SEC-021 / SEC-021b — withdrawal authorization (2026-07, FIXED)
+
+Two findings from the withdrawal-authorization review, both fixed (gateway +
+frontend; no contract change):
+
+- **SEC-021 — withdrawals were authorized by the bearer API key alone.**
+  `POST /v1/accounts/withdraw` (and the LP variant `POST /v1/lp/withdraw`) moved
+  funds to an arbitrary `to` on the strength of the `X-Api-Key` header, so a
+  leaked API key was full fund loss — defeating both caller-signed mode and the
+  ownership-proven deposit binding. **Fixed:** every withdrawal now requires a
+  strictly-increasing per-account nonce plus a 65-byte secp256k1 signature over a
+  deployment-bound digest — `keccak256("dark-perp:withdraw:" ‖ chain_id ‖ vault ‖
+  owner ‖ market_id ‖ amount ‖ to ‖ nonce)` for account withdrawals,
+  `keccak256("dark-perp:lp-withdraw:" ‖ chain_id ‖ vault ‖ owner ‖ shares ‖
+  nonce)` for LP — recovering to the account's **authorizing address**: the
+  registered caller-signed `signer` if there is one, else the bound deposit
+  address (an account with neither cannot withdraw). Server-custody accounts are
+  additionally pinned to `to` = the bound deposit address. The nonce commits only
+  after the withdrawal fully succeeds, so a rejected request never burns it.
+  (`Gw::account_withdraw`, `Gw::account_lp_withdraw`, `Gw::authorizing_address`,
+  `withdraw_auth_digest`, `lp_withdraw_auth_digest` in `crates/gateway/src/main.rs`;
+  the digest layouts are user-facing API — documented byte-for-byte in
+  `docs/API.md` and frozen by `auth_digests_match_known_answer_vectors`.)
+
+- **SEC-021b — the deposit-address REBIND only proved control of the NEW
+  address** (found reviewing the SEC-021 fix itself). Proving control of an
+  address the attacker owns is free, so an API-key-only attacker could re-point
+  the binding at their own EOA — and, under SEC-021's own `to` pin, direct every
+  future withdrawal there. The rebind path was exactly the hole the withdrawal
+  signature was meant to close. **Fixed:** moving an existing binding now also
+  requires `currentSignature` — the CURRENTLY bound address's signature over
+  `keccak256("dark-perp:rebind-deposit:" ‖ chain_id ‖ vault ‖ owner ‖
+  rebind_counter ‖ old_addr ‖ new_addr)`. The per-account `rebind_counter`
+  (`+1` per accepted rebind, served as `rebindCounter` on `GET /v1/accounts/me`)
+  makes each rebind signature single-use, so an old rotation signature cannot be
+  replayed after the binding has moved again — the replay matters most when
+  rotating away from a *compromised* address whose old signatures the attacker
+  holds. (`Gw::account_set_deposit_address`, `rebind_auth_digest`.)
+
+Both digests bind `chain_id` + the vault address (a signature for one deployment
+is not portable onto another restored from a copied snapshot), and both are
+accepted over the raw 32-byte digest or either EIP-191 `personal_sign` shape
+(over the 32 bytes, or over their lowercase `0x…` hex string) — all three are
+deterministic transforms of the same digest (`eip191_prehash_candidates`), so
+signer ergonomics widen while authorization does not. Caller-signed **order**
+signatures remain raw-digest-only.
+
+### User-visible consequences — deliberate, carry into the alpha release notes
+
+These follow from decisions taken on purpose (no operator override was the
+point), and users must learn them here rather than live:
+
+1. **No recovery path for a lost bound-address key.** The binding moves only
+   with a signature from the address currently bound — no timelock, no operator
+   unbind. Combined with the server-custody `to` pin, losing that key makes the
+   account's funds **permanently unwithdrawable**. "Keep the key you deposited
+   from" is the whole mitigation.
+2. **First bind wins, permanently.** An attacker holding only a leaked API key
+   can bind their own address to an account that never bound one, and the victim
+   cannot overwrite it. The account holds no funds in that state (crediting
+   requires `from` == bound address), so this is griefing, not theft — but the
+   failure mode is inverted relative to the old behavior, where the victim could
+   simply rebind. Mitigation: bind immediately after registering.
+3. **Registering a caller-signed `signer` narrows withdrawal authorization to
+   that one key.** `authorizing_address` gives `signer` precedence over a bound
+   deposit address, deliberately. Losing the signer key strands the funds even
+   though the deposit-address key is safe.
