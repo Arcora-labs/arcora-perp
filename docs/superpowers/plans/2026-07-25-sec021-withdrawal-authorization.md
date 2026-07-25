@@ -1708,7 +1708,8 @@ These cannot be verified from source — the deployed snapshot is the only autho
 
 - [ ] Inspect live state for accounts with `signer: Some(..)` — caller-signed accounts in the wild would need a client capable of signing withdrawals.
 - [ ] Inspect live state for **funded accounts with `deposit_address: None`** — under the new rule they cannot withdraw. In production this set should be empty (crediting already requires a bound address), but confirm rather than assume.
-- [ ] Confirm the snapshot decision from Task 3, Step 5 and wipe state if required.
+- [ ] **Wipe `state.snap`.** Task 3 settled this by test: a pre-upgrade snapshot does not load correctly — it either fails with `DeserializeUnexpectedEnd` or, when `deposit_authorizations` is non-empty and its key bytes align, decodes *silently into corrupt state* with the authorizations dropped. The wipe is required, not precautionary. Note the live cutover gotcha already on record: stop the process, **then** remove `state.snap`, then start — a restart lets the old process rewrite an old-format snapshot on shutdown.
+- [ ] **Propagate that fact to the deploy runbook.** The runbook does not live in this repo, so no commit here can update it; it has to be carried across by hand.
 - [ ] This change rides the pending redeploy that the forge-audit remediation (`a413750`) already requires (fresh `Settlement`/`Vault`/`USDC` with 3 new constructor params). Verify `L1_CHAIN_ID` and `L1_VAULT` are set in the gateway environment — `Gw.chain_id`/`Gw.vault` fall back to `84532`/zero, and a zero vault would make signatures portable to any other zero-vault deployment.
 
 ## Follow-ups (out of scope, track separately)

@@ -178,7 +178,11 @@ All authorization checks run **before the first `seq.apply(...)`**. Every reject
 
 ## State / snapshot impact
 
-`Account` is serialized into the postcard snapshot, and postcard is positional — a trailing field added with `#[serde(default)]` may still fail to load an older snapshot with an EOF error, despite the claim at `main.rs:976` that this keeps pre-upgrade snapshots loadable. **The plan must test this rather than assume it**, and record the true answer.
+`Account` is serialized into the postcard snapshot, and postcard is positional. The claim at `main.rs:976` that `#[serde(default)]` keeps pre-upgrade snapshots loadable was **tested during implementation and found false** — it has been corrected in the code.
+
+**The answer, pinned by test:** a pre-upgrade snapshot does **not** load correctly. It either fails with `DeserializeUnexpectedEnd` or — with a non-empty `deposit_authorizations` map whose key bytes happen to align — decodes *successfully into corrupt state*, silently dropping the authorizations. The second case is the dangerous one: it looks like a clean start.
+
+**Therefore the state wipe is required, not precautionary.** A decode that succeeds against a shorter encoding must be read as corruption, never as compatibility.
 
 In practice this is unlikely to bite: the forge-audit remediation (`a413750`) is merged but not yet deployed and already requires fresh `Settlement`/`Vault`/`USDC` contracts (3 new constructor params) plus a snapshot wipe. This fix rides that same redeploy.
 
