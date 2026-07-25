@@ -53,7 +53,7 @@
 
 <div class="endpoint">
   <div class="sig"><span class="method post">POST</span>/v1/accounts/deposit/address</div>
-  <p>Bind the external EOA you fund USDC from. Body: <code>{"address": "0x&hellip;", "signature": "0x&hellip;"}</code>. The binding is ownership-proven: <code>signature</code> is a 65-byte <code>r&#8214;s&#8214;v</code> secp256k1 signature (<code>v</code> &isin; {27, 28}; 0/1 also accepted) made with the <em>deposit EOA's</em> key over this digest:</p>
+  <p>Bind the external EOA you fund USDC from. Body: <code>{"address": "0x&hellip;", "signature": "0x&hellip;"}</code>. The binding is ownership-proven: <code>signature</code> is a 65-byte <code>r&#8214;s&#8214;v</code> secp256k1 signature (<code>v</code> &isin; {27, 28} as wallets produce it; any <code>v</code> in {0&ndash;3} or {27&ndash;30} is accepted) made with the <em>deposit EOA's</em> key over this digest:</p>
 <pre><code>digest = keccak256(
     "dark-perp:bind-deposit:"  <span class="c">// fixed ASCII prefix (23 bytes)</span>
  &#8214; owner            (32)      <span class="c">// your account owner, from POST /v1/accounts</span>

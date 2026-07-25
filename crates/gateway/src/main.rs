@@ -1123,14 +1123,19 @@ struct Gw {
     /// signature minted for this one — the signed nonce is not the withdrawal-leaf nonce
     /// (that is the gateway-global `next_withdraw_nonce`), so one authorization could
     /// otherwise become different claim leaves on two deployments. NOT persisted —
-    /// like `oracle_signer`, serde skips it and a restore re-applies the shared dev
-    /// fallback (`DEV_FALLBACK_CHAIN_ID`/`DEV_FALLBACK_VAULT`) via the `default` fn, so
-    /// EVERY deserialize path yields the same identity a fresh `boot()` does; `main()`
-    /// then overwrites both from `GatewaySigner` (the same env source the on-chain
-    /// deposit digest is bound to), and a prod boot with a zero vault is refused
-    /// (`vault_binding_ok_for_mode`). Read at runtime by `account_set_deposit_address`
-    /// (the SEC-021b rebind digest, Task 4 — the first non-test reader) and next by
-    /// the withdrawal-verification paths as Tasks 5-6 land.
+    /// like `oracle_signer`, serde skips it and the REAL identity is installed by the
+    /// boot wiring: `main()` writes both from `GatewaySigner` (the same env source the
+    /// on-chain deposit digest is bound to) right beside `prod`, and the digest paths
+    /// (`account_withdraw`, `account_lp_withdraw`, the SEC-021b rebind in
+    /// `account_set_deposit_address`) read them at runtime — that write + those reads
+    /// are what keep these fields live code (no `dead_code` marker needed; the serde
+    /// `default` reference is NOT what silences the lint — a `#[serde(skip)]` field
+    /// with no `default` is equally silent). The `default` fn
+    /// (`dev_fallback_chain_id`/`dev_fallback_vault`) is load-bearing for the RESTORE
+    /// path only: a deserialized `Gw` holds the same dev fallback a fresh `boot()`
+    /// does until the `main()` write lands, so no deserialize path can invent a third
+    /// identity. A prod boot whose vault is still the zero fallback is refused
+    /// (`vault_binding_ok_for_mode`).
     #[serde(skip, default = "dev_fallback_chain_id")]
     chain_id: u64,
     #[serde(skip, default = "dev_fallback_vault")]
@@ -3049,8 +3054,13 @@ impl Gw {
             return Err("withdrawal nonce must strictly increase (replay protection)".into());
         }
         let expected = self.authorizing_address(key)?;
-        let digest =
-            lp_withdraw_auth_digest(self.chain_id, &self.vault, &wallet.owner, shares, auth_nonce);
+        let digest = lp_withdraw_auth_digest(
+            self.chain_id,
+            &self.vault,
+            &wallet.owner,
+            shares,
+            auth_nonce,
+        );
         let authorized = eip191_prehash_candidates(&digest)
             .iter()
             .any(|prehash| recover_eth_address(prehash, sig) == Some(expected));
@@ -4228,6 +4238,38 @@ fn recover_eth_address(prehash: &[u8; 32], sig: &[u8; 65]) -> Option<[u8; 20]> {
 const DEV_FALLBACK_CHAIN_ID: u64 = 84532;
 const DEV_FALLBACK_VAULT: [u8; 20] = [0u8; 20];
 
+/// SEC-021 (final-review M-e): the parse decision for `L1_CHAIN_ID` — UNSET takes the
+/// dev fallback; SET-but-unparseable fails closed, mirroring `GATEWAY_SIGNER_KEY` in
+/// `from_env` below. Decimal only: the hex form (`0x14a34`) previously fell through the
+/// silent `.ok()` fallback and became 84532, which is exactly the silent-divergence this
+/// refuses. Takes the raw `Option<String>` (not the env directly) so the decision is
+/// unit-testable without process-global env mutation.
+fn parse_l1_chain_id(raw: Option<String>) -> Result<u64, String> {
+    match raw {
+        Some(s) => s.trim().parse::<u64>().map_err(|_| {
+            format!(
+                "L1_CHAIN_ID is set but is not a decimal u64 chain id (got {s:?}; \
+                 hex like 0x14a34 is not accepted — use 84532)"
+            )
+        }),
+        None => Ok(DEV_FALLBACK_CHAIN_ID),
+    }
+}
+
+/// SEC-021 (final-review M-e): the parse decision for `L1_VAULT` — same convention as
+/// `parse_l1_chain_id`. A SET-but-malformed vault previously became the zero address
+/// silently, and `vault_binding_ok_for_mode`'s refusal then claimed "`L1_VAULT` must be
+/// set" to an operator whose var WAS set, just malformed. Now that state errs here with
+/// the actual problem named.
+fn parse_l1_vault(raw: Option<String>) -> Result<[u8; 20], String> {
+    match raw {
+        Some(s) => parse_addr20_hex(&s).ok_or_else(|| {
+            format!("L1_VAULT is set but is not a 20-byte 0x hex address (got {s:?})")
+        }),
+        None => Ok(DEV_FALLBACK_VAULT),
+    }
+}
+
 /// SEC-019 (Task 7b) demo/test default for the gateway deposit-authorization key. NEVER
 /// use it on a real deployment — the deployed `CollateralVault.gatewaySigner` must be the
 /// ADDRESS of a SECRET production key set via `GATEWAY_SIGNER_KEY`. This fixed scalar only
@@ -4267,8 +4309,13 @@ impl GatewaySigner {
     /// Load from env: `GATEWAY_SIGNER_KEY` (32-byte hex scalar), `L1_CHAIN_ID`, `L1_VAULT`.
     /// Falls back to the demo key / a dev chain id (Base Sepolia) / a zero vault when a var
     /// is unset — fine for the demo build and unit tests (live-key provisioning + the real
-    /// vault/chain wiring are the deferred deploy phase). A SET-but-malformed key fails
-    /// closed (the caller exits) rather than silently signing with the demo key.
+    /// vault/chain wiring are the deferred deploy phase). All three vars share one
+    /// convention: a SET-but-malformed value fails closed (the caller exits) rather than
+    /// silently taking its fallback — the key because silently signing with the demo key
+    /// would be a catastrophe, and the deployment identity (final-review M-e) because a
+    /// typo'd `L1_CHAIN_ID`/`L1_VAULT` would otherwise silently bind every SEC-021 digest
+    /// to the dev identity, and `vault_binding_ok_for_mode`'s "`L1_VAULT` must be set"
+    /// refusal would gaslight an operator whose var IS set, just malformed.
     fn from_env() -> Result<Self, String> {
         let key = match std::env::var("GATEWAY_SIGNER_KEY") {
             Ok(s) => {
@@ -4276,14 +4323,8 @@ impl GatewaySigner {
             }
             Err(_) => DEMO_GATEWAY_SIGNER_KEY,
         };
-        let chain_id = std::env::var("L1_CHAIN_ID")
-            .ok()
-            .and_then(|s| s.trim().parse::<u64>().ok())
-            .unwrap_or(DEV_FALLBACK_CHAIN_ID);
-        let vault = std::env::var("L1_VAULT")
-            .ok()
-            .and_then(|s| parse_addr20_hex(&s))
-            .unwrap_or(DEV_FALLBACK_VAULT);
+        let chain_id = parse_l1_chain_id(std::env::var("L1_CHAIN_ID").ok())?;
+        let vault = parse_l1_vault(std::env::var("L1_VAULT").ok())?;
         Self::from_parts(key, chain_id, vault)
     }
 
@@ -5026,7 +5067,12 @@ async fn post_v1_lp_withdraw(
             return err400("`signature` is required (65-byte 0x hex r‖s‖v)".into()).into_response()
         }
     };
-    let r = { app.gw.lock().await.account_lp_withdraw(&key, shares, nonce, &sig) };
+    let r = {
+        app.gw
+            .lock()
+            .await
+            .account_lp_withdraw(&key, shares, nonce, &sig)
+    };
     match r {
         Ok(value) => {
             Json(serde_json::json!({ "withdrawnValue": value.to_string() })).into_response()
@@ -7825,6 +7871,57 @@ mod tests {
         );
     }
 
+    // SEC-021 (final-review M-c): the whole server-custody defence composes with one
+    // load-bearing invariant — an UNBOUND account can hold no funds in production. The
+    // FIRST bind is deliberately free for a bare API key (only the NEW address signs,
+    // SEC-021b covers only rebinds), and that is harmless griefing exactly because
+    // neither crediting path will fund the account first: the self-service credit is
+    // prod-disabled (DP-001) and the on-chain credit requires a binding. Nothing else
+    // pins that composition, so pin it here: both paths must refuse an unbound
+    // account, each on its stated ground, and no balance may appear.
+    #[test]
+    fn prod_unbound_account_cannot_be_credited_by_either_path() {
+        let mut gw = Gw::boot();
+        gw.prod = true;
+        let (key, owner) = gw.register_account(None); // no signer, never bound
+
+        // Path 1: the self-service credit is prod-disabled outright (DP-001).
+        let err = gw
+            .account_deposit(&key, 0, 20_000 * QUOTE_SCALE)
+            .expect_err("prod self-service deposit must be refused");
+        assert!(
+            err.contains("disabled in production"),
+            "unexpected error: {err}"
+        );
+
+        // Path 2: the on-chain credit requires a binding. Everything ELSE about this
+        // confirm is valid — a stored authorization whose blind reproduces the
+        // on-chain ownerCommit, a positive amount, the next-in-line deposit id — so
+        // the ONLY check refusing it is the missing binding (drop that check and this
+        // credit lands, failing the test).
+        let blind = [0x11u8; 32];
+        let commit = owner_commit(&owner, &blind);
+        gw.accounts
+            .get_mut(&key)
+            .unwrap()
+            .deposit_authorizations
+            .insert(commit, blind);
+        let next_id = gw.seq.state.consumed_deposit_count;
+        let err = gw
+            .account_confirm_deposit(&key, [0x22u8; 20], commit, 1_000, next_id, "0xtx", 0)
+            .expect_err("an unbound account must not be creditable from a real deposit");
+        assert!(
+            err.contains("Bind a deposit address first"),
+            "unexpected error: {err}"
+        );
+        // The invariant itself: the unbound account still holds nothing.
+        assert_eq!(
+            gw.market_free_of(&owner, 0),
+            0,
+            "an unbound account must hold no funds in production"
+        );
+    }
+
     // audit LIQ-001b: the public /api/state + /ws snapshot must never expose the
     // market-maker's inventory in production — mm_hedge is dev-only detail.
     #[test]
@@ -8101,6 +8198,43 @@ mod tests {
         // the gate's zero test IS the shared fallback const — if the fallback ever
         // changes, this keeps the gate honest.
         assert_eq!(DEV_FALLBACK_VAULT, [0u8; 20]);
+    }
+
+    // SEC-021 (final-review M-e): the deployment-identity env vars follow the same
+    // convention as GATEWAY_SIGNER_KEY — UNSET ⇒ dev fallback, SET-but-malformed ⇒
+    // fail closed. Before this, L1_CHAIN_ID=0x14a34 silently became 84532 and a
+    // malformed L1_VAULT silently became the zero address, which the prod boot gate
+    // then reported as "L1_VAULT must be set" (it WAS set — just malformed).
+    #[test]
+    fn deployment_identity_env_vars_fall_back_only_when_unset() {
+        // unset ⇒ the documented dev fallback (unchanged behavior)
+        assert_eq!(parse_l1_chain_id(None), Ok(DEV_FALLBACK_CHAIN_ID));
+        assert_eq!(parse_l1_vault(None), Ok(DEV_FALLBACK_VAULT));
+        // set + well-formed ⇒ parsed (the trim is preserved)
+        assert_eq!(parse_l1_chain_id(Some("8453".into())), Ok(8453));
+        assert_eq!(parse_l1_chain_id(Some(" 84532 ".into())), Ok(84532));
+        let addr = "0x00000000000000000000000000000000000000aa";
+        assert_eq!(
+            parse_l1_vault(Some(addr.into())),
+            Ok(parse_addr20_hex(addr).unwrap())
+        );
+        // set + malformed ⇒ Err naming the var, NEVER the silent fallback. The hex
+        // chain-id form is the documented foot-gun (Base Sepolia's 84532 = 0x14a34).
+        for bad in ["0x14a34", "", "84532n", "eighty"] {
+            let err = parse_l1_chain_id(Some(bad.into()))
+                .expect_err("a set-but-malformed L1_CHAIN_ID must fail closed");
+            assert!(err.contains("L1_CHAIN_ID"), "unexpected error: {err}");
+        }
+        for bad in [
+            "not-an-address",
+            "0x1234",
+            "",
+            "0xgg000000000000000000000000000000000000gg",
+        ] {
+            let err = parse_l1_vault(Some(bad.into()))
+                .expect_err("a set-but-malformed L1_VAULT must fail closed");
+            assert!(err.contains("L1_VAULT"), "unexpected error: {err}");
+        }
     }
 
     #[test]
@@ -8886,7 +9020,8 @@ mod tests {
         assert_eq!(v["vault"], hex0x(&gw.vault));
 
         let bind = sign_digest(&sk, &deposit_bind_digest(&owner, &eoa));
-        gw.account_set_deposit_address(&key, eoa, &bind, None).unwrap();
+        gw.account_set_deposit_address(&key, eoa, &bind, None)
+            .unwrap();
         let v = gw.v1_account(&key).unwrap();
         assert_eq!(v["depositAddress"], hex0x(&eoa));
         assert_eq!(v["rebindCounter"], 0, "a first-time bind is not a rebind");
@@ -8920,7 +9055,10 @@ mod tests {
             .expect("rebind authorized by the current address");
         let v = gw.v1_account(&key).unwrap();
         assert_eq!(v["depositAddress"], hex0x(&b));
-        assert_eq!(v["rebindCounter"], 1, "an accepted rebind burns a generation");
+        assert_eq!(
+            v["rebindCounter"], 1,
+            "an accepted rebind burns a generation"
+        );
 
         // A caller-signed account reports callerSigned=true, so the client knows the
         // registered signer — not the bound deposit address — must sign withdrawals.
@@ -9173,7 +9311,8 @@ mod tests {
         let eoa = eth_addr(&sk);
         let (key, owner) = gw.register_account(None);
         let bind = sign_digest(&sk, &deposit_bind_digest(&owner, &eoa));
-        gw.account_set_deposit_address(&key, eoa, &bind, None).unwrap();
+        gw.account_set_deposit_address(&key, eoa, &bind, None)
+            .unwrap();
         fund_test_account(&mut gw, &key, 10_000);
         let wallet = gw.accounts.get(&key).unwrap().wallet;
         let shares = gw.lp_deposit(key, &wallet, 5_000).expect("stake");
@@ -9193,7 +9332,8 @@ mod tests {
             &sk,
             &lp_withdraw_auth_digest(gw.chain_id, &gw.vault, &owner, shares, 1),
         );
-        gw.account_lp_withdraw(&key, shares, 1, &sig).expect("accepted");
+        gw.account_lp_withdraw(&key, shares, 1, &sig)
+            .expect("accepted");
         assert_eq!(gw.accounts.get(&key).unwrap().last_withdraw_nonce, 1);
     }
 
@@ -9223,7 +9363,8 @@ mod tests {
         let eoa = eth_addr(&sk);
         let (key, owner) = gw.register_account(None);
         let bind = sign_digest(&sk, &deposit_bind_digest(&owner, &eoa));
-        gw.account_set_deposit_address(&key, eoa, &bind, None).unwrap();
+        gw.account_set_deposit_address(&key, eoa, &bind, None)
+            .unwrap();
         fund_test_account(&mut gw, &key, 10_000);
         let wallet = gw.accounts.get(&key).unwrap().wallet;
         let shares = gw.lp_deposit(key, &wallet, 5_000).expect("stake");
@@ -9236,7 +9377,10 @@ mod tests {
         let err = gw
             .account_lp_withdraw(&key, shares + 1, 1, &over)
             .expect_err("over-shares LP withdrawal fails");
-        assert!(err.contains("Insufficient LP shares"), "unexpected error: {err}");
+        assert!(
+            err.contains("Insufficient LP shares"),
+            "unexpected error: {err}"
+        );
         assert_eq!(
             gw.accounts.get(&key).unwrap().last_withdraw_nonce,
             0,
@@ -9262,6 +9406,49 @@ mod tests {
             .account_lp_withdraw(&key, shares, 1, &sig)
             .expect_err("replay must be refused");
         assert!(err.contains("nonce"), "unexpected error: {err}");
+    }
+
+    /// SEC-021 (final-review M-b — the spec's "server-custody, no bound address and
+    /// no signer ⇒ rejected" row): `authorizing_address`'s no-address arm is
+    /// unreachable through `account_withdraw` (its `to` match errors first), so pin
+    /// it through the one caller that CAN reach it — `account_lp_withdraw`. An
+    /// account with neither a registered signer nor a bound deposit address, holding
+    /// real LP shares, must be refused on the missing authorizing address with
+    /// nothing mutated and no nonce advance. The request is otherwise fully valid
+    /// (fresh nonce, a real signature over the correct digest), so the refusal can
+    /// only come from the fail-closed arm itself.
+    #[test]
+    fn lp_withdraw_with_no_signer_and_no_bound_address_is_refused() {
+        use k256::ecdsa::SigningKey;
+        let mut gw = Gw::boot();
+        let (key, owner) = gw.register_account(None); // server-custody, never bound
+        fund_test_account(&mut gw, &key, 10_000);
+        let wallet = gw.accounts.get(&key).unwrap().wallet;
+        let shares = gw.lp_deposit(key, &wallet, 5_000).expect("stake");
+
+        let sk = SigningKey::from_slice(&[9u8; 32]).unwrap();
+        let sig = sign_digest(
+            &sk,
+            &lp_withdraw_auth_digest(gw.chain_id, &gw.vault, &owner, shares, 1),
+        );
+        let err = gw
+            .account_lp_withdraw(&key, shares, 1, &sig)
+            .expect_err("no signer and no bound address ⇒ rejected");
+        assert!(
+            err.contains("no authorizing address"),
+            "unexpected error: {err}"
+        );
+        // Nothing mutated: the shares are intact and the nonce did not advance.
+        assert_eq!(
+            gw.lp_shares.get(&key).copied().unwrap_or(0),
+            shares,
+            "a refused LP withdrawal must not burn shares"
+        );
+        assert_eq!(
+            gw.accounts.get(&key).unwrap().last_withdraw_nonce,
+            0,
+            "a refused LP withdrawal must not advance the nonce"
+        );
     }
 
     #[test]

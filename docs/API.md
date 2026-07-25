@@ -218,8 +218,10 @@ deterministic shapes of the digest, tried in order:
    `personal_sign` as lowercase `0x…`.
 
 All three commit to the same fields, so this widens signer ergonomics, never
-authorization. `v` ∈ {27, 28} as wallets produce it (0/1 are also accepted);
-high-`s` (malleable) signatures are rejected.
+authorization. `v` ∈ {27, 28} as wallets produce it; the gateway actually
+accepts any `v` in {0, 1, 2, 3} (raw recovery ids) or {27, 28, 29, 30} (their
+27-shifted forms) and rejects everything else. High-`s` (malleable) signatures
+are rejected.
 
 **⚠ Order signatures are different.** A caller-signed **order** signature is over
 the **raw** 32-byte order hash only — no EIP-191 prefix, and the EIP-191 shapes

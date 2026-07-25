@@ -347,3 +347,28 @@ point), and users must learn them here rather than live:
    that one key.** `authorizing_address` gives `signer` precedence over a bound
    deposit address, deliberately. Losing the signer key strands the funds even
    though the deposit-address key is safe.
+
+### Residual — what a leaked API key can STILL do (pre-existing, outside SEC-021's reach)
+
+SEC-021 closed the withdrawal surface, but it does not make a leaked API key
+harmless — one value-extraction route survives it, by construction:
+
+- **Order placement remains bearer-authorized for server-custody accounts** —
+  the per-order signature branch in `account_place_order` runs only when a
+  registered `signer` is `Some`. Combined with the absence of any
+  oracle-relative fill-price band in the real matcher, a leaked key can still
+  move value out of the victim account through an off-market self-cross into an
+  attacker-controlled account, which then withdraws with its *own* perfectly
+  valid signature — fully satisfying SEC-021. The house-MM off-market guard
+  covers only the `Ioc`/`Fok` taker path; a `Gtc` order rests in the real
+  matcher book at the caller's own price. This is pre-existing and lives in
+  `perp-core`/`matcher`/`sequencer`, which SEC-021 could not modify — they
+  compile into the SP1 guest, and changing them would invalidate the deployed
+  verifying key. Closing it (an oracle-relative price band on resting orders,
+  or per-order signatures for server-custody accounts) needs its own
+  guest-affecting design cycle.
+- **`POST /v1/lp/deposit` remains API-key-only.** A leaked key can push a
+  victim's free balance into the counterparty pool; pulling it back out is a
+  *signed* LP withdrawal the attacker cannot produce — so the funds are
+  strandable, not stealable, through this route (griefing, not theft, matching
+  consequence 2 above).
