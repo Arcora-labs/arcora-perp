@@ -1688,11 +1688,11 @@ impl Gw {
         // Accept the signature over ANY of the three deterministic shapes of the
         // bind digest (raw / EIP-191 over bytes / EIP-191 over hex string) so both
         // CLI signers and browser-wallet `personal_sign` work — see
-        // `deposit_bind_prehash_candidates` for the WHY of each and the security
+        // `eip191_prehash_candidates` for the WHY of each and the security
         // invariant (all shapes commit to the same (owner, addr), so this widens
         // signer ergonomics, never authorization).
         let digest = deposit_bind_digest(&owner, &addr);
-        let proven = deposit_bind_prehash_candidates(&digest)
+        let proven = eip191_prehash_candidates(&digest)
             .iter()
             .any(|prehash| recover_eth_address(prehash, sig) == Some(addr));
         if !proven {
@@ -3863,7 +3863,7 @@ struct DepositAddrReq {
     /// secp256k1 signature (65-byte r‖s‖v) proving the caller controls `address`.
     /// Accepted over any of three shapes of `deposit_bind_digest(owner, address)`:
     /// the raw digest, EIP-191 `personal_sign` over its 32 bytes, or EIP-191 over
-    /// its "0x<64 hex>" string — see `deposit_bind_prehash_candidates`.
+    /// its "0x<64 hex>" string — see `eip191_prehash_candidates`.
     signature: String,
 }
 #[derive(Deserialize)]
@@ -4079,13 +4079,15 @@ fn deposit_bind_digest(owner: &PubKey, addr: &[u8; 20]) -> [u8; 32] {
     h.finalize().into()
 }
 
-/// The three prehashes a deposit-address bind signature may cover, in the order
-/// they are tried. SECURITY INVARIANT: every candidate is a deterministic
-/// transform of the SAME `deposit_bind_digest(owner, addr)` — no attacker-chosen
-/// message ever enters a preimage — so accepting any of them leaves the
-/// authorization semantics unchanged: a valid signature still proves the signer
-/// controls `addr` and consented to binding it to exactly this `owner`.
-fn deposit_bind_prehash_candidates(digest: &[u8; 32]) -> [[u8; 32]; 3] {
+/// The three prehashes a gateway-local authorization signature may cover, in the
+/// order they are tried. SECURITY INVARIANT: every candidate is a deterministic
+/// transform of the SAME caller-independent digest — no attacker-chosen message
+/// ever enters a preimage — so accepting any of them leaves the authorization
+/// semantics unchanged: a valid signature still proves the signer consented to
+/// exactly the fields that digest binds. Shared by the deposit-address bind
+/// (`deposit_bind_digest`) and by withdrawal authorization (`withdraw_auth_digest`,
+/// `lp_withdraw_auth_digest`, `rebind_auth_digest`).
+fn eip191_prehash_candidates(digest: &[u8; 32]) -> [[u8; 32]; 3] {
     use sha3::{Digest as _, Keccak256 as RawKeccak};
     // (a) The raw digest itself. WHY: CLI signers (`cast wallet sign --no-hash`)
     //     sign the 32 digest bytes directly — the original form, kept byte-identical.
