@@ -118,7 +118,7 @@ general rule rather than a bind-specific one."
   - `Gw.chain_id: u64`, `Gw.vault: [u8; 20]` (both `#[serde(skip)]`)
   - `fn withdraw_auth_digest(chain_id: u64, vault: &[u8;20], owner: &PubKey, market_id: u64, amount: i128, to: &[u8;20], nonce: u64) -> [u8;32]`
   - `fn lp_withdraw_auth_digest(chain_id: u64, vault: &[u8;20], owner: &PubKey, shares: u128, nonce: u64) -> [u8;32]`
-  - `fn rebind_auth_digest(chain_id: u64, vault: &[u8;20], owner: &PubKey, old_addr: &[u8;20], new_addr: &[u8;20]) -> [u8;32]`
+  - `fn rebind_auth_digest(chain_id: u64, vault: &[u8;20], owner: &PubKey, rebind_counter: u64, old_addr: &[u8;20], new_addr: &[u8;20]) -> [u8;32]`
 
 - [ ] **Step 1: Add the deployment-binding fields to `Gw`**
 
@@ -197,7 +197,7 @@ fn withdrawal_digests_are_domain_separated_from_each_other_and_from_bind() {
     let vault = [0x22u8; 20];
     let w = withdraw_auth_digest(84532, &vault, &owner, 0, 1_000, &addr, 1);
     let lp = lp_withdraw_auth_digest(84532, &vault, &owner, 1_000, 1);
-    let rb = rebind_auth_digest(84532, &vault, &owner, &addr, &[0x33u8; 20]);
+    let rb = rebind_auth_digest(84532, &vault, &owner, 0, &addr, &[0x33u8; 20]);
     let bind = deposit_bind_digest(&owner, &addr);
     assert_ne!(w, lp);
     assert_ne!(w, rb);
@@ -216,8 +216,14 @@ fn rebind_auth_digest_binds_both_addresses_in_order() {
     // Swapping old/new must NOT produce the same digest — otherwise a signature
     // authorizing A->B would also authorize B->A.
     assert_ne!(
-        rebind_auth_digest(84532, &vault, &owner, &a, &b),
-        rebind_auth_digest(84532, &vault, &owner, &b, &a)
+        rebind_auth_digest(84532, &vault, &owner, 0, &a, &b),
+        rebind_auth_digest(84532, &vault, &owner, 0, &b, &a)
+    );
+    // The counter must change the digest, or a rebind authorization would be
+    // replayable forever once the account returns to the same bound address.
+    assert_ne!(
+        rebind_auth_digest(84532, &vault, &owner, 0, &a, &b),
+        rebind_auth_digest(84532, &vault, &owner, 1, &a, &b)
     );
 }
 ```
@@ -286,13 +292,23 @@ fn lp_withdraw_auth_digest(
 
 /// SEC-021b: the digest the CURRENTLY BOUND address must sign to authorize moving an
 /// account's deposit-address binding to `new_addr`.
-/// `keccak256("dark-perp:rebind-deposit:" ‖ chain_id ‖ vault ‖ owner ‖ old ‖ new)`
+/// `keccak256("dark-perp:rebind-deposit:" ‖ chain_id ‖ vault ‖ owner ‖ rebind_counter ‖ old ‖ new)`
+///
 /// Binding BOTH addresses (in this order) stops a signature authorizing old→new being
 /// reused to authorize old→someone-else, or replayed in reverse.
+///
+/// `rebind_counter` is the account's monotonic rebind count, and it is what stops a
+/// rebind authorization living forever. Without it a signature over (owner, A, B) stays
+/// valid ANY time the account's bound address is A — so a user who rotates A→B and later
+/// back to B→A hands anyone holding the old signature plus a leaked API key the power to
+/// force the binding back to B. That is worst exactly when it matters most: rotating away
+/// from a compromised address. The counter increments on every accepted rebind, so each
+/// authorization is single-use.
 fn rebind_auth_digest(
     chain_id: u64,
     vault: &[u8; 20],
     owner: &PubKey,
+    rebind_counter: u64,
     old_addr: &[u8; 20],
     new_addr: &[u8; 20],
 ) -> [u8; 32] {
@@ -302,6 +318,7 @@ fn rebind_auth_digest(
     h.update(chain_id.to_be_bytes());
     h.update(vault);
     h.update(owner);
+    h.update(rebind_counter.to_be_bytes());
     h.update(old_addr);
     h.update(new_addr);
     h.finalize().into()
@@ -312,6 +329,20 @@ fn rebind_auth_digest(
 
 Run: `cargo test -p gateway -- withdraw_auth_digest withdrawal_digests rebind_auth_digest 2>&1 | tail -10`
 Expected: 3 passed.
+
+- [ ] **Step 7b: Add known-answer (KAT) tests pinning the exact bytes**
+
+The tests above compare the implementation against itself, so they survive a typo in a prefix, a swap of two same-width fields (`market_id` ↔ `nonce`, `vault` ↔ `to`, `old` ↔ `new`), or little-endian instead of big-endian. A TypeScript client mirrors `withdraw_auth_digest` byte-for-byte in Task 8, so the layout is a cross-component contract and a wrong layout is a **silent** security bug — the gateway would accept a signature over a different field tuple than the one it acts on. There is crate precedent: `gateway_signature_round_trips_and_matches_solidity_digest` (`main.rs:6856`) pins the deposit digest the same way.
+
+Add a KAT asserting fixed vectors for all four digests (including `deposit_bind_digest` as a frozen baseline), and include the negative-amount vector — it pins `i128` two's-complement big-endian, which nothing else covers. Compute each vector from the implementation once, then hard-code it.
+
+Also fold an offset table into each digest's doc comment. **The divergence a TS author is most likely to get wrong:** `GatewaySigner::digest` (`main.rs:4061`) encodes `chain_id` as a **32-byte** word (mirroring Solidity's `abi.encodePacked(uint256)`), while these three encode it as **8 bytes**. Both live in the same file.
+
+- [ ] **Step 7c: Fail closed in production when the vault is unset**
+
+`production_mode()` (`main.rs:5277`) is `l1_enabled || DARKPERP_PROD == "1"`, and `GatewaySigner::from_env` falls back to chain-id `84532` / zero vault when the env vars are absent. So a gateway in production posture without an L1 bridge and without `L1_VAULT` binds every withdrawal digest to `(84532, 0x00…00)` — byte-identical to the unit-test identity and to every other such deployment. The cross-deployment replay protection these fields exist to provide would be vacuous exactly there.
+
+In production posture, refuse to boot when `L1_VAULT` is unset or all-zero, in the style of the existing fail-closed exits at `main.rs:5734` (attestation) and `:5935` (SEC-019 signer). Dev/demo is unaffected.
 
 - [ ] **Step 8: Commit**
 
@@ -341,7 +372,9 @@ The spec leaves one question open: does adding a trailing `#[serde(default)]` fi
 - Test: `crates/gateway/src/main.rs` test module
 
 **Interfaces:**
-- Produces: `Account.last_withdraw_nonce: u64`
+- Produces: `Account.last_withdraw_nonce: u64`, `Account.rebind_counter: u64`
+
+Both fields are added in this task so the snapshot-format question is answered once, for the final field layout — not twice.
 
 - [ ] **Step 1: Write the snapshot round-trip test**
 
@@ -365,11 +398,13 @@ fn account_snapshot_round_trips_with_withdraw_nonce() {
         last_sealed_nonce: 0,
         deposit_authorizations: Default::default(),
         last_withdraw_nonce: 42,
+        rebind_counter: 3,
     };
     a.nonce = 7;
     let bytes = postcard::to_allocvec(&a).expect("serialize");
     let back: Account = postcard::from_bytes(&bytes).expect("deserialize");
     assert_eq!(back.last_withdraw_nonce, 42);
+    assert_eq!(back.rebind_counter, 3);
     assert_eq!(back.nonce, 7);
     assert_eq!(back.deposit_address, Some([0x11u8; 20]));
 }
@@ -400,6 +435,14 @@ Insert after the `last_sealed_nonce` field (`main.rs:977`):
     /// note in the deploy runbook).
     #[serde(default)]
     last_withdraw_nonce: u64,
+    /// SEC-021b: how many times this account's deposit-address binding has been moved.
+    /// Mixed into `rebind_auth_digest` and incremented on every accepted rebind, so a
+    /// rebind authorization is single-use. Without it a signature over (owner, A, B)
+    /// would stay valid any time the bound address is A — letting a leaked API key plus
+    /// a captured old signature force the binding back to B after the user rotated away
+    /// from it. Counts rebinds only; the first-time bind does not increment it.
+    #[serde(default)]
+    rebind_counter: u64,
 ```
 
 - [ ] **Step 4: Run to verify it passes**
@@ -491,7 +534,7 @@ the real answer, not an assumption."
 - Test: `crates/gateway/src/main.rs` test module
 
 **Interfaces:**
-- Consumes: `rebind_auth_digest` (Task 2), `eip191_prehash_candidates` (Task 1)
+- Consumes: `rebind_auth_digest` (Task 2), `eip191_prehash_candidates` (Task 1), `Account.rebind_counter` (Task 3)
 - Produces: `Gw::account_set_deposit_address(&mut self, key: &[u8;32], addr: [u8;20], sig: &[u8;65], current_sig: Option<&[u8;65]>) -> Result<(), String>`
 
 - [ ] **Step 1: Write the failing exploit-chain test**
@@ -535,11 +578,46 @@ fn leaked_api_key_alone_cannot_rebind_deposit_address() {
     // A rebind signed by the CURRENT address is allowed (legitimate rotation).
     let rotate_sig = sign_digest(
         &victim_sk,
-        &rebind_auth_digest(gw.chain_id, &gw.vault, &owner, &victim_eoa, &attacker_eoa),
+        &rebind_auth_digest(gw.chain_id, &gw.vault, &owner, 0, &victim_eoa, &attacker_eoa),
     );
     gw.account_set_deposit_address(&key, attacker_eoa, &attacker_bind_sig, Some(&rotate_sig))
         .expect("rebind authorized by the current address succeeds");
     assert_eq!(gw.accounts.get(&key).unwrap().deposit_address, Some(attacker_eoa));
+    assert_eq!(gw.accounts.get(&key).unwrap().rebind_counter, 1, "rebind burns the authorization");
+}
+
+/// SEC-021b: a rebind authorization is SINGLE-USE. Without the counter in the digest,
+/// a signature over (owner, A, B) stays valid any time the bound address is A — so a
+/// user who rotates A->B and later back to A hands anyone holding the old signature
+/// (plus a leaked API key) the power to force the binding back to B. That is worst
+/// exactly when it matters most: rotating away from a compromised address.
+#[test]
+fn a_rebind_authorization_cannot_be_replayed_after_returning_to_the_old_address() {
+    use k256::ecdsa::SigningKey;
+    let mut gw = test_gw();
+    let a_sk = SigningKey::from_slice(&[9u8; 32]).unwrap();
+    let b_sk = SigningKey::from_slice(&[0xB5u8; 32]).unwrap();
+    let a = eth_addr(&a_sk);
+    let b = eth_addr(&b_sk);
+    let (key, owner) = gw.register_account(None);
+    let bind_a = sign_digest(&a_sk, &deposit_bind_digest(&owner, &a));
+    let bind_b = sign_digest(&b_sk, &deposit_bind_digest(&owner, &b));
+    gw.account_set_deposit_address(&key, a, &bind_a, None).unwrap();
+
+    // Rotate A -> B (counter 0), then B -> A (counter 1).
+    let a_to_b = sign_digest(&a_sk, &rebind_auth_digest(gw.chain_id, &gw.vault, &owner, 0, &a, &b));
+    gw.account_set_deposit_address(&key, b, &bind_b, Some(&a_to_b)).unwrap();
+    let b_to_a = sign_digest(&b_sk, &rebind_auth_digest(gw.chain_id, &gw.vault, &owner, 1, &b, &a));
+    gw.account_set_deposit_address(&key, a, &bind_a, Some(&b_to_a)).unwrap();
+    assert_eq!(gw.accounts.get(&key).unwrap().deposit_address, Some(a));
+    assert_eq!(gw.accounts.get(&key).unwrap().rebind_counter, 2);
+
+    // The account is bound to A again — replay the ORIGINAL A->B authorization.
+    let err = gw
+        .account_set_deposit_address(&key, b, &bind_b, Some(&a_to_b))
+        .expect_err("a spent rebind authorization must not work a second time");
+    assert!(err.contains("rebind not authorized"), "unexpected error: {err}");
+    assert_eq!(gw.accounts.get(&key).unwrap().deposit_address, Some(a), "binding unchanged");
 }
 ```
 
@@ -598,9 +676,9 @@ Replace the body of `account_set_deposit_address` (`main.rs:1676-1712`):
         sig: &[u8; 65],
         current_sig: Option<&[u8; 65]>,
     ) -> Result<(), String> {
-        let (owner, bound) = {
+        let (owner, bound, rebinds) = {
             let a = self.accounts.get(key).ok_or("Unknown account.")?;
-            (a.wallet.owner, a.deposit_address)
+            (a.wallet.owner, a.deposit_address, a.rebind_counter)
         };
         // Proof of control over the address being bound (unchanged). Accept the
         // signature over ANY of the three deterministic shapes of the bind digest
@@ -629,7 +707,7 @@ Replace the body of `account_set_deposit_address` (`main.rs:1676-1712`):
                 "rebinding requires `currentSignature` from the account's current deposit address",
             )?;
             let rebind_digest =
-                rebind_auth_digest(self.chain_id, &self.vault, &owner, &old, &addr);
+                rebind_auth_digest(self.chain_id, &self.vault, &owner, rebinds, &old, &addr);
             let authorized = eip191_prehash_candidates(&rebind_digest)
                 .iter()
                 .any(|prehash| recover_eth_address(prehash, cur) == Some(old));
@@ -647,7 +725,13 @@ Replace the body of `account_set_deposit_address` (`main.rs:1676-1712`):
         {
             return Err("that address is already bound to another account".into());
         }
-        self.accounts.get_mut(key).unwrap().deposit_address = Some(addr);
+        let a = self.accounts.get_mut(key).unwrap();
+        a.deposit_address = Some(addr);
+        if bound.is_some() {
+            // SEC-021b: burn the authorization just consumed. Only a REBIND increments —
+            // the first-time bind carries no `currentSignature` to invalidate.
+            a.rebind_counter += 1;
+        }
         Ok(())
     }
 ```
@@ -1335,7 +1419,9 @@ The frontend cannot implement the signed-withdrawal flow without this: it persis
 - Test: `crates/gateway/src/main.rs` test module
 
 **Interfaces:**
-- Produces: `/v1/accounts/me` response gains `depositAddress` (string or null), `callerSigned` (bool), `nextWithdrawNonce` (u64), `chainId` (u64), `vault` (0x-hex string)
+- Produces: `/v1/accounts/me` response gains `depositAddress` (string or null), `callerSigned` (bool), `nextWithdrawNonce` (u64), `rebindCounter` (u64), `chainId` (u64), `vault` (0x-hex string)
+
+`rebindCounter` is needed for the same reason as the others: it is mixed into `rebind_auth_digest`, so a client rotating its deposit address cannot build a valid signature without it. Task 4 documented the derivation rule (0 at creation, +1 per *accepted* rebind, rejected attempts do not count) but left clients to track it themselves — serving it is the friendlier and less error-prone contract.
 
 `chainId` and `vault` are part of the signed digest, so the client must read them from the gateway rather than hardcoding them — a client compiled against the wrong deployment would otherwise produce signatures that are silently rejected.
 
@@ -1391,6 +1477,7 @@ Replace `v1_account` (`main.rs:2467-2476`):
             "depositAddress": a.deposit_address.map(|d| hex0x(&d)),
             "callerSigned": a.signer.is_some(),
             "nextWithdrawNonce": a.last_withdraw_nonce + 1,
+            "rebindCounter": a.rebind_counter,
             "chainId": self.chain_id,
             "vault": hex0x(&self.vault),
         }))
@@ -1594,9 +1681,26 @@ Extend the withdrawal section with the signature/nonce requirement for **both** 
 
 Add SEC-021 and SEC-021b with their resolutions, matching the format used for SEC-019/ZK-001.
 
+- [ ] **Step 3b: Document the two user-visible consequences of the rebind lock**
+
+Both follow from decisions taken deliberately, and both are surprising enough that users must not discover them live. Cover them in `docs/API.md`, `docs/SECURITY.md`, and the alpha release notes:
+
+1. **There is no recovery path for a lost bound-address key.** The binding can only be moved by a signature from the address currently bound, and the design explicitly rejects a timelocked or operator-mediated rebind. Combined with the server-custody `to` pin, losing that key makes the account's funds permanently unwithdrawable. State it plainly — "keep the key you deposited from" is the whole mitigation.
+2. **First bind wins, permanently.** An attacker holding only a leaked API key can bind their own address to an account that has never bound one, and the victim can no longer overwrite it. The account holds no funds in that state (crediting requires `from == bound address`), so this is griefing rather than theft — but the failure mode inverted relative to the old behavior, where the victim could simply rebind.
+3. **For a caller-signed account, the registered `signer` is the *only* key that can withdraw** — even if the account has also bound a deposit address. `authorizing_address` gives `signer` precedence, deliberately, so registering a signer narrows authorization rather than widening it. The consequence: losing the signer key strands the funds even though the deposit-address key is perfectly safe. Say so where caller-signed mode is documented, next to the existing note that a caller-signed account's orders need that same key.
+
 - [ ] **Step 4: Update the public site**
 
 Mirror the API.md changes in `docs/public-site/api.html` (`:46`, `:71`, `:127-128`) and `docs/public-site/trading.html` (`:112`).
+
+**Cover the LP endpoint, not just `/v1/accounts/withdraw`.** It is the one most likely to be missed, because no client calls it today — which is exactly why nothing else will catch a stale doc. Two specific defects found in review:
+
+- `docs/public-site/api.html:128` still documents `POST /v1/lp/withdraw` as `{"shares": "…"}`. That body is now a **guaranteed 400**.
+- The in-tree OpenAPI blob (`get_v1_openapi`) omits the `/v1/lp/*` paths **entirely**, and still declares `"required": ["marketId","amount","to"]` for `/v1/accounts/withdraw` — which now contradicts the server. Add the LP paths rather than leaving them undocumented.
+- `/v1/accounts/deposit/address` in the same blob still does not document `currentSignature`, the rebind parameter Task 4 added — so the blob describes a rebind request that the server now rejects.
+- The withdraw `signature` description is terse where it matters: unlike its sibling at `/v1/accounts/deposit/address`, it does not say that **all three** `eip191_prehash_candidates` shapes are accepted (raw digest, EIP-191 over the 32 bytes, EIP-191 over the `"0x…"` hex string). A browser `personal_sign` client reading only the blob would not know it works.
+
+**One cross-endpoint inconsistency worth a documented line rather than a code change:** two endpoints now expose a field named `vault`. `/v1/accounts/me` serves `hex0x(&Gw.vault)` — normalized lowercase `0x` + 40 hex, and **these are the exact bytes hashed into the digests**, so it is the authoritative one for signing. `/v1/accounts/withdrawals` echoes `l1.vault`, the raw unparsed `L1_VAULT` env string, which may be EIP-55 mixed-case. Same env var, same source of truth, but a naive string comparison between the two can mismatch.
 
 - [ ] **Step 5: Verify the docs match the code**
 
@@ -1624,7 +1728,8 @@ These cannot be verified from source — the deployed snapshot is the only autho
 
 - [ ] Inspect live state for accounts with `signer: Some(..)` — caller-signed accounts in the wild would need a client capable of signing withdrawals.
 - [ ] Inspect live state for **funded accounts with `deposit_address: None`** — under the new rule they cannot withdraw. In production this set should be empty (crediting already requires a bound address), but confirm rather than assume.
-- [ ] Confirm the snapshot decision from Task 3, Step 5 and wipe state if required.
+- [ ] **Wipe `state.snap`.** Task 3 settled this by test: a pre-upgrade snapshot does not load correctly — it either fails with `DeserializeUnexpectedEnd` or, when `deposit_authorizations` is non-empty and its key bytes align, decodes *silently into corrupt state* with the authorizations dropped. The wipe is required, not precautionary. Note the live cutover gotcha already on record: stop the process, **then** remove `state.snap`, then start — a restart lets the old process rewrite an old-format snapshot on shutdown.
+- [ ] **Propagate that fact to the deploy runbook.** The runbook does not live in this repo, so no commit here can update it; it has to be carried across by hand.
 - [ ] This change rides the pending redeploy that the forge-audit remediation (`a413750`) already requires (fresh `Settlement`/`Vault`/`USDC` with 3 new constructor params). Verify `L1_CHAIN_ID` and `L1_VAULT` are set in the gateway environment — `Gw.chain_id`/`Gw.vault` fall back to `84532`/zero, and a zero vault would make signatures portable to any other zero-vault deployment.
 
 ## Follow-ups (out of scope, track separately)

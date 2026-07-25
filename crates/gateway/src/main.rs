@@ -955,9 +955,12 @@ struct Account {
     /// Per-account order rate limit (a sliding 1s window).
     last_order_ms: u64,
     orders_this_sec: u32,
-    /// The external EOA the account funds from. Bound once; an on-chain USDC
-    /// `Deposit(from, amount)` is credited only when `from` matches this (so one
-    /// account can't claim another's deposit). `None` until bound.
+    /// The external EOA the account funds from. An on-chain USDC `Deposit(from, amount)`
+    /// is credited only when `from` matches this (so one account can't claim another's
+    /// deposit). `None` until bound. NOT immutable: it may be REBOUND, but SEC-021b
+    /// requires the currently bound address to sign the change — the API key alone is
+    /// not sufficient, because proving control of the new address is free for whoever
+    /// chose it.
     deposit_address: Option<[u8; 20]>,
     /// Caller-signed mode: if set, every order MUST carry a secp256k1 signature over
     /// the order hash that recovers to this address (the caller's own key), so a
@@ -970,11 +973,34 @@ struct Account {
     /// server-custody (`signer: None`) account (replay protection): the decrypted
     /// canonical terms carry a client-chosen `nonce`, and a new sealed order must
     /// carry a higher one — so re-POSTing a captured `{epochId, sealed}` body is
-    /// rejected instead of duplicating the position. Rides the sealed snapshot
-    /// (`serde(default)` keeps pre-upgrade snapshots loadable; fresh genesis on
-    /// redeploy is fine).
+    /// rejected instead of duplicating the position. Rides the sealed snapshot.
+    /// NOTE (SEC-021, tested): `serde(default)` does NOT keep pre-upgrade postcard
+    /// snapshots loadable — postcard is positional, so a shorter old encoding fails
+    /// to decode (see `pre_upgrade_account_encoding_behaviour_is_pinned`); fresh
+    /// genesis on redeploy is fine.
     #[serde(default)]
     last_sealed_nonce: u64,
+    /// SEC-021: strictly-increasing nonce of the last SUCCESSFULLY COMPLETED signed
+    /// withdrawal (account or LP). Deliberately SEPARATE from `last_signed_nonce`
+    /// (orders): orders are high-frequency, and a shared counter would let an order
+    /// stream racing past nonce N invalidate an already-signed withdrawal in flight.
+    /// Committed only after the whole withdrawal succeeds, so a validly signed request
+    /// that then fails on insufficient balance stays retryable rather than burning its
+    /// nonce. Both withdrawal flows share this one counter — their digests are
+    /// domain-separated, so cross-replay is impossible without a second counter.
+    /// `serde(default)` is forward-additive struct hygiene; NOTE postcard is positional,
+    /// so a cross-version snapshot load still requires a state reset (see the migration
+    /// note in the deploy runbook).
+    #[serde(default)]
+    last_withdraw_nonce: u64,
+    /// SEC-021b: how many times this account's deposit-address binding has been moved.
+    /// Mixed into `rebind_auth_digest` and incremented on every accepted rebind, so a
+    /// rebind authorization is single-use. Without it a signature over (owner, A, B)
+    /// would stay valid any time the bound address is A — letting a leaked API key plus
+    /// a captured old signature force the binding back to B after the user rotated away
+    /// from it. Counts rebinds only; the first-time bind does not increment it.
+    #[serde(default)]
+    rebind_counter: u64,
     /// SEC-019 (Task 7b): gateway-issued deposit authorizations awaiting their on-chain
     /// landing, keyed by `ownerCommit = keccak(owner ‖ deposit_blind)`. The value is the
     /// SECRET per-deposit `deposit_blind` (a fresh 32-byte CSPRNG value); `owner` is this
@@ -983,7 +1009,9 @@ struct Account {
     /// credits only on a match (the misattribution guard). The blind is NEVER served
     /// publicly (only `ownerCommit` + `sig` leave the gateway) but IS persisted — it must
     /// be reproducible at credit time, and it rides the existing sealed snapshot.
-    /// `serde(default)` keeps pre-upgrade snapshots loadable.
+    /// NOTE (SEC-021, tested): `serde(default)` does NOT make this loadable from a
+    /// pre-upgrade snapshot — postcard is positional (see
+    /// `pre_upgrade_account_encoding_behaviour_is_pinned`); a state reset is required.
     #[serde(default)]
     deposit_authorizations: std::collections::BTreeMap<[u8; 32], [u8; 32]>,
 }
@@ -1089,6 +1117,29 @@ struct Gw {
     /// the demo/test build. NOT persisted — recomputed from the environment.
     #[serde(skip)]
     prod: bool,
+    /// SEC-021: the deployment this gateway's withdrawal-authorization signatures are
+    /// bound to (L1 chain id + vault address). Mixed into every withdrawal/rebind digest
+    /// so a snapshot restored or copied onto a DIFFERENT deployment cannot accept a
+    /// signature minted for this one — the signed nonce is not the withdrawal-leaf nonce
+    /// (that is the gateway-global `next_withdraw_nonce`), so one authorization could
+    /// otherwise become different claim leaves on two deployments. NOT persisted —
+    /// like `oracle_signer`, serde skips it and the REAL identity is installed by the
+    /// boot wiring: `main()` writes both from `GatewaySigner` (the same env source the
+    /// on-chain deposit digest is bound to) right beside `prod`, and the digest paths
+    /// (`account_withdraw`, `account_lp_withdraw`, the SEC-021b rebind in
+    /// `account_set_deposit_address`) read them at runtime — that write + those reads
+    /// are what keep these fields live code (no `dead_code` marker needed; the serde
+    /// `default` reference is NOT what silences the lint — a `#[serde(skip)]` field
+    /// with no `default` is equally silent). The `default` fn
+    /// (`dev_fallback_chain_id`/`dev_fallback_vault`) is load-bearing for the RESTORE
+    /// path only: a deserialized `Gw` holds the same dev fallback a fresh `boot()`
+    /// does until the `main()` write lands, so no deserialize path can invent a third
+    /// identity. A prod boot whose vault is still the zero fallback is refused
+    /// (`vault_binding_ok_for_mode`).
+    #[serde(skip, default = "dev_fallback_chain_id")]
+    chain_id: u64,
+    #[serde(skip, default = "dev_fallback_vault")]
+    vault: [u8; 20],
     /// Task 5: honest finality reporting on the window-settle path. When the prover
     /// is configured (PROVER_URL), the tick loop must NOT simulate SETTLED after
     /// `SETTLE_TICKS` — orders stay MATCHED until their window's proof verifies on
@@ -1134,6 +1185,18 @@ fn boot_oracle_signer() -> k256::ecdsa::SigningKey {
         eprintln!("[fatal] oracle publisher signer: {e}");
         std::process::exit(1);
     })
+}
+
+/// Serde-restore defaults for the SEC-021 deployment binding (`Gw.chain_id`/`Gw.vault`):
+/// a deserialized `Gw` gets the SAME dev fallback `boot()` and `GatewaySigner::from_env`
+/// use (single source: `DEV_FALLBACK_CHAIN_ID`/`DEV_FALLBACK_VAULT`), and `main()` then
+/// overwrites both from `GatewaySigner` — mirrors `boot_oracle_signer`'s
+/// "runtime-only, re-derived on restore" pattern.
+fn dev_fallback_chain_id() -> u64 {
+    DEV_FALLBACK_CHAIN_ID
+}
+fn dev_fallback_vault() -> [u8; 20] {
+    DEV_FALLBACK_VAULT
 }
 
 /// Advisory lifetime of a published order-ingress epoch key (§5.1). Clients should
@@ -1552,6 +1615,12 @@ impl Gw {
             lp_total_shares: 0,
             lp_counter: 0,
             prod: false,
+            // SEC-021: overwritten in `main()` from GatewaySigner. The shared consts
+            // ARE GatewaySigner::from_env's unset-var fallbacks, so the demo build and
+            // unit tests get a coherent (if non-unique) deployment identity by
+            // construction.
+            chain_id: DEV_FALLBACK_CHAIN_ID,
+            vault: DEV_FALLBACK_VAULT,
             window_settle_mode: false,
             // Derive the first order-ingress epoch from the SAME seed the enclave
             // signing identity derives from, so a reboot/re-pin keeps the key stable.
@@ -1612,6 +1681,11 @@ impl Gw {
         // public or secret — is ever read from the snapshot.
         gw.order_log.set_recipient(derive_log_pub(&enclave_seed));
 
+        // SEC-021: chain_id/vault are serde-skipped with a `default` fn (the
+        // oracle_signer pattern), so deserialization ALREADY re-applied the shared dev
+        // fallback — no manual re-apply here, and any future deserialize path gets the
+        // same identity for free. main() then overwrites both from GatewaySigner.
+
         gw.mkts = MARKETS
             .iter()
             .map(|cfg| Mkt {
@@ -1662,6 +1736,8 @@ impl Gw {
                 signer,
                 last_signed_nonce: 0,
                 last_sealed_nonce: 0,
+                last_withdraw_nonce: 0,
+                rebind_counter: 0,
                 deposit_authorizations: std::collections::BTreeMap::new(),
             },
         );
@@ -1673,32 +1749,63 @@ impl Gw {
     /// digest binding this account's owner — so only the controller of `addr` can bind
     /// it. This closes a front-run where an attacker binds a victim's public deposit
     /// EOA and steals the credit (review fix). An address binds to at most one account.
+    /// SEC-021b: a REBIND must additionally carry `current_sig` — the CURRENTLY bound
+    /// address's signature over `rebind_auth_digest` — see the body for the WHY.
+    ///
+    /// NO RECOVERY PATH (accepted product decision, to be DOCUMENTED not engineered
+    /// around — Task 9: docs/API.md, docs/SECURITY.md, alpha release notes): if the
+    /// key for the currently bound address is lost, the binding is permanently
+    /// frozen — there is no unbind, override, or admin escape hatch — and once
+    /// withdrawals are pinned to the bound address (Task 5), the account's funds
+    /// become unwithdrawable. Keep the bound key safe.
     fn account_set_deposit_address(
         &mut self,
         key: &[u8; 32],
         addr: [u8; 20],
         sig: &[u8; 65],
+        current_sig: Option<&[u8; 65]>,
     ) -> Result<(), String> {
-        let owner = self
-            .accounts
-            .get(key)
-            .ok_or("Unknown account.")?
-            .wallet
-            .owner;
-        // Accept the signature over ANY of the three deterministic shapes of the
-        // bind digest (raw / EIP-191 over bytes / EIP-191 over hex string) so both
-        // CLI signers and browser-wallet `personal_sign` work — see
-        // `deposit_bind_prehash_candidates` for the WHY of each and the security
-        // invariant (all shapes commit to the same (owner, addr), so this widens
-        // signer ergonomics, never authorization).
+        let (owner, bound, rebinds) = {
+            let a = self.accounts.get(key).ok_or("Unknown account.")?;
+            (a.wallet.owner, a.deposit_address, a.rebind_counter)
+        };
+        // Proof of control over the address being bound (unchanged). Accept the
+        // signature over ANY of the three deterministic shapes of the bind digest
+        // (raw / EIP-191 over bytes / EIP-191 over hex string) so both CLI signers
+        // and browser-wallet `personal_sign` work — see `eip191_prehash_candidates`
+        // for the WHY of each and the security invariant (all shapes commit to the
+        // same (owner, addr), so this widens signer ergonomics, never authorization).
         let digest = deposit_bind_digest(&owner, &addr);
-        let proven = deposit_bind_prehash_candidates(&digest)
+        let proven = eip191_prehash_candidates(&digest)
             .iter()
             .any(|prehash| recover_eth_address(prehash, sig) == Some(addr));
         if !proven {
             return Err(
                 "deposit-address proof: signature must recover to the address being bound".into(),
             );
+        }
+        // SEC-021b: a REBIND must additionally be authorized by the address currently
+        // bound. Proving control of the NEW address is free for an attacker (it is
+        // their own address), so without this a leaked API key alone could redirect
+        // the binding and drain every future withdrawal to it.
+        if let Some(old) = bound {
+            if old == addr {
+                return Ok(()); // idempotent re-bind of the same address: no-op
+            }
+            let cur = current_sig.ok_or(
+                "rebinding requires `currentSignature` from the account's current deposit address",
+            )?;
+            let rebind_digest =
+                rebind_auth_digest(self.chain_id, &self.vault, &owner, rebinds, &old, &addr);
+            let authorized = eip191_prehash_candidates(&rebind_digest)
+                .iter()
+                .any(|prehash| recover_eth_address(prehash, cur) == Some(old));
+            if !authorized {
+                return Err(
+                    "rebind not authorized: `currentSignature` must recover to the current deposit address"
+                        .into(),
+                );
+            }
         }
         if self
             .accounts
@@ -1707,7 +1814,13 @@ impl Gw {
         {
             return Err("that address is already bound to another account".into());
         }
-        self.accounts.get_mut(key).unwrap().deposit_address = Some(addr);
+        let a = self.accounts.get_mut(key).unwrap();
+        a.deposit_address = Some(addr);
+        if bound.is_some() {
+            // SEC-021b: burn the authorization just consumed. Only a REBIND increments —
+            // the first-time bind carries no `currentSignature` to invalidate.
+            a.rebind_counter += 1;
+        }
         Ok(())
     }
 
@@ -1867,17 +1980,39 @@ impl Gw {
         Ok(amt)
     }
 
+    /// SEC-021: the address whose secp256k1 signature authorizes this account's
+    /// withdrawals. A caller-signed account's registered `signer` wins — it is the
+    /// explicit opt-in. Otherwise the bound `deposit_address`: the account already
+    /// proved it can sign with that key when it bound it, so requiring it again on
+    /// the money path costs the user nothing new and leaves no account authorized by
+    /// the bearer API key alone. Neither ⇒ no withdrawal is possible.
+    fn authorizing_address(&self, key: &[u8; 32]) -> Result<[u8; 20], String> {
+        let a = self.accounts.get(key).ok_or("Unknown account.")?;
+        a.signer.or(a.deposit_address).ok_or_else(|| {
+            "no authorizing address: bind a deposit address (POST /v1/accounts/deposit/address) \
+             or register a caller-signed account before withdrawing"
+                .to_string()
+        })
+    }
+
     /// Withdraw `amount` (quote units = USDC base units) from an account's market
     /// bucket to the L1 address `to`: debit the engine (Unbind + burn the note, so the
     /// off-chain balance really drops and can't be double-withdrawn) and record an
     /// authorized withdrawal leaf. On the next L1 settle the cumulative root is
     /// published and the user can `vault.claim` the USDC on Base Sepolia (§3).
+    /// SEC-021: EVERY withdrawal must carry a secp256k1 signature over
+    /// `withdraw_auth_digest` recovering to the account's authorizing address
+    /// (`authorizing_address`) — the API key alone must never move funds. All
+    /// checks run BEFORE the first `seq.apply` (fail-closed: a rejection mutates
+    /// nothing and burns no nonce).
     fn account_withdraw(
         &mut self,
         key: &[u8; 32],
         market: u64,
         amount: i128,
         to: [u8; 20],
+        auth_nonce: u64,
+        sig: &[u8; 65],
     ) -> Result<Withdrawal, String> {
         if amount <= 0 {
             return Err("Amount must be positive.".into());
@@ -1885,7 +2020,55 @@ impl Gw {
         if self.mkt(market).is_none() {
             return Err("Unknown market.".into());
         }
-        let wallet = self.accounts.get(key).ok_or("Unknown account.")?.wallet;
+        let (wallet, signer, bound, last_nonce) = {
+            let a = self.accounts.get(key).ok_or("Unknown account.")?;
+            (a.wallet, a.signer, a.deposit_address, a.last_withdraw_nonce)
+        };
+        // SEC-021: server-custody accounts may only withdraw to the address they
+        // bound. The signature already binds `to`, but the rebind path is exactly
+        // where this design's first version failed (SEC-021b), so the destination
+        // carries a second, independent constraint. Caller-signed accounts are the
+        // explicit advanced mode and keep a free destination — they consented to it
+        // cryptographically (deposit from a hot wallet, withdraw to a cold one).
+        if signer.is_none() {
+            match bound {
+                Some(b) if b == to => {}
+                Some(_) => {
+                    return Err(
+                        "Withdrawal `to` must equal this account's bound deposit address.".into(),
+                    )
+                }
+                None => {
+                    return Err(
+                        "Bind a deposit address first (POST /v1/accounts/deposit/address).".into(),
+                    )
+                }
+            }
+        }
+        // Replay protection: strictly increasing, CHECKED here but COMMITTED only
+        // after the withdrawal fully succeeds (see the end of this function).
+        if auth_nonce <= last_nonce {
+            return Err("withdrawal nonce must strictly increase (replay protection)".into());
+        }
+        let expected = self.authorizing_address(key)?;
+        let digest = withdraw_auth_digest(
+            self.chain_id,
+            &self.vault,
+            &wallet.owner,
+            market,
+            amount,
+            &to,
+            auth_nonce,
+        );
+        let authorized = eip191_prehash_candidates(&digest)
+            .iter()
+            .any(|prehash| recover_eth_address(prehash, sig) == Some(expected));
+        if !authorized {
+            return Err(
+                "withdrawal signature does not recover to this account's authorizing address"
+                    .into(),
+            );
+        }
         if amount > self.market_free_of(&wallet.owner, market) {
             return Err(
                 "Not withdrawable: amount exceeds the SETTLED balance in this market (§3).".into(),
@@ -1930,6 +2113,11 @@ impl Gw {
         // the BatchOp::Withdraw was applied), so the new settle path's window withdrawal
         // tree byte-matches the circuit's withdrawals_root.
         self.window_withdrawals.push(w.clone());
+        // SEC-021: commit the authorization nonce ONLY now — the withdrawal is fully
+        // applied. Committing at verification time would burn the nonce on a request
+        // that then failed the balance check, and the user's retry of the unchanged
+        // signed request would be rejected as a replay.
+        self.accounts.get_mut(key).unwrap().last_withdraw_nonce = auth_nonce;
         Ok(w)
     }
 
@@ -2472,6 +2660,19 @@ impl Gw {
             "settledBalance": self.free_balance_of(&owner).to_string(),
             "positions": self.positions_json_of(&owner),
             "nextNonce": a.nonce,
+            // SEC-021: everything the client needs to build a withdrawal signature —
+            // which address must sign, which nonce is next, and the deployment the
+            // digest is bound to (never hardcode these client-side: a client built
+            // against the wrong deployment would sign digests that silently fail).
+            "depositAddress": a.deposit_address.map(|d| hex0x(&d)),
+            "callerSigned": a.signer.is_some(),
+            // Saturating: `u64::MAX` means "no acceptable nonce remains" (the
+            // account is already permanently un-withdrawable at that point), so
+            // saturate rather than panic (debug) / wrap to a never-valid 0 (release).
+            "nextWithdrawNonce": a.last_withdraw_nonce.saturating_add(1),
+            "rebindCounter": a.rebind_counter,
+            "chainId": self.chain_id,
+            "vault": hex0x(&self.vault),
         }))
     }
     fn v1_orders_json(&self, key: &[u8; 32]) -> Option<serde_json::Value> {
@@ -2826,6 +3027,52 @@ impl Gw {
         if let Some(s) = self.lp_shares.get_mut(share_key) {
             *s -= shares;
         }
+        Ok(value)
+    }
+
+    /// SEC-021: the authorized, account-scoped LP withdrawal — the entry point `/v1`
+    /// uses. `lp_withdraw` itself stays an unauthenticated engine primitive because
+    /// the legacy demo handler calls it with the demo wallet's owner, which is not a
+    /// registered account; putting the check there would break that path, and
+    /// skipping the check for non-account keys would hollow it out.
+    ///
+    /// The withdrawer wallet is DERIVED from the account rather than accepted as a
+    /// parameter, so a caller cannot pair one account's share key with another
+    /// account's wallet.
+    fn account_lp_withdraw(
+        &mut self,
+        key: &[u8; 32],
+        shares: u128,
+        auth_nonce: u64,
+        sig: &[u8; 65],
+    ) -> Result<i128, String> {
+        let (wallet, last_nonce) = {
+            let a = self.accounts.get(key).ok_or("unknown account")?;
+            (a.wallet, a.last_withdraw_nonce)
+        };
+        if auth_nonce <= last_nonce {
+            return Err("withdrawal nonce must strictly increase (replay protection)".into());
+        }
+        let expected = self.authorizing_address(key)?;
+        let digest = lp_withdraw_auth_digest(
+            self.chain_id,
+            &self.vault,
+            &wallet.owner,
+            shares,
+            auth_nonce,
+        );
+        let authorized = eip191_prehash_candidates(&digest)
+            .iter()
+            .any(|prehash| recover_eth_address(prehash, sig) == Some(expected));
+        if !authorized {
+            return Err(
+                "LP withdrawal signature does not recover to this account's authorizing address"
+                    .into(),
+            );
+        }
+        let value = self.lp_withdraw(key, &wallet, shares)?;
+        // Commit only after success, for the same reason as `account_withdraw`.
+        self.accounts.get_mut(key).unwrap().last_withdraw_nonce = auth_nonce;
         Ok(value)
     }
 
@@ -3863,8 +4110,20 @@ struct DepositAddrReq {
     /// secp256k1 signature (65-byte r‖s‖v) proving the caller controls `address`.
     /// Accepted over any of three shapes of `deposit_bind_digest(owner, address)`:
     /// the raw digest, EIP-191 `personal_sign` over its 32 bytes, or EIP-191 over
-    /// its "0x<64 hex>" string — see `deposit_bind_prehash_candidates`.
+    /// its "0x<64 hex>" string — see `eip191_prehash_candidates`.
     signature: String,
+    /// SEC-021b: REBIND ONLY. When the account already has a bound address, this
+    /// must additionally carry that CURRENT address's signature over
+    /// `rebind_auth_digest(chain_id, vault, owner, rebind_counter, old_addr, new_addr)`
+    /// — see that function's doc for the exact 133-byte preimage. `rebind_counter`
+    /// is the account's rebind generation: 0 at account creation, untouched by the
+    /// first-time bind and by REJECTED attempts, +1 on every ACCEPTED rebind. Read
+    /// the current value as `rebindCounter` from `GET /v1/accounts/me` (`v1_account`).
+    /// Absent/ignored on a first-time bind. Without this signature, a leaked API key
+    /// alone could redirect the binding — and therefore every future withdrawal — to
+    /// an attacker's address.
+    #[serde(rename = "currentSignature", default)]
+    current_signature: Option<String>,
 }
 #[derive(Deserialize)]
 struct OnchainDepositReq {
@@ -3891,6 +4150,16 @@ struct WithdrawReq {
     market_id: u64,
     amount: String,
     to: String,
+    /// SEC-021: strictly-increasing withdrawal-authorization nonce (replay
+    /// protection). Required for every account.
+    #[serde(default)]
+    nonce: Option<u64>,
+    /// SEC-021: 65-byte secp256k1 signature (r‖s‖v) over `withdraw_auth_digest`,
+    /// recovering to the account's authorizing address (registered `signer`, else
+    /// the bound deposit address). Required for every account; accepted over any of
+    /// the three shapes in `eip191_prehash_candidates`.
+    #[serde(default)]
+    signature: Option<String>,
 }
 
 /// One hex nibble, byte-safe: `None` for anything outside `[0-9a-fA-F]` —
@@ -3936,9 +4205,14 @@ fn parse_hex65(s: &str) -> Option<[u8; 65]> {
     parse_hex_exact::<65>(s)
 }
 
-/// Recover the 20-byte Ethereum address that signed `prehash` with `sig` (r‖s‖v),
-/// exactly as the contract's `ecrecover` would — so a caller-signed order is
-/// authenticated identically off-chain and on-chain.
+/// Recover the 20-byte Ethereum address that signed `prehash` with `sig` (r‖s‖v).
+/// NOTE: this is deliberately more permissive than the Solidity side on `v` — it
+/// accepts 0..3 as well as 27..30, whereas `CollateralVault`/`DarkPerpSettlement`
+/// accept only 27/28. That is safe for gateway-local authorization (these signatures
+/// never reach a contract), but it is NOT byte-identical to on-chain `ecrecover`.
+/// High-`s` (malleable) signatures are rejected inside k256's recovery primitive
+/// (`recover_from_prehash` ends by re-verifying, and secp256k1's `verify_prehashed`
+/// refuses a high-`s` signature).
 fn recover_eth_address(prehash: &[u8; 32], sig: &[u8; 65]) -> Option<[u8; 20]> {
     use k256::ecdsa::{RecoveryId, Signature, VerifyingKey};
     use sha3::{Digest as _, Keccak256 as RawKeccak};
@@ -3952,6 +4226,48 @@ fn recover_eth_address(prehash: &[u8; 32], sig: &[u8; 65]) -> Option<[u8; 20]> {
     let mut a = [0u8; 20];
     a.copy_from_slice(&hash[12..]);
     Some(a)
+}
+
+/// SEC-021: the dev/demo fallback deployment identity — Base Sepolia's chain id and an
+/// all-zero vault address. Single source of truth for the THREE consumers that must
+/// agree: `GatewaySigner::from_env`'s unset-var fallbacks, `Gw::boot`'s initial fields,
+/// and the serde-restore defaults (`dev_fallback_chain_id`/`dev_fallback_vault`) — so a
+/// fresh boot, a restored snapshot, and the signer-derived identity can never silently
+/// diverge. Production never runs on these: `vault_binding_ok_for_mode` refuses a prod
+/// boot whose vault is still the zero fallback.
+const DEV_FALLBACK_CHAIN_ID: u64 = 84532;
+const DEV_FALLBACK_VAULT: [u8; 20] = [0u8; 20];
+
+/// SEC-021 (final-review M-e): the parse decision for `L1_CHAIN_ID` — UNSET takes the
+/// dev fallback; SET-but-unparseable fails closed, mirroring `GATEWAY_SIGNER_KEY` in
+/// `from_env` below. Decimal only: the hex form (`0x14a34`) previously fell through the
+/// silent `.ok()` fallback and became 84532, which is exactly the silent-divergence this
+/// refuses. Takes the raw `Option<String>` (not the env directly) so the decision is
+/// unit-testable without process-global env mutation.
+fn parse_l1_chain_id(raw: Option<String>) -> Result<u64, String> {
+    match raw {
+        Some(s) => s.trim().parse::<u64>().map_err(|_| {
+            format!(
+                "L1_CHAIN_ID is set but is not a decimal u64 chain id (got {s:?}; \
+                 hex like 0x14a34 is not accepted — use 84532)"
+            )
+        }),
+        None => Ok(DEV_FALLBACK_CHAIN_ID),
+    }
+}
+
+/// SEC-021 (final-review M-e): the parse decision for `L1_VAULT` — same convention as
+/// `parse_l1_chain_id`. A SET-but-malformed vault previously became the zero address
+/// silently, and `vault_binding_ok_for_mode`'s refusal then claimed "`L1_VAULT` must be
+/// set" to an operator whose var WAS set, just malformed. Now that state errs here with
+/// the actual problem named.
+fn parse_l1_vault(raw: Option<String>) -> Result<[u8; 20], String> {
+    match raw {
+        Some(s) => parse_addr20_hex(&s).ok_or_else(|| {
+            format!("L1_VAULT is set but is not a 20-byte 0x hex address (got {s:?})")
+        }),
+        None => Ok(DEV_FALLBACK_VAULT),
+    }
 }
 
 /// SEC-019 (Task 7b) demo/test default for the gateway deposit-authorization key. NEVER
@@ -3993,8 +4309,13 @@ impl GatewaySigner {
     /// Load from env: `GATEWAY_SIGNER_KEY` (32-byte hex scalar), `L1_CHAIN_ID`, `L1_VAULT`.
     /// Falls back to the demo key / a dev chain id (Base Sepolia) / a zero vault when a var
     /// is unset — fine for the demo build and unit tests (live-key provisioning + the real
-    /// vault/chain wiring are the deferred deploy phase). A SET-but-malformed key fails
-    /// closed (the caller exits) rather than silently signing with the demo key.
+    /// vault/chain wiring are the deferred deploy phase). All three vars share one
+    /// convention: a SET-but-malformed value fails closed (the caller exits) rather than
+    /// silently taking its fallback — the key because silently signing with the demo key
+    /// would be a catastrophe, and the deployment identity (final-review M-e) because a
+    /// typo'd `L1_CHAIN_ID`/`L1_VAULT` would otherwise silently bind every SEC-021 digest
+    /// to the dev identity, and `vault_binding_ok_for_mode`'s "`L1_VAULT` must be set"
+    /// refusal would gaslight an operator whose var IS set, just malformed.
     fn from_env() -> Result<Self, String> {
         let key = match std::env::var("GATEWAY_SIGNER_KEY") {
             Ok(s) => {
@@ -4002,14 +4323,8 @@ impl GatewaySigner {
             }
             Err(_) => DEMO_GATEWAY_SIGNER_KEY,
         };
-        let chain_id = std::env::var("L1_CHAIN_ID")
-            .ok()
-            .and_then(|s| s.trim().parse::<u64>().ok())
-            .unwrap_or(84532);
-        let vault = std::env::var("L1_VAULT")
-            .ok()
-            .and_then(|s| parse_addr20_hex(&s))
-            .unwrap_or([0u8; 20]);
+        let chain_id = parse_l1_chain_id(std::env::var("L1_CHAIN_ID").ok())?;
+        let vault = parse_l1_vault(std::env::var("L1_VAULT").ok())?;
         Self::from_parts(key, chain_id, vault)
     }
 
@@ -4070,6 +4385,15 @@ impl GatewaySigner {
 /// The digest a deposit-address bind signature must cover: `keccak256("dark-perp:
 /// bind-deposit:" ‖ owner ‖ addr)`. Binding the account owner stops the proof being
 /// replayed to bind the same address to a different account.
+///
+/// Byte layout (fixed-width fields, no length prefixes, no separators):
+/// ```text
+/// offset  len  field
+///      0   23  "dark-perp:bind-deposit:"  (ASCII, no trailing space)
+///     23   32  owner
+///     55   20  addr                       (total preimage: 75 bytes)
+/// ```
+/// Layout frozen by `auth_digests_match_known_answer_vectors`.
 fn deposit_bind_digest(owner: &PubKey, addr: &[u8; 20]) -> [u8; 32] {
     use sha3::{Digest as _, Keccak256 as RawKeccak};
     let mut h = RawKeccak::new();
@@ -4079,13 +4403,149 @@ fn deposit_bind_digest(owner: &PubKey, addr: &[u8; 20]) -> [u8; 32] {
     h.finalize().into()
 }
 
-/// The three prehashes a deposit-address bind signature may cover, in the order
-/// they are tried. SECURITY INVARIANT: every candidate is a deterministic
-/// transform of the SAME `deposit_bind_digest(owner, addr)` — no attacker-chosen
-/// message ever enters a preimage — so accepting any of them leaves the
-/// authorization semantics unchanged: a valid signature still proves the signer
-/// controls `addr` and consented to binding it to exactly this `owner`.
-fn deposit_bind_prehash_candidates(digest: &[u8; 32]) -> [[u8; 32]; 3] {
+/// SEC-021: the digest a withdrawal authorization signature must cover.
+/// `keccak256("dark-perp:withdraw:" ‖ chain_id ‖ vault ‖ owner ‖ market_id ‖ amount ‖ to ‖ nonce)`
+///
+/// Every field is fixed-width big-endian (no length prefixes, no separators), so the
+/// concatenation is unambiguous by construction — there is no variable-length field
+/// that could collide under a different field split:
+/// ```text
+/// offset  len  field
+///      0   19  "dark-perp:withdraw:"  (ASCII, no trailing space)
+///     19    8  chain_id   u64 BE
+///     27   20  vault
+///     47   32  owner
+///     79    8  market_id  u64 BE
+///     87   16  amount     i128 BE (two's complement)
+///    103   20  to
+///    123    8  nonce      u64 BE   (total preimage: 131 bytes)
+/// ```
+/// NOTE for the TypeScript mirror (Task 8): `chain_id` here is EIGHT bytes (u64 BE),
+/// NOT the 32-byte word `GatewaySigner::digest` (in this same file) uses for the
+/// on-chain deposit digest (Solidity `abi.encodePacked(uint256)`). These digests are
+/// verified gateway-side only, so they owe Solidity's ABI nothing — do not conflate
+/// the two encodings. Layout frozen by `auth_digests_match_known_answer_vectors`.
+///
+/// `owner` stops a signature being replayed onto a second account registered to the
+/// same address; `chain_id`+`vault` stop it being replayed onto another deployment
+/// restored from a copied snapshot.
+fn withdraw_auth_digest(
+    chain_id: u64,
+    vault: &[u8; 20],
+    owner: &PubKey,
+    market_id: u64,
+    amount: i128,
+    to: &[u8; 20],
+    nonce: u64,
+) -> [u8; 32] {
+    use sha3::{Digest as _, Keccak256 as RawKeccak};
+    let mut h = RawKeccak::new();
+    h.update(b"dark-perp:withdraw:");
+    h.update(chain_id.to_be_bytes());
+    h.update(vault);
+    h.update(owner);
+    h.update(market_id.to_be_bytes());
+    h.update(amount.to_be_bytes());
+    h.update(to);
+    h.update(nonce.to_be_bytes());
+    h.finalize().into()
+}
+
+/// SEC-021: the digest an LP-withdrawal authorization signature must cover.
+/// `keccak256("dark-perp:lp-withdraw:" ‖ chain_id ‖ vault ‖ owner ‖ shares ‖ nonce)`
+/// There is no `to`: LP value lands in the account's OWN internal balance, never on L1.
+/// The distinct prefix makes a `withdraw` signature unusable here and vice versa.
+///
+/// Byte layout (all fields fixed-width big-endian, no length prefixes, no separators;
+/// `chain_id` is 8 bytes, NOT `GatewaySigner::digest`'s 32-byte Solidity word — see
+/// `withdraw_auth_digest`):
+/// ```text
+/// offset  len  field
+///      0   22  "dark-perp:lp-withdraw:"  (ASCII, no trailing space)
+///     22    8  chain_id  u64 BE
+///     30   20  vault
+///     50   32  owner
+///     82   16  shares    u128 BE
+///     98    8  nonce     u64 BE   (total preimage: 106 bytes)
+/// ```
+/// Layout frozen by `auth_digests_match_known_answer_vectors`.
+fn lp_withdraw_auth_digest(
+    chain_id: u64,
+    vault: &[u8; 20],
+    owner: &PubKey,
+    shares: u128,
+    nonce: u64,
+) -> [u8; 32] {
+    use sha3::{Digest as _, Keccak256 as RawKeccak};
+    let mut h = RawKeccak::new();
+    h.update(b"dark-perp:lp-withdraw:");
+    h.update(chain_id.to_be_bytes());
+    h.update(vault);
+    h.update(owner);
+    h.update(shares.to_be_bytes());
+    h.update(nonce.to_be_bytes());
+    h.finalize().into()
+}
+
+/// SEC-021b: the digest the CURRENTLY BOUND address must sign to authorize moving an
+/// account's deposit-address binding to `new_addr`.
+/// `keccak256("dark-perp:rebind-deposit:" ‖ chain_id ‖ vault ‖ owner ‖ rebind_counter ‖ old ‖ new)`
+///
+/// Byte layout (all fields fixed-width big-endian, no length prefixes, no separators;
+/// `chain_id` is 8 bytes, NOT `GatewaySigner::digest`'s 32-byte Solidity word — see
+/// `withdraw_auth_digest`):
+/// ```text
+/// offset  len  field
+///      0   25  "dark-perp:rebind-deposit:"  (ASCII, no trailing space)
+///     25    8  chain_id        u64 BE
+///     33   20  vault
+///     53   32  owner
+///     85    8  rebind_counter  u64 BE
+///     93   20  old_addr
+///    113   20  new_addr        (total preimage: 133 bytes)
+/// ```
+/// Layout frozen by `auth_digests_match_known_answer_vectors`.
+///
+/// Binding BOTH addresses (in this order) stops a signature authorizing old→new being
+/// reused to authorize old→someone-else, or replayed in reverse. `rebind_counter` —
+/// the account's rebind generation, incremented on every ACCEPTED rebind
+/// (`Account.rebind_counter`, enforced by `account_set_deposit_address`) — closes
+/// the CYCLE replay the address pair alone cannot: without it, a signature over
+/// `(chain, vault, owner, A, B)` stays valid ANY time the bound address is `A` again.
+/// Bind A → rotate A→B → later rotate B→A, and the ORIGINAL A→B signature replays,
+/// forcing the binding back to B. That failure is worst exactly when rebinding matters
+/// most — rotating away from a COMPROMISED address, whose old rotation signatures the
+/// attacker may hold. With the counter, every accepted rebind bumps the generation, so
+/// each signature authorizes at most one specific rotation and then dies.
+fn rebind_auth_digest(
+    chain_id: u64,
+    vault: &[u8; 20],
+    owner: &PubKey,
+    rebind_counter: u64,
+    old_addr: &[u8; 20],
+    new_addr: &[u8; 20],
+) -> [u8; 32] {
+    use sha3::{Digest as _, Keccak256 as RawKeccak};
+    let mut h = RawKeccak::new();
+    h.update(b"dark-perp:rebind-deposit:");
+    h.update(chain_id.to_be_bytes());
+    h.update(vault);
+    h.update(owner);
+    h.update(rebind_counter.to_be_bytes());
+    h.update(old_addr);
+    h.update(new_addr);
+    h.finalize().into()
+}
+
+/// The three prehashes a gateway-local authorization signature may cover, in the
+/// order they are tried. SECURITY INVARIANT: every candidate is a deterministic
+/// transform of the SAME caller-independent digest — no attacker-chosen message
+/// ever enters a preimage — so accepting any of them leaves the authorization
+/// semantics unchanged: a valid signature still proves the signer consented to
+/// exactly the fields that digest binds. Shared by the deposit-address bind
+/// (`deposit_bind_digest`) and by withdrawal authorization (`withdraw_auth_digest`,
+/// `lp_withdraw_auth_digest`, `rebind_auth_digest`).
+fn eip191_prehash_candidates(digest: &[u8; 32]) -> [[u8; 32]; 3] {
     use sha3::{Digest as _, Keccak256 as RawKeccak};
     // (a) The raw digest itself. WHY: CLI signers (`cast wallet sign --no-hash`)
     //     sign the 32 digest bytes directly — the original form, kept byte-identical.
@@ -4342,11 +4802,21 @@ async fn post_v1_deposit_address(
             return err400("bad signature (expected 65-byte 0x hex r‖s‖v)".into()).into_response()
         }
     };
+    let current_sig = match req.current_signature.as_deref() {
+        Some(s) => match parse_hex65(s) {
+            Some(v) => Some(v),
+            None => {
+                return err400("bad `currentSignature` (expected 65-byte 0x hex r‖s‖v)".into())
+                    .into_response()
+            }
+        },
+        None => None,
+    };
     match app
         .gw
         .lock()
         .await
-        .account_set_deposit_address(&key, addr, &sig)
+        .account_set_deposit_address(&key, addr, &sig, current_sig.as_ref())
     {
         Ok(()) => Json(serde_json::json!({ "depositAddress": hex0x(&addr) })).into_response(),
         Err(e) => err400(e).into_response(),
@@ -4479,11 +4949,24 @@ async fn post_v1_withdraw(
         Some(a) => a,
         None => return err400("bad `to` address (expected 0x + 40 hex)".into()).into_response(),
     };
+    // SEC-021: every withdrawal must carry its authorization nonce + signature —
+    // the engine method verifies them; the handler only refuses absent/unparseable
+    // fields early with a clear message.
+    let nonce = match req.nonce {
+        Some(n) => n,
+        None => return err400("`nonce` is required".into()).into_response(),
+    };
+    let sig = match req.signature.as_deref().and_then(parse_hex65) {
+        Some(s) => s,
+        None => {
+            return err400("`signature` is required (65-byte 0x hex r‖s‖v)".into()).into_response()
+        }
+    };
     let r = {
         app.gw
             .lock()
             .await
-            .account_withdraw(&key, req.market_id, amount, to)
+            .account_withdraw(&key, req.market_id, amount, to, nonce, &sig)
     };
     match r {
         Ok(w) => Json(serde_json::json!({
@@ -4571,12 +5054,24 @@ async fn post_v1_lp_withdraw(
         Ok(v) => v,
         Err(_) => return err400("bad shares".into()).into_response(),
     };
-    let r = {
-        let mut gw = app.gw.lock().await;
-        match gw.accounts.get(&key).map(|a| a.wallet) {
-            Some(w) => gw.lp_withdraw(&key, &w, shares),
-            None => Err("unknown account".into()),
+    // SEC-021: every LP withdrawal must carry its authorization nonce + signature —
+    // the engine method verifies them; the handler only refuses absent/unparseable
+    // fields early with a clear message.
+    let nonce = match req.nonce {
+        Some(n) => n,
+        None => return err400("`nonce` is required".into()).into_response(),
+    };
+    let sig = match req.signature.as_deref().and_then(parse_hex65) {
+        Some(s) => s,
+        None => {
+            return err400("`signature` is required (65-byte 0x hex r‖s‖v)".into()).into_response()
         }
+    };
+    let r = {
+        app.gw
+            .lock()
+            .await
+            .account_lp_withdraw(&key, shares, nonce, &sig)
     };
     match r {
         Ok(value) => {
@@ -4842,12 +5337,13 @@ async fn get_v1_openapi() -> impl IntoResponse {
         "components": { "securitySchemes": { "ApiKey": { "type": "apiKey", "in": "header", "name": "X-Api-Key" } } },
         "paths": {
             "/v1/accounts": { "post": { "summary": "Register an account (optional { signer } for caller-signed)", "responses": ok("apiKey + owner + callerSigned") } },
-            "/v1/accounts/me": { "get": { "summary": "Own account (balance, positions, nextNonce)", "responses": ok("account"), "security": auth["security"] } },
+            "/v1/accounts/me": { "get": { "summary": "Own account (balance, positions, nextNonce; SEC-021 withdrawal-auth state: depositAddress, callerSigned, nextWithdrawNonce, rebindCounter, chainId, vault — read these from here, never hardcode)", "responses": ok("account"), "security": auth["security"] } },
             "/v1/accounts/deposit": { "post": { "summary": "Deposit collateral (demo/in-memory credit)", "security": auth["security"],
                 "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["marketId","amount"], "properties": { "marketId": { "type": "integer" }, "amount": { "type": "string" } } } } } },
                 "responses": ok("updated account") } },
-            "/v1/accounts/deposit/address": { "post": { "summary": "Bind the external EOA you fund USDC from (ownership-proven)", "security": auth["security"],
-                "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["address","signature"], "properties": { "address": { "type": "string" }, "signature": { "type": "string", "description": "secp256k1 sig recovering to address over the bind digest keccak256(\"dark-perp:bind-deposit:\"‖owner‖address) — raw, or EIP-191 personal_sign over its 32 bytes or its 0x-hex string" } } } } } },
+            "/v1/accounts/deposit/address": { "post": { "summary": "Bind the external EOA you fund USDC from (ownership-proven; a REBIND additionally requires currentSignature)", "security": auth["security"],
+                "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["address","signature"], "properties": { "address": { "type": "string" }, "signature": { "type": "string", "description": "secp256k1 sig recovering to address over the bind digest keccak256(\"dark-perp:bind-deposit:\"‖owner‖address) — raw, or EIP-191 personal_sign over its 32 bytes or its 0x-hex string" },
+                    "currentSignature": { "type": "string", "description": "REBIND ONLY (SEC-021b): the CURRENTLY bound address's sig over the rebind digest keccak256(\"dark-perp:rebind-deposit:\"‖chainId(u64 BE)‖vault‖owner‖rebindCounter(u64 BE)‖oldAddr‖newAddr) — rebindCounter from GET /v1/accounts/me; same three accepted shapes as `signature`. Absent/ignored on a first-time bind; without it a rebind is refused. There is NO operator or timelock override: losing the bound key permanently freezes the binding" } } } } } },
                 "responses": ok("bound address") } },
             "/v1/accounts/deposit/authorize": { "post": { "summary": "Authorize an L1 deposit (SEC-019): get ownerCommit + gateway sig for deposit(amount, ownerCommit, sig)", "security": auth["security"],
                 "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["from","amount"], "properties": { "from": { "type": "string", "description": "the L1 address the deposit is sent from (your bound deposit address)" }, "amount": { "type": "string", "description": "USDC base units to deposit" } } } } } },
@@ -4855,10 +5351,21 @@ async fn get_v1_openapi() -> impl IntoResponse {
             "/v1/accounts/deposit/onchain": { "post": { "summary": "Credit a real on-chain USDC deposit by tx hash", "security": auth["security"],
                 "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["txHash","marketId"], "properties": { "txHash": { "type": "string" }, "marketId": { "type": "integer" } } } } } },
                 "responses": ok("credited + account") } },
-            "/v1/accounts/withdraw": { "post": { "summary": "Withdraw USDC (record an authorized withdrawal)", "security": auth["security"],
-                "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["marketId","amount","to"], "properties": { "marketId": { "type": "integer" }, "amount": { "type": "string" }, "to": { "type": "string" } } } } } },
+            "/v1/accounts/withdraw": { "post": { "summary": "Withdraw USDC (record an authorized withdrawal; SEC-021: every withdrawal is wallet-signed — the API key alone can never move funds)", "security": auth["security"],
+                "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["marketId","amount","to","nonce","signature"], "properties": { "marketId": { "type": "integer" }, "amount": { "type": "string" }, "to": { "type": "string", "description": "destination L1 address. Server-custody accounts (no registered signer) MUST set this to their bound deposit address; caller-signed accounts may use any address" },
+                    "nonce": { "type": "integer", "description": "strictly-increasing withdrawal auth nonce, shared with /v1/lp/withdraw — use nextWithdrawNonce from GET /v1/accounts/me; committed only when the withdrawal succeeds (a rejected request does not burn it)" },
+                    "signature": { "type": "string", "description": "65-byte secp256k1 sig (r‖s‖v) over the withdraw auth digest keccak256(\"dark-perp:withdraw:\"‖chainId(u64 BE)‖vault(20)‖owner(32)‖marketId(u64 BE)‖amount(i128 BE)‖to(20)‖nonce(u64 BE)), recovering to the registered signer (caller-signed) or else the bound deposit address. Accepted over any of THREE shapes: the raw 32-byte digest, EIP-191 personal_sign over those 32 bytes, or EIP-191 over their lowercase 0x-hex string — so both CLI signers and browser-wallet personal_sign work. chainId/vault/owner: read them from GET /v1/accounts/me" } } } } } },
                 "responses": ok("recorded withdrawal + leaf") } },
-            "/v1/accounts/withdrawals": { "get": { "summary": "Own withdrawals + claim proofs", "security": auth["security"], "responses": ok("vault + withdrawals[]") } },
+            "/v1/accounts/withdrawals": { "get": { "summary": "Own withdrawals + claim proofs (NOTE: this endpoint's `vault` echoes the raw L1_VAULT env string, possibly EIP-55 mixed-case; for building signing digests use the normalized lowercase `vault` from GET /v1/accounts/me — those are the exact bytes hashed)", "security": auth["security"], "responses": ok("vault + withdrawals[]") } },
+            "/v1/lp": { "get": { "summary": "LP pool stats + own stake", "security": auth["security"], "responses": ok("{ tvl, navPerShare, totalShares, myShares, myValue }") } },
+            "/v1/lp/deposit": { "post": { "summary": "Stake USDC into the counterparty pool (mint LP shares)", "security": auth["security"],
+                "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["amount"], "properties": { "amount": { "type": "string", "description": "USDC base units (1e6-scaled string) staked from the account's market-0 balance" } } } } } },
+                "responses": ok("{ sharesMinted }") } },
+            "/v1/lp/withdraw": { "post": { "summary": "Burn LP shares for their pool value (SEC-021: wallet-signed like /v1/accounts/withdraw; pays into the account's OWN market-0 balance — no `to`)", "security": auth["security"],
+                "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["shares","nonce","signature"], "properties": { "shares": { "type": "string" },
+                    "nonce": { "type": "integer", "description": "strictly-increasing withdrawal auth nonce, shared with /v1/accounts/withdraw — use nextWithdrawNonce from GET /v1/accounts/me" },
+                    "signature": { "type": "string", "description": "65-byte secp256k1 sig (r‖s‖v) over the LP withdraw auth digest keccak256(\"dark-perp:lp-withdraw:\"‖chainId(u64 BE)‖vault(20)‖owner(32)‖shares(u128 BE)‖nonce(u64 BE)), recovering to the registered signer (caller-signed) or else the bound deposit address — same three accepted shapes as /v1/accounts/withdraw" } } } } } },
+                "responses": ok("{ withdrawnValue }") } },
             "/v1/orders": {
                 "post": { "summary": "Place an order", "security": auth["security"], "requestBody": order_body, "responses": { "200": { "description": "signed receipt" }, "400": { "description": "rejected" }, "429": { "description": "rate limit (10/s)" } } },
                 "get": { "summary": "Own orders + finality", "security": auth["security"], "responses": ok("orders") }
@@ -5029,6 +5536,12 @@ async fn post_lp_deposit(
 #[derive(Deserialize)]
 struct LpWithdrawReq {
     shares: String,
+    /// SEC-021: required on `/v1/lp/withdraw`. Ignored by the legacy demo handler,
+    /// which is omitted in production (audit DP-010).
+    #[serde(default)]
+    nonce: Option<u64>,
+    #[serde(default)]
+    signature: Option<String>,
 }
 /// Demo-user LP withdraw: burns `shares` for their current value out of the pool.
 async fn post_lp_withdraw(
@@ -5320,6 +5833,19 @@ fn measurement_matches_pin(prod: bool, attested: Option<[u8; 32]>, pin: Option<[
     }
 }
 
+/// SEC-021 (Task-2 review Finding 3): whether the gateway may boot given its deployment
+/// vault binding. In production posture the vault address must be real — `L1_VAULT` set
+/// and non-zero. `production_mode()` is `l1_enabled || DARKPERP_PROD=1`, so a prod-posture
+/// gateway CAN run without an L1 bridge; if `L1_VAULT` is then unset (or explicitly zero),
+/// `GatewaySigner::from_env` falls back to `DEV_FALLBACK_VAULT` and every SEC-021
+/// withdrawal/rebind digest binds to `(84532, 0x00…00)` — byte-identical to the unit-test
+/// identity and to every other such deployment, making the cross-deployment replay
+/// protection vacuous. Mirrors `oracle_signer_ok_for_mode`; the demo/dev build boots
+/// either way.
+fn vault_binding_ok_for_mode(prod: bool, vault: [u8; 20]) -> bool {
+    !prod || vault != [0u8; 20]
+}
+
 /// Assemble the HTTP router. In production mode the legacy, UNAUTHENTICATED `/api/*`
 /// mutation routes are omitted (audit DP-010) — only the read-only demo state/websocket
 /// and the API-key-authenticated `/v1` surface are exposed.
@@ -5570,6 +6096,40 @@ async fn main() {
              unset) — demo/test only, never production"
         );
     }
+    // SEC-019 (Task 7b): load the deposit-authorization signer. A SET-but-malformed
+    // GATEWAY_SIGNER_KEY fails closed with a clear message (never silently signs with
+    // the demo key); unset falls back to the demo key for the demo build. Loaded BEFORE
+    // the state restore below (SEC-021 review Finding 8): `from_env` reads only the
+    // environment, and hoisting it lets the SEC-021 deployment binding be applied
+    // beside `gw.prod` — so no code between restore and wiring can ever observe the
+    // restore-default chain_id/vault instead of the environment's.
+    let gateway_signer = match GatewaySigner::from_env() {
+        Ok(gs) => {
+            println!(
+                "[sec-019] gateway deposit-authorization signer address {} (must equal the \
+                 deployed CollateralVault.gatewaySigner)",
+                hex0x(&gs.address())
+            );
+            gs
+        }
+        Err(e) => {
+            eprintln!("[sec-019] REFUSING to start: {e}");
+            std::process::exit(1);
+        }
+    };
+    // SEC-021 (review Finding 3): in production the deployment binding must be real.
+    if !vault_binding_ok_for_mode(prod, gateway_signer.vault) {
+        eprintln!(
+            "[sec-021] REFUSING to start: in production L1_VAULT must be set to the deployed \
+             CollateralVault address (non-zero). Without it, every withdrawal/rebind \
+             authorization digest binds to the dev fallback identity (chain 84532 / zero \
+             vault) — byte-identical to every other such deployment and to the unit-test \
+             identity — so the cross-deployment replay protection is vacuous. Set L1_VAULT, \
+             or drop the production posture (no L1 bridge and DARKPERP_PROD unset) to run \
+             the demo build."
+        );
+        std::process::exit(1);
+    }
     // Sealed state persistence: DARKPERP_STATE=<path> restores the engine across
     // restarts. A present-but-unopenable snapshot is fail-closed (never silently
     // wipe balances) — the operator deletes the file to consciously boot fresh.
@@ -5606,6 +6166,13 @@ async fn main() {
         _ => Gw::boot(),
     };
     gw.prod = prod;
+    // SEC-021: bind withdrawal authorization to this deployment — the same env source
+    // the deposit-authorization signer uses, so both digest families agree on chain id
+    // + vault by construction. Set HERE, beside `prod` (review Finding 8): the signer
+    // is loaded before `gw` exists, so a future pre-`App` reader sees the environment's
+    // identity, never the restore default.
+    gw.chain_id = gateway_signer.chain_id;
+    gw.vault = gateway_signer.vault;
     // Task 5: with a prover configured, the tick loop's SETTLE_TICKS simulation is OFF —
     // finality advances only when a window's proof verifies on L1. Set BEFORE the
     // boot-recovery block below, so a roll-forward re-commit already runs under the
@@ -5815,23 +6382,6 @@ async fn main() {
             }
         }
     }
-    // SEC-019 (Task 7b): load the deposit-authorization signer. A SET-but-malformed
-    // GATEWAY_SIGNER_KEY fails closed with a clear message (never silently signs with
-    // the demo key); unset falls back to the demo key for the demo build.
-    let gateway_signer = match GatewaySigner::from_env() {
-        Ok(gs) => {
-            println!(
-                "[sec-019] gateway deposit-authorization signer address {} (must equal the \
-                 deployed CollateralVault.gatewaySigner)",
-                hex0x(&gs.address())
-            );
-            gs
-        }
-        Err(e) => {
-            eprintln!("[sec-019] REFUSING to start: {e}");
-            std::process::exit(1);
-        }
-    };
     let app = Arc::new(App {
         gw: Mutex::new(gw),
         tx: tx.clone(),
@@ -7035,6 +7585,12 @@ mod tests {
             )
             .unwrap();
         gw.mkts[0].px += 1234; // market dynamics must survive too
+                               // SEC-021 (review Finding 7): scribble on the runtime-only deployment binding
+                               // BEFORE snapshotting — restore must NOT carry it (serde-skip) and must
+                               // re-apply the shared dev fallback via the `default` fns, exactly as a fresh
+                               // boot() would (main() then overwrites both from GatewaySigner).
+        gw.chain_id = 31_337;
+        gw.vault = [0xEEu8; 20];
         let root_before = gw.state_root_hex();
         let px_before = gw.mkts[0].px;
         let log_head_before = gw.order_log.head();
@@ -7083,6 +7639,17 @@ mod tests {
             restored.order_log.recipient(),
             gw.order_log.recipient(),
             "log pubkey re-derived from the seed, not persisted"
+        );
+        // SEC-021 (review Finding 7): the deployment binding is runtime-only — the
+        // scribbled values above must NOT survive the round trip; the restore re-applies
+        // the shared dev fallback (dev_fallback_chain_id/dev_fallback_vault).
+        assert_eq!(
+            restored.chain_id, DEV_FALLBACK_CHAIN_ID,
+            "chain_id not persisted; restore re-applies the dev fallback"
+        );
+        assert_eq!(
+            restored.vault, DEV_FALLBACK_VAULT,
+            "vault not persisted; restore re-applies the dev fallback"
         );
     }
 
@@ -7301,6 +7868,57 @@ mod tests {
         assert!(
             gw.account_deposit(&key, 0, 20_000 * QUOTE_SCALE).is_err(),
             "production build must reject self-service (unbacked) deposits",
+        );
+    }
+
+    // SEC-021 (final-review M-c): the whole server-custody defence composes with one
+    // load-bearing invariant — an UNBOUND account can hold no funds in production. The
+    // FIRST bind is deliberately free for a bare API key (only the NEW address signs,
+    // SEC-021b covers only rebinds), and that is harmless griefing exactly because
+    // neither crediting path will fund the account first: the self-service credit is
+    // prod-disabled (DP-001) and the on-chain credit requires a binding. Nothing else
+    // pins that composition, so pin it here: both paths must refuse an unbound
+    // account, each on its stated ground, and no balance may appear.
+    #[test]
+    fn prod_unbound_account_cannot_be_credited_by_either_path() {
+        let mut gw = Gw::boot();
+        gw.prod = true;
+        let (key, owner) = gw.register_account(None); // no signer, never bound
+
+        // Path 1: the self-service credit is prod-disabled outright (DP-001).
+        let err = gw
+            .account_deposit(&key, 0, 20_000 * QUOTE_SCALE)
+            .expect_err("prod self-service deposit must be refused");
+        assert!(
+            err.contains("disabled in production"),
+            "unexpected error: {err}"
+        );
+
+        // Path 2: the on-chain credit requires a binding. Everything ELSE about this
+        // confirm is valid — a stored authorization whose blind reproduces the
+        // on-chain ownerCommit, a positive amount, the next-in-line deposit id — so
+        // the ONLY check refusing it is the missing binding (drop that check and this
+        // credit lands, failing the test).
+        let blind = [0x11u8; 32];
+        let commit = owner_commit(&owner, &blind);
+        gw.accounts
+            .get_mut(&key)
+            .unwrap()
+            .deposit_authorizations
+            .insert(commit, blind);
+        let next_id = gw.seq.state.consumed_deposit_count;
+        let err = gw
+            .account_confirm_deposit(&key, [0x22u8; 20], commit, 1_000, next_id, "0xtx", 0)
+            .expect_err("an unbound account must not be creditable from a real deposit");
+        assert!(
+            err.contains("Bind a deposit address first"),
+            "unexpected error: {err}"
+        );
+        // The invariant itself: the unbound account still holds nothing.
+        assert_eq!(
+            gw.market_free_of(&owner, 0),
+            0,
+            "an unbound account must hold no funds in production"
         );
     }
 
@@ -7552,6 +8170,71 @@ mod tests {
             !measurement_matches_pin(true, None, Some(m)),
             "prod requires a verified measurement"
         );
+    }
+
+    // SEC-021 (Task-2 review Finding 3): production must refuse the zero-vault dev
+    // fallback — a prod-posture gateway with no L1 bridge and no L1_VAULT would bind
+    // every withdrawal/rebind digest to (84532, 0x00…00), byte-identical to the
+    // unit-test identity and to every other such deployment, so the cross-deployment
+    // replay protection would be vacuous.
+    #[test]
+    fn production_requires_a_real_vault_binding() {
+        assert!(
+            !vault_binding_ok_for_mode(true, [0u8; 20]),
+            "production must reject the zero-vault fallback (L1_VAULT unset or zero)"
+        );
+        assert!(
+            vault_binding_ok_for_mode(true, [0x22u8; 20]),
+            "production boots with a real vault address"
+        );
+        assert!(
+            vault_binding_ok_for_mode(false, [0u8; 20]),
+            "demo build boots on the zero-vault fallback"
+        );
+        assert!(
+            vault_binding_ok_for_mode(false, [0x22u8; 20]),
+            "demo build boots with a real vault too"
+        );
+        // the gate's zero test IS the shared fallback const — if the fallback ever
+        // changes, this keeps the gate honest.
+        assert_eq!(DEV_FALLBACK_VAULT, [0u8; 20]);
+    }
+
+    // SEC-021 (final-review M-e): the deployment-identity env vars follow the same
+    // convention as GATEWAY_SIGNER_KEY — UNSET ⇒ dev fallback, SET-but-malformed ⇒
+    // fail closed. Before this, L1_CHAIN_ID=0x14a34 silently became 84532 and a
+    // malformed L1_VAULT silently became the zero address, which the prod boot gate
+    // then reported as "L1_VAULT must be set" (it WAS set — just malformed).
+    #[test]
+    fn deployment_identity_env_vars_fall_back_only_when_unset() {
+        // unset ⇒ the documented dev fallback (unchanged behavior)
+        assert_eq!(parse_l1_chain_id(None), Ok(DEV_FALLBACK_CHAIN_ID));
+        assert_eq!(parse_l1_vault(None), Ok(DEV_FALLBACK_VAULT));
+        // set + well-formed ⇒ parsed (the trim is preserved)
+        assert_eq!(parse_l1_chain_id(Some("8453".into())), Ok(8453));
+        assert_eq!(parse_l1_chain_id(Some(" 84532 ".into())), Ok(84532));
+        let addr = "0x00000000000000000000000000000000000000aa";
+        assert_eq!(
+            parse_l1_vault(Some(addr.into())),
+            Ok(parse_addr20_hex(addr).unwrap())
+        );
+        // set + malformed ⇒ Err naming the var, NEVER the silent fallback. The hex
+        // chain-id form is the documented foot-gun (Base Sepolia's 84532 = 0x14a34).
+        for bad in ["0x14a34", "", "84532n", "eighty"] {
+            let err = parse_l1_chain_id(Some(bad.into()))
+                .expect_err("a set-but-malformed L1_CHAIN_ID must fail closed");
+            assert!(err.contains("L1_CHAIN_ID"), "unexpected error: {err}");
+        }
+        for bad in [
+            "not-an-address",
+            "0x1234",
+            "",
+            "0xgg000000000000000000000000000000000000gg",
+        ] {
+            let err = parse_l1_vault(Some(bad.into()))
+                .expect_err("a set-but-malformed L1_VAULT must fail closed");
+            assert!(err.contains("L1_VAULT"), "unexpected error: {err}");
+        }
     }
 
     #[test]
@@ -7908,14 +8591,16 @@ mod tests {
         let wrong = SigningKey::from_bytes((&[4u8; 32]).into()).unwrap();
         let bad = sign(&wrong, &deposit_bind_digest(&owner, &addr));
         assert!(
-            gw.account_set_deposit_address(&key, addr, &bad).is_err(),
+            gw.account_set_deposit_address(&key, addr, &bad, None)
+                .is_err(),
             "a proof not from the bound address is rejected",
         );
 
         // the address's own key proves control → bind succeeds
         let good = sign(&eoa, &deposit_bind_digest(&owner, &addr));
         assert!(
-            gw.account_set_deposit_address(&key, addr, &good).is_ok(),
+            gw.account_set_deposit_address(&key, addr, &good, None)
+                .is_ok(),
             "valid ownership proof accepted",
         );
 
@@ -7923,7 +8608,8 @@ mod tests {
         let (key2, owner2) = gw.register_account(None);
         let good2 = sign(&eoa, &deposit_bind_digest(&owner2, &addr));
         assert!(
-            gw.account_set_deposit_address(&key2, addr, &good2).is_err(),
+            gw.account_set_deposit_address(&key2, addr, &good2, None)
+                .is_err(),
             "an address already bound to another account is rejected",
         );
     }
@@ -7980,7 +8666,8 @@ mod tests {
         let digest = deposit_bind_digest(&owner, &addr);
         let sig = sign(&eoa, &eip191_prehash(&digest));
         assert!(
-            gw.account_set_deposit_address(&key, addr, &sig).is_ok(),
+            gw.account_set_deposit_address(&key, addr, &sig, None)
+                .is_ok(),
             "EIP-191 personal_sign over the raw digest bytes accepted",
         );
 
@@ -7994,7 +8681,8 @@ mod tests {
         assert_eq!(hex_msg.len(), 66, "sanity: 0x + 64 hex chars");
         let sig2 = sign(&eoa2, &eip191_prehash(hex_msg.as_bytes()));
         assert!(
-            gw.account_set_deposit_address(&key2, addr2, &sig2).is_ok(),
+            gw.account_set_deposit_address(&key2, addr2, &sig2, None)
+                .is_ok(),
             "EIP-191 personal_sign over the digest's hex string accepted",
         );
 
@@ -8013,10 +8701,983 @@ mod tests {
         for (i, prehash) in forms.iter().enumerate() {
             let bad = sign(&wrong, prehash);
             assert!(
-                gw.account_set_deposit_address(&key3, addr3, &bad).is_err(),
+                gw.account_set_deposit_address(&key3, addr3, &bad, None)
+                    .is_err(),
                 "wrong-key signature rejected for digest form {i}",
             );
         }
+    }
+
+    /// Shared by the SEC-021b rebind tests below: sign a 32-byte digest directly
+    /// (the raw-digest shape (a) of `eip191_prehash_candidates`).
+    fn sign_digest(sk: &k256::ecdsa::SigningKey, digest: &[u8; 32]) -> [u8; 65] {
+        let (sig, recid) = sk.sign_prehash_recoverable(digest).unwrap();
+        let mut s = [0u8; 65];
+        s[..64].copy_from_slice(&sig.to_bytes());
+        s[64] = 27 + recid.to_byte();
+        s
+    }
+    /// The Ethereum address of a secp256k1 key (keccak of the uncompressed point).
+    fn eth_addr(sk: &k256::ecdsa::SigningKey) -> [u8; 20] {
+        use sha3::{Digest as _, Keccak256 as RawKeccak};
+        let point = sk.verifying_key().to_encoded_point(false);
+        let hash = RawKeccak::digest(&point.as_bytes()[1..]);
+        let mut a = [0u8; 20];
+        a.copy_from_slice(&hash[12..]);
+        a
+    }
+
+    /// SEC-021 fixture: credit an account through the same dev-mode path the
+    /// pre-existing withdrawal tests use (`account_deposit`, the DP-001-guarded
+    /// self-service credit — enabled because tests boot non-prod).
+    fn fund_test_account(gw: &mut Gw, key: &[u8; 32], amount: i128) {
+        gw.account_deposit(key, 0, amount).unwrap();
+    }
+
+    /// SEC-021 fixture for tests whose SUBJECT is not withdrawal authorization:
+    /// register a CALLER-SIGNED account (its registered signer authorizes its
+    /// withdrawals and the destination stays free, so each test keeps its original
+    /// `to` values and assertions) and return the key material to sign with.
+    fn register_withdrawer(gw: &mut Gw) -> ([u8; 32], k256::ecdsa::SigningKey) {
+        let sk = k256::ecdsa::SigningKey::from_slice(&[0x51u8; 32]).unwrap();
+        let (key, _owner) = gw.register_account(Some(eth_addr(&sk)));
+        (key, sk)
+    }
+
+    /// SEC-021 fixture: a withdrawal through the REAL authorization path — computes
+    /// `withdraw_auth_digest` for the account's next strictly-increasing auth nonce
+    /// and signs it with `sk`. No exemption anywhere: `account_withdraw` runs its
+    /// full destination/nonce/signature/balance checks on every call.
+    fn signed_withdraw(
+        gw: &mut Gw,
+        key: &[u8; 32],
+        sk: &k256::ecdsa::SigningKey,
+        market: u64,
+        amount: i128,
+        to: [u8; 20],
+    ) -> Result<Withdrawal, String> {
+        let (owner, nonce) = {
+            let a = gw.accounts.get(key).unwrap();
+            (a.wallet.owner, a.last_withdraw_nonce + 1)
+        };
+        let sig = sign_digest(
+            sk,
+            &withdraw_auth_digest(gw.chain_id, &gw.vault, &owner, market, amount, &to, nonce),
+        );
+        gw.account_withdraw(key, market, amount, to, nonce, &sig)
+    }
+
+    /// SEC-021b: an attacker holding ONLY the API key must not be able to move the
+    /// account's deposit-address binding to an address they control. Before the fix,
+    /// account_set_deposit_address proved control only of the NEW address and
+    /// overwrote an existing binding unconditionally — so a leaked key plus the
+    /// attacker's own signature was enough to redirect every future withdrawal.
+    #[test]
+    fn leaked_api_key_alone_cannot_rebind_deposit_address() {
+        use k256::ecdsa::SigningKey;
+        let mut gw = Gw::boot();
+        let victim_sk = SigningKey::from_slice(&[9u8; 32]).unwrap();
+        let victim_eoa = eth_addr(&victim_sk);
+        let attacker_sk = SigningKey::from_slice(&[0xA5u8; 32]).unwrap();
+        let attacker_eoa = eth_addr(&attacker_sk);
+
+        let (key, owner) = gw.register_account(None);
+
+        // Victim binds their own address — one signature, unchanged flow.
+        let bind_sig = sign_digest(&victim_sk, &deposit_bind_digest(&owner, &victim_eoa));
+        gw.account_set_deposit_address(&key, victim_eoa, &bind_sig, None)
+            .expect("first bind succeeds");
+
+        // Attacker has the API key and their own key. They can sign for their OWN
+        // address trivially — that was the whole bypass.
+        let attacker_bind_sig =
+            sign_digest(&attacker_sk, &deposit_bind_digest(&owner, &attacker_eoa));
+        let err = gw
+            .account_set_deposit_address(&key, attacker_eoa, &attacker_bind_sig, None)
+            .expect_err("rebind without the current address's signature must be refused");
+        assert!(
+            err.contains("rebinding requires"),
+            "expected the MISSING-`currentSignature` rejection (not the bad-signature one): {err}"
+        );
+
+        // Binding is untouched.
+        assert_eq!(
+            gw.accounts.get(&key).unwrap().deposit_address,
+            Some(victim_eoa)
+        );
+
+        // A rebind signed by the CURRENT address is allowed (legitimate rotation).
+        let rotate_sig = sign_digest(
+            &victim_sk,
+            &rebind_auth_digest(
+                gw.chain_id,
+                &gw.vault,
+                &owner,
+                0,
+                &victim_eoa,
+                &attacker_eoa,
+            ),
+        );
+        gw.account_set_deposit_address(&key, attacker_eoa, &attacker_bind_sig, Some(&rotate_sig))
+            .expect("rebind authorized by the current address succeeds");
+        assert_eq!(
+            gw.accounts.get(&key).unwrap().deposit_address,
+            Some(attacker_eoa)
+        );
+        assert_eq!(
+            gw.accounts.get(&key).unwrap().rebind_counter,
+            1,
+            "rebind burns the authorization"
+        );
+    }
+
+    /// SEC-021b: a rebind authorization is SINGLE-USE. Without the counter in the digest,
+    /// a signature over (owner, A, B) stays valid any time the bound address is A — so a
+    /// user who rotates A->B and later back to A hands anyone holding the old signature
+    /// (plus a leaked API key) the power to force the binding back to B. That is worst
+    /// exactly when it matters most: rotating away from a compromised address.
+    #[test]
+    fn a_rebind_authorization_cannot_be_replayed_after_returning_to_the_old_address() {
+        use k256::ecdsa::SigningKey;
+        let mut gw = Gw::boot();
+        let a_sk = SigningKey::from_slice(&[9u8; 32]).unwrap();
+        let b_sk = SigningKey::from_slice(&[0xB5u8; 32]).unwrap();
+        let a = eth_addr(&a_sk);
+        let b = eth_addr(&b_sk);
+        let (key, owner) = gw.register_account(None);
+        let bind_a = sign_digest(&a_sk, &deposit_bind_digest(&owner, &a));
+        let bind_b = sign_digest(&b_sk, &deposit_bind_digest(&owner, &b));
+        gw.account_set_deposit_address(&key, a, &bind_a, None)
+            .unwrap();
+
+        // Rotate A -> B (counter 0), then B -> A (counter 1).
+        let a_to_b = sign_digest(
+            &a_sk,
+            &rebind_auth_digest(gw.chain_id, &gw.vault, &owner, 0, &a, &b),
+        );
+        gw.account_set_deposit_address(&key, b, &bind_b, Some(&a_to_b))
+            .unwrap();
+        let b_to_a = sign_digest(
+            &b_sk,
+            &rebind_auth_digest(gw.chain_id, &gw.vault, &owner, 1, &b, &a),
+        );
+        gw.account_set_deposit_address(&key, a, &bind_a, Some(&b_to_a))
+            .unwrap();
+        assert_eq!(gw.accounts.get(&key).unwrap().deposit_address, Some(a));
+        assert_eq!(gw.accounts.get(&key).unwrap().rebind_counter, 2);
+
+        // The account is bound to A again — replay the ORIGINAL A->B authorization.
+        let err = gw
+            .account_set_deposit_address(&key, b, &bind_b, Some(&a_to_b))
+            .expect_err("a spent rebind authorization must not work a second time");
+        assert!(
+            err.contains("rebind not authorized"),
+            "unexpected error: {err}"
+        );
+        assert_eq!(
+            gw.accounts.get(&key).unwrap().deposit_address,
+            Some(a),
+            "binding unchanged"
+        );
+        // A REJECTED rebind must not advance the generation. If it did, an attacker
+        // holding only the API key could spam garbage `currentSignature`s to burn
+        // the generation and silently invalidate a legitimate rotation signature
+        // the user already holds — a rotation DoS, worst exactly when the user is
+        // rotating away from a compromised address.
+        assert_eq!(
+            gw.accounts.get(&key).unwrap().rebind_counter,
+            2,
+            "a rejected rebind must not burn the generation"
+        );
+    }
+
+    /// SEC-021b: re-binding the SAME already-bound address is an idempotent no-op —
+    /// it succeeds without a `currentSignature`, leaves the binding unchanged, and
+    /// must NOT advance `rebind_counter` (only an ACCEPTED move to a DIFFERENT
+    /// address burns a generation).
+    #[test]
+    fn rebinding_the_same_address_is_a_no_op_and_burns_no_generation() {
+        use k256::ecdsa::SigningKey;
+        let mut gw = Gw::boot();
+        let sk = SigningKey::from_slice(&[9u8; 32]).unwrap();
+        let a = eth_addr(&sk);
+        let (key, owner) = gw.register_account(None);
+        let bind = sign_digest(&sk, &deposit_bind_digest(&owner, &a));
+        gw.account_set_deposit_address(&key, a, &bind, None)
+            .expect("first bind succeeds");
+
+        gw.account_set_deposit_address(&key, a, &bind, None)
+            .expect("re-binding the already-bound address is an idempotent Ok");
+        let acct = gw.accounts.get(&key).unwrap();
+        assert_eq!(acct.deposit_address, Some(a), "binding unchanged");
+        assert_eq!(
+            acct.rebind_counter, 0,
+            "an idempotent same-address re-bind must not burn a generation"
+        );
+    }
+
+    /// SEC-021b ordering pin: the proof-of-control check runs BEFORE the idempotent
+    /// same-address short-circuit. Hoisted above the proof, that short-circuit would
+    /// hand an API-key-only attacker an oracle: call with a GUESSED address and a
+    /// garbage signature — an `Ok` confirms the guess is the bound address, without
+    /// controlling it or holding any signature at all.
+    #[test]
+    fn same_address_short_circuit_still_requires_the_control_proof() {
+        use k256::ecdsa::SigningKey;
+        let mut gw = Gw::boot();
+        let sk = SigningKey::from_slice(&[9u8; 32]).unwrap();
+        let a = eth_addr(&sk);
+        let (key, owner) = gw.register_account(None);
+        let bind = sign_digest(&sk, &deposit_bind_digest(&owner, &a));
+        gw.account_set_deposit_address(&key, a, &bind, None)
+            .expect("first bind succeeds");
+
+        // Same (currently bound) address, garbage signature: the proof must be
+        // checked first, so this is an Err — never an idempotent Ok.
+        let garbage = [0u8; 65];
+        assert!(
+            gw.account_set_deposit_address(&key, a, &garbage, None)
+                .is_err(),
+            "a garbage signature must fail even when `addr` equals the bound address"
+        );
+        assert_eq!(
+            gw.accounts.get(&key).unwrap().rebind_counter,
+            0,
+            "the rejected probe must not burn a generation either"
+        );
+    }
+
+    /// SEC-021b: every field of the rebind digest is public (owner, chain_id, vault,
+    /// rebind_counter, both addresses), so an attacker CAN compute the exact digest
+    /// the current address would sign. Authorization must therefore hinge on WHO
+    /// signed: the correct digest signed by the attacker's OWN key is rejected.
+    #[test]
+    fn a_correct_rebind_digest_signed_by_the_wrong_key_is_rejected() {
+        use k256::ecdsa::SigningKey;
+        let mut gw = Gw::boot();
+        let victim_sk = SigningKey::from_slice(&[9u8; 32]).unwrap();
+        let victim_eoa = eth_addr(&victim_sk);
+        let attacker_sk = SigningKey::from_slice(&[0xA5u8; 32]).unwrap();
+        let attacker_eoa = eth_addr(&attacker_sk);
+        let (key, owner) = gw.register_account(None);
+        let bind = sign_digest(&victim_sk, &deposit_bind_digest(&owner, &victim_eoa));
+        gw.account_set_deposit_address(&key, victim_eoa, &bind, None)
+            .expect("first bind succeeds");
+
+        // The attacker computes the CORRECT current rebind digest — everything in
+        // it is public — but can only sign it with their own key.
+        let attacker_bind = sign_digest(&attacker_sk, &deposit_bind_digest(&owner, &attacker_eoa));
+        let forged = sign_digest(
+            &attacker_sk,
+            &rebind_auth_digest(
+                gw.chain_id,
+                &gw.vault,
+                &owner,
+                0,
+                &victim_eoa,
+                &attacker_eoa,
+            ),
+        );
+        let err = gw
+            .account_set_deposit_address(&key, attacker_eoa, &attacker_bind, Some(&forged))
+            .expect_err("a `currentSignature` from the wrong key must be rejected");
+        assert!(
+            err.contains("rebind not authorized"),
+            "unexpected error: {err}"
+        );
+        let acct = gw.accounts.get(&key).unwrap();
+        assert_eq!(acct.deposit_address, Some(victim_eoa), "binding unchanged");
+        assert_eq!(
+            acct.rebind_counter, 0,
+            "the rejected forgery must not burn a generation"
+        );
+    }
+
+    /// SEC-021: the client needs the binding state to build a withdrawal signature.
+    /// It persists only `{apiKey, owner}`, so after a reload `/v1/accounts/me` is its
+    /// only source for which key must sign (`callerSigned` / `depositAddress`), the
+    /// next auth nonce, the rebind generation, and the deployment (`chainId`, `vault`)
+    /// every digest is bound to.
+    #[test]
+    fn v1_account_exposes_withdrawal_authorization_state() {
+        use k256::ecdsa::SigningKey;
+        let mut gw = Gw::boot();
+        // A distinctive vault: `DEV_FALLBACK_VAULT` is the all-zero address, so
+        // asserting against the boot default could not tell the real field from a
+        // hardcoded zero. Every digest below reads `gw.vault`, so this stays coherent.
+        gw.vault = [0x77u8; 20];
+        let sk = SigningKey::from_slice(&[9u8; 32]).unwrap();
+        let eoa = eth_addr(&sk);
+        let (key, owner) = gw.register_account(None);
+
+        let v = gw.v1_account(&key).unwrap();
+        assert_eq!(v["depositAddress"], serde_json::Value::Null);
+        assert_eq!(v["callerSigned"], false);
+        assert_eq!(v["nextWithdrawNonce"], 1);
+        assert_eq!(v["rebindCounter"], 0);
+        // The client cannot build a valid digest without these.
+        assert_eq!(v["chainId"], gw.chain_id);
+        assert_eq!(v["vault"], hex0x(&gw.vault));
+
+        let bind = sign_digest(&sk, &deposit_bind_digest(&owner, &eoa));
+        gw.account_set_deposit_address(&key, eoa, &bind, None)
+            .unwrap();
+        let v = gw.v1_account(&key).unwrap();
+        assert_eq!(v["depositAddress"], hex0x(&eoa));
+        assert_eq!(v["rebindCounter"], 0, "a first-time bind is not a rebind");
+        // Binding an address does NOT make the account caller-signed: `signer`
+        // (None here) — not `deposit_address` — decides, and that precedence is
+        // exactly what the client keys off to pick which key must sign.
+        assert_eq!(v["callerSigned"], false);
+
+        // One REAL authorized withdrawal: the served nonce must track
+        // `last_withdraw_nonce` (the withdrawal-auth counter) — not any other
+        // per-account counter, which all still read 0 here.
+        fund_test_account(&mut gw, &key, 10_000);
+        signed_withdraw(&mut gw, &key, &sk, 0, 5_000, eoa).expect("authorized withdrawal");
+        let v = gw.v1_account(&key).unwrap();
+        assert_eq!(
+            v["nextWithdrawNonce"], 2,
+            "the served nonce advances with the withdrawal-auth counter"
+        );
+
+        // An ACCEPTED rebind (authorized by the currently bound address) must be
+        // surfaced as the incremented generation — the client signs the NEXT
+        // rebind digest over this value.
+        let b_sk = SigningKey::from_slice(&[0xB7u8; 32]).unwrap();
+        let b = eth_addr(&b_sk);
+        let bind_b = sign_digest(&b_sk, &deposit_bind_digest(&owner, &b));
+        let rotate = sign_digest(
+            &sk,
+            &rebind_auth_digest(gw.chain_id, &gw.vault, &owner, 0, &eoa, &b),
+        );
+        gw.account_set_deposit_address(&key, b, &bind_b, Some(&rotate))
+            .expect("rebind authorized by the current address");
+        let v = gw.v1_account(&key).unwrap();
+        assert_eq!(v["depositAddress"], hex0x(&b));
+        assert_eq!(
+            v["rebindCounter"], 1,
+            "an accepted rebind burns a generation"
+        );
+
+        // A caller-signed account reports callerSigned=true, so the client knows the
+        // registered signer — not the bound deposit address — must sign withdrawals.
+        let (key2, _owner2) = gw.register_account(Some(eth_addr(&sk)));
+        let v2 = gw.v1_account(&key2).unwrap();
+        assert_eq!(v2["callerSigned"], true);
+    }
+
+    /// SEC-021: the regression test for the reported finding. A caller-signed account
+    /// exists precisely so a leaked API key cannot act — but the withdrawal path never
+    /// read `acct.signer`, so the key alone could drain funds to any address.
+    #[test]
+    fn caller_signed_account_cannot_withdraw_without_a_signature() {
+        use k256::ecdsa::SigningKey;
+        let mut gw = Gw::boot();
+        let sk = SigningKey::from_slice(&[9u8; 32]).unwrap();
+        let (key, _owner) = gw.register_account(Some(eth_addr(&sk)));
+        fund_test_account(&mut gw, &key, 10_000);
+        let root_before = gw.seq.state.state_root();
+
+        let err = gw
+            .account_withdraw(&key, 0, 5_000, [0x66u8; 20], 1, &[0u8; 65])
+            .expect_err("unsigned withdrawal must be refused");
+        assert!(err.contains("signature"), "unexpected error: {err}");
+
+        assert_eq!(gw.seq.state.state_root(), root_before, "no state mutation");
+        assert_eq!(
+            gw.accounts.get(&key).unwrap().last_withdraw_nonce,
+            0,
+            "a rejected withdrawal must not burn its nonce"
+        );
+    }
+
+    /// SEC-021: server-custody accounts are authorized by the EOA they already proved
+    /// they can sign with at bind time, and may only withdraw to that address.
+    #[test]
+    fn server_custody_withdrawal_requires_bound_address_signature_and_destination() {
+        use k256::ecdsa::SigningKey;
+        let mut gw = Gw::boot();
+        let sk = SigningKey::from_slice(&[9u8; 32]).unwrap();
+        let eoa = eth_addr(&sk);
+        let (key, owner) = gw.register_account(None);
+        let bind = sign_digest(&sk, &deposit_bind_digest(&owner, &eoa));
+        gw.account_set_deposit_address(&key, eoa, &bind, None)
+            .unwrap();
+        fund_test_account(&mut gw, &key, 10_000);
+
+        // Wrong destination, even with a valid signature over that destination.
+        let elsewhere = [0x66u8; 20];
+        let sig_elsewhere = sign_digest(
+            &sk,
+            &withdraw_auth_digest(gw.chain_id, &gw.vault, &owner, 0, 5_000, &elsewhere, 1),
+        );
+        let err = gw
+            .account_withdraw(&key, 0, 5_000, elsewhere, 1, &sig_elsewhere)
+            .expect_err("server-custody withdrawal to a non-bound address must be refused");
+        assert!(
+            err.contains("bound deposit address"),
+            "unexpected error: {err}"
+        );
+
+        // Correct destination + signature.
+        let sig = sign_digest(
+            &sk,
+            &withdraw_auth_digest(gw.chain_id, &gw.vault, &owner, 0, 5_000, &eoa, 1),
+        );
+        let w = gw
+            .account_withdraw(&key, 0, 5_000, eoa, 1, &sig)
+            .expect("accepted");
+        assert_eq!(w.to, eoa);
+        assert_eq!(gw.accounts.get(&key).unwrap().last_withdraw_nonce, 1);
+
+        // Replay of the same signed request.
+        let err = gw
+            .account_withdraw(&key, 0, 5_000, eoa, 1, &sig)
+            .expect_err("replay must be refused");
+        assert!(err.contains("nonce"), "unexpected error: {err}");
+    }
+
+    /// SEC-021: a validly signed withdrawal that fails on insufficient balance must NOT
+    /// burn its nonce — otherwise the user's retry of the unchanged signed request would
+    /// be rejected as a replay, stranding them.
+    #[test]
+    fn failed_withdrawal_does_not_burn_its_nonce() {
+        use k256::ecdsa::SigningKey;
+        let mut gw = Gw::boot();
+        let sk = SigningKey::from_slice(&[9u8; 32]).unwrap();
+        let eoa = eth_addr(&sk);
+        let (key, owner) = gw.register_account(None);
+        let bind = sign_digest(&sk, &deposit_bind_digest(&owner, &eoa));
+        gw.account_set_deposit_address(&key, eoa, &bind, None)
+            .unwrap();
+        fund_test_account(&mut gw, &key, 1_000);
+
+        let sig = sign_digest(
+            &sk,
+            &withdraw_auth_digest(gw.chain_id, &gw.vault, &owner, 0, 5_000, &eoa, 1),
+        );
+        let err = gw
+            .account_withdraw(&key, 0, 5_000, eoa, 1, &sig)
+            .expect_err("over-balance withdrawal fails");
+        assert!(err.contains("Not withdrawable"), "unexpected error: {err}");
+        assert_eq!(
+            gw.accounts.get(&key).unwrap().last_withdraw_nonce,
+            0,
+            "nonce must survive a post-verification failure"
+        );
+
+        // Fund and retry the SAME signed request — it must now succeed.
+        fund_test_account(&mut gw, &key, 10_000);
+        gw.account_withdraw(&key, 0, 5_000, eoa, 1, &sig)
+            .expect("the unchanged signed request is still valid on retry");
+    }
+
+    /// SEC-021: a caller-signed account's registered `signer` takes precedence — a
+    /// signature from the bound deposit address must NOT authorize its withdrawals,
+    /// or registering a signer would silently widen authorization instead of
+    /// narrowing it.
+    #[test]
+    fn registered_signer_takes_precedence_over_bound_address() {
+        use k256::ecdsa::SigningKey;
+        let mut gw = Gw::boot();
+        let signer_sk = SigningKey::from_slice(&[9u8; 32]).unwrap();
+        let eoa_sk = SigningKey::from_slice(&[0xE0u8; 32]).unwrap();
+        let eoa = eth_addr(&eoa_sk);
+        let (key, owner) = gw.register_account(Some(eth_addr(&signer_sk)));
+        let bind = sign_digest(&eoa_sk, &deposit_bind_digest(&owner, &eoa));
+        gw.account_set_deposit_address(&key, eoa, &bind, None)
+            .unwrap();
+        fund_test_account(&mut gw, &key, 10_000);
+
+        let digest = withdraw_auth_digest(gw.chain_id, &gw.vault, &owner, 0, 5_000, &eoa, 1);
+        // The bound address signs — must be refused, the account registered a signer.
+        let err = gw
+            .account_withdraw(&key, 0, 5_000, eoa, 1, &sign_digest(&eoa_sk, &digest))
+            .expect_err("bound-address signature must not authorize a caller-signed account");
+        assert!(err.contains("signature"), "unexpected error: {err}");
+        // The registered signer signs — accepted, and `to` is free for caller-signed.
+        gw.account_withdraw(&key, 0, 5_000, eoa, 1, &sign_digest(&signer_sk, &digest))
+            .expect("registered signer authorizes");
+    }
+
+    /// SEC-021: `owner` in the digest stops a signature being replayed onto a SECOND
+    /// account registered to the same signer address.
+    #[test]
+    fn withdrawal_signature_does_not_replay_across_accounts() {
+        use k256::ecdsa::SigningKey;
+        let mut gw = Gw::boot();
+        let sk = SigningKey::from_slice(&[9u8; 32]).unwrap();
+        let addr = eth_addr(&sk);
+        let (key_a, owner_a) = gw.register_account(Some(addr));
+        let (key_b, owner_b) = gw.register_account(Some(addr));
+        assert_ne!(owner_a, owner_b);
+        fund_test_account(&mut gw, &key_a, 10_000);
+        fund_test_account(&mut gw, &key_b, 10_000);
+
+        let to = [0x66u8; 20];
+        let sig_a = sign_digest(
+            &sk,
+            &withdraw_auth_digest(gw.chain_id, &gw.vault, &owner_a, 0, 5_000, &to, 1),
+        );
+        let err = gw
+            .account_withdraw(&key_b, 0, 5_000, to, 1, &sig_a)
+            .expect_err("account A's signature must not authorize account B");
+        assert!(err.contains("signature"), "unexpected error: {err}");
+    }
+
+    /// SEC-021: the signature covers every money-moving field — tampering with any of
+    /// them after signing must invalidate it.
+    #[test]
+    fn tampering_with_a_signed_withdrawal_invalidates_it() {
+        use k256::ecdsa::SigningKey;
+        let mut gw = Gw::boot();
+        let sk = SigningKey::from_slice(&[9u8; 32]).unwrap();
+        let (key, owner) = gw.register_account(Some(eth_addr(&sk)));
+        fund_test_account(&mut gw, &key, 100_000);
+
+        let to = [0x66u8; 20];
+        let sig = sign_digest(
+            &sk,
+            &withdraw_auth_digest(gw.chain_id, &gw.vault, &owner, 0, 5_000, &to, 1),
+        );
+        // Amount tampered.
+        assert!(gw.account_withdraw(&key, 0, 9_000, to, 1, &sig).is_err());
+        // Destination tampered.
+        assert!(gw
+            .account_withdraw(&key, 0, 5_000, [0x77u8; 20], 1, &sig)
+            .is_err());
+        // Nonce tampered.
+        assert!(gw.account_withdraw(&key, 0, 5_000, to, 2, &sig).is_err());
+        // Nothing was applied by any of the three.
+        assert_eq!(gw.accounts.get(&key).unwrap().last_withdraw_nonce, 0);
+        // The untampered request still works.
+        gw.account_withdraw(&key, 0, 5_000, to, 1, &sig)
+            .expect("untampered request is valid");
+    }
+
+    /// SEC-021: all three EIP-191 prehash shapes authorize a withdrawal, so both CLI
+    /// signers and browser wallets work. Mirrors the deposit-bind shape test above.
+    #[test]
+    fn withdrawal_accepts_all_three_prehash_shapes() {
+        use k256::ecdsa::SigningKey;
+        let sk = SigningKey::from_slice(&[9u8; 32]).unwrap();
+        let addr = eth_addr(&sk);
+        let to = [0x66u8; 20];
+
+        for shape in 0..3 {
+            let mut gw = Gw::boot();
+            let (key, owner) = gw.register_account(Some(addr));
+            fund_test_account(&mut gw, &key, 10_000);
+            let digest = withdraw_auth_digest(gw.chain_id, &gw.vault, &owner, 0, 5_000, &to, 1);
+            let prehash = eip191_prehash_candidates(&digest)[shape];
+            let sig = sign_digest(&sk, &prehash);
+            gw.account_withdraw(&key, 0, 5_000, to, 1, &sig)
+                .unwrap_or_else(|e| panic!("prehash shape {shape} must be accepted: {e}"));
+        }
+    }
+
+    /// SEC-021: cross-flow and cross-deployment replay are both closed by the digest.
+    #[test]
+    fn withdrawal_signature_does_not_replay_across_deployments() {
+        use k256::ecdsa::SigningKey;
+        let mut gw = Gw::boot();
+        let sk = SigningKey::from_slice(&[9u8; 32]).unwrap();
+        let eoa = eth_addr(&sk);
+        let (key, owner) = gw.register_account(None);
+        let bind = sign_digest(&sk, &deposit_bind_digest(&owner, &eoa));
+        gw.account_set_deposit_address(&key, eoa, &bind, None)
+            .unwrap();
+        fund_test_account(&mut gw, &key, 10_000);
+
+        // Signed for a DIFFERENT chain id.
+        let foreign = sign_digest(
+            &sk,
+            &withdraw_auth_digest(gw.chain_id + 1, &gw.vault, &owner, 0, 5_000, &eoa, 1),
+        );
+        let err = gw
+            .account_withdraw(&key, 0, 5_000, eoa, 1, &foreign)
+            .expect_err("a signature for another deployment must be refused");
+        assert!(err.contains("signature"), "unexpected error: {err}");
+    }
+
+    /// SEC-021: the /v1 LP withdrawal is authorized like any other withdrawal, and a
+    /// withdrawal signature cannot be carried across into it.
+    #[test]
+    fn account_lp_withdraw_requires_its_own_signature() {
+        use k256::ecdsa::SigningKey;
+        let mut gw = Gw::boot();
+        let sk = SigningKey::from_slice(&[9u8; 32]).unwrap();
+        let eoa = eth_addr(&sk);
+        let (key, owner) = gw.register_account(None);
+        let bind = sign_digest(&sk, &deposit_bind_digest(&owner, &eoa));
+        gw.account_set_deposit_address(&key, eoa, &bind, None)
+            .unwrap();
+        fund_test_account(&mut gw, &key, 10_000);
+        let wallet = gw.accounts.get(&key).unwrap().wallet;
+        let shares = gw.lp_deposit(key, &wallet, 5_000).expect("stake");
+
+        // A signature over the ACCOUNT-withdrawal digest must not authorize an LP
+        // withdrawal — the two digests are domain-separated.
+        let wrong = sign_digest(
+            &sk,
+            &withdraw_auth_digest(gw.chain_id, &gw.vault, &owner, 0, shares as i128, &eoa, 1),
+        );
+        let err = gw
+            .account_lp_withdraw(&key, shares, 1, &wrong)
+            .expect_err("cross-flow signature must be refused");
+        assert!(err.contains("signature"), "unexpected error: {err}");
+
+        let sig = sign_digest(
+            &sk,
+            &lp_withdraw_auth_digest(gw.chain_id, &gw.vault, &owner, shares, 1),
+        );
+        gw.account_lp_withdraw(&key, shares, 1, &sig)
+            .expect("accepted");
+        assert_eq!(gw.accounts.get(&key).unwrap().last_withdraw_nonce, 1);
+    }
+
+    /// SEC-021: the legacy demo LP handler calls the raw primitive with a key that is
+    /// not a registered account. That path must keep working — authorization lives in
+    /// the wrapper, not in `lp_withdraw`.
+    #[test]
+    fn legacy_lp_withdraw_primitive_still_works_for_the_demo_wallet() {
+        let mut gw = Gw::boot();
+        let who = gw.user.owner;
+        let w = gw.user;
+        let shares = gw.lp_deposit(who, &w, 1_000).expect("stake");
+        gw.lp_withdraw(&who, &w, shares)
+            .expect("legacy primitive is unauthenticated by contract");
+    }
+
+    /// SEC-021: a validly signed LP withdrawal that then fails inside the delegated
+    /// primitive (here: more shares than held) must NOT burn its nonce — the nonce
+    /// commits only after `lp_withdraw` succeeds, so the same nonce is still usable
+    /// and a later replay of a SPENT nonce is still refused. Mirrors
+    /// `failed_withdrawal_does_not_burn_its_nonce` for the LP flow.
+    #[test]
+    fn rejected_lp_withdrawal_does_not_burn_its_nonce() {
+        use k256::ecdsa::SigningKey;
+        let mut gw = Gw::boot();
+        let sk = SigningKey::from_slice(&[9u8; 32]).unwrap();
+        let eoa = eth_addr(&sk);
+        let (key, owner) = gw.register_account(None);
+        let bind = sign_digest(&sk, &deposit_bind_digest(&owner, &eoa));
+        gw.account_set_deposit_address(&key, eoa, &bind, None)
+            .unwrap();
+        fund_test_account(&mut gw, &key, 10_000);
+        let wallet = gw.accounts.get(&key).unwrap().wallet;
+        let shares = gw.lp_deposit(key, &wallet, 5_000).expect("stake");
+
+        // Validly signed, but for more shares than the account holds.
+        let over = sign_digest(
+            &sk,
+            &lp_withdraw_auth_digest(gw.chain_id, &gw.vault, &owner, shares + 1, 1),
+        );
+        let err = gw
+            .account_lp_withdraw(&key, shares + 1, 1, &over)
+            .expect_err("over-shares LP withdrawal fails");
+        assert!(
+            err.contains("Insufficient LP shares"),
+            "unexpected error: {err}"
+        );
+        assert_eq!(
+            gw.accounts.get(&key).unwrap().last_withdraw_nonce,
+            0,
+            "nonce must survive a post-verification failure"
+        );
+        assert_eq!(
+            gw.lp_shares.get(&key).copied().unwrap_or(0),
+            shares,
+            "no shares burned by the rejection"
+        );
+
+        // Nonce 1 is still spendable — proof the rejection committed nothing.
+        let sig = sign_digest(
+            &sk,
+            &lp_withdraw_auth_digest(gw.chain_id, &gw.vault, &owner, shares, 1),
+        );
+        gw.account_lp_withdraw(&key, shares, 1, &sig)
+            .expect("the un-burned nonce is still valid");
+        assert_eq!(gw.accounts.get(&key).unwrap().last_withdraw_nonce, 1);
+
+        // A SPENT nonce is refused (replay protection).
+        let err = gw
+            .account_lp_withdraw(&key, shares, 1, &sig)
+            .expect_err("replay must be refused");
+        assert!(err.contains("nonce"), "unexpected error: {err}");
+    }
+
+    /// SEC-021 (final-review M-b — the spec's "server-custody, no bound address and
+    /// no signer ⇒ rejected" row): `authorizing_address`'s no-address arm is
+    /// unreachable through `account_withdraw` (its `to` match errors first), so pin
+    /// it through the one caller that CAN reach it — `account_lp_withdraw`. An
+    /// account with neither a registered signer nor a bound deposit address, holding
+    /// real LP shares, must be refused on the missing authorizing address with
+    /// nothing mutated and no nonce advance. The request is otherwise fully valid
+    /// (fresh nonce, a real signature over the correct digest), so the refusal can
+    /// only come from the fail-closed arm itself.
+    #[test]
+    fn lp_withdraw_with_no_signer_and_no_bound_address_is_refused() {
+        use k256::ecdsa::SigningKey;
+        let mut gw = Gw::boot();
+        let (key, owner) = gw.register_account(None); // server-custody, never bound
+        fund_test_account(&mut gw, &key, 10_000);
+        let wallet = gw.accounts.get(&key).unwrap().wallet;
+        let shares = gw.lp_deposit(key, &wallet, 5_000).expect("stake");
+
+        let sk = SigningKey::from_slice(&[9u8; 32]).unwrap();
+        let sig = sign_digest(
+            &sk,
+            &lp_withdraw_auth_digest(gw.chain_id, &gw.vault, &owner, shares, 1),
+        );
+        let err = gw
+            .account_lp_withdraw(&key, shares, 1, &sig)
+            .expect_err("no signer and no bound address ⇒ rejected");
+        assert!(
+            err.contains("no authorizing address"),
+            "unexpected error: {err}"
+        );
+        // Nothing mutated: the shares are intact and the nonce did not advance.
+        assert_eq!(
+            gw.lp_shares.get(&key).copied().unwrap_or(0),
+            shares,
+            "a refused LP withdrawal must not burn shares"
+        );
+        assert_eq!(
+            gw.accounts.get(&key).unwrap().last_withdraw_nonce,
+            0,
+            "a refused LP withdrawal must not advance the nonce"
+        );
+    }
+
+    #[test]
+    fn withdraw_auth_digest_binds_every_field() {
+        let owner: PubKey = [7u8; 32];
+        let to = [0x11u8; 20];
+        let vault = [0x22u8; 20];
+        let base = withdraw_auth_digest(84532, &vault, &owner, 0, 1_000, &to, 1);
+
+        // Every field must change the digest.
+        assert_ne!(
+            base,
+            withdraw_auth_digest(1, &vault, &owner, 0, 1_000, &to, 1)
+        );
+        assert_ne!(
+            base,
+            withdraw_auth_digest(84532, &[0x33u8; 20], &owner, 0, 1_000, &to, 1)
+        );
+        assert_ne!(
+            base,
+            withdraw_auth_digest(84532, &vault, &[8u8; 32], 0, 1_000, &to, 1)
+        );
+        assert_ne!(
+            base,
+            withdraw_auth_digest(84532, &vault, &owner, 1, 1_000, &to, 1)
+        );
+        assert_ne!(
+            base,
+            withdraw_auth_digest(84532, &vault, &owner, 0, 1_001, &to, 1)
+        );
+        assert_ne!(
+            base,
+            withdraw_auth_digest(84532, &vault, &owner, 0, 1_000, &[0x44u8; 20], 1)
+        );
+        assert_ne!(
+            base,
+            withdraw_auth_digest(84532, &vault, &owner, 0, 1_000, &to, 2)
+        );
+
+        // Deterministic.
+        assert_eq!(
+            base,
+            withdraw_auth_digest(84532, &vault, &owner, 0, 1_000, &to, 1)
+        );
+    }
+
+    #[test]
+    fn withdrawal_digests_are_domain_separated_from_each_other_and_from_bind() {
+        let owner: PubKey = [7u8; 32];
+        let addr = [0x11u8; 20];
+        let vault = [0x22u8; 20];
+        let w = withdraw_auth_digest(84532, &vault, &owner, 0, 1_000, &addr, 1);
+        let lp = lp_withdraw_auth_digest(84532, &vault, &owner, 1_000, 1);
+        let rb = rebind_auth_digest(84532, &vault, &owner, 0, &addr, &[0x33u8; 20]);
+        let bind = deposit_bind_digest(&owner, &addr);
+        assert_ne!(w, lp);
+        assert_ne!(w, rb);
+        assert_ne!(lp, rb);
+        assert_ne!(w, bind);
+        assert_ne!(lp, bind);
+        assert_ne!(rb, bind);
+    }
+
+    #[test]
+    fn rebind_auth_digest_binds_both_addresses_in_order() {
+        let owner: PubKey = [7u8; 32];
+        let a = [0xAAu8; 20];
+        let b = [0xBBu8; 20];
+        let vault = [0x22u8; 20];
+        // Swapping old/new must NOT produce the same digest — otherwise a signature
+        // authorizing A->B would also authorize B->A.
+        assert_ne!(
+            rebind_auth_digest(84532, &vault, &owner, 0, &a, &b),
+            rebind_auth_digest(84532, &vault, &owner, 0, &b, &a)
+        );
+        // Finding 1: a different rebind_counter must change the digest — the counter
+        // is what makes an old rotation signature unreplayable after the binding
+        // cycles back to the same address pair.
+        assert_ne!(
+            rebind_auth_digest(84532, &vault, &owner, 0, &a, &b),
+            rebind_auth_digest(84532, &vault, &owner, 1, &a, &b)
+        );
+    }
+
+    /// SEC-021 (Task-2 review Finding 2): known-answer tests freezing the exact BYTE
+    /// LAYOUT of every authorization digest. The sensitivity tests above compare the
+    /// implementation against itself, so they still pass under a prefix typo, a swap of
+    /// two same-width fields (`market_id`↔`nonce`, `vault`↔`to`, `old_addr`↔`new_addr`),
+    /// or a little-endian encoding. Task 8 mirrors `withdraw_auth_digest` byte-for-byte
+    /// in TypeScript, so the layout is a cross-component CONTRACT — a wrong layout is a
+    /// silent security bug. These vectors were computed ONCE from this implementation
+    /// and hard-coded (never recomputed at test time from the function under test);
+    /// any later change to a prefix, field order, width, or endianness fails loudly.
+    #[test]
+    fn auth_digests_match_known_answer_vectors() {
+        let owner: PubKey = [7u8; 32];
+        let to = [0x11u8; 20];
+        let vault = [0x22u8; 20];
+        assert_eq!(
+            hex0x(&withdraw_auth_digest(
+                84532, &vault, &owner, 0, 1_000, &to, 1
+            )),
+            "0x297d6fcc305700b679a59a06cb0d990a70157fcc314f93f69ed36bb1eec6ff97",
+            "withdraw_auth_digest layout drifted"
+        );
+        // amount = -1 pins the i128 two's-complement big-endian encoding (16 bytes of
+        // 0xFF) — nothing else in the suite covers a negative amount.
+        assert_eq!(
+            hex0x(&withdraw_auth_digest(84532, &vault, &owner, 0, -1, &to, 1)),
+            "0xe9285454ef17c530a4a32577d234bbace2d0fc1177f7a9a677a88f63474f695e",
+            "withdraw_auth_digest negative-amount (i128 two's-complement BE) drifted"
+        );
+        assert_eq!(
+            hex0x(&lp_withdraw_auth_digest(84532, &vault, &owner, 1_000, 1)),
+            "0x6499ac5025078970b4d4aea3031d0704d6a0398c8a748c299dbad105b0c00914",
+            "lp_withdraw_auth_digest layout drifted"
+        );
+        // Frozen baseline: the pre-SEC-021 bind digest must never move either.
+        assert_eq!(
+            hex0x(&deposit_bind_digest(&owner, &to)),
+            "0x2ba386f057ba44415aab7b46643ed103af568763a1f9c31afd7ce639a07f983f",
+            "deposit_bind_digest layout drifted"
+        );
+        // rebind_counter = 1 (not 0), so a big-endian↔little-endian flip of the counter
+        // bytes changes the digest and is caught here. Vector computed AFTER Finding 1
+        // inserted the counter between `owner` and `old_addr`.
+        assert_eq!(
+            hex0x(&rebind_auth_digest(
+                84532,
+                &vault,
+                &owner,
+                1,
+                &to,
+                &[0x33u8; 20]
+            )),
+            "0x5443439bdaff6c0664d421740e45477386aa256329eb9dbf68c3564676ff917e",
+            "rebind_auth_digest layout drifted"
+        );
+    }
+
+    /// SEC-021: adding `last_withdraw_nonce` must not silently corrupt snapshot
+    /// loading. postcard is POSITIONAL, so `#[serde(default)]` does not necessarily
+    /// make an older (shorter) encoding loadable. This test pins the actual behaviour
+    /// so the deploy runbook states the truth instead of a guess.
+    #[test]
+    fn account_snapshot_round_trips_with_withdraw_nonce() {
+        let mut a = Account {
+            wallet: Wallet::from_seed([3u8; 32]),
+            orders: vec![],
+            nonce: 0,
+            deposit_counter: 0,
+            last_order_ms: 0,
+            orders_this_sec: 0,
+            deposit_address: Some([0x11u8; 20]),
+            signer: None,
+            last_signed_nonce: 0,
+            last_sealed_nonce: 0,
+            deposit_authorizations: Default::default(),
+            last_withdraw_nonce: 42,
+            rebind_counter: 3,
+        };
+        a.nonce = 7;
+        let bytes = postcard::to_allocvec(&a).expect("serialize");
+        let back: Account = postcard::from_bytes(&bytes).expect("deserialize");
+        assert_eq!(back.last_withdraw_nonce, 42);
+        assert_eq!(back.rebind_counter, 3);
+        assert_eq!(back.nonce, 7);
+        assert_eq!(back.deposit_address, Some([0x11u8; 20]));
+    }
+
+    /// SEC-021 migration fact: can a PRE-upgrade Account encoding still load?
+    /// postcard is positional and non-self-describing, so a trailing field with
+    /// `#[serde(default)]` is NOT guaranteed to be optional on the wire. This test
+    /// RECORDS the real behaviour — whichever way it goes, the deploy runbook must
+    /// match it.
+    #[test]
+    fn pre_upgrade_account_encoding_behaviour_is_pinned() {
+        #[derive(serde::Serialize)]
+        struct OldAccount {
+            wallet: Wallet,
+            orders: Vec<GwOrder>,
+            nonce: u64,
+            deposit_counter: u64,
+            last_order_ms: u64,
+            orders_this_sec: u32,
+            deposit_address: Option<[u8; 20]>,
+            signer: Option<[u8; 20]>,
+            last_signed_nonce: u64,
+            last_sealed_nonce: u64,
+            deposit_authorizations: std::collections::BTreeMap<[u8; 32], [u8; 32]>,
+        }
+        let old = OldAccount {
+            wallet: Wallet::from_seed([3u8; 32]),
+            orders: vec![],
+            nonce: 7,
+            deposit_counter: 0,
+            last_order_ms: 0,
+            orders_this_sec: 0,
+            deposit_address: Some([0x11u8; 20]),
+            signer: None,
+            last_signed_nonce: 0,
+            last_sealed_nonce: 0,
+            deposit_authorizations: Default::default(),
+        };
+        let bytes = postcard::to_allocvec(&old).expect("serialize old");
+        let decoded: Result<Account, _> = postcard::from_bytes(&bytes);
+        // ANSWER (pinned 2026-07-25): with THIS fixture (empty `deposit_authorizations`)
+        // the decode fails with Err(DeserializeUnexpectedEnd). Mechanism: the new fields
+        // are NOT trailing — `last_withdraw_nonce` and `rebind_counter` sit mid-struct,
+        // BEFORE `deposit_authorizations` — so `last_withdraw_nonce` swallows the map's
+        // length byte and `rebind_counter` then hits end-of-input. This is NOT a
+        // universal guarantee of an error: with a NON-EMPTY map whose key bytes happen
+        // to align, an old encoding can decode SUCCESSFULLY into corrupt state (the
+        // nonce absorbs the map's length byte and the authorizations are silently
+        // dropped) — strictly worse than erroring, and exactly the case where a state
+        // wipe matters most. Either way, pre-upgrade snapshots do not load CORRECTLY,
+        // so the deploy runbook's state wipe is REQUIRED in BOTH outcomes. Do not "fix"
+        // a failure of this assert by changing a field; see the assert message for what
+        // a flip actually means.
+        assert!(
+            decoded.is_err(),
+            "pre-upgrade Account encoding DECODED — on a SHORTER pre-upgrade encoding a \
+             successful decode is a silent mis-parse, NOT compatibility: \
+             `last_withdraw_nonce` swallows the `deposit_authorizations` length byte and \
+             the authorizations are silently dropped into corrupt state (strictly worse \
+             than erroring). The deploy runbook's state wipe is STILL REQUIRED; anyone \
+             changing the runbook must FIRST verify, field-by-field, that every \
+             pre-upgrade field decodes into the same field post-upgrade"
+        );
     }
 
     /// AUDIT (CRITICAL — off-market fill-price vault drain): the gateway's house
@@ -8869,14 +10530,12 @@ mod tests {
     #[test]
     fn account_withdraw_records_window_withdrawal() {
         let mut gw = Gw::boot();
-        let (key, _owner) = gw.register_account(None);
+        let (key, sk) = register_withdrawer(&mut gw);
         gw.account_deposit(&key, 0, 20_000 * QUOTE_SCALE).unwrap();
         assert!(gw.window_withdrawals.is_empty());
 
         let to = [7u8; 20];
-        let w = gw
-            .account_withdraw(&key, 0, 5_000 * QUOTE_SCALE, to)
-            .expect("withdraw");
+        let w = signed_withdraw(&mut gw, &key, &sk, 0, 5_000 * QUOTE_SCALE, to).expect("withdraw");
 
         assert_eq!(gw.window_withdrawals.len(), 1);
         assert_eq!(gw.window_withdrawals[0].to, to);
@@ -8886,17 +10545,14 @@ mod tests {
     #[test]
     fn v1_withdrawals_json_serves_root_and_proof() {
         let mut gw = Gw::boot();
-        let (key, owner) = gw.register_account(None);
+        let (key, sk) = register_withdrawer(&mut gw);
         gw.account_deposit(&key, 0, 20_000 * QUOTE_SCALE).unwrap();
-        let w = gw
-            .account_withdraw(&key, 0, 5_000 * QUOTE_SCALE, [7u8; 20])
-            .unwrap();
+        let w = signed_withdraw(&mut gw, &key, &sk, 0, 5_000 * QUOTE_SCALE, [7u8; 20]).unwrap();
 
         // seed a published (root, proof) for this leaf as the settle path would
         let leaf = w.leaf();
         let root = [0xAAu8; 32];
         gw.withdraw_proofs.insert(leaf, (root, vec![[0xBBu8; 32]]));
-        let _ = owner;
 
         let json = gw.v1_withdrawals_json(&key).expect("json");
         let item = &json["withdrawals"][0];
@@ -8910,14 +10566,10 @@ mod tests {
     #[test]
     fn prune_claimed_withdrawals_removes_only_claimed() {
         let mut gw = Gw::boot();
-        let (key, _o) = gw.register_account(None);
+        let (key, sk) = register_withdrawer(&mut gw);
         gw.account_deposit(&key, 0, 40_000 * QUOTE_SCALE).unwrap();
-        let w1 = gw
-            .account_withdraw(&key, 0, 5_000 * QUOTE_SCALE, [7u8; 20])
-            .unwrap();
-        let w2 = gw
-            .account_withdraw(&key, 0, 3_000 * QUOTE_SCALE, [8u8; 20])
-            .unwrap();
+        let w1 = signed_withdraw(&mut gw, &key, &sk, 0, 5_000 * QUOTE_SCALE, [7u8; 20]).unwrap();
+        let w2 = signed_withdraw(&mut gw, &key, &sk, 0, 3_000 * QUOTE_SCALE, [8u8; 20]).unwrap();
         // seed proofs for both leaves as a settle would
         gw.withdraw_proofs
             .insert(w1.leaf(), ([0xAAu8; 32], vec![[0xBBu8; 32]]));
@@ -8938,12 +10590,10 @@ mod tests {
     #[test]
     fn rollback_window_withdrawals_prepends() {
         let mut gw = Gw::boot();
-        let (key, _o) = gw.register_account(None);
+        let (key, sk) = register_withdrawer(&mut gw);
         gw.account_deposit(&key, 0, 40_000 * QUOTE_SCALE).unwrap();
         // one withdrawal accumulated since the (failed) seal drained the window's set
-        let after = gw
-            .account_withdraw(&key, 0, 3_000 * QUOTE_SCALE, [8u8; 20])
-            .unwrap();
+        let after = signed_withdraw(&mut gw, &key, &sk, 0, 3_000 * QUOTE_SCALE, [8u8; 20]).unwrap();
         // the failed window's withdrawals, captured before the seal
         let failed = vec![Withdrawal {
             owner: [1u8; 32],
@@ -8975,10 +10625,9 @@ mod tests {
     #[test]
     fn begin_window_settle_errors_on_desync_without_mutating() {
         let mut gw = Gw::boot();
-        let (key, _o) = gw.register_account(None);
+        let (key, sk) = register_withdrawer(&mut gw);
         gw.account_deposit(&key, 0, 20_000 * QUOTE_SCALE).unwrap();
-        gw.account_withdraw(&key, 0, 5_000 * QUOTE_SCALE, [7u8; 20])
-            .unwrap();
+        signed_withdraw(&mut gw, &key, &sk, 0, 5_000 * QUOTE_SCALE, [7u8; 20]).unwrap();
         let before_next = gw.seq.state.next_batch_id;
         let before_ww = gw.window_withdrawals.len();
 
@@ -8996,10 +10645,9 @@ mod tests {
     #[test]
     fn begin_window_settle_seals_and_takes_withdrawals() {
         let mut gw = Gw::boot();
-        let (key, _o) = gw.register_account(None);
+        let (key, sk) = register_withdrawer(&mut gw);
         gw.account_deposit(&key, 0, 20_000 * QUOTE_SCALE).unwrap();
-        gw.account_withdraw(&key, 0, 5_000 * QUOTE_SCALE, [7u8; 20])
-            .unwrap();
+        signed_withdraw(&mut gw, &key, &sk, 0, 5_000 * QUOTE_SCALE, [7u8; 20]).unwrap();
         let bc = gw.seq.state.next_batch_id;
 
         let (witness, ww) = gw.begin_window_settle(bc).unwrap().expect("some");
@@ -9028,10 +10676,9 @@ mod tests {
         use crate::prover_client::{prove_and_prepare, MockProverClient};
 
         let mut gw = Gw::boot();
-        let (key, _o) = gw.register_account(None);
+        let (key, sk) = register_withdrawer(&mut gw);
         gw.account_deposit(&key, 0, 20_000 * QUOTE_SCALE).unwrap();
-        gw.account_withdraw(&key, 0, 5_000 * QUOTE_SCALE, [7u8; 20])
-            .unwrap();
+        signed_withdraw(&mut gw, &key, &sk, 0, 5_000 * QUOTE_SCALE, [7u8; 20]).unwrap();
         let bc = gw.seq.state.next_batch_id;
         let (witness, ww) = gw.begin_window_settle(bc).unwrap().expect("sealed");
         let ww_leaves: Vec<[u8; 32]> = ww.iter().map(|w| w.leaf()).collect();
@@ -9117,10 +10764,9 @@ mod tests {
     fn boot_recovery_rollback_restores_reseal() {
         let seed = [42u8; 32];
         let mut gw = Gw::boot();
-        let (key, _o) = gw.register_account(None);
+        let (key, sk) = register_withdrawer(&mut gw);
         gw.account_deposit(&key, 0, 20_000 * QUOTE_SCALE).unwrap();
-        gw.account_withdraw(&key, 0, 5_000 * QUOTE_SCALE, [7u8; 20])
-            .unwrap();
+        signed_withdraw(&mut gw, &key, &sk, 0, 5_000 * QUOTE_SCALE, [7u8; 20]).unwrap();
         let bc = gw.seq.state.next_batch_id;
         let (witness, ww) = gw.begin_window_settle(bc).unwrap().expect("sealed");
         let ww_leaves: Vec<[u8; 32]> = ww.iter().map(|w| w.leaf()).collect();
@@ -9192,10 +10838,9 @@ mod tests {
 
         let seed = [42u8; 32];
         let mut gw = Gw::boot();
-        let (key, _o) = gw.register_account(None);
+        let (key, sk) = register_withdrawer(&mut gw);
         gw.account_deposit(&key, 0, 20_000 * QUOTE_SCALE).unwrap();
-        gw.account_withdraw(&key, 0, 5_000 * QUOTE_SCALE, [7u8; 20])
-            .unwrap();
+        signed_withdraw(&mut gw, &key, &sk, 0, 5_000 * QUOTE_SCALE, [7u8; 20]).unwrap();
         let bc = gw.seq.state.next_batch_id;
         let (witness, ww) = gw.begin_window_settle(bc).unwrap().expect("sealed");
         let leaf0 = ww[0].leaf();
@@ -9275,9 +10920,7 @@ mod tests {
 
         // Counter B (bc+1) now matches the chain: the NEXT window passes the
         // desync guard and seals (new state so there is something to settle).
-        restored
-            .account_withdraw(&key, 0, 1_000 * QUOTE_SCALE, [9u8; 20])
-            .unwrap();
+        signed_withdraw(&mut restored, &key, &sk, 0, 1_000 * QUOTE_SCALE, [9u8; 20]).unwrap();
         let (w2, _ww2) = restored
             .begin_window_settle(bc + 1)
             .unwrap()
@@ -9299,10 +10942,9 @@ mod tests {
     fn boot_recovery_persists_before_journal_delete() {
         let seed = [42u8; 32];
         let mut gw = Gw::boot();
-        let (key, _o) = gw.register_account(None);
+        let (key, sk) = register_withdrawer(&mut gw);
         gw.account_deposit(&key, 0, 20_000 * QUOTE_SCALE).unwrap();
-        gw.account_withdraw(&key, 0, 5_000 * QUOTE_SCALE, [7u8; 20])
-            .unwrap();
+        signed_withdraw(&mut gw, &key, &sk, 0, 5_000 * QUOTE_SCALE, [7u8; 20]).unwrap();
         let bc = gw.seq.state.next_batch_id;
         let (witness, ww) = gw.begin_window_settle(bc).unwrap().expect("sealed");
         let journal = rollback_journal::RollbackJournal {
@@ -9381,10 +11023,9 @@ mod tests {
         use prover::SealedWitness;
 
         let mut gw = Gw::boot();
-        let (key, _o) = gw.register_account(None);
+        let (key, sk) = register_withdrawer(&mut gw);
         gw.account_deposit(&key, 0, 40_000 * QUOTE_SCALE).unwrap();
-        gw.account_withdraw(&key, 0, 5_000 * QUOTE_SCALE, [7u8; 20])
-            .unwrap();
+        signed_withdraw(&mut gw, &key, &sk, 0, 5_000 * QUOTE_SCALE, [7u8; 20]).unwrap();
         let bc = gw.seq.state.next_batch_id;
         let (witness, _ww) = gw.begin_window_settle(bc).unwrap().expect("some");
 
@@ -9457,17 +11098,14 @@ mod tests {
         use crate::prover_client::{prove_and_prepare, MockProverClient};
 
         let mut gw = Gw::boot();
-        let (key, _o) = gw.register_account(None);
+        let (key, sk) = register_withdrawer(&mut gw);
         gw.account_deposit(&key, 0, 40_000 * QUOTE_SCALE).unwrap();
         // THREE real-exit withdrawals in the window → a non-trivial withdrawals tree
         // that also pins op-ORDER (a 2-leaf sorted-pair tree is permutation-invariant,
         // so two leaves alone couldn't tell "same set" from "same order")
-        gw.account_withdraw(&key, 0, 5_000 * QUOTE_SCALE, [7u8; 20])
-            .unwrap();
-        gw.account_withdraw(&key, 0, 3_000 * QUOTE_SCALE, [8u8; 20])
-            .unwrap();
-        gw.account_withdraw(&key, 0, 2_000 * QUOTE_SCALE, [9u8; 20])
-            .unwrap();
+        signed_withdraw(&mut gw, &key, &sk, 0, 5_000 * QUOTE_SCALE, [7u8; 20]).unwrap();
+        signed_withdraw(&mut gw, &key, &sk, 0, 3_000 * QUOTE_SCALE, [8u8; 20]).unwrap();
+        signed_withdraw(&mut gw, &key, &sk, 0, 2_000 * QUOTE_SCALE, [9u8; 20]).unwrap();
         let bc = gw.seq.state.next_batch_id;
 
         let (witness, ww) = gw.begin_window_settle(bc).unwrap().expect("some");
@@ -9494,10 +11132,9 @@ mod tests {
         use crate::prover_client::{prove_and_prepare, MockProverClient};
 
         let mut gw = Gw::boot();
-        let (key, _o) = gw.register_account(None);
+        let (key, sk) = register_withdrawer(&mut gw);
         gw.account_deposit(&key, 0, 40_000 * QUOTE_SCALE).unwrap();
-        gw.account_withdraw(&key, 0, 5_000 * QUOTE_SCALE, [7u8; 20])
-            .unwrap();
+        signed_withdraw(&mut gw, &key, &sk, 0, 5_000 * QUOTE_SCALE, [7u8; 20]).unwrap();
         let bc = gw.seq.state.next_batch_id;
 
         let (witness, ww) = gw.begin_window_settle(bc).unwrap().expect("some");
@@ -9635,10 +11272,9 @@ mod tests {
         }
 
         let mut gw = Gw::boot();
-        let (key, _o) = gw.register_account(None);
+        let (key, sk) = register_withdrawer(&mut gw);
         gw.account_deposit(&key, 0, 40_000 * QUOTE_SCALE).unwrap();
-        gw.account_withdraw(&key, 0, 5_000 * QUOTE_SCALE, [7u8; 20])
-            .unwrap();
+        signed_withdraw(&mut gw, &key, &sk, 0, 5_000 * QUOTE_SCALE, [7u8; 20]).unwrap();
         let bc = gw.seq.state.next_batch_id;
         let (witness, ww) = gw.begin_window_settle(bc).unwrap().expect("some");
         assert!(!ww.is_empty());
@@ -9669,10 +11305,9 @@ mod tests {
         }
 
         let mut gw = Gw::boot();
-        let (key, _o) = gw.register_account(None);
+        let (key, sk) = register_withdrawer(&mut gw);
         gw.account_deposit(&key, 0, 40_000 * QUOTE_SCALE).unwrap();
-        gw.account_withdraw(&key, 0, 5_000 * QUOTE_SCALE, [7u8; 20])
-            .unwrap();
+        signed_withdraw(&mut gw, &key, &sk, 0, 5_000 * QUOTE_SCALE, [7u8; 20]).unwrap();
         let bc = gw.seq.state.next_batch_id;
         let (witness, ww) = gw.begin_window_settle(bc).unwrap().expect("some");
 
@@ -9688,12 +11323,11 @@ mod tests {
         use crate::prover_client::{prove_and_prepare, MockProverClient};
 
         let mut gw = Gw::boot();
-        let (key, _o) = gw.register_account(None);
+        let (key, sk) = register_withdrawer(&mut gw);
         gw.account_deposit(&key, 0, 40_000 * QUOTE_SCALE).unwrap();
 
         // ── window 1: withdrawal → begin → prove → commit ────────────────────
-        gw.account_withdraw(&key, 0, 5_000 * QUOTE_SCALE, [7u8; 20])
-            .unwrap();
+        signed_withdraw(&mut gw, &key, &sk, 0, 5_000 * QUOTE_SCALE, [7u8; 20]).unwrap();
         let bc1 = gw.seq.state.next_batch_id;
         let (witness1, ww1) = gw.begin_window_settle(bc1).unwrap().expect("some");
         let ordered1 = witness1.manifest.ordered.clone();
@@ -9712,8 +11346,7 @@ mod tests {
         assert!(gw.withdraw_proofs.contains_key(&leaf_w1));
 
         // ── window 2: another withdrawal (root changes) → begin → commit ─────
-        gw.account_withdraw(&key, 0, 3_000 * QUOTE_SCALE, [8u8; 20])
-            .unwrap();
+        signed_withdraw(&mut gw, &key, &sk, 0, 3_000 * QUOTE_SCALE, [8u8; 20]).unwrap();
         let bc2 = gw.seq.state.next_batch_id;
         let (witness2, ww2) = gw.begin_window_settle(bc2).unwrap().expect("some");
         let ordered2 = witness2.manifest.ordered.clone();

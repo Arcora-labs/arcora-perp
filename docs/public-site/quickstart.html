@@ -87,7 +87,7 @@ cast send 0xC3EBc0f7301D5a914b01b8d2a1B5574764330c05 \
 
 <div class="step">
 <h3><span class="step-num">6</span> Withdraw and claim</h3>
-<p>Withdraw on the Account tab (a destination address is required). The withdrawal goes through three visible stages:</p>
+<p>Withdraw on the Account tab. The app asks your wallet to sign the withdrawal (every withdrawal is wallet-signed — the API key alone cannot move funds), and the destination is your bound deposit address. The withdrawal goes through three visible stages:</p>
 <ol>
   <li>The withdrawal is recorded off-chain and shows as <em>&ldquo;Settling on-chain&hellip;&rdquo;</em> while it waits to be included in a settlement window.</li>
   <li>Once that window's proof settles, it becomes <em>&ldquo;Claimable&rdquo;</em> — the withdrawal is now a leaf in an on-chain Merkle root.</li>

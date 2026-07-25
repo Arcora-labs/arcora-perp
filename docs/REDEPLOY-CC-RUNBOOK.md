@@ -181,6 +181,20 @@ Full detail: `docs/PROVER-CC-H100-MIGRATION.md`. Window-level steps:
 1. Pause the gateway settle loop (breaker/`FIN_ADMIN_KEY` path or stop the
    service); snapshot + archive the CVM's `state.snap` and rollback journal,
    then wipe both (clean genesis boot).
+   - **The wipe is REQUIRED, not precautionary — SEC-021 broke the snapshot
+     format.** The merged tree adds mid-struct `Account` fields (postcard is
+     positional), so a pre-upgrade snapshot does not load correctly under the
+     new binary: it either fails with `DeserializeUnexpectedEnd` or — when
+     `deposit_authorizations` is non-empty and its key bytes happen to align —
+     decodes **silently into corrupt state**, dropping the authorizations. A
+     decode that succeeds against a shorter pre-upgrade encoding must be read
+     as corruption, never compatibility (pinned by
+     `pre_upgrade_account_encoding_behaviour_is_pinned` in the gateway
+     tests).
+   - **Order matters (the 2026-07-09 cutover gotcha):** stop the process,
+     **then** remove `state.snap`, then start. A plain restart lets the old
+     process rewrite an old-format snapshot on shutdown, and the new binary
+     then boots against exactly the bytes you meant to wipe.
 2. Deploy with `Deploy.s.sol` (env from 0c/0d): new `SP1ZkVerifier` (NEW
    programVKey), `DarkPerpSettlement` (`GENESIS_ROOT`, governance, bonds),
    `CollateralVault` (`GATEWAY_SIGNER` = real address). `MockUSDC`: reuse
@@ -190,6 +204,16 @@ Full detail: `docs/PROVER-CC-H100-MIGRATION.md`. Window-level steps:
    `GATEWAY_SIGNER_KEY`, `PROVER_URL`, seal-root config) and boot. The boot
    itself is a test: prod-mode refusals must NOT fire with real keys (if one
    fires, the env is wrong — that's the guard working).
+   - **Verify `L1_VAULT` is exported in the systemd unit BEFORE starting the
+     cutover (step 1), not here.** The SEC-021 production boot gate
+     (`vault_binding_ok_for_mode`) calls `exit(1)` when a prod-posture
+     gateway boots with `L1_VAULT` unset or all-zero — and, post
+     final-review, a set-but-malformed `L1_VAULT`/`L1_CHAIN_ID` also fails
+     the boot instead of silently taking the dev fallback. This gate fires
+     *after* the old process is stopped and `state.snap` wiped, so an
+     unexported `L1_VAULT` discovered here turns the cutover into a hard
+     outage instead of a pre-window check. It must be the NEW vault address
+     from step 2.
 4. **In-zkVM proof smoke on GX10:** drive one real batch through seal → POST
    `/prove` → Groth16 → `settleBatch` on-chain with the new VK. A clean-state
    proof is ~10–14 GB RSS. This also proves the guest now enforces
@@ -198,6 +222,14 @@ Full detail: `docs/PROVER-CC-H100-MIGRATION.md`. Window-level steps:
    settle-stall alert (`openWindowId > batchCount`) stays quiet.
 
 ## Phase 3 — Frontend release
+
+**The gateway and frontend must ship together (SEC-021).** The old frontend
+against the new gateway gets a 400 on every withdrawal (no `nonce`/`signature`
+in the request); the new frontend against the old gateway refuses client-side
+("gateway too old" — `/v1/accounts/me` lacks the withdrawal-authorization
+fields). Both directions fail closed, but withdrawals are down for any window
+where the two are split — keep the split inside the maintenance window and
+publish this phase immediately after Phase 2's boot check passes.
 
 1. Fill the constants (0e list), update `deployments/base-sepolia.json`
    (addresses, `deployedAt`, deploy block, new `programVKey`), commit + push.
