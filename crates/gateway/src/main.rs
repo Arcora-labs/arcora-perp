@@ -970,11 +970,34 @@ struct Account {
     /// server-custody (`signer: None`) account (replay protection): the decrypted
     /// canonical terms carry a client-chosen `nonce`, and a new sealed order must
     /// carry a higher one — so re-POSTing a captured `{epochId, sealed}` body is
-    /// rejected instead of duplicating the position. Rides the sealed snapshot
-    /// (`serde(default)` keeps pre-upgrade snapshots loadable; fresh genesis on
-    /// redeploy is fine).
+    /// rejected instead of duplicating the position. Rides the sealed snapshot.
+    /// NOTE (SEC-021, tested): `serde(default)` does NOT keep pre-upgrade postcard
+    /// snapshots loadable — postcard is positional, so a shorter old encoding fails
+    /// to decode (see `pre_upgrade_account_encoding_behaviour_is_pinned`); fresh
+    /// genesis on redeploy is fine.
     #[serde(default)]
     last_sealed_nonce: u64,
+    /// SEC-021: strictly-increasing nonce of the last SUCCESSFULLY COMPLETED signed
+    /// withdrawal (account or LP). Deliberately SEPARATE from `last_signed_nonce`
+    /// (orders): orders are high-frequency, and a shared counter would let an order
+    /// stream racing past nonce N invalidate an already-signed withdrawal in flight.
+    /// Committed only after the whole withdrawal succeeds, so a validly signed request
+    /// that then fails on insufficient balance stays retryable rather than burning its
+    /// nonce. Both withdrawal flows share this one counter — their digests are
+    /// domain-separated, so cross-replay is impossible without a second counter.
+    /// `serde(default)` is forward-additive struct hygiene; NOTE postcard is positional,
+    /// so a cross-version snapshot load still requires a state reset (see the migration
+    /// note in the deploy runbook).
+    #[serde(default)]
+    last_withdraw_nonce: u64,
+    /// SEC-021b: how many times this account's deposit-address binding has been moved.
+    /// Mixed into `rebind_auth_digest` and incremented on every accepted rebind, so a
+    /// rebind authorization is single-use. Without it a signature over (owner, A, B)
+    /// would stay valid any time the bound address is A — letting a leaked API key plus
+    /// a captured old signature force the binding back to B after the user rotated away
+    /// from it. Counts rebinds only; the first-time bind does not increment it.
+    #[serde(default)]
+    rebind_counter: u64,
     /// SEC-019 (Task 7b): gateway-issued deposit authorizations awaiting their on-chain
     /// landing, keyed by `ownerCommit = keccak(owner ‖ deposit_blind)`. The value is the
     /// SECRET per-deposit `deposit_blind` (a fresh 32-byte CSPRNG value); `owner` is this
@@ -983,7 +1006,9 @@ struct Account {
     /// credits only on a match (the misattribution guard). The blind is NEVER served
     /// publicly (only `ownerCommit` + `sig` leave the gateway) but IS persisted — it must
     /// be reproducible at credit time, and it rides the existing sealed snapshot.
-    /// `serde(default)` keeps pre-upgrade snapshots loadable.
+    /// NOTE (SEC-021, tested): `serde(default)` does NOT make this loadable from a
+    /// pre-upgrade snapshot — postcard is positional (see
+    /// `pre_upgrade_account_encoding_behaviour_is_pinned`); a state reset is required.
     #[serde(default)]
     deposit_authorizations: std::collections::BTreeMap<[u8; 32], [u8; 32]>,
 }
@@ -1703,6 +1728,8 @@ impl Gw {
                 signer,
                 last_signed_nonce: 0,
                 last_sealed_nonce: 0,
+                last_withdraw_nonce: 0,
+                rebind_counter: 0,
                 deposit_authorizations: std::collections::BTreeMap::new(),
             },
         );
@@ -8435,6 +8462,83 @@ mod tests {
             )),
             "0x5443439bdaff6c0664d421740e45477386aa256329eb9dbf68c3564676ff917e",
             "rebind_auth_digest layout drifted"
+        );
+    }
+
+    /// SEC-021: adding `last_withdraw_nonce` must not silently corrupt snapshot
+    /// loading. postcard is POSITIONAL, so `#[serde(default)]` does not necessarily
+    /// make an older (shorter) encoding loadable. This test pins the actual behaviour
+    /// so the deploy runbook states the truth instead of a guess.
+    #[test]
+    fn account_snapshot_round_trips_with_withdraw_nonce() {
+        let mut a = Account {
+            wallet: Wallet::from_seed([3u8; 32]),
+            orders: vec![],
+            nonce: 0,
+            deposit_counter: 0,
+            last_order_ms: 0,
+            orders_this_sec: 0,
+            deposit_address: Some([0x11u8; 20]),
+            signer: None,
+            last_signed_nonce: 0,
+            last_sealed_nonce: 0,
+            deposit_authorizations: Default::default(),
+            last_withdraw_nonce: 42,
+            rebind_counter: 3,
+        };
+        a.nonce = 7;
+        let bytes = postcard::to_allocvec(&a).expect("serialize");
+        let back: Account = postcard::from_bytes(&bytes).expect("deserialize");
+        assert_eq!(back.last_withdraw_nonce, 42);
+        assert_eq!(back.rebind_counter, 3);
+        assert_eq!(back.nonce, 7);
+        assert_eq!(back.deposit_address, Some([0x11u8; 20]));
+    }
+
+    /// SEC-021 migration fact: can a PRE-upgrade Account encoding still load?
+    /// postcard is positional and non-self-describing, so a trailing field with
+    /// `#[serde(default)]` is NOT guaranteed to be optional on the wire. This test
+    /// RECORDS the real behaviour — whichever way it goes, the deploy runbook must
+    /// match it.
+    #[test]
+    fn pre_upgrade_account_encoding_behaviour_is_pinned() {
+        #[derive(serde::Serialize)]
+        struct OldAccount {
+            wallet: Wallet,
+            orders: Vec<GwOrder>,
+            nonce: u64,
+            deposit_counter: u64,
+            last_order_ms: u64,
+            orders_this_sec: u32,
+            deposit_address: Option<[u8; 20]>,
+            signer: Option<[u8; 20]>,
+            last_signed_nonce: u64,
+            last_sealed_nonce: u64,
+            deposit_authorizations: std::collections::BTreeMap<[u8; 32], [u8; 32]>,
+        }
+        let old = OldAccount {
+            wallet: Wallet::from_seed([3u8; 32]),
+            orders: vec![],
+            nonce: 7,
+            deposit_counter: 0,
+            last_order_ms: 0,
+            orders_this_sec: 0,
+            deposit_address: Some([0x11u8; 20]),
+            signer: None,
+            last_signed_nonce: 0,
+            last_sealed_nonce: 0,
+            deposit_authorizations: Default::default(),
+        };
+        let bytes = postcard::to_allocvec(&old).expect("serialize old");
+        let decoded: Result<Account, _> = postcard::from_bytes(&bytes);
+        // ANSWER (pinned 2026-07-25): Err(DeserializeUnexpectedEnd) — the positional
+        // decoder runs out of bytes reading the new trailing u64s. Pre-upgrade
+        // snapshots DO NOT load; the deploy runbook's state wipe is REQUIRED.
+        // If this assert fails, INVERT it and update the runbook —
+        // do not "fix" it by changing the field, the point is to know which it is.
+        assert!(
+            decoded.is_err(),
+            "pre-upgrade snapshots DO load; update the runbook to say a wipe is optional"
         );
     }
 
