@@ -1693,6 +1693,11 @@ Both follow from decisions taken deliberately, and both are surprising enough th
 
 Mirror the API.md changes in `docs/public-site/api.html` (`:46`, `:71`, `:127-128`) and `docs/public-site/trading.html` (`:112`).
 
+**Cover the LP endpoint, not just `/v1/accounts/withdraw`.** It is the one most likely to be missed, because no client calls it today — which is exactly why nothing else will catch a stale doc. Two specific defects found in review:
+
+- `docs/public-site/api.html:128` still documents `POST /v1/lp/withdraw` as `{"shares": "…"}`. That body is now a **guaranteed 400**.
+- The in-tree OpenAPI blob (`get_v1_openapi`) omits the `/v1/lp/*` paths **entirely**, and still declares `"required": ["marketId","amount","to"]` for `/v1/accounts/withdraw` — which now contradicts the server. Add the LP paths rather than leaving them undocumented.
+
 - [ ] **Step 5: Verify the docs match the code**
 
 Run: `rg -n 'currentSignature|nextWithdrawNonce|dark-perp:withdraw' docs/ crates/gateway/src/main.rs`
