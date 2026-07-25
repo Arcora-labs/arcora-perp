@@ -1697,6 +1697,10 @@ Mirror the API.md changes in `docs/public-site/api.html` (`:46`, `:71`, `:127-12
 
 - `docs/public-site/api.html:128` still documents `POST /v1/lp/withdraw` as `{"shares": "…"}`. That body is now a **guaranteed 400**.
 - The in-tree OpenAPI blob (`get_v1_openapi`) omits the `/v1/lp/*` paths **entirely**, and still declares `"required": ["marketId","amount","to"]` for `/v1/accounts/withdraw` — which now contradicts the server. Add the LP paths rather than leaving them undocumented.
+- `/v1/accounts/deposit/address` in the same blob still does not document `currentSignature`, the rebind parameter Task 4 added — so the blob describes a rebind request that the server now rejects.
+- The withdraw `signature` description is terse where it matters: unlike its sibling at `/v1/accounts/deposit/address`, it does not say that **all three** `eip191_prehash_candidates` shapes are accepted (raw digest, EIP-191 over the 32 bytes, EIP-191 over the `"0x…"` hex string). A browser `personal_sign` client reading only the blob would not know it works.
+
+**One cross-endpoint inconsistency worth a documented line rather than a code change:** two endpoints now expose a field named `vault`. `/v1/accounts/me` serves `hex0x(&Gw.vault)` — normalized lowercase `0x` + 40 hex, and **these are the exact bytes hashed into the digests**, so it is the authoritative one for signing. `/v1/accounts/withdrawals` echoes `l1.vault`, the raw unparsed `L1_VAULT` env string, which may be EIP-55 mixed-case. Same env var, same source of truth, but a naive string comparison between the two can mismatch.
 
 - [ ] **Step 5: Verify the docs match the code**
 
