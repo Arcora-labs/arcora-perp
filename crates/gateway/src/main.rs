@@ -1089,6 +1089,19 @@ struct Gw {
     /// the demo/test build. NOT persisted — recomputed from the environment.
     #[serde(skip)]
     prod: bool,
+    /// SEC-021: the deployment this gateway's withdrawal-authorization signatures are
+    /// bound to (L1 chain id + vault address). Mixed into every withdrawal/rebind digest
+    /// so a snapshot restored or copied onto a DIFFERENT deployment cannot accept a
+    /// signature minted for this one — the signed nonce is not the withdrawal-leaf nonce
+    /// (that is the gateway-global `next_withdraw_nonce`), so one authorization could
+    /// otherwise become different claim leaves on two deployments. NOT persisted —
+    /// recomputed from the environment at boot, exactly like `prod`.
+    #[serde(skip)]
+    #[allow(dead_code)] // read by the withdrawal-verification tasks (SEC-021 Task 3+)
+    chain_id: u64,
+    #[serde(skip)]
+    #[allow(dead_code)] // read by the withdrawal-verification tasks (SEC-021 Task 3+)
+    vault: [u8; 20],
     /// Task 5: honest finality reporting on the window-settle path. When the prover
     /// is configured (PROVER_URL), the tick loop must NOT simulate SETTLED after
     /// `SETTLE_TICKS` — orders stay MATCHED until their window's proof verifies on
@@ -1552,6 +1565,11 @@ impl Gw {
             lp_total_shares: 0,
             lp_counter: 0,
             prod: false,
+            // SEC-021: overwritten at boot from GatewaySigner. Base Sepolia + zero
+            // vault is the same fallback GatewaySigner::from_env uses, so the demo
+            // build and unit tests get a coherent (if non-unique) deployment identity.
+            chain_id: 84532,
+            vault: [0u8; 20],
             window_settle_mode: false,
             // Derive the first order-ingress epoch from the SAME seed the enclave
             // signing identity derives from, so a reboot/re-pin keeps the key stable.
@@ -1611,6 +1629,13 @@ impl Gw {
         // seed: the persisted entries + head restore as-is, but no key material —
         // public or secret — is ever read from the snapshot.
         gw.order_log.set_recipient(derive_log_pub(&enclave_seed));
+
+        // SEC-021: chain_id/vault are serde-skipped, so deserialization leaves them
+        // at Default (0 / zero) rather than boot()'s dev identity. Re-apply the same
+        // fallback here so a restored Gw is coherent with a fresh one; main() then
+        // overwrites both from GatewaySigner for the real deployment (like `prod`).
+        gw.chain_id = 84532;
+        gw.vault = [0u8; 20];
 
         gw.mkts = MARKETS
             .iter()
@@ -4079,6 +4104,84 @@ fn deposit_bind_digest(owner: &PubKey, addr: &[u8; 20]) -> [u8; 32] {
     h.finalize().into()
 }
 
+/// SEC-021: the digest a withdrawal authorization signature must cover.
+/// `keccak256("dark-perp:withdraw:" ‖ chain_id ‖ vault ‖ owner ‖ market_id ‖ amount ‖ to ‖ nonce)`
+///
+/// Every field is fixed-width big-endian, so the concatenation is unambiguous by
+/// construction — there is no variable-length field that could collide under a
+/// different field split. `owner` stops a signature being replayed onto a second
+/// account registered to the same address; `chain_id`+`vault` stop it being replayed
+/// onto another deployment restored from a copied snapshot.
+#[allow(dead_code)] // consumed by the withdrawal-verification tasks (SEC-021 Task 3+)
+fn withdraw_auth_digest(
+    chain_id: u64,
+    vault: &[u8; 20],
+    owner: &PubKey,
+    market_id: u64,
+    amount: i128,
+    to: &[u8; 20],
+    nonce: u64,
+) -> [u8; 32] {
+    use sha3::{Digest as _, Keccak256 as RawKeccak};
+    let mut h = RawKeccak::new();
+    h.update(b"dark-perp:withdraw:");
+    h.update(chain_id.to_be_bytes());
+    h.update(vault);
+    h.update(owner);
+    h.update(market_id.to_be_bytes());
+    h.update(amount.to_be_bytes());
+    h.update(to);
+    h.update(nonce.to_be_bytes());
+    h.finalize().into()
+}
+
+/// SEC-021: the digest an LP-withdrawal authorization signature must cover.
+/// `keccak256("dark-perp:lp-withdraw:" ‖ chain_id ‖ vault ‖ owner ‖ shares ‖ nonce)`
+/// There is no `to`: LP value lands in the account's OWN internal balance, never on L1.
+/// The distinct prefix makes a `withdraw` signature unusable here and vice versa.
+#[allow(dead_code)] // consumed by the withdrawal-verification tasks (SEC-021 Task 3+)
+fn lp_withdraw_auth_digest(
+    chain_id: u64,
+    vault: &[u8; 20],
+    owner: &PubKey,
+    shares: u128,
+    nonce: u64,
+) -> [u8; 32] {
+    use sha3::{Digest as _, Keccak256 as RawKeccak};
+    let mut h = RawKeccak::new();
+    h.update(b"dark-perp:lp-withdraw:");
+    h.update(chain_id.to_be_bytes());
+    h.update(vault);
+    h.update(owner);
+    h.update(shares.to_be_bytes());
+    h.update(nonce.to_be_bytes());
+    h.finalize().into()
+}
+
+/// SEC-021b: the digest the CURRENTLY BOUND address must sign to authorize moving an
+/// account's deposit-address binding to `new_addr`.
+/// `keccak256("dark-perp:rebind-deposit:" ‖ chain_id ‖ vault ‖ owner ‖ old ‖ new)`
+/// Binding BOTH addresses (in this order) stops a signature authorizing old→new being
+/// reused to authorize old→someone-else, or replayed in reverse.
+#[allow(dead_code)] // consumed by the withdrawal-verification tasks (SEC-021 Task 3+)
+fn rebind_auth_digest(
+    chain_id: u64,
+    vault: &[u8; 20],
+    owner: &PubKey,
+    old_addr: &[u8; 20],
+    new_addr: &[u8; 20],
+) -> [u8; 32] {
+    use sha3::{Digest as _, Keccak256 as RawKeccak};
+    let mut h = RawKeccak::new();
+    h.update(b"dark-perp:rebind-deposit:");
+    h.update(chain_id.to_be_bytes());
+    h.update(vault);
+    h.update(owner);
+    h.update(old_addr);
+    h.update(new_addr);
+    h.finalize().into()
+}
+
 /// The three prehashes a gateway-local authorization signature may cover, in the
 /// order they are tried. SECURITY INVARIANT: every candidate is a deterministic
 /// transform of the SAME caller-independent digest — no attacker-chosen message
@@ -5834,6 +5937,12 @@ async fn main() {
             std::process::exit(1);
         }
     };
+    // SEC-021: bind withdrawal authorization to this deployment. Same source the
+    // deposit-authorization signer uses, so both digests agree on chain id + vault.
+    // (Set here, not beside `gw.prod = prod` above, because the signer is only
+    // loaded now — and both `gw` and `gateway_signer` move into the App below.)
+    gw.chain_id = gateway_signer.chain_id;
+    gw.vault = gateway_signer.vault;
     let app = Arc::new(App {
         gw: Mutex::new(gw),
         tx: tx.clone(),
@@ -8019,6 +8128,78 @@ mod tests {
                 "wrong-key signature rejected for digest form {i}",
             );
         }
+    }
+
+    #[test]
+    fn withdraw_auth_digest_binds_every_field() {
+        let owner: PubKey = [7u8; 32];
+        let to = [0x11u8; 20];
+        let vault = [0x22u8; 20];
+        let base = withdraw_auth_digest(84532, &vault, &owner, 0, 1_000, &to, 1);
+
+        // Every field must change the digest.
+        assert_ne!(base, withdraw_auth_digest(1, &vault, &owner, 0, 1_000, &to, 1));
+        assert_ne!(
+            base,
+            withdraw_auth_digest(84532, &[0x33u8; 20], &owner, 0, 1_000, &to, 1)
+        );
+        assert_ne!(
+            base,
+            withdraw_auth_digest(84532, &vault, &[8u8; 32], 0, 1_000, &to, 1)
+        );
+        assert_ne!(
+            base,
+            withdraw_auth_digest(84532, &vault, &owner, 1, 1_000, &to, 1)
+        );
+        assert_ne!(
+            base,
+            withdraw_auth_digest(84532, &vault, &owner, 0, 1_001, &to, 1)
+        );
+        assert_ne!(
+            base,
+            withdraw_auth_digest(84532, &vault, &owner, 0, 1_000, &[0x44u8; 20], 1)
+        );
+        assert_ne!(
+            base,
+            withdraw_auth_digest(84532, &vault, &owner, 0, 1_000, &to, 2)
+        );
+
+        // Deterministic.
+        assert_eq!(
+            base,
+            withdraw_auth_digest(84532, &vault, &owner, 0, 1_000, &to, 1)
+        );
+    }
+
+    #[test]
+    fn withdrawal_digests_are_domain_separated_from_each_other_and_from_bind() {
+        let owner: PubKey = [7u8; 32];
+        let addr = [0x11u8; 20];
+        let vault = [0x22u8; 20];
+        let w = withdraw_auth_digest(84532, &vault, &owner, 0, 1_000, &addr, 1);
+        let lp = lp_withdraw_auth_digest(84532, &vault, &owner, 1_000, 1);
+        let rb = rebind_auth_digest(84532, &vault, &owner, &addr, &[0x33u8; 20]);
+        let bind = deposit_bind_digest(&owner, &addr);
+        assert_ne!(w, lp);
+        assert_ne!(w, rb);
+        assert_ne!(lp, rb);
+        assert_ne!(w, bind);
+        assert_ne!(lp, bind);
+        assert_ne!(rb, bind);
+    }
+
+    #[test]
+    fn rebind_auth_digest_binds_both_addresses_in_order() {
+        let owner: PubKey = [7u8; 32];
+        let a = [0xAAu8; 20];
+        let b = [0xBBu8; 20];
+        let vault = [0x22u8; 20];
+        // Swapping old/new must NOT produce the same digest — otherwise a signature
+        // authorizing A->B would also authorize B->A.
+        assert_ne!(
+            rebind_auth_digest(84532, &vault, &owner, &a, &b),
+            rebind_auth_digest(84532, &vault, &owner, &b, &a)
+        );
     }
 
     /// AUDIT (CRITICAL — off-market fill-price vault drain): the gateway's house
