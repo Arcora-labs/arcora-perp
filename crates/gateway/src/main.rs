@@ -1095,12 +1095,17 @@ struct Gw {
     /// signature minted for this one — the signed nonce is not the withdrawal-leaf nonce
     /// (that is the gateway-global `next_withdraw_nonce`), so one authorization could
     /// otherwise become different claim leaves on two deployments. NOT persisted —
-    /// recomputed from the environment at boot, exactly like `prod`.
-    #[serde(skip)]
-    #[allow(dead_code)] // read by the withdrawal-verification tasks (SEC-021 Task 3+)
+    /// like `oracle_signer`, serde skips it and a restore re-applies the shared dev
+    /// fallback (`DEV_FALLBACK_CHAIN_ID`/`DEV_FALLBACK_VAULT`) via the `default` fn, so
+    /// EVERY deserialize path yields the same identity a fresh `boot()` does; `main()`
+    /// then overwrites both from `GatewaySigner` (the same env source the on-chain
+    /// deposit digest is bound to), and a prod boot with a zero vault is refused
+    /// (`vault_binding_ok_for_mode`). Read by the withdrawal-verification tasks
+    /// (SEC-021 Task 3+); until then only tests read them (no dead_code marker needed —
+    /// the serde `default` reference keeps the fields live).
+    #[serde(skip, default = "dev_fallback_chain_id")]
     chain_id: u64,
-    #[serde(skip)]
-    #[allow(dead_code)] // read by the withdrawal-verification tasks (SEC-021 Task 3+)
+    #[serde(skip, default = "dev_fallback_vault")]
     vault: [u8; 20],
     /// Task 5: honest finality reporting on the window-settle path. When the prover
     /// is configured (PROVER_URL), the tick loop must NOT simulate SETTLED after
@@ -1147,6 +1152,18 @@ fn boot_oracle_signer() -> k256::ecdsa::SigningKey {
         eprintln!("[fatal] oracle publisher signer: {e}");
         std::process::exit(1);
     })
+}
+
+/// Serde-restore defaults for the SEC-021 deployment binding (`Gw.chain_id`/`Gw.vault`):
+/// a deserialized `Gw` gets the SAME dev fallback `boot()` and `GatewaySigner::from_env`
+/// use (single source: `DEV_FALLBACK_CHAIN_ID`/`DEV_FALLBACK_VAULT`), and `main()` then
+/// overwrites both from `GatewaySigner` — mirrors `boot_oracle_signer`'s
+/// "runtime-only, re-derived on restore" pattern.
+fn dev_fallback_chain_id() -> u64 {
+    DEV_FALLBACK_CHAIN_ID
+}
+fn dev_fallback_vault() -> [u8; 20] {
+    DEV_FALLBACK_VAULT
 }
 
 /// Advisory lifetime of a published order-ingress epoch key (§5.1). Clients should
@@ -1565,11 +1582,12 @@ impl Gw {
             lp_total_shares: 0,
             lp_counter: 0,
             prod: false,
-            // SEC-021: overwritten at boot from GatewaySigner. Base Sepolia + zero
-            // vault is the same fallback GatewaySigner::from_env uses, so the demo
-            // build and unit tests get a coherent (if non-unique) deployment identity.
-            chain_id: 84532,
-            vault: [0u8; 20],
+            // SEC-021: overwritten in `main()` from GatewaySigner. The shared consts
+            // ARE GatewaySigner::from_env's unset-var fallbacks, so the demo build and
+            // unit tests get a coherent (if non-unique) deployment identity by
+            // construction.
+            chain_id: DEV_FALLBACK_CHAIN_ID,
+            vault: DEV_FALLBACK_VAULT,
             window_settle_mode: false,
             // Derive the first order-ingress epoch from the SAME seed the enclave
             // signing identity derives from, so a reboot/re-pin keeps the key stable.
@@ -1630,12 +1648,10 @@ impl Gw {
         // public or secret — is ever read from the snapshot.
         gw.order_log.set_recipient(derive_log_pub(&enclave_seed));
 
-        // SEC-021: chain_id/vault are serde-skipped, so deserialization leaves them
-        // at Default (0 / zero) rather than boot()'s dev identity. Re-apply the same
-        // fallback here so a restored Gw is coherent with a fresh one; main() then
-        // overwrites both from GatewaySigner for the real deployment (like `prod`).
-        gw.chain_id = 84532;
-        gw.vault = [0u8; 20];
+        // SEC-021: chain_id/vault are serde-skipped with a `default` fn (the
+        // oracle_signer pattern), so deserialization ALREADY re-applied the shared dev
+        // fallback — no manual re-apply here, and any future deserialize path gets the
+        // same identity for free. main() then overwrites both from GatewaySigner.
 
         gw.mkts = MARKETS
             .iter()
@@ -3979,6 +3995,16 @@ fn recover_eth_address(prehash: &[u8; 32], sig: &[u8; 65]) -> Option<[u8; 20]> {
     Some(a)
 }
 
+/// SEC-021: the dev/demo fallback deployment identity — Base Sepolia's chain id and an
+/// all-zero vault address. Single source of truth for the THREE consumers that must
+/// agree: `GatewaySigner::from_env`'s unset-var fallbacks, `Gw::boot`'s initial fields,
+/// and the serde-restore defaults (`dev_fallback_chain_id`/`dev_fallback_vault`) — so a
+/// fresh boot, a restored snapshot, and the signer-derived identity can never silently
+/// diverge. Production never runs on these: `vault_binding_ok_for_mode` refuses a prod
+/// boot whose vault is still the zero fallback.
+const DEV_FALLBACK_CHAIN_ID: u64 = 84532;
+const DEV_FALLBACK_VAULT: [u8; 20] = [0u8; 20];
+
 /// SEC-019 (Task 7b) demo/test default for the gateway deposit-authorization key. NEVER
 /// use it on a real deployment — the deployed `CollateralVault.gatewaySigner` must be the
 /// ADDRESS of a SECRET production key set via `GATEWAY_SIGNER_KEY`. This fixed scalar only
@@ -4030,11 +4056,11 @@ impl GatewaySigner {
         let chain_id = std::env::var("L1_CHAIN_ID")
             .ok()
             .and_then(|s| s.trim().parse::<u64>().ok())
-            .unwrap_or(84532);
+            .unwrap_or(DEV_FALLBACK_CHAIN_ID);
         let vault = std::env::var("L1_VAULT")
             .ok()
             .and_then(|s| parse_addr20_hex(&s))
-            .unwrap_or([0u8; 20]);
+            .unwrap_or(DEV_FALLBACK_VAULT);
         Self::from_parts(key, chain_id, vault)
     }
 
@@ -4095,6 +4121,15 @@ impl GatewaySigner {
 /// The digest a deposit-address bind signature must cover: `keccak256("dark-perp:
 /// bind-deposit:" ‖ owner ‖ addr)`. Binding the account owner stops the proof being
 /// replayed to bind the same address to a different account.
+///
+/// Byte layout (fixed-width fields, no length prefixes, no separators):
+/// ```text
+/// offset  len  field
+///      0   23  "dark-perp:bind-deposit:"  (ASCII, no trailing space)
+///     23   32  owner
+///     55   20  addr                       (total preimage: 75 bytes)
+/// ```
+/// Layout frozen by `auth_digests_match_known_answer_vectors`.
 fn deposit_bind_digest(owner: &PubKey, addr: &[u8; 20]) -> [u8; 32] {
     use sha3::{Digest as _, Keccak256 as RawKeccak};
     let mut h = RawKeccak::new();
@@ -4107,12 +4142,30 @@ fn deposit_bind_digest(owner: &PubKey, addr: &[u8; 20]) -> [u8; 32] {
 /// SEC-021: the digest a withdrawal authorization signature must cover.
 /// `keccak256("dark-perp:withdraw:" ‖ chain_id ‖ vault ‖ owner ‖ market_id ‖ amount ‖ to ‖ nonce)`
 ///
-/// Every field is fixed-width big-endian, so the concatenation is unambiguous by
-/// construction — there is no variable-length field that could collide under a
-/// different field split. `owner` stops a signature being replayed onto a second
-/// account registered to the same address; `chain_id`+`vault` stop it being replayed
-/// onto another deployment restored from a copied snapshot.
-#[allow(dead_code)] // consumed by the withdrawal-verification tasks (SEC-021 Task 3+)
+/// Every field is fixed-width big-endian (no length prefixes, no separators), so the
+/// concatenation is unambiguous by construction — there is no variable-length field
+/// that could collide under a different field split:
+/// ```text
+/// offset  len  field
+///      0   19  "dark-perp:withdraw:"  (ASCII, no trailing space)
+///     19    8  chain_id   u64 BE
+///     27   20  vault
+///     47   32  owner
+///     79    8  market_id  u64 BE
+///     87   16  amount     i128 BE (two's complement)
+///    103   20  to
+///    123    8  nonce      u64 BE   (total preimage: 131 bytes)
+/// ```
+/// NOTE for the TypeScript mirror (Task 8): `chain_id` here is EIGHT bytes (u64 BE),
+/// NOT the 32-byte word `GatewaySigner::digest` (in this same file) uses for the
+/// on-chain deposit digest (Solidity `abi.encodePacked(uint256)`). These digests are
+/// verified gateway-side only, so they owe Solidity's ABI nothing — do not conflate
+/// the two encodings. Layout frozen by `auth_digests_match_known_answer_vectors`.
+///
+/// `owner` stops a signature being replayed onto a second account registered to the
+/// same address; `chain_id`+`vault` stop it being replayed onto another deployment
+/// restored from a copied snapshot.
+#[cfg_attr(not(test), expect(dead_code))] // consumed by the withdrawal-verification tasks (SEC-021 Task 3+)
 fn withdraw_auth_digest(
     chain_id: u64,
     vault: &[u8; 20],
@@ -4139,7 +4192,21 @@ fn withdraw_auth_digest(
 /// `keccak256("dark-perp:lp-withdraw:" ‖ chain_id ‖ vault ‖ owner ‖ shares ‖ nonce)`
 /// There is no `to`: LP value lands in the account's OWN internal balance, never on L1.
 /// The distinct prefix makes a `withdraw` signature unusable here and vice versa.
-#[allow(dead_code)] // consumed by the withdrawal-verification tasks (SEC-021 Task 3+)
+///
+/// Byte layout (all fields fixed-width big-endian, no length prefixes, no separators;
+/// `chain_id` is 8 bytes, NOT `GatewaySigner::digest`'s 32-byte Solidity word — see
+/// `withdraw_auth_digest`):
+/// ```text
+/// offset  len  field
+///      0   22  "dark-perp:lp-withdraw:"  (ASCII, no trailing space)
+///     22    8  chain_id  u64 BE
+///     30   20  vault
+///     50   32  owner
+///     82   16  shares    u128 BE
+///     98    8  nonce     u64 BE   (total preimage: 106 bytes)
+/// ```
+/// Layout frozen by `auth_digests_match_known_answer_vectors`.
+#[cfg_attr(not(test), expect(dead_code))] // consumed by the withdrawal-verification tasks (SEC-021 Task 3+)
 fn lp_withdraw_auth_digest(
     chain_id: u64,
     vault: &[u8; 20],
@@ -4160,14 +4227,40 @@ fn lp_withdraw_auth_digest(
 
 /// SEC-021b: the digest the CURRENTLY BOUND address must sign to authorize moving an
 /// account's deposit-address binding to `new_addr`.
-/// `keccak256("dark-perp:rebind-deposit:" ‖ chain_id ‖ vault ‖ owner ‖ old ‖ new)`
+/// `keccak256("dark-perp:rebind-deposit:" ‖ chain_id ‖ vault ‖ owner ‖ rebind_counter ‖ old ‖ new)`
+///
+/// Byte layout (all fields fixed-width big-endian, no length prefixes, no separators;
+/// `chain_id` is 8 bytes, NOT `GatewaySigner::digest`'s 32-byte Solidity word — see
+/// `withdraw_auth_digest`):
+/// ```text
+/// offset  len  field
+///      0   25  "dark-perp:rebind-deposit:"  (ASCII, no trailing space)
+///     25    8  chain_id        u64 BE
+///     33   20  vault
+///     53   32  owner
+///     85    8  rebind_counter  u64 BE
+///     93   20  old_addr
+///    113   20  new_addr        (total preimage: 133 bytes)
+/// ```
+/// Layout frozen by `auth_digests_match_known_answer_vectors`.
+///
 /// Binding BOTH addresses (in this order) stops a signature authorizing old→new being
-/// reused to authorize old→someone-else, or replayed in reverse.
-#[allow(dead_code)] // consumed by the withdrawal-verification tasks (SEC-021 Task 3+)
+/// reused to authorize old→someone-else, or replayed in reverse. `rebind_counter` —
+/// the account's rebind generation, incremented on every ACCEPTED rebind (the
+/// `Account.rebind_counter` field lands in Task 3 and is enforced in Task 4) — closes
+/// the CYCLE replay the address pair alone cannot: without it, a signature over
+/// `(chain, vault, owner, A, B)` stays valid ANY time the bound address is `A` again.
+/// Bind A → rotate A→B → later rotate B→A, and the ORIGINAL A→B signature replays,
+/// forcing the binding back to B. That failure is worst exactly when rebinding matters
+/// most — rotating away from a COMPROMISED address, whose old rotation signatures the
+/// attacker may hold. With the counter, every accepted rebind bumps the generation, so
+/// each signature authorizes at most one specific rotation and then dies.
+#[cfg_attr(not(test), expect(dead_code))] // consumed by the withdrawal-verification tasks (SEC-021 Task 3+)
 fn rebind_auth_digest(
     chain_id: u64,
     vault: &[u8; 20],
     owner: &PubKey,
+    rebind_counter: u64,
     old_addr: &[u8; 20],
     new_addr: &[u8; 20],
 ) -> [u8; 32] {
@@ -4177,6 +4270,7 @@ fn rebind_auth_digest(
     h.update(chain_id.to_be_bytes());
     h.update(vault);
     h.update(owner);
+    h.update(rebind_counter.to_be_bytes());
     h.update(old_addr);
     h.update(new_addr);
     h.finalize().into()
@@ -5425,6 +5519,19 @@ fn measurement_matches_pin(prod: bool, attested: Option<[u8; 32]>, pin: Option<[
     }
 }
 
+/// SEC-021 (Task-2 review Finding 3): whether the gateway may boot given its deployment
+/// vault binding. In production posture the vault address must be real — `L1_VAULT` set
+/// and non-zero. `production_mode()` is `l1_enabled || DARKPERP_PROD=1`, so a prod-posture
+/// gateway CAN run without an L1 bridge; if `L1_VAULT` is then unset (or explicitly zero),
+/// `GatewaySigner::from_env` falls back to `DEV_FALLBACK_VAULT` and every SEC-021
+/// withdrawal/rebind digest binds to `(84532, 0x00…00)` — byte-identical to the unit-test
+/// identity and to every other such deployment, making the cross-deployment replay
+/// protection vacuous. Mirrors `oracle_signer_ok_for_mode`; the demo/dev build boots
+/// either way.
+fn vault_binding_ok_for_mode(prod: bool, vault: [u8; 20]) -> bool {
+    !prod || vault != [0u8; 20]
+}
+
 /// Assemble the HTTP router. In production mode the legacy, UNAUTHENTICATED `/api/*`
 /// mutation routes are omitted (audit DP-010) — only the read-only demo state/websocket
 /// and the API-key-authenticated `/v1` surface are exposed.
@@ -5675,6 +5782,40 @@ async fn main() {
              unset) — demo/test only, never production"
         );
     }
+    // SEC-019 (Task 7b): load the deposit-authorization signer. A SET-but-malformed
+    // GATEWAY_SIGNER_KEY fails closed with a clear message (never silently signs with
+    // the demo key); unset falls back to the demo key for the demo build. Loaded BEFORE
+    // the state restore below (SEC-021 review Finding 8): `from_env` reads only the
+    // environment, and hoisting it lets the SEC-021 deployment binding be applied
+    // beside `gw.prod` — so no code between restore and wiring can ever observe the
+    // restore-default chain_id/vault instead of the environment's.
+    let gateway_signer = match GatewaySigner::from_env() {
+        Ok(gs) => {
+            println!(
+                "[sec-019] gateway deposit-authorization signer address {} (must equal the \
+                 deployed CollateralVault.gatewaySigner)",
+                hex0x(&gs.address())
+            );
+            gs
+        }
+        Err(e) => {
+            eprintln!("[sec-019] REFUSING to start: {e}");
+            std::process::exit(1);
+        }
+    };
+    // SEC-021 (review Finding 3): in production the deployment binding must be real.
+    if !vault_binding_ok_for_mode(prod, gateway_signer.vault) {
+        eprintln!(
+            "[sec-021] REFUSING to start: in production L1_VAULT must be set to the deployed \
+             CollateralVault address (non-zero). Without it, every withdrawal/rebind \
+             authorization digest binds to the dev fallback identity (chain 84532 / zero \
+             vault) — byte-identical to every other such deployment and to the unit-test \
+             identity — so the cross-deployment replay protection is vacuous. Set L1_VAULT, \
+             or drop the production posture (no L1 bridge and DARKPERP_PROD unset) to run \
+             the demo build."
+        );
+        std::process::exit(1);
+    }
     // Sealed state persistence: DARKPERP_STATE=<path> restores the engine across
     // restarts. A present-but-unopenable snapshot is fail-closed (never silently
     // wipe balances) — the operator deletes the file to consciously boot fresh.
@@ -5711,6 +5852,13 @@ async fn main() {
         _ => Gw::boot(),
     };
     gw.prod = prod;
+    // SEC-021: bind withdrawal authorization to this deployment — the same env source
+    // the deposit-authorization signer uses, so both digest families agree on chain id
+    // + vault by construction. Set HERE, beside `prod` (review Finding 8): the signer
+    // is loaded before `gw` exists, so a future pre-`App` reader sees the environment's
+    // identity, never the restore default.
+    gw.chain_id = gateway_signer.chain_id;
+    gw.vault = gateway_signer.vault;
     // Task 5: with a prover configured, the tick loop's SETTLE_TICKS simulation is OFF —
     // finality advances only when a window's proof verifies on L1. Set BEFORE the
     // boot-recovery block below, so a roll-forward re-commit already runs under the
@@ -5920,29 +6068,6 @@ async fn main() {
             }
         }
     }
-    // SEC-019 (Task 7b): load the deposit-authorization signer. A SET-but-malformed
-    // GATEWAY_SIGNER_KEY fails closed with a clear message (never silently signs with
-    // the demo key); unset falls back to the demo key for the demo build.
-    let gateway_signer = match GatewaySigner::from_env() {
-        Ok(gs) => {
-            println!(
-                "[sec-019] gateway deposit-authorization signer address {} (must equal the \
-                 deployed CollateralVault.gatewaySigner)",
-                hex0x(&gs.address())
-            );
-            gs
-        }
-        Err(e) => {
-            eprintln!("[sec-019] REFUSING to start: {e}");
-            std::process::exit(1);
-        }
-    };
-    // SEC-021: bind withdrawal authorization to this deployment. Same source the
-    // deposit-authorization signer uses, so both digests agree on chain id + vault.
-    // (Set here, not beside `gw.prod = prod` above, because the signer is only
-    // loaded now — and both `gw` and `gateway_signer` move into the App below.)
-    gw.chain_id = gateway_signer.chain_id;
-    gw.vault = gateway_signer.vault;
     let app = Arc::new(App {
         gw: Mutex::new(gw),
         tx: tx.clone(),
@@ -7146,6 +7271,12 @@ mod tests {
             )
             .unwrap();
         gw.mkts[0].px += 1234; // market dynamics must survive too
+                               // SEC-021 (review Finding 7): scribble on the runtime-only deployment binding
+                               // BEFORE snapshotting — restore must NOT carry it (serde-skip) and must
+                               // re-apply the shared dev fallback via the `default` fns, exactly as a fresh
+                               // boot() would (main() then overwrites both from GatewaySigner).
+        gw.chain_id = 31_337;
+        gw.vault = [0xEEu8; 20];
         let root_before = gw.state_root_hex();
         let px_before = gw.mkts[0].px;
         let log_head_before = gw.order_log.head();
@@ -7194,6 +7325,17 @@ mod tests {
             restored.order_log.recipient(),
             gw.order_log.recipient(),
             "log pubkey re-derived from the seed, not persisted"
+        );
+        // SEC-021 (review Finding 7): the deployment binding is runtime-only — the
+        // scribbled values above must NOT survive the round trip; the restore re-applies
+        // the shared dev fallback (dev_fallback_chain_id/dev_fallback_vault).
+        assert_eq!(
+            restored.chain_id, DEV_FALLBACK_CHAIN_ID,
+            "chain_id not persisted; restore re-applies the dev fallback"
+        );
+        assert_eq!(
+            restored.vault, DEV_FALLBACK_VAULT,
+            "vault not persisted; restore re-applies the dev fallback"
         );
     }
 
@@ -7663,6 +7805,34 @@ mod tests {
             !measurement_matches_pin(true, None, Some(m)),
             "prod requires a verified measurement"
         );
+    }
+
+    // SEC-021 (Task-2 review Finding 3): production must refuse the zero-vault dev
+    // fallback — a prod-posture gateway with no L1 bridge and no L1_VAULT would bind
+    // every withdrawal/rebind digest to (84532, 0x00…00), byte-identical to the
+    // unit-test identity and to every other such deployment, so the cross-deployment
+    // replay protection would be vacuous.
+    #[test]
+    fn production_requires_a_real_vault_binding() {
+        assert!(
+            !vault_binding_ok_for_mode(true, [0u8; 20]),
+            "production must reject the zero-vault fallback (L1_VAULT unset or zero)"
+        );
+        assert!(
+            vault_binding_ok_for_mode(true, [0x22u8; 20]),
+            "production boots with a real vault address"
+        );
+        assert!(
+            vault_binding_ok_for_mode(false, [0u8; 20]),
+            "demo build boots on the zero-vault fallback"
+        );
+        assert!(
+            vault_binding_ok_for_mode(false, [0x22u8; 20]),
+            "demo build boots with a real vault too"
+        );
+        // the gate's zero test IS the shared fallback const — if the fallback ever
+        // changes, this keeps the gate honest.
+        assert_eq!(DEV_FALLBACK_VAULT, [0u8; 20]);
     }
 
     #[test]
@@ -8138,7 +8308,10 @@ mod tests {
         let base = withdraw_auth_digest(84532, &vault, &owner, 0, 1_000, &to, 1);
 
         // Every field must change the digest.
-        assert_ne!(base, withdraw_auth_digest(1, &vault, &owner, 0, 1_000, &to, 1));
+        assert_ne!(
+            base,
+            withdraw_auth_digest(1, &vault, &owner, 0, 1_000, &to, 1)
+        );
         assert_ne!(
             base,
             withdraw_auth_digest(84532, &[0x33u8; 20], &owner, 0, 1_000, &to, 1)
@@ -8178,7 +8351,7 @@ mod tests {
         let vault = [0x22u8; 20];
         let w = withdraw_auth_digest(84532, &vault, &owner, 0, 1_000, &addr, 1);
         let lp = lp_withdraw_auth_digest(84532, &vault, &owner, 1_000, 1);
-        let rb = rebind_auth_digest(84532, &vault, &owner, &addr, &[0x33u8; 20]);
+        let rb = rebind_auth_digest(84532, &vault, &owner, 0, &addr, &[0x33u8; 20]);
         let bind = deposit_bind_digest(&owner, &addr);
         assert_ne!(w, lp);
         assert_ne!(w, rb);
@@ -8197,8 +8370,71 @@ mod tests {
         // Swapping old/new must NOT produce the same digest — otherwise a signature
         // authorizing A->B would also authorize B->A.
         assert_ne!(
-            rebind_auth_digest(84532, &vault, &owner, &a, &b),
-            rebind_auth_digest(84532, &vault, &owner, &b, &a)
+            rebind_auth_digest(84532, &vault, &owner, 0, &a, &b),
+            rebind_auth_digest(84532, &vault, &owner, 0, &b, &a)
+        );
+        // Finding 1: a different rebind_counter must change the digest — the counter
+        // is what makes an old rotation signature unreplayable after the binding
+        // cycles back to the same address pair.
+        assert_ne!(
+            rebind_auth_digest(84532, &vault, &owner, 0, &a, &b),
+            rebind_auth_digest(84532, &vault, &owner, 1, &a, &b)
+        );
+    }
+
+    /// SEC-021 (Task-2 review Finding 2): known-answer tests freezing the exact BYTE
+    /// LAYOUT of every authorization digest. The sensitivity tests above compare the
+    /// implementation against itself, so they still pass under a prefix typo, a swap of
+    /// two same-width fields (`market_id`↔`nonce`, `vault`↔`to`, `old_addr`↔`new_addr`),
+    /// or a little-endian encoding. Task 8 mirrors `withdraw_auth_digest` byte-for-byte
+    /// in TypeScript, so the layout is a cross-component CONTRACT — a wrong layout is a
+    /// silent security bug. These vectors were computed ONCE from this implementation
+    /// and hard-coded (never recomputed at test time from the function under test);
+    /// any later change to a prefix, field order, width, or endianness fails loudly.
+    #[test]
+    fn auth_digests_match_known_answer_vectors() {
+        let owner: PubKey = [7u8; 32];
+        let to = [0x11u8; 20];
+        let vault = [0x22u8; 20];
+        assert_eq!(
+            hex0x(&withdraw_auth_digest(
+                84532, &vault, &owner, 0, 1_000, &to, 1
+            )),
+            "0x297d6fcc305700b679a59a06cb0d990a70157fcc314f93f69ed36bb1eec6ff97",
+            "withdraw_auth_digest layout drifted"
+        );
+        // amount = -1 pins the i128 two's-complement big-endian encoding (16 bytes of
+        // 0xFF) — nothing else in the suite covers a negative amount.
+        assert_eq!(
+            hex0x(&withdraw_auth_digest(84532, &vault, &owner, 0, -1, &to, 1)),
+            "0xe9285454ef17c530a4a32577d234bbace2d0fc1177f7a9a677a88f63474f695e",
+            "withdraw_auth_digest negative-amount (i128 two's-complement BE) drifted"
+        );
+        assert_eq!(
+            hex0x(&lp_withdraw_auth_digest(84532, &vault, &owner, 1_000, 1)),
+            "0x6499ac5025078970b4d4aea3031d0704d6a0398c8a748c299dbad105b0c00914",
+            "lp_withdraw_auth_digest layout drifted"
+        );
+        // Frozen baseline: the pre-SEC-021 bind digest must never move either.
+        assert_eq!(
+            hex0x(&deposit_bind_digest(&owner, &to)),
+            "0x2ba386f057ba44415aab7b46643ed103af568763a1f9c31afd7ce639a07f983f",
+            "deposit_bind_digest layout drifted"
+        );
+        // rebind_counter = 1 (not 0), so a big-endian↔little-endian flip of the counter
+        // bytes changes the digest and is caught here. Vector computed AFTER Finding 1
+        // inserted the counter between `owner` and `old_addr`.
+        assert_eq!(
+            hex0x(&rebind_auth_digest(
+                84532,
+                &vault,
+                &owner,
+                1,
+                &to,
+                &[0x33u8; 20]
+            )),
+            "0x5443439bdaff6c0664d421740e45477386aa256329eb9dbf68c3564676ff917e",
+            "rebind_auth_digest layout drifted"
         );
     }
 
