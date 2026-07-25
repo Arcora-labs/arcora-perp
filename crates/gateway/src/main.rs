@@ -8531,14 +8531,28 @@ mod tests {
         };
         let bytes = postcard::to_allocvec(&old).expect("serialize old");
         let decoded: Result<Account, _> = postcard::from_bytes(&bytes);
-        // ANSWER (pinned 2026-07-25): Err(DeserializeUnexpectedEnd) — the positional
-        // decoder runs out of bytes reading the new trailing u64s. Pre-upgrade
-        // snapshots DO NOT load; the deploy runbook's state wipe is REQUIRED.
-        // If this assert fails, INVERT it and update the runbook —
-        // do not "fix" it by changing the field, the point is to know which it is.
+        // ANSWER (pinned 2026-07-25): with THIS fixture (empty `deposit_authorizations`)
+        // the decode fails with Err(DeserializeUnexpectedEnd). Mechanism: the new fields
+        // are NOT trailing — `last_withdraw_nonce` and `rebind_counter` sit mid-struct,
+        // BEFORE `deposit_authorizations` — so `last_withdraw_nonce` swallows the map's
+        // length byte and `rebind_counter` then hits end-of-input. This is NOT a
+        // universal guarantee of an error: with a NON-EMPTY map whose key bytes happen
+        // to align, an old encoding can decode SUCCESSFULLY into corrupt state (the
+        // nonce absorbs the map's length byte and the authorizations are silently
+        // dropped) — strictly worse than erroring, and exactly the case where a state
+        // wipe matters most. Either way, pre-upgrade snapshots do not load CORRECTLY,
+        // so the deploy runbook's state wipe is REQUIRED in BOTH outcomes. Do not "fix"
+        // a failure of this assert by changing a field; see the assert message for what
+        // a flip actually means.
         assert!(
             decoded.is_err(),
-            "pre-upgrade snapshots DO load; update the runbook to say a wipe is optional"
+            "pre-upgrade Account encoding DECODED — on a SHORTER pre-upgrade encoding a \
+             successful decode is a silent mis-parse, NOT compatibility: \
+             `last_withdraw_nonce` swallows the `deposit_authorizations` length byte and \
+             the authorizations are silently dropped into corrupt state (strictly worse \
+             than erroring). The deploy runbook's state wipe is STILL REQUIRED; anyone \
+             changing the runbook must FIRST verify, field-by-field, that every \
+             pre-upgrade field decodes into the same field post-upgrade"
         );
     }
 
