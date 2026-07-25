@@ -1975,17 +1975,39 @@ impl Gw {
         Ok(amt)
     }
 
+    /// SEC-021: the address whose secp256k1 signature authorizes this account's
+    /// withdrawals. A caller-signed account's registered `signer` wins — it is the
+    /// explicit opt-in. Otherwise the bound `deposit_address`: the account already
+    /// proved it can sign with that key when it bound it, so requiring it again on
+    /// the money path costs the user nothing new and leaves no account authorized by
+    /// the bearer API key alone. Neither ⇒ no withdrawal is possible.
+    fn authorizing_address(&self, key: &[u8; 32]) -> Result<[u8; 20], String> {
+        let a = self.accounts.get(key).ok_or("Unknown account.")?;
+        a.signer.or(a.deposit_address).ok_or_else(|| {
+            "no authorizing address: bind a deposit address (POST /v1/accounts/deposit/address) \
+             or register a caller-signed account before withdrawing"
+                .to_string()
+        })
+    }
+
     /// Withdraw `amount` (quote units = USDC base units) from an account's market
     /// bucket to the L1 address `to`: debit the engine (Unbind + burn the note, so the
     /// off-chain balance really drops and can't be double-withdrawn) and record an
     /// authorized withdrawal leaf. On the next L1 settle the cumulative root is
     /// published and the user can `vault.claim` the USDC on Base Sepolia (§3).
+    /// SEC-021: EVERY withdrawal must carry a secp256k1 signature over
+    /// `withdraw_auth_digest` recovering to the account's authorizing address
+    /// (`authorizing_address`) — the API key alone must never move funds. All
+    /// checks run BEFORE the first `seq.apply` (fail-closed: a rejection mutates
+    /// nothing and burns no nonce).
     fn account_withdraw(
         &mut self,
         key: &[u8; 32],
         market: u64,
         amount: i128,
         to: [u8; 20],
+        auth_nonce: u64,
+        sig: &[u8; 65],
     ) -> Result<Withdrawal, String> {
         if amount <= 0 {
             return Err("Amount must be positive.".into());
@@ -1993,7 +2015,55 @@ impl Gw {
         if self.mkt(market).is_none() {
             return Err("Unknown market.".into());
         }
-        let wallet = self.accounts.get(key).ok_or("Unknown account.")?.wallet;
+        let (wallet, signer, bound, last_nonce) = {
+            let a = self.accounts.get(key).ok_or("Unknown account.")?;
+            (a.wallet, a.signer, a.deposit_address, a.last_withdraw_nonce)
+        };
+        // SEC-021: server-custody accounts may only withdraw to the address they
+        // bound. The signature already binds `to`, but the rebind path is exactly
+        // where this design's first version failed (SEC-021b), so the destination
+        // carries a second, independent constraint. Caller-signed accounts are the
+        // explicit advanced mode and keep a free destination — they consented to it
+        // cryptographically (deposit from a hot wallet, withdraw to a cold one).
+        if signer.is_none() {
+            match bound {
+                Some(b) if b == to => {}
+                Some(_) => {
+                    return Err(
+                        "Withdrawal `to` must equal this account's bound deposit address.".into(),
+                    )
+                }
+                None => {
+                    return Err(
+                        "Bind a deposit address first (POST /v1/accounts/deposit/address).".into(),
+                    )
+                }
+            }
+        }
+        // Replay protection: strictly increasing, CHECKED here but COMMITTED only
+        // after the withdrawal fully succeeds (see the end of this function).
+        if auth_nonce <= last_nonce {
+            return Err("withdrawal nonce must strictly increase (replay protection)".into());
+        }
+        let expected = self.authorizing_address(key)?;
+        let digest = withdraw_auth_digest(
+            self.chain_id,
+            &self.vault,
+            &wallet.owner,
+            market,
+            amount,
+            &to,
+            auth_nonce,
+        );
+        let authorized = eip191_prehash_candidates(&digest)
+            .iter()
+            .any(|prehash| recover_eth_address(prehash, sig) == Some(expected));
+        if !authorized {
+            return Err(
+                "withdrawal signature does not recover to this account's authorizing address"
+                    .into(),
+            );
+        }
         if amount > self.market_free_of(&wallet.owner, market) {
             return Err(
                 "Not withdrawable: amount exceeds the SETTLED balance in this market (§3).".into(),
@@ -2038,6 +2108,11 @@ impl Gw {
         // the BatchOp::Withdraw was applied), so the new settle path's window withdrawal
         // tree byte-matches the circuit's withdrawals_root.
         self.window_withdrawals.push(w.clone());
+        // SEC-021: commit the authorization nonce ONLY now — the withdrawal is fully
+        // applied. Committing at verification time would burn the nonce on a request
+        // that then failed the balance check, and the user's retry of the unchanged
+        // signed request would be rejected as a replay.
+        self.accounts.get_mut(key).unwrap().last_withdraw_nonce = auth_nonce;
         Ok(w)
     }
 
@@ -4012,6 +4087,16 @@ struct WithdrawReq {
     market_id: u64,
     amount: String,
     to: String,
+    /// SEC-021: strictly-increasing withdrawal-authorization nonce (replay
+    /// protection). Required for every account.
+    #[serde(default)]
+    nonce: Option<u64>,
+    /// SEC-021: 65-byte secp256k1 signature (r‖s‖v) over `withdraw_auth_digest`,
+    /// recovering to the account's authorizing address (registered `signer`, else
+    /// the bound deposit address). Required for every account; accepted over any of
+    /// the three shapes in `eip191_prehash_candidates`.
+    #[serde(default)]
+    signature: Option<String>,
 }
 
 /// One hex nibble, byte-safe: `None` for anything outside `[0-9a-fA-F]` —
@@ -4245,7 +4330,6 @@ fn deposit_bind_digest(owner: &PubKey, addr: &[u8; 20]) -> [u8; 32] {
 /// `owner` stops a signature being replayed onto a second account registered to the
 /// same address; `chain_id`+`vault` stop it being replayed onto another deployment
 /// restored from a copied snapshot.
-#[cfg_attr(not(test), expect(dead_code))] // consumed by the withdrawal-verification tasks (SEC-021 Task 3+)
 fn withdraw_auth_digest(
     chain_id: u64,
     vault: &[u8; 20],
@@ -4767,11 +4851,24 @@ async fn post_v1_withdraw(
         Some(a) => a,
         None => return err400("bad `to` address (expected 0x + 40 hex)".into()).into_response(),
     };
+    // SEC-021: every withdrawal must carry its authorization nonce + signature —
+    // the engine method verifies them; the handler only refuses absent/unparseable
+    // fields early with a clear message.
+    let nonce = match req.nonce {
+        Some(n) => n,
+        None => return err400("`nonce` is required".into()).into_response(),
+    };
+    let sig = match req.signature.as_deref().and_then(parse_hex65) {
+        Some(s) => s,
+        None => {
+            return err400("`signature` is required (65-byte 0x hex r‖s‖v)".into()).into_response()
+        }
+    };
     let r = {
         app.gw
             .lock()
             .await
-            .account_withdraw(&key, req.market_id, amount, to)
+            .account_withdraw(&key, req.market_id, amount, to, nonce, &sig)
     };
     match r {
         Ok(w) => Json(serde_json::json!({
@@ -8414,6 +8511,46 @@ mod tests {
         a
     }
 
+    /// SEC-021 fixture: credit an account through the same dev-mode path the
+    /// pre-existing withdrawal tests use (`account_deposit`, the DP-001-guarded
+    /// self-service credit — enabled because tests boot non-prod).
+    fn fund_test_account(gw: &mut Gw, key: &[u8; 32], amount: i128) {
+        gw.account_deposit(key, 0, amount).unwrap();
+    }
+
+    /// SEC-021 fixture for tests whose SUBJECT is not withdrawal authorization:
+    /// register a CALLER-SIGNED account (its registered signer authorizes its
+    /// withdrawals and the destination stays free, so each test keeps its original
+    /// `to` values and assertions) and return the key material to sign with.
+    fn register_withdrawer(gw: &mut Gw) -> ([u8; 32], k256::ecdsa::SigningKey) {
+        let sk = k256::ecdsa::SigningKey::from_slice(&[0x51u8; 32]).unwrap();
+        let (key, _owner) = gw.register_account(Some(eth_addr(&sk)));
+        (key, sk)
+    }
+
+    /// SEC-021 fixture: a withdrawal through the REAL authorization path — computes
+    /// `withdraw_auth_digest` for the account's next strictly-increasing auth nonce
+    /// and signs it with `sk`. No exemption anywhere: `account_withdraw` runs its
+    /// full destination/nonce/signature/balance checks on every call.
+    fn signed_withdraw(
+        gw: &mut Gw,
+        key: &[u8; 32],
+        sk: &k256::ecdsa::SigningKey,
+        market: u64,
+        amount: i128,
+        to: [u8; 20],
+    ) -> Result<Withdrawal, String> {
+        let (owner, nonce) = {
+            let a = gw.accounts.get(key).unwrap();
+            (a.wallet.owner, a.last_withdraw_nonce + 1)
+        };
+        let sig = sign_digest(
+            sk,
+            &withdraw_auth_digest(gw.chain_id, &gw.vault, &owner, market, amount, &to, nonce),
+        );
+        gw.account_withdraw(key, market, amount, to, nonce, &sig)
+    }
+
     /// SEC-021b: an attacker holding ONLY the API key must not be able to move the
     /// account's deposit-address binding to an address they control. Before the fix,
     /// account_set_deposit_address proved control only of the NEW address and
@@ -8613,8 +8750,7 @@ mod tests {
 
         // The attacker computes the CORRECT current rebind digest — everything in
         // it is public — but can only sign it with their own key.
-        let attacker_bind =
-            sign_digest(&attacker_sk, &deposit_bind_digest(&owner, &attacker_eoa));
+        let attacker_bind = sign_digest(&attacker_sk, &deposit_bind_digest(&owner, &attacker_eoa));
         let forged = sign_digest(
             &attacker_sk,
             &rebind_auth_digest(
@@ -8639,6 +8775,240 @@ mod tests {
             acct.rebind_counter, 0,
             "the rejected forgery must not burn a generation"
         );
+    }
+
+    /// SEC-021: the regression test for the reported finding. A caller-signed account
+    /// exists precisely so a leaked API key cannot act — but the withdrawal path never
+    /// read `acct.signer`, so the key alone could drain funds to any address.
+    #[test]
+    fn caller_signed_account_cannot_withdraw_without_a_signature() {
+        use k256::ecdsa::SigningKey;
+        let mut gw = Gw::boot();
+        let sk = SigningKey::from_slice(&[9u8; 32]).unwrap();
+        let (key, _owner) = gw.register_account(Some(eth_addr(&sk)));
+        fund_test_account(&mut gw, &key, 10_000);
+        let root_before = gw.seq.state.state_root();
+
+        let err = gw
+            .account_withdraw(&key, 0, 5_000, [0x66u8; 20], 1, &[0u8; 65])
+            .expect_err("unsigned withdrawal must be refused");
+        assert!(err.contains("signature"), "unexpected error: {err}");
+
+        assert_eq!(gw.seq.state.state_root(), root_before, "no state mutation");
+        assert_eq!(
+            gw.accounts.get(&key).unwrap().last_withdraw_nonce,
+            0,
+            "a rejected withdrawal must not burn its nonce"
+        );
+    }
+
+    /// SEC-021: server-custody accounts are authorized by the EOA they already proved
+    /// they can sign with at bind time, and may only withdraw to that address.
+    #[test]
+    fn server_custody_withdrawal_requires_bound_address_signature_and_destination() {
+        use k256::ecdsa::SigningKey;
+        let mut gw = Gw::boot();
+        let sk = SigningKey::from_slice(&[9u8; 32]).unwrap();
+        let eoa = eth_addr(&sk);
+        let (key, owner) = gw.register_account(None);
+        let bind = sign_digest(&sk, &deposit_bind_digest(&owner, &eoa));
+        gw.account_set_deposit_address(&key, eoa, &bind, None)
+            .unwrap();
+        fund_test_account(&mut gw, &key, 10_000);
+
+        // Wrong destination, even with a valid signature over that destination.
+        let elsewhere = [0x66u8; 20];
+        let sig_elsewhere = sign_digest(
+            &sk,
+            &withdraw_auth_digest(gw.chain_id, &gw.vault, &owner, 0, 5_000, &elsewhere, 1),
+        );
+        let err = gw
+            .account_withdraw(&key, 0, 5_000, elsewhere, 1, &sig_elsewhere)
+            .expect_err("server-custody withdrawal to a non-bound address must be refused");
+        assert!(
+            err.contains("bound deposit address"),
+            "unexpected error: {err}"
+        );
+
+        // Correct destination + signature.
+        let sig = sign_digest(
+            &sk,
+            &withdraw_auth_digest(gw.chain_id, &gw.vault, &owner, 0, 5_000, &eoa, 1),
+        );
+        let w = gw
+            .account_withdraw(&key, 0, 5_000, eoa, 1, &sig)
+            .expect("accepted");
+        assert_eq!(w.to, eoa);
+        assert_eq!(gw.accounts.get(&key).unwrap().last_withdraw_nonce, 1);
+
+        // Replay of the same signed request.
+        let err = gw
+            .account_withdraw(&key, 0, 5_000, eoa, 1, &sig)
+            .expect_err("replay must be refused");
+        assert!(err.contains("nonce"), "unexpected error: {err}");
+    }
+
+    /// SEC-021: a validly signed withdrawal that fails on insufficient balance must NOT
+    /// burn its nonce — otherwise the user's retry of the unchanged signed request would
+    /// be rejected as a replay, stranding them.
+    #[test]
+    fn failed_withdrawal_does_not_burn_its_nonce() {
+        use k256::ecdsa::SigningKey;
+        let mut gw = Gw::boot();
+        let sk = SigningKey::from_slice(&[9u8; 32]).unwrap();
+        let eoa = eth_addr(&sk);
+        let (key, owner) = gw.register_account(None);
+        let bind = sign_digest(&sk, &deposit_bind_digest(&owner, &eoa));
+        gw.account_set_deposit_address(&key, eoa, &bind, None)
+            .unwrap();
+        fund_test_account(&mut gw, &key, 1_000);
+
+        let sig = sign_digest(
+            &sk,
+            &withdraw_auth_digest(gw.chain_id, &gw.vault, &owner, 0, 5_000, &eoa, 1),
+        );
+        let err = gw
+            .account_withdraw(&key, 0, 5_000, eoa, 1, &sig)
+            .expect_err("over-balance withdrawal fails");
+        assert!(err.contains("Not withdrawable"), "unexpected error: {err}");
+        assert_eq!(
+            gw.accounts.get(&key).unwrap().last_withdraw_nonce,
+            0,
+            "nonce must survive a post-verification failure"
+        );
+
+        // Fund and retry the SAME signed request — it must now succeed.
+        fund_test_account(&mut gw, &key, 10_000);
+        gw.account_withdraw(&key, 0, 5_000, eoa, 1, &sig)
+            .expect("the unchanged signed request is still valid on retry");
+    }
+
+    /// SEC-021: a caller-signed account's registered `signer` takes precedence — a
+    /// signature from the bound deposit address must NOT authorize its withdrawals,
+    /// or registering a signer would silently widen authorization instead of
+    /// narrowing it.
+    #[test]
+    fn registered_signer_takes_precedence_over_bound_address() {
+        use k256::ecdsa::SigningKey;
+        let mut gw = Gw::boot();
+        let signer_sk = SigningKey::from_slice(&[9u8; 32]).unwrap();
+        let eoa_sk = SigningKey::from_slice(&[0xE0u8; 32]).unwrap();
+        let eoa = eth_addr(&eoa_sk);
+        let (key, owner) = gw.register_account(Some(eth_addr(&signer_sk)));
+        let bind = sign_digest(&eoa_sk, &deposit_bind_digest(&owner, &eoa));
+        gw.account_set_deposit_address(&key, eoa, &bind, None)
+            .unwrap();
+        fund_test_account(&mut gw, &key, 10_000);
+
+        let digest = withdraw_auth_digest(gw.chain_id, &gw.vault, &owner, 0, 5_000, &eoa, 1);
+        // The bound address signs — must be refused, the account registered a signer.
+        let err = gw
+            .account_withdraw(&key, 0, 5_000, eoa, 1, &sign_digest(&eoa_sk, &digest))
+            .expect_err("bound-address signature must not authorize a caller-signed account");
+        assert!(err.contains("signature"), "unexpected error: {err}");
+        // The registered signer signs — accepted, and `to` is free for caller-signed.
+        gw.account_withdraw(&key, 0, 5_000, eoa, 1, &sign_digest(&signer_sk, &digest))
+            .expect("registered signer authorizes");
+    }
+
+    /// SEC-021: `owner` in the digest stops a signature being replayed onto a SECOND
+    /// account registered to the same signer address.
+    #[test]
+    fn withdrawal_signature_does_not_replay_across_accounts() {
+        use k256::ecdsa::SigningKey;
+        let mut gw = Gw::boot();
+        let sk = SigningKey::from_slice(&[9u8; 32]).unwrap();
+        let addr = eth_addr(&sk);
+        let (key_a, owner_a) = gw.register_account(Some(addr));
+        let (key_b, owner_b) = gw.register_account(Some(addr));
+        assert_ne!(owner_a, owner_b);
+        fund_test_account(&mut gw, &key_a, 10_000);
+        fund_test_account(&mut gw, &key_b, 10_000);
+
+        let to = [0x66u8; 20];
+        let sig_a = sign_digest(
+            &sk,
+            &withdraw_auth_digest(gw.chain_id, &gw.vault, &owner_a, 0, 5_000, &to, 1),
+        );
+        let err = gw
+            .account_withdraw(&key_b, 0, 5_000, to, 1, &sig_a)
+            .expect_err("account A's signature must not authorize account B");
+        assert!(err.contains("signature"), "unexpected error: {err}");
+    }
+
+    /// SEC-021: the signature covers every money-moving field — tampering with any of
+    /// them after signing must invalidate it.
+    #[test]
+    fn tampering_with_a_signed_withdrawal_invalidates_it() {
+        use k256::ecdsa::SigningKey;
+        let mut gw = Gw::boot();
+        let sk = SigningKey::from_slice(&[9u8; 32]).unwrap();
+        let (key, owner) = gw.register_account(Some(eth_addr(&sk)));
+        fund_test_account(&mut gw, &key, 100_000);
+
+        let to = [0x66u8; 20];
+        let sig = sign_digest(
+            &sk,
+            &withdraw_auth_digest(gw.chain_id, &gw.vault, &owner, 0, 5_000, &to, 1),
+        );
+        // Amount tampered.
+        assert!(gw.account_withdraw(&key, 0, 9_000, to, 1, &sig).is_err());
+        // Destination tampered.
+        assert!(gw
+            .account_withdraw(&key, 0, 5_000, [0x77u8; 20], 1, &sig)
+            .is_err());
+        // Nonce tampered.
+        assert!(gw.account_withdraw(&key, 0, 5_000, to, 2, &sig).is_err());
+        // Nothing was applied by any of the three.
+        assert_eq!(gw.accounts.get(&key).unwrap().last_withdraw_nonce, 0);
+        // The untampered request still works.
+        gw.account_withdraw(&key, 0, 5_000, to, 1, &sig)
+            .expect("untampered request is valid");
+    }
+
+    /// SEC-021: all three EIP-191 prehash shapes authorize a withdrawal, so both CLI
+    /// signers and browser wallets work. Mirrors the deposit-bind shape test above.
+    #[test]
+    fn withdrawal_accepts_all_three_prehash_shapes() {
+        use k256::ecdsa::SigningKey;
+        let sk = SigningKey::from_slice(&[9u8; 32]).unwrap();
+        let addr = eth_addr(&sk);
+        let to = [0x66u8; 20];
+
+        for shape in 0..3 {
+            let mut gw = Gw::boot();
+            let (key, owner) = gw.register_account(Some(addr));
+            fund_test_account(&mut gw, &key, 10_000);
+            let digest = withdraw_auth_digest(gw.chain_id, &gw.vault, &owner, 0, 5_000, &to, 1);
+            let prehash = eip191_prehash_candidates(&digest)[shape];
+            let sig = sign_digest(&sk, &prehash);
+            gw.account_withdraw(&key, 0, 5_000, to, 1, &sig)
+                .unwrap_or_else(|e| panic!("prehash shape {shape} must be accepted: {e}"));
+        }
+    }
+
+    /// SEC-021: cross-flow and cross-deployment replay are both closed by the digest.
+    #[test]
+    fn withdrawal_signature_does_not_replay_across_deployments() {
+        use k256::ecdsa::SigningKey;
+        let mut gw = Gw::boot();
+        let sk = SigningKey::from_slice(&[9u8; 32]).unwrap();
+        let eoa = eth_addr(&sk);
+        let (key, owner) = gw.register_account(None);
+        let bind = sign_digest(&sk, &deposit_bind_digest(&owner, &eoa));
+        gw.account_set_deposit_address(&key, eoa, &bind, None)
+            .unwrap();
+        fund_test_account(&mut gw, &key, 10_000);
+
+        // Signed for a DIFFERENT chain id.
+        let foreign = sign_digest(
+            &sk,
+            &withdraw_auth_digest(gw.chain_id + 1, &gw.vault, &owner, 0, 5_000, &eoa, 1),
+        );
+        let err = gw
+            .account_withdraw(&key, 0, 5_000, eoa, 1, &foreign)
+            .expect_err("a signature for another deployment must be refused");
+        assert!(err.contains("signature"), "unexpected error: {err}");
     }
 
     #[test]
@@ -9720,14 +10090,12 @@ mod tests {
     #[test]
     fn account_withdraw_records_window_withdrawal() {
         let mut gw = Gw::boot();
-        let (key, _owner) = gw.register_account(None);
+        let (key, sk) = register_withdrawer(&mut gw);
         gw.account_deposit(&key, 0, 20_000 * QUOTE_SCALE).unwrap();
         assert!(gw.window_withdrawals.is_empty());
 
         let to = [7u8; 20];
-        let w = gw
-            .account_withdraw(&key, 0, 5_000 * QUOTE_SCALE, to)
-            .expect("withdraw");
+        let w = signed_withdraw(&mut gw, &key, &sk, 0, 5_000 * QUOTE_SCALE, to).expect("withdraw");
 
         assert_eq!(gw.window_withdrawals.len(), 1);
         assert_eq!(gw.window_withdrawals[0].to, to);
@@ -9737,17 +10105,14 @@ mod tests {
     #[test]
     fn v1_withdrawals_json_serves_root_and_proof() {
         let mut gw = Gw::boot();
-        let (key, owner) = gw.register_account(None);
+        let (key, sk) = register_withdrawer(&mut gw);
         gw.account_deposit(&key, 0, 20_000 * QUOTE_SCALE).unwrap();
-        let w = gw
-            .account_withdraw(&key, 0, 5_000 * QUOTE_SCALE, [7u8; 20])
-            .unwrap();
+        let w = signed_withdraw(&mut gw, &key, &sk, 0, 5_000 * QUOTE_SCALE, [7u8; 20]).unwrap();
 
         // seed a published (root, proof) for this leaf as the settle path would
         let leaf = w.leaf();
         let root = [0xAAu8; 32];
         gw.withdraw_proofs.insert(leaf, (root, vec![[0xBBu8; 32]]));
-        let _ = owner;
 
         let json = gw.v1_withdrawals_json(&key).expect("json");
         let item = &json["withdrawals"][0];
@@ -9761,14 +10126,10 @@ mod tests {
     #[test]
     fn prune_claimed_withdrawals_removes_only_claimed() {
         let mut gw = Gw::boot();
-        let (key, _o) = gw.register_account(None);
+        let (key, sk) = register_withdrawer(&mut gw);
         gw.account_deposit(&key, 0, 40_000 * QUOTE_SCALE).unwrap();
-        let w1 = gw
-            .account_withdraw(&key, 0, 5_000 * QUOTE_SCALE, [7u8; 20])
-            .unwrap();
-        let w2 = gw
-            .account_withdraw(&key, 0, 3_000 * QUOTE_SCALE, [8u8; 20])
-            .unwrap();
+        let w1 = signed_withdraw(&mut gw, &key, &sk, 0, 5_000 * QUOTE_SCALE, [7u8; 20]).unwrap();
+        let w2 = signed_withdraw(&mut gw, &key, &sk, 0, 3_000 * QUOTE_SCALE, [8u8; 20]).unwrap();
         // seed proofs for both leaves as a settle would
         gw.withdraw_proofs
             .insert(w1.leaf(), ([0xAAu8; 32], vec![[0xBBu8; 32]]));
@@ -9789,12 +10150,10 @@ mod tests {
     #[test]
     fn rollback_window_withdrawals_prepends() {
         let mut gw = Gw::boot();
-        let (key, _o) = gw.register_account(None);
+        let (key, sk) = register_withdrawer(&mut gw);
         gw.account_deposit(&key, 0, 40_000 * QUOTE_SCALE).unwrap();
         // one withdrawal accumulated since the (failed) seal drained the window's set
-        let after = gw
-            .account_withdraw(&key, 0, 3_000 * QUOTE_SCALE, [8u8; 20])
-            .unwrap();
+        let after = signed_withdraw(&mut gw, &key, &sk, 0, 3_000 * QUOTE_SCALE, [8u8; 20]).unwrap();
         // the failed window's withdrawals, captured before the seal
         let failed = vec![Withdrawal {
             owner: [1u8; 32],
@@ -9826,10 +10185,9 @@ mod tests {
     #[test]
     fn begin_window_settle_errors_on_desync_without_mutating() {
         let mut gw = Gw::boot();
-        let (key, _o) = gw.register_account(None);
+        let (key, sk) = register_withdrawer(&mut gw);
         gw.account_deposit(&key, 0, 20_000 * QUOTE_SCALE).unwrap();
-        gw.account_withdraw(&key, 0, 5_000 * QUOTE_SCALE, [7u8; 20])
-            .unwrap();
+        signed_withdraw(&mut gw, &key, &sk, 0, 5_000 * QUOTE_SCALE, [7u8; 20]).unwrap();
         let before_next = gw.seq.state.next_batch_id;
         let before_ww = gw.window_withdrawals.len();
 
@@ -9847,10 +10205,9 @@ mod tests {
     #[test]
     fn begin_window_settle_seals_and_takes_withdrawals() {
         let mut gw = Gw::boot();
-        let (key, _o) = gw.register_account(None);
+        let (key, sk) = register_withdrawer(&mut gw);
         gw.account_deposit(&key, 0, 20_000 * QUOTE_SCALE).unwrap();
-        gw.account_withdraw(&key, 0, 5_000 * QUOTE_SCALE, [7u8; 20])
-            .unwrap();
+        signed_withdraw(&mut gw, &key, &sk, 0, 5_000 * QUOTE_SCALE, [7u8; 20]).unwrap();
         let bc = gw.seq.state.next_batch_id;
 
         let (witness, ww) = gw.begin_window_settle(bc).unwrap().expect("some");
@@ -9879,10 +10236,9 @@ mod tests {
         use crate::prover_client::{prove_and_prepare, MockProverClient};
 
         let mut gw = Gw::boot();
-        let (key, _o) = gw.register_account(None);
+        let (key, sk) = register_withdrawer(&mut gw);
         gw.account_deposit(&key, 0, 20_000 * QUOTE_SCALE).unwrap();
-        gw.account_withdraw(&key, 0, 5_000 * QUOTE_SCALE, [7u8; 20])
-            .unwrap();
+        signed_withdraw(&mut gw, &key, &sk, 0, 5_000 * QUOTE_SCALE, [7u8; 20]).unwrap();
         let bc = gw.seq.state.next_batch_id;
         let (witness, ww) = gw.begin_window_settle(bc).unwrap().expect("sealed");
         let ww_leaves: Vec<[u8; 32]> = ww.iter().map(|w| w.leaf()).collect();
@@ -9968,10 +10324,9 @@ mod tests {
     fn boot_recovery_rollback_restores_reseal() {
         let seed = [42u8; 32];
         let mut gw = Gw::boot();
-        let (key, _o) = gw.register_account(None);
+        let (key, sk) = register_withdrawer(&mut gw);
         gw.account_deposit(&key, 0, 20_000 * QUOTE_SCALE).unwrap();
-        gw.account_withdraw(&key, 0, 5_000 * QUOTE_SCALE, [7u8; 20])
-            .unwrap();
+        signed_withdraw(&mut gw, &key, &sk, 0, 5_000 * QUOTE_SCALE, [7u8; 20]).unwrap();
         let bc = gw.seq.state.next_batch_id;
         let (witness, ww) = gw.begin_window_settle(bc).unwrap().expect("sealed");
         let ww_leaves: Vec<[u8; 32]> = ww.iter().map(|w| w.leaf()).collect();
@@ -10043,10 +10398,9 @@ mod tests {
 
         let seed = [42u8; 32];
         let mut gw = Gw::boot();
-        let (key, _o) = gw.register_account(None);
+        let (key, sk) = register_withdrawer(&mut gw);
         gw.account_deposit(&key, 0, 20_000 * QUOTE_SCALE).unwrap();
-        gw.account_withdraw(&key, 0, 5_000 * QUOTE_SCALE, [7u8; 20])
-            .unwrap();
+        signed_withdraw(&mut gw, &key, &sk, 0, 5_000 * QUOTE_SCALE, [7u8; 20]).unwrap();
         let bc = gw.seq.state.next_batch_id;
         let (witness, ww) = gw.begin_window_settle(bc).unwrap().expect("sealed");
         let leaf0 = ww[0].leaf();
@@ -10126,9 +10480,7 @@ mod tests {
 
         // Counter B (bc+1) now matches the chain: the NEXT window passes the
         // desync guard and seals (new state so there is something to settle).
-        restored
-            .account_withdraw(&key, 0, 1_000 * QUOTE_SCALE, [9u8; 20])
-            .unwrap();
+        signed_withdraw(&mut restored, &key, &sk, 0, 1_000 * QUOTE_SCALE, [9u8; 20]).unwrap();
         let (w2, _ww2) = restored
             .begin_window_settle(bc + 1)
             .unwrap()
@@ -10150,10 +10502,9 @@ mod tests {
     fn boot_recovery_persists_before_journal_delete() {
         let seed = [42u8; 32];
         let mut gw = Gw::boot();
-        let (key, _o) = gw.register_account(None);
+        let (key, sk) = register_withdrawer(&mut gw);
         gw.account_deposit(&key, 0, 20_000 * QUOTE_SCALE).unwrap();
-        gw.account_withdraw(&key, 0, 5_000 * QUOTE_SCALE, [7u8; 20])
-            .unwrap();
+        signed_withdraw(&mut gw, &key, &sk, 0, 5_000 * QUOTE_SCALE, [7u8; 20]).unwrap();
         let bc = gw.seq.state.next_batch_id;
         let (witness, ww) = gw.begin_window_settle(bc).unwrap().expect("sealed");
         let journal = rollback_journal::RollbackJournal {
@@ -10232,10 +10583,9 @@ mod tests {
         use prover::SealedWitness;
 
         let mut gw = Gw::boot();
-        let (key, _o) = gw.register_account(None);
+        let (key, sk) = register_withdrawer(&mut gw);
         gw.account_deposit(&key, 0, 40_000 * QUOTE_SCALE).unwrap();
-        gw.account_withdraw(&key, 0, 5_000 * QUOTE_SCALE, [7u8; 20])
-            .unwrap();
+        signed_withdraw(&mut gw, &key, &sk, 0, 5_000 * QUOTE_SCALE, [7u8; 20]).unwrap();
         let bc = gw.seq.state.next_batch_id;
         let (witness, _ww) = gw.begin_window_settle(bc).unwrap().expect("some");
 
@@ -10308,17 +10658,14 @@ mod tests {
         use crate::prover_client::{prove_and_prepare, MockProverClient};
 
         let mut gw = Gw::boot();
-        let (key, _o) = gw.register_account(None);
+        let (key, sk) = register_withdrawer(&mut gw);
         gw.account_deposit(&key, 0, 40_000 * QUOTE_SCALE).unwrap();
         // THREE real-exit withdrawals in the window → a non-trivial withdrawals tree
         // that also pins op-ORDER (a 2-leaf sorted-pair tree is permutation-invariant,
         // so two leaves alone couldn't tell "same set" from "same order")
-        gw.account_withdraw(&key, 0, 5_000 * QUOTE_SCALE, [7u8; 20])
-            .unwrap();
-        gw.account_withdraw(&key, 0, 3_000 * QUOTE_SCALE, [8u8; 20])
-            .unwrap();
-        gw.account_withdraw(&key, 0, 2_000 * QUOTE_SCALE, [9u8; 20])
-            .unwrap();
+        signed_withdraw(&mut gw, &key, &sk, 0, 5_000 * QUOTE_SCALE, [7u8; 20]).unwrap();
+        signed_withdraw(&mut gw, &key, &sk, 0, 3_000 * QUOTE_SCALE, [8u8; 20]).unwrap();
+        signed_withdraw(&mut gw, &key, &sk, 0, 2_000 * QUOTE_SCALE, [9u8; 20]).unwrap();
         let bc = gw.seq.state.next_batch_id;
 
         let (witness, ww) = gw.begin_window_settle(bc).unwrap().expect("some");
@@ -10345,10 +10692,9 @@ mod tests {
         use crate::prover_client::{prove_and_prepare, MockProverClient};
 
         let mut gw = Gw::boot();
-        let (key, _o) = gw.register_account(None);
+        let (key, sk) = register_withdrawer(&mut gw);
         gw.account_deposit(&key, 0, 40_000 * QUOTE_SCALE).unwrap();
-        gw.account_withdraw(&key, 0, 5_000 * QUOTE_SCALE, [7u8; 20])
-            .unwrap();
+        signed_withdraw(&mut gw, &key, &sk, 0, 5_000 * QUOTE_SCALE, [7u8; 20]).unwrap();
         let bc = gw.seq.state.next_batch_id;
 
         let (witness, ww) = gw.begin_window_settle(bc).unwrap().expect("some");
@@ -10486,10 +10832,9 @@ mod tests {
         }
 
         let mut gw = Gw::boot();
-        let (key, _o) = gw.register_account(None);
+        let (key, sk) = register_withdrawer(&mut gw);
         gw.account_deposit(&key, 0, 40_000 * QUOTE_SCALE).unwrap();
-        gw.account_withdraw(&key, 0, 5_000 * QUOTE_SCALE, [7u8; 20])
-            .unwrap();
+        signed_withdraw(&mut gw, &key, &sk, 0, 5_000 * QUOTE_SCALE, [7u8; 20]).unwrap();
         let bc = gw.seq.state.next_batch_id;
         let (witness, ww) = gw.begin_window_settle(bc).unwrap().expect("some");
         assert!(!ww.is_empty());
@@ -10520,10 +10865,9 @@ mod tests {
         }
 
         let mut gw = Gw::boot();
-        let (key, _o) = gw.register_account(None);
+        let (key, sk) = register_withdrawer(&mut gw);
         gw.account_deposit(&key, 0, 40_000 * QUOTE_SCALE).unwrap();
-        gw.account_withdraw(&key, 0, 5_000 * QUOTE_SCALE, [7u8; 20])
-            .unwrap();
+        signed_withdraw(&mut gw, &key, &sk, 0, 5_000 * QUOTE_SCALE, [7u8; 20]).unwrap();
         let bc = gw.seq.state.next_batch_id;
         let (witness, ww) = gw.begin_window_settle(bc).unwrap().expect("some");
 
@@ -10539,12 +10883,11 @@ mod tests {
         use crate::prover_client::{prove_and_prepare, MockProverClient};
 
         let mut gw = Gw::boot();
-        let (key, _o) = gw.register_account(None);
+        let (key, sk) = register_withdrawer(&mut gw);
         gw.account_deposit(&key, 0, 40_000 * QUOTE_SCALE).unwrap();
 
         // ── window 1: withdrawal → begin → prove → commit ────────────────────
-        gw.account_withdraw(&key, 0, 5_000 * QUOTE_SCALE, [7u8; 20])
-            .unwrap();
+        signed_withdraw(&mut gw, &key, &sk, 0, 5_000 * QUOTE_SCALE, [7u8; 20]).unwrap();
         let bc1 = gw.seq.state.next_batch_id;
         let (witness1, ww1) = gw.begin_window_settle(bc1).unwrap().expect("some");
         let ordered1 = witness1.manifest.ordered.clone();
@@ -10563,8 +10906,7 @@ mod tests {
         assert!(gw.withdraw_proofs.contains_key(&leaf_w1));
 
         // ── window 2: another withdrawal (root changes) → begin → commit ─────
-        gw.account_withdraw(&key, 0, 3_000 * QUOTE_SCALE, [8u8; 20])
-            .unwrap();
+        signed_withdraw(&mut gw, &key, &sk, 0, 3_000 * QUOTE_SCALE, [8u8; 20]).unwrap();
         let bc2 = gw.seq.state.next_batch_id;
         let (witness2, ww2) = gw.begin_window_settle(bc2).unwrap().expect("some");
         let ordered2 = witness2.manifest.ordered.clone();

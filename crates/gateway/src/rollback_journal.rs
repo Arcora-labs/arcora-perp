@@ -182,12 +182,28 @@ mod tests {
     }
 
     /// A REAL sealed window (deposit + withdrawal), exactly what the settle loop
-    /// would journal — not a hand-built stand-in.
+    /// would journal — not a hand-built stand-in. SEC-021: the withdrawal goes
+    /// through the full authorization path — a caller-signed account whose
+    /// registered signer signs the real `withdraw_auth_digest` (no exemption).
     fn sealed_window() -> (sequencer::WindowWitness, Vec<Withdrawal>) {
+        use sha3::{Digest as _, Keccak256};
+        let sk = k256::ecdsa::SigningKey::from_slice(&[0x51u8; 32]).unwrap();
+        let point = sk.verifying_key().to_encoded_point(false);
+        let hash = Keccak256::digest(&point.as_bytes()[1..]);
+        let mut signer = [0u8; 20];
+        signer.copy_from_slice(&hash[12..]);
+
         let mut gw = Gw::boot();
-        let (key, _o) = gw.register_account(None);
+        let (key, owner) = gw.register_account(Some(signer));
         gw.account_deposit(&key, 0, 20_000 * QUOTE_SCALE).unwrap();
-        gw.account_withdraw(&key, 0, 5_000 * QUOTE_SCALE, [7u8; 20])
+        let (amount, to, nonce) = (5_000 * QUOTE_SCALE, [7u8; 20], 1u64);
+        let digest =
+            crate::withdraw_auth_digest(gw.chain_id, &gw.vault, &owner, 0, amount, &to, nonce);
+        let (s, recid) = sk.sign_prehash_recoverable(&digest).unwrap();
+        let mut sig = [0u8; 65];
+        sig[..64].copy_from_slice(&s.to_bytes());
+        sig[64] = 27 + recid.to_byte();
+        gw.account_withdraw(&key, 0, amount, to, nonce, &sig)
             .unwrap();
         let bc = gw.seq.state.next_batch_id;
         gw.begin_window_settle(bc).unwrap().expect("window sealed")
