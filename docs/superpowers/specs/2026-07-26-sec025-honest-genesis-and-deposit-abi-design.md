@@ -1,106 +1,134 @@
-# SEC-025 — Honest genesis + SEC-019 deposit ABI wiring — Design
+# SEC-025 — Honest genesis + SEC-019 deposit wiring — Design
 
-> **Sequencing: PREREQUISITE for SEC-022, SEC-023 and SEC-024.** All three reason about a proven
-> transition whose external value is L1-bound. Until this lands, it is not — and the first settle
-> against a SEC-019 contract reverts. This is the finding that actually blocks the pending cutover.
+> **Threat model:** see `2026-07-26-sec02x-threat-model.md`. This finding is threat-model
+> independent — it is not an attack, it is that the repo does not settle end-to-end and that genesis
+> asserts collateral that does not exist.
+>
+> **Not independently deployable.** Its bootstrap needs `FundInsurance`, which SEC-024 introduces.
+> SEC-025 and SEC-024 land together; SEC-022 and SEC-023 ride the same cutover because all four
+> change the guest ELF, the genesis root, or a persisted format.
 
-**Finding:** SEC-025 [critical, deployment-blocking + proof-soundness] — the deposit binding SEC-019 designed is **not wired end-to-end**, and genesis contains fabricated collateral that the on-chain accumulator will reject.
+**Finding:** SEC-025 [critical, deployment-blocking] — the SEC-019 deposit binding is **not connected across three boundaries**, and genesis asserts $20.04M of collateral that was never deposited.
 
-Two independent halves, both verified at source:
+## The three broken boundaries
 
-### Half 1 — the gateway calls the wrong ABI
+Each verified at source. Any one of them stops a settle.
 
-`DarkPerpSettlement.settleBatch` takes seven roots including `depositsRoot`, and checks it against the vault's chain prefix (`contracts/src/DarkPerpSettlement.sol:305-318`, `:311` — `require(depositsRoot == prefixTip, "deposits: root != L1 chain prefix")`).
+**1. prover-service → gateway (fails first).** The gateway's response parser declares `deposits_root` as a required field (`crates/gateway/src/prover_client.rs:241`, no `Option`, no `serde(default)`), but `ProveResp` never emits it (`crates/prover-service/src/main.rs:70-80`). A real prove response therefore **fails JSON decoding before settlement is attempted**.
 
-The gateway calls the **six-root selector**:
+**2. gateway → Solidity.** `DarkPerpSettlement.settleBatch` takes seven roots plus `newDepositCount` and checks the root against the vault's chain prefix (`contracts/src/DarkPerpSettlement.sol:311-320`). Both gateway paths call the old six-root selector: `L1::settle_proved` (`crates/gateway/src/l1.rs:439`) and the legacy `L1::settle` (`:385-419`). Production can select the legacy path with `PROVER_URL` unset (`crates/gateway/src/main.rs:5689-5704`), so both must be fixed or the legacy path forbidden whenever a SEC-019 contract is configured.
 
-```rust
-// crates/gateway/src/l1.rs:439
-"settleBatch(bytes32,bytes32,bytes32,bytes32,bytes32,bytes32,bytes)"
-```
+**3. `finalSettle` has no gateway path at all.** It exists only in Solidity (`DarkPerpSettlement.sol:365-388`) and requires governance, close-only, grace expiry, the deposit prefix and a proof. The first version of this spec said to "give it the same treatment"; there is nothing to give it treatment to.
 
-It supplies neither `depositsRoot` nor the post-state deposit count, and `ProveOutcome` carries a `deposits_root` but no count (`crates/gateway/src/prover_client.rs:19`).
+The live testnet settles today only because the deployed contract predates SEC-019 (deployment metadata records 2026-07-11, `contracts/deployments/base-sepolia.json:6-15`; the frontend labels those addresses pre-SEC-019, `frontend/src/api/wallet.ts:17-21`). **The system works because the check that would catch it is not deployed.**
 
-So repo gateway and repo Solidity are out of sync. **Against the current Solidity source every settlement call hits the wrong selector and reverts.** Settlement works on the live testnet only because the deployed contract predates SEC-019 (the live stack was deployed 2026-07-11; SEC-019 merged after), so nothing checks the deposit prefix today.
+## Genesis asserts collateral that does not exist
 
-### Half 2 — genesis fabricates collateral
-
-Boot funds every market's MM and the demo user *before* genesis (`crates/gateway/src/main.rs:1543`), via `fund()` → `fund_amount_unbacked` (`main.rs:3930`). That helper's own comment states the problem (`main.rs:3949`):
+Boot funds every market's MM and the demo user before genesis (`crates/gateway/src/main.rs:1543`) via `fund()` → `fund_amount_unbacked` (`:3930`), whose own comment states the problem (`:3949`):
 
 > an UNBACKED credit — a `Deposit` op with SENTINEL L1-leaf fields (`from=[0;20]`, `deposit_blind=[0;32]`, `deposit_id` = the live consumed count so the strict in-order gate passes) … those fold a `consumed_deposit_tip` the on-chain vault chain will NOT match, so they can never settle in `prod`.
 
-The reasoning behind that comment is that production disables the self-service paths (DP-001). But **boot calls it unconditionally**, and `seal_genesis_baseline` folds the result into the genesis root (`main.rs:1572`). So a production genesis carries fabricated deposits *and* an advanced `consumed_deposit_tip`.
+The comment's reasoning is that production disables the self-service paths (DP-001). But **boot calls it unconditionally**, and `seal_genesis_baseline` folds the result into the genesis root (`:1572`). Seven fabricated deposits totalling **$20,015,000**, plus `SeedInsurance`'s $25,000 — **$20,040,000**.
 
-Consequence: the moment a SEC-019 contract is deployed, the first settle presents a non-zero `depositsRoot` against an empty vault whose prefix reads zero (`DarkPerpSettlement.sol:301`, `contracts/src/CollateralVault.sol:59`) — **revert, permanently, on batch one.**
+Consequence: against a SEC-019 contract the first settle presents a non-zero `depositsRoot` while an empty vault's `depositTipAt` returns the mapping default of zero (`contracts/src/CollateralVault.sol:59-70`, `DarkPerpSettlement.sol:301-306`) — revert on batch one. Later real deposits fold **on top of** the fake tip and cannot repair it.
 
-### Why this outranks the other three
+**Permanent for that deployment, not globally.** `finalSettle` performs the same prefix check (`:379-388`); the vault binding is set once (`:194-199`); the admin resume endpoint only requests a retry and cannot alter roots (`main.rs:4644-4684`). Recovery means new contracts, a state wipe, and abandoning the wedged deployment — which strands any real funds already in the old vault.
 
-SEC-022, SEC-023 and SEC-024 all reason about a system whose external value is anchored to L1. SEC-024's central claim is literally "after this change `external_in` has exactly one writer and it is L1-bound". That is false while Half 1 is open, and genesis is dishonest while Half 2 is open — by roughly three orders of magnitude more value than the insurance seed SEC-024 removes.
+**There is a second, live fabrication path.** `pool_transfer` (`main.rs:2936-2974`) burns via `Withdraw{to:None}` and re-credits via `fund_amount_unbacked`. It is net-zero externally and conservation holds, so it fabricates no *value* — but it advances the deposit count and folds a leaf the vault never saw, i.e. **it corrupts the tip exactly like genesis does**. `/v1/lp/deposit` and `/v1/lp/withdraw` are mounted in production (`main.rs:5896-5899`), so removing unbacked funding from boot alone is insufficient.
+
+## Correction history
+
+The first version of this spec was rejected in review. Three errors, all verified:
+
+1. **It claimed to be a prerequisite for SEC-024 while its own bootstrap required SEC-024's `FundInsurance`** — a circular dependency. Corrected: they ship together.
+2. **The bootstrap was not constructible.** Deposit confirmation binds to a registered account's randomly-generated wallet (`main.rs:1900-1903`, `:1721-1744`), while the MM is a fixed demo wallet `Wallet::from_seed([2u8;32])` (`:1504-1505`). There is no production path to deposit into the MM or to leave a note for insurance. Resolved by the alpha posture below.
+3. **The trading gate was hand-waving.** `/v1/orders` is always mounted in production (`main.rs:5852-5914`) and its handler calls `account_place_order` with no bootstrap check (`:5128-5146`). "Keep the server private" does not implement it, because the gateway must be online to register accounts and confirm the bootstrap deposits.
+
+Review also surfaced that `gw.prod` is assigned **after** `Gw::boot()` has already seeded funds (`main.rs:5921-5925`, `:6143-6168`), so the field cannot guard boot funding — the mode must be passed *into* boot.
 
 ## Design
 
-### 1. Complete the SEC-019 submission path
+### 1. Alpha posture: no house MM, no LP
 
-- `ProveOutcome` carries the post-state deposit **count** alongside `deposits_root`.
-- `L1::settle_proved` calls the seven-root selector and supplies both.
-- The same treatment for `finalSettle` (`DarkPerpSettlement.sol:387`), which independently recomputes `publicCommitment`.
+Both are disabled in production. This is a scope decision, and it removes three problems at once:
 
-This is integration wiring, not new protocol: the circuit already derives `deposits_root`, and the contract already knows how to check it. Nothing about the binding needs redesigning — it simply was never connected.
+- The MM needs no capitalization, so the unconstructible bootstrap disappears.
+- `pool_transfer` becomes unreachable in production, so the live tip-corruption path closes.
+- `lp_total_shares` starting at zero would otherwise let the first LP depositor mint shares equal to their deposit while redeeming against total pool equity (`main.rs:2994-3026`) — an ownership-capture bug that only exists *because* genesis becomes honest. Disabling LP closes it rather than requiring a redesign of LP accounting.
 
-### 2. An honest genesis
+Cost, stated plainly: **the alpha has no house liquidity.** Users match only against each other. That is the honest trade for an exchange that cannot yet capitalize an MM with real funds.
 
-Genesis contains **markets only**. Specifically: zero notes, zero positions, zero insurance, `external_in == 0`, `external_out == 0`, deposit count zero, deposit tip zero.
+Mechanically: do not mount `/v1/lp/*` in production, and do not generate house-MM counter-orders. `fund_amount_unbacked` stays for demo/dev builds but must be unreachable when `prod` is set — enforced at the call sites, not by an assert inside the helper, which would turn a request into a panic.
 
-`fund_amount_unbacked` is removed from the boot path. It may remain for demo/dev builds, but it must be unreachable when `prod` is set — the same fail-closed posture `account_deposit` already takes (`main.rs:2285-2294`, audit DP-001).
+### 2. Honest genesis
 
-### 3. The bootstrap sequence
+Genesis contains **markets only**: zero notes, zero positions, zero insurance, `external_in == 0`, `external_out == 0`, deposit count zero, deposit tip zero.
 
-Capitalization becomes an explicit, ordered cutover procedure rather than a fiction folded into genesis:
+This is viable — `State::new` initializes every relevant field to zero (`crates/perp-core/src/state.rs:73-90`) and market registration installs only market and default-funding state (`:94-109`). Empty note and position sets are supported.
+
+`seal_genesis_baseline` becomes unnecessary in this shape, because `add_market` already refreshes `window_start_state` (`crates/sequencer/src/lib.rs:430-450`). Keep the call but make it **assert** the honest invariants in production rather than silently folding unexpected boot ops.
+
+The mode must reach `Gw::boot()` as a parameter; `gw.prod` is set too late to guard it.
+
+### 3. Complete the SEC-019 wiring
+
+- `ProveResp` emits `deposits_root` **and** the post-state deposit count; `ProveOutcome`, the HTTP parser, and the gateway's independent commitment cross-check carry both.
+- Prefer deriving the count from the gateway's **own** witness in `prove_and_prepare` rather than trusting the service's response — the count is otherwise an unbound field from an untrusted service.
+- `L1::settle_proved` uses the seven-root + count selector. The legacy `L1::settle` is either updated or **refused** when a SEC-019 contract is configured; silently taking the stale path is how this stayed hidden.
+- `finalSettle`: decide explicitly whether it is an external governance runbook/tool or a gateway method. Governance may be a different key from the sequencer (`contracts/script/Deploy.s.sol:57`), so a gateway method raises key-custody questions. **Recommendation: runbook + script, not a gateway method.**
+
+### 4. The bootstrap sequence and the trading gate
 
 1. Boot with an honest genesis; compute `GENESIS_ROOT` from it.
-2. Deploy `SP1ZkVerifier`, `DarkPerpSettlement` (with that genesis root) and `CollateralVault`.
-3. Make **real** vault deposits: MM working capital, insurance capital, and any demo/user float.
-4. Prove and settle a **bootstrap batch** containing the resulting `Deposit` ops followed by `FundPosition` / `FundInsurance`.
-5. **Enable order ingress only after that batch settles.**
+2. Deploy `SP1ZkVerifier`, `DarkPerpSettlement` (constructed with that root) and `CollateralVault`.
+3. Post the settlement bond — deposits raise `requiredBond` and settlement rejects while underbonded (`DarkPerpSettlement.sol:324-325`).
+4. Make **real** vault deposits for insurance capital and any operator float.
+5. Prove and settle a **bootstrap batch**: the resulting `Deposit` ops followed by `FundInsurance`.
+6. **Enable order ingress only after that batch settles.**
 
-Step 5 is not ceremony. With zero insurance, the first bad debt goes straight to ADL against real users or — absent winners — parks the debt and trips `Mode::CloseOnly`, from which there is **no proven transition back** (only `EnterCloseOnly` exists, `engine.rs:304`), while withdrawals stay permitted (`engine.rs:854`). Opening trading before the backstop is real risks winding the deployment down permanently on the first gap.
+Step 6 needs a real mechanism, not a procedure. It requires: a durable, fail-closed bootstrap flag; a predicate on the *actual* expected state (bootstrap root and deposit count, and a non-zero insurance balance) rather than `batchCount > 0`; correct roll-forward across a crash or restart; and a test that drives the real HTTP handler, since the gateway is necessarily online during bootstrap to register accounts and confirm deposits.
+
+Why it matters rather than being ceremony: with zero insurance the first bad debt goes straight to ADL against real users or, absent winners, parks the debt and trips `Mode::CloseOnly` (`engine.rs:697`) — from which there is **no proven transition back**; only `EnterCloseOnly` exists (`engine.rs:304`). A later `FundInsurance` cannot repair an already-closed negative position, because liquidation requires an open one (`engine.rs:640`), and withdrawals stay permitted in close-only (`engine.rs:854`). One early gap can wind the deployment down permanently.
+
+*(SEC-022's per-fill solvency postcondition makes fill-created bad debt impossible, which is what makes launching with modest insurance defensible at all. That is another reason the four ship together.)*
 
 ## Scope
 
-- **`crates/gateway`**: `ProveOutcome` gains the deposit count; `L1::settle_proved` and the `finalSettle` path use the seven-root ABI; boot stops calling `fund_amount_unbacked`; `fund_amount_unbacked` becomes unreachable in `prod`.
-- **`crates/prover-service`** / **`crates/prover`**: surface the post-state deposit count in the prove response if not already carried.
-- **Runbook**: the five-step bootstrap above, with the trading gate.
+- **`crates/gateway`**: mode passed into `Gw::boot()`; boot stops fabricating deposits and insurance; `/v1/lp/*` and house-MM generation not mounted in prod; `fund_amount_unbacked` unreachable in prod; `ProveOutcome` + parser carry `deposits_root` and the count; `settle_proved` uses the new ABI; legacy `settle` updated or refused; the bootstrap gate.
+- **`crates/prover-service`**: `ProveResp` emits `deposits_root` and the count.
+- **Runbook**: the six-step bootstrap, the trading gate, and the operational items below.
 
-**Non-goals:**
-
-- **Changing the SEC-019 accumulator design.** It is correct; it was not connected.
-- **A migration path for the existing live state.** The pending cutover already requires fresh contracts and a state wipe; there is nothing to migrate.
-- **The `TreasuryToInsurance` gap** (`state.rs:53` claims a backstop that does not exist) — tracked with SEC-024.
-- SEC-022, SEC-023, SEC-024, each its own spec.
+**Non-goals:** changing the SEC-019 accumulator (it is correct, it was unconnected); redesigning LP accounting (disabled instead); a migration path for existing live state (the cutover already requires fresh contracts and a wipe); `TreasuryToInsurance` (tracked with SEC-024).
 
 ## Migration
 
-This spec changes no proven code, so **no vkey impact of its own** — but it lands in the same cutover as three specs that do, and it changes `GENESIS_ROOT` by emptying genesis.
+No proven-code change of its own, so **no vkey impact from this spec** — but it lands with three specs that do, and it moves `GENESIS_ROOT` by emptying genesis.
 
-| Change | Consequence |
-|---|---|
-| Boot no longer fabricates deposits/insurance | **`GENESIS_ROOT` moves**; deposit tip and count start at zero |
-| Gateway settle ABI | host-only; must match the deployed contract exactly |
-| Bootstrap batch before trading | operational — new cutover steps |
+The contract is constructed **with** the genesis root, so the honest genesis must be computed **before** deployment.
 
-Deploy order matters: the contract is constructed **with** the genesis root, so the honest genesis must be computed before deployment, not after.
+Operational items the runbook must cover, each verified:
+
+- `GENESIS_ROOT` defaults to zero in the deploy script (`contracts/script/Deploy.s.sol:49-53`); a markets-only root is non-zero.
+- Omitting `VERIFIER` silently deploys `MockZkVerifier` (`:60-76`).
+- The bond must be funded and posted before proving (`DarkPerpSettlement.sol:324-325`).
+- Anyone can trigger close-only after the liveness timeout (`:406-413`), after which deposits are refused (`CollateralVault.sol:186-191`) and normal bootstrap settlement becomes impossible — so bootstrap must complete inside that window.
+- **The state wipe must remove the snapshot *and* the rollback journal**, or `boot_restored` wins over `Gw::boot()` (`main.rs:6143-6166`) and the dishonest genesis survives the cutover.
 
 ## Testing
 
 | Case | Expected |
 |---|---|
-| **ABI regression:** the encoded selector matches `DarkPerpSettlement.settleBatch` | byte-identical — a mismatch is the current bug |
-| A settle carrying `depositsRoot` + count against a vault prefix | accepted on match, reverts on mismatch |
-| **Production boot** | genesis has zero notes, zero positions, zero insurance, `external_in == 0`, deposit tip and count zero |
-| `fund_amount_unbacked` reachable in `prod` | impossible — assert at the call sites, mirroring DP-001's posture |
+| Encoded settle selector vs `DarkPerpSettlement.settleBatch` | byte-identical — the mismatch is the current bug |
+| A real prove response decodes | passes — pins boundary 1, which fails today |
+| Settle with `depositsRoot` + count against a vault prefix | accepted on match, reverts on mismatch |
+| **Production boot** | zero notes, positions, insurance, `external_in`; deposit tip and count zero |
+| `fund_amount_unbacked` reachable in prod | impossible — asserted at the call sites |
+| `/v1/lp/*` mounted in prod | not mounted |
+| House-MM counter-order generated in prod | none |
 | Demo/dev boot | unchanged — the seeded demo still works |
-| Deposit → `FundPosition`/`FundInsurance` bootstrap batch | settles against a real vault prefix |
-| First settle after an honest genesis, empty vault, no deposits | accepted (`depositsRoot` == zero prefix) — pins that an empty genesis does **not** wedge |
-| Order ingress before the bootstrap batch settles | refused by the gate |
+| **First settle after an honest genesis, empty vault, no deposits** | accepted (`depositsRoot` == zero prefix) — pins that an empty genesis does not wedge |
+| Bootstrap batch: `Deposit` → `FundInsurance` | settles against the real vault prefix |
+| Order ingress before the bootstrap batch settles | refused, through the **real HTTP handler** |
+| Gate survives a restart mid-bootstrap | still closed; rolls forward correctly |
 
-The last two rows are the ones that would have caught this: today's genesis produces a non-zero tip against a zero prefix, and nothing tests that combination because the deployed contract never checks it.
+The last three are the ones that would have caught the original design: the gate was specified as a procedure, and a procedure cannot be tested.
