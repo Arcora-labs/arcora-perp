@@ -1,3 +1,10 @@
+> **SUPERSEDED — do not implement from this document.** It was written three times and rejected three
+> times; the framing was the problem, not the details. It accreted an operator bootstrap path, a
+> no-house posture, an execution-status model, a frontend rework, a durable trading gate and
+> documentation corrections — a program, not a spec. **See `2026-07-26-sec025-decomposition.md`**, which
+> splits it into independently reviewable pieces in dependency order. Every finding below is real and
+> was carried forward; only the bundling was wrong.
+
 # SEC-025 — Honest genesis + SEC-019 deposit wiring — Design
 
 > **Threat model:** see `2026-07-26-sec02x-threat-model.md`. This finding is threat-model
