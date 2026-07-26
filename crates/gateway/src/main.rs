@@ -1968,12 +1968,29 @@ impl Gw {
         // FALLIBLE (SEC-026 review F2): the note blind (`0xB0 ‖ deposit_counter`,
         // monotonic per account, bumped only on success) makes a historical duplicate
         // unreachable today, but an engine refusal here must be a clean Err, never a
-        // panic under the account lock. On Err NOTHING below runs: the authorization is
-        // NOT consumed, the counter is NOT bumped, and the tx is NOT marked processed —
-        // so the same confirm may be retried (a DuplicateCommitment retry needs a fresh
-        // note blind; the note blind is independent of the L1 leaf's `deposit_blind`,
-        // so the same L1 deposit stays creditable — an operator/cutover decision, not
-        // automated here).
+        // panic under the account lock. On Err NOTHING below runs (the authorization is
+        // NOT consumed, `deposit_counter` is NOT bumped, the tx is NOT marked
+        // processed) — but `fund_amount` is TWO-PHASE and its arms leave DIFFERENT
+        // engine state, so the operator contract is per-arm:
+        //
+        //  - `CreditRefused` (phase 1, `op_deposit`): the engine mutated nothing, so
+        //    `consumed_deposit_count` did NOT advance — the in-order stream IS stalled
+        //    at this id and the SAME confirm may be retried. (A DuplicateCommitment
+        //    retry needs a fresh note blind; the note blind is independent of the L1
+        //    leaf's `deposit_blind`, so the same L1 deposit stays creditable — an
+        //    operator/cutover decision, not automated here.)
+        //
+        //  - `FundPositionFailed` (phase 2, after the credit landed): the deposit WAS
+        //    credited and `consumed_deposit_count` DID advance — the stream is NOT
+        //    stalled, and retrying this confirm is refused as not next-in-line. The
+        //    value sits as an unspent note owned by this account (recoverable). And
+        //    because `deposit_counter` was not bumped, this account's NEXT same-amount
+        //    confirm re-derives the same `0xB0` blind against the still-live note and
+        //    hits a permanent DuplicateCommitment — which THEN stalls the stream. This
+        //    arm needs operator intervention, not a blind retry. (Reachable only via a
+        //    gateway/state market-table divergence or collateral near `i128::MAX`;
+        //    `consume_note` cannot fail here — SEC-026: a fresh cm implies a fresh
+        //    nullifier.)
         fund_amount(
             &mut self.seq,
             &mut self.archive,
@@ -1985,15 +2002,27 @@ impl Gw {
             deposit_id,
             deposit_blind,
         )
-        .map_err(|e| {
-            format!(
-                "L1 deposit id {deposit_id} (tx {tx}) could NOT be credited: {e}. \
+        .map_err(|e| match e {
+            FundAmountError::CreditRefused(msg) => format!(
+                "L1 deposit id {deposit_id} (tx {tx}) could NOT be credited: {msg}. \
                  OPERATOR: the SEC-019 in-order deposit stream is STALLED at id \
                  {deposit_id} — `op_deposit` requires deposit_id == consumed_deposit_count, \
                  so every later on-chain deposit confirm will fail (DepositOutOfOrder) \
                  until this deposit is credited. The authorization was not consumed and \
                  the tx was not marked processed; the confirm may be retried."
-            )
+            ),
+            FundAmountError::FundPositionFailed(msg) => format!(
+                "L1 deposit id {deposit_id} (tx {tx}) WAS credited but binding it as \
+                 collateral failed: {msg}. OPERATOR: the deposit stream is NOT stalled — \
+                 the credit advanced consumed_deposit_count to {}, so retrying this \
+                 confirm will be refused as not next-in-line. The value is recoverable \
+                 (an unspent note owned by this account). The authorization was not \
+                 consumed, the tx was not marked processed, and deposit_counter was not \
+                 bumped — so this account's NEXT same-amount deposit would re-derive the \
+                 same note blind and hit a permanent DuplicateCommitment, stalling the \
+                 stream for real. Operator intervention required; do NOT blind-retry.",
+                deposit_id + 1
+            ),
         })?;
         let a = self.accounts.get_mut(key).unwrap();
         a.deposit_counter += 1;
@@ -4024,6 +4053,35 @@ fn fund_amount_unbacked(
     fund_amount(
         seq, archive, w, market, amount, blind, [0u8; 20], deposit_id, [0u8; 32],
     )
+    // Callers of the unbacked helper (demo/LP/self-service) don't have the
+    // in-order deposit-stream contract, so the flat message suffices — the arm
+    // distinction only matters to `account_confirm_deposit` (SEC-026 review).
+    .map_err(|e| e.to_string())
+}
+
+/// Which phase of the TWO-PHASE `fund_amount` failed. The arms leave the engine
+/// in DIFFERENT states, so a caller with an operator-facing contract
+/// (`account_confirm_deposit`) must not describe both with one message: a
+/// `CreditRefused` mutated nothing, while a `FundPositionFailed` comes AFTER the
+/// deposit credit landed (`consumed_deposit_count` advanced, note minted).
+enum FundAmountError {
+    /// Phase 1 (`op_deposit`) refused the credit — all-or-nothing, the engine
+    /// state is byte-for-byte unchanged (SEC-026 failure atomicity), so the
+    /// same op may be re-applied.
+    CreditRefused(String),
+    /// Phase 2 (`op_fund_position`) failed AFTER the note was minted and the
+    /// deposit credited: `consumed_deposit_count` HAS advanced, and the value
+    /// sits as an unspent note owned by the wallet (recoverable, not
+    /// collateral). Re-applying the whole two-phase op is NOT possible.
+    FundPositionFailed(String),
+}
+
+impl std::fmt::Display for FundAmountError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::CreditRefused(m) | Self::FundPositionFailed(m) => f.write_str(m),
+        }
+    }
 }
 
 /// Deposit a quote-scaled `amount` as a note, archive it, and fund the position. The
@@ -4037,6 +4095,15 @@ fn fund_amount_unbacked(
 /// `DuplicateCommitment`. Callers must either construct a blind that provably
 /// never repeats within the state's history, or surface the `Err` cleanly —
 /// never `.expect()` this on a path a user or the world tick can reach.
+///
+/// BLIND-DERIVATION WARNING: the demo paths derive their blinds from the tree's
+/// LEAF COUNT (`0x80`/`0xC0` ‖ `tree.len()`). That satisfies never-repeats, but
+/// it is DEMO-ONLY because the leaf count is PUBLIC: `blinding` is the note's
+/// hiding factor, and a blind derived from a readable tree index lets anyone
+/// reading the tree brute-force the note's amount with a single candidate per
+/// leaf. Harmless for the demo (those routes are omitted in production) — never
+/// copy it onto a `/v1` money path; use a secret or per-account-counter blind
+/// there (`0xA0`/`0xB0` ‖ `deposit_counter`, `0xE1` ‖ `lp_counter`).
 #[allow(clippy::too_many_arguments)] // a flat funding spec; a params struct adds only ceremony
 fn fund_amount(
     seq: &mut Sequencer,
@@ -4048,7 +4115,7 @@ fn fund_amount(
     from: [u8; 20],
     deposit_id: u64,
     deposit_blind: Digest,
-) -> Result<(), String> {
+) -> Result<(), FundAmountError> {
     let note = Note::new(w.owner, 0, amount, note_blind);
     let cm = note.commitment::<Keccak256>();
     seq.apply(&BatchOp::Deposit {
@@ -4061,12 +4128,12 @@ fn fund_amount(
         deposit_blind,
     })
     .map_err(|e| {
-        format!(
+        FundAmountError::CreditRefused(format!(
             "deposit credit refused by the engine: {e:?} (a DuplicateCommitment means this \
              exact (owner, amount, note_blind) note was minted before — SEC-026 historical \
              uniqueness — and crediting requires a FRESH note blind; the note blind is \
              independent of any L1 deposit_blind, so the same L1 leaf remains creditable)"
-        )
+        ))
     })?;
     // Seal to the owner's X25519 viewing PUBLIC key (real note encryption); the
     // recorder needs no decryption capability. OsRng: fresh ephemeral + nonce.
@@ -4087,10 +4154,10 @@ fn fund_amount(
         spend_key: w.spend_key,
     })
     .map_err(|e| {
-        format!(
+        FundAmountError::FundPositionFailed(format!(
             "fund-position failed AFTER the note was minted: {e:?} — the deposited value \
              now sits as an unspent note for this owner (not lost, not yet collateral)"
-        )
+        ))
     })
 }
 
@@ -7386,6 +7453,83 @@ mod tests {
         gw.tick += 60;
         gw.withdraw(amount)
             .expect("second demo withdraw of the same amount 60 ticks later (SEC-026)");
+    }
+
+    /// Review F2 regression: `account_confirm_deposit` driven into a historical
+    /// `DuplicateCommitment` — the arm the design calls "worse than a panic" because
+    /// it stalls the SEC-019 in-order deposit stream. Pre-mint the EXACT note the
+    /// confirm path will derive (same owner, asset 0, same amount, and the same
+    /// `0xB0 ‖ deposit_counter` blind), then confirm at the next-in-line id: the
+    /// engine must refuse in phase 1 (`op_deposit`) with a clean operator-facing
+    /// `Err` — never a panic under the account lock — whose text names the stall
+    /// correctly for the CREDIT-REFUSAL arm, and the three retriability invariants
+    /// must hold (counter unbumped, authorization intact, tx not marked processed).
+    #[test]
+    fn confirm_deposit_duplicate_commitment_is_clean_err_and_retriable() {
+        let mut gw = Gw::boot();
+        let (key, _owner) = gw.register_account(None);
+        let from = [0x42u8; 20];
+        gw.accounts.get_mut(&key).unwrap().deposit_address = Some(from);
+        let amount = 5_000_000u128;
+        let wallet = gw.accounts[&key].wallet;
+        // The colliding blind: exactly what the confirm path derives from the
+        // account's live `deposit_counter`.
+        let dc = gw.accounts[&key].deposit_counter;
+        let mut note_blind = [0xB0u8; 32];
+        note_blind[..8].copy_from_slice(&dc.to_le_bytes());
+        fund_amount_unbacked(
+            &mut gw.seq,
+            &mut gw.archive,
+            &wallet,
+            0,
+            amount as i128,
+            note_blind,
+        )
+        .expect("pre-minting the colliding note must succeed");
+        // Authorize, then confirm at the live next-in-line id so the in-order guard
+        // passes and the duplicate refusal (not DepositOutOfOrder) is what fires.
+        let commit = gw.account_authorize_deposit(&key, from, amount).unwrap();
+        let dc_before = gw.accounts[&key].deposit_counter;
+        let id = gw.seq.state.consumed_deposit_count;
+        let count_before = id;
+        let err = gw
+            .account_confirm_deposit(&key, from, commit, amount, id, "0xf2dup", 0)
+            .expect_err("a historical duplicate must be a clean Err, not a panic (SEC-026 F2)");
+        // Phase 1 actually refused as a duplicate (the parenthetical in the message
+        // always mentions DuplicateCommitment, so pin the ENGINE's rendering)…
+        assert!(
+            err.contains("refused by the engine: DuplicateCommitment"),
+            "the engine must refuse phase 1 as a historical duplicate: {err}"
+        );
+        // …and the operator text carries the CREDIT-REFUSAL contract: the stream is
+        // stalled at this id and the same confirm may be retried. (The other arm's
+        // "WAS credited / NOT stalled" text would be FALSE here.)
+        assert!(
+            err.contains("STALLED at id") && err.contains("may be retried"),
+            "the operator text must name the stall + retriability of the credit-refusal arm: {err}"
+        );
+        assert!(
+            !err.contains("NOT stalled"),
+            "the fund-position arm's text must not leak onto the credit-refusal arm: {err}"
+        );
+        // The three retriability invariants — nothing after the failed fund ran.
+        assert_eq!(
+            gw.accounts[&key].deposit_counter, dc_before,
+            "deposit_counter must be unchanged on refusal"
+        );
+        assert!(
+            gw.accounts[&key].deposit_authorizations.contains_key(&commit),
+            "the authorization must still be present (not consumed) — retriable"
+        );
+        assert!(
+            !gw.processed_deposit_txs.contains("0xf2dup"),
+            "the tx must not be marked processed — retriable"
+        );
+        // And the engine really is byte-consistent with "stalled": no credit landed.
+        assert_eq!(
+            gw.seq.state.consumed_deposit_count, count_before,
+            "phase-1 refusal must not advance consumed_deposit_count"
+        );
     }
 
     /// A minimal `App` for router tests — no socket bound, pure in-memory (`l1: None`).
