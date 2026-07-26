@@ -12,7 +12,7 @@
 
 **Exploit.** Mint fake insurance → create bad debt through fills → have the fabricated insurance absorb it → withdraw the counterparty's excess from the **real** vault. The withdrawal itself is legitimate — bound to a real `withdrawals_root` leaf, and the vault pays it. The fabrication happened upstream, in the accounting that made the position look solvent.
 
-**Trust model.** See `2026-07-26-sec02x-threat-model.md`, which is canonical. No API surface emits this op, and the prover cannot inject it — the witness it receives is sealed. Only the gateway can, and a compromised gateway can already forge the oracle price outright. **So this is defence-in-depth under Phase 1, not a critical live hole.** It remains worth doing: it is cheap, and it removes the only *unbounded* external-value assertion in the circuit — a property worth having regardless of who can currently reach it.
+**Trust model.** See `2026-07-26-sec02x-threat-model.md`, which is canonical. No **production** API surface emits this op — the non-production `/api/simulate-adl` route does reach the replenish call (`main.rs:5615`, `:5872`) — and the prover cannot inject it, since the witness it receives is sealed. Only the gateway can, and a compromised gateway can already forge the oracle price outright. **So this is defence-in-depth under Phase 1, not a critical live hole.** It remains worth doing: it is cheap, and it removes the only *unbounded* external-value assertion in the circuit — a property worth having regardless of who can currently reach it.
 
 ## How this was found
 
@@ -58,7 +58,9 @@ variant 9: FundInsurance { note_commitment, spend_key }  // consumes a real note
 
 **Atomicity — required, not hygiene.** `consume_note` inserts the nullifier and removes the note immediately (`engine.rs:397-424`). A fallible `insurance_fund.checked_add(...)` afterwards would return `Err` with the note already destroyed; the sequencer logs an op only after successful application (`sequencer/src/lib.rs:468-482`), so live state would diverge from the op-log and wedge the next proof. Therefore: authenticate the note and precompute the new balance with checked arithmetic **first**, then insert the nullifier, remove the note, and commit. A test must force the insurance addition to overflow and assert byte-for-byte state equality.
 
-*(The same partial-mutation ordering already exists in `Deposit`, `FundPosition`, `Withdraw` and `SeedInsurance` — `engine.rs:369, 440, 791, 861`. Fixing them is out of scope here; SEC-022 fixes `op_fill`'s instance.)*
+*(The same partial-mutation ordering already exists in `Deposit`, `FundPosition`, `Withdraw`, `SeedInsurance` — `engine.rs:369, 440, 791, 861` — **and `Liquidate`**, which mutates the position through `apply_fill` before fallible vault and insurance arithmetic (`:651, :654, :666`) while maintenance records the op only on `Ok` (`sequencer/src/lib.rs:749`). Fixing them is out of scope here; SEC-022 fixes `op_fill`'s instance.)*
+
+**Staging note:** the ordering above cannot be achieved by calling the current `consume_note` first — it inserts the nullifier and removes the note immediately. Validation must fetch the note, verify the spend key, asset and nullifier, and precompute the new insurance balance **before** anything is inserted or removed. With exclusive `&mut State`, the final nullifier insertion, note removal and balance assignment are then infallible.
 
 **Fee accrual is unchanged.** `op_fill` still credits `taker_fee − maker_rebate − treasury_fee` (`engine.rs:569-578`) and liquidation penalties still flow in (`:663-669`) — internal, value-preserving transfers that were never part of this finding.
 
@@ -83,7 +85,8 @@ Boot currently applies `SeedInsurance` directly (`crates/gateway/src/main.rs:156
 
 - **An insurance withdrawal path.** None exists; none added.
 - **Fixing the other ops' partial-mutation ordering.** Noted above, tracked separately.
-- **`TreasuryToInsurance`.** `state.rs:53` claims treasury can act as a final backstop; **no such op exists**, and the waterfall goes insurance → ADL → CloseOnly (`engine.rs:684`). So with insurance at zero, users are ADL'd while treasury funds sit stranded. Either make treasury part of the automatic waterfall or delete the false claim — an operator-directed transfer would need authorization, since it confiscates operator revenue. **Follow-up.**
+- **`TreasuryToInsurance`.** `state.rs:53` claims treasury can be paid out **or** injected into insurance as a final backstop. **Neither path exists**, and the waterfall goes insurance → ADL → CloseOnly (`engine.rs:684`). So with insurance at zero, users are ADL'd while treasury funds sit stranded. Correct the doubly-false comment now even though both features stay deferred; an operator-directed transfer would need authorization, since it confiscates operator revenue. **Follow-up.**
+- **SEC-026 / SEC-027** — see `2026-07-26-sec026-sec027-open-findings.md`. SEC-026 (a real deposit can be permanently unspendable, because commitment uniqueness is checked against the live UTXO set while nullifiers are retained forever) directly threatens this spec's bootstrap, which deliberately leaves a note unspent between `Deposit` and `FundInsurance`. SEC-027 (CloseOnly can strand collateral in unmatched open positions) is what makes "insurance starts at zero" a live risk *after* launch, which SEC-025's pre-launch gate does not cover.
 - SEC-025, SEC-023 and SEC-022, each its own spec.
 
 ## Migration
@@ -100,14 +103,17 @@ The cutover must explicitly bump or invalidate: snapshot magic `DPSNAP1` (`crate
 
 | Case | Expected |
 |---|---|
-| **Fabrication regression:** enumerate writers of `external_in` | exactly one, `op_deposit` |
+| **Fabrication regression:** exactly one writer of `external_in`, and it is `op_deposit` | must be a real check — a static assertion or module-visibility restriction, **not** a review instruction. `external_in` is currently `pub` (`state.rs:57`) |
 | `FundInsurance` with a valid note | `insurance_fund` rises by the note amount; `external_in` **unchanged**; note consumed |
 | Wrong spend key | rejected, no state change |
 | Already-consumed note, including twice in one batch | rejected (nullifier) |
-| `asset_id != 0` | rejected |
+| `asset_id != 0` | rejected with **byte-for-byte unchanged state** — otherwise an implementation could call the mutating `consume_note` and only then check the asset |
+| Wrong spend key / double-spend | rejected, **state unchanged** (not merely "no credit") |
 | **Insurance `checked_add` forced to overflow** | `Err` with **byte-for-byte identical state** — the note must not be destroyed |
-| `DeprecatedSeedInsurance` in a witness | rejected deterministically |
-| Genesis boot | `insurance_fund == 0` |
+| `DeprecatedSeedInsurance` newly encoded | rejected deterministically |
+| **A frozen legacy fixture encoded under the OLD enum** | decodes as variant 8, the amount survives, it is rejected, and surrounding ops in the vector stay aligned — this is what actually proves the migration; testing newly-encoded bytes does not |
+| **Production** boot | `insurance_fund == 0` |
+| **Demo/dev** boot | still seeded — SEC-025 keeps the demo path intact, so both this test and the replenish behaviour must be explicitly prod-versus-demo scoped, not one global expectation |
 | Deposit → `FundInsurance` → bad debt → waterfall draws it | insurance absorbs; `conservation_holds()` |
 | Fee accrual during fills | unchanged |
 | Every scenario | `conservation_holds()` |
