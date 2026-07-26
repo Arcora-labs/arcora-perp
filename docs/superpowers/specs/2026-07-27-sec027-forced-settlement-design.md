@@ -68,6 +68,23 @@ This removes, at a stroke: blinding derivation and distribution for mass-minted 
 
 It also fixes an end-to-end break the first version had: the production withdrawal endpoint checks free **position collateral** and always does `Unbind → Withdraw` (`gateway/src/main.rs:2126-2157`, `:2317-2329`). A minted note would have been invisible to it — the "user can withdraw afterwards" test could not have passed.
 
+### 3a. The wind-down batch grammar — without it, everything above is bypassable
+
+**`apply_batch` accepts an arbitrary op sequence** (`engine.rs:183-203`): it iterates `&[BatchOp]` with no constraint on what may appear. So binding the settlement price — or any settlement rule — constrains only the *settlement op*, not the batch that contains it.
+
+The bypass, which defeats the entire design:
+
+1. Liquidate or trade selected positions using a **gateway-signed** `OracleTranscript` at a chosen price. `op_liquidate` demonstrably uses its transcript price to close and to move `vault_pool` (`engine.rs:656`, `:673`).
+2. Collateral, insurance, ADL haircuts and `vault_pool` are now whatever the witness wanted.
+3. Run `SettleAll` at the honest, L1-verified price.
+4. End flat, satisfying every terminal postcondition.
+
+The honest price is applied to a state the attacker already shaped.
+
+**Therefore a wind-down proof must contain exactly one staged `SettleAll` and no other state-changing op.** Every ordinary price-consuming operation — `Fill`, `AccrueFunding`, `Liquidate`, `Unbind` — must be forbidden in that batch. Later exits are a separate phase (SEC-027a §4).
+
+This is the single most important constraint in this design, and the first version did not have it.
+
 ### 4. Terminal postcondition — solvency, not just flatness
 
 The transition must end with **all** of:
@@ -129,4 +146,9 @@ Rows 2 and 4 are the ones the first version would have failed.
 
 ## Status
 
-**Not implementable until §7 is decided.** The emergency price source is a prerequisite, not a detail — a wind-down that cannot obtain a trustworthy price is not a wind-down.
+**The price question is resolved** — `2026-07-27-sec027a-settlement-price-design.md` §1 settles at each position's own `entry_price`, needing no oracle at all, so the wind-down terminates unconditionally and cannot have a deficit manufactured for it by an unavailable or manipulated price. An L1-verified feed price remains an optional improvement (§2), not a prerequisite.
+
+**Remaining before implementable:**
+
+- **The batch grammar (§3a)** — a wind-down proof must carry exactly one staged `SettleAll` and nothing else. Without it every other guarantee here is bypassable.
+- **Who produces the Phase-2 exits.** SEC-027a §4 splits wind-down into a one-shot `SettleAll` and a price-free exit phase permitting only flat `Unbind`/`Withdraw`. If the gateway is dead, nothing currently specifies how users submit those exits or how governance obtains the private state and witness to prove them. This is the same shape as the runbook's termination assumption: the escape assumes a live actor that may be exactly what failed.
