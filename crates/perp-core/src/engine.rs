@@ -361,17 +361,18 @@ impl<H: Hasher> State<H> {
         if amount <= 0 {
             return Err(EngineError::NonPositiveAmount);
         }
-        let note = Note::new(*owner, asset_id, amount, *blinding);
-        let cm = note.commitment::<H>();
-        if self.notes.contains_key(&cm) {
-            return Err(EngineError::DuplicateCommitment);
-        }
-        self.tree.append(cm).map_err(|_| EngineError::Overflow)?;
-        self.notes.insert(cm, note);
-        self.external_in = self
+        // Compute the fallible external_in update BEFORE any mutation (it used to
+        // run after tree/notes had already changed, leaving a partial mutation on
+        // overflow). Together with the all-or-nothing mint below, a rejected deposit
+        // leaves the state byte-for-byte unchanged (SEC-026 failure atomicity).
+        let external_in = self
             .external_in
             .checked_add(amount)
             .ok_or(EngineError::Overflow)?;
+        // SEC-026: mint through the single shared primitive — historical commitment
+        // uniqueness (every leaf ever appended), not just the live unspent map.
+        self.mint_note(Note::new(*owner, asset_id, amount, *blinding))?;
+        self.external_in = external_in;
         // Fold the L1 deposit leaf onto the in-circuit accumulator. `amount as u128`
         // is safe: it is verified `> 0` above. This is the SAME leaf/fold the
         // on-chain vault computes (byte-parity via `merkle::deposit_leaf`), so the
@@ -392,6 +393,28 @@ impl<H: Hasher> State<H> {
             amount: amount as u128,
             deposit_id,
         })
+    }
+
+    /// SEC-026: the ONE shared mint primitive — every note creation (`op_deposit`
+    /// and `op_unbind` alike) funnels through here, so the two paths cannot drift
+    /// apart again. Uniqueness is enforced against every commitment EVER appended
+    /// to the tree (`MerkleTree::contains_leaf`, the historical root-bound list),
+    /// not merely the live unspent map: nullifiers are retained forever, so
+    /// re-minting a previously-SPENT tuple would credit value whose every later
+    /// spend recomputes the same retained nullifier and is refused with
+    /// `UnknownOrSpentNote` — accepted-but-frozen funds that `conservation_holds()`
+    /// cannot see. All-or-nothing: on any error (duplicate, tree full) neither the
+    /// tree, its index, nor the notes map has changed; callers must sequence their
+    /// own fallible work BEFORE calling this (deposit) or commit copies after it
+    /// (unbind) so the whole op stays atomic.
+    fn mint_note(&mut self, note: Note) -> Result<(), EngineError> {
+        let cm = note.commitment::<H>();
+        if self.tree.contains_leaf(&cm) {
+            return Err(EngineError::DuplicateCommitment);
+        }
+        self.tree.append(cm).map_err(|_| EngineError::Overflow)?;
+        self.notes.insert(cm, note);
+        Ok(())
     }
 
     /// Consume a note: verify ownership, mark nullifier, remove from unspent set.
@@ -837,16 +860,11 @@ impl<H: Hasher> State<H> {
         if pos.is_open() {
             pos.check_initial_margin(&market, mark, funding_index)?;
         }
-        // all checks passed. Do the fallible mint FIRST (tree.append can fail if
-        // full); only then commit the position, so the op stays atomic and
+        // all checks passed. Do the fallible mint FIRST (SEC-026 shared primitive:
+        // historical-uniqueness gate + append, which can fail on a duplicate or a
+        // full tree); only then commit the position, so the op stays atomic and
         // value-preserving.
-        let note = Note::new(*owner, 0, amount, *blinding);
-        let cm = note.commitment::<H>();
-        if self.notes.contains_key(&cm) {
-            return Err(EngineError::DuplicateCommitment);
-        }
-        self.tree.append(cm).map_err(|_| EngineError::Overflow)?;
-        self.notes.insert(cm, note);
+        self.mint_note(Note::new(*owner, 0, amount, *blinding))?;
         self.positions.insert(key, pos);
         Ok(())
     }

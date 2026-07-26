@@ -186,3 +186,185 @@ fn full_witness_round_trips_and_rederives_commitment() {
         .commitment::<Keccak256>();
     assert_eq!(a, b, "decoded witness re-derives the identical commitment");
 }
+
+// ---------------------------------------------------------------------------
+// SEC-026 — failure atomicity, pinned at the STRONGEST granularity: a rejected
+// mint must leave the full postcard encoding of the state byte-for-byte
+// unchanged (not merely the state root). Before SEC-026, `op_deposit` mutated
+// `tree` and `notes` before the fallible `external_in` add, and a duplicate of a
+// SPENT commitment was accepted outright.
+// ---------------------------------------------------------------------------
+
+/// A rejected duplicate (same tuple as a previously-spent note) leaves the full
+/// postcard bytes unchanged — no tree append, no `external_in`, no deposit-count
+/// advance, no notes-map entry.
+#[test]
+fn sec026_rejected_duplicate_leaves_postcard_bytes_unchanged() {
+    use perp_core::EngineError;
+    let mut s = DefaultState::new(20);
+    s.add_market(signed_market(Market::conservative(0)));
+    let o = owner(1);
+    let bl = [9u8; 32];
+    let amt = 1_000 * QUOTE_SCALE;
+    let cm = Note::new(o, 0, amt, bl).commitment::<Keccak256>();
+    s.apply_op(&BatchOp::Deposit {
+        owner: o,
+        asset_id: 0,
+        amount: amt,
+        blinding: bl,
+        from: [0xA1u8; 20],
+        deposit_id: 0,
+        deposit_blind: [0xDBu8; 32],
+    })
+    .unwrap();
+    s.apply_op(&BatchOp::Withdraw {
+        note_commitment: cm,
+        spend_key: [1u8; 32],
+        to: None,
+        nonce: 0,
+    })
+    .unwrap();
+
+    let before = postcard::to_allocvec(&s).expect("serialize state");
+    let err = s
+        .apply_op(&BatchOp::Deposit {
+            owner: o,
+            asset_id: 0,
+            amount: amt,
+            blinding: bl,
+            from: [0xA1u8; 20],
+            deposit_id: 1, // in-order: historical uniqueness is what rejects
+            deposit_blind: [0xDBu8; 32],
+        })
+        .unwrap_err();
+    assert_eq!(err, EngineError::DuplicateCommitment);
+    let after = postcard::to_allocvec(&s).expect("serialize state");
+    assert_eq!(
+        before, after,
+        "a rejected duplicate must leave the state byte-for-byte unchanged"
+    );
+    assert!(s.conservation_holds());
+}
+
+/// An `external_in` overflow must reject the deposit with NO partial mutation.
+/// Before SEC-026, `tree`/`notes` had already mutated when the add failed.
+#[test]
+fn sec026_overflowing_deposit_leaves_postcard_bytes_unchanged() {
+    use perp_core::EngineError;
+    let mut s = DefaultState::new(20);
+    // conservation-consistent extreme: internal_value == external_in − external_out
+    s.insurance_fund = i128::MAX;
+    s.external_in = i128::MAX;
+    assert!(s.conservation_holds());
+
+    let before = postcard::to_allocvec(&s).expect("serialize state");
+    let err = s
+        .apply_op(&BatchOp::Deposit {
+            owner: owner(1),
+            asset_id: 0,
+            amount: 1_000 * QUOTE_SCALE,
+            blinding: [4u8; 32],
+            from: [0xA1u8; 20],
+            deposit_id: 0,
+            deposit_blind: [0xDBu8; 32],
+        })
+        .unwrap_err();
+    assert_eq!(err, EngineError::Overflow);
+    let after = postcard::to_allocvec(&s).expect("serialize state");
+    assert_eq!(
+        before, after,
+        "an overflowing deposit must not partially mutate the state"
+    );
+    assert!(s.conservation_holds());
+}
+
+/// A tree-full mint rejects with NO partial mutation (the append fails before any
+/// insertion, and nothing else may have moved first).
+#[test]
+fn sec026_tree_full_deposit_leaves_postcard_bytes_unchanged() {
+    use perp_core::EngineError;
+    let mut s = DefaultState::new(1); // capacity 2
+    for i in 0..2u64 {
+        s.apply_op(&BatchOp::Deposit {
+            owner: owner(1),
+            asset_id: 0,
+            amount: 1_000 * QUOTE_SCALE,
+            blinding: [i as u8; 32],
+            from: [0xA1u8; 20],
+            deposit_id: i,
+            deposit_blind: [0xDBu8; 32],
+        })
+        .unwrap();
+    }
+    let before = postcard::to_allocvec(&s).expect("serialize state");
+    let err = s
+        .apply_op(&BatchOp::Deposit {
+            owner: owner(1),
+            asset_id: 0,
+            amount: 1_000 * QUOTE_SCALE,
+            blinding: [7u8; 32],
+            from: [0xA1u8; 20],
+            deposit_id: 2,
+            deposit_blind: [0xDBu8; 32],
+        })
+        .unwrap_err();
+    assert_eq!(err, EngineError::Overflow);
+    let after = postcard::to_allocvec(&s).expect("serialize state");
+    assert_eq!(before, after, "a tree-full mint must not partially mutate the state");
+    assert!(s.conservation_holds());
+}
+
+/// The nightmare case for a derived index: a state restored from bytes (snapshot /
+/// witness) whose index arrived silently empty would re-accept spent tuples and
+/// reintroduce the bug. Deserialization must rebuild the index, so the RESTORED
+/// state still rejects a historical duplicate on both mint paths.
+#[test]
+fn sec026_restored_state_still_rejects_historical_duplicates() {
+    use perp_core::EngineError;
+    let mut s = DefaultState::new(20);
+    s.add_market(signed_market(Market::conservative(0)));
+    let o = owner(1);
+    let bl = [9u8; 32];
+    let amt = 1_000 * QUOTE_SCALE;
+    let cm = Note::new(o, 0, amt, bl).commitment::<Keccak256>();
+    s.apply_op(&BatchOp::Deposit {
+        owner: o,
+        asset_id: 0,
+        amount: amt,
+        blinding: bl,
+        from: [0xA1u8; 20],
+        deposit_id: 0,
+        deposit_blind: [0xDBu8; 32],
+    })
+    .unwrap();
+    s.apply_op(&BatchOp::Withdraw {
+        note_commitment: cm,
+        spend_key: [1u8; 32],
+        to: None,
+        nonce: 0,
+    })
+    .unwrap();
+
+    // round-trip through the wire format, exactly like a snapshot/witness load
+    let bytes = postcard::to_allocvec(&s).expect("serialize state");
+    let mut back: DefaultState = postcard::from_bytes(&bytes).expect("deserialize state");
+    assert_eq!(s.state_root(), back.state_root());
+
+    let err = back
+        .apply_op(&BatchOp::Deposit {
+            owner: o,
+            asset_id: 0,
+            amount: amt,
+            blinding: bl,
+            from: [0xA1u8; 20],
+            deposit_id: 1,
+            deposit_blind: [0xDBu8; 32],
+        })
+        .unwrap_err();
+    assert_eq!(
+        err,
+        EngineError::DuplicateCommitment,
+        "the restored state must remember every historical commitment"
+    );
+    assert!(back.conservation_holds());
+}

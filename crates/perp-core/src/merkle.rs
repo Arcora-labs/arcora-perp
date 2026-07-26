@@ -23,21 +23,61 @@
 //! off-chain and in-circuit trees are provably the same code.
 
 use crate::hash::{Digest, Domain, Hasher};
+use alloc::collections::BTreeSet;
 use alloc::vec::Vec;
 use tiny_keccak::{Hasher as _, Keccak};
 
 /// An append-only Merkle accumulator of fixed depth.
 #[derive(Clone, Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "serde", serde(bound = ""))]
+#[cfg_attr(feature = "serde", serde(bound = "", from = "MerkleTreeWire"))]
 pub struct MerkleTree<H: Hasher> {
     depth: u8,
     /// Dense leaves appended so far.
     leaves: Vec<Digest>,
     /// `empty[i]` = root of an all-empty subtree of height `i`.
     empty: Vec<Digest>,
+    /// SEC-026: O(log n) membership index over `leaves` — "has this commitment EVER
+    /// been appended?". NEVER serialized (`serde(skip)`): the authoritative list is
+    /// `leaves` itself (dense, insertion-ordered, root-bound), and the index is
+    /// rebuilt from it on construction and on EVERY deserialize (all deserialization
+    /// is routed through [`MerkleTreeWire`], whose `From` conversion rebuilds it),
+    /// so it is structurally impossible for the index to diverge from its anchor —
+    /// or to arrive silently empty after a snapshot/witness restore.
+    #[cfg_attr(feature = "serde", serde(skip))]
+    leaf_set: BTreeSet<Digest>,
     #[cfg_attr(feature = "serde", serde(skip))]
     _h: core::marker::PhantomData<H>,
+}
+
+/// The exact serialized shape of [`MerkleTree`]: its three encoded fields, in
+/// declaration order (postcard is positional), byte-identical to the pre-SEC-026
+/// derived encoding. Deserialization goes THROUGH this type (`serde(from)`), which
+/// is what guarantees the SEC-026 leaf index is populated on every load path —
+/// gateway snapshot, rollback journal, prover witness, zkVM guest alike — before a
+/// tree value can exist at all.
+#[cfg(feature = "serde")]
+#[derive(serde::Deserialize)]
+struct MerkleTreeWire {
+    depth: u8,
+    leaves: Vec<Digest>,
+    empty: Vec<Digest>,
+}
+
+#[cfg(feature = "serde")]
+impl<H: Hasher> From<MerkleTreeWire> for MerkleTree<H> {
+    fn from(w: MerkleTreeWire) -> Self {
+        // rebuild the SEC-026 membership index from the anchored leaf list — derived
+        // from the serialized truth, never trusted from the wire.
+        let leaf_set = w.leaves.iter().copied().collect();
+        Self {
+            depth: w.depth,
+            leaves: w.leaves,
+            empty: w.empty,
+            leaf_set,
+            _h: core::marker::PhantomData,
+        }
+    }
 }
 
 /// A membership proof: the sibling path from a leaf up to the root.
@@ -62,6 +102,7 @@ impl<H: Hasher> MerkleTree<H> {
             depth,
             leaves: Vec::new(),
             empty,
+            leaf_set: BTreeSet::new(),
             _h: core::marker::PhantomData,
         }
     }
@@ -96,7 +137,18 @@ impl<H: Hasher> MerkleTree<H> {
         }
         let idx = self.leaves.len() as u64;
         self.leaves.push(leaf);
+        // keep the SEC-026 membership index in lockstep with the anchored list
+        self.leaf_set.insert(leaf);
         Ok(idx)
+    }
+
+    /// SEC-026: has this exact leaf EVER been appended to the tree? O(log n) via the
+    /// membership index derived from `leaves` (the historical, root-bound list —
+    /// strictly a superset of the live unspent-note map, since notes leave that map
+    /// when spent but never leave the tree). This is the uniqueness source the
+    /// engine's shared mint primitive consults.
+    pub fn contains_leaf(&self, leaf: &Digest) -> bool {
+        self.leaf_set.contains(leaf)
     }
 
     /// Current root. Computed bottom-up over the dense leaves, padding each level
@@ -474,6 +526,58 @@ mod tests {
             t.append(word_u64(i)).unwrap();
         }
         assert_eq!(t.append(word_u64(5)), Err(MerkleError::Full));
+    }
+
+    // SEC-026: the membership index answers "ever appended", tracks every append,
+    // starts empty at genesis, and is NOT polluted by a failed (tree-full) append.
+    #[test]
+    fn contains_leaf_tracks_every_append() {
+        let mut t = T::new(2); // capacity 4
+        assert!(!t.contains_leaf(&word_u64(1)), "genesis: index empty");
+        for i in 0..4u64 {
+            t.append(word_u64(i + 1)).unwrap();
+            assert!(t.contains_leaf(&word_u64(i + 1)));
+        }
+        assert!(!t.contains_leaf(&word_u64(99)));
+        // a rejected append (full) must not index the leaf
+        assert_eq!(t.append(word_u64(99)), Err(MerkleError::Full));
+        assert!(
+            !t.contains_leaf(&word_u64(99)),
+            "a failed append must leave the index untouched"
+        );
+    }
+
+    /// SEC-026 index/anchor consistency: deserializing a tree rebuilds the leaf
+    /// index EXACTLY from `leaves` (the property `NullifierSet` lacks — here the
+    /// index is derived from the anchored list, so divergence is structurally
+    /// impossible), and the index contributes zero bytes to the encoding.
+    #[cfg(feature = "serde")]
+    #[test]
+    fn sec026_deserialize_rebuilds_leaf_index_exactly() {
+        let mut t = T::new(8);
+        for i in 0..50u64 {
+            t.append(word_u64(i + 1)).unwrap();
+        }
+        let bytes = postcard::to_allocvec(&t).expect("serialize tree");
+        let back: T = postcard::from_bytes(&bytes).expect("deserialize tree");
+        assert_eq!(back.leaves, t.leaves, "anchored list survives the round-trip");
+        let rebuilt: BTreeSet<Digest> = back.leaves.iter().copied().collect();
+        assert_eq!(
+            back.leaf_set, rebuilt,
+            "the index must be rebuilt from the anchored leaves on every deserialize"
+        );
+        assert_eq!(back.leaf_set, t.leaf_set, "index identical to the original's");
+        for i in 0..50u64 {
+            assert!(back.contains_leaf(&word_u64(i + 1)));
+        }
+        assert!(!back.contains_leaf(&word_u64(999)));
+        assert_eq!(back.root(), t.root(), "root unchanged by the round-trip");
+        // the index is serde(skip)ped: re-encoding reproduces the identical bytes
+        assert_eq!(
+            postcard::to_allocvec(&back).expect("re-serialize tree"),
+            bytes,
+            "the index must contribute zero bytes to the encoding"
+        );
     }
 }
 
