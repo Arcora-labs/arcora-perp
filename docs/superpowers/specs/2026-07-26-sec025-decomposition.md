@@ -34,7 +34,11 @@ Small, self-contained, `perp-core` only. Fund-loss severity.
 
 ## 025-B — finish the SEC-019 settlement path
 
-The narrow, mechanical part, and the only piece that is purely integration:
+The narrow, mechanical part, and the only piece that is purely integration.
+
+**Found during SEC-026's implementation review, and it will bite this cutover:** `crates/prover-service/src/bin/seal-client.rs:22` and `crates/sp1-host/src/{main.rs:43, bin/prove.rs:31}` still construct the **pre-SEC-019 four-field** `BatchOp::Deposit { owner, asset_id, amount, blinding }`. Those crates are `exclude`d from the workspace (`Cargo.toml:25`) so CI never compiles them — but they take a *path* dependency on `perp-core`, so **they do not build today**. Since the bundle forces a vkey re-pin and therefore a prover-service rebuild on the prover box, a plain `cargo build --release` there will fail. Pre-existing SEC-019 debt, not introduced by SEC-026, but it must be fixed as part of this piece or the cutover stops at the prover.
+
+The rest:
 
 - `ProveResp` emits `deposits_root` **and** a host-only post-state deposit count; `ProveOutcome`, the parser and the cross-check carry both.
 - The gateway **MUST** derive the count and the insurance balance from replaying its own witness — the current check only re-hashes prover-returned roots (`prover_client.rs:110-159`).
