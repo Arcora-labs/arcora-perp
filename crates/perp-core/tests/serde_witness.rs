@@ -310,7 +310,10 @@ fn sec026_tree_full_deposit_leaves_postcard_bytes_unchanged() {
         .unwrap_err();
     assert_eq!(err, EngineError::Overflow);
     let after = postcard::to_allocvec(&s).expect("serialize state");
-    assert_eq!(before, after, "a tree-full mint must not partially mutate the state");
+    assert_eq!(
+        before, after,
+        "a tree-full mint must not partially mutate the state"
+    );
     assert!(s.conservation_holds());
 }
 

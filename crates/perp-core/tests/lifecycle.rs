@@ -1127,7 +1127,10 @@ fn sec026_deposit_spend_deposit_same_tuple_rejected() {
         nonce: 0,
     })
     .unwrap();
-    assert!(!s.notes.contains_key(&cm), "spent: the live map no longer knows the commitment");
+    assert!(
+        !s.notes.contains_key(&cm),
+        "spent: the live map no longer knows the commitment"
+    );
 
     let external_in_before = s.external_in;
     let count_before = s.consumed_deposit_count;
@@ -1148,8 +1151,14 @@ fn sec026_deposit_spend_deposit_same_tuple_rejected() {
         .unwrap_err();
     assert_eq!(err, EngineError::DuplicateCommitment);
     assert_eq!(s.external_in, external_in_before, "no value credited");
-    assert_eq!(s.consumed_deposit_count, count_before, "deposit count did not advance");
-    assert_eq!(s.consumed_deposit_tip, tip_before, "deposit chain did not fold");
+    assert_eq!(
+        s.consumed_deposit_count, count_before,
+        "deposit count did not advance"
+    );
+    assert_eq!(
+        s.consumed_deposit_tip, tip_before,
+        "deposit chain did not fold"
+    );
     assert_eq!(s.state_root(), root_before, "state unchanged");
     assert!(s.conservation_holds());
 }

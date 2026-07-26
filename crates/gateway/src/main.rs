@@ -7518,7 +7518,9 @@ mod tests {
             "deposit_counter must be unchanged on refusal"
         );
         assert!(
-            gw.accounts[&key].deposit_authorizations.contains_key(&commit),
+            gw.accounts[&key]
+                .deposit_authorizations
+                .contains_key(&commit),
             "the authorization must still be present (not consumed) — retriable"
         );
         assert!(

@@ -560,13 +560,19 @@ mod tests {
         }
         let bytes = postcard::to_allocvec(&t).expect("serialize tree");
         let back: T = postcard::from_bytes(&bytes).expect("deserialize tree");
-        assert_eq!(back.leaves, t.leaves, "anchored list survives the round-trip");
+        assert_eq!(
+            back.leaves, t.leaves,
+            "anchored list survives the round-trip"
+        );
         let rebuilt: BTreeSet<Digest> = back.leaves.iter().copied().collect();
         assert_eq!(
             back.leaf_set, rebuilt,
             "the index must be rebuilt from the anchored leaves on every deserialize"
         );
-        assert_eq!(back.leaf_set, t.leaf_set, "index identical to the original's");
+        assert_eq!(
+            back.leaf_set, t.leaf_set,
+            "index identical to the original's"
+        );
         for i in 0..50u64 {
             assert!(back.contains_leaf(&word_u64(i + 1)));
         }
