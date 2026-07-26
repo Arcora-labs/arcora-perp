@@ -383,6 +383,75 @@ mod tests {
         );
     }
 
+    // SEC-026: adding the rebuilt-on-load leaf index must change NOTHING in the
+    // serialized encoding — the postcard bytes of a state are pinned to their
+    // pre-SEC-026 values for the same logical state. This is what guarantees
+    // `state_root` is unchanged and `GENESIS_ROOT` does not move: the index is
+    // `serde(skip)`ped and derived, never encoded. The pins were computed on the
+    // pre-SEC-026 code (commit 127820e) and MUST NOT be updated to "fix" a failure.
+    #[cfg(feature = "serde")]
+    #[test]
+    fn sec026_postcard_encoding_is_pinned() {
+        use crate::engine::BatchOp;
+        use crate::note::owner_from_spend_key;
+        use tiny_keccak::{Hasher as _, Keccak};
+
+        fn hex_keccak(bytes: &[u8]) -> alloc::string::String {
+            let mut k = Keccak::v256();
+            k.update(bytes);
+            let mut out = [0u8; 32];
+            k.finalize(&mut out);
+            let mut s = alloc::string::String::new();
+            for b in out {
+                use core::fmt::Write as _;
+                let _ = write!(s, "{b:02x}");
+            }
+            s
+        }
+
+        // (a) an empty state — the genesis shape
+        let empty: State<Keccak256> = State::new(16);
+        let b = postcard::to_allocvec(&empty).expect("serialize empty state");
+        assert_eq!(b.len(), 625, "empty-state postcard length pinned");
+        assert_eq!(
+            hex_keccak(&b),
+            "4fc7c794fe978a764d294880b49bf796d462d0b9bccada04f2373a8ebb827222",
+            "empty-state postcard bytes pinned to the pre-SEC-026 encoding"
+        );
+
+        // (b) a state with history: one deposit consumed, then spent (tree leaf +
+        // retained nullifier + external flow), so every SEC-026-adjacent field is live
+        let spend_key = [1u8; 32];
+        let owner = owner_from_spend_key::<Keccak256>(&spend_key);
+        let mut s: State<Keccak256> = State::new(16);
+        let note = Note::new(owner, 0, 1_000_000, [7u8; 32]);
+        let cm = note.commitment::<Keccak256>();
+        s.apply_op(&BatchOp::Deposit {
+            owner,
+            asset_id: 0,
+            amount: 1_000_000,
+            blinding: [7u8; 32],
+            from: [0xA1u8; 20],
+            deposit_id: 0,
+            deposit_blind: [0xDBu8; 32],
+        })
+        .expect("deposit");
+        s.apply_op(&BatchOp::Withdraw {
+            note_commitment: cm,
+            spend_key,
+            to: None,
+            nonce: 0,
+        })
+        .expect("withdraw");
+        let b = postcard::to_allocvec(&s).expect("serialize state");
+        assert_eq!(b.len(), 693, "historied-state postcard length pinned");
+        assert_eq!(
+            hex_keccak(&b),
+            "91bb7735cc734da25c0a889337b7675613d22b477b0a78dbce7ff101494ffd41",
+            "historied-state postcard bytes pinned to the pre-SEC-026 encoding"
+        );
+    }
+
     // ZK-001 (Task 4, carry-forward M1): the per-market mark band is consumed by the
     // funding path to bound `AccrueFunding.mark` against the signed index. Task 2 folded
     // `max_mark_deviation_ratio` into `markets_digest`, but never asserted it — so a

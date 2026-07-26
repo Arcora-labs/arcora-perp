@@ -1087,3 +1087,412 @@ fn a_liquidation_absorbed_by_insurance_reports_no_adl_haircuts() {
     );
     assert!(s.conservation_holds());
 }
+
+// ---------------------------------------------------------------------------
+// SEC-026 — historical commitment uniqueness. A mint (Deposit or Unbind) that
+// reconstructs a previously-SPENT `(owner, asset_id, amount, blinding)` tuple used
+// to be accepted, because uniqueness was checked against the live unspent map while
+// nullifiers are retained forever: the value was credited (`external_in` rose, the
+// vault holds the money) but every later spend recomputed the same nullifier and
+// was refused with `UnknownOrSpentNote` — credited-but-frozen funds that
+// `conservation_holds()` cannot see. Both mint paths must reject against the
+// HISTORICAL leaf list (every commitment ever appended to the tree).
+// ---------------------------------------------------------------------------
+
+/// The fund-loss regression itself: `Deposit → spend → Deposit` with the same tuple.
+/// Before SEC-026 the second deposit was ACCEPTED (the live map had forgotten the
+/// commitment) and the credited value was permanently unspendable.
+#[test]
+fn sec026_deposit_spend_deposit_same_tuple_rejected() {
+    let mut s = fresh_state();
+    let o = owner_of(1);
+    let bl = [9u8; 32];
+    let amt = 1_000 * QUOTE_SCALE;
+    let cm = deposit_commit(o, amt, bl);
+    s.apply_op(&BatchOp::Deposit {
+        owner: o,
+        asset_id: 0,
+        amount: amt,
+        blinding: bl,
+        from: [0xA1u8; 20],
+        deposit_id: 0,
+        deposit_blind: [0xDBu8; 32],
+    })
+    .unwrap();
+    // spend it — the commitment leaves the live unspent map, the nullifier stays forever
+    s.apply_op(&BatchOp::Withdraw {
+        note_commitment: cm,
+        spend_key: [1u8; 32],
+        to: None,
+        nonce: 0,
+    })
+    .unwrap();
+    assert!(
+        !s.notes.contains_key(&cm),
+        "spent: the live map no longer knows the commitment"
+    );
+
+    let external_in_before = s.external_in;
+    let count_before = s.consumed_deposit_count;
+    let tip_before = s.consumed_deposit_tip;
+    let root_before = s.state_root();
+    let err = s
+        .apply_op(&BatchOp::Deposit {
+            owner: o,
+            asset_id: 0,
+            amount: amt,
+            blinding: bl,
+            from: [0xA1u8; 20],
+            // in-order id (1 == count): the SEC-019 order gate passes, so historical
+            // uniqueness is the property under test.
+            deposit_id: 1,
+            deposit_blind: [0xDBu8; 32],
+        })
+        .unwrap_err();
+    assert_eq!(err, EngineError::DuplicateCommitment);
+    assert_eq!(s.external_in, external_in_before, "no value credited");
+    assert_eq!(
+        s.consumed_deposit_count, count_before,
+        "deposit count did not advance"
+    );
+    assert_eq!(
+        s.consumed_deposit_tip, tip_before,
+        "deposit chain did not fold"
+    );
+    assert_eq!(s.state_root(), root_before, "state unchanged");
+    assert!(s.conservation_holds());
+}
+
+/// `Unbind → Withdraw → Unbind` with the same tuple: the second unbind would debit
+/// position collateral and mint an unspendable note. Must be rejected atomically.
+#[test]
+fn sec026_unbind_withdraw_unbind_same_tuple_rejected() {
+    let mut s = fresh_state();
+    let o = owner_of(1);
+    let dep_bl = [1u8; 32];
+    let cm0 = deposit_commit(o, 20_000 * QUOTE_SCALE, dep_bl);
+    s.apply_batch(&[
+        BatchOp::Deposit {
+            owner: o,
+            asset_id: 0,
+            amount: 20_000 * QUOTE_SCALE,
+            blinding: dep_bl,
+            from: [0xA1u8; 20],
+            deposit_id: 0,
+            deposit_blind: [0xDBu8; 32],
+        },
+        BatchOp::FundPosition {
+            owner: o,
+            market_id: 0,
+            note_commitment: cm0,
+            spend_key: [1u8; 32],
+        },
+    ])
+    .unwrap();
+
+    let bl = [0x77u8; 32];
+    let amt = 1_000 * QUOTE_SCALE;
+    // an unbound note is (owner, asset 0, amount, blinding) — same shape as a deposit
+    let cm = deposit_commit(o, amt, bl);
+    s.apply_op(&BatchOp::Unbind {
+        owner: o,
+        market_id: 0,
+        amount: amt,
+        blinding: bl,
+        oracle: oracle(100_000, 1_000),
+        now_ms: 1_000,
+    })
+    .unwrap();
+    // spend it as a real L1 withdrawal
+    s.apply_op(&BatchOp::Withdraw {
+        note_commitment: cm,
+        spend_key: [1u8; 32],
+        to: Some([0xEEu8; 20]),
+        nonce: 7,
+    })
+    .unwrap();
+
+    let collateral_before = s.position(&o, 0).unwrap().collateral;
+    let root_before = s.state_root();
+    let err = s
+        .apply_op(&BatchOp::Unbind {
+            owner: o,
+            market_id: 0,
+            amount: amt,
+            blinding: bl,
+            oracle: oracle(100_000, 2_000),
+            now_ms: 2_000,
+        })
+        .unwrap_err();
+    assert_eq!(err, EngineError::DuplicateCommitment);
+    assert_eq!(
+        s.position(&o, 0).unwrap().collateral,
+        collateral_before,
+        "the rejected mint must not debit position collateral"
+    );
+    assert_eq!(s.state_root(), root_before, "state unchanged");
+    assert!(s.conservation_holds());
+}
+
+/// `Unbind → spend → Deposit`: a deposit-side check alone would miss this — the
+/// commitment was created by the OTHER mint path.
+#[test]
+fn sec026_unbind_spend_deposit_same_tuple_rejected() {
+    let mut s = fresh_state();
+    let o = owner_of(1);
+    let dep_bl = [1u8; 32];
+    let cm0 = deposit_commit(o, 20_000 * QUOTE_SCALE, dep_bl);
+    s.apply_batch(&[
+        BatchOp::Deposit {
+            owner: o,
+            asset_id: 0,
+            amount: 20_000 * QUOTE_SCALE,
+            blinding: dep_bl,
+            from: [0xA1u8; 20],
+            deposit_id: 0,
+            deposit_blind: [0xDBu8; 32],
+        },
+        BatchOp::FundPosition {
+            owner: o,
+            market_id: 0,
+            note_commitment: cm0,
+            spend_key: [1u8; 32],
+        },
+    ])
+    .unwrap();
+
+    let bl = [0x55u8; 32];
+    let amt = 2_000 * QUOTE_SCALE;
+    let cm = deposit_commit(o, amt, bl);
+    s.apply_op(&BatchOp::Unbind {
+        owner: o,
+        market_id: 0,
+        amount: amt,
+        blinding: bl,
+        oracle: oracle(100_000, 1_000),
+        now_ms: 1_000,
+    })
+    .unwrap();
+    s.apply_op(&BatchOp::Withdraw {
+        note_commitment: cm,
+        spend_key: [1u8; 32],
+        to: None,
+        nonce: 0,
+    })
+    .unwrap();
+
+    let root_before = s.state_root();
+    let err = s
+        .apply_op(&BatchOp::Deposit {
+            owner: o,
+            asset_id: 0,
+            amount: amt,
+            blinding: bl,
+            from: [0xA1u8; 20],
+            deposit_id: s.consumed_deposit_count, // in-order: uniqueness is what rejects
+            deposit_blind: [0xDBu8; 32],
+        })
+        .unwrap_err();
+    assert_eq!(err, EngineError::DuplicateCommitment);
+    assert_eq!(s.state_root(), root_before, "state unchanged");
+    assert!(s.conservation_holds());
+}
+
+/// `Deposit → spend → Unbind`: the mirror gap — an unbind-side check against only
+/// the live map would re-mint a commitment the DEPOSIT path created.
+#[test]
+fn sec026_deposit_spend_unbind_same_tuple_rejected() {
+    let mut s = fresh_state();
+    let o = owner_of(1);
+    let dep_bl = [1u8; 32];
+    let cm0 = deposit_commit(o, 20_000 * QUOTE_SCALE, dep_bl);
+    s.apply_batch(&[
+        BatchOp::Deposit {
+            owner: o,
+            asset_id: 0,
+            amount: 20_000 * QUOTE_SCALE,
+            blinding: dep_bl,
+            from: [0xA1u8; 20],
+            deposit_id: 0,
+            deposit_blind: [0xDBu8; 32],
+        },
+        BatchOp::FundPosition {
+            owner: o,
+            market_id: 0,
+            note_commitment: cm0,
+            spend_key: [1u8; 32],
+        },
+    ])
+    .unwrap();
+
+    // deposit the tuple that the later unbind will collide with, then spend it
+    let bl = [0x66u8; 32];
+    let amt = 1_500 * QUOTE_SCALE;
+    let cm = deposit_commit(o, amt, bl);
+    s.apply_op(&BatchOp::Deposit {
+        owner: o,
+        asset_id: 0,
+        amount: amt,
+        blinding: bl,
+        from: [0xA1u8; 20],
+        deposit_id: 1,
+        deposit_blind: [0xDBu8; 32],
+    })
+    .unwrap();
+    s.apply_op(&BatchOp::FundPosition {
+        owner: o,
+        market_id: 0,
+        note_commitment: cm,
+        spend_key: [1u8; 32],
+    })
+    .unwrap();
+
+    let collateral_before = s.position(&o, 0).unwrap().collateral;
+    let root_before = s.state_root();
+    let err = s
+        .apply_op(&BatchOp::Unbind {
+            owner: o,
+            market_id: 0,
+            amount: amt,
+            blinding: bl,
+            oracle: oracle(100_000, 1_000),
+            now_ms: 1_000,
+        })
+        .unwrap_err();
+    assert_eq!(err, EngineError::DuplicateCommitment);
+    assert_eq!(s.position(&o, 0).unwrap().collateral, collateral_before);
+    assert_eq!(s.state_root(), root_before, "state unchanged");
+    assert!(s.conservation_holds());
+}
+
+/// A duplicate unbind while the first note is STILL UNSPENT must also stay rejected
+/// (the deposit-side twin of `duplicate_commitment_deposit_rejected`).
+#[test]
+fn sec026_duplicate_unbind_while_unspent_rejected() {
+    let mut s = fresh_state();
+    let o = owner_of(1);
+    let dep_bl = [1u8; 32];
+    let cm0 = deposit_commit(o, 20_000 * QUOTE_SCALE, dep_bl);
+    s.apply_batch(&[
+        BatchOp::Deposit {
+            owner: o,
+            asset_id: 0,
+            amount: 20_000 * QUOTE_SCALE,
+            blinding: dep_bl,
+            from: [0xA1u8; 20],
+            deposit_id: 0,
+            deposit_blind: [0xDBu8; 32],
+        },
+        BatchOp::FundPosition {
+            owner: o,
+            market_id: 0,
+            note_commitment: cm0,
+            spend_key: [1u8; 32],
+        },
+    ])
+    .unwrap();
+    let bl = [0x33u8; 32];
+    let amt = 500 * QUOTE_SCALE;
+    s.apply_op(&BatchOp::Unbind {
+        owner: o,
+        market_id: 0,
+        amount: amt,
+        blinding: bl,
+        oracle: oracle(100_000, 1_000),
+        now_ms: 1_000,
+    })
+    .unwrap();
+    let err = s
+        .apply_op(&BatchOp::Unbind {
+            owner: o,
+            market_id: 0,
+            amount: amt,
+            blinding: bl,
+            oracle: oracle(100_000, 1_100),
+            now_ms: 1_100,
+        })
+        .unwrap_err();
+    assert_eq!(err, EngineError::DuplicateCommitment);
+    assert!(s.conservation_holds());
+}
+
+/// Two mints differing ONLY in blinding must both be accepted — on both mint paths,
+/// and even after the first is spent. Uniqueness is per-commitment, not per-value.
+#[test]
+fn sec026_mints_differing_only_in_blinding_both_accepted() {
+    let mut s = fresh_state();
+    let o = owner_of(1);
+    let amt = 1_000 * QUOTE_SCALE;
+
+    // deposits: same (owner, asset, amount), different blinding — first one spent
+    let cm1 = deposit_commit(o, amt, [0x01u8; 32]);
+    s.apply_op(&BatchOp::Deposit {
+        owner: o,
+        asset_id: 0,
+        amount: amt,
+        blinding: [0x01u8; 32],
+        from: [0xA1u8; 20],
+        deposit_id: 0,
+        deposit_blind: [0xDBu8; 32],
+    })
+    .unwrap();
+    s.apply_op(&BatchOp::Withdraw {
+        note_commitment: cm1,
+        spend_key: [1u8; 32],
+        to: None,
+        nonce: 0,
+    })
+    .unwrap();
+    s.apply_op(&BatchOp::Deposit {
+        owner: o,
+        asset_id: 0,
+        amount: amt,
+        blinding: [0x02u8; 32],
+        from: [0xA1u8; 20],
+        deposit_id: 1,
+        deposit_blind: [0xDBu8; 32],
+    })
+    .unwrap();
+    assert!(s.conservation_holds());
+
+    // unbinds: fund a position, then two same-amount unbinds under fresh blinds
+    let dep_bl = [0x03u8; 32];
+    let cm0 = deposit_commit(o, 10_000 * QUOTE_SCALE, dep_bl);
+    s.apply_batch(&[
+        BatchOp::Deposit {
+            owner: o,
+            asset_id: 0,
+            amount: 10_000 * QUOTE_SCALE,
+            blinding: dep_bl,
+            from: [0xA1u8; 20],
+            deposit_id: 2,
+            deposit_blind: [0xDBu8; 32],
+        },
+        BatchOp::FundPosition {
+            owner: o,
+            market_id: 0,
+            note_commitment: cm0,
+            spend_key: [1u8; 32],
+        },
+    ])
+    .unwrap();
+    s.apply_op(&BatchOp::Unbind {
+        owner: o,
+        market_id: 0,
+        amount: amt,
+        blinding: [0x04u8; 32],
+        oracle: oracle(100_000, 1_000),
+        now_ms: 1_000,
+    })
+    .unwrap();
+    s.apply_op(&BatchOp::Unbind {
+        owner: o,
+        market_id: 0,
+        amount: amt,
+        blinding: [0x05u8; 32],
+        oracle: oracle(100_000, 1_100),
+        now_ms: 1_100,
+    })
+    .unwrap();
+    assert!(s.conservation_holds());
+}
