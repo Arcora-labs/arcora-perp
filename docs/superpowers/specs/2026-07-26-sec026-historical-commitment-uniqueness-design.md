@@ -56,7 +56,26 @@ So the bug has three more shapes beyond the deposit one:
 
 **Every successful `tree.append(cm)` / `notes.insert(cm, note)` must be gated, through a single shared mint primitive** rather than two parallel checks that can drift. Nothing legitimately depends on reuse: the tree is explicitly permanent (`merkle.rs`), and the note archive keys ciphertexts by commitment (`crates/note-archive/src/lib.rs:147`), so a reused commitment would collide there too.
 
-## Design — uniqueness by construction, not by lookup
+## Design — the historical list already exists; index it
+
+**Chosen at implementation time, after verifying a fact both earlier options had missed:** `MerkleTree.leaves` is a dense, insertion-ordered `Vec<Digest>` that **is serialized** (`merkle.rs:28-36` — the struct derives `Serialize`/`Deserialize` and `leaves` carries no `serde(skip)`), and the tree root is bound into `state_root`. So the authoritative, root-bound list of every commitment ever appended is **already in state**.
+
+That makes both options below unnecessary:
+
+- A separate `CommitmentSet` would **duplicate** that list and reintroduce exactly the divergence risk documented for `NullifierSet` — two structures that can disagree, with only one of them anchored.
+- The creation counter would change `BatchOp` semantics and client reconstruction for a guarantee the existing data can already provide.
+
+**Design:** a membership index over `tree.leaves`, held as a `#[serde(skip)]` field and rebuilt on construction and on deserialize, consulted by a **single shared mint primitive** that both `op_deposit` and `op_unbind` call.
+
+Properties this buys:
+
+- **No new serialized state.** `state_root` is unchanged, `GENESIS_ROOT` does not move, and the postcard encoding of `DefaultState` is untouched — so unlike the rest of the cutover bundle, **SEC-026 needs no state migration at all.** Only the guest ELF changes, hence a vkey re-pin.
+- **The index cannot diverge from the anchor**, because it is derived from it rather than maintained beside it. That is precisely the failure mode `NullifierSet` has.
+- O(log n) membership instead of the O(N)-per-mint scan the alternative would have cost, at the price of an O(n log n) index build per deserialize — on data the guest already deserializes.
+
+Bound: leaves are capped by the tree depth (24 at the current `Sequencer::new(enclave, 24)`, ≈16.7M).
+
+## Alternatives considered (superseded by the above)
 
 **Mix a state-bound, globally monotonic note-creation counter into the blind at every mint path.**
 
@@ -88,12 +107,12 @@ Under the canonical threat model this is not user-exploitable (the prover cannot
 
 | Change | Consequence |
 |---|---|
-| New `State.commitments` field bound into `state_root` | **`GENESIS_ROOT` moves**; guest ELF changes → **vkey re-pin** |
-| `DefaultState` postcard encoding changes | witness plaintext, sealed-witness ciphertext, gateway + sequencer snapshots, `window_start_state`, rollback journals |
+| Guest ELF changes (new check on both mint paths) | **vkey re-pin** |
+| **No serialized-state change** | `state_root` unchanged, **`GENESIS_ROOT` does not move**, postcard encoding of `DefaultState` untouched |
 
-Both are already required by the rest of the cutover bundle (SEC-022's `Market` field, SEC-024's `BatchOp` change), so this adds no *new* class of migration — it rides the same wipe and the same vkey re-pin.
+**This is the practical payoff of indexing the existing list rather than adding a set: SEC-026 requires no state migration.** It still rides the cutover bundle's vkey re-pin (SEC-022 and SEC-024 change the guest anyway), but it does not itself force a wipe, and it would be independently deployable if the bundle slipped.
 
-**Backfill:** on a fresh genesis the set starts empty, which is correct and needs no migration. The cutover already wipes state, so there is no live set to reconstruct.
+**Backfill:** none. The index is derived from `tree.leaves` on load, so any existing state produces a correct index without migration.
 
 ## Testing
 
@@ -108,8 +127,9 @@ Both are already required by the rest of the cutover bundle (SEC-022's `Market` 
 | **Invariant: every successful `tree.append` has exactly one uniqueness-enforcing step** | structural test over both mint paths — prevents the two from drifting apart again |
 | Rejected duplicate | **full postcard bytes unchanged**, not merely `state_root` — no tree append, no `external_in`, no deposit-count advance |
 | **Failure atomicity:** tree-full, and `external_in` overflow | state unchanged. Note `tree` and `notes` currently mutate **before** `external_in.checked_add` (`engine.rs:369`), so inserting new bookkeeping ahead of the fallible work would add a partial-mutation case rather than remove one |
-| Serialization consistency of whatever representation is chosen | a deserialized state cannot present a digest that disagrees with the structure `contains()` consults *(see the `NullifierSet` defect above)* |
-| Genesis | counter zero / set empty |
+| **Index/anchor consistency:** serialize a state, deserialize it, and assert the rebuilt index exactly matches `tree.leaves` | equal — the property that makes divergence structurally impossible, and the one `NullifierSet` lacks |
+| **No serialized-state change:** postcard bytes of a `DefaultState` before and after this change | identical for the same logical state — pins that `GENESIS_ROOT` does not move |
+| Genesis | index empty |
 | Every scenario | `conservation_holds()` |
 
 The first four rows are the finding: each fails today by *accepting* the mint, and the failure is silent — the money is credited, the accounting balances, and only the eventual spend reveals it.
