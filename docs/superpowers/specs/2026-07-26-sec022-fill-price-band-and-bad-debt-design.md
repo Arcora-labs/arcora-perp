@@ -1,123 +1,163 @@
-# SEC-022 — Fill-price band + bad-debt accounting — Design
+# SEC-022 — Fill-price band + closed-position debt — Design
 
-**Finding:** SEC-022 [critical, protocol-soundness] — a fill can execute at **any** price relative to the oracle, and the resulting shortfall is never accounted for. Two accounts crossing at an off-market price move value between them at that price; the losing side's collateral can go negative; and because the position ends at `size == 0`, both liquidation entry points skip it (`engine.rs:644`, `sequencer/src/lib.rs:744` — each requires `pos.is_open()`), so the shortfall is **parked on a closed position forever**. The winning account then withdraws normally. Net: the vault pays out more than was ever deposited.
+> **Sequencing: this is the THIRD of three findings and must not be implemented first.**
+> SEC-023 (oracle time-binding) and SEC-024 (`SeedInsurance` fabricates external collateral) both let a
+> prover assert arbitrary values inside the proven transition. While either is open, this design's band
+> is anchored to something a prover controls, so implementing SEC-022 alone buys far less than it appears
+> to. See "Dependencies".
 
-Three independent gaps compose into this:
+**Finding:** SEC-022 [critical, protocol-soundness] — a fill can execute at **any** price relative to the oracle, and a fill that leaves a position closed with negative collateral is never resolved. Two accounts crossing off-market move value between them at that price; the losing side's collateral goes negative; the position ends at `size == 0`, so no liquidation path will ever revisit it (`engine.rs:644`, `sequencer/src/lib.rs:744` — each requires `pos.is_open()`). The winning account withdraws normally. The vault pays out more than was deposited.
 
-1. **No fill-price band.** `op_fill` (`crates/perp-core/src/engine.rs:453-580`) validates only `size > 0 && price > 0` (`:465`). It obtains the attested oracle mark at `:478` and uses it **only** for `check_initial_margin` (`:550`). `price` and `mark` are never compared. The matcher supplies `price` verbatim from the resting maker (`crates/matcher/src/book.rs:295`) and has no access to an oracle at all.
-2. **The reducing leg is unchecked.** `check_initial_margin` runs only when `increasing` (`engine.rs:549`); `Position::fits_initial_after` returns `true` immediately for any non-increasing delta (`crates/perp-core/src/position.rs:171-173`). The reducing leg is precisely where PnL is realized (`position.rs:251-265`), so an off-band reducing fill mints realized PnL out of `vault_pool` with nothing checking it. *(Skipping the initial-margin check on a reduce is correct and stays; the defect is that no bankruptcy path exists either.)*
-3. **Bad debt from a fill is never handled.** The full waterfall — insurance backstop → ADL cascade → `CloseOnly` halt — exists only inside `op_liquidate` (`engine.rs:679-704`) and is gated on `is_open()`.
+Three gaps compose:
 
-**Conservation does not catch any of this.** `conservation_holds()` (`crates/perp-core/src/state.rs:129-134`) is a **bookkeeping** identity, not a solvency one: `apply_fill` moves value between `pos.collateral` and `vault_pool`, both terms of `internal_value()`. A fill priced 50% away from the mark passes it cleanly, and `positions_collateral()` sums signed collateral with no clamp (`state.rs:118-120`), so a negative position is absorbed silently. `crates/perp-core/tests/lifecycle.rs:600-679` currently *pins the parked shortfall as correct behavior*.
+1. **No fill-price band.** `op_fill` (`crates/perp-core/src/engine.rs:453-580`) validates only `size > 0 && price > 0` (`:465`). It obtains the attested mark at `:478` and uses it **only** for `check_initial_margin` (`:550`). `price` and `mark` are never compared. The matcher supplies `price` verbatim from the resting maker (`crates/matcher/src/book.rs:295`) and has no oracle access at all.
+2. **The reducing leg has no risk check of any kind.** `check_initial_margin` runs only when `increasing` (`:549`); `fits_initial_after` returns `true` immediately for non-increasing deltas (`crates/perp-core/src/position.rs:171-173`). That leg is where PnL is realized (`position.rs:251-265`). Skipping *initial margin* on a reduce is correct and stays — the defect is that no bankruptcy check exists either.
+3. **Closed-position debt is unresolvable after the fact.** The bad-debt waterfall lives only in `op_liquidate` (`engine.rs:679-704`) and is gated on `is_open()`.
 
-**Exploitability without any credential compromise.** This needs no leaked key: one user with two funded accounts drains the vault. It is therefore strictly more fundamental than SEC-021's authorization gap, and it remains open even with perfect authorization. SEC-021's own final review identified it as the residual; this design closes it.
+**Conservation does not catch this.** `conservation_holds()` (`state.rs:129-134`) is a **bookkeeping** identity, not a solvency one: `apply_fill` moves value between `pos.collateral` and `vault_pool`, both terms of `internal_value()`, and `positions_collateral()` sums signed collateral with no clamp (`state.rs:118-120`). A fill priced 50% from the mark passes it cleanly.
 
-**Relationship to SEC-021 (A/B split).** Two defects were separated during design: **(A)** order placement is bearer-authorized for server-custody accounts (gateway-only fix, no vkey impact), and **(B)** this protocol-soundness hole. (B) is designed and fixed first because it is exploitable without (A), and because it forces a vkey redeploy that (A) can ride. (A) is tracked separately and should ship in the same cutover.
+**No credential compromise is needed** — one user with two funded accounts is sufficient. This is strictly more fundamental than SEC-021's authorization gap and remains open under perfect authorization.
+
+## Correction history
+
+The first version of this design proposed **running the existing liquidation waterfall from `op_fill`**. Adversarial review (Codex) showed that does not close the attack, and the claim was verified at source:
+
+- **ADL cannot see a closed winner.** `auto_deleverage` skips `!pos.is_open()` (`engine.rs:736`). The natural shape of the attack closes *both* legs, so the profitable leg has `size == 0` and is invisible to the claw.
+- **`CloseOnly` is not a vault halt.** It only blocks exposure-increasing fills (`engine.rs:491`). `op_withdraw` (`engine.rs:854`) never checks `mode` — it consumes the note and credits `external_out`. So the terminal state the waterfall falls back to does not stop the winner withdrawing.
+
+Net: insurance is drained, ADL finds nothing to claw, the system halts to `CloseOnly`, and the attacker withdraws anyway. The waterfall was a no-op against the actual attack.
+
+The argument the first version gave *against* a hard fill-level solvency check was also wrong. Rejecting a fill does not wedge the chain: `seal_batch` already omits rejected fills from the proven op-log (`sequencer/src/lib.rs:888-906`) and routes the orders to `manifest.rejected`. Rejection is the cheap, fail-closed option, and it was available all along.
 
 ## Scope
 
-- **`crates/perp-core`** (compiles into the SP1 guest — see Migration):
+- **`crates/perp-core`** (compiles into the SP1 guest):
   - `op_fill` gains an oracle-relative price band.
+  - `op_fill` gains a **solvency postcondition**: the fill fails if either leg ends with `collateral < 0`.
   - `Market` gains `max_fill_deviation_ratio`.
-  - `EngineError` gains `FillPriceOutOfBand`.
-  - The bad-debt waterfall is extracted from `op_liquidate` into a shared helper and invoked from `op_fill`.
-  - A `fill()` public wrapper mirroring `liquidate()`, returning `Vec<AdlHaircut>` for host-side receipt attribution.
-- **`crates/sequencer`** (host, not in the guest): a `settlement_reason` arm for the new error; call the `fill()` wrapper so ADL receipts are issued for haircuts a fill caused.
-- **Tests** across `perp-core` and `sequencer`, including inverting the test that currently pins the bug.
+  - `EngineError` gains `FillPriceOutOfBand` and `FillWouldBankrupt`.
+  - `op_fill` is restructured so **no fallible operation follows its first mutation** (see §4).
+- **`crates/perp-core/src/order.rs`**: **append** a `RejectReason::FillPriceOutOfBand` variant.
+- **`crates/sequencer`** (host, not in the guest): `settlement_reason` arms for the new errors.
 
-**Non-goals / deferred:**
+**Non-goals / deferred, each with its own tracking:**
 
-- **(A) order-path signing** — separate spec, gateway-only, ships in the same cutover.
-- **A matcher-side band.** `matcher` is not a guest dependency and has no oracle plumbing (`crates/matcher/Cargo.toml`). A host-side band is unproven and therefore not a security control here; it could later be added as a UX nicety that rejects doomed orders earlier, but it must never be the only band.
-- **A hard solvency invariant** (e.g. `all collateral >= 0`) in `apply_batch`. The existing design deliberately uses the `CloseOnly` halt as the terminal signal; a hard in-circuit invariant would make an unprovable batch — i.e. a wedged chain — out of a recoverable accounting event.
-- **Garbage-collecting parked positions.** Once the waterfall runs, a residual negative position still lingers; `op_fund_position` (`engine.rs:430-451`) silently repays it if the owner refunds. Out of scope, worth its own follow-up.
-- **`op_seed_insurance` has no authorization** (`engine.rs:787-800`) — any `SeedInsurance` op mints `external_in`. Conservation-safe but unauthenticated. Noticed during this design; tracked separately.
+- **SEC-023 — oracle time-binding.** `now_ms` is a private per-op field with no public clock. A prover can replay a historical signed transcript and set `now_ms` near its `publish_time_ms`, passing the 10 s freshness gate (`oracle.rs:93`). `BatchManifest` has no time field (`order.rs:157`), and `derive_roots` (`commitment.rs:53`) does not constrain it. Affects `Fill`, `Liquidate`, `Unbind`, `AccrueFunding`. **Own spec, higher priority than this one.**
+- **SEC-024 — `SeedInsurance` fabricates external collateral.** `op_seed_insurance` (`engine.rs:787-800`) raises both `insurance_fund` and `external_in` with no note consumed and no L1 binding, and the guest proves it. Mint fake insurance → create bad debt → cover it → withdraw the winner's excess from the real vault. Must be L1-deposit-bound or removed from the proven op set. **Own spec, higher priority than this one.**
+- **Matcher liquidity is consumed before rejection.** The matcher decrements/removes the resting maker (`matcher/book.rs:301`) *before* settlement discovers the fill is out of band, and the rejection arm has no rollback (`sequencer/src/lib.rs:901`). An attacker can burn out-of-band resting liquidity without executing and reject an innocent taker alongside it. The in-circuit band stays the security control; this needs an atomic restore or a host-side pre-filter. **Follow-up.**
+- **Funding remains steerable.** Funding uses the book mid (`sequencer/src/lib.rs:682`) and the rate clamps at a 0.05% premium (`funding.rs:23`) while the mark band permits 5% — so the existing band bounds a rate that is already clamped, and two accounts parking non-crossing quotes can choose the funding sign. ≈12% of notional per day. **Follow-up.**
+- **`op_fund_position` silently repays parked debt** (`engine.rs:430-451`). It consumes a real note, so it mints nothing — but a new deposit can vanish into old debt while the system stays `CloseOnly`. Make repayment explicit or refuse to fund a debt-parked position. **Follow-up.**
+- **A hard global solvency invariant** in `apply_batch`. The per-fill postcondition below is the targeted version; a global one risks converting a recoverable accounting state into an unprovable batch.
 
 ## Current state (grounding)
 
-- **`BatchOp::Fill`** (`engine.rs:59-68`) carries `oracle: OracleTranscript` **by value, per op**. `State` holds no oracle. Two fills in one batch may legally carry different transcripts.
-- **The mark is attested and fully gated.** `oracle.validate(&market, now_ms)` (`crates/perp-core/src/oracle.rs:63-129`) checks the publisher signature **first** (fail-closed on a zero pubkey), then `price > 0`, staleness, confidence ratio, and TWAP deviation. `market.oracle_pubkey` is bound into `markets_digest → state_root` (`state.rs:200-204`), so a prover cannot swap the trust anchor.
-- **The mark is available in-circuit at fill time.** The guest witness is `(DefaultState, Vec<BatchOp>, BatchManifest)` (`crates/sp1-guest/src/main.rs`) and `k256` is a real no-std dependency of `perp-core` specifically so recoverable-ECDSA runs in the guest. **A fill band needs no new witness data and no new plumbing** — `price`, `mark` and `market` are already in scope in the same function.
-- **The precedent to copy is one op away.** `op_accrue_funding` (`engine.rs:593-612`, from ZK-001) already implements exactly this shape of band against the same attested index.
-- **The rejected-fill path already exists.** On `Err`, `seal_batch` (`sequencer/src/lib.rs:899-906`) pushes both legs' order hashes into `settlement_rejected`, does **not** push the op into the proven op-log, and moves the orders into `manifest.rejected` (`:930-947`) while clearing their inclusion records (`:980-988`) so a justified rejection is not mistaken for censorship.
-- **Liquidations close at the oracle price** (`engine.rs:633, 653`), so they are in-band by construction and unaffected.
+- **`BatchOp::Fill`** (`engine.rs:59-68`) carries `oracle: OracleTranscript` **by value, per op**. Two fills in one batch may carry different transcripts.
+- **`oracle.validate`** (`oracle.rs:63-129`) checks the publisher signature first (fail-closed on a zero pubkey), then `price > 0`, staleness, confidence, TWAP deviation. `market.oracle_pubkey` is bound into `markets_digest → state_root` (`state.rs:200-204`). **But freshness is only relative to the op's own `now_ms` — see SEC-023.**
+- **The mark is available in-circuit at fill time.** `price`, `mark` and `market` are all in scope in `op_fill`; `k256` is a real no-std dependency of `perp-core` so recoverable-ECDSA runs in the guest. The band needs **no new witness data**.
+- **The precedent is one op away.** `op_accrue_funding` (`engine.rs:593-612`, from ZK-001) implements this band shape against the same attested index.
+- **The rejected-fill path already exists** (`sequencer/src/lib.rs:899-906`): both legs' hashes go to `settlement_rejected`, the op is not pushed to the op-log, and the orders move to `manifest.rejected` with inclusion records cleared.
+- **Margin defaults** (`market.rs:63-64`): `initial_margin_ratio` 10%, `maintenance_margin_ratio` **5%**.
+- **Liquidations close at the oracle price** (`engine.rs:633, 653`) — in-band by construction, unaffected.
 
 ## Design
 
 ### 1. The band
 
-Inserted into `op_fill` **after** `oracle.validate(...)` (`engine.rs:478`), so no band check is reachable without a valid publisher signature:
+Inserted into `op_fill` **after** `oracle.validate(...)`, so no band check is reachable without a valid publisher signature:
 
 ```
 dev = |price − mark|                                  // checked_sub; i128::MIN fail-closes
 dev · RATE_SCALE  ≤  market.max_fill_deviation_ratio · mark
 ```
 
-Three properties, copied verbatim from `op_accrue_funding` because each was already reasoned through and reviewed in ZK-001:
+Copied verbatim from `op_accrue_funding` because each property was already reasoned through in ZK-001:
 
-- **Division-free.** Both sides are products; no rounding, no divide-by-zero.
-- **The right-hand side multiplies the *attested* `mark`, never the untrusted `price`.** Anchoring to the input under attack would let a prover widen its own band by inflating `price`. (`engine.rs:609` does the same with `index_price`.)
-- **Every arithmetic step is `checked_*`, and every overflow rejects** via a catch-all `_ =>` arm. Nothing wraps; nothing panics in-guest.
+- **Division-free** — both sides are products.
+- **The RHS multiplies the attested `mark`, never the untrusted `price`.** Anchoring to the value under attack would let a prover widen its own band.
+- **Every step is `checked_*`; every overflow rejects** via a catch-all `_ =>`. Nothing wraps, nothing panics in-guest.
 
-The check is symmetric — it bounds fills that are too good *and* too bad for either side, because an off-market fill harms whichever leg is on the wrong side of it.
+Symmetric: an off-market fill harms whichever leg is on the wrong side, so both directions are bounded.
 
-New `EngineError::FillPriceOutOfBand` (`crates/perp-core/src/error.rs`, beside `MarkOutOfBand`), plus a `settlement_reason` arm (`sequencer/src/lib.rs:256-267`) so a band rejection does not fall into the `InvalidOrder` catch-all. **Reuse an existing `RejectReason`** rather than adding a variant: `RejectReason` is hashed into `BatchManifest` (`order.rs:168-171`), and a new variant changes manifest bytes without buying anything a precise `EngineError` does not already give the operator.
+### 2. Band calibration
 
-### 2. `Market::max_fill_deviation_ratio`
+**The first version proposed 10% and justified it with "the loss is bounded by the loser's collateral". That is false**, and the correction drives this section. With `maintenance_margin_ratio` at 5% (`market.rs:64`), a position sitting just above maintenance can be closed 10% through the mark and finish roughly 5% of notional **negative**, before fees — because the reducing leg has no risk check at all. A 10% band therefore permits deterministic bankruptcy of maintenance-safe positions.
 
-A dedicated field rather than reusing `max_mark_deviation_ratio`, because the two constrain genuinely different things: the funding band constrains *the sequencer's book mid* against the index and should track it tightly; the fill band constrains *execution price* against the index and must tolerate real movement during the oracle's staleness window. Sharing one ratio would mean loosening the funding band later silently loosens the fill band — exactly the coupling to avoid.
+**The band must be strictly tighter than the maintenance margin**, so that no in-band fill can take a maintenance-compliant position below zero. Proposed default: `max_fill_deviation_ratio = RATE_SCALE / 50` (2%), against a 5% maintenance margin, leaving headroom for fees and funding drift.
 
-**Default: `RATE_SCALE / 10` (10%)**, twice the funding band's 5%. The band's job is not to prevent all value transfer between consenting accounts — it is to make a *single catastrophic fill* impossible. The loss is already bounded by the loser's collateral, and §3 now catches the overflow; the band reduces per-fill damage from unbounded to ~10% of notional. Too tight a band is its own failure mode: it rejects legitimate trades during fast markets and makes the exchange look broken.
+Two constraints on the field itself:
 
-Follows the existing field's conventions exactly: `is_coherent()` rejects `<= 0` (mirroring `market.rs:138`), bound into `markets_digest` (`state.rs:200-204`), with its own binding test in the style of `state.rs:392-406`.
+- `is_coherent()` must enforce **both** `> 0` **and an upper bound relative to `maintenance_margin_ratio`** — a `> 0` check alone would let governance configure an arbitrarily wide band and silently reintroduce this finding.
+- Bound into `markets_digest` (`state.rs:200-204`) with its own binding test, in the style of `state.rs:392-406`.
 
-### 3. Bad-debt accounting
+The band alone is not the solvency guarantee — §3 is. The band's job is to keep normal trading inside a sane envelope and make the bankruptcy path rare.
 
-**Only one case is missing.** An *open* position with negative collateral already fails its maintenance check and is liquidatable, so the existing waterfall covers it. The gap is exactly `size == 0 && collateral < 0` — a position closed by an ordinary fill, which no liquidation path will ever revisit.
+### 3. The solvency postcondition
 
-Extract the waterfall from `op_liquidate` (`engine.rs:679-704`) into a shared helper and call it from `op_fill` for any leg that ends in that state. **Extract, do not duplicate** — divergent copies of accounting logic are exactly how this class of bug appears.
+**A fill must not succeed with unresolved closed-position debt.** After both legs are staged, if either ends with `collateral < 0`, the whole fill fails with `FillWouldBankrupt` — no state is committed.
 
-The waterfall is unchanged: insurance backstop (`insurance_fund` covers what it can) → ADL cascade on the residual (`auto_deleverage`, capped at each victim's claimable so ADL can never mint fresh bad debt) → if still negative, `mode = CloseOnly`.
+This replaces the first version's "run the waterfall from `op_fill`", which the correction history above shows does not work.
 
-**The non-obvious consequence: receipts.** ADL produces `AdlHaircut`s, and haircut victims are owed `AdlReceipt`s (`sequencer/src/lib.rs:1025-1038`). `op_liquidate` returns them via the public `liquidate()` wrapper (`engine.rs:323-336`); `op_fill` returns `Result<()>`. In-circuit this does not matter — haircuts are recomputed deterministically — but the **host** cannot issue receipts for haircuts a fill caused. So `perp-core` gains a `fill()` wrapper mirroring `liquidate()`, and the sequencer calls it at `lib.rs:899` instead of the bare `apply_op`.
+Why rejection is right here and the waterfall is right in `op_liquidate`:
 
-*Alternative considered and rejected:* insurance-only from fills, halting to `CloseOnly` if uncovered. It avoids the receipt plumbing but stops the whole exchange over a small residual, and it makes bad debt behave differently depending on which op produced it. Consistency is worth the plumbing.
+- **Liquidation** is the protocol *choosing* to close a position that is already underwater. There is no alternative to socializing whatever the collateral cannot cover, so insurance → ADL → halt is the correct policy.
+- **A fill** is two parties electing to trade. If the trade would bankrupt one of them, not trading is always available and strictly better for the protocol. The position stays open, stays maintenance-checked, and gets liquidated by the normal path if it deteriorates — where the waterfall *can* reach an open winner.
 
-**Expected frequency: rare and small.** With the band in place, a fill can only push collateral negative if it was already nearly exhausted — a state in which maintenance would normally have liquidated the position first. This path is a backstop, not a hot path. It must exist because today the shortfall is silently parked.
+Rejection cannot wedge the chain: `seal_batch` omits rejected fills from the proven op-log and routes the orders to `manifest.rejected`.
+
+**The waterfall is not touched by this design.** It stays in `op_liquidate`, its correct home.
+
+### 4. Atomic failure
+
+`op_fill` currently commits `vault_pool` and positions (`engine.rs:554-566`) **before** the fallible `treasury` and `insurance_fund` additions (`:567-578`). A late `checked_add` failure returns `Err` while state has already changed — the sequencer then takes the rejection arm and omits the op, leaving live host state diverged from what was proven.
+
+The postcondition in §3 adds another late failure point, so this must be fixed as part of this work: **`op_fill` must perform no fallible operation after its first mutation.** Compute everything into staged values, run the band and the solvency postcondition against the staged result, and only then commit.
+
+This is a real pre-existing defect surfaced by review, not new risk introduced here.
+
+### 5. Reject reasons
+
+**Append** `RejectReason::FillPriceOutOfBand` rather than reusing `InvalidOrder`. The first version proposed reuse to avoid changing manifest bytes; that reasoning was wrong on both halves — `RejectReason` has explicit stable discriminants (`order.rs:127-148`), so appending does not change any existing encoding, and `EngineError` is internal while the manifest is what users and auditors see. Hiding a band rejection inside a generic `InvalidOrder` costs debuggability for nothing.
+
+## Dependencies
+
+Implement **after** SEC-023 and SEC-024. Both let a prover assert values the band depends on:
+
+- Without SEC-023, `mark` is "a signed price" but not "a current price" — a prover can select a favourable historical transcript per fill, so the band's anchor is partly under the attacker's control.
+- Without SEC-024, an attacker can mint the insurance that would otherwise absorb whatever the band lets through.
+
+SEC-022 is still worth doing — it closes the unbounded-price hole and the closed-debt hole — but its guarantee is only as good as the anchor, and the anchor is SEC-023's job.
 
 ## Migration
 
-This is the expensive part, and the timing is favourable — all of it rides one cutover that was already pending.
-
 | Change | Consequence |
 |---|---|
-| `op_fill` band, new `EngineError` | Guest ELF changes → **vkey re-pin** → new `SP1ZkVerifier` deploy |
-| New `Market` field → `markets_digest` → `state_root` | **`GENESIS_ROOT` moves** → every root KAT re-pins (`commitment.rs:241-246` `KAT_COMMIT7`, `state.rs` root tests) |
-| Fresh `Settlement`/`Vault`/`USDC` | Already required by the merged-but-undeployed forge-audit remediation (`a413750`, 3 new constructor params) + the SEC-021 snapshot wipe |
+| `op_fill` band + postcondition, new `EngineError` variants | Guest ELF changes → **vkey re-pin** → new `SP1ZkVerifier` deploy |
+| New `Market` field → `markets_digest` → `state_root` | **`GENESIS_ROOT` moves**; relational market-binding tests in `state.rs` update |
+| New `Market` field → **postcard encoding of `DefaultState`** | Witness plaintext, **sealed-witness ciphertext/nonce**, gateway snapshots, sequencer snapshots, `window_start_state`, and rollback journals all change shape. **Any pending witness or journal must be drained or explicitly invalidated before cutover** — this is the item the first version missed entirely. |
+| `RejectReason` append | New discriminant only; existing encodings unchanged |
+| Fresh `Settlement`/`Vault`/`USDC` | Already required by the merged-but-undeployed forge-audit remediation (`a413750`) + the SEC-021 snapshot wipe |
 
-`GATE-1` precedent applies: verify the built guest ELF's vkey **before** deploying the verifier, and deploy a fresh `SP1ZkVerifier` rather than assuming an existing one matches. The SEC-021 cutover items (state wipe, `L1_VAULT` exported before start, gateway+frontend together) all still apply and are additive to this one.
+**Correction:** the first version claimed `KAT_COMMIT7` moves. It does not — it hashes fixed roots `[0x01;32]…[0x07;32]` independent of `Market` (`commitment.rs:236-246`), and the Solidity cross-layer KAT is likewise unaffected.
 
-**(A) order-path signing is gateway-only and should ship in the same cutover** — it does not affect the vkey, but shipping the two halves of the same threat separately leaves a window where the cheap half is done and the expensive half is not.
+`GATE-1` precedent applies: verify the built guest ELF's vkey **before** deploying the verifier. All SEC-021 cutover items remain and are additive.
+
+**The gateway-only order-signing half (SEC-021 "A") must be a hard release dependency, not a suggestion.** Bearer-authorized orders let an attacker deliberately walk a victim through every adverse edge this design still permits.
 
 ## Testing
 
-The suite must show three things: the attack is closed, the band bites exactly where intended, and nothing that worked before broke.
-
 | Case | Expected |
 |---|---|
-| **Attack regression:** two accounts, off-market `Gtc` self-cross V→B | fill rejected `FillPriceOutOfBand`; V's collateral unchanged; state root unchanged |
+| **Attack regression:** two accounts, off-market cross closing **both** legs | rejected; no state committed; both accounts' collateral unchanged |
+| Fill that would leave either leg `collateral < 0`, in-band price | rejected `FillWouldBankrupt` |
 | Fill exactly at the band edge | accepted |
-| Fill just outside the band, **both directions** (price above and below mark) | rejected |
-| `checked_sub` on `i128::MIN`, `checked_mul` overflow on either side | rejected, no panic |
-| Inflated `price` cannot widen the band | rejected — RHS is anchored to the attested `mark` |
-| Fill with an invalid oracle signature | rejected by `validate()` **before** the band is reached |
-| **Liquidations unaffected** — they close at the oracle price | every existing liquidation test passes unchanged |
-| Fill closing a position to `size == 0, collateral < 0`, insurance sufficient | covered from insurance; no ADL |
-| …insurance insufficient | ADL cascade runs **and haircut victims receive receipts** |
-| …both insufficient | `mode == CloseOnly` |
-| **`lifecycle.rs:600-679`** — currently asserts the shortfall "is parked" | **inverted** — it pins today's bug as correct |
-| Every scenario above | `conservation_holds()` |
+| Fill just outside the band, both directions | rejected `FillPriceOutOfBand` |
+| `checked_sub` on `i128::MIN`; `checked_mul` overflow either side | rejected, no panic |
+| Inflated `price` cannot widen the band | rejected — RHS anchored to `mark` |
+| Invalid oracle signature | rejected by `validate()` **before** the band |
+| A maintenance-safe position cannot be bankrupted by any in-band fill | property test over the band/maintenance relationship |
+| `is_coherent()` rejects a band ≥ maintenance margin | rejected at market construction |
+| Late-failure atomicity: force the insurance `checked_add` to overflow | `Err` with **state unchanged** |
+| Liquidations unaffected (they close at the oracle price) | every existing liquidation test passes unchanged |
+| Every scenario | `conservation_holds()` |
 
-The inverted test is the clearest single piece of evidence the fix landed: it currently encodes the defective behavior as intended.
-
-Band-edge and overflow tests mirror the existing funding-band tests at `engine.rs:1055-1102`.
+**The first version proposed inverting `lifecycle.rs:600-679`. That was wrong** — that test is `true_insolvency_trips_close_only_when_winners_have_exited`, a *liquidation* insolvency case deliberately constructed with the winner already exited (`lifecycle.rs:601`, `:662`). It does not pin fill-created parked debt, and inverting it would contradict correct liquidation behavior. It must keep passing unchanged. This design needs its **own** fill-specific regression test.
