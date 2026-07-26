@@ -1,106 +1,144 @@
 # SEC-023 — Oracle time-binding — Design
 
-> **Sequencing: this is the FIRST of three findings** split out of the SEC-022 review.
-> SEC-024 (`SeedInsurance` fabricates external collateral) is second; SEC-022 (fill-price band +
-> closed-position debt) is third and depends on this one — its band is anchored to an oracle mark
-> that, until this lands, a prover partly controls.
+> **Sequencing: FIRST of three findings** split out of the SEC-022 review. SEC-024 (`SeedInsurance`
+> fabricates external collateral) is second; SEC-022 (fill-price band + closed-position debt) is third
+> and depends on this one — its band is anchored to an oracle mark that, until this lands, a prover
+> partly controls.
 
-**Finding:** SEC-023 [critical, proof-soundness] — the proven transition has **no clock**. Oracle freshness is checked only against a value the prover supplies, so a prover can replay any historical signed transcript and have the circuit accept it as current.
+**Finding:** SEC-023 [critical, proof-soundness] — the proven transition has **no clock**. Oracle freshness is checked against a value the prover supplies, so a prover can replay any historical signed transcript and have the circuit accept it as current.
 
 Verified at source:
 
-- `OracleTranscript::validate` (`crates/perp-core/src/oracle.rs:93-98`) checks freshness as `publish_time_ms > now_ms || now_ms - publish_time_ms > market.max_oracle_staleness_ms`. Both operands are prover-supplied: `publish_time_ms` comes from the (genuinely signed) transcript, and `now_ms` is a plain field of the `BatchOp` (`engine.rs:59-68`).
-- **`BatchManifest` has no time field at all** (`crates/perp-core/src/order.rs:157-166`): `previous_state_root`, `batch_id`, `ordered`, `rejected`, `oracle_updates`, `matching_rule_version`, `enclave_measurement`, `sequencer_pubkey_epoch`.
-- **`derive_roots` constrains neither** (`crates/perp-core/src/commitment.rs:53-90`). It binds `manifest.previous_state_root` and `manifest.batch_id` to the state, then applies the batch. Nothing relates `now_ms` to anything outside the witness.
+- `OracleTranscript::validate` (`crates/perp-core/src/oracle.rs:93-98`) checks `publish_time_ms > now_ms || now_ms - publish_time_ms > market.max_oracle_staleness_ms`. Both operands are prover-supplied: the transcript is genuinely signed, but `now_ms` is a plain field of the `BatchOp` (`engine.rs:59-68`).
+- **`BatchManifest` has no time field** (`crates/perp-core/src/order.rs:157-166`).
+- **`derive_roots` constrains neither** (`crates/perp-core/src/commitment.rs:53-90`) — it binds only `previous_state_root` and `batch_id`.
 
-So a prover picks a historical transcript, sets `now_ms` near its `publish_time_ms`, and the 10-second staleness gate passes. The signature check is untouched — **the prover cannot forge a price, only choose which real past price to use.** That is enough: it decides the mark that every downstream risk check is measured against.
+The signature check is untouched: **a prover cannot forge a price, only choose which real past price to use.** That decides the mark every downstream risk check is measured against. Affects `Fill`, `Liquidate`, `Unbind`, `AccrueFunding` (`engine.rs:478, 593, 633, 819`): liquidate a healthy position on an old adverse mark, spare an unhealthy one on an old favourable mark, steer funding, and widen SEC-022's fill band, whose right-hand side is anchored to whichever mark the prover selected.
 
-**Blast radius: every op that carries an oracle.** `Fill`, `Liquidate`, `Unbind`, `AccrueFunding`. Concretely — liquidate a healthy position by selecting an old adverse mark; avoid liquidating an unhealthy one by selecting an old favourable mark; steer funding; and (once SEC-022 lands) widen the effective fill band, since its right-hand side is anchored to whichever mark the prover selected.
+**Trust model.** This is exploitable by whoever produces the witness — the sequencer/prover — not by an ordinary API user. The zk layer exists so that party need not be trusted, so "the sequencer wouldn't" is not a defence.
 
-**Why this outranks SEC-022.** SEC-022's band anchors to `mark` precisely so a prover cannot widen its own band. That argument only holds if `mark` is *current*. Until then the anchor is partly attacker-chosen, and SEC-022 buys less than it appears to.
+## Correction history
 
-**Trust-model note.** This is a soundness bug, not a liveness one: it is exploitable by whoever produces the witness — the sequencer/prover — not by an ordinary API user. The zk layer exists specifically so that party need not be trusted, so "the sequencer wouldn't do that" is not a defence.
+The first version of this design was rejected in adversarial review (Codex), and all three findings were verified at source. It is recorded here because two of the mistakes are instructive.
 
-## Scope
+1. **The central mechanism did not bind what it claimed.** The design constrained `op.now_ms` to `(last_batch_time, batch_time]` and assumed the 10-second staleness gate would then keep the oracle near `batch_time`. It does not — nothing required `now_ms` to be *close to* `batch_time`. A prover sets `now_ms = 10:02` with a 10:02 transcript and declares `batch_time = 10:20`: the staleness gate passes (measured against `now_ms`), monotonicity passes, and the L1 lag check passes (measured against `batch_time`). Settlement at 10:33 uses a 31-minute-old price. **The freshness check must be anchored to the externally verifiable time, not to a second prover-supplied clock.**
+2. **Strict per-transcript monotonicity would have wedged the exchange.** The sequencer holds one transcript per market (`sequencer/src/lib.rs:453`) and reuses it across every fill in a tick (`:844-899`) and, in maintenance, across funding *and every liquidation candidate* (`:712-760`). Live feeds are deliberately not restamped per tick (`gateway/src/main.rs:3098-3112`). Under strict `>`, the second consumer of any transcript would be rejected — trading, funding, liquidation and unbinding all effectively dead. The first version's own warning that "every additional in-circuit constraint is another way to make an unprovable batch" was written and then walked into.
+3. **The 8th commitment word touches three definitions, not one.** `crates/prover/src/lib.rs:49-87` defines and hashes the seven words independently of `perp-core`, and `publicCommitment` is recomputed at **two** Solidity sites — `settleBatch` (`DarkPerpSettlement.sol:336`) **and `finalSettle` (`:387`)`. The first version specified the timestamp policy only for `settleBatch`, leaving a `finalSettle` bypass.
 
-- **`crates/perp-core`** (compiles into the SP1 guest):
-  - `BatchManifest` gains `batch_time_ms: u64`, hashed with the rest.
-  - `DerivedRoots` gains an 8th word `batch_time_ms`; `commitment()` covers it.
-  - `DefaultState` gains `last_batch_time_ms: u64` and `last_oracle_publish_ms: BTreeMap<MarketId, u64>`, both bound into `state_root`.
-  - `derive_roots` enforces batch monotonicity and the per-op window.
-  - `validate` (or its caller) enforces per-market oracle monotonicity.
-  - New `EngineError` variants for each rejection.
-- **`contracts/`**: `settleBatch` takes `batchTimeMs`, binds it through `publicCommitment`, and checks it against `block.timestamp`.
-- **`crates/sequencer`**: populate `batch_time_ms`; surface the new rejection reasons.
-
-**Non-goals / deferred:**
-
-- **Binding `manifest.oracle_updates` to the transcripts actually used.** The field is currently dead weight — hashed into the manifest, never cross-checked against `ops`. Binding it would add auditability (anyone could see which oracle prices a batch consumed), but the *security* property is delivered by oracle monotonicity below, and every additional in-circuit constraint is another way to make an unprovable batch. **Follow-up.**
-- **Sub-second or per-op oracle sequencing.** Monotonicity is per market per batch; ordering *within* a batch is not constrained beyond the window.
-- SEC-024 and SEC-022, each its own spec.
+Review also sharpened a fourth point the first version raised only weakly: with a 30-minute permitted lag, a prover can generate **candidate proofs from the same pre-state**, observe subsequent market movement, and settle whichever became favourable. That is a retrospective option, not merely price selection — and it is why this design now precommits.
 
 ## Design
 
-### 1. Where the clock comes from
+### 1. Anchored freshness — the core fix
 
-The contract currently sees only `manifest_hash` — a hash, not fields — so adding `batch_time_ms` to the manifest alone would leave it unverifiable on L1.
-
-Therefore `batch_time_ms` becomes the **8th word of the public commitment**. `settleBatch` receives it as an argument, `publicCommitment` folds it in exactly as Solidity already does for the other seven, and the proof binds it. There is no cheaper way to give the contract a value it can check: any field the contract cannot see is a field the prover can choose freely.
-
-Cost, stated plainly: `KAT_COMMIT7` becomes `KAT_COMMIT8` and the cross-layer Solidity KAT re-pins. That is the price of having a clock at all.
-
-### 2. What the circuit enforces
-
-Three constraints. The third does the real work.
-
-1. **Batch window.** Every op's `now_ms` must lie in `(state.last_batch_time_ms, manifest.batch_time_ms]`. Ops cannot claim a time outside the batch they are in.
-2. **Batch monotonicity.** `manifest.batch_time_ms > state.last_batch_time_ms`, stored at the end of the batch. A prover cannot rewind.
-3. **Per-market oracle monotonicity.** `state.last_oracle_publish_ms[market]` is stored, and every transcript for that market must satisfy `publish_time_ms > last_oracle_publish_ms[market]`, updating it.
-
-Constraint 3 is what closes the finding: **a historical transcript can never be replayed**, because every transcript must be strictly newer than the last one that market consumed. The attack degrades from "choose any past price" to "only move forward". Constraints 1 and 2 then bound how far behind real time that forward march may fall.
-
-Genesis: `last_oracle_publish_ms` absent for a market means no lower bound yet — the first transcript for a market sets it. `last_batch_time_ms` starts at 0.
-
-### 3. What the contract enforces
-
-`settleBatch` checks:
+Replace the prover-clock freshness test with one measured against the externally anchored batch time:
 
 ```
-batchTimeMs <= block.timestamp * 1000                       // not from the future
-block.timestamp * 1000 - batchTimeMs <= MAX_SETTLE_LAG_MS   // not indefinitely behind
+batch_time_ms − publish_time_ms  ≤  market.max_oracle_staleness_ms
+publish_time_ms                  ≤  batch_time_ms          // not from the future
 ```
 
-**`MAX_SETTLE_LAG_MS` must accommodate proving latency, and getting this wrong bricks settlement.** Proof generation currently measures ~13 minutes, so a batch is legitimately that far behind by the time it settles. Proposed **30 minutes**, roughly 2× measured latency.
+`op.now_ms` is no longer trusted for freshness. (It stays in the op for the other uses it already has; it simply stops being a security input.)
 
-Taken alone that would be weak — "any price from the last 30 minutes". It is not alone: oracle monotonicity (§2.3) means the prover cannot go *back* to a price inside that window either. The L1 bound stops indefinite lag; monotonicity stops rewinding. Each is insufficient by itself; together they close the window.
+**This single change subsumes what the first version tried to get from monotonicity.** If freshness is measured against an L1-bound `batch_time_ms`, a historical transcript is rejected *because it is stale*, regardless of any monotonic bookkeeping. So:
+
+- Finding 1 is closed at its root.
+- **Finding 2's wedge disappears entirely** — reusing one transcript across many ops in a window stays legal, because nothing per-transcript is consumed.
+
+Per-market monotonicity (`publish_time_ms >= last_oracle_publish_ms[market]`, non-decreasing) is retained as cheap defence-in-depth, **not** as the load-bearing constraint. Non-decreasing, never strict, precisely so the legitimate reuse above keeps working.
+
+### 2. Precommit — closing retrospective selection
+
+Anchored freshness bounds *which* price, but a prover who may choose `batch_time_ms` after the fact can still produce several candidate proofs from one pre-state and settle whichever the market later favours. It can also renew a stale batch's L1 deadline by re-sealing under a newer `batch_time_ms`.
+
+So the batch time is committed **before** proving begins:
+
+- The sequencer submits `precommit(prevRoot, manifestHash, batchTimeMs)` — a cheap L1 transaction — then proves.
+- `settleBatch` requires a matching, unexpired precommit and binds to it.
+
+The prover commits to the window before it can know the outcome, which removes the option value. Two operational requirements fall out:
+
+- **Expiry.** A precommit that never gets a proof must not block the slot. It expires after a bounded interval, after which the same `(prevRoot, batchId)` may be re-precommitted.
+- **Rollback compatibility.** The SEC-021 rollback path re-seals a failed window's ops together with intervening ones under the same `batch_id` but a **different** manifest (`sequencer/src/lib.rs:1121-1143`), so the original precommit no longer matches. Re-sealing must therefore issue a fresh precommit, and expiry must be short enough that this is not blocked in practice. **This interaction is the most likely way to wedge settlement and needs an explicit test.**
+
+### 3. Transport: the 8th commitment word
+
+The contract sees only `manifest_hash` — a hash, not fields — so a manifest field alone would remain prover-chosen. `batch_time_ms` therefore becomes the **8th word of the public commitment**, and the proof binds it.
+
+Three definitions must move in lock-step, and all three must stay byte-identical:
+
+- `perp_core::commitment::DerivedRoots` + `commitment()`;
+- `crates::prover::PublicInputs` (`prover/src/lib.rs:49-87`) — defines and hashes the words independently;
+- Solidity `publicCommitment` (`DarkPerpSettlement.sol:255`), consumed at **both** `settleBatch` (`:336`) and `finalSettle` (`:387`).
+
+Encoding must use the existing little-endian 32-byte `_leWord` convention (`DarkPerpSettlement.sol:619`, matching `perp-core/src/hash.rs:202`). Packing a Solidity `uint64` naturally would emit eight big-endian bytes and silently diverge from Rust.
+
+`KAT_COMMIT7` becomes `KAT_COMMIT8`; the cross-layer KAT re-pins.
+
+### 4. The L1 time check
+
+At `settleBatch`:
+
+```
+batchTimeMs  ≤  chainNowMs                       // check BEFORE subtracting (no underflow)
+chainNowMs − batchTimeMs  ≤  MAX_SETTLE_LAG_MS
+```
+
+**Granularity.** EVM timestamps are whole seconds. A host time of `12:00:00.500` exceeds `block.timestamp * 1000`, so a perfectly legitimate non-future batch would reject. **Canonicalize `batch_time_ms` to chain-second precision** (the circuit requires `batch_time_ms % 1000 == 0`), which removes the skew class entirely rather than papering over it with a tolerance.
+
+**`MAX_SETTLE_LAG_MS` must clear proving latency, and setting it too tight bricks settlement.** Proof generation measures ~13 minutes; proposed **30 minutes**, roughly 2×.
+
+Note what this constant now does and does not buy. With anchored freshness (§1), the oracle can never be more than `max_oracle_staleness_ms` (10 s) older than `batch_time_ms`, so the lag bound is **not** what keeps prices fresh — it bounds how long a *whole batch* may sit between sealing and settling. It is an operational liveness allowance, not the security argument. The first version treated it as the latter; that was wrong.
+
+**`finalSettle` must carry an explicit policy.** Applying the same check preserves the guarantee but may constrain emergency settlement; exempting it creates a bypass. The policy must be stated in the contract, not left implicit. Recommendation: `finalSettle` enforces the future check and the precommit binding, but relaxes `MAX_SETTLE_LAG_MS`, since its purpose is recovery when normal settlement has already failed.
+
+### 5. Atomicity
+
+`last_oracle_publish_ms` must advance only when the op that consumed the transcript **fully succeeds**. A fill can fail its margin checks after `validate()` returns, and `unbind` likewise; the sequencer logs only successful ops (`sequencer/src/lib.rs:888-906`). Advancing the bound before downstream success would mutate live state without a replayable op and break the next proof.
+
+## Scope
+
+- **`crates/perp-core`** (guest): `BatchManifest.batch_time_ms`; `DerivedRoots` 8th word + `commitment()`; `DefaultState.last_oracle_publish_ms`; anchored freshness in `validate` (or its callers); `derive_roots` enforces the second-precision and monotonicity rules; new `EngineError` variants.
+- **`crates/prover`**: `PublicInputs` gains the 8th word.
+- **`contracts/`**: precommit storage + expiry; `settleBatch` binding and time checks; `finalSettle` policy; `publicCommitment` 8th word via `_leWord`.
+- **`crates/sequencer`** + **gateway**: populate `batch_time_ms` at second precision; issue the precommit before proving; re-precommit on rollback re-seal; surface new rejection reasons.
+
+**Non-goals / deferred:**
+
+- **Publisher sequence numbers / hash-chained updates.** Anchored freshness bounds *staleness*, but it cannot prove *completeness*: within the 10-second window a prover may still prefer one signed update over another, and the circuit cannot detect a withheld update because the publisher signs only `(market, price, publish_time, confidence, twap)` (`oracle.rs:76-82`). Proving "no update was skipped" requires publisher-side sequencing plus an externally anchored head — a change to a component outside this repo. **Own workstream.** The residual after this spec is selection within a 10-second window, which is the intended staleness tolerance.
+- **Binding `manifest.oracle_updates` to the transcripts actually used.** The field is dead weight today, and `seal_window` fills it from the seal-time cache (`sequencer/src/lib.rs:1090-1100`) rather than from the transcripts ops carried — so it can list an unused update and omit used ones. Binding it improves auditability but does not add soundness here. **Follow-up.**
+- SEC-024 and SEC-022, each its own spec.
 
 ## Migration
 
 | Change | Consequence |
 |---|---|
-| `DerivedRoots` 8th word → `commitment()` | **vkey re-pin**; Solidity `publicCommitment` must match byte-for-byte; `KAT_COMMIT7` → `KAT_COMMIT8`; cross-layer KAT re-pins |
+| `DerivedRoots` 8th word | **vkey re-pin**; `prover::PublicInputs` and both Solidity call sites must match byte-for-byte; `KAT_COMMIT7` → `KAT_COMMIT8`; cross-layer KAT re-pins |
 | `BatchManifest.batch_time_ms` | manifest hash changes |
-| `State`: `last_batch_time_ms`, `last_oracle_publish_ms` | `state_root` changes → **`GENESIS_ROOT` moves**; **postcard encoding of `DefaultState` changes** → witness plaintext, sealed-witness ciphertext/nonce, gateway + sequencer snapshots, `window_start_state`, rollback journals |
-| `settleBatch` signature | contract redeploy — already planned |
+| `DefaultState.last_oracle_publish_ms` | `state_root` changes → **`GENESIS_ROOT` moves**; **postcard encoding of `DefaultState` changes** → witness plaintext, sealed-witness ciphertext/nonce, gateway + sequencer snapshots, `window_start_state`, rollback journals |
+| Precommit + `settleBatch`/`finalSettle` signatures | contract redeploy — already planned |
 
-**SEC-022 also adds a `Market` field, which also changes the `DefaultState` encoding. The two must ship in one cutover**; sequencing them as separate migrations would mean two snapshot/witness breaks for no benefit.
-
-Any pending witness or rollback journal must be drained or explicitly invalidated before cutover. `GATE-1` applies: verify the built guest ELF's vkey **before** deploying the verifier.
+**SEC-022 also changes the `DefaultState` encoding (a new `Market` field). The two must ship in one cutover** — sequencing them separately means two snapshot/witness breaks for no benefit. Pending witnesses and rollback journals must be drained or explicitly invalidated before cutover. `GATE-1` applies: verify the built guest ELF's vkey **before** deploying the verifier.
 
 ## Testing
 
 | Case | Expected |
 |---|---|
-| **Replay regression:** a valid historical transcript, `now_ms` set near its `publish_time_ms` | rejected by oracle monotonicity |
-| `batch_time_ms <= last_batch_time_ms` | rejected |
-| An op's `now_ms` above `batch_time_ms`, or at/below `last_batch_time_ms` | rejected |
-| Two transcripts for one market in a batch, second older than the first | rejected |
-| Transcripts for *different* markets, independently ordered | accepted — monotonicity is per market |
-| First-ever transcript for a market (no stored bound) | accepted, sets the bound |
+| **Replay regression:** a valid historical transcript, any `op.now_ms` | rejected — stale against `batch_time_ms` |
+| The first version's bypass: `now_ms = 10:02` transcript, `batch_time = 10:20` | rejected (it passed before) |
+| Transcript newer than `batch_time_ms` | rejected |
+| **One transcript reused across many fills, funding and several liquidations in a window** | **accepted** — pins that finding 2's wedge is gone |
+| `publish_time_ms` decreasing for a market | rejected |
+| First-ever transcript for a market | accepted, sets the bound |
+| Op fails after `validate()` (e.g. margin) | `last_oracle_publish_ms` **not** advanced |
+| `batch_time_ms % 1000 != 0` | rejected |
 | Contract: `batchTimeMs` in the future | revert |
-| Contract: `batchTimeMs` older than `MAX_SETTLE_LAG_MS` | revert |
-| **Contract: a batch ~13 minutes behind `block.timestamp` still settles** | accepted — pins that the tolerance clears real proving latency |
-| Rust `commitment()` and Solidity `publicCommitment` over the same 8 words | byte-identical (cross-layer KAT) |
+| Contract: settle without a matching precommit | revert |
+| Contract: settle against an expired precommit | revert |
+| **Rollback → re-seal under a new manifest → fresh precommit → settle** | **accepted** — the most likely wedge |
+| **A batch ~13 minutes behind `block.timestamp` still settles** | accepted — pins that the tolerance clears real proving latency |
+| `finalSettle` under its stated policy | matches the contract's documented rule |
+| Rust `commitment()`, `prover::PublicInputs`, and Solidity `publicCommitment` over the same 8 words | byte-identical |
 | Every scenario | `conservation_holds()` |
 
-The 13-minute test matters as much as the attack regression: a `MAX_SETTLE_LAG_MS` set tighter than proving latency would stop the exchange settling at all — a self-inflicted outage dressed as a security control.
+Two of these matter as much as the attack regression: the transcript-reuse test pins that this design does not repeat the first version's wedge, and the 13-minute test pins that `MAX_SETTLE_LAG_MS` does not become a self-inflicted outage.
