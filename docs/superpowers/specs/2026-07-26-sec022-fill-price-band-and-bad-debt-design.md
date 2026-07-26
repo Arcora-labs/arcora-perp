@@ -1,10 +1,11 @@
 # SEC-022 — Fill-price band + closed-position debt — Design
 
-> **Sequencing: this is the THIRD of three findings and must not be implemented first.**
-> SEC-023 (oracle time-binding) and SEC-024 (`SeedInsurance` fabricates external collateral) both let a
-> prover assert arbitrary values inside the proven transition. While either is open, this design's band
-> is anchored to something a prover controls, so implementing SEC-022 alone buys far less than it appears
-> to. See "Dependencies".
+> **Sequencing — corrected.** An earlier header said this was "third of three" and must wait for
+> SEC-023/024. That contradicted the canonical threat model (`2026-07-26-sec02x-threat-model.md`) written
+> afterwards, and was backwards: the prover cannot alter a sealed witness, so SEC-023/024 are Phase-1
+> defence-in-depth, while **this is the only one of the four an ordinary user can reach.** Neither is a
+> prerequisite for the solvency postcondition. All four still ship in one cutover because each changes the
+> guest ELF, the genesis root, or a persisted format — but on priority, this one leads.
 
 **Finding:** SEC-022 [critical, protocol-soundness] — a fill can execute at **any** price relative to the oracle, and a fill that leaves a position closed with negative collateral is never resolved. Two accounts crossing off-market move value between them at that price; the losing side's collateral goes negative; the position ends at `size == 0`, so no liquidation path will ever revisit it (`engine.rs:644`, `sequencer/src/lib.rs:744` — each requires `pos.is_open()`). The winning account withdraws normally. The vault pays out more than was deposited.
 
@@ -39,15 +40,14 @@ The argument the first version gave *against* a hard fill-level solvency check w
   - `Market` gains `max_fill_deviation_ratio`.
   - `EngineError` gains `FillPriceOutOfBand` and `FillWouldBankrupt`.
   - `op_fill` is restructured so **no fallible operation follows its first mutation** (see §4).
-- **`crates/perp-core/src/order.rs`**: **append** a `RejectReason::FillPriceOutOfBand` variant.
-- **`crates/sequencer`** (host, not in the guest): `settlement_reason` arms for the new errors.
+- **`crates/perp-core/src/order.rs`**: **append** `RejectReason::FillPriceOutOfBand` and `RejectReason::FillWouldBankrupt`.
+- **`crates/sequencer`** (host, not in the guest): explicit `settlement_reason` arms for both new errors — without them `FillWouldBankrupt` lands in the `InvalidOrder` catch-all (`sequencer/src/lib.rs:255`), which is actively misleading; **and match-time validation + rollback (§6)**.
 
 **Non-goals / deferred, each with its own tracking:**
 
 - **SEC-023 — oracle time-binding.** `now_ms` is a private per-op field with no public clock. A prover can replay a historical signed transcript and set `now_ms` near its `publish_time_ms`, passing the 10 s freshness gate (`oracle.rs:93`). `BatchManifest` has no time field (`order.rs:157`), and `derive_roots` (`commitment.rs:53`) does not constrain it. Affects `Fill`, `Liquidate`, `Unbind`, `AccrueFunding`. **Own spec, higher priority than this one.**
 - **SEC-024 — `SeedInsurance` fabricates external collateral.** `op_seed_insurance` (`engine.rs:787-800`) raises both `insurance_fund` and `external_in` with no note consumed and no L1 binding, and the guest proves it. Mint fake insurance → create bad debt → cover it → withdraw the winner's excess from the real vault. Must be L1-deposit-bound or removed from the proven op set. **Own spec, higher priority than this one.**
-- **Matcher liquidity is consumed before rejection.** The matcher decrements/removes the resting maker (`matcher/book.rs:301`) *before* settlement discovers the fill is out of band, and the rejection arm has no rollback (`sequencer/src/lib.rs:901`). An attacker can burn out-of-band resting liquidity without executing and reject an innocent taker alongside it. The in-circuit band stays the security control; this needs an atomic restore or a host-side pre-filter. **Follow-up.**
-- **Funding remains steerable.** Funding uses the book mid (`sequencer/src/lib.rs:682`) and the rate clamps at a 0.05% premium (`funding.rs:23`) while the mark band permits 5% — so the existing band bounds a rate that is already clamped, and two accounts parking non-crossing quotes can choose the funding sign. ≈12% of notional per day. **Follow-up.**
+- **Funding remains steerable.** Funding uses the book mid (`sequencer/src/lib.rs:682`) and the rate clamps at a 0.05% hourly premium (`funding.rs:23`) while the mark band permits 5% — so the existing band bounds a rate that is already clamped, and two accounts parking non-crossing quotes can choose the funding sign. ≈1.2% of notional per day. *(An earlier draft said ≈12%; that was off by 10×.)* **Follow-up.**
 - **`op_fund_position` silently repays parked debt** (`engine.rs:430-451`). It consumes a real note, so it mints nothing — but a new deposit can vanish into old debt while the system stays `CloseOnly`. Make repayment explicit or refuse to fund a debt-parked position. **Follow-up.**
 - **A hard global solvency invariant** in `apply_batch`. The per-fill postcondition below is the targeted version; a global one risks converting a recoverable accounting state into an unprovable batch.
 
@@ -59,7 +59,7 @@ The argument the first version gave *against* a hard fill-level solvency check w
 - **The precedent is one op away.** `op_accrue_funding` (`engine.rs:593-612`, from ZK-001) implements this band shape against the same attested index.
 - **The rejected-fill path already exists** (`sequencer/src/lib.rs:899-906`): both legs' hashes go to `settlement_rejected`, the op is not pushed to the op-log, and the orders move to `manifest.rejected` with inclusion records cleared.
 - **Margin defaults** (`market.rs:63-64`): `initial_margin_ratio` 10%, `maintenance_margin_ratio` **5%**.
-- **Liquidations close at the oracle price** (`engine.rs:633, 653`) — in-band by construction, unaffected.
+- **Liquidations do not go through `op_fill` at all.** `BatchOp::Fill` and `BatchOp::Liquidate` dispatch separately (`engine.rs:263`, `:288`); `op_liquidate` calls `Position::apply_fill` directly at the oracle price (`:650`). So neither the band nor the postcondition can block a liquidation. *(An earlier draft said liquidations were "in-band by construction" — the outcome is right, the reasoning was wrong: no band check is invoked.)* Note also that `op_liquidate` has its own partial-mutation ordering (`:651`, `:663` mutate before fallible arithmetic); out of scope here, but this spec should not be read as implying liquidation is atomic.
 
 ## Design
 
@@ -84,18 +84,43 @@ Symmetric: an off-market fill harms whichever leg is on the wrong side, so both 
 
 **The first version proposed 10% and justified it with "the loss is bounded by the loser's collateral". That is false**, and the correction drives this section. With `maintenance_margin_ratio` at 5% (`market.rs:64`), a position sitting just above maintenance can be closed 10% through the mark and finish roughly 5% of notional **negative**, before fees — because the reducing leg has no risk check at all. A 10% band therefore permits deterministic bankruptcy of maintenance-safe positions.
 
-**The band must be strictly tighter than the maintenance margin**, so that no in-band fill can take a maintenance-compliant position below zero. Proposed default: `max_fill_deviation_ratio = RATE_SCALE / 50` (2%), against a 5% maintenance margin, leaving headroom for fees and funding drift.
+**The band must be tight enough that no in-band fill can take a maintenance-compliant position below its maintenance requirement.** "Strictly tighter than the maintenance margin" — an earlier draft's rule — is **not sufficient**, because the taker fee is charged on top of the deviation.
 
-Two constraints on the field itself:
+The worst pure reduction is a taker closing at the far edge of the band, which consumes `d + f·(1 + d)` of the maintenance buffer. So the sufficient joint condition is:
 
-- `is_coherent()` must enforce **both** `> 0` **and an upper bound relative to `maintenance_margin_ratio`** — a `> 0` check alone would let governance configure an arbitrarily wide band and silently reintroduce this finding.
+```
+d · RATE_SCALE  +  f · (RATE_SCALE + d)   <   maintenance_margin_ratio · RATE_SCALE
+```
+
+where `d = max_fill_deviation_ratio` and `f = taker_fee_ratio`.
+
+**Proposed default `d = RATE_SCALE / 50` (2%)** against the live schedule — 5% maintenance (`market.rs:60`), 10 bp taker (`gateway/main.rs:296`): `2% + 0.1%·1.02 = 2.102% < 5%`. Sound with a wide margin.
+
+Enforcing `d < maintenance` and the existing `liquidation_fee_ratio < maintenance` (`market.rs:114`) **separately** is the trap: `d = 2%` and `f = 4.9999%` each pass individually while together consuming ~7.10%. The postcondition would then reject rather than bankrupt — safe, but the guarantee "a maintenance-compliant position can always close in-band" would be false, which is exactly the property users rely on.
+
+Two constraints on the field:
+
+- **`is_coherent()` enforces the joint inequality above**, not a standalone bound. It is the right place because `add_market` hard-asserts coherence (`state.rs:104-107`), making it a genuine configuration boundary.
 - Bound into `markets_digest` (`state.rs:200-204`) with its own binding test, in the style of `state.rs:392-406`.
+
+No additive allowance for funding is needed: maintenance equity already subtracts funding owed, and `apply_fill` settles that same amount.
 
 The band alone is not the solvency guarantee — §3 is. The band's job is to keep normal trading inside a sane envelope and make the bankruptcy path rare.
 
 ### 3. The solvency postcondition
 
-**A fill must not succeed with unresolved closed-position debt.** After both legs are staged, if either ends with `collateral < 0`, the whole fill fails with `FillWouldBankrupt` — no state is committed.
+**A fill must not succeed with unresolved closed-position debt.** After both legs are staged, the fill fails with `FillWouldBankrupt` — committing nothing — if either leg violates its rule:
+
+| Staged leg ends | Rule |
+|---|---|
+| **closed** (`size == 0`) | `collateral >= 0` |
+| **still open** | maintenance-compliant |
+
+**The rule is conditional, and that is load-bearing.** A flat `collateral >= 0` on every leg — which an earlier draft proposed — creates a denial of service, because `apply_fill` settles the position's **entire** accrued funding (`position.rs:205-217`, `settle_funding`) while realizing PnL only on the **closed fragment** (`:251-258`, `closed = min(|delta|, |size|)`).
+
+Concretely, at the live 10 bp taker fee: long 1 BTC from $90k, mark $100k, collateral $1k, unrealized PnL $10k, funding owed $5k. Equity is $6k, so the position is maintenance-safe against a $5k requirement. Closing the whole position ends at `1 − 5 + 10 − 0.1 = $5.9k` — accepted. Closing 0.1 BTC ends at `1 − 5 + 1 − 0.01 = −$3.01k` — rejected under a flat rule. An attacker posting ten 0.1 BTC resting orders makes every fragment fail, each one re-settling the full $5k funding bill against unchanged state, so **a solvent aggregate close becomes impossible while the victim stays non-liquidatable.** Reducing orders pass `pre_trade_check` unconditionally (`position.rs:171-173`), so nothing upstream catches it.
+
+Requiring maintenance-compliance on a still-open leg — rather than mere non-negativity — sidesteps this entirely: a partial close of a healthy position leaves it healthy, and the funding settled is the same funding maintenance equity already accounts for.
 
 This replaces the first version's "run the waterfall from `op_fill`", which the correction history above shows does not work.
 
@@ -119,6 +144,16 @@ This is a real pre-existing defect surfaced by review, not new risk introduced h
 ### 5. Reject reasons
 
 **Append** `RejectReason::FillPriceOutOfBand` rather than reusing `InvalidOrder`. The first version proposed reuse to avoid changing manifest bytes; that reasoning was wrong on both halves — `RejectReason` has explicit stable discriminants (`order.rs:127-148`), so appending does not change any existing encoding, and `EngineError` is internal while the manifest is what users and auditors see. Hiding a band rejection inside a generic `InvalidOrder` costs debuggability for nothing.
+
+### 6. Match-time validation and rollback — no longer deferrable
+
+The matcher decrements or removes the resting maker (`matcher/book.rs:295-301`) **before** settlement discovers the fill is invalid, and the rejection arm records both order hashes without restoring the book (`sequencer/src/lib.rs:888-906`). An earlier draft deferred this. It cannot be deferred any more, because this design **materially increases settlement-time rejections** — every out-of-band fill and every bankrupting fill now rejects, including the fragmentation case above. Deferring it means an attacker can burn resting liquidity without ever executing.
+
+A band in `pre_trade_check` alone is **not** a substitute, for three reasons: the execution price comes from the resting maker, not the incoming taker's limit; a `Gtc` maker admitted in-band drifts out of band as the oracle moves; and rejecting broad taker limits would discard orders whose actual fills would have been valid.
+
+What is needed is host-side validation **at match time against the current oracle**, plus either transactional rollback with rematching or a settlement dry-run before the book is mutated. Solvency failures need the same protection as band failures.
+
+**A second, related defect:** settlement assigns the *same* reason to both orders (`sequencer/src/lib.rs:901`). When the resting maker supplied the out-of-band price, rejecting the innocent taker instead of cancelling the maker and rematching is the larger unfairness. The engine error should identify **which staged leg failed**, so the host can act on the right one.
 
 ## Dependencies
 
@@ -149,17 +184,22 @@ SEC-022 is still worth doing — it closes the unbounded-price hole and the clos
 
 | Case | Expected |
 |---|---|
-| **Attack regression:** two accounts, off-market cross closing **both** legs | rejected; no state committed; both accounts' collateral unchanged |
-| Fill that would leave either leg `collateral < 0`, in-band price | rejected `FillWouldBankrupt` |
+| **Attack regression:** two accounts, off-market cross closing **both** legs | rejected; **whole state and state root unchanged** (not just the two collateral fields) |
+| **Fragmentation regression:** maintenance-safe position with funding owed > raw collateral, closed in small fragments | **each fragment accepted** — pins that the conditional rule, not a flat `collateral >= 0`, is implemented. Repeat at both core and sequencer level |
+| Fill leaving a **closed** leg at `collateral < 0` | rejected `FillWouldBankrupt` |
+| Fill leaving a **still-open** leg below maintenance | rejected `FillWouldBankrupt` |
 | Fill exactly at the band edge | accepted |
 | Fill just outside the band, both directions | rejected `FillPriceOutOfBand` |
-| `checked_sub` on `i128::MIN`; `checked_mul` overflow either side | rejected, no panic |
+| `checked_mul` overflow on either side of the band | rejected, no panic |
 | Inflated `price` cannot widen the band | rejected — RHS anchored to `mark` |
 | Invalid oracle signature | rejected by `validate()` **before** the band |
-| A maintenance-safe position cannot be bankrupted by any in-band fill | property test over the band/maintenance relationship |
-| `is_coherent()` rejects a band ≥ maintenance margin | rejected at market construction |
-| Late-failure atomicity: force the insurance `checked_add` to overflow | `Err` with **state unchanged** |
-| Liquidations unaffected (they close at the oracle price) | every existing liquidation test passes unchanged |
+| **Every pure reduction satisfying the joint band/fee inequality returns `Ok`**, and leaves the position maintenance-compliant or cleanly closed | property test — *rejection must not count as success* |
+| `is_coherent()` rejects params violating the **joint** inequality (e.g. `d = 2%`, `f = 4.9999%`) | rejected at market construction |
+| Late-failure atomicity: force overflow on the **vault**, **treasury** and **insurance** paths | `Err` with **state unchanged**, each path |
+| Liquidations (separate dispatch, not via `op_fill`) | every existing liquidation test passes unchanged |
+| Host: an out-of-band or bankrupting match does not permanently consume resting liquidity | book restored or never mutated (§6) |
 | Every scenario | `conservation_holds()` |
+
+Two corrections to an earlier draft's table. "A maintenance-safe position cannot be bankrupted" was **vacuous** as written — rejection satisfied it trivially; the property must require that valid reductions *succeed*. And the `i128::MIN` subtraction case is **unreachable through `op_fill`**, since both `price` and the validated `mark` are positive (`engine.rs:465`, `oracle.rs:90`); keep it only as a helper-level arithmetic test.
 
 **The first version proposed inverting `lifecycle.rs:600-679`. That was wrong** — that test is `true_insolvency_trips_close_only_when_winners_have_exited`, a *liquidation* insolvency case deliberately constructed with the winner already exited (`lifecycle.rs:601`, `:662`). It does not pin fill-created parked debt, and inverting it would contradict correct liquidation behavior. It must keep passing unchanged. This design needs its **own** fill-specific regression test.
