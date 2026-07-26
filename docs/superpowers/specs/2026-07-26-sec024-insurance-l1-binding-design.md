@@ -12,7 +12,7 @@
 
 **Exploit.** Mint fake insurance → create bad debt through fills → have the fabricated insurance absorb it → withdraw the counterparty's excess from the **real** vault. The withdrawal itself is legitimate — bound to a real `withdrawals_root` leaf, and the vault pays it. The fabrication happened upstream, in the accounting that made the position look solvent.
 
-**Trust model.** No API surface emits this op; it is exploitable by whoever produces the witness — the party the zk layer exists so as not to trust.
+**Trust model.** See `2026-07-26-sec02x-threat-model.md`, which is canonical. No API surface emits this op, and the prover cannot inject it — the witness it receives is sealed. Only the gateway can, and a compromised gateway can already forge the oracle price outright. **So this is defence-in-depth under Phase 1, not a critical live hole.** It remains worth doing: it is cheap, and it removes the only *unbounded* external-value assertion in the circuit — a property worth having regardless of who can currently reach it.
 
 ## How this was found
 

@@ -5,7 +5,9 @@
 > and depends on this one — its band is anchored to an oracle mark that, until this lands, a prover
 > partly controls.
 
-**Finding:** SEC-023 [critical, proof-soundness] — the proven transition has **no clock**. Oracle freshness is checked against a value the prover supplies, so a prover can replay any historical signed transcript and have the circuit accept it as current.
+> **Severity corrected.** This spec originally claimed "critical, proof-soundness … exploitable by the sequencer/prover". That was wrong on both halves — see `2026-07-26-sec02x-threat-model.md`, which is canonical. The prover receives a **sealed** (AEAD) witness and cannot alter `now_ms` or swap a transcript; the gateway can, but it also holds the oracle key, so a compromised gateway forges the price outright and the replay is redundant. **Under Phase 1 this is defence-in-depth. It becomes load-bearing the moment a Phase-2 independent price anchor lands** — a signed price the operator cannot forge is still replayable without an anchored clock. Ship it with, or before, any such anchor.
+
+**Finding:** SEC-023 [defence-in-depth under Phase 1; critical once an independent anchor exists] — the proven transition has **no clock**. Oracle freshness is checked against a value the prover supplies, so a prover can replay any historical signed transcript and have the circuit accept it as current.
 
 Verified at source:
 
@@ -15,7 +17,7 @@ Verified at source:
 
 The signature check is untouched: **a prover cannot forge a price, only choose which real past price to use.** That decides the mark every downstream risk check is measured against. Affects `Fill`, `Liquidate`, `Unbind`, `AccrueFunding` (`engine.rs:478, 593, 633, 819`): liquidate a healthy position on an old adverse mark, spare an unhealthy one on an old favourable mark, steer funding, and widen SEC-022's fill band, whose right-hand side is anchored to whichever mark the prover selected.
 
-**Trust model.** This is exploitable by whoever produces the witness — the sequencer/prover — not by an ordinary API user. The zk layer exists so that party need not be trusted, so "the sequencer wouldn't" is not a defence.
+**Trust model.** See `2026-07-26-sec02x-threat-model.md`. In short: not reachable by an API user, not reachable by the prover (sealed witness), reachable by the gateway — which already holds the oracle key, so under Phase 1 this buys hardening rather than a new guarantee.
 
 ## Correction history
 

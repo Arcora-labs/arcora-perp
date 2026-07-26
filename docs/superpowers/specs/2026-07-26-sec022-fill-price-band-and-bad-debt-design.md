@@ -18,6 +18,8 @@ Three gaps compose:
 
 **No credential compromise is needed** — one user with two funded accounts is sufficient. This is strictly more fundamental than SEC-021's authorization gap and remains open under perfect authorization.
 
+**Severity confirmed: critical.** Of the four SEC-02x findings this is the only one an ordinary user can reach, through the ordinary order API, with no operator involvement — see `2026-07-26-sec02x-threat-model.md`. One scope correction to the band's rationale below: anchoring the band's right-hand side to the attested `mark` prevents a *prover* widening its own band, but the **operator** signs the oracle, so against a compromised gateway the anchor constrains nothing. That is ZK-001's documented Phase-1 posture, not a defect of this design — but this spec must not be read as making the fill price trustworthy against the operator.
+
 ## Correction history
 
 The first version of this design proposed **running the existing liquidation waterfall from `op_fill`**. Adversarial review (Codex) showed that does not close the attack, and the claim was verified at source:
