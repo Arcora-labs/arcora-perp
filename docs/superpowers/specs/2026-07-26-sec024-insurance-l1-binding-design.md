@@ -49,6 +49,8 @@ variant 9: FundInsurance { note_commitment, spend_key }  // consumes a real note
 
 `FundInsurance` consumes a note and moves its value into `insurance_fund`. **`external_in` is not touched** — the value entered the system earlier through the L1-bound deposit path. Fabrication becomes impossible **without inventing an authorization mechanism**: the operator must actually send money. Authorization would prove permission; it would not prove collateral.
 
+**`FundInsurance` needs a gateway path that does not exist yet — see SEC-025 §1a.** Every confirmed L1 deposit runs `Deposit` then immediately `FundPosition` in the same helper (`main.rs:1962` → `fund_amount`, `:3987-4013`), and `FundPosition` consumes the note (`engine.rs:430`). So there is no unspent note for `FundInsurance` to spend. SEC-025 scopes the operator-gated confirm-then-fund-insurance path; without it this op is unreachable in production.
+
 **Constraints:**
 
 - `consume_note(commitment, spend_key, None)` — no destination-owner constraint, the same form `op_withdraw` uses. Adding value to a communal backstop can only help the protocol, and letting third parties capitalize it is a feature. The spend key is still required, so nobody can donate another's note.
