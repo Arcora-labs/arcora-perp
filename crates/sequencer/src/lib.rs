@@ -29,7 +29,7 @@ use perp_core::note::PubKey;
 use perp_core::oracle::OracleTranscript;
 use perp_core::order::{BatchManifest, Finality, Order, Receipt, RejectReason, Side};
 use perp_core::position::Position;
-use perp_core::{DefaultState, EngineError};
+use perp_core::{DefaultState, EngineError, FillLeg};
 
 /// Compute the Ethereum-style 20-byte address of a secp256k1 verifying key:
 /// `keccak256(uncompressed_pubkey[1..])[12..]` — exactly what L1 `ecrecover`
@@ -265,6 +265,20 @@ fn settlement_reason(e: &EngineError) -> RejectReason {
         // NonPositiveAmount, Overflow, DuplicateCommitment, …) instead of mis-tagging them
         // all as ReduceOnlyViolation in the manifest.
         _ => RejectReason::InvalidOrder,
+    }
+}
+
+/// Which order a failed fill is attributable to, if the engine identified one (SEC-022 §6).
+/// `None` means the failure is not attributable and both legs are recorded, as before.
+fn offending_leg(e: &EngineError) -> Option<FillLeg> {
+    match e {
+        // The engine names the leg whose staged result violated the postcondition.
+        EngineError::FillWouldBankrupt(leg) => Some(*leg),
+        // The execution price is the RESTING MAKER's (`matcher/book.rs:295`); the taker
+        // only supplied a limit it was willing to cross. An out-of-band price is therefore
+        // the maker's order to cancel, not the taker's.
+        EngineError::FillPriceOutOfBand => Some(FillLeg::Maker),
+        _ => None,
     }
 }
 
@@ -902,8 +916,21 @@ impl Sequencer {
                 }
                 Err(e) => {
                     let reason = settlement_reason(&e);
-                    for oh in [m.taker_order_hash, m.maker_order_hash] {
-                        settlement_rejected.push((oh, reason));
+                    // Attribute the rejection to the offending leg ONLY, never to an
+                    // innocent counterparty — the same rule the reduce_only arm above
+                    // already follows.
+                    match offending_leg(&e) {
+                        Some(FillLeg::Taker) => {
+                            settlement_rejected.push((m.taker_order_hash, reason))
+                        }
+                        Some(FillLeg::Maker) => {
+                            settlement_rejected.push((m.maker_order_hash, reason))
+                        }
+                        None => {
+                            for oh in [m.taker_order_hash, m.maker_order_hash] {
+                                settlement_rejected.push((oh, reason));
+                            }
+                        }
                     }
                 }
             }
@@ -1322,6 +1349,31 @@ mod tests {
         assert_eq!(book_mid(-100, 100), 0);
     }
 
+    /// SEC-022 §6: settlement assigned the SAME reason to BOTH order hashes. When the
+    /// resting maker supplied the out-of-band price, rejecting the innocent taker is the
+    /// larger unfairness — and the reduce_only arm directly above already follows the
+    /// opposite (correct) rule. A bankruptcy is attributable to one leg; the band price
+    /// comes from the resting maker (`matcher/book.rs:295`), so it is the maker's.
+    #[test]
+    fn a_failed_fill_is_attributed_to_the_offending_leg_only() {
+        assert_eq!(
+            offending_leg(&EngineError::FillWouldBankrupt(FillLeg::Taker)),
+            Some(FillLeg::Taker),
+        );
+        assert_eq!(
+            offending_leg(&EngineError::FillWouldBankrupt(FillLeg::Maker)),
+            Some(FillLeg::Maker),
+        );
+        assert_eq!(
+            offending_leg(&EngineError::FillPriceOutOfBand),
+            Some(FillLeg::Maker),
+            "the execution price is the resting maker's, not the taker's limit",
+        );
+        // Errors with no attributable leg still reject both, as before.
+        assert_eq!(offending_leg(&EngineError::Overflow), None);
+        assert_eq!(offending_leg(&EngineError::UnknownMarket), None);
+    }
+
     // --- Slice 3b-4 harness (mirrors tests/spine.rs::setup) ---------------------
 
     fn now() -> u64 {
@@ -1649,5 +1701,54 @@ mod tests {
         assert_eq!(w.batch_id, batch_id_before);
         assert_eq!(w.pre_state.state_root(), genesis_root);
         assert_eq!(w.manifest.previous_state_root, genesis_root);
+    }
+
+    /// SEC-022 §6 wiring: the unit test above pins `offending_leg` itself, but would
+    /// still pass if the settlement `Err` arm never called it — so drive the REAL
+    /// `seal_batch` path. A maker rests 5% below the attested mark (outside the 2%
+    /// `max_fill_deviation_ratio` band of `Market::conservative`); the taker crosses and
+    /// the fill executes at the MAKER's resting price (`matcher/book.rs:295`), so
+    /// settlement fails with `FillPriceOutOfBand` — attributable to the maker alone.
+    #[test]
+    fn a_band_violation_at_settlement_rejects_only_the_resting_maker() {
+        let mut seq = test_sequencer();
+        // maker: owner 1 rests a sell at 95k against a 100k attested mark (out of band);
+        // the pre-trade gate margins the order AT THE MARK, so it admits it.
+        let mut maker = t_order(1, Side::Sell, 1);
+        maker.limit_price = 95_000 * PRICE_SCALE;
+        // taker: owner 2 buys at its 100k limit, crossing the resting 95k ask.
+        let taker = t_order(2, Side::Buy, 2);
+        let maker_hash = maker.order_hash::<Keccak256>();
+        let taker_hash = taker.order_hash::<Keccak256>();
+
+        let sealed = seq.seal_batch(&[maker, taker], now());
+
+        // ONLY the maker leg is recorded, with the settlement-time band reason (this
+        // reason cannot originate anywhere but the settlement `Err` arm — reaching it
+        // proves the fill matched and then failed the §1 band check).
+        assert_eq!(
+            sealed.settlement_rejected,
+            vec![(maker_hash, RejectReason::FillPriceOutOfBand)],
+            "the failed fill is attributed to the offending maker leg only",
+        );
+        // The manifest agrees: the maker is rejected, the innocent taker is not…
+        assert!(sealed
+            .manifest
+            .rejected
+            .iter()
+            .any(|(h, r)| *h == maker_hash && *r == RejectReason::FillPriceOutOfBand));
+        assert!(
+            !sealed
+                .manifest
+                .rejected
+                .iter()
+                .any(|(h, _)| *h == taker_hash),
+            "the innocent counterparty must not be tagged rejected",
+        );
+        // …and the taker (which really did match) stays in `ordered`, the maker does not.
+        assert!(sealed.manifest.ordered.contains(&taker_hash));
+        assert!(!sealed.manifest.ordered.contains(&maker_hash));
+        // The failed fill settled nothing.
+        assert!(sealed.settled_order_hashes.is_empty());
     }
 }
