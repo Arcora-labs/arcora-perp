@@ -574,31 +574,39 @@ impl<H: Hasher> State<H> {
             }
             staged[i] = (key, pos);
         }
-        // commit
-        self.vault_pool = self
+        // SEC-022 §4 — stage EVERY remaining fallible value BEFORE the first mutation.
+        // This op used to commit `vault_pool` and both positions and only THEN run the
+        // fallible `treasury` / `insurance_fund` additions, so a late overflow returned
+        // `Err` with state already changed. The sequencer's rejection arm omits a failed
+        // fill from the proven op-log (`sequencer/src/lib.rs:901-906`), so that divergence
+        // is exactly what wedges the next proof. Nothing fallible may follow the commit.
+        let new_vault_pool = self
             .vault_pool
             .checked_add(pool_delta)
             .ok_or(EngineError::Overflow)?;
-        for (key, pos) in staged {
-            self.positions.insert(key, pos);
-        }
-        // Route the treasury cut to the operator treasury and the remainder of the
-        // net fee into the insurance fund. Conservation holds: taker −fee, maker
-        // +rebate, treasury +treasury_fee, insurance +(fee−rebate−treasury_fee).
-        self.treasury = self
+        let new_treasury = self
             .treasury
             .checked_add(treasury_fee)
             .ok_or(EngineError::Overflow)?;
-        self.insurance_fund = self
-            .insurance_fund
-            .checked_add(
-                taker_fee
-                    .checked_sub(maker_rebate)
-                    .ok_or(EngineError::Overflow)?
-                    .checked_sub(treasury_fee)
-                    .ok_or(EngineError::Overflow)?,
-            )
+        // Conservation: taker −fee, maker +rebate, treasury +treasury_fee,
+        // insurance +(fee − rebate − treasury_fee). `is_coherent` bounds the cut ≥ 0.
+        let insurance_cut = taker_fee
+            .checked_sub(maker_rebate)
+            .ok_or(EngineError::Overflow)?
+            .checked_sub(treasury_fee)
             .ok_or(EngineError::Overflow)?;
+        let new_insurance_fund = self
+            .insurance_fund
+            .checked_add(insurance_cut)
+            .ok_or(EngineError::Overflow)?;
+
+        // commit — infallible from here down
+        self.vault_pool = new_vault_pool;
+        self.treasury = new_treasury;
+        self.insurance_fund = new_insurance_fund;
+        for (key, pos) in staged {
+            self.positions.insert(key, pos);
+        }
         Ok(())
     }
 
