@@ -499,6 +499,26 @@ impl<H: Hasher> State<H> {
             .get(&market_id)
             .ok_or(EngineError::UnknownMarket)?;
         let mark = oracle.validate(&market, now_ms)?;
+        // SEC-022 §1 — bound the execution price to a symmetric band around the ATTESTED
+        // mark: |price − mark| · RATE_SCALE <= max_fill_deviation_ratio · mark. Placed
+        // after `validate` so no band check is reachable without a valid publisher
+        // signature. Copied from `op_accrue_funding`'s mark band (ZK-001 Task 4), whose
+        // properties were already reasoned through: division-free (both sides products);
+        // the RHS multiplies the ATTESTED `mark`, never the untrusted `price`, so a prover
+        // cannot widen its own band; every step `checked_*` with a catch-all reject, so
+        // nothing wraps and nothing panics in-guest. `price > 0` is checked above and
+        // `mark > 0` is guaranteed by `validate`.
+        let fill_dev = match price.checked_sub(mark) {
+            Some(d) => abs(d),
+            None => return Err(EngineError::FillPriceOutOfBand),
+        };
+        match (
+            fill_dev.checked_mul(RATE_SCALE),
+            market.max_fill_deviation_ratio.checked_mul(mark),
+        ) {
+            (Some(lhs), Some(rhs)) if lhs <= rhs => {}
+            _ => return Err(EngineError::FillPriceOutOfBand),
+        }
         let funding_index = self
             .funding
             .get(&market_id)

@@ -171,3 +171,149 @@ fn vault_pool_overflow_leaves_state_untouched() {
         "state must be byte-for-byte unchanged"
     );
 }
+
+// ------------------------------------------------------------------- Task 3: the band
+
+/// The headline attack: two accounts, one user, crossing far off-market. No credential
+/// compromise, no operator involvement — the ordinary order API is enough.
+#[test]
+fn off_market_cross_is_rejected_with_state_unchanged() {
+    let (mut s, a, b) = two_funded(Market::conservative(0));
+    let before = s.state_root();
+    // Oracle says $100k; they trade at $150k — 50% through the mark.
+    let op = BatchOp::Fill {
+        taker: a,
+        maker: b,
+        market_id: 0,
+        taker_side: Side::Buy,
+        size: SIZE_SCALE,
+        price: 150_000 * PRICE_SCALE,
+        oracle: oracle(100_000, 1_000),
+        now_ms: 1_000,
+    };
+    let err = s.apply_op(&op).expect_err("off-market fill must reject");
+    assert_eq!(err, EngineError::FillPriceOutOfBand);
+    assert_eq!(s.state_root(), before, "whole state and root unchanged");
+    assert!(s.conservation_holds());
+}
+
+#[test]
+fn fill_exactly_at_the_band_edge_is_accepted() {
+    let (mut s, a, b) = two_funded(Market::conservative(0));
+    // 2% band around a $100k mark → $102,000 is exactly the edge.
+    let op = BatchOp::Fill {
+        taker: a,
+        maker: b,
+        market_id: 0,
+        taker_side: Side::Buy,
+        size: SIZE_SCALE,
+        price: 102_000 * PRICE_SCALE,
+        oracle: oracle(100_000, 1_000),
+        now_ms: 1_000,
+    };
+    s.apply_op(&op).expect("the band edge is inclusive");
+    assert!(s.conservation_holds());
+}
+
+#[test]
+fn fill_just_outside_the_band_is_rejected_in_both_directions() {
+    for price in [
+        102_000 * PRICE_SCALE + 1, // one unit above the upper edge
+        98_000 * PRICE_SCALE - 1,  // one unit below the lower edge
+    ] {
+        let (mut s, a, b) = two_funded(Market::conservative(0));
+        let before = s.state_root();
+        let op = BatchOp::Fill {
+            taker: a,
+            maker: b,
+            market_id: 0,
+            taker_side: Side::Buy,
+            size: SIZE_SCALE,
+            price,
+            oracle: oracle(100_000, 1_000),
+            now_ms: 1_000,
+        };
+        assert_eq!(
+            s.apply_op(&op).expect_err("out of band"),
+            EngineError::FillPriceOutOfBand,
+        );
+        assert_eq!(s.state_root(), before, "band is symmetric and fail-closed");
+    }
+}
+
+/// The band's right-hand side multiplies the ATTESTED mark, never the untrusted `price`.
+/// Anchoring to the value under attack would let a prover widen its own band.
+#[test]
+fn inflated_price_cannot_widen_its_own_band() {
+    let (mut s, a, b) = two_funded(Market::conservative(0));
+    // A price 100x the mark is 100x out of band — it must not scale the allowance.
+    let op = BatchOp::Fill {
+        taker: a,
+        maker: b,
+        market_id: 0,
+        taker_side: Side::Buy,
+        size: SIZE_SCALE / 1_000,
+        price: 10_000_000 * PRICE_SCALE,
+        oracle: oracle(100_000, 1_000),
+        now_ms: 1_000,
+    };
+    assert_eq!(
+        s.apply_op(&op).expect_err("inflated price"),
+        EngineError::FillPriceOutOfBand,
+    );
+}
+
+/// An invalid publisher signature must be rejected by `validate()` BEFORE the band, so no
+/// band check is ever reachable without a valid signature.
+#[test]
+fn unsigned_oracle_is_rejected_before_the_band() {
+    let mut m = Market::conservative(0);
+    m.oracle_pubkey = [0u8; 20]; // fail-closed: unset key refuses every price
+    let mut s = DefaultState::new(TREE_DEPTH);
+    s.add_market(m);
+    let (a, b) = (owner_of(1), owner_of(2));
+    fund(&mut s, a, 1, 20_000 * QUOTE_SCALE, [0x11u8; 32], 0);
+    fund(&mut s, b, 2, 20_000 * QUOTE_SCALE, [0x22u8; 32], 1);
+    // The fill must be OUT of band relative to the (unverifiable) transcript: price
+    // $150k against a $100k transcript. With an in-band fill this test could not
+    // detect a band-before-signature reordering — both orderings would return
+    // `Oracle(_)`. Off-band, a wrong ordering returns `FillPriceOutOfBand` instead,
+    // so the assert genuinely pins that the signature gate fires first.
+    let op = BatchOp::Fill {
+        taker: a,
+        maker: b,
+        market_id: 0,
+        taker_side: Side::Buy,
+        size: SIZE_SCALE,
+        price: 150_000 * PRICE_SCALE,
+        oracle: oracle(100_000, 1_000),
+        now_ms: 1_000,
+    };
+    let err = s.apply_op(&op).expect_err("unsigned oracle");
+    assert!(
+        matches!(err, EngineError::Oracle(_)),
+        "signature gate must fire before the band, got {err:?}",
+    );
+}
+
+/// Overflow anywhere in the band arithmetic rejects — it never wraps and never panics
+/// (this code runs in the SP1 guest).
+#[test]
+fn band_arithmetic_overflow_rejects_without_panicking() {
+    let mut s = state_with(Market::conservative(0));
+    // Set the band AFTER add_market: `add_market` hard-asserts is_coherent(), and an
+    // i128::MAX band is (correctly) incoherent — Task 1's joint band/fee/maintenance
+    // inequality overflows on it and fails closed — so building the market with it
+    // would panic in setup instead of exercising op_fill's checked band arithmetic.
+    s.markets.get_mut(&0).unwrap().max_fill_deviation_ratio = i128::MAX;
+    let (a, b) = (owner_of(1), owner_of(2));
+    fund(&mut s, a, 1, 20_000 * QUOTE_SCALE, [0x11u8; 32], 0);
+    fund(&mut s, b, 2, 20_000 * QUOTE_SCALE, [0x22u8; 32], 1);
+    let before = s.state_root();
+    assert_eq!(
+        s.apply_op(&fill(a, b, Side::Buy, SIZE_SCALE, 101_000, 1_000))
+            .expect_err("overflowing band"),
+        EngineError::FillPriceOutOfBand,
+    );
+    assert_eq!(s.state_root(), before);
+}

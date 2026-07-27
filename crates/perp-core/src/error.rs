@@ -55,6 +55,13 @@ pub enum EngineError {
     /// index before it can steer the funding rate; a mark out of band — or an overflow in
     /// the checked band arithmetic — is rejected fail-closed (never wrapped or panicked).
     MarkOutOfBand,
+    /// SEC-022: a fill's execution price lies outside `max_fill_deviation_ratio` of the
+    /// ATTESTED oracle mark. `op_fill` previously validated only `size > 0 && price > 0`
+    /// and never compared `price` to `mark`, so two accounts could cross at any price and
+    /// move value between them — the losing leg closing with negative collateral that no
+    /// liquidation path revisits. An out-of-band price, or an overflow in the checked band
+    /// arithmetic, is rejected fail-closed (never wrapped, never panicked in-guest).
+    FillPriceOutOfBand,
 }
 
 impl From<RiskError> for EngineError {
