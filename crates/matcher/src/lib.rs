@@ -78,6 +78,15 @@ impl<H: Hasher> MatchingEngine<H> {
         self.books.values_mut().map(|b| b.cancel_owner(owner)).sum()
     }
 
+    /// Cancel a single resting order by hash across all markets, returning its
+    /// cancelled remaining size if it was resting. Used by the sequencer's SEC-022
+    /// §6 dry-run to ban an offending maker that has been resting since an EARLIER
+    /// batch (a drifted Gtc quote) — such an order is in no current stream, so
+    /// dropping it from the order flow alone cannot remove it from the book.
+    pub fn cancel_order(&mut self, order_hash: &Digest) -> Option<i128> {
+        self.books.values_mut().find_map(|b| b.cancel(order_hash))
+    }
+
     /// Reap expired resting makers across all markets at `now_ms` (good-till-time
     /// maintenance). Returns the total reaped. See [`OrderBook::reap_expired`].
     pub fn reap_expired(&mut self, now_ms: u64) -> usize {

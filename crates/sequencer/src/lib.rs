@@ -294,8 +294,8 @@ struct FillSettlement {
     /// Order hashes with at least one settled fill, deduplicated, in fill order.
     settled_order_hashes: Vec<Digest>,
     /// SEC-022 §6: order hashes whose fill failed for an ATTRIBUTABLE reason
-    /// (band / bankruptcy) and which Task 7 therefore drops before rematching.
-    #[allow(dead_code)] // populated for Task 7's dry-run + rematch; unconsumed until then
+    /// (band / bankruptcy). `seal_batch`'s dry-run bans these — book restored,
+    /// offender excised, stream rematched — before the committed pass runs.
     offenders: Vec<Digest>,
 }
 
@@ -323,11 +323,11 @@ fn exposure_increases_in(
 /// since (funding / a prior liquidation), so a fill can still fail to settle.
 /// Failure attribution (SEC-022 §6): an ATTRIBUTABLE failure ([`offending_leg`]
 /// returns `Some`) records ONLY the offending leg in `rejected` (and
-/// `offenders`), so the innocent counterparty stays in `ordered` — unsettled,
-/// its resting liquidity consumed — pending Task 7's dry-run and rematch. A
-/// NON-attributable failure still records BOTH legs, and `seal_batch` still
-/// moves an order all of whose recorded fills failed into the manifest's
-/// `rejected`.
+/// `offenders`); `seal_batch`'s dry-run then bans the offender, restores the
+/// book, and rematches, so the innocent counterparty's fill is re-routed rather
+/// than left in limbo. A NON-attributable failure still records BOTH legs, and
+/// `seal_batch` still moves an order all of whose recorded fills failed into
+/// the manifest's `rejected`.
 fn settle_fills(
     state: &mut DefaultState,
     oracles: &BTreeMap<MarketId, OracleTranscript>,
@@ -825,13 +825,6 @@ impl Sequencer {
         }
     }
 
-    /// Thin delegate to [`exposure_increases_in`] (the one definition, shared
-    /// with [`settle_fills`]).
-    #[allow(dead_code)] // no caller since settle_fills was extracted; Task 7's pre-match screen uses it
-    fn exposure_increases(&self, owner: &PubKey, market: MarketId, delta: i128) -> bool {
-        exposure_increases_in(&self.state, owner, market, delta)
-    }
-
     /// Best book mid as the perp mark price; falls back to the oracle index if a
     /// side is empty. Used as the funding mark (§8).
     fn mark_price(&self, market_id: MarketId) -> Option<i128> {
@@ -970,10 +963,68 @@ impl Sequencer {
             }
         }
 
-        // 1. match the arrival-ordered stream of admitted orders
-        let stream = self.matcher.process_stream(&admitted, now_ms);
+        // 1. match, then DRY-RUN settlement against a probe clone before the book's
+        //    mutation is allowed to stand (SEC-022 §6). The matcher consumes resting
+        //    depth during `process_stream`, but settlement only discovers an
+        //    out-of-band or bankrupting fill afterwards — so a rejected fill used to
+        //    burn liquidity that never executed. On any ATTRIBUTABLE failure we
+        //    restore the book, ban the offending order, and rematch. `MatchingEngine`
+        //    is `Clone` and the restore carries `next_seq` with it, so the final pass
+        //    assigns exactly the seq numbers the banned orders' absence would have
+        //    produced. An offender need not be in `live` at all: a maker resting
+        //    since an EARLIER batch (the drifted-Gtc case) survives the restore, so
+        //    a ban also cancels the hash from the rematch base book — for a
+        //    current-batch offender that cancel is a no-op (it never rested there).
+        let mut rematch_base = self.matcher.clone();
+        let mut live: Vec<Order> = admitted;
+        let mut banned: Vec<(Digest, RejectReason)> = Vec::new();
+        let mut banned_set: BTreeSet<Digest> = BTreeSet::new();
+        let stream = loop {
+            let stream = self.matcher.process_stream(&live, now_ms);
+            // no fills → nothing to probe (`settle_fills` over no fills is a no-op),
+            // which also spares the idle 700ms ticks the per-round state clone.
+            if stream.fills.is_empty() {
+                break stream;
+            }
+            let mut probe = self.state.clone();
+            let probed = settle_fills(&mut probe, &self.oracles, &stream.fills, now_ms);
+            if probed.offenders.is_empty() {
+                break stream;
+            }
+            // Roll the book back to exactly where this batch started, drop the
+            // offenders, and match again.
+            let banned_before = banned_set.len();
+            for oh in &probed.offenders {
+                if banned_set.insert(*oh) {
+                    let reason = probed
+                        .rejected
+                        .iter()
+                        .find(|(h, _)| h == oh)
+                        .map(|(_, r)| *r)
+                        .unwrap_or(RejectReason::InvalidOrder);
+                    banned.push((*oh, reason));
+                    rematch_base.cancel_order(oh);
+                }
+            }
+            // Termination, made explicit: every round that reaches here bans at least
+            // one NEW hash — an already-banned order can appear in no fill, because a
+            // banned taker was removed from `live` and a banned resting maker was
+            // cancelled from the rematch base. The bannable set is finite (this
+            // batch's admitted orders + the makers resting at batch start), so the
+            // loop runs at most once per member of it.
+            assert!(
+                banned_set.len() > banned_before,
+                "rematch loop must terminate: a round that produced offenders banned no new order",
+            );
+            live.retain(|o| !banned_set.contains(&o.order_hash::<Keccak256>()));
+            self.matcher = rematch_base.clone();
+        };
 
-        // 2. issue signed receipts for every accepted (non-rejected) order
+        // 2. issue signed receipts for every accepted (non-rejected) order in the
+        //    FINAL stream. A banned order never entered the book on that pass, so it
+        //    gets no receipt — it is resolved in `manifest.rejected` (bound by
+        //    `manifest_hash`) instead, which step 5b already treats as a justified
+        //    rejection rather than censorship.
         let mut receipts = Vec::new();
         for p in &stream.processed {
             if !matches!(p.outcome.status, SubmitStatus::Rejected(_)) {
@@ -981,22 +1032,24 @@ impl Sequencer {
             }
         }
 
-        // 3. settle matched fills through the engine, attaching the oracle — see
-        //    [`settle_fills`] for the drifted-resting-maker rationale and the
-        //    SEC-022 §6 failure-attribution rule: an ATTRIBUTABLE failure records
-        //    only the offending leg, so the innocent counterparty stays in
-        //    `ordered` — unsettled, its liquidity consumed — pending Task 7's
-        //    dry-run and rematch; a NON-attributable failure records both legs,
-        //    and an order all of whose recorded fills failed is moved out of
-        //    `ordered` into `rejected` below (it did not settle).
+        // 3. settle for real. The dry-run above ran the SAME function against the
+        //    SAME pre-state with the SAME fills in the SAME order, so this cannot
+        //    fail differently; `offenders` is empty by construction here. See
+        //    [`settle_fills`] for the failure-attribution rule; NON-attributable
+        //    failures (no offender) still reject here, and an order all of whose
+        //    recorded fills failed is moved out of `ordered` into `rejected` below.
         //    `ops` becomes the batch's replayable op-log: `[applied fills] ++
         //    [maintenance ops]`, in application order (Slice 3a).
         let FillSettlement {
             mut ops,
             rejected: settlement_rejected,
             settled_order_hashes,
-            offenders: _,
+            offenders,
         } = settle_fills(&mut self.state, &self.oracles, &stream.fills, now_ms);
+        debug_assert!(
+            offenders.is_empty(),
+            "the committed pass must reproduce the dry run",
+        );
         // Advance finality for every hash with a settled fill. Lives at the call
         // site (not in `settle_fills`) so a Task-7 probe run cannot touch the real
         // finality map; inserting once per deduped hash is identical to the old
@@ -1019,14 +1072,14 @@ impl Sequencer {
         }
 
         // 4. build the manifest, keeping `ordered`/`rejected` DISJOINT and HONEST.
-        //    `rejected` = pre-trade rejects + matcher rejects + orders RECORDED
-        //    against a failed fill (per the attribution rule in `settle_fills`)
-        //    none of whose fills settled. An order with at least one settled fill
-        //    (a partial multi-counterparty fill) stays in `ordered` — it really
-        //    did trade. So does the INNOCENT counterparty of an attributable
-        //    failure (SEC-022 §6): unsettled, its liquidity consumed, pending
-        //    Task 7's dry-run and rematch. Orders moved here are removed from
-        //    `ordered` below.
+        //    `rejected` = pre-trade rejects + dry-run BANS (attributable offenders,
+        //    which never entered the final stream at all — a banned cross-batch
+        //    resting maker was `ordered` in its own batch and is rejected here, the
+        //    batch that discovered it) + matcher rejects + orders RECORDED against a
+        //    failed fill (per the attribution rule in `settle_fills`) none of whose
+        //    fills settled. An order with at least one settled fill (a partial
+        //    multi-counterparty fill) stays in `ordered` — it really did trade.
+        //    Orders moved here are removed from `ordered` below.
         let settled_set: std::collections::BTreeSet<Digest> =
             settled_order_hashes.iter().copied().collect();
         let mut failed_unsettled: Vec<(Digest, RejectReason)> = Vec::new();
@@ -1045,6 +1098,7 @@ impl Sequencer {
             .filter(|h| !reject_set.contains(h))
             .collect();
         let mut rejected = pre_rejected.clone();
+        rejected.extend_from_slice(&banned);
         rejected.extend_from_slice(&stream.rejected);
         rejected.extend_from_slice(&failed_unsettled);
         let oracle_updates: Vec<Digest> = self
@@ -1517,6 +1571,16 @@ mod tests {
         }
     }
 
+    /// A GTC order at an explicit limit price and size. `t_order` is pinned to
+    /// $100k / 0.1 BTC; the SEC-022 §6 tests need makers resting away from the mark.
+    fn t_order_at(owner: u64, side: Side, price_usd: i128, size: i128, nonce: u64) -> Order {
+        Order {
+            limit_price: price_usd * PRICE_SCALE,
+            size,
+            ..t_order(owner, side, nonce)
+        }
+    }
+
     /// A crossing maker/taker pair that settles a fill, with fresh nonces per call
     /// so consecutive ticks carry distinct orders.
     fn sample_orders(nonce_base: u64) -> Vec<Order> {
@@ -1782,6 +1846,10 @@ mod tests {
     /// `max_fill_deviation_ratio` band of `Market::conservative`); the taker crosses and
     /// the fill executes at the MAKER's resting price (`matcher/book.rs:295`), so
     /// settlement fails with `FillPriceOutOfBand` — attributable to the maker alone.
+    /// That reason can originate nowhere but settlement's `Err` arm; since the Task-7
+    /// dry-run it surfaces via the probe run's `offenders` → ban → `manifest.rejected`
+    /// (the committed pass replays only the clean rematch), so the exact-equality pin
+    /// lives on `manifest.rejected` now.
     #[test]
     fn a_band_violation_at_settlement_rejects_only_the_resting_maker() {
         let mut seq = test_sequencer();
@@ -1796,32 +1864,301 @@ mod tests {
 
         let sealed = seq.seal_batch(&[maker, taker], now());
 
-        // ONLY the maker leg is recorded, with the settlement-time band reason (this
-        // reason cannot originate anywhere but the settlement `Err` arm — reaching it
-        // proves the fill matched and then failed the §1 band check).
+        // ONLY the maker leg is banned, with the settlement-time band reason. Exact
+        // equality: nothing else may be rejected — in particular not the innocent taker.
         assert_eq!(
-            sealed.settlement_rejected,
+            sealed.manifest.rejected,
             vec![(maker_hash, RejectReason::FillPriceOutOfBand)],
             "the failed fill is attributed to the offending maker leg only",
         );
-        // The manifest agrees: the maker is rejected, the innocent taker is not…
-        assert!(sealed
-            .manifest
-            .rejected
-            .iter()
-            .any(|(h, r)| *h == maker_hash && *r == RejectReason::FillPriceOutOfBand));
+        // The committed settlement pass replays only the clean rematch (the offender was
+        // excised before it), so it rejects nothing…
+        assert!(sealed.settlement_rejected.is_empty());
+        // …and the taker stays in `ordered` (it rests after the rematch), the maker does
+        // not enter it at all.
+        assert!(sealed.manifest.ordered.contains(&taker_hash));
+        assert!(!sealed.manifest.ordered.contains(&maker_hash));
+        // The banned fill settled nothing.
+        assert!(sealed.settled_order_hashes.is_empty());
+        // Receipt behaviour (intentional, Task 7): a banned order never enters the book
+        // on the final pass, so it receives NO receipt — it is resolved in
+        // `manifest.rejected` (bound by `manifest_hash`) instead. The taker still gets one.
+        assert_eq!(sealed.receipts.len(), 1);
+        assert_eq!(sealed.receipts[0].receipt.order_hash, taker_hash);
+    }
+
+    /// SEC-022 §6: an out-of-band match must not permanently consume resting liquidity.
+    /// The matcher decrements the resting maker (`matcher/book.rs:295-308`) before
+    /// settlement discovers the fill is invalid, and the rejection arm never restored
+    /// it — so an attacker could burn a book without ever executing.
+    ///
+    /// FIXTURE FIX vs the plan draft: at 0.1 BTC the taker was fully satisfied by the
+    /// honest $100k maker (price priority) and never REACHED the $150k ask — the
+    /// out-of-band fill this test exists for never happened, and the expected final
+    /// book contradicted ban semantics (a banned offender is cancelled with cause, not
+    /// re-rested). The taker takes 0.2 so its sweep consumes the honest maker AND the
+    /// poisoned one; the book pin is "nothing was consumed by a fill that didn't
+    /// settle".
+    #[test]
+    fn a_rejected_fill_does_not_consume_resting_liquidity() {
+        let mut sq = test_sequencer();
+        fund(&mut sq, 3, 20_000, 0x33); // a third account, for the honest maker
+        let size = SIZE_SCALE / 10; // 0.1 BTC — $10k notional, $1k initial margin
+
+        // Owner 1 rests 50% above the $100k mark: any fill against it is out of band.
+        // Owner 3 rests AT the mark. Owner 2 takes 0.2 with a limit wide enough to
+        // cross both.
+        let bad_maker = t_order_at(1, Side::Sell, 150_000, size, 100);
+        let good_maker = t_order_at(3, Side::Sell, 100_000, size, 101);
+        let taker = t_order_at(2, Side::Buy, 200_000, 2 * size, 102);
+        let sealed = sq.seal_batch(&[bad_maker, good_maker, taker], now());
+
+        let bad_h = bad_maker.order_hash::<Keccak256>();
+        let good_h = good_maker.order_hash::<Keccak256>();
+        let taker_h = taker.order_hash::<Keccak256>();
         assert!(
-            !sealed
+            sealed
                 .manifest
                 .rejected
                 .iter()
-                .any(|(h, _)| *h == taker_hash),
-            "the innocent counterparty must not be tagged rejected",
+                .any(|(h, r)| *h == bad_h && *r == RejectReason::FillPriceOutOfBand),
+            "the out-of-band MAKER is rejected, with a specific reason: {:?}",
+            sealed.manifest.rejected,
         );
-        // …and the taker (which really did match) stays in `ordered`, the maker does not.
-        assert!(sealed.manifest.ordered.contains(&taker_hash));
-        assert!(!sealed.manifest.ordered.contains(&maker_hash));
-        // The failed fill settled nothing.
+        assert!(
+            !sealed.manifest.rejected.iter().any(|(h, _)| *h == taker_h),
+            "the innocent taker must not be rejected alongside it",
+        );
+        assert!(
+            sealed.manifest.ordered.contains(&taker_h),
+            "on the rematch the taker really does trade, against the honest maker",
+        );
+        assert!(
+            sealed.settled_order_hashes.contains(&taker_h)
+                && sealed.settled_order_hashes.contains(&good_h),
+            "the rematched fill actually settled",
+        );
+        // Nothing was consumed by a fill that failed to settle: the honest maker's
+        // 0.1 BTC went to a settled fill, the poisoned quote is cancelled with cause
+        // (it is in `manifest.rejected`, not resting), and the taker's unfilled
+        // remainder rests on the book instead of being burned by the phantom fill.
+        let book = sq.matcher.book(0).expect("market 0");
+        assert_eq!(book.resting_size(Side::Sell), 0);
+        assert_eq!(
+            book.resting_size(Side::Buy),
+            size,
+            "the taker's unfilled half rests; the old path burned it inside the poisoned FilledFull",
+        );
+        assert_eq!(sq.state.position(&owner_id(2), 0).unwrap().size, size);
+        assert!(sq.state.conservation_holds());
+    }
+
+    /// SEC-022 §6, the BANKRUPTCY class: `fits_initial_after` passes ANY reduction
+    /// (`perp-core/src/position.rs:171-173`), so a reducing order that will trip the §3
+    /// solvency postcondition has NO pre-match screen at all — it matches, consumes the
+    /// counterparty's resting liquidity, and is dropped at settlement. The dry-run is
+    /// the only thing standing between that order and a free liquidity burn (the
+    /// band-class twin is `a_rejected_fill_does_not_consume_resting_liquidity`).
+    #[test]
+    fn a_bankrupting_reduction_is_banned_and_burns_no_resting_liquidity() {
+        let mut sq = test_sequencer();
+        fund(&mut sq, 3, 20_000, 0x33);
+        // Owner 1 opens 1.0 BTC long at the $100k mark against owner 2 ($20k collateral
+        // against a $10k initial requirement — admitted with room to spare).
+        sq.seal_batch(
+            &[
+                t_order_at(2, Side::Sell, 100_000, SIZE_SCALE, 600),
+                t_order_at(1, Side::Buy, 100_000, SIZE_SCALE, 601),
+            ],
+            now(),
+        );
+        assert_eq!(sq.state.position(&owner_id(1), 0).unwrap().size, SIZE_SCALE);
+
+        // The oracle gaps to $80k: owner 1's equity is exactly 0 (−$20k PnL on $20k
+        // collateral) — under maintenance, but maintenance/liquidation runs AFTER
+        // settlement inside `seal_batch`, so a close order still reaches matching first.
+        sq.set_oracle(
+            0,
+            signed_oracle(
+                0,
+                80_000 * PRICE_SCALE,
+                now() + 10,
+                10 * PRICE_SCALE,
+                80_000 * PRICE_SCALE,
+            ),
+        );
+
+        // Owner 3 innocently bids $78.5k — within the 2% band of the $80k mark. Owner 1
+        // dumps its whole position into that bid: closing at $78.5k realizes −$21.5k
+        // against $20k collateral, so the closed leg ends with NEGATIVE collateral.
+        // Nothing screens this before matching; without the dry-run it burned owner 3's
+        // bid for nothing.
+        let bid = t_order_at(3, Side::Buy, 78_500, SIZE_SCALE, 602);
+        let close = t_order_at(1, Side::Sell, 78_000, SIZE_SCALE, 603);
+        let bid_h = bid.order_hash::<Keccak256>();
+        let close_h = close.order_hash::<Keccak256>();
+        let sealed = sq.seal_batch(&[bid, close], now() + 10);
+
+        assert!(
+            sealed
+                .manifest
+                .rejected
+                .iter()
+                .any(|(h, r)| *h == close_h && *r == RejectReason::FillWouldBankrupt),
+            "the bankrupting reduction is banned with the specific reason: {:?}",
+            sealed.manifest.rejected,
+        );
+        assert!(
+            !sealed.manifest.rejected.iter().any(|(h, _)| *h == bid_h),
+            "the innocent maker is not blamed",
+        );
+        assert!(sealed.manifest.ordered.contains(&bid_h));
+        assert!(sealed.settled_order_hashes.is_empty(), "nothing settled");
+        // The whole point: the innocent bid SURVIVES on the book instead of being
+        // consumed by a fill that was then dropped at settlement.
+        assert_eq!(
+            sq.matcher
+                .book(0)
+                .expect("market 0")
+                .resting_size(Side::Buy),
+            SIZE_SCALE,
+            "the innocent maker's resting depth must not be burned by the banned fill",
+        );
+        assert!(sq.state.conservation_holds());
+    }
+
+    /// The cross-batch arm of the same hazard (the spec's "a Gtc maker admitted in-band
+    /// drifts out of band as the oracle moves"): the offender is a maker RESTING FROM AN
+    /// EARLIER BATCH, so it is in no later batch's admitted stream — banning it from
+    /// `live` alone removes nothing, and restoring the book resurrects it, reproducing
+    /// the same doomed fill forever. The ban must cancel it from the rematch base book,
+    /// and the loop must still terminate.
+    #[test]
+    fn a_drifted_resting_maker_is_banned_from_the_book_not_just_the_stream() {
+        let mut sq = test_sequencer();
+        let size = SIZE_SCALE / 10;
+        // Batch 1: owner 1 rests a sell AT the $100k mark — in band, honestly admitted.
+        let maker = t_order_at(1, Side::Sell, 100_000, size, 700);
+        let maker_h = maker.order_hash::<Keccak256>();
+        let s1 = sq.seal_batch(&[maker], now());
+        assert!(s1.manifest.ordered.contains(&maker_h));
+        assert_eq!(sq.matcher.book(0).unwrap().resting_size(Side::Sell), size);
+
+        // The oracle moves to $110k: the resting $100k ask is now >2% below the mark.
+        sq.set_oracle(
+            0,
+            signed_oracle(
+                0,
+                110_000 * PRICE_SCALE,
+                now() + 10,
+                10 * PRICE_SCALE,
+                110_000 * PRICE_SCALE,
+            ),
+        );
+
+        // Batch 2: owner 2 crosses it; the fill executes at the maker's drifted price.
+        let taker = t_order_at(2, Side::Buy, 110_000, size, 701);
+        let taker_h = taker.order_hash::<Keccak256>();
+        let s2 = sq.seal_batch(&[taker], now() + 10);
+
+        assert!(
+            s2.manifest
+                .rejected
+                .iter()
+                .any(|(h, r)| *h == maker_h && *r == RejectReason::FillPriceOutOfBand),
+            "the drifted maker is rejected in the batch that discovered it: {:?}",
+            s2.manifest.rejected,
+        );
+        assert!(!s2.manifest.rejected.iter().any(|(h, _)| *h == taker_h));
+        assert!(s2.manifest.ordered.contains(&taker_h));
+        let book = sq.matcher.book(0).unwrap();
+        assert_eq!(
+            book.resting_size(Side::Sell),
+            0,
+            "the poisoned quote is cancelled, not left to trap the next taker",
+        );
+        assert_eq!(
+            book.resting_size(Side::Buy),
+            size,
+            "the taker rests unfilled instead of being burned by the phantom fill",
+        );
+    }
+
+    /// **Fragmentation regression at the sequencer level** (the core-level twin lives in
+    /// `perp-core/tests/sec022_fill_band.rs`). A solvent aggregate close must not become
+    /// impossible because the counterparty fragmented it across many small resting orders.
+    #[test]
+    fn a_healthy_position_closes_against_fragmented_resting_liquidity() {
+        let mut sq = test_sequencer();
+        // Owner 1 opens 0.5 BTC long against owner 2, at the mark.
+        let half = SIZE_SCALE / 2;
+        sq.seal_batch(
+            &[
+                t_order_at(2, Side::Sell, 100_000, half, 200),
+                t_order_at(1, Side::Buy, 100_000, half, 201),
+            ],
+            now(),
+        );
+        assert_eq!(sq.state.position(&owner_id(1), 0).unwrap().size, half);
+
+        // Owner 2 fragments the other side into five 0.1 BTC resting bids at the mark;
+        // owner 1 closes across all of them in one batch. Every fragment must settle.
+        let mut orders: Vec<Order> = (0..5)
+            .map(|i| t_order_at(2, Side::Buy, 100_000, SIZE_SCALE / 10, 300 + i))
+            .collect();
+        orders.push(t_order_at(1, Side::Sell, 100_000, half, 400));
+        let sealed = sq.seal_batch(&orders, now() + 10);
+
+        assert!(
+            sealed.manifest.rejected.iter().all(|(_, r)| !matches!(
+                r,
+                RejectReason::FillWouldBankrupt | RejectReason::FillPriceOutOfBand
+            )),
+            "no fragment may be rejected as bankrupting or out of band: {:?}",
+            sealed.manifest.rejected,
+        );
+        assert_eq!(
+            sq.state.position(&owner_id(1), 0).unwrap().size,
+            0,
+            "the aggregate close completed across every fragment",
+        );
+        assert!(sq.state.conservation_holds());
+    }
+
+    /// The loop terminates when EVERY fill this batch produces is offending: each round
+    /// bans at least one new order, so the loop is bounded and still seals a batch.
+    #[test]
+    fn rematch_loop_terminates_when_every_fill_is_offending() {
+        let mut sq = test_sequencer();
+        let size = SIZE_SCALE / 100;
+        // Four crossing pairs, all far off the mark — every resulting fill is out of band.
+        let mut orders = Vec::new();
+        for i in 0..4u64 {
+            orders.push(t_order_at(1, Side::Sell, 150_000, size, 500 + i * 2));
+            orders.push(t_order_at(2, Side::Buy, 160_000, size, 501 + i * 2));
+        }
+        let sealed = sq.seal_batch(&orders, now());
+        assert!(
+            !sealed.manifest.rejected.is_empty(),
+            "every fill was out of band, so the batch rejects rather than hanging",
+        );
+        // Every out-of-band maker is banned; no taker is blamed (they rest unfilled).
+        for o in &orders {
+            let h = o.order_hash::<Keccak256>();
+            match o.side {
+                Side::Sell => assert!(
+                    sealed
+                        .manifest
+                        .rejected
+                        .iter()
+                        .any(|(rh, r)| *rh == h && *r == RejectReason::FillPriceOutOfBand),
+                    "each out-of-band maker is rejected: {:?}",
+                    sealed.manifest.rejected,
+                ),
+                Side::Buy => assert!(sealed.manifest.ordered.contains(&h)),
+            }
+        }
         assert!(sealed.settled_order_hashes.is_empty());
+        assert!(sq.state.conservation_holds());
     }
 }
