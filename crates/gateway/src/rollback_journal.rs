@@ -24,10 +24,13 @@ use crate::withdrawals::Withdrawal;
 use std::path::{Path, PathBuf};
 
 /// Journal plaintext magic + format version (INSIDE the sealed payload; the sealed
-/// file itself starts with the snapshot module's `DPSNAP1` framing). Bump the
+/// file itself starts with the snapshot module's `DPSNAP2` framing). Bump the
 /// trailing digit on layout changes so an old binary refuses a new journal (and
 /// vice versa) instead of postcard-misreading it.
-const MAGIC: &[u8; 8] = b"DPRBJL1\0";
+/// v2: SEC-022 added `Market.max_fill_deviation_ratio`, carried here via
+/// `witness: WindowWitness.pre_state` — same positional-postcard hazard as the
+/// snapshot's v2 bump (see `snapshot.rs::MAGIC`).
+const MAGIC: &[u8; 8] = b"DPRBJL2\0";
 
 /// Everything boot recovery needs to resolve one in-flight window settle:
 /// the sequencer rollback input (`witness`), the withdrawal rollback input (`ww`,

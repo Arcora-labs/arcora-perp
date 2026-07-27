@@ -283,6 +283,9 @@ fn offending_leg(e: &EngineError) -> Option<FillLeg> {
 }
 
 /// The outcome of settling one batch's matched fills ([`settle_fills`]).
+/// `Default` is the no-fills settlement: settling an empty fill stream is a
+/// no-op, so its outcome is empty everywhere.
+#[derive(Default)]
 struct FillSettlement {
     /// The batch's replayable fill op-log, in application order. Only ops whose
     /// application SUCCEEDED are logged, so replaying it via `apply_batch`
@@ -294,10 +297,16 @@ struct FillSettlement {
     /// Order hashes with at least one settled fill, deduplicated, in fill order.
     settled_order_hashes: Vec<Digest>,
     /// SEC-022 §6: order hashes whose fill failed for an ATTRIBUTABLE reason
-    /// (band / bankruptcy / reduce_only settlement violation). `seal_batch`'s
-    /// dry-run bans these — book restored, offender excised, stream rematched —
-    /// before the committed pass runs.
-    offenders: Vec<Digest>,
+    /// (band / bankruptcy / reduce_only settlement violation), each paired with
+    /// the reason recorded at its OWN push site. `seal_batch`'s dry-run bans
+    /// these — book restored, offender excised, stream rematched — before the
+    /// committed pass runs, and commits the paired reason into the manifest.
+    /// The reason travels here (not via a lookup in `rejected`) because a hash
+    /// can appear in `rejected` earlier in the same pass as an INNOCENT
+    /// counterparty of a non-attributable both-leg rejection — a first-match
+    /// lookup would commit that earlier, wrong reason into `manifest_hash`
+    /// (whole-branch review I2).
+    offenders: Vec<(Digest, RejectReason)>,
 }
 
 /// Whether a signed `delta` would INCREASE `owner`'s absolute exposure in
@@ -316,8 +325,11 @@ fn exposure_increases_in(
 }
 
 /// Settle matched `fills` through the engine against `state`, attaching the
-/// per-market oracle. Extracted from `seal_batch` so SEC-022 §6's probe dry-run
-/// and the committed pass run IDENTICAL code by construction (Task 7).
+/// per-market oracle. Extracted from `seal_batch` for SEC-022 §6's probe
+/// dry-run (Task 7); a clean probe is ADOPTED as the committed settlement
+/// (review I4), so the probe and the commit are one run by construction.
+/// Deterministic in exactly `(state, oracles, fills, now_ms)` — the adoption
+/// relies on that.
 ///
 /// The pre-trade gate covers the *taker* against current state, but a *resting
 /// maker* admitted in an earlier batch can have drifted below initial margin
@@ -336,12 +348,7 @@ fn settle_fills(
     fills: &[Match],
     now_ms: u64,
 ) -> FillSettlement {
-    let mut out = FillSettlement {
-        ops: Vec::new(),
-        rejected: Vec::new(),
-        settled_order_hashes: Vec::new(),
-        offenders: Vec::new(),
-    };
+    let mut out = FillSettlement::default();
     for m in fills {
         let Some(oracle) = oracles.get(&m.market_id).copied() else {
             for oh in [m.taker_order_hash, m.maker_order_hash] {
@@ -376,12 +383,14 @@ fn settle_fills(
             if taker_opens {
                 out.rejected
                     .push((m.taker_order_hash, RejectReason::ReduceOnlyViolation));
-                out.offenders.push(m.taker_order_hash);
+                out.offenders
+                    .push((m.taker_order_hash, RejectReason::ReduceOnlyViolation));
             }
             if maker_opens {
                 out.rejected
                     .push((m.maker_order_hash, RejectReason::ReduceOnlyViolation));
-                out.offenders.push(m.maker_order_hash);
+                out.offenders
+                    .push((m.maker_order_hash, RejectReason::ReduceOnlyViolation));
             }
             continue;
         }
@@ -415,11 +424,11 @@ fn settle_fills(
                 match offending_leg(&e) {
                     Some(FillLeg::Taker) => {
                         out.rejected.push((m.taker_order_hash, reason));
-                        out.offenders.push(m.taker_order_hash);
+                        out.offenders.push((m.taker_order_hash, reason));
                     }
                     Some(FillLeg::Maker) => {
                         out.rejected.push((m.maker_order_hash, reason));
-                        out.offenders.push(m.maker_order_hash);
+                        out.offenders.push((m.maker_order_hash, reason));
                     }
                     None => {
                         for oh in [m.taker_order_hash, m.maker_order_hash] {
@@ -990,34 +999,48 @@ impl Sequencer {
         let mut live: Vec<Order> = admitted;
         let mut banned: Vec<(Digest, RejectReason)> = Vec::new();
         let mut banned_set: BTreeSet<Digest> = BTreeSet::new();
-        let stream = loop {
+        let (stream, probe_outcome) = loop {
             let stream = self.matcher.process_stream(&live, now_ms);
-            // no fills → nothing to probe (`settle_fills` over no fills is a no-op),
-            // which also spares the idle 700ms ticks the per-round state clone.
+            // no fills → nothing to probe (`settle_fills` over no fills is a no-op,
+            // so its outcome is `FillSettlement::default()` and the state is left
+            // untouched), which also spares the idle 700ms ticks the per-round
+            // state clone.
             if stream.fills.is_empty() {
-                break stream;
+                break (stream, None);
             }
             let mut probe = self.state.clone();
             let probed = settle_fills(&mut probe, &self.oracles, &stream.fills, now_ms);
             if probed.offenders.is_empty() {
-                break stream;
+                // Clean: carry the probe state + its settlement out of the loop;
+                // step 3 ADOPTS them instead of settling the same fills a second
+                // time (whole-branch review I4).
+                break (stream, Some((probe, probed)));
             }
             // Roll the book back to exactly where this batch started, drop the
-            // offenders, and match again.
+            // offenders, and match again. Each offender carries the reason from
+            // its own `settle_fills` push site — never looked up in `rejected`,
+            // where an earlier fill of the same pass can have recorded the same
+            // hash as an innocent counterparty with a different reason (I2).
             let banned_before = banned_set.len();
-            for oh in &probed.offenders {
+            for (oh, reason) in &probed.offenders {
                 if banned_set.insert(*oh) {
-                    let reason = probed
-                        .rejected
-                        .iter()
-                        .find(|(h, _)| h == oh)
-                        .map(|(_, r)| *r)
-                        .expect(
-                            "settle_fills invariant: every offenders push is paired \
-                             with a rejected push for the same hash in the same arm",
-                        );
-                    banned.push((*oh, reason));
-                    rematch_base.cancel_order(oh);
+                    banned.push((*oh, *reason));
+                    // M3: a ban must make progress — the offender has to leave the
+                    // next round's inputs, either cancelled from the batch-start
+                    // book here (a maker resting since an earlier batch) or removed
+                    // from `live` by the `retain` below (a current-batch order). If
+                    // neither holds, the next round reproduces the same offender
+                    // and trips the termination assert with a far less actionable
+                    // message — fail loudly at the cause instead. Unreachable
+                    // through the gateway today (per-account nonce monotonicity
+                    // makes duplicate order hashes impossible), but the library
+                    // API does not enforce that.
+                    let cancelled = rematch_base.cancel_order(oh).is_some();
+                    assert!(
+                        cancelled || live.iter().any(|o| o.order_hash::<Keccak256>() == *oh),
+                        "ban made no progress: offender {oh:?} neither rests in the \
+                         batch-start book nor is a live order of this batch",
+                    );
                 }
             }
             // Termination, made explicit: every round that reaches here bans at least
@@ -1046,29 +1069,38 @@ impl Sequencer {
             }
         }
 
-        // 3. settle for real. The dry-run above ran the SAME function against the
-        //    SAME pre-state with the SAME fills in the SAME order, so this cannot
-        //    fail differently; `offenders` is empty by construction here. See
-        //    [`settle_fills`] for the failure-attribution rule; NON-attributable
-        //    failures (no offender) still reject here, and an order all of whose
-        //    recorded fills failed is moved out of `ordered` into `rejected` below.
-        //    `ops` becomes the batch's replayable op-log: `[applied fills] ++
-        //    [maintenance ops]`, in application order (Slice 3a).
+        // 3. adopt the dry-run as the committed settlement (I4). The probe ran
+        //    `settle_fills` — deterministic in exactly (state, oracles, fills,
+        //    now_ms) — against a clone of the CURRENT pre-state with the final
+        //    stream's fills, and nothing since has mutated `self.state`: the only
+        //    code between the probe and here is `issue_receipt`, which writes only
+        //    `inclusion`/`finality`/`next_receipt_seq` and READS
+        //    `state.next_batch_id`. Re-running the settlement against `self.state`
+        //    (as this used to) could therefore only reproduce the identical result,
+        //    at the cost of a second full pass on the per-tick hot path of a system
+        //    whose proof RSS already scales with state size. Swapping the probe in
+        //    IS the committed settlement; the old "committed pass must reproduce
+        //    the dry run" assert is structurally unnecessary now — the loop's break
+        //    condition (`probed.offenders.is_empty()`) is the guarantee, so
+        //    `offenders` is dropped unread. A no-fills break settles nothing and
+        //    leaves `self.state` untouched. See [`settle_fills`] for the
+        //    failure-attribution rule; NON-attributable failures (no offender)
+        //    still reject here, and an order all of whose recorded fills failed is
+        //    moved out of `ordered` into `rejected` below. `ops` becomes the
+        //    batch's replayable op-log: `[applied fills] ++ [maintenance ops]`, in
+        //    application order (Slice 3a).
         let FillSettlement {
             mut ops,
             rejected: settlement_rejected,
             settled_order_hashes,
-            offenders,
-        } = settle_fills(&mut self.state, &self.oracles, &stream.fills, now_ms);
-        // A hard assert (not debug_assert) for the same reason as the termination
-        // assert above: in a release enclave build a debug_assert compiles out, and
-        // if the committed pass ever DID produce an offender the book mutation would
-        // silently stand — the exact hazard this dry-run removes. The invariant is
-        // unreachable by construction, so failing loud costs nothing.
-        assert!(
-            offenders.is_empty(),
-            "the committed pass must reproduce the dry run",
-        );
+            offenders: _,
+        } = match probe_outcome {
+            Some((mut probe, probed)) => {
+                std::mem::swap(&mut self.state, &mut probe);
+                probed
+            }
+            None => FillSettlement::default(),
+        };
         // Advance finality for every hash with a settled fill. Lives at the call
         // site (not in `settle_fills`) so a Task-7 probe run cannot touch the real
         // finality map; inserting once per deduped hash is identical to the old
@@ -2043,6 +2075,86 @@ mod tests {
             SIZE_SCALE,
             "the innocent maker's resting depth must not be burned by the banned fill",
         );
+        assert!(sq.state.conservation_holds());
+    }
+
+    /// Whole-branch review I2: the reason committed with a BAN must be the one recorded
+    /// at the offender's own `settle_fills` push site, not the FIRST `rejected` entry
+    /// for that hash. One probe pass records maker X twice: fill 2 fails with a
+    /// non-attributable `Risk` (owner 4's SECOND buy fails initial margin at settlement
+    /// because its FIRST buy — admitted in the same batch, both gated against the
+    /// pre-batch state — consumed the margin), recording X as the INNOCENT counterparty
+    /// under `InsufficientMargin`; fill 3 then fails on X's own leg with
+    /// `FillWouldBankrupt(Maker)`, making X the banned offender. The old
+    /// first-match lookup committed the ban as `InsufficientMargin` — a falsehood
+    /// folded permanently into `manifest_hash`. The taker leg is checked before the
+    /// maker leg in `op_fill`, so fill 2 never reaches X's violation — which is why
+    /// the same hash can carry two different reasons in one pass at all.
+    #[test]
+    fn a_ban_commits_the_offending_legs_reason_not_an_earlier_innocent_records() {
+        let mut sq = test_sequencer();
+        fund(&mut sq, 3, 20_000, 0x33); // M0 — the honest maker owner 4's first buy hits
+        fund(&mut sq, 4, 5_000, 0x44); // P — margined for ONE 0.5 BTC open, gated twice
+        fund(&mut sq, 5, 20_000, 0x55); // T2 — the well-funded taker that reaches X's leg
+
+        // Batch 1: X (owner 1, $20k) opens 1.0 BTC long at the $100k mark vs owner 2.
+        sq.seal_batch(
+            &[
+                t_order_at(2, Side::Sell, 100_000, SIZE_SCALE, 800),
+                t_order_at(1, Side::Buy, 100_000, SIZE_SCALE, 801),
+            ],
+            now(),
+        );
+        assert_eq!(sq.state.position(&owner_id(1), 0).unwrap().size, SIZE_SCALE);
+
+        // The oracle gaps to $80k: X's equity is exactly 0. Its close at $78.5k is in
+        // band (|78.5k−80k| = $1.5k ≤ 2% of $80k = $1.6k) but realizes −$10.75k per
+        // half, leaving the surviving half below maintenance → bankrupting.
+        sq.set_oracle(
+            0,
+            signed_oracle(
+                0,
+                80_000 * PRICE_SCALE,
+                now() + 10,
+                10 * PRICE_SCALE,
+                80_000 * PRICE_SCALE,
+            ),
+        );
+
+        let half = SIZE_SCALE / 2;
+        // Stream order matters: P's FIRST buy must fill before X's close rests (so it
+        // matches M0, not X), degrading P before its SECOND buy crosses X.
+        let m0 = t_order_at(3, Side::Sell, 80_000, half, 802);
+        let alpha = t_order_at(4, Side::Buy, 80_000, half, 803);
+        let x_close = t_order_at(1, Side::Sell, 78_500, SIZE_SCALE, 804);
+        let beta = t_order_at(4, Side::Buy, 78_500, half, 805);
+        let t2 = t_order_at(5, Side::Buy, 78_500, half, 806);
+        let x_h = x_close.order_hash::<Keccak256>();
+        let beta_h = beta.order_hash::<Keccak256>();
+        let alpha_h = alpha.order_hash::<Keccak256>();
+        let m0_h = m0.order_hash::<Keccak256>();
+
+        // Probe pass, in match order: [alpha×M0 @80k settles] → [beta×X @78.5k fails
+        // Risk on P's taker leg: VWAP entry $79.25k on 1.0 BTC, equity $5.75k < $8k
+        // initial — recording (beta, IM) AND (X, IM)] → [t2×X @78.5k fails
+        // FillWouldBankrupt(Maker) on X's leg — the offender]. Ban X, rematch clean.
+        let sealed = sq.seal_batch(&[m0, alpha, x_close, beta, t2], now() + 10);
+
+        // THE PIN: the ban carries the offending fill's reason. The old first-match
+        // lookup found fill 2's innocent-counterparty record and committed
+        // InsufficientMargin instead.
+        assert_eq!(
+            sealed.manifest.rejected,
+            vec![(x_h, RejectReason::FillWouldBankrupt)],
+            "the ban must commit the reason from X's OWN offending leg, not the reason \
+             recorded when X was the innocent counterparty of an earlier failed fill",
+        );
+        // The degraded second buy is not rejected: its round-1 fill died with the
+        // discarded probe, and on the rematch (X gone) it simply rests.
+        assert!(sealed.manifest.ordered.contains(&beta_h));
+        // The honest first fill really settled on the committed pass.
+        assert!(sealed.settled_order_hashes.contains(&alpha_h));
+        assert!(sealed.settled_order_hashes.contains(&m0_h));
         assert!(sq.state.conservation_holds());
     }
 
