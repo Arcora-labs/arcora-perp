@@ -119,3 +119,15 @@ The cutover must explicitly bump or invalidate: snapshot magic `DPSNAP1` (`crate
 | Every scenario | `conservation_holds()` |
 
 The first row is checkable by enumeration rather than imagination — and it only becomes *true* once SEC-025 lands.
+
+## Carried in from SEC-022 (added 2026-07-27)
+
+**These are not SEC-024's findings. They are `perp-core` changes deliberately deferred to this branch because it re-pins the vkey anyway**, and doing them here costs nothing extra. SEC-022's whole-branch review argued for folding them into *its* branch on the same reasoning; they were deferred here instead because `DeprecatedSeedInsurance`/`FundInsurance` already moves the guest ELF within the same cutover bundle, so the marginal cost is identical and SEC-022 stays single-concern.
+
+**If this spec is descoped or resequenced, these must move with it, not be dropped.** `SP1ZkVerifier.programVKey` and `DarkPerpSettlement`'s verifier address are both immutable, so once the bundle deploys, either item costs a full live cutover on its own.
+
+1. **`EngineError::Risk` carries no failing leg** (`engine.rs:598`). `check_initial_margin(...)?` discards the `leg` variable that is already in scope three lines above. Consequence: SEC-022's dry-run bans and rolls back the book only for *attributable* failures, and `Risk` → `InsufficientMargin` is not attributable — so the drifted-resting-maker case, which `settle_fills`' own doc comment calls the canonical one, still matches, consumes the innocent counterparty's depth, and is dropped at settlement. Fix: give `Risk` the same `FillLeg` payload `FillWouldBankrupt` already carries, then add it to `offending_leg`. `EngineError` must stay `Copy`.
+
+2. **`op_liquidate` is not failure-atomic.** `engine.rs:733` mutates the position via `apply_fill`, then `:734` and `:748` perform fallible arithmetic; `Sequencer::run_maintenance` (`sequencer/src/lib.rs:906`) takes `if let Ok(...)` and **silently drops a failed liquidation without logging the op**. That is exactly the host/guest divergence class SEC-022 §4 closed for `op_fill` — mutated live state, no op in the replayable log, wedged next proof. It matters more now than before: SEC-022's solvency postcondition forbids a below-maintenance position from partially closing, so liquidation is its only resolution and receives strictly more traffic. Fix mirrors §4: stage every fallible value before the first mutation.
+
+`op_liquidate`'s partial-mutation ordering is also listed among the known gaps in `2026-07-26-sec02x-threat-model.md`'s sibling notes; this is the same defect, now with a concrete reason to fix it.
