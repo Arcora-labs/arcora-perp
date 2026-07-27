@@ -31,6 +31,48 @@ jobs:
           cargo build -p note-archive --no-default-features
           cargo build -p bridge --no-default-features
 
+  excluded-crates-typecheck:
+    # crates/sp1-host and crates/prover-service are excluded from the workspace
+    # (Cargo.toml) because they pull sp1-sdk — Groth16, Docker, gnark — which must
+    # not enter `cargo build --workspace`. That exclusion also means CI never
+    # compiled them, so they silently rotted against perp-core: all three of their
+    # binaries were still constructing the pre-SEC-019 four-field BatchOp::Deposit
+    # and had not compiled since. `cargo check` type-checks against the real
+    # perp-core path dependency without linking or proving, which is exactly the
+    # coverage needed to catch a changed op shape.
+    #
+    # Three harness steps make the check runnable off the prover box:
+    #   - protoc: sp1-prover-types' build script generates protobuf bindings.
+    #   - SP1_SKIP_PROGRAM_BUILD: both crates' build.rs would otherwise compile the
+    #     SP1 guest, which needs the succinct toolchain (`cargo prove`).
+    #   - stub ELF: `include_elf!` is an `include_bytes!` of the path sp1-build
+    #     emits even when skipped, so the file must exist. An empty file is fine —
+    #     we type-check the host sources, we never execute the guest. The path
+    #     comes from sp1-build's HELPER_TARGET_SUBDIR/DEFAULT_TARGET constants; if
+    #     an sp1 upgrade moves it, this job fails loudly on the include_bytes.
+    name: prover crates (excluded, typecheck)
+    runs-on: ubuntu-latest
+    env:
+      SP1_SKIP_PROGRAM_BUILD: "true"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            crates/sp1-host
+            crates/prover-service
+      - name: install protoc (sp1-prover-types build script)
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+      - name: stub the guest ELF (guest build skipped; include_elf! needs the file)
+        run: |
+          mkdir -p crates/sp1-guest/target/elf-compilation/riscv64im-succinct-zkvm-elf/release
+          touch crates/sp1-guest/target/elf-compilation/riscv64im-succinct-zkvm-elf/release/perp-core-guest
+      - name: typecheck sp1-host
+        run: cargo check --manifest-path crates/sp1-host/Cargo.toml
+      - name: typecheck prover-service
+        run: cargo check --manifest-path crates/prover-service/Cargo.toml
+
   contracts:
     name: contracts (foundry)
     runs-on: ubuntu-latest
