@@ -3,6 +3,15 @@
 
 use crate::position::RiskError;
 
+/// Which leg of a two-sided fill a rejection is attributable to (SEC-022 §6). Settlement
+/// used to record the SAME reason against BOTH order hashes, so an innocent counterparty
+/// was rejected alongside the offender. `Copy`, so `EngineError` stays `Copy`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FillLeg {
+    Taker,
+    Maker,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum EngineError {
     /// Referenced note is unknown or already spent (double-spend).
@@ -62,6 +71,12 @@ pub enum EngineError {
     /// liquidation path revisits. An out-of-band price, or an overflow in the checked band
     /// arithmetic, is rejected fail-closed (never wrapped, never panicked in-guest).
     FillPriceOutOfBand,
+    /// SEC-022: the fill would have left the identified leg either CLOSED with negative
+    /// collateral — debt no liquidation path revisits, since `op_liquidate` and the
+    /// maintenance pass both require `is_open()` — or still open and below maintenance
+    /// margin. Two parties electing to trade always have "not trading" available, and it
+    /// is strictly better for the protocol than parking unresolvable debt.
+    FillWouldBankrupt(FillLeg),
 }
 
 impl From<RiskError> for EngineError {

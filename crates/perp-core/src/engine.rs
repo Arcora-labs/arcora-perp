@@ -12,7 +12,7 @@
 //! engine enforces *settlement validity*: funding, margin, liquidation,
 //! conservation.
 
-use crate::error::EngineError;
+use crate::error::{EngineError, FillLeg};
 use crate::fixed::{abs, apply_rate, notional_quote, RATE_SCALE};
 use crate::hash::{Digest, Hasher};
 use crate::market::MarketId;
@@ -589,8 +589,37 @@ impl<H: Hasher> State<H> {
                     .checked_add(maker_rebate)
                     .ok_or(EngineError::Overflow)?
             };
+            let leg = if i == 0 {
+                FillLeg::Taker
+            } else {
+                FillLeg::Maker
+            };
             if increasing {
                 pos.check_initial_margin(&market, mark, funding_index)?;
+            }
+            // SEC-022 §3 — the solvency postcondition, checked on the STAGED leg before
+            // anything commits. Conditional by design:
+            //   * a leg ending CLOSED must not carry negative collateral — nothing
+            //     revisits a flat position (`engine.rs` liquidation and ADL, and the
+            //     sequencer's maintenance pass, all require `is_open()`), so that debt is
+            //     parked forever while the winner withdraws normally; and
+            //   * a leg that stays OPEN must still be maintenance-compliant.
+            // A flat `collateral >= 0` on BOTH cases would be a denial of service:
+            // `apply_fill` settles the position's ENTIRE accrued funding while realizing
+            // PnL only on the closed fragment, so small resting orders could make every
+            // fragment of a solvent aggregate close fail while the victim stays
+            // non-liquidatable. Requiring maintenance-compliance on a still-open leg
+            // sidesteps that — the funding settled is the funding maintenance equity
+            // already accounts for.
+            if pos.is_open() {
+                if pos
+                    .check_maintenance_margin(&market, mark, funding_index)
+                    .is_err()
+                {
+                    return Err(EngineError::FillWouldBankrupt(leg));
+                }
+            } else if pos.collateral < 0 {
+                return Err(EngineError::FillWouldBankrupt(leg));
             }
             staged[i] = (key, pos);
         }

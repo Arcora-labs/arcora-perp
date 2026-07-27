@@ -200,6 +200,32 @@ impl Position {
         Ok(())
     }
 
+    /// SEC-022 §3: does this position satisfy MAINTENANCE margin? The checked,
+    /// fail-CLOSED sibling of [`Self::is_liquidatable`].
+    ///
+    /// `is_liquidatable` deliberately returns `false` on overflow — for auto-liquidation
+    /// that is the conservative direction (do not seize a position whose health we cannot
+    /// compute). For a solvency POSTCONDITION the identical default is fail-OPEN: it would
+    /// ACCEPT a fill whose resulting health could not be evaluated. So this returns
+    /// `Err(RiskError::Overflow)` instead and the caller rejects the fill.
+    pub fn check_maintenance_margin(
+        &self,
+        market: &Market,
+        mark: i128,
+        funding_index_now: i128,
+    ) -> Result<(), RiskError> {
+        let eq = self
+            .equity(mark, funding_index_now)
+            .ok_or(RiskError::Overflow)?;
+        let mm = self
+            .maintenance_required(market, mark)
+            .ok_or(RiskError::Overflow)?;
+        if eq < mm {
+            return Err(RiskError::InsufficientMargin);
+        }
+        Ok(())
+    }
+
     /// Settle accrued funding into collateral, advancing `funding_entry` to the
     /// current index. Returns the funding amount paid (positive = debited). The
     /// engine routes this into the vault pool so total value is conserved.

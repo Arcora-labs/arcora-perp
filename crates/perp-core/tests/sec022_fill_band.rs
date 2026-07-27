@@ -9,8 +9,7 @@ use perp_core::hash::Keccak256;
 use perp_core::note::owner_from_spend_key;
 use perp_core::oracle::{oracle_digest, OracleSig, OracleTranscript};
 use perp_core::order::Side;
-use perp_core::{DefaultState, EngineError, Market, Note};
-// Task 4 adds `FillLeg` to this import.
+use perp_core::{DefaultState, EngineError, FillLeg, Market, Note};
 
 const TREE_DEPTH: u8 = 20;
 
@@ -315,5 +314,140 @@ fn band_arithmetic_overflow_rejects_without_panicking() {
             .expect_err("overflowing band"),
         EngineError::FillPriceOutOfBand,
     );
+    assert_eq!(s.state_root(), before);
+}
+
+// --------------------------------------------------- Task 4: the solvency postcondition
+
+/// A fill must not succeed leaving a CLOSED leg with negative collateral: nothing revisits
+/// a flat position. Both `op_liquidate` and the sequencer's maintenance pass require
+/// `is_open()` (`engine.rs:667`, `sequencer/src/lib.rs:744`), and `auto_deleverage` skips
+/// `!pos.is_open()` — so the debt is parked forever while the winner withdraws normally.
+#[test]
+fn closed_leg_with_negative_collateral_is_rejected() {
+    let mut s = state_with(Market::conservative(0));
+    let (a, b) = (owner_of(1), owner_of(2));
+    fund(&mut s, a, 1, 20_000 * QUOTE_SCALE, [0x11u8; 32], 0);
+    fund(&mut s, b, 2, 200_000 * QUOTE_SCALE, [0x22u8; 32], 1);
+    s.apply_op(&fill(a, b, Side::Buy, 2 * SIZE_SCALE, 100_000, 1_000))
+        .expect("open 2 BTC on $20k (10x)");
+    // Strip A's collateral so any realized loss closes it negative.
+    s.positions.get_mut(&(a, 0)).unwrap().collateral = 0;
+    let before = s.state_root();
+    let err = s
+        .apply_op(&BatchOp::Fill {
+            taker: a,
+            maker: b,
+            market_id: 0,
+            taker_side: Side::Sell,
+            size: 2 * SIZE_SCALE,
+            price: 98_000 * PRICE_SCALE,
+            oracle: oracle(100_000, 2_000),
+            now_ms: 2_000,
+        })
+        .expect_err("closing into debt must reject");
+    assert_eq!(err, EngineError::FillWouldBankrupt(FillLeg::Taker));
+    assert_eq!(s.state_root(), before, "whole state and root unchanged");
+}
+
+/// **The fragmentation regression.** The rule is CONDITIONAL, and that is load-bearing.
+/// A flat `collateral >= 0` on every leg is a denial of service: `apply_fill` settles the
+/// position's ENTIRE accrued funding while realizing PnL only on the closed fragment, so
+/// an attacker posting many small resting orders makes every fragment of a solvent
+/// aggregate close fail, each re-settling the full funding bill against unchanged state —
+/// while the victim stays non-liquidatable. Requiring maintenance-compliance on a
+/// still-OPEN leg sidesteps it: a partial close of a healthy position leaves it healthy.
+#[test]
+fn healthy_position_can_close_in_small_fragments() {
+    let mut s = state_with(Market::conservative(0));
+    let (a, b) = (owner_of(1), owner_of(2));
+    fund(&mut s, a, 1, 30_000 * QUOTE_SCALE, [0x11u8; 32], 0);
+    fund(&mut s, b, 2, 300_000 * QUOTE_SCALE, [0x22u8; 32], 1);
+    s.apply_op(&fill(a, b, Side::Buy, SIZE_SCALE, 100_000, 1_000))
+        .expect("open 1 BTC");
+    // FIXTURE FIX: as originally drafted (no funding accrued, every fragment at
+    // price == entry == mark) A's staged collateral stayed +$30k throughout, so the
+    // flat `collateral >= 0` rule this test exists to reject would ALSO have passed
+    // it — the test never reached the shape it pins. The DoS only bites on an open
+    // leg with NEGATIVE raw collateral but maintenance-compliant equity, so build
+    // exactly that: give A $40k of unrealized profit (entry $60k, mark $100k) and a
+    // $40k accrued-funding debt (negative `funding_entry` against index 0). Both
+    // fields are conservation-neutral (only `collateral` sums into conservation).
+    // Fragment 1 then settles the FULL $40k funding, leaving raw collateral −$6k on
+    // a healthy leg (equity $30k ≥ maintenance): the flat rule rejects it, the
+    // conditional rule accepts every fragment.
+    {
+        let pos = s.positions.get_mut(&(a, 0)).unwrap();
+        pos.entry_price = 60_000 * PRICE_SCALE;
+        pos.funding_entry = -40_000 * QUOTE_SCALE;
+    }
+    // Close it in ten 0.1 BTC fragments. EVERY fragment must be accepted — rejection
+    // must not count as success here.
+    for i in 0..10u64 {
+        s.apply_op(&fill(
+            a,
+            b,
+            Side::Sell,
+            SIZE_SCALE / 10,
+            100_000,
+            2_000 + i * 10,
+        ))
+        .unwrap_or_else(|e| panic!("fragment {i} must be accepted, got {e:?}"));
+    }
+    assert_eq!(s.position(&a, 0).unwrap().size, 0, "fully closed");
+    assert!(s.conservation_holds());
+}
+
+/// Every pure reduction that satisfies the joint band/fee inequality must RETURN OK and
+/// leave the position maintenance-compliant or cleanly closed. Property-style sweep —
+/// rejection does not count as success (the earlier draft's version was vacuous).
+#[test]
+fn every_in_band_reduction_of_a_healthy_position_succeeds() {
+    for price_usd in [98_000i128, 99_000, 100_000, 101_000, 102_000] {
+        for denom in [1i128, 2, 4, 10] {
+            let mut s = state_with(Market::with_fees(0, 10, 4));
+            let (a, b) = (owner_of(1), owner_of(2));
+            fund(&mut s, a, 1, 50_000 * QUOTE_SCALE, [0x11u8; 32], 0);
+            fund(&mut s, b, 2, 500_000 * QUOTE_SCALE, [0x22u8; 32], 1);
+            s.apply_op(&fill(a, b, Side::Buy, SIZE_SCALE, 100_000, 1_000))
+                .expect("open 1 BTC on $50k — comfortably margined");
+            s.apply_op(&fill(
+                a,
+                b,
+                Side::Sell,
+                SIZE_SCALE / denom,
+                price_usd,
+                2_000,
+            ))
+            .unwrap_or_else(|e| {
+                panic!("in-band reduction at ${price_usd} size 1/{denom} rejected: {e:?}")
+            });
+            let pos = s.position(&a, 0).unwrap();
+            assert!(
+                !pos.is_open() || pos.collateral >= 0,
+                "a closed leg never carries debt",
+            );
+            assert!(s.conservation_holds());
+        }
+    }
+}
+
+/// A still-OPEN leg left below maintenance is rejected, not merely left non-negative.
+#[test]
+fn fill_leaving_an_open_leg_below_maintenance_is_rejected() {
+    let mut s = state_with(Market::conservative(0));
+    let (a, b) = (owner_of(1), owner_of(2));
+    fund(&mut s, a, 1, 20_000 * QUOTE_SCALE, [0x11u8; 32], 0);
+    fund(&mut s, b, 2, 300_000 * QUOTE_SCALE, [0x22u8; 32], 1);
+    s.apply_op(&fill(a, b, Side::Buy, 2 * SIZE_SCALE, 100_000, 1_000))
+        .expect("open 2 BTC on $20k");
+    // Leave a sliver of collateral: any partial close leaves the REMAINING open leg
+    // below its maintenance requirement.
+    s.positions.get_mut(&(a, 0)).unwrap().collateral = 100 * QUOTE_SCALE;
+    let before = s.state_root();
+    let err = s
+        .apply_op(&fill(a, b, Side::Sell, SIZE_SCALE / 10, 99_000, 2_000))
+        .expect_err("an open leg below maintenance must reject");
+    assert_eq!(err, EngineError::FillWouldBankrupt(FillLeg::Taker));
     assert_eq!(s.state_root(), before);
 }

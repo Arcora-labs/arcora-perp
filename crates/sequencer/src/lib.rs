@@ -260,6 +260,7 @@ fn settlement_reason(e: &EngineError) -> RejectReason {
         EngineError::CloseOnly => RejectReason::MarketCloseOnly,
         EngineError::SelfTrade => RejectReason::SelfTradePrevented,
         EngineError::FillPriceOutOfBand => RejectReason::FillPriceOutOfBand,
+        EngineError::FillWouldBankrupt(_) => RejectReason::FillWouldBankrupt,
         // audit Tier-3: an HONEST catch-all for the remaining engine errors (UnknownMarket,
         // NonPositiveAmount, Overflow, DuplicateCommitment, …) instead of mis-tagging them
         // all as ReduceOnlyViolation in the manifest.
