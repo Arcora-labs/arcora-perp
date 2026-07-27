@@ -388,6 +388,31 @@ mod tests {
         assert!(!p.is_liquidatable(&m, 100_000 * PRICE_SCALE, 0));
     }
 
+    // SEC-022 §3: `check_maintenance_margin` must NOT be a delegation to
+    // `is_liquidatable`. On overflow `is_liquidatable` deliberately returns `false`
+    // (never auto-seize a position whose health cannot be computed) — for a solvency
+    // POSTCONDITION that identical default is fail-OPEN, accepting a fill whose
+    // resulting health could not be evaluated. Drive `equity`'s `checked_add` to
+    // `None` (collateral at the i128 ceiling plus positive unrealized PnL) and pin
+    // the two functions DISAGREEING on the same input — the contrast is the point.
+    #[test]
+    fn check_maintenance_margin_fails_closed_on_overflow_unlike_is_liquidatable() {
+        let m = Market::conservative(0);
+        let mark = 110_000 * PRICE_SCALE;
+        // 1 BTC long from $100k at mark $110k → +$10k unrealized PnL; collateral at
+        // i128::MAX makes `collateral + pnl` overflow inside `equity`.
+        let p = pos(SIZE_SCALE, 100_000 * PRICE_SCALE, i128::MAX);
+        assert_eq!(
+            p.check_maintenance_margin(&m, mark, 0),
+            Err(RiskError::Overflow),
+            "the postcondition fails CLOSED on unevaluable health"
+        );
+        assert!(
+            !p.is_liquidatable(&m, mark, 0),
+            "the liquidation path stays fail-open (false) on the very same input"
+        );
+    }
+
     #[test]
     fn vwap_on_increase() {
         let mut p = pos(SIZE_SCALE, 100_000 * PRICE_SCALE, 50_000 * QUOTE_SCALE);

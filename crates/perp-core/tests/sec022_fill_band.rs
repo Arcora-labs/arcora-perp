@@ -398,9 +398,14 @@ fn healthy_position_can_close_in_small_fragments() {
     assert!(s.conservation_holds());
 }
 
-/// Every pure reduction that satisfies the joint band/fee inequality must RETURN OK and
-/// leave the position maintenance-compliant or cleanly closed. Property-style sweep —
-/// rejection does not count as success (the earlier draft's version was vacuous).
+/// Every pure reduction of a comfortably-margined position must RETURN OK and leave the
+/// position maintenance-compliant or cleanly closed. Property-style sweep — rejection
+/// does not count as success (the earlier draft's version was vacuous). NOTE the
+/// `fill()` helper signs its transcript AT the fill price, so `|price − mark| == 0` on
+/// every iteration: this sweep varies the mark and the realized PnL together, never the
+/// band deviation. The joint band/fee inequality's WORST case — a near-maintenance
+/// position closing at the band edge with the fee on top — is pinned separately by
+/// `maintenance_boundary_position_closes_at_the_band_edge` below.
 #[test]
 fn every_in_band_reduction_of_a_healthy_position_succeeds() {
     for price_usd in [98_000i128, 99_000, 100_000, 101_000, 102_000] {
@@ -423,13 +428,103 @@ fn every_in_band_reduction_of_a_healthy_position_succeeds() {
                 panic!("in-band reduction at ${price_usd} size 1/{denom} rejected: {e:?}")
             });
             let pos = s.position(&a, 0).unwrap();
+            // closed ⇒ collateral >= 0, i.e. `is_open ∨ collateral >= 0`. (An OPEN
+            // leg with negative raw collateral is explicitly permitted — see
+            // `healthy_position_can_close_in_small_fragments` — so the negated form
+            // would assert a property the design rejects.)
             assert!(
-                !pos.is_open() || pos.collateral >= 0,
+                pos.is_open() || pos.collateral >= 0,
                 "a closed leg never carries debt",
             );
             assert!(s.conservation_holds());
         }
     }
+}
+
+/// SEC-022 §2 exercised for real: the joint band/fee inequality
+/// (`market.rs::fill_band_fits_maintenance`) is derived for a taker closing at the FAR
+/// edge of the band with the fee charged on top — consuming `d + f·(1 + d)` of the
+/// maintenance buffer — and its guarantee is that a maintenance-compliant position can
+/// ALWAYS close in-band. Pin exactly that worst case: the oracle at $100k, fill prices
+/// at the inclusive band edges, a market with real fees, and the closer parked EXACTLY
+/// at maintenance (`eq < mm` is the reject, so equality is the tightest compliant
+/// point). A long realizes its loss at the LOWER edge; a short at the UPPER edge, where
+/// the fee also lands on the larger `(1 + d)` notional — the inequality's exact worst
+/// case. Every reduction here MUST return `Ok`; a rejection would mean the joint
+/// inequality does not deliver its guarantee and is a design-level finding, not a
+/// fixture problem.
+#[test]
+fn maintenance_boundary_position_closes_at_the_band_edge() {
+    for (open_side, close_side, edge_usd) in [
+        (Side::Buy, Side::Sell, 98_000i128),
+        (Side::Sell, Side::Buy, 102_000i128),
+    ] {
+        for denom in [1i128, 2, 10] {
+            let mut s = state_with(Market::with_fees(0, 10, 4));
+            let (a, b) = (owner_of(1), owner_of(2));
+            fund(&mut s, a, 1, 20_000 * QUOTE_SCALE, [0x11u8; 32], 0);
+            fund(&mut s, b, 2, 200_000 * QUOTE_SCALE, [0x22u8; 32], 1);
+            s.apply_op(&fill(a, b, open_side, SIZE_SCALE, 100_000, 1_000))
+                .expect("open 1 BTC at the mark");
+            // Park A exactly at maintenance: equity == mm == 5% of the $100k notional.
+            s.positions.get_mut(&(a, 0)).unwrap().collateral = 5_000 * QUOTE_SCALE;
+            s.apply_op(&BatchOp::Fill {
+                taker: a,
+                maker: b,
+                market_id: 0,
+                taker_side: close_side,
+                size: SIZE_SCALE / denom,
+                price: edge_usd * PRICE_SCALE,
+                oracle: oracle(100_000, 2_000),
+                now_ms: 2_000,
+            })
+            .unwrap_or_else(|e| {
+                panic!(
+                    "in-band close at ${edge_usd} size 1/{denom} from the maintenance \
+                     boundary rejected: {e:?} — the joint inequality failed its guarantee"
+                )
+            });
+            let pos = s.position(&a, 0).unwrap();
+            assert!(
+                pos.is_open() || pos.collateral >= 0,
+                "a closed leg never carries debt",
+            );
+        }
+    }
+}
+
+/// A leg that closes at EXACTLY zero collateral is a clean break-even close, not
+/// bankruptcy — the closed-leg rule is strictly `collateral < 0`. Pins the strictness:
+/// an over-strict `<= 0` (which refuses an honest zero-collateral close) survives every
+/// other test in this suite.
+#[test]
+fn close_landing_at_exactly_zero_collateral_is_accepted() {
+    let mut s = state_with(Market::conservative(0));
+    let (a, b) = (owner_of(1), owner_of(2));
+    fund(&mut s, a, 1, 20_000 * QUOTE_SCALE, [0x11u8; 32], 0);
+    fund(&mut s, b, 2, 200_000 * QUOTE_SCALE, [0x22u8; 32], 1);
+    s.apply_op(&fill(a, b, Side::Buy, SIZE_SCALE, 100_000, 1_000))
+        .expect("open 1 BTC");
+    // Leave exactly the $2,000 the band-edge close below realizes as loss (fee-free
+    // market), so the closed leg lands at exactly 0.
+    s.positions.get_mut(&(a, 0)).unwrap().collateral = 2_000 * QUOTE_SCALE;
+    s.apply_op(&BatchOp::Fill {
+        taker: a,
+        maker: b,
+        market_id: 0,
+        taker_side: Side::Sell,
+        size: SIZE_SCALE,
+        price: 98_000 * PRICE_SCALE,
+        oracle: oracle(100_000, 2_000),
+        now_ms: 2_000,
+    })
+    .expect("a break-even close landing at exactly zero collateral must be accepted");
+    let pos = s.position(&a, 0).unwrap();
+    assert_eq!(pos.size, 0, "fully closed");
+    assert_eq!(
+        pos.collateral, 0,
+        "landed at exactly zero — and was accepted"
+    );
 }
 
 /// A still-OPEN leg left below maintenance is rejected, not merely left non-negative.
@@ -449,5 +544,28 @@ fn fill_leaving_an_open_leg_below_maintenance_is_rejected() {
         .apply_op(&fill(a, b, Side::Sell, SIZE_SCALE / 10, 99_000, 2_000))
         .expect_err("an open leg below maintenance must reject");
     assert_eq!(err, EngineError::FillWouldBankrupt(FillLeg::Taker));
+    assert_eq!(s.state_root(), before);
+}
+
+/// Attribution: when the MAKER's leg is the violating one, the error names the maker.
+/// Task 5 routes rejections by this value, and only the Taker direction was pinned. The
+/// taker's reducing leg here stays comfortably healthy, so the staging loop reaches
+/// leg 1 and it is the maker's remaining open leg that fails maintenance.
+#[test]
+fn maker_leg_below_maintenance_is_attributed_to_the_maker() {
+    let mut s = state_with(Market::conservative(0));
+    let (a, b) = (owner_of(1), owner_of(2));
+    fund(&mut s, a, 1, 300_000 * QUOTE_SCALE, [0x11u8; 32], 0);
+    fund(&mut s, b, 2, 20_000 * QUOTE_SCALE, [0x22u8; 32], 1);
+    s.apply_op(&fill(a, b, Side::Buy, 2 * SIZE_SCALE, 100_000, 1_000))
+        .expect("open: A long 2 BTC, B (maker) short 2 BTC on $20k");
+    // Strip the MAKER to a sliver, so the partial close leaves B's remaining 1.9 BTC
+    // short leg far below its maintenance requirement.
+    s.positions.get_mut(&(b, 0)).unwrap().collateral = 100 * QUOTE_SCALE;
+    let before = s.state_root();
+    let err = s
+        .apply_op(&fill(a, b, Side::Sell, SIZE_SCALE / 10, 99_000, 2_000))
+        .expect_err("the maker's open leg below maintenance must reject");
+    assert_eq!(err, EngineError::FillWouldBankrupt(FillLeg::Maker));
     assert_eq!(s.state_root(), before);
 }
