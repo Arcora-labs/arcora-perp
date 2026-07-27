@@ -21,7 +21,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use k256::ecdsa::{RecoveryId, Signature, SigningKey, VerifyingKey};
 use sha3::{Digest as _, Keccak256 as RawKeccak};
 
-use matcher::{MatchingEngine, SubmitStatus};
+use matcher::{Match, MatchingEngine, SubmitStatus};
 use perp_core::engine::BatchOp;
 use perp_core::hash::{word_u64, Digest, Domain, Hasher, Keccak256};
 use perp_core::market::{Market, MarketId};
@@ -280,6 +280,146 @@ fn offending_leg(e: &EngineError) -> Option<FillLeg> {
         EngineError::FillPriceOutOfBand => Some(FillLeg::Maker),
         _ => None,
     }
+}
+
+/// The outcome of settling one batch's matched fills ([`settle_fills`]).
+struct FillSettlement {
+    /// The batch's replayable fill op-log, in application order. Only ops whose
+    /// application SUCCEEDED are logged, so replaying it via `apply_batch`
+    /// reproduces the resulting state root (Slice 3a).
+    ops: Vec<BatchOp>,
+    /// Order hashes recorded against a failed fill, with the reason. An
+    /// ATTRIBUTABLE failure records only the offending leg (see [`settle_fills`]).
+    rejected: Vec<(Digest, RejectReason)>,
+    /// Order hashes with at least one settled fill, deduplicated, in fill order.
+    settled_order_hashes: Vec<Digest>,
+    /// SEC-022 §6: order hashes whose fill failed for an ATTRIBUTABLE reason
+    /// (band / bankruptcy) and which Task 7 therefore drops before rematching.
+    #[allow(dead_code)] // populated for Task 7's dry-run + rematch; unconsumed until then
+    offenders: Vec<Digest>,
+}
+
+/// Whether a signed `delta` would INCREASE `owner`'s absolute exposure in
+/// `market_id` (open from flat, grow in the same direction, or flip) — used to
+/// enforce reduce_only at settlement (audit DP-009).
+fn exposure_increases_in(
+    state: &DefaultState,
+    owner: &PubKey,
+    market_id: MarketId,
+    delta: i128,
+) -> bool {
+    match state.position(owner, market_id) {
+        None => true,
+        Some(p) => p.increases_exposure(delta),
+    }
+}
+
+/// Settle matched `fills` through the engine against `state`, attaching the
+/// per-market oracle. Extracted from `seal_batch` so SEC-022 §6's probe dry-run
+/// and the committed pass run IDENTICAL code by construction (Task 7).
+///
+/// The pre-trade gate covers the *taker* against current state, but a *resting
+/// maker* admitted in an earlier batch can have drifted below initial margin
+/// since (funding / a prior liquidation), so a fill can still fail to settle.
+/// Failure attribution (SEC-022 §6): an ATTRIBUTABLE failure ([`offending_leg`]
+/// returns `Some`) records ONLY the offending leg in `rejected` (and
+/// `offenders`), so the innocent counterparty stays in `ordered` — unsettled,
+/// its resting liquidity consumed — pending Task 7's dry-run and rematch. A
+/// NON-attributable failure still records BOTH legs, and `seal_batch` still
+/// moves an order all of whose recorded fills failed into the manifest's
+/// `rejected`.
+fn settle_fills(
+    state: &mut DefaultState,
+    oracles: &BTreeMap<MarketId, OracleTranscript>,
+    fills: &[Match],
+    now_ms: u64,
+) -> FillSettlement {
+    let mut out = FillSettlement {
+        ops: Vec::new(),
+        rejected: Vec::new(),
+        settled_order_hashes: Vec::new(),
+        offenders: Vec::new(),
+    };
+    for m in fills {
+        let Some(oracle) = oracles.get(&m.market_id).copied() else {
+            for oh in [m.taker_order_hash, m.maker_order_hash] {
+                out.rejected.push((oh, RejectReason::OracleUnavailable));
+            }
+            continue;
+        };
+        // audit DP-009: a reduce_only order may only SHRINK its owner's position. Drop
+        // the fill if it would increase a reduce_only party's absolute exposure. (Matching
+        // is trusted in Phase 0; op_fill's margin checks still guard fund safety.)
+        // The pre-trade gate already rejects a reduce_only order that would open against
+        // the pre-batch position; this is the live backstop for an intra-batch change.
+        let taker_delta = if m.taker_side == Side::Buy {
+            m.size
+        } else {
+            -m.size
+        };
+        let taker_opens =
+            m.taker_reduce_only && exposure_increases_in(state, &m.taker, m.market_id, taker_delta);
+        let maker_opens = m.maker_reduce_only
+            && exposure_increases_in(state, &m.maker, m.market_id, -taker_delta);
+        if taker_opens || maker_opens {
+            // attribute the violation ONLY to the offending reduce_only order(s), never
+            // to an innocent counterparty (adversarial-review follow-up).
+            if taker_opens {
+                out.rejected
+                    .push((m.taker_order_hash, RejectReason::ReduceOnlyViolation));
+            }
+            if maker_opens {
+                out.rejected
+                    .push((m.maker_order_hash, RejectReason::ReduceOnlyViolation));
+            }
+            continue;
+        }
+        let op = BatchOp::Fill {
+            taker: m.taker,
+            maker: m.maker,
+            market_id: m.market_id,
+            taker_side: m.taker_side,
+            size: m.size,
+            price: m.price,
+            oracle,
+            now_ms,
+        };
+        match state.apply_op(&op) {
+            // A Fill never yields a withdrawal output, so discard it.
+            Ok(_) => {
+                for oh in [m.taker_order_hash, m.maker_order_hash] {
+                    if !out.settled_order_hashes.contains(&oh) {
+                        out.settled_order_hashes.push(oh);
+                    }
+                }
+                // log the fill only after it settled — a failed fill (Err arm) is
+                // dropped, so it never enters the replayable op-log.
+                out.ops.push(op);
+            }
+            Err(e) => {
+                let reason = settlement_reason(&e);
+                // Attribute the rejection to the offending leg ONLY, never to an
+                // innocent counterparty — the same rule the reduce_only arm above
+                // already follows.
+                match offending_leg(&e) {
+                    Some(FillLeg::Taker) => {
+                        out.rejected.push((m.taker_order_hash, reason));
+                        out.offenders.push(m.taker_order_hash);
+                    }
+                    Some(FillLeg::Maker) => {
+                        out.rejected.push((m.maker_order_hash, reason));
+                        out.offenders.push(m.maker_order_hash);
+                    }
+                    None => {
+                        for oh in [m.taker_order_hash, m.maker_order_hash] {
+                            out.rejected.push((oh, reason));
+                        }
+                    }
+                }
+            }
+        }
+    }
+    out
 }
 
 /// serde default for the skipped `enclave` field: a placeholder identity a
@@ -685,14 +825,11 @@ impl Sequencer {
         }
     }
 
-    /// Whether a signed `delta` would INCREASE `owner`'s absolute exposure in `market`
-    /// (open from flat, grow in the same direction, or flip) — used to enforce reduce_only
-    /// at settlement (audit DP-009).
+    /// Thin delegate to [`exposure_increases_in`] (the one definition, shared
+    /// with [`settle_fills`]).
+    #[allow(dead_code)] // no caller since settle_fills was extracted; Task 7's pre-match screen uses it
     fn exposure_increases(&self, owner: &PubKey, market: MarketId, delta: i128) -> bool {
-        match self.state.position(owner, market) {
-            None => true,
-            Some(p) => p.increases_exposure(delta),
-        }
+        exposure_increases_in(&self.state, owner, market, delta)
     }
 
     /// Best book mid as the perp mark price; falls back to the oracle index if a
@@ -844,96 +981,28 @@ impl Sequencer {
             }
         }
 
-        // 3. settle matched fills through the engine, attaching the oracle. The
-        //    pre-trade gate covers the *taker* against current state, but a
-        //    *resting maker* admitted in an earlier batch can have drifted below
-        //    initial margin since (funding / a prior liquidation), so a fill can
-        //    still fail to settle. We record BOTH legs of any failed fill and,
-        //    below, keep the manifest honest: an order whose fills ALL failed is
-        //    moved out of `ordered` into `rejected` (it did not settle).
-        let mut settled_order_hashes = Vec::new();
-        let mut settlement_rejected: Vec<(Digest, RejectReason)> = Vec::new();
-        // The batch's replayable op-log: `[applied fills] ++ [maintenance ops]`, in
-        // application order. Only ops whose application SUCCEEDED are logged, so
-        // replaying it via `apply_batch` reproduces the sealed `new_state_root` (Slice 3a).
-        let mut ops: Vec<BatchOp> = Vec::new();
-        for m in &stream.fills {
-            let Some(oracle) = self.oracles.get(&m.market_id).copied() else {
-                for oh in [m.taker_order_hash, m.maker_order_hash] {
-                    settlement_rejected.push((oh, RejectReason::OracleUnavailable));
-                }
-                continue;
-            };
-            // audit DP-009: a reduce_only order may only SHRINK its owner's position. Drop
-            // the fill if it would increase a reduce_only party's absolute exposure. (Matching
-            // is trusted in Phase 0; op_fill's margin checks still guard fund safety.)
-            // The pre-trade gate already rejects a reduce_only order that would open against
-            // the pre-batch position; this is the live backstop for an intra-batch change.
-            let taker_delta = if m.taker_side == Side::Buy {
-                m.size
-            } else {
-                -m.size
-            };
-            let taker_opens =
-                m.taker_reduce_only && self.exposure_increases(&m.taker, m.market_id, taker_delta);
-            let maker_opens =
-                m.maker_reduce_only && self.exposure_increases(&m.maker, m.market_id, -taker_delta);
-            if taker_opens || maker_opens {
-                // attribute the violation ONLY to the offending reduce_only order(s), never
-                // to an innocent counterparty (adversarial-review follow-up).
-                if taker_opens {
-                    settlement_rejected
-                        .push((m.taker_order_hash, RejectReason::ReduceOnlyViolation));
-                }
-                if maker_opens {
-                    settlement_rejected
-                        .push((m.maker_order_hash, RejectReason::ReduceOnlyViolation));
-                }
-                continue;
-            }
-            let op = BatchOp::Fill {
-                taker: m.taker,
-                maker: m.maker,
-                market_id: m.market_id,
-                taker_side: m.taker_side,
-                size: m.size,
-                price: m.price,
-                oracle,
-                now_ms,
-            };
-            match self.state.apply_op(&op) {
-                // A Fill never yields a withdrawal output, so discard it.
-                Ok(_) => {
-                    for oh in [m.taker_order_hash, m.maker_order_hash] {
-                        self.finality.insert(oh, Finality::Matched);
-                        if !settled_order_hashes.contains(&oh) {
-                            settled_order_hashes.push(oh);
-                        }
-                    }
-                    // log the fill only after it settled — a failed fill (Err arm) is
-                    // dropped, so it never enters the replayable op-log.
-                    ops.push(op);
-                }
-                Err(e) => {
-                    let reason = settlement_reason(&e);
-                    // Attribute the rejection to the offending leg ONLY, never to an
-                    // innocent counterparty — the same rule the reduce_only arm above
-                    // already follows.
-                    match offending_leg(&e) {
-                        Some(FillLeg::Taker) => {
-                            settlement_rejected.push((m.taker_order_hash, reason))
-                        }
-                        Some(FillLeg::Maker) => {
-                            settlement_rejected.push((m.maker_order_hash, reason))
-                        }
-                        None => {
-                            for oh in [m.taker_order_hash, m.maker_order_hash] {
-                                settlement_rejected.push((oh, reason));
-                            }
-                        }
-                    }
-                }
-            }
+        // 3. settle matched fills through the engine, attaching the oracle — see
+        //    [`settle_fills`] for the drifted-resting-maker rationale and the
+        //    SEC-022 §6 failure-attribution rule: an ATTRIBUTABLE failure records
+        //    only the offending leg, so the innocent counterparty stays in
+        //    `ordered` — unsettled, its liquidity consumed — pending Task 7's
+        //    dry-run and rematch; a NON-attributable failure records both legs,
+        //    and an order all of whose recorded fills failed is moved out of
+        //    `ordered` into `rejected` below (it did not settle).
+        //    `ops` becomes the batch's replayable op-log: `[applied fills] ++
+        //    [maintenance ops]`, in application order (Slice 3a).
+        let FillSettlement {
+            mut ops,
+            rejected: settlement_rejected,
+            settled_order_hashes,
+            offenders: _,
+        } = settle_fills(&mut self.state, &self.oracles, &stream.fills, now_ms);
+        // Advance finality for every hash with a settled fill. Lives at the call
+        // site (not in `settle_fills`) so a Task-7 probe run cannot touch the real
+        // finality map; inserting once per deduped hash is identical to the old
+        // per-fill insert of the same value.
+        for oh in &settled_order_hashes {
+            self.finality.insert(*oh, Finality::Matched);
         }
 
         // 3b. maintenance: accrue funding + liquidate underwater positions (§5,§8).
@@ -950,10 +1019,14 @@ impl Sequencer {
         }
 
         // 4. build the manifest, keeping `ordered`/`rejected` DISJOINT and HONEST.
-        //    `rejected` = pre-trade rejects + matcher rejects + orders whose fills
-        //    ALL failed settlement. An order with at least one settled fill (a
-        //    partial multi-counterparty fill) stays in `ordered` — it really did
-        //    trade. Orders moved here are removed from `ordered` below.
+        //    `rejected` = pre-trade rejects + matcher rejects + orders RECORDED
+        //    against a failed fill (per the attribution rule in `settle_fills`)
+        //    none of whose fills settled. An order with at least one settled fill
+        //    (a partial multi-counterparty fill) stays in `ordered` — it really
+        //    did trade. So does the INNOCENT counterparty of an attributable
+        //    failure (SEC-022 §6): unsettled, its liquidity consumed, pending
+        //    Task 7's dry-run and rematch. Orders moved here are removed from
+        //    `ordered` below.
         let settled_set: std::collections::BTreeSet<Digest> =
             settled_order_hashes.iter().copied().collect();
         let mut failed_unsettled: Vec<(Digest, RejectReason)> = Vec::new();
