@@ -202,6 +202,9 @@ impl<H: Hasher> State<H> {
             pk[..20].copy_from_slice(&m.oracle_pubkey);
             words.push(pk);
             words.push(word_i128(m.max_mark_deviation_ratio));
+            // SEC-022: the fill band, bound like every other risk parameter so a prover
+            // cannot widen the price constraint under an unchanged state root.
+            words.push(word_i128(m.max_fill_deviation_ratio));
         }
         H::hash_words(Domain::StateRoot, &words)
     }
@@ -471,6 +474,25 @@ mod tests {
             a.markets_digest(),
             b.markets_digest(),
             "max_mark_deviation_ratio must be bound into markets_digest",
+        );
+    }
+
+    // SEC-022: the per-market fill band bounds the price a fill may execute at relative
+    // to the attested oracle mark. It MUST be bound into `markets_digest` — otherwise a
+    // prover could widen (or null) the band under an unchanged state root, which is the
+    // whole constraint. Two states differing ONLY in the fill band must not share a digest.
+    #[test]
+    fn market_binds_max_fill_deviation_ratio_in_digest() {
+        let mut a: State<Keccak256> = State::new(16);
+        let mut b: State<Keccak256> = State::new(16);
+        a.add_market(Market::conservative(1)); // max_fill_deviation_ratio = 2%
+        let mut mb = Market::conservative(1);
+        mb.max_fill_deviation_ratio = 40_000; // same market, wider (4%) fill band
+        b.add_market(mb);
+        assert_ne!(
+            a.markets_digest(),
+            b.markets_digest(),
+            "max_fill_deviation_ratio must be bound into markets_digest",
         );
     }
 }

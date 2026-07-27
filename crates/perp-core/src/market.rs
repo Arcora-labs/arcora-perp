@@ -55,6 +55,13 @@ pub struct Market {
     /// as a [`RATE_SCALE`]-scaled fraction (the mark band for funding). Sibling of the
     /// `max_oracle_*` bounds; consumed by the funding path (Task 4).
     pub max_mark_deviation_ratio: i128,
+    /// SEC-022: max |fill price − attested oracle mark| / mark tolerated on a settlement
+    /// fill, as a [`RATE_SCALE`]-scaled fraction. Distinct from `max_mark_deviation_ratio`,
+    /// which bounds the *funding* mark: this one bounds the price two counterparties
+    /// actually trade at. It must be tight enough that no in-band fill can take a
+    /// maintenance-compliant position below its maintenance requirement — see the joint
+    /// inequality in [`Self::is_coherent`].
+    pub max_fill_deviation_ratio: i128,
 }
 
 impl Market {
@@ -74,6 +81,7 @@ impl Market {
             treasury_fee_ratio: 0,
             oracle_pubkey: [0u8; 20], // fail-closed: unset key refuses all prices
             max_mark_deviation_ratio: RATE_SCALE / 20, // 5%
+            max_fill_deviation_ratio: RATE_SCALE / 50, // 2%
         }
     }
 
@@ -136,6 +144,47 @@ impl Market {
             // must be strictly positive — a zero band would reject ALL marks (only
             // mark == index passes) and a negative one is nonsense.
             && self.max_mark_deviation_ratio > 0
+            // SEC-022: the fill band, like the sibling oracle bounds, must be strictly
+            // positive — a zero band admits only a fill exactly at the mark.
+            && self.max_fill_deviation_ratio > 0
+            && Self::fill_band_fits_maintenance(
+                self.max_fill_deviation_ratio,
+                self.taker_fee_ratio,
+                self.maintenance_margin_ratio,
+            )
+    }
+
+    /// SEC-022 §2 — the joint band / fee / maintenance inequality.
+    ///
+    /// The worst pure reduction is a taker closing at the far edge of the band, which
+    /// consumes `d + f·(1 + d)` of the maintenance buffer. Bounding `d < maintenance` and
+    /// `f < maintenance` SEPARATELY is not sufficient: `d = 2%` with `f = 4.9999%` passes
+    /// both and together consumes ~7.10%. Scaled by `RATE_SCALE`, the sufficient joint
+    /// condition is
+    ///
+    /// ```text
+    /// d · RATE_SCALE  +  f · (RATE_SCALE + d)  <  maintenance · RATE_SCALE
+    /// ```
+    ///
+    /// Governance sets these and they are otherwise arbitrary `i128`, so every step is
+    /// `checked_*` and ANY overflow is incoherent (fail-closed) rather than a wrap.
+    fn fill_band_fits_maintenance(d: i128, f: i128, maintenance: i128) -> bool {
+        let Some(band_term) = d.checked_mul(RATE_SCALE) else {
+            return false;
+        };
+        let Some(one_plus_d) = RATE_SCALE.checked_add(d) else {
+            return false;
+        };
+        let Some(fee_term) = f.checked_mul(one_plus_d) else {
+            return false;
+        };
+        let Some(lhs) = band_term.checked_add(fee_term) else {
+            return false;
+        };
+        let Some(rhs) = maintenance.checked_mul(RATE_SCALE) else {
+            return false;
+        };
+        lhs < rhs
     }
 }
 
@@ -209,5 +258,61 @@ mod tests {
         assert!(!m.is_coherent(), "negative mark band is incoherent");
         // the conservative default (5%) stays coherent
         assert!(Market::conservative(0).is_coherent());
+    }
+
+    #[test]
+    fn fill_deviation_ratio_must_be_positive() {
+        // SEC-022: the fill band gates the price two counterparties actually trade at.
+        // A ZERO band would reject every fill except one exactly at the mark; a NEGATIVE
+        // band is nonsense. Reject both at setup, like the sibling oracle `*_ratio` bounds.
+        let mut m = Market::conservative(0);
+        m.max_fill_deviation_ratio = 0;
+        assert!(!m.is_coherent(), "zero fill band is incoherent");
+        m.max_fill_deviation_ratio = -1;
+        assert!(!m.is_coherent(), "negative fill band is incoherent");
+        assert!(
+            Market::conservative(0).is_coherent(),
+            "the 2% default is coherent"
+        );
+    }
+
+    #[test]
+    fn fill_band_and_taker_fee_are_jointly_bounded_by_maintenance() {
+        // SEC-022 §2: enforcing `d < maintenance` and `f < maintenance` SEPARATELY is the
+        // trap. d = 2% and f = 4.9999% each pass individually against a 5% maintenance
+        // ratio, while together they consume ~7.10% of the maintenance buffer — enough to
+        // deterministically bankrupt a maintenance-compliant position on a pure reduction.
+        let mut m = Market::conservative(0);
+        m.max_fill_deviation_ratio = RATE_SCALE / 50; // 2%
+        m.taker_fee_ratio = 49_999; // 4.9999%, individually < 5% maintenance
+        m.maker_rebate_ratio = 0;
+        m.treasury_fee_ratio = 0;
+        assert!(
+            m.taker_fee_ratio < m.maintenance_margin_ratio,
+            "precondition: the fee passes the OLD standalone bound",
+        );
+        assert!(
+            m.max_fill_deviation_ratio < m.maintenance_margin_ratio,
+            "precondition: the band passes a standalone bound too",
+        );
+        assert!(
+            !m.is_coherent(),
+            "jointly they exceed the maintenance buffer and must be rejected",
+        );
+    }
+
+    #[test]
+    fn live_fee_schedule_is_jointly_coherent() {
+        // The live schedule: 5% maintenance, 10bp taker, 4bp maker, 2% band.
+        // 2% + 0.1%·(1 + 2%) = 2.102% < 5%. Sound with a wide margin.
+        let mut m = Market::with_fees(0, 10, 4);
+        assert_eq!(m.max_fill_deviation_ratio, RATE_SCALE / 50);
+        assert!(m.is_coherent(), "the live schedule must stay coherent");
+        // and the boundary is real: a band at maintenance itself is not
+        m.max_fill_deviation_ratio = m.maintenance_margin_ratio;
+        assert!(
+            !m.is_coherent(),
+            "a band at the maintenance ratio is incoherent"
+        );
     }
 }
