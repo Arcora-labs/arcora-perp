@@ -1,0 +1,571 @@
+//! SEC-022 — fill-price band, per-fill solvency postcondition, and `op_fill` atomicity.
+//!
+//! Spec: `docs/superpowers/specs/2026-07-26-sec022-fill-price-band-and-bad-debt-design.md`
+
+use k256::ecdsa::SigningKey;
+use perp_core::engine::BatchOp;
+use perp_core::fixed::{PRICE_SCALE, QUOTE_SCALE, SIZE_SCALE};
+use perp_core::hash::Keccak256;
+use perp_core::note::owner_from_spend_key;
+use perp_core::oracle::{oracle_digest, OracleSig, OracleTranscript};
+use perp_core::order::Side;
+use perp_core::{DefaultState, EngineError, FillLeg, Market, Note};
+
+const TREE_DEPTH: u8 = 20;
+
+fn owner_of(sk: u8) -> [u8; 32] {
+    owner_from_spend_key::<Keccak256>(&[sk; 32])
+}
+
+fn oracle_key() -> SigningKey {
+    SigningKey::from_bytes((&[7u8; 32]).into()).unwrap()
+}
+
+fn oracle_addr() -> [u8; 20] {
+    let d = oracle_digest(0, 1, 1, 0, 1);
+    OracleSig::sign(&oracle_key(), &d).recover(&d).unwrap()
+}
+
+/// A transcript signed by the fixture publisher, at `price_usd`, for market 0.
+fn oracle(price_usd: i128, now: u64) -> OracleTranscript {
+    let price = price_usd * PRICE_SCALE;
+    let confidence = 10 * PRICE_SCALE; // $10, well inside 1%
+    let d = oracle_digest(0, price, now, confidence, price);
+    OracleTranscript {
+        price,
+        publish_time_ms: now,
+        confidence,
+        backup_twap: price,
+        signature: OracleSig::sign(&oracle_key(), &d),
+    }
+}
+
+fn deposit_commit(owner: [u8; 32], amount: i128, blinding: [u8; 32]) -> [u8; 32] {
+    Note::new(owner, 0, amount, blinding).commitment::<Keccak256>()
+}
+
+/// A state with market 0 built from `m`, its oracle pubkey set to the fixture publisher.
+fn state_with(m: Market) -> DefaultState {
+    let mut m = m;
+    m.oracle_pubkey = oracle_addr();
+    let mut s = DefaultState::new(TREE_DEPTH);
+    s.add_market(m);
+    s
+}
+
+/// Deposit `amount` for `owner` and bind it all as position collateral on market 0.
+fn fund(s: &mut DefaultState, owner: [u8; 32], sk: u8, amount: i128, blinding: [u8; 32], id: u64) {
+    let cm = deposit_commit(owner, amount, blinding);
+    s.apply_batch(&[
+        BatchOp::Deposit {
+            owner,
+            asset_id: 0,
+            amount,
+            blinding,
+            from: [0xA1u8; 20],
+            deposit_id: id,
+            deposit_blind: [0xDBu8; 32],
+        },
+        BatchOp::FundPosition {
+            owner,
+            market_id: 0,
+            note_commitment: cm,
+            spend_key: [sk; 32],
+        },
+    ])
+    .expect("deposit + fund");
+}
+
+/// Two funded accounts, $20k each, on a market built from `m`.
+fn two_funded(m: Market) -> (DefaultState, [u8; 32], [u8; 32]) {
+    let mut s = state_with(m);
+    let (a, b) = (owner_of(1), owner_of(2));
+    fund(&mut s, a, 1, 20_000 * QUOTE_SCALE, [0x11u8; 32], 0);
+    fund(&mut s, b, 2, 20_000 * QUOTE_SCALE, [0x22u8; 32], 1);
+    (s, a, b)
+}
+
+fn fill(a: [u8; 32], b: [u8; 32], side: Side, size: i128, price_usd: i128, now: u64) -> BatchOp {
+    BatchOp::Fill {
+        taker: a,
+        maker: b,
+        market_id: 0,
+        taker_side: side,
+        size,
+        price: price_usd * PRICE_SCALE,
+        oracle: oracle(price_usd, now),
+        now_ms: now,
+    }
+}
+
+// ---------------------------------------------------------------- Task 2: atomicity
+
+/// SEC-022 §4: `op_fill` committed `vault_pool` and both positions BEFORE the fallible
+/// `treasury` / `insurance_fund` additions. A late overflow returned `Err` with state
+/// already mutated — and the sequencer's rejection arm then omits the op entirely
+/// (`sequencer/src/lib.rs:901-906`), leaving live host state diverged from what was
+/// proven. Every fallible path must leave the state byte-for-byte unchanged.
+///
+/// `state_root()` binds the whole state — the note tree, nullifiers, notes, positions,
+/// funding, market params, every balance counter, the mode and the counters — so root
+/// equality IS whole-state equality, which is what the spec's test table demands.
+#[test]
+fn treasury_overflow_leaves_state_untouched() {
+    // `with_fees` routes 0 bps to the treasury (`with_fees_treasury(.., 0)`), which
+    // would make the treasury `checked_add` unreachable (MAX + 0 is fine); a nonzero
+    // treasury cut (2 <= taker − maker = 6 bps, per `is_coherent`) forces it.
+    let (mut s, a, b) = two_funded(Market::with_fees_treasury(0, 10, 4, 2));
+    s.treasury = i128::MAX;
+    let before = s.state_root();
+    let err = s
+        .apply_op(&fill(a, b, Side::Buy, SIZE_SCALE, 100_000, 1_000))
+        .expect_err("treasury overflow must reject");
+    assert_eq!(err, EngineError::Overflow);
+    assert_eq!(
+        s.state_root(),
+        before,
+        "state must be byte-for-byte unchanged"
+    );
+}
+
+#[test]
+fn insurance_overflow_leaves_state_untouched() {
+    let (mut s, a, b) = two_funded(Market::with_fees(0, 10, 4));
+    s.insurance_fund = i128::MAX;
+    let before = s.state_root();
+    let err = s
+        .apply_op(&fill(a, b, Side::Buy, SIZE_SCALE, 100_000, 1_000))
+        .expect_err("insurance overflow must reject");
+    assert_eq!(err, EngineError::Overflow);
+    assert_eq!(
+        s.state_root(),
+        before,
+        "state must be byte-for-byte unchanged"
+    );
+}
+
+/// Regression pin: the `vault_pool` add is already the first fallible step of the
+/// commit block, before any mutation — this test passes both before and after the
+/// restructure and pins that ordering.
+#[test]
+fn vault_pool_overflow_leaves_state_untouched() {
+    // Open A↔B, then have A close against a THIRD account at a different price. In a
+    // two-party close both legs realize exactly opposite PnL and `pool_delta` is 0
+    // (the pool never moves); against a fresh counterparty only A's leg realizes, so
+    // `pool_delta = −realized ≠ 0` — with `vault_pool` at the bound, that overflows.
+    let (mut s, a, b) = two_funded(Market::with_fees(0, 10, 4));
+    let c = owner_of(3);
+    fund(&mut s, c, 3, 20_000 * QUOTE_SCALE, [0x33u8; 32], 2);
+    s.apply_op(&fill(a, b, Side::Buy, SIZE_SCALE, 100_000, 1_000))
+        .expect("open");
+    s.vault_pool = i128::MIN;
+    let before = s.state_root();
+    let err = s
+        .apply_op(&fill(a, c, Side::Sell, SIZE_SCALE, 101_000, 2_000))
+        .expect_err("vault pool overflow must reject");
+    assert_eq!(err, EngineError::Overflow);
+    assert_eq!(
+        s.state_root(),
+        before,
+        "state must be byte-for-byte unchanged"
+    );
+}
+
+// ------------------------------------------------------------------- Task 3: the band
+
+/// The headline attack: two accounts, one user, crossing far off-market. No credential
+/// compromise, no operator involvement — the ordinary order API is enough.
+#[test]
+fn off_market_cross_is_rejected_with_state_unchanged() {
+    let (mut s, a, b) = two_funded(Market::conservative(0));
+    let before = s.state_root();
+    // Oracle says $100k; they trade at $150k — 50% through the mark.
+    let op = BatchOp::Fill {
+        taker: a,
+        maker: b,
+        market_id: 0,
+        taker_side: Side::Buy,
+        size: SIZE_SCALE,
+        price: 150_000 * PRICE_SCALE,
+        oracle: oracle(100_000, 1_000),
+        now_ms: 1_000,
+    };
+    let err = s.apply_op(&op).expect_err("off-market fill must reject");
+    assert_eq!(err, EngineError::FillPriceOutOfBand);
+    assert_eq!(s.state_root(), before, "whole state and root unchanged");
+    assert!(s.conservation_holds());
+}
+
+#[test]
+fn fill_exactly_at_the_band_edge_is_accepted() {
+    let (mut s, a, b) = two_funded(Market::conservative(0));
+    // 2% band around a $100k mark → $102,000 is exactly the edge.
+    let op = BatchOp::Fill {
+        taker: a,
+        maker: b,
+        market_id: 0,
+        taker_side: Side::Buy,
+        size: SIZE_SCALE,
+        price: 102_000 * PRICE_SCALE,
+        oracle: oracle(100_000, 1_000),
+        now_ms: 1_000,
+    };
+    s.apply_op(&op).expect("the band edge is inclusive");
+    assert!(s.conservation_holds());
+}
+
+#[test]
+fn fill_just_outside_the_band_is_rejected_in_both_directions() {
+    for price in [
+        102_000 * PRICE_SCALE + 1, // one unit above the upper edge
+        98_000 * PRICE_SCALE - 1,  // one unit below the lower edge
+    ] {
+        let (mut s, a, b) = two_funded(Market::conservative(0));
+        let before = s.state_root();
+        let op = BatchOp::Fill {
+            taker: a,
+            maker: b,
+            market_id: 0,
+            taker_side: Side::Buy,
+            size: SIZE_SCALE,
+            price,
+            oracle: oracle(100_000, 1_000),
+            now_ms: 1_000,
+        };
+        assert_eq!(
+            s.apply_op(&op).expect_err("out of band"),
+            EngineError::FillPriceOutOfBand,
+        );
+        assert_eq!(s.state_root(), before, "band is symmetric and fail-closed");
+    }
+}
+
+/// The band's right-hand side multiplies the ATTESTED mark, never the untrusted `price`.
+/// Anchoring to the value under attack would let a prover widen its own band.
+#[test]
+fn inflated_price_cannot_widen_its_own_band() {
+    let (mut s, a, b) = two_funded(Market::conservative(0));
+    // A price 100x the mark is 100x out of band — it must not scale the allowance.
+    let op = BatchOp::Fill {
+        taker: a,
+        maker: b,
+        market_id: 0,
+        taker_side: Side::Buy,
+        size: SIZE_SCALE / 1_000,
+        price: 10_000_000 * PRICE_SCALE,
+        oracle: oracle(100_000, 1_000),
+        now_ms: 1_000,
+    };
+    assert_eq!(
+        s.apply_op(&op).expect_err("inflated price"),
+        EngineError::FillPriceOutOfBand,
+    );
+}
+
+/// An invalid publisher signature must be rejected by `validate()` BEFORE the band, so no
+/// band check is ever reachable without a valid signature.
+#[test]
+fn unsigned_oracle_is_rejected_before_the_band() {
+    let mut m = Market::conservative(0);
+    m.oracle_pubkey = [0u8; 20]; // fail-closed: unset key refuses every price
+    let mut s = DefaultState::new(TREE_DEPTH);
+    s.add_market(m);
+    let (a, b) = (owner_of(1), owner_of(2));
+    fund(&mut s, a, 1, 20_000 * QUOTE_SCALE, [0x11u8; 32], 0);
+    fund(&mut s, b, 2, 20_000 * QUOTE_SCALE, [0x22u8; 32], 1);
+    // The fill must be OUT of band relative to the (unverifiable) transcript: price
+    // $150k against a $100k transcript. With an in-band fill this test could not
+    // detect a band-before-signature reordering — both orderings would return
+    // `Oracle(_)`. Off-band, a wrong ordering returns `FillPriceOutOfBand` instead,
+    // so the assert genuinely pins that the signature gate fires first.
+    let op = BatchOp::Fill {
+        taker: a,
+        maker: b,
+        market_id: 0,
+        taker_side: Side::Buy,
+        size: SIZE_SCALE,
+        price: 150_000 * PRICE_SCALE,
+        oracle: oracle(100_000, 1_000),
+        now_ms: 1_000,
+    };
+    let err = s.apply_op(&op).expect_err("unsigned oracle");
+    assert!(
+        matches!(err, EngineError::Oracle(_)),
+        "signature gate must fire before the band, got {err:?}",
+    );
+}
+
+/// Overflow anywhere in the band arithmetic rejects — it never wraps and never panics
+/// (this code runs in the SP1 guest).
+#[test]
+fn band_arithmetic_overflow_rejects_without_panicking() {
+    let mut s = state_with(Market::conservative(0));
+    // Set the band AFTER add_market: `add_market` hard-asserts is_coherent(), and an
+    // i128::MAX band is (correctly) incoherent — Task 1's joint band/fee/maintenance
+    // inequality overflows on it and fails closed — so building the market with it
+    // would panic in setup instead of exercising op_fill's checked band arithmetic.
+    s.markets.get_mut(&0).unwrap().max_fill_deviation_ratio = i128::MAX;
+    let (a, b) = (owner_of(1), owner_of(2));
+    fund(&mut s, a, 1, 20_000 * QUOTE_SCALE, [0x11u8; 32], 0);
+    fund(&mut s, b, 2, 20_000 * QUOTE_SCALE, [0x22u8; 32], 1);
+    let before = s.state_root();
+    assert_eq!(
+        s.apply_op(&fill(a, b, Side::Buy, SIZE_SCALE, 101_000, 1_000))
+            .expect_err("overflowing band"),
+        EngineError::FillPriceOutOfBand,
+    );
+    assert_eq!(s.state_root(), before);
+}
+
+// --------------------------------------------------- Task 4: the solvency postcondition
+
+/// A fill must not succeed leaving a CLOSED leg with negative collateral: nothing revisits
+/// a flat position. Both `op_liquidate` and the sequencer's maintenance pass require
+/// `is_open()` (`engine.rs:667`, `sequencer/src/lib.rs:744`), and `auto_deleverage` skips
+/// `!pos.is_open()` — so the debt is parked forever while the winner withdraws normally.
+#[test]
+fn closed_leg_with_negative_collateral_is_rejected() {
+    let mut s = state_with(Market::conservative(0));
+    let (a, b) = (owner_of(1), owner_of(2));
+    fund(&mut s, a, 1, 20_000 * QUOTE_SCALE, [0x11u8; 32], 0);
+    fund(&mut s, b, 2, 200_000 * QUOTE_SCALE, [0x22u8; 32], 1);
+    s.apply_op(&fill(a, b, Side::Buy, 2 * SIZE_SCALE, 100_000, 1_000))
+        .expect("open 2 BTC on $20k (10x)");
+    // Strip A's collateral so any realized loss closes it negative.
+    s.positions.get_mut(&(a, 0)).unwrap().collateral = 0;
+    let before = s.state_root();
+    let err = s
+        .apply_op(&BatchOp::Fill {
+            taker: a,
+            maker: b,
+            market_id: 0,
+            taker_side: Side::Sell,
+            size: 2 * SIZE_SCALE,
+            price: 98_000 * PRICE_SCALE,
+            oracle: oracle(100_000, 2_000),
+            now_ms: 2_000,
+        })
+        .expect_err("closing into debt must reject");
+    assert_eq!(err, EngineError::FillWouldBankrupt(FillLeg::Taker));
+    assert_eq!(s.state_root(), before, "whole state and root unchanged");
+}
+
+/// **The fragmentation regression.** The rule is CONDITIONAL, and that is load-bearing.
+/// A flat `collateral >= 0` on every leg is a denial of service: `apply_fill` settles the
+/// position's ENTIRE accrued funding while realizing PnL only on the closed fragment, so
+/// an attacker posting many small resting orders makes every fragment of a solvent
+/// aggregate close fail, each re-settling the full funding bill against unchanged state —
+/// while the victim stays non-liquidatable. Requiring maintenance-compliance on a
+/// still-OPEN leg sidesteps it: a partial close of a healthy position leaves it healthy.
+#[test]
+fn healthy_position_can_close_in_small_fragments() {
+    let mut s = state_with(Market::conservative(0));
+    let (a, b) = (owner_of(1), owner_of(2));
+    fund(&mut s, a, 1, 30_000 * QUOTE_SCALE, [0x11u8; 32], 0);
+    fund(&mut s, b, 2, 300_000 * QUOTE_SCALE, [0x22u8; 32], 1);
+    s.apply_op(&fill(a, b, Side::Buy, SIZE_SCALE, 100_000, 1_000))
+        .expect("open 1 BTC");
+    // FIXTURE FIX: as originally drafted (no funding accrued, every fragment at
+    // price == entry == mark) A's staged collateral stayed +$30k throughout, so the
+    // flat `collateral >= 0` rule this test exists to reject would ALSO have passed
+    // it — the test never reached the shape it pins. The DoS only bites on an open
+    // leg with NEGATIVE raw collateral but maintenance-compliant equity, so build
+    // exactly that: give A $40k of unrealized profit (entry $60k, mark $100k) and a
+    // $40k accrued-funding debt (negative `funding_entry` against index 0). Both
+    // fields are conservation-neutral (only `collateral` sums into conservation).
+    // Fragment 1 then settles the FULL $40k funding, leaving raw collateral −$6k on
+    // a healthy leg (equity $30k ≥ maintenance): the flat rule rejects it, the
+    // conditional rule accepts every fragment.
+    {
+        let pos = s.positions.get_mut(&(a, 0)).unwrap();
+        pos.entry_price = 60_000 * PRICE_SCALE;
+        pos.funding_entry = -40_000 * QUOTE_SCALE;
+    }
+    // Close it in ten 0.1 BTC fragments. EVERY fragment must be accepted — rejection
+    // must not count as success here.
+    for i in 0..10u64 {
+        s.apply_op(&fill(
+            a,
+            b,
+            Side::Sell,
+            SIZE_SCALE / 10,
+            100_000,
+            2_000 + i * 10,
+        ))
+        .unwrap_or_else(|e| panic!("fragment {i} must be accepted, got {e:?}"));
+    }
+    assert_eq!(s.position(&a, 0).unwrap().size, 0, "fully closed");
+    assert!(s.conservation_holds());
+}
+
+/// Every pure reduction of a comfortably-margined position must RETURN OK and leave the
+/// position maintenance-compliant or cleanly closed. Property-style sweep — rejection
+/// does not count as success (the earlier draft's version was vacuous). NOTE the
+/// `fill()` helper signs its transcript AT the fill price, so `|price − mark| == 0` on
+/// every iteration: this sweep varies the mark and the realized PnL together, never the
+/// band deviation. The joint band/fee inequality's WORST case — a near-maintenance
+/// position closing at the band edge with the fee on top — is pinned separately by
+/// `maintenance_boundary_position_closes_at_the_band_edge` below.
+#[test]
+fn every_in_band_reduction_of_a_healthy_position_succeeds() {
+    for price_usd in [98_000i128, 99_000, 100_000, 101_000, 102_000] {
+        for denom in [1i128, 2, 4, 10] {
+            let mut s = state_with(Market::with_fees(0, 10, 4));
+            let (a, b) = (owner_of(1), owner_of(2));
+            fund(&mut s, a, 1, 50_000 * QUOTE_SCALE, [0x11u8; 32], 0);
+            fund(&mut s, b, 2, 500_000 * QUOTE_SCALE, [0x22u8; 32], 1);
+            s.apply_op(&fill(a, b, Side::Buy, SIZE_SCALE, 100_000, 1_000))
+                .expect("open 1 BTC on $50k — comfortably margined");
+            s.apply_op(&fill(
+                a,
+                b,
+                Side::Sell,
+                SIZE_SCALE / denom,
+                price_usd,
+                2_000,
+            ))
+            .unwrap_or_else(|e| {
+                panic!("in-band reduction at ${price_usd} size 1/{denom} rejected: {e:?}")
+            });
+            let pos = s.position(&a, 0).unwrap();
+            // closed ⇒ collateral >= 0, i.e. `is_open ∨ collateral >= 0`. (An OPEN
+            // leg with negative raw collateral is explicitly permitted — see
+            // `healthy_position_can_close_in_small_fragments` — so the negated form
+            // would assert a property the design rejects.)
+            assert!(
+                pos.is_open() || pos.collateral >= 0,
+                "a closed leg never carries debt",
+            );
+            assert!(s.conservation_holds());
+        }
+    }
+}
+
+/// SEC-022 §2 exercised for real: the joint band/fee inequality
+/// (`market.rs::fill_band_fits_maintenance`) is derived for a taker closing at the FAR
+/// edge of the band with the fee charged on top — consuming `d + f·(1 + d)` of the
+/// maintenance buffer — and its guarantee is that a maintenance-compliant position can
+/// ALWAYS close in-band. Pin exactly that worst case: the oracle at $100k, fill prices
+/// at the inclusive band edges, a market with real fees, and the closer parked EXACTLY
+/// at maintenance (`eq < mm` is the reject, so equality is the tightest compliant
+/// point). A long realizes its loss at the LOWER edge; a short at the UPPER edge, where
+/// the fee also lands on the larger `(1 + d)` notional — the inequality's exact worst
+/// case. Every reduction here MUST return `Ok`; a rejection would mean the joint
+/// inequality does not deliver its guarantee and is a design-level finding, not a
+/// fixture problem.
+#[test]
+fn maintenance_boundary_position_closes_at_the_band_edge() {
+    for (open_side, close_side, edge_usd) in [
+        (Side::Buy, Side::Sell, 98_000i128),
+        (Side::Sell, Side::Buy, 102_000i128),
+    ] {
+        for denom in [1i128, 2, 10] {
+            let mut s = state_with(Market::with_fees(0, 10, 4));
+            let (a, b) = (owner_of(1), owner_of(2));
+            fund(&mut s, a, 1, 20_000 * QUOTE_SCALE, [0x11u8; 32], 0);
+            fund(&mut s, b, 2, 200_000 * QUOTE_SCALE, [0x22u8; 32], 1);
+            s.apply_op(&fill(a, b, open_side, SIZE_SCALE, 100_000, 1_000))
+                .expect("open 1 BTC at the mark");
+            // Park A exactly at maintenance: equity == mm == 5% of the $100k notional.
+            s.positions.get_mut(&(a, 0)).unwrap().collateral = 5_000 * QUOTE_SCALE;
+            s.apply_op(&BatchOp::Fill {
+                taker: a,
+                maker: b,
+                market_id: 0,
+                taker_side: close_side,
+                size: SIZE_SCALE / denom,
+                price: edge_usd * PRICE_SCALE,
+                oracle: oracle(100_000, 2_000),
+                now_ms: 2_000,
+            })
+            .unwrap_or_else(|e| {
+                panic!(
+                    "in-band close at ${edge_usd} size 1/{denom} from the maintenance \
+                     boundary rejected: {e:?} — the joint inequality failed its guarantee"
+                )
+            });
+            let pos = s.position(&a, 0).unwrap();
+            assert!(
+                pos.is_open() || pos.collateral >= 0,
+                "a closed leg never carries debt",
+            );
+        }
+    }
+}
+
+/// A leg that closes at EXACTLY zero collateral is a clean break-even close, not
+/// bankruptcy — the closed-leg rule is strictly `collateral < 0`. Pins the strictness:
+/// an over-strict `<= 0` (which refuses an honest zero-collateral close) survives every
+/// other test in this suite.
+#[test]
+fn close_landing_at_exactly_zero_collateral_is_accepted() {
+    let mut s = state_with(Market::conservative(0));
+    let (a, b) = (owner_of(1), owner_of(2));
+    fund(&mut s, a, 1, 20_000 * QUOTE_SCALE, [0x11u8; 32], 0);
+    fund(&mut s, b, 2, 200_000 * QUOTE_SCALE, [0x22u8; 32], 1);
+    s.apply_op(&fill(a, b, Side::Buy, SIZE_SCALE, 100_000, 1_000))
+        .expect("open 1 BTC");
+    // Leave exactly the $2,000 the band-edge close below realizes as loss (fee-free
+    // market), so the closed leg lands at exactly 0.
+    s.positions.get_mut(&(a, 0)).unwrap().collateral = 2_000 * QUOTE_SCALE;
+    s.apply_op(&BatchOp::Fill {
+        taker: a,
+        maker: b,
+        market_id: 0,
+        taker_side: Side::Sell,
+        size: SIZE_SCALE,
+        price: 98_000 * PRICE_SCALE,
+        oracle: oracle(100_000, 2_000),
+        now_ms: 2_000,
+    })
+    .expect("a break-even close landing at exactly zero collateral must be accepted");
+    let pos = s.position(&a, 0).unwrap();
+    assert_eq!(pos.size, 0, "fully closed");
+    assert_eq!(
+        pos.collateral, 0,
+        "landed at exactly zero — and was accepted"
+    );
+}
+
+/// A still-OPEN leg left below maintenance is rejected, not merely left non-negative.
+#[test]
+fn fill_leaving_an_open_leg_below_maintenance_is_rejected() {
+    let mut s = state_with(Market::conservative(0));
+    let (a, b) = (owner_of(1), owner_of(2));
+    fund(&mut s, a, 1, 20_000 * QUOTE_SCALE, [0x11u8; 32], 0);
+    fund(&mut s, b, 2, 300_000 * QUOTE_SCALE, [0x22u8; 32], 1);
+    s.apply_op(&fill(a, b, Side::Buy, 2 * SIZE_SCALE, 100_000, 1_000))
+        .expect("open 2 BTC on $20k");
+    // Leave a sliver of collateral: any partial close leaves the REMAINING open leg
+    // below its maintenance requirement.
+    s.positions.get_mut(&(a, 0)).unwrap().collateral = 100 * QUOTE_SCALE;
+    let before = s.state_root();
+    let err = s
+        .apply_op(&fill(a, b, Side::Sell, SIZE_SCALE / 10, 99_000, 2_000))
+        .expect_err("an open leg below maintenance must reject");
+    assert_eq!(err, EngineError::FillWouldBankrupt(FillLeg::Taker));
+    assert_eq!(s.state_root(), before);
+}
+
+/// Attribution: when the MAKER's leg is the violating one, the error names the maker.
+/// Task 5 routes rejections by this value, and only the Taker direction was pinned. The
+/// taker's reducing leg here stays comfortably healthy, so the staging loop reaches
+/// leg 1 and it is the maker's remaining open leg that fails maintenance.
+#[test]
+fn maker_leg_below_maintenance_is_attributed_to_the_maker() {
+    let mut s = state_with(Market::conservative(0));
+    let (a, b) = (owner_of(1), owner_of(2));
+    fund(&mut s, a, 1, 300_000 * QUOTE_SCALE, [0x11u8; 32], 0);
+    fund(&mut s, b, 2, 20_000 * QUOTE_SCALE, [0x22u8; 32], 1);
+    s.apply_op(&fill(a, b, Side::Buy, 2 * SIZE_SCALE, 100_000, 1_000))
+        .expect("open: A long 2 BTC, B (maker) short 2 BTC on $20k");
+    // Strip the MAKER to a sliver, so the partial close leaves B's remaining 1.9 BTC
+    // short leg far below its maintenance requirement.
+    s.positions.get_mut(&(b, 0)).unwrap().collateral = 100 * QUOTE_SCALE;
+    let before = s.state_root();
+    let err = s
+        .apply_op(&fill(a, b, Side::Sell, SIZE_SCALE / 10, 99_000, 2_000))
+        .expect_err("the maker's open leg below maintenance must reject");
+    assert_eq!(err, EngineError::FillWouldBankrupt(FillLeg::Maker));
+    assert_eq!(s.state_root(), before);
+}

@@ -145,6 +145,14 @@ pub enum RejectReason {
     /// arithmetic overflow, …). An honest catch-all — never the misleading
     /// `ReduceOnlyViolation` the manifest used to report for these (audit Tier-3).
     InvalidOrder = 10,
+    /// SEC-022: the fill price lay outside the market's `max_fill_deviation_ratio` band
+    /// around the attested oracle mark. Appending (rather than reusing `InvalidOrder`)
+    /// changes no existing encoding — the discriminants are explicit and stable — and the
+    /// manifest is what users and auditors read, so the reason must be specific.
+    FillPriceOutOfBand = 11,
+    /// SEC-022: the fill would have left a leg closed with negative collateral, or still
+    /// open below maintenance margin. Rejected rather than settled into parked debt.
+    FillWouldBankrupt = 12,
 }
 
 /// Per-batch public commitment to exactly what was sequenced (§2).

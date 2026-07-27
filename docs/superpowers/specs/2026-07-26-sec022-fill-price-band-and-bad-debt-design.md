@@ -157,12 +157,12 @@ What is needed is host-side validation **at match time against the current oracl
 
 ## Dependencies
 
-Implement **after** SEC-023 and SEC-024. Both let a prover assert values the band depends on:
+None. The corrected header at the top of this document governs: neither SEC-023 nor SEC-024 gates this work, and on priority this finding leads — it is the only one of the four an ordinary user can reach. An earlier revision of this section said "implement after SEC-023 and SEC-024"; that predated the canonical threat model (`2026-07-26-sec02x-threat-model.md`) and is withdrawn. Concretely:
 
-- Without SEC-023, `mark` is "a signed price" but not "a current price" — a prover can select a favourable historical transcript per fill, so the band's anchor is partly under the attacker's control.
-- Without SEC-024, an attacker can mint the insurance that would otherwise absorb whatever the band lets through.
+- **SEC-023 is parked.** It is not a prerequisite; the band ships without it.
+- **SEC-024 is a sibling in the same cutover bundle**, not a dependency. All four SEC-02x changes still land in one cutover because each moves the guest ELF, the genesis root, or a persisted format — but that is release batching, not sequencing.
 
-SEC-022 is still worth doing — it closes the unbounded-price hole and the closed-debt hole — but its guarantee is only as good as the anchor, and the anchor is SEC-023's job.
+**Anchor-trust caveat** (kept because it is true regardless of sequencing — see also the severity note above): the band's anchor is the attested oracle mark, so its guarantee is only as trustworthy as the oracle signature. Anchoring the band's right-hand side to `mark` stops a *prover* widening its own band, but the operator signs the oracle — **against a compromised gateway the band constrains nothing.** That is the honest, documented Phase-1 posture (ZK-001), not a blocker: SEC-022 closes the unbounded-price hole and the closed-debt hole for the reachable-today attack, and later anchor hardening (SEC-023 or its successor) tightens the same band without reworking it.
 
 ## Migration
 

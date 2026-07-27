@@ -31,7 +31,13 @@ use std::path::Path;
 
 /// File magic + format version. Bump the trailing digit on layout changes so an
 /// old binary refuses a new snapshot (and vice versa) instead of misreading it.
-const MAGIC: &[u8; 8] = b"DPSNAP1\0";
+/// v2: SEC-022 added `Market.max_fill_deviation_ratio`, which sits inside the
+/// sealed payload (`Gw.seq.state.markets`); postcard is positional, so a v1
+/// snapshot read by a v2 binary would shift by one `i128` per market — and
+/// `is_coherent()` is never re-run on a deserialized `Market`, so a mis-decoded
+/// band ratio would silently disable the fill band (fail-OPEN). The magic is
+/// the guard for when the planned snapshot wipe is forgotten.
+const MAGIC: &[u8; 8] = b"DPSNAP2\0";
 
 /// Keystream block derived from the SECRET seed and the per-snapshot nonce.
 fn keystream(seed: &[u8; 32], nonce: &Digest, len: usize) -> Vec<u8> {

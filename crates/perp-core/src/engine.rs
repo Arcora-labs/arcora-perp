@@ -12,7 +12,7 @@
 //! engine enforces *settlement validity*: funding, margin, liquidation,
 //! conservation.
 
-use crate::error::EngineError;
+use crate::error::{EngineError, FillLeg};
 use crate::fixed::{abs, apply_rate, notional_quote, RATE_SCALE};
 use crate::hash::{Digest, Hasher};
 use crate::market::MarketId;
@@ -499,6 +499,26 @@ impl<H: Hasher> State<H> {
             .get(&market_id)
             .ok_or(EngineError::UnknownMarket)?;
         let mark = oracle.validate(&market, now_ms)?;
+        // SEC-022 §1 — bound the execution price to a symmetric band around the ATTESTED
+        // mark: |price − mark| · RATE_SCALE <= max_fill_deviation_ratio · mark. Placed
+        // after `validate` so no band check is reachable without a valid publisher
+        // signature. Copied from `op_accrue_funding`'s mark band (ZK-001 Task 4), whose
+        // properties were already reasoned through: division-free (both sides products);
+        // the RHS multiplies the ATTESTED `mark`, never the untrusted `price`, so a prover
+        // cannot widen its own band; every step `checked_*` with a catch-all reject, so
+        // nothing wraps and nothing panics in-guest. `price > 0` is checked above and
+        // `mark > 0` is guaranteed by `validate`.
+        let fill_dev = match price.checked_sub(mark) {
+            Some(d) => abs(d),
+            None => return Err(EngineError::FillPriceOutOfBand),
+        };
+        match (
+            fill_dev.checked_mul(RATE_SCALE),
+            market.max_fill_deviation_ratio.checked_mul(mark),
+        ) {
+            (Some(lhs), Some(rhs)) if lhs <= rhs => {}
+            _ => return Err(EngineError::FillPriceOutOfBand),
+        }
         let funding_index = self
             .funding
             .get(&market_id)
@@ -569,36 +589,73 @@ impl<H: Hasher> State<H> {
                     .checked_add(maker_rebate)
                     .ok_or(EngineError::Overflow)?
             };
+            let leg = if i == 0 {
+                FillLeg::Taker
+            } else {
+                FillLeg::Maker
+            };
             if increasing {
                 pos.check_initial_margin(&market, mark, funding_index)?;
             }
+            // SEC-022 §3 — the solvency postcondition, checked on the STAGED leg before
+            // anything commits. Conditional by design:
+            //   * a leg ending CLOSED must not carry negative collateral — nothing
+            //     revisits a flat position (`engine.rs` liquidation and ADL, and the
+            //     sequencer's maintenance pass, all require `is_open()`), so that debt is
+            //     parked forever while the winner withdraws normally; and
+            //   * a leg that stays OPEN must still be maintenance-compliant.
+            // A flat `collateral >= 0` on BOTH cases would be a denial of service:
+            // `apply_fill` settles the position's ENTIRE accrued funding while realizing
+            // PnL only on the closed fragment, so small resting orders could make every
+            // fragment of a solvent aggregate close fail while the victim stays
+            // non-liquidatable. Requiring maintenance-compliance on a still-open leg
+            // sidesteps that — the funding settled is the funding maintenance equity
+            // already accounts for.
+            if pos.is_open() {
+                if pos
+                    .check_maintenance_margin(&market, mark, funding_index)
+                    .is_err()
+                {
+                    return Err(EngineError::FillWouldBankrupt(leg));
+                }
+            } else if pos.collateral < 0 {
+                return Err(EngineError::FillWouldBankrupt(leg));
+            }
             staged[i] = (key, pos);
         }
-        // commit
-        self.vault_pool = self
+        // SEC-022 §4 — stage EVERY remaining fallible value BEFORE the first mutation.
+        // This op used to commit `vault_pool` and both positions and only THEN run the
+        // fallible `treasury` / `insurance_fund` additions, so a late overflow returned
+        // `Err` with state already changed. The sequencer's rejection arm omits a failed
+        // fill from the proven op-log (`sequencer/src/lib.rs:901-906`), so that divergence
+        // is exactly what wedges the next proof. Nothing fallible may follow the commit.
+        let new_vault_pool = self
             .vault_pool
             .checked_add(pool_delta)
             .ok_or(EngineError::Overflow)?;
-        for (key, pos) in staged {
-            self.positions.insert(key, pos);
-        }
-        // Route the treasury cut to the operator treasury and the remainder of the
-        // net fee into the insurance fund. Conservation holds: taker −fee, maker
-        // +rebate, treasury +treasury_fee, insurance +(fee−rebate−treasury_fee).
-        self.treasury = self
+        let new_treasury = self
             .treasury
             .checked_add(treasury_fee)
             .ok_or(EngineError::Overflow)?;
-        self.insurance_fund = self
-            .insurance_fund
-            .checked_add(
-                taker_fee
-                    .checked_sub(maker_rebate)
-                    .ok_or(EngineError::Overflow)?
-                    .checked_sub(treasury_fee)
-                    .ok_or(EngineError::Overflow)?,
-            )
+        // Conservation: taker −fee, maker +rebate, treasury +treasury_fee,
+        // insurance +(fee − rebate − treasury_fee). `is_coherent` bounds the cut ≥ 0.
+        let insurance_cut = taker_fee
+            .checked_sub(maker_rebate)
+            .ok_or(EngineError::Overflow)?
+            .checked_sub(treasury_fee)
             .ok_or(EngineError::Overflow)?;
+        let new_insurance_fund = self
+            .insurance_fund
+            .checked_add(insurance_cut)
+            .ok_or(EngineError::Overflow)?;
+
+        // commit — infallible from here down
+        self.vault_pool = new_vault_pool;
+        self.treasury = new_treasury;
+        self.insurance_fund = new_insurance_fund;
+        for (key, pos) in staged {
+            self.positions.insert(key, pos);
+        }
         Ok(())
     }
 

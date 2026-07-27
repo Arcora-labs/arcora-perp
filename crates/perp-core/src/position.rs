@@ -200,6 +200,32 @@ impl Position {
         Ok(())
     }
 
+    /// SEC-022 §3: does this position satisfy MAINTENANCE margin? The checked,
+    /// fail-CLOSED sibling of [`Self::is_liquidatable`].
+    ///
+    /// `is_liquidatable` deliberately returns `false` on overflow — for auto-liquidation
+    /// that is the conservative direction (do not seize a position whose health we cannot
+    /// compute). For a solvency POSTCONDITION the identical default is fail-OPEN: it would
+    /// ACCEPT a fill whose resulting health could not be evaluated. So this returns
+    /// `Err(RiskError::Overflow)` instead and the caller rejects the fill.
+    pub fn check_maintenance_margin(
+        &self,
+        market: &Market,
+        mark: i128,
+        funding_index_now: i128,
+    ) -> Result<(), RiskError> {
+        let eq = self
+            .equity(mark, funding_index_now)
+            .ok_or(RiskError::Overflow)?;
+        let mm = self
+            .maintenance_required(market, mark)
+            .ok_or(RiskError::Overflow)?;
+        if eq < mm {
+            return Err(RiskError::InsufficientMargin);
+        }
+        Ok(())
+    }
+
     /// Settle accrued funding into collateral, advancing `funding_entry` to the
     /// current index. Returns the funding amount paid (positive = debited). The
     /// engine routes this into the vault pool so total value is conserved.
@@ -360,6 +386,31 @@ mod tests {
         assert!(p.is_liquidatable(&m, 94_000 * PRICE_SCALE, 0));
         // healthy at $100k: equity $6k > $5k maintenance
         assert!(!p.is_liquidatable(&m, 100_000 * PRICE_SCALE, 0));
+    }
+
+    // SEC-022 §3: `check_maintenance_margin` must NOT be a delegation to
+    // `is_liquidatable`. On overflow `is_liquidatable` deliberately returns `false`
+    // (never auto-seize a position whose health cannot be computed) — for a solvency
+    // POSTCONDITION that identical default is fail-OPEN, accepting a fill whose
+    // resulting health could not be evaluated. Drive `equity`'s `checked_add` to
+    // `None` (collateral at the i128 ceiling plus positive unrealized PnL) and pin
+    // the two functions DISAGREEING on the same input — the contrast is the point.
+    #[test]
+    fn check_maintenance_margin_fails_closed_on_overflow_unlike_is_liquidatable() {
+        let m = Market::conservative(0);
+        let mark = 110_000 * PRICE_SCALE;
+        // 1 BTC long from $100k at mark $110k → +$10k unrealized PnL; collateral at
+        // i128::MAX makes `collateral + pnl` overflow inside `equity`.
+        let p = pos(SIZE_SCALE, 100_000 * PRICE_SCALE, i128::MAX);
+        assert_eq!(
+            p.check_maintenance_margin(&m, mark, 0),
+            Err(RiskError::Overflow),
+            "the postcondition fails CLOSED on unevaluable health"
+        );
+        assert!(
+            !p.is_liquidatable(&m, mark, 0),
+            "the liquidation path stays fail-open (false) on the very same input"
+        );
     }
 
     #[test]

@@ -55,7 +55,7 @@ pub mod state;
 
 // Curated public surface.
 pub use engine::BatchOp;
-pub use error::EngineError;
+pub use error::{EngineError, FillLeg};
 pub use hash::{Digest, Hasher, Keccak256};
 pub use market::{Market, MarketId};
 pub use note::{Note, PubKey};
