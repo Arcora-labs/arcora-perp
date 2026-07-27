@@ -97,7 +97,7 @@ Boot currently applies `SeedInsurance` directly (`crates/gateway/src/main.rs:156
 | Guest ELF changes | **vkey re-pin** → new `SP1ZkVerifier` **and** Settlement deploy (`programVKey` and the verifier address are immutable — `SP1ZkVerifier.sol:12`, `DarkPerpSettlement.sol:70`) |
 | `insurance_fund` no longer seeded at boot | genesis `state_root` differs → **`GENESIS_ROOT` moves** |
 
-The cutover must explicitly bump or invalidate: snapshot magic `DPSNAP1` (`crates/gateway/src/snapshot.rs:32`), rollback-journal magic `DPRBJL1` (`crates/gateway/src/rollback_journal.rs:26`), any pending sealed-witness plaintext, gateway snapshots carrying `Sequencer.window_ops`, and the recorded genesis root / vkey in deployment metadata. SEC-022 and SEC-023 already force a full format break; the point here is that **SEC-024's stated reason for one was wrong**, and the magic-bump requirement is the real mechanism.
+The cutover must explicitly bump or invalidate: the snapshot magic, **now `DPSNAP2`** (`crates/gateway/src/snapshot.rs`, `MAGIC`), the rollback-journal magic, **now `DPRBJL2`** (`crates/gateway/src/rollback_journal.rs`, `MAGIC`) — both bumped from `…1` when SEC-022 added a `Market` field, so grep for the constant name rather than the value — any pending sealed-witness plaintext, gateway snapshots carrying `Sequencer.window_ops`, and the recorded genesis root / vkey in deployment metadata. SEC-022 and SEC-023 already force a full format break; the point here is that **SEC-024's stated reason for one was wrong**, and the magic-bump requirement is the real mechanism.
 
 ## Testing
 
