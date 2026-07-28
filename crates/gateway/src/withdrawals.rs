@@ -15,9 +15,13 @@
 // the gateway share one implementation — byte-identical trees off-chain and
 // in-circuit. The tests below pin them to Solidity vectors, proving the moved code
 // hashes exactly what the contracts verify.
-pub use perp_core::merkle::{
-    inclusion_leaf, merkle_proof, merkle_root, rejection_leaf, withdrawal_leaf,
-};
+pub use perp_core::merkle::{inclusion_leaf, merkle_proof, rejection_leaf, withdrawal_leaf};
+// SEC-025-B: `merkle_root` lost its last production caller with the legacy settle body
+// (the window path derives roots inside prover_client, which imports perp_core::merkle
+// directly); the re-export stays as the shared test oracle for the Solidity-vector and
+// window-settle tests here and in main.rs — same posture as `verify` below.
+#[allow(unused_imports)]
+pub use perp_core::merkle::merkle_root;
 // SEC-019: the blinded owner binding `ownerCommit = keccak(owner ‖ deposit_blind)`, used
 // by the gateway credit path (misattribution guard) and the authorization endpoint.
 pub use perp_core::merkle::owner_commit;

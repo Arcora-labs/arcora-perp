@@ -54,9 +54,11 @@ mod settle_health;
 mod snapshot;
 mod withdrawals;
 use l1::{L1Status, L1};
-use withdrawals::{
-    inclusion_leaf, merkle_proof, merkle_root, owner_commit, rejection_leaf, Withdrawal,
-};
+// SEC-025-B: `merkle_root` left the production import set with the legacy settle body
+// (the window path derives roots inside prover_client); tests still assert with it.
+#[cfg(test)]
+use withdrawals::merkle_root;
+use withdrawals::{inclusion_leaf, merkle_proof, owner_commit, rejection_leaf, Withdrawal};
 
 /// 0x-prefixed lowercase hex of a 32-byte digest (for L1 calldata + display).
 fn hex32(d: &Digest) -> String {
@@ -1075,8 +1077,10 @@ struct Gw {
     last_settled_root: Digest,
     /// On-chain deposit tx hashes already credited (idempotency / replay guard).
     processed_deposit_txs: std::collections::BTreeSet<String>,
-    /// Manifest hash of the most recently sealed batch — published to L1 as the
-    /// settled batch's manifest when the L1 bridge is active.
+    /// Manifest hash of the most recently sealed batch. SEC-025-B: no longer read —
+    /// the deleted legacy settle body was its only consumer (the window path publishes
+    /// the sealed witness's own manifest hash) — but it stays: postcard snapshots are
+    /// positional, so dropping the field would break every existing snapshot.
     last_manifest: Digest,
     /// Order hashes matched / validly-rejected since the last L1 settle, accumulated across
     /// engine batches. At settle they become this on-chain batch's ordered/rejected roots, so
@@ -2821,13 +2825,12 @@ impl Gw {
         serde_json::json!({ "type": "markets", "markets": markets, "tsMs": now_ms() })
     }
 
-    /// The engine's live state root as 0x-hex — what the L1 bridge settles to.
+    /// The engine's live state root as 0x-hex. SEC-025-B: only tests read this now —
+    /// the legacy settle body that fed it (and `last_manifest_hex`) to `L1::settle` is
+    /// deleted; the window path derives every settled root from the sealed witness.
+    #[cfg(test)]
     fn state_root_hex(&self) -> String {
         hex32(&self.seq.state.state_root())
-    }
-    /// The most recently sealed batch's manifest hash as 0x-hex.
-    fn last_manifest_hex(&self) -> String {
-        hex32(&self.last_manifest)
     }
 
     /// Build the answer to an inclusion challenge for `order_hash` (audit DP-004): find the
@@ -6852,14 +6855,6 @@ async fn main() {
         let jpath = state_path.as_deref().map(rollback_journal::journal_path);
         let snapshot_notify = snapshot_notify.clone();
         tokio::spawn(async move {
-            type SettleOut = (
-                L1Status,
-                Vec<[u8; 32]>,
-                std::collections::BTreeMap<[u8; 32], (Digest, Vec<[u8; 32]>)>,
-                u64, // on-chain batch id these ordered/rejected hashes were committed under
-                Vec<[u8; 32]>, // ordered order hashes settled this batch (audit DP-004 retention)
-                Vec<[u8; 32]>, // rejected order hashes settled this batch
-            );
             // start the first settle one period out, so it never races the bond's
             // confirmation (tokio's plain `interval` would fire immediately).
             let mut iv = tokio::time::interval_at(
@@ -7223,129 +7218,13 @@ async fn main() {
                             }
                         }
                     }
-                    continue; // new path handled this tick; skip the legacy body
                 }
-                let (new_root, manifest, withdrawals, ordered_h, rejected_h) = {
-                    let gw = app.gw.lock().await;
-                    (
-                        gw.state_root_hex(),
-                        gw.last_manifest_hex(),
-                        gw.pending_withdrawals.clone(),
-                        gw.pending_ordered.clone(),
-                        gw.pending_rejected.clone(),
-                    )
-                };
-                let l1c = l1.clone();
-                let res =
-                    tokio::task::spawn_blocking(move || -> Result<Option<SettleOut>, String> {
-                        // keep the USDC bond above the 5%-of-TVL floor as deposits grow (Q1)
-                        match l1c.ensure_bond() {
-                            Ok(Some(tx)) => println!("[l1] bond topped up: {tx}"),
-                            Ok(None) => {}
-                            Err(e) => eprintln!("[l1] bond top-up skipped: {e}"),
-                        }
-                        let prev = l1c.current_root()?;
-                        // prune withdrawals the vault already paid out, then build the
-                        // CUMULATIVE root over every still-unclaimed leaf (vault invariant).
-                        let mut surviving = Vec::new();
-                        let mut claimed = Vec::new();
-                        for w in withdrawals {
-                            let leaf = w.leaf();
-                            if l1c.claimed(&hex32(&leaf)).unwrap_or(false) {
-                                claimed.push(leaf);
-                            } else {
-                                surviving.push(w);
-                            }
-                        }
-                        let leaves: Vec<[u8; 32]> = surviving.iter().map(|w| w.leaf()).collect();
-                        let wroot = merkle_root(&leaves);
-                        let wroot_hex = hex32(&wroot);
-                        if prev.eq_ignore_ascii_case(&new_root) {
-                            return Ok(None); // engine root unchanged → nothing to settle
-                        }
-                        // audit DP-004: this settle becomes on-chain batch `batch_id` (the current
-                        // count, which settleBatch consumes then increments). Build the ordered and
-                        // rejected roots over THIS batch id, so a later `answerChallenge` /
-                        // `answerByRejection` proof (built with the same id) verifies on-chain.
-                        // audit (fail-closed): propagate a batch_count RPC error instead of
-                        // defaulting to 0 — a transient failure that silently keyed the roots to
-                        // batch 0 would make every challenge for this batch unanswerable and get an
-                        // honest sequencer slashed. Aborting here just retries the settle next tick.
-                        let batch_id = l1c.batch_count()?;
-                        let ordered_leaves: Vec<[u8; 32]> = ordered_h
-                            .iter()
-                            .map(|h| inclusion_leaf(batch_id, h))
-                            .collect();
-                        let rejected_leaves: Vec<[u8; 32]> = rejected_h
-                            .iter()
-                            .map(|h| rejection_leaf(batch_id, h))
-                            .collect();
-                        let oroot_hex = hex32(&merkle_root(&ordered_leaves));
-                        let rroot_hex = hex32(&merkle_root(&rejected_leaves));
-                        let tx = l1c.settle(
-                            &prev, &manifest, &new_root, &oroot_hex, &wroot_hex, &rroot_hex,
-                        )?;
-                        let mut proofs = std::collections::BTreeMap::new();
-                        for (i, w) in surviving.iter().enumerate() {
-                            // legacy: every note shares the one cumulative root published this settle.
-                            proofs.insert(w.leaf(), (wroot, merkle_proof(&leaves, i)));
-                        }
-                        Ok(Some((
-                            L1Status {
-                                settled_root: new_root,
-                                // settleBatch consumed `batch_id` then incremented, so the new
-                                // on-chain count is known — no need to re-query (and never show 0).
-                                batch_count: batch_id + 1,
-                                last_tx: tx,
-                                bond: l1c.sequencer_bond().unwrap_or(0).to_string(),
-                                withdrawals_root: wroot_hex,
-                            },
-                            claimed,
-                            proofs,
-                            batch_id,
-                            ordered_h,
-                            rejected_h,
-                        )))
-                    })
-                    .await;
-                match res {
-                    Ok(Ok(Some((status, claimed, proofs, batch_id, ordered_h, rejected_h)))) => {
-                        println!(
-                            "[l1] settled root {} batch {} tx {} (withdrawals root {})",
-                            status.settled_root,
-                            status.batch_count,
-                            status.last_tx,
-                            status.withdrawals_root
-                        );
-                        {
-                            let mut gw = app.gw.lock().await;
-                            if !claimed.is_empty() {
-                                let cset: std::collections::BTreeSet<[u8; 32]> =
-                                    claimed.into_iter().collect();
-                                gw.pending_withdrawals.retain(|w| !cset.contains(&w.leaf()));
-                            }
-                            gw.withdraw_proofs = proofs;
-                            gw.l1_status = Some(status);
-                            // audit DP-004: retain the order hashes this on-chain batch committed so
-                            // a challenge can be answered against its root, then drop exactly the
-                            // ones just settled from the pending accumulators (any appended during
-                            // the settle stay, at the back).
-                            let (no, nr) = (ordered_h.len(), rejected_h.len());
-                            gw.batch_orders.insert(batch_id, (ordered_h, rejected_h));
-                            let po_len = gw.pending_ordered.len();
-                            gw.pending_ordered.drain(0..no.min(po_len));
-                            let pr_len = gw.pending_rejected.len();
-                            gw.pending_rejected.drain(0..nr.min(pr_len));
-                        }
-                        let snap = { app.gw.lock().await.snapshot() };
-                        let _ = app
-                            .tx
-                            .send(serde_json::to_string(&WsMsg::State { state: snap }).unwrap());
-                    }
-                    Ok(Ok(None)) => {}
-                    Ok(Err(e)) => eprintln!("[l1] settle failed: {e}"),
-                    Err(e) => eprintln!("[l1] settle join: {e}"),
-                }
+                // SEC-025-B: the legacy `L1::settle` body that lived here is deleted. It
+                // synthesized its commitment via a six-root `publicCommitment` and sent a
+                // seven-parameter `settleBatch` — both arities are stale since SEC-019, so
+                // it could not produce a resolvable call. `PROVER_URL=mock` covers the
+                // prover-free role through the window path above with the correct ABI;
+                // with no prover configured the loop settles nothing.
             }
         });
     }

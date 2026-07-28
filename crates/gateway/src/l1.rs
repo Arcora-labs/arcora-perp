@@ -6,11 +6,13 @@
 //! the `CollateralVault` on L1. It also confirms on-chain USDC deposits and tops up
 //! the USDC sequencer bond as TVL grows.
 //!
-//! The only on-chain constraint with the testnet `MockZkVerifier` is
-//! `prevRoot == currentStateRoot` and `proof == publicCommitment`, so the bridge
-//! reads the current on-chain root live as `prev`, uses the engine root as `new`, and
-//! submits. The real ZK proof replaces MockZkVerifier in a later milestone (see
-//! docs/PROVING.md).
+//! SEC-025-B: every settle goes through `settle_proved` — the nine-parameter
+//! `settleBatch` carrying the seven roots + `newDepositCount` the gateway derived from
+//! its own window-witness replay, plus the prover's proof (== the commitment bytes for
+//! MockProverClient, which the testnet `MockZkVerifier` accepts; see docs/PROVING.md).
+//! The legacy path that read the on-chain root as `prev` and synthesized its
+//! commitment via `publicCommitment` is deleted — both its arities went stale at
+//! SEC-019, so it could not produce a resolvable call.
 //!
 //! Transport: shells out to `cast` (Foundry) — pragmatic for a testnet demo and
 //! reuses the same signer path as deploy. A production bridge would use a native
@@ -377,76 +379,18 @@ impl L1 {
         parse_deposit_receipt(&json, &vault)
     }
 
-    /// Settle: advance the on-chain root from `prev` to `new` with `manifest`, and publish the
-    /// cumulative `withdrawals` root (so users can claim USDC) plus this batch's `ordered` and
-    /// `rejected` order-hash roots — so the sequencer can answer an inclusion challenge for an
-    /// order it either matched (`answerChallenge`) or validly rejected (`answerByRejection`),
-    /// audit DP-004. The proof is the 32-byte public commitment itself (what MockZkVerifier checks).
-    pub fn settle(
-        &self,
-        prev: &str,
-        manifest: &str,
-        new: &str,
-        ordered: &str,
-        withdrawals: &str,
-        rejected: &str,
-    ) -> Result<String, String> {
-        let commitment = self.cast(&[
-            "call",
-            &self.settlement,
-            "publicCommitment(bytes32,bytes32,bytes32,bytes32,bytes32,bytes32)(bytes32)",
-            prev,
-            manifest,
-            new,
-            ordered,
-            withdrawals,
-            rejected,
-            "--rpc-url",
-            &self.rpc,
-        ])?;
-        self.send(
-            &self.settlement.clone(),
-            "settleBatch(bytes32,bytes32,bytes32,bytes32,bytes32,bytes32,bytes)",
-            &[
-                prev,
-                manifest,
-                new,
-                ordered,
-                withdrawals,
-                rejected,
-                &commitment,
-            ],
-        )
-    }
-
-    /// Slice 3b-2a: submit prover-derived roots + a real (or mock) proof directly — no
-    /// `publicCommitment` synthesis. `out.proof` is the ZK proof (== the commitment bytes
-    /// for MockProverClient, which the on-chain MockZkVerifier accepts).
+    /// Slice 3b-2a / SEC-025-B: submit the gateway-derived roots + the proof through the
+    /// nine-parameter `settleBatch` — no `publicCommitment` synthesis. Every value in
+    /// `out` except `proof` was derived by the gateway's own witness replay (Task 3);
+    /// `out.proof` is the ZK proof (== the commitment bytes for MockProverClient, which
+    /// the on-chain MockZkVerifier accepts).
     pub fn settle_proved(
         &self,
         out: &crate::prover_client::ProveOutcome,
     ) -> Result<String, String> {
-        let proof_hex = {
-            let mut s = String::with_capacity(2 + out.proof.len() * 2);
-            s.push_str("0x");
-            for byte in &out.proof {
-                s.push_str(&format!("{byte:02x}"));
-            }
-            s
-        };
-        self.send(
-            &self.settlement.clone(),
-            "settleBatch(bytes32,bytes32,bytes32,bytes32,bytes32,bytes32,bytes)",
-            &[
-                &crate::hex32(&out.prev_root),
-                &crate::hex32(&out.manifest_hash),
-                &crate::hex32(&out.new_root),
-                &crate::hex32(&out.ordered_root),
-                &crate::hex32(&out.withdrawals_root),
-                &crate::hex32(&out.rejected_root),
-                &proof_hex,
-            ],
-        )
+        let args = settle_proved_args(out);
+        let refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+        self.send(&self.settlement.clone(), SETTLE_BATCH_SIG, &refs)
     }
 
     // ── inclusion-challenge answering (audit DP-004) ─────────────────────────────
@@ -568,6 +512,35 @@ impl L1 {
             &[order_hash, &bid, &proof_arg],
         )
     }
+}
+
+/// The nine-parameter settleBatch signature. Six roots, then SEC-019's depositsRoot and
+/// newDepositCount, then the proof. Must byte-match
+/// `contracts/src/DarkPerpSettlement.sol:311-321`; the gateway previously sent the
+/// seven-parameter form, which does not even resolve to this selector.
+pub(crate) const SETTLE_BATCH_SIG: &str =
+    "settleBatch(bytes32,bytes32,bytes32,bytes32,bytes32,bytes32,bytes32,uint64,bytes)";
+
+/// The `settleBatch` argument vector, in exactly Solidity's declared order. Pure (no
+/// subprocess, no `&self`) so the order is unit-testable against a fixed vector.
+/// `newDepositCount` is rendered as a decimal uint64 (cast parses it per the sig).
+pub(crate) fn settle_proved_args(out: &crate::prover_client::ProveOutcome) -> Vec<String> {
+    let mut proof_hex = String::with_capacity(2 + out.proof.len() * 2);
+    proof_hex.push_str("0x");
+    for byte in &out.proof {
+        proof_hex.push_str(&format!("{byte:02x}"));
+    }
+    vec![
+        crate::hex32(&out.prev_root),
+        crate::hex32(&out.manifest_hash),
+        crate::hex32(&out.new_root),
+        crate::hex32(&out.ordered_root),
+        crate::hex32(&out.withdrawals_root),
+        crate::hex32(&out.rejected_root),
+        crate::hex32(&out.deposits_root),
+        out.new_deposit_count.to_string(),
+        proof_hex,
+    ]
 }
 
 /// Build the full `cast send` argv. Pure (no subprocess, no `&self`) so the flag
@@ -1091,6 +1064,57 @@ mod tests {
                 "--json",
             ]
         );
+    }
+
+    /// SEC-025-B: the encoded selector and argument order must byte-match Solidity's
+    /// nine-parameter settleBatch (contracts/src/DarkPerpSettlement.sol:311-321). A
+    /// fixed vector, NOT a round-trip through our own encoder — a round-trip would agree
+    /// with itself even if both sides were wrong, which is exactly how the seven-param
+    /// selector survived undetected.
+    #[test]
+    fn settle_batch_signature_matches_solidity() {
+        assert_eq!(
+            SETTLE_BATCH_SIG,
+            "settleBatch(bytes32,bytes32,bytes32,bytes32,bytes32,bytes32,bytes32,uint64,bytes)"
+        );
+    }
+
+    /// The argument vector must be in Solidity's declared order: six roots, then
+    /// depositsRoot, then newDepositCount, then proof. Every argument gets a distinct
+    /// byte pattern and EVERY position is asserted (the brief's fixture left positions
+    /// 1–4 unasserted, so a transposition among manifestHash/newRoot/orderedRoot/
+    /// withdrawalsRoot would have passed — exactly the class of fixture this branch
+    /// exists to distrust).
+    #[test]
+    fn settle_proved_argument_order_matches_solidity() {
+        let out = crate::prover_client::ProveOutcome {
+            prev_root: [0x11; 32],
+            manifest_hash: [0x22; 32],
+            new_root: [0x33; 32],
+            ordered_root: [0x44; 32],
+            withdrawals_root: [0x55; 32],
+            rejected_root: [0x66; 32],
+            deposits_root: [0x77; 32],
+            new_deposit_count: 42,
+            commitment: [0x88; 32],
+            proof: vec![0xab, 0xcd],
+        };
+        let args = settle_proved_args(&out);
+        assert_eq!(args.len(), 9);
+        // bytes32 args are cast-shaped: 0x + 64 nibbles.
+        assert!(
+            args[0].starts_with("0x") && args[0].len() == 66,
+            "prevRoot is 0x+64 hex"
+        );
+        assert!(args[0].ends_with("1111"), "prevRoot is 1st");
+        assert!(args[1].ends_with("2222"), "manifestHash is 2nd");
+        assert!(args[2].ends_with("3333"), "newRoot is 3rd");
+        assert!(args[3].ends_with("4444"), "orderedRoot is 4th");
+        assert!(args[4].ends_with("5555"), "withdrawalsRoot is 5th");
+        assert!(args[5].ends_with("6666"), "rejectedRoot is 6th");
+        assert!(args[6].ends_with("7777"), "depositsRoot is 7th");
+        assert_eq!(args[7], "42", "newDepositCount is 8th, decimal uint64");
+        assert_eq!(args[8], "0xabcd", "proof is 9th");
     }
 
     /// Byte-safety regression (pre-merge hygiene): non-ASCII input to the L1 hex
