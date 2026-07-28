@@ -30,7 +30,12 @@ use std::path::{Path, PathBuf};
 /// v2: SEC-022 added `Market.max_fill_deviation_ratio`, carried here via
 /// `witness: WindowWitness.pre_state` — same positional-postcard hazard as the
 /// snapshot's v2 bump (see `snapshot.rs::MAGIC`).
-const MAGIC: &[u8; 8] = b"DPRBJL2\0";
+/// v3: SEC-025-B — `ProveOutcome` gained `new_deposit_count`, and `PreparedSettle`
+/// is journaled, so the positional postcard layout changed. SEC-022 already moved
+/// this to DPRBJL2 and a pre-025-B binary can therefore already have written
+/// DPRBJL2 — reusing it would make an old journal a silent postcard misparse
+/// instead of a versioned rejection.
+const MAGIC: &[u8; 8] = b"DPRBJL3\0";
 
 /// Everything boot recovery needs to resolve one in-flight window settle:
 /// the sequencer rollback input (`witness`), the withdrawal rollback input (`ww`,

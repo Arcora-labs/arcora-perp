@@ -8532,15 +8532,17 @@ mod tests {
 
         let out = MockProverClient.prove(&witness).expect("mock prove");
 
-        // Independently derive the same roots and assert byte-equality.
+        // Independently derive the same roots and assert byte-equality (SEC-025-B:
+        // the mock returns the RAW remote shape, so its itemised roots are Options).
         let mut state = witness.pre_state.clone();
         let d = derive_roots(&mut state, &witness.ops, &witness.manifest).expect("derive");
-        assert_eq!(out.prev_root, d.prev_state_root);
-        assert_eq!(out.manifest_hash, d.manifest_hash);
-        assert_eq!(out.new_root, d.new_state_root);
-        assert_eq!(out.ordered_root, d.ordered_root);
-        assert_eq!(out.withdrawals_root, d.withdrawals_root);
-        assert_eq!(out.rejected_root, d.rejected_root);
+        assert_eq!(out.roots.prev_root, Some(d.prev_state_root));
+        assert_eq!(out.roots.manifest_hash, Some(d.manifest_hash));
+        assert_eq!(out.roots.new_root, Some(d.new_state_root));
+        assert_eq!(out.roots.ordered_root, Some(d.ordered_root));
+        assert_eq!(out.roots.withdrawals_root, Some(d.withdrawals_root));
+        assert_eq!(out.roots.rejected_root, Some(d.rejected_root));
+        assert_eq!(out.roots.deposits_root, Some(d.deposits_root));
         assert_eq!(out.commitment, d.commitment::<Keccak256>());
         // MockZkVerifier accepts proof == commitment.
         assert_eq!(out.proof, out.commitment.to_vec());
@@ -11337,14 +11339,14 @@ mod tests {
             r32(7)
         );
         let out = parse_prove_resp(&json).expect("parse");
-        assert_eq!(out.prev_root, [1u8; 32]);
-        assert_eq!(out.manifest_hash, [2u8; 32]);
-        assert_eq!(out.new_root, [3u8; 32]);
-        assert_eq!(out.ordered_root, [4u8; 32]);
-        assert_eq!(out.withdrawals_root, [5u8; 32]);
-        assert_eq!(out.rejected_root, [6u8; 32]);
-        // SEC-019: the prover-service response now carries the 7th commitment word.
-        assert_eq!(out.deposits_root, [8u8; 32]);
+        // SEC-025-B: the raw remote shape — itemised roots are Options (diagnostic only).
+        assert_eq!(out.roots.prev_root, Some([1u8; 32]));
+        assert_eq!(out.roots.manifest_hash, Some([2u8; 32]));
+        assert_eq!(out.roots.new_root, Some([3u8; 32]));
+        assert_eq!(out.roots.ordered_root, Some([4u8; 32]));
+        assert_eq!(out.roots.withdrawals_root, Some([5u8; 32]));
+        assert_eq!(out.roots.rejected_root, Some([6u8; 32]));
+        assert_eq!(out.roots.deposits_root, Some([8u8; 32]));
         assert_eq!(out.commitment, [7u8; 32]);
         assert_eq!(out.proof, vec![0xde, 0xad, 0xbe, 0xef]);
     }
@@ -11512,62 +11514,39 @@ mod tests {
 
     #[test]
     fn prove_and_prepare_rejects_wroot_mismatch() {
-        use crate::prover_client::{
-            prove_and_prepare, MockProverClient, ProveOutcome, ProverClient, ProverClientError,
-        };
-        use perp_core::commitment::DerivedRoots;
-        use perp_core::Keccak256;
-        use sequencer::WindowWitness;
+        use crate::prover_client::{prove_and_prepare, MockProverClient};
 
-        // corrupts withdrawals_root AND recomputes commitment over the tampered roots, so
-        // the commitment cross-check PASSES and the failure lands on the withdrawal-tree
-        // byte-match branch.
-        struct WrootTamper;
-        impl ProverClient for WrootTamper {
-            fn prove(&self, w: &WindowWitness) -> Result<ProveOutcome, ProverClientError> {
-                let mut out = MockProverClient.prove(w)?;
-                out.withdrawals_root = [0xFFu8; 32];
-                out.commitment = DerivedRoots {
-                    prev_state_root: out.prev_root,
-                    manifest_hash: out.manifest_hash,
-                    new_state_root: out.new_root,
-                    ordered_root: out.ordered_root,
-                    withdrawals_root: out.withdrawals_root,
-                    rejected_root: out.rejected_root,
-                    deposits_root: out.deposits_root,
-                }
-                .commitment::<Keccak256>();
-                Ok(out)
-            }
-        }
-
+        // SEC-025-B: the withdrawals_root now comes from the gateway's OWN replay, so a
+        // prover can no longer steer it — the wroot byte-match branch guards a
+        // gateway-INTERNAL invariant instead: the drained window withdrawal set (`ww`)
+        // must reproduce the withdrawals the witness ops derive. Drive it with an
+        // honest prover and a `ww` that drifted (a dropped withdrawal).
         let mut gw = Gw::boot();
         let (key, sk) = register_withdrawer(&mut gw);
         gw.account_deposit(&key, 0, 40_000 * QUOTE_SCALE).unwrap();
         signed_withdraw(&mut gw, &key, &sk, 0, 5_000 * QUOTE_SCALE, [7u8; 20]).unwrap();
         let bc = gw.seq.state.next_batch_id;
-        let (witness, ww) = gw.begin_window_settle(bc).unwrap().expect("some");
+        let (witness, mut ww) = gw.begin_window_settle(bc).unwrap().expect("some");
         assert!(!ww.is_empty());
+        ww.pop(); // the drift: a withdrawal the ops derived is missing from the set
 
-        // (PreparedSettle is not Debug, so no unwrap_err here)
-        let Err(err) = prove_and_prepare(&WrootTamper, &witness, &ww) else {
-            panic!("tampered withdrawals_root must be a hard error");
-        };
+        let err = prove_and_prepare(&MockProverClient, &witness, &ww)
+            .expect_err("a drifted withdrawal set must be a hard error");
         assert!(err.contains("withdrawals root mismatch"), "got: {err}");
     }
 
     #[test]
     fn prove_and_prepare_rejects_commitment_mismatch() {
         use crate::prover_client::{
-            prove_and_prepare, MockProverClient, ProveOutcome, ProverClient, ProverClientError,
+            prove_and_prepare, MockProverClient, ProverClient, ProverClientError, RemoteProveResp,
         };
         use sequencer::WindowWitness;
 
-        // corrupts only the commitment (roots stay consistent with the gateway tree) → the
-        // commitment cross-check branch fires first.
+        // corrupts only the commitment (itemised roots stay honest) → SEC-025-B: the
+        // prover's commitment no longer equals the gateway's OWN derivation → refused.
         struct CommitTamper;
         impl ProverClient for CommitTamper {
-            fn prove(&self, w: &WindowWitness) -> Result<ProveOutcome, ProverClientError> {
+            fn prove(&self, w: &WindowWitness) -> Result<RemoteProveResp, ProverClientError> {
                 let mut out = MockProverClient.prove(w)?;
                 out.commitment = [0xFFu8; 32];
                 Ok(out)
@@ -11581,10 +11560,8 @@ mod tests {
         let bc = gw.seq.state.next_batch_id;
         let (witness, ww) = gw.begin_window_settle(bc).unwrap().expect("some");
 
-        // (PreparedSettle is not Debug, so no unwrap_err here)
-        let Err(err) = prove_and_prepare(&CommitTamper, &witness, &ww) else {
-            panic!("tampered commitment must be a hard error");
-        };
+        let err = prove_and_prepare(&CommitTamper, &witness, &ww)
+            .expect_err("tampered commitment must be a hard error");
         assert!(err.contains("commitment mismatch"), "got: {err}");
     }
 

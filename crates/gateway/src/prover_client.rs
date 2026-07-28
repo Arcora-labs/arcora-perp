@@ -1,11 +1,20 @@
-//! Slice 3b-2a: the gateway's client for turning a sealed window into the six on-chain
+//! Slice 3b-2a: the gateway's client for turning a sealed window into the seven on-chain
 //! roots + a proof. `MockProverClient` derives the roots in-process (no network, no
 //! confidentiality boundary) and uses the commitment as the proof — accepted by the
 //! on-chain MockZkVerifier (proof == commitment). Slice 3b-2b adds `HttpProverClient`
 //! (seal → POST /prove → real Groth16 proof); this module's trait is that seam.
+//!
+//! SEC-025-B trust boundary: a `ProverClient` returns the RAW `/prove` response
+//! (`RemoteProveResp`) and is trusted for NOTHING but the proof bytes.
+//! `prove_and_prepare` replays the `WindowWitness` itself (`derive_roots` is pure over
+//! explicit inputs — deterministic), derives all seven roots + the cumulative
+//! `new_deposit_count` locally, and requires the prover's commitment to equal its own;
+//! since the commitment is a keccak over all seven roots, that one comparison covers
+//! them all. The remote's itemised roots serve only to name WHICH root differs on a
+//! mismatch.
 
 use crate::withdrawals::Withdrawal;
-use perp_core::commitment::{derive_roots, DerivedRoots};
+use perp_core::commitment::derive_roots;
 use perp_core::hash::{Domain, Hasher};
 use perp_core::merkle::{merkle_proof, merkle_root};
 use perp_core::{Digest, EngineError, Keccak256};
@@ -23,11 +32,17 @@ pub struct ProveOutcome {
     pub ordered_root: Digest,
     pub withdrawals_root: Digest,
     pub rejected_root: Digest,
-    /// SEC-019: the post-batch deposit hash-chain tip — the 7th commitment word. Carried
-    /// from the prover's derived roots (Mock) or its `/prove` response (Http) so the
-    /// gateway's independent commitment re-derivation in `prove_and_prepare` includes it
-    /// (a 6-word re-derivation would mismatch every settle).
+    /// SEC-019: the post-batch deposit hash-chain tip — the 7th commitment word.
+    /// SEC-025-B: derived by the gateway's OWN replay in `prove_and_prepare` (never
+    /// taken from the prover), like every other root in this struct.
     pub deposits_root: Digest,
+    /// SEC-025-B: the POST-replay cumulative `consumed_deposit_count`, which is the
+    /// `newDepositCount` argument of the nine-parameter `settleBatch`. Cumulative, not
+    /// per-window: a zero-deposit window over a pre-state of five submits five.
+    /// `_requireDepositPrefix` pins this to the L1 deposit hash chain BEFORE the proof
+    /// is verified, so it is a fund-safety input and is derived locally, never accepted
+    /// from the prover.
+    pub new_deposit_count: u64,
     pub commitment: Digest,
     pub proof: Vec<u8>,
 }
@@ -64,27 +79,59 @@ pub enum ProverClientError {
 /// `Send + Sync` behind an `Arc`.
 pub type ReHandshake = Box<dyn Fn() -> Result<(String, [u8; 32], u64), String> + Send + Sync>;
 
-/// Turns a sealed window into its six roots + a proof.
-pub trait ProverClient: Send + Sync {
-    fn prove(&self, witness: &WindowWitness) -> Result<ProveOutcome, ProverClientError>;
+/// The six roots the prover-service currently emits, plus the 7th it does not yet.
+/// Every field is optional: these are DIAGNOSTIC only. Under SEC-025-B the gateway
+/// derives its own authoritative roots (see `prove_and_prepare`), so a response that
+/// omits a root is not an error — it just yields a less specific message on mismatch.
+#[derive(Debug, Default)]
+pub struct RemoteRoots {
+    pub prev_root: Option<Digest>,
+    pub manifest_hash: Option<Digest>,
+    pub new_root: Option<Digest>,
+    pub ordered_root: Option<Digest>,
+    pub withdrawals_root: Option<Digest>,
+    pub rejected_root: Option<Digest>,
+    pub deposits_root: Option<Digest>,
 }
 
-/// In-process client: derive the roots locally and use the commitment as the proof.
+/// What `/prove` actually returns. Distinct from `ProveOutcome`, which is the
+/// AUTHORITATIVE post-replay value and cannot be built until the gateway has replayed
+/// the witness itself.
+#[derive(Debug)]
+pub struct RemoteProveResp {
+    pub roots: RemoteRoots,
+    pub commitment: Digest,
+    pub proof: Vec<u8>,
+}
+
+/// Turns a sealed window into a proof over its commitment.
+pub trait ProverClient: Send + Sync {
+    /// Returns the prover's RAW response. The gateway derives the authoritative roots
+    /// itself in `prove_and_prepare`; a client is trusted only for `proof` bytes.
+    fn prove(&self, witness: &WindowWitness) -> Result<RemoteProveResp, ProverClientError>;
+}
+
+/// In-process client: derive the roots locally and use the commitment as the proof
+/// (accepted by the on-chain MockZkVerifier, proof == commitment). SEC-025-B: it
+/// returns the raw remote shape — a stand-in for the remote prover, NOT a source of
+/// truth; `prove_and_prepare`'s own replay is the authority either way.
 pub struct MockProverClient;
 
 impl ProverClient for MockProverClient {
-    fn prove(&self, w: &WindowWitness) -> Result<ProveOutcome, ProverClientError> {
+    fn prove(&self, w: &WindowWitness) -> Result<RemoteProveResp, ProverClientError> {
         let mut state = w.pre_state.clone();
         let d = derive_roots(&mut state, &w.ops, &w.manifest).map_err(ProverClientError::Derive)?;
         let commitment = d.commitment::<Keccak256>();
-        Ok(ProveOutcome {
-            prev_root: d.prev_state_root,
-            manifest_hash: d.manifest_hash,
-            new_root: d.new_state_root,
-            ordered_root: d.ordered_root,
-            withdrawals_root: d.withdrawals_root,
-            rejected_root: d.rejected_root,
-            deposits_root: d.deposits_root,
+        Ok(RemoteProveResp {
+            roots: RemoteRoots {
+                prev_root: Some(d.prev_state_root),
+                manifest_hash: Some(d.manifest_hash),
+                new_root: Some(d.new_state_root),
+                ordered_root: Some(d.ordered_root),
+                withdrawals_root: Some(d.withdrawals_root),
+                rejected_root: Some(d.rejected_root),
+                deposits_root: Some(d.deposits_root),
+            },
             commitment,
             proof: commitment.to_vec(),
         })
@@ -97,51 +144,117 @@ impl ProverClient for MockProverClient {
 /// possibly-drifted state).
 /// Clone: the settle loop's stage-2 journal write clones a copy into the journal while
 /// the original proceeds to `settle_proved`/`commit_window_settle` (Task 2).
-#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct PreparedSettle {
     pub outcome: ProveOutcome,
     pub withdraw_proofs: BTreeMap<[u8; 32], (Digest, Vec<[u8; 32]>)>,
 }
 
-/// Prove a sealed window and prepare its claim proofs. Builds the window's withdrawal
-/// tree from `ww` (op-application order) and asserts its root byte-matches the prover's
-/// derived `withdrawals_root` — the two are the same `merkle_root` over the same
-/// `withdrawal_leaf`s, so any divergence is a hard error, never silently published.
+/// Prove a sealed window and prepare its claim proofs. SEC-025-B §1: the gateway
+/// replays the witness ITSELF and its derivation is the outcome — the prover's
+/// commitment must equal the local one, and the prover contributes only proof bytes.
+/// Also builds the window's withdrawal tree from `ww` (op-application order) and
+/// asserts its root byte-matches the locally derived `withdrawals_root` — the two are
+/// the same `merkle_root` over the same `withdrawal_leaf`s, so any divergence is a
+/// hard error, never silently published.
 pub fn prove_and_prepare(
     client: &dyn ProverClient,
     witness: &WindowWitness,
     ww: &[Withdrawal],
 ) -> Result<PreparedSettle, String> {
-    let outcome = client.prove(witness).map_err(|e| format!("prove: {e:?}"))?;
+    // SEC-025-B §1 — derive the answer ourselves. `derive_roots` is pure over explicit
+    // inputs (no clock: `now_ms` is a stored BatchOp field), so replaying the witness we
+    // are about to send is deterministic and reproduces what the prover must derive.
+    // This replaces a check that re-hashed the PROVER's own roots and therefore only
+    // established that the prover agreed with itself.
+    let mut post = witness.pre_state.clone();
+    let derived = derive_roots(&mut post, &witness.ops, &witness.manifest)
+        .map_err(|e| format!("local replay failed: {e:?}"))?;
+    let local_commitment = derived.commitment::<Keccak256>();
 
-    // The prover's claimed commitment must be THE commitment of the seven roots it returned
-    // — that binding is what the on-chain verifier checks the proof against, so a client
-    // that returns mismatched roots/commitment is broken and must never reach settleBatch.
-    // (Trivially true for MockProverClient; a real trust-boundary check for 3b-2b's
-    // HttpProverClient.)
-    let expect = DerivedRoots {
-        prev_state_root: outcome.prev_root,
-        manifest_hash: outcome.manifest_hash,
-        new_state_root: outcome.new_root,
-        ordered_root: outcome.ordered_root,
-        withdrawals_root: outcome.withdrawals_root,
-        rejected_root: outcome.rejected_root,
-        deposits_root: outcome.deposits_root,
-    }
-    .commitment::<Keccak256>();
-    if expect != outcome.commitment {
+    let remote = client.prove(witness).map_err(|e| format!("prove: {e:?}"))?;
+
+    // The commitment is a keccak over all seven roots, so this ONE comparison verifies
+    // every root. The per-root loop below exists only to turn "commitment mismatch" into
+    // "the prover's new_root differs", which is the difference between a five-minute and
+    // a five-hour cutover debug.
+    if remote.commitment != local_commitment {
+        let mut which = Vec::new();
+        for (name, ours, theirs) in [
+            ("prev_root", derived.prev_state_root, remote.roots.prev_root),
+            (
+                "manifest_hash",
+                derived.manifest_hash,
+                remote.roots.manifest_hash,
+            ),
+            ("new_root", derived.new_state_root, remote.roots.new_root),
+            (
+                "ordered_root",
+                derived.ordered_root,
+                remote.roots.ordered_root,
+            ),
+            (
+                "withdrawals_root",
+                derived.withdrawals_root,
+                remote.roots.withdrawals_root,
+            ),
+            (
+                "rejected_root",
+                derived.rejected_root,
+                remote.roots.rejected_root,
+            ),
+            (
+                "deposits_root",
+                derived.deposits_root,
+                remote.roots.deposits_root,
+            ),
+        ] {
+            if let Some(t) = theirs {
+                if t != ours {
+                    which.push(format!(
+                        "{name} (ours {} vs prover {})",
+                        crate::hex32(&ours),
+                        crate::hex32(&t)
+                    ));
+                }
+            }
+        }
+        let detail = if which.is_empty() {
+            // either the prover itemised no roots, or every root it DID itemise matches
+            // ours — then the commitment derivation itself (domain tag / hash) differs
+            "no itemised prover root differs (roots absent or all matching ours)".to_string()
+        } else {
+            which.join(", ")
+        };
         return Err(format!(
-            "commitment mismatch: prover claims {} but its roots commit to {}",
-            crate::hex32(&outcome.commitment),
-            crate::hex32(&expect)
+            "commitment mismatch: ours {} vs prover {} — {detail}",
+            crate::hex32(&local_commitment),
+            crate::hex32(&remote.commitment)
         ));
     }
 
+    let outcome = ProveOutcome {
+        prev_root: derived.prev_state_root,
+        manifest_hash: derived.manifest_hash,
+        new_root: derived.new_state_root,
+        ordered_root: derived.ordered_root,
+        withdrawals_root: derived.withdrawals_root,
+        rejected_root: derived.rejected_root,
+        deposits_root: derived.deposits_root,
+        new_deposit_count: post.consumed_deposit_count,
+        commitment: local_commitment,
+        proof: remote.proof,
+    };
+
+    // Independent gateway-internal consistency check (kept from 3b-2a): the drained
+    // window withdrawal set must byte-match the withdrawals the replay derived. Under
+    // SEC-025-B the prover can no longer steer `withdrawals_root`; a mismatch here
+    // means the gateway's own `ww` drifted from the witness ops — still a hard error.
     let leaves: Vec<[u8; 32]> = ww.iter().map(|w| w.leaf()).collect();
     let wroot = merkle_root(&leaves);
     if wroot != outcome.withdrawals_root {
         return Err(format!(
-            "withdrawals root mismatch: gateway tree {} vs prover {}",
+            "withdrawals root mismatch: gateway tree {} vs derived {}",
             crate::hex32(&wroot),
             crate::hex32(&outcome.withdrawals_root)
         ));
@@ -223,39 +336,59 @@ pub fn seal_witness(
     Ok(hexed)
 }
 
-/// Parse the prover-service /prove JSON into a ProveOutcome. The six roots + commitment
-/// are 32-byte hex (parse_hex32); the proof is variable-length hex (decode_hex). The
-/// returned outcome is validated downstream by prove_and_prepare (commitment cross-check
-/// + withdrawal-tree byte-match), so a tampered response is rejected before settleBatch.
-pub fn parse_prove_resp(json: &str) -> Result<ProveOutcome, ProverClientError> {
+/// Parse the prover-service /prove JSON into the raw remote shape. SEC-025-B break 3:
+/// the service's `ProveResp` has EIGHT fields and does not emit `deposits_root`, so
+/// every root is OPTIONAL here (absent ⇒ `None`, never a decode failure) — the gateway
+/// derives the authoritative roots itself in `prove_and_prepare`, and the remote roots
+/// are diagnostic only. The commitment + proof are what the gateway actually consumes,
+/// so those stay required.
+pub fn parse_prove_resp(json: &str) -> Result<RemoteProveResp, ProverClientError> {
     #[derive(serde::Deserialize)]
     struct Resp {
-        prev_root: String,
-        manifest_hash: String,
-        new_root: String,
-        ordered_root: String,
-        withdrawals_root: String,
-        rejected_root: String,
-        // SEC-019: the prover-service must emit the 7th commitment word so the gateway's
-        // commitment cross-check in `prove_and_prepare` re-derives the same 7-word digest.
-        deposits_root: String,
+        #[serde(default)]
+        prev_root: Option<String>,
+        #[serde(default)]
+        manifest_hash: Option<String>,
+        #[serde(default)]
+        new_root: Option<String>,
+        #[serde(default)]
+        ordered_root: Option<String>,
+        #[serde(default)]
+        withdrawals_root: Option<String>,
+        #[serde(default)]
+        rejected_root: Option<String>,
+        #[serde(default)]
+        deposits_root: Option<String>,
         commitment: String,
         proof: String,
     }
     let r: Resp =
         serde_json::from_str(json).map_err(|e| ProverClientError::Decode(format!("json: {e}")))?;
-    let root = |s: &str, name: &str| -> Result<Digest, ProverClientError> {
-        crate::parse_hex32(s).ok_or_else(|| ProverClientError::Decode(format!("bad {name}: {s}")))
+
+    // An ABSENT root is fine (today's service omits `deposits_root`); a PRESENT but
+    // unparseable one is not — leniency is about absence, never about garbage.
+    let opt = |s: &Option<String>, name: &str| -> Result<Option<Digest>, ProverClientError> {
+        match s {
+            None => Ok(None),
+            Some(v) => crate::parse_hex32(v)
+                .map(Some)
+                .ok_or_else(|| ProverClientError::Decode(format!("bad {name}: {v}"))),
+        }
     };
-    Ok(ProveOutcome {
-        prev_root: root(&r.prev_root, "prev_root")?,
-        manifest_hash: root(&r.manifest_hash, "manifest_hash")?,
-        new_root: root(&r.new_root, "new_root")?,
-        ordered_root: root(&r.ordered_root, "ordered_root")?,
-        withdrawals_root: root(&r.withdrawals_root, "withdrawals_root")?,
-        rejected_root: root(&r.rejected_root, "rejected_root")?,
-        deposits_root: root(&r.deposits_root, "deposits_root")?,
-        commitment: root(&r.commitment, "commitment")?,
+
+    Ok(RemoteProveResp {
+        roots: RemoteRoots {
+            prev_root: opt(&r.prev_root, "prev_root")?,
+            manifest_hash: opt(&r.manifest_hash, "manifest_hash")?,
+            new_root: opt(&r.new_root, "new_root")?,
+            ordered_root: opt(&r.ordered_root, "ordered_root")?,
+            withdrawals_root: opt(&r.withdrawals_root, "withdrawals_root")?,
+            rejected_root: opt(&r.rejected_root, "rejected_root")?,
+            deposits_root: opt(&r.deposits_root, "deposits_root")?,
+        },
+        commitment: crate::parse_hex32(&r.commitment).ok_or_else(|| {
+            ProverClientError::Decode(format!("bad commitment: {}", r.commitment))
+        })?,
         proof: crate::decode_hex(&r.proof)
             .ok_or_else(|| ProverClientError::Decode(format!("bad proof: {}", r.proof)))?,
     })
@@ -493,9 +626,9 @@ impl HttpProverClient {
 fn prove_with_reauth(
     token: Option<String>,
     rehandshake: Option<&ReHandshake>,
-    mut post: impl FnMut(Option<&str>) -> Result<ProveOutcome, ProverClientError>,
+    mut post: impl FnMut(Option<&str>) -> Result<RemoteProveResp, ProverClientError>,
     store: impl FnOnce(String, [u8; 32], u64),
-) -> Result<ProveOutcome, ProverClientError> {
+) -> Result<RemoteProveResp, ProverClientError> {
     match post(token.as_deref()) {
         Err(ProverClientError::Unauthorized) => {
             let Some(rehandshake) = rehandshake else {
@@ -512,7 +645,7 @@ fn prove_with_reauth(
 }
 
 impl ProverClient for HttpProverClient {
-    fn prove(&self, w: &WindowWitness) -> Result<ProveOutcome, ProverClientError> {
+    fn prove(&self, w: &WindowWitness) -> Result<RemoteProveResp, ProverClientError> {
         // Snapshot the token (lock released at the end of this statement — never
         // held across the multi-minute POST). `None` ⇒ no bearer sent ⇒ the
         // prover 401s (fail-closed).
@@ -539,6 +672,315 @@ impl ProverClient for HttpProverClient {
                 s.not_after = fresh_not_after;
             },
         )
+    }
+}
+
+/// Test-only fixture builders for the SEC-025-B `prove_and_prepare` tests. Both drive
+/// the REAL gateway path — `Gw::boot()` → account ops → `begin_window_settle` — never a
+/// hand-built witness (the rollback_journal tests' `sealed_window` shape; underneath,
+/// every op flows through the live `Sequencer`/`seal_window`). Each helper ASSERTS its
+/// own preconditions, so a fixture that drifts fails loudly here instead of letting a
+/// dependent test pass vacuously.
+#[cfg(test)]
+pub(crate) mod tests_support {
+    use crate::withdrawals::Withdrawal;
+    use perp_core::engine::BatchOp;
+    use perp_core::fixed::QUOTE_SCALE;
+    use sequencer::WindowWitness;
+
+    /// A caller-signed account's signing key + its Ethereum address (the registered
+    /// signer), so withdrawals go through the FULL SEC-021 authorization path.
+    fn signer_key() -> (k256::ecdsa::SigningKey, [u8; 20]) {
+        use sha3::{Digest as _, Keccak256};
+        let sk = k256::ecdsa::SigningKey::from_slice(&[0x51u8; 32]).unwrap();
+        let point = sk.verifying_key().to_encoded_point(false);
+        let hash = Keccak256::digest(&point.as_bytes()[1..]);
+        let mut signer = [0u8; 20];
+        signer.copy_from_slice(&hash[12..]);
+        (sk, signer)
+    }
+
+    /// A real signed withdrawal: sign the live `withdraw_auth_digest` with the
+    /// account's registered signer and apply it (Unbind + Withdraw ops + the
+    /// window's incremental withdrawal set).
+    fn signed_withdraw(
+        gw: &mut crate::Gw,
+        sk: &k256::ecdsa::SigningKey,
+        key: &[u8; 32],
+        owner: &perp_core::PubKey,
+        amount: i128,
+        auth_nonce: u64,
+    ) {
+        let to = [7u8; 20];
+        let digest =
+            crate::withdraw_auth_digest(gw.chain_id, &gw.vault, owner, 0, amount, &to, auth_nonce);
+        let (s, recid) = sk.sign_prehash_recoverable(&digest).unwrap();
+        let mut sig = [0u8; 65];
+        sig[..64].copy_from_slice(&s.to_bytes());
+        sig[64] = 27 + recid.to_byte();
+        gw.account_withdraw(key, 0, amount, to, auth_nonce, &sig)
+            .unwrap();
+    }
+
+    /// A REAL sealed window containing at least one `Deposit` op AND at least one
+    /// withdrawal, so `prove_and_prepare`'s withdrawal-tree byte-match is genuinely
+    /// exercised. Note the pre-state is the FULL boot state (`seal_genesis_baseline`
+    /// folds boot funding into the genesis baseline), so `consumed_deposit_count`
+    /// starts non-zero too — cumulative vs per-window is distinguishable here as well.
+    pub(crate) fn sample_window() -> (WindowWitness, Vec<Withdrawal>) {
+        let (sk, signer) = signer_key();
+        let mut gw = crate::Gw::boot();
+        let (key, owner) = gw.register_account(Some(signer));
+        gw.account_deposit(&key, 0, 20_000 * QUOTE_SCALE).unwrap();
+        signed_withdraw(&mut gw, &sk, &key, &owner, 5_000 * QUOTE_SCALE, 1);
+        let bc = gw.seq.state.next_batch_id;
+        let (witness, ww) = gw.begin_window_settle(bc).unwrap().expect("window sealed");
+        // fixture preconditions — do NOT weaken; a fixture without them lets the
+        // dependent tests pass while exercising nothing
+        assert!(
+            witness
+                .ops
+                .iter()
+                .any(|o| matches!(o, BatchOp::Deposit { .. })),
+            "fixture precondition: sample_window must contain a Deposit op"
+        );
+        assert!(
+            !ww.is_empty(),
+            "fixture precondition: sample_window must contain a withdrawal"
+        );
+        (witness, ww)
+    }
+
+    /// A REAL sealed window with NO `Deposit` ops over a pre-state whose
+    /// `consumed_deposit_count` is non-zero: window 0 (boot + a deposit) is sealed
+    /// away first, then window 1 carries only a withdrawal. This is the fixture that
+    /// distinguishes the cumulative `new_deposit_count` from a per-window reading
+    /// (which would wrongly submit 0 here).
+    pub(crate) fn sample_window_no_deposits() -> (WindowWitness, Vec<Withdrawal>) {
+        let (sk, signer) = signer_key();
+        let mut gw = crate::Gw::boot();
+        let (key, owner) = gw.register_account(Some(signer));
+        gw.account_deposit(&key, 0, 20_000 * QUOTE_SCALE).unwrap();
+        // seal window 0 (contains the deposit) so the NEXT window's pre-state carries
+        // the cumulative count
+        let bc0 = gw.seq.state.next_batch_id;
+        let _ = gw
+            .begin_window_settle(bc0)
+            .unwrap()
+            .expect("window 0 sealed");
+        // window 1: only a withdrawal — no Deposit op enters this window
+        signed_withdraw(&mut gw, &sk, &key, &owner, 5_000 * QUOTE_SCALE, 1);
+        let bc1 = gw.seq.state.next_batch_id;
+        let (witness, ww) = gw
+            .begin_window_settle(bc1)
+            .unwrap()
+            .expect("window 1 sealed");
+        // fixture preconditions — do NOT weaken (see sample_window)
+        assert!(
+            witness.pre_state.consumed_deposit_count > 0,
+            "fixture precondition: the pre-state must have consumed deposits"
+        );
+        assert!(
+            witness
+                .ops
+                .iter()
+                .all(|o| !matches!(o, BatchOp::Deposit { .. })),
+            "fixture precondition: the window must contain no Deposit ops"
+        );
+        (witness, ww)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── Task 2: parsing the remote /prove response ────────────────────────────
+
+    /// SEC-025-B break 3: `prover-service`'s ProveResp has EIGHT fields and does not
+    /// emit `deposits_root` (crates/prover-service/src/main.rs:71-80), while the parser
+    /// required it — so every HTTP prove failed at JSON decode before any proof was
+    /// examined. The requirement was recorded as a comment instructing the service to
+    /// emit it, and never implemented.
+    #[test]
+    fn parses_a_response_without_deposits_root() {
+        let json = r#"{
+            "prev_root":"0x1111111111111111111111111111111111111111111111111111111111111111",
+            "manifest_hash":"0x2222222222222222222222222222222222222222222222222222222222222222",
+            "new_root":"0x3333333333333333333333333333333333333333333333333333333333333333",
+            "ordered_root":"0x4444444444444444444444444444444444444444444444444444444444444444",
+            "withdrawals_root":"0x5555555555555555555555555555555555555555555555555555555555555555",
+            "rejected_root":"0x6666666666666666666666666666666666666666666666666666666666666666",
+            "commitment":"0x7777777777777777777777777777777777777777777777777777777777777777",
+            "proof":"0xabcd"
+        }"#;
+        let r = parse_prove_resp(json).expect("today's prover-service shape must parse");
+        assert_eq!(r.commitment[0], 0x77);
+        assert_eq!(r.proof, vec![0xab, 0xcd]);
+        assert_eq!(r.roots.deposits_root, None, "absent field stays absent");
+        assert_eq!(
+            r.roots.new_root.expect("present roots still parse")[0],
+            0x33
+        );
+    }
+
+    /// Forward-compatible: if the service later emits the 7th word, it parses too.
+    #[test]
+    fn parses_a_response_with_deposits_root() {
+        let json = r#"{
+            "prev_root":"0x1111111111111111111111111111111111111111111111111111111111111111",
+            "manifest_hash":"0x2222222222222222222222222222222222222222222222222222222222222222",
+            "new_root":"0x3333333333333333333333333333333333333333333333333333333333333333",
+            "ordered_root":"0x4444444444444444444444444444444444444444444444444444444444444444",
+            "withdrawals_root":"0x5555555555555555555555555555555555555555555555555555555555555555",
+            "rejected_root":"0x6666666666666666666666666666666666666666666666666666666666666666",
+            "deposits_root":"0x8888888888888888888888888888888888888888888888888888888888888888",
+            "commitment":"0x7777777777777777777777777777777777777777777777777777777777777777",
+            "proof":"0xabcd"
+        }"#;
+        let r = parse_prove_resp(json).expect("forward-compatible");
+        assert_eq!(r.roots.deposits_root.expect("present")[0], 0x88);
+    }
+
+    /// A malformed root that IS present must still be rejected — leniency is about
+    /// absence, not about accepting garbage.
+    #[test]
+    fn rejects_a_present_but_malformed_root() {
+        let json = r#"{
+            "prev_root":"not-hex",
+            "manifest_hash":"0x2222222222222222222222222222222222222222222222222222222222222222",
+            "new_root":"0x3333333333333333333333333333333333333333333333333333333333333333",
+            "ordered_root":"0x4444444444444444444444444444444444444444444444444444444444444444",
+            "withdrawals_root":"0x5555555555555555555555555555555555555555555555555555555555555555",
+            "rejected_root":"0x6666666666666666666666666666666666666666666666666666666666666666",
+            "commitment":"0x7777777777777777777777777777777777777777777777777777777777777777",
+            "proof":"0xabcd"
+        }"#;
+        assert!(
+            parse_prove_resp(json).is_err(),
+            "garbage must not parse as absent"
+        );
+    }
+
+    /// The commitment and proof are what Task 3 actually consumes — absent or
+    /// malformed, they are a hard parse failure.
+    #[test]
+    fn rejects_a_response_missing_the_commitment() {
+        let json = r#"{"proof":"0xabcd"}"#;
+        assert!(parse_prove_resp(json).is_err());
+    }
+
+    // ── Task 3: local derivation is the source of truth ───────────────────────
+
+    /// SEC-025-B §1: the gateway derives all seven roots from its OWN replay and requires
+    /// the prover's commitment to equal its own. Because the commitment is a keccak over
+    /// all seven words, that single comparison covers every root — replacing a check that
+    /// only re-hashed the prover's own roots and so proved nothing but self-consistency.
+    #[test]
+    fn local_derivation_matches_the_mock_prover_on_all_seven_roots() {
+        let (witness, ww) = crate::prover_client::tests_support::sample_window();
+        let prepared = prove_and_prepare(&MockProverClient, &witness, &ww)
+            .expect("mock agrees with local derivation");
+        let mut state = witness.pre_state.clone();
+        let d = perp_core::commitment::derive_roots(&mut state, &witness.ops, &witness.manifest)
+            .expect("replay");
+        let o = &prepared.outcome;
+        assert_eq!(o.prev_root, d.prev_state_root);
+        assert_eq!(o.manifest_hash, d.manifest_hash);
+        assert_eq!(o.new_root, d.new_state_root);
+        assert_eq!(o.ordered_root, d.ordered_root);
+        assert_eq!(o.withdrawals_root, d.withdrawals_root);
+        assert_eq!(o.rejected_root, d.rejected_root);
+        assert_eq!(o.deposits_root, d.deposits_root);
+    }
+
+    /// The cumulative count, not the per-window one. This is the value
+    /// `_requireDepositPrefix` pins BEFORE proof verification, so getting it wrong
+    /// selects the wrong L1 prefix.
+    #[test]
+    fn new_deposit_count_is_cumulative_not_per_window() {
+        let (witness, ww) = crate::prover_client::tests_support::sample_window();
+        let pre_count = witness.pre_state.consumed_deposit_count;
+        let n_deposits = witness
+            .ops
+            .iter()
+            .filter(|o| matches!(o, perp_core::engine::BatchOp::Deposit { .. }))
+            .count() as u64;
+        let prepared = prove_and_prepare(&MockProverClient, &witness, &ww).expect("prove");
+        assert_eq!(
+            prepared.outcome.new_deposit_count,
+            pre_count + n_deposits,
+            "post == pre + deposits in window (NOT the per-window count)"
+        );
+    }
+
+    /// A window with no deposits over a non-zero pre-state must still submit the
+    /// pre-state count — the case a per-window reading gets wrong as 0.
+    #[test]
+    fn zero_deposit_window_submits_the_prestate_count() {
+        let (witness, ww) = crate::prover_client::tests_support::sample_window_no_deposits();
+        assert!(
+            witness.pre_state.consumed_deposit_count > 0,
+            "fixture precondition: the pre-state must have consumed deposits, or this \
+             test cannot distinguish cumulative from per-window"
+        );
+        let prepared = prove_and_prepare(&MockProverClient, &witness, &ww).expect("prove");
+        assert_eq!(
+            prepared.outcome.new_deposit_count,
+            witness.pre_state.consumed_deposit_count
+        );
+    }
+
+    /// A prover whose commitment disagrees with local derivation must be refused
+    /// OUTRIGHT — nothing prepared, nothing returned for broadcast.
+    #[test]
+    fn a_disagreeing_prover_is_refused() {
+        struct LyingProver;
+        impl ProverClient for LyingProver {
+            fn prove(&self, _w: &WindowWitness) -> Result<RemoteProveResp, ProverClientError> {
+                Ok(RemoteProveResp {
+                    roots: RemoteRoots::default(),
+                    commitment: [0xEE; 32],
+                    proof: vec![0x01],
+                })
+            }
+        }
+        let (witness, ww) = crate::prover_client::tests_support::sample_window();
+        let err = prove_and_prepare(&LyingProver, &witness, &ww)
+            .expect_err("a commitment that disagrees with local derivation must be refused");
+        assert!(
+            err.contains("commitment"),
+            "error should name the commitment mismatch, got: {err}"
+        );
+    }
+
+    /// The diagnostic path: when the response DID carry roots, the error names which
+    /// one differs rather than only reporting a commitment mismatch.
+    #[test]
+    fn a_disagreeing_prover_names_the_differing_root() {
+        let (witness, ww) = crate::prover_client::tests_support::sample_window();
+        let mut state = witness.pre_state.clone();
+        let d = perp_core::commitment::derive_roots(&mut state, &witness.ops, &witness.manifest)
+            .expect("replay");
+        struct WrongNewRoot(perp_core::commitment::DerivedRoots);
+        impl ProverClient for WrongNewRoot {
+            fn prove(&self, _w: &WindowWitness) -> Result<RemoteProveResp, ProverClientError> {
+                Ok(RemoteProveResp {
+                    roots: RemoteRoots {
+                        prev_root: Some(self.0.prev_state_root),
+                        new_root: Some([0xEE; 32]), // the one that differs
+                        ..RemoteRoots::default()
+                    },
+                    commitment: [0xEE; 32],
+                    proof: vec![0x01],
+                })
+            }
+        }
+        let err = prove_and_prepare(&WrongNewRoot(d), &witness, &ww).expect_err("must refuse");
+        assert!(
+            err.contains("new_root"),
+            "error should name new_root, got: {err}"
+        );
     }
 }
 
@@ -682,15 +1124,11 @@ mod reauth_tests {
     use super::*;
     use std::cell::RefCell;
 
-    fn dummy_outcome() -> ProveOutcome {
-        ProveOutcome {
-            prev_root: [0u8; 32],
-            manifest_hash: [0u8; 32],
-            new_root: [0u8; 32],
-            ordered_root: [0u8; 32],
-            withdrawals_root: [0u8; 32],
-            rejected_root: [0u8; 32],
-            deposits_root: [0u8; 32],
+    // SEC-025-B: the reauth seam now carries the RAW remote response (the
+    // authoritative ProveOutcome is built only after the local replay).
+    fn dummy_outcome() -> RemoteProveResp {
+        RemoteProveResp {
+            roots: RemoteRoots::default(),
             commitment: [0u8; 32],
             proof: vec![],
         }
