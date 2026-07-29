@@ -87,7 +87,11 @@ and refuse to start otherwise, naming both roots. If the RPC is unreachable the 
 
 Pure no-L1 demo behaviour is untouched: `Gw::boot()` still funds MM, user and the LP demo.
 
-## The open decision: L1-configured testnets
+## DECIDED: genesis mode keys on `production_mode` (any L1-configured deployment)
+
+**Resolved 2026-07-29.** Genesis mode follows `production_mode` — i.e. **any** deployment with L1 configured gets a markets-only genesis, including Base Sepolia and local anvil. The reasoning and its cost are below; the cost is real and accepted.
+
+Consequence for the current live testnet: after the cutover it loses its funded MM, demo user, LP pool and insurance. **Testnet liquidity must be re-established through real deposits** — faucet → `CollateralVault.deposit` → `account_confirm_deposit` — which is the same path production uses. That is additional cutover work and belongs in the runbook.
 
 **The first version claimed "demo/dev settling under `PROVER_URL=mock` is untouched." That is false.** Production posture is `l1_enabled || DARKPERP_PROD` (`main.rs:5844`, `:6132`), independent of the prover. So keying genesis mode on `production_mode` means a Base Sepolia or local-anvil deployment loses its funded MM, demo user, LP pool and insurance — including the current live testnet.
 
@@ -140,6 +144,6 @@ Rows marked "must fail before the change" are what establish the tests test some
 
 ## Open risks
 
-1. **The testnet decision above** is unresolved until the user picks. Everything else in this spec is independent of it.
+1. **Testnet liquidity after the cutover.** The decision above means the live testnet's MM must be re-funded through real deposits. If that turns out to be impractical (no faucet path for the MM wallet, say), the fallback is not to reintroduce unbacked minting — it is to fund the MM like any user and accept a thinner book. Reintroducing unbacked minting would re-break settling.
 2. **Zero insurance until 025-A.** Restated because it is the one way this piece could make things worse if a deployment opens for trading before 025-D exists.
 3. **The continuity check needs an L1 read at boot.** Fail-closed on an unreachable RPC is specified; it must not be softened to a warning under operational pressure, which is how the existing check became vacuous.
