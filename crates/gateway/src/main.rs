@@ -2180,16 +2180,24 @@ impl Gw {
     }
 
     /// Slice 3b-2a: begin a new-path window settle. Returns `None` if the engine root is
-    /// unchanged since the last settle (nothing to prove). Errors WITHOUT mutating if the
-    /// window's batch id would not match the on-chain `batchCount` (a desync a prior fault
-    /// left behind — recovery is Slice 3b-3). Otherwise seals the window and takes its
-    /// incremental withdrawal set.
+    /// unchanged since the last settle AND the open window carries no manifest content
+    /// (nothing to prove). Errors WITHOUT mutating if the window's batch id would not
+    /// match the on-chain `batchCount` (a desync a prior fault left behind — recovery is
+    /// Slice 3b-3). Otherwise seals the window and takes its incremental withdrawal set.
     fn begin_window_settle(
         &mut self,
         chain_batch_count: u64,
     ) -> Result<Option<(WindowWitness, Vec<Withdrawal>)>, String> {
-        if self.seq.state.state_root() == self.last_settled_root {
-            return Ok(None); // no net state change since the last settle
+        // SEC-025-B break 4: a window can carry consensus-relevant manifest content with
+        // an UNCHANGED engine root — a resting unfilled order is in `ordered` but moves no
+        // state. Settling is what populates the challenge-answer store, and both on-chain
+        // answer paths require a settled batch, so a root-only predicate leaves an honest
+        // sequencer unable to answer a ripe challenge. Still returns None when the window
+        // is empty in both senses, so idle ticks burn no proofs.
+        if self.seq.state.state_root() == self.last_settled_root
+            && !self.seq.window_has_pending_manifest()
+        {
+            return Ok(None);
         }
         // Pre-check the counter BEFORE sealing (which bumps it), so a desync leaves the
         // sequencer untouched instead of stranded ahead of the chain.
@@ -7320,6 +7328,53 @@ async fn main() {
 mod tests {
     use super::*;
 
+    /// SEC-025-B break-4 fixtures. The manifest-only tests need an order that is
+    /// genuinely ACCEPTED and RESTS (it lands in `ordered` with no fill and no
+    /// rejection). The distinction matters: a REJECTED order also lands in the
+    /// window manifest, so a broken fixture would still satisfy
+    /// `window_has_pending_manifest()` while silently testing the wrong path — and
+    /// an order that accidentally FILLS would move the engine root and stop
+    /// exercising break 4 at all. The tests' precondition asserts pin both.
+    mod tests_support {
+        use super::*;
+
+        /// A booted gateway whose market-0 oracle is re-signed at a small
+        /// deterministic publish time (500 ms), so a batch sealed at `now_ms =
+        /// 1_000` clears the freshness gate (`publish_time ∈ [now − staleness,
+        /// now]`). Boot pins the transcript at the REAL wall clock — the future of
+        /// `1_000` — which `validate` rejects as Stale, and a stale oracle turns
+        /// the resting order into a REJECTED one (`OracleUnavailable`), defeating
+        /// the fixture.
+        pub fn gw_with_market() -> Gw {
+            let mut gw = Gw::boot();
+            let px = gw.seq.oracle(0).expect("boot pins a market-0 oracle").price;
+            let t = oracle_of(px, 500, 0, &gw.oracle_signer);
+            gw.seq.set_oracle(0, t);
+            gw
+        }
+
+        /// A Gtc buy at HALF the oracle mark from the boot-funded demo user
+        /// (wallet seed `[1u8; 32]`, exactly boot's `user`): it clears the
+        /// pre-trade margin gate (boot funds ≫ the initial margin on 0.1 base) but
+        /// crosses nothing in an empty book, so it RESTS — its hash enters the
+        /// window manifest while engine state (and thus the state root) is
+        /// untouched: the book is matcher state, not `State`.
+        pub fn resting_order(nonce: u64) -> Order {
+            let user = Wallet::from_seed([1u8; 32]);
+            let px = usd(MARKETS[0].seed);
+            mk_order(
+                user.owner,
+                0,
+                Side::Buy,
+                SIZE_SCALE / 10,
+                px / 2,
+                nonce,
+                TimeInForce::Gtc,
+                false,
+            )
+        }
+    }
+
     // ZK-001 (Hazard #1): a transcript pushed through the LIVE oracle path
     // (`apply_real_oracle`, which remaps `publish_time_ms` onto the local freshness
     // clock) must STILL recover to the market's `oracle_pubkey` — i.e. the gateway
@@ -10909,6 +10964,69 @@ mod tests {
         gw.last_settled_root = gw.seq.state.state_root();
         let bc = gw.seq.state.next_batch_id;
         assert!(gw.begin_window_settle(bc).unwrap().is_none());
+    }
+
+    /// SEC-025-B break 4: a window holding an accepted-but-unfilled order's hash must
+    /// settle even though the engine root did not move. Otherwise its hashes never reach
+    /// the challenge-answer store and an honest sequencer cannot answer a ripe inclusion
+    /// challenge — a wrongful-slash path reachable by any user resting an order into an
+    /// otherwise quiet window.
+    #[test]
+    fn a_manifest_only_window_still_settles() {
+        let mut gw = tests_support::gw_with_market();
+        let root_before = gw.seq.state.state_root();
+
+        // A far-from-the-book limit that rests without crossing: no fill, no state change.
+        let sealed = gw.seq.seal_batch(&[tests_support::resting_order(1)], 1_000);
+
+        // Fixture-suspicion guards: the order must be ACCEPTED into `ordered`, not
+        // rejected — a REJECTED order also reaches the window manifest, so without
+        // these two asserts a broken fixture (e.g. a stale oracle) would pass the
+        // preconditions below while exercising the wrong path.
+        assert!(
+            sealed.manifest.rejected.is_empty(),
+            "fixture precondition: the resting order must be ACCEPTED, not rejected: {:?}",
+            sealed.manifest.rejected
+        );
+        assert_eq!(
+            sealed.manifest.ordered.len(),
+            1,
+            "fixture precondition: the resting order must be in this tick's `ordered`"
+        );
+
+        assert_eq!(
+            gw.seq.state.state_root(),
+            root_before,
+            "fixture precondition: a resting unfilled order must NOT move the engine root, \
+             or this test is not exercising break 4"
+        );
+        assert!(
+            gw.seq.window_has_pending_manifest(),
+            "fixture precondition: the order must be in the window manifest"
+        );
+
+        let out = gw
+            .begin_window_settle(gw.seq.state.next_batch_id)
+            .expect("no desync");
+        assert!(
+            out.is_some(),
+            "a window carrying manifest content must settle even with an unchanged root"
+        );
+    }
+
+    /// The predicate must not turn idle ticks into proofs: a window empty in BOTH senses
+    /// still returns None.
+    #[test]
+    fn a_truly_empty_window_still_returns_none() {
+        let mut gw = tests_support::gw_with_market();
+        assert!(!gw.seq.window_has_pending_manifest());
+        let out = gw
+            .begin_window_settle(gw.seq.state.next_batch_id)
+            .expect("no desync");
+        assert!(
+            out.is_none(),
+            "no state change and no manifest content ⇒ nothing to prove"
+        );
     }
 
     #[test]
