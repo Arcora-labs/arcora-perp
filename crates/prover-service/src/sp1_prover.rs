@@ -3,7 +3,7 @@
 //! sync trait method. Runs where the SP1 toolchain + (emulated) gnark are (the prover
 //! machine), NOT in the workspace. SP1 v6.x Groth16 API — validated on the SP1 prover
 //! machine (GB10); build steps in `docs/PROVING-RUNBOOK.md`.
-use perp_core::hash::{Digest, Hasher, Keccak256};
+use perp_core::hash::{Digest, Keccak256};
 use prover::{Prover, PublicInputs};
 use sp1_sdk::{
     include_elf, Elf, HashableKey, ProveRequest, Prover as _, ProverClient, ProvingKey, SP1Stdin,
@@ -64,12 +64,24 @@ impl Prover for Sp1GnarkProver {
             .rt
             .block_on(async move { client.prove(&pk, stdin).groth16().await })
             .expect("sp1 groth16 prove");
-        // Sanity: the guest-derived public value must match the natively-derived commitment.
-        debug_assert_eq!(
-            proof.public_values.as_slice(),
-            public.commitment::<Keccak256>().as_slice(),
-            "proof public_values must equal the derived commitment"
-        );
+        // SEC-025-B §2: the guest's committed public value MUST equal the natively derived
+        // commitment. This was a debug_assert, which compiles out of the release builds the
+        // prover box runs — so a native/guest divergence would return a proof the gateway
+        // happily accepts (its local replay matches the NATIVE roots) and L1 then rejects,
+        // late and inside the rollback machinery. Fail here instead, naming both values.
+        // A panic (not a Result): the `Prover` trait's `prove` is infallible by signature,
+        // this function already panics on prove failure (the `.expect` above), and the
+        // /prove call site runs us inside `spawn_blocking`, whose JoinError on panic is
+        // mapped to a 500 — so the panic IS the propagated /prove 500.
+        let expected = public.commitment::<Keccak256>();
+        if proof.public_values.as_slice() != expected.as_slice() {
+            panic!(
+                "guest/native divergence: guest committed {} but native derivation gives {} \
+                 — the guest ELF and the host perp-core are not the same code",
+                hex::encode(proof.public_values.as_slice()),
+                hex::encode(expected),
+            );
+        }
         proof.bytes()
     }
 }

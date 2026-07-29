@@ -30,7 +30,12 @@ fn main() {
             deposit_id: 0,
             deposit_blind: [0u8; 32],
         },
-        BatchOp::Withdraw { note_commitment: cm, spend_key, to: Some([0xAB; 20]), nonce: 1 },
+        BatchOp::Withdraw {
+            note_commitment: cm,
+            spend_key,
+            to: Some([0xAB; 20]),
+            nonce: 1,
+        },
     ];
     let manifest = BatchManifest {
         previous_state_root: state.state_root(),
@@ -48,8 +53,13 @@ fn main() {
     // Seal to the service's stand-in measurement (0xAB..) + seal root (0x5E.. default). Must match
     // crates/prover-service/src/main.rs `measurement()` / `seal_root()`.
     let m = [0xABu8; 32];
-    let sealed = SealedWitness::seal(&bytes, &SoftwareSealProvider::new([0x5Eu8; 32], m), m, [0x11u8; 32])
-        .expect("seal");
+    let sealed = SealedWitness::seal(
+        &bytes,
+        &SoftwareSealProvider::new([0x5Eu8; 32], m),
+        m,
+        [0x11u8; 32],
+    )
+    .expect("seal");
     let out = postcard::to_allocvec(&sealed).unwrap();
     println!("SEALED=0x{}", hex::encode(out));
 }
