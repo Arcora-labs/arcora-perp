@@ -52,6 +52,9 @@ jobs:
     #     an sp1 upgrade moves it, this job fails loudly on the include_bytes.
     name: prover crates (excluded, typecheck)
     runs-on: ubuntu-latest
+    # Both crates gitignore their Cargo.lock, so every run cold-resolves the whole
+    # sp1-sdk tree — bound the job so a hung resolve can't burn a runner for 6h.
+    timeout-minutes: 30
     env:
       SP1_SKIP_PROGRAM_BUILD: "true"
     steps:

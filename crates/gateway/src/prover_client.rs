@@ -21,7 +21,8 @@ use perp_core::{Digest, EngineError, Keccak256};
 use sequencer::WindowWitness;
 use std::collections::BTreeMap;
 
-/// The six on-chain roots + commitment + proof for one window's `settleBatch`.
+/// The seven on-chain roots + the cumulative `new_deposit_count` + commitment + proof
+/// for one window's `settleBatch`.
 /// Serde: persisted (sealed) in the rollback journal once the prove returns, so a boot
 /// after a crash between prove and commit can roll the landed settle forward.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -231,6 +232,29 @@ pub fn prove_and_prepare(
             crate::hex32(&local_commitment),
             crate::hex32(&remote.commitment)
         ));
+    }
+
+    // Whole-branch review item 3: an empty proof can never verify on-chain, but
+    // nothing downstream would catch it — `decode_hex("0x")` is `Some(vec![])`,
+    // `parse_prove_resp` has no length floor, and the commitment check above says
+    // nothing about the proof bytes. Left alone it would be journaled at stage 2,
+    // broadcast, and fail only in `settleBatch` — burning gas and a rollback cycle.
+    // The design principle is the opposite: turn a late, expensive, on-chain failure
+    // into an immediate prover-side error.
+
+    // Whole-branch review item 3: an empty proof can never verify on-chain, but
+    // nothing downstream would catch it — `decode_hex("0x")` is `Some(vec![])`,
+    // `parse_prove_resp` has no length floor, and the commitment check above says
+    // nothing about the proof bytes. Left alone it would be journaled at stage 2,
+    // broadcast, and fail only in `settleBatch` — burning gas and a rollback cycle.
+    // The design principle is the opposite: turn a late, expensive, on-chain failure
+    // into an immediate prover-side error.
+    if remote.proof.is_empty() {
+        return Err(
+            "prover returned an empty proof (commitment matched, but empty \
+                    bytes cannot verify on-chain)"
+                .to_string(),
+        );
     }
 
     let outcome = ProveOutcome {
@@ -951,6 +975,51 @@ mod tests {
         assert!(
             err.contains("commitment"),
             "error should name the commitment mismatch, got: {err}"
+        );
+    }
+
+    /// Whole-branch review item 3: a prover returning `"proof":"0x"` with a CORRECT
+    /// commitment must be refused locally — an empty proof passes the commitment
+    /// check and the withdrawal-root check, so without this floor it would be
+    /// journaled and broadcast, failing only on-chain (gas + a rollback cycle).
+    #[test]
+    fn an_empty_proof_is_refused_before_broadcast() {
+        /// Agrees with local derivation on every root (delegates to the mock),
+        /// but returns zero proof bytes — exactly what `parse_prove_resp` yields
+        /// for `"proof":"0x"` (`decode_hex("0x")` == `Some(vec![])`).
+        struct EmptyProofProver;
+        impl ProverClient for EmptyProofProver {
+            fn prove(&self, w: &WindowWitness) -> Result<RemoteProveResp, ProverClientError> {
+                let mut r = MockProverClient.prove(w)?;
+                r.proof = Vec::new();
+                Ok(r)
+            }
+        }
+        let (witness, ww) = crate::prover_client::tests_support::sample_window();
+        // Fixture-suspicion guard: the commitment really does match (the mock's
+        // does), so a failure here can ONLY come from the empty-proof floor —
+        // not from an accidental commitment mismatch.
+        let remote = EmptyProofProver.prove(&witness).expect("prove");
+        let mut state = witness.pre_state.clone();
+        let local =
+            perp_core::commitment::derive_roots(&mut state, &witness.ops, &witness.manifest)
+                .expect("replay")
+                .commitment::<Keccak256>();
+        assert_eq!(
+            remote.commitment, local,
+            "fixture precondition: the empty-proof prover's commitment must MATCH, \
+             or this test only re-exercises the commitment check"
+        );
+        assert!(
+            remote.proof.is_empty(),
+            "fixture precondition: proof is empty"
+        );
+
+        let err = prove_and_prepare(&EmptyProofProver, &witness, &ww)
+            .expect_err("an empty proof must be refused before anything is prepared");
+        assert!(
+            err.contains("empty proof"),
+            "error should name the empty proof, got: {err}"
         );
     }
 

@@ -1,7 +1,11 @@
 # SP1 host that EXECUTES the perp-core zkVM guest and checks its committed public
 # value equals the native perp-core commitment byte-for-byte. Standalone (heavy
 # sp1-sdk dep, not run in CI); excluded from the host workspace. Build the guest
-# first (`cd ../sp1-guest && cargo prove build`), then `cargo run --release` here.
+# first (`cd ../sp1-guest && cargo prove build`), then
+# `cargo run --release --bin sp1-host` here (`--bin` is required: this crate has
+# two bin targets — `sp1-host` and `prove` — and no `default-run`, so a bare
+# `cargo run` errors). Run with SP1_SKIP_PROGRAM_BUILD unset, or build.rs skips
+# the guest build the parity check depends on.
 [package]
 name = "sp1-host"
 version = "0.0.0"

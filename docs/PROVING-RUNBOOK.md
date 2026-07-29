@@ -29,8 +29,12 @@ builds in isolation before invoking the host.
 
 ## 3. Equivalence gate (validates P1 in the real zkVM)
 ```bash
-cd crates/sp1-host && cargo run --release
+cd crates/sp1-host && cargo run --release --bin sp1-host
 ```
+(`--bin sp1-host` is required: the crate has a second bin target, `prove`, so a bare
+`cargo run` errors with "could not determine which binary to run". Run with
+`SP1_SKIP_PROGRAM_BUILD` **unset** — CI's typecheck job sets it, and with it set the
+guest ELF this gate executes is never built.)
 Asserts `native derive_roots(...).commitment == the guest's committed value`. This is
 the first execution of the P1 circuit in the SP1 zkVM. Must print the equality/success
 before proceeding. (If include_elf! can't find the guest ELF, run the standalone build
@@ -71,14 +75,17 @@ Then rewire the CollateralVault + repost the sequencer bond per the existing red
 flow. MockZkVerifier is retired for this deployment.
 
 ## 7. End-to-end
-Submit a real settlement:
+Submit a real settlement (SEC-025-B: `settleBatch` takes NINE parameters — seven
+roots including the SEC-019 `depositsRoot`, the cumulative `uint64 newDepositCount`,
+and the proof):
 ```
-settleBatch(prevRoot, manifestHash, newRoot, orderedRoot, withdrawalsRoot, rejectedRoot, proof_bytes)
+settleBatch(prevRoot, manifestHash, newRoot, orderedRoot, withdrawalsRoot, rejectedRoot,
+            depositsRoot, newDepositCount, proof_bytes)
 ```
 `publicCommitment = publicCommitment(prevRoot, manifestHash, newRoot, orderedRoot,
-withdrawalsRoot, rejectedRoot)` must equal the 32-byte `public_values` from step 4, and
-the SP1 gateway must accept `proof_bytes` under the pinned `vkey`. On success the derived
-commitment is now enforced on-chain by real ZK.
+withdrawalsRoot, rejectedRoot, depositsRoot)` must equal the 32-byte `public_values`
+from step 4, and the SP1 gateway must accept `proof_bytes` under the pinned `vkey`. On
+success the derived commitment is now enforced on-chain by real ZK.
 
 ## Notes / gotchas
 - Proving latency + resources set the L1 settle cadence.
@@ -137,17 +144,29 @@ let sealed = prover::SealedWitness::seal(
 let hex = format!("0x{}", hex::encode(postcard::to_allocvec(&sealed).unwrap()));
 // curl -s localhost:8091/prove -H 'content-type: application/json' -d "{\"sealed\":\"$hex\"}"
 ```
-The response's 6 roots + `proof` go straight into `settleBatch` (below).
+SEC-025-B: take ONLY the `proof` bytes from the response. The service's itemised
+roots are DIAGNOSTIC — the response carries no `depositsRoot` at all, and the roots
+submitted on-chain come from the gateway's own LOCAL replay of the witness
+(`perp_core::commitment::derive_roots`, exactly what `prove_and_prepare` in
+`crates/gateway/src/prover_client.rs` does). Derive all seven roots + the post-replay
+`consumed_deposit_count` locally, check the service's `commitment` equals the keccak
+commitment over YOUR seven derived roots, then pair your roots with its `proof`.
 
 (If `PROVER_SEAL_ROOT` is unset the service uses `0x5E…`; if set, the client must use the same value.)
 
 ### e2e verify on-chain (the merge gate)
-Submit the returned 6 roots + proof to a fresh `DarkPerpSettlement` wired to the Slice-1
-`SP1ZkVerifier` (`0xCbdD7381766f3021C5fae2a5bBeAe5CF0Fc20bcF` on Base Sepolia), genesis =
-`prev_root`:
+Submit your seven locally derived roots, the cumulative `newDepositCount`, and the
+service's proof to a fresh `DarkPerpSettlement` wired to the Slice-1 `SP1ZkVerifier`
+(`0xCbdD7381766f3021C5fae2a5bBeAe5CF0Fc20bcF` on Base Sepolia), genesis = `prev_root`.
+`newDepositCount` is the **cumulative** post-state `consumed_deposit_count`, not a
+per-window count (a zero-deposit window over a pre-state that already consumed five
+deposits submits **5**); `_requireDepositPrefix` pins `depositsRoot` to the vault's
+deposit-chain tip at exactly that count, before the proof is even verified:
 ```bash
-cast send <SETTLEMENT> "settleBatch(bytes32,bytes32,bytes32,bytes32,bytes32,bytes32,bytes)" \
-  <prev_root> <manifest_hash> <new_root> <ordered_root> <withdrawals_root> <rejected_root> <proof> \
+cast send <SETTLEMENT> \
+  "settleBatch(bytes32,bytes32,bytes32,bytes32,bytes32,bytes32,bytes32,uint64,bytes)" \
+  <prev_root> <manifest_hash> <new_root> <ordered_root> <withdrawals_root> <rejected_root> \
+  <deposits_root> <new_deposit_count> <proof> \
   --rpc-url https://sepolia.base.org --private-key $KEY
 ```
 `$KEY` must be the deployed settlement's `sequencer` (`settleBatch` is `onlySequencer`).

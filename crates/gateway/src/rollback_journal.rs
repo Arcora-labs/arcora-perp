@@ -160,6 +160,17 @@ pub fn recovery_action(
     // Row order IS the precedence: STALE must beat ROLL-FORWARD (same counters —
     // if the settled root already matches the chain, the commit was persisted and
     // re-committing would double-apply the window).
+    //
+    // WHY the precedence is sound (i.e. why STALE can never shadow a genuine
+    // roll-forward): `root_matches_settled` and `root_matches_prepared` can never
+    // both be true, because consecutive settle roots always differ —
+    // `state_root()` binds `next_batch_id` into the root
+    // (crates/perp-core/src/state.rs:240) and `apply_batch` increments it exactly
+    // once per window (crates/perp-core/src/engine.rs:204), so `prepared.new_root`
+    // (the new window's post-state) cannot equal the restored
+    // `l1_status.settled_root` (the previous window's post-state) even for a
+    // window that changed nothing else. A lost commit therefore always presents
+    // as `root_matches_settled == false` and falls through to ROLL-FORWARD.
     if sealed_persisted && tx_landed && root_matches_settled {
         RecoveryAction::Stale
     } else if b_snap == j_batch && chain_bc == j_batch {
@@ -229,10 +240,17 @@ mod tests {
         let ww_leaves: Vec<[u8; 32]> = ww.iter().map(|w| w.leaf()).collect();
         let commitment = prepared.outcome.commitment;
         let new_root = prepared.outcome.new_root;
+        let new_deposit_count = prepared.outcome.new_deposit_count;
         let proof = prepared.outcome.proof.clone();
         let withdraw_proofs = prepared.withdraw_proofs.clone();
         assert!(ops_len > 0, "a real window has ops");
         assert!(!ww_leaves.is_empty(), "a real window has a withdrawal");
+        // Fixture guard: the window contains a deposit, so the cumulative count is
+        // non-zero — the round-trip assert below can never pass vacuously as 0 == 0.
+        assert!(
+            new_deposit_count > 0,
+            "a real window has a consumed deposit"
+        );
 
         let j = RollbackJournal {
             batch_id,
@@ -265,6 +283,11 @@ mod tests {
 
         let bp = back.prepared.expect("prepared survives");
         assert_eq!(bp.outcome.new_root, new_root);
+        assert_eq!(
+            bp.outcome.new_deposit_count, new_deposit_count,
+            "new_deposit_count survives — the field whose addition motivated the \
+             DPRBJL3 bump, and the one a roll-forward resubmits to _requireDepositPrefix"
+        );
         assert_eq!(bp.outcome.proof, proof);
         assert_eq!(bp.withdraw_proofs, withdraw_proofs, "claim proofs survive");
 

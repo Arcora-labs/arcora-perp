@@ -73,6 +73,10 @@ impl Prover for Sp1GnarkProver {
         // this function already panics on prove failure (the `.expect` above), and the
         // /prove call site runs us inside `spawn_blocking`, whose JoinError on panic is
         // mapped to a 500 — so the panic IS the propagated /prove 500.
+        // COVERAGE HONESTY: this check has NO automated coverage — exercising it needs
+        // a real SP1 prover (this crate is workspace-excluded and CI only typechecks
+        // it). Its operational counterpart is the pre-cutover parity step in
+        // docs/FINAL_SETTLE_RUNBOOK.md (`cargo run --release --bin sp1-host`).
         let expected = public.commitment::<Keccak256>();
         if proof.public_values.as_slice() != expected.as_slice() {
             panic!(

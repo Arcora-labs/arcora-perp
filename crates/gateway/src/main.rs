@@ -1069,8 +1069,12 @@ struct Gw {
     #[serde(default)]
     window_withdrawals: Vec<Withdrawal>,
     /// Slice 3b-2a: the state root of the last on-chain settle (genesis at boot). The new
-    /// settle path uses `seq.state.state_root() != last_settled_root` as its RPC-free
-    /// "is there anything to settle?" signal. `serde(default)` is forward-additive struct
+    /// settle path's RPC-free "is there anything to settle?" signal is
+    /// `seq.state.state_root() != last_settled_root` OR the open window carries manifest
+    /// content (`window_has_pending_manifest` — SEC-025-B break 4: a resting or rejected
+    /// order lands in the manifest without moving the engine root, and must still settle
+    /// so inclusion/rejection challenges stay answerable); see `begin_window_settle`.
+    /// `serde(default)` is forward-additive struct
     /// hygiene (matches crate precedent); NOTE: postcard is positional, so cross-version
     /// snapshot load still requires a state reset/migration — handled by the migration slice.
     #[serde(default)]
@@ -7373,6 +7377,30 @@ mod tests {
                 false,
             )
         }
+
+        /// `resting_order`'s evil twin for the `window_rejected` arm: the same Gtc
+        /// buy at half the mark, but sized so its initial margin exceeds the demo
+        /// user's boot funds by orders of magnitude — the pre-trade gate REJECTS it
+        /// (`InsufficientMargin`) before matching, so it fills nothing, rests
+        /// nowhere, and moves no state. A margin rejection is used (over the
+        /// equally reachable stale-oracle one) precisely because it is
+        /// distinguishable: under `gw_with_market`'s freshly re-signed oracle an
+        /// `OracleUnavailable` rejection can only mean the fixture regressed, so
+        /// the dependent test asserts the REASON, not just that a rejection exists.
+        pub fn oversized_order(nonce: u64) -> Order {
+            let user = Wallet::from_seed([1u8; 32]);
+            let px = usd(MARKETS[0].seed);
+            mk_order(
+                user.owner,
+                0,
+                Side::Buy,
+                SIZE_SCALE * 1_000_000,
+                px / 2,
+                nonce,
+                TimeInForce::Gtc,
+                false,
+            )
+        }
     }
 
     // ZK-001 (Hazard #1): a transcript pushed through the LIVE oracle path
@@ -11011,6 +11039,71 @@ mod tests {
         assert!(
             out.is_some(),
             "a window carrying manifest content must settle even with an unchanged root"
+        );
+    }
+
+    /// Whole-branch review item 5 — the `window_rejected` arm of the predicate. A
+    /// window whose ONLY manifest content is a REJECTED order (nothing accepted, no
+    /// state change) must also settle: `answerByRejection` requires the answering
+    /// batch to be genuinely settled (`DarkPerpSettlement.sol:554`,
+    /// `settledAtBlock != 0`), so a predicate checking `window_ordered` alone would
+    /// leave an honest sequencer unable to answer a rejection challenge — the same
+    /// wrongful-slash vector as break 4's accepted-order case, reachable via a
+    /// stale-oracle rejection, a margin rejection, or SEC-022's band-ban. Without
+    /// this test, mutating `window_has_pending_manifest` to drop the
+    /// `window_rejected` arm left the suite green.
+    #[test]
+    fn a_rejected_only_window_still_settles() {
+        let mut gw = tests_support::gw_with_market();
+        let root_before = gw.seq.state.state_root();
+
+        // A margin-unpayable order: rejected pre-trade, so it never touches the book.
+        let sealed = gw
+            .seq
+            .seal_batch(&[tests_support::oversized_order(1)], 1_000);
+
+        // Fixture-suspicion guards — `a_manifest_only_window_still_settles` with the
+        // arms swapped: nothing may be ACCEPTED (an accepted order would satisfy the
+        // predicate via the other, already-tested arm), and the one rejection must be
+        // the rejection we CONSTRUCTED. `gw_with_market` re-signs the oracle at 500ms
+        // exactly so an accidental stale-oracle rejection cannot masquerade as this
+        // margin rejection — hence the reason is asserted, not just the count.
+        assert!(
+            sealed.manifest.ordered.is_empty(),
+            "fixture precondition: nothing may be accepted, or this test exercises \
+             the window_ordered arm instead: {:?}",
+            sealed.manifest.ordered
+        );
+        assert_eq!(
+            sealed.manifest.rejected.len(),
+            1,
+            "fixture precondition: exactly the one constructed rejection"
+        );
+        assert_eq!(
+            sealed.manifest.rejected[0].1,
+            perp_core::order::RejectReason::InsufficientMargin,
+            "fixture precondition: the rejection must be the margin rejection we \
+             constructed — any other reason (e.g. OracleUnavailable) means the \
+             fixture regressed and the test passes for an unrelated rejection"
+        );
+        assert_eq!(
+            gw.seq.state.state_root(),
+            root_before,
+            "fixture precondition: a pre-trade-rejected order must NOT move the \
+             engine root, or the root half of the predicate carries the test"
+        );
+        assert!(
+            gw.seq.window_has_pending_manifest(),
+            "fixture precondition: the rejected hash must be in the window manifest"
+        );
+
+        let out = gw
+            .begin_window_settle(gw.seq.state.next_batch_id)
+            .expect("no desync");
+        assert!(
+            out.is_some(),
+            "a window whose only manifest content is a rejected order must settle — \
+             answerByRejection is only reachable against a settled batch"
         );
     }
 

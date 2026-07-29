@@ -1066,11 +1066,17 @@ mod tests {
         );
     }
 
-    /// SEC-025-B: the encoded selector and argument order must byte-match Solidity's
-    /// nine-parameter settleBatch (contracts/src/DarkPerpSettlement.sol:311-321). A
-    /// fixed vector, NOT a round-trip through our own encoder — a round-trip would agree
-    /// with itself even if both sides were wrong, which is exactly how the seven-param
-    /// selector survived undetected.
+    /// SEC-025-B: the encoded signature must match Solidity's nine-parameter
+    /// settleBatch (contracts/src/DarkPerpSettlement.sol:311-321). Honest scope: this
+    /// asserts a Rust constant equals a Rust literal, BOTH written from the same
+    /// reading of the Solidity — so it guards ONLY against someone editing
+    /// `SETTLE_BATCH_SIG` in isolation. It would NOT have caught SEC-019's arity
+    /// change either: a Solidity-side change leaves both sides here stale together.
+    /// What DOES catch a Solidity arity change is a Solidity-side selector assertion
+    /// against the compiled contract — see
+    /// `contracts/test/DarkPerpSettlement.t.sol::test_settleBatch_selector_matches_nine_param_signature`,
+    /// which recomputes this exact string's selector and compares it to
+    /// `DarkPerpSettlement.settleBatch.selector`.
     #[test]
     fn settle_batch_signature_matches_solidity() {
         assert_eq!(

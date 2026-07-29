@@ -109,9 +109,15 @@ from the natively derived commitment (SEC-025-B §2). That check is the continuo
 defence, but it only fires once a proof has been produced. Before a cutover,
 confirm the guest ELF and the host `perp-core` are the same code by building both
 from the same commit and running the `sp1-host` comparison binary
-(`crates/sp1-host`, `cargo run --release` — executes the guest and asserts the
-native and zkVM commitments are byte-identical). A mismatch here presents as "the
-prover disagrees" during settlement, not as a build error.
+(`crates/sp1-host`, `cargo run --release --bin sp1-host` — executes the guest and
+asserts the native and zkVM commitments are byte-identical). `--bin sp1-host` is
+required: the crate has two bin targets (`src/main.rs` → `sp1-host`,
+`src/bin/prove.rs` → `prove`) and no `default-run`, so a bare `cargo run` errors
+with "could not determine which binary to run". Run it with
+`SP1_SKIP_PROGRAM_BUILD` **unset**: the CI typecheck job sets it to skip the guest
+build, but this parity check depends on `build.rs` actually compiling the guest ELF
+from the current commit. A mismatch here presents as "the prover disagrees" during
+settlement, not as a build error.
 
 ## 3. Submit
 
