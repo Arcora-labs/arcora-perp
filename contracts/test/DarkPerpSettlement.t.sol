@@ -112,6 +112,21 @@ contract DarkPerpSettlementTest is MiniTest {
         assertEq(s.batchCount(), 1, "batch counted");
     }
 
+    /// SEC-025-B (whole-branch review item 8): pin the nine-parameter signature the
+    /// off-chain callers hard-code (the gateway's `SETTLE_BATCH_SIG` in
+    /// `crates/gateway/src/l1.rs` and both runbooks' `cast send` lines) to the
+    /// COMPILED contract's selector. The Rust-side test can only compare two Rust
+    /// strings written from the same reading of this contract; this assertion is the
+    /// one check that actually breaks when the Solidity arity changes — the
+    /// recurrence guard for the stale seven-parameter selector this branch fixed.
+    function test_settleBatch_selector_matches_nine_param_signature() public pure {
+        assertEq(
+            bytes32(bytes4(keccak256("settleBatch(bytes32,bytes32,bytes32,bytes32,bytes32,bytes32,bytes32,uint64,bytes)"))),
+            bytes32(DarkPerpSettlement.settleBatch.selector),
+            "nine-parameter settleBatch signature must hash to the compiled selector"
+        );
+    }
+
     function test_settle_binds_withdrawals_root() public {
         // a proof valid for one withdrawalsRoot must NOT settle with a different
         // withdrawalsRoot (audit F2): the roots are part of the commitment.

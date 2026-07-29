@@ -54,9 +54,11 @@ mod settle_health;
 mod snapshot;
 mod withdrawals;
 use l1::{L1Status, L1};
-use withdrawals::{
-    inclusion_leaf, merkle_proof, merkle_root, owner_commit, rejection_leaf, Withdrawal,
-};
+// SEC-025-B: `merkle_root` left the production import set with the legacy settle body
+// (the window path derives roots inside prover_client); tests still assert with it.
+#[cfg(test)]
+use withdrawals::merkle_root;
+use withdrawals::{inclusion_leaf, merkle_proof, owner_commit, rejection_leaf, Withdrawal};
 
 /// 0x-prefixed lowercase hex of a 32-byte digest (for L1 calldata + display).
 fn hex32(d: &Digest) -> String {
@@ -1067,16 +1069,22 @@ struct Gw {
     #[serde(default)]
     window_withdrawals: Vec<Withdrawal>,
     /// Slice 3b-2a: the state root of the last on-chain settle (genesis at boot). The new
-    /// settle path uses `seq.state.state_root() != last_settled_root` as its RPC-free
-    /// "is there anything to settle?" signal. `serde(default)` is forward-additive struct
+    /// settle path's RPC-free "is there anything to settle?" signal is
+    /// `seq.state.state_root() != last_settled_root` OR the open window carries manifest
+    /// content (`window_has_pending_manifest` — SEC-025-B break 4: a resting or rejected
+    /// order lands in the manifest without moving the engine root, and must still settle
+    /// so inclusion/rejection challenges stay answerable); see `begin_window_settle`.
+    /// `serde(default)` is forward-additive struct
     /// hygiene (matches crate precedent); NOTE: postcard is positional, so cross-version
     /// snapshot load still requires a state reset/migration — handled by the migration slice.
     #[serde(default)]
     last_settled_root: Digest,
     /// On-chain deposit tx hashes already credited (idempotency / replay guard).
     processed_deposit_txs: std::collections::BTreeSet<String>,
-    /// Manifest hash of the most recently sealed batch — published to L1 as the
-    /// settled batch's manifest when the L1 bridge is active.
+    /// Manifest hash of the most recently sealed batch. SEC-025-B: no longer read —
+    /// the deleted legacy settle body was its only consumer (the window path publishes
+    /// the sealed witness's own manifest hash) — but it stays: postcard snapshots are
+    /// positional, so dropping the field would break every existing snapshot.
     last_manifest: Digest,
     /// Order hashes matched / validly-rejected since the last L1 settle, accumulated across
     /// engine batches. At settle they become this on-chain batch's ordered/rejected roots, so
@@ -2176,16 +2184,24 @@ impl Gw {
     }
 
     /// Slice 3b-2a: begin a new-path window settle. Returns `None` if the engine root is
-    /// unchanged since the last settle (nothing to prove). Errors WITHOUT mutating if the
-    /// window's batch id would not match the on-chain `batchCount` (a desync a prior fault
-    /// left behind — recovery is Slice 3b-3). Otherwise seals the window and takes its
-    /// incremental withdrawal set.
+    /// unchanged since the last settle AND the open window carries no manifest content
+    /// (nothing to prove). Errors WITHOUT mutating if the window's batch id would not
+    /// match the on-chain `batchCount` (a desync a prior fault left behind — recovery is
+    /// Slice 3b-3). Otherwise seals the window and takes its incremental withdrawal set.
     fn begin_window_settle(
         &mut self,
         chain_batch_count: u64,
     ) -> Result<Option<(WindowWitness, Vec<Withdrawal>)>, String> {
-        if self.seq.state.state_root() == self.last_settled_root {
-            return Ok(None); // no net state change since the last settle
+        // SEC-025-B break 4: a window can carry consensus-relevant manifest content with
+        // an UNCHANGED engine root — a resting unfilled order is in `ordered` but moves no
+        // state. Settling is what populates the challenge-answer store, and both on-chain
+        // answer paths require a settled batch, so a root-only predicate leaves an honest
+        // sequencer unable to answer a ripe challenge. Still returns None when the window
+        // is empty in both senses, so idle ticks burn no proofs.
+        if self.seq.state.state_root() == self.last_settled_root
+            && !self.seq.window_has_pending_manifest()
+        {
+            return Ok(None);
         }
         // Pre-check the counter BEFORE sealing (which bumps it), so a desync leaves the
         // sequencer untouched instead of stranded ahead of the chain.
@@ -2821,13 +2837,12 @@ impl Gw {
         serde_json::json!({ "type": "markets", "markets": markets, "tsMs": now_ms() })
     }
 
-    /// The engine's live state root as 0x-hex — what the L1 bridge settles to.
+    /// The engine's live state root as 0x-hex. SEC-025-B: only tests read this now —
+    /// the legacy settle body that fed it (and `last_manifest_hex`) to `L1::settle` is
+    /// deleted; the window path derives every settled root from the sealed witness.
+    #[cfg(test)]
     fn state_root_hex(&self) -> String {
         hex32(&self.seq.state.state_root())
-    }
-    /// The most recently sealed batch's manifest hash as 0x-hex.
-    fn last_manifest_hex(&self) -> String {
-        hex32(&self.last_manifest)
     }
 
     /// Build the answer to an inclusion challenge for `order_hash` (audit DP-004): find the
@@ -5834,6 +5849,14 @@ fn production_mode(l1_enabled: bool) -> bool {
     l1_enabled || std::env::var("DARKPERP_PROD").ok().as_deref() == Some("1")
 }
 
+/// SEC-025-B: TRUE production, as opposed to `production_mode`, which is also true for
+/// any L1-configured testnet (`l1_enabled || DARKPERP_PROD`). The prover-less settle
+/// refusal keys on THIS, so a testnet can still settle on-chain with `PROVER_URL=mock`
+/// while a real deployment cannot boot without a real prover.
+fn strict_production() -> bool {
+    std::env::var("DARKPERP_PROD").ok().as_deref() == Some("1")
+}
+
 /// Select the settle path's prover client from `PROVER_URL`.
 /// unset/empty → legacy path (None); "mock" → in-process MockProverClient;
 /// any URL → HttpProverClient (seal → POST /prove → real Groth16 proof).
@@ -5851,6 +5874,43 @@ fn prover_from_str(
             prover_client::HttpProverClient::from_env(url, prod)?,
         ))),
     }
+}
+
+/// SEC-025-B §6: `prover_from_str`, plus the strict-production refusal. Split from the
+/// env read so it is testable without mutating process environment.
+///
+/// `prod` and `strict_prod` are DIFFERENT and both are needed: `prod` is
+/// `production_mode` (true for any L1-configured deployment) and is what
+/// `HttpProverClient::from_env` uses for its own fail-closed seal-root resolution;
+/// `strict_prod` is `DARKPERP_PROD=1` alone and is what gates this refusal. Collapsing
+/// them would refuse mock on every testnet: settlement only runs when L1 is configured,
+/// and L1 implies `production_mode`, so no configuration could settle on-chain without
+/// a real prover.
+fn prover_from_str_strict(
+    v: Option<&str>,
+    prod: bool,
+    strict_prod: bool,
+) -> Result<Option<std::sync::Arc<dyn prover_client::ProverClient>>, String> {
+    if strict_prod && matches!(v, None | Some("") | Some("mock")) {
+        return Err(
+            "DARKPERP_PROD=1 requires a real prover: set PROVER_URL to the prover-service \
+             endpoint. A prover-less settle path cannot produce a proof the on-chain \
+             verifier accepts."
+                .to_string(),
+        );
+    }
+    prover_from_str(v, prod)
+}
+
+/// SEC-025-B Task-4 carry-in: whether the tick loop's SETTLE_TICKS finality SIMULATION
+/// must be OFF (i.e. `window_settle_mode`). With a prover, SETTLED is earned by the
+/// on-chain window settle. With L1 configured but NO prover, Task 4 deleted the legacy
+/// settle body, so nothing can land on-chain at all — simulating SETTLED would be false
+/// finality over real collateral, so the simulation is off there too and orders honestly
+/// stay MATCHED (main() warns loudly at boot). Only the pure demo (no L1, no prover)
+/// keeps the simulation.
+fn honest_finality_required(prover_configured: bool, l1_enabled: bool) -> bool {
+    prover_configured || l1_enabled
 }
 
 /// SEC-020 Task 5: like `prover_from_str` for the None/"mock" cases, but for a real
@@ -5898,8 +5958,11 @@ fn prover_from_env_attested(
                 .with_rehandshake(rehandshake);
             Ok(Some(std::sync::Arc::new(client)))
         }
-        // None / "" ⇒ legacy path (None); "mock" ⇒ in-process MockProverClient.
-        other => prover_from_str(other, prod),
+        // None / "" ⇒ no client; "mock" ⇒ in-process MockProverClient — but under
+        // DARKPERP_PROD=1 (strict production, NOT mere `production_mode`) all three
+        // are refused outright: a prover-less settle path cannot produce a proof
+        // the on-chain verifier accepts (SEC-025-B §6).
+        other => prover_from_str_strict(other, prod, strict_production()),
     }
 }
 
@@ -6158,12 +6221,30 @@ async fn main() {
     ) {
         Ok(p) => p,
         Err(e) => {
-            eprintln!("[prover] {e}");
+            // SEC-025-B §6: a refusal to start, not a warning that proceeds — this is
+            // where a DARKPERP_PROD=1 boot without a real PROVER_URL dies.
+            eprintln!("[prover] REFUSING to start: {e}");
             std::process::exit(1);
         }
     };
     if prover.is_some() {
         println!("[prover] window-settle path ON (PROVER_URL)");
+    } else if l1.is_some() {
+        // SEC-025-B Task-4 carry-in: Task 4 deleted the legacy settle body, so an
+        // L1-configured gateway without a prover settles NOTHING — and it used to be
+        // silent about it (the legacy body's per-tick "[l1] settle failed" log went
+        // with it). Under the §6 rule this configuration is only reachable WITHOUT
+        // DARKPERP_PROD=1 (strict production refuses it above), i.e. a testnet or
+        // local chain — so warn loudly rather than refuse, and run under the honest
+        // finality posture (`window_settle_mode` below): orders stay MATCHED instead
+        // of the SETTLE_TICKS simulation reporting a SETTLED that never happened.
+        eprintln!(
+            "[l1] WARNING: L1 settlement is configured but no prover is (PROVER_URL unset) — \
+             the gateway CANNOT settle on-chain: the root never advances and withdrawals \
+             never become claimable. The SETTLE_TICKS finality simulation is DISABLED, so \
+             orders stay MATCHED. Set PROVER_URL to the prover-service endpoint \
+             (or PROVER_URL=mock on a testnet/local chain)."
+        );
     }
     // The attestor whose self-quote `GET /attest` serves: pinned collateral +
     // the same §5c ATTESTATION_DIR capture `attest_from_env` verifies. Absent
@@ -6326,7 +6407,11 @@ async fn main() {
     // boot-recovery block below, so a roll-forward re-commit already runs under the
     // honest-finality posture (its `commit_window_settle` marks the recovered window's
     // orders SETTLED either way — the flag gates only the tick-loop simulation).
-    gw.window_settle_mode = prover.is_some();
+    // SEC-025-B Task-4 carry-in: ALSO off when L1 is configured with NO prover — the
+    // legacy settle body is deleted, so nothing lands on-chain and the simulation would
+    // be false finality (see `honest_finality_required` + the boot warning above; pinned
+    // by `l1_without_a_prover_must_not_simulate_settled`).
+    gw.window_settle_mode = honest_finality_required(prover.is_some(), l1.is_some());
     if gw.window_settle_mode {
         // Task 5 fix round 1 (report Concern 1, memory): the window path never
         // consumes the per-tick rollback snapshots, and with the SETTLE_TICKS
@@ -6852,14 +6937,6 @@ async fn main() {
         let jpath = state_path.as_deref().map(rollback_journal::journal_path);
         let snapshot_notify = snapshot_notify.clone();
         tokio::spawn(async move {
-            type SettleOut = (
-                L1Status,
-                Vec<[u8; 32]>,
-                std::collections::BTreeMap<[u8; 32], (Digest, Vec<[u8; 32]>)>,
-                u64, // on-chain batch id these ordered/rejected hashes were committed under
-                Vec<[u8; 32]>, // ordered order hashes settled this batch (audit DP-004 retention)
-                Vec<[u8; 32]>, // rejected order hashes settled this batch
-            );
             // start the first settle one period out, so it never races the bond's
             // confirmation (tokio's plain `interval` would fire immediately).
             let mut iv = tokio::time::interval_at(
@@ -7223,129 +7300,13 @@ async fn main() {
                             }
                         }
                     }
-                    continue; // new path handled this tick; skip the legacy body
                 }
-                let (new_root, manifest, withdrawals, ordered_h, rejected_h) = {
-                    let gw = app.gw.lock().await;
-                    (
-                        gw.state_root_hex(),
-                        gw.last_manifest_hex(),
-                        gw.pending_withdrawals.clone(),
-                        gw.pending_ordered.clone(),
-                        gw.pending_rejected.clone(),
-                    )
-                };
-                let l1c = l1.clone();
-                let res =
-                    tokio::task::spawn_blocking(move || -> Result<Option<SettleOut>, String> {
-                        // keep the USDC bond above the 5%-of-TVL floor as deposits grow (Q1)
-                        match l1c.ensure_bond() {
-                            Ok(Some(tx)) => println!("[l1] bond topped up: {tx}"),
-                            Ok(None) => {}
-                            Err(e) => eprintln!("[l1] bond top-up skipped: {e}"),
-                        }
-                        let prev = l1c.current_root()?;
-                        // prune withdrawals the vault already paid out, then build the
-                        // CUMULATIVE root over every still-unclaimed leaf (vault invariant).
-                        let mut surviving = Vec::new();
-                        let mut claimed = Vec::new();
-                        for w in withdrawals {
-                            let leaf = w.leaf();
-                            if l1c.claimed(&hex32(&leaf)).unwrap_or(false) {
-                                claimed.push(leaf);
-                            } else {
-                                surviving.push(w);
-                            }
-                        }
-                        let leaves: Vec<[u8; 32]> = surviving.iter().map(|w| w.leaf()).collect();
-                        let wroot = merkle_root(&leaves);
-                        let wroot_hex = hex32(&wroot);
-                        if prev.eq_ignore_ascii_case(&new_root) {
-                            return Ok(None); // engine root unchanged → nothing to settle
-                        }
-                        // audit DP-004: this settle becomes on-chain batch `batch_id` (the current
-                        // count, which settleBatch consumes then increments). Build the ordered and
-                        // rejected roots over THIS batch id, so a later `answerChallenge` /
-                        // `answerByRejection` proof (built with the same id) verifies on-chain.
-                        // audit (fail-closed): propagate a batch_count RPC error instead of
-                        // defaulting to 0 — a transient failure that silently keyed the roots to
-                        // batch 0 would make every challenge for this batch unanswerable and get an
-                        // honest sequencer slashed. Aborting here just retries the settle next tick.
-                        let batch_id = l1c.batch_count()?;
-                        let ordered_leaves: Vec<[u8; 32]> = ordered_h
-                            .iter()
-                            .map(|h| inclusion_leaf(batch_id, h))
-                            .collect();
-                        let rejected_leaves: Vec<[u8; 32]> = rejected_h
-                            .iter()
-                            .map(|h| rejection_leaf(batch_id, h))
-                            .collect();
-                        let oroot_hex = hex32(&merkle_root(&ordered_leaves));
-                        let rroot_hex = hex32(&merkle_root(&rejected_leaves));
-                        let tx = l1c.settle(
-                            &prev, &manifest, &new_root, &oroot_hex, &wroot_hex, &rroot_hex,
-                        )?;
-                        let mut proofs = std::collections::BTreeMap::new();
-                        for (i, w) in surviving.iter().enumerate() {
-                            // legacy: every note shares the one cumulative root published this settle.
-                            proofs.insert(w.leaf(), (wroot, merkle_proof(&leaves, i)));
-                        }
-                        Ok(Some((
-                            L1Status {
-                                settled_root: new_root,
-                                // settleBatch consumed `batch_id` then incremented, so the new
-                                // on-chain count is known — no need to re-query (and never show 0).
-                                batch_count: batch_id + 1,
-                                last_tx: tx,
-                                bond: l1c.sequencer_bond().unwrap_or(0).to_string(),
-                                withdrawals_root: wroot_hex,
-                            },
-                            claimed,
-                            proofs,
-                            batch_id,
-                            ordered_h,
-                            rejected_h,
-                        )))
-                    })
-                    .await;
-                match res {
-                    Ok(Ok(Some((status, claimed, proofs, batch_id, ordered_h, rejected_h)))) => {
-                        println!(
-                            "[l1] settled root {} batch {} tx {} (withdrawals root {})",
-                            status.settled_root,
-                            status.batch_count,
-                            status.last_tx,
-                            status.withdrawals_root
-                        );
-                        {
-                            let mut gw = app.gw.lock().await;
-                            if !claimed.is_empty() {
-                                let cset: std::collections::BTreeSet<[u8; 32]> =
-                                    claimed.into_iter().collect();
-                                gw.pending_withdrawals.retain(|w| !cset.contains(&w.leaf()));
-                            }
-                            gw.withdraw_proofs = proofs;
-                            gw.l1_status = Some(status);
-                            // audit DP-004: retain the order hashes this on-chain batch committed so
-                            // a challenge can be answered against its root, then drop exactly the
-                            // ones just settled from the pending accumulators (any appended during
-                            // the settle stay, at the back).
-                            let (no, nr) = (ordered_h.len(), rejected_h.len());
-                            gw.batch_orders.insert(batch_id, (ordered_h, rejected_h));
-                            let po_len = gw.pending_ordered.len();
-                            gw.pending_ordered.drain(0..no.min(po_len));
-                            let pr_len = gw.pending_rejected.len();
-                            gw.pending_rejected.drain(0..nr.min(pr_len));
-                        }
-                        let snap = { app.gw.lock().await.snapshot() };
-                        let _ = app
-                            .tx
-                            .send(serde_json::to_string(&WsMsg::State { state: snap }).unwrap());
-                    }
-                    Ok(Ok(None)) => {}
-                    Ok(Err(e)) => eprintln!("[l1] settle failed: {e}"),
-                    Err(e) => eprintln!("[l1] settle join: {e}"),
-                }
+                // SEC-025-B: the legacy `L1::settle` body that lived here is deleted. It
+                // synthesized its commitment via a six-root `publicCommitment` and sent a
+                // seven-parameter `settleBatch` — both arities are stale since SEC-019, so
+                // it could not produce a resolvable call. `PROVER_URL=mock` covers the
+                // prover-free role through the window path above with the correct ABI;
+                // with no prover configured the loop settles nothing.
             }
         });
     }
@@ -7370,6 +7331,77 @@ async fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// SEC-025-B break-4 fixtures. The manifest-only tests need an order that is
+    /// genuinely ACCEPTED and RESTS (it lands in `ordered` with no fill and no
+    /// rejection). The distinction matters: a REJECTED order also lands in the
+    /// window manifest, so a broken fixture would still satisfy
+    /// `window_has_pending_manifest()` while silently testing the wrong path — and
+    /// an order that accidentally FILLS would move the engine root and stop
+    /// exercising break 4 at all. The tests' precondition asserts pin both.
+    mod tests_support {
+        use super::*;
+
+        /// A booted gateway whose market-0 oracle is re-signed at a small
+        /// deterministic publish time (500 ms), so a batch sealed at `now_ms =
+        /// 1_000` clears the freshness gate (`publish_time ∈ [now − staleness,
+        /// now]`). Boot pins the transcript at the REAL wall clock — the future of
+        /// `1_000` — which `validate` rejects as Stale, and a stale oracle turns
+        /// the resting order into a REJECTED one (`OracleUnavailable`), defeating
+        /// the fixture.
+        pub fn gw_with_market() -> Gw {
+            let mut gw = Gw::boot();
+            let px = gw.seq.oracle(0).expect("boot pins a market-0 oracle").price;
+            let t = oracle_of(px, 500, 0, &gw.oracle_signer);
+            gw.seq.set_oracle(0, t);
+            gw
+        }
+
+        /// A Gtc buy at HALF the oracle mark from the boot-funded demo user
+        /// (wallet seed `[1u8; 32]`, exactly boot's `user`): it clears the
+        /// pre-trade margin gate (boot funds ≫ the initial margin on 0.1 base) but
+        /// crosses nothing in an empty book, so it RESTS — its hash enters the
+        /// window manifest while engine state (and thus the state root) is
+        /// untouched: the book is matcher state, not `State`.
+        pub fn resting_order(nonce: u64) -> Order {
+            let user = Wallet::from_seed([1u8; 32]);
+            let px = usd(MARKETS[0].seed);
+            mk_order(
+                user.owner,
+                0,
+                Side::Buy,
+                SIZE_SCALE / 10,
+                px / 2,
+                nonce,
+                TimeInForce::Gtc,
+                false,
+            )
+        }
+
+        /// `resting_order`'s evil twin for the `window_rejected` arm: the same Gtc
+        /// buy at half the mark, but sized so its initial margin exceeds the demo
+        /// user's boot funds by orders of magnitude — the pre-trade gate REJECTS it
+        /// (`InsufficientMargin`) before matching, so it fills nothing, rests
+        /// nowhere, and moves no state. A margin rejection is used (over the
+        /// equally reachable stale-oracle one) precisely because it is
+        /// distinguishable: under `gw_with_market`'s freshly re-signed oracle an
+        /// `OracleUnavailable` rejection can only mean the fixture regressed, so
+        /// the dependent test asserts the REASON, not just that a rejection exists.
+        pub fn oversized_order(nonce: u64) -> Order {
+            let user = Wallet::from_seed([1u8; 32]);
+            let px = usd(MARKETS[0].seed);
+            mk_order(
+                user.owner,
+                0,
+                Side::Buy,
+                SIZE_SCALE * 1_000_000,
+                px / 2,
+                nonce,
+                TimeInForce::Gtc,
+                false,
+            )
+        }
+    }
 
     // ZK-001 (Hazard #1): a transcript pushed through the LIVE oracle path
     // (`apply_real_oracle`, which remaps `publish_time_ms` onto the local freshness
@@ -8532,15 +8564,17 @@ mod tests {
 
         let out = MockProverClient.prove(&witness).expect("mock prove");
 
-        // Independently derive the same roots and assert byte-equality.
+        // Independently derive the same roots and assert byte-equality (SEC-025-B:
+        // the mock returns the RAW remote shape, so its itemised roots are Options).
         let mut state = witness.pre_state.clone();
         let d = derive_roots(&mut state, &witness.ops, &witness.manifest).expect("derive");
-        assert_eq!(out.prev_root, d.prev_state_root);
-        assert_eq!(out.manifest_hash, d.manifest_hash);
-        assert_eq!(out.new_root, d.new_state_root);
-        assert_eq!(out.ordered_root, d.ordered_root);
-        assert_eq!(out.withdrawals_root, d.withdrawals_root);
-        assert_eq!(out.rejected_root, d.rejected_root);
+        assert_eq!(out.roots.prev_root, Some(d.prev_state_root));
+        assert_eq!(out.roots.manifest_hash, Some(d.manifest_hash));
+        assert_eq!(out.roots.new_root, Some(d.new_state_root));
+        assert_eq!(out.roots.ordered_root, Some(d.ordered_root));
+        assert_eq!(out.roots.withdrawals_root, Some(d.withdrawals_root));
+        assert_eq!(out.roots.rejected_root, Some(d.rejected_root));
+        assert_eq!(out.roots.deposits_root, Some(d.deposits_root));
         assert_eq!(out.commitment, d.commitment::<Keccak256>());
         // MockZkVerifier accepts proof == commitment.
         assert_eq!(out.proof, out.commitment.to_vec());
@@ -8572,6 +8606,74 @@ mod tests {
             "an explicit seal root serves prod too"
         );
         std::env::remove_var("PROVER_SEAL_ROOT");
+    }
+
+    /// SEC-025-B §6: DARKPERP_PROD=1 must refuse a prover-less settle path — but an
+    /// L1-configured TESTNET must still be able to run with mock. `production_mode` is
+    /// `l1_enabled || DARKPERP_PROD`, so keying this on `prod` would leave no
+    /// configuration that settles on-chain without a real prover.
+    #[test]
+    fn strict_prod_refuses_a_proverless_settle_path() {
+        for v in [None, Some(""), Some("mock")] {
+            // Not `expect_err`: that needs `T: Debug` and `Arc<dyn ProverClient>` has
+            // no Debug impl (the brief's fixture as written did not compile).
+            let err =
+                match prover_from_str_strict(v, /* prod */ true, /* strict_prod */ true) {
+                    Err(e) => e,
+                    Ok(_) => panic!("strict production must refuse a prover-less path (v={v:?})"),
+                };
+            assert!(
+                err.contains("PROVER_URL"),
+                "the error must name the variable an operator has to set, got: {err}"
+            );
+        }
+    }
+
+    /// The case the first draft of this design would have broken: an L1-configured
+    /// testnet is `production_mode` (because `l1_enabled` implies it) but is NOT strict
+    /// production, and must still be able to settle on-chain with the mock prover.
+    #[test]
+    fn a_testnet_may_still_use_the_mock_prover() {
+        let c = prover_from_str_strict(
+            Some("mock"),
+            /* prod */ true,
+            /* strict_prod */ false,
+        )
+        .expect("mock is allowed outside strict production, even when prod-mode is on");
+        assert!(
+            c.is_some(),
+            "mock must yield a client, not the legacy None path"
+        );
+    }
+
+    /// The legacy None path is gone (Task 4 deleted L1::settle), so an unset PROVER_URL
+    /// outside strict production must still produce no client — the caller treats that
+    /// as "do not run the settle loop", not as "settle through a deleted path".
+    #[test]
+    fn unset_prover_url_outside_strict_prod_yields_no_client() {
+        let c = prover_from_str_strict(None, false, false).expect("allowed");
+        assert!(c.is_none());
+    }
+
+    /// Task-4 carry-in (SEC-025-B): with L1 configured but NO prover, the legacy settle
+    /// body is deleted, so nothing can ever land on-chain — the tick loop's SETTLE_TICKS
+    /// simulation would report SETTLED over real collateral that never settled (false
+    /// finality). The simulation must be off for ANY L1-configured boot; only the pure
+    /// demo (no L1, no prover) keeps it. The tick-loop mechanism this flag gates is
+    /// exercised by `window_mode_defers_settled_until_commit` /
+    /// `legacy_mode_settles_after_ticks_unchanged`; this pins the boot-wiring decision.
+    #[test]
+    fn l1_without_a_prover_must_not_simulate_settled() {
+        assert!(
+            honest_finality_required(/* prover */ false, /* l1 */ true),
+            "L1 with no prover cannot settle — simulating SETTLED would be false finality"
+        );
+        assert!(honest_finality_required(true, true));
+        assert!(honest_finality_required(true, false));
+        assert!(
+            !honest_finality_required(false, false),
+            "the pure demo (no L1, no prover) keeps the legacy tick simulation"
+        );
     }
 
     #[test]
@@ -10892,6 +10994,134 @@ mod tests {
         assert!(gw.begin_window_settle(bc).unwrap().is_none());
     }
 
+    /// SEC-025-B break 4: a window holding an accepted-but-unfilled order's hash must
+    /// settle even though the engine root did not move. Otherwise its hashes never reach
+    /// the challenge-answer store and an honest sequencer cannot answer a ripe inclusion
+    /// challenge — a wrongful-slash path reachable by any user resting an order into an
+    /// otherwise quiet window.
+    #[test]
+    fn a_manifest_only_window_still_settles() {
+        let mut gw = tests_support::gw_with_market();
+        let root_before = gw.seq.state.state_root();
+
+        // A far-from-the-book limit that rests without crossing: no fill, no state change.
+        let sealed = gw.seq.seal_batch(&[tests_support::resting_order(1)], 1_000);
+
+        // Fixture-suspicion guards: the order must be ACCEPTED into `ordered`, not
+        // rejected — a REJECTED order also reaches the window manifest, so without
+        // these two asserts a broken fixture (e.g. a stale oracle) would pass the
+        // preconditions below while exercising the wrong path.
+        assert!(
+            sealed.manifest.rejected.is_empty(),
+            "fixture precondition: the resting order must be ACCEPTED, not rejected: {:?}",
+            sealed.manifest.rejected
+        );
+        assert_eq!(
+            sealed.manifest.ordered.len(),
+            1,
+            "fixture precondition: the resting order must be in this tick's `ordered`"
+        );
+
+        assert_eq!(
+            gw.seq.state.state_root(),
+            root_before,
+            "fixture precondition: a resting unfilled order must NOT move the engine root, \
+             or this test is not exercising break 4"
+        );
+        assert!(
+            gw.seq.window_has_pending_manifest(),
+            "fixture precondition: the order must be in the window manifest"
+        );
+
+        let out = gw
+            .begin_window_settle(gw.seq.state.next_batch_id)
+            .expect("no desync");
+        assert!(
+            out.is_some(),
+            "a window carrying manifest content must settle even with an unchanged root"
+        );
+    }
+
+    /// Whole-branch review item 5 — the `window_rejected` arm of the predicate. A
+    /// window whose ONLY manifest content is a REJECTED order (nothing accepted, no
+    /// state change) must also settle: `answerByRejection` requires the answering
+    /// batch to be genuinely settled (`DarkPerpSettlement.sol:554`,
+    /// `settledAtBlock != 0`), so a predicate checking `window_ordered` alone would
+    /// leave an honest sequencer unable to answer a rejection challenge — the same
+    /// wrongful-slash vector as break 4's accepted-order case, reachable via a
+    /// stale-oracle rejection, a margin rejection, or SEC-022's band-ban. Without
+    /// this test, mutating `window_has_pending_manifest` to drop the
+    /// `window_rejected` arm left the suite green.
+    #[test]
+    fn a_rejected_only_window_still_settles() {
+        let mut gw = tests_support::gw_with_market();
+        let root_before = gw.seq.state.state_root();
+
+        // A margin-unpayable order: rejected pre-trade, so it never touches the book.
+        let sealed = gw
+            .seq
+            .seal_batch(&[tests_support::oversized_order(1)], 1_000);
+
+        // Fixture-suspicion guards — `a_manifest_only_window_still_settles` with the
+        // arms swapped: nothing may be ACCEPTED (an accepted order would satisfy the
+        // predicate via the other, already-tested arm), and the one rejection must be
+        // the rejection we CONSTRUCTED. `gw_with_market` re-signs the oracle at 500ms
+        // exactly so an accidental stale-oracle rejection cannot masquerade as this
+        // margin rejection — hence the reason is asserted, not just the count.
+        assert!(
+            sealed.manifest.ordered.is_empty(),
+            "fixture precondition: nothing may be accepted, or this test exercises \
+             the window_ordered arm instead: {:?}",
+            sealed.manifest.ordered
+        );
+        assert_eq!(
+            sealed.manifest.rejected.len(),
+            1,
+            "fixture precondition: exactly the one constructed rejection"
+        );
+        assert_eq!(
+            sealed.manifest.rejected[0].1,
+            perp_core::order::RejectReason::InsufficientMargin,
+            "fixture precondition: the rejection must be the margin rejection we \
+             constructed — any other reason (e.g. OracleUnavailable) means the \
+             fixture regressed and the test passes for an unrelated rejection"
+        );
+        assert_eq!(
+            gw.seq.state.state_root(),
+            root_before,
+            "fixture precondition: a pre-trade-rejected order must NOT move the \
+             engine root, or the root half of the predicate carries the test"
+        );
+        assert!(
+            gw.seq.window_has_pending_manifest(),
+            "fixture precondition: the rejected hash must be in the window manifest"
+        );
+
+        let out = gw
+            .begin_window_settle(gw.seq.state.next_batch_id)
+            .expect("no desync");
+        assert!(
+            out.is_some(),
+            "a window whose only manifest content is a rejected order must settle — \
+             answerByRejection is only reachable against a settled batch"
+        );
+    }
+
+    /// The predicate must not turn idle ticks into proofs: a window empty in BOTH senses
+    /// still returns None.
+    #[test]
+    fn a_truly_empty_window_still_returns_none() {
+        let mut gw = tests_support::gw_with_market();
+        assert!(!gw.seq.window_has_pending_manifest());
+        let out = gw
+            .begin_window_settle(gw.seq.state.next_batch_id)
+            .expect("no desync");
+        assert!(
+            out.is_none(),
+            "no state change and no manifest content ⇒ nothing to prove"
+        );
+    }
+
     #[test]
     fn begin_window_settle_errors_on_desync_without_mutating() {
         let mut gw = Gw::boot();
@@ -11337,14 +11567,14 @@ mod tests {
             r32(7)
         );
         let out = parse_prove_resp(&json).expect("parse");
-        assert_eq!(out.prev_root, [1u8; 32]);
-        assert_eq!(out.manifest_hash, [2u8; 32]);
-        assert_eq!(out.new_root, [3u8; 32]);
-        assert_eq!(out.ordered_root, [4u8; 32]);
-        assert_eq!(out.withdrawals_root, [5u8; 32]);
-        assert_eq!(out.rejected_root, [6u8; 32]);
-        // SEC-019: the prover-service response now carries the 7th commitment word.
-        assert_eq!(out.deposits_root, [8u8; 32]);
+        // SEC-025-B: the raw remote shape — itemised roots are Options (diagnostic only).
+        assert_eq!(out.roots.prev_root, Some([1u8; 32]));
+        assert_eq!(out.roots.manifest_hash, Some([2u8; 32]));
+        assert_eq!(out.roots.new_root, Some([3u8; 32]));
+        assert_eq!(out.roots.ordered_root, Some([4u8; 32]));
+        assert_eq!(out.roots.withdrawals_root, Some([5u8; 32]));
+        assert_eq!(out.roots.rejected_root, Some([6u8; 32]));
+        assert_eq!(out.roots.deposits_root, Some([8u8; 32]));
         assert_eq!(out.commitment, [7u8; 32]);
         assert_eq!(out.proof, vec![0xde, 0xad, 0xbe, 0xef]);
     }
@@ -11512,62 +11742,39 @@ mod tests {
 
     #[test]
     fn prove_and_prepare_rejects_wroot_mismatch() {
-        use crate::prover_client::{
-            prove_and_prepare, MockProverClient, ProveOutcome, ProverClient, ProverClientError,
-        };
-        use perp_core::commitment::DerivedRoots;
-        use perp_core::Keccak256;
-        use sequencer::WindowWitness;
+        use crate::prover_client::{prove_and_prepare, MockProverClient};
 
-        // corrupts withdrawals_root AND recomputes commitment over the tampered roots, so
-        // the commitment cross-check PASSES and the failure lands on the withdrawal-tree
-        // byte-match branch.
-        struct WrootTamper;
-        impl ProverClient for WrootTamper {
-            fn prove(&self, w: &WindowWitness) -> Result<ProveOutcome, ProverClientError> {
-                let mut out = MockProverClient.prove(w)?;
-                out.withdrawals_root = [0xFFu8; 32];
-                out.commitment = DerivedRoots {
-                    prev_state_root: out.prev_root,
-                    manifest_hash: out.manifest_hash,
-                    new_state_root: out.new_root,
-                    ordered_root: out.ordered_root,
-                    withdrawals_root: out.withdrawals_root,
-                    rejected_root: out.rejected_root,
-                    deposits_root: out.deposits_root,
-                }
-                .commitment::<Keccak256>();
-                Ok(out)
-            }
-        }
-
+        // SEC-025-B: the withdrawals_root now comes from the gateway's OWN replay, so a
+        // prover can no longer steer it — the wroot byte-match branch guards a
+        // gateway-INTERNAL invariant instead: the drained window withdrawal set (`ww`)
+        // must reproduce the withdrawals the witness ops derive. Drive it with an
+        // honest prover and a `ww` that drifted (a dropped withdrawal).
         let mut gw = Gw::boot();
         let (key, sk) = register_withdrawer(&mut gw);
         gw.account_deposit(&key, 0, 40_000 * QUOTE_SCALE).unwrap();
         signed_withdraw(&mut gw, &key, &sk, 0, 5_000 * QUOTE_SCALE, [7u8; 20]).unwrap();
         let bc = gw.seq.state.next_batch_id;
-        let (witness, ww) = gw.begin_window_settle(bc).unwrap().expect("some");
+        let (witness, mut ww) = gw.begin_window_settle(bc).unwrap().expect("some");
         assert!(!ww.is_empty());
+        ww.pop(); // the drift: a withdrawal the ops derived is missing from the set
 
-        // (PreparedSettle is not Debug, so no unwrap_err here)
-        let Err(err) = prove_and_prepare(&WrootTamper, &witness, &ww) else {
-            panic!("tampered withdrawals_root must be a hard error");
-        };
+        let err = prove_and_prepare(&MockProverClient, &witness, &ww)
+            .expect_err("a drifted withdrawal set must be a hard error");
         assert!(err.contains("withdrawals root mismatch"), "got: {err}");
     }
 
     #[test]
     fn prove_and_prepare_rejects_commitment_mismatch() {
         use crate::prover_client::{
-            prove_and_prepare, MockProverClient, ProveOutcome, ProverClient, ProverClientError,
+            prove_and_prepare, MockProverClient, ProverClient, ProverClientError, RemoteProveResp,
         };
         use sequencer::WindowWitness;
 
-        // corrupts only the commitment (roots stay consistent with the gateway tree) → the
-        // commitment cross-check branch fires first.
+        // corrupts only the commitment (itemised roots stay honest) → SEC-025-B: the
+        // prover's commitment no longer equals the gateway's OWN derivation → refused.
         struct CommitTamper;
         impl ProverClient for CommitTamper {
-            fn prove(&self, w: &WindowWitness) -> Result<ProveOutcome, ProverClientError> {
+            fn prove(&self, w: &WindowWitness) -> Result<RemoteProveResp, ProverClientError> {
                 let mut out = MockProverClient.prove(w)?;
                 out.commitment = [0xFFu8; 32];
                 Ok(out)
@@ -11581,10 +11788,8 @@ mod tests {
         let bc = gw.seq.state.next_batch_id;
         let (witness, ww) = gw.begin_window_settle(bc).unwrap().expect("some");
 
-        // (PreparedSettle is not Debug, so no unwrap_err here)
-        let Err(err) = prove_and_prepare(&CommitTamper, &witness, &ww) else {
-            panic!("tampered commitment must be a hard error");
-        };
+        let err = prove_and_prepare(&CommitTamper, &witness, &ww)
+            .expect_err("tampered commitment must be a hard error");
         assert!(err.contains("commitment mismatch"), "got: {err}");
     }
 

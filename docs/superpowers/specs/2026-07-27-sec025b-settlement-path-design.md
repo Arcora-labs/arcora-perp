@@ -7,6 +7,16 @@
 
 **Finding:** the repo does not settle end-to-end. The production settle path is broken in **four** independent places, each of which alone stops a cutover, plus one latent.
 
+> ## ⚠️ Landing this piece does NOT make a settle succeed
+>
+> **Added after the whole-branch review, which caught this.** A fifth condition also stops a cutover, and it is outside this piece's scope: **`Gw::boot()` funds the MM, the demo user and the LP demo through `fund_amount_unbacked` (`main.rs:4029-4071`), emitting seven `BatchOp::Deposit`s with sentinel L1 fields.** `op_deposit` folds each into `consumed_deposit_tip` and increments `consumed_deposit_count` (`engine.rs:385-389`), so every settle submits `newDepositCount = 7+` against a vault whose `depositCount` is 0. `_requireDepositPrefix` reads `depositTipAt(7)` — a plain mapping returning `bytes32(0)` past the end — and **reverts before the proof is verified**, on `settleBatch` and `finalSettle` alike, and identically under `PROVER_URL=mock`.
+>
+> This is known and tracked: `fund_amount_unbacked`'s own doc comment says these "can never settle in prod", and the decomposition assigns honest genesis (*"zero notes, positions, insurance, external_in, **deposit tip and count**"*) to **025-C**. It is not an implementation defect in 025-B.
+>
+> **It is a defect in this spec's framing.** "Finish the SEC-019 settlement path" and "four breaks, each of which alone stops a cutover" read as though a settle works once this lands. It does not. Anyone reading *025-B: merged* and scheduling a cutover will hit a revert at `_requireDepositPrefix`. **025-B + 025-C together are the smallest set that settles.**
+>
+> The failure mode is the same one that produced break 4: the decomposition's inventory of what blocks settling was incomplete, and this spec inherited it rather than re-deriving it.
+
 ## Verified at source
 
 | # | Break | Evidence |
@@ -89,7 +99,7 @@ This makes a manifest-only window settle, which is what populates the challenge-
 
 **Two consequences to design for rather than discover:**
 
-- A manifest-only window has `new_root == prev_root`. `settleBatch` does not forbid that (`prevRoot != currentStateRoot` is the only root check, `DarkPerpSettlement.sol:326`), but this must be asserted, not assumed.
+- ~~A manifest-only window has `new_root == prev_root`.~~ **This claim was false and is retracted.** `state_root()` binds `next_batch_id` (`crates/perp-core/src/state.rs:240`), and `seal_window` bumps it exactly once per window while `apply_batch` increments it unconditionally even over an empty op list (`engine.rs:204`) — so **every** settle, manifest-only included, produces `new_root != prev_root`. The implementation neither asserts nor relies on the retracted claim, so nothing built on it. But an implementer *did* inherit it and derived a plausible boot-recovery vulnerability that does not exist, and a reviewer had to disprove both. The property that actually matters is the opposite one, and it is load-bearing: **because consecutive settle roots always differ, `root_matches_settled` is a sound discriminator between the `Stale` and `RollForward` rows of the crash-recovery table** (`rollback_journal.rs:163-170`). Were the roots ever equal, `Stale` would win and that window's `batch_orders` would be silently dropped.
 - Settling more often costs a proof per manifest-only window (~13 minutes and, per the RAM-fit history, memory scaling with total accounts). The predicate must not turn every idle tick into a proof — it triggers on *pending manifest content*, which is bounded by real user submissions, not on liveness.
 
 ### 6. Production start, and the legacy path
@@ -114,6 +124,8 @@ They stay **excluded** from the workspace — they pull `sp1-sdk` (Groth16, Dock
 ### 8. Runbook
 
 Correct `docs/FINAL_SETTLE_RUNBOOK.md`'s six-root/old-selector documentation (`:52-80`) to the nine-parameter ABI. It is EXIT-001's wind-down escape, read under duress; being wrong there is expensive. The `finalSettle` **script** and prepared-data export stay deferred to 025-C/D.
+
+**Correction: this scoped only one of the two stale runbooks.** `docs/PROVING-RUNBOOK.md:120-155` also documents the seven-parameter selector and states that the `/prove` response's "6 roots + proof go straight into `settleBatch`" — both false after §1, since the roots now come from the gateway's local replay and the response carries no `depositsRoot` at all. That is the **normal-path cutover** runbook, followed on the prover box, so the "read under duress" argument applies at least as strongly. `docs/PROVING.md:16` ("All six roots are now DERIVED") is stale for the same reason. Both are in scope.
 
 ## Scope
 
@@ -147,7 +159,7 @@ No `GENESIS_ROOT` move and no vkey move originate here.
 | Encoded `settleBatch` calldata | selector and argument order byte-match the Solidity signature — a **fixed-vector** test, not a round-trip through our own encoder |
 | **Break 4:** a window with a resting unfilled order and no state change | settles; its hashes reach the challenge-answer store; a challenge on that order is answerable. **Must fail before the change** |
 | A window empty of both state change and manifest content | still returns `None` — no proof burned on idle ticks |
-| Manifest-only window where `new_root == prev_root` | `settleBatch` accepts it |
+| ~~Manifest-only window where `new_root == prev_root`~~ | **Row deleted — the premise is false; see §5. Every settle moves the root because it binds `next_batch_id`.** |
 | `DARKPERP_PROD=1` with `PROVER_URL` unset/`mock` | refuses to start, naming the variable |
 | L1-configured testnet, `PROVER_URL=mock`, no `DARKPERP_PROD` | settles on-chain through the window path |
 | A journal written by the pre-025-B binary | **refused** on the `DPRBJL3` magic — versioned rejection, not a decode accident |

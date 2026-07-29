@@ -1287,6 +1287,18 @@ impl Sequencer {
         self.window_start_state = self.state.clone();
     }
 
+    /// SEC-025-B break 4: does the open window carry manifest content that must be
+    /// settled even though the engine root has not moved? An accepted order that rests
+    /// without crossing lands in `window_ordered` while changing no engine state (the
+    /// book is matcher state, not `State`), and a settle is what publishes the ordered/
+    /// rejected roots an inclusion challenge is answered from. Deliberately keyed on
+    /// the ordered/rejected manifest unions ONLY — never `window_ops`, which grows a
+    /// zero-delta `AccrueFunding` op on ordinary idle ticks — so a window empty of
+    /// user submissions still settles nothing and idle ticks burn no proofs.
+    pub fn window_has_pending_manifest(&self) -> bool {
+        !self.window_ordered.is_empty() || !self.window_rejected.is_empty()
+    }
+
     /// Close the current settle window: build the combined manifest over the window's
     /// accumulated ordered/rejected hashes, advance the batch counter once (mirroring
     /// `apply_batch`), drain the window op-log into the witness, and reopen a fresh

@@ -50,6 +50,10 @@ The rest:
 
 ## 025-C — honest genesis and the alpha posture
 
+> **025-C is a hard prerequisite for settling at all — not just for honesty.** Established while building 025-B (2026-07-27) and confirmed by its whole-branch review. `Gw::boot()` funds the MM, demo user and LP demo via `fund_amount_unbacked`, emitting **seven** `BatchOp::Deposit`s with sentinel L1 fields; `op_deposit` folds each into `consumed_deposit_tip` and increments `consumed_deposit_count`. So every settle submits `newDepositCount = 7+` against a fresh vault whose `depositCount` is 0, and `_requireDepositPrefix` reverts **before the proof is verified** — on `settleBatch` and `finalSettle`, and identically under `PROVER_URL=mock`.
+>
+> **025-B + 025-C together are the smallest set that produces a successful settle.** 025-B alone closes four breaks and leaves this fifth one standing. Do not schedule a cutover on 025-B's merge.
+
 - Genesis is markets-only: zero notes, positions, insurance, `external_in`, deposit tip and count. Mode passed **into** `Gw::boot()`, since `gw.prod` is assigned too late to guard boot funding (`main.rs:5921`, `:6143-6168`).
 - `fund_amount_unbacked` unreachable in production, enforced at the call sites.
 - `/v1/lp/*` not mounted and no house-MM counter-orders in production — which also makes `pool_transfer`'s deposit-tip corruption unreachable.

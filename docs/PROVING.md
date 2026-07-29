@@ -5,15 +5,15 @@ yet, and exactly how a real zkVM backend slots in.
 
 ## The binding (stable, backend-independent)
 
-Every batch proof commits to six public values, hashed under `Domain::StateRoot`
+Every batch proof commits to seven public values, hashed under `Domain::StateRoot`
 (tag 7) into the single commitment the L1 verifier checks:
 
 ```
 PublicInputs = (prev_state_root, batch_manifest_hash, new_state_root,
-                ordered_root, withdrawals_root, rejected_root)
+                ordered_root, withdrawals_root, rejected_root, deposits_root)
 ```
 
-All six roots are now **DERIVED** inside the circuit by
+All seven roots are now **DERIVED** inside the circuit by
 `perp_core::commitment::derive_roots` — the guest, the prover's `run_transition`,
 and the SP1 host all call it, so they compute byte-identical roots. They are **not**
 trusted-sequencer calldata: `withdrawals_root` is derived from the batch's burned
