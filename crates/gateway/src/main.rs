@@ -5837,6 +5837,14 @@ fn production_mode(l1_enabled: bool) -> bool {
     l1_enabled || std::env::var("DARKPERP_PROD").ok().as_deref() == Some("1")
 }
 
+/// SEC-025-B: TRUE production, as opposed to `production_mode`, which is also true for
+/// any L1-configured testnet (`l1_enabled || DARKPERP_PROD`). The prover-less settle
+/// refusal keys on THIS, so a testnet can still settle on-chain with `PROVER_URL=mock`
+/// while a real deployment cannot boot without a real prover.
+fn strict_production() -> bool {
+    std::env::var("DARKPERP_PROD").ok().as_deref() == Some("1")
+}
+
 /// Select the settle path's prover client from `PROVER_URL`.
 /// unset/empty → legacy path (None); "mock" → in-process MockProverClient;
 /// any URL → HttpProverClient (seal → POST /prove → real Groth16 proof).
@@ -5854,6 +5862,43 @@ fn prover_from_str(
             prover_client::HttpProverClient::from_env(url, prod)?,
         ))),
     }
+}
+
+/// SEC-025-B §6: `prover_from_str`, plus the strict-production refusal. Split from the
+/// env read so it is testable without mutating process environment.
+///
+/// `prod` and `strict_prod` are DIFFERENT and both are needed: `prod` is
+/// `production_mode` (true for any L1-configured deployment) and is what
+/// `HttpProverClient::from_env` uses for its own fail-closed seal-root resolution;
+/// `strict_prod` is `DARKPERP_PROD=1` alone and is what gates this refusal. Collapsing
+/// them would refuse mock on every testnet: settlement only runs when L1 is configured,
+/// and L1 implies `production_mode`, so no configuration could settle on-chain without
+/// a real prover.
+fn prover_from_str_strict(
+    v: Option<&str>,
+    prod: bool,
+    strict_prod: bool,
+) -> Result<Option<std::sync::Arc<dyn prover_client::ProverClient>>, String> {
+    if strict_prod && matches!(v, None | Some("") | Some("mock")) {
+        return Err(
+            "DARKPERP_PROD=1 requires a real prover: set PROVER_URL to the prover-service \
+             endpoint. A prover-less settle path cannot produce a proof the on-chain \
+             verifier accepts."
+                .to_string(),
+        );
+    }
+    prover_from_str(v, prod)
+}
+
+/// SEC-025-B Task-4 carry-in: whether the tick loop's SETTLE_TICKS finality SIMULATION
+/// must be OFF (i.e. `window_settle_mode`). With a prover, SETTLED is earned by the
+/// on-chain window settle. With L1 configured but NO prover, Task 4 deleted the legacy
+/// settle body, so nothing can land on-chain at all — simulating SETTLED would be false
+/// finality over real collateral, so the simulation is off there too and orders honestly
+/// stay MATCHED (main() warns loudly at boot). Only the pure demo (no L1, no prover)
+/// keeps the simulation.
+fn honest_finality_required(prover_configured: bool, l1_enabled: bool) -> bool {
+    prover_configured || l1_enabled
 }
 
 /// SEC-020 Task 5: like `prover_from_str` for the None/"mock" cases, but for a real
@@ -5901,8 +5946,11 @@ fn prover_from_env_attested(
                 .with_rehandshake(rehandshake);
             Ok(Some(std::sync::Arc::new(client)))
         }
-        // None / "" ⇒ legacy path (None); "mock" ⇒ in-process MockProverClient.
-        other => prover_from_str(other, prod),
+        // None / "" ⇒ no client; "mock" ⇒ in-process MockProverClient — but under
+        // DARKPERP_PROD=1 (strict production, NOT mere `production_mode`) all three
+        // are refused outright: a prover-less settle path cannot produce a proof
+        // the on-chain verifier accepts (SEC-025-B §6).
+        other => prover_from_str_strict(other, prod, strict_production()),
     }
 }
 
@@ -6161,12 +6209,30 @@ async fn main() {
     ) {
         Ok(p) => p,
         Err(e) => {
-            eprintln!("[prover] {e}");
+            // SEC-025-B §6: a refusal to start, not a warning that proceeds — this is
+            // where a DARKPERP_PROD=1 boot without a real PROVER_URL dies.
+            eprintln!("[prover] REFUSING to start: {e}");
             std::process::exit(1);
         }
     };
     if prover.is_some() {
         println!("[prover] window-settle path ON (PROVER_URL)");
+    } else if l1.is_some() {
+        // SEC-025-B Task-4 carry-in: Task 4 deleted the legacy settle body, so an
+        // L1-configured gateway without a prover settles NOTHING — and it used to be
+        // silent about it (the legacy body's per-tick "[l1] settle failed" log went
+        // with it). Under the §6 rule this configuration is only reachable WITHOUT
+        // DARKPERP_PROD=1 (strict production refuses it above), i.e. a testnet or
+        // local chain — so warn loudly rather than refuse, and run under the honest
+        // finality posture (`window_settle_mode` below): orders stay MATCHED instead
+        // of the SETTLE_TICKS simulation reporting a SETTLED that never happened.
+        eprintln!(
+            "[l1] WARNING: L1 settlement is configured but no prover is (PROVER_URL unset) — \
+             the gateway CANNOT settle on-chain: the root never advances and withdrawals \
+             never become claimable. The SETTLE_TICKS finality simulation is DISABLED, so \
+             orders stay MATCHED. Set PROVER_URL to the prover-service endpoint \
+             (or PROVER_URL=mock on a testnet/local chain)."
+        );
     }
     // The attestor whose self-quote `GET /attest` serves: pinned collateral +
     // the same §5c ATTESTATION_DIR capture `attest_from_env` verifies. Absent
@@ -6329,7 +6395,11 @@ async fn main() {
     // boot-recovery block below, so a roll-forward re-commit already runs under the
     // honest-finality posture (its `commit_window_settle` marks the recovered window's
     // orders SETTLED either way — the flag gates only the tick-loop simulation).
-    gw.window_settle_mode = prover.is_some();
+    // SEC-025-B Task-4 carry-in: ALSO off when L1 is configured with NO prover — the
+    // legacy settle body is deleted, so nothing lands on-chain and the simulation would
+    // be false finality (see `honest_finality_required` + the boot warning above; pinned
+    // by `l1_without_a_prover_must_not_simulate_settled`).
+    gw.window_settle_mode = honest_finality_required(prover.is_some(), l1.is_some());
     if gw.window_settle_mode {
         // Task 5 fix round 1 (report Concern 1, memory): the window path never
         // consumes the per-tick rollback snapshots, and with the SETTLE_TICKS
@@ -8453,6 +8523,74 @@ mod tests {
             "an explicit seal root serves prod too"
         );
         std::env::remove_var("PROVER_SEAL_ROOT");
+    }
+
+    /// SEC-025-B §6: DARKPERP_PROD=1 must refuse a prover-less settle path — but an
+    /// L1-configured TESTNET must still be able to run with mock. `production_mode` is
+    /// `l1_enabled || DARKPERP_PROD`, so keying this on `prod` would leave no
+    /// configuration that settles on-chain without a real prover.
+    #[test]
+    fn strict_prod_refuses_a_proverless_settle_path() {
+        for v in [None, Some(""), Some("mock")] {
+            // Not `expect_err`: that needs `T: Debug` and `Arc<dyn ProverClient>` has
+            // no Debug impl (the brief's fixture as written did not compile).
+            let err =
+                match prover_from_str_strict(v, /* prod */ true, /* strict_prod */ true) {
+                    Err(e) => e,
+                    Ok(_) => panic!("strict production must refuse a prover-less path (v={v:?})"),
+                };
+            assert!(
+                err.contains("PROVER_URL"),
+                "the error must name the variable an operator has to set, got: {err}"
+            );
+        }
+    }
+
+    /// The case the first draft of this design would have broken: an L1-configured
+    /// testnet is `production_mode` (because `l1_enabled` implies it) but is NOT strict
+    /// production, and must still be able to settle on-chain with the mock prover.
+    #[test]
+    fn a_testnet_may_still_use_the_mock_prover() {
+        let c = prover_from_str_strict(
+            Some("mock"),
+            /* prod */ true,
+            /* strict_prod */ false,
+        )
+        .expect("mock is allowed outside strict production, even when prod-mode is on");
+        assert!(
+            c.is_some(),
+            "mock must yield a client, not the legacy None path"
+        );
+    }
+
+    /// The legacy None path is gone (Task 4 deleted L1::settle), so an unset PROVER_URL
+    /// outside strict production must still produce no client — the caller treats that
+    /// as "do not run the settle loop", not as "settle through a deleted path".
+    #[test]
+    fn unset_prover_url_outside_strict_prod_yields_no_client() {
+        let c = prover_from_str_strict(None, false, false).expect("allowed");
+        assert!(c.is_none());
+    }
+
+    /// Task-4 carry-in (SEC-025-B): with L1 configured but NO prover, the legacy settle
+    /// body is deleted, so nothing can ever land on-chain — the tick loop's SETTLE_TICKS
+    /// simulation would report SETTLED over real collateral that never settled (false
+    /// finality). The simulation must be off for ANY L1-configured boot; only the pure
+    /// demo (no L1, no prover) keeps it. The tick-loop mechanism this flag gates is
+    /// exercised by `window_mode_defers_settled_until_commit` /
+    /// `legacy_mode_settles_after_ticks_unchanged`; this pins the boot-wiring decision.
+    #[test]
+    fn l1_without_a_prover_must_not_simulate_settled() {
+        assert!(
+            honest_finality_required(/* prover */ false, /* l1 */ true),
+            "L1 with no prover cannot settle — simulating SETTLED would be false finality"
+        );
+        assert!(honest_finality_required(true, true));
+        assert!(honest_finality_required(true, false));
+        assert!(
+            !honest_finality_required(false, false),
+            "the pure demo (no L1, no prover) keeps the legacy tick simulation"
+        );
     }
 
     #[test]
