@@ -6164,6 +6164,18 @@ fn build_router(app: Shared, prod: bool) -> Router {
             .route("/api/recover", post(post_recover));
     }
 
+    if !prod {
+        // SEC-025-C: the LP pool credits through an UNBACKED mint (`pool_transfer` →
+        // `fund_amount_unbacked`), which folds a sentinel leaf the vault chain cannot
+        // match — one call breaks every later settle at `_requireDepositPrefix`. Task 2
+        // refuses it at the call site; not mounting it in production keeps it off the
+        // surface too. Removing this block does NOT re-enable LP in production.
+        router = router
+            .route("/v1/lp", get(get_v1_lp))
+            .route("/v1/lp/deposit", post(post_v1_lp_deposit))
+            .route("/v1/lp/withdraw", post(post_v1_lp_withdraw));
+    }
+
     router
         // ── multi-tenant external API (/v1) ──
         .route("/v1/accounts", post(post_v1_register))
@@ -6183,9 +6195,6 @@ fn build_router(app: Shared, prod: bool) -> Router {
         )
         .route("/v1/accounts/withdraw", post(post_v1_withdraw))
         .route("/v1/accounts/withdrawals", get(get_v1_withdrawals))
-        .route("/v1/lp", get(get_v1_lp))
-        .route("/v1/lp/deposit", post(post_v1_lp_deposit))
-        .route("/v1/lp/withdraw", post(post_v1_lp_withdraw))
         .route("/v1/orders", post(post_v1_order).get(get_v1_orders))
         .route("/v1/orders/:order_id", delete(delete_v1_order))
         .route("/v1/positions", get(get_v1_positions))
@@ -8610,6 +8619,68 @@ mod tests {
             StatusCode::NOT_FOUND,
             "/v1 surface stays mounted in the production build",
         );
+    }
+
+    /// Build a router in the given mode, issue one bare (unauthenticated,
+    /// empty-body) request at `path`, and return the response status. The
+    /// method matches the mounted route (`/v1/lp` is GET; the LP mutations are
+    /// POST) so a mounted route answers with its real handler-surface status —
+    /// a wrong-method request would return 405 and still satisfy the not-404
+    /// discriminator, but would not verify what a mounted route actually says.
+    async fn router_status_for(prod: bool, path: &str) -> StatusCode {
+        use axum::body::Body;
+        use axum::http::Request;
+        use tower::ServiceExt as _; // for `oneshot`
+
+        let method = if path == "/v1/lp" { "GET" } else { "POST" };
+        let req = Request::builder()
+            .method(method)
+            .uri(path)
+            .body(Body::empty())
+            .unwrap();
+        build_router(test_app(), prod)
+            .oneshot(req)
+            .await
+            .unwrap()
+            .status()
+    }
+
+    /// SEC-025-C: the LP pool credits via an unbacked mint (`pool_transfer` →
+    /// `fund_amount_unbacked`), so it cannot exist in production without breaking
+    /// settlement. Task 2 refuses it at the call site; this keeps it off the surface
+    /// entirely. **Must fail at the parent commit** — these routes are mounted today.
+    #[tokio::test]
+    async fn lp_routes_are_absent_in_production() {
+        for path in ["/v1/lp", "/v1/lp/deposit", "/v1/lp/withdraw"] {
+            let status = router_status_for(/* prod */ true, path).await;
+            assert_eq!(
+                status,
+                StatusCode::NOT_FOUND,
+                "{path} must not be mounted in production"
+            );
+        }
+    }
+
+    /// …and still present in demo, so this is a posture change, not a deletion.
+    /// Beyond the not-404 discriminator, pin the statuses a mounted route
+    /// actually returns to a bare request: `/v1/lp` hits `api_key_from` → 401;
+    /// the POST routes die in the `Json` extractor first (no content-type on an
+    /// empty body → 415) — the extractor runs before the handler's auth check.
+    #[tokio::test]
+    async fn lp_routes_are_present_in_demo() {
+        for (path, expect) in [
+            ("/v1/lp", StatusCode::UNAUTHORIZED),
+            ("/v1/lp/deposit", StatusCode::UNSUPPORTED_MEDIA_TYPE),
+            ("/v1/lp/withdraw", StatusCode::UNSUPPORTED_MEDIA_TYPE),
+        ] {
+            let status = router_status_for(/* prod */ false, path).await;
+            assert_ne!(
+                status,
+                StatusCode::NOT_FOUND,
+                "{path} must remain mounted in demo"
+            );
+            assert_eq!(status, expect, "{path} mounted-route status in demo");
+        }
     }
 
     // enabling the L1 settlement bridge (real USDC at stake) forces the production
