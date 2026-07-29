@@ -70,6 +70,13 @@ fn hex32(d: &Digest) -> String {
     s
 }
 
+/// SEC-025-C: does the gateway's last settled root match the chain's currentStateRoot?
+/// Split from the boot wiring so it is testable without an RPC. Case-insensitive
+/// because `current_root()` returns whatever the node formats.
+fn continuity_ok(last_settled_root: &Digest, chain_root: &str) -> bool {
+    hex32(last_settled_root).eq_ignore_ascii_case(chain_root)
+}
+
 /// What to do with a sealed-but-settle-failed window, given the on-chain batchCount
 /// re-read AFTER the failure. `seal_window` bumped the local per-window counter to
 /// `sealed_batch_id + 1`, so `chain_batch_count == sealed_batch_id` means the tx never
@@ -6679,11 +6686,19 @@ async fn main() {
             }
         }
     }
-    // Restored-state ↔ L1 continuity: the snapshot's last settled root must equal
-    // the on-chain currentStateRoot, or this snapshot is stale / from a different
-    // deployment — settling from it would fork the withdrawal roots users hold.
-    // Fail closed; the operator resolves (right snapshot, right chain, or fresh).
-    if let (Some(l1c), Some(st)) = (&l1, gw.l1_status.as_ref()) {
+    // State ↔ L1 continuity, on EVERY L1-configured boot (SEC-025-C): the gateway's
+    // last settled root must equal the on-chain currentStateRoot, or this state is
+    // stale / from a different deployment — settling from it would fork the
+    // withdrawal roots users hold. Gating this on `l1_status` being Some left every
+    // pre-first-settle snapshot unchecked: `l1_status` stays None until the first
+    // commit_window_settle, yet the gateway persists (and restores the deposit
+    // accumulator) throughout — and since `prod` is not persisted, a DEMO snapshot
+    // carrying unbacked deposits could be restored under production posture.
+    // `last_settled_root` (genesis until a settle lands) is compared rather than
+    // `state_root()`, because a legitimate pre-settle snapshot may hold real pending
+    // deposits and correctly differ from the chain. Fail closed; the operator
+    // resolves (right snapshot, right chain, or fresh).
+    if let Some(l1c) = &l1 {
         let chain_root = {
             let l1c = l1c.clone();
             tokio::task::spawn_blocking(move || l1c.current_root())
@@ -6691,16 +6706,19 @@ async fn main() {
                 .unwrap_or_else(|e| Err(e.to_string()))
         };
         match chain_root {
-            Ok(r) if r.eq_ignore_ascii_case(&st.settled_root) => {
+            Ok(r) if continuity_ok(&gw.last_settled_root, &r) => {
                 println!("[state] on-chain continuity OK (currentStateRoot {r})");
             }
             Ok(r) => {
                 eprintln!(
-                    "[state] REFUSING to start: restored snapshot last settled {} but the \
-                     chain's currentStateRoot is {r} — the snapshot is stale or from a \
-                     different deployment. Restore the latest snapshot or delete \
-                     DARKPERP_STATE to consciously boot fresh.",
-                    st.settled_root
+                    "[state] REFUSING to start: the gateway's last settled root is {} but the \
+                     chain's currentStateRoot is {r} — this state is stale, from a different \
+                     deployment, or a DEMO snapshot booted under production posture (prod is \
+                     not persisted, so a demo snapshot's unbacked balances would otherwise \
+                     re-break settlement). Restore the snapshot matching this chain, point \
+                     the gateway at the deployment this state belongs to, or deploy fresh \
+                     contracts and delete DARKPERP_STATE to consciously start over.",
+                    hex32(&gw.last_settled_root)
                 );
                 std::process::exit(1);
             }
@@ -8071,6 +8089,35 @@ mod tests {
         assert!(!crate::needs_confirm_delay(true, 6, 5));
         assert!(!crate::needs_confirm_delay(true, 4, 5));
         assert!(!crate::needs_confirm_delay(false, 6, 5));
+    }
+
+    /// SEC-025-C: continuity must be checked on EVERY L1-configured boot. A snapshot
+    /// taken before the first settle has `l1_status == None`, so neither the old check
+    /// nor a fresh-boot-only check covers it — and since `prod` is not persisted, a
+    /// DEMO snapshot with unbacked deposits can be restored under production posture.
+    /// **Must fail at the parent commit.**
+    #[test]
+    fn continuity_is_checked_when_l1_status_is_none() {
+        // genesis root vs a chain that has advanced past it
+        assert!(
+            !continuity_ok(
+                &[0x11u8; 32],
+                "0x2222222222222222222222222222222222222222222222222222222222222222"
+            ),
+            "a mismatch must be refused even with no prior settle"
+        );
+        assert!(
+            continuity_ok(&[0x11u8; 32], &hex32(&[0x11u8; 32])),
+            "a match starts"
+        );
+    }
+
+    /// Hex comparison must not be case-sensitive — `current_root()` returns whatever
+    /// the RPC formats, and the existing check used `eq_ignore_ascii_case`.
+    #[test]
+    fn continuity_comparison_ignores_hex_case() {
+        let root = [0xABu8; 32];
+        assert!(continuity_ok(&root, &hex32(&root).to_uppercase()));
     }
 
     // ── off-chain receipt reconciliation (Slice 3b-4) ────────────────────────
