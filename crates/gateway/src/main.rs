@@ -1512,9 +1512,12 @@ pub enum GenesisMode {
 impl Gw {
     /// Demo-genesis boot — the historical entry point, kept so its ~80 test call
     /// sites stay untouched (exactly one caller was ever non-test: `main`, which
-    /// now derives a `GenesisMode` and calls `boot_with` directly). Outside
-    /// `cfg(test)` this wrapper is therefore intentionally unused.
-    #[cfg_attr(not(test), allow(dead_code))]
+    /// now derives a `GenesisMode` and calls `boot_with` directly). Compiled out
+    /// of the non-test binary entirely — `cfg(test)`, not `allow(dead_code)` — so
+    /// a future non-test caller is a COMPILE ERROR rather than a silent
+    /// reintroduction of demo funding (seven unbacked deposits) into production,
+    /// which is the exact bug class SEC-025-C exists to kill.
+    #[cfg(test)]
     fn boot() -> Self {
         Self::boot_with(GenesisMode::Demo)
     }
@@ -5560,7 +5563,13 @@ async fn get_v1_enclave_epoch(State(app): State<Shared>) -> impl IntoResponse {
 }
 /// Machine-readable OpenAPI 3.1 spec for the /v1 API, so bots/tools can codegen a
 /// client. Hand-authored + compact; the prose reference is docs/API.md.
-async fn get_v1_openapi() -> impl IntoResponse {
+///
+/// Takes the production posture because the document must match the MOUNTED
+/// surface: `/v1/lp*` is not mounted in production (SEC-025-C Task 3), so the
+/// production document must OMIT those three paths rather than advertise routes
+/// that 404. Split from the axum handler so the gating is testable without an
+/// HTTP stack (`openapi_advertises_lp_only_in_demo`).
+fn v1_openapi_json(prod: bool) -> serde_json::Value {
     let auth = serde_json::json!({ "security": [{ "ApiKey": [] }] });
     let ok = |desc: &str| serde_json::json!({ "200": { "description": desc } });
     let order_body = serde_json::json!({
@@ -5580,7 +5589,7 @@ async fn get_v1_openapi() -> impl IntoResponse {
                 "sealed": { "type": "string", "description": "sealed ingress: 0x-hex sealed-box wire (0x01 ‖ epk32 ‖ nonce24 ‖ ct‖tag) over the canonical order terms, AAD = OrderEncryptAad ‖ epochId(u64 LE) ‖ owner" }
             } } } }
     });
-    Json(serde_json::json!({
+    let mut spec = serde_json::json!({
         "openapi": "3.1.0",
         "info": { "title": "dark-perp external API", "version": "1", "description": "Multi-tenant trading over the sequencer engine. Amounts are decimal strings of scaled integers (quote *1e6, size/price *1e8). See docs/API.md." },
         "components": { "securitySchemes": { "ApiKey": { "type": "apiKey", "in": "header", "name": "X-Api-Key" } } },
@@ -5606,15 +5615,6 @@ async fn get_v1_openapi() -> impl IntoResponse {
                     "signature": { "type": "string", "description": "65-byte secp256k1 sig (r‖s‖v) over the withdraw auth digest keccak256(\"dark-perp:withdraw:\"‖chainId(u64 BE)‖vault(20)‖owner(32)‖marketId(u64 BE)‖amount(i128 BE)‖to(20)‖nonce(u64 BE)), recovering to the registered signer (caller-signed) or else the bound deposit address. Accepted over any of THREE shapes: the raw 32-byte digest, EIP-191 personal_sign over those 32 bytes, or EIP-191 over their lowercase 0x-hex string — so both CLI signers and browser-wallet personal_sign work. chainId/vault/owner: read them from GET /v1/accounts/me" } } } } } },
                 "responses": ok("recorded withdrawal + leaf") } },
             "/v1/accounts/withdrawals": { "get": { "summary": "Own withdrawals + claim proofs (NOTE: this endpoint's `vault` echoes the raw L1_VAULT env string, possibly EIP-55 mixed-case; for building signing digests use the normalized lowercase `vault` from GET /v1/accounts/me — those are the exact bytes hashed)", "security": auth["security"], "responses": ok("vault + withdrawals[]") } },
-            "/v1/lp": { "get": { "summary": "LP pool stats + own stake", "security": auth["security"], "responses": ok("{ tvl, navPerShare, totalShares, myShares, myValue }") } },
-            "/v1/lp/deposit": { "post": { "summary": "Stake USDC into the counterparty pool (mint LP shares)", "security": auth["security"],
-                "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["amount"], "properties": { "amount": { "type": "string", "description": "USDC base units (1e6-scaled string) staked from the account's market-0 balance" } } } } } },
-                "responses": ok("{ sharesMinted }") } },
-            "/v1/lp/withdraw": { "post": { "summary": "Burn LP shares for their pool value (SEC-021: wallet-signed like /v1/accounts/withdraw; pays into the account's OWN market-0 balance — no `to`)", "security": auth["security"],
-                "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["shares","nonce","signature"], "properties": { "shares": { "type": "string" },
-                    "nonce": { "type": "integer", "description": "strictly-increasing withdrawal auth nonce, shared with /v1/accounts/withdraw — use nextWithdrawNonce from GET /v1/accounts/me" },
-                    "signature": { "type": "string", "description": "65-byte secp256k1 sig (r‖s‖v) over the LP withdraw auth digest keccak256(\"dark-perp:lp-withdraw:\"‖chainId(u64 BE)‖vault(20)‖owner(32)‖shares(u128 BE)‖nonce(u64 BE)), recovering to the registered signer (caller-signed) or else the bound deposit address — same three accepted shapes as /v1/accounts/withdraw" } } } } } },
-                "responses": ok("{ withdrawnValue }") } },
             "/v1/orders": {
                 "post": { "summary": "Place an order", "security": auth["security"], "requestBody": order_body, "responses": { "200": { "description": "signed receipt" }, "400": { "description": "rejected" }, "429": { "description": "rate limit (10/s)" } } },
                 "get": { "summary": "Own orders + finality", "security": auth["security"], "responses": ok("orders") }
@@ -5633,7 +5633,40 @@ async fn get_v1_openapi() -> impl IntoResponse {
             "/v1/enclave/epoch": { "get": { "summary": "Enclave order-ingress epoch key (X25519), signed by the enclave's secp256k1 identity — verify `sig` recovers to the pinned enclave signer before sealing orders to `x25519Pub`", "responses": ok("{ epochId, x25519Pub, notAfterMs, measurement, sig }") } },
             "/v1/system/status": { "get": { "summary": "System status", "responses": ok("status") } }
         }
-    }))
+    });
+    if !prod {
+        // demo/dev only — mirrors the `build_router` gating (SEC-025-C Task 3):
+        // the LP pool credits through an unbacked mint, so production neither
+        // mounts nor documents it. INSERTED when demo (rather than removed when
+        // prod) so forgetting this block under-advertises the demo surface
+        // instead of over-advertising the production one.
+        let paths = spec["paths"]
+            .as_object_mut()
+            .expect("the openapi spec always has a paths object");
+        paths.insert("/v1/lp".to_string(), serde_json::json!(
+            { "get": { "summary": "LP pool stats + own stake", "security": auth["security"], "responses": ok("{ tvl, navPerShare, totalShares, myShares, myValue }") } }
+        ));
+        paths.insert("/v1/lp/deposit".to_string(), serde_json::json!(
+            { "post": { "summary": "Stake USDC into the counterparty pool (mint LP shares)", "security": auth["security"],
+                "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["amount"], "properties": { "amount": { "type": "string", "description": "USDC base units (1e6-scaled string) staked from the account's market-0 balance" } } } } } },
+                "responses": ok("{ sharesMinted }") } }
+        ));
+        paths.insert("/v1/lp/withdraw".to_string(), serde_json::json!(
+            { "post": { "summary": "Burn LP shares for their pool value (SEC-021: wallet-signed like /v1/accounts/withdraw; pays into the account's OWN market-0 balance — no `to`)", "security": auth["security"],
+                "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["shares","nonce","signature"], "properties": { "shares": { "type": "string" },
+                    "nonce": { "type": "integer", "description": "strictly-increasing withdrawal auth nonce, shared with /v1/accounts/withdraw — use nextWithdrawNonce from GET /v1/accounts/me" },
+                    "signature": { "type": "string", "description": "65-byte secp256k1 sig (r‖s‖v) over the LP withdraw auth digest keccak256(\"dark-perp:lp-withdraw:\"‖chainId(u64 BE)‖vault(20)‖owner(32)‖shares(u128 BE)‖nonce(u64 BE)), recovering to the registered signer (caller-signed) or else the bound deposit address — same three accepted shapes as /v1/accounts/withdraw" } } } } } },
+                "responses": ok("{ withdrawnValue }") } }
+        ));
+    }
+    spec
+}
+
+/// `/v1/openapi.json`: the spec for THIS deployment's mounted surface — reads the
+/// production posture off the shared state like the neighbouring handlers do.
+async fn get_v1_openapi(State(app): State<Shared>) -> impl IntoResponse {
+    let prod = app.gw.lock().await.prod;
+    Json(v1_openapi_json(prod))
 }
 async fn ws_v1_handler(State(app): State<Shared>, ws: WebSocketUpgrade) -> impl IntoResponse {
     ws.on_upgrade(move |socket| ws_v1_loop(socket, app))
@@ -6558,9 +6591,10 @@ async fn main() {
     // (the journal is a WAL for the latest sealed window; resolving arms only
     // poke the snapshot writer) — BOOT is the only deleter, via the recovery
     // table. This runs BEFORE the continuity check below and leaves it untouched
-    // as the final arbiter: a roll-forward re-commit advances
-    // l1_status.settled_root so an interrupted-but-landed settle passes it, and
-    // a rollback rewinds Counter B so the desync guard stops skipping settles.
+    // as the final arbiter: a roll-forward re-commit (`commit_window_settle`)
+    // advances `last_settled_root` — the value the continuity check compares —
+    // so an interrupted-but-landed settle passes it, and a rollback rewinds
+    // Counter B so the desync guard stops skipping settles.
     if let Some(sp) = &state_path {
         let jp = rollback_journal::journal_path(sp);
         if !restored_from_snapshot {
@@ -7729,14 +7763,18 @@ mod tests {
     // ── SEC-025-C Task 5: the fifth blocker, proven end to end ───────────────
 
     /// SEC-025-C: the row that actually proves the fifth blocker is closed. From a
-    /// PRODUCTION boot, seal a window and run the real prove path; the tuple that
+    /// PRODUCTION boot, seal a window and prepare the settle tuple; the tuple that
     /// would go on-chain must be the zero prefix a fresh vault accepts. Asserting
     /// the genesis constants alone (`production_genesis_matches_a_fresh_vault_prefix`)
     /// proves two constants — it would not catch a sentinel op left staged in the
     /// window, a wrong witness pre-state reaching the prover, or the demo funding
-    /// block regressing to run in both modes. This runs the path a real deployment
-    /// takes: boot → a tick seals a batch into the window → `begin_window_settle`
-    /// → `prove_and_prepare` → the nine-parameter `settleBatch` tuple.
+    /// block regressing to run in both modes. Scope, stated honestly: the batch is
+    /// sealed via `gw.seq.seal_batch` directly (not `Gw::tick`, so the house-MM
+    /// counter-order injection is bypassed), and the proof step is
+    /// `MockProverClient` — a local re-derivation of the roots, not the real
+    /// prover. What IS end-to-end here is the settle-tuple pipeline: production
+    /// boot → sealed window → `begin_window_settle` → `prove_and_prepare` → the
+    /// nine-parameter `settleBatch` tuple.
     ///
     /// The contract side is already covered — `contracts/test/DarkPerpSettlement.t.sol`
     /// lands a zero-prefix settle — but nothing connected it to the boot mode, which
@@ -7858,31 +7896,39 @@ mod tests {
     /// guarding the wrapper is sufficient — but a NEW unbacked caller must break
     /// something. This test is that something: it scans every gateway source file
     /// (not just main.rs), so a call site added in a sibling module is caught too.
-    /// The scan is non-recursive because `crates/gateway/src` is flat; the needle
-    /// is `concat!`-split so this test does not count itself.
+    /// The scan is non-recursive because `crates/gateway/src` is flat; the needles
+    /// are `concat!`-split so this test does not count itself.
+    ///
+    /// Whole-branch review item 2: the wrapper is not the only way in, so the two
+    /// levels BELOW it are pinned too. Calling `fund_amount` directly with the
+    /// sentinel tuple (`from=[0;20]`, `deposit_id = consumed_deposit_count`,
+    /// `deposit_blind=[0;32]` — exactly what the unbacked wrapper passes) bypasses
+    /// `refuse_unbacked_mint` entirely; and so does applying the raw `Deposit`
+    /// engine op through `seq.apply` directly.
     #[test]
     fn unbacked_funding_has_exactly_the_known_call_sites() {
-        let needle = concat!("fund_amount_unbacked", "(");
+        let unbacked_needle = concat!("fund_amount_unbacked", "(");
+        let fund_needle = concat!("fund_amount", "(");
+        let deposit_op_needle = concat!("BatchOp::", "Deposit");
         let src_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
-        let mut n = 0usize;
-        let mut files = 0usize;
+        let mut sources: Vec<String> = Vec::new();
         for entry in std::fs::read_dir(&src_dir).expect("gateway src dir") {
             let path = entry.expect("dir entry").path();
             if path.extension().and_then(|e| e.to_str()) == Some("rs") {
-                files += 1;
-                n += std::fs::read_to_string(&path)
-                    .expect("readable gateway source")
-                    .matches(needle)
-                    .count();
+                sources.push(std::fs::read_to_string(&path).expect("readable gateway source"));
             }
         }
         assert!(
-            files >= 2,
-            "the scan must actually cover the gateway sources (found {files} files)"
+            sources.len() >= 2,
+            "the scan must actually cover the gateway sources (found {} files)",
+            sources.len()
         );
+        let count =
+            |needle: &str| -> usize { sources.iter().map(|s| s.matches(needle).count()).sum() };
+        let n = count(unbacked_needle);
         assert_eq!(
             n, 7,
-            "expected exactly 7 occurrences of `{needle}` across the \
+            "expected exactly 7 occurrences of `{unbacked_needle}` across the \
              gateway sources: the definition (`fn fund_amount_unbacked`), 4 \
              production call sites — `fund` (the boot/demo funnel), `pool_transfer` \
              (the LP credit leg), `deposit` (legacy demo), `account_deposit` \
@@ -7893,6 +7939,86 @@ mod tests {
              flag through `refuse_unbacked_mint` (SEC-025-C) and get a refusal test \
              like `unbacked_funding_is_refused_in_production` — only then update this \
              count and its breakdown."
+        );
+        // Review item 2, pin 1: the chokepoint one level down. A direct
+        // `fund_amount` call handed the sentinel tuple mints unbacked collateral
+        // without ever reaching `refuse_unbacked_mint`, so every caller is pinned.
+        let fund_calls = count(fund_needle);
+        assert_eq!(
+            fund_calls, 3,
+            "expected exactly 3 occurrences of `{fund_needle}` across the gateway \
+             sources (all in main.rs): the definition (`fn` + name) and 2 callers — \
+             `account_confirm_deposit` (the REAL L1-credit path, passing the \
+             verified vault leaf) and `fund_amount_unbacked` (the guarded sentinel \
+             wrapper); found {fund_calls}. A direct caller can mint UNBACKED \
+             collateral by passing the sentinel tuple (from=[0;20], deposit_id = \
+             consumed_deposit_count, deposit_blind=[0;32]) without ever reaching \
+             `refuse_unbacked_mint` — so a legitimately added caller MUST either \
+             route through `fund_amount_unbacked` (which carries the guard) or pass \
+             a REAL verified L1 leaf like `account_confirm_deposit` does, and only \
+             then update this count and its breakdown."
+        );
+        // Review item 2, pin 2: the bottom level. Applying the raw `Deposit`
+        // engine op through `seq.apply` mints collateral below BOTH the guard and
+        // `fund_amount`'s note/archive bookkeeping.
+        let deposit_ops = count(deposit_op_needle);
+        assert_eq!(
+            deposit_ops, 4,
+            "expected exactly 4 occurrences of `{deposit_op_needle}` across the \
+             gateway sources: 1 in main.rs — the single `seq.apply(..)` construction \
+             inside `fund_amount`, the ONLY place the gateway mints a deposit credit \
+             — and 3 in prover_client.rs, all `cfg(test)` `matches!`/filter PATTERNS \
+             that inspect ops without constructing one; found {deposit_ops}. \
+             Applying this op anywhere else mints collateral below BOTH \
+             `refuse_unbacked_mint` and `fund_amount`'s note/archive bookkeeping, so \
+             a new construction site is almost certainly wrong; a legitimate credit \
+             path MUST route through `fund_amount` (backed) or \
+             `fund_amount_unbacked` (guarded), and a legitimate new PATTERN use \
+             (e.g. a test inspecting ops) just updates this count and its breakdown."
+        );
+    }
+
+    /// Whole-branch review item 5: the OpenAPI document must describe the MOUNTED
+    /// surface. Task 3 removed `/v1/lp*` from the production router, so an
+    /// unconditional spec would advertise three paths that 404 in production.
+    /// Asserts on the parsed `paths` object (not a substring of the whole
+    /// document) in BOTH modes, so the discriminator is proven to discriminate:
+    /// un-gating the entries (advertising LP unconditionally) fails the
+    /// production half, and dropping them outright fails the demo half.
+    #[test]
+    fn openapi_advertises_lp_only_in_demo() {
+        const LP_PATHS: [&str; 3] = ["/v1/lp", "/v1/lp/deposit", "/v1/lp/withdraw"];
+        let prod_spec = v1_openapi_json(true);
+        let demo_spec = v1_openapi_json(false);
+        let prod_paths = prod_spec["paths"]
+            .as_object()
+            .expect("production spec has a paths object");
+        let demo_paths = demo_spec["paths"]
+            .as_object()
+            .expect("demo spec has a paths object");
+        for p in LP_PATHS {
+            assert!(
+                !prod_paths.contains_key(p),
+                "production openapi must NOT advertise {p} — the production router \
+                 does not mount it (SEC-025-C Task 3), so documenting it advertises \
+                 a 404"
+            );
+            assert!(
+                demo_paths.contains_key(p),
+                "demo openapi must keep advertising {p} — the demo router mounts it"
+            );
+        }
+        // Fixture-suspicion guards: an empty (or LP-only) paths object would pass
+        // the loop above while documenting nothing. Both documents must carry the
+        // ungated surface, and the LP gating must be their ONLY difference.
+        assert!(
+            prod_paths.contains_key("/v1/orders"),
+            "production spec still documents the ungated /v1 surface"
+        );
+        assert_eq!(
+            demo_paths.len(),
+            prod_paths.len() + LP_PATHS.len(),
+            "the demo and production documents differ by EXACTLY the three LP paths"
         );
     }
 
@@ -8261,13 +8387,18 @@ mod tests {
         assert!(!crate::needs_confirm_delay(false, 6, 5));
     }
 
-    /// SEC-025-C: continuity must be checked on EVERY L1-configured boot. A snapshot
-    /// taken before the first settle has `l1_status == None`, so neither the old check
-    /// nor a fresh-boot-only check covers it — and since `prod` is not persisted, a
-    /// DEMO snapshot with unbacked deposits can be restored under production posture.
-    /// **Must fail at the parent commit.**
+    /// SEC-025-C: the pure comparator refuses a root mismatch (and its sibling
+    /// `continuity_comparison_ignores_hex_case` pins the format tolerance). Scope,
+    /// stated honestly: this exercises ONLY `continuity_ok` — it touches neither
+    /// `l1_status` nor the boot guard. The actual SEC-025-C change — WIDENING the
+    /// guard so continuity is checked on every L1-configured boot (a pre-first-settle
+    /// snapshot has `l1_status == None`, and `prod` is not persisted, so a DEMO
+    /// snapshot with unbacked deposits could be restored under production posture)
+    /// — is verified by reading the `if let Some(l1c) = &l1` continuity block in
+    /// `main()`, and is NOT covered by an in-process test: `main()` is untestable
+    /// in a bin crate.
     #[test]
-    fn continuity_is_checked_when_l1_status_is_none() {
+    fn continuity_comparator_rejects_a_mismatch() {
         // genesis root vs a chain that has advanced past it
         assert!(
             !continuity_ok(
