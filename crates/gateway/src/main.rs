@@ -7726,6 +7726,176 @@ mod tests {
         assert_eq!(gw.seq.state.consumed_deposit_count, before);
     }
 
+    // ── SEC-025-C Task 5: the fifth blocker, proven end to end ───────────────
+
+    /// SEC-025-C: the row that actually proves the fifth blocker is closed. From a
+    /// PRODUCTION boot, seal a window and run the real prove path; the tuple that
+    /// would go on-chain must be the zero prefix a fresh vault accepts. Asserting
+    /// the genesis constants alone (`production_genesis_matches_a_fresh_vault_prefix`)
+    /// proves two constants — it would not catch a sentinel op left staged in the
+    /// window, a wrong witness pre-state reaching the prover, or the demo funding
+    /// block regressing to run in both modes. This runs the path a real deployment
+    /// takes: boot → a tick seals a batch into the window → `begin_window_settle`
+    /// → `prove_and_prepare` → the nine-parameter `settleBatch` tuple.
+    ///
+    /// The contract side is already covered — `contracts/test/DarkPerpSettlement.t.sol`
+    /// lands a zero-prefix settle — but nothing connected it to the boot mode, which
+    /// is the half that was broken.
+    #[test]
+    fn a_production_genesis_window_submits_the_zero_prefix() {
+        let mut gw = Gw::boot_with(GenesisMode::Production);
+        gw.prod = true; // mirrors main(): `gw.prod = prod` right after boot returns
+        let genesis_root = gw.seq.state.state_root();
+
+        // PRECONDITION, verified rather than assumed: a BARE production genesis has
+        // no state change and no manifest content, so `begin_window_settle` correctly
+        // returns `None` (025-B's predicate — idle ticks burn no proofs). The fixture
+        // below therefore gives the window real content first.
+        assert!(
+            gw.begin_window_settle(0)
+                .expect("window 0 vs a fresh chain's batchCount 0")
+                .is_none(),
+            "a bare production genesis window must have nothing to prove — Some here \
+             means boot staged content and the markets-only genesis regressed"
+        );
+
+        // FIXTURE: the cheapest REAL first-window content that touches no deposit
+        // machinery — an order from an unfunded account, rejected pre-trade
+        // (InsufficientMargin). An ACCEPTED order needs margin, and on a production
+        // genesis margin can only come from a real L1 deposit, which would advance
+        // the very accumulator this test pins at zero. A rejected-only window is a
+        // genuinely reachable first window (any order sent before depositing) and
+        // must settle (SEC-025-B break 4 / whole-branch review item 5).
+        //
+        // Deterministic oracle, mirroring `tests_support::gw_with_market`: re-sign
+        // market 0 at 500 ms so a batch sealed at 1_000 ms clears the freshness
+        // gate — otherwise this rejection could silently become OracleUnavailable.
+        let px = gw.seq.oracle(0).expect("boot pins a market-0 oracle").price;
+        let t = oracle_of(px, 500, 0, &gw.oracle_signer);
+        gw.seq.set_oracle(0, t);
+        let trader = Wallet::from_seed([9u8; 32]);
+        let sealed = gw.seq.seal_batch(
+            &[mk_order(
+                trader.owner,
+                0,
+                Side::Buy,
+                SIZE_SCALE / 10,
+                px / 2,
+                1,
+                TimeInForce::Gtc,
+                false,
+            )],
+            1_000,
+        );
+
+        // Fixture-suspicion guards: exactly the constructed rejection, nothing
+        // accepted, and no state moved — otherwise the zero-prefix assertions below
+        // could pass while the window exercises a different path entirely.
+        assert!(
+            sealed.manifest.ordered.is_empty(),
+            "fixture precondition: an unfunded account's order must not be accepted: {:?}",
+            sealed.manifest.ordered
+        );
+        assert_eq!(
+            sealed.manifest.rejected.len(),
+            1,
+            "fixture precondition: exactly the one constructed rejection"
+        );
+        assert_eq!(
+            sealed.manifest.rejected[0].1,
+            perp_core::order::RejectReason::InsufficientMargin,
+            "fixture precondition: the margin rejection we constructed — any other \
+             reason (e.g. OracleUnavailable) means the fixture regressed"
+        );
+        assert_eq!(
+            gw.seq.state.state_root(),
+            genesis_root,
+            "fixture precondition: a rejected order moves no state — the deposit \
+             accumulator must reach the prover untouched by the fixture itself"
+        );
+
+        let (witness, ww) = gw
+            .begin_window_settle(0)
+            .expect("window 0 vs a fresh chain's batchCount 0")
+            .expect("a window carrying a rejected order is settleable (break 4)");
+
+        // The witness pre-state is what the proof opens from: anything but the boot
+        // state root is the BadPrevRoot revert the live migration hit.
+        assert_eq!(witness.batch_id, 0, "the first window is window 0");
+        assert_eq!(
+            witness.pre_state.state_root(),
+            genesis_root,
+            "witness pre-state must be the deployed GENESIS_ROOT"
+        );
+
+        let prepared =
+            prover_client::prove_and_prepare(&prover_client::MockProverClient, &witness, &ww)
+                .expect("local derivation agrees with the mock prover");
+
+        // The tuple that reaches `settleBatch`. `_requireDepositPrefix`
+        // (DarkPerpSettlement.sol:301-307) pins (newDepositCount, depositsRoot) to
+        // the vault's `depositTipAt` BEFORE the proof is verified; a fresh vault has
+        // depositCount 0 and `depositTipAt(0)` is the never-written mapping default.
+        assert_eq!(
+            prepared.outcome.prev_root, genesis_root,
+            "prevRoot must be the deployed GENESIS_ROOT"
+        );
+        assert_eq!(
+            prepared.outcome.deposits_root, [0u8; 32],
+            "depositsRoot must be the vault's genesis tip"
+        );
+        assert_eq!(
+            prepared.outcome.new_deposit_count, 0,
+            "newDepositCount must be 0 — _requireDepositPrefix reads depositTipAt(0)"
+        );
+    }
+
+    /// SEC-025-C's invariant, checked by enumeration rather than by imagining an
+    /// attack — the method that made SEC-024's core the one design in this
+    /// workstream to survive review intact. `fund_amount_unbacked` is the ONLY
+    /// constructor of sentinel-leaf deposits in the gateway and
+    /// `refuse_unbacked_mint` guards it (plus the `pool_transfer` pre-flight), so
+    /// guarding the wrapper is sufficient — but a NEW unbacked caller must break
+    /// something. This test is that something: it scans every gateway source file
+    /// (not just main.rs), so a call site added in a sibling module is caught too.
+    /// The scan is non-recursive because `crates/gateway/src` is flat; the needle
+    /// is `concat!`-split so this test does not count itself.
+    #[test]
+    fn unbacked_funding_has_exactly_the_known_call_sites() {
+        let needle = concat!("fund_amount_unbacked", "(");
+        let src_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut n = 0usize;
+        let mut files = 0usize;
+        for entry in std::fs::read_dir(&src_dir).expect("gateway src dir") {
+            let path = entry.expect("dir entry").path();
+            if path.extension().and_then(|e| e.to_str()) == Some("rs") {
+                files += 1;
+                n += std::fs::read_to_string(&path)
+                    .expect("readable gateway source")
+                    .matches(needle)
+                    .count();
+            }
+        }
+        assert!(
+            files >= 2,
+            "the scan must actually cover the gateway sources (found {files} files)"
+        );
+        assert_eq!(
+            n, 7,
+            "expected exactly 7 occurrences of `{needle}` across the \
+             gateway sources: the definition (`fn fund_amount_unbacked`), 4 \
+             production call sites — `fund` (the boot/demo funnel), `pool_transfer` \
+             (the LP credit leg), `deposit` (legacy demo), `account_deposit` \
+             (self-service) — and 2 test call sites \
+             (`unbacked_funding_is_refused_in_production`, \
+             `confirm_deposit_duplicate_commitment_is_clean_err_and_retriable`); \
+             found {n}. A new unbacked-funding call site MUST thread the production \
+             flag through `refuse_unbacked_mint` (SEC-025-C) and get a refusal test \
+             like `unbacked_funding_is_refused_in_production` — only then update this \
+             count and its breakdown."
+        );
+    }
+
     // ZK-001 (Hazard #1): a transcript pushed through the LIVE oracle path
     // (`apply_real_oracle`, which remaps `publish_time_ms` onto the local freshness
     // clock) must STILL recover to the market's `oracle_pubkey` — i.e. the gateway
