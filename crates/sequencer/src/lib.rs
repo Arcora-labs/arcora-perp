@@ -1310,6 +1310,15 @@ impl Sequencer {
         !self.window_ops.is_empty()
     }
 
+    /// SEC-025-C (unbacked-mint refusal tests): the number of ops staged in the
+    /// open window's op-log. `state_root()` commits only `perp_core::State`, so a
+    /// "refused call mutated nothing" assertion cannot observe a stray op pushed
+    /// into the window log through the root alone — it must count the log
+    /// directly. Read-only accessor so the field itself stays private.
+    pub fn window_op_count(&self) -> usize {
+        self.window_ops.len()
+    }
+
     /// Close the current settle window: build the combined manifest over the window's
     /// accumulated ordered/rejected hashes, advance the batch counter once (mirroring
     /// `apply_batch`), drain the window op-log into the witness, and reopen a fresh

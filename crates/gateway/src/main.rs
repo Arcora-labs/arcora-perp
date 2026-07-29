@@ -1584,6 +1584,8 @@ impl Gw {
             // exactly once — no historical duplicate is possible, so `.expect` is honest.
             for (i, cfg) in MARKETS.iter().enumerate() {
                 // fund the market-maker (deep) and the user (≈$5k) into each market bucket
+                // `prod: false` — this whole block runs only under `GenesisMode::Demo`,
+                // never in production (SEC-025-C).
                 fund(
                     &mut seq,
                     &mut archive,
@@ -1591,6 +1593,7 @@ impl Gw {
                     cfg.id,
                     MM_FUND_PER_MARKET,
                     0x40 + i as u8,
+                    false,
                 )
                 .expect("boot MM funding: fresh distinct blinds on an empty genesis tree");
                 fund(
@@ -1600,12 +1603,13 @@ impl Gw {
                     cfg.id,
                     USER_FUND_PER_MARKET,
                     0x10 + i as u8,
+                    false,
                 )
                 .expect("boot user funding: fresh distinct blinds on an empty genesis tree");
             }
             // give the demo user extra market-0 balance so the LP tab is demoable (LP
             // deposits debit this real balance — no free mint).
-            fund(&mut seq, &mut archive, &user, 0, 2_000_000, 0x38)
+            fund(&mut seq, &mut archive, &user, 0, 2_000_000, 0x38, false)
                 .expect("boot LP-demo funding: fresh distinct blind on an empty genesis tree");
             // capitalize the insurance fund so the backstop is visible from genesis; it
             // then grows on its own from the per-fill insurance cut (audit Q3/Q4).
@@ -2422,6 +2426,7 @@ impl Gw {
             market,
             amount,
             blind,
+            self.prod,
         )?;
         self.accounts.get_mut(key).unwrap().deposit_counter += 1;
         Ok(())
@@ -2947,6 +2952,7 @@ impl Gw {
                 market,
                 30_000,
                 0x71u8.wrapping_add(bn),
+                self.prod,
             )
             .map_err(|e| format!("adl demo: user margin fund failed: {e}"))?;
         }
@@ -2966,6 +2972,7 @@ impl Gw {
             market,
             victim_margin_usd,
             0x9Au8.wrapping_add(bn),
+            self.prod,
         )
         .map_err(|e| format!("adl demo: victim fund failed: {e}"))?;
         let oracle = oracle_of(px, now, market, &self.oracle_signer);
@@ -3051,6 +3058,13 @@ impl Gw {
     /// Unbind+Withdraw on `from` (external_out) then Deposit+Fund on `to` (external_in),
     /// net-zero externally. `from` must have `value` free in market 0.
     fn pool_transfer(&mut self, from: &Wallet, to: &Wallet, value: i128) -> Result<(), String> {
+        // SEC-025-C: the credit leg below is an unbacked mint, refused in production
+        // by `fund_amount_unbacked`. But the debit leg (Unbind+Withdraw) is applied
+        // FIRST, so relying on the mint-site refusal alone would return `Err` with
+        // `from`'s value already burned. Pre-flight the SAME guard before mutating
+        // anything: a production refusal must mutate NOTHING. The mint-site check
+        // remains the backstop for every other caller.
+        refuse_unbacked_mint(self.prod)?;
         if value > self.market_free_of(&from.owner, 0) {
             return Err("Insufficient market-0 free balance.".into());
         }
@@ -3089,8 +3103,16 @@ impl Gw {
         // NOTE: the debit (Unbind+Withdraw) has already been applied at this point; the
         // engine refusing the credit would leave the value burned, which is why the
         // blind's by-construction uniqueness matters and why we still never panic here.
-        fund_amount_unbacked(&mut self.seq, &mut self.archive, to, 0, value, cb)
-            .map_err(|e| format!("lp credit fund: {e}"))?;
+        fund_amount_unbacked(
+            &mut self.seq,
+            &mut self.archive,
+            to,
+            0,
+            value,
+            cb,
+            self.prod,
+        )
+        .map_err(|e| format!("lp credit fund: {e}"))?;
         Ok(())
     }
 
@@ -3455,6 +3477,7 @@ impl Gw {
             self.selected,
             amount,
             blind,
+            self.prod,
         )
     }
 
@@ -4069,6 +4092,7 @@ fn fund(
     market: u64,
     usd_amount: i128,
     blind: u8,
+    prod: bool,
 ) -> Result<(), String> {
     fund_amount_unbacked(
         seq,
@@ -4077,15 +4101,36 @@ fn fund(
         market,
         usd_amount * QUOTE_SCALE,
         [blind; 32],
+        prod,
     )
+}
+
+/// SEC-025-C: THE production refusal for unbacked minting — the single guard every
+/// unbacked-credit path funnels through: `fund_amount_unbacked` at the mint itself,
+/// and `pool_transfer` as a pre-flight BEFORE its debit leg (its Unbind+Withdraw is
+/// applied first, so a mint-site refusal alone would return `Err` with the debited
+/// value already burned). Refused HERE rather than at the router, because
+/// route-mounting protects one caller and is invisible to the next one added: that
+/// is exactly how `/v1/lp` and `simulate_adl` came to be reachable while
+/// self-service was correctly closed (audit DP-001).
+fn refuse_unbacked_mint(prod: bool) -> Result<(), String> {
+    if prod {
+        return Err(
+            "unbacked funding is refused in production: collateral must enter through a \
+             verified L1 deposit (CollateralVault.deposit → account_confirm_deposit)"
+                .to_string(),
+        );
+    }
+    Ok(())
 }
 
 /// SEC-019 (Task 7b): an UNBACKED credit — a `Deposit` op with SENTINEL L1-leaf fields
 /// (`from=[0;20]`, `deposit_blind=[0;32]`, `deposit_id` = the live consumed count so the
 /// strict in-order gate passes). Used ONLY by the demo/LP/self-service seed paths that
 /// fabricate collateral without a real L1 deposit event; those fold a `consumed_deposit_tip`
-/// the on-chain vault chain will NOT match, so they can never settle in `prod` (self-service
-/// is disabled there — audit DP-001). The REAL L1-credit path
+/// the on-chain vault chain will NOT match, so a single one breaks every subsequent
+/// settle at `_requireDepositPrefix` — before the proof is even verified. REFUSED in
+/// production (SEC-025-C, `refuse_unbacked_mint`). The REAL L1-credit path
 /// (`account_confirm_deposit`) calls `fund_amount` with the payer's real `from`, the
 /// deposit's L1 `id`, and the authorized `deposit_blind`, so its fold DOES match the vault.
 fn fund_amount_unbacked(
@@ -4095,7 +4140,9 @@ fn fund_amount_unbacked(
     market: u64,
     amount: i128,
     blind: Digest,
+    prod: bool,
 ) -> Result<(), String> {
+    refuse_unbacked_mint(prod)?;
     let deposit_id = seq.state.consumed_deposit_count;
     fund_amount(
         seq, archive, w, market, amount, blind, [0u8; 20], deposit_id, [0u8; 32],
@@ -7515,6 +7562,143 @@ mod tests {
         );
     }
 
+    // ── SEC-025-C Task 2: unbacked minting is refused at every call site ─────
+
+    /// SEC-025-C: unbacked minting must be refused in production AT THE CALL SITE,
+    /// not merely unrouted. `/v1/lp/*` was mounted in production and `simulate_adl`
+    /// sits behind route-mounting alone — both reach `fund_amount_unbacked` and would
+    /// re-corrupt `consumed_deposit_tip` after a clean genesis.
+    #[test]
+    fn unbacked_funding_is_refused_in_production() {
+        let mut gw = Gw::boot_with(GenesisMode::Production);
+        let before_root = gw.seq.state.state_root();
+        let before_ops = gw.seq.window_op_count();
+        let before_archive = gw.archive.len();
+        let w = Wallet::from_seed([9u8; 32]);
+
+        let err = fund_amount_unbacked(
+            &mut gw.seq,
+            &mut gw.archive,
+            &w,
+            0,
+            1_000 * QUOTE_SCALE,
+            [0x99u8; 32],
+            /* prod */ true,
+        )
+        .expect_err("production must refuse an unbacked mint");
+        assert!(err.contains("production"), "error names the reason: {err}");
+
+        // `state_root()` alone is NOT sufficient here: this fn takes &mut Sequencer
+        // and &mut NoteArchive, and state_root() commits only perp_core::State — a
+        // buggy rejected call could mutate the sequencer's op log or the archive
+        // invisibly.
+        assert_eq!(
+            gw.seq.state.state_root(),
+            before_root,
+            "engine state untouched"
+        );
+        assert_eq!(gw.seq.window_op_count(), before_ops, "no op staged");
+        assert_eq!(gw.archive.len(), before_archive, "no archive record");
+    }
+
+    /// A production LP transfer is the live corruption path today (`/v1/lp/*` is
+    /// mounted in production, outside the demo-only route block).
+    ///
+    /// FIXTURE NOTE: this boots the FUNDED demo genesis and then flips `prod`. On a
+    /// bare production genesis `from` has no market-0 balance, so the transfer would
+    /// be refused by the BALANCE check and this test would keep passing with the
+    /// SEC-025-C guard deleted — a fixture that tests nothing. Funded, the guard is
+    /// the only thing standing between this call and a mint (pinned by the
+    /// precondition assert), which is exactly what the Step-5 mutation check needs.
+    #[test]
+    fn a_production_lp_transfer_is_refused() {
+        let mut gw = Gw::boot();
+        gw.prod = true;
+        let user = gw.user;
+        let mm = gw.mm;
+        let value = 100 * QUOTE_SCALE;
+        assert!(
+            value <= gw.market_free_of(&user.owner, 0),
+            "precondition: the transfer must clear the balance gate, or the refusal \
+             below could come from the wrong check"
+        );
+        let before_root = gw.seq.state.state_root();
+        let before_ops = gw.seq.window_op_count();
+        let before_count = gw.seq.state.consumed_deposit_count;
+
+        let res = gw.pool_transfer(&user, &mm, value);
+
+        assert!(res.is_err(), "LP transfer must be refused in production");
+        assert_eq!(
+            gw.seq.state.consumed_deposit_count, before_count,
+            "the deposit accumulator must not move"
+        );
+        // The debit leg (Unbind+Withdraw) runs BEFORE the credit in pool_transfer:
+        // a refusal firing only at the mint would return Err with `from`'s value
+        // already burned. The production refusal must mutate NOTHING.
+        assert_eq!(
+            gw.seq.state.state_root(),
+            before_root,
+            "the refusal must precede the debit leg — no value burned"
+        );
+        assert_eq!(gw.seq.window_op_count(), before_ops, "no ops staged");
+    }
+
+    /// simulate_adl reaches `fund` at runtime and was protected only by
+    /// `/api/simulate-adl` sitting inside the router's demo-only block — route-only
+    /// enforcement, which SEC-025-C replaces with a refusal at the mint itself.
+    #[test]
+    fn a_production_simulate_adl_is_refused() {
+        let mut gw = Gw::boot_with(GenesisMode::Production);
+        gw.prod = true;
+        let before_root = gw.seq.state.state_root();
+        let before_count = gw.seq.state.consumed_deposit_count;
+        let err = gw.simulate_adl().expect_err("refused in production");
+        assert!(
+            err.contains("production"),
+            "refused by the SEC-025-C guard, not an incidental demo failure: {err}"
+        );
+        assert_eq!(gw.seq.state.consumed_deposit_count, before_count);
+        assert_eq!(
+            gw.seq.state.state_root(),
+            before_root,
+            "the first mutation in the demo flow is a fund call, so a refusal \
+             must leave the engine untouched"
+        );
+    }
+
+    /// The legacy demo deposit is protected today only by its route not being
+    /// mounted. After this task the method itself refuses, so an internal caller
+    /// cannot reach it.
+    #[test]
+    fn legacy_deposit_is_refused_in_production() {
+        let mut gw = Gw::boot_with(GenesisMode::Production);
+        gw.prod = true;
+        let before = gw.seq.state.consumed_deposit_count;
+        let err = gw
+            .deposit(1_000 * QUOTE_SCALE)
+            .expect_err("the method must refuse, not merely be unrouted");
+        assert!(err.contains("production"), "error names the reason: {err}");
+        assert_eq!(gw.seq.state.consumed_deposit_count, before);
+    }
+
+    /// DP-001 regression — self-service was already correctly closed at the METHOD;
+    /// keep it closed. The account is registered BEFORE flipping `prod` and the
+    /// parameters are valid, so the only possible refusal is the production one
+    /// (pinned by message) — not "unknown account" or a bad-amount error.
+    #[test]
+    fn self_service_deposit_is_still_refused_in_production() {
+        let mut gw = Gw::boot_with(GenesisMode::Production);
+        let (key, _owner) = gw.register_account(None);
+        gw.prod = true;
+        let before = gw.seq.state.consumed_deposit_count;
+        let err = gw
+            .account_deposit(&key, 0, 1_000 * QUOTE_SCALE)
+            .expect_err("DP-001: self-service deposit refuses in production");
+        assert!(err.contains("production"), "error names the reason: {err}");
+        assert_eq!(gw.seq.state.consumed_deposit_count, before);
+    }
+
     // ZK-001 (Hazard #1): a transcript pushed through the LIVE oracle path
     // (`apply_real_oracle`, which remaps `publish_time_ms` onto the local freshness
     // clock) must STILL recover to the market's `oracle_pubkey` — i.e. the gateway
@@ -7628,6 +7812,7 @@ mod tests {
             0,
             amount as i128,
             note_blind,
+            /* prod */ false,
         )
         .expect("pre-minting the colliding note must succeed");
         // Authorize, then confirm at the live next-in-line id so the in-order guard
