@@ -1299,6 +1299,17 @@ impl Sequencer {
         !self.window_ordered.is_empty() || !self.window_rejected.is_empty()
     }
 
+    /// SEC-025-C: does the open window carry staged ops in its op-log? Complements
+    /// `window_has_pending_manifest` — boot funding stages `Deposit` ops in
+    /// `window_ops` (via `apply`), never the ordered/rejected manifest, so the
+    /// manifest probe alone cannot observe ops staged after `seal_genesis_baseline`.
+    /// A production genesis must leave BOTH empty, or the first settle's witness
+    /// pre-state would not be the deployed GENESIS_ROOT. Read-only accessor so the
+    /// field itself stays private.
+    pub fn window_has_staged_ops(&self) -> bool {
+        !self.window_ops.is_empty()
+    }
+
     /// Close the current settle window: build the combined manifest over the window's
     /// accumulated ordered/rejected hashes, advance the batch counter once (mirroring
     /// `apply_batch`), drain the window op-log into the witness, and reopen a fresh

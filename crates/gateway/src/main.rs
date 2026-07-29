@@ -1487,8 +1487,32 @@ fn decode_hex(s: &str) -> Option<Vec<u8>> {
         .collect()
 }
 
+/// SEC-025-C: what a boot mints at genesis. **Passed into `Gw::boot_with`, never read
+/// from `Gw::prod`** — `prod` is assigned two lines after `boot()` returns in `main()`,
+/// so it cannot guard the funding that happens inside.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GenesisMode {
+    /// Registers markets AND funds MM / demo user / LP demo, and seeds insurance.
+    /// Those are UNBACKED mints with sentinel L1 fields, so a chain built on this
+    /// genesis can never satisfy `_requireDepositPrefix`. Demo and no-L1 dev only.
+    Demo,
+    /// Markets only. `consumed_deposit_tip` and `consumed_deposit_count` stay at their
+    /// `State::new` values, which is exactly the pair a fresh vault's `depositTipAt(0)`
+    /// returns — so the first settle's deposit-prefix pin passes.
+    Production,
+}
+
 impl Gw {
+    /// Demo-genesis boot — the historical entry point, kept so its ~80 test call
+    /// sites stay untouched (exactly one caller was ever non-test: `main`, which
+    /// now derives a `GenesisMode` and calls `boot_with` directly). Outside
+    /// `cfg(test)` this wrapper is therefore intentionally unused.
+    #[cfg_attr(not(test), allow(dead_code))]
     fn boot() -> Self {
+        Self::boot_with(GenesisMode::Demo)
+    }
+
+    fn boot_with(mode: GenesisMode) -> Self {
         // Bind the enclave identity to a REAL verified TEE measurement when an
         // attestation is configured (Azure TDX + vTPM); else a stub for the demo.
         let attestation = attest_from_env();
@@ -1548,47 +1572,55 @@ impl Gw {
                 feed_ts: 0,
             });
         }
-        // Pass 2 (funding): all markets now exist, so fund each bucket.
-        // Infallible-by-construction (SEC-026): genesis boot mints into an EMPTY tree,
-        // and every blind below (0x40+i / 0x10+i / 0x38) is a distinct constant used
-        // exactly once — no historical duplicate is possible, so `.expect` is honest.
-        for (i, cfg) in MARKETS.iter().enumerate() {
-            // fund the market-maker (deep) and the user (≈$5k) into each market bucket
-            fund(
-                &mut seq,
-                &mut archive,
-                &mm,
-                cfg.id,
-                MM_FUND_PER_MARKET,
-                0x40 + i as u8,
-            )
-            .expect("boot MM funding: fresh distinct blinds on an empty genesis tree");
-            fund(
-                &mut seq,
-                &mut archive,
-                &user,
-                cfg.id,
-                USER_FUND_PER_MARKET,
-                0x10 + i as u8,
-            )
-            .expect("boot user funding: fresh distinct blinds on an empty genesis tree");
+        // Pass 2 (funding): all markets now exist, so fund each bucket. DEMO ONLY
+        // (SEC-025-C): every credit below is an UNBACKED mint with sentinel L1 fields,
+        // each folding a sentinel leaf into `consumed_deposit_tip`. A production
+        // genesis must mint NOTHING — a chain built on these seven fabricated deposits
+        // submits `newDepositCount = 7+` against a fresh vault whose `depositCount` is
+        // 0, and `_requireDepositPrefix` reverts BEFORE the proof is even verified.
+        if mode == GenesisMode::Demo {
+            // Infallible-by-construction (SEC-026): genesis boot mints into an EMPTY tree,
+            // and every blind below (0x40+i / 0x10+i / 0x38) is a distinct constant used
+            // exactly once — no historical duplicate is possible, so `.expect` is honest.
+            for (i, cfg) in MARKETS.iter().enumerate() {
+                // fund the market-maker (deep) and the user (≈$5k) into each market bucket
+                fund(
+                    &mut seq,
+                    &mut archive,
+                    &mm,
+                    cfg.id,
+                    MM_FUND_PER_MARKET,
+                    0x40 + i as u8,
+                )
+                .expect("boot MM funding: fresh distinct blinds on an empty genesis tree");
+                fund(
+                    &mut seq,
+                    &mut archive,
+                    &user,
+                    cfg.id,
+                    USER_FUND_PER_MARKET,
+                    0x10 + i as u8,
+                )
+                .expect("boot user funding: fresh distinct blinds on an empty genesis tree");
+            }
+            // give the demo user extra market-0 balance so the LP tab is demoable (LP
+            // deposits debit this real balance — no free mint).
+            fund(&mut seq, &mut archive, &user, 0, 2_000_000, 0x38)
+                .expect("boot LP-demo funding: fresh distinct blind on an empty genesis tree");
+            // capitalize the insurance fund so the backstop is visible from genesis; it
+            // then grows on its own from the per-fill insurance cut (audit Q3/Q4).
+            seq.apply(&BatchOp::SeedInsurance {
+                amount: INSURANCE_SEED_USD * QUOTE_SCALE,
+            })
+            .expect("seed insurance fund");
         }
-        // give the demo user extra market-0 balance so the LP tab is demoable (LP
-        // deposits debit this real balance — no free mint).
-        fund(&mut seq, &mut archive, &user, 0, 2_000_000, 0x38)
-            .expect("boot LP-demo funding: fresh distinct blind on an empty genesis tree");
-        // capitalize the insurance fund so the backstop is visible from genesis; it
-        // then grows on its own from the per-fill insurance cut (audit Q3/Q4).
-        seq.apply(&BatchOp::SeedInsurance {
-            amount: INSURANCE_SEED_USD * QUOTE_SCALE,
-        })
-        .expect("seed insurance fund");
         // Pass-2 funding + SeedInsurance mutated state and pushed ops into the open
         // window AFTER add_market last captured window_start_state. The L1 contract
         // is deployed with GENESIS_ROOT = the FULL boot state root (computed below),
         // so fold the boot ops into the genesis baseline: window 0 must open from
         // genesis, or its pre_state (post-Pass-1, pre-funding) != the on-chain
-        // GENESIS_ROOT and the first settle reverts with BadPrevRoot.
+        // GENESIS_ROOT and the first settle reverts with BadPrevRoot. Runs in BOTH
+        // genesis modes: with no Pass-2 ops (Production) it simply folds nothing.
         seq.seal_genesis_baseline();
 
         let genesis_root = seq.state.state_root();
@@ -6369,6 +6401,16 @@ async fn main() {
     // a rollback journal is only meaningful against the state it was written
     // beside; on a fresh boot a leftover journal is deleted below, unapplied.
     let mut restored_from_snapshot = false;
+    // SEC-025-C: the genesis mode is computed BEFORE boot and passed as a parameter —
+    // `gw.prod` is assigned two lines after boot returns, so a field read inside
+    // `boot()` could never guard the demo funding. Keyed on `production_mode`
+    // (L1-configured OR DARKPERP_PROD): any L1-configured deployment gets a
+    // markets-only genesis whose (tip, count) = (0, 0) matches a fresh vault.
+    let genesis_mode = if prod {
+        GenesisMode::Production
+    } else {
+        GenesisMode::Demo
+    };
     let mut gw = match &state_path {
         Some(p) if p.exists() => {
             let restored = std::fs::read(p)
@@ -6392,7 +6434,7 @@ async fn main() {
                 }
             }
         }
-        _ => Gw::boot(),
+        _ => Gw::boot_with(genesis_mode),
     };
     gw.prod = prod;
     // SEC-021: bind withdrawal authorization to this deployment — the same env source
@@ -7401,6 +7443,76 @@ mod tests {
                 false,
             )
         }
+    }
+
+    // ── SEC-025-C: a production genesis mints nothing ────────────────────────
+
+    /// SEC-025-C: a production genesis must mint nothing. Boot fabricated seven
+    /// unbacked deposits (MM + user per market across 3 markets, plus an LP-demo
+    /// grant), each folding a sentinel leaf into `consumed_deposit_tip`. Every settle
+    /// then submitted `newDepositCount = 7+` against a vault whose `depositCount` is 0,
+    /// and `_requireDepositPrefix` reverted BEFORE the proof was verified.
+    #[test]
+    fn production_genesis_mints_nothing() {
+        let gw = Gw::boot_with(GenesisMode::Production);
+        let s = &gw.seq.state;
+        assert_eq!(s.consumed_deposit_count, 0, "no deposits at genesis");
+        assert_eq!(s.consumed_deposit_tip, [0u8; 32], "untouched deposit chain");
+        assert_eq!(s.insurance_fund, 0, "no seeded insurance");
+        assert_eq!(s.external_in, 0, "no external value asserted");
+        assert!(s.notes.is_empty(), "no notes");
+        assert!(s.positions.is_empty(), "no positions");
+        assert_eq!(s.markets.len(), MARKETS.len(), "markets ARE registered");
+    }
+
+    /// The pair a fresh vault expects. `CollateralVault.sol:59` states that
+    /// `depositTipAt[0]` is never written and the mapping default `bytes32(0)` IS the
+    /// genesis tip, so this is the exact tuple `_requireDepositPrefix(0, 0)` accepts.
+    #[test]
+    fn production_genesis_matches_a_fresh_vault_prefix() {
+        let gw = Gw::boot_with(GenesisMode::Production);
+        assert_eq!(
+            (
+                gw.seq.state.consumed_deposit_tip,
+                gw.seq.state.consumed_deposit_count
+            ),
+            ([0u8; 32], 0u64),
+        );
+    }
+
+    /// The demo path is untouched — explicitly demo-scoped, not a global expectation.
+    #[test]
+    fn demo_genesis_is_still_funded() {
+        let gw = Gw::boot();
+        let s = &gw.seq.state;
+        assert_eq!(
+            s.consumed_deposit_count,
+            (MARKETS.len() as u64) * 2 + 1,
+            "MM + user per market, plus the LP-demo grant"
+        );
+        assert!(s.insurance_fund > 0, "demo seeds insurance");
+        assert!(
+            !s.notes.is_empty() || !s.positions.is_empty(),
+            "demo has value"
+        );
+    }
+
+    /// The window must open from genesis with nothing staged, or the first settle's
+    /// witness pre-state would not be the deployed GENESIS_ROOT. Probes BOTH window
+    /// accumulators: the ordered/rejected manifest AND the op-log — boot funding
+    /// stages `Deposit` ops in `window_ops`, never the manifest, so the manifest
+    /// probe alone could not see ops staged after `seal_genesis_baseline`.
+    #[test]
+    fn production_genesis_leaves_no_staged_ops() {
+        let gw = Gw::boot_with(GenesisMode::Production);
+        assert!(
+            !gw.seq.window_has_pending_manifest(),
+            "no manifest content at genesis"
+        );
+        assert!(
+            !gw.seq.window_has_staged_ops(),
+            "no window ops staged at genesis"
+        );
     }
 
     // ZK-001 (Hazard #1): a transcript pushed through the LIVE oracle path
