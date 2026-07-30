@@ -138,6 +138,56 @@ Written 2026-07-26. Since then **SEC-022 (`13fc9d0`), 025-B (`a2a2f56`) and 025-
 
 **Sequencing, corrected.** The decomposition's graph (`SEC-026 → 025-A → 025-B/C → 025-D`) does not show that **025-A cannot be built before this spec lands**: 025-A's entire deliverable is a gateway path that leaves a note unspent *for `FundInsurance` to consume*, and that op does not exist. SEC-024's own §"Design" already said *"`FundInsurance` needs a gateway path that does not exist yet — see SEC-025 §1a"*, and 025-A's decomposition entry says *"`FundInsurance` needs an unspent note"* — the two documents point at each other. **The op comes first; the path second.** SEC-024 → 025-A → 025-D.
 
+## Second adversarial review, 2026-07-30 — six findings, and what they supersede
+
+The freshness pass above went back to Codex. **The central migration claim is confirmed sound**: `postcard` 1.1.3 (`Cargo.lock:1507`) writes a struct variant's ordinal as a varint before its fields, so keeping ordinal 8 with the identical `i128` payload preserves element boundaries — legacy bytes decode as `DeprecatedSeedInsurance { amount: <original> }` and are then rejected deterministically. `from_bytes` ignoring trailing top-level bytes does not affect decoding *inside* a `Vec<BatchOp>`. `BatchOp` is positional in witness plaintext, rollback journals and snapshots (`prover_client.rs:333`, `rollback_journal.rs:47`, `sequencer/src/lib.rs:519`), which is exactly why the ordinal must be retained.
+
+Six findings, all verified at source. Four change the work.
+
+### 1 (High) — the demo conversion I prescribed cannot work, and the inventory was still incomplete
+
+The freshness pass said boot could convert to `FundInsurance` "consuming one of the demo's own unbacked notes — the demo mints them anyway". **It cannot.** Every boot `fund(...)` (`main.rs:1599`) reaches `fund_amount`, whose own doc reads *"Deposit a quote-scaled `amount` as a note, archive it, **and fund the position**"* — it emits `Deposit` (`:4225`) and **immediately** consumes that note with `FundPosition` (`:4254`). **No unspent boot note exists.**
+
+This is the same error I made in 025-C's Open Risk 1 ("re-fund the MM through real deposits"): asserting a mitigation without checking the code can perform it. Twice in a row, and both times the check was one function-doc away.
+
+**What it actually takes.** To keep both the position funding *and* the $25k demo insurance, boot needs a **separate demo-only `Deposit → FundInsurance` pair with a fresh blind**. Consequences, none of them previously scoped:
+
+- demo `consumed_deposit_count` goes **7 → 8**;
+- the **demo genesis root moves**;
+- the pinned demo count in `main.rs`'s `demo_genesis_is_still_funded` (`MARKETS.len() * 2 + 1`) must become `+ 2`, and its comment updated.
+
+**And there are FOUR construction sites, not three.** The missed one is a `perp-core` test fixture: `crates/perp-core/tests/lifecycle.rs:522` (a `seed_usd` parameter), used by `insurance_backstop_absorbs_bad_debt` (`:546`) and `adl_covers_residual_after_insurance` (`:577`). **Both panic unless converted.**
+
+Docs are also in scope: `docs/ECONOMIC_SECURITY.md:117` still calls `SeedInsurance` a "real inflow".
+
+*(Confirmed: leaving the rejected op at boot reaches `.expect("seed insurance fund")` at `main.rs:1626` and **panics** — the demo break is real, not theoretical.)*
+
+### 2 (High) — "give `Risk` the same `FillLeg` payload" is not a complete error design
+
+The consequence the carry-in describes is real and I re-verified the chain: `Risk` has no leg (`error.rs:28`); `op_fill` has `leg` in scope (`engine.rs:592`) and loses it through `?` (`:598`); `offending_leg` therefore returns `None` (`sequencer/src/lib.rs:273`); the matcher has already consumed the resting quantity (`matcher/book.rs:288`); and the `None` arm records both legs with no offender (`sequencer/src/lib.rs:424`), so the dry run is accepted **without rematching** (`:1011`). The innocent counterparty's liquidity is burned.
+
+But a bare payload does not work: **`Risk` is also raised by non-fill operations.** `op_unbind` constructs it directly and runs its own margin check (`engine.rs:911`, `:918`), and the generic `From<RiskError>` (`error.rs:82`) has no leg to supply.
+
+**Decision: `Risk { source: RiskError, leg: Option<FillLeg> }`.** One variant; `From<RiskError>` supplies `None`; `op_fill` supplies `Some(leg)`. A fill-specific `FillRisk(RiskError, FillLeg)` would also work but splits a taxonomy that every existing `match` treats as one case. **`settlement_reason` must be updated too, not only `offending_leg`** — the carry-in named only the latter.
+
+### 3 (Medium) — the journal magic in the migration table is two versions stale
+
+The table says "now `DPRBJL2`". It is already **`DPRBJL3`** after 025-B (`rollback_journal.rs:33`, `:38`). If SEC-024 intends to invalidate legacy pending witnesses — and it does, because `BatchOp`'s meaning changes — the next value is **`DPRBJL4`**. Reusing 3 would accept journals written under the already-deployed v3 layout.
+
+### 4 (Medium) — SEC-024 no longer moves the *production* `GENESIS_ROOT`
+
+The table's causal claim ("insurance no longer seeded → `GENESIS_ROOT` moves") is stale: **025-C already moved it**, and production boot now skips the whole funding/insurance block (`main.rs:1591`), pinned at `main.rs:7564`. `state_root()` binds state, not the enum or engine code (`state.rs:216`), so adding `FundInsurance`, changing errors and rejecting variant 8 move the **guest ELF and vkey** but not the production genesis root.
+
+The cutover root still differs from the currently deployed one — because 025-C moved it, not because SEC-024 does. **The demo root does move, if finding 1 is fixed correctly.**
+
+### 5 (Low) — the sequencing claim was too strong
+
+`FundInsurance` genuinely does not exist and 025-A genuinely needs an insurance-credit transition. But "025-A cannot be built before this lands" overstates it: the decomposition allows a composite transition or explicit rollback around the two operations, and SEC-025's parent design says SEC-024 and SEC-025 ship together. A **stacked branch or joint implementation is valid**. The real requirement is *"SEC-024's transition contract must exist when 025-A compiles, and the two must cut over together"* — not that SEC-024 must reach `main` first.
+
+### 6 (Low) — stale citations in the sections I wrote
+
+`run_maintenance`'s `if let Ok(...)` is at `sequencer/src/lib.rs:915`, not `:906`. `programVKey` is `SP1ZkVerifier.sol:17`, not `:12`; the settlement's immutable verifier is `DarkPerpSettlement.sol:74`, and the `:70` I cited is the sequencer address. **Third time on this workstream that inherited-rather-than-derived line numbers were wrong.**
+
 ## Carried in from SEC-022 (added 2026-07-27)
 
 **These are not SEC-024's findings. They are `perp-core` changes deliberately deferred to this branch because it re-pins the vkey anyway**, and doing them here costs nothing extra. SEC-022's whole-branch review argued for folding them into *its* branch on the same reasoning; they were deferred here instead because `DeprecatedSeedInsurance`/`FundInsurance` already moves the guest ELF within the same cutover bundle, so the marginal cost is identical and SEC-022 stays single-concern.
