@@ -871,24 +871,40 @@ In `bootstrap_insurance`, before the payer check, handle the resume case: when t
 
 - [ ] **Step 5: Add the two durability barriers**
 
-In the endpoint handler, after a successful `bootstrap_insurance` and **after releasing the
-`gw` lock**, call `snapshot_now(&app.snapshot_req).await`. On `Err`, return 500 naming the
-failure — the operator must learn the record is not durable, because a crash now loses the
-`(cm, spend_key)` the resume path needs.
+**The lock rule, and it is not optional.** `snapshot_now`'s writer takes `app.gw.lock()`
+itself. A caller that holds the `gw` lock across `snapshot_now(...).await` **deadlocks
+permanently and wedges the entire gateway** — the writer blocks on the lock, the caller blocks
+on the reply, and the tick loop and every handler stall behind it. Task 1 added a timeout so
+this surfaces as an `Err` rather than an unbounded hang, but the timeout is a backstop, not a
+licence. **Both barriers below must release the `gw` lock before awaiting.**
+
+In the endpoint handler, after a successful `bootstrap_insurance`, **drop the `gw` guard**, then
+call `snapshot_now(&app.snapshot_req).await`. On `Err`, return 500 naming the failure — the
+operator must learn the record is not durable, because a crash now loses the `(cm, spend_key)`
+the resume path needs.
 
 In the settle loop, when the sealed window's id equals an `InsuranceApplied { window_id }`,
-require `snapshot_now` to succeed **before** submitting the settle. Rationale to put in the
+require `snapshot_now` to succeed **before** submitting the settle — again outside any `gw`
+guard. Rationale to put in the
 comment: if that window lands on-chain before its post-seal snapshot persists, boot restores
 Counter B at `J` while the chain reads `J+1`, the recovery table returns `Hold` rather than
 `RollForward`, `commit_window_settle` never runs, and a genuinely settled bootstrap never
 reaches `Complete` — with the one-shot already spent.
 
-- [ ] **Step 6: Run the full workspace**
+- [ ] **Step 6: Remove Task 1's dead-code suppressions**
+
+Task 1 marked `snapshot_now` and `App.snapshot_req` with `#[cfg_attr(not(test), expect(dead_code))]`
+and `#[expect(dead_code)]` respectively, because nothing called them yet. This task adds the
+production callers, so **both suppressions must come off**. `#[expect]` will fail the build once
+the item is used, so the compiler enforces this — but if you find yourself keeping one to make a
+build pass, that means a barrier is not actually wired, which is the defect.
+
+- [ ] **Step 7: Run the full workspace**
 
 Run: `cargo fmt --all && cargo test --workspace && cargo clippy --workspace --all-targets`
 Expected: workspace PASS (555 + the new tests), clippy 0 warnings.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
 git add crates/gateway/src/main.rs
