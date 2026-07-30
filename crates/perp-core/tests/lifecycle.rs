@@ -9,7 +9,7 @@ use perp_core::hash::{word_u64, Keccak256};
 use perp_core::note::owner_from_spend_key;
 use perp_core::oracle::{oracle_digest, OracleSig, OracleTranscript};
 use perp_core::order::Side;
-use perp_core::{DefaultState, EngineError, Market, Mode, Note};
+use perp_core::{DefaultState, EngineError, FillLeg, Market, Mode, Note};
 
 const TREE_DEPTH: u8 = 20;
 
@@ -319,9 +319,14 @@ fn invariant_post_fill_margin_sufficiency() {
             now_ms: 1_000,
         })
         .unwrap_err();
+    // SEC-024 (SEC-022 carry-in): a fill margin failure names the staged leg that
+    // violated — the taker here, checked first with only half the required initial.
     assert_eq!(
         err,
-        EngineError::Risk(perp_core::RiskError::InsufficientMargin)
+        EngineError::Risk {
+            source: perp_core::RiskError::InsufficientMargin,
+            leg: Some(FillLeg::Taker),
+        }
     );
     // atomic: the rejected fill left NO position open
     assert!(s.position(&a, 0).is_none_or(|p| p.size == 0));
@@ -519,9 +524,28 @@ fn bad_debt_setup(seed_usd: i128) -> DefaultState {
         .unwrap();
     }
     if seed_usd > 0 {
-        s.apply_op(&BatchOp::SeedInsurance {
-            amount: seed_usd * QUOTE_SCALE,
-        })
+        // SEC-024: insurance is capitalized by TRANSFER — deposit a real note
+        // (owner 0x0F, distinct from A/B), then move it into the fund. The old
+        // `SeedInsurance` mint is a rejected stub now.
+        let sk = [0x0Fu8; 32];
+        let o = owner_of(0x0F);
+        let amt = seed_usd * QUOTE_SCALE;
+        let cm = deposit_commit(o, amt, sk);
+        s.apply_batch(&[
+            BatchOp::Deposit {
+                owner: o,
+                asset_id: 0,
+                amount: amt,
+                blinding: sk,
+                from: [0x0Fu8; 20],
+                deposit_id: s.consumed_deposit_count,
+                deposit_blind: [0xDBu8; 32],
+            },
+            BatchOp::FundInsurance {
+                note_commitment: cm,
+                spend_key: sk,
+            },
+        ])
         .unwrap();
     }
     s.apply_op(&BatchOp::Fill {
@@ -1088,6 +1112,176 @@ fn a_liquidation_absorbed_by_insurance_reports_no_adl_haircuts() {
     assert!(s.conservation_holds());
 }
 
+/// A SOLVENT-but-liquidatable fixture for the SEC-024 atomicity tests: A funds $6k
+/// and opens 0.5 BTC long at $100k against B. At $90k the loss is $5k → equity
+/// ~$1k < maintenance $2.25k (5% of $45k), so A is liquidatable — yet the close
+/// leaves ~$550 positive collateral after the 1% penalty, so BOTH fallible
+/// post-close paths (vault-pool arithmetic AND the insurance penalty add) are
+/// reached with no bad-debt waterfall in play. The caller MUST assert the
+/// liquidatability precondition at its chosen price (mandated: a fixture that
+/// silently exercises `NotLiquidatable` passes for the wrong reason).
+fn solvent_liquidatable_setup() -> DefaultState {
+    let mut s = fresh_state();
+    let (a, b) = (owner_of(1), owner_of(2));
+    for (o, sk, amt) in [(a, 1u8, 6_000i128), (b, 2u8, 20_000)] {
+        let bl = [sk; 32];
+        let cm = deposit_commit(o, amt * QUOTE_SCALE, bl);
+        s.apply_batch(&[
+            BatchOp::Deposit {
+                owner: o,
+                asset_id: 0,
+                amount: amt * QUOTE_SCALE,
+                blinding: bl,
+                from: [sk; 20],
+                deposit_id: s.consumed_deposit_count,
+                deposit_blind: [0xDBu8; 32],
+            },
+            BatchOp::FundPosition {
+                owner: o,
+                market_id: 0,
+                note_commitment: cm,
+                spend_key: [sk; 32],
+            },
+        ])
+        .unwrap();
+    }
+    s.apply_op(&BatchOp::Fill {
+        taker: a,
+        maker: b,
+        market_id: 0,
+        taker_side: Side::Buy,
+        size: SIZE_SCALE / 2,
+        price: 100_000 * PRICE_SCALE,
+        oracle: oracle(100_000, 1_000),
+        now_ms: 1_000,
+    })
+    .unwrap();
+    s
+}
+
+/// The mandated fixture precondition: A really is liquidatable at $90k. Without
+/// this, a drifted fixture would exercise `NotLiquidatable` and the overflow tests
+/// below would pass without ever reaching the poisoned arithmetic.
+fn assert_liquidatable_at_90k(s: &DefaultState) {
+    let market = *s.markets.get(&0).unwrap();
+    let fi = s.funding.get(&0).map(|f| f.cumulative_index).unwrap_or(0);
+    assert!(
+        s.position(&owner_of(1), 0)
+            .unwrap()
+            .is_liquidatable(&market, 90_000 * PRICE_SCALE, fi),
+        "fixture precondition violated: A must be liquidatable at $90k"
+    );
+}
+
+/// SEC-024 (SEC-022 carry-in): op_liquidate mutated the position via apply_fill and
+/// THEN ran fallible vault/insurance arithmetic. A late overflow returned Err with
+/// the position already closed, while run_maintenance logs an op only on success —
+/// so the live root reflected a mutation the replayable op-log did not contain, and
+/// the next proof wedged. Every fallible path must leave state byte-identical.
+///
+/// Variant 1: poison the VAULT POOL so the post-close pool arithmetic overflows.
+/// The liquidated loser's realized PnL is negative, so the pool GAINS
+/// (`checked_sub` of a negative) — the poison that trips is `i128::MAX`, not MIN.
+#[test]
+fn liquidation_overflow_in_vault_pool_leaves_state_byte_identical() {
+    let mut s = solvent_liquidatable_setup();
+    let a = owner_of(1);
+    assert_liquidatable_at_90k(&s);
+    s.vault_pool = i128::MAX;
+    let before = s.state_root();
+    let err = s
+        .apply_op(&BatchOp::Liquidate {
+            owner: a,
+            market_id: 0,
+            oracle: oracle(90_000, 2_000),
+            now_ms: 2_000,
+        })
+        .expect_err("vault-pool overflow must reject");
+    assert_eq!(err, EngineError::Overflow);
+    assert_eq!(
+        s.state_root(),
+        before,
+        "the position must NOT be closed by a failed liquidation"
+    );
+    assert!(
+        s.position(&a, 0).unwrap().is_open(),
+        "the position survives the rejected liquidation"
+    );
+}
+
+/// Variant 2: poison the INSURANCE FUND so the penalty `checked_add` overflows —
+/// the LAST fallible step, reached with the position closed, the vault pool moved,
+/// and the penalty already taken from collateral under the old ordering.
+#[test]
+fn liquidation_overflow_in_insurance_fund_leaves_state_byte_identical() {
+    let mut s = solvent_liquidatable_setup();
+    let a = owner_of(1);
+    assert_liquidatable_at_90k(&s);
+    s.insurance_fund = i128::MAX;
+    let before = s.state_root();
+    let err = s
+        .apply_op(&BatchOp::Liquidate {
+            owner: a,
+            market_id: 0,
+            oracle: oracle(90_000, 2_000),
+            now_ms: 2_000,
+        })
+        .expect_err("insurance-fund overflow must reject");
+    assert_eq!(err, EngineError::Overflow);
+    assert_eq!(
+        s.state_root(),
+        before,
+        "the position must NOT be closed by a failed liquidation"
+    );
+    assert!(
+        s.position(&a, 0).unwrap().is_open(),
+        "the position survives the rejected liquidation"
+    );
+}
+
+/// SEC-024 review carry-in: `EngineError::WrongAsset` is reachable — `op_deposit`
+/// accepts ANY `asset_id` and mints it into the note — and `op_fund_insurance`
+/// must refuse a non-canonical asset BEFORE its first mutation, or a wrong-asset
+/// note would be destroyed while the fund is credited in the quote unit. Pins both
+/// the rejection and the "checked before the first mutation" ordering the guard's
+/// comment claims (state root byte-identical, note still spendable).
+#[test]
+fn fund_insurance_with_non_canonical_asset_is_rejected_untouched() {
+    let mut s = fresh_state();
+    let o = owner_of(1);
+    let bl = [0x77u8; 32];
+    let amt = 1_000 * QUOTE_SCALE;
+    // An asset-1 note: `deposit_commit` hardcodes asset 0, so commit directly.
+    let cm = Note::new(o, 1, amt, bl).commitment::<Keccak256>();
+    s.apply_batch(&[BatchOp::Deposit {
+        owner: o,
+        asset_id: 1,
+        amount: amt,
+        blinding: bl,
+        from: [0xA1u8; 20],
+        deposit_id: 0,
+        deposit_blind: [0xDBu8; 32],
+    }])
+    .unwrap();
+    let before = s.state_root();
+    let err = s
+        .apply_batch(&[BatchOp::FundInsurance {
+            note_commitment: cm,
+            spend_key: [1; 32],
+        }])
+        .expect_err("a non-canonical asset must not capitalize the insurance fund");
+    assert_eq!(err, EngineError::WrongAsset);
+    assert_eq!(
+        s.state_root(),
+        before,
+        "WrongAsset is checked before the first mutation — state byte-identical"
+    );
+    assert!(
+        s.notes.contains_key(&cm),
+        "the wrong-asset note survives, unspent"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // SEC-026 — historical commitment uniqueness. A mint (Deposit or Unbind) that
 // reconstructs a previously-SPENT `(owner, asset_id, amount, blinding)` tuple used
@@ -1495,4 +1689,256 @@ fn sec026_mints_differing_only_in_blinding_both_accepted() {
     })
     .unwrap();
     assert!(s.conservation_holds());
+}
+
+// ── SEC-024: insurance is a transfer of L1-bound value, never a mint ─────────
+
+/// SEC-024: insurance must be a TRANSFER of already-L1-bound value, not a mint.
+/// `FundInsurance` consumes a real note and raises `insurance_fund` while leaving
+/// `external_in` untouched — the note's value already entered through `op_deposit`.
+#[test]
+fn fund_insurance_moves_note_value_without_asserting_new_external_value() {
+    let mut s = fresh_state();
+    let a = owner_of(1);
+    let blind = [0x51u8; 32];
+    let amount = 10_000 * QUOTE_SCALE;
+    let cm = deposit_commit(a, amount, blind);
+    s.apply_batch(&[BatchOp::Deposit {
+        owner: a,
+        asset_id: 0,
+        amount,
+        blinding: blind,
+        from: [0xA1u8; 20],
+        deposit_id: 0,
+        deposit_blind: [0xDBu8; 32],
+    }])
+    .expect("deposit");
+
+    let ext_in_before = s.external_in;
+    let ins_before = s.insurance_fund;
+
+    s.apply_batch(&[BatchOp::FundInsurance {
+        note_commitment: cm,
+        spend_key: [1u8; 32],
+    }])
+    .expect("fund insurance from a real note");
+
+    assert_eq!(s.insurance_fund, ins_before + amount, "value moved in");
+    assert_eq!(
+        s.external_in, ext_in_before,
+        "external_in MUST NOT move — the value entered at deposit, not here"
+    );
+    assert!(!s.notes.contains_key(&cm), "note consumed");
+    assert!(s.conservation_holds());
+}
+
+/// The spend key still authorizes: nobody can donate another account's note.
+#[test]
+fn fund_insurance_rejects_a_wrong_spend_key() {
+    let mut s = fresh_state();
+    let a = owner_of(1);
+    let blind = [0x52u8; 32];
+    let amount = 1_000 * QUOTE_SCALE;
+    let cm = deposit_commit(a, amount, blind);
+    s.apply_batch(&[BatchOp::Deposit {
+        owner: a,
+        asset_id: 0,
+        amount,
+        blinding: blind,
+        from: [0xA1u8; 20],
+        deposit_id: 0,
+        deposit_blind: [0xDBu8; 32],
+    }])
+    .expect("deposit");
+    let before = s.state_root();
+    assert_eq!(
+        s.apply_batch(&[BatchOp::FundInsurance {
+            note_commitment: cm,
+            spend_key: [9u8; 32], // not the owner's key
+        }])
+        .expect_err("wrong key"),
+        EngineError::BadSpendKey
+    );
+    assert_eq!(s.state_root(), before, "state unchanged");
+}
+
+/// **The atomicity test.** `consume_note` inserts the nullifier and removes the note
+/// immediately, so a fallible `insurance_fund` addition afterwards would destroy the
+/// note and return `Err`. The sequencer logs an op only on success, so live state
+/// would diverge from the proven op-log and wedge the next proof.
+#[test]
+fn fund_insurance_overflow_leaves_state_byte_identical() {
+    let mut s = fresh_state();
+    let a = owner_of(1);
+    let blind = [0x53u8; 32];
+    let amount = 1_000 * QUOTE_SCALE;
+    let cm = deposit_commit(a, amount, blind);
+    s.apply_batch(&[BatchOp::Deposit {
+        owner: a,
+        asset_id: 0,
+        amount,
+        blinding: blind,
+        from: [0xA1u8; 20],
+        deposit_id: 0,
+        deposit_blind: [0xDBu8; 32],
+    }])
+    .expect("deposit");
+    s.insurance_fund = i128::MAX;
+    let before = s.state_root();
+    assert_eq!(
+        s.apply_batch(&[BatchOp::FundInsurance {
+            note_commitment: cm,
+            spend_key: [1u8; 32],
+        }])
+        .expect_err("insurance overflow"),
+        EngineError::Overflow
+    );
+    assert_eq!(
+        s.state_root(),
+        before,
+        "the note must NOT be destroyed by a failed credit"
+    );
+    assert!(s.notes.contains_key(&cm), "note still unspent");
+}
+
+/// A newly-encoded deprecated op is refused deterministically.
+#[test]
+fn deprecated_seed_insurance_is_always_rejected() {
+    let mut s = fresh_state();
+    let before = s.state_root();
+    assert_eq!(
+        s.apply_batch(&[BatchOp::DeprecatedSeedInsurance {
+            amount: 1_000 * QUOTE_SCALE
+        }])
+        .expect_err("deprecated"),
+        EngineError::DeprecatedOp
+    );
+    assert_eq!(s.state_root(), before);
+}
+
+/// **The migration test that actually proves the ordinal choice.** `LEGACY_BYTES` is
+/// a REAL pre-change encoding — captured by running `postcard::to_allocvec` on
+/// `[SeedInsurance { amount: 7_500 }, EnterCloseOnly]` against the pre-SEC-024 tree
+/// (commit 8a43792), NOT re-derived from the current enum. It must decode under the
+/// CURRENT enum to the ordinal-8 stub with its amount intact, leave the op that
+/// follows it correctly aligned, and the current enum must re-encode the stub to the
+/// same bytes (postcard writes the variant ordinal as a varint BEFORE the fields, so
+/// replacing ordinal 8 in place would silently mis-parse legacy bytes).
+///
+/// Feature-gated on `serde`, which is NOT a `perp-core` default: this test runs
+/// under `cargo test --workspace` (resolver-2 unifies the feature because
+/// `sequencer` declares `perp-core = { features = ["serde"] }`) or under
+/// `-p perp-core --features serde` — a plain `-p perp-core` run silently filters
+/// it out.
+#[cfg(feature = "serde")]
+#[test]
+fn legacy_seed_insurance_bytes_decode_to_the_stub_and_stay_aligned() {
+    // [len=2, ordinal 8, zigzag-varint(7500) = 152 117, ordinal 7 (EnterCloseOnly)]
+    const LEGACY_BYTES: [u8; 5] = [2, 8, 152, 117, 7];
+    let back: Vec<BatchOp> = postcard::from_bytes(&LEGACY_BYTES).expect("decode");
+    assert_eq!(back.len(), 2, "the following op stayed aligned");
+    match back[0] {
+        BatchOp::DeprecatedSeedInsurance { amount } => assert_eq!(amount, 7_500),
+        ref other => panic!("expected the deprecated stub, got {other:?}"),
+    }
+    assert!(matches!(back[1], BatchOp::EnterCloseOnly));
+    // …and the byte freeze holds in the encode direction too: the retained stub
+    // re-encodes to exactly the legacy bytes.
+    let reenc = postcard::to_allocvec(&vec![
+        BatchOp::DeprecatedSeedInsurance { amount: 7_500 },
+        BatchOp::EnterCloseOnly,
+    ])
+    .expect("encode");
+    assert_eq!(reenc, LEGACY_BYTES);
+}
+
+/// SEC-024's finding, made mechanical. `external_in` asserts that value entered
+/// the system from outside. Before this branch there were TWO writers:
+/// `op_deposit`, bound to the SEC-019 L1 hash chain, and `op_seed_insurance`,
+/// bound to nothing — it fabricated the accounting representation of collateral
+/// that never arrived, and the guest proved it. After this branch there must be
+/// exactly one.
+///
+/// A source scan rather than a type-level restriction because `external_in` is
+/// `pub` (`state.rs`) and used across the crate; making it private is a larger
+/// refactor than this finding warrants. The scan strips ALL whitespace first so
+/// the count is formatting-independent: rustfmt currently splits the op_deposit
+/// READ across lines (`self\n.external_in`), so a raw substring count would see 1
+/// today and drift to 2 under a harmless re-join. On the normalized text there
+/// are exactly 2 touches of `self.external_in` — the READ
+/// (`self.external_in.checked_add(amount)`) and the WRITE
+/// (`self.external_in = external_in;`), both in `op_deposit` — and exactly 1 of
+/// those is an assignment.
+///
+/// If you add a legitimate writer, update the counts AND state in the message
+/// what binds it to real external value — an UNBOUND writer is the bug SEC-024
+/// exists to close. (Mutation-checked: `self.external_in = self.external_in + 1;`
+/// anywhere in engine.rs moves both counts and fails both asserts.)
+///
+/// Because `external_in` is `pub`, engine.rs is not automatically the whole
+/// story — any module could write it. state.rs (at the time of writing, the only
+/// other file in the crate that mentions the field) is scanned too, with its
+/// `#[cfg(test)] mod tests` excluded: the module's root-sensitivity test mutates
+/// the field, and a test is not a production writer.
+#[test]
+fn external_in_has_exactly_one_writer_and_it_is_op_deposit() {
+    let src = include_str!("../src/engine.rs");
+    let norm: String = src.chars().filter(|c| !c.is_whitespace()).collect();
+    let touches = norm.matches("self.external_in").count();
+    assert_eq!(
+        touches, 2,
+        "expected exactly 2 whitespace-normalized occurrences of `self.external_in` \
+         in engine.rs — the read (`self.external_in.checked_add`) and the write \
+         (`self.external_in = …`), both in op_deposit — found {touches}. A NEW \
+         writer of external_in must be bound to real external value (op_deposit's \
+         is the SEC-019 L1 deposit hash chain); an unbound writer is the \
+         fabrication SEC-024 removed. Update this count only with that binding \
+         named here."
+    );
+    // The sharper pin: the ASSIGNMENT form specifically. `==` comparisons are
+    // excluded so a future assert/debug check does not masquerade as a writer.
+    let writes =
+        norm.matches("self.external_in=").count() - norm.matches("self.external_in==").count();
+    assert_eq!(
+        writes, 1,
+        "expected exactly 1 assignment to `self.external_in` in engine.rs — \
+         op_deposit's `self.external_in = external_in;`, the L1-bound deposit \
+         path — found {writes}. op_seed_insurance was the second writer and it \
+         was the SEC-024 fabrication; do not add another without an L1 binding."
+    );
+
+    // The same scan over state.rs, minus its `#[cfg(test)] mod tests` (whose
+    // root-sensitivity test mutates the field). The split-at-marker exclusion is
+    // sound only while the marker is unique, so pin that first — a second
+    // `#[cfg(test)]` would silently shrink the scanned text.
+    let state_src = include_str!("../src/state.rs");
+    assert_eq!(
+        state_src.matches("#[cfg(test)]").count(),
+        1,
+        "state.rs no longer has exactly one `#[cfg(test)]` marker — re-derive \
+         this scan's non-test split before trusting its counts"
+    );
+    let (state_prod, _state_tests) = state_src
+        .split_once("#[cfg(test)]")
+        .expect("uniqueness was just asserted");
+    let snorm: String = state_prod.chars().filter(|c| !c.is_whitespace()).collect();
+    let stouches = snorm.matches("self.external_in").count();
+    assert_eq!(
+        stouches, 2,
+        "expected exactly 2 whitespace-normalized occurrences of `self.external_in` \
+         in state.rs outside its #[cfg(test)] module — the conservation identity \
+         read (`self.external_in - self.external_out`) and the root-binding read \
+         (`word_i128(self.external_in)`) — found {stouches}. A NEW writer of \
+         external_in belongs behind op_deposit's L1 binding in engine.rs; an \
+         unbound writer is the fabrication SEC-024 removed."
+    );
+    let swrites =
+        snorm.matches("self.external_in=").count() - snorm.matches("self.external_in==").count();
+    assert_eq!(
+        swrites, 0,
+        "expected 0 assignments to `self.external_in` in state.rs outside its \
+         #[cfg(test)] module — both non-test touches are reads — found {swrites}. \
+         The only production writer of external_in is op_deposit in engine.rs \
+         (the SEC-019 L1-bound deposit path)."
+    );
 }

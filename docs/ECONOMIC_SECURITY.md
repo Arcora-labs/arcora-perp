@@ -115,10 +115,30 @@ a fixed cascade:
 `c3f2930`.
 
 **What feeds the fund.** Two real inflows, not a hand-wave: an explicit
-capitalization op (`BatchOp::SeedInsurance` / `op_seed_insurance`, accounted into
-`external_in`), and the **insurance cut of every trade** (Q4) — the slice of the
-taker fee not rebated to the maker flows straight into the fund. So the backstop
-grows with volume instead of sitting at the genesis balance.
+capitalization op (`BatchOp::FundInsurance` / `op_fund_insurance`, SEC-024), which
+consumes a real, L1-bound note — a transfer inside the shielded pool, never a mint;
+`external_in` is untouched because the note's value already entered through the
+deposit path's L1 hash-chain binding — and the **insurance cut of every trade**
+(Q4): the slice of the taker fee not rebated to the maker flows straight into the
+fund. So the backstop grows with volume instead of sitting at the genesis balance.
+
+**But only the second inflow is live.** `op_fund_insurance` exists in the proven
+transition function and nowhere else: it has **no production caller** — the gateway
+path that leaves a deposit-derived note unspent for it to consume is SEC-025-A's
+deliverable and does not exist yet (its only current call sites are test boot and a
+demo helper whose first statement refuses to run in production). Until 025-A lands,
+a production deployment starts with `insurance_fund` at **zero** and is capitalized
+only by the per-fill cut: `TAKER_FEE_BPS (10) − TREASURY_FEE_BPS (8) −
+MAKER_REBATE_BPS (0)` = **2 bps** of fill notional (constants in
+`crates/gateway/src/main.rs`).
+
+*(History: the fund used to be capitalized by `BatchOp::SeedInsurance` /
+`op_seed_insurance`, which this document once described as a "real inflow". It
+never was — it raised `insurance_fund` AND `external_in` with no note consumed and
+no L1 binding, fabricating the accounting representation of collateral that never
+arrived; that is the SEC-024 finding. The op is retained at ordinal 8 only as an
+always-rejected stub, so a legacy encoding fails loudly instead of mis-parsing
+under postcard's positional layout.)*
 
 **Conservation.** Every branch of the waterfall is collateral-neutral and is
 re-checked against the conservation identity after each op (`apply_batch`

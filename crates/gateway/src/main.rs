@@ -88,11 +88,11 @@ enum DepositPosture {
     /// false positives — it is exactly the unbacked-deposit signature (a demo-derived
     /// genesis, or a demo snapshot booted under production posture). The converse does
     /// NOT hold: this detects unbacked deposit LEAVES, not unbacked mints in general —
-    /// it is complete today only because every unbacked credit routes through `fund` →
-    /// `fund_amount` (the sole emitter of the `Deposit` batch op). `SeedInsurance` is
-    /// the known exception: it inflates `insurance_fund` with no deposit leaf, so a
-    /// snapshot carrying only that residual passes this check (SEC-024's scope — it
-    /// deprecates the op).
+    /// it is complete today because every unbacked credit emits a `Deposit` batch op
+    /// and folds a leaf: `fund` → `fund_amount`, and (SEC-024) the demo insurance
+    /// seed, which now enters as its own Deposit → `FundInsurance` pair. The old
+    /// `SeedInsurance` mint — which inflated `insurance_fund` with NO deposit leaf,
+    /// the one credit this check could not see — is a deterministically-rejected stub.
     UnbackedCount,
     /// The counts are consistent, but the vault's recorded prefix tip at the gateway's
     /// consumed count differs from the gateway's fold — the consumed leaves are not the
@@ -1558,7 +1558,7 @@ impl Gw {
     /// now derives a `GenesisMode` and calls `boot_with` directly). Compiled out
     /// of the non-test binary entirely — `cfg(test)`, not `allow(dead_code)` — so
     /// a future non-test caller is a COMPILE ERROR rather than a silent
-    /// reintroduction of demo funding (seven unbacked deposits) into production,
+    /// reintroduction of demo funding (eight unbacked deposits) into production,
     /// which is the exact bug class SEC-025-C exists to kill.
     #[cfg(test)]
     fn boot() -> Self {
@@ -1628,13 +1628,13 @@ impl Gw {
         // Pass 2 (funding): all markets now exist, so fund each bucket. DEMO ONLY
         // (SEC-025-C): every credit below is an UNBACKED mint with sentinel L1 fields,
         // each folding a sentinel leaf into `consumed_deposit_tip`. A production
-        // genesis must mint NOTHING — a chain built on these seven fabricated deposits
-        // submits `newDepositCount = 7+` against a fresh vault whose `depositCount` is
+        // genesis must mint NOTHING — a chain built on these eight fabricated deposits
+        // submits `newDepositCount = 8+` against a fresh vault whose `depositCount` is
         // 0, and `_requireDepositPrefix` reverts BEFORE the proof is even verified.
         if mode == GenesisMode::Demo {
             // Infallible-by-construction (SEC-026): genesis boot mints into an EMPTY tree,
-            // and every blind below (0x40+i / 0x10+i / 0x38) is a distinct constant used
-            // exactly once — no historical duplicate is possible, so `.expect` is honest.
+            // and every blind below (0x40+i / 0x10+i / 0x38 / 0x39) is a distinct constant
+            // used exactly once — no historical duplicate is possible, so `.expect` is honest.
             for (i, cfg) in MARKETS.iter().enumerate() {
                 // fund the market-maker (deep) and the user (≈$5k) into each market bucket
                 // `prod: false` — this whole block runs only under `GenesisMode::Demo`,
@@ -1666,12 +1666,21 @@ impl Gw {
                 .expect("boot LP-demo funding: fresh distinct blind on an empty genesis tree");
             // capitalize the insurance fund so the backstop is visible from genesis; it
             // then grows on its own from the per-fill insurance cut (audit Q3/Q4).
-            seq.apply(&BatchOp::SeedInsurance {
-                amount: INSURANCE_SEED_USD * QUOTE_SCALE,
-            })
-            .expect("seed insurance fund");
+            // SEC-024: insurance is a TRANSFER now, never a mint — a sentinel-leaf
+            // deposit (so it counts in `consumed_deposit_count` like every credit
+            // above) consumed by `FundInsurance`. There is no unspent boot note to
+            // reuse (`fund` consumes what it deposits), so this is its own pair,
+            // under the free blind 0x39 and a throwaway owner (seed [3; 32]).
+            seed_insurance_unbacked(
+                &mut seq,
+                [3u8; 32],
+                INSURANCE_SEED_USD * QUOTE_SCALE,
+                [0x39u8; 32],
+                false,
+            )
+            .expect("boot insurance seed: fresh distinct blind + owner on an empty genesis tree");
         }
-        // Pass-2 funding + SeedInsurance mutated state and pushed ops into the open
+        // Pass-2 funding + the insurance transfer mutated state and pushed ops into the open
         // window AFTER add_market last captured window_start_state. The L1 contract
         // is deployed with GENESIS_ROOT = the FULL boot state root (computed below),
         // so fold the boot ops into the genesis baseline: window 0 must open from
@@ -3059,12 +3068,22 @@ impl Gw {
         // 5. replenish the insurance fund to its baseline so the backstop is shown
         //    full again and the demo is repeatable (the draw-down happened within
         //    the cascade seal above; the user's haircut below is what persists).
+        //    SEC-024: replenish by TRANSFER — an unbacked demo deposit (prod-refused,
+        //    like every fund above) moved into the fund with `FundInsurance`; the old
+        //    `SeedInsurance` mint is a rejected stub. A fresh owner per call (derived
+        //    from the full 64-bit batch id, like the victim above) keeps the note
+        //    commitment historically unique even when the u8 salts wrap. Errors
+        //    PROPAGATE: the old `let _ =` would have silently skipped the one refill
+        //    this demo exists to show.
         let target = INSURANCE_SEED_USD * QUOTE_SCALE;
         let now_ins = self.seq.state.insurance_fund;
         if now_ins < target {
-            let _ = self.seq.apply(&BatchOp::SeedInsurance {
-                amount: target - now_ins,
-            });
+            let mut iseed = [0x1Cu8; 32];
+            iseed[..8].copy_from_slice(&n.to_le_bytes());
+            let mut iblind = [0x1Du8; 32];
+            iblind[..8].copy_from_slice(&n.to_le_bytes());
+            seed_insurance_unbacked(&mut self.seq, iseed, target - now_ins, iblind, self.prod)
+                .map_err(|e| format!("adl demo: insurance refill: {e}"))?;
         }
         let clawed = self.user_adl_in(&sealed);
         if clawed <= 0 {
@@ -4204,6 +4223,46 @@ fn fund_amount_unbacked(
     // in-order deposit-stream contract, so the flat message suffices — the arm
     // distinction only matters to `account_confirm_deposit` (SEC-026 review).
     .map_err(|e| e.to_string())
+}
+
+/// SEC-024: capitalize the insurance fund with an UNBACKED demo credit — a
+/// sentinel-leaf `Deposit` (minted to a throwaway owner derived from
+/// `owner_seed`) consumed in the same breath by `FundInsurance`. Insurance is a
+/// TRANSFER now, never a mint: the pair folds a deposit leaf into
+/// `consumed_deposit_tip` exactly like `fund_amount_unbacked`, so the boot-time
+/// deposit-posture check sees it, and it is REFUSED in production by the same
+/// SEC-025-C guard. The note is never archived — it is consumed immediately and
+/// no wallet ever needs to decrypt it. THE only insurance-seeding funnel (demo
+/// boot + `simulate_adl` refill); the `unbacked_funding_has_exactly_the_known_
+/// call_sites` scan pins its single raw `Deposit` construction.
+fn seed_insurance_unbacked(
+    seq: &mut Sequencer,
+    owner_seed: [u8; 32],
+    amount: i128,
+    blind: Digest,
+    prod: bool,
+) -> Result<(), String> {
+    refuse_unbacked_mint(prod)?;
+    let w = Wallet::from_seed(owner_seed);
+    let cm = Note::new(w.owner, 0, amount, blind).commitment::<Keccak256>();
+    seq.apply(&BatchOp::Deposit {
+        owner: w.owner,
+        asset_id: 0,
+        amount,
+        blinding: blind,
+        from: [0u8; 20],
+        deposit_id: seq.state.consumed_deposit_count,
+        deposit_blind: [0u8; 32],
+    })
+    .map_err(|e| format!("insurance deposit refused by the engine: {e:?}"))?;
+    // Infallible-by-construction in practice (the note was minted just above for
+    // this exact key), but surfaced honestly: a failure here leaves the value as
+    // an unspent note owned by the throwaway key — recoverable, not insurance.
+    seq.apply(&BatchOp::FundInsurance {
+        note_commitment: cm,
+        spend_key: w.spend_key,
+    })
+    .map_err(|e| format!("insurance transfer failed AFTER the note was minted: {e:?}"))
 }
 
 /// Which phase of the TWO-PHASE `fund_amount` failed. The arms leave the engine
@@ -7718,10 +7777,13 @@ mod tests {
     fn demo_genesis_is_still_funded() {
         let gw = Gw::boot();
         let s = &gw.seq.state;
+        // + 2, not + 1, since SEC-024: the insurance seed is no longer a mint — it
+        // enters as its own boot `Deposit` (blind 0x39) consumed by `FundInsurance`,
+        // so it counts in `consumed_deposit_count` like every other demo credit.
         assert_eq!(
             s.consumed_deposit_count,
-            (MARKETS.len() as u64) * 2 + 1,
-            "MM + user per market, plus the LP-demo grant"
+            (MARKETS.len() as u64) * 2 + 2,
+            "MM + user per market, plus the LP-demo grant and the insurance-seed deposit"
         );
         assert!(s.insurance_fund > 0, "demo seeds insurance");
         assert!(
@@ -7785,6 +7847,34 @@ mod tests {
         );
         assert_eq!(gw.seq.window_op_count(), before_ops, "no op staged");
         assert_eq!(gw.archive.len(), before_archive, "no archive record");
+    }
+
+    /// SEC-024: the insurance-seeding funnel is an unbacked credit too, and
+    /// `simulate_adl`'s refill reaches it with the live `prod` flag — so its
+    /// refusal must hold AT THE CALL SITE like every other unbacked path.
+    #[test]
+    fn unbacked_insurance_seeding_is_refused_in_production() {
+        let mut gw = Gw::boot_with(GenesisMode::Production);
+        let before_root = gw.seq.state.state_root();
+        let before_ops = gw.seq.window_op_count();
+
+        let err = seed_insurance_unbacked(
+            &mut gw.seq,
+            [0x1Cu8; 32],
+            1_000 * QUOTE_SCALE,
+            [0x1Du8; 32],
+            /* prod */ true,
+        )
+        .expect_err("production must refuse an unbacked insurance seed");
+        assert!(err.contains("production"), "error names the reason: {err}");
+
+        assert_eq!(
+            gw.seq.state.state_root(),
+            before_root,
+            "engine state untouched"
+        );
+        assert_eq!(gw.seq.window_op_count(), before_ops, "no op staged");
+        assert_eq!(gw.seq.state.insurance_fund, 0, "no insurance minted");
     }
 
     /// A production LP transfer is the live corruption path today (`/v1/lp/*` is
@@ -8088,17 +8178,20 @@ mod tests {
         // `fund_amount`'s note/archive bookkeeping.
         let deposit_ops = count(deposit_op_needle);
         assert_eq!(
-            deposit_ops, 4,
-            "expected exactly 4 occurrences of `{deposit_op_needle}` across the \
-             gateway sources: 1 in main.rs — the single `seq.apply(..)` construction \
-             inside `fund_amount`, the ONLY place the gateway mints a deposit credit \
-             — and 3 in prover_client.rs, all `cfg(test)` `matches!`/filter PATTERNS \
-             that inspect ops without constructing one; found {deposit_ops}. \
-             Applying this op anywhere else mints collateral below BOTH \
-             `refuse_unbacked_mint` and `fund_amount`'s note/archive bookkeeping, so \
-             a new construction site is almost certainly wrong; a legitimate credit \
-             path MUST route through `fund_amount` (backed) or \
-             `fund_amount_unbacked` (guarded), and a legitimate new PATTERN use \
+            deposit_ops, 5,
+            "expected exactly 5 occurrences of `{deposit_op_needle}` across the \
+             gateway sources: 2 in main.rs — the `seq.apply(..)` constructions \
+             inside `fund_amount` (the only position-credit minter) and \
+             `seed_insurance_unbacked` (SEC-024: the only insurance-seeding \
+             funnel, itself behind `refuse_unbacked_mint`) — and 3 in \
+             prover_client.rs, all `cfg(test)` `matches!`/filter PATTERNS that \
+             inspect ops without constructing one; found {deposit_ops}. Applying \
+             this op anywhere else mints collateral below BOTH \
+             `refuse_unbacked_mint` and the funnels' bookkeeping, so a new \
+             construction site is almost certainly wrong; a legitimate credit \
+             path MUST route through `fund_amount` (backed), \
+             `fund_amount_unbacked` (guarded), or `seed_insurance_unbacked` \
+             (guarded, insurance only), and a legitimate new PATTERN use \
              (e.g. a test inspecting ops) just updates this count and its breakdown."
         );
     }

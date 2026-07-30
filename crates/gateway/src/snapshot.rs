@@ -37,7 +37,18 @@ use std::path::Path;
 /// `is_coherent()` is never re-run on a deserialized `Market`, so a mis-decoded
 /// band ratio would silently disable the fill band (fail-OPEN). The magic is
 /// the guard for when the planned snapshot wipe is forgotten.
-const MAGIC: &[u8; 8] = b"DPSNAP2\0";
+/// v3: SEC-024 — `BatchOp`'s MEANING changed: ordinal 8 (`SeedInsurance`, the
+/// unbound insurance mint) now always rejects, and ordinal 9 (`FundInsurance`)
+/// exists. The snapshot carries `BatchOp`s — `Sequencer` derives serde and its
+/// `window_ops: Vec<BatchOp>` is `#[serde(default)]`, not skipped — and `DPSNAP2`
+/// spans other in-bundle pre-SEC-024 builds (SEC-022/025-B/025-C), so without a
+/// bump this binary would ACCEPT their snapshots; a restored `window_ops` still
+/// holding a legacy `SeedInsurance` then wedges the NEXT window (`seal_window` →
+/// `derive_roots` → `Err(DeprecatedOp)` → prove fails → rollback re-prepends the
+/// same ops) instead of failing loudly at boot. The journal's v4 bump
+/// (`rollback_journal.rs::MAGIC`) refuses this exact hazard through the journal
+/// door; this refuses it through the snapshot door.
+const MAGIC: &[u8; 8] = b"DPSNAP3\0";
 
 /// Keystream block derived from the SECRET seed and the per-snapshot nonce.
 fn keystream(seed: &[u8; 32], nonce: &Digest, len: usize) -> Vec<u8> {

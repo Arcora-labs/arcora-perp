@@ -255,7 +255,7 @@ pub fn adl_tag(tag_key: &Digest, market_id: MarketId, batch_id: u64) -> Digest {
 /// Why an order was rejected at settlement, mapped from an engine error.
 fn settlement_reason(e: &EngineError) -> RejectReason {
     match e {
-        EngineError::Risk(_) => RejectReason::InsufficientMargin,
+        EngineError::Risk { .. } => RejectReason::InsufficientMargin,
         EngineError::Oracle(_) => RejectReason::OracleUnavailable,
         EngineError::CloseOnly => RejectReason::MarketCloseOnly,
         EngineError::SelfTrade => RejectReason::SelfTradePrevented,
@@ -274,6 +274,10 @@ fn offending_leg(e: &EngineError) -> Option<FillLeg> {
     match e {
         // The engine names the leg whose staged result violated the postcondition.
         EngineError::FillWouldBankrupt(leg) => Some(*leg),
+        // SEC-024 (SEC-022 carry-in): a margin failure raised INSIDE a fill names the
+        // staged leg that violated; a leg-less Risk (op_unbind, generic From) stays
+        // non-attributable and falls through to the catch-all.
+        EngineError::Risk { leg: Some(l), .. } => Some(*l),
         // The execution price is the RESTING MAKER's (`matcher/book.rs:295`); the taker
         // only supplied a limit it was willing to cross. An out-of-band price is therefore
         // the maker's order to cancel, not the taker's.
@@ -527,8 +531,11 @@ pub struct Sequencer {
     #[serde(default)]
     window_rejected: Vec<(Digest, RejectReason)>,
     /// The state at the current window's open — the witness pre-state. Re-captured after
-    /// each `seal_window`. (Not `#[serde(default)]`: `DefaultState` has no `Default`; the
-    /// Sequencer is not persisted, so no missing-field case arises.)
+    /// each `seal_window`. (Not `#[serde(default)]`: `DefaultState` has no `Default`. The
+    /// Sequencer IS persisted — it rides inside `Gw` in the gateway snapshot — but this
+    /// field is always written, so no missing-field case arises. The comment here used to
+    /// claim the Sequencer was never persisted; that was false, and it is the same premise
+    /// the snapshot magic depends on, so do not restore it.)
     window_start_state: DefaultState,
     /// Per-account secret liquidation-tag keys, derived from the spend key the
     /// account presents when funding a position and captured inside the enclave.
@@ -1503,7 +1510,7 @@ mod tests {
     use perp_core::note::owner_from_spend_key;
     use perp_core::oracle::{oracle_digest, OracleSig};
     use perp_core::order::TimeInForce;
-    use perp_core::Note;
+    use perp_core::{Note, RiskError};
 
     // ZK-001: a fixed dev oracle-publisher key every test transcript is signed with,
     // and the address its signatures recover to. A market whose `oracle_pubkey` is this
@@ -1582,6 +1589,50 @@ mod tests {
         // Errors with no attributable leg still reject both, as before.
         assert_eq!(offending_leg(&EngineError::Overflow), None);
         assert_eq!(offending_leg(&EngineError::UnknownMarket), None);
+    }
+
+    /// SEC-024 (SEC-022 carry-in): a margin failure on a fill must name the leg, so
+    /// the dry run bans the offender and rematches instead of recording both legs and
+    /// burning the innocent counterparty's consumed liquidity.
+    #[test]
+    fn a_fill_margin_failure_names_the_offending_leg() {
+        assert_eq!(
+            offending_leg(&EngineError::Risk {
+                source: RiskError::InsufficientMargin,
+                leg: Some(FillLeg::Maker),
+            }),
+            Some(FillLeg::Maker),
+        );
+        assert_eq!(
+            offending_leg(&EngineError::Risk {
+                source: RiskError::InsufficientMargin,
+                leg: Some(FillLeg::Taker),
+            }),
+            Some(FillLeg::Taker),
+        );
+        // A non-fill Risk (op_unbind) has no leg and must stay non-attributable.
+        assert_eq!(
+            offending_leg(&EngineError::Risk {
+                source: RiskError::InsufficientMargin,
+                leg: None,
+            }),
+            None,
+        );
+    }
+
+    /// The manifest reason must not change — a margin failure is still
+    /// InsufficientMargin whether or not a leg is attached.
+    #[test]
+    fn settlement_reason_is_unchanged_by_the_leg() {
+        for leg in [None, Some(FillLeg::Taker), Some(FillLeg::Maker)] {
+            assert_eq!(
+                settlement_reason(&EngineError::Risk {
+                    source: RiskError::InsufficientMargin,
+                    leg,
+                }),
+                RejectReason::InsufficientMargin,
+            );
+        }
     }
 
     // --- Slice 3b-4 harness (mirrors tests/spine.rs::setup) ---------------------
@@ -1876,17 +1927,33 @@ mod tests {
         assert_eq!(seq.window_for_tick(n - 1), Some(n - 1));
     }
 
-    // BadPrevRoot fix: boot funding + SeedInsurance run AFTER add_market's last
-    // window_start_state capture, so without re-basing, window 0's pre_state is the
-    // pre-funding state while the deployed GENESIS_ROOT is the FULL boot state root.
-    // seal_genesis_baseline folds the boot ops into the trusted genesis baseline.
+    // BadPrevRoot fix: boot funding + the insurance transfer run AFTER add_market's
+    // last window_start_state capture, so without re-basing, window 0's pre_state is
+    // the pre-funding state while the deployed GENESIS_ROOT is the FULL boot state
+    // root. seal_genesis_baseline folds the boot ops into the trusted genesis baseline.
     #[test]
     fn seal_genesis_baseline_rebases_window_zero_to_full_boot_state() {
         // mirrors Gw::boot: add_market + oracle (test_sequencer), then funding
-        // (Deposit + FundPosition per account) and an insurance seed.
+        // (Deposit + FundPosition per account) and an insurance seed — which since
+        // SEC-024 is its own Deposit → FundInsurance pair (a transfer, not a mint).
         let mut seq = test_sequencer();
-        seq.apply(&BatchOp::SeedInsurance {
-            amount: 1_000 * QUOTE_SCALE,
+        let ins_owner = owner_id(9);
+        let ins_amount = 1_000 * QUOTE_SCALE;
+        let ins_blind = [0x39u8; 32];
+        let ins_cm = Note::new(ins_owner, 0, ins_amount, ins_blind).commitment::<Keccak256>();
+        seq.apply(&BatchOp::Deposit {
+            owner: ins_owner,
+            asset_id: 0,
+            amount: ins_amount,
+            blinding: ins_blind,
+            from: [0u8; 20],
+            deposit_id: seq.state.consumed_deposit_count,
+            deposit_blind: [0u8; 32],
+        })
+        .unwrap();
+        seq.apply(&BatchOp::FundInsurance {
+            note_commitment: ins_cm,
+            spend_key: [9u8; 32],
         })
         .unwrap();
         // the bug precondition: boot ops accumulated after the last baseline capture,
@@ -2110,18 +2177,22 @@ mod tests {
         assert!(sq.state.conservation_holds());
     }
 
-    /// Whole-branch review I2: the reason committed with a BAN must be the one recorded
-    /// at the offender's own `settle_fills` push site, not the FIRST `rejected` entry
-    /// for that hash. One probe pass records maker X twice: fill 2 fails with a
-    /// non-attributable `Risk` (owner 4's SECOND buy fails initial margin at settlement
-    /// because its FIRST buy — admitted in the same batch, both gated against the
-    /// pre-batch state — consumed the margin), recording X as the INNOCENT counterparty
-    /// under `InsufficientMargin`; fill 3 then fails on X's own leg with
-    /// `FillWouldBankrupt(Maker)`, making X the banned offender. The old
-    /// first-match lookup committed the ban as `InsufficientMargin` — a falsehood
-    /// folded permanently into `manifest_hash`. The taker leg is checked before the
-    /// maker leg in `op_fill`, so fill 2 never reaches X's violation — which is why
-    /// the same hash can carry two different reasons in one pass at all.
+    /// Whole-branch review I2, updated for SEC-024's leg attribution: the reason
+    /// committed with a BAN must be the one recorded at the offender's own
+    /// `settle_fills` push site. Originally, fill 2 failed with a NON-attributable
+    /// `Risk` (owner 4's SECOND buy fails initial margin at settlement because its
+    /// FIRST buy — admitted in the same batch, both gated against the pre-batch
+    /// state — consumed the margin), recording X as the INNOCENT counterparty under
+    /// `InsufficientMargin` before fill 3 banned X for its own
+    /// `FillWouldBankrupt(Maker)` — and the old first-match lookup committed X's ban
+    /// as `InsufficientMargin`, a falsehood folded permanently into `manifest_hash`.
+    ///
+    /// SEC-024 (SEC-022 carry-in) closes that construction at the source: a fill
+    /// margin failure now NAMES its staged leg, so fill 2 bans ITS OWN offender (the
+    /// degraded taker) and records nothing against the innocent X. The same fixture
+    /// now pins the successor properties: two offenders in one probe pass are each
+    /// banned under the reason from their OWN push site, and the margin offender is
+    /// excised (banned, not ordered) instead of dragging X into a both-legs record.
     #[test]
     fn a_ban_commits_the_offending_legs_reason_not_an_earlier_innocent_records() {
         let mut sq = test_sequencer();
@@ -2167,26 +2238,146 @@ mod tests {
         let m0_h = m0.order_hash::<Keccak256>();
 
         // Probe pass, in match order: [alpha×M0 @80k settles] → [beta×X @78.5k fails
-        // Risk on P's taker leg: VWAP entry $79.25k on 1.0 BTC, equity $5.75k < $8k
-        // initial — recording (beta, IM) AND (X, IM)] → [t2×X @78.5k fails
-        // FillWouldBankrupt(Maker) on X's leg — the offender]. Ban X, rematch clean.
+        // Risk{leg: Taker} on P's degraded taker leg: VWAP entry $79.25k on 1.0 BTC,
+        // equity $5.75k < $8k initial — banning beta, sparing X] → [t2×X @78.5k fails
+        // FillWouldBankrupt(Maker) on X's leg — the second offender]. Ban both,
+        // rematch clean.
         let sealed = sq.seal_batch(&[m0, alpha, x_close, beta, t2], now() + 10);
 
-        // THE PIN: the ban carries the offending fill's reason. The old first-match
-        // lookup found fill 2's innocent-counterparty record and committed
-        // InsufficientMargin instead.
+        // THE PIN: each ban carries the reason from its OWN offending leg's push
+        // site. Pre-SEC-024, fill 2's leg-less Risk recorded (beta, IM) AND (X, IM)
+        // with no offender — and X's later ban could inherit that earlier innocent
+        // record's reason via a first-match lookup.
         assert_eq!(
             sealed.manifest.rejected,
-            vec![(x_h, RejectReason::FillWouldBankrupt)],
-            "the ban must commit the reason from X's OWN offending leg, not the reason \
-             recorded when X was the innocent counterparty of an earlier failed fill",
+            vec![
+                (beta_h, RejectReason::InsufficientMargin),
+                (x_h, RejectReason::FillWouldBankrupt),
+            ],
+            "each ban must commit the reason recorded at its own offender push site",
         );
-        // The degraded second buy is not rejected: its round-1 fill died with the
-        // discarded probe, and on the rematch (X gone) it simply rests.
-        assert!(sealed.manifest.ordered.contains(&beta_h));
+        // The degraded second buy is a banned offender now — excised from the final
+        // stream entirely, not resting in `ordered` as it did when Risk was
+        // non-attributable.
+        assert!(!sealed.manifest.ordered.contains(&beta_h));
         // The honest first fill really settled on the committed pass.
         assert!(sealed.settled_order_hashes.contains(&alpha_h));
         assert!(sealed.settled_order_hashes.contains(&m0_h));
+        assert!(sq.state.conservation_holds());
+    }
+
+    /// Whole-branch review I2, the REBUILT pin (SEC-024 Task 4). The ban commit
+    /// site pairs each banned order with the reason pushed at its OWN
+    /// `settle_fills` push site — never looked up first-match in `rejected`, where
+    /// the same hash can already sit under a DIFFERENT reason from earlier in the
+    /// same probe pass. The original pin drove that with a leg-less fill `Risk`;
+    /// SEC-024's carry-in made fill `Risk` attributable, which dissolved the
+    /// fixture (the test above now pins two-offender pairing, where a first-match
+    /// lookup happens to agree) — but not the hazard: every remaining
+    /// non-attributable class (`Oracle`, `CloseOnly`, `SelfTrade`, `Overflow`)
+    /// still records BOTH legs. This fixture rebuilds the double record on
+    /// `CloseOnly`.
+    ///
+    /// In close-only mode (which `pre_trade_check` deliberately does not gate — it
+    /// margins at the mark and screens reduce_only only, so opening orders still
+    /// admit and match, failing first at settlement), ONE probe pass records X
+    /// twice: fill 1 (X taker × M1 maker, at M1's in-band resting price) fails
+    /// `CloseOnly` because M1's flat leg would OPEN — non-attributable, both legs
+    /// recorded, and X (whose leg REDUCES: it is closing its batch-1 long) is the
+    /// INNOCENT counterparty under `MarketCloseOnly`; fill 2 (T2 taker × X's
+    /// resting remainder, at X's own out-of-band 90k limit) then fails
+    /// `FillPriceOutOfBand` on X's maker leg — X's OWN offense, and the pass's
+    /// only offender.
+    #[test]
+    fn a_ban_survives_an_earlier_innocent_record_of_the_same_hash() {
+        let mut sq = test_sequencer();
+        fund(&mut sq, 3, 20_000, 0x33); // M1 — the flat maker whose leg trips close-only
+        let size = SIZE_SCALE / 10;
+
+        // Batch 1 (normal mode): X (owner 1) opens 0.1 BTC long at the $100k mark
+        // against owner 2, so X's later sell REDUCES — the innocence in fill 1.
+        sq.seal_batch(
+            &[
+                t_order_at(2, Side::Sell, 100_000, size, 900),
+                t_order_at(1, Side::Buy, 100_000, size, 901),
+            ],
+            now(),
+        );
+        assert_eq!(sq.state.position(&owner_id(1), 0).unwrap().size, size);
+
+        // Flip the system to close-only for batch 2.
+        sq.apply(&BatchOp::EnterCloseOnly).unwrap();
+
+        // Stream order matters: M1 rests first; X's sell crosses it (fill 1, at
+        // M1's 100k) and X's remainder rests at its own 90k ask; T2 crosses X
+        // (fill 2, at X's 90k).
+        let m1 = t_order_at(3, Side::Buy, 100_000, size, 902);
+        let x = t_order_at(1, Side::Sell, 90_000, 2 * size, 903);
+        let t2 = t_order_at(2, Side::Buy, 95_000, size, 904);
+        let m1_h = m1.order_hash::<Keccak256>();
+        let x_h = x.order_hash::<Keccak256>();
+        let t2_h = t2.order_hash::<Keccak256>();
+
+        // Fixture guards — mechanical, not narrative. Fill 1 exactly as the matcher
+        // will produce it must fail with the NON-attributable `CloseOnly`, and
+        // fill 2 with the maker-attributable band error — otherwise the double
+        // record this test exists for never forms and the pin below goes vacuous.
+        let oracle = *sq.oracle(0).expect("market 0 oracle");
+        let mut probe = sq.state.clone();
+        let e1 = probe
+            .apply_op(&BatchOp::Fill {
+                taker: owner_id(1),
+                maker: owner_id(3),
+                market_id: 0,
+                taker_side: Side::Sell,
+                size,
+                price: 100_000 * PRICE_SCALE,
+                oracle,
+                now_ms: now() + 10,
+            })
+            .expect_err("fill 1 must fail at settlement");
+        assert_eq!(e1, EngineError::CloseOnly, "fill 1 is the close-only class");
+        assert_eq!(offending_leg(&e1), None, "…and it is NON-attributable");
+        let mut probe = sq.state.clone();
+        let e2 = probe
+            .apply_op(&BatchOp::Fill {
+                taker: owner_id(2),
+                maker: owner_id(1),
+                market_id: 0,
+                taker_side: Side::Buy,
+                size,
+                price: 90_000 * PRICE_SCALE,
+                oracle,
+                now_ms: now() + 10,
+            })
+            .expect_err("fill 2 must fail at settlement");
+        assert_eq!(e2, EngineError::FillPriceOutOfBand);
+        assert_eq!(
+            offending_leg(&e2),
+            Some(FillLeg::Maker),
+            "fill 2 is X's OWN offense — the attributable record"
+        );
+
+        let sealed = sq.seal_batch(&[m1, x, t2], now() + 10);
+
+        // THE PIN: the committed ban carries the reason from X's OWN offender push
+        // site. Reverting `banned.push((*oh, *reason))` to a first-match lookup
+        // into `rejected` finds fill 1's innocent `MarketCloseOnly` record for the
+        // same hash instead and folds that falsehood permanently into
+        // `manifest_hash`.
+        assert_eq!(
+            sealed.manifest.rejected,
+            vec![(x_h, RejectReason::FillPriceOutOfBand)],
+            "the ban must commit the reason from X's OWN offending leg, not the \
+             reason recorded when X was the innocent counterparty of the earlier \
+             non-attributable close-only failure",
+        );
+        // The rematch (X excised) leaves two same-side bids: nothing fills, both
+        // rest — the innocent parties are ordered, not dragged into the rejection.
+        assert!(sealed.manifest.ordered.contains(&m1_h));
+        assert!(sealed.manifest.ordered.contains(&t2_h));
+        assert!(!sealed.manifest.ordered.contains(&x_h));
+        assert!(sealed.settled_order_hashes.is_empty(), "nothing settled");
         assert!(sq.state.conservation_holds());
     }
 

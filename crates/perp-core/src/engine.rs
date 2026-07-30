@@ -19,7 +19,7 @@ use crate::market::MarketId;
 use crate::note::{owner_from_spend_key, Note, PubKey};
 use crate::oracle::OracleTranscript;
 use crate::order::Side;
-use crate::position::Position;
+use crate::position::{Position, RiskError};
 use crate::state::{Mode, State};
 use alloc::vec::Vec;
 
@@ -103,10 +103,21 @@ pub enum BatchOp {
     },
     /// Forced-exit / circuit-breaker: switch the system to close-only (§6, §8).
     EnterCloseOnly,
-    /// Capitalize the insurance fund with external collateral (§6, §9) — the
-    /// backstop that absorbs liquidation bad debt before it socializes onto the
-    /// clearing pool.
-    SeedInsurance { amount: i128 },
+    /// SEC-024: RETAINED AT ORDINAL 8 AND ALWAYS REJECTED. This op raised
+    /// `insurance_fund` and `external_in` together with no note consumed and no L1
+    /// binding — it fabricated the accounting representation of collateral that never
+    /// entered the system, and the guest proved it. Kept rather than removed because
+    /// `postcard` writes a variant's ordinal before its fields: replacing it in place
+    /// would let legacy bytes decode as whatever took index 8 and consume the following
+    /// bytes as its fields, a SILENT mis-parse. Retaining it means old bytes decode to
+    /// their original meaning and are then refused deterministically. Fail loudly.
+    DeprecatedSeedInsurance { amount: i128 },
+    /// SEC-024: capitalize insurance by consuming a REAL note. `external_in` is NOT
+    /// touched — that value entered the system through the L1-bound deposit path.
+    FundInsurance {
+        note_commitment: Digest,
+        spend_key: Digest,
+    },
 }
 
 /// One auto-deleverage haircut: `clawed` of `owner`'s unrealized profit was taken
@@ -305,7 +316,13 @@ impl<H: Hasher> State<H> {
                 self.mode = Mode::CloseOnly;
                 Ok(())
             }
-            BatchOp::SeedInsurance { amount } => self.op_seed_insurance(*amount),
+            // SEC-024: the retained ordinal-8 stub — refused deterministically, and
+            // the `amount` is deliberately unused (binding it would imply meaning).
+            BatchOp::DeprecatedSeedInsurance { .. } => Err(EngineError::DeprecatedOp),
+            BatchOp::FundInsurance {
+                note_commitment,
+                spend_key,
+            } => self.op_fund_insurance(note_commitment, spend_key),
             BatchOp::Deposit { .. } => {
                 unreachable!("Deposit is handled by apply_op, never delegated here")
             }
@@ -417,13 +434,17 @@ impl<H: Hasher> State<H> {
         Ok(())
     }
 
-    /// Consume a note: verify ownership, mark nullifier, remove from unspent set.
-    fn consume_note(
-        &mut self,
+    /// SEC-024: the NON-MUTATING half of `consume_note` — look the note up, check the
+    /// spend authority and the nullifier, and return the note plus the nullifier the
+    /// caller must insert to commit. Split out because `consume_note` mutates
+    /// immediately, so any fallible arithmetic after it destroys the note on failure.
+    /// `op_fund_position` has that shape today; `op_fund_insurance` must not.
+    fn validate_note_spend(
+        &self,
         note_commitment: &Digest,
         spend_key: &Digest,
         expected_owner: Option<&PubKey>,
-    ) -> Result<Note, EngineError> {
+    ) -> Result<(Note, Digest), EngineError> {
         let note = *self
             .notes
             .get(note_commitment)
@@ -444,6 +465,17 @@ impl<H: Hasher> State<H> {
         if self.nullifiers.contains(&nf) {
             return Err(EngineError::UnknownOrSpentNote);
         }
+        Ok((note, nf))
+    }
+
+    /// Consume a note: verify ownership, mark nullifier, remove from unspent set.
+    fn consume_note(
+        &mut self,
+        note_commitment: &Digest,
+        spend_key: &Digest,
+        expected_owner: Option<&PubKey>,
+    ) -> Result<Note, EngineError> {
+        let (note, nf) = self.validate_note_spend(note_commitment, spend_key, expected_owner)?;
         // Insert nullifier and drop the note from the unspent set.
         let _ = self.nullifiers.insert::<H>(nf);
         self.notes.remove(note_commitment);
@@ -595,7 +627,18 @@ impl<H: Hasher> State<H> {
                 FillLeg::Maker
             };
             if increasing {
-                pos.check_initial_margin(&market, mark, funding_index)?;
+                // SEC-024 (SEC-022 carry-in): name the failing leg. A leg-less Risk is
+                // non-attributable, so the sequencer's dry run recorded BOTH order
+                // hashes and accepted without rematching — burning the innocent
+                // counterparty's already-consumed resting liquidity.
+                pos.check_initial_margin(&market, mark, funding_index)
+                    .map_err(|e| match e {
+                        RiskError::Overflow => EngineError::Overflow,
+                        source => EngineError::Risk {
+                            source,
+                            leg: Some(leg),
+                        },
+                    })?;
             }
             // SEC-022 §3 — the solvency postcondition, checked on the STAGED leg before
             // anything commits. Conditional by design:
@@ -727,11 +770,17 @@ impl<H: Hasher> State<H> {
         let notional = pos.notional(price).ok_or(EngineError::Overflow)?;
         let penalty =
             apply_rate(notional, market.liquidation_fee_ratio).ok_or(EngineError::Overflow)?;
-        // close the whole position at oracle price
-        let pos = self.positions.get_mut(&key).unwrap();
-        let close_delta = -pos.size;
-        let (realized, funding) = pos.apply_fill(close_delta, price, funding_index)?;
-        self.vault_pool = self
+        // SEC-024 (SEC-022 §4, carried into op_liquidate): stage EVERY fallible value
+        // on a COPY before the first mutation. This op used to close the position via
+        // `apply_fill` and only THEN run the fallible vault-pool / insurance-fund
+        // arithmetic, so a late overflow returned `Err` with the position already
+        // closed — and `run_maintenance` logs an op only on success, so the live root
+        // reflected a close the replayable op-log did not contain, wedging the next
+        // proof. Close the whole position at oracle price, staged:
+        let mut staged = *pos;
+        let close_delta = -staged.size;
+        let (realized, funding) = staged.apply_fill(close_delta, price, funding_index)?;
+        let new_vault_pool = self
             .vault_pool
             .checked_sub(realized)
             .ok_or(EngineError::Overflow)?
@@ -740,13 +789,26 @@ impl<H: Hasher> State<H> {
         // Take the liquidation penalty from any remaining (positive) collateral
         // into the insurance fund. Bad debt (a close that left collateral < 0) is
         // then handled by the waterfall below: insurance backstop → ADL → close-only.
-        let pos = self.positions.get_mut(&key).unwrap();
-        let take = penalty.min(pos.collateral.max(0));
-        pos.collateral -= take;
-        self.insurance_fund = self
+        // `take ∈ [0, max(collateral, 0)]`, so the sub cannot actually fail — checked
+        // anyway (crate rule: every arithmetic step is `checked_*`), and still before
+        // the first mutation.
+        let take = penalty.min(staged.collateral.max(0));
+        staged.collateral = staged
+            .collateral
+            .checked_sub(take)
+            .ok_or(EngineError::Overflow)?;
+        let new_insurance_fund = self
             .insurance_fund
             .checked_add(take)
             .ok_or(EngineError::Overflow)?;
+
+        // commit — infallible from here down. The bad-debt waterfall below runs
+        // against committed state by design (it is not part of the fallible close:
+        // its arithmetic is saturating/bounded and it only moves value between
+        // committed balances).
+        self.positions.insert(key, staged);
+        self.vault_pool = new_vault_pool;
+        self.insurance_fund = new_insurance_fund;
 
         // Insurance backstop (§6, §9): if the close left the position underwater
         // (bad debt — a gap-down past the maintenance buffer), draw from the
@@ -861,21 +923,38 @@ impl<H: Hasher> State<H> {
         haircuts
     }
 
-    /// Capitalize the insurance fund from external collateral (§6, §9). The fund
-    /// is the backstop drawn on by [`Self::op_liquidate`] to absorb bad debt.
-    /// Conservation-safe: `insurance_fund` and `external_in` rise together.
-    fn op_seed_insurance(&mut self, amount: i128) -> Result<(), EngineError> {
-        if amount <= 0 {
-            return Err(EngineError::NonPositiveAmount);
+    /// SEC-024: capitalize the insurance fund by consuming a REAL note (§6, §9) —
+    /// a TRANSFER inside the shielded pool, never a mint. `external_in` is not
+    /// touched: the note's value already entered through the L1-bound deposit path.
+    /// No destination-owner constraint (`expected_owner = None`), matching
+    /// `op_withdraw`: adding value to a communal backstop can only help the
+    /// protocol, and the spend key still prevents donating someone else's note.
+    fn op_fund_insurance(
+        &mut self,
+        note_commitment: &Digest,
+        spend_key: &Digest,
+    ) -> Result<(), EngineError> {
+        // SEC-024 — validate and precompute BEFORE the first mutation. `consume_note`
+        // inserts the nullifier and removes the note immediately, so a fallible
+        // `checked_add` after it would return Err with the note already destroyed; the
+        // sequencer logs an op only on success, so live state would diverge from the
+        // proven op-log and wedge the next proof.
+        let (note, nf) = self.validate_note_spend(note_commitment, spend_key, None)?;
+        // Without this, the op becomes wrong the moment non-canonical note assets
+        // become meaningful. Checked BEFORE any mutation, so a wrong asset leaves
+        // state byte-identical.
+        if note.asset_id != 0 {
+            return Err(EngineError::WrongAsset);
         }
-        self.insurance_fund = self
+        let new_insurance = self
             .insurance_fund
-            .checked_add(amount)
+            .checked_add(note.amount)
             .ok_or(EngineError::Overflow)?;
-        self.external_in = self
-            .external_in
-            .checked_add(amount)
-            .ok_or(EngineError::Overflow)?;
+
+        // commit — infallible from here
+        let _ = self.nullifiers.insert::<H>(nf);
+        self.notes.remove(note_commitment);
+        self.insurance_fund = new_insurance;
         Ok(())
     }
 
@@ -908,9 +987,11 @@ impl<H: Hasher> State<H> {
             .get(&key)
             .ok_or(EngineError::UnknownPosition)?;
         if pos.collateral < amount {
-            return Err(EngineError::Risk(
-                crate::position::RiskError::InsufficientMargin,
-            ));
+            // Not a fill: no leg to name (SEC-024 / SEC-022 carry-in).
+            return Err(EngineError::Risk {
+                source: RiskError::InsufficientMargin,
+                leg: None,
+            });
         }
         pos.collateral -= amount;
         // if still open, must remain ≥ initial margin after the withdrawal.

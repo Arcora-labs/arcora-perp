@@ -24,8 +24,13 @@ pub enum EngineError {
     UnknownPosition,
     /// Oracle transcript failed sanity checks (§8).
     Oracle(crate::oracle::OracleError),
-    /// Risk / margin failure (§5, §12).
-    Risk(RiskError),
+    /// Risk / margin failure (§5, §12). `leg` is `Some` only when the failure arose
+    /// inside a two-sided fill, where the engine knows which staged leg violated;
+    /// `op_unbind` and the generic `From<RiskError>` have no leg to name.
+    Risk {
+        source: RiskError,
+        leg: Option<FillLeg>,
+    },
     /// Position is not liquidatable but a liquidation was attempted.
     NotLiquidatable,
     /// Withdrawals / opens blocked because the market is in close-only mode (§6).
@@ -77,13 +82,20 @@ pub enum EngineError {
     /// margin. Two parties electing to trade always have "not trading" available, and it
     /// is strictly better for the protocol than parking unresolvable debt.
     FillWouldBankrupt(FillLeg),
+    /// SEC-024: a retained-but-deprecated op was submitted. Always rejected.
+    DeprecatedOp,
+    /// SEC-024: the op requires the canonical quote asset (`asset_id == 0`).
+    WrongAsset,
 }
 
 impl From<RiskError> for EngineError {
     fn from(e: RiskError) -> Self {
         match e {
             RiskError::Overflow => EngineError::Overflow,
-            other => EngineError::Risk(other),
+            other => EngineError::Risk {
+                source: other,
+                leg: None,
+            },
         }
     }
 }

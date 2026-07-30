@@ -24,7 +24,7 @@ use crate::withdrawals::Withdrawal;
 use std::path::{Path, PathBuf};
 
 /// Journal plaintext magic + format version (INSIDE the sealed payload; the sealed
-/// file itself starts with the snapshot module's `DPSNAP2` framing). Bump the
+/// file itself starts with the snapshot module's `DPSNAP3` framing). Bump the
 /// trailing digit on layout changes so an old binary refuses a new journal (and
 /// vice versa) instead of postcard-misreading it.
 /// v2: SEC-022 added `Market.max_fill_deviation_ratio`, carried here via
@@ -35,7 +35,13 @@ use std::path::{Path, PathBuf};
 /// this to DPRBJL2 and a pre-025-B binary can therefore already have written
 /// DPRBJL2 — reusing it would make an old journal a silent postcard misparse
 /// instead of a versioned rejection.
-const MAGIC: &[u8; 8] = b"DPRBJL3\0";
+/// v4: SEC-024 — `BatchOp`'s MEANING changed, not just its layout: ordinal 8
+/// (`SeedInsurance`, the unbound insurance mint) now always rejects, and ordinal 9
+/// (`FundInsurance`) exists. `BatchOp` is positional in the journaled witness via
+/// `window_ops`, so a pending pre-SEC-024 journal must be REFUSED here rather than
+/// decoded under the new meaning — replaying it would either reject a formerly
+/// valid seed op mid-recovery or misread a trailing variant.
+const MAGIC: &[u8; 8] = b"DPRBJL4\0";
 
 /// Everything boot recovery needs to resolve one in-flight window settle:
 /// the sequencer rollback input (`witness`), the withdrawal rollback input (`ww`,
