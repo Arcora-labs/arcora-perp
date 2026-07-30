@@ -355,6 +355,11 @@ const L1_SETTLE_SECS: u64 = 30; // how often the L1 bridge advances the on-chain
 const V1_ORDER_RATE: u32 = 10; // max orders/sec per external account
 const V1_REGISTER_RATE: u32 = 30; // max account registrations/min per IP
 const SNAPSHOT_SECS: u64 = 30; // sealed state-snapshot cadence (DARKPERP_STATE)
+/// How long an acknowledged snapshot waits before giving up. A wedge here means the
+/// writer cannot make progress — most likely a caller holding `App.gw` across the await —
+/// and an `Err` that a caller can refuse on is strictly better than an unbounded hang
+/// that takes the whole gateway with it.
+const SNAPSHOT_ACK_TIMEOUT_SECS: u64 = 30;
 /// Cap on retained per-account order history. SETTLED orders are terminal display data;
 /// without a bound the Vec (and every snapshot) grows forever on a long-lived deployment.
 const MAX_ACCOUNT_ORDER_HISTORY: usize = 500;
@@ -4381,12 +4386,25 @@ type SnapshotAck = tokio::sync::oneshot::Sender<bool>;
 /// L1 deposit whose blind lives only in memory, and submitting a settle whose window
 /// would otherwise be unrecoverable at boot (SEC-025-A §3, §9).
 ///
-/// FAIL-CLOSED in every direction: persistence off, writer gone, or write failed all
-/// return `Err`. A caller must never read "no error" as "durable".
+/// FAIL-CLOSED in every direction: persistence off, writer gone, write failed, or no
+/// verdict within `SNAPSHOT_ACK_TIMEOUT_SECS` all return `Err`. A caller must never
+/// read "no error" as "durable".
 ///
-/// `allow(dead_code)`: Task 1 lands the primitive only; its first production callers
-/// are the SEC-025-A bootstrap legs in later tasks (tests exercise it today).
-#[allow(dead_code)]
+/// LOCK PRECONDITION: the caller must NOT hold `App.gw` while awaiting this. The
+/// writer takes that same async lock to read the state (`snapshot_plain`), so a
+/// holder deadlocks both sides — the writer blocked on the lock, the caller blocked
+/// on the ack — with no log and no recovery; only the timeout below turns that wedge
+/// into an `Err` instead of a permanent gateway-wide hang.
+///
+/// DURABILITY: `Ok(())` means the sealed bytes were fsynced and renamed into place,
+/// but `write_atomic` does not fsync the containing DIRECTORY after the rename — the
+/// snapshot survives process death, not necessarily host power loss.
+///
+/// `expect(dead_code)`: Task 1 lands the primitive only; its first production callers
+/// are the SEC-025-A bootstrap legs in later tasks (tests exercise it today, hence
+/// `not(test)` — the expectation self-enforces the follow-up: the moment a production
+/// caller lands, the attribute errors and must be deleted).
+#[cfg_attr(not(test), expect(dead_code))]
 async fn snapshot_now(req: &Option<tokio::sync::mpsc::Sender<SnapshotAck>>) -> Result<(), String> {
     let Some(tx) = req else {
         return Err("state persistence is not configured — cannot guarantee durability".into());
@@ -4395,10 +4413,14 @@ async fn snapshot_now(req: &Option<tokio::sync::mpsc::Sender<SnapshotAck>>) -> R
     tx.send(ack_tx)
         .await
         .map_err(|_| "snapshot writer is gone".to_string())?;
-    match ack_rx.await {
-        Ok(true) => Ok(()),
-        Ok(false) => Err("snapshot write failed".into()),
-        Err(_) => Err("snapshot writer dropped the request".into()),
+    match tokio::time::timeout(Duration::from_secs(SNAPSHOT_ACK_TIMEOUT_SECS), ack_rx).await {
+        Ok(Ok(true)) => Ok(()),
+        Ok(Ok(false)) => Err("snapshot write failed".into()),
+        Ok(Err(_)) => Err("snapshot writer dropped the request".into()),
+        Err(_) => Err(format!(
+            "snapshot ack timed out after {SNAPSHOT_ACK_TIMEOUT_SECS}s — the writer is \
+             wedged (is a caller holding App.gw across snapshot_now?)"
+        )),
     }
 }
 
@@ -4414,11 +4436,12 @@ struct App {
     /// handler to verify on-chain USDC deposits. `None` ⇒ pure in-memory mode.
     l1: Option<L1>,
     /// SEC-025-A: acknowledged-snapshot requests, served by the single periodic writer.
-    /// `None` when persistence is off. See `snapshot_now`. `allow(dead_code)`: the
+    /// `None` when persistence is off. See `snapshot_now`. `expect(dead_code)`: the
     /// field's first reader is the bootstrap endpoint in a later SEC-025-A task; it
     /// must exist now so the sender half outlives the writer task that owns the
-    /// receiver.
-    #[allow(dead_code)]
+    /// receiver — and `expect` (not `allow`) so the suppression errors, and must be
+    /// deleted, the moment that reader lands.
+    #[expect(dead_code)]
     snapshot_req: Option<tokio::sync::mpsc::Sender<SnapshotAck>>,
     /// SEC-019 (Task 7b): the gateway deposit-authorization signer. Its ADDRESS is what
     /// the deployed `CollateralVault.gatewaySigner` must equal; `POST /v1/accounts/
@@ -7094,8 +7117,12 @@ async fn main() {
                     // Third arm (SEC-025-A): an ACKNOWLEDGED request. The reply carries
                     // the writer's real verdict so the caller can refuse to proceed with
                     // an irreversible action after a failed write. Kept in this task so
-                    // there is still exactly ONE writer — a second writer could interleave
-                    // `.tmp` renames and lose a snapshot.
+                    // the ack adds no NEW writer — a second writer could interleave
+                    // `.tmp` renames and lose a snapshot. (The shutdown saver below is a
+                    // PRE-EXISTING second caller of `write()` on the same `.tmp` path; a
+                    // SIGTERM concurrent with an in-flight write can still interleave.
+                    // That race predates the ack — but note it means an ack answered
+                    // `true` during shutdown may vouch for a clobbered file.)
                     let mut ack: Option<SnapshotAck> = None;
                     tokio::select! {
                         _ = iv.tick() => {}
@@ -9046,10 +9073,15 @@ mod tests {
 
     #[tokio::test]
     async fn snapshot_now_reports_the_writers_verdict_and_refuses_when_unconfigured() {
+        // Each error case asserts on a DISTINGUISHING substring, not just is_err():
+        // these strings become operator-facing text, and collapsing two cases into
+        // one message would otherwise go unnoticed.
+
         // Persistence off ⇒ there is no writer, so a caller must NOT be told the state
         // is durable. This is the case that matters: the bootstrap barrier runs before
         // an irreversible L1 deposit.
-        assert!(snapshot_now(&None).await.is_err());
+        let err = snapshot_now(&None).await.unwrap_err();
+        assert!(err.contains("not configured"), "got: {err}");
 
         // A writer that succeeds.
         let (tx, mut rx) = tokio::sync::mpsc::channel::<SnapshotAck>(1);
@@ -9068,12 +9100,46 @@ mod tests {
                 let _ = ack.send(false);
             }
         });
-        assert!(snapshot_now(&Some(tx2)).await.is_err());
+        let err = snapshot_now(&Some(tx2)).await.unwrap_err();
+        assert!(err.contains("write failed"), "got: {err}");
 
         // A dead writer (receiver dropped) must also be an Err, never a hang.
         let (tx3, rx3) = tokio::sync::mpsc::channel::<SnapshotAck>(1);
         drop(rx3);
-        assert!(snapshot_now(&Some(tx3)).await.is_err());
+        let err = snapshot_now(&Some(tx3)).await.unwrap_err();
+        assert!(err.contains("writer is gone"), "got: {err}");
+
+        // A writer that TAKES the request and then dies mid-write must also be an Err.
+        // Distinct from the dropped-receiver case above: there `send()` fails and we never
+        // reach the ack at all, so this is the only case that exercises the ack's own
+        // failure arm — the one a mutation to `Ok(())` otherwise walks straight through.
+        let (tx4, mut rx4) = tokio::sync::mpsc::channel::<SnapshotAck>(1);
+        tokio::spawn(async move {
+            while let Some(ack) = rx4.recv().await {
+                drop(ack);
+            }
+        });
+        let err = snapshot_now(&Some(tx4)).await.unwrap_err();
+        assert!(err.contains("dropped the request"), "got: {err}");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn snapshot_now_times_out_instead_of_hanging_when_the_writer_never_replies() {
+        // A wedged writer — most likely a caller holding `App.gw` across the await, the
+        // deadlock the doc comment forbids — must surface as an `Err` the caller can
+        // refuse on, never an unbounded hang that takes the gateway with it. Paused
+        // time: the runtime auto-advances the virtual clock when every task is idle,
+        // so this exercises the full SNAPSHOT_ACK_TIMEOUT_SECS without sleeping.
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<SnapshotAck>(1);
+        let wedged = tokio::spawn(async move {
+            // Take the request, then hold the ack forever: never reply, never drop.
+            let held = rx.recv().await;
+            std::future::pending::<()>().await;
+            drop(held);
+        });
+        let err = snapshot_now(&Some(tx)).await.unwrap_err();
+        assert!(err.contains("timed out"), "got: {err}");
+        wedged.abort();
     }
 
     // FIN-001 Task 4: the operator-gated settlement-resume auth matrix, exercised as

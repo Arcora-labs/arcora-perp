@@ -40,3 +40,7 @@ postcard = { version = "1", features = ["alloc", "use-std"] }
 [dev-dependencies]
 # router-level tests drive `build_router` via `ServiceExt::oneshot` (audit DP-010).
 tower = { version = "0.5", features = ["util"] }
+# SEC-025-A Task 1: `start_paused` for the snapshot-ack timeout test, so the full
+# SNAPSHOT_ACK_TIMEOUT_SECS elapses on the virtual clock instead of a real sleep.
+# Test-target only — the production bin's tokio feature set is unchanged.
+tokio = { version = "1", features = ["test-util"] }
