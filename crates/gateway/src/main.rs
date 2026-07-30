@@ -77,6 +77,43 @@ fn continuity_ok(last_settled_root: &Digest, chain_root: &str) -> bool {
     hex32(last_settled_root).eq_ignore_ascii_case(chain_root)
 }
 
+/// SEC-025-C follow-up (deposit-posture check): verdict of comparing the gateway's
+/// consumed-deposit accumulator against the vault's on-chain deposit chain at boot.
+/// Split from the boot wiring so it is testable without an RPC (like `continuity_ok`).
+#[derive(Debug, PartialEq, Eq)]
+enum DepositPosture {
+    Ok,
+    /// The gateway has consumed MORE deposits than the vault ever received. A correct
+    /// gateway can only ever credit deposits the vault actually holds, so this has no
+    /// false positives — it is exactly the unbacked-deposit signature (a demo-derived
+    /// genesis, or a demo snapshot booted under production posture).
+    UnbackedCount,
+    /// The counts are consistent, but the vault's recorded prefix tip at the gateway's
+    /// consumed count differs from the gateway's fold — the consumed leaves are not the
+    /// vault's leaves (sentinel/fabricated deposits with a coincidental count).
+    TipMismatch,
+}
+
+/// The pure half of the boot-time deposit-posture check. `vault_tip_at_gw_count` is
+/// `vault.depositTipAt(gw_count)` as `cast` formats it (`bytes32(0)` — never written —
+/// for the honest-genesis `gw_count == 0`); the tip comparison reuses `continuity_ok`
+/// so hex-case tolerance stays in one place. `gw_count < vault_count` is legitimate:
+/// deposits the vault holds but the gateway has not yet confirmed.
+fn deposit_posture(
+    gw_count: u64,
+    gw_tip: &Digest,
+    vault_count: u64,
+    vault_tip_at_gw_count: &str,
+) -> DepositPosture {
+    if gw_count > vault_count {
+        return DepositPosture::UnbackedCount;
+    }
+    if !continuity_ok(gw_tip, vault_tip_at_gw_count) {
+        return DepositPosture::TipMismatch;
+    }
+    DepositPosture::Ok
+}
+
 /// What to do with a sealed-but-settle-failed window, given the on-chain batchCount
 /// re-read AFTER the failure. `seal_window` bumped the local per-window counter to
 /// `sealed_batch_id + 1`, so `chain_batch_count == sealed_batch_id` means the tx never
@@ -6764,6 +6801,85 @@ async fn main() {
                 std::process::exit(1);
             }
         }
+        // Deposit posture, beside the continuity check (SEC-025-C follow-up): root
+        // EQUALITY above is not a posture detector — a deployment whose contract
+        // GENESIS_ROOT was itself derived from a DEMO boot matches its own demo
+        // snapshot and would boot with fabricated unbacked deposits intact. That
+        // strands real USDC: `account_confirm_deposit` refuses every real deposit
+        // (id 0 is not next-in-line), `settleBatch` reverts at `_requireDepositPrefix`,
+        // and `finalSettle` reverts on the same pin — the wind-down escape hatch is
+        // bricked. So ALSO require, on every L1-configured boot, that the vault can
+        // back what the gateway has consumed. Fail closed on every arm, including
+        // "vault not configured": that Errs inside the accessors and lands here as
+        // an RPC-shaped refusal, never a silent skip.
+        let gw_count = gw.seq.state.consumed_deposit_count;
+        let vault_reads = {
+            let l1c = l1c.clone();
+            tokio::task::spawn_blocking(move || {
+                let count = l1c.vault_deposit_count()?;
+                let tip = l1c.vault_deposit_tip_at(gw_count)?;
+                Ok::<(u64, String), String>((count, tip))
+            })
+            .await
+            .unwrap_or_else(|e| Err(e.to_string()))
+        };
+        let gw_tip = hex32(&gw.seq.state.consumed_deposit_tip);
+        match vault_reads {
+            Ok((vault_count, vault_tip)) => {
+                match deposit_posture(
+                    gw_count,
+                    &gw.seq.state.consumed_deposit_tip,
+                    vault_count,
+                    &vault_tip,
+                ) {
+                    DepositPosture::Ok => {
+                        println!(
+                            "[state] deposit posture OK (consumed {gw_count} of {vault_count} \
+                             vault deposits, tip {gw_tip})"
+                        );
+                    }
+                    DepositPosture::UnbackedCount => {
+                        eprintln!(
+                            "[state] REFUSING to start: the gateway has consumed {gw_count} \
+                             deposits (tip {gw_tip}) but the vault has only ever received \
+                             {vault_count} — the gateway credited deposits the vault never \
+                             received. This signature is almost always a demo-derived genesis \
+                             or a demo snapshot booted under production posture; left running \
+                             it strands real USDC (every real deposit is refused as \
+                             out-of-order, and both settleBatch and finalSettle revert at the \
+                             deposit-prefix pin). The remedy is fresh contracts at an honest \
+                             genesis plus a snapshot wipe (delete DARKPERP_STATE) — not a \
+                             restart."
+                        );
+                        std::process::exit(1);
+                    }
+                    DepositPosture::TipMismatch => {
+                        eprintln!(
+                            "[state] REFUSING to start: the gateway's consumed-deposit tip at \
+                             count {gw_count} is {gw_tip} but the vault's recorded prefix tip \
+                             depositTipAt({gw_count}) is {vault_tip} — the leaves the gateway \
+                             consumed are not the vault's leaves, even though the counts \
+                             coincide. This signature is almost always a demo-derived genesis \
+                             or a demo snapshot booted under production posture (sentinel \
+                             deposits credited off-chain); left running it strands real USDC \
+                             (settleBatch and finalSettle both revert at the deposit-prefix \
+                             pin). The remedy is fresh contracts at an honest genesis plus a \
+                             snapshot wipe (delete DARKPERP_STATE) — not a restart."
+                        );
+                        std::process::exit(1);
+                    }
+                }
+            }
+            Err(e) => {
+                eprintln!(
+                    "[state] REFUSING to start: cannot verify the deposit posture against \
+                     the vault ({e}). If this says L1_VAULT is not set: an L1-configured \
+                     gateway without a vault is itself a misconfiguration — configure \
+                     L1_VAULT rather than expecting the check to be skipped."
+                );
+                std::process::exit(1);
+            }
+        }
     }
     let app = Arc::new(App {
         gw: Mutex::new(gw),
@@ -8419,6 +8535,81 @@ mod tests {
     fn continuity_comparison_ignores_hex_case() {
         let root = [0xABu8; 32];
         assert!(continuity_ok(&root, &hex32(&root).to_uppercase()));
+    }
+
+    // ── deposit-posture check (SEC-025-C follow-up) ──────────────────────────
+    //
+    // Scope, stated honestly: these exercise ONLY the pure `deposit_posture`
+    // predicate. The boot wiring — the vault reads and the exit(1) arms inside
+    // `main()`'s `if let Some(l1c) = &l1` block, including the requirement that
+    // an L1-configured-but-vault-less gateway refuses rather than skips — is
+    // verified by reading that block, NOT by an in-process test: `main()` is
+    // untestable in a bin crate (same caveat as the continuity tests above).
+
+    /// A count the vault can back, with the matching prefix tip, boots. Equality is
+    /// the boundary: mutating the count predicate's `>` to `>=` (i.e. the spec's
+    /// `<=` to `<`) must kill this test.
+    #[test]
+    fn deposit_posture_accepts_a_backed_count_and_matching_tip() {
+        let tip = [0x5Au8; 32];
+        assert_eq!(
+            deposit_posture(3, &tip, 3, &hex32(&tip)),
+            DepositPosture::Ok
+        );
+        // tip comparison goes through `continuity_ok`, so it is hex-case tolerant.
+        assert_eq!(
+            deposit_posture(3, &tip, 3, &hex32(&tip).to_uppercase()),
+            DepositPosture::Ok
+        );
+    }
+
+    /// The unbacked signature: the gateway consumed MORE deposits than the vault ever
+    /// received — the live demo-genesis shape (7 fabricated deposits vs a fresh vault).
+    /// Must be refused as `UnbackedCount` specifically (the count check, not a
+    /// coincidental tip mismatch, is what names the failure for the operator).
+    #[test]
+    fn deposit_posture_refuses_an_unbacked_count() {
+        let demo_tip = [0xAAu8; 32]; // 7 sentinel leaves folded off-chain
+        assert_eq!(
+            deposit_posture(7, &demo_tip, 0, &hex32(&[0u8; 32])),
+            DepositPosture::UnbackedCount,
+            "count above the vault's is exactly the unbacked-deposit condition"
+        );
+    }
+
+    /// Equal counts do NOT imply honesty: if the fold at that prefix differs, the
+    /// consumed leaves are not the vault's leaves. The tip check catches it.
+    #[test]
+    fn deposit_posture_refuses_a_tip_mismatch_at_an_equal_count() {
+        let gw_tip = [0xAAu8; 32];
+        let vault_tip = [0xBBu8; 32];
+        assert_eq!(
+            deposit_posture(4, &gw_tip, 4, &hex32(&vault_tip)),
+            DepositPosture::TipMismatch
+        );
+    }
+
+    /// The honest genesis: a fresh gateway `(0, [0;32])` against a fresh vault's
+    /// `(0, bytes32(0))` — `depositTipAt[0]` is never written, the mapping default IS
+    /// the genesis tip — must boot.
+    #[test]
+    fn deposit_posture_accepts_the_honest_genesis() {
+        assert_eq!(
+            deposit_posture(0, &[0u8; 32], 0, &hex32(&[0u8; 32])),
+            DepositPosture::Ok
+        );
+    }
+
+    /// A gateway BEHIND the vault is legitimate — deposits landed on-chain that the
+    /// gateway has not yet confirmed — provided the tip at its consumed prefix
+    /// matches. Kills the mutation that inverts the count comparison (`<=` → `>=`).
+    #[test]
+    fn deposit_posture_accepts_a_gateway_behind_the_vault() {
+        let tip_at_2 = [0x11u8; 32];
+        assert_eq!(
+            deposit_posture(2, &tip_at_2, 5, &hex32(&tip_at_2)),
+            DepositPosture::Ok
+        );
     }
 
     // ── off-chain receipt reconciliation (Slice 3b-4) ────────────────────────

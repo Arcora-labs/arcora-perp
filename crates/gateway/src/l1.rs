@@ -364,6 +364,45 @@ impl L1 {
         Ok(out.trim() == "true")
     }
 
+    /// The vault's total on-chain deposit count (`depositCount`, a public uint64) —
+    /// the boot-time deposit-posture check compares the gateway's consumed-deposit
+    /// counter against it (SEC-025-C follow-up). Errs when `L1_VAULT` is unset: an
+    /// L1-configured gateway without a vault is a misconfiguration, and the caller
+    /// must fail closed, not skip.
+    pub fn vault_deposit_count(&self) -> Result<u64, String> {
+        let vault = self.vault.as_ref().ok_or("L1_VAULT not set")?;
+        let s = self.cast(&[
+            "call",
+            vault,
+            "depositCount()(uint64)",
+            "--rpc-url",
+            &self.rpc,
+        ])?;
+        // cast may print "7" or "7 [7e0]" — take the leading integer token (see read_u).
+        s.split_whitespace()
+            .next()
+            .unwrap_or("0")
+            .parse::<u64>()
+            .map_err(|e| format!("parse depositCount: {e}"))
+    }
+
+    /// The vault's recorded deposit-chain prefix tip after its first `n` deposits
+    /// (`depositTipAt[n]`, a public mapping; `depositTipAt[0]` is never written — the
+    /// mapping default `bytes32(0)` IS the genesis tip, which is exactly what an
+    /// honest fresh gateway's `[0u8; 32]` fold compares equal to). Errs when
+    /// `L1_VAULT` is unset, same as `vault_deposit_count`.
+    pub fn vault_deposit_tip_at(&self, n: u64) -> Result<String, String> {
+        let vault = self.vault.as_ref().ok_or("L1_VAULT not set")?;
+        self.cast(&[
+            "call",
+            vault,
+            "depositTipAt(uint64)(bytes32)",
+            &n.to_string(),
+            "--rpc-url",
+            &self.rpc,
+        ])
+    }
+
     /// Verify a confirmed `vault.deposit` tx and return `(from20, owner_commit, amount,
     /// id)`: scan the receipt for the SEC-019 `Deposit(from, ownerCommit, amount, id,
     /// newTip)` log emitted by the configured vault. The caller binds `from` to the
