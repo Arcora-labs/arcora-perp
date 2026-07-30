@@ -1824,6 +1824,12 @@ fn deprecated_seed_insurance_is_always_rejected() {
 /// follows it correctly aligned, and the current enum must re-encode the stub to the
 /// same bytes (postcard writes the variant ordinal as a varint BEFORE the fields, so
 /// replacing ordinal 8 in place would silently mis-parse legacy bytes).
+///
+/// Feature-gated on `serde`, which is NOT a `perp-core` default: this test runs
+/// under `cargo test --workspace` (resolver-2 unifies the feature because
+/// `sequencer` declares `perp-core = { features = ["serde"] }`) or under
+/// `-p perp-core --features serde` — a plain `-p perp-core` run silently filters
+/// it out.
 #[cfg(feature = "serde")]
 #[test]
 fn legacy_seed_insurance_bytes_decode_to_the_stub_and_stay_aligned() {
@@ -1868,6 +1874,12 @@ fn legacy_seed_insurance_bytes_decode_to_the_stub_and_stay_aligned() {
 /// what binds it to real external value — an UNBOUND writer is the bug SEC-024
 /// exists to close. (Mutation-checked: `self.external_in = self.external_in + 1;`
 /// anywhere in engine.rs moves both counts and fails both asserts.)
+///
+/// Because `external_in` is `pub`, engine.rs is not automatically the whole
+/// story — any module could write it. state.rs (at the time of writing, the only
+/// other file in the crate that mentions the field) is scanned too, with its
+/// `#[cfg(test)] mod tests` excluded: the module's root-sensitivity test mutates
+/// the field, and a test is not a production writer.
 #[test]
 fn external_in_has_exactly_one_writer_and_it_is_op_deposit() {
     let src = include_str!("../src/engine.rs");
@@ -1893,5 +1905,40 @@ fn external_in_has_exactly_one_writer_and_it_is_op_deposit() {
          op_deposit's `self.external_in = external_in;`, the L1-bound deposit \
          path — found {writes}. op_seed_insurance was the second writer and it \
          was the SEC-024 fabrication; do not add another without an L1 binding."
+    );
+
+    // The same scan over state.rs, minus its `#[cfg(test)] mod tests` (whose
+    // root-sensitivity test mutates the field). The split-at-marker exclusion is
+    // sound only while the marker is unique, so pin that first — a second
+    // `#[cfg(test)]` would silently shrink the scanned text.
+    let state_src = include_str!("../src/state.rs");
+    assert_eq!(
+        state_src.matches("#[cfg(test)]").count(),
+        1,
+        "state.rs no longer has exactly one `#[cfg(test)]` marker — re-derive \
+         this scan's non-test split before trusting its counts"
+    );
+    let (state_prod, _state_tests) = state_src
+        .split_once("#[cfg(test)]")
+        .expect("uniqueness was just asserted");
+    let snorm: String = state_prod.chars().filter(|c| !c.is_whitespace()).collect();
+    let stouches = snorm.matches("self.external_in").count();
+    assert_eq!(
+        stouches, 2,
+        "expected exactly 2 whitespace-normalized occurrences of `self.external_in` \
+         in state.rs outside its #[cfg(test)] module — the conservation identity \
+         read (`self.external_in - self.external_out`) and the root-binding read \
+         (`word_i128(self.external_in)`) — found {stouches}. A NEW writer of \
+         external_in belongs behind op_deposit's L1 binding in engine.rs; an \
+         unbound writer is the fabrication SEC-024 removed."
+    );
+    let swrites =
+        snorm.matches("self.external_in=").count() - snorm.matches("self.external_in==").count();
+    assert_eq!(
+        swrites, 0,
+        "expected 0 assignments to `self.external_in` in state.rs outside its \
+         #[cfg(test)] module — both non-test touches are reads — found {swrites}. \
+         The only production writer of external_in is op_deposit in engine.rs \
+         (the SEC-019 L1-bound deposit path)."
     );
 }
