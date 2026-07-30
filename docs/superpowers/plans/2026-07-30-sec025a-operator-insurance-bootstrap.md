@@ -493,11 +493,30 @@ fn only_the_configured_operator_payer_can_reach_the_insurance_fund() {
     let key = gw.account_register_for_test();
     let operator = [0xAAu8; 20];
     let attacker = [0xBBu8; 20];
+    let amount = bootstrap::MIN_BOOTSTRAP_INSURANCE;
+    let ins_before = gw.seq.state.insurance_fund;
+    let count_before = gw.seq.state.consumed_deposit_count;
 
+    // A deposit whose on-chain payer is NOT the configured operator must be refused even
+    // though both credentials are valid — the admin key and the account key are present,
+    // and only the payer differs.
+    let err = gw
+        .bootstrap_insurance_for_test(&key, operator, attacker, amount)
+        .expect_err("a non-operator payer must be refused");
     assert!(
-        !insurance_bootstrap_payer_ok(&operator, &operator),
-        "placeholder — replace with the real assertion below"
+        err.contains("INSURANCE_OPERATOR_ADDRESS"),
+        "the refusal must name the binding that failed: {err}"
     );
+    // Refused before ANY mutation: no note minted, no deposit consumed.
+    assert_eq!(gw.seq.state.insurance_fund, ins_before);
+    assert_eq!(gw.seq.state.consumed_deposit_count, count_before);
+    assert_eq!(gw.bootstrap, bootstrap::Bootstrap::NotStarted);
+
+    // The same call with the operator as payer succeeds, proving the refusal above was
+    // the payer binding and not some unrelated precondition.
+    gw.bootstrap_insurance_for_test(&key, operator, operator, amount)
+        .expect("the configured operator's own deposit must be accepted");
+    assert_eq!(gw.seq.state.insurance_fund, ins_before + amount);
 }
 
 #[test]
@@ -540,10 +559,24 @@ fn a_successful_bootstrap_raises_insurance_without_raising_external_in_twice() {
 }
 ```
 
-Replace the placeholder body of the first test with the real one once
-`bootstrap_insurance_for_test` exists — it must take an explicit payer address and assert
-that a payer other than the configured operator is refused while the operator's succeeds,
-with `insurance_fund` unchanged in the refused case.
+**Test-helper signature** (`#[cfg(test)]`, on `impl Gw`), used by all three tests above:
+
+```rust
+fn bootstrap_insurance_for_test(
+    &mut self,
+    key: &[u8; 32],
+    expected_payer: [u8; 20],
+    from: [u8; 20],
+    amount: i128,
+) -> Result<(), String>
+```
+
+It authorizes a deposit for `from`, then calls the real `bootstrap_insurance` with
+`expected_payer`, the chain-assigned `deposit_id = seq.state.consumed_deposit_count`, a
+unique tx string, and market 0. It must call the **real** driver — a parallel test-only
+path would pin nothing. `a_below_floor_bootstrap_is_refused_before_either_leg_applies` and
+`a_successful_bootstrap_raises_insurance_without_raising_external_in_twice` call it with
+`expected_payer == from` so the payer binding is satisfied and the amount is what varies.
 
 - [ ] **Step 2: Run to confirm they fail**
 
