@@ -98,8 +98,12 @@ replayable at all — rather than teaching the gateway to tolerate replays. It p
 existing signature ABI (no new parameter, no re-signing scheme), needs no gateway state growth,
 and does not keep a secret blind alive past its single use.
 
-Store the **digest**, not the signature bytes: ECDSA signatures are malleable, so keying on
-signature bytes would admit a trivially mutated variant of the same authorization.
+Store the **digest**, not the signature bytes. Keying on signature bytes would tie replay
+protection to an encoding rather than to the authorization itself. *(The malleability argument
+is weaker here than it first appears: `_recover` already rejects high-`s` signatures
+(`contracts/src/CollateralVault.sol:138`), so the obvious mutated variant is refused anyway.
+Digest keying is still the right design — it is the authorization that should be one-shot, not
+one particular serialization of it.)*
 
 Cost: a contract change, so a fresh `CollateralVault` deploy. Acceptable — this workstream's
 cutover already requires fresh contracts.

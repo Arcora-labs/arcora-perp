@@ -138,6 +138,24 @@ it at the moment `FundInsurance` applies — `state.next_batch_id` is the open w
 parameter of `commit_window_settle` (`main.rs:2323-2330`), so this needs no post-state and no
 new `ProveOutcome` field. That is the whole reason to key on an id rather than on a predicate.
 
+**One false-negative ordering, and the primitive that closes it.** If window `J` — the one
+carrying `FundInsurance` — settles on-chain *before* the triggered post-seal snapshot persists,
+boot restores Counter B at `J` while the chain reads `J+1`. The recovery table returns **`Hold`**,
+not `RollForward` (`crates/gateway/src/rollback_journal.rs:182`), so `commit_window_settle` never
+runs and a **genuinely settled bootstrap never reaches `Complete`**. The deployment is then stuck
+with an endpoint that is one-shot and already spent.
+
+The fix is an **acknowledged snapshot**: a serialized snapshot operation that returns only after
+the write succeeded, and that the caller can await. Today's `snapshot_notify` (`main.rs:7017`) is
+internal, asynchronous and best-effort — it cannot serve. This piece must add or specify one, and
+it is needed in two places:
+
+1. after `FundInsurance` applies and its window seals, **before the settle is submitted**, so the
+   `Hold` ordering above cannot arise;
+2. after the operator's deposit authorization, **before the L1 deposit is sent** — see §9.
+
+Both are the same primitive. Specify it once.
+
 - **The marker (defect 2).** `Complete` is set at settle-commit, not at apply. Nothing else
   writes it, so no fill or liquidation can forge it and no depletion can clear it.
 - **Second-leg recovery.** If `Deposit` lands and `FundInsurance` fails, the record holds
@@ -276,8 +294,14 @@ is reachable — and properly once SEC-028 lands.
    alone and does not attempt another `Deposit`. Pin that a naive pair-retry would fail
    `DepositOutOfOrder`, so the test proves the resume path is load-bearing.
 5. **One-shot**: with the record `Complete`, the endpoint refuses.
-6. `Complete` is not reachable from a fill's insurance cut, a liquidation penalty, or a
-   `finalSettle` — only from a normal `settleBatch` commit.
+6. `Complete` is not reachable from a fill's insurance cut or a liquidation penalty — the
+   balance can move without the record moving. **Do not test that `finalSettle` cannot set
+   `Complete`**: §4 deliberately permits it, and an earlier version of this list contradicted
+   §4 by demanding the strong property the spec had just chosen not to claim. Test the property
+   §4 actually states — a proof-valid on-chain commit of the window carrying `FundInsurance`.
+7. The `Hold` ordering above: a settle that lands before its post-seal snapshot persists must
+   still reach `Complete`, or must be made unreachable by the acknowledged-snapshot barrier.
+   Assert whichever the implementation chooses, and make it fail without the barrier.
 7. Duplicate-tx and out-of-order bootstraps are refused — through whichever path §5 chooses,
    asserted against that path rather than assumed.
 
@@ -290,12 +314,21 @@ Order: deploy → operator registers, binds address, authorizes → **force a du
 before sending the L1 deposit** → deposits on L1 as id 0 → admin bootstrap → the window carrying
 `FundInsurance` settles → record reads `Complete` → **then** order ingress (025-D).
 
-The snapshot barrier is not optional. `account_authorize_deposit` stores the blind in memory
-only (`main.rs:1977-1983`) and snapshots are periodic (default 30 s, `main.rs:357`), so a crash
-between authorizing and snapshotting leaves the gateway unable to credit its own bootstrap
-deposit — stranding the capitalization and wedging the deposit queue on the very first leaf.
-This is a general defect, recorded as the second cause in SEC-028; the cutover works around it
-until SEC-028 fixes it properly.
+The snapshot barrier is not optional, and **no mechanism for it exists today**.
+`account_authorize_deposit` stores the blind in memory only (`main.rs:1977-1983`), snapshots are
+periodic (default 30 s, `main.rs:357`), and `snapshot_notify` (`:7017`) is internal, asynchronous
+and best-effort — a handler cannot await it or learn whether it succeeded. So "force a durable
+snapshot" is an instruction to an operator with no button to press.
+
+This piece must therefore **specify a serialized, success-acknowledged snapshot operation** and
+use it here. It is the same primitive §3 needs for the `Hold` ordering; one implementation
+serves both. `deposit_authorizations` is serialized inside `Gw` (verified), so a successful
+snapshot does durably capture the blind.
+
+Without it, a crash between authorizing and snapshotting leaves the gateway unable to credit its
+own bootstrap deposit — stranding the capitalization and wedging the deposit queue on the very
+first leaf. This is a general defect, recorded as the second cause in SEC-028; the cutover works
+around it until SEC-028 fixes it properly.
 
 ## 10. Gaps recorded, not solved
 
