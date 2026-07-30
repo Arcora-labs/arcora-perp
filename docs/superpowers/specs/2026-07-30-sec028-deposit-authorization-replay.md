@@ -69,8 +69,14 @@ blind out of band.
 4. Confirm the first. The gateway credits it and deletes the authorization.
 5. The second leaf is now permanently uncreditable, and the deposit stream is wedged.
 
-Cost: 2 base units of USDC plus gas. The attacker need not even confirm the first — leaving
-both uncredited wedges the stream just as effectively and costs the same.
+Cost: 2 base units of USDC plus gas.
+
+**Step 4 is required.** An earlier draft of this spec said the attacker "need not even confirm
+the first". That is wrong: until a credit succeeds, the authorization is still there, so both
+leaves remain creditable and the block is the ordinary **voluntary, recoverable** kind — the
+depositor can confirm whenever they choose. It is the *first successful credit* that deletes
+the blind and converts the second leaf into a permanent one. One unconfirmed leaf is enough to
+stall the queue; it is not enough to wedge it.
 
 ## Blast radius
 
@@ -85,27 +91,92 @@ both uncredited wedges the stream just as effectively and costs the same.
 
 ## Directions (not yet a design)
 
-Roughly in increasing order of intrusiveness:
+**Preferred: consume the digest on-chain.** Add a `usedDepositAuthorization[digest]` mapping to
+`CollateralVault` and mark it inside `deposit`, **before** `transferFrom` so a revert rolls the
+mark back with the rest of the call. This fixes the root cause — the signature stops being
+replayable at all — rather than teaching the gateway to tolerate replays. It preserves the
+existing signature ABI (no new parameter, no re-signing scheme), needs no gateway state growth,
+and does not keep a secret blind alive past its single use.
 
-1. **Do not delete the authorization** — retain `ownerCommit → blind` and rely on the
-   existing tx-hash dedup (`processed_deposit_txs`) to stop double-crediting, which is what
-   actually prevents it. The deleted-blind comment calls itself "defense in depth"; it is
-   the load-bearing cause here. Cheapest, and it makes every replayed leaf creditable, which
-   is exactly the contract's stated invariant. Needs care: retaining blinds grows state and
-   keeps a secret alive longer than one use.
-2. **Bind the id or a nonce into the signature.** Contract change; the contract explicitly
-   rejected binding `depositCount` because the gateway cannot predict the landing index — but
-   a gateway-chosen *nonce* consumed in a mapping has no such problem.
+Store the **digest**, not the signature bytes: ECDSA signatures are malleable, so keying on
+signature bytes would admit a trivially mutated variant of the same authorization.
+
+Cost: a contract change, so a fresh `CollateralVault` deploy. Acceptable — this workstream's
+cutover already requires fresh contracts.
+
+Alternatives considered:
+
+1. **Do not delete the authorization** — retain `ownerCommit → blind` so every replayed leaf
+   stays creditable. Gateway-only, no contract change, and SEC-026-safe (verified below). But
+   it *accommodates* the replay rather than preventing it, retains a secret past its single
+   use, and grows gateway state without a safe eviction policy (see below). Viable fallback if
+   a contract deploy is off the table; not the first choice.
+2. **Bind an id or nonce into the signature.** The contract deliberately does not bind
+   `depositCount`, because the gateway cannot predict the landing index at signing time. A
+   gateway-chosen nonce avoids that, but changes the signature ABI and the gateway's signing
+   path for no benefit over consuming the digest.
 3. **An operator path to credit a stuck leaf** with a re-supplied blind. Re-opens exactly the
-   confiscation surface 025-A had to design around, so this is the least attractive.
+   confiscation surface 025-A had to design around. Least attractive.
 
-Option 1 looks correct and small, but the interaction with SEC-026 historical commitment
-uniqueness needs checking before it is chosen: two identical `(owner, asset, amount, blind)`
-notes produce the same commitment, and `mint_note` rejects any historically used commitment
-(`engine.rs:427-435`). The note blind is `0xB0 ‖ deposit_counter` and the counter bumps per
-successful credit, so two credits get different note blinds — but that must be verified, not
-assumed, because it is the difference between option 1 working and option 1 wedging
-differently.
+*(Note for whichever option is chosen: `processed_deposit_txs` is not the only double-credit
+protection. The contiguous-id check independently rejects replaying an already-consumed leaf,
+so the tx-hash dedup is defence in depth on that axis too.)*
+
+### The SEC-026 interaction — verified, and option 1 survives it
+
+Option 1's risk was that crediting two leaves for the same `(owner, amount)` would produce the
+same note commitment and be rejected by historical uniqueness — trading one wedge for another.
+**It does not.** Verified at source:
+
+- The note blind is 32 bytes of `0xB0` with the first eight overwritten by the account's
+  `deposit_counter` in little-endian (`crates/gateway/src/main.rs:2067-2069`).
+- The counter is **per account, monotonic, and bumped only on success** (`:2134`).
+- `mint_note` rejects a commitment already in the tree (`crates/perp-core/src/engine.rs:427-435`).
+
+So the first credit uses `0xB0 ‖ N` and the second `0xB0 ‖ N+1` — different blinds, different
+commitments, no `DuplicateCommitment`. The tree already reasons about exactly this: the comment
+at `main.rs:2064-2066` cites "SEC-026 review F2" and states the property directly.
+
+Crediting both is also the *correct* outcome: the user really did pay twice, so they should be
+credited twice. Today's behaviour strands the second payment **and** wedges the queue.
+
+### What option 1 still has to solve
+
+Retaining authorizations indefinitely grows state without bound, and keeps a secret blind alive
+past its single use — which is the stated reason the deletion exists. Neither is fatal, but a
+naive fix trades a wedge for a leak and a leak for an unbounded map.
+
+**An expiry policy would reintroduce the bug**: any authorization that expires while an
+un-landed leaf can still reference it recreates the uncreditable leaf, and the gateway cannot
+know whether such a leaf exists. So the retention must be bounded by *refusing new
+authorizations at a per-account cap* rather than by evicting old ones — never drop a blind that
+some leaf might still need.
+
+## A second, independent cause of the same wedge — authorization durability
+
+Found in the same review, and **not fixed by any of the options above.**
+
+`account_authorize_deposit` inserts the blind into memory only (`main.rs:1977-1983`), and the
+handler returns the signature immediately. Snapshots are periodic — every `SNAPSHOT_SECS`,
+default 30 (`main.rs:357`, `:7043`). So:
+
+1. The user calls `/authorize` and receives a signed tuple.
+2. The gateway crashes before the next snapshot.
+3. The user's deposit lands on L1 (or already had).
+4. The restored gateway has **no record of the blind**, and the leaf is uncreditable —
+   permanently, by the same mechanism as the replay case.
+
+This needs no attacker and no replay: an ordinary user and an ordinary crash suffice. The
+window is up to `SNAPSHOT_SECS` wide on every authorization the gateway issues.
+
+**Fix direction:** make the authorization durable *before* the signature leaves the process —
+either a synchronous snapshot barrier on that path, or a small append-only authorization log
+that boot replays. Returning a signature for a deposit the gateway cannot later credit is the
+defect; the signature is a promise the gateway has not yet made durable.
+
+This matters acutely at cutover: the operator's own bootstrap deposit runs through exactly this
+path, so a crash in that window strands the capitalization *and* wedges the queue on the very
+first deposit. 025-A's cutover must force a durable authorization before the L1 deposit is sent.
 
 ## Relationship to 025-A
 

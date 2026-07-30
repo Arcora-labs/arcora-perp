@@ -13,10 +13,19 @@ production callers. This piece is that caller. The two must cut over together.
 ## The gap
 
 025-C made the production genesis honest, so `insurance_fund` starts at **0** and grows only
-from the per-fill cut — 2 bps of notional (`crates/gateway/src/main.rs:350-352`). Zero
-insurance is terminal, not merely thin: the bad-debt waterfall runs insurance → ADL →
-`Mode::CloseOnly`, and only `EnterCloseOnly` exists. A first bad debt on an uncapitalized
-deployment can wind it down permanently.
+from the per-fill cut — 2 bps of notional (`crates/gateway/src/main.rs:350-352`).
+
+The hazard, stated precisely. An earlier draft of this spec said "zero insurance is terminal".
+**That is false**, and it contradicts the very test it cited: with insurance exhausted, ADL
+covers the residual and the system stays `Mode::Normal`
+(`crates/perp-core/tests/lifecycle.rs:615-620`). The waterfall is insurance → ADL →
+`CloseOnly`, and only the *last* step is terminal — `EnterCloseOnly` has no inverse.
+
+So the real exposure of an uncapitalized deployment is: every bad debt is paid by **clawing
+real users through ADL** instead of by the backstop, and `CloseOnly` — which is terminal —
+trips only when ADL also runs out of winners to claw. That is bad enough to gate a launch on.
+It is not the same as "one bad debt ends the deployment", and the spec should not borrow
+urgency it does not have.
 
 ## What the first version got wrong
 
@@ -48,7 +57,7 @@ recorded at `main.rs:4960-4962`.
 
 *(Correction to the first version: that spec claimed the compare leaks neither key length nor
 matching-prefix length. The prefix half is true — no early exit. The length half is false: the
-loop runs `max(a.len(), b.len())` iterations (`main.rs:4981`), so a presentation shorter than
+loop runs `max(a.len(), b.len())` iterations (`main.rs:4986`), so a presentation shorter than
 the configured key reveals the configured length through iteration count. Minor, pre-existing,
 and not this piece's to fix — but do not repeat the claim.)*
 
@@ -76,9 +85,11 @@ The honest claim, which is what this piece should test:
 > any custodied note directly.
 
 That residual is not new and not this piece's to close: the gateway already custodies every
-account's wallet (`main.rs:996`, Phase-0 custody acknowledged at `:1829`), and a compromised
-gateway can already forge the oracle price outright — a strictly larger capability. Closing it
-means removing custody, which is Phase 1.
+account's wallet (`main.rs:996`, Phase-0 custody acknowledged at `:1829`). **Phase-0 custody is
+by itself the sufficient residual-risk argument.** An earlier draft also called oracle-price
+forgery "a strictly larger capability"; that is unsupported — it is a *different* capability,
+and the custody argument does not need the comparison. Closing this means removing custody,
+which is Phase 1.
 
 Two further limits worth naming, both verified: an ordinary user cannot spoof `from`, because
 the vault emits `msg.sender` and pulls tokens from that same address
@@ -95,10 +106,29 @@ defects at once:
 ```
 enum Bootstrap {
     NotStarted,
-    DepositApplied { note_commitment: Digest, spend_key: Digest, deposit_id: u64 },
+    DepositApplied   { note_commitment: Digest, spend_key: Digest, deposit_id: u64 },
+    InsuranceApplied { window_id: u64 },
     Complete,
 }
 ```
+
+**Why there are four states and not three.** A three-state version — transitioning to
+`Complete` when the window carrying the *deposit* commits — is wrong in two orderings, both
+of which the review found:
+
+- `Deposit` succeeds, `FundInsurance` fails. The deposit alone moved the state root, so that
+  window is settleable (`main.rs:2299-2303`), its `settleBatch` lands, and `Complete` would be
+  set **although no `FundInsurance` ever settled** — the exact fabrication this whole workstream
+  exists to remove.
+- The first leg's window is sealed, and the endpoint then applies `FundInsurance` into the
+  *next* window while proving runs without the lock (`main.rs:7325`, `:7376`). Committing the
+  earlier window must not complete the bootstrap.
+
+So the window that matters is the one carrying the **second** leg. `InsuranceApplied` records
+it at the moment `FundInsurance` applies — `state.next_batch_id` is the open window's id — and
+`Complete` is set when `commit_window_settle` commits **that** id. `batch_id` is already a
+parameter of `commit_window_settle` (`main.rs:2323-2330`), so this needs no post-state and no
+new `ProveOutcome` field. That is the whole reason to key on an id rather than on a predicate.
 
 - **The marker (defect 2).** `Complete` is set at settle-commit, not at apply. Nothing else
   writes it, so no fill or liquidation can forge it and no depletion can clear it.
@@ -140,12 +170,29 @@ true (`crates/sequencer/src/lib.rs:1367-1387`). The conclusion is false:
   after `seal_window` journalled a witness containing the bootstrap but before the post-seal
   snapshot lands, boot classifies it `SealNeverPersisted` and deletes the journal without
   replaying its ops (`rollback_journal.rs:182`, `main.rs:229`). The comment calling this safe
-  (`main.rs:7353`) assumes the restored pre-seal snapshot contains everything applied before
+  (`main.rs:7360-7361`) assumes the restored pre-seal snapshot contains everything applied before
   sealing — which is exactly what a 30-second snapshot window does not guarantee.
 
-So `Complete` transitions in `commit_window_settle`, from the replayed post-state, and only
-for a normal `settleBatch`. This is the same transition point 025-D needs for the trading
-gate; **the two must share it rather than each inventing one.**
+So `Complete` transitions in `commit_window_settle`. **Not** "from the replayed post-state" —
+an earlier draft said that, and the post-state is not there: `commit_window_settle` receives no
+witness and no state, and the replay built in `prove_and_prepare` is discarded with exactly one
+scalar surviving it (`prover_client.rs:171-173`, `:268`). The transition is the `window_id`
+comparison of §3, which needs neither.
+
+**On `finalSettle`.** Both roll-forward arms (`main.rs:7566`, `:273`) reach
+`commit_window_settle`, and neither can tell a `settleBatch` from a `finalSettle`: the two
+advance `currentStateRoot` and `batchCount` identically
+(`contracts/src/DarkPerpSettlement.sol:346-348` vs `:397-399`), the gateway reads no logs but
+challenges, and it has no `closeOnly` read path at all. So a governance `finalSettle` landing
+the journal's prepared root could set `Complete`.
+
+025-D must defend against that, because opening *trading* on a wind-down is a real harm.
+**025-A should not.** If a `finalSettle` committed the bootstrap window, the capitalization
+genuinely landed and was proof-verified on-chain, and the deployment is in terminal close-only
+anyway. So the property this piece claims and tests is the weaker, honest one — *a proof-valid
+on-chain commit of the window carrying `FundInsurance`* — not "a normal `settleBatch`". Claiming
+the strong version while testing the weak one is exactly how a spec acquires a mitigation it
+cannot perform.
 
 ## 5. The helper must refactor, not duplicate
 
@@ -231,9 +278,16 @@ is reachable — and properly once SEC-028 lands.
 Shares SEC-024's cutover (rebuilt guest, fresh `SP1ZkVerifier`). This piece adds no
 `perp-core` change, so it moves no root or vkey of its own; it does move the snapshot magic.
 
-Order: deploy → operator registers, binds address, authorizes, deposits on L1 as id 0 → admin
-bootstrap → the bootstrap window settles → record reads `Complete` → **then** order ingress
-(025-D).
+Order: deploy → operator registers, binds address, authorizes → **force a durable snapshot
+before sending the L1 deposit** → deposits on L1 as id 0 → admin bootstrap → the window carrying
+`FundInsurance` settles → record reads `Complete` → **then** order ingress (025-D).
+
+The snapshot barrier is not optional. `account_authorize_deposit` stores the blind in memory
+only (`main.rs:1977-1983`) and snapshots are periodic (default 30 s, `main.rs:357`), so a crash
+between authorizing and snapshotting leaves the gateway unable to credit its own bootstrap
+deposit — stranding the capitalization and wedging the deposit queue on the very first leaf.
+This is a general defect, recorded as the second cause in SEC-028; the cutover works around it
+until SEC-028 fixes it properly.
 
 ## 10. Gaps recorded, not solved
 
