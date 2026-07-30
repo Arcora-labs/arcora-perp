@@ -4402,8 +4402,11 @@ type SnapshotAck = tokio::sync::oneshot::Sender<bool>;
 ///
 /// `expect(dead_code)`: Task 1 lands the primitive only; its first production callers
 /// are the SEC-025-A bootstrap legs in later tasks (tests exercise it today, hence
-/// `not(test)` — the expectation self-enforces the follow-up: the moment a production
-/// caller lands, the attribute errors and must be deleted).
+/// `not(test)`). The moment a production caller lands, the expectation goes unfulfilled
+/// and must be deleted — enforced by CI, which runs clippy with `-D warnings`
+/// (`.github/workflows/ci.yml:21`), NOT by rustc: a local `cargo build` or bare `cargo
+/// clippy` still exits 0 with only a warning. Precise because the difference is the
+/// difference between a gate and a hope.
 #[cfg_attr(not(test), expect(dead_code))]
 async fn snapshot_now(req: &Option<tokio::sync::mpsc::Sender<SnapshotAck>>) -> Result<(), String> {
     let Some(tx) = req else {

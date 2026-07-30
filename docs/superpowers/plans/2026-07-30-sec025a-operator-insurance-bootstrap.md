@@ -895,9 +895,14 @@ reaches `Complete` — with the one-shot already spent.
 
 Task 1 marked `snapshot_now` and `App.snapshot_req` with `#[cfg_attr(not(test), expect(dead_code))]`
 and `#[expect(dead_code)]` respectively, because nothing called them yet. This task adds the
-production callers, so **both suppressions must come off**. `#[expect]` will fail the build once
-the item is used, so the compiler enforces this — but if you find yourself keeping one to make a
-build pass, that means a barrier is not actually wired, which is the defect.
+production callers, so **both suppressions must come off**.
+
+Once an item is used, the expectation goes unfulfilled and clippy warns — which **CI promotes
+to a failure** via `-D warnings` (`.github/workflows/ci.yml:21`). It is a CI gate, not a rustc
+error: a local `cargo build` still exits 0. So do not rely on the compiler to remind you; the
+signal is `cargo clippy --workspace --all-targets` printing anything other than "No issues
+found". If you find yourself keeping a suppression to quiet that, it means a barrier is not
+actually wired — which is the defect, not the lint.
 
 - [ ] **Step 7: Run the full workspace**
 
