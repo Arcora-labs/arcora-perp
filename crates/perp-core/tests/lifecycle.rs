@@ -9,7 +9,7 @@ use perp_core::hash::{word_u64, Keccak256};
 use perp_core::note::owner_from_spend_key;
 use perp_core::oracle::{oracle_digest, OracleSig, OracleTranscript};
 use perp_core::order::Side;
-use perp_core::{DefaultState, EngineError, Market, Mode, Note};
+use perp_core::{DefaultState, EngineError, FillLeg, Market, Mode, Note};
 
 const TREE_DEPTH: u8 = 20;
 
@@ -319,9 +319,14 @@ fn invariant_post_fill_margin_sufficiency() {
             now_ms: 1_000,
         })
         .unwrap_err();
+    // SEC-024 (SEC-022 carry-in): a fill margin failure names the staged leg that
+    // violated — the taker here, checked first with only half the required initial.
     assert_eq!(
         err,
-        EngineError::Risk(perp_core::RiskError::InsufficientMargin)
+        EngineError::Risk {
+            source: perp_core::RiskError::InsufficientMargin,
+            leg: Some(FillLeg::Taker),
+        }
     );
     // atomic: the rejected fill left NO position open
     assert!(s.position(&a, 0).is_none_or(|p| p.size == 0));

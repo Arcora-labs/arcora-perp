@@ -19,7 +19,7 @@ use crate::market::MarketId;
 use crate::note::{owner_from_spend_key, Note, PubKey};
 use crate::oracle::OracleTranscript;
 use crate::order::Side;
-use crate::position::Position;
+use crate::position::{Position, RiskError};
 use crate::state::{Mode, State};
 use alloc::vec::Vec;
 
@@ -627,7 +627,18 @@ impl<H: Hasher> State<H> {
                 FillLeg::Maker
             };
             if increasing {
-                pos.check_initial_margin(&market, mark, funding_index)?;
+                // SEC-024 (SEC-022 carry-in): name the failing leg. A leg-less Risk is
+                // non-attributable, so the sequencer's dry run recorded BOTH order
+                // hashes and accepted without rematching — burning the innocent
+                // counterparty's already-consumed resting liquidity.
+                pos.check_initial_margin(&market, mark, funding_index)
+                    .map_err(|e| match e {
+                        RiskError::Overflow => EngineError::Overflow,
+                        source => EngineError::Risk {
+                            source,
+                            leg: Some(leg),
+                        },
+                    })?;
             }
             // SEC-022 §3 — the solvency postcondition, checked on the STAGED leg before
             // anything commits. Conditional by design:
@@ -957,9 +968,11 @@ impl<H: Hasher> State<H> {
             .get(&key)
             .ok_or(EngineError::UnknownPosition)?;
         if pos.collateral < amount {
-            return Err(EngineError::Risk(
-                crate::position::RiskError::InsufficientMargin,
-            ));
+            // Not a fill: no leg to name (SEC-024 / SEC-022 carry-in).
+            return Err(EngineError::Risk {
+                source: RiskError::InsufficientMargin,
+                leg: None,
+            });
         }
         pos.collateral -= amount;
         // if still open, must remain ≥ initial margin after the withdrawal.
