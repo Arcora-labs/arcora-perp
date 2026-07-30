@@ -40,15 +40,9 @@ pub enum Bootstrap {
 }
 
 /// Whether an operator bootstrap amount is large enough to be worth the one-shot.
-///
-/// `expect(dead_code)`: Task 2 lands the record and the floor only; the first
-/// production caller is the bootstrap endpoint in a later task (tests exercise it
-/// today, hence `not(test)`) — the `snapshot_now` pattern. The moment a production
-/// caller lands, the expectation goes unfulfilled and must be deleted — enforced by
-/// CI, which runs clippy with `-D warnings`. Marking the fn alone suffices: rustc
-/// treats an expected-dead item as a live root, so `MIN_BOOTSTRAP_INSURANCE` (read
-/// here) counts as used and must NOT carry a marker of its own.
-#[cfg_attr(not(test), expect(dead_code))]
+/// Production caller: `Gw::bootstrap_insurance`, which runs this check FIRST so a
+/// below-floor amount cannot spend the one-shot (the Task-2 `expect(dead_code)`
+/// came off with that caller, as its contract required).
 pub fn amount_meets_floor(amount: i128) -> bool {
     amount >= MIN_BOOTSTRAP_INSURANCE
 }
