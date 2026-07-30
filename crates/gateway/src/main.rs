@@ -86,7 +86,13 @@ enum DepositPosture {
     /// The gateway has consumed MORE deposits than the vault ever received. A correct
     /// gateway can only ever credit deposits the vault actually holds, so this has no
     /// false positives — it is exactly the unbacked-deposit signature (a demo-derived
-    /// genesis, or a demo snapshot booted under production posture).
+    /// genesis, or a demo snapshot booted under production posture). The converse does
+    /// NOT hold: this detects unbacked deposit LEAVES, not unbacked mints in general —
+    /// it is complete today only because every unbacked credit routes through `fund` →
+    /// `fund_amount` (the sole emitter of the `Deposit` batch op). `SeedInsurance` is
+    /// the known exception: it inflates `insurance_fund` with no deposit leaf, so a
+    /// snapshot carrying only that residual passes this check (SEC-024's scope — it
+    /// deprecates the op).
     UnbackedCount,
     /// The counts are consistent, but the vault's recorded prefix tip at the gateway's
     /// consumed count differs from the gateway's fold — the consumed leaves are not the
@@ -6843,13 +6849,16 @@ async fn main() {
                             "[state] REFUSING to start: the gateway has consumed {gw_count} \
                              deposits (tip {gw_tip}) but the vault has only ever received \
                              {vault_count} — the gateway credited deposits the vault never \
-                             received. This signature is almost always a demo-derived genesis \
-                             or a demo snapshot booted under production posture; left running \
-                             it strands real USDC (every real deposit is refused as \
+                             received. If this gateway was previously healthy: a stale read \
+                             from a load-balanced RPC backend produces this exact signature, \
+                             so restart and let the check re-read before concluding the state \
+                             is unbacked. If it persists, this is almost always a demo-derived \
+                             genesis or a demo snapshot booted under production posture; left \
+                             running it strands real USDC (every real deposit is refused as \
                              out-of-order, and both settleBatch and finalSettle revert at the \
-                             deposit-prefix pin). The remedy is fresh contracts at an honest \
-                             genesis plus a snapshot wipe (delete DARKPERP_STATE) — not a \
-                             restart."
+                             deposit-prefix pin). The remedy for a genuinely unbacked state is \
+                             fresh contracts at an honest genesis plus a snapshot wipe (delete \
+                             DARKPERP_STATE) — a restart alone cannot repair it."
                         );
                         std::process::exit(1);
                     }
