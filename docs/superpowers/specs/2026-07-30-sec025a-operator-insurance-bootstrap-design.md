@@ -170,9 +170,16 @@ Both are the same primitive. Specify it once.
   next same-owner, same-amount deposit colliding with the live note — commitments bind owner,
   asset, amount and blind, but not `from`, id, or deposit blind (`note.rs:39`), and historical
   uniqueness rejects a repeat (`engine.rs:427-435`).
-- **One-shot (defect 8).** The endpoint refuses when the record is `Complete`. Without this
-  the endpoint is a runtime top-up path — which the first version declared a non-goal while
-  designing no condition that would prevent it.
+- **One-shot (defect 8), keyed on reaching the floor rather than on being called.** `Complete`
+  is set only when the settled `insurance_fund` meets `MIN_BOOTSTRAP_INSURANCE`; until then the
+  endpoint stays open for a further bootstrap, and once `Complete` it refuses permanently.
+
+  Counting calls instead would deadlock across time: 025-A could complete under floor F1 and a
+  later 025-D build with a raised F2 would refuse to open while the spent one-shot refused to
+  top up. Keying on the floor also absorbs a partial capitalization, and it still forecloses the
+  runtime top-up path this condition exists to prevent — the endpoint shuts the moment the fund
+  is adequate. (025-D additionally requires that A and D ship as **one artifact**, since they
+  cut over together.)
 
 Cost: a new field on `Gw`, so the snapshot format moves. `DPSNAP3 → DPSNAP4`. Acceptable —
 this cutover already requires a state wipe. The first version's "no new field, no snapshot

@@ -123,6 +123,20 @@ amended to carry it: **025-A must reject a bootstrap whose amount is below
 `MIN_BOOTSTRAP_INSURANCE` before applying either leg**, so the one-shot can never be spent on an
 insufficient amount. The constant lives in one module that both read.
 
+**One shared constant closes same-build drift but not temporal drift.** A could complete under
+floor F1, and a later 025-D build with a raised F2 would then refuse to open while 025-A's
+one-shot refuses to top up — the same deadlock, arrived at through time instead of through
+arithmetic. Two things close it, and this spec requires both:
+
+1. **A and D ship as one artifact.** They are already in the same cutover bundle and must cut
+   over together; make that a stated constraint rather than an accident of sequencing.
+2. **025-A's one-shot is keyed on reaching the floor, not on being called.** `Complete` is set
+   only when the settled `insurance_fund` meets `MIN_BOOTSTRAP_INSURANCE`; until then the
+   endpoint stays open for a further bootstrap. This is strictly better than counting calls: it
+   also absorbs a partial capitalization, and it cannot become a runtime top-up path, because
+   the moment the fund is adequate the endpoint closes permanently — which is the hazard the
+   one-shot existed to prevent.
+
 ### The latch is one-way — and the honest reason is not the one I first gave
 
 An earlier draft justified never re-closing by saying `Mode::CloseOnly` already handles a
@@ -203,11 +217,32 @@ on-chain discriminator" and that this needed a new subsystem was wrong.
 
 **All three reads must be pinned to one block.** Three independent "latest" calls through a
 lagging or load-balanced RPC could observe them at different heights and defeat the argument.
+`cast call --block <height|hash>` supports this; `current_root` and `batch_count` need
+block-aware variants alongside the new boolean reader.
+
+**A failed or stale read must RETRY, never commit closed.** This is the second way "safe" stops
+being "live", and it is sharper than the first. The opening check runs once per commit, and a
+commit is not repeatable — so a read that errors, or that lands on a coherent but *lagging*
+pre-settle block, would evaluate false, the bookkeeping would commit anyway, and **the only
+opening opportunity would be gone permanently**. 025-A's endpoint is one-shot and cannot
+manufacture another window.
+
+So the rule is asymmetric, and must be written that way in the code:
+
+> Only a **successfully observed** mismatch — a root or count that does not match, or
+> `closeOnly == true` — may commit the gate as closed. A read error, or an observation whose
+> `batchCount` is behind `J+1`, is **inconclusive**: retry, and if it stays inconclusive leave
+> the gate's decision pending rather than resolving it against opening.
+
+Treat inconclusive exactly as the settle path already treats an ambiguous landing — hold and log
+loudly — rather than inventing a second vocabulary for the same situation.
 
 **Finality policy must be explicit.** `send_args` supplies no confirmation depth
-(`l1.rs:604-617`) and `cast` defaults to one confirmation. If "demonstrably settled" is meant to
-survive a reorg, this spec has to say how many confirmations the opening read requires; one
-confirmation is a policy choice, not a default to inherit silently.
+(`l1.rs:604-617`) and `cast` defaults to one confirmation. **This spec sets the policy: the
+opening read requires the pinned block to be at least `GATE_OPEN_CONFIRMATIONS` deep**, a named
+constant beside `MIN_BOOTSTRAP_INSURANCE`. One confirmation is a choice, not a default to
+inherit silently — and a reorg that unwound the capitalization settle after the gate opened
+would leave trading enabled against a fund that no longer exists on L1.
 
 ## 5. Where the gate is enforced
 
