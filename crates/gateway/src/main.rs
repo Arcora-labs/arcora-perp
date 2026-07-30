@@ -44,6 +44,7 @@ use perp_core::order::{Finality, Order, Side, TimeInForce};
 use perp_core::state::Mode;
 use sequencer::{adl_tag, adl_tag_key, EnclaveIdentity, SealedBatch, Sequencer, WindowWitness};
 
+mod bootstrap;
 mod candles;
 mod enclave_epoch;
 mod l1;
@@ -1134,6 +1135,11 @@ struct Gw {
     /// snapshot load still requires a state reset/migration — handled by the migration slice.
     #[serde(default)]
     last_settled_root: Digest,
+    /// SEC-025-A: the operator insurance bootstrap state machine. Persisted, because a
+    /// crash between the two legs must not lose the `(cm, spend_key)` the second leg
+    /// needs, and because `Complete` is what 025-D's launch gate reads.
+    #[serde(default = "bootstrap_not_started")]
+    bootstrap: bootstrap::Bootstrap,
     /// On-chain deposit tx hashes already credited (idempotency / replay guard).
     processed_deposit_txs: std::collections::BTreeSet<String>,
     /// Manifest hash of the most recently sealed batch. SEC-025-B: no longer read —
@@ -1260,6 +1266,10 @@ fn dev_fallback_chain_id() -> u64 {
 }
 fn dev_fallback_vault() -> [u8; 20] {
     DEV_FALLBACK_VAULT
+}
+
+fn bootstrap_not_started() -> bootstrap::Bootstrap {
+    bootstrap::Bootstrap::NotStarted
 }
 
 /// Advisory lifetime of a published order-ingress epoch key (§5.1). Clients should
@@ -1719,6 +1729,7 @@ impl Gw {
             withdraw_proofs: std::collections::BTreeMap::new(),
             window_withdrawals: Vec::new(),
             last_settled_root: genesis_root,
+            bootstrap: bootstrap::Bootstrap::NotStarted,
             processed_deposit_txs: std::collections::BTreeSet::new(),
             last_manifest: [0u8; 32],
             pending_ordered: Vec::new(),
@@ -8983,6 +8994,20 @@ mod tests {
         assert_eq!(
             restored.vault, DEV_FALLBACK_VAULT,
             "vault not persisted; restore re-applies the dev fallback"
+        );
+    }
+
+    #[test]
+    fn the_bootstrap_record_survives_a_snapshot_round_trip() {
+        let mut gw = Gw::boot();
+        gw.bootstrap = bootstrap::Bootstrap::InsuranceApplied { window_id: 42 };
+        let plain = gw.snapshot_plain();
+        let restored = Gw::boot_restored(&plain).expect("restore");
+        // The launch gate 025-D will read this, so losing it across a restart would
+        // silently reopen the question the record exists to answer.
+        assert_eq!(
+            restored.bootstrap,
+            bootstrap::Bootstrap::InsuranceApplied { window_id: 42 }
         );
     }
 

@@ -48,7 +48,12 @@ use std::path::Path;
 /// same ops) instead of failing loudly at boot. The journal's v4 bump
 /// (`rollback_journal.rs::MAGIC`) refuses this exact hazard through the journal
 /// door; this refuses it through the snapshot door.
-const MAGIC: &[u8; 8] = b"DPSNAP3\0";
+/// v4: SEC-025-A added `Gw.bootstrap`, the operator insurance bootstrap record. `Gw` is
+/// encoded positionally by postcard (`snapshot_plain` writes `(self, mkt_px)`), so a v3
+/// snapshot read by a v4 binary shifts every field after it. `#[serde(default)]` does not
+/// rescue that — postcard is not self-describing. SEC-025-D adds another `Gw` field and
+/// takes DPSNAP5; do not reuse v4 for it.
+const MAGIC: &[u8; 8] = b"DPSNAP4\0";
 
 /// Keystream block derived from the SECRET seed and the per-snapshot nonce.
 fn keystream(seed: &[u8; 32], nonce: &Digest, len: usize) -> Vec<u8> {
