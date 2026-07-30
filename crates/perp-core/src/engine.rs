@@ -770,11 +770,17 @@ impl<H: Hasher> State<H> {
         let notional = pos.notional(price).ok_or(EngineError::Overflow)?;
         let penalty =
             apply_rate(notional, market.liquidation_fee_ratio).ok_or(EngineError::Overflow)?;
-        // close the whole position at oracle price
-        let pos = self.positions.get_mut(&key).unwrap();
-        let close_delta = -pos.size;
-        let (realized, funding) = pos.apply_fill(close_delta, price, funding_index)?;
-        self.vault_pool = self
+        // SEC-024 (SEC-022 §4, carried into op_liquidate): stage EVERY fallible value
+        // on a COPY before the first mutation. This op used to close the position via
+        // `apply_fill` and only THEN run the fallible vault-pool / insurance-fund
+        // arithmetic, so a late overflow returned `Err` with the position already
+        // closed — and `run_maintenance` logs an op only on success, so the live root
+        // reflected a close the replayable op-log did not contain, wedging the next
+        // proof. Close the whole position at oracle price, staged:
+        let mut staged = *pos;
+        let close_delta = -staged.size;
+        let (realized, funding) = staged.apply_fill(close_delta, price, funding_index)?;
+        let new_vault_pool = self
             .vault_pool
             .checked_sub(realized)
             .ok_or(EngineError::Overflow)?
@@ -783,13 +789,26 @@ impl<H: Hasher> State<H> {
         // Take the liquidation penalty from any remaining (positive) collateral
         // into the insurance fund. Bad debt (a close that left collateral < 0) is
         // then handled by the waterfall below: insurance backstop → ADL → close-only.
-        let pos = self.positions.get_mut(&key).unwrap();
-        let take = penalty.min(pos.collateral.max(0));
-        pos.collateral -= take;
-        self.insurance_fund = self
+        // `take ∈ [0, max(collateral, 0)]`, so the sub cannot actually fail — checked
+        // anyway (crate rule: every arithmetic step is `checked_*`), and still before
+        // the first mutation.
+        let take = penalty.min(staged.collateral.max(0));
+        staged.collateral = staged
+            .collateral
+            .checked_sub(take)
+            .ok_or(EngineError::Overflow)?;
+        let new_insurance_fund = self
             .insurance_fund
             .checked_add(take)
             .ok_or(EngineError::Overflow)?;
+
+        // commit — infallible from here down. The bad-debt waterfall below runs
+        // against committed state by design (it is not part of the fallible close:
+        // its arithmetic is saturating/bounded and it only moves value between
+        // committed balances).
+        self.positions.insert(key, staged);
+        self.vault_pool = new_vault_pool;
+        self.insurance_fund = new_insurance_fund;
 
         // Insurance backstop (§6, §9): if the close left the position underwater
         // (bad debt — a gap-down past the maintenance buffer), draw from the

@@ -1112,6 +1112,176 @@ fn a_liquidation_absorbed_by_insurance_reports_no_adl_haircuts() {
     assert!(s.conservation_holds());
 }
 
+/// A SOLVENT-but-liquidatable fixture for the SEC-024 atomicity tests: A funds $6k
+/// and opens 0.5 BTC long at $100k against B. At $90k the loss is $5k → equity
+/// ~$1k < maintenance $2.25k (5% of $45k), so A is liquidatable — yet the close
+/// leaves ~$550 positive collateral after the 1% penalty, so BOTH fallible
+/// post-close paths (vault-pool arithmetic AND the insurance penalty add) are
+/// reached with no bad-debt waterfall in play. The caller MUST assert the
+/// liquidatability precondition at its chosen price (mandated: a fixture that
+/// silently exercises `NotLiquidatable` passes for the wrong reason).
+fn solvent_liquidatable_setup() -> DefaultState {
+    let mut s = fresh_state();
+    let (a, b) = (owner_of(1), owner_of(2));
+    for (o, sk, amt) in [(a, 1u8, 6_000i128), (b, 2u8, 20_000)] {
+        let bl = [sk; 32];
+        let cm = deposit_commit(o, amt * QUOTE_SCALE, bl);
+        s.apply_batch(&[
+            BatchOp::Deposit {
+                owner: o,
+                asset_id: 0,
+                amount: amt * QUOTE_SCALE,
+                blinding: bl,
+                from: [sk; 20],
+                deposit_id: s.consumed_deposit_count,
+                deposit_blind: [0xDBu8; 32],
+            },
+            BatchOp::FundPosition {
+                owner: o,
+                market_id: 0,
+                note_commitment: cm,
+                spend_key: [sk; 32],
+            },
+        ])
+        .unwrap();
+    }
+    s.apply_op(&BatchOp::Fill {
+        taker: a,
+        maker: b,
+        market_id: 0,
+        taker_side: Side::Buy,
+        size: SIZE_SCALE / 2,
+        price: 100_000 * PRICE_SCALE,
+        oracle: oracle(100_000, 1_000),
+        now_ms: 1_000,
+    })
+    .unwrap();
+    s
+}
+
+/// The mandated fixture precondition: A really is liquidatable at $90k. Without
+/// this, a drifted fixture would exercise `NotLiquidatable` and the overflow tests
+/// below would pass without ever reaching the poisoned arithmetic.
+fn assert_liquidatable_at_90k(s: &DefaultState) {
+    let market = *s.markets.get(&0).unwrap();
+    let fi = s.funding.get(&0).map(|f| f.cumulative_index).unwrap_or(0);
+    assert!(
+        s.position(&owner_of(1), 0)
+            .unwrap()
+            .is_liquidatable(&market, 90_000 * PRICE_SCALE, fi),
+        "fixture precondition violated: A must be liquidatable at $90k"
+    );
+}
+
+/// SEC-024 (SEC-022 carry-in): op_liquidate mutated the position via apply_fill and
+/// THEN ran fallible vault/insurance arithmetic. A late overflow returned Err with
+/// the position already closed, while run_maintenance logs an op only on success —
+/// so the live root reflected a mutation the replayable op-log did not contain, and
+/// the next proof wedged. Every fallible path must leave state byte-identical.
+///
+/// Variant 1: poison the VAULT POOL so the post-close pool arithmetic overflows.
+/// The liquidated loser's realized PnL is negative, so the pool GAINS
+/// (`checked_sub` of a negative) — the poison that trips is `i128::MAX`, not MIN.
+#[test]
+fn liquidation_overflow_in_vault_pool_leaves_state_byte_identical() {
+    let mut s = solvent_liquidatable_setup();
+    let a = owner_of(1);
+    assert_liquidatable_at_90k(&s);
+    s.vault_pool = i128::MAX;
+    let before = s.state_root();
+    let err = s
+        .apply_op(&BatchOp::Liquidate {
+            owner: a,
+            market_id: 0,
+            oracle: oracle(90_000, 2_000),
+            now_ms: 2_000,
+        })
+        .expect_err("vault-pool overflow must reject");
+    assert_eq!(err, EngineError::Overflow);
+    assert_eq!(
+        s.state_root(),
+        before,
+        "the position must NOT be closed by a failed liquidation"
+    );
+    assert!(
+        s.position(&a, 0).unwrap().is_open(),
+        "the position survives the rejected liquidation"
+    );
+}
+
+/// Variant 2: poison the INSURANCE FUND so the penalty `checked_add` overflows —
+/// the LAST fallible step, reached with the position closed, the vault pool moved,
+/// and the penalty already taken from collateral under the old ordering.
+#[test]
+fn liquidation_overflow_in_insurance_fund_leaves_state_byte_identical() {
+    let mut s = solvent_liquidatable_setup();
+    let a = owner_of(1);
+    assert_liquidatable_at_90k(&s);
+    s.insurance_fund = i128::MAX;
+    let before = s.state_root();
+    let err = s
+        .apply_op(&BatchOp::Liquidate {
+            owner: a,
+            market_id: 0,
+            oracle: oracle(90_000, 2_000),
+            now_ms: 2_000,
+        })
+        .expect_err("insurance-fund overflow must reject");
+    assert_eq!(err, EngineError::Overflow);
+    assert_eq!(
+        s.state_root(),
+        before,
+        "the position must NOT be closed by a failed liquidation"
+    );
+    assert!(
+        s.position(&a, 0).unwrap().is_open(),
+        "the position survives the rejected liquidation"
+    );
+}
+
+/// SEC-024 review carry-in: `EngineError::WrongAsset` is reachable — `op_deposit`
+/// accepts ANY `asset_id` and mints it into the note — and `op_fund_insurance`
+/// must refuse a non-canonical asset BEFORE its first mutation, or a wrong-asset
+/// note would be destroyed while the fund is credited in the quote unit. Pins both
+/// the rejection and the "checked before the first mutation" ordering the guard's
+/// comment claims (state root byte-identical, note still spendable).
+#[test]
+fn fund_insurance_with_non_canonical_asset_is_rejected_untouched() {
+    let mut s = fresh_state();
+    let o = owner_of(1);
+    let bl = [0x77u8; 32];
+    let amt = 1_000 * QUOTE_SCALE;
+    // An asset-1 note: `deposit_commit` hardcodes asset 0, so commit directly.
+    let cm = Note::new(o, 1, amt, bl).commitment::<Keccak256>();
+    s.apply_batch(&[BatchOp::Deposit {
+        owner: o,
+        asset_id: 1,
+        amount: amt,
+        blinding: bl,
+        from: [0xA1u8; 20],
+        deposit_id: 0,
+        deposit_blind: [0xDBu8; 32],
+    }])
+    .unwrap();
+    let before = s.state_root();
+    let err = s
+        .apply_batch(&[BatchOp::FundInsurance {
+            note_commitment: cm,
+            spend_key: [1; 32],
+        }])
+        .expect_err("a non-canonical asset must not capitalize the insurance fund");
+    assert_eq!(err, EngineError::WrongAsset);
+    assert_eq!(
+        s.state_root(),
+        before,
+        "WrongAsset is checked before the first mutation — state byte-identical"
+    );
+    assert!(
+        s.notes.contains_key(&cm),
+        "the wrong-asset note survives, unspent"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // SEC-026 — historical commitment uniqueness. A mint (Deposit or Unbind) that
 // reconstructs a previously-SPENT `(owner, asset_id, amount, blinding)` tuple used
