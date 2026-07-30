@@ -52,12 +52,22 @@ selector, `l1.rs:556-561`), and `l1_status` written nowhere else outside tests.
 ## 1. The gate itself
 
 A persisted `TradingGate { Closed, Open }` on `Gw`, defaulting to `Closed` on a production
-genesis. `DPSNAP3 → DPSNAP4`.
+genesis.
+
+**`DPSNAP4 → DPSNAP5`, not `DPSNAP3 → DPSNAP4`.** 025-A already claims `DPSNAP4` for its own
+`Gw` field. If both pieces claimed the same magic, whichever landed second would change the
+positional v4 schema *without changing its magic* — which is exactly the silent-misparse hazard
+the magic exists to prevent. Two options and this spec takes the first: **D requires `DPSNAP5`
+and states its dependency on A explicitly**, or A and D are implemented and cut over as one
+atomic change with a single v4. Sequential merges into `main` make the first the only safe
+choice.
 
 `Gw` is positional postcard (`snapshot_plain`, `main.rs:1754-1761`), and the tree is explicit
-that `#[serde(default)]` does **not** rescue old encodings — with a pinned test recording the
-worse case, that a misaligned old encoding can decode *successfully into corrupt state*
-(`main.rs:11008-11061`). So the magic bump is the only guard, and it is mandatory.
+that `#[serde(default)]` does **not** rescue old encodings. *(An earlier draft said a pinned
+test demonstrates an old encoding decoding successfully into corrupt state. It does not — the
+fixture asserts `decoded.is_err()`; the corrupt-decode case exists only as a comment and a
+hypothesis, `main.rs:11039-11060`. The bump is still mandatory; the justification is
+"positional postcard", not "we have a test showing corruption".)*
 
 Demo genesis opens the gate at boot. The gate must not be settable by any HTTP route — the
 existing `set_mode` (`main.rs:3641-3647`) is the anti-pattern to avoid: it assigns
@@ -88,25 +98,49 @@ bump is cheap: this cutover already wipes state, and a fresh boot deletes an orp
 mode           == Normal
 insurance_fund >= MIN_BOOTSTRAP_INSURANCE
 deposit_count  >= MIN_BOOTSTRAP_DEPOSITS
-landed_via     == SettleBatch          // §4
+not_a_wind_down                        // the block-pinned read of §4
 ```
 
 `insurance_fund > 0` is **not** capitalization — one base unit passes, and worse, the per-fill
 cut (`engine.rs:690`) and liquidation penalties (`:800`) raise it with no bootstrap at all. So
-the floor is a named constant, and **025-A must read the same constant** so the deposit-side
-and trading-side notions of "capitalized" cannot drift.
+the floor is a named constant, and it is a deployment risk policy with no source-derivable
+value. It must be a compile-time constant, not an env var: an env change must not be able to
+alter a roll-forward decision made by a different process invocation.
 
-The floor is a deployment risk policy with no source-derivable value. It must be a compile-time
-constant, not an env var: an env change must not be able to alter a roll-forward decision made
-by a different process invocation.
+### A hard cross-spec requirement on 025-A
 
-**The latch is one-way, and that is a deliberate compromise.** Both `insurance_fund` and `mode`
-are non-monotonic — insurance is drained by the bad-debt backstop (`engine.rs:828-829`) and
-true insolvency flips `mode` in-engine (`:843-845`). So the predicate can become false after
-the gate has opened. Re-closing on depletion would hand any adversary who can manufacture one
-bad debt a cheap trading halt, and `Mode::CloseOnly` already handles genuine insolvency by
-blocking risk increase. The gate is a **launch** gate, not a circuit breaker; say so in the
-code, because a reader will otherwise assume it tracks the predicate continuously.
+`MIN_BOOTSTRAP_INSURANCE` currently exists **only in this document**. An earlier draft said it
+is "the same constant 025-A gates on"; that was aspirational, and left as-is it produces a
+deadlock:
+
+025-A accepts *any* positive operator bootstrap, marks its record `Complete` after settlement,
+and then **permanently refuses the endpoint** — it is deliberately one-shot. So a bootstrap
+below this floor completes 025-A's state machine while 025-D stays closed, **with no retry path
+in either piece**. The deployment is then unlaunchable without a code change.
+
+So this is not a shared-constant nicety; it is a requirement on 025-A, and 025-A's spec must be
+amended to carry it: **025-A must reject a bootstrap whose amount is below
+`MIN_BOOTSTRAP_INSURANCE` before applying either leg**, so the one-shot can never be spent on an
+insufficient amount. The constant lives in one module that both read.
+
+### The latch is one-way — and the honest reason is not the one I first gave
+
+An earlier draft justified never re-closing by saying `Mode::CloseOnly` already handles a
+depleted fund. **It does not.** `CloseOnly` is not triggered by insurance depletion: the
+waterfall is insurance → ADL → `CloseOnly`, and the last step is reached only if debt remains
+after *both* (`engine.rs:813-845`). The existing regression ends with `insurance_fund == 0`, a
+winner haircut by ADL, and `Mode::Normal` (`crates/perp-core/tests/lifecycle.rs:596-621`).
+
+So an opened gate really can keep accepting exposure-increasing trades with **no backstop**, and
+the next bad debt is socialized straight onto winners. `CloseOnly`, when it finally trips, blocks
+exposure increases but not risk-reducing fills (`engine.rs:566-572`), and those reductions and
+liquidations can realize further bad debt.
+
+The latch stays one-way anyway, for a narrower reason: this gate is a blunt **ingress** gate, so
+re-closing it would also block reduce-only exits — trapping users in exactly the state where
+they most need to leave. The right response to a depleted fund is a **separate
+exposure-increase circuit breaker** plus a recapitalization path, not a re-closing launch gate.
+Neither exists; both are recorded here as required follow-ups rather than waved away.
 
 ## 4. `finalSettle` must never open the gate — and today it could
 
@@ -121,21 +155,59 @@ and `recovery_action` (`rollback_journal.rs:163-190`). The only on-chain discrim
 event (`BatchSettled` vs `FinalSettle`), and the gateway reads no logs except challenges
 (`l1.rs:475`).
 
-The ordinary wind-down produces the confusion naturally: close-only trips → the gateway's next
-`settleBatch` reverts `InCloseOnly` → governance runs `finalSettle` over the gateway's **own
-exported prepared data**, so the roots match → the gateway re-reads, sees `batchCount == id+1`
-and a matching root → `RollForward` → `commit_window_settle`. A transition placed there with no
-extra evidence **fires on a wind-down**.
+The ordinary wind-down produces the confusion: close-only trips → the gateway's next
+`settleBatch` reverts `InCloseOnly` → governance runs `finalSettle` for the same window, so the
+roots match → the gateway re-reads, sees `batchCount == id+1` and a matching root →
+`RollForward` → `commit_window_settle`. A transition placed there with no extra evidence
+**fires on a wind-down**.
 
-**Fix:** the clean path already knows it called `settleBatch` — `settle_proved` is the only
-submission. So `landed_via` is carried into `commit_window_settle` by the caller:
-`SettleBatch` on the clean path, `Unknown` on both roll-forward arms. Only `SettleBatch` may
-open the gate. A roll-forward still commits the settle; it just cannot *launch* the deployment.
+*(An earlier draft said governance runs `finalSettle` over "the gateway's own exported prepared
+data". No such export exists: the runbook requires manually constructing the witness and proof,
+or reusing an internal rollback-journal outcome, then a manual `cast send`
+(`docs/FINAL_SETTLE_RUNBOOK.md:51-103`, `:122-129`). The root match is still reachable — it is
+the same window — but do not describe a tool that is not there.)*
 
-That is deliberately conservative: a roll-forward of a genuine `settleBatch` will not open the
-gate either. The cost is one extra window before launch; the alternative is either an L1
-`closeOnly` read (the gateway has **no** read path today — no `L1` accessor, no boot check) or
-event-log parsing, and neither is worth it to save one window at cutover.
+**Fix — a block-pinned three-way read, not a caller-supplied flag.** An earlier version of this
+spec threaded a `landed_via` value from the caller (`SettleBatch` on the clean arm, `Unknown` on
+both roll-forward arms) and opened only on `SettleBatch`. That is *safe* but **not live**, and
+the review showed why the "costs one extra window" justification was false:
+
+after an ambiguous capitalization settle is committed as `Unknown`, there is **no guaranteed
+next window**. `begin_window_settle` returns `None` when neither root nor manifest changed
+(`main.rs:2299-2303`), manifest presence deliberately ignores idle `window_ops`
+(`crates/sequencer/src/lib.rs:1297-1307`), and with an empty book the mark equals the oracle so
+idle funding has zero delta (`sequencer/src/lib.rs:855-897`,
+`crates/perp-core/src/funding.rs:80-95`). And 025-A's endpoint is one-shot, so it cannot
+manufacture a retry once `Complete` is set. **The launch would stay closed indefinitely** until
+someone deliberately created a root-changing operation.
+
+So use the discriminator this spec previously dismissed. `finalSettle` *requires*
+`closeOnly == true` (`DarkPerpSettlement.sol:377`), and `closeOnly` is terminal — written only
+at `:411` and `:575`, never cleared. Therefore a **single block-pinned** observation of
+
+```
+batchCount        == J + 1
+currentStateRoot  == prepared.new_root
+closeOnly         == false
+```
+
+proves that `finalSettle` did not produce that transition. It is conservative in the harmless
+direction — it can miss a real `settleBatch` followed by a later close-only — but it **cannot
+falsely open on a `finalSettle`**, and it lets a genuine roll-forward open the gate, which is
+what restores liveness.
+
+The gateway has no `closeOnly` accessor today, but it does have the infrastructure: generic
+contract reads (`l1.rs:265-293`), receipt-log parsing (`:411-418`) and `cast logs` handling
+(`:475-512`). Adding a boolean read is small. The earlier claim that events were "the only
+on-chain discriminator" and that this needed a new subsystem was wrong.
+
+**All three reads must be pinned to one block.** Three independent "latest" calls through a
+lagging or load-balanced RPC could observe them at different heights and defeat the argument.
+
+**Finality policy must be explicit.** `send_args` supplies no confirmation depth
+(`l1.rs:604-617`) and `cast` defaults to one confirmation. If "demonstrably settled" is meant to
+survive a reorg, this spec has to say how many confirmations the opening read requires; one
+confirmation is a policy choice, not a default to inherit silently.
 
 ## 5. Where the gate is enforced
 
@@ -150,9 +222,17 @@ going through `accept_order`:
 - **The house-MM counter-order injector** (`main.rs:3734-3743`, `:3786-3795`) pushes orders
   straight into the `seal` vector and is **not gated on `prod`**. It is stopped only
   transitively — no taker, no counter-order. Gate it directly rather than relying on that.
-- **`simulate_adl`** (`:2994+`) applies `BatchOp::Fill` directly and is prod-refused only
-  *incidentally*, via a conditional `fund(...)` reaching `refuse_unbacked_mint`. Give it a
-  posture guard at the top of the function; incidental refusal is how a refactor reopens a hole.
+- **`simulate_adl`** (`:2994+`) applies `BatchOp::Fill` directly (`:3042`). *(An earlier draft
+  said it is prod-refused only through a **conditional** `fund(...)`. That is wrong: it also
+  performs an **unconditional** victim `fund(...)` before the Fill (`:3030-3042`), so production
+  always refuses before reaching it today.)* A top-level posture guard is still worth adding as
+  defence in depth — refusal that depends on an unrelated call's position is one refactor away
+  from disappearing — but it is hardening, not a hole.
+
+Two workspace binaries also seal orders directly — `crates/node/src/lib.rs:63-94` and
+`crates/demo/src/main.rs:157-161` — and bypass any gateway gate. They do **not** run the
+production gateway or L1 settlement path, so they are out of scope; noted so a future reader
+does not mistake them for a gap.
 
 WebSocket ingress is clean in both directions and needs nothing (`/v1/ws` handles only auth,
 `main.rs:5797-5813`; `/ws` is send-only).
@@ -182,15 +262,25 @@ pinned by `production_genesis_mints_nothing` (`:7747-7760`). Nothing else credit
 So in production today: a market order is accepted → the tick fabricates an MM counter-order at
 the oracle mark (`:3786-3795`) → `pre_trade_check` builds `Position::empty` for the MM and
 `check_initial_margin` fails on zero collateral (`crates/perp-core/src/position.rs:185-201`)
-⇒ `InsufficientMargin` → the taker meets an empty book ⇒ `CancelledNoFill`, filed under
-**`ordered`**, not `rejected` (`crates/matcher/src/lib.rs:132-139`) → no fills, so finality
-never advances (`sequencer/src/lib.rs:1115-1117`) → the gateway marks it `sealed = true` anyway
-(`main.rs:3829`), so it is never resubmitted. **The order sits at `ACCEPTED` with `filled = 0`
-forever.**
+⇒ `InsufficientMargin` → **if no other resting liquidity exists**, the taker meets an empty book
+⇒ `CancelledNoFill`, filed under **`ordered`**, not `rejected`
+(`crates/matcher/src/lib.rs:132-139`) → no fills, so finality never advances
+(`sequencer/src/lib.rs:1115-1117`) → the gateway marks it `sealed = true` anyway
+(`main.rs:3829`), so it is never resubmitted, and it cannot be cancelled either
+(`:2763-2775`). **The order sits at `ACCEPTED` with `filled = 0` forever.**
 
-And the MM's rejection lands in `manifest.rejected`, making `window_has_pending_manifest()`
-true — so a production deployment with trading open **burns a full Groth16 proof per window to
-settle nothing but its own fabricated rejections.**
+**Two corrections to an earlier draft of this section**, both from review:
+
+- The trace is **conditional, not unconditional**. The invalid step was "the taker meets an
+  empty book". A funded external `Gtc`/`PostOnly` order can rest, and a later market order can
+  fill against it (`main.rs:3701-3704`). The house MM being rejected does not imply the book is
+  empty. What is unconditional is that **the house MM never provides liquidity** — so the
+  deployment depends entirely on external makers, which is the no-house posture arriving by
+  accident rather than by design.
+- The claim that this **burns a proof per window on nothing was causally wrong**, and I had
+  propagated it. The user's IOC is *already* in `manifest.ordered`, so the window required
+  settlement with or without the MM. The MM's rejection adds a leaf; it does not cause an extra
+  proof, an extra window, or a window that would otherwise not have settled.
 
 **025-D does not fix this and must not pretend to.** Opening the gate on a deployment in this
 state produces silently-dead orders and wasted proofs. Two exits, and the choice is a product
@@ -210,11 +300,14 @@ signals readiness that does not exist.
 
 ## 7. Scope
 
-- **`crates/gateway`**: the `TradingGate` field and persistence; `DPSNAP3 → DPSNAP4`;
-  two new `ProveOutcome` scalars and `DPRBJL4 → DPRBJL5`; `landed_via` threaded into
-  `commit_window_settle` at all three call sites; enforcement in `account_place_order`,
-  `place_order`, the MM injector and `simulate_adl`; `MIN_BOOTSTRAP_INSURANCE` shared with
-  025-A.
+- **`crates/gateway`**: the `TradingGate` field and persistence; **`DPSNAP4 → DPSNAP5`** (025-A
+  takes v4); two new `ProveOutcome` scalars and `DPRBJL4 → DPRBJL5` — which also requires
+  updating the positional journal tests and the `ProveOutcome` initializer at `l1.rs:1135-1146`;
+  a block-pinned `closeOnly` read on `L1`; the three-way opening check at all three
+  `commit_window_settle` call sites; enforcement in `account_place_order`, `place_order`, the MM
+  injector and `simulate_adl`; `MIN_BOOTSTRAP_INSURANCE` in one module, **read by 025-A too**.
+- **025-A (cross-spec):** must reject a bootstrap below `MIN_BOOTSTRAP_INSURANCE` before
+  applying either leg. Without that amendment the two pieces deadlock — see §3.
 - **`crates/perp-core`**: none. No vkey movement from this piece.
 - **Contracts**: none.
 
@@ -225,10 +318,16 @@ signals readiness that does not exist.
    asserted directly rather than via "no taker exists".
 3. The predicate: each term independently insufficient. In particular `insurance_fund` at one
    base unit does **not** open the gate, and neither does a fill's insurance cut.
-4. **A roll-forward commit does not open the gate**, on both the settle-loop arm and the boot
-   arm. This is the `finalSettle` defence and must fail before the fix.
-5. The gate survives a snapshot round-trip, and an old-magic snapshot is refused.
-6. The latch does not re-close when `insurance_fund` later falls below the floor — pinning the
-   deliberate one-way choice so a later reader does not "fix" it.
-7. `MIN_BOOTSTRAP_INSURANCE` is the same constant 025-A gates on — a compile-time assertion or
-   a shared `const`, not two literals.
+4. **A `finalSettle`-shaped commit does not open the gate**, on both the settle-loop arm and the
+   boot arm: with `closeOnly == true` on-chain the gate stays closed even though `batchCount`
+   and `currentStateRoot` match. Must fail before the fix.
+5. **A genuine `settleBatch` observed only through a roll-forward DOES open the gate** — the
+   liveness half. Without this the deployment can be left permanently unlaunchable, since no
+   further window is guaranteed and 025-A's endpoint is one-shot.
+6. A bootstrap below `MIN_BOOTSTRAP_INSURANCE` is rejected by 025-A rather than consuming its
+   one-shot.
+7. The gate survives a snapshot round-trip, and an old-magic snapshot is refused.
+8. The latch does not re-close when `insurance_fund` later falls below the floor — pinning the
+   deliberate one-way choice so a later reader does not "fix" it, with the comment explaining
+   that the reason is reduce-only exits, not that `CloseOnly` covers it.
+9. `MIN_BOOTSTRAP_INSURANCE` is one `const` read by both pieces — not two literals.
