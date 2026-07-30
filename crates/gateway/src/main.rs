@@ -1074,6 +1074,17 @@ struct Account {
     deposit_authorizations: std::collections::BTreeMap<[u8; 32], [u8; 32]>,
 }
 
+/// The output of `Gw::validated_deposit` — everything the funding op needs, produced
+/// by the guards WITHOUT mutating anything (SEC-025-A Task 3). Existing so the
+/// insurance-bootstrap path can run the same validation as a user deposit and then
+/// route the value differently, instead of duplicating the security checks.
+struct ValidatedDeposit {
+    wallet: Wallet,
+    amt: i128,
+    note_blind: [u8; 32],
+    deposit_blind: [u8; 32],
+}
+
 /// serde `default` for `Gw::settle_health` on the restore (postcard) path. Settlement
 /// health is ephemeral runtime state — a restored `Gw` starts a fresh `from_env` breaker
 /// just as a cold `boot()` does. `SettleHealth` isn't (de)serializable, so the field is
@@ -2000,17 +2011,17 @@ impl Gw {
         Ok(commit)
     }
 
-    /// Credit a CONFIRMED on-chain USDC deposit to an account's market bucket. The
-    /// caller (handler) has already read `(from, ownerCommit, amount, id)` from the
-    /// vault's SEC-019 `Deposit` log via the L1 bridge; here we enforce the binding
-    /// (`from` == the account's bound address), the SEC-019 misattribution guard (the
-    /// stored blind for `ownerCommit` must reproduce the on-chain commit), dedup by tx
-    /// hash, and fund the engine with the REAL L1-leaf fields so the resulting
-    /// `consumed_deposit_tip` fold matches the vault's `depositChainTip` for this
-    /// `(from, ownerCommit, amount, id)`. USDC base units map 1:1 to quote units.
+    /// The validation half of crediting a confirmed L1 deposit: every guard, NO
+    /// mutation (SEC-025-A Task 3). Split out of `account_confirm_deposit` so the
+    /// insurance-bootstrap path reaches the SAME guards — tx-hash dedup, the payer
+    /// binding, the SEC-019 misattribution guard, the checked u128→i128, the
+    /// in-order id gate, and the note-blind derivation — around a different funding
+    /// op, instead of duplicating them (duplicated security bookkeeping is how one
+    /// copy drifts). Pure by contract: calling it twice succeeds twice, because
+    /// nothing here consumes the authorization or advances a counter.
     #[allow(clippy::too_many_arguments)] // the L1 `Deposit` event's fields, threaded flat; a struct adds only ceremony
-    fn account_confirm_deposit(
-        &mut self,
+    fn validated_deposit(
+        &self,
         key: &[u8; 32],
         from: [u8; 20],
         owner_commit_onchain: [u8; 32],
@@ -2018,7 +2029,7 @@ impl Gw {
         deposit_id: u64,
         tx: &str,
         market: u64,
-    ) -> Result<i128, String> {
+    ) -> Result<ValidatedDeposit, String> {
         if self.mkt(market).is_none() {
             return Err("Unknown market.".into());
         }
@@ -2083,6 +2094,64 @@ impl Gw {
         let dc = self.accounts.get(key).unwrap().deposit_counter;
         let mut note_blind = [0xB0u8; 32];
         note_blind[..8].copy_from_slice(&dc.to_le_bytes());
+        Ok(ValidatedDeposit {
+            wallet,
+            amt,
+            note_blind,
+            deposit_blind,
+        })
+    }
+
+    /// The success-bookkeeping half (SEC-025-A Task 3): bump `deposit_counter`,
+    /// consume the one-shot authorization, mark the tx processed. Runs ONLY after
+    /// the funding op succeeded — on any Err the caller must skip it, so a failed
+    /// confirm stays retriable (nothing consumed, nothing marked).
+    fn commit_deposit_bookkeeping(
+        &mut self,
+        key: &[u8; 32],
+        owner_commit_onchain: &[u8; 32],
+        tx: &str,
+    ) {
+        let a = self.accounts.get_mut(key).unwrap();
+        a.deposit_counter += 1;
+        // One-shot: consume the authorization so a second event for the same ownerCommit
+        // can't double-credit (the tx-hash dedup already guards replays; this is defense
+        // in depth and keeps the SECRET blind from lingering past its single use).
+        a.deposit_authorizations.remove(owner_commit_onchain);
+        self.processed_deposit_txs.insert(tx.to_string());
+    }
+
+    /// Credit a CONFIRMED on-chain USDC deposit to an account's market bucket. The
+    /// caller (handler) has already read `(from, ownerCommit, amount, id)` from the
+    /// vault's SEC-019 `Deposit` log via the L1 bridge; here we enforce the binding
+    /// (`from` == the account's bound address), the SEC-019 misattribution guard (the
+    /// stored blind for `ownerCommit` must reproduce the on-chain commit), dedup by tx
+    /// hash, and fund the engine with the REAL L1-leaf fields so the resulting
+    /// `consumed_deposit_tip` fold matches the vault's `depositChainTip` for this
+    /// `(from, ownerCommit, amount, id)`. USDC base units map 1:1 to quote units.
+    /// The guards live in `validated_deposit` and the success mutations in
+    /// `commit_deposit_bookkeeping` (both shared with the insurance bootstrap,
+    /// SEC-025-A); this composes them around the user-deposit funding op.
+    #[allow(clippy::too_many_arguments)] // the L1 `Deposit` event's fields, threaded flat; a struct adds only ceremony
+    fn account_confirm_deposit(
+        &mut self,
+        key: &[u8; 32],
+        from: [u8; 20],
+        owner_commit_onchain: [u8; 32],
+        amount: u128,
+        deposit_id: u64,
+        tx: &str,
+        market: u64,
+    ) -> Result<i128, String> {
+        let v = self.validated_deposit(
+            key,
+            from,
+            owner_commit_onchain,
+            amount,
+            deposit_id,
+            tx,
+            market,
+        )?;
         // Fund with the REAL L1-leaf fields: the payer `from`, the L1 `id`, and the
         // authorized `deposit_blind` — so `consumed_deposit_tip` folds the SAME leaf the
         // vault chained on-chain (`deposit_leaf(from, keccak(owner‖blind), amount, id)`).
@@ -2116,13 +2185,13 @@ impl Gw {
         fund_amount(
             &mut self.seq,
             &mut self.archive,
-            &wallet,
+            &v.wallet,
             market,
-            amt,
-            note_blind,
+            v.amt,
+            v.note_blind,
             from,
             deposit_id,
-            deposit_blind,
+            v.deposit_blind,
         )
         .map_err(|e| match e {
             FundAmountError::CreditRefused(msg) => format!(
@@ -2146,14 +2215,8 @@ impl Gw {
                 deposit_id + 1
             ),
         })?;
-        let a = self.accounts.get_mut(key).unwrap();
-        a.deposit_counter += 1;
-        // One-shot: consume the authorization so a second event for the same ownerCommit
-        // can't double-credit (the tx-hash dedup already guards replays; this is defense
-        // in depth and keeps the SECRET blind from lingering past its single use).
-        a.deposit_authorizations.remove(&owner_commit_onchain);
-        self.processed_deposit_txs.insert(tx.to_string());
-        Ok(amt)
+        self.commit_deposit_bookkeeping(key, &owner_commit_onchain, tx);
+        Ok(v.amt)
     }
 
     /// SEC-021: the address whose secp256k1 signature authorizes this account's
@@ -7759,6 +7822,86 @@ async fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Test-only deposit fixtures (SEC-025-A Task 3). The register/bind/authorize
+    /// preamble was already repeated inline across the deposit tests; the split of
+    /// `account_confirm_deposit` into validate + bookkeeping halves needs it again,
+    /// so it becomes a named helper instead of a fourth copy.
+    impl Gw {
+        /// Register a fresh account and bind its `deposit_address` to a fixed
+        /// 20-byte payer, returning the API key. The binding skips the SEC-021b
+        /// signature ceremony on purpose — these tests exercise the deposit
+        /// guards, not the bind path.
+        fn account_register_for_test(&mut self) -> [u8; 32] {
+            let (key, _owner) = self.register_account(None);
+            self.accounts.get_mut(&key).unwrap().deposit_address = Some([0x42u8; 20]);
+            key
+        }
+
+        /// Authorize a deposit of `amount` for the account's bound payer and
+        /// return the tuple a confirm needs: `(from, owner_commit, amount,
+        /// deposit_id)`, where `deposit_id` is the live next-in-line id
+        /// (`seq.state.consumed_deposit_count`) so the in-order gate passes.
+        fn authorize_for_test(
+            &mut self,
+            key: &[u8; 32],
+            amount: u128,
+        ) -> ([u8; 20], [u8; 32], u128, u64) {
+            let from = self.accounts[key]
+                .deposit_address
+                .expect("account_register_for_test binds a deposit address");
+            let commit = self
+                .account_authorize_deposit(key, from, amount)
+                .expect("authorization must succeed for a bound payer");
+            (from, commit, amount, self.seq.state.consumed_deposit_count)
+        }
+    }
+
+    /// SEC-025-A Task 3: the deposit guards and their success bookkeeping must be
+    /// separable, because the insurance-bootstrap path (Task 4) reuses the guards
+    /// around a DIFFERENT funding op. The validation half must be pure (safe to
+    /// call twice), and only the bookkeeping half may consume the one-shot state.
+    #[test]
+    fn validated_deposit_checks_without_mutating_and_bookkeeping_is_separable() {
+        let mut gw = Gw::boot();
+        let key = gw.account_register_for_test();
+        let (from, commit, amount, id) = gw.authorize_for_test(&key, 5_000_000);
+
+        // The validation half must be pure: calling it twice must succeed twice, because
+        // nothing it does can consume the authorization or advance a counter.
+        let before = gw.accounts.get(&key).unwrap().deposit_counter;
+        let v1 = gw
+            .validated_deposit(&key, from, commit, amount, id, "0xtx", 0)
+            .expect("first validate");
+        let v2 = gw
+            .validated_deposit(&key, from, commit, amount, id, "0xtx", 0)
+            .expect("second validate must also succeed — validation must not mutate");
+        assert_eq!(v1.note_blind, v2.note_blind);
+        assert_eq!(gw.accounts.get(&key).unwrap().deposit_counter, before);
+        assert!(gw
+            .accounts
+            .get(&key)
+            .unwrap()
+            .deposit_authorizations
+            .contains_key(&commit));
+        assert!(!gw.processed_deposit_txs.contains("0xtx"));
+
+        // The bookkeeping half, applied once, must consume all three.
+        gw.commit_deposit_bookkeeping(&key, &commit, "0xtx");
+        assert_eq!(gw.accounts.get(&key).unwrap().deposit_counter, before + 1);
+        assert!(!gw
+            .accounts
+            .get(&key)
+            .unwrap()
+            .deposit_authorizations
+            .contains_key(&commit));
+        assert!(gw.processed_deposit_txs.contains("0xtx"));
+
+        // And the guards must now refuse a replay of the same tx.
+        assert!(gw
+            .validated_deposit(&key, from, commit, amount, id, "0xtx", 0)
+            .is_err());
+    }
 
     /// SEC-025-B break-4 fixtures. The manifest-only tests need an order that is
     /// genuinely ACCEPTED and RESTS (it lands in `ordered` with no fill and no
