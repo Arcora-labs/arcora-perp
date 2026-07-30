@@ -1,233 +1,252 @@
 # SEC-025-A — operator insurance bootstrap
 
-**Status:** design. Depends on SEC-024 (merged, `2d6a857`), which added
-`BatchOp::FundInsurance` and left it with **zero production callers**. This piece is that
-caller. The two must cut over together.
+**Status:** design, **rewritten after adversarial review rejected the first version.** Depends
+on SEC-024 (merged, `2d6a857`), which added `BatchOp::FundInsurance` and left it with zero
+production callers. This piece is that caller. The two must cut over together.
 
 **Do not deploy from this spec.** Merge only.
+
+**Blocked on [SEC-028](2026-07-30-sec028-deposit-authorization-replay.md)** — see §7.
 
 ---
 
 ## The gap
 
-SEC-024 made insurance capitalization a transfer instead of a mint: `op_fund_insurance`
-consumes an existing note whose value already entered through the deposit path's L1
-hash-chain binding. But nothing in production constructs one. 025-C independently made the
-production genesis honest, which means `insurance_fund` starts at **0** and grows only from
-the per-fill cut — 2 bps of notional (`TAKER_FEE_BPS(10) − TREASURY_FEE_BPS(8) −
-MAKER_REBATE_BPS(0)`, `crates/gateway/src/main.rs:350-352`).
+025-C made the production genesis honest, so `insurance_fund` starts at **0** and grows only
+from the per-fill cut — 2 bps of notional (`crates/gateway/src/main.rs:350-352`). Zero
+insurance is terminal, not merely thin: the bad-debt waterfall runs insurance → ADL →
+`Mode::CloseOnly`, and only `EnterCloseOnly` exists. A first bad debt on an uncapitalized
+deployment can wind it down permanently.
 
-Zero insurance is not merely thin. It is a **terminal** risk: the bad-debt waterfall runs
-insurance → ADL → `Mode::CloseOnly`, and only `EnterCloseOnly` exists — there is no proven
-transition back. A first bad debt on an uncapitalized deployment can wind it down
-permanently.
+## What the first version got wrong
 
-## Shape
+Recorded because the corrections *are* the design, and because three of the four are the same
+failure this workstream keeps repeating — asserting a property the code cannot perform.
 
-**The operator is an ordinary registered account. The admin key only redirects the
-destination of value the operator itself paid in.**
+1. **It claimed a protocol invariant that lives only in an HTTP handler.** See §2.
+2. **It used `insurance_fund > 0` as a bootstrap marker.** Wrong in both directions: the
+   per-fill cut and liquidation penalties raise the fund without any bootstrap
+   (`engine.rs:690`, `:800`), and the fund can return to **zero while `Mode` stays `Normal`**
+   — there is an existing test showing insurance exhausted, ADL covering the residual, and no
+   close-only transition (`crates/perp-core/tests/lifecycle.rs:615-620`). A balance is not a
+   marker.
+3. **It argued "applied, not settled" was safer.** It is not. See §4.
+4. **It claimed the new helper would reach the existing deposit guards.** It would not; those
+   guards live inside `account_confirm_deposit`. See §5.
 
-This is deliberate: it reuses the entire existing deposit path — gateway-signed entry, the
-SEC-019 misattribution guard, the in-order id gate, the L1 leaf fold — and adds no new
-trusted route into the state. What is new is one op-pair and one gate.
+## 1. Shape
 
-### 1. `fund_insurance_backed` — the backed sibling of `seed_insurance_unbacked`
+The operator is an ordinary registered account. The admin key redirects the destination of
+value the operator itself paid in. This reuses the existing deposit path — gateway-signed
+entry, the SEC-019 misattribution guard, the in-order id gate, the L1 leaf fold — and adds no
+new route into the state.
 
-`seed_insurance_unbacked` (`main.rs:4238-4266`) already has the correct *shape*. Exactly
-three things in it are fabricated:
+`POST /v1/admin/insurance/bootstrap`, following `admin_resume_authz` (`main.rs:4963-4996`):
+env read per request, header `x-admin-key`, three-state fail-closed (unset/empty ⇒ 503;
+absent/wrong ⇒ 401), constant-time compare. Deliberately not `api_key_from`, for the reason
+recorded at `main.rs:4960-4962`.
 
-| Field | Demo (unbacked) | Backed |
-|---|---|---|
-| `from` | `[0u8; 20]` sentinel | the L1 `Deposit.from` from the receipt |
-| `deposit_blind` | `[0u8; 32]` sentinel | the stored authorization blind for that `ownerCommit` |
-| `deposit_id` | self-assigned `consumed_deposit_count` | the chain-assigned id from the receipt |
+*(Correction to the first version: that spec claimed the compare leaks neither key length nor
+matching-prefix length. The prefix half is true — no early exit. The length half is false: the
+loop runs `max(a.len(), b.len())` iterations (`main.rs:4981`), so a presentation shorter than
+the configured key reveals the configured length through iteration count. Minor, pre-existing,
+and not this piece's to fix — but do not repeat the claim.)*
 
-Everything else is kept unchanged and for the reasons already recorded in the demo funnel:
-the `Note::new(owner, 0, amount, blind).commitment::<Keccak256>()` precomputation, the two
-sequential `seq.apply` calls so both ops land in `window_ops` in order, the deliberate
-absence of `archive.record` (`main.rs:4234-4235` — the note is consumed immediately and no
-wallet ever needs to decrypt it), and the error message distinguishing a failure *after* the
-note was minted.
+Three bindings, all required: `FIN_ADMIN_KEY`; the operator account's `X-Api-Key`; and
+`from == INSURANCE_OPERATOR_ADDRESS` taken from the parsed receipt.
 
-It carries **no** `refuse_unbacked_mint` call. That guard exists to stop value being
-asserted without backing; this path is backed by construction, and calling it here would be
-cargo-culting a check whose premise does not apply.
+## 2. What the payer binding actually buys — stated honestly
 
-### 2. `POST /v1/admin/insurance/bootstrap`
+`FundInsurance` carries only `note_commitment` and `spend_key` (`engine.rs:115`). It carries
+no payer, no admin authorization, no account identity. The guest validates with
+`expected_owner = None` (`engine.rs:942`). L1 pins the deposit prefix, not who may receive the
+resulting internal value (`DarkPerpSettlement.sol:301`).
 
-Follows `admin_resume_authz` (`main.rs:4963-4996`) exactly — env read per request, header
-`x-admin-key`, three-state fail-closed (unset/empty ⇒ `Disabled` ⇒ 503; absent/wrong ⇒
-`Unauthorized` ⇒ 401), constant-time compare seeded with the length difference so neither key
-length nor matching-prefix length leaks. Deliberately **not** `api_key_from`, for the reason
-already recorded at `main.rs:4960-4962`.
+**Therefore none of the three bindings reaches the guest.** A malicious or compromised
+sequencer can construct `FundInsurance { victim_cm, victim_spend_key }` for any custodied user
+note and produce a valid proof. The first version of this spec stated the invariant as *"only
+value whose L1 payer is the configured operator address can reach `insurance_fund`"*. **That
+is false as a protocol property.** It is true only of the shipped handler.
 
-Three bindings, all required:
+The honest claim, which is what this piece should test:
 
-1. **`FIN_ADMIN_KEY`** — authorizes the redirect-to-insurance.
-2. **The operator account's `X-Api-Key`** — identifies whose wallet owns the note.
-3. **`from == INSURANCE_OPERATOR_ADDRESS`** (new env) — the deposit's on-chain payer, taken
-   from the parsed receipt, must equal the configured operator address.
+> Within the shipped endpoint, an admin key cannot route a deposit into `insurance_fund`
+> unless that deposit's on-chain payer is the configured operator address. This constrains
+> misuse of the endpoint. It does **not** constrain a compromised sequencer, which can spend
+> any custodied note directly.
 
-Binding 3 is the load-bearing one, and the rest of this section explains why it is not
-optional.
+That residual is not new and not this piece's to close: the gateway already custodies every
+account's wallet (`main.rs:996`, Phase-0 custody acknowledged at `:1829`), and a compromised
+gateway can already forge the oracle price outright — a strictly larger capability. Closing it
+means removing custody, which is Phase 1.
 
-### 3. Why binding 3 exists — the confiscation primitive it closes
+Two further limits worth naming, both verified: an ordinary user cannot spoof `from`, because
+the vault emits `msg.sender` and pulls tokens from that same address
+(`CollateralVault.sol:197-204`) — but that proves which account was *debited*, not beneficial
+ownership, so a malicious operator can still deposit customer or borrowed funds. And
+`verify_deposit_tx` enforces no confirmation depth (`l1.rs:411-419`), so a reorg can remove
+the operator deposit after the bootstrap was applied.
 
-`op_fund_insurance` validates the spend with `expected_owner = None`
-(`crates/perp-core/src/engine.rs:942`). The engine's own comment justifies this: adding value
-to a communal backstop can only help the protocol, and the spend key still prevents donating
-someone else's note. **Inside the gateway process that reasoning does not hold** — the
-gateway custodies every account's wallet, spend key included (`main.rs:1003`, Phase-0 custody
-acknowledged at `:1829-1832`).
+## 3. The bootstrap record — one persisted state machine, four problems
 
-So an endpoint shaped the obvious way — *"credit the next-in-line deposit and route it to
-insurance"* — would be a **confiscation primitive**: the admin key could move an arbitrary
-user's L1 deposit into the fund, and no layer would object. The operator's deposit is
-indistinguishable from a user's everywhere it could be distinguished: the on-chain leaf
-carries no role field (`contracts/src/CollateralVault.sol:204`), the event's owner topic is
-blinded (`:99`), and `account_confirm_deposit` takes no role parameter.
+A single persisted field on `Gw` replaces the balance predicate and solves four separate
+defects at once:
 
-The only discriminator that is not forgeable by the caller is the **on-chain payer**, which
-comes from the parsed receipt rather than the request body. Hence the invariant this piece
-must hold, and must test:
+```
+enum Bootstrap {
+    NotStarted,
+    DepositApplied { note_commitment: Digest, spend_key: Digest, deposit_id: u64 },
+    Complete,
+}
+```
 
-> **Only value whose L1 payer is the configured `INSURANCE_OPERATOR_ADDRESS` can reach
-> `insurance_fund`.** A deposit from any other address is refused regardless of which
-> credentials accompany it.
+- **The marker (defect 2).** `Complete` is set at settle-commit, not at apply. Nothing else
+  writes it, so no fill or liquidation can forge it and no depletion can clear it.
+- **Second-leg recovery.** If `Deposit` lands and `FundInsurance` fails, the record holds
+  `DepositApplied` with the exact `(cm, spend_key)`. The endpoint, called again, resumes the
+  **second leg alone**. This matters because retrying the *pair* cannot work: the first
+  `Deposit` already advanced `consumed_deposit_count`, so a retry fails `DepositOutOfOrder`
+  (`engine.rs:375`) before reaching `FundInsurance`. The first version claimed "a later
+  `FundInsurance` with the same `(cm, spend_key)` still works" — true as an engine primitive,
+  false as an operational path, because no production caller could invoke the second leg alone.
+- **The note-blind boundary (H5).** `deposit_counter` bumps when the **first** leg succeeds,
+  and the record carries the commitment forward. Bumping only after both legs would leave the
+  next same-owner, same-amount deposit colliding with the live note — commitments bind owner,
+  asset, amount and blind, but not `from`, id, or deposit blind (`note.rs:39`), and historical
+  uniqueness rejects a repeat (`engine.rs:427-435`).
+- **One-shot (defect 8).** The endpoint refuses when the record is `Complete`. Without this
+  the endpoint is a runtime top-up path — which the first version declared a non-goal while
+  designing no condition that would prevent it.
 
-Note what this does *not* claim: it does not stop an operator from capitalizing insurance
-with their own money and then being unable to retrieve it (see H3 below). It stops the
-operator from capitalizing insurance with **someone else's** money.
+Cost: a new field on `Gw`, so the snapshot format moves. `DPSNAP3 → DPSNAP4`. Acceptable —
+this cutover already requires a state wipe. The first version's "no new field, no snapshot
+change" property is **abandoned deliberately**; it was bought with a predicate that did not work.
 
-### 4. The pre-bootstrap deposit-ordering restriction
+## 4. Where the gate transitions, and why "applied" was wrong
 
-Deposit ids are assigned by the chain at mine time (`CollateralVault.sol:204`), and crediting
-id *k* requires ids `0..k-1` to be credited first — enforced at three layers, the last of
-which is that a wrong fold breaks **every future settle**, `finalSettle` included.
+The first version argued that gating on applied state was more correct than gating on settled
+state, on the grounds that `rollback_window` does not revert `self.state`. The narrow claim is
+true (`crates/sequencer/src/lib.rs:1367-1387`). The conclusion is false:
 
-Crediting id *j* requires **account *j*'s API key**: `account_confirm_deposit` is keyed on
-the caller's header (`main.rs:5187`, `:5212`), and the gateway has no path to credit a
-deposit on a user's behalf. Therefore any registered user can **permanently head-of-line
-block the bootstrap** by authorizing ≥ 1 base unit, depositing on L1, and never confirming.
-Cost ≈ 1 USDC base unit plus gas.
+- `Sequencer::apply` mutates live state **before any proof exists** (`lib.rs:649`). The first
+  version called this "already-proven state"; that is simply wrong.
+- Snapshots are periodic — every `SNAPSHOT_SECS`, default 30 (`main.rs:357`, `:7043`). A hard
+  crash after the bootstrap applies but before a snapshot restores a pre-bootstrap state with
+  `insurance_fund == 0`, while the operator's deposit remains on L1.
+- Boot deliberately compares L1 against `last_settled_root`, not the applied root
+  (`main.rs:6825`), and accepts `gw_count < vault_count` (`main.rs:103`). Losing pending
+  applied state is an accepted outcome by design.
+- Worse, there is a recovery path that **discards a sealed witness**: if the process dies
+  after `seal_window` journalled a witness containing the bootstrap but before the post-seal
+  snapshot lands, boot classifies it `SealNeverPersisted` and deletes the journal without
+  replaying its ops (`rollback_journal.rs:182`, `main.rs:229`). The comment calling this safe
+  (`main.rs:7353`) assumes the restored pre-seal snapshot contains everything applied before
+  sealing — which is exactly what a 30-second snapshot window does not guarantee.
 
-**Restriction:** in production, refuse `POST /v1/accounts/deposit/authorize` while
-`insurance_fund == 0`. At cutover no users exist, the operator's deposit is id 0, and the
-route opens the moment the fund is capitalized.
+So `Complete` transitions in `commit_window_settle`, from the replayed post-state, and only
+for a normal `settleBatch`. This is the same transition point 025-D needs for the trading
+gate; **the two must share it rather than each inventing one.**
 
-Two properties make this cheap:
+## 5. The helper must refactor, not duplicate
 
-- The gate is a **pure read of already-proven state** (`self.seq.state.insurance_fund`,
-  already read at `main.rs:2903` and `:4119`). No new field on `Account` or `Gw`, so no
-  snapshot format change and no reset beyond the one the cutover already requires.
-- It gates `authorize`, not registration. Registration alone cannot produce a creditable
-  deposit, and gating it would be broader than the hazard.
+The first version's table claimed exactly three fields change versus `seed_insurance_unbacked`.
+More must change, and all of it already exists inside `account_confirm_deposit`: the
+throwaway `owner_seed` becomes the registered account wallet; the note blind must come from
+`deposit_counter`; the authorization must be looked up and recomputed (`main.rs:2029-2048`);
+`processed_deposit_txs` must be checked and inserted (`:2009`, `:2139`); the authorization must
+be removed (`:2135`); `deposit_counter` must bump (`:2134`).
 
-**Deliberate divergence from the SEC-024 spec.** That spec said to gate on the bootstrap
-batch being **settled**. Gating on `insurance_fund > 0` — *applied*, not settled — is both
-simpler and more correct for the stated hazard: the thing that decides whether a bad debt is
-covered is the engine, which sees applied state, and `Sequencer::rollback_window`
-(`crates/sequencer/src/lib.rs:1371-1387`) does **not** revert `self.state`, so an applied
-capitalization survives a failed settle. "Settled" was over-strict. This divergence is
-recorded here rather than silently taken.
+A raw `Deposit → FundInsurance` helper does **not** reach those guards. So the first version's
+test — "duplicate-tx bootstraps are refused by the existing guards, reached through the new
+endpoint" — was unsupported. Either the shared validation and bookkeeping is factored out of
+`account_confirm_deposit` and both callers use it, or the bootstrap path duplicates it and the
+duplication is pinned by a test. **Prefer the refactor**; duplicated security bookkeeping is
+how one copy drifts.
 
-### 5. Atomicity — what is actually guaranteed
+On atomicity: holding one `app.gw.lock()` across both applies does prevent the snapshot writer
+from observing the intermediate state (`main.rs:7028`), which is what the first version
+claimed. It does **not** make the result durable, and it does not guarantee the authorization
+blind was in the preceding snapshot. Durability is the record's job, not the mutex's.
 
-Three distinct boundaries, which must not be conflated in the implementation or its tests:
+*(One more imprecision to retire: the first version said conservation is enforced as a hard
+check at these call sites. `apply_batch` does enforce it (`engine.rs:195`), but the host's two
+calls go through `Sequencer::apply` → `state.apply_op`, which does not. The guest replay
+checks it. The property holds; the call-site framing did not.)*
 
-- **Per op:** genuinely all-or-nothing. Both `op_deposit` and `op_fund_insurance` were
-  restructured (SEC-026, SEC-024) so a failure leaves state byte-identical.
-- **Between the two ops:** *recoverable, not impossible*. If `Deposit` lands and
-  `FundInsurance` fails, the deposit is committed and the value is a live unspent note owned
-  by the operator account; a later `FundInsurance` with the same `(cm, spend_key)` still
-  works. What cannot be redone is the pair — `deposit_id` is consumed forever. This is the
-  same asymmetry `fund_amount` already documents (`main.rs:4278-4282`), and the operator
-  contract must say so in the same voice. In practice the second leg is
-  infallible-by-construction except `insurance_fund` overflow near `i128::MAX`.
-- **Persistence:** atomic provided both applies share one `app.gw.lock()` hold. The snapshot
-  writer takes the same mutex (`main.rs:7028`), so a crash mid-handler rewinds to a snapshot
-  predating both ops *and* `processed_deposit_txs`/`deposit_counter` — leaving the L1 deposit
-  fully creditable after restart. The handler must therefore hold the lock across both
-  applies, exactly as `post_v1_deposit_onchain` already does (`:5211-5221`).
+## 6. Scope
 
-### 6. Call-site tripwires
-
-`unbacked_funding_has_exactly_the_known_call_sites` (`main.rs:8124-8197`) asserts exact
-occurrence counts across `crates/gateway/src`: `fund_amount_unbacked(` == 7, `fund_amount(`
-== 3, `BatchOp::Deposit` == 5. This piece adds a `BatchOp::Deposit` construction, so the
-count and its prose breakdown move. That is the tripwire working as designed — update the
-count *and* the justification text, never the count alone.
-
-## Scope
-
-- **`crates/gateway`**: `fund_insurance_backed`; the admin endpoint and its authz; the
-  `INSURANCE_OPERATOR_ADDRESS` config; the `authorize` gate; tripwire count updates.
-- **`crates/perp-core`**: **none.** `op_fund_insurance` already exists and is unchanged.
-  This piece therefore **does not move the vkey** — unlike SEC-024, whose cutover it shares.
+- **`crates/gateway`**: the bootstrap record and its persistence; the admin endpoint and
+  authz; `INSURANCE_OPERATOR_ADDRESS`; the refactor of `account_confirm_deposit`'s validation
+  and bookkeeping into a shared path; the `Complete` transition in `commit_window_settle`;
+  `DPSNAP3 → DPSNAP4`; tripwire count updates (`main.rs:8124-8197`, currently 7 / 3 / 5 — all
+  three verified still accurate).
+- **`crates/perp-core`**: none. `op_fund_insurance` is unchanged, so this piece **moves no
+  vkey** of its own. (Verified: a gateway-only change does not alter the guest binary.)
 - **Contracts**: none.
 
-## Non-goals
+## 7. The deposit-ordering restriction is deferred to SEC-028
 
-- **A runtime top-up path** (capitalizing insurance after users exist). H1 makes it
-  grief-able by any registered user, and solving that needs either an operator path to credit
-  third-party deposits — which is the confiscation primitive above — or a contract change.
-  Separate piece.
-- **Recapitalization after depletion.** `CollateralVault.deposit` reverts in close-only
-  (`CollateralVault.sol:191`), and insurance depletion plus exhausted ADL is precisely what
-  trips close-only. **So once the backstop is empty enough to matter, this path is closed by
-  the contract.** Recorded as a real gap, not solved here; solving it requires a contract
-  change.
-- **An insurance withdrawal or "unfund" op.** None exists and none is added — see H3.
+The first version proposed gating `/v1/accounts/deposit/authorize` to stop a user
+head-of-line blocking the bootstrap. Adversarial review showed the gate does not do that:
 
-## Hazards to carry into the plan
+- Authorizations are persisted with **no expiry and no nonce** (`main.rs:1056`). One issued
+  before the gate closes can be landed after.
+- A user can deposit while the gateway is offline, or before a restarted gateway serves.
+- The vault does not consume the signature, so **one authorization can be replayed into
+  several leaves**, and after the first is credited its authorization is deleted — leaving
+  every later identical leaf permanently uncreditable.
 
-- **H3 — insurance is a one-way valve.** No op removes value from the fund except covering
-  bad debt into a position's collateral (`engine.rs:828-830`). The operator's USDC becomes
-  permanently protocol-owned. Conservation still holds — it sits in `internal_value`, backed
-  by real vault USDC — but there is no operator claim path. The endpoint's documentation must
-  say this plainly; an operator should not discover it afterwards.
-- **H5 — the note blind is a permanent-failure surface.** The deposit path derives
-  `0xB0 ‖ deposit_counter` and bumps the counter only on success (`main.rs:2067-2069`,
-  `:2134`). SEC-026 uniqueness is **historical**, so reusing the scheme without bumping
-  produces a permanent `DuplicateCommitment` on that account's next same-amount deposit. The
-  `BLIND-DERIVATION WARNING` (`main.rs:4305-4312`) additionally forbids leaf-count-derived
-  blinds on any `/v1` money path. The bootstrap must reuse the existing derivation and bump,
-  not invent one.
-- **H8 — boot posture exits(1) on any bookkeeping slip.** `deposit_posture` (`main.rs:84-120`,
-  wired `:6869-6950`) terminates the process on `gw_count > vault_count` or a tip mismatch,
-  on every L1-configured boot. A bootstrap that credited insurance without a matching real
-  leaf would brick the next restart rather than degrade — which is the correct behaviour, and
-  the reason the backed path must go through `op_deposit` rather than around it.
-- **H9 — the bootstrap is publicly attributable.** `Deposit.from` is an indexed topic and
-  `amount` is in the data. The operator's EOA and the size of the capitalization are public
-  and correlate with the settle in which `insurance_fund` jumps. The privacy story covers
-  payer↔owner linkage, not "the operator capitalized insurance with $X from address Y".
-- **H10 — `insurance_fund` is proven but not L1-pinned.** It lives in `state_root` and is
-  covered by the proof, but nothing on L1 checks it; `_requireDepositPrefix` pins only the
-  deposit leg. A bootstrap whose `Deposit` lands and whose `FundInsurance` is lost looks
-  on-chain like an ordinary user deposit — detectable only by reading gateway state.
+That last point is not a limitation of the gate; it is a **live, unrecoverable wedge of the
+deposit stream on `main` today**, and it is strictly worse than the voluntary blocking this
+gate was designed against. It is written up separately as
+[SEC-028](2026-07-30-sec028-deposit-authorization-replay.md).
 
-## What must be tested
+**Decision:** 025-A does not ship a deposit-authorize gate. A gate that stops the voluntary
+case while the involuntary permanent case remains open would be security theatre, and would
+have to be redesigned the moment SEC-028 is fixed. Pre-bootstrap ordering is handled
+operationally at cutover — a fresh vault, the operator's deposit as id 0, before the endpoint
+is reachable — and properly once SEC-028 lands.
 
-1. **The confiscation invariant**: a deposit whose on-chain `from` is not
-   `INSURANCE_OPERATOR_ADDRESS` is refused, with both valid credentials presented. This is
-   the piece's central security property and must fail before the fix.
+## 8. What must be tested
+
+1. **The endpoint-scoped payer binding**: a deposit whose on-chain `from` is not
+   `INSURANCE_OPERATOR_ADDRESS` is refused with both valid credentials presented. Must fail
+   before the fix. The test name must not claim a protocol invariant — it is an endpoint
+   property (§2).
 2. Each authz state independently: no admin key ⇒ 401; unset config ⇒ 503; admin key but no
    account key ⇒ rejected.
-3. `external_in` is unchanged across a successful bootstrap by the `FundInsurance` leg, and
-   raised **once** by the `Deposit` leg — the SEC-024 property, re-pinned at this call site.
-4. The `authorize` gate: refused at `insurance_fund == 0` in production, permitted after,
-   and **not** gated in demo mode.
-5. Out-of-order and duplicate-tx bootstraps are refused by the existing guards, reached
-   through the new endpoint.
-6. Conservation holds across the pair (`conservation_holds`, already a hard rejection in
-   `apply_batch`).
+3. `external_in` is unchanged by the `FundInsurance` leg and raised exactly once by the
+   `Deposit` leg — the SEC-024 property, re-pinned at this call site.
+4. **Resume**: with the record at `DepositApplied`, a second call completes the second leg
+   alone and does not attempt another `Deposit`. Pin that a naive pair-retry would fail
+   `DepositOutOfOrder`, so the test proves the resume path is load-bearing.
+5. **One-shot**: with the record `Complete`, the endpoint refuses.
+6. `Complete` is not reachable from a fill's insurance cut, a liquidation penalty, or a
+   `finalSettle` — only from a normal `settleBatch` commit.
+7. Duplicate-tx and out-of-order bootstraps are refused — through whichever path §5 chooses,
+   asserted against that path rather than assumed.
 
-## Cutover
+## 9. Cutover
 
-Shares SEC-024's cutover, which already needs a rebuilt guest and a fresh `SP1ZkVerifier`.
-This piece adds no `perp-core` change, so it moves no root and no vkey of its own.
+Shares SEC-024's cutover (rebuilt guest, fresh `SP1ZkVerifier`). This piece adds no
+`perp-core` change, so it moves no root or vkey of its own; it does move the snapshot magic.
 
-Order at cutover: deploy → operator registers, binds address, authorizes, deposits on L1 as
-id 0 → admin bootstrap → confirm `insurance_fund > 0` → the `authorize` route opens →
-**then** order ingress (025-D).
+Order: deploy → operator registers, binds address, authorizes, deposits on L1 as id 0 → admin
+bootstrap → the bootstrap window settles → record reads `Complete` → **then** order ingress
+(025-D).
+
+## 10. Gaps recorded, not solved
+
+- **SEC-028**, above. Prerequisite for any real deposit-ordering guarantee.
+- **Recapitalization after depletion.** `CollateralVault.deposit` reverts only when
+  settlement `closeOnly()` is actually true (`CollateralVault.sol:186-191`). The first version
+  claimed the path is closed "once the backstop is empty enough to matter" — false: insurance
+  can sit at zero with `Mode::Normal` and deposits still work. The real gap is narrower and
+  worse-defined: recapitalization works until close-only trips, and is impossible after.
+- **Insurance is a one-way valve.** No op removes value from the fund except covering bad debt
+  (`engine.rs:828-830`). The operator's USDC becomes permanently protocol-owned, with no
+  claim path. The endpoint's documentation must say so plainly.
+- **`insurance_fund` is proven but not L1-pinned.** A bootstrap whose `Deposit` lands and
+  whose `FundInsurance` is lost looks on-chain like an ordinary user deposit.
+- **Public attributability.** `Deposit.from` is an indexed topic; the operator's EOA and the
+  capitalization size are public and correlate with the settle in which the fund jumps.
