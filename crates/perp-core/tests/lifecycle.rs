@@ -1845,3 +1845,53 @@ fn legacy_seed_insurance_bytes_decode_to_the_stub_and_stay_aligned() {
     .expect("encode");
     assert_eq!(reenc, LEGACY_BYTES);
 }
+
+/// SEC-024's finding, made mechanical. `external_in` asserts that value entered
+/// the system from outside. Before this branch there were TWO writers:
+/// `op_deposit`, bound to the SEC-019 L1 hash chain, and `op_seed_insurance`,
+/// bound to nothing — it fabricated the accounting representation of collateral
+/// that never arrived, and the guest proved it. After this branch there must be
+/// exactly one.
+///
+/// A source scan rather than a type-level restriction because `external_in` is
+/// `pub` (`state.rs`) and used across the crate; making it private is a larger
+/// refactor than this finding warrants. The scan strips ALL whitespace first so
+/// the count is formatting-independent: rustfmt currently splits the op_deposit
+/// READ across lines (`self\n.external_in`), so a raw substring count would see 1
+/// today and drift to 2 under a harmless re-join. On the normalized text there
+/// are exactly 2 touches of `self.external_in` — the READ
+/// (`self.external_in.checked_add(amount)`) and the WRITE
+/// (`self.external_in = external_in;`), both in `op_deposit` — and exactly 1 of
+/// those is an assignment.
+///
+/// If you add a legitimate writer, update the counts AND state in the message
+/// what binds it to real external value — an UNBOUND writer is the bug SEC-024
+/// exists to close. (Mutation-checked: `self.external_in = self.external_in + 1;`
+/// anywhere in engine.rs moves both counts and fails both asserts.)
+#[test]
+fn external_in_has_exactly_one_writer_and_it_is_op_deposit() {
+    let src = include_str!("../src/engine.rs");
+    let norm: String = src.chars().filter(|c| !c.is_whitespace()).collect();
+    let touches = norm.matches("self.external_in").count();
+    assert_eq!(
+        touches, 2,
+        "expected exactly 2 whitespace-normalized occurrences of `self.external_in` \
+         in engine.rs — the read (`self.external_in.checked_add`) and the write \
+         (`self.external_in = …`), both in op_deposit — found {touches}. A NEW \
+         writer of external_in must be bound to real external value (op_deposit's \
+         is the SEC-019 L1 deposit hash chain); an unbound writer is the \
+         fabrication SEC-024 removed. Update this count only with that binding \
+         named here."
+    );
+    // The sharper pin: the ASSIGNMENT form specifically. `==` comparisons are
+    // excluded so a future assert/debug check does not masquerade as a writer.
+    let writes =
+        norm.matches("self.external_in=").count() - norm.matches("self.external_in==").count();
+    assert_eq!(
+        writes, 1,
+        "expected exactly 1 assignment to `self.external_in` in engine.rs — \
+         op_deposit's `self.external_in = external_in;`, the L1-bound deposit \
+         path — found {writes}. op_seed_insurance was the second writer and it \
+         was the SEC-024 fabrication; do not add another without an L1 binding."
+    );
+}

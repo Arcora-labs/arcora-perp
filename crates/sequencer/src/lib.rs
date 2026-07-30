@@ -2263,6 +2263,121 @@ mod tests {
         assert!(sq.state.conservation_holds());
     }
 
+    /// Whole-branch review I2, the REBUILT pin (SEC-024 Task 4). The ban commit
+    /// site pairs each banned order with the reason pushed at its OWN
+    /// `settle_fills` push site — never looked up first-match in `rejected`, where
+    /// the same hash can already sit under a DIFFERENT reason from earlier in the
+    /// same probe pass. The original pin drove that with a leg-less fill `Risk`;
+    /// SEC-024's carry-in made fill `Risk` attributable, which dissolved the
+    /// fixture (the test above now pins two-offender pairing, where a first-match
+    /// lookup happens to agree) — but not the hazard: every remaining
+    /// non-attributable class (`Oracle`, `CloseOnly`, `SelfTrade`, `Overflow`)
+    /// still records BOTH legs. This fixture rebuilds the double record on
+    /// `CloseOnly`.
+    ///
+    /// In close-only mode (which `pre_trade_check` deliberately does not gate — it
+    /// margins at the mark and screens reduce_only only, so opening orders still
+    /// admit and match, failing first at settlement), ONE probe pass records X
+    /// twice: fill 1 (X taker × M1 maker, at M1's in-band resting price) fails
+    /// `CloseOnly` because M1's flat leg would OPEN — non-attributable, both legs
+    /// recorded, and X (whose leg REDUCES: it is closing its batch-1 long) is the
+    /// INNOCENT counterparty under `MarketCloseOnly`; fill 2 (T2 taker × X's
+    /// resting remainder, at X's own out-of-band 90k limit) then fails
+    /// `FillPriceOutOfBand` on X's maker leg — X's OWN offense, and the pass's
+    /// only offender.
+    #[test]
+    fn a_ban_survives_an_earlier_innocent_record_of_the_same_hash() {
+        let mut sq = test_sequencer();
+        fund(&mut sq, 3, 20_000, 0x33); // M1 — the flat maker whose leg trips close-only
+        let size = SIZE_SCALE / 10;
+
+        // Batch 1 (normal mode): X (owner 1) opens 0.1 BTC long at the $100k mark
+        // against owner 2, so X's later sell REDUCES — the innocence in fill 1.
+        sq.seal_batch(
+            &[
+                t_order_at(2, Side::Sell, 100_000, size, 900),
+                t_order_at(1, Side::Buy, 100_000, size, 901),
+            ],
+            now(),
+        );
+        assert_eq!(sq.state.position(&owner_id(1), 0).unwrap().size, size);
+
+        // Flip the system to close-only for batch 2.
+        sq.apply(&BatchOp::EnterCloseOnly).unwrap();
+
+        // Stream order matters: M1 rests first; X's sell crosses it (fill 1, at
+        // M1's 100k) and X's remainder rests at its own 90k ask; T2 crosses X
+        // (fill 2, at X's 90k).
+        let m1 = t_order_at(3, Side::Buy, 100_000, size, 902);
+        let x = t_order_at(1, Side::Sell, 90_000, 2 * size, 903);
+        let t2 = t_order_at(2, Side::Buy, 95_000, size, 904);
+        let m1_h = m1.order_hash::<Keccak256>();
+        let x_h = x.order_hash::<Keccak256>();
+        let t2_h = t2.order_hash::<Keccak256>();
+
+        // Fixture guards — mechanical, not narrative. Fill 1 exactly as the matcher
+        // will produce it must fail with the NON-attributable `CloseOnly`, and
+        // fill 2 with the maker-attributable band error — otherwise the double
+        // record this test exists for never forms and the pin below goes vacuous.
+        let oracle = *sq.oracle(0).expect("market 0 oracle");
+        let mut probe = sq.state.clone();
+        let e1 = probe
+            .apply_op(&BatchOp::Fill {
+                taker: owner_id(1),
+                maker: owner_id(3),
+                market_id: 0,
+                taker_side: Side::Sell,
+                size,
+                price: 100_000 * PRICE_SCALE,
+                oracle,
+                now_ms: now() + 10,
+            })
+            .expect_err("fill 1 must fail at settlement");
+        assert_eq!(e1, EngineError::CloseOnly, "fill 1 is the close-only class");
+        assert_eq!(offending_leg(&e1), None, "…and it is NON-attributable");
+        let mut probe = sq.state.clone();
+        let e2 = probe
+            .apply_op(&BatchOp::Fill {
+                taker: owner_id(2),
+                maker: owner_id(1),
+                market_id: 0,
+                taker_side: Side::Buy,
+                size,
+                price: 90_000 * PRICE_SCALE,
+                oracle,
+                now_ms: now() + 10,
+            })
+            .expect_err("fill 2 must fail at settlement");
+        assert_eq!(e2, EngineError::FillPriceOutOfBand);
+        assert_eq!(
+            offending_leg(&e2),
+            Some(FillLeg::Maker),
+            "fill 2 is X's OWN offense — the attributable record"
+        );
+
+        let sealed = sq.seal_batch(&[m1, x, t2], now() + 10);
+
+        // THE PIN: the committed ban carries the reason from X's OWN offender push
+        // site. Reverting `banned.push((*oh, *reason))` to a first-match lookup
+        // into `rejected` finds fill 1's innocent `MarketCloseOnly` record for the
+        // same hash instead and folds that falsehood permanently into
+        // `manifest_hash`.
+        assert_eq!(
+            sealed.manifest.rejected,
+            vec![(x_h, RejectReason::FillPriceOutOfBand)],
+            "the ban must commit the reason from X's OWN offending leg, not the \
+             reason recorded when X was the innocent counterparty of the earlier \
+             non-attributable close-only failure",
+        );
+        // The rematch (X excised) leaves two same-side bids: nothing fills, both
+        // rest — the innocent parties are ordered, not dragged into the rejection.
+        assert!(sealed.manifest.ordered.contains(&m1_h));
+        assert!(sealed.manifest.ordered.contains(&t2_h));
+        assert!(!sealed.manifest.ordered.contains(&x_h));
+        assert!(sealed.settled_order_hashes.is_empty(), "nothing settled");
+        assert!(sq.state.conservation_holds());
+    }
+
     /// The cross-batch arm of the same hazard (the spec's "a Gtc maker admitted in-band
     /// drifts out of band as the oracle moves"): the offender is a maker RESTING FROM AN
     /// EARLIER BATCH, so it is in no later batch's admitted stream — banning it from
