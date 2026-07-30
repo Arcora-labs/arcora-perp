@@ -7903,6 +7903,37 @@ mod tests {
             .is_err());
     }
 
+    #[test]
+    fn the_tx_dedup_guard_refuses_a_replayed_hash_on_its_own() {
+        // ISOLATES tx dedup. The sibling test above ends by replaying the SAME tx with the
+        // SAME ownerCommit — but `commit_deposit_bookkeeping` removes the authorization too,
+        // so that assertion is satisfied by the AUTHORIZATION guard and survives deleting
+        // the dedup check entirely (mutation-verified). Here a FRESH authorization exists,
+        // so every other guard passes and only dedup can refuse.
+        let mut gw = Gw::boot();
+        let key = gw.account_register_for_test();
+
+        let (from, commit_a, amount, id) = gw.authorize_for_test(&key, 5_000_000);
+        gw.validated_deposit(&key, from, commit_a, amount, id, "0xreplayed", 0)
+            .expect("first deposit validates");
+        gw.commit_deposit_bookkeeping(&key, &commit_a, "0xreplayed");
+
+        // A second, DIFFERENT authorization — its blind is present and reproduces its own
+        // commit, so the SEC-019 guard is satisfied.
+        let (_, commit_b, _, _) = gw.authorize_for_test(&key, 5_000_000);
+        assert_ne!(commit_a, commit_b, "authorize must mint a fresh blind");
+
+        // `ValidatedDeposit` is not `Debug`, so `expect_err` will not compile here.
+        let err = match gw.validated_deposit(&key, from, commit_b, amount, id, "0xreplayed", 0) {
+            Ok(_) => panic!("an already-credited tx hash must be refused"),
+            Err(e) => e,
+        };
+        assert!(
+            err.contains("already credited"),
+            "must fail on tx dedup, not on some other guard: {err}"
+        );
+    }
+
     /// SEC-025-B break-4 fixtures. The manifest-only tests need an order that is
     /// genuinely ACCEPTED and RESTS (it lands in `ordered` with no fill and no
     /// rejection). The distinction matters: a REJECTED order also lands in the
