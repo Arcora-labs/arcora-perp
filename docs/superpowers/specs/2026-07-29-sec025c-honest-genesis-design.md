@@ -115,7 +115,7 @@ The two options are genuinely in tension and the choice is a product decision, n
 | Change | Consequence |
 |---|---|
 | Production genesis is markets-only | **`GENESIS_ROOT` moves.** Fresh `DarkPerpSettlement` deploy with the new root; gateway snapshot wiped |
-| No `perp-core` change | **No vkey move, no verifier redeploy** originates here |
+| No `perp-core` change | No vkey move originates **here** — but this row under-plans the cutover if read alone. **SEC-022 (`50e6c17`, `52d4123`, `5a25197`, all ancestors of this branch) did change `perp-core`**, which `crates/sp1-guest` compiles into the guest. The cutover therefore needs a **rebuilt guest and a new `SP1ZkVerifier`**. `docs/REDEPLOY-CC-RUNBOOK.md:119-122` states this correctly; consult it rather than this row |
 | Mode threaded through `fund` / `fund_amount_unbacked` | Compile error at every call site — intended |
 | Continuity check on every L1 boot | A gateway whose `last_settled_root` disagrees with the chain now refuses to start rather than settling into a fork |
 | `/v1/lp/*` absent in production | Never usable there without corrupting settlement |
@@ -144,6 +144,23 @@ Rows marked "must fail before the change" are what establish the tests test some
 
 ## Open risks
 
-1. **Testnet liquidity after the cutover.** The decision above means the live testnet's MM must be re-funded through real deposits. If that turns out to be impractical (no faucet path for the MM wallet, say), the fallback is not to reintroduce unbacked minting — it is to fund the MM like any user and accept a thinner book. Reintroducing unbacked minting would re-break settling.
+1. **~~Testnet liquidity after the cutover.~~ RETRACTED — the mitigation I wrote is not implementable, and the consequence is larger than "a thinner book".**
+
+   The original text said the MM would be re-funded "through real deposits — faucet → `CollateralVault.deposit` → `account_confirm_deposit`". **That path cannot credit the house MM.** `account_confirm_deposit` credits `self.accounts[key].wallet` (`main.rs:1957-1959`), and every account wallet is derived from `csprng_bytes32()` at registration (`:1779`). `gw.mm` is `Wallet::from_seed([2u8; 32])` (`:1544`) and **is not an account at all**. Every path that could credit it — boot Pass 2, `fund`, `pool_transfer` via `lp_deposit` — is refused or unmounted by this very design.
+
+   The consequence is concrete, not cosmetic. `Gw::tick` injects a house-MM counter-order for every crossing `Ioc`/`Fok` (`main.rs:3669`, `:3721`). With a zero-collateral MM that counter is engine-rejected, so **market orders never fill in production** unless two real accounts happen to cross resting `Gtc` orders.
+
+   This is not a defect in 025-C's implementation — it is faithful to this spec. It is a defect in this spec: I asserted a mitigation without checking that the code could perform it. **Resolving it is a prerequisite for opening trading, not for merging.** Two candidate shapes, neither designed here: an operator-owned *registered account* acting as MM and quoting through `/v1/orders` like any participant, or 025-E owning market-making explicitly as part of the no-house posture it already scopes. `docs/API.md:79`'s "guaranteed fill" claim is false in production until one of them lands.
+
+2. **The demo-snapshot residual strands real USDC, and a cheap mechanical detector exists.** §4's check is root *equality*, not a posture detector: a deployment whose contract `GENESIS_ROOT` was itself demo-derived (as the live stack's `0x4d1ae1d2` was) matches its own demo snapshot and boots with the seven deposits intact. The failure is worse than a wedged settle — `account_confirm_deposit` refuses every real deposit (`deposit_id 0 is not next-in-line (expected 7)`), `settleBatch` reverts at `_requireDepositPrefix`, **and `finalSettle` reverts on the same pin** (`DarkPerpSettlement.sol:378`), so the wind-down escape is bricked and users' collateral is permanently unclaimable.
+
+   Two `cast call`s beside the root check would detect it mechanically:
+
+   ```
+   require gw.seq.state.consumed_deposit_count <= vault.depositCount()
+   require vault.depositTipAt(consumed_deposit_count) == consumed_deposit_tip
+   ```
+
+   The first has no false positives — the gateway can only have credited deposits the vault actually holds, so `count > depositCount` is *exactly* the unbacked-deposit condition. The second catches sentinel leaves even when the counts coincide. **This is a hard gate on the cutover** and the highest-value follow-up to this piece; it converts operator discipline into a fail-closed boot.
 2. **Zero insurance until 025-A.** Restated because it is the one way this piece could make things worse if a deployment opens for trading before 025-D exists.
 3. **The continuity check needs an L1 read at boot.** Fail-closed on an unreachable RPC is specified; it must not be softened to a warning under operational pressure, which is how the existing check became vacuous.

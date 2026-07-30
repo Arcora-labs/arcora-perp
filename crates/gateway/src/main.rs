@@ -70,6 +70,13 @@ fn hex32(d: &Digest) -> String {
     s
 }
 
+/// SEC-025-C: does the gateway's last settled root match the chain's currentStateRoot?
+/// Split from the boot wiring so it is testable without an RPC. Case-insensitive
+/// because `current_root()` returns whatever the node formats.
+fn continuity_ok(last_settled_root: &Digest, chain_root: &str) -> bool {
+    hex32(last_settled_root).eq_ignore_ascii_case(chain_root)
+}
+
 /// What to do with a sealed-but-settle-failed window, given the on-chain batchCount
 /// re-read AFTER the failure. `seal_window` bumped the local per-window counter to
 /// `sealed_batch_id + 1`, so `chain_batch_count == sealed_batch_id` means the tx never
@@ -1487,8 +1494,35 @@ fn decode_hex(s: &str) -> Option<Vec<u8>> {
         .collect()
 }
 
+/// SEC-025-C: what a boot mints at genesis. **Passed into `Gw::boot_with`, never read
+/// from `Gw::prod`** — `prod` is assigned two lines after `boot()` returns in `main()`,
+/// so it cannot guard the funding that happens inside.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GenesisMode {
+    /// Registers markets AND funds MM / demo user / LP demo, and seeds insurance.
+    /// Those are UNBACKED mints with sentinel L1 fields, so a chain built on this
+    /// genesis can never satisfy `_requireDepositPrefix`. Demo and no-L1 dev only.
+    Demo,
+    /// Markets only. `consumed_deposit_tip` and `consumed_deposit_count` stay at their
+    /// `State::new` values, which is exactly the pair a fresh vault's `depositTipAt(0)`
+    /// returns — so the first settle's deposit-prefix pin passes.
+    Production,
+}
+
 impl Gw {
+    /// Demo-genesis boot — the historical entry point, kept so its ~80 test call
+    /// sites stay untouched (exactly one caller was ever non-test: `main`, which
+    /// now derives a `GenesisMode` and calls `boot_with` directly). Compiled out
+    /// of the non-test binary entirely — `cfg(test)`, not `allow(dead_code)` — so
+    /// a future non-test caller is a COMPILE ERROR rather than a silent
+    /// reintroduction of demo funding (seven unbacked deposits) into production,
+    /// which is the exact bug class SEC-025-C exists to kill.
+    #[cfg(test)]
     fn boot() -> Self {
+        Self::boot_with(GenesisMode::Demo)
+    }
+
+    fn boot_with(mode: GenesisMode) -> Self {
         // Bind the enclave identity to a REAL verified TEE measurement when an
         // attestation is configured (Azure TDX + vTPM); else a stub for the demo.
         let attestation = attest_from_env();
@@ -1548,47 +1582,59 @@ impl Gw {
                 feed_ts: 0,
             });
         }
-        // Pass 2 (funding): all markets now exist, so fund each bucket.
-        // Infallible-by-construction (SEC-026): genesis boot mints into an EMPTY tree,
-        // and every blind below (0x40+i / 0x10+i / 0x38) is a distinct constant used
-        // exactly once — no historical duplicate is possible, so `.expect` is honest.
-        for (i, cfg) in MARKETS.iter().enumerate() {
-            // fund the market-maker (deep) and the user (≈$5k) into each market bucket
-            fund(
-                &mut seq,
-                &mut archive,
-                &mm,
-                cfg.id,
-                MM_FUND_PER_MARKET,
-                0x40 + i as u8,
-            )
-            .expect("boot MM funding: fresh distinct blinds on an empty genesis tree");
-            fund(
-                &mut seq,
-                &mut archive,
-                &user,
-                cfg.id,
-                USER_FUND_PER_MARKET,
-                0x10 + i as u8,
-            )
-            .expect("boot user funding: fresh distinct blinds on an empty genesis tree");
+        // Pass 2 (funding): all markets now exist, so fund each bucket. DEMO ONLY
+        // (SEC-025-C): every credit below is an UNBACKED mint with sentinel L1 fields,
+        // each folding a sentinel leaf into `consumed_deposit_tip`. A production
+        // genesis must mint NOTHING — a chain built on these seven fabricated deposits
+        // submits `newDepositCount = 7+` against a fresh vault whose `depositCount` is
+        // 0, and `_requireDepositPrefix` reverts BEFORE the proof is even verified.
+        if mode == GenesisMode::Demo {
+            // Infallible-by-construction (SEC-026): genesis boot mints into an EMPTY tree,
+            // and every blind below (0x40+i / 0x10+i / 0x38) is a distinct constant used
+            // exactly once — no historical duplicate is possible, so `.expect` is honest.
+            for (i, cfg) in MARKETS.iter().enumerate() {
+                // fund the market-maker (deep) and the user (≈$5k) into each market bucket
+                // `prod: false` — this whole block runs only under `GenesisMode::Demo`,
+                // never in production (SEC-025-C).
+                fund(
+                    &mut seq,
+                    &mut archive,
+                    &mm,
+                    cfg.id,
+                    MM_FUND_PER_MARKET,
+                    0x40 + i as u8,
+                    false,
+                )
+                .expect("boot MM funding: fresh distinct blinds on an empty genesis tree");
+                fund(
+                    &mut seq,
+                    &mut archive,
+                    &user,
+                    cfg.id,
+                    USER_FUND_PER_MARKET,
+                    0x10 + i as u8,
+                    false,
+                )
+                .expect("boot user funding: fresh distinct blinds on an empty genesis tree");
+            }
+            // give the demo user extra market-0 balance so the LP tab is demoable (LP
+            // deposits debit this real balance — no free mint).
+            fund(&mut seq, &mut archive, &user, 0, 2_000_000, 0x38, false)
+                .expect("boot LP-demo funding: fresh distinct blind on an empty genesis tree");
+            // capitalize the insurance fund so the backstop is visible from genesis; it
+            // then grows on its own from the per-fill insurance cut (audit Q3/Q4).
+            seq.apply(&BatchOp::SeedInsurance {
+                amount: INSURANCE_SEED_USD * QUOTE_SCALE,
+            })
+            .expect("seed insurance fund");
         }
-        // give the demo user extra market-0 balance so the LP tab is demoable (LP
-        // deposits debit this real balance — no free mint).
-        fund(&mut seq, &mut archive, &user, 0, 2_000_000, 0x38)
-            .expect("boot LP-demo funding: fresh distinct blind on an empty genesis tree");
-        // capitalize the insurance fund so the backstop is visible from genesis; it
-        // then grows on its own from the per-fill insurance cut (audit Q3/Q4).
-        seq.apply(&BatchOp::SeedInsurance {
-            amount: INSURANCE_SEED_USD * QUOTE_SCALE,
-        })
-        .expect("seed insurance fund");
         // Pass-2 funding + SeedInsurance mutated state and pushed ops into the open
         // window AFTER add_market last captured window_start_state. The L1 contract
         // is deployed with GENESIS_ROOT = the FULL boot state root (computed below),
         // so fold the boot ops into the genesis baseline: window 0 must open from
         // genesis, or its pre_state (post-Pass-1, pre-funding) != the on-chain
-        // GENESIS_ROOT and the first settle reverts with BadPrevRoot.
+        // GENESIS_ROOT and the first settle reverts with BadPrevRoot. Runs in BOTH
+        // genesis modes: with no Pass-2 ops (Production) it simply folds nothing.
         seq.seal_genesis_baseline();
 
         let genesis_root = seq.state.state_root();
@@ -2390,6 +2436,7 @@ impl Gw {
             market,
             amount,
             blind,
+            self.prod,
         )?;
         self.accounts.get_mut(key).unwrap().deposit_counter += 1;
         Ok(())
@@ -2915,6 +2962,7 @@ impl Gw {
                 market,
                 30_000,
                 0x71u8.wrapping_add(bn),
+                self.prod,
             )
             .map_err(|e| format!("adl demo: user margin fund failed: {e}"))?;
         }
@@ -2934,6 +2982,7 @@ impl Gw {
             market,
             victim_margin_usd,
             0x9Au8.wrapping_add(bn),
+            self.prod,
         )
         .map_err(|e| format!("adl demo: victim fund failed: {e}"))?;
         let oracle = oracle_of(px, now, market, &self.oracle_signer);
@@ -3019,6 +3068,13 @@ impl Gw {
     /// Unbind+Withdraw on `from` (external_out) then Deposit+Fund on `to` (external_in),
     /// net-zero externally. `from` must have `value` free in market 0.
     fn pool_transfer(&mut self, from: &Wallet, to: &Wallet, value: i128) -> Result<(), String> {
+        // SEC-025-C: the credit leg below is an unbacked mint, refused in production
+        // by `fund_amount_unbacked`. But the debit leg (Unbind+Withdraw) is applied
+        // FIRST, so relying on the mint-site refusal alone would return `Err` with
+        // `from`'s value already burned. Pre-flight the SAME guard before mutating
+        // anything: a production refusal must mutate NOTHING. The mint-site check
+        // remains the backstop for every other caller.
+        refuse_unbacked_mint(self.prod)?;
         if value > self.market_free_of(&from.owner, 0) {
             return Err("Insufficient market-0 free balance.".into());
         }
@@ -3057,8 +3113,16 @@ impl Gw {
         // NOTE: the debit (Unbind+Withdraw) has already been applied at this point; the
         // engine refusing the credit would leave the value burned, which is why the
         // blind's by-construction uniqueness matters and why we still never panic here.
-        fund_amount_unbacked(&mut self.seq, &mut self.archive, to, 0, value, cb)
-            .map_err(|e| format!("lp credit fund: {e}"))?;
+        fund_amount_unbacked(
+            &mut self.seq,
+            &mut self.archive,
+            to,
+            0,
+            value,
+            cb,
+            self.prod,
+        )
+        .map_err(|e| format!("lp credit fund: {e}"))?;
         Ok(())
     }
 
@@ -3423,6 +3487,7 @@ impl Gw {
             self.selected,
             amount,
             blind,
+            self.prod,
         )
     }
 
@@ -4037,6 +4102,7 @@ fn fund(
     market: u64,
     usd_amount: i128,
     blind: u8,
+    prod: bool,
 ) -> Result<(), String> {
     fund_amount_unbacked(
         seq,
@@ -4045,15 +4111,36 @@ fn fund(
         market,
         usd_amount * QUOTE_SCALE,
         [blind; 32],
+        prod,
     )
+}
+
+/// SEC-025-C: THE production refusal for unbacked minting — the single guard every
+/// unbacked-credit path funnels through: `fund_amount_unbacked` at the mint itself,
+/// and `pool_transfer` as a pre-flight BEFORE its debit leg (its Unbind+Withdraw is
+/// applied first, so a mint-site refusal alone would return `Err` with the debited
+/// value already burned). Refused HERE rather than at the router, because
+/// route-mounting protects one caller and is invisible to the next one added: that
+/// is exactly how `/v1/lp` and `simulate_adl` came to be reachable while
+/// self-service was correctly closed (audit DP-001).
+fn refuse_unbacked_mint(prod: bool) -> Result<(), String> {
+    if prod {
+        return Err(
+            "unbacked funding is refused in production: collateral must enter through a \
+             verified L1 deposit (CollateralVault.deposit → account_confirm_deposit)"
+                .to_string(),
+        );
+    }
+    Ok(())
 }
 
 /// SEC-019 (Task 7b): an UNBACKED credit — a `Deposit` op with SENTINEL L1-leaf fields
 /// (`from=[0;20]`, `deposit_blind=[0;32]`, `deposit_id` = the live consumed count so the
 /// strict in-order gate passes). Used ONLY by the demo/LP/self-service seed paths that
 /// fabricate collateral without a real L1 deposit event; those fold a `consumed_deposit_tip`
-/// the on-chain vault chain will NOT match, so they can never settle in `prod` (self-service
-/// is disabled there — audit DP-001). The REAL L1-credit path
+/// the on-chain vault chain will NOT match, so a single one breaks every subsequent
+/// settle at `_requireDepositPrefix` — before the proof is even verified. REFUSED in
+/// production (SEC-025-C, `refuse_unbacked_mint`). The REAL L1-credit path
 /// (`account_confirm_deposit`) calls `fund_amount` with the payer's real `from`, the
 /// deposit's L1 `id`, and the authorized `deposit_blind`, so its fold DOES match the vault.
 fn fund_amount_unbacked(
@@ -4063,7 +4150,9 @@ fn fund_amount_unbacked(
     market: u64,
     amount: i128,
     blind: Digest,
+    prod: bool,
 ) -> Result<(), String> {
+    refuse_unbacked_mint(prod)?;
     let deposit_id = seq.state.consumed_deposit_count;
     fund_amount(
         seq, archive, w, market, amount, blind, [0u8; 20], deposit_id, [0u8; 32],
@@ -5474,7 +5563,13 @@ async fn get_v1_enclave_epoch(State(app): State<Shared>) -> impl IntoResponse {
 }
 /// Machine-readable OpenAPI 3.1 spec for the /v1 API, so bots/tools can codegen a
 /// client. Hand-authored + compact; the prose reference is docs/API.md.
-async fn get_v1_openapi() -> impl IntoResponse {
+///
+/// Takes the production posture because the document must match the MOUNTED
+/// surface: `/v1/lp*` is not mounted in production (SEC-025-C Task 3), so the
+/// production document must OMIT those three paths rather than advertise routes
+/// that 404. Split from the axum handler so the gating is testable without an
+/// HTTP stack (`openapi_advertises_lp_only_in_demo`).
+fn v1_openapi_json(prod: bool) -> serde_json::Value {
     let auth = serde_json::json!({ "security": [{ "ApiKey": [] }] });
     let ok = |desc: &str| serde_json::json!({ "200": { "description": desc } });
     let order_body = serde_json::json!({
@@ -5494,7 +5589,7 @@ async fn get_v1_openapi() -> impl IntoResponse {
                 "sealed": { "type": "string", "description": "sealed ingress: 0x-hex sealed-box wire (0x01 ‖ epk32 ‖ nonce24 ‖ ct‖tag) over the canonical order terms, AAD = OrderEncryptAad ‖ epochId(u64 LE) ‖ owner" }
             } } } }
     });
-    Json(serde_json::json!({
+    let mut spec = serde_json::json!({
         "openapi": "3.1.0",
         "info": { "title": "dark-perp external API", "version": "1", "description": "Multi-tenant trading over the sequencer engine. Amounts are decimal strings of scaled integers (quote *1e6, size/price *1e8). See docs/API.md." },
         "components": { "securitySchemes": { "ApiKey": { "type": "apiKey", "in": "header", "name": "X-Api-Key" } } },
@@ -5520,15 +5615,6 @@ async fn get_v1_openapi() -> impl IntoResponse {
                     "signature": { "type": "string", "description": "65-byte secp256k1 sig (r‖s‖v) over the withdraw auth digest keccak256(\"dark-perp:withdraw:\"‖chainId(u64 BE)‖vault(20)‖owner(32)‖marketId(u64 BE)‖amount(i128 BE)‖to(20)‖nonce(u64 BE)), recovering to the registered signer (caller-signed) or else the bound deposit address. Accepted over any of THREE shapes: the raw 32-byte digest, EIP-191 personal_sign over those 32 bytes, or EIP-191 over their lowercase 0x-hex string — so both CLI signers and browser-wallet personal_sign work. chainId/vault/owner: read them from GET /v1/accounts/me" } } } } } },
                 "responses": ok("recorded withdrawal + leaf") } },
             "/v1/accounts/withdrawals": { "get": { "summary": "Own withdrawals + claim proofs (NOTE: this endpoint's `vault` echoes the raw L1_VAULT env string, possibly EIP-55 mixed-case; for building signing digests use the normalized lowercase `vault` from GET /v1/accounts/me — those are the exact bytes hashed)", "security": auth["security"], "responses": ok("vault + withdrawals[]") } },
-            "/v1/lp": { "get": { "summary": "LP pool stats + own stake", "security": auth["security"], "responses": ok("{ tvl, navPerShare, totalShares, myShares, myValue }") } },
-            "/v1/lp/deposit": { "post": { "summary": "Stake USDC into the counterparty pool (mint LP shares)", "security": auth["security"],
-                "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["amount"], "properties": { "amount": { "type": "string", "description": "USDC base units (1e6-scaled string) staked from the account's market-0 balance" } } } } } },
-                "responses": ok("{ sharesMinted }") } },
-            "/v1/lp/withdraw": { "post": { "summary": "Burn LP shares for their pool value (SEC-021: wallet-signed like /v1/accounts/withdraw; pays into the account's OWN market-0 balance — no `to`)", "security": auth["security"],
-                "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["shares","nonce","signature"], "properties": { "shares": { "type": "string" },
-                    "nonce": { "type": "integer", "description": "strictly-increasing withdrawal auth nonce, shared with /v1/accounts/withdraw — use nextWithdrawNonce from GET /v1/accounts/me" },
-                    "signature": { "type": "string", "description": "65-byte secp256k1 sig (r‖s‖v) over the LP withdraw auth digest keccak256(\"dark-perp:lp-withdraw:\"‖chainId(u64 BE)‖vault(20)‖owner(32)‖shares(u128 BE)‖nonce(u64 BE)), recovering to the registered signer (caller-signed) or else the bound deposit address — same three accepted shapes as /v1/accounts/withdraw" } } } } } },
-                "responses": ok("{ withdrawnValue }") } },
             "/v1/orders": {
                 "post": { "summary": "Place an order", "security": auth["security"], "requestBody": order_body, "responses": { "200": { "description": "signed receipt" }, "400": { "description": "rejected" }, "429": { "description": "rate limit (10/s)" } } },
                 "get": { "summary": "Own orders + finality", "security": auth["security"], "responses": ok("orders") }
@@ -5547,7 +5633,40 @@ async fn get_v1_openapi() -> impl IntoResponse {
             "/v1/enclave/epoch": { "get": { "summary": "Enclave order-ingress epoch key (X25519), signed by the enclave's secp256k1 identity — verify `sig` recovers to the pinned enclave signer before sealing orders to `x25519Pub`", "responses": ok("{ epochId, x25519Pub, notAfterMs, measurement, sig }") } },
             "/v1/system/status": { "get": { "summary": "System status", "responses": ok("status") } }
         }
-    }))
+    });
+    if !prod {
+        // demo/dev only — mirrors the `build_router` gating (SEC-025-C Task 3):
+        // the LP pool credits through an unbacked mint, so production neither
+        // mounts nor documents it. INSERTED when demo (rather than removed when
+        // prod) so forgetting this block under-advertises the demo surface
+        // instead of over-advertising the production one.
+        let paths = spec["paths"]
+            .as_object_mut()
+            .expect("the openapi spec always has a paths object");
+        paths.insert("/v1/lp".to_string(), serde_json::json!(
+            { "get": { "summary": "LP pool stats + own stake", "security": auth["security"], "responses": ok("{ tvl, navPerShare, totalShares, myShares, myValue }") } }
+        ));
+        paths.insert("/v1/lp/deposit".to_string(), serde_json::json!(
+            { "post": { "summary": "Stake USDC into the counterparty pool (mint LP shares)", "security": auth["security"],
+                "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["amount"], "properties": { "amount": { "type": "string", "description": "USDC base units (1e6-scaled string) staked from the account's market-0 balance" } } } } } },
+                "responses": ok("{ sharesMinted }") } }
+        ));
+        paths.insert("/v1/lp/withdraw".to_string(), serde_json::json!(
+            { "post": { "summary": "Burn LP shares for their pool value (SEC-021: wallet-signed like /v1/accounts/withdraw; pays into the account's OWN market-0 balance — no `to`)", "security": auth["security"],
+                "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["shares","nonce","signature"], "properties": { "shares": { "type": "string" },
+                    "nonce": { "type": "integer", "description": "strictly-increasing withdrawal auth nonce, shared with /v1/accounts/withdraw — use nextWithdrawNonce from GET /v1/accounts/me" },
+                    "signature": { "type": "string", "description": "65-byte secp256k1 sig (r‖s‖v) over the LP withdraw auth digest keccak256(\"dark-perp:lp-withdraw:\"‖chainId(u64 BE)‖vault(20)‖owner(32)‖shares(u128 BE)‖nonce(u64 BE)), recovering to the registered signer (caller-signed) or else the bound deposit address — same three accepted shapes as /v1/accounts/withdraw" } } } } } },
+                "responses": ok("{ withdrawnValue }") } }
+        ));
+    }
+    spec
+}
+
+/// `/v1/openapi.json`: the spec for THIS deployment's mounted surface — reads the
+/// production posture off the shared state like the neighbouring handlers do.
+async fn get_v1_openapi(State(app): State<Shared>) -> impl IntoResponse {
+    let prod = app.gw.lock().await.prod;
+    Json(v1_openapi_json(prod))
 }
 async fn ws_v1_handler(State(app): State<Shared>, ws: WebSocketUpgrade) -> impl IntoResponse {
     ws.on_upgrade(move |socket| ws_v1_loop(socket, app))
@@ -6085,6 +6204,18 @@ fn build_router(app: Shared, prod: bool) -> Router {
             .route("/api/recover", post(post_recover));
     }
 
+    if !prod {
+        // SEC-025-C: the LP pool credits through an UNBACKED mint (`pool_transfer` →
+        // `fund_amount_unbacked`), which folds a sentinel leaf the vault chain cannot
+        // match — one call breaks every later settle at `_requireDepositPrefix`. Task 2
+        // refuses it at the call site; not mounting it in production keeps it off the
+        // surface too. Removing this block does NOT re-enable LP in production.
+        router = router
+            .route("/v1/lp", get(get_v1_lp))
+            .route("/v1/lp/deposit", post(post_v1_lp_deposit))
+            .route("/v1/lp/withdraw", post(post_v1_lp_withdraw));
+    }
+
     router
         // ── multi-tenant external API (/v1) ──
         .route("/v1/accounts", post(post_v1_register))
@@ -6104,9 +6235,6 @@ fn build_router(app: Shared, prod: bool) -> Router {
         )
         .route("/v1/accounts/withdraw", post(post_v1_withdraw))
         .route("/v1/accounts/withdrawals", get(get_v1_withdrawals))
-        .route("/v1/lp", get(get_v1_lp))
-        .route("/v1/lp/deposit", post(post_v1_lp_deposit))
-        .route("/v1/lp/withdraw", post(post_v1_lp_withdraw))
         .route("/v1/orders", post(post_v1_order).get(get_v1_orders))
         .route("/v1/orders/:order_id", delete(delete_v1_order))
         .route("/v1/positions", get(get_v1_positions))
@@ -6369,6 +6497,16 @@ async fn main() {
     // a rollback journal is only meaningful against the state it was written
     // beside; on a fresh boot a leftover journal is deleted below, unapplied.
     let mut restored_from_snapshot = false;
+    // SEC-025-C: the genesis mode is computed BEFORE boot and passed as a parameter —
+    // `gw.prod` is assigned two lines after boot returns, so a field read inside
+    // `boot()` could never guard the demo funding. Keyed on `production_mode`
+    // (L1-configured OR DARKPERP_PROD): any L1-configured deployment gets a
+    // markets-only genesis whose (tip, count) = (0, 0) matches a fresh vault.
+    let genesis_mode = if prod {
+        GenesisMode::Production
+    } else {
+        GenesisMode::Demo
+    };
     let mut gw = match &state_path {
         Some(p) if p.exists() => {
             let restored = std::fs::read(p)
@@ -6392,7 +6530,7 @@ async fn main() {
                 }
             }
         }
-        _ => Gw::boot(),
+        _ => Gw::boot_with(genesis_mode),
     };
     gw.prod = prod;
     // SEC-021: bind withdrawal authorization to this deployment — the same env source
@@ -6453,9 +6591,10 @@ async fn main() {
     // (the journal is a WAL for the latest sealed window; resolving arms only
     // poke the snapshot writer) — BOOT is the only deleter, via the recovery
     // table. This runs BEFORE the continuity check below and leaves it untouched
-    // as the final arbiter: a roll-forward re-commit advances
-    // l1_status.settled_root so an interrupted-but-landed settle passes it, and
-    // a rollback rewinds Counter B so the desync guard stops skipping settles.
+    // as the final arbiter: a roll-forward re-commit (`commit_window_settle`)
+    // advances `last_settled_root` — the value the continuity check compares —
+    // so an interrupted-but-landed settle passes it, and a rollback rewinds
+    // Counter B so the desync guard stops skipping settles.
     if let Some(sp) = &state_path {
         let jp = rollback_journal::journal_path(sp);
         if !restored_from_snapshot {
@@ -6581,11 +6720,19 @@ async fn main() {
             }
         }
     }
-    // Restored-state ↔ L1 continuity: the snapshot's last settled root must equal
-    // the on-chain currentStateRoot, or this snapshot is stale / from a different
-    // deployment — settling from it would fork the withdrawal roots users hold.
-    // Fail closed; the operator resolves (right snapshot, right chain, or fresh).
-    if let (Some(l1c), Some(st)) = (&l1, gw.l1_status.as_ref()) {
+    // State ↔ L1 continuity, on EVERY L1-configured boot (SEC-025-C): the gateway's
+    // last settled root must equal the on-chain currentStateRoot, or this state is
+    // stale / from a different deployment — settling from it would fork the
+    // withdrawal roots users hold. Gating this on `l1_status` being Some left every
+    // pre-first-settle snapshot unchecked: `l1_status` stays None until the first
+    // commit_window_settle, yet the gateway persists (and restores the deposit
+    // accumulator) throughout — and since `prod` is not persisted, a DEMO snapshot
+    // carrying unbacked deposits could be restored under production posture.
+    // `last_settled_root` (genesis until a settle lands) is compared rather than
+    // `state_root()`, because a legitimate pre-settle snapshot may hold real pending
+    // deposits and correctly differ from the chain. Fail closed; the operator
+    // resolves (right snapshot, right chain, or fresh).
+    if let Some(l1c) = &l1 {
         let chain_root = {
             let l1c = l1c.clone();
             tokio::task::spawn_blocking(move || l1c.current_root())
@@ -6593,16 +6740,19 @@ async fn main() {
                 .unwrap_or_else(|e| Err(e.to_string()))
         };
         match chain_root {
-            Ok(r) if r.eq_ignore_ascii_case(&st.settled_root) => {
+            Ok(r) if continuity_ok(&gw.last_settled_root, &r) => {
                 println!("[state] on-chain continuity OK (currentStateRoot {r})");
             }
             Ok(r) => {
                 eprintln!(
-                    "[state] REFUSING to start: restored snapshot last settled {} but the \
-                     chain's currentStateRoot is {r} — the snapshot is stale or from a \
-                     different deployment. Restore the latest snapshot or delete \
-                     DARKPERP_STATE to consciously boot fresh.",
-                    st.settled_root
+                    "[state] REFUSING to start: the gateway's last settled root is {} but the \
+                     chain's currentStateRoot is {r} — this state is stale, from a different \
+                     deployment, or a DEMO snapshot booted under production posture (prod is \
+                     not persisted, so a demo snapshot's unbacked balances would otherwise \
+                     re-break settlement). Restore the snapshot matching this chain, point \
+                     the gateway at the deployment this state belongs to, or deploy fresh \
+                     contracts and delete DARKPERP_STATE to consciously start over.",
+                    hex32(&gw.last_settled_root)
                 );
                 std::process::exit(1);
             }
@@ -7403,6 +7553,475 @@ mod tests {
         }
     }
 
+    // ── SEC-025-C: a production genesis mints nothing ────────────────────────
+
+    /// SEC-025-C: a production genesis must mint nothing. Boot fabricated seven
+    /// unbacked deposits (MM + user per market across 3 markets, plus an LP-demo
+    /// grant), each folding a sentinel leaf into `consumed_deposit_tip`. Every settle
+    /// then submitted `newDepositCount = 7+` against a vault whose `depositCount` is 0,
+    /// and `_requireDepositPrefix` reverted BEFORE the proof was verified.
+    #[test]
+    fn production_genesis_mints_nothing() {
+        let gw = Gw::boot_with(GenesisMode::Production);
+        let s = &gw.seq.state;
+        assert_eq!(s.consumed_deposit_count, 0, "no deposits at genesis");
+        assert_eq!(s.consumed_deposit_tip, [0u8; 32], "untouched deposit chain");
+        assert_eq!(s.insurance_fund, 0, "no seeded insurance");
+        assert_eq!(s.external_in, 0, "no external value asserted");
+        assert!(s.notes.is_empty(), "no notes");
+        assert!(s.positions.is_empty(), "no positions");
+        assert_eq!(s.markets.len(), MARKETS.len(), "markets ARE registered");
+    }
+
+    /// The pair a fresh vault expects. `CollateralVault.sol:59` states that
+    /// `depositTipAt[0]` is never written and the mapping default `bytes32(0)` IS the
+    /// genesis tip, so this is the exact tuple `_requireDepositPrefix(0, 0)` accepts.
+    #[test]
+    fn production_genesis_matches_a_fresh_vault_prefix() {
+        let gw = Gw::boot_with(GenesisMode::Production);
+        assert_eq!(
+            (
+                gw.seq.state.consumed_deposit_tip,
+                gw.seq.state.consumed_deposit_count
+            ),
+            ([0u8; 32], 0u64),
+        );
+    }
+
+    /// The demo path is untouched — explicitly demo-scoped, not a global expectation.
+    #[test]
+    fn demo_genesis_is_still_funded() {
+        let gw = Gw::boot();
+        let s = &gw.seq.state;
+        assert_eq!(
+            s.consumed_deposit_count,
+            (MARKETS.len() as u64) * 2 + 1,
+            "MM + user per market, plus the LP-demo grant"
+        );
+        assert!(s.insurance_fund > 0, "demo seeds insurance");
+        assert!(
+            !s.notes.is_empty() || !s.positions.is_empty(),
+            "demo has value"
+        );
+    }
+
+    /// The window must open from genesis with nothing staged, or the first settle's
+    /// witness pre-state would not be the deployed GENESIS_ROOT. Probes BOTH window
+    /// accumulators: the ordered/rejected manifest AND the op-log — boot funding
+    /// stages `Deposit` ops in `window_ops`, never the manifest, so the manifest
+    /// probe alone could not see ops staged after `seal_genesis_baseline`.
+    #[test]
+    fn production_genesis_leaves_no_staged_ops() {
+        let gw = Gw::boot_with(GenesisMode::Production);
+        assert!(
+            !gw.seq.window_has_pending_manifest(),
+            "no manifest content at genesis"
+        );
+        assert!(
+            !gw.seq.window_has_staged_ops(),
+            "no window ops staged at genesis"
+        );
+    }
+
+    // ── SEC-025-C Task 2: unbacked minting is refused at every call site ─────
+
+    /// SEC-025-C: unbacked minting must be refused in production AT THE CALL SITE,
+    /// not merely unrouted. `/v1/lp/*` was mounted in production and `simulate_adl`
+    /// sits behind route-mounting alone — both reach `fund_amount_unbacked` and would
+    /// re-corrupt `consumed_deposit_tip` after a clean genesis.
+    #[test]
+    fn unbacked_funding_is_refused_in_production() {
+        let mut gw = Gw::boot_with(GenesisMode::Production);
+        let before_root = gw.seq.state.state_root();
+        let before_ops = gw.seq.window_op_count();
+        let before_archive = gw.archive.len();
+        let w = Wallet::from_seed([9u8; 32]);
+
+        let err = fund_amount_unbacked(
+            &mut gw.seq,
+            &mut gw.archive,
+            &w,
+            0,
+            1_000 * QUOTE_SCALE,
+            [0x99u8; 32],
+            /* prod */ true,
+        )
+        .expect_err("production must refuse an unbacked mint");
+        assert!(err.contains("production"), "error names the reason: {err}");
+
+        // `state_root()` alone is NOT sufficient here: this fn takes &mut Sequencer
+        // and &mut NoteArchive, and state_root() commits only perp_core::State — a
+        // buggy rejected call could mutate the sequencer's op log or the archive
+        // invisibly.
+        assert_eq!(
+            gw.seq.state.state_root(),
+            before_root,
+            "engine state untouched"
+        );
+        assert_eq!(gw.seq.window_op_count(), before_ops, "no op staged");
+        assert_eq!(gw.archive.len(), before_archive, "no archive record");
+    }
+
+    /// A production LP transfer is the live corruption path today (`/v1/lp/*` is
+    /// mounted in production, outside the demo-only route block).
+    ///
+    /// FIXTURE NOTE: this boots the FUNDED demo genesis and then flips `prod`. On a
+    /// bare production genesis `from` has no market-0 balance, so the transfer would
+    /// be refused by the BALANCE check and this test would keep passing with the
+    /// SEC-025-C guard deleted — a fixture that tests nothing. Funded, the guard is
+    /// the only thing standing between this call and a mint (pinned by the
+    /// precondition assert), which is exactly what the Step-5 mutation check needs.
+    #[test]
+    fn a_production_lp_transfer_is_refused() {
+        let mut gw = Gw::boot();
+        gw.prod = true;
+        let user = gw.user;
+        let mm = gw.mm;
+        let value = 100 * QUOTE_SCALE;
+        assert!(
+            value <= gw.market_free_of(&user.owner, 0),
+            "precondition: the transfer must clear the balance gate, or the refusal \
+             below could come from the wrong check"
+        );
+        let before_root = gw.seq.state.state_root();
+        let before_ops = gw.seq.window_op_count();
+        let before_count = gw.seq.state.consumed_deposit_count;
+
+        let res = gw.pool_transfer(&user, &mm, value);
+
+        assert!(res.is_err(), "LP transfer must be refused in production");
+        assert_eq!(
+            gw.seq.state.consumed_deposit_count, before_count,
+            "the deposit accumulator must not move"
+        );
+        // The debit leg (Unbind+Withdraw) runs BEFORE the credit in pool_transfer:
+        // a refusal firing only at the mint would return Err with `from`'s value
+        // already burned. The production refusal must mutate NOTHING.
+        assert_eq!(
+            gw.seq.state.state_root(),
+            before_root,
+            "the refusal must precede the debit leg — no value burned"
+        );
+        assert_eq!(gw.seq.window_op_count(), before_ops, "no ops staged");
+    }
+
+    /// simulate_adl reaches `fund` at runtime and was protected only by
+    /// `/api/simulate-adl` sitting inside the router's demo-only block — route-only
+    /// enforcement, which SEC-025-C replaces with a refusal at the mint itself.
+    #[test]
+    fn a_production_simulate_adl_is_refused() {
+        let mut gw = Gw::boot_with(GenesisMode::Production);
+        gw.prod = true;
+        let before_root = gw.seq.state.state_root();
+        let before_count = gw.seq.state.consumed_deposit_count;
+        let err = gw.simulate_adl().expect_err("refused in production");
+        assert!(
+            err.contains("production"),
+            "refused by the SEC-025-C guard, not an incidental demo failure: {err}"
+        );
+        assert_eq!(gw.seq.state.consumed_deposit_count, before_count);
+        assert_eq!(
+            gw.seq.state.state_root(),
+            before_root,
+            "the first mutation in the demo flow is a fund call, so a refusal \
+             must leave the engine untouched"
+        );
+    }
+
+    /// The legacy demo deposit is protected today only by its route not being
+    /// mounted. After this task the method itself refuses, so an internal caller
+    /// cannot reach it.
+    #[test]
+    fn legacy_deposit_is_refused_in_production() {
+        let mut gw = Gw::boot_with(GenesisMode::Production);
+        gw.prod = true;
+        let before = gw.seq.state.consumed_deposit_count;
+        let err = gw
+            .deposit(1_000 * QUOTE_SCALE)
+            .expect_err("the method must refuse, not merely be unrouted");
+        assert!(err.contains("production"), "error names the reason: {err}");
+        assert_eq!(gw.seq.state.consumed_deposit_count, before);
+    }
+
+    /// DP-001 regression — self-service was already correctly closed at the METHOD;
+    /// keep it closed. The account is registered BEFORE flipping `prod` and the
+    /// parameters are valid, so the only possible refusal is the production one
+    /// (pinned by message) — not "unknown account" or a bad-amount error.
+    #[test]
+    fn self_service_deposit_is_still_refused_in_production() {
+        let mut gw = Gw::boot_with(GenesisMode::Production);
+        let (key, _owner) = gw.register_account(None);
+        gw.prod = true;
+        let before = gw.seq.state.consumed_deposit_count;
+        let err = gw
+            .account_deposit(&key, 0, 1_000 * QUOTE_SCALE)
+            .expect_err("DP-001: self-service deposit refuses in production");
+        assert!(err.contains("production"), "error names the reason: {err}");
+        assert_eq!(gw.seq.state.consumed_deposit_count, before);
+    }
+
+    // ── SEC-025-C Task 5: the fifth blocker, proven end to end ───────────────
+
+    /// SEC-025-C: the row that actually proves the fifth blocker is closed. From a
+    /// PRODUCTION boot, seal a window and prepare the settle tuple; the tuple that
+    /// would go on-chain must be the zero prefix a fresh vault accepts. Asserting
+    /// the genesis constants alone (`production_genesis_matches_a_fresh_vault_prefix`)
+    /// proves two constants — it would not catch a sentinel op left staged in the
+    /// window, a wrong witness pre-state reaching the prover, or the demo funding
+    /// block regressing to run in both modes. Scope, stated honestly: the batch is
+    /// sealed via `gw.seq.seal_batch` directly (not `Gw::tick`, so the house-MM
+    /// counter-order injection is bypassed), and the proof step is
+    /// `MockProverClient` — a local re-derivation of the roots, not the real
+    /// prover. What IS end-to-end here is the settle-tuple pipeline: production
+    /// boot → sealed window → `begin_window_settle` → `prove_and_prepare` → the
+    /// nine-parameter `settleBatch` tuple.
+    ///
+    /// The contract side is already covered — `contracts/test/DarkPerpSettlement.t.sol`
+    /// lands a zero-prefix settle — but nothing connected it to the boot mode, which
+    /// is the half that was broken.
+    #[test]
+    fn a_production_genesis_window_submits_the_zero_prefix() {
+        let mut gw = Gw::boot_with(GenesisMode::Production);
+        gw.prod = true; // mirrors main(): `gw.prod = prod` right after boot returns
+        let genesis_root = gw.seq.state.state_root();
+
+        // PRECONDITION, verified rather than assumed: a BARE production genesis has
+        // no state change and no manifest content, so `begin_window_settle` correctly
+        // returns `None` (025-B's predicate — idle ticks burn no proofs). The fixture
+        // below therefore gives the window real content first.
+        assert!(
+            gw.begin_window_settle(0)
+                .expect("window 0 vs a fresh chain's batchCount 0")
+                .is_none(),
+            "a bare production genesis window must have nothing to prove — Some here \
+             means boot staged content and the markets-only genesis regressed"
+        );
+
+        // FIXTURE: the cheapest REAL first-window content that touches no deposit
+        // machinery — an order from an unfunded account, rejected pre-trade
+        // (InsufficientMargin). An ACCEPTED order needs margin, and on a production
+        // genesis margin can only come from a real L1 deposit, which would advance
+        // the very accumulator this test pins at zero. A rejected-only window is a
+        // genuinely reachable first window (any order sent before depositing) and
+        // must settle (SEC-025-B break 4 / whole-branch review item 5).
+        //
+        // Deterministic oracle, mirroring `tests_support::gw_with_market`: re-sign
+        // market 0 at 500 ms so a batch sealed at 1_000 ms clears the freshness
+        // gate — otherwise this rejection could silently become OracleUnavailable.
+        let px = gw.seq.oracle(0).expect("boot pins a market-0 oracle").price;
+        let t = oracle_of(px, 500, 0, &gw.oracle_signer);
+        gw.seq.set_oracle(0, t);
+        let trader = Wallet::from_seed([9u8; 32]);
+        let sealed = gw.seq.seal_batch(
+            &[mk_order(
+                trader.owner,
+                0,
+                Side::Buy,
+                SIZE_SCALE / 10,
+                px / 2,
+                1,
+                TimeInForce::Gtc,
+                false,
+            )],
+            1_000,
+        );
+
+        // Fixture-suspicion guards: exactly the constructed rejection, nothing
+        // accepted, and no state moved — otherwise the zero-prefix assertions below
+        // could pass while the window exercises a different path entirely.
+        assert!(
+            sealed.manifest.ordered.is_empty(),
+            "fixture precondition: an unfunded account's order must not be accepted: {:?}",
+            sealed.manifest.ordered
+        );
+        assert_eq!(
+            sealed.manifest.rejected.len(),
+            1,
+            "fixture precondition: exactly the one constructed rejection"
+        );
+        assert_eq!(
+            sealed.manifest.rejected[0].1,
+            perp_core::order::RejectReason::InsufficientMargin,
+            "fixture precondition: the margin rejection we constructed — any other \
+             reason (e.g. OracleUnavailable) means the fixture regressed"
+        );
+        assert_eq!(
+            gw.seq.state.state_root(),
+            genesis_root,
+            "fixture precondition: a rejected order moves no state — the deposit \
+             accumulator must reach the prover untouched by the fixture itself"
+        );
+
+        let (witness, ww) = gw
+            .begin_window_settle(0)
+            .expect("window 0 vs a fresh chain's batchCount 0")
+            .expect("a window carrying a rejected order is settleable (break 4)");
+
+        // The witness pre-state is what the proof opens from: anything but the boot
+        // state root is the BadPrevRoot revert the live migration hit.
+        assert_eq!(witness.batch_id, 0, "the first window is window 0");
+        assert_eq!(
+            witness.pre_state.state_root(),
+            genesis_root,
+            "witness pre-state must be the deployed GENESIS_ROOT"
+        );
+
+        let prepared =
+            prover_client::prove_and_prepare(&prover_client::MockProverClient, &witness, &ww)
+                .expect("local derivation agrees with the mock prover");
+
+        // The tuple that reaches `settleBatch`. `_requireDepositPrefix`
+        // (DarkPerpSettlement.sol:301-307) pins (newDepositCount, depositsRoot) to
+        // the vault's `depositTipAt` BEFORE the proof is verified; a fresh vault has
+        // depositCount 0 and `depositTipAt(0)` is the never-written mapping default.
+        assert_eq!(
+            prepared.outcome.prev_root, genesis_root,
+            "prevRoot must be the deployed GENESIS_ROOT"
+        );
+        assert_eq!(
+            prepared.outcome.deposits_root, [0u8; 32],
+            "depositsRoot must be the vault's genesis tip"
+        );
+        assert_eq!(
+            prepared.outcome.new_deposit_count, 0,
+            "newDepositCount must be 0 — _requireDepositPrefix reads depositTipAt(0)"
+        );
+    }
+
+    /// SEC-025-C's invariant, checked by enumeration rather than by imagining an
+    /// attack — the method that made SEC-024's core the one design in this
+    /// workstream to survive review intact. `fund_amount_unbacked` is the ONLY
+    /// constructor of sentinel-leaf deposits in the gateway and
+    /// `refuse_unbacked_mint` guards it (plus the `pool_transfer` pre-flight), so
+    /// guarding the wrapper is sufficient — but a NEW unbacked caller must break
+    /// something. This test is that something: it scans every gateway source file
+    /// (not just main.rs), so a call site added in a sibling module is caught too.
+    /// The scan is non-recursive because `crates/gateway/src` is flat; the needles
+    /// are `concat!`-split so this test does not count itself.
+    ///
+    /// Whole-branch review item 2: the wrapper is not the only way in, so the two
+    /// levels BELOW it are pinned too. Calling `fund_amount` directly with the
+    /// sentinel tuple (`from=[0;20]`, `deposit_id = consumed_deposit_count`,
+    /// `deposit_blind=[0;32]` — exactly what the unbacked wrapper passes) bypasses
+    /// `refuse_unbacked_mint` entirely; and so does applying the raw `Deposit`
+    /// engine op through `seq.apply` directly.
+    #[test]
+    fn unbacked_funding_has_exactly_the_known_call_sites() {
+        let unbacked_needle = concat!("fund_amount_unbacked", "(");
+        let fund_needle = concat!("fund_amount", "(");
+        let deposit_op_needle = concat!("BatchOp::", "Deposit");
+        let src_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut sources: Vec<String> = Vec::new();
+        for entry in std::fs::read_dir(&src_dir).expect("gateway src dir") {
+            let path = entry.expect("dir entry").path();
+            if path.extension().and_then(|e| e.to_str()) == Some("rs") {
+                sources.push(std::fs::read_to_string(&path).expect("readable gateway source"));
+            }
+        }
+        assert!(
+            sources.len() >= 2,
+            "the scan must actually cover the gateway sources (found {} files)",
+            sources.len()
+        );
+        let count =
+            |needle: &str| -> usize { sources.iter().map(|s| s.matches(needle).count()).sum() };
+        let n = count(unbacked_needle);
+        assert_eq!(
+            n, 7,
+            "expected exactly 7 occurrences of `{unbacked_needle}` across the \
+             gateway sources: the definition (`fn fund_amount_unbacked`), 4 \
+             production call sites — `fund` (the boot/demo funnel), `pool_transfer` \
+             (the LP credit leg), `deposit` (legacy demo), `account_deposit` \
+             (self-service) — and 2 test call sites \
+             (`unbacked_funding_is_refused_in_production`, \
+             `confirm_deposit_duplicate_commitment_is_clean_err_and_retriable`); \
+             found {n}. A new unbacked-funding call site MUST thread the production \
+             flag through `refuse_unbacked_mint` (SEC-025-C) and get a refusal test \
+             like `unbacked_funding_is_refused_in_production` — only then update this \
+             count and its breakdown."
+        );
+        // Review item 2, pin 1: the chokepoint one level down. A direct
+        // `fund_amount` call handed the sentinel tuple mints unbacked collateral
+        // without ever reaching `refuse_unbacked_mint`, so every caller is pinned.
+        let fund_calls = count(fund_needle);
+        assert_eq!(
+            fund_calls, 3,
+            "expected exactly 3 occurrences of `{fund_needle}` across the gateway \
+             sources (all in main.rs): the definition (`fn` + name) and 2 callers — \
+             `account_confirm_deposit` (the REAL L1-credit path, passing the \
+             verified vault leaf) and `fund_amount_unbacked` (the guarded sentinel \
+             wrapper); found {fund_calls}. A direct caller can mint UNBACKED \
+             collateral by passing the sentinel tuple (from=[0;20], deposit_id = \
+             consumed_deposit_count, deposit_blind=[0;32]) without ever reaching \
+             `refuse_unbacked_mint` — so a legitimately added caller MUST either \
+             route through `fund_amount_unbacked` (which carries the guard) or pass \
+             a REAL verified L1 leaf like `account_confirm_deposit` does, and only \
+             then update this count and its breakdown."
+        );
+        // Review item 2, pin 2: the bottom level. Applying the raw `Deposit`
+        // engine op through `seq.apply` mints collateral below BOTH the guard and
+        // `fund_amount`'s note/archive bookkeeping.
+        let deposit_ops = count(deposit_op_needle);
+        assert_eq!(
+            deposit_ops, 4,
+            "expected exactly 4 occurrences of `{deposit_op_needle}` across the \
+             gateway sources: 1 in main.rs — the single `seq.apply(..)` construction \
+             inside `fund_amount`, the ONLY place the gateway mints a deposit credit \
+             — and 3 in prover_client.rs, all `cfg(test)` `matches!`/filter PATTERNS \
+             that inspect ops without constructing one; found {deposit_ops}. \
+             Applying this op anywhere else mints collateral below BOTH \
+             `refuse_unbacked_mint` and `fund_amount`'s note/archive bookkeeping, so \
+             a new construction site is almost certainly wrong; a legitimate credit \
+             path MUST route through `fund_amount` (backed) or \
+             `fund_amount_unbacked` (guarded), and a legitimate new PATTERN use \
+             (e.g. a test inspecting ops) just updates this count and its breakdown."
+        );
+    }
+
+    /// Whole-branch review item 5: the OpenAPI document must describe the MOUNTED
+    /// surface. Task 3 removed `/v1/lp*` from the production router, so an
+    /// unconditional spec would advertise three paths that 404 in production.
+    /// Asserts on the parsed `paths` object (not a substring of the whole
+    /// document) in BOTH modes, so the discriminator is proven to discriminate:
+    /// un-gating the entries (advertising LP unconditionally) fails the
+    /// production half, and dropping them outright fails the demo half.
+    #[test]
+    fn openapi_advertises_lp_only_in_demo() {
+        const LP_PATHS: [&str; 3] = ["/v1/lp", "/v1/lp/deposit", "/v1/lp/withdraw"];
+        let prod_spec = v1_openapi_json(true);
+        let demo_spec = v1_openapi_json(false);
+        let prod_paths = prod_spec["paths"]
+            .as_object()
+            .expect("production spec has a paths object");
+        let demo_paths = demo_spec["paths"]
+            .as_object()
+            .expect("demo spec has a paths object");
+        for p in LP_PATHS {
+            assert!(
+                !prod_paths.contains_key(p),
+                "production openapi must NOT advertise {p} — the production router \
+                 does not mount it (SEC-025-C Task 3), so documenting it advertises \
+                 a 404"
+            );
+            assert!(
+                demo_paths.contains_key(p),
+                "demo openapi must keep advertising {p} — the demo router mounts it"
+            );
+        }
+        // Fixture-suspicion guards: an empty (or LP-only) paths object would pass
+        // the loop above while documenting nothing. Both documents must carry the
+        // ungated surface, and the LP gating must be their ONLY difference.
+        assert!(
+            prod_paths.contains_key("/v1/orders"),
+            "production spec still documents the ungated /v1 surface"
+        );
+        assert_eq!(
+            demo_paths.len(),
+            prod_paths.len() + LP_PATHS.len(),
+            "the demo and production documents differ by EXACTLY the three LP paths"
+        );
+    }
+
     // ZK-001 (Hazard #1): a transcript pushed through the LIVE oracle path
     // (`apply_real_oracle`, which remaps `publish_time_ms` onto the local freshness
     // clock) must STILL recover to the market's `oracle_pubkey` — i.e. the gateway
@@ -7516,6 +8135,7 @@ mod tests {
             0,
             amount as i128,
             note_blind,
+            /* prod */ false,
         )
         .expect("pre-minting the colliding note must succeed");
         // Authorize, then confirm at the live next-in-line id so the in-order guard
@@ -7765,6 +8385,40 @@ mod tests {
         assert!(!crate::needs_confirm_delay(true, 6, 5));
         assert!(!crate::needs_confirm_delay(true, 4, 5));
         assert!(!crate::needs_confirm_delay(false, 6, 5));
+    }
+
+    /// SEC-025-C: the pure comparator refuses a root mismatch (and its sibling
+    /// `continuity_comparison_ignores_hex_case` pins the format tolerance). Scope,
+    /// stated honestly: this exercises ONLY `continuity_ok` — it touches neither
+    /// `l1_status` nor the boot guard. The actual SEC-025-C change — WIDENING the
+    /// guard so continuity is checked on every L1-configured boot (a pre-first-settle
+    /// snapshot has `l1_status == None`, and `prod` is not persisted, so a DEMO
+    /// snapshot with unbacked deposits could be restored under production posture)
+    /// — is verified by reading the `if let Some(l1c) = &l1` continuity block in
+    /// `main()`, and is NOT covered by an in-process test: `main()` is untestable
+    /// in a bin crate.
+    #[test]
+    fn continuity_comparator_rejects_a_mismatch() {
+        // genesis root vs a chain that has advanced past it
+        assert!(
+            !continuity_ok(
+                &[0x11u8; 32],
+                "0x2222222222222222222222222222222222222222222222222222222222222222"
+            ),
+            "a mismatch must be refused even with no prior settle"
+        );
+        assert!(
+            continuity_ok(&[0x11u8; 32], &hex32(&[0x11u8; 32])),
+            "a match starts"
+        );
+    }
+
+    /// Hex comparison must not be case-sensitive — `current_root()` returns whatever
+    /// the RPC formats, and the existing check used `eq_ignore_ascii_case`.
+    #[test]
+    fn continuity_comparison_ignores_hex_case() {
+        let root = [0xABu8; 32];
+        assert!(continuity_ok(&root, &hex32(&root).to_uppercase()));
     }
 
     // ── off-chain receipt reconciliation (Slice 3b-4) ────────────────────────
@@ -8313,6 +8967,68 @@ mod tests {
             StatusCode::NOT_FOUND,
             "/v1 surface stays mounted in the production build",
         );
+    }
+
+    /// Build a router in the given mode, issue one bare (unauthenticated,
+    /// empty-body) request at `path`, and return the response status. The
+    /// method matches the mounted route (`/v1/lp` is GET; the LP mutations are
+    /// POST) so a mounted route answers with its real handler-surface status —
+    /// a wrong-method request would return 405 and still satisfy the not-404
+    /// discriminator, but would not verify what a mounted route actually says.
+    async fn router_status_for(prod: bool, path: &str) -> StatusCode {
+        use axum::body::Body;
+        use axum::http::Request;
+        use tower::ServiceExt as _; // for `oneshot`
+
+        let method = if path == "/v1/lp" { "GET" } else { "POST" };
+        let req = Request::builder()
+            .method(method)
+            .uri(path)
+            .body(Body::empty())
+            .unwrap();
+        build_router(test_app(), prod)
+            .oneshot(req)
+            .await
+            .unwrap()
+            .status()
+    }
+
+    /// SEC-025-C: the LP pool credits via an unbacked mint (`pool_transfer` →
+    /// `fund_amount_unbacked`), so it cannot exist in production without breaking
+    /// settlement. Task 2 refuses it at the call site; this keeps it off the surface
+    /// entirely. **Must fail at the parent commit** — these routes are mounted today.
+    #[tokio::test]
+    async fn lp_routes_are_absent_in_production() {
+        for path in ["/v1/lp", "/v1/lp/deposit", "/v1/lp/withdraw"] {
+            let status = router_status_for(/* prod */ true, path).await;
+            assert_eq!(
+                status,
+                StatusCode::NOT_FOUND,
+                "{path} must not be mounted in production"
+            );
+        }
+    }
+
+    /// …and still present in demo, so this is a posture change, not a deletion.
+    /// Beyond the not-404 discriminator, pin the statuses a mounted route
+    /// actually returns to a bare request: `/v1/lp` hits `api_key_from` → 401;
+    /// the POST routes die in the `Json` extractor first (no content-type on an
+    /// empty body → 415) — the extractor runs before the handler's auth check.
+    #[tokio::test]
+    async fn lp_routes_are_present_in_demo() {
+        for (path, expect) in [
+            ("/v1/lp", StatusCode::UNAUTHORIZED),
+            ("/v1/lp/deposit", StatusCode::UNSUPPORTED_MEDIA_TYPE),
+            ("/v1/lp/withdraw", StatusCode::UNSUPPORTED_MEDIA_TYPE),
+        ] {
+            let status = router_status_for(/* prod */ false, path).await;
+            assert_ne!(
+                status,
+                StatusCode::NOT_FOUND,
+                "{path} must remain mounted in demo"
+            );
+            assert_eq!(status, expect, "{path} mounted-route status in demo");
+        }
     }
 
     // enabling the L1 settlement bridge (real USDC at stake) forces the production
