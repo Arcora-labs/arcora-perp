@@ -120,6 +120,24 @@ The cutover must explicitly bump or invalidate: the snapshot magic, **now `DPSNA
 
 The first row is checkable by enumeration rather than imagination — and it only becomes *true* once SEC-025 lands.
 
+## Freshness pass, 2026-07-30 — what changed under this spec
+
+Written 2026-07-26. Since then **SEC-022 (`13fc9d0`), 025-B (`a2a2f56`) and 025-C (`6dd7e08`) merged.** Re-verified against the current tree:
+
+**Still true.** `SeedInsurance { amount: i128 }` is the **last** `BatchOp` variant (`engine.rs:109`), so appending `FundInsurance` at 9 shifts no discriminant — the spec's central migration claim holds. `op_seed_insurance` (`engine.rs:867-880`) still raises `insurance_fund` **and** `external_in` together with no note consumed and no L1 binding.
+
+**Already done by 025-C.** The spec's Genesis section asked for `insurance_fund == 0` in production. 025-C delivered that: boot's `SeedInsurance` (`main.rs:1626`) now runs only under `GenesisMode::Demo`, and production genesis is markets-only. **SEC-024 no longer needs to touch production genesis** — only to remove the op the demo path still calls.
+
+**New interaction the original spec could not have known.** Deprecating `SeedInsurance` into an always-rejected stub **breaks the demo boot**, because 025-C left the demo path calling it. All three call sites must be converted, not just noted:
+
+| Site | What it is | What SEC-024 must do |
+|---|---|---|
+| `main.rs:1626` | boot, `GenesisMode::Demo` only | convert to `FundInsurance` consuming one of the demo's own unbacked notes — the demo mints them anyway, so the backstop stays visible and demoable |
+| `main.rs:3022` | `simulate_adl`'s replenish, **`let _ =` swallows the error** | a rejected op would make it silently do nothing. Either convert it or delete it — **do not leave a swallowed rejection**, which is indistinguishable from success in a demo whose whole point is showing the backstop refill |
+| `sequencer/src/lib.rs:1888` | test-boot fixture | convert |
+
+**Sequencing, corrected.** The decomposition's graph (`SEC-026 → 025-A → 025-B/C → 025-D`) does not show that **025-A cannot be built before this spec lands**: 025-A's entire deliverable is a gateway path that leaves a note unspent *for `FundInsurance` to consume*, and that op does not exist. SEC-024's own §"Design" already said *"`FundInsurance` needs a gateway path that does not exist yet — see SEC-025 §1a"*, and 025-A's decomposition entry says *"`FundInsurance` needs an unspent note"* — the two documents point at each other. **The op comes first; the path second.** SEC-024 → 025-A → 025-D.
+
 ## Carried in from SEC-022 (added 2026-07-27)
 
 **These are not SEC-024's findings. They are `perp-core` changes deliberately deferred to this branch because it re-pins the vkey anyway**, and doing them here costs nothing extra. SEC-022's whole-branch review argued for folding them into *its* branch on the same reasoning; they were deferred here instead because `DeprecatedSeedInsurance`/`FundInsurance` already moves the guest ELF within the same cutover bundle, so the marginal cost is identical and SEC-022 stays single-concern.
