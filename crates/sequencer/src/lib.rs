@@ -1876,17 +1876,33 @@ mod tests {
         assert_eq!(seq.window_for_tick(n - 1), Some(n - 1));
     }
 
-    // BadPrevRoot fix: boot funding + SeedInsurance run AFTER add_market's last
-    // window_start_state capture, so without re-basing, window 0's pre_state is the
-    // pre-funding state while the deployed GENESIS_ROOT is the FULL boot state root.
-    // seal_genesis_baseline folds the boot ops into the trusted genesis baseline.
+    // BadPrevRoot fix: boot funding + the insurance transfer run AFTER add_market's
+    // last window_start_state capture, so without re-basing, window 0's pre_state is
+    // the pre-funding state while the deployed GENESIS_ROOT is the FULL boot state
+    // root. seal_genesis_baseline folds the boot ops into the trusted genesis baseline.
     #[test]
     fn seal_genesis_baseline_rebases_window_zero_to_full_boot_state() {
         // mirrors Gw::boot: add_market + oracle (test_sequencer), then funding
-        // (Deposit + FundPosition per account) and an insurance seed.
+        // (Deposit + FundPosition per account) and an insurance seed — which since
+        // SEC-024 is its own Deposit → FundInsurance pair (a transfer, not a mint).
         let mut seq = test_sequencer();
-        seq.apply(&BatchOp::SeedInsurance {
-            amount: 1_000 * QUOTE_SCALE,
+        let ins_owner = owner_id(9);
+        let ins_amount = 1_000 * QUOTE_SCALE;
+        let ins_blind = [0x39u8; 32];
+        let ins_cm = Note::new(ins_owner, 0, ins_amount, ins_blind).commitment::<Keccak256>();
+        seq.apply(&BatchOp::Deposit {
+            owner: ins_owner,
+            asset_id: 0,
+            amount: ins_amount,
+            blinding: ins_blind,
+            from: [0u8; 20],
+            deposit_id: seq.state.consumed_deposit_count,
+            deposit_blind: [0u8; 32],
+        })
+        .unwrap();
+        seq.apply(&BatchOp::FundInsurance {
+            note_commitment: ins_cm,
+            spend_key: [9u8; 32],
         })
         .unwrap();
         // the bug precondition: boot ops accumulated after the last baseline capture,

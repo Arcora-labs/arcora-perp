@@ -77,6 +77,10 @@ pub enum EngineError {
     /// margin. Two parties electing to trade always have "not trading" available, and it
     /// is strictly better for the protocol than parking unresolvable debt.
     FillWouldBankrupt(FillLeg),
+    /// SEC-024: a retained-but-deprecated op was submitted. Always rejected.
+    DeprecatedOp,
+    /// SEC-024: the op requires the canonical quote asset (`asset_id == 0`).
+    WrongAsset,
 }
 
 impl From<RiskError> for EngineError {

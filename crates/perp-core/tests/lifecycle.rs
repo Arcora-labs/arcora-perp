@@ -519,9 +519,28 @@ fn bad_debt_setup(seed_usd: i128) -> DefaultState {
         .unwrap();
     }
     if seed_usd > 0 {
-        s.apply_op(&BatchOp::SeedInsurance {
-            amount: seed_usd * QUOTE_SCALE,
-        })
+        // SEC-024: insurance is capitalized by TRANSFER — deposit a real note
+        // (owner 0x0F, distinct from A/B), then move it into the fund. The old
+        // `SeedInsurance` mint is a rejected stub now.
+        let sk = [0x0Fu8; 32];
+        let o = owner_of(0x0F);
+        let amt = seed_usd * QUOTE_SCALE;
+        let cm = deposit_commit(o, amt, sk);
+        s.apply_batch(&[
+            BatchOp::Deposit {
+                owner: o,
+                asset_id: 0,
+                amount: amt,
+                blinding: sk,
+                from: [0x0Fu8; 20],
+                deposit_id: s.consumed_deposit_count,
+                deposit_blind: [0xDBu8; 32],
+            },
+            BatchOp::FundInsurance {
+                note_commitment: cm,
+                spend_key: sk,
+            },
+        ])
         .unwrap();
     }
     s.apply_op(&BatchOp::Fill {
@@ -1495,4 +1514,159 @@ fn sec026_mints_differing_only_in_blinding_both_accepted() {
     })
     .unwrap();
     assert!(s.conservation_holds());
+}
+
+// ── SEC-024: insurance is a transfer of L1-bound value, never a mint ─────────
+
+/// SEC-024: insurance must be a TRANSFER of already-L1-bound value, not a mint.
+/// `FundInsurance` consumes a real note and raises `insurance_fund` while leaving
+/// `external_in` untouched — the note's value already entered through `op_deposit`.
+#[test]
+fn fund_insurance_moves_note_value_without_asserting_new_external_value() {
+    let mut s = fresh_state();
+    let a = owner_of(1);
+    let blind = [0x51u8; 32];
+    let amount = 10_000 * QUOTE_SCALE;
+    let cm = deposit_commit(a, amount, blind);
+    s.apply_batch(&[BatchOp::Deposit {
+        owner: a,
+        asset_id: 0,
+        amount,
+        blinding: blind,
+        from: [0xA1u8; 20],
+        deposit_id: 0,
+        deposit_blind: [0xDBu8; 32],
+    }])
+    .expect("deposit");
+
+    let ext_in_before = s.external_in;
+    let ins_before = s.insurance_fund;
+
+    s.apply_batch(&[BatchOp::FundInsurance {
+        note_commitment: cm,
+        spend_key: [1u8; 32],
+    }])
+    .expect("fund insurance from a real note");
+
+    assert_eq!(s.insurance_fund, ins_before + amount, "value moved in");
+    assert_eq!(
+        s.external_in, ext_in_before,
+        "external_in MUST NOT move — the value entered at deposit, not here"
+    );
+    assert!(!s.notes.contains_key(&cm), "note consumed");
+    assert!(s.conservation_holds());
+}
+
+/// The spend key still authorizes: nobody can donate another account's note.
+#[test]
+fn fund_insurance_rejects_a_wrong_spend_key() {
+    let mut s = fresh_state();
+    let a = owner_of(1);
+    let blind = [0x52u8; 32];
+    let amount = 1_000 * QUOTE_SCALE;
+    let cm = deposit_commit(a, amount, blind);
+    s.apply_batch(&[BatchOp::Deposit {
+        owner: a,
+        asset_id: 0,
+        amount,
+        blinding: blind,
+        from: [0xA1u8; 20],
+        deposit_id: 0,
+        deposit_blind: [0xDBu8; 32],
+    }])
+    .expect("deposit");
+    let before = s.state_root();
+    assert_eq!(
+        s.apply_batch(&[BatchOp::FundInsurance {
+            note_commitment: cm,
+            spend_key: [9u8; 32], // not the owner's key
+        }])
+        .expect_err("wrong key"),
+        EngineError::BadSpendKey
+    );
+    assert_eq!(s.state_root(), before, "state unchanged");
+}
+
+/// **The atomicity test.** `consume_note` inserts the nullifier and removes the note
+/// immediately, so a fallible `insurance_fund` addition afterwards would destroy the
+/// note and return `Err`. The sequencer logs an op only on success, so live state
+/// would diverge from the proven op-log and wedge the next proof.
+#[test]
+fn fund_insurance_overflow_leaves_state_byte_identical() {
+    let mut s = fresh_state();
+    let a = owner_of(1);
+    let blind = [0x53u8; 32];
+    let amount = 1_000 * QUOTE_SCALE;
+    let cm = deposit_commit(a, amount, blind);
+    s.apply_batch(&[BatchOp::Deposit {
+        owner: a,
+        asset_id: 0,
+        amount,
+        blinding: blind,
+        from: [0xA1u8; 20],
+        deposit_id: 0,
+        deposit_blind: [0xDBu8; 32],
+    }])
+    .expect("deposit");
+    s.insurance_fund = i128::MAX;
+    let before = s.state_root();
+    assert_eq!(
+        s.apply_batch(&[BatchOp::FundInsurance {
+            note_commitment: cm,
+            spend_key: [1u8; 32],
+        }])
+        .expect_err("insurance overflow"),
+        EngineError::Overflow
+    );
+    assert_eq!(
+        s.state_root(),
+        before,
+        "the note must NOT be destroyed by a failed credit"
+    );
+    assert!(s.notes.contains_key(&cm), "note still unspent");
+}
+
+/// A newly-encoded deprecated op is refused deterministically.
+#[test]
+fn deprecated_seed_insurance_is_always_rejected() {
+    let mut s = fresh_state();
+    let before = s.state_root();
+    assert_eq!(
+        s.apply_batch(&[BatchOp::DeprecatedSeedInsurance {
+            amount: 1_000 * QUOTE_SCALE
+        }])
+        .expect_err("deprecated"),
+        EngineError::DeprecatedOp
+    );
+    assert_eq!(s.state_root(), before);
+}
+
+/// **The migration test that actually proves the ordinal choice.** `LEGACY_BYTES` is
+/// a REAL pre-change encoding — captured by running `postcard::to_allocvec` on
+/// `[SeedInsurance { amount: 7_500 }, EnterCloseOnly]` against the pre-SEC-024 tree
+/// (commit 8a43792), NOT re-derived from the current enum. It must decode under the
+/// CURRENT enum to the ordinal-8 stub with its amount intact, leave the op that
+/// follows it correctly aligned, and the current enum must re-encode the stub to the
+/// same bytes (postcard writes the variant ordinal as a varint BEFORE the fields, so
+/// replacing ordinal 8 in place would silently mis-parse legacy bytes).
+#[cfg(feature = "serde")]
+#[test]
+fn legacy_seed_insurance_bytes_decode_to_the_stub_and_stay_aligned() {
+    // [len=2, ordinal 8, zigzag-varint(7500) = 152 117, ordinal 7 (EnterCloseOnly)]
+    const LEGACY_BYTES: [u8; 5] = [2, 8, 152, 117, 7];
+    let back: Vec<BatchOp> = postcard::from_bytes(&LEGACY_BYTES).expect("decode");
+    assert_eq!(back.len(), 2, "the following op stayed aligned");
+    match back[0] {
+        BatchOp::DeprecatedSeedInsurance { amount } => assert_eq!(amount, 7_500),
+        ref other => panic!("expected the deprecated stub, got {other:?}"),
+    }
+    assert!(matches!(back[1], BatchOp::EnterCloseOnly));
+    // …and the byte freeze holds in the encode direction too: the retained stub
+    // re-encodes to exactly the legacy bytes.
+    let reenc = postcard::to_allocvec(&vec![
+        BatchOp::DeprecatedSeedInsurance { amount: 7_500 },
+        BatchOp::EnterCloseOnly,
+    ])
+    .expect("encode");
+    assert_eq!(reenc, LEGACY_BYTES);
 }

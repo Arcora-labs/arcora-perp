@@ -103,10 +103,21 @@ pub enum BatchOp {
     },
     /// Forced-exit / circuit-breaker: switch the system to close-only (§6, §8).
     EnterCloseOnly,
-    /// Capitalize the insurance fund with external collateral (§6, §9) — the
-    /// backstop that absorbs liquidation bad debt before it socializes onto the
-    /// clearing pool.
-    SeedInsurance { amount: i128 },
+    /// SEC-024: RETAINED AT ORDINAL 8 AND ALWAYS REJECTED. This op raised
+    /// `insurance_fund` and `external_in` together with no note consumed and no L1
+    /// binding — it fabricated the accounting representation of collateral that never
+    /// entered the system, and the guest proved it. Kept rather than removed because
+    /// `postcard` writes a variant's ordinal before its fields: replacing it in place
+    /// would let legacy bytes decode as whatever took index 8 and consume the following
+    /// bytes as its fields, a SILENT mis-parse. Retaining it means old bytes decode to
+    /// their original meaning and are then refused deterministically. Fail loudly.
+    DeprecatedSeedInsurance { amount: i128 },
+    /// SEC-024: capitalize insurance by consuming a REAL note. `external_in` is NOT
+    /// touched — that value entered the system through the L1-bound deposit path.
+    FundInsurance {
+        note_commitment: Digest,
+        spend_key: Digest,
+    },
 }
 
 /// One auto-deleverage haircut: `clawed` of `owner`'s unrealized profit was taken
@@ -305,7 +316,13 @@ impl<H: Hasher> State<H> {
                 self.mode = Mode::CloseOnly;
                 Ok(())
             }
-            BatchOp::SeedInsurance { amount } => self.op_seed_insurance(*amount),
+            // SEC-024: the retained ordinal-8 stub — refused deterministically, and
+            // the `amount` is deliberately unused (binding it would imply meaning).
+            BatchOp::DeprecatedSeedInsurance { .. } => Err(EngineError::DeprecatedOp),
+            BatchOp::FundInsurance {
+                note_commitment,
+                spend_key,
+            } => self.op_fund_insurance(note_commitment, spend_key),
             BatchOp::Deposit { .. } => {
                 unreachable!("Deposit is handled by apply_op, never delegated here")
             }
@@ -417,13 +434,17 @@ impl<H: Hasher> State<H> {
         Ok(())
     }
 
-    /// Consume a note: verify ownership, mark nullifier, remove from unspent set.
-    fn consume_note(
-        &mut self,
+    /// SEC-024: the NON-MUTATING half of `consume_note` — look the note up, check the
+    /// spend authority and the nullifier, and return the note plus the nullifier the
+    /// caller must insert to commit. Split out because `consume_note` mutates
+    /// immediately, so any fallible arithmetic after it destroys the note on failure.
+    /// `op_fund_position` has that shape today; `op_fund_insurance` must not.
+    fn validate_note_spend(
+        &self,
         note_commitment: &Digest,
         spend_key: &Digest,
         expected_owner: Option<&PubKey>,
-    ) -> Result<Note, EngineError> {
+    ) -> Result<(Note, Digest), EngineError> {
         let note = *self
             .notes
             .get(note_commitment)
@@ -444,6 +465,17 @@ impl<H: Hasher> State<H> {
         if self.nullifiers.contains(&nf) {
             return Err(EngineError::UnknownOrSpentNote);
         }
+        Ok((note, nf))
+    }
+
+    /// Consume a note: verify ownership, mark nullifier, remove from unspent set.
+    fn consume_note(
+        &mut self,
+        note_commitment: &Digest,
+        spend_key: &Digest,
+        expected_owner: Option<&PubKey>,
+    ) -> Result<Note, EngineError> {
+        let (note, nf) = self.validate_note_spend(note_commitment, spend_key, expected_owner)?;
         // Insert nullifier and drop the note from the unspent set.
         let _ = self.nullifiers.insert::<H>(nf);
         self.notes.remove(note_commitment);
@@ -861,21 +893,38 @@ impl<H: Hasher> State<H> {
         haircuts
     }
 
-    /// Capitalize the insurance fund from external collateral (§6, §9). The fund
-    /// is the backstop drawn on by [`Self::op_liquidate`] to absorb bad debt.
-    /// Conservation-safe: `insurance_fund` and `external_in` rise together.
-    fn op_seed_insurance(&mut self, amount: i128) -> Result<(), EngineError> {
-        if amount <= 0 {
-            return Err(EngineError::NonPositiveAmount);
+    /// SEC-024: capitalize the insurance fund by consuming a REAL note (§6, §9) —
+    /// a TRANSFER inside the shielded pool, never a mint. `external_in` is not
+    /// touched: the note's value already entered through the L1-bound deposit path.
+    /// No destination-owner constraint (`expected_owner = None`), matching
+    /// `op_withdraw`: adding value to a communal backstop can only help the
+    /// protocol, and the spend key still prevents donating someone else's note.
+    fn op_fund_insurance(
+        &mut self,
+        note_commitment: &Digest,
+        spend_key: &Digest,
+    ) -> Result<(), EngineError> {
+        // SEC-024 — validate and precompute BEFORE the first mutation. `consume_note`
+        // inserts the nullifier and removes the note immediately, so a fallible
+        // `checked_add` after it would return Err with the note already destroyed; the
+        // sequencer logs an op only on success, so live state would diverge from the
+        // proven op-log and wedge the next proof.
+        let (note, nf) = self.validate_note_spend(note_commitment, spend_key, None)?;
+        // Without this, the op becomes wrong the moment non-canonical note assets
+        // become meaningful. Checked BEFORE any mutation, so a wrong asset leaves
+        // state byte-identical.
+        if note.asset_id != 0 {
+            return Err(EngineError::WrongAsset);
         }
-        self.insurance_fund = self
+        let new_insurance = self
             .insurance_fund
-            .checked_add(amount)
+            .checked_add(note.amount)
             .ok_or(EngineError::Overflow)?;
-        self.external_in = self
-            .external_in
-            .checked_add(amount)
-            .ok_or(EngineError::Overflow)?;
+
+        // commit — infallible from here
+        let _ = self.nullifiers.insert::<H>(nf);
+        self.notes.remove(note_commitment);
+        self.insurance_fund = new_insurance;
         Ok(())
     }
 
