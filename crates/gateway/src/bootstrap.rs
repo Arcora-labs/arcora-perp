@@ -40,8 +40,9 @@ pub enum Bootstrap {
 }
 
 /// Whether an operator bootstrap amount is large enough to be worth the one-shot.
-/// Production caller: `Gw::bootstrap_insurance`, which runs this check FIRST so a
-/// below-floor amount cannot spend the one-shot (the Task-2 `expect(dead_code)`
+/// Production caller: `Gw::bootstrap_insurance`, which runs this check — like every
+/// other guard — BEFORE its first `seq.apply`, so a below-floor amount cannot mint a
+/// note, consume a deposit id, or spend the one-shot (the Task-2 `expect(dead_code)`
 /// came off with that caller, as its contract required).
 pub fn amount_meets_floor(amount: i128) -> bool {
     amount >= MIN_BOOTSTRAP_INSURANCE

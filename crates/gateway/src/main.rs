@@ -2220,8 +2220,12 @@ impl Gw {
     }
 
     /// Drive the bootstrap. Ordering is load-bearing:
-    /// floor check → validate → apply both legs → record → bookkeeping.
-    /// The floor check runs FIRST so a below-floor amount cannot spend the one-shot.
+    /// one-shot → payer binding → checked u128→i128 → floor → validate →
+    /// apply both legs → record → bookkeeping. The property that matters is not
+    /// which guard runs first but that EVERY guard precedes the first `seq.apply`:
+    /// no guard failure can consume a deposit id or mint a note, so a refused
+    /// call spends nothing — in particular, a below-floor amount cannot spend
+    /// the one-shot.
     #[allow(clippy::too_many_arguments)] // the L1 `Deposit` event's fields, threaded flat; a struct adds only ceremony
     fn bootstrap_insurance(
         &mut self,
@@ -2276,7 +2280,7 @@ impl Gw {
             tx,
             market,
         )?;
-        let (cm, spend_key) = fund_insurance_backed(
+        fund_insurance_backed(
             &mut self.seq,
             &v.wallet,
             v.amt,
@@ -2285,16 +2289,30 @@ impl Gw {
             deposit_id,
             v.deposit_blind,
         )
-        .inspect_err(|_| {
-            // Record what the second leg needs even when it failed, so a resume is possible.
-            self.bootstrap = bootstrap::Bootstrap::DepositApplied {
-                note_commitment: Note::new(v.wallet.owner, 0, v.amt, v.note_blind)
-                    .commitment::<Keccak256>(),
-                spend_key: v.wallet.spend_key,
-                deposit_id,
-            };
+        .map_err(|e| match e {
+            // Leg 1 refused: NOTHING was applied (SEC-026 failure atomicity), so the
+            // record must not move. In particular a pre-existing `DepositApplied` from
+            // an earlier attempt still describes the note that WAS minted — overwriting
+            // it here would swap in THIS attempt's deposit_id while the live note came
+            // from the old one.
+            FundInsuranceError::DepositRefused(msg) => msg,
+            // Leg 2 failed AFTER the note was minted: record what a resume of the
+            // second leg alone needs, from the values the engine was actually fed —
+            // the variant carries them so there is exactly one derivation and no
+            // recompute here that could drift from it.
+            FundInsuranceError::TransferFailed {
+                msg,
+                note_commitment,
+                spend_key,
+            } => {
+                self.bootstrap = bootstrap::Bootstrap::DepositApplied {
+                    note_commitment,
+                    spend_key,
+                    deposit_id,
+                };
+                msg
+            }
         })?;
-        let _ = (cm, spend_key);
         self.bootstrap = bootstrap::Bootstrap::InsuranceApplied {
             window_id: self.seq.state.next_batch_id,
         };
@@ -4435,9 +4453,12 @@ fn seed_insurance_unbacked(
 /// gateway actually issued, and `deposit_id` is the chain-assigned id. So this path folds
 /// the SAME leaf the vault chained on-chain, and `_requireDepositPrefix` will match.
 ///
-/// No `refuse_unbacked_mint` here: that guard stops value being asserted without backing,
-/// and this path is backed by construction. Calling it would be cargo-culting a check whose
-/// premise does not apply.
+/// No `refuse_unbacked_mint` here: that guard stops value being asserted without backing.
+/// But this function VERIFIES no backing itself — the backing is its caller's contract
+/// (the funnel scan pins it: "callers must pass a REAL verified L1 leaf", which the
+/// bootstrap driver satisfies via `validated_deposit`), unlike `seed_insurance_unbacked`,
+/// which carries its guard inside. Calling the guard here would be cargo-culting a check
+/// whose premise this function cannot even evaluate.
 ///
 /// Deliberately no `archive.record`: the note is consumed in the same breath and no wallet
 /// ever needs to decrypt it — same reasoning as the demo funnel.
@@ -4449,7 +4470,7 @@ fn fund_insurance_backed(
     from: [u8; 20],
     deposit_id: u64,
     deposit_blind: [u8; 32],
-) -> Result<([u8; 32], [u8; 32]), String> {
+) -> Result<(), FundInsuranceError> {
     let cm = Note::new(wallet.owner, 0, amount, note_blind).commitment::<Keccak256>();
     seq.apply(&BatchOp::Deposit {
         owner: wallet.owner,
@@ -4460,20 +4481,47 @@ fn fund_insurance_backed(
         deposit_id,
         deposit_blind,
     })
-    .map_err(|e| format!("operator deposit leg failed (nothing applied): {e:?}"))?;
+    .map_err(|e| {
+        FundInsuranceError::DepositRefused(format!(
+            "operator deposit leg failed (nothing applied): {e:?}"
+        ))
+    })?;
     seq.apply(&BatchOp::FundInsurance {
         note_commitment: cm,
         spend_key: wallet.spend_key,
     })
-    .map_err(|e| {
-        format!(
+    .map_err(|e| FundInsuranceError::TransferFailed {
+        msg: format!(
             "insurance transfer failed AFTER the operator note was minted: {e:?}. \
              The value is a live unspent note; resume the SECOND LEG ALONE. A pair-retry \
              cannot work — the deposit already advanced consumed_deposit_count, so it \
              would fail DepositOutOfOrder."
-        )
+        ),
+        note_commitment: cm,
+        spend_key: wallet.spend_key,
     })?;
-    Ok((cm, wallet.spend_key))
+    Ok(())
+}
+
+/// Which leg of the TWO-LEG `fund_insurance_backed` failed. Same shape and reason as
+/// `FundAmountError`: the arms leave the engine in DIFFERENT states, and the bootstrap
+/// driver persists a record whose truth depends on WHICH leg failed — a `String` cannot
+/// be matched on, and matching on message text would couple the record to prose.
+enum FundInsuranceError {
+    /// Leg 1 (`op_deposit`) refused the credit — all-or-nothing, the engine state is
+    /// byte-for-byte unchanged (SEC-026 failure atomicity). NO note was minted, so the
+    /// driver must NOT record `Bootstrap::DepositApplied` on this arm.
+    DepositRefused(String),
+    /// Leg 2 (`FundInsurance`) failed AFTER the operator note was minted: the value is
+    /// a live unspent note and only the SECOND leg may be resumed. Carries the minted
+    /// note's commitment and spend key — the SAME values leg 2 was applied with — so
+    /// the driver's `Bootstrap::DepositApplied` record is written from the one
+    /// derivation that fed the engine, never a recompute that could drift from it.
+    TransferFailed {
+        msg: String,
+        note_commitment: [u8; 32],
+        spend_key: [u8; 32],
+    },
 }
 
 /// Which phase of the TWO-PHASE `fund_amount` failed. The arms leave the engine
@@ -4606,13 +4654,17 @@ type SnapshotAck = tokio::sync::oneshot::Sender<bool>;
 /// but `write_atomic` does not fsync the containing DIRECTORY after the rename — the
 /// snapshot survives process death, not necessarily host power loss.
 ///
-/// `expect(dead_code)`: Task 1 lands the primitive only; its first production callers
-/// are the SEC-025-A bootstrap legs in later tasks (tests exercise it today, hence
-/// `not(test)`). The moment a production caller lands, the expectation goes unfulfilled
-/// and must be deleted — enforced by CI, which runs clippy with `-D warnings`
-/// (`.github/workflows/ci.yml:21`), NOT by rustc: a local `cargo build` or bare `cargo
-/// clippy` still exits 0 with only a warning. Precise because the difference is the
-/// difference between a gate and a hope.
+/// `expect(dead_code)`: STILL no production caller — and that is now a DEBT, not a
+/// plan. The bootstrap endpoint (Task 4) has landed WITHOUT this barrier: it replies
+/// 200 while the bootstrap record and both applied legs live only in memory, so a
+/// crash before the next periodic snapshot reverts a bootstrap the operator was told
+/// succeeded. The next task owes the endpoint this call (and the settle-side one);
+/// when it lands, the expectation goes unfulfilled and must be deleted (tests
+/// exercise the primitive today, hence `not(test)`). Deletion is enforced by CI,
+/// which runs clippy with `-D warnings` (`.github/workflows/ci.yml:21`), NOT by
+/// rustc: a local `cargo build` or bare `cargo clippy` still exits 0 with only a
+/// warning. Precise because the difference is the difference between a gate and a
+/// hope.
 #[cfg_attr(not(test), expect(dead_code))]
 async fn snapshot_now(req: &Option<tokio::sync::mpsc::Sender<SnapshotAck>>) -> Result<(), String> {
     let Some(tx) = req else {
@@ -4645,11 +4697,13 @@ struct App {
     /// handler to verify on-chain USDC deposits. `None` ⇒ pure in-memory mode.
     l1: Option<L1>,
     /// SEC-025-A: acknowledged-snapshot requests, served by the single periodic writer.
-    /// `None` when persistence is off. See `snapshot_now`. `expect(dead_code)`: the
-    /// field's first reader is the bootstrap endpoint in a later SEC-025-A task; it
-    /// must exist now so the sender half outlives the writer task that owns the
-    /// receiver — and `expect` (not `allow`) so the suppression errors, and must be
-    /// deleted, the moment that reader lands.
+    /// `None` when persistence is off. See `snapshot_now`. `expect(dead_code)`: STILL
+    /// unread — the bootstrap endpoint (Task 4) landed WITHOUT the durability barrier,
+    /// so its 200 is not yet durable (a crash before the next periodic snapshot
+    /// reverts the bootstrap); the next task owes the wiring of `snapshot_now`
+    /// through this field. It must exist now so the sender half outlives the writer
+    /// task that owns the receiver — and `expect` (not `allow`) so the suppression
+    /// errors, and must be deleted, the moment that reader lands.
     #[expect(dead_code)]
     snapshot_req: Option<tokio::sync::mpsc::Sender<SnapshotAck>>,
     /// SEC-019 (Task 7b): the gateway deposit-authorization signer. Its ADDRESS is what
@@ -8257,8 +8311,9 @@ mod tests {
             )
             .expect_err("a below-floor amount must be refused");
         assert!(
-            err.contains("minimum"),
-            "message should name the floor: {err}"
+            err.contains("below the minimum"),
+            "must fail on the floor check, not the one-shot (whose message also \
+             says \"minimum\"): {err}"
         );
 
         // "Before either leg" is the load-bearing part: no deposit may have been consumed.
@@ -8325,6 +8380,111 @@ mod tests {
         gw.bootstrap_insurance_for_test(&key, operator, operator, amount)
             .expect("a drained fund must reopen the gated recapitalization path");
         assert!(gw.seq.state.insurance_fund >= bootstrap::MIN_BOOTSTRAP_INSURANCE);
+    }
+
+    #[test]
+    fn a_second_leg_failure_records_deposit_applied_with_the_minted_notes_identity() {
+        // Task-4 review I-1, the true half: `Bootstrap::DepositApplied` is written ONLY
+        // when the operator note really was minted, and from the values the engine was
+        // fed. Leg 2 (`FundInsurance`) is forced to fail by an insurance fund one
+        // `amount` short of i128 overflow — `op_fund_insurance` checked_adds BEFORE any
+        // mutation, so the leg-1 note stays live. The inflation is conservation-neutral
+        // (insurance ↔ treasury is an internal transfer), as in the reopen test above.
+        let mut gw = Gw::boot();
+        let key = gw.account_register_for_test();
+        let operator = [0xAAu8; 20];
+        let amount = bootstrap::MIN_BOOTSTRAP_INSURANCE;
+        let bump = (i128::MAX - amount + 1) - gw.seq.state.insurance_fund;
+        gw.seq.state.insurance_fund += bump;
+        gw.seq.state.treasury -= bump;
+
+        // The note identity the record must carry, derived INDEPENDENTLY here (the
+        // account wallet's keys and the 0xB0 ‖ deposit_counter blind): a record written
+        // from anything but the real mint fails these comparisons.
+        let (owner, spend_key) = {
+            let w = gw.accounts.get(&key).unwrap().wallet;
+            (w.owner, w.spend_key)
+        };
+        let dc = gw.accounts.get(&key).unwrap().deposit_counter;
+        let mut note_blind = [0xB0u8; 32];
+        note_blind[..8].copy_from_slice(&dc.to_le_bytes());
+        let cm = Note::new(owner, 0, amount, note_blind).commitment::<Keccak256>();
+        let deposit_id = gw.seq.state.consumed_deposit_count;
+
+        let err = gw
+            .bootstrap_insurance_for_test(&key, operator, operator, amount)
+            .expect_err("an overflowing insurance fund must fail the second leg");
+        assert!(
+            err.contains("AFTER the operator note was minted"),
+            "must fail on leg 2, not leg 1: {err}"
+        );
+        // The note really is live — the record below asserts a fact, not a hope.
+        assert!(gw.seq.state.notes.contains_key(&cm));
+        assert_eq!(
+            gw.bootstrap,
+            bootstrap::Bootstrap::DepositApplied {
+                note_commitment: cm,
+                spend_key,
+                deposit_id,
+            },
+            "the record must carry the minted note's identity and the consumed id"
+        );
+    }
+
+    #[test]
+    fn a_first_leg_refusal_leaves_the_bootstrap_record_untouched() {
+        // Task-4 review I-1, the false half: when leg 1 refuses, NOTHING was applied
+        // (SEC-026 failure atomicity), so the record must not move — writing it would
+        // persist a note that was never minted, and a pre-existing `DepositApplied`
+        // would have THIS attempt's deposit_id swapped in while the live note came from
+        // the old one. Leg 1 is forced to fail by pre-minting the exact commitment the
+        // bootstrap would mint (same owner/amount and the 0xB0 ‖ deposit_counter
+        // blind), so `mint_note` refuses with DuplicateCommitment (SEC-026 historical
+        // uniqueness) while every gateway-level guard still passes.
+        let mut gw = Gw::boot();
+        let key = gw.account_register_for_test();
+        let operator = [0xAAu8; 20];
+        let amount = bootstrap::MIN_BOOTSTRAP_INSURANCE;
+        let owner = gw.accounts.get(&key).unwrap().wallet.owner;
+        let dc = gw.accounts.get(&key).unwrap().deposit_counter;
+        let mut note_blind = [0xB0u8; 32];
+        note_blind[..8].copy_from_slice(&dc.to_le_bytes());
+        gw.seq
+            .apply(&BatchOp::Deposit {
+                owner,
+                asset_id: 0,
+                amount,
+                blinding: note_blind,
+                from: [0x11u8; 20],
+                deposit_id: gw.seq.state.consumed_deposit_count,
+                deposit_blind: [0u8; 32],
+            })
+            .expect("pre-minting the colliding note must succeed");
+
+        // From NotStarted, a leg-1 refusal must leave it NotStarted.
+        let err = gw
+            .bootstrap_insurance_for_test(&key, operator, operator, amount)
+            .expect_err("the duplicate commitment must refuse leg 1");
+        assert!(
+            err.contains("nothing applied"),
+            "must fail on leg 1, not leg 2: {err}"
+        );
+        assert_eq!(gw.bootstrap, bootstrap::Bootstrap::NotStarted);
+
+        // And from a pre-existing `DepositApplied` (an earlier attempt whose note IS
+        // live): the record must survive byte-identical — above all its deposit_id.
+        let sentinel = bootstrap::Bootstrap::DepositApplied {
+            note_commitment: [7u8; 32],
+            spend_key: [9u8; 32],
+            deposit_id: 3,
+        };
+        gw.bootstrap = sentinel.clone();
+        gw.bootstrap_insurance_for_test(&key, operator, operator, amount)
+            .expect_err("still a duplicate — leg 1 refuses again");
+        assert_eq!(
+            gw.bootstrap, sentinel,
+            "a leg-1 refusal must not overwrite an earlier attempt's record"
+        );
     }
 
     /// SEC-025-B break-4 fixtures. The manifest-only tests need an order that is
@@ -8839,15 +8999,18 @@ mod tests {
         // `fund_amount`'s note/archive bookkeeping.
         let deposit_ops = count(deposit_op_needle);
         assert_eq!(
-            deposit_ops, 6,
-            "expected exactly 6 occurrences of `{deposit_op_needle}` across the \
-             gateway sources: 3 in main.rs — the `seq.apply(..)` constructions \
+            deposit_ops, 7,
+            "expected exactly 7 occurrences of `{deposit_op_needle}` across the \
+             gateway sources: 4 in main.rs — the `seq.apply(..)` constructions \
              inside `fund_amount` (the only position-credit minter), \
              `seed_insurance_unbacked` (SEC-024: the UNBACKED insurance funnel, \
              itself behind `refuse_unbacked_mint`), and `fund_insurance_backed` \
              (SEC-025-A: the BACKED insurance funnel — its callers thread the \
              REAL verified L1 leaf from `validated_deposit`, so the unbacked \
-             guard's premise does not apply) — and 3 in prover_client.rs, all \
+             guard's premise does not apply), plus 1 `cfg(test)` fixture in \
+             `a_first_leg_refusal_leaves_the_bootstrap_record_untouched` that \
+             pre-mints a colliding note to force leg 1's DuplicateCommitment — \
+             and 3 in prover_client.rs, all \
              `cfg(test)` `matches!`/filter PATTERNS that inspect ops without \
              constructing one; found {deposit_ops}. Applying this op anywhere \
              else mints collateral below BOTH `refuse_unbacked_mint` and the \
