@@ -623,8 +623,22 @@ impl Gw {
         tx: &str,
         market: u64,
     ) -> Result<(), String> {
-        if self.bootstrap == bootstrap::Bootstrap::Complete {
-            return Err("insurance bootstrap already completed — this endpoint is one-shot".into());
+        // One-shot keyed on REACHING THE FLOOR, not on having been called. Counting calls
+        // deadlocks across time: A completes under floor F1, a later D build raises it to
+        // F2, D refuses to open and a spent one-shot refuses to top up.
+        //
+        // KNOWN TENSION, named rather than hidden: because this reads the CURRENT fund, a
+        // fund later drained below the floor by bad debt also reopens the endpoint. That is
+        // a recapitalization path, which 025-D lists as a required follow-up — but it was a
+        // declared non-goal here, and it is admin+payer gated rather than free. Do not
+        // "tidy" this into a plain `== Complete` check without re-reading 025-D §3; that
+        // reintroduces the temporal deadlock.
+        if self.bootstrap == bootstrap::Bootstrap::Complete
+            && self.seq.state.insurance_fund >= bootstrap::MIN_BOOTSTRAP_INSURANCE
+        {
+            return Err(
+                "insurance bootstrap already completed and the fund meets the minimum".into(),
+            );
         }
         // The only non-forgeable discriminator: the on-chain payer, taken from the parsed
         // receipt rather than the request body. Without it an admin key could route ANY
@@ -801,7 +815,13 @@ In `commit_window_settle`, after `self.last_settled_root = prepared.outcome.new_
         // receives no witness and no post-state — the replay built during proving is
         // discarded, with one scalar surviving it.
         if let bootstrap::Bootstrap::InsuranceApplied { window_id } = self.bootstrap {
-            if window_id == batch_id {
+            // Both conditions matter. The id proves the SECOND leg's window is what
+            // committed; the floor proves the capitalization is actually adequate, which is
+            // what 025-D's launch gate goes on to require. Completing on the id alone would
+            // let a deployment whose floor later rose sit permanently uncapitalizable.
+            if window_id == batch_id
+                && self.seq.state.insurance_fund >= bootstrap::MIN_BOOTSTRAP_INSURANCE
+            {
                 self.bootstrap = bootstrap::Bootstrap::Complete;
             }
         }
@@ -894,5 +914,8 @@ git commit -m "docs(sec025a): the bootstrap endpoint, and what it does not promi
 - [ ] Confirm which tests were verified to **fail before the change** — at minimum the payer binding, the below-floor refusal, and the second-leg window keying.
 - [ ] Run `superpowers:requesting-code-review` on the whole branch, and send the diff to Codex (`mcp__codex__codex`, `sandbox: read-only`, `cwd` = repo). **Codex rejected this piece's spec twice and found three more issues on the third pass — expect it to find more in the implementation.** Verify every finding at source before accepting it.
 - [ ] **Do not deploy.** No `perp-core` change, so no vkey and no root movement. `DPSNAP3 → DPSNAP4` means the cutover's state wipe is still required.
-- [ ] **025-D must land before launch** and takes `DPSNAP5`. It reads `bootstrap::MIN_BOOTSTRAP_INSURANCE` — if that constant moves, both pieces move together.
+- [ ] **025-D must land before launch** and takes `DPSNAP5`. It reads
+  `bootstrap::MIN_BOOTSTRAP_INSURANCE`, and **A and D must ship as one artifact** — they are one
+  cutover bundle, and a floor that differs between the two builds recreates the deadlock this
+  design exists to avoid.
 - [ ] **SEC-028 remains open.** This piece works around its second cause (the authorization-durability window) with the snapshot barrier; it does not fix the replay wedge.
