@@ -51,8 +51,13 @@ pub struct State<H: Hasher> {
     /// identity in Phase 0 rather than an oracle-dependent approximation.
     pub vault_pool: i128,
     /// Protocol-treasury balance: the operator's accrued trading-fee revenue (§9).
-    /// Grows by each fill's `treasury_fee`; can be paid out or injected into the
-    /// insurance fund as a final backstop (`TreasuryToInsurance`).
+    /// Grows by each fill's `treasury_fee`, and nothing else touches it: there is
+    /// **no payout op and no `TreasuryToInsurance`** — this comment claimed both
+    /// until SEC-024, and neither has ever existed. The bad-debt waterfall runs
+    /// insurance → ADL → CloseOnly, so with insurance at zero users are clawed
+    /// while treasury sits stranded. Both features stay deferred; an
+    /// operator-directed transfer would need authorization, since it moves
+    /// operator revenue.
     pub treasury: i128,
     pub external_in: i128,
     pub external_out: i128,

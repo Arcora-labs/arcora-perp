@@ -531,8 +531,11 @@ pub struct Sequencer {
     #[serde(default)]
     window_rejected: Vec<(Digest, RejectReason)>,
     /// The state at the current window's open — the witness pre-state. Re-captured after
-    /// each `seal_window`. (Not `#[serde(default)]`: `DefaultState` has no `Default`; the
-    /// Sequencer is not persisted, so no missing-field case arises.)
+    /// each `seal_window`. (Not `#[serde(default)]`: `DefaultState` has no `Default`. The
+    /// Sequencer IS persisted — it rides inside `Gw` in the gateway snapshot — but this
+    /// field is always written, so no missing-field case arises. The comment here used to
+    /// claim the Sequencer was never persisted; that was false, and it is the same premise
+    /// the snapshot magic depends on, so do not restore it.)
     window_start_state: DefaultState,
     /// Per-account secret liquidation-tag keys, derived from the spend key the
     /// account presents when funding a position and captured inside the enclave.
