@@ -80,8 +80,14 @@ A machine-readable **OpenAPI 3.1** spec is served at `GET /v1/openapi.json`.
 fill); `Gtc`/`PostOnly` rest in the matcher book so a maker can quote and be crossed
 by later takers. `limitPrice: "0"` means market (filled at the mark). Opening orders
 are margin-checked against the account's free balance; close-only mode blocks
-openers (§6). **Rate limit:** at most 10 orders/sec per account — over that returns
-`429` `{ "error": "RATE_LIMIT: ..." }`.
+openers (§6). Acceptance is not a fill guarantee: that margin check runs against the
+**pre-batch** state, so an order can also be **rejected at settlement**, not just at
+submission — the ordinary cause is two of your own orders that individually fit your
+margin but together do not (each passes alone; the second fails initial margin when
+the batch settles). A settlement-rejected order never rests or fills and receives no
+further receipt — it stays `ACCEPTED` in `GET /v1/orders` and is resolved in the
+batch manifest's **rejected** set. **Rate limit:** at most 10 orders/sec per account
+— over that returns `429` `{ "error": "RATE_LIMIT: ..." }`.
 
 ## Faucet — get test USDC
 
