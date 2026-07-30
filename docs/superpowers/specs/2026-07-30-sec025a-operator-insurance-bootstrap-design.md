@@ -64,6 +64,14 @@ and not this piece's to fix — but do not repeat the claim.)*
 Three bindings, all required: `FIN_ADMIN_KEY`; the operator account's `X-Api-Key`; and
 `from == INSURANCE_OPERATOR_ADDRESS` taken from the parsed receipt.
 
+**And a minimum amount.** The endpoint must reject a deposit below `MIN_BOOTSTRAP_INSURANCE`
+**before applying either leg**. This is a requirement 025-D imposes, not a nicety: 025-D gates
+launch on `insurance_fund >= MIN_BOOTSTRAP_INSURANCE`, while this endpoint is one-shot and
+permanently refuses once `Complete`. Without the check, a below-floor bootstrap spends the
+one-shot, 025-D stays closed, and **neither piece has a retry path** — the deployment becomes
+unlaunchable without a code change. The constant lives in one module that both pieces read; two
+literals would let the two notions of "capitalized" drift apart silently.
+
 ## 2. What the payer binding actually buys — stated honestly
 
 `FundInsurance` carries only `note_commitment` and `spend_key` (`engine.rs:115`). It carries
