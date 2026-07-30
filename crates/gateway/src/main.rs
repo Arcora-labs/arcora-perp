@@ -4369,6 +4369,39 @@ fn fund_amount(
 
 // ── HTTP/WS plumbing ─────────────────────────────────────────────────────────
 type Shared = Arc<App>;
+
+/// Reply channel for one acknowledged snapshot: `true` iff the sealed write landed.
+type SnapshotAck = tokio::sync::oneshot::Sender<bool>;
+
+/// Force a snapshot and WAIT for the single writer task's verdict.
+///
+/// Exists because the periodic writer is fire-and-forget: `snapshot_notify` is a bare
+/// `Notify`, so a caller can neither await it nor learn whether the write succeeded.
+/// Two call sites need that guarantee before doing something irreversible — sending an
+/// L1 deposit whose blind lives only in memory, and submitting a settle whose window
+/// would otherwise be unrecoverable at boot (SEC-025-A §3, §9).
+///
+/// FAIL-CLOSED in every direction: persistence off, writer gone, or write failed all
+/// return `Err`. A caller must never read "no error" as "durable".
+///
+/// `allow(dead_code)`: Task 1 lands the primitive only; its first production callers
+/// are the SEC-025-A bootstrap legs in later tasks (tests exercise it today).
+#[allow(dead_code)]
+async fn snapshot_now(req: &Option<tokio::sync::mpsc::Sender<SnapshotAck>>) -> Result<(), String> {
+    let Some(tx) = req else {
+        return Err("state persistence is not configured — cannot guarantee durability".into());
+    };
+    let (ack_tx, ack_rx) = tokio::sync::oneshot::channel();
+    tx.send(ack_tx)
+        .await
+        .map_err(|_| "snapshot writer is gone".to_string())?;
+    match ack_rx.await {
+        Ok(true) => Ok(()),
+        Ok(false) => Err("snapshot write failed".into()),
+        Err(_) => Err("snapshot writer dropped the request".into()),
+    }
+}
+
 struct App {
     gw: Mutex<Gw>,
     tx: broadcast::Sender<String>,
@@ -4380,6 +4413,13 @@ struct App {
     /// The L1 bridge (Base Sepolia), if configured — used by the deposit-confirm
     /// handler to verify on-chain USDC deposits. `None` ⇒ pure in-memory mode.
     l1: Option<L1>,
+    /// SEC-025-A: acknowledged-snapshot requests, served by the single periodic writer.
+    /// `None` when persistence is off. See `snapshot_now`. `allow(dead_code)`: the
+    /// field's first reader is the bootstrap endpoint in a later SEC-025-A task; it
+    /// must exist now so the sender half outlives the writer task that owns the
+    /// receiver.
+    #[allow(dead_code)]
+    snapshot_req: Option<tokio::sync::mpsc::Sender<SnapshotAck>>,
     /// SEC-019 (Task 7b): the gateway deposit-authorization signer. Its ADDRESS is what
     /// the deployed `CollateralVault.gatewaySigner` must equal; `POST /v1/accounts/
     /// deposit/authorize` signs `keccak256(chainid ‖ vault ‖ from ‖ ownerCommit ‖ amount)`
@@ -6949,12 +6989,15 @@ async fn main() {
             }
         }
     }
+    let (snapshot_req_tx, mut snapshot_req_rx) = tokio::sync::mpsc::channel::<SnapshotAck>(8);
+    let snapshot_req = state_path.as_ref().map(|_| snapshot_req_tx);
     let app = Arc::new(App {
         gw: Mutex::new(gw),
         tx: tx.clone(),
         events_tx,
         reg_limit: Mutex::new(HashMap::new()),
         l1: l1.clone(),
+        snapshot_req,
         gateway_signer,
         prover: prover.clone(),
         candles: Mutex::new(candles::CandleStore::new()),
@@ -7048,11 +7091,21 @@ async fn main() {
                     // stage-1 journal write). Notify stores a permit if we're
                     // mid-write, so a wake-up is never lost — at worst it costs one
                     // extra snapshot.
+                    // Third arm (SEC-025-A): an ACKNOWLEDGED request. The reply carries
+                    // the writer's real verdict so the caller can refuse to proceed with
+                    // an irreversible action after a failed write. Kept in this task so
+                    // there is still exactly ONE writer — a second writer could interleave
+                    // `.tmp` renames and lose a snapshot.
+                    let mut ack: Option<SnapshotAck> = None;
                     tokio::select! {
                         _ = iv.tick() => {}
                         _ = notify.notified() => {}
+                        Some(a) = snapshot_req_rx.recv() => { ack = Some(a); }
                     }
-                    write().await;
+                    let ok = write().await;
+                    if let Some(a) = ack {
+                        let _ = a.send(ok);
+                    }
                 }
             });
         }
@@ -8417,6 +8470,7 @@ mod tests {
             events_tx,
             reg_limit: Mutex::new(HashMap::new()),
             l1: None,
+            snapshot_req: None,
             gateway_signer: GatewaySigner::from_env().expect("demo gateway signer"),
             prover: None,
             candles: Mutex::new(candles::CandleStore::new()),
@@ -8988,6 +9042,38 @@ mod tests {
         assert_eq!(r.status(), StatusCode::BAD_REQUEST, "unknown timeframe");
         let r = router.oneshot(get("/v1/markets/99/candles")).await.unwrap();
         assert_eq!(r.status(), StatusCode::NOT_FOUND, "unknown market");
+    }
+
+    #[tokio::test]
+    async fn snapshot_now_reports_the_writers_verdict_and_refuses_when_unconfigured() {
+        // Persistence off ⇒ there is no writer, so a caller must NOT be told the state
+        // is durable. This is the case that matters: the bootstrap barrier runs before
+        // an irreversible L1 deposit.
+        assert!(snapshot_now(&None).await.is_err());
+
+        // A writer that succeeds.
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<SnapshotAck>(1);
+        tokio::spawn(async move {
+            while let Some(ack) = rx.recv().await {
+                let _ = ack.send(true);
+            }
+        });
+        assert!(snapshot_now(&Some(tx)).await.is_ok());
+
+        // A writer that FAILS must surface as Err, not as a silent success — the whole
+        // point of the ack is that the caller learns the write did not land.
+        let (tx2, mut rx2) = tokio::sync::mpsc::channel::<SnapshotAck>(1);
+        tokio::spawn(async move {
+            while let Some(ack) = rx2.recv().await {
+                let _ = ack.send(false);
+            }
+        });
+        assert!(snapshot_now(&Some(tx2)).await.is_err());
+
+        // A dead writer (receiver dropped) must also be an Err, never a hang.
+        let (tx3, rx3) = tokio::sync::mpsc::channel::<SnapshotAck>(1);
+        drop(rx3);
+        assert!(snapshot_now(&Some(tx3)).await.is_err());
     }
 
     // FIN-001 Task 4: the operator-gated settlement-resume auth matrix, exercised as
