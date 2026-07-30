@@ -2220,12 +2220,14 @@ impl Gw {
     }
 
     /// Drive the bootstrap. Ordering is load-bearing:
-    /// one-shot → payer binding → checked u128→i128 → floor → validate →
-    /// apply both legs → record → bookkeeping. The property that matters is not
-    /// which guard runs first but that EVERY guard precedes the first `seq.apply`:
-    /// no guard failure can consume a deposit id or mint a note, so a refused
-    /// call spends nothing — in particular, a below-floor amount cannot spend
-    /// the one-shot.
+    /// one-shot → resume (second leg alone) → payer binding → checked u128→i128 →
+    /// floor → validate → apply both legs → record → bookkeeping. The property that
+    /// matters is not which guard runs first but that EVERY guard precedes the first
+    /// `seq.apply`: no guard failure can consume a deposit id or mint a note, so a
+    /// refused call spends nothing — in particular, a below-floor amount cannot spend
+    /// the one-shot. (The resume arm is the one deliberate exception to "guards then
+    /// apply": it spends a note the guards already vetted when the record was written,
+    /// and consumes nothing from THIS request.)
     #[allow(clippy::too_many_arguments)] // the L1 `Deposit` event's fields, threaded flat; a struct adds only ceremony
     fn bootstrap_insurance(
         &mut self,
@@ -2254,6 +2256,38 @@ impl Gw {
             return Err(
                 "insurance bootstrap already completed and the fund meets the minimum".into(),
             );
+        }
+        // SEC-025-A Task 5: resume a half-finished bootstrap — the SECOND leg alone.
+        // `DepositApplied` is written only on the `TransferFailed` arm below, from the
+        // values the engine was actually fed, so the note it names really was minted
+        // and is live. A pair-retry cannot work (the first `Deposit` already advanced
+        // `consumed_deposit_count`, so it would fail `DepositOutOfOrder` before ever
+        // reaching `FundInsurance`); and none of the request-derived guards below
+        // apply, because this arm consumes NOTHING from the current request — it
+        // spends the recorded note, whose payer and amount the guards vetted when the
+        // record was written. On failure the record is untouched (engine failure
+        // atomicity), so the resume stays retriable.
+        if let bootstrap::Bootstrap::DepositApplied {
+            note_commitment,
+            spend_key,
+            ..
+        } = self.bootstrap
+        {
+            self.seq
+                .apply(&BatchOp::FundInsurance {
+                    note_commitment,
+                    spend_key,
+                })
+                .map_err(|e| {
+                    format!(
+                        "insurance transfer resume failed (the recorded note stays live, \
+                         resume again): {e:?}"
+                    )
+                })?;
+            self.bootstrap = bootstrap::Bootstrap::InsuranceApplied {
+                window_id: self.seq.state.next_batch_id,
+            };
+            return Ok(());
         }
         // The only non-forgeable discriminator: the on-chain payer, taken from the parsed
         // receipt rather than the request body. Without it an admin key could route ANY
@@ -2512,6 +2546,21 @@ impl Gw {
             self.withdraw_proofs.insert(leaf, entry);
         }
         self.last_settled_root = prepared.outcome.new_root;
+        // SEC-025-A: the bootstrap completes only when the window carrying the SECOND leg
+        // commits. Keyed on the id rather than on a predicate, because this function
+        // receives no witness and no post-state — the replay built during proving is
+        // discarded, with one scalar surviving it.
+        if let bootstrap::Bootstrap::InsuranceApplied { window_id } = self.bootstrap {
+            // Both conditions matter. The id proves the SECOND leg's window is what
+            // committed; the floor proves the capitalization is actually adequate, which is
+            // what 025-D's launch gate goes on to require. Completing on the id alone would
+            // let a deployment whose floor later rose sit permanently uncapitalizable.
+            if window_id == batch_id
+                && self.seq.state.insurance_fund >= bootstrap::MIN_BOOTSTRAP_INSURANCE
+            {
+                self.bootstrap = bootstrap::Bootstrap::Complete;
+            }
+        }
         self.batch_orders.insert(batch_id, (ordered, rejected));
         // the window manifest is the source of truth for this batch's roots; the legacy
         // per-tick accumulators are unused by the new path — clear them so they can't grow.
@@ -4636,9 +4685,12 @@ type SnapshotAck = tokio::sync::oneshot::Sender<bool>;
 ///
 /// Exists because the periodic writer is fire-and-forget: `snapshot_notify` is a bare
 /// `Notify`, so a caller can neither await it nor learn whether the write succeeded.
-/// Two call sites need that guarantee before doing something irreversible — sending an
-/// L1 deposit whose blind lives only in memory, and submitting a settle whose window
-/// would otherwise be unrecoverable at boot (SEC-025-A §3, §9).
+/// Two call sites (SEC-025-A §3, §9 — both Task 5) need that guarantee before doing
+/// something irreversible: the insurance-bootstrap endpoint before replying 200 (the
+/// record — and the note identity its resume path needs — lives only in memory until
+/// a snapshot lands), and the settle loop before submitting the window that carries
+/// the bootstrap's second leg (once that window lands on-chain, a boot from a
+/// pre-seal snapshot resolves to Hold and completion is unreachable).
 ///
 /// FAIL-CLOSED in every direction: persistence off, writer gone, write failed, or no
 /// verdict within `SNAPSHOT_ACK_TIMEOUT_SECS` all return `Err`. A caller must never
@@ -4654,18 +4706,6 @@ type SnapshotAck = tokio::sync::oneshot::Sender<bool>;
 /// but `write_atomic` does not fsync the containing DIRECTORY after the rename — the
 /// snapshot survives process death, not necessarily host power loss.
 ///
-/// `expect(dead_code)`: STILL no production caller — and that is now a DEBT, not a
-/// plan. The bootstrap endpoint (Task 4) has landed WITHOUT this barrier: it replies
-/// 200 while the bootstrap record and both applied legs live only in memory, so a
-/// crash before the next periodic snapshot reverts a bootstrap the operator was told
-/// succeeded. The next task owes the endpoint this call (and the settle-side one);
-/// when it lands, the expectation goes unfulfilled and must be deleted (tests
-/// exercise the primitive today, hence `not(test)`). Deletion is enforced by CI,
-/// which runs clippy with `-D warnings` (`.github/workflows/ci.yml:21`), NOT by
-/// rustc: a local `cargo build` or bare `cargo clippy` still exits 0 with only a
-/// warning. Precise because the difference is the difference between a gate and a
-/// hope.
-#[cfg_attr(not(test), expect(dead_code))]
 async fn snapshot_now(req: &Option<tokio::sync::mpsc::Sender<SnapshotAck>>) -> Result<(), String> {
     let Some(tx) = req else {
         return Err("state persistence is not configured — cannot guarantee durability".into());
@@ -4697,14 +4737,10 @@ struct App {
     /// handler to verify on-chain USDC deposits. `None` ⇒ pure in-memory mode.
     l1: Option<L1>,
     /// SEC-025-A: acknowledged-snapshot requests, served by the single periodic writer.
-    /// `None` when persistence is off. See `snapshot_now`. `expect(dead_code)`: STILL
-    /// unread — the bootstrap endpoint (Task 4) landed WITHOUT the durability barrier,
-    /// so its 200 is not yet durable (a crash before the next periodic snapshot
-    /// reverts the bootstrap); the next task owes the wiring of `snapshot_now`
-    /// through this field. It must exist now so the sender half outlives the writer
-    /// task that owns the receiver — and `expect` (not `allow`) so the suppression
-    /// errors, and must be deleted, the moment that reader lands.
-    #[expect(dead_code)]
+    /// `None` when persistence is off. Read by the two `snapshot_now` durability
+    /// barriers (Task 5): the bootstrap endpoint's post-success barrier and the settle
+    /// loop's pre-submit barrier for the window carrying the bootstrap's second leg.
+    /// See `snapshot_now` for the fail-closed and lock contracts.
     snapshot_req: Option<tokio::sync::mpsc::Sender<SnapshotAck>>,
     /// SEC-019 (Task 7b): the gateway deposit-authorization signer. Its ADDRESS is what
     /// the deployed `CollateralVault.gatewaySigner` must equal; `POST /v1/accounts/
@@ -5443,13 +5479,37 @@ async fn post_v1_admin_insurance_bootstrap(
     };
     // ONE lock hold across both legs AND the response read: the snapshot writer takes
     // this same lock, so it can never persist the state between `Deposit` and
-    // `FundInsurance`.
-    let gw = &mut *app.gw.lock().await;
-    // Market 0: the shared guards only need a real market to exist — the value routes
-    // to `insurance_fund`, never to a market bucket.
-    match gw.bootstrap_insurance(&key, operator, from, owner_commit, amount, id, &tx, 0) {
-        Ok(()) => {
-            let b = gw.bootstrap.clone();
+    // `FundInsurance`. Scoped so the guard DROPS before the durability barrier below —
+    // `snapshot_now` waits on that same writer, so awaiting it under this guard
+    // deadlocks both sides for the full ack timeout (see `snapshot_now`).
+    let outcome = {
+        let gw = &mut *app.gw.lock().await;
+        // Market 0: the shared guards only need a real market to exist — the value routes
+        // to `insurance_fund`, never to a market bucket.
+        gw.bootstrap_insurance(&key, operator, from, owner_commit, amount, id, &tx, 0)
+            .map(|()| gw.bootstrap.clone())
+    };
+    match outcome {
+        Ok(b) => {
+            // SEC-025-A Task 5: a 200 must mean DURABLE. Until the writer persists it,
+            // the record — and on the `DepositApplied` arm the `(cm, spend_key)` the
+            // resume path needs — lives only in memory, so a crash now reverts a
+            // bootstrap the operator was just told succeeded. Force an acknowledged
+            // snapshot and fail loudly if that guarantee cannot be given.
+            if let Err(e) = snapshot_now(&app.snapshot_req).await {
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({
+                        "error": format!(
+                            "bootstrap applied in memory but is NOT yet durable — \
+                             snapshot failed: {e}. Do not treat this bootstrap as \
+                             recorded until a snapshot succeeds."
+                        ),
+                        "bootstrap": b,
+                    })),
+                )
+                    .into_response();
+            }
             (StatusCode::OK, Json(serde_json::json!({ "bootstrap": b }))).into_response()
         }
         // The driver's one-shot refusal (its only "already completed" arm) is the
@@ -7772,7 +7832,16 @@ async fn main() {
                             Ok(Some(x)) => {
                                 let cand: Vec<[u8; 32]> =
                                     gw.pending_withdrawals.iter().map(|w| w.leaf()).collect();
-                                Some((x, cand))
+                                // SEC-025-A Task 5: does the window just sealed carry the
+                                // insurance bootstrap's SECOND leg? Read under the same
+                                // guard as the seal, acted on (a durability barrier)
+                                // AFTER the guard drops.
+                                let bootstrap_window = matches!(
+                                    gw.bootstrap,
+                                    bootstrap::Bootstrap::InsuranceApplied { window_id }
+                                        if window_id == x.0.batch_id
+                                );
+                                Some((x, cand, bootstrap_window))
                             }
                             Ok(None) => None,
                             Err(e) => {
@@ -7781,7 +7850,7 @@ async fn main() {
                             }
                         }
                     };
-                    let Some(((witness, ww), prune_candidates)) = begun else {
+                    let Some(((witness, ww), prune_candidates, bootstrap_window)) = begun else {
                         continue;
                     };
                     // capture the manifest's ordered/rejected for the DP-004 challenge store
@@ -7814,6 +7883,36 @@ async fn main() {
                             Err(e) => eprintln!(
                                 "[recovery] stage-1 rollback journal write failed (settle continues unjournaled): {e}"
                             ),
+                        }
+                    }
+                    // SEC-025-A Task 5: this window carries the bootstrap's SECOND leg, so
+                    // its post-seal snapshot must be durably ACKNOWLEDGED before the settle
+                    // can broadcast. If the window lands on-chain before that snapshot
+                    // persists, boot restores Counter B at J while the chain reads J+1,
+                    // the recovery table returns Hold rather than RollForward,
+                    // `commit_window_settle` never runs, and a genuinely settled bootstrap
+                    // never reaches `Complete` — with the one-shot already spent. The
+                    // stage-1 notify above is fire-and-forget and cannot carry this
+                    // guarantee. Awaited with NO `gw` guard held: the snapshot writer
+                    // takes that same lock, so a holder wedges the gateway for the full
+                    // ack timeout (see `snapshot_now`). On failure, roll the seal back and
+                    // retry the whole settle next tick — fail-closed, nothing broadcast.
+                    if bootstrap_window {
+                        if let Err(e) = snapshot_now(&app.snapshot_req).await {
+                            eprintln!(
+                                "[l1] bootstrap window {batch_id}: post-seal snapshot is not \
+                                 durable ({e}) — rolling back; the settle retries next tick"
+                            );
+                            {
+                                let mut gw = app.gw.lock().await;
+                                gw.seq.rollback_window(&witness_rb);
+                                gw.rollback_window_withdrawals(ww_rb);
+                            }
+                            // Task 3 (WAL): keep the journal (boot's SEAL-NEVER-PERSISTED
+                            // row resolves it once the rolled-back state persists); poke
+                            // the writer in case only the ack path is broken.
+                            snapshot_notify.notify_one();
+                            continue;
                         }
                     }
                     // (C) prove + settle (lock-free). Distinguish a prove failure (no tx
@@ -8175,6 +8274,38 @@ mod tests {
                 0,
             )
         }
+
+        /// SEC-025-A Task 5 fixture: drive the REAL `commit_window_settle` (a
+        /// parallel test-only transition path would pin nothing) with a minimal
+        /// `PreparedSettle` and empty manifests. The completion transition reads
+        /// only `batch_id` and gateway state, so the roots' exact values are
+        /// irrelevant to what its tests pin.
+        fn commit_window_settle_for_test(&mut self, batch_id: u64) {
+            let root = self.seq.state.state_root();
+            let prepared = prover_client::PreparedSettle {
+                outcome: prover_client::ProveOutcome {
+                    prev_root: self.last_settled_root,
+                    manifest_hash: [0u8; 32],
+                    new_root: root,
+                    ordered_root: [0u8; 32],
+                    withdrawals_root: [0u8; 32],
+                    rejected_root: [0u8; 32],
+                    deposits_root: [0u8; 32],
+                    new_deposit_count: self.seq.state.consumed_deposit_count,
+                    commitment: [0u8; 32],
+                    proof: Vec::new(),
+                },
+                withdraw_proofs: std::collections::BTreeMap::new(),
+            };
+            let status = L1Status {
+                settled_root: hex32(&root),
+                batch_count: batch_id + 1,
+                last_tx: "(test)".into(),
+                bond: "0".into(),
+                withdrawals_root: hex32(&[0u8; 32]),
+            };
+            self.commit_window_settle(batch_id, Vec::new(), Vec::new(), prepared, status);
+        }
     }
 
     /// SEC-025-A Task 3: the deposit guards and their success bookkeeping must be
@@ -8484,6 +8615,133 @@ mod tests {
         assert_eq!(
             gw.bootstrap, sentinel,
             "a leg-1 refusal must not overwrite an earlier attempt's record"
+        );
+    }
+
+    #[test]
+    fn completion_requires_the_window_carrying_the_second_leg() {
+        // The defect this whole four-state design exists to prevent: if the DEPOSIT's window
+        // commits while FundInsurance has not applied, completion must NOT be recorded.
+        let mut gw = Gw::boot();
+        gw.bootstrap = bootstrap::Bootstrap::DepositApplied {
+            note_commitment: [1u8; 32],
+            spend_key: [2u8; 32],
+            deposit_id: 0,
+        };
+        gw.commit_window_settle_for_test(0);
+        assert_eq!(
+            gw.bootstrap,
+            bootstrap::Bootstrap::DepositApplied {
+                note_commitment: [1u8; 32],
+                spend_key: [2u8; 32],
+                deposit_id: 0
+            },
+            "a deposit-only window must never complete the bootstrap"
+        );
+
+        // And a DIFFERENT window committing must not complete it either.
+        gw.bootstrap = bootstrap::Bootstrap::InsuranceApplied { window_id: 7 };
+        gw.commit_window_settle_for_test(6);
+        assert_eq!(
+            gw.bootstrap,
+            bootstrap::Bootstrap::InsuranceApplied { window_id: 7 }
+        );
+
+        // Only the matching window completes it.
+        gw.commit_window_settle_for_test(7);
+        assert_eq!(gw.bootstrap, bootstrap::Bootstrap::Complete);
+    }
+
+    #[test]
+    fn completion_is_not_reachable_from_a_fill_cut_or_a_liquidation_penalty() {
+        // `insurance_fund` moves for reasons that are not a bootstrap. The RECORD must not.
+        let mut gw = Gw::boot();
+        let before = gw.bootstrap.clone();
+        gw.seq.state.insurance_fund += bootstrap::MIN_BOOTSTRAP_INSURANCE * 10;
+        assert_eq!(gw.bootstrap, before, "a balance is not a marker");
+    }
+
+    #[test]
+    fn completion_requires_the_floor_not_just_the_window_id() {
+        // The transition's second conjunct. 025-D's launch gate reads the SAME floor,
+        // so completing on the id alone would hand it a `Complete` record over a fund
+        // that bad debt drained below adequacy between apply and settle.
+        let mut gw = Gw::boot();
+        gw.bootstrap = bootstrap::Bootstrap::InsuranceApplied { window_id: 3 };
+        // Drain conservation-neutrally (insurance → treasury is an internal transfer),
+        // as the reopen test above does.
+        let drain = gw.seq.state.insurance_fund - (bootstrap::MIN_BOOTSTRAP_INSURANCE - 1);
+        gw.seq.state.insurance_fund -= drain;
+        gw.seq.state.treasury += drain;
+
+        gw.commit_window_settle_for_test(3);
+        assert_eq!(
+            gw.bootstrap,
+            bootstrap::Bootstrap::InsuranceApplied { window_id: 3 },
+            "a below-floor fund must not complete, even on the matching window"
+        );
+    }
+
+    #[test]
+    fn a_resume_from_deposit_applied_applies_only_the_second_leg() {
+        // Task 5's resume path: from `DepositApplied` the driver must apply
+        // `FundInsurance` ALONE — never a second `Deposit` (which would fail
+        // DepositOutOfOrder anyway: the first leg already advanced
+        // `consumed_deposit_count`). Reach `DepositApplied` the only way production
+        // can — a REAL leg-2 failure (fund one `amount` short of i128 overflow, as in
+        // the record-writing test above), so the recorded note is genuinely live.
+        let mut gw = Gw::boot();
+        let key = gw.account_register_for_test();
+        let operator = [0xAAu8; 20];
+        let amount = bootstrap::MIN_BOOTSTRAP_INSURANCE;
+        let bump = (i128::MAX - amount + 1) - gw.seq.state.insurance_fund;
+        gw.seq.state.insurance_fund += bump;
+        gw.seq.state.treasury -= bump;
+        gw.bootstrap_insurance_for_test(&key, operator, operator, amount)
+            .expect_err("an overflowing insurance fund must fail the second leg");
+        let bootstrap::Bootstrap::DepositApplied {
+            note_commitment, ..
+        } = gw.bootstrap
+        else {
+            panic!("a leg-2 failure must record DepositApplied");
+        };
+        // Un-inflate (conservation-neutrally) so the resume's transfer can succeed.
+        gw.seq.state.insurance_fund -= bump;
+        gw.seq.state.treasury += bump;
+        assert!(
+            gw.seq.state.notes.contains_key(&note_commitment),
+            "the recorded note must be live before the resume"
+        );
+
+        let count_before = gw.seq.state.consumed_deposit_count;
+        let ext_before = gw.seq.state.external_in;
+        let ins_before = gw.seq.state.insurance_fund;
+        let expected_window = gw.seq.state.next_batch_id;
+        gw.bootstrap_insurance_for_test(&key, operator, operator, amount)
+            .expect("a resume from DepositApplied must apply the second leg alone");
+
+        // The load-bearing assertion: no second `Deposit` — the id counter (and the
+        // deposit-stream accounting) must not move on a resume.
+        assert_eq!(
+            gw.seq.state.consumed_deposit_count, count_before,
+            "a resume must not consume a deposit id"
+        );
+        assert_eq!(
+            gw.seq.state.external_in, ext_before,
+            "a resume must not re-credit external value"
+        );
+        // The second leg really applied: the note was spent into the fund …
+        assert_eq!(gw.seq.state.insurance_fund, ins_before + amount);
+        assert!(
+            !gw.seq.state.notes.contains_key(&note_commitment),
+            "the resume must spend the recorded note"
+        );
+        // … and the record now waits on the window the resume applied into.
+        assert_eq!(
+            gw.bootstrap,
+            bootstrap::Bootstrap::InsuranceApplied {
+                window_id: expected_window
+            }
         );
     }
 
