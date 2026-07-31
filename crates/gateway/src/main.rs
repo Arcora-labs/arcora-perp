@@ -2891,6 +2891,24 @@ impl Gw {
 
     /// Place an order for an account. Ioc/Fok are takers; Gtc/PostOnly rest in the
     /// matcher book (so an MM bot can quote). Returns the signed receipt.
+    /// SEC-025-D: refuse while the launch gate is closed.
+    ///
+    /// DISTINCT from the close-only refusal on purpose. Close-only blocks only *opening*
+    /// and means a wind-down is under way; this blocks ALL ingress and means the
+    /// deployment has not launched. They stack on the same handler, and an operator who
+    /// reads one message while the other is the real cause diagnoses the wrong system.
+    fn refuse_if_gate_closed(&self) -> Result<(), String> {
+        if self.trading_gate == trading_gate::TradingGate::Closed {
+            return Err(
+                "Trading has not been opened on this deployment yet — the launch gate is \
+                 closed until a proven settle shows the insurance fund capitalized (§025-D). \
+                 This is NOT close-only: no wind-down is in progress."
+                    .into(),
+            );
+        }
+        Ok(())
+    }
+
     fn account_place_order(&mut self, key: &[u8; 32], req: &OrderReq) -> Result<WReceipt, String> {
         // The account's 32-byte owner pubkey — needed UP FRONT to build the sealed
         // order AAD (which binds the ciphertext to this epoch AND this owner), and
@@ -2983,6 +3001,9 @@ impl Gw {
         // required presence; the sealed branch always supplies "Buy"/"Sell"). No
         // silent `else → Sell` default that could flip a malformed order's direction.
         let side = parse_side_strict(&req.side)?;
+        // Before the close-only check and before any mutation: a closed gate refuses
+        // every order, opening or not.
+        self.refuse_if_gate_closed()?;
         let opening = self.is_opening_of(&owner, req.market_id, &req.side, size);
         if self.seq.state.mode == Mode::CloseOnly && opening {
             return Err(
@@ -3387,6 +3408,11 @@ impl Gw {
     /// is recorded as a receipt the user detects, not silent. Self-contained; the
     /// transient oracle spike is restored afterward.
     fn simulate_adl(&mut self) -> Result<i128, String> {
+        // SEC-025-D: its own guard. This path applies `BatchOp::Fill` DIRECTLY, and until
+        // now was refused in production only because an unrelated unconditional `fund(..)`
+        // happened to reach `refuse_unbacked_mint` first. Refusal that depends on another
+        // call's position is one refactor away from disappearing.
+        self.refuse_if_gate_closed()?;
         let market = 0u64;
         let now = now_ms();
         let px = self.px_of(market);
@@ -3844,6 +3870,9 @@ impl Gw {
         if self.mkt(req.market_id).is_none() {
             return Err("Unknown market.".into());
         }
+        // Before the close-only check and before any mutation: a closed gate refuses
+        // every order, opening or not.
+        self.refuse_if_gate_closed()?;
         let opening = self.is_opening(req.market_id, &req.side, size);
         if self.seq.state.mode == Mode::CloseOnly && opening {
             return Err(
@@ -4119,7 +4148,11 @@ impl Gw {
                     Side::Buy => uo.limit_price >= mark,
                     Side::Sell => uo.limit_price <= mark,
                 };
-            if crosses {
+            // SEC-025-D: gated DIRECTLY. This injector pushes straight into the seal
+            // vector without touching `accept_order` and carries no `prod` gate of its
+            // own — a gate placed only in the order handlers would leave it live, stopped
+            // merely because no taker got through.
+            if crosses && self.trading_gate == trading_gate::TradingGate::Open {
                 let opp = match uo.side {
                     Side::Buy => Side::Sell,
                     Side::Sell => Side::Buy,
@@ -8686,6 +8719,94 @@ mod tests {
         }
     }
 
+    fn gate_test_order() -> OrderReq {
+        OrderReq {
+            market_id: 0,
+            side: "Buy".into(),
+            size: (SIZE_SCALE / 10).to_string(),
+            limit_price: "0".into(),
+            tif: "Ioc".into(),
+            reduce_only: false,
+            nonce: None,
+            signature: None,
+            ..Default::default()
+        }
+    }
+
+    /// SEC-025-D: every ingress path refuses while the gate is closed — asserted per
+    /// path, because three of the four do NOT go through the HTTP order handler and a
+    /// gate placed only there would leave them live.
+    #[test]
+    fn every_ingress_path_refuses_while_the_gate_is_closed() {
+        let mut gw = Gw::boot_production_for_test();
+        assert_eq!(gw.trading_gate, trading_gate::TradingGate::Closed);
+        let key = gw.account_register_for_test();
+        let req = gate_test_order();
+
+        // `WReceipt`/`WEvent` are not `Debug`, so `expect_err` will not compile here.
+        let e1 = match gw.account_place_order(&key, &req) {
+            Ok(_) => panic!("/v1/orders must refuse while the gate is closed"),
+            Err(e) => e,
+        };
+        assert!(e1.contains("launch gate"), "wrong refusal: {e1}");
+        let e2 = match gw.place_order(&req) {
+            Ok(_) => panic!("the legacy path must refuse too"),
+            Err(e) => e,
+        };
+        assert!(e2.contains("launch gate"), "wrong refusal: {e2}");
+        let e3 = gw
+            .simulate_adl()
+            .expect_err("simulate_adl must refuse on its OWN guard");
+        assert!(e3.contains("launch gate"), "wrong refusal: {e3}");
+
+        // The refusal must be distinguishable from close-only, which is a different
+        // condition with a different remedy.
+        assert!(
+            !e1.contains("close-only mode"),
+            "must not read as a wind-down"
+        );
+    }
+
+    /// The house-MM injector pushes straight into the seal vector without touching
+    /// `accept_order`. Asserted DIRECTLY rather than via "no taker exists", because the
+    /// latter passes even if the injector is completely ungated.
+    #[test]
+    fn the_house_mm_injector_stages_no_counter_order_while_the_gate_is_closed() {
+        let mut gw = Gw::boot();
+        gw.trading_gate = trading_gate::TradingGate::Open;
+        let req = gate_test_order();
+        gw.place_order(&req)
+            .expect("demo order accepted while open");
+        gw.tick();
+        let opened = gw
+            .seq
+            .state
+            .position(&gw.mm.owner, 0)
+            .map(|p| p.is_open())
+            .unwrap_or(false);
+        assert!(
+            opened,
+            "fixture precondition: with the gate OPEN the injector must actually fill \
+             the MM — otherwise the closed case below proves nothing"
+        );
+
+        let mut gw2 = Gw::boot();
+        gw2.trading_gate = trading_gate::TradingGate::Open;
+        gw2.place_order(&req).expect("accepted");
+        gw2.trading_gate = trading_gate::TradingGate::Closed;
+        gw2.tick();
+        let opened2 = gw2
+            .seq
+            .state
+            .position(&gw2.mm.owner, 0)
+            .map(|p| p.is_open())
+            .unwrap_or(false);
+        assert!(
+            !opened2,
+            "a closed gate must stop the injector itself, not merely starve it of takers"
+        );
+    }
+
     /// SEC-025-A Task 3: the deposit guards and their success bookkeeping must be
     /// separable, because the insurance-bootstrap path (Task 4) reuses the guards
     /// around a DIFFERENT funding op. The validation half must be pure (safe to
@@ -9410,6 +9531,12 @@ mod tests {
     fn a_production_simulate_adl_is_refused() {
         let mut gw = Gw::boot_with(GenesisMode::Production);
         gw.prod = true;
+        // OPEN the launch gate first. SEC-025-D added its own refusal at the top of
+        // `simulate_adl`, and with the gate closed IT answers — which would leave this
+        // test green while proving nothing about the SEC-025-C guard it exists to pin.
+        // Opening the gate makes 025-C's guard the only thing that can refuse here, so
+        // the two guards stay independently pinned instead of one masking the other.
+        gw.trading_gate = trading_gate::TradingGate::Open;
         let before_root = gw.seq.state.state_root();
         let before_count = gw.seq.state.consumed_deposit_count;
         let err = gw.simulate_adl().expect_err("refused in production");
