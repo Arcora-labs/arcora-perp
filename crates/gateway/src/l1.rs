@@ -1141,6 +1141,10 @@ mod tests {
             rejected_root: [0x66; 32],
             deposits_root: [0x77; 32],
             new_deposit_count: 42,
+            // SEC-025-D: gate terms — consumed by `commit_window_settle`'s opening
+            // check, never by the settleBatch calldata this test pins.
+            post_mode_is_normal: true,
+            post_insurance_fund: 0,
             commitment: [0x88; 32],
             proof: vec![0xab, 0xcd],
         };

@@ -8390,6 +8390,10 @@ mod tests {
                     rejected_root: [0u8; 32],
                     deposits_root: [0u8; 32],
                     new_deposit_count: self.seq.state.consumed_deposit_count,
+                    // SEC-025-D: the post-state terms, from the live state — the same
+                    // post-state proxy `new_root` above already uses in this fixture.
+                    post_mode_is_normal: self.seq.state.mode == Mode::Normal,
+                    post_insurance_fund: self.seq.state.insurance_fund,
                     commitment: [0u8; 32],
                     proof: Vec::new(),
                 },
