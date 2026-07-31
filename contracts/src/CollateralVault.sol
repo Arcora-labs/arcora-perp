@@ -73,11 +73,14 @@ contract CollateralVault {
     /// it carries this key's ECDSA signature over `(chainid, this vault, from,
     /// ownerCommit, amount)`. This is a LIVENESS GATE on deposit entry, not a mint
     /// authority: the gateway signs only after recording the `(owner, blind)` behind
-    /// `ownerCommit`, so every leaf that can ever enter the chain is creditable off-chain
-    /// — an uncreditable leaf (e.g. a free `deposit(0, junkCommit)` whose commit preimage
-    /// the gateway doesn't know) can no longer head-of-line-block the circuit's
-    /// contiguous deposit consumption and strand every deposit queued behind it (spec
-    /// §1b). It CANNOT inflate `external_in`: each deposit still performs a real
+    /// `ownerCommit`, so a leaf whose commit preimage the gateway never knew — a free
+    /// `deposit(0, junkCommit)` — cannot enter and head-of-line-block the circuit's
+    /// contiguous deposit consumption (spec §1b).
+    ///
+    /// SEC-028: that is narrower than this comment used to claim. The signature alone did
+    /// NOT make every enterable leaf creditable — the tuple binds no nonce, so it was
+    /// replayable — and it still does not, because the recorded blind is memory-first.
+    /// `usedDepositAuthorization` closes the replay half; the durability half is open. It CANNOT inflate `external_in`: each deposit still performs a real
     /// `transferFrom` and settlement still pins `depositsRoot` to the proven prefix, so a
     /// compromised signer can permit entry but never conjure collateral.
     address public gatewaySigner;
@@ -88,8 +91,11 @@ contract CollateralVault {
     /// the same tuple mints a fresh leaf on every submission, and since the gateway
     /// consumes its stored blind on the FIRST credit, every later identical leaf is
     /// permanently uncreditable and head-of-line-blocks the contiguous deposit queue.
-    /// That is exactly the property `deposit`'s own doc claims the signature establishes;
-    /// this mapping is what actually establishes it.
+    /// This mapping CLOSES THE REPLAY CAUSE. It does not, on its own, establish that
+    /// every leaf is creditable: an authorization whose `(owner, blind)` the gateway
+    /// recorded only in memory, and lost to a crash before its next periodic snapshot,
+    /// still yields an uncreditable leaf with no attacker and no replay. That is the
+    /// second cause and it is open.
     ///
     /// Keyed on the DIGEST, not the signature bytes: replay protection should bind the
     /// authorization, not one serialization of it.

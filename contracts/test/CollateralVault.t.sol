@@ -466,17 +466,35 @@ contract CollateralVaultTest is MiniTest {
         assertEq(vault.depositCount(), 1, "the retry must be creditable");
     }
 
-    /// The mapping must not be over-broad: a different authorization is unaffected.
+    /// The mapping must not be over-broad, and must key on the EXACT digest.
+    ///
+    /// Varying only the amount is not enough: an over-broad key that hashed just the
+    /// amount would pass that, and so would one keyed on the payer alone. This varies the
+    /// COMMIT while holding payer and amount fixed, which no coarser key survives, and
+    /// asserts the mapping slot itself rather than inferring it from the count.
     function test_a_distinct_authorization_still_deposits() public {
-        uint256 a1 = 1_000 * USD;
-        uint256 a2 = 2_000 * USD;
-        usdc.mint(alice, a1 + a2);
+        uint256 amount = 1_000 * USD;
+        bytes32 commitB = keccak256("SEC-028 second owner commit");
+        assertTrue(commitB != DEFAULT_TEST_OWNER_COMMIT, "the two commits must differ");
+        usdc.mint(alice, amount * 2);
         vm.startPrank(alice);
-        usdc.approve(address(vault), a1 + a2);
-        vault.deposit(a1, DEFAULT_TEST_OWNER_COMMIT, _gwSig(vault, alice, a1, DEFAULT_TEST_OWNER_COMMIT));
-        vault.deposit(a2, DEFAULT_TEST_OWNER_COMMIT, _gwSig(vault, alice, a2, DEFAULT_TEST_OWNER_COMMIT));
+        usdc.approve(address(vault), amount * 2);
+        vault.deposit(amount, DEFAULT_TEST_OWNER_COMMIT, _gwSig(vault, alice, amount, DEFAULT_TEST_OWNER_COMMIT));
+        vault.deposit(amount, commitB, _gwSig(vault, alice, amount, commitB));
         vm.stopPrank();
-        assertEq(vault.depositCount(), 2, "a different digest must be independent");
+        assertEq(vault.depositCount(), 2, "same payer and amount, different commit => independent");
+
+        // Pin the slot directly: both exact digests consumed, and nothing else.
+        bytes32 dA = keccak256(
+            abi.encodePacked(block.chainid, address(vault), alice, DEFAULT_TEST_OWNER_COMMIT, amount)
+        );
+        bytes32 dB = keccak256(abi.encodePacked(block.chainid, address(vault), alice, commitB, amount));
+        assertTrue(vault.usedDepositAuthorization(dA), "digest A must be marked consumed");
+        assertTrue(vault.usedDepositAuthorization(dB), "digest B must be marked consumed");
+        assertTrue(
+            !vault.usedDepositAuthorization(keccak256("an authorization that was never presented")),
+            "the mapping must not mark digests it never saw"
+        );
     }
 
     /// An unsigned or wrongly-signed call must burn nothing: the digest it presented

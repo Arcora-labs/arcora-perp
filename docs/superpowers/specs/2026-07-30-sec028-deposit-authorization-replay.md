@@ -232,11 +232,14 @@ Inside `deposit` (`:186`), after the close-only refusal and the `_recover` check
         usedDepositAuthorization[digest] = true;
 ```
 
-Placement is load-bearing in both directions. **After** signature recovery, so an unsigned or
-badly-signed call cannot burn a digest it never had the right to. **Before** `transferFrom`, so
-a token-transfer failure reverts the whole call and rolls the mark back with it — the mark and
-the leaf are then written or not written together, and there is no state in which an
-authorization is consumed but no leaf exists.
+Placement is **after** signature recovery and **before** `transferFrom`.
+
+*(Corrected: an earlier version of this paragraph called the placement "load-bearing in both
+directions" on the grounds that a transfer failure must roll the mark back. That rollback is EVM
+revert atomicity and happens wherever the mark sits — mutation testing showed both alternative
+placements invisible to every test. The real reason to mark before the external call is
+checks-effects-interactions: `token` is immutable but chosen at deployment, so a hook-bearing
+one could re-enter `deposit` with the same digest while the mark was unset.)*
 
 Key on the **digest**, never on the signature bytes. Keying on bytes would tie replay protection
 to one serialization of the authorization rather than to the authorization itself. (Malleability
@@ -280,10 +283,11 @@ Foundry, `contracts/test/`:
 2. **`depositCount` and `depositChainTip` are unchanged by the refused call** — the wedge came
    from a leaf existing at all, so proving no leaf was minted is the point, not just that the
    call reverted.
-3. **A failed `transferFrom` rolls the mark back**: with an insufficient allowance the call
-   reverts, and a subsequent well-funded call with the same signature **succeeds**. This is the
-   test that proves the placement before `transferFrom` was right; a mark written outside the
-   revert path would strand a legitimate depositor permanently.
+3. **A failed `transferFrom` leaves the authorization usable**: with an insufficient allowance
+   the call reverts, and a subsequent well-funded call with the same signature **succeeds**.
+   Note what this does and does not prove — it pins that a legitimate depositor is not stranded,
+   but it does **not** prove the placement, since revert atomicity would deliver the same result
+   with the mark anywhere. Pinning the CEI reason needs a re-entrant token fixture.
 4. **A distinct authorization is unaffected** — a different `amount` (hence a different digest)
    still deposits normally, so the mapping is not over-broad.
 5. **An unsigned or wrongly-signed call burns nothing**: it reverts `BadGatewaySig`, and the

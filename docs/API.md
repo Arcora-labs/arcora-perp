@@ -124,12 +124,31 @@ A real deposit is funded on Base Sepolia and then attributed to your account:
    the consent of the currently bound address** via `currentSignature` — see
    § Rebinding the deposit address. Re-binding the same address is an idempotent
    no-op (no `currentSignature` needed).
-2. On Base Sepolia, from that EOA: `usdc.approve(vault, amount)` then
-   `vault.deposit(amount)`.
-3. `POST /v1/accounts/deposit/onchain { "txHash": "0x..", "marketId": 0 }` — the
-   gateway verifies the `vault.Deposit(from, amount)` log, checks the binding,
+2. `POST /v1/accounts/deposit/authorize { "from": "0x<your EOA>", "amount": "<base units>" }`
+   — the gateway records a secret blind for this deposit and returns its `ownerCommit`
+   plus a signature. The vault accepts **only** pre-authorized deposits, so this step is
+   not optional.
+3. On Base Sepolia, from that EOA: `usdc.approve(vault, amount)` then
+   `vault.deposit(amount, ownerCommit, signature)` — three arguments, all from step 2.
+
+   **The authorization is one-shot on-chain (SEC-028).** Re-submitting the same
+   `(from, ownerCommit, amount)` reverts `AuthorizationAlreadyUsed`. Before that guard,
+   a replay minted a second leaf that the gateway could never credit — which blocked the
+   contiguous deposit queue for **every** user, permanently. Get a fresh authorization
+   for each deposit.
+4. `POST /v1/accounts/deposit/onchain { "txHash": "0x..", "marketId": 0 }` — the
+   gateway verifies the `vault.Deposit(from, ownerCommit, amount, id, tip)` log, checks
+   the binding and that the recorded blind reproduces the on-chain `ownerCommit`,
    canonicalizes + dedups the tx hash, and credits `amount` (USDC base units) to the
-   market bucket.
+   market bucket. **Deposits must be confirmed in L1 order**; a gap stalls the stream
+   until it is filled.
+
+**Known open (SEC-028, second cause).** The blind from step 2 lives in gateway memory
+until the next periodic snapshot. A gateway crash in that window loses it, and the
+already-landed deposit from step 3 becomes uncreditable — stalling the deposit stream for
+everyone until the operator intervenes. Nothing in the API protects against this yet; if
+you deposit immediately after authorizing and the confirm in step 4 fails with "no gateway
+authorization for this ownerCommit", this is why.
 
 ## Trading is gated until launch (SEC-025-D)
 
