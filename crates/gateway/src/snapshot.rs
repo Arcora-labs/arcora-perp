@@ -53,7 +53,12 @@ use std::path::Path;
 /// snapshot read by a v4 binary shifts every field after it. `#[serde(default)]` does not
 /// rescue that — postcard is not self-describing. SEC-025-D adds another `Gw` field and
 /// takes DPSNAP5; do not reuse v4 for it.
-const MAGIC: &[u8; 8] = b"DPSNAP4\0";
+/// v5: SEC-025-D added `Gw.trading_gate`, the launch gate, inserted mid-struct (after
+/// `bootstrap`). Same positional-postcard hazard as v4: every field after it shifts on
+/// a cross-version read. 025-A already took v4 for `Gw.bootstrap`, and two pieces
+/// claiming one magic means whichever lands second changes the positional schema
+/// without changing its guard — the exact misread the magic exists to refuse.
+const MAGIC: &[u8; 8] = b"DPSNAP5\0";
 
 /// Keystream block derived from the SECRET seed and the per-snapshot nonce.
 fn keystream(seed: &[u8; 32], nonce: &Digest, len: usize) -> Vec<u8> {

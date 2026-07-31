@@ -53,6 +53,7 @@ mod prover_client;
 mod rollback_journal;
 mod settle_health;
 mod snapshot;
+mod trading_gate;
 mod withdrawals;
 use l1::{L1Status, L1};
 // SEC-025-B: `merkle_root` left the production import set with the legacy settle body
@@ -1151,6 +1152,10 @@ struct Gw {
     /// needs, and because `Complete` is what 025-D's launch gate reads.
     #[serde(default = "bootstrap_not_started")]
     bootstrap: bootstrap::Bootstrap,
+    /// SEC-025-D: the launch gate. `Closed` on a production genesis until a proven,
+    /// block-pinned `settleBatch` shows the deployment capitalized — see `trading_gate`.
+    #[serde(default = "trading_gate_closed")]
+    trading_gate: trading_gate::TradingGate,
     /// On-chain deposit tx hashes already credited (idempotency / replay guard).
     processed_deposit_txs: std::collections::BTreeSet<String>,
     /// Manifest hash of the most recently sealed batch. SEC-025-B: no longer read —
@@ -1281,6 +1286,10 @@ fn dev_fallback_vault() -> [u8; 20] {
 
 fn bootstrap_not_started() -> bootstrap::Bootstrap {
     bootstrap::Bootstrap::NotStarted
+}
+
+fn trading_gate_closed() -> trading_gate::TradingGate {
+    trading_gate::TradingGate::Closed
 }
 
 /// Advisory lifetime of a published order-ingress epoch key (§5.1). Clients should
@@ -1741,6 +1750,14 @@ impl Gw {
             window_withdrawals: Vec::new(),
             last_settled_root: genesis_root,
             bootstrap: bootstrap::Bootstrap::NotStarted,
+            // SEC-025-D: a demo genesis trades from boot (funded accounts, no L1 to
+            // observe, so no settle could ever open a closed gate); production starts
+            // Closed and stays so until the launch check (Task 4) opens it.
+            trading_gate: if mode == GenesisMode::Demo {
+                trading_gate::TradingGate::Open
+            } else {
+                trading_gate::TradingGate::Closed
+            },
             processed_deposit_txs: std::collections::BTreeSet::new(),
             last_manifest: [0u8; 32],
             pending_ordered: Vec::new(),
@@ -10130,6 +10147,24 @@ mod tests {
             restored.bootstrap,
             bootstrap::Bootstrap::InsuranceApplied { window_id: 42 }
         );
+    }
+
+    #[test]
+    fn the_trading_gate_survives_a_snapshot_round_trip() {
+        let mut gw = Gw::boot();
+        gw.trading_gate = trading_gate::TradingGate::Closed;
+        let plain = gw.snapshot_plain();
+        let restored = Gw::boot_restored(&plain).expect("restore");
+        assert_eq!(restored.trading_gate, trading_gate::TradingGate::Closed);
+        // The Open leg is what makes this test able to die: `Closed` is ALSO the
+        // deserialization default (`trading_gate_closed`), so the leg above passes even
+        // if the field is serde-skipped and never persisted at all. Losing the field
+        // across a restart would silently re-CLOSE an opened deployment — and a closed
+        // ingress gate blocks reduce-only exits, the exact trap the one-way latch
+        // exists to avoid.
+        gw.trading_gate = trading_gate::TradingGate::Open;
+        let restored = Gw::boot_restored(&gw.snapshot_plain()).expect("restore");
+        assert_eq!(restored.trading_gate, trading_gate::TradingGate::Open);
     }
 
     /// Task 12: every ACCEPTED `/v1` order is appended to the hash-chained
