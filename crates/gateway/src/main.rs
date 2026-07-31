@@ -2344,6 +2344,29 @@ impl Gw {
                     spend_key,
                     deposit_id,
                 };
+                // The DEPOSIT succeeded on this arm, so its two irreversible consequences
+                // must be booked even though the transfer did not. Skipping them is a
+                // landmine, not a tidy rollback:
+                //
+                // `deposit_counter` feeds the note blind (`0xB0 ‖ counter`). The mint
+                // consumed this blind, and SEC-026 uniqueness is HISTORICAL, so leaving the
+                // counter would make this account's next SAME-AMOUNT deposit re-derive the
+                // same commitment and fail `DuplicateCommitment`. `op_deposit` mints before
+                // any counter bump, so that failure does NOT advance
+                // `consumed_deposit_count` — which stalls the SEC-019 in-order deposit
+                // stream for EVERY account, not just this one. And the operator cannot dodge
+                // it by retrying with a different amount: the amount comes from the on-chain
+                // `Deposit` event, never from the request body.
+                //
+                // The tx is marked because it really was credited; a later confirm of it
+                // would otherwise fail as not-next-in-line and read like a different bug.
+                //
+                // The AUTHORIZATION is deliberately left in place. Removing it is what makes
+                // a second leaf for the same `ownerCommit` permanently uncreditable
+                // (SEC-028), and nothing here needs it gone.
+                let a = self.accounts.get_mut(key).unwrap();
+                a.deposit_counter += 1;
+                self.processed_deposit_txs.insert(tx.to_string());
                 msg
             }
         })?;
@@ -4542,9 +4565,15 @@ fn fund_insurance_backed(
     .map_err(|e| FundInsuranceError::TransferFailed {
         msg: format!(
             "insurance transfer failed AFTER the operator note was minted: {e:?}. \
-             The value is a live unspent note; resume the SECOND LEG ALONE. A pair-retry \
-             cannot work — the deposit already advanced consumed_deposit_count, so it \
-             would fail DepositOutOfOrder."
+             OPERATOR: no value is lost — the deposit IS credited and the note is a live \
+             unspent note owned by this account. Resume the SECOND LEG ALONE by calling \
+             the bootstrap endpoint again; the persisted record carries the note's \
+             identity. A pair-retry cannot work — the deposit already advanced \
+             consumed_deposit_count, so it would fail DepositOutOfOrder. The caller has \
+             ALREADY booked this leg's two irreversible consequences (deposit_counter \
+             bumped so the next same-amount deposit cannot collide on a historical \
+             commitment, and the tx marked credited), so do NOT hand-repair them; the \
+             deposit stream is NOT stalled."
         ),
         note_commitment: cm,
         spend_key: wallet.spend_key,
@@ -5477,6 +5506,26 @@ async fn post_v1_admin_insurance_bootstrap(
         Ok(Err(e)) => return err400(format!("deposit not verified: {e}")).into_response(),
         Err(e) => return err400(format!("verify task failed: {e}")).into_response(),
     };
+    // Refuse BEFORE any mutation when durability is structurally unavailable. With
+    // persistence off there is no writer at all, so the barrier below could only ever
+    // fail — and failing it AFTER both legs applied is not a clean rollback: the engine
+    // mutation is irreversible, and the settle loop then re-seals that same window id
+    // every tick forever (`rollback_window` restores the counter), so its barrier fails,
+    // rolls back and continues — halting ALL settlement, not just this window's. This
+    // condition is deterministic and known before the lock is taken, so the whole class
+    // is removed by checking it here. A TRANSIENT failure (persistence on, write fails)
+    // still surfaces at the barrier, which is the correct place for it.
+    if app.snapshot_req.is_none() {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(serde_json::json!({
+                "error": "state persistence is not configured — refusing to bootstrap \
+                          insurance, because the result could not be made durable and a \
+                          restart would silently revert it"
+            })),
+        )
+            .into_response();
+    }
     // ONE lock hold across both legs AND the response read: the snapshot writer takes
     // this same lock, so it can never persist the state between `Deposit` and
     // `FundInsurance`. Scoped so the guard DROPS before the durability barrier below —
@@ -5491,11 +5540,18 @@ async fn post_v1_admin_insurance_bootstrap(
     };
     match outcome {
         Ok(b) => {
-            // SEC-025-A Task 5: a 200 must mean DURABLE. Until the writer persists it,
-            // the record — and on the `DepositApplied` arm the `(cm, spend_key)` the
-            // resume path needs — lives only in memory, so a crash now reverts a
-            // bootstrap the operator was just told succeeded. Force an acknowledged
-            // snapshot and fail loudly if that guarantee cannot be given.
+            // SEC-025-A Task 5: a 200 must mean DURABLE. This arm is reached only with
+            // the record at `InsuranceApplied` — both `Ok` exits of `bootstrap_insurance`
+            // set it, and `DepositApplied` is written on an arm that returns Err and takes
+            // the 400 path below, so this barrier never observes that state. What it
+            // protects is the `InsuranceApplied` record plus the applied engine mutation:
+            // until the writer persists them they live only in memory, and a crash would
+            // revert a bootstrap the operator was just told succeeded.
+            //
+            // (A crash on the `DepositApplied` path is benign and needs no barrier: the
+            // record and the minted note share one snapshot, so both revert together and
+            // the on-chain deposit becomes re-confirmable once `consumed_deposit_count`
+            // regresses with them.)
             if let Err(e) = snapshot_now(&app.snapshot_req).await {
                 return (
                     StatusCode::INTERNAL_SERVER_ERROR,
@@ -8256,6 +8312,23 @@ mod tests {
             from: [u8; 20],
             amount: i128,
         ) -> Result<(), String> {
+            self.bootstrap_insurance_capturing(key, expected_payer, from, amount)
+                .0
+        }
+
+        /// As above, but hands back the request tuple it synthesised so a caller can
+        /// REPLAY it. That matters for the resume path: production resumes by re-sending
+        /// the SAME request, and a fixture that mints a fresh authorization, a fresh
+        /// in-order `deposit_id` and a fresh tx hash every call makes the resume look like
+        /// a valid brand-new first leg — which is how the resume's placement ahead of the
+        /// request-derived guards went unpinned (review I-2).
+        fn bootstrap_insurance_capturing(
+            &mut self,
+            key: &[u8; 32],
+            expected_payer: [u8; 20],
+            from: [u8; 20],
+            amount: i128,
+        ) -> (Result<(), String>, [u8; 32], u128, u64, String) {
             self.accounts.get_mut(key).unwrap().deposit_address = Some(from);
             let amount_u128 = u128::try_from(amount).expect("test amounts are non-negative");
             let commit = self
@@ -8263,7 +8336,7 @@ mod tests {
                 .expect("authorization must succeed for the just-bound payer");
             let deposit_id = self.seq.state.consumed_deposit_count;
             let tx = hex0x(&csprng_bytes32());
-            self.bootstrap_insurance(
+            let r = self.bootstrap_insurance(
                 key,
                 expected_payer,
                 from,
@@ -8272,7 +8345,8 @@ mod tests {
                 deposit_id,
                 &tx,
                 0,
-            )
+            );
+            (r, commit, amount_u128, deposit_id, tx)
         }
 
         /// SEC-025-A Task 5 fixture: drive the REAL `commit_window_settle` (a
@@ -8654,11 +8728,23 @@ mod tests {
 
     #[test]
     fn completion_is_not_reachable_from_a_fill_cut_or_a_liquidation_penalty() {
-        // `insurance_fund` moves for reasons that are not a bootstrap. The RECORD must not.
+        // `insurance_fund` moves for reasons that are not a bootstrap — the per-fill cut
+        // and liquidation penalties both credit it. The RECORD must not follow.
+        //
+        // The earlier version of this test only added to an `i128` and asserted a
+        // different field was unchanged, which the language guarantees; it executed no
+        // production code and could not fail under any mutation. This version drives the
+        // REAL commit path with a fund far above the floor, so it dies if completion is
+        // ever keyed on the balance instead of on the second leg's window id.
         let mut gw = Gw::boot();
-        let before = gw.bootstrap.clone();
+        gw.bootstrap = bootstrap::Bootstrap::NotStarted;
         gw.seq.state.insurance_fund += bootstrap::MIN_BOOTSTRAP_INSURANCE * 10;
-        assert_eq!(gw.bootstrap, before, "a balance is not a marker");
+        gw.commit_window_settle_for_test(0);
+        assert_eq!(
+            gw.bootstrap,
+            bootstrap::Bootstrap::NotStarted,
+            "a fund above the floor must not complete a bootstrap that never happened"
+        );
     }
 
     #[test]
@@ -8697,8 +8783,9 @@ mod tests {
         let bump = (i128::MAX - amount + 1) - gw.seq.state.insurance_fund;
         gw.seq.state.insurance_fund += bump;
         gw.seq.state.treasury -= bump;
-        gw.bootstrap_insurance_for_test(&key, operator, operator, amount)
-            .expect_err("an overflowing insurance fund must fail the second leg");
+        let (r, commit, amount_u128, deposit_id, tx) =
+            gw.bootstrap_insurance_capturing(&key, operator, operator, amount);
+        r.expect_err("an overflowing insurance fund must fail the second leg");
         let bootstrap::Bootstrap::DepositApplied {
             note_commitment, ..
         } = gw.bootstrap
@@ -8717,8 +8804,21 @@ mod tests {
         let ext_before = gw.seq.state.external_in;
         let ins_before = gw.seq.state.insurance_fund;
         let expected_window = gw.seq.state.next_batch_id;
-        gw.bootstrap_insurance_for_test(&key, operator, operator, amount)
-            .expect("a resume from DepositApplied must apply the second leg alone");
+        // REPLAY the original request, which is what production re-sends. A fresh
+        // authorization/id/tx here would make this a valid brand-new first leg and would
+        // pass even if the resume arm sat BEHIND the request-derived guards — where it
+        // would be unreachable in production, because this deposit_id is already consumed.
+        gw.bootstrap_insurance(
+            &key,
+            operator,
+            operator,
+            commit,
+            amount_u128,
+            deposit_id,
+            &tx,
+            0,
+        )
+        .expect("a resume from DepositApplied must apply the second leg alone");
 
         // The load-bearing assertion: no second `Deposit` — the id counter (and the
         // deposit-stream accounting) must not move on a resume.
