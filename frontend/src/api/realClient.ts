@@ -495,6 +495,23 @@ export class RealDarkPerpClient implements DarkPerpClient {
   private ws: WebSocket | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
+  // ── the live account stream (/v1/ws, SEC-025-E1 Task 2) ────────────────────
+  // The legacy /ws is a PUBLIC broadcast: its event frames are the shared demo
+  // wallet's order lifecycle, delivered to every client unfiltered — another
+  // account's activity. This client's own events (fills, finality transitions,
+  // ADL haircuts) arrive on the authenticated /v1/ws instead: after
+  // `{"type":"auth","apiKey"}` the server forwards only events whose `owner`
+  // equals the authenticated owner (and the client re-verifies — see
+  // handleV1Frame). Pre-key the connection is a VALID unauthenticated state
+  // that receives public market frames only: degrade, never throw.
+  private wsV1Url: string;
+  private wsV1: WebSocket | null = null;
+  private reconnectV1Timer: ReturnType<typeof setTimeout> | null = null;
+  /** The owner the server confirmed via authOk — events must match it exactly. */
+  private v1Owner: string | null = null;
+  /** Auth is per-connection: reset when a new /v1/ws socket is created. */
+  private v1AuthSent = false;
+
   // ── client-side market selection ───────────────────────────────────────────
   // The gateway's WS frame carries book/oracle/selectedMarketId for the SERVER's
   // selected market only (market 0 on the shared prod gateway) — but `marks` and
@@ -548,8 +565,10 @@ export class RealDarkPerpClient implements DarkPerpClient {
   constructor(baseUrl: string, initial: ClientState) {
     this.base = baseUrl.replace(/\/$/, "");
     this.wsUrl = this.base.replace(/^http/, "ws") + "/ws";
+    this.wsV1Url = this.base.replace(/^http/, "ws") + "/v1/ws";
     this.state = initial;
     this.connect();
+    this.connectV1();
   }
 
   /** One blocking fetch of the initial snapshot so the store has a non-null first state. */
@@ -632,7 +651,11 @@ export class RealDarkPerpClient implements DarkPerpClient {
     if (stored) {
       try {
         const res = await fetch(this.base + "/v1/accounts/me", { headers: { "X-Api-Key": stored.apiKey } });
-        if (res.ok) { this.sealing = stored; return stored; }
+        if (res.ok) {
+          this.sealing = stored;
+          this.tryAuthV1(); // the account stream may already be open and waiting
+          return stored;
+        }
       } catch { /* unreachable/reset gateway — fall through and re-register */ }
     }
     const res = await fetch(this.base + "/v1/accounts", { method: "POST" });
@@ -646,6 +669,7 @@ export class RealDarkPerpClient implements DarkPerpClient {
       localStorage.setItem(LS_ACCOUNT_KEY, JSON.stringify({ apiKey: j.apiKey, owner: j.owner }));
     } catch { /* storage unavailable (private mode) — account lives for this session only */ }
     this.sealing = acct;
+    this.tryAuthV1(); // the account stream may already be open and waiting
     return acct;
   }
 
@@ -679,13 +703,15 @@ export class RealDarkPerpClient implements DarkPerpClient {
       this.ws = new WebSocket(this.wsUrl);
       this.ws.onmessage = (ev) => {
         try {
-          const msg = JSON.parse(ev.data as string) as
-            | { type: "state"; state: WireState }
-            | { type: "event"; event: OrderEvent };
-          if (msg.type === "state") {
+          const msg = JSON.parse(ev.data as string) as { type?: string; state?: WireState };
+          // STATE frames only. The legacy stream also broadcasts `event`
+          // frames, but those are the shared demo wallet's order lifecycle —
+          // another account's activity, sent to every client unfiltered. This
+          // client's own events arrive owner-filtered on /v1/ws
+          // (handleV1Frame); forwarding the legacy ones would pop toasts for
+          // orders that are not the caller's.
+          if (msg.type === "state" && msg.state) {
             this.setState(parseState(msg.state));
-          } else if (msg.type === "event") {
-            for (const cb of this.eventSubs) cb(msg.event);
           }
         } catch { /* ignore malformed frame */ }
       };
@@ -699,6 +725,116 @@ export class RealDarkPerpClient implements DarkPerpClient {
   private scheduleReconnect() {
     if (this.reconnectTimer || this.disposed) return;
     this.reconnectTimer = setTimeout(() => { this.reconnectTimer = null; this.connect(); }, 1500);
+  }
+
+  // ── /v1/ws: the authenticated account stream ────────────────────────────────
+
+  private connectV1() {
+    if (this.disposed) return;
+    try {
+      if (this.wsV1) { try { this.wsV1.close(); } catch { /* noop */ } }
+      // Per-connection state: the server forgets us on disconnect, so a new
+      // socket must re-auth (and must not trust a stale authOk owner).
+      this.v1AuthSent = false;
+      this.v1Owner = null;
+      this.wsV1 = new WebSocket(this.wsV1Url);
+      this.wsV1.onopen = () => { this.tryAuthV1(); };
+      this.wsV1.onmessage = (ev) => { this.handleV1Frame(ev.data as string); };
+      this.wsV1.onclose = () => { this.scheduleReconnectV1(); };
+      this.wsV1.onerror = () => { try { this.wsV1?.close(); } catch { /* noop */ } };
+    } catch {
+      this.scheduleReconnectV1();
+    }
+  }
+
+  private scheduleReconnectV1() {
+    if (this.reconnectV1Timer || this.disposed) return;
+    this.reconnectV1Timer = setTimeout(() => { this.reconnectV1Timer = null; this.connectV1(); }, 1500);
+  }
+
+  /**
+   * Send the auth handshake once BOTH preconditions hold: the socket is OPEN
+   * and a /v1 account exists. Called from both edges — socket open (account may
+   * already be there) and account provisioning (socket may already be open).
+   * Pre-key there is simply nothing to send: the connection stays a valid
+   * unauthenticated public stream (degrade, not throw).
+   */
+  private tryAuthV1(): void {
+    const ws = this.wsV1;
+    if (!ws || ws.readyState !== 1 /* OPEN */ || this.v1AuthSent) return;
+    const acct = this.sealing;
+    if (!acct) return;
+    try {
+      ws.send(JSON.stringify({ type: "auth", apiKey: acct.apiKey }));
+      this.v1AuthSent = true;
+    } catch { /* socket died between checks — the reconnect path re-auths */ }
+  }
+
+  /**
+   * One /v1/ws frame. The wire carries four shapes (gateway `ws_v1_loop`):
+   * - `{type:"markets", …}` — the public tick snapshot. Ignored: the legacy
+   *   /ws state frame remains the base-state source (it alone carries mode,
+   *   batches, l1, settlement health, lp, insurance, marks, attestation — the
+   *   /v1 public frame has only per-market price + book).
+   * - `{type:"authOk", owner}` — auth confirmed; remember the owner and
+   *   refresh once so events missed while unauthenticated aren't lost.
+   * - `{type:"error", message}` — auth refused; stay public-only.
+   * - a raw account event with an `owner` field — forwarded by the server only
+   *   for the authenticated owner, and RE-VERIFIED here so a confused or
+   *   hostile stream still cannot cross accounts.
+   */
+  private handleV1Frame(raw: string): void {
+    let v: { type?: unknown; owner?: unknown; message?: unknown };
+    try {
+      v = JSON.parse(raw) as { type?: unknown; owner?: unknown; message?: unknown };
+    } catch {
+      return; // malformed frame
+    }
+    if (typeof v !== "object" || v === null) return;
+    if (v.type === "authOk" && typeof v.owner === "string") {
+      this.v1Owner = v.owner;
+      // The stream is live from here, but anything that happened between the
+      // last refresh and this auth was never delivered — start current.
+      void this.refreshOwnState();
+      return;
+    }
+    if (v.type === "error") {
+      console.warn("[dark-perp] /v1/ws auth failed (account events unavailable):", v.message);
+      return;
+    }
+    if (v.type === "markets") return; // public frame — see doc above
+    // Account event: must carry OUR authenticated owner, exactly.
+    if (typeof v.owner !== "string" || !this.v1Owner || v.owner !== this.v1Owner) return;
+    this.handleOwnEvent(v as Record<string, unknown>);
+  }
+
+  /**
+   * An own-account event landed. Whatever it is, the /v1 view moved — refresh
+   * through the guarded path (the third trigger `refreshOwnState`'s in-flight
+   * guard was built for). Order-finality transitions and ADL haircuts also
+   * surface as OrderEvent notifications (Toaster + ActivityFeed); `fill`
+   * events do NOT toast — the gateway pushes a paired `order` event for the
+   * same transition, and toasting both would double-notify every fill.
+   */
+  private handleOwnEvent(ev: Record<string, unknown>): void {
+    void this.refreshOwnState();
+    const orderId = typeof ev.orderId === "string" ? ev.orderId : "";
+    if (ev.type === "order") {
+      const f = ev.finality;
+      if (f === "ACCEPTED" || f === "MATCHED" || f === "SETTLED") {
+        // The wire event carries no message (the legacy stream's did) — the
+        // texts mirror the gateway's legacy per-finality wording.
+        const message =
+          f === "MATCHED" ? "Matched (soft preconfirmation) — not yet withdrawable"
+          : f === "SETTLED" ? "Settled on L1 — withdrawable"
+          : "Order accepted";
+        for (const cb of this.eventSubs) cb({ orderId, kind: f, message });
+      }
+    } else if (ev.type === "adl") {
+      const clawed = typeof ev.clawed === "string" ? ev.clawed : "?";
+      const message = `Auto-deleveraged: $${clawed} of your winning position was clawed to cover a counterparty's bad debt.`;
+      for (const cb of this.eventSubs) cb({ orderId: orderId || "adl", kind: "ADL", message });
+    }
   }
 
   /**
@@ -719,10 +855,11 @@ export class RealDarkPerpClient implements DarkPerpClient {
       book: this.selBook ?? base.book,
       oracle: this.selOracle ?? base.oracle,
       // SEC-025-E1: the caller's own /v1 account overrides the public feed's
-      // demo wallet. The base frame (the bootstrap /api/state snapshot, and the
-      // legacy /ws stream until Task 2 replaces it) carries only the shared
-      // demo account — without this overlay every WS push would clobber the
-      // user's own view back to demo data one frame after bootstrap fixed it.
+      // demo wallet. The base frame (the bootstrap /api/state snapshot and the
+      // legacy /ws state stream — still the only live source of mode, batches,
+      // l1, settlement health, lp, marks, …) carries only the shared demo
+      // account — without this overlay every WS push would clobber the user's
+      // own view back to demo data one frame after bootstrap fixed it.
       // `null` degrades to the legacy feed (no /v1 account / read failed).
       // `ownAccount` replaces the base account WHOLE (balance + positions from
       // the same /v1 refresh): a spread that overlaid only positions would ship
@@ -770,16 +907,23 @@ export class RealDarkPerpClient implements DarkPerpClient {
     this.pollTimer = setInterval(() => { void this.refreshSelected(this.clientSelectedMarket); }, 1500);
   }
 
-  /** Tear down socket + timers. The page-lifetime app never calls this; tests do. */
+  /** Tear down sockets + timers. The page-lifetime app never calls this; tests do. */
   dispose(): void {
     this.disposed = true;
     if (this.reconnectTimer) { clearTimeout(this.reconnectTimer); this.reconnectTimer = null; }
+    if (this.reconnectV1Timer) { clearTimeout(this.reconnectV1Timer); this.reconnectV1Timer = null; }
     if (this.pollTimer) { clearInterval(this.pollTimer); this.pollTimer = null; }
     const ws = this.ws;
     this.ws = null;
     if (ws) {
       ws.onmessage = null; ws.onclose = null; ws.onerror = null;
       try { ws.close(); } catch { /* noop */ }
+    }
+    const wsV1 = this.wsV1;
+    this.wsV1 = null;
+    if (wsV1) {
+      wsV1.onopen = null; wsV1.onmessage = null; wsV1.onclose = null; wsV1.onerror = null;
+      try { wsV1.close(); } catch { /* noop */ }
     }
   }
 
@@ -839,9 +983,10 @@ export class RealDarkPerpClient implements DarkPerpClient {
       { "X-Api-Key": acct.apiKey },
     );
     // SEC-025-E1: the accepted order lands in the account's /v1 order list —
-    // refresh the own-account view now instead of waiting for a push (the
-    // legacy /ws stream carries only the demo wallet until Task 2). Fire and
-    // forget: the receipt must return to the caller regardless.
+    // refresh the own-account view now instead of waiting for the /v1/ws
+    // stream (an ACCEPTED order has no finality TRANSITION yet, so no event
+    // announces it). Fire and forget: the receipt must return to the caller
+    // regardless.
     void this.refreshOwnState();
     return receipt;
   }

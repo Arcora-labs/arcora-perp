@@ -17,6 +17,7 @@ import {
   verifyEnclaveEpoch,
   withdrawAuthDigest,
 } from "./realClient";
+import type { OrderEvent } from "./client";
 
 // ── Rust-extracted contract vectors (source of truth) ────────────────────────
 // epoch_signing_digest(1, &[0x11;32], 1_720_000_000_000)
@@ -272,14 +273,29 @@ function installFetch() {
   );
 }
 
-let lastWs: FakeWebSocket | null = null;
+let lastWs: FakeWebSocket | null = null; // legacy /ws (public state stream)
+let lastWsV1: FakeWebSocket | null = null; // /v1/ws (authenticated account stream)
 
 class FakeWebSocket {
+  onopen: (() => void) | null = null;
   onmessage: ((ev: { data: string }) => void) | null = null;
   onclose: (() => void) | null = null;
   onerror: (() => void) | null = null;
-  constructor(_url: string) { lastWs = this; }
+  /** 0 = CONNECTING until the test calls open() — like a real socket. */
+  readyState = 0;
+  /** Everything the client sent — the /v1/ws auth handshake lands here. */
+  sent: string[] = [];
+  readonly url: string;
+  constructor(url: string) {
+    this.url = url;
+    // "/v1/ws".endsWith("/ws") too — discriminate on the /v1 segment.
+    if (url.includes("/v1/ws")) lastWsV1 = this;
+    else lastWs = this;
+  }
+  send(data: string) { this.sent.push(data); }
   close() {}
+  /** Test hook: the server accepted the connection. */
+  open() { this.readyState = 1; this.onopen?.(); }
 }
 
 /** Push a server state frame (market 0 selected) through the client's WS. */
@@ -298,6 +314,7 @@ beforeEach(() => {
   epochHits = 0;
   registrations = 0;
   lastWs = null;
+  lastWsV1 = null;
   v1WithdrawStatus = 200;
   demoWithdrawStatus = 200;
   authorizeStatus = 200;
@@ -1007,6 +1024,219 @@ describe("own-account reads from /v1 (SEC-025-E1)", () => {
     // The fresher list must win. Without the guard, the second refresh's fast
     // read landed first and R1's stale [o43, o42] then overwrote it, losing o44.
     expect(client.getState().orders.map((o) => o.id)).toEqual(["o44", "o43", "o42"]);
+    client.dispose();
+  });
+});
+
+// ── SEC-025-E1 Task 2: the live stream (/v1/ws) ──────────────────────────────
+// The legacy /ws is a public broadcast: every client receives every account's
+// event frames (the shared demo wallet's lifecycle) unfiltered. The client now
+// treats the legacy stream as PUBLIC STATE ONLY — its event frames are another
+// account's and must never reach this client — and takes its own account events
+// from the authenticated /v1/ws, whose server filters by owner (and which the
+// client re-verifies).
+describe("live stream: /v1/ws own-account events (SEC-025-E1 Task 2)", () => {
+  /** Macrotask barrier (see the SEC-025-E1 describe above): full microtask quiescence. */
+  const macrotask = () => new Promise<void>((r) => setTimeout(r, 0));
+  const ownReads = () =>
+    calls.filter((c) => (c.path === "/v1/orders" || c.path === "/v1/positions") && c.method === "GET").length;
+  /** Open the /v1/ws socket and complete the auth handshake as the gateway would. */
+  const openAndAuth = () => {
+    lastWsV1!.open();
+    lastWsV1!.onmessage!({ data: JSON.stringify({ type: "authOk", owner: OWNER_HEX }) });
+  };
+
+  beforeEach(() => {
+    stateResponse = demoState;
+    v1OrdersResponse = { orders: [v1Order] };
+    v1PositionsResponse = { positions: [v1Position] };
+  });
+
+  it("a legacy /ws event frame — another account's lifecycle — does NOT reach onOrderEvent", async () => {
+    const client = await bootstrapClient();
+    const events: OrderEvent[] = [];
+    client.onOrderEvent((e) => events.push(e));
+    // This event WOULD visibly land if forwarded: a MATCHED transition pops a
+    // toast + an Activity row for order demo-1. It is the shared demo wallet's
+    // (the legacy stream carries no owner at all — it cannot be attributed to
+    // this client), so it must be dropped.
+    lastWs!.onmessage!({
+      data: JSON.stringify({
+        type: "event",
+        event: { orderId: "demo-1", kind: "MATCHED", message: "Matched (soft preconfirmation) — not yet withdrawable" },
+      }),
+    });
+    expect(events).toEqual([]);
+    client.dispose();
+  });
+
+  it("connects to /v1/ws and authenticates with the account's api key once the socket opens — never before", async () => {
+    const client = await bootstrapClient();
+    expect(lastWsV1).toBeTruthy();
+    expect(lastWsV1!.sent).toEqual([]); // nothing until the socket is OPEN
+    lastWsV1!.open();
+    expect(lastWsV1!.sent.map((s) => JSON.parse(s))).toEqual([{ type: "auth", apiKey: ACCT_KEY }]);
+    client.dispose();
+  });
+
+  it("an own-account order event refreshes the /v1 view AND surfaces the toast", async () => {
+    const client = await bootstrapClient();
+    const events: OrderEvent[] = [];
+    client.onOrderEvent((e) => events.push(e));
+    openAndAuth();
+    await client.ownStateSettled();
+    await macrotask();
+    expect(client.getState().orders[0].finality).toBe("ACCEPTED");
+    // The account moves server-side: o42 matches. The stream announces it and
+    // the refresh must pick up the new finality + fill values.
+    v1OrdersResponse = {
+      orders: [{ ...v1Order, finality: "MATCHED", filledSize: "250000000", avgFillPrice: "352000000000" }],
+    };
+    lastWsV1!.onmessage!({
+      data: JSON.stringify({ owner: OWNER_HEX, type: "order", orderId: "o42", finality: "MATCHED", marketId: 1 }),
+    });
+    await client.ownStateSettled();
+    await macrotask();
+    const st = client.getState();
+    expect(st.orders[0].finality).toBe("MATCHED");
+    expect(st.orders[0].filledSize).toBe(250_000_000n);
+    expect(events).toEqual([
+      { orderId: "o42", kind: "MATCHED", message: expect.stringMatching(/matched/i) },
+    ]);
+    client.dispose();
+  });
+
+  it("authOk triggers a refresh, so activity missed while unauthenticated is recovered", async () => {
+    const client = await bootstrapClient(); // own view settled: o42 ACCEPTED
+    // The order matched while the stream was still unauthenticated — no event
+    // was ever delivered for it. The auth handshake must start the view current
+    // rather than waiting for the NEXT transition.
+    v1OrdersResponse = { orders: [{ ...v1Order, finality: "MATCHED" }] };
+    openAndAuth();
+    await client.ownStateSettled();
+    await macrotask();
+    expect(client.getState().orders[0].finality).toBe("MATCHED");
+    client.dispose();
+  });
+
+  it("an event for ANOTHER owner is dropped: no toast, no refresh, no state change", async () => {
+    const client = await bootstrapClient();
+    const events: OrderEvent[] = [];
+    client.onOrderEvent((e) => events.push(e));
+    openAndAuth();
+    await client.ownStateSettled();
+    await macrotask();
+    const readsBefore = ownReads();
+    // Discriminating fixture: if this event LANDED, all three assertions below
+    // would flip — the refresh would read the new MATCHED list, and the toast
+    // would fire. (The server already filters by owner; this pins the client's
+    // own re-verification so a confused/hostile stream still can't cross accounts.)
+    v1OrdersResponse = { orders: [{ ...v1Order, finality: "MATCHED" }] };
+    lastWsV1!.onmessage!({
+      data: JSON.stringify({ owner: "0x" + "99".repeat(32), type: "order", orderId: "o42", finality: "MATCHED", marketId: 1 }),
+    });
+    await client.ownStateSettled();
+    await macrotask();
+    expect(events).toEqual([]);
+    expect(client.getState().orders[0].finality).toBe("ACCEPTED"); // NOT refreshed to MATCHED
+    expect(ownReads()).toBe(readsBefore);
+    client.dispose();
+  });
+
+  it("pre-key window: with no /v1 account the stream degrades to public-only — no auth, no throw", async () => {
+    accountsStatus = 500; // registration fails ⇒ no api key exists
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const client = await bootstrapClient(); // must resolve, not reject
+    lastWsV1!.open(); // opening with nothing to authenticate with is fine
+    expect(lastWsV1!.sent).toEqual([]);
+    // The public markets frame /v1/ws sends unauthenticated connections is
+    // handled without touching state (the legacy /ws stays the base-state
+    // source — it alone carries mode/batches/l1/settlement/lp/…).
+    const before = client.getState();
+    lastWsV1!.onmessage!({
+      data: JSON.stringify({
+        type: "markets",
+        markets: [{ id: 0, symbol: "BTC/USDC", price: "1", book: { marketId: 0, bids: [], asks: [] } }],
+        tsMs: 1,
+      }),
+    });
+    expect(client.getState()).toBe(before); // same reference — nothing emitted
+    // An account event pushed anyway (an unauthenticated server never would) is
+    // dropped safely: no /v1 reads are even possible without a key.
+    lastWsV1!.onmessage!({
+      data: JSON.stringify({ owner: OWNER_HEX, type: "order", orderId: "o42", finality: "MATCHED", marketId: 1 }),
+    });
+    await macrotask();
+    expect(ownReads()).toBe(0);
+    client.dispose();
+  });
+
+  it("authenticates LATE: an account provisioned after the socket opened still auths the stream", async () => {
+    accountsStatus = 500;
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const client = await bootstrapClient();
+    lastWsV1!.open();
+    expect(lastWsV1!.sent).toEqual([]); // pre-key: nothing to send yet
+    accountsStatus = 200; // the gateway recovers; the next order provisions the account
+    await client.placeOrder({ marketId: 0, side: "Buy", size: 1n, limitPrice: 1n, tif: "Gtc", reduceOnly: false });
+    expect(lastWsV1!.sent.map((s) => JSON.parse(s))).toEqual([{ type: "auth", apiKey: ACCT_KEY }]);
+    client.dispose();
+  });
+
+  it("an own adl event surfaces an ADL toast and refreshes the /v1 view", async () => {
+    const client = await bootstrapClient();
+    const events: OrderEvent[] = [];
+    client.onOrderEvent((e) => events.push(e));
+    openAndAuth();
+    await client.ownStateSettled();
+    await macrotask();
+    const readsBefore = ownReads();
+    lastWsV1!.onmessage!({ data: JSON.stringify({ owner: OWNER_HEX, type: "adl", clawed: "12" }) });
+    await client.ownStateSettled();
+    await macrotask();
+    expect(events.length).toBe(1);
+    expect(events[0].kind).toBe("ADL");
+    expect(events[0].message).toContain("12");
+    expect(ownReads()).toBeGreaterThan(readsBefore); // the haircut moved the balance — re-read
+    client.dispose();
+  });
+
+  it("a fill event refreshes but does NOT toast (its paired order event carries the toast)", async () => {
+    const client = await bootstrapClient();
+    const events: OrderEvent[] = [];
+    client.onOrderEvent((e) => events.push(e));
+    openAndAuth();
+    await client.ownStateSettled();
+    await macrotask();
+    const readsBefore = ownReads();
+    // The gateway pushes a fill AND an order event for the same transition —
+    // toasting both would double-notify every fill.
+    lastWsV1!.onmessage!({
+      data: JSON.stringify({
+        owner: OWNER_HEX, type: "fill", orderId: "o42", marketId: 1, side: "Sell",
+        size: "250000000", price: "352000000000",
+      }),
+    });
+    await client.ownStateSettled();
+    await macrotask();
+    expect(events).toEqual([]);
+    expect(ownReads()).toBeGreaterThan(readsBefore);
+    client.dispose();
+  });
+
+  it("reconnects /v1/ws after a drop and re-authenticates on the NEW socket", async () => {
+    const client = await bootstrapClient();
+    lastWsV1!.open();
+    expect(lastWsV1!.sent.length).toBe(1);
+    const first = lastWsV1!;
+    vi.useFakeTimers();
+    first.onclose!(); // the server dropped us
+    vi.advanceTimersByTime(1600);
+    vi.useRealTimers();
+    expect(lastWsV1).not.toBe(first); // a fresh socket, not the dead one
+    lastWsV1!.open();
+    // auth is per-connection: the new socket must be authenticated again
+    expect(lastWsV1!.sent.map((s) => JSON.parse(s))).toEqual([{ type: "auth", apiKey: ACCT_KEY }]);
     client.dispose();
   });
 });
