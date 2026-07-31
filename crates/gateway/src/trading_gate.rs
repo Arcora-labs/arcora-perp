@@ -5,6 +5,23 @@
 //! a depleted fund is a separate exposure-increase breaker plus a recapitalization path;
 //! neither exists yet, and both are recorded follow-ups.
 
+//! # What this gate does NOT do
+//!
+//! It makes a deployment safe to **open**, not safe to trade on. Three limits, stated here
+//! because a reader who finds only the opening logic will assume more than it delivers:
+//!
+//! 1. **The house MM is funded by nothing in production.** `gw.mm` is credited only under
+//!    `GenesisMode::Demo`, so a production market order fabricates a counter-order that
+//!    fails initial margin and fills nothing unless genuine external resting liquidity
+//!    exists. Opening the gate does not create a counterparty.
+//! 2. **The latch is one-way over non-monotonic terms.** `insurance_fund` is drained by the
+//!    bad-debt backstop and `Mode` can flip in-engine, so the predicate can become false
+//!    after the gate has opened and the gate will not re-close. The answers are a separate
+//!    exposure-increase circuit breaker and a recapitalization path — **neither exists**.
+//! 3. **`MIN_BOOTSTRAP_INSURANCE` is shared with SEC-025-A**, which refuses a bootstrap
+//!    below it. A and D must therefore ship as **one artifact**: a floor that differs
+//!    between the two builds recreates the deadlock the shared constant exists to prevent.
+
 use crate::bootstrap::MIN_BOOTSTRAP_INSURANCE;
 
 /// How deep the pinned block must be before an observation may OPEN the gate. A reorg

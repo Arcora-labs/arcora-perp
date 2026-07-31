@@ -131,6 +131,29 @@ A real deposit is funded on Base Sepolia and then attributed to your account:
    canonicalizes + dedups the tx hash, and credits `amount` (USDC base units) to the
    market bucket.
 
+## Trading is gated until launch (SEC-025-D)
+
+On a fresh production deployment, **order submission is refused** until the deployment has
+demonstrably settled a normal `settleBatch` over a capitalized insurance fund. Every order
+path returns an error naming the **launch gate**.
+
+Do not confuse this with close-only, which is a different condition with a different remedy:
+
+| | launch gate closed | `Mode::CloseOnly` |
+|---|---|---|
+| means | the deployment has not opened yet | a wind-down is under way |
+| blocks | **all** order ingress | only *opening/increasing*; reduce-only, cancels, deposits and withdrawals still pass |
+| clears when | a proven, block-pinned settle shows the fund capitalized | never — it is terminal on-chain |
+
+The gate opens **once** and does not re-close. It is a launch gate, not a circuit breaker:
+re-closing a blunt ingress gate would also block reduce-only **exits**, trapping users exactly
+when they most need to leave.
+
+**What the gate does not do.** It makes a deployment safe to *open*, not safe to trade on. In
+particular the house market maker is funded by nothing in production, so a market order does
+not get a guaranteed counterparty — it fills only against genuine external resting liquidity.
+See the honesty note under § REST.
+
 ## Operator insurance bootstrap (SEC-025-A) — admin only
 
 `POST /v1/admin/insurance/bootstrap { "txHash": "0x.." }`
