@@ -6466,7 +6466,7 @@ fn v1_openapi_json(prod: bool) -> serde_json::Value {
                 "post": { "summary": "Place an order", "security": auth["security"], "requestBody": order_body, "responses": { "200": { "description": "signed receipt" }, "400": { "description": "rejected" }, "429": { "description": "rate limit (10/s)" } } },
                 "get": { "summary": "Own orders + finality", "security": auth["security"], "responses": ok("orders") }
             },
-            "/v1/orders/{orderId}": { "delete": { "summary": "Cancel an ACCEPTED order", "security": auth["security"], "parameters": [{ "name": "orderId", "in": "path", "required": true, "schema": { "type": "string" } }], "responses": ok("cancelled") } },
+            "/v1/orders/{orderId}": { "delete": { "summary": "Cancel a not-yet-SEALED ACCEPTED order. Effectively pre-seal only: every resting order seals into the next batch within one ~700ms tick, and a sealed order is refused even while its finality is still ACCEPTED (cancel-inside-the-window is SEC-025-E2)", "security": auth["security"], "parameters": [{ "name": "orderId", "in": "path", "required": true, "schema": { "type": "string" } }], "responses": { "200": { "description": "cancelled" }, "400": { "description": "refused: order unknown, sealed, or no longer ACCEPTED" } } } },
             "/v1/positions": { "get": { "summary": "Own open positions", "security": auth["security"], "responses": ok("positions") } },
             "/v1/markets": { "get": { "summary": "All markets", "responses": ok("markets") } },
             "/v1/markets/{id}": { "get": { "summary": "One market", "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }], "responses": ok("market") } },

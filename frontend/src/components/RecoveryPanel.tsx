@@ -19,15 +19,28 @@ export function RecoveryPanel() {
   const recover = client.recover?.bind(client);
 
   if (!recover) {
+    // Review F5: do NOT claim funds stay recoverable after device loss. A
+    // claim exists only for a withdrawal that was ALREADY REQUESTED, and
+    // requesting one needs this browser's /v1 API key (requestWithdrawal
+    // starts with ensureAccount) — lose the browser and no new withdrawal
+    // can ever be requested.
     return (
       <div className="card">
         <h3 className="card__title">Recover from seed</h3>
         <p className="muted small">
           Seed-based note recovery is <strong>not available on the live gateway</strong>{" "}
           yet — the archive-scan route exists only in the demo build. Your balance and
-          positions live in your per-browser <code>/v1</code> account; withdrawals are
-          authorized by the wallet address you deposited from (SEC-021), so funds are
-          recoverable through the on-chain claim path even without this panel.
+          positions live in your per-browser <code>/v1</code> account, and every
+          withdrawal <em>request</em> needs that account's browser-held API key:{" "}
+          <strong>
+            if you lose this browser (or clear its storage), the account&apos;s balance
+            and positions are stranded
+          </strong>{" "}
+          — there is no recovery path yet. Only withdrawals you had{" "}
+          <strong>already requested</strong> before the loss remain claimable on-chain
+          (the claim is wallet-signed against the published withdrawals root and needs
+          no API key). Do not leave more in the account than you are prepared to lose
+          with the device.
         </p>
       </div>
     );

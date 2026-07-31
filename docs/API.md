@@ -50,18 +50,30 @@ A machine-readable **OpenAPI 3.1** spec is served at `GET /v1/openapi.json`.
 | POST | `/v1/accounts/deposit/onchain` | ✓ | `{ txHash, marketId }` — credit a real USDC deposit |
 | POST | `/v1/accounts/withdraw` | ✓ | `{ marketId, amount, to, nonce, signature }` → authorized withdrawal (wallet-signed, § Withdrawal authorization) |
 | GET  | `/v1/accounts/withdrawals` | ✓ | `{ vault, withdrawals[] }` with claim proofs |
-| GET  | `/v1/lp` | ✓ | `{ tvl, navPerShare, totalShares, myShares, myValue }` |
-| POST | `/v1/lp/deposit` | ✓ | `{ amount }` → `{ sharesMinted }` — stake into the counterparty pool |
-| POST | `/v1/lp/withdraw` | ✓ | `{ shares, nonce, signature }` → `{ withdrawnValue }` (wallet-signed, § Withdrawal authorization) |
+| GET  | `/v1/lp` | ✓ | `{ tvl, navPerShare, totalShares, myShares, myValue }` — **demo build only** (see note below) |
+| POST | `/v1/lp/deposit` | ✓ | `{ amount }` → `{ sharesMinted }` — stake into the counterparty pool — **demo build only** |
+| POST | `/v1/lp/withdraw` | ✓ | `{ shares, nonce, signature }` → `{ withdrawnValue }` (wallet-signed, § Withdrawal authorization) — **demo build only** |
 | POST | `/v1/orders` | ✓ | order body (below) → signed receipt |
-| GET  | `/v1/orders` | ✓ | `{ orders[] }` (own orders + finality) |
-| DELETE | `/v1/orders/:orderId` | ✓ | cancel a still-`ACCEPTED` order |
+| GET  | `/v1/orders` | ✓ | `{ orders[] }` (own orders + finality + the stored acceptance `receipt`, incl. its `windowId`) |
+| DELETE | `/v1/orders/:orderId` | ✓ | cancel a still-`ACCEPTED` order **that has not yet sealed into a batch** (see the cancel note below) |
 | GET  | `/v1/positions` | ✓ | `{ positions[] }` (own open positions) |
 | GET  | `/v1/markets` | – | `{ markets[] }` |
 | GET  | `/v1/markets/:id` | – | one market |
 | GET  | `/v1/markets/:id/orderbook` | – | `{ marketId, bids[], asks[] }` |
 | GET  | `/v1/markets/:id/oracle` | – | `{ marketId, price, confidence, publishTimeMs }` |
 | GET  | `/v1/system/status` | – | `{ mode, insuranceFund, nextBatchId, accounts }` |
+
+**`/v1/lp*` is not mounted in production** (SEC-025-C): the demo LP pool credits
+stakes through an unbacked mint, which would break settlement — the production
+router omits all three routes (they 404) and the served OpenAPI document omits
+them too.
+
+**Cancel is effectively pre-seal only.** `DELETE /v1/orders/:orderId` refuses any
+order already **sealed** into a batch — even while its finality is still
+`ACCEPTED` — and every resting order seals within one sequencer tick (~700 ms).
+So in practice only an order cancelled immediately after submission succeeds;
+cancelling a resting order returns the refusal until cancel-inside-the-window
+lands (SEC-025-E2).
 
 **Order body** (`POST /v1/orders`):
 
@@ -76,9 +88,17 @@ A machine-readable **OpenAPI 3.1** spec is served at `GET /v1/openapi.json`.
 }
 ```
 
-`tif`: `Ioc`/`Fok` are takers (crossed against the resting market-maker, guaranteed
-fill); `Gtc`/`PostOnly` rest in the matcher book so a maker can quote and be crossed
-by later takers. `limitPrice: "0"` means market (filled at the mark). Opening orders
+`tif`: `Ioc`/`Fok` are takers (crossed against resting liquidity, or killed);
+`Gtc`/`PostOnly` rest in the matcher book so a maker can quote and be crossed
+by later takers. `limitPrice: "0"` means market (crossed at the mark).
+
+**Honesty note (market orders).** A taker order has **no guaranteed counterparty
+in production**: the house market maker is funded by nothing there, so `Ioc`/`Fok`
+fill only against genuine external resting liquidity and are otherwise killed. The
+"resting market-maker" that reliably fills takers exists only in the demo build.
+(§ Trading is gated until launch discusses the same gap.)
+
+Opening orders
 are margin-checked against the account's free balance; close-only mode blocks
 openers (§6). Acceptance is not a fill guarantee: that margin check runs against the
 **pre-batch** state, so an order can also be **rejected at settlement**, not just at

@@ -32,7 +32,9 @@ const SETTLE_DELAY_MS = 4500;
 /// SEC-025-E1 Task 4 — mirror the gateway's seal tick (TICK_MS = 700 in
 /// crates/gateway/src/main.rs): every resting order seals into the next batch
 /// within one tick, and `account_cancel` refuses a SEALED order even while its
-/// finality is still ACCEPTED. Kept < MATCH_DELAY_MS so the sealed-but-still-
+/// finality is still ACCEPTED (main.rs:3195-3198 — the refusal predicate
+/// `sealed || last_finality != "ACCEPTED"` and its verbatim error string,
+/// mirrored in cancelOrder below). Kept < MATCH_DELAY_MS so the sealed-but-still-
 /// ACCEPTED state exists here exactly as it does on the gateway. Cancel-inside-
 /// the-window is SEC-025-E2; until it lands, cancelling a resting order is
 /// REFUSED in both clients — a mock where cancel always succeeds would pin a
@@ -370,8 +372,13 @@ export class MockDarkPerpClient implements DarkPerpClient {
     };
     this.state = this.snapshot([order, ...this.state.orders]);
     this.emit();
-    // Message parity with the real client's /v1/ws-derived ACCEPTED event
-    // (clientContract.test.ts) — the receipt itself is this method's return.
+    // Message parity with the real client's /v1/ws `order` handler
+    // (clientContract.test.ts). NOTE the producer asymmetry: the GATEWAY never
+    // pushes this frame at placement — orders are created ACCEPTED
+    // (main.rs:3181) and the only account-event emitter fires on a finality
+    // TRANSITION (main.rs:4347-4367), so a live ACCEPTED frame is a
+    // MATCHED→ACCEPTED downgrade. The mock emits it here because it has no
+    // stream; the receipt itself is this method's return.
     this.emitEvent({ orderId: id, kind: "ACCEPTED", message: "Order accepted" });
     setTimeout(() => this.sealOrder(id), SEAL_DELAY_MS);
     setTimeout(() => this.advanceToMatched(id), MATCH_DELAY_MS);
@@ -586,10 +593,11 @@ export class MockDarkPerpClient implements DarkPerpClient {
     });
   }
 
-  /// Mirrors the gateway's `account_cancel` verbatim (refusal wording
-  /// included): a cancel succeeds only in the pre-seal window; a SEALED order
-  /// refuses even while still ACCEPTED — the answer every resting order gets
-  /// on the live gateway until SEC-025-E2 lands cancel-inside-the-window.
+  /// Mirrors the gateway's `account_cancel` verbatim (main.rs:3195-3198 —
+  /// the `sealed || last_finality != "ACCEPTED"` predicate and its exact
+  /// error string): a cancel succeeds only in the pre-seal window; a SEALED
+  /// order refuses even while still ACCEPTED — the answer every resting order
+  /// gets on the live gateway until SEC-025-E2 lands cancel-inside-the-window.
   async cancelOrder(orderId: string): Promise<void> {
     const o = this.state.orders.find((x) => x.id === orderId);
     if (!o) throw new Error("Order not found.");

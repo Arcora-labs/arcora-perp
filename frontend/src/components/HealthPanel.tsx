@@ -36,7 +36,7 @@ export function settlementRowModel(s: SettlementHealth): { status: Status; detai
 /// token-styled — the frontend analog of a status page. Reads the same ClientState, so
 /// against a real backend it reflects real service health.
 export function HealthPanel() {
-  const { state } = useStore();
+  const { client, state } = useStore();
   const markets = state.markets;
   const liveCount = markets.filter((m) => m.live).length;
   const orders = state.orders;
@@ -118,11 +118,20 @@ export function HealthPanel() {
           <div className="summary">
             <Stat label="Protocol treasury" value={formatUsd(state.treasury)} tone="pos" />
             <Stat label="Insurance fund" value={formatUsd(state.insuranceFund)} tone="pos" />
-            <Stat
-              label="Your ADL haircuts"
-              value={formatUsd(state.userAdlClawed)}
-              tone={state.userAdlClawed > 0n ? "neg" : undefined}
-            />
+            {/* SEC-025-E1 review F6: `userAdlClawed` comes off the PUBLIC feed
+                — the shared demo wallet's counter, not the caller's. On a live
+                gateway the caller's real ADL arrives as /v1/ws `adl` toasts,
+                and accumulating those into a real counter is E3 scope — until
+                then this stat renders only where the demo wallet IS the
+                caller's account (the mock; `simulateAdl` is the established
+                live/demo discriminator). */}
+            {typeof client.simulateAdl === "function" && (
+              <Stat
+                label="Your ADL haircuts"
+                value={formatUsd(state.userAdlClawed)}
+                tone={state.userAdlClawed > 0n ? "neg" : undefined}
+              />
+            )}
           </div>
           <p className="small muted">
             Every fill on {state.market.symbol} charges a {fmtBps(state.market.takerFeeBps)} taker

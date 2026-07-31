@@ -83,6 +83,14 @@ export interface ClientState {
   attestation: Attestation | null;
   /// FIN-001 settle-loop health, or null when the gateway predates it (or mock).
   settlement: SettlementHealth | null;
+  /// SEC-025-E1 (whole-branch review F1): true when the caller HAS a /v1
+  /// account but its state could not be read — `account`/`orders` are then
+  /// EMPTY PLACEHOLDERS (zero balance, no positions, no rows), which is a
+  /// read failure, NOT a statement of "no balance / no positions", and never
+  /// the public demo feed. Absent/false on the mock (its account is always
+  /// readable) and while no /v1 account exists yet (there the public feed
+  /// legitimately stands in).
+  accountUnavailable?: boolean;
 }
 
 export interface DarkPerpClient {
@@ -160,12 +168,23 @@ export interface DarkPerpClient {
 }
 
 /// An order lifecycle event surfaced for notifications. Every member has a
-/// live producer (SEC-025-E1 Task 3 dropped the producer-less "REJECTED"):
-/// ACCEPTED/MATCHED/SETTLED — mock lifecycle + the real /v1/ws stream's
-/// owner-verified `order` events; CANCELLED — both clients' cancelOrder on
-/// success; ADL — mock simulateAdl + the real stream's `adl` events. If the
-/// gateway ever pushes real rejection events (E3 territory), re-add the kind
-/// WITH its producer.
+/// live producer (SEC-025-E1 Task 3 dropped the producer-less "REJECTED"),
+/// but the producers are NOT symmetrical across the clients:
+/// - ACCEPTED — produced at PLACEMENT by the MOCK only. The real client's
+///   /v1/ws `order` handler accepts the kind, but the gateway emits an order
+///   frame only on a finality TRANSITION (crates/gateway/src/main.rs:4347-4367
+///   — `if f != o.last_finality`, the only account-event emitter) and creates
+///   every order ACCEPTED (main.rs:3181), so the first evaluation compares
+///   ACCEPTED to ACCEPTED and pushes nothing. A live `finality:"ACCEPTED"`
+///   frame therefore occurs only on a MATCHED→ACCEPTED downgrade (a
+///   rollback), never on the accept path — there, placeOrder's resolved
+///   receipt is the acceptance signal.
+/// - MATCHED/SETTLED — mock lifecycle + the real stream's owner-verified
+///   `order` events.
+/// - CANCELLED — both clients' cancelOrder on success.
+/// - ADL — mock simulateAdl + the real stream's `adl` events.
+/// If the gateway ever pushes real rejection events (E3 territory), re-add the
+/// kind WITH its producer.
 export interface OrderEvent {
   orderId: string;
   kind: "ACCEPTED" | "MATCHED" | "SETTLED" | "CANCELLED" | "ADL";

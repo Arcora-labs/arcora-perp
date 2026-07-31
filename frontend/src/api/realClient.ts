@@ -506,7 +506,11 @@ export class RealDarkPerpClient implements DarkPerpClient {
   private wsV1Url: string;
   private wsV1: WebSocket | null = null;
   private reconnectV1Timer: ReturnType<typeof setTimeout> | null = null;
-  /** The owner the server confirmed via authOk — events must match it exactly. */
+  /**
+   * The authenticated stream's owner: set ONLY after the server's authOk
+   * claim was verified against this client's own registration owner
+   * (`sealing.owner` — review F8). Events must match it exactly.
+   */
   private v1Owner: string | null = null;
   /** Auth is per-connection: reset when a new /v1/ws socket is created. */
   private v1AuthSent = false;
@@ -532,8 +536,10 @@ export class RealDarkPerpClient implements DarkPerpClient {
   // gateway's LIQ-001 invariant keeps real /v1 tenants off it), while this
   // client's sealed orders trade as its own authenticated /v1 account. These
   // caches hold the latest authenticated /v1 reads; emit() overlays them so the
-  // UI shows the CALLER's account. `null` (no /v1 account yet, or the read
-  // failed) falls through to the legacy feed. `ownAccount` is ONE AccountState
+  // UI shows the CALLER's account. `null` with NO /v1 account falls through to
+  // the legacy feed; `null` with an account provisioned renders the EMPTY
+  // unavailable placeholder instead (review F1 — see emit()), never the demo
+  // wallet. `ownAccount` is ONE AccountState
   // assembled atomically from the same refresh — balance and positions must
   // never mix accounts (a demo-wallet balance beside the caller's positions
   // invites the user to read a stranger's balance as their own collateral, and
@@ -775,12 +781,18 @@ export class RealDarkPerpClient implements DarkPerpClient {
    *   /ws state frame remains the base-state source (it alone carries mode,
    *   batches, l1, settlement health, lp, insurance, marks, attestation — the
    *   /v1 public frame has only per-market price + book).
-   * - `{type:"authOk", owner}` — auth confirmed; remember the owner and
-   *   refresh once so events missed while unauthenticated aren't lost.
-   * - `{type:"error", message}` — auth refused; stay public-only.
+   * - `{type:"authOk", owner}` — auth confirmed. The claimed owner is
+   *   VERIFIED against the owner this client holds from registration
+   *   (`sealing.owner`) before it is trusted — see the branch below — then
+   *   one refresh runs so events missed while unauthenticated aren't lost.
+   * - `{type:"error", message}` — auth refused: the api key is dead (this
+   *   deployment wipes state.snap on every cutover, so an open tab across a
+   *   redeploy lands here). The cached account is dropped so the next
+   *   ensureAccount() re-registers and re-auths this socket, instead of the
+   *   tab staying wedged on the dead key for its lifetime.
    * - a raw account event with an `owner` field — forwarded by the server only
-   *   for the authenticated owner, and RE-VERIFIED here so a confused or
-   *   hostile stream still cannot cross accounts.
+   *   for the authenticated owner, and checked here against the VERIFIED
+   *   owner so a confused or hostile stream still cannot cross accounts.
    */
   private handleV1Frame(raw: string): void {
     let v: { type?: unknown; owner?: unknown; message?: unknown };
@@ -791,7 +803,22 @@ export class RealDarkPerpClient implements DarkPerpClient {
     }
     if (typeof v !== "object" || v === null) return;
     if (v.type === "authOk" && typeof v.owner === "string") {
-      this.v1Owner = v.owner;
+      // Review F8: verify the server's claimed owner against the owner WE
+      // hold from registration — storing the echo and then "re-verifying"
+      // events against it would compare the server to itself and provide
+      // nothing. A mismatch means the stream is confused or hostile about
+      // whose account this is; refuse to treat the socket as authenticated
+      // (its account events stay dropped) — this branch's whole subject is
+      // not trusting a feed about whose account it is showing.
+      const expected = this.sealing ? "0x" + bytesToHex(this.sealing.owner) : null;
+      if (expected === null || v.owner.toLowerCase() !== expected) {
+        console.warn(
+          "[dark-perp] /v1/ws authOk owner mismatch — refusing the stream's account events:",
+          v.owner,
+        );
+        return;
+      }
+      this.v1Owner = expected;
       // The stream is live from here, but anything that happened between the
       // last refresh and this auth was never delivered — start current.
       void this.refreshOwnState();
@@ -799,6 +826,18 @@ export class RealDarkPerpClient implements DarkPerpClient {
     }
     if (v.type === "error") {
       console.warn("[dark-perp] /v1/ws auth failed (account events unavailable):", v.message);
+      // Review F7: the server refused the api key ⇒ the cached account is
+      // dead (a state-wipe cutover with this tab open lands here). Leaving
+      // `v1AuthSent`/`sealing` set would wedge BOTH the socket (tryAuthV1
+      // never retries on it) and every /v1 read (ensureAccount returns the
+      // dead account forever, 401ing into the unavailable placeholder).
+      // Clear them so the NEXT ensureAccount() re-registers (initAccount
+      // revalidates the stored key and replaces it) and its tryAuthV1
+      // re-auths this same socket. No auto-retry here: a server answering
+      // `error` to every fresh key must not drive a registration loop.
+      this.v1AuthSent = false;
+      this.v1Owner = null;
+      this.sealing = null;
       return;
     }
     if (v.type === "markets") return; // public frame — see doc above
@@ -859,13 +898,28 @@ export class RealDarkPerpClient implements DarkPerpClient {
       // l1, settlement health, lp, marks, …) carries only the shared demo
       // account — without this overlay every WS push would clobber the user's
       // own view back to demo data one frame after bootstrap fixed it.
-      // `null` degrades to the legacy feed (no /v1 account / read failed).
       // `ownAccount` replaces the base account WHOLE (balance + positions from
       // the same /v1 refresh): a spread that overlaid only positions would ship
       // a mixed-account AccountState — the demo wallet's settledBalance under
       // the caller's positions.
-      orders: this.ownOrders ?? base.orders,
-      account: this.ownAccount ?? base.account,
+      //
+      // Fallback discipline (whole-branch review F1): the legacy feed stands
+      // in ONLY while no /v1 account exists (demo build / pre-key window —
+      // the public feed is all there is). Once an account exists the client
+      // KNOWS whose state it should render; painting the shared demo wallet
+      // there (on a transient /v1 read failure) would show a stranger's
+      // balance/positions as the caller's — OrderTicket.maxOrderSize sizing
+      // against a stranger's collateral — and render the demo orders as
+      // ACTIONABLE rows: order ids collide across accounts
+      // (`format!("o{nonce}")`, main.rs:3172), so cancelling the demo row's
+      // "o42" would cancel the caller's own unseen "o42". Instead: EMPTY
+      // placeholders plus the `accountUnavailable` flag, so the UI can say
+      // "unreadable", never "zero" and never a stranger's numbers.
+      orders: this.ownOrders ?? (this.sealing !== null ? [] : base.orders),
+      account:
+        this.ownAccount ??
+        (this.sealing !== null ? { settledBalance: 0n, positions: [] } : base.account),
+      accountUnavailable: this.sealing !== null && this.ownAccount === null,
     };
   }
 
@@ -1103,7 +1157,15 @@ export class RealDarkPerpClient implements DarkPerpClient {
       this.ownAccount = { settledBalance, positions };
       if (this.state) this.setState(this.state);
     } catch (e) {
-      console.warn("[dark-perp] /v1 own-account read failed (showing the legacy feed until it succeeds):", e);
+      console.warn(
+        "[dark-perp] /v1 own-account read failed (own view degraded until a read succeeds):",
+        e,
+      );
+      // Re-emit even on failure (review F1): with an account provisioned the
+      // emitted view must move to the empty/unavailable placeholder — the
+      // bootstrap-constructed state was built BEFORE the account existed and
+      // still carries the raw public feed otherwise.
+      if (!this.disposed && this.state) this.setState(this.state);
     }
   }
   /**
@@ -1229,6 +1291,12 @@ export class RealDarkPerpClient implements DarkPerpClient {
       { marketId: this.clientSelectedMarket, amount: s(amountQuote), to, nonce, signature },
       { "X-Api-Key": acct.apiKey },
     );
+    // Review F4: the withdrawal debits the /v1 balance server-side and NO
+    // /v1/ws event announces it (events_tx carries exactly fill/order/adl,
+    // main.rs:4347-4384) — without this the displayed balance stays stale
+    // until an unrelated fill. Same guarded refresh path as placeOrder;
+    // fire-and-forget so the caller's success resolves regardless.
+    void this.refreshOwnState();
   }
 
   // ── SEC-025-E1 Task 3: the demo mutation surface is DELETED, not stubbed ────
@@ -1365,6 +1433,10 @@ export class RealDarkPerpClient implements DarkPerpClient {
       { txHash, marketId: this.clientSelectedMarket },
       { "X-Api-Key": acct.apiKey },
     );
+    // Review F4: like requestWithdrawal — the credit moved the /v1 balance
+    // and no /v1/ws event announces a deposit; re-read through the guarded
+    // refresh or the balance stays stale until an unrelated fill.
+    void this.refreshOwnState();
     return typeof r.credited === "string" ? B(r.credited) : 0n;
   }
 

@@ -156,6 +156,18 @@ export function AccountPanel() {
         <span className="stat__label">Settled balance (withdrawable)</span>
         <span className="stat__value">{formatUsd(state.account.settledBalance)}</span>
       </div>
+      {/* SEC-025-E1 review F1: with a /v1 account provisioned but unreadable,
+          the client emits an EMPTY placeholder instead of the public demo
+          feed — say so, or a user cannot tell "no balance" from "we could
+          not read your account". */}
+      {state.accountUnavailable && (
+        <p className="small neg">
+          Your account state could not be read from the gateway — the balance,
+          positions and orders shown are <strong>placeholders (0), not your
+          actual state</strong>. The view recovers automatically once the
+          connection does.
+        </p>
+      )}
 
       {walletCapable && <WalletDepositCard client={client as DarkPerpClient & WalletDepositClient} />}
 

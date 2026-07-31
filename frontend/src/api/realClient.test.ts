@@ -48,6 +48,8 @@ const epochKp = x25519KeypairFromIkm(
 const MEASUREMENT = "0x" + "ab".repeat(32);
 
 const ACCT_KEY = "0x" + "11".repeat(32);
+/** The key a POST-WIPE re-registration hands out (review F7's recovery test). */
+const ACCT_KEY2 = "0x" + "77".repeat(32);
 const OWNER_HEX = "0x" + "22".repeat(32);
 
 interface EpochOverrides {
@@ -167,6 +169,15 @@ let accountsStatus = 200; // per-test override: /v1 account registration failure
 // One-shot gate: parks the NEXT GET /v1/orders (payload captured at REQUEST
 // time) until resolved — a slow read delivering a stale list late.
 let v1OrdersGate: Promise<void> | null = null;
+// The api key the gateway currently accepts (and hands out on registration).
+// Tests model a state-wipe cutover (review F7) by flipping it: the old key
+// 401s everywhere and a fresh registration returns the new one.
+let validKey = ACCT_KEY;
+// Review F4 ordering hooks: run when the mutating POST lands, so a test can
+// move the served balance AT the mutation — a refresh issued BEFORE the POST
+// cannot see the post-mutation value.
+let afterWithdrawPost: (() => void) | null = null;
+let afterOnchainPost: (() => void) | null = null;
 
 // ── SEC-021 withdrawal-authorization fixtures ────────────────────────────────
 // The bound deposit address withdrawals pay to (and whose key signs).
@@ -222,12 +233,12 @@ function installFetch() {
       if (path === "/v1/accounts" && method === "POST") {
         registrations++;
         if (accountsStatus !== 200) return json({ error: "registration unavailable" }, accountsStatus);
-        return json({ apiKey: ACCT_KEY, owner: OWNER_HEX, callerSigned: false });
+        return json({ apiKey: validKey, owner: OWNER_HEX, callerSigned: false });
       }
       if (path === "/v1/accounts/me") {
         // Authenticated like the gateway's — the SEC-025-E1 balance read must
         // provably be the CALLER's account, not an open endpoint.
-        if (init?.headers?.["X-Api-Key"] !== ACCT_KEY) return json({ error: "unknown account" }, 401);
+        if (init?.headers?.["X-Api-Key"] !== validKey) return json({ error: "unknown account" }, 401);
         return json({ owner: OWNER_HEX, ...meFields });
       }
       if (path === "/v1/orders" && method === "POST") {
@@ -235,7 +246,7 @@ function installFetch() {
       }
       // SEC-025-E1 own-account reads — authenticated per account, like the gateway.
       if ((path === "/v1/orders" || path === "/v1/positions") && method === "GET") {
-        if (init?.headers?.["X-Api-Key"] !== ACCT_KEY) return json({ error: "unknown account" }, 401);
+        if (init?.headers?.["X-Api-Key"] !== validKey) return json({ error: "unknown account" }, 401);
         if (path === "/v1/positions") return json(v1PositionsResponse);
         const payload = v1OrdersResponse; // response reflects state AS OF the request
         if (v1OrdersGate) {
@@ -246,7 +257,7 @@ function installFetch() {
         return json(payload);
       }
       if (path === "/v1/accounts/deposit" && method === "POST") {
-        if (init?.headers?.["X-Api-Key"] !== ACCT_KEY) return json({ error: "unknown account" }, 401);
+        if (init?.headers?.["X-Api-Key"] !== validKey) return json({ error: "unknown account" }, 401);
         if (v1DepositStatus !== 200) {
           return json(
             { error: "unbacked demo deposit refused in production — fund the account on-chain (wallet deposit + confirm) instead" },
@@ -258,7 +269,7 @@ function installFetch() {
       // Task 3: the CALLER-scoped cancel — resolves the id inside the
       // authenticated account only, like the gateway's `account_cancel`.
       if (path.startsWith("/v1/orders/") && method === "DELETE") {
-        if (init?.headers?.["X-Api-Key"] !== ACCT_KEY) return json({ error: "unknown account" }, 401);
+        if (init?.headers?.["X-Api-Key"] !== validKey) return json({ error: "unknown account" }, 401);
         if (v1CancelStatus !== 200) {
           return json(
             { error: "Only an ACCEPTED order can be cancelled (matched/settled are binding)." },
@@ -279,7 +290,25 @@ function installFetch() {
         if (v1WithdrawStatus !== 200) {
           return json({ error: "Not withdrawable: amount exceeds the SETTLED balance in this market (§3)." }, v1WithdrawStatus);
         }
+        if (afterWithdrawPost) {
+          // Review F4 ordering pin: the server "processes" for one macrotask,
+          // so every microtask-queued read issued BEFORE this POST resolves
+          // still sees the pre-mutation balance — only a refresh issued AFTER
+          // the POST resolves can observe the hook's post-mutation value. A
+          // refresh relocated ahead of the POST therefore fails the test.
+          await new Promise<void>((r) => setTimeout(r, 0));
+          afterWithdrawPost();
+        }
         return json({ to: "0x" + "ab".repeat(20), amount: "5000000", nonce: 0, leaf: "0x" + "aa".repeat(32), status: "recorded" });
+      }
+      // Review F4: the on-chain deposit credit (the wallet pipeline's step 4).
+      if (path === "/v1/accounts/deposit/onchain" && method === "POST") {
+        if (init?.headers?.["X-Api-Key"] !== validKey) return json({ error: "unknown account" }, 401);
+        if (afterOnchainPost) {
+          await new Promise<void>((r) => setTimeout(r, 0)); // same ordering pin as withdraw
+          afterOnchainPost();
+        }
+        return json({ credited: "1000000" });
       }
       if (path === "/v1/accounts/deposit/authorize" && method === "POST") {
         if (authorizeStatus !== 200) {
@@ -351,6 +380,9 @@ beforeEach(() => {
   v1PositionsResponse = { positions: [] };
   v1OrdersGate = null;
   accountsStatus = 200;
+  validKey = ACCT_KEY;
+  afterWithdrawPost = null;
+  afterOnchainPost = null;
   meFields = defaultMeFields();
   personalSigns = [];
   epochResponse = () => signedEpoch();
@@ -942,30 +974,57 @@ describe("own-account reads from /v1 (SEC-025-E1)", () => {
       expect.anything(),
     );
     const st = client.getState();
-    // no key ⇒ the /v1 reads are impossible; the legacy feed falls through
+    // no key ⇒ the /v1 reads are impossible; the legacy feed falls through.
+    // This is the ONE case the public feed may stand in (review F1): no /v1
+    // account exists, so there is no "right account" to show instead — and
+    // accordingly the view is NOT flagged unavailable.
     expect(st.orders.map((o) => o.id)).toEqual(["demo-1"]);
+    expect(st.accountUnavailable).toBe(false);
     expect(calls.some((c) => c.path === "/v1/orders" && c.method === "GET")).toBe(false);
     client.dispose();
   });
 
-  it("a failed balance read degrades the WHOLE own-account view — never a mixed account", async () => {
+  it("a failed balance read shows the EMPTY unavailable placeholder — never the demo wallet, never a mixed account", async () => {
     // /v1/accounts/me stops serving settledBalance while orders + positions
-    // still read fine. Overlaying just those would put the DEMO wallet's
-    // balance beside the CALLER's positions — the exact mixed-account bug this
-    // task closes (before the fix, that spread shape lived in emit()).
+    // still read fine. The /v1 account EXISTS here, so the demo feed must NOT
+    // stand in for it (review F1): a demo balance would hand
+    // OrderTicket.maxOrderSize a stranger's collateral, and demo ORDER ROWS
+    // would render actionable — ids collide across accounts (`o{nonce}`), so
+    // clicking Cancel on the demo row's "o42" would cancel the caller's own
+    // unseen "o42". The WHOLE view degrades to the empty placeholder plus
+    // `accountUnavailable`, so the UI can say "unreadable", never "zero".
     const { settledBalance: _dropped, ...noBalance } = defaultMeFields();
     meFields = noBalance;
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const client = await bootstrapClient();
     const st = client.getState();
-    // ALL of it falls back to the legacy feed together — one account, always:
-    expect(st.account.settledBalance).toBe(123_000_000n); // demo balance…
-    expect(st.account.positions.map((p) => p.marketId)).toEqual([0]); // …with demo positions
-    expect(st.orders.map((o) => o.id)).toEqual(["demo-1"]);
+    expect(st.account.settledBalance).toBe(0n); // not the demo 123000000
+    expect(st.account.positions).toEqual([]); // not the demo long-BTC position
+    expect(st.orders).toEqual([]); // no actionable demo rows
+    expect(st.accountUnavailable).toBe(true); // "unreadable", not "no position"
     expect(warn).toHaveBeenCalledWith(
       expect.stringContaining("own-account read failed"),
       expect.anything(),
     );
+    client.dispose();
+  });
+
+  it("the unavailable placeholder recovers to the own view once a later read succeeds", async () => {
+    const { settledBalance: _dropped, ...noBalance } = defaultMeFields();
+    meFields = noBalance;
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const client = await bootstrapClient();
+    expect(client.getState().accountUnavailable).toBe(true);
+    meFields = defaultMeFields(); // the gateway recovers
+    await client.placeOrder({
+      marketId: 1, side: "Sell", size: 250_000_000n, limitPrice: 352_000_000_000n,
+      tif: "Fok", reduceOnly: true,
+    });
+    await client.ownStateSettled();
+    const st = client.getState();
+    expect(st.accountUnavailable).toBe(false);
+    expect(st.account.settledBalance).toBe(987_654_321_777n);
+    expect(st.orders.map((o) => o.id)).toEqual(["o42"]);
     client.dispose();
   });
 
@@ -1001,6 +1060,41 @@ describe("own-account reads from /v1 (SEC-025-E1)", () => {
     client.dispose();
   });
 
+  it("requestWithdrawal refreshes the own view — the post-debit balance lands (review F4)", async () => {
+    const client = await bootstrapClient();
+    expect(client.getState().account.settledBalance).toBe(987_654_321_777n);
+    // The gateway's balance moves exactly WHEN the withdraw POST lands (the
+    // harness hook), so a refresh issued before the mutation cannot see it.
+    // 444333222111 is producible by NO pre-mutation fixture (not the demo
+    // 123000000, not V1_BALANCE): only a re-read AFTER the POST can show it.
+    afterWithdrawPost = () => {
+      meFields = { ...defaultMeFields(), settledBalance: "444333222111" };
+    };
+    await client.requestWithdrawal(5_000_000n);
+    await client.ownStateSettled();
+    await macrotask();
+    // No /v1/ws event announces a withdrawal (the gateway's events_tx carries
+    // exactly fill/order/adl) — without requestWithdrawal's own refresh this
+    // stays 987654321777 until an unrelated fill.
+    expect(client.getState().account.settledBalance).toBe(444_333_222_111n);
+    client.dispose();
+  });
+
+  it("creditOnchainDeposit refreshes the own view — the credited balance lands (review F4)", async () => {
+    const client = await bootstrapClient();
+    expect(client.getState().account.settledBalance).toBe(987_654_321_777n);
+    afterOnchainPost = () => {
+      meFields = { ...defaultMeFields(), settledBalance: "555666777888" };
+    };
+    const credited = await client.creditOnchainDeposit("0x" + "ff".repeat(32));
+    expect(credited).toBe(1_000_000n);
+    await client.ownStateSettled();
+    await macrotask();
+    // Same reasoning as the withdrawal test: no event announces a deposit.
+    expect(client.getState().account.settledBalance).toBe(555_666_777_888n);
+    client.dispose();
+  });
+
   it("no emitted frame EVER mixes accounts — balance and positions land atomically", async () => {
     // Settled-state asserts can't catch a two-phase write (positions emitted,
     // balance patched in later): every frame between them is a mixed account on
@@ -1020,9 +1114,12 @@ describe("own-account reads from /v1 (SEC-025-E1)", () => {
     await macrotask();
     expect(frames.length).toBeGreaterThan(0);
     for (const f of frames) {
-      // own account whole (V1_BALANCE with the /v1 short-ETH position) or demo
-      // whole (123000000 with the long-BTC position) — never a hybrid.
-      expect(["987654321777|1", "123000000|0"]).toContain(f);
+      // Every frame is the OWN account whole (V1_BALANCE with the /v1
+      // short-ETH position) — never a hybrid, and (review F1) never the demo
+      // wallet: the /v1 account exists for this whole test, so the demo
+      // "123000000|0" the pre-fix assertion tolerated must not appear either
+      // — an interleaved demo push may only re-emit the own overlay.
+      expect(f).toBe("987654321777|1");
     }
     client.dispose();
   });
@@ -1271,6 +1368,65 @@ describe("live stream: /v1/ws own-account events (SEC-025-E1 Task 2)", () => {
     lastWsV1!.open();
     // auth is per-connection: the new socket must be authenticated again
     expect(lastWsV1!.sent.map((s) => JSON.parse(s))).toEqual([{ type: "auth", apiKey: ACCT_KEY }]);
+    client.dispose();
+  });
+
+  it("an `error` auth reply un-wedges: the dead account is dropped, the next use re-registers and re-auths the SAME socket (review F7)", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const client = await bootstrapClient();
+    lastWsV1!.open();
+    expect(lastWsV1!.sent.length).toBe(1); // auth with the (about-to-die) key
+    // The deployment wiped state.snap (the runbook does, on every cutover):
+    // the old key is now unknown everywhere and a fresh registration hands
+    // out a NEW key.
+    validKey = ACCT_KEY2;
+    lastWsV1!.onmessage!({ data: JSON.stringify({ type: "error", message: "unknown api key" }) });
+    // Next use must NOT serve the dead cached account: ensureAccount
+    // revalidates the stored key (401 now), re-registers, and the fresh
+    // account re-auths THIS socket — without the fix `v1AuthSent` stays true
+    // (no second auth frame, ever) and `sealing` keeps the dead key (no
+    // second registration, every /v1 read 401s for the tab's lifetime).
+    await client.placeOrder({ marketId: 0, side: "Buy", size: 1n, limitPrice: 1n, tif: "Gtc", reduceOnly: false });
+    expect(registrations).toBe(2);
+    expect(lastWsV1!.sent.map((s) => JSON.parse(s))).toEqual([
+      { type: "auth", apiKey: ACCT_KEY },
+      { type: "auth", apiKey: ACCT_KEY2 },
+    ]);
+    // the order itself went out under the NEW key
+    expect(ordersPosted()[0].headers["X-Api-Key"]).toBe(ACCT_KEY2);
+    client.dispose();
+  });
+
+  it("an authOk naming a DIFFERENT owner is refused — the stream stays unauthenticated (review F8)", async () => {
+    const client = await bootstrapClient();
+    const events: OrderEvent[] = [];
+    client.onOrderEvent((e) => events.push(e));
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    lastWsV1!.open();
+    const readsBefore = ownReads();
+    // A confused/hostile server confirms auth but names a stranger's owner.
+    // Storing that echo and then "verifying" events against it would compare
+    // the server to itself — the client must instead check the claim against
+    // the owner IT holds from registration, and refuse the mismatch.
+    const stranger = "0x" + "99".repeat(32);
+    lastWsV1!.onmessage!({ data: JSON.stringify({ type: "authOk", owner: stranger }) });
+    await client.ownStateSettled();
+    await macrotask();
+    expect(ownReads()).toBe(readsBefore); // no authOk refresh for a mismatch
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining("authOk owner mismatch"),
+      expect.anything(),
+    );
+    // …and the stranger's events do NOT land: had the echo been trusted,
+    // this frame would refresh the view to MATCHED and pop a toast.
+    v1OrdersResponse = { orders: [{ ...v1Order, finality: "MATCHED" }] };
+    lastWsV1!.onmessage!({
+      data: JSON.stringify({ owner: stranger, type: "order", orderId: "o42", finality: "MATCHED", marketId: 1 }),
+    });
+    await client.ownStateSettled();
+    await macrotask();
+    expect(events).toEqual([]);
+    expect(client.getState().orders[0].finality).toBe("ACCEPTED");
     client.dispose();
   });
 });

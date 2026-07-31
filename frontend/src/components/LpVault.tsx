@@ -20,7 +20,7 @@ function Stat({ label, value, tone }: { label: string; value: string; tone?: "po
 /// route that 404s is not a fallback — the tab is now read-only and says why,
 /// instead of offering a write that cannot succeed anywhere.
 export function LpVault() {
-  const { state } = useStore();
+  const { client, state } = useStore();
   const lp = state.lp;
 
   const nav = Number(lp.navPerShare);
@@ -43,17 +43,26 @@ export function LpVault() {
           </div>
         </div>
 
-        <div className="card">
-          <h3 className="card__title">Your LP position</h3>
-          <div className="summary">
-            <Stat label="Your value" value={formatUsd(lp.myValue)} tone={lp.myValue > 0n ? "pos" : undefined} />
-            <Stat label="Your shares" value={sharesDisp} />
+        {/* SEC-025-E1 review F6: `lp.myShares`/`myValue` come off the PUBLIC
+            feed — the shared demo wallet's stake, not the caller's. On a live
+            gateway LP staking is unmounted so they happen to read 0, but on a
+            demo gateway the card would present a stranger's stake as "Your LP
+            position" — the last remaining stranger's-state claim on the page.
+            Render it only where the demo wallet IS the caller's account (the
+            mock; `simulateAdl` is the established live/demo discriminator). */}
+        {typeof client.simulateAdl === "function" && (
+          <div className="card">
+            <h3 className="card__title">Your LP position</h3>
+            <div className="summary">
+              <Stat label="Your value" value={formatUsd(lp.myValue)} tone={lp.myValue > 0n ? "pos" : undefined} />
+              <Stat label="Your shares" value={sharesDisp} />
+            </div>
+            <p className="small muted">
+              Your value floats with the pool's PnL (NAV × your shares). These figures come from
+              the public pool snapshot.
+            </p>
           </div>
-          <p className="small muted">
-            Your value floats with the pool's PnL (NAV × your shares). These figures come from
-            the public pool snapshot.
-          </p>
-        </div>
+        )}
       </div>
 
       <div className="col">

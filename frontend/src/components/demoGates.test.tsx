@@ -25,6 +25,8 @@ import { ModeBanner } from "./ModeBanner";
 import { RecoveryPanel } from "./RecoveryPanel";
 import { PositionsOrders } from "./Tables";
 import { LpVault } from "./LpVault";
+import { HealthPanel } from "./HealthPanel";
+import { AccountPanel } from "./AccountPanel";
 
 // ── module-mocked store: each test injects its client + state ────────────────
 const injected: { client: Partial<DarkPerpClient>; state: ClientState | null } = {
@@ -97,12 +99,14 @@ function baseState(overrides: Partial<ClientState> = {}): ClientState {
 /** The REAL client's post-Task-3 shape: no demo mutation methods. */
 const realShaped = (extra: Partial<DarkPerpClient> = {}): Partial<DarkPerpClient> => ({
   cancelOrder: vi.fn(async () => {}),
+  listWithdrawals: vi.fn(async () => null),
   ...extra,
 });
 
 /** The MOCK client's shape: the demo surface exists. */
 const mockShaped = (): Partial<DarkPerpClient> => ({
   cancelOrder: vi.fn(async () => {}),
+  listWithdrawals: vi.fn(async () => null),
   closePosition: vi.fn(async () => {}),
   simulateAdl: vi.fn(async () => 0n),
   triggerCloseOnly: vi.fn(),
@@ -212,5 +216,82 @@ describe("LpVault no longer offers staking writes", () => {
     expect(screen.getByText(/staking is not available/i)).toBeTruthy();
     expect(screen.queryByRole("button", { name: /deposit/i })).toBeNull();
     expect(screen.queryByRole("button", { name: /withdraw/i })).toBeNull();
+  });
+});
+
+// ── review F6: "Your …" claims sourced from the PUBLIC feed are demo-gated ───
+// `state.userAdlClawed` and `state.lp.myShares/myValue` are the SHARED DEMO
+// WALLET's numbers (the public /api/state feed — the LIQ-001 invariant keeps
+// real /v1 tenants off it). Labelling them "Your …" on a live gateway presents
+// a stranger's state as the caller's — beside a /v1/ws `adl` toast that just
+// told the caller their REAL haircut. Gate: `simulateAdl` presence, the
+// branch's established live/demo discriminator (on the mock the demo wallet
+// IS the caller's account, so the labels are truthful there).
+describe("public-feed 'Your …' stats are presence-gated (review F6)", () => {
+  it("REAL client: the 'Your ADL haircuts' stat is absent (public-feed number)", () => {
+    injected.client = realShaped();
+    injected.state = baseState({ userAdlClawed: 5_000_000n });
+    render(<HealthPanel />);
+    expect(screen.queryByText(/your adl haircuts/i)).toBeNull();
+    // the card's other stats stay (exact-case: the prose also says "insurance fund")
+    expect(screen.getByText("Insurance fund")).toBeTruthy();
+  });
+
+  it("MOCK client: 'Your ADL haircuts' renders (the demo wallet IS the account)", () => {
+    injected.client = mockShaped();
+    injected.state = baseState({ userAdlClawed: 5_000_000n });
+    render(<HealthPanel />);
+    expect(screen.getByText(/your adl haircuts/i)).toBeTruthy();
+  });
+
+  it("REAL client: the 'Your LP position' card is absent (public-feed stake)", () => {
+    injected.client = realShaped();
+    injected.state = baseState();
+    render(<LpVault />);
+    expect(screen.queryByText(/your lp position/i)).toBeNull();
+    expect(screen.getByText(/pool tvl/i)).toBeTruthy(); // pool stats stay
+  });
+
+  it("MOCK client: 'Your LP position' renders", () => {
+    injected.client = mockShaped();
+    injected.state = baseState();
+    render(<LpVault />);
+    expect(screen.getByText(/your lp position/i)).toBeTruthy();
+  });
+});
+
+// ── review F5: no recovery assurance the API-key custody model cannot honor ──
+describe("RecoveryPanel does not overpromise recovery (review F5)", () => {
+  it("REAL client: says device loss STRANDS the account; only already-requested withdrawals stay claimable", () => {
+    injected.client = realShaped();
+    injected.state = baseState();
+    render(<RecoveryPanel />);
+    expect(screen.getByText(/stranded/i)).toBeTruthy();
+    expect(screen.getByText(/already requested/i)).toBeTruthy();
+    // the refuted claim must be gone: a withdrawal REQUEST needs the
+    // browser-held API key, so funds are NOT generally recoverable on-chain
+    expect(screen.queryByText(/funds are\s+recoverable through the on-chain claim path/i)).toBeNull();
+  });
+});
+
+// ── review F1: the unavailable-account placeholder is SAID, not silent ───────
+describe("AccountPanel surfaces the unavailable own-account placeholder (review F1)", () => {
+  it("accountUnavailable ⇒ an explicit 'could not be read / placeholders' notice", () => {
+    injected.client = realShaped();
+    injected.state = baseState({
+      accountUnavailable: true,
+      account: { settledBalance: 0n, positions: [] },
+      orders: [],
+    });
+    render(<AccountPanel />);
+    expect(screen.getByText(/could not be read/i)).toBeTruthy();
+    expect(screen.getByText(/placeholders/i)).toBeTruthy();
+  });
+
+  it("a readable account shows no such notice", () => {
+    injected.client = realShaped();
+    injected.state = baseState();
+    render(<AccountPanel />);
+    expect(screen.queryByText(/could not be read/i)).toBeNull();
   });
 });
