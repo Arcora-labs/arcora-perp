@@ -1028,6 +1028,79 @@ describe("own-account reads from /v1 (SEC-025-E1)", () => {
     client.dispose();
   });
 
+  it("the F7 error-branch reset does NOT reopen the demo-feed fallback: /v1 reads down + an `error` auth reply keeps the placeholder + accountUnavailable (fix-wave-2 G1)", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    // The own reads fail from the start (no settledBalance served) while
+    // registration itself succeeds — so NO own read has ever landed when the
+    // socket refuses the key. This is the F1∩F7 interaction: F7's error
+    // branch nulls `sealing`, and a fallback gated on `sealing` alone would
+    // then paint the shared demo wallet as the caller's account, unflagged —
+    // in exactly the state-wipe cutover F7 was written for.
+    const { settledBalance: _dropped, ...noBalance } = defaultMeFields();
+    meFields = noBalance;
+    stateResponse = demoState; // the public feed is the DEMO wallet — distinguishable
+    const client = await bootstrapClient();
+    lastWsV1!.open();
+    expect(client.getState().accountUnavailable).toBe(true); // the F1 baseline holds pre-error
+    lastWsV1!.onmessage!({ data: JSON.stringify({ type: "error", message: "unknown api key" }) });
+    // The next public frame re-emits. `sealing` is gone (F7's reset), but an
+    // account EXISTS — localStorage still holds it — so the demo wallet must
+    // not come back and the view must stay flagged unreadable.
+    lastWs!.onmessage!({ data: JSON.stringify({ type: "state", state: demoState }) });
+    const st = client.getState();
+    expect(st.orders).toEqual([]); // not the demo wallet's actionable rows
+    expect(st.account.settledBalance).toBe(0n); // not the demo 123000000
+    expect(st.account.positions).toEqual([]); // not the demo long-BTC position
+    expect(st.accountUnavailable).toBe(true);
+    client.dispose();
+  });
+
+  it("a returning browser whose stored key fails revalidation AND whose re-registration fails renders the placeholder — never the demo wallet (fix-wave-2 G1)", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    // A previous session's account sits in localStorage (LS_ACCOUNT_KEY)…
+    localStorage.setItem(
+      "darkperp.v1Account",
+      JSON.stringify({ apiKey: ACCT_KEY, owner: OWNER_HEX }),
+    );
+    // …but the gateway was wiped AND registration is down: the stored key
+    // 401s on revalidation and the re-register POST 500s, so `sealing` never
+    // gets set at all this session.
+    validKey = ACCT_KEY2;
+    accountsStatus = 500;
+    stateResponse = demoState;
+    const client = await bootstrapClient();
+    const st = client.getState();
+    // The fresh-browser fallback ("degrades to the legacy feed…" above)
+    // applies only when NOTHING is stored — here an account exists, so the
+    // public demo feed must not stand in for it.
+    expect(st.orders).toEqual([]);
+    expect(st.account.settledBalance).toBe(0n);
+    expect(st.account.positions).toEqual([]);
+    expect(st.accountUnavailable).toBe(true);
+    client.dispose();
+  });
+
+  it("private mode (localStorage write fails): a provisioned-but-unreadable account still renders the placeholder (G1 — the gate's `sealing` side)", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    // Storage rejects writes (private browsing): registration succeeds and
+    // `sealing` is set, but nothing lands in localStorage — the gate's OTHER
+    // disjunct. A gate narrowed to the STORED account alone would fall back
+    // to the demo feed here.
+    vi.spyOn(localStorage, "setItem").mockImplementation(() => {
+      throw new Error("private mode");
+    });
+    const { settledBalance: _dropped, ...noBalance } = defaultMeFields();
+    meFields = noBalance; // the own reads fail, the account itself exists
+    stateResponse = demoState;
+    const client = await bootstrapClient();
+    const st = client.getState();
+    expect(st.orders).toEqual([]);
+    expect(st.account.settledBalance).toBe(0n);
+    expect(st.account.positions).toEqual([]);
+    expect(st.accountUnavailable).toBe(true);
+    client.dispose();
+  });
+
   it("an order served without a receipt (older gateway) degrades to a synthesized stub receipt", async () => {
     const { receipt: _dropped, ...noReceipt } = v1Order;
     v1OrdersResponse = { orders: [noReceipt] };

@@ -23,6 +23,20 @@ function HealthCell({ liq, mark, long }: { liq: bigint; mark: bigint; long: bool
   );
 }
 
+/** SEC-025-E1 fix-wave-2 G2: when `accountUnavailable` is set, `account`/`orders`
+ * are EMPTY PLACEHOLDERS (a read failure, realClient emit()) — an unlabelled
+ * empty table would present "we could not read your account" as "you are flat".
+ * A user with a live leveraged position must be able to tell the two apart. */
+function UnavailableNotice({ what }: { what: string }) {
+  return (
+    <p className="empty neg">
+      Your {what} could not be read from the gateway — this empty list is a
+      placeholder, not your actual state. It recovers automatically once the
+      connection does.
+    </p>
+  );
+}
+
 /** Positions table body (no card chrome) — shared by the standalone card and the tabbed card. */
 function PositionsBody() {
   const { client, state } = useStore();
@@ -44,6 +58,7 @@ function PositionsBody() {
       setCloseErr(e instanceof Error ? e.message : String(e));
     }
   }
+  if (state.accountUnavailable) return <UnavailableNotice what="positions" />;
   if (positions.length === 0) return <p className="empty">No open positions. Place an order to open one.</p>;
   return (
     <table className="table">
@@ -112,6 +127,7 @@ function OrdersBody() {
       setCancelErr(e instanceof Error ? e.message : String(e));
     }
   }
+  if (state.accountUnavailable) return <UnavailableNotice what="orders" />;
   if (state.orders.length === 0) return <p className="empty">No orders yet. Place one to watch the finality lifecycle.</p>;
   return (
     <table className="table">
@@ -184,11 +200,13 @@ export function PositionsOrders() {
   return (
     <div className="card card--flush">
       <div className="tabs">
+        {/* G2: an unreadable account's counts are placeholders — "· 0" would
+            claim flatness as fact, so show "—" (the bodies say why). */}
         <button className={`tab ${tab === "positions" ? "is-active" : ""}`} onClick={() => setTab("positions")}>
-          Positions · {state.account.positions.length}
+          Positions · {state.accountUnavailable ? "—" : state.account.positions.length}
         </button>
         <button className={`tab ${tab === "orders" ? "is-active" : ""}`} onClick={() => setTab("orders")}>
-          Orders · {state.orders.length}
+          Orders · {state.accountUnavailable ? "—" : state.orders.length}
         </button>
       </div>
       {tab === "positions" ? <PositionsBody /> : <OrdersBody />}

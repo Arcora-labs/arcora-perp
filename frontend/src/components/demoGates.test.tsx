@@ -27,6 +27,7 @@ import { PositionsOrders } from "./Tables";
 import { LpVault } from "./LpVault";
 import { HealthPanel } from "./HealthPanel";
 import { AccountPanel } from "./AccountPanel";
+import { StatsBar } from "./StatsBar";
 
 // ── module-mocked store: each test injects its client + state ────────────────
 const injected: { client: Partial<DarkPerpClient>; state: ClientState | null } = {
@@ -272,6 +273,24 @@ describe("RecoveryPanel does not overpromise recovery (review F5)", () => {
     // browser-held API key, so funds are NOT generally recoverable on-chain
     expect(screen.queryByText(/funds are\s+recoverable through the on-chain claim path/i)).toBeNull();
   });
+
+  it("…and the CLAIM is qualified too (fix-wave-2 G3): the tx needs no key, but the Merkle proof is served only on the authenticated withdrawals endpoint", () => {
+    injected.client = realShaped();
+    injected.state = baseState();
+    render(<RecoveryPanel />);
+    // The smaller overpromise F5's fix introduced: "wallet-signed … needs no
+    // API key" was true of the claim TX but not of the Merkle proof it
+    // requires — GET /v1/accounts/withdrawals is authenticated (main.rs), so
+    // device loss also forecloses fetching the served proof.
+    expect(
+      screen.getByText(/Merkle proof it requires is\s+served only by the authenticated withdrawals endpoint/i),
+    ).toBeTruthy();
+    expect(screen.getByText(/loses access to the served proof/i)).toBeTruthy();
+    // the old unqualified assurance is gone
+    expect(
+      screen.queryByText(/wallet-signed against the published withdrawals root and needs\s+no API key/i),
+    ).toBeNull();
+  });
 });
 
 // ── review F1: the unavailable-account placeholder is SAID, not silent ───────
@@ -293,5 +312,81 @@ describe("AccountPanel surfaces the unavailable own-account placeholder (review 
     injected.state = baseState();
     render(<AccountPanel />);
     expect(screen.queryByText(/could not be read/i)).toBeNull();
+  });
+});
+
+// ── fix-wave-2 G2: the TRADE screen says "unreadable" too, not just Account ──
+// `accountUnavailable` was consumed only by AccountPanel (the account tab);
+// StatsBar / PositionsOrders / HealthPanel rendered the zero placeholder as
+// fact — a user with a live leveraged position saw "Positions · 0" and an
+// empty orders table and could not tell that from being flat. The flag's
+// emit()-side contract: when it is set, account/orders are ALWAYS the empty
+// placeholder, so the empty-state branches below are the reachable ones.
+const unavailableState = () =>
+  baseState({
+    accountUnavailable: true,
+    account: { settledBalance: 0n, positions: [] },
+    orders: [],
+  });
+
+describe("trade-screen surfaces distinguish 'unreadable' from 'flat' (fix-wave-2 G2)", () => {
+  it("StatsBar: 'Your notional' says unreadable, never a factual $0", () => {
+    injected.client = realShaped();
+    injected.state = unavailableState();
+    render(<StatsBar />);
+    expect(screen.getByText("Your notional")).toBeTruthy();
+    expect(screen.getByText(/unreadable/i)).toBeTruthy();
+    expect(screen.queryByText("$0")).toBeNull();
+  });
+
+  it("StatsBar: a readable account shows the notional value, unflagged", () => {
+    injected.client = realShaped();
+    injected.state = baseState();
+    render(<StatsBar />);
+    expect(screen.getByText("Your notional")).toBeTruthy();
+    expect(screen.queryByText(/unreadable/i)).toBeNull();
+  });
+
+  it("PositionsOrders: both tabs carry the could-not-read notice and the counts show — not 0", () => {
+    injected.client = realShaped();
+    injected.state = unavailableState();
+    render(<PositionsOrders />);
+    expect(screen.getByText(/positions · —/i)).toBeTruthy();
+    expect(screen.getByText(/orders · —/i)).toBeTruthy();
+    // positions tab (default): the placeholder is SAID, not shown as flatness
+    expect(screen.getByText(/positions could not be read/i)).toBeTruthy();
+    expect(screen.queryByText(/no open positions/i)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /orders/i }));
+    expect(screen.getByText(/orders could not be read/i)).toBeTruthy();
+    expect(screen.queryByText(/no orders yet/i)).toBeNull();
+  });
+
+  it("PositionsOrders: a READABLE empty account keeps the plain empty message — no scare notice", () => {
+    injected.client = realShaped();
+    injected.state = baseState({
+      account: { settledBalance: 1_000_000_000n, positions: [] },
+      orders: [],
+    });
+    render(<PositionsOrders />);
+    expect(screen.getByText(/positions · 0/i)).toBeTruthy();
+    expect(screen.getByText(/no open positions/i)).toBeTruthy();
+    expect(screen.queryByText(/could not be read/i)).toBeNull();
+  });
+
+  it("HealthPanel: the conservation check SUSPENDS over an unreadable account — no vacuous 'solvent ✓'", () => {
+    injected.client = realShaped();
+    injected.state = unavailableState();
+    render(<HealthPanel />);
+    expect(screen.getByText(/collateral conservation/i)).toBeTruthy();
+    expect(screen.getByText(/unreadable — check suspended/i)).toBeTruthy();
+    expect(screen.queryByText(/solvent ✓/i)).toBeNull();
+  });
+
+  it("HealthPanel: a readable account keeps the live conservation verdict", () => {
+    injected.client = realShaped();
+    injected.state = baseState();
+    render(<HealthPanel />);
+    expect(screen.getByText(/solvent ✓/i)).toBeTruthy();
+    expect(screen.queryByText(/check suspended/i)).toBeNull();
   });
 });

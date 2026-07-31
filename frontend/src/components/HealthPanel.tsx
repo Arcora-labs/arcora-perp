@@ -96,10 +96,13 @@ export function HealthPanel() {
             status={modeStatus}
             detail={state.mode === "CloseOnly" ? "CLOSE-ONLY — exit only" : "Normal — full trading"}
           />
+          {/* SEC-025-E1 fix-wave-2 G2: over the unavailable-account PLACEHOLDER
+              the invariants hold vacuously (`noNegativeMargin` over [] is true)
+              — "solvent ✓" would report consistency of data never read. */}
           <StatusRow
             label="Collateral conservation (§4)"
-            status={conserved ? "ok" : "down"}
-            detail={conservationDetail}
+            status={state.accountUnavailable ? "warn" : conserved ? "ok" : "down"}
+            detail={state.accountUnavailable ? "account state unreadable — check suspended" : conservationDetail}
           />
         </div>
 

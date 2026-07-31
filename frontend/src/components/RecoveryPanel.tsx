@@ -23,7 +23,10 @@ export function RecoveryPanel() {
     // claim exists only for a withdrawal that was ALREADY REQUESTED, and
     // requesting one needs this browser's /v1 API key (requestWithdrawal
     // starts with ensureAccount) — lose the browser and no new withdrawal
-    // can ever be requested.
+    // can ever be requested. Fix-wave-2 G3: even that claim is qualified —
+    // the claim TX needs no key, but its Merkle proof is served only by the
+    // authenticated GET /v1/accounts/withdrawals (gateway main.rs), so a
+    // lost key also forecloses fetching the proof.
     return (
       <div className="card">
         <h3 className="card__title">Recover from seed</h3>
@@ -38,9 +41,11 @@ export function RecoveryPanel() {
           </strong>{" "}
           — there is no recovery path yet. Only withdrawals you had{" "}
           <strong>already requested</strong> before the loss remain claimable on-chain
-          (the claim is wallet-signed against the published withdrawals root and needs
-          no API key). Do not leave more in the account than you are prepared to lose
-          with the device.
+          — and only with the claim data in hand: the claim transaction itself is
+          wallet-signed and needs no API key, but the Merkle proof it requires is
+          served only by the authenticated withdrawals endpoint, so losing this
+          browser&apos;s key also loses access to the served proof. Do not leave more
+          in the account than you are prepared to lose with the device.
         </p>
       </div>
     );

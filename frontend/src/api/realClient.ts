@@ -544,6 +544,12 @@ export class RealDarkPerpClient implements DarkPerpClient {
   // never mix accounts (a demo-wallet balance beside the caller's positions
   // invites the user to read a stranger's balance as their own collateral, and
   // feeds maxOrderSize a different account's number).
+  //
+  // NOTE (recorded at the fix-wave-2 review, deliberately not restructured):
+  // once a read has SUCCEEDED these caches are never reset, so
+  // `accountUnavailable` can only ever be true before the FIRST successful
+  // read — a later read failure silently keeps showing the last-good OWN
+  // data (stale, but the caller's own: the safe direction).
   private ownOrders: TrackedOrder[] | null = null;
   private ownAccount: AccountState | null = null;
   /** In-flight own-account refresh — overlapping callers join it (see refreshOwnState). */
@@ -688,6 +694,22 @@ export class RealDarkPerpClient implements DarkPerpClient {
     } catch {
       return null;
     }
+  }
+
+  /**
+   * Whether a /v1 account exists for this browser — emit()'s fallback gate
+   * (review F1, tightened at fix-wave-2 G1). `sealing` covers the provisioned
+   * account; the STORED account covers the two states where `sealing` is null
+   * yet an account exists: (a) the /v1/ws `error` branch dropped a dead key
+   * (F7) before any own read had succeeded, and (b) a returning browser whose
+   * stored key failed revalidation and whose re-registration also failed. In
+   * both, falling through to the public feed would render the shared demo
+   * wallet as the caller's account — the exact defect F1 removed, reopened by
+   * its neighbour. Both the fallback AND `accountUnavailable` key on this one
+   * predicate so the two can never disagree.
+   */
+  private hasAccount(): boolean {
+    return this.sealing !== null || this.readStoredAccount() !== null;
   }
 
   /**
@@ -886,6 +908,7 @@ export class RealDarkPerpClient implements DarkPerpClient {
    */
   private emit(base: ClientState): ClientState {
     const id = this.clientSelectedMarket;
+    const hasAcct = this.hasAccount();
     return {
       ...base,
       selectedMarketId: id,
@@ -915,11 +938,14 @@ export class RealDarkPerpClient implements DarkPerpClient {
       // "o42" would cancel the caller's own unseen "o42". Instead: EMPTY
       // placeholders plus the `accountUnavailable` flag, so the UI can say
       // "unreadable", never "zero" and never a stranger's numbers.
-      orders: this.ownOrders ?? (this.sealing !== null ? [] : base.orders),
+      // "An account exists" is hasAccount() — provisioned OR stored (G1):
+      // gating on `sealing` alone reopened the fallback in exactly the
+      // state-wipe cutover F7's error-branch reset was written for.
+      orders: this.ownOrders ?? (hasAcct ? [] : base.orders),
       account:
         this.ownAccount ??
-        (this.sealing !== null ? { settledBalance: 0n, positions: [] } : base.account),
-      accountUnavailable: this.sealing !== null && this.ownAccount === null,
+        (hasAcct ? { settledBalance: 0n, positions: [] } : base.account),
+      accountUnavailable: hasAcct && this.ownAccount === null,
     };
   }
 
