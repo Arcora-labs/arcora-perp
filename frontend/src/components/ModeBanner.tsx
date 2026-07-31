@@ -2,6 +2,13 @@ import { useStore } from "../store";
 
 /// Surfaces the system mode. Close-only (§6) must be loud — it changes what the
 /// user can do (exit only).
+///
+/// SEC-025-E1 Task 3: the simulate/resume controls are DEMO features — their
+/// client methods are optional and the real client omits them (the legacy
+/// `POST /api/mode` / `/api/simulate-adl` routes are not mounted in
+/// production, and calling them 404'd silently). Presence-gating keeps the
+/// buttons in mock mode and honestly absent in live mode; the mode banner
+/// itself always renders (state.mode is real either way).
 export function ModeBanner() {
   const { client, state } = useStore();
   if (state.mode === "CloseOnly") {
@@ -12,13 +19,15 @@ export function ModeBanner() {
           tripped — you can reduce/close and withdraw against the last settled state, but
           cannot open or increase (§6).
         </span>
-        <button
-          className="btn btn--tiny"
-          onClick={() => client.resumeNormal()}
-          title="Simulate the breaker clearing / sequencer recovering"
-        >
-          Resume normal
-        </button>
+        {client.resumeNormal && (
+          <button
+            className="btn btn--tiny"
+            onClick={() => client.resumeNormal!()}
+            title="Simulate the breaker clearing / sequencer recovering"
+          >
+            Resume normal
+          </button>
+        )}
       </div>
     );
   }
@@ -28,16 +37,20 @@ export function ModeBanner() {
         <strong>Normal.</strong> Continuous dark CLOB, operator-blind matching.
       </span>
       <span className="banner__actions">
-        <button
-          className="btn btn--tiny"
-          onClick={() => void client.simulateAdl()}
-          title="Simulate a bad-debt cascade that auto-deleverages your winning position (audit Q2)"
-        >
-          Simulate ADL
-        </button>
-        <button className="btn btn--tiny" onClick={() => client.triggerCloseOnly()} title="Simulate liveness failure / circuit breaker">
-          Simulate forced exit
-        </button>
+        {client.simulateAdl && (
+          <button
+            className="btn btn--tiny"
+            onClick={() => void client.simulateAdl!()}
+            title="Simulate a bad-debt cascade that auto-deleverages your winning position (audit Q2)"
+          >
+            Simulate ADL
+          </button>
+        )}
+        {client.triggerCloseOnly && (
+          <button className="btn btn--tiny" onClick={() => client.triggerCloseOnly!()} title="Simulate liveness failure / circuit breaker">
+            Simulate forced exit
+          </button>
+        )}
       </span>
     </div>
   );

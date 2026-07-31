@@ -21,10 +21,9 @@
 import type { DarkPerpClient, ClientState, OrderEvent, SettlementHealth } from "./client";
 import type {
   AccountState, BatchSummary, BookLevel, Market, OracleQuote, OrderBookSnapshot,
-  OrderInput, Position, RecoveredNote, Receipt, Side, TimeInForce, TrackedOrder,
+  OrderInput, Position, Receipt, Side, TimeInForce, TrackedOrder,
   WithdrawalEntry,
 } from "../domain/types";
-import { QUOTE_SCALE } from "../domain/types";
 import { seal, domainAad } from "./sealedBox";
 import { personalSign } from "./wallet";
 import { secp256k1 } from "@noble/curves/secp256k1";
@@ -927,11 +926,16 @@ export class RealDarkPerpClient implements DarkPerpClient {
     }
   }
 
-  private async post<T>(path: string, body: unknown, headers?: Record<string, string>): Promise<T> {
+  private async request<T>(
+    method: "POST" | "DELETE",
+    path: string,
+    body: unknown,
+    headers?: Record<string, string>,
+  ): Promise<T> {
     const res = await fetch(this.base + path, {
-      method: "POST",
+      method,
       headers: { "content-type": "application/json", ...(headers ?? {}) },
-      body: JSON.stringify(body ?? {}),
+      ...(body === undefined ? {} : { body: JSON.stringify(body ?? {}) }),
     });
     const text = await res.text();
     // Error bodies aren't always JSON (axum extractor rejections are text/plain) —
@@ -944,6 +948,10 @@ export class RealDarkPerpClient implements DarkPerpClient {
     }
     if (!res.ok) throw new Error(json?.error ?? `${path} failed (${res.status}): ${text.slice(0, 200)}`);
     return json as T;
+  }
+
+  private post<T>(path: string, body: unknown, headers?: Record<string, string>): Promise<T> {
+    return this.request<T>("POST", path, body, headers);
   }
 
   getState(): ClientState {
@@ -1098,21 +1106,26 @@ export class RealDarkPerpClient implements DarkPerpClient {
       console.warn("[dark-perp] /v1 own-account read failed (showing the legacy feed until it succeeds):", e);
     }
   }
+  /**
+   * SEC-025-E1 Task 3: fund the /v1 trading account the sealed orders trade
+   * as — `POST /v1/accounts/deposit` ONLY. The legacy demo primary
+   * (`POST /api/deposit`) is gone: it is unmounted in production, and because
+   * it ran FIRST and threw, its 404 also blocked this /v1 leg — in production
+   * the old deposit() could never fund anything. This route is mounted in
+   * BOTH postures; the production gateway answers it with the SEC-025-C
+   * unbacked-mint refusal, which must SURFACE to the caller (the wallet
+   * deposit flow below is the real production funding path). On success the
+   * own-account view is refreshed — the credit moves the /v1 balance and no
+   * /v1/ws event announces a deposit.
+   */
   async deposit(amountQuote: bigint): Promise<void> {
-    await this.post("/api/deposit", { amount: s(amountQuote) });
-    // Mirror the deposit into the /v1 trading account the SEALED orders trade as,
-    // so they clear the margin check (demo in-memory credit; the prod gateway
-    // refuses unbacked deposits and funds on-chain instead). Best-effort.
-    try {
-      const acct = await this.ensureAccount();
-      await this.post(
-        "/v1/accounts/deposit",
-        { marketId: this.clientSelectedMarket, amount: s(amountQuote) },
-        { "X-Api-Key": acct.apiKey },
-      );
-    } catch (e) {
-      console.warn("[dark-perp] /v1 mirror deposit failed (sealed orders may lack margin):", e);
-    }
+    const acct = await this.ensureAccount(); // no /v1 account ⇒ throw (fail closed)
+    await this.post(
+      "/v1/accounts/deposit",
+      { marketId: this.clientSelectedMarket, amount: s(amountQuote) },
+      { "X-Api-Key": acct.apiKey },
+    );
+    void this.refreshOwnState();
   }
   /**
    * SEC-021 fields of `GET /v1/accounts/me` — everything a withdrawal signature
@@ -1173,15 +1186,14 @@ export class RealDarkPerpClient implements DarkPerpClient {
   }
 
   /**
-   * Withdraw = /v1 FIRST — the inverse of deposit's priorities (demo primary /
-   * v1 mirror there). Only `POST /v1/accounts/withdraw` debits the per-browser
+   * Withdraw: `POST /v1/accounts/withdraw` ONLY. It debits the per-browser
    * account the sealed orders trade as AND records the withdrawal leaf that the
    * next window-settle publishes into the vault's Merkle root — i.e. the entry
-   * `listWithdrawals` shows and the on-chain `claim` pays out. The legacy shared
-   * demo `/api/withdraw` is cosmetic (in-memory demo balances shown elsewhere),
-   * so it is mirrored best-effort AFTER the real path. A /v1 failure must THROW
-   * so the form surfaces the gateway's error: silently falling back to the demo
-   * path would report success while never producing a real claimable leaf.
+   * `listWithdrawals` shows and the on-chain `claim` pays out. A /v1 failure
+   * must THROW so the form surfaces the gateway's error: reporting success
+   * without a real claimable leaf is the defect class this task removes.
+   * (Task 3 deleted the cosmetic legacy demo mirror that used to follow the
+   * real path — its route is unmounted in production.)
    *
    * SEC-021: the gateway rejects any withdrawal without a signature over
    * `withdraw_auth_digest`, and for server-custody accounts the destination
@@ -1217,20 +1229,54 @@ export class RealDarkPerpClient implements DarkPerpClient {
       { marketId: this.clientSelectedMarket, amount: s(amountQuote), to, nonce, signature },
       { "X-Api-Key": acct.apiKey },
     );
-    try {
-      await this.post("/api/withdraw", { amount: s(amountQuote) });
-    } catch (e) {
-      console.warn("[dark-perp] legacy demo withdraw mirror failed (display-only):", e);
+  }
+
+  // ── SEC-025-E1 Task 3: the demo mutation surface is DELETED, not stubbed ────
+  // triggerCloseOnly / resumeNormal / simulateAdl / closePosition / recover
+  // are gone from this client: their legacy routes exist only in the demo
+  // build (audit DP-010 — the production router does not mount them), so here
+  // they could only 404 — and three of them reported that failure to the user
+  // as success. The interface declares them optional and the UI presence-gates
+  // (the wallet-methods idiom), so the buttons are honestly absent in live
+  // mode instead of lying. closePosition in particular has NO /v1 equivalent
+  // yet; re-adding it as a reduce-only /v1 order submission is a product
+  // decision for a later slice, not a transport fix.
+
+  /**
+   * Cancel an order — `DELETE /v1/orders/:id` under the account's API key,
+   * so the id resolves inside the CALLER's own order list (`account_cancel`).
+   *
+   * This re-route closes a CROSS-ACCOUNT hazard, not just a 404: order ids
+   * are `o{nonce}` in both the /v1 path and the demo wallet — per-account,
+   * not globally unique — and the legacy `POST /api/cancel` resolved the id
+   * against the DEMO WALLET's list. After Task 1 the UI shows the caller's
+   * /v1 ids, so the old path could silently cancel a stranger's same-named
+   * order and report success.
+   *
+   * Refusals THROW with the gateway's own reason — including the `sealed`
+   * refusal: every order seals into a batch within one ~700ms tick and
+   * `account_cancel` refuses sealed orders, so cancelling a RESTING order
+   * stays ineffective until E2 lands cancel-inside-the-window. The user must
+   * see that answer, unsatisfying as it is; swallowing it (or the legacy
+   * route's 404) is the report-failure-as-success defect this task removes.
+   *
+   * On success this is also the CANCELLED lifecycle event's producer (no
+   * server event announces a cancel — the order simply leaves the list), and
+   * the own-account view is refreshed so the row disappears.
+   */
+  async cancelOrder(orderId: string): Promise<void> {
+    const acct = await this.ensureAccount();
+    await this.request(
+      "DELETE",
+      `/v1/orders/${encodeURIComponent(orderId)}`,
+      undefined,
+      { "X-Api-Key": acct.apiKey },
+    );
+    for (const cb of this.eventSubs) {
+      cb({ orderId, kind: "CANCELLED", message: "Order cancelled before matching" });
     }
+    void this.refreshOwnState();
   }
-  triggerCloseOnly(): void { void this.post("/api/mode", { mode: "CloseOnly" }); }
-  resumeNormal(): void { void this.post("/api/mode", { mode: "Normal" }); }
-  async simulateAdl(): Promise<bigint> {
-    const r = await this.post<{ clawed: string }>("/api/simulate-adl", {});
-    return B(r.clawed) * QUOTE_SCALE; // gateway returns whole USD; scale to quote
-  }
-  async closePosition(marketId: number): Promise<void> { await this.post("/api/close", { marketId }); }
-  async cancelOrder(orderId: string): Promise<void> { await this.post("/api/cancel", { orderId }); }
   /**
    * CLIENT-SIDE market switch. The old implementation POSTed the legacy demo
    * `/api/select-market` route — 404 in prod (silently swallowed) and, even
@@ -1252,11 +1298,6 @@ export class RealDarkPerpClient implements DarkPerpClient {
     void this.refreshSelected(marketId);
     this.ensurePoll();
   }
-  async recover(seedHex: string): Promise<RecoveredNote[]> {
-    const notes = await this.post<{ batchId: number; amount: string; spent: boolean }[]>("/api/recover", { seed: seedHex });
-    return notes.map((n) => ({ batchId: n.batchId, amount: B(n.amount), spent: n.spent }));
-  }
-
   // ── injected-wallet deposit flow (see api/wallet.ts) ────────────────────────
   // These four methods make this client a `WalletDepositClient`: the wallet UI
   // is gated on their presence (the mock client lacks them ⇒ no wallet UI).

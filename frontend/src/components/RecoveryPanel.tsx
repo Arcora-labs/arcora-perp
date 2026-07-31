@@ -5,16 +5,38 @@ import type { RecoveredNote } from "../domain/types";
 
 /// Device-loss recovery (§7): enter your seed, derive a view-key, scan the
 /// encrypted note archive, and reconstruct your shielded balance.
+///
+/// SEC-025-E1 Task 3: `client.recover` is optional — it is a DEMO surface (the
+/// legacy `POST /api/recover` route is not mounted in production, so the real
+/// client omits the method). Without it this panel says so honestly instead of
+/// offering a scan that could only fail.
 export function RecoveryPanel() {
   const { client } = useStore();
   const [seed, setSeed] = useState("");
   const [notes, setNotes] = useState<RecoveredNote[] | null>(null);
   const [scanning, setScanning] = useState(false);
 
+  const recover = client.recover?.bind(client);
+
+  if (!recover) {
+    return (
+      <div className="card">
+        <h3 className="card__title">Recover from seed</h3>
+        <p className="muted small">
+          Seed-based note recovery is <strong>not available on the live gateway</strong>{" "}
+          yet — the archive-scan route exists only in the demo build. Your balance and
+          positions live in your per-browser <code>/v1</code> account; withdrawals are
+          authorized by the wallet address you deposited from (SEC-021), so funds are
+          recoverable through the on-chain claim path even without this panel.
+        </p>
+      </div>
+    );
+  }
+
   async function scan() {
     if (seed.trim() === "") return;
     setScanning(true);
-    const r = await client.recover(seed.trim());
+    const r = await recover!(seed.trim());
     setNotes(r);
     setScanning(false);
   }

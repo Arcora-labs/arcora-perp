@@ -115,24 +115,39 @@ export interface DarkPerpClient {
   /// account provisioned yet; the UI hides the surface entirely then.
   listWithdrawals(): Promise<{ withdrawals: WithdrawalEntry[]; vault: string } | null>;
 
-  /// Simulate the liveness/forced-exit trigger → close-only (§6).
-  triggerCloseOnly(): void;
+  // ── demo-only surfaces (SEC-025-E1 Task 3) ────────────────────────────────
+  // OPTIONAL because their legacy /api/* routes exist only in the demo build
+  // (audit DP-010: the production router does not mount them). The mock client
+  // implements them; the real client DELETES them rather than calling routes
+  // that 404 — three of them used to report that failure to the user as
+  // success. The UI presence-gates on each (the `withdrawAuthInfo` idiom), so
+  // the corresponding buttons are honestly absent in live mode.
 
-  /// Clear close-only and return to Normal (the breaker recovers / sequencer is
-  /// back). Lets the forced-exit simulation be toggled instead of being a dead-end.
-  resumeNormal(): void;
+  /// Demo: simulate the liveness/forced-exit trigger → close-only (§6).
+  triggerCloseOnly?(): void;
+
+  /// Demo: clear close-only and return to Normal (the breaker recovers /
+  /// sequencer is back). Lets the forced-exit simulation be toggled.
+  resumeNormal?(): void;
 
   /// Demo: run a bad-debt cascade that auto-deleverages the user, surfacing the
   /// resulting ADL receipt (audit Q2). Returns the quote-scaled amount clawed.
-  simulateAdl(): Promise<bigint>;
+  simulateAdl?(): Promise<bigint>;
 
-  /// Recover notes by scanning the archive with a seed-derived view-key (§7).
-  recover(seedHex: string): Promise<RecoveredNote[]>;
+  /// Demo: recover notes by scanning the archive with a seed-derived view-key
+  /// (§7). The live gateway serves no recovery route yet.
+  recover?(seedHex: string): Promise<RecoveredNote[]>;
 
-  /// Close a position with a reduce-only market order.
-  closePosition(marketId: number): Promise<void>;
+  /// Demo: close a position with a reduce-only market order. There is NO /v1
+  /// equivalent yet — implementing close as a reduce-only /v1 order submission
+  /// is a product decision for a later slice, so in live mode the close button
+  /// is honestly absent rather than falsely reporting success.
+  closePosition?(marketId: number): Promise<void>;
 
-  /// Cancel an order that is still ACCEPTED (not yet matched).
+  /// Cancel an order that is still ACCEPTED (not yet matched). On the real
+  /// client this is `DELETE /v1/orders/:id` (caller-scoped); gateway refusals
+  /// — including the `sealed` refusal every resting order hits until E2 —
+  /// reject the promise with the gateway's reason.
   cancelOrder(orderId: string): Promise<void>;
 
   /// Switch the active market.
@@ -142,9 +157,15 @@ export interface DarkPerpClient {
   onOrderEvent(cb: (e: OrderEvent) => void): () => void;
 }
 
-/// An order lifecycle event surfaced for notifications.
+/// An order lifecycle event surfaced for notifications. Every member has a
+/// live producer (SEC-025-E1 Task 3 dropped the producer-less "REJECTED"):
+/// ACCEPTED/MATCHED/SETTLED — mock lifecycle + the real /v1/ws stream's
+/// owner-verified `order` events; CANCELLED — both clients' cancelOrder on
+/// success; ADL — mock simulateAdl + the real stream's `adl` events. If the
+/// gateway ever pushes real rejection events (E3 territory), re-add the kind
+/// WITH its producer.
 export interface OrderEvent {
   orderId: string;
-  kind: "ACCEPTED" | "MATCHED" | "SETTLED" | "CANCELLED" | "REJECTED" | "ADL";
+  kind: "ACCEPTED" | "MATCHED" | "SETTLED" | "CANCELLED" | "ADL";
   message: string;
 }

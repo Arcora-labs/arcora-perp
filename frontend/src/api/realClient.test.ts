@@ -156,7 +156,8 @@ let epochResponse: () => unknown = () => signedEpoch();
 let epochHits = 0;
 let registrations = 0;
 let v1WithdrawStatus = 200; // per-test override: gateway rejection of the REAL path
-let demoWithdrawStatus = 200; // per-test override: legacy demo-mirror failure
+let v1DepositStatus = 200; // per-test override: the production unbacked-mint refusal
+let v1CancelStatus = 200; // per-test override: gateway cancel refusal (sealed/finality)
 let authorizeStatus = 200; // per-test override: gateway rejection (bind-first etc.)
 let authorizeBody: unknown = null; // per-test override of the response body (null ⇒ well-formed default)
 let stateResponse: unknown = wireState; // per-test override of the /api/state snapshot
@@ -244,7 +245,36 @@ function installFetch() {
         }
         return json(payload);
       }
-      if (path === "/api/deposit" || path === "/v1/accounts/deposit") return json({});
+      if (path === "/v1/accounts/deposit" && method === "POST") {
+        if (init?.headers?.["X-Api-Key"] !== ACCT_KEY) return json({ error: "unknown account" }, 401);
+        if (v1DepositStatus !== 200) {
+          return json(
+            { error: "unbacked demo deposit refused in production — fund the account on-chain (wallet deposit + confirm) instead" },
+            v1DepositStatus,
+          );
+        }
+        return json({});
+      }
+      // Task 3: the CALLER-scoped cancel — resolves the id inside the
+      // authenticated account only, like the gateway's `account_cancel`.
+      if (path.startsWith("/v1/orders/") && method === "DELETE") {
+        if (init?.headers?.["X-Api-Key"] !== ACCT_KEY) return json({ error: "unknown account" }, 401);
+        if (v1CancelStatus !== 200) {
+          return json(
+            { error: "Only an ACCEPTED order can be cancelled (matched/settled are binding)." },
+            v1CancelStatus,
+          );
+        }
+        return json({ orderId: path.slice("/v1/orders/".length), cancelled: true });
+      }
+      // The LEGACY demo cancel resolver: `POST /api/cancel` matches the id
+      // against the SHARED DEMO WALLET's own list (gateway `Gw::cancel` over
+      // `self.orders`). It deliberately ANSWERS SUCCESS here — in the
+      // cross-account fixture the demo wallet DOES hold the id — so a client
+      // that mis-routes a cancel to it does NOT fail by throwing: it can only
+      // fail the targeting assertions (that is the hazard under test — a
+      // user's cancel silently cancelling a stranger's same-named order).
+      if (path === "/api/cancel" && method === "POST") return json({});
       if (path === "/v1/accounts/withdraw" && method === "POST") {
         if (v1WithdrawStatus !== 200) {
           return json({ error: "Not withdrawable: amount exceeds the SETTLED balance in this market (§3)." }, v1WithdrawStatus);
@@ -259,10 +289,6 @@ function installFetch() {
           );
         }
         return json(authorizeBody ?? { ownerCommit: "0x" + "ab".repeat(32), sig: "0x" + "cd".repeat(65) });
-      }
-      if (path === "/api/withdraw" && method === "POST") {
-        if (demoWithdrawStatus !== 200) return json({ error: "demo state unavailable" }, demoWithdrawStatus);
-        return json({});
       }
       if (path === "/v1/markets/0/orderbook") return json({ marketId: 0, bids: [], asks: [] });
       if (path === "/v1/markets/0/oracle") return json({ marketId: 0, price: "6450000000000", confidence: "1", publishTimeMs: 0 });
@@ -316,7 +342,8 @@ beforeEach(() => {
   lastWs = null;
   lastWsV1 = null;
   v1WithdrawStatus = 200;
-  demoWithdrawStatus = 200;
+  v1DepositStatus = 200;
+  v1CancelStatus = 200;
   authorizeStatus = 200;
   authorizeBody = null;
   stateResponse = wireState;
@@ -539,14 +566,34 @@ describe("RealDarkPerpClient sealed order flow", () => {
     expect(calls.some((c) => c.path === "/v1/accounts/me")).toBe(true);
   });
 
-  it("mirrors deposits to the /v1 trading account so sealed orders have margin", async () => {
+  // ── Task 3: the legacy `POST /api/deposit` primary is GONE ────────────────
+  // It is unmounted in production (build_router), and because it ran FIRST and
+  // threw, its 404 also blocked the /v1 leg — in production the old deposit()
+  // could never fund anything. The /v1 deposit (mounted in BOTH postures; the
+  // production gateway answers it with the SEC-025-C unbacked-mint refusal) is
+  // now the only path. The fetch harness no longer answers /api/deposit at
+  // all, so a resurrected legacy call fails loudly as an unexpected fetch.
+
+  it("deposit funds ONLY the authenticated /v1 account — no legacy demo call — and refreshes the own-account view", async () => {
     const client = await bootstrapClient();
+    const meReadsBefore = calls.filter((c) => c.path === "/v1/accounts/me").length;
     await client.deposit(5_000_000n);
-    const demo = calls.find((c) => c.path === "/api/deposit");
+    await client.ownStateSettled();
+    expect(calls.some((c) => c.path === "/api/deposit")).toBe(false);
     const v1 = calls.find((c) => c.path === "/v1/accounts/deposit");
-    expect(demo?.body).toEqual({ amount: "5000000" });
     expect(v1?.body).toEqual({ marketId: 0, amount: "5000000" });
     expect(v1?.headers["X-Api-Key"]).toBe(ACCT_KEY);
+    // The credit changes the /v1 balance, which only the own-account refresh
+    // can surface (deposits emit no /v1/ws event) — one more /me read landed.
+    expect(calls.filter((c) => c.path === "/v1/accounts/me").length).toBeGreaterThan(meReadsBefore);
+    client.dispose();
+  });
+
+  it("a refused /v1 deposit (the production posture) SURFACES the gateway's reason — never resolves as success", async () => {
+    const client = await bootstrapClient();
+    v1DepositStatus = 400;
+    await expect(client.deposit(5_000_000n)).rejects.toThrow(/refused in production/i);
+    client.dispose();
   });
 });
 
@@ -586,20 +633,16 @@ describe("withdrawAuthDigest (contract 3)", () => {
 // SEC-021: the destination is ALWAYS the bound deposit address, and the request
 // carries that address's personal_sign over the gateway's withdraw digest.
 describe("RealDarkPerpClient.requestWithdrawal", () => {
-  it("signs the EXACT gateway digest with the bound address and posts {marketId, amount, to, nonce, signature}, then mirrors the legacy demo path", async () => {
+  it("signs the EXACT gateway digest with the bound address and posts {marketId, amount, to, nonce, signature} — /v1 ONLY, no legacy demo mirror (Task 3: /api/withdraw is unmounted in production)", async () => {
     const client = await bootstrapClient();
     await client.requestWithdrawal(5_000_000n);
     const v1Idx = calls.findIndex((c) => c.path === "/v1/accounts/withdraw");
-    const demoIdx = calls.findIndex((c) => c.path === "/api/withdraw");
     expect(v1Idx).toBeGreaterThan(-1);
-    expect(demoIdx).toBeGreaterThan(-1);
-    // Priority inversion vs deposit: the /v1 call is the money path and runs first.
-    expect(v1Idx).toBeLessThan(demoIdx);
+    expect(calls.some((c) => c.path === "/api/withdraw")).toBe(false);
     expect(calls[v1Idx].body).toEqual({
       marketId: 0, amount: "5000000", to: BOUND, nonce: 1, signature: FAKE_SIG,
     });
     expect(calls[v1Idx].headers["X-Api-Key"]).toBe(ACCT_KEY);
-    expect(calls[demoIdx].body).toEqual({ amount: "5000000" });
 
     // The wallet was asked to sign EXACTLY withdraw_auth_digest — with the
     // gateway-served chainId/vault/owner/nonce, never hardcoded ones (the
@@ -650,20 +693,11 @@ describe("RealDarkPerpClient.requestWithdrawal", () => {
     expect(personalSigns.length).toBe(0);
   });
 
-  it("surfaces a /v1 rejection and SKIPS the demo mirror (no silent fallback — demo cannot mint a claimable leaf)", async () => {
+  it("surfaces a /v1 rejection — no silent fallback (demo cannot mint a claimable leaf)", async () => {
     const client = await bootstrapClient();
     v1WithdrawStatus = 400;
     await expect(client.requestWithdrawal(5_000_000n)).rejects.toThrow(/exceeds the SETTLED/i);
     expect(calls.some((c) => c.path === "/api/withdraw")).toBe(false);
-  });
-
-  it("swallows a demo-mirror failure with a warning — the real withdrawal already landed", async () => {
-    const client = await bootstrapClient();
-    demoWithdrawStatus = 500;
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    await expect(client.requestWithdrawal(5_000_000n)).resolves.toBeUndefined();
-    expect(calls.some((c) => c.path === "/v1/accounts/withdraw")).toBe(true);
-    expect(warn).toHaveBeenCalledWith(expect.stringMatching(/mirror/i), expect.anything());
   });
 
   it("withdrawAuthInfo exposes the bound address + callerSigned for the UI gate", async () => {
@@ -1237,6 +1271,86 @@ describe("live stream: /v1/ws own-account events (SEC-025-E1 Task 2)", () => {
     lastWsV1!.open();
     // auth is per-connection: the new socket must be authenticated again
     expect(lastWsV1!.sent.map((s) => JSON.parse(s))).toEqual([{ type: "auth", apiKey: ACCT_KEY }]);
+    client.dispose();
+  });
+});
+
+// ── SEC-025-E1 Task 3: cancel is caller-scoped; the demo mutation surface is gone ──
+//
+// The hazard the cancel re-route closes is CROSS-ACCOUNT, not just a 404:
+// order ids are `format!("o{nonce}")` in BOTH the /v1 account path and the
+// demo wallet (gateway main.rs) — per-account, NOT globally unique — and the
+// legacy `POST /api/cancel` resolves the id against the DEMO WALLET's own
+// list. After Task 1 the UI renders the CALLER's /v1 ids, so on a demo
+// gateway a user cancelling their "o42" would silently cancel the demo
+// wallet's "o42" (if one existed, ACCEPTED) and be told it succeeded.
+describe("cancelOrder is caller-scoped: DELETE /v1/orders/:id (SEC-025-E1 Task 3)", () => {
+  beforeEach(() => {
+    // THE DISCRIMINATING FIXTURE: both lists hold an order with the SAME id.
+    // Without this collision the test proves nothing about targeting — a
+    // demo-list resolver would just 404 and fail for the wrong reason. Here
+    // the harness's /api/cancel ANSWERS SUCCESS (the demo wallet has "o42"),
+    // so a mis-routed cancel completes "successfully" and only the targeting
+    // assertions can catch it.
+    stateResponse = {
+      ...demoState,
+      orders: [{ ...demoOrder, id: "o42" }], // the DEMO wallet's own "o42"
+    };
+    v1OrdersResponse = { orders: [v1Order] }; // the CALLER's "o42"
+    v1PositionsResponse = { positions: [v1Position] };
+  });
+
+  it("cancels the CALLER's order via the authenticated per-account route — never the demo wallet's same-named order", async () => {
+    const client = await bootstrapClient();
+    const events: OrderEvent[] = [];
+    client.onOrderEvent((e) => events.push(e));
+    v1OrdersResponse = { orders: [] }; // the post-cancel read: the order is gone
+    await client.cancelOrder("o42");
+    // the one cancel request is the caller-scoped DELETE, under the api key
+    const dels = calls.filter((c) => c.method === "DELETE");
+    expect(dels.map((c) => c.path)).toEqual(["/v1/orders/o42"]);
+    expect(dels[0].headers["X-Api-Key"]).toBe(ACCT_KEY);
+    // and the demo-wallet resolver was never touched (it would have answered
+    // success for ITS "o42" — the silent cross-account mutation)
+    expect(calls.some((c) => c.path === "/api/cancel")).toBe(false);
+    // cancel's real producer: the CANCELLED lifecycle event (Toaster/Activity)
+    expect(events).toEqual([
+      { orderId: "o42", kind: "CANCELLED", message: expect.stringMatching(/cancelled/i) },
+    ]);
+    // the own-account view refreshed — the cancelled order left the list
+    await client.ownStateSettled();
+    expect(client.getState().orders.some((o) => o.id === "o42")).toBe(false);
+    client.dispose();
+  });
+
+  it("SURFACES the gateway's refusal — including the `sealed` refusal every resting order hits until E2 — instead of reporting success", async () => {
+    const client = await bootstrapClient();
+    const events: OrderEvent[] = [];
+    client.onOrderEvent((e) => events.push(e));
+    v1CancelStatus = 400;
+    // The gateway's exact wording must reach the caller: `account_cancel`
+    // refuses any sealed order, and every order seals within one ~700ms tick,
+    // so this refusal is the EXPECTED production answer for resting orders
+    // until E2 lands cancel-inside-the-window. Unsatisfying, but honest —
+    // swallowing it is the defect this task removes.
+    await expect(client.cancelOrder("o42")).rejects.toThrow(
+      /Only an ACCEPTED order can be cancelled/,
+    );
+    expect(events).toEqual([]); // no CANCELLED event for a refused cancel
+    client.dispose();
+  });
+
+  it("exposes NO demo mutation surface — the production router does not mount those routes", async () => {
+    // closePosition/simulateAdl/triggerCloseOnly/resumeNormal/recover had no
+    // production transport (their /api/* routes 404 there) and three of them
+    // reported that failure as success. They are DELETED from the real client
+    // — not stubbed — so the UI presence-gates honestly (the wallet-methods
+    // idiom). A resurrected no-op stub would resolve silently — the exact
+    // report-failure-as-success defect — and fails these absence pins.
+    const client = await bootstrapClient();
+    for (const m of ["closePosition", "simulateAdl", "triggerCloseOnly", "resumeNormal", "recover"]) {
+      expect((client as unknown as Record<string, unknown>)[m], m).toBeUndefined();
+    }
     client.dispose();
   });
 });

@@ -11675,6 +11675,73 @@ mod tests {
         assert!(gw.v1_account(&[0xff; 32]).is_none());
     }
 
+    /// SEC-025-E1 Task 3: order ids are `format!("o{nonce}")` — PER-ACCOUNT,
+    /// not globally unique — so a cancel MUST resolve the id inside the
+    /// caller's own list and nowhere else. The legacy demo `POST /api/cancel`
+    /// resolves ids against the SHARED DEMO WALLET's list (`Gw::cancel` over
+    /// `self.orders`), which is why the browser mis-cancelling a stranger's
+    /// same-named order was live until Task 3 re-routed it to
+    /// `DELETE /v1/orders/:id`. This pins the /v1 path's resolution scope.
+    #[test]
+    fn account_cancel_cannot_reach_another_accounts_order() {
+        let mut gw = Gw::boot();
+        let (a_key, _a_owner) = gw.register_account(None);
+        let (b_key, _b_owner) = gw.register_account(None);
+        gw.account_deposit(&a_key, 0, 20_000 * QUOTE_SCALE)
+            .expect("A deposit");
+        gw.account_deposit(&b_key, 0, 20_000 * QUOTE_SCALE)
+            .expect("B deposit");
+        let req = OrderReq {
+            market_id: 0,
+            side: "Buy".into(),
+            size: (SIZE_SCALE / 10).to_string(),
+            limit_price: "0".into(),
+            tif: "Ioc".into(),
+            reduce_only: false,
+            nonce: None,
+            signature: None,
+            ..Default::default()
+        };
+        // No tick between place and cancel: both orders stay ACCEPTED/unsealed.
+        gw.account_place_order(&a_key, &req).expect("A order");
+        gw.account_place_order(&b_key, &req).expect("B order");
+        let ids = |gw: &Gw, key: &[u8; 32]| -> Vec<String> {
+            gw.v1_orders_json(key).unwrap()["orders"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|o| o["orderId"].as_str().unwrap().to_string())
+                .collect()
+        };
+        // THE DISCRIMINATING PRECONDITION: each account's first order takes
+        // the registration-initial nonce 1, so BOTH lists hold an order with
+        // the SAME id "o1". Without this collision the test proves nothing
+        // about targeting — a wrong-list resolver would merely 404 and fail
+        // for the wrong reason.
+        assert_eq!(ids(&gw, &a_key), ["o1"], "A holds its own o1");
+        assert_eq!(ids(&gw, &b_key), ["o1"], "B holds its own, same-named o1");
+        // A's cancel removes A's order ONLY.
+        gw.account_cancel(&a_key, "o1")
+            .expect("A cancels its own o1");
+        assert!(ids(&gw, &a_key).is_empty(), "A's o1 is gone");
+        assert_eq!(
+            ids(&gw, &b_key),
+            ["o1"],
+            "B's same-named order must be untouched by A's cancel"
+        );
+        // And an id ABSENT from the caller's list errors even though another
+        // account still holds one by that name — resolution never crosses.
+        let err = gw
+            .account_cancel(&a_key, "o1")
+            .expect_err("A no longer holds an o1");
+        assert_eq!(err, "Order not found.");
+        assert_eq!(
+            ids(&gw, &b_key),
+            ["o1"],
+            "the failed cancel mutated no other account's list"
+        );
+    }
+
     /// SEC-025-E1 decision (c): `GET /v1/orders` serves each order's ACCEPTANCE
     /// RECEIPT — the exact one `account_place_order` returned — so a browser can
     /// render receipts for orders placed in ANY session, not just those whose
