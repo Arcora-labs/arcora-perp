@@ -1,7 +1,10 @@
 # SEC-028 — a replayed deposit authorization permanently wedges the deposit stream
 
-**Status:** **designed** (§Design below), independently verified by an adversarial review. Found
-while reviewing the 025-A spec; **independent of 025-A and present on `main` today.**
+**Status:** **replay cause IMPLEMENTED** on `fix/sec028-authorization-replay`; the
+authorization-durability cause (§A second, independent cause) remains **OPEN**. Found while
+reviewing the 025-A spec; independent of 025-A.
+
+**SEC-028 is not closed.** Both causes produce the same uncreditable leaf, and only one is fixed.
 
 **Severity:** High. Permanent, unrecoverable denial of the deposit path for the cost of a
 few base units of USDC. No fund loss for existing users — they can still withdraw — and
@@ -99,7 +102,13 @@ existing signature ABI (no new parameter, no re-signing scheme), needs no gatewa
 and does not keep a secret blind alive past its single use.
 
 Store the **digest**, not the signature bytes. Keying on signature bytes would tie replay
-protection to an encoding rather than to the authorization itself. *(The malleability argument
+protection to an encoding rather than to the authorization itself.
+
+*(Implementation note: the mark's position relative to `transferFrom` turned out **not** to be
+load-bearing for the rollback reason this document originally gave — EVM revert atomicity rolls
+it back wherever it sits, and mutation testing showed both placements invisible to every test.
+It is placed before the external call for checks-effects-interactions, since `token` is chosen
+at deployment and a hook-bearing one could otherwise re-enter with the same digest.)* *(The malleability argument
 is weaker here than it first appears: `_recover` already rejects high-`s` signatures
 (`contracts/src/CollateralVault.sol:138`), so the obvious mutated variant is refused anyway.
 Digest keying is still the right design — it is the authorization that should be one-shot, not

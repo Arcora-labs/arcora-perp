@@ -206,17 +206,34 @@ contract CollateralVault {
         // exit via `claim` against the last settled root, not by depositing more.
         if (ISettlementCloseOnly(settlement).closeOnly()) revert InCloseOnly();
         // SEC-019 (Task 6c): the vault accepts a deposit ONLY if the gateway pre-authorized
-        // this exact (from, ownerCommit, amount) tuple for THIS vault on THIS chain, so
-        // every leaf that can enter the chain is creditable off-chain by construction (no
-        // uncreditable leaf can head-of-line-block the contiguous deposit queue — spec §1b).
+        // this exact (from, ownerCommit, amount) tuple for THIS vault on THIS chain.
         // Verified BEFORE the transfer and then dropped; it never touches the leaf/chain.
+        //
+        // SEC-028: that check ALONE did not deliver the property this comment used to
+        // claim — "every leaf that can enter the chain is creditable off-chain by
+        // construction". The tuple binds no nonce and no id, so the same signature minted
+        // a fresh leaf on every submission, and the gateway consumes its stored blind on
+        // the FIRST credit — leaving every later identical leaf permanently uncreditable
+        // and head-of-line-blocking the contiguous queue for everyone. What establishes
+        // the property is the signature PLUS `usedDepositAuthorization` below.
+        //
+        // And it is still not the whole property. An authorization whose blind was never
+        // made durable off-chain yields the same uncreditable leaf with no attacker and no
+        // replay: the gateway holds it in memory and snapshots periodically. That is
+        // SEC-028's SECOND cause and it is NOT fixed here.
         bytes32 digest = keccak256(abi.encodePacked(block.chainid, address(this), msg.sender, ownerCommit, amount));
         if (_recover(digest, sig) != gatewaySigner) revert BadGatewaySig();
-        // Placement is load-bearing in BOTH directions. After `_recover`, so an unsigned
-        // or wrongly-signed call cannot burn a digest it never had the right to spend.
-        // Before `transferFrom`, so a failed transfer reverts the whole call and rolls
-        // this mark back with it — leaving no state in which an authorization is consumed
-        // but no leaf exists.
+        // Placement, stated honestly. An earlier version of this comment claimed it was
+        // "load-bearing in both directions" because a failed transfer must roll the mark
+        // back — but that rollback is EVM revert atomicity and happens wherever the mark
+        // sits. Mutation testing confirmed it: moving this after `transferFrom`, or ahead
+        // of `_recover`, is invisible to every test.
+        //
+        // What placement DOES buy is checks-effects-interactions. `transferFrom` is an
+        // external call into `token`, which is immutable but chosen at deployment, so a
+        // token with transfer hooks could re-enter `deposit` with the same digest while
+        // the mark was still unset. Marking before the interaction closes that, and keeps
+        // the guard correct under a later refactor that adds one.
         if (usedDepositAuthorization[digest]) revert AuthorizationAlreadyUsed();
         usedDepositAuthorization[digest] = true;
         if (!token.transferFrom(msg.sender, address(this), amount)) revert TransferFailed();
