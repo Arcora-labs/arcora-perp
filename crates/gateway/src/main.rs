@@ -200,9 +200,18 @@ fn observe_gate_once(
 /// depth), and a deployment whose only window was the capitalization settle never
 /// seals another — without the wait every observation it will ever get is
 /// `Inconclusive` and the gate never opens. Bounded: past the deadline the last
-/// `Inconclusive` is returned, which leaves the gate UNRESOLVED for a later
-/// window rather than resolved against opening. Blocking (subprocess reads +
-/// sleeps) — call from `spawn_blocking` or boot, never on the async runtime.
+/// `Inconclusive` is returned, which leaves the gate UNRESOLVED rather than
+/// resolved against opening.
+///
+/// "For a later window" is NOT a guarantee: `begin_window_settle` returns `None` on an
+/// unchanged root with no manifest content, and SEC-025-A's bootstrap endpoint is
+/// one-shot, so a quiet deployment may seal nothing further on its own. The recovery is
+/// that ANY deposit moves the state root and therefore manufactures a window — an
+/// operator whose observation was burnt by a long outage should credit one rather than
+/// wait. Recorded here because the code offers no other way back.
+///
+/// Blocking (subprocess reads + sleeps) — call from `spawn_blocking` or boot, never on
+/// the async runtime.
 fn observe_gate(
     l1: &L1,
     sealed_batch_id: u64,
@@ -4204,7 +4213,12 @@ impl Gw {
                             Side::Buy => uo.limit_price >= mark,
                             Side::Sell => uo.limit_price <= mark,
                         };
-                    if crosses {
+                    // SEC-025-D: the /v1-account injector, gated on the SAME terms as the
+                    // demo arm above. There are TWO injectors and the first pass gated only
+                    // one — not exploitable today, since the one-way latch means no order
+                    // can be staged while Closed, but that is exactly the positional
+                    // reliance this branch refuses one screen earlier for `simulate_adl`.
+                    if crosses && self.trading_gate == trading_gate::TradingGate::Open {
                         let opp = match uo.side {
                             Side::Buy => Side::Sell,
                             Side::Sell => Side::Buy,
@@ -8804,6 +8818,45 @@ mod tests {
         assert!(
             !opened2,
             "a closed gate must stop the injector itself, not merely starve it of takers"
+        );
+    }
+
+    /// `tick()` has TWO injectors — the demo-order arm and the /v1-account arm. The first
+    /// enforcement pass gated only the demo one and every test stayed green, so this
+    /// covers the other explicitly rather than trusting that "the injector" is singular.
+    #[test]
+    fn the_v1_account_injector_stages_no_counter_order_while_the_gate_is_closed() {
+        let mut gw = Gw::boot();
+        gw.trading_gate = trading_gate::TradingGate::Open;
+        let key = gw.account_register_for_test();
+        gw.account_deposit(&key, 0, 20_000 * QUOTE_SCALE).unwrap();
+        let req = gate_test_order();
+        gw.account_place_order(&key, &req)
+            .expect("accepted while open");
+        gw.tick();
+        assert!(
+            gw.seq
+                .state
+                .position(&gw.mm.owner, 0)
+                .map(|p| p.is_open())
+                .unwrap_or(false),
+            "fixture precondition: the /v1 injector must actually fill the MM while OPEN"
+        );
+
+        let mut gw2 = Gw::boot();
+        gw2.trading_gate = trading_gate::TradingGate::Open;
+        let key2 = gw2.account_register_for_test();
+        gw2.account_deposit(&key2, 0, 20_000 * QUOTE_SCALE).unwrap();
+        gw2.account_place_order(&key2, &req).expect("accepted");
+        gw2.trading_gate = trading_gate::TradingGate::Closed;
+        gw2.tick();
+        assert!(
+            !gw2.seq
+                .state
+                .position(&gw2.mm.owner, 0)
+                .map(|p| p.is_open())
+                .unwrap_or(false),
+            "a closed gate must stop the /v1 injector too"
         );
     }
 
@@ -14211,6 +14264,77 @@ mod tests {
     /// served, and `begin_window_settle(bc+1)` passes the desync guard. A second
     /// application of the same journal (the crash-after-commit shape) resolves
     /// STALE — delete again, but never double-apply.
+    /// SEC-025-D §8.4/§8.5: the boot roll-forward arm threads a gate observation into
+    /// `commit_window_settle`, and until this test nothing distinguished "threaded
+    /// through" from "ignored" — every other boot-recovery test passes `Inconclusive`,
+    /// so hardcoding that value inside the arm left the whole suite green.
+    ///
+    /// Both directions matter here and neither is covered by the settle-loop tests: this
+    /// is the arm a governance `finalSettle` can reach after a crash, AND the arm a
+    /// genuine settle reaches when the process died before committing.
+    #[test]
+    fn the_boot_roll_forward_arm_carries_the_gate_observation_both_ways() {
+        use crate::prover_client::{prove_and_prepare, MockProverClient};
+
+        // A bare production genesis seals NOTHING — `begin_window_settle` returns `None`
+        // on an unchanged root, which is the circularity this piece documents. So build a
+        // window the way the sibling roll-forward test does (a real deposit moves the
+        // root) and force the gate Closed; the arm's plumbing is what is under test here,
+        // not the genesis mode.
+        let build = || {
+            let mut gw = Gw::boot();
+            gw.trading_gate = trading_gate::TradingGate::Closed;
+            gw.set_prepared_post_state_for_test(true, bootstrap::MIN_BOOTSTRAP_INSURANCE, 1);
+            let (key, _sk) = register_withdrawer(&mut gw);
+            gw.account_deposit(&key, 0, 20_000 * QUOTE_SCALE).unwrap();
+            let bc = gw.seq.state.next_batch_id;
+            let (witness, ww) = gw.begin_window_settle(bc).unwrap().expect("sealed");
+            let prepared = prove_and_prepare(&MockProverClient, &witness, &ww).expect("prove");
+            let root = hex32(&prepared.outcome.new_root);
+            let j = rollback_journal::RollbackJournal {
+                batch_id: bc,
+                witness,
+                ww,
+                prepared: Some(prepared),
+            };
+            (gw, j, bc, root)
+        };
+
+        // A wind-down-shaped commit must NOT open the gate on this arm.
+        let (mut gw, j, bc, root) = build();
+        assert_eq!(gw.trading_gate, trading_gate::TradingGate::Closed);
+        apply_boot_recovery(
+            &mut gw,
+            j,
+            bc + 1,
+            &root,
+            77,
+            trading_gate::GateObservation::StaysClosed,
+        );
+        assert_eq!(
+            gw.trading_gate,
+            trading_gate::TradingGate::Closed,
+            "a StaysClosed observation must not open the gate at boot"
+        );
+
+        // …and a genuine one MUST, or a settle that landed before the crash can never
+        // launch the deployment — there is no guarantee of another window.
+        let (mut gw2, j2, bc2, root2) = build();
+        apply_boot_recovery(
+            &mut gw2,
+            j2,
+            bc2 + 1,
+            &root2,
+            77,
+            trading_gate::GateObservation::OpensGate,
+        );
+        assert_eq!(
+            gw2.trading_gate,
+            trading_gate::TradingGate::Open,
+            "an OpensGate observation at boot must open the gate"
+        );
+    }
+
     #[test]
     fn boot_recovery_roll_forward_commits() {
         use crate::prover_client::{prove_and_prepare, MockProverClient};

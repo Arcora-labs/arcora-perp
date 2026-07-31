@@ -989,6 +989,47 @@ mod tests {
         );
     }
 
+    /// The insurance term is the REPLAYED post-state's. A demo fill routes its taker fee
+    /// through the per-fill insurance cut, so the fund rises INSIDE the window and the
+    /// pre-state differs from the post-state — which is the only way to tell a post-state
+    /// read from a pre-state one.
+    ///
+    /// This matters more than "one window late". The capitalization window's pre-state has
+    /// `insurance_fund == 0` by construction, and `begin_window_settle` returns `None` on
+    /// an unchanged root with no manifest content while SEC-025-A's bootstrap endpoint is
+    /// one-shot — so under a pre-state read there may never BE a later window. The
+    /// regression's real mode is "the gate never opens", not "it opens late".
+    #[test]
+    fn the_insurance_term_is_the_post_state_not_the_pre_state() {
+        let mut gw = crate::Gw::boot();
+        gw.trading_gate = crate::trading_gate::TradingGate::Open;
+        let req = crate::OrderReq {
+            market_id: 0,
+            side: "Buy".into(),
+            size: (crate::SIZE_SCALE / 10).to_string(),
+            limit_price: "0".into(),
+            tif: "Ioc".into(),
+            reduce_only: false,
+            nonce: None,
+            signature: None,
+            ..Default::default()
+        };
+        gw.place_order(&req).expect("demo order accepted");
+        gw.tick();
+        let bc = gw.seq.state.next_batch_id;
+        let (witness, ww) = gw.begin_window_settle(bc).unwrap().expect("window sealed");
+        // fixture precondition — without a fund that MOVES inside the window, this test
+        // cannot distinguish the two reads and would pass against either.
+        let pre = witness.pre_state.insurance_fund;
+        let out = prove_and_prepare(&MockProverClient, &witness, &ww).expect("prepare");
+        assert!(
+            out.outcome.post_insurance_fund > pre,
+            "fixture precondition: the fill's insurance cut must raise the fund inside the \
+             window (pre {pre}, post {})",
+            out.outcome.post_insurance_fund
+        );
+    }
+
     /// The mode term is the REPLAYED post-state's — not a constant, and not the
     /// pre-state's. This window ENTERS close-only mid-window through the real
     /// gateway path (`set_mode` → `Sequencer::apply` logs the op into the open

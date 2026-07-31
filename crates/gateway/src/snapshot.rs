@@ -199,6 +199,27 @@ mod tests {
         assert!(open(&sealed, &[9u8; 32]).is_err());
     }
 
+    /// SEC-025-D: pin the MAGIC VALUE, not just that some magic is checked. The sibling
+    /// test XORs a byte, which passes under any value — so reverting DPSNAP5 to DPSNAP4
+    /// left the whole suite green. 025-A already ships DPSNAP4 on `main`, so a revert here
+    /// would make a v4 snapshot from that build decode positionally into a v5 `Gw` and
+    /// shift every field after `trading_gate`.
+    #[test]
+    fn a_stale_snapshot_magic_is_refused() {
+        let seed = [42u8; 32];
+        // The magic lives in the SEALED ENVELOPE (`MAGIC ‖ nonce ‖ tag ‖ ciphertext`),
+        // not in the payload — unlike the rollback journal, which carries its own magic
+        // inside a snapshot-sealed body. So overwrite the envelope's first eight bytes
+        // with the previous value; the body stays a perfectly valid v5 snapshot, which is
+        // exactly the hazard: a v4 build's file is well-formed, just differently shaped.
+        let mut sealed = seal(b"a valid payload", &seed);
+        sealed[..8].copy_from_slice(b"DPSNAP4\0");
+        assert!(
+            open(&sealed, &seed).is_err(),
+            "a snapshot under the previous magic must be refused, not decoded"
+        );
+    }
+
     #[test]
     fn truncated_or_wrong_magic_rejected() {
         let seed = [9u8; 32];
