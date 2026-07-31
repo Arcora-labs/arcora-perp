@@ -82,6 +82,19 @@ contract CollateralVault {
     /// compromised signer can permit entry but never conjure collateral.
     address public gatewaySigner;
 
+    /// SEC-028: gateway authorizations already consumed. `deposit`'s signature binds
+    /// (chainid, vault, from, ownerCommit, amount) and deliberately NOT `depositCount` —
+    /// the gateway cannot predict the landing index at signing time. Without this mapping
+    /// the same tuple mints a fresh leaf on every submission, and since the gateway
+    /// consumes its stored blind on the FIRST credit, every later identical leaf is
+    /// permanently uncreditable and head-of-line-blocks the contiguous deposit queue.
+    /// That is exactly the property `deposit`'s own doc claims the signature establishes;
+    /// this mapping is what actually establishes it.
+    ///
+    /// Keyed on the DIGEST, not the signature bytes: replay protection should bind the
+    /// authorization, not one serialization of it.
+    mapping(bytes32 => bool) public usedDepositAuthorization;
+
     /// secp256k1 group order ÷ 2; ECDSA signatures with higher `s` are non-canonical
     /// (malleable) and rejected in `_recover` (matches DarkPerpSettlement's F3 hygiene).
     uint256 private constant SECP256K1_N_HALF = 0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF5D576E7357A4501DDFE92F46681B20A0;
@@ -114,6 +127,9 @@ contract CollateralVault {
     /// `address(0) != address(0)` == false and let an unauthorized deposit through.
     /// Reject it at construction so the gate can never be bypassed.
     error ZeroGatewaySigner();
+    /// SEC-028: this exact gateway authorization (digest) was already spent by an
+    /// earlier successful deposit; replaying it must not mint a second leaf.
+    error AuthorizationAlreadyUsed();
 
     modifier onlySettlement() {
         if (msg.sender != settlement) revert NotSettlement();
@@ -190,12 +206,36 @@ contract CollateralVault {
         // exit via `claim` against the last settled root, not by depositing more.
         if (ISettlementCloseOnly(settlement).closeOnly()) revert InCloseOnly();
         // SEC-019 (Task 6c): the vault accepts a deposit ONLY if the gateway pre-authorized
-        // this exact (from, ownerCommit, amount) tuple for THIS vault on THIS chain, so
-        // every leaf that can enter the chain is creditable off-chain by construction (no
-        // uncreditable leaf can head-of-line-block the contiguous deposit queue — spec §1b).
+        // this exact (from, ownerCommit, amount) tuple for THIS vault on THIS chain.
         // Verified BEFORE the transfer and then dropped; it never touches the leaf/chain.
+        //
+        // SEC-028: that check ALONE did not deliver the property this comment used to
+        // claim — "every leaf that can enter the chain is creditable off-chain by
+        // construction". The tuple binds no nonce and no id, so the same signature minted
+        // a fresh leaf on every submission, and the gateway consumes its stored blind on
+        // the FIRST credit — leaving every later identical leaf permanently uncreditable
+        // and head-of-line-blocking the contiguous queue for everyone. What establishes
+        // the property is the signature PLUS `usedDepositAuthorization` below.
+        //
+        // And it is still not the whole property. An authorization whose blind was never
+        // made durable off-chain yields the same uncreditable leaf with no attacker and no
+        // replay: the gateway holds it in memory and snapshots periodically. That is
+        // SEC-028's SECOND cause and it is NOT fixed here.
         bytes32 digest = keccak256(abi.encodePacked(block.chainid, address(this), msg.sender, ownerCommit, amount));
         if (_recover(digest, sig) != gatewaySigner) revert BadGatewaySig();
+        // Placement, stated honestly. An earlier version of this comment claimed it was
+        // "load-bearing in both directions" because a failed transfer must roll the mark
+        // back — but that rollback is EVM revert atomicity and happens wherever the mark
+        // sits. Mutation testing confirmed it: moving this after `transferFrom`, or ahead
+        // of `_recover`, is invisible to every test.
+        //
+        // What placement DOES buy is checks-effects-interactions. `transferFrom` is an
+        // external call into `token`, which is immutable but chosen at deployment, so a
+        // token with transfer hooks could re-enter `deposit` with the same digest while
+        // the mark was still unset. Marking before the interaction closes that, and keeps
+        // the guard correct under a later refactor that adds one.
+        if (usedDepositAuthorization[digest]) revert AuthorizationAlreadyUsed();
+        usedDepositAuthorization[digest] = true;
         if (!token.transferFrom(msg.sender, address(this), amount)) revert TransferFailed();
         totalDeposited += amount;
         // `id` is the PRE-increment count, so the first deposit is id 0 (matching the
