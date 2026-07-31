@@ -41,7 +41,13 @@ use std::path::{Path, PathBuf};
 /// `window_ops`, so a pending pre-SEC-024 journal must be REFUSED here rather than
 /// decoded under the new meaning — replaying it would either reject a formerly
 /// valid seed op mid-recovery or misread a trailing variant.
-const MAGIC: &[u8; 8] = b"DPRBJL4\0";
+/// v5: SEC-025-D — `ProveOutcome` gained `post_mode_is_normal` + `post_insurance_fund`
+/// (the launch-gate terms), and `PreparedSettle` embeds it in the journaled
+/// `prepared`, so the positional postcard layout moved again. A pre-025-D journal
+/// decoded by a post-025-D binary would misparse the outcome — and a roll-forward
+/// re-submits those roots to `_requireDepositPrefix`, so this must be a versioned
+/// refusal, never a silent misparse.
+const MAGIC: &[u8; 8] = b"DPRBJL5\0";
 
 /// Everything boot recovery needs to resolve one in-flight window settle:
 /// the sequencer rollback input (`witness`), the withdrawal rollback input (`ww`,
@@ -247,6 +253,7 @@ mod tests {
         let commitment = prepared.outcome.commitment;
         let new_root = prepared.outcome.new_root;
         let new_deposit_count = prepared.outcome.new_deposit_count;
+        let post_insurance_fund = prepared.outcome.post_insurance_fund;
         let proof = prepared.outcome.proof.clone();
         let withdraw_proofs = prepared.withdraw_proofs.clone();
         assert!(ops_len > 0, "a real window has ops");
@@ -256,6 +263,17 @@ mod tests {
         assert!(
             new_deposit_count > 0,
             "a real window has a consumed deposit"
+        );
+        // Fixture guards for the SEC-025-D terms (the DPRBJL5 bump): both captured
+        // values must differ from what a silently-defaulted decode would produce
+        // (false / 0), or the survival asserts below prove nothing.
+        assert!(
+            prepared.outcome.post_mode_is_normal,
+            "a demo-boot window replays to a Normal post-state"
+        );
+        assert!(
+            post_insurance_fund > 0,
+            "boot seeds a non-zero insurance fund"
         );
 
         let j = RollbackJournal {
@@ -293,6 +311,13 @@ mod tests {
             bp.outcome.new_deposit_count, new_deposit_count,
             "new_deposit_count survives — the field whose addition motivated the \
              DPRBJL3 bump, and the one a roll-forward resubmits to _requireDepositPrefix"
+        );
+        // The SEC-025-D terms (the DPRBJL5 bump) survive with non-default values —
+        // guarded above, so a decode that silently defaulted them would fail here.
+        assert!(bp.outcome.post_mode_is_normal, "gate mode term survives");
+        assert_eq!(
+            bp.outcome.post_insurance_fund, post_insurance_fund,
+            "gate insurance term survives"
         );
         assert_eq!(bp.outcome.proof, proof);
         assert_eq!(bp.withdraw_proofs, withdraw_proofs, "claim proofs survive");
@@ -346,6 +371,33 @@ mod tests {
             err.contains("batch_id mismatch"),
             "unexpected error text: {err}"
         );
+        std::fs::remove_file(&path).ok();
+    }
+
+    /// The DPRBJL5 bump's whole claim, made executable: a journal written under the
+    /// PREVIOUS magic must be refused as a versioned mismatch, never handed to
+    /// postcard under the new layout (a pre-025-D `ProveOutcome` would misparse, and
+    /// a roll-forward re-submits those roots to `_requireDepositPrefix`). No prior
+    /// bump (v2/v3/v4) pinned this; each relied on the constant alone.
+    #[test]
+    fn journal_with_a_stale_magic_is_refused() {
+        let seed = [42u8; 32];
+        let path = scratch_path("stale-magic");
+        // A well-formed v4-era payload is unnecessary: the magic check runs BEFORE
+        // postcard, so any body under the old magic must already be refused.
+        let mut plain = Vec::new();
+        plain.extend_from_slice(b"DPRBJL4\0");
+        plain.extend_from_slice(&[0u8; 16]);
+        let sealed = snapshot::seal(&plain, &seed);
+        snapshot::write_atomic(&path, &sealed).expect("write");
+        let err = match read(&path, &seed) {
+            Err(e) => e,
+            Ok(_) => panic!("a stale-magic journal must be refused"),
+        };
+        // Under a reverted MAGIC this dies either way: the old-magic journal then
+        // strips cleanly and yields Ok (panic above) or a postcard decode error
+        // (which does not name the magic) — never this exact refusal.
+        assert!(err.contains("magic"), "unexpected error: {err}");
         std::fs::remove_file(&path).ok();
     }
 

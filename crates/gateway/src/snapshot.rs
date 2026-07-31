@@ -53,7 +53,12 @@ use std::path::Path;
 /// snapshot read by a v4 binary shifts every field after it. `#[serde(default)]` does not
 /// rescue that — postcard is not self-describing. SEC-025-D adds another `Gw` field and
 /// takes DPSNAP5; do not reuse v4 for it.
-const MAGIC: &[u8; 8] = b"DPSNAP4\0";
+/// v5: SEC-025-D added `Gw.trading_gate`, the launch gate, inserted mid-struct (after
+/// `bootstrap`). Same positional-postcard hazard as v4: every field after it shifts on
+/// a cross-version read. 025-A already took v4 for `Gw.bootstrap`, and two pieces
+/// claiming one magic means whichever lands second changes the positional schema
+/// without changing its guard — the exact misread the magic exists to refuse.
+const MAGIC: &[u8; 8] = b"DPSNAP5\0";
 
 /// Keystream block derived from the SECRET seed and the per-snapshot nonce.
 fn keystream(seed: &[u8; 32], nonce: &Digest, len: usize) -> Vec<u8> {
@@ -192,6 +197,27 @@ mod tests {
         let last = sealed.len() - 1;
         sealed[last] ^= 0x01;
         assert!(open(&sealed, &[9u8; 32]).is_err());
+    }
+
+    /// SEC-025-D: pin the MAGIC VALUE, not just that some magic is checked. The sibling
+    /// test XORs a byte, which passes under any value — so reverting DPSNAP5 to DPSNAP4
+    /// left the whole suite green. 025-A already ships DPSNAP4 on `main`, so a revert here
+    /// would make a v4 snapshot from that build decode positionally into a v5 `Gw` and
+    /// shift every field after `trading_gate`.
+    #[test]
+    fn a_stale_snapshot_magic_is_refused() {
+        let seed = [42u8; 32];
+        // The magic lives in the SEALED ENVELOPE (`MAGIC ‖ nonce ‖ tag ‖ ciphertext`),
+        // not in the payload — unlike the rollback journal, which carries its own magic
+        // inside a snapshot-sealed body. So overwrite the envelope's first eight bytes
+        // with the previous value; the body stays a perfectly valid v5 snapshot, which is
+        // exactly the hazard: a v4 build's file is well-formed, just differently shaped.
+        let mut sealed = seal(b"a valid payload", &seed);
+        sealed[..8].copy_from_slice(b"DPSNAP4\0");
+        assert!(
+            open(&sealed, &seed).is_err(),
+            "a snapshot under the previous magic must be refused, not decoded"
+        );
     }
 
     #[test]

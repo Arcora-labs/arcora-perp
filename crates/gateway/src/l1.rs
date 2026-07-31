@@ -18,6 +18,7 @@
 //! reuses the same signer path as deploy. A production bridge would use a native
 //! signer (alloy) instead of a subprocess + key in argv.
 
+use perp_core::Digest;
 use std::process::Command;
 
 /// keccak256("Deposit(address,bytes32,uint256,uint64,bytes32)") — the vault's deposit
@@ -291,6 +292,71 @@ impl L1 {
     }
     pub fn batch_count(&self) -> Result<u64, String> {
         self.read_u("batchCount()(uint256)").map(|v| v as u64)
+    }
+
+    // ── SEC-025-D: block-pinned reads for the trading gate ───────────────────────
+    //
+    // `finalSettle` advances `currentStateRoot` and `batchCount` identically to
+    // `settleBatch`, so neither alone excludes a wind-down. What excludes it is that
+    // `finalSettle` requires `closeOnly == true` and `closeOnly` is terminal on-chain —
+    // but that argument only holds when all three values are read AT ONE BLOCK. Three
+    // "latest" reads through a lagging or load-balanced RPC could observe different
+    // heights and silently defeat it, so every reader here takes the block as a
+    // REQUIRED parameter — a caller physically cannot forget the pinning — and all
+    // three go through one `pinned_call` choke point.
+
+    /// One block-pinned `cast call` against `addr`. The single choke point for the
+    /// gate's three reads, so none of them can individually drop the `--block` flag.
+    // A source-scan tripwire in main.rs pins every occurrence of this symbol: the
+    // real argv crosses the subprocess boundary where unit tests cannot follow, so
+    // a reader that built its own argv (silently dropping the pin) would leave every
+    // test green — the scan is what catches it.
+    fn pinned_call(&self, addr: &str, sig: &str, block: u64) -> Result<String, String> {
+        let mut a = pinned_call_args(addr, sig, block);
+        a.extend(["--rpc-url".into(), self.rpc.clone()]);
+        let refs: Vec<&str> = a.iter().map(String::as_str).collect();
+        self.cast(&refs)
+    }
+
+    /// `closeOnly` at ONE named block — the gateway's first `closeOnly` read path.
+    /// This is the term that distinguishes a wind-down `finalSettle` from a normal
+    /// `settleBatch` (the other two values move identically under both).
+    // Caller: `observe_gate_once` (main.rs), the gate's observation read.
+    pub fn close_only_at(&self, block: u64) -> Result<bool, String> {
+        let out = self.pinned_call(&self.settlement, "closeOnly()(bool)", block)?;
+        parse_close_only(&out).map_err(|e| format!("{e} (block {block})"))
+    }
+
+    /// `batchCount` at ONE named block. Parsed directly as u64 (not `read_u`'s
+    /// u128-then-truncate): an overflowing count errs — fail closed, never wrap.
+    // Caller: `observe_gate_once` (main.rs), the gate's observation read.
+    pub fn batch_count_at(&self, block: u64) -> Result<u64, String> {
+        let s = self.pinned_call(&self.settlement, "batchCount()(uint256)", block)?;
+        // cast may print "8" or "8 [8e0]" — take the leading integer token (see read_u).
+        s.split_whitespace()
+            .next()
+            .unwrap_or("")
+            .parse::<u64>()
+            .map_err(|e| format!("batchCount at block {block}: parse: {e}"))
+    }
+
+    /// `currentStateRoot` at ONE named block, as the `[u8; 32]` the gate classifier
+    /// compares against the root we settled (`current_root` returns the hex string the
+    /// status surface wants; the classifier must not depend on hex-casing quirks).
+    // Caller: `observe_gate_once` (main.rs), the gate's observation read.
+    pub fn current_root_at(&self, block: u64) -> Result<Digest, String> {
+        let s = self.pinned_call(&self.settlement, "currentStateRoot()(bytes32)", block)?;
+        parse_bytes32(&s).ok_or_else(|| format!("currentStateRoot at block {block}: bad bytes32"))
+    }
+
+    /// The current chain height — the gate's ONE discovery read that may ask "latest",
+    /// because its whole job is to pick the block the three pinned reads then name
+    /// (`observe_gate_once` rewinds it by `GATE_OPEN_CONFIRMATIONS` first). Delegates
+    /// to the challenge watcher's `block_number` — same read, and an alias that
+    /// drifted from it would mean two notions of "head".
+    // Caller: `observe_gate_once` (main.rs), the gate's observation read.
+    pub fn head_block(&self) -> Result<u64, String> {
+        self.block_number()
     }
 
     /// The sequencer key's address (the `cast wallet` derivation; no key is printed).
@@ -615,6 +681,33 @@ fn send_args(
     }
     a.extend(["--rpc-url".into(), rpc.into(), "--json".into()]);
     a
+}
+
+/// The argv for a **block-pinned** `cast call` (`--rpc-url` is appended by
+/// `pinned_call`, which owns the transport). Pure (no subprocess, no `&self`) so the
+/// pinning is unit-testable, mirroring `send_args`: the block is a required `u64`
+/// parameter, never an `Option` — a `None`-means-latest arm would let one forgetful
+/// caller silently unpin the three-way read the gate's safety argument needs.
+fn pinned_call_args(addr: &str, sig: &str, block: u64) -> Vec<String> {
+    vec![
+        "call".into(),
+        addr.into(),
+        sig.into(),
+        "--block".into(),
+        block.to_string(),
+    ]
+}
+
+/// Strict parse of `cast call … (bool)` output for `closeOnly`. `false` is the
+/// PERMISSIVE answer — it is the value that lets the gate open — so unexpected output
+/// must be an error the caller treats as Inconclusive, never a silent `false` (the
+/// lenient `claimed`-style `out == "true"` would read garbage as "not close-only").
+fn parse_close_only(out: &str) -> Result<bool, String> {
+    match out.trim() {
+        "true" => Ok(true),
+        "false" => Ok(false),
+        other => Err(format!("closeOnly: unexpected cast output {other:?}")),
+    }
 }
 
 /// A 32-byte value as `0x`+64 hex, for cast calldata.
@@ -982,6 +1075,58 @@ mod tests {
         );
     }
 
+    #[test]
+    fn a_pinned_read_names_its_block_and_an_unpinned_one_cannot_be_confused_for_it() {
+        // The whole safety argument is that the three reads see ONE block. Three "latest"
+        // calls through a lagging or load-balanced RPC could observe different heights and
+        // defeat it, and that failure is invisible at runtime — so pin the flag here.
+        let args = pinned_call_args("0xVAULT", "closeOnly()(bool)", 1234);
+        assert!(
+            args.windows(2).any(|w| w[0] == "--block" && w[1] == "1234"),
+            "a pinned read must pass --block: {args:?}"
+        );
+    }
+
+    // SEC-025-D: pin the WHOLE argv, not just the flag's presence — `cast call` takes
+    // the target and signature positionally, so a transposition (or a stray extra
+    // argument cast would read as calldata) only fails at runtime, on the one
+    // unrepeatable opening observation. `--rpc-url` is deliberately absent: transport
+    // belongs to `pinned_call`, and this builder must add nothing cast could misread.
+    #[test]
+    fn the_pinned_argv_is_exactly_call_addr_sig_block() {
+        assert_eq!(
+            pinned_call_args("0xSETTLEMENT", "batchCount()(uint256)", 42),
+            [
+                "call",
+                "0xSETTLEMENT",
+                "batchCount()(uint256)",
+                "--block",
+                "42"
+            ]
+        );
+    }
+
+    // SEC-025-D: `closeOnly` output must parse STRICTLY. `false` is the permissive
+    // answer (it lets the gate open), so garbage must become an Err the caller holds
+    // as Inconclusive — a lenient `out == "true"` parse would read an RPC hiccup as
+    // "not close-only" and could open the gate on a wound-down chain.
+    #[test]
+    fn close_only_parses_strictly_and_never_defaults_to_the_permissive_answer() {
+        assert_eq!(parse_close_only("true"), Ok(true));
+        assert_eq!(parse_close_only("false"), Ok(false));
+        assert_eq!(
+            parse_close_only(" true\n"),
+            Ok(true),
+            "cast output is trimmed"
+        );
+        for garbage in ["", "True", "0x1", "revert: whatever", "false true"] {
+            assert!(
+                parse_close_only(garbage).is_err(),
+                "{garbage:?} must be an error, not a silent bool"
+            );
+        }
+    }
+
     // audit DP-007: the mock-proof bridge may only settle against testnets; real-value
     // chains are refused unless the operator explicitly opts into the unsound verifier.
     #[test]
@@ -1141,6 +1286,10 @@ mod tests {
             rejected_root: [0x66; 32],
             deposits_root: [0x77; 32],
             new_deposit_count: 42,
+            // SEC-025-D: gate terms — consumed by `commit_window_settle`'s opening
+            // check, never by the settleBatch calldata this test pins.
+            post_mode_is_normal: true,
+            post_insurance_fund: 0,
             commitment: [0x88; 32],
             proof: vec![0xab, 0xcd],
         };

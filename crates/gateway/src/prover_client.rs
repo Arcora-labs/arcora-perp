@@ -44,6 +44,12 @@ pub struct ProveOutcome {
     /// is verified, so it is a fund-safety input and is derived locally, never accepted
     /// from the prover.
     pub new_deposit_count: u64,
+    /// SEC-025-D: the proven post-state terms the launch gate judges. Derived from the
+    /// SAME local replay as every root here, at the one point where the post-state
+    /// exists — `commit_window_settle` receives neither a witness nor a state, and the
+    /// live `seq.state` has advanced past this window by the time a proof returns.
+    pub post_mode_is_normal: bool,
+    pub post_insurance_fund: i128,
     pub commitment: Digest,
     pub proof: Vec<u8>,
 }
@@ -266,6 +272,8 @@ pub fn prove_and_prepare(
         rejected_root: derived.rejected_root,
         deposits_root: derived.deposits_root,
         new_deposit_count: post.consumed_deposit_count,
+        post_mode_is_normal: post.mode == perp_core::Mode::Normal,
+        post_insurance_fund: post.insurance_fund,
         commitment: local_commitment,
         proof: remote.proof,
     };
@@ -952,6 +960,105 @@ mod tests {
         assert_eq!(
             prepared.outcome.new_deposit_count,
             witness.pre_state.consumed_deposit_count
+        );
+    }
+
+    // ── SEC-025-D Task 2: the proven post-state terms the launch gate judges ──
+
+    #[test]
+    fn the_outcome_carries_the_proven_post_state_terms_the_gate_judges() {
+        // These ride here for one reason: `commit_window_settle` gets no witness and no
+        // state, and `self.seq.state` is NOT the window's post-state — ticks run every
+        // 700ms while a real proof takes minutes, so the live state has moved on.
+        let (witness, ww) = crate::prover_client::tests_support::sample_window();
+        // Fixture honesty, said plainly: no op in this window touches the insurance
+        // fund, so the proven post value EQUALS the pre-state one — this assert cannot
+        // tell a post-state read from a pre-state read (the close-only test below is
+        // the one that pins post vs pre). What it CAN reject is a defaulted or
+        // hardcoded 0, because the boot fixture seeds a non-zero fund.
+        assert!(
+            witness.pre_state.insurance_fund > 0,
+            "fixture precondition: boot must seed a non-zero insurance fund, or the \
+             post_insurance_fund assert below cannot reject a defaulted 0"
+        );
+        let out = prove_and_prepare(&MockProverClient, &witness, &ww).expect("prepare");
+        assert!(out.outcome.post_mode_is_normal);
+        assert_eq!(
+            out.outcome.post_insurance_fund,
+            witness.pre_state.insurance_fund
+        );
+    }
+
+    /// The insurance term is the REPLAYED post-state's. A demo fill routes its taker fee
+    /// through the per-fill insurance cut, so the fund rises INSIDE the window and the
+    /// pre-state differs from the post-state — which is the only way to tell a post-state
+    /// read from a pre-state one.
+    ///
+    /// This matters more than "one window late". The capitalization window's pre-state has
+    /// `insurance_fund == 0` by construction, and `begin_window_settle` returns `None` on
+    /// an unchanged root with no manifest content while SEC-025-A's bootstrap endpoint is
+    /// one-shot — so under a pre-state read there may never BE a later window. The
+    /// regression's real mode is "the gate never opens", not "it opens late".
+    #[test]
+    fn the_insurance_term_is_the_post_state_not_the_pre_state() {
+        let mut gw = crate::Gw::boot();
+        gw.trading_gate = crate::trading_gate::TradingGate::Open;
+        let req = crate::OrderReq {
+            market_id: 0,
+            side: "Buy".into(),
+            size: (crate::SIZE_SCALE / 10).to_string(),
+            limit_price: "0".into(),
+            tif: "Ioc".into(),
+            reduce_only: false,
+            nonce: None,
+            signature: None,
+            ..Default::default()
+        };
+        gw.place_order(&req).expect("demo order accepted");
+        gw.tick();
+        let bc = gw.seq.state.next_batch_id;
+        let (witness, ww) = gw.begin_window_settle(bc).unwrap().expect("window sealed");
+        // fixture precondition — without a fund that MOVES inside the window, this test
+        // cannot distinguish the two reads and would pass against either.
+        let pre = witness.pre_state.insurance_fund;
+        let out = prove_and_prepare(&MockProverClient, &witness, &ww).expect("prepare");
+        assert!(
+            out.outcome.post_insurance_fund > pre,
+            "fixture precondition: the fill's insurance cut must raise the fund inside the \
+             window (pre {pre}, post {})",
+            out.outcome.post_insurance_fund
+        );
+    }
+
+    /// The mode term is the REPLAYED post-state's — not a constant, and not the
+    /// pre-state's. This window ENTERS close-only mid-window through the real
+    /// gateway path (`set_mode` → `Sequencer::apply` logs the op into the open
+    /// window), so the pre-state reads Normal while the proven post-state must not.
+    /// A hardcoded `true` or a pre-state read both die here.
+    #[test]
+    fn a_window_that_enters_close_only_reports_a_non_normal_post_state() {
+        let mut gw = crate::Gw::boot();
+        gw.set_mode("CloseOnly");
+        let bc = gw.seq.state.next_batch_id;
+        let (witness, ww) = gw.begin_window_settle(bc).unwrap().expect("window sealed");
+        // fixture preconditions — the flip must happen INSIDE the window, or this
+        // test could not tell a post-state read from a pre-state one
+        assert_eq!(
+            witness.pre_state.mode,
+            perp_core::Mode::Normal,
+            "fixture precondition: the pre-state must be Normal"
+        );
+        assert!(
+            witness
+                .ops
+                .iter()
+                .any(|o| matches!(o, perp_core::engine::BatchOp::EnterCloseOnly)),
+            "fixture precondition: the mode flip must be a window op"
+        );
+        let out = prove_and_prepare(&MockProverClient, &witness, &ww).expect("prepare");
+        assert!(
+            !out.outcome.post_mode_is_normal,
+            "a window that entered close-only must not report a normal post-state"
         );
     }
 
