@@ -1101,6 +1101,63 @@ describe("own-account reads from /v1 (SEC-025-E1)", () => {
     client.dispose();
   });
 
+  it("private mode + the F7 error reset: the placeholder still survives — the provisioning latch outlives both erasable gate sources (fix-wave-3 H3)", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    // Storage rejects writes (private browsing): registration succeeds and
+    // `sealing` is set, but NOTHING ever lands in localStorage…
+    vi.spyOn(localStorage, "setItem").mockImplementation(() => {
+      throw new Error("private mode");
+    });
+    const { settledBalance: _dropped, ...noBalance } = defaultMeFields();
+    meFields = noBalance; // no own read ever succeeds
+    stateResponse = demoState;
+    const client = await bootstrapClient();
+    lastWsV1!.open();
+    expect(client.getState().accountUnavailable).toBe(true); // the G1 baseline holds pre-error
+    // …then the socket refuses the key (the state-wipe cutover F7 was written
+    // for) and its error branch nulls `sealing`: BOTH of hasAccount()'s
+    // erasable sources are now gone. Only the in-memory `everProvisioned`
+    // latch still knows an account was provisioned this session — without it
+    // the next public frame repaints the shared demo wallet, unflagged (the
+    // exact defect F1 removed).
+    lastWsV1!.onmessage!({ data: JSON.stringify({ type: "error", message: "unknown api key" }) });
+    lastWs!.onmessage!({ data: JSON.stringify({ type: "state", state: demoState }) });
+    const st = client.getState();
+    expect(st.orders).toEqual([]); // not the demo wallet's actionable rows
+    expect(st.account.settledBalance).toBe(0n); // not the demo 123000000
+    expect(st.account.positions).toEqual([]); // not the demo long-BTC position
+    expect(st.accountUnavailable).toBe(true);
+    client.dispose();
+  });
+
+  it("a stored account revalidated OK, then storage cleared mid-session + the F7 reset: the latch still holds the placeholder (fix-wave-3 H3, the initAccount stored path)", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    // A previous session's account revalidates fine (the STORED provisioning
+    // path — no fresh registration)…
+    localStorage.setItem(
+      "darkperp.v1Account",
+      JSON.stringify({ apiKey: ACCT_KEY, owner: OWNER_HEX }),
+    );
+    const { settledBalance: _dropped, ...noBalance } = defaultMeFields();
+    meFields = noBalance; // revalidation 200s, the own reads still fail
+    stateResponse = demoState;
+    const client = await bootstrapClient();
+    expect(registrations).toBe(0); // provisioned via the stored path, not POST /v1/accounts
+    lastWsV1!.open();
+    // …then another tab (or a site-data clear) erases the stored copy AND the
+    // auth-error reset nulls `sealing`. A latch set only at the fresh-
+    // registration site would miss this session entirely.
+    localStorage.clear();
+    lastWsV1!.onmessage!({ data: JSON.stringify({ type: "error", message: "unknown api key" }) });
+    lastWs!.onmessage!({ data: JSON.stringify({ type: "state", state: demoState }) });
+    const st = client.getState();
+    expect(st.orders).toEqual([]);
+    expect(st.account.settledBalance).toBe(0n);
+    expect(st.account.positions).toEqual([]);
+    expect(st.accountUnavailable).toBe(true);
+    client.dispose();
+  });
+
   it("an order served without a receipt (older gateway) degrades to a synthesized stub receipt", async () => {
     const { receipt: _dropped, ...noReceipt } = v1Order;
     v1OrdersResponse = { orders: [noReceipt] };

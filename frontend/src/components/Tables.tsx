@@ -26,13 +26,17 @@ function HealthCell({ liq, mark, long }: { liq: bigint; mark: bigint; long: bool
 /** SEC-025-E1 fix-wave-2 G2: when `accountUnavailable` is set, `account`/`orders`
  * are EMPTY PLACEHOLDERS (a read failure, realClient emit()) — an unlabelled
  * empty table would present "we could not read your account" as "you are flat".
- * A user with a live leveraged position must be able to tell the two apart. */
+ * A user with a live leveraged position must be able to tell the two apart.
+ * Fix-wave-3 H1: no "recovers automatically" promise — in two of the flag's
+ * states (the F7 auth-error reset, a boot-time registration failure) nothing
+ * retries on its own (tryAuthV1 early-returns without `sealing`, and the only
+ * timer refreshes market data), so recovery needs a user action or a reload. */
 function UnavailableNotice({ what }: { what: string }) {
   return (
     <p className="empty neg">
       Your {what} could not be read from the gateway — this empty list is a
-      placeholder, not your actual state. It recovers automatically once the
-      connection does.
+      placeholder, not your actual state. It clears as soon as a read
+      succeeds; if it persists, reload the page.
     </p>
   );
 }

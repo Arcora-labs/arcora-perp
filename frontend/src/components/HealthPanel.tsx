@@ -76,6 +76,12 @@ export function HealthPanel() {
   // FIN-001: the settle-loop breaker (null = old gateway / mock → row hidden)
   const settleRow = state.settlement ? settlementRowModel(state.settlement) : null;
 
+  // SEC-025-E1 fix-wave-3 H2: over the unavailable-account PLACEHOLDER the
+  // Accounting tiles would state "Equity $0.00" as dollar fact — on the trade
+  // tab, in a card separate from the suspended verdict row, and louder than
+  // the "Positions · 0" G2 fixed. Same treatment as the G2 tab counts: "—".
+  const acctStat = (v: bigint): string => (state.accountUnavailable ? "—" : formatUsd(v));
+
   return (
     <div className="grid grid--two">
       <div className="col">
@@ -109,10 +115,14 @@ export function HealthPanel() {
         <div className="card">
           <h3 className="card__title">Accounting</h3>
           <div className="summary">
-            <Stat label="Equity" value={formatUsd(s.equity)} />
-            <Stat label="Free" value={formatUsd(s.freeBalance)} />
-            <Stat label="Used margin" value={formatUsd(s.usedMargin)} />
-            <Stat label="uPnL" value={formatUsd(s.upnl)} tone={s.upnl >= 0n ? "pos" : "neg"} />
+            <Stat label="Equity" value={acctStat(s.equity)} />
+            <Stat label="Free" value={acctStat(s.freeBalance)} />
+            <Stat label="Used margin" value={acctStat(s.usedMargin)} />
+            <Stat
+              label="uPnL"
+              value={acctStat(s.upnl)}
+              tone={state.accountUnavailable ? undefined : s.upnl >= 0n ? "pos" : "neg"}
+            />
           </div>
         </div>
 

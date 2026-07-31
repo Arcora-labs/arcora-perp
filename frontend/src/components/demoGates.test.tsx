@@ -390,3 +390,55 @@ describe("trade-screen surfaces distinguish 'unreadable' from 'flat' (fix-wave-2
     expect(screen.queryByText(/check suspended/i)).toBeNull();
   });
 });
+
+// ── fix-wave-3 H1/H2: no false recovery promise; no "$0.00" stated as fact ───
+// H1: the unavailable notices said "recovers automatically once the connection
+// does" — false in two of the flag's states (the F7 auth-error reset and a
+// boot-time registration failure): tryAuthV1 early-returns without `sealing`,
+// deliberately never auto-retries, and the only timer refreshes market data.
+// H2: HealthPanel's Accounting card rendered the placeholder as Equity/Free/
+// Used margin/uPnL "$0.00" — a dollar claim louder than the "Positions · 0"
+// G2 fixed, in a card separate from the suspended verdict row.
+describe("unavailable-state honesty (fix-wave-3 H1/H2)", () => {
+  /** The four Accounting-card tile values, in render order. */
+  function accountingValues(): (string | null)[] {
+    const card = screen.getByText("Accounting").closest(".card");
+    expect(card).toBeTruthy();
+    return Array.from(card!.querySelectorAll(".summary__value")).map((el) => el.textContent);
+  }
+
+  it("H1 Tables: the notice points at 'reload the page' and no longer promises automatic recovery", () => {
+    injected.client = realShaped();
+    injected.state = unavailableState();
+    render(<PositionsOrders />);
+    expect(screen.getByText(/positions could not be read/i)).toBeTruthy();
+    expect(screen.getByText(/reload the page/i)).toBeTruthy();
+    expect(screen.queryByText(/recovers automatically/i)).toBeNull();
+  });
+
+  it("H1 AccountPanel: same — the reload escape hatch, no automatic-recovery promise", () => {
+    injected.client = realShaped();
+    injected.state = unavailableState();
+    render(<AccountPanel />);
+    expect(screen.getByText(/could not be read/i)).toBeTruthy();
+    expect(screen.getByText(/reload the page/i)).toBeTruthy();
+    expect(screen.queryByText(/recovers automatically/i)).toBeNull();
+  });
+
+  it("H2 HealthPanel: all four Accounting tiles dash out over an unreadable account — never '$0.00' as fact", () => {
+    injected.client = realShaped();
+    injected.state = unavailableState();
+    render(<HealthPanel />);
+    // toEqual over ALL FOUR: a ternary applied to only some tiles fails here.
+    expect(accountingValues()).toEqual(["—", "—", "—", "—"]);
+  });
+
+  it("H2 HealthPanel: a readable account keeps the four dollar tiles", () => {
+    injected.client = realShaped();
+    injected.state = baseState();
+    render(<HealthPanel />);
+    const values = accountingValues();
+    expect(values).toHaveLength(4);
+    for (const v of values) expect(v).toMatch(/^\$/); // formatUsd output, not "—"
+  });
+});

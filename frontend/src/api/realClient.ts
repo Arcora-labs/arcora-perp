@@ -563,6 +563,20 @@ export class RealDarkPerpClient implements DarkPerpClient {
   private epochFetch: Promise<VerifiedEpoch> | null = null;
   /** The self-provisioned `/v1` trading account sealed orders trade as. */
   private sealing: SealingAccount | null = null;
+  /**
+   * Monotone provisioning latch (fix-wave-3 H3): set beside every `sealing`
+   * assignment, NEVER reset. `hasAccount()`'s other two sources can each be
+   * erased after the fact — the /v1/ws `error` branch nulls `sealing` (F7),
+   * and the stored copy may never have been written (private mode:
+   * initAccount swallows the storage-write failure) or can be cleared by
+   * another tab — and with both gone emit() would repaint the shared demo
+   * wallet as the caller's account: the exact defect F1 removed. An
+   * in-memory bit cannot be erased. It feeds ONLY the rendering gate
+   * (hasAccount → placeholder + accountUnavailable, the conservative
+   * direction); it must never feed tryAuthV1/ensureAccount, which key on
+   * `sealing` itself so the no-registration-loop rule (F7) stands.
+   */
+  private everProvisioned = false;
   private acctFetch: Promise<SealingAccount> | null = null;
   /**
    * Strictly-increasing order nonce carried inside the sealed terms. The gateway
@@ -664,6 +678,7 @@ export class RealDarkPerpClient implements DarkPerpClient {
         const res = await fetch(this.base + "/v1/accounts/me", { headers: { "X-Api-Key": stored.apiKey } });
         if (res.ok) {
           this.sealing = stored;
+          this.everProvisioned = true;
           this.tryAuthV1(); // the account stream may already be open and waiting
           return stored;
         }
@@ -680,6 +695,7 @@ export class RealDarkPerpClient implements DarkPerpClient {
       localStorage.setItem(LS_ACCOUNT_KEY, JSON.stringify({ apiKey: j.apiKey, owner: j.owner }));
     } catch { /* storage unavailable (private mode) — account lives for this session only */ }
     this.sealing = acct;
+    this.everProvisioned = true;
     this.tryAuthV1(); // the account stream may already be open and waiting
     return acct;
   }
@@ -705,11 +721,21 @@ export class RealDarkPerpClient implements DarkPerpClient {
    * stored key failed revalidation and whose re-registration also failed. In
    * both, falling through to the public feed would render the shared demo
    * wallet as the caller's account — the exact defect F1 removed, reopened by
-   * its neighbour. Both the fallback AND `accountUnavailable` key on this one
-   * predicate so the two can never disagree.
+   * its neighbour. The `everProvisioned` latch (fix-wave-3 H3) covers the
+   * state where BOTH of those are gone — private mode (the storage write
+   * threw, so nothing was ever stored) or a cleared storage, followed by the
+   * F7 reset nulling `sealing` — because both sources are erasable and the
+   * in-memory latch is not. Both the fallback AND `accountUnavailable` key on
+   * this one predicate so the two can never disagree.
    */
   private hasAccount(): boolean {
-    return this.sealing !== null || this.readStoredAccount() !== null;
+    // Cheap in-memory disjuncts first (H3): emit() runs this on every WS frame
+    // and every poll tick, and readStoredAccount() is a synchronous
+    // localStorage read + JSON.parse — once the latch is set (any provisioned
+    // session) the storage read never runs. The middle disjunct is subsumed by
+    // the latch today (every `sealing` assignment sets it) and stays as a
+    // guard against a future assignment site that forgets to.
+    return this.everProvisioned || this.sealing !== null || this.readStoredAccount() !== null;
   }
 
   /**
@@ -938,9 +964,11 @@ export class RealDarkPerpClient implements DarkPerpClient {
       // "o42" would cancel the caller's own unseen "o42". Instead: EMPTY
       // placeholders plus the `accountUnavailable` flag, so the UI can say
       // "unreadable", never "zero" and never a stranger's numbers.
-      // "An account exists" is hasAccount() — provisioned OR stored (G1):
-      // gating on `sealing` alone reopened the fallback in exactly the
-      // state-wipe cutover F7's error-branch reset was written for.
+      // "An account exists" is hasAccount() — provisioned, stored (G1), OR
+      // ever provisioned this session (the H3 latch): gating on `sealing`
+      // alone reopened the fallback in exactly the state-wipe cutover F7's
+      // error-branch reset was written for, and the first two sources are
+      // both erasable (F7 nulls one; private mode never wrote the other).
       orders: this.ownOrders ?? (hasAcct ? [] : base.orders),
       account:
         this.ownAccount ??

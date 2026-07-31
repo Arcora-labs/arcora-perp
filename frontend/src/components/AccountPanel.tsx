@@ -159,13 +159,15 @@ export function AccountPanel() {
       {/* SEC-025-E1 review F1: with a /v1 account provisioned but unreadable,
           the client emits an EMPTY placeholder instead of the public demo
           feed — say so, or a user cannot tell "no balance" from "we could
-          not read your account". */}
+          not read your account". Fix-wave-3 H1: no automatic-recovery promise
+          — after the F7 auth-error reset or a boot-time registration failure
+          nothing retries on its own (see Tables.UnavailableNotice). */}
       {state.accountUnavailable && (
         <p className="small neg">
           Your account state could not be read from the gateway — the balance,
           positions and orders shown are <strong>placeholders (0), not your
-          actual state</strong>. The view recovers automatically once the
-          connection does.
+          actual state</strong>. It clears as soon as a read succeeds; if this
+          notice persists, reload the page.
         </p>
       )}
 
