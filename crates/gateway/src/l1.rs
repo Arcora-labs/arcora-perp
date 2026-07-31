@@ -307,10 +307,10 @@ impl L1 {
 
     /// One block-pinned `cast call` against `addr`. The single choke point for the
     /// gate's three reads, so none of them can individually drop the `--block` flag.
-    // No dead-code marker here even though Task 4 brings the first real caller: rustc
-    // seeds `expect(dead_code)` items as live roots, so the marked readers below keep
-    // this callee "used" — a marker here would itself be an unfulfilled expectation
-    // and fail CI's `-D warnings`.
+    // A source-scan tripwire in main.rs pins every occurrence of this symbol: the
+    // real argv crosses the subprocess boundary where unit tests cannot follow, so
+    // a reader that built its own argv (silently dropping the pin) would leave every
+    // test green — the scan is what catches it.
     fn pinned_call(&self, addr: &str, sig: &str, block: u64) -> Result<String, String> {
         let mut a = pinned_call_args(addr, sig, block);
         a.extend(["--rpc-url".into(), self.rpc.clone()]);
@@ -321,8 +321,7 @@ impl L1 {
     /// `closeOnly` at ONE named block — the gateway's first `closeOnly` read path.
     /// This is the term that distinguishes a wind-down `finalSettle` from a normal
     /// `settleBatch` (the other two values move identically under both).
-    // Caller lands in Task 4 (`commit_window_settle`'s opening check).
-    #[expect(dead_code)]
+    // Caller: `observe_gate_once` (main.rs), the gate's observation read.
     pub fn close_only_at(&self, block: u64) -> Result<bool, String> {
         let out = self.pinned_call(&self.settlement, "closeOnly()(bool)", block)?;
         parse_close_only(&out).map_err(|e| format!("{e} (block {block})"))
@@ -330,8 +329,7 @@ impl L1 {
 
     /// `batchCount` at ONE named block. Parsed directly as u64 (not `read_u`'s
     /// u128-then-truncate): an overflowing count errs — fail closed, never wrap.
-    // Caller lands in Task 4 (`commit_window_settle`'s opening check).
-    #[expect(dead_code)]
+    // Caller: `observe_gate_once` (main.rs), the gate's observation read.
     pub fn batch_count_at(&self, block: u64) -> Result<u64, String> {
         let s = self.pinned_call(&self.settlement, "batchCount()(uint256)", block)?;
         // cast may print "8" or "8 [8e0]" — take the leading integer token (see read_u).
@@ -345,8 +343,7 @@ impl L1 {
     /// `currentStateRoot` at ONE named block, as the `[u8; 32]` the gate classifier
     /// compares against the root we settled (`current_root` returns the hex string the
     /// status surface wants; the classifier must not depend on hex-casing quirks).
-    // Caller lands in Task 4 (`commit_window_settle`'s opening check).
-    #[expect(dead_code)]
+    // Caller: `observe_gate_once` (main.rs), the gate's observation read.
     pub fn current_root_at(&self, block: u64) -> Result<Digest, String> {
         let s = self.pinned_call(&self.settlement, "currentStateRoot()(bytes32)", block)?;
         parse_bytes32(&s).ok_or_else(|| format!("currentStateRoot at block {block}: bad bytes32"))
@@ -354,11 +351,10 @@ impl L1 {
 
     /// The current chain height — the gate's ONE discovery read that may ask "latest",
     /// because its whole job is to pick the block the three pinned reads then name
-    /// (Task 4 rewinds it by `GATE_OPEN_CONFIRMATIONS` first). Delegates to the
-    /// challenge watcher's `block_number` — same read, and an alias that drifted from
-    /// it would mean two notions of "head".
-    // Caller lands in Task 4 (`commit_window_settle`'s opening check).
-    #[expect(dead_code)]
+    /// (`observe_gate_once` rewinds it by `GATE_OPEN_CONFIRMATIONS` first). Delegates
+    /// to the challenge watcher's `block_number` — same read, and an alias that
+    /// drifted from it would mean two notions of "head".
+    // Caller: `observe_gate_once` (main.rs), the gate's observation read.
     pub fn head_block(&self) -> Result<u64, String> {
         self.block_number()
     }

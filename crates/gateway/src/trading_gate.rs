@@ -11,17 +11,15 @@ use crate::bootstrap::MIN_BOOTSTRAP_INSURANCE;
 /// that unwound the capitalization settle after opening would leave trading enabled
 /// against a fund that no longer exists on L1. `cast` defaults to one confirmation;
 /// inheriting that default silently is a policy choice made by accident.
-// Consumed by nothing yet, even under test — Task 4's opening check pins its
-// observation block this deep; the marker comes off with that caller.
-#[expect(dead_code)]
+// Consumed by `observe_gate_once` (main.rs), which rewinds its observation block
+// this deep behind head before the three pinned reads.
 pub const GATE_OPEN_CONFIRMATIONS: u64 = 12;
 
 /// The minimum credited deposits a launch-ready deployment must show. The operator's own
 /// bootstrap deposit is one, so this is deliberately small — it exists to reject a
 /// deployment that has never credited anything, not to demand traffic.
-// Consumed by nothing yet, even under test — Task 4's opening check passes it as
-// `predicate_met`'s `min_deposits`; the marker comes off with that caller.
-#[expect(dead_code)]
+// Passed as `predicate_met`'s `min_deposits` by `commit_window_settle`'s opening
+// check (main.rs).
 pub const MIN_BOOTSTRAP_DEPOSITS: u64 = 1;
 
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -52,9 +50,7 @@ pub enum GateObservation {
 /// may commit the gate closed. The opening check runs once per commit and a commit is not
 /// repeatable, so resolving an errored or lagging read against opening would burn the only
 /// opportunity — and 025-A's bootstrap endpoint is one-shot and cannot manufacture another.
-// Production caller lands in Task 4 (`commit_window_settle`'s opening check); until
-// then only the tests below call this, so the non-test build sees it dead.
-#[cfg_attr(not(test), expect(dead_code))]
+// Production caller: `observe_gate_once` (main.rs), fed by the three pinned readers.
 pub fn classify(
     chain_batch_count: u64,
     sealed_batch_id: u64,
@@ -79,9 +75,9 @@ pub fn classify(
 }
 
 /// The capitalization half of the opening condition, judged on the PROVEN post-state.
-// Production caller lands in Task 4 (`commit_window_settle`'s opening check); until
-// then only the tests below call this, so the non-test build sees it dead.
-#[cfg_attr(not(test), expect(dead_code))]
+// Production caller: `commit_window_settle`'s opening check (main.rs), over the
+// `ProveOutcome` post-state terms — never the live `seq.state`, which has advanced
+// past the proven window by the time a proof returns.
 pub fn predicate_met(
     mode_is_normal: bool,
     insurance_fund: i128,

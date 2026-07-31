@@ -145,6 +145,81 @@ fn settle_failure_action(sealed_batch_id: u64, chain_batch_count: u64) -> RollAc
     }
 }
 
+/// SEC-025-D: how long a settle path may wait for its gate observation to become
+/// conclusive before carrying `Inconclusive` into the commit. The observation block
+/// sits `GATE_OPEN_CONFIRMATIONS` behind head, so right after a settle's receipt it
+/// predates the settle by construction and the classifier reads "lagging" — the
+/// chain needs ~12 more Base blocks (~24 s) before the observation can decide.
+/// This deadline is that, with generous slack for a slow or load-balanced RPC.
+/// Only paid while the gate is Closed (launch), never in steady state.
+const GATE_OBSERVE_WAIT_SECS: u64 = 120;
+
+/// Poll cadence inside that wait — a few Base blocks per probe. Each probe is four
+/// `cast` subprocesses, so probing faster than the chain moves only burns RPC.
+const GATE_OBSERVE_POLL_SECS: u64 = 5;
+
+/// SEC-025-D: ONE block-pinned three-way gate observation. Reads `batchCount`,
+/// `currentStateRoot` and `closeOnly` at a SINGLE height `GATE_OPEN_CONFIRMATIONS`
+/// behind the current head and classifies the result. All three at one block, or
+/// the finalSettle exclusion does not hold (see the pinned readers' block comment
+/// in l1.rs); the depth means a reorg shallower than the confirmation policy
+/// cannot unwind what an OPEN was decided on. Any failed read is `Inconclusive`,
+/// NEVER `StaysClosed`: the opening check runs once per commit and a commit is not
+/// repeatable, so resolving an errored read against opening could burn a launch's
+/// only opportunity — an idle book opens no further windows, and 025-A's bootstrap
+/// endpoint is one-shot and cannot manufacture one.
+fn observe_gate_once(
+    l1: &L1,
+    sealed_batch_id: u64,
+    our_new_root: Digest,
+) -> trading_gate::GateObservation {
+    let read = || -> Result<trading_gate::GateObservation, String> {
+        let head = l1.head_block()?;
+        let pinned = head.saturating_sub(trading_gate::GATE_OPEN_CONFIRMATIONS);
+        let count = l1.batch_count_at(pinned)?;
+        let root = l1.current_root_at(pinned)?;
+        let close_only = l1.close_only_at(pinned)?;
+        Ok(trading_gate::classify(
+            count,
+            sealed_batch_id,
+            root,
+            our_new_root,
+            close_only,
+        ))
+    };
+    read().unwrap_or_else(|e| {
+        eprintln!("[gate] pinned observation read failed ({e}) — inconclusive, not resolved");
+        trading_gate::GateObservation::Inconclusive
+    })
+}
+
+/// SEC-025-D: the settle paths' gate observation — `observe_gate_once`, retried
+/// while it reads `Inconclusive`, up to a wall-clock deadline. The wait is what
+/// makes a quiet launch able to open at all: the commit right after a receipt
+/// always starts lagging (the observation block trails head by the confirmation
+/// depth), and a deployment whose only window was the capitalization settle never
+/// seals another — without the wait every observation it will ever get is
+/// `Inconclusive` and the gate never opens. Bounded: past the deadline the last
+/// `Inconclusive` is returned, which leaves the gate UNRESOLVED for a later
+/// window rather than resolved against opening. Blocking (subprocess reads +
+/// sleeps) — call from `spawn_blocking` or boot, never on the async runtime.
+fn observe_gate(
+    l1: &L1,
+    sealed_batch_id: u64,
+    our_new_root: Digest,
+) -> trading_gate::GateObservation {
+    let deadline = std::time::Instant::now() + Duration::from_secs(GATE_OBSERVE_WAIT_SECS);
+    loop {
+        let obs = observe_gate_once(l1, sealed_batch_id, our_new_root);
+        if obs != trading_gate::GateObservation::Inconclusive
+            || std::time::Instant::now() >= deadline
+        {
+            return obs;
+        }
+        std::thread::sleep(Duration::from_secs(GATE_OBSERVE_POLL_SECS));
+    }
+}
+
 /// Fix round 2 (final-review TOCTOU): whether the boot-recovery chain read must
 /// be CONFIRMED by a delayed second read before feeding the recovery decision.
 ///
@@ -193,12 +268,21 @@ enum BootRecoveryOutcome {
 /// roll-forward: re-commit the bookkeeping from the journal's `prepared`).
 /// Every HOLD prints a line containing "HOLDING" — the ops health alert greps
 /// for that substring.
+///
+/// SEC-025-D: `gate_observation` is the block-pinned three-way gate read the CALLER
+/// took (this function stays pure of chain I/O so its tests can drive the table
+/// directly); it reaches `commit_window_settle` only through the RollForward arm —
+/// the third place a settle can be committed, and so the third place a wind-down
+/// `finalSettle` could be mistaken for ours. Callers that cannot or need not
+/// observe (tests, a gate already open, a non-roll-forward shape) pass
+/// `Inconclusive`, which can never open the gate and never latches it either.
 fn apply_boot_recovery(
     gw: &mut Gw,
     j: rollback_journal::RollbackJournal,
     chain_bc: u64,
     chain_root: &str,
     bond: u128,
+    gate_observation: trading_gate::GateObservation,
 ) -> BootRecoveryOutcome {
     use rollback_journal::RecoveryAction;
     let b_snap = gw.seq.state.next_batch_id;
@@ -272,7 +356,14 @@ fn apply_boot_recovery(
                 bond: bond.to_string(),
                 withdrawals_root: hex32(&prepared.outcome.withdrawals_root),
             };
-            gw.commit_window_settle(j.batch_id, ordered, rejected, prepared, status);
+            gw.commit_window_settle(
+                j.batch_id,
+                ordered,
+                rejected,
+                prepared,
+                status,
+                gate_observation,
+            );
             println!(
                 "[recovery] rolled forward window {} at boot (tx landed, commit lost) — \
                  bookkeeping re-committed from the journal",
@@ -1156,6 +1247,16 @@ struct Gw {
     /// block-pinned `settleBatch` shows the deployment capitalized — see `trading_gate`.
     #[serde(default = "trading_gate_closed")]
     trading_gate: trading_gate::TradingGate,
+    /// SEC-025-D test-only: `(mode_is_normal, insurance_fund, deposit_count)` the
+    /// test commit fixture puts on its `ProveOutcome` INSTEAD of deriving them from
+    /// live state. The divergence is the point: the gate must judge the PROVEN
+    /// post-state terms, and only terms that differ from `seq.state` can catch a
+    /// transition that consults the live state (see
+    /// `commit_window_settle_for_test_with`). `serde(skip)` — never persisted, so
+    /// the snapshot wire format is identical with and without `cfg(test)`.
+    #[cfg(test)]
+    #[serde(skip)]
+    test_post_state: Option<(bool, i128, u64)>,
     /// On-chain deposit tx hashes already credited (idempotency / replay guard).
     processed_deposit_txs: std::collections::BTreeSet<String>,
     /// Manifest hash of the most recently sealed batch. SEC-025-B: no longer read —
@@ -1758,6 +1859,8 @@ impl Gw {
             } else {
                 trading_gate::TradingGate::Closed
             },
+            #[cfg(test)]
+            test_post_state: None,
             processed_deposit_txs: std::collections::BTreeSet::new(),
             last_manifest: [0u8; 32],
             pending_ordered: Vec::new(),
@@ -2573,7 +2676,11 @@ impl Gw {
     /// EXTEND, never replace); advances `last_settled_root`; retains this batch's ordered/
     /// rejected hashes for DP-004 challenge answers (keyed by the on-chain batch id, which
     /// equals the window id); clears the now-redundant legacy pending accumulators; and
-    /// records the published L1 status.
+    /// records the published L1 status. SEC-025-D: also the ONE place the launch gate
+    /// can open — every path that commits a settle passes the block-pinned observation
+    /// it took, and the gate opens only on `OpensGate` over a capitalized PROVEN
+    /// post-state (the `ProveOutcome` terms, not the live `seq.state`, which has
+    /// advanced past the proven window by the time a proof returns).
     fn commit_window_settle(
         &mut self,
         batch_id: u64,
@@ -2581,11 +2688,30 @@ impl Gw {
         rejected: Vec<Digest>,
         prepared: prover_client::PreparedSettle,
         l1_status: L1Status,
+        observation: trading_gate::GateObservation,
     ) {
         for (leaf, entry) in prepared.withdraw_proofs {
             self.withdraw_proofs.insert(leaf, entry);
         }
         self.last_settled_root = prepared.outcome.new_root;
+        // SEC-025-D: open ONCE, and only on a proven, block-pinned normal settle over a
+        // capitalized post-state. Never re-closes — see `trading_gate`'s module doc for
+        // why a launch gate must not double as a circuit breaker.
+        if self.trading_gate == trading_gate::TradingGate::Closed
+            && observation == trading_gate::GateObservation::OpensGate
+            && trading_gate::predicate_met(
+                prepared.outcome.post_mode_is_normal,
+                prepared.outcome.post_insurance_fund,
+                prepared.outcome.new_deposit_count,
+                trading_gate::MIN_BOOTSTRAP_DEPOSITS,
+            )
+        {
+            self.trading_gate = trading_gate::TradingGate::Open;
+            println!(
+                "[gate] trading gate OPEN (window {batch_id}): pinned observation confirmed \
+                 our settleBatch on a capitalized post-state"
+            );
+        }
         // SEC-025-A: the bootstrap completes only when the window carrying the SECOND leg
         // commits. Keyed on the id rather than on a predicate, because this function
         // receives no witness and no post-state — the replay built during proving is
@@ -7360,7 +7486,45 @@ async fn main() {
                         };
                         match reads {
                             Ok((chain_bc, chain_root, bond)) => {
-                                match apply_boot_recovery(&mut gw, j, chain_bc, &chain_root, bond) {
+                                // SEC-025-D: the boot roll-forward COMMITS a settle, so it
+                                // must carry the same block-pinned observation as the live
+                                // settle paths — it must not shortcut the finalSettle
+                                // distinction to `StaysClosed`, and a failed read proves
+                                // nothing (`Inconclusive`). Observed only when this journal
+                                // actually presents the roll-forward shape (the same
+                                // conjunction `recovery_action`'s RollForward row requires)
+                                // and the gate is still Closed. The pre-filter carries no
+                                // safety weight — the observation re-derives all three
+                                // terms at one pinned block regardless — and erring on
+                                // skipping can only leave the gate UNRESOLVED, never open
+                                // it on a wind-down.
+                                let gate_observation = match (&gw.trading_gate, &j.prepared) {
+                                    (trading_gate::TradingGate::Closed, Some(p))
+                                        if Some(gw.seq.state.next_batch_id)
+                                            == j.batch_id.checked_add(1)
+                                            && Some(chain_bc) == j.batch_id.checked_add(1)
+                                            && chain_root.eq_ignore_ascii_case(&hex32(
+                                                &p.outcome.new_root,
+                                            )) =>
+                                    {
+                                        let l1o = l1c.clone();
+                                        let (bid, our_root) = (j.batch_id, p.outcome.new_root);
+                                        tokio::task::spawn_blocking(move || {
+                                            observe_gate(&l1o, bid, our_root)
+                                        })
+                                        .await
+                                        .unwrap_or(trading_gate::GateObservation::Inconclusive)
+                                    }
+                                    _ => trading_gate::GateObservation::Inconclusive,
+                                };
+                                match apply_boot_recovery(
+                                    &mut gw,
+                                    j,
+                                    chain_bc,
+                                    &chain_root,
+                                    bond,
+                                    gate_observation,
+                                ) {
                                     // Task 3 fix: a MUTATED resolution is persisted
                                     // synchronously BEFORE the journal is deleted
                                     // (and a failed persist keeps the journal) —
@@ -7918,7 +8082,15 @@ async fn main() {
                                     bootstrap::Bootstrap::InsuranceApplied { window_id }
                                         if window_id == x.0.batch_id
                                 );
-                                Some((x, cand, bootstrap_window))
+                                // SEC-025-D: whether the launch gate still needs an
+                                // observation, read under the same guard as the seal.
+                                // Sound to act on later without re-reading: only
+                                // `commit_window_settle` opens the gate, and this loop
+                                // is the sole live committer — no open can interleave
+                                // between the seal and this window's own commit.
+                                let gate_was_closed =
+                                    gw.trading_gate == trading_gate::TradingGate::Closed;
+                                Some((x, cand, bootstrap_window, gate_was_closed))
                             }
                             Ok(None) => None,
                             Err(e) => {
@@ -7927,7 +8099,9 @@ async fn main() {
                             }
                         }
                     };
-                    let Some(((witness, ww), prune_candidates, bootstrap_window)) = begun else {
+                    let Some(((witness, ww), prune_candidates, bootstrap_window, gate_was_closed)) =
+                        begun
+                    else {
                         continue;
                     };
                     // capture the manifest's ordered/rejected for the DP-004 challenge store
@@ -8006,6 +8180,10 @@ async fn main() {
                             tx: String,
                             bond: u128,
                             claimed: Vec<[u8; 32]>,
+                            /// SEC-025-D: the block-pinned gate observation taken AFTER
+                            /// the receipt (Inconclusive when the gate is already open
+                            /// and no read was needed).
+                            observation: trading_gate::GateObservation,
                         },
                         ProveFailed(String),
                         SettleFailed {
@@ -8044,7 +8222,18 @@ async fn main() {
                                     .into_iter()
                                     .filter(|leaf| l1c.claimed(&hex32(leaf)).unwrap_or(false))
                                     .collect();
-                                SettleAttempt::Ok { prepared, tx, bond, claimed }
+                                // SEC-025-D: the launch observation, AFTER the receipt —
+                                // an observation taken before broadcast could never see
+                                // our settle and would waste the whole wait. Skipped once
+                                // the gate is open: the transition only consults it while
+                                // Closed, and the read costs pinned RPC rounds plus a
+                                // bounded wait (`GATE_OBSERVE_WAIT_SECS`).
+                                let observation = if gate_was_closed {
+                                    observe_gate(&l1c, batch_id, prepared.outcome.new_root)
+                                } else {
+                                    trading_gate::GateObservation::Inconclusive
+                                };
+                                SettleAttempt::Ok { prepared, tx, bond, claimed, observation }
                             }
                             Err(err) => SettleAttempt::SettleFailed { err, prepared },
                         }
@@ -8056,6 +8245,7 @@ async fn main() {
                             tx,
                             bond,
                             claimed,
+                            observation,
                         }) => {
                             let status = L1Status {
                                 settled_root: hex32(&prepared.outcome.new_root),
@@ -8074,7 +8264,12 @@ async fn main() {
                             {
                                 let mut gw = app.gw.lock().await;
                                 gw.commit_window_settle(
-                                    batch_id, ordered, rejected, prepared, status,
+                                    batch_id,
+                                    ordered,
+                                    rejected,
+                                    prepared,
+                                    status,
+                                    observation,
                                 );
                                 gw.prune_claimed_withdrawals(&claimed);
                                 // FIN-001: this window settled — clear any failure/HELD state
@@ -8171,6 +8366,26 @@ async fn main() {
                                                 // Task-3 boot recovery) still needs the rollback inputs.
                                                 eprintln!("[l1] settle reported '{err}' and batchCount advanced to {now_bc}, but currentStateRoot {now_root} != our new_root {our_root} — a DIFFERENT window settled; HOLDING (no commit); operator must reconcile");
                                             } else {
+                                                // SEC-025-D: this roll-forward COMMITS, and it is
+                                                // exactly where a wind-down finalSettle could be
+                                                // mistaken for our settle (batchCount and root are
+                                                // the two values it advances identically) — so it
+                                                // performs the SAME block-pinned three-way read as
+                                                // the clean path, never a shortcut to StaysClosed.
+                                                // A failed spawn proves nothing → Inconclusive.
+                                                let observation = if gate_was_closed {
+                                                    let l1o = l1.clone();
+                                                    let our_root = prepared.outcome.new_root;
+                                                    tokio::task::spawn_blocking(move || {
+                                                        observe_gate(&l1o, batch_id, our_root)
+                                                    })
+                                                    .await
+                                                    .unwrap_or(
+                                                        trading_gate::GateObservation::Inconclusive,
+                                                    )
+                                                } else {
+                                                    trading_gate::GateObservation::Inconclusive
+                                                };
                                                 let status = L1Status {
                                                     settled_root: hex32(&prepared.outcome.new_root),
                                                     batch_count: batch_id + 1,
@@ -8186,8 +8401,12 @@ async fn main() {
                                                 {
                                                     let mut gw = app.gw.lock().await;
                                                     gw.commit_window_settle(
-                                                        batch_id, ordered, rejected, prepared,
+                                                        batch_id,
+                                                        ordered,
+                                                        rejected,
+                                                        prepared,
                                                         status,
+                                                        observation,
                                                     );
                                                     // FIN-001: this ambiguous-but-landed settle
                                                     // reached finality — clear any failure/HELD
@@ -8377,9 +8596,37 @@ mod tests {
         /// parallel test-only transition path would pin nothing) with a minimal
         /// `PreparedSettle` and empty manifests. The completion transition reads
         /// only `batch_id` and gateway state, so the roots' exact values are
-        /// irrelevant to what its tests pin.
+        /// irrelevant to what its tests pin. The bootstrap tests that use this
+        /// wrapper never examine the gate (their demo boots are already Open), so
+        /// it fixes the observation to the clean-settle shape.
         fn commit_window_settle_for_test(&mut self, batch_id: u64) {
+            self.commit_window_settle_for_test_with(
+                batch_id,
+                trading_gate::GateObservation::OpensGate,
+            );
+        }
+
+        /// SEC-025-D Task 4: as above, with the caller choosing the observation,
+        /// and the post-state TERMS taken from `test_post_state` when set (live
+        /// state otherwise, as before). The override exists so the PREPARED terms
+        /// can DIVERGE from live state: `boot_production_for_test` leaves the live
+        /// state a genuinely empty production genesis while the prepared terms
+        /// read capitalized, so a transition that consulted `seq.state` instead of
+        /// the proven post-state fails the opening tests — live state at commit
+        /// time has advanced past the proven window and is exactly what the gate
+        /// must NOT trust.
+        fn commit_window_settle_for_test_with(
+            &mut self,
+            batch_id: u64,
+            observation: trading_gate::GateObservation,
+        ) {
             let root = self.seq.state.state_root();
+            let (post_mode_is_normal, post_insurance_fund, new_deposit_count) =
+                self.test_post_state.unwrap_or((
+                    self.seq.state.mode == Mode::Normal,
+                    self.seq.state.insurance_fund,
+                    self.seq.state.consumed_deposit_count,
+                ));
             let prepared = prover_client::PreparedSettle {
                 outcome: prover_client::ProveOutcome {
                     prev_root: self.last_settled_root,
@@ -8389,11 +8636,9 @@ mod tests {
                     withdrawals_root: [0u8; 32],
                     rejected_root: [0u8; 32],
                     deposits_root: [0u8; 32],
-                    new_deposit_count: self.seq.state.consumed_deposit_count,
-                    // SEC-025-D: the post-state terms, from the live state — the same
-                    // post-state proxy `new_root` above already uses in this fixture.
-                    post_mode_is_normal: self.seq.state.mode == Mode::Normal,
-                    post_insurance_fund: self.seq.state.insurance_fund,
+                    new_deposit_count,
+                    post_mode_is_normal,
+                    post_insurance_fund,
                     commitment: [0u8; 32],
                     proof: Vec::new(),
                 },
@@ -8406,7 +8651,38 @@ mod tests {
                 bond: "0".into(),
                 withdrawals_root: hex32(&[0u8; 32]),
             };
-            self.commit_window_settle(batch_id, Vec::new(), Vec::new(), prepared, status);
+            self.commit_window_settle(
+                batch_id,
+                Vec::new(),
+                Vec::new(),
+                prepared,
+                status,
+                observation,
+            );
+        }
+
+        /// SEC-025-D Task 4: pin the post-state terms the next test commit's
+        /// outcome carries — `(mode_is_normal, insurance_fund, deposit_count)` —
+        /// independently of live state. Sticky until set again.
+        fn set_prepared_post_state_for_test(
+            &mut self,
+            mode_normal: bool,
+            insurance: i128,
+            deposits: u64,
+        ) {
+            self.test_post_state = Some((mode_normal, insurance, deposits));
+        }
+
+        /// SEC-025-D Task 4: a production-genesis gateway — gate Closed, nothing
+        /// minted — whose PREPARED post-state terms default to capitalized while
+        /// the LIVE state stays empty (see `commit_window_settle_for_test_with`
+        /// for why the divergence is the point). The default lets the tests that
+        /// are NOT about the predicate isolate the observation term; the
+        /// predicate-half tests override the terms explicitly.
+        fn boot_production_for_test() -> Self {
+            let mut gw = Self::boot_with(GenesisMode::Production);
+            gw.set_prepared_post_state_for_test(true, bootstrap::MIN_BOOTSTRAP_INSURANCE, 1);
+            gw
         }
     }
 
@@ -9432,6 +9708,68 @@ mod tests {
         );
     }
 
+    /// SEC-025-D Task 4 (a Task-3 carry-forward): the one gate mutation the unit
+    /// suite cannot kill crosses the subprocess boundary — a reader that builds
+    /// its own `cast` argv, bypassing the choke point, still returns the right
+    /// VALUES under any in-process test while silently dropping the `--block`
+    /// pin, and three reads at different heights defeat the finalSettle
+    /// exclusion without failing anything. So pin the seam at the source level,
+    /// the same idiom as `unbacked_funding_has_exactly_the_known_call_sites`:
+    /// the choke point must be the only argv builder the three pinned readers
+    /// use, and the raw argv helper must have no consumer outside it. The
+    /// needles are `concat!`-split so this test does not count itself, and the
+    /// breakdowns below deliberately never spell a needle out in prose — this
+    /// scan counts occurrences across its own source file, so naming one here
+    /// would inflate the very count it describes (a prior task's edit failed
+    /// exactly that way).
+    #[test]
+    fn the_pinned_gate_readers_all_route_through_the_one_choke_point() {
+        let choke_needle = concat!("pinned_call", "(");
+        let argv_needle = concat!("pinned_call_args", "(");
+        let src_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut sources: Vec<String> = Vec::new();
+        for entry in std::fs::read_dir(&src_dir).expect("gateway src dir") {
+            let path = entry.expect("dir entry").path();
+            if path.extension().and_then(|e| e.to_str()) == Some("rs") {
+                sources.push(std::fs::read_to_string(&path).expect("readable gateway source"));
+            }
+        }
+        assert!(
+            sources.len() >= 2,
+            "the scan must actually cover the gateway sources (found {} files)",
+            sources.len()
+        );
+        let count =
+            |needle: &str| -> usize { sources.iter().map(|s| s.matches(needle).count()).sum() };
+        let n = count(choke_needle);
+        assert_eq!(
+            n, 4,
+            "expected exactly 4 occurrences of `{choke_needle}` across the gateway \
+             sources (all in l1.rs): the definition and its three callers — the \
+             closeOnly, batchCount and currentStateRoot pinned readers the gate \
+             observation is classified from; found {n}. If an occurrence DISAPPEARED, \
+             a reader stopped routing through the choke point and its read is no \
+             longer provably block-pinned — that is the exact mutation the unit \
+             suite cannot see, because the real argv crosses the subprocess \
+             boundary. A legitimately added occurrence must prove it reads at ONE \
+             caller-named block and feeds `classify` (or is itself a new pinned \
+             reader doing so) — only then update this count and its breakdown."
+        );
+        let na = count(argv_needle);
+        assert_eq!(
+            na, 4,
+            "expected exactly 4 occurrences of `{argv_needle}` across the gateway \
+             sources (all in l1.rs): the pure argv builder's definition, its ONE \
+             production consumer (the choke point's body), and the 2 argv-shape \
+             tests; found {na}. Building the pinned argv anywhere else reopens the \
+             bypass the count above exists to close — one level down: a caller \
+             could assemble a correct-LOOKING read that drops or mistypes the \
+             block flag with every in-process test still green. A new consumer \
+             must instead call the choke point itself (and be accounted for in \
+             the count above)."
+        );
+    }
+
     /// Whole-branch review item 5: the OpenAPI document must describe the MOUNTED
     /// surface. Task 3 removed `/v1/lp*` from the production router, so an
     /// unconditional spec would advertise three paths that 404 in production.
@@ -10169,6 +10507,50 @@ mod tests {
         gw.trading_gate = trading_gate::TradingGate::Open;
         let restored = Gw::boot_restored(&gw.snapshot_plain()).expect("restore");
         assert_eq!(restored.trading_gate, trading_gate::TradingGate::Open);
+    }
+
+    #[test]
+    fn a_wind_down_shaped_commit_does_not_open_the_gate() {
+        // The finalSettle defence, at the transition rather than in the classifier: the
+        // count and root match exactly, and only the observation distinguishes it.
+        let mut gw = Gw::boot_production_for_test();
+        assert_eq!(gw.trading_gate, trading_gate::TradingGate::Closed);
+        gw.commit_window_settle_for_test_with(0, trading_gate::GateObservation::StaysClosed);
+        assert_eq!(gw.trading_gate, trading_gate::TradingGate::Closed);
+    }
+
+    #[test]
+    fn an_inconclusive_observation_leaves_the_gate_unresolved_rather_than_closed() {
+        // The liveness half. The commit is not repeatable, so resolving a failed or lagging
+        // read AGAINST opening would burn the only opportunity — and 025-A's bootstrap
+        // endpoint is one-shot and cannot manufacture another window.
+        let mut gw = Gw::boot_production_for_test();
+        gw.commit_window_settle_for_test_with(0, trading_gate::GateObservation::Inconclusive);
+        assert_eq!(gw.trading_gate, trading_gate::TradingGate::Closed);
+        // …and a later conclusive observation still opens it.
+        gw.commit_window_settle_for_test_with(1, trading_gate::GateObservation::OpensGate);
+        assert_eq!(gw.trading_gate, trading_gate::TradingGate::Open);
+    }
+
+    #[test]
+    fn an_undercapitalized_deployment_does_not_open_on_a_clean_settle() {
+        // The predicate half: a perfect on-chain observation is not enough.
+        let mut gw = Gw::boot_production_for_test();
+        gw.set_prepared_post_state_for_test(true, 1, 1); // one base unit of insurance
+        gw.commit_window_settle_for_test_with(0, trading_gate::GateObservation::OpensGate);
+        assert_eq!(gw.trading_gate, trading_gate::TradingGate::Closed);
+    }
+
+    #[test]
+    fn the_gate_does_not_re_close_when_the_fund_is_later_drained() {
+        // Deliberate: this is a LAUNCH gate. Re-closing a blunt ingress gate would block
+        // reduce-only exits, trapping users exactly when they most need to leave.
+        let mut gw = Gw::boot_production_for_test();
+        gw.commit_window_settle_for_test_with(0, trading_gate::GateObservation::OpensGate);
+        assert_eq!(gw.trading_gate, trading_gate::TradingGate::Open);
+        gw.set_prepared_post_state_for_test(true, 0, 1);
+        gw.commit_window_settle_for_test_with(1, trading_gate::GateObservation::OpensGate);
+        assert_eq!(gw.trading_gate, trading_gate::TradingGate::Open);
     }
 
     /// Task 12: every ACCEPTED `/v1` order is appended to the hash-chained
@@ -13582,7 +13964,14 @@ mod tests {
         let j = rollback_journal::read(&jp, &seed)
             .expect("read")
             .expect("present");
-        let out = apply_boot_recovery(&mut gw, j, bc, "0x00", 0);
+        let out = apply_boot_recovery(
+            &mut gw,
+            j,
+            bc,
+            "0x00",
+            0,
+            trading_gate::GateObservation::Inconclusive,
+        );
         // SEAL-NEVER-PERSISTED is a NON-mutating resolution: delete without a
         // pre-delete snapshot write (the state on disk is already the one it
         // resolves to).
@@ -13646,7 +14035,14 @@ mod tests {
             prepared: None,
         };
         assert_eq!(
-            apply_boot_recovery(&mut restored, hold_j, bc + 2, "0x00", 0),
+            apply_boot_recovery(
+                &mut restored,
+                hold_j,
+                bc + 2,
+                "0x00",
+                0,
+                trading_gate::GateObservation::Inconclusive,
+            ),
             BootRecoveryOutcome::KeepJournal
         );
         assert_eq!(
@@ -13657,7 +14053,14 @@ mod tests {
 
         // the ROLLBACK row: seal persisted (B == bc+1), tx never landed (chain == bc).
         // A MUTATING resolution — the caller must persist before deleting.
-        let out = apply_boot_recovery(&mut restored, journal, bc, "0x00", 0);
+        let out = apply_boot_recovery(
+            &mut restored,
+            journal,
+            bc,
+            "0x00",
+            0,
+            trading_gate::GateObservation::Inconclusive,
+        );
         assert_eq!(out, BootRecoveryOutcome::DeleteJournal { mutated: true });
         assert_eq!(
             restored.seq.state.next_batch_id, bc,
@@ -13731,6 +14134,7 @@ mod tests {
             bc + 1,
             &chain_root.to_ascii_uppercase(),
             77,
+            trading_gate::GateObservation::Inconclusive,
         );
         // ROLL-FORWARD is a MUTATING resolution — persist before delete.
         assert_eq!(out, BootRecoveryOutcome::DeleteJournal { mutated: true });
@@ -13757,7 +14161,14 @@ mod tests {
         restored.l1_status.as_mut().unwrap().last_tx = "(already committed)".into();
         let proofs_before = restored.withdraw_proofs.len();
         assert_eq!(
-            apply_boot_recovery(&mut restored, j2, bc + 1, &chain_root, 77),
+            apply_boot_recovery(
+                &mut restored,
+                j2,
+                bc + 1,
+                &chain_root,
+                77,
+                trading_gate::GateObservation::Inconclusive,
+            ),
             BootRecoveryOutcome::DeleteJournal { mutated: false }
         );
         assert_eq!(
@@ -13829,7 +14240,14 @@ mod tests {
         let j = rollback_journal::read(&jp, &seed)
             .expect("read")
             .expect("present");
-        let out = apply_boot_recovery(&mut restored, j, bc, "0x00", 0);
+        let out = apply_boot_recovery(
+            &mut restored,
+            j,
+            bc,
+            "0x00",
+            0,
+            trading_gate::GateObservation::Inconclusive,
+        );
         assert_eq!(out, BootRecoveryOutcome::DeleteJournal { mutated: true });
 
         // the call-site glue: persist the post-recovery snapshot, THEN delete.
@@ -14001,7 +14419,14 @@ mod tests {
             bond: "0".into(),
             withdrawals_root: hex32(&prepared.outcome.withdrawals_root),
         };
-        gw.commit_window_settle(batch_id, ordered, rejected, prepared, status);
+        gw.commit_window_settle(
+            batch_id,
+            ordered,
+            rejected,
+            prepared,
+            status,
+            trading_gate::GateObservation::OpensGate,
+        );
 
         assert_eq!(gw.last_settled_root, new_root);
         assert!(gw.withdraw_proofs.contains_key(&leaf0));
@@ -14059,7 +14484,14 @@ mod tests {
             bond: "0".into(),
             withdrawals_root: hex32(&prepared.outcome.withdrawals_root),
         };
-        gw.commit_window_settle(batch_id, ordered, rejected, prepared, status);
+        gw.commit_window_settle(
+            batch_id,
+            ordered,
+            rejected,
+            prepared,
+            status,
+            trading_gate::GateObservation::OpensGate,
+        );
         assert_eq!(gw.finality_str(&gw.orders[0].order_hash), "SETTLED");
     }
 
@@ -14166,7 +14598,14 @@ mod tests {
             bond: "0".into(),
             withdrawals_root: hex32(&prepared1.outcome.withdrawals_root),
         };
-        gw.commit_window_settle(batch_id1, ordered1, rejected1, prepared1, status1);
+        gw.commit_window_settle(
+            batch_id1,
+            ordered1,
+            rejected1,
+            prepared1,
+            status1,
+            trading_gate::GateObservation::OpensGate,
+        );
         assert!(gw.withdraw_proofs.contains_key(&leaf_w1));
 
         // ── window 2: another withdrawal (root changes) → begin → commit ─────
@@ -14187,7 +14626,14 @@ mod tests {
             bond: "0".into(),
             withdrawals_root: hex32(&prepared2.outcome.withdrawals_root),
         };
-        gw.commit_window_settle(batch_id2, ordered2, rejected2, prepared2, status2);
+        gw.commit_window_settle(
+            batch_id2,
+            ordered2,
+            rejected2,
+            prepared2,
+            status2,
+            trading_gate::GateObservation::OpensGate,
+        );
 
         // EXTEND semantics: window 1's claim proof SURVIVES window 2's commit
         assert!(
