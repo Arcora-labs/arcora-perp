@@ -3299,7 +3299,12 @@ impl Gw {
                     // in the current page session, for no saving beyond these lines.
                     // Serialized via WReceipt so the camelCase field names stay
                     // byte-identical to the /api/state + placeOrder-response shape.
-                    "receipt": serde_json::to_value(&o.receipt).unwrap(),
+                    // `unwrap_or(Null)` not `unwrap`: WReceipt's flat String/int
+                    // fields cannot fail serialization today, but a panic is never
+                    // the right default on a serving path — the frontend already
+                    // synthesizes a stub for an absent/null receipt.
+                    "receipt": serde_json::to_value(&o.receipt)
+                        .unwrap_or(serde_json::Value::Null),
                 })
             })
             .collect();
@@ -11674,16 +11679,23 @@ mod tests {
     /// RECEIPT — the exact one `account_place_order` returned — so a browser can
     /// render receipts for orders placed in ANY session, not just those whose
     /// receipt it still holds from its own placeOrder response.
+    ///
+    /// TWO orders, deliberately: orders are stored newest-first (`insert(0, …)`),
+    /// so a handler that served `a.orders[0].receipt` for EVERY order — a
+    /// realistic mis-index — passes a single-order assert. Each served order
+    /// must carry ITS OWN receipt, and the second order's non-zero `seqNo`
+    /// closes the hole where a zeroed fabrication matched the first order's
+    /// genuine `seqNo == 0`.
     #[test]
     fn v1_orders_carry_the_acceptance_receipt() {
         let mut gw = Gw::boot();
         let (key, _owner) = gw.register_account(None);
         gw.account_deposit(&key, 0, 20_000 * QUOTE_SCALE)
             .expect("deposit");
-        let req = OrderReq {
+        let req = |size: i128| OrderReq {
             market_id: 0,
             side: "Buy".into(),
-            size: (SIZE_SCALE / 10).to_string(),
+            size: size.to_string(),
             limit_price: "0".into(),
             tif: "Ioc".into(),
             reduce_only: false,
@@ -11691,19 +11703,37 @@ mod tests {
             signature: None,
             ..Default::default()
         };
-        let receipt = gw.account_place_order(&key, &req).expect("order");
+        let first = gw
+            .account_place_order(&key, &req(SIZE_SCALE / 10))
+            .expect("order 1");
+        let second = gw
+            .account_place_order(&key, &req(SIZE_SCALE / 20))
+            .expect("order 2");
+        // Fixture guard: the two receipts must be distinguishable in the fields
+        // asserted below, or the per-order pairing proves nothing.
+        assert_ne!(first.order_hash, second.order_hash, "distinct order hashes");
+        assert_ne!(first.seq_no, second.seq_no, "distinct seqNos");
+        assert!(
+            second.seq_no > 0,
+            "second acceptance has a non-zero seqNo (a zeroed fabrication cannot match it)"
+        );
         let v = gw.v1_orders_json(&key).unwrap();
-        let o = &v["orders"][0];
-        // The served receipt must be the STORED acceptance receipt, field by field
-        // (camelCase per WReceipt's serde rename) — not a default/reconstructed one.
-        let r = &o["receipt"];
-        assert_eq!(r["orderHash"], serde_json::json!(receipt.order_hash));
-        assert_eq!(r["seqNo"], serde_json::json!(receipt.seq_no));
-        assert_eq!(r["recvTimeMs"], serde_json::json!(receipt.recv_time_ms));
-        assert_eq!(r["batchIdHint"], serde_json::json!(receipt.batch_id_hint));
-        assert_eq!(r["windowId"], serde_json::json!(receipt.window_id));
-        // internal consistency: the receipt names the same order as the flat field
-        assert_eq!(o["orderHash"], r["orderHash"]);
+        let orders = v["orders"].as_array().unwrap();
+        assert_eq!(orders.len(), 2);
+        // Newest-first storage: orders[0] is the SECOND order placed. Each served
+        // receipt must be the STORED acceptance receipt for THAT order, field by
+        // field (camelCase per WReceipt's serde rename) — not a default, not a
+        // reconstruction, and not the newest order's receipt repeated.
+        for (o, want) in [(&orders[0], &second), (&orders[1], &first)] {
+            let r = &o["receipt"];
+            assert_eq!(r["orderHash"], serde_json::json!(want.order_hash));
+            assert_eq!(r["seqNo"], serde_json::json!(want.seq_no));
+            assert_eq!(r["recvTimeMs"], serde_json::json!(want.recv_time_ms));
+            assert_eq!(r["batchIdHint"], serde_json::json!(want.batch_id_hint));
+            assert_eq!(r["windowId"], serde_json::json!(want.window_id));
+            // internal consistency: the receipt names the same order as the flat field
+            assert_eq!(o["orderHash"], r["orderHash"]);
+        }
     }
 
     #[test]

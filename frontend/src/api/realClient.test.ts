@@ -112,9 +112,10 @@ const ethOracle = { marketId: 1, price: "351500000000", confidence: "5", publish
 // LIQ-001 invariant), so a client that keeps reading account state off it shows
 // the WRONG account. Every distinguishing field below DIFFERS between the demo
 // wallet and the caller's /v1 account — id demo-1 vs o42, market 0 vs 1, Buy vs
-// Sell, seqNo 77 vs 5, hash dd… vs a1…, long-BTC vs short-ETH — so an
-// implementation still reading /api/state cannot pass any assertion by
-// coincidence (the workstream's most common defect shape).
+// Sell, seqNo 77 vs 5, hash dd… vs a1…, long-BTC vs short-ETH, settledBalance
+// 123000000 vs 987654321777 (no combination of the demo fixture's values
+// produces the /v1 one) — so an implementation still reading /api/state cannot
+// pass any assertion by coincidence (the workstream's most common defect shape).
 const demoOrder = {
   id: "demo-1",
   input: { marketId: 0, side: "Buy", size: "100000000", limitPrice: "6400000000000", tif: "Gtc", reduceOnly: false },
@@ -142,6 +143,11 @@ const v1Position = {
   marketId: 1, size: "-25000000", entryPrice: "351000000000",
   collateral: "1755000000", unrealizedPnl: "-12500000", liquidationPrice: "368550000000",
 };
+// The /v1 account's settledBalance (`GET /v1/accounts/me`). Deliberately a value
+// the demo wallet's fixtures cannot produce (no sum/echo of 123000000 or any
+// demo field): a mixed-account overlay — demo balance beside /v1 positions —
+// must fail the balance assertions, never pass by coincidence.
+const V1_BALANCE = "987654321777";
 
 interface Captured { path: string; method: string; headers: Record<string, string>; body: unknown }
 let calls: Captured[] = [];
@@ -156,6 +162,9 @@ let stateResponse: unknown = wireState; // per-test override of the /api/state s
 let v1OrdersResponse: unknown = { orders: [] }; // GET /v1/orders (own-account read)
 let v1PositionsResponse: unknown = { positions: [] }; // GET /v1/positions (own-account read)
 let accountsStatus = 200; // per-test override: /v1 account registration failure
+// One-shot gate: parks the NEXT GET /v1/orders (payload captured at REQUEST
+// time) until resolved — a slow read delivering a stale list late.
+let v1OrdersGate: Promise<void> | null = null;
 
 // ── SEC-021 withdrawal-authorization fixtures ────────────────────────────────
 // The bound deposit address withdrawals pay to (and whose key signs).
@@ -168,9 +177,10 @@ const BOUND = "0x" + "cd".repeat(20);
 // own 84532/0x2222… inputs: those pin the Rust vectors, not this property.)
 const VAULT = "0x" + "3b".repeat(20);
 const CHAIN_ID = 4242;
-// Per-test override of the SEC-021 fields GET /v1/accounts/me serves.
+// Per-test override of the SEC-021 + SEC-025-E1 fields GET /v1/accounts/me serves.
 let meFields: Record<string, unknown> = {};
 const defaultMeFields = () => ({
+  settledBalance: V1_BALANCE,
   depositAddress: BOUND, callerSigned: false, nextWithdrawNonce: 1,
   rebindCounter: 0, chainId: CHAIN_ID, vault: VAULT,
 });
@@ -212,14 +222,26 @@ function installFetch() {
         if (accountsStatus !== 200) return json({ error: "registration unavailable" }, accountsStatus);
         return json({ apiKey: ACCT_KEY, owner: OWNER_HEX, callerSigned: false });
       }
-      if (path === "/v1/accounts/me") return json({ owner: OWNER_HEX, ...meFields });
+      if (path === "/v1/accounts/me") {
+        // Authenticated like the gateway's — the SEC-025-E1 balance read must
+        // provably be the CALLER's account, not an open endpoint.
+        if (init?.headers?.["X-Api-Key"] !== ACCT_KEY) return json({ error: "unknown account" }, 401);
+        return json({ owner: OWNER_HEX, ...meFields });
+      }
       if (path === "/v1/orders" && method === "POST") {
         return json({ orderHash: "0x" + "00".repeat(32), seqNo: 1, recvTimeMs: 0, batchIdHint: 1 });
       }
       // SEC-025-E1 own-account reads — authenticated per account, like the gateway.
       if ((path === "/v1/orders" || path === "/v1/positions") && method === "GET") {
         if (init?.headers?.["X-Api-Key"] !== ACCT_KEY) return json({ error: "unknown account" }, 401);
-        return json(path === "/v1/orders" ? v1OrdersResponse : v1PositionsResponse);
+        if (path === "/v1/positions") return json(v1PositionsResponse);
+        const payload = v1OrdersResponse; // response reflects state AS OF the request
+        if (v1OrdersGate) {
+          const gate = v1OrdersGate;
+          v1OrdersGate = null; // one-shot: later reads answer immediately
+          await gate;
+        }
+        return json(payload);
       }
       if (path === "/api/deposit" || path === "/v1/accounts/deposit") return json({});
       if (path === "/v1/accounts/withdraw" && method === "POST") {
@@ -283,6 +305,7 @@ beforeEach(() => {
   stateResponse = wireState;
   v1OrdersResponse = { orders: [] };
   v1PositionsResponse = { positions: [] };
+  v1OrdersGate = null;
   accountsStatus = 200;
   meFields = defaultMeFields();
   personalSigns = [];
@@ -787,8 +810,13 @@ describe("settlement health (FIN-001)", () => {
 // every distinguishing field (see their definition above) so nothing passes by
 // coincidence.
 describe("own-account reads from /v1 (SEC-025-E1)", () => {
-  /** Let a fire-and-forget microtask fetch chain settle (mock fetch is all-microtask). */
-  const settle = async () => { for (let i = 0; i < 10; i++) await Promise.resolve(); };
+  /**
+   * A macrotask barrier: setTimeout(0) fires only after the ENTIRE pending
+   * microtask queue (including chains each microtask enqueues) has drained, so
+   * one await here means every purely-microtask fetch chain — the mock is
+   * all-microtask — has fully completed. Quiescence, not a guessed tick count.
+   */
+  const macrotask = () => new Promise<void>((r) => setTimeout(r, 0));
 
   beforeEach(() => {
     stateResponse = demoState;
@@ -796,7 +824,7 @@ describe("own-account reads from /v1 (SEC-025-E1)", () => {
     v1PositionsResponse = { positions: [v1Position] };
   });
 
-  it("bootstrap shows the CALLER's /v1 orders and positions, never the demo wallet's", async () => {
+  it("bootstrap shows the CALLER's /v1 orders, positions AND balance, never the demo wallet's", async () => {
     const client = await bootstrapClient();
     const st = client.getState();
     expect(st.orders.map((o) => o.id)).toEqual(["o42"]);
@@ -806,12 +834,19 @@ describe("own-account reads from /v1 (SEC-025-E1)", () => {
     expect(st.account.positions[0].size).toBe(-25_000_000n);
     // demo-wallet position (long BTC on market 0) must NOT leak through
     expect(st.account.positions.some((p) => p.marketId === 0)).toBe(false);
-    // both reads hit the AUTHENTICATED /v1 endpoints under the account's key
+    // The balance beside those positions is the SAME account's — the demo
+    // wallet's 123000000 rendered here would hand OrderTicket.maxOrderSize a
+    // stranger's collateral. V1_BALANCE is unreachable from the demo fixtures.
+    expect(st.account.settledBalance).toBe(987_654_321_777n);
+    // all three reads hit AUTHENTICATED /v1 endpoints under the account's key
     const reads = calls.filter(
       (c) => (c.path === "/v1/orders" || c.path === "/v1/positions") && c.method === "GET",
     );
     expect(reads.length).toBe(2);
     for (const r of reads) expect(r.headers["X-Api-Key"]).toBe(ACCT_KEY);
+    const meReads = calls.filter((c) => c.path === "/v1/accounts/me" && c.method === "GET");
+    expect(meReads.length).toBe(1); // the balance read (fresh registration fetches /me no other way)
+    expect(meReads[0].headers["X-Api-Key"]).toBe(ACCT_KEY);
     client.dispose();
   });
 
@@ -834,12 +869,13 @@ describe("own-account reads from /v1 (SEC-025-E1)", () => {
     client.dispose();
   });
 
-  it("a later demo-wallet WS frame does NOT clobber the caller's own orders/positions", async () => {
+  it("a later demo-wallet WS frame does NOT clobber the caller's own orders/positions/balance", async () => {
     const client = await bootstrapClient();
     lastWs!.onmessage!({ data: JSON.stringify({ type: "state", state: demoState }) });
     const st = client.getState();
     expect(st.orders.map((o) => o.id)).toEqual(["o42"]);
     expect(st.account.positions[0].marketId).toBe(1);
+    expect(st.account.settledBalance).toBe(987_654_321_777n); // not the frame's 123000000
     client.dispose();
   });
 
@@ -847,11 +883,38 @@ describe("own-account reads from /v1 (SEC-025-E1)", () => {
     accountsStatus = 500;
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const client = await bootstrapClient(); // must resolve, not reject
-    expect(warn).toHaveBeenCalled();
+    // Discriminate on the MESSAGE: prepareSealing also fails and warns here
+    // ("sealed-order setup failed…"), so a bare toHaveBeenCalled() would pass
+    // even if refreshOwnState's own catch never ran.
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining("own-account read failed"),
+      expect.anything(),
+    );
     const st = client.getState();
     // no key ⇒ the /v1 reads are impossible; the legacy feed falls through
     expect(st.orders.map((o) => o.id)).toEqual(["demo-1"]);
     expect(calls.some((c) => c.path === "/v1/orders" && c.method === "GET")).toBe(false);
+    client.dispose();
+  });
+
+  it("a failed balance read degrades the WHOLE own-account view — never a mixed account", async () => {
+    // /v1/accounts/me stops serving settledBalance while orders + positions
+    // still read fine. Overlaying just those would put the DEMO wallet's
+    // balance beside the CALLER's positions — the exact mixed-account bug this
+    // task closes (before the fix, that spread shape lived in emit()).
+    const { settledBalance: _dropped, ...noBalance } = defaultMeFields();
+    meFields = noBalance;
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const client = await bootstrapClient();
+    const st = client.getState();
+    // ALL of it falls back to the legacy feed together — one account, always:
+    expect(st.account.settledBalance).toBe(123_000_000n); // demo balance…
+    expect(st.account.positions.map((p) => p.marketId)).toEqual([0]); // …with demo positions
+    expect(st.orders.map((o) => o.id)).toEqual(["demo-1"]);
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining("own-account read failed"),
+      expect.anything(),
+    );
     client.dispose();
   });
 
@@ -880,8 +943,70 @@ describe("own-account reads from /v1 (SEC-025-E1)", () => {
       marketId: 1, side: "Sell", size: 250_000_000n, limitPrice: 352_000_000_000n,
       tif: "Fok", reduceOnly: true,
     });
-    await settle();
+    // placeOrder kicked the refresh off fire-and-forget BEFORE resolving, so its
+    // in-flight promise is already exposed — await it, don't count ticks.
+    await client.ownStateSettled();
     expect(client.getState().orders.map((o) => o.id)).toEqual(["o43", "o42"]);
+    client.dispose();
+  });
+
+  it("no emitted frame EVER mixes accounts — balance and positions land atomically", async () => {
+    // Settled-state asserts can't catch a two-phase write (positions emitted,
+    // balance patched in later): every frame between them is a mixed account on
+    // screen. Record every emission and require each one to be entirely the /v1
+    // account or entirely the demo wallet.
+    const client = await bootstrapClient();
+    const frames: string[] = [];
+    client.subscribe((s) =>
+      frames.push(`${s.account.settledBalance}|${s.account.positions.map((p) => p.marketId).join(",")}`),
+    );
+    lastWs!.onmessage!({ data: JSON.stringify({ type: "state", state: demoState }) }); // interleaved demo push
+    await client.placeOrder({
+      marketId: 1, side: "Sell", size: 250_000_000n, limitPrice: 352_000_000_000n,
+      tif: "Fok", reduceOnly: true,
+    });
+    await client.ownStateSettled();
+    await macrotask();
+    expect(frames.length).toBeGreaterThan(0);
+    for (const f of frames) {
+      // own account whole (V1_BALANCE with the /v1 short-ETH position) or demo
+      // whole (123000000 with the long-BTC position) — never a hybrid.
+      expect(["987654321777|1", "123000000|0"]).toContain(f);
+    }
+    client.dispose();
+  });
+
+  it("a slow earlier refresh can never overwrite a fresher one (in-flight guard + trailing re-run)", async () => {
+    const client = await bootstrapClient(); // own view settled: ["o42"]
+    const mk = (id: string, hex: string, seqNo: number) => ({
+      ...v1Order, orderId: id, orderHash: "0x" + hex.repeat(32),
+      receipt: { ...v1Order.receipt, orderHash: "0x" + hex.repeat(32), seqNo },
+    });
+    const o43 = mk("o43", "b2", 6);
+    const o44 = mk("o44", "c3", 7);
+    // Refresh R1 (first placeOrder) reads the list AS OF its request — [o43,
+    // o42] — but delivers it LATE: its GET parks on the one-shot gate.
+    let release!: () => void;
+    v1OrdersGate = new Promise<void>((r) => { release = r; });
+    v1OrdersResponse = { orders: [o43, v1Order] };
+    await client.placeOrder({
+      marketId: 1, side: "Sell", size: 250_000_000n, limitPrice: 352_000_000_000n,
+      tif: "Fok", reduceOnly: true,
+    });
+    await macrotask(); // R1's GET is now issued and parked on the gate
+    // The account moves on: a second order lands and prompts another refresh
+    // while R1 is still in flight.
+    v1OrdersResponse = { orders: [o44, o43, v1Order] };
+    await client.placeOrder({
+      marketId: 1, side: "Sell", size: 250_000_000n, limitPrice: 352_000_000_000n,
+      tif: "Fok", reduceOnly: true,
+    });
+    release();
+    await client.ownStateSettled(); // guard path: waits for the trailing re-run too
+    await macrotask(); // full quiescence — an UN-guarded stale write chain has also run by now
+    // The fresher list must win. Without the guard, the second refresh's fast
+    // read landed first and R1's stale [o43, o42] then overwrote it, losing o44.
+    expect(client.getState().orders.map((o) => o.id)).toEqual(["o44", "o43", "o42"]);
     client.dispose();
   });
 });

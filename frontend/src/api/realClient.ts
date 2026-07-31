@@ -515,11 +515,19 @@ export class RealDarkPerpClient implements DarkPerpClient {
   // The public /api/state + /ws feed carries ONLY the shared demo wallet (the
   // gateway's LIQ-001 invariant keeps real /v1 tenants off it), while this
   // client's sealed orders trade as its own authenticated /v1 account. These
-  // caches hold the latest authenticated `GET /v1/orders` + `GET /v1/positions`
-  // reads; emit() overlays them so the UI shows the CALLER's account. `null`
-  // (no /v1 account yet, or the read failed) falls through to the legacy feed.
+  // caches hold the latest authenticated /v1 reads; emit() overlays them so the
+  // UI shows the CALLER's account. `null` (no /v1 account yet, or the read
+  // failed) falls through to the legacy feed. `ownAccount` is ONE AccountState
+  // assembled atomically from the same refresh — balance and positions must
+  // never mix accounts (a demo-wallet balance beside the caller's positions
+  // invites the user to read a stranger's balance as their own collateral, and
+  // feeds maxOrderSize a different account's number).
   private ownOrders: TrackedOrder[] | null = null;
-  private ownPositions: Position[] | null = null;
+  private ownAccount: AccountState | null = null;
+  /** In-flight own-account refresh — overlapping callers join it (see refreshOwnState). */
+  private ownRefresh: Promise<void> | null = null;
+  /** Set when a refresh is requested while one is in flight ⇒ one trailing re-run. */
+  private ownRefreshAgain = false;
 
   // ── sealed order ingress state ─────────────────────────────────────────────
   /** The verified enclave order-epoch key (refetched once notAfterMs passes). */
@@ -716,12 +724,12 @@ export class RealDarkPerpClient implements DarkPerpClient {
       // demo account — without this overlay every WS push would clobber the
       // user's own view back to demo data one frame after bootstrap fixed it.
       // `null` degrades to the legacy feed (no /v1 account / read failed).
-      // `settledBalance` intentionally stays the base feed's: moving the
-      // balance read is not this task (only orders + positions are).
+      // `ownAccount` replaces the base account WHOLE (balance + positions from
+      // the same /v1 refresh): a spread that overlaid only positions would ship
+      // a mixed-account AccountState — the demo wallet's settledBalance under
+      // the caller's positions.
       orders: this.ownOrders ?? base.orders,
-      account: this.ownPositions
-        ? { ...base.account, positions: this.ownPositions }
-        : base.account,
+      account: this.ownAccount ?? base.account,
     };
   }
 
@@ -865,17 +873,81 @@ export class RealDarkPerpClient implements DarkPerpClient {
   }
 
   /**
-   * Refresh the caller's OWN orders/positions from the authenticated /v1 reads
-   * and re-emit. NEVER throws: before a /v1 account exists (or when the gateway
-   * is unreachable) the UI must degrade to the legacy public feed, not crash —
-   * the caches simply stay as they were (`null` ⇒ fall through in emit()).
+   * The account's settled balance from the authenticated `GET /v1/accounts/me`.
+   * The brief mandates positions come from `GET /v1/positions`, and no other
+   * /v1 surface serves `settledBalance` — so the balance is a THIRD fetch here
+   * rather than collapsing the positions read into /v1/accounts/me (which also
+   * carries positions). Throws on absence/malformation: a refresh that cannot
+   * source the balance must degrade WHOLE, never overlay positions alone.
    */
-  private async refreshOwnState(): Promise<void> {
+  private async getSettledBalance(): Promise<bigint> {
+    const acct = await this.ensureAccount();
+    const res = await fetch(this.base + "/v1/accounts/me", { headers: { "X-Api-Key": acct.apiKey } });
+    if (!res.ok) throw new Error(`/v1/accounts/me ${res.status}`);
+    const j = (await res.json()) as { settledBalance?: unknown };
+    if (typeof j !== "object" || j === null || typeof j.settledBalance !== "string") {
+      throw new Error("/v1/accounts/me: missing settledBalance");
+    }
+    return B(j.settledBalance); // throws on a non-decimal string ⇒ same whole-degrade
+  }
+
+  /**
+   * Refresh the caller's OWN orders/positions/balance from the authenticated
+   * /v1 reads and re-emit. NEVER throws: before a /v1 account exists (or when
+   * the gateway is unreachable) the UI must degrade to the legacy public feed,
+   * not crash — the caches simply stay as they were (`null` ⇒ fall through in
+   * emit()).
+   *
+   * In-flight guard (the file's `ensureAccount` pattern): overlapping callers
+   * join the one running refresh instead of racing it, so a slow earlier read
+   * can never resolve late and overwrite a fresher list. Unlike ensureAccount
+   * the result here is FRESHNESS, not identity, so a join also flags one
+   * trailing re-run: the in-flight GETs may predate the change (e.g. a just-
+   * accepted order) that prompted the joiner. placeOrder is the second trigger
+   * today; Task 2's /v1/ws stream becomes the third.
+   */
+  private refreshOwnState(): Promise<void> {
+    if (this.ownRefresh) {
+      this.ownRefreshAgain = true;
+      return this.ownRefresh;
+    }
+    this.ownRefresh = (async () => {
+      try {
+        do {
+          this.ownRefreshAgain = false;
+          await this.fetchOwnStateOnce();
+        } while (this.ownRefreshAgain && !this.disposed);
+      } finally {
+        this.ownRefresh = null;
+      }
+    })();
+    return this.ownRefresh;
+  }
+
+  /**
+   * Resolves when no own-account refresh is in flight. The refresh is fire-and-
+   * forget at its trigger sites, so anything needing the settled view (tests;
+   * potentially UI flows) awaits this instead of guessing at microtask timing.
+   */
+  ownStateSettled(): Promise<void> {
+    return this.ownRefresh ?? Promise.resolve();
+  }
+
+  /** One refresh pass — only refreshOwnState may call this (it holds the guard). */
+  private async fetchOwnStateOnce(): Promise<void> {
     try {
-      const [orders, positions] = await Promise.all([this.getOrders(), this.getPositions()]);
+      const [orders, positions, settledBalance] = await Promise.all([
+        this.getOrders(),
+        this.getPositions(),
+        this.getSettledBalance(),
+      ]);
       if (this.disposed) return;
       this.ownOrders = orders;
-      this.ownPositions = positions;
+      // ONE account object, assembled atomically from this refresh: emit() swaps
+      // it in whole, so the balance shown beside these positions is always the
+      // same account's. All three reads degrade together (Promise.all): a
+      // partial overlay would resurrect the mixed-account view.
+      this.ownAccount = { settledBalance, positions };
       if (this.state) this.setState(this.state);
     } catch (e) {
       console.warn("[dark-perp] /v1 own-account read failed (showing the legacy feed until it succeeds):", e);
