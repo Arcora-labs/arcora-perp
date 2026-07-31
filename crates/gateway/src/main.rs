@@ -4484,7 +4484,7 @@ fn fund_amount_unbacked(
 /// `consumed_deposit_tip` exactly like `fund_amount_unbacked`, so the boot-time
 /// deposit-posture check sees it, and it is REFUSED in production by the same
 /// SEC-025-C guard. The note is never archived — it is consumed immediately and
-/// no wallet ever needs to decrypt it. THE only insurance-seeding funnel (demo
+/// no wallet ever needs to decrypt it. the UNBACKED insurance-seeding funnel (demo
 /// boot + `simulate_adl` refill); the `unbacked_funding_has_exactly_the_known_
 /// call_sites` scan pins its single raw `Deposit` construction.
 fn seed_insurance_unbacked(
@@ -4520,8 +4520,10 @@ fn seed_insurance_unbacked(
 /// SEC-025-A: the BACKED sibling of `seed_insurance_unbacked`, and the first production
 /// caller of `BatchOp::FundInsurance`.
 ///
-/// Exactly three fields differ from the demo funnel, and they are the three the demo
-/// fabricates: `from` is the real L1 payer, `deposit_blind` is the authorization blind the
+/// Three SENTINEL fields differ from the demo funnel — the three it fabricates. (`owner`
+/// and `blinding` differ too: a registered account's wallet rather than a throwaway seed,
+/// and `0xB0 ‖ deposit_counter` rather than a free constant. "Exactly three" is true only
+/// of the sentinels.) `from` is the real L1 payer, `deposit_blind` is the authorization blind the
 /// gateway actually issued, and `deposit_id` is the chain-assigned id. So this path folds
 /// the SAME leaf the vault chained on-chain, and `_requireDepositPrefix` will match.
 ///
@@ -4707,7 +4709,9 @@ fn fund_amount(
 // ── HTTP/WS plumbing ─────────────────────────────────────────────────────────
 type Shared = Arc<App>;
 
-/// Reply channel for one acknowledged snapshot: `true` iff the sealed write landed.
+/// Reply channel for one acknowledged snapshot: `true` when the sealed write returned
+/// success. Not quite "iff" — the shutdown saver shares the same `.tmp` path, so a SIGTERM
+/// racing an in-flight write can still clobber it (pre-existing; see the writer task).
 type SnapshotAck = tokio::sync::oneshot::Sender<bool>;
 
 /// Force a snapshot and WAIT for the single writer task's verdict.
@@ -7947,7 +7951,10 @@ async fn main() {
                     // persists, boot restores Counter B at J while the chain reads J+1,
                     // the recovery table returns Hold rather than RollForward,
                     // `commit_window_settle` never runs, and a genuinely settled bootstrap
-                    // never reaches `Complete` — with the one-shot already spent. The
+                    // never reaches `Complete`. The one-shot is NOT spent (the record sits at
+                    // `InsuranceApplied`, not `Complete`), but the cost is worse than that: a `Hold`
+                    // leaves Counter B at J against a chain at J+1, so `begin_window_settle`'s desync
+                    // guard rejects EVERY subsequent tick — settlement wedges entirely. The
                     // stage-1 notify above is fire-and-forget and cannot carry this
                     // guarantee. Awaited with NO `gw` guard held: the snapshot writer
                     // takes that same lock, so a holder wedges the gateway for the full
@@ -8460,7 +8467,7 @@ mod tests {
     }
 
     #[test]
-    fn only_the_configured_operator_payer_can_reach_the_insurance_fund() {
+    fn the_bootstrap_driver_refuses_a_non_operator_payer() {
         // THE central security property of this piece — and note what it does NOT claim.
         // This is an ENDPOINT property, not a protocol invariant: `FundInsurance` carries no
         // payer and the guest validates with `expected_owner = None`, so a compromised
@@ -8727,7 +8734,7 @@ mod tests {
     }
 
     #[test]
-    fn completion_is_not_reachable_from_a_fill_cut_or_a_liquidation_penalty() {
+    fn a_fund_above_the_floor_alone_does_not_complete_the_bootstrap() {
         // `insurance_fund` moves for reasons that are not a bootstrap — the per-fill cut
         // and liquidation penalties both credit it. The RECORD must not follow.
         //
@@ -9304,6 +9311,7 @@ mod tests {
         let unbacked_needle = concat!("fund_amount_unbacked", "(");
         let fund_needle = concat!("fund_amount", "(");
         let deposit_op_needle = concat!("BatchOp::", "Deposit");
+        let backed_needle = concat!("fund_insurance_backed", "(");
         let src_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
         let mut sources: Vec<String> = Vec::new();
         for entry in std::fs::read_dir(&src_dir).expect("gateway src dir") {
@@ -9319,6 +9327,27 @@ mod tests {
         );
         let count =
             |needle: &str| -> usize { sources.iter().map(|s| s.matches(needle).count()).sum() };
+        // SEC-025-A: pin the BACKED insurance funnel's callers too. The deposit-op count
+        // below does NOT cover this — a new caller of `fund_insurance_backed` that passes
+        // a fabricated sentinel leaf constructs no deposit op of its own and would sail
+        // through. `fund_amount`'s callers are pinned for exactly that reason; this closes
+        // the same gap on the sibling funnel, whose whole safety argument is that its
+        // CALLER supplies a real verified L1 leaf.
+        //
+        // (Deliberately phrased without the op's literal name: this scan counts occurrences
+        // across its own source file, so naming it here would inflate the very count it
+        // describes — which is how this edit first failed.)
+        let nb = count(backed_needle);
+        assert_eq!(
+            nb, 2,
+            "expected exactly 2 occurrences of `{backed_needle}` across the gateway \
+             sources: the definition (`fn fund_insurance_backed`) and its ONE production \
+             call site, the operator bootstrap driver `Gw::bootstrap_insurance`; found \
+             {nb}. This funnel folds a REAL L1 leaf and its backing is supplied by the \
+             CALLER, not verified inside — so a new call site must prove it passes the \
+             payer, id and blind that the vault actually chained, or it fabricates \
+             collateral exactly as `SeedInsurance` did before SEC-024."
+        );
         let n = count(unbacked_needle);
         assert_eq!(
             n, 7,

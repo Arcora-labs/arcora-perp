@@ -972,4 +972,4 @@ git commit -m "docs(sec025a): the bootstrap endpoint, and what it does not promi
   `bootstrap::MIN_BOOTSTRAP_INSURANCE`, and **A and D must ship as one artifact** — they are one
   cutover bundle, and a floor that differs between the two builds recreates the deadlock this
   design exists to avoid.
-- [ ] **SEC-028 remains open.** This piece works around its second cause (the authorization-durability window) with the snapshot barrier; it does not fix the replay wedge.
+- [ ] **SEC-028 remains open, BOTH causes.** An earlier version of this line said this piece works around the second cause (the authorization-durability window) with a snapshot barrier. **It does not.** `POST /v1/accounts/deposit/authorize` calls no barrier, so the blind still lives only in memory until the next periodic snapshot; the barriers that shipped fire long after the L1 deposit is credited. A crash in that window still makes the operator's own leaf permanently uncreditable.

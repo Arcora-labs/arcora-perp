@@ -255,8 +255,9 @@ contract fix; the cutover already requires fresh contracts.
 The authorization-durability window (above) has no attacker and no replay: an authorization
 lives in memory until the next periodic snapshot, so a crash between issuing a signature and
 snapshotting leaves an equally uncreditable leaf. That needs a durable-before-return
-authorization path, and it is separate work. 025-A works around it for its own cutover with an
-acknowledged-snapshot barrier; ordinary users have no such barrier.
+authorization path, and it is separate work. 025-A does **not** work around it, contrary to an earlier
+version of this line: its barriers fire after the deposit is already credited, and the
+authorize path calls none. Nobody has a barrier here — the operator included.
 
 **Sequencing note:** fixing the replay does not make the queue wedge-proof. Both causes produce
 the same uncreditable leaf, and the design should not claim otherwise.

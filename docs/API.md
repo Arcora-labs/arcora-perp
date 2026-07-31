@@ -154,14 +154,30 @@ a protocol invariant — `op_fund_insurance` validates the spend with `expected_
 and the gateway custodies every account's wallet, so a compromised sequencer can spend any
 custodied note directly. That residual is Phase-0 custody, not this endpoint.
 
-**A minimum applies.** A deposit below the configured bootstrap floor is refused **before
-either leg applies**. The endpoint is one-shot in the sense that matters: once the settled
-fund meets the floor it refuses permanently. Refusing small amounts is the point — spending
-the bootstrap on dust would leave the launch gate closed with no retry path.
+**A minimum applies.** A deposit below the bootstrap floor — a compile-time constant, 10,000
+USDC, deliberately not an env var so no environment change can alter a roll-forward decision —
+is refused **before either leg applies**. Refusing small amounts is the point: spending the
+bootstrap on dust would leave the launch gate closed with no retry path.
+
+**The one-shot is keyed on the fund, not on having been called.** The endpoint refuses only
+while the record is complete **and** `insurance_fund` currently meets the floor. So it stays
+open after a partial capitalization, and — deliberately — **reopens if the fund is later
+drained below the floor**. That is a recapitalization path, not an oversight; keying purely on
+"already called" would deadlock a deployment whose floor was raised by a later build.
 
 **Insurance is a one-way valve.** Nothing removes value from the fund except covering bad
 debt. The operator's USDC becomes permanently protocol-owned; there is no claim path and no
 "unfund" operation. Know this before calling.
+
+**Resume, not restart.** If the deposit lands but the insurance transfer fails, the endpoint
+returns **400** and the value is safe — the deposit *is* credited, the note is live, and
+`deposit_counter` and the tx have already been booked. Call the endpoint **again** to resume the
+second leg alone; the persisted record carries the note's identity. Do not hand-repair anything,
+and do not expect a fresh deposit to work in its place.
+
+**400** also covers the two refusals above (non-operator payer, below-floor) and an unverifiable
+`txHash`. Note that a resume returns before the payer check, since it spends the recorded note
+rather than anything from the current request.
 
 Other responses: **409** if the bootstrap is already complete and adequately funded; **503**
 if state persistence is not configured, because the result could not be made durable and a
