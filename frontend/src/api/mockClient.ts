@@ -29,6 +29,15 @@ import {
 
 const MATCH_DELAY_MS = 900;
 const SETTLE_DELAY_MS = 4500;
+/// SEC-025-E1 Task 4 — mirror the gateway's seal tick (TICK_MS = 700 in
+/// crates/gateway/src/main.rs): every resting order seals into the next batch
+/// within one tick, and `account_cancel` refuses a SEALED order even while its
+/// finality is still ACCEPTED. Kept < MATCH_DELAY_MS so the sealed-but-still-
+/// ACCEPTED state exists here exactly as it does on the gateway. Cancel-inside-
+/// the-window is SEC-025-E2; until it lands, cancelling a resting order is
+/// REFUSED in both clients — a mock where cancel always succeeds would pin a
+/// contract the gateway does not honor (clientContract.test.ts pins this).
+const SEAL_DELAY_MS = 700;
 
 interface MarketData {
   market: Market;
@@ -149,6 +158,11 @@ export class MockDarkPerpClient implements DarkPerpClient {
   private adlClawed = 0n;
   private subs = new Set<(s: ClientState) => void>();
   private eventSubs = new Set<(e: OrderEvent) => void>();
+  /// Order ids sealed into a batch (one tick after placement — see SEAL_DELAY_MS).
+  /// TrackedOrder deliberately carries no `sealed` field: the gateway does not
+  /// serve one on /v1/orders either, so the UI cannot know it — the refusal is
+  /// how both clients surface it (the honest E2-gap answer).
+  private sealedIds = new Set<string>();
 
   constructor() {
     for (const cfg of MARKETS) this.data.set(cfg.id, makeMarket(cfg));
@@ -356,10 +370,20 @@ export class MockDarkPerpClient implements DarkPerpClient {
     };
     this.state = this.snapshot([order, ...this.state.orders]);
     this.emit();
-    this.emitEvent({ orderId: id, kind: "ACCEPTED", message: `Order accepted — receipt #${receipt.seqNo}` });
+    // Message parity with the real client's /v1/ws-derived ACCEPTED event
+    // (clientContract.test.ts) — the receipt itself is this method's return.
+    this.emitEvent({ orderId: id, kind: "ACCEPTED", message: "Order accepted" });
+    setTimeout(() => this.sealOrder(id), SEAL_DELAY_MS);
     setTimeout(() => this.advanceToMatched(id), MATCH_DELAY_MS);
     setTimeout(() => this.advanceToSettled(id), SETTLE_DELAY_MS);
     return receipt;
+  }
+
+  /// One tick after placement the order is sealed into a batch (still ACCEPTED
+  /// — matching is a separate step, exactly as on the gateway). From here on,
+  /// cancel refuses it.
+  private sealOrder(id: string) {
+    if (this.state.orders.some((o) => o.id === id)) this.sealedIds.add(id);
   }
 
   private advanceToMatched(id: string) {
@@ -513,6 +537,17 @@ export class MockDarkPerpClient implements DarkPerpClient {
     return null;
   }
 
+  // ── demo-only surfaces — KEPT here, deliberately (SEC-025-E1 Task 4) ──────
+  // Task 3 made triggerCloseOnly/resumeNormal/simulateAdl/closePosition/recover
+  // OPTIONAL on the interface and DELETED them from the real client (their
+  // routes exist only in the demo gateway build). The mock keeps them: it IS
+  // the demo — these methods are the close-only/§6, ADL/Q2, and recovery/§7
+  // stories the demo exists to show, and the UI presence-gates on each
+  // per-client, so the mock implementing them cannot mask their honest absence
+  // in live mode (demoGates.test.tsx pins both sides of that gate). What the
+  // mock must NOT do is give a method the two clients SHARE a semantics the
+  // gateway refuses — that is cancel, handled above.
+
   triggerCloseOnly(): void {
     this.state.mode = "CloseOnly";
     this.emit();
@@ -527,11 +562,13 @@ export class MockDarkPerpClient implements DarkPerpClient {
     const clawed = 1_975n * QUOTE_SCALE;
     this.adlClawed += clawed;
     this.emit();
+    // Event parity with the real client's /v1/ws `adl` handler: same orderId
+    // ("adl" — the wire event names no order) and same message template, with
+    // the amount in whole dollars as the gateway sends it (clawed/QUOTE_SCALE).
     this.emitEvent({
-      orderId: "adl-sim",
+      orderId: "adl",
       kind: "ADL",
-      message:
-        "Auto-deleveraged: $1,975 of your winning position was clawed to cover a counterparty's bad debt (audit Q2).",
+      message: `Auto-deleveraged: $${clawed / QUOTE_SCALE} of your winning position was clawed to cover a counterparty's bad debt.`,
     });
     return clawed;
   }
@@ -549,10 +586,14 @@ export class MockDarkPerpClient implements DarkPerpClient {
     });
   }
 
+  /// Mirrors the gateway's `account_cancel` verbatim (refusal wording
+  /// included): a cancel succeeds only in the pre-seal window; a SEALED order
+  /// refuses even while still ACCEPTED — the answer every resting order gets
+  /// on the live gateway until SEC-025-E2 lands cancel-inside-the-window.
   async cancelOrder(orderId: string): Promise<void> {
     const o = this.state.orders.find((x) => x.id === orderId);
     if (!o) throw new Error("Order not found.");
-    if (o.finality !== "ACCEPTED") {
+    if (this.sealedIds.has(orderId) || o.finality !== "ACCEPTED") {
       throw new Error("Only an ACCEPTED order can be cancelled (matched/settled are binding).");
     }
     this.state = this.snapshot(this.state.orders.filter((x) => x.id !== orderId));

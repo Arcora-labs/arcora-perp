@@ -147,7 +147,9 @@ export interface DarkPerpClient {
   /// Cancel an order that is still ACCEPTED (not yet matched). On the real
   /// client this is `DELETE /v1/orders/:id` (caller-scoped); gateway refusals
   /// — including the `sealed` refusal every resting order hits until E2 —
-  /// reject the promise with the gateway's reason.
+  /// reject the promise with the gateway's reason. The mock mirrors the same
+  /// one-tick seal window and refusal wording (Task 4, clientContract.test.ts),
+  /// so neither client pins an always-cancellable contract E2 hasn't earned.
   cancelOrder(orderId: string): Promise<void>;
 
   /// Switch the active market.
