@@ -24,7 +24,7 @@ use crate::withdrawals::Withdrawal;
 use std::path::{Path, PathBuf};
 
 /// Journal plaintext magic + format version (INSIDE the sealed payload; the sealed
-/// file itself starts with the snapshot module's `DPSNAP3` framing). Bump the
+/// file itself starts with the snapshot module's `snapshot::MAGIC` framing). Bump the
 /// trailing digit on layout changes so an old binary refuses a new journal (and
 /// vice versa) instead of postcard-misreading it.
 /// v2: SEC-022 added `Market.max_fill_deviation_ratio`, carried here via

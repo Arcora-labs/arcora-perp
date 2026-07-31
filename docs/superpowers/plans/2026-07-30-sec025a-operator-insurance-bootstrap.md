@@ -493,11 +493,30 @@ fn only_the_configured_operator_payer_can_reach_the_insurance_fund() {
     let key = gw.account_register_for_test();
     let operator = [0xAAu8; 20];
     let attacker = [0xBBu8; 20];
+    let amount = bootstrap::MIN_BOOTSTRAP_INSURANCE;
+    let ins_before = gw.seq.state.insurance_fund;
+    let count_before = gw.seq.state.consumed_deposit_count;
 
+    // A deposit whose on-chain payer is NOT the configured operator must be refused even
+    // though both credentials are valid — the admin key and the account key are present,
+    // and only the payer differs.
+    let err = gw
+        .bootstrap_insurance_for_test(&key, operator, attacker, amount)
+        .expect_err("a non-operator payer must be refused");
     assert!(
-        !insurance_bootstrap_payer_ok(&operator, &operator),
-        "placeholder — replace with the real assertion below"
+        err.contains("INSURANCE_OPERATOR_ADDRESS"),
+        "the refusal must name the binding that failed: {err}"
     );
+    // Refused before ANY mutation: no note minted, no deposit consumed.
+    assert_eq!(gw.seq.state.insurance_fund, ins_before);
+    assert_eq!(gw.seq.state.consumed_deposit_count, count_before);
+    assert_eq!(gw.bootstrap, bootstrap::Bootstrap::NotStarted);
+
+    // The same call with the operator as payer succeeds, proving the refusal above was
+    // the payer binding and not some unrelated precondition.
+    gw.bootstrap_insurance_for_test(&key, operator, operator, amount)
+        .expect("the configured operator's own deposit must be accepted");
+    assert_eq!(gw.seq.state.insurance_fund, ins_before + amount);
 }
 
 #[test]
@@ -540,10 +559,24 @@ fn a_successful_bootstrap_raises_insurance_without_raising_external_in_twice() {
 }
 ```
 
-Replace the placeholder body of the first test with the real one once
-`bootstrap_insurance_for_test` exists — it must take an explicit payer address and assert
-that a payer other than the configured operator is refused while the operator's succeeds,
-with `insurance_fund` unchanged in the refused case.
+**Test-helper signature** (`#[cfg(test)]`, on `impl Gw`), used by all three tests above:
+
+```rust
+fn bootstrap_insurance_for_test(
+    &mut self,
+    key: &[u8; 32],
+    expected_payer: [u8; 20],
+    from: [u8; 20],
+    amount: i128,
+) -> Result<(), String>
+```
+
+It authorizes a deposit for `from`, then calls the real `bootstrap_insurance` with
+`expected_payer`, the chain-assigned `deposit_id = seq.state.consumed_deposit_count`, a
+unique tx string, and market 0. It must call the **real** driver — a parallel test-only
+path would pin nothing. `a_below_floor_bootstrap_is_refused_before_either_leg_applies` and
+`a_successful_bootstrap_raises_insurance_without_raising_external_in_twice` call it with
+`expected_payer == from` so the payer binding is satisfied and the amount is what varies.
 
 - [ ] **Step 2: Run to confirm they fail**
 
@@ -838,24 +871,45 @@ In `bootstrap_insurance`, before the payer check, handle the resume case: when t
 
 - [ ] **Step 5: Add the two durability barriers**
 
-In the endpoint handler, after a successful `bootstrap_insurance` and **after releasing the
-`gw` lock**, call `snapshot_now(&app.snapshot_req).await`. On `Err`, return 500 naming the
-failure — the operator must learn the record is not durable, because a crash now loses the
-`(cm, spend_key)` the resume path needs.
+**The lock rule, and it is not optional.** `snapshot_now`'s writer takes `app.gw.lock()`
+itself. A caller that holds the `gw` lock across `snapshot_now(...).await` **deadlocks
+permanently and wedges the entire gateway** — the writer blocks on the lock, the caller blocks
+on the reply, and the tick loop and every handler stall behind it. Task 1 added a timeout so
+this surfaces as an `Err` rather than an unbounded hang, but the timeout is a backstop, not a
+licence. **Both barriers below must release the `gw` lock before awaiting.**
+
+In the endpoint handler, after a successful `bootstrap_insurance`, **drop the `gw` guard**, then
+call `snapshot_now(&app.snapshot_req).await`. On `Err`, return 500 naming the failure — the
+operator must learn the record is not durable, because a crash now loses the `(cm, spend_key)`
+the resume path needs.
 
 In the settle loop, when the sealed window's id equals an `InsuranceApplied { window_id }`,
-require `snapshot_now` to succeed **before** submitting the settle. Rationale to put in the
+require `snapshot_now` to succeed **before** submitting the settle — again outside any `gw`
+guard. Rationale to put in the
 comment: if that window lands on-chain before its post-seal snapshot persists, boot restores
 Counter B at `J` while the chain reads `J+1`, the recovery table returns `Hold` rather than
 `RollForward`, `commit_window_settle` never runs, and a genuinely settled bootstrap never
 reaches `Complete` — with the one-shot already spent.
 
-- [ ] **Step 6: Run the full workspace**
+- [ ] **Step 6: Remove Task 1's dead-code suppressions**
+
+Task 1 marked `snapshot_now` and `App.snapshot_req` with `#[cfg_attr(not(test), expect(dead_code))]`
+and `#[expect(dead_code)]` respectively, because nothing called them yet. This task adds the
+production callers, so **both suppressions must come off**.
+
+Once an item is used, the expectation goes unfulfilled and clippy warns — which **CI promotes
+to a failure** via `-D warnings` (`.github/workflows/ci.yml:21`). It is a CI gate, not a rustc
+error: a local `cargo build` still exits 0. So do not rely on the compiler to remind you; the
+signal is `cargo clippy --workspace --all-targets` printing anything other than "No issues
+found". If you find yourself keeping a suppression to quiet that, it means a barrier is not
+actually wired — which is the defect, not the lint.
+
+- [ ] **Step 7: Run the full workspace**
 
 Run: `cargo fmt --all && cargo test --workspace && cargo clippy --workspace --all-targets`
 Expected: workspace PASS (555 + the new tests), clippy 0 warnings.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
 git add crates/gateway/src/main.rs
@@ -918,4 +972,4 @@ git commit -m "docs(sec025a): the bootstrap endpoint, and what it does not promi
   `bootstrap::MIN_BOOTSTRAP_INSURANCE`, and **A and D must ship as one artifact** — they are one
   cutover bundle, and a floor that differs between the two builds recreates the deadlock this
   design exists to avoid.
-- [ ] **SEC-028 remains open.** This piece works around its second cause (the authorization-durability window) with the snapshot barrier; it does not fix the replay wedge.
+- [ ] **SEC-028 remains open, BOTH causes.** An earlier version of this line said this piece works around the second cause (the authorization-durability window) with a snapshot barrier. **It does not.** `POST /v1/accounts/deposit/authorize` calls no barrier, so the blind still lives only in memory until the next periodic snapshot; the barriers that shipped fire long after the L1 deposit is credited. A crash in that window still makes the operator's own leaf permanently uncreditable.

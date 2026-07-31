@@ -1,7 +1,7 @@
 # SEC-028 — a replayed deposit authorization permanently wedges the deposit stream
 
-**Status:** finding, verified at source. Not yet designed. Found while adversarially
-reviewing the 025-A spec; **independent of 025-A and present on `main` today.**
+**Status:** **designed** (§Design below), independently verified by an adversarial review. Found
+while reviewing the 025-A spec; **independent of 025-A and present on `main` today.**
 
 **Severity:** High. Permanent, unrecoverable denial of the deposit path for the cost of a
 few base units of USDC. No fund loss for existing users — they can still withdraw — and
@@ -189,3 +189,107 @@ head-of-line block (a user deposits and declines to confirm, recoverable the mom
 act). This is the same shape but **involuntary and permanent**, and it is strictly worse.
 Any 025-A gate must be designed knowing this exists; and 025-A's gate does not fix it,
 because the wedge can be created after the gate opens.
+
+
+---
+
+# Design
+
+Consume the signed authorization on-chain, so the replay becomes impossible rather than merely
+uncreditable. One mapping, one write, one revert path.
+
+## The contract change
+
+`contracts/src/CollateralVault.sol`. Follows the existing one-shot idiom in this file —
+`claimed` (`:41`) and `rootPublished` (`:46`) are both `mapping(bytes32 => bool) public`:
+
+```solidity
+    /// SEC-028: gateway authorizations already consumed. The `deposit` signature binds
+    /// (chainid, vault, from, ownerCommit, amount) and deliberately NOT `depositCount`,
+    /// because the gateway cannot predict the landing index at signing time — so without
+    /// this mapping the same tuple can be submitted repeatedly, each call minting a fresh
+    /// leaf. The gateway consumes its stored blind on the FIRST credit, leaving every later
+    /// identical leaf permanently uncreditable and head-of-line-blocking the contiguous
+    /// deposit queue. That is exactly the property `deposit`'s own doc claims the signature
+    /// establishes; this mapping is what actually establishes it.
+    mapping(bytes32 => bool) public usedDepositAuthorization;
+```
+
+Inside `deposit` (`:186`), after the close-only refusal and the `_recover` check, and
+**before** `transferFrom`:
+
+```solidity
+        if (usedDepositAuthorization[digest]) revert AuthorizationAlreadyUsed();
+        usedDepositAuthorization[digest] = true;
+```
+
+Placement is load-bearing in both directions. **After** signature recovery, so an unsigned or
+badly-signed call cannot burn a digest it never had the right to. **Before** `transferFrom`, so
+a token-transfer failure reverts the whole call and rolls the mark back with it — the mark and
+the leaf are then written or not written together, and there is no state in which an
+authorization is consumed but no leaf exists.
+
+Key on the **digest**, never on the signature bytes. Keying on bytes would tie replay protection
+to one serialization of the authorization rather than to the authorization itself. (Malleability
+is a weaker argument here than it first looks, since `_recover` (`:138`) already rejects high-`s`
+signatures — but the principle stands on its own.)
+
+## What does NOT change
+
+- **The signature ABI.** No new parameter, no re-signing scheme, no gateway signing change.
+- **The leaf and the fold.** `deposit_leaf` / `deposit_chain_fold` and every cross-layer KAT are
+  untouched, because the digest never enters the leaf or the chain — the contract already says
+  the signature is "verified then DISCARDED", and that stays true of everything that is chained.
+- **`crates/perp-core`.** No vkey movement.
+- **The off-chain confirm path.** `account_confirm_deposit` keeps deleting the authorization
+  after the first credit. That deletion is only harmful *because* a second leaf can exist; once
+  it cannot, the deletion is simply correct one-shot hygiene and the secret stops lingering.
+
+The alternative — retaining blinds gateway-side — is recorded above as a fallback. It is
+gateway-only, and verified SEC-026-safe, but it *accommodates* the replay, keeps a secret alive
+past its single use, and needs a retention policy with no safe eviction rule. Prefer the
+contract fix; the cutover already requires fresh contracts.
+
+## The second cause is NOT fixed by this
+
+The authorization-durability window (above) has no attacker and no replay: an authorization
+lives in memory until the next periodic snapshot, so a crash between issuing a signature and
+snapshotting leaves an equally uncreditable leaf. That needs a durable-before-return
+authorization path, and it is separate work. 025-A does **not** work around it, contrary to an earlier
+version of this line: its barriers fire after the deposit is already credited, and the
+authorize path calls none. Nobody has a barrier here — the operator included.
+
+**Sequencing note:** fixing the replay does not make the queue wedge-proof. Both causes produce
+the same uncreditable leaf, and the design should not claim otherwise.
+
+## Tests
+
+Foundry, `contracts/test/`:
+
+1. **The replay is refused.** Same `(from, ownerCommit, amount)` and the same signature,
+   submitted twice: the second reverts `AuthorizationAlreadyUsed`. Must fail before the fix.
+2. **`depositCount` and `depositChainTip` are unchanged by the refused call** — the wedge came
+   from a leaf existing at all, so proving no leaf was minted is the point, not just that the
+   call reverted.
+3. **A failed `transferFrom` rolls the mark back**: with an insufficient allowance the call
+   reverts, and a subsequent well-funded call with the same signature **succeeds**. This is the
+   test that proves the placement before `transferFrom` was right; a mark written outside the
+   revert path would strand a legitimate depositor permanently.
+4. **A distinct authorization is unaffected** — a different `amount` (hence a different digest)
+   still deposits normally, so the mapping is not over-broad.
+5. **An unsigned or wrongly-signed call burns nothing**: it reverts `BadGatewaySig`, and the
+   digest it presented is still usable afterwards by its legitimate holder.
+
+Rust side: no new test is required, but the existing `account_confirm_deposit` guards should keep
+their coverage — the point of this change is that the *fail-closed* refusal for an absent
+authorization stops being reachable through a replay.
+
+## Migration
+
+A contract change, so a fresh `CollateralVault` deploy. Acceptable: this workstream's cutover
+already deploys fresh contracts (Settlement, Vault, USDC). No gateway state format moves, so
+this adds no snapshot or journal magic bump of its own.
+
+**On the currently deployed stack**, the wedge remains reachable until that redeploy. It is
+worth knowing the blast radius is bounded: deposits die, settlement and withdrawals keep
+working, and existing users can still exit.
