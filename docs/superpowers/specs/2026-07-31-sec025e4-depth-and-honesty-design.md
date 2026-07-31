@@ -80,9 +80,10 @@ answered: **fund a real house MM, or go no-house?**
 - **No-house** — remove the injector rather than merely starve it, require genuine market makers,
   and ship E3 so their orders report honest execution.
 
-The recorded direction is **no-house**, which is why 025-E is called the honest blocker for the
-alpha. This spec assumes it. **If that assumption is wrong, most of Part 2 changes**, so confirm
-it before editing prose — rewriting the litepaper twice is worse than asking once.
+**DECIDED 2026-07-31 by the operator: no-house.** This is no longer an assumption — Part 2's
+sweep and the injector deletion below both proceed on it. Recorded here because the prose
+changes are irreversible in practice (the litepaper is a published document) and a future reader
+should know the decision was made rather than inferred.
 
 ## Carry-in
 
