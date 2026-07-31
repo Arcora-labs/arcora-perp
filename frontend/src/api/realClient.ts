@@ -73,6 +73,18 @@ interface WireWithdrawal {
   to: string; amount: string; nonce: number; leaf: string; root: string;
   claimable: boolean; proof: string[];
 }
+/// The gateway's WReceipt wire shape — the domain `Receipt` plus `windowId`.
+interface WireV1Receipt { orderHash: string; seqNo: number; recvTimeMs: number; batchIdHint: number; windowId: number }
+/// One order in the FLAT `GET /v1/orders` shape (`v1_orders_json`) — unlike the
+/// legacy /api/state entries there is no nested `input` object.
+interface WireV1Order {
+  orderId: string; marketId: number; side: "Buy" | "Sell"; size: string; limitPrice: string;
+  tif: string; reduceOnly: boolean; orderHash: string; finality: TrackedOrder["finality"];
+  filledSize: string; avgFillPrice: string; createdMs: number;
+  /// SEC-025-E1 decision (c): the stored acceptance receipt, served by the
+  /// gateway. Optional so an OLDER gateway (field absent) degrades, not crashes.
+  receipt?: WireV1Receipt;
+}
 
 const B = (s: string): bigint => BigInt(s);
 
@@ -103,6 +115,43 @@ function pOrder(o: WireTrackedOrder): TrackedOrder {
 }
 function pAccount(a: WireState["account"]): AccountState {
   return { settledBalance: B(a.settledBalance), positions: a.positions.map(pPosition) };
+}
+/**
+ * Map the flat `GET /v1/orders` wire shape into the UI's nested TrackedOrder.
+ *
+ * Receipt — SEC-025-E1 decision (c): the gateway serves the stored acceptance
+ * receipt on /v1/orders (it always held it; the frontend-only alternatives could
+ * only render placeholders for orders placed in other sessions). It is mapped
+ * FIELD-BY-FIELD rather than passed through: the domain `Receipt` has no
+ * `windowId`, and the explicit map keeps the domain type the contract instead
+ * of silently carrying whatever extra keys the wire grows. An older gateway
+ * that omits the field degrades to a synthesized stub (hash from the flat
+ * `orderHash`, zero seq/batch) — degrade, never throw.
+ *
+ * NOTE: `filledSize`/`avgFillPrice` are the gateway's FABRICATED full-fill
+ * values (it marks every non-ACCEPTED order fully filled at its limit price).
+ * Real execution reporting is SEC-025-E3 — this task only makes the browser
+ * read the RIGHT ACCOUNT's fabricated values instead of the demo wallet's.
+ */
+function pV1Order(o: WireV1Order): TrackedOrder {
+  const r = o.receipt;
+  const receipt: Receipt =
+    r && typeof r.orderHash === "string" && typeof r.seqNo === "number" &&
+    typeof r.recvTimeMs === "number" && typeof r.batchIdHint === "number"
+      ? { orderHash: r.orderHash, seqNo: r.seqNo, recvTimeMs: r.recvTimeMs, batchIdHint: r.batchIdHint }
+      : { orderHash: o.orderHash, seqNo: 0, recvTimeMs: o.createdMs, batchIdHint: 0 };
+  return {
+    id: o.orderId,
+    input: {
+      marketId: o.marketId, side: o.side, size: B(o.size), limitPrice: B(o.limitPrice),
+      tif: o.tif as OrderInput["tif"], reduceOnly: o.reduceOnly,
+    },
+    receipt,
+    finality: o.finality,
+    filledSize: B(o.filledSize),
+    avgFillPrice: B(o.avgFillPrice),
+    createdMs: o.createdMs,
+  };
 }
 /// FIN-001, defensively: an old gateway (fields absent) or a malformed frame
 /// parses to null — the UI simply hides the row, never crashes.
@@ -462,6 +511,16 @@ export class RealDarkPerpClient implements DarkPerpClient {
   private pollTimer: ReturnType<typeof setInterval> | null = null;
   private disposed = false;
 
+  // ── own-account state (SEC-025-E1) ─────────────────────────────────────────
+  // The public /api/state + /ws feed carries ONLY the shared demo wallet (the
+  // gateway's LIQ-001 invariant keeps real /v1 tenants off it), while this
+  // client's sealed orders trade as its own authenticated /v1 account. These
+  // caches hold the latest authenticated `GET /v1/orders` + `GET /v1/positions`
+  // reads; emit() overlays them so the UI shows the CALLER's account. `null`
+  // (no /v1 account yet, or the read failed) falls through to the legacy feed.
+  private ownOrders: TrackedOrder[] | null = null;
+  private ownPositions: Position[] | null = null;
+
   // ── sealed order ingress state ─────────────────────────────────────────────
   /** The verified enclave order-epoch key (refetched once notAfterMs passes). */
   private epoch: VerifiedEpoch | null = null;
@@ -501,6 +560,12 @@ export class RealDarkPerpClient implements DarkPerpClient {
     } catch (e) {
       console.warn("[dark-perp] sealed-order setup failed at bootstrap (will retry on first order):", e);
     }
+    // SEC-025-E1: the /api/state snapshot's account/orders are the SHARED DEMO
+    // wallet — the caller's real state lives behind the authenticated /v1
+    // reads. Overlay it now so the first render already shows the right
+    // account; on failure (no account, gateway down) the UI degrades to the
+    // legacy feed (refreshOwnState never throws).
+    await client.refreshOwnState();
     return client;
   }
 
@@ -645,6 +710,18 @@ export class RealDarkPerpClient implements DarkPerpClient {
       market: base.markets.find((m) => m.id === id) ?? base.market,
       book: this.selBook ?? base.book,
       oracle: this.selOracle ?? base.oracle,
+      // SEC-025-E1: the caller's own /v1 account overrides the public feed's
+      // demo wallet. The base frame (the bootstrap /api/state snapshot, and the
+      // legacy /ws stream until Task 2 replaces it) carries only the shared
+      // demo account — without this overlay every WS push would clobber the
+      // user's own view back to demo data one frame after bootstrap fixed it.
+      // `null` degrades to the legacy feed (no /v1 account / read failed).
+      // `settledBalance` intentionally stays the base feed's: moving the
+      // balance read is not this task (only orders + positions are).
+      orders: this.ownOrders ?? base.orders,
+      account: this.ownPositions
+        ? { ...base.account, positions: this.ownPositions }
+        : base.account,
     };
   }
 
@@ -748,11 +825,61 @@ export class RealDarkPerpClient implements DarkPerpClient {
     extra.set(acct.owner, 8);
     const aad = domainAad(DOMAIN_ORDER_ENCRYPT_AAD, extra);
     const sealed = seal(epoch.pub, terms, aad);
-    return this.post<Receipt>(
+    const receipt = await this.post<Receipt>(
       "/v1/orders",
       { epochId: epoch.epochId, sealed: "0x" + bytesToHex(sealed) },
       { "X-Api-Key": acct.apiKey },
     );
+    // SEC-025-E1: the accepted order lands in the account's /v1 order list —
+    // refresh the own-account view now instead of waiting for a push (the
+    // legacy /ws stream carries only the demo wallet until Task 2). Fire and
+    // forget: the receipt must return to the caller regardless.
+    void this.refreshOwnState();
+    return receipt;
+  }
+
+  // ── own-account reads (SEC-025-E1) ──────────────────────────────────────────
+
+  /** The account's orders from the authenticated `GET /v1/orders` (flat wire → TrackedOrder). */
+  async getOrders(): Promise<TrackedOrder[]> {
+    const acct = await this.ensureAccount();
+    const res = await fetch(this.base + "/v1/orders", { headers: { "X-Api-Key": acct.apiKey } });
+    if (!res.ok) throw new Error(`/v1/orders ${res.status}`);
+    const j = (await res.json()) as { orders?: unknown };
+    if (typeof j !== "object" || j === null || !Array.isArray(j.orders)) {
+      throw new Error("/v1/orders: malformed response");
+    }
+    return (j.orders as WireV1Order[]).map(pV1Order);
+  }
+
+  /** The account's open positions from the authenticated `GET /v1/positions`. */
+  async getPositions(): Promise<Position[]> {
+    const acct = await this.ensureAccount();
+    const res = await fetch(this.base + "/v1/positions", { headers: { "X-Api-Key": acct.apiKey } });
+    if (!res.ok) throw new Error(`/v1/positions ${res.status}`);
+    const j = (await res.json()) as { positions?: unknown };
+    if (typeof j !== "object" || j === null || !Array.isArray(j.positions)) {
+      throw new Error("/v1/positions: malformed response");
+    }
+    return (j.positions as WirePosition[]).map(pPosition);
+  }
+
+  /**
+   * Refresh the caller's OWN orders/positions from the authenticated /v1 reads
+   * and re-emit. NEVER throws: before a /v1 account exists (or when the gateway
+   * is unreachable) the UI must degrade to the legacy public feed, not crash —
+   * the caches simply stay as they were (`null` ⇒ fall through in emit()).
+   */
+  private async refreshOwnState(): Promise<void> {
+    try {
+      const [orders, positions] = await Promise.all([this.getOrders(), this.getPositions()]);
+      if (this.disposed) return;
+      this.ownOrders = orders;
+      this.ownPositions = positions;
+      if (this.state) this.setState(this.state);
+    } catch (e) {
+      console.warn("[dark-perp] /v1 own-account read failed (showing the legacy feed until it succeeds):", e);
+    }
   }
   async deposit(amountQuote: bigint): Promise<void> {
     await this.post("/api/deposit", { amount: s(amountQuote) });

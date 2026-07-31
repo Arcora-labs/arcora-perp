@@ -107,6 +107,42 @@ const ethBook = {
 };
 const ethOracle = { marketId: 1, price: "351500000000", confidence: "5", publishTimeMs: 1234 };
 
+// ── SEC-025-E1 fixtures: the caller's /v1 account state ≠ the demo wallet's ──
+// The public /api/state feed serves ONLY the shared demo wallet (the gateway's
+// LIQ-001 invariant), so a client that keeps reading account state off it shows
+// the WRONG account. Every distinguishing field below DIFFERS between the demo
+// wallet and the caller's /v1 account — id demo-1 vs o42, market 0 vs 1, Buy vs
+// Sell, seqNo 77 vs 5, hash dd… vs a1…, long-BTC vs short-ETH — so an
+// implementation still reading /api/state cannot pass any assertion by
+// coincidence (the workstream's most common defect shape).
+const demoOrder = {
+  id: "demo-1",
+  input: { marketId: 0, side: "Buy", size: "100000000", limitPrice: "6400000000000", tif: "Gtc", reduceOnly: false },
+  receipt: { orderHash: "0x" + "dd".repeat(32), seqNo: 77, recvTimeMs: 1000, batchIdHint: 2, windowId: 1 },
+  finality: "MATCHED", filledSize: "100000000", avgFillPrice: "6400000000000", createdMs: 1000,
+};
+const demoPosition = {
+  marketId: 0, size: "100000000", entryPrice: "6400000000000",
+  collateral: "32000000000", unrealizedPnl: "5000000000", liquidationPrice: "6100000000000",
+};
+const demoState = {
+  ...wireState,
+  orders: [demoOrder],
+  account: { settledBalance: "123000000", positions: [demoPosition] },
+};
+// The caller's own order in the FLAT `GET /v1/orders` wire shape (no nested
+// `input`; `receipt` per SEC-025-E1 decision (c), including the extra windowId).
+const v1Order = {
+  orderId: "o42", marketId: 1, side: "Sell", size: "250000000", limitPrice: "352000000000",
+  tif: "Fok", reduceOnly: true, orderHash: "0x" + "a1".repeat(32), finality: "ACCEPTED",
+  filledSize: "0", avgFillPrice: "0", createdMs: 5000,
+  receipt: { orderHash: "0x" + "a1".repeat(32), seqNo: 5, recvTimeMs: 5001, batchIdHint: 3, windowId: 9 },
+};
+const v1Position = {
+  marketId: 1, size: "-25000000", entryPrice: "351000000000",
+  collateral: "1755000000", unrealizedPnl: "-12500000", liquidationPrice: "368550000000",
+};
+
 interface Captured { path: string; method: string; headers: Record<string, string>; body: unknown }
 let calls: Captured[] = [];
 let epochResponse: () => unknown = () => signedEpoch();
@@ -116,6 +152,10 @@ let v1WithdrawStatus = 200; // per-test override: gateway rejection of the REAL 
 let demoWithdrawStatus = 200; // per-test override: legacy demo-mirror failure
 let authorizeStatus = 200; // per-test override: gateway rejection (bind-first etc.)
 let authorizeBody: unknown = null; // per-test override of the response body (null ⇒ well-formed default)
+let stateResponse: unknown = wireState; // per-test override of the /api/state snapshot
+let v1OrdersResponse: unknown = { orders: [] }; // GET /v1/orders (own-account read)
+let v1PositionsResponse: unknown = { positions: [] }; // GET /v1/positions (own-account read)
+let accountsStatus = 200; // per-test override: /v1 account registration failure
 
 // ── SEC-021 withdrawal-authorization fixtures ────────────────────────────────
 // The bound deposit address withdrawals pay to (and whose key signs).
@@ -165,15 +205,21 @@ function installFetch() {
         json: async () => v,
         text: async () => JSON.stringify(v),
       });
-      if (path === "/api/state") return json(wireState);
+      if (path === "/api/state") return json(stateResponse);
       if (path === "/v1/enclave/epoch") { epochHits++; return json(epochResponse()); }
       if (path === "/v1/accounts" && method === "POST") {
         registrations++;
+        if (accountsStatus !== 200) return json({ error: "registration unavailable" }, accountsStatus);
         return json({ apiKey: ACCT_KEY, owner: OWNER_HEX, callerSigned: false });
       }
       if (path === "/v1/accounts/me") return json({ owner: OWNER_HEX, ...meFields });
       if (path === "/v1/orders" && method === "POST") {
         return json({ orderHash: "0x" + "00".repeat(32), seqNo: 1, recvTimeMs: 0, batchIdHint: 1 });
+      }
+      // SEC-025-E1 own-account reads — authenticated per account, like the gateway.
+      if ((path === "/v1/orders" || path === "/v1/positions") && method === "GET") {
+        if (init?.headers?.["X-Api-Key"] !== ACCT_KEY) return json({ error: "unknown account" }, 401);
+        return json(path === "/v1/orders" ? v1OrdersResponse : v1PositionsResponse);
       }
       if (path === "/api/deposit" || path === "/v1/accounts/deposit") return json({});
       if (path === "/v1/accounts/withdraw" && method === "POST") {
@@ -234,6 +280,10 @@ beforeEach(() => {
   demoWithdrawStatus = 200;
   authorizeStatus = 200;
   authorizeBody = null;
+  stateResponse = wireState;
+  v1OrdersResponse = { orders: [] };
+  v1PositionsResponse = { positions: [] };
+  accountsStatus = 200;
   meFields = defaultMeFields();
   personalSigns = [];
   epochResponse = () => signedEpoch();
@@ -728,5 +778,110 @@ describe("settlement health (FIN-001)", () => {
       data: JSON.stringify({ type: "state", state: { ...wireState, settlementHealth: "BANANA" } }),
     });
     expect(client.getState().settlement).toBeNull();
+  });
+});
+
+// ── SEC-025-E1: authenticated own-account reads (orders + positions) ─────────
+// The browser must show the CALLER's /v1 account, not the shared demo wallet the
+// public /api/state feed serves. The fixtures make the two accounts differ in
+// every distinguishing field (see their definition above) so nothing passes by
+// coincidence.
+describe("own-account reads from /v1 (SEC-025-E1)", () => {
+  /** Let a fire-and-forget microtask fetch chain settle (mock fetch is all-microtask). */
+  const settle = async () => { for (let i = 0; i < 10; i++) await Promise.resolve(); };
+
+  beforeEach(() => {
+    stateResponse = demoState;
+    v1OrdersResponse = { orders: [v1Order] };
+    v1PositionsResponse = { positions: [v1Position] };
+  });
+
+  it("bootstrap shows the CALLER's /v1 orders and positions, never the demo wallet's", async () => {
+    const client = await bootstrapClient();
+    const st = client.getState();
+    expect(st.orders.map((o) => o.id)).toEqual(["o42"]);
+    expect(st.orders.some((o) => o.id === "demo-1")).toBe(false);
+    expect(st.account.positions.length).toBe(1);
+    expect(st.account.positions[0].marketId).toBe(1);
+    expect(st.account.positions[0].size).toBe(-25_000_000n);
+    // demo-wallet position (long BTC on market 0) must NOT leak through
+    expect(st.account.positions.some((p) => p.marketId === 0)).toBe(false);
+    // both reads hit the AUTHENTICATED /v1 endpoints under the account's key
+    const reads = calls.filter(
+      (c) => (c.path === "/v1/orders" || c.path === "/v1/positions") && c.method === "GET",
+    );
+    expect(reads.length).toBe(2);
+    for (const r of reads) expect(r.headers["X-Api-Key"]).toBe(ACCT_KEY);
+    client.dispose();
+  });
+
+  it("maps the flat /v1 order into the nested TrackedOrder (bigints; receipt = exactly the four domain fields)", async () => {
+    const client = await bootstrapClient();
+    // toEqual is strict on extra keys: this dies if the wire receipt (which
+    // carries windowId) is passed through instead of mapped field-by-field.
+    expect(client.getState().orders[0]).toEqual({
+      id: "o42",
+      input: {
+        marketId: 1, side: "Sell", size: 250_000_000n, limitPrice: 352_000_000_000n,
+        tif: "Fok", reduceOnly: true,
+      },
+      receipt: { orderHash: "0x" + "a1".repeat(32), seqNo: 5, recvTimeMs: 5001, batchIdHint: 3 },
+      finality: "ACCEPTED",
+      filledSize: 0n,
+      avgFillPrice: 0n,
+      createdMs: 5000,
+    });
+    client.dispose();
+  });
+
+  it("a later demo-wallet WS frame does NOT clobber the caller's own orders/positions", async () => {
+    const client = await bootstrapClient();
+    lastWs!.onmessage!({ data: JSON.stringify({ type: "state", state: demoState }) });
+    const st = client.getState();
+    expect(st.orders.map((o) => o.id)).toEqual(["o42"]);
+    expect(st.account.positions[0].marketId).toBe(1);
+    client.dispose();
+  });
+
+  it("degrades to the legacy feed when no /v1 account can be provisioned — never throws", async () => {
+    accountsStatus = 500;
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const client = await bootstrapClient(); // must resolve, not reject
+    expect(warn).toHaveBeenCalled();
+    const st = client.getState();
+    // no key ⇒ the /v1 reads are impossible; the legacy feed falls through
+    expect(st.orders.map((o) => o.id)).toEqual(["demo-1"]);
+    expect(calls.some((c) => c.path === "/v1/orders" && c.method === "GET")).toBe(false);
+    client.dispose();
+  });
+
+  it("an order served without a receipt (older gateway) degrades to a synthesized stub receipt", async () => {
+    const { receipt: _dropped, ...noReceipt } = v1Order;
+    v1OrdersResponse = { orders: [noReceipt] };
+    const client = await bootstrapClient();
+    expect(client.getState().orders[0].receipt).toEqual({
+      orderHash: "0x" + "a1".repeat(32), // from the flat orderHash field
+      seqNo: 0,
+      recvTimeMs: 5000, // createdMs — the closest honest stand-in
+      batchIdHint: 0,
+    });
+    client.dispose();
+  });
+
+  it("placeOrder refreshes the own-account view (the legacy stream can't carry it)", async () => {
+    const client = await bootstrapClient();
+    expect(client.getState().orders.map((o) => o.id)).toEqual(["o42"]);
+    const newOrder = {
+      ...v1Order, orderId: "o43", orderHash: "0x" + "b2".repeat(32),
+      receipt: { ...v1Order.receipt, orderHash: "0x" + "b2".repeat(32), seqNo: 6 },
+    };
+    v1OrdersResponse = { orders: [newOrder, v1Order] };
+    await client.placeOrder({
+      marketId: 1, side: "Sell", size: 250_000_000n, limitPrice: 352_000_000_000n,
+      tif: "Fok", reduceOnly: true,
+    });
+    await settle();
+    expect(client.getState().orders.map((o) => o.id)).toEqual(["o43", "o42"]);
+    client.dispose();
   });
 });

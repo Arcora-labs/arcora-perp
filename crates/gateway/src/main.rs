@@ -3292,6 +3292,14 @@ impl Gw {
                     "filledSize": o.filled.to_string(),
                     "avgFillPrice": o.avg_fill.to_string(),
                     "createdMs": o.created_ms,
+                    // SEC-025-E1 decision (c): serve the stored ACCEPTANCE RECEIPT.
+                    // The gateway already holds it (populated when the order was
+                    // accepted); the alternatives — a client-side receipt cache or
+                    // an optional field — degrade the UI for every order not placed
+                    // in the current page session, for no saving beyond these lines.
+                    // Serialized via WReceipt so the camelCase field names stay
+                    // byte-identical to the /api/state + placeOrder-response shape.
+                    "receipt": serde_json::to_value(&o.receipt).unwrap(),
                 })
             })
             .collect();
@@ -11660,6 +11668,42 @@ mod tests {
         );
         // an unknown key has no view
         assert!(gw.v1_account(&[0xff; 32]).is_none());
+    }
+
+    /// SEC-025-E1 decision (c): `GET /v1/orders` serves each order's ACCEPTANCE
+    /// RECEIPT — the exact one `account_place_order` returned — so a browser can
+    /// render receipts for orders placed in ANY session, not just those whose
+    /// receipt it still holds from its own placeOrder response.
+    #[test]
+    fn v1_orders_carry_the_acceptance_receipt() {
+        let mut gw = Gw::boot();
+        let (key, _owner) = gw.register_account(None);
+        gw.account_deposit(&key, 0, 20_000 * QUOTE_SCALE)
+            .expect("deposit");
+        let req = OrderReq {
+            market_id: 0,
+            side: "Buy".into(),
+            size: (SIZE_SCALE / 10).to_string(),
+            limit_price: "0".into(),
+            tif: "Ioc".into(),
+            reduce_only: false,
+            nonce: None,
+            signature: None,
+            ..Default::default()
+        };
+        let receipt = gw.account_place_order(&key, &req).expect("order");
+        let v = gw.v1_orders_json(&key).unwrap();
+        let o = &v["orders"][0];
+        // The served receipt must be the STORED acceptance receipt, field by field
+        // (camelCase per WReceipt's serde rename) — not a default/reconstructed one.
+        let r = &o["receipt"];
+        assert_eq!(r["orderHash"], serde_json::json!(receipt.order_hash));
+        assert_eq!(r["seqNo"], serde_json::json!(receipt.seq_no));
+        assert_eq!(r["recvTimeMs"], serde_json::json!(receipt.recv_time_ms));
+        assert_eq!(r["batchIdHint"], serde_json::json!(receipt.batch_id_hint));
+        assert_eq!(r["windowId"], serde_json::json!(receipt.window_id));
+        // internal consistency: the receipt names the same order as the flat field
+        assert_eq!(o["orderHash"], r["orderHash"]);
     }
 
     #[test]
