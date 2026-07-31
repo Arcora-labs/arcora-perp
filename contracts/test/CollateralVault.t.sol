@@ -416,4 +416,82 @@ contract CollateralVaultTest is MiniTest {
         vm.expectRevert(CollateralVault.ZeroGatewaySigner.selector);
         new CollateralVault(address(this), address(usdc), address(0));
     }
+
+    // =====================================================================
+    // SEC-028: a gateway deposit authorization is one-shot on-chain
+    // =====================================================================
+
+    /// SEC-028: the same signed tuple must not mint a second leaf. Before this, a
+    /// depositor could replay their own authorization, and because the gateway consumes
+    /// its stored blind on the FIRST credit, the second leaf became permanently
+    /// uncreditable and head-of-line-blocked the contiguous deposit queue for EVERYONE.
+    function test_replayed_authorization_is_refused() public {
+        uint256 amount = 1_000 * USD;
+        bytes memory sig = _gwSig(vault, alice, amount, DEFAULT_TEST_OWNER_COMMIT);
+        usdc.mint(alice, amount * 2);
+        vm.startPrank(alice);
+        usdc.approve(address(vault), amount * 2);
+        vault.deposit(amount, DEFAULT_TEST_OWNER_COMMIT, sig);
+
+        // The leaf state BEFORE the replay — read into locals, because expectRevert
+        // binds to the very next external call.
+        uint64 countBefore = vault.depositCount();
+        bytes32 tipBefore = vault.depositChainTip();
+
+        vm.expectRevert(CollateralVault.AuthorizationAlreadyUsed.selector);
+        vault.deposit(amount, DEFAULT_TEST_OWNER_COMMIT, sig);
+        vm.stopPrank();
+
+        // The wedge came from a LEAF EXISTING AT ALL, not from the call succeeding — so
+        // proving no leaf was minted is the point, not merely that it reverted.
+        assertEq(vault.depositCount(), countBefore, "no leaf may be minted by a replay");
+        assertEq(vault.depositChainTip(), tipBefore, "the chain tip must not move");
+    }
+
+    /// A failed transfer must roll the mark back with the rest of the call, or a
+    /// legitimate depositor whose approval was short is stranded permanently.
+    function test_a_failed_transfer_leaves_the_authorization_usable() public {
+        uint256 amount = 1_000 * USD;
+        bytes memory sig = _gwSig(vault, alice, amount, DEFAULT_TEST_OWNER_COMMIT);
+        usdc.mint(alice, amount);
+        vm.startPrank(alice);
+        // No approval yet: transferFrom fails, so the whole call must revert.
+        vm.expectRevert(MockUSDC.InsufficientAllowance.selector);
+        vault.deposit(amount, DEFAULT_TEST_OWNER_COMMIT, sig);
+
+        // …and the SAME signature still works once the approval is there.
+        usdc.approve(address(vault), amount);
+        vault.deposit(amount, DEFAULT_TEST_OWNER_COMMIT, sig);
+        vm.stopPrank();
+        assertEq(vault.depositCount(), 1, "the retry must be creditable");
+    }
+
+    /// The mapping must not be over-broad: a different authorization is unaffected.
+    function test_a_distinct_authorization_still_deposits() public {
+        uint256 a1 = 1_000 * USD;
+        uint256 a2 = 2_000 * USD;
+        usdc.mint(alice, a1 + a2);
+        vm.startPrank(alice);
+        usdc.approve(address(vault), a1 + a2);
+        vault.deposit(a1, DEFAULT_TEST_OWNER_COMMIT, _gwSig(vault, alice, a1, DEFAULT_TEST_OWNER_COMMIT));
+        vault.deposit(a2, DEFAULT_TEST_OWNER_COMMIT, _gwSig(vault, alice, a2, DEFAULT_TEST_OWNER_COMMIT));
+        vm.stopPrank();
+        assertEq(vault.depositCount(), 2, "a different digest must be independent");
+    }
+
+    /// An unsigned or wrongly-signed call must burn nothing: the digest it presented
+    /// stays usable by its legitimate holder afterwards.
+    function test_a_bad_signature_does_not_consume_the_authorization() public {
+        uint256 amount = 1_000 * USD;
+        bytes memory good = _gwSig(vault, alice, amount, DEFAULT_TEST_OWNER_COMMIT);
+        bytes memory bad = _sigWith(0xBEEF, vault, alice, amount, DEFAULT_TEST_OWNER_COMMIT);
+        usdc.mint(alice, amount);
+        vm.startPrank(alice);
+        usdc.approve(address(vault), amount);
+        vm.expectRevert(CollateralVault.BadGatewaySig.selector);
+        vault.deposit(amount, DEFAULT_TEST_OWNER_COMMIT, bad);
+        vault.deposit(amount, DEFAULT_TEST_OWNER_COMMIT, good);
+        vm.stopPrank();
+        assertEq(vault.depositCount(), 1, "a rejected signature must not burn the digest");
+    }
 }

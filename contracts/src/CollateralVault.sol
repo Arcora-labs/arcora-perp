@@ -82,6 +82,19 @@ contract CollateralVault {
     /// compromised signer can permit entry but never conjure collateral.
     address public gatewaySigner;
 
+    /// SEC-028: gateway authorizations already consumed. `deposit`'s signature binds
+    /// (chainid, vault, from, ownerCommit, amount) and deliberately NOT `depositCount` —
+    /// the gateway cannot predict the landing index at signing time. Without this mapping
+    /// the same tuple mints a fresh leaf on every submission, and since the gateway
+    /// consumes its stored blind on the FIRST credit, every later identical leaf is
+    /// permanently uncreditable and head-of-line-blocks the contiguous deposit queue.
+    /// That is exactly the property `deposit`'s own doc claims the signature establishes;
+    /// this mapping is what actually establishes it.
+    ///
+    /// Keyed on the DIGEST, not the signature bytes: replay protection should bind the
+    /// authorization, not one serialization of it.
+    mapping(bytes32 => bool) public usedDepositAuthorization;
+
     /// secp256k1 group order ÷ 2; ECDSA signatures with higher `s` are non-canonical
     /// (malleable) and rejected in `_recover` (matches DarkPerpSettlement's F3 hygiene).
     uint256 private constant SECP256K1_N_HALF = 0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF5D576E7357A4501DDFE92F46681B20A0;
@@ -114,6 +127,9 @@ contract CollateralVault {
     /// `address(0) != address(0)` == false and let an unauthorized deposit through.
     /// Reject it at construction so the gate can never be bypassed.
     error ZeroGatewaySigner();
+    /// SEC-028: this exact gateway authorization (digest) was already spent by an
+    /// earlier successful deposit; replaying it must not mint a second leaf.
+    error AuthorizationAlreadyUsed();
 
     modifier onlySettlement() {
         if (msg.sender != settlement) revert NotSettlement();
@@ -196,6 +212,13 @@ contract CollateralVault {
         // Verified BEFORE the transfer and then dropped; it never touches the leaf/chain.
         bytes32 digest = keccak256(abi.encodePacked(block.chainid, address(this), msg.sender, ownerCommit, amount));
         if (_recover(digest, sig) != gatewaySigner) revert BadGatewaySig();
+        // Placement is load-bearing in BOTH directions. After `_recover`, so an unsigned
+        // or wrongly-signed call cannot burn a digest it never had the right to spend.
+        // Before `transferFrom`, so a failed transfer reverts the whole call and rolls
+        // this mark back with it — leaving no state in which an authorization is consumed
+        // but no leaf exists.
+        if (usedDepositAuthorization[digest]) revert AuthorizationAlreadyUsed();
+        usedDepositAuthorization[digest] = true;
         if (!token.transferFrom(msg.sender, address(this), amount)) revert TransferFailed();
         totalDeposited += amount;
         // `id` is the PRE-increment count, so the first deposit is id 0 (matching the
