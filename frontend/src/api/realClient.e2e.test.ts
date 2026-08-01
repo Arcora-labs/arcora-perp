@@ -30,7 +30,9 @@ describe.runIf(!!GATEWAY_URL)("sealed order round trip against a live gateway", 
   it("bootstrap verifies the epoch, deposit funds the /v1 account, and a SEALED order is decrypted + ACCEPTED by the enclave", async () => {
     const client = await RealDarkPerpClient.bootstrap(GATEWAY_URL!);
 
-    // Fund both the demo display account and the /v1 sealing account.
+    // Fund the /v1 sealing account (Task 3: deposit is /v1-only — the legacy
+    // demo route is gone; a PRODUCTION gateway would refuse this unbacked
+    // credit, so this e2e runs against the demo `cargo run -p gateway`).
     await client.deposit(20_000n * 1_000_000n); // $20k in µUSD
 
     // Market-buy 0.1 BTC, sealed end-to-end. An ACCEPTED receipt proves the

@@ -21,10 +21,9 @@
 import type { DarkPerpClient, ClientState, OrderEvent, SettlementHealth } from "./client";
 import type {
   AccountState, BatchSummary, BookLevel, Market, OracleQuote, OrderBookSnapshot,
-  OrderInput, Position, RecoveredNote, Receipt, Side, TimeInForce, TrackedOrder,
+  OrderInput, Position, Receipt, Side, TimeInForce, TrackedOrder,
   WithdrawalEntry,
 } from "../domain/types";
-import { QUOTE_SCALE } from "../domain/types";
 import { seal, domainAad } from "./sealedBox";
 import { personalSign } from "./wallet";
 import { secp256k1 } from "@noble/curves/secp256k1";
@@ -73,6 +72,18 @@ interface WireWithdrawal {
   to: string; amount: string; nonce: number; leaf: string; root: string;
   claimable: boolean; proof: string[];
 }
+/// The gateway's WReceipt wire shape — the domain `Receipt` plus `windowId`.
+interface WireV1Receipt { orderHash: string; seqNo: number; recvTimeMs: number; batchIdHint: number; windowId: number }
+/// One order in the FLAT `GET /v1/orders` shape (`v1_orders_json`) — unlike the
+/// legacy /api/state entries there is no nested `input` object.
+interface WireV1Order {
+  orderId: string; marketId: number; side: "Buy" | "Sell"; size: string; limitPrice: string;
+  tif: string; reduceOnly: boolean; orderHash: string; finality: TrackedOrder["finality"];
+  filledSize: string; avgFillPrice: string; createdMs: number;
+  /// SEC-025-E1 decision (c): the stored acceptance receipt, served by the
+  /// gateway. Optional so an OLDER gateway (field absent) degrades, not crashes.
+  receipt?: WireV1Receipt;
+}
 
 const B = (s: string): bigint => BigInt(s);
 
@@ -103,6 +114,43 @@ function pOrder(o: WireTrackedOrder): TrackedOrder {
 }
 function pAccount(a: WireState["account"]): AccountState {
   return { settledBalance: B(a.settledBalance), positions: a.positions.map(pPosition) };
+}
+/**
+ * Map the flat `GET /v1/orders` wire shape into the UI's nested TrackedOrder.
+ *
+ * Receipt — SEC-025-E1 decision (c): the gateway serves the stored acceptance
+ * receipt on /v1/orders (it always held it; the frontend-only alternatives could
+ * only render placeholders for orders placed in other sessions). It is mapped
+ * FIELD-BY-FIELD rather than passed through: the domain `Receipt` has no
+ * `windowId`, and the explicit map keeps the domain type the contract instead
+ * of silently carrying whatever extra keys the wire grows. An older gateway
+ * that omits the field degrades to a synthesized stub (hash from the flat
+ * `orderHash`, zero seq/batch) — degrade, never throw.
+ *
+ * NOTE: `filledSize`/`avgFillPrice` are the gateway's FABRICATED full-fill
+ * values (it marks every non-ACCEPTED order fully filled at its limit price).
+ * Real execution reporting is SEC-025-E3 — this task only makes the browser
+ * read the RIGHT ACCOUNT's fabricated values instead of the demo wallet's.
+ */
+function pV1Order(o: WireV1Order): TrackedOrder {
+  const r = o.receipt;
+  const receipt: Receipt =
+    r && typeof r.orderHash === "string" && typeof r.seqNo === "number" &&
+    typeof r.recvTimeMs === "number" && typeof r.batchIdHint === "number"
+      ? { orderHash: r.orderHash, seqNo: r.seqNo, recvTimeMs: r.recvTimeMs, batchIdHint: r.batchIdHint }
+      : { orderHash: o.orderHash, seqNo: 0, recvTimeMs: o.createdMs, batchIdHint: 0 };
+  return {
+    id: o.orderId,
+    input: {
+      marketId: o.marketId, side: o.side, size: B(o.size), limitPrice: B(o.limitPrice),
+      tif: o.tif as OrderInput["tif"], reduceOnly: o.reduceOnly,
+    },
+    receipt,
+    finality: o.finality,
+    filledSize: B(o.filledSize),
+    avgFillPrice: B(o.avgFillPrice),
+    createdMs: o.createdMs,
+  };
 }
 /// FIN-001, defensively: an old gateway (fields absent) or a malformed frame
 /// parses to null — the UI simply hides the row, never crashes.
@@ -446,6 +494,27 @@ export class RealDarkPerpClient implements DarkPerpClient {
   private ws: WebSocket | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
+  // ── the live account stream (/v1/ws, SEC-025-E1 Task 2) ────────────────────
+  // The legacy /ws is a PUBLIC broadcast: its event frames are the shared demo
+  // wallet's order lifecycle, delivered to every client unfiltered — another
+  // account's activity. This client's own events (fills, finality transitions,
+  // ADL haircuts) arrive on the authenticated /v1/ws instead: after
+  // `{"type":"auth","apiKey"}` the server forwards only events whose `owner`
+  // equals the authenticated owner (and the client re-verifies — see
+  // handleV1Frame). Pre-key the connection is a VALID unauthenticated state
+  // that receives public market frames only: degrade, never throw.
+  private wsV1Url: string;
+  private wsV1: WebSocket | null = null;
+  private reconnectV1Timer: ReturnType<typeof setTimeout> | null = null;
+  /**
+   * The authenticated stream's owner: set ONLY after the server's authOk
+   * claim was verified against this client's own registration owner
+   * (`sealing.owner` — review F8). Events must match it exactly.
+   */
+  private v1Owner: string | null = null;
+  /** Auth is per-connection: reset when a new /v1/ws socket is created. */
+  private v1AuthSent = false;
+
   // ── client-side market selection ───────────────────────────────────────────
   // The gateway's WS frame carries book/oracle/selectedMarketId for the SERVER's
   // selected market only (market 0 on the shared prod gateway) — but `marks` and
@@ -462,12 +531,52 @@ export class RealDarkPerpClient implements DarkPerpClient {
   private pollTimer: ReturnType<typeof setInterval> | null = null;
   private disposed = false;
 
+  // ── own-account state (SEC-025-E1) ─────────────────────────────────────────
+  // The public /api/state + /ws feed carries ONLY the shared demo wallet (the
+  // gateway's LIQ-001 invariant keeps real /v1 tenants off it), while this
+  // client's sealed orders trade as its own authenticated /v1 account. These
+  // caches hold the latest authenticated /v1 reads; emit() overlays them so the
+  // UI shows the CALLER's account. `null` with NO /v1 account falls through to
+  // the legacy feed; `null` with an account provisioned renders the EMPTY
+  // unavailable placeholder instead (review F1 — see emit()), never the demo
+  // wallet. `ownAccount` is ONE AccountState
+  // assembled atomically from the same refresh — balance and positions must
+  // never mix accounts (a demo-wallet balance beside the caller's positions
+  // invites the user to read a stranger's balance as their own collateral, and
+  // feeds maxOrderSize a different account's number).
+  //
+  // NOTE (recorded at the fix-wave-2 review, deliberately not restructured):
+  // once a read has SUCCEEDED these caches are never reset, so
+  // `accountUnavailable` can only ever be true before the FIRST successful
+  // read — a later read failure silently keeps showing the last-good OWN
+  // data (stale, but the caller's own: the safe direction).
+  private ownOrders: TrackedOrder[] | null = null;
+  private ownAccount: AccountState | null = null;
+  /** In-flight own-account refresh — overlapping callers join it (see refreshOwnState). */
+  private ownRefresh: Promise<void> | null = null;
+  /** Set when a refresh is requested while one is in flight ⇒ one trailing re-run. */
+  private ownRefreshAgain = false;
+
   // ── sealed order ingress state ─────────────────────────────────────────────
   /** The verified enclave order-epoch key (refetched once notAfterMs passes). */
   private epoch: VerifiedEpoch | null = null;
   private epochFetch: Promise<VerifiedEpoch> | null = null;
   /** The self-provisioned `/v1` trading account sealed orders trade as. */
   private sealing: SealingAccount | null = null;
+  /**
+   * Monotone provisioning latch (fix-wave-3 H3): set beside every `sealing`
+   * assignment, NEVER reset. `hasAccount()`'s other two sources can each be
+   * erased after the fact — the /v1/ws `error` branch nulls `sealing` (F7),
+   * and the stored copy may never have been written (private mode:
+   * initAccount swallows the storage-write failure) or can be cleared by
+   * another tab — and with both gone emit() would repaint the shared demo
+   * wallet as the caller's account: the exact defect F1 removed. An
+   * in-memory bit cannot be erased. It feeds ONLY the rendering gate
+   * (hasAccount → placeholder + accountUnavailable, the conservative
+   * direction); it must never feed tryAuthV1/ensureAccount, which key on
+   * `sealing` itself so the no-registration-loop rule (F7) stands.
+   */
+  private everProvisioned = false;
   private acctFetch: Promise<SealingAccount> | null = null;
   /**
    * Strictly-increasing order nonce carried inside the sealed terms. The gateway
@@ -481,8 +590,10 @@ export class RealDarkPerpClient implements DarkPerpClient {
   constructor(baseUrl: string, initial: ClientState) {
     this.base = baseUrl.replace(/\/$/, "");
     this.wsUrl = this.base.replace(/^http/, "ws") + "/ws";
+    this.wsV1Url = this.base.replace(/^http/, "ws") + "/v1/ws";
     this.state = initial;
     this.connect();
+    this.connectV1();
   }
 
   /** One blocking fetch of the initial snapshot so the store has a non-null first state. */
@@ -501,6 +612,12 @@ export class RealDarkPerpClient implements DarkPerpClient {
     } catch (e) {
       console.warn("[dark-perp] sealed-order setup failed at bootstrap (will retry on first order):", e);
     }
+    // SEC-025-E1: the /api/state snapshot's account/orders are the SHARED DEMO
+    // wallet — the caller's real state lives behind the authenticated /v1
+    // reads. Overlay it now so the first render already shows the right
+    // account; on failure (no account, gateway down) the UI degrades to the
+    // legacy feed (refreshOwnState never throws).
+    await client.refreshOwnState();
     return client;
   }
 
@@ -559,7 +676,12 @@ export class RealDarkPerpClient implements DarkPerpClient {
     if (stored) {
       try {
         const res = await fetch(this.base + "/v1/accounts/me", { headers: { "X-Api-Key": stored.apiKey } });
-        if (res.ok) { this.sealing = stored; return stored; }
+        if (res.ok) {
+          this.sealing = stored;
+          this.everProvisioned = true;
+          this.tryAuthV1(); // the account stream may already be open and waiting
+          return stored;
+        }
       } catch { /* unreachable/reset gateway — fall through and re-register */ }
     }
     const res = await fetch(this.base + "/v1/accounts", { method: "POST" });
@@ -573,6 +695,8 @@ export class RealDarkPerpClient implements DarkPerpClient {
       localStorage.setItem(LS_ACCOUNT_KEY, JSON.stringify({ apiKey: j.apiKey, owner: j.owner }));
     } catch { /* storage unavailable (private mode) — account lives for this session only */ }
     this.sealing = acct;
+    this.everProvisioned = true;
+    this.tryAuthV1(); // the account stream may already be open and waiting
     return acct;
   }
 
@@ -586,6 +710,32 @@ export class RealDarkPerpClient implements DarkPerpClient {
     } catch {
       return null;
     }
+  }
+
+  /**
+   * Whether a /v1 account exists for this browser — emit()'s fallback gate
+   * (review F1, tightened at fix-wave-2 G1). `sealing` covers the provisioned
+   * account; the STORED account covers the two states where `sealing` is null
+   * yet an account exists: (a) the /v1/ws `error` branch dropped a dead key
+   * (F7) before any own read had succeeded, and (b) a returning browser whose
+   * stored key failed revalidation and whose re-registration also failed. In
+   * both, falling through to the public feed would render the shared demo
+   * wallet as the caller's account — the exact defect F1 removed, reopened by
+   * its neighbour. The `everProvisioned` latch (fix-wave-3 H3) covers the
+   * state where BOTH of those are gone — private mode (the storage write
+   * threw, so nothing was ever stored) or a cleared storage, followed by the
+   * F7 reset nulling `sealing` — because both sources are erasable and the
+   * in-memory latch is not. Both the fallback AND `accountUnavailable` key on
+   * this one predicate so the two can never disagree.
+   */
+  private hasAccount(): boolean {
+    // Cheap in-memory disjuncts first (H3): emit() runs this on every WS frame
+    // and every poll tick, and readStoredAccount() is a synchronous
+    // localStorage read + JSON.parse — once the latch is set (any provisioned
+    // session) the storage read never runs. The middle disjunct is subsumed by
+    // the latch today (every `sealing` assignment sets it) and stays as a
+    // guard against a future assignment site that forgets to.
+    return this.everProvisioned || this.sealing !== null || this.readStoredAccount() !== null;
   }
 
   /**
@@ -606,13 +756,15 @@ export class RealDarkPerpClient implements DarkPerpClient {
       this.ws = new WebSocket(this.wsUrl);
       this.ws.onmessage = (ev) => {
         try {
-          const msg = JSON.parse(ev.data as string) as
-            | { type: "state"; state: WireState }
-            | { type: "event"; event: OrderEvent };
-          if (msg.type === "state") {
+          const msg = JSON.parse(ev.data as string) as { type?: string; state?: WireState };
+          // STATE frames only. The legacy stream also broadcasts `event`
+          // frames, but those are the shared demo wallet's order lifecycle —
+          // another account's activity, sent to every client unfiltered. This
+          // client's own events arrive owner-filtered on /v1/ws
+          // (handleV1Frame); forwarding the legacy ones would pop toasts for
+          // orders that are not the caller's.
+          if (msg.type === "state" && msg.state) {
             this.setState(parseState(msg.state));
-          } else if (msg.type === "event") {
-            for (const cb of this.eventSubs) cb(msg.event);
           }
         } catch { /* ignore malformed frame */ }
       };
@@ -628,6 +780,149 @@ export class RealDarkPerpClient implements DarkPerpClient {
     this.reconnectTimer = setTimeout(() => { this.reconnectTimer = null; this.connect(); }, 1500);
   }
 
+  // ── /v1/ws: the authenticated account stream ────────────────────────────────
+
+  private connectV1() {
+    if (this.disposed) return;
+    try {
+      if (this.wsV1) { try { this.wsV1.close(); } catch { /* noop */ } }
+      // Per-connection state: the server forgets us on disconnect, so a new
+      // socket must re-auth (and must not trust a stale authOk owner).
+      this.v1AuthSent = false;
+      this.v1Owner = null;
+      this.wsV1 = new WebSocket(this.wsV1Url);
+      this.wsV1.onopen = () => { this.tryAuthV1(); };
+      this.wsV1.onmessage = (ev) => { this.handleV1Frame(ev.data as string); };
+      this.wsV1.onclose = () => { this.scheduleReconnectV1(); };
+      this.wsV1.onerror = () => { try { this.wsV1?.close(); } catch { /* noop */ } };
+    } catch {
+      this.scheduleReconnectV1();
+    }
+  }
+
+  private scheduleReconnectV1() {
+    if (this.reconnectV1Timer || this.disposed) return;
+    this.reconnectV1Timer = setTimeout(() => { this.reconnectV1Timer = null; this.connectV1(); }, 1500);
+  }
+
+  /**
+   * Send the auth handshake once BOTH preconditions hold: the socket is OPEN
+   * and a /v1 account exists. Called from both edges — socket open (account may
+   * already be there) and account provisioning (socket may already be open).
+   * Pre-key there is simply nothing to send: the connection stays a valid
+   * unauthenticated public stream (degrade, not throw).
+   */
+  private tryAuthV1(): void {
+    const ws = this.wsV1;
+    if (!ws || ws.readyState !== 1 /* OPEN */ || this.v1AuthSent) return;
+    const acct = this.sealing;
+    if (!acct) return;
+    try {
+      ws.send(JSON.stringify({ type: "auth", apiKey: acct.apiKey }));
+      this.v1AuthSent = true;
+    } catch { /* socket died between checks — the reconnect path re-auths */ }
+  }
+
+  /**
+   * One /v1/ws frame. The wire carries four shapes (gateway `ws_v1_loop`):
+   * - `{type:"markets", …}` — the public tick snapshot. Ignored: the legacy
+   *   /ws state frame remains the base-state source (it alone carries mode,
+   *   batches, l1, settlement health, lp, insurance, marks, attestation — the
+   *   /v1 public frame has only per-market price + book).
+   * - `{type:"authOk", owner}` — auth confirmed. The claimed owner is
+   *   VERIFIED against the owner this client holds from registration
+   *   (`sealing.owner`) before it is trusted — see the branch below — then
+   *   one refresh runs so events missed while unauthenticated aren't lost.
+   * - `{type:"error", message}` — auth refused: the api key is dead (this
+   *   deployment wipes state.snap on every cutover, so an open tab across a
+   *   redeploy lands here). The cached account is dropped so the next
+   *   ensureAccount() re-registers and re-auths this socket, instead of the
+   *   tab staying wedged on the dead key for its lifetime.
+   * - a raw account event with an `owner` field — forwarded by the server only
+   *   for the authenticated owner, and checked here against the VERIFIED
+   *   owner so a confused or hostile stream still cannot cross accounts.
+   */
+  private handleV1Frame(raw: string): void {
+    let v: { type?: unknown; owner?: unknown; message?: unknown };
+    try {
+      v = JSON.parse(raw) as { type?: unknown; owner?: unknown; message?: unknown };
+    } catch {
+      return; // malformed frame
+    }
+    if (typeof v !== "object" || v === null) return;
+    if (v.type === "authOk" && typeof v.owner === "string") {
+      // Review F8: verify the server's claimed owner against the owner WE
+      // hold from registration — storing the echo and then "re-verifying"
+      // events against it would compare the server to itself and provide
+      // nothing. A mismatch means the stream is confused or hostile about
+      // whose account this is; refuse to treat the socket as authenticated
+      // (its account events stay dropped) — this branch's whole subject is
+      // not trusting a feed about whose account it is showing.
+      const expected = this.sealing ? "0x" + bytesToHex(this.sealing.owner) : null;
+      if (expected === null || v.owner.toLowerCase() !== expected) {
+        console.warn(
+          "[dark-perp] /v1/ws authOk owner mismatch — refusing the stream's account events:",
+          v.owner,
+        );
+        return;
+      }
+      this.v1Owner = expected;
+      // The stream is live from here, but anything that happened between the
+      // last refresh and this auth was never delivered — start current.
+      void this.refreshOwnState();
+      return;
+    }
+    if (v.type === "error") {
+      console.warn("[dark-perp] /v1/ws auth failed (account events unavailable):", v.message);
+      // Review F7: the server refused the api key ⇒ the cached account is
+      // dead (a state-wipe cutover with this tab open lands here). Leaving
+      // `v1AuthSent`/`sealing` set would wedge BOTH the socket (tryAuthV1
+      // never retries on it) and every /v1 read (ensureAccount returns the
+      // dead account forever, 401ing into the unavailable placeholder).
+      // Clear them so the NEXT ensureAccount() re-registers (initAccount
+      // revalidates the stored key and replaces it) and its tryAuthV1
+      // re-auths this same socket. No auto-retry here: a server answering
+      // `error` to every fresh key must not drive a registration loop.
+      this.v1AuthSent = false;
+      this.v1Owner = null;
+      this.sealing = null;
+      return;
+    }
+    if (v.type === "markets") return; // public frame — see doc above
+    // Account event: must carry OUR authenticated owner, exactly.
+    if (typeof v.owner !== "string" || !this.v1Owner || v.owner !== this.v1Owner) return;
+    this.handleOwnEvent(v as Record<string, unknown>);
+  }
+
+  /**
+   * An own-account event landed. Whatever it is, the /v1 view moved — refresh
+   * through the guarded path (the third trigger `refreshOwnState`'s in-flight
+   * guard was built for). Order-finality transitions and ADL haircuts also
+   * surface as OrderEvent notifications (Toaster + ActivityFeed); `fill`
+   * events do NOT toast — the gateway pushes a paired `order` event for the
+   * same transition, and toasting both would double-notify every fill.
+   */
+  private handleOwnEvent(ev: Record<string, unknown>): void {
+    void this.refreshOwnState();
+    const orderId = typeof ev.orderId === "string" ? ev.orderId : "";
+    if (ev.type === "order") {
+      const f = ev.finality;
+      if (f === "ACCEPTED" || f === "MATCHED" || f === "SETTLED") {
+        // The wire event carries no message (the legacy stream's did) — the
+        // texts mirror the gateway's legacy per-finality wording.
+        const message =
+          f === "MATCHED" ? "Matched (soft preconfirmation) — not yet withdrawable"
+          : f === "SETTLED" ? "Settled on L1 — withdrawable"
+          : "Order accepted";
+        for (const cb of this.eventSubs) cb({ orderId, kind: f, message });
+      }
+    } else if (ev.type === "adl") {
+      const clawed = typeof ev.clawed === "string" ? ev.clawed : "?";
+      const message = `Auto-deleveraged: $${clawed} of your winning position was clawed to cover a counterparty's bad debt.`;
+      for (const cb of this.eventSubs) cb({ orderId: orderId || "adl", kind: "ADL", message });
+    }
+  }
+
   /**
    * Single choke point between raw gateway state and the UI: every emitted state
    * gets the CLIENT-side market selection applied. The base frame's book/oracle
@@ -639,12 +934,46 @@ export class RealDarkPerpClient implements DarkPerpClient {
    */
   private emit(base: ClientState): ClientState {
     const id = this.clientSelectedMarket;
+    const hasAcct = this.hasAccount();
     return {
       ...base,
       selectedMarketId: id,
       market: base.markets.find((m) => m.id === id) ?? base.market,
       book: this.selBook ?? base.book,
       oracle: this.selOracle ?? base.oracle,
+      // SEC-025-E1: the caller's own /v1 account overrides the public feed's
+      // demo wallet. The base frame (the bootstrap /api/state snapshot and the
+      // legacy /ws state stream — still the only live source of mode, batches,
+      // l1, settlement health, lp, marks, …) carries only the shared demo
+      // account — without this overlay every WS push would clobber the user's
+      // own view back to demo data one frame after bootstrap fixed it.
+      // `ownAccount` replaces the base account WHOLE (balance + positions from
+      // the same /v1 refresh): a spread that overlaid only positions would ship
+      // a mixed-account AccountState — the demo wallet's settledBalance under
+      // the caller's positions.
+      //
+      // Fallback discipline (whole-branch review F1): the legacy feed stands
+      // in ONLY while no /v1 account exists (demo build / pre-key window —
+      // the public feed is all there is). Once an account exists the client
+      // KNOWS whose state it should render; painting the shared demo wallet
+      // there (on a transient /v1 read failure) would show a stranger's
+      // balance/positions as the caller's — OrderTicket.maxOrderSize sizing
+      // against a stranger's collateral — and render the demo orders as
+      // ACTIONABLE rows: order ids collide across accounts
+      // (`format!("o{nonce}")`, main.rs:3172), so cancelling the demo row's
+      // "o42" would cancel the caller's own unseen "o42". Instead: EMPTY
+      // placeholders plus the `accountUnavailable` flag, so the UI can say
+      // "unreadable", never "zero" and never a stranger's numbers.
+      // "An account exists" is hasAccount() — provisioned, stored (G1), OR
+      // ever provisioned this session (the H3 latch): gating on `sealing`
+      // alone reopened the fallback in exactly the state-wipe cutover F7's
+      // error-branch reset was written for, and the first two sources are
+      // both erasable (F7 nulls one; private mode never wrote the other).
+      orders: this.ownOrders ?? (hasAcct ? [] : base.orders),
+      account:
+        this.ownAccount ??
+        (hasAcct ? { settledBalance: 0n, positions: [] } : base.account),
+      accountUnavailable: hasAcct && this.ownAccount === null,
     };
   }
 
@@ -685,10 +1014,11 @@ export class RealDarkPerpClient implements DarkPerpClient {
     this.pollTimer = setInterval(() => { void this.refreshSelected(this.clientSelectedMarket); }, 1500);
   }
 
-  /** Tear down socket + timers. The page-lifetime app never calls this; tests do. */
+  /** Tear down sockets + timers. The page-lifetime app never calls this; tests do. */
   dispose(): void {
     this.disposed = true;
     if (this.reconnectTimer) { clearTimeout(this.reconnectTimer); this.reconnectTimer = null; }
+    if (this.reconnectV1Timer) { clearTimeout(this.reconnectV1Timer); this.reconnectV1Timer = null; }
     if (this.pollTimer) { clearInterval(this.pollTimer); this.pollTimer = null; }
     const ws = this.ws;
     this.ws = null;
@@ -696,13 +1026,24 @@ export class RealDarkPerpClient implements DarkPerpClient {
       ws.onmessage = null; ws.onclose = null; ws.onerror = null;
       try { ws.close(); } catch { /* noop */ }
     }
+    const wsV1 = this.wsV1;
+    this.wsV1 = null;
+    if (wsV1) {
+      wsV1.onopen = null; wsV1.onmessage = null; wsV1.onclose = null; wsV1.onerror = null;
+      try { wsV1.close(); } catch { /* noop */ }
+    }
   }
 
-  private async post<T>(path: string, body: unknown, headers?: Record<string, string>): Promise<T> {
+  private async request<T>(
+    method: "POST" | "DELETE",
+    path: string,
+    body: unknown,
+    headers?: Record<string, string>,
+  ): Promise<T> {
     const res = await fetch(this.base + path, {
-      method: "POST",
+      method,
       headers: { "content-type": "application/json", ...(headers ?? {}) },
-      body: JSON.stringify(body ?? {}),
+      ...(body === undefined ? {} : { body: JSON.stringify(body ?? {}) }),
     });
     const text = await res.text();
     // Error bodies aren't always JSON (axum extractor rejections are text/plain) —
@@ -715,6 +1056,10 @@ export class RealDarkPerpClient implements DarkPerpClient {
     }
     if (!res.ok) throw new Error(json?.error ?? `${path} failed (${res.status}): ${text.slice(0, 200)}`);
     return json as T;
+  }
+
+  private post<T>(path: string, body: unknown, headers?: Record<string, string>): Promise<T> {
+    return this.request<T>("POST", path, body, headers);
   }
 
   getState(): ClientState {
@@ -748,27 +1093,155 @@ export class RealDarkPerpClient implements DarkPerpClient {
     extra.set(acct.owner, 8);
     const aad = domainAad(DOMAIN_ORDER_ENCRYPT_AAD, extra);
     const sealed = seal(epoch.pub, terms, aad);
-    return this.post<Receipt>(
+    const receipt = await this.post<Receipt>(
       "/v1/orders",
       { epochId: epoch.epochId, sealed: "0x" + bytesToHex(sealed) },
       { "X-Api-Key": acct.apiKey },
     );
+    // SEC-025-E1: the accepted order lands in the account's /v1 order list —
+    // refresh the own-account view now instead of waiting for the /v1/ws
+    // stream (an ACCEPTED order has no finality TRANSITION yet, so no event
+    // announces it). Fire and forget: the receipt must return to the caller
+    // regardless.
+    void this.refreshOwnState();
+    return receipt;
   }
-  async deposit(amountQuote: bigint): Promise<void> {
-    await this.post("/api/deposit", { amount: s(amountQuote) });
-    // Mirror the deposit into the /v1 trading account the SEALED orders trade as,
-    // so they clear the margin check (demo in-memory credit; the prod gateway
-    // refuses unbacked deposits and funds on-chain instead). Best-effort.
-    try {
-      const acct = await this.ensureAccount();
-      await this.post(
-        "/v1/accounts/deposit",
-        { marketId: this.clientSelectedMarket, amount: s(amountQuote) },
-        { "X-Api-Key": acct.apiKey },
-      );
-    } catch (e) {
-      console.warn("[dark-perp] /v1 mirror deposit failed (sealed orders may lack margin):", e);
+
+  // ── own-account reads (SEC-025-E1) ──────────────────────────────────────────
+
+  /** The account's orders from the authenticated `GET /v1/orders` (flat wire → TrackedOrder). */
+  async getOrders(): Promise<TrackedOrder[]> {
+    const acct = await this.ensureAccount();
+    const res = await fetch(this.base + "/v1/orders", { headers: { "X-Api-Key": acct.apiKey } });
+    if (!res.ok) throw new Error(`/v1/orders ${res.status}`);
+    const j = (await res.json()) as { orders?: unknown };
+    if (typeof j !== "object" || j === null || !Array.isArray(j.orders)) {
+      throw new Error("/v1/orders: malformed response");
     }
+    return (j.orders as WireV1Order[]).map(pV1Order);
+  }
+
+  /** The account's open positions from the authenticated `GET /v1/positions`. */
+  async getPositions(): Promise<Position[]> {
+    const acct = await this.ensureAccount();
+    const res = await fetch(this.base + "/v1/positions", { headers: { "X-Api-Key": acct.apiKey } });
+    if (!res.ok) throw new Error(`/v1/positions ${res.status}`);
+    const j = (await res.json()) as { positions?: unknown };
+    if (typeof j !== "object" || j === null || !Array.isArray(j.positions)) {
+      throw new Error("/v1/positions: malformed response");
+    }
+    return (j.positions as WirePosition[]).map(pPosition);
+  }
+
+  /**
+   * The account's settled balance from the authenticated `GET /v1/accounts/me`.
+   * The brief mandates positions come from `GET /v1/positions`, and no other
+   * /v1 surface serves `settledBalance` — so the balance is a THIRD fetch here
+   * rather than collapsing the positions read into /v1/accounts/me (which also
+   * carries positions). Throws on absence/malformation: a refresh that cannot
+   * source the balance must degrade WHOLE, never overlay positions alone.
+   */
+  private async getSettledBalance(): Promise<bigint> {
+    const acct = await this.ensureAccount();
+    const res = await fetch(this.base + "/v1/accounts/me", { headers: { "X-Api-Key": acct.apiKey } });
+    if (!res.ok) throw new Error(`/v1/accounts/me ${res.status}`);
+    const j = (await res.json()) as { settledBalance?: unknown };
+    if (typeof j !== "object" || j === null || typeof j.settledBalance !== "string") {
+      throw new Error("/v1/accounts/me: missing settledBalance");
+    }
+    return B(j.settledBalance); // throws on a non-decimal string ⇒ same whole-degrade
+  }
+
+  /**
+   * Refresh the caller's OWN orders/positions/balance from the authenticated
+   * /v1 reads and re-emit. NEVER throws: before a /v1 account exists (or when
+   * the gateway is unreachable) the UI must degrade to the legacy public feed,
+   * not crash — the caches simply stay as they were (`null` ⇒ fall through in
+   * emit()).
+   *
+   * In-flight guard (the file's `ensureAccount` pattern): overlapping callers
+   * join the one running refresh instead of racing it, so a slow earlier read
+   * can never resolve late and overwrite a fresher list. Unlike ensureAccount
+   * the result here is FRESHNESS, not identity, so a join also flags one
+   * trailing re-run: the in-flight GETs may predate the change (e.g. a just-
+   * accepted order) that prompted the joiner. placeOrder is the second trigger
+   * today; Task 2's /v1/ws stream becomes the third.
+   */
+  private refreshOwnState(): Promise<void> {
+    if (this.ownRefresh) {
+      this.ownRefreshAgain = true;
+      return this.ownRefresh;
+    }
+    this.ownRefresh = (async () => {
+      try {
+        do {
+          this.ownRefreshAgain = false;
+          await this.fetchOwnStateOnce();
+        } while (this.ownRefreshAgain && !this.disposed);
+      } finally {
+        this.ownRefresh = null;
+      }
+    })();
+    return this.ownRefresh;
+  }
+
+  /**
+   * Resolves when no own-account refresh is in flight. The refresh is fire-and-
+   * forget at its trigger sites, so anything needing the settled view (tests;
+   * potentially UI flows) awaits this instead of guessing at microtask timing.
+   */
+  ownStateSettled(): Promise<void> {
+    return this.ownRefresh ?? Promise.resolve();
+  }
+
+  /** One refresh pass — only refreshOwnState may call this (it holds the guard). */
+  private async fetchOwnStateOnce(): Promise<void> {
+    try {
+      const [orders, positions, settledBalance] = await Promise.all([
+        this.getOrders(),
+        this.getPositions(),
+        this.getSettledBalance(),
+      ]);
+      if (this.disposed) return;
+      this.ownOrders = orders;
+      // ONE account object, assembled atomically from this refresh: emit() swaps
+      // it in whole, so the balance shown beside these positions is always the
+      // same account's. All three reads degrade together (Promise.all): a
+      // partial overlay would resurrect the mixed-account view.
+      this.ownAccount = { settledBalance, positions };
+      if (this.state) this.setState(this.state);
+    } catch (e) {
+      console.warn(
+        "[dark-perp] /v1 own-account read failed (own view degraded until a read succeeds):",
+        e,
+      );
+      // Re-emit even on failure (review F1): with an account provisioned the
+      // emitted view must move to the empty/unavailable placeholder — the
+      // bootstrap-constructed state was built BEFORE the account existed and
+      // still carries the raw public feed otherwise.
+      if (!this.disposed && this.state) this.setState(this.state);
+    }
+  }
+  /**
+   * SEC-025-E1 Task 3: fund the /v1 trading account the sealed orders trade
+   * as — `POST /v1/accounts/deposit` ONLY. The legacy demo primary
+   * (`POST /api/deposit`) is gone: it is unmounted in production, and because
+   * it ran FIRST and threw, its 404 also blocked this /v1 leg — in production
+   * the old deposit() could never fund anything. This route is mounted in
+   * BOTH postures; the production gateway answers it with the SEC-025-C
+   * unbacked-mint refusal, which must SURFACE to the caller (the wallet
+   * deposit flow below is the real production funding path). On success the
+   * own-account view is refreshed — the credit moves the /v1 balance and no
+   * /v1/ws event announces a deposit.
+   */
+  async deposit(amountQuote: bigint): Promise<void> {
+    const acct = await this.ensureAccount(); // no /v1 account ⇒ throw (fail closed)
+    await this.post(
+      "/v1/accounts/deposit",
+      { marketId: this.clientSelectedMarket, amount: s(amountQuote) },
+      { "X-Api-Key": acct.apiKey },
+    );
+    void this.refreshOwnState();
   }
   /**
    * SEC-021 fields of `GET /v1/accounts/me` — everything a withdrawal signature
@@ -829,15 +1302,14 @@ export class RealDarkPerpClient implements DarkPerpClient {
   }
 
   /**
-   * Withdraw = /v1 FIRST — the inverse of deposit's priorities (demo primary /
-   * v1 mirror there). Only `POST /v1/accounts/withdraw` debits the per-browser
+   * Withdraw: `POST /v1/accounts/withdraw` ONLY. It debits the per-browser
    * account the sealed orders trade as AND records the withdrawal leaf that the
    * next window-settle publishes into the vault's Merkle root — i.e. the entry
-   * `listWithdrawals` shows and the on-chain `claim` pays out. The legacy shared
-   * demo `/api/withdraw` is cosmetic (in-memory demo balances shown elsewhere),
-   * so it is mirrored best-effort AFTER the real path. A /v1 failure must THROW
-   * so the form surfaces the gateway's error: silently falling back to the demo
-   * path would report success while never producing a real claimable leaf.
+   * `listWithdrawals` shows and the on-chain `claim` pays out. A /v1 failure
+   * must THROW so the form surfaces the gateway's error: reporting success
+   * without a real claimable leaf is the defect class this task removes.
+   * (Task 3 deleted the cosmetic legacy demo mirror that used to follow the
+   * real path — its route is unmounted in production.)
    *
    * SEC-021: the gateway rejects any withdrawal without a signature over
    * `withdraw_auth_digest`, and for server-custody accounts the destination
@@ -873,20 +1345,60 @@ export class RealDarkPerpClient implements DarkPerpClient {
       { marketId: this.clientSelectedMarket, amount: s(amountQuote), to, nonce, signature },
       { "X-Api-Key": acct.apiKey },
     );
-    try {
-      await this.post("/api/withdraw", { amount: s(amountQuote) });
-    } catch (e) {
-      console.warn("[dark-perp] legacy demo withdraw mirror failed (display-only):", e);
+    // Review F4: the withdrawal debits the /v1 balance server-side and NO
+    // /v1/ws event announces it (events_tx carries exactly fill/order/adl,
+    // main.rs:4347-4384) — without this the displayed balance stays stale
+    // until an unrelated fill. Same guarded refresh path as placeOrder;
+    // fire-and-forget so the caller's success resolves regardless.
+    void this.refreshOwnState();
+  }
+
+  // ── SEC-025-E1 Task 3: the demo mutation surface is DELETED, not stubbed ────
+  // triggerCloseOnly / resumeNormal / simulateAdl / closePosition / recover
+  // are gone from this client: their legacy routes exist only in the demo
+  // build (audit DP-010 — the production router does not mount them), so here
+  // they could only 404 — and three of them reported that failure to the user
+  // as success. The interface declares them optional and the UI presence-gates
+  // (the wallet-methods idiom), so the buttons are honestly absent in live
+  // mode instead of lying. closePosition in particular has NO /v1 equivalent
+  // yet; re-adding it as a reduce-only /v1 order submission is a product
+  // decision for a later slice, not a transport fix.
+
+  /**
+   * Cancel an order — `DELETE /v1/orders/:id` under the account's API key,
+   * so the id resolves inside the CALLER's own order list (`account_cancel`).
+   *
+   * This re-route closes a CROSS-ACCOUNT hazard, not just a 404: order ids
+   * are `o{nonce}` in both the /v1 path and the demo wallet — per-account,
+   * not globally unique — and the legacy `POST /api/cancel` resolved the id
+   * against the DEMO WALLET's list. After Task 1 the UI shows the caller's
+   * /v1 ids, so the old path could silently cancel a stranger's same-named
+   * order and report success.
+   *
+   * Refusals THROW with the gateway's own reason — including the `sealed`
+   * refusal: every order seals into a batch within one ~700ms tick and
+   * `account_cancel` refuses sealed orders, so cancelling a RESTING order
+   * stays ineffective until E2 lands cancel-inside-the-window. The user must
+   * see that answer, unsatisfying as it is; swallowing it (or the legacy
+   * route's 404) is the report-failure-as-success defect this task removes.
+   *
+   * On success this is also the CANCELLED lifecycle event's producer (no
+   * server event announces a cancel — the order simply leaves the list), and
+   * the own-account view is refreshed so the row disappears.
+   */
+  async cancelOrder(orderId: string): Promise<void> {
+    const acct = await this.ensureAccount();
+    await this.request(
+      "DELETE",
+      `/v1/orders/${encodeURIComponent(orderId)}`,
+      undefined,
+      { "X-Api-Key": acct.apiKey },
+    );
+    for (const cb of this.eventSubs) {
+      cb({ orderId, kind: "CANCELLED", message: "Order cancelled before matching" });
     }
+    void this.refreshOwnState();
   }
-  triggerCloseOnly(): void { void this.post("/api/mode", { mode: "CloseOnly" }); }
-  resumeNormal(): void { void this.post("/api/mode", { mode: "Normal" }); }
-  async simulateAdl(): Promise<bigint> {
-    const r = await this.post<{ clawed: string }>("/api/simulate-adl", {});
-    return B(r.clawed) * QUOTE_SCALE; // gateway returns whole USD; scale to quote
-  }
-  async closePosition(marketId: number): Promise<void> { await this.post("/api/close", { marketId }); }
-  async cancelOrder(orderId: string): Promise<void> { await this.post("/api/cancel", { orderId }); }
   /**
    * CLIENT-SIDE market switch. The old implementation POSTed the legacy demo
    * `/api/select-market` route — 404 in prod (silently swallowed) and, even
@@ -908,11 +1420,6 @@ export class RealDarkPerpClient implements DarkPerpClient {
     void this.refreshSelected(marketId);
     this.ensurePoll();
   }
-  async recover(seedHex: string): Promise<RecoveredNote[]> {
-    const notes = await this.post<{ batchId: number; amount: string; spent: boolean }[]>("/api/recover", { seed: seedHex });
-    return notes.map((n) => ({ batchId: n.batchId, amount: B(n.amount), spent: n.spent }));
-  }
-
   // ── injected-wallet deposit flow (see api/wallet.ts) ────────────────────────
   // These four methods make this client a `WalletDepositClient`: the wallet UI
   // is gated on their presence (the mock client lacks them ⇒ no wallet UI).
@@ -980,6 +1487,10 @@ export class RealDarkPerpClient implements DarkPerpClient {
       { txHash, marketId: this.clientSelectedMarket },
       { "X-Api-Key": acct.apiKey },
     );
+    // Review F4: like requestWithdrawal — the credit moved the /v1 balance
+    // and no /v1/ws event announces a deposit; re-read through the guarded
+    // refresh or the balance stays stale until an unrelated fill.
+    void this.refreshOwnState();
     return typeof r.credited === "string" ? B(r.credited) : 0n;
   }
 

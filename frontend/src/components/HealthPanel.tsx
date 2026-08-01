@@ -36,7 +36,7 @@ export function settlementRowModel(s: SettlementHealth): { status: Status; detai
 /// token-styled — the frontend analog of a status page. Reads the same ClientState, so
 /// against a real backend it reflects real service health.
 export function HealthPanel() {
-  const { state } = useStore();
+  const { client, state } = useStore();
   const markets = state.markets;
   const liveCount = markets.filter((m) => m.live).length;
   const orders = state.orders;
@@ -76,6 +76,12 @@ export function HealthPanel() {
   // FIN-001: the settle-loop breaker (null = old gateway / mock → row hidden)
   const settleRow = state.settlement ? settlementRowModel(state.settlement) : null;
 
+  // SEC-025-E1 fix-wave-3 H2: over the unavailable-account PLACEHOLDER the
+  // Accounting tiles would state "Equity $0.00" as dollar fact — on the trade
+  // tab, in a card separate from the suspended verdict row, and louder than
+  // the "Positions · 0" G2 fixed. Same treatment as the G2 tab counts: "—".
+  const acctStat = (v: bigint): string => (state.accountUnavailable ? "—" : formatUsd(v));
+
   return (
     <div className="grid grid--two">
       <div className="col">
@@ -96,20 +102,27 @@ export function HealthPanel() {
             status={modeStatus}
             detail={state.mode === "CloseOnly" ? "CLOSE-ONLY — exit only" : "Normal — full trading"}
           />
+          {/* SEC-025-E1 fix-wave-2 G2: over the unavailable-account PLACEHOLDER
+              the invariants hold vacuously (`noNegativeMargin` over [] is true)
+              — "solvent ✓" would report consistency of data never read. */}
           <StatusRow
             label="Collateral conservation (§4)"
-            status={conserved ? "ok" : "down"}
-            detail={conservationDetail}
+            status={state.accountUnavailable ? "warn" : conserved ? "ok" : "down"}
+            detail={state.accountUnavailable ? "account state unreadable — check suspended" : conservationDetail}
           />
         </div>
 
         <div className="card">
           <h3 className="card__title">Accounting</h3>
           <div className="summary">
-            <Stat label="Equity" value={formatUsd(s.equity)} />
-            <Stat label="Free" value={formatUsd(s.freeBalance)} />
-            <Stat label="Used margin" value={formatUsd(s.usedMargin)} />
-            <Stat label="uPnL" value={formatUsd(s.upnl)} tone={s.upnl >= 0n ? "pos" : "neg"} />
+            <Stat label="Equity" value={acctStat(s.equity)} />
+            <Stat label="Free" value={acctStat(s.freeBalance)} />
+            <Stat label="Used margin" value={acctStat(s.usedMargin)} />
+            <Stat
+              label="uPnL"
+              value={acctStat(s.upnl)}
+              tone={state.accountUnavailable ? undefined : s.upnl >= 0n ? "pos" : "neg"}
+            />
           </div>
         </div>
 
@@ -118,11 +131,20 @@ export function HealthPanel() {
           <div className="summary">
             <Stat label="Protocol treasury" value={formatUsd(state.treasury)} tone="pos" />
             <Stat label="Insurance fund" value={formatUsd(state.insuranceFund)} tone="pos" />
-            <Stat
-              label="Your ADL haircuts"
-              value={formatUsd(state.userAdlClawed)}
-              tone={state.userAdlClawed > 0n ? "neg" : undefined}
-            />
+            {/* SEC-025-E1 review F6: `userAdlClawed` comes off the PUBLIC feed
+                — the shared demo wallet's counter, not the caller's. On a live
+                gateway the caller's real ADL arrives as /v1/ws `adl` toasts,
+                and accumulating those into a real counter is E3 scope — until
+                then this stat renders only where the demo wallet IS the
+                caller's account (the mock; `simulateAdl` is the established
+                live/demo discriminator). */}
+            {typeof client.simulateAdl === "function" && (
+              <Stat
+                label="Your ADL haircuts"
+                value={formatUsd(state.userAdlClawed)}
+                tone={state.userAdlClawed > 0n ? "neg" : undefined}
+              />
+            )}
           </div>
           <p className="small muted">
             Every fill on {state.market.symbol} charges a {fmtBps(state.market.takerFeeBps)} taker

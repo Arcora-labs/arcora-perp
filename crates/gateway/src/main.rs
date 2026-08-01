@@ -3292,6 +3292,19 @@ impl Gw {
                     "filledSize": o.filled.to_string(),
                     "avgFillPrice": o.avg_fill.to_string(),
                     "createdMs": o.created_ms,
+                    // SEC-025-E1 decision (c): serve the stored ACCEPTANCE RECEIPT.
+                    // The gateway already holds it (populated when the order was
+                    // accepted); the alternatives — a client-side receipt cache or
+                    // an optional field — degrade the UI for every order not placed
+                    // in the current page session, for no saving beyond these lines.
+                    // Serialized via WReceipt so the camelCase field names stay
+                    // byte-identical to the /api/state + placeOrder-response shape.
+                    // `unwrap_or(Null)` not `unwrap`: WReceipt's flat String/int
+                    // fields cannot fail serialization today, but a panic is never
+                    // the right default on a serving path — the frontend already
+                    // synthesizes a stub for an absent/null receipt.
+                    "receipt": serde_json::to_value(&o.receipt)
+                        .unwrap_or(serde_json::Value::Null),
                 })
             })
             .collect();
@@ -6453,7 +6466,7 @@ fn v1_openapi_json(prod: bool) -> serde_json::Value {
                 "post": { "summary": "Place an order", "security": auth["security"], "requestBody": order_body, "responses": { "200": { "description": "signed receipt" }, "400": { "description": "rejected" }, "429": { "description": "rate limit (10/s)" } } },
                 "get": { "summary": "Own orders + finality", "security": auth["security"], "responses": ok("orders") }
             },
-            "/v1/orders/{orderId}": { "delete": { "summary": "Cancel an ACCEPTED order", "security": auth["security"], "parameters": [{ "name": "orderId", "in": "path", "required": true, "schema": { "type": "string" } }], "responses": ok("cancelled") } },
+            "/v1/orders/{orderId}": { "delete": { "summary": "Cancel a not-yet-SEALED ACCEPTED order. Effectively pre-seal only: every resting order seals into the next batch within one ~700ms tick, and a sealed order is refused even while its finality is still ACCEPTED (cancel-inside-the-window is SEC-025-E2)", "security": auth["security"], "parameters": [{ "name": "orderId", "in": "path", "required": true, "schema": { "type": "string" } }], "responses": { "200": { "description": "cancelled" }, "400": { "description": "refused: order unknown, sealed, or no longer ACCEPTED" } } } },
             "/v1/positions": { "get": { "summary": "Own open positions", "security": auth["security"], "responses": ok("positions") } },
             "/v1/markets": { "get": { "summary": "All markets", "responses": ok("markets") } },
             "/v1/markets/{id}": { "get": { "summary": "One market", "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }], "responses": ok("market") } },
@@ -11660,6 +11673,134 @@ mod tests {
         );
         // an unknown key has no view
         assert!(gw.v1_account(&[0xff; 32]).is_none());
+    }
+
+    /// SEC-025-E1 Task 3: order ids are `format!("o{nonce}")` — PER-ACCOUNT,
+    /// not globally unique — so a cancel MUST resolve the id inside the
+    /// caller's own list and nowhere else. The legacy demo `POST /api/cancel`
+    /// resolves ids against the SHARED DEMO WALLET's list (`Gw::cancel` over
+    /// `self.orders`), which is why the browser mis-cancelling a stranger's
+    /// same-named order was live until Task 3 re-routed it to
+    /// `DELETE /v1/orders/:id`. This pins the /v1 path's resolution scope.
+    #[test]
+    fn account_cancel_cannot_reach_another_accounts_order() {
+        let mut gw = Gw::boot();
+        let (a_key, _a_owner) = gw.register_account(None);
+        let (b_key, _b_owner) = gw.register_account(None);
+        gw.account_deposit(&a_key, 0, 20_000 * QUOTE_SCALE)
+            .expect("A deposit");
+        gw.account_deposit(&b_key, 0, 20_000 * QUOTE_SCALE)
+            .expect("B deposit");
+        let req = OrderReq {
+            market_id: 0,
+            side: "Buy".into(),
+            size: (SIZE_SCALE / 10).to_string(),
+            limit_price: "0".into(),
+            tif: "Ioc".into(),
+            reduce_only: false,
+            nonce: None,
+            signature: None,
+            ..Default::default()
+        };
+        // No tick between place and cancel: both orders stay ACCEPTED/unsealed.
+        gw.account_place_order(&a_key, &req).expect("A order");
+        gw.account_place_order(&b_key, &req).expect("B order");
+        let ids = |gw: &Gw, key: &[u8; 32]| -> Vec<String> {
+            gw.v1_orders_json(key).unwrap()["orders"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|o| o["orderId"].as_str().unwrap().to_string())
+                .collect()
+        };
+        // THE DISCRIMINATING PRECONDITION: each account's first order takes
+        // the registration-initial nonce 1, so BOTH lists hold an order with
+        // the SAME id "o1". Without this collision the test proves nothing
+        // about targeting — a wrong-list resolver would merely 404 and fail
+        // for the wrong reason.
+        assert_eq!(ids(&gw, &a_key), ["o1"], "A holds its own o1");
+        assert_eq!(ids(&gw, &b_key), ["o1"], "B holds its own, same-named o1");
+        // A's cancel removes A's order ONLY.
+        gw.account_cancel(&a_key, "o1")
+            .expect("A cancels its own o1");
+        assert!(ids(&gw, &a_key).is_empty(), "A's o1 is gone");
+        assert_eq!(
+            ids(&gw, &b_key),
+            ["o1"],
+            "B's same-named order must be untouched by A's cancel"
+        );
+        // And an id ABSENT from the caller's list errors even though another
+        // account still holds one by that name — resolution never crosses.
+        let err = gw
+            .account_cancel(&a_key, "o1")
+            .expect_err("A no longer holds an o1");
+        assert_eq!(err, "Order not found.");
+        assert_eq!(
+            ids(&gw, &b_key),
+            ["o1"],
+            "the failed cancel mutated no other account's list"
+        );
+    }
+
+    /// SEC-025-E1 decision (c): `GET /v1/orders` serves each order's ACCEPTANCE
+    /// RECEIPT — the exact one `account_place_order` returned — so a browser can
+    /// render receipts for orders placed in ANY session, not just those whose
+    /// receipt it still holds from its own placeOrder response.
+    ///
+    /// TWO orders, deliberately: orders are stored newest-first (`insert(0, …)`),
+    /// so a handler that served `a.orders[0].receipt` for EVERY order — a
+    /// realistic mis-index — passes a single-order assert. Each served order
+    /// must carry ITS OWN receipt, and the second order's non-zero `seqNo`
+    /// closes the hole where a zeroed fabrication matched the first order's
+    /// genuine `seqNo == 0`.
+    #[test]
+    fn v1_orders_carry_the_acceptance_receipt() {
+        let mut gw = Gw::boot();
+        let (key, _owner) = gw.register_account(None);
+        gw.account_deposit(&key, 0, 20_000 * QUOTE_SCALE)
+            .expect("deposit");
+        let req = |size: i128| OrderReq {
+            market_id: 0,
+            side: "Buy".into(),
+            size: size.to_string(),
+            limit_price: "0".into(),
+            tif: "Ioc".into(),
+            reduce_only: false,
+            nonce: None,
+            signature: None,
+            ..Default::default()
+        };
+        let first = gw
+            .account_place_order(&key, &req(SIZE_SCALE / 10))
+            .expect("order 1");
+        let second = gw
+            .account_place_order(&key, &req(SIZE_SCALE / 20))
+            .expect("order 2");
+        // Fixture guard: the two receipts must be distinguishable in the fields
+        // asserted below, or the per-order pairing proves nothing.
+        assert_ne!(first.order_hash, second.order_hash, "distinct order hashes");
+        assert_ne!(first.seq_no, second.seq_no, "distinct seqNos");
+        assert!(
+            second.seq_no > 0,
+            "second acceptance has a non-zero seqNo (a zeroed fabrication cannot match it)"
+        );
+        let v = gw.v1_orders_json(&key).unwrap();
+        let orders = v["orders"].as_array().unwrap();
+        assert_eq!(orders.len(), 2);
+        // Newest-first storage: orders[0] is the SECOND order placed. Each served
+        // receipt must be the STORED acceptance receipt for THAT order, field by
+        // field (camelCase per WReceipt's serde rename) — not a default, not a
+        // reconstruction, and not the newest order's receipt repeated.
+        for (o, want) in [(&orders[0], &second), (&orders[1], &first)] {
+            let r = &o["receipt"];
+            assert_eq!(r["orderHash"], serde_json::json!(want.order_hash));
+            assert_eq!(r["seqNo"], serde_json::json!(want.seq_no));
+            assert_eq!(r["recvTimeMs"], serde_json::json!(want.recv_time_ms));
+            assert_eq!(r["batchIdHint"], serde_json::json!(want.batch_id_hint));
+            assert_eq!(r["windowId"], serde_json::json!(want.window_id));
+            // internal consistency: the receipt names the same order as the flat field
+            assert_eq!(o["orderHash"], r["orderHash"]);
+        }
     }
 
     #[test]

@@ -5,16 +5,56 @@ import type { RecoveredNote } from "../domain/types";
 
 /// Device-loss recovery (§7): enter your seed, derive a view-key, scan the
 /// encrypted note archive, and reconstruct your shielded balance.
+///
+/// SEC-025-E1 Task 3: `client.recover` is optional — it is a DEMO surface (the
+/// legacy `POST /api/recover` route is not mounted in production, so the real
+/// client omits the method). Without it this panel says so honestly instead of
+/// offering a scan that could only fail.
 export function RecoveryPanel() {
   const { client } = useStore();
   const [seed, setSeed] = useState("");
   const [notes, setNotes] = useState<RecoveredNote[] | null>(null);
   const [scanning, setScanning] = useState(false);
 
+  const recover = client.recover?.bind(client);
+
+  if (!recover) {
+    // Review F5: do NOT claim funds stay recoverable after device loss. A
+    // claim exists only for a withdrawal that was ALREADY REQUESTED, and
+    // requesting one needs this browser's /v1 API key (requestWithdrawal
+    // starts with ensureAccount) — lose the browser and no new withdrawal
+    // can ever be requested. Fix-wave-2 G3: even that claim is qualified —
+    // the claim TX needs no key, but its Merkle proof is served only by the
+    // authenticated GET /v1/accounts/withdrawals (gateway main.rs), so a
+    // lost key also forecloses fetching the proof.
+    return (
+      <div className="card">
+        <h3 className="card__title">Recover from seed</h3>
+        <p className="muted small">
+          Seed-based note recovery is <strong>not available on the live gateway</strong>{" "}
+          yet — the archive-scan route exists only in the demo build. Your balance and
+          positions live in your per-browser <code>/v1</code> account, and every
+          withdrawal <em>request</em> needs that account's browser-held API key:{" "}
+          <strong>
+            if you lose this browser (or clear its storage), the account&apos;s balance
+            and positions are stranded
+          </strong>{" "}
+          — there is no recovery path yet. Only withdrawals you had{" "}
+          <strong>already requested</strong> before the loss remain claimable on-chain
+          — and only with the claim data in hand: the claim transaction itself is
+          wallet-signed and needs no API key, but the Merkle proof it requires is
+          served only by the authenticated withdrawals endpoint, so losing this
+          browser&apos;s key also loses access to the served proof. Do not leave more
+          in the account than you are prepared to lose with the device.
+        </p>
+      </div>
+    );
+  }
+
   async function scan() {
     if (seed.trim() === "") return;
     setScanning(true);
-    const r = await client.recover(seed.trim());
+    const r = await recover!(seed.trim());
     setNotes(r);
     setScanning(false);
   }

@@ -45,7 +45,14 @@ export function StatsBar() {
       <Stat label="24h" value={`${up ? "+" : ""}${changePct.toFixed(2)}%`} tone={up ? "pos" : "neg"} />
       <Stat label="Index" value={formatPrice(state.oracle.price)} />
       <Stat label="Funding / 1h" value={`${fundingPct >= 0 ? "+" : ""}${fundingPct.toFixed(3)}%`} tone={fundingPct >= 0 ? "pos" : "neg"} />
-      <Stat label="Your notional" value={formatUsd(myNotional, 0)} />
+      {/* SEC-025-E1 fix-wave-2 G2: `accountUnavailable` means the account is
+          an EMPTY PLACEHOLDER (read failure, realClient emit()) — "$0" here
+          would present the placeholder as the caller's actual exposure. */}
+      <Stat
+        label="Your notional"
+        value={state.accountUnavailable ? "unreadable" : formatUsd(myNotional, 0)}
+        tone={state.accountUnavailable ? "neg" : undefined}
+      />
       <Stat label="Max leverage" value={`${state.market.maxLeverage}×`} />
     </div>
   );
