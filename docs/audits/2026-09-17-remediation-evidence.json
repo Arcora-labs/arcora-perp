@@ -1,0 +1,32 @@
+{
+  "baseline_commit": "5eeb37fde378336fc9daae7c6798637317ffb319",
+  "runner_commit": "54b1e1b52057568996fb47a8e01c3ef6832fbd30",
+  "published_source_commit": "f9244ca1eee3bb19e91c46648756fe844e12e2a4",
+  "run_id": 35269526191,
+  "verify_job_id": 105365057718,
+  "publish_job_id": 105367600947,
+  "artifact_id": 10518448550,
+  "artifact_zip_sha256": "84f29eadaf250653ecc968a936daacf25edfc6e129ce077431571a4bf2805a41",
+  "verified_patch_sha256": "b896ad8da6ffe296f5222d49db3fc4417fc4c619726da5c8e81fff1b90af3aa7",
+  "all_verification_commands_passed": true,
+  "test_profile": {"opt_level": 2, "debug_assertions": true, "overflow_checks": true},
+  "workspace": {"passed": 609, "failed": 0, "ignored": 0, "new_regressions_included": 14},
+  "perp_core_serde": {"passed": 156, "failed": 0, "ignored": 0, "overlaps_workspace": true},
+  "frontend": {"passed": 261, "failed": 0, "skipped": 1, "new_tests_included": 3},
+  "clippy": "passed",
+  "frontend_build": "passed",
+  "perp_core_no_std_serde_build": "passed",
+  "application_paths_changed": [
+    "crates/gateway/src/main.rs", "crates/gateway/src/snapshot.rs",
+    "crates/gateway/src/audit_remediation_tests.rs", "frontend/src/api/realClient.ts",
+    "frontend/src/api/realClient.test.ts", "frontend/src/domain/types.ts",
+    "frontend/src/components/OrderBook.tsx", "frontend/src/components/OrderBook.unavailable.test.tsx"
+  ],
+  "main_merged": false,
+  "deployed": false,
+  "live_transactions_sent": false,
+  "physical_power_loss_tested": false,
+  "live_tee_tested": false,
+  "real_sp1_proof_generated": false,
+  "still_open": ["A01", "A04", "A05", "A06", "A07", "A10", "A11: dependencies/prover/deployment"]
+}
