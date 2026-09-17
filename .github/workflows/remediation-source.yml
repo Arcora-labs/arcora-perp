@@ -1,0 +1,27 @@
+name: Remediation source and verification
+on:
+  push:
+    branches: [fix/audit-2026-09-17]
+permissions:
+  contents: read
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Export committed source only
+        run: |
+          mkdir -p /tmp/remediation-source
+          git archive --format=tar HEAD > /tmp/remediation-source/source.tar
+          git rev-parse HEAD > /tmp/remediation-source/commit.txt
+          git ls-tree -r HEAD > /tmp/remediation-source/tree.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: remediation-source
+          path: /tmp/remediation-source/
+          retention-days: 2
+          if-no-files-found: error
