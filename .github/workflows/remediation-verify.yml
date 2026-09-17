@@ -7,7 +7,7 @@ permissions:
   contents: read
 concurrency:
   group: remediation-verify
-  cancel-in-progress: false
+  cancel-in-progress: true
 jobs:
   verify:
     runs-on: ubuntu-latest
@@ -51,6 +51,7 @@ jobs:
           path.write_bytes(patch)
           subprocess.run(['git', 'apply', '--check', str(path)], check=True)
           subprocess.run(['git', 'apply', str(path)], check=True)
+          subprocess.run(['python3', '.remediation/adjust.py'], check=True)
           print('Reviewed patch SHA256:', digest)
           PY
       - name: Format and verify independently
@@ -58,7 +59,7 @@ jobs:
         shell: bash
         run: |
           python3 - <<'PY'
-          import hashlib, json, os, pathlib, subprocess, sys, time
+          import hashlib, json, os, pathlib, re, subprocess, sys, time
           out = pathlib.Path('/tmp/remediation-evidence')
           jobs = [
               ('rustfmt', ['rustfmt','--edition','2021','crates/gateway/src/audit_remediation_tests.rs'], '.'),
@@ -85,19 +86,27 @@ jobs:
                       code = subprocess.run(cmd, cwd=cwd, env=env, stdout=log, stderr=subprocess.STDOUT, timeout=480).returncode
                   except subprocess.TimeoutExpired:
                       code = 124
+              text = (out/(name+'.log')).read_text()
+              if name == 'gateway-regressions' and code == 0:
+                  if not re.search(r'test result: ok\. 14 passed; 0 failed; 0 ignored;', text):
+                      code = 125
               results.append({'name':name,'exit':code,'seconds':round(time.monotonic()-started,2)})
+              (out/'progress.json').write_text(json.dumps(results,indent=2))
               print(name, code, flush=True)
-              print('\n'.join((out/(name+'.log')).read_text().splitlines()[-18:]), flush=True)
+              print('\n'.join(text.splitlines()[-30:]), flush=True)
+              if code and name in {'rustfmt','cargo-fmt','gateway-regressions'}:
+                  break
           allowed = {'crates/gateway/src/main.rs','crates/gateway/src/snapshot.rs','crates/gateway/src/audit_remediation_tests.rs','frontend/src/api/realClient.ts','frontend/src/api/realClient.test.ts','frontend/src/domain/types.ts','frontend/src/components/OrderBook.tsx','frontend/src/components/OrderBook.unavailable.test.tsx'}
           subprocess.run(['git','add','-N','crates/gateway/src/audit_remediation_tests.rs','frontend/src/components/OrderBook.unavailable.test.tsx'],check=True)
           changed = set(subprocess.check_output(['git','diff','--name-only'],text=True).splitlines())
           assert changed <= allowed, changed-allowed
           patch = subprocess.check_output(['git','diff','--binary'])
           (out/'verified.patch').write_bytes(patch)
-          status = {'source_commit':os.environ['GITHUB_SHA'],'results':results,'patch_sha256':hashlib.sha256(patch).hexdigest(),'changed_paths':sorted(changed),'all_passed':all(r['exit']==0 for r in results)}
+          passed = len(results)==len(jobs) and all(r['exit']==0 for r in results)
+          status = {'source_commit':os.environ['GITHUB_SHA'],'results':results,'patch_sha256':hashlib.sha256(patch).hexdigest(),'changed_paths':sorted(changed),'all_passed':passed}
           (out/'status.json').write_text(json.dumps(status,indent=2))
           print(json.dumps(status,indent=2))
-          sys.exit(0 if status['all_passed'] else 1)
+          sys.exit(0 if passed else 1)
           PY
       - uses: actions/upload-artifact@v4
         if: ${{ always() }}
