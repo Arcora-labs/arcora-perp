@@ -1,0 +1,137 @@
+name: Verify remediation
+on:
+  push:
+    branches: [fix/audit-2026-09-17]
+    paths: ['.remediation/**', '.github/workflows/remediation-verify.yml']
+permissions:
+  contents: read
+concurrency:
+  group: remediation-verify
+  cancel-in-progress: false
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Materialize checksum-locked patch
+        id: materialize
+        shell: bash
+        run: |
+          mkdir -p /tmp/remediation-evidence
+          python3 - <<'PY'
+          import base64, gzip, hashlib, pathlib, subprocess
+          p = pathlib.Path('.remediation/fix.patch.gz.b64').read_text().strip()
+          corrections = [
+            ('6zZnAyFRxfkRBwefKukNukN7iJc0AMJ6prHObPsrIqC', '6zZnAyFRxfkRBwefKukN7iJc0AMJ6prHObPsrIqC'),
+            ('Jx6POXzSJfCcmYjnkncaeYgQrzzBvKJBALw3jLCW+', 'Jx6POXzSJfCcmYjnkncaYgQrzzBvKJBALw3jLCW+'),
+            ('4aQpubUe5Gt6SDIvnrSrAo3tetlqr5RuRDjtM12ZIq', '4aQpubUe5Gt6SDIvnrSr3tetlqr5RuRDjtM12ZIq'),
+          ]
+          for old, new in corrections:
+              if old in p:
+                  assert p.count(old) == 1
+                  p = p.replace(old, new)
+          patch = gzip.decompress(base64.b64decode(p, validate=True))
+          digest = hashlib.sha256(patch).hexdigest()
+          assert digest == '3f6b093421394e3f492709816b6a79a4b99ea149d98fce14a1dce8eaa0e02f32', digest
+          path = pathlib.Path('/tmp/remediation-evidence/reviewed.patch')
+          path.write_bytes(patch)
+          subprocess.run(['git', 'apply', '--check', str(path)], check=True)
+          subprocess.run(['git', 'apply', str(path)], check=True)
+          print('Reviewed patch SHA256:', digest)
+          PY
+      - name: Format and verify independently
+        if: ${{ !cancelled() && steps.materialize.outcome == 'success' }}
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib, subprocess, sys, time
+          out = pathlib.Path('/tmp/remediation-evidence')
+          jobs = [
+              ('rustfmt', ['rustfmt','--edition','2021','crates/gateway/src/audit_remediation_tests.rs'], '.'),
+              ('cargo-fmt', ['cargo','fmt','--all'], '.'),
+              ('gateway-regressions', ['cargo','test','-p','gateway','--locked','audit_remediation','--','--nocapture'], '.'),
+              ('clippy', ['cargo','clippy','--workspace','--all-targets','--locked','--','-D','warnings'], '.'),
+              ('workspace-tests', ['cargo','test','--workspace','--locked'], '.'),
+              ('serde-tests', ['cargo','test','-p','perp-core','--features','serde','--locked'], '.'),
+              ('no-std', ['cargo','build','-p','perp-core','--no-default-features','--features','serde','--locked'], '.'),
+              ('frontend-install', ['pnpm','install','--frozen-lockfile'], 'frontend'),
+              ('frontend-tests', ['pnpm','test'], 'frontend'),
+              ('frontend-build', ['pnpm','build'], 'frontend'),
+              ('diff-check', ['git','diff','--check'], '.'),
+          ]
+          results = []
+          env = os.environ.copy()
+          env['CARGO_TERM_COLOR'] = 'never'
+          env['NO_COLOR'] = '1'
+          for name, cmd, cwd in jobs:
+              print('RUN', name, flush=True)
+              started = time.monotonic()
+              with (out / (name + '.log')).open('w') as log:
+                  try:
+                      code = subprocess.run(cmd, cwd=cwd, env=env, stdout=log, stderr=subprocess.STDOUT, timeout=480).returncode
+                  except subprocess.TimeoutExpired:
+                      code = 124
+              results.append({'name':name,'exit':code,'seconds':round(time.monotonic()-started,2)})
+              print(name, code, flush=True)
+              print('\n'.join((out/(name+'.log')).read_text().splitlines()[-18:]), flush=True)
+          allowed = {'crates/gateway/src/main.rs','crates/gateway/src/snapshot.rs','crates/gateway/src/audit_remediation_tests.rs','frontend/src/api/realClient.ts','frontend/src/api/realClient.test.ts','frontend/src/domain/types.ts','frontend/src/components/OrderBook.tsx','frontend/src/components/OrderBook.unavailable.test.tsx'}
+          subprocess.run(['git','add','-N','crates/gateway/src/audit_remediation_tests.rs','frontend/src/components/OrderBook.unavailable.test.tsx'],check=True)
+          changed = set(subprocess.check_output(['git','diff','--name-only'],text=True).splitlines())
+          assert changed <= allowed, changed-allowed
+          patch = subprocess.check_output(['git','diff','--binary'])
+          (out/'verified.patch').write_bytes(patch)
+          status = {'source_commit':os.environ['GITHUB_SHA'],'results':results,'patch_sha256':hashlib.sha256(patch).hexdigest(),'changed_paths':sorted(changed),'all_passed':all(r['exit']==0 for r in results)}
+          (out/'status.json').write_text(json.dumps(status,indent=2))
+          print(json.dumps(status,indent=2))
+          sys.exit(0 if status['all_passed'] else 1)
+          PY
+      - uses: actions/upload-artifact@v4
+        if: ${{ always() }}
+        with:
+          name: remediation-verification
+          path: /tmp/remediation-evidence/
+          retention-days: 14
+          if-no-files-found: error
+  publish:
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: remediation-verification
+          path: /tmp/verified-remediation
+      - name: Publish verified source to remediation branch only
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib, subprocess
+          d=pathlib.Path('/tmp/verified-remediation')
+          s=json.loads((d/'status.json').read_text())
+          assert s['all_passed'] and s['source_commit']==os.environ['GITHUB_SHA']
+          assert hashlib.sha256((d/'verified.patch').read_bytes()).hexdigest()==s['patch_sha256']
+          subprocess.run(['git','apply','--index',str(d/'verified.patch')],check=True)
+          subprocess.run(['git','config','user.name','Kubudak90'],check=True)
+          subprocess.run(['git','config','user.email','95706654+Kubudak90@users.noreply.github.com'],check=True)
+          subprocess.run(['git','commit','-m','fix(gateway): durable deposit permits, serialized snapshots, signed receipts and honest market data'],check=True)
+          subprocess.run(['git','push','origin','HEAD:refs/heads/fix/audit-2026-09-17'],check=True)
+          PY
