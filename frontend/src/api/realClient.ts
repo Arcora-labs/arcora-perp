@@ -49,7 +49,7 @@ interface WireTrackedOrder {
 }
 interface WireState {
   markets: WireMarket[]; selectedMarketId: number; market: WireMarket; mode: ClientState["mode"];
-  oracle: WireOracle; book: { marketId: number; bids: WireBookLevel[]; asks: WireBookLevel[] };
+  oracle: WireOracle; book: { marketId: number; bids: WireBookLevel[]; asks: WireBookLevel[]; unavailable?: boolean };
   marks: Record<string, string>; account: { settledBalance: string; positions: WirePosition[] };
   orders: WireTrackedOrder[]; batches: BatchSummary[]; insuranceFund: string; treasury: string; userAdlClawed: string;
   lp: { tvl: string; navPerShare: string; totalShares: string; myShares: string; myValue: string };
@@ -73,7 +73,7 @@ interface WireWithdrawal {
   claimable: boolean; proof: string[];
 }
 /// The gateway's WReceipt wire shape — the domain `Receipt` plus `windowId`.
-interface WireV1Receipt { orderHash: string; seqNo: number; recvTimeMs: number; batchIdHint: number; windowId: number }
+interface WireV1Receipt { signature?: string; enclaveSigner?: string; orderHash: string; seqNo: number; recvTimeMs: number; batchIdHint: number; windowId: number }
 /// One order in the FLAT `GET /v1/orders` shape (`v1_orders_json`) — unlike the
 /// legacy /api/state entries there is no nested `input` object.
 interface WireV1Order {
@@ -97,7 +97,7 @@ function pLevel(l: WireBookLevel): BookLevel {
   return { price: B(l.price), size: B(l.size) };
 }
 function pBook(b: WireState["book"]): OrderBookSnapshot {
-  return { marketId: b.marketId, bids: b.bids.map(pLevel), asks: b.asks.map(pLevel) };
+  return { marketId: b.marketId, bids: b.unavailable ? [] : b.bids.map(pLevel), asks: b.unavailable ? [] : b.asks.map(pLevel), ...(b.unavailable === true ? { unavailable: true } : {}) };
 }
 function pPosition(p: WirePosition): Position {
   return {
@@ -137,7 +137,10 @@ function pV1Order(o: WireV1Order): TrackedOrder {
   const receipt: Receipt =
     r && typeof r.orderHash === "string" && typeof r.seqNo === "number" &&
     typeof r.recvTimeMs === "number" && typeof r.batchIdHint === "number"
-      ? { orderHash: r.orderHash, seqNo: r.seqNo, recvTimeMs: r.recvTimeMs, batchIdHint: r.batchIdHint }
+      ? { orderHash: r.orderHash, seqNo: r.seqNo, recvTimeMs: r.recvTimeMs, batchIdHint: r.batchIdHint,
+          ...(typeof r.signature === "string" && /^0x[0-9a-fA-F]{130}$/.test(r.signature) &&
+              typeof r.enclaveSigner === "string" && /^0x[0-9a-fA-F]{40}$/.test(r.enclaveSigner)
+            ? { signature: r.signature, enclaveSigner: r.enclaveSigner } : {}) }
       : { orderHash: o.orderHash, seqNo: 0, recvTimeMs: o.createdMs, batchIdHint: 0 };
   return {
     id: o.orderId,

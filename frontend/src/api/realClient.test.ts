@@ -1640,3 +1640,29 @@ describe("cancelOrder is caller-scoped: DELETE /v1/orders/:id (SEC-025-E1 Task 3
     client.dispose();
   });
 });
+
+// Audit remediation: proof material must survive the own-account wire adapter.
+describe("audit remediation receipt and market-data transport", () => {
+  it("retains signature bytes and signer from the stored acceptance receipt", async () => {
+    const signature = "0x" + "11".repeat(64) + "1b";
+    const enclaveSigner = "0x" + "22".repeat(20);
+    v1OrdersResponse = { orders: [{ ...v1Order, receipt: { ...v1Order.receipt, signature, enclaveSigner } }] };
+    const client = await bootstrapClient();
+    const [order] = await client.getOrders();
+    expect(order.receipt.signature).toBe(signature);
+    expect(order.receipt.enclaveSigner).toBe(enclaveSigner);
+    expect(order.receipt.recvTimeMs).toBe(v1Order.receipt.recvTimeMs);
+    client.dispose();
+  });
+
+  it("does not invent signature material for a legacy unsigned response", async () => {
+    v1OrdersResponse = { orders: [v1Order] };
+    const client = await bootstrapClient();
+    const [order] = await client.getOrders();
+    expect(order.receipt.signature).toBeUndefined();
+    expect(order.receipt.enclaveSigner).toBeUndefined();
+    client.dispose();
+  });
+
+
+});

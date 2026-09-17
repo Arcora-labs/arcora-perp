@@ -835,6 +835,7 @@ struct WLevel {
 struct WBook {
     #[serde(rename = "marketId")]
     market_id: u64,
+    unavailable: bool,
     bids: Vec<WLevel>,
     asks: Vec<WLevel>,
 }
@@ -921,7 +922,7 @@ struct WReceipt {
 struct WTrackedOrder {
     id: String,
     input: WOrderInput,
-    receipt: WReceipt,
+    receipt: serde_json::Value,
     finality: String,
     filled_size: String,
     avg_fill_price: String,
@@ -1194,9 +1195,17 @@ fn default_settle_health() -> crate::settle_health::SettleHealth {
     crate::settle_health::SettleHealth::from_env(std::time::Duration::from_secs(L1_SETTLE_SECS))
 }
 
+// Public receipt material only. Runtime-only and bounded: repeated polling must
+// not perform one ECDSA operation per historical order while holding App.gw.
+type ReceiptCache =
+    std::sync::Mutex<std::collections::BTreeMap<(Digest, u64, [u8; 20]), serde_json::Value>>;
+const MAX_RECEIPT_CACHE: usize = 4096;
+
 #[derive(Serialize, serde::Deserialize)]
 struct Gw {
     seq: Sequencer,
+    #[serde(skip)]
+    receipt_cache: ReceiptCache,
     archive: NoteArchive,
     user: Wallet,
     mm: Wallet,
@@ -1841,6 +1850,7 @@ impl Gw {
         println!("[state] genesis engine root {}", hex32(&genesis_root));
         let mut gw = Gw {
             seq,
+            receipt_cache: ReceiptCache::default(),
             archive,
             user,
             mm,
@@ -2060,6 +2070,9 @@ impl Gw {
             if old == addr {
                 return Ok(()); // idempotent re-bind of the same address: no-op
             }
+            if !self.accounts[key].deposit_authorizations.is_empty() {
+                return Err("Confirm all outstanding deposit authorizations before rebinding; issued L1 permits do not expire.".into());
+            }
             let cur = current_sig.ok_or(
                 "rebinding requires `currentSignature` from the account's current deposit address",
             )?;
@@ -2126,6 +2139,9 @@ impl Gw {
         }
         if amount == 0 {
             return Err("deposit amount must be positive".into());
+        }
+        if amount > i128::MAX as u128 {
+            return Err("deposit amount too large".into());
         }
         // Fresh CSPRNG blind per authorization (never derived from public data — a
         // public-derived blind would let an observer brute-force keccak(owner ‖ blind)
@@ -3203,6 +3219,48 @@ impl Gw {
         Ok(())
     }
 
+    /// Reproduce the original acceptance signature over the PRESERVED receipt
+    /// fields, never via `accept_order`/`issue_receipt` (those refresh timestamps).
+    /// k256 uses deterministic signing; the snapshot and enclave identity share
+    /// ENCLAVE_SEED, so an ordinary authenticated restore reproduces the same
+    /// key and byte-identical signature. No persisted postcard fields change.
+    /// Only trusted, stored receipt metadata reaches this helper, not user JSON.
+    fn receipt_json(&self, stored: &WReceipt) -> serde_json::Value {
+        let Some(order_hash) = parse_hex32(&stored.order_hash) else {
+            return serde_json::Value::Null; // do not sign corrupt stored metadata
+        };
+        let receipt = perp_core::order::Receipt {
+            order_hash,
+            seq_no: stored.seq_no,
+            recv_time_ms: stored.recv_time_ms,
+            batch_id_hint: stored.batch_id_hint,
+            window_id: stored.window_id, // deliberately unsigned, as in the L1 ABI
+        };
+        let digest = receipt.signing_digest::<Keccak256>();
+        let signer = self.seq.enclave().eth_address();
+        let cache_key = (digest, stored.window_id, signer);
+        if let Ok(cache) = self.receipt_cache.lock() {
+            if let Some(wire) = cache.get(&cache_key) {
+                return wire.clone();
+            }
+        }
+        let (r, s, v) = self.seq.enclave().sign_prehash(&digest);
+        let mut signature = [0u8; 65];
+        signature[..32].copy_from_slice(&r);
+        signature[32..64].copy_from_slice(&s);
+        signature[64] = v;
+        let mut wire = serde_json::to_value(stored).expect("receipt fields serialize");
+        wire["signature"] = serde_json::json!(hex0x(&signature));
+        wire["enclaveSigner"] = serde_json::json!(hex0x(&signer));
+        if let Ok(mut cache) = self.receipt_cache.lock() {
+            if cache.len() >= MAX_RECEIPT_CACHE {
+                cache.clear();
+            }
+            cache.insert(cache_key, wire.clone());
+        }
+        wire
+    }
+
     // ── /v1 read views ───────────────────────────────────────────────────────
     fn free_balance_of(&self, owner: &PubKey) -> i128 {
         let mut free: i128 = self
@@ -3303,8 +3361,7 @@ impl Gw {
                     // fields cannot fail serialization today, but a panic is never
                     // the right default on a serving path — the frontend already
                     // synthesizes a stub for an absent/null receipt.
-                    "receipt": serde_json::to_value(&o.receipt)
-                        .unwrap_or(serde_json::Value::Null),
+                    "receipt": self.receipt_json(&o.receipt),
                 })
             })
             .collect();
@@ -3332,7 +3389,8 @@ impl Gw {
             "marketId": market,
             "price": m.px.to_string(),
             "confidence": (m.px / 1000).max(1).to_string(),
-            "publishTimeMs": now_ms(),
+            "publishTimeMs": if m.live { m.feed_ts } else { m.px_ms },
+            "receivedTimeMs": m.px_ms,
         }))
     }
     fn v1_status_json(&self) -> serde_json::Value {
@@ -3757,10 +3815,11 @@ impl Gw {
             // stop advancing px_ms and go stale, while the exchange clock's absolute
             // skew/lag never false-stalls a healthy feed (audit review of #7).
             let exch_ts = transcript.publish_time_ms;
-            if exch_ts != m.feed_ts {
-                m.feed_ts = exch_ts;
-                m.px_ms = now;
+            if m.live && exch_ts <= m.feed_ts {
+                return; // duplicate/out-of-order source data cannot refresh or alter the price
             }
+            m.feed_ts = exch_ts;
+            m.px_ms = now;
             m.px = transcript.price;
             m.live = true;
             // Keep the real confidence/backup_twap band, but stamp freshness from px_ms
@@ -4139,6 +4198,7 @@ impl Gw {
             let noise = (((self.rand_unit() - 0.5) * 2.0) * (p as f64) * 0.0008) as i128;
             let next = (p + drift + noise).max(1);
             self.mkts[i].px = next;
+            self.mkts[i].px_ms = now;
             let id = self.mkts[i].id;
             let oracle = oracle_of(next, now, id, &self.oracle_signer);
             self.seq.set_oracle(id, oracle);
@@ -4297,7 +4357,7 @@ impl Gw {
         if !self.window_settle_mode {
             let tick = self.tick;
             let mut still = Vec::new();
-            for (bid, t) in self.pending_settle.drain(..).collect::<Vec<_>>() {
+            for (bid, t) in std::mem::take(&mut self.pending_settle) {
                 if tick - t >= SETTLE_TICKS {
                     self.seq.mark_settled(bid);
                 } else {
@@ -4422,6 +4482,14 @@ impl Gw {
         }
     }
     fn book_around(&self, market: u64, mid: i128) -> WBook {
+        if self.prod {
+            return WBook {
+                market_id: market,
+                unavailable: true,
+                bids: Vec::new(),
+                asks: Vec::new(),
+            };
+        }
         let step = (mid / 5000).max(1);
         let mut bids = Vec::new();
         let mut asks = Vec::new();
@@ -4443,6 +4511,7 @@ impl Gw {
         }
         WBook {
             market_id: market,
+            unavailable: false,
             bids,
             asks,
         }
@@ -4482,7 +4551,7 @@ impl Gw {
             .map(|o| WTrackedOrder {
                 id: o.id.clone(),
                 input: o.input.clone(),
-                receipt: o.receipt.clone(),
+                receipt: self.receipt_json(&o.receipt),
                 finality: self.finality_str(&o.order_hash),
                 filled_size: o.filled.to_string(),
                 avg_fill_price: o.avg_fill.to_string(),
@@ -4561,7 +4630,11 @@ impl Gw {
                 market_id: sel,
                 price: sel_mkt.px.to_string(),
                 confidence: (sel_mkt.px / 1000).max(1).to_string(),
-                publish_time_ms: now_ms(),
+                publish_time_ms: if sel_mkt.live {
+                    sel_mkt.feed_ts
+                } else {
+                    sel_mkt.px_ms
+                },
             },
             book: self.book_around(sel, sel_mkt.px),
             marks,
@@ -4912,52 +4985,61 @@ fn fund_amount(
 // ── HTTP/WS plumbing ─────────────────────────────────────────────────────────
 type Shared = Arc<App>;
 
-/// Reply channel for one acknowledged snapshot: `true` when the sealed write returned
-/// success. Not quite "iff" — the shutdown saver shares the same `.tmp` path, so a SIGTERM
-/// racing an in-flight write can still clobber it (pre-existing; see the writer task).
+/// Acknowledgement after a complete sealed snapshot write, rename, and directory sync.
 type SnapshotAck = tokio::sync::oneshot::Sender<bool>;
 
-/// Force a snapshot and WAIT for the single writer task's verdict.
-///
-/// Exists because the periodic writer is fire-and-forget: `snapshot_notify` is a bare
-/// `Notify`, so a caller can neither await it nor learn whether the write succeeded.
-/// Two call sites (SEC-025-A §3, §9 — both Task 5) need that guarantee before doing
-/// something irreversible: the insurance-bootstrap endpoint before replying 200 (the
-/// record — and the note identity its resume path needs — lives only in memory until
-/// a snapshot lands), and the settle loop before submitting the window that carries
-/// the bootstrap's second leg (once that window lands on-chain, a boot from a
-/// pre-seal snapshot resolves to Hold and completion is unreachable).
-///
-/// FAIL-CLOSED in every direction: persistence off, writer gone, write failed, or no
-/// verdict within `SNAPSHOT_ACK_TIMEOUT_SECS` all return `Err`. A caller must never
-/// read "no error" as "durable".
-///
-/// LOCK PRECONDITION: the caller must NOT hold `App.gw` while awaiting this. The
-/// writer takes that same async lock to read the state (`snapshot_plain`), so a
-/// holder deadlocks both sides — the writer blocked on the lock, the caller blocked
-/// on the ack — with no log and no recovery; only the timeout below turns that wedge
-/// into an `Err` instead of a permanent gateway-wide hang.
-///
-/// DURABILITY: `Ok(())` means the sealed bytes were fsynced and renamed into place,
-/// but `write_atomic` does not fsync the containing DIRECTORY after the rename — the
-/// snapshot survives process death, not necessarily host power loss.
-///
+/// Wait for a durable snapshot. The deadline includes queue backpressure AND the
+/// writer's acknowledgement. Never call while holding `App.gw`.
+/// A timeout is an unknown write outcome, never permission to release a signature.
 async fn snapshot_now(req: &Option<tokio::sync::mpsc::Sender<SnapshotAck>>) -> Result<(), String> {
     let Some(tx) = req else {
         return Err("state persistence is not configured — cannot guarantee durability".into());
     };
-    let (ack_tx, ack_rx) = tokio::sync::oneshot::channel();
-    tx.send(ack_tx)
+    let request = async {
+        let (ack_tx, ack_rx) = tokio::sync::oneshot::channel();
+        tx.send(ack_tx)
+            .await
+            .map_err(|_| "snapshot writer is gone".to_string())?;
+        match ack_rx.await {
+            Ok(true) => Ok(()),
+            Ok(false) => Err("snapshot write failed".to_string()),
+            Err(_) => Err("snapshot writer dropped the request".to_string()),
+        }
+    };
+    tokio::time::timeout(Duration::from_secs(SNAPSHOT_ACK_TIMEOUT_SECS), request)
         .await
-        .map_err(|_| "snapshot writer is gone".to_string())?;
-    match tokio::time::timeout(Duration::from_secs(SNAPSHOT_ACK_TIMEOUT_SECS), ack_rx).await {
-        Ok(Ok(true)) => Ok(()),
-        Ok(Ok(false)) => Err("snapshot write failed".into()),
-        Ok(Err(_)) => Err("snapshot writer dropped the request".into()),
-        Err(_) => Err(format!(
-            "snapshot ack timed out after {SNAPSHOT_ACK_TIMEOUT_SECS}s — the writer is \
-             wedged (is a caller holding App.gw across snapshot_now?)"
-        )),
+        .map_err(|_| format!("snapshot request timed out after {SNAPSHOT_ACK_TIMEOUT_SECS}s (queue or writer stalled)"))?
+}
+
+/// All runtime snapshot callers share `serial`. Acquire it BEFORE capturing state,
+/// otherwise an older capture could overwrite a newer acknowledged snapshot.
+/// Move the owned guard into the blocking worker: cancelling the async caller must
+/// not unlock it while an uncancellable filesystem operation is still running.
+async fn write_snapshot(
+    app: &Shared,
+    path: &std::path::Path,
+    seed: [u8; 32],
+    serial: Arc<Mutex<()>>,
+) -> bool {
+    let guard = serial.lock_owned().await;
+    let plain = { app.gw.lock().await.snapshot_plain() };
+    let path = path.to_path_buf();
+    match tokio::task::spawn_blocking(move || {
+        let _guard = guard;
+        let sealed = snapshot::seal(&plain, &seed);
+        snapshot::write_atomic(&path, &sealed)
+    })
+    .await
+    {
+        Ok(Ok(())) => true,
+        Ok(Err(e)) => {
+            eprintln!("[state] snapshot write failed: {e}");
+            false
+        }
+        Err(e) => {
+            eprintln!("[state] snapshot worker failed: {e}");
+            false
+        }
     }
 }
 
@@ -6005,8 +6087,17 @@ async fn post_v1_deposit_authorize(
             return err400("bad amount (expected a u128 of USDC base units)".into()).into_response()
         }
     };
-    // Record the authorization (generates + stores the blind) under the account lock,
-    // then sign — the signer needs only the resulting ownerCommit.
+    if app.snapshot_req.is_none() {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(serde_json::json!({
+                "error": "state persistence is not configured; deposit authorization unavailable"
+            })),
+        )
+            .into_response();
+    }
+    // Release the account lock before requesting durability. No signature may be
+    // constructed or returned until the writer acknowledges the stored blind.
     let commit = {
         match app
             .gw
@@ -6018,6 +6109,20 @@ async fn post_v1_deposit_authorize(
             Err(e) => return err400(e).into_response(),
         }
     };
+    if let Err(e) = snapshot_now(&app.snapshot_req).await {
+        // No signature was released, so this specific permit cannot have reached
+        // L1. Remove it to avoid exhausting capacity after repeated disk failures.
+        if let Some(a) = app.gw.lock().await.accounts.get_mut(&key) {
+            a.deposit_authorizations.remove(&commit);
+        }
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(serde_json::json!({
+                "error": format!("deposit authorization not issued: {e}")
+            })),
+        )
+            .into_response();
+    }
     match app.gateway_signer.sign(&from, &commit, amount) {
         Ok(sig) => Json(serde_json::json!({
             "ownerCommit": hex0x(&commit),
@@ -6233,9 +6338,13 @@ async fn post_v1_order(
         Ok(k) => k,
         Err(e) => return e.into_response(),
     };
-    let r = { app.gw.lock().await.account_place_order(&key, &req) };
+    let r = {
+        let mut gw = app.gw.lock().await;
+        gw.account_place_order(&key, &req)
+            .map(|receipt| gw.receipt_json(&receipt))
+    };
     match r {
-        Ok(receipt) => Json(serde_json::to_value(receipt).unwrap()).into_response(),
+        Ok(receipt) => Json(receipt).into_response(),
         Err(e) if e.starts_with("RATE_LIMIT") => (
             StatusCode::TOO_MANY_REQUESTS,
             Json(serde_json::json!({ "error": e })),
@@ -6599,7 +6708,8 @@ async fn post_order(State(app): State<Shared>, Json(req): Json<OrderReq>) -> imp
             for ev in events {
                 app.broadcast_event(ev).await;
             }
-            Json(serde_json::to_value(receipt).unwrap()).into_response()
+            let receipt = app.gw.lock().await.receipt_json(&receipt);
+            Json(receipt).into_response()
         }
         Err(e) => err400(e).into_response(),
     }
@@ -7808,23 +7918,15 @@ async fn main() {
 
     // Periodic sealed-snapshot writer + graceful-shutdown save (SIGTERM/ctrl-c).
     if let Some(path) = state_path.clone() {
+        let snapshot_serial = Arc::new(Mutex::new(()));
         let write = {
             let app = app.clone();
             let path = path.clone();
             move || {
                 let app = app.clone();
                 let path = path.clone();
-                async move {
-                    let plain = { app.gw.lock().await.snapshot_plain() };
-                    let sealed = snapshot::seal(&plain, &enclave_seed);
-                    match snapshot::write_atomic(&path, &sealed) {
-                        Ok(()) => true,
-                        Err(e) => {
-                            eprintln!("[state] snapshot write failed: {e}");
-                            false
-                        }
-                    }
-                }
+                let serial = snapshot_serial.clone();
+                async move { write_snapshot(&app, &path, enclave_seed, serial).await }
             }
         };
         {
@@ -7838,15 +7940,8 @@ async fn main() {
                     // stage-1 journal write). Notify stores a permit if we're
                     // mid-write, so a wake-up is never lost — at worst it costs one
                     // extra snapshot.
-                    // Third arm (SEC-025-A): an ACKNOWLEDGED request. The reply carries
-                    // the writer's real verdict so the caller can refuse to proceed with
-                    // an irreversible action after a failed write. Kept in this task so
-                    // the ack adds no NEW writer — a second writer could interleave
-                    // `.tmp` renames and lose a snapshot. (The shutdown saver below is a
-                    // PRE-EXISTING second caller of `write()` on the same `.tmp` path; a
-                    // SIGTERM concurrent with an in-flight write can still interleave.
-                    // That race predates the ack — but note it means an ack answered
-                    // `true` during shutdown may vouch for a clobbered file.)
+                    // Acknowledged requests use the same serialized capture/write
+                    // operation as periodic saves and graceful shutdown.
                     let mut ack: Option<SnapshotAck> = None;
                     tokio::select! {
                         _ = iv.tick() => {}
@@ -15037,4 +15132,5 @@ mod tests {
         assert!(gw.batch_orders.contains_key(&batch_id2));
         assert_eq!(gw.last_settled_root, new_root2);
     }
+    include!("audit_remediation_tests.rs");
 }
