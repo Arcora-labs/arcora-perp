@@ -544,11 +544,28 @@ pub async fn confirm(
         return unavailable(e);
     }
     let gw = app.gw.lock().await;
+    confirmed_receipt(&gw, &key, &tx, market, purpose)
+}
+
+/// Keep the final durability check and receipt read under the same Gw lock.
+/// `ingest_once` releases deposit_serial before its caller reacquires Gw: another
+/// poller can apply a new page in that gap and still be waiting for its disk ACK.
+/// A receipt from that page must not claim confirmed durability yet.
+fn confirmed_receipt(
+    gw: &Gw,
+    key: &[u8; 32],
+    tx: &str,
+    market: u64,
+    purpose: Purpose,
+) -> axum::response::Response {
+    if let Err(e) = gw.deposits.check_ready() {
+        return unavailable(e);
+    }
     let matching: Vec<_> = gw
         .deposits
         .credits
         .values()
-        .filter(|c| c.route.key == key && hex0x(&c.event.tx) == tx)
+        .filter(|c| c.route.key == *key && hex0x(&c.event.tx) == tx)
         .collect();
     if matching
         .iter()
@@ -561,7 +578,7 @@ pub async fn confirm(
             .into_response();
     }
     if matching.is_empty() {
-        if gw.processed_deposit_txs.contains(&tx) {
+        if gw.processed_deposit_txs.contains(tx) {
             return (StatusCode::CONFLICT,Json(serde_json::json!({"error":"legacy credited transaction; no new credit applied"}))).into_response();
         }
         return (
@@ -578,8 +595,12 @@ pub async fn confirm(
     };
     Json(serde_json::json!({"status":"credited","credited":amount.to_string(),"durability":"confirmed",
         "depositIds":matching.iter().map(|c|c.event.id).collect::<Vec<_>>(),
-        "purpose":purpose,"marketId":market,"account":gw.v1_account(&key),"bootstrap":gw.bootstrap})).into_response()
+        "purpose":purpose,"marketId":market,"account":gw.v1_account(key),"bootstrap":gw.bootstrap})).into_response()
 }
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+#[path = "deposit_ingestion/receipt_tests.rs"]
+mod receipt_tests;
