@@ -280,7 +280,7 @@
 <header class="cover">
   <p class="brand">Arcora Labs</p>
   <h1>Arcora Perp</h1>
-  <p class="subtitle"><strong>A privacy-preserving perpetual futures exchange.</strong> Orders are matched privately inside attested hardware at centralized-exchange speed, then settled publicly under zero-knowledge validity proofs — so the operator is cryptographically incapable of forging state.</p>
+  <p class="subtitle"><strong>A privacy-preserving perpetual futures exchange.</strong> Orders are matched privately inside attested hardware at centralized-exchange speed, then settled publicly under zero-knowledge validity proofs. In the current alpha, the gateway remains a trusted/custodial component because it holds server-custody spend keys and oracle-publisher authority.</p>
   <p class="meta"><span>Testnet Alpha — Technical Brief</span><span>July 2026</span><span>perp.arcoralabs.xyz</span></p>
 </header>
 
@@ -292,7 +292,7 @@
 <p>Today this runs as a public testnet alpha on Base Sepolia at <a href="https://perp.arcoralabs.xyz">perp.arcoralabs.xyz</a>, with real Groth16 proofs verified on-chain for every settlement window.</p>
 
 <blockquote class="pull"><span class="lede">The trust statement in one line</span>
-<p>Order flow is confidential because it never exists in plaintext outside attested hardware, and balances are correct because the operator cannot settle a state transition it cannot prove.</p></blockquote>
+<p>The proof verifies that a settled transition satisfies the zk guest and its committed inputs; it does not independently prove user intent or external price truth. The alpha gateway still custodies account spend keys and controls the oracle publisher key.</p></blockquote>
 
 <!-- ================= 2 PROBLEM ================= -->
 <h2>The problem</h2>
@@ -308,7 +308,7 @@
 
 <p>The established alternative is a centralized exchange: the internal order book is private, so most of these leaks disappear. But the price is custodial trust — traders deposit into an opaque balance sheet, solvency is asserted rather than proven, and withdrawal is at the operator's discretion. The industry has repeatedly discovered what that discretion can cost.</p>
 
-<p>The standing trade-off, then, has been <em>privacy with custodial trust</em> or <em>self-custody with full exposure</em>. Arcora Perp is built on the position that this is a false dilemma: matching can be private and fast while settlement remains publicly verifiable and custody stays under on-chain rules the operator cannot override.</p>
+<p>The standing trade-off, then, has been <em>privacy with custodial trust</em> or <em>self-custody with full exposure</em>. Arcora Perp explores a path toward private matching with publicly verifiable settlement. The current alpha has <strong>not</strong> completed that path: collateral is held by on-chain contracts, but the gateway still holds server-custody spend keys, so a live gateway compromise remains a custody risk until key custody is moved behind the intended hardened boundary.</p>
 
 <!-- ================= 3 DESIGN OVERVIEW ================= -->
 <h2>Design overview</h2>

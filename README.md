@@ -10,10 +10,12 @@ liveness/recovery from forced exit + an encrypted note archive.
 > Technical brief: [`docs/litepaper`](docs/litepaper/arcora-perp-litepaper.md).
 > Codename in-repo: `dark-perp`.
 
-One line: *confidential matching in an attested TEE (fast + operator-blind),
-public settlement under a zk validity proof so the operator is cryptographically
-incapable of forging state, permissionless Merkle withdrawals from settled state,
-sequencing accountability from signed receipts + slashing, and shielded balances.*
+One line: *confidential matching in an attested TEE, proof-gated public settlement,
+permissionless Merkle claims from settled withdrawal roots, sequencing accountability
+from signed receipts + slashing, and shielded balances.* **Alpha trust boundary:** the
+gateway is still a trusted/custodial component: it holds server-custody spend keys and
+the oracle publisher authority. ZK proves the transition implemented by the guest; it
+does not independently prove user intent or external price truth.
 
 The full architecture (v2, Turkish) lives in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 The design decisions taken while building are in [`docs/DECISIONS.md`](docs/DECISIONS.md),
@@ -38,10 +40,14 @@ fairness / liveness / recovery are *separate* protocol obligations.
 | **Protocol** — order-commitment log + forced exit + slashing | sequencing accountability, liveness, fair access | confidentiality, fund validity |
 | **ZK** — fund-safety / state-validity root | vault safety, valid state transitions | inclusion / ordering / censorship (on its own) |
 
-If the TEE breaks, funds **cannot be stolen** (ZK protects the vault) — but
-confidentiality, fair access, preconfirmation reliability and market integrity
-can. We label that honestly rather than calling the enclave an untouchable black
-box. See §10 of the architecture.
+If only TEE confidentiality fails, private order/position data can leak while the
+proof and vault checks still apply. A broader gateway compromise is different: the
+alpha gateway also holds server-custody spend keys and oracle-publisher authority, so
+it is a fund-safety and market-integrity trust dependency. ZK rejects transitions
+that violate the guest program; it does not turn compromised custody keys or a
+gateway-signed false-but-valid oracle transcript into independently authenticated
+user intent or external price truth. See the threat model before treating this as a
+non-custodial system.
 
 ## The hot path, at a glance
 
@@ -129,8 +135,10 @@ boot). **Funds are test USDC and carry no value.**
 | **Operator liveness** | **Single point of failure** — if the sequencer stops, trading halts; settled funds stay withdrawable via forced-exit after the liveness window |
 | **Matching-fairness proof** | **Not yet** — the proof attests correct *execution* of the sequenced ops; the *ordering* itself is enclave-attested only (roadmap: Proof v2) |
 
-Fund safety is now cryptographic: an invalid state root cannot pass the on-chain
-verifier. The honest limits — a non-attested dev prover, operator liveness as a
+Proof enforcement is cryptographic within its stated boundary: a state transition
+that does not satisfy the zk guest cannot pass the on-chain verifier. That statement
+does **not** remove the alpha gateway's custody/oracle trust. The honest limits — a
+non-attested dev prover, gateway-held spend keys and oracle authority, operator liveness as a
 SPOF, ordering fairness not yet zk-proven, ~10–20 min proof cadence, and no
 third-party audit — are documented in full on the
 [Security & Trust](https://perpdocs.arcoralabs.xyz/security.html) page. Get test

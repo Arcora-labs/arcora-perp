@@ -32,13 +32,8 @@
 <p class="lede">This page states exactly what the current alpha guarantees, what it does not, and what secures your funds in between. We would rather you trust Arcora Perp for the right reasons than for vague ones.</p>
 
 <h2>What the zk proof guarantees</h2>
-<p>Every settled state root is proven byte-exact from the replayed engine: an SP1 zkVM proof re-executes the full window — fills, funding, liquidations, ADL, deposits, withdrawals — and the on-chain verifier accepts nothing else. Concretely, the operator <strong>cannot</strong>:</p>
-<ul>
-  <li>forge a state transition or skip the engine's rules,</li>
-  <li>inflate balances,</li>
-  <li>fake fills into settled state.</li>
-</ul>
-<p>All six commitment roots are derived <em>inside</em> the zk guest from the replayed operations — none are trusted from the operator. Withdrawals from settled state are <strong>trustless</strong>: permissionless Merkle claims against the vault, executable by anyone, payable only to the leaf-bound address.</p>
+<p>Every settled state root must satisfy the SP1 zkVM guest: the proof re-executes the committed window and the on-chain verifier rejects a transition that does not satisfy that program. All six commitment roots are derived inside the guest rather than accepted as arbitrary host-provided roots.</p>
+<p><strong>That is a transition-validity guarantee, not a complete operator-independence guarantee.</strong> The current alpha gateway holds server-custody spend keys and the oracle publisher authority. The proof does not independently establish that an operation reflects a user's intent when the gateway already possesses that user's custody key, and it does not establish external price truth when the accepted oracle transcript is signed by a gateway-controlled publisher key. Permissionless Merkle claims enforce the destination and amount committed by a settled withdrawals root; they do not erase those upstream trust assumptions.</p>
 
 <h2>What the TEE guarantees</h2>
 <p>Matching and ordering run inside an Intel TDX confidential VM. The TEE provides matching/ordering <strong>privacy and integrity attested to Intel TDX hardware</strong>, with the enclave identity (its signing key) sealed to the attested measurement. Signed receipts, the sealed order ingress, and shielded account state all hang off this identity.</p>
@@ -47,6 +42,7 @@
 <div class="callout danger">
   <p class="callout-title">Read this before depositing anything you care about</p>
   <ol>
+    <li><strong>The gateway is a trusted/custodial component in this alpha.</strong> It holds server-custody account spend keys in process memory and controls the oracle publisher key. A gateway compromise can therefore affect fund authorization and market inputs even though invalid guest transitions remain unprovable. This is the principal A10 trust boundary.</li>
     <li>The <strong>zk prover currently runs on a development workstation and is NOT yet TEE-attested</strong>. The witness leaves the sequencer enclave sealed, but the prover machine's measurement is a stub. Roadmap: attestation-gated key release to an x86_64 TDX prover.</li>
     <li><strong>Operator liveness is a single point of failure.</strong> If the sequencer goes down, trading halts. Funds remain safe and withdrawable via forced-exit after the liveness window (7,200 blocks), but there is no failover operator.</li>
     <li><strong>Ordering fairness is not yet zk-proven.</strong> The proof attests correct <em>execution</em> of the sequenced operations; the sequencing itself is enclave-attested only. A matching-fairness proof (&ldquo;Proof v2&rdquo;) is on the roadmap.</li>
