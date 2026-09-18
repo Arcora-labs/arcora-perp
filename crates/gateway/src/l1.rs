@@ -520,7 +520,8 @@ impl L1 {
     ) -> Result<String, String> {
         let args = settle_proved_args(out);
         let refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-        self.send(&self.settlement.clone(), SETTLE_BATCH_SIG, &refs)
+        let sig = settle_sig_for_phase(out.wind_down_phase)?;
+        self.send(&self.settlement.clone(), sig, &refs)
     }
 
     // ── inclusion-challenge answering (audit DP-004) ─────────────────────────────
@@ -650,6 +651,19 @@ impl L1 {
 /// seven-parameter form, which does not even resolve to this selector.
 pub(crate) const SETTLE_BATCH_SIG: &str =
     "settleBatch(bytes32,bytes32,bytes32,bytes32,bytes32,bytes32,bytes32,uint64,bytes)";
+pub(crate) const FINAL_SETTLE_SIG: &str =
+    "finalSettle(bytes32,bytes32,bytes32,bytes32,bytes32,bytes32,bytes32,uint64,bytes)";
+pub(crate) const FINAL_EXIT_SIG: &str =
+    "finalExit(bytes32,bytes32,bytes32,bytes32,bytes32,bytes32,bytes32,uint64,bytes)";
+
+pub(crate) fn settle_sig_for_phase(phase: u8) -> Result<&'static str, String> {
+    match phase {
+        0 => Ok(SETTLE_BATCH_SIG),
+        1 => Ok(FINAL_SETTLE_SIG),
+        2 => Ok(FINAL_EXIT_SIG),
+        _ => Err("invalid wind-down phase in proven outcome".into()),
+    }
+}
 
 /// The `settleBatch` argument vector, in exactly Solidity's declared order. Pure (no
 /// subprocess, no `&self`) so the order is unit-testable against a fixed vector.
@@ -1291,6 +1305,14 @@ mod tests {
     /// which recomputes this exact string's selector and compares it to
     /// `DarkPerpSettlement.settleBatch.selector`.
     #[test]
+    fn a06_proven_phase_routes_only_to_its_l1_entrypoint() {
+        assert_eq!(settle_sig_for_phase(0).unwrap(), SETTLE_BATCH_SIG);
+        assert_eq!(settle_sig_for_phase(1).unwrap(), FINAL_SETTLE_SIG);
+        assert_eq!(settle_sig_for_phase(2).unwrap(), FINAL_EXIT_SIG);
+        assert!(settle_sig_for_phase(3).is_err());
+    }
+
+    #[test]
     fn settle_batch_signature_matches_solidity() {
         assert_eq!(
             SETTLE_BATCH_SIG,
@@ -1314,6 +1336,7 @@ mod tests {
             withdrawals_root: [0x55; 32],
             rejected_root: [0x66; 32],
             deposits_root: [0x77; 32],
+            wind_down_phase: 0,
             new_deposit_count: 42,
             // SEC-025-D: gate terms — consumed by `commit_window_settle`'s opening
             // check, never by the settleBatch calldata this test pins.

@@ -745,6 +745,11 @@ impl Sequencer {
         self.state.next_batch_id
     }
 
+    /// A06 operator guard: SettleAll must be the only op in its phase-1 window.
+    pub fn open_window_has_ops(&self) -> bool {
+        !self.window_ops.is_empty()
+    }
+
     /// The on-chain window (Counter B) a per-tick batch (Counter A) settled into, if still
     /// mapped. `None` once pruned (its window settled more than the grace period ago, or the
     /// size cap evicted it), or for an unknown/future tick.

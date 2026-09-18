@@ -102,6 +102,9 @@ contract DarkPerpSettlement {
     /// The block close-only was entered (0 while live), so `finalSettle`'s grace
     /// window can be measured (§6 wind-down).
     uint256 public closeOnlyBlock;
+    /// A06: phase-1 SettleAll has landed. Once true, only proof-bound phase-2
+    /// price-free exits may use the wind-down entrypoint.
+    bool public windDownSettled;
     /// The address allowed to push a wind-down `finalSettle` while close-only.
     /// Alpha: the deployer. Escape stays proof-gated — governance can only land
     /// proof-valid transitions, never fabricate balances.
@@ -275,6 +278,35 @@ contract DarkPerpSettlement {
         );
     }
 
+    /// @dev A06 wind-down commitments append one little-endian phase word to the
+    /// legacy seven-root preimage. Ordinary `publicCommitment` is intentionally
+    /// unchanged, so existing batches/vectors do not move.
+    function windDownCommitment(
+        bytes32 prevRoot,
+        bytes32 manifestHash,
+        bytes32 newRoot,
+        bytes32 orderedRoot,
+        bytes32 withdrawalsRoot,
+        bytes32 rejectedRoot,
+        bytes32 depositsRoot,
+        uint64 phase
+    ) public pure returns (bytes32) {
+        require(phase == 1 || phase == 2, "bad wind-down phase");
+        return keccak256(
+            abi.encodePacked(
+                DOMAIN_STATE_ROOT,
+                prevRoot,
+                manifestHash,
+                newRoot,
+                orderedRoot,
+                withdrawalsRoot,
+                rejectedRoot,
+                depositsRoot,
+                _leWord(phase)
+            )
+        );
+    }
+
     /// @dev SEC-019 L1 pin, shared by both settle entrypoints (kept in one place so
     /// the two can never drift apart, and to hold the settle functions under the
     /// stack limit). Requires the batch's proven deposit fold to equal the vault's own
@@ -375,6 +407,7 @@ contract DarkPerpSettlement {
     ) external {
         if (msg.sender != governance) revert NotGovernance();
         if (!closeOnly) revert NotCloseOnly();
+        require(!windDownSettled, "wind-down already settled");
         if (block.number < closeOnlyBlock + finalSettleGraceBlocks) revert GraceNotExpired();
         if (prevRoot != currentStateRoot) revert BadPrevRoot();
         // SEC-019: the wind-down path skips the close-only/slashed/bond guards but
@@ -383,8 +416,51 @@ contract DarkPerpSettlement {
         // the pin exists to close. Deposits are refused in close-only, so the chain is
         // frozen here and the prefix being settled can only be one of its own.
         _requireDepositPrefix(depositsRoot, newDepositCount);
-        bytes32 commitment =
-            publicCommitment(prevRoot, manifestHash, newRoot, orderedRoot, withdrawalsRoot, rejectedRoot, depositsRoot);
+        bytes32 commitment = windDownCommitment(
+            prevRoot, manifestHash, newRoot, orderedRoot, withdrawalsRoot, rejectedRoot, depositsRoot, 1
+        );
+        if (!verifier.verify(commitment, proof)) revert BadProof();
+
+        uint256 batchId = batchCount;
+        batches[batchId] = Batch({
+            manifestHash: manifestHash,
+            orderedRoot: orderedRoot,
+            rejectedRoot: rejectedRoot,
+            settledAtBlock: block.number
+        });
+        currentStateRoot = newRoot;
+        lastProgressBlock = block.number;
+        batchCount = batchId + 1;
+        windDownSettled = true;
+        emit FinalSettle(batchId, prevRoot, newRoot, manifestHash);
+        if (vault != address(0)) {
+            ICollateralVault(vault).publishWithdrawals(withdrawalsRoot, batchId);
+        }
+    }
+
+
+    /// @notice A06 post-wind-down exit batches. The proof commitment is phase 2,
+    /// whose circuit grammar permits only price-free WindDownUnbind/Withdraw ops.
+    /// This is repeatable so users can exit independently after the one-shot close.
+    function finalExit(
+        bytes32 prevRoot,
+        bytes32 manifestHash,
+        bytes32 newRoot,
+        bytes32 orderedRoot,
+        bytes32 withdrawalsRoot,
+        bytes32 rejectedRoot,
+        bytes32 depositsRoot,
+        uint64 newDepositCount,
+        bytes calldata proof
+    ) external {
+        if (msg.sender != governance) revert NotGovernance();
+        if (!closeOnly) revert NotCloseOnly();
+        require(windDownSettled, "wind-down not settled");
+        if (prevRoot != currentStateRoot) revert BadPrevRoot();
+        _requireDepositPrefix(depositsRoot, newDepositCount);
+        bytes32 commitment = windDownCommitment(
+            prevRoot, manifestHash, newRoot, orderedRoot, withdrawalsRoot, rejectedRoot, depositsRoot, 2
+        );
         if (!verifier.verify(commitment, proof)) revert BadProof();
 
         uint256 batchId = batchCount;

@@ -2687,31 +2687,51 @@ impl Gw {
             );
         }
         let nonce = self.next_withdraw_nonce;
-        let now = now_ms();
-        let oracle = oracle_of(self.px_of(market), now, market, &self.oracle_signer);
         let mut blind = [0xD0u8; 32];
         blind[..8].copy_from_slice(&nonce.to_le_bytes());
-        self.seq
-            .apply(&BatchOp::Unbind {
-                owner: wallet.owner,
-                market_id: market,
-                amount,
-                blinding: blind,
-                oracle,
-                now_ms: now,
-            })
-            .map_err(|e| format!("withdraw unbind failed: {e:?}"))?;
+        let wind_down = self.seq.state.mode == Mode::CloseOnly;
+        if wind_down {
+            self.seq
+                .apply(&BatchOp::WindDownUnbind {
+                    owner: wallet.owner,
+                    market_id: market,
+                    amount,
+                    blinding: blind,
+                })
+                .map_err(|e| format!("wind-down unbind failed: {e:?}"))?;
+        } else {
+            let now = now_ms();
+            let oracle = oracle_of(self.px_of(market), now, market, &self.oracle_signer);
+            self.seq
+                .apply(&BatchOp::Unbind {
+                    owner: wallet.owner,
+                    market_id: market,
+                    amount,
+                    blinding: blind,
+                    oracle,
+                    now_ms: now,
+                })
+                .map_err(|e| format!("withdraw unbind failed: {e:?}"))?;
+        }
         let note = Note::new(wallet.owner, 0, amount, blind);
         let cm = note.commitment::<Keccak256>();
-        self.seq
-            .apply(&BatchOp::Withdraw {
+        let withdraw_op = if wind_down {
+            BatchOp::WindDownWithdraw {
                 note_commitment: cm,
                 spend_key: wallet.spend_key,
-                // Real L1 withdrawal: bind the burned value to the same (to, nonce)
-                // leaf pushed to `pending_withdrawals` below (enters withdrawals_root).
                 to: Some(to),
                 nonce,
-            })
+            }
+        } else {
+            BatchOp::Withdraw {
+                note_commitment: cm,
+                spend_key: wallet.spend_key,
+                to: Some(to),
+                nonce,
+            }
+        };
+        self.seq
+            .apply(&withdraw_op)
             .map_err(|e| format!("withdraw burn failed: {e:?}"))?;
         self.next_withdraw_nonce += 1;
         let w = Withdrawal {
@@ -4251,10 +4271,15 @@ impl Gw {
             .scan(&w.view_x25519_secret())
             .into_iter()
             .map(|rn| {
+                let cm = rn.note.commitment::<Keccak256>();
                 serde_json::json!({
                     "batchId": rn.batch_id,
                     "amount": rn.note.amount.to_string(),
-                    "spent": false
+                    // A06 can replace a haircut note without its spend key. The
+                    // append-only archive therefore retains the old ciphertext;
+                    // liveness comes from the authoritative root-bound unspent map,
+                    // not from pretending every archived record is still live.
+                    "spent": !self.seq.state.notes.contains_key(&cm)
                 })
             })
             .collect()
@@ -5847,6 +5872,125 @@ async fn post_v1_admin_resume(State(app): State<Shared>, headers: HeaderMap) -> 
     }
 }
 
+/// A06: explicitly start the one-shot counterparty-free wind-down. This endpoint
+/// never fabricates the L1 condition: it requires a successful block-pinned read
+/// showing the deployed settlement is already in close-only. The SettleAll op is
+/// persisted before 200; the ordinary settle loop then proves it and routes phase 1
+/// to `finalSettle` by the proof-derived wind-down phase.
+async fn post_v1_admin_wind_down(
+    State(app): State<Shared>,
+    headers: HeaderMap,
+) -> impl IntoResponse {
+    let configured = std::env::var("FIN_ADMIN_KEY").ok();
+    let presented = headers.get("x-admin-key").and_then(|v| v.to_str().ok());
+    match admin_resume_authz(configured.as_deref(), presented) {
+        AdminAuthz::Disabled => {
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(serde_json::json!({"error":"wind-down disabled — set FIN_ADMIN_KEY"})),
+            )
+                .into_response()
+        }
+        AdminAuthz::Unauthorized => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(serde_json::json!({"error":"missing or invalid X-Admin-Key"})),
+            )
+                .into_response()
+        }
+        AdminAuthz::Ok => {}
+    }
+    if app.snapshot_req.is_none() || app.prover.is_none() {
+        return (StatusCode::SERVICE_UNAVAILABLE, Json(serde_json::json!({"error":"wind-down requires durable snapshots and the proof settlement path"}))).into_response();
+    }
+    let Some(l1) = app.l1.clone() else {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(serde_json::json!({"error":"L1 bridge is not configured"})),
+        )
+            .into_response();
+    };
+    let observed = tokio::task::spawn_blocking(move || {
+        let block = l1.block_number()?;
+        Ok::<_, String>((block, l1.close_only_at(block)?))
+    })
+    .await;
+    let (block, close_only) = match observed {
+        Ok(Ok(v)) => v,
+        Ok(Err(e)) => {
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(serde_json::json!({"error":format!("cannot verify L1 close-only: {e}")})),
+            )
+                .into_response()
+        }
+        Err(e) => {
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(serde_json::json!({"error":format!("L1 close-only reader failed: {e}")})),
+            )
+                .into_response()
+        }
+    };
+    if !close_only {
+        return (StatusCode::CONFLICT, Json(serde_json::json!({"error":"L1 settlement is not in close-only","observedBlock":block}))).into_response();
+    }
+    {
+        let mut gw = app.gw.lock().await;
+        if gw.seq.open_window_has_ops() {
+            return (StatusCode::CONFLICT, Json(serde_json::json!({"error":"seal the current ordinary window before starting wind-down"}))).into_response();
+        }
+        if gw.seq.state.mode == Mode::CloseOnly {
+            return (
+                StatusCode::CONFLICT,
+                Json(serde_json::json!({"error":"wind-down phase 1 already applied locally"})),
+            )
+                .into_response();
+        }
+        // SettleAll may haircut an unspent note and deterministically reissue the
+        // reduced claim. Simulate first, while nothing is mutated, so every such
+        // replacement can be encrypted into the owner's recovery archive. If an
+        // owner is not registered locally, refuse rather than create an unreachable
+        // private claim; A07 supplies the broader account-recovery story.
+        let before: std::collections::HashSet<[u8; 32]> =
+            gw.seq.state.notes.keys().copied().collect();
+        let mut preview = gw.seq.state.clone();
+        if let Err(e) = preview.apply_batch(&[BatchOp::SettleAll]) {
+            return err400(format!("SettleAll refused: {e:?}")).into_response();
+        }
+        let replacements: Vec<Note> = preview
+            .notes
+            .iter()
+            .filter(|(cm, _)| !before.contains(*cm))
+            .map(|(_, note)| *note)
+            .collect();
+        let mut archive_targets = Vec::with_capacity(replacements.len());
+        for note in &replacements {
+            let Some(account) = gw.accounts.values().find(|a| a.wallet.owner == note.owner) else {
+                return (StatusCode::CONFLICT, Json(serde_json::json!({"error":"wind-down would reissue a haircut note for an owner not recoverable by this gateway"}))).into_response();
+            };
+            archive_targets.push((*note, account.wallet.view_x25519_public()));
+        }
+        let window = gw.seq.current_window_id();
+        if let Err(e) = gw.seq.apply(&BatchOp::SettleAll) {
+            return err400(format!("SettleAll refused: {e:?}")).into_response();
+        }
+        for (note, view) in archive_targets {
+            gw.archive.record(window, &note, &view, rand::rngs::OsRng);
+        }
+    }
+    if let Err(e) = snapshot_now(&app.snapshot_req).await {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(serde_json::json!({"error":e,"durability":"unknown"})),
+        )
+            .into_response();
+    }
+    app.force_settle
+        .store(true, std::sync::atomic::Ordering::SeqCst);
+    (StatusCode::ACCEPTED, Json(serde_json::json!({"status":"wind-down phase 1 queued for proof/finalSettle","observedBlock":block}))).into_response()
+}
+
 /// A01: optional operator receipt/acceleration endpoint. Payer and purpose are
 /// fixed by the durable permit, never inferred from this confirm request.
 async fn post_v1_admin_insurance_bootstrap(
@@ -7271,6 +7415,7 @@ fn build_router(app: Shared, prod: bool) -> Router {
         .route("/v1/markets/:id/oracle", get(get_v1_oracle))
         .route("/v1/system/status", get(get_v1_status))
         .route("/v1/admin/settlement/resume", post(post_v1_admin_resume))
+        .route("/v1/admin/wind-down", post(post_v1_admin_wind_down))
         .route(
             "/v1/admin/insurance/bootstrap",
             post(post_v1_admin_insurance_bootstrap),
@@ -8890,6 +9035,7 @@ mod tests {
                     withdrawals_root: [0u8; 32],
                     rejected_root: [0u8; 32],
                     deposits_root: [0u8; 32],
+                    wind_down_phase: 0,
                     new_deposit_count,
                     post_mode_is_normal,
                     post_insurance_fund,

@@ -86,6 +86,11 @@ pub enum EngineError {
     DeprecatedOp,
     /// SEC-024: the op requires the canonical quote asset (`asset_id == 0`).
     WrongAsset,
+    /// A wind-down-only operation was mixed with ordinary operations, or the
+    /// phase-specific batch grammar was otherwise violated.
+    WindDownGrammar,
+    /// The terminal socialization set cannot absorb the remaining deficit.
+    WindDownInsolvent,
 }
 
 impl From<RiskError> for EngineError {

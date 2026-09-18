@@ -37,6 +37,10 @@ pub struct ProveOutcome {
     /// SEC-025-B: derived by the gateway's OWN replay in `prove_and_prepare` (never
     /// taken from the prover), like every other root in this struct.
     pub deposits_root: Digest,
+    /// A06: 0 ordinary settleBatch, 1 one-shot finalSettle, 2 finalExit. Default
+    /// keeps pre-A06 rollback journals readable.
+    #[serde(default)]
+    pub wind_down_phase: u8,
     /// SEC-025-B: the POST-replay cumulative `consumed_deposit_count`, which is the
     /// `newDepositCount` argument of the nine-parameter `settleBatch`. Cumulative, not
     /// per-window: a zero-deposit window over a pre-state of five submits five.
@@ -271,6 +275,7 @@ pub fn prove_and_prepare(
         withdrawals_root: derived.withdrawals_root,
         rejected_root: derived.rejected_root,
         deposits_root: derived.deposits_root,
+        wind_down_phase: derived.wind_down_phase,
         new_deposit_count: post.consumed_deposit_count,
         post_mode_is_normal: post.mode == perp_core::Mode::Normal,
         post_insurance_fund: post.insurance_fund,

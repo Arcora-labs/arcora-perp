@@ -21,7 +21,7 @@ pub type Digest = [u8; 32];
 /// Implementors MUST be deterministic and collision-resistant. Domain tags keep
 /// note commitments, nullifiers, and Merkle nodes in disjoint hash sub-spaces so
 /// a value valid in one role can never be reinterpreted in another.
-pub trait Hasher {
+pub trait Hasher: Clone {
     /// Hash an ordered list of 32-byte words under a domain tag.
     fn hash_words(domain: Domain, words: &[Digest]) -> Digest;
 
