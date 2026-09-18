@@ -111,7 +111,7 @@ const EXPECTED = {
   freshCancel: {
     outcome: "resolved",
     gone: true,
-    cancelledEvent: { kind: "CANCELLED", message: "Order cancelled before matching", forPlacedOrder: true },
+    cancelledEvent: { kind: "CANCELLED", message: "Unfilled remainder cancelled; prior fills are unchanged", forPlacedOrder: true },
   },
   adlEvent: {
     orderId: "adl",

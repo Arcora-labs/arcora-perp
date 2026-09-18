@@ -272,7 +272,9 @@ function installFetch() {
         if (init?.headers?.["X-Api-Key"] !== validKey) return json({ error: "unknown account" }, 401);
         if (v1CancelStatus !== 200) {
           return json(
-            { error: "Only an ACCEPTED order can be cancelled (matched/settled are binding)." },
+            { error: v1CancelStatus === 503
+                ? "Cancellation durability unconfirmed: snapshot write failed"
+                : "Only an ACCEPTED order can be cancelled (matched/settled are binding)." },
             v1CancelStatus,
           );
         }
@@ -1665,4 +1667,42 @@ describe("audit remediation receipt and market-data transport", () => {
   });
 
 
+});
+
+// A04: retain the server's live-remainder capability independently of finality.
+describe("cancellation capability transport", () => {
+  it.each(["MATCHED", "SETTLED"])("retains a cancellable %s remainder", async (finality) => {
+    v1OrdersResponse = { orders: [{ ...v1Order, finality, cancellable: true }] };
+    const client = await bootstrapClient();
+    const [order] = await client.getOrders();
+    expect(order.finality).toBe(finality);
+    expect(order.cancellable).toBe(true);
+    client.dispose();
+  });
+  it("retains explicit false for an ACCEPTED order with no remainder", async () => {
+    v1OrdersResponse = { orders: [{ ...v1Order, cancellable: false }] };
+    const client = await bootstrapClient();
+    const [order] = await client.getOrders();
+    expect(order.cancellable).toBe(false);
+    client.dispose();
+  });
+  it("treats a malformed present capability as false rather than legacy absence", async () => {
+    v1OrdersResponse = { orders: [{ ...v1Order, cancellable: "true" }] };
+    const client = await bootstrapClient();
+    const [order] = await client.getOrders();
+    expect(order.cancellable).toBe(false);
+    client.dispose();
+  });
+});
+
+describe("cancellation durability failure", () => {
+  it("does not emit CANCELLED after an HTTP 503 unknown outcome", async () => {
+    const client = await bootstrapClient();
+    const events: OrderEvent[] = [];
+    client.onOrderEvent((event) => events.push(event));
+    v1CancelStatus = 503;
+    await expect(client.cancelOrder("o42")).rejects.toThrow(/durability unconfirmed/);
+    expect(events).toEqual([]);
+    client.dispose();
+  });
 });

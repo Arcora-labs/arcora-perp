@@ -16,6 +16,8 @@
 //! holds enclave keys and real signatures), so it is plain `std`. The pieces it
 //! drives — the matcher and the settlement engine — remain zkVM-reproducible.
 
+mod cancellation;
+
 use std::collections::{BTreeMap, BTreeSet};
 
 use k256::ecdsa::{RecoveryId, Signature, SigningKey, VerifyingKey};

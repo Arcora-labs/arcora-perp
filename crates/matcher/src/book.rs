@@ -135,6 +135,29 @@ impl<H: perp_core::hash::Hasher> OrderBook<H> {
             .sum()
     }
 
+    /// Owner-scoped remaining quantity, for cancellation eligibility. This is
+    /// not public market depth and must only be exposed through authenticated views.
+    pub fn remaining_for(&self, owner: &PubKey, order_hash: &Digest) -> Option<i128> {
+        self.bids
+            .values()
+            .chain(self.asks.values())
+            .flat_map(|queue| queue.iter())
+            .find(|r| &r.owner == owner && &r.order_hash == order_hash)
+            .map(|r| r.remaining)
+    }
+
+    /// Collect this owner's live hashes once when serving a whole order list.
+    /// Avoid a full-book scan for every historical row in the authenticated view.
+    pub fn resting_hashes_for(&self, owner: &PubKey) -> Vec<Digest> {
+        self.bids
+            .values()
+            .chain(self.asks.values())
+            .flat_map(|queue| queue.iter())
+            .filter(|r| &r.owner == owner && r.remaining > 0)
+            .map(|r| r.order_hash)
+            .collect()
+    }
+
     /// Does `price` cross a resting order on `opposite`? `limit == 0` means a
     /// market order (always crosses if liquidity exists).
     fn price_crosses(taker_side: Side, limit: i128, resting_price: i128) -> bool {

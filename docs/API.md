@@ -55,7 +55,7 @@ A machine-readable **OpenAPI 3.1** spec is served at `GET /v1/openapi.json`.
 | POST | `/v1/lp/withdraw` | ✓ | `{ shares, nonce, signature }` → `{ withdrawnValue }` (wallet-signed, § Withdrawal authorization) — **demo build only** |
 | POST | `/v1/orders` | ✓ | order body (below) → signed receipt |
 | GET  | `/v1/orders` | ✓ | `{ orders[] }` (own orders + finality + the stored acceptance `receipt`, incl. its `windowId`) |
-| DELETE | `/v1/orders/:orderId` | ✓ | cancel a still-`ACCEPTED` order **that has not yet sealed into a batch** (see the cancel note below) |
+| DELETE | `/v1/orders/:orderId` | ✓ | cancel a pending order or live maker remainder (see the cancel note below) |
 | GET  | `/v1/positions` | ✓ | `{ positions[] }` (own open positions) |
 | GET  | `/v1/markets` | – | `{ markets[] }` |
 | GET  | `/v1/markets/:id` | – | one market |
@@ -68,12 +68,25 @@ stakes through an unbacked mint, which would break settlement — the production
 router omits all three routes (they 404) and the served OpenAPI document omits
 them too.
 
-**Cancel is effectively pre-seal only.** `DELETE /v1/orders/:orderId` refuses any
-order already **sealed** into a batch — even while its finality is still
-`ACCEPTED` — and every resting order seals within one sequencer tick (~700 ms).
-So in practice only an order cancelled immediately after submission succeeds;
-cancelling a resting order returns the refusal until cancel-inside-the-window
-lands (SEC-025-E2).
+**Cancellation uses the live remainder, not finality.** A pending order or a
+resting maker remainder can be cancelled, including after a partial fill is
+MATCHED or SETTLED. Prior fills and position balances are not reversed.
+GET /v1/orders includes the authenticated owner's `cancellable` capability.
+DELETE returns `{ orderId, cancelled: true, cancelledSize }`, with the exact
+removed size as a decimal string. The cancelled row leaves the order list;
+complete cancellation history and cumulative fill/VWAP accounting remain A05.
+
+The gateway serializes cancellation and the entire matching tick under the
+same state mutex. The existing Cancelled reason enters the current window
+manifest. Proof-v1 replays accounting and commits that manifest; it does not
+independently prove cancellation authorization or CLOB matching fairness.
+
+Production without persistence refuses cancellation before mutation (503).
+With persistence, success waits for a durable snapshot ACK. Write failure or
+timeout returns 503 with `durability: "unknown"`; the in-memory quote remains
+removed, but restart durability is unconfirmed. Do not infer safe replacement
+from an empty order list after this error. Obtain confirmed durable state
+before replacing the quote. Snapshot acknowledgement is not L1 settlement.
 
 **Order body** (`POST /v1/orders`):
 
