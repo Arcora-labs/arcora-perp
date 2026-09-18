@@ -1172,6 +1172,9 @@ struct Account {
     /// from it. Counts rebinds only; the first-time bind does not increment it.
     #[serde(default)]
     rebind_counter: u64,
+    /// A07 credential-rotation generation; trailer-persisted, not positional.
+    #[serde(skip)]
+    recovery_nonce: u64,
     /// SEC-019 (Task 7b): gateway-issued deposit authorizations awaiting their on-chain
     /// landing, keyed by `ownerCommit = keccak(owner ‖ deposit_blind)`. The value is the
     /// SECRET per-deposit `deposit_blind` (a fresh 32-byte CSPRNG value); `owner` is this
@@ -1939,12 +1942,13 @@ impl Gw {
             .iter()
             .map(|m| (m.id, m.reference_price, m.px, m.live))
             .collect();
-        let mut bytes = execution::SNAPSHOT_V7.to_vec();
+        let mut bytes = account_recovery::SNAPSHOT_V8.to_vec();
         bytes.extend_from_slice(deposit_ingestion::SNAPSHOT_V6);
         bytes.extend(
             postcard::to_allocvec(&(self, mkt_px, &self.deposits)).expect("snapshot encode"),
         );
         execution::append_snapshot(self, &mut bytes);
+        account_recovery::append(self, &mut bytes);
         bytes
     }
 
@@ -1953,10 +1957,11 @@ impl Gw {
     /// `ENCLAVE_SEED` — the snapshot never carries the signing secret), and the
     /// static market table with the persisted dynamics overlaid.
     fn boot_restored(plain: &[u8]) -> Result<Self, String> {
-        let (plain, version7) = match plain.strip_prefix(execution::SNAPSHOT_V7) {
-            Some(payload) => (payload, true),
-            None => (plain, false),
-        };
+        let (plain, version7, version8) = if let Some(payload)=plain.strip_prefix(account_recovery::SNAPSHOT_V8) {
+            (payload,true,true)
+        } else if let Some(payload)=plain.strip_prefix(execution::SNAPSHOT_V7) {
+            (payload,true,false)
+        } else { (plain,false,false) };
         if version7 && !plain.starts_with(deposit_ingestion::SNAPSHOT_V6) {
             return Err("v7 snapshot missing A01 payload".into());
         }
@@ -1974,12 +1979,18 @@ impl Gw {
                 if rest.is_empty() {
                     return Err("v7 snapshot missing execution extension".into());
                 }
-                execution::restore_snapshot(&mut gw, rest)?;
+                let (exec,recovery)=if version8 {
+                    let i=rest.windows(account_recovery::EXT.len()).position(|w|w==account_recovery::EXT).ok_or("v8 snapshot missing recovery extension")?;
+                    (&rest[..i],&rest[i..])
+                } else {(rest,&[][..])};
+                execution::restore_snapshot(&mut gw, exec)?;
+                account_recovery::restore(&mut gw, recovery)?;
             } else {
                 if !rest.is_empty() {
                     return Err("trailing v6 snapshot bytes".into());
                 }
                 execution::restore_snapshot(&mut gw, &[])?;
+                account_recovery::restore(&mut gw, &[])?;
             }
             (gw, prices)
         } else {
@@ -1995,6 +2006,7 @@ impl Gw {
                 legacy.0.seq.state.consumed_deposit_tip,
             ));
             execution::restore_snapshot(&mut legacy.0, &[])?;
+            account_recovery::restore(&mut legacy.0, &[])?;
             legacy
         };
         gw.validate_deposit_state()?;
@@ -2081,6 +2093,7 @@ impl Gw {
                 last_sealed_nonce: 0,
                 last_withdraw_nonce: 0,
                 rebind_counter: 0,
+                recovery_nonce: 0,
                 deposit_authorizations: std::collections::BTreeMap::new(),
             },
         );
@@ -3418,6 +3431,7 @@ impl Gw {
             // saturate rather than panic (debug) / wrap to a never-valid 0 (release).
             "nextWithdrawNonce": a.last_withdraw_nonce.saturating_add(1),
             "rebindCounter": a.rebind_counter,
+            "recoveryNonce": a.recovery_nonce,
             "chainId": self.chain_id,
             "vault": hex0x(&self.vault),
         }))
@@ -5308,6 +5322,8 @@ struct DepositAddrReq {
     current_signature: Option<String>,
 }
 #[derive(Deserialize)]
+struct RecoveryReq { owner: String, nonce: u64, signature: String }
+#[derive(Deserialize)]
 struct OnchainDepositReq {
     #[serde(rename = "txHash")]
     tx_hash: String,
@@ -6150,6 +6166,19 @@ async fn post_v1_register(
         "callerSigned": signer.is_some(),
     }))
     .into_response()
+}
+
+async fn get_v1_recovery(State(app): State<Shared>, Path(owner): Path<String>) -> impl IntoResponse {
+    let Some(owner)=parse_hex32(&owner) else { return err400("bad owner (expected 32-byte 0x hex)".into()).into_response(); };
+    match app.gw.lock().await.recovery_view(&owner) { Some(v)=>Json(v).into_response(), None=>(StatusCode::NOT_FOUND,Json(serde_json::json!({"error":"unknown or unrecoverable account"}))).into_response() }
+}
+async fn post_v1_recovery(State(app): State<Shared>, Json(req): Json<RecoveryReq>) -> impl IntoResponse {
+    if app.snapshot_req.is_none() { return (StatusCode::SERVICE_UNAVAILABLE,Json(serde_json::json!({"error":"state persistence is required for credential recovery","durability":"unknown"}))).into_response(); }
+    let Some(owner)=parse_hex32(&req.owner) else { return err400("bad owner (expected 32-byte 0x hex)".into()).into_response(); };
+    let Some(sig)=parse_hex65(&req.signature) else { return err400("bad signature".into()).into_response(); };
+    let key={ let mut gw=app.gw.lock().await; match gw.recover_account(owner,req.nonce,&sig){Ok(k)=>k,Err(e)=>return err400(e).into_response()} };
+    if let Err(e)=snapshot_now(&app.snapshot_req).await { return (StatusCode::SERVICE_UNAVAILABLE,Json(serde_json::json!({"error":e,"durability":"unknown"}))).into_response(); }
+    Json(serde_json::json!({"apiKey":hex0x(&key),"owner":hex0x(&owner),"recoveryNonce":req.nonce.saturating_add(1),"durability":"confirmed"})).into_response()
 }
 
 /// Bind the external EOA an account funds from, so its on-chain USDC deposits can be
@@ -7386,6 +7415,8 @@ fn build_router(app: Shared, prod: bool) -> Router {
         // ── multi-tenant external API (/v1) ──
         .route("/v1/accounts", post(post_v1_register))
         .route("/v1/accounts/me", get(get_v1_account))
+        .route("/v1/accounts/recovery/:owner", get(get_v1_recovery))
+        .route("/v1/accounts/recovery", post(post_v1_recovery))
         .route("/v1/accounts/deposit", post(post_v1_deposit))
         .route(
             "/v1/accounts/deposit/address",
@@ -13386,6 +13417,7 @@ mod tests {
             deposit_authorizations: Default::default(),
             last_withdraw_nonce: 42,
             rebind_counter: 3,
+            recovery_nonce: 0,
         };
         a.nonce = 7;
         let bytes = postcard::to_allocvec(&a).expect("serialize");

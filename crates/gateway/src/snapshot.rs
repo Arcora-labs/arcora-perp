@@ -62,7 +62,8 @@ use std::path::Path;
 // v7: A05 execution metadata wraps the unchanged A01 v6 payload.
 // The v7 MAC binds its version; authenticated v5/v6 remain readable losslessly.
 // Formats older than v5 remain refused; no automatic wipe or downgrade.
-const MAGIC: &[u8; 8] = b"DPSNAP7\0";
+const MAGIC: &[u8; 8] = b"DPSNAP8\0";
+const A05_MAGIC: &[u8; 8] = b"DPSNAP7\0";
 const A01_MAGIC: &[u8; 8] = b"DPSNAP6\0";
 const LEGACY_MAGIC: &[u8; 8] = b"DPSNAP5\0";
 
@@ -92,9 +93,9 @@ fn mac(seed: &[u8; 32], nonce: &Digest, ciphertext: &[u8]) -> Digest {
 }
 
 /// The v7 domain binds the version as well as the entire authenticated v6 payload.
-fn mac_v7(seed: &[u8; 32], nonce: &Digest, ciphertext: &[u8]) -> Digest {
+fn mac_version(seed: &[u8; 32], nonce: &Digest, ciphertext: &[u8], version:u64) -> Digest {
     let tag = mac(seed, nonce, ciphertext);
-    Keccak256::hash_words(Domain::SnapshotSealMac, &[word_u64(7), tag])
+    Keccak256::hash_words(Domain::SnapshotSealMac, &[word_u64(version), tag])
 }
 
 /// Constant-time 32-byte tag comparison (no early exit on the first mismatch).
@@ -120,7 +121,7 @@ pub fn seal(plain: &[u8], seed: &[u8; 32]) -> Vec<u8> {
 
     let ks = keystream(seed, &nonce, plain.len());
     let ciphertext: Vec<u8> = plain.iter().zip(ks).map(|(p, k)| p ^ k).collect();
-    let tag = mac_v7(seed, &nonce, &ciphertext);
+    let tag = mac_version(seed, &nonce, &ciphertext, 8);
 
     let mut out = Vec::with_capacity(8 + 32 + 32 + ciphertext.len());
     out.extend_from_slice(MAGIC);
@@ -136,7 +137,7 @@ pub fn open(sealed: &[u8], seed: &[u8; 32]) -> Result<Vec<u8>, String> {
     if sealed.len() < 8 + 32 + 32 {
         return Err("snapshot too short".into());
     }
-    if &sealed[..8] != MAGIC && &sealed[..8] != A01_MAGIC && &sealed[..8] != LEGACY_MAGIC {
+    if &sealed[..8] != MAGIC && &sealed[..8] != A05_MAGIC && &sealed[..8] != A01_MAGIC && &sealed[..8] != LEGACY_MAGIC {
         return Err("snapshot magic/version mismatch".into());
     }
     let mut nonce = [0u8; 32];
@@ -145,7 +146,9 @@ pub fn open(sealed: &[u8], seed: &[u8; 32]) -> Result<Vec<u8>, String> {
     tag.copy_from_slice(&sealed[40..72]);
     let ciphertext = &sealed[72..];
     let expected = if &sealed[..8] == MAGIC {
-        mac_v7(seed, &nonce, ciphertext)
+        mac_version(seed, &nonce, ciphertext, 8)
+    } else if &sealed[..8] == A05_MAGIC {
+        mac_version(seed, &nonce, ciphertext, 7)
     } else {
         mac(seed, &nonce, ciphertext)
     };
