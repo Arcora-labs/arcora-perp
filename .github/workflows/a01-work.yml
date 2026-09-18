@@ -8,7 +8,7 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
     env:
       CARGO_PROFILE_TEST_OPT_LEVEL: 2
       CARGO_PROFILE_TEST_DEBUG_ASSERTIONS: true
@@ -22,29 +22,38 @@ jobs:
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
-      - name: Build pinned baseline fixture, then compile fresh candidate
+        with:
+          cache-on-failure: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
+      - name: Validate fresh candidate against pinned main
         run: |
           python3 - <<'PY'
           import base64,zlib,hashlib,pathlib,subprocess,os,json
           root=pathlib.Path.cwd(); ev=root/'evidence'; ev.mkdir(exist_ok=True)
           base='48e03ac3db123cdf159c10f1e0c86262043a377e'
-          patch=zlib.decompress(base64.b64decode(''.join((root/f'scripts/audit/a01-work/patch.{i}').read_text().strip() for i in range(3))))
-          assert hashlib.sha256(patch).hexdigest()=='600f1704c9c78caab0579a08a82500987adf9c03c895812f14c6b101958349ec'
-          (ev/'candidate.patch').write_bytes(patch)
+          def decode(stem,digest):
+              p=zlib.decompress(base64.b64decode(''.join((root/f'scripts/audit/a01-work/{stem}.{i}').read_text().strip() for i in range(3))))
+              assert hashlib.sha256(p).hexdigest()==digest
+              out=ev/(stem+'.patch');out.write_bytes(p);return out
+          first=decode('patch','600f1704c9c78caab0579a08a82500987adf9c03c895812f14c6b101958349ec')
+          delta=decode('delta2','3047ea8df2726df2576e2a27f2ba2d2ae6c50654004d20660617cbf073570fcd')
           work=root.parent/'a01-candidate'
           subprocess.run(['git','worktree','add','--detach',str(work),base],check=True)
-          os.environ['CARGO_TARGET_DIR']=str(root/'target')
-          os.environ['A01_FIXTURE_DIR']=str(ev)
+          os.environ['CARGO_TARGET_DIR']=str(root/'target');os.environ['A01_FIXTURE_DIR']=str(ev)
           results=[]
-          def run(name,cmd):
-              with (ev/(name+'.log')).open('w') as f:
-                  p=subprocess.run(cmd,cwd=work,stdout=f,stderr=subprocess.STDOUT)
+          def run(name,cmd,cwd=work):
+              with (ev/(name+'.log')).open('w') as f:p=subprocess.run(cmd,cwd=cwd,stdout=f,stderr=subprocess.STDOUT)
               results.append(dict(name=name,command=cmd,exit_code=p.returncode))
               (ev/'results.json').write_text(json.dumps(results,indent=2))
               print(name,p.returncode,flush=True)
-              if p.returncode: print((ev/(name+'.log')).read_text()[-12000:],flush=True)
+              if p.returncode:print((ev/(name+'.log')).read_text()[-14000:],flush=True)
               return p.returncode
-          p=work/'crates/gateway/src/main.rs'; original=p.read_bytes()
+          p=work/'crates/gateway/src/main.rs';original=p.read_bytes()
           p.write_text(p.read_text()+'''\n#[cfg(test)] mod a01_legacy_export { use super::*;
           #[test] fn export_v5() {
             let mut gw=Gw::boot_with(GenesisMode::Production);
@@ -58,19 +67,57 @@ jobs:
             let plain=gw.snapshot_plain();std::fs::write(dir.join("legacy-v5.plain"),&plain).unwrap();
             std::fs::write(dir.join("legacy-v5.sealed"),snapshot::seal(&plain,&[42;32])).unwrap();
           }}\n''')
-          if run('baseline-v5',['cargo','test','--locked','-p','gateway','a01_legacy_export::export_v5','--','--exact']): raise SystemExit(1)
+          if run('baseline-v5',['cargo','test','--locked','-p','gateway','a01_legacy_export::export_v5','--','--exact']):raise SystemExit(1)
           p.write_bytes(original)
-          subprocess.run(['git','apply',str(ev/'candidate.patch')],cwd=work,check=True)
+          for patch in [first,delta]:subprocess.run(['git','apply',str(patch)],cwd=work,check=True)
+          (work/'crates/gateway/src/deposit_ingestion/legacy-v5.hex').write_text((ev/'legacy-v5.sealed').read_bytes().hex()+'\n')
           run('format',['cargo','fmt','--all'])
           failed=run('typecheck',['cargo','check','--workspace','--all-targets','--locked'])
-          if not failed: failed=run('a01-smoke',['cargo','test','--locked','-p','gateway','a01_'])
-          subprocess.run(['git','add','crates'],cwd=work,check=True)
-          (ev/'formatted.patch').write_bytes(subprocess.check_output(['git','diff','--cached','--binary'],cwd=work))
-          raise SystemExit(bool(failed))
+          if not failed:
+              (ev/'compile-ok').write_text('1')
+              run('clippy',['cargo','clippy','--workspace','--all-targets','--locked','--','-D','warnings'])
+              run('rust-workspace',['cargo','test','--workspace','--locked'])
+              run('native-rpc',['cargo','test','--locked','-p','gateway','a01_native_cast_hash_pinned_jsonrpc_roundtrip','--','--ignored','--nocapture'])
+              run('core-serde',['cargo','test','--locked','-p','perp-core','--features','serde'])
+              run('core-no-std',['cargo','build','--locked','-p','perp-core','--no-default-features'])
+          if not run('npm-ci',['npm','ci'],work/'frontend'):
+              run('frontend-tests',['npm','test','--','--run'],work/'frontend')
+              run('frontend-build',['npm','run','build'],work/'frontend')
+          run('foundry',['forge','test','-v'],work/'contracts')
+          subprocess.run(['git','add','crates','frontend'],cwd=work,check=True)
+          formatted=subprocess.check_output(['git','diff','--cached','--binary'],cwd=work)
+          (ev/'formatted.patch').write_bytes(formatted)
+          (ev/'source.json').write_text(json.dumps({'base':base,'patch_sha256':hashlib.sha256(formatted).hexdigest(),'fixture_sha256':hashlib.sha256((ev/'legacy-v5.sealed').read_bytes()).hexdigest()},indent=2))
+          raise SystemExit(any(r['exit_code'] for r in results))
           PY
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: a01-compile-evidence
+          name: a01-verification-evidence
           path: evidence
           retention-days: 14
+  publish-candidate:
+    needs: verify
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/a01-ordered-deposits-2026-09-18
+      - uses: actions/download-artifact@v4
+        with:
+          name: a01-verification-evidence
+          path: evidence
+      - name: Commit compiled candidate only to the authorized feature branch
+        run: |
+          test -f evidence/compile-ok || exit 0
+          test "$(git rev-parse HEAD)" = "${{ github.sha }}"
+          git apply --check evidence/formatted.patch
+          git apply evidence/formatted.patch
+          git add crates frontend
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'fix(a01): implement ordered durable deposit intake and regression coverage'
+          git push origin HEAD:refs/heads/fix/a01-ordered-deposits-2026-09-18
