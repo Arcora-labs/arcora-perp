@@ -70,3 +70,4 @@ replace('frontend/src/api/realClient.ts', '    execution: pExecution(o.execution
 for path in ['frontend/src/api/mockClient.ts', 'frontend/src/api/clientContract.test.ts']:
     replace(path, 'message: "Order cancelled before matching"', 'message: "Unfilled remainder cancelled; existing fills are unchanged"')
 replace('crates/gateway/src/main.rs', '// reference orders by index), and only evicts SETTLED (terminal, display-only)\n            // orders — live/pending orders and the account\'s replay nonce are untouched.', '// reference orders by index), and only evicts terminal execution records with\n            // no unconfirmed fills. A SETTLED receipt may still have a live remainder.')
+replace('crates/gateway/src/main.rs', '        let ((mut gw, mkt_px), trailer): ((Gw, Vec<(u64, i128, i128, bool)>), _) =', '        type SnapshotPrefix = (Gw, Vec<(u64, i128, i128, bool)>);\n        let ((mut gw, mkt_px), trailer): (SnapshotPrefix, _) =')
