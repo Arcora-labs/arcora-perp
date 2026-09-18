@@ -1,0 +1,86 @@
+name: Execution remediation
+on:
+  push:
+    branches: [fix/execution-2026-09-18]
+permissions:
+  contents: read
+concurrency:
+  group: execution-remediation
+  cancel-in-progress: true
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: execution-remediation
+          cache-on-failure: true
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - uses: foundry-rs/foundry-toolchain@v1
+      - name: Verify source, baseline failures, full tests and compatibility
+        run: python3 .continuation/verify.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: execution-evidence
+          path: execution-evidence/
+          if-no-files-found: error
+          retention-days: 14
+  publish:
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: execution-evidence
+          path: execution-evidence
+      - name: Commit only verified application source to the fix branch
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          branch=fix/execution-2026-09-18
+          actual=$(git ls-remote origin "refs/heads/$branch" | cut -f1)
+          test "$actual" = "$EXPECTED_SHA"
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib, subprocess
+          p = pathlib.Path('execution-evidence')
+          s = json.loads((p/'status.json').read_text())
+          assert s['all_passed'] is True
+          assert s['runner_commit'] == os.environ['EXPECTED_SHA']
+          patch = (p/'verified.patch').read_bytes()
+          assert hashlib.sha256(patch).hexdigest() == s['verified_patch_sha256']
+          subprocess.run(['git', 'apply', '--check', str(p/'verified.patch')], check=True)
+          subprocess.run(['git', 'apply', str(p/'verified.patch')], check=True)
+          for name, sha in s['source_blob_ids'].items():
+              assert subprocess.check_output(['git','hash-object',name],text=True).strip() == sha
+          subprocess.run(['git','add','--',*s['changed_paths']],check=True)
+          PY
+          git diff --cached --check
+          git config user.name Kubudak90
+          git config user.email 95706654+Kubudak90@users.noreply.github.com
+          git commit -m "fix: cancel resting remainders and report actual cumulative executions"
+          git push origin "HEAD:refs/heads/$branch"
