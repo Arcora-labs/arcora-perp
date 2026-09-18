@@ -17,3 +17,4 @@ jobs:
       - run: cargo test --locked -p gateway
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - run: cargo test --workspace --locked
+
