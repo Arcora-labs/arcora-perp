@@ -1,0 +1,28 @@
+name: a01-work
+on:
+  push:
+    branches: [fix/a01-ordered-deposits-2026-09-18]
+    paths: [.github/workflows/a01-work.yml]
+permissions:
+  contents: read
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Export exact baselines, not old patches
+        run: |
+          mkdir -p evidence
+          git archive 48e03ac3db123cdf159c10f1e0c86262043a377e | gzip > evidence/main.tar.gz
+          git archive 9cc31baa49e1da08bb4a018279e7bb3b7bc67b40 | gzip > evidence/a04.tar.gz
+          git ls-tree -r 48e03ac3db123cdf159c10f1e0c86262043a377e > evidence/main-tree.txt
+          git ls-tree -r 9cc31baa49e1da08bb4a018279e7bb3b7bc67b40 > evidence/a04-tree.txt
+          sha256sum evidence/* > evidence/SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: a01-pinned-sources
+          path: evidence
+          retention-days: 7
