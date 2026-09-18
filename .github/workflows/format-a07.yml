@@ -1,0 +1,21 @@
+name: Format A07 source
+on:
+  push:
+    branches: ['fix/a07-account-recovery-2026-09-18']
+    paths: ['.github/workflows/format-a07.yml']
+permissions: { contents: write }
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with: { components: rustfmt }
+      - run: |
+          cargo fmt --all
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add crates/gateway/src
+          git rm .github/workflows/format-a07.yml
+          git commit -m 'style(a07): format recovery implementation'
+          git push
