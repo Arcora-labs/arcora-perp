@@ -5788,16 +5788,8 @@ async fn post_v1_admin_resume(State(app): State<Shared>, headers: HeaderMap) -> 
     }
 }
 
-/// SEC-025-A Task 4: `POST /v1/admin/insurance/bootstrap` — route the operator's OWN
-/// confirmed L1 deposit into the insurance fund (`Gw::bootstrap_insurance`).
-///
-/// Two credentials on purpose. `X-Admin-Key` (the dedicated `FIN_ADMIN_KEY` gate,
-/// exactly as `post_v1_admin_resume` — NOT `api_key_from` alone, which authenticates a
-/// registered USER and would let any user trigger the bootstrap) authorizes the ACTION;
-/// `X-Api-Key` selects the operator's registered ACCOUNT, whose bound payer and deposit
-/// authorization the shared deposit guards then enforce. Neither credential is the
-/// security boundary for WHOSE value moves — that is the receipt-parsed `from` bound to
-/// `INSURANCE_OPERATOR_ADDRESS` inside the driver, the one field a caller cannot forge.
+/// A01: optional operator receipt/acceleration endpoint. Payer and purpose are
+/// fixed by the durable permit, never inferred from this confirm request.
 async fn post_v1_admin_insurance_bootstrap(
     State(app): State<Shared>,
     headers: HeaderMap,
@@ -6522,11 +6514,11 @@ fn v1_openapi_json(prod: bool) -> serde_json::Value {
                     "currentSignature": { "type": "string", "description": "REBIND ONLY (SEC-021b): the CURRENTLY bound address's sig over the rebind digest keccak256(\"dark-perp:rebind-deposit:\"‖chainId(u64 BE)‖vault‖owner‖rebindCounter(u64 BE)‖oldAddr‖newAddr) — rebindCounter from GET /v1/accounts/me; same three accepted shapes as `signature`. Absent/ignored on a first-time bind; without it a rebind is refused. There is NO operator or timelock override: losing the bound key permanently freezes the binding" } } } } } },
                 "responses": ok("bound address") } },
             "/v1/accounts/deposit/authorize": { "post": { "summary": "Authorize an L1 deposit (SEC-019): get ownerCommit + gateway sig for deposit(amount, ownerCommit, sig)", "security": auth["security"],
-                "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["from","amount"], "properties": { "from": { "type": "string", "description": "the L1 address the deposit is sent from (your bound deposit address)" }, "amount": { "type": "string", "description": "USDC base units to deposit" } } } } } },
+                "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["from","amount","marketId","purpose"], "properties": { "marketId": { "type": "integer", "minimum": 0 }, "purpose": { "type": "string", "enum": ["collateral","insuranceBootstrap"], "description": "Immutable routing; insurance also requires admin authorization and the bound operator payer" }, "from": { "type": "string", "description": "the L1 address the deposit is sent from (your bound deposit address)" }, "amount": { "type": "string", "description": "USDC base units to deposit" } } } } } },
                 "responses": ok("ownerCommit + sig") } },
-            "/v1/accounts/deposit/onchain": { "post": { "summary": "Credit a real on-chain USDC deposit by tx hash", "security": auth["security"],
+            "/v1/accounts/deposit/onchain": { "post": { "summary": "Optional finalized ingestion accelerator and durable receipt; cannot change routing", "security": auth["security"],
                 "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["txHash","marketId"], "properties": { "txHash": { "type": "string" }, "marketId": { "type": "integer" } } } } } },
-                "responses": ok("credited + account") } },
+                "responses": { "200": { "description": "Owned durable credit receipt" }, "202": { "description": "pendingFinalizedIngestion; do not send funds again" }, "409": { "description": "Routing mismatch or legacy receipt" }, "503": { "description": "Ingestion unavailable or durability unknown" } } } },
             "/v1/accounts/withdraw": { "post": { "summary": "Withdraw USDC (record an authorized withdrawal; SEC-021: every withdrawal is wallet-signed — the API key alone can never move funds)", "security": auth["security"],
                 "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["marketId","amount","to","nonce","signature"], "properties": { "marketId": { "type": "integer" }, "amount": { "type": "string" }, "to": { "type": "string", "description": "destination L1 address. Server-custody accounts (no registered signer) MUST set this to their bound deposit address; caller-signed accounts may use any address" },
                     "nonce": { "type": "integer", "description": "strictly-increasing withdrawal auth nonce, shared with /v1/lp/withdraw — use nextWithdrawNonce from GET /v1/accounts/me; committed only when the withdrawal succeeds (a rejected request does not burn it)" },
@@ -6552,6 +6544,17 @@ fn v1_openapi_json(prod: bool) -> serde_json::Value {
             "/v1/system/status": { "get": { "summary": "System status", "responses": ok("status") } }
         }
     });
+    let mut route = spec["paths"]["/v1/accounts/deposit/authorize"].clone();
+    route["post"]["summary"] =
+        serde_json::json!("Explicitly adopt a legacy permit; routing is immutable");
+    let schema = &mut route["post"]["requestBody"]["content"]["application/json"]["schema"];
+    schema["required"]
+        .as_array_mut()
+        .unwrap()
+        .push(serde_json::json!("ownerCommit"));
+    schema["properties"]["ownerCommit"] = serde_json::json!({"type":"string"});
+    route["post"]["responses"] = ok("ownerCommit + routing + durability; no new signature");
+    spec["paths"]["/v1/accounts/deposit/route"] = route;
     if !prod {
         // demo/dev only — mirrors the `build_router` gating (SEC-025-C Task 3):
         // the LP pool credits through an unbacked mint, so production neither
@@ -8218,7 +8221,7 @@ async fn main() {
                                 // insurance bootstrap's SECOND leg? Read under the same
                                 // guard as the seal, acted on (a durability barrier)
                                 // AFTER the guard drops.
-                                let bootstrap_window = matches!(
+                                let deposit_window = matches!(
                                     gw.bootstrap,
                                     bootstrap::Bootstrap::InsuranceApplied { window_id }
                                         if window_id == x.0.batch_id
@@ -8235,7 +8238,7 @@ async fn main() {
                                 // between the seal and this window's own commit.
                                 let gate_was_closed =
                                     gw.trading_gate == trading_gate::TradingGate::Closed;
-                                Some((x, cand, bootstrap_window, gate_was_closed))
+                                Some((x, cand, deposit_window, gate_was_closed))
                             }
                             Ok(None) => None,
                             Err(e) => {
@@ -8244,7 +8247,7 @@ async fn main() {
                             }
                         }
                     };
-                    let Some(((witness, ww), prune_candidates, bootstrap_window, gate_was_closed)) =
+                    let Some(((witness, ww), prune_candidates, deposit_window, gate_was_closed)) =
                         begun
                     else {
                         continue;
@@ -8281,7 +8284,7 @@ async fn main() {
                             ),
                         }
                     }
-                    // SEC-025-A Task 5: this window carries the bootstrap's SECOND leg, so
+                    // A01: every deposit-bearing window and resumed bootstrap second leg needs durability;
                     // its post-seal snapshot must be durably ACKNOWLEDGED before the settle
                     // can broadcast. If the window lands on-chain before that snapshot
                     // persists, boot restores Counter B at J while the chain reads J+1,
@@ -8296,10 +8299,10 @@ async fn main() {
                     // takes that same lock, so a holder wedges the gateway for the full
                     // ack timeout (see `snapshot_now`). On failure, roll the seal back and
                     // retry the whole settle next tick — fail-closed, nothing broadcast.
-                    if bootstrap_window {
+                    if deposit_window {
                         if let Err(e) = snapshot_now(&app.snapshot_req).await {
                             eprintln!(
-                                "[l1] bootstrap window {batch_id}: post-seal snapshot is not \
+                                "[l1] deposit window {batch_id}: post-seal snapshot is not \
                                  durable ({e}) — rolling back; the settle retries next tick"
                             );
                             {
@@ -9878,7 +9881,7 @@ mod tests {
     /// guarding the wrapper is sufficient — but a NEW unbacked caller must break
     /// something. This test is that something: it scans every gateway source file
     /// (not just main.rs), so a call site added in a sibling module is caught too.
-    /// The scan is non-recursive because `crates/gateway/src` is flat; the needles
+    /// The scan covers top-level production modules; nested A01 modules are test-only; the needles
     /// are `concat!`-split so this test does not count itself.
     ///
     /// Whole-branch review item 2: the wrapper is not the only way in, so the two
@@ -9965,10 +9968,17 @@ mod tests {
         // Review item 2, pin 2: the bottom level. Applying the raw `Deposit`
         // engine op through `seq.apply` mints collateral below BOTH the guard and
         // `fund_amount`'s note/archive bookkeeping.
+        assert_eq!(
+            include_str!("deposit_ingestion.rs")
+                .matches(deposit_op_needle)
+                .count(),
+            1,
+            "one prefix-verified atomic intake constructor"
+        );
         let deposit_ops = count(deposit_op_needle);
         assert_eq!(
-            deposit_ops, 7,
-            "expected exactly 7 occurrences of `{deposit_op_needle}` across the \
+            deposit_ops, 9,
+            "expected exactly 9 occurrences of `{deposit_op_needle}` across the \
              gateway sources: 4 in main.rs — the `seq.apply(..)` constructions \
              inside `fund_amount` (the only position-credit minter), \
              `seed_insurance_unbacked` (SEC-024: the UNBACKED insurance funnel, \
@@ -9980,7 +9990,7 @@ mod tests {
              pre-mints a colliding note to force leg 1's DuplicateCommitment — \
              and 3 in prover_client.rs, all \
              `cfg(test)` `matches!`/filter PATTERNS that inspect ops without \
-             constructing one; found {deposit_ops}. Applying this op anywhere \
+             constructing one; plus A01 atomic intake and its post-seal persistence pattern; found {deposit_ops}. Applying this op anywhere \
              else mints collateral below BOTH `refuse_unbacked_mint` and the \
              funnels' bookkeeping, so a new construction site is almost \
              certainly wrong; a legitimate credit path MUST route through \

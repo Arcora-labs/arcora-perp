@@ -160,6 +160,7 @@ let registrations = 0;
 let v1WithdrawStatus = 200; // per-test override: gateway rejection of the REAL path
 let v1DepositStatus = 200; // per-test override: the production unbacked-mint refusal
 let v1CancelStatus = 200; // per-test override: gateway cancel refusal (sealed/finality)
+let onchainPending = false;
 let authorizeStatus = 200; // per-test override: gateway rejection (bind-first etc.)
 let authorizeBody: unknown = null; // per-test override of the response body (null ⇒ well-formed default)
 let stateResponse: unknown = wireState; // per-test override of the /api/state snapshot
@@ -308,7 +309,7 @@ function installFetch() {
           await new Promise<void>((r) => setTimeout(r, 0)); // same ordering pin as withdraw
           afterOnchainPost();
         }
-        return json({ credited: "1000000" });
+        return onchainPending ? json({ status: "pendingFinalizedIngestion", credited: "0" }, 202) : json({ credited: "1000000" });
       }
       if (path === "/v1/accounts/deposit/authorize" && method === "POST") {
         if (authorizeStatus !== 200) {
@@ -373,6 +374,7 @@ beforeEach(() => {
   v1WithdrawStatus = 200;
   v1DepositStatus = 200;
   v1CancelStatus = 200;
+  onchainPending = false;
   authorizeStatus = 200;
   authorizeBody = null;
   stateResponse = wireState;
@@ -1665,4 +1667,19 @@ describe("audit remediation receipt and market-data transport", () => {
   });
 
 
+});
+
+describe("A01 autonomous deposit receipts", () => {
+  it("never reports pending finality as successful zero credit", async () => {
+    const client = await bootstrapClient();
+    onchainPending = true;
+    await expect(client.creditOnchainDeposit("0x" + "11".repeat(32))).rejects.toThrow(/credited automatically; do not send another deposit/);
+  });
+  it("binds selected market and collateral purpose at authorization", async () => {
+    const client = await bootstrapClient();
+    await client.selectMarket(1);
+    await client.authorizeDeposit("0x" + "22".repeat(20), 5_000_000n);
+    expect(calls.find((c) => c.path === "/v1/accounts/deposit/authorize")!.body)
+      .toEqual({ from: "0x" + "22".repeat(20), amount: "5000000", marketId: 1, purpose: "collateral" });
+  });
 });

@@ -509,12 +509,6 @@ impl L1 {
         ])
     }
 
-    /// Verify a confirmed `vault.deposit` tx and return `(from20, owner_commit, amount,
-    /// id)`: scan the receipt for the SEC-019 `Deposit(from, ownerCommit, amount, id,
-    /// newTip)` log emitted by the configured vault. The caller binds `from` to the
-    /// account, recomputes `keccak(owner ‖ deposit_blind)` against the on-chain
-    /// `owner_commit` (misattribution guard), and dedups by tx hash before crediting.
-
     /// Slice 3b-2a / SEC-025-B: submit the gateway-derived roots + the proof through the
     /// nine-parameter `settleBatch` — no `publicCommitment` synthesis. Every value in
     /// `out` except `proof` was derived by the gateway's own witness replay (Task 3);
@@ -929,6 +923,7 @@ fn tx_hash(json: &str) -> String {
 /// Parse a 32-byte-padded hex topic into the low 20 bytes (an address).
 /// Byte-safe: RPC log topics are external data, so a non-ASCII byte returns a
 /// clean `None` (never a mid-codepoint `&str` slice panic).
+#[cfg(test)]
 fn parse_addr20(s: &str) -> Option<[u8; 20]> {
     let h = s.strip_prefix("0x").unwrap_or(s).as_bytes();
     if h.len() < 40 {
@@ -961,6 +956,7 @@ fn parse_bytes32(s: &str) -> Option<[u8; 32]> {
 /// Slice the `n`-th 32-byte (64-nibble) ABI word out of a log `data` hex string.
 /// `data` is `0x`-optional and holds the non-indexed event fields packed as full
 /// 32-byte words. Returns the word's 64-hex substring, or `None` if `data` is too short.
+#[cfg(test)]
 fn data_word(data: &str, n: usize) -> Option<&str> {
     let h = data.strip_prefix("0x").unwrap_or(data);
     let start = n * 64;
@@ -1019,6 +1015,7 @@ fn parse_deposit_receipt(
 /// Parse a uint256 hex word into u128 (USDC amounts fit comfortably); rejects overflow.
 /// Byte-safe: operates on bytes (RPC data is external), so a non-ASCII byte returns a
 /// clean `None` instead of a mid-codepoint `&str` slice panic.
+#[cfg(test)]
 fn parse_u256_low128(s: &str) -> Option<u128> {
     let h = s.strip_prefix("0x").unwrap_or(s).trim().as_bytes();
     if h.is_empty() {

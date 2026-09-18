@@ -29,10 +29,11 @@ use std::sync::{
     atomic::{AtomicUsize, Ordering},
     Arc, Mutex,
 };
+type Requests = Arc<Mutex<Vec<(String, Vec<Value>)>>>;
 #[derive(Clone)]
 struct MockRpc {
     calls: Arc<AtomicUsize>,
-    requests: Arc<Mutex<Vec<(String, Vec<Value>)>>>,
+    requests: Requests,
     fail: Option<usize>,
     missing: bool,
     reversed: bool,
@@ -392,4 +393,22 @@ fn a01_native_cast_hash_pinned_jsonrpc_roundtrip() {
     server.join().unwrap();
     let p = result.unwrap();
     assert_eq!(p.events.len(), 2);
+}
+
+#[test]
+fn a01_rpc_wrong_historical_header_number_is_rejected() {
+    struct WrongHeight(MockRpc);
+    impl Rpc for WrongHeight {
+        fn call(&self, m: &str, p: Vec<Value>) -> Result<Value, String> {
+            let historical = m == "eth_getBlockByNumber" && p[0] != json!("finalized");
+            let mut v = self.0.call(m, p)?;
+            if historical {
+                v["number"] = json!("0xffff");
+            }
+            Ok(v)
+        }
+    }
+    assert!(VaultSource::new(WrongHeight(MockRpc::default()))
+        .fetch(cursor())
+        .is_err());
 }

@@ -39,11 +39,9 @@ pub enum Bootstrap {
     Complete,
 }
 
-/// Whether an operator bootstrap amount is large enough to be worth the one-shot.
-/// Production caller: `Gw::bootstrap_insurance`, which runs this check — like every
-/// other guard — BEFORE its first `seq.apply`, so a below-floor amount cannot mint a
-/// note, consume a deposit id, or spend the one-shot (the Task-2 `expect(dead_code)`
-/// came off with that caller, as its contract required).
+/// Minimum for an explicit insurance route. A01 production ingestion validates
+/// this before atomic Deposit + FundInsurance. The legacy driver is test-only;
+/// a v5 half-transfer resumes from its recorded note without a new deposit.
 pub fn amount_meets_floor(amount: i128) -> bool {
     amount >= MIN_BOOTSTRAP_INSURANCE
 }

@@ -110,7 +110,9 @@ fn bytes(v: &Value) -> Result<Vec<u8>, Error> {
         return Err("odd-length data".into());
     }
     s.as_bytes()
-        .chunks_exact(2)
+        .as_chunks::<2>()
+        .0
+        .iter()
         .map(|p| {
             let a = super::hex_nibble(p[0]).ok_or("bad hex data")?;
             let b = super::hex_nibble(p[1]).ok_or("bad hex data")?;
@@ -129,11 +131,15 @@ impl<R: Rpc> VaultSource<R> {
     fn block(&self, tag: Value) -> Result<Block, Error> {
         let v = self
             .rpc
-            .call("eth_getBlockByNumber", vec![tag, json!(false)])?;
-        Ok(Block {
+            .call("eth_getBlockByNumber", vec![tag.clone(), json!(false)])?;
+        let block = Block {
             number: quantity(&v["number"])?,
             hash: digest(&v["hash"])?,
-        })
+        };
+        if tag != json!("finalized") && quantity(&tag)? != block.number {
+            return Err("RPC returned the wrong block height".into());
+        }
+        Ok(block)
     }
     fn canonical(&self, b: &Block) -> Result<bool, Error> {
         Ok(self.block(json!(format!("0x{:x}", b.number)))? == *b)

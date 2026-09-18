@@ -218,7 +218,9 @@ fn a01_actual_frozen_v5_fixture_migrates_losslessly_with_pending_permit() {
     let encoded = include_str!("legacy-v5.hex").trim();
     let bytes: Vec<u8> = encoded
         .as_bytes()
-        .chunks_exact(2)
+        .as_chunks::<2>()
+        .0
+        .iter()
         .map(|c| (hex_nibble(c[0]).unwrap() << 4) | hex_nibble(c[1]).unwrap())
         .collect();
     assert_eq!(&bytes[..8], b"DPSNAP5\0");
@@ -406,4 +408,119 @@ async fn a01_rpc_failure_preserves_cursor_and_finalized_reorg_halt_survives_rest
         source.calls.load(std::sync::atomic::Ordering::SeqCst),
         before
     );
+}
+
+#[tokio::test]
+async fn a01_cancellation_at_ack_keeps_barrier_and_retry_never_recredits() {
+    let mut gw = fresh();
+    let (_, c) = permit(&mut gw, 5_000_000, Purpose::Collateral, 0);
+    let p = page(&gw, &[c]);
+    let (app, source, mut rx) = app_with_page(gw, p);
+    let job = tokio::spawn({
+        let app = app.clone();
+        async move { ingest_once(&app).await }
+    });
+    let abandoned_ack = rx.recv().await.unwrap();
+    job.abort();
+    assert!(job.await.unwrap_err().is_cancelled());
+    assert!(app.gw.lock().await.deposits.check_ready().is_err());
+    drop(abandoned_ack);
+    let job = tokio::spawn({
+        let app = app.clone();
+        async move { ingest_once(&app).await }
+    });
+    let ack = rx.recv().await.unwrap();
+    assert_eq!(source.calls.load(std::sync::atomic::Ordering::SeqCst), 1);
+    let path = std::env::temp_dir().join(format!("a01-restart-{}", hex0x(&csprng_bytes32())));
+    assert!(write_snapshot(&app, &path, [42; 32], Arc::new(Mutex::new(()))).await);
+    ack.send(true).unwrap();
+    assert_eq!(job.await.unwrap().unwrap(), 0);
+    let plain = snapshot::open(&std::fs::read(&path).unwrap(), &[42; 32]).unwrap();
+    std::fs::remove_file(path).unwrap();
+    let restored = Gw::boot_restored(&plain).unwrap();
+    assert_eq!(restored.seq.state.consumed_deposit_count, 1);
+    assert_eq!(restored.deposits.credits.len(), 1);
+    assert_eq!(
+        restored.accounts.values().next().unwrap().deposit_counter,
+        1
+    );
+}
+#[test]
+fn a01_legacy_bootstrap_half_transfer_resumes_without_minting_or_user_credit() {
+    let mut gw = fresh();
+    let (key, c) = permit(
+        &mut gw,
+        bootstrap::MIN_BOOTSTRAP_INSURANCE as u128,
+        Purpose::InsuranceBootstrap,
+        0,
+    );
+    let a = &gw.accounts[&key];
+    let wallet = a.wallet;
+    let blind = a.deposit_authorizations[&c];
+    let amount = bootstrap::MIN_BOOTSTRAP_INSURANCE;
+    let mut note_blind = [0xb0; 32];
+    note_blind[..8].copy_from_slice(&0u64.to_le_bytes());
+    let note = Note::new(wallet.owner, 0, amount, note_blind);
+    gw.seq
+        .apply(&BatchOp::Deposit {
+            owner: wallet.owner,
+            asset_id: 0,
+            amount,
+            blinding: note_blind,
+            from: [0x42; 20],
+            deposit_id: 0,
+            deposit_blind: blind,
+        })
+        .unwrap();
+    gw.bootstrap = bootstrap::Bootstrap::DepositApplied {
+        note_commitment: note.commitment::<Keccak256>(),
+        spend_key: wallet.spend_key,
+        deposit_id: 0,
+    };
+    gw.accounts.get_mut(&key).unwrap().deposit_counter = 1;
+    let prices: Vec<_> = gw
+        .mkts
+        .iter()
+        .map(|m| (m.id, m.reference_price, m.px, m.live))
+        .collect();
+    let legacy = postcard::to_allocvec(&(&gw, prices)).unwrap();
+    let mut gw = Gw::boot_restored(&legacy).unwrap();
+    let p = Page {
+        start: gw.deposit_cursor(),
+        end: Block {
+            number: 1,
+            hash: [7; 32],
+        },
+        events: vec![],
+    };
+    gw.apply_deposit_page(p).unwrap();
+    assert_eq!(gw.seq.state.insurance_fund, amount);
+    assert_eq!(gw.seq.state.consumed_deposit_count, 1);
+    assert_eq!(gw.accounts[&key].deposit_counter, 1);
+    assert!(!gw
+        .seq
+        .state
+        .positions
+        .keys()
+        .any(|(owner, _)| *owner == wallet.owner));
+    assert!(matches!(
+        gw.bootstrap,
+        bootstrap::Bootstrap::InsuranceApplied { .. }
+    ));
+    let mut restored = Gw::boot_restored(&gw.snapshot_plain()).unwrap();
+    let p = Page {
+        start: restored.deposit_cursor(),
+        end: Block {
+            number: 1,
+            hash: [7; 32],
+        },
+        events: vec![],
+    };
+    restored.apply_deposit_page(p).unwrap();
+    assert_eq!(restored.seq.state.insurance_fund, amount);
+    let w = restored.seq.seal_window();
+    let mut state = w.pre_state.clone();
+    let roots = perp_core::commitment::derive_roots(&mut state, &w.ops, &w.manifest).unwrap();
+    assert_eq!(roots.new_state_root, restored.seq.state.state_root());
+    assert!(state.conservation_holds());
 }

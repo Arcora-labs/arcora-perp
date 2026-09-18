@@ -1480,9 +1480,9 @@ export class RealDarkPerpClient implements DarkPerpClient {
   }
 
   /**
-   * `POST /v1/accounts/deposit/onchain` — credit a CONFIRMED on-chain
-   * `vault.deposit` tx (the gateway verifies the receipt + `from`==bound EOA +
-   * dedups by hash). Returns the credited amount in USDC base units.
+   * Request a durable receipt from the autonomous finalized ingester.
+   * Cannot choose a new market or consume deposits out of order.
+   * A pending result is not zero credit and never means send funds again.
    */
   async creditOnchainDeposit(txHash: string): Promise<bigint> {
     const acct = await this.ensureAccount();
@@ -1492,7 +1492,7 @@ export class RealDarkPerpClient implements DarkPerpClient {
       { "X-Api-Key": acct.apiKey },
     );
     if (r.status === "pendingFinalizedIngestion") {
-      throw new Error("Deposit received on-chain and awaiting finalized ingestion. It will be credited automatically; do not send another deposit.");
+      throw new Error("Deposit is not yet confirmed by the finalized ingester. Valid authorized deposits are credited automatically; do not send another deposit.");
     }
     // Review F4: like requestWithdrawal — the credit moved the /v1 balance
     // and no /v1/ws event announces a deposit; re-read through the guarded
