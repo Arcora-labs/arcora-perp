@@ -93,7 +93,7 @@ fn mac(seed: &[u8; 32], nonce: &Digest, ciphertext: &[u8]) -> Digest {
 }
 
 /// The v7 domain binds the version as well as the entire authenticated v6 payload.
-fn mac_version(seed: &[u8; 32], nonce: &Digest, ciphertext: &[u8], version:u64) -> Digest {
+fn mac_version(seed: &[u8; 32], nonce: &Digest, ciphertext: &[u8], version: u64) -> Digest {
     let tag = mac(seed, nonce, ciphertext);
     Keccak256::hash_words(Domain::SnapshotSealMac, &[word_u64(version), tag])
 }
@@ -137,7 +137,11 @@ pub fn open(sealed: &[u8], seed: &[u8; 32]) -> Result<Vec<u8>, String> {
     if sealed.len() < 8 + 32 + 32 {
         return Err("snapshot too short".into());
     }
-    if &sealed[..8] != MAGIC && &sealed[..8] != A05_MAGIC && &sealed[..8] != A01_MAGIC && &sealed[..8] != LEGACY_MAGIC {
+    if &sealed[..8] != MAGIC
+        && &sealed[..8] != A05_MAGIC
+        && &sealed[..8] != A01_MAGIC
+        && &sealed[..8] != LEGACY_MAGIC
+    {
         return Err("snapshot magic/version mismatch".into());
     }
     let mut nonce = [0u8; 32];

@@ -1957,11 +1957,14 @@ impl Gw {
     /// `ENCLAVE_SEED` — the snapshot never carries the signing secret), and the
     /// static market table with the persisted dynamics overlaid.
     fn boot_restored(plain: &[u8]) -> Result<Self, String> {
-        let (plain, version7, version8) = if let Some(payload)=plain.strip_prefix(account_recovery::SNAPSHOT_V8) {
-            (payload,true,true)
-        } else if let Some(payload)=plain.strip_prefix(execution::SNAPSHOT_V7) {
-            (payload,true,false)
-        } else { (plain,false,false) };
+        let (plain, version7, version8) =
+            if let Some(payload) = plain.strip_prefix(account_recovery::SNAPSHOT_V8) {
+                (payload, true, true)
+            } else if let Some(payload) = plain.strip_prefix(execution::SNAPSHOT_V7) {
+                (payload, true, false)
+            } else {
+                (plain, false, false)
+            };
         if version7 && !plain.starts_with(deposit_ingestion::SNAPSHOT_V6) {
             return Err("v7 snapshot missing A01 payload".into());
         }
@@ -1979,10 +1982,15 @@ impl Gw {
                 if rest.is_empty() {
                     return Err("v7 snapshot missing execution extension".into());
                 }
-                let (exec,recovery)=if version8 {
-                    let i=rest.windows(account_recovery::EXT.len()).position(|w|w==account_recovery::EXT).ok_or("v8 snapshot missing recovery extension")?;
-                    (&rest[..i],&rest[i..])
-                } else {(rest,&[][..])};
+                let (exec, recovery) = if version8 {
+                    let i = rest
+                        .windows(account_recovery::EXT.len())
+                        .position(|w| w == account_recovery::EXT)
+                        .ok_or("v8 snapshot missing recovery extension")?;
+                    (&rest[..i], &rest[i..])
+                } else {
+                    (rest, &[][..])
+                };
                 execution::restore_snapshot(&mut gw, exec)?;
                 account_recovery::restore(&mut gw, recovery)?;
             } else {
@@ -5322,7 +5330,11 @@ struct DepositAddrReq {
     current_signature: Option<String>,
 }
 #[derive(Deserialize)]
-struct RecoveryReq { owner: String, nonce: u64, signature: String }
+struct RecoveryReq {
+    owner: String,
+    nonce: u64,
+    signature: String,
+}
 #[derive(Deserialize)]
 struct OnchainDepositReq {
     #[serde(rename = "txHash")]
@@ -6168,16 +6180,49 @@ async fn post_v1_register(
     .into_response()
 }
 
-async fn get_v1_recovery(State(app): State<Shared>, Path(owner): Path<String>) -> impl IntoResponse {
-    let Some(owner)=parse_hex32(&owner) else { return err400("bad owner (expected 32-byte 0x hex)".into()).into_response(); };
-    match app.gw.lock().await.recovery_view(&owner) { Some(v)=>Json(v).into_response(), None=>(StatusCode::NOT_FOUND,Json(serde_json::json!({"error":"unknown or unrecoverable account"}))).into_response() }
+async fn get_v1_recovery(
+    State(app): State<Shared>,
+    Path(owner): Path<String>,
+) -> impl IntoResponse {
+    let Some(owner) = parse_hex32(&owner) else {
+        return err400("bad owner (expected 32-byte 0x hex)".into()).into_response();
+    };
+    match app.gw.lock().await.recovery_view(&owner) {
+        Some(v) => Json(v).into_response(),
+        None => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({"error":"unknown or unrecoverable account"})),
+        )
+            .into_response(),
+    }
 }
-async fn post_v1_recovery(State(app): State<Shared>, Json(req): Json<RecoveryReq>) -> impl IntoResponse {
-    if app.snapshot_req.is_none() { return (StatusCode::SERVICE_UNAVAILABLE,Json(serde_json::json!({"error":"state persistence is required for credential recovery","durability":"unknown"}))).into_response(); }
-    let Some(owner)=parse_hex32(&req.owner) else { return err400("bad owner (expected 32-byte 0x hex)".into()).into_response(); };
-    let Some(sig)=parse_hex65(&req.signature) else { return err400("bad signature".into()).into_response(); };
-    let key={ let mut gw=app.gw.lock().await; match gw.recover_account(owner,req.nonce,&sig){Ok(k)=>k,Err(e)=>return err400(e).into_response()} };
-    if let Err(e)=snapshot_now(&app.snapshot_req).await { return (StatusCode::SERVICE_UNAVAILABLE,Json(serde_json::json!({"error":e,"durability":"unknown"}))).into_response(); }
+async fn post_v1_recovery(
+    State(app): State<Shared>,
+    Json(req): Json<RecoveryReq>,
+) -> impl IntoResponse {
+    if app.snapshot_req.is_none() {
+        return (StatusCode::SERVICE_UNAVAILABLE,Json(serde_json::json!({"error":"state persistence is required for credential recovery","durability":"unknown"}))).into_response();
+    }
+    let Some(owner) = parse_hex32(&req.owner) else {
+        return err400("bad owner (expected 32-byte 0x hex)".into()).into_response();
+    };
+    let Some(sig) = parse_hex65(&req.signature) else {
+        return err400("bad signature".into()).into_response();
+    };
+    let key = {
+        let mut gw = app.gw.lock().await;
+        match gw.recover_account(owner, req.nonce, &sig) {
+            Ok(k) => k,
+            Err(e) => return err400(e).into_response(),
+        }
+    };
+    if let Err(e) = snapshot_now(&app.snapshot_req).await {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(serde_json::json!({"error":e,"durability":"unknown"})),
+        )
+            .into_response();
+    }
     Json(serde_json::json!({"apiKey":hex0x(&key),"owner":hex0x(&owner),"recoveryNonce":req.nonce.saturating_add(1),"durability":"confirmed"})).into_response()
 }
 
