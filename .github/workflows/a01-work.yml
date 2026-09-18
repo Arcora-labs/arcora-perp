@@ -33,54 +33,51 @@ jobs:
       - uses: foundry-rs/foundry-toolchain@v1
         with:
           version: stable
-      - name: Verify source, migration, native transport, workspace, frontend and A04 compatibility
+      - name: Verify final published source and isolated negative controls
         run: |
           python3 - <<'PY'
-          import base64,zlib,hashlib,pathlib,subprocess,os,json,tarfile,shutil
+          import hashlib,pathlib,subprocess,os,json,tarfile,shutil,re
           root=pathlib.Path.cwd();ev=root/'evidence';ev.mkdir(exist_ok=True)
-          base='48e03ac3db123cdf159c10f1e0c86262043a377e'
-          a04='9cc31baa49e1da08bb4a018279e7bb3b7bc67b40'
-          work=root.parent/'a01-candidate';subprocess.run(['git','worktree','add','--detach',str(work),base],check=True)
-          os.environ['CARGO_TARGET_DIR']=str(root/'target')
-          results=[]
-          def run(name,cmd,cwd=work):
+          base='48e03ac3db123cdf159c10f1e0c86262043a377e';a04='9cc31baa49e1da08bb4a018279e7bb3b7bc67b40'
+          work=root.parent/'a01-candidate';subprocess.run(['git','worktree','add','--detach',str(work),os.environ['GITHUB_SHA']],check=True)
+          os.environ['CARGO_TARGET_DIR']=str(root/'target');results=[]
+          def run(name,cmd,cwd=work,negative=False):
               with (ev/(name+'.log')).open('w') as f:p=subprocess.run(cmd,cwd=cwd,stdout=f,stderr=subprocess.STDOUT)
-              results.append(dict(name=name,command=cmd,exit_code=p.returncode))
-              (ev/'results.json').write_text(json.dumps(results,indent=2))
-              print(name,p.returncode,flush=True)
-              if p.returncode:print((ev/(name+'.log')).read_text()[-16000:],flush=True)
-              return p.returncode
-          for stem,digest in [('patch','600f1704c9c78caab0579a08a82500987adf9c03c895812f14c6b101958349ec'),('delta2','3047ea8df2726df2576e2a27f2ba2d2ae6c50654004d20660617cbf073570fcd')]:
-              patch=zlib.decompress(base64.b64decode(''.join((root/f'scripts/audit/a01-work/{stem}.{i}').read_text().strip() for i in range(3))))
-              assert hashlib.sha256(patch).hexdigest()==digest
-              path=ev/(stem+'.patch');path.write_bytes(patch)
-              subprocess.run(['git','apply',str(path)],cwd=work,check=True)
-          # The independent v5 fixture came from the old binary in run 35324830651.
-          fixture=root/'crates/gateway/src/deposit_ingestion/legacy-v5.hex'
-          assert hashlib.sha256(bytes.fromhex(fixture.read_text().strip())).hexdigest()=='a9c0ba6cfb2a8366446ad6ace2449961c68892bd78f9cf1d2149a7b09db44c4e'
-          shutil.copyfile(fixture,work/'crates/gateway/src/deposit_ingestion/legacy-v5.hex')
-          for script in ['finish.py','docs.py']:
-              subprocess.run(['python3',str(root/'scripts/audit/a01-work'/script),str(work)],check=True)
-          shutil.copyfile(root/'.github/workflows/a01-ingestion.yml',work/'.github/workflows/a01-ingestion.yml')
-          run('format',['cargo','fmt','--all'])
+              text=(ev/(name+'.log')).read_text();ok=p.returncode==0
+              if negative:ok=p.returncode==101 and 'test result: FAILED. 0 passed; 1 failed;' in text and 'assertion' in text
+              row=dict(name=name,command=cmd,exit_code=p.returncode,expected_failure=negative,passed=ok)
+              counts=re.findall(r'test result: .*? (\d+) passed; (\d+) failed; (\d+) ignored;',text)
+              if counts:row['rust_test_counts']={k:sum(int(t[i]) for t in counts) for i,k in enumerate(['passed','failed','ignored'])}
+              results.append(row);(ev/'results.json').write_text(json.dumps(results,indent=2));print(name,p.returncode,ok,flush=True)
+              if not ok:print(text[-16000:],flush=True)
+              return ok
+          subprocess.run(['python3',str(root/'scripts/audit/a01-work/ui-final.py'),str(work)],check=True)
           run('format-check',['cargo','fmt','--all','--check'])
-          failed=run('typecheck',['cargo','check','--workspace','--all-targets','--locked'])
-          if not failed:
-              (ev/'compile-ok').write_text('1')
-              run('clippy',['cargo','clippy','--workspace','--all-targets','--locked','--','-D','warnings'])
-              run('rust-workspace',['cargo','test','--workspace','--locked'])
-              run('native-rpc',['cargo','test','--locked','-p','gateway','a01_native_cast_hash_pinned_jsonrpc_roundtrip','--','--ignored','--nocapture'])
-              run('core-serde',['cargo','test','--locked','-p','perp-core','--features','serde'])
-              run('core-no-std',['cargo','build','--locked','-p','perp-core','--no-default-features'])
-          if not run('pnpm-install',['pnpm','install','--frozen-lockfile'],work/'frontend'):
-              run('frontend-tests',['pnpm','test'],work/'frontend')
-              run('frontend-build',['pnpm','build'],work/'frontend')
+          run('clippy',['cargo','clippy','--workspace','--all-targets','--locked','--','-D','warnings'])
+          run('rust-workspace',['cargo','test','--workspace','--locked'])
+          run('native-rpc',['cargo','test','--locked','-p','gateway','a01_native_cast_hash_pinned_jsonrpc_roundtrip','--','--ignored','--nocapture'])
+          run('core-serde',['cargo','test','--locked','-p','perp-core','--features','serde'])
+          run('core-no-std',['cargo','build','--locked','-p','perp-core','--no-default-features'])
+          if run('pnpm-install',['pnpm','install','--frozen-lockfile'],work/'frontend'):
+              run('frontend-tests',['pnpm','test'],work/'frontend');run('frontend-build',['pnpm','build'],work/'frontend')
           run('foundry',['forge','test','-v'],work/'contracts')
           protected=['crates/perp-core','contracts','tests/fixtures','crates/prover/tests/vectors.rs','crates/sealed-box/tests/vectors.rs']
           run('protected-commitment-vectors',['git','diff','--exit-code',base,'--',*protected])
-          subprocess.run(['git','add','crates','frontend','docs/API.md','.github/workflows/a01-ingestion.yml'],cwd=work,check=True)
-          patch=subprocess.check_output(['git','diff','--cached','--binary'],cwd=work);(ev/'formatted.patch').write_bytes(patch)
-          paths=subprocess.check_output(['git','diff','--cached','--name-only'],cwd=work).decode().splitlines()
+          # Demonstrate that the regression tests detect the original failure classes.
+          seq=work/'crates/sequencer/src/lib.rs';original=seq.read_text()
+          begin=original.index('    pub fn apply_atomic(');end=original.index('\n    ///',begin)
+          part=original[begin:end];assert 'next.apply_op(op)?;' in part
+          seq.write_text(original[:begin]+part.replace('next.apply_op(op)?;','self.state.apply_op(op)?;')+original[end:])
+          run('negative-partial-credit',['cargo','test','--locked','-p','gateway','a01_atomic_second_funding_failure_preserves_every_account_and_replay_op'],negative=True)
+          seq.write_text(original)
+          ing=work/'crates/gateway/src/deposit_ingestion.rs';original=ing.read_text();assert original.count('match route.purpose {')==1
+          ing.write_text(original.replace('match route.purpose {','match Purpose::Collateral {'))
+          run('negative-insurance-diversion',['cargo','test','--locked','-p','gateway','a01_insurance_is_never_user_collateral'],negative=True)
+          ing.write_text(original)
+          shutil.rmtree(work/'scripts/audit/a01-work');(work/'.github/workflows/a01-work.yml').unlink()
+          subprocess.run(['git','add','-A'],cwd=work,check=True)
+          patch=subprocess.check_output(['git','diff','--cached',base,'--binary'],cwd=work);(ev/'formatted.patch').write_bytes(patch)
+          paths=subprocess.check_output(['git','diff','--cached',base,'--name-only','--diff-filter=ACM'],cwd=work).decode().splitlines()
           with tarfile.open(ev/'candidate.tar.gz','w:gz') as tar:
               for path in paths:tar.add(work/path,arcname=path)
           info={'base':base,'a04_head':a04,'workflow_commit':os.environ['GITHUB_SHA'],'patch_sha256':hashlib.sha256(patch).hexdigest(),
@@ -90,14 +87,13 @@ jobs:
                 'pnpm':subprocess.check_output(['pnpm','--version']).decode().strip(),
                 'cast':subprocess.check_output(['cast','--version']).decode().strip()}
           (ev/'source.json').write_text(json.dumps(info,indent=2))
-          if not failed:
-              compat=root.parent/'a01-a04-compat';subprocess.run(['git','worktree','add','--detach',str(compat),a04],check=True)
-              if not run('a04-apply',['git','apply','--3way',str(ev/'formatted.patch')],compat):
-                  run('a04-rust',['cargo','test','--locked','-p','gateway','-p','sequencer'],compat)
-                  if not run('a04-pnpm-install',['pnpm','install','--offline','--frozen-lockfile'],compat/'frontend'):
-                      run('a04-frontend',['pnpm','test'],compat/'frontend')
-          if not any(r['exit_code'] for r in results):(ev/'verified').write_text('1')
-          raise SystemExit(any(r['exit_code'] for r in results))
+          compat=root.parent/'a01-a04-compat';subprocess.run(['git','worktree','add','--detach',str(compat),a04],check=True)
+          if run('a04-apply',['git','apply','--3way',str(ev/'formatted.patch')],compat):
+              run('a04-rust',['cargo','test','--locked','-p','gateway','-p','sequencer'],compat)
+              if run('a04-pnpm-install',['pnpm','install','--offline','--frozen-lockfile'],compat/'frontend'):
+                  run('a04-frontend',['pnpm','test'],compat/'frontend')
+          if all(r['passed'] for r in results):(ev/'verified').write_text('1')
+          raise SystemExit(not all(r['passed'] for r in results))
           PY
       - uses: actions/upload-artifact@v4
         if: always()
@@ -107,7 +103,6 @@ jobs:
           retention-days: 30
   publish-candidate:
     needs: verify
-    if: always()
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -119,9 +114,9 @@ jobs:
         with:
           name: a01-final-evidence
           path: evidence
-      - name: Publish only to the authorized feature branch, never merge or deploy
+      - name: Commit verified source and remove temporary helpers; no merge or deployment
         run: |
-          test -f evidence/compile-ok || exit 0
+          test -f evidence/verified
           test "$(git rev-parse HEAD)" = "${{ github.sha }}"
           python3 - <<'PY'
           import tarfile,pathlib,json,hashlib
@@ -129,16 +124,13 @@ jobs:
           with tarfile.open('evidence/candidate.tar.gz') as tar:
               for item in tar:
                   assert item.isfile() and item.name in info['files']
-                  data=tar.extractfile(item).read()
-                  assert hashlib.sha256(data).hexdigest()==info['files'][item.name]
+                  data=tar.extractfile(item).read();assert hashlib.sha256(data).hexdigest()==info['files'][item.name]
                   dest=pathlib.Path(item.name);assert '..' not in dest.parts and not dest.is_absolute()
                   dest.parent.mkdir(parents=True,exist_ok=True);dest.write_bytes(data)
           PY
           git add crates frontend docs/API.md .github/workflows/a01-ingestion.yml
-          if test -f evidence/verified; then
-            git rm -r scripts/audit/a01-work .github/workflows/a01-work.yml
-          fi
+          git rm -r scripts/audit/a01-work .github/workflows/a01-work.yml
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git commit -m 'fix(a01): finalize durable intake, migration, RPC and recovery coverage'
+          git commit -m 'fix(a01): verify autonomous deposits and clean temporary test transport'
           git push origin HEAD:refs/heads/fix/a01-ordered-deposits-2026-09-18
