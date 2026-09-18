@@ -64,14 +64,17 @@ try:
     subprocess.run(['git', 'apply', '--check', str(OUT / 'input.patch')], check=True)
     subprocess.run(['git', 'apply', str(OUT / 'input.patch')], check=True)
     subprocess.run([sys.executable, '.continuation/adjust.py'], check=True)
+    PATHS += ['frontend/src/api/mockClient.ts', 'frontend/src/api/clientContract.test.ts']
     subprocess.run(['git', 'add', '-N', '--', *PATHS], check=True)
     if not run('format', ['cargo', 'fmt', '--all']):
         raise RuntimeError('Rust formatting failed')
     if not run('format-included-tests', ['rustfmt', '--edition', '2021', 'crates/gateway/src/execution_regression_tests.rs']):
         raise RuntimeError('test formatting failed')
-    if not run('gateway', ['cargo', 'test', '-p', 'gateway', '--locked', '--', '--test-threads=1'], tests=True):
-        raise RuntimeError('gateway verification failed')
-    # The exact same tests must compile on the old program and expose real failures.
+    if not run('gateway-execution', ['cargo', 'test', '-p', 'gateway', '--locked', 'execution_', '--', '--test-threads=1'], tests=True):
+        raise RuntimeError('gateway execution verification failed')
+    if not run('gateway-durability', ['cargo', 'test', '-p', 'gateway', '--locked', 'cancellation_durability_tests', '--', '--test-threads=1'], tests=True):
+        raise RuntimeError('gateway durability verification failed')
+    # The same tests must compile on the old program and expose real failures.
     with tempfile.TemporaryDirectory(prefix='dark-perp-red-') as tmp:
         red = Path(tmp)
         archive = subprocess.check_output(['git', 'archive', BASE])
