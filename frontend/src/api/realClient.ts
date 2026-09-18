@@ -59,6 +59,7 @@ interface WireState {
   l1: WireL1 | null;
   attestation: { measurement: string; tcb: string; quoteVersion: number } | null;
   /// FIN-001 (absent on an old gateway) — validated field-by-field at parse time.
+  depositIngestion?: unknown;
   settlementHealth?: unknown;
   settlementConsecutiveFailures?: unknown;
   settlementLastError?: unknown;
@@ -564,6 +565,8 @@ export class RealDarkPerpClient implements DarkPerpClient {
   private ownRefresh: Promise<void> | null = null;
   /** Set when a refresh is requested while one is in flight ⇒ one trailing re-run. */
   private ownRefreshAgain = false;
+  // Public progress is only a refresh hint; balances come from authenticated reads.
+  private depositRefreshHint: string | null = null;
 
   // ── sealed order ingress state ─────────────────────────────────────────────
   /** The verified enclave order-epoch key (refetched once notAfterMs passes). */
@@ -761,6 +764,7 @@ export class RealDarkPerpClient implements DarkPerpClient {
     if (this.disposed) return;
     try {
       if (this.ws) { try { this.ws.close(); } catch { /* noop */ } }
+      this.depositRefreshHint = null;
       this.ws = new WebSocket(this.wsUrl);
       this.ws.onmessage = (ev) => {
         try {
@@ -773,6 +777,7 @@ export class RealDarkPerpClient implements DarkPerpClient {
           // orders that are not the caller's.
           if (msg.type === "state" && msg.state) {
             this.setState(parseState(msg.state));
+            this.refreshAfterDeposit(msg.state.depositIngestion);
           }
         } catch { /* ignore malformed frame */ }
       };
@@ -781,6 +786,18 @@ export class RealDarkPerpClient implements DarkPerpClient {
     } catch {
       this.scheduleReconnect();
     }
+  }
+
+  private refreshAfterDeposit(value: unknown): void {
+    if (!value || typeof value !== "object" || this.disposed || !this.hasAccount()) return;
+    const d = value as Record<string, unknown>;
+    if (d.state !== "ready" || typeof d.consumedCount !== "number" ||
+        !Number.isSafeInteger(d.consumedCount) || d.consumedCount < 0 ||
+        typeof d.consumedTip !== "string" || !/^0x[0-9a-fA-F]{64}$/.test(d.consumedTip)) return;
+    const hint = `${d.consumedCount}:${d.consumedTip}`;
+    if (hint === this.depositRefreshHint) return;
+    this.depositRefreshHint = hint;
+    void this.refreshOwnState();
   }
 
   private scheduleReconnect() {
@@ -1465,10 +1482,11 @@ export class RealDarkPerpClient implements DarkPerpClient {
     from: string,
     amount: bigint,
   ): Promise<{ ownerCommit: string; sig: string }> {
+    const marketId = this.clientSelectedMarket;
     const acct = await this.ensureAccount();
     const r = await this.post<{ ownerCommit?: unknown; sig?: unknown }>(
       "/v1/accounts/deposit/authorize",
-      { from, amount: s(amount) },
+      { from, amount: s(amount), marketId, purpose: "collateral" },
       { "X-Api-Key": acct.apiKey },
     );
     if (typeof r.ownerCommit !== "string" || !/^0x[0-9a-fA-F]{64}$/.test(r.ownerCommit)) {
@@ -1481,17 +1499,20 @@ export class RealDarkPerpClient implements DarkPerpClient {
   }
 
   /**
-   * `POST /v1/accounts/deposit/onchain` — credit a CONFIRMED on-chain
-   * `vault.deposit` tx (the gateway verifies the receipt + `from`==bound EOA +
-   * dedups by hash). Returns the credited amount in USDC base units.
+   * Request a durable receipt from the autonomous finalized ingester.
+   * Cannot choose a new market or consume deposits out of order.
+   * A pending result is not zero credit and never means send funds again.
    */
   async creditOnchainDeposit(txHash: string): Promise<bigint> {
     const acct = await this.ensureAccount();
-    const r = await this.post<{ credited?: unknown }>(
+    const r = await this.post<{ credited?: unknown; status?: unknown }>(
       "/v1/accounts/deposit/onchain",
       { txHash, marketId: this.clientSelectedMarket },
       { "X-Api-Key": acct.apiKey },
     );
+    if (r.status === "pendingFinalizedIngestion") {
+      throw new Error("Deposit is not yet confirmed by the finalized ingester. Valid authorized deposits are credited automatically; do not send another deposit.");
+    }
     // Review F4: like requestWithdrawal — the credit moved the /v1 balance
     // and no /v1/ws event announces a deposit; re-read through the guarded
     // refresh or the balance stays stale until an unrelated fill.

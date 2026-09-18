@@ -47,7 +47,9 @@ A machine-readable **OpenAPI 3.1** spec is served at `GET /v1/openapi.json`.
 | GET  | `/v1/accounts/me` | ✓ | `{ owner, settledBalance, positions[], nextNonce, depositAddress, callerSigned, nextWithdrawNonce, rebindCounter, chainId, vault }` |
 | POST | `/v1/accounts/deposit` | ✓ | `{ marketId, amount }` — demo/in-memory credit |
 | POST | `/v1/accounts/deposit/address` | ✓ | `{ address, signature, currentSignature? }` — bind the EOA you fund from (ownership-proven; a **rebind** additionally requires `currentSignature`, § Withdrawal authorization) |
-| POST | `/v1/accounts/deposit/onchain` | ✓ | `{ txHash, marketId }` — credit a real USDC deposit |
+| POST | `/v1/accounts/deposit/authorize` | ✓ | `{ from, amount, marketId, purpose }` — durable permit with explicit routing |
+| POST | `/v1/accounts/deposit/route` | ✓ | `{ ownerCommit, from, amount, marketId, purpose }` — explicitly adopt a legacy pending permit |
+| POST | `/v1/accounts/deposit/onchain` | ✓ | `{ txHash, marketId }` — optional finalized ingestion accelerator / durable receipt |
 | POST | `/v1/accounts/withdraw` | ✓ | `{ marketId, amount, to, nonce, signature }` → authorized withdrawal (wallet-signed, § Withdrawal authorization) |
 | GET  | `/v1/accounts/withdrawals` | ✓ | `{ vault, withdrawals[] }` with claim proofs |
 | GET  | `/v1/lp` | ✓ | `{ tvl, navPerShare, totalShares, myShares, myValue }` — **demo build only** (see note below) |
@@ -157,7 +159,7 @@ A real deposit is funded on Base Sepolia and then attributed to your account:
    the consent of the currently bound address** via `currentSignature` — see
    § Rebinding the deposit address. Re-binding the same address is an idempotent
    no-op (no `currentSignature` needed).
-2. `POST /v1/accounts/deposit/authorize { "from": "0x<your EOA>", "amount": "<base units>" }`
+2. `POST /v1/accounts/deposit/authorize { "from": "0x<your EOA>", "amount": "<base units>", "marketId": 0, "purpose": "collateral" }`
    — the gateway records a secret blind for this deposit and returns its `ownerCommit`
    plus a signature. The vault accepts **only** pre-authorized deposits, so this step is
    not optional.
@@ -169,19 +171,50 @@ A real deposit is funded on Base Sepolia and then attributed to your account:
    a replay minted a second leaf that the gateway could never credit — which blocked the
    contiguous deposit queue for **every** user, permanently. Get a fresh authorization
    for each deposit.
-4. `POST /v1/accounts/deposit/onchain { "txHash": "0x..", "marketId": 0 }` — the
-   gateway verifies the `vault.Deposit(from, ownerCommit, amount, id, tip)` log, checks
-   the binding and that the recorded blind reproduces the on-chain `ownerCommit`,
-   canonicalizes + dedups the tx hash, and credits `amount` (USDC base units) to the
-   market bucket. **Deposits must be confirmed in L1 order**; a gap stalls the stream
-   until it is filled.
+4. **No confirm call is required.** The gateway autonomously consumes finalized
+   L1 blocks in deposit-ID order, using the market and purpose recorded at
+   authorization. Closing the browser does not interrupt ingestion.
+   `POST /v1/accounts/deposit/onchain { "txHash": "0x..", "marketId": 0 }` optionally
+   accelerates that same serialized ingester and returns an owned durable receipt.
+   It cannot skip earlier deposits, change their market, or divert insurance.
 
-**Known open (SEC-028, second cause).** The blind from step 2 lives in gateway memory
-until the next periodic snapshot. A gateway crash in that window loses it, and the
-already-landed deposit from step 3 becomes uncreditable — stalling the deposit stream for
-everyone until the operator intervenes. Nothing in the API protects against this yet; if
-you deposit immediately after authorizing and the confirm in step 4 fails with "no gateway
-authorization for this ownerCommit", this is why.
+The permit's secret blind and route must be acknowledged by persistent storage
+**before** any gateway signature is released. An applied block's engine state,
+replay operations, consumed prefix, receipts and remaining permits are saved
+in the same snapshot before success is reported. Identity is chain/vault/deposit ID,
+not merely transaction hash: multiple accounts can deposit in one transaction.
+
+**Confirm responses:** `200` with `status: "credited"`, `credited`, `depositIds`,
+`marketId`, `purpose`, `durability: "confirmed"`; `202` with
+`status: "pendingFinalizedIngestion"` (not successful zero credit); `409` for a
+market/purpose mismatch or a historical transaction without reconstructible new
+receipts; `503` for RPC unavailability, blocked ordering, safety halt or uncertain
+durability. Pending / `503` is **not** an instruction to send funds again.
+
+**Legacy permits remain unresolved, not reset.** Snapshot v5 imports retain every
+blind, account, nonce, note, replay operation and inherited consumed prefix. No
+market or purpose is inferred for blind-only authorizations. The account explicitly
+adopts each legacy permit through `/v1/accounts/deposit/route`, supplying all route
+fields; insurance additionally requires operator authorization. Routing is then
+immutable. A missing or mismatched route at the next L1 deposit stops the stream
+with a visible error. Later deposits are never skipped. Do not delete the state,
+invent an initial cursor, or fabricate missing historical receipts to bypass this.
+
+**Provider requirements:** `finalized`, historical headers, block-hash
+`eth_getLogs`, EIP-1898 hash-pinned `eth_call`, and historical `eth_getCode` before
+contract deployment. There is no latest/receipt fallback. Complete log pages are
+checked against contract deposit-count/prefix and canonical headers. Transient
+errors pause ingestion; a contradiction of a persisted prefix or anchor causes a
+durable safety halt. Trading, withdrawals and new settlement are paused while
+prefix verification or deposit durability is unresolved. The public state's
+`depositIngestion` object exposes readiness (paused while durability is dirty), count/tip, anchor, halt,
+last error and unresolved-permit count without exposing secret routes.
+
+RPC remains a trust boundary: consistency checks cannot authenticate a wholly
+fabricated chain. A finalized reorg is not automatically rewound; operators must
+reconcile trusted chain data and preserved state. v6 is an explicit snapshot format
+upgrade; older binaries cannot safely read the new state. Preserve backups and do
+not roll back the binary while discarding credits written after upgrade.
 
 ## Trading is gated until launch (SEC-025-D)
 
@@ -208,57 +241,37 @@ See the honesty note under § REST.
 
 ## Operator insurance bootstrap (SEC-025-A) — admin only
 
-`POST /v1/admin/insurance/bootstrap { "txHash": "0x.." }`
+The operator first authorizes a fresh one-shot permit with
+`POST /v1/accounts/deposit/authorize { "from": "0x<operator>", "amount": "<base units>",
+"marketId": 0, "purpose": "insuranceBootstrap" }`.
+This requires the operator account's `X-Api-Key`, `X-Admin-Key` matching
+`FIN_ADMIN_KEY`, and a bound payer equal to `INSURANCE_OPERATOR_ADDRESS`.
+All requirements also apply to explicit legacy insurance-route adoption.
 
-Capitalizes the protocol's insurance fund from the **operator's own** on-chain deposit.
-The operator registers an ordinary account, binds its deposit address, authorizes and
-deposits exactly like any user; this endpoint then routes that deposit's note into
-`insurance_fund` instead of into a position.
+The finalized ingester applies `Deposit` and `FundInsurance` atomically. It never
+uses a later confirm request to decide purpose. A bootstrap deposit cannot become
+user collateral, even when manual confirm races automatic processing.
 
-**Three credentials, all required:**
+`POST /v1/admin/insurance/bootstrap { "txHash": "0x..", "marketId": 0 }` with those
+credentials is now an **optional receipt/acceleration endpoint**, not a routing
+command. Its `200`, `202`, `409`, `503` meanings match the shared ingester. Repeated
+confirmation is idempotent. A separately authorized insurance contribution uses a
+fresh permit; do not authorize another contribution because a receipt is pending.
 
-| | |
-|---|---|
-| `X-Admin-Key` | must equal `FIN_ADMIN_KEY`, compared constant-time. Unset ⇒ **503**; missing or wrong ⇒ **401**. Deliberately *not* an ordinary API key — that authenticates a registered user. |
-| `X-Api-Key` | the operator account whose wallet owns the note. |
-| the deposit's on-chain payer | must equal `INSURANCE_OPERATOR_ADDRESS`, read from the parsed receipt, never from the request body. |
+The compile-time insurance minimum remains **10,000 USDC**. Insurance routes record
+an explicit existing market ID for audit consistency, but `FundInsurance` targets
+the global fund, not a market position. This is a **one-way** transfer to protocol
+ownership; there is no operator withdrawal or unfund path.
 
-**What that third binding does and does not promise.** It is an *endpoint* property: within
-this endpoint, an admin key cannot route someone else's deposit into the fund. It is **not**
-a protocol invariant — `op_fund_insurance` validates the spend with `expected_owner = None`
-and the gateway custodies every account's wallet, so a compromised sequencer can spend any
-custodied note directly. That residual is Phase-0 custody, not this endpoint.
+A pre-v6 `Bootstrap::DepositApplied` record is preserved. After verifying its
+inherited L1 prefix, ingestion resumes **only** the recorded `FundInsurance`,
+without minting another deposit or crediting collateral. Failed application leaves
+the recorded note and state retriable. Bootstrap completion still follows
+settlement of the window containing the insurance operation.
 
-**A minimum applies.** A deposit below the bootstrap floor — a compile-time constant, 10,000
-USDC, deliberately not an env var so no environment change can alter a roll-forward decision —
-is refused **before either leg applies**. Refusing small amounts is the point: spending the
-bootstrap on dust would leave the launch gate closed with no retry path.
-
-**The one-shot is keyed on the fund, not on having been called.** The endpoint refuses only
-while the record is complete **and** `insurance_fund` currently meets the floor. So it stays
-open after a partial capitalization, and — deliberately — **reopens if the fund is later
-drained below the floor**. That is a recapitalization path, not an oversight; keying purely on
-"already called" would deadlock a deployment whose floor was raised by a later build.
-
-**Insurance is a one-way valve.** Nothing removes value from the fund except covering bad
-debt. The operator's USDC becomes permanently protocol-owned; there is no claim path and no
-"unfund" operation. Know this before calling.
-
-**Resume, not restart.** If the deposit lands but the insurance transfer fails, the endpoint
-returns **400** and the value is safe — the deposit *is* credited, the note is live, and
-`deposit_counter` and the tx have already been booked. Call the endpoint **again** to resume the
-second leg alone; the persisted record carries the note's identity. Do not hand-repair anything,
-and do not expect a fresh deposit to work in its place.
-
-**400** also covers the two refusals above (non-operator payer, below-floor) and an unverifiable
-`txHash`. Note that a resume returns before the payer check, since it spends the recorded note
-rather than anything from the current request.
-
-Other responses: **409** if the bootstrap is already complete and adequately funded; **503**
-if state persistence is not configured, because the result could not be made durable and a
-restart would silently revert it; **500** if the deposit applied but the snapshot that makes
-it durable failed — in that case the value is safe but the bootstrap must not be treated as
-recorded until a snapshot succeeds.
+These checks are gateway custody policy, not a new ZK guarantee. A compromised
+sequencer custodies spend keys and the engine's `FundInsurance` operation does not
+prove this API authorization policy. A10 remains open.
 
 ## Withdrawals + claiming USDC on Base Sepolia (§3)
 

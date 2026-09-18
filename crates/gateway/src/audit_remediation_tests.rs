@@ -35,7 +35,7 @@ mod audit_remediation {
             .header("content-type", "application/json")
             .header("x-api-key", hex0x(key))
             .body(Body::from(
-                serde_json::json!({"from": hex0x(&[0x42; 20]), "amount": "5000000"}).to_string(),
+                serde_json::json!({"from": hex0x(&[0x42; 20]), "amount": "5000000", "marketId": 0, "purpose": "collateral"}).to_string(),
             ))
             .unwrap()
     }

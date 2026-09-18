@@ -671,6 +671,29 @@ impl Sequencer {
         Ok(())
     }
 
+    /// Apply an ordered group without exposing a partially applied deposit/funding pair.
+    /// Validate on a cloned engine state; commit state, replay log and tag keys together.
+    /// No witness encoding or commitment rule is changed.
+    pub fn apply_atomic(&mut self, ops: &[BatchOp]) -> Result<(), EngineError> {
+        let mut next = self.state.clone();
+        for op in ops {
+            next.apply_op(op)?;
+        }
+        self.state = next;
+        for op in ops {
+            if let BatchOp::FundPosition {
+                owner, spend_key, ..
+            } = op
+            {
+                self.liq_tag_keys
+                    .insert(*owner, liquidation_tag_key(spend_key));
+                self.adl_tag_keys.insert(*owner, adl_tag_key(spend_key));
+            }
+        }
+        self.window_ops.extend_from_slice(ops);
+        Ok(())
+    }
+
     /// Fail-closed fallback liquidation-tag key for an account whose captured
     /// secret key is missing (funded outside `apply`, §7). Keyed on the enclave's
     /// secret salt — NOT the public owner id, which any known-pubkey observer
