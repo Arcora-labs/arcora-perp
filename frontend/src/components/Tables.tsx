@@ -116,12 +116,7 @@ function PositionsBody() {
 /** Orders table body (no card chrome). */
 function OrdersBody() {
   const { client, state } = useStore();
-  // SEC-025-E1 Task 3: a cancel refusal must reach the user. The gateway
-  // refuses cancels of sealed/matched orders with its own wording — and since
-  // every order seals within one ~700ms tick, that refusal is the EXPECTED
-  // answer for resting orders until E2 lands cancel-inside-the-window.
-  // `void client.cancelOrder(...)` used to swallow exactly that (and the old
-  // route's 404), reporting failure as success.
+  // Remainder eligibility is independent of the receipt's monotone finality.
   const [cancelErr, setCancelErr] = useState<string | null>(null);
   async function doCancel(orderId: string) {
     setCancelErr(null);
@@ -142,6 +137,8 @@ function OrdersBody() {
           <th className="num">Size</th>
           <th>Receipt</th>
           <th>Finality</th>
+          <th>Execution</th>
+          <th className="num">Filled / Remaining</th>
           <th></th>
         </tr>
       </thead>
@@ -158,8 +155,21 @@ function OrdersBody() {
                 <FinalityProgress finality={o.finality} />
               </span>
             </td>
+            <td title={o.execution?.reason ?? "Order lifecycle is not independently ZK-proven"}>
+              {o.execution?.status ?? "Execution unavailable"}
+              {o.execution && !o.execution.available && <div className="small muted">Historical fills unavailable</div>}
+              {(o.execution?.unsettledSize ?? 0n) > 0n && <div className="small muted">Unsettled fills: {formatSignedSize(o.execution!.unsettledSize!)}</div>}
+            </td>
             <td className="num">
-              {o.finality === "ACCEPTED" && (
+              {o.execution?.available ? formatSignedSize(o.filledSize) : "?"}
+              {" / "}
+              {o.execution?.remainingSize != null ? formatSignedSize(o.execution.remainingSize) : "?"}
+              {o.execution?.available && o.filledSize > 0n && <div className="small muted">Avg {formatPrice(o.avgFillPrice)}</div>}
+            </td>
+            <td className="num">
+              {(o.execution ?
+                (o.execution.remainingSize ?? 0n) > 0n && ["PENDING", "RESTING", "PARTIALLY_FILLED"].includes(o.execution.status)
+                : o.finality === "ACCEPTED") && (
                 <button className="btn btn--tiny" onClick={() => void doCancel(o.id)}>Cancel</button>
               )}
             </td>
@@ -169,7 +179,7 @@ function OrdersBody() {
       {cancelErr && (
         <tfoot>
           <tr>
-            <td colSpan={6} className="small neg">{cancelErr}</td>
+            <td colSpan={8} className="small neg">{cancelErr}</td>
           </tr>
         </tfoot>
       )}

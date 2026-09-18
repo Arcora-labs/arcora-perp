@@ -22,7 +22,7 @@ import type { DarkPerpClient, ClientState, OrderEvent, SettlementHealth } from "
 import type {
   AccountState, BatchSummary, BookLevel, Market, OracleQuote, OrderBookSnapshot,
   OrderInput, Position, Receipt, Side, TimeInForce, TrackedOrder,
-  WithdrawalEntry,
+  WithdrawalEntry, OrderExecution,
 } from "../domain/types";
 import { seal, domainAad } from "./sealedBox";
 import { personalSign } from "./wallet";
@@ -45,7 +45,8 @@ interface WirePosition {
 interface WireOrderInput { marketId: number; side: "Buy" | "Sell"; size: string; limitPrice: string; tif: string; reduceOnly: boolean }
 interface WireTrackedOrder {
   id: string; input: WireOrderInput; receipt: Receipt; finality: TrackedOrder["finality"];
-  filledSize: string; avgFillPrice: string; createdMs: number;
+  filledSize: string | null; avgFillPrice: string | null; createdMs: number;
+  execution?: unknown;
 }
 interface WireState {
   markets: WireMarket[]; selectedMarketId: number; market: WireMarket; mode: ClientState["mode"];
@@ -79,13 +80,34 @@ interface WireV1Receipt { signature?: string; enclaveSigner?: string; orderHash:
 interface WireV1Order {
   orderId: string; marketId: number; side: "Buy" | "Sell"; size: string; limitPrice: string;
   tif: string; reduceOnly: boolean; orderHash: string; finality: TrackedOrder["finality"];
-  filledSize: string; avgFillPrice: string; createdMs: number;
+  filledSize: string | null; avgFillPrice: string | null; createdMs: number;
+  execution?: unknown;
   /// SEC-025-E1 decision (c): the stored acceptance receipt, served by the
   /// gateway. Optional so an OLDER gateway (field absent) degrades, not crashes.
   receipt?: WireV1Receipt;
 }
 
 const B = (s: string): bigint => BigInt(s);
+
+/** Never infer execution or remaining size from protocol finality. */
+function pExecution(value: unknown): OrderExecution | undefined {
+  if (value === undefined) return undefined; // old gateway: explicitly unavailable in the table
+  const v = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  const statuses = ["PENDING", "RESTING", "PARTIALLY_FILLED", "FILLED", "CANCELLED", "REJECTED", "UNKNOWN"];
+  const amount = (x: unknown): bigint | null =>
+    typeof x === "string" && /^\d+$/.test(x) ? BigInt(x) : null;
+  const validStatus = typeof v.status === "string" && statuses.includes(v.status);
+  const remainingSize = amount(v.remainingSize);
+  const unsettledSize = amount(v.unsettledSize);
+  const settledSize = amount(v.settledSize);
+  const available = v.available === true && validStatus && remainingSize !== null &&
+    unsettledSize !== null && settledSize !== null;
+  return {
+    status: validStatus ? v.status as OrderExecution["status"] : "UNKNOWN",
+    available, remainingSize, unsettledSize, settledSize,
+    reason: typeof v.reason === "string" ? v.reason : null, proven: false,
+  };
+}
 
 function pMarket(m: WireMarket): Market {
   return { ...m, referencePrice: B(m.referencePrice) };
@@ -109,7 +131,8 @@ function pOrder(o: WireTrackedOrder): TrackedOrder {
   return {
     id: o.id,
     input: { ...o.input, side: o.input.side, size: B(o.input.size), limitPrice: B(o.input.limitPrice), tif: o.input.tif as OrderInput["tif"] },
-    receipt: o.receipt, finality: o.finality, filledSize: B(o.filledSize), avgFillPrice: B(o.avgFillPrice), createdMs: o.createdMs,
+    receipt: o.receipt, finality: o.finality, filledSize: B(o.filledSize ?? "0"), avgFillPrice: B(o.avgFillPrice ?? "0"), createdMs: o.createdMs,
+    ...(o.execution === undefined ? {} : { execution: pExecution(o.execution) }),
   };
 }
 function pAccount(a: WireState["account"]): AccountState {
@@ -127,10 +150,8 @@ function pAccount(a: WireState["account"]): AccountState {
  * that omits the field degrades to a synthesized stub (hash from the flat
  * `orderHash`, zero seq/batch) — degrade, never throw.
  *
- * NOTE: `filledSize`/`avgFillPrice` are the gateway's FABRICATED full-fill
- * values (it marks every non-ACCEPTED order fully filled at its limit price).
- * Real execution reporting is SEC-025-E3 — this task only makes the browser
- * read the RIGHT ACCOUNT's fabricated values instead of the demo wallet's.
+ * Execution is separate native metadata. An upgraded gateway preserves exact
+ * applied-fill quantities; a migrated legacy order can explicitly lack history.
  */
 function pV1Order(o: WireV1Order): TrackedOrder {
   const r = o.receipt;
@@ -150,8 +171,9 @@ function pV1Order(o: WireV1Order): TrackedOrder {
     },
     receipt,
     finality: o.finality,
-    filledSize: B(o.filledSize),
-    avgFillPrice: B(o.avgFillPrice),
+    filledSize: B(o.filledSize ?? "0"),
+    avgFillPrice: B(o.avgFillPrice ?? "0"),
+    ...(o.execution === undefined ? {} : { execution: pExecution(o.execution) }),
     createdMs: o.createdMs,
   };
 }
@@ -1378,16 +1400,9 @@ export class RealDarkPerpClient implements DarkPerpClient {
    * /v1 ids, so the old path could silently cancel a stranger's same-named
    * order and report success.
    *
-   * Refusals THROW with the gateway's own reason — including the `sealed`
-   * refusal: every order seals into a batch within one ~700ms tick and
-   * `account_cancel` refuses sealed orders, so cancelling a RESTING order
-   * stays ineffective until E2 lands cancel-inside-the-window. The user must
-   * see that answer, unsatisfying as it is; swallowing it (or the legacy
-   * route's 404) is the report-failure-as-success defect this task removes.
-   *
-   * On success this is also the CANCELLED lifecycle event's producer (no
-   * server event announces a cancel — the order simply leaves the list), and
-   * the own-account view is refreshed so the row disappears.
+   * Cancels only the unfilled remainder, including a partially-filled or
+   * previously-settled resting maker. Refusals (including unconfirmed durability)
+   * propagate; successful cancellation retains the receipt/history row.
    */
   async cancelOrder(orderId: string): Promise<void> {
     const acct = await this.ensureAccount();
@@ -1398,7 +1413,7 @@ export class RealDarkPerpClient implements DarkPerpClient {
       { "X-Api-Key": acct.apiKey },
     );
     for (const cb of this.eventSubs) {
-      cb({ orderId, kind: "CANCELLED", message: "Order cancelled before matching" });
+      cb({ orderId, kind: "CANCELLED", message: "Unfilled remainder cancelled; existing fills are unchanged" });
     }
     void this.refreshOwnState();
   }

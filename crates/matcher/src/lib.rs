@@ -22,7 +22,7 @@ extern crate std;
 
 mod book;
 
-pub use book::{Match, OrderBook, SubmitOutcome, SubmitStatus};
+pub use book::{Match, OrderBook, OrderRemoval, SubmitOutcome, SubmitStatus};
 
 use alloc::collections::BTreeMap;
 use alloc::vec::Vec;
@@ -96,6 +96,27 @@ impl<H: Hasher> MatchingEngine<H> {
             .sum()
     }
 
+    pub fn remaining(&self, hash: &Digest) -> Option<i128> {
+        self.books.values().find_map(|b| b.remaining(hash))
+    }
+
+    pub fn reap_expired_with_events(&mut self, now_ms: u64) -> Vec<OrderRemoval> {
+        self.books
+            .values_mut()
+            .flat_map(|b| b.reap_expired_with_events(now_ms))
+            .collect()
+    }
+
+    pub fn cancel_owner_with_events(
+        &mut self,
+        owner: &perp_core::note::PubKey,
+    ) -> Vec<OrderRemoval> {
+        self.books
+            .values_mut()
+            .flat_map(|b| b.cancel_owner_with_events(owner))
+            .collect()
+    }
+
     /// The seq number that will be assigned to the next accepted order.
     pub fn peek_seq(&self) -> u64 {
         self.next_seq
@@ -110,7 +131,8 @@ impl<H: Hasher> MatchingEngine<H> {
                 outcome: SubmitOutcome {
                     order_hash: order.order_hash::<H>(),
                     fills: Vec::new(),
-                    status: SubmitStatus::Rejected(RejectReason::MarketCloseOnly),
+                    removals: Vec::new(),
+                    status: SubmitStatus::Rejected(RejectReason::InvalidOrder),
                 },
             };
         };
@@ -839,5 +861,77 @@ mod tests {
             e.process_stream(&orders, 0).fills
         };
         assert_eq!(run(), run(), "matching must be deterministic");
+    }
+}
+
+#[cfg(test)]
+mod execution_removal_tests {
+    use super::*;
+    use perp_core::order::{Order, Side, TimeInForce};
+    fn order(n: u8) -> Order {
+        Order {
+            owner: [n; 32],
+            market_id: 0,
+            side: Side::Sell,
+            size: 100,
+            limit_price: 100,
+            tif: TimeInForce::Gtc,
+            reduce_only: false,
+            nonce: n as u64,
+            expiry_ms: 0,
+            ciphertext_commit: [n; 32],
+        }
+    }
+    #[test]
+    fn expiry_and_liquidation_removals_retain_attribution() {
+        let mut e = MatchingEngine::<Keccak256>::new();
+        e.open_market(0);
+        let mut expired = order(1);
+        expired.expiry_ms = 50;
+        e.submit(&expired, 1);
+        let keeper = order(2);
+        e.submit(&keeper, 1);
+        let removed = e.reap_expired_with_events(50);
+        assert_eq!(
+            removed,
+            [OrderRemoval {
+                order_hash: expired.order_hash::<Keccak256>(),
+                reason: "Expired"
+            }]
+        );
+        assert!(e.remaining(&expired.order_hash::<Keccak256>()).is_none());
+        let removed = e.cancel_owner_with_events(&keeper.owner);
+        assert_eq!(
+            removed,
+            [OrderRemoval {
+                order_hash: keeper.order_hash::<Keccak256>(),
+                reason: "Liquidated"
+            }]
+        );
+        assert!(e.remaining(&keeper.order_hash::<Keccak256>()).is_none());
+    }
+    #[test]
+    fn malformed_and_unknown_market_are_invalid_not_close_only_or_cancelled() {
+        let mut e = MatchingEngine::<Keccak256>::new();
+        e.open_market(0);
+        for o in [
+            Order {
+                size: 0,
+                ..order(1)
+            },
+            Order {
+                limit_price: -1,
+                ..order(2)
+            },
+            Order {
+                market_id: 999,
+                ..order(3)
+            },
+        ] {
+            assert_eq!(
+                e.submit(&o, 1).outcome.status,
+                SubmitStatus::Rejected(RejectReason::InvalidOrder)
+            );
+        }
     }
 }

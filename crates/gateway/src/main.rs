@@ -47,6 +47,7 @@ use sequencer::{adl_tag, adl_tag_key, EnclaveIdentity, SealedBatch, Sequencer, W
 mod bootstrap;
 mod candles;
 mod enclave_epoch;
+mod execution;
 mod l1;
 mod order_log;
 mod prover_client;
@@ -924,8 +925,9 @@ struct WTrackedOrder {
     input: WOrderInput,
     receipt: serde_json::Value,
     finality: String,
-    filled_size: String,
-    avg_fill_price: String,
+    filled_size: Option<String>,
+    avg_fill_price: Option<String>,
+    execution: serde_json::Value,
     created_ms: u64,
 }
 #[derive(Serialize)]
@@ -1089,6 +1091,9 @@ struct Mkt {
 }
 #[derive(Serialize, serde::Deserialize)]
 struct GwOrder {
+    /// Persisted in the versioned snapshot trailer, not the legacy Gw prefix.
+    #[serde(skip)]
+    execution: Option<execution::Execution>,
     id: String,
     order: Order,
     order_hash: Digest,
@@ -1923,7 +1928,9 @@ impl Gw {
             .iter()
             .map(|m| (m.id, m.reference_price, m.px, m.live))
             .collect();
-        postcard::to_allocvec(&(self, mkt_px)).expect("snapshot encode")
+        let mut bytes = postcard::to_allocvec(&(self, mkt_px)).expect("snapshot encode");
+        execution::append_snapshot(self, &mut bytes);
+        bytes
     }
 
     /// Restore from snapshot plaintext, rebuilding the runtime-only parts exactly
@@ -1931,8 +1938,10 @@ impl Gw {
     /// `ENCLAVE_SEED` — the snapshot never carries the signing secret), and the
     /// static market table with the persisted dynamics overlaid.
     fn boot_restored(plain: &[u8]) -> Result<Self, String> {
-        let (mut gw, mkt_px): (Gw, Vec<(u64, i128, i128, bool)>) =
-            postcard::from_bytes(plain).map_err(|e| format!("snapshot decode: {e}"))?;
+        type SnapshotPrefix = (Gw, Vec<(u64, i128, i128, bool)>);
+        let ((mut gw, mkt_px), trailer): (SnapshotPrefix, _) =
+            postcard::take_from_bytes(plain).map_err(|e| format!("snapshot decode: {e}"))?;
+        execution::restore_snapshot(&mut gw, trailer)?;
 
         let attestation = attest_from_env();
         let measurement = attestation
@@ -3185,6 +3194,7 @@ impl Gw {
         acct.orders.insert(
             0,
             GwOrder {
+                execution: Some(execution::Execution::new(order.size)),
                 id: format!("o{nonce}"),
                 order,
                 order_hash: oh,
@@ -3200,22 +3210,18 @@ impl Gw {
         Ok(receipt)
     }
 
-    /// Cancel an account's still-ACCEPTED order.
+    /// Cancel the caller's queued order or its still-live resting remainder.
     fn account_cancel(&mut self, key: &[u8; 32], order_id: &str) -> Result<(), String> {
         let acct = self.accounts.get_mut(key).ok_or("Unknown account.")?;
-        let idx = acct
+        let order = acct
             .orders
-            .iter()
-            .position(|o| o.id == order_id)
+            .iter_mut()
+            .find(|o| o.id == order_id)
             .ok_or("Order not found.")?;
-        if acct.orders[idx].sealed || acct.orders[idx].last_finality != "ACCEPTED" {
-            return Err(
-                "Only an ACCEPTED order can be cancelled (matched/settled are binding).".into(),
-            );
+        execution::cancel(&mut self.seq, order)?;
+        if !self.pending_rejected.contains(&order.order_hash) {
+            self.pending_rejected.push(order.order_hash);
         }
-        // ACCEPTED orders have not been sealed into a batch yet (not in the matcher
-        // book), so dropping them from tracking is enough — they are never submitted.
-        acct.orders.remove(idx);
         Ok(())
     }
 
@@ -3347,8 +3353,9 @@ impl Gw {
                     "reduceOnly": o.input.reduce_only,
                     "orderHash": hex0x(&o.order_hash),
                     "finality": o.last_finality,
-                    "filledSize": o.filled.to_string(),
-                    "avgFillPrice": o.avg_fill.to_string(),
+                    "filledSize": o.execution.as_ref().filter(|e| e.known).map(|e| e.filled.to_string()),
+                    "avgFillPrice": o.execution.as_ref().filter(|e| e.known).map(|e| e.average().to_string()),
+                    "execution": execution::wire(o, &self.seq),
                     "createdMs": o.created_ms,
                     // SEC-025-E1 decision (c): serve the stored ACCEPTANCE RECEIPT.
                     // The gateway already holds it (populated when the order was
@@ -4014,6 +4021,7 @@ impl Gw {
         self.orders.insert(
             0,
             GwOrder {
+                execution: Some(execution::Execution::new(order.size)),
                 id: id.clone(),
                 order,
                 order_hash: oh,
@@ -4125,21 +4133,19 @@ impl Gw {
     }
 
     fn cancel(&mut self, order_id: &str) -> Result<Vec<WEvent>, String> {
-        let idx = self
+        let o = self
             .orders
-            .iter()
-            .position(|o| o.id == order_id)
+            .iter_mut()
+            .find(|o| o.id == order_id)
             .ok_or("Order not found.")?;
-        if self.orders[idx].sealed || self.orders[idx].last_finality != "ACCEPTED" {
-            return Err(
-                "Only an ACCEPTED order can be cancelled (matched/settled are binding).".into(),
-            );
+        execution::cancel(&mut self.seq, o)?;
+        if !self.pending_rejected.contains(&o.order_hash) {
+            self.pending_rejected.push(o.order_hash);
         }
-        self.orders.remove(idx);
         Ok(vec![WEvent {
-            order_id: order_id.to_string(),
+            order_id: order_id.into(),
             kind: "CANCELLED".into(),
-            message: "Order cancelled before matching".into(),
+            message: "Unfilled remainder cancelled; existing fills are unchanged".into(),
         }])
     }
 
@@ -4329,19 +4335,26 @@ impl Gw {
             self.user_adl_clawed += adl_clawed;
         }
         let any_sealed = !pending.is_empty() || !account_refs.is_empty();
-        for &i in &pending {
-            self.orders[i].sealed = true;
-            self.orders[i].filled = self.orders[i].order.size;
-            self.orders[i].avg_fill = if self.orders[i].order.limit_price > 0 {
-                self.orders[i].order.limit_price
-            } else {
-                self.px_of(self.orders[i].order.market_id)
-            };
+        // Update all orders, including makers submitted in older ticks/windows.
+        // Applied-fill attribution is independent of the monotone finality axis.
+        let mut acct_events: Vec<String> = Vec::new();
+        for (i, o) in self.orders.iter_mut().enumerate() {
+            let fresh = pending.contains(&i);
+            let _ = execution::update(o, &self.seq, &sealed, fresh);
+            if fresh {
+                o.sealed = true;
+            }
         }
-        // account orders are submitted; their fill status is read from finality below
-        for (k, i) in &account_refs {
-            if let Some(a) = self.accounts.get_mut(k) {
-                a.orders[*i].sealed = true;
+        for (key, acct) in &mut self.accounts {
+            for (i, o) in acct.orders.iter_mut().enumerate() {
+                let fresh = account_refs.contains(&(*key, i));
+                for mut event in execution::update(o, &self.seq, &sealed, fresh) {
+                    event["owner"] = serde_json::json!(hex0x(&acct.wallet.owner));
+                    acct_events.push(event.to_string());
+                }
+                if fresh {
+                    o.sealed = true;
+                }
             }
         }
         // Task 5: the SETTLE_TICKS queue is the LEGACY (demo/no-prover) finality
@@ -4392,13 +4405,9 @@ impl Gw {
         }
         // advance /v1 account orders' finality + collect per-account events for the
         // authenticated WS (own fills, order-finality transitions, ADL haircuts).
-        let mut acct_events: Vec<String> = Vec::new();
         for acct in self.accounts.values_mut() {
             let owner_hex = hex0x(&acct.wallet.owner);
             for o in acct.orders.iter_mut() {
-                if o.last_finality == "SETTLED" {
-                    continue;
-                }
                 let f = match self.seq.finality_of(&o.order_hash) {
                     Some(Finality::Matched) => "MATCHED",
                     Some(Finality::Settled) => "SETTLED",
@@ -4406,18 +4415,6 @@ impl Gw {
                 };
                 if f != o.last_finality {
                     o.last_finality = f.to_string();
-                    if f != "ACCEPTED" {
-                        o.filled = o.order.size;
-                        o.avg_fill = o.order.limit_price;
-                        acct_events.push(
-                            serde_json::json!({
-                                "owner": owner_hex, "type": "fill", "orderId": o.id,
-                                "marketId": o.order.market_id, "side": o.input.side,
-                                "size": o.input.size, "price": o.order.limit_price.to_string(),
-                            })
-                            .to_string(),
-                        );
-                    }
                     acct_events.push(
                         serde_json::json!({
                             "owner": owner_hex, "type": "order", "orderId": o.id,
@@ -4448,10 +4445,12 @@ impl Gw {
             }
             // audit Tier-3: bound the retained order history so it (and every snapshot)
             // can't grow without limit. Runs AFTER the seal/finality passes above (which
-            // reference orders by index), and only evicts SETTLED (terminal, display-only)
-            // orders — live/pending orders and the account's replay nonce are untouched.
+            // reference orders by index), and only evicts terminal execution records with
+            // no unconfirmed fills. A SETTLED receipt may still have a live remainder.
             cap_history(&mut acct.orders, MAX_ACCOUNT_ORDER_HISTORY, |o| {
-                o.last_finality == "SETTLED"
+                o.execution
+                    .as_ref()
+                    .is_some_and(execution::Execution::terminal)
             });
         }
         if adl_clawed > 0 {
@@ -4553,8 +4552,17 @@ impl Gw {
                 input: o.input.clone(),
                 receipt: self.receipt_json(&o.receipt),
                 finality: self.finality_str(&o.order_hash),
-                filled_size: o.filled.to_string(),
-                avg_fill_price: o.avg_fill.to_string(),
+                filled_size: o
+                    .execution
+                    .as_ref()
+                    .filter(|e| e.known)
+                    .map(|e| e.filled.to_string()),
+                avg_fill_price: o
+                    .execution
+                    .as_ref()
+                    .filter(|e| e.known)
+                    .map(|e| e.average().to_string()),
+                execution: execution::wire(o, &self.seq),
                 created_ms: o.created_ms,
             })
             .collect();
@@ -6362,9 +6370,26 @@ async fn delete_v1_order(
         Ok(k) => k,
         Err(e) => return e.into_response(),
     };
+    let durable = { app.gw.lock().await.prod };
+    if durable && app.snapshot_req.is_none() {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(serde_json::json!({"error": "Cancellation requires durable state persistence"})),
+        )
+            .into_response();
+    }
     let r = { app.gw.lock().await.account_cancel(&key, &order_id) };
     match r {
         Ok(()) => {
+            if durable {
+                if let Err(e) = snapshot_now(&app.snapshot_req).await {
+                    return (StatusCode::SERVICE_UNAVAILABLE, Json(serde_json::json!({"error": format!("Cancellation applied in memory but durability is unconfirmed: {e}. Retry this cancellation."), "outcome": "DURABILITY_UNKNOWN"}))).into_response();
+                }
+            }
+            let owner = { app.gw.lock().await.owner_hex_for(&key) };
+            if let Some(owner) = owner {
+                let _ = app.events_tx.send(serde_json::json!({"owner": owner, "type": "execution", "orderId": order_id, "status": "CANCELLED"}).to_string());
+            }
             Json(serde_json::json!({ "orderId": order_id, "cancelled": true })).into_response()
         }
         Err(e) => err400(e).into_response(),
@@ -6575,7 +6600,7 @@ fn v1_openapi_json(prod: bool) -> serde_json::Value {
                 "post": { "summary": "Place an order", "security": auth["security"], "requestBody": order_body, "responses": { "200": { "description": "signed receipt" }, "400": { "description": "rejected" }, "429": { "description": "rate limit (10/s)" } } },
                 "get": { "summary": "Own orders + finality", "security": auth["security"], "responses": ok("orders") }
             },
-            "/v1/orders/{orderId}": { "delete": { "summary": "Cancel a not-yet-SEALED ACCEPTED order. Effectively pre-seal only: every resting order seals into the next batch within one ~700ms tick, and a sealed order is refused even while its finality is still ACCEPTED (cancel-inside-the-window is SEC-025-E2)", "security": auth["security"], "parameters": [{ "name": "orderId", "in": "path", "required": true, "schema": { "type": "string" } }], "responses": { "200": { "description": "cancelled" }, "400": { "description": "refused: order unknown, sealed, or no longer ACCEPTED" } } } },
+            "/v1/orders/{orderId}": { "delete": { "summary": "Cancel the caller's queued order or live resting remainder, including partially filled or previously settled orders. Existing fills and the original receipt are retained; repeated user cancellation is idempotent. Production requires a durable snapshot acknowledgement.", "security": auth["security"], "parameters": [{ "name": "orderId", "in": "path", "required": true, "schema": { "type": "string" } }], "responses": { "200": { "description": "cancelled" }, "400": { "description": "Unknown account/order or ORDER_NOT_LIVE: no resting remainder" }, "503": { "description": "Persistence unavailable before cancellation, or DURABILITY_UNKNOWN after in-memory cancellation. Retry the same cancellation; do not assume the remainder is still active." } } } },
             "/v1/positions": { "get": { "summary": "Own open positions", "security": auth["security"], "responses": ok("positions") } },
             "/v1/markets": { "get": { "summary": "All markets", "responses": ok("markets") } },
             "/v1/markets/{id}": { "get": { "summary": "One market", "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }], "responses": ok("market") } },
@@ -11818,7 +11843,11 @@ mod tests {
         // A's cancel removes A's order ONLY.
         gw.account_cancel(&a_key, "o1")
             .expect("A cancels its own o1");
-        assert!(ids(&gw, &a_key).is_empty(), "A's o1 is gone");
+        assert_eq!(ids(&gw, &a_key), ["o1"], "receipt history is retained");
+        assert_eq!(
+            gw.v1_orders_json(&a_key).unwrap()["orders"][0]["execution"]["status"],
+            "CANCELLED"
+        );
         assert_eq!(
             ids(&gw, &b_key),
             ["o1"],
@@ -11827,8 +11856,8 @@ mod tests {
         // And an id ABSENT from the caller's list errors even though another
         // account still holds one by that name — resolution never crosses.
         let err = gw
-            .account_cancel(&a_key, "o1")
-            .expect_err("A no longer holds an o1");
+            .account_cancel(&a_key, "o2")
+            .expect_err("A never held o2");
         assert_eq!(err, "Order not found.");
         assert_eq!(
             ids(&gw, &b_key),
@@ -15133,4 +15162,5 @@ mod tests {
         assert_eq!(gw.last_settled_root, new_root2);
     }
     include!("audit_remediation_tests.rs");
+    include!("execution_regression_tests.rs");
 }

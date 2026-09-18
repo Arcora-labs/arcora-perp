@@ -21,7 +21,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use k256::ecdsa::{RecoveryId, Signature, SigningKey, VerifyingKey};
 use sha3::{Digest as _, Keccak256 as RawKeccak};
 
-use matcher::{Match, MatchingEngine, SubmitStatus};
+use matcher::{Match, MatchingEngine, OrderRemoval, SubmitStatus};
 use perp_core::engine::BatchOp;
 use perp_core::hash::{word_u64, Digest, Domain, Hasher, Keccak256};
 use perp_core::market::{Market, MarketId};
@@ -144,6 +144,10 @@ struct InclusionRecord {
 /// The output of sealing one batch.
 #[derive(Clone, Debug)]
 pub struct SealedBatch {
+    /// Native execution attribution. The amounts/prices correspond one-for-one
+    /// to successful Fill ops, but the order-hash association is NOT ZK-proven.
+    pub applied_fills: Vec<Match>,
+    pub removals: Vec<OrderRemoval>,
     pub batch_id: u64,
     pub prev_state_root: Digest,
     pub new_state_root: Digest,
@@ -202,6 +206,7 @@ pub struct AdlReceipt {
 /// The liquidated owners and ADL haircuts produced by one [`Sequencer::run_maintenance`]
 /// pass. The haircuts carry `(owner, market, clawed)` so the seal can tag them.
 pub struct MaintenanceOutcome {
+    pub removals: Vec<OrderRemoval>,
     pub liquidated: Vec<(PubKey, MarketId)>,
     pub adl: Vec<(PubKey, MarketId, i128)>,
     /// The AccrueFunding + Liquidate ops applied this pass, in application order —
@@ -291,6 +296,7 @@ fn offending_leg(e: &EngineError) -> Option<FillLeg> {
 /// no-op, so its outcome is empty everywhere.
 #[derive(Default)]
 struct FillSettlement {
+    applied_fills: Vec<Match>,
     /// The batch's replayable fill op-log, in application order. Only ops whose
     /// application SUCCEEDED are logged, so replaying it via `apply_batch`
     /// reproduces the resulting state root (Slice 3a).
@@ -419,6 +425,7 @@ fn settle_fills(
                 // log the fill only after it settled — a failed fill (Err arm) is
                 // dropped, so it never enters the replayable op-log.
                 out.ops.push(op);
+                out.applied_fills.push(*m);
             }
             Err(e) => {
                 let reason = settlement_reason(&e);
@@ -871,7 +878,7 @@ impl Sequencer {
         // reap good-till-time makers that have expired before reading the book as
         // the funding mark — an expired order must not anchor `best_bid`/`best_ask`
         // (§8), and matching already refuses to trade against it.
-        self.matcher.reap_expired(now_ms);
+        let removals = self.matcher.reap_expired_with_events(now_ms);
         let mut liquidated = Vec::new();
         let mut adl: Vec<(PubKey, MarketId, i128)> = Vec::new();
         // The replayable op-log for this maintenance pass: every AccrueFunding/Liquidate
@@ -940,6 +947,7 @@ impl Sequencer {
             }
         }
         MaintenanceOutcome {
+            removals,
             liquidated,
             adl,
             ops,
@@ -1097,6 +1105,7 @@ impl Sequencer {
         //    batch's replayable op-log: `[applied fills] ++ [maintenance ops]`, in
         //    application order (Slice 3a).
         let FillSettlement {
+            applied_fills,
             mut ops,
             rejected: settlement_rejected,
             settled_order_hashes,
@@ -1113,21 +1122,33 @@ impl Sequencer {
         // finality map; inserting once per deduped hash is identical to the old
         // per-fill insert of the same value.
         for oh in &settled_order_hashes {
-            self.finality.insert(*oh, Finality::Matched);
+            // A later partial fill must not rewrite an earlier hard-finality fact.
+            // Clients separately track the unproven quantity of each tick.
+            if self.finality.get(oh) != Some(&Finality::Settled) {
+                self.finality.insert(*oh, Finality::Matched);
+            }
         }
 
         // 3b. maintenance: accrue funding + liquidate underwater positions (§5,§8).
         //     Liquidating an owner also cancels its resting orders, so a
         //     bad-debt account can't leave stale makers that would fail to settle.
         let MaintenanceOutcome {
+            mut removals,
             liquidated: liquidations,
             adl: adl_haircuts,
             ops: maintenance_ops,
         } = self.run_maintenance(now_ms);
         ops.extend(maintenance_ops);
         for (owner, _market) in &liquidations {
-            self.matcher.cancel_owner_orders(owner);
+            removals.extend(self.matcher.cancel_owner_with_events(owner));
         }
+
+        removals.extend(
+            stream
+                .processed
+                .iter()
+                .flat_map(|p| p.outcome.removals.iter().copied()),
+        );
 
         // 4. build the manifest, keeping `ordered`/`rejected` DISJOINT and HONEST.
         //    `rejected` = pre-trade rejects + dry-run BANS (attributable offenders,
@@ -1147,8 +1168,22 @@ impl Sequencer {
                 failed_unsettled.push((*oh, *reason));
             }
         }
-        let reject_set: std::collections::BTreeSet<Digest> =
-            failed_unsettled.iter().map(|(h, _)| *h).collect();
+        // Record non-filling removals instead of leaving dead orders invisible.
+        // A hash with an applied fill remains ordered; its remainder's lifecycle
+        // is native metadata (Proof-v1 does not prove order lifecycle decisions).
+        for r in &removals {
+            if !settled_set.contains(&r.order_hash) && seen_failed.insert(r.order_hash) {
+                failed_unsettled.push((
+                    r.order_hash,
+                    match r.reason {
+                        "Expired" => RejectReason::Expired,
+                        "SelfTradePrevented" => RejectReason::SelfTradePrevented,
+                        _ => RejectReason::Cancelled,
+                    },
+                ));
+            }
+        }
+        let reject_set: BTreeSet<Digest> = failed_unsettled.iter().map(|(h, _)| *h).collect();
         let ordered: Vec<Digest> = stream
             .ordered
             .iter()
@@ -1260,6 +1295,8 @@ impl Sequencer {
         self.window_rejected.extend_from_slice(&manifest.rejected);
 
         SealedBatch {
+            applied_fills,
+            removals,
             batch_id,
             prev_state_root,
             new_state_root,
@@ -1272,6 +1309,47 @@ impl Sequencer {
             adl_receipts,
             ops,
         }
+    }
+
+    /// Cancel only a live remainder. Callers serialize this with seal_batch.
+    /// The gateway uses one mutex and neither operation yields while holding it.
+    /// Proof-v1 replays ledger ops, not the matcher: a cancellation mutates no
+    /// ledger state, and the resulting window manifest is still root-derived.
+    pub fn cancel_resting_order(&mut self, hash: &Digest) -> Option<i128> {
+        let remaining = self.matcher.cancel_order(hash)?;
+        // Legacy per-tick rollback must not resurrect an acknowledged cancellation.
+        for (_, book) in self.snapshots.values_mut() {
+            book.cancel_order(hash);
+        }
+        self.record_order_cancellation(hash);
+        Some(remaining)
+    }
+
+    /// Resolve an ingress cancellation too: its receipt must not look censored.
+    /// Existing window_rejected is serialized; no new witness/schema field.
+    pub fn record_order_cancellation(&mut self, hash: &Digest) {
+        if !self
+            .window_rejected
+            .iter()
+            .any(|(h, r)| h == hash && *r == RejectReason::Cancelled)
+        {
+            self.window_rejected.push((*hash, RejectReason::Cancelled));
+        }
+        if let Some(rec) = self.inclusion.get_mut(hash) {
+            if rec.seen_in_batch.is_none() {
+                rec.seen_in_batch = Some(self.next_batch_id);
+            }
+        }
+    }
+
+    pub fn remaining_order_size(&self, hash: &Digest) -> Option<i128> {
+        self.matcher.remaining(hash)
+    }
+
+    /// Pending fill ticks are removed only when hardened on the gateway's window
+    /// path. Its rollback_window retains them; mark_failed is a legacy-only API.
+    pub fn fill_tick_pending(&self, tick: u64) -> bool {
+        self.batch_orders.contains_key(&tick)
     }
 
     /// Fold boot-time ops into the genesis baseline: the deployed `GENESIS_ROOT` is
@@ -1385,6 +1463,13 @@ impl Sequencer {
         let mut rejected = w.manifest.rejected.clone();
         rejected.append(&mut self.window_rejected);
         self.window_rejected = rejected;
+        // Intervening ticks' ops now belong to W, not W+1. Rebind immediately so
+        // a reseal with no additional tick can still harden their fill quantities.
+        for window in self.tick_window.values_mut() {
+            if *window == w.batch_id + 1 {
+                *window = w.batch_id;
+            }
+        }
         // restore the window baseline (seal_window re-captured it to the post-bump state).
         self.window_start_state = w.pre_state.clone();
     }

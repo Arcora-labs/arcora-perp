@@ -110,7 +110,19 @@ export interface Receipt {
 }
 
 /// An order as tracked in the UI, with its evolving finality.
+export interface OrderExecution {
+  status: "PENDING" | "RESTING" | "PARTIALLY_FILLED" | "FILLED" | "CANCELLED" | "REJECTED" | "UNKNOWN";
+  available: boolean;
+  remainingSize: bigint | null;
+  unsettledSize: bigint | null;
+  settledSize: bigint | null;
+  reason: string | null;
+  /** Order attribution/lifecycle is native metadata, not a Proof-v1 guarantee. */
+  proven: false;
+}
+
 export interface TrackedOrder {
+  execution?: OrderExecution;
   id: string;
   input: OrderInput;
   receipt: Receipt;

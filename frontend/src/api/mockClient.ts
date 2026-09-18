@@ -606,7 +606,7 @@ export class MockDarkPerpClient implements DarkPerpClient {
     }
     this.state = this.snapshot(this.state.orders.filter((x) => x.id !== orderId));
     this.emit();
-    this.emitEvent({ orderId, kind: "CANCELLED", message: "Order cancelled before matching" });
+    this.emitEvent({ orderId, kind: "CANCELLED", message: "Unfilled remainder cancelled; existing fills are unchanged" });
   }
 
   async recover(seedHex: string): Promise<RecoveredNote[]> {
