@@ -1,0 +1,26 @@
+name: a01-ingestion
+on:
+  pull_request:
+    paths:
+      - 'crates/**'
+      - 'Cargo.lock'
+      - '.github/workflows/a01-ingestion.yml'
+permissions:
+  contents: read
+jobs:
+  offline-ingestion:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
+      - name: Deposit regressions, migration, races, and proof replay
+        run: cargo test --locked -p gateway a01_
+      - name: Real cast transport against loopback JSON-RPC (no live chain)
+        run: cargo test --locked -p gateway a01_native_cast_hash_pinned_jsonrpc_roundtrip -- --ignored --nocapture
