@@ -62,7 +62,7 @@ replace('crates/gateway/src/execution_regression_tests.rs', '        let mut sea
         for chunk in sealed[72..].chunks(32) {
             let mut word = [0u8; 32]; word[..chunk.len()].copy_from_slice(chunk); words.push(word);
         }
-        let tag = Keccak256::hash_words(Domain::SnapshotSealMac, &words);
+        let tag = <Keccak256 as perp_core::hash::Hasher>::hash_words(Domain::SnapshotSealMac, &words);
         sealed[40..72].copy_from_slice(&tag);''')
 
 # Keep the optional field genuinely absent for old gateway/mock contracts.
