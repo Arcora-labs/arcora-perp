@@ -1,5 +1,19 @@
 # Threat model
 
+> **A10 trust-boundary correction (2026-09-18).** The public testnet alpha is a
+> **trusted-gateway / custodial** system at the authorization and oracle boundaries.
+> The gateway currently holds server-custody account spend keys in live process memory
+> and controls the oracle publisher key accepted by the engine. The zk proof establishes
+> that a settled transition satisfies the guest program and its committed inputs. It does
+> **not** independently establish user intent for operations authorized with a key the
+> gateway itself holds, nor external price truth for a transcript signed by the
+> gateway-controlled oracle publisher. A prover that only receives the sealed witness
+> does not gain these gateway authorities. Claims such as "TEE compromise can only leak
+> confidentiality" or "ZK alone makes the operator unable to steal funds" are therefore
+> outside the alpha's stated guarantee. Stronger claims require separated oracle trust
+> and user-controlled/proof-bound authorization, followed by independent review.
+
+
 > **Audit status (internal adversarial review).** The Rust core had two
 > review→fix passes (collateral conservation, margin/flip handling, self-trade,
 > funding-sign, maker-drift manifest honesty, receipt-seq). The Solidity contracts

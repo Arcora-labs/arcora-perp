@@ -1,6 +1,6 @@
 # Arcora Perp
 
-**A privacy-preserving perpetual futures exchange.** Orders are matched privately inside attested hardware at centralized-exchange speed, then settled publicly under zero-knowledge validity proofs — so the operator is cryptographically incapable of forging state.
+**A privacy-preserving perpetual futures exchange.** Orders are matched privately inside attested hardware at centralized-exchange speed, then settled publicly under zero-knowledge validity proofs. In the current alpha, the gateway remains a trusted/custodial component: it holds server-custody spend keys and oracle-publisher authority.
 
 *Technical Brief — Testnet Alpha — July 2026 — Arcora Labs*
 
@@ -10,7 +10,7 @@
 
 Arcora Perp is a perpetual futures exchange built as an application-specific rollup. The matching engine runs inside an Intel TDX confidential VM: order terms are encrypted in the trader's browser to an attested enclave key, matched in milliseconds on a price-time-priority book, and acknowledged with an enclave-signed receipt. Trading activity is sealed into windows; each window is re-executed inside the SP1 zkVM, and the resulting Groth16 proof is verified on-chain before the new state root is accepted. Collateral sits in an on-chain vault, and withdrawals from settled state are claimable by anyone via Merkle proofs, permanently.
 
-Today this runs as a public testnet alpha on Base Sepolia at https://perp.arcoralabs.xyz, with real Groth16 proofs verified on-chain for every settlement window. The trust statement in one line: **order flow is confidential because it never exists in plaintext outside attested hardware, and balances are correct because the operator cannot settle a state transition it cannot prove.**
+Today this runs as a public testnet alpha on Base Sepolia at https://perp.arcoralabs.xyz, with real Groth16 proofs verified on-chain for settlement windows. The trust statement in one line: **the proof verifies that a settled transition satisfies the zk guest and its committed inputs; it does not independently prove user intent or external price truth. The alpha gateway still custodies account spend keys and controls the oracle publisher key.**
 
 ## 2. The problem
 
@@ -23,7 +23,7 @@ On a transparent perpetual futures DEX, everything is public before and after th
 
 The established alternative is a centralized exchange: the internal order book is private, so most of these leaks disappear. But the price is custodial trust — traders deposit into an opaque balance sheet, solvency is asserted rather than proven, and withdrawal is at the operator's discretion. The industry has repeatedly discovered what that discretion can cost.
 
-The standing trade-off, then, has been *privacy with custodial trust* or *self-custody with full exposure*. Arcora Perp is built on the position that this is a false dilemma: matching can be private and fast while settlement remains publicly verifiable and custody stays under on-chain rules the operator cannot override.
+The standing trade-off, then, has been *privacy with custodial trust* or *self-custody with full exposure*. Arcora Perp explores a path toward private matching with publicly verifiable settlement. The current alpha has **not** completed that path: collateral is held by on-chain contracts, but the gateway still holds server-custody spend keys, so a live gateway compromise remains a custody risk until key custody is moved behind the intended hardened boundary.
 
 ## 3. Design overview
 

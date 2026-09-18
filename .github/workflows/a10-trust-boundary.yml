@@ -1,0 +1,38 @@
+name: A10 trust-boundary verification
+on:
+  push:
+    branches: ['fix/a10-honest-trust-boundary-2026-09-18']
+  pull_request:
+    paths:
+      - README.md
+      - docs/SECURITY.md
+      - docs/litepaper/**
+      - docs/public-site/**
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Reject superseded alpha claims
+        run: |
+          set -euo pipefail
+          files=(README.md docs/SECURITY.md docs/litepaper/arcora-perp-litepaper.md docs/public-site/security.html docs/public-site/arcora-perp-litepaper.html)
+          ! grep -F "operator is cryptographically incapable of forging state" "${files[@]}"
+          ! grep -F "If the TEE breaks, funds **cannot be stolen**" "${files[@]}"
+          ! grep -F "custody stays under on-chain rules the operator cannot override" "${files[@]}"
+          grep -F "trusted-gateway / custodial" docs/SECURITY.md
+          grep -F "server-custody spend keys" README.md docs/SECURITY.md docs/litepaper/arcora-perp-litepaper.md docs/public-site/security.html
+          grep -F "oracle publisher" README.md docs/SECURITY.md docs/litepaper/arcora-perp-litepaper.md docs/public-site/security.html
+      - name: Parse public HTML
+        run: |
+          python3 - <<'PY'
+          from html.parser import HTMLParser
+          from pathlib import Path
+          class P(HTMLParser): pass
+          for f in ["docs/public-site/security.html","docs/public-site/arcora-perp-litepaper.html"]:
+              P().feed(Path(f).read_text())
+              print("parsed", f)
+          PY
+      - run: git diff --check origin/main...HEAD
