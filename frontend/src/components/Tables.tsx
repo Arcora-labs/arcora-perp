@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useStore } from "../store";
 import { formatPrice, formatSignedSize, formatUsd, shortHash } from "../domain/format";
 import { FinalityBadge, FinalityProgress } from "./FinalityTracker";
+import { canCancelOrder } from "../domain/cancellation";
 
 /// Liquidation-proximity bar: the cushion (in %) between the mark and the
 /// position's liquidation price. Safety-critical, so it's loud and colour-coded.
@@ -116,12 +117,8 @@ function PositionsBody() {
 /** Orders table body (no card chrome). */
 function OrdersBody() {
   const { client, state } = useStore();
-  // SEC-025-E1 Task 3: a cancel refusal must reach the user. The gateway
-  // refuses cancels of sealed/matched orders with its own wording — and since
-  // every order seals within one ~700ms tick, that refusal is the EXPECTED
-  // answer for resting orders until E2 lands cancel-inside-the-window.
-  // `void client.cancelOrder(...)` used to swallow exactly that (and the old
-  // route's 404), reporting failure as success.
+  // Cancellability comes from live remaining depth, independently of finality.
+  // Refusals and uncertain durability must reach the user, not become a success toast.
   const [cancelErr, setCancelErr] = useState<string | null>(null);
   async function doCancel(orderId: string) {
     setCancelErr(null);
@@ -132,7 +129,12 @@ function OrdersBody() {
     }
   }
   if (state.accountUnavailable) return <UnavailableNotice what="orders" />;
-  if (state.orders.length === 0) return <p className="empty">No orders yet. Place one to watch the finality lifecycle.</p>;
+  if (state.orders.length === 0) return (
+    <>
+      <p className="empty">No orders yet. Place one to watch the finality lifecycle.</p>
+      {cancelErr && <p role="alert" className="small neg">{cancelErr}</p>}
+    </>
+  );
   return (
     <table className="table">
       <thead>
@@ -159,7 +161,7 @@ function OrdersBody() {
               </span>
             </td>
             <td className="num">
-              {o.finality === "ACCEPTED" && (
+              {canCancelOrder(o) && (
                 <button className="btn btn--tiny" onClick={() => void doCancel(o.id)}>Cancel</button>
               )}
             </td>

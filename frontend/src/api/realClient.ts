@@ -26,6 +26,7 @@ import type {
 } from "../domain/types";
 import { seal, domainAad } from "./sealedBox";
 import { personalSign } from "./wallet";
+import { cancellationCapability } from "../domain/cancellation";
 import { secp256k1 } from "@noble/curves/secp256k1";
 import { keccak_256 } from "@noble/hashes/sha3";
 import { bytesToHex, hexToBytes, utf8ToBytes, concatBytes } from "@noble/hashes/utils";
@@ -44,6 +45,7 @@ interface WirePosition {
 }
 interface WireOrderInput { marketId: number; side: "Buy" | "Sell"; size: string; limitPrice: string; tif: string; reduceOnly: boolean }
 interface WireTrackedOrder {
+  cancellable?: unknown;
   id: string; input: WireOrderInput; receipt: Receipt; finality: TrackedOrder["finality"];
   filledSize: string; avgFillPrice: string; createdMs: number;
 }
@@ -77,6 +79,7 @@ interface WireV1Receipt { signature?: string; enclaveSigner?: string; orderHash:
 /// One order in the FLAT `GET /v1/orders` shape (`v1_orders_json`) — unlike the
 /// legacy /api/state entries there is no nested `input` object.
 interface WireV1Order {
+  cancellable?: unknown;
   orderId: string; marketId: number; side: "Buy" | "Sell"; size: string; limitPrice: string;
   tif: string; reduceOnly: boolean; orderHash: string; finality: TrackedOrder["finality"];
   filledSize: string; avgFillPrice: string; createdMs: number;
@@ -107,6 +110,7 @@ function pPosition(p: WirePosition): Position {
 }
 function pOrder(o: WireTrackedOrder): TrackedOrder {
   return {
+    ...cancellationCapability(o.cancellable),
     id: o.id,
     input: { ...o.input, side: o.input.side, size: B(o.input.size), limitPrice: B(o.input.limitPrice), tif: o.input.tif as OrderInput["tif"] },
     receipt: o.receipt, finality: o.finality, filledSize: B(o.filledSize), avgFillPrice: B(o.avgFillPrice), createdMs: o.createdMs,
@@ -143,6 +147,7 @@ function pV1Order(o: WireV1Order): TrackedOrder {
             ? { signature: r.signature, enclaveSigner: r.enclaveSigner } : {}) }
       : { orderHash: o.orderHash, seqNo: 0, recvTimeMs: o.createdMs, batchIdHint: 0 };
   return {
+    ...cancellationCapability(o.cancellable),
     id: o.orderId,
     input: {
       marketId: o.marketId, side: o.side, size: B(o.size), limitPrice: B(o.limitPrice),
@@ -1378,12 +1383,9 @@ export class RealDarkPerpClient implements DarkPerpClient {
    * /v1 ids, so the old path could silently cancel a stranger's same-named
    * order and report success.
    *
-   * Refusals THROW with the gateway's own reason — including the `sealed`
-   * refusal: every order seals into a batch within one ~700ms tick and
-   * `account_cancel` refuses sealed orders, so cancelling a RESTING order
-   * stays ineffective until E2 lands cancel-inside-the-window. The user must
-   * see that answer, unsatisfying as it is; swallowing it (or the legacy
-   * route's 404) is the report-failure-as-success defect this task removes.
+   * Refusals THROW with the gateway's reason, including an unknown durable
+   * outcome (503). A live remainder is cancellable even after a partial fill
+   * settled. Completed fills are never undone by cancellation.
    *
    * On success this is also the CANCELLED lifecycle event's producer (no
    * server event announces a cancel — the order simply leaves the list), and
@@ -1398,7 +1400,7 @@ export class RealDarkPerpClient implements DarkPerpClient {
       { "X-Api-Key": acct.apiKey },
     );
     for (const cb of this.eventSubs) {
-      cb({ orderId, kind: "CANCELLED", message: "Order cancelled before matching" });
+      cb({ orderId, kind: "CANCELLED", message: "Unfilled remainder cancelled; prior fills are unchanged" });
     }
     void this.refreshOwnState();
   }

@@ -1,0 +1,311 @@
+{
+  "base_main": "48e03ac3db123cdf159c10f1e0c86262043a377e",
+  "workflow_head": "fe4a429426b6fb6a29a28c628e05d87bd0605001",
+  "run_id": "35316179109",
+  "complete": true,
+  "all_passed": true,
+  "commands": [
+    {
+      "name": "format",
+      "command": [
+        "cargo",
+        "fmt",
+        "--all"
+      ],
+      "exit_code": 0,
+      "expected_failure": false
+    },
+    {
+      "name": "gateway-a04",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "gateway",
+        "audit_cancellation"
+      ],
+      "exit_code": 0,
+      "expected_failure": false
+    },
+    {
+      "name": "sequencer-a04",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "sequencer",
+        "cancellation"
+      ],
+      "exit_code": 0,
+      "expected_failure": false
+    },
+    {
+      "name": "workspace",
+      "command": [
+        "cargo",
+        "test",
+        "--workspace",
+        "--locked"
+      ],
+      "exit_code": 0,
+      "expected_failure": false
+    },
+    {
+      "name": "clippy",
+      "command": [
+        "cargo",
+        "clippy",
+        "--workspace",
+        "--all-targets",
+        "--locked",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "exit_code": 0,
+      "expected_failure": false
+    },
+    {
+      "name": "serde",
+      "command": [
+        "cargo",
+        "test",
+        "-p",
+        "perp-core",
+        "--features",
+        "serde",
+        "--locked"
+      ],
+      "exit_code": 0,
+      "expected_failure": false
+    },
+    {
+      "name": "no-std-core",
+      "command": [
+        "cargo",
+        "build",
+        "-p",
+        "perp-core",
+        "--no-default-features",
+        "--features",
+        "serde",
+        "--locked"
+      ],
+      "exit_code": 0,
+      "expected_failure": false
+    },
+    {
+      "name": "no-std-matcher",
+      "command": [
+        "cargo",
+        "build",
+        "-p",
+        "matcher",
+        "--no-default-features",
+        "--locked"
+      ],
+      "exit_code": 0,
+      "expected_failure": false
+    },
+    {
+      "name": "frontend-install",
+      "command": [
+        "pnpm",
+        "install",
+        "--frozen-lockfile"
+      ],
+      "exit_code": 0,
+      "expected_failure": false
+    },
+    {
+      "name": "frontend-tests",
+      "command": [
+        "pnpm",
+        "test"
+      ],
+      "exit_code": 0,
+      "expected_failure": false
+    },
+    {
+      "name": "frontend-build",
+      "command": [
+        "pnpm",
+        "build"
+      ],
+      "exit_code": 0,
+      "expected_failure": false
+    },
+    {
+      "name": "negative-sealed",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "gateway",
+        "tests::audit_cancellation::sealed_resting_order_cancels_and_appears_in_the_window_manifest",
+        "--",
+        "--exact"
+      ],
+      "exit_code": 101,
+      "expected_failure": true
+    },
+    {
+      "name": "negative-history",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "gateway",
+        "tests::audit_cancellation::settled_partial_maker_survives_history_pruning_and_remains_cancellable",
+        "--",
+        "--exact"
+      ],
+      "exit_code": 101,
+      "expected_failure": true
+    },
+    {
+      "name": "gateway-restored",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "gateway",
+        "audit_cancellation"
+      ],
+      "exit_code": 0,
+      "expected_failure": false
+    },
+    {
+      "name": "format-check",
+      "command": [
+        "cargo",
+        "fmt",
+        "--all",
+        "--check"
+      ],
+      "exit_code": 0,
+      "expected_failure": false
+    },
+    {
+      "name": "diff-check",
+      "command": [
+        "git",
+        "diff",
+        "--check",
+        "HEAD"
+      ],
+      "exit_code": 0,
+      "expected_failure": false
+    }
+  ],
+  "test_profile": {
+    "opt_level": 2,
+    "debug_assertions": true,
+    "overflow_checks": true
+  },
+  "real_sp1_proof": false,
+  "live_tee": false,
+  "live_payments": false,
+  "gateway-a04": {
+    "passed": 11,
+    "failed": 0,
+    "ignored": 0
+  },
+  "gateway-restored": {
+    "passed": 11,
+    "failed": 0,
+    "ignored": 0
+  },
+  "sequencer-a04": {
+    "passed": 10,
+    "failed": 0,
+    "ignored": 0
+  },
+  "workspace": {
+    "passed": 630,
+    "failed": 0,
+    "ignored": 0
+  },
+  "serde": {
+    "passed": 156,
+    "failed": 0,
+    "ignored": 0
+  },
+  "frontend": {
+    "passed": 270,
+    "skipped": 1
+  },
+  "negative_controls": {
+    "legacy_sealed_refusal": "one executed test failed as expected",
+    "legacy_history_pruning": "one executed test failed as expected"
+  },
+  "verified_patch_sha256": "c20590cf927ed1735a6f441f8f9b53bf326ea2bcd0ac82969e8b92c3c0da7538",
+  "source_files": {
+    "crates/gateway/src/audit_cancellation_tests.rs": {
+      "git_blob": "bc148c271e53bb913c856097cadc7ef49c7b81f3",
+      "sha256": "bd312ca743e011b7ccdd89c3b5690d928f009d43e359fc46f17849487a086948"
+    },
+    "crates/gateway/src/main.rs": {
+      "git_blob": "aa4abd269c0f612c216cebd89419343a1c11558f",
+      "sha256": "87204b7945d232033c2535cff2309d3dcb748e350f49dfb57eb9bff0b896606b"
+    },
+    "crates/matcher/src/book.rs": {
+      "git_blob": "cfa55c7f013c0b1d1c5a08f973b5138e52b029ab",
+      "sha256": "a325c98407a714bbf4355b4d2db213a7bbce540f2ad3099cf1c9c24ee5166634"
+    },
+    "crates/sequencer/src/cancellation.rs": {
+      "git_blob": "32dc2cc02069452e85899b70f3d7b7b1c0fc8db6",
+      "sha256": "9a6e91840c789be4951168fe5967b63652dad3c27c7708da5325f4736f2cca8a"
+    },
+    "crates/sequencer/src/cancellation/tests.rs": {
+      "git_blob": "16abcbeee6001582e62fbd785b0ca73a173edfad",
+      "sha256": "d035285fea1c091dd287a250c378d24f080e03ddfdc03c67b53a04d406a04bf2"
+    },
+    "crates/sequencer/src/lib.rs": {
+      "git_blob": "fdd7e7db0a13b8fb5737a0b0142034e8f90822a0",
+      "sha256": "5cd3ed2fb9f995d43b2d35f1aa540f4ff538133a098fdbd0cebbe006cdee329a"
+    },
+    "docs/API.md": {
+      "git_blob": "08eab7dd07cd004c2afd82740fa6ca1ef61d4622",
+      "sha256": "b56b677fba4baed46d9bfefdaa88e57dc14d934f9e4320ed0ae0f0261b6fa1c0"
+    },
+    "frontend/src/api/clientContract.test.ts": {
+      "git_blob": "17cec728b6b4063e3137fb3d53ba5946722faa33",
+      "sha256": "8f39bce92406906b0a8e8d2238b297afc7dcd825b1bba9b1ab97ad1202ecb490"
+    },
+    "frontend/src/api/mockClient.ts": {
+      "git_blob": "42b8b16aacdeb12a4ebf3583f1cbd366550ebeb7",
+      "sha256": "cfd563e570d962ef22c082515a905482c38267f9f99be4ac0466ee395cbf5b14"
+    },
+    "frontend/src/api/realClient.test.ts": {
+      "git_blob": "45d5213dabf25c1045b37c86a21c962efbed3525",
+      "sha256": "e983041e3a85a858a42ada43dab7895cf1ce273f509e93afb50191f267f12dab"
+    },
+    "frontend/src/api/realClient.ts": {
+      "git_blob": "a5d998841ce607380c89d75cabf4f815255374dd",
+      "sha256": "6745c78b49f526371369ae30be9928ded7ae8ad16948dc854f122dfb9f8c0200"
+    },
+    "frontend/src/components/Tables.tsx": {
+      "git_blob": "34b2ac5ffc8cc04ce771db609ac83c4201b96daa",
+      "sha256": "e47959fedc002f7c2b41100a78cf7ed22f4ca390633fe076a8c2b1af71fed79f"
+    },
+    "frontend/src/components/demoGates.test.tsx": {
+      "git_blob": "c4183b6700fa26f728574a3eb362af8fbe29faf3",
+      "sha256": "9f2af0d3cb1e22dfec7fd68f13e6545f3e463d8bdb2c30627c29c106cfeede6c"
+    },
+    "frontend/src/domain/cancellation.ts": {
+      "git_blob": "0f1a8ce7d108119bd76fb4e509a83f32b689dbe8",
+      "sha256": "aa230eb6fcefea6f83cb1c650e4d5b1f1c38bbcacaa11f38c7e6d24d23c2756c"
+    },
+    "frontend/src/domain/types.ts": {
+      "git_blob": "45a7fa6556c20fca6e976a5ab1b3046092e88bf4",
+      "sha256": "8c1f422f51661f53c49166d8e805b83d0f8d8bfebef3419dada4caddb6ebf3ba"
+    }
+  },
+  "finished_utc": "2026-09-18T06:56:22.492916+00:00"
+}

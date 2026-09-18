@@ -442,3 +442,40 @@ describe("unavailable-state honesty (fix-wave-3 H1/H2)", () => {
     for (const v of values) expect(v).toMatch(/^\$/); // formatUsd output, not "—"
   });
 });
+
+// A04: protocol finality is not the same as cancellation eligibility.
+describe("Tables use the gateway remainder capability", () => {
+  it.each(["MATCHED", "SETTLED"] as const)("permits cancelling a live %s remainder", (finality) => {
+    const client = realShaped();
+    injected.client = client;
+    const state = baseState();
+    state.orders[0].finality = finality;
+    state.orders[0].cancellable = true;
+    injected.state = state;
+    render(<PositionsOrders />);
+    fireEvent.click(screen.getByRole("button", { name: /orders/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^cancel$/i }));
+    expect(client.cancelOrder).toHaveBeenCalledWith("o42");
+  });
+  it("hides cancellation for an ACCEPTED order explicitly reported as non-cancellable", () => {
+    injected.client = realShaped();
+    const state = baseState();
+    state.orders[0].cancellable = false;
+    injected.state = state;
+    render(<PositionsOrders />);
+    fireEvent.click(screen.getByRole("button", { name: /orders/i }));
+    expect(screen.queryByRole("button", { name: /^cancel$/i })).toBeNull();
+  });
+  it("keeps a durability failure visible when the cancelled row has disappeared", async () => {
+    const refusal = "Cancellation durability unconfirmed";
+    injected.state = baseState();
+    injected.client = realShaped({ cancelOrder: vi.fn(async () => {
+      injected.state = baseState({ orders: [] });
+      throw new Error(refusal);
+    }) });
+    render(<PositionsOrders />);
+    fireEvent.click(screen.getByRole("button", { name: /orders/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^cancel$/i }));
+    expect(await screen.findByRole("alert")).toHaveProperty("textContent", refusal);
+  });
+});

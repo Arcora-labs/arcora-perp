@@ -111,6 +111,8 @@ export interface Receipt {
 
 /// An order as tracked in the UI, with its evolving finality.
 export interface TrackedOrder {
+  /// Authoritative remainder eligibility. Absent on older gateways and demos.
+  cancellable?: boolean;
   id: string;
   input: OrderInput;
   receipt: Receipt;
