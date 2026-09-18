@@ -511,3 +511,12 @@ SEC-021), and **caller-signed orders**.
 The full deposit → withdraw → claim flow is verified live on Base Sepolia. Remaining
 toward fully non-custodial: on-chain enclave custody of spend keys (the TEE
 milestone) — see `docs/NEXT_STEPS.md`.
+
+### `POST /v1/admin/wind-down` — A06 terminal CloseOnly settlement
+
+Operator-only (`X-Admin-Key` / `FIN_ADMIN_KEY`). Requires durable snapshots, the proof path,
+an empty ordinary window, and a block-pinned L1 observation with `closeOnly == true`. Queues
+the one-shot oracle-free `SettleAll`; the proof-derived phase routes to governance
+`finalSettle`. After phase 1 lands, normal account withdrawal requests in proven CloseOnly
+use price-free `WindDownUnbind`/`WindDownWithdraw` and land through repeatable `finalExit`.
+A 202 means phase 1 was durably queued, not that an L1 transaction has already finalized.

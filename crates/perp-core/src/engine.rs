@@ -14,7 +14,7 @@
 
 use crate::error::{EngineError, FillLeg};
 use crate::fixed::{abs, apply_rate, notional_quote, RATE_SCALE};
-use crate::hash::{Digest, Hasher};
+use crate::hash::{word_i128, word_u64, Digest, Domain, Hasher};
 use crate::market::MarketId;
 use crate::note::{owner_from_spend_key, Note, PubKey};
 use crate::oracle::OracleTranscript;
@@ -118,6 +118,26 @@ pub enum BatchOp {
         note_commitment: Digest,
         spend_key: Digest,
     },
+    /// A06: one-shot, counterparty-free terminal settlement. Every position is
+    /// flattened at its own entry price (zero unrealized PnL), current funding is
+    /// settled, and any pre-existing insolvency is reconciled globally before the
+    /// transition commits. L1 authorizes this only through `finalSettle`.
+    SettleAll,
+    /// A06 phase-2 price-free exit from a position already flattened by SettleAll.
+    WindDownUnbind {
+        owner: PubKey,
+        market_id: MarketId,
+        amount: i128,
+        blinding: Digest,
+    },
+    /// A06 phase-2 withdrawal. Kept distinct from ordinary Withdraw so the proof
+    /// commitment can derive the wind-down phase from the op grammar itself.
+    WindDownWithdraw {
+        note_commitment: Digest,
+        spend_key: Digest,
+        to: Option<[u8; 20]>,
+        nonce: u64,
+    },
 }
 
 /// One auto-deleverage haircut: `clawed` of `owner`'s unrealized profit was taken
@@ -195,6 +215,7 @@ impl<H: Hasher> State<H> {
     /// Apply a whole batch, asserting conservation after each op. Stops at the
     /// first error (the prover reproduces the same stop point deterministically).
     pub fn apply_batch(&mut self, ops: &[BatchOp]) -> Result<BatchOutputs, EngineError> {
+        crate::commitment::classify_wind_down_ops(ops)?;
         let mut outputs = BatchOutputs::default();
         for op in ops {
             let out = self.apply_op(op)?;
@@ -229,6 +250,17 @@ impl<H: Hasher> State<H> {
                 nonce,
             } => self
                 .op_withdraw(note_commitment, spend_key, to, *nonce)
+                .map(|w| OpOutput {
+                    withdrawal: w,
+                    deposit: None,
+                }),
+            BatchOp::WindDownWithdraw {
+                note_commitment,
+                spend_key,
+                to,
+                nonce,
+            } => self
+                .op_wind_down_withdraw(note_commitment, spend_key, to, *nonce)
                 .map(|w| OpOutput {
                     withdrawal: w,
                     deposit: None,
@@ -323,13 +355,221 @@ impl<H: Hasher> State<H> {
                 note_commitment,
                 spend_key,
             } => self.op_fund_insurance(note_commitment, spend_key),
+            BatchOp::SettleAll => self.op_settle_all(),
+            BatchOp::WindDownUnbind {
+                owner,
+                market_id,
+                amount,
+                blinding,
+            } => self.op_wind_down_unbind(owner, *market_id, *amount, blinding),
             BatchOp::Deposit { .. } => {
                 unreachable!("Deposit is handled by apply_op, never delegated here")
             }
             BatchOp::Withdraw { .. } => {
                 unreachable!("Withdraw is handled by apply_op, never delegated here")
             }
+            BatchOp::WindDownWithdraw { .. } => {
+                unreachable!("WindDownWithdraw is handled by apply_op")
+            }
         }
+    }
+
+    /// A06 terminal settlement. Work on a full clone so every overflow, tree-full
+    /// condition, or insufficient-claims failure is byte-for-byte atomic.
+    fn op_settle_all(&mut self) -> Result<(), EngineError> {
+        let mut next = self.clone();
+        next.settle_all_inner()?;
+        *self = next;
+        Ok(())
+    }
+
+    fn settle_all_inner(&mut self) -> Result<(), EngineError> {
+        // First settle only already-committed funding. Entry-price closure realizes
+        // exactly zero price PnL, so no oracle or governance-selected price exists.
+        let keys: Vec<(PubKey, MarketId)> = self.positions.keys().copied().collect();
+        for key in &keys {
+            let idx = self
+                .funding
+                .get(&key.1)
+                .map(|f| f.cumulative_index)
+                .unwrap_or(0);
+            let pos = self.positions.get_mut(key).expect("key snapshot");
+            let funding = pos.settle_funding(idx)?;
+            self.vault_pool = self
+                .vault_pool
+                .checked_add(funding)
+                .ok_or(EngineError::Overflow)?;
+            pos.size = 0;
+            pos.entry_price = 0;
+        }
+
+        // Normalize every negative internal balance. This increases claims by
+        // `deficit`; pay for it from insurance/treasury first, then one global
+        // pro-rata haircut over the remaining positive position collateral and
+        // unspent notes. Free notes are included because excluding them can leave
+        // the vault insolvent after winners previously unbound realized gains.
+        let mut deficit = 0i128;
+        for pos in self.positions.values_mut() {
+            if pos.collateral < 0 {
+                let d = pos.collateral.checked_neg().ok_or(EngineError::Overflow)?;
+                deficit = deficit.checked_add(d).ok_or(EngineError::Overflow)?;
+                pos.collateral = 0;
+            }
+        }
+        if self.vault_pool < 0 {
+            let d = self.vault_pool.checked_neg().ok_or(EngineError::Overflow)?;
+            deficit = deficit.checked_add(d).ok_or(EngineError::Overflow)?;
+            self.vault_pool = 0;
+        }
+        for reserve in [&mut self.insurance_fund, &mut self.treasury] {
+            let take = deficit.min((*reserve).max(0));
+            *reserve = reserve.checked_sub(take).ok_or(EngineError::Overflow)?;
+            deficit -= take;
+        }
+
+        if deficit > 0 {
+            #[derive(Clone, Copy)]
+            enum Claim {
+                Pos((PubKey, MarketId)),
+                Note(Digest),
+            }
+            let mut claims: Vec<(Claim, i128)> = Vec::new();
+            let mut total = 0i128;
+            for (key, pos) in &self.positions {
+                if pos.collateral > 0 {
+                    total = total
+                        .checked_add(pos.collateral)
+                        .ok_or(EngineError::Overflow)?;
+                    claims.push((Claim::Pos(*key), pos.collateral));
+                }
+            }
+            for (cm, note) in &self.notes {
+                if note.amount > 0 {
+                    total = total
+                        .checked_add(note.amount)
+                        .ok_or(EngineError::Overflow)?;
+                    claims.push((Claim::Note(*cm), note.amount));
+                }
+            }
+            if total < deficit || total <= 0 {
+                return Err(EngineError::WindDownInsolvent);
+            }
+            let mut takes = Vec::with_capacity(claims.len());
+            let mut used = 0i128;
+            for (_, amount) in &claims {
+                let take = deficit.checked_mul(*amount).ok_or(EngineError::Overflow)? / total;
+                takes.push(take);
+                used = used.checked_add(take).ok_or(EngineError::Overflow)?;
+            }
+            let mut left = deficit.checked_sub(used).ok_or(EngineError::Overflow)?;
+            for (i, (_, amount)) in claims.iter().enumerate() {
+                if left == 0 {
+                    break;
+                }
+                let headroom = amount.checked_sub(takes[i]).ok_or(EngineError::Overflow)?;
+                let add = left.min(headroom);
+                takes[i] = takes[i].checked_add(add).ok_or(EngineError::Overflow)?;
+                left -= add;
+            }
+            if left != 0 {
+                return Err(EngineError::WindDownInsolvent);
+            }
+
+            for ((claim, amount), take) in claims.into_iter().zip(takes) {
+                if take == 0 {
+                    continue;
+                }
+                match claim {
+                    Claim::Pos(key) => {
+                        let pos = self.positions.get_mut(&key).expect("claim key");
+                        pos.collateral = pos
+                            .collateral
+                            .checked_sub(take)
+                            .ok_or(EngineError::Overflow)?;
+                    }
+                    Claim::Note(old_cm) => {
+                        let old = self.notes.remove(&old_cm).expect("claim note");
+                        let new_amount = amount.checked_sub(take).ok_or(EngineError::Overflow)?;
+                        if new_amount > 0 {
+                            let mut minted = false;
+                            for nonce in 0u64..32 {
+                                let blind = H::hash_words(
+                                    Domain::StateRoot,
+                                    &[old_cm, word_i128(new_amount), word_u64(0xA060_0000 + nonce)],
+                                );
+                                let note = Note::new(old.owner, old.asset_id, new_amount, blind);
+                                let cm = note.commitment::<H>();
+                                if !self.tree.contains_leaf(&cm) {
+                                    self.mint_note(note)?;
+                                    minted = true;
+                                    break;
+                                }
+                            }
+                            if !minted {
+                                return Err(EngineError::DuplicateCommitment);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        self.mode = Mode::CloseOnly;
+        if self.vault_pool < 0
+            || self
+                .positions
+                .values()
+                .any(|p| p.collateral < 0 || p.size != 0)
+            || !self.conservation_holds()
+        {
+            return Err(EngineError::WindDownInsolvent);
+        }
+        Ok(())
+    }
+
+    fn op_wind_down_unbind(
+        &mut self,
+        owner: &PubKey,
+        market_id: MarketId,
+        amount: i128,
+        blinding: &Digest,
+    ) -> Result<(), EngineError> {
+        if self.mode != Mode::CloseOnly {
+            return Err(EngineError::CloseOnly);
+        }
+        if amount <= 0 {
+            return Err(EngineError::NonPositiveAmount);
+        }
+        let key = (*owner, market_id);
+        let mut pos = *self
+            .positions
+            .get(&key)
+            .ok_or(EngineError::UnknownPosition)?;
+        if pos.size != 0 || pos.collateral < amount {
+            return Err(EngineError::Risk {
+                source: RiskError::InsufficientMargin,
+                leg: None,
+            });
+        }
+        pos.collateral = pos
+            .collateral
+            .checked_sub(amount)
+            .ok_or(EngineError::Overflow)?;
+        self.mint_note(Note::new(*owner, 0, amount, *blinding))?;
+        self.positions.insert(key, pos);
+        Ok(())
+    }
+
+    fn op_wind_down_withdraw(
+        &mut self,
+        note_commitment: &Digest,
+        spend_key: &Digest,
+        to: &Option<[u8; 20]>,
+        nonce: u64,
+    ) -> Result<Option<WithdrawalOut>, EngineError> {
+        if self.mode != Mode::CloseOnly {
+            return Err(EngineError::CloseOnly);
+        }
+        self.op_withdraw(note_commitment, spend_key, to, nonce)
     }
 
     /// Liquidate `owner`'s position, returning the auto-deleverage haircuts the

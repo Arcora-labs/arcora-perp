@@ -63,6 +63,10 @@ pub struct PublicInputs {
     /// deposit that no `Deposited` event produced. Ordered LAST, mirroring
     /// `perp_core::commitment::DerivedRoots`.
     pub deposits_root: Digest,
+    /// A06: 0 ordinary, 1 one-shot SettleAll, 2 post-wind-down exits. Ordinary
+    /// commitments remain byte-for-byte legacy-compatible; only nonzero phases
+    /// append this word to the commitment.
+    pub wind_down_phase: u8,
 }
 
 impl PublicInputs {
@@ -72,18 +76,22 @@ impl PublicInputs {
     /// canonical implementation of this same seven-word hash. `commitment_matches_
     /// perp_core_derived_roots` below is the anti-drift guard tying the two together.
     pub fn commitment<H: Hasher>(&self) -> Digest {
-        H::hash_words(
-            Domain::StateRoot,
-            &[
-                self.prev_state_root,
-                self.batch_manifest_hash,
-                self.new_state_root,
-                self.ordered_root,
-                self.withdrawals_root,
-                self.rejected_root,
-                self.deposits_root,
-            ],
-        )
+        let ordinary = [
+            self.prev_state_root,
+            self.batch_manifest_hash,
+            self.new_state_root,
+            self.ordered_root,
+            self.withdrawals_root,
+            self.rejected_root,
+            self.deposits_root,
+        ];
+        if self.wind_down_phase == 0 {
+            H::hash_words(Domain::StateRoot, &ordinary)
+        } else {
+            let mut words = ordinary.to_vec();
+            words.push(perp_core::hash::word_u64(self.wind_down_phase as u64));
+            H::hash_words(Domain::StateRoot, &words)
+        }
     }
 }
 
@@ -104,6 +112,7 @@ pub fn run_transition(
         withdrawals_root: d.withdrawals_root,
         rejected_root: d.rejected_root,
         deposits_root: d.deposits_root,
+        wind_down_phase: d.wind_down_phase,
     })
 }
 
@@ -605,6 +614,7 @@ mod tests {
             withdrawals_root: [5u8; 32],
             rejected_root: [6u8; 32],
             deposits_root: [7u8; 32],
+            wind_down_phase: 0,
         };
         let mut other = base;
         other.rejected_root = [0x99u8; 32];
@@ -642,6 +652,7 @@ mod tests {
                 withdrawals_root: [c[4]; 32],
                 rejected_root: [c[5]; 32],
                 deposits_root: [c[6]; 32],
+                wind_down_phase: 0,
             };
             let derived = DerivedRoots {
                 prev_state_root: [c[0]; 32],
@@ -651,6 +662,7 @@ mod tests {
                 withdrawals_root: [c[4]; 32],
                 rejected_root: [c[5]; 32],
                 deposits_root: [c[6]; 32],
+                wind_down_phase: 0,
             };
             assert_eq!(
                 public.commitment::<Keccak256>(),
@@ -675,6 +687,7 @@ mod tests {
             withdrawals_root: [5u8; 32],
             rejected_root: [6u8; 32],
             deposits_root: [7u8; 32],
+            wind_down_phase: 0,
         };
         assert_eq!(canonical.commitment::<Keccak256>(), KAT_COMMIT7);
     }
@@ -822,6 +835,7 @@ mod tests {
             withdrawals_root: [0; 32],
             rejected_root: [0; 32],
             deposits_root: [0; 32],
+            wind_down_phase: 0,
         };
         let proof = prover.prove_sealed(&sealed, &public).unwrap();
         assert_eq!(proof.proof_bytes.len(), 32);

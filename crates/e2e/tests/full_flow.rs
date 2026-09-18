@@ -172,6 +172,7 @@ fn deposit_match_settle_prove_recover() {
         // scaffold: sibling roots are placeholder zeros, so deposits_root matches —
         // prove/verify here is self-consistent, not an on-chain commitment.
         deposits_root: [0u8; 32],
+        wind_down_phase: 0,
     };
     // the witness (positions/fills/margins) is sealed to the prover measurement
     let witness = b"sealed batch witness: cross-user matching + margins";

@@ -47,6 +47,7 @@ fn public_commitment_vector() {
         withdrawals_root: [0x05u8; 32],
         rejected_root: [0x06u8; 32],
         deposits_root: [0x07u8; 32],
+        wind_down_phase: 0,
     };
     let d = public.commitment::<Keccak256>();
     assert_eq!(
@@ -54,5 +55,23 @@ fn public_commitment_vector() {
         "27e3e52688359d5759ff4c7b0bea4d25a14b3c81652a4083d531592f827d8902",
         "PUBLIC COMMITMENT VECTOR (update Solidity CrossLayer.t.sol to match): {}",
         hex(&d)
+    );
+}
+
+#[test]
+fn a06_wind_down_phase_one_commitment_kat() {
+    let p = PublicInputs {
+        prev_state_root: [1; 32],
+        batch_manifest_hash: [2; 32],
+        new_state_root: [3; 32],
+        ordered_root: [4; 32],
+        withdrawals_root: [5; 32],
+        rejected_root: [6; 32],
+        deposits_root: [7; 32],
+        wind_down_phase: 1,
+    };
+    assert_eq!(
+        hex::encode(p.commitment::<Keccak256>()),
+        "10e0f1fecdde1dc0b2aad3f551163ce9ea181ecc40f44d3b935dd11c5c373b88"
     );
 }

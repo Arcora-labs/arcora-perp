@@ -199,6 +199,7 @@ fn main() {
         // demo scaffold: sibling roots are placeholder zeros (not real derivations), so
         // the deposits_root matches — prove/verify here is self-consistent, not on-chain.
         deposits_root: [0u8; 32],
+        wind_down_phase: 0,
     };
     let prover = AttestedProver::new(
         CommitmentProver::new(MEASUREMENT),

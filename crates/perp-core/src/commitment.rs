@@ -7,7 +7,7 @@
 //! constrains withdrawals to the burned notes.
 
 use crate::engine::BatchOp;
-use crate::hash::{Digest, Domain, Hasher};
+use crate::hash::{word_u64, Digest, Domain, Hasher};
 use crate::merkle::{ordered_root, rejected_root, withdrawals_root, WithdrawalLeaf};
 use crate::order::BatchManifest;
 use crate::{DefaultState, EngineError};
@@ -27,23 +27,54 @@ pub struct DerivedRoots {
     /// vault's own `depositChainTip` for the same count, so a batch cannot credit a
     /// deposit that no `Deposited` event produced.
     pub deposits_root: Digest,
+    /// 0 = ordinary batch, 1 = one-shot SettleAll, 2 = post-wind-down exits.
+    pub wind_down_phase: u8,
+}
+
+pub fn classify_wind_down_ops(ops: &[BatchOp]) -> Result<u8, EngineError> {
+    if ops.len() == 1 && matches!(ops[0], BatchOp::SettleAll) {
+        return Ok(1);
+    }
+    if !ops.is_empty()
+        && ops.iter().all(|op| {
+            matches!(
+                op,
+                BatchOp::WindDownUnbind { .. } | BatchOp::WindDownWithdraw { .. }
+            )
+        })
+    {
+        return Ok(2);
+    }
+    if ops.iter().any(|op| {
+        matches!(
+            op,
+            BatchOp::SettleAll | BatchOp::WindDownUnbind { .. } | BatchOp::WindDownWithdraw { .. }
+        )
+    }) {
+        return Err(EngineError::WindDownGrammar);
+    }
+    Ok(0)
 }
 
 impl DerivedRoots {
     /// The proof's public commitment: `keccak_words(StateRoot, [seven roots])`.
     pub fn commitment<H: Hasher>(&self) -> Digest {
-        H::hash_words(
-            Domain::StateRoot,
-            &[
-                self.prev_state_root,
-                self.manifest_hash,
-                self.new_state_root,
-                self.ordered_root,
-                self.withdrawals_root,
-                self.rejected_root,
-                self.deposits_root,
-            ],
-        )
+        let ordinary = [
+            self.prev_state_root,
+            self.manifest_hash,
+            self.new_state_root,
+            self.ordered_root,
+            self.withdrawals_root,
+            self.rejected_root,
+            self.deposits_root,
+        ];
+        if self.wind_down_phase == 0 {
+            H::hash_words(Domain::StateRoot, &ordinary)
+        } else {
+            let mut words = ordinary.to_vec();
+            words.push(word_u64(self.wind_down_phase as u64));
+            H::hash_words(Domain::StateRoot, &words)
+        }
     }
 }
 
@@ -55,6 +86,7 @@ pub fn derive_roots(
     ops: &[BatchOp],
     manifest: &BatchManifest,
 ) -> Result<DerivedRoots, EngineError> {
+    let wind_down_phase = classify_wind_down_ops(ops)?;
     let prev_state_root = state.state_root();
     let batch_id = state.next_batch_id;
     // tie the manifest to the state (BOUNDARY 1: structural only — no matcher rerun)
@@ -86,6 +118,7 @@ pub fn derive_roots(
         withdrawals_root,
         rejected_root,
         deposits_root,
+        wind_down_phase,
     })
 }
 
@@ -224,6 +257,7 @@ mod tests {
             withdrawals_root: [5u8; 32],
             rejected_root: [6u8; 32],
             deposits_root: [7u8; 32],
+            wind_down_phase: 0,
         };
         let expected = Keccak256::hash_words(
             crate::hash::Domain::StateRoot,

@@ -745,7 +745,7 @@ contract DarkPerpSettlementTest is MiniTest {
         // the SEC-019 head is read here too, for exactly the reason above: these are
         // external staticcalls that must not be made after `vm.expectRevert` is armed.
         (dTip, dCount) = _head();
-        bytes32 commitment = s.publicCommitment(prev, manifestHash, newRoot, bytes32(0), wroot, bytes32(0), dTip);
+        bytes32 commitment = s.windDownCommitment(prev, manifestHash, newRoot, bytes32(0), wroot, bytes32(0), dTip, 1);
         proof = abi.encodePacked(commitment);
     }
 
@@ -823,7 +823,7 @@ contract DarkPerpSettlementTest is MiniTest {
         // chain tip — this exercises finalSettle's SEC-019 check against live state.
         (bytes32 dTip, uint64 dCount) = _head();
         assertTrue(dTip != bytes32(0), "wind-down pins a non-genesis deposit chain");
-        bytes32 commitment = s.publicCommitment(prev, bytes32("m"), newRoot, bytes32(0), leaf, bytes32(0), dTip);
+        bytes32 commitment = s.windDownCommitment(prev, bytes32("m"), newRoot, bytes32(0), leaf, bytes32(0), dTip, 1);
         s.finalSettle(
             prev, bytes32("m"), newRoot, bytes32(0), leaf, bytes32(0), dTip, dCount, abi.encodePacked(commitment)
         );
@@ -878,6 +878,57 @@ contract DarkPerpSettlementTest is MiniTest {
         uint256 before = s.batchCount();
         _governanceFinalSettle();
         assertEq(s.batchCount(), before + 1, "wind-down lands per the original grace deadline despite the later slash");
+    }
+
+
+    function test_a06_finalSettle_rejects_ordinary_phase_zero_proof() public {
+        _enterCloseOnlyViaLiveness();
+        vm.roll(block.number + GRACE + 1);
+        (bytes32 p, bytes32 mh, bytes32 nr, bytes32 wr, bytes32 dTip, uint64 dCount,) = _finalSettleArgs();
+        bytes32 ordinary = s.publicCommitment(p, mh, nr, bytes32(0), wr, bytes32(0), dTip);
+        vm.expectRevert(DarkPerpSettlement.BadProof.selector);
+        s.finalSettle(p, mh, nr, bytes32(0), wr, bytes32(0), dTip, dCount, abi.encodePacked(ordinary));
+    }
+
+    function test_a06_settleBatch_rejects_phase_one_proof() public {
+        bytes32 prev = s.currentStateRoot();
+        bytes32 mh = bytes32("phase1");
+        bytes32 nr = keccak256("phase1-root");
+        (bytes32 dTip, uint64 dCount) = _head();
+        bytes32 phase1 = s.windDownCommitment(prev, mh, nr, bytes32(0), bytes32(0), bytes32(0), dTip, 1);
+        vm.expectRevert(DarkPerpSettlement.BadProof.selector);
+        s.settleBatch(prev, mh, nr, bytes32(0), bytes32(0), bytes32(0), dTip, dCount, abi.encodePacked(phase1));
+    }
+
+    function test_a06_final_settle_is_one_shot_and_phase_two_exit_is_repeatable() public {
+        _enterCloseOnlyViaLiveness();
+        vm.roll(block.number + GRACE + 1);
+        _governanceFinalSettle();
+        assertTrue(s.windDownSettled(), "phase 1 latched");
+
+        (bytes32 p, bytes32 mh, bytes32 nr, bytes32 wr, bytes32 dTip, uint64 dCount,) = _finalSettleArgs();
+        bytes32 again = s.windDownCommitment(p, mh, nr, bytes32(0), wr, bytes32(0), dTip, 1);
+        vm.expectRevert(bytes("wind-down already settled"));
+        s.finalSettle(p, mh, nr, bytes32(0), wr, bytes32(0), dTip, dCount, abi.encodePacked(again));
+
+        for (uint256 i = 0; i < 2; i++) {
+            bytes32 prev = s.currentStateRoot();
+            bytes32 manifest = keccak256(abi.encodePacked("exit", i));
+            bytes32 next = keccak256(abi.encodePacked("exit-root", i));
+            (bytes32 tip, uint64 count) = _head();
+            bytes32 phase2 = s.windDownCommitment(prev, manifest, next, bytes32(0), bytes32(0), bytes32(0), tip, 2);
+            s.finalExit(prev, manifest, next, bytes32(0), bytes32(0), bytes32(0), tip, count, abi.encodePacked(phase2));
+            assertEq(s.currentStateRoot(), next, "phase 2 advanced root");
+        }
+    }
+
+    function test_a06_finalExit_rejects_before_phase_one() public {
+        _enterCloseOnlyViaLiveness();
+        bytes32 prev = s.currentStateRoot();
+        (bytes32 tip, uint64 count) = _head();
+        bytes32 c = s.windDownCommitment(prev, bytes32("x"), bytes32("y"), bytes32(0), bytes32(0), bytes32(0), tip, 2);
+        vm.expectRevert(bytes("wind-down not settled"));
+        s.finalExit(prev, bytes32("x"), bytes32("y"), bytes32(0), bytes32(0), bytes32(0), tip, count, abi.encodePacked(c));
     }
 
     receive() external payable {}
