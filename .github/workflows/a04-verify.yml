@@ -1,0 +1,227 @@
+name: A04 cancellation verification
+on:
+  push:
+    branches: [fix/a04-cancellation-verified-2026-09-18]
+permissions:
+  contents: read
+concurrency:
+  group: a04-cancellation-verification
+  cancel-in-progress: true
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      CARGO_PROFILE_TEST_OPT_LEVEL: '2'
+      CARGO_PROFILE_TEST_DEBUG_ASSERTIONS: 'true'
+      CARGO_PROFILE_TEST_OVERFLOW_CHECKS: 'true'
+      CARGO_TERM_COLOR: never
+      NO_COLOR: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - name: Materialize reviewed candidate with exact source checks
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import base64, hashlib, lzma, pathlib, re, subprocess
+          p = pathlib.Path('.remediation-a04')
+          encoded = ''.join((p / f'part{i}.b64').read_text().strip() for i in (1, 2, 3))
+          patch = lzma.decompress(base64.b64decode(encoded, validate=True))
+          assert hashlib.sha256(patch).hexdigest() == '3dd64f15433553c2c24f9dcb8bc1507f20ff3cd9157c72b81649356d1c002bdc', 'candidate checksum mismatch'
+          allowed = {'crates/gateway/src/audit_cancellation_tests.rs', 'crates/gateway/src/main.rs', 'crates/matcher/src/book.rs', 'crates/sequencer/src/cancellation.rs', 'crates/sequencer/src/cancellation/tests.rs', 'crates/sequencer/src/lib.rs', 'frontend/src/api/clientContract.test.ts', 'frontend/src/api/mockClient.ts', 'frontend/src/api/realClient.test.ts', 'frontend/src/api/realClient.ts', 'frontend/src/components/Tables.tsx', 'frontend/src/components/demoGates.test.tsx', 'frontend/src/domain/cancellation.ts', 'frontend/src/domain/types.ts'}
+          seen = set()
+          for chunk in patch.decode().split('diff --git ')[1:]:
+              line = chunk.splitlines()[0]
+              match = re.fullmatch(r'a/(\S+) b/(\S+)', line)
+              assert match and match[1] == match[2] and match[1] in allowed, line
+              path = match[1]
+              before = re.search(r'^index ([0-9a-f]{40})\.\.', chunk, re.M)[1]
+              if before == '0' * 40:
+                  assert not pathlib.Path(path).exists(), path
+              else:
+                  actual = subprocess.check_output(['git', 'hash-object', path], text=True).strip()
+                  assert before == actual, f'base file changed: {path}'
+              seen.add(path)
+          assert seen == allowed
+          (p / 'candidate.patch').write_bytes(patch)
+          subprocess.run(['git', 'apply', '--check', str(p / 'candidate.patch')], check=True)
+          subprocess.run(['git', 'apply', '--index', str(p / 'candidate.patch')], check=True)
+          api = pathlib.Path('docs/API.md')
+          text = api.read_text()
+          old = '''**Cancel is effectively pre-seal only.** `DELETE /v1/orders/:orderId` refuses any
+          order already **sealed** into a batch — even while its finality is still
+          `ACCEPTED` — and every resting order seals within one sequencer tick (~700 ms).
+          So in practice only an order cancelled immediately after submission succeeds;
+          cancelling a resting order returns the refusal until cancel-inside-the-window
+          lands (SEC-025-E2).'''
+          new = '''**Cancellation uses the live remainder, not finality.** A pending order or a
+          resting maker remainder can be cancelled, including after a partial fill is
+          MATCHED or SETTLED. Prior fills and position balances are not reversed.
+          GET /v1/orders includes the authenticated owner's `cancellable` capability.
+          DELETE returns `{ orderId, cancelled: true, cancelledSize }`, with the exact
+          removed size as a decimal string. The cancelled row leaves the order list;
+          complete cancellation history and cumulative fill/VWAP accounting remain A05.
+
+          The gateway serializes cancellation and the entire matching tick under the
+          same state mutex. The existing Cancelled reason enters the current window
+          manifest. Proof-v1 replays accounting and commits that manifest; it does not
+          independently prove cancellation authorization or CLOB matching fairness.
+
+          Production without persistence refuses cancellation before mutation (503).
+          With persistence, success waits for a durable snapshot ACK. Write failure or
+          timeout returns 503 with `durability: "unknown"`; the in-memory quote remains
+          removed, but restart durability is unconfirmed. Do not infer safe replacement
+          from an empty order list after this error. Obtain confirmed durable state
+          before replacing the quote. Snapshot acknowledgement is not L1 settlement.'''
+          assert text.count(old) == 1, 'API note base changed'
+          text = text.replace(old, new)
+          old_row = 'cancel a still-`ACCEPTED` order **that has not yet sealed into a batch** (see the cancel note below)'
+          assert text.count(old_row) == 1
+          api.write_text(text.replace(old_row, 'cancel a pending order or live maker remainder (see the cancel note below)'))
+          allowed.add('docs/API.md')
+          (p / 'allowed.json').write_text(__import__('json').dumps(sorted(allowed)))
+          print('Candidate and API documentation materialized; exact input hashes verified.')
+          PY
+      - name: Run complete verification and a regression negative control
+        shell: bash
+        run: |
+          python3 -u - <<'PY'
+          import datetime, hashlib, json, os, pathlib, re, subprocess
+          root = pathlib.Path.cwd()
+          out = root / 'a04-evidence'
+          out.mkdir()
+          report = {'workflow_head': os.environ['GITHUB_SHA'], 'run_id': int(os.environ['GITHUB_RUN_ID']), 'base_main': '48e03ac3db123cdf159c10f1e0c86262043a377e', 'complete': False, 'all_passed': False, 'commands': [], 'live_payments': False, 'real_sp1_proof': False, 'live_tee': False}
+          env = {k: v for k, v in os.environ.items() if not k.startswith(('DARKPERP_', 'ENCLAVE_', 'ORACLE_', 'ATTESTATION_', 'L1_', 'PROVER_', 'FIN_', 'INSURANCE_', 'VITE_')) and k not in ('DEV_INSECURE', 'GATEWAY_URL', 'PORT', 'GATEWAY_SIGNER_KEY', 'GITHUB_TOKEN', 'GH_TOKEN')}
+          def save():
+              (out / 'status.json').write_text(json.dumps(report, indent=2) + '\n')
+          def run(name, args, cwd=root):
+              print('RUN', name, flush=True)
+              entry = {'name': name, 'command': args, 'exit_code': None}
+              try:
+                  with (out / (name + '.log')).open('w') as log:
+                      result = subprocess.run(args, cwd=cwd, env=env, stdout=log, stderr=subprocess.STDOUT, timeout=1500)
+                  entry['exit_code'] = result.returncode
+              except subprocess.TimeoutExpired:
+                  entry['timed_out'] = True
+              report['commands'].append(entry)
+              save()
+              if entry['exit_code'] != 0:
+                  print((out / (name + '.log')).read_text()[-12000:])
+                  raise SystemExit(1)
+          save()
+          run('format', ['cargo', 'fmt', '--all'])
+          run('gateway-a04', ['cargo', 'test', '--locked', '-p', 'gateway', 'audit_cancellation'])
+          run('sequencer-a04', ['cargo', 'test', '--locked', '-p', 'sequencer', 'cancellation'])
+          run('workspace', ['cargo', 'test', '--workspace', '--locked'])
+          run('clippy', ['cargo', 'clippy', '--workspace', '--all-targets', '--locked', '--', '-D', 'warnings'])
+          run('serde', ['cargo', 'test', '-p', 'perp-core', '--features', 'serde', '--locked'])
+          run('no-std-core', ['cargo', 'build', '-p', 'perp-core', '--no-default-features', '--features', 'serde', '--locked'])
+          run('no-std-matcher', ['cargo', 'build', '-p', 'matcher', '--no-default-features', '--locked'])
+          run('frontend-install', ['pnpm', 'install', '--frozen-lockfile'], root / 'frontend')
+          run('frontend-tests', ['pnpm', 'test'], root / 'frontend')
+          run('frontend-build', ['pnpm', 'build'], root / 'frontend')
+          # Reintroduce only the original blanket sealed-order refusal. The exact
+          # behavioral regression must fail at runtime, not merely fail compilation.
+          source = root / 'crates/gateway/src/main.rs'
+          good = source.read_bytes()
+          needle = '        let cancelled = self\n            .seq\n            .cancel_order(&owner, &order, submitted)'
+          text = good.decode()
+          assert text.count(needle) == 1
+          mutant = text.replace(needle, '        if submitted { return Err("legacy sealed-order refusal".into()); }\n' + needle)
+          try:
+              source.write_text(mutant)
+              args = ['cargo', 'test', '--locked', '-p', 'gateway', 'tests::audit_cancellation::sealed_resting_order_cancels_and_appears_in_the_window_manifest', '--', '--exact']
+              with (out / 'negative-control.log').open('w') as log:
+                  result = subprocess.run(args, env=env, stdout=log, stderr=subprocess.STDOUT, timeout=600)
+              log = (out / 'negative-control.log').read_text()
+              assert result.returncode == 101 and 'test result: FAILED. 0 passed; 1 failed;' in log, 'negative control did not execute and fail exactly one test'
+              report['negative_control'] = {'legacy_sealed_refusal_rejected': True, 'executed': 1, 'expected_failed': 1}
+          finally:
+              source.write_bytes(good)
+          assert source.read_bytes() == good
+          run('format-check', ['cargo', 'fmt', '--all', '--check'])
+          run('diff-check', ['git', 'diff', '--check', 'HEAD'])
+          for name in ('gateway-a04', 'sequencer-a04', 'workspace', 'serde'):
+              text = (out / (name + '.log')).read_text()
+              results = re.findall(r'test result: ok\. (\d+) passed; (\d+) failed; (\d+) ignored;', text)
+              counts = [sum(int(row[i]) for row in results) for i in range(3)]
+              assert counts[0] > 0 and counts[1:] == [0, 0], (name, counts)
+              report[name] = {'passed': counts[0], 'failed': counts[1], 'ignored': counts[2]}
+          assert report['gateway-a04']['passed'] == 10 and report['sequencer-a04']['passed'] == 10
+          assert report['workspace']['passed'] >= 629
+          text = re.sub(r'\x1b\[[0-9;]*m', '', (out / 'frontend-tests.log').read_text())
+          match = re.search(r'Tests\s+(\d+) passed', text)
+          assert match and int(match[1]) >= 270, 'frontend test count missing or reduced'
+          report['frontend'] = {'passed': int(match[1]), 'live_gateway_test_skipped': True}
+          allowed = set(json.loads(pathlib.Path('.remediation-a04/allowed.json').read_text()))
+          changed = set(subprocess.check_output(['git', 'diff', 'HEAD', '--name-only'], text=True).splitlines())
+          assert changed == allowed, (changed - allowed, allowed - changed)
+          patch = subprocess.check_output(['git', 'diff', 'HEAD', '--binary', '--full-index', '--', *sorted(allowed)])
+          (out / 'verified.patch').write_bytes(patch)
+          report['verified_patch_sha256'] = hashlib.sha256(patch).hexdigest()
+          report['source_files'] = {name: {'git_blob': subprocess.check_output(['git', 'hash-object', name], text=True).strip(), 'sha256': hashlib.sha256(pathlib.Path(name).read_bytes()).hexdigest()} for name in sorted(allowed)}
+          report.update(complete=True, all_passed=True, finished_utc=datetime.datetime.now(datetime.timezone.utc).isoformat())
+          save()
+          print(json.dumps(report, indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: a04-verification-${{ github.run_id }}
+          path: a04-evidence/
+          if-no-files-found: error
+          retention-days: 14
+  publish:
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/a04-cancellation-verified-2026-09-18
+      - uses: actions/download-artifact@v4
+        with:
+          name: a04-verification-${{ github.run_id }}
+          path: /tmp/a04-evidence
+      - name: Publish verified application source to the fix branch only
+        env:
+          EXPECTED_HEAD: ${{ github.sha }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib, subprocess
+          out = pathlib.Path('/tmp/a04-evidence')
+          report = json.loads((out / 'status.json').read_text())
+          assert report['complete'] and report['all_passed'] and report['workflow_head'] == os.environ['EXPECTED_HEAD']
+          patch = (out / 'verified.patch').read_bytes()
+          assert hashlib.sha256(patch).hexdigest() == report['verified_patch_sha256']
+          subprocess.run(['git', 'apply', '--check', str(out / 'verified.patch')], check=True)
+          subprocess.run(['git', 'apply', '--index', str(out / 'verified.patch')], check=True)
+          for name, values in report['source_files'].items():
+              assert hashlib.sha256(pathlib.Path(name).read_bytes()).hexdigest() == values['sha256'], name
+          target = pathlib.Path('docs/audits/2026-09-18-a04-verification.json')
+          target.parent.mkdir(parents=True, exist_ok=True)
+          target.write_text(json.dumps(report, indent=2) + '\n')
+          PY
+          git rm .remediation-a04/part1.b64 .remediation-a04/part2.b64 .remediation-a04/part3.b64 .github/workflows/a04-verify.yml
+          git add docs/audits/2026-09-18-a04-verification.json
+          git diff --cached --check
+          git config user.name Kubudak90
+          git config user.email 95706654+Kubudak90@users.noreply.github.com
+          git commit -m 'fix(a04): cancel live order remainders with durable acknowledgements and replay regressions'
+          git push origin HEAD:refs/heads/fix/a04-cancellation-verified-2026-09-18
