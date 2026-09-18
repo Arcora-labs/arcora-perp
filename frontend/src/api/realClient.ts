@@ -1463,10 +1463,11 @@ export class RealDarkPerpClient implements DarkPerpClient {
     from: string,
     amount: bigint,
   ): Promise<{ ownerCommit: string; sig: string }> {
+    const marketId = this.clientSelectedMarket;
     const acct = await this.ensureAccount();
     const r = await this.post<{ ownerCommit?: unknown; sig?: unknown }>(
       "/v1/accounts/deposit/authorize",
-      { from, amount: s(amount) },
+      { from, amount: s(amount), marketId, purpose: "collateral" },
       { "X-Api-Key": acct.apiKey },
     );
     if (typeof r.ownerCommit !== "string" || !/^0x[0-9a-fA-F]{64}$/.test(r.ownerCommit)) {
@@ -1485,11 +1486,14 @@ export class RealDarkPerpClient implements DarkPerpClient {
    */
   async creditOnchainDeposit(txHash: string): Promise<bigint> {
     const acct = await this.ensureAccount();
-    const r = await this.post<{ credited?: unknown }>(
+    const r = await this.post<{ credited?: unknown; status?: unknown }>(
       "/v1/accounts/deposit/onchain",
       { txHash, marketId: this.clientSelectedMarket },
       { "X-Api-Key": acct.apiKey },
     );
+    if (r.status === "pendingFinalizedIngestion") {
+      throw new Error("Deposit received on-chain and awaiting finalized ingestion. It will be credited automatically; do not send another deposit.");
+    }
     // Review F4: like requestWithdrawal — the credit moved the /v1 balance
     // and no /v1/ws event announces a deposit; re-read through the guarded
     // refresh or the balance stays stale until an unrelated fill.

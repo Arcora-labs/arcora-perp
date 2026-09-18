@@ -28,7 +28,8 @@ use std::process::Command;
 /// a STALE topic0 means the log matcher never fires and EVERY deposit silently fails to
 /// credit, so this is load-bearing. The `deposit_topic0_matches_event_signature` test
 /// recomputes it from the signature string and guards against drift.
-const DEPOSIT_TOPIC0: &str = "0xdf3f00354434921901d8a49f26c4b0e4a907d497e57f2e9478e9ba4ea43eb0f9";
+pub(super) const DEPOSIT_TOPIC0: &str =
+    "0xdf3f00354434921901d8a49f26c4b0e4a907d497e57f2e9478e9ba4ea43eb0f9";
 
 /// Per-RPC timeout handed to every `cast` invocation (bounds each JSON-RPC call).
 const CAST_RPC_TIMEOUT_SECS: u64 = 15;
@@ -80,6 +81,26 @@ pub struct L1Status {
 }
 
 impl L1 {
+    #[cfg(test)]
+    pub(crate) fn test_reader(rpc: String) -> Self {
+        let dir = std::env::temp_dir().join(format!(
+            "a01-readonly-{}-{}",
+            std::process::id(),
+            rand::random::<u64>()
+        ));
+        std::fs::create_dir(&dir).unwrap();
+        Self {
+            rpc,
+            settlement: String::new(),
+            keystore_path: String::new(),
+            password_file: String::new(),
+            _keystore: std::sync::Arc::new(KeystoreDir(dir)),
+            usdc: None,
+            vault: None,
+            nonce: std::sync::Arc::new(std::sync::Mutex::new(None)),
+        }
+    }
+
     /// Configure from env. Requires `L1_SETTLEMENT` + `L1_SEQUENCER_KEY`; RPC defaults
     /// to Base Sepolia. `L1_USDC` + `L1_VAULT` enable the USDC bond, deposit
     /// confirmation, and withdrawal-claim pruning.
@@ -131,6 +152,25 @@ impl L1 {
             vault: std::env::var("L1_VAULT").ok(),
             nonce: std::sync::Arc::new(std::sync::Mutex::new(None)),
         })
+    }
+
+    /// Read-only JSON-RPC, with the same subprocess and network deadlines as the bridge.
+    /// No signing key, transaction send, or receipt-based credit shortcut is exposed.
+    pub(crate) fn read_rpc(
+        &self,
+        method: &str,
+        params: &[serde_json::Value],
+    ) -> Result<serde_json::Value, String> {
+        let mut args = vec![
+            "rpc".to_string(),
+            "--rpc-url".to_string(),
+            self.rpc.clone(),
+            method.to_string(),
+        ];
+        args.extend(params.iter().map(|v| v.to_string()));
+        let refs: Vec<&str> = args.iter().map(String::as_str).collect();
+        let out = self.cast(&refs)?;
+        serde_json::from_str(&out).map_err(|e| format!("RPC response JSON: {e}"))
     }
 
     /// The confirmed transaction count of the sequencer address = its next unused nonce.
@@ -474,15 +514,6 @@ impl L1 {
     /// newTip)` log emitted by the configured vault. The caller binds `from` to the
     /// account, recomputes `keccak(owner ‖ deposit_blind)` against the on-chain
     /// `owner_commit` (misattribution guard), and dedups by tx hash before crediting.
-    pub fn verify_deposit_tx(&self, tx: &str) -> Result<([u8; 20], [u8; 32], u128, u64), String> {
-        let vault = self
-            .vault
-            .as_ref()
-            .ok_or("L1_VAULT not set")?
-            .to_lowercase();
-        let json = self.cast(&["receipt", tx, "--rpc-url", &self.rpc, "--json"])?;
-        parse_deposit_receipt(&json, &vault)
-    }
 
     /// Slice 3b-2a / SEC-025-B: submit the gateway-derived roots + the proof through the
     /// nine-parameter `settleBatch` — no `publicCommitment` synthesis. Every value in
@@ -943,6 +974,7 @@ fn data_word(data: &str, n: usize) -> Option<&str> {
 /// parse is unit-testable against a canned receipt fixture. `vault` is the lowercased
 /// vault address the log must originate from — a `Deposit` log from any other contract
 /// is ignored.
+#[cfg(test)]
 fn parse_deposit_receipt(
     json: &str,
     vault: &str,

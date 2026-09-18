@@ -58,7 +58,10 @@ use std::path::Path;
 /// a cross-version read. 025-A already took v4 for `Gw.bootstrap`, and two pieces
 /// claiming one magic means whichever lands second changes the positional schema
 /// without changing its guard — the exact misread the magic exists to refuse.
-const MAGIC: &[u8; 8] = b"DPSNAP5\0";
+// v6: explicit A01 extension; the legacy Gw/Account positional encoding is frozen.
+// v5 is read losslessly and migrated; older versions remain refused.
+const MAGIC: &[u8; 8] = b"DPSNAP6\0";
+const LEGACY_MAGIC: &[u8; 8] = b"DPSNAP5\0";
 
 /// Keystream block derived from the SECRET seed and the per-snapshot nonce.
 fn keystream(seed: &[u8; 32], nonce: &Digest, len: usize) -> Vec<u8> {
@@ -124,7 +127,7 @@ pub fn open(sealed: &[u8], seed: &[u8; 32]) -> Result<Vec<u8>, String> {
     if sealed.len() < 8 + 32 + 32 {
         return Err("snapshot too short".into());
     }
-    if &sealed[..8] != MAGIC {
+    if &sealed[..8] != MAGIC && &sealed[..8] != LEGACY_MAGIC {
         return Err("snapshot magic/version mismatch".into());
     }
     let mut nonce = [0u8; 32];

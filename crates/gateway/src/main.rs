@@ -46,6 +46,8 @@ use sequencer::{adl_tag, adl_tag_key, EnclaveIdentity, SealedBatch, Sequencer, W
 
 mod bootstrap;
 mod candles;
+mod deposit_ingestion;
+mod deposit_rpc;
 mod enclave_epoch;
 mod l1;
 mod order_log;
@@ -967,6 +969,8 @@ struct WState {
     l1: Option<WL1>,
     /// FIN-001 settle-loop health for operators/monitors: "HEALTHY"|"DEGRADED"|"HELD".
     settlement_health: String,
+    /// A01 finalized-prefix/durability health, without permit/account secrets.
+    deposit_ingestion: serde_json::Value,
     /// Consecutive settle failures behind `settlement_health` (0 when healthy).
     settlement_consecutive_failures: u32,
     /// Most recent settle error while unhealthy (omitted when none).
@@ -1180,6 +1184,7 @@ struct Account {
 /// by the guards WITHOUT mutating anything (SEC-025-A Task 3). Existing so the
 /// insurance-bootstrap path can run the same validation as a user deposit and then
 /// route the value differently, instead of duplicating the security checks.
+#[cfg(test)]
 struct ValidatedDeposit {
     wallet: Wallet,
     amt: i128,
@@ -1203,6 +1208,9 @@ const MAX_RECEIPT_CACHE: usize = 4096;
 
 #[derive(Serialize, serde::Deserialize)]
 struct Gw {
+    // A01 extension is versioned outside the frozen v5 positional Gw encoding.
+    #[serde(skip)]
+    deposits: deposit_ingestion::DepositState,
     seq: Sequencer,
     #[serde(skip)]
     receipt_cache: ReceiptCache,
@@ -1849,6 +1857,7 @@ impl Gw {
         // boot config). Log-only — no behavior change.
         println!("[state] genesis engine root {}", hex32(&genesis_root));
         let mut gw = Gw {
+            deposits: Default::default(),
             seq,
             receipt_cache: ReceiptCache::default(),
             archive,
@@ -1923,7 +1932,11 @@ impl Gw {
             .iter()
             .map(|m| (m.id, m.reference_price, m.px, m.live))
             .collect();
-        postcard::to_allocvec(&(self, mkt_px)).expect("snapshot encode")
+        let mut bytes = deposit_ingestion::SNAPSHOT_V6.to_vec();
+        bytes.extend(
+            postcard::to_allocvec(&(self, mkt_px, &self.deposits)).expect("snapshot encode"),
+        );
+        bytes
     }
 
     /// Restore from snapshot plaintext, rebuilding the runtime-only parts exactly
@@ -1931,8 +1944,35 @@ impl Gw {
     /// `ENCLAVE_SEED` — the snapshot never carries the signing secret), and the
     /// static market table with the persisted dynamics overlaid.
     fn boot_restored(plain: &[u8]) -> Result<Self, String> {
-        let (mut gw, mkt_px): (Gw, Vec<(u64, i128, i128, bool)>) =
-            postcard::from_bytes(plain).map_err(|e| format!("snapshot decode: {e}"))?;
+        type MarketDynamics = Vec<(u64, i128, i128, bool)>;
+        let (mut gw, mkt_px): (Gw, MarketDynamics) = if let Some(payload) =
+            plain.strip_prefix(deposit_ingestion::SNAPSHOT_V6)
+        {
+            let ((mut gw, prices, deposits), rest): (
+                (Gw, MarketDynamics, deposit_ingestion::DepositState),
+                _,
+            ) = postcard::take_from_bytes(payload)
+                .map_err(|e| format!("v6 snapshot decode: {e}"))?;
+            if !rest.is_empty() {
+                return Err("trailing v6 snapshot bytes".into());
+            }
+            gw.deposits = deposits;
+            (gw, prices)
+        } else {
+            // Frozen DPSNAP5 positional layout: preserve all fields, including
+            // every secret blind. Missing routing remains explicitly unresolved.
+            let (mut legacy, rest): ((Gw, MarketDynamics), _) =
+                postcard::take_from_bytes(plain).map_err(|e| format!("v5 snapshot decode: {e}"))?;
+            if !rest.is_empty() {
+                return Err("trailing v5 snapshot bytes".into());
+            }
+            legacy.0.deposits.legacy_prefix = Some((
+                legacy.0.seq.state.consumed_deposit_count,
+                legacy.0.seq.state.consumed_deposit_tip,
+            ));
+            legacy
+        };
+        gw.validate_deposit_state()?;
 
         let attestation = attest_from_env();
         let measurement = attestation
@@ -2165,6 +2205,7 @@ impl Gw {
     /// copy drifts). Pure by contract: calling it twice succeeds twice, because
     /// nothing here consumes the authorization or advances a counter.
     #[allow(clippy::too_many_arguments)] // the L1 `Deposit` event's fields, threaded flat; a struct adds only ceremony
+    #[cfg(test)]
     fn validated_deposit(
         &self,
         key: &[u8; 32],
@@ -2251,6 +2292,7 @@ impl Gw {
     /// consume the one-shot authorization, mark the tx processed. Runs ONLY after
     /// the funding op succeeded — on any Err the caller must skip it, so a failed
     /// confirm stays retriable (nothing consumed, nothing marked).
+    #[cfg(test)]
     fn commit_deposit_bookkeeping(
         &mut self,
         key: &[u8; 32],
@@ -2278,6 +2320,7 @@ impl Gw {
     /// `commit_deposit_bookkeeping` (both shared with the insurance bootstrap,
     /// SEC-025-A); this composes them around the user-deposit funding op.
     #[allow(clippy::too_many_arguments)] // the L1 `Deposit` event's fields, threaded flat; a struct adds only ceremony
+    #[cfg(test)]
     fn account_confirm_deposit(
         &mut self,
         key: &[u8; 32],
@@ -2374,6 +2417,7 @@ impl Gw {
     /// apply": it spends a note the guards already vetted when the record was written,
     /// and consumes nothing from THIS request.)
     #[allow(clippy::too_many_arguments)] // the L1 `Deposit` event's fields, threaded flat; a struct adds only ceremony
+    #[cfg(test)]
     fn bootstrap_insurance(
         &mut self,
         key: &[u8; 32],
@@ -2556,6 +2600,7 @@ impl Gw {
         auth_nonce: u64,
         sig: &[u8; 65],
     ) -> Result<Withdrawal, String> {
+        self.deposits.check_ready()?;
         if amount <= 0 {
             return Err("Amount must be positive.".into());
         }
@@ -2672,6 +2717,7 @@ impl Gw {
         &mut self,
         chain_batch_count: u64,
     ) -> Result<Option<(WindowWitness, Vec<Withdrawal>)>, String> {
+        self.deposits.check_ready()?;
         // SEC-025-B break 4: a window can carry consensus-relevant manifest content with
         // an UNCHANGED engine root — a resting unfilled order is in `ordered` but moves no
         // state. Settling is what populates the challenge-answer store, and both on-chain
@@ -2923,6 +2969,7 @@ impl Gw {
     /// deployment has not launched. They stack on the same handler, and an operator who
     /// reads one message while the other is the real cause diagnoses the wrong system.
     fn refuse_if_gate_closed(&self) -> Result<(), String> {
+        self.deposits.check_ready()?;
         if self.trading_gate == trading_gate::TradingGate::Closed {
             return Err(
                 "Trading has not been opened on this deployment yet — the launch gate is \
@@ -3761,6 +3808,7 @@ impl Gw {
         auth_nonce: u64,
         sig: &[u8; 65],
     ) -> Result<i128, String> {
+        self.deposits.check_ready()?;
         let (wallet, last_nonce) = {
             let a = self.accounts.get(key).ok_or("unknown account")?;
             (a.wallet, a.last_withdraw_nonce)
@@ -4179,6 +4227,9 @@ impl Gw {
 
     // ── tick: oracle walk, seal pending + MM counters, settle, maintenance ───
     fn tick(&mut self) -> (Vec<WEvent>, Vec<String>) {
+        if self.deposits.check_ready().is_err() {
+            return (vec![], vec![]);
+        }
         self.tick += 1;
         let now = now_ms();
         // 1) oracle update. Markets with a LIVE feed keep the real transcript the
@@ -4656,6 +4707,15 @@ impl Gw {
                 withdrawals_root: s.withdrawals_root.clone(),
             }),
             settlement_health: self.settle_health.health().as_str().to_string(),
+            deposit_ingestion: serde_json::json!({
+                "state": if self.deposits.halt.is_some() { "halted" } else if self.deposits.check_ready().is_err() { "paused" } else { "ready" },
+                "consumedCount": self.seq.state.consumed_deposit_count,
+                "consumedTip": hex0x(&self.seq.state.consumed_deposit_tip),
+                "anchor": self.deposits.anchor,
+                "halt": self.deposits.halt,
+                "lastError": self.deposits.last_error,
+                "unresolvedPermits": self.accounts.values().flat_map(|a| a.deposit_authorizations.keys()).filter(|c| !self.deposits.routes.contains_key(*c)).count(),
+            }),
             settlement_consecutive_failures: self.settle_health.consecutive_failures(),
             settlement_last_error: self.settle_health.last_error().map(|s| s.to_string()),
             settlement_held_since_ms: self.settlement_held_since_ms,
@@ -4812,6 +4872,7 @@ fn seed_insurance_unbacked(
 ///
 /// Deliberately no `archive.record`: the note is consumed in the same breath and no wallet
 /// ever needs to decrypt it — same reasoning as the demo funnel.
+#[cfg(test)]
 fn fund_insurance_backed(
     seq: &mut Sequencer,
     wallet: &Wallet,
@@ -4863,6 +4924,7 @@ fn fund_insurance_backed(
 /// `FundAmountError`: the arms leave the engine in DIFFERENT states, and the bootstrap
 /// driver persists a record whose truth depends on WHICH leg failed — a `String` cannot
 /// be matched on, and matching on message text would couple the record to prose.
+#[cfg(test)]
 enum FundInsuranceError {
     /// Leg 1 (`op_deposit`) refused the credit — all-or-nothing, the engine state is
     /// byte-for-byte unchanged (SEC-026 failure atomicity). NO note was minted, so the
@@ -5044,6 +5106,8 @@ async fn write_snapshot(
 }
 
 struct App {
+    deposit_source: Option<Arc<dyn deposit_rpc::DepositSource>>,
+    deposit_serial: Mutex<()>,
     gw: Mutex<Gw>,
     tx: broadcast::Sender<String>,
     /// Per-account event stream (own fills, order finality, ADL) — each JSON carries
@@ -5171,6 +5235,9 @@ struct OnchainDepositReq {
 /// submit as `deposit(amount, ownerCommit, sig)` on L1.
 #[derive(Deserialize)]
 struct DepositAuthorizeReq {
+    #[serde(rename = "marketId")]
+    market_id: u64,
+    purpose: deposit_ingestion::Purpose,
     /// The L1 address the deposit will be sent `from` (must equal the account's bound
     /// deposit address). Also the `msg.sender` the on-chain digest binds.
     from: String,
@@ -5769,103 +5836,31 @@ async fn post_v1_admin_insurance_bootstrap(
         Ok(k) => k,
         Err(e) => return e.into_response(),
     };
-    let l1 = match &app.l1 {
-        Some(l) => l.clone(),
-        None => {
-            return err400("L1 bridge not configured — insurance bootstrap unavailable".into())
-                .into_response()
-        }
-    };
-    let tx = match body
-        .get("txHash")
-        .and_then(|v| v.as_str())
-        .and_then(canon_tx_hash)
+    if app
+        .gw
+        .lock()
+        .await
+        .accounts
+        .get(&key)
+        .and_then(|a| a.deposit_address)
+        != Some(operator)
     {
-        Some(t) => t,
-        None => {
-            return err400("bad or missing txHash (expected 0x + 64 hex)".into()).into_response()
-        }
-    };
-    // The receipt is parsed on-chain-side exactly as `post_v1_deposit_onchain` does —
-    // `from` comes out of the vault's `Deposit` log, never the request body.
-    let txc = tx.clone();
-    let verified = tokio::task::spawn_blocking(move || l1.verify_deposit_tx(&txc)).await;
-    let (from, owner_commit, amount, id) = match verified {
-        Ok(Ok(v)) => v,
-        Ok(Err(e)) => return err400(format!("deposit not verified: {e}")).into_response(),
-        Err(e) => return err400(format!("verify task failed: {e}")).into_response(),
-    };
-    // Refuse BEFORE any mutation when durability is structurally unavailable. With
-    // persistence off there is no writer at all, so the barrier below could only ever
-    // fail — and failing it AFTER both legs applied is not a clean rollback: the engine
-    // mutation is irreversible, and the settle loop then re-seals that same window id
-    // every tick forever (`rollback_window` restores the counter), so its barrier fails,
-    // rolls back and continues — halting ALL settlement, not just this window's. This
-    // condition is deterministic and known before the lock is taken, so the whole class
-    // is removed by checking it here. A TRANSIENT failure (persistence on, write fails)
-    // still surfaces at the barrier, which is the correct place for it.
-    if app.snapshot_req.is_none() {
-        return (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(serde_json::json!({
-                "error": "state persistence is not configured — refusing to bootstrap \
-                          insurance, because the result could not be made durable and a \
-                          restart would silently revert it"
-            })),
-        )
-            .into_response();
+        return err400("account is not bound to INSURANCE_OPERATOR_ADDRESS".into()).into_response();
     }
-    // ONE lock hold across both legs AND the response read: the snapshot writer takes
-    // this same lock, so it can never persist the state between `Deposit` and
-    // `FundInsurance`. Scoped so the guard DROPS before the durability barrier below —
-    // `snapshot_now` waits on that same writer, so awaiting it under this guard
-    // deadlocks both sides for the full ack timeout (see `snapshot_now`).
-    let outcome = {
-        let gw = &mut *app.gw.lock().await;
-        // Market 0: the shared guards only need a real market to exist — the value routes
-        // to `insurance_fund`, never to a market bucket.
-        gw.bootstrap_insurance(&key, operator, from, owner_commit, amount, id, &tx, 0)
-            .map(|()| gw.bootstrap.clone())
+    let Some(tx) = body.get("txHash").and_then(|v| v.as_str()) else {
+        return err400("missing txHash".into()).into_response();
     };
-    match outcome {
-        Ok(b) => {
-            // SEC-025-A Task 5: a 200 must mean DURABLE. This arm is reached only with
-            // the record at `InsuranceApplied` — both `Ok` exits of `bootstrap_insurance`
-            // set it, and `DepositApplied` is written on an arm that returns Err and takes
-            // the 400 path below, so this barrier never observes that state. What it
-            // protects is the `InsuranceApplied` record plus the applied engine mutation:
-            // until the writer persists them they live only in memory, and a crash would
-            // revert a bootstrap the operator was just told succeeded.
-            //
-            // (A crash on the `DepositApplied` path is benign and needs no barrier: the
-            // record and the minted note share one snapshot, so both revert together and
-            // the on-chain deposit becomes re-confirmable once `consumed_deposit_count`
-            // regresses with them.)
-            if let Err(e) = snapshot_now(&app.snapshot_req).await {
-                return (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(serde_json::json!({
-                        "error": format!(
-                            "bootstrap applied in memory but is NOT yet durable — \
-                             snapshot failed: {e}. Do not treat this bootstrap as \
-                             recorded until a snapshot succeeds."
-                        ),
-                        "bootstrap": b,
-                    })),
-                )
-                    .into_response();
-            }
-            (StatusCode::OK, Json(serde_json::json!({ "bootstrap": b }))).into_response()
-        }
-        // The driver's one-shot refusal (its only "already completed" arm) is the
-        // request-level conflict, not a bad request.
-        Err(e) if e.contains("already completed") => (
-            StatusCode::CONFLICT,
-            Json(serde_json::json!({ "error": e })),
-        )
-            .into_response(),
-        Err(e) => err400(e).into_response(),
-    }
+    let Some(market) = body.get("marketId").and_then(|v| v.as_u64()) else {
+        return err400("missing marketId".into()).into_response();
+    };
+    deposit_ingestion::confirm(
+        &app,
+        &headers,
+        tx,
+        market,
+        deposit_ingestion::Purpose::InsuranceBootstrap,
+    )
+    .await
 }
 
 fn api_key_from(headers: &HeaderMap) -> Result<[u8; 32], (StatusCode, Json<serde_json::Value>)> {
@@ -6011,55 +6006,14 @@ async fn post_v1_deposit_onchain(
     headers: HeaderMap,
     Json(req): Json<OnchainDepositReq>,
 ) -> impl IntoResponse {
-    let key = match api_key_from(&headers) {
-        Ok(k) => k,
-        Err(e) => return e.into_response(),
-    };
-    let l1 = match &app.l1 {
-        Some(l) => l.clone(),
-        None => {
-            return err400("L1 bridge not configured — on-chain deposits unavailable".into())
-                .into_response()
-        }
-    };
-    // canonicalize the tx hash so case-permuted spellings of the same tx can't bypass
-    // the dedup (they all resolve to one receipt on-chain) — review fix.
-    let tx = match canon_tx_hash(&req.tx_hash) {
-        Some(t) => t,
-        None => return err400("bad txHash (expected 0x + 64 hex)".into()).into_response(),
-    };
-    let txc = tx.clone();
-    let verified = tokio::task::spawn_blocking(move || l1.verify_deposit_tx(&txc)).await;
-    let (from, owner_commit, amount, id) = match verified {
-        Ok(Ok(v)) => v,
-        Ok(Err(e)) => return err400(format!("deposit not verified: {e}")).into_response(),
-        Err(e) => return err400(format!("verify task failed: {e}")).into_response(),
-    };
-    let r = {
-        app.gw.lock().await.account_confirm_deposit(
-            &key,
-            from,
-            owner_commit,
-            amount,
-            id,
-            &tx,
-            req.market_id,
-        )
-    };
-    match r {
-        Ok(amt) => {
-            let acct = {
-                app.gw
-                    .lock()
-                    .await
-                    .v1_account(&key)
-                    .unwrap_or(serde_json::json!({}))
-            };
-            Json(serde_json::json!({ "credited": amt.to_string(), "account": acct }))
-                .into_response()
-        }
-        Err(e) => err400(e).into_response(),
-    }
+    deposit_ingestion::confirm(
+        &app,
+        &headers,
+        &req.tx_hash,
+        req.market_id,
+        deposit_ingestion::Purpose::Collateral,
+    )
+    .await
 }
 
 /// SEC-019 (Task 7b): authorize an L1 deposit. Records a fresh per-deposit blind under
@@ -6087,6 +6041,9 @@ async fn post_v1_deposit_authorize(
             return err400("bad amount (expected a u128 of USDC base units)".into()).into_response()
         }
     };
+    if let Err(e) = deposit_ingestion::authorize_purpose(&headers, req.purpose, from) {
+        return err400(e).into_response();
+    }
     if app.snapshot_req.is_none() {
         return (
             StatusCode::SERVICE_UNAVAILABLE,
@@ -6099,12 +6056,13 @@ async fn post_v1_deposit_authorize(
     // Release the account lock before requesting durability. No signature may be
     // constructed or returned until the writer acknowledges the stored blind.
     let commit = {
-        match app
-            .gw
-            .lock()
-            .await
-            .account_authorize_deposit(&key, from, amount)
-        {
+        match app.gw.lock().await.authorize_routed_deposit(
+            &key,
+            from,
+            amount,
+            req.market_id,
+            req.purpose,
+        ) {
             Ok(c) => c,
             Err(e) => return err400(e).into_response(),
         }
@@ -6112,7 +6070,9 @@ async fn post_v1_deposit_authorize(
     if let Err(e) = snapshot_now(&app.snapshot_req).await {
         // No signature was released, so this specific permit cannot have reached
         // L1. Remove it to avoid exhausting capacity after repeated disk failures.
-        if let Some(a) = app.gw.lock().await.accounts.get_mut(&key) {
+        let mut gw = app.gw.lock().await;
+        gw.deposits.routes.remove(&commit);
+        if let Some(a) = gw.accounts.get_mut(&key) {
             a.deposit_authorizations.remove(&commit);
         }
         return (
@@ -6127,6 +6087,8 @@ async fn post_v1_deposit_authorize(
         Ok(sig) => Json(serde_json::json!({
             "ownerCommit": hex0x(&commit),
             "sig": hex0x(&sig),
+            "marketId": req.market_id,
+            "purpose": req.purpose,
         }))
         .into_response(),
         Err(e) => err400(format!("gateway sign failed: {e}")).into_response(),
@@ -7187,6 +7149,10 @@ fn build_router(app: Shared, prod: bool) -> Router {
             post(post_v1_deposit_authorize),
         )
         .route(
+            "/v1/accounts/deposit/route",
+            post(deposit_ingestion::route_legacy),
+        )
+        .route(
             "/v1/accounts/deposit/onchain",
             post(post_v1_deposit_onchain),
         )
@@ -7848,7 +7814,13 @@ async fn main() {
     }
     let (snapshot_req_tx, mut snapshot_req_rx) = tokio::sync::mpsc::channel::<SnapshotAck>(8);
     let snapshot_req = state_path.as_ref().map(|_| snapshot_req_tx);
+    let deposit_source = l1.as_ref().map(|l| {
+        gw.deposits.required = true;
+        Arc::new(deposit_rpc::VaultSource::new(l.clone())) as Arc<dyn deposit_rpc::DepositSource>
+    });
     let app = Arc::new(App {
+        deposit_source,
+        deposit_serial: Mutex::new(()),
         gw: Mutex::new(gw),
         tx: tx.clone(),
         events_tx,
@@ -7864,6 +7836,20 @@ async fn main() {
         prover_session_token,
         force_settle: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
     });
+
+    if app.deposit_source.is_some() {
+        let app = app.clone();
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(2));
+            interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+            loop {
+                interval.tick().await;
+                if let Err(e) = deposit_ingestion::ingest_once(&app).await {
+                    eprintln!("[deposit-ingester] paused: {e}");
+                }
+            }
+        });
+    }
 
     // One-shot REAL history backfill for feed-backed markets (chart past bars):
     // exchange candles land under the live bars the tick loop records. Failures
@@ -8236,7 +8222,11 @@ async fn main() {
                                     gw.bootstrap,
                                     bootstrap::Bootstrap::InsuranceApplied { window_id }
                                         if window_id == x.0.batch_id
-                                );
+                                ) || x
+                                    .0
+                                    .ops
+                                    .iter()
+                                    .any(|op| matches!(op, BatchOp::Deposit { .. }));
                                 // SEC-025-D: whether the launch gate still needs an
                                 // observation, read under the same guard as the seal.
                                 // Sound to act on later without re-reading: only
@@ -8348,6 +8338,7 @@ async fn main() {
                     }
                     let l1c = l1.clone();
                     let jpath_bg = jpath.clone();
+                    let deposit_guard_app = app.clone();
                     let res = tokio::task::spawn_blocking(move || -> SettleAttempt {
                         let prepared = match prover_client::prove_and_prepare(
                             client.as_ref(),
@@ -8369,6 +8360,11 @@ async fn main() {
                                     "[recovery] stage-2 rollback journal write failed (settle continues): {e}"
                                 );
                             }
+                        }
+                        // A01: do not broadcast after an observed RPC/reorg/durability
+                        // pause that arrived while the proof was being prepared.
+                        if let Err(e) = deposit_guard_app.gw.blocking_lock().deposits.check_ready() {
+                            return SettleAttempt::ProveFailed(e);
                         }
                         match l1c.settle_proved(&prepared.outcome) {
                             Ok(tx) => {
@@ -10267,13 +10263,15 @@ mod tests {
     }
 
     /// A minimal `App` for router tests — no socket bound, pure in-memory (`l1: None`).
-    fn test_app() -> Shared {
+    pub(crate) fn test_app() -> Shared {
         let (tx, _rx) = broadcast::channel::<String>(16);
         let (events_tx, _erx) = broadcast::channel::<String>(16);
         // A fixed-IKM ephemeral keypair — deterministic, fine for router tests
         // (no handshake runs; /attest 503s on `attestor: None` anyway).
         let (gw_eph_secret, gw_pub) = ephemeral_keypair(&[0u8; 32]);
         Arc::new(App {
+            deposit_source: None,
+            deposit_serial: Mutex::new(()),
             gw: Mutex::new(Gw::boot()),
             tx,
             events_tx,

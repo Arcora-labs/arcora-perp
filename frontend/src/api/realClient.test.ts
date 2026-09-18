@@ -751,7 +751,7 @@ describe("authorizeDeposit (SEC-019)", () => {
     expect(call).toBeTruthy();
     expect(call!.method).toBe("POST");
     expect(call!.headers["X-Api-Key"]).toBe(ACCT_KEY);
-    expect(call!.body).toEqual({ from: FROM, amount: "1000000000" });
+    expect(call!.body).toEqual({ from: FROM, amount: "1000000000", marketId: 0, purpose: "collateral" });
   });
 
   it("surfaces the gateway's bind-first error text verbatim", async () => {
