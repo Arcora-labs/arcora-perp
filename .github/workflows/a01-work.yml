@@ -6,23 +6,71 @@ on:
 permissions:
   contents: read
 jobs:
-  source:
+  verify:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CARGO_PROFILE_TEST_OPT_LEVEL: 2
+      CARGO_PROFILE_TEST_DEBUG_ASSERTIONS: true
+      CARGO_PROFILE_TEST_OVERFLOW_CHECKS: true
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
           persist-credentials: false
-      - name: Export exact baselines, not old patches
-        run: |
-          mkdir -p evidence
-          git archive 48e03ac3db123cdf159c10f1e0c86262043a377e | gzip > evidence/main.tar.gz
-          git archive 9cc31baa49e1da08bb4a018279e7bb3b7bc67b40 | gzip > evidence/a04.tar.gz
-          git ls-tree -r 48e03ac3db123cdf159c10f1e0c86262043a377e > evidence/main-tree.txt
-          git ls-tree -r 9cc31baa49e1da08bb4a018279e7bb3b7bc67b40 > evidence/a04-tree.txt
-          sha256sum evidence/* > evidence/SHA256SUMS
-      - uses: actions/upload-artifact@v4
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          name: a01-pinned-sources
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Build pinned baseline fixture, then compile fresh candidate
+        run: |
+          python3 - <<'PY'
+          import base64,zlib,hashlib,pathlib,subprocess,os,json
+          root=pathlib.Path.cwd(); ev=root/'evidence'; ev.mkdir(exist_ok=True)
+          base='48e03ac3db123cdf159c10f1e0c86262043a377e'
+          patch=zlib.decompress(base64.b64decode(''.join((root/f'scripts/audit/a01-work/patch.{i}').read_text().strip() for i in range(3))))
+          assert hashlib.sha256(patch).hexdigest()=='600f1704c9c78caab0579a08a82500987adf9c03c895812f14c6b101958349ec'
+          (ev/'candidate.patch').write_bytes(patch)
+          work=root.parent/'a01-candidate'
+          subprocess.run(['git','worktree','add','--detach',str(work),base],check=True)
+          os.environ['CARGO_TARGET_DIR']=str(root/'target')
+          os.environ['A01_FIXTURE_DIR']=str(ev)
+          results=[]
+          def run(name,cmd):
+              with (ev/(name+'.log')).open('w') as f:
+                  p=subprocess.run(cmd,cwd=work,stdout=f,stderr=subprocess.STDOUT)
+              results.append(dict(name=name,command=cmd,exit_code=p.returncode))
+              (ev/'results.json').write_text(json.dumps(results,indent=2))
+              print(name,p.returncode,flush=True)
+              if p.returncode: print((ev/(name+'.log')).read_text()[-12000:],flush=True)
+              return p.returncode
+          p=work/'crates/gateway/src/main.rs'; original=p.read_bytes()
+          p.write_text(p.read_text()+'''\n#[cfg(test)] mod a01_legacy_export { use super::*;
+          #[test] fn export_v5() {
+            let mut gw=Gw::boot_with(GenesisMode::Production);
+            let (key,_)=gw.register_account(None);
+            gw.accounts.get_mut(&key).unwrap().deposit_address=Some([0x42;20]);
+            let c=gw.account_authorize_deposit(&key,[0x42;20],5_000_000).unwrap();
+            gw.account_confirm_deposit(&key,[0x42;20],c,5_000_000,0,&hex0x(&[9;32]),0).unwrap();
+            gw.account_authorize_deposit(&key,[0x42;20],7_000_000).unwrap();
+            let a=gw.accounts.get_mut(&key).unwrap();a.last_signed_nonce=17;a.last_sealed_nonce=19;a.rebind_counter=3;
+            let dir=std::path::PathBuf::from(std::env::var("A01_FIXTURE_DIR").unwrap());
+            let plain=gw.snapshot_plain();std::fs::write(dir.join("legacy-v5.plain"),&plain).unwrap();
+            std::fs::write(dir.join("legacy-v5.sealed"),snapshot::seal(&plain,&[42;32])).unwrap();
+          }}\n''')
+          if run('baseline-v5',['cargo','test','--locked','-p','gateway','a01_legacy_export::export_v5','--','--exact']): raise SystemExit(1)
+          p.write_bytes(original)
+          subprocess.run(['git','apply',str(ev/'candidate.patch')],cwd=work,check=True)
+          run('format',['cargo','fmt','--all'])
+          failed=run('typecheck',['cargo','check','--workspace','--all-targets','--locked'])
+          if not failed: failed=run('a01-smoke',['cargo','test','--locked','-p','gateway','a01_'])
+          subprocess.run(['git','add','crates'],cwd=work,check=True)
+          (ev/'formatted.patch').write_bytes(subprocess.check_output(['git','diff','--cached','--binary'],cwd=work))
+          raise SystemExit(bool(failed))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: a01-compile-evidence
           path: evidence
-          retention-days: 7
+          retention-days: 14
