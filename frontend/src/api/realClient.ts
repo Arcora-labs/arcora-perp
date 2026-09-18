@@ -27,6 +27,7 @@ import type {
 import { seal, domainAad } from "./sealedBox";
 import { personalSign } from "./wallet";
 import { cancellationCapability } from "../domain/cancellation";
+import { parseExecution } from "../domain/execution";
 import { secp256k1 } from "@noble/curves/secp256k1";
 import { keccak_256 } from "@noble/hashes/sha3";
 import { bytesToHex, hexToBytes, utf8ToBytes, concatBytes } from "@noble/hashes/utils";
@@ -47,7 +48,8 @@ interface WireOrderInput { marketId: number; side: "Buy" | "Sell"; size: string;
 interface WireTrackedOrder {
   cancellable?: unknown;
   id: string; input: WireOrderInput; receipt: Receipt; finality: TrackedOrder["finality"];
-  filledSize: string; avgFillPrice: string; createdMs: number;
+  filledSize: string | null; avgFillPrice: string | null; createdMs: number;
+  execution?: unknown;
 }
 interface WireState {
   markets: WireMarket[]; selectedMarketId: number; market: WireMarket; mode: ClientState["mode"];
@@ -83,7 +85,8 @@ interface WireV1Order {
   cancellable?: unknown;
   orderId: string; marketId: number; side: "Buy" | "Sell"; size: string; limitPrice: string;
   tif: string; reduceOnly: boolean; orderHash: string; finality: TrackedOrder["finality"];
-  filledSize: string; avgFillPrice: string; createdMs: number;
+  filledSize: string | null; avgFillPrice: string | null; createdMs: number;
+  execution?: unknown;
   /// SEC-025-E1 decision (c): the stored acceptance receipt, served by the
   /// gateway. Optional so an OLDER gateway (field absent) degrades, not crashes.
   receipt?: WireV1Receipt;
@@ -114,7 +117,8 @@ function pOrder(o: WireTrackedOrder): TrackedOrder {
     ...cancellationCapability(o.cancellable),
     id: o.id,
     input: { ...o.input, side: o.input.side, size: B(o.input.size), limitPrice: B(o.input.limitPrice), tif: o.input.tif as OrderInput["tif"] },
-    receipt: o.receipt, finality: o.finality, filledSize: B(o.filledSize), avgFillPrice: B(o.avgFillPrice), createdMs: o.createdMs,
+    receipt: o.receipt, finality: o.finality, filledSize: B(o.filledSize ?? "0"), avgFillPrice: B(o.avgFillPrice ?? "0"), createdMs: o.createdMs,
+    ...(o.execution === undefined ? {} : { execution: parseExecution(o.execution, { size: o.input.size, filledSize: o.filledSize, avgFillPrice: o.avgFillPrice }) }),
   };
 }
 function pAccount(a: WireState["account"]): AccountState {
@@ -132,10 +136,8 @@ function pAccount(a: WireState["account"]): AccountState {
  * that omits the field degrades to a synthesized stub (hash from the flat
  * `orderHash`, zero seq/batch) — degrade, never throw.
  *
- * NOTE: `filledSize`/`avgFillPrice` are the gateway's FABRICATED full-fill
- * values (it marks every non-ACCEPTED order fully filled at its limit price).
- * Real execution reporting is SEC-025-E3 — this task only makes the browser
- * read the RIGHT ACCOUNT's fabricated values instead of the demo wallet's.
+ * Execution is separate native metadata. An upgraded gateway preserves exact
+ * applied-fill quantities; a migrated legacy order can explicitly lack history.
  */
 function pV1Order(o: WireV1Order): TrackedOrder {
   const r = o.receipt;
@@ -156,8 +158,9 @@ function pV1Order(o: WireV1Order): TrackedOrder {
     },
     receipt,
     finality: o.finality,
-    filledSize: B(o.filledSize),
-    avgFillPrice: B(o.avgFillPrice),
+    filledSize: B(o.filledSize ?? "0"),
+    avgFillPrice: B(o.avgFillPrice ?? "0"),
+    ...(o.execution === undefined ? {} : { execution: parseExecution(o.execution, { size: o.size, filledSize: o.filledSize, avgFillPrice: o.avgFillPrice }) }),
     createdMs: o.createdMs,
   };
 }
@@ -924,8 +927,8 @@ export class RealDarkPerpClient implements DarkPerpClient {
    * through the guarded path (the third trigger `refreshOwnState`'s in-flight
    * guard was built for). Order-finality transitions and ADL haircuts also
    * surface as OrderEvent notifications (Toaster + ActivityFeed); `fill`
-   * events do NOT toast — the gateway pushes a paired `order` event for the
-   * same transition, and toasting both would double-notify every fill.
+   * and `execution` events refresh amounts without creating finality notifications.
+   * Further maker fills can arrive even when the receipt is already SETTLED.
    */
   private handleOwnEvent(ev: Record<string, unknown>): void {
     void this.refreshOwnState();
@@ -1404,9 +1407,9 @@ export class RealDarkPerpClient implements DarkPerpClient {
    * outcome (503). A live remainder is cancellable even after a partial fill
    * settled. Completed fills are never undone by cancellation.
    *
-   * On success this is also the CANCELLED lifecycle event's producer (no
-   * server event announces a cancel — the order simply leaves the list), and
-   * the own-account view is refreshed so the row disappears.
+   * A successful response produces the local CANCELLED notification. The private
+   * execution event refreshes state without another toast; the receipt/history row
+   * remains visible. A failed durability ACK produces no success notification.
    */
   async cancelOrder(orderId: string): Promise<void> {
     const acct = await this.ensureAccount();

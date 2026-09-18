@@ -250,7 +250,7 @@ fn a01_actual_frozen_v5_fixture_migrates_losslessly_with_pending_permit() {
         .collect();
     assert_eq!(postcard::to_allocvec(&(&gw, prices)).unwrap(), plain);
     let new = snapshot::seal(&gw.snapshot_plain(), &[42; 32]);
-    assert_eq!(&new[..8], b"DPSNAP6\0");
+    assert_eq!(&new[..8], b"DPSNAP7\0");
     let restored = Gw::boot_restored(&snapshot::open(&new, &[42; 32]).unwrap()).unwrap();
     assert_eq!(gw.snapshot_plain(), restored.snapshot_plain());
 }
@@ -523,4 +523,65 @@ fn a01_legacy_bootstrap_half_transfer_resumes_without_minting_or_user_credit() {
     let roots = perp_core::commitment::derive_roots(&mut state, &w.ops, &w.manifest).unwrap();
     assert_eq!(roots.new_state_root, restored.seq.state.state_root());
     assert!(state.conservation_holds());
+}
+
+#[test]
+fn a05_a01_v6_migration_preserves_credits_routes_secrets_and_replay_bytes() {
+    let mut gw = fresh();
+    let (_, credited) = permit(&mut gw, 5_000_000, Purpose::Collateral, 1);
+    let block = page(&gw, &[credited]);
+    gw.apply_deposit_page(block).unwrap();
+    let (_, pending) = permit(
+        &mut gw,
+        bootstrap::MIN_BOOTSTRAP_INSURANCE as u128,
+        Purpose::InsuranceBootstrap,
+        0,
+    );
+    let prices: Vec<_> = gw
+        .mkts
+        .iter()
+        .map(|m| (m.id, m.reference_price, m.px, m.live))
+        .collect();
+    // Exact current-main v6 serializer: skipped execution metadata is not part
+    // of any legacy positional field. All A01 deposit state is included.
+    let legacy_tuple = postcard::to_allocvec(&(&gw, &prices, &gw.deposits)).unwrap();
+    let mut v6 = SNAPSHOT_V6.to_vec();
+    v6.extend_from_slice(&legacy_tuple);
+    let root = gw.seq.state.state_root();
+    let prefix = (
+        gw.seq.state.consumed_deposit_count,
+        gw.seq.state.consumed_deposit_tip,
+    );
+    let mut restored = Gw::boot_restored(&v6).unwrap();
+    let restored_prices: Vec<_> = restored
+        .mkts
+        .iter()
+        .map(|m| (m.id, m.reference_price, m.px, m.live))
+        .collect();
+    assert_eq!(
+        postcard::to_allocvec(&(&restored, restored_prices, &restored.deposits)).unwrap(),
+        legacy_tuple
+    );
+    assert_eq!(restored.seq.state.state_root(), root);
+    assert_eq!(
+        (
+            restored.seq.state.consumed_deposit_count,
+            restored.seq.state.consumed_deposit_tip
+        ),
+        prefix
+    );
+    assert_eq!(restored.deposits.credits.len(), 1);
+    assert_eq!(
+        restored.deposits.routes[&pending].purpose,
+        Purpose::InsuranceBootstrap
+    );
+    let v7 = restored.snapshot_plain();
+    assert!(v7.starts_with(crate::execution::SNAPSHOT_V7));
+    assert_eq!(Gw::boot_restored(&v7).unwrap().snapshot_plain(), v7);
+    let witness = restored.seq.seal_window();
+    let mut replay = witness.pre_state.clone();
+    let roots =
+        perp_core::commitment::derive_roots(&mut replay, &witness.ops, &witness.manifest).unwrap();
+    assert_eq!(roots.new_state_root, restored.seq.state.state_root());
+    assert_eq!(replay.consumed_deposit_tip, prefix.1);
 }

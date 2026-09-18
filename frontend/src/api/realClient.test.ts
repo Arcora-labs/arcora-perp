@@ -1755,3 +1755,38 @@ describe("cancellation durability failure", () => {
     client.dispose();
   });
 });
+
+describe("native execution metadata transport", () => {
+  it("preserves exact partial quantities independently of SETTLED", async () => {
+    v1OrdersResponse = { orders: [{ ...v1Order, size: "10000000", tif: "Gtc", finality: "SETTLED", filledSize: "2500000", avgFillPrice: "123456789",
+      execution: { status: "PARTIALLY_FILLED", remainingSize: "7500000", unsettledSize: "1000000", settledSize: "1500000", available: true, proven: false, reason: null } }] };
+    const client = await bootstrapClient(); const [o] = await client.getOrders();
+    expect(o.finality).toBe("SETTLED"); expect(o.filledSize).toBe(2500000n);
+    expect(o.avgFillPrice).toBe(123456789n); expect(o.execution?.remainingSize).toBe(7500000n);
+    expect(o.execution?.unsettledSize).toBe(1000000n); expect(o.execution?.proven).toBe(false);
+    client.dispose();
+  });
+  it("rejects partial quantities that do not reconcile with the original order size", async () => {
+    v1OrdersResponse = { orders: [{ ...v1Order, finality: "SETTLED", filledSize: "2500000", avgFillPrice: "123456789",
+      execution: { status: "PARTIALLY_FILLED", remainingSize: "7500000", unsettledSize: "1000000", settledSize: "1500000", available: true, proven: false } }] };
+    const client = await bootstrapClient(); const [o] = await client.getOrders();
+    expect(o.input.size).toBe(250000000n);
+    expect(o.execution?.available).toBe(false);
+    expect(o.execution?.remainingSize).toBeNull();
+    expect(o.execution?.reason).toBe("ExecutionMetadataMismatch");
+    client.dispose();
+  });
+  it("accepts explicitly unavailable historical quantities without claiming zero fills", async () => {
+    v1OrdersResponse = { orders: [{ ...v1Order, filledSize: null, avgFillPrice: null,
+      execution: { status: "UNKNOWN", remainingSize: "0", unsettledSize: null, settledSize: null, available: false, proven: false } }] };
+    const client = await bootstrapClient(); const [o] = await client.getOrders();
+    expect(o.execution?.available).toBe(false); expect(o.execution?.status).toBe("UNKNOWN");
+    expect(o.execution?.unsettledSize).toBeNull(); client.dispose();
+  });
+  it("does not trust malformed execution counters or a claimed proven flag", async () => {
+    v1OrdersResponse = { orders: [{ ...v1Order,
+      execution: { status: "FILLED", remainingSize: "-1", unsettledSize: "bogus", settledSize: "0", available: true, proven: true } }] };
+    const client = await bootstrapClient(); const [o] = await client.getOrders();
+    expect(o.execution?.available).toBe(false); expect(o.execution?.proven).toBe(false); client.dispose();
+  });
+});

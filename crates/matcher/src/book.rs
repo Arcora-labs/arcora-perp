@@ -52,11 +52,19 @@ pub enum SubmitStatus {
     Rejected(RejectReason),
 }
 
+/// A non-fill removal. Native output metadata, not part of the serialized book.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct OrderRemoval {
+    pub order_hash: Digest,
+    pub reason: &'static str,
+}
+
 /// The result of submitting one order.
 #[derive(Clone, Debug)]
 pub struct SubmitOutcome {
     pub order_hash: Digest,
     pub fills: Vec<Match>,
+    pub removals: Vec<OrderRemoval>,
     pub status: SubmitStatus,
 }
 
@@ -133,6 +141,16 @@ impl<H: perp_core::hash::Hasher> OrderBook<H> {
             .flat_map(|q| q.iter())
             .map(|r| r.remaining)
             .sum()
+    }
+
+    /// Internal execution lookup. Public depth remains undisclosed.
+    pub fn remaining(&self, hash: &Digest) -> Option<i128> {
+        self.bids
+            .values()
+            .chain(self.asks.values())
+            .flat_map(|q| q.iter())
+            .find(|o| &o.order_hash == hash)
+            .map(|o| o.remaining)
     }
 
     /// Owner-scoped remaining quantity, for cancellation eligibility. This is
@@ -219,6 +237,7 @@ impl<H: perp_core::hash::Hasher> OrderBook<H> {
         let mut out = SubmitOutcome {
             order_hash,
             fills: Vec::new(),
+            removals: Vec::new(),
             status: SubmitStatus::Resting,
         };
 
@@ -299,7 +318,15 @@ impl<H: perp_core::hash::Hasher> OrderBook<H> {
             // own/expired maker is handled once it reaches the front.
             while let Some(front) = queue.front() {
                 if front.owner == order.owner || resting_expired(front, now_ms) {
-                    queue.pop_front();
+                    let removed = queue.pop_front().expect("front exists");
+                    out.removals.push(OrderRemoval {
+                        order_hash: removed.order_hash,
+                        reason: if resting_expired(&removed, now_ms) {
+                            "Expired"
+                        } else {
+                            "SelfTradePrevented"
+                        },
+                    });
                 } else {
                     break;
                 }
@@ -398,48 +425,45 @@ impl<H: perp_core::hash::Hasher> OrderBook<H> {
     /// Cancel every resting order belonging to `owner` (e.g. after the owner is
     /// liquidated). Returns the number of orders cancelled.
     pub fn cancel_owner(&mut self, owner: &PubKey) -> usize {
-        let mut cancelled = 0;
-        for book in [&mut self.bids, &mut self.asks] {
-            let mut empty_keys = alloc::vec::Vec::new();
-            for (price, q) in book.iter_mut() {
-                let before = q.len();
-                q.retain(|r| &r.owner != owner);
-                cancelled += before - q.len();
-                if q.is_empty() {
-                    empty_keys.push(*price);
-                }
-            }
-            for k in empty_keys {
-                book.remove(&k);
-            }
-        }
-        cancelled
+        self.cancel_owner_with_events(owner).len()
     }
 
-    /// Drop every resting maker whose good-till-time has elapsed at `now_ms`,
-    /// returning the number reaped. Matching already refuses to trade against an
-    /// expired maker; this proactively removes them so they also stop polluting
-    /// `best_bid`/`best_ask` — which the sequencer reads as the perp mark for
-    /// funding (§8). Without it, an expired order could anchor the funding mark to
-    /// a price no taker can ever hit. Deterministic in `now_ms`, so it stays
-    /// zkVM-reproducible (§4).
+    pub fn cancel_owner_with_events(&mut self, owner: &PubKey) -> Vec<OrderRemoval> {
+        self.remove_where(|r| &r.owner == owner, "Liquidated")
+    }
+
+    /// Reap before using the book as a funding mark; retain attribution for clients.
     pub fn reap_expired(&mut self, now_ms: u64) -> usize {
-        let mut reaped = 0;
+        self.reap_expired_with_events(now_ms).len()
+    }
+
+    pub fn reap_expired_with_events(&mut self, now_ms: u64) -> Vec<OrderRemoval> {
+        self.remove_where(|r| resting_expired(r, now_ms), "Expired")
+    }
+
+    fn remove_where(
+        &mut self,
+        remove: impl Fn(&Resting) -> bool,
+        reason: &'static str,
+    ) -> Vec<OrderRemoval> {
+        let mut removed = Vec::new();
         for book in [&mut self.bids, &mut self.asks] {
-            let mut empty_keys = alloc::vec::Vec::new();
-            for (price, q) in book.iter_mut() {
-                let before = q.len();
-                q.retain(|r| !resting_expired(r, now_ms));
-                reaped += before - q.len();
-                if q.is_empty() {
-                    empty_keys.push(*price);
-                }
-            }
-            for k in empty_keys {
-                book.remove(&k);
-            }
+            book.retain(|_, q| {
+                q.retain(|r| {
+                    if remove(r) {
+                        removed.push(OrderRemoval {
+                            order_hash: r.order_hash,
+                            reason,
+                        });
+                        false
+                    } else {
+                        true
+                    }
+                });
+                !q.is_empty()
+            });
         }
-        reaped
+        removed
     }
 
     /// Cancel a resting order by hash. Returns the cancelled remaining size.
