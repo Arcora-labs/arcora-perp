@@ -100,6 +100,9 @@ export interface OrderInput {
 }
 
 export interface Receipt {
+  /// Optional for old gateways and demos. 65-byte r||s||v, with v = 27 or 28.
+  signature?: string;
+  enclaveSigner?: string;
   orderHash: string;
   seqNo: number;
   recvTimeMs: number;
@@ -141,6 +144,8 @@ export interface BookLevel {
 
 export interface OrderBookSnapshot {
   marketId: number;
+  /// True means depth is not published, NOT that the real book is empty.
+  unavailable?: boolean;
   bids: BookLevel[]; // high → low
   asks: BookLevel[]; // low → high
 }

@@ -153,24 +153,47 @@ fn tmp_path(path: &Path) -> std::path::PathBuf {
     std::path::PathBuf::from(os)
 }
 
-/// Write `bytes` to `path` atomically: a 0600 sibling tmp file is fully written
-/// and fsynced, then renamed over the target — a crash mid-write never leaves a
-/// torn snapshot, only the previous intact one.
+/// Write a private, exclusive sibling temporary file, fsync it, rename it over
+/// the destination, then fsync the parent directory. A successful return means
+/// BOTH data and the rename were acknowledged by the filesystem. Runtime callers
+/// must still serialize state capture plus publication to prevent stale overwrites.
 pub fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
-    let tmp = tmp_path(path);
+    let parent = path
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or(Path::new("."));
+    let directory = std::fs::File::open(parent)?;
+    let mut random = [0u8; 16];
+    getrandom::getrandom(&mut random).map_err(|e| std::io::Error::other(e.to_string()))?;
+    let mut name = tmp_path(path).into_os_string();
+    name.push(".");
+    name.push(
+        random
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect::<String>(),
+    );
+    let tmp = std::path::PathBuf::from(name);
+    let mut opts = std::fs::OpenOptions::new();
+    opts.write(true).create_new(true);
+    #[cfg(unix)]
     {
-        let mut opts = std::fs::OpenOptions::new();
-        opts.write(true).create(true).truncate(true);
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::OpenOptionsExt;
-            opts.mode(0o600);
-        }
-        let mut f = opts.open(&tmp)?;
+        use std::os::unix::fs::OpenOptionsExt;
+        opts.mode(0o600);
+    }
+    let mut f = opts.open(&tmp)?;
+    let result = (|| {
         f.write_all(bytes)?;
         f.sync_all()?;
+        std::fs::rename(&tmp, path)?;
+        directory.sync_all()
+    })();
+    // Remove only the exclusively created temporary file, never another writer's
+    // target or an existing legacy .tmp path. A failed directory sync is still Err.
+    if result.is_err() {
+        let _ = std::fs::remove_file(&tmp);
     }
-    std::fs::rename(&tmp, path)
+    result
 }
 
 #[cfg(test)]

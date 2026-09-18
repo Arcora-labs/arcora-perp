@@ -17,8 +17,8 @@ export function OrderBook() {
   const { book, oracle } = state;
   const flash = useFlash(oracle.price);
 
-  const bids = cumulative(book.bids);
-  const asks = cumulative(book.asks);
+  const bids = cumulative(book.unavailable ? [] : book.bids);
+  const asks = cumulative(book.unavailable ? [] : book.asks);
   const max = [...bids, ...asks].reduce((m, r) => (r.cum > m ? r.cum : m), 1n);
   const pct = (cum: bigint) => Number((cum * 100n) / max);
 
@@ -44,8 +44,9 @@ export function OrderBook() {
         ))}
       </div>
       <p className="orderbook__note">
-        Dark book — resting orders are operator-blind in production. Depth here is the
-        internal market-maker seed (§15).
+        {book.unavailable
+          ? "Depth is not published for this dark market. This is not an empty-book signal or a liquidity guarantee."
+          : "Simulated demo depth. These displayed levels are not executable liquidity."}
       </p>
     </div>
   );
