@@ -144,6 +144,8 @@ function OrdersBody() {
           <th className="num">Size</th>
           <th>Receipt</th>
           <th>Finality</th>
+          <th>Execution</th>
+          <th className="num">Filled / Remaining</th>
           <th></th>
         </tr>
       </thead>
@@ -160,6 +162,16 @@ function OrdersBody() {
                 <FinalityProgress finality={o.finality} />
               </span>
             </td>
+            <td title={o.execution?.reason ?? "Native metadata, not independently ZK-proven"}>
+              {o.execution?.status ?? "Execution unavailable"}
+              {o.execution && !o.execution.available && <div className="small muted">Historical fills unavailable</div>}
+              {(o.execution?.unsettledSize ?? 0n) > 0n && <div className="small muted">Unsettled fills: {formatSignedSize(o.execution!.unsettledSize!)}</div>}
+            </td>
+            <td className="num">
+              {o.execution?.available ? formatSignedSize(o.filledSize) : "?"}{" / "}
+              {o.execution?.remainingSize != null ? formatSignedSize(o.execution.remainingSize) : "?"}
+              {o.execution?.available && o.filledSize > 0n && <div className="small muted">Avg {formatPrice(o.avgFillPrice)}</div>}
+            </td>
             <td className="num">
               {canCancelOrder(o) && (
                 <button className="btn btn--tiny" onClick={() => void doCancel(o.id)}>Cancel</button>
@@ -171,7 +183,7 @@ function OrdersBody() {
       {cancelErr && (
         <tfoot>
           <tr>
-            <td colSpan={6} className="small neg">{cancelErr}</td>
+            <td colSpan={8} className="small neg">{cancelErr}</td>
           </tr>
         </tfoot>
       )}

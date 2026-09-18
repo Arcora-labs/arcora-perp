@@ -59,8 +59,11 @@ use std::path::Path;
 /// claiming one magic means whichever lands second changes the positional schema
 /// without changing its guard — the exact misread the magic exists to refuse.
 // v6: explicit A01 extension; the legacy Gw/Account positional encoding is frozen.
-// v5 is read losslessly and migrated; older versions remain refused.
-const MAGIC: &[u8; 8] = b"DPSNAP6\0";
+// v7: A05 execution metadata wraps the unchanged A01 v6 payload.
+// The v7 MAC binds its version; authenticated v5/v6 remain readable losslessly.
+// Formats older than v5 remain refused; no automatic wipe or downgrade.
+const MAGIC: &[u8; 8] = b"DPSNAP7\0";
+const A01_MAGIC: &[u8; 8] = b"DPSNAP6\0";
 const LEGACY_MAGIC: &[u8; 8] = b"DPSNAP5\0";
 
 /// Keystream block derived from the SECRET seed and the per-snapshot nonce.
@@ -88,6 +91,12 @@ fn mac(seed: &[u8; 32], nonce: &Digest, ciphertext: &[u8]) -> Digest {
     Keccak256::hash_words(Domain::SnapshotSealMac, &words)
 }
 
+/// The v7 domain binds the version as well as the entire authenticated v6 payload.
+fn mac_v7(seed: &[u8; 32], nonce: &Digest, ciphertext: &[u8]) -> Digest {
+    let tag = mac(seed, nonce, ciphertext);
+    Keccak256::hash_words(Domain::SnapshotSealMac, &[word_u64(7), tag])
+}
+
 /// Constant-time 32-byte tag comparison (no early exit on the first mismatch).
 fn ct_eq(a: &Digest, b: &Digest) -> bool {
     let mut diff = 0u8;
@@ -111,7 +120,7 @@ pub fn seal(plain: &[u8], seed: &[u8; 32]) -> Vec<u8> {
 
     let ks = keystream(seed, &nonce, plain.len());
     let ciphertext: Vec<u8> = plain.iter().zip(ks).map(|(p, k)| p ^ k).collect();
-    let tag = mac(seed, &nonce, &ciphertext);
+    let tag = mac_v7(seed, &nonce, &ciphertext);
 
     let mut out = Vec::with_capacity(8 + 32 + 32 + ciphertext.len());
     out.extend_from_slice(MAGIC);
@@ -127,7 +136,7 @@ pub fn open(sealed: &[u8], seed: &[u8; 32]) -> Result<Vec<u8>, String> {
     if sealed.len() < 8 + 32 + 32 {
         return Err("snapshot too short".into());
     }
-    if &sealed[..8] != MAGIC && &sealed[..8] != LEGACY_MAGIC {
+    if &sealed[..8] != MAGIC && &sealed[..8] != A01_MAGIC && &sealed[..8] != LEGACY_MAGIC {
         return Err("snapshot magic/version mismatch".into());
     }
     let mut nonce = [0u8; 32];
@@ -135,7 +144,11 @@ pub fn open(sealed: &[u8], seed: &[u8; 32]) -> Result<Vec<u8>, String> {
     let mut tag = [0u8; 32];
     tag.copy_from_slice(&sealed[40..72]);
     let ciphertext = &sealed[72..];
-    let expected = mac(seed, &nonce, ciphertext);
+    let expected = if &sealed[..8] == MAGIC {
+        mac_v7(seed, &nonce, ciphertext)
+    } else {
+        mac(seed, &nonce, ciphertext)
+    };
     if !ct_eq(&expected, &tag) {
         return Err("snapshot authentication failed (wrong seed or tampered file)".into());
     }

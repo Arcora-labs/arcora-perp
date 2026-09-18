@@ -59,7 +59,9 @@ mod audit_cancellation {
         let root = gw.seq.state.state_root();
         assert_eq!(gw.account_cancel(&key, "o1").unwrap(), order.size);
         assert_eq!(gw.seq.state.state_root(), root);
-        assert!(gw.accounts[&key].orders.is_empty());
+        assert_eq!(gw.accounts[&key].orders.len(), 1);
+        assert_eq!(gw.v1_orders_json(&key).unwrap()["orders"][0]["execution"]["status"], "CANCELLED");
+        assert_eq!(gw.v1_orders_json(&key).unwrap()["orders"][0]["cancellable"], false);
         assert_eq!(gw.seq.book(0).unwrap().resting_size(Side::Sell), 0);
         let witness = gw.seq.seal_window();
         assert!(witness.manifest.rejected.contains(&(order.order_hash::<Keccak256>(), perp_core::order::RejectReason::Cancelled)));
@@ -89,7 +91,8 @@ mod audit_cancellation {
         gw.account_cancel(&a, "o1").unwrap();
         assert_eq!(gw.seq.cancellable_size(&order_a.owner, &order_a, true), None);
         assert_eq!(gw.seq.cancellable_size(&order_b.owner, &order_b, true), Some(order_b.size));
-        assert_eq!(gw.account_cancel(&a, "o1").unwrap_err(), "Order not found.");
+        assert_eq!(gw.account_cancel(&a, "o1").unwrap(), order_a.size);
+        assert_eq!(gw.account_cancel(&a, "o2").unwrap_err(), "Order not found.");
         assert_eq!(gw.accounts[&b].orders.len(), 1);
     }
 
@@ -110,7 +113,7 @@ mod audit_cancellation {
         }).unwrap();
         gw.tick();
         assert_eq!(gw.seq.state.position(&maker.owner, 0).unwrap().size, -maker.size / 4);
-        // This field remains an A05 defect; cancellation must not depend on it.
+        // Inject a stale legacy field; A05 reports the extension and A04 eligibility still reads the book.
         gw.accounts.get_mut(&maker_key).unwrap().orders[0].filled = maker.size;
         assert_eq!(gw.v1_orders_json(&maker_key).unwrap()["orders"][0]["cancellable"], true);
         let root = gw.seq.state.state_root();
@@ -125,7 +128,9 @@ mod audit_cancellation {
         let (key, order) = rest(&mut gw);
         gw.account_cancel(&key, "o1").unwrap();
         let mut restored = Gw::boot_restored(&gw.snapshot_plain()).unwrap();
-        assert!(restored.accounts[&key].orders.is_empty());
+        assert_eq!(restored.accounts[&key].orders.len(), 1);
+        assert_eq!(restored.v1_orders_json(&key).unwrap()["orders"][0]["execution"]["status"], "CANCELLED");
+        assert_eq!(restored.v1_orders_json(&key).unwrap()["orders"][0]["cancellable"], false);
         assert_eq!(restored.seq.book(0).unwrap().resting_size(Side::Sell), 0);
         restored.tick();
         assert_eq!(restored.seq.book(0).unwrap().resting_size(Side::Sell), 0);
@@ -187,7 +192,9 @@ mod audit_cancellation {
         assert!(write_snapshot(&app, &path, seed, Arc::new(Mutex::new(()))).await);
         let plain = snapshot::open(&std::fs::read(path).unwrap(), &seed).unwrap();
         let restored = Gw::boot_restored(&plain).unwrap();
-        assert!(restored.accounts[&key].orders.is_empty());
+        assert_eq!(restored.accounts[&key].orders.len(), 1);
+        assert_eq!(restored.v1_orders_json(&key).unwrap()["orders"][0]["execution"]["status"], "CANCELLED");
+        assert_eq!(restored.v1_orders_json(&key).unwrap()["orders"][0]["cancellable"], false);
         assert_eq!(restored.seq.book(0).unwrap().resting_size(Side::Sell), 0);
         ack.send(true).unwrap();
         let response = task.await.unwrap().unwrap();
@@ -264,6 +271,12 @@ mod audit_cancellation {
             historical.order.nonce = 10_000 + n as u64;
             historical.order_hash = historical.order.order_hash::<Keccak256>();
             assert_ne!(historical.order_hash, hash);
+            // Explicit terminal DISPLAY fixture: do not fabricate ledger fills.
+            let mut execution = execution::Execution::new(historical.order.size);
+            execution.status = execution::Status::Cancelled;
+            execution.remaining = 0;
+            execution.reason = Some("TestTerminalHistory".into());
+            historical.execution = Some(execution);
             account.orders.push(historical);
         }
         assert_eq!(account.orders.len(), MAX_ACCOUNT_ORDER_HISTORY + 1);

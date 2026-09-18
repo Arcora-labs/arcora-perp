@@ -110,7 +110,18 @@ export interface Receipt {
 }
 
 /// An order as tracked in the UI, with its evolving finality.
+export interface OrderExecution {
+  status: "PENDING" | "RESTING" | "PARTIALLY_FILLED" | "FILLED" | "CANCELLED" | "REJECTED" | "UNKNOWN";
+  available: boolean;
+  remainingSize: bigint | null;
+  unsettledSize: bigint | null;
+  settledSize: bigint | null;
+  reason: string | null;
+  proven: false;
+}
+
 export interface TrackedOrder {
+  execution?: OrderExecution;
   /// Authoritative remainder eligibility. Absent on older gateways and demos.
   cancellable?: boolean;
   id: string;
