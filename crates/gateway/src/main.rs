@@ -5991,8 +5991,8 @@ async fn post_v1_deposit_address(
     }
 }
 
-/// Credit a real on-chain USDC deposit: verify the `vault.deposit` tx via the L1
-/// bridge, enforce the `from`==bound-address binding + tx dedup, and fund the engine.
+/// Optional owned receipt from the shared finalized ingester. This endpoint
+/// cannot choose routing, bypass L1 ordering, or consume a deposit a second time.
 async fn post_v1_deposit_onchain(
     State(app): State<Shared>,
     headers: HeaderMap,

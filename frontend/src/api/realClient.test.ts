@@ -1643,6 +1643,53 @@ describe("cancelOrder is caller-scoped: DELETE /v1/orders/:id (SEC-025-E1 Task 3
   });
 });
 
+describe("A01 autonomous deposit receipts", () => {
+  it("never reports pending finality as successful zero credit", async () => {
+    const client = await bootstrapClient();
+    onchainPending = true;
+    await expect(client.creditOnchainDeposit("0x" + "11".repeat(32))).rejects.toThrow(/credited automatically; do not send another deposit/);
+  });
+  it("binds selected market and collateral purpose at authorization", async () => {
+    const client = await bootstrapClient();
+    await client.selectMarket(1);
+    await client.authorizeDeposit("0x" + "22".repeat(20), 5_000_000n);
+    expect(calls.find((c) => c.path === "/v1/accounts/deposit/authorize")!.body)
+      .toEqual({ from: "0x" + "22".repeat(20), amount: "5000000", marketId: 1, purpose: "collateral" });
+  });
+});
+
+
+describe("A01 automatic own-balance refresh", () => {
+  it("refreshes owned balance without confirm and deduplicates progress hints", async () => {
+    const client = await bootstrapClient();
+    const frame = (state: string, count: number, tip: string) => {
+      lastWs!.onmessage!({ data: JSON.stringify({ type: "state", state: {
+        ...demoState, depositIngestion: { state, consumedCount: count, consumedTip: tip },
+      } }) });
+    };
+    const tip = "0x" + "12".repeat(32);
+    meFields = { ...defaultMeFields(), settledBalance: "555666777888" };
+    frame("paused", 1, tip);
+    await client.ownStateSettled();
+    expect(client.getState().account.settledBalance).toBe(BigInt(V1_BALANCE));
+    frame("ready", 1, tip);
+    await client.ownStateSettled();
+    expect(client.getState().account.settledBalance).toBe(555_666_777_888n);
+    const reads = calls.filter((c) => c.path === "/v1/accounts/me").length;
+    frame("ready", 1, tip);
+    frame("ready", 2, "malformed");
+    await client.ownStateSettled();
+    expect(calls.filter((c) => c.path === "/v1/accounts/me").length).toBe(reads);
+    expect(calls.some((c) => c.path === "/v1/accounts/deposit/onchain")).toBe(false);
+    meFields = { ...defaultMeFields(), settledBalance: "666777888999" };
+    frame("ready", 2, "0x" + "23".repeat(32));
+    await client.ownStateSettled();
+    expect(client.getState().account.settledBalance).toBe(666_777_888_999n);
+    client.dispose();
+  });
+});
+
+
 // Audit remediation: proof material must survive the own-account wire adapter.
 describe("audit remediation receipt and market-data transport", () => {
   it("retains signature bytes and signer from the stored acceptance receipt", async () => {
@@ -1667,19 +1714,4 @@ describe("audit remediation receipt and market-data transport", () => {
   });
 
 
-});
-
-describe("A01 autonomous deposit receipts", () => {
-  it("never reports pending finality as successful zero credit", async () => {
-    const client = await bootstrapClient();
-    onchainPending = true;
-    await expect(client.creditOnchainDeposit("0x" + "11".repeat(32))).rejects.toThrow(/credited automatically; do not send another deposit/);
-  });
-  it("binds selected market and collateral purpose at authorization", async () => {
-    const client = await bootstrapClient();
-    await client.selectMarket(1);
-    await client.authorizeDeposit("0x" + "22".repeat(20), 5_000_000n);
-    expect(calls.find((c) => c.path === "/v1/accounts/deposit/authorize")!.body)
-      .toEqual({ from: "0x" + "22".repeat(20), amount: "5000000", marketId: 1, purpose: "collateral" });
-  });
 });

@@ -194,7 +194,7 @@ checked against contract deposit-count/prefix and canonical headers. Transient
 errors pause ingestion; a contradiction of a persisted prefix or anchor causes a
 durable safety halt. Trading, withdrawals and new settlement are paused while
 prefix verification or deposit durability is unresolved. The public state's
-`deposit_ingestion` object exposes readiness, dirty state, count/tip, anchor, halt,
+`depositIngestion` object exposes readiness (paused while durability is dirty), count/tip, anchor, halt,
 last error and unresolved-permit count without exposing secret routes.
 
 RPC remains a trust boundary: consistency checks cannot authenticate a wholly
