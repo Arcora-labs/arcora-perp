@@ -48,7 +48,7 @@ describe("App smoke", () => {
     // not expose live credential rotation, so the UI must fail closed rather
     // than pretending seed scanning can recover gateway account access.
     fireEvent.click(screen.getByRole("button", { name: /^recover$/i }));
-    expect(screen.getByText(/account recovery/i)).toBeTruthy();
+    expect(screen.getByRole("heading", { name: /^account recovery$/i })).toBeTruthy();
     expect(screen.getByText(/unavailable on this gateway build/i)).toBeTruthy();
     // back to Trade → the order ticket's submit button returns
     fireEvent.click(screen.getByRole("button", { name: /^trade$/i }));
