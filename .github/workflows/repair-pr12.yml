@@ -1,0 +1,111 @@
+name: Repair PR12 integration
+on:
+  push:
+    branches: ['fix/a07-recovery-ui-hotfix-2026-09-19']
+    paths: ['.github/workflows/repair-pr12.yml']
+permissions: { contents: write }
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with: { components: rustfmt }
+      - name: Update migration and frontend contract tests
+        shell: python
+        run: |
+          from pathlib import Path
+          p=Path("crates/gateway/src/deposit_ingestion/tests.rs");s=p.read_text()
+          s=s.replace('assert_eq!(&new[..8], b"DPSNAP7\\0");','assert_eq!(&new[..8], b"DPSNAP8\\0");',1)
+          s=s.replace('''    let v7 = restored.snapshot_plain();
+              assert!(v7.starts_with(crate::execution::SNAPSHOT_V7));
+              assert_eq!(Gw::boot_restored(&v7).unwrap().snapshot_plain(), v7);''','''    let v8 = restored.snapshot_plain();
+              assert!(v8.starts_with(crate::account_recovery::SNAPSHOT_V8));
+              assert_eq!(Gw::boot_restored(&v8).unwrap().snapshot_plain(), v8);''',1)
+          p.write_text(s)
+
+          p=Path("frontend/src/api/deadRoutes.test.ts");s=p.read_text()
+          s=s.replace('''  "/v1/accounts/me",''','''  "/v1/accounts/me",
+            "/v1/accounts/recovery",''',1)
+          s=s.replace('''const MOUNTED_PREFIXES = ["/v1/orders/", "/v1/markets/", "/v1/batch/"];''','''const MOUNTED_PREFIXES = ["/v1/orders/", "/v1/markets/", "/v1/batch/", "/v1/accounts/recovery/"];''',1)
+          p.write_text(s)
+
+          p=Path("frontend/src/components/RecoveryPanel.test.tsx")
+          p.write_text('''// @vitest-environment happy-dom
+          import { describe, it, expect, afterEach, vi } from "vitest";
+          import { render, screen, fireEvent, cleanup } from "@testing-library/react";
+          import { RecoveryPanel } from "./RecoveryPanel";
+          const injected:any={client:{}};
+          vi.mock("../store",()=>({useStore:()=>injected}));
+          vi.mock("../api/wallet",()=>({connect:vi.fn(async()=>{}),hasInjected:()=>true,useWalletAddress:()=> "0x"+"11".repeat(20)}));
+          afterEach(()=>{cleanup();injected.client={};});
+          describe("RecoveryPanel A07",()=>{
+            it("live client exposes owner-id recovery and dispatches",async()=>{
+              const recoverAccount=vi.fn(async()=>({owner:"0x"+"22".repeat(32),recoveryNonce:2}));
+              injected.client={recoverAccount};
+              render(<RecoveryPanel/>);
+              fireEvent.change(screen.getByLabelText(/account owner id/i),{target:{value:"0x"+"22".repeat(32)}});
+              fireEvent.click(screen.getByRole("button",{name:/sign & recover/i}));
+              expect(await screen.findByText(/credential generation is now #2/i)).toBeTruthy();
+              expect(recoverAccount).toHaveBeenCalledWith("0x"+"22".repeat(32));
+            });
+            it("client without live recovery gives a fail-closed explanation",()=>{
+              render(<RecoveryPanel/>);
+              expect(screen.getByText(/unavailable on this gateway build/i)).toBeTruthy();
+              expect(screen.queryByRole("button")).toBeNull();
+            });
+          });
+          ''')
+        shell: bash
+      - name: Replace stale recovery assertions in demo gates
+        shell: python
+        run: |
+          from pathlib import Path
+          p=Path("frontend/src/components/demoGates.test.tsx");s=p.read_text()
+          s=s.replace('''  recover: vi.fn(async () => []),''','''  recover: vi.fn(async () => []),
+            recoverAccount: vi.fn(async () => ({ owner: "0x" + "22".repeat(32), recoveryNonce: 1 })),''')
+          start=s.index('describe("RecoveryPanel is presence-gated"')
+          end=s.index('describe("Tables: cancel surfaces refusals',start)
+          block='''describe("RecoveryPanel live recovery is capability-gated", () => {
+            it("client without recoverAccount shows an honest unavailable note", () => {
+              injected.client = realShaped(); injected.state = baseState(); render(<RecoveryPanel />);
+              expect(screen.getByText(/unavailable on this gateway build/i)).toBeTruthy();
+            });
+            it("client with recoverAccount exposes the owner-id recovery form", () => {
+              injected.client = realShaped({ recoverAccount: vi.fn(async () => ({owner:"0x"+"22".repeat(32),recoveryNonce:1})) });
+              injected.state = baseState(); render(<RecoveryPanel />);
+              expect(screen.getByLabelText(/account owner id/i)).toBeTruthy();
+            });
+          });
+
+          '''
+          s=s[:start]+block+s[end:]
+          start=s.index('describe("RecoveryPanel does not overpromise recovery')
+          end=s.index('// ── review F1:',start)
+          block='''describe("RecoveryPanel recovery claims match capability (A07)", () => {
+            it("without live recovery it does not promise account access", () => {
+              injected.client = realShaped(); injected.state = baseState(); render(<RecoveryPanel />);
+              expect(screen.getByText(/unavailable on this gateway build/i)).toBeTruthy();
+              expect(screen.queryByText(/account recovered/i)).toBeNull();
+            });
+            it("with live recovery it describes credential rotation, not seed-note scanning", () => {
+              injected.client = realShaped({ recoverAccount: vi.fn(async () => ({owner:"0x"+"22".repeat(32),recoveryNonce:1})) });
+              injected.state = baseState(); render(<RecoveryPanel />);
+              expect(screen.getByText(/lost this browser/i)).toBeTruthy();
+              expect(screen.queryByLabelText(/recovery seed/i)).toBeNull();
+            });
+          });
+
+          '''
+          s=s[:start]+block+s[end:]
+          p.write_text(s)
+        shell: bash
+      - name: Format and commit
+        run: |
+          cargo fmt --all
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add crates/gateway/src frontend/src
+          git rm .github/workflows/repair-pr12.yml
+          git commit -m 'test(a07): align migration and frontend contracts with recovery'
+          git push
