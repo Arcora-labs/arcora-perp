@@ -102,6 +102,23 @@ impl Gw {
         let mut a = self.accounts.remove(&old).expect("located account");
         a.recovery_nonce = next;
         self.accounts.insert(new_key, a);
+        // A01 stores account lookup credentials in permits and credited receipts.
+        // Move those references under the same Gw lock as the account rotation.
+        // Owner, destination market, purpose, event bytes and L1 prefix stay intact.
+        for route in self.deposits.routes.values_mut() {
+            if route.key == old {
+                route.key = new_key;
+            }
+        }
+        for credit in self.deposits.credits.values_mut() {
+            if credit.route.key == old {
+                credit.route.key = new_key;
+            }
+        }
         Ok(new_key)
     }
 }
+
+#[cfg(test)]
+#[path = "account_recovery_tests.rs"]
+mod tests;
