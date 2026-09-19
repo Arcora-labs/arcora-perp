@@ -1,0 +1,85 @@
+name: S1 isolated patch verification
+on:
+  push:
+    branches: ['fix/s1-rotation-fence-2026-09-19']
+    paths: ['scripts/audit/s1-followup/**', '.github/workflows/s1-followup-patch.yml']
+permissions:
+  contents: read
+concurrency:
+  group: s1-isolated-patch
+  cancel-in-progress: false
+jobs:
+  verify:
+    if: github.repository == 'Kubudak90/dark-perp' && github.ref == 'refs/heads/fix/s1-rotation-fence-2026-09-19'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87
+        with:
+          toolchain: stable
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+      - name: Reproduce baseline, apply narrow correction, verify sources
+        run: python3 scripts/audit/s1-followup/apply_and_verify.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: s1-followup-evidence
+          path: target/s1-followup-evidence/
+          if-no-files-found: error
+  publish-isolated-branch:
+    needs: verify
+    if: github.repository == 'Kubudak90/dark-perp' && github.ref == 'refs/heads/fix/s1-rotation-fence-2026-09-19'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # Tests run read-only; only this fixed non-force branch publication has write access.
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: s1-followup-evidence
+          path: /tmp/s1-candidate
+      - name: Validate exact input, tree and allowed paths; publish candidate
+        shell: bash
+        env:
+          CANDIDATE_BRANCH: fix/s1-rotation-fence-2026-09-19
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git ls-remote origin refs/heads/$CANDIDATE_BRANCH | cut -f1)" = "$GITHUB_SHA"
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          m=json.loads(Path('/tmp/s1-candidate/candidate.json').read_text())
+          assert m['input_sha']==os.environ['GITHUB_SHA']
+          assert m['branch']==os.environ['CANDIDATE_BRANCH']
+          assert m['base_sha']=='f997f8b96279bd06ec1808f6b9cb2a6aeb25cc5e'
+          PY
+          git apply --check /tmp/s1-candidate/candidate.patch
+          git apply --index /tmp/s1-candidate/candidate.patch
+          python3 - <<'PY'
+          import hashlib, json, subprocess
+          from pathlib import Path
+          m=json.loads(Path('/tmp/s1-candidate/candidate.json').read_text())
+          changed=set(subprocess.check_output(['git','diff','--cached','--name-only'],text=True).splitlines())
+          allowed={'crates/gateway/src/main.rs','crates/gateway/src/account_recovery.rs','crates/gateway/src/credential_session.rs','crates/gateway/src/s1_recovery_ws_tests.rs','docs/ROADMAP.md','docs/AUDIT_HANDOFF.md','docs/audits/2026-09-19-s1-fence-followup.md','docs/audits/2026-09-19-s1-fence-evidence.json','.github/workflows/s1-followup-patch.yml'}
+          allowed|={'scripts/audit/s1-followup/'+n for n in ['apply_and_verify.py','credential_session.rs','http_recovery.rs','repros.rs','fence_tests.rs']}
+          assert changed<=allowed,changed-allowed
+          for p,h in m['source_sha256'].items():
+              assert hashlib.sha256(Path(p).read_bytes()).hexdigest()==h,p
+          assert subprocess.check_output(['git','write-tree'],text=True).strip()==m['tree']
+          assert not Path('.github/workflows/s1-followup-patch.yml').exists()
+          PY
+          git diff --cached --check
+          git -c user.name='dark-perp audit' -c user.email='audit@users.noreply.github.com' commit -m 'fix(s1): fence recovery responses and revoke queued/idle websocket sessions'
+          git push origin HEAD:refs/heads/$CANDIDATE_BRANCH
+          git rev-parse HEAD
