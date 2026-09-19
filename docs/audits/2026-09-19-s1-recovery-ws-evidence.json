@@ -15,7 +15,10 @@
       "base_location": "crates/gateway/src/main.rs:6918-6974 (ws_v1_loop), owner_hex_for at main.rs:3420-3423",
       "impact": "stale session keeps receiving owner's private events indefinitely; owner-only filtering, no credential-generation check",
       "fix": "session pins (owner, recovery_nonce) at auth; ws_auth_valid re-checks current recovery_nonce under a fresh short lock before every private event delivery and on non-auth frames; mismatch sends error frame and closes; old-key reconnect rejection preserved",
-      "fix_locations": ["main.rs:3433-3451", "main.rs:6950-7030"]
+      "fix_locations": [
+        "main.rs:3433-3451",
+        "main.rs:6950-7030"
+      ]
     },
     {
       "id": "S1-B2",
@@ -23,7 +26,10 @@
       "base_location": "crates/gateway/src/main.rs:6200-6228 (post_v1_recovery) + account_recovery.rs:63-119",
       "impact": "rotation applied in memory (old key dead, nonce burned) before durable ACK; any ACK failure / dropped request / lost response returned 503 unknown with no way to re-obtain the key; blind retry hits nonce mismatch",
       "fix": "Account.recovery_last (in-memory only, serde-skip; snapshot/trailer format unchanged) records (nonce, new_key) per applied rotation; retry of the same signed authorization for the current generation returns the byte-identical key with zero mutation and still requires the durable ACK; superseded nonces still rejected; checked_add against u64 overflow",
-      "fix_locations": ["account_recovery.rs:63-128", "main.rs:1176-1186"]
+      "fix_locations": [
+        "account_recovery.rs:63-128",
+        "main.rs:1176-1186"
+      ]
     }
   ],
   "semantics": {
@@ -56,11 +62,29 @@
   },
   "verification": {
     "commands": [
-      {"cmd": "cargo test -p gateway", "exit": 0, "result": "338 passed; 0 failed; 1 ignored (pre-existing); self-run this session"},
-      {"cmd": "cargo fmt --all --check", "exit": 0},
-      {"cmd": "cargo clippy --workspace --all-targets --locked -- -D warnings", "exit": 0},
-      {"cmd": "cargo test --workspace --locked", "exit": 0, "result": "all test binaries ok; includes 4-test binary at 136s; self-run this session"},
-      {"cmd": "cargo test --locked -p gateway a01_", "exit": 0, "result": "28 passed; 0 failed; 1 ignored (pre-existing live-RPC cast test); 310 filtered out"}
+      {
+        "cmd": "cargo test -p gateway",
+        "exit": 0,
+        "result": "338 passed; 0 failed; 1 ignored (pre-existing); self-run this session"
+      },
+      {
+        "cmd": "cargo fmt --all --check",
+        "exit": 0
+      },
+      {
+        "cmd": "cargo clippy --workspace --all-targets --locked -- -D warnings",
+        "exit": 0
+      },
+      {
+        "cmd": "cargo test --workspace --locked",
+        "exit": 0,
+        "result": "all test binaries ok; includes 4-test binary at 136s; self-run this session"
+      },
+      {
+        "cmd": "cargo test --locked -p gateway a01_",
+        "exit": 0,
+        "result": "28 passed; 0 failed; 1 ignored (pre-existing live-RPC cast test); 310 filtered out"
+      }
     ]
   },
   "mock_limits": [
@@ -69,8 +93,54 @@
     "real SP1 ELF/vkey/proof/deployment verification NOT done; stub typecheck is not proof"
   ],
   "ci": {
-    "workflows_triggered_by_pr_push": ["ci.yml", "a01-ingestion.yml", "a07-integration-hotfix.yml", "a10-trust-boundary.yml"],
+    "workflows_triggered_by_pr_push": [
+      "ci.yml",
+      "a01-ingestion.yml",
+      "a07-integration-hotfix.yml",
+      "a10-trust-boundary.yml"
+    ],
     "deployment_or_live_interaction": "none; all triggered workflows are code-validation only (contents: read)",
     "run_ids": "recorded in PR description after push"
+  },
+  "round2": {
+    "base": "f997f8b96279bd06ec1808f6b9cb2a6aeb25cc5e",
+    "head": "8b064a892759d4266115fbe62ffa40879f4ebdce",
+    "finding": {
+      "id": "S1-B3",
+      "title": "post_v1_recovery returned captured key without rechecking active key/generation after ACK",
+      "base_location": "crates/gateway/src/main.rs post_v1_recovery (pre-fix head 0cde5ee)",
+      "impact": "interleaved rotations A=nonce0 parked-ACK, B=nonce1 confirmed; A's late ACK made A return its superseded dead key as 200 confirmed",
+      "fix": "after durable ACK, re-lock Gw and verify accounts.contains_key(key); superseded -> 409 'recovery superseded by a newer rotation', dead key never returned",
+      "fix_location": "crates/gateway/src/main.rs:6242-6266"
+    },
+    "failing_before": {
+      "test": "recovery_interleaved_rotation_returns_superseded_not_dead_key",
+      "with_recheck_disabled": "FAILED: expected 409, got 200 carrying the dead key"
+    },
+    "tests_added": [
+      "recovery_interleaved_rotation_returns_superseded_not_dead_key",
+      "ws_non_auth_command_frames_do_not_mutate_state",
+      "ws_revocation_race_slow_consumer_and_no_lock_across_send",
+      "recovery_restart_drops_pending_retry_and_rejects_old_authorization"
+    ],
+    "commands": [
+      {
+        "cmd": "cargo test -p gateway",
+        "exit": 0,
+        "result": "342 passed; 0 failed; 1 ignored"
+      },
+      {
+        "cmd": "cargo fmt --all --check",
+        "exit": 0
+      },
+      {
+        "cmd": "cargo clippy -p gateway --all-targets --locked",
+        "exit": 0
+      }
+    ],
+    "ci": {
+      "pr": "draft PR to be recorded",
+      "runs": "recorded after push"
+    }
   }
 }
