@@ -180,6 +180,17 @@
         "exit": 0
       }
     ],
-    "linearization": "delivery = at ws_auth_valid under READ guard; revocation = at WRITE guard acquisition in post_v1_recovery; already-emitted TCP frames are not retractable"
+    "linearization": "delivery = at ws_auth_valid under READ guard; revocation = at WRITE guard acquisition in post_v1_recovery; already-emitted TCP frames are not retractable",
+    "head": "a5687a89afde649a44518bb24d1ec661d6a4f567",
+    "ci": {
+      "pr": 18,
+      "draft": true,
+      "runs": {
+        "ci": 35450246450,
+        "a01_ingestion": 35450248329,
+        "a07_integration_hotfix": 35450246435
+      },
+      "conclusion": "all completed success on head a5687a8"
+    }
   }
 }
