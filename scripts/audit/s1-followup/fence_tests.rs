@@ -4,7 +4,7 @@ async fn s1f_send_lease_fences_rotation_without_holding_gw() {
     let (mut app, key, owner, sk) = prepared();
     let (tx, mut rx) = tokio::sync::mpsc::channel::<SnapshotAck>(8);
     Arc::get_mut(&mut app).unwrap().snapshot_req = Some(tx);
-    let session = crate::credential_session::Session::authenticate(&app.gw.lock().await, key).unwrap();
+    let session = crate::credential_session::Session::authenticate(&*app.gw.lock().await, key).unwrap();
     let (entered_tx, entered_rx) = tokio::sync::oneshot::channel();
     let (release_tx, release_rx) = tokio::sync::oneshot::channel();
     let send = tokio::spawn({
@@ -42,7 +42,7 @@ async fn s1f_stalled_send_releases_lease_on_deadline() {
     let (mut app, key, owner, sk) = prepared();
     let (tx, mut rx) = tokio::sync::mpsc::channel::<SnapshotAck>(8);
     Arc::get_mut(&mut app).unwrap().snapshot_req = Some(tx);
-    let session = crate::credential_session::Session::authenticate(&app.gw.lock().await, key).unwrap();
+    let session = crate::credential_session::Session::authenticate(&*app.gw.lock().await, key).unwrap();
     let (entered_tx, entered_rx) = tokio::sync::oneshot::channel();
     let send = tokio::spawn({
         let app = app.clone();

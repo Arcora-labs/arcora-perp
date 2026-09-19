@@ -69,7 +69,7 @@ where
             _ = changed.changed() => return false,
             lease = session.control.fence.read() => lease,
         };
-        if !session.valid(&app.gw.lock().await) {
+        if !session.valid(&*app.gw.lock().await) {
             return false;
         }
         // No Gw guard survives the condition above. Only this account is fenced.
@@ -117,7 +117,7 @@ pub(super) async fn serve(mut socket: WebSocket, app: Shared) {
                         if value.get("type").and_then(|v| v.as_str()) == Some("auth") {
                             let key = value.get("apiKey").and_then(|v| v.as_str()).and_then(parse_hex32);
                             auth = match key {
-                                Some(key) => Session::authenticate(&app.gw.lock().await, key),
+                                Some(key) => Session::authenticate(&*app.gw.lock().await, key),
                                 None => None,
                             };
                             if let Some(session) = &auth {
@@ -127,7 +127,7 @@ pub(super) async fn serve(mut socket: WebSocket, app: Shared) {
                                 serde_json::json!({"type":"error","message":"unknown api key"}).to_string()
                             )).await { break; }
                         } else if let Some(session) = &auth {
-                            if !session.valid(&app.gw.lock().await) { break; }
+                            if !session.valid(&*app.gw.lock().await) { break; }
                             // /v1/ws has no command/subscription mutation protocol.
                             // Unknown frames stay no-ops; never dispatch them by owner.
                         }
