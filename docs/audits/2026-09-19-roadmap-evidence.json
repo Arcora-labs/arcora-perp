@@ -1,0 +1,212 @@
+{
+  "schema_version": 1,
+  "purpose": "Documentation handoff: timestamped observations, not a new application verification run",
+  "repository": "Kubudak90/dark-perp",
+  "observed_at": "2026-09-19T15:44:28+03:00",
+  "main_sha": "b3372caef14ff847f57e949dc3ccf2df30759350",
+  "main_tree_sha": "ddba5649dcc6831a0d34273692dc3f215f4a237c",
+  "documentation_branch": "docs/audit-roadmap-handoff-2026-09-19",
+  "pr12": {
+    "number": 12,
+    "state": "closed",
+    "merged": true,
+    "head_sha": "c633c642dc5d1deb125bbbd8b1c7e9eff4b04839",
+    "head_ref": "fix/a07-recovery-ui-hotfix-2026-09-19",
+    "merge_commit_sha": "b3372caef14ff847f57e949dc3ccf2df30759350",
+    "merged_at": "2026-09-19T12:02:49Z",
+    "url": "https://github.com/Kubudak90/dark-perp/pull/12"
+  },
+  "pr11": {
+    "number": 11,
+    "state": "closed",
+    "merged": true,
+    "head_sha": "84445cfa3072035b2c934d33ddc6ca82be703c82",
+    "url": "https://github.com/Kubudak90/dark-perp/pull/11"
+  },
+  "pr10": {
+    "number": 10,
+    "state": "closed",
+    "merged": false,
+    "scope": "unmerged Solana experiment, excluded from remediation completion"
+  },
+  "open_pull_requests_before_this_documentation_pr": [],
+  "observed_runs": [
+    {
+      "run_id": 35441756911,
+      "name": "ci",
+      "head_sha": "b3372caef14ff847f57e949dc3ccf2df30759350",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/Kubudak90/dark-perp/actions/runs/35441756911",
+      "evidence_level": "GitHub run result and job/step metadata re-read; not rerun",
+      "jobs": [
+        {
+          "job_id": 105893659238,
+          "name": "rust (workspace)",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "job_id": 105893659336,
+          "name": "frontend (vite)",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "job_id": 105893659393,
+          "name": "contracts (foundry)",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "job_id": 105893659414,
+          "name": "prover crates (excluded, typecheck)",
+          "status": "completed",
+          "conclusion": "success"
+        }
+      ]
+    },
+    {
+      "run_id": 35437539311,
+      "name": "ci",
+      "head_sha": "c633c642dc5d1deb125bbbd8b1c7e9eff4b04839",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/Kubudak90/dark-perp/actions/runs/35437539311",
+      "evidence_level": "GitHub run result and job/step metadata re-read; not rerun",
+      "jobs": [
+        {
+          "job_id": 105882651604,
+          "name": "contracts (foundry)",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "job_id": 105882651735,
+          "name": "frontend (vite)",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "job_id": 105882651755,
+          "name": "prover crates (excluded, typecheck)",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "job_id": 105882651756,
+          "name": "rust (workspace)",
+          "status": "completed",
+          "conclusion": "success"
+        }
+      ]
+    },
+    {
+      "run_id": 35437539277,
+      "name": "A07 integration hotfix",
+      "head_sha": "c633c642dc5d1deb125bbbd8b1c7e9eff4b04839",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/Kubudak90/dark-perp/actions/runs/35437539277",
+      "evidence_level": "GitHub run result and job/step metadata re-read; not rerun",
+      "jobs": [
+        {
+          "job_id": 105882651531,
+          "name": "rust",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "job_id": 105882651563,
+          "name": "frontend",
+          "status": "completed",
+          "conclusion": "success"
+        }
+      ]
+    },
+    {
+      "run_id": 35437539274,
+      "name": "a01-ingestion",
+      "head_sha": "c633c642dc5d1deb125bbbd8b1c7e9eff4b04839",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/Kubudak90/dark-perp/actions/runs/35437539274",
+      "evidence_level": "GitHub run result and job/step metadata re-read; not rerun",
+      "jobs": [
+        {
+          "job_id": 105882651570,
+          "name": "offline-ingestion",
+          "status": "completed",
+          "conclusion": "success"
+        }
+      ]
+    }
+  ],
+  "main_run_listing": {
+    "url": "https://api.github.com/repos/Kubudak90/dark-perp/actions/runs?head_sha=b3372caef14ff847f57e949dc3ccf2df30759350&per_page=20",
+    "total_count": 1,
+    "workflow_run_ids": [
+      35441756911
+    ],
+    "a11_same_main_sha_run_observed": false
+  },
+  "raw_log_review": {
+    "job_id": 105893659414,
+    "run_id": 35441756911,
+    "head_sha": "b3372caef14ff847f57e949dc3ccf2df30759350",
+    "url": "https://github.com/Kubudak90/dark-perp/actions/runs/35441756911/job/105893659414",
+    "observations": [
+      "Checkout log resolves b3372caef14ff847f57e949dc3ccf2df30759350",
+      "SP1_SKIP_PROGRAM_BUILD: true",
+      "touch crates/sp1-guest/target/elf-compilation/riscv64im-succinct-zkvm-elf/release/perp-core-guest",
+      "Build skipped for perp-core-guest due to SP1_SKIP_PROGRAM_BUILD flag",
+      "cargo check --manifest-path crates/sp1-host/Cargo.toml",
+      "cargo check --manifest-path crates/prover-service/Cargo.toml"
+    ],
+    "conclusion": "Typecheck only, not real SP1 ELF build, execution, vkey derivation or proof"
+  },
+  "workflow_sources_read_at_main": [
+    ".github/workflows/ci.yml",
+    ".github/workflows/a01-ingestion.yml",
+    ".github/workflows/a07-integration-hotfix.yml",
+    ".github/workflows/a07-recovery.yml",
+    ".github/workflows/a10-trust-boundary.yml",
+    ".github/workflows/a11-release-evidence.yml",
+    ".github/workflows/audit-2026-09-17.yml"
+  ],
+  "verification_limits": {
+    "application_tests_rerun_in_this_documentation_task": false,
+    "github_workflow_rerun_requested": false,
+    "all_raw_test_logs_reaudited": false,
+    "test_totals_recalculated": false,
+    "full_codebase_audit_complete": false,
+    "real_current_sp1_elf_verified": false,
+    "current_elf_vkey_derived_and_verified": false,
+    "real_current_sp1_proof_verified": false,
+    "live_deployment_binding_verified": false,
+    "physical_crash_drill_verified": false,
+    "new_documentation_head_ci_covered_by_this_evidence": false
+  },
+  "delegation": {
+    "accepted_audit_continuation_job_id": null,
+    "new_agent_result_verified": false,
+    "last_session_observation": "kimi-bridge/kimi-mcp tools unavailable in ChatGPT discovery",
+    "local_bridge_health": "User-reported live/ready, version 0.2.0, 10 tools; not independently verified from ChatGPT",
+    "next_step": "Discover current tools and list existing jobs before a new submission; do not infer acceptance without a job id"
+  },
+  "next_review_order": [
+    "S1: recovery HTTP durability/authorization and pre-rotation authenticated WS session revocation",
+    "S2: frontend credential storage and concurrent account refresh",
+    "S3: V8 snapshot extension parsing/framing and migrations",
+    "S4: core/matcher/sequencer/prover/contracts/oracle/attestation/archive/CI integrity",
+    "S5-S7: real SP1 and release evidence; no live actions without separate authorization"
+  ],
+  "prohibited_actions": [
+    "merge",
+    "auto-merge",
+    "deployment",
+    "live-chain transactions",
+    "approval/security-control bypass",
+    "unapproved paid network proving"
+  ]
+}
