@@ -250,7 +250,7 @@ fn a01_actual_frozen_v5_fixture_migrates_losslessly_with_pending_permit() {
         .collect();
     assert_eq!(postcard::to_allocvec(&(&gw, prices)).unwrap(), plain);
     let new = snapshot::seal(&gw.snapshot_plain(), &[42; 32]);
-    assert_eq!(&new[..8], b"DPSNAP7\0");
+    assert_eq!(&new[..8], b"DPSNAP8\0");
     let restored = Gw::boot_restored(&snapshot::open(&new, &[42; 32]).unwrap()).unwrap();
     assert_eq!(gw.snapshot_plain(), restored.snapshot_plain());
 }
@@ -575,9 +575,9 @@ fn a05_a01_v6_migration_preserves_credits_routes_secrets_and_replay_bytes() {
         restored.deposits.routes[&pending].purpose,
         Purpose::InsuranceBootstrap
     );
-    let v7 = restored.snapshot_plain();
-    assert!(v7.starts_with(crate::execution::SNAPSHOT_V7));
-    assert_eq!(Gw::boot_restored(&v7).unwrap().snapshot_plain(), v7);
+    let v8 = restored.snapshot_plain();
+    assert!(v8.starts_with(crate::account_recovery::SNAPSHOT_V8));
+    assert_eq!(Gw::boot_restored(&v8).unwrap().snapshot_plain(), v8);
     let witness = restored.seq.seal_window();
     let mut replay = witness.pre_state.clone();
     let roots =
