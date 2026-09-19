@@ -81,12 +81,17 @@ where
 }
 
 async fn public_send(socket: &mut WebSocket, message: Message) -> bool {
-    matches!(tokio::time::timeout(SEND_TIMEOUT, socket.send(message)).await, Ok(Ok(())))
+    matches!(
+        tokio::time::timeout(SEND_TIMEOUT, socket.send(message)).await,
+        Ok(Ok(()))
+    )
 }
 
 async fn revoked(auth: &mut Option<Session>) {
     match auth {
-        Some(session) => { let _ = session.changed.changed().await; }
+        Some(session) => {
+            let _ = session.changed.changed().await;
+        }
         None => std::future::pending::<()>().await,
     }
 }

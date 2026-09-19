@@ -1,5 +1,11 @@
 # Yeni oturum başlangıcı: dark-perp audit devamı
 
+> **S1 devamı (19 Eylül 2026):** PR #14 `f997f8b` ile birleşti, ancak S1'i
+> kapatmadı. HTTP ACK/rotation ve WS check/send/idle eksikleri bağımsız testlerle
+> yeniden üretildi. [Devam raporu](audits/2026-09-19-s1-fence-followup.md) ve
+> [kaynak-bağlı kanıt](audits/2026-09-19-s1-fence-evidence.json) esas alınmalıdır.
+> Final-head CI ve kalan S1 matrisi henüz kapanış kanıtı değildir; S2'ye geçmeyin.
+
 **Tarih:** 19 Eylül 2026. **Tek güncel plan:** [ROADMAP.md](ROADMAP.md).
 
 **Tam codebase audit'i bitmedi. Gerçek SP1 ELF/vkey/proof/deployment doğrulaması yapılmadı.** Bu handoff belge güncellemesidir; yeni recovery/WS/frontend/snapshot düzeltmesi yapıldığı anlamına gelmez.

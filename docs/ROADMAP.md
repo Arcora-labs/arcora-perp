@@ -1,5 +1,11 @@
 # Dark-perp / Arcora Perp: audit ve canlıya çıkış roadmap'i
 
+> **S1 devamı (19 Eylül 2026):** PR #14 `f997f8b` ile birleşti, ancak S1'i
+> kapatmadı. HTTP ACK/rotation ve WS check/send/idle eksikleri bağımsız testlerle
+> yeniden üretildi. [Devam raporu](audits/2026-09-19-s1-fence-followup.md) ve
+> [kaynak-bağlı kanıt](audits/2026-09-19-s1-fence-evidence.json) esas alınmalıdır.
+> Final-head CI ve kalan S1 matrisi henüz kapanış kanıtı değildir; S2'ye geçmeyin.
+
 **Güncelleme:** 19 Eylül 2026. **Kod tabanı:** `main@b3372caef14ff847f57e949dc3ccf2df30759350`.
 
 **Durum: tam codebase audit'i bitmedi. Gerçek SP1 ELF/vkey/proof/deployment doğrulaması yapılmadı. Gerçek para için yayın onayı yok.**
@@ -72,13 +78,13 @@ Aşağıdaki kutular **açıktır**. Bunlar doğrulanmış yeni açıklar listes
 
 Başlangıç: `crates/gateway/src/main.rs`, `account_recovery.rs`, `snapshot.rs`, mevcut recovery ve deposit testleri.
 
-- [x] Recovery imzasında owner, chain/vault domain'i, mevcut authorizer, nonce/replay ve nonce taşması; yanlış signer, rebind ve eşzamanlı recovery yolları incelendi. (2026-09-19 S1 PR: handler + Gw testleri; rapor `audits/2026-09-19-s1-recovery-ws.md`)
-- [x] HTTP başarı yanıtının ilgili recovery generation'ını kapsayan dayanıklı ACK'e bağlı olduğu gerçek handler testleriyle gösterildi. Writer yokluğu, kapalı/dolu kuyruk, disk hatası (stub writer false-ACK), timeout ve request iptali başarı/secret sızdırmıyor.
-- [x] Rotation sonrası ACK belirsizliği ve kayıp HTTP yanıtı için güvenli yeniden deneme tanımlandı (idempotent retry, aynı imzalı authorization → byte-identical key, nonce çift artmaz, yine ACK şartı). Bellek/disk ayrışması sessiz rollback/nonce sıfırlama ile örtülmüyor; restart `recovery_last`'i unutur. Eşzamanlı rotation ile superseded key teslimi ayrıca ele alındı.
-- [x] Eski API key ile önceden açılmış authenticated WebSocket oturumu rotation sonrasında özel veri alamıyor ve bağlantısı kapatılıyor (oturum auth anındaki `recovery_nonce`'a pin'leniyor, her özel event ve non-auth frame'de güncel nonce doğrulanıyor). Reconnect yolları ve ilgisiz oturumlar gerçek socket testleriyle doğrulandı.
-- [x] PR #12'nin pending permit/credited receipt taşıması, hesap/emir kimliği ve deposit prefix/replay özellikleri bozulmadı (ilgili testler değişiklik görmeden geçti; tek istisna: uygulanmış authorization'ın replay'inin artık idempotent retry sayılması — superseded nonce reddi korundu).
+- [ ] Recovery imzasında owner, chain/vault domain'i, mevcut authorizer, nonce/replay ve nonce taşması; yanlış signer, rebind ve eşzamanlı recovery yolları incelendi. (2026-09-19 S1 PR: handler + Gw testleri; rapor `audits/2026-09-19-s1-recovery-ws.md`)
+- [ ] HTTP başarı yanıtının ilgili recovery generation'ını kapsayan dayanıklı ACK'e bağlı olduğu gerçek handler testleriyle gösterildi. Writer yokluğu, kapalı/dolu kuyruk, disk hatası (stub writer false-ACK), timeout ve request iptali başarı/secret sızdırmıyor.
+- [ ] Rotation sonrası ACK belirsizliği ve kayıp HTTP yanıtı için güvenli yeniden deneme tanımlandı (idempotent retry, aynı imzalı authorization → byte-identical key, nonce çift artmaz, yine ACK şartı). Bellek/disk ayrışması sessiz rollback/nonce sıfırlama ile örtülmüyor; restart `recovery_last`'i unutur. Eşzamanlı rotation ile superseded key teslimi ayrıca ele alındı.
+- [ ] Eski API key ile önceden açılmış authenticated WebSocket oturumu rotation sonrasında özel veri alamıyor ve bağlantısı kapatılıyor (oturum auth anındaki `recovery_nonce`'a pin'leniyor, her özel event ve non-auth frame'de güncel nonce doğrulanıyor). Reconnect yolları ve ilgisiz oturumlar gerçek socket testleriyle doğrulandı.
+- [ ] PR #12'nin pending permit/credited receipt taşıması, hesap/emir kimliği ve deposit prefix/replay özellikleri bozulmadı (ilgili testler değişiklik görmeden geçti; tek istisna: uygulanmış authorization'ın replay'inin artık idempotent retry sayılması — superseded nonce reddi korundu).
 
-**Bitiş kanıtı:** `docs/audits/2026-09-19-s1-recovery-ws.md` + `...-evidence.json`. Exact base `b60e537f...`; `cargo test -p gateway` 338 passed/0 failed/1 ignored; `cargo test --workspace --locked` ve `cargo clippy --workspace --all-targets --locked -- -D warnings` ve `cargo fmt --all --check` exit 0; aynı head CI sonucu S1 PR açıklamasında. Fiziksel crash kanıtı ayrıca S6'dadır.
+**PR #14 tarihsel kaydı, S1 kapanış kanıtı değildir:** `docs/audits/2026-09-19-s1-recovery-ws.md` + `...-evidence.json`. Exact base `b60e537f...`; `cargo test -p gateway` 338 passed/0 failed/1 ignored; `cargo test --workspace --locked` ve `cargo clippy --workspace --all-targets --locked -- -D warnings` ve `cargo fmt --all --check` exit 0; aynı head CI sonucu S1 PR açıklamasında. Fiziksel crash kanıtı ayrıca S6'dadır.
 
 ### S2. Frontend credential storage ve eşzamanlı hesap yenileme
 

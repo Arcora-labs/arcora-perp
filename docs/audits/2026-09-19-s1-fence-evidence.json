@@ -1,0 +1,123 @@
+{
+  "base_sha": "f997f8b96279bd06ec1808f6b9cb2a6aeb25cc5e",
+  "bootstrap_sha": "d95192de2be36ba431f653df4fe2a80cab49d6f4",
+  "workflow_run": "35447879244",
+  "commands": [
+    {
+      "name": "baseline-reproductions",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "gateway",
+        "s1f_",
+        "--",
+        "--test-threads=1"
+      ],
+      "exit_code": 101,
+      "expected_exit": 101,
+      "summaries": [
+        "test result: FAILED. 0 passed; 2 failed; 0 ignored; 0 measured; 339 filtered out; finished in 3.50s"
+      ]
+    },
+    {
+      "name": "format",
+      "command": [
+        "cargo",
+        "fmt",
+        "--all"
+      ],
+      "exit_code": 0,
+      "expected_exit": 0,
+      "summaries": []
+    },
+    {
+      "name": "focused",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "gateway",
+        "s1f_",
+        "--",
+        "--test-threads=1"
+      ],
+      "exit_code": 0,
+      "expected_exit": 0,
+      "summaries": [
+        "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 339 filtered out; finished in 2.53s"
+      ]
+    },
+    {
+      "name": "gateway",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "gateway"
+      ],
+      "exit_code": 0,
+      "expected_exit": 0,
+      "summaries": [
+        "test result: ok. 346 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 34.36s"
+      ]
+    },
+    {
+      "name": "clippy",
+      "command": [
+        "cargo",
+        "clippy",
+        "--workspace",
+        "--all-targets",
+        "--locked",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "exit_code": 0,
+      "expected_exit": 0,
+      "summaries": []
+    },
+    {
+      "name": "format-check",
+      "command": [
+        "cargo",
+        "fmt",
+        "--all",
+        "--check"
+      ],
+      "exit_code": 0,
+      "expected_exit": 0,
+      "summaries": []
+    },
+    {
+      "name": "diff-check",
+      "command": [
+        "git",
+        "diff",
+        "--check"
+      ],
+      "exit_code": 0,
+      "expected_exit": 0,
+      "summaries": []
+    }
+  ],
+  "source_sha256": {
+    "crates/gateway/src/main.rs": "488785fb0f67fa9f1708a2ea3942620a55def08782911aba763ba339d076ccd2",
+    "crates/gateway/src/account_recovery.rs": "00ad3478fa755441a7122aad27adc2245de2895dea7511028df47f2fe0b09046",
+    "crates/gateway/src/credential_session.rs": "21254c638bca932f206e7ece2289ec354f48cec9e58799320ffe3b2d729ddc40",
+    "crates/gateway/src/s1_recovery_ws_tests.rs": "037ed49a4a789582e3ac420a13c1d86409ec9b5c527e8298199c982b18b8970f"
+  },
+  "baseline": "Two failing runtime assertions; unchanged tests pass on fixed sources",
+  "limitations": [
+    "Final source commit CI must be independently checked after publishing",
+    "Only controlled ACKs except one actual encrypted snapshot write/fsync/restore test",
+    "No physical process kill or power-loss drill",
+    "Send-stall seam uses a controlled future at production helper; TCP backpressure stress not performed",
+    "No real SP1 ELF/vkey/proof, no deployment/live-chain operations",
+    "Full S1 matrix and codebase audit not closed"
+  ]
+}

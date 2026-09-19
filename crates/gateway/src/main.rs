@@ -47,6 +47,7 @@ use sequencer::{adl_tag, adl_tag_key, EnclaveIdentity, SealedBatch, Sequencer, W
 mod account_recovery;
 mod bootstrap;
 mod candles;
+mod credential_session;
 mod deposit_ingestion;
 mod deposit_rpc;
 mod enclave_epoch;
@@ -1184,6 +1185,9 @@ struct Account {
     /// scoped to one process generation.
     #[serde(skip)]
     recovery_last: Option<(u64, [u8; 32])>,
+    /// Runtime-only synchronization; no positional or trailer schema change.
+    #[serde(skip)]
+    credential_control: Arc<credential_session::Control>,
     /// SEC-019 (Task 7b): gateway-issued deposit authorizations awaiting their on-chain
     /// landing, keyed by `ownerCommit = keccak(owner ‖ deposit_blind)`. The value is the
     /// SECRET per-deposit `deposit_blind` (a fresh 32-byte CSPRNG value); `owner` is this
@@ -2112,6 +2116,7 @@ impl Gw {
                 rebind_counter: 0,
                 recovery_nonce: 0,
                 recovery_last: None,
+                credential_control: Arc::default(),
                 deposit_authorizations: std::collections::BTreeMap::new(),
             },
         );
@@ -3429,24 +3434,6 @@ impl Gw {
     /// Owner (hex) for an API key, for authenticating a /v1/ws connection.
     fn owner_hex_for(&self, key: &[u8; 32]) -> Option<String> {
         self.accounts.get(key).map(|a| hex0x(&a.wallet.owner))
-    }
-    /// Owner (hex) + recovery nonce at auth time, for a /v1/ws session. The nonce
-    /// pins the session to the credential generation it authenticated under, so a
-    /// later key rotation (recovery_nonce bump) invalidates the session (S1).
-    fn owner_and_recovery_for(&self, key: &[u8; 32]) -> Option<(String, u64)> {
-        self.accounts
-            .get(key)
-            .map(|a| (hex0x(&a.wallet.owner), a.recovery_nonce))
-    }
-    /// S1: is a /v1/ws session still valid? The owner's account must still exist
-    /// and carry the SAME recovery_nonce the session authenticated under; any
-    /// rotation since auth invalidates it.
-    fn ws_auth_valid(&self, owner_hex: &str, nonce: u64) -> bool {
-        self.accounts
-            .values()
-            .find(|a| hex0x(&a.wallet.owner) == owner_hex)
-            .map(|a| a.recovery_nonce == nonce)
-            .unwrap_or(false)
     }
     fn v1_account(&self, key: &[u8; 32]) -> Option<serde_json::Value> {
         let a = self.accounts.get(key)?;
@@ -6228,30 +6215,7 @@ async fn post_v1_recovery(
     State(app): State<Shared>,
     Json(req): Json<RecoveryReq>,
 ) -> impl IntoResponse {
-    if app.snapshot_req.is_none() {
-        return (StatusCode::SERVICE_UNAVAILABLE,Json(serde_json::json!({"error":"state persistence is required for credential recovery","durability":"unknown"}))).into_response();
-    }
-    let Some(owner) = parse_hex32(&req.owner) else {
-        return err400("bad owner (expected 32-byte 0x hex)".into()).into_response();
-    };
-    let Some(sig) = parse_hex65(&req.signature) else {
-        return err400("bad signature".into()).into_response();
-    };
-    let key = {
-        let mut gw = app.gw.lock().await;
-        match gw.recover_account(owner, req.nonce, &sig) {
-            Ok(k) => k,
-            Err(e) => return err400(e).into_response(),
-        }
-    };
-    if let Err(e) = snapshot_now(&app.snapshot_req).await {
-        return (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(serde_json::json!({"error":e,"durability":"unknown"})),
-        )
-            .into_response();
-    }
-    Json(serde_json::json!({"apiKey":hex0x(&key),"owner":hex0x(&owner),"recoveryNonce":req.nonce.saturating_add(1),"durability":"confirmed"})).into_response()
+    account_recovery::post(app, req).await
 }
 
 /// Bind the external EOA an account funds from, so its on-chain USDC deposits can be
@@ -6942,90 +6906,8 @@ async fn ws_v1_handler(State(app): State<Shared>, ws: WebSocketUpgrade) -> impl 
 /// `{"type":"auth","apiKey":"0x.."}` — that account's own events (fills, order
 /// finality, ADL haircuts). Events are filtered to the authenticated owner; an
 /// unauthenticated connection sees only public market data.
-async fn ws_v1_loop(mut socket: WebSocket, app: Shared) {
-    let mut ticks = app.tx.subscribe();
-    let mut accts = app.events_tx.subscribe();
-    let mut auth: Option<(String, u64)> = None;
-    let initial = { serde_json::to_string(&app.gw.lock().await.v1_public_json()).unwrap() };
-    if socket.send(Message::Text(initial)).await.is_err() {
-        return;
-    }
-    loop {
-        tokio::select! {
-            client = socket.recv() => {
-                match client {
-                    Some(Ok(Message::Text(txt))) => {
-                        let v: serde_json::Value = match serde_json::from_str(&txt) {
-                            Ok(v) => v,
-                            Err(_) => continue,
-                        };
-                        if v.get("type").and_then(|t| t.as_str()) == Some("auth") {
-                            let key = v.get("apiKey").and_then(|a| a.as_str()).and_then(parse_hex32);
-                            let next = match key {
-                                Some(k) => app.gw.lock().await.owner_and_recovery_for(&k),
-                                None => None,
-                            };
-                            let reply = match &next {
-                                Some((o, _)) => serde_json::json!({ "type": "authOk", "owner": o }),
-                                None => serde_json::json!({ "type": "error", "message": "unknown api key" }),
-                            };
-                            auth = next;
-                            if socket.send(Message::Text(reply.to_string())).await.is_err() {
-                                break;
-                            }
-                        } else if let Some((owner, nonce)) = &auth {
-                            // S1: any non-auth frame from a session whose key was
-                            // rotated since auth must not be honored — close it.
-                            let valid = { app.gw.lock().await.ws_auth_valid(owner, *nonce) };
-                            if !valid {
-                                let _ = socket
-                                    .send(Message::Text(
-                                        serde_json::json!({"type":"error","message":"api key rotated"})
-                                            .to_string(),
-                                    ))
-                                    .await;
-                                break;
-                            }
-                        }
-                    }
-                    Some(Ok(_)) => {}
-                    _ => break,
-                }
-            }
-            tick = ticks.recv() => {
-                if tick.is_err() { continue; }
-                let msg = { serde_json::to_string(&app.gw.lock().await.v1_public_json()).unwrap() };
-                if socket.send(Message::Text(msg)).await.is_err() { break; }
-            }
-            ev = accts.recv() => {
-                let Ok(json) = ev else { continue; };
-                if let Some((owner, nonce)) = &auth {
-                    let is_mine = serde_json::from_str::<serde_json::Value>(&json)
-                        .ok()
-                        .and_then(|v| v.get("owner").and_then(|o| o.as_str()).map(|s| s == owner))
-                        .unwrap_or(false);
-                    if is_mine {
-                        // S1: re-check the session's credential generation BEFORE
-                        // delivering a private event; a rotation since auth revokes
-                        // the session. Lock is released before the socket send.
-                        let valid = { app.gw.lock().await.ws_auth_valid(owner, *nonce) };
-                        if !valid {
-                            let _ = socket
-                                .send(Message::Text(
-                                    serde_json::json!({"type":"error","message":"api key rotated"})
-                                        .to_string(),
-                                ))
-                                .await;
-                            break;
-                        }
-                        if socket.send(Message::Text(json)).await.is_err() {
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-    }
+async fn ws_v1_loop(socket: WebSocket, app: Shared) {
+    credential_session::serve(socket, app).await;
 }
 
 async fn get_state(State(app): State<Shared>) -> impl IntoResponse {
@@ -13524,6 +13406,7 @@ mod tests {
             rebind_counter: 3,
             recovery_nonce: 0,
             recovery_last: None,
+            credential_control: Arc::default(),
         };
         a.nonce = 7;
         let bytes = postcard::to_allocvec(&a).expect("serialize");
