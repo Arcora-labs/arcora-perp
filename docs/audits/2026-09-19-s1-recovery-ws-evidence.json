@@ -190,7 +190,10 @@
         "a01_ingestion": 35450248329,
         "a07_integration_hotfix": 35450246435
       },
-      "conclusion": "all completed success on head a5687a8"
+      "conclusion": "all completed success on head a5687a8",
+      "checkout_note": "pull_request CI checks out the synthetic merge commit, NOT the literal PR head",
+      "pr_head": "3f1063a0ec9a29ef305ffe903b306a79f0e807c0",
+      "merge_commit_checked_out": "ebe41ceb7758eeae12d17440deddd8a1d312e370 (\"Merge 3f1063a into f997f8b\", verified via checkout step log of run 35451434095 job)"
     }
   }
 }
