@@ -64,18 +64,22 @@ fn a07_rotation_preserves_pending_routes_and_other_accounts() {
     assert_eq!(postcard::to_allocvec(&gw.seq).unwrap(), before_seq);
     gw.validate_deposit_state().unwrap();
     let snapshot = gw.snapshot_plain();
-    // S1: re-presenting the just-applied authorization is the IDEMPOTENT RETRY —
-    // it returns the same key and mutates nothing (the pre-S1 "replay is an
-    // error" behavior is what wedged clients after a 503 durability-unknown).
-    let retried = gw.recover_account(owner, 0, &sig).unwrap();
-    assert_eq!(retried, new);
-    assert_eq!(gw.snapshot_plain(), snapshot);
-    // A superseded authorization (recovery_last no longer matches) is rejected.
+    // S1 round-3: replaying a USED authorization is always rejected — there is
+    // no idempotent-retry acceptance. After an unknown outcome the client must
+    // GET the recovery view and sign the CURRENT nonce (a fresh challenge).
+    assert!(
+        gw.recover_account(owner, 0, &sig).is_err(),
+        "replay rejected"
+    );
+    assert_eq!(gw.snapshot_plain(), snapshot, "rejection mutates nothing");
     let sig1 = signature(&gw, &sk, &owner, 1);
     let new2 = gw.recover_account(owner, 1, &sig1).unwrap();
-    assert!(gw.recover_account(owner, 0, &sig).is_err(), "superseded");
     assert_ne!(new2, new);
     assert_eq!(gw.accounts[&new2].recovery_nonce, 2);
+    assert!(
+        gw.recover_account(owner, 1, &sig1).is_err(),
+        "replay of the newest authorization is also rejected"
+    );
     let restored = Gw::boot_restored(&snapshot).unwrap();
     assert_eq!(restored.snapshot_plain(), snapshot);
     assert_eq!(restored.accounts[&new].recovery_nonce, 1);

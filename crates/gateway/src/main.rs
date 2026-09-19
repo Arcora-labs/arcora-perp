@@ -466,6 +466,10 @@ const SNAPSHOT_SECS: u64 = 30; // sealed state-snapshot cadence (DARKPERP_STATE)
 /// and an `Err` that a caller can refuse on is strictly better than an unbounded hang
 /// that takes the whole gateway with it.
 const SNAPSHOT_ACK_TIMEOUT_SECS: u64 = 30;
+/// S1 round-3: bound a single WS private-event send. A slow consumer can only
+/// delay credential revocation by at most one in-flight (bounded) send per
+/// connection — never by queued-but-unread events.
+const WS_SEND_TIMEOUT_SECS: u64 = 5;
 /// Soft cap on retained per-account order history. A SETTLED partial fill can still
 /// have a live remainder: only sealed orders absent from the book may be evicted.
 /// Live orders take priority over the history cap so their cancellation stays reachable.
@@ -1176,14 +1180,6 @@ struct Account {
     /// A07 credential-rotation generation; trailer-persisted, not positional.
     #[serde(skip)]
     recovery_nonce: u64,
-    /// S1: in-memory-only record of the last applied rotation — (nonce used,
-    /// resulting new key). Lets a client whose POST /v1/accounts/recovery got a
-    /// 503 "durability unknown" retry the SAME authorization idempotently and
-    /// still learn the new key, instead of wedging into permanent lockout.
-    /// Never persisted: a process restart forgets it, and the retry contract is
-    /// scoped to one process generation.
-    #[serde(skip)]
-    recovery_last: Option<(u64, [u8; 32])>,
     /// SEC-019 (Task 7b): gateway-issued deposit authorizations awaiting their on-chain
     /// landing, keyed by `ownerCommit = keccak(owner ‖ deposit_blind)`. The value is the
     /// SECRET per-deposit `deposit_blind` (a fresh 32-byte CSPRNG value); `owner` is this
@@ -2111,7 +2107,6 @@ impl Gw {
                 last_withdraw_nonce: 0,
                 rebind_counter: 0,
                 recovery_nonce: 0,
-                recovery_last: None,
                 deposit_authorizations: std::collections::BTreeMap::new(),
             },
         );
@@ -5258,6 +5253,13 @@ struct App {
     /// loop's pre-submit barrier for the window carrying the bootstrap's second leg.
     /// See `snapshot_now` for the fail-closed and lock contracts.
     snapshot_req: Option<tokio::sync::mpsc::Sender<SnapshotAck>>,
+    /// S1 round-3: serializes WS private-event delivery against credential
+    /// revocation. `ws_v1_loop` holds the READ guard across its
+    /// `ws_auth_valid` check and the bounded socket send; `post_v1_recovery`
+    /// takes the WRITE guard before mutating. A delivery thus linearizes at its
+    /// validation check, revocation at write-guard acquisition — closing the
+    /// check-then-send TOCTOU. Frames already emitted to TCP stay emitted.
+    ws_delivery: Arc<tokio::sync::RwLock<()>>,
     /// SEC-019 (Task 7b): the gateway deposit-authorization signer. Its ADDRESS is what
     /// the deployed `CollateralVault.gatewaySigner` must equal; `POST /v1/accounts/
     /// deposit/authorize` signs `keccak256(chainid ‖ vault ‖ from ‖ ownerCommit ‖ amount)`
@@ -6228,15 +6230,34 @@ async fn post_v1_recovery(
     State(app): State<Shared>,
     Json(req): Json<RecoveryReq>,
 ) -> impl IntoResponse {
-    if app.snapshot_req.is_none() {
+    let Some(tx) = &app.snapshot_req else {
         return (StatusCode::SERVICE_UNAVAILABLE,Json(serde_json::json!({"error":"state persistence is required for credential recovery","durability":"unknown"}))).into_response();
-    }
+    };
     let Some(owner) = parse_hex32(&req.owner) else {
         return err400("bad owner (expected 32-byte 0x hex)".into()).into_response();
     };
     let Some(sig) = parse_hex65(&req.signature) else {
         return err400("bad signature".into()).into_response();
     };
+    // S1 round-3: serialize revocation against in-flight WS private-event
+    // deliveries (see App.ws_delivery), and pre-flight the snapshot queue
+    // BEFORE the irreversible in-memory rotation: a closed or full queue is
+    // refused here with state provably untouched, not discovered afterwards.
+    let _ws_revocation = app.ws_delivery.write().await;
+    let (ack_tx, ack_rx) = tokio::sync::oneshot::channel::<bool>();
+    if let Err(e) = tx.try_send(ack_tx) {
+        let msg = match e {
+            tokio::sync::mpsc::error::TrySendError::Full(_) => "snapshot queue is full".to_string(),
+            tokio::sync::mpsc::error::TrySendError::Closed(_) => {
+                "snapshot writer is gone".to_string()
+            }
+        };
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(serde_json::json!({"error":msg,"durability":"unknown"})),
+        )
+            .into_response();
+    }
     let key = {
         let mut gw = app.gw.lock().await;
         match gw.recover_account(owner, req.nonce, &sig) {
@@ -6244,12 +6265,31 @@ async fn post_v1_recovery(
             Err(e) => return err400(e).into_response(),
         }
     };
-    if let Err(e) = snapshot_now(&app.snapshot_req).await {
-        return (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(serde_json::json!({"error":e,"durability":"unknown"})),
-        )
-            .into_response();
+    // Await the pre-flushed ack with the same deadline and outcome mapping as
+    // `snapshot_now`.
+    match tokio::time::timeout(Duration::from_secs(SNAPSHOT_ACK_TIMEOUT_SECS), ack_rx).await {
+        Err(_) => {
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(serde_json::json!({"error":format!("snapshot request timed out after {SNAPSHOT_ACK_TIMEOUT_SECS}s (queue or writer stalled)"),"durability":"unknown"})),
+            )
+                .into_response();
+        }
+        Ok(Ok(true)) => {}
+        Ok(Ok(false)) => {
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(serde_json::json!({"error":"snapshot write failed","durability":"unknown"})),
+            )
+                .into_response();
+        }
+        Ok(Err(_)) => {
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(serde_json::json!({"error":"snapshot writer dropped the request","durability":"unknown"})),
+            )
+                .into_response();
+        }
     }
     // S1 race: while this request waited for its ACK, a newer rotation for the
     // same account may have superseded the key captured above (interleaved
@@ -7018,9 +7058,12 @@ async fn ws_v1_loop(mut socket: WebSocket, app: Shared) {
                         .and_then(|v| v.get("owner").and_then(|o| o.as_str()).map(|s| s == owner))
                         .unwrap_or(false);
                     if is_mine {
-                        // S1: re-check the session's credential generation BEFORE
-                        // delivering a private event; a rotation since auth revokes
-                        // the session. Lock is released before the socket send.
+                        // S1 round-3: hold the delivery READ guard across both the
+                        // ws_auth_valid check and the bounded send, so a rotation
+                        // (WRITE guard in post_v1_recovery) cannot interleave
+                        // between validation and emission. The delivery
+                        // linearizes at the check; frames already on TCP stay.
+                        let _delivery = app.ws_delivery.read().await;
                         let valid = { app.gw.lock().await.ws_auth_valid(owner, *nonce) };
                         if !valid {
                             let _ = socket
@@ -7031,8 +7074,14 @@ async fn ws_v1_loop(mut socket: WebSocket, app: Shared) {
                                 .await;
                             break;
                         }
-                        if socket.send(Message::Text(json)).await.is_err() {
-                            break;
+                        match tokio::time::timeout(
+                            Duration::from_secs(WS_SEND_TIMEOUT_SECS),
+                            socket.send(Message::Text(json)),
+                        )
+                        .await
+                        {
+                            Ok(Ok(())) => {}
+                            _ => break,
                         }
                     }
                 }
@@ -8220,6 +8269,7 @@ async fn main() {
         reg_limit: Mutex::new(HashMap::new()),
         l1: l1.clone(),
         snapshot_req,
+        ws_delivery: Arc::new(tokio::sync::RwLock::new(())),
         gateway_signer,
         prover: prover.clone(),
         candles: Mutex::new(candles::CandleStore::new()),
@@ -10683,6 +10733,7 @@ mod tests {
             reg_limit: Mutex::new(HashMap::new()),
             l1: None,
             snapshot_req: None,
+            ws_delivery: Arc::new(tokio::sync::RwLock::new(())),
             gateway_signer: GatewaySigner::from_env().expect("demo gateway signer"),
             prover: None,
             candles: Mutex::new(candles::CandleStore::new()),
@@ -13536,7 +13587,6 @@ mod tests {
             last_withdraw_nonce: 42,
             rebind_counter: 3,
             recovery_nonce: 0,
-            recovery_last: None,
         };
         a.nonce = 7;
         let bytes = postcard::to_allocvec(&a).expect("serialize");

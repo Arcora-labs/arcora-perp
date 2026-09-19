@@ -53,6 +53,15 @@ Bağımsız current-main incelemesi iki noktayı doğruladı, biri yeni bulgu:
 - `cargo test -p gateway`: 342 passed / 0 failed / 1 ignored (+4 yeni test).
 - `cargo fmt --all --check` ve `cargo clippy -p gateway --all-targets --locked`: exit 0, sıfır warning.
 
+### Üçüncü tur (bağımsız review #3): sıkılaştırma
+
+1. **Kuyruk pre-flight** (`main.rs:6230-6256`): kapalı/dolu snapshot kuyruğu, geri döndürülemez bellek içi rotation'dan ÖNCE `try_send` ile yakalanıyor; 503 unknown + state kanıtlanmış biçimde dokunulmamış. Failing-before: pre-flight devre dışıyken kapalı-kuyruk testi state'i mutate edip 30 sn timeout'a düşüyor (FAILED).
+2. **Strict fresh-challenge retry**: idempotent stale-nonce retry kaldırıldı (`recovery_last` silindi); kullanılmış/eski authorization her zaman reddedilir. Unknown/timeout/kayıp yanıt/restart sonrası istemci GET view'dan güncel nonce'u alıp YENİ imza üretir: rotation bellekte uygulanmışsa ikinci bir rotation (güvenli, monotonic), revert olmuşsa doğrudan başarı. Kilitlenme yok; secret yalnızca ACK sonrası çıkar.
+3. **WS TOCTOU kapandı** (`App.ws_delivery` RwLock): event kolu READ guard'ı `ws_auth_valid` kontrolü + sınırlı (5 sn) send boyunca tutar; `post_v1_recovery` pre-flight'tan yanıta kadar WRITE guard tutar. Lineerizasyon: teslimat = kontrol anı, iptal = write-guard edinimi; TCP'ye çıkmış frame'ler geri alınamaz. Rotation, bağlantı başına en fazla bir sınırlı in-flight send kadar gecikir (kuyruktaki okunmamış event'lerle değil).
+4. **Gerçek write/restore handler testi** (`recovery_confirmed_via_real_snapshot_write_and_restore`): writer stub production `write_snapshot`'ı aynen çağırır; sealed dosya `snapshot::open` + `Gw::boot_restored` ile açılır; key/nonce kalıcılığı, eski key'in yokluğu, restore sonrası stale replay reddi ve fresh challenge başarısı doğrulanır.
+- Not: round-2'nin interleaved-409 testi write guard ile yapısal olarak imkansız olduğundan `recovery_rotations_serialize_against_inflight_ack` ile değiştirildi (recheck derinlik savunması olarak durur).
+- Doğrulama (exact head): `cargo test -p gateway` 345 passed / 0 failed / 1 ignored; fmt ve workspace clippy exit 0.
+
 ## Mock/sınır ve kalan riskler
 - Snapshot writer testlerde stub (ack-true/false/park/drop); gerçek disk hatası/fsync davranışı ve fiziksel crash drill yapılmadı (S6 konusu).
 - WS testleri gerçek socket üzerinden; broadcast kuyruğu dolu/replay edilmiş event senaryosu `ws_auth_valid` kapısında kapsanıyor ama üretim yükü altında ölçülmedi.

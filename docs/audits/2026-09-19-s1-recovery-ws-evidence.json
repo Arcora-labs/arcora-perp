@@ -142,5 +142,44 @@
       "pr": "draft PR to be recorded",
       "runs": "recorded after push"
     }
+  },
+  "round3": {
+    "base": "9ff9f749baeb1c3c1895cdce834fdaf5af5d6376 (round-2 branch)",
+    "items": {
+      "queue_preflight": "post_v1_recovery try_sends the SnapshotAck oneshot BEFORE the irreversible in-memory rotation; closed/full queue -> 503 unknown with state provably untouched. Failing-before: pre-flight disabled -> closed-queue test mutates state and dies on the 30s timeout (FAILED).",
+      "fresh_challenge_retry": "idempotent stale-nonce retry removed (recovery_last deleted); stale/replayed authorization always rejected; after unknown/restart the client GETs the recovery view and signs the CURRENT nonce. No lockout: unknown+applied -> second rotation; unknown+reverted -> direct success.",
+      "ws_toctou": "App.ws_delivery RwLock: WS event arm holds READ guard across ws_auth_valid + bounded 5s send; post_v1_recovery holds WRITE guard from pre-flight through response. Delivery linearizes at its validation check; revocation at write-guard acquisition; frames already on TCP cannot be retracted. Rotation delayed by at most one bounded in-flight send per connection.",
+      "real_write_restore": "recovery_confirmed_via_real_snapshot_write_and_restore: writer stub calls production write_snapshot verbatim, ack carries its result; sealed file opened via snapshot::open and restored via Gw::boot_restored; asserts key/nonce durability, old key absent, stale replay rejected on restored state, fresh challenge succeeds."
+    },
+    "tests": {
+      "total": "cargo test -p gateway: 345 passed; 0 failed; 1 ignored",
+      "new_or_converted": [
+        "recovery_closed_queue_is_preflight_503_and_state_unchanged",
+        "recovery_full_queue_is_preflight_503_and_state_unchanged",
+        "recovery_confirmed_via_real_snapshot_write_and_restore",
+        "recovery_rotations_serialize_against_inflight_ack",
+        "recovery_false_ack_then_fresh_challenge_succeeds",
+        "recovery_dropped_ack_then_fresh_challenge_succeeds",
+        "recovery_wedged_writer_times_out_then_fresh_challenge_succeeds",
+        "recovery_dropped_request_then_fresh_challenge_succeeds"
+      ],
+      "note": "round-2 interleaved 409 test replaced by recovery_rotations_serialize_against_inflight_ack: with the write guard the interleaving is structurally impossible; recheck retained as defense in depth"
+    },
+    "commands": [
+      {
+        "cmd": "cargo test -p gateway",
+        "exit": 0,
+        "result": "345 passed; 0 failed; 1 ignored"
+      },
+      {
+        "cmd": "cargo fmt --all --check",
+        "exit": 0
+      },
+      {
+        "cmd": "cargo clippy --workspace --all-targets --locked",
+        "exit": 0
+      }
+    ],
+    "linearization": "delivery = at ws_auth_valid under READ guard; revocation = at WRITE guard acquisition in post_v1_recovery; already-emitted TCP frames are not retractable"
   }
 }
