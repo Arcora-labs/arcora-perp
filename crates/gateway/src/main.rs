@@ -6251,6 +6251,19 @@ async fn post_v1_recovery(
         )
             .into_response();
     }
+    // S1 race: while this request waited for its ACK, a newer rotation for the
+    // same account may have superseded the key captured above (interleaved
+    // rotations A=nonce0/B=nonce1). Never hand out a dead key as "confirmed":
+    // re-check under the lock that the captured key is still the account's
+    // active credential before returning it.
+    let still_active = { app.gw.lock().await.accounts.contains_key(&key) };
+    if !still_active {
+        return (
+            StatusCode::CONFLICT,
+            Json(serde_json::json!({"error":"recovery superseded by a newer rotation","durability":"confirmed"})),
+        )
+            .into_response();
+    }
     Json(serde_json::json!({"apiKey":hex0x(&key),"owner":hex0x(&owner),"recoveryNonce":req.nonce.saturating_add(1),"durability":"confirmed"})).into_response()
 }
 

@@ -642,3 +642,306 @@ async fn ws_unrelated_sessions_unaffected_by_rotation() {
     }
     assert!(revoked);
 }
+
+// ── S1 follow-up: superseded race, WS command surface, revocation boundary ────
+
+/// THE superseded-rotation race. Request A (nonce 0) commits its rotation in
+/// memory but its snapshot ACK parks; while A waits, request B (nonce 1)
+/// rotates again and is ACKed. When A's ACK finally lands, A's captured key is
+/// DEAD — the handler must answer 409 "superseded", never the dead key.
+#[tokio::test]
+async fn recovery_interleaved_rotation_returns_superseded_not_dead_key() {
+    // Writer that parks the FIRST request's ack until signaled, and acks true
+    // every subsequent request.
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<SnapshotAck>(8);
+    let parked: StdArc<StdMutex<Option<SnapshotAck>>> = StdArc::new(StdMutex::new(None));
+    let parked_flag = parked.clone();
+    let notify = StdArc::new(tokio::sync::Notify::new());
+    let notify_flag = notify.clone();
+    tokio::spawn(async move {
+        let mut first = true;
+        while let Some(ack) = rx.recv().await {
+            if first {
+                first = false;
+                *parked_flag.lock().unwrap() = Some(ack);
+                notify_flag.notify_one();
+            } else {
+                let _ = ack.send(true);
+            }
+        }
+    });
+    let (mut app, key_a, owner, sk) = prepared();
+    Arc::get_mut(&mut app).unwrap().snapshot_req = Some(tx);
+    let router = build_router(app.clone(), false);
+    let owner_hex = hex0x(&owner);
+    let sig0 = signature(&app, &sk, &owner, 0).await;
+    let sig1 = signature(&app, &sk, &owner, 1).await;
+
+    // Request A: rotates nonce 0, then parks waiting for its ACK.
+    let task_a = tokio::spawn({
+        let router = router.clone();
+        let owner_hex = owner_hex.clone();
+        async move {
+            router
+                .oneshot(post_recovery(&owner_hex, 0, &sig0))
+                .await
+                .unwrap()
+        }
+    });
+    notify.notified().await;
+    assert!(!task_a.is_finished(), "A is parked on its snapshot ACK");
+
+    // Request B (nonce 1) interleaves: supersedes A's key and is ACKed.
+    let r_b = router
+        .clone()
+        .oneshot(post_recovery(&owner_hex, 1, &sig1))
+        .await
+        .unwrap();
+    assert_eq!(r_b.status(), StatusCode::OK, "B confirmed");
+    let v_b = body_json(r_b).await;
+    assert_eq!(v_b["durability"], "confirmed");
+    let key_b = parse_hex32(v_b["apiKey"].as_str().unwrap()).unwrap();
+    assert_ne!(key_b, key_a);
+    let r = router.clone().oneshot(get_me(&key_b)).await.unwrap();
+    assert_eq!(r.status(), StatusCode::OK, "B's key works");
+    let r = router.clone().oneshot(get_me(&key_a)).await.unwrap();
+    assert_eq!(r.status(), StatusCode::UNAUTHORIZED, "A's key already dead");
+
+    // A's ACK finally lands — but A's key is superseded.
+    parked.lock().unwrap().take().unwrap().send(true).unwrap();
+    let r_a = task_a.await.unwrap();
+    assert_eq!(
+        r_a.status(),
+        StatusCode::CONFLICT,
+        "A must be told it was superseded, not handed its dead key"
+    );
+    let v_a = body_json(r_a).await;
+    assert!(
+        v_a["apiKey"].is_null(),
+        "dead key must never leave the gateway: {v_a}"
+    );
+    assert_eq!(v_a["durability"], "confirmed");
+    assert!(
+        v_a["error"]
+            .as_str()
+            .unwrap()
+            .contains("superseded by a newer rotation"),
+        "got: {v_a}"
+    );
+
+    // Final state: B's key active, A's key absent.
+    {
+        let gw = app.gw.lock().await;
+        assert!(!gw.accounts.contains_key(&key_a), "dead key gone");
+        assert!(gw.accounts.contains_key(&key_b), "winner keeps the account");
+        assert_eq!(gw.accounts[&key_b].recovery_nonce, 2);
+    }
+    assert_eq!(view_nonce(&app, &owner_hex).await, 2);
+}
+
+/// WS implements ONLY `auth` frames. Hypothetical command frames — including
+/// garbage and binary — must be ignored without touching account state and
+/// without killing the connection.
+#[tokio::test]
+async fn ws_non_auth_command_frames_do_not_mutate_state() {
+    let (app, key, owner, _sk) = prepared();
+    let owner_hex = hex0x(&owner);
+    let base = spawn_ws_server(app.clone()).await;
+    let (mut ws, reply) = connect_auth(&base, &key).await;
+    assert_eq!(reply["type"], "authOk");
+
+    let frames = [
+        Message::Text(
+            serde_json::json!({"type":"placeOrder","marketId":0,"size":"100","side":"BUY"})
+                .to_string(),
+        ),
+        Message::Text(
+            serde_json::json!({"type":"cancel","orderId":"0x01"}).to_string(),
+        ),
+        Message::Text(
+            serde_json::json!({"type":"withdraw","amount":"1000","to":"0x000000000000000000000000000000000000dead"})
+                .to_string(),
+        ),
+        Message::Text(serde_json::json!({"type":"subscribe","channel":"fills"}).to_string()),
+        Message::Text("{not valid json".to_string()),
+        Message::Binary(vec![0xde, 0xad, 0xbe, 0xef]),
+    ];
+    for f in frames {
+        ws.send(f).await.unwrap();
+    }
+
+    // The gateway lock is observable: nothing about the account may have moved.
+    {
+        let gw = app.gw.lock().await;
+        let a = &gw.accounts[&key];
+        assert!(a.orders.is_empty(), "no order landed");
+        assert_eq!(a.nonce, 1, "account nonce untouched");
+        assert_eq!(a.orders_this_sec, 0);
+        assert!(a.deposit_authorizations.is_empty());
+        assert!(gw.deposits.credits.is_empty(), "no credit landed");
+        assert!(gw.deposits.routes.is_empty(), "no route landed");
+    }
+
+    // The connection is still healthy: the VALID session keeps receiving its
+    // own private events (commands are ignored, not fatal).
+    publish_private(&app, &owner_hex, 77);
+    let ev: serde_json::Value = match tokio::time::timeout(Duration::from_secs(5), ws.next())
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap()
+    {
+        Message::Text(t) => serde_json::from_str(&t).unwrap(),
+        other => panic!("expected text frame, got {other:?}"),
+    };
+    assert_eq!(ev["type"], "execution");
+    assert_eq!(ev["orderId"], 77);
+}
+
+/// Revocation boundary under backpressure: the rotation HTTP request must not
+/// block on a slow WS consumer (the Gw lock is never held across a socket
+/// send), and once revocation fires no owner event is delivered afterwards.
+#[tokio::test]
+async fn ws_revocation_race_slow_consumer_and_no_lock_across_send() {
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<SnapshotAck>(8);
+    tokio::spawn(async move {
+        while let Some(ack) = rx.recv().await {
+            let _ = ack.send(true);
+        }
+    });
+    let (mut app, old_key, owner, sk) = prepared();
+    Arc::get_mut(&mut app).unwrap().snapshot_req = Some(tx);
+    let owner_hex = hex0x(&owner);
+    let base = spawn_ws_server(app.clone()).await;
+    let (mut ws, reply) = connect_auth(&base, &old_key).await;
+    assert_eq!(reply["type"], "authOk");
+
+    // Flood the session's queue without reading it, then rotate mid-stream.
+    for tag in 0..50 {
+        publish_private(&app, &owner_hex, tag);
+    }
+    // (a) The rotation must complete promptly even though the socket is not
+    // being read — i.e. no gateway lock is held across a socket send.
+    let rotate = tokio::time::timeout(Duration::from_secs(5), async {
+        build_router(app.clone(), false)
+            .oneshot(post_recovery(
+                &owner_hex,
+                0,
+                &signature(&app, &sk, &owner, 0).await,
+            ))
+            .await
+            .unwrap()
+    });
+    let r = rotate
+        .await
+        .expect("rotation wedged behind the slow WS consumer");
+    assert_eq!(r.status(), StatusCode::OK);
+    let new_key = parse_hex32(body_json(r).await["apiKey"].as_str().unwrap()).unwrap();
+
+    // (b) Drain the old session: at some point the revocation (error frame
+    // and/or close) must arrive. Afterwards, read a few more bounded frames:
+    // NONE of them may be an owner event.
+    let mut revoked = false;
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+    while !revoked {
+        let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+        match tokio::time::timeout(remaining, ws.next()).await {
+            Ok(Some(Ok(Message::Text(t)))) => {
+                let v: serde_json::Value = serde_json::from_str(&t).unwrap();
+                if v["message"] == "api key rotated" {
+                    revoked = true;
+                }
+            }
+            Ok(Some(Ok(Message::Close(_)))) | Ok(None) | Ok(Some(Err(_))) | Err(_) => {
+                revoked = true
+            }
+            Ok(Some(Ok(_))) => continue,
+        }
+    }
+    assert!(revoked, "revocation must fire while events are in flight");
+    let mut events_after_revocation = 0u32;
+    for _ in 0..5 {
+        match tokio::time::timeout(Duration::from_millis(500), ws.next()).await {
+            Ok(Some(Ok(Message::Text(t)))) => {
+                let v: serde_json::Value = serde_json::from_str(&t).unwrap();
+                if v["owner"] == owner_hex && v["type"] == "execution" {
+                    events_after_revocation += 1;
+                }
+            }
+            _ => break, // close / EOF / quiet: nothing more can arrive
+        }
+    }
+    assert_eq!(
+        events_after_revocation, 0,
+        "no owner event may be delivered after the rotation revoked the session"
+    );
+
+    // (c) A fresh session under the new key receives owner events again.
+    let (mut ws2, reply) = connect_auth(&base, &new_key).await;
+    assert_eq!(reply["type"], "authOk");
+    publish_private(&app, &owner_hex, 1000);
+    let ev: serde_json::Value = match tokio::time::timeout(Duration::from_secs(5), ws2.next())
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap()
+    {
+        Message::Text(t) => serde_json::from_str(&t).unwrap(),
+        other => panic!("expected text frame, got {other:?}"),
+    };
+    assert_eq!(ev["type"], "execution");
+    assert_eq!(ev["orderId"], 1000);
+}
+
+/// Restart boundary: `recovery_last` is in-memory only, so a process restart
+/// (snapshot round-trip) drops the pending-retry record. The old nonce-0
+/// authorization is then just a stale authorization — it must be REJECTED,
+/// never answered with the key (no secret leak post-restart).
+#[tokio::test]
+async fn recovery_restart_drops_pending_retry_and_rejects_old_authorization() {
+    let (app, _old_key, owner, sk) = prepared();
+    let owner_hex = hex0x(&owner);
+    let sig0 = signature(&app, &sk, &owner, 0).await;
+
+    // Apply the rotation the way the handler does, then snapshot+restore to
+    // simulate a restart with the ACKed state (trailer carries recovery_nonce).
+    let mut restored = {
+        let mut gw = app.gw.lock().await;
+        let key1 = gw.recover_account(owner, 0, &sig0).unwrap();
+        assert_eq!(gw.accounts[&key1].recovery_last, Some((0, key1)));
+        let snapshot = gw.snapshot_plain();
+        Gw::boot_restored(&snapshot).unwrap()
+    };
+
+    // The pending-retry record is gone; the rotation itself survived.
+    let key1 = *restored.accounts.keys().next().unwrap();
+    assert_eq!(restored.accounts[&key1].recovery_nonce, 1);
+    assert_eq!(restored.accounts[&key1].recovery_last, None);
+
+    // The old nonce-0 authorization is now stale, NOT a retry: rejected, and
+    // the key never comes back.
+    let err = restored.recover_account(owner, 0, &sig0).unwrap_err();
+    assert!(
+        err.contains("nonce mismatch"),
+        "stale authorization after restart must be rejected, got: {err}"
+    );
+    assert!(restored.accounts.contains_key(&key1), "account intact");
+
+    // The recovery view reports the fresh nonce so the client can build a new
+    // authorization.
+    let mut app2 = crate::tests::test_app();
+    Arc::get_mut(&mut app2).unwrap().gw = Mutex::new(restored);
+    let r = build_router(app2, false)
+        .oneshot(
+            axum::http::Request::builder()
+                .uri(format!("/v1/accounts/recovery/{owner_hex}"))
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::OK);
+    let v = body_json(r).await;
+    assert_eq!(v["recoveryNonce"], 1);
+    assert_eq!(v["owner"], owner_hex);
+}

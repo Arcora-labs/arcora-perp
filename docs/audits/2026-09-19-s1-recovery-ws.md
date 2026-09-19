@@ -27,9 +27,31 @@
 - Mevcut test güncellemesi: `a07_rotation_preserves_pending_routes_and_other_accounts` içindeki "uygulanmış authorization'ın replay'i hata vermeli" iddiası yeni idempotent-retry semantiğinde bilinçli olarak değişti; superseded authorization reddi korundu.
 
 ## Doğrulama (exact head, bu oturumda çalıştırıldı)
-- `cargo test -p gateway`: 338 passed / 0 failed / 1 ignored (ignored, önceden var).
-- `cargo fmt --all --check`, `cargo clippy --workspace --all-targets --locked -- -D warnings`, `cargo test --workspace --locked`: sonuçlar kanıt JSON'unda ve PR açıklamasında.
-- CI: PR push'u üzerine tetiklenen run'lar PR'da kayıtlı; bu belge yazımı anında okunup buraya eklenir.
+- `cargo test -p gateway`: 338 passed / 0 failed / 1 ignored (ilk S1 head'i `0cde5ee` için).
+- `cargo fmt --all --check`, `cargo clippy --workspace --all-targets --locked -- -D warnings`, `cargo test --workspace --locked`: exit 0 (aynı head).
+- CI (head `0cde5ee`, 4/4 success): ci `35446306970`, a01 `35446306976`, a07 `35446306966`, a11 `35446306965`.
+
+## Bağımsız review sonrası ikinci tur (head: bu dalın son commit'i)
+
+Bağımsız current-main incelemesi iki noktayı doğruladı, biri yeni bulgu:
+
+### B3 — Eşzamanlı rotation'da superseded key'in "confirmed" dönmesi (yeni, düzeltildi)
+- Konum (önceki head `0cde5ee`): `post_v1_recovery` ACK sonrası yakalanan key'i aktiflik kontrolü olmadan dönüyordu. A (nonce=0) ACK'de takılıyken B (nonce=1) rotation'ını onaylatırsa, A'nın ACK'ı geç tamamlandığında A ölü key'i 200 confirmed ile dönebiliyordu.
+- Düzeltme (`main.rs:6242-6266`): ACK sonrası kısa kilit altında `accounts.contains_key(&key)`; key artık aktif değilse 409 `{"error":"recovery superseded by a newer rotation","durability":"confirmed"}` — ölü key asla dönülmez. Client, GET recovery view'daki güncel nonce ile yeni authorization üretir.
+- Failing-before kanıt: recheck `true` sabitiyle devre dışı bırakılıp `recovery_interleaved_rotation_returns_superseded_not_dead_key` çalıştırıldığında test 200 + ölü key gördüğü için FAILED; geri yüklemede geçiyor.
+
+### İnceleme kanıtı — WS'te komut yürütme yolu yok
+- `ws_non_auth_command_frames_do_not_mutate_state`: authed oturuma placeOrder/cancel/withdraw/subscribe/garbage/binary frame gönderiliyor; Gw kilidi altında hesabın byte-değişmemişliği (emirler boş, nonce aynı, deposit/credit yok) ve bağlantının sağlıklı kalması doğrulanıyor. WS yalnızca `auth` implemente eder; bu test "komut çalıştırma yok" invariant'ını sabitler.
+
+### Kilit sınırı — revocation/send sınırında global kilit yok
+- `ws_revocation_race_slow_consumer_and_no_lock_across_send`: 50 özel event okunmadan yayınlanıp socket backpressure altıyken rotation isteği 5 sn içinde tamamlanıyor (kilit socket send'de tutulmuyor); revoke sonrası bounded drain'de sıfır owner event; yeni key ile event akışı doğrulanıyor.
+
+### Restart/pending semantiği — secret sızıntısı yok
+- `recovery_restart_drops_pending_retry_and_rejects_old_authorization`: rotation + snapshot roundtrip (restart) sonrası `recovery_last` None; eski nonce-0 authorization reddedilir (nonce mismatch), key1 GERİ VERİLMEZ; GET view `recoveryNonce:1` döner → client taze authorization üretebilir. Kayıp yanıtın restart sonrası kurtarımı yalnızca yeni authenticated generation üzerinden.
+
+### İkinci tur doğrulama (exact head, bu oturumda)
+- `cargo test -p gateway`: 342 passed / 0 failed / 1 ignored (+4 yeni test).
+- `cargo fmt --all --check` ve `cargo clippy -p gateway --all-targets --locked`: exit 0, sıfır warning.
 
 ## Mock/sınır ve kalan riskler
 - Snapshot writer testlerde stub (ack-true/false/park/drop); gerçek disk hatası/fsync davranışı ve fiziksel crash drill yapılmadı (S6 konusu).
