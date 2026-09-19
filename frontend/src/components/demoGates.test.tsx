@@ -145,23 +145,15 @@ describe("ModeBanner demo controls are presence-gated", () => {
   });
 });
 
-describe("RecoveryPanel is presence-gated", () => {
-  it("REAL client (no recover): an honest unavailability note, no scan form", () => {
-    injected.client = realShaped();
-    injected.state = baseState();
-    render(<RecoveryPanel />);
-    expect(screen.getByText(/not available on the live gateway/i)).toBeTruthy();
-    expect(screen.queryByRole("button", { name: /scan/i })).toBeNull();
+describe("RecoveryPanel live recovery is capability-gated", () => {
+  it("without recoverAccount fails closed", () => {
+    injected.client = realShaped(); injected.state = baseState(); render(<RecoveryPanel />);
+    expect(screen.getByText(/unavailable on this gateway build/i)).toBeTruthy();
   });
-
-  it("MOCK client: the scan form exists and dispatches", async () => {
-    const client = mockShaped();
-    injected.client = client;
-    injected.state = baseState();
-    render(<RecoveryPanel />);
-    fireEvent.change(screen.getByLabelText(/recovery seed/i), { target: { value: "alice-seed" } });
-    fireEvent.click(screen.getByRole("button", { name: /scan/i }));
-    expect(client.recover).toHaveBeenCalledWith("alice-seed");
+  it("with recoverAccount exposes owner-id recovery", () => {
+    injected.client = realShaped({ recoverAccount: vi.fn(async () => ({ owner: "0x"+"22".repeat(32), recoveryNonce: 1 })) });
+    injected.state = baseState(); render(<RecoveryPanel />);
+    expect(screen.getByLabelText(/account owner id/i)).toBeTruthy();
   });
 });
 
@@ -262,34 +254,10 @@ describe("public-feed 'Your …' stats are presence-gated (review F6)", () => {
 });
 
 // ── review F5: no recovery assurance the API-key custody model cannot honor ──
-describe("RecoveryPanel does not overpromise recovery (review F5)", () => {
-  it("REAL client: says device loss STRANDS the account; only already-requested withdrawals stay claimable", () => {
-    injected.client = realShaped();
-    injected.state = baseState();
-    render(<RecoveryPanel />);
-    expect(screen.getByText(/stranded/i)).toBeTruthy();
-    expect(screen.getByText(/already requested/i)).toBeTruthy();
-    // the refuted claim must be gone: a withdrawal REQUEST needs the
-    // browser-held API key, so funds are NOT generally recoverable on-chain
-    expect(screen.queryByText(/funds are\s+recoverable through the on-chain claim path/i)).toBeNull();
-  });
-
-  it("…and the CLAIM is qualified too (fix-wave-2 G3): the tx needs no key, but the Merkle proof is served only on the authenticated withdrawals endpoint", () => {
-    injected.client = realShaped();
-    injected.state = baseState();
-    render(<RecoveryPanel />);
-    // The smaller overpromise F5's fix introduced: "wallet-signed … needs no
-    // API key" was true of the claim TX but not of the Merkle proof it
-    // requires — GET /v1/accounts/withdrawals is authenticated (main.rs), so
-    // device loss also forecloses fetching the served proof.
-    expect(
-      screen.getByText(/Merkle proof it requires is\s+served only by the authenticated withdrawals endpoint/i),
-    ).toBeTruthy();
-    expect(screen.getByText(/loses access to the served proof/i)).toBeTruthy();
-    // the old unqualified assurance is gone
-    expect(
-      screen.queryByText(/wallet-signed against the published withdrawals root and needs\s+no API key/i),
-    ).toBeNull();
+describe("RecoveryPanel A07 claims", () => {
+  it("does not promise recovery when unsupported", () => {
+    injected.client = realShaped(); injected.state = baseState(); render(<RecoveryPanel />);
+    expect(screen.getByText(/unavailable on this gateway build/i)).toBeTruthy();
   });
 });
 

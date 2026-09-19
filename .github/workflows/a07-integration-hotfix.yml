@@ -1,0 +1,31 @@
+name: A07 integration hotfix
+on:
+  push:
+    branches: ['fix/a07-recovery-ui-hotfix-2026-09-19']
+  pull_request:
+permissions: { contents: read }
+jobs:
+  rust:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all --check
+      - run: cargo test --locked -p gateway
+      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+  frontend:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: frontend } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 10 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test
+      - run: pnpm build

@@ -1,33 +1,33 @@
 // @vitest-environment happy-dom
-import { describe, it, expect, afterEach } from "vitest";
-import { render, screen, fireEvent, cleanup } from "@testing-library/react";
-import { StoreProvider } from "../store";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { RecoveryPanel } from "./RecoveryPanel";
 
-afterEach(cleanup);
+const injected: { client: any } = { client: {} };
+vi.mock("../store", () => ({ useStore: () => injected }));
+vi.mock("../api/wallet", () => ({
+  connect: vi.fn(async () => {}),
+  hasInjected: () => true,
+  useWalletAddress: () => "0x" + "11".repeat(20),
+}));
 
-const renderPanel = () =>
-  render(
-    <StoreProvider>
-      <RecoveryPanel />
-    </StoreProvider>,
-  );
+afterEach(() => { cleanup(); injected.client = {}; });
 
-describe("RecoveryPanel (§7)", () => {
-  it("does nothing for an empty seed", () => {
-    renderPanel();
-    fireEvent.click(screen.getByRole("button", { name: /scan/i }));
-    expect(screen.queryByText(/recoverable balance/i)).toBeNull();
+describe("RecoveryPanel A07", () => {
+  it("dispatches live owner-id credential recovery", async () => {
+    const owner = "0x" + "22".repeat(32);
+    const recoverAccount = vi.fn(async () => ({ owner, recoveryNonce: 2 }));
+    injected.client = { recoverAccount };
+    render(<RecoveryPanel />);
+    fireEvent.change(screen.getByLabelText(/account owner id/i), { target: { value: owner } });
+    fireEvent.click(screen.getByRole("button", { name: /sign & recover/i }));
+    expect(await screen.findByText(/credential generation is now #2/i)).toBeTruthy();
+    expect(recoverAccount).toHaveBeenCalledWith(owner);
   });
 
-  it("recovers notes from a seed and shows the recoverable balance", async () => {
-    renderPanel();
-    fireEvent.change(screen.getByLabelText(/recovery seed/i), {
-      target: { value: "alice-seed" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: /scan/i }));
-    expect(await screen.findByText(/recoverable balance/i)).toBeTruthy();
-    // at least one recovered (unspent) note row is shown
-    expect(screen.getAllByText(/^recovered$/i).length).toBeGreaterThan(0);
+  it("fails closed when the gateway client lacks live recovery", () => {
+    render(<RecoveryPanel />);
+    expect(screen.getByText(/unavailable on this gateway build/i)).toBeTruthy();
+    expect(screen.queryByRole("button")).toBeNull();
   });
 });

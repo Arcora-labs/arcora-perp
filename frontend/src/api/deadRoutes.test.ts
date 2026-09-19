@@ -138,6 +138,7 @@ const MOUNTED = new Set([
   "/api/state",
   "/v1/accounts",
   "/v1/accounts/me",
+  "/v1/accounts/recovery",
   "/v1/accounts/deposit",
   "/v1/accounts/deposit/address",
   "/v1/accounts/deposit/authorize",
@@ -156,7 +157,7 @@ const MOUNTED = new Set([
   "/v1/ws",
 ]);
 /** Parameterized mounts: a token below one of these prefixes is mounted too. */
-const MOUNTED_PREFIXES = ["/v1/orders/", "/v1/markets/", "/v1/batch/"];
+const MOUNTED_PREFIXES = ["/v1/orders/", "/v1/markets/", "/v1/batch/", "/v1/accounts/recovery/"];
 
 const isMounted = (t: string) =>
   MOUNTED.has(t) || MOUNTED_PREFIXES.some((p) => t.startsWith(p));
