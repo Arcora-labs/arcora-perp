@@ -86,8 +86,13 @@ izole dal kullan, kabul edilmiş job_id olmadan görev başladı deme. Ajan çı
 incele. Focused testlerden sonra ilgili full CI'ı aynı head üzerinde doğrula. Her komutun
 exit kodunu, mocked/ignored/skipped kapsamı ve run/job/head kimliklerini kaydet.
 
-Sonraki sıra: frontend credential storage/concurrent account refresh; V8 extension
+Sonraki sıra: S2 frontend credential storage/concurrent account refresh; S3 V8 extension
 framing; ardından core/matcher/sequencer/prover/contracts/CI bütünlüğü.
+
+**S1 ilerlemesi (19 Eylül 2026, bu dal):** recovery HTTP durability wedge (post-mutation ACK
+hatasında kalıcı kilitlenme) ve rotation sonrası eski WS oturumlarının iptali düzeltildi;
+gerçek route/WS regresyon testleri eklendi. Rapor: `docs/audits/2026-09-19-s1-recovery-ws.md`,
+kanıt: `docs/audits/2026-09-19-s1-recovery-ws-evidence.json`.
 Tam codebase audit'i bitmedi. Gerçek SP1 ELF/vkey/proof/deployment doğrulaması yapılmadı.
 Stub typecheck veya eski deployment kaydı gerçek proof/release kanıtı değildir.
 

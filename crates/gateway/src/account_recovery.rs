@@ -80,9 +80,6 @@ impl Gw {
                 a.recovery_nonce,
             )
         };
-        if nonce != current {
-            return Err("recovery nonce mismatch (stale or replayed authorization)".into());
-        }
         let d = digest(self.chain_id, &self.vault, &owner, nonce);
         if !eip191_prehash_candidates(&d)
             .iter()
@@ -91,6 +88,23 @@ impl Gw {
             return Err(
                 "recovery signature does not recover to this account's authorizing address".into(),
             );
+        }
+        if nonce != current {
+            // S1: idempotent retry. A caller whose POST succeeded in memory but got
+            // a 503 "durability unknown" re-submits the SAME authorization: nonce is
+            // one behind and matches the recorded last rotation, so return the same
+            // key without mutating anything. Requires the author's valid signature
+            // for that exact nonce (verified above), and only answers for the
+            // CURRENT generation — an older retry after a newer rotation falls
+            // through to the mismatch error.
+            if nonce.checked_add(1) == Some(current) {
+                if let Some((last_nonce, last_key)) = self.accounts[&old].recovery_last {
+                    if last_nonce == nonce {
+                        return Ok(last_key);
+                    }
+                }
+            }
+            return Err("recovery nonce mismatch (stale or replayed authorization)".into());
         }
         let next = current.checked_add(1).ok_or("recovery nonce exhausted")?;
         let new_key = loop {
@@ -101,6 +115,7 @@ impl Gw {
         };
         let mut a = self.accounts.remove(&old).expect("located account");
         a.recovery_nonce = next;
+        a.recovery_last = Some((nonce, new_key));
         self.accounts.insert(new_key, a);
         // A01 stores account lookup credentials in permits and credited receipts.
         // Move those references under the same Gw lock as the account rotation.
