@@ -44,3 +44,6 @@ tower = { version = "0.5", features = ["util"] }
 # SNAPSHOT_ACK_TIMEOUT_SECS elapses on the virtual clock instead of a real sleep.
 # Test-target only — the production bin's tokio feature set is unchanged.
 tokio = { version = "1", features = ["test-util"] }
+# S1: real-socket /v1/ws tests (session revocation after API-key rotation).
+tokio-tungstenite = "0.24"
+futures-util = "0.3"

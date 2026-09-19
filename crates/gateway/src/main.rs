@@ -1176,6 +1176,14 @@ struct Account {
     /// A07 credential-rotation generation; trailer-persisted, not positional.
     #[serde(skip)]
     recovery_nonce: u64,
+    /// S1: in-memory-only record of the last applied rotation — (nonce used,
+    /// resulting new key). Lets a client whose POST /v1/accounts/recovery got a
+    /// 503 "durability unknown" retry the SAME authorization idempotently and
+    /// still learn the new key, instead of wedging into permanent lockout.
+    /// Never persisted: a process restart forgets it, and the retry contract is
+    /// scoped to one process generation.
+    #[serde(skip)]
+    recovery_last: Option<(u64, [u8; 32])>,
     /// SEC-019 (Task 7b): gateway-issued deposit authorizations awaiting their on-chain
     /// landing, keyed by `ownerCommit = keccak(owner ‖ deposit_blind)`. The value is the
     /// SECRET per-deposit `deposit_blind` (a fresh 32-byte CSPRNG value); `owner` is this
@@ -2103,6 +2111,7 @@ impl Gw {
                 last_withdraw_nonce: 0,
                 rebind_counter: 0,
                 recovery_nonce: 0,
+                recovery_last: None,
                 deposit_authorizations: std::collections::BTreeMap::new(),
             },
         );
@@ -3420,6 +3429,24 @@ impl Gw {
     /// Owner (hex) for an API key, for authenticating a /v1/ws connection.
     fn owner_hex_for(&self, key: &[u8; 32]) -> Option<String> {
         self.accounts.get(key).map(|a| hex0x(&a.wallet.owner))
+    }
+    /// Owner (hex) + recovery nonce at auth time, for a /v1/ws session. The nonce
+    /// pins the session to the credential generation it authenticated under, so a
+    /// later key rotation (recovery_nonce bump) invalidates the session (S1).
+    fn owner_and_recovery_for(&self, key: &[u8; 32]) -> Option<(String, u64)> {
+        self.accounts
+            .get(key)
+            .map(|a| (hex0x(&a.wallet.owner), a.recovery_nonce))
+    }
+    /// S1: is a /v1/ws session still valid? The owner's account must still exist
+    /// and carry the SAME recovery_nonce the session authenticated under; any
+    /// rotation since auth invalidates it.
+    fn ws_auth_valid(&self, owner_hex: &str, nonce: u64) -> bool {
+        self.accounts
+            .values()
+            .find(|a| hex0x(&a.wallet.owner) == owner_hex)
+            .map(|a| a.recovery_nonce == nonce)
+            .unwrap_or(false)
     }
     fn v1_account(&self, key: &[u8; 32]) -> Option<serde_json::Value> {
         let a = self.accounts.get(key)?;
@@ -6918,7 +6945,7 @@ async fn ws_v1_handler(State(app): State<Shared>, ws: WebSocketUpgrade) -> impl 
 async fn ws_v1_loop(mut socket: WebSocket, app: Shared) {
     let mut ticks = app.tx.subscribe();
     let mut accts = app.events_tx.subscribe();
-    let mut auth_owner: Option<String> = None;
+    let mut auth: Option<(String, u64)> = None;
     let initial = { serde_json::to_string(&app.gw.lock().await.v1_public_json()).unwrap() };
     if socket.send(Message::Text(initial)).await.is_err() {
         return;
@@ -6934,16 +6961,29 @@ async fn ws_v1_loop(mut socket: WebSocket, app: Shared) {
                         };
                         if v.get("type").and_then(|t| t.as_str()) == Some("auth") {
                             let key = v.get("apiKey").and_then(|a| a.as_str()).and_then(parse_hex32);
-                            let owner = match key {
-                                Some(k) => app.gw.lock().await.owner_hex_for(&k),
+                            let next = match key {
+                                Some(k) => app.gw.lock().await.owner_and_recovery_for(&k),
                                 None => None,
                             };
-                            let reply = match &owner {
-                                Some(o) => serde_json::json!({ "type": "authOk", "owner": o }),
+                            let reply = match &next {
+                                Some((o, _)) => serde_json::json!({ "type": "authOk", "owner": o }),
                                 None => serde_json::json!({ "type": "error", "message": "unknown api key" }),
                             };
-                            auth_owner = owner;
+                            auth = next;
                             if socket.send(Message::Text(reply.to_string())).await.is_err() {
+                                break;
+                            }
+                        } else if let Some((owner, nonce)) = &auth {
+                            // S1: any non-auth frame from a session whose key was
+                            // rotated since auth must not be honored — close it.
+                            let valid = { app.gw.lock().await.ws_auth_valid(owner, *nonce) };
+                            if !valid {
+                                let _ = socket
+                                    .send(Message::Text(
+                                        serde_json::json!({"type":"error","message":"api key rotated"})
+                                            .to_string(),
+                                    ))
+                                    .await;
                                 break;
                             }
                         }
@@ -6959,13 +6999,28 @@ async fn ws_v1_loop(mut socket: WebSocket, app: Shared) {
             }
             ev = accts.recv() => {
                 let Ok(json) = ev else { continue; };
-                if let Some(owner) = &auth_owner {
+                if let Some((owner, nonce)) = &auth {
                     let is_mine = serde_json::from_str::<serde_json::Value>(&json)
                         .ok()
                         .and_then(|v| v.get("owner").and_then(|o| o.as_str()).map(|s| s == owner))
                         .unwrap_or(false);
-                    if is_mine && socket.send(Message::Text(json)).await.is_err() {
-                        break;
+                    if is_mine {
+                        // S1: re-check the session's credential generation BEFORE
+                        // delivering a private event; a rotation since auth revokes
+                        // the session. Lock is released before the socket send.
+                        let valid = { app.gw.lock().await.ws_auth_valid(owner, *nonce) };
+                        if !valid {
+                            let _ = socket
+                                .send(Message::Text(
+                                    serde_json::json!({"type":"error","message":"api key rotated"})
+                                        .to_string(),
+                                ))
+                                .await;
+                            break;
+                        }
+                        if socket.send(Message::Text(json)).await.is_err() {
+                            break;
+                        }
                     }
                 }
             }
@@ -8978,6 +9033,10 @@ async fn main() {
     .await
     .expect("serve");
 }
+
+#[cfg(test)]
+#[path = "s1_recovery_ws_tests.rs"]
+mod s1_recovery_ws_tests;
 
 #[cfg(test)]
 mod tests {
@@ -13464,6 +13523,7 @@ mod tests {
             last_withdraw_nonce: 42,
             rebind_counter: 3,
             recovery_nonce: 0,
+            recovery_last: None,
         };
         a.nonce = 7;
         let bytes = postcard::to_allocvec(&a).expect("serialize");

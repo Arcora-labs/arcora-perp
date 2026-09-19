@@ -1,0 +1,76 @@
+{
+  "date": "2026-09-19",
+  "job": "S1: recovery HTTP durability/authorization + WS session revocation after API-key rotation",
+  "base": {
+    "ref": "main",
+    "sha": "b60e537f9487fd13e3cf453011a11c68f6d5889c",
+    "verified": "git ls-remote origin main matched local HEAD at job start; PR #13 (docs handoff) merged 2026-09-19T13:07:51Z per independent record"
+  },
+  "open_prs_at_start": [],
+  "worktree": "kimi/job--6-continue-only-s1-from-docs-audit-handoff (isolated)",
+  "findings": [
+    {
+      "id": "S1-B1",
+      "title": "Authenticated WS session survives API-key rotation",
+      "base_location": "crates/gateway/src/main.rs:6918-6974 (ws_v1_loop), owner_hex_for at main.rs:3420-3423",
+      "impact": "stale session keeps receiving owner's private events indefinitely; owner-only filtering, no credential-generation check",
+      "fix": "session pins (owner, recovery_nonce) at auth; ws_auth_valid re-checks current recovery_nonce under a fresh short lock before every private event delivery and on non-auth frames; mismatch sends error frame and closes; old-key reconnect rejection preserved",
+      "fix_locations": ["main.rs:3433-3451", "main.rs:6950-7030"]
+    },
+    {
+      "id": "S1-B2",
+      "title": "Permanent lockout on post-mutation snapshot failure (durability unknown wedge)",
+      "base_location": "crates/gateway/src/main.rs:6200-6228 (post_v1_recovery) + account_recovery.rs:63-119",
+      "impact": "rotation applied in memory (old key dead, nonce burned) before durable ACK; any ACK failure / dropped request / lost response returned 503 unknown with no way to re-obtain the key; blind retry hits nonce mismatch",
+      "fix": "Account.recovery_last (in-memory only, serde-skip; snapshot/trailer format unchanged) records (nonce, new_key) per applied rotation; retry of the same signed authorization for the current generation returns the byte-identical key with zero mutation and still requires the durable ACK; superseded nonces still rejected; checked_add against u64 overflow",
+      "fix_locations": ["account_recovery.rs:63-128", "main.rs:1176-1186"]
+    }
+  ],
+  "semantics": {
+    "confirmed": "rotation + durable ACK covering that recovery generation; key in response",
+    "unknown": "rotation may be committed in memory; retrying the identical signed request is safe and idempotent (same key, no double nonce increment); no silent rollback or nonce reset",
+    "restart": "forgets recovery_last; an un-ACKed generation's secret is never delivered after restart; client issues a fresh authorization (no permanent lockout)"
+  },
+  "preserved_invariants": [
+    "PR #12 deposit permit + credited receipt key migration under same Gw lock",
+    "V7/V8 migration + DPSNAP8 trailer; positional postcard Account format unchanged (recovery_last is serde-skip)",
+    "owner/payer/market/purpose/event/prefix and native replay tests untouched and passing",
+    "snapshot_now timeout (30s) and queue semantics unchanged"
+  ],
+  "tests_added": {
+    "file": "crates/gateway/src/s1_recovery_ws_tests.rs",
+    "http": [
+      "recovery_without_writer_is_503_and_state_unchanged",
+      "recovery_false_ack_then_retry_returns_same_key",
+      "recovery_dropped_ack_then_retry_returns_same_key",
+      "recovery_wedged_writer_times_out_then_retry_returns_same_key",
+      "recovery_dropped_request_then_retry_returns_same_key",
+      "recovery_racing_sequential_nonces_and_stale_retry_is_rejected",
+      "recovery_rejections_and_nonce_overflow"
+    ],
+    "ws": [
+      "ws_session_revoked_after_key_rotation",
+      "ws_unrelated_sessions_unaffected_by_rotation"
+    ],
+    "transport": "real POST /v1/accounts/recovery route via tower oneshot; real TCP server + tokio-tungstenite on /v1/ws; snapshot writer stubbed (ack-true/false/park/drop)"
+  },
+  "verification": {
+    "commands": [
+      {"cmd": "cargo test -p gateway", "exit": 0, "result": "338 passed; 0 failed; 1 ignored (pre-existing); self-run this session"},
+      {"cmd": "cargo fmt --all --check", "exit": 0},
+      {"cmd": "cargo clippy --workspace --all-targets --locked -- -D warnings", "exit": 0},
+      {"cmd": "cargo test --workspace --locked", "exit": 0, "result": "all test binaries ok; includes 4-test binary at 136s; self-run this session"},
+      {"cmd": "cargo test --locked -p gateway a01_", "exit": 0, "result": "28 passed; 0 failed; 1 ignored (pre-existing live-RPC cast test); 310 filtered out"}
+    ]
+  },
+  "mock_limits": [
+    "snapshot writer is a stub; real disk/fsync failure and physical crash drill NOT done (S6)",
+    "WS tests on loopback socket; production load not measured",
+    "real SP1 ELF/vkey/proof/deployment verification NOT done; stub typecheck is not proof"
+  ],
+  "ci": {
+    "workflows_triggered_by_pr_push": ["ci.yml", "a01-ingestion.yml", "a07-integration-hotfix.yml", "a10-trust-boundary.yml"],
+    "deployment_or_live_interaction": "none; all triggered workflows are code-validation only (contents: read)",
+    "run_ids": "recorded in PR description after push"
+  }
+}
