@@ -384,6 +384,16 @@ export function bindDepositDigest(owner: Uint8Array, depositAddress: string): Ui
   return keccak_256(concatBytes(utf8ToBytes("dark-perp:bind-deposit:"), owner, addr));
 }
 
+/** A07 credential-recovery digest. Byte-identical to gateway account_recovery::digest. */
+export function accountRecoveryDigest(chainId: bigint, vault: string, owner: Uint8Array, nonce: bigint): Uint8Array {
+  const max=(1n<<64n)-1n;
+  if(chainId<0n||chainId>max||nonce<0n||nonce>max) throw new Error("recovery domain value out of u64 range");
+  if(owner.length!==32) throw new Error("owner pubkey must be 32 bytes");
+  if(!/^0x[0-9a-fA-F]{40}$/.test(vault)) throw new Error("vault must be a 20-byte 0x address");
+  const u64be=(v:bigint)=>{const o=new Uint8Array(8);for(let i=7;i>=0;i--){o[i]=Number(v&255n);v>>=8n;}return o;};
+  return keccak_256(concatBytes(utf8ToBytes("dark-perp:recover-account:"),u64be(chainId),hexToBytes(vault.slice(2)),owner,u64be(nonce)));
+}
+
 // ── wallet-deposit capability of the API client ───────────────────────────────
 
 /**

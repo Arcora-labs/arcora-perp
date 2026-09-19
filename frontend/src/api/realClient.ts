@@ -25,7 +25,7 @@ import type {
   WithdrawalEntry,
 } from "../domain/types";
 import { seal, domainAad } from "./sealedBox";
-import { personalSign } from "./wallet";
+import { accountRecoveryDigest, personalSign } from "./wallet";
 import { cancellationCapability } from "../domain/cancellation";
 import { parseExecution } from "../domain/execution";
 import { secp256k1 } from "@noble/curves/secp256k1";
@@ -1391,6 +1391,34 @@ export class RealDarkPerpClient implements DarkPerpClient {
   // mode instead of lying. closePosition in particular has NO /v1 equivalent
   // yet; re-adding it as a reduce-only /v1 order submission is a product
   // decision for a later slice, not a transport fix.
+
+  /** A07: rotate a lost browser API key using the account's existing wallet/signer authority. */
+  async recoverAccount(ownerHex: string): Promise<{ owner: string; recoveryNonce: number }> {
+    if (!/^0x[0-9a-fA-F]{64}$/.test(ownerHex)) throw new Error("Owner must be a 32-byte 0x id.");
+    const metaRes=await fetch(this.base+`/v1/accounts/recovery/${encodeURIComponent(ownerHex)}`);
+    if(!metaRes.ok) throw new Error(`Recovery metadata unavailable (${metaRes.status}).`);
+    const m=await metaRes.json() as {owner?:unknown;authorizer?:unknown;recoveryNonce?:unknown;chainId?:unknown;vault?:unknown};
+    if(typeof m.owner!=="string"||m.owner.toLowerCase()!==ownerHex.toLowerCase()||
+       typeof m.authorizer!=="string"||!/^0x[0-9a-fA-F]{40}$/.test(m.authorizer)||
+       typeof m.recoveryNonce!=="number"||!Number.isSafeInteger(m.recoveryNonce)||m.recoveryNonce<0||
+       typeof m.chainId!=="number"||!Number.isSafeInteger(m.chainId)||m.chainId<0||
+       typeof m.vault!=="string"||!/^0x[0-9a-fA-F]{40}$/.test(m.vault)) throw new Error("Gateway returned malformed recovery metadata.");
+    const owner=strictHex(m.owner,32);
+    const digest=accountRecoveryDigest(BigInt(m.chainId),m.vault,owner,BigInt(m.recoveryNonce));
+    const signature=await personalSign("0x"+bytesToHex(digest),m.authorizer);
+    const out=await this.post<{apiKey?:unknown;owner?:unknown;recoveryNonce?:unknown;durability?:unknown}>(
+      "/v1/accounts/recovery",{owner:m.owner,nonce:m.recoveryNonce,signature});
+    if(typeof out.apiKey!=="string"||typeof out.owner!=="string"||out.owner.toLowerCase()!==m.owner.toLowerCase()||
+       typeof out.recoveryNonce!=="number"||out.recoveryNonce!==m.recoveryNonce+1||out.durability!=="confirmed"){
+      throw new Error("Gateway returned malformed or non-durable recovery result.");
+    }
+    const acct:SealingAccount={apiKey:out.apiKey,owner};
+    localStorage.setItem(LS_ACCOUNT_KEY,JSON.stringify({apiKey:out.apiKey,owner:out.owner}));
+    this.sealing=acct; this.everProvisioned=true; this.ownAccount=null; this.ownOrders=null;
+    if(this.wsV1){try{this.wsV1.close();}catch{/* noop */}} else this.connectV1();
+    await this.refreshOwnState();
+    return {owner:out.owner,recoveryNonce:out.recoveryNonce};
+  }
 
   /**
    * Cancel an order — `DELETE /v1/orders/:id` under the account's API key,

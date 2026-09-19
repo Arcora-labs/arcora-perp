@@ -1,108 +1,50 @@
 import { useState } from "react";
 import { useStore } from "../store";
-import { formatUsd } from "../domain/format";
-import type { RecoveredNote } from "../domain/types";
+import { connect, hasInjected, useWalletAddress } from "../api/wallet";
 
-/// Device-loss recovery (§7): enter your seed, derive a view-key, scan the
-/// encrypted note archive, and reconstruct your shielded balance.
-///
-/// SEC-025-E1 Task 3: `client.recover` is optional — it is a DEMO surface (the
-/// legacy `POST /api/recover` route is not mounted in production, so the real
-/// client omits the method). Without it this panel says so honestly instead of
-/// offering a scan that could only fail.
 export function RecoveryPanel() {
   const { client } = useStore();
-  const [seed, setSeed] = useState("");
-  const [notes, setNotes] = useState<RecoveredNote[] | null>(null);
-  const [scanning, setScanning] = useState(false);
+  const wallet = useWalletAddress();
+  const [owner, setOwner] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const liveRecovery = client.recoverAccount?.bind(client);
 
-  const recover = client.recover?.bind(client);
-
-  if (!recover) {
-    // Review F5: do NOT claim funds stay recoverable after device loss. A
-    // claim exists only for a withdrawal that was ALREADY REQUESTED, and
-    // requesting one needs this browser's /v1 API key (requestWithdrawal
-    // starts with ensureAccount) — lose the browser and no new withdrawal
-    // can ever be requested. Fix-wave-2 G3: even that claim is qualified —
-    // the claim TX needs no key, but its Merkle proof is served only by the
-    // authenticated GET /v1/accounts/withdrawals (gateway main.rs), so a
-    // lost key also forecloses fetching the proof.
-    return (
-      <div className="card">
-        <h3 className="card__title">Recover from seed</h3>
-        <p className="muted small">
-          Seed-based note recovery is <strong>not available on the live gateway</strong>{" "}
-          yet — the archive-scan route exists only in the demo build. Your balance and
-          positions live in your per-browser <code>/v1</code> account, and every
-          withdrawal <em>request</em> needs that account's browser-held API key:{" "}
-          <strong>
-            if you lose this browser (or clear its storage), the account&apos;s balance
-            and positions are stranded
-          </strong>{" "}
-          — there is no recovery path yet. Only withdrawals you had{" "}
-          <strong>already requested</strong> before the loss remain claimable on-chain
-          — and only with the claim data in hand: the claim transaction itself is
-          wallet-signed and needs no API key, but the Merkle proof it requires is
-          served only by the authenticated withdrawals endpoint, so losing this
-          browser&apos;s key also loses access to the served proof. Do not leave more
-          in the account than you are prepared to lose with the device.
-        </p>
-      </div>
-    );
+  async function recover() {
+    if (!liveRecovery || !/^0x[0-9a-fA-F]{64}$/.test(owner.trim())) return;
+    setBusy(true); setError(null); setResult(null);
+    try {
+      if (!wallet) await connect();
+      const r = await liveRecovery(owner.trim());
+      setResult(`Account recovered. Credential generation is now #${r.recoveryNonce}.`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally { setBusy(false); }
   }
 
-  async function scan() {
-    if (seed.trim() === "") return;
-    setScanning(true);
-    const r = await recover!(seed.trim());
-    setNotes(r);
-    setScanning(false);
+  if (!liveRecovery) {
+    return <div className="card"><h3 className="card__title">Account recovery</h3>
+      <p className="muted small">Wallet-authorized account recovery is unavailable on this gateway build. Do not create a replacement account if the old account may still hold funds.</p>
+    </div>;
   }
 
-  const recoverable = (notes ?? []).filter((n) => !n.spent).reduce((a, n) => a + n.amount, 0n);
-
-  return (
-    <div className="card">
-      <h3 className="card__title">Recover from seed</h3>
-      <p className="muted small">
-        Lost your device? Your seed derives a <strong>view-key</strong> that scans the
-        encrypted note archive and rebuilds your position. The view-key can read but
-        not spend (§7).
-      </p>
-      <label className="field">
-        <span className="field__label">Recovery seed (any text in this demo)</span>
-        <input className="field__input" value={seed} onChange={(e) => setSeed(e.target.value)} placeholder="seed phrase…" />
-      </label>
-      <button className="btn btn--ghost" onClick={scan} disabled={scanning}>
-        {scanning ? "Scanning archive…" : "Scan & recover"}
-      </button>
-
-      {notes && (
-        <div className="recovery__result">
-          <div className="stat">
-            <span className="stat__label">Recoverable balance</span>
-            <span className="stat__value">{formatUsd(recoverable)}</span>
-          </div>
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Batch</th>
-                <th>Amount</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {notes.map((n, i) => (
-                <tr key={i}>
-                  <td>#{n.batchId}</td>
-                  <td>{formatUsd(n.amount)}</td>
-                  <td>{n.spent ? <span className="muted">spent</span> : <span className="pos">recovered</span>}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
-  );
+  return <div className="card">
+    <h3 className="card__title">Recover account access</h3>
+    <p className="muted small">
+      Lost this browser&apos;s API credential? Enter the account&apos;s 32-byte owner id.
+      The gateway returns the account&apos;s current recovery authorizer and nonce; your
+      wallet signs a deployment-bound recovery digest. A successful durable rotation
+      invalidates the old API key and stores the replacement in this browser.
+    </p>
+    <label className="field"><span className="field__label">Account owner id</span>
+      <input className="field__input" value={owner} onChange={e=>setOwner(e.target.value)}
+        placeholder="0x… (32 bytes)" autoComplete="off" spellCheck={false}/></label>
+    <p className="muted small">Connected wallet: {wallet ?? "not connected"}</p>
+    <button className="btn btn--ghost" onClick={recover} disabled={busy || !/^0x[0-9a-fA-F]{64}$/.test(owner.trim()) || !hasInjected()}>
+      {busy ? "Authorizing recovery…" : wallet ? "Sign & recover" : "Connect wallet & recover"}
+    </button>
+    {error && <p className="neg small" role="alert">{error}</p>}
+    {result && <p className="pos small" role="status">{result}</p>}
+  </div>;
 }

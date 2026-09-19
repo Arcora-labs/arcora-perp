@@ -44,6 +44,7 @@ use perp_core::order::{Finality, Order, Side, TimeInForce};
 use perp_core::state::Mode;
 use sequencer::{adl_tag, adl_tag_key, EnclaveIdentity, SealedBatch, Sequencer, WindowWitness};
 
+mod account_recovery;
 mod bootstrap;
 mod candles;
 mod deposit_ingestion;

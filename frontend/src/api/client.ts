@@ -146,6 +146,9 @@ export interface DarkPerpClient {
   /// (§7). The live gateway serves no recovery route yet.
   recover?(seedHex: string): Promise<RecoveredNote[]>;
 
+  /** A07 live recovery: wallet-authorized rotation of a lost browser API credential. */
+  recoverAccount?(ownerHex: string): Promise<{ owner: string; recoveryNonce: number }>;
+
   /// Demo: close a position with a reduce-only market order. There is NO /v1
   /// equivalent yet — implementing close as a reduce-only /v1 order submission
   /// is a product decision for a later slice, so in live mode the close button
