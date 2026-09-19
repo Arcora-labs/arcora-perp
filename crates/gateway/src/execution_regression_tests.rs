@@ -73,6 +73,21 @@ mod execution_regressions {
         w
     }
 
+    // Reproduce the v7 writer explicitly. Calling snapshot_plain() here would
+    // produce v8 and stop testing the historical execution-only format.
+    fn v7_snapshot(gw: &Gw) -> Vec<u8> {
+        let prices: Vec<_> = gw
+            .mkts
+            .iter()
+            .map(|m| (m.id, m.reference_price, m.px, m.live))
+            .collect();
+        let mut bytes = execution::SNAPSHOT_V7.to_vec();
+        bytes.extend_from_slice(deposit_ingestion::SNAPSHOT_V6);
+        bytes.extend_from_slice(&postcard::to_allocvec(&(gw, prices, &gw.deposits)).unwrap());
+        execution::append_snapshot(gw, &mut bytes);
+        bytes
+    }
+
     #[test]
     fn sealed_maker_cancel_removes_remainder_and_commits_manifest() {
         let (mut gw, maker, taker, _) = paired();
@@ -300,11 +315,11 @@ mod execution_regressions {
         assert!(Gw::boot_restored(&bytes).is_err());
     }
     #[test]
-    fn snapshot_envelope_has_one_way_v7_guard_and_accepts_v5() {
+    fn snapshot_envelope_has_one_way_v8_guard_and_accepts_v5() {
         let (gw, _, _, _) = paired();
         let seed = [42; 32];
         let current = snapshot::seal(&gw.snapshot_plain(), &seed);
-        assert_eq!(&current[..8], b"DPSNAP7\0");
+        assert_eq!(&current[..8], b"DPSNAP8\0");
         let markets: Vec<_> = gw
             .mkts
             .iter()
@@ -373,9 +388,9 @@ mod execution_regressions {
             .contains("ORDER_NOT_LIVE"));
     }
     #[test]
-    fn changing_v7_to_a_legacy_header_does_not_bypass_authentication() {
+    fn changing_v8_to_a_legacy_header_does_not_bypass_authentication() {
         let seed = [42; 32];
-        for magic in [b"DPSNAP5\0", b"DPSNAP6\0"] {
+        for magic in [b"DPSNAP5\0", b"DPSNAP6\0", b"DPSNAP7\0"] {
             let mut sealed = snapshot::seal(b"a new-format state", &seed);
             sealed[..8].copy_from_slice(magic);
             assert!(snapshot::open(&sealed, &seed).is_err());
@@ -436,7 +451,7 @@ mod execution_regressions {
     #[test]
     fn a05_v7_cannot_silently_drop_execution_extension() {
         let (gw, _, _, _) = paired();
-        let raw = gw.snapshot_plain();
+        let raw = v7_snapshot(&gw);
         let payload = raw.strip_prefix(execution::SNAPSHOT_V7).unwrap()
             .strip_prefix(deposit_ingestion::SNAPSHOT_V6).unwrap();
         type LegacyPart = (Gw, Vec<(u64, i128, i128, bool)>, deposit_ingestion::DepositState);
@@ -445,6 +460,85 @@ mod execution_regressions {
         assert!(Gw::boot_restored(&raw[..raw.len() - rest.len()]).is_err());
         // Simply removing v7's prefix also leaves a forbidden v6 trailer.
         assert!(Gw::boot_restored(raw.strip_prefix(execution::SNAPSHOT_V7).unwrap()).is_err());
+    }
+
+    #[test]
+    fn a07_v7_migration_preserves_partial_execution_and_replay() {
+        let (mut gw, maker, taker, _) = paired();
+        submit(&mut gw, &taker, "Buy", SIZE_SCALE / 40, 0, "Ioc");
+        tick(&mut gw);
+        gw.account_cancel(&maker, "o1").unwrap();
+        let before = row(&gw, &maker);
+        let old = v7_snapshot(&gw);
+        let mut restored = Gw::boot_restored(&old).unwrap();
+        assert_eq!(restored.seq.state.state_root(), gw.seq.state.state_root());
+        assert_eq!(row(&restored, &maker), before);
+        assert!(restored.accounts.values().all(|a| a.recovery_nonce == 0));
+        assert_eq!(v7_snapshot(&restored), old);
+        let upgraded = restored.snapshot_plain();
+        assert!(upgraded.starts_with(account_recovery::SNAPSHOT_V8));
+        assert_eq!(Gw::boot_restored(&upgraded).unwrap().snapshot_plain(), upgraded);
+        assert_replay(&mut restored);
+    }
+
+    #[test]
+    fn a07_v8_preserves_generation_and_rejects_truncation_or_downgrade() {
+        let (mut gw, maker, _, _) = paired();
+        gw.accounts.get_mut(&maker).unwrap().recovery_nonce = 7;
+        let raw = gw.snapshot_plain();
+        let restored = Gw::boot_restored(&raw).unwrap();
+        assert_eq!(restored.accounts[&maker].recovery_nonce, 7);
+        assert_eq!(restored.snapshot_plain(), raw);
+        let payload = raw
+            .strip_prefix(account_recovery::SNAPSHOT_V8)
+            .unwrap()
+            .strip_prefix(deposit_ingestion::SNAPSHOT_V6)
+            .unwrap();
+        type LegacyPart = (Gw, Vec<(u64, i128, i128, bool)>, deposit_ingestion::DepositState);
+        let (_, rest): (LegacyPart, _) = postcard::take_from_bytes(payload).unwrap();
+        assert!(!rest.is_empty());
+        assert!(Gw::boot_restored(&raw[..raw.len() - rest.len()]).is_err());
+        let legacy = v7_snapshot(&gw);
+        let mut no_recovery = account_recovery::SNAPSHOT_V8.to_vec();
+        no_recovery.extend_from_slice(legacy.strip_prefix(execution::SNAPSHOT_V7).unwrap());
+        assert!(Gw::boot_restored(&no_recovery).is_err());
+        let inner = raw.strip_prefix(account_recovery::SNAPSHOT_V8).unwrap();
+        assert!(Gw::boot_restored(inner).is_err());
+        let mut downgraded = execution::SNAPSHOT_V7.to_vec();
+        downgraded.extend_from_slice(inner);
+        assert!(Gw::boot_restored(&downgraded).is_err());
+    }
+
+    #[test]
+    fn a07_authenticated_v7_envelope_remains_readable() {
+        let (gw, _, _, _) = paired();
+        let old = v7_snapshot(&gw);
+        let seed = [42; 32];
+        let mut sealed = snapshot::seal(&old, &seed);
+        let nonce: [u8; 32] = sealed[8..40].try_into().unwrap();
+        let mut words = vec![
+            seed,
+            nonce,
+            perp_core::hash::word_u64((sealed.len() - 72) as u64),
+        ];
+        for chunk in sealed[72..].chunks(32) {
+            let mut word = [0u8; 32];
+            word[..chunk.len()].copy_from_slice(chunk);
+            words.push(word);
+        }
+        let inner =
+            <Keccak256 as perp_core::hash::Hasher>::hash_words(Domain::SnapshotSealMac, &words);
+        let tag = <Keccak256 as perp_core::hash::Hasher>::hash_words(
+            Domain::SnapshotSealMac,
+            &[perp_core::hash::word_u64(7), inner],
+        );
+        sealed[..8].copy_from_slice(b"DPSNAP7\0");
+        sealed[40..72].copy_from_slice(&tag);
+        let opened = snapshot::open(&sealed, &seed).unwrap();
+        assert_eq!(opened, old);
+        let restored = Gw::boot_restored(&opened).unwrap();
+        assert_eq!(v7_snapshot(&restored), old);
+        assert!(restored.snapshot_plain().starts_with(account_recovery::SNAPSHOT_V8));
     }
 
     #[test]
