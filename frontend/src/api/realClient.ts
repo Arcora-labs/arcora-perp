@@ -497,6 +497,28 @@ interface SealingAccount {
   owner: Uint8Array;
 }
 
+/** Total recovery rounds (initial + retries) — see recoverAccount's S1 contract. */
+const MAX_RECOVERY_ATTEMPTS = 3;
+
+/**
+ * Internal error of one recovery round: `retryable` decides whether
+ * recoverAccount re-GETs/re-signs/re-POSTs with a FRESH nonce or gives up
+ * immediately (400/401/409, wallet rejection, superseded, storage refusal).
+ */
+class RecoveryAttemptError extends Error {
+  constructor(
+    message: string,
+    readonly retryable: boolean,
+  ) {
+    super(message);
+    this.name = "RecoveryAttemptError";
+  }
+}
+
+function errMsg(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
+
 export class RealDarkPerpClient implements DarkPerpClient {
   private base: string;
   private wsUrl: string;
@@ -593,6 +615,25 @@ export class RealDarkPerpClient implements DarkPerpClient {
   private everProvisioned = false;
   private acctFetch: Promise<SealingAccount> | null = null;
   /**
+   * Monotonic credential epoch (account-recovery hardening S1): bumped on EVERY
+   * credential swap — a confirmed recovery, an initAccount adoption, or a
+   * cross-tab storage adoption. Any async step that captured the epoch at
+   * start and finds it advanced on arrival (a late recovery result, a stale
+   * own-state refresh, an old socket's authOk/error frame) must discard its
+   * result instead of overwriting the winner's credential/state.
+   */
+  private credentialEpoch = 0;
+  /**
+   * Generation of the stored credential record this client last wrote or
+   * adopted. The stored record carries a `gen` field (records without one are
+   * legacy generation 0, upgraded on the next confirmed write); a tab whose
+   * in-memory `storedGen` is BEHIND the stored record must refuse to write,
+   * or a stale tab would clobber a newer rotation from another tab.
+   */
+  private storedGen = 0;
+  /** Cross-tab `storage` listener — registered in the constructor, removed in dispose(). */
+  private readonly storageListener: ((ev: StorageEvent) => void) | null = null;
+  /**
    * Strictly-increasing order nonce carried inside the sealed terms. The gateway
    * ENFORCES strict monotonicity per account on the decrypted terms (replay
    * protection: a captured `{epochId, sealed}` body re-POSTed is rejected), so
@@ -606,6 +647,17 @@ export class RealDarkPerpClient implements DarkPerpClient {
     this.wsUrl = this.base.replace(/^http/, "ws") + "/ws";
     this.wsV1Url = this.base.replace(/^http/, "ws") + "/v1/ws";
     this.state = initial;
+    // Cross-tab credential propagation (S1): another tab's write of
+    // LS_ACCOUNT_KEY arrives here as a `storage` event (the writing tab itself
+    // never fires one). Same-tab writes and other keys are ignored by
+    // onStorageEvent.
+    if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
+      this.storageListener = (ev: StorageEvent) => {
+        if (ev.key !== LS_ACCOUNT_KEY) return;
+        this.onStorageEvent(ev.newValue);
+      };
+      window.addEventListener("storage", this.storageListener);
+    }
     this.connect();
     this.connectV1();
   }
@@ -686,13 +738,17 @@ export class RealDarkPerpClient implements DarkPerpClient {
   }
 
   private async initAccount(): Promise<SealingAccount> {
-    const stored = this.readStoredAccount();
-    if (stored) {
+    const storedRec = this.readStoredRecord();
+    if (storedRec) {
       try {
-        const res = await fetch(this.base + "/v1/accounts/me", { headers: { "X-Api-Key": stored.apiKey } });
+        const res = await fetch(this.base + "/v1/accounts/me", { headers: { "X-Api-Key": storedRec.apiKey } });
         if (res.ok) {
+          const stored = { apiKey: storedRec.apiKey, owner: strictHex(storedRec.ownerHex, 32) };
+          this.storedGen = storedRec.gen; // adopt the record's generation (legacy ⇒ 0)
           this.sealing = stored;
           this.everProvisioned = true;
+          // No epoch bump: first provisioning is not a swap — the /v1/ws socket
+          // connected at the current epoch must keep accepting authOk/error.
           this.tryAuthV1(); // the account stream may already be open and waiting
           return stored;
         }
@@ -706,24 +762,115 @@ export class RealDarkPerpClient implements DarkPerpClient {
     }
     const acct: SealingAccount = { apiKey: j.apiKey, owner: strictHex(j.owner, 32) };
     try {
-      localStorage.setItem(LS_ACCOUNT_KEY, JSON.stringify({ apiKey: j.apiKey, owner: j.owner }));
-    } catch { /* storage unavailable (private mode) — account lives for this session only */ }
+      // Generation-stamped, stale-overwrite-guarded — same discipline as recovery.
+      this.writeStoredCredential(j.apiKey, j.owner);
+    } catch { /* storage unavailable (private mode) or a newer stored credential exists — session-only */ }
     this.sealing = acct;
     this.everProvisioned = true;
+    // No epoch bump — same reasoning as the stored-adoption branch above.
     this.tryAuthV1(); // the account stream may already be open and waiting
     return acct;
   }
 
-  private readStoredAccount(): SealingAccount | null {
+  /**
+   * The parsed stored credential record, generation included. Records written
+   * before the S1 hardening carry no `gen` — they parse as generation 0 and
+   * are upgraded on the next confirmed write.
+   */
+  private readStoredRecord(): { apiKey: string; ownerHex: string; gen: number } | null {
     try {
       const raw = localStorage.getItem(LS_ACCOUNT_KEY);
       if (!raw) return null;
-      const j = JSON.parse(raw) as { apiKey?: unknown; owner?: unknown };
-      if (typeof j.apiKey !== "string" || typeof j.owner !== "string") return null;
-      return { apiKey: j.apiKey, owner: strictHex(j.owner, 32) };
+      const j = JSON.parse(raw) as { apiKey?: unknown; owner?: unknown; gen?: unknown };
+      if (
+        typeof j !== "object" || j === null ||
+        typeof j.apiKey !== "string" ||
+        typeof j.owner !== "string" || !/^0x[0-9a-fA-F]{64}$/.test(j.owner)
+      ) {
+        return null;
+      }
+      const gen =
+        typeof j.gen === "number" && Number.isSafeInteger(j.gen) && j.gen >= 0 ? j.gen : 0;
+      return { apiKey: j.apiKey, ownerHex: j.owner, gen };
     } catch {
       return null;
     }
+  }
+
+  /**
+   * Persist a freshly confirmed credential, generation-stamped, with stale-
+   * overwrite protection (S1 multi-tab): the CURRENT stored record is re-read
+   * first, and if it holds a NEWER generation than this tab last saw, the
+   * write is REFUSED (another tab rotated the key more recently — this stale
+   * tab must not clobber it). Throws on refusal AND on storage failure; the
+   * caller treats a throw as "failure to swap" and keeps its old credential.
+   */
+  private writeStoredCredential(apiKey: string, ownerHex: string): void {
+    const current = this.readStoredRecord();
+    if (
+      current !== null &&
+      current.ownerHex.toLowerCase() === ownerHex.toLowerCase() &&
+      current.gen > this.storedGen
+    ) {
+      throw new Error(
+        "Refusing to overwrite a newer stored credential (another tab rotated this account's key more recently).",
+      );
+    }
+    const gen = Math.max(current?.gen ?? 0, this.storedGen) + 1;
+    localStorage.setItem(
+      LS_ACCOUNT_KEY,
+      JSON.stringify({ apiKey, owner: ownerHex, gen, ts: Date.now() }),
+    );
+    this.storedGen = gen;
+  }
+
+  /**
+   * Cross-tab adoption (S1): another tab wrote a new LS_ACCOUNT_KEY. Adopt it
+   * ONLY when it belongs to the owner this tab currently knows (a foreign
+   * owner's record is ignored — it is another user's account in a shared
+   * browser profile) AND its generation is newer than what this tab last saw
+   * (an older/equal generation is a stale echo — ignore). Adoption bumps the
+   * credential epoch (so in-flight old-credential work is discarded), swaps
+   * sealing, and forces a /v1/ws re-auth.
+   */
+  private onStorageEvent(newValue: string | null): void {
+    if (newValue === null) return; // key removed — nothing to adopt
+    let rec: { apiKey?: unknown; owner?: unknown; gen?: unknown };
+    try {
+      rec = JSON.parse(newValue) as { apiKey?: unknown; owner?: unknown; gen?: unknown };
+    } catch {
+      return; // malformed record — ignore
+    }
+    if (
+      typeof rec !== "object" || rec === null ||
+      typeof rec.apiKey !== "string" ||
+      typeof rec.owner !== "string" || !/^0x[0-9a-fA-F]{64}$/.test(rec.owner)
+    ) {
+      return;
+    }
+    const gen =
+      typeof rec.gen === "number" && Number.isSafeInteger(rec.gen) && rec.gen >= 0 ? rec.gen : 0;
+    // Foreign-owner records are out of this tab's owner scope — ignore.
+    const known = this.sealing ?? this.readStoredAccount();
+    if (known && bytesToHex(known.owner).toLowerCase() !== rec.owner.toLowerCase().slice(2)) return;
+    if (!known) return; // no known owner scope — a stray record is not adopted
+    if (gen <= this.storedGen) return; // stale or same-generation echo
+    this.storedGen = gen;
+    this.credentialEpoch++;
+    this.sealing = { apiKey: rec.apiKey, owner: strictHex(rec.owner, 32) };
+    this.everProvisioned = true;
+    this.ownAccount = null;
+    this.ownOrders = null;
+    this.v1AuthSent = false;
+    this.v1Owner = null;
+    if (this.wsV1) { try { this.wsV1.close(); } catch { /* noop */ } } else this.connectV1();
+    void this.refreshOwnState();
+  }
+
+  private readStoredAccount(): SealingAccount | null {
+    const rec = this.readStoredRecord();
+    if (!rec) return null;
+    return { apiKey: rec.apiKey, owner: strictHex(rec.ownerHex, 32) };
   }
 
   /**
@@ -819,8 +966,15 @@ export class RealDarkPerpClient implements DarkPerpClient {
       this.v1AuthSent = false;
       this.v1Owner = null;
       this.wsV1 = new WebSocket(this.wsV1Url);
+      // S1 epoch + identity pinning: the frame handler drops authOk/error
+      // frames whose socket is no longer the current one OR whose connect
+      // predates the current credential epoch — an old socket's late frame
+      // after a rotation-driven reconnect must not clear/replace the new
+      // credential/sealing.
+      const socket = this.wsV1;
+      const connectEpoch = this.credentialEpoch;
       this.wsV1.onopen = () => { this.tryAuthV1(); };
-      this.wsV1.onmessage = (ev) => { this.handleV1Frame(ev.data as string); };
+      this.wsV1.onmessage = (ev) => { this.handleV1Frame(ev.data as string, socket, connectEpoch); };
       this.wsV1.onclose = () => { this.scheduleReconnectV1(); };
       this.wsV1.onerror = () => { try { this.wsV1?.close(); } catch { /* noop */ } };
     } catch {
@@ -870,7 +1024,7 @@ export class RealDarkPerpClient implements DarkPerpClient {
    *   for the authenticated owner, and checked here against the VERIFIED
    *   owner so a confused or hostile stream still cannot cross accounts.
    */
-  private handleV1Frame(raw: string): void {
+  private handleV1Frame(raw: string, socket: WebSocket | null = null, connectEpoch = this.credentialEpoch): void {
     let v: { type?: unknown; owner?: unknown; message?: unknown };
     try {
       v = JSON.parse(raw) as { type?: unknown; owner?: unknown; message?: unknown };
@@ -878,7 +1032,12 @@ export class RealDarkPerpClient implements DarkPerpClient {
       return; // malformed frame
     }
     if (typeof v !== "object" || v === null) return;
+    // S1: an authOk/error frame from a socket that is no longer current, or
+    // that connected under an older credential epoch (its auth handshake used
+    // a since-rotated key), can neither establish v1Owner nor clear sealing.
+    const staleSocket = socket !== null && (socket !== this.wsV1 || connectEpoch !== this.credentialEpoch);
     if (v.type === "authOk" && typeof v.owner === "string") {
+      if (staleSocket) return;
       // Review F8: verify the server's claimed owner against the owner WE
       // hold from registration — storing the echo and then "re-verifying"
       // events against it would compare the server to itself and provide
@@ -901,6 +1060,7 @@ export class RealDarkPerpClient implements DarkPerpClient {
       return;
     }
     if (v.type === "error") {
+      if (staleSocket) return;
       console.warn("[dark-perp] /v1/ws auth failed (account events unavailable):", v.message);
       // Review F7: the server refused the api key ⇒ the cached account is
       // dead (a state-wipe cutover with this tab open lands here). Leaving
@@ -1045,6 +1205,9 @@ export class RealDarkPerpClient implements DarkPerpClient {
   /** Tear down sockets + timers. The page-lifetime app never calls this; tests do. */
   dispose(): void {
     this.disposed = true;
+    if (this.storageListener && typeof window !== "undefined") {
+      window.removeEventListener("storage", this.storageListener);
+    }
     if (this.reconnectTimer) { clearTimeout(this.reconnectTimer); this.reconnectTimer = null; }
     if (this.reconnectV1Timer) { clearTimeout(this.reconnectV1Timer); this.reconnectV1Timer = null; }
     if (this.pollTimer) { clearInterval(this.pollTimer); this.pollTimer = null; }
@@ -1224,13 +1387,17 @@ export class RealDarkPerpClient implements DarkPerpClient {
 
   /** One refresh pass — only refreshOwnState may call this (it holds the guard). */
   private async fetchOwnStateOnce(): Promise<void> {
+    // S1 epoch tagging: a refresh whose reads were issued under an OLDER
+    // credential (started before a recovery/rotation) must not overwrite the
+    // post-rotation ownOrders/ownAccount when its fetches resolve late.
+    const startEpoch = this.credentialEpoch;
     try {
       const [orders, positions, settledBalance] = await Promise.all([
         this.getOrders(),
         this.getPositions(),
         this.getSettledBalance(),
       ]);
-      if (this.disposed) return;
+      if (this.disposed || startEpoch !== this.credentialEpoch) return; // stale result — drop
       this.ownOrders = orders;
       // ONE account object, assembled atomically from this refresh: emit() swaps
       // it in whole, so the balance shown beside these positions is always the
@@ -1392,32 +1559,155 @@ export class RealDarkPerpClient implements DarkPerpClient {
   // yet; re-adding it as a reduce-only /v1 order submission is a product
   // decision for a later slice, not a transport fix.
 
-  /** A07: rotate a lost browser API key using the account's existing wallet/signer authority. */
+  /**
+   * A07: rotate a lost browser API key using the account's existing wallet/signer authority.
+   *
+   * S1 retry contract: a used/stale signed authorization is NEVER replayed as
+   * success. On any retryable failure — network error/timeout, 503 (the server
+   * rotated but the snapshot write is unconfirmed: the old key is dead and the
+   * nonce HAS advanced), durability !== "confirmed", or a malformed/missing
+   * response — the retry loop re-GETs the recovery metadata (fresh nonce),
+   * re-signs the CURRENT nonce, and re-POSTs, bounded to MAX_RECOVERY_ATTEMPTS.
+   * On 400/401/409 or a wallet rejection there is NO automatic retry: those
+   * authorizations are dead by contract, and replaying them must fail. Every
+   * path preserves the previously stored credential and in-memory sealing —
+   * the swap happens ONLY after a fully-validated confirmed response, in the
+   * order: guarded storage write (failure ⇒ swap aborted, old credential kept)
+   * → in-memory sealing swap → epoch bump → socket close → refresh.
+   */
   async recoverAccount(ownerHex: string): Promise<{ owner: string; recoveryNonce: number }> {
     if (!/^0x[0-9a-fA-F]{64}$/.test(ownerHex)) throw new Error("Owner must be a 32-byte 0x id.");
-    const metaRes=await fetch(this.base+`/v1/accounts/recovery/${encodeURIComponent(ownerHex)}`);
-    if(!metaRes.ok) throw new Error(`Recovery metadata unavailable (${metaRes.status}).`);
-    const m=await metaRes.json() as {owner?:unknown;authorizer?:unknown;recoveryNonce?:unknown;chainId?:unknown;vault?:unknown};
-    if(typeof m.owner!=="string"||m.owner.toLowerCase()!==ownerHex.toLowerCase()||
-       typeof m.authorizer!=="string"||!/^0x[0-9a-fA-F]{40}$/.test(m.authorizer)||
-       typeof m.recoveryNonce!=="number"||!Number.isSafeInteger(m.recoveryNonce)||m.recoveryNonce<0||
-       typeof m.chainId!=="number"||!Number.isSafeInteger(m.chainId)||m.chainId<0||
-       typeof m.vault!=="string"||!/^0x[0-9a-fA-F]{40}$/.test(m.vault)) throw new Error("Gateway returned malformed recovery metadata.");
-    const owner=strictHex(m.owner,32);
-    const digest=accountRecoveryDigest(BigInt(m.chainId),m.vault,owner,BigInt(m.recoveryNonce));
-    const signature=await personalSign("0x"+bytesToHex(digest),m.authorizer);
-    const out=await this.post<{apiKey?:unknown;owner?:unknown;recoveryNonce?:unknown;durability?:unknown}>(
-      "/v1/accounts/recovery",{owner:m.owner,nonce:m.recoveryNonce,signature});
-    if(typeof out.apiKey!=="string"||typeof out.owner!=="string"||out.owner.toLowerCase()!==m.owner.toLowerCase()||
-       typeof out.recoveryNonce!=="number"||out.recoveryNonce!==m.recoveryNonce+1||out.durability!=="confirmed"){
-      throw new Error("Gateway returned malformed or non-durable recovery result.");
+    const startEpoch = this.credentialEpoch;
+    let lastError: unknown = null;
+    for (let attempt = 0; attempt < MAX_RECOVERY_ATTEMPTS; attempt++) {
+      if (this.credentialEpoch !== startEpoch) {
+        throw new Error("Recovery superseded by a newer credential swap.");
+      }
+      try {
+        return await this.attemptRecovery(ownerHex, startEpoch);
+      } catch (e) {
+        if (e instanceof RecoveryAttemptError && !e.retryable) throw e;
+        if (!(e instanceof RecoveryAttemptError)) throw e; // internal bug — do not mask
+        lastError = e;
+      }
     }
-    const acct:SealingAccount={apiKey:out.apiKey,owner};
-    localStorage.setItem(LS_ACCOUNT_KEY,JSON.stringify({apiKey:out.apiKey,owner:out.owner}));
-    this.sealing=acct; this.everProvisioned=true; this.ownAccount=null; this.ownOrders=null;
-    if(this.wsV1){try{this.wsV1.close();}catch{/* noop */}} else this.connectV1();
+    throw new Error(
+      `Account recovery failed after ${MAX_RECOVERY_ATTEMPTS} attempts` +
+        (lastError instanceof Error ? `: ${lastError.message}` : "."),
+    );
+  }
+
+  /** One GET → sign → POST recovery round. See recoverAccount's S1 contract. */
+  private async attemptRecovery(
+    ownerHex: string,
+    startEpoch: number,
+  ): Promise<{ owner: string; recoveryNonce: number }> {
+    // 1) Fresh recovery metadata — the nonce served here is the ONLY nonce
+    //    that signature is valid for, and the server rejects a used one.
+    let metaRes: Response;
+    try {
+      metaRes = await fetch(this.base + `/v1/accounts/recovery/${encodeURIComponent(ownerHex)}`);
+    } catch (e) {
+      throw new RecoveryAttemptError(`Recovery metadata fetch failed: ${errMsg(e)}`, true);
+    }
+    if (!metaRes.ok) {
+      throw new RecoveryAttemptError(
+        `Recovery metadata unavailable (${metaRes.status}).`,
+        metaRes.status >= 500,
+      );
+    }
+    let m: { owner?: unknown; authorizer?: unknown; recoveryNonce?: unknown; chainId?: unknown; vault?: unknown };
+    try {
+      m = (await metaRes.json()) as typeof m;
+    } catch (e) {
+      throw new RecoveryAttemptError(`Recovery metadata unreadable: ${errMsg(e)}`, true);
+    }
+    if (
+      typeof m !== "object" || m === null ||
+      typeof m.owner !== "string" || m.owner.toLowerCase() !== ownerHex.toLowerCase() ||
+      typeof m.authorizer !== "string" || !/^0x[0-9a-fA-F]{40}$/.test(m.authorizer) ||
+      typeof m.recoveryNonce !== "number" || !Number.isSafeInteger(m.recoveryNonce) || m.recoveryNonce < 0 ||
+      typeof m.chainId !== "number" || !Number.isSafeInteger(m.chainId) || m.chainId < 0 ||
+      typeof m.vault !== "string" || !/^0x[0-9a-fA-F]{40}$/.test(m.vault)
+    ) {
+      throw new RecoveryAttemptError("Gateway returned malformed recovery metadata.", true);
+    }
+    const owner = strictHex(m.owner, 32);
+    // 2) Wallet signature over the CURRENT nonce. A rejection is final —
+    //    retrying cannot succeed without the user.
+    const digest = accountRecoveryDigest(BigInt(m.chainId), m.vault, owner, BigInt(m.recoveryNonce));
+    let signature: string;
+    try {
+      signature = await personalSign("0x" + bytesToHex(digest), m.authorizer);
+    } catch (e) {
+      throw new RecoveryAttemptError(`Wallet refused the recovery signature: ${errMsg(e)}`, false);
+    }
+    // 3) The rotation POST — inspect the status directly: 400/401/409 are
+    //    final, 503/5xx and transport failures are retryable.
+    let res: Response;
+    try {
+      res = await fetch(this.base + "/v1/accounts/recovery", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ owner: m.owner, nonce: m.recoveryNonce, signature }),
+      });
+    } catch (e) {
+      throw new RecoveryAttemptError(`Recovery rotation request failed: ${errMsg(e)}`, true);
+    }
+    if (!res.ok) {
+      let msg = `Recovery rotation failed (${res.status}).`;
+      try {
+        const j = (await res.json()) as { error?: unknown };
+        if (typeof j?.error === "string") msg = j.error;
+      } catch { /* non-JSON error body — the status message stands */ }
+      // 409 "superseded by a newer rotation" means the nonce we signed is
+      // stale FOREVER — replaying it can only fail again. 400/401 likewise.
+      const retryable = res.status === 503 || res.status >= 500;
+      throw new RecoveryAttemptError(msg, retryable);
+    }
+    let out: { apiKey?: unknown; owner?: unknown; recoveryNonce?: unknown; durability?: unknown };
+    try {
+      out = (await res.json()) as typeof out;
+    } catch (e) {
+      throw new RecoveryAttemptError(`Recovery rotation response unreadable: ${errMsg(e)}`, true);
+    }
+    if (
+      typeof out !== "object" || out === null ||
+      typeof out.apiKey !== "string" ||
+      typeof out.owner !== "string" || out.owner.toLowerCase() !== m.owner.toLowerCase() ||
+      typeof out.recoveryNonce !== "number" || out.recoveryNonce !== m.recoveryNonce + 1 ||
+      out.durability !== "confirmed"
+    ) {
+      // A response that is not fully validated confirmed success is NEVER a
+      // success — a stale authorization replayed into this shape still fails.
+      throw new RecoveryAttemptError("Gateway returned malformed or non-durable recovery result.", true);
+    }
+    // 4) Epoch guard: another recovery/swap won while we were in flight —
+    //    discard this late result entirely.
+    if (this.credentialEpoch !== startEpoch) {
+      throw new RecoveryAttemptError("Recovery superseded by a newer credential swap.", false);
+    }
+    // 5) Atomic swap. The storage write goes FIRST inside try/catch: a storage
+    //    failure (or a newer stored generation from another tab) aborts the
+    //    swap and leaves the OLD credential untouched in memory and storage.
+    try {
+      this.writeStoredCredential(out.apiKey, out.owner);
+    } catch (e) {
+      throw new RecoveryAttemptError(
+        `Recovered credential could not be stored (old credential kept): ${errMsg(e)}`,
+        false,
+      );
+    }
+    this.sealing = { apiKey: out.apiKey, owner };
+    this.everProvisioned = true;
+    this.ownAccount = null;
+    this.ownOrders = null;
+    this.credentialEpoch++; // bump AFTER sealing is the new live credential
+    this.v1AuthSent = false;
+    this.v1Owner = null;
+    if (this.wsV1) { try { this.wsV1.close(); } catch { /* noop */ } } else this.connectV1();
     await this.refreshOwnState();
-    return {owner:out.owner,recoveryNonce:out.recoveryNonce};
+    return { owner: out.owner, recoveryNonce: out.recoveryNonce };
   }
 
   /**
