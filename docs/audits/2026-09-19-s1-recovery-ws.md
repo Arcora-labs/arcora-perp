@@ -36,3 +36,35 @@
 - WS testleri gerçek socket üzerinden; broadcast kuyruğu dolu/replay edilmiş event senaryosu `ws_auth_valid` kapısında kapsanıyor ama üretim yükü altında ölçülmedi.
 - `ws_auth_valid` owner hex üzerinden hesap bulur; aynı owner ile birden fazla hesap varsa davranış belirsizdir (kayıt modelinde owner'ın unique varsayımı, mevcut kodun genel varsayımı).
 - Tam codebase audit bitmedi; gerçek SP1 ELF/vkey/proof/deployment doğrulaması yapılmadı.
+
+---
+
+## Round-3 güncellemesi (2026-09-27, job--10 head) — B2 semantiği değişti
+
+Round-1/2 metnindeki "aynı imzalı authorization idempotent retry" anlatısı **geçersizdir**; bu head'de sözleşme tekleştirildi:
+
+- `Account.recovery_last` kaldırıldı. Kullanılmış/stale authorization artık asla idempotent kabul edilmiyor; replay her zaman "recovery nonce mismatch (stale or replayed authorization)" reddi.
+- Belirsizlik (503 `durability:"unknown"`, timeout, kayıp yanıt) sonrası güvenli yol: istemci `GET /v1/accounts/recovery/:owner` ile güncel nonce/challenge alır, CURRENT nonce'u yeniden imzalar ve POST eder. Gateway round-3 testleri bu akışı kanıtlar: `recovery_false_ack_then_fresh_challenge_succeeds`, `recovery_dropped_ack_then_fresh_challenge_succeeds`, `recovery_wedged_writer_times_out_then_fresh_challenge_succeeds`, `recovery_dropped_request_then_fresh_challenge_succeeds`.
+- `post_v1_recovery` artık mutation ÖNCESİ snapshot kuyruğunu `try_send` ile preflight eder (kapalı/dolu kuyruk 503, state dokunulmamış kanıtlı: `recovery_closed_queue_is_preflight_503_and_state_unchanged`, `recovery_full_queue_is_preflight_503_and_state_unchanged`). try_send ile mutation arasında yield yok; ACK'in kapladığı generation yanıttaki key/generation ile doğrulanır (gerçek encrypted write/open/boot-restore: `recovery_confirmed_via_real_snapshot_write_and_restore` — restore sonrası eski key yok, eski authorization reddediliyor, taze challenge ile gateway çalışır).
+- ACK beklenirken aynı hesaba daha yeni bir rotation girmişse 409 `durability:"confirmed"` ("superseded by a newer rotation") — ölü key asla confirmed dönmez (`recovery_racing_sequential_nonces_and_stale_retry_is_rejected`).
+- WS iptali round-3'te TOCTOU-kapalı: private delivery READ guard'ını `ws_auth_valid` kontrolü + 5 s sınırlı send boyunca tutar; rotation WRITE guard'ında lineerize olur (`ws_revocation_race_slow_consumer_and_no_lock_across_send`). İlgisiz hesap isolation'ı korundu (`ws_unrelated_sessions_unaffected_by_rotation`). Timeout'u testte success sayma kuralı korunur.
+- A01 deposit permit/credited-receipt taşıması, V7→V8 migration, DPSNAP8 trailer ve mevcut invariant'lar değişmedi (`a07_rotation_preserves_pending_routes_and_other_accounts`, migration/replay testleri değişiklik görmeden geçti).
+
+### Bu head'de (50b3b26 tabanıyla) yeniden çalıştırılan doğrulama
+- `cargo test --locked -p gateway s1_recovery_ws_tests -- --test-threads=1`: 16 passed / 0 failed.
+- `cargo test --locked -p gateway`: 345 passed / 0 failed / 1 ignored (ignored: mevcut A01 localhost JSON-RPC cast testi; canlı zincir değil).
+- `cargo fmt --all --check`, `cargo clippy --workspace --all-targets --locked -- -D warnings`: exit 0.
+- Frontend: `pnpm test` 300 passed / 1 skipped (`realClient.e2e.test.ts`, canlı ortam gerektiren önceden var skip), `pnpm build` başarılı.
+- Workspace geneli: `cargo test --workspace --locked` sonucu PR açıklamasında.
+
+### Frontend S1/S2 karşılığı (job--10)
+- Credential swap yalnızca tam doğrulanmış `durability:"confirmed"` yanıt sonrası atomik; 400/401/409/503/5xx, network/transport, bozuk yanıt ve wallet reddinde eski credential ve sealing korunur (`frontend/src/api/realClient.recovery.test.ts`, 20 test).
+- Retry sözleşmesi sunucuyla aynı: retryable hatada taze metadata + taze imza; stale imza replay'i asla başarı sayılmaz.
+- Monoton `credentialEpoch` guard: rotation öncesi başlayan refresh'in geç yanıtı post-rotation state'i ezemez; eski socket'in authOk/error frame'i yeni credential'ı temizleyemez.
+- Çok sekme: `storage` event ile aynı-owner + daha yeni generation benimsenir; yabancı owner ve eski nesil reddedilir; legacy kayıtlar generation 0 sayılır.
+- API key URL/log/telemetry'ye girmez (yalnızca `X-Api-Key` header ve WS auth frame).
+
+### Hâlâ açık sınırlar
+- Fiziksel crash/power-loss drill yapılmadı; restart kanıtı gerçek dosya yazımı + boot-restore testidir. SP1 ELF/vkey/proof/deployment doğrulaması bu işte yapılmadı ve açık olarak yapılmamıştır.
+- Frontend↔gateway gerçek yerel E2E (mock'suz) hâlâ roadmap S2'nin açık maddesidir; bu head yalnızca mock'lu birim testleri ekler.
+- try_send→mutation arası yield'sızlık tokio `Mutex` uncontended fast-path'ine dayanır; gözlemlenen bir açıklık yok, formal olarak runtime davranışına bağlıdır.
