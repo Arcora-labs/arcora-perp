@@ -1,0 +1,16 @@
+{
+  "status": "BLOCKED",
+  "reason": "Automatic safety review stopped delegated A06 guest verification with possible cybersecurity-risk flag. No retry or alternate agent execution performed.",
+  "draft_file": "unverified-a06-host.rs.txt",
+  "draft_sha256": "3788ea512bd3c2877eeeef5c08e4a8bdbcf69519285a9d186e812f5c3595acdc",
+  "executed": false,
+  "integration": "Host main restored to previously executed normal parity harness. Unverified draft retained separately for review; no production engine/guest changes from draft.",
+  "cleanup": {
+    "stopped_pids": [
+      45075,
+      45078,
+      43011
+    ],
+    "reason": "Agent stopped by automatic review; pending compile stopped and partial output not counted as guest execution."
+  }
+}

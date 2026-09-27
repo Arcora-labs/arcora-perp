@@ -1,5 +1,7 @@
 # Building & testing
 
+> 27 Eylül 2026 yerel çalışma eki: [güncel kaynak ve kanıt raporu](audits/2026-09-27-local/README.md). Aşağıdaki tarihsel toplamlar korunmuştur; yeni sonuçlar ve açık yayın koşulları ek rapordadır.
+
 The repo is a Cargo workspace (Rust core), a Foundry project (L1 contracts), and a
 Vite app (frontend). Each layer is independently buildable; the cross-layer bond
 between Rust and Solidity is enforced by shared test vectors.

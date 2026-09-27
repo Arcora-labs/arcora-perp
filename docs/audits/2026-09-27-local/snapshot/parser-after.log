@@ -1,0 +1,26 @@
+   Compiling gateway v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/gateway)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 5.74s
+     Running unittests src/main.rs (/tmp/arcora-gateway-target/debug/deps/gateway-af1323d2b67b45c0)
+
+running 5 tests
+test account_recovery::snapshot_s3_tests::s3_execution_error_preserves_existing_state ... [oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+[state] genesis engine root 0x464f52b0bc0e452be7e050758e209d7a75708e98ea3eb4f0ffac4e5f6d7a5a28
+ok
+test account_recovery::snapshot_s3_tests::s3_file_limits_and_failed_write_preserve_durable_target ... [oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+[state] genesis engine root 0x464f52b0bc0e452be7e050758e209d7a75708e98ea3eb4f0ffac4e5f6d7a5a28
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+ok
+test account_recovery::snapshot_s3_tests::s3_marker_inside_execution_payload_is_not_a_delimiter ... [oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+[state] genesis engine root 0x464f52b0bc0e452be7e050758e209d7a75708e98ea3eb4f0ffac4e5f6d7a5a28
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+ok
+test account_recovery::snapshot_s3_tests::s3_recovery_error_preserves_existing_state ... [oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+[state] genesis engine root 0x45c35f80338a149a3d14d3dd8bfdd959f3dc769427b15c0e65ba817a54156436
+ok
+test account_recovery::snapshot_s3_tests::s3_recovery_legacy_absence_cannot_downgrade_existing_generation ... [oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+[state] genesis engine root 0x45c35f80338a149a3d14d3dd8bfdd959f3dc769427b15c0e65ba817a54156436
+ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 366 filtered out; finished in 0.12s
+

@@ -1,0 +1,16 @@
+[
+  {
+    "label": "ci-profile-before",
+    "exit_code": 101,
+    "profile": "TEST",
+    "debug_assertions": "true",
+    "overflow_checks": "true"
+  },
+  {
+    "label": "ci-profile-after",
+    "exit_code": 0,
+    "profile": "RELEASE",
+    "debug_assertions": "true",
+    "overflow_checks": "true"
+  }
+]

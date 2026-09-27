@@ -1,0 +1,18 @@
+# S4-07 source inventory and open criteria
+
+`route-matrix.csv` enumerates 45 gateway method/path rows and 4 prover-service rows from `build_router` and the prover router. Node/loadbot source has no listening HTTP route registration. Inventory is source evidence; it is not a runtime penetration-test claim.
+
+Observed application controls:
+
+- Legacy `/api/*` mutation and `/v1/lp*` routes are omitted in production. `/api/state`, `/ws`, attestation and public market/system data remain public. `/v1/accounts/deposit` stays mounted but the engine refuses unbacked production credit.
+- Recovery needs a current wallet signature and durable snapshot writer; per-account fencing spans mutation/ACK/response. API-key handlers check the header and account-specific authorization. Admin routes are disabled when FIN_ADMIN_KEY is absent; no admin key was configured by these tests.
+- Registration limits 30 requests per IP per 60-second bucket; orders limit 10 per account per second. Other handlers have no explicit application rate limit. Proxy client-IP headers are trusted for loopback peers; direct localhost exposure therefore depends on the deployment proxy boundary.
+- Gateway uses Axum's 2 MiB default for Bytes/Json extraction. Resolved tungstenite 0.24.0 defaults are 16 MiB/frame, 64 MiB/message, 128 KiB write-buffer target and usize::MAX maximum write buffer; application code does not override them; no explicit application connection cap or WS auth-attempt rate cap was found. Event broadcast capacity is 1024 and ticks 256. Authenticated private sends have a 2-second deadline and are owner-filtered; runtime-only account read/write fencing avoids holding the global Gw mutex across send/disk await.
+- CORS is permissive and WebSocket handshake has no Origin check. This documents the existing API policy; it is not evidence that all cross-origin browser behaviors are acceptable.
+- Prover-service has a 512 MiB body cap and an expiring attested bearer gate for `/prove`; no explicit concurrency semaphore, rate limiter, or graceful shutdown path was found in its main. The Json extractor consumes the body before that handler-level bearer check, so the 512 MiB unauthenticated parse exposure is an open resource-policy issue. Prover was not started and no proof was purchased.
+- Legacy public `/ws` does not use the 2-second credential-session send timeout and only reads the broadcast stream, so its idle disconnect/backpressure lifecycle is an additional source-inspected open issue.
+- When persistence is configured, gateway has a SIGTERM/ctrl-c task that writes a shutdown snapshot, cleans the L1 keystore, then calls process::exit. The axum listener is not drained before this snapshot/exit; accepted-request versus shutdown races remain unverified. The managed loopback test harness uses listener shutdown strictly to verify its own teardown; this is not production shutdown coverage.
+
+Bounded local runtime scope: 31 registration requests against an in-process router; one 2 MiB+1 body; production route/auth rejection samples; three real loopback WebSockets (two share an owner), one 8 MiB event with an 8 KiB requested server send buffer; unrelated-account delivery and actual closure; explicit task/subscription cleanup. No non-loopback load.
+
+S4-07 remains PARTIAL: endpoint-by-endpoint business authorization, complete malformed UTF-8/frame/hex matrix, connection-pressure caps, rate-limit-map lifetime/cardinality, graceful shutdown versus accepted writes, disk/memory pressure and worker-backpressure fault injection are not completed by this bounded slice. No p95/p99 or capacity claim is made.

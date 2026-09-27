@@ -94,6 +94,8 @@ export interface ClientState {
 }
 
 export interface DarkPerpClient {
+  /** Persistence of the current credential, retained across panel navigation. */
+  readonly credentialStorage?: "persistent" | "session";
   getState(): ClientState;
   subscribe(cb: (s: ClientState) => void): () => void;
 

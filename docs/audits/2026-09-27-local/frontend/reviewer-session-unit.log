@@ -1,0 +1,11 @@
+[WARN] The "pnpm" field in package.json is no longer read by pnpm. The following keys were ignored: "pnpm.onlyBuiltDependencies". See https://pnpm.io/settings for the new home of each setting.
+
+ RUN  v2.1.9 /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend
+
+ ✓ src/components/RecoveryPanel.test.tsx (4 tests) 27ms
+
+ Test Files  1 passed (1)
+      Tests  4 passed (4)
+   Start at  22:32:05
+   Duration  599ms (transform 31ms, setup 0ms, collect 123ms, tests 27ms, environment 186ms, prepare 52ms)
+

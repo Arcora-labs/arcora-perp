@@ -1,0 +1,37 @@
+{
+  "configuration_variable_names_only": [
+    "ATTESTATION_DIR",
+    "ATTESTATION_EXPECTED_MEASUREMENT",
+    "ATTESTATION_NOW",
+    "DARKPERP_PROD",
+    "DARKPERP_STATE",
+    "DEV_INSECURE",
+    "ENCLAVE_SEED",
+    "FIN_ADMIN_KEY",
+    "FIN_ALERT_NTFY_TOPIC",
+    "GATEWAY_BIND_ADDRESS",
+    "GATEWAY_SIGNER_KEY",
+    "INSURANCE_OPERATOR_ADDRESS",
+    "L1_ALLOW_MOCK_PROOF",
+    "L1_CHAIN_ID",
+    "L1_RPC",
+    "L1_SEQUENCER_KEY",
+    "L1_SETTLEMENT",
+    "L1_USDC",
+    "L1_VAULT",
+    "ORACLE_SIGNER_KEY",
+    "PORT",
+    "PROVER_SEAL_ROOT",
+    "PROVER_TIMEOUT_SECS",
+    "PROVER_URL"
+  ],
+  "local_policy": {
+    "environment": "env -i allowlist; no inherited production/prover/L1/notification values",
+    "GATEWAY_BIND_ADDRESS": "127.0.0.1",
+    "PORT": "18080",
+    "snapshot": "temporary directory only",
+    "outbound_read_limit": "demo binary fetches public Crypto.com candles/oracle; local binding is not outbound isolation; unit and RPC fixtures deterministic"
+  },
+  "original_env_files_read": false,
+  "secrets_recorded": false
+}

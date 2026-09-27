@@ -10,9 +10,10 @@ import { MOCK_USDC, COLLATERAL_VAULT as VAULT } from "../api/wallet";
 const DISMISS_KEY = "dp_testnet_notice_dismissed_v4";
 
 export function TestnetNotice() {
-  const [open, setOpen] = useState(
-    () => typeof localStorage === "undefined" || localStorage.getItem(DISMISS_KEY) !== "1",
-  );
+  const [open, setOpen] = useState(() => {
+    try { return typeof localStorage === "undefined" || localStorage.getItem(DISMISS_KEY) !== "1"; }
+    catch { return true; } // denied storage must not prevent account recovery
+  });
   const [showFaucet, setShowFaucet] = useState(false);
   if (!open) return null;
 

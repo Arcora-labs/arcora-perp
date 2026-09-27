@@ -1,0 +1,10 @@
+{
+  "exit_code": 0,
+  "log_sha256": "b2068a76692c64844c7c7ed97b66d6c35dfe7797d98db7fbf76b93ba578905f4",
+  "argv": [
+    "cargo-prove",
+    "prove",
+    "build"
+  ],
+  "SP1_SKIP_PROGRAM_BUILD": false
+}

@@ -1,0 +1,31 @@
+Workflow: /tmp/arcora-a11-before.yml Settings: {'CARGO_PROFILE_TEST_OPT_LEVEL': '3', 'CARGO_PROFILE_TEST_DEBUG_ASSERTIONS': 'true', 'CARGO_PROFILE_TEST_OVERFLOW_CHECKS': 'true'}
+    Blocking waiting for file lock on package cache
+   Compiling arcora-profile-control v0.0.0 (/var/folders/jz/7wbjs_5j45g915858xh6wm200000gn/T/arcora-release-profile-tcicg0j4)
+    Finished `release` profile [optimized] target(s) in 0.88s
+     Running unittests src/lib.rs (/var/folders/jz/7wbjs_5j45g915858xh6wm200000gn/T/arcora-release-profile-tcicg0j4/target/release/deps/arcora_profile_control-3a93dd9726074e99)
+
+running 2 tests
+test release_overflow_checks_are_active ... FAILED
+test release_debug_assertions_are_active ... FAILED
+
+failures:
+
+---- release_overflow_checks_are_active stdout ----
+
+thread 'release_overflow_checks_are_active' (1027197) panicked at src/lib.rs:8:5:
+release overflow silently wrapped
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- release_debug_assertions_are_active stdout ----
+
+thread 'release_debug_assertions_are_active' (1027196) panicked at src/lib.rs:3:5:
+release safety flag not applied
+
+
+failures:
+    release_debug_assertions_are_active
+    release_overflow_checks_are_active
+
+test result: FAILED. 0 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `--lib`

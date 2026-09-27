@@ -1,0 +1,93 @@
+[WARN] The "pnpm" field in package.json is no longer read by pnpm. The following keys were ignored: "pnpm.onlyBuiltDependencies". See https://pnpm.io/settings for the new home of each setting.
+[2m[WebServer] [22m(node:25058) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[2m[WebServer] [22m(Use `node --trace-warnings ...` to show where the warning was created)
+[2m[WebServer] [22m[43m[33m[[39m[49m[43m[30mWARN[39m[49m[43m[33m][39m[49m The "pnpm" field in package.json is no longer read by pnpm. The following keys were ignored: "pnpm.onlyBuiltDependencies". See https://pnpm.io/settings for the new home of each setting.
+[2m[WebServer] [22m(node:25059) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[2m[WebServer] [22m(Use `node --trace-warnings ...` to show where the warning was created)
+[2m[WebServer] [22m(node:25066) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[2m[WebServer] [22m(Use `node --trace-warnings ...` to show where the warning was created)
+
+Running 3 tests using 1 worker
+
+(node:25067) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:25067) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘  1 [chromium] › tests/browser/local.spec.ts:132:64 › BR-06 legacy record never transmits old key or registers replacement (5.2s)
+(node:25095) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:25095) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘  2 [chromium] › tests/browser/local.spec.ts:143:1 › BR-08 withdrawal retains signed market when selection changes during wallet prompt (278ms)
+(node:25109) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:25109) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘  3 [chromium] › tests/browser/local.spec.ts:152:1 › BR-07 cancel response after recovery cannot emit success into new credential context (391ms)
+
+
+  1) [chromium] › tests/browser/local.spec.ts:132:64 › BR-06 legacy record never transmits old key or registers replacement 
+
+    Error: [2mexpect([22m[31mlocator[39m[2m).[22mtoBeVisible[2m([22m[2m)[22m failed
+
+    Locator: getByText(/saved legacy account/i)
+    Expected: visible
+    Timeout: 5000ms
+    Error: element(s) not found
+
+    Call log:
+    [2m  - Expect "toBeVisible" with timeout 5000ms[22m
+    [2m  - waiting for getByText(/saved legacy account/i)[22m
+
+
+      135 |   expect(f.calls.filter(c => c.path === '/v1/accounts' && c.method === 'POST')).toHaveLength(0);
+      136 |   if (mode === 'legacy') {
+    > 137 |     await expect(page.getByText(/saved legacy account/i)).toBeVisible();
+          |                                                           ^
+      138 |     await expect(page.getByLabel('Account owner id')).toHaveValue(OWNER);
+      139 |     expect(await page.evaluate(() => localStorage.getItem('darkperp.v1Account') !== null)).toBe(true);
+      140 |   }
+        at /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/tests/browser/local.spec.ts:137:59
+
+    Error Context: output/playwright/results/local-BR-06-legacy-record--03288-ey-or-registers-replacement-chromium/error-context.md
+
+  2) [chromium] › tests/browser/local.spec.ts:143:1 › BR-08 withdrawal retains signed market when selection changes during wallet prompt 
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32m0[39m
+    Received: [31m1[39m
+
+      147 |   await api(page, 'window.testClient.selectMarket(1); window.testWallet.release()');
+      148 |   expect(await api(page, 'window.pending')).toBe('ok');
+    > 149 |   expect(f.calls.find(c => c.path === '/v1/accounts/withdraw')?.body.marketId).toBe(0);
+          |                                                                                ^
+      150 | });
+      151 |
+      152 | test('BR-07 cancel response after recovery cannot emit success into new credential context', async ({ context }) => {
+        at /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/tests/browser/local.spec.ts:149:80
+
+    Error Context: output/playwright/results/local-BR-08-withdrawal-ret-2d48e-hanges-during-wallet-prompt-chromium/error-context.md
+
+  3) [chromium] › tests/browser/local.spec.ts:152:1 › BR-07 cancel response after recovery cannot emit success into new credential context 
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoMatch[2m([22m[32mexpected[39m[2m)[22m
+
+    Expected pattern: [32m/account.*changed|credential.*changed/i[39m
+    Received string:  [31m"ok"[39m
+
+      155 |   await api(page, 'window.events = []; window.testClient.onOrderEvent(e => window.events.push(e)); window.pending = window.testClient.cancelOrder("o42").then(() => "ok", e => e.message); undefined');
+      156 |   await expect.poll(() => parked).toBe(true); await recover(page); await expect(page.getByRole('status')).toContainText('generation is now #1');
+    > 157 |   gate.release(); expect(await api(page, 'window.pending')).toMatch(/account.*changed|credential.*changed/i);
+          |                                                             ^
+      158 |   expect(await api(page, 'window.events.length')).toBe(0);
+      159 | });
+      160 |
+        at /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/tests/browser/local.spec.ts:157:61
+
+    Error Context: output/playwright/results/local-BR-07-cancel-respons-8f5bb-into-new-credential-context-chromium/error-context.md
+
+  3 failed
+    [chromium] › tests/browser/local.spec.ts:132:64 › BR-06 legacy record never transmits old key or registers replacement 
+    [chromium] › tests/browser/local.spec.ts:143:1 › BR-08 withdrawal retains signed market when selection changes during wallet prompt 
+    [chromium] › tests/browser/local.spec.ts:152:1 › BR-07 cancel response after recovery cannot emit success into new credential context 

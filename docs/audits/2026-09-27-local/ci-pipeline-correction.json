@@ -1,0 +1,37 @@
+{
+  "status": "FIX_VERIFIED",
+  "observed_run": 36346465040,
+  "observed_job": 108696474349,
+  "observed_job_conclusion": "SUCCESS",
+  "runner_shell": "/usr/bin/bash -e {0}",
+  "audit_vulnerabilities_found": true,
+  "audit_vulnerabilities_count": 1,
+  "control": [
+    {
+      "label": "before",
+      "argv": [
+        "bash",
+        "-e",
+        "-c",
+        "(exit 23) | cat"
+      ],
+      "exit_code": 0
+    },
+    {
+      "label": "after",
+      "argv": [
+        "bash",
+        "-e",
+        "-c",
+        "set -o pipefail\n(exit 23) | cat"
+      ],
+      "exit_code": 23
+    }
+  ],
+  "workflow_sha256": "47815b92998cd6c23e0e89c552f225b9bfcb7fc20c99667e63e3fb8384ef1613",
+  "limits": [
+    "Prior source review incorrectly assumed unspecified GitHub bash enables pipefail. Live job log disproves that claim.",
+    "Fix intentionally exposes the pre-existing RSA advisory as an unsuccessful audit job; no ignore, continue-on-error or assertion suppression added.",
+    "Local controls test pipeline status propagation, not dependency remediation."
+  ]
+}

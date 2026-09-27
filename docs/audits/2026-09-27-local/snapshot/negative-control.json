@@ -1,0 +1,19 @@
+{
+  "base_sha": "098e4952c189f92e4293ed7d49f81222b626e406",
+  "status": "assertion_failures_verified",
+  "selected": 5,
+  "passed": 1,
+  "failed": 4,
+  "ignored": 0,
+  "exit_code": 101,
+  "log": "parser-before.log",
+  "note": "Parser production functions match base; disk size hardening was already applied. Four failures are runtime assertions, not compiler failures.",
+  "file_sha256": {
+    "crates/gateway/src/main.rs": "e833b98ebefaa1cb6fd59a24e681ffecd9e2ef9e9df2eec21824169855e178f9",
+    "crates/gateway/src/snapshot.rs": "9623cb69c9ef18992fafe4a92a9decc1d750b854e89ea9b3f7a77f3224b6ae05",
+    "crates/gateway/src/account_recovery.rs": "66ca0945e1f89938df588df627805cb77260a74fc51fc8b31631329a1ffadae8",
+    "crates/gateway/src/execution.rs": "d408281c68bfab69b5a8f117befa25b36e23626639e7b26a7d154ffdbb935d16",
+    "crates/gateway/src/snapshot_s3_tests.rs": "248cc53d584a6a32201fa4cb83d35ac1bdca9fc146a919034c6e2c400d95b25d",
+    "Cargo.lock": "0db4f88b8f0c4a67ae57b04ae26eaec8ff98370d79677bae63da8053714f2479"
+  }
+}

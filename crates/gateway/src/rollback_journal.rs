@@ -74,8 +74,9 @@ pub fn journal_path(state_path: &Path) -> PathBuf {
 
 /// Persist the journal: magic-prefixed postcard plaintext → `snapshot::seal` under
 /// the enclave seed → `snapshot::write_atomic` (a crash mid-write never leaves a
-/// torn journal). `Err` is a display string for the caller to log — journal writes
-/// are best-effort in the settle loop (a failed write must not fail the settle).
+/// torn journal). `Err` means durability was not acknowledged. The live settle
+/// loop must stop before proving/broadcasting when configured persistence fails;
+/// it must not delete the existing recovery record or treat the write as success.
 pub fn write(path: &Path, j: &RollbackJournal, seed: &[u8; 32]) -> Result<(), String> {
     let body = postcard::to_allocvec(j).map_err(|e| format!("journal encode: {e}"))?;
     let mut plain = Vec::with_capacity(MAGIC.len() + body.len());
@@ -90,7 +91,7 @@ pub fn write(path: &Path, j: &RollbackJournal, seed: &[u8; 32]) -> Result<(), St
 /// `Err` = a journal EXISTS but is unreadable (wrong seed / tampered / truncated /
 /// future format) — the caller must HOLD, never treat it as absent.
 pub fn read(path: &Path, seed: &[u8; 32]) -> Result<Option<RollbackJournal>, String> {
-    let sealed = match std::fs::read(path) {
+    let sealed = match snapshot::read_file(path) {
         Ok(bytes) => bytes,
         // The ONLY absent case: the file does not exist. Every other I/O failure
         // (permissions, etc.) is a present-but-unreadable journal → Err → HOLD.

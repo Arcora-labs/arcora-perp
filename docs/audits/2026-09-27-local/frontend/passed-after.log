@@ -1,0 +1,22 @@
+[WARN] The "pnpm" field in package.json is no longer read by pnpm. The following keys were ignored: "pnpm.onlyBuiltDependencies". See https://pnpm.io/settings for the new home of each setting.
+[2m[WebServer] [22m(node:25507) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[2m[WebServer] [22m(Use `node --trace-warnings ...` to show where the warning was created)
+[2m[WebServer] [22m[43m[33m[[39m[49m[43m[30mWARN[39m[49m[43m[33m][39m[49m The "pnpm" field in package.json is no longer read by pnpm. The following keys were ignored: "pnpm.onlyBuiltDependencies". See https://pnpm.io/settings for the new home of each setting.
+[2m[WebServer] [22m(node:25508) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[2m[WebServer] [22m(Use `node --trace-warnings ...` to show where the warning was created)
+[2m[WebServer] [22m(node:25515) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[2m[WebServer] [22m(Use `node --trace-warnings ...` to show where the warning was created)
+
+Running 5 tests using 1 worker
+
+(node:25516) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:25516) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  1 [chromium] › tests/browser/local.spec.ts:132:64 › BR-06 legacy record never transmits old key or registers replacement (214ms)
+  ✓  2 [chromium] › tests/browser/local.spec.ts:143:1 › BR-08 withdrawal retains signed market when selection changes during wallet prompt (225ms)
+  ✓  3 [chromium] › tests/browser/local.spec.ts:152:1 › BR-07 cancel response after recovery cannot emit success into new credential context (363ms)
+  ✓  4 [chromium] › tests/browser/local.spec.ts:186:1 › BR-08 cross-tab rotation while withdrawal signature waits aborts old mutation (479ms)
+  ✓  5 [chromium] › tests/browser/local.spec.ts:197:1 › BR-07 stale withdrawal proof response is discarded after rotation (373ms)
+
+  5 passed (3.4s)

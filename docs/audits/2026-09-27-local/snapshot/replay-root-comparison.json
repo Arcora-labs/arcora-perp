@@ -1,0 +1,85 @@
+{
+  "status": "PASS",
+  "comparisons": [
+    {
+      "version": "v5",
+      "historical_native_root": "0xd1ef16f1d91b2ecd3489d68a197b7d05d3bd77e6aed6dac71ee2b99071310218",
+      "restored_native_root": "0xd1ef16f1d91b2ecd3489d68a197b7d05d3bd77e6aed6dac71ee2b99071310218",
+      "root_equality_asserted": true,
+      "exact_native_state_bytes_equal": true,
+      "account_and_authority_bytes_equal": true,
+      "pending_withdrawals_bytes_equal": true,
+      "A01_bytes_equal": false,
+      "v8_roundtrip_stable": true,
+      "replay_sequence": [
+        "cancel o2",
+        "same Unbind with fixed oracle timestamp/signature",
+        "native derive_roots window replay"
+      ],
+      "replay_roots_equal_asserted": true,
+      "exact_post_replay_root_not_retained": true,
+      "current_authorizer_recovery_and_old_signature_replay_rejection": true,
+      "evidence": "s3-complete.log"
+    },
+    {
+      "version": "v6",
+      "historical_native_root": "0x080ba21b7b21d9d43bc579fc36c718c6e2578b20c8b8013f4f2e42cbea5793e3",
+      "restored_native_root": "0x080ba21b7b21d9d43bc579fc36c718c6e2578b20c8b8013f4f2e42cbea5793e3",
+      "root_equality_asserted": true,
+      "exact_native_state_bytes_equal": true,
+      "account_and_authority_bytes_equal": true,
+      "pending_withdrawals_bytes_equal": true,
+      "A01_bytes_equal": true,
+      "v8_roundtrip_stable": true,
+      "replay_sequence": [
+        "cancel o2",
+        "same Unbind with fixed oracle timestamp/signature",
+        "native derive_roots window replay"
+      ],
+      "replay_roots_equal_asserted": true,
+      "exact_post_replay_root_not_retained": true,
+      "current_authorizer_recovery_and_old_signature_replay_rejection": true,
+      "evidence": "s3-complete.log"
+    },
+    {
+      "version": "v7",
+      "historical_native_root": "0x0ec6a04cd9d9564851edeabeed3e70c7323dbd0c0226949255b86868144f437a",
+      "restored_native_root": "0x0ec6a04cd9d9564851edeabeed3e70c7323dbd0c0226949255b86868144f437a",
+      "root_equality_asserted": true,
+      "exact_native_state_bytes_equal": true,
+      "account_and_authority_bytes_equal": true,
+      "pending_withdrawals_bytes_equal": true,
+      "A01_bytes_equal": true,
+      "v8_roundtrip_stable": true,
+      "replay_sequence": [
+        "cancel o2",
+        "same Unbind with fixed oracle timestamp/signature",
+        "native derive_roots window replay"
+      ],
+      "replay_roots_equal_asserted": true,
+      "exact_post_replay_root_not_retained": true,
+      "current_authorizer_recovery_and_old_signature_replay_rejection": true,
+      "evidence": "s3-complete.log"
+    },
+    {
+      "version": "v8",
+      "historical_native_root": "0x498a2f1227aff1dda2d0b732277e4922f40a18846bcbf587ff604f94142c32cc",
+      "restored_native_root": "0x498a2f1227aff1dda2d0b732277e4922f40a18846bcbf587ff604f94142c32cc",
+      "root_equality_asserted": true,
+      "exact_native_state_bytes_equal": true,
+      "account_and_authority_bytes_equal": true,
+      "pending_withdrawals_bytes_equal": true,
+      "A01_bytes_equal": true,
+      "v8_roundtrip_stable": true,
+      "replay_sequence": [
+        "cancel o2",
+        "same Unbind with fixed oracle timestamp/signature",
+        "native derive_roots window replay"
+      ],
+      "replay_roots_equal_asserted": true,
+      "exact_post_replay_root_not_retained": true,
+      "current_authorizer_recovery_and_old_signature_replay_rejection": true,
+      "evidence": "s3-complete.log"
+    }
+  ]
+}

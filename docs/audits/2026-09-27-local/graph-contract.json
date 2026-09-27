@@ -1,0 +1,141 @@
+{
+  "schema_version": 1,
+  "task_id": "arcora-local-20260927",
+  "criteria": [
+    {
+      "id": "B-01",
+      "description": "Sabit başlangıç ve doğru durum kaydı",
+      "verifier": "inspection"
+    },
+    {
+      "id": "B-02",
+      "description": "Loopback, test kimlikleri ve güvenli yerel ortam",
+      "verifier": "inspection"
+    },
+    {
+      "id": "S1-01",
+      "description": "Recovery, adres yeniden bağlama ve yetki matrisi",
+      "verifier": "inspection"
+    },
+    {
+      "id": "S1-02",
+      "description": "Gerçek TCP backpressure ve oturum kapatma",
+      "verifier": "inspection"
+    },
+    {
+      "id": "S2-01",
+      "description": "Gerçek tarayıcıda iki sekme ve kurtarma akışı",
+      "verifier": "inspection"
+    },
+    {
+      "id": "S2-02",
+      "description": "Eski hesap geçişi ve session-only erişim UX’i",
+      "verifier": "inspection"
+    },
+    {
+      "id": "S2-03",
+      "description": "Emir, çekim ve piyasa seçimi yarış matrisi",
+      "verifier": "inspection"
+    },
+    {
+      "id": "S2-04",
+      "description": "XSS, CSP ve credential saklama politikası",
+      "verifier": "inspection"
+    },
+    {
+      "id": "S3-01",
+      "description": "Snapshot framing ve adversarial parser",
+      "verifier": "inspection"
+    },
+    {
+      "id": "S3-02",
+      "description": "V5–V8 göçü ve state eşdeğerliği",
+      "verifier": "inspection"
+    },
+    {
+      "id": "S3-03",
+      "description": "Parser fuzz ve sınırlı kaynak dayanıklılığı",
+      "verifier": "inspection"
+    },
+    {
+      "id": "S4-01",
+      "description": "Core muhasebe, margin, likidasyon ve ADL",
+      "verifier": "inspection"
+    },
+    {
+      "id": "S4-02",
+      "description": "Matcher: sıra, emir türleri ve kalan miktar",
+      "verifier": "inspection"
+    },
+    {
+      "id": "S4-03",
+      "description": "Sequencer, finality ve rollback journal",
+      "verifier": "inspection"
+    },
+    {
+      "id": "S4-04",
+      "description": "Vault, settlement ve yetki sözleşmeleri",
+      "verifier": "inspection"
+    },
+    {
+      "id": "S4-05",
+      "description": "Witness ve prover taşıma sınırı",
+      "verifier": "inspection"
+    },
+    {
+      "id": "S4-06",
+      "description": "Oracle, attestation ve note archive",
+      "verifier": "inspection"
+    },
+    {
+      "id": "S4-07",
+      "description": "HTTP/WS yüzeyi, kaynak sınırları ve kapanış",
+      "verifier": "inspection"
+    },
+    {
+      "id": "S4-08",
+      "description": "CI, bağımlılık ve test kanıtı bütünlüğü",
+      "verifier": "inspection"
+    },
+    {
+      "id": "S5-01",
+      "description": "Release adayı ve gerçek guest ELF",
+      "verifier": "inspection"
+    },
+    {
+      "id": "S5-02",
+      "description": "Native / guest byte-exact eşitliği",
+      "verifier": "inspection"
+    },
+    {
+      "id": "S5-03",
+      "description": "Vkey, gerçek proof ve verifier doğrulaması",
+      "verifier": "inspection"
+    },
+    {
+      "id": "S6-01",
+      "description": "Yerel tam fon akışı ve acil çıkış",
+      "verifier": "inspection"
+    },
+    {
+      "id": "S6-02",
+      "description": "Disk hatası, process kill ve restore provası",
+      "verifier": "inspection"
+    },
+    {
+      "id": "S6-03",
+      "description": "RPC/finality/reorg ve deployment eşlemesi",
+      "verifier": "inspection"
+    },
+    {
+      "id": "S7-01",
+      "description": "Anahtarlar, gözlem ve olay runbook’ları",
+      "verifier": "inspection"
+    },
+    {
+      "id": "S7-02",
+      "description": "Bağımsız inceleme ve yayın karar kapısı",
+      "verifier": "inspection"
+    }
+  ]
+}

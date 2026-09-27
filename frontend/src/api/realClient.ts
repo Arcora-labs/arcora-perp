@@ -522,6 +522,7 @@ function errMsg(e: unknown): string {
 }
 
 export class RealDarkPerpClient implements DarkPerpClient {
+  credentialStorage?: "persistent" | "session";
   private base: string;
   private wsUrl: string;
   private state: ClientState | null = null;
@@ -769,9 +770,9 @@ export class RealDarkPerpClient implements DarkPerpClient {
     if (!sameScope(parseScope(this.base, j), this.scope)) throw new Error("Registration belongs to a different deployment.");
     const record = makeCredential(this.scope, j);
     if (record.recoveryNonce !== 0) throw new Error("Malformed registration generation.");
-    await persistCredential(record, current);
+    const persisted = await persistCredential(record, current);
     if (!current()) return winner();
-    this.installCredential(record);
+    this.installCredential(record, persisted);
     return this.sealing!;
   }
 
@@ -791,7 +792,8 @@ export class RealDarkPerpClient implements DarkPerpClient {
     const record = this.readStoredRecord();
     return record ? { apiKey: record.apiKey, owner: strictHex(record.owner, 32) } : null;
   }
-  private installCredential(record: StoredCredential): void {
+  private installCredential(record: StoredCredential, persisted = true): void {
+    this.credentialStorage = persisted ? "persistent" : "session";
     this.sealing = { apiKey: record.apiKey, owner: strictHex(record.owner, 32) };
     this.storedGen = record.recoveryNonce;
     this.everProvisioned = true;
@@ -1190,6 +1192,15 @@ export class RealDarkPerpClient implements DarkPerpClient {
     return json as T;
   }
 
+  /** An asynchronous result belongs to the account that initiated it. A response
+   * arriving after rotation is an unknown old-account outcome, never a success
+   * notification for the newly selected credential. Do not automatically retry. */
+  private assertMutationAccount(acct: SealingAccount): void {
+    if (this.disposed || this.recoveryInFlight || this.sealing?.apiKey !== acct.apiKey) {
+      throw new Error("Account credential changed or recovery is in progress. Reconcile the original operation before retrying; no success is reported for the selected account.");
+    }
+  }
+
   private post<T>(path: string, body: unknown, headers?: Record<string, string>): Promise<T> {
     return this.request<T>("POST", path, body, headers);
   }
@@ -1457,8 +1468,10 @@ export class RealDarkPerpClient implements DarkPerpClient {
    * closed: no bound address ⇒ refuse client-side rather than POST a 400.
    */
   async requestWithdrawal(amountQuote: bigint): Promise<void> {
+    const marketId = this.clientSelectedMarket;
     const acct = await this.ensureAccount(); // no /v1 account ⇒ throw (fail closed)
     const me = await this.fetchWithdrawAuth(acct);
+    this.assertMutationAccount(acct);
     if (me.callerSigned) {
       // The registered signer key authorizes this account's withdrawals; this
       // UI does not hold it — signing with the wallet would produce a signature
@@ -1474,14 +1487,16 @@ export class RealDarkPerpClient implements DarkPerpClient {
     const nonce = me.nextWithdrawNonce;
     const digest = withdrawAuthDigest(
       me.chainId, me.vault, me.owner,
-      BigInt(this.clientSelectedMarket), amountQuote, to, BigInt(nonce),
+      BigInt(marketId), amountQuote, to, BigInt(nonce),
     );
     const signature = await personalSign("0x" + bytesToHex(digest), to);
+    this.assertMutationAccount(acct);
     await this.post(
       "/v1/accounts/withdraw",
-      { marketId: this.clientSelectedMarket, amount: s(amountQuote), to, nonce, signature },
+      { marketId, amount: s(amountQuote), to, nonce, signature },
       { "X-Api-Key": acct.apiKey },
     );
+    this.assertMutationAccount(acct);
     // Review F4: the withdrawal debits the /v1 balance server-side and NO
     // /v1/ws event announces it (events_tx carries exactly fill/order/adl,
     // main.rs:4347-4384) — without this the displayed balance stays stale
@@ -1568,7 +1583,7 @@ export class RealDarkPerpClient implements DarkPerpClient {
     const record = makeCredential(this.scope, out);
     const persisted = await persistCredential(record, current, true);
     if (!current()) throw new RecoveryAttemptError("Recovery superseded during credential storage.", false);
-    this.installCredential(record); // retain the confirmed key even if storage is unavailable
+    this.installCredential(record, persisted); // retain the confirmed key even if storage is unavailable
     void this.refreshOwnState(); // a stalled data refresh must not swallow confirmed key delivery
     return { owner: ownerHex, recoveryNonce: record.recoveryNonce, credentialStorage: persisted ? "persistent" : "session" };
   }
@@ -1594,12 +1609,14 @@ export class RealDarkPerpClient implements DarkPerpClient {
    */
   async cancelOrder(orderId: string): Promise<void> {
     const acct = await this.ensureAccount();
+    this.assertMutationAccount(acct);
     await this.request(
       "DELETE",
       `/v1/orders/${encodeURIComponent(orderId)}`,
       undefined,
       { "X-Api-Key": acct.apiKey },
     );
+    this.assertMutationAccount(acct);
     for (const cb of this.eventSubs) {
       cb({ orderId, kind: "CANCELLED", message: "Unfilled remainder cancelled; prior fills are unchanged" });
     }
@@ -1713,6 +1730,7 @@ export class RealDarkPerpClient implements DarkPerpClient {
    * malformed entry is dropped rather than breaking the whole list.
    */
   async listWithdrawals(): Promise<{ withdrawals: WithdrawalEntry[]; vault: string } | null> {
+    const epoch = this.credentialEpoch;
     const acct = this.sealing ?? this.readStoredAccount();
     if (!acct) return null;
     let res: Response;
@@ -1728,6 +1746,7 @@ export class RealDarkPerpClient implements DarkPerpClient {
     } catch {
       return null;
     }
+    if (this.disposed || epoch !== this.credentialEpoch) return null;
     if (typeof j !== "object" || j === null || !Array.isArray(j.withdrawals) || typeof j.vault !== "string") {
       return null;
     }

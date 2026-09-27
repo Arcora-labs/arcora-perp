@@ -1,0 +1,78 @@
+   Compiling gateway v0.0.1 (/private/var/folders/jz/7wbjs_5j45g915858xh6wm200000gn/T/arcora-fixture-v6-4x63xp75/crates/gateway)
+error[E0599]: no method named `apply_atomic` found for struct `Sequencer` in the current scope
+   --> crates/gateway/src/deposit_ingestion.rs:322:14
+    |
+321 | /         self.seq
+322 | |             .apply_atomic(&ops)
+    | |             -^^^^^^^^^^^^ method not found in `Sequencer`
+    | |_____________|
+    |
+
+error[E0599]: no method named `cancel_order` found for struct `Sequencer` in the current scope
+    --> crates/gateway/src/main.rs:3270:34
+     |
+3270 |         let cancelled = self.seq.cancel_order(&owner, &order, submitted).ok_or(
+     |                                  ^^^^^^^^^^^^
+     |
+help: there is a method `accept_order` with a similar name, but with different arguments
+    --> crates/sequencer/src/lib.rs:810:4
+
+error[E0599]: no method named `cancellable_size` found for struct `Sequencer` in the current scope
+    --> crates/gateway/src/main.rs:3419:91
+     |
+3419 | ...   "cancellable": live.contains(&o.order_hash) || (!o.sealed && self.seq.cancellable_size(&a.wallet.owner, &o.order, false).is_...
+     |                                                                             ^^^^^^^^^^^^^^^^ method not found in `Sequencer`
+
+error[E0599]: no method named `cancel_order` found for struct `Sequencer` in the current scope
+    --> crates/gateway/src/main.rs:4206:14
+     |
+4205 | /         self.seq
+4206 | |             .cancel_order(&self.user.owner, &order, self.orders[idx].sealed)
+     | |_____________-^^^^^^^^^^^^
+     |
+help: there is a method `accept_order` with a similar name, but with different arguments
+    --> crates/sequencer/src/lib.rs:810:4
+
+error[E0599]: no method named `cancellable_size` found for struct `Sequencer` in the current scope
+    --> crates/gateway/src/main.rs:4642:30
+     |
+4640 |                           && self
+     |  ____________________________-
+4641 | |                             .seq
+4642 | |                             .cancellable_size(&self.user.owner, &o.order, false)
+     | |                             -^^^^^^^^^^^^^^^^ method not found in `Sequencer`
+     | |_____________________________|
+     |
+
+error[E0599]: no method named `cancellable_size` found for struct `Sequencer` in the current scope
+  --> crates/gateway/src/audit_cancellation_tests.rs:27:27
+   |
+27 |         assert_eq!(gw.seq.cancellable_size(&order.owner, &order, true), Some(order.size));
+   |                           ^^^^^^^^^^^^^^^^ method not found in `Sequencer`
+
+error[E0599]: no method named `cancellable_size` found for struct `Sequencer` in the current scope
+  --> crates/gateway/src/audit_cancellation_tests.rs:90:27
+   |
+90 |         assert_eq!(gw.seq.cancellable_size(&order_a.owner, &order_a, true), None);
+   |                           ^^^^^^^^^^^^^^^^ method not found in `Sequencer`
+
+error[E0599]: no method named `cancellable_size` found for struct `Sequencer` in the current scope
+  --> crates/gateway/src/audit_cancellation_tests.rs:91:27
+   |
+91 |         assert_eq!(gw.seq.cancellable_size(&order_b.owner, &order_b, true), Some(order_b.size));
+   |                           ^^^^^^^^^^^^^^^^ method not found in `Sequencer`
+
+error[E0599]: no method named `cancellable_size` found for struct `Sequencer` in the current scope
+   --> crates/gateway/src/audit_cancellation_tests.rs:167:27
+    |
+167 |         assert_eq!(gw.seq.cancellable_size(&order.owner, &order, true), Some(order.size));
+    |                           ^^^^^^^^^^^^^^^^ method not found in `Sequencer`
+
+error[E0599]: no method named `cancellable_size` found for struct `Sequencer` in the current scope
+   --> crates/gateway/src/audit_cancellation_tests.rs:254:27
+    |
+254 |         assert_eq!(gw.seq.cancellable_size(&maker.owner, &maker, true), Some(maker.size * 3 / 4));
+    |                           ^^^^^^^^^^^^^^^^ method not found in `Sequencer`
+
+For more information about this error, try `rustc --explain E0599`.
+error: could not compile `gateway` (bin "gateway" test) due to 10 previous errors

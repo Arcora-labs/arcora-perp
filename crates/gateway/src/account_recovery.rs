@@ -24,34 +24,51 @@ pub(super) fn append(gw: &Gw, bytes: &mut Vec<u8>) {
 }
 pub(super) fn restore(gw: &mut Gw, trailer: &[u8]) -> Result<(), String> {
     if trailer.is_empty() {
-        for a in gw.accounts.values_mut() {
-            a.recovery_nonce = 0;
+        // Genuine legacy decoding starts at the serde-skipped default (zero).
+        // Never let the same helper rewind an already established generation.
+        if gw.accounts.values().any(|a| a.recovery_nonce != 0) {
+            return Err("legacy recovery extension would downgrade nonce".into());
         }
         return Ok(());
     }
     let payload = trailer
         .strip_prefix(EXT)
         .ok_or("unknown recovery snapshot extension")?;
+    let (count, _): (usize, _) =
+        postcard::take_from_bytes(payload).map_err(|e| format!("recovery snapshot count: {e}"))?;
+    if count != gw.accounts.len() {
+        return Err("recovery snapshot row count disagrees with accounts".into());
+    }
     let (rows, rest): (Vec<(PubKey, u64)>, _) =
         postcard::take_from_bytes(payload).map_err(|e| format!("recovery snapshot decode: {e}"))?;
     if !rest.is_empty() {
         return Err("trailing recovery snapshot bytes".into());
     }
     let n = rows.len();
-    let mut map: std::collections::BTreeMap<_, _> = rows.into_iter().collect();
+    let map: std::collections::BTreeMap<_, _> = rows.into_iter().collect();
     if map.len() != n {
         return Err("duplicate recovery owner".into());
     }
-    for a in gw.accounts.values_mut() {
-        a.recovery_nonce = map
-            .remove(&a.wallet.owner)
-            .ok_or("missing recovery owner")?;
+    let mut owners = std::collections::BTreeSet::new();
+    for a in gw.accounts.values() {
+        let nonce = map.get(&a.wallet.owner).ok_or("missing recovery owner")?;
+        if !owners.insert(a.wallet.owner) {
+            return Err("duplicate account recovery owner".into());
+        }
+        if *nonce < a.recovery_nonce {
+            return Err("recovery snapshot would downgrade nonce".into());
+        }
     }
-    if !map.is_empty() {
+    if owners.len() != map.len() {
         return Err("orphan recovery owner".into());
+    }
+    // Every check precedes mutation: an error leaves the caller's state intact.
+    for a in gw.accounts.values_mut() {
+        a.recovery_nonce = map[&a.wallet.owner];
     }
     Ok(())
 }
+
 impl Gw {
     pub(super) fn recovery_view(&self, owner: &PubKey) -> Option<serde_json::Value> {
         let a = self.accounts.values().find(|a| &a.wallet.owner == owner)?;
@@ -321,3 +338,7 @@ async fn post_inner(app: Shared, req: RecoveryReq) -> axum::response::Response {
 #[cfg(test)]
 #[path = "account_recovery_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "snapshot_s3_tests.rs"]
+mod snapshot_s3_tests;

@@ -350,6 +350,9 @@ fn a01_native_cast_hash_pinned_jsonrpc_roundtrip() {
                 }
                 Err(e) => panic!("{e}"),
             };
+            // Accepted sockets inherit O_NONBLOCK on macOS. The listener polls
+            // for shutdown, but each HTTP request uses a bounded blocking read.
+            stream.set_nonblocking(false).unwrap();
             stream
                 .set_read_timeout(Some(std::time::Duration::from_secs(5)))
                 .unwrap();

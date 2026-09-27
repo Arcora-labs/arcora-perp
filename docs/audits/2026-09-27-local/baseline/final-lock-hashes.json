@@ -1,0 +1,7 @@
+{
+  "Cargo.lock": "0db4f88b8f0c4a67ae57b04ae26eaec8ff98370d79677bae63da8053714f2479",
+  "frontend/pnpm-lock.yaml": "153011d388345922c0775c99ac5a779c13049bc77dbf05b6e0567e1d4347bd6c",
+  "crates/sp1-guest/Cargo.lock": "228b4111a7b18423e2450e81bf95ec54129d7757cd30f4397fc7b5dea504302d",
+  "crates/sp1-host/Cargo.lock": "345a845740dc17eb0718f4b5d9bf207988780530d1dd21a5af04d2ace81612d5",
+  "crates/prover-service/Cargo.lock": "c1e85ae35501c47ed0bcc433c32e27f771b3e565a8747865f02de4e6cf235dbc"
+}

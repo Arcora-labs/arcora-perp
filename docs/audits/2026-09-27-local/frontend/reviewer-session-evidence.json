@@ -1,0 +1,47 @@
+{
+  "finding": "Session-only warning lost during and after a failed second recovery",
+  "review_origin": "independent reviewer relayed by root",
+  "status": "PASS_WITH_FINAL_FULL_RERUN",
+  "source_manifest": "reviewer-source-manifest.json",
+  "frontend_dirty_source_sha256": "2197bb43294d70e05de671adb2e7807e0b41f19c463987ebda84fa38d5c3a02a",
+  "failed_before_assertion_verified": true,
+  "commands": [
+    {
+      "command": "pnpm exec playwright test --project=chromium --grep \"remains during and after rejected second recovery\"",
+      "cwd": "frontend",
+      "log": "reviewer-session-failed-before.log",
+      "exit_code": 1,
+      "selected": 1,
+      "passed": 0,
+      "log_sha256": "bb4fe81564bfa06b17242e5f3f42a314092ec734c5b9ff4d5a02bc968bc024b7"
+    },
+    {
+      "command": "pnpm exec playwright test --grep \"remains during and after rejected second recovery\"",
+      "cwd": "frontend",
+      "log": "reviewer-session-passed-after.log",
+      "exit_code": 0,
+      "selected": 2,
+      "passed": 2,
+      "log_sha256": "c8a150d5c45842b0201a8b8e9cca81eb4eb56863d66629a2de90363a22632ed2"
+    },
+    {
+      "command": "pnpm exec vitest run src/components/RecoveryPanel.test.tsx",
+      "cwd": "frontend",
+      "log": "reviewer-session-unit.log",
+      "exit_code": 0,
+      "selected": 4,
+      "passed": 4,
+      "log_sha256": "a7caae37b9c13d269491e3ead11fbc26d6eb28d27a9ead3121aadfe2b6475d8e"
+    },
+    {
+      "command": "pnpm typecheck",
+      "cwd": "frontend",
+      "log": "reviewer-session-typecheck.log",
+      "exit_code": 0,
+      "selected": null,
+      "passed": null,
+      "log_sha256": "dab119e14a45d3d11faccba381b9f05a2a1a74da071ac50c58036b36110bb728"
+    }
+  ],
+  "full_browser_status": "38/38 passed on same reviewer source; final-browser.log"
+}

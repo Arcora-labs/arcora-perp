@@ -1,0 +1,9 @@
+{
+  "schema2": "validated and native two-tab adoption PASS",
+  "legacy": "public owner hint PASS; no key transmission or deletion",
+  "mismatched_scope": "PASS; no credential transmission or replacement registration",
+  "malformed": "PASS; no credential transmission or replacement registration",
+  "quota": "PASS; confirmed key retained in memory; session warning; revoked key reload gives unavailable state",
+  "disabled_reads": "PASS; application shell remains available",
+  "private_mode": "NOT RUN on OS private profile"
+}

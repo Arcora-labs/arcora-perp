@@ -1,0 +1,45 @@
+[WARN] The "pnpm" field in package.json is no longer read by pnpm. The following keys were ignored: "pnpm.onlyBuiltDependencies". See https://pnpm.io/settings for the new home of each setting.
+[2m[WebServer] [22m(node:36210) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[2m[WebServer] [22m(Use `node --trace-warnings ...` to show where the warning was created)
+[2m[WebServer] [22m[43m[33m[[39m[49m[43m[30mWARN[39m[49m[43m[33m][39m[49m The "pnpm" field in package.json is no longer read by pnpm. The following keys were ignored: "pnpm.onlyBuiltDependencies". See https://pnpm.io/settings for the new home of each setting.
+[2m[WebServer] [22m(node:36212) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[2m[WebServer] [22m(Use `node --trace-warnings ...` to show where the warning was created)
+[2m[WebServer] [22m(node:36221) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[2m[WebServer] [22m(Use `node --trace-warnings ...` to show where the warning was created)
+
+Running 1 test using 1 worker
+
+(node:36223) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:36223) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘  1 [chromium] › tests/browser/local.spec.ts:272:1 › BR-05 session-only warning remains during and after rejected second recovery (549ms)
+
+
+  1) [chromium] › tests/browser/local.spec.ts:272:1 › BR-05 session-only warning remains during and after rejected second recovery 
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoEqual[2m([22m[32mexpected[39m[2m) // deep equality[22m
+
+    [32m- Expected  - 2[39m
+    [31m+ Received  + 2[39m
+
+    [2m  Object {[22m
+    [32m-   "after": StringContaining "this tab only",[39m
+    [32m-   "during": StringContaining "this tab only",[39m
+    [31m+   "after": null,[39m
+    [31m+   "during": null,[39m
+    [2m  }[22m
+
+      281 |   metadata.release(); await expect(page.getByRole('alert')).toContainText('Wallet refused');
+      282 |   const after = (await page.getByRole('status').allTextContents()).join(' ') || null;
+    > 283 |   expect({ during, after }).toEqual({ during: expect.stringContaining('this tab only'), after: expect.stringContaining('this tab only') });
+          |                             ^
+      284 |   expect(f.posts()).toHaveLength(1);
+      285 |   expect(await api(page, 'window.testClient.credentialStorage')).toBe('session');
+      286 | });
+        at /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/tests/browser/local.spec.ts:283:29
+
+    Error Context: output/playwright/results/local-BR-05-session-only-w-d809d-er-rejected-second-recovery-chromium/error-context.md
+
+  1 failed
+    [chromium] › tests/browser/local.spec.ts:272:1 › BR-05 session-only warning remains during and after rejected second recovery 

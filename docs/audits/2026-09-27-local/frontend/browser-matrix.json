@@ -1,0 +1,357 @@
+{
+  "selection": "19 scenarios x Chromium and WebKit",
+  "frontend_dirty_source_sha256": "2197bb43294d70e05de671adb2e7807e0b41f19c463987ebda84fa38d5c3a02a",
+  "fixture": "controlled API/WS routes and EIP-1193 provider; native browsers/storage/locks; stalled-body uses real HTTP",
+  "stats": {
+    "startTime": "2026-09-27T19:37:32.175Z",
+    "duration": 109955.084,
+    "expected": 38,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  },
+  "tests": [
+    {
+      "scenario": "BR-01 real same-origin tabs serialize recovery and adopt storage generation",
+      "project": "chromium",
+      "status": "expected",
+      "attempts": 1,
+      "duration_ms": 865,
+      "file": "local.spec.ts",
+      "line": 87
+    },
+    {
+      "scenario": "BR-01 closing tab holding native Web Lock releases recovery for sibling",
+      "project": "chromium",
+      "status": "expected",
+      "attempts": 1,
+      "duration_ms": 528,
+      "file": "local.spec.ts",
+      "line": 104
+    },
+    {
+      "scenario": "BR-04 wallet rejection and absent Web Locks both fail before POST",
+      "project": "chromium",
+      "status": "expected",
+      "attempts": 1,
+      "duration_ms": 303,
+      "file": "local.spec.ts",
+      "line": 112
+    },
+    {
+      "scenario": "BR-05 storage quota failure retains new key in memory and warns after confirmed rotation",
+      "project": "chromium",
+      "status": "expected",
+      "attempts": 1,
+      "duration_ms": 331,
+      "file": "local.spec.ts",
+      "line": 120
+    },
+    {
+      "scenario": "BR-06 legacy record never transmits old key or registers replacement",
+      "project": "chromium",
+      "status": "expected",
+      "attempts": 1,
+      "duration_ms": 111,
+      "file": "local.spec.ts",
+      "line": 132
+    },
+    {
+      "scenario": "BR-06 mismatch record never transmits old key or registers replacement",
+      "project": "chromium",
+      "status": "expected",
+      "attempts": 1,
+      "duration_ms": 111,
+      "file": "local.spec.ts",
+      "line": 132
+    },
+    {
+      "scenario": "BR-06 corrupt record never transmits old key or registers replacement",
+      "project": "chromium",
+      "status": "expected",
+      "attempts": 1,
+      "duration_ms": 118,
+      "file": "local.spec.ts",
+      "line": 132
+    },
+    {
+      "scenario": "BR-08 withdrawal retains signed market when selection changes during wallet prompt",
+      "project": "chromium",
+      "status": "expected",
+      "attempts": 1,
+      "duration_ms": 250,
+      "file": "local.spec.ts",
+      "line": 143
+    },
+    {
+      "scenario": "BR-07 cancel response after recovery cannot emit success into new credential context",
+      "project": "chromium",
+      "status": "expected",
+      "attempts": 1,
+      "duration_ms": 353,
+      "file": "local.spec.ts",
+      "line": 152
+    },
+    {
+      "scenario": "S2-04 CSP blocks inline script and external connect; errors render only text",
+      "project": "chromium",
+      "status": "expected",
+      "attempts": 1,
+      "duration_ms": 366,
+      "file": "local.spec.ts",
+      "line": 161
+    },
+    {
+      "scenario": "BR-03 real HTTP body stall is bounded and preserves saved credential",
+      "project": "chromium",
+      "status": "expected",
+      "attempts": 1,
+      "duration_ms": 46146,
+      "file": "local.spec.ts",
+      "line": 179
+    },
+    {
+      "scenario": "BR-08 cross-tab rotation while withdrawal signature waits aborts old mutation",
+      "project": "chromium",
+      "status": "expected",
+      "attempts": 1,
+      "duration_ms": 501,
+      "file": "local.spec.ts",
+      "line": 188
+    },
+    {
+      "scenario": "BR-07 stale withdrawal proof response is discarded after rotation",
+      "project": "chromium",
+      "status": "expected",
+      "attempts": 1,
+      "duration_ms": 370,
+      "file": "local.spec.ts",
+      "line": 199
+    },
+    {
+      "scenario": "BR-01 metadata and storage-write barriers retain one recovery lock across tabs",
+      "project": "chromium",
+      "status": "expected",
+      "attempts": 1,
+      "duration_ms": 805,
+      "file": "local.spec.ts",
+      "line": 207
+    },
+    {
+      "scenario": "BR-02 obsolete socket callbacks cannot close current native browser socket",
+      "project": "chromium",
+      "status": "expected",
+      "attempts": 1,
+      "duration_ms": 288,
+      "file": "local.spec.ts",
+      "line": 222
+    },
+    {
+      "scenario": "BR-07 old refresh held across rotation cannot install stale balance",
+      "project": "chromium",
+      "status": "expected",
+      "attempts": 1,
+      "duration_ms": 384,
+      "file": "local.spec.ts",
+      "line": 239
+    },
+    {
+      "scenario": "BR-05 session-only warning survives leaving and returning to recovery panel",
+      "project": "chromium",
+      "status": "expected",
+      "attempts": 1,
+      "duration_ms": 317,
+      "file": "local.spec.ts",
+      "line": 256
+    },
+    {
+      "scenario": "S2-02 disabled storage does not crash application shell",
+      "project": "chromium",
+      "status": "expected",
+      "attempts": 1,
+      "duration_ms": 163,
+      "file": "local.spec.ts",
+      "line": 265
+    },
+    {
+      "scenario": "BR-05 session-only warning remains during and after rejected second recovery",
+      "project": "chromium",
+      "status": "expected",
+      "attempts": 1,
+      "duration_ms": 514,
+      "file": "local.spec.ts",
+      "line": 272
+    },
+    {
+      "scenario": "BR-01 real same-origin tabs serialize recovery and adopt storage generation",
+      "project": "webkit",
+      "status": "expected",
+      "attempts": 1,
+      "duration_ms": 1102,
+      "file": "local.spec.ts",
+      "line": 87
+    },
+    {
+      "scenario": "BR-01 closing tab holding native Web Lock releases recovery for sibling",
+      "project": "webkit",
+      "status": "expected",
+      "attempts": 1,
+      "duration_ms": 722,
+      "file": "local.spec.ts",
+      "line": 104
+    },
+    {
+      "scenario": "BR-04 wallet rejection and absent Web Locks both fail before POST",
+      "project": "webkit",
+      "status": "expected",
+      "attempts": 1,
+      "duration_ms": 380,
+      "file": "local.spec.ts",
+      "line": 112
+    },
+    {
+      "scenario": "BR-05 storage quota failure retains new key in memory and warns after confirmed rotation",
+      "project": "webkit",
+      "status": "expected",
+      "attempts": 1,
+      "duration_ms": 431,
+      "file": "local.spec.ts",
+      "line": 120
+    },
+    {
+      "scenario": "BR-06 legacy record never transmits old key or registers replacement",
+      "project": "webkit",
+      "status": "expected",
+      "attempts": 1,
+      "duration_ms": 230,
+      "file": "local.spec.ts",
+      "line": 132
+    },
+    {
+      "scenario": "BR-06 mismatch record never transmits old key or registers replacement",
+      "project": "webkit",
+      "status": "expected",
+      "attempts": 1,
+      "duration_ms": 255,
+      "file": "local.spec.ts",
+      "line": 132
+    },
+    {
+      "scenario": "BR-06 corrupt record never transmits old key or registers replacement",
+      "project": "webkit",
+      "status": "expected",
+      "attempts": 1,
+      "duration_ms": 221,
+      "file": "local.spec.ts",
+      "line": 132
+    },
+    {
+      "scenario": "BR-08 withdrawal retains signed market when selection changes during wallet prompt",
+      "project": "webkit",
+      "status": "expected",
+      "attempts": 1,
+      "duration_ms": 309,
+      "file": "local.spec.ts",
+      "line": 143
+    },
+    {
+      "scenario": "BR-07 cancel response after recovery cannot emit success into new credential context",
+      "project": "webkit",
+      "status": "expected",
+      "attempts": 1,
+      "duration_ms": 440,
+      "file": "local.spec.ts",
+      "line": 152
+    },
+    {
+      "scenario": "S2-04 CSP blocks inline script and external connect; errors render only text",
+      "project": "webkit",
+      "status": "expected",
+      "attempts": 1,
+      "duration_ms": 383,
+      "file": "local.spec.ts",
+      "line": 161
+    },
+    {
+      "scenario": "BR-03 real HTTP body stall is bounded and preserves saved credential",
+      "project": "webkit",
+      "status": "expected",
+      "attempts": 1,
+      "duration_ms": 46240,
+      "file": "local.spec.ts",
+      "line": 179
+    },
+    {
+      "scenario": "BR-08 cross-tab rotation while withdrawal signature waits aborts old mutation",
+      "project": "webkit",
+      "status": "expected",
+      "attempts": 1,
+      "duration_ms": 686,
+      "file": "local.spec.ts",
+      "line": 188
+    },
+    {
+      "scenario": "BR-07 stale withdrawal proof response is discarded after rotation",
+      "project": "webkit",
+      "status": "expected",
+      "attempts": 1,
+      "duration_ms": 336,
+      "file": "local.spec.ts",
+      "line": 199
+    },
+    {
+      "scenario": "BR-01 metadata and storage-write barriers retain one recovery lock across tabs",
+      "project": "webkit",
+      "status": "expected",
+      "attempts": 1,
+      "duration_ms": 685,
+      "file": "local.spec.ts",
+      "line": 207
+    },
+    {
+      "scenario": "BR-02 obsolete socket callbacks cannot close current native browser socket",
+      "project": "webkit",
+      "status": "expected",
+      "attempts": 1,
+      "duration_ms": 324,
+      "file": "local.spec.ts",
+      "line": 222
+    },
+    {
+      "scenario": "BR-07 old refresh held across rotation cannot install stale balance",
+      "project": "webkit",
+      "status": "expected",
+      "attempts": 1,
+      "duration_ms": 437,
+      "file": "local.spec.ts",
+      "line": 239
+    },
+    {
+      "scenario": "BR-05 session-only warning survives leaving and returning to recovery panel",
+      "project": "webkit",
+      "status": "expected",
+      "attempts": 1,
+      "duration_ms": 395,
+      "file": "local.spec.ts",
+      "line": 256
+    },
+    {
+      "scenario": "S2-02 disabled storage does not crash application shell",
+      "project": "webkit",
+      "status": "expected",
+      "attempts": 1,
+      "duration_ms": 236,
+      "file": "local.spec.ts",
+      "line": 265
+    },
+    {
+      "scenario": "BR-05 session-only warning remains during and after rejected second recovery",
+      "project": "webkit",
+      "status": "expected",
+      "attempts": 1,
+      "duration_ms": 592,
+      "file": "local.spec.ts",
+      "line": 272
+    }
+  ]
+}

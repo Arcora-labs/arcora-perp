@@ -1,0 +1,21 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.09s
+     Running unittests src/main.rs (/tmp/arcora-gateway-target/debug/deps/gateway-af1323d2b67b45c0)
+
+running 1 test
+
+thread '<unnamed>' (1120515) panicked at crates/gateway/src/deposit_rpc/tests.rs:359:47:
+called `Result::unwrap()` on an `Err` value: Os { code: 35, kind: WouldBlock, message: "Resource temporarily unavailable" }
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+thread 'deposit_rpc::tests::a01_native_cast_hash_pinned_jsonrpc_roundtrip' (1120514) panicked at crates/gateway/src/deposit_rpc/tests.rs:393:19:
+called `Result::unwrap()` on an `Err` value: Any { .. }
+test deposit_rpc::tests::a01_native_cast_hash_pinned_jsonrpc_roundtrip ... FAILED
+
+failures:
+
+failures:
+    deposit_rpc::tests::a01_native_cast_hash_pinned_jsonrpc_roundtrip
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 374 filtered out; finished in 0.58s
+
+error: test failed, to rerun pass `-p gateway --bin gateway`

@@ -11,7 +11,7 @@ perp-core = { path = "../perp-core", features = ["serde"] }
 # (AzureTdxAttestor to verify the gateway, NvidiaCcAttestor for our self-quote)
 # + the pure session secret/token math shared with the gateway.
 dark-perp-attestation = { path = "../attestation" }
-sp1-sdk = "6.0.0"
+sp1-sdk = "=6.0.0"
 tokio = { version = "1", features = ["full"] }
 axum = "0.7"
 serde = { version = "1", features = ["derive"] }
@@ -22,7 +22,7 @@ postcard = { version = "1", features = ["alloc"] }
 getrandom = "0.2"
 
 [build-dependencies]
-sp1-build = "6.0.0"
+sp1-build = "=6.0.0"
 
 # standalone: not part of the host workspace
 [workspace]

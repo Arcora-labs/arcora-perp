@@ -1,0 +1,314 @@
+{
+  "schema": 1,
+  "docId": "arcora-local-guide-v1-098e495",
+  "baseline": "098e4952c189f92e4293ed7d49f81222b626e406",
+  "updatedAt": "2026-09-27T19:54:33.635773+00:00",
+  "environment": {
+    "worktree": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+    "head": "098e4952c189f92e4293ed7d49f81222b626e406 + dirty sha256 4285ad1425cc350c8e6d2b6314aa3f03fc33d93ff61d533ebe5b4218025e6e1d",
+    "platform": "macOS arm64; Chromium145 / WebKit26; Rust1.95; SP1 6.0.0",
+    "evidenceDir": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/docs/audits/2026-09-27-local",
+    "reviewer": "Local agent review only; external signoff missing",
+    "activeTask": "S4-03 crash/reconciliation next; overall PARTIAL, release CLOSED"
+  },
+  "tasks": {
+    "B-01": {
+      "checks": [
+        true,
+        true,
+        true,
+        true
+      ],
+      "evidence": "098e4952c189f92e4293ed7d49f81222b626e406; baseline/baseline.json, baseline/ci-run.json, baseline/original-worktree-preserved.json",
+      "note": "PASS\n",
+      "status": "verified"
+    },
+    "B-02": {
+      "checks": [
+        true,
+        true,
+        true,
+        true
+      ],
+      "evidence": "098e4952c189f92e4293ed7d49f81222b626e406; baseline/redacted-config-manifest.json, runtime/runtime-manifest.json, frontend/README.md",
+      "note": "PASS\nPublic oracle reads remain enabled in demo; loopback is not outbound network isolation.",
+      "status": "verified"
+    },
+    "S1-01": {
+      "checks": [
+        true,
+        true,
+        true,
+        true
+      ],
+      "evidence": "098e4952c189f92e4293ed7d49f81222b626e406; recovery/authority-matrix.md, checks/workspace-integrated.json",
+      "note": "PASS\nBounded barrier schedules and synthetic keys; no exhaustive concurrency or device-wallet claim.",
+      "status": "verified"
+    },
+    "S1-02": {
+      "checks": [
+        true,
+        true,
+        true,
+        true
+      ],
+      "evidence": "098e4952c189f92e4293ed7d49f81222b626e406; recovery/tcp-matrix.md, recovery/real-ws-final.log, recovery/latency-observations.json",
+      "note": "PASS\nThree loopback sockets and one8MiB slow-reader event; no p95/p99 or production capacity claim.",
+      "status": "verified"
+    },
+    "S2-01": {
+      "checks": [
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "evidence": "098e4952c189f92e4293ed7d49f81222b626e406; frontend/evidence.json, frontend/browser-matrix.json, frontend/manual-wallet-test.md",
+      "note": "PARTIAL\nReal Chromium/WebKit two-tab fixture matrix passed; actual extension wallet and real-browser-to-Rust-gateway integration remain unexecuted.",
+      "status": "active"
+    },
+    "S2-02": {
+      "checks": [
+        true,
+        true,
+        true,
+        true
+      ],
+      "evidence": "098e4952c189f92e4293ed7d49f81222b626e406; frontend/legacy-fixture-matrix.json, frontend/migration-runbook.md, frontend/reviewer-session-evidence.json",
+      "note": "PARTIAL\nLocal acceptance checks pass; S2-01 real-wallet dependency remains open.\nUnpassed dependencies: S2-01",
+      "status": "active"
+    },
+    "S2-03": {
+      "checks": [
+        false,
+        true,
+        true,
+        true
+      ],
+      "evidence": "098e4952c189f92e4293ed7d49f81222b626e406; frontend/mutation-race-matrix.md, frontend/evidence.json",
+      "note": "PARTIAL\nDeposit wallet mint/approve/bind/authorize/credit transaction race matrix not executed.\nUnpassed dependencies: S2-01",
+      "status": "active"
+    },
+    "S2-04": {
+      "checks": [
+        true,
+        true,
+        false,
+        true
+      ],
+      "evidence": "098e4952c189f92e4293ed7d49f81222b626e406; frontend/browser-threat-model.md, frontend/csp-local-policy.txt",
+      "note": "PARTIAL\nCSP applied only to local compiled fixture server; actual extension-wallet/production-CSP compatibility unverified.\nUnpassed dependencies: S2-02",
+      "status": "active"
+    },
+    "S3-01": {
+      "checks": [
+        true,
+        true,
+        true,
+        true
+      ],
+      "evidence": "098e4952c189f92e4293ed7d49f81222b626e406; snapshot/s3-evidence.json, snapshot/format-map.md, checks/s3-final.json",
+      "note": "PASS\n64MiB input cap does not promise exact RSS; old authenticated snapshots lack an external monotonic antirollback store.",
+      "status": "verified"
+    },
+    "S3-02": {
+      "checks": [
+        true,
+        true,
+        true,
+        true
+      ],
+      "evidence": "098e4952c189f92e4293ed7d49f81222b626e406; snapshot/migration-vectors.json, snapshot/replay-root-comparison.json, snapshot/fixture-sha256.txt",
+      "note": "PASS\nFour actual historical writer revisions; not arbitrary historical deployment snapshots.",
+      "status": "verified"
+    },
+    "S3-03": {
+      "checks": [
+        true,
+        true,
+        true,
+        true
+      ],
+      "evidence": "098e4952c189f92e4293ed7d49f81222b626e406; snapshot/fuzz-manifest.json, snapshot/crash-triage.md, checks/s3-final.json",
+      "note": "PASS\nFinite deterministic713 inner and216 outer vectors, no sanitizer/libFuzzer campaign.",
+      "status": "verified"
+    },
+    "S4-01": {
+      "checks": [
+        true,
+        true,
+        true,
+        true
+      ],
+      "evidence": "098e4952c189f92e4293ed7d49f81222b626e406; protocol/layer-review.md, checks/core-debug-after.json, checks/core-release-integrated.json",
+      "note": "PASS\napply_batch stops at first invalid operation; callers needing batch atomicity retain/rollback prestate. Other window-counter +1 paths remain outside the added core guard.",
+      "status": "verified"
+    },
+    "S4-02": {
+      "checks": [
+        true,
+        true,
+        true,
+        true
+      ],
+      "evidence": "098e4952c189f92e4293ed7d49f81222b626e406; protocol/layer-review.md, checks/workspace-integrated.json",
+      "note": "PASS\nBounded deterministic native/property coverage; no ZK fairness proof.",
+      "status": "verified"
+    },
+    "S4-03": {
+      "checks": [
+        true,
+        true,
+        false,
+        false
+      ],
+      "evidence": "098e4952c189f92e4293ed7d49f81222b626e406; rollback_journal/evidence.json, rollback_journal/journal-crash-matrix.json, recovery/protocol-lifecycle.md",
+      "note": "PARTIAL\nJournal I/O fail-open fixed; seal-vs-snapshot atomicity, pending old transaction reconciliation and unpinned ambiguous settlement recheck remain release gates.",
+      "status": "active"
+    },
+    "S4-04": {
+      "checks": [
+        true,
+        true,
+        true,
+        true
+      ],
+      "evidence": "098e4952c189f92e4293ed7d49f81222b626e406; protocol/layer-review.md, checks/foundry-final.json",
+      "note": "PASS\n96 Foundry cases; native/mock verifier boundaries, conventional ERC20 only; no real Groth16 receipt.",
+      "status": "verified"
+    },
+    "S4-05": {
+      "checks": [
+        true,
+        true,
+        true,
+        true
+      ],
+      "evidence": "098e4952c189f92e4293ed7d49f81222b626e406; protocol/layer-review.md, checks/prover-service-real-elf.json, checks/prover-service-tests.json",
+      "note": "PARTIAL\nNative transport checks and actual-ELF service validation are distinct from proof verification; S4-03 dependency unresolved.\nUnpassed dependencies: S4-03",
+      "status": "active"
+    },
+    "S4-06": {
+      "checks": [
+        true,
+        true,
+        true,
+        true
+      ],
+      "evidence": "098e4952c189f92e4293ed7d49f81222b626e406; protocol/layer-review.md, checks/workspace-integrated.json",
+      "note": "PASS\nFrozen quote/time fixtures; no live TEE attestation, external oracle truth or deployed committee claim.",
+      "status": "verified"
+    },
+    "S4-07": {
+      "checks": [
+        true,
+        false,
+        false,
+        true
+      ],
+      "evidence": "098e4952c189f92e4293ed7d49f81222b626e406; recovery/route-matrix.csv, recovery/surface-review.md, recovery/bounded-load-manifest.json",
+      "note": "PARTIAL\nNo explicit gateway socket cap/origin gate; permissive CORS; prover512MiB body consumed before handler bearer check; no complete request-draining shutdown.",
+      "status": "active"
+    },
+    "S4-08": {
+      "checks": [
+        true,
+        true,
+        true,
+        true
+      ],
+      "evidence": "098e4952c189f92e4293ed7d49f81222b626e406; protocol/ci-coverage.md, baseline/ci-run.json, final-evidence-manifest.json",
+      "note": "PASS\nLocal changes not pushed; old remote CI proves base only. RSA/dev-tool advisories and local-vs-CI tool-version drift remain recorded.",
+      "status": "verified"
+    },
+    "S5-01": {
+      "checks": [
+        false,
+        true,
+        true,
+        true
+      ],
+      "evidence": "098e4952c189f92e4293ed7d49f81222b626e406; protocol/release-manifest.json, protocol/guest-reproducibility-pinned-path.json, checks/guest-build-family-locked.json",
+      "note": "PARTIAL\nActual ELF and vkey generated; dirty source is content-pinned but no release commit or completed upstream graph gate.\nUnpassed dependencies: S4-05",
+      "status": "active"
+    },
+    "S5-02": {
+      "checks": [
+        false,
+        false,
+        false,
+        true
+      ],
+      "evidence": "098e4952c189f92e4293ed7d49f81222b626e406; checks/sp1-host-with-protoc.json, protocol/a06-execution-gate.json",
+      "note": "BLOCKED\nNormal deposit/withdraw native==guest passed; A06 delegated verification stopped by automatic safety review. Draft quarantined; not executed or integrated.\nUnpassed dependencies: S5-01, S4-03",
+      "status": "blocked"
+    },
+    "S5-03": {
+      "checks": [
+        false,
+        false,
+        false,
+        true
+      ],
+      "evidence": "098e4952c189f92e4293ed7d49f81222b626e406; checks/sp1-vkey.json, protocol/proving-capability.json",
+      "note": "BLOCKED\nS5-02 incomplete; no real Groth16 proof. Configured Docker gnark backend unavailable; no paid/network/remote prover used.\nUnpassed dependencies: S5-02",
+      "status": "blocked"
+    },
+    "S6-01": {
+      "checks": [
+        false,
+        false,
+        false,
+        false
+      ],
+      "evidence": "098e4952c189f92e4293ed7d49f81222b626e406; runtime/runtime-manifest.json, protocol/layer-review.md",
+      "note": "BLOCKED\nReal-proof dependency absent. Demo HTTP and native/Foundry mock flows do not establish actual full token lifecycle.\nUnpassed dependencies: S5-03, S2-03",
+      "status": "blocked"
+    },
+    "S6-02": {
+      "checks": [
+        false,
+        false,
+        true,
+        true
+      ],
+      "evidence": "098e4952c189f92e4293ed7d49f81222b626e406; snapshot/crash-drill-matrix.json, runtime/runtime-manifest.json, rollback_journal/journal-crash-matrix.json",
+      "note": "PARTIAL\nReal filesystem failures and own-process periodic-snapshot SIGKILL/restore passed; exhaustive ACK/fsync/rename/prepared-settlement crash matrix not completed.\nUnpassed dependencies: S6-01",
+      "status": "active"
+    },
+    "S6-03": {
+      "checks": [
+        false,
+        true,
+        true,
+        true
+      ],
+      "evidence": "098e4952c189f92e4293ed7d49f81222b626e406; recovery/protocol-lifecycle.md, checks/real-cast-portable.json, protocol/block-pinned-deployment-manifest.json",
+      "note": "PARTIAL\nFinalized intake RPC fixtures pass; settlement two-read ambiguity remains. Public Base Sepolia endpoint returns HTTP403, so current deployment code/roles/vkey remain unknown.\nUnpassed dependencies: S6-01",
+      "status": "active"
+    },
+    "S7-01": {
+      "checks": [
+        true,
+        false,
+        false,
+        false
+      ],
+      "evidence": "098e4952c189f92e4293ed7d49f81222b626e406; operations/key-role-inventory.md, operations/alert-catalog.json, operations/incident-drill.md",
+      "note": "BLOCKED\nReal incident owners/escalation destinations not supplied; no failure-injected pager/CloseOnly/full-funds drill.\nUnpassed dependencies: S6-02, S6-03",
+      "status": "blocked"
+    },
+    "S7-02": {
+      "checks": [
+        false,
+        true,
+        false,
+        false
+      ],
+      "evidence": "098e4952c189f92e4293ed7d49f81222b626e406; independent-review.md, release-decision.md, final-evidence-manifest.json",
+      "note": "BLOCKED\nBounded local independent code review only; no full independent/external signoff. Release held; no deployment or release approval inferred.\nUnpassed dependencies: S2-04, S4-07, S5-03, S6-02, S6-03, S7-01",
+      "status": "blocked"
+    }
+  }
+}

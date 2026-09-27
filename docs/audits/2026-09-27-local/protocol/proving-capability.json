@@ -1,0 +1,25 @@
+{
+  "architecture": {
+    "exit_code": 0,
+    "stdout": "arm64\n",
+    "stderr": ""
+  },
+  "memory_bytes": {
+    "exit_code": 0,
+    "stdout": "17179869184\n",
+    "stderr": ""
+  },
+  "docker": {
+    "exit_code": 1,
+    "stdout": "null\n",
+    "stderr": "Cannot connect to the Docker daemon at unix:///Users/huseyinarslan/.docker/run/docker.sock. Is the docker daemon running?\n"
+  },
+  "available_launchers": {
+    "colima": "/opt/homebrew/bin/colima",
+    "podman": null,
+    "go": null
+  },
+  "docker_app_present": true,
+  "groth16_backend": "Pinned SP1 gnark FFI default docker path calls docker info before wrapping. Native backend is not enabled; Go is absent.",
+  "scope": "CPU guest execution and vkey setup were run. No Groth16 proof, rented hardware, prover network, paid API or remote machine access."
+}

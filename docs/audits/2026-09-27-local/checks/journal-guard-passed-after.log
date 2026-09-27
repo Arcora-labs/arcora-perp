@@ -1,0 +1,12 @@
+   Compiling gateway v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/gateway)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.85s
+     Running unittests src/main.rs (/tmp/arcora-gateway-target/debug/deps/gateway-af1323d2b67b45c0)
+
+running 4 tests
+test tests::settle_journal_guard_stage1_fs_failure_never_reaches_prove_callback ... ok
+test tests::settle_journal_guard_stage2_fs_failure_keeps_original_and_never_broadcasts ... ok
+test tests::settle_journal_guard_success_persists_each_stage_before_callback ... ok
+test tests::settle_journal_guard_unconfigured_dev_path_keeps_existing_behavior ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 375 filtered out; finished in 0.20s
+

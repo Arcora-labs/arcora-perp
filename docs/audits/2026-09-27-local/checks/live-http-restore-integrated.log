@@ -1,0 +1,27 @@
+{
+  "binary_sha256": "05a3550ef377c1eb9dba8a27fc849652c89949b6993ce6176a1ab17f84a27f49",
+  "processes": [
+    {
+      "label": "initial",
+      "pid": 46682,
+      "exit_code": -9
+    },
+    {
+      "label": "restored",
+      "pid": 46738,
+      "exit_code": 0
+    }
+  ],
+  "limits": [
+    "Demo balances, no L1 contract/proof/token transfer",
+    "HTTP Vitest uses NullWebSocket",
+    "Waited for a periodic snapshot before SIGKILL; not a snapshot/ACK boundary crash matrix",
+    "Public Crypto.com oracle/candle reads remain enabled; loopback is not outbound isolation"
+  ],
+  "http_smoke_exit": 0,
+  "deposit_response_received": true,
+  "snapshot_before_kill_sha256": "5a4f6a8c1aa3e20a769e1c4cc8aecbe674aa9e8e956b2ea5e5531d238a38e22a",
+  "snapshot_after_kill_sha256": "5a4f6a8c1aa3e20a769e1c4cc8aecbe674aa9e8e956b2ea5e5531d238a38e22a",
+  "restored_account_balance_collateral_nonce_match": true,
+  "status": "PASS"
+}

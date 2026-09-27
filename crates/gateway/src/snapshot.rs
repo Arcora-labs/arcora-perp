@@ -26,7 +26,7 @@
 //! the witness seal enforces (see the prover's two-time-pad regression).
 
 use perp_core::hash::{word_u64, Digest, Domain, Hasher, Keccak256};
-use std::io::Write;
+use std::io::{Read, Write};
 use std::path::Path;
 
 /// File magic + format version. Bump the trailing digit on layout changes so an
@@ -66,6 +66,35 @@ const MAGIC: &[u8; 8] = b"DPSNAP8\0";
 const A05_MAGIC: &[u8; 8] = b"DPSNAP7\0";
 const A01_MAGIC: &[u8; 8] = b"DPSNAP6\0";
 const LEGACY_MAGIC: &[u8; 8] = b"DPSNAP5\0";
+
+/// Operational resource limit, shared by disk intake, parser and atomic writer.
+/// This is not a wire-format change: oversized files are preserved and refused
+/// for offline reconciliation, never truncated, reset or acknowledged durable.
+pub const MAX_PLAIN_BYTES: usize = 64 * 1024 * 1024;
+pub const MAX_SEALED_BYTES: usize = MAX_PLAIN_BYTES + 72;
+
+/// Bound the actual descriptor read (including a concurrent file growth), not
+/// merely a racy metadata check followed by an unbounded `std::fs::read`.
+pub fn read_file(path: &Path) -> std::io::Result<Vec<u8>> {
+    let file = std::fs::File::open(path)?;
+    if file.metadata()?.len() > MAX_SEALED_BYTES as u64 {
+        return Err(size_error());
+    }
+    let mut bytes = Vec::new();
+    file.take(MAX_SEALED_BYTES as u64 + 1)
+        .read_to_end(&mut bytes)?;
+    if bytes.len() > MAX_SEALED_BYTES {
+        return Err(size_error());
+    }
+    Ok(bytes)
+}
+
+fn size_error() -> std::io::Error {
+    std::io::Error::new(
+        std::io::ErrorKind::InvalidData,
+        "snapshot exceeds 64 MiB payload limit; preserve file for offline reconciliation",
+    )
+}
 
 /// Keystream block derived from the SECRET seed and the per-snapshot nonce.
 fn keystream(seed: &[u8; 32], nonce: &Digest, len: usize) -> Vec<u8> {
@@ -134,6 +163,9 @@ pub fn seal(plain: &[u8], seed: &[u8; 32]) -> Vec<u8> {
 /// Open a sealed snapshot. Authenticates BEFORE decrypting; a wrong seed, a
 /// truncated file, or any flipped ciphertext byte is rejected.
 pub fn open(sealed: &[u8], seed: &[u8; 32]) -> Result<Vec<u8>, String> {
+    if sealed.len() > MAX_SEALED_BYTES {
+        return Err(size_error().to_string());
+    }
     if sealed.len() < 8 + 32 + 32 {
         return Err("snapshot too short".into());
     }
@@ -181,6 +213,9 @@ fn tmp_path(path: &Path) -> std::path::PathBuf {
 /// BOTH data and the rename were acknowledged by the filesystem. Runtime callers
 /// must still serialize state capture plus publication to prevent stale overwrites.
 pub fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    if bytes.len() > MAX_SEALED_BYTES {
+        return Err(size_error());
+    }
     let parent = path
         .parent()
         .filter(|p| !p.as_os_str().is_empty())

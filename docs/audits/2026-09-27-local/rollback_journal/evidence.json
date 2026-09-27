@@ -1,0 +1,155 @@
+{
+  "task": "S4-03 configured rollback journal persistence barrier",
+  "status": "FOCUSED_FIX_PASS",
+  "overall_S4_03": "PARTIAL",
+  "base_sha": "098e4952c189f92e4293ed7d49f81222b626e406",
+  "head_sha": "098e4952c189f92e4293ed7d49f81222b626e406",
+  "head_tree_sha": "c6e9d4af0257531cd77e45ca5b3939c6ea7a0fa4",
+  "source_sha256": "ea23b761f539a3415c2c5763764480bbd26f65d00875014e8c77b9bdf7d52b61",
+  "changed_subject_files": {
+    "crates/gateway/src/main.rs": "3289e444a39fccdc8a08e1bb448bd484e8a5dc6d31b09f662bac609ef55bfc67",
+    "crates/gateway/src/rollback_journal.rs": "086bb30aad0b7d55c2aa1a703c0c173cdf3d1c42ec5e101ac69122b203999f0b"
+  },
+  "negative_control": {
+    "actual_assertion_failures": 2,
+    "compilation_failure": false,
+    "subject": "source after helper extraction with prior log-and-continue decision preserved"
+  },
+  "checks": [
+    {
+      "label": "journal-guard-failed-before",
+      "record": "../checks/journal-guard-failed-before.json",
+      "record_sha256": "5fd37cb738fa4bf599ebe8919eb5242f3c948c43b8a1ca5f19b0ff56101e7c0b",
+      "argv": [
+        "env",
+        "CARGO_TARGET_DIR=/tmp/arcora-gateway-target",
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "gateway",
+        "settle_journal_guard",
+        "--",
+        "--test-threads=1"
+      ],
+      "exit_code": 101,
+      "rust_test_summaries": [
+        [
+          "FAILED",
+          "2",
+          "2",
+          "0",
+          "0",
+          "375"
+        ]
+      ],
+      "log": "../checks/journal-guard-failed-before.log",
+      "log_sha256": "b10a65e61ea79f3a8fa6f41dc46f28906dd98416e8d3a815988b40d19226aad0",
+      "source_before_sha256": "fc56e852a7b6e6f28726227f39e30f7a6f9465768a75bfcb96c90d6951165a6b",
+      "source_after_sha256": "fc56e852a7b6e6f28726227f39e30f7a6f9465768a75bfcb96c90d6951165a6b",
+      "source_unchanged_during_check": true
+    },
+    {
+      "label": "journal-guard-passed-after",
+      "record": "../checks/journal-guard-passed-after.json",
+      "record_sha256": "8112c6d9dc9f987d011bc4d9f8581979289f256c149ed8300440bf1f51a96402",
+      "argv": [
+        "env",
+        "CARGO_TARGET_DIR=/tmp/arcora-gateway-target",
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "gateway",
+        "settle_journal_guard",
+        "--",
+        "--test-threads=1"
+      ],
+      "exit_code": 0,
+      "rust_test_summaries": [
+        [
+          "ok",
+          "4",
+          "0",
+          "0",
+          "0",
+          "375"
+        ]
+      ],
+      "log": "../checks/journal-guard-passed-after.log",
+      "log_sha256": "a06b79091cad8717a7febfde948588729c97794d49498b4454ffcb96204f9db9",
+      "source_before_sha256": "ea23b761f539a3415c2c5763764480bbd26f65d00875014e8c77b9bdf7d52b61",
+      "source_after_sha256": "ea23b761f539a3415c2c5763764480bbd26f65d00875014e8c77b9bdf7d52b61",
+      "source_unchanged_during_check": true
+    },
+    {
+      "label": "journal-lifecycle-regressions",
+      "record": "../checks/journal-lifecycle-regressions.json",
+      "record_sha256": "c6e397fb9a92ecba6e1c10e49042b326dad95b4e7c22d838e87033ef70921783",
+      "argv": [
+        "env",
+        "CARGO_TARGET_DIR=/tmp/arcora-gateway-target",
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "gateway",
+        "journal",
+        "--",
+        "--test-threads=1"
+      ],
+      "exit_code": 0,
+      "rust_test_summaries": [
+        [
+          "ok",
+          "12",
+          "0",
+          "0",
+          "0",
+          "367"
+        ]
+      ],
+      "log": "../checks/journal-lifecycle-regressions.log",
+      "log_sha256": "39892fdf1dee17281f59ba30d2302b181dafdde439bbea33891f48bdb2a749ba",
+      "source_before_sha256": "ea23b761f539a3415c2c5763764480bbd26f65d00875014e8c77b9bdf7d52b61",
+      "source_after_sha256": "ea23b761f539a3415c2c5763764480bbd26f65d00875014e8c77b9bdf7d52b61",
+      "source_unchanged_during_check": true
+    },
+    {
+      "label": "journal-guard-clippy",
+      "record": "../checks/journal-guard-clippy.json",
+      "record_sha256": "dc6eb3d6550467aa8dd1af3edc5b5a1b9d87d70a5a5f18162a4939ca83b80217",
+      "argv": [
+        "env",
+        "CARGO_TARGET_DIR=/tmp/arcora-gateway-target",
+        "cargo",
+        "clippy",
+        "--locked",
+        "-p",
+        "gateway",
+        "--all-targets",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "exit_code": 0,
+      "rust_test_summaries": [],
+      "log": "../checks/journal-guard-clippy.log",
+      "log_sha256": "cf5b3452be7e3704dae545a7c85be0cb3923cdaa65c4a88d77a79e7f4b52fb3a",
+      "source_before_sha256": "ea23b761f539a3415c2c5763764480bbd26f65d00875014e8c77b9bdf7d52b61",
+      "source_after_sha256": "ea23b761f539a3415c2c5763764480bbd26f65d00875014e8c77b9bdf7d52b61",
+      "source_unchanged_during_check": true
+    }
+  ],
+  "mocks": [
+    "MockProverClient native prepared-state construction; callback probe replaces external settlement in tests"
+  ],
+  "limits": [
+    "No real RPC, L1 transaction or SP1 proof",
+    "Seal and independent periodic snapshot are not atomic in this patch",
+    "Original journal retention asserted for injected pre-rename failure, not every I/O phase",
+    "Unconfigured persistence behavior unchanged",
+    "Full workspace not rerun by this lane after the narrow patch"
+  ],
+  "reviewer": null
+}

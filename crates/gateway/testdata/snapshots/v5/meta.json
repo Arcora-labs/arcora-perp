@@ -1,0 +1,11 @@
+{
+  "orders": 2,
+  "accounts": 2,
+  "pending_withdrawals": 1,
+  "nullifiers": 11,
+  "plain_bytes": 12097,
+  "replay_key": "0xf66b768078d9fcb832c6fabf52bbfa780ff3c1d1867aed94073d4a182129d0b6",
+  "recovery_owner": "0x9e44562f2f074bf20851a494929adf836b46a25473d8df39314486ce91a7cae0",
+  "withdraw_key": "0x25ac28668b0d3129dd3557104cd057aff9f567f27d777e628c581ed2ecbc6d87",
+  "recovery_authorizer": "0xfa17c5b66a985f44bc249c8e8fabd64767f414b1"
+}

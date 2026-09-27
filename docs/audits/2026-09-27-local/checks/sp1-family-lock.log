@@ -1,0 +1,29 @@
+    Updating crates.io index
+     Locking 160 packages to latest compatible versions
+      Adding crypto-common v0.1.6 (available: v0.1.7)
+      Adding slop-algebra v6.0.0 (available: v6.8.1)
+      Adding slop-bn254 v6.0.0 (available: v6.8.1)
+      Adding slop-challenger v6.0.0 (available: v6.8.1)
+      Adding slop-koala-bear v6.0.0 (available: v6.8.1)
+      Adding slop-poseidon2 v6.0.0 (available: v6.8.1)
+      Adding slop-primitives v6.0.0 (available: v6.8.1)
+      Adding slop-symmetric v6.0.0 (available: v6.8.1)
+      Adding sp1-lib v6.0.0 (available: v6.8.1)
+      Adding sp1-primitives v6.0.0 (available: v6.8.1)
+      Adding sp1-zkvm v6.0.0 (available: v6.8.1)
+     Locking 0 packages to latest compatible versions
+note: pass `--verbose` to see 11 unchanged dependencies behind latest
+sp1-guest [('slop-algebra', '6.0.0'), ('slop-bn254', '6.0.0'), ('slop-challenger', '6.0.0'), ('slop-koala-bear', '6.0.0'), ('slop-poseidon2', '6.0.0'), ('slop-primitives', '6.0.0'), ('slop-symmetric', '6.0.0'), ('sp1-lib', '6.0.0'), ('sp1-primitives', '6.0.0'), ('sp1-zkvm', '6.0.0')]
+    Updating crates.io index
+error: failed to select a version for the requirement `sp1-core-executor-runner = "=6.0.0"`
+candidate versions found which didn't match: 6.8.1, 6.8.0, 6.7.0, ...
+location searched: crates.io index
+required by package `sp1-host v0.0.0 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/sp1-host)`
+Traceback (most recent call last):
+  File "/tmp/arcora-pin-sp1.py", line 10, in <module>
+    subprocess.run(['cargo','generate-lockfile','--manifest-path',str(manifest)],check=True)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.6/Frameworks/Python.framework/Versions/3.14/lib/python3.14/subprocess.py", line 578, in run
+    raise CalledProcessError(retcode, process.args,
+                             output=stdout, stderr=stderr)
+subprocess.CalledProcessError: Command '['cargo', 'generate-lockfile', '--manifest-path', 'crates/sp1-host/Cargo.toml']' returned non-zero exit status 101.

@@ -1,0 +1,12 @@
+{
+  "phase": "pre_rebind_fix",
+  "base": "098e4952c189f92e4293ed7d49f81222b626e406",
+  "utc": "2026-09-27T19:21:16.752408+00:00",
+  "files": {
+    "crates/gateway/src/main.rs": "efbb9b2203e24c67d47bdf8e7fb69cb19915f58fbae6144230fa80a6000637f4",
+    "crates/gateway/src/account_recovery_tests.rs": "4f13aff43ffa7693f9e5c88a200ddfeb4b4ee906cf88efc337c09019ecc7fa59",
+    "crates/gateway/src/s1_recovery_ws_tests.rs": "a6dd30969a68412521177b0990ead93e87c71711317a3bf6d0ad579cb9a74df1",
+    "crates/gateway/src/credential_session.rs": "21254c638bca932f206e7ece2289ec354f48cec9e58799320ffe3b2d729ddc40",
+    "Cargo.lock": "0db4f88b8f0c4a67ae57b04ae26eaec8ff98370d79677bae63da8053714f2479"
+  }
+}

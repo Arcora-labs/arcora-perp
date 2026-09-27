@@ -1,0 +1,28 @@
+{
+  "status": "LOCAL_CANDIDATE_PARTIAL_NO_RELEASE",
+  "base_sha": "098e4952c189f92e4293ed7d49f81222b626e406",
+  "base_tree": "c6e9d4af0257531cd77e45ca5b3939c6ea7a0fa4",
+  "dirty_source_sha256": "4285ad1425cc350c8e6d2b6314aa3f03fc33d93ff61d533ebe5b4218025e6e1d",
+  "elf_path": "crates/sp1-guest/target/elf-compilation/riscv64im-succinct-zkvm-elf/release/perp-core-guest",
+  "elf_sha256": "a1f0a43033ffdd858bf99854cae814f5426c27db512088883ffa1a0e8f1c4e75",
+  "elf_bytes": 515096,
+  "sp1_version": "6.0.0",
+  "guest_rustc": "1.93.0-dev succinct",
+  "program_vkey": "0x0051a1c5d05d246f51d8dae1041d1faa9d73330b29bd2ce4ea13360a5154ad63",
+  "lock_hashes": {
+    "Cargo.lock": "0db4f88b8f0c4a67ae57b04ae26eaec8ff98370d79677bae63da8053714f2479",
+    "frontend/pnpm-lock.yaml": "153011d388345922c0775c99ac5a779c13049bc77dbf05b6e0567e1d4347bd6c",
+    "crates/sp1-guest/Cargo.lock": "228b4111a7b18423e2450e81bf95ec54129d7757cd30f4397fc7b5dea504302d",
+    "crates/sp1-host/Cargo.lock": "345a845740dc17eb0718f4b5d9bf207988780530d1dd21a5af04d2ace81612d5",
+    "crates/prover-service/Cargo.lock": "c1e85ae35501c47ed0bcc433c32e27f771b3e565a8747865f02de4e6cf235dbc"
+  },
+  "real_proof": null,
+  "real_verifier_receipt": null,
+  "normal_native_guest_parity": "checks/sp1-host-with-protoc.json",
+  "a06_gate": "protocol/a06-execution-gate.json",
+  "rebuild": "protocol/guest-reproducibility-pinned-path.json",
+  "limits": [
+    "No release commit, proof, deployment or authorization inferred.",
+    "Repository July vkey differs from measured local key; live deployment observation failed403, so live key unknown."
+  ]
+}

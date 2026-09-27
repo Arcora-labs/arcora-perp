@@ -319,38 +319,83 @@ pub(super) fn restore_snapshot(gw: &mut Gw, trailer: &[u8]) -> Result<(), String
         }
         return Ok(());
     }
-    if !trailer.starts_with(EXT) {
-        return Err("unknown execution snapshot extension".into());
-    }
-    let (records, rest): (Vec<(Digest, Option<Execution>)>, _) =
-        postcard::take_from_bytes(&trailer[EXT.len()..])
-            .map_err(|e| format!("execution snapshot decode: {e}"))?;
+    let (records, rest) = decode_snapshot_records(gw, trailer)?;
     if !rest.is_empty() {
         return Err("trailing execution snapshot bytes".into());
     }
+    restore_snapshot_records(gw, records)
+}
+
+/// Consume one typed extension, returning its actual postcard boundary. Marker
+/// bytes inside a digest or string are payload, never framing delimiters.
+pub(super) fn restore_snapshot_prefix<'a>(
+    gw: &mut Gw,
+    trailer: &'a [u8],
+) -> Result<&'a [u8], String> {
+    let (records, rest) = decode_snapshot_records(gw, trailer)?;
+    restore_snapshot_records(gw, records)?;
+    Ok(rest)
+}
+
+type SnapshotRecords = Vec<(Digest, Option<Execution>)>;
+fn decode_snapshot_records<'a>(
+    gw: &Gw,
+    trailer: &'a [u8],
+) -> Result<(SnapshotRecords, &'a [u8]), String> {
+    let payload = trailer
+        .strip_prefix(EXT)
+        .ok_or("unknown execution snapshot extension")?;
+    let expected = gw
+        .accounts
+        .values()
+        .try_fold(gw.orders.len(), |count, a| {
+            count.checked_add(a.orders.len())
+        })
+        .ok_or("execution snapshot record count overflow")?;
+    let (count, _): (usize, _) =
+        postcard::take_from_bytes(payload).map_err(|e| format!("execution snapshot count: {e}"))?;
+    if count != expected {
+        return Err("execution snapshot row count disagrees with orders".into());
+    }
+    postcard::take_from_bytes(payload).map_err(|e| format!("execution snapshot decode: {e}"))
+}
+
+fn restore_snapshot_records(gw: &mut Gw, records: SnapshotRecords) -> Result<(), String> {
     let count = records.len();
     let mut map: BTreeMap<_, _> = records.into_iter().collect();
     if map.len() != count {
         return Err("duplicate execution record".into());
+    }
+    let mut hashes = std::collections::BTreeSet::new();
+    for o in gw
+        .orders
+        .iter()
+        .chain(gw.accounts.values().flat_map(|a| &a.orders))
+    {
+        let e = map
+            .get(&o.order_hash)
+            .ok_or("missing execution snapshot record")?
+            .as_ref()
+            .ok_or("missing execution snapshot payload")?;
+        if !hashes.insert(o.order_hash) {
+            return Err("duplicate order execution hash".into());
+        }
+        if !e.validate(o.order.size) {
+            return Err("invalid execution snapshot record".into());
+        }
+    }
+    if hashes.len() != map.len() {
+        return Err("orphan execution snapshot record".into());
     }
     for o in gw
         .orders
         .iter_mut()
         .chain(gw.accounts.values_mut().flat_map(|a| &mut a.orders))
     {
-        let e = map
+        // Validation above is complete before any caller-owned metadata changes.
+        o.execution = map
             .remove(&o.order_hash)
-            .ok_or("missing execution snapshot record")?
-            .ok_or("missing execution snapshot payload")?;
-        if !e.validate(o.order.size) {
-            return Err("invalid execution snapshot record".into());
-        }
-        // Keep legacy prefix bytes unchanged. Runtime views read the
-        // authenticated extension, never the old fabricated quantities.
-        o.execution = Some(e);
-    }
-    if !map.is_empty() {
-        return Err("orphan execution snapshot record".into());
+            .expect("validated execution record");
     }
     Ok(())
 }

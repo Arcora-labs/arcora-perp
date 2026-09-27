@@ -1,0 +1,48 @@
+{
+  "status": "PARTIAL",
+  "external_delivery_configured": false,
+  "owner": null,
+  "scope": "Source-backed local control specification; existing unit failures exercised, no actual pager delivery or live SLA claimed.",
+  "alerts": [
+    {
+      "name": "Deposit halt / dirty persistence barrier",
+      "signal": "system snapshot deposit state halted/paused; deposits.halt/dirty/check_ready",
+      "action": "Stop new credits/broadcast; retain cursor, route and snapshot; reconcile finalized prefix.",
+      "evidence": "workspace-integrated: deposit_ingestion tests with failed ACK/finalized reorg/retry",
+      "threshold": "Any durable halt; paused age threshold requires operational baseline",
+      "delivery_tested": false
+    },
+    {
+      "name": "Snapshot or journal persistence failure",
+      "signal": "[state] snapshot write failed; stage-1/stage-2 rollback journal is not durable",
+      "action": "Preserve old file; refuse confirmed response/broadcast; repair storage and retry owned fixture.",
+      "evidence": "snapshot S3 filesystem cases; journal-guard ENOTDIR/ENAMETOOLONG cases",
+      "threshold": "Any failed required durability barrier",
+      "delivery_tested": false
+    },
+    {
+      "name": "Settlement failure/HELD",
+      "signal": "settlement_health, settlement_consecutive_failures, settlement_last_error",
+      "action": "Investigate prover/RPC/durable state; do not automatically force resume or reset snapshot.",
+      "evidence": "settle_health unit cases: 3rd failure held, once-per-episode alert, cap, success rearm",
+      "threshold": "Configured FIN_HELD_THRESHOLD; source default 3, not an SLA",
+      "delivery_tested": false
+    },
+    {
+      "name": "Oracle stale or inconsistent",
+      "signal": "core freshness/confidence/deviation rejection; configured oracle feed",
+      "action": "Keep risk-increasing operations closed; inspect signer/time/source disagreement.",
+      "evidence": "native oracle/core fixtures only; no end-to-end injected operational alarm",
+      "threshold": "Market risk parameters; no arbitrary pager latency assigned",
+      "delivery_tested": false
+    },
+    {
+      "name": "Vault/engine reconciliation",
+      "signal": "Credited deposit prefix, uncredited finalized leaves, token balance, outstanding claims, bond, engine internal_value",
+      "action": "Stop release on unexplained difference; compare one pinned block and exact engine source/state.",
+      "evidence": "native accounting / Foundry controls, not real-proof integrated ledger",
+      "threshold": "Any unexplained nonzero difference",
+      "delivery_tested": false
+    }
+  ]
+}

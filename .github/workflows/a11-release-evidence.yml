@@ -6,6 +6,8 @@ on:
     paths:
       - Cargo.toml
       - Cargo.lock
+      - crates/**
+      - scripts/local-verification/**
       - frontend/package.json
       - frontend/pnpm-lock.yaml
       - crates/sp1-guest/**
@@ -24,7 +26,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: taiki-e/install-action@cargo-audit
       - name: RustSec workspace lock
-        run: cargo audit --json | tee cargo-audit.json
+        run: |
+          set -o pipefail
+          cargo audit --json | tee cargo-audit.json
       - uses: pnpm/action-setup@v4
         with: { version: 10 }
       - uses: actions/setup-node@v4
@@ -32,6 +36,7 @@ jobs:
       - name: npm advisories through frozen pnpm graph
         working-directory: frontend
         run: |
+          set -o pipefail
           pnpm install --frozen-lockfile
           pnpm audit --prod --json | tee ../pnpm-audit.json
       - uses: actions/upload-artifact@v4
@@ -52,11 +57,12 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: Check release profile flags take effect
+        run: python3 scripts/local-verification/check_release_profile.py
       - name: release workspace tests
         env:
-          CARGO_PROFILE_TEST_OPT_LEVEL: 3
-          CARGO_PROFILE_TEST_DEBUG_ASSERTIONS: 'true'
-          CARGO_PROFILE_TEST_OVERFLOW_CHECKS: 'true'
+          CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS: 'true'
+          CARGO_PROFILE_RELEASE_OVERFLOW_CHECKS: 'true'
         run: cargo test --workspace --locked --release
       - run: cargo build -p perp-core --no-default-features --features serde --locked
       - run: cargo build -p matcher --no-default-features --locked

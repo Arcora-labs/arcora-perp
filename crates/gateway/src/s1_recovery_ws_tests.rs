@@ -893,43 +893,25 @@ async fn ws_revocation_race_slow_consumer_and_no_lock_across_send() {
     assert_eq!(r.status(), StatusCode::OK);
     let new_key = parse_hex32(body_json(r).await["apiKey"].as_str().unwrap()).unwrap();
 
-    // (b) Drain the old session: at some point the revocation (error frame
-    // and/or close) must arrive. Afterwards, read a few more bounded frames:
-    // NONE of them may be an owner event.
-    let mut revoked = false;
+    // (b) An error frame is advisory; only actual transport termination proves
+    // revocation. A quiet reader or an arbitrary protocol error is not success.
     let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
-    while !revoked {
-        let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
-        match tokio::time::timeout(remaining, ws.next()).await {
-            Ok(Some(Ok(Message::Text(t)))) => {
-                let v: serde_json::Value = serde_json::from_str(&t).unwrap();
-                if v["message"] == "api key rotated" {
-                    revoked = true;
-                }
+    let mut saw_revocation = false;
+    loop {
+        match tokio::time::timeout_at(deadline, ws.next())
+            .await
+            .expect("slow consumer did not reach transport closure")
+        {
+            None | Some(Ok(Message::Close(_))) => break,
+            Some(Err(error)) if is_transport_closed(&error) => break,
+            Some(Ok(Message::Text(text))) => {
+                let value: serde_json::Value = serde_json::from_str(&text).unwrap();
+                assert!(!saw_revocation, "payload was flushed after revocation");
+                saw_revocation = value["message"] == "api key rotated";
             }
-            Ok(Some(Ok(Message::Close(_)))) | Ok(None) | Ok(Some(Err(_))) | Err(_) => {
-                revoked = true
-            }
-            Ok(Some(Ok(_))) => continue,
+            other => panic!("unexpected revocation result: {other:?}"),
         }
     }
-    assert!(revoked, "revocation must fire while events are in flight");
-    let mut events_after_revocation = 0u32;
-    for _ in 0..5 {
-        match tokio::time::timeout(Duration::from_millis(500), ws.next()).await {
-            Ok(Some(Ok(Message::Text(t)))) => {
-                let v: serde_json::Value = serde_json::from_str(&t).unwrap();
-                if v["owner"] == owner_hex && v["type"] == "execution" {
-                    events_after_revocation += 1;
-                }
-            }
-            _ => break, // close / EOF / quiet: nothing more can arrive
-        }
-    }
-    assert_eq!(
-        events_after_revocation, 0,
-        "no owner event may be delivered after the rotation revoked the session"
-    );
 
     // (c) A fresh session under the new key receives owner events again.
     let (mut ws2, reply) = connect_auth(&base, &new_key).await;
@@ -1334,18 +1316,21 @@ async fn s1f_queued_private_event_cannot_cross_rotation() {
     tokio::task::yield_now().await;
     drop(gate);
     assert_eq!(recovery.await.unwrap().status(), StatusCode::OK);
-    let next = tokio::time::timeout(Duration::from_secs(3), ws.next())
-        .await
-        .unwrap();
-    if let Some(Ok(Message::Text(text))) = next {
-        let value: serde_json::Value = serde_json::from_str(&text).unwrap();
-        assert_eq!(value["message"], "api key rotated");
-        assert_ne!(value["type"], "execution");
-    } else {
-        assert!(matches!(
-            next,
-            None | Some(Err(_)) | Some(Ok(Message::Close(_)))
-        ));
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(3);
+    loop {
+        match tokio::time::timeout_at(deadline, ws.next())
+            .await
+            .expect("queued-event socket did not close after rotation")
+        {
+            None | Some(Ok(Message::Close(_))) => break,
+            Some(Err(error)) if is_transport_closed(&error) => break,
+            Some(Ok(Message::Text(text))) => {
+                let value: serde_json::Value = serde_json::from_str(&text).unwrap();
+                assert_eq!(value["type"], "error");
+                assert_eq!(value["message"], "api key rotated");
+            }
+            other => panic!("unexpected queued-event revocation: {other:?}"),
+        }
     }
 }
 
@@ -1629,4 +1614,463 @@ async fn direct_idle_revocation_requires_transport_closure_not_silence() {
     }
     let (_, old_auth) = connect_auth(&base, &old).await;
     assert_eq!(old_auth["type"], "error");
+}
+
+fn local_sign_digest(sk: &SigningKey, digest: &[u8; 32]) -> [u8; 65] {
+    let (sig, recovery) = sk.sign_prehash_recoverable(digest).unwrap();
+    let mut wire = [0u8; 65];
+    wire[..64].copy_from_slice(&sig.to_bytes());
+    wire[64] = recovery.to_byte() + 27;
+    wire
+}
+
+#[tokio::test]
+async fn local_same_nonce_race_has_one_winner_and_no_secret_for_loser() {
+    let (mut app, original, owner, sk) = prepared();
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<SnapshotAck>(2);
+    Arc::get_mut(&mut app).unwrap().snapshot_req = Some(tx);
+    let sig = signature(&app, &sk, &owner, 0).await;
+    let router = build_router(app.clone(), false);
+    let first = tokio::spawn(
+        router
+            .clone()
+            .oneshot(post_recovery(&hex0x(&owner), 0, &sig)),
+    );
+    let ack = tokio::time::timeout(Duration::from_secs(2), rx.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    let second = tokio::spawn(
+        router
+            .clone()
+            .oneshot(post_recovery(&hex0x(&owner), 0, &sig)),
+    );
+    assert!(tokio::time::timeout(Duration::from_millis(100), rx.recv())
+        .await
+        .is_err());
+    assert_eq!(
+        router
+            .clone()
+            .oneshot(get_me(&original))
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::UNAUTHORIZED
+    );
+    ack.send(true).unwrap();
+    let winner = first.await.unwrap().unwrap();
+    assert_eq!(winner.status(), StatusCode::OK);
+    let new_key = parse_hex32(body_json(winner).await["apiKey"].as_str().unwrap()).unwrap();
+    let loser = tokio::time::timeout(Duration::from_secs(2), second)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    assert_eq!(loser.status(), StatusCode::BAD_REQUEST);
+    assert!(body_json(loser).await.get("apiKey").is_none());
+    assert!(
+        rx.try_recv().is_err(),
+        "rejected replay published a disk write"
+    );
+    let gw = app.gw.lock().await;
+    assert_eq!(gw.accounts[&new_key].recovery_nonce, 1);
+    assert_eq!(gw.accounts.len(), 1);
+    let restored = Gw::boot_restored(&gw.snapshot_plain()).unwrap();
+    assert!(restored.accounts.contains_key(&new_key));
+    assert!(!restored.accounts.contains_key(&original));
+}
+
+#[tokio::test]
+async fn local_real_rebind_before_recovery_rechecks_current_authorizer() {
+    for caller_signed in [false, true] {
+        let (mut app, key, owner, old_sk) = prepared();
+        if !caller_signed {
+            app.gw.lock().await.accounts.get_mut(&key).unwrap().signer = None;
+        }
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<SnapshotAck>(2);
+        Arc::get_mut(&mut app).unwrap().snapshot_req = Some(tx);
+        let new_sk = SigningKey::from_bytes((&[9u8; 32]).into()).unwrap();
+        let public = new_sk.verifying_key().to_encoded_point(false);
+        let hash = <RawKeccak as sha3::Digest>::digest(&public.as_bytes()[1..]);
+        let new_address: [u8; 20] = hash[12..].try_into().unwrap();
+        let sig = signature(&app, &old_sk, &owner, 0).await;
+        let proof = local_sign_digest(&new_sk, &deposit_bind_digest(&owner, &new_address));
+        let (chain, vault, old_address) = {
+            let gw = app.gw.lock().await;
+            (
+                gw.chain_id,
+                gw.vault,
+                gw.accounts[&key].deposit_address.unwrap(),
+            )
+        };
+        let authorization = local_sign_digest(
+            &old_sk,
+            &rebind_auth_digest(chain, &vault, &owner, 0, &old_address, &new_address),
+        );
+        let request = axum::http::Request::builder().method("POST").uri("/v1/accounts/deposit/address")
+            .header("content-type", "application/json").header("x-api-key", hex0x(&key))
+            .body(axum::body::Body::from(serde_json::json!({"address":hex0x(&new_address),"signature":hex0x(&proof),"currentSignature":hex0x(&authorization)}).to_string())).unwrap();
+        let router = build_router(app.clone(), false);
+        let held = app.gw.lock().await;
+        let mut rebind = Box::pin(router.clone().oneshot(request));
+        assert!(futures_util::poll!(rebind.as_mut()).is_pending());
+        let mut recovery = Box::pin(
+            router
+                .clone()
+                .oneshot(post_recovery(&hex0x(&owner), 0, &sig)),
+        );
+        assert!(futures_util::poll!(recovery.as_mut()).is_pending());
+        drop(held); // FIFO Gw waiters place the fully authorized rebind first.
+        assert_eq!(rebind.await.unwrap().status(), StatusCode::OK);
+        let recovery = tokio::spawn(recovery);
+        if caller_signed {
+            tokio::time::timeout(Duration::from_secs(2), rx.recv())
+                .await
+                .unwrap()
+                .unwrap()
+                .send(true)
+                .unwrap();
+            assert_eq!(recovery.await.unwrap().unwrap().status(), StatusCode::OK);
+        } else {
+            let response = tokio::time::timeout(Duration::from_secs(2), recovery)
+                .await
+                .unwrap()
+                .unwrap()
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+            assert!(body_json(response).await.get("apiKey").is_none());
+            assert!(rx.try_recv().is_err());
+            assert_eq!(view_nonce(&app, &hex0x(&owner)).await, 0);
+            let fresh = signature(&app, &new_sk, &owner, 0).await;
+            let next = tokio::spawn(router.oneshot(post_recovery(&hex0x(&owner), 0, &fresh)));
+            tokio::time::timeout(Duration::from_secs(2), rx.recv())
+                .await
+                .unwrap()
+                .unwrap()
+                .send(true)
+                .unwrap();
+            assert_eq!(next.await.unwrap().unwrap().status(), StatusCode::OK);
+        }
+        let gw = app.gw.lock().await;
+        let a = gw.accounts.values().next().unwrap();
+        assert_eq!(a.deposit_address, Some(new_address));
+        assert_eq!(a.rebind_counter, 1);
+        assert_eq!(a.recovery_nonce, 1);
+        assert!(!gw.accounts.contains_key(&key));
+        assert_eq!(
+            Gw::boot_restored(&gw.snapshot_plain())
+                .unwrap()
+                .snapshot_plain(),
+            gw.snapshot_plain()
+        );
+    }
+}
+
+/// Owns the listener task so the test can verify shutdown instead of depending
+/// on Tokio's test-runtime teardown to abort leaked sockets.
+struct LocalWsServer {
+    base: String,
+    shutdown: tokio::sync::oneshot::Sender<()>,
+    task: tokio::task::JoinHandle<()>,
+}
+impl LocalWsServer {
+    async fn start(app: Shared) -> Self {
+        let socket = tokio::net::TcpSocket::new_v4().unwrap();
+        // Accepted sockets inherit this small send buffer. A single bounded
+        // payload below fills it without an unbounded producer/flood loop.
+        socket.set_send_buffer_size(8 * 1024).unwrap();
+        socket.bind("127.0.0.1:0".parse().unwrap()).unwrap();
+        let listener = socket.listen(8).unwrap();
+        let addr = listener.local_addr().unwrap();
+        let (shutdown, stop) = tokio::sync::oneshot::channel();
+        let task = tokio::spawn(async move {
+            axum::serve(listener, build_router(app, false))
+                .with_graceful_shutdown(async {
+                    let _ = stop.await;
+                })
+                .await
+                .unwrap();
+        });
+        Self {
+            base: format!("ws://{addr}"),
+            shutdown,
+            task,
+        }
+    }
+    async fn stop(self) {
+        self.shutdown.send(()).unwrap();
+        tokio::time::timeout(Duration::from_secs(3), self.task)
+            .await
+            .expect("loopback listener did not shut down")
+            .unwrap();
+    }
+}
+
+fn is_transport_closed(error: &tokio_tungstenite::tungstenite::Error) -> bool {
+    use tokio_tungstenite::tungstenite::{error::ProtocolError, Error};
+    matches!(
+        error,
+        Error::ConnectionClosed
+            | Error::AlreadyClosed
+            | Error::Protocol(ProtocolError::ResetWithoutClosingHandshake)
+    ) || matches!(error, Error::Io(e) if matches!(e.kind(), std::io::ErrorKind::UnexpectedEof | std::io::ErrorKind::ConnectionReset | std::io::ErrorKind::BrokenPipe))
+}
+
+#[tokio::test]
+async fn local_tcp_backpressure_has_bounded_send_and_other_account_progress() {
+    let (mut app, old_key, owner, sk) = prepared();
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<SnapshotAck>(2);
+    Arc::get_mut(&mut app).unwrap().snapshot_req = Some(tx);
+    let (key_b, owner_b) = app.gw.lock().await.register_account(None);
+    let baseline_receivers = app.events_tx.receiver_count();
+    let server = LocalWsServer::start(app.clone()).await;
+    let (mut slow, auth) = connect_auth(&server.base, &old_key).await;
+    assert_eq!(auth["type"], "authOk");
+    let (mut healthy, auth) = connect_auth(&server.base, &key_b).await;
+    assert_eq!(auth["type"], "authOk");
+    let (mut same_owner, auth) = connect_auth(&server.base, &old_key).await;
+    assert_eq!(auth["type"], "authOk");
+    let control = app.gw.lock().await.recovery_control(&owner).unwrap();
+    const PAYLOAD_BYTES: usize = 8 * 1024 * 1024;
+    let payload = serde_json::json!({"owner":hex0x(&owner),"type":"execution","orderId":9001,"padding":"x".repeat(PAYLOAD_BYTES)}).to_string();
+    let started = tokio::time::Instant::now();
+    app.events_tx.send(payload).unwrap();
+    tokio::time::timeout(Duration::from_secs(1), async {
+        loop {
+            if control.fence.try_write().is_err() {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("did not observe the real socket send holding its account lease");
+    let other_started = tokio::time::Instant::now();
+    publish_private(&app, &hex0x(&owner_b), 9002);
+    let event = tokio::time::timeout(Duration::from_secs(1), healthy.next())
+        .await
+        .expect("slow account blocked the other socket")
+        .unwrap()
+        .unwrap();
+    let Message::Text(text) = event else {
+        panic!("expected other account private event");
+    };
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&text).unwrap()["orderId"],
+        9002
+    );
+    let other_ms = other_started.elapsed().as_millis();
+    assert!(
+        control.fence.try_write().is_err(),
+        "payload did not sustain backpressure through other-account delivery"
+    );
+    let sig = signature(&app, &sk, &owner, 0).await;
+    let recovery = tokio::spawn(build_router(app.clone(), false).oneshot(post_recovery(
+        &hex0x(&owner),
+        0,
+        &sig,
+    )));
+    let ack = tokio::time::timeout(
+        crate::credential_session::SEND_TIMEOUT + Duration::from_secs(1),
+        rx.recv(),
+    )
+    .await
+    .expect("socket send never released its lease")
+    .unwrap();
+    let release_ms = started.elapsed().as_millis();
+    assert!(
+        release_ms >= 1500,
+        "send completed too early to prove timeout/backpressure: {release_ms}ms"
+    );
+    ack.send(true).unwrap();
+    assert_eq!(recovery.await.unwrap().unwrap().status(), StatusCode::OK);
+    // Resume reads only after rotation; buffered pre-rotation bytes are allowed.
+    // An incomplete giant frame normally ends with TCP EOF/reset, never silence.
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(3);
+    loop {
+        match tokio::time::timeout_at(deadline, slow.next())
+            .await
+            .expect("stalled socket never reached actual closure")
+        {
+            None | Some(Ok(Message::Close(_))) => break,
+            Some(Err(error)) if is_transport_closed(&error) => break,
+            Some(Ok(Message::Text(text))) => {
+                let value: serde_json::Value = serde_json::from_str(&text).unwrap();
+                assert!(value["orderId"] == 9001 || value["message"] == "api key rotated");
+            }
+            other => panic!("unexpected socket termination: {other:?}"),
+        }
+    }
+    drop(slow);
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(3);
+    loop {
+        match tokio::time::timeout_at(deadline, same_owner.next())
+            .await
+            .expect("second same-owner socket was not revoked")
+        {
+            None | Some(Ok(Message::Close(_))) => break,
+            Some(Err(error)) if is_transport_closed(&error) => break,
+            Some(Ok(Message::Text(text))) => {
+                let value: serde_json::Value = serde_json::from_str(&text).unwrap();
+                assert!(value["orderId"] == 9001 || value["message"] == "api key rotated");
+            }
+            other => panic!("unexpected same-owner socket termination: {other:?}"),
+        }
+    }
+    drop(same_owner);
+    healthy.close(None).await.unwrap();
+    drop(healthy);
+    tokio::time::timeout(Duration::from_secs(3), async {
+        while app.events_tx.receiver_count() != baseline_receivers {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("websocket task/subscription leaked after clients closed");
+    server.stop().await;
+    println!("LOCAL_TCP_OBSERVATION {{\"payloadBytes\":{PAYLOAD_BYTES},\"connections\":3,\"sendBufferRequested\":8192,\"otherAccountMs\":{other_ms},\"leaseReleaseMs\":{release_ms},\"receiversAfter\":{baseline_receivers}}}");
+}
+
+#[tokio::test]
+async fn local_http_body_and_registration_limits_are_bounded() {
+    use axum::extract::ConnectInfo;
+    let (app, _, _, _) = prepared();
+    let router = build_router(app.clone(), true);
+    let peer: SocketAddr = "192.0.2.42:3210".parse().unwrap();
+    let initial = app.gw.lock().await.accounts.len();
+    for i in 0..=V1_REGISTER_RATE {
+        let request = axum::http::Request::builder()
+            .method("POST")
+            .uri("/v1/accounts")
+            .extension(ConnectInfo(peer))
+            .body(axum::body::Body::empty())
+            .unwrap();
+        let response = router.clone().oneshot(request).await.unwrap();
+        let expected = if i < V1_REGISTER_RATE {
+            StatusCode::OK
+        } else {
+            StatusCode::TOO_MANY_REQUESTS
+        };
+        assert_eq!(response.status(), expected);
+        if i == V1_REGISTER_RATE {
+            assert!(body_json(response).await.get("apiKey").is_none());
+        }
+    }
+    assert_eq!(
+        app.gw.lock().await.accounts.len(),
+        initial + V1_REGISTER_RATE as usize
+    );
+    let before = app.gw.lock().await.snapshot_plain();
+    let request = axum::http::Request::builder()
+        .method("POST")
+        .uri("/v1/accounts")
+        .extension(ConnectInfo(peer))
+        .body(axum::body::Body::from(vec![b'x'; 2 * 1024 * 1024 + 1]))
+        .unwrap();
+    assert_eq!(
+        router.clone().oneshot(request).await.unwrap().status(),
+        StatusCode::PAYLOAD_TOO_LARGE
+    );
+    assert_eq!(app.gw.lock().await.snapshot_plain(), before);
+    for path in [
+        "/api/deposit",
+        "/api/order",
+        "/api/recover",
+        "/v1/lp/deposit",
+    ] {
+        let request = axum::http::Request::builder()
+            .method("POST")
+            .uri(path)
+            .header("content-type", "application/json")
+            .body(axum::body::Body::from("{}"))
+            .unwrap();
+        assert_eq!(
+            router.clone().oneshot(request).await.unwrap().status(),
+            StatusCode::NOT_FOUND,
+            "production mounted {path}"
+        );
+    }
+    for key in [
+        None,
+        Some("not-hex"),
+        Some("0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"),
+    ] {
+        let mut request = axum::http::Request::builder().uri("/v1/accounts/me");
+        if let Some(key) = key {
+            request = request.header("x-api-key", key);
+        }
+        assert_eq!(
+            router
+                .clone()
+                .oneshot(request.body(axum::body::Body::empty()).unwrap())
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::UNAUTHORIZED
+        );
+    }
+    assert_eq!(app.gw.lock().await.snapshot_plain(), before);
+}
+
+#[tokio::test]
+async fn local_tcp_auth_ok_queued_behind_rotation_never_discloses_stale_success() {
+    let (mut app, old, owner, sk) = prepared();
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<SnapshotAck>(2);
+    Arc::get_mut(&mut app).unwrap().snapshot_req = Some(tx);
+    let receivers_before = app.events_tx.receiver_count();
+    let server = LocalWsServer::start(app.clone()).await;
+    let control = app.gw.lock().await.recovery_control(&owner).unwrap();
+    let gate = control.fence.clone().write_owned().await;
+    let sig = signature(&app, &sk, &owner, 0).await;
+    let mut recovery =
+        Box::pin(build_router(app.clone(), false).oneshot(post_recovery(&hex0x(&owner), 0, &sig)));
+    assert!(futures_util::poll!(recovery.as_mut()).is_pending());
+    // Rotation is queued first. Let a real socket authenticate the old key and
+    // subscribe to revocation while its authOk is waiting for the read fence.
+    let (mut ws, _) = tokio_tungstenite::connect_async(format!("{}/v1/ws", server.base))
+        .await
+        .unwrap();
+    assert!(matches!(
+        tokio::time::timeout(Duration::from_secs(2), ws.next())
+            .await
+            .unwrap(),
+        Some(Ok(Message::Text(_)))
+    ));
+    ws.send(Message::Text(
+        serde_json::json!({"type":"auth","apiKey":hex0x(&old)}).to_string(),
+    ))
+    .await
+    .unwrap();
+    tokio::time::timeout(Duration::from_secs(1), async {
+        while control.changed.receiver_count() == 0 {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("auth did not reach the credential boundary");
+    drop(gate);
+    let recovery = tokio::spawn(recovery);
+    let ack = tokio::time::timeout(Duration::from_secs(2), rx.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    ack.send(true).unwrap();
+    assert_eq!(recovery.await.unwrap().unwrap().status(), StatusCode::OK);
+    let message = tokio::time::timeout(Duration::from_secs(3), ws.next())
+        .await
+        .expect("stale authOk path did not close its transport");
+    match message {
+        None | Some(Ok(Message::Close(_))) => {}
+        Some(Err(error)) if is_transport_closed(&error) => {}
+        other => panic!("stale authentication emitted data after rotation: {other:?}"),
+    }
+    drop(ws);
+    tokio::time::timeout(Duration::from_secs(2), async {
+        while app.events_tx.receiver_count() != receivers_before {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("auth-race socket task leaked");
+    server.stop().await;
 }

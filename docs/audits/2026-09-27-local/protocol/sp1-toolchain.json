@@ -1,0 +1,7 @@
+{
+  "cli_version": "v6.0.0",
+  "cli_sha256": "04bc59c91993002fcea9265e5694a78ced7fe92cb42a25e8ce29acec3c366393",
+  "toolchain_archive_sha256": "8ee4ea0f27efbf73ddfe8a2038ced4c0802fdcf9e1ee109349763b9f4a808cf6",
+  "toolchain_rustc": "rustc 1.93.0-dev",
+  "actual_proof": false
+}

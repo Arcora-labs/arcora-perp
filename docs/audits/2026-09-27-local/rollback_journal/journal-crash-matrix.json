@@ -1,0 +1,9 @@
+{
+  "stage1_write_failure": "PASS: real ENOTDIR; continuation denied",
+  "stage2_write_failure": "PASS: real ENAMETOOLONG; continuation denied; previous stage1 journal retained",
+  "stage1_and_stage2_success": "PASS: data readable inside continuation; exact prepared root preserved",
+  "persistence_absent": "PASS: previous dev behavior retained; no durability claim",
+  "snapshot_delete_order": "PASS: existing regression selected in 12-test journal run",
+  "full_seal_snapshot_process_crash_matrix": "OPEN",
+  "real_proof_and_L1_broadcast": "BLOCKED_BY_EXTERNAL_LOCAL_PROVER_GATE"
+}

@@ -105,3 +105,13 @@ export async function boundedJson(url: string, init: RequestInit = {}, timeoutMs
     ]);
   } finally { if (timer !== undefined) clearTimeout(timer); }
 }
+
+/** A legacy record is only a public recovery hint, never trusted authority.
+ * Read only the validated owner; never expose or transmit its unscoped key. */
+export function legacyOwnerHint(): string | null {
+  try {
+    const value = JSON.parse(localStorage.getItem(LEGACY_ACCOUNT_KEY) ?? "null");
+    return value && typeof value.owner === "string" && hex32.test(value.owner)
+      ? value.owner.toLowerCase() : null;
+  } catch { return null; }
+}

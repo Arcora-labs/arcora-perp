@@ -1,0 +1,50 @@
+{
+  "recorded_at": "2026-09-27T19:32:49.800077+00:00",
+  "base_sha": "098e4952c189f92e4293ed7d49f81222b626e406",
+  "head_sha": "098e4952c189f92e4293ed7d49f81222b626e406",
+  "head_tree": "c6e9d4af0257531cd77e45ca5b3939c6ea7a0fa4",
+  "dirty_source_sha256": {
+    "crates/gateway/src/main.rs": "e0e6266327e47457a55a887651c89c4a9585fc9a92a57efc2f6579a0e9ce085b",
+    "crates/gateway/src/snapshot.rs": "62854569b2f35e98766e867d2ec803b8303044e1ffc3c58946ab66b721136aa1",
+    "crates/gateway/src/execution.rs": "e8104657f76b69a8485d4cccfbea8e91cb469d1ae9e16d08e43509ea967a3fbe",
+    "crates/gateway/src/account_recovery.rs": "162fa23be426bf1714f2ffbab28f63321fd526bb0c730f5dd1687a29ba9056e9",
+    "crates/gateway/src/rollback_journal.rs": "89b92086ca8d8efc9f65d01defd0fbdadd36ed8cdaad0044e1409f3028258880",
+    "crates/gateway/src/snapshot_s3_tests.rs": "479ae500d5b8851e29c0e7be7369ef29d8eeedec8de4fca32d582772a920ce84",
+    "Cargo.lock": "0db4f88b8f0c4a67ae57b04ae26eaec8ff98370d79677bae63da8053714f2479"
+  },
+  "tasks": {
+    "S3-01": "PASS bounded framing/authentication/malformed and allocation policy evidence",
+    "S3-02": "PASS representative frozen V5-V8 source-generated migration/state/authority/A01 vectors",
+    "S3-03": "PASS finite deterministic mutation/property campaign",
+    "S6-02": "PARTIAL real filesystem write/read/rename-failure/oversize preservation; no process kill or power-loss claim"
+  },
+  "commands": [
+    {
+      "argv": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "gateway",
+        "s3_",
+        "--",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "CARGO_TARGET_DIR": "/tmp/arcora-gateway-target",
+      "log": "s3-complete.log",
+      "exit_code": 0,
+      "selected": 8,
+      "passed": 8,
+      "failed": 0,
+      "ignored": 0,
+      "filtered_out": 367,
+      "log_sha256": "0dedfeaec19a0cedd9ca3f43e8123eb0605190a20bb2085d69cf361e0c177660"
+    }
+  ],
+  "negative_control": "negative-control.json",
+  "format_map": "format-map.md",
+  "migration": "migration-vectors.json",
+  "fuzz": "fuzz-manifest.json",
+  "reviewer": "root independent review pending at this subtask record; no external audit claim"
+}

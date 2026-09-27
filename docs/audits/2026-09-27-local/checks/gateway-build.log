@@ -1,0 +1,15 @@
+   Compiling perp-core v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/perp-core)
+   Compiling tokio v1.52.3
+   Compiling matcher v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/matcher)
+   Compiling sequencer v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/sequencer)
+   Compiling oracle-feed v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/oracle-feed)
+   Compiling prover v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/prover)
+   Compiling note-archive v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/note-archive)
+   Compiling dark-perp-attestation v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/attestation)
+   Compiling hyper v1.10.1
+   Compiling hyper-util v0.1.20
+   Compiling tokio-tungstenite v0.24.0
+   Compiling tower v0.5.3
+   Compiling axum v0.7.9
+   Compiling gateway v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/gateway)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 10.96s

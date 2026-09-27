@@ -1,0 +1,6 @@
+CARGO_TARGET_DIR=/Users/huseyinarslan/Desktop/dark-perp/target cargo test --locked -p gateway local_rebind_nonce_exhaustion_rejects_before_any_mutation -- --exact --nocapture	143
+CARGO_BUILD_JOBS=2 CARGO_TARGET_DIR=/tmp/arcora-gateway-target cargo test --locked -p gateway local_rebind_nonce_exhaustion_rejects_before_any_mutation -- --nocapture	101
+CARGO_BUILD_JOBS=2 CARGO_TARGET_DIR=/tmp/arcora-gateway-target cargo test --locked -p gateway s1_recovery_ws_tests -- --nocapture --test-threads=1	0
+CARGO_BUILD_JOBS=2 CARGO_TARGET_DIR=/tmp/arcora-gateway-target cargo test --locked -p gateway account_recovery -- --nocapture --test-threads=1	101
+CARGO_BUILD_JOBS=2 CARGO_TARGET_DIR=/tmp/arcora-gateway-target cargo test --locked -p gateway account_recovery::tests -- --nocapture --test-threads=1	0
+CARGO_BUILD_JOBS=2 CARGO_TARGET_DIR=/tmp/arcora-gateway-target cargo test --locked -p gateway s1_recovery_ws_tests -- --nocapture --test-threads=1	0
