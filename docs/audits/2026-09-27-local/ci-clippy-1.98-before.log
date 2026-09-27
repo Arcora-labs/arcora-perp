@@ -1,0 +1,16 @@
+2026-09-27T20:02:25.6264530Z error: can be more succinctly written as a byte str
+2026-09-27T20:02:25.6283399Z    --> crates/gateway/src/snapshot_s3_tests.rs:418:20
+2026-09-27T20:02:25.6303155Z     |
+2026-09-27T20:02:25.6313426Z 418 |     for version in [b'D', b'4', b'5', b'6', b'7', b'9'] {
+2026-09-27T20:02:25.6343618Z     |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: try: `*b"D45679"`
+2026-09-27T20:02:25.6344511Z     |
+2026-09-27T20:02:25.6345796Z     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.98.0/index.html#byte_char_slices
+2026-09-27T20:02:25.6353099Z     = note: `-D clippy::byte-char-slices` implied by `-D warnings`
+2026-09-27T20:02:25.6354541Z     = help: to override `-D warnings` add `#[allow(clippy::byte_char_slices)]`
+2026-09-27T20:02:25.6355225Z 
+2026-09-27T20:02:26.5879754Z error: could not compile `gateway` (bin "gateway" test) due to 1 previous error
+2026-09-27T20:02:26.5881581Z warning: build failed, waiting for other jobs to finish...
+2026-09-27T20:02:27.1421601Z ##[error]Process completed with exit code 101.
+2026-09-27T20:02:27.1584920Z Post job cleanup.
+2026-09-27T20:02:27.2530588Z [command]/usr/bin/git version
+2026-09-27T20:02:27.2614500Z git version 2.55.0

@@ -1,0 +1,9 @@
+   Compiling gateway v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/gateway)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.93s
+     Running unittests src/main.rs (/tmp/arcora-gateway-target/debug/deps/gateway-af1323d2b67b45c0)
+
+running 1 test
+test account_recovery::snapshot_s3_tests::s3_envelope_mutations_wrong_seed_and_versions_are_rejected ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 378 filtered out; finished in 0.23s
+

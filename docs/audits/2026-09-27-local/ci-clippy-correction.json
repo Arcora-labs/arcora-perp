@@ -1,0 +1,16 @@
+{
+  "head": "ac9db962a703fc25d2ede4a6b80de1ee67396866",
+  "jobs": [
+    108696474575,
+    108696474558,
+    108696474126
+  ],
+  "same_failure": "Clippy 1.98 byte_char_slices at snapshot_s3_tests.rs:418",
+  "fix": "Equivalent six-byte array expressed as *b\"D45679\"; no warning suppression",
+  "remote_gateway_tests": {
+    "passed": 378,
+    "failed": 0,
+    "ignored": 1
+  },
+  "excerpt_sha256": "55f9127aa38de7130f8d7e9268d54ebc50f77faad7405174b9eaae38461d382a"
+}

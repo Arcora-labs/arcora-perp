@@ -26,7 +26,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: taiki-e/install-action@cargo-audit
       - name: RustSec workspace lock
-        run: cargo audit --json | tee cargo-audit.json
+        run: |
+          set -o pipefail
+          cargo audit --json | tee cargo-audit.json
       - uses: pnpm/action-setup@v4
         with: { version: 10 }
       - uses: actions/setup-node@v4
@@ -34,6 +36,7 @@ jobs:
       - name: npm advisories through frozen pnpm graph
         working-directory: frontend
         run: |
+          set -o pipefail
           pnpm install --frozen-lockfile
           pnpm audit --prod --json | tee ../pnpm-audit.json
       - uses: actions/upload-artifact@v4

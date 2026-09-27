@@ -415,7 +415,7 @@ fn s3_envelope_mutations_wrong_seed_and_versions_are_rejected() {
         tested += 1;
     }
     assert!(snapshot::open(&sealed, &[0xC4; 32]).is_err());
-    for version in [b'D', b'4', b'5', b'6', b'7', b'9'] {
+    for version in *b"D45679" {
         let mut input = sealed.clone();
         input[6] = version;
         assert!(snapshot::open(&input, &[0xC3; 32]).is_err());

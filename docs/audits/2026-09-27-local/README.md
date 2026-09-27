@@ -2,9 +2,9 @@
 
 **Durum: PARTIAL. 27 görevden 12 PASS, 10 PARTIAL, 5 BLOCKED. Yayın kapısı kapalı.** Güncel GitHub `origin/main` çekildi ve rehberin tabanı ile eşleşti: `098e4952c189f92e4293ed7d49f81222b626e406`, tree `c6e9d4af0257531cd77e45ca5b3939c6ea7a0fa4`. Çalışma `audit/arcora-local-20260927` dalında, `/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp` dizinindedir.
 
-Masaüstündeki asıl checkout'un durumu ve 62 kaydedilmiş dosya hash'i değişmedi. O checkout `f997f8b9` üzerinde bırakıldı; yeni kod ve düzeltmeler ayrı worktree'dedir. Main'e push, PR, merge veya deploy yapılmadı. Base CI run 36337867266'nın dört işi de güncel olarak başarılı gözlendi; bu uzak koşu yerel değişiklikleri kapsamaz.
+Masaüstündeki asıl checkout'un durumu ve 62 kaydedilmiş dosya hash'i değişmedi. O checkout `f997f8b9` üzerinde bırakıldı; yeni kod ve düzeltmeler ayrı worktree'dedir. İlk yerel değerlendirme sırasında push, PR, merge veya deploy yapılmamıştı. Kullanıcının sonraki merge talebiyle [PR #21](https://github.com/Kubudak90/dark-perp/pull/21) açıldı; birleştirme durumu PR üzerinden doğrulanmalıdır. Yayın kapısı kapalıdır. Base CI run 36337867266'nın dört işi de güncel olarak başarılı gözlendi; bu uzak koşu yerel değişiklikleri kapsamaz.
 
-[Durumlu çalışma rehberi](arcora-ilerleme.html) · [27 görev ve kabul ölçütleri](task-status.json) · [Son kanıt manifest'i](final-evidence-manifest.json) · [Kaynak parmak izi](source-manifest.json) · [Yayın kararı ve kalanlar](release-decision.md)
+[Kalan 15 iş — HTML](kalan-isler.html) · [Durumlu çalışma rehberi](arcora-ilerleme.html) · [27 görev ve kabul ölçütleri](task-status.json) · [Son kanıt manifest'i](final-evidence-manifest.json) · [Kaynak parmak izi](source-manifest.json) · [Yayın kararı ve kalanlar](release-decision.md)
 
 ## Doğrulama
 
@@ -43,3 +43,9 @@ Gerçek cüzdan, A06/Groth16, gerçek proof ile tam fon akışı, tüm crash sı
 Repo kökünde `CARGO_TARGET_DIR=/tmp/arcora-gateway-target cargo test --workspace --locked`; frontend'de `pnpm install --frozen-lockfile`, `pnpm test`, `pnpm build`, `pnpm test:browser`; contracts'ta `forge test -vvv`. Gerçek SP1 için `protocol/sp1-toolchain.json` ve `checks/sp1-host-with-protoc.json` içindeki pinlenmiş PATH/PROTOC kurulumunu kullan; sistem Rust'ı succinct target'ının yerine kullanma.
 
 Gateway'i yalnız temiz test ortamında `GATEWAY_BIND_ADDRESS=127.0.0.1` ile başlat. `scripts/local-verification/smoke_gateway.py` yalnız kendisinin oluşturduğu süreç/geçici state üzerinde çalışır. Graph Engineering uygulandı; Jev değerlendirildi, deterministik yetki/finans/parser yollarına model tabanlı karar eklenmedi.
+
+## Birleştirme öncesi CI düzeltmesi
+
+`ac9db962` üzerindeki ilk GitHub koşusunda gateway 378/378 geçti. Yeni Clippy 1.98, testteki altı byte literalinin eşdeğer byte-string biçimini istedi; uyarı bastırılmadan düzeltildi. `ci-clippy-correction.json` ve `checks/merge-*` kayıtları bu ek değişikliği kapsar. İlk `final-evidence-manifest.json` önceki kaynak anının kanıtıdır; sonraki birleştirme değişikliklerini test etmiş gibi sunulmaz.
+
+GitHub shell varsayılanının pipefail içermediği canlı log ile doğrulandı. A11 audit adımlarına `set -o pipefail` eklendi; RSA advisory kaynaklı hata artık `tee` ile gizlenmez. `ci-pipeline-correction.json` ayrıntıyı kaydeder. Bağımlılık ve yayın engelleri açık kalır.

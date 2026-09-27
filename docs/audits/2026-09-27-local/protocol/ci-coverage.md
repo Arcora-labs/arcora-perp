@@ -14,3 +14,7 @@ Test-control negative evidence: two assertions fail with the old TEST-profile-on
 Tool drift is recorded: local Rust1.95, Node24.12/pnpm11.5 versus CI Node22/pnpm10; Foundry1.7.2 nightly; SP1 direct and sp1/slop family lock resolution6.0.0 plus succinct Rust1.93.0-dev. Both nested SP1 .gitignore files now allow Cargo.lock tracking. Runtime dependency hashes and tool provenance are in the final manifest. Unpatched RSA and remaining Vite/Vitest dev advisories are open, not suppressed.
 
 Proposed repository policy: require current-head Rust/frontend/Foundry/typecheck jobs, A01/A11 for affected paths, and a separately provisioned real-guest/proof job before release. Review stale branch-specific workflows, pin third-party actions to reviewed immutable commits, and use a protected release branch with independent review. No GitHub protection, collaborator or action setting was changed.
+
+## Merge-preparation correction
+
+The live A11 advisory job reported SUCCESS while its JSON contained one RSA vulnerability. Its actual step shell lacked pipefail. Both audit pipelines now enable pipefail explicitly; the local negative/positive control is in `../ci-pipeline-correction.json`. The inherited advisory now correctly fails that release-oriented check. No dependency risk was suppressed. Other functional checks and the explicit user-authorized code merge remain separate from release approval.
