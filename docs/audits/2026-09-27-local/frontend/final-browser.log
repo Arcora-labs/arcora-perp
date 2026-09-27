@@ -1,0 +1,60 @@
+[WARN] The "pnpm" field in package.json is no longer read by pnpm. The following keys were ignored: "pnpm.onlyBuiltDependencies". See https://pnpm.io/settings for the new home of each setting.
+$ playwright test
+[2m[WebServer] [22m(node:39642) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[2m[WebServer] [22m(Use `node --trace-warnings ...` to show where the warning was created)
+[2m[WebServer] [22m[43m[33m[[39m[49m[43m[30mWARN[39m[49m[43m[33m][39m[49m The "pnpm" field in package.json is no longer read by pnpm. The following keys were ignored: "pnpm.onlyBuiltDependencies". See https://pnpm.io/settings for the new home of each setting.
+[2m[WebServer] [22m(node:39643) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[2m[WebServer] [22m(Use `node --trace-warnings ...` to show where the warning was created)
+[2m[WebServer] [22m(node:39675) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[2m[WebServer] [22m(Use `node --trace-warnings ...` to show where the warning was created)
+
+Running 38 tests using 1 worker
+
+(node:39676) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:39676) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓   1 [chromium] › tests/browser/local.spec.ts:87:1 › BR-01 real same-origin tabs serialize recovery and adopt storage generation (865ms)
+  ✓   2 [chromium] › tests/browser/local.spec.ts:104:1 › BR-01 closing tab holding native Web Lock releases recovery for sibling (528ms)
+  ✓   3 [chromium] › tests/browser/local.spec.ts:112:1 › BR-04 wallet rejection and absent Web Locks both fail before POST (303ms)
+  ✓   4 [chromium] › tests/browser/local.spec.ts:120:1 › BR-05 storage quota failure retains new key in memory and warns after confirmed rotation (331ms)
+  ✓   5 [chromium] › tests/browser/local.spec.ts:132:64 › BR-06 legacy record never transmits old key or registers replacement (111ms)
+  ✓   6 [chromium] › tests/browser/local.spec.ts:132:64 › BR-06 mismatch record never transmits old key or registers replacement (111ms)
+  ✓   7 [chromium] › tests/browser/local.spec.ts:132:64 › BR-06 corrupt record never transmits old key or registers replacement (118ms)
+  ✓   8 [chromium] › tests/browser/local.spec.ts:143:1 › BR-08 withdrawal retains signed market when selection changes during wallet prompt (250ms)
+  ✓   9 [chromium] › tests/browser/local.spec.ts:152:1 › BR-07 cancel response after recovery cannot emit success into new credential context (353ms)
+  ✓  10 [chromium] › tests/browser/local.spec.ts:161:1 › S2-04 CSP blocks inline script and external connect; errors render only text (366ms)
+  ✓  11 [chromium] › tests/browser/local.spec.ts:179:1 › BR-03 real HTTP body stall is bounded and preserves saved credential (46.1s)
+  ✓  12 [chromium] › tests/browser/local.spec.ts:188:1 › BR-08 cross-tab rotation while withdrawal signature waits aborts old mutation (501ms)
+  ✓  13 [chromium] › tests/browser/local.spec.ts:199:1 › BR-07 stale withdrawal proof response is discarded after rotation (370ms)
+  ✓  14 [chromium] › tests/browser/local.spec.ts:207:1 › BR-01 metadata and storage-write barriers retain one recovery lock across tabs (805ms)
+  ✓  15 [chromium] › tests/browser/local.spec.ts:222:1 › BR-02 obsolete socket callbacks cannot close current native browser socket (288ms)
+  ✓  16 [chromium] › tests/browser/local.spec.ts:239:1 › BR-07 old refresh held across rotation cannot install stale balance (384ms)
+  ✓  17 [chromium] › tests/browser/local.spec.ts:256:1 › BR-05 session-only warning survives leaving and returning to recovery panel (317ms)
+  ✓  18 [chromium] › tests/browser/local.spec.ts:265:1 › S2-02 disabled storage does not crash application shell (163ms)
+  ✓  19 [chromium] › tests/browser/local.spec.ts:272:1 › BR-05 session-only warning remains during and after rejected second recovery (514ms)
+(node:40252) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:40252) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  20 [webkit] › tests/browser/local.spec.ts:87:1 › BR-01 real same-origin tabs serialize recovery and adopt storage generation (1.1s)
+  ✓  21 [webkit] › tests/browser/local.spec.ts:104:1 › BR-01 closing tab holding native Web Lock releases recovery for sibling (722ms)
+  ✓  22 [webkit] › tests/browser/local.spec.ts:112:1 › BR-04 wallet rejection and absent Web Locks both fail before POST (380ms)
+  ✓  23 [webkit] › tests/browser/local.spec.ts:120:1 › BR-05 storage quota failure retains new key in memory and warns after confirmed rotation (431ms)
+  ✓  24 [webkit] › tests/browser/local.spec.ts:132:64 › BR-06 legacy record never transmits old key or registers replacement (230ms)
+  ✓  25 [webkit] › tests/browser/local.spec.ts:132:64 › BR-06 mismatch record never transmits old key or registers replacement (255ms)
+  ✓  26 [webkit] › tests/browser/local.spec.ts:132:64 › BR-06 corrupt record never transmits old key or registers replacement (221ms)
+  ✓  27 [webkit] › tests/browser/local.spec.ts:143:1 › BR-08 withdrawal retains signed market when selection changes during wallet prompt (309ms)
+  ✓  28 [webkit] › tests/browser/local.spec.ts:152:1 › BR-07 cancel response after recovery cannot emit success into new credential context (440ms)
+  ✓  29 [webkit] › tests/browser/local.spec.ts:161:1 › S2-04 CSP blocks inline script and external connect; errors render only text (383ms)
+  ✓  30 [webkit] › tests/browser/local.spec.ts:179:1 › BR-03 real HTTP body stall is bounded and preserves saved credential (46.2s)
+  ✓  31 [webkit] › tests/browser/local.spec.ts:188:1 › BR-08 cross-tab rotation while withdrawal signature waits aborts old mutation (686ms)
+  ✓  32 [webkit] › tests/browser/local.spec.ts:199:1 › BR-07 stale withdrawal proof response is discarded after rotation (336ms)
+  ✓  33 [webkit] › tests/browser/local.spec.ts:207:1 › BR-01 metadata and storage-write barriers retain one recovery lock across tabs (685ms)
+  ✓  34 [webkit] › tests/browser/local.spec.ts:222:1 › BR-02 obsolete socket callbacks cannot close current native browser socket (324ms)
+  ✓  35 [webkit] › tests/browser/local.spec.ts:239:1 › BR-07 old refresh held across rotation cannot install stale balance (437ms)
+  ✓  36 [webkit] › tests/browser/local.spec.ts:256:1 › BR-05 session-only warning survives leaving and returning to recovery panel (395ms)
+  ✓  37 [webkit] › tests/browser/local.spec.ts:265:1 › S2-02 disabled storage does not crash application shell (236ms)
+  ✓  38 [webkit] › tests/browser/local.spec.ts:272:1 › BR-05 session-only warning remains during and after rejected second recovery (592ms)
+
+  38 passed (1.8m)

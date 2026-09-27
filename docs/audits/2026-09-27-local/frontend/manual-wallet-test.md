@@ -1,0 +1,5 @@
+# Manual browser and wallet gate
+
+Status: NOT RUN. No real wallet profile, user signature or real chain transaction was requested or used. Controlled EIP-1193 provider returns synthetic deterministic signatures; it does not validate wallet address choice, extension prompts, native key storage, network switching, user rejection UX or hardware-wallet interaction.
+
+Required rehearsal in an isolated test profile: open two same-origin tabs in actual Safari plus one extension-supported browser; select the previously bound synthetic/test-wallet owner; recover while tab switching and while offline; reject one signature; confirm no second prompt while sibling lock is held; deny persistence/private mode; reload and recover session-only access; confirm account balance/positions/withdrawal display using the real local gateway. Keep private keys and raw signatures out of evidence. Record browser/extension versions, deployment tuple and redacted outcomes. Actual Safari is not equivalent to automated Playwright WebKit.

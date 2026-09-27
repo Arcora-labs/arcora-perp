@@ -216,6 +216,12 @@ impl<H: Hasher> State<H> {
     /// first error (the prover reproduces the same stop point deterministically).
     pub fn apply_batch(&mut self, ops: &[BatchOp]) -> Result<BatchOutputs, EngineError> {
         crate::commitment::classify_wind_down_ops(ops)?;
+        // Batch identity is committed into the state root. Reject exhaustion
+        // before any operation can mint/burn value, in debug and release alike.
+        let next_batch_id = self
+            .next_batch_id
+            .checked_add(1)
+            .ok_or(EngineError::Overflow)?;
         let mut outputs = BatchOutputs::default();
         for op in ops {
             let out = self.apply_op(op)?;
@@ -233,7 +239,7 @@ impl<H: Hasher> State<H> {
                 return Err(EngineError::ConservationViolated);
             }
         }
-        self.next_batch_id += 1;
+        self.next_batch_id = next_batch_id;
         Ok(outputs)
     }
 

@@ -1,0 +1,8 @@
+{
+  "before_sha256": "a1f0a43033ffdd858bf99854cae814f5426c27db512088883ffa1a0e8f1c4e75",
+  "after_sha256": "a1f0a43033ffdd858bf99854cae814f5426c27db512088883ffa1a0e8f1c4e75",
+  "equal": true,
+  "exit_code": 0,
+  "size": 515096,
+  "method": "Same environment/cache; mtime forces guest recompilation. Not independent clean-container reproducibility. Earlier hash difference invalidated because core engine formatting changed; intervening wrong-PATH attempt failed before compiling."
+}

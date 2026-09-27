@@ -412,6 +412,28 @@ contract CollateralVaultTest is MiniTest {
     /// and an unauthorized deposit slips through. The constructor must reject it so a
     /// deploy with `GATEWAY_SIGNER=0x0` can never ship a wide-open vault. Same arg
     /// list/order as `setUp`, only the signer is `address(0)`.
+    function test_local_s4_signature_cannot_cross_vault_or_chain() public {
+        CollateralVault other = new CollateralVault(address(this), address(usdc), vm.addr(GW_PK));
+        bytes memory sig = _gwSig(vault, alice, USD, DEFAULT_TEST_OWNER_COMMIT);
+        usdc.mint(alice, USD);
+        vm.startPrank(alice);
+        usdc.approve(address(vault), USD);
+        usdc.approve(address(other), USD);
+        vm.expectRevert(CollateralVault.BadGatewaySig.selector);
+        other.deposit(USD, DEFAULT_TEST_OWNER_COMMIT, sig);
+        uint256 originalChain = block.chainid;
+        vm.chainId(originalChain + 1);
+        vm.expectRevert(CollateralVault.BadGatewaySig.selector);
+        vault.deposit(USD, DEFAULT_TEST_OWNER_COMMIT, sig);
+        assertEq(vault.depositCount(), 0, "domain rejects leave original vault unchanged");
+        assertEq(other.depositCount(), 0, "domain rejects leave other vault unchanged");
+        assertEq(usdc.balanceOf(alice), USD, "domain rejects move no tokens");
+        vm.chainId(originalChain);
+        vault.deposit(USD, DEFAULT_TEST_OWNER_COMMIT, sig);
+        vm.stopPrank();
+        assertEq(vault.depositCount(), 1, "correct domain remains usable");
+    }
+
     function test_constructor_rejects_zero_gateway_signer() public {
         vm.expectRevert(CollateralVault.ZeroGatewaySigner.selector);
         new CollateralVault(address(this), address(usdc), address(0));

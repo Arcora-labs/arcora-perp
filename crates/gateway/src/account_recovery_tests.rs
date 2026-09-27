@@ -180,3 +180,105 @@ async fn a07_rotation_preserves_ingested_receipts_prefix_and_proof_replay() {
     assert_eq!(roots.new_state_root, gw.seq.state.state_root());
     assert_eq!(roots.deposits_root, event.tip);
 }
+
+fn local_sign(sk: &SigningKey, digest: &[u8; 32]) -> [u8; 65] {
+    let (sig, recovery) = sk.sign_prehash_recoverable(digest).unwrap();
+    let mut wire = [0u8; 65];
+    wire[..64].copy_from_slice(&sig.to_bytes());
+    wire[64] = recovery.to_byte() + 27;
+    wire
+}
+
+fn local_address(sk: &SigningKey) -> [u8; 20] {
+    let public = sk.verifying_key().to_encoded_point(false);
+    let hash = <RawKeccak as sha3::Digest>::digest(&public.as_bytes()[1..]);
+    hash[12..].try_into().unwrap()
+}
+
+#[test]
+fn local_rebind_nonce_exhaustion_rejects_before_any_mutation() {
+    let (mut gw, key, owner, old_sk, old_address) = prepared();
+    let new_sk = SigningKey::from_bytes((&[9u8; 32]).into()).unwrap();
+    let new_address = local_address(&new_sk);
+    gw.accounts.get_mut(&key).unwrap().rebind_counter = u64::MAX;
+    let proof = local_sign(&new_sk, &deposit_bind_digest(&owner, &new_address));
+    let authorization = local_sign(
+        &old_sk,
+        &rebind_auth_digest(
+            gw.chain_id,
+            &gw.vault,
+            &owner,
+            u64::MAX,
+            &old_address,
+            &new_address,
+        ),
+    );
+    let before = gw.snapshot_plain();
+    assert!(gw
+        .account_set_deposit_address(&key, new_address, &proof, Some(&authorization))
+        .is_err());
+    assert_eq!(
+        gw.snapshot_plain(),
+        before,
+        "exhausted rebind must not partially change its authorizer"
+    );
+}
+
+#[test]
+fn local_recovery_authority_and_domain_matrix_preserves_rejected_state() {
+    let (base, key, owner, signer_sk, _) = prepared();
+    let bound_sk = SigningKey::from_bytes((&[9u8; 32]).into()).unwrap();
+    let foreign_sk = SigningKey::from_bytes((&[11u8; 32]).into()).unwrap();
+    for caller_signed in [false, true] {
+        let mut gw = Gw::boot_restored(&base.snapshot_plain()).unwrap();
+        gw.accounts.get_mut(&key).unwrap().deposit_address = Some(local_address(&bound_sk));
+        if !caller_signed {
+            gw.accounts.get_mut(&key).unwrap().signer = None;
+        }
+        let authorizer = if caller_signed { &signer_sk } else { &bound_sk };
+        let non_authorizer = if caller_signed { &bound_sk } else { &signer_sk };
+        let valid = digest(gw.chain_id, &gw.vault, &owner, 0);
+        let invalid = [
+            ("other_authority", local_sign(non_authorizer, &valid)),
+            ("unrelated_signer", local_sign(&foreign_sk, &valid)),
+            (
+                "wrong_chain",
+                local_sign(authorizer, &digest(gw.chain_id ^ 1, &gw.vault, &owner, 0)),
+            ),
+            (
+                "wrong_vault",
+                local_sign(authorizer, &digest(gw.chain_id, &[0x99; 20], &owner, 0)),
+            ),
+            (
+                "wrong_owner",
+                local_sign(authorizer, &digest(gw.chain_id, &gw.vault, &[0x99; 32], 0)),
+            ),
+            (
+                "wrong_nonce",
+                local_sign(authorizer, &digest(gw.chain_id, &gw.vault, &owner, 1)),
+            ),
+            ("malformed_signature", [0; 65]),
+        ];
+        for (label, sig) in invalid {
+            let before = gw.snapshot_plain();
+            assert!(
+                gw.recover_account(owner, 0, &sig).is_err(),
+                "accepted {label}, caller_signed={caller_signed}"
+            );
+            assert_eq!(gw.snapshot_plain(), before, "rejection mutated {label}");
+        }
+        let signature = local_sign(authorizer, &valid);
+        let rotated = gw.recover_account(owner, 0, &signature).unwrap();
+        assert!(!gw.accounts.contains_key(&key));
+        assert_eq!(gw.accounts[&rotated].recovery_nonce, 1);
+        let before = gw.snapshot_plain();
+        assert!(gw.recover_account(owner, 0, &signature).is_err());
+        assert_eq!(gw.snapshot_plain(), before, "replay changed state");
+        let restored = Gw::boot_restored(&before).unwrap();
+        assert_eq!(restored.snapshot_plain(), before);
+        assert_eq!(
+            restored.recovery_view(&owner).unwrap()["authorizer"],
+            hex0x(&local_address(authorizer))
+        );
+    }
+}

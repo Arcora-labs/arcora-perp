@@ -1,0 +1,38 @@
+[WARN] The "pnpm" field in package.json is no longer read by pnpm. The following keys were ignored: "pnpm.onlyBuiltDependencies". See https://pnpm.io/settings for the new home of each setting.
+
+ RUN  v2.1.9 /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend
+
+stderr | src/api/realClient.e2e.test.ts > sealed order round trip against a live gateway > bootstrap verifies the epoch, deposit funds the /v1 account, and a SEALED order is decrypted + ACCEPTED by the enclave
+[dark-perp] VITE_ENCLAVE_SIGNER not set — enclave epoch signer UNPINNED (dev mode). Recovered signer: 0x4a62316623ad457f02cdc5d997ded67a383ec569
+
+ ✓ src/api/realClient.e2e.test.ts (1 test) 47ms
+stderr | Fetch.onError (file:/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/node_modules/.pnpm/happy-dom@20.10.6/node_modules/happy-dom/src/fetch/Fetch.ts:698:35)
+DOMException [AbortError]: The operation was aborted.
+    at Fetch.onAsyncTaskManagerAbort (file:///Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/node_modules/.pnpm/happy-dom@20.10.6/node_modules/happy-dom/src/fetch/Fetch.ts:711:17)
+    at Object.<anonymous> (file:///Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/node_modules/.pnpm/happy-dom@20.10.6/node_modules/happy-dom/src/fetch/Fetch.ts:545:10)
+    at AsyncTaskManager.abortAll (file:///Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/node_modules/.pnpm/happy-dom@20.10.6/node_modules/happy-dom/src/async-task-manager/AsyncTaskManager.ts:331:21)
+    at AsyncTaskManager.abort (file:///Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/node_modules/.pnpm/happy-dom@20.10.6/node_modules/happy-dom/src/async-task-manager/AsyncTaskManager.ts:61:15)
+    at DetachedBrowserFrame.abort (file:///Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/node_modules/.pnpm/happy-dom@20.10.6/node_modules/happy-dom/src/browser/detached-browser/DetachedBrowserFrame.ts:139:49)
+    at DetachedWindowAPI.abort (file:///Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/node_modules/.pnpm/happy-dom@20.10.6/node_modules/happy-dom/src/window/DetachedWindowAPI.ts:62:29)
+    at teardownWindow (file:///Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/node_modules/.pnpm/vitest@2.1.9_@types+node@26.0.1_happy-dom@20.10.6/node_modules/vitest/dist/chunks/index.K90BXFOx.js:363:24)
+    at Object.teardown (file:///Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/node_modules/.pnpm/vitest@2.1.9_@types+node@26.0.1_happy-dom@20.10.6/node_modules/vitest/dist/chunks/index.K90BXFOx.js:415:15)
+    at withEnv (file:///Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/node_modules/.pnpm/vitest@2.1.9_@types+node@26.0.1_happy-dom@20.10.6/node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:94:15)
+    at run (file:///Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/node_modules/.pnpm/vitest@2.1.9_@types+node@26.0.1_happy-dom@20.10.6/node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:112:3)
+DOMException [AbortError]: The operation was aborted.
+    at Fetch.onAsyncTaskManagerAbort (file:///Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/node_modules/.pnpm/happy-dom@20.10.6/node_modules/happy-dom/src/fetch/Fetch.ts:711:17)
+    at Object.<anonymous> (file:///Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/node_modules/.pnpm/happy-dom@20.10.6/node_modules/happy-dom/src/fetch/Fetch.ts:545:10)
+    at AsyncTaskManager.abortAll (file:///Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/node_modules/.pnpm/happy-dom@20.10.6/node_modules/happy-dom/src/async-task-manager/AsyncTaskManager.ts:331:21)
+    at AsyncTaskManager.abort (file:///Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/node_modules/.pnpm/happy-dom@20.10.6/node_modules/happy-dom/src/async-task-manager/AsyncTaskManager.ts:61:15)
+    at DetachedBrowserFrame.abort (file:///Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/node_modules/.pnpm/happy-dom@20.10.6/node_modules/happy-dom/src/browser/detached-browser/DetachedBrowserFrame.ts:139:49)
+    at DetachedWindowAPI.abort (file:///Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/node_modules/.pnpm/happy-dom@20.10.6/node_modules/happy-dom/src/window/DetachedWindowAPI.ts:62:29)
+    at teardownWindow (file:///Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/node_modules/.pnpm/vitest@2.1.9_@types+node@26.0.1_happy-dom@20.10.6/node_modules/vitest/dist/chunks/index.K90BXFOx.js:363:24)
+    at Object.teardown (file:///Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/node_modules/.pnpm/vitest@2.1.9_@types+node@26.0.1_happy-dom@20.10.6/node_modules/vitest/dist/chunks/index.K90BXFOx.js:415:15)
+    at withEnv (file:///Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/node_modules/.pnpm/vitest@2.1.9_@types+node@26.0.1_happy-dom@20.10.6/node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:94:15)
+    at run (file:///Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/node_modules/.pnpm/vitest@2.1.9_@types+node@26.0.1_happy-dom@20.10.6/node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:112:3)
+
+
+ Test Files  1 passed (1)
+      Tests  1 passed (1)
+   Start at  22:32:56
+   Duration  436ms (transform 67ms, setup 0ms, collect 88ms, tests 47ms, environment 103ms, prepare 38ms)
+

@@ -1,0 +1,21 @@
+{
+  "owner": "root",
+  "parent_check": "../checks/live-http-restore.json",
+  "parent_check_sha256": "494e83441f2eecc9a2ce3aa3511f331f68404a6599277b8f59cb3cebb514a230",
+  "parent_check_exit_code": 0,
+  "command": "GATEWAY_URL=<ephemeral loopback URL> pnpm exec vitest run src/api/realClient.e2e.test.ts",
+  "log": "../runtime-before-integration/http-smoke.log",
+  "log_sha256": "aefc34e91724066ef1a2e322b6426d81491cfa1b3bc76226cf4af17a762f3424",
+  "selected": 1,
+  "passed": 1,
+  "skipped": 0,
+  "all_frontend_files_match_current": true,
+  "limits": [
+    "Separate live Rust gateway HTTP test; browser routes remain fixtures.",
+    "HTTP test uses happy-dom and NullWebSocket, not a real-browser/real-WebSocket gateway end-to-end test.",
+    "The ordinary unit run skips this same test with GATEWAY_URL unset; do not add the selections as disjoint tests.",
+    "HTTP smoke reports teardown AbortError warnings; Vitest suite passed with exit 0."
+  ],
+  "historical_runtime_directory": "../runtime-before-integration",
+  "latest_integrated_record": "../checks/live-http-restore-integrated.json"
+}

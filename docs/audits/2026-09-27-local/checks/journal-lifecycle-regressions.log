@@ -1,0 +1,19 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.08s
+     Running unittests src/main.rs (/tmp/arcora-gateway-target/debug/deps/gateway-af1323d2b67b45c0)
+
+running 12 tests
+test rollback_journal::tests::journal_batch_id_mismatch_fails_closed ... ok
+test rollback_journal::tests::journal_missing_is_none ... ok
+test rollback_journal::tests::journal_seal_round_trip ... ok
+test rollback_journal::tests::journal_with_a_stale_magic_is_refused ... ok
+test rollback_journal::tests::journal_wrong_seed_fails_closed ... ok
+test rollback_journal::tests::recovery_action_full_matrix ... ok
+test tests::boot_recovery_persists_before_journal_delete ... ok
+test tests::settle_journal_guard_stage1_fs_failure_never_reaches_prove_callback ... ok
+test tests::settle_journal_guard_stage2_fs_failure_keeps_original_and_never_broadcasts ... ok
+test tests::settle_journal_guard_success_persists_each_stage_before_callback ... ok
+test tests::settle_journal_guard_unconfigured_dev_path_keeps_existing_behavior ... ok
+test tests::settle_loop_journal_lifecycle ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 367 filtered out; finished in 0.42s
+

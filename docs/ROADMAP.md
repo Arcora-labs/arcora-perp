@@ -1,4 +1,6 @@
 > **27 Eylül 2026 doğrudan düzeltme adayı:** PR19 tabanlı kaynak güncellendi.
+
+> 27 Eylül 2026 yerel çalışma eki: [güncel kaynak ve kanıt raporu](audits/2026-09-27-local/README.md). Aşağıdaki tarihsel toplamlar korunmuştur; yeni sonuçlar ve açık yayın koşulları ek rapordadır.
 > [Yeni rapor](audits/2026-09-27-direct-remediation.md) ve makine kanıtı,
 > eski S1/S2 tamamlanma iddialarını daraltır. Merge/deployment/release onayı yoktur.
 

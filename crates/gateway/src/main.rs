@@ -53,6 +53,7 @@ mod deposit_rpc;
 mod enclave_epoch;
 mod execution;
 mod l1;
+mod listen_config;
 mod order_log;
 mod prover_client;
 mod rollback_journal;
@@ -1962,6 +1963,12 @@ impl Gw {
     /// `ENCLAVE_SEED` — the snapshot never carries the signing secret), and the
     /// static market table with the persisted dynamics overlaid.
     fn boot_restored(plain: &[u8]) -> Result<Self, String> {
+        if plain.len() > snapshot::MAX_PLAIN_BYTES {
+            return Err(
+                "snapshot exceeds 64 MiB payload limit; preserve file for offline reconciliation"
+                    .into(),
+            );
+        }
         let (plain, version7, version8) =
             if let Some(payload) = plain.strip_prefix(account_recovery::SNAPSHOT_V8) {
                 (payload, true, true)
@@ -1987,16 +1994,16 @@ impl Gw {
                 if rest.is_empty() {
                     return Err("v7 snapshot missing execution extension".into());
                 }
-                let (exec, recovery) = if version8 {
-                    let i = rest
-                        .windows(account_recovery::EXT.len())
-                        .position(|w| w == account_recovery::EXT)
-                        .ok_or("v8 snapshot missing recovery extension")?;
-                    (&rest[..i], &rest[i..])
+                let recovery = if version8 {
+                    let recovery = execution::restore_snapshot_prefix(&mut gw, rest)?;
+                    if !recovery.starts_with(account_recovery::EXT) {
+                        return Err("v8 snapshot missing recovery extension".into());
+                    }
+                    recovery
                 } else {
-                    (rest, &[][..])
+                    execution::restore_snapshot(&mut gw, rest)?;
+                    &[][..]
                 };
-                execution::restore_snapshot(&mut gw, exec)?;
                 account_recovery::restore(&mut gw, recovery)?;
             } else {
                 if !rest.is_empty() {
@@ -2187,13 +2194,17 @@ impl Gw {
         {
             return Err("that address is already bound to another account".into());
         }
+        // Check exhaustion before changing either the binding or its generation.
+        // A wrapped counter would make an old rebind authorization valid again.
+        let next_rebinds = if bound.is_some() {
+            rebinds.checked_add(1).ok_or("rebind nonce exhausted")?
+        } else {
+            rebinds
+        };
         let a = self.accounts.get_mut(key).unwrap();
         a.deposit_address = Some(addr);
-        if bound.is_some() {
-            // SEC-021b: burn the authorization just consumed. Only a REBIND increments —
-            // the first-time bind carries no `currentSignature` to invalidate.
-            a.rebind_counter += 1;
-        }
+        // Only a REBIND increments; a first bind has no old authorization to burn.
+        a.rebind_counter = next_rebinds;
         Ok(())
     }
 
@@ -7441,8 +7452,31 @@ fn build_router(app: Shared, prod: bool) -> Router {
         .with_state(app)
 }
 
+/// A configured journal is a durability barrier before proving/broadcasting.
+/// Do not invoke the continuation after any write or fsync failure. `None`
+/// preserves the explicitly unjournaled dev path; it is not durable evidence.
+fn after_settle_journal<T>(
+    path: Option<&std::path::Path>,
+    journal: &rollback_journal::RollbackJournal,
+    seed: &[u8; 32],
+    next: impl FnOnce() -> T,
+) -> Result<T, String> {
+    if let Some(path) = path {
+        rollback_journal::write(path, journal, seed)?;
+    }
+    Ok(next())
+}
+
 #[tokio::main]
 async fn main() {
+    let addr = listen_config::parse(
+        std::env::var("GATEWAY_BIND_ADDRESS").ok().as_deref(),
+        std::env::var("PORT").ok().as_deref(),
+    )
+    .unwrap_or_else(|error| {
+        eprintln!("[listener] REFUSING to start: {error}");
+        std::process::exit(1);
+    });
     let (tx, _rx) = broadcast::channel::<String>(256);
     let (events_tx, _erx) = broadcast::channel::<String>(1024);
     let l1 = L1::from_env();
@@ -7697,7 +7731,7 @@ async fn main() {
     };
     let mut gw = match &state_path {
         Some(p) if p.exists() => {
-            let restored = std::fs::read(p)
+            let restored = snapshot::read_file(p)
                 .map_err(|e| e.to_string())
                 .and_then(|sealed| snapshot::open(&sealed, &enclave_seed))
                 .and_then(|plain| Gw::boot_restored(&plain));
@@ -8519,28 +8553,32 @@ async fn main() {
                     // clone — far rarer than the per-tick snapshot clone, so negligible).
                     let witness_rb = witness.clone();
                     let ww_rb = ww.clone();
-                    // Task 2 stage 1: the seal just bumped Counter B in memory — persist
-                    // the rollback inputs BEFORE anything can crash, then ask the single
-                    // snapshot writer for an immediate snapshot so the on-disk pair
-                    // (post-seal snapshot + journal) is consistent at seal time. The
-                    // journal takes ownership of witness/ww (no extra DefaultState clone)
-                    // and carries them into the prove closure below. Best-effort: a failed
-                    // write only logs — the settle must behave exactly as the un-journaled
-                    // path did. (A crash in the ~ms before the triggered snapshot lands
-                    // restores a pre-seal snapshot → SEAL-NEVER-PERSISTED at boot — safe.)
+                    // Stage 1: persist the rollback inputs before proving or
+                    // broadcasting a sealed window. A configured write failure
+                    // rolls back in memory and requests a fresh snapshot instead
+                    // of continuing without a recovery record. This barrier does
+                    // not make the seal and the independent periodic snapshot
+                    // writer one atomic operation.
                     let mut journal = rollback_journal::RollbackJournal {
                         batch_id,
                         witness,
                         ww,
                         prepared: None,
                     };
-                    if let Some(jp) = &jpath {
-                        match rollback_journal::write(jp, &journal, &enclave_seed) {
-                            Ok(()) => snapshot_notify.notify_one(),
-                            Err(e) => eprintln!(
-                                "[recovery] stage-1 rollback journal write failed (settle continues unjournaled): {e}"
-                            ),
+                    if let Err(error) =
+                        after_settle_journal(jpath.as_deref(), &journal, &enclave_seed, || ())
+                    {
+                        eprintln!("[recovery] stage-1 rollback journal is not durable: {error} — rolling back before proving");
+                        {
+                            let mut gw = app.gw.lock().await;
+                            gw.seq.rollback_window(&witness_rb);
+                            gw.rollback_window_withdrawals(ww_rb);
                         }
+                        snapshot_notify.notify_one();
+                        continue;
+                    }
+                    if jpath.is_some() {
+                        snapshot_notify.notify_one();
                     }
                     // A01: every deposit-bearing window and resumed bootstrap second leg needs durability;
                     // its post-seal snapshot must be durably ACKNOWLEDGED before the settle
@@ -8609,46 +8647,52 @@ async fn main() {
                             Ok(p) => p,
                             Err(e) => return SettleAttempt::ProveFailed(e),
                         };
-                        // Task 2 stage 2: the prove came back — rewrite the journal with
-                        // `prepared` BEFORE the tx can broadcast, so a crash between
-                        // broadcast and commit leaves boot the exact new_root/claim
-                        // proofs a roll-forward re-commits. Same best-effort posture as
-                        // stage 1 (and no snapshot poke: nothing in-memory changed since).
-                        if let Some(jp) = &jpath_bg {
+                        // Persist the prepared outcome before the broadcast continuation.
+                        if jpath_bg.is_some() {
                             journal.prepared = Some(prepared.clone());
-                            if let Err(e) = rollback_journal::write(jp, &journal, &enclave_seed) {
-                                eprintln!(
-                                    "[recovery] stage-2 rollback journal write failed (settle continues): {e}"
-                                );
+                        }
+                        after_settle_journal(jpath_bg.as_deref(), &journal, &enclave_seed, || {
+                            // A01: do not broadcast after an observed RPC/reorg/durability
+                            // pause that arrived while the proof was being prepared.
+                            if let Err(e) =
+                                deposit_guard_app.gw.blocking_lock().deposits.check_ready()
+                            {
+                                return SettleAttempt::ProveFailed(e);
                             }
-                        }
-                        // A01: do not broadcast after an observed RPC/reorg/durability
-                        // pause that arrived while the proof was being prepared.
-                        if let Err(e) = deposit_guard_app.gw.blocking_lock().deposits.check_ready() {
-                            return SettleAttempt::ProveFailed(e);
-                        }
-                        match l1c.settle_proved(&prepared.outcome) {
-                            Ok(tx) => {
-                                let bond = l1c.sequencer_bond().unwrap_or(0);
-                                let claimed: Vec<[u8; 32]> = prune_candidates
-                                    .into_iter()
-                                    .filter(|leaf| l1c.claimed(&hex32(leaf)).unwrap_or(false))
-                                    .collect();
-                                // SEC-025-D: the launch observation, AFTER the receipt —
-                                // an observation taken before broadcast could never see
-                                // our settle and would waste the whole wait. Skipped once
-                                // the gate is open: the transition only consults it while
-                                // Closed, and the read costs pinned RPC rounds plus a
-                                // bounded wait (`GATE_OBSERVE_WAIT_SECS`).
-                                let observation = if gate_was_closed {
-                                    observe_gate(&l1c, batch_id, prepared.outcome.new_root)
-                                } else {
-                                    trading_gate::GateObservation::Inconclusive
-                                };
-                                SettleAttempt::Ok { prepared, tx, bond, claimed, observation }
+                            match l1c.settle_proved(&prepared.outcome) {
+                                Ok(tx) => {
+                                    let bond = l1c.sequencer_bond().unwrap_or(0);
+                                    let claimed: Vec<[u8; 32]> = prune_candidates
+                                        .into_iter()
+                                        .filter(|leaf| l1c.claimed(&hex32(leaf)).unwrap_or(false))
+                                        .collect();
+                                    // SEC-025-D: the launch observation, AFTER the receipt —
+                                    // an observation taken before broadcast could never see
+                                    // our settle and would waste the whole wait. Skipped once
+                                    // the gate is open: the transition only consults it while
+                                    // Closed, and the read costs pinned RPC rounds plus a
+                                    // bounded wait (`GATE_OBSERVE_WAIT_SECS`).
+                                    let observation = if gate_was_closed {
+                                        observe_gate(&l1c, batch_id, prepared.outcome.new_root)
+                                    } else {
+                                        trading_gate::GateObservation::Inconclusive
+                                    };
+                                    SettleAttempt::Ok {
+                                        prepared,
+                                        tx,
+                                        bond,
+                                        claimed,
+                                        observation,
+                                    }
+                                }
+                                Err(err) => SettleAttempt::SettleFailed { err, prepared },
                             }
-                            Err(err) => SettleAttempt::SettleFailed { err, prepared },
-                        }
+                        })
+                        .unwrap_or_else(|error| {
+                            SettleAttempt::ProveFailed(format!(
+                                "stage-2 rollback journal is not durable: {error}"
+                            ))
+                        })
                     })
                     .await;
                     match res {
@@ -8900,12 +8944,8 @@ async fn main() {
 
     let router = build_router(app, prod);
 
-    let port: u16 = std::env::var("PORT")
-        .ok()
-        .and_then(|p| p.parse().ok())
-        .unwrap_or(8080);
-    let addr = format!("0.0.0.0:{port}");
-    let listener = tokio::net::TcpListener::bind(&addr).await.expect("bind");
+    let listener = tokio::net::TcpListener::bind(addr).await.expect("bind");
+    let addr = listener.local_addr().expect("bound listener address");
     println!("dark-perp gateway listening on http://{addr}  (ws: /ws)");
     axum::serve(
         listener,
@@ -14583,6 +14623,137 @@ mod tests {
             .ops
             .iter()
             .any(|op| matches!(op, BatchOp::Withdraw { to: Some(_), .. })));
+    }
+
+    fn settle_journal_guard_fixture() -> rollback_journal::RollbackJournal {
+        let mut gw = Gw::boot();
+        let (key, sk) = register_withdrawer(&mut gw);
+        gw.account_deposit(&key, 0, 20_000 * QUOTE_SCALE).unwrap();
+        signed_withdraw(&mut gw, &key, &sk, 0, 5_000 * QUOTE_SCALE, [7u8; 20]).unwrap();
+        let bc = gw.seq.state.next_batch_id;
+        let (witness, ww) = gw.begin_window_settle(bc).unwrap().expect("sealed");
+        rollback_journal::RollbackJournal {
+            batch_id: bc,
+            witness,
+            ww,
+            prepared: None,
+        }
+    }
+
+    fn settle_journal_guard_scratch() -> std::path::PathBuf {
+        let mut random = [0u8; 16];
+        getrandom::getrandom(&mut random).unwrap();
+        let name: String = random.iter().map(|b| format!("{b:02x}")).collect();
+        let dir = std::env::temp_dir().join(format!("darkperp-journal-guard-{name}"));
+        std::fs::create_dir(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn settle_journal_guard_stage1_fs_failure_never_reaches_prove_callback() {
+        let dir = settle_journal_guard_scratch();
+        let not_directory = dir.join("parent-is-file");
+        std::fs::write(&not_directory, b"sentinel").unwrap();
+        let path = not_directory.join("state.rollback");
+        let journal = settle_journal_guard_fixture();
+        let mut reached = false;
+        let result = after_settle_journal(Some(&path), &journal, &[42; 32], || reached = true);
+        assert_eq!(std::fs::read(&not_directory).unwrap(), b"sentinel");
+        std::fs::remove_dir_all(&dir).unwrap();
+        assert!(
+            !reached,
+            "stage-1 write failure must not reach the proving continuation"
+        );
+        assert!(result.is_err(), "failed filesystem write must propagate");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn settle_journal_guard_stage2_fs_failure_keeps_original_and_never_broadcasts() {
+        let dir = settle_journal_guard_scratch();
+        let short = dir.join("original.rollback");
+        let mut journal = settle_journal_guard_fixture();
+        let seed = [42; 32];
+        rollback_journal::write(&short, &journal, &seed).unwrap();
+        // POSIX filesystem failure independent of uid/permissions: the target
+        // name fits NAME_MAX, but write_atomic's exclusive sibling suffix does
+        // not. Move an actual valid stage-1 journal there first.
+        let path = dir.join("j".repeat(240));
+        std::fs::rename(&short, &path).unwrap();
+        let original = std::fs::read(&path).unwrap();
+        journal.prepared = Some(
+            prover_client::prove_and_prepare(
+                &prover_client::MockProverClient,
+                &journal.witness,
+                &journal.ww,
+            )
+            .unwrap(),
+        );
+        let mut broadcast = false;
+        let result = after_settle_journal(Some(&path), &journal, &seed, || broadcast = true);
+        assert_eq!(
+            std::fs::read(&path).unwrap(),
+            original,
+            "old journal retained byte-exact"
+        );
+        let retained = rollback_journal::read(&path, &seed).unwrap().unwrap();
+        assert!(
+            retained.prepared.is_none(),
+            "stage-1 recovery record remains readable"
+        );
+        assert_eq!(
+            std::fs::read_dir(&dir).unwrap().count(),
+            1,
+            "no leaked temporary file"
+        );
+        std::fs::remove_dir_all(&dir).unwrap();
+        assert!(
+            !broadcast,
+            "stage-2 write failure must not reach the broadcast continuation"
+        );
+        assert!(result.is_err(), "failed filesystem write must propagate");
+    }
+
+    #[test]
+    fn settle_journal_guard_success_persists_each_stage_before_callback() {
+        let dir = settle_journal_guard_scratch();
+        let path = dir.join("state.rollback");
+        let seed = [42; 32];
+        let mut journal = settle_journal_guard_fixture();
+        let mut callbacks = 0;
+        after_settle_journal(Some(&path), &journal, &seed, || {
+            let persisted = rollback_journal::read(&path, &seed).unwrap().unwrap();
+            assert!(persisted.prepared.is_none());
+            assert_eq!(persisted.batch_id, journal.batch_id);
+            callbacks += 1;
+        })
+        .unwrap();
+        let prepared = prover_client::prove_and_prepare(
+            &prover_client::MockProverClient,
+            &journal.witness,
+            &journal.ww,
+        )
+        .unwrap();
+        let expected_root = prepared.outcome.new_root;
+        journal.prepared = Some(prepared);
+        after_settle_journal(Some(&path), &journal, &seed, || {
+            let persisted = rollback_journal::read(&path, &seed).unwrap().unwrap();
+            assert_eq!(persisted.prepared.unwrap().outcome.new_root, expected_root);
+            callbacks += 1;
+        })
+        .unwrap();
+        assert_eq!(callbacks, 2);
+        assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 1);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn settle_journal_guard_unconfigured_dev_path_keeps_existing_behavior() {
+        let journal = settle_journal_guard_fixture();
+        assert_eq!(
+            after_settle_journal(None, &journal, &[42; 32], || 42).unwrap(),
+            42
+        );
     }
 
     // ── Task 2/3: settle-loop rollback-journal lifecycle (WAL model) ────────

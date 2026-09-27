@@ -104,6 +104,23 @@ contract DarkPerpSettlementTest is MiniTest {
         proof = new bytes32[](0);
     }
 
+    function test_local_s4_non_sequencer_cannot_configure_bond_or_settle() public {
+        address outsider = address(0xBAD);
+        vm.startPrank(outsider);
+        vm.expectRevert(DarkPerpSettlement.NotSequencer.selector);
+        s.setVault(address(vault));
+        vm.expectRevert(DarkPerpSettlement.NotSequencer.selector);
+        s.postBond(0);
+        vm.expectRevert(DarkPerpSettlement.NotSequencer.selector);
+        s.withdrawBond(0);
+        vm.expectRevert(DarkPerpSettlement.NotSequencer.selector);
+        s.settleBatch(GENESIS, bytes32(0), bytes32(uint256(2)), bytes32(0), bytes32(0), bytes32(0), bytes32(0), 0, hex"");
+        vm.stopPrank();
+        assertEq(s.currentStateRoot(), GENESIS, "unauthorized calls preserve root");
+        assertEq(s.batchCount(), 0, "unauthorized calls preserve batch identity");
+        assertEq(s.sequencerBond(), 0, "unauthorized calls preserve bond");
+    }
+
     function test_settle_advances_root() public {
         bytes32 newRoot = bytes32(uint256(2));
         bytes32 manifest = keccak256("m0");

@@ -1,0 +1,61 @@
+[WARN] The "pnpm" field in package.json is no longer read by pnpm. The following keys were ignored: "pnpm.onlyBuiltDependencies". See https://pnpm.io/settings for the new home of each setting.
+[2m[WebServer] [22m(node:25162) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[2m[WebServer] [22m(Use `node --trace-warnings ...` to show where the warning was created)
+[2m[WebServer] [22m[43m[33m[[39m[49m[43m[30mWARN[39m[49m[43m[33m][39m[49m The "pnpm" field in package.json is no longer read by pnpm. The following keys were ignored: "pnpm.onlyBuiltDependencies". See https://pnpm.io/settings for the new home of each setting.
+[2m[WebServer] [22m(node:25163) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[2m[WebServer] [22m(Use `node --trace-warnings ...` to show where the warning was created)
+[2m[WebServer] [22m(node:25170) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[2m[WebServer] [22m(Use `node --trace-warnings ...` to show where the warning was created)
+
+Running 2 tests using 1 worker
+
+(node:25171) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:25171) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘  1 [chromium] › tests/browser/local.spec.ts:186:1 › BR-08 cross-tab rotation while withdrawal signature waits aborts old mutation (510ms)
+(node:25181) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:25181) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘  2 [chromium] › tests/browser/local.spec.ts:197:1 › BR-07 stale withdrawal proof response is discarded after rotation (414ms)
+
+
+  1) [chromium] › tests/browser/local.spec.ts:186:1 › BR-08 cross-tab rotation while withdrawal signature waits aborts old mutation 
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoMatch[2m([22m[32mexpected[39m[2m)[22m
+
+    Expected pattern: [32m/account.*changed|credential.*changed/i[39m
+    Received string:  [31m"ok"[39m
+
+      191 |   await expect.poll(() => api(a, 'window.testClient.depositAccount().then(a => a.apiKey === "' + NEW + '")')).toBe(true);
+      192 |   await api(a, 'window.testWallet.release()');
+    > 193 |   expect(await api(a, 'window.pending')).toMatch(/account.*changed|credential.*changed/i);
+          |                                          ^
+      194 |   expect(f.calls.filter(c => c.path === '/v1/accounts/withdraw')).toHaveLength(0);
+      195 | });
+      196 |
+        at /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/tests/browser/local.spec.ts:193:42
+
+    Error Context: output/playwright/results/local-BR-08-cross-tab-rota-7734f-e-waits-aborts-old-mutation-chromium/error-context.md
+
+  2) [chromium] › tests/browser/local.spec.ts:197:1 › BR-07 stale withdrawal proof response is discarded after rotation 
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mnull[39m
+    Received: [31m{"vault": "0x3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b", "withdrawals": []}[39m
+
+      200 |   await api(page, 'window.pending = window.testClient.listWithdrawals(); undefined');
+      201 |   await expect.poll(() => parked).toBe(true); await recover(page); await expect(page.getByRole('status')).toContainText('generation is now #1');
+    > 202 |   gate.release(); expect(await api(page, 'window.pending')).toBe(null);
+          |                                                             ^
+      203 | });
+      204 |
+        at /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/tests/browser/local.spec.ts:202:61
+
+    Error Context: output/playwright/results/local-BR-07-stale-withdraw-21fdc-is-discarded-after-rotation-chromium/error-context.md
+
+  2 failed
+    [chromium] › tests/browser/local.spec.ts:186:1 › BR-08 cross-tab rotation while withdrawal signature waits aborts old mutation 
+    [chromium] › tests/browser/local.spec.ts:197:1 › BR-07 stale withdrawal proof response is discarded after rotation 

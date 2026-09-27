@@ -1,0 +1,17 @@
+{
+  "source_sha": "098e4952c189f92e4293ed7d49f81222b626e406",
+  "checkout": "/private/var/folders/jz/7wbjs_5j45g915858xh6wm200000gn/T/arcora-fixture-v8-lfogn8on",
+  "command": [
+    "cargo",
+    "test",
+    "--locked",
+    "-p",
+    "gateway",
+    "generate_historical_snapshot_fixture",
+    "--",
+    "--nocapture"
+  ],
+  "exit_code": 0,
+  "log": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/docs/audits/2026-09-27-local/snapshot/historical-v8.log",
+  "generator_changes": "appended test-only module; production source unchanged"
+}

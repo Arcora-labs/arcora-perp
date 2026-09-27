@@ -1,0 +1,29 @@
+
+running 2 tests
+test release_debug_assertions_are_active ... FAILED
+test release_overflow_checks_are_active ... FAILED
+
+failures:
+
+---- release_debug_assertions_are_active stdout ----
+
+thread 'release_debug_assertions_are_active' (999142) panicked at src/lib.rs:1:52:
+release safety flag not applied
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- release_overflow_checks_are_active stdout ----
+
+thread 'release_overflow_checks_are_active' (999143) panicked at src/lib.rs:2:91:
+release overflow silently wrapped
+
+
+failures:
+    release_debug_assertions_are_active
+    release_overflow_checks_are_active
+
+test result: FAILED. 0 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Compiling arcora-profile-control v0.0.0 (/var/folders/jz/7wbjs_5j45g915858xh6wm200000gn/T/arcora-cargo-profile-qvuqaysm)
+    Finished `release` profile [optimized] target(s) in 0.31s
+     Running unittests src/lib.rs (/var/folders/jz/7wbjs_5j45g915858xh6wm200000gn/T/arcora-cargo-profile-qvuqaysm/target/release/deps/arcora_profile_control-3a93dd9726074e99)
+error: test failed, to rerun pass `--lib`

@@ -1,0 +1,146 @@
+{
+  "status": "PASS",
+  "base_sha": "098e4952c189f92e4293ed7d49f81222b626e406",
+  "fixture_seed": "synthetic-public-test-seed 0xC3 repeated32",
+  "fixture_keys": "synthetic; never valid user accounts",
+  "source_compilation": "separate historical target; extracted sources touched after git archive to defeat stale-mtime Cargo artifact reuse",
+  "vectors": [
+    {
+      "version": "v5",
+      "source_sha": "f9244ca1eee3bb19e91c46648756fe844e12e2a4",
+      "source_tree": "41cee8ed97df45549604bfd79924ce3557597d7b",
+      "writer": "actual historical Gw::snapshot_plain + snapshot::seal compiled with test-only generator",
+      "generator": "historical_fixture_generator.rs",
+      "credit_adapter": null,
+      "compiled_main_sha256": "b8e3c63883826c90a9fca17e9490a31d9f8e5cf3920159354b4aa1b49400ccce",
+      "compiled_deposit_module_sha256": null,
+      "cargo_lock_sha256": "a03882aa07c4e23bff03695d5b03476bf23f7d10784541f4fecc8118b0c4dbfb",
+      "command_log": "historical-v5.log",
+      "exit_code": 0,
+      "selected": 1,
+      "passed": 1,
+      "fixture_files": {
+        "crates/gateway/testdata/snapshots/v5/accounts.bin": "2859494637fe8c6a996decb63d8fc6b8120a84108abbdfd36ad86c19826d0c76",
+        "crates/gateway/testdata/snapshots/v5/meta.json": "cbdf28da2457b9a9a2acfe1c958f01a7e58a03d98a4db0b910447e3fea37e12d",
+        "crates/gateway/testdata/snapshots/v5/root.txt": "5b4cd9a79a8a265788c155977c5f0adca2903eb74b425c8eff7f84ae69c3a545",
+        "crates/gateway/testdata/snapshots/v5/sealed.bin": "c30f71448709e1add3801180c38fd2d34f618594891254dc5577ebf5ac269326",
+        "crates/gateway/testdata/snapshots/v5/state.bin": "3821db388d14a11cac79d5407fec58983ed9047859460db72f5e6d1902f5ff4e",
+        "crates/gateway/testdata/snapshots/v5/withdrawals.bin": "569577472ed67714f3fb74afe54f92365a71d6fe337fb739273c8c1dcf81f881"
+      },
+      "coverage": {
+        "accounts": 2,
+        "orders": 2,
+        "pending_withdrawals": 1,
+        "nullifiers": 11,
+        "pending_A01_routes": 0,
+        "consumed_A01_credits": 0,
+        "recovery_generation": 0
+      }
+    },
+    {
+      "version": "v6",
+      "source_sha": "35c519ea2415436ea6c89e200937465f814c939a",
+      "source_tree": "fdac5a20597fb8edcb0f6af3f69186341258437e",
+      "writer": "actual historical Gw::snapshot_plain + snapshot::seal compiled with test-only generator",
+      "generator": "historical_fixture_generator.rs",
+      "credit_adapter": "historical_credit_helper.rs",
+      "compiled_main_sha256": "38514aa0ef7a7e5a8be3bd84ca09cc97f80ca3163be878d3d8f36faba999e51f",
+      "compiled_deposit_module_sha256": "31ea7af46a065811875adf945a052794e663b70af16f3a152e118f381d9bf4bb",
+      "cargo_lock_sha256": "a03882aa07c4e23bff03695d5b03476bf23f7d10784541f4fecc8118b0c4dbfb",
+      "command_log": "historical-v6.log",
+      "exit_code": 0,
+      "selected": 1,
+      "passed": 1,
+      "fixture_files": {
+        "crates/gateway/testdata/snapshots/v6/accounts.bin": "ffc8636bb04a18defa38c5e4da0081741a5d7ff69de3c5dd376113d278d7ea67",
+        "crates/gateway/testdata/snapshots/v6/deposits.bin": "03ef245f92676a9acb1292d3e502f82231f56b1e92cb7cfccc39b732ec9f8f1e",
+        "crates/gateway/testdata/snapshots/v6/meta.json": "e267a7fc28bf183dc089f585d0f858cfe59007db7ae9de734955fd1a8eda8b80",
+        "crates/gateway/testdata/snapshots/v6/root.txt": "163510b1287b6e20991f200bbae34bf145c5f9d171e1b77cd94e2405ee81c579",
+        "crates/gateway/testdata/snapshots/v6/sealed.bin": "b2f6dcf5b7d01981a2971f89e699c0baa0fed4d10d5116b8344bb829547ae296",
+        "crates/gateway/testdata/snapshots/v6/state.bin": "cde0e140da7727a3ac942c7b1e3b2fad78d4ca6d6b6abce726ea177efd437eeb",
+        "crates/gateway/testdata/snapshots/v6/withdrawals.bin": "44e4c52b183f59a1e9ab995384022670c812a5400f166c137f93a0d5d40ca483"
+      },
+      "coverage": {
+        "accounts": 2,
+        "orders": 2,
+        "pending_withdrawals": 1,
+        "nullifiers": 12,
+        "pending_A01_routes": 1,
+        "consumed_A01_credits": 1,
+        "recovery_generation": 0
+      }
+    },
+    {
+      "version": "v7",
+      "source_sha": "bddf815f6b20388c9f9710e4fe98fdba736a751c",
+      "source_tree": "8aee29b94c82018884abfcdb418b34a37ff01f04",
+      "writer": "actual historical Gw::snapshot_plain + snapshot::seal compiled with test-only generator",
+      "generator": "historical_fixture_generator.rs",
+      "credit_adapter": "historical_credit_helper.rs",
+      "compiled_main_sha256": "9e7ccf21846c00c0c614a6166a03f521657cc1fd4ce9b1e9956ae78c3f51cee8",
+      "compiled_deposit_module_sha256": "31ea7af46a065811875adf945a052794e663b70af16f3a152e118f381d9bf4bb",
+      "cargo_lock_sha256": "a03882aa07c4e23bff03695d5b03476bf23f7d10784541f4fecc8118b0c4dbfb",
+      "command_log": "historical-v7.log",
+      "exit_code": 0,
+      "selected": 1,
+      "passed": 1,
+      "fixture_files": {
+        "crates/gateway/testdata/snapshots/v7/accounts.bin": "1d2c8edc82826c8cf9556883a3589be6468157219be3e765df2537eeae74a7ab",
+        "crates/gateway/testdata/snapshots/v7/deposits.bin": "a05073bf5ea3d18b9cbe0d27ccc0212b8ea271f6e4e1e2c7e3875b4cbec71897",
+        "crates/gateway/testdata/snapshots/v7/meta.json": "a8007d7f9d5617e4cc34d58fe1530130c43c86a7e81a173fc73e342792480105",
+        "crates/gateway/testdata/snapshots/v7/root.txt": "336fc231afee7803b58f7eb18dff1e09d5a164602872ff0fb7deaa0c89a5a20e",
+        "crates/gateway/testdata/snapshots/v7/sealed.bin": "120862c30dce350a07a0f07438c937d07338de32e915a1e487b73d71b477d522",
+        "crates/gateway/testdata/snapshots/v7/state.bin": "d0ad5121e3c912ad5a4cdc75eedd6259ec4786d0f196ff8feba2065c1f8a29a5",
+        "crates/gateway/testdata/snapshots/v7/withdrawals.bin": "228551ea5e1ae9f070afee5166c0bb01e2439c4fab0944fb04800e2c6c695d8a"
+      },
+      "coverage": {
+        "accounts": 2,
+        "orders": 2,
+        "pending_withdrawals": 1,
+        "nullifiers": 12,
+        "pending_A01_routes": 1,
+        "consumed_A01_credits": 1,
+        "recovery_generation": 0
+      }
+    },
+    {
+      "version": "v8",
+      "source_sha": "098e4952c189f92e4293ed7d49f81222b626e406",
+      "source_tree": "c6e9d4af0257531cd77e45ca5b3939c6ea7a0fa4",
+      "writer": "actual historical Gw::snapshot_plain + snapshot::seal compiled with test-only generator",
+      "generator": "historical_fixture_generator.rs",
+      "credit_adapter": "historical_credit_helper.rs",
+      "compiled_main_sha256": "8042b79ac1f93f90c7532b922ef641160be698d5cadb43123f32b55c8ec34847",
+      "compiled_deposit_module_sha256": "31ea7af46a065811875adf945a052794e663b70af16f3a152e118f381d9bf4bb",
+      "cargo_lock_sha256": "113871cd63a911454185efdee6ddbe77640b1f91f925de0dabe4c580b6a71651",
+      "command_log": "historical-v8.log",
+      "exit_code": 0,
+      "selected": 1,
+      "passed": 1,
+      "fixture_files": {
+        "crates/gateway/testdata/snapshots/v8/accounts.bin": "8ae0788a6bb386bc02b302bb4a8a08a359e7a64113c3fbb42e0437ff70e9950d",
+        "crates/gateway/testdata/snapshots/v8/deposits.bin": "54e7fe8869fe99cc810b79920bd5cb9dbeb2759e4b50df7678e1b13265f4a8e4",
+        "crates/gateway/testdata/snapshots/v8/meta.json": "5320e4fa9fd037ca98dd8e7fcadbfd3f4e4e7c687cc93364fa8e95d55ae2a92e",
+        "crates/gateway/testdata/snapshots/v8/root.txt": "13226f7b2a264b0de01e1d696cf591b4953eb2e6cfb711dd019d211f9c19e535",
+        "crates/gateway/testdata/snapshots/v8/sealed.bin": "147811631a15554ece533a9731893bb4728ce4ca6f61febd5a8527165f5ebee2",
+        "crates/gateway/testdata/snapshots/v8/state.bin": "61b69f1447480bdd21ef6f9825bd6d44e5a1b8add10a5b44fb682879c35eaa63",
+        "crates/gateway/testdata/snapshots/v8/withdrawals.bin": "c425951db41923daa553dbcf1f85f75412f428953547487f1556e4eec28a9e5c"
+      },
+      "coverage": {
+        "accounts": 2,
+        "orders": 2,
+        "pending_withdrawals": 1,
+        "nullifiers": 12,
+        "pending_A01_routes": 1,
+        "consumed_A01_credits": 1,
+        "recovery_generation": 7
+      }
+    }
+  ],
+  "limitations": [
+    "One representative fixture per supported version, not every historical release.",
+    "No independent whole-file monotonic anti-rollback checkpoint.",
+    "No real L1/network RPC in historical fixture generation.",
+    "V5 preserves missing routing as unresolved and old execution history stays unavailable."
+  ]
+}

@@ -1,0 +1,44 @@
+{
+  "head": {
+    "argv": [
+      "git",
+      "rev-parse",
+      "HEAD"
+    ],
+    "exit_code": 0,
+    "stdout": "098e4952c189f92e4293ed7d49f81222b626e406\n",
+    "stderr": ""
+  },
+  "tree": {
+    "argv": [
+      "git",
+      "rev-parse",
+      "HEAD^{tree}"
+    ],
+    "exit_code": 0,
+    "stdout": "c6e9d4af0257531cd77e45ca5b3939c6ea7a0fa4\n",
+    "stderr": ""
+  },
+  "branch": {
+    "argv": [
+      "git",
+      "branch",
+      "--show-current"
+    ],
+    "exit_code": 0,
+    "stdout": "audit/arcora-local-20260927\n",
+    "stderr": ""
+  },
+  "status": {
+    "argv": [
+      "git",
+      "status",
+      "--short"
+    ],
+    "exit_code": 0,
+    "stdout": " M crates/gateway/src/account_recovery_tests.rs\n M frontend/package.json\n M frontend/pnpm-lock.yaml\n?? docs/audits/2026-09-27-local/\n",
+    "stderr": ""
+  },
+  "os": "macOS-26.5.1-arm64-arm-64bit",
+  "worktree": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp"
+}

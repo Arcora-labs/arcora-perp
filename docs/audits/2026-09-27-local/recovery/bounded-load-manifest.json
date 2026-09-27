@@ -1,0 +1,20 @@
+{
+  "network": "127.0.0.1:ephemeral only",
+  "ws_connections": 3,
+  "same_owner_connections": 2,
+  "events": {
+    "pressure_payload_bytes": 8388608,
+    "pressure_events": 1,
+    "healthy_private_events": 1
+  },
+  "in_process_requests": {
+    "registrations": 31,
+    "oversized_body_bytes": 2097153
+  },
+  "stop_conditions": [
+    "any deadline/assertion fails",
+    "after actual socket closure then subscription baseline and listener join"
+  ],
+  "external_services": false,
+  "paid_proving": false
+}

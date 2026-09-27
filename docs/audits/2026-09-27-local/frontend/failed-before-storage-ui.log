@@ -1,0 +1,73 @@
+[WARN] The "pnpm" field in package.json is no longer read by pnpm. The following keys were ignored: "pnpm.onlyBuiltDependencies". See https://pnpm.io/settings for the new home of each setting.
+[2m[WebServer] [22m(node:30559) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[2m[WebServer] [22m(Use `node --trace-warnings ...` to show where the warning was created)
+[2m[WebServer] [22m[43m[33m[[39m[49m[43m[30mWARN[39m[49m[43m[33m][39m[49m The "pnpm" field in package.json is no longer read by pnpm. The following keys were ignored: "pnpm.onlyBuiltDependencies". See https://pnpm.io/settings for the new home of each setting.
+[2m[WebServer] [22m(node:30560) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[2m[WebServer] [22m(Use `node --trace-warnings ...` to show where the warning was created)
+[2m[WebServer] [22m(node:30567) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[2m[WebServer] [22m(Use `node --trace-warnings ...` to show where the warning was created)
+
+Running 2 tests using 1 worker
+
+(node:30568) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:30568) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘  1 [chromium] › tests/browser/local.spec.ts:256:1 › BR-05 session-only warning survives leaving and returning to recovery panel (5.6s)
+(node:30717) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:30717) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘  2 [chromium] › tests/browser/local.spec.ts:265:1 › S2-02 disabled storage does not crash application shell (5.1s)
+
+
+  1) [chromium] › tests/browser/local.spec.ts:256:1 › BR-05 session-only warning survives leaving and returning to recovery panel 
+
+    Error: [2mexpect([22m[31mlocator[39m[2m).[22mtoContainText[2m([22m[32mexpected[39m[2m)[22m failed
+
+    Locator: getByRole('status')
+    Expected substring: [32m"this tab only"[39m
+    Timeout: 5000ms
+    Error: element(s) not found
+
+    Call log:
+    [2m  - Expect "toContainText" with timeout 5000ms[22m
+    [2m  - waiting for getByRole('status')[22m
+
+
+      260 |   await page.getByRole('button', { name: 'Account', exact: true }).click();
+      261 |   await page.getByRole('button', { name: 'Recover', exact: true }).click();
+    > 262 |   await expect(page.getByRole('status')).toContainText('this tab only');
+          |                                          ^
+      263 | });
+      264 |
+      265 | test('S2-02 disabled storage does not crash application shell', async ({ context }) => {
+        at /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/tests/browser/local.spec.ts:262:42
+
+    Error Context: output/playwright/results/local-BR-05-session-only-w-a93d8-returning-to-recovery-panel-chromium/error-context.md
+
+  2) [chromium] › tests/browser/local.spec.ts:265:1 › S2-02 disabled storage does not crash application shell 
+
+    Error: [2mexpect([22m[31mlocator[39m[2m).[22mtoBeVisible[2m([22m[2m)[22m failed
+
+    Locator: getByRole('button', { name: 'Recover', exact: true })
+    Expected: visible
+    Timeout: 5000ms
+    Error: element(s) not found
+
+    Call log:
+    [2m  - Expect "toBeVisible" with timeout 5000ms[22m
+    [2m  - waiting for getByRole('button', { name: 'Recover', exact: true })[22m
+
+
+      267 |   await context.addInitScript(() => { Storage.prototype.getItem = () => { throw new DOMException('storage denied', 'SecurityError'); }; });
+      268 |   const page = await context.newPage(); await page.goto('/');
+    > 269 |   await expect(page.getByRole('button', { name: 'Recover', exact: true })).toBeVisible();
+          |                                                                            ^
+      270 | });
+      271 |
+        at /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/tests/browser/local.spec.ts:269:76
+
+  2 failed
+    [chromium] › tests/browser/local.spec.ts:256:1 › BR-05 session-only warning survives leaving and returning to recovery panel 
+    [chromium] › tests/browser/local.spec.ts:265:1 › S2-02 disabled storage does not crash application shell 

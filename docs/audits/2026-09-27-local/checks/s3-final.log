@@ -1,0 +1,16 @@
+   Compiling gateway v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/gateway)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 5.73s
+     Running unittests src/main.rs (/tmp/arcora-gateway-target/debug/deps/gateway-af1323d2b67b45c0)
+
+running 8 tests
+test account_recovery::snapshot_s3_tests::s3_authenticated_parser_mutation_budget ... ok
+test account_recovery::snapshot_s3_tests::s3_envelope_mutations_wrong_seed_and_versions_are_rejected ... ok
+test account_recovery::snapshot_s3_tests::s3_execution_error_preserves_existing_state ... ok
+test account_recovery::snapshot_s3_tests::s3_file_limits_and_failed_write_preserve_durable_target ... ok
+test account_recovery::snapshot_s3_tests::s3_historical_writers_preserve_state_authority_and_replay ... ok
+test account_recovery::snapshot_s3_tests::s3_marker_inside_execution_payload_is_not_a_delimiter ... ok
+test account_recovery::snapshot_s3_tests::s3_recovery_error_preserves_existing_state ... ok
+test account_recovery::snapshot_s3_tests::s3_recovery_legacy_absence_cannot_downgrade_existing_generation ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 367 filtered out; finished in 19.42s
+

@@ -1,0 +1,692 @@
+    Blocking waiting for file lock on package cache
+ Downloading crates ...
+  Downloaded memfd v0.6.6
+  Downloaded slop-maybe-rayon v6.8.1
+  Downloaded sp1-derive v6.8.1
+  Downloaded clap_lex v1.1.1
+  Downloaded slop-futures v6.8.1
+  Downloaded p3-maybe-rayon v0.3.3-succinct
+  Downloaded sp1-build v6.0.0
+  Downloaded crossbeam v0.8.5
+  Downloaded twox-hash v2.1.4
+  Downloaded eyre v0.6.14
+  Downloaded derive-where v1.7.0
+  Downloaded crossbeam-queue v0.3.14
+  Downloaded camino v1.2.6
+  Downloaded sp1-verifier v6.8.1
+  Downloaded sp1-prover-types v6.2.1
+  Downloaded smallvec v1.16.2
+  Downloaded slop-alloc v6.8.1
+  Downloaded p3-util v0.4.3
+  Downloaded num-modular v0.6.5
+  Downloaded uuid v1.26.1
+  Downloaded clap v4.6.7
+  Downloaded hyper-rustls v0.27.10
+  Downloaded clap_derive v4.6.7
+  Downloaded rand v0.10.3
+  Downloaded clap_builder v4.6.7
+  Downloaded h2 v0.4.19
+  Downloaded slop-keccak-air v6.2.1
+  Downloaded slop-poseidon2 v6.2.1
+  Downloaded slop-utils v6.2.1
+  Downloaded p3-interpolation v0.3.3-succinct
+  Downloaded slop-challenger v6.2.1
+  Downloaded p3-bn254-fr v0.3.3-succinct
+  Downloaded slop-air v6.2.1
+  Downloaded slop-sumcheck v6.2.1
+  Downloaded sp1-curves v6.2.1
+  Downloaded slop-merkle-tree v6.2.1
+  Downloaded sp1-core-executor-runner-binary v6.2.1
+  Downloaded p3-mds v0.3.3-succinct
+  Downloaded slop-fri v6.2.1
+  Downloaded p3-air v0.3.3-succinct
+  Downloaded slop-baby-bear v6.2.1
+  Downloaded p3-fri v0.3.3-succinct
+  Downloaded p3-merkle-tree v0.3.3-succinct
+  Downloaded p3-uni-stark v0.3.3-succinct
+  Downloaded p3-symmetric v0.3.3-succinct
+  Downloaded slop-bn254 v6.2.1
+  Downloaded slop-stacked v6.2.1
+  Downloaded slop-commit v6.2.1
+  Downloaded p3-commit v0.3.3-succinct
+  Downloaded slop-koala-bear v6.2.1
+  Downloaded p3-keccak-air v0.3.3-succinct
+  Downloaded p3-matrix v0.3.3-succinct
+  Downloaded sp1-recursion-executor v6.2.1
+  Downloaded slop-dft v6.2.1
+  Downloaded p3-dft v0.3.3-succinct
+  Downloaded slop-uni-stark v6.2.1
+  Downloaded slop-tensor v6.2.1
+  Downloaded slop-basefold-prover v6.2.1
+  Downloaded p3-util v0.3.3-succinct
+  Downloaded slop-basefold v6.2.1
+  Downloaded p3-poseidon2 v0.3.3-succinct
+  Downloaded slop-whir v6.2.1
+  Downloaded slop-matrix v6.2.1
+  Downloaded sp1-jit v6.2.1
+  Downloaded p3-challenger v0.3.3-succinct
+  Downloaded sp1-primitives v6.2.1
+  Downloaded sp1-recursion-gnark-ffi v6.2.1
+  Downloaded slop-jagged v6.2.1
+  Downloaded p3-field v0.3.3-succinct
+  Downloaded sp1-recursion-machine v6.2.1
+  Downloaded p3-koala-bear v0.3.3-succinct
+  Downloaded slop-multilinear v6.2.1
+  Downloaded p3-baby-bear v0.3.3-succinct
+  Downloaded sp1-core-executor-runner v6.2.1
+  Downloaded sp1-cuda v6.2.1
+  Downloaded sp1-recursion-compiler v6.2.1
+  Downloaded sp1-recursion-circuit v6.2.1
+  Downloaded sp1-hypercube v6.2.1
+  Downloaded sp1-core-executor v6.2.1
+  Downloaded sp1-sdk v6.0.0
+  Downloaded sp1-core-machine v6.2.1
+  Downloaded sp1-prover v6.2.1
+    Blocking waiting for file lock on package cache
+   Compiling proc-macro2 v1.0.107
+   Compiling quote v1.0.47
+   Compiling unicode-ident v1.0.26
+   Compiling syn v3.0.6
+   Compiling libc v0.2.189
+   Compiling serde_core v1.0.229
+   Compiling serde v1.0.229
+   Compiling syn v2.0.119
+   Compiling serde_derive v1.0.229
+   Compiling autocfg v1.5.1
+   Compiling num-traits v0.2.19
+   Compiling zerocopy v0.8.59
+   Compiling cfg-if v1.0.5
+   Compiling tracing-attributes v0.1.31
+   Compiling num-integer v0.1.47
+   Compiling pin-project-lite v0.2.17
+   Compiling getrandom v0.2.17
+   Compiling once_cell v1.21.4
+   Compiling either v1.18.0
+   Compiling futures-macro v0.3.34
+   Compiling version_check v0.9.5
+   Compiling rand_core v0.6.4
+   Compiling syn v1.0.109
+   Compiling generic-array v0.14.9
+   Compiling crossbeam-utils v0.8.23
+   Compiling tracing-core v0.1.36
+   Compiling radium v0.7.0
+   Compiling tracing v0.1.44
+   Compiling ppv-lite86 v0.2.21
+   Compiling num-bigint v0.4.8
+   Compiling num-bigint v0.3.3
+   Compiling rand_chacha v0.3.1
+   Compiling semver v1.0.28
+   Compiling rand v0.8.8
+   Compiling itertools v0.12.1
+   Compiling addchain v0.2.1
+   Compiling rustc_version v0.4.1
+   Compiling ff_derive v0.13.1
+   Compiling crossbeam-epoch v0.9.21
+   Compiling thiserror v1.0.69
+   Compiling p3-util v0.3.3-succinct
+   Compiling thiserror-impl v1.0.69
+   Compiling crossbeam-deque v0.8.8
+   Compiling p3-field v0.3.3-succinct
+   Compiling futures-core v0.3.34
+   Compiling p3-maybe-rayon v0.3.3-succinct
+   Compiling rayon-core v1.13.0
+   Compiling p3-matrix v0.3.3-succinct
+   Compiling memchr v2.8.3
+   Compiling smallvec v1.16.2
+   Compiling parking_lot_core v0.9.12
+   Compiling futures-sink v0.3.34
+   Compiling subtle v2.6.1
+   Compiling zeroize v1.9.0
+   Compiling p3-symmetric v0.3.3-succinct
+   Compiling p3-koala-bear v0.3.3-succinct
+   Compiling itertools v0.14.0
+   Compiling slab v0.4.12
+   Compiling futures-channel v0.3.34
+   Compiling pin-project-internal v1.1.13
+   Compiling shlex v2.0.1
+   Compiling find-msvc-tools v0.1.14
+   Compiling cc v1.5.1
+   Compiling futures-io v0.3.34
+   Compiling futures-task v0.3.34
+   Compiling futures-util v0.3.34
+   Compiling errno v0.3.14
+   Compiling bytes v1.12.1
+   Compiling strength_reduce v0.2.4
+   Compiling transpose v0.2.3
+   Compiling p3-dft v0.3.3-succinct
+   Compiling scopeguard v1.2.0
+   Compiling lock_api v0.4.14
+   Compiling p3-util v0.4.3
+   Compiling equivalent v1.0.2
+   Compiling hashbrown v0.17.1
+   Compiling byteorder v1.5.0
+   Compiling p3-field v0.4.3-succinct
+   Compiling indexmap v2.14.2
+   Compiling parking_lot v0.12.5
+   Compiling p3-challenger v0.3.3-succinct
+   Compiling rustversion v1.0.23
+   Compiling p3-baby-bear v0.3.3-succinct
+   Compiling derive-where v1.7.0
+   Compiling lazy_static v1.5.0
+   Compiling signal-hook-registry v1.4.8
+   Compiling mio v1.2.3
+   Compiling socket2 v0.6.5
+   Compiling tokio-macros v2.7.2
+   Compiling tap v1.0.1
+   Compiling wyz v0.5.1
+   Compiling futures-executor v0.3.34
+   Compiling tokio v1.53.1
+   Compiling slop-algebra v6.8.1
+   Compiling typenum v1.20.1
+   Compiling funty v2.0.0
+   Compiling bitvec v1.1.1
+   Compiling futures v0.3.34
+   Compiling p3-mds v0.3.3-succinct
+   Compiling gcd v2.3.0
+   Compiling p3-poseidon2 v0.3.3-succinct
+   Compiling ff v0.13.1
+   Compiling arrayvec v0.7.8
+   Compiling const-oid v0.9.6
+   Compiling p3-symmetric v0.4.3-succinct
+   Compiling blake3 v1.8.7
+   Compiling heck v0.5.0
+   Compiling slop-symmetric v6.8.1
+   Compiling slop-challenger v6.2.1
+error[E0277]: the trait bound `P: p3_symmetric::permutation::CryptographicPermutation<[F; WIDTH]>` is not satisfied
+  --> /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/slop-challenger-6.2.1/src/synchronize.rs:12:5
+   |
+12 |     fn synchronize_challengers(mut challengers: Vec<Self>) -> Self {
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the trait `p3_symmetric::permutation::CryptographicPermutation<[F; WIDTH]>` is not implemented for `P`
+   |
+note: there are multiple different versions of crate `p3_symmetric` in the dependency graph
+  --> /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/p3-symmetric-0.3.3-succinct/src/permutation.rs:13:1
+   |
+13 | pub trait CryptographicPermutation<T: Clone>: Permutation<T> {}
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ this is the expected trait
+   |
+  ::: /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/p3-symmetric-0.4.3-succinct/src/permutation.rs:13:1
+   |
+13 | pub trait CryptographicPermutation<T: Clone>: Permutation<T> {}
+   | ------------------------------------------------------------ this is the trait that was imported
+   = help: you can use `cargo tree` to explore your dependency tree
+note: required by a bound in `DuplexChallenger`
+  --> /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/p3-challenger-0.3.3-succinct/src/duplex_challenger.rs:18:8
+   |
+15 | pub struct DuplexChallenger<F, P, const WIDTH: usize, const RATE: usize>
+   |            ---------------- required by a bound in this struct
+...
+18 |     P: CryptographicPermutation<[F; WIDTH]>,
+   |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `DuplexChallenger`
+help: consider further restricting type parameter `P` with trait `CryptographicPermutation`
+   |
+ 9 | impl<F: Field, P: CryptographicPermutation<[F; WIDTH]> + p3_symmetric::permutation::CryptographicPermutation<[F; WIDTH]>, const WIDTH: usize, const RATE: usize>
+   |                                                        +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+error[E0277]: the trait bound `P: p3_symmetric::permutation::CryptographicPermutation<[F; WIDTH]>` is not satisfied
+  --> /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/slop-challenger-6.2.1/src/synchronize.rs:10:24
+   |
+10 |     Synchronizable for DuplexChallenger<F, P, WIDTH, RATE>
+   |                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the trait `p3_symmetric::permutation::CryptographicPermutation<[F; WIDTH]>` is not implemented for `P`
+   |
+note: there are multiple different versions of crate `p3_symmetric` in the dependency graph
+  --> /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/p3-symmetric-0.3.3-succinct/src/permutation.rs:13:1
+   |
+13 | pub trait CryptographicPermutation<T: Clone>: Permutation<T> {}
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ this is the expected trait
+   |
+  ::: /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/p3-symmetric-0.4.3-succinct/src/permutation.rs:13:1
+   |
+13 | pub trait CryptographicPermutation<T: Clone>: Permutation<T> {}
+   | ------------------------------------------------------------ this is the trait that was imported
+   = help: you can use `cargo tree` to explore your dependency tree
+note: required by a bound in `DuplexChallenger`
+  --> /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/p3-challenger-0.3.3-succinct/src/duplex_challenger.rs:18:8
+   |
+15 | pub struct DuplexChallenger<F, P, const WIDTH: usize, const RATE: usize>
+   |            ---------------- required by a bound in this struct
+...
+18 |     P: CryptographicPermutation<[F; WIDTH]>,
+   |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `DuplexChallenger`
+help: consider further restricting type parameter `P` with trait `CryptographicPermutation`
+   |
+ 9 | impl<F: Field, P: CryptographicPermutation<[F; WIDTH]> + p3_symmetric::permutation::CryptographicPermutation<[F; WIDTH]>, const WIDTH: usize, const RATE: usize>
+   |                                                        +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+error[E0277]: the trait bound `F: p3_field::field::Field` is not satisfied
+   --> /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/slop-challenger-6.2.1/src/lib.rs:55:5
+    |
+ 55 |     FieldChallenger<F> + CanObserve<Digest>
+    |     ^^^^^^^^^^^^^^^^^^ the trait `p3_field::field::Field` is not implemented for `F`
+    |
+note: there are multiple different versions of crate `p3_field` in the dependency graph
+   --> /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/p3-field-0.3.3-succinct/src/field.rs:159:1
+    |
+159 | / pub trait Field:
+160 | |     AbstractField<F = Self>
+161 | |     + Packable
+162 | |     + 'static
+...   |
+170 | |     + Serialize
+171 | |     + DeserializeOwned
+    | |______________________^ this is the expected trait
+    |
+   ::: /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/p3-field-0.4.3-succinct/src/field.rs:159:1
+    |
+159 | / pub trait Field:
+160 | |     AbstractField<F = Self>
+161 | |     + Packable
+162 | |     + 'static
+...   |
+170 | |     + Serialize
+171 | |     + DeserializeOwned
+    | |______________________- this is the trait that was imported
+    = help: you can use `cargo tree` to explore your dependency tree
+note: required by a bound in `p3_challenger::FieldChallenger`
+   --> /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/p3-challenger-0.3.3-succinct/src/lib.rs:52:30
+    |
+ 52 | pub trait FieldChallenger<F: Field>:
+    |                              ^^^^^ required by this bound in `FieldChallenger`
+    = note: `FieldChallenger` is a "sealed trait", because to implement it you also need to implement `p3_field::field::Field`, which is not accessible; this is usually done to force you to use one of the provided types that already implement it
+    = help: the following type implements the trait:
+              p3_field::extension::binomial_extension::BinomialExtensionField<F, D>
+help: consider further restricting type parameter `F` with trait `Field`
+    |
+ 54 | pub trait VariableLengthChallenger<F: Field + p3_field::field::Field, Digest: Copy>:
+    |                                             ++++++++++++++++++++++++
+
+error[E0277]: the trait bound `F: p3_field::field::Field` is not satisfied
+   --> /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/slop-challenger-6.2.1/src/lib.rs:84:33
+    |
+ 84 | impl<F: Field, Digest: Copy, C: FieldChallenger<F> + CanObserve<Digest>>
+    |                                 ^^^^^^^^^^^^^^^^^^ the trait `p3_field::field::Field` is not implemented for `F`
+    |
+note: there are multiple different versions of crate `p3_field` in the dependency graph
+   --> /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/p3-field-0.3.3-succinct/src/field.rs:159:1
+    |
+159 | / pub trait Field:
+160 | |     AbstractField<F = Self>
+161 | |     + Packable
+162 | |     + 'static
+...   |
+170 | |     + Serialize
+171 | |     + DeserializeOwned
+    | |______________________^ this is the expected trait
+    |
+   ::: /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/p3-field-0.4.3-succinct/src/field.rs:159:1
+    |
+159 | / pub trait Field:
+160 | |     AbstractField<F = Self>
+161 | |     + Packable
+162 | |     + 'static
+...   |
+170 | |     + Serialize
+171 | |     + DeserializeOwned
+    | |______________________- this is the trait that was imported
+    = help: you can use `cargo tree` to explore your dependency tree
+note: required by a bound in `p3_challenger::FieldChallenger`
+   --> /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/p3-challenger-0.3.3-succinct/src/lib.rs:52:30
+    |
+ 52 | pub trait FieldChallenger<F: Field>:
+    |                              ^^^^^ required by this bound in `FieldChallenger`
+    = note: `FieldChallenger` is a "sealed trait", because to implement it you also need to implement `p3_field::field::Field`, which is not accessible; this is usually done to force you to use one of the provided types that already implement it
+    = help: the following type implements the trait:
+              p3_field::extension::binomial_extension::BinomialExtensionField<F, D>
+help: consider further restricting type parameter `F` with trait `Field`
+    |
+ 84 | impl<F: Field + p3_field::field::Field, Digest: Copy, C: FieldChallenger<F> + CanObserve<Digest>>
+    |               ++++++++++++++++++++++++
+
+error[E0277]: the trait bound `P: p3_symmetric::permutation::CryptographicPermutation<[F; WIDTH]>` is not satisfied
+  --> /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/slop-challenger-6.2.1/src/synchronize.rs:12:53
+   |
+12 |     fn synchronize_challengers(mut challengers: Vec<Self>) -> Self {
+   |                                                     ^^^^ the trait `p3_symmetric::permutation::CryptographicPermutation<[F; WIDTH]>` is not implemented for `P`
+   |
+note: there are multiple different versions of crate `p3_symmetric` in the dependency graph
+  --> /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/p3-symmetric-0.3.3-succinct/src/permutation.rs:13:1
+   |
+13 | pub trait CryptographicPermutation<T: Clone>: Permutation<T> {}
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ this is the expected trait
+   |
+  ::: /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/p3-symmetric-0.4.3-succinct/src/permutation.rs:13:1
+   |
+13 | pub trait CryptographicPermutation<T: Clone>: Permutation<T> {}
+   | ------------------------------------------------------------ this is the trait that was imported
+   = help: you can use `cargo tree` to explore your dependency tree
+note: required by a bound in `DuplexChallenger`
+  --> /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/p3-challenger-0.3.3-succinct/src/duplex_challenger.rs:18:8
+   |
+15 | pub struct DuplexChallenger<F, P, const WIDTH: usize, const RATE: usize>
+   |            ---------------- required by a bound in this struct
+...
+18 |     P: CryptographicPermutation<[F; WIDTH]>,
+   |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `DuplexChallenger`
+help: consider further restricting type parameter `P` with trait `CryptographicPermutation`
+   |
+ 9 | impl<F: Field, P: CryptographicPermutation<[F; WIDTH]> + p3_symmetric::permutation::CryptographicPermutation<[F; WIDTH]>, const WIDTH: usize, const RATE: usize>
+   |                                                        +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+error[E0277]: the trait bound `P: p3_symmetric::permutation::CryptographicPermutation<[F; WIDTH]>` is not satisfied
+  --> /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/slop-challenger-6.2.1/src/synchronize.rs:13:24
+   |
+13 |         debug_assert!(!challengers.is_empty(), "No challengers to synchronize");
+   |                        ^^^^^^^^^^^^^^^^^^^^^^ the trait `p3_symmetric::permutation::CryptographicPermutation<[F; WIDTH]>` is not implemented for `P`
+   |
+note: there are multiple different versions of crate `p3_symmetric` in the dependency graph
+  --> /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/p3-symmetric-0.3.3-succinct/src/permutation.rs:13:1
+   |
+13 | pub trait CryptographicPermutation<T: Clone>: Permutation<T> {}
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ this is the expected trait
+   |
+  ::: /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/p3-symmetric-0.4.3-succinct/src/permutation.rs:13:1
+   |
+13 | pub trait CryptographicPermutation<T: Clone>: Permutation<T> {}
+   | ------------------------------------------------------------ this is the trait that was imported
+   = help: you can use `cargo tree` to explore your dependency tree
+note: required by a bound in `DuplexChallenger`
+  --> /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/p3-challenger-0.3.3-succinct/src/duplex_challenger.rs:18:8
+   |
+15 | pub struct DuplexChallenger<F, P, const WIDTH: usize, const RATE: usize>
+   |            ---------------- required by a bound in this struct
+...
+18 |     P: CryptographicPermutation<[F; WIDTH]>,
+   |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `DuplexChallenger`
+help: consider further restricting type parameter `P` with trait `CryptographicPermutation`
+   |
+ 9 | impl<F: Field, P: CryptographicPermutation<[F; WIDTH]> + p3_symmetric::permutation::CryptographicPermutation<[F; WIDTH]>, const WIDTH: usize, const RATE: usize>
+   |                                                        +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+error[E0277]: the trait bound `P: p3_symmetric::permutation::CryptographicPermutation<[F; WIDTH]>` is not satisfied
+  --> /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/slop-challenger-6.2.1/src/synchronize.rs:15:26
+   |
+15 |         let mut result = challengers[0].clone();
+   |                          ^^^^^^^^^^^^^^ the trait `p3_symmetric::permutation::CryptographicPermutation<[F; WIDTH]>` is not implemented for `P`
+   |
+note: there are multiple different versions of crate `p3_symmetric` in the dependency graph
+  --> /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/p3-symmetric-0.3.3-succinct/src/permutation.rs:13:1
+   |
+13 | pub trait CryptographicPermutation<T: Clone>: Permutation<T> {}
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ this is the expected trait
+   |
+  ::: /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/p3-symmetric-0.4.3-succinct/src/permutation.rs:13:1
+   |
+13 | pub trait CryptographicPermutation<T: Clone>: Permutation<T> {}
+   | ------------------------------------------------------------ this is the trait that was imported
+   = help: you can use `cargo tree` to explore your dependency tree
+note: required by a bound in `DuplexChallenger`
+  --> /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/p3-challenger-0.3.3-succinct/src/duplex_challenger.rs:18:8
+   |
+15 | pub struct DuplexChallenger<F, P, const WIDTH: usize, const RATE: usize>
+   |            ---------------- required by a bound in this struct
+...
+18 |     P: CryptographicPermutation<[F; WIDTH]>,
+   |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `DuplexChallenger`
+help: consider further restricting type parameter `P` with trait `CryptographicPermutation`
+   |
+ 9 | impl<F: Field, P: CryptographicPermutation<[F; WIDTH]> + p3_symmetric::permutation::CryptographicPermutation<[F; WIDTH]>, const WIDTH: usize, const RATE: usize>
+   |                                                        +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+error[E0599]: the method `clone` exists for struct `DuplexChallenger<F, P, WIDTH, RATE>`, but its trait bounds were not satisfied
+  --> /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/slop-challenger-6.2.1/src/synchronize.rs:15:41
+   |
+15 |         let mut result = challengers[0].clone();
+   |                                         ^^^^^ method cannot be called on `DuplexChallenger<F, P, WIDTH, RATE>` due to unsatisfied trait bounds
+   |
+  ::: /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/p3-challenger-0.3.3-succinct/src/duplex_challenger.rs:15:1
+   |
+15 | pub struct DuplexChallenger<F, P, const WIDTH: usize, const RATE: usize>
+   | ------------------------------------------------------------------------ doesn't satisfy `DuplexChallenger<F, P, WIDTH, RATE>: Clone`
+   |
+   = note: the following trait bounds were not satisfied:
+           `P: p3_symmetric::permutation::CryptographicPermutation<[F; WIDTH]>`
+           which is required by `DuplexChallenger<F, P, WIDTH, RATE>: Clone`
+
+error[E0277]: the trait bound `P: p3_symmetric::permutation::CryptographicPermutation<[F; WIDTH]>` is not satisfied
+  --> /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/slop-challenger-6.2.1/src/synchronize.rs:17:18
+   |
+17 |         for c in challengers[1..].iter_mut() {
+   |                  ^^^^^^^^^^^^^^^^ the trait `p3_symmetric::permutation::CryptographicPermutation<[F; WIDTH]>` is not implemented for `P`
+   |
+note: there are multiple different versions of crate `p3_symmetric` in the dependency graph
+  --> /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/p3-symmetric-0.3.3-succinct/src/permutation.rs:13:1
+   |
+13 | pub trait CryptographicPermutation<T: Clone>: Permutation<T> {}
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ this is the expected trait
+   |
+  ::: /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/p3-symmetric-0.4.3-succinct/src/permutation.rs:13:1
+   |
+13 | pub trait CryptographicPermutation<T: Clone>: Permutation<T> {}
+   | ------------------------------------------------------------ this is the trait that was imported
+   = help: you can use `cargo tree` to explore your dependency tree
+note: required by a bound in `DuplexChallenger`
+  --> /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/p3-challenger-0.3.3-succinct/src/duplex_challenger.rs:18:8
+   |
+15 | pub struct DuplexChallenger<F, P, const WIDTH: usize, const RATE: usize>
+   |            ---------------- required by a bound in this struct
+...
+18 |     P: CryptographicPermutation<[F; WIDTH]>,
+   |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `DuplexChallenger`
+help: consider further restricting type parameter `P` with trait `CryptographicPermutation`
+   |
+ 9 | impl<F: Field, P: CryptographicPermutation<[F; WIDTH]> + p3_symmetric::permutation::CryptographicPermutation<[F; WIDTH]>, const WIDTH: usize, const RATE: usize>
+   |                                                        +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+error[E0277]: the trait bound `P: p3_symmetric::permutation::CryptographicPermutation<[F; WIDTH]>` is not satisfied
+  --> /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/slop-challenger-6.2.1/src/synchronize.rs:17:18
+   |
+17 |         for c in challengers[1..].iter_mut() {
+   |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^ the trait `p3_symmetric::permutation::CryptographicPermutation<[F; WIDTH]>` is not implemented for `P`
+   |
+note: there are multiple different versions of crate `p3_symmetric` in the dependency graph
+  --> /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/p3-symmetric-0.3.3-succinct/src/permutation.rs:13:1
+   |
+13 | pub trait CryptographicPermutation<T: Clone>: Permutation<T> {}
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ this is the expected trait
+   |
+  ::: /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/p3-symmetric-0.4.3-succinct/src/permutation.rs:13:1
+   |
+13 | pub trait CryptographicPermutation<T: Clone>: Permutation<T> {}
+   | ------------------------------------------------------------ this is the trait that was imported
+   = help: you can use `cargo tree` to explore your dependency tree
+note: required by a bound in `DuplexChallenger`
+  --> /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/p3-challenger-0.3.3-succinct/src/duplex_challenger.rs:18:8
+   |
+15 | pub struct DuplexChallenger<F, P, const WIDTH: usize, const RATE: usize>
+   |            ---------------- required by a bound in this struct
+...
+18 |     P: CryptographicPermutation<[F; WIDTH]>,
+   |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `DuplexChallenger`
+help: consider further restricting type parameter `P` with trait `CryptographicPermutation`
+   |
+ 9 | impl<F: Field, P: CryptographicPermutation<[F; WIDTH]> + p3_symmetric::permutation::CryptographicPermutation<[F; WIDTH]>, const WIDTH: usize, const RATE: usize>
+   |                                                        +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+error[E0599]: the method `sample` exists for mutable reference `&mut DuplexChallenger<F, P, WIDTH, RATE>`, but its trait bounds were not satisfied
+  --> /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/slop-challenger-6.2.1/src/synchronize.rs:19:32
+   |
+19 |                 let elt: F = c.sample();
+   |                                ^^^^^^ method cannot be called on `&mut DuplexChallenger<F, P, WIDTH, RATE>` due to unsatisfied trait bounds
+   |
+  ::: /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/p3-challenger-0.3.3-succinct/src/duplex_challenger.rs:15:1
+   |
+15 | pub struct DuplexChallenger<F, P, const WIDTH: usize, const RATE: usize>
+   | ------------------------------------------------------------------------ doesn't satisfy `DuplexChallenger<F, P, WIDTH, RATE>: CanSample<_>`
+   |
+   = note: the following trait bounds were not satisfied:
+           `F: p3_field::field::Field`
+           which is required by `DuplexChallenger<F, P, WIDTH, RATE>: CanSample<_>`
+           `P: p3_symmetric::permutation::CryptographicPermutation<[F; WIDTH]>`
+           which is required by `DuplexChallenger<F, P, WIDTH, RATE>: CanSample<_>`
+           `DuplexChallenger<F, P, WIDTH, RATE>: CanSample<_>`
+           which is required by `&mut DuplexChallenger<F, P, WIDTH, RATE>: CanSample<_>`
+
+error[E0277]: the trait bound `F: p3_field::field::Field` is not satisfied
+   --> /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/slop-challenger-6.2.1/src/lib.rs:64:18
+    |
+ 64 |             self.observe_ext_element(item);
+    |                  ^^^^^^^^^^^^^^^^^^^ the trait `p3_field::field::Field` is not implemented for `F`
+    |
+note: there are multiple different versions of crate `p3_field` in the dependency graph
+   --> /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/p3-field-0.3.3-succinct/src/field.rs:159:1
+    |
+159 | / pub trait Field:
+160 | |     AbstractField<F = Self>
+161 | |     + Packable
+162 | |     + 'static
+...   |
+170 | |     + Serialize
+171 | |     + DeserializeOwned
+    | |______________________^ this is the expected trait
+    |
+   ::: /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/p3-field-0.4.3-succinct/src/field.rs:159:1
+    |
+159 | / pub trait Field:
+160 | |     AbstractField<F = Self>
+161 | |     + Packable
+162 | |     + 'static
+...   |
+170 | |     + Serialize
+171 | |     + DeserializeOwned
+    | |______________________- this is the trait that was imported
+    = help: you can use `cargo tree` to explore your dependency tree
+note: required by a bound in `observe_ext_element`
+   --> /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/p3-challenger-0.3.3-succinct/src/lib.rs:52:30
+    |
+ 52 | pub trait FieldChallenger<F: Field>:
+    |                              ^^^^^ required by this bound in `FieldChallenger::observe_ext_element`
+...
+ 55 |     fn observe_ext_element<EF: AbstractExtensionField<F>>(&mut self, ext: EF) {
+    |        ------------------- required by a bound in this associated function
+help: consider further restricting type parameter `F` with trait `Field`
+    |
+ 54 | pub trait VariableLengthChallenger<F: Field + p3_field::field::Field, Digest: Copy>:
+    |                                             ++++++++++++++++++++++++
+
+error[E0277]: the trait bound `EF: p3_field::field::AbstractExtensionField<F>` is not satisfied
+   --> /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/slop-challenger-6.2.1/src/lib.rs:64:38
+    |
+ 64 |             self.observe_ext_element(item);
+    |                  ------------------- ^^^^ the trait `p3_field::field::AbstractExtensionField<F>` is not implemented for `EF`
+    |                  |
+    |                  required by a bound introduced by this call
+    |
+note: there are multiple different versions of crate `p3_field` in the dependency graph
+   --> /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/p3-field-0.3.3-succinct/src/field.rs:260:1
+    |
+260 | / pub trait AbstractExtensionField<Base: AbstractField>:
+261 | |     AbstractField
+262 | |     + From<Base>
+263 | |     + Add<Base, Output = Self>
+...   |
+267 | |     + Mul<Base, Output = Self>
+268 | |     + MulAssign<Base>
+    | |_____________________^ this is the expected trait
+    |
+   ::: /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/p3-field-0.4.3-succinct/src/field.rs:260:1
+    |
+260 | / pub trait AbstractExtensionField<Base: AbstractField>:
+261 | |     AbstractField
+262 | |     + From<Base>
+263 | |     + Add<Base, Output = Self>
+...   |
+267 | |     + Mul<Base, Output = Self>
+268 | |     + MulAssign<Base>
+    | |_____________________- this is the found trait
+    = help: you can use `cargo tree` to explore your dependency tree
+note: required by a bound in `observe_ext_element`
+   --> /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/p3-challenger-0.3.3-succinct/src/lib.rs:55:32
+    |
+ 55 |     fn observe_ext_element<EF: AbstractExtensionField<F>>(&mut self, ext: EF) {
+    |                                ^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `FieldChallenger::observe_ext_element`
+help: consider further restricting type parameter `EF` with trait `AbstractExtensionField`
+    |
+ 61 |     fn observe_variable_length_extension_slice<EF: ExtensionField<F> + p3_field::field::AbstractExtensionField<F>>(&mut self, data: &[EF]) {
+    |                                                                      ++++++++++++++++++++++++++++++++++++++++++++
+
+error[E0277]: the trait bound `F: p3_field::field::Field` is not satisfied
+   --> /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/slop-challenger-6.2.1/src/lib.rs:72:18
+    |
+ 72 |             self.observe_ext_element(item);
+    |                  ^^^^^^^^^^^^^^^^^^^ the trait `p3_field::field::Field` is not implemented for `F`
+    |
+note: there are multiple different versions of crate `p3_field` in the dependency graph
+   --> /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/p3-field-0.3.3-succinct/src/field.rs:159:1
+    |
+159 | / pub trait Field:
+160 | |     AbstractField<F = Self>
+161 | |     + Packable
+162 | |     + 'static
+...   |
+170 | |     + Serialize
+171 | |     + DeserializeOwned
+    | |______________________^ this is the expected trait
+    |
+   ::: /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/p3-field-0.4.3-succinct/src/field.rs:159:1
+    |
+159 | / pub trait Field:
+160 | |     AbstractField<F = Self>
+161 | |     + Packable
+162 | |     + 'static
+...   |
+170 | |     + Serialize
+171 | |     + DeserializeOwned
+    | |______________________- this is the trait that was imported
+    = help: you can use `cargo tree` to explore your dependency tree
+note: required by a bound in `observe_ext_element`
+   --> /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/p3-challenger-0.3.3-succinct/src/lib.rs:52:30
+    |
+ 52 | pub trait FieldChallenger<F: Field>:
+    |                              ^^^^^ required by this bound in `FieldChallenger::observe_ext_element`
+...
+ 55 |     fn observe_ext_element<EF: AbstractExtensionField<F>>(&mut self, ext: EF) {
+    |        ------------------- required by a bound in this associated function
+help: consider further restricting type parameter `F` with trait `Field`
+    |
+ 54 | pub trait VariableLengthChallenger<F: Field + p3_field::field::Field, Digest: Copy>:
+    |                                             ++++++++++++++++++++++++
+
+error[E0277]: the trait bound `EF: p3_field::field::AbstractExtensionField<F>` is not satisfied
+   --> /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/slop-challenger-6.2.1/src/lib.rs:72:38
+    |
+ 72 |             self.observe_ext_element(item);
+    |                  ------------------- ^^^^ the trait `p3_field::field::AbstractExtensionField<F>` is not implemented for `EF`
+    |                  |
+    |                  required by a bound introduced by this call
+    |
+note: there are multiple different versions of crate `p3_field` in the dependency graph
+   --> /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/p3-field-0.3.3-succinct/src/field.rs:260:1
+    |
+260 | / pub trait AbstractExtensionField<Base: AbstractField>:
+261 | |     AbstractField
+262 | |     + From<Base>
+263 | |     + Add<Base, Output = Self>
+...   |
+267 | |     + Mul<Base, Output = Self>
+268 | |     + MulAssign<Base>
+    | |_____________________^ this is the expected trait
+    |
+   ::: /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/p3-field-0.4.3-succinct/src/field.rs:260:1
+    |
+260 | / pub trait AbstractExtensionField<Base: AbstractField>:
+261 | |     AbstractField
+262 | |     + From<Base>
+263 | |     + Add<Base, Output = Self>
+...   |
+267 | |     + Mul<Base, Output = Self>
+268 | |     + MulAssign<Base>
+    | |_____________________- this is the found trait
+    = help: you can use `cargo tree` to explore your dependency tree
+note: required by a bound in `observe_ext_element`
+   --> /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/p3-challenger-0.3.3-succinct/src/lib.rs:55:32
+    |
+ 55 |     fn observe_ext_element<EF: AbstractExtensionField<F>>(&mut self, ext: EF) {
+    |                                ^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `FieldChallenger::observe_ext_element`
+help: consider further restricting type parameter `EF` with trait `AbstractExtensionField`
+    |
+ 70 |     fn observe_constant_length_extension_slice<EF: ExtensionField<F> + p3_field::field::AbstractExtensionField<F>>(&mut self, data: &[EF]) {
+    |                                                                      ++++++++++++++++++++++++++++++++++++++++++++
+
+Some errors have detailed explanations: E0277, E0599.
+For more information about an error, try `rustc --explain E0277`.
+error: could not compile `slop-challenger` (lib) due to 16 previous errors
+warning: build failed, waiting for other jobs to finish...

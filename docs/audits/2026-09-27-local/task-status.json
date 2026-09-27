@@ -1,0 +1,1052 @@
+{
+  "base_sha": "098e4952c189f92e4293ed7d49f81222b626e406",
+  "guide_sha256": "00e8aef0801cd76160213dd3a3d73b9636b2f243bb5ab20079efcffa4f7ccdfd",
+  "tasks": [
+    {
+      "id": "B-01",
+      "title": "Sabit başlangıç ve doğru durum kaydı",
+      "priority": "P0",
+      "depends_on": [],
+      "status": "PASS",
+      "evidence": [
+        "baseline/baseline.json",
+        "baseline/ci-run.json",
+        "baseline/original-worktree-preserved.json"
+      ],
+      "limits": [],
+      "criteria": [
+        {
+          "text": "Base SHA, tree, dal, işletim sistemi ve araç sürümleri kayıtlı.",
+          "passed": true
+        },
+        {
+          "text": "Kullanıcının mevcut worktree’si değiştirilmedi; ayrı çalışma dizini doğrulandı.",
+          "passed": true
+        },
+        {
+          "text": "Tarihsel test toplamları ile yeni çalışma sonuçları ayrı tutuldu.",
+          "passed": true
+        },
+        {
+          "text": "Seçilen ilk görev ve kapsam dışı işler açıkça yazıldı.",
+          "passed": true
+        }
+      ],
+      "local_criteria_complete": true,
+      "unpassed_dependencies": []
+    },
+    {
+      "id": "B-02",
+      "title": "Loopback, test kimlikleri ve güvenli yerel ortam",
+      "priority": "P0",
+      "depends_on": [
+        "B-01"
+      ],
+      "status": "PASS",
+      "evidence": [
+        "baseline/redacted-config-manifest.json",
+        "runtime/runtime-manifest.json",
+        "frontend/README.md"
+      ],
+      "limits": [
+        "Public oracle reads remain enabled in demo; loopback is not outbound network isolation."
+      ],
+      "criteria": [
+        {
+          "text": "Gateway, Vite ve varsa Anvil yalnız loopback üzerinden erişilebilir.",
+          "passed": true
+        },
+        {
+          "text": "Canlı fon, canlı anahtar ve canlı snapshot kullanılmadı.",
+          "passed": true
+        },
+        {
+          "text": "Dış servis çağrıları ve mock/fixture sınırları kaydedildi.",
+          "passed": true
+        },
+        {
+          "text": "Başlatma ve güvenli durdurma adımları aynı yerel ortamda tekrarlandı.",
+          "passed": true
+        }
+      ],
+      "local_criteria_complete": true,
+      "unpassed_dependencies": []
+    },
+    {
+      "id": "S1-01",
+      "title": "Recovery, adres yeniden bağlama ve yetki matrisi",
+      "priority": "P0",
+      "depends_on": [
+        "B-01"
+      ],
+      "status": "PASS",
+      "evidence": [
+        "recovery/authority-matrix.md",
+        "checks/workspace-integrated.json"
+      ],
+      "limits": [
+        "Bounded barrier schedules and synthetic keys; no exhaustive concurrency or device-wallet claim."
+      ],
+      "criteria": [
+        {
+          "text": "Yetki matrisi pozitif ve negatif vektörlerle tamamlandı.",
+          "passed": true
+        },
+        {
+          "text": "Her hata noktasındaki bellek/disk/nonce durumu ayrı doğrulandı.",
+          "passed": true
+        },
+        {
+          "text": "Eski yetkiyle secret dönülmüyor; unknown outcome başarı sayılmıyor.",
+          "passed": true
+        },
+        {
+          "text": "A01 referansları ve ilgisiz hesaplar korunuyor.",
+          "passed": true
+        }
+      ],
+      "local_criteria_complete": true,
+      "unpassed_dependencies": []
+    },
+    {
+      "id": "S1-02",
+      "title": "Gerçek TCP backpressure ve oturum kapatma",
+      "priority": "P1",
+      "depends_on": [
+        "B-02",
+        "S1-01"
+      ],
+      "status": "PASS",
+      "evidence": [
+        "recovery/tcp-matrix.md",
+        "recovery/real-ws-final.log",
+        "recovery/latency-observations.json"
+      ],
+      "limits": [
+        "Three loopback sockets and one8MiB slow-reader event; no p95/p99 or production capacity claim."
+      ],
+      "criteria": [
+        {
+          "text": "Idle, queued ve yavaş okuyucu testleri gerçek socket ile geçti.",
+          "passed": true
+        },
+        {
+          "text": "Timeout veya yalnız hata metni kapanışın yerine kullanılmadı.",
+          "passed": true
+        },
+        {
+          "text": "İlgisiz hesabın ilerlemesi ölçüldü; kilit bekleme sınırları kayıtlı.",
+          "passed": true
+        },
+        {
+          "text": "Socket/task sızıntısı için test sonu kaynak kontrolü yapıldı.",
+          "passed": true
+        }
+      ],
+      "local_criteria_complete": true,
+      "unpassed_dependencies": []
+    },
+    {
+      "id": "S2-01",
+      "title": "Gerçek tarayıcıda iki sekme ve kurtarma akışı",
+      "priority": "P0",
+      "depends_on": [
+        "B-02",
+        "S1-01"
+      ],
+      "status": "PARTIAL",
+      "evidence": [
+        "frontend/evidence.json",
+        "frontend/browser-matrix.json",
+        "frontend/manual-wallet-test.md"
+      ],
+      "limits": [
+        "Real Chromium/WebKit two-tab fixture matrix passed; actual extension wallet and real-browser-to-Rust-gateway integration remain unexecuted."
+      ],
+      "criteria": [
+        {
+          "text": "Aynı origin’de iki gerçek sekme ile matris tamamlandı.",
+          "passed": true
+        },
+        {
+          "text": "Eski yanıt veya socket yeni credential/state’i ezemiyor.",
+          "passed": true
+        },
+        {
+          "text": "Kilit yok/meşgul durumunda mutasyon öncesi anlaşılır hata var.",
+          "passed": true
+        },
+        {
+          "text": "Console/network kayıtları secret içermeyecek biçimde redakte edildi.",
+          "passed": true
+        },
+        {
+          "text": "Gerçek cüzdan ile otomatik provider kanıtları ayrı etiketli.",
+          "passed": true
+        }
+      ],
+      "local_criteria_complete": true,
+      "unpassed_dependencies": []
+    },
+    {
+      "id": "S2-02",
+      "title": "Eski hesap geçişi ve session-only erişim UX’i",
+      "priority": "P0",
+      "depends_on": [
+        "S2-01"
+      ],
+      "status": "PARTIAL",
+      "evidence": [
+        "frontend/legacy-fixture-matrix.json",
+        "frontend/migration-runbook.md",
+        "frontend/reviewer-session-evidence.json"
+      ],
+      "limits": [
+        "Local acceptance checks pass; S2-01 real-wallet dependency remains open."
+      ],
+      "criteria": [
+        {
+          "text": "Eski hesap için anlaşılır, mevcut yetkiye dayanan geçiş yolu var.",
+          "passed": true
+        },
+        {
+          "text": "Legacy kayıt silinmedi ve yanlış deployment’a credential sızmadı.",
+          "passed": true
+        },
+        {
+          "text": "Session-only uyarısı ve reload davranışı gerçek tarayıcıda doğrulandı.",
+          "passed": true
+        },
+        {
+          "text": "Geçiş balance, snapshot veya chain reset gerektirmiyor.",
+          "passed": true
+        }
+      ],
+      "local_criteria_complete": true,
+      "unpassed_dependencies": [
+        "S2-01"
+      ]
+    },
+    {
+      "id": "S2-03",
+      "title": "Emir, çekim ve piyasa seçimi yarış matrisi",
+      "priority": "P0",
+      "depends_on": [
+        "S2-01"
+      ],
+      "status": "PARTIAL",
+      "evidence": [
+        "frontend/mutation-race-matrix.md",
+        "frontend/evidence.json"
+      ],
+      "limits": [
+        "Deposit wallet mint/approve/bind/authorize/credit transaction race matrix not executed."
+      ],
+      "criteria": [
+        {
+          "text": "Her mutation’ın hangi immutable bağlamla gönderildiği testli.",
+          "passed": false
+        },
+        {
+          "text": "Farklı hesap/piyasa verileri aynı state altında birleşmiyor.",
+          "passed": true
+        },
+        {
+          "text": "Unknown sonuçta sahte başarı veya otomatik çift transfer yok.",
+          "passed": true
+        },
+        {
+          "text": "Execution miktarı ile finality eksenleri arayüzde ayrı tutuluyor.",
+          "passed": true
+        }
+      ],
+      "local_criteria_complete": false,
+      "unpassed_dependencies": [
+        "S2-01"
+      ]
+    },
+    {
+      "id": "S2-04",
+      "title": "XSS, CSP ve credential saklama politikası",
+      "priority": "P0",
+      "depends_on": [
+        "S2-02"
+      ],
+      "status": "PARTIAL",
+      "evidence": [
+        "frontend/browser-threat-model.md",
+        "frontend/csp-local-policy.txt"
+      ],
+      "limits": [
+        "CSP applied only to local compiled fixture server; actual extension-wallet/production-CSP compatibility unverified."
+      ],
+      "criteria": [
+        {
+          "text": "Riskli render ve dış içerik yüzeylerinin kapsam listesi var.",
+          "passed": true
+        },
+        {
+          "text": "Credential URL, console, hata raporu ve telemetry’ye taşınmıyor.",
+          "passed": true
+        },
+        {
+          "text": "Yerelde uygulanmış CSP ve wallet uyumluluk sonuçları kayıtlı.",
+          "passed": false
+        },
+        {
+          "text": "Storage güven sınırı ile kalan XSS riski dürüstçe belgeli.",
+          "passed": true
+        }
+      ],
+      "local_criteria_complete": false,
+      "unpassed_dependencies": [
+        "S2-02"
+      ]
+    },
+    {
+      "id": "S3-01",
+      "title": "Snapshot framing ve adversarial parser",
+      "priority": "P0",
+      "depends_on": [
+        "B-01"
+      ],
+      "status": "PASS",
+      "evidence": [
+        "snapshot/s3-evidence.json",
+        "snapshot/format-map.md",
+        "checks/s3-final.json"
+      ],
+      "limits": [
+        "64MiB input cap does not promise exact RSS; old authenticated snapshots lack an external monotonic antirollback store."
+      ],
+      "criteria": [
+        {
+          "text": "Framing’in tek anlamlılığı somut pozitif/negatif vektörlerle gösterildi.",
+          "passed": true
+        },
+        {
+          "text": "Authentication başarısızlığında payload güvenilir kabul edilmiyor.",
+          "passed": true
+        },
+        {
+          "text": "Bozuk veri açık hata ile reddediliyor; nonce/root reset yok.",
+          "passed": true
+        },
+        {
+          "text": "Tahsis, derinlik ve input boyutu sınırları tanımlı.",
+          "passed": true
+        }
+      ],
+      "local_criteria_complete": true,
+      "unpassed_dependencies": []
+    },
+    {
+      "id": "S3-02",
+      "title": "V5–V8 göçü ve state eşdeğerliği",
+      "priority": "P0",
+      "depends_on": [
+        "S3-01"
+      ],
+      "status": "PASS",
+      "evidence": [
+        "snapshot/migration-vectors.json",
+        "snapshot/replay-root-comparison.json",
+        "snapshot/fixture-sha256.txt"
+      ],
+      "limits": [
+        "Four actual historical writer revisions; not arbitrary historical deployment snapshots."
+      ],
+      "criteria": [
+        {
+          "text": "Her desteklenen eski sürüm için hash’i sabit fixture var.",
+          "passed": true
+        },
+        {
+          "text": "State/root ve yetki semantiği eşdeğerlik kontrolünden geçti.",
+          "passed": true
+        },
+        {
+          "text": "Recovery nonce düşmüyor; A01 tek-kredi semantiği korunuyor.",
+          "passed": true
+        },
+        {
+          "text": "Desteklenmeyen/tutarsız kayıt için veri kaybetmeyen uzlaştırma yolu yazıldı.",
+          "passed": true
+        }
+      ],
+      "local_criteria_complete": true,
+      "unpassed_dependencies": []
+    },
+    {
+      "id": "S3-03",
+      "title": "Parser fuzz ve sınırlı kaynak dayanıklılığı",
+      "priority": "P1",
+      "depends_on": [
+        "S3-01",
+        "S3-02"
+      ],
+      "status": "PASS",
+      "evidence": [
+        "snapshot/fuzz-manifest.json",
+        "snapshot/crash-triage.md",
+        "checks/s3-final.json"
+      ],
+      "limits": [
+        "Finite deterministic713 inner and216 outer vectors, no sanitizer/libFuzzer campaign."
+      ],
+      "criteria": [
+        {
+          "text": "Fuzz hedefleri ve kapsanan parser yolları tanımlı.",
+          "passed": true
+        },
+        {
+          "text": "Çalıştırılan seed/bütçe/araç sürümü kayıtlı.",
+          "passed": true
+        },
+        {
+          "text": "Tüm gerçek crash/hang bulguları düzeltildi veya açık engel olarak yazıldı.",
+          "passed": true
+        },
+        {
+          "text": "Negatif kontrol gerçekten ilgili parser’a ulaşıyor.",
+          "passed": true
+        }
+      ],
+      "local_criteria_complete": true,
+      "unpassed_dependencies": []
+    },
+    {
+      "id": "S4-01",
+      "title": "Core muhasebe, margin, likidasyon ve ADL",
+      "priority": "P0",
+      "depends_on": [
+        "S3-02"
+      ],
+      "status": "PASS",
+      "evidence": [
+        "protocol/layer-review.md",
+        "checks/core-debug-after.json",
+        "checks/core-release-integrated.json"
+      ],
+      "limits": [
+        "apply_batch stops at first invalid operation; callers needing batch atomicity retain/rollback prestate. Other window-counter +1 paths remain outside the added core guard."
+      ],
+      "criteria": [
+        {
+          "text": "Muhasebe denklemi ve kapsam dışı dış akışlar belgeli.",
+          "passed": true
+        },
+        {
+          "text": "Funding/fee/rounding sınırları pozitif ve negatif testli.",
+          "passed": true
+        },
+        {
+          "text": "Likidasyon/ADL/A06 sonucunda açıklanamayan değer oluşmuyor.",
+          "passed": true
+        },
+        {
+          "text": "İşlem reddi kabul edilmeyen kısmi state bırakmıyor.",
+          "passed": true
+        }
+      ],
+      "local_criteria_complete": true,
+      "unpassed_dependencies": []
+    },
+    {
+      "id": "S4-02",
+      "title": "Matcher: sıra, emir türleri ve kalan miktar",
+      "priority": "P0",
+      "depends_on": [
+        "S4-01"
+      ],
+      "status": "PASS",
+      "evidence": [
+        "protocol/layer-review.md",
+        "checks/workspace-integrated.json"
+      ],
+      "limits": [
+        "Bounded deterministic native/property coverage; no ZK fairness proof."
+      ],
+      "criteria": [
+        {
+          "text": "Tüm desteklenen emir türlerinin sınır semantiği testli.",
+          "passed": true
+        },
+        {
+          "text": "Kalan/filled/VWAP hesapları tam hassasiyetle uzlaşıyor.",
+          "passed": true
+        },
+        {
+          "text": "Risk reddinde çift veya kayıp fill oluşmuyor.",
+          "passed": true
+        },
+        {
+          "text": "Canlı maker tarihçe temizliğinde kaybolmuyor.",
+          "passed": true
+        }
+      ],
+      "local_criteria_complete": true,
+      "unpassed_dependencies": []
+    },
+    {
+      "id": "S4-03",
+      "title": "Sequencer, finality ve rollback journal",
+      "priority": "P0",
+      "depends_on": [
+        "S4-02",
+        "S3-02"
+      ],
+      "status": "PARTIAL",
+      "evidence": [
+        "rollback_journal/evidence.json",
+        "rollback_journal/journal-crash-matrix.json",
+        "recovery/protocol-lifecycle.md"
+      ],
+      "limits": [
+        "Journal I/O fail-open fixed; seal-vs-snapshot atomicity, pending old transaction reconciliation and unpinned ambiguous settlement recheck remain release gates."
+      ],
+      "criteria": [
+        {
+          "text": "Finality işaretleri gerçek gözlem ve commitment’a bağlı.",
+          "passed": true
+        },
+        {
+          "text": "Roll-forward/rollback/hold karar tablosu testli.",
+          "passed": true
+        },
+        {
+          "text": "Belirsiz durumda kanıt yokken journal/state silinmiyor.",
+          "passed": false
+        },
+        {
+          "text": "Kesinti sonrası çift settlement veya withdrawal kökü sapması oluşmuyor.",
+          "passed": false
+        }
+      ],
+      "local_criteria_complete": false,
+      "unpassed_dependencies": []
+    },
+    {
+      "id": "S4-04",
+      "title": "Vault, settlement ve yetki sözleşmeleri",
+      "priority": "P0",
+      "depends_on": [
+        "S4-01"
+      ],
+      "status": "PASS",
+      "evidence": [
+        "protocol/layer-review.md",
+        "checks/foundry-final.json"
+      ],
+      "limits": [
+        "96 Foundry cases; native/mock verifier boundaries, conventional ERC20 only; no real Groth16 receipt."
+      ],
+      "criteria": [
+        {
+          "text": "Fon giriş/çıkış muhasebesi ve replay korumaları testli.",
+          "passed": true
+        },
+        {
+          "text": "Rol ve domain negatif matrisi tamamlandı.",
+          "passed": true
+        },
+        {
+          "text": "A06 phase yolları ordinary settlement’tan ayrılıyor.",
+          "passed": true
+        },
+        {
+          "text": "Mock/gerçek verifier sınırı sonuçlarda açık.",
+          "passed": true
+        }
+      ],
+      "local_criteria_complete": true,
+      "unpassed_dependencies": []
+    },
+    {
+      "id": "S4-05",
+      "title": "Witness ve prover taşıma sınırı",
+      "priority": "P0",
+      "depends_on": [
+        "S4-03"
+      ],
+      "status": "PARTIAL",
+      "evidence": [
+        "protocol/layer-review.md",
+        "checks/prover-service-real-elf.json",
+        "checks/prover-service-tests.json"
+      ],
+      "limits": [
+        "Native transport checks and actual-ELF service validation are distinct from proof verification; S4-03 dependency unresolved."
+      ],
+      "criteria": [
+        {
+          "text": "Input/output bağlama matrisi ve negatif vektörler mevcut.",
+          "passed": true
+        },
+        {
+          "text": "Production’da dev bypass kabul edilmiyor.",
+          "passed": true
+        },
+        {
+          "text": "Retry/session dönüşümü yanlış batch veya root’u kabul ettirmiyor.",
+          "passed": true
+        },
+        {
+          "text": "Gerçek SP1 ispatı dışındaki kontroller açık etiketli.",
+          "passed": true
+        }
+      ],
+      "local_criteria_complete": true,
+      "unpassed_dependencies": [
+        "S4-03"
+      ]
+    },
+    {
+      "id": "S4-06",
+      "title": "Oracle, attestation ve note archive",
+      "priority": "P0",
+      "depends_on": [
+        "S4-01",
+        "S3-02"
+      ],
+      "status": "PASS",
+      "evidence": [
+        "protocol/layer-review.md",
+        "checks/workspace-integrated.json"
+      ],
+      "limits": [
+        "Frozen quote/time fixtures; no live TEE attestation, external oracle truth or deployed committee claim."
+      ],
+      "criteria": [
+        {
+          "text": "Oracle freshness ve hata politikası testli.",
+          "passed": true
+        },
+        {
+          "text": "Quote/key pin/expiry/replay sınırları belgeli ve testli.",
+          "passed": true
+        },
+        {
+          "text": "Archive restore muhasebe ve gizlilik koşullarını koruyor.",
+          "passed": true
+        },
+        {
+          "text": "Trusted oracle/custody/TEE/prover varsayımları ayrı gösteriliyor.",
+          "passed": true
+        }
+      ],
+      "local_criteria_complete": true,
+      "unpassed_dependencies": []
+    },
+    {
+      "id": "S4-07",
+      "title": "HTTP/WS yüzeyi, kaynak sınırları ve kapanış",
+      "priority": "P1",
+      "depends_on": [
+        "S1-02"
+      ],
+      "status": "PARTIAL",
+      "evidence": [
+        "recovery/route-matrix.csv",
+        "recovery/surface-review.md",
+        "recovery/bounded-load-manifest.json"
+      ],
+      "limits": [
+        "No explicit gateway socket cap/origin gate; permissive CORS; prover512MiB body consumed before handler bearer check; no complete request-draining shutdown."
+      ],
+      "criteria": [
+        {
+          "text": "Tüm erişilebilir route’ların güvenlik envanteri var.",
+          "passed": true
+        },
+        {
+          "text": "Body/rate/socket kaynak sınırları tekrar üretilebilir biçimde testli.",
+          "passed": false
+        },
+        {
+          "text": "Secret taşımayan ve kapalı varsayılan operasyon davranışı var.",
+          "passed": false
+        },
+        {
+          "text": "Yük/arıza testi yalnız izole yerel hedefte çalıştı.",
+          "passed": true
+        }
+      ],
+      "local_criteria_complete": false,
+      "unpassed_dependencies": []
+    },
+    {
+      "id": "S4-08",
+      "title": "CI, bağımlılık ve test kanıtı bütünlüğü",
+      "priority": "P0",
+      "depends_on": [
+        "B-01"
+      ],
+      "status": "PASS",
+      "evidence": [
+        "protocol/ci-coverage.md",
+        "baseline/ci-run.json",
+        "final-evidence-manifest.json"
+      ],
+      "limits": [
+        "Local changes not pushed; old remote CI proves base only. RSA/dev-tool advisories and local-vs-CI tool-version drift remain recorded."
+      ],
+      "criteria": [
+        {
+          "text": "Her rapor source SHA, checkout SHA/tree ve test seçimi taşıyor.",
+          "passed": true
+        },
+        {
+          "text": "Skipped/ignored ve sıfır-test kontrolleri açık.",
+          "passed": true
+        },
+        {
+          "text": "Gerekli workflow tetikleme kapsamı kontrol edildi.",
+          "passed": true
+        },
+        {
+          "text": "Bağımlılık/toolchain ve supply-chain açık riskleri kayıtlı.",
+          "passed": true
+        }
+      ],
+      "local_criteria_complete": true,
+      "unpassed_dependencies": []
+    },
+    {
+      "id": "S5-01",
+      "title": "Release adayı ve gerçek guest ELF",
+      "priority": "P0",
+      "depends_on": [
+        "S3-03",
+        "S4-05",
+        "S4-08"
+      ],
+      "status": "PARTIAL",
+      "evidence": [
+        "protocol/release-manifest.json",
+        "protocol/guest-reproducibility-pinned-path.json",
+        "checks/guest-build-family-locked.json"
+      ],
+      "limits": [
+        "Actual ELF and vkey generated; dirty source is content-pinned but no release commit or completed upstream graph gate."
+      ],
+      "criteria": [
+        {
+          "text": "Release source SHA ve tüm araç/bağımlılık sürümleri sabit.",
+          "passed": false
+        },
+        {
+          "text": "Gerçek guest ELF üretildi; stub kullanımı yok.",
+          "passed": true
+        },
+        {
+          "text": "ELF SHA-256 ve build komutu/exit kodu kayıtlı.",
+          "passed": true
+        },
+        {
+          "text": "Derleme tekrar üretilebilirliği veya tespit edilen fark belgeli.",
+          "passed": true
+        }
+      ],
+      "local_criteria_complete": false,
+      "unpassed_dependencies": [
+        "S4-05"
+      ]
+    },
+    {
+      "id": "S5-02",
+      "title": "Native / guest byte-exact eşitliği",
+      "priority": "P0",
+      "depends_on": [
+        "S5-01",
+        "S4-01",
+        "S4-03"
+      ],
+      "status": "BLOCKED",
+      "evidence": [
+        "checks/sp1-host-with-protoc.json",
+        "protocol/a06-execution-gate.json"
+      ],
+      "limits": [
+        "Normal deposit/withdraw native==guest passed; A06 delegated verification stopped by automatic safety review. Draft quarantined; not executed or integrated."
+      ],
+      "criteria": [
+        {
+          "text": "Aynı witness hash’i her iki yürütmede kullanıldı.",
+          "passed": false
+        },
+        {
+          "text": "Normal ve A06 phase 1/2 çıktıları byte-exact eşit.",
+          "passed": false
+        },
+        {
+          "text": "Negatif vektörler gerçek guest yürütmesinde reddedildi.",
+          "passed": false
+        },
+        {
+          "text": "Çıktı formatı ve alan sırası kontrat tüketicisiyle eşleşiyor.",
+          "passed": true
+        }
+      ],
+      "local_criteria_complete": false,
+      "unpassed_dependencies": [
+        "S5-01",
+        "S4-03"
+      ]
+    },
+    {
+      "id": "S5-03",
+      "title": "Vkey, gerçek proof ve verifier doğrulaması",
+      "priority": "P0",
+      "depends_on": [
+        "S5-02",
+        "S4-04"
+      ],
+      "status": "BLOCKED",
+      "evidence": [
+        "checks/sp1-vkey.json",
+        "protocol/proving-capability.json"
+      ],
+      "limits": [
+        "S5-02 incomplete; no real Groth16 proof. Configured Docker gnark backend unavailable; no paid/network/remote prover used."
+      ],
+      "criteria": [
+        {
+          "text": "Gerçek proof üretildi ve target verifier yolunda geçti.",
+          "passed": false
+        },
+        {
+          "text": "Yanlış vkey/input/proof negatif kontrolleri geçti.",
+          "passed": false
+        },
+        {
+          "text": "Source→ELF→vkey→witness→proof hash zinciri eksiksiz.",
+          "passed": false
+        },
+        {
+          "text": "Yerel/ücretli donanım ve maliyet yetkisi açıkça kayıtlı.",
+          "passed": true
+        }
+      ],
+      "local_criteria_complete": false,
+      "unpassed_dependencies": [
+        "S5-02"
+      ]
+    },
+    {
+      "id": "S6-01",
+      "title": "Yerel tam fon akışı ve acil çıkış",
+      "priority": "P0",
+      "depends_on": [
+        "S5-03",
+        "S2-03"
+      ],
+      "status": "BLOCKED",
+      "evidence": [
+        "runtime/runtime-manifest.json",
+        "protocol/layer-review.md"
+      ],
+      "limits": [
+        "Real-proof dependency absent. Demo HTTP and native/Foundry mock flows do not establish actual full token lifecycle."
+      ],
+      "criteria": [
+        {
+          "text": "Normal fon akışı gerçek yerel sözleşme ve proof ile tamamlandı.",
+          "passed": false
+        },
+        {
+          "text": "Withdraw/claim sonucunda gerçek test-token farkı doğrulandı.",
+          "passed": false
+        },
+        {
+          "text": "Acil çıkış ve negatif duplicate/proof senaryoları testli.",
+          "passed": false
+        },
+        {
+          "text": "Gateway-engine-vault muhasebesi her adımda uzlaşıyor.",
+          "passed": false
+        }
+      ],
+      "local_criteria_complete": false,
+      "unpassed_dependencies": [
+        "S5-03",
+        "S2-03"
+      ]
+    },
+    {
+      "id": "S6-02",
+      "title": "Disk hatası, process kill ve restore provası",
+      "priority": "P0",
+      "depends_on": [
+        "S6-01",
+        "S3-03"
+      ],
+      "status": "PARTIAL",
+      "evidence": [
+        "snapshot/crash-drill-matrix.json",
+        "runtime/runtime-manifest.json",
+        "rollback_journal/journal-crash-matrix.json"
+      ],
+      "limits": [
+        "Real filesystem failures and own-process periodic-snapshot SIGKILL/restore passed; exhaustive ACK/fsync/rename/prepared-settlement crash matrix not completed."
+      ],
+      "criteria": [
+        {
+          "text": "Kontrollü kesinti matrisi kaynak/durum hash’leriyle kayıtlı.",
+          "passed": false
+        },
+        {
+          "text": "Confirmed sonuç restart sonrası korunuyor; unknown dürüst kalıyor.",
+          "passed": false
+        },
+        {
+          "text": "Veri silerek/resetleyerek sorun örtülmedi.",
+          "passed": true
+        },
+        {
+          "text": "Gerçek dosya, process-kill ve fiziksel güç kesintisi kapsamları ayrı.",
+          "passed": true
+        }
+      ],
+      "local_criteria_complete": false,
+      "unpassed_dependencies": [
+        "S6-01"
+      ]
+    },
+    {
+      "id": "S6-03",
+      "title": "RPC/finality/reorg ve deployment eşlemesi",
+      "priority": "P0",
+      "depends_on": [
+        "S6-01"
+      ],
+      "status": "PARTIAL",
+      "evidence": [
+        "recovery/protocol-lifecycle.md",
+        "checks/real-cast-portable.json",
+        "protocol/block-pinned-deployment-manifest.json"
+      ],
+      "limits": [
+        "Finalized intake RPC fixtures pass; settlement two-read ambiguity remains. Public Base Sepolia endpoint returns HTTP403, so current deployment code/roles/vkey remain unknown."
+      ],
+      "criteria": [
+        {
+          "text": "Finality ve RPC disagreement politikası testli.",
+          "passed": false
+        },
+        {
+          "text": "Replay/duplicate ingestion çift kredi üretmiyor.",
+          "passed": true
+        },
+        {
+          "text": "Yerel ve canlı salt-okunur kanıtlar ayrı etiketli.",
+          "passed": true
+        },
+        {
+          "text": "Deployment eşleşmesi doğrulanmış veya açık engel olarak kayıtlı.",
+          "passed": true
+        }
+      ],
+      "local_criteria_complete": false,
+      "unpassed_dependencies": [
+        "S6-01"
+      ]
+    },
+    {
+      "id": "S7-01",
+      "title": "Anahtarlar, gözlem ve olay runbook’ları",
+      "priority": "P1",
+      "depends_on": [
+        "S6-02",
+        "S6-03"
+      ],
+      "status": "BLOCKED",
+      "evidence": [
+        "operations/key-role-inventory.md",
+        "operations/alert-catalog.json",
+        "operations/incident-drill.md"
+      ],
+      "limits": [
+        "Real incident owners/escalation destinations not supplied; no failure-injected pager/CloseOnly/full-funds drill."
+      ],
+      "criteria": [
+        {
+          "text": "Rol/anahtar envanteri secret içermeden tamamlandı.",
+          "passed": true
+        },
+        {
+          "text": "Kritik alarmlar arıza enjekte edilerek sınandı.",
+          "passed": false
+        },
+        {
+          "text": "Restore/CloseOnly/incident akışı yerelde tekrarlandı.",
+          "passed": false
+        },
+        {
+          "text": "Olay sahipleri ve iletişim sınırları belirli.",
+          "passed": false
+        }
+      ],
+      "local_criteria_complete": false,
+      "unpassed_dependencies": [
+        "S6-02",
+        "S6-03"
+      ]
+    },
+    {
+      "id": "S7-02",
+      "title": "Bağımsız inceleme ve yayın karar kapısı",
+      "priority": "P0",
+      "depends_on": [
+        "S2-04",
+        "S4-07",
+        "S4-08",
+        "S5-03",
+        "S6-02",
+        "S6-03",
+        "S7-01"
+      ],
+      "status": "BLOCKED",
+      "evidence": [
+        "independent-review.md",
+        "release-decision.md",
+        "final-evidence-manifest.json"
+      ],
+      "limits": [
+        "Bounded local independent code review only; no full independent/external signoff. Release held; no deployment or release approval inferred."
+      ],
+      "criteria": [
+        {
+          "text": "Coverage ve açık risk listesi bağımsız gözden geçirildi.",
+          "passed": false
+        },
+        {
+          "text": "Açık kritik/yüksek risk yayın engelleri kapandı veya yayın durduruldu.",
+          "passed": true
+        },
+        {
+          "text": "Tüm release kanıtı aynı kaynak/toolchain/deployment kimliğine bağlı.",
+          "passed": false
+        },
+        {
+          "text": "Yayın kararı ayrı açık yetkiyle verildi; bu rehber kararın yerine kullanılmadı.",
+          "passed": false
+        }
+      ],
+      "local_criteria_complete": false,
+      "unpassed_dependencies": [
+        "S2-04",
+        "S4-07",
+        "S5-03",
+        "S6-02",
+        "S6-03",
+        "S7-01"
+      ]
+    }
+  ],
+  "overall_status": "PARTIAL",
+  "release_gate": "BLOCKED",
+  "status_semantics": "PASS=bounded card acceptance covered; PARTIAL=material local evidence but broader acceptance/dependency open; BLOCKED=external/tool/review/authorization dependency prevents closure. No statuses imply release authorization.",
+  "source_manifest": "source-manifest.json",
+  "source_sha256": "4285ad1425cc350c8e6d2b6314aa3f03fc33d93ff61d533ebe5b4218025e6e1d"
+}

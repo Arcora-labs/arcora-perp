@@ -1,0 +1,220 @@
+   Compiling perp-core v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/perp-core)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.23s
+     Running unittests src/lib.rs (/tmp/arcora-core-target/debug/deps/perp_core-92c7af20978e962f)
+
+running 95 tests
+test fixed::tests::apply_rate_basic ... ok
+test commitment::tests::commitment_is_seven_field_state_root_domain ... ok
+test fixed::tests::notional_handles_fractional_size ... ok
+test fixed::tests::notional_of_one_btc_at_100k ... ok
+test funding::tests::accrue_moves_index_up_on_premium ... ok
+test funding::tests::discount_makes_shorts_pay ... ok
+test engine::tests::deposit_folds_blinded_owner_commit_not_raw_owner ... ok
+test commitment::tests::rejects_manifest_with_wrong_batch_id ... ok
+test funding::tests::extreme_negative_mark_clamps_to_minus_max ... ok
+test funding::tests::funding_tracks_elapsed_time_not_call_count ... ok
+test funding::tests::manipulated_mark_cannot_inflate_the_funding_notional ... ok
+test engine::tests::deposit_binds_order_and_folds_chain ... ok
+test funding::tests::overflow_clamp_preserves_sign ... ok
+test funding::tests::premium_makes_longs_pay ... ok
+test funding::tests::small_premium_not_clamped ... ok
+test commitment::tests::derives_withdrawals_root_from_burned_note ... ok
+test hash::tests::deterministic ... ok
+test hash::tests::domains_separate ... ok
+test hash::tests::sign_extension_distinguishes ... ok
+test hash::tests::new_encryption_domains_are_stable ... ok
+test commitment::tests::rejects_manifest_with_wrong_prev_root ... ok
+test market::tests::conservative_is_coherent ... ok
+test market::tests::fill_band_and_taker_fee_are_jointly_bounded_by_maintenance ... ok
+test market::tests::fill_deviation_ratio_must_be_positive ... ok
+test market::tests::incoherent_rejected ... ok
+test market::tests::liquidation_fee_must_be_below_maintenance ... ok
+test commitment::tests::deposits_root_is_post_batch_tip_and_in_commitment ... ok
+test market::tests::mark_deviation_ratio_must_be_positive ... ok
+test market::tests::live_fee_schedule_is_jointly_coherent ... ok
+test market::tests::max_leverage_is_10x ... ok
+test funding::tests::low_priced_market_still_accrues_funding_via_the_carry ... ok
+test market::tests::taker_fee_must_be_below_maintenance ... ok
+test engine::tests::apply_batch_emits_only_real_l1_withdrawal_outputs ... ok
+test merkle::settlement_tests::empty_merkle_root_is_zero ... ok
+test merkle::settlement_tests::challenge_leaves_match_solidity_vectors ... ok
+test merkle::settlement_tests::deposit_chain_fold_and_root_are_ordered ... ok
+test merkle::settlement_tests::challenge_leaves_domain_separated ... ok
+test merkle::settlement_tests::deposit_leaf_matches_abi_encodepacked ... ok
+test merkle::settlement_tests::rejected_and_withdrawals_roots_compose_their_leaves ... ok
+test merkle::settlement_tests::withdrawal_leaf_matches_solidity_vector ... ok
+test merkle::tests::capacity_enforced ... ok
+test merkle::settlement_tests::owner_commit_is_keccak_owner_blind ... ok
+test merkle::settlement_tests::ordered_root_matches_manual_tree ... ok
+test merkle::tests::contains_leaf_tracks_every_append ... ok
+test merkle::tests::append_changes_root ... ok
+test merkle::tests::empty_root_stable ... ok
+test merkle::tests::internal_node_is_not_a_valid_leaf ... ok
+test note::tests::commitment_is_binding ... ok
+test note::tests::commitment_is_hiding_on_blinding ... ok
+test note::tests::nullifier_is_deterministic ... ok
+test merkle::tests::proof_is_bound_to_its_leaf_index ... ok
+test nullifier::tests::double_spend_rejected ... ok
+test nullifier::tests::digest_is_an_incremental_chain_over_insertion_order ... ok
+test merkle::tests::tampered_sibling_rejected ... ok
+test merkle::tests::sec026_deserialize_rebuilds_leaf_index_exactly ... ok
+test merkle::settlement_tests::settlement_proofs_round_trip ... ok
+test oracle::tests::rejects_backup_deviation ... ok
+test oracle::tests::accepts_fresh_tight_price ... ok
+test oracle::tests::oracle_sig_round_trips_and_binds_digest ... ok
+test oracle::tests::rejects_future_price ... ok
+test order::tests::manifest_inclusion_and_hash_stable ... ok
+test order::tests::only_settled_is_withdrawable ... ok
+test engine::tests::accrue_funding_bounds_mark_against_signed_index ... ok
+test order::tests::order_hash_depends_on_nonce ... ok
+test position::tests::check_maintenance_margin_fails_closed_on_overflow_unlike_is_liquidatable ... ok
+test position::tests::flip_to_smaller_opposite_still_requires_margin ... ok
+test order::tests::signing_digest_ignores_window_id ... ok
+test position::tests::funding_debits_long ... ok
+test position::tests::hedge_signal_reports_the_offsetting_external_position ... ok
+test position::tests::increases_exposure_does_not_overflow_at_the_size_bound ... ok
+test position::tests::liquidatable_when_equity_below_maintenance ... ok
+test position::tests::long_pnl_positive_when_price_rises ... ok
+test position::tests::pre_trade_blocks_overleverage_allows_reduce ... ok
+test position::tests::realize_pnl_on_close ... ok
+test position::tests::short_pnl_positive_when_price_falls ... ok
+test position::tests::vwap_on_increase ... ok
+test oracle::tests::rejects_wide_confidence ... ok
+test state::tests::empty_state_conserves ... ok
+test state::tests::market_binds_oracle_pubkey_in_digest ... ok
+test state::tests::market_binds_max_fill_deviation_ratio_in_digest ... ok
+test state::tests::sec026_postcard_encoding_is_pinned ... ok
+test oracle::tests::rejects_stale ... ok
+test oracle::tests::extreme_price_is_rejected_not_wrapped ... ok
+test state::tests::market_binds_max_mark_deviation_ratio_in_digest ... ok
+test state::tests::state_root_binds_market_config ... ok
+test state::tests::state_root_binds_deposit_accumulator ... ok
+test merkle::tests::proofs_verify_for_all_leaves ... ok
+test state::tests::state_root_binds_mode ... ok
+test oracle::tests::zero_backup_twap_is_rejected_not_skipped ... ok
+test state::tests::state_root_binds_nullifier_contents_not_just_count ... ok
+test state::tests::state_root_binds_sequence_and_batch ... ok
+test state::tests::state_root_changes_with_external_flow ... ok
+test state::tests::state_root_binds_unspent_notes ... ok
+test hash::tests::all_domains_pairwise_distinct ... ok
+test oracle::tests::validate_requires_correct_publisher_signature ... ok
+
+test result: ok. 95 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running tests/a06_wind_down.rs (/tmp/arcora-core-target/debug/deps/a06_wind_down-36c7cf7c1db3f040)
+
+running 4 tests
+test a06_stranded_healthy_position_closes_without_counterparty_or_oracle ... ok
+test a06_mixed_wind_down_batch_is_rejected_before_mutation ... ok
+test a06_settle_all_reconciles_preexisting_pool_deficit_globally ... ok
+test a06_settle_all_is_atomic_when_note_reissue_cannot_fit_tree ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/fuzz.rs (/tmp/arcora-core-target/debug/deps/fuzz-393b6ce8c7112994)
+
+running 4 tests
+test fuzz_state_root_is_deterministic ... ok
+test fuzz_merkle_proofs_sound_and_second_preimage_safe ... ok
+test fuzz_conservation_holds_over_random_sessions has been running for over 60 seconds
+test fuzz_oracle_validate_is_total_and_sound has been running for over 60 seconds
+test fuzz_oracle_validate_is_total_and_sound ... ok
+test fuzz_conservation_holds_over_random_sessions ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 166.05s
+
+     Running tests/lifecycle.rs (/tmp/arcora-core-target/debug/deps/lifecycle-c276e9e833e4f645)
+
+running 32 tests
+test deprecated_seed_insurance_is_always_rejected ... ok
+test external_in_has_exactly_one_writer_and_it_is_op_deposit ... ok
+test duplicate_commitment_deposit_rejected ... ok
+test a_liquidation_absorbed_by_insurance_reports_no_adl_haircuts ... ok
+test fund_insurance_moves_note_value_without_asserting_new_external_value ... ok
+test bad_debt_is_clawed_from_the_winners_via_adl ... ok
+test adl_covers_residual_after_insurance ... ok
+test fund_insurance_overflow_leaves_state_byte_identical ... ok
+test fund_insurance_rejects_a_wrong_spend_key ... ok
+test forced_exit_close_only_blocks_increase ... ok
+test adl_surfaces_the_per_winner_haircut_attribution ... ok
+test fund_insurance_with_non_canonical_asset_is_rejected_untouched ... ok
+test full_lifecycle_conserves_throughout ... ok
+test invariant_no_double_spend ... ok
+test legacy_seed_insurance_bytes_decode_to_the_stub_and_stay_aligned ... ok
+test insurance_backstop_absorbs_bad_debt ... ok
+test adl_distributes_pro_rata_across_multiple_winners ... ok
+test sec026_deposit_spend_deposit_same_tuple_rejected ... ok
+test invariant_post_fill_margin_sufficiency ... ok
+test sec026_duplicate_unbind_while_unspent_rejected ... ok
+test invariant_oracle_freshness_enforced ... ok
+test liquidation_overflow_in_insurance_fund_leaves_state_byte_identical ... ok
+test invariant_liquidation_threshold ... ok
+test sec026_deposit_spend_unbind_same_tuple_rejected ... ok
+test self_trade_is_rejected_at_settlement ... ok
+test sec026_unbind_withdraw_unbind_same_tuple_rejected ... ok
+test liquidation_overflow_in_vault_pool_leaves_state_byte_identical ... ok
+test trading_fees_pay_the_maker_and_fund_insurance ... ok
+test sec026_unbind_spend_deposit_same_tuple_rejected ... ok
+test sec026_mints_differing_only_in_blinding_both_accepted ... ok
+test true_insolvency_trips_close_only_when_winners_have_exited ... ok
+test invariant_collateral_conservation_under_random_ops ... ok
+
+test result: ok. 32 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s
+
+     Running tests/local_s4.rs (/tmp/arcora-core-target/debug/deps/local_s4-07e32c4177d58bd9)
+
+running 2 tests
+test exhausted_batch_counter_rejects_before_deposit_mutation ... ok
+test last_representable_batch_completes_then_empty_batch_rejects ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/sec022_fill_band.rs (/tmp/arcora-core-target/debug/deps/sec022_fill_band-0d209e4f8add23f4)
+
+running 16 tests
+test inflated_price_cannot_widen_its_own_band ... ok
+test insurance_overflow_leaves_state_untouched ... ok
+test close_landing_at_exactly_zero_collateral_is_accepted ... ok
+test fill_leaving_an_open_leg_below_maintenance_is_rejected ... ok
+test band_arithmetic_overflow_rejects_without_panicking ... ok
+test closed_leg_with_negative_collateral_is_rejected ... ok
+test unsigned_oracle_is_rejected_before_the_band ... ok
+test fill_exactly_at_the_band_edge_is_accepted ... ok
+test maker_leg_below_maintenance_is_attributed_to_the_maker ... ok
+test fill_just_outside_the_band_is_rejected_in_both_directions ... ok
+test treasury_overflow_leaves_state_untouched ... ok
+test off_market_cross_is_rejected_with_state_unchanged ... ok
+test vault_pool_overflow_leaves_state_untouched ... ok
+test healthy_position_can_close_in_small_fragments ... ok
+test maintenance_boundary_position_closes_at_the_band_edge ... ok
+test every_in_band_reduction_of_a_healthy_position_succeeds ... ok
+
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.22s
+
+     Running tests/serde_witness.rs (/tmp/arcora-core-target/debug/deps/serde_witness-b05492da951bbc1d)
+
+running 7 tests
+test sec026_tree_full_deposit_leaves_postcard_bytes_unchanged ... ok
+test sec026_overflowing_deposit_leaves_postcard_bytes_unchanged ... ok
+test sec026_rejected_duplicate_leaves_postcard_bytes_unchanged ... ok
+test sec026_restored_state_still_rejects_historical_duplicates ... ok
+test state_round_trips_losslessly ... ok
+test full_witness_round_trips_and_rederives_commitment ... ok
+test ops_round_trip_and_replay_identically ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running tests/spend_binding.rs (/tmp/arcora-core-target/debug/deps/spend_binding-e20ab9c0b6f30ce1)
+
+running 2 tests
+test fund_position_rejects_a_spend_key_that_does_not_derive_the_owner ... ok
+test withdraw_rejects_a_spend_key_that_does_not_derive_the_owner ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests perp_core
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

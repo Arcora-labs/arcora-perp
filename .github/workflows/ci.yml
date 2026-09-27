@@ -18,18 +18,18 @@ jobs:
       - name: fmt
         run: cargo fmt --all --check
       - name: clippy
-        run: cargo clippy --workspace --all-targets -- -D warnings
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - name: test
-        run: cargo test --workspace
+        run: cargo test --workspace --locked
       - name: witness serialization (serde feature)
-        run: cargo test -p perp-core --features serde
+        run: cargo test -p perp-core --features serde --locked
       - name: zkVM-guest builds (no_std, incl. serde witness)
         run: |
-          cargo build -p perp-core --no-default-features
-          cargo build -p perp-core --no-default-features --features serde
-          cargo build -p matcher --no-default-features
-          cargo build -p note-archive --no-default-features
-          cargo build -p bridge --no-default-features
+          cargo build -p perp-core --no-default-features --locked
+          cargo build -p perp-core --no-default-features --features serde --locked
+          cargo build -p matcher --no-default-features --locked
+          cargo build -p note-archive --no-default-features --locked
+          cargo build -p bridge --no-default-features --locked
 
   excluded-crates-typecheck:
     # crates/sp1-host and crates/prover-service are excluded from the workspace
@@ -52,8 +52,8 @@ jobs:
     #     an sp1 upgrade moves it, this job fails loudly on the include_bytes.
     name: prover crates (excluded, typecheck)
     runs-on: ubuntu-latest
-    # Both crates gitignore their Cargo.lock, so every run cold-resolves the whole
-    # sp1-sdk tree — bound the job so a hung resolve can't burn a runner for 6h.
+    # Each excluded application has a reviewed lockfile. Keep the expensive
+    # typecheck bounded; this job still does not execute or prove the guest.
     timeout-minutes: 30
     env:
       SP1_SKIP_PROGRAM_BUILD: "true"
@@ -72,9 +72,9 @@ jobs:
           mkdir -p crates/sp1-guest/target/elf-compilation/riscv64im-succinct-zkvm-elf/release
           touch crates/sp1-guest/target/elf-compilation/riscv64im-succinct-zkvm-elf/release/perp-core-guest
       - name: typecheck sp1-host
-        run: cargo check --manifest-path crates/sp1-host/Cargo.toml
+        run: cargo check --locked --manifest-path crates/sp1-host/Cargo.toml
       - name: typecheck prover-service
-        run: cargo check --manifest-path crates/prover-service/Cargo.toml
+        run: cargo check --locked --manifest-path crates/prover-service/Cargo.toml
 
   contracts:
     name: contracts (foundry)

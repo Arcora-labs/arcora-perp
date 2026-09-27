@@ -1,0 +1,44 @@
+{
+  "status": "PASS",
+  "tool": "Rust unit-test deterministic mutation/property harness; production postcard parser",
+  "seed": "0xA0720260927",
+  "rustc": "rustc 1.95.0 (59807616e 2026-04-14) (Homebrew)",
+  "budget": {
+    "inner_inputs": 713,
+    "seeded_single_byte_mutations": 512,
+    "outer_negative_vectors": 216,
+    "maximum_inner_input_bytes": 13641,
+    "suite_seconds": 18.24
+  },
+  "results": {
+    "inner_rejected": 258,
+    "inner_accepted_and_stable": 455,
+    "outer_rejected": 216,
+    "panic": 0,
+    "observed_hang": 0
+  },
+  "authentication": "each inner mutation sealed under synthetic key then opened using unchanged production authentication",
+  "corpus": {
+    "count": 201,
+    "directory": "crates/gateway/testdata/snapshots/malformed",
+    "hash_manifest": "fixture-sha256.txt"
+  },
+  "targets": [
+    "snapshot::open",
+    "Gw::boot_restored",
+    "execution extension typed count/decode/validation",
+    "recovery extension typed count/decode/validation",
+    "validate_deposit_state"
+  ],
+  "assertion_negative_controls": {
+    "log": "parser-before.log",
+    "runtime_assertion_failures": 4,
+    "compiler_failures": 0
+  },
+  "log": "s3-complete.log",
+  "limits": [
+    "Finite deterministic campaign; no sanitizer/libFuzzer or exhaustive security claim.",
+    "Allocation cap bounds input bytes, not exact process RSS.",
+    "Fixed schema nesting only; no recursive input data model."
+  ]
+}

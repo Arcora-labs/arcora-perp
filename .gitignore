@@ -1,4 +1,4 @@
-/target
+**/target/
 **/*.rs.bk
 Cargo.lock.orig
 .DS_Store
@@ -17,7 +17,7 @@ frontend/node_modules/
 .superpowers/
 .vercel/
 
-# prover-service is a workspace-EXCLUDED standalone crate; its build cache + lock
-# are typecheck byproducts, never repo content (accidental git add -A swept them once).
+# Excluded prover applications retain lockfiles for source/toolchain binding.
+crates/sp1-guest/target/
+crates/sp1-host/target/
 crates/prover-service/target/
-crates/prover-service/Cargo.lock

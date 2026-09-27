@@ -1,0 +1,37 @@
+   Compiling gateway v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/gateway)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.23s
+     Running unittests src/main.rs (/tmp/arcora-gateway-target/debug/deps/gateway-af1323d2b67b45c0)
+
+running 4 tests
+test tests::settle_journal_guard_stage1_fs_failure_never_reaches_prove_callback ... FAILED
+test tests::settle_journal_guard_stage2_fs_failure_keeps_original_and_never_broadcasts ... FAILED
+test tests::settle_journal_guard_success_persists_each_stage_before_callback ... ok
+test tests::settle_journal_guard_unconfigured_dev_path_keeps_existing_behavior ... ok
+
+failures:
+
+---- tests::settle_journal_guard_stage1_fs_failure_never_reaches_prove_callback stdout ----
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+[state] genesis engine root 0x464f52b0bc0e452be7e050758e209d7a75708e98ea3eb4f0ffac4e5f6d7a5a28
+[recovery] rollback journal write failed (settle continues): journal write: Not a directory (os error 20)
+
+thread 'tests::settle_journal_guard_stage1_fs_failure_never_reaches_prove_callback' (1151054) panicked at crates/gateway/src/main.rs:14668:9:
+stage-1 write failure must not reach the proving continuation
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- tests::settle_journal_guard_stage2_fs_failure_keeps_original_and_never_broadcasts stdout ----
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+[state] genesis engine root 0x464f52b0bc0e452be7e050758e209d7a75708e98ea3eb4f0ffac4e5f6d7a5a28
+[recovery] rollback journal write failed (settle continues): journal write: File name too long (os error 63)
+
+thread 'tests::settle_journal_guard_stage2_fs_failure_keeps_original_and_never_broadcasts' (1151055) panicked at crates/gateway/src/main.rs:14715:9:
+stage-2 write failure must not reach the broadcast continuation
+
+
+failures:
+    tests::settle_journal_guard_stage1_fs_failure_never_reaches_prove_callback
+    tests::settle_journal_guard_stage2_fs_failure_keeps_original_and_never_broadcasts
+
+test result: FAILED. 2 passed; 2 failed; 0 ignored; 0 measured; 375 filtered out; finished in 0.20s
+
+error: test failed, to rerun pass `-p gateway --bin gateway`

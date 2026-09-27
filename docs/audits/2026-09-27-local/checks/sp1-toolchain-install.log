@@ -1,0 +1,6 @@
+No existing ~/.sp1 directory to remove.
+Successfully cleaned up ~/.sp1 directory.
+Successfully created ~/.sp1 directory.
+info: no toolchain installed for 'succinct'
+Successfully removed existing toolchain.
+Successfully linked toolchain to rustup.

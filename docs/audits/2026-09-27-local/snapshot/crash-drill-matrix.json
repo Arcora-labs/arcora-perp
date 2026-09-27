@@ -1,0 +1,40 @@
+{
+  "task": "S6-02",
+  "status": "PARTIAL",
+  "test": "s3_file_limits_and_failed_write_preserve_durable_target",
+  "evidence": "s3-complete.log",
+  "rows": [
+    {
+      "scenario": "private temporary file/write/fsync/rename/parent-fsync success then authenticated restore",
+      "result": "PASS returned success and read-back restored exact state"
+    },
+    {
+      "scenario": "oversized write",
+      "result": "PASS InvalidData; durable previous bytes unchanged; no temporary side effects"
+    },
+    {
+      "scenario": "sparse oversized input file",
+      "result": "PASS bounded read rejection; original file length unchanged"
+    },
+    {
+      "scenario": "rename over directory",
+      "result": "PASS explicit filesystem error and exclusive temp cleanup"
+    },
+    {
+      "scenario": "missing parent directory",
+      "result": "PASS explicit error; no output file"
+    },
+    {
+      "scenario": "process kill at ACK boundaries",
+      "result": "NOT_RUN"
+    },
+    {
+      "scenario": "fsync failure / disk-full / permission injection",
+      "result": "NOT_RUN"
+    },
+    {
+      "scenario": "physical power loss",
+      "result": "NOT_RUN; separately authorized hardware only"
+    }
+  ]
+}

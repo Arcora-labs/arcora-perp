@@ -1,0 +1,331 @@
+{
+  "task": "S2 local browser fixture matrix and focused remediation",
+  "status": "PARTIAL",
+  "local_matrix_status": "REQUIRES_FULL_RERUN_AFTER_REVIEW_FIX",
+  "base_sha": "098e4952c189f92e4293ed7d49f81222b626e406",
+  "head_sha": "098e4952c189f92e4293ed7d49f81222b626e406",
+  "head_tree_sha": "c6e9d4af0257531cd77e45ca5b3939c6ea7a0fa4",
+  "frontend_dirty_source_sha256": "f929630cd0a11df77e5c9a296558ae797c3319c0137381792289c1def5c92d96",
+  "environment": {
+    "os": "Darwin",
+    "release": "25.5.0",
+    "arch": "arm64",
+    "node": "v24.12.0",
+    "browsers": {
+      "chromium": "145.0.7632.6",
+      "webkit": "26.0"
+    }
+  },
+  "commands": [
+    {
+      "command": "pnpm install --frozen-lockfile",
+      "cwd": "frontend",
+      "exit_code": 0,
+      "selected": null,
+      "passed": null,
+      "skipped": null,
+      "log": "install-frozen.log",
+      "log_sha256": "73f877598a3f948febf76de1221d7070cb2e21d6c0854b18f63dd105c7315aec"
+    },
+    {
+      "command": "pnpm typecheck",
+      "cwd": "frontend",
+      "exit_code": 0,
+      "selected": null,
+      "passed": null,
+      "skipped": null,
+      "log": "typecheck.log",
+      "log_sha256": "dab119e14a45d3d11faccba381b9f05a2a1a74da071ac50c58036b36110bb728"
+    },
+    {
+      "command": "pnpm test",
+      "cwd": "frontend",
+      "exit_code": 0,
+      "selected": 317,
+      "passed": 316,
+      "skipped": 1,
+      "log": "unit.log",
+      "log_sha256": "91a3d2d8488897217761c12bf091ddce8f3da472a5d6e922a3cae3db4544ce2f"
+    },
+    {
+      "command": "pnpm build",
+      "cwd": "frontend",
+      "exit_code": 0,
+      "selected": null,
+      "passed": null,
+      "skipped": null,
+      "log": "build.log",
+      "log_sha256": "1e6eca504a26ca08d55b1b06f16fb065f5874b294a1acd8deddaf605169d7c69"
+    },
+    {
+      "command": "pnpm exec playwright test",
+      "cwd": "frontend",
+      "exit_code": 0,
+      "selected": 36,
+      "passed": 36,
+      "skipped": 0,
+      "log": "browser.log",
+      "log_sha256": "2260c836984e2ea0ba23a10cc8331e314d35c69e7f7bbfc77344e6cd159a886c"
+    },
+    {
+      "command": "pnpm exec playwright test --project=chromium --grep 'BR-08|cancel response|BR-06 legacy'",
+      "cwd": "frontend",
+      "exit_code": 1,
+      "selected": 3,
+      "passed": 0,
+      "skipped": 0,
+      "log": "failed-before.log",
+      "log_sha256": "2a3b28bbaaa3e681e39f2d67384ebc3893034ba49e9afd297cb5be495cb6217c"
+    },
+    {
+      "command": "pnpm exec playwright test --project=chromium --grep 'cross-tab rotation while|stale withdrawal proof'",
+      "cwd": "frontend",
+      "exit_code": 1,
+      "selected": 2,
+      "passed": 0,
+      "skipped": 0,
+      "log": "failed-before-context.log",
+      "log_sha256": "b74abcfdaca4ea16dfb11536976b93b0b5b640065995b6ac7de151c31e933536"
+    },
+    {
+      "command": "pnpm exec playwright test --project=chromium --grep 'session-only warning survives|disabled storage'",
+      "cwd": "frontend",
+      "exit_code": 1,
+      "selected": 2,
+      "passed": 0,
+      "skipped": 0,
+      "log": "failed-before-storage-ui.log",
+      "log_sha256": "0ce0a09466c6815ee12d632a5fe22714693f9ea34294b8a31fb0c9dc764dcf3d"
+    },
+    {
+      "command": "pnpm exec playwright test --project=chromium --grep 'BR-08|cancel response|BR-06 legacy|stale withdrawal proof'",
+      "cwd": "frontend",
+      "exit_code": 0,
+      "selected": 5,
+      "passed": 5,
+      "skipped": 0,
+      "log": "passed-after.log",
+      "log_sha256": "1cad083f18ef3a10df8180cea58db47196008bd51f5a079231d8dd6f3341cc1e"
+    },
+    {
+      "command": "pnpm exec playwright test --project=chromium --grep 'session-only warning survives|disabled storage'",
+      "cwd": "frontend",
+      "exit_code": 0,
+      "selected": 2,
+      "passed": 2,
+      "skipped": 0,
+      "log": "passed-after-storage-ui.log",
+      "log_sha256": "e7f40a7115337c896035fd6a4917843ab4cf1146037dadd50eac8f5c0ba93cb2"
+    },
+    {
+      "command": "pnpm audit --prod --json",
+      "cwd": "frontend",
+      "exit_code": 0,
+      "selected": null,
+      "passed": null,
+      "skipped": null,
+      "log": "audit-prod-after.json",
+      "log_sha256": "845d3aad1b31955ad8e3ca1c169304556740f4f9b38fc1d64fc682a84e98861f"
+    },
+    {
+      "command": "pnpm audit --json",
+      "cwd": "frontend",
+      "exit_code": 1,
+      "selected": null,
+      "passed": null,
+      "skipped": null,
+      "log": "audit-all-after.json",
+      "log_sha256": "6d86146eb6d1175ca47aa07ca3682b3d0fdeae6be41afadeb4ecb32b3ad96608"
+    }
+  ],
+  "negative_controls": {
+    "assertion_failures_verified": 7,
+    "compile_failures_counted": 0
+  },
+  "limits": [
+    "Controlled provider is not an extension wallet; Playwright WebKit is not Safari.",
+    "API and WS routes are fixtures, not the Rust gateway. Real HTTP partial-body deadlines are actual loopback transport.",
+    "Full wallet/on-chain deposit workflow, real private profile, production CSP/telemetry and independent review remain open.",
+    "One existing live HTTP integration test is skipped in ordinary unit run; root owns separate gateway smoke.",
+    "Seven dev-only dependency advisories remain; prod audit has zero.",
+    "No push, deployment, real chain transaction or secret export."
+  ],
+  "artifacts": [
+    {
+      "path": "README.md",
+      "sha256": "22505b7a4c79db3cf116416c72a4501bf41cdcff44afd218c68b009254686903"
+    },
+    {
+      "path": "audit-all-after.json",
+      "sha256": "6d86146eb6d1175ca47aa07ca3682b3d0fdeae6be41afadeb4ecb32b3ad96608"
+    },
+    {
+      "path": "audit-all-before.json",
+      "sha256": "205548b5126af43bee21cac21a3af14a4de6babe5a285271b3a526fa3bc91da6"
+    },
+    {
+      "path": "audit-prod-after.json",
+      "sha256": "845d3aad1b31955ad8e3ca1c169304556740f4f9b38fc1d64fc682a84e98861f"
+    },
+    {
+      "path": "audit-prod-before.json",
+      "sha256": "845d3aad1b31955ad8e3ca1c169304556740f4f9b38fc1d64fc682a84e98861f"
+    },
+    {
+      "path": "browser-matrix.json",
+      "sha256": "4b552ad8e5a75e9c0bb77284f4f208673cc9b73c983611c4657f65850ad61089"
+    },
+    {
+      "path": "browser-threat-model.md",
+      "sha256": "5ed80bdceb168d905b50e8a96d4f4a426b87f9c7263be0b01cc288c99f167759"
+    },
+    {
+      "path": "browser.log",
+      "sha256": "2260c836984e2ea0ba23a10cc8331e314d35c69e7f7bbfc77344e6cd159a886c"
+    },
+    {
+      "path": "build.log",
+      "sha256": "1e6eca504a26ca08d55b1b06f16fb065f5874b294a1acd8deddaf605169d7c69"
+    },
+    {
+      "path": "csp-local-policy.txt",
+      "sha256": "90db8007b35665e1c0f1d29b96c1037be950a724554e8d185ddde49a6ce39705"
+    },
+    {
+      "path": "dependency-review.md",
+      "sha256": "ffa360ab2ba2ce74024486faaadc2a1f4870295555950ea91c41669b994f587f"
+    },
+    {
+      "path": "environment.json",
+      "sha256": "2138c96e1ec9de1ba7742701ee6ee98b30240f1861327d53735981ba175706b0"
+    },
+    {
+      "path": "failed-before-context.log",
+      "sha256": "b74abcfdaca4ea16dfb11536976b93b0b5b640065995b6ac7de151c31e933536"
+    },
+    {
+      "path": "failed-before-storage-ui.log",
+      "sha256": "0ce0a09466c6815ee12d632a5fe22714693f9ea34294b8a31fb0c9dc764dcf3d"
+    },
+    {
+      "path": "failed-before.log",
+      "sha256": "2a3b28bbaaa3e681e39f2d67384ebc3893034ba49e9afd297cb5be495cb6217c"
+    },
+    {
+      "path": "install-frozen.log",
+      "sha256": "73f877598a3f948febf76de1221d7070cb2e21d6c0854b18f63dd105c7315aec"
+    },
+    {
+      "path": "legacy-fixture-matrix.json",
+      "sha256": "115ce28d8ab77bf4792e9c57cc52cebf027c7a397f706ebbd8ba88e9b4a3124d"
+    },
+    {
+      "path": "manual-wallet-test.md",
+      "sha256": "ad547e116137983994e1254906ae5144fb372eab5701f349f63d5b6b534f77c2"
+    },
+    {
+      "path": "migration-runbook.md",
+      "sha256": "ea9ee74278a4e671334af62ead474efc895263d805228994918ea7fddc68f84c"
+    },
+    {
+      "path": "mutation-race-matrix.md",
+      "sha256": "76ab9b0703c693f249abca54a2b7a9acceb9653ce60d963c22236c6f4fbea137"
+    },
+    {
+      "path": "passed-after-storage-ui.log",
+      "sha256": "e7f40a7115337c896035fd6a4917843ab4cf1146037dadd50eac8f5c0ba93cb2"
+    },
+    {
+      "path": "passed-after.log",
+      "sha256": "1cad083f18ef3a10df8180cea58db47196008bd51f5a079231d8dd6f3341cc1e"
+    },
+    {
+      "path": "reviewer-session-evidence.json",
+      "sha256": "8e442e9c9bdf71fb7c5f5b99da5c9a436ba7e261f7669f4128a8458fd579cd5b"
+    },
+    {
+      "path": "reviewer-session-failed-before.log",
+      "sha256": "bb4fe81564bfa06b17242e5f3f42a314092ec734c5b9ff4d5a02bc968bc024b7"
+    },
+    {
+      "path": "reviewer-session-followup.md",
+      "sha256": "863cbced0a4f810113f973789feb9baedc175ef6f682fd311053ef4f75926910"
+    },
+    {
+      "path": "reviewer-session-passed-after.log",
+      "sha256": "c8a150d5c45842b0201a8b8e9cca81eb4eb56863d66629a2de90363a22632ed2"
+    },
+    {
+      "path": "reviewer-session-typecheck.log",
+      "sha256": "dab119e14a45d3d11faccba381b9f05a2a1a74da071ac50c58036b36110bb728"
+    },
+    {
+      "path": "reviewer-session-unit.log",
+      "sha256": "a7caae37b9c13d269491e3ead11fbc26d6eb28d27a9ead3121aadfe2b6475d8e"
+    },
+    {
+      "path": "reviewer-source-manifest.json",
+      "sha256": "6dbf820d93069c15128ae742a247e537484fb3fa93cdecaa0b3b33856e53f718"
+    },
+    {
+      "path": "source-manifest.json",
+      "sha256": "ba286758ade714a9c75a858d5a3d492c5d86343bb23744d81f030a77b5981a30"
+    },
+    {
+      "path": "typecheck.log",
+      "sha256": "dab119e14a45d3d11faccba381b9f05a2a1a74da071ac50c58036b36110bb728"
+    },
+    {
+      "path": "unit.log",
+      "sha256": "91a3d2d8488897217761c12bf091ddce8f3da472a5d6e922a3cae3db4544ce2f"
+    }
+  ],
+  "independent_reviewer": null,
+  "review_followup": {
+    "finding": "Session-only warning lost during and after a failed second recovery",
+    "review_origin": "independent reviewer relayed by root",
+    "status": "TARGETED_PASS_FULL_RERUN_REQUIRED",
+    "source_manifest": "reviewer-source-manifest.json",
+    "frontend_dirty_source_sha256": "2197bb43294d70e05de671adb2e7807e0b41f19c463987ebda84fa38d5c3a02a",
+    "failed_before_assertion_verified": true,
+    "commands": [
+      {
+        "command": "pnpm exec playwright test --project=chromium --grep \"remains during and after rejected second recovery\"",
+        "cwd": "frontend",
+        "log": "reviewer-session-failed-before.log",
+        "exit_code": 1,
+        "selected": 1,
+        "passed": 0,
+        "log_sha256": "bb4fe81564bfa06b17242e5f3f42a314092ec734c5b9ff4d5a02bc968bc024b7"
+      },
+      {
+        "command": "pnpm exec playwright test --grep \"remains during and after rejected second recovery\"",
+        "cwd": "frontend",
+        "log": "reviewer-session-passed-after.log",
+        "exit_code": 0,
+        "selected": 2,
+        "passed": 2,
+        "log_sha256": "c8a150d5c45842b0201a8b8e9cca81eb4eb56863d66629a2de90363a22632ed2"
+      },
+      {
+        "command": "pnpm exec vitest run src/components/RecoveryPanel.test.tsx",
+        "cwd": "frontend",
+        "log": "reviewer-session-unit.log",
+        "exit_code": 0,
+        "selected": 4,
+        "passed": 4,
+        "log_sha256": "a7caae37b9c13d269491e3ead11fbc26d6eb28d27a9ead3121aadfe2b6475d8e"
+      },
+      {
+        "command": "pnpm typecheck",
+        "cwd": "frontend",
+        "log": "reviewer-session-typecheck.log",
+        "exit_code": 0,
+        "selected": null,
+        "passed": null,
+        "log_sha256": "dab119e14a45d3d11faccba381b9f05a2a1a74da071ac50c58036b36110bb728"
+      }
+    ],
+    "full_browser_status": "prior36 exact-source stale; root to run current38"
+  }
+}

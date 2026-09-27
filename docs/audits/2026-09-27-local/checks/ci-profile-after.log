@@ -1,0 +1,16 @@
+
+running 2 tests
+test release_debug_assertions_are_active ... ok
+test release_overflow_checks_are_active ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Compiling arcora-profile-control v0.0.0 (/var/folders/jz/7wbjs_5j45g915858xh6wm200000gn/T/arcora-cargo-profile-qvuqaysm)
+    Finished `release` profile [optimized] target(s) in 0.09s
+     Running unittests src/lib.rs (/var/folders/jz/7wbjs_5j45g915858xh6wm200000gn/T/arcora-cargo-profile-qvuqaysm/target/release/deps/arcora_profile_control-8a6867e8fbd8a1d7)
+   Doc-tests arcora_profile_control

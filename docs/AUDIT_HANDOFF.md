@@ -1,5 +1,7 @@
 # Yeni oturum başlangıcı: dark-perp audit devamı
 
+> 27 Eylül 2026 yerel çalışma eki: [güncel kaynak ve kanıt raporu](audits/2026-09-27-local/README.md). Aşağıdaki tarihsel toplamlar korunmuştur; yeni sonuçlar ve açık yayın koşulları ek rapordadır.
+
 **Tarih:** 19 Eylül 2026. **Tek güncel plan:** [ROADMAP.md](ROADMAP.md).
 
 **Tam codebase audit'i bitmedi. Gerçek SP1 ELF/vkey/proof/deployment doğrulaması yapılmadı.** Bu handoff belge güncellemesidir; yeni recovery/WS/frontend/snapshot düzeltmesi yapıldığı anlamına gelmez.

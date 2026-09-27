@@ -35,9 +35,29 @@ describe("RecoveryPanel A07", () => {
 
 it("warns that confirmed recovery is session-only when browser persistence fails", async () => {
   const owner = "0x" + "22".repeat(32);
-  injected.client = { recoverAccount: vi.fn(async () => ({ owner, recoveryNonce: 3, credentialStorage: "session" })) };
+  injected.client = { recoverAccount: vi.fn(async () => {
+    injected.client.credentialStorage = "session";
+    return { owner, recoveryNonce: 3, credentialStorage: "session" };
+  }) };
   render(<RecoveryPanel />);
   fireEvent.change(screen.getByLabelText(/account owner id/i), { target: { value: owner } });
   fireEvent.click(screen.getByRole("button", { name: /sign & recover/i }));
   expect(await screen.findByRole("status")).toHaveProperty("textContent", expect.stringMatching(/this tab only.*old saved key may no longer work/i));
+});
+
+
+it("retains the current credential's session-only notice during and after a rejected retry", async () => {
+  const owner = "0x" + "22".repeat(32);
+  let reject!: (error: Error) => void;
+  injected.client = {
+    credentialStorage: "session",
+    recoverAccount: vi.fn(() => new Promise((_resolve, fail) => { reject = fail; })),
+  };
+  render(<RecoveryPanel />);
+  fireEvent.change(screen.getByLabelText(/account owner id/i), { target: { value: owner } });
+  fireEvent.click(screen.getByRole("button", { name: /sign & recover/i }));
+  expect(screen.getByRole("status").textContent).toMatch(/this tab only/);
+  reject(new Error("Wallet refused the recovery signature."));
+  expect(await screen.findByRole("alert")).toHaveProperty("textContent", "Wallet refused the recovery signature.");
+  expect(screen.getByRole("status").textContent).toMatch(/this tab only.*use wallet recovery again/);
 });

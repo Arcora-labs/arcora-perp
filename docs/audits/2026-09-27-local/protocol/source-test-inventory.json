@@ -1,0 +1,4212 @@
+[
+  {
+    "file": "crates/sealed-box/tests/vectors.rs",
+    "test": "cross_language_vector",
+    "line": 18
+  },
+  {
+    "file": "crates/sealed-box/src/lib.rs",
+    "test": "version_is_one",
+    "line": 146
+  },
+  {
+    "file": "crates/sealed-box/src/lib.rs",
+    "test": "roundtrip",
+    "line": 157
+  },
+  {
+    "file": "crates/sealed-box/src/lib.rs",
+    "test": "wrong_key_fails",
+    "line": 166
+  },
+  {
+    "file": "crates/sealed-box/src/lib.rs",
+    "test": "aad_mismatch_fails",
+    "line": 173
+  },
+  {
+    "file": "crates/sealed-box/src/lib.rs",
+    "test": "tamper_fails",
+    "line": 179
+  },
+  {
+    "file": "crates/sealed-box/src/lib.rs",
+    "test": "wire_roundtrips",
+    "line": 186
+  },
+  {
+    "file": "crates/sealed-box/src/lib.rs",
+    "test": "keypair_is_deterministic",
+    "line": 200
+  },
+  {
+    "file": "crates/sealed-box/src/lib.rs",
+    "test": "different_info_gives_different_key",
+    "line": 207
+  },
+  {
+    "file": "crates/sealed-box/src/lib.rs",
+    "test": "domain_aad_prefixes_the_byte",
+    "line": 213
+  },
+  {
+    "file": "crates/committee/tests/fuzz.rs",
+    "test": "fuzz_any_t_subset_reconstructs",
+    "line": 22
+  },
+  {
+    "file": "crates/committee/src/shamir.rs",
+    "test": "any_t_subset_reconstructs",
+    "line": 155
+  },
+  {
+    "file": "crates/committee/src/shamir.rs",
+    "test": "fewer_than_t_does_not_reveal",
+    "line": 166
+  },
+  {
+    "file": "crates/committee/src/shamir.rs",
+    "test": "duplicate_x_rejected",
+    "line": 176
+  },
+  {
+    "file": "crates/committee/src/shamir.rs",
+    "test": "t_equals_n_needs_everyone",
+    "line": 183
+  },
+  {
+    "file": "crates/committee/src/lib.rs",
+    "test": "quorum_reached_with_threshold_signers",
+    "line": 180
+  },
+  {
+    "file": "crates/committee/src/lib.rs",
+    "test": "below_threshold_fails",
+    "line": 192
+  },
+  {
+    "file": "crates/committee/src/lib.rs",
+    "test": "duplicate_signer_counts_once",
+    "line": 203
+  },
+  {
+    "file": "crates/committee/src/lib.rs",
+    "test": "malleated_signature_cannot_inflate_quorum_weight",
+    "line": 216
+  },
+  {
+    "file": "crates/committee/src/lib.rs",
+    "test": "non_member_signature_ignored",
+    "line": 262
+  },
+  {
+    "file": "crates/committee/src/lib.rs",
+    "test": "wrong_digest_signature_does_not_count",
+    "line": 272
+  },
+  {
+    "file": "crates/note-archive/tests/fuzz.rs",
+    "test": "fuzz_recovery_is_exact_and_isolated",
+    "line": 21
+  },
+  {
+    "file": "crates/note-archive/src/lib.rs",
+    "test": "serialize_roundtrips",
+    "line": 264
+  },
+  {
+    "file": "crates/note-archive/src/lib.rs",
+    "test": "key_derivation_is_domain_separated_from_state_root",
+    "line": 272
+  },
+  {
+    "file": "crates/note-archive/src/lib.rs",
+    "test": "viewing_keypair_is_deterministic_and_scoped",
+    "line": 294
+  },
+  {
+    "file": "crates/note-archive/src/lib.rs",
+    "test": "owner_view_spend_are_distinct",
+    "line": 307
+  },
+  {
+    "file": "crates/note-archive/src/lib.rs",
+    "test": "sealed_note_scans_for_owner_only",
+    "line": 317
+  },
+  {
+    "file": "crates/note-archive/src/lib.rs",
+    "test": "archive_host_without_key_reads_nothing",
+    "line": 328
+  },
+  {
+    "file": "crates/note-archive/src/lib.rs",
+    "test": "swapped_commitment_ciphertext_is_rejected_by_aad_binding",
+    "line": 345
+  },
+  {
+    "file": "crates/note-archive/src/lib.rs",
+    "test": "recover_my_notes_from_seed",
+    "line": 384
+  },
+  {
+    "file": "crates/note-archive/src/lib.rs",
+    "test": "cannot_read_others_notes",
+    "line": 417
+  },
+  {
+    "file": "crates/note-archive/src/lib.rs",
+    "test": "recover_balance_excludes_spent",
+    "line": 432
+  },
+  {
+    "file": "crates/bridge/tests/fuzz.rs",
+    "test": "fuzz_decompose_is_value_exact",
+    "line": 20
+  },
+  {
+    "file": "crates/bridge/tests/fuzz.rs",
+    "test": "fuzz_negative_amount_is_surfaced",
+    "line": 45
+  },
+  {
+    "file": "crates/bridge/tests/fuzz.rs",
+    "test": "fuzz_mix_preserves_multiset",
+    "line": 60
+  },
+  {
+    "file": "crates/bridge/src/lib.rs",
+    "test": "decompose_is_exact_when_divisible",
+    "line": 220
+  },
+  {
+    "file": "crates/bridge/src/lib.rs",
+    "test": "negative_amount_is_surfaced_not_swallowed",
+    "line": 239
+  },
+  {
+    "file": "crates/bridge/src/lib.rs",
+    "test": "entries_plus_remainder_always_equal_amount",
+    "line": 249
+  },
+  {
+    "file": "crates/bridge/src/lib.rs",
+    "test": "sub_unit_remainder_leaks_explicitly",
+    "line": 265
+  },
+  {
+    "file": "crates/bridge/src/lib.rs",
+    "test": "same_denomination_shares_anonymity_set",
+    "line": 274
+  },
+  {
+    "file": "crates/bridge/src/lib.rs",
+    "test": "mix_preserves_multiset_but_reorders",
+    "line": 285
+  },
+  {
+    "file": "crates/bridge/src/lib.rs",
+    "test": "mix_commitment_is_domain_separated_from_note_commitment",
+    "line": 303
+  },
+  {
+    "file": "crates/bridge/src/lib.rs",
+    "test": "mix_is_deterministic_for_a_seed",
+    "line": 329
+  },
+  {
+    "file": "crates/oracle-feed/src/lib.rs",
+    "test": "produced_transcript_signature_recovers_to_signer",
+    "line": 338
+  },
+  {
+    "file": "crates/oracle-feed/src/lib.rs",
+    "test": "parses_decimal_prices_exactly",
+    "line": 368
+  },
+  {
+    "file": "crates/oracle-feed/src/lib.rs",
+    "test": "builds_a_valid_transcript_that_passes_the_oracle_gate",
+    "line": 389
+  },
+  {
+    "file": "crates/oracle-feed/src/lib.rs",
+    "test": "publish_time_prefers_exchange_timestamp_but_never_future",
+    "line": 405
+  },
+  {
+    "file": "crates/oracle-feed/src/lib.rs",
+    "test": "a_frozen_exchange_timestamp_goes_stale_at_the_gate",
+    "line": 416
+  },
+  {
+    "file": "crates/oracle-feed/src/lib.rs",
+    "test": "rejects_nonpositive_or_unparseable_last",
+    "line": 434
+  },
+  {
+    "file": "crates/oracle-feed/src/lib.rs",
+    "test": "fat_finger_last_outside_the_book_is_rejected_by_the_gate",
+    "line": 447
+  },
+  {
+    "file": "crates/oracle-feed/src/lib.rs",
+    "test": "absurd_spread_book_is_rejected_by_the_gate",
+    "line": 461
+  },
+  {
+    "file": "crates/oracle-feed/src/lib.rs",
+    "test": "one_sided_book_outage_falls_back_to_last_and_still_marks",
+    "line": 473
+  },
+  {
+    "file": "crates/oracle-feed/src/lib.rs",
+    "test": "a_book_outage_falls_back_to_last_and_still_marks",
+    "line": 489
+  },
+  {
+    "file": "crates/oracle-feed/src/lib.rs",
+    "test": "parses_candlesticks_ascending_and_skips_malformed_rows",
+    "line": 501
+  },
+  {
+    "file": "crates/matcher/tests/fuzz.rs",
+    "test": "fuzz_matcher_invariants",
+    "line": 144
+  },
+  {
+    "file": "crates/matcher/tests/fuzz.rs",
+    "test": "fuzz_expired_makers_never_trade",
+    "line": 206
+  },
+  {
+    "file": "crates/matcher/tests/fuzz.rs",
+    "test": "fuzz_matcher_deterministic",
+    "line": 213
+  },
+  {
+    "file": "crates/matcher/tests/fuzz.rs",
+    "test": "negative_limit_price_is_rejected",
+    "line": 234
+  },
+  {
+    "file": "crates/matcher/src/lib.rs",
+    "test": "resting_then_cross_produces_fill",
+    "line": 215
+  },
+  {
+    "file": "crates/matcher/src/lib.rs",
+    "test": "price_time_priority",
+    "line": 252
+  },
+  {
+    "file": "crates/matcher/src/lib.rs",
+    "test": "partial_fill_rests_remainder",
+    "line": 308
+  },
+  {
+    "file": "crates/matcher/src/lib.rs",
+    "test": "ioc_cancels_remainder",
+    "line": 343
+  },
+  {
+    "file": "crates/matcher/src/lib.rs",
+    "test": "fok_all_or_nothing",
+    "line": 381
+  },
+  {
+    "file": "crates/matcher/src/lib.rs",
+    "test": "post_only_rejects_if_it_would_take",
+    "line": 432
+  },
+  {
+    "file": "crates/matcher/src/lib.rs",
+    "test": "self_trade_prevention_cancels_maker",
+    "line": 478
+  },
+  {
+    "file": "crates/matcher/src/lib.rs",
+    "test": "post_only_rejects_even_against_own_order",
+    "line": 513
+  },
+  {
+    "file": "crates/matcher/src/lib.rs",
+    "test": "expired_order_rejected",
+    "line": 556
+  },
+  {
+    "file": "crates/matcher/src/lib.rs",
+    "test": "expired_resting_maker_does_not_trade",
+    "line": 575
+  },
+  {
+    "file": "crates/matcher/src/lib.rs",
+    "test": "fok_ignores_expired_resting_liquidity",
+    "line": 610
+  },
+  {
+    "file": "crates/matcher/src/lib.rs",
+    "test": "reap_expired_clears_stale_makers_from_the_book",
+    "line": 643
+  },
+  {
+    "file": "crates/matcher/src/lib.rs",
+    "test": "stream_collects_manifest_lists",
+    "line": 680
+  },
+  {
+    "file": "crates/matcher/src/lib.rs",
+    "test": "market_buy_sweeps_multiple_levels",
+    "line": 720
+  },
+  {
+    "file": "crates/matcher/src/lib.rs",
+    "test": "sell_crosses_best_bid_first",
+    "line": 755
+  },
+  {
+    "file": "crates/matcher/src/lib.rs",
+    "test": "fok_excludes_self_liquidity",
+    "line": 797
+  },
+  {
+    "file": "crates/matcher/src/lib.rs",
+    "test": "deterministic_across_runs",
+    "line": 831
+  },
+  {
+    "file": "crates/matcher/src/lib.rs",
+    "test": "expiry_and_liquidation_removals_retain_attribution",
+    "line": 885
+  },
+  {
+    "file": "crates/prover-service/src/main.rs",
+    "test": "gate_accepts_valid_unexpired_and_rejects_expired_or_wrong",
+    "line": 529
+  },
+  {
+    "file": "crates/prover-service/src/main.rs",
+    "test": "present_token_matches_only_its_exact_bearer",
+    "line": 543
+  },
+  {
+    "file": "crates/prover-service/src/main.rs",
+    "test": "no_bearer_is_rejected",
+    "line": 550
+  },
+  {
+    "file": "crates/prover-service/src/main.rs",
+    "test": "non_bearer_scheme_is_rejected",
+    "line": 560
+  },
+  {
+    "file": "crates/prover-service/src/main.rs",
+    "test": "absent_stored_token_never_matches_any_bearer",
+    "line": 572
+  },
+  {
+    "file": "crates/prover-service/src/main.rs",
+    "test": "empty_stored_token_never_matches",
+    "line": 591
+  },
+  {
+    "file": "crates/prover-service/src/main.rs",
+    "test": "expiry_boundary_is_inclusive",
+    "line": 615
+  },
+  {
+    "file": "crates/prover-service/src/main.rs",
+    "test": "prove_without_bearer_is_401",
+    "line": 639
+  },
+  {
+    "file": "crates/prover-service/src/main.rs",
+    "test": "prove_with_empty_stored_token_is_401_even_with_bearer",
+    "line": 655
+  },
+  {
+    "file": "crates/prover-service/src/main.rs",
+    "test": "prove_with_expired_session_is_401_even_with_matching_bearer",
+    "line": 671
+  },
+  {
+    "file": "crates/prover-service/src/main.rs",
+    "test": "prove_with_valid_bearer_reaches_handler",
+    "line": 685
+  },
+  {
+    "file": "crates/sequencer/tests/fixture.rs",
+    "test": "emit_receipt_fixture",
+    "line": 15
+  },
+  {
+    "file": "crates/sequencer/tests/fuzz.rs",
+    "test": "fuzz_sequencer_multi_batch_invariants",
+    "line": 244
+  },
+  {
+    "file": "crates/sequencer/tests/fuzz.rs",
+    "test": "fuzz_rejected_orders_are_not_inclusion_violations",
+    "line": 328
+  },
+  {
+    "file": "crates/sequencer/tests/fuzz.rs",
+    "test": "fuzz_settling_a_height_finalizes_all_prior_batches",
+    "line": 437
+  },
+  {
+    "file": "crates/sequencer/tests/spine.rs",
+    "test": "multi_market_positions_are_isolated",
+    "line": 124
+  },
+  {
+    "file": "crates/sequencer/tests/spine.rs",
+    "test": "receipt_is_signed_and_verifies",
+    "line": 200
+  },
+  {
+    "file": "crates/sequencer/tests/spine.rs",
+    "test": "match_settles_and_advances_finality",
+    "line": 220
+  },
+  {
+    "file": "crates/sequencer/tests/spine.rs",
+    "test": "manifest_hash_is_stable_and_binds_roots",
+    "line": 252
+  },
+  {
+    "file": "crates/sequencer/tests/spine.rs",
+    "test": "pre_trade_risk_rejects_unmarginable_before_matching",
+    "line": 266
+  },
+  {
+    "file": "crates/sequencer/tests/spine.rs",
+    "test": "maintenance_liquidates_underwater_position",
+    "line": 305
+  },
+  {
+    "file": "crates/sequencer/tests/spine.rs",
+    "test": "missing_liq_key_falls_back_to_secret_not_public_owner",
+    "line": 363
+  },
+  {
+    "file": "crates/sequencer/tests/spine.rs",
+    "test": "auto_deleverage_publishes_an_attributable_receipt",
+    "line": 394
+  },
+  {
+    "file": "crates/sequencer/tests/spine.rs",
+    "test": "missing_adl_key_falls_back_to_secret_not_public_owner",
+    "line": 447
+  },
+  {
+    "file": "crates/sequencer/tests/spine.rs",
+    "test": "liquidation_cancels_resting_orders",
+    "line": 483
+  },
+  {
+    "file": "crates/sequencer/tests/spine.rs",
+    "test": "manifest_ordered_rejected_disjoint_invariant",
+    "line": 535
+  },
+  {
+    "file": "crates/sequencer/tests/spine.rs",
+    "test": "accept_then_seal_keeps_one_seq",
+    "line": 550
+  },
+  {
+    "file": "crates/sequencer/tests/spine.rs",
+    "test": "honest_flow_has_no_inclusion_violations",
+    "line": 570
+  },
+  {
+    "file": "crates/sequencer/tests/spine.rs",
+    "test": "failed_batch_rolls_back_to_hard_state",
+    "line": 583
+  },
+  {
+    "file": "crates/sequencer/tests/spine.rs",
+    "test": "withheld_order_becomes_inclusion_violation",
+    "line": 643
+  },
+  {
+    "file": "crates/sequencer/tests/spine.rs",
+    "test": "rejected_for_cause_is_not_an_inclusion_violation",
+    "line": 670
+  },
+  {
+    "file": "crates/sequencer/tests/spine.rs",
+    "test": "marking_a_height_settled_finalizes_every_prior_pending_batch",
+    "line": 697
+  },
+  {
+    "file": "crates/sequencer/tests/spine.rs",
+    "test": "maintenance_reaps_expired_makers_so_they_do_not_anchor_the_mark",
+    "line": 748
+  },
+  {
+    "file": "crates/sequencer/tests/spine.rs",
+    "test": "reduce_only_order_cannot_open_a_position",
+    "line": 786
+  },
+  {
+    "file": "crates/sequencer/tests/spine.rs",
+    "test": "reduce_only_order_may_shrink_a_position",
+    "line": 830
+  },
+  {
+    "file": "crates/sequencer/tests/spine.rs",
+    "test": "reduce_only_behind_an_earlier_same_batch_order_is_rejected",
+    "line": 860
+  },
+  {
+    "file": "crates/sequencer/tests/spine.rs",
+    "test": "run_maintenance_ops_replay_reproduces_state",
+    "line": 894
+  },
+  {
+    "file": "crates/sequencer/tests/spine.rs",
+    "test": "seal_window_replays_multi_tick_window_to_live_root",
+    "line": 970
+  },
+  {
+    "file": "crates/sequencer/tests/spine.rs",
+    "test": "seal_window_two_tick_fills_only_round_trips",
+    "line": 1052
+  },
+  {
+    "file": "crates/sequencer/tests/spine.rs",
+    "test": "unknown_market_order_is_tagged_invalid_not_reduce_only",
+    "line": 1076
+  },
+  {
+    "file": "crates/sequencer/tests/spine.rs",
+    "test": "rollback_window_restores_and_reseals_to_live_root",
+    "line": 1098
+  },
+  {
+    "file": "crates/sequencer/src/lib.rs",
+    "test": "book_mid_is_overflow_safe_at_extreme_prices",
+    "line": 1627
+  },
+  {
+    "file": "crates/sequencer/src/lib.rs",
+    "test": "a_failed_fill_is_attributed_to_the_offending_leg_only",
+    "line": 1644
+  },
+  {
+    "file": "crates/sequencer/src/lib.rs",
+    "test": "a_fill_margin_failure_names_the_offending_leg",
+    "line": 1667
+  },
+  {
+    "file": "crates/sequencer/src/lib.rs",
+    "test": "settlement_reason_is_unchanged_by_the_leg",
+    "line": 1695
+  },
+  {
+    "file": "crates/sequencer/src/lib.rs",
+    "test": "receipt_window_id_is_open_window_and_map_tracks_it",
+    "line": 1797
+  },
+  {
+    "file": "crates/sequencer/src/lib.rs",
+    "test": "rollback_keeps_the_window_map_correct",
+    "line": 1824
+  },
+  {
+    "file": "crates/sequencer/src/lib.rs",
+    "test": "mark_settled_no_longer_prunes_the_window_map",
+    "line": 1836
+  },
+  {
+    "file": "crates/sequencer/src/lib.rs",
+    "test": "mark_window_settled_hardens_through_window",
+    "line": 1851
+  },
+  {
+    "file": "crates/sequencer/src/lib.rs",
+    "test": "window_mode_skips_tick_rollback_snapshots",
+    "line": 1895
+  },
+  {
+    "file": "crates/sequencer/src/lib.rs",
+    "test": "mark_failed_no_longer_prunes_the_window_map",
+    "line": 1950
+  },
+  {
+    "file": "crates/sequencer/src/lib.rs",
+    "test": "prune_tick_window_settled_keeps_grace_drops_old",
+    "line": 1962
+  },
+  {
+    "file": "crates/sequencer/src/lib.rs",
+    "test": "enforce_tick_window_cap_bounds_the_map",
+    "line": 1983
+  },
+  {
+    "file": "crates/sequencer/src/lib.rs",
+    "test": "seal_genesis_baseline_rebases_window_zero_to_full_boot_state",
+    "line": 2004
+  },
+  {
+    "file": "crates/sequencer/src/lib.rs",
+    "test": "a_band_violation_at_settlement_rejects_only_the_resting_maker",
+    "line": 2073
+  },
+  {
+    "file": "crates/sequencer/src/lib.rs",
+    "test": "a_rejected_fill_does_not_consume_resting_liquidity",
+    "line": 2122
+  },
+  {
+    "file": "crates/sequencer/src/lib.rs",
+    "test": "a_bankrupting_reduction_is_banned_and_burns_no_resting_liquidity",
+    "line": 2182
+  },
+  {
+    "file": "crates/sequencer/src/lib.rs",
+    "test": "a_ban_commits_the_offending_legs_reason_not_an_earlier_innocent_records",
+    "line": 2266
+  },
+  {
+    "file": "crates/sequencer/src/lib.rs",
+    "test": "a_ban_survives_an_earlier_innocent_record_of_the_same_hash",
+    "line": 2361
+  },
+  {
+    "file": "crates/sequencer/src/lib.rs",
+    "test": "a_drifted_resting_maker_is_banned_from_the_book_not_just_the_stream",
+    "line": 2460
+  },
+  {
+    "file": "crates/sequencer/src/lib.rs",
+    "test": "a_healthy_position_closes_against_fragmented_resting_liquidity",
+    "line": 2514
+  },
+  {
+    "file": "crates/sequencer/src/lib.rs",
+    "test": "rematch_loop_terminates_when_every_fill_is_offending",
+    "line": 2554
+  },
+  {
+    "file": "crates/sequencer/src/lib.rs",
+    "test": "a_reduce_only_settlement_violation_bans_the_offender_and_spares_the_counterparty",
+    "line": 2599
+  },
+  {
+    "file": "crates/sequencer/src/lib.rs",
+    "test": "two_drifted_makers_are_banned_in_separate_rounds_before_the_loop_settles",
+    "line": 2687
+  },
+  {
+    "file": "crates/sequencer/src/cancellation/tests.rs",
+    "test": "resting_cancel_removes_depth_and_records_manifest_without_mutating_accounting",
+    "line": 94
+  },
+  {
+    "file": "crates/sequencer/src/cancellation/tests.rs",
+    "test": "pending_cancellation_resolves_the_acceptance_receipt",
+    "line": 109
+  },
+  {
+    "file": "crates/sequencer/src/cancellation/tests.rs",
+    "test": "wrong_owner_and_unknown_order_cannot_cancel",
+    "line": 128
+  },
+  {
+    "file": "crates/sequencer/src/cancellation/tests.rs",
+    "test": "already_processed_ioc_is_not_a_pending_cancellable_order",
+    "line": 143
+  },
+  {
+    "file": "crates/sequencer/src/cancellation/tests.rs",
+    "test": "partial_cancel_uses_real_remaining_size_and_preserves_the_fill",
+    "line": 155
+  },
+  {
+    "file": "crates/sequencer/src/cancellation/tests.rs",
+    "test": "settled_partial_fill_does_not_block_remainder_cancellation",
+    "line": 179
+  },
+  {
+    "file": "crates/sequencer/src/cancellation/tests.rs",
+    "test": "full_fill_has_no_cancellable_remainder",
+    "line": 201
+  },
+  {
+    "file": "crates/sequencer/src/cancellation/tests.rs",
+    "test": "both_cancel_fill_orderings_replay_to_the_live_root",
+    "line": 212
+  },
+  {
+    "file": "crates/sequencer/src/cancellation/tests.rs",
+    "test": "window_rollback_preserves_intervening_cancellation_and_its_manifest",
+    "line": 244
+  },
+  {
+    "file": "crates/sequencer/src/cancellation/tests.rs",
+    "test": "legacy_tick_rollback_cannot_restore_a_cancelled_maker",
+    "line": 266
+  },
+  {
+    "file": "crates/prover/tests/vectors.rs",
+    "test": "receipt_signing_digest_vector",
+    "line": 14
+  },
+  {
+    "file": "crates/prover/tests/vectors.rs",
+    "test": "public_commitment_vector",
+    "line": 35
+  },
+  {
+    "file": "crates/prover/tests/vectors.rs",
+    "test": "a06_wind_down_phase_one_commitment_kat",
+    "line": 61
+  },
+  {
+    "file": "crates/prover/src/lib.rs",
+    "test": "attested_prover_is_send_sync",
+    "line": 537
+  },
+  {
+    "file": "crates/prover/src/lib.rs",
+    "test": "transition_derives_roots_from_manifest",
+    "line": 592
+  },
+  {
+    "file": "crates/prover/src/lib.rs",
+    "test": "commitment_binds_the_rejected_root",
+    "line": 607
+  },
+  {
+    "file": "crates/prover/src/lib.rs",
+    "test": "commitment_matches_perp_core_derived_roots",
+    "line": 635
+  },
+  {
+    "file": "crates/prover/src/lib.rs",
+    "test": "prove_and_verify_roundtrip",
+    "line": 695
+  },
+  {
+    "file": "crates/prover/src/lib.rs",
+    "test": "tampered_public_inputs_break_verification",
+    "line": 709
+  },
+  {
+    "file": "crates/prover/src/lib.rs",
+    "test": "wrong_measurement_cannot_open_witness",
+    "line": 728
+  },
+  {
+    "file": "crates/prover/src/lib.rs",
+    "test": "wrong_measurement_cannot_even_seal",
+    "line": 744
+  },
+  {
+    "file": "crates/prover/src/lib.rs",
+    "test": "tampered_ciphertext_fails_authentication",
+    "line": 754
+  },
+  {
+    "file": "crates/prover/src/lib.rs",
+    "test": "correct_open_recovers_exact_plaintext",
+    "line": 765
+  },
+  {
+    "file": "crates/prover/src/lib.rs",
+    "test": "attested_seal_roundtrip_binds_measurement_and_secret",
+    "line": 778
+  },
+  {
+    "file": "crates/prover/src/lib.rs",
+    "test": "seal_actually_hides_plaintext",
+    "line": 822
+  },
+  {
+    "file": "crates/prover/src/lib.rs",
+    "test": "distinct_nonces_avoid_two_time_pad",
+    "line": 844
+  },
+  {
+    "file": "crates/prover/src/lib.rs",
+    "test": "rejected_transition_propagates",
+    "line": 868
+  },
+  {
+    "file": "crates/prover/src/lib.rs",
+    "test": "prove_batch_opens_derives_and_proves",
+    "line": 909
+  },
+  {
+    "file": "crates/prover/src/lib.rs",
+    "test": "prove_batch_wrong_measurement_cannot_open",
+    "line": 931
+  },
+  {
+    "file": "crates/prover/src/lib.rs",
+    "test": "prove_batch_garbage_witness_is_witness_decode",
+    "line": 945
+  },
+  {
+    "file": "crates/prover/src/lib.rs",
+    "test": "sealed_witness_postcard_round_trips",
+    "line": 965
+  },
+  {
+    "file": "crates/prover/src/seal_root.rs",
+    "test": "unset_and_not_dev_refuses",
+    "line": 78
+  },
+  {
+    "file": "crates/prover/src/seal_root.rs",
+    "test": "explicit_hex_is_used",
+    "line": 91
+  },
+  {
+    "file": "crates/prover/src/seal_root.rs",
+    "test": "dev_insecure_gives_non_5e_root_in_nonprod",
+    "line": 102
+  },
+  {
+    "file": "crates/prover/src/seal_root.rs",
+    "test": "dev_insecure_refused_in_prod",
+    "line": 116
+  },
+  {
+    "file": "crates/prover/src/seal_root.rs",
+    "test": "bad_hex_errors",
+    "line": 129
+  },
+  {
+    "file": "crates/attestation/tests/verify_offline.rs",
+    "test": "verifies_pinned_tdx_quote_and_extracts_measurements",
+    "line": 38
+  },
+  {
+    "file": "crates/attestation/tests/verify_offline.rs",
+    "test": "rejects_a_tampered_quote",
+    "line": 66
+  },
+  {
+    "file": "crates/attestation/tests/verify_offline.rs",
+    "test": "measurement_is_deterministic_and_binds_mrtd_and_rtmrs",
+    "line": 79
+  },
+  {
+    "file": "crates/attestation/tests/verify_offline.rs",
+    "test": "acceptable_platform_yields_a_measurement",
+    "line": 123
+  },
+  {
+    "file": "crates/attestation/tests/verify_offline.rs",
+    "test": "rejects_an_outdated_platform_quote",
+    "line": 134
+  },
+  {
+    "file": "crates/attestation/tests/verify_offline.rs",
+    "test": "verifies_a_real_azure_tdx_quote_offline",
+    "line": 161
+  },
+  {
+    "file": "crates/attestation/tests/verify_offline.rs",
+    "test": "key_release_gate_accepts_only_current_tcb",
+    "line": 198
+  },
+  {
+    "file": "crates/attestation/tests/vtpm_offline.rs",
+    "test": "verifies_the_real_azure_vtpm_chain",
+    "line": 49
+  },
+  {
+    "file": "crates/attestation/tests/vtpm_offline.rs",
+    "test": "a_different_measured_boot_pcr_breaks_the_chain",
+    "line": 72
+  },
+  {
+    "file": "crates/attestation/tests/vtpm_offline.rs",
+    "test": "a_corrupt_hcl_header_is_rejected",
+    "line": 84
+  },
+  {
+    "file": "crates/attestation/tests/vtpm_offline.rs",
+    "test": "a_tampered_hcl_report_breaks_the_td_binding",
+    "line": 98
+  },
+  {
+    "file": "crates/attestation/tests/handshake_orchestration.rs",
+    "test": "both_sides_derive_the_identical_secret_and_token",
+    "line": 119
+  },
+  {
+    "file": "crates/attestation/tests/handshake_orchestration.rs",
+    "test": "a_tampered_peer_bundle_fails_closed",
+    "line": 165
+  },
+  {
+    "file": "crates/attestation/tests/handshake_orchestration.rs",
+    "test": "a_wrong_peer_measurement_fails_closed",
+    "line": 204
+  },
+  {
+    "file": "crates/attestation/tests/handshake_orchestration.rs",
+    "test": "a_mismatched_eph_pub_fails_closed",
+    "line": 245
+  },
+  {
+    "file": "crates/attestation/src/lib.rs",
+    "test": "azure_verify_accepts_the_bundle_at_app_level_with_matching_challenge",
+    "line": 448
+  },
+  {
+    "file": "crates/attestation/src/lib.rs",
+    "test": "azure_verify_rejects_a_firmware_only_expected_measurement",
+    "line": 461
+  },
+  {
+    "file": "crates/attestation/src/lib.rs",
+    "test": "azure_verify_rejects_a_mismatched_challenge",
+    "line": 480
+  },
+  {
+    "file": "crates/attestation/src/lib.rs",
+    "test": "azure_verify_rejects_a_malformed_bundle",
+    "line": 490
+  },
+  {
+    "file": "crates/attestation/src/lib.rs",
+    "test": "azure_verify_rejects_a_tampered_quote_in_the_bundle",
+    "line": 500
+  },
+  {
+    "file": "crates/attestation/src/lib.rs",
+    "test": "azure_quote_assembles_the_full_bundle_and_round_trips",
+    "line": 516
+  },
+  {
+    "file": "crates/attestation/src/lib.rs",
+    "test": "azure_quote_without_a_live_source_fails_closed",
+    "line": 531
+  },
+  {
+    "file": "crates/attestation/src/lib.rs",
+    "test": "pinned_now_parses_intel_pcs_timestamps",
+    "line": 541
+  },
+  {
+    "file": "crates/attestation/src/lib.rs",
+    "test": "pinned_now_lies_inside_the_collateral_windows",
+    "line": 561
+  },
+  {
+    "file": "crates/attestation/src/handshake.rs",
+    "test": "dh_agrees_from_both_directions",
+    "line": 111
+  },
+  {
+    "file": "crates/attestation/src/handshake.rs",
+    "test": "secret_is_deterministic_transcript_and_shared_bound",
+    "line": 122
+  },
+  {
+    "file": "crates/attestation/src/handshake.rs",
+    "test": "public_transcript_alone_cannot_reproduce_the_secret",
+    "line": 140
+  },
+  {
+    "file": "crates/attestation/src/handshake.rs",
+    "test": "token_binds_secret_and_not_after",
+    "line": 158
+  },
+  {
+    "file": "crates/attestation/src/handshake.rs",
+    "test": "ct_eq_matches_semantic_equality",
+    "line": 167
+  },
+  {
+    "file": "crates/attestation/src/nvidia_cc.rs",
+    "test": "quote_fails_closed_when_cc_disabled",
+    "line": 67
+  },
+  {
+    "file": "crates/attestation/src/nvidia_cc.rs",
+    "test": "cc_on_stub_path_never_returns_ok",
+    "line": 80
+  },
+  {
+    "file": "crates/attestation/src/vtpm.rs",
+    "test": "parses_the_fixture_pcrs_txt",
+    "line": 337
+  },
+  {
+    "file": "crates/attestation/src/vtpm.rs",
+    "test": "parse_pcrs_txt_rejects_malformed_captures",
+    "line": 364
+  },
+  {
+    "file": "crates/attestation/src/vtpm.rs",
+    "test": "app_measurement_applies_the_tcb_gate",
+    "line": 393
+  },
+  {
+    "file": "crates/perp-core/tests/sec022_fill_band.rs",
+    "test": "treasury_overflow_leaves_state_untouched",
+    "line": 112
+  },
+  {
+    "file": "crates/perp-core/tests/sec022_fill_band.rs",
+    "test": "insurance_overflow_leaves_state_untouched",
+    "line": 131
+  },
+  {
+    "file": "crates/perp-core/tests/sec022_fill_band.rs",
+    "test": "vault_pool_overflow_leaves_state_untouched",
+    "line": 150
+  },
+  {
+    "file": "crates/perp-core/tests/sec022_fill_band.rs",
+    "test": "off_market_cross_is_rejected_with_state_unchanged",
+    "line": 178
+  },
+  {
+    "file": "crates/perp-core/tests/sec022_fill_band.rs",
+    "test": "fill_exactly_at_the_band_edge_is_accepted",
+    "line": 199
+  },
+  {
+    "file": "crates/perp-core/tests/sec022_fill_band.rs",
+    "test": "fill_just_outside_the_band_is_rejected_in_both_directions",
+    "line": 217
+  },
+  {
+    "file": "crates/perp-core/tests/sec022_fill_band.rs",
+    "test": "inflated_price_cannot_widen_its_own_band",
+    "line": 245
+  },
+  {
+    "file": "crates/perp-core/tests/sec022_fill_band.rs",
+    "test": "unsigned_oracle_is_rejected_before_the_band",
+    "line": 267
+  },
+  {
+    "file": "crates/perp-core/tests/sec022_fill_band.rs",
+    "test": "band_arithmetic_overflow_rejects_without_panicking",
+    "line": 300
+  },
+  {
+    "file": "crates/perp-core/tests/sec022_fill_band.rs",
+    "test": "closed_leg_with_negative_collateral_is_rejected",
+    "line": 326
+  },
+  {
+    "file": "crates/perp-core/tests/sec022_fill_band.rs",
+    "test": "healthy_position_can_close_in_small_fragments",
+    "line": 360
+  },
+  {
+    "file": "crates/perp-core/tests/sec022_fill_band.rs",
+    "test": "every_in_band_reduction_of_a_healthy_position_succeeds",
+    "line": 409
+  },
+  {
+    "file": "crates/perp-core/tests/sec022_fill_band.rs",
+    "test": "maintenance_boundary_position_closes_at_the_band_edge",
+    "line": 456
+  },
+  {
+    "file": "crates/perp-core/tests/sec022_fill_band.rs",
+    "test": "close_landing_at_exactly_zero_collateral_is_accepted",
+    "line": 500
+  },
+  {
+    "file": "crates/perp-core/tests/sec022_fill_band.rs",
+    "test": "fill_leaving_an_open_leg_below_maintenance_is_rejected",
+    "line": 531
+  },
+  {
+    "file": "crates/perp-core/tests/sec022_fill_band.rs",
+    "test": "maker_leg_below_maintenance_is_attributed_to_the_maker",
+    "line": 554
+  },
+  {
+    "file": "crates/perp-core/tests/spend_binding.rs",
+    "test": "fund_position_rejects_a_spend_key_that_does_not_derive_the_owner",
+    "line": 24
+  },
+  {
+    "file": "crates/perp-core/tests/spend_binding.rs",
+    "test": "withdraw_rejects_a_spend_key_that_does_not_derive_the_owner",
+    "line": 59
+  },
+  {
+    "file": "crates/perp-core/tests/a06_wind_down.rs",
+    "test": "a06_stranded_healthy_position_closes_without_counterparty_or_oracle",
+    "line": 31
+  },
+  {
+    "file": "crates/perp-core/tests/a06_wind_down.rs",
+    "test": "a06_mixed_wind_down_batch_is_rejected_before_mutation",
+    "line": 67
+  },
+  {
+    "file": "crates/perp-core/tests/a06_wind_down.rs",
+    "test": "a06_settle_all_reconciles_preexisting_pool_deficit_globally",
+    "line": 86
+  },
+  {
+    "file": "crates/perp-core/tests/a06_wind_down.rs",
+    "test": "a06_settle_all_is_atomic_when_note_reissue_cannot_fit_tree",
+    "line": 122
+  },
+  {
+    "file": "crates/perp-core/tests/fuzz.rs",
+    "test": "fuzz_conservation_holds_over_random_sessions",
+    "line": 207
+  },
+  {
+    "file": "crates/perp-core/tests/fuzz.rs",
+    "test": "fuzz_state_root_is_deterministic",
+    "line": 215
+  },
+  {
+    "file": "crates/perp-core/tests/fuzz.rs",
+    "test": "fuzz_oracle_validate_is_total_and_sound",
+    "line": 272
+  },
+  {
+    "file": "crates/perp-core/tests/fuzz.rs",
+    "test": "fuzz_merkle_proofs_sound_and_second_preimage_safe",
+    "line": 345
+  },
+  {
+    "file": "crates/perp-core/tests/serde_witness.rs",
+    "test": "state_round_trips_losslessly",
+    "line": 95
+  },
+  {
+    "file": "crates/perp-core/tests/serde_witness.rs",
+    "test": "ops_round_trip_and_replay_identically",
+    "line": 113
+  },
+  {
+    "file": "crates/perp-core/tests/serde_witness.rs",
+    "test": "full_witness_round_trips_and_rederives_commitment",
+    "line": 153
+  },
+  {
+    "file": "crates/perp-core/tests/serde_witness.rs",
+    "test": "sec026_rejected_duplicate_leaves_postcard_bytes_unchanged",
+    "line": 201
+  },
+  {
+    "file": "crates/perp-core/tests/serde_witness.rs",
+    "test": "sec026_overflowing_deposit_leaves_postcard_bytes_unchanged",
+    "line": 251
+  },
+  {
+    "file": "crates/perp-core/tests/serde_witness.rs",
+    "test": "sec026_tree_full_deposit_leaves_postcard_bytes_unchanged",
+    "line": 283
+  },
+  {
+    "file": "crates/perp-core/tests/serde_witness.rs",
+    "test": "sec026_restored_state_still_rejects_historical_duplicates",
+    "line": 324
+  },
+  {
+    "file": "crates/perp-core/tests/lifecycle.rs",
+    "test": "full_lifecycle_conserves_throughout",
+    "line": 88
+  },
+  {
+    "file": "crates/perp-core/tests/lifecycle.rs",
+    "test": "invariant_collateral_conservation_under_random_ops",
+    "line": 191
+  },
+  {
+    "file": "crates/perp-core/tests/lifecycle.rs",
+    "test": "invariant_no_double_spend",
+    "line": 246
+  },
+  {
+    "file": "crates/perp-core/tests/lifecycle.rs",
+    "test": "invariant_post_fill_margin_sufficiency",
+    "line": 283
+  },
+  {
+    "file": "crates/perp-core/tests/lifecycle.rs",
+    "test": "invariant_oracle_freshness_enforced",
+    "line": 336
+  },
+  {
+    "file": "crates/perp-core/tests/lifecycle.rs",
+    "test": "invariant_liquidation_threshold",
+    "line": 386
+  },
+  {
+    "file": "crates/perp-core/tests/lifecycle.rs",
+    "test": "bad_debt_is_clawed_from_the_winners_via_adl",
+    "line": 460
+  },
+  {
+    "file": "crates/perp-core/tests/lifecycle.rs",
+    "test": "insurance_backstop_absorbs_bad_debt",
+    "line": 565
+  },
+  {
+    "file": "crates/perp-core/tests/lifecycle.rs",
+    "test": "adl_covers_residual_after_insurance",
+    "line": 596
+  },
+  {
+    "file": "crates/perp-core/tests/lifecycle.rs",
+    "test": "true_insolvency_trips_close_only_when_winners_have_exited",
+    "line": 624
+  },
+  {
+    "file": "crates/perp-core/tests/lifecycle.rs",
+    "test": "adl_distributes_pro_rata_across_multiple_winners",
+    "line": 705
+  },
+  {
+    "file": "crates/perp-core/tests/lifecycle.rs",
+    "test": "trading_fees_pay_the_maker_and_fund_insurance",
+    "line": 790
+  },
+  {
+    "file": "crates/perp-core/tests/lifecycle.rs",
+    "test": "duplicate_commitment_deposit_rejected",
+    "line": 851
+  },
+  {
+    "file": "crates/perp-core/tests/lifecycle.rs",
+    "test": "self_trade_is_rejected_at_settlement",
+    "line": 901
+  },
+  {
+    "file": "crates/perp-core/tests/lifecycle.rs",
+    "test": "forced_exit_close_only_blocks_increase",
+    "line": 943
+  },
+  {
+    "file": "crates/perp-core/tests/lifecycle.rs",
+    "test": "adl_surfaces_the_per_winner_haircut_attribution",
+    "line": 1015
+  },
+  {
+    "file": "crates/perp-core/tests/lifecycle.rs",
+    "test": "a_liquidation_absorbed_by_insurance_reports_no_adl_haircuts",
+    "line": 1100
+  },
+  {
+    "file": "crates/perp-core/tests/lifecycle.rs",
+    "test": "liquidation_overflow_in_vault_pool_leaves_state_byte_identical",
+    "line": 1185
+  },
+  {
+    "file": "crates/perp-core/tests/lifecycle.rs",
+    "test": "liquidation_overflow_in_insurance_fund_leaves_state_byte_identical",
+    "line": 1215
+  },
+  {
+    "file": "crates/perp-core/tests/lifecycle.rs",
+    "test": "fund_insurance_with_non_canonical_asset_is_rejected_untouched",
+    "line": 1248
+  },
+  {
+    "file": "crates/perp-core/tests/lifecycle.rs",
+    "test": "sec026_deposit_spend_deposit_same_tuple_rejected",
+    "line": 1299
+  },
+  {
+    "file": "crates/perp-core/tests/lifecycle.rs",
+    "test": "sec026_unbind_withdraw_unbind_same_tuple_rejected",
+    "line": 1362
+  },
+  {
+    "file": "crates/perp-core/tests/lifecycle.rs",
+    "test": "sec026_unbind_spend_deposit_same_tuple_rejected",
+    "line": 1433
+  },
+  {
+    "file": "crates/perp-core/tests/lifecycle.rs",
+    "test": "sec026_deposit_spend_unbind_same_tuple_rejected",
+    "line": 1497
+  },
+  {
+    "file": "crates/perp-core/tests/lifecycle.rs",
+    "test": "sec026_duplicate_unbind_while_unspent_rejected",
+    "line": 1564
+  },
+  {
+    "file": "crates/perp-core/tests/lifecycle.rs",
+    "test": "sec026_mints_differing_only_in_blinding_both_accepted",
+    "line": 1615
+  },
+  {
+    "file": "crates/perp-core/tests/lifecycle.rs",
+    "test": "fund_insurance_moves_note_value_without_asserting_new_external_value",
+    "line": 1699
+  },
+  {
+    "file": "crates/perp-core/tests/lifecycle.rs",
+    "test": "fund_insurance_rejects_a_wrong_spend_key",
+    "line": 1736
+  },
+  {
+    "file": "crates/perp-core/tests/lifecycle.rs",
+    "test": "fund_insurance_overflow_leaves_state_byte_identical",
+    "line": 1769
+  },
+  {
+    "file": "crates/perp-core/tests/lifecycle.rs",
+    "test": "deprecated_seed_insurance_is_always_rejected",
+    "line": 1805
+  },
+  {
+    "file": "crates/perp-core/tests/lifecycle.rs",
+    "test": "legacy_seed_insurance_bytes_decode_to_the_stub_and_stay_aligned",
+    "line": 1834
+  },
+  {
+    "file": "crates/perp-core/tests/lifecycle.rs",
+    "test": "external_in_has_exactly_one_writer_and_it_is_op_deposit",
+    "line": 1883
+  },
+  {
+    "file": "crates/perp-core/tests/local_s4.rs",
+    "test": "exhausted_batch_counter_rejects_before_deposit_mutation",
+    "line": 19
+  },
+  {
+    "file": "crates/perp-core/tests/local_s4.rs",
+    "test": "last_representable_batch_completes_then_empty_batch_rejects",
+    "line": 34
+  },
+  {
+    "file": "crates/perp-core/src/commitment.rs",
+    "test": "derives_withdrawals_root_from_burned_note",
+    "line": 149
+  },
+  {
+    "file": "crates/perp-core/src/commitment.rs",
+    "test": "rejects_manifest_with_wrong_prev_root",
+    "line": 186
+  },
+  {
+    "file": "crates/perp-core/src/commitment.rs",
+    "test": "rejects_manifest_with_wrong_batch_id",
+    "line": 197
+  },
+  {
+    "file": "crates/perp-core/src/commitment.rs",
+    "test": "deposits_root_is_post_batch_tip_and_in_commitment",
+    "line": 209
+  },
+  {
+    "file": "crates/perp-core/src/commitment.rs",
+    "test": "commitment_is_seven_field_state_root_domain",
+    "line": 250
+  },
+  {
+    "file": "crates/perp-core/src/fixed.rs",
+    "test": "notional_of_one_btc_at_100k",
+    "line": 70
+  },
+  {
+    "file": "crates/perp-core/src/fixed.rs",
+    "test": "notional_handles_fractional_size",
+    "line": 79
+  },
+  {
+    "file": "crates/perp-core/src/fixed.rs",
+    "test": "apply_rate_basic",
+    "line": 87
+  },
+  {
+    "file": "crates/perp-core/src/market.rs",
+    "test": "conservative_is_coherent",
+    "line": 195
+  },
+  {
+    "file": "crates/perp-core/src/market.rs",
+    "test": "max_leverage_is_10x",
+    "line": 200
+  },
+  {
+    "file": "crates/perp-core/src/market.rs",
+    "test": "incoherent_rejected",
+    "line": 205
+  },
+  {
+    "file": "crates/perp-core/src/market.rs",
+    "test": "liquidation_fee_must_be_below_maintenance",
+    "line": 212
+  },
+  {
+    "file": "crates/perp-core/src/market.rs",
+    "test": "taker_fee_must_be_below_maintenance",
+    "line": 223
+  },
+  {
+    "file": "crates/perp-core/src/market.rs",
+    "test": "mark_deviation_ratio_must_be_positive",
+    "line": 248
+  },
+  {
+    "file": "crates/perp-core/src/market.rs",
+    "test": "fill_deviation_ratio_must_be_positive",
+    "line": 263
+  },
+  {
+    "file": "crates/perp-core/src/market.rs",
+    "test": "fill_band_and_taker_fee_are_jointly_bounded_by_maintenance",
+    "line": 279
+  },
+  {
+    "file": "crates/perp-core/src/market.rs",
+    "test": "live_fee_schedule_is_jointly_coherent",
+    "line": 304
+  },
+  {
+    "file": "crates/perp-core/src/merkle.rs",
+    "test": "empty_root_stable",
+    "line": 432
+  },
+  {
+    "file": "crates/perp-core/src/merkle.rs",
+    "test": "append_changes_root",
+    "line": 439
+  },
+  {
+    "file": "crates/perp-core/src/merkle.rs",
+    "test": "proofs_verify_for_all_leaves",
+    "line": 447
+  },
+  {
+    "file": "crates/perp-core/src/merkle.rs",
+    "test": "proof_is_bound_to_its_leaf_index",
+    "line": 463
+  },
+  {
+    "file": "crates/perp-core/src/merkle.rs",
+    "test": "tampered_sibling_rejected",
+    "line": 480
+  },
+  {
+    "file": "crates/perp-core/src/merkle.rs",
+    "test": "internal_node_is_not_a_valid_leaf",
+    "line": 495
+  },
+  {
+    "file": "crates/perp-core/src/merkle.rs",
+    "test": "capacity_enforced",
+    "line": 522
+  },
+  {
+    "file": "crates/perp-core/src/merkle.rs",
+    "test": "contains_leaf_tracks_every_append",
+    "line": 533
+  },
+  {
+    "file": "crates/perp-core/src/merkle.rs",
+    "test": "sec026_deserialize_rebuilds_leaf_index_exactly",
+    "line": 555
+  },
+  {
+    "file": "crates/perp-core/src/merkle.rs",
+    "test": "withdrawal_leaf_matches_solidity_vector",
+    "line": 628
+  },
+  {
+    "file": "crates/perp-core/src/merkle.rs",
+    "test": "challenge_leaves_match_solidity_vectors",
+    "line": 648
+  },
+  {
+    "file": "crates/perp-core/src/merkle.rs",
+    "test": "challenge_leaves_domain_separated",
+    "line": 680
+  },
+  {
+    "file": "crates/perp-core/src/merkle.rs",
+    "test": "empty_merkle_root_is_zero",
+    "line": 687
+  },
+  {
+    "file": "crates/perp-core/src/merkle.rs",
+    "test": "ordered_root_matches_manual_tree",
+    "line": 692
+  },
+  {
+    "file": "crates/perp-core/src/merkle.rs",
+    "test": "settlement_proofs_round_trip",
+    "line": 703
+  },
+  {
+    "file": "crates/perp-core/src/merkle.rs",
+    "test": "rejected_and_withdrawals_roots_compose_their_leaves",
+    "line": 719
+  },
+  {
+    "file": "crates/perp-core/src/merkle.rs",
+    "test": "deposit_leaf_matches_abi_encodepacked",
+    "line": 757
+  },
+  {
+    "file": "crates/perp-core/src/merkle.rs",
+    "test": "owner_commit_is_keccak_owner_blind",
+    "line": 789
+  },
+  {
+    "file": "crates/perp-core/src/merkle.rs",
+    "test": "deposit_chain_fold_and_root_are_ordered",
+    "line": 800
+  },
+  {
+    "file": "crates/perp-core/src/order.rs",
+    "test": "order_hash_depends_on_nonce",
+    "line": 245
+  },
+  {
+    "file": "crates/perp-core/src/order.rs",
+    "test": "manifest_inclusion_and_hash_stable",
+    "line": 253
+  },
+  {
+    "file": "crates/perp-core/src/order.rs",
+    "test": "only_settled_is_withdrawable",
+    "line": 270
+  },
+  {
+    "file": "crates/perp-core/src/order.rs",
+    "test": "signing_digest_ignores_window_id",
+    "line": 277
+  },
+  {
+    "file": "crates/perp-core/src/funding.rs",
+    "test": "premium_makes_longs_pay",
+    "line": 103
+  },
+  {
+    "file": "crates/perp-core/src/funding.rs",
+    "test": "discount_makes_shorts_pay",
+    "line": 110
+  },
+  {
+    "file": "crates/perp-core/src/funding.rs",
+    "test": "small_premium_not_clamped",
+    "line": 116
+  },
+  {
+    "file": "crates/perp-core/src/funding.rs",
+    "test": "extreme_negative_mark_clamps_to_minus_max",
+    "line": 126
+  },
+  {
+    "file": "crates/perp-core/src/funding.rs",
+    "test": "overflow_clamp_preserves_sign",
+    "line": 139
+  },
+  {
+    "file": "crates/perp-core/src/funding.rs",
+    "test": "accrue_moves_index_up_on_premium",
+    "line": 149
+  },
+  {
+    "file": "crates/perp-core/src/funding.rs",
+    "test": "manipulated_mark_cannot_inflate_the_funding_notional",
+    "line": 162
+  },
+  {
+    "file": "crates/perp-core/src/funding.rs",
+    "test": "funding_tracks_elapsed_time_not_call_count",
+    "line": 182
+  },
+  {
+    "file": "crates/perp-core/src/funding.rs",
+    "test": "low_priced_market_still_accrues_funding_via_the_carry",
+    "line": 220
+  },
+  {
+    "file": "crates/perp-core/src/note.rs",
+    "test": "commitment_is_binding",
+    "line": 85
+  },
+  {
+    "file": "crates/perp-core/src/note.rs",
+    "test": "commitment_is_hiding_on_blinding",
+    "line": 92
+  },
+  {
+    "file": "crates/perp-core/src/note.rs",
+    "test": "nullifier_is_deterministic",
+    "line": 103
+  },
+  {
+    "file": "crates/perp-core/src/state.rs",
+    "test": "empty_state_conserves",
+    "line": 262
+  },
+  {
+    "file": "crates/perp-core/src/state.rs",
+    "test": "state_root_changes_with_external_flow",
+    "line": 269
+  },
+  {
+    "file": "crates/perp-core/src/state.rs",
+    "test": "state_root_binds_nullifier_contents_not_just_count",
+    "line": 279
+  },
+  {
+    "file": "crates/perp-core/src/state.rs",
+    "test": "state_root_binds_mode",
+    "line": 294
+  },
+  {
+    "file": "crates/perp-core/src/state.rs",
+    "test": "state_root_binds_unspent_notes",
+    "line": 308
+  },
+  {
+    "file": "crates/perp-core/src/state.rs",
+    "test": "state_root_binds_sequence_and_batch",
+    "line": 322
+  },
+  {
+    "file": "crates/perp-core/src/state.rs",
+    "test": "state_root_binds_deposit_accumulator",
+    "line": 344
+  },
+  {
+    "file": "crates/perp-core/src/state.rs",
+    "test": "state_root_binds_market_config",
+    "line": 359
+  },
+  {
+    "file": "crates/perp-core/src/state.rs",
+    "test": "market_binds_oracle_pubkey_in_digest",
+    "line": 377
+  },
+  {
+    "file": "crates/perp-core/src/state.rs",
+    "test": "sec026_postcard_encoding_is_pinned",
+    "line": 401
+  },
+  {
+    "file": "crates/perp-core/src/state.rs",
+    "test": "market_binds_max_mark_deviation_ratio_in_digest",
+    "line": 469
+  },
+  {
+    "file": "crates/perp-core/src/state.rs",
+    "test": "market_binds_max_fill_deviation_ratio_in_digest",
+    "line": 489
+  },
+  {
+    "file": "crates/perp-core/src/oracle.rs",
+    "test": "oracle_sig_round_trips_and_binds_digest",
+    "line": 250
+  },
+  {
+    "file": "crates/perp-core/src/oracle.rs",
+    "test": "accepts_fresh_tight_price",
+    "line": 323
+  },
+  {
+    "file": "crates/perp-core/src/oracle.rs",
+    "test": "zero_backup_twap_is_rejected_not_skipped",
+    "line": 333
+  },
+  {
+    "file": "crates/perp-core/src/oracle.rs",
+    "test": "rejects_stale",
+    "line": 344
+  },
+  {
+    "file": "crates/perp-core/src/oracle.rs",
+    "test": "rejects_future_price",
+    "line": 351
+  },
+  {
+    "file": "crates/perp-core/src/oracle.rs",
+    "test": "rejects_wide_confidence",
+    "line": 357
+  },
+  {
+    "file": "crates/perp-core/src/oracle.rs",
+    "test": "extreme_price_is_rejected_not_wrapped",
+    "line": 369
+  },
+  {
+    "file": "crates/perp-core/src/oracle.rs",
+    "test": "rejects_backup_deviation",
+    "line": 393
+  },
+  {
+    "file": "crates/perp-core/src/oracle.rs",
+    "test": "validate_requires_correct_publisher_signature",
+    "line": 412
+  },
+  {
+    "file": "crates/perp-core/src/nullifier.rs",
+    "test": "double_spend_rejected",
+    "line": 75
+  },
+  {
+    "file": "crates/perp-core/src/nullifier.rs",
+    "test": "digest_is_an_incremental_chain_over_insertion_order",
+    "line": 89
+  },
+  {
+    "file": "crates/perp-core/src/position.rs",
+    "test": "increases_exposure_does_not_overflow_at_the_size_bound",
+    "line": 321
+  },
+  {
+    "file": "crates/perp-core/src/position.rs",
+    "test": "long_pnl_positive_when_price_rises",
+    "line": 332
+  },
+  {
+    "file": "crates/perp-core/src/position.rs",
+    "test": "short_pnl_positive_when_price_falls",
+    "line": 342
+  },
+  {
+    "file": "crates/perp-core/src/position.rs",
+    "test": "hedge_signal_reports_the_offsetting_external_position",
+    "line": 351
+  },
+  {
+    "file": "crates/perp-core/src/position.rs",
+    "test": "liquidatable_when_equity_below_maintenance",
+    "line": 380
+  },
+  {
+    "file": "crates/perp-core/src/position.rs",
+    "test": "check_maintenance_margin_fails_closed_on_overflow_unlike_is_liquidatable",
+    "line": 398
+  },
+  {
+    "file": "crates/perp-core/src/position.rs",
+    "test": "vwap_on_increase",
+    "line": 416
+  },
+  {
+    "file": "crates/perp-core/src/position.rs",
+    "test": "realize_pnl_on_close",
+    "line": 425
+  },
+  {
+    "file": "crates/perp-core/src/position.rs",
+    "test": "flip_to_smaller_opposite_still_requires_margin",
+    "line": 436
+  },
+  {
+    "file": "crates/perp-core/src/position.rs",
+    "test": "pre_trade_blocks_overleverage_allows_reduce",
+    "line": 458
+  },
+  {
+    "file": "crates/perp-core/src/position.rs",
+    "test": "funding_debits_long",
+    "line": 478
+  },
+  {
+    "file": "crates/perp-core/src/hash.rs",
+    "test": "domains_separate",
+    "line": 213
+  },
+  {
+    "file": "crates/perp-core/src/hash.rs",
+    "test": "all_domains_pairwise_distinct",
+    "line": 223
+  },
+  {
+    "file": "crates/perp-core/src/hash.rs",
+    "test": "deterministic",
+    "line": 285
+  },
+  {
+    "file": "crates/perp-core/src/hash.rs",
+    "test": "sign_extension_distinguishes",
+    "line": 294
+  },
+  {
+    "file": "crates/perp-core/src/hash.rs",
+    "test": "new_encryption_domains_are_stable",
+    "line": 301
+  },
+  {
+    "file": "crates/perp-core/src/engine.rs",
+    "test": "apply_batch_emits_only_real_l1_withdrawal_outputs",
+    "line": 1302
+  },
+  {
+    "file": "crates/perp-core/src/engine.rs",
+    "test": "deposit_binds_order_and_folds_chain",
+    "line": 1363
+  },
+  {
+    "file": "crates/perp-core/src/engine.rs",
+    "test": "deposit_folds_blinded_owner_commit_not_raw_owner",
+    "line": 1415
+  },
+  {
+    "file": "crates/perp-core/src/engine.rs",
+    "test": "accrue_funding_bounds_mark_against_signed_index",
+    "line": 1454
+  },
+  {
+    "file": "crates/node/tests/lifecycle.rs",
+    "test": "thin_long_liquidates_and_conservation_holds_every_tick",
+    "line": 10
+  },
+  {
+    "file": "crates/node/tests/lifecycle.rs",
+    "test": "boot_is_deterministic",
+    "line": 79
+  },
+  {
+    "file": "crates/e2e/tests/oracle_path.rs",
+    "test": "real_ticker_feeds_the_sequencer_and_a_trade_settles",
+    "line": 48
+  },
+  {
+    "file": "crates/e2e/tests/full_flow.rs",
+    "test": "deposit_match_settle_prove_recover",
+    "line": 112
+  },
+  {
+    "file": "crates/e2e/tests/full_flow.rs",
+    "test": "close_only_blocks_open_but_allows_exit",
+    "line": 238
+  },
+  {
+    "file": "crates/e2e/tests/full_flow.rs",
+    "test": "failed_batch_rolls_back_but_settled_history_and_recovery_survive",
+    "line": 287
+  },
+  {
+    "file": "crates/e2e/tests/attestation_binding.rs",
+    "test": "attested_measurement_seeds_identity_and_gates_seal_release",
+    "line": 21
+  },
+  {
+    "file": "crates/gateway/src/account_recovery_tests.rs",
+    "test": "a07_rotation_preserves_pending_routes_and_other_accounts",
+    "line": 26
+  },
+  {
+    "file": "crates/gateway/src/account_recovery_tests.rs",
+    "test": "a07_rotation_preserves_ingested_receipts_prefix_and_proof_replay",
+    "line": 100
+  },
+  {
+    "file": "crates/gateway/src/account_recovery_tests.rs",
+    "test": "local_rebind_nonce_exhaustion_rejects_before_any_mutation",
+    "line": 199
+  },
+  {
+    "file": "crates/gateway/src/account_recovery_tests.rs",
+    "test": "local_recovery_authority_and_domain_matrix_preserves_rejected_state",
+    "line": 214
+  },
+  {
+    "file": "crates/gateway/src/execution_regression_tests.rs",
+    "test": "sealed_maker_cancel_removes_remainder_and_commits_manifest",
+    "line": 91
+  },
+  {
+    "file": "crates/gateway/src/execution_regression_tests.rs",
+    "test": "partial_maker_reports_actual_size_and_emits_fill_once",
+    "line": 116
+  },
+  {
+    "file": "crates/gateway/src/execution_regression_tests.rs",
+    "test": "later_partial_after_settle_keeps_finality_and_tracks_new_unsettled_size",
+    "line": 154
+  },
+  {
+    "file": "crates/gateway/src/execution_regression_tests.rs",
+    "test": "multi_level_taker_uses_execution_vwap_not_limit_or_zero",
+    "line": 184
+  },
+  {
+    "file": "crates/gateway/src/execution_regression_tests.rs",
+    "test": "rejected_orders_have_zero_fills_and_specific_reason",
+    "line": 207
+  },
+  {
+    "file": "crates/gateway/src/execution_regression_tests.rs",
+    "test": "ioc_partial_cancels_only_unfilled_remainder",
+    "line": 223
+  },
+  {
+    "file": "crates/gateway/src/execution_regression_tests.rs",
+    "test": "self_trade_removal_is_visible_without_fake_execution",
+    "line": 235
+  },
+  {
+    "file": "crates/gateway/src/execution_regression_tests.rs",
+    "test": "cancel_before_seal_retains_original_receipt_and_is_idempotent",
+    "line": 246
+  },
+  {
+    "file": "crates/gateway/src/execution_regression_tests.rs",
+    "test": "full_fill_cannot_be_cancelled_and_foreign_key_cannot_cancel",
+    "line": 260
+  },
+  {
+    "file": "crates/gateway/src/execution_regression_tests.rs",
+    "test": "snapshot_roundtrip_preserves_partial_vwap_and_cancelled_remainder",
+    "line": 270
+  },
+  {
+    "file": "crates/gateway/src/execution_regression_tests.rs",
+    "test": "v5_migration_preserves_accounts_but_marks_fabricated_history_unavailable",
+    "line": 284
+  },
+  {
+    "file": "crates/gateway/src/execution_regression_tests.rs",
+    "test": "corrupt_execution_trailer_is_not_silently_ignored",
+    "line": 310
+  },
+  {
+    "file": "crates/gateway/src/execution_regression_tests.rs",
+    "test": "snapshot_envelope_has_one_way_v8_guard_and_accepts_v5",
+    "line": 317
+  },
+  {
+    "file": "crates/gateway/src/execution_regression_tests.rs",
+    "test": "failed_window_retains_cancel_and_rebinds_intervening_fills",
+    "line": 347
+  },
+  {
+    "file": "crates/gateway/src/execution_regression_tests.rs",
+    "test": "legacy_maker_finishing_remainder_is_not_actionable_or_fabricated",
+    "line": 368
+  },
+  {
+    "file": "crates/gateway/src/execution_regression_tests.rs",
+    "test": "changing_v8_to_a_legacy_header_does_not_bypass_authentication",
+    "line": 390
+  },
+  {
+    "file": "crates/gateway/src/execution_regression_tests.rs",
+    "test": "a05_duplicate_tick_notification_is_idempotent_before_and_after_restart",
+    "line": 399
+  },
+  {
+    "file": "crates/gateway/src/execution_regression_tests.rs",
+    "test": "a05_reported_fills_match_successful_replay_ops_and_bad_attribution_is_unavailable",
+    "line": 425
+  },
+  {
+    "file": "crates/gateway/src/execution_regression_tests.rs",
+    "test": "a05_v7_cannot_silently_drop_execution_extension",
+    "line": 451
+  },
+  {
+    "file": "crates/gateway/src/execution_regression_tests.rs",
+    "test": "a07_v7_migration_preserves_partial_execution_and_replay",
+    "line": 465
+  },
+  {
+    "file": "crates/gateway/src/execution_regression_tests.rs",
+    "test": "a07_v8_preserves_generation_and_rejects_truncation_or_downgrade",
+    "line": 484
+  },
+  {
+    "file": "crates/gateway/src/execution_regression_tests.rs",
+    "test": "a07_authenticated_v7_envelope_remains_readable",
+    "line": 512
+  },
+  {
+    "file": "crates/gateway/src/execution_regression_tests.rs",
+    "test": "challenge_prefers_earlier_ordered_evidence_over_later_cancellation",
+    "line": 544
+  },
+  {
+    "file": "crates/gateway/src/execution_regression_tests.rs",
+    "test": "no_persistence_refuses_without_cancelling_a_live_order",
+    "line": 590
+  },
+  {
+    "file": "crates/gateway/src/execution_regression_tests.rs",
+    "test": "cancellation_waits_for_ack_retries_safely_and_uses_only_private_stream",
+    "line": 602
+  },
+  {
+    "file": "crates/gateway/src/prover_client.rs",
+    "test": "parses_a_response_without_deposits_root",
+    "line": 842
+  },
+  {
+    "file": "crates/gateway/src/prover_client.rs",
+    "test": "parses_a_response_with_deposits_root",
+    "line": 865
+  },
+  {
+    "file": "crates/gateway/src/prover_client.rs",
+    "test": "rejects_a_present_but_malformed_root",
+    "line": 884
+  },
+  {
+    "file": "crates/gateway/src/prover_client.rs",
+    "test": "rejects_a_response_missing_the_commitment",
+    "line": 904
+  },
+  {
+    "file": "crates/gateway/src/prover_client.rs",
+    "test": "local_derivation_matches_the_mock_prover_on_all_seven_roots",
+    "line": 916
+  },
+  {
+    "file": "crates/gateway/src/prover_client.rs",
+    "test": "new_deposit_count_is_cumulative_not_per_window",
+    "line": 937
+  },
+  {
+    "file": "crates/gateway/src/prover_client.rs",
+    "test": "zero_deposit_window_submits_the_prestate_count",
+    "line": 956
+  },
+  {
+    "file": "crates/gateway/src/prover_client.rs",
+    "test": "the_outcome_carries_the_proven_post_state_terms_the_gate_judges",
+    "line": 973
+  },
+  {
+    "file": "crates/gateway/src/prover_client.rs",
+    "test": "the_insurance_term_is_the_post_state_not_the_pre_state",
+    "line": 1007
+  },
+  {
+    "file": "crates/gateway/src/prover_client.rs",
+    "test": "a_window_that_enters_close_only_reports_a_non_normal_post_state",
+    "line": 1043
+  },
+  {
+    "file": "crates/gateway/src/prover_client.rs",
+    "test": "a_disagreeing_prover_is_refused",
+    "line": 1072
+  },
+  {
+    "file": "crates/gateway/src/prover_client.rs",
+    "test": "an_empty_proof_is_refused_before_broadcast",
+    "line": 1097
+  },
+  {
+    "file": "crates/gateway/src/prover_client.rs",
+    "test": "a_disagreeing_prover_names_the_differing_root",
+    "line": 1140
+  },
+  {
+    "file": "crates/gateway/src/prover_client.rs",
+    "test": "nonce_is_not_the_public_plaintext_hash",
+    "line": 1177
+  },
+  {
+    "file": "crates/gateway/src/prover_client.rs",
+    "test": "nonce_is_deterministic_for_same_root_and_plaintext",
+    "line": 1186
+  },
+  {
+    "file": "crates/gateway/src/prover_client.rs",
+    "test": "nonce_varies_with_plaintext_and_with_root",
+    "line": 1194
+  },
+  {
+    "file": "crates/gateway/src/prover_client.rs",
+    "test": "args_carry_the_transport_hardening_flags_in_pairs",
+    "line": 1217
+  },
+  {
+    "file": "crates/gateway/src/prover_client.rs",
+    "test": "bearer_is_attached_when_present",
+    "line": 1250
+  },
+  {
+    "file": "crates/gateway/src/prover_client.rs",
+    "test": "no_bearer_header_when_token_absent",
+    "line": 1260
+  },
+  {
+    "file": "crates/gateway/src/prover_client.rs",
+    "test": "status_is_captured_via_write_out",
+    "line": 1271
+  },
+  {
+    "file": "crates/gateway/src/prover_client.rs",
+    "test": "split_status_separates_body_and_code",
+    "line": 1283
+  },
+  {
+    "file": "crates/gateway/src/prover_client.rs",
+    "test": "re_handshakes_once_and_retries_on_401",
+    "line": 1320
+  },
+  {
+    "file": "crates/gateway/src/prover_client.rs",
+    "test": "second_401_is_terminal",
+    "line": 1356
+  },
+  {
+    "file": "crates/gateway/src/prover_client.rs",
+    "test": "no_rehandshake_means_401_is_terminal",
+    "line": 1379
+  },
+  {
+    "file": "crates/gateway/src/prover_client.rs",
+    "test": "rehandshake_refreshes_the_stored_secret_not_only_the_token",
+    "line": 1401
+  },
+  {
+    "file": "crates/gateway/src/prover_client.rs",
+    "test": "success_does_not_rehandshake",
+    "line": 1502
+  },
+  {
+    "file": "crates/gateway/src/snapshot_s3_tests.rs",
+    "test": "s3_marker_inside_execution_payload_is_not_a_delimiter",
+    "line": 23
+  },
+  {
+    "file": "crates/gateway/src/snapshot_s3_tests.rs",
+    "test": "s3_recovery_error_preserves_existing_state",
+    "line": 36
+  },
+  {
+    "file": "crates/gateway/src/snapshot_s3_tests.rs",
+    "test": "s3_execution_error_preserves_existing_state",
+    "line": 56
+  },
+  {
+    "file": "crates/gateway/src/snapshot_s3_tests.rs",
+    "test": "s3_file_limits_and_failed_write_preserve_durable_target",
+    "line": 70
+  },
+  {
+    "file": "crates/gateway/src/snapshot_s3_tests.rs",
+    "test": "s3_recovery_legacy_absence_cannot_downgrade_existing_generation",
+    "line": 102
+  },
+  {
+    "file": "crates/gateway/src/execution.rs",
+    "test": "exact_vwap_keeps_fractional_remainders_across_many_fills",
+    "line": 378
+  },
+  {
+    "file": "crates/gateway/src/execution.rs",
+    "test": "maximum_positive_i128_size_and_price_do_not_overflow_metadata",
+    "line": 387
+  },
+  {
+    "file": "crates/gateway/src/execution.rs",
+    "test": "excess_fill_fails_closed_as_unavailable_metadata",
+    "line": 396
+  },
+  {
+    "file": "crates/gateway/src/audit_remediation_tests.rs",
+    "test": "authorization_waits_for_disk_before_signature_and_restores_creditably",
+    "line": 51
+  },
+  {
+    "file": "crates/gateway/src/audit_remediation_tests.rs",
+    "test": "authorization_without_persistence_releases_no_signature",
+    "line": 108
+  },
+  {
+    "file": "crates/gateway/src/audit_remediation_tests.rs",
+    "test": "failed_disk_ack_releases_no_signature_and_drops_the_unsigned_permit",
+    "line": 123
+  },
+  {
+    "file": "crates/gateway/src/audit_remediation_tests.rs",
+    "test": "a_full_queue_is_inside_the_snapshot_deadline",
+    "line": 144
+  },
+  {
+    "file": "crates/gateway/src/audit_remediation_tests.rs",
+    "test": "snapshot_serialization_precedes_state_capture",
+    "line": 165
+  },
+  {
+    "file": "crates/gateway/src/audit_remediation_tests.rs",
+    "test": "atomic_writer_never_follows_a_preexisting_tmp_symlink",
+    "line": 190
+  },
+  {
+    "file": "crates/gateway/src/audit_remediation_tests.rs",
+    "test": "failed_atomic_rename_retains_the_existing_target_and_cleans_only_its_tmp",
+    "line": 208
+  },
+  {
+    "file": "crates/gateway/src/audit_remediation_tests.rs",
+    "test": "oversized_deposit_is_rejected_before_creating_an_authorization",
+    "line": 223
+  },
+  {
+    "file": "crates/gateway/src/audit_remediation_tests.rs",
+    "test": "pending_deposit_permits_prevent_a_rebind_from_stranding_the_queue",
+    "line": 242
+  },
+  {
+    "file": "crates/gateway/src/audit_remediation_tests.rs",
+    "test": "served_receipt_reproduces_original_signature_and_survives_restore",
+    "line": 274
+  },
+  {
+    "file": "crates/gateway/src/audit_remediation_tests.rs",
+    "test": "order_post_and_list_both_deliver_the_same_acceptance_signature",
+    "line": 317
+  },
+  {
+    "file": "crates/gateway/src/audit_remediation_tests.rs",
+    "test": "every_production_book_surface_explicitly_withholds_depth",
+    "line": 343
+  },
+  {
+    "file": "crates/gateway/src/audit_remediation_tests.rs",
+    "test": "public_oracle_time_is_observation_time_not_request_time",
+    "line": 365
+  },
+  {
+    "file": "crates/gateway/src/audit_remediation_tests.rs",
+    "test": "receipt_cache_is_bounded_metadata_bound_and_not_persisted",
+    "line": 392
+  },
+  {
+    "file": "crates/gateway/src/rollback_journal.rs",
+    "test": "journal_seal_round_trip",
+    "line": 243
+  },
+  {
+    "file": "crates/gateway/src/rollback_journal.rs",
+    "test": "journal_wrong_seed_fails_closed",
+    "line": 330
+  },
+  {
+    "file": "crates/gateway/src/rollback_journal.rs",
+    "test": "journal_batch_id_mismatch_fails_closed",
+    "line": 352
+  },
+  {
+    "file": "crates/gateway/src/rollback_journal.rs",
+    "test": "journal_with_a_stale_magic_is_refused",
+    "line": 382
+  },
+  {
+    "file": "crates/gateway/src/rollback_journal.rs",
+    "test": "journal_missing_is_none",
+    "line": 405
+  },
+  {
+    "file": "crates/gateway/src/rollback_journal.rs",
+    "test": "recovery_action_full_matrix",
+    "line": 413
+  },
+  {
+    "file": "crates/gateway/src/listen_config.rs",
+    "test": "local_listener_is_explicitly_loopback",
+    "line": 20
+  },
+  {
+    "file": "crates/gateway/src/listen_config.rs",
+    "test": "invalid_configuration_never_falls_back_to_a_public_listener",
+    "line": 28
+  },
+  {
+    "file": "crates/gateway/src/listen_config.rs",
+    "test": "existing_deployment_default_is_preserved",
+    "line": 38
+  },
+  {
+    "file": "crates/gateway/src/candles.rs",
+    "test": "record_folds_ohlc_and_rolls_buckets",
+    "line": 126
+  },
+  {
+    "file": "crates/gateway/src/candles.rs",
+    "test": "ring_is_capped_and_out_of_order_stamps_are_ignored",
+    "line": 152
+  },
+  {
+    "file": "crates/gateway/src/candles.rs",
+    "test": "backfill_prepends_history_without_rewriting_live_bars",
+    "line": 167
+  },
+  {
+    "file": "crates/gateway/src/candles.rs",
+    "test": "unknown_market_or_timeframe_is_none",
+    "line": 188
+  },
+  {
+    "file": "crates/gateway/src/bootstrap.rs",
+    "test": "the_floor_rejects_a_dust_bootstrap_and_accepts_exactly_the_floor",
+    "line": 53
+  },
+  {
+    "file": "crates/gateway/src/bootstrap.rs",
+    "test": "the_record_round_trips_through_postcard_in_every_state",
+    "line": 65
+  },
+  {
+    "file": "crates/gateway/src/withdrawals.rs",
+    "test": "leaf_matches_solidity_abi_encode_packed",
+    "line": 82
+  },
+  {
+    "file": "crates/gateway/src/withdrawals.rs",
+    "test": "challenge_leaves_match_solidity",
+    "line": 101
+  },
+  {
+    "file": "crates/gateway/src/withdrawals.rs",
+    "test": "empty_tree_is_zero_root",
+    "line": 122
+  },
+  {
+    "file": "crates/gateway/src/withdrawals.rs",
+    "test": "single_leaf_root_is_the_leaf_with_empty_proof",
+    "line": 127
+  },
+  {
+    "file": "crates/gateway/src/withdrawals.rs",
+    "test": "two_leaf_round_trip",
+    "line": 137
+  },
+  {
+    "file": "crates/gateway/src/withdrawals.rs",
+    "test": "n_leaf_proofs_all_verify",
+    "line": 156
+  },
+  {
+    "file": "crates/gateway/src/settle_health.rs",
+    "test": "healthy_initially",
+    "line": 170
+  },
+  {
+    "file": "crates/gateway/src/settle_health.rs",
+    "test": "first_failure_degraded_base_backoff",
+    "line": 178
+  },
+  {
+    "file": "crates/gateway/src/settle_health.rs",
+    "test": "second_failure_exponential",
+    "line": 188
+  },
+  {
+    "file": "crates/gateway/src/settle_health.rs",
+    "test": "third_failure_enters_held_alerts_once",
+    "line": 197
+  },
+  {
+    "file": "crates/gateway/src/settle_health.rs",
+    "test": "backoff_never_exceeds_cap",
+    "line": 211
+  },
+  {
+    "file": "crates/gateway/src/settle_health.rs",
+    "test": "success_resets_and_rearms_alert",
+    "line": 220
+  },
+  {
+    "file": "crates/gateway/src/settle_health.rs",
+    "test": "threshold_floor_is_one",
+    "line": 238
+  },
+  {
+    "file": "crates/gateway/src/settle_health.rs",
+    "test": "alert_message_names_count_error_and_remedy",
+    "line": 247
+  },
+  {
+    "file": "crates/gateway/src/s1_recovery_ws_tests.rs",
+    "test": "recovery_without_writer_is_503_and_state_unchanged",
+    "line": 142
+  },
+  {
+    "file": "crates/gateway/src/s1_recovery_ws_tests.rs",
+    "test": "recovery_false_ack_then_fresh_challenge_succeeds",
+    "line": 163
+  },
+  {
+    "file": "crates/gateway/src/s1_recovery_ws_tests.rs",
+    "test": "recovery_dropped_ack_then_fresh_challenge_succeeds",
+    "line": 203
+  },
+  {
+    "file": "crates/gateway/src/s1_recovery_ws_tests.rs",
+    "test": "recovery_wedged_writer_times_out_then_fresh_challenge_succeeds",
+    "line": 233
+  },
+  {
+    "file": "crates/gateway/src/s1_recovery_ws_tests.rs",
+    "test": "recovery_dropped_request_then_fresh_challenge_succeeds",
+    "line": 263
+  },
+  {
+    "file": "crates/gateway/src/s1_recovery_ws_tests.rs",
+    "test": "recovery_racing_sequential_nonces_and_stale_retry_is_rejected",
+    "line": 312
+  },
+  {
+    "file": "crates/gateway/src/s1_recovery_ws_tests.rs",
+    "test": "recovery_rejections_and_nonce_overflow",
+    "line": 367
+  },
+  {
+    "file": "crates/gateway/src/s1_recovery_ws_tests.rs",
+    "test": "ws_session_revoked_after_key_rotation",
+    "line": 509
+  },
+  {
+    "file": "crates/gateway/src/s1_recovery_ws_tests.rs",
+    "test": "ws_unrelated_sessions_unaffected_by_rotation",
+    "line": 604
+  },
+  {
+    "file": "crates/gateway/src/s1_recovery_ws_tests.rs",
+    "test": "recovery_rotations_serialize_against_inflight_ack",
+    "line": 690
+  },
+  {
+    "file": "crates/gateway/src/s1_recovery_ws_tests.rs",
+    "test": "ws_non_auth_command_frames_do_not_mutate_state",
+    "line": 800
+  },
+  {
+    "file": "crates/gateway/src/s1_recovery_ws_tests.rs",
+    "test": "ws_revocation_race_slow_consumer_and_no_lock_across_send",
+    "line": 859
+  },
+  {
+    "file": "crates/gateway/src/s1_recovery_ws_tests.rs",
+    "test": "recovery_restart_drops_pending_retry_and_rejects_old_authorization",
+    "line": 935
+  },
+  {
+    "file": "crates/gateway/src/s1_recovery_ws_tests.rs",
+    "test": "recovery_closed_queue_is_preflight_503_and_state_unchanged",
+    "line": 988
+  },
+  {
+    "file": "crates/gateway/src/s1_recovery_ws_tests.rs",
+    "test": "recovery_full_queue_is_preflight_503_and_state_unchanged",
+    "line": 1017
+  },
+  {
+    "file": "crates/gateway/src/s1_recovery_ws_tests.rs",
+    "test": "recovery_confirmed_via_real_snapshot_write_and_restore",
+    "line": 1052
+  },
+  {
+    "file": "crates/gateway/src/s1_recovery_ws_tests.rs",
+    "test": "s1f_concurrent_rotation_is_serialized_through_ack",
+    "line": 1135
+  },
+  {
+    "file": "crates/gateway/src/s1_recovery_ws_tests.rs",
+    "test": "s1f_idle_authenticated_socket_closes_without_traffic",
+    "line": 1177
+  },
+  {
+    "file": "crates/gateway/src/s1_recovery_ws_tests.rs",
+    "test": "s1f_send_lease_fences_rotation_without_holding_gw",
+    "line": 1213
+  },
+  {
+    "file": "crates/gateway/src/s1_recovery_ws_tests.rs",
+    "test": "s1f_stalled_send_releases_lease_on_deadline",
+    "line": 1264
+  },
+  {
+    "file": "crates/gateway/src/s1_recovery_ws_tests.rs",
+    "test": "s1f_queued_private_event_cannot_cross_rotation",
+    "line": 1295
+  },
+  {
+    "file": "crates/gateway/src/s1_recovery_ws_tests.rs",
+    "test": "s1f_full_and_closed_snapshot_queues_do_not_disclose_credentials",
+    "line": 1332
+  },
+  {
+    "file": "crates/gateway/src/s1_recovery_ws_tests.rs",
+    "test": "s1f_actual_snapshot_restore_after_cancelled_response_allows_fresh_recovery",
+    "line": 1376
+  },
+  {
+    "file": "crates/gateway/src/s1_recovery_ws_tests.rs",
+    "test": "s1f_post_ack_authorizer_change_is_conflict_without_secret",
+    "line": 1442
+  },
+  {
+    "file": "crates/gateway/src/s1_recovery_ws_tests.rs",
+    "test": "direct_no_snapshot_request_before_mutation_and_real_restore",
+    "line": 1473
+  },
+  {
+    "file": "crates/gateway/src/s1_recovery_ws_tests.rs",
+    "test": "direct_other_account_delivers_while_recovery_waits_for_disk",
+    "line": 1537
+  },
+  {
+    "file": "crates/gateway/src/s1_recovery_ws_tests.rs",
+    "test": "direct_idle_revocation_requires_transport_closure_not_silence",
+    "line": 1577
+  },
+  {
+    "file": "crates/gateway/src/s1_recovery_ws_tests.rs",
+    "test": "local_same_nonce_race_has_one_winner_and_no_secret_for_loser",
+    "line": 1623
+  },
+  {
+    "file": "crates/gateway/src/s1_recovery_ws_tests.rs",
+    "test": "local_real_rebind_before_recovery_rechecks_current_authorizer",
+    "line": 1651
+  },
+  {
+    "file": "crates/gateway/src/s1_recovery_ws_tests.rs",
+    "test": "local_tcp_backpressure_has_bounded_send_and_other_account_progress",
+    "line": 1742
+  },
+  {
+    "file": "crates/gateway/src/s1_recovery_ws_tests.rs",
+    "test": "local_http_body_and_registration_limits_are_bounded",
+    "line": 1820
+  },
+  {
+    "file": "crates/gateway/src/snapshot.rs",
+    "test": "seal_open_round_trip",
+    "line": 261
+  },
+  {
+    "file": "crates/gateway/src/snapshot.rs",
+    "test": "wrong_seed_rejected",
+    "line": 269
+  },
+  {
+    "file": "crates/gateway/src/snapshot.rs",
+    "test": "tampered_ciphertext_rejected",
+    "line": 275
+  },
+  {
+    "file": "crates/gateway/src/snapshot.rs",
+    "test": "a_stale_snapshot_magic_is_refused",
+    "line": 288
+  },
+  {
+    "file": "crates/gateway/src/snapshot.rs",
+    "test": "truncated_or_wrong_magic_rejected",
+    "line": 304
+  },
+  {
+    "file": "crates/gateway/src/snapshot.rs",
+    "test": "distinct_nonces_no_keystream_reuse",
+    "line": 313
+  },
+  {
+    "file": "crates/gateway/src/snapshot.rs",
+    "test": "seal_hides_plaintext",
+    "line": 324
+  },
+  {
+    "file": "crates/gateway/src/snapshot.rs",
+    "test": "write_atomic_tmp_names_distinct_per_target",
+    "line": 338
+  },
+  {
+    "file": "crates/gateway/src/order_log.rs",
+    "test": "append_chains_and_is_tamper_evident",
+    "line": 174
+  },
+  {
+    "file": "crates/gateway/src/order_log.rs",
+    "test": "chain_link_is_domain_tagged",
+    "line": 211
+  },
+  {
+    "file": "crates/gateway/src/order_log.rs",
+    "test": "entries_are_sealed_not_plaintext_and_open_only_with_log_secret",
+    "line": 242
+  },
+  {
+    "file": "crates/gateway/src/l1.rs",
+    "test": "deposit_topic0_matches_event_signature",
+    "line": 1065
+  },
+  {
+    "file": "crates/gateway/src/l1.rs",
+    "test": "verify_deposit_tx_extracts_from_ownercommit_amount_id",
+    "line": 1086
+  },
+  {
+    "file": "crates/gateway/src/l1.rs",
+    "test": "a_pinned_read_names_its_block_and_an_unpinned_one_cannot_be_confused_for_it",
+    "line": 1121
+  },
+  {
+    "file": "crates/gateway/src/l1.rs",
+    "test": "the_pinned_argv_is_exactly_call_addr_sig_block",
+    "line": 1138
+  },
+  {
+    "file": "crates/gateway/src/l1.rs",
+    "test": "close_only_parses_strictly_and_never_defaults_to_the_permissive_answer",
+    "line": 1156
+  },
+  {
+    "file": "crates/gateway/src/l1.rs",
+    "test": "mock_proof_bridge_allows_testnets_and_refuses_real_chains",
+    "line": 1175
+  },
+  {
+    "file": "crates/gateway/src/l1.rs",
+    "test": "bridge_cross_checks_declared_chain_against_the_rpc",
+    "line": 1191
+  },
+  {
+    "file": "crates/gateway/src/l1.rs",
+    "test": "keystore_roundtrips_the_sequencer_key",
+    "line": 1215
+  },
+  {
+    "file": "crates/gateway/src/l1.rs",
+    "test": "post_bond_send_has_an_explicit_gas_limit_and_plain_sends_are_unchanged",
+    "line": 1238
+  },
+  {
+    "file": "crates/gateway/src/l1.rs",
+    "test": "a06_proven_phase_routes_only_to_its_l1_entrypoint",
+    "line": 1307
+  },
+  {
+    "file": "crates/gateway/src/l1.rs",
+    "test": "settle_batch_signature_matches_solidity",
+    "line": 1315
+  },
+  {
+    "file": "crates/gateway/src/l1.rs",
+    "test": "settle_proved_argument_order_matches_solidity",
+    "line": 1329
+  },
+  {
+    "file": "crates/gateway/src/l1.rs",
+    "test": "l1_hex_parsers_reject_non_ascii_without_panic",
+    "line": 1370
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "every_ingress_path_refuses_while_the_gate_is_closed",
+    "line": 9128
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "the_house_mm_injector_stages_no_counter_order_while_the_gate_is_closed",
+    "line": 9162
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "the_v1_account_injector_stages_no_counter_order_while_the_gate_is_closed",
+    "line": 9202
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "validated_deposit_checks_without_mutating_and_bookkeeping_is_separable",
+    "line": 9242
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "the_tx_dedup_guard_refuses_a_replayed_hash_on_its_own",
+    "line": 9284
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "the_bootstrap_driver_refuses_a_non_operator_payer",
+    "line": 9315
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "a_below_floor_bootstrap_is_refused_before_either_leg_applies",
+    "line": 9351
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "a_successful_bootstrap_raises_insurance_without_raising_external_in_twice",
+    "line": 9383
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "the_one_shot_reopens_only_when_the_fund_falls_below_the_floor",
+    "line": 9406
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "a_second_leg_failure_records_deposit_applied_with_the_minted_notes_identity",
+    "line": 9443
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "a_first_leg_refusal_leaves_the_bootstrap_record_untouched",
+    "line": 9492
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "completion_requires_the_window_carrying_the_second_leg",
+    "line": 9548
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "a_fund_above_the_floor_alone_does_not_complete_the_bootstrap",
+    "line": 9582
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "completion_requires_the_floor_not_just_the_window_id",
+    "line": 9603
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "a_resume_from_deposit_applied_applies_only_the_second_leg",
+    "line": 9624
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "production_genesis_mints_nothing",
+    "line": 9779
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "production_genesis_matches_a_fresh_vault_prefix",
+    "line": 9795
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "demo_genesis_is_still_funded",
+    "line": 9808
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "production_genesis_leaves_no_staged_ops",
+    "line": 9832
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "unbacked_funding_is_refused_in_production",
+    "line": 9851
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "unbacked_insurance_seeding_is_refused_in_production",
+    "line": 9887
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "a_production_lp_transfer_is_refused",
+    "line": 9921
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "a_production_simulate_adl_is_refused",
+    "line": 9958
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "legacy_deposit_is_refused_in_production",
+    "line": 9987
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "self_service_deposit_is_still_refused_in_production",
+    "line": 10003
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "a_production_genesis_window_submits_the_zero_prefix",
+    "line": 10035
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "unbacked_funding_has_exactly_the_known_call_sites",
+    "line": 10161
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "the_pinned_gate_readers_all_route_through_the_one_choke_point",
+    "line": 10287
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "openapi_advertises_lp_only_in_demo",
+    "line": 10342
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "gateway_oracle_path_produces_a_validatable_signed_transcript",
+    "line": 10385
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "demo_deposit_same_amount_sixty_ticks_apart_succeeds",
+    "line": 10429
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "demo_withdraw_same_amount_sixty_ticks_apart_succeeds",
+    "line": 10453
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "confirm_deposit_duplicate_commitment_is_clean_err_and_retriable",
+    "line": 10472
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "gateway_signature_round_trips_and_matches_solidity_digest",
+    "line": 10577
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "confirm_deposit_matching_blind_advances_tip_to_vault_fold",
+    "line": 10613
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "confirm_deposit_absent_or_mismatched_blind_is_refused",
+    "line": 10658
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "settle_failure_action_decides_by_batch_count",
+    "line": 10714
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "needs_confirm_delay_only_for_ambiguous_prepared_row",
+    "line": 10733
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "continuity_comparator_rejects_a_mismatch",
+    "line": 10757
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "continuity_comparison_ignores_hex_case",
+    "line": 10775
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "deposit_posture_accepts_a_backed_count_and_matching_tip",
+    "line": 10793
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "deposit_posture_refuses_an_unbacked_count",
+    "line": 10811
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "deposit_posture_refuses_a_tip_mismatch_at_an_equal_count",
+    "line": 10823
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "deposit_posture_accepts_the_honest_genesis",
+    "line": 10836
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "deposit_posture_accepts_a_gateway_behind_the_vault",
+    "line": 10847
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "v1_batch_json_reconciles_tick_to_window",
+    "line": 10861
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "snapshot_exposes_settlement_health",
+    "line": 10897
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "settle_breaker_recovered_clears_held_state",
+    "line": 10924
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "snapshot_restart_round_trip_preserves_state",
+    "line": 10951
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "the_bootstrap_record_survives_a_snapshot_round_trip",
+    "line": 11044
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "the_trading_gate_survives_a_snapshot_round_trip",
+    "line": 11058
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "a_wind_down_shaped_commit_does_not_open_the_gate",
+    "line": 11076
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "an_inconclusive_observation_leaves_the_gate_unresolved_rather_than_closed",
+    "line": 11086
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "an_undercapitalized_deployment_does_not_open_on_a_clean_settle",
+    "line": 11099
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "the_gate_does_not_re_close_when_the_fund_is_later_drained",
+    "line": 11108
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "accepted_order_appends_to_encrypted_order_log",
+    "line": 11123
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "candles_endpoint_serves_recorded_history",
+    "line": 11167
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "snapshot_now_reports_the_writers_verdict_and_refuses_when_unconfigured",
+    "line": 11208
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "snapshot_now_times_out_instead_of_hanging_when_the_writer_never_replies",
+    "line": 11260
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "admin_key_check_is_fail_closed_and_constant_shape",
+    "line": 11281
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "empty_configured_admin_key_is_disabled_not_authorizing",
+    "line": 11304
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "resume_sets_force_flag_when_authorized",
+    "line": 11322
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "snapshot_wrong_enclave_seed_fails_closed",
+    "line": 11383
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "production_mode_refuses_self_service_deposit",
+    "line": 11392
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "prod_unbound_account_cannot_be_credited_by_either_path",
+    "line": 11417
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "prod_snapshot_omits_mm_hedge",
+    "line": 11462
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "production_mode_drops_legacy_unauthenticated_api_mutations",
+    "line": 11500
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "lp_routes_are_absent_in_production",
+    "line": 11579
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "lp_routes_are_present_in_demo",
+    "line": 11596
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "l1_enabled_implies_production_mode",
+    "line": 11615
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "production_requires_verified_attestation",
+    "line": 11625
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "build_challenge_answer_produces_a_verifying_proof",
+    "line": 11647
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "production_requires_a_secret_enclave_seed",
+    "line": 11685
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "production_requires_a_secret_oracle_signer",
+    "line": 11705
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "enclave_seed_validation_and_demo_detection",
+    "line": 11727
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "production_pins_the_expected_measurement",
+    "line": 11747
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "production_requires_a_real_vault_binding",
+    "line": 11777
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "deployment_identity_env_vars_fall_back_only_when_unset",
+    "line": 11805
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "boot_funds_user_to_15k",
+    "line": 11837
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "mock_prover_client_matches_derive_roots",
+    "line": 11849
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "prover_from_str_selects_path",
+    "line": 11878
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "strict_prod_refuses_a_proverless_settle_path",
+    "line": 11910
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "a_testnet_may_still_use_the_mock_prover",
+    "line": 11930
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "unset_prover_url_outside_strict_prod_yields_no_client",
+    "line": 11947
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "l1_without_a_prover_must_not_simulate_settled",
+    "line": 11960
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "order_opens_position_and_advances_finality",
+    "line": 11974
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "v1_accounts_are_isolated_and_trade",
+    "line": 12008
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "account_cancel_cannot_reach_another_accounts_order",
+    "line": 12056
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "v1_orders_carry_the_acceptance_receipt",
+    "line": 12131
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "caller_signed_orders_require_a_valid_signature",
+    "line": 12181
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "lp_deposit_debits_the_depositor_no_free_mint",
+    "line": 12329
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "deposit_address_bind_requires_ownership_proof",
+    "line": 12365
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "deposit_address_bind_accepts_eip191_personal_sign_forms",
+    "line": 12423
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "leaked_api_key_alone_cannot_rebind_deposit_address",
+    "line": 12574
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "a_rebind_authorization_cannot_be_replayed_after_returning_to_the_old_address",
+    "line": 12638
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "rebinding_the_same_address_is_a_no_op_and_burns_no_generation",
+    "line": 12697
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "same_address_short_circuit_still_requires_the_control_proof",
+    "line": 12723
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "a_correct_rebind_digest_signed_by_the_wrong_key_is_rejected",
+    "line": 12753
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "v1_account_exposes_withdrawal_authorization_state",
+    "line": 12800
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "caller_signed_account_cannot_withdraw_without_a_signature",
+    "line": 12872
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "server_custody_withdrawal_requires_bound_address_signature_and_destination",
+    "line": 12896
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "failed_withdrawal_does_not_burn_its_nonce",
+    "line": 12943
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "registered_signer_takes_precedence_over_bound_address",
+    "line": 12979
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "withdrawal_signature_does_not_replay_across_accounts",
+    "line": 13005
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "tampering_with_a_signed_withdrawal_invalidates_it",
+    "line": 13030
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "withdrawal_accepts_all_three_prehash_shapes",
+    "line": 13060
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "withdrawal_signature_does_not_replay_across_deployments",
+    "line": 13080
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "account_lp_withdraw_requires_its_own_signature",
+    "line": 13105
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "legacy_lp_withdraw_primitive_still_works_for_the_demo_wallet",
+    "line": 13142
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "rejected_lp_withdrawal_does_not_burn_its_nonce",
+    "line": 13157
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "lp_withdraw_with_no_signer_and_no_bound_address_is_refused",
+    "line": 13219
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "withdraw_auth_digest_binds_every_field",
+    "line": 13253
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "withdrawal_digests_are_domain_separated_from_each_other_and_from_bind",
+    "line": 13297
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "rebind_auth_digest_binds_both_addresses_in_order",
+    "line": 13314
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "auth_digests_match_known_answer_vectors",
+    "line": 13344
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "account_snapshot_round_trips_with_withdraw_nonce",
+    "line": 13395
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "pre_upgrade_account_encoding_behaviour_is_pinned",
+    "line": 13428
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "ioc_taker_cannot_open_a_position_below_the_oracle_mark",
+    "line": 13490
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "recover_does_not_leak_another_accounts_notes",
+    "line": 13527
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "challenge_scan_start_rewinds_past_the_window",
+    "line": 13540
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "cap_history_evicts_oldest_terminal_only",
+    "line": 13554
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "client_ip_trusts_proxy_only_from_loopback",
+    "line": 13577
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "caller_signed_orders_bind_reduce_only",
+    "line": 13617
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "market_order_fills_even_when_the_mark_moves_after_accept",
+    "line": 13682
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "ioc_taker_cannot_open_a_short_above_the_oracle_mark",
+    "line": 13720
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "market_order_still_fills_at_the_mark",
+    "line": 13752
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "sealed_only_wire_body_parses_and_places_the_order",
+    "line": 13811
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "sealed_order_decrypts_and_opens_position",
+    "line": 13861
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "sealed_order_wrong_or_expired_epoch_is_rejected",
+    "line": 13935
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "decode_hex_rejects_non_ascii_without_panic",
+    "line": 14005
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "fixed_len_hex_parsers_reject_non_ascii_without_panic",
+    "line": 14036
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "sealed_order_non_ascii_wire_is_cleanly_rejected",
+    "line": 14062
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "sealed_order_replay_of_same_body_is_rejected",
+    "line": 14091
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "prod_posture_rejects_unsealed_plaintext_order",
+    "line": 14151
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "plaintext_order_missing_side_is_rejected",
+    "line": 14182
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "plaintext_order_with_empty_or_unknown_tif_is_rejected",
+    "line": 14205
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "plaintext_order_with_unknown_side_is_rejected",
+    "line": 14234
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "complete_plaintext_order_still_succeeds_in_demo",
+    "line": 14261
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "order_terms_layout_is_stable_and_51_bytes",
+    "line": 14289
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "account_withdraw_records_window_withdrawal",
+    "line": 14331
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "v1_withdrawals_json_serves_root_and_proof",
+    "line": 14346
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "prune_claimed_withdrawals_removes_only_claimed",
+    "line": 14367
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "rollback_window_withdrawals_prepends",
+    "line": 14391
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "begin_window_settle_none_when_unchanged",
+    "line": 14417
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "a_manifest_only_window_still_settles",
+    "line": 14431
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "a_rejected_only_window_still_settles",
+    "line": 14484
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "a_truly_empty_window_still_returns_none",
+    "line": 14541
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "begin_window_settle_errors_on_desync_without_mutating",
+    "line": 14554
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "begin_window_settle_seals_and_takes_withdrawals",
+    "line": 14574
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "settle_loop_journal_lifecycle",
+    "line": 14603
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "boot_recovery_rollback_restores_reseal",
+    "line": 14699
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "the_boot_roll_forward_arm_carries_the_gate_observation_both_ways",
+    "line": 14793
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "boot_recovery_roll_forward_commits",
+    "line": 14856
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "boot_recovery_persists_before_journal_delete",
+    "line": 14970
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "seal_witness_is_well_formed_and_addressed",
+    "line": 15056
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "parse_prove_resp_decodes_all_fields",
+    "line": 15090
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "parse_prove_resp_rejects_malformed",
+    "line": 15118
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "prove_and_prepare_withdrawal_tree_byte_matches_circuit",
+    "line": 15132
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "commit_window_settle_accumulates_and_advances",
+    "line": 15166
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "window_mode_defers_settled_until_commit",
+    "line": 15210
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "legacy_mode_settles_after_ticks_unchanged",
+    "line": 15269
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "prove_and_prepare_rejects_wroot_mismatch",
+    "line": 15293
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "prove_and_prepare_rejects_commitment_mismatch",
+    "line": 15316
+  },
+  {
+    "file": "crates/gateway/src/main.rs",
+    "test": "commit_window_settle_extends_proofs_across_windows",
+    "line": 15346
+  },
+  {
+    "file": "crates/gateway/src/enclave_epoch.rs",
+    "test": "epoch_key_is_seed_scoped_and_stable",
+    "line": 158
+  },
+  {
+    "file": "crates/gateway/src/enclave_epoch.rs",
+    "test": "old_epoch_secret_retained_for_grace",
+    "line": 174
+  },
+  {
+    "file": "crates/gateway/src/enclave_epoch.rs",
+    "test": "published_epoch_sig_recovers_to_enclave_identity",
+    "line": 187
+  },
+  {
+    "file": "crates/gateway/src/audit_cancellation_tests.rs",
+    "test": "sealed_resting_order_cancels_and_appears_in_the_window_manifest",
+    "line": 55
+  },
+  {
+    "file": "crates/gateway/src/audit_cancellation_tests.rs",
+    "test": "pending_cancel_is_committed_instead_of_silently_dropping_a_receipted_order",
+    "line": 72
+  },
+  {
+    "file": "crates/gateway/src/audit_cancellation_tests.rs",
+    "test": "identical_order_ids_remain_account_scoped_after_sealing",
+    "line": 83
+  },
+  {
+    "file": "crates/gateway/src/audit_cancellation_tests.rs",
+    "test": "partial_cancel_reads_the_matcher_not_the_legacy_fabricated_fill_field",
+    "line": 99
+  },
+  {
+    "file": "crates/gateway/src/audit_cancellation_tests.rs",
+    "test": "cancelled_snapshot_restores_without_resurrecting_depth_or_ingress",
+    "line": 125
+  },
+  {
+    "file": "crates/gateway/src/audit_cancellation_tests.rs",
+    "test": "cancellation_only_window_is_not_skipped_and_original_inclusion_is_preferred",
+    "line": 140
+  },
+  {
+    "file": "crates/gateway/src/audit_cancellation_tests.rs",
+    "test": "production_without_persistence_refuses_before_cancelling",
+    "line": 159
+  },
+  {
+    "file": "crates/gateway/src/audit_cancellation_tests.rs",
+    "test": "production_success_waits_for_durable_cancellation",
+    "line": 175
+  },
+  {
+    "file": "crates/gateway/src/audit_cancellation_tests.rs",
+    "test": "failed_write_is_not_reported_as_success_and_does_not_restore_the_quote",
+    "line": 207
+  },
+  {
+    "file": "crates/gateway/src/audit_cancellation_tests.rs",
+    "test": "full_snapshot_queue_times_out_without_success",
+    "line": 224
+  },
+  {
+    "file": "crates/gateway/src/audit_cancellation_tests.rs",
+    "test": "settled_partial_maker_survives_history_pruning_and_remains_cancellable",
+    "line": 237
+  },
+  {
+    "file": "crates/gateway/src/trading_gate.rs",
+    "test": "a_close_only_chain_never_opens_the_gate_even_on_a_perfect_match",
+    "line": 114
+  },
+  {
+    "file": "crates/gateway/src/trading_gate.rs",
+    "test": "a_lagging_read_is_inconclusive_and_a_diverged_one_is_not",
+    "line": 122
+  },
+  {
+    "file": "crates/gateway/src/trading_gate.rs",
+    "test": "the_predicate_needs_every_term_and_a_dust_fund_does_not_pass",
+    "line": 138
+  },
+  {
+    "file": "crates/gateway/src/deposit_rpc/tests.rs",
+    "test": "a01_missing_finalized_header_is_not_an_empty_page",
+    "line": 2
+  },
+  {
+    "file": "crates/gateway/src/deposit_rpc/tests.rs",
+    "test": "a01_rpc_pages_whole_blocks_in_canonical_order_deduplicates_and_catches_up",
+    "line": 180
+  },
+  {
+    "file": "crates/gateway/src/deposit_rpc/tests.rs",
+    "test": "a01_rpc_failure_at_each_read_never_becomes_an_empty_success",
+    "line": 207
+  },
+  {
+    "file": "crates/gateway/src/deposit_rpc/tests.rs",
+    "test": "a01_rpc_missing_log_and_reordered_ids_do_not_advance_prefix",
+    "line": 223
+  },
+  {
+    "file": "crates/gateway/src/deposit_rpc/tests.rs",
+    "test": "a01_rpc_legacy_midblock_prefix_resumes_without_skipping_or_recrediting",
+    "line": 245
+  },
+  {
+    "file": "crates/gateway/src/deposit_rpc/tests.rs",
+    "test": "a01_rpc_domain_prefix_and_credited_anchor_reorg_are_durable_halts",
+    "line": 254
+  },
+  {
+    "file": "crates/gateway/src/deposit_rpc/tests.rs",
+    "test": "a01_rpc_malformed_removed_forked_or_conflicting_logs_fail_closed",
+    "line": 284
+  },
+  {
+    "file": "crates/gateway/src/deposit_rpc/tests.rs",
+    "test": "a01_native_cast_hash_pinned_jsonrpc_roundtrip",
+    "line": 332
+  },
+  {
+    "file": "crates/gateway/src/deposit_rpc/tests.rs",
+    "test": "a01_rpc_wrong_historical_header_number_is_rejected",
+    "line": 398
+  },
+  {
+    "file": "crates/gateway/src/deposit_ingestion/receipt_tests.rs",
+    "test": "a01_receipt_read_after_a_later_poll_cannot_claim_undurable_credit",
+    "line": 49
+  },
+  {
+    "file": "crates/gateway/src/deposit_ingestion/receipt_tests.rs",
+    "test": "a01_receipt_read_after_ack_returns_the_original_credit_without_reapplying",
+    "line": 66
+  },
+  {
+    "file": "crates/gateway/src/deposit_ingestion/receipt_tests.rs",
+    "test": "a01_receipt_read_rechecks_reorg_and_restart_barriers",
+    "line": 84
+  },
+  {
+    "file": "crates/gateway/src/deposit_ingestion/receipt_tests.rs",
+    "test": "a01_receipt_read_does_not_reroute_a_durable_credit",
+    "line": 101
+  },
+  {
+    "file": "crates/gateway/src/deposit_ingestion/tests.rs",
+    "test": "a01_offline_customers_and_same_transaction_credit_once_in_l1_order",
+    "line": 49
+  },
+  {
+    "file": "crates/gateway/src/deposit_ingestion/tests.rs",
+    "test": "a01_insurance_is_never_user_collateral",
+    "line": 63
+  },
+  {
+    "file": "crates/gateway/src/deposit_ingestion/tests.rs",
+    "test": "a01_legacy_permits_are_preserved_without_automatic_routing",
+    "line": 80
+  },
+  {
+    "file": "crates/gateway/src/deposit_ingestion/tests.rs",
+    "test": "a01_snapshot_v6_roundtrip_preserves_routing_and_consumption",
+    "line": 91
+  },
+  {
+    "file": "crates/gateway/src/deposit_ingestion/tests.rs",
+    "test": "a01_atomic_second_funding_failure_preserves_every_account_and_replay_op",
+    "line": 107
+  },
+  {
+    "file": "crates/gateway/src/deposit_ingestion/tests.rs",
+    "test": "a01_counter_overflow_and_duplicate_commit_leave_no_partial_credit",
+    "line": 125
+  },
+  {
+    "file": "crates/gateway/src/deposit_ingestion/tests.rs",
+    "test": "a01_explicit_legacy_adoption_is_owned_and_immutable",
+    "line": 142
+  },
+  {
+    "file": "crates/gateway/src/deposit_ingestion/tests.rs",
+    "test": "a01_bootstrap_then_customer_prefix_and_rollback_proof_replay_agree",
+    "line": 168
+  },
+  {
+    "file": "crates/gateway/src/deposit_ingestion/tests.rs",
+    "test": "a01_actual_frozen_v5_fixture_migrates_losslessly_with_pending_permit",
+    "line": 216
+  },
+  {
+    "file": "crates/gateway/src/deposit_ingestion/tests.rs",
+    "test": "a01_corrupt_receipt_prefix_or_snapshot_version_refuses_restore",
+    "line": 257
+  },
+  {
+    "file": "crates/gateway/src/deposit_ingestion/tests.rs",
+    "test": "a01_auto_and_manual_race_wait_for_durable_ack_then_credit_once",
+    "line": 314
+  },
+  {
+    "file": "crates/gateway/src/deposit_ingestion/tests.rs",
+    "test": "a01_disk_failure_retries_persistence_before_rpc_and_restart_is_exactly_once",
+    "line": 343
+  },
+  {
+    "file": "crates/gateway/src/deposit_ingestion/tests.rs",
+    "test": "a01_rpc_failure_preserves_cursor_and_finalized_reorg_halt_survives_restart",
+    "line": 380
+  },
+  {
+    "file": "crates/gateway/src/deposit_ingestion/tests.rs",
+    "test": "a01_cancellation_at_ack_keeps_barrier_and_retry_never_recredits",
+    "line": 413
+  },
+  {
+    "file": "crates/gateway/src/deposit_ingestion/tests.rs",
+    "test": "a01_legacy_bootstrap_half_transfer_resumes_without_minting_or_user_credit",
+    "line": 448
+  },
+  {
+    "file": "crates/gateway/src/deposit_ingestion/tests.rs",
+    "test": "a05_a01_v6_migration_preserves_credits_routes_secrets_and_replay_bytes",
+    "line": 528
+  },
+  {
+    "file": "contracts/test/Integration.t.sol",
+    "test": "test_deposit_settle_then_claim_from_vault",
+    "line": 82
+  },
+  {
+    "file": "contracts/test/Integration.t.sol",
+    "test": "test_settle_requires_a_bond_scaled_to_tvl",
+    "line": 113
+  },
+  {
+    "file": "contracts/test/Integration.t.sol",
+    "test": "test_bond_floor_immune_to_donations",
+    "line": 147
+  },
+  {
+    "file": "contracts/test/Integration.t.sol",
+    "test": "test_withdrawals_only_from_settled_batches",
+    "line": 159
+  },
+  {
+    "file": "contracts/test/DeployGuard.t.sol",
+    "test": "test_testnets_allow_the_mock_verifier",
+    "line": 9
+  },
+  {
+    "file": "contracts/test/DeployGuard.t.sol",
+    "test": "test_real_value_chains_block_the_mock_verifier",
+    "line": 15
+  },
+  {
+    "file": "contracts/test/AttestationRegistry.t.sol",
+    "test": "test_registers_a_current_matching_enclave",
+    "line": 42
+  },
+  {
+    "file": "contracts/test/AttestationRegistry.t.sol",
+    "test": "test_accepts_sw_hardening_needed",
+    "line": 50
+  },
+  {
+    "file": "contracts/test/AttestationRegistry.t.sol",
+    "test": "test_rejects_an_unverified_quote",
+    "line": 59
+  },
+  {
+    "file": "contracts/test/AttestationRegistry.t.sol",
+    "test": "test_rejects_a_degraded_tcb",
+    "line": 66
+  },
+  {
+    "file": "contracts/test/AttestationRegistry.t.sol",
+    "test": "test_rejects_a_measurement_mismatch",
+    "line": 73
+  },
+  {
+    "file": "contracts/test/AttestationRegistry.t.sol",
+    "test": "test_rejects_an_rtmr_mismatch",
+    "line": 82
+  },
+  {
+    "file": "contracts/test/AttestationRegistry.t.sol",
+    "test": "test_register_rejects_a_non_owner",
+    "line": 93
+  },
+  {
+    "file": "contracts/test/AttestationRegistry.t.sol",
+    "test": "test_rejects_truncated_report_data",
+    "line": 103
+  },
+  {
+    "file": "contracts/test/CrossLayer.t.sol",
+    "test": "test_receipt_digest_matches_rust",
+    "line": 22
+  },
+  {
+    "file": "contracts/test/CrossLayer.t.sol",
+    "test": "test_public_commitment_matches_rust",
+    "line": 39
+  },
+  {
+    "file": "contracts/test/CrossLayer.t.sol",
+    "test": "test_real_rust_receipt_passes_ecrecover",
+    "line": 60
+  },
+  {
+    "file": "contracts/test/CrossLayer.t.sol",
+    "test": "test_a06_wind_down_phase_one_commitment_matches_rust",
+    "line": 81
+  },
+  {
+    "file": "contracts/test/DeployVerifierEnv.t.sol",
+    "test": "test_verifier_env_override",
+    "line": 29
+  },
+  {
+    "file": "contracts/test/SP1ZkVerifier.t.sol",
+    "test": "test_verify_true_on_matching_proof",
+    "line": 23
+  },
+  {
+    "file": "contracts/test/SP1ZkVerifier.t.sol",
+    "test": "test_verify_false_on_bad_proof",
+    "line": 29
+  },
+  {
+    "file": "contracts/test/SP1ZkVerifier.t.sol",
+    "test": "test_verify_false_on_wrong_commitment",
+    "line": 36
+  },
+  {
+    "file": "contracts/test/SP1ZkVerifier.t.sol",
+    "test": "test_verify_false_on_wrong_vkey",
+    "line": 42
+  },
+  {
+    "file": "contracts/test/SP1ZkVerifier.t.sol",
+    "test": "test_immutables_pinned",
+    "line": 49
+  },
+  {
+    "file": "contracts/test/CollateralVault.t.sol",
+    "test": "test_deposit_accrues_total",
+    "line": 98
+  },
+  {
+    "file": "contracts/test/CollateralVault.t.sol",
+    "test": "test_deposit_requires_approval",
+    "line": 105
+  },
+  {
+    "file": "contracts/test/CollateralVault.t.sol",
+    "test": "test_only_settlement_publishes_root",
+    "line": 115
+  },
+  {
+    "file": "contracts/test/CollateralVault.t.sol",
+    "test": "test_claim_against_settled_root",
+    "line": 121
+  },
+  {
+    "file": "contracts/test/CollateralVault.t.sol",
+    "test": "test_claim_with_bad_proof_rejected",
+    "line": 143
+  },
+  {
+    "file": "contracts/test/CollateralVault.t.sol",
+    "test": "test_two_leaf_merkle_claim",
+    "line": 152
+  },
+  {
+    "file": "contracts/test/CollateralVault.t.sol",
+    "test": "test_older_published_root_is_still_claimable",
+    "line": 169
+  },
+  {
+    "file": "contracts/test/CollateralVault.t.sol",
+    "test": "test_zero_root_is_never_a_valid_claim_root",
+    "line": 198
+  },
+  {
+    "file": "contracts/test/CollateralVault.t.sol",
+    "test": "test_deposit_leaf_encoding",
+    "line": 217
+  },
+  {
+    "file": "contracts/test/CollateralVault.t.sol",
+    "test": "test_deposit_advances_chain_matching_rust_KAT",
+    "line": 235
+  },
+  {
+    "file": "contracts/test/CollateralVault.t.sol",
+    "test": "test_deposit_id_is_pre_increment_count",
+    "line": 254
+  },
+  {
+    "file": "contracts/test/CollateralVault.t.sol",
+    "test": "test_deposit_chain_is_order_sensitive",
+    "line": 267
+  },
+  {
+    "file": "contracts/test/CollateralVault.t.sol",
+    "test": "test_depositTipAt_records_every_prefix",
+    "line": 291
+  },
+  {
+    "file": "contracts/test/CollateralVault.t.sol",
+    "test": "test_failed_deposit_does_not_advance_chain",
+    "line": 312
+  },
+  {
+    "file": "contracts/test/CollateralVault.t.sol",
+    "test": "test_deposit_requires_gateway_signature",
+    "line": 338
+  },
+  {
+    "file": "contracts/test/CollateralVault.t.sol",
+    "test": "test_deposit_with_valid_gateway_sig_advances_chain_to_KAT",
+    "line": 362
+  },
+  {
+    "file": "contracts/test/CollateralVault.t.sol",
+    "test": "test_sig_is_bound_to_from_ownerCommit_amount",
+    "line": 378
+  },
+  {
+    "file": "contracts/test/CollateralVault.t.sol",
+    "test": "test_constructor_rejects_zero_gateway_signer",
+    "line": 415
+  },
+  {
+    "file": "contracts/test/CollateralVault.t.sol",
+    "test": "test_replayed_authorization_is_refused",
+    "line": 428
+  },
+  {
+    "file": "contracts/test/CollateralVault.t.sol",
+    "test": "test_a_failed_transfer_leaves_the_authorization_usable",
+    "line": 453
+  },
+  {
+    "file": "contracts/test/CollateralVault.t.sol",
+    "test": "test_a_distinct_authorization_still_deposits",
+    "line": 475
+  },
+  {
+    "file": "contracts/test/CollateralVault.t.sol",
+    "test": "test_a_bad_signature_does_not_consume_the_authorization",
+    "line": 502
+  },
+  {
+    "file": "contracts/test/Fuzz.t.sol",
+    "test": "testFuzz_claim_only_exact_leaf",
+    "line": 34
+  },
+  {
+    "file": "contracts/test/Fuzz.t.sol",
+    "test": "testFuzz_settle_binds_roots",
+    "line": 59
+  },
+  {
+    "file": "contracts/test/Fuzz.t.sol",
+    "test": "testFuzz_inclusion_leaf_distinct",
+    "line": 79
+  },
+  {
+    "file": "contracts/test/Fuzz.t.sol",
+    "test": "testFuzz_inclusion_leaf_is_not_an_internal_node",
+    "line": 90
+  },
+  {
+    "file": "contracts/test/DarkPerpSettlement.t.sol",
+    "test": "test_settle_advances_root",
+    "line": 107
+  },
+  {
+    "file": "contracts/test/DarkPerpSettlement.t.sol",
+    "test": "test_settleBatch_selector_matches_nine_param_signature",
+    "line": 122
+  },
+  {
+    "file": "contracts/test/DarkPerpSettlement.t.sol",
+    "test": "test_settle_binds_withdrawals_root",
+    "line": 130
+  },
+  {
+    "file": "contracts/test/DarkPerpSettlement.t.sol",
+    "test": "test_settle_rejects_bad_prev_root",
+    "line": 145
+  },
+  {
+    "file": "contracts/test/DarkPerpSettlement.t.sol",
+    "test": "test_settle_rejects_bad_proof",
+    "line": 155
+  },
+  {
+    "file": "contracts/test/DarkPerpSettlement.t.sol",
+    "test": "test_liveness_triggers_close_only",
+    "line": 165
+  },
+  {
+    "file": "contracts/test/DarkPerpSettlement.t.sol",
+    "test": "test_settle_blocked_in_close_only",
+    "line": 173
+  },
+  {
+    "file": "contracts/test/DarkPerpSettlement.t.sol",
+    "test": "test_deposit_blocked_in_close_only",
+    "line": 187
+  },
+  {
+    "file": "contracts/test/DarkPerpSettlement.t.sol",
+    "test": "test_inclusion_answered_clears_challenge",
+    "line": 202
+  },
+  {
+    "file": "contracts/test/DarkPerpSettlement.t.sol",
+    "test": "test_answer_with_batch_settled_after_challenge_succeeds",
+    "line": 225
+  },
+  {
+    "file": "contracts/test/DarkPerpSettlement.t.sol",
+    "test": "test_answer_rejected_when_batch_lacks_order",
+    "line": 252
+  },
+  {
+    "file": "contracts/test/DarkPerpSettlement.t.sol",
+    "test": "test_valid_rejection_answers_challenge",
+    "line": 275
+  },
+  {
+    "file": "contracts/test/DarkPerpSettlement.t.sol",
+    "test": "test_answer_by_rejection_requires_membership",
+    "line": 305
+  },
+  {
+    "file": "contracts/test/DarkPerpSettlement.t.sol",
+    "test": "test_answer_refund_is_pull_not_push",
+    "line": 330
+  },
+  {
+    "file": "contracts/test/DarkPerpSettlement.t.sol",
+    "test": "test_answer_forced_inclusion_refunds_challenger",
+    "line": 359
+  },
+  {
+    "file": "contracts/test/DarkPerpSettlement.t.sol",
+    "test": "test_answer_presettled_forfeits_to_sequencer",
+    "line": 386
+  },
+  {
+    "file": "contracts/test/DarkPerpSettlement.t.sol",
+    "test": "test_rejection_answer_always_forfeits",
+    "line": 405
+  },
+  {
+    "file": "contracts/test/DarkPerpSettlement.t.sol",
+    "test": "test_public_commitment_7word_matches_rust",
+    "line": 449
+  },
+  {
+    "file": "contracts/test/DarkPerpSettlement.t.sol",
+    "test": "test_settle_reverts_on_deposit_root_mismatch",
+    "line": 467
+  },
+  {
+    "file": "contracts/test/DarkPerpSettlement.t.sol",
+    "test": "test_settle_reverts_on_wrong_prefix_root",
+    "line": 491
+  },
+  {
+    "file": "contracts/test/DarkPerpSettlement.t.sol",
+    "test": "test_settle_accepts_a_proven_prefix_while_head_moved",
+    "line": 515
+  },
+  {
+    "file": "contracts/test/DarkPerpSettlement.t.sol",
+    "test": "test_zero_value_deposit_cannot_stall_settlement",
+    "line": 543
+  },
+  {
+    "file": "contracts/test/DarkPerpSettlement.t.sol",
+    "test": "test_settle_at_l1_deposit_head_succeeds",
+    "line": 575
+  },
+  {
+    "file": "contracts/test/DarkPerpSettlement.t.sol",
+    "test": "test_withdraw_excess_bond",
+    "line": 594
+  },
+  {
+    "file": "contracts/test/DarkPerpSettlement.t.sol",
+    "test": "test_cannot_withdraw_bond_below_required_floor",
+    "line": 603
+  },
+  {
+    "file": "contracts/test/DarkPerpSettlement.t.sol",
+    "test": "test_cannot_withdraw_bond_after_slash",
+    "line": 613
+  },
+  {
+    "file": "contracts/test/DarkPerpSettlement.t.sol",
+    "test": "test_inclusion_unanswered_slashes_bond",
+    "line": 629
+  },
+  {
+    "file": "contracts/test/DarkPerpSettlement.t.sol",
+    "test": "test_challenge_requires_bond",
+    "line": 664
+  },
+  {
+    "file": "contracts/test/DarkPerpSettlement.t.sol",
+    "test": "test_non_canonical_signature_rejected",
+    "line": 671
+  },
+  {
+    "file": "contracts/test/DarkPerpSettlement.t.sol",
+    "test": "test_bad_receipt_signature_rejected",
+    "line": 684
+  },
+  {
+    "file": "contracts/test/DarkPerpSettlement.t.sol",
+    "test": "test_challenge_reverts_before_ripe",
+    "line": 693
+  },
+  {
+    "file": "contracts/test/DarkPerpSettlement.t.sol",
+    "test": "test_challenge_allowed_after_ripe",
+    "line": 703
+  },
+  {
+    "file": "contracts/test/DarkPerpSettlement.t.sol",
+    "test": "test_finalSettle_reverts_when_not_closeOnly",
+    "line": 779
+  },
+  {
+    "file": "contracts/test/DarkPerpSettlement.t.sol",
+    "test": "test_finalSettle_reverts_before_grace",
+    "line": 786
+  },
+  {
+    "file": "contracts/test/DarkPerpSettlement.t.sol",
+    "test": "test_finalSettle_reverts_non_governance",
+    "line": 795
+  },
+  {
+    "file": "contracts/test/DarkPerpSettlement.t.sol",
+    "test": "test_finalSettle_publish_then_claim",
+    "line": 805
+  },
+  {
+    "file": "contracts/test/DarkPerpSettlement.t.sol",
+    "test": "test_finalSettle_works_when_slashed",
+    "line": 837
+  },
+  {
+    "file": "contracts/test/DarkPerpSettlement.t.sol",
+    "test": "test_slash_after_closeOnly_does_not_reset_grace",
+    "line": 858
+  },
+  {
+    "file": "contracts/test/DarkPerpSettlement.t.sol",
+    "test": "test_a06_finalSettle_rejects_ordinary_phase_zero_proof",
+    "line": 884
+  },
+  {
+    "file": "contracts/test/DarkPerpSettlement.t.sol",
+    "test": "test_a06_settleBatch_rejects_phase_one_proof",
+    "line": 893
+  },
+  {
+    "file": "contracts/test/DarkPerpSettlement.t.sol",
+    "test": "test_a06_final_settle_is_one_shot_and_phase_two_exit_is_repeatable",
+    "line": 903
+  },
+  {
+    "file": "contracts/test/DarkPerpSettlement.t.sol",
+    "test": "test_a06_finalExit_rejects_before_phase_one",
+    "line": 925
+  }
+]

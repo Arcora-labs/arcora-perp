@@ -1,0 +1,11 @@
+{
+  "before": {
+    "path": "crates/sp1-guest/target/elf-compilation/riscv64im-succinct-zkvm-elf/release/perp-core-guest",
+    "size": 515096,
+    "sha256": "e232452842adb9f5e2097b3562ef128918133281fb3613a48886f3dad56a63ba",
+    "format": "crates/sp1-guest/target/elf-compilation/riscv64im-succinct-zkvm-elf/release/perp-core-guest: ELF 64-bit LSB executable, UCB RISC-V, soft-float ABI, version 1 (SYSV), statically linked, not stripped"
+  },
+  "after_sha256": "a1f0a43033ffdd858bf99854cae814f5426c27db512088883ffa1a0e8f1c4e75",
+  "same": false,
+  "method": "same environment and dependency cache, forced guest source recompilation by mtime; not independent clean reproducibility"
+}

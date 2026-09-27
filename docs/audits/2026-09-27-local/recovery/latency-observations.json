@@ -1,0 +1,25 @@
+{
+  "status": "one_local_observation",
+  "source_log": "deterministic-race-tests.log",
+  "sample": {
+    "payloadBytes": 8388608,
+    "connections": 3,
+    "sendBufferRequested": 8192,
+    "otherAccountMs": 1,
+    "leaseReleaseMs": 2089,
+    "receiversAfter": 0
+  },
+  "deadlines_ms": {
+    "other_account": 1000,
+    "send_timeout": 2000,
+    "rotation_lease_release": 3000,
+    "actual_close": 3000,
+    "subscription_cleanup": 3000,
+    "listener_join": 3000
+  },
+  "limitations": [
+    "one loopback run, not a percentile or capacity measure",
+    "socket send buffer is requested, not measured effective kernel allocation",
+    "bytes accepted by TCP before rotation may be read afterwards"
+  ]
+}

@@ -1,0 +1,12 @@
+   Compiling gateway v0.0.1 (/private/var/folders/jz/7wbjs_5j45g915858xh6wm200000gn/T/arcora-fixture-v6-dcb4ne90/crates/gateway)
+error[E0599]: no method named `apply_atomic` found for struct `Sequencer` in the current scope
+   --> crates/gateway/src/deposit_ingestion.rs:322:14
+    |
+321 | /         self.seq
+322 | |             .apply_atomic(&ops)
+    | |             -^^^^^^^^^^^^ method not found in `Sequencer`
+    | |_____________|
+    |
+
+For more information about this error, try `rustc --explain E0599`.
+error: could not compile `gateway` (bin "gateway" test) due to 1 previous error

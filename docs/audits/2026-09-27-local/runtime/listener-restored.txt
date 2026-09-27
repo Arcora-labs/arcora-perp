@@ -1,0 +1,2 @@
+COMMAND   PID          USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME
+gateway 46738 huseyinarslan    9u  IPv4 0xa0c0432f2dcc7d12      0t0  TCP 127.0.0.1:63858 (LISTEN)

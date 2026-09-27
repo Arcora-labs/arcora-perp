@@ -1,0 +1,75 @@
+[
+  {
+    "argv": [
+      "git",
+      "--version"
+    ],
+    "exit_code": 0,
+    "stdout": "git version 2.50.1 (Apple Git-155)\n",
+    "stderr": ""
+  },
+  {
+    "argv": [
+      "rustc",
+      "--version"
+    ],
+    "exit_code": 0,
+    "stdout": "rustc 1.95.0 (59807616e 2026-04-14) (Homebrew)\n",
+    "stderr": ""
+  },
+  {
+    "argv": [
+      "cargo",
+      "--version"
+    ],
+    "exit_code": 0,
+    "stdout": "cargo 1.95.0 (f2d3ce0bd 2026-03-21) (Homebrew)\n",
+    "stderr": ""
+  },
+  {
+    "argv": [
+      "node",
+      "--version"
+    ],
+    "exit_code": 0,
+    "stdout": "v24.12.0\n",
+    "stderr": ""
+  },
+  {
+    "argv": [
+      "pnpm",
+      "--version"
+    ],
+    "exit_code": 0,
+    "stdout": "11.5.1\n",
+    "stderr": ""
+  },
+  {
+    "argv": [
+      "forge",
+      "--version"
+    ],
+    "exit_code": 0,
+    "stdout": "forge Version: 1.7.2-nightly\nCommit SHA: dea99c55914d010b22d3f5532fca180a8ecafda1\nBuild Timestamp: 2026-06-05T07:27:50.230262000Z (1780644470)\nBuild Profile: dist\n",
+    "stderr": ""
+  },
+  {
+    "argv": [
+      "cast",
+      "--version"
+    ],
+    "exit_code": 0,
+    "stdout": "cast Version: 1.7.2-nightly\nCommit SHA: dea99c55914d010b22d3f5532fca180a8ecafda1\nBuild Timestamp: 2026-06-05T07:27:50.230262000Z (1780644470)\nBuild Profile: dist\n",
+    "stderr": ""
+  },
+  {
+    "argv": [
+      "cargo",
+      "prove",
+      "--version"
+    ],
+    "exit_code": 101,
+    "stdout": "",
+    "stderr": "error: no such command: `prove`\n\nhelp: a command with a similar name exists: `remove`\n\nhelp: view all installed commands with `cargo --list`\nhelp: find a package to install `prove` with `cargo search cargo-prove`\n"
+  }
+]
