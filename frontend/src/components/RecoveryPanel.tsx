@@ -17,7 +17,9 @@ export function RecoveryPanel() {
     try {
       if (!wallet) await connect();
       const r = await liveRecovery(owner.trim());
-      setResult(`Account recovered. Credential generation is now #${r.recoveryNonce}.`);
+      setResult(r.credentialStorage === "session"
+        ? `Account recovered for this tab only (generation #${r.recoveryNonce}). Browser storage is unavailable. Keep this tab open; after reloading, use wallet recovery again. The old saved key may no longer work.`
+        : `Account recovered. Credential generation is now #${r.recoveryNonce}.`);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally { setBusy(false); }
@@ -35,10 +37,10 @@ export function RecoveryPanel() {
       Lost this browser&apos;s API credential? Enter the account&apos;s 32-byte owner id.
       The gateway returns the account&apos;s current recovery authorizer and nonce; your
       wallet signs a deployment-bound recovery digest. A successful durable rotation
-      invalidates the old API key and stores the replacement in this browser.
+      invalidates the old API key. The result below tells you whether the replacement was saved or is available only in this tab.
     </p>
     <label className="field"><span className="field__label">Account owner id</span>
-      <input className="field__input" value={owner} onChange={e=>setOwner(e.target.value)}
+      <input className="field__input" disabled={busy} value={owner} onChange={e=>setOwner(e.target.value)}
         placeholder="0x… (32 bytes)" autoComplete="off" spellCheck={false}/></label>
     <p className="muted small">Connected wallet: {wallet ?? "not connected"}</p>
     <button className="btn btn--ghost" onClick={recover} disabled={busy || !/^0x[0-9a-fA-F]{64}$/.test(owner.trim()) || !hasInjected()}>

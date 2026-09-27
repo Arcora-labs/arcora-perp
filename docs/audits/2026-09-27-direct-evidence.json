@@ -1,0 +1,46 @@
+{
+  "date": "2026-09-27",
+  "base": "7e2f1768d452633c7e8a2fe8f9eb513b473097b1",
+  "gateway": {
+    "run": 36334230430,
+    "job": 108661883657,
+    "artifact": 10937275122,
+    "zip_sha256": "f3f1c4f2a91f8308ac447cab3265f415b55ac8425090057cf71c273ded2432d3",
+    "patch_sha256": "2cf5cd50fcd7b7518704302177b0110d0cecdfe96edf8abe0c181e80030370d4",
+    "baseline_assertion_failures": 3,
+    "focused_passed": 27,
+    "gateway_passed": 356,
+    "workspace_passed": 722,
+    "ignored": 1
+  },
+  "frontend": {
+    "run": 36334644779,
+    "artifact": 10936728674,
+    "zip_sha256": "3867877332d222522a6221da0871ca1410e25240a53371c2838a9005e4ad4bce",
+    "patch_sha256": "bb602170aa3e5276ba183480de2cbbede984adf878590f066a18ce707e206550",
+    "baseline_assertion_failures": 3,
+    "passed": 316,
+    "skipped": 1,
+    "build": "success"
+  },
+  "overlapping_test_selections": true,
+  "real_sp1": false,
+  "physical_crash": false,
+  "deployment": false,
+  "normal_pr_ci": "separate run; see PR metadata",
+  "source_sha256": {
+    "crates/gateway/src/account_recovery.rs": "ab12b3a3f67f938e8863d648f4a462c1fa8de18733ed68064f5738278abce0ee",
+    "crates/gateway/src/credential_session.rs": "21254c638bca932f206e7ece2289ec354f48cec9e58799320ffe3b2d729ddc40",
+    "crates/gateway/src/main.rs": "2132c19e5a04c1f8229d2bf8ff4d7a79dd63c64610aecc79920e7b299a369052",
+    "crates/gateway/src/s1_recovery_ws_tests.rs": "7fb926cb80fdcce30e80fb3a1fe24baa9dbf99a09c16d8d1008450e60badc186",
+    "frontend/src/api/client.ts": "3228fe55de16e92106afd065df30d0c2e1016212128922a61af3837c2e62fc81",
+    "frontend/src/api/clientContract.test.ts": "32cd60f59fa981debd3042cadd6d07a4381ff9e388318f9fc75a930085c8e1bd",
+    "frontend/src/api/credentialStore.ts": "a6f9bf84c562f0167fd28f13b6e2a4b03da50bc6e023d2d89991b105972c251a",
+    "frontend/src/api/realClient.recovery.test.ts": "add4574bdfd41738f9aa1a64b6dad461aaa7cfc9332f326949b47736abe96c1a",
+    "frontend/src/api/realClient.test.ts": "690f8c8f1d68e640e591704ac99b78c5976b6a220c82d5f647416ad42cf34607",
+    "frontend/src/api/realClient.ts": "751427f1d2db00686bb7d621b067bdbcc355733f3260a282278c1b79beaea280",
+    "frontend/src/components/RecoveryPanel.test.tsx": "921d125bb825a76dd5902208828304f8bd6214f298d615b1b9a8bd8e7981a76e",
+    "frontend/src/components/RecoveryPanel.tsx": "236d6585e146f082db1f9b550e85c607656fc419f32f149a2cca6f09340d55e8",
+    "frontend/src/testSupport/locks.ts": "bfc2fd32ae5022cb936ae465e4dfd6f289f405365b9192a86cd8665c4cd6aa78"
+  }
+}

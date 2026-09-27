@@ -1,4 +1,6 @@
+import { credentialKey } from "./credentialStore";
 // @vitest-environment happy-dom
+import { installTestLocks } from "../testSupport/locks";
 //
 // Task 11 — the browser client fetches + verifies the enclave order-epoch key and
 // SEALS every order before POSTing. Two byte-exact cross-language contracts are
@@ -196,7 +198,7 @@ let meFields: Record<string, unknown> = {};
 const defaultMeFields = () => ({
   settledBalance: V1_BALANCE,
   depositAddress: BOUND, callerSigned: false, nextWithdrawNonce: 1,
-  rebindCounter: 0, chainId: CHAIN_ID, vault: VAULT,
+  rebindCounter: 0, chainId: CHAIN_ID, vault: VAULT, recoveryNonce: 0,
 });
 
 // A fake EIP-1193 wallet answering `personal_sign` — records what it was asked
@@ -230,11 +232,12 @@ function installFetch() {
         text: async () => JSON.stringify(v),
       });
       if (path === "/api/state") return json(stateResponse);
+      if (path === "/v1/system/status") return json({ chainId: CHAIN_ID, vault: VAULT });
       if (path === "/v1/enclave/epoch") { epochHits++; return json(epochResponse()); }
       if (path === "/v1/accounts" && method === "POST") {
         registrations++;
         if (accountsStatus !== 200) return json({ error: "registration unavailable" }, accountsStatus);
-        return json({ apiKey: validKey, owner: OWNER_HEX, callerSigned: false });
+        return json({ apiKey: validKey, owner: OWNER_HEX, callerSigned: false, recoveryNonce: 0, chainId: CHAIN_ID, vault: VAULT });
       }
       if (path === "/v1/accounts/me") {
         // Authenticated like the gateway's — the SEC-025-E1 balance read must
@@ -368,6 +371,7 @@ async function bootstrapClient() {
 }
 
 beforeEach(() => {
+  installTestLocks();
   calls = [];
   epochHits = 0;
   registrations = 0;
@@ -1063,8 +1067,8 @@ describe("own-account reads from /v1 (SEC-025-E1)", () => {
     vi.spyOn(console, "warn").mockImplementation(() => {});
     // A previous session's account sits in localStorage (LS_ACCOUNT_KEY)…
     localStorage.setItem(
-      "darkperp.v1Account",
-      JSON.stringify({ apiKey: ACCT_KEY, owner: OWNER_HEX }),
+      `darkperp.v2Account:${JSON.stringify(["http://gw.test", CHAIN_ID, VAULT])}`,
+      JSON.stringify({ schema: 2, base: "http://gw.test", chainId: CHAIN_ID, vault: VAULT, apiKey: ACCT_KEY, owner: OWNER_HEX, recoveryNonce: 0 }),
     );
     // …but the gateway was wiped AND registration is down: the stored key
     // 401s on revalidation and the re-register POST 500s, so `sealing` never
@@ -1139,8 +1143,8 @@ describe("own-account reads from /v1 (SEC-025-E1)", () => {
     // A previous session's account revalidates fine (the STORED provisioning
     // path — no fresh registration)…
     localStorage.setItem(
-      "darkperp.v1Account",
-      JSON.stringify({ apiKey: ACCT_KEY, owner: OWNER_HEX }),
+      `darkperp.v2Account:${JSON.stringify(["http://gw.test", CHAIN_ID, VAULT])}`,
+      JSON.stringify({ schema: 2, base: "http://gw.test", chainId: CHAIN_ID, vault: VAULT, apiKey: ACCT_KEY, owner: OWNER_HEX, recoveryNonce: 0 }),
     );
     const { settledBalance: _dropped, ...noBalance } = defaultMeFields();
     meFields = noBalance; // revalidation 200s, the own reads still fail
@@ -1442,8 +1446,11 @@ describe("live stream: /v1/ws own-account events (SEC-025-E1 Task 2)", () => {
     const client = await bootstrapClient();
     lastWsV1!.open();
     expect(lastWsV1!.sent).toEqual([]); // pre-key: nothing to send yet
+    const preAccountSocket = lastWsV1!;
     accountsStatus = 200; // the gateway recovers; the next order provisions the account
     await client.placeOrder({ marketId: 0, side: "Buy", size: 1n, limitPrice: 1n, tif: "Gtc", reduceOnly: false });
+    expect(lastWsV1).not.toBe(preAccountSocket);
+    lastWsV1!.open(); // the replacement transport must authenticate under the new epoch
     expect(lastWsV1!.sent.map((s) => JSON.parse(s))).toEqual([{ type: "auth", apiKey: ACCT_KEY }]);
     client.dispose();
   });
@@ -1505,29 +1512,19 @@ describe("live stream: /v1/ws own-account events (SEC-025-E1 Task 2)", () => {
     client.dispose();
   });
 
-  it("an `error` auth reply un-wedges: the dead account is dropped, the next use re-registers and re-auths the SAME socket (review F7)", async () => {
+  it("an auth error preserves account identity and never silently registers a replacement", async () => {
     vi.spyOn(console, "warn").mockImplementation(() => {});
     const client = await bootstrapClient();
     lastWsV1!.open();
-    expect(lastWsV1!.sent.length).toBe(1); // auth with the (about-to-die) key
-    // The deployment wiped state.snap (the runbook does, on every cutover):
-    // the old key is now unknown everywhere and a fresh registration hands
-    // out a NEW key.
+    expect(registrations).toBe(1);
+    const key = credentialKey({ base: "http://gw.test", chainId: 4242, vault: "0x" + "3b".repeat(20) });
+    const before = localStorage.getItem(key);
     validKey = ACCT_KEY2;
     lastWsV1!.onmessage!({ data: JSON.stringify({ type: "error", message: "unknown api key" }) });
-    // Next use must NOT serve the dead cached account: ensureAccount
-    // revalidates the stored key (401 now), re-registers, and the fresh
-    // account re-auths THIS socket — without the fix `v1AuthSent` stays true
-    // (no second auth frame, ever) and `sealing` keeps the dead key (no
-    // second registration, every /v1 read 401s for the tab's lifetime).
-    await client.placeOrder({ marketId: 0, side: "Buy", size: 1n, limitPrice: 1n, tif: "Gtc", reduceOnly: false });
-    expect(registrations).toBe(2);
-    expect(lastWsV1!.sent.map((s) => JSON.parse(s))).toEqual([
-      { type: "auth", apiKey: ACCT_KEY },
-      { type: "auth", apiKey: ACCT_KEY2 },
-    ]);
-    // the order itself went out under the NEW key
-    expect(ordersPosted()[0].headers["X-Api-Key"]).toBe(ACCT_KEY2);
+    await expect(client.getPositions()).rejects.toThrow(/401/);
+    expect(registrations).toBe(1);
+    expect(localStorage.getItem(key)).toBe(before);
+    expect(lastWsV1!.sent.map(s => JSON.parse(s))).toEqual([{ type: "auth", apiKey: ACCT_KEY }]);
     client.dispose();
   });
 

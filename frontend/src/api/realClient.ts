@@ -26,6 +26,8 @@ import type {
 } from "../domain/types";
 import { seal, domainAad } from "./sealedBox";
 import { accountRecoveryDigest, personalSign } from "./wallet";
+import { boundedJson, canonicalBase, credentialKey, LEGACY_ACCOUNT_KEY, makeCredential, parseCredential, parseScope,
+  persistCredential, sameScope, validGeneration, withRecoveryLock, type CredentialScope, type StoredCredential } from "./credentialStore";
 import { cancellationCapability } from "../domain/cancellation";
 import { parseExecution } from "../domain/execution";
 import { secp256k1 } from "@noble/curves/secp256k1";
@@ -489,12 +491,34 @@ export function verifyEnclaveEpoch(raw: unknown, opts: VerifyEpochOptions = {}):
 }
 
 /// localStorage key for the self-provisioned `/v1` trading account.
-const LS_ACCOUNT_KEY = "darkperp.v1Account";
+// Legacy records remain untouched; automatic reuse cannot establish their deployment.
 
 interface SealingAccount {
   apiKey: string;
   /** The account's 32-byte owner pubkey — the sealed-order AAD binds to it. */
   owner: Uint8Array;
+}
+
+/** Total recovery rounds (initial + retries) — see recoverAccount's S1 contract. */
+const MAX_RECOVERY_ATTEMPTS = 3;
+
+/**
+ * Internal error of one recovery round: `retryable` decides whether
+ * recoverAccount re-GETs/re-signs/re-POSTs with a FRESH nonce or gives up
+ * immediately (400/401/409, wallet rejection, superseded, storage refusal).
+ */
+class RecoveryAttemptError extends Error {
+  constructor(
+    message: string,
+    readonly retryable: boolean,
+  ) {
+    super(message);
+    this.name = "RecoveryAttemptError";
+  }
+}
+
+function errMsg(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
 }
 
 export class RealDarkPerpClient implements DarkPerpClient {
@@ -577,21 +601,27 @@ export class RealDarkPerpClient implements DarkPerpClient {
   private epochFetch: Promise<VerifiedEpoch> | null = null;
   /** The self-provisioned `/v1` trading account sealed orders trade as. */
   private sealing: SealingAccount | null = null;
-  /**
-   * Monotone provisioning latch (fix-wave-3 H3): set beside every `sealing`
-   * assignment, NEVER reset. `hasAccount()`'s other two sources can each be
-   * erased after the fact — the /v1/ws `error` branch nulls `sealing` (F7),
-   * and the stored copy may never have been written (private mode:
-   * initAccount swallows the storage-write failure) or can be cleared by
-   * another tab — and with both gone emit() would repaint the shared demo
-   * wallet as the caller's account: the exact defect F1 removed. An
-   * in-memory bit cannot be erased. It feeds ONLY the rendering gate
-   * (hasAccount → placeholder + accountUnavailable, the conservative
-   * direction); it must never feed tryAuthV1/ensureAccount, which key on
-   * `sealing` itself so the no-registration-loop rule (F7) stands.
+  /** Once an account is known, failed reads must never render the shared demo
+   * wallet as this user's balance. This rendering latch grants no authority.
    */
   private everProvisioned = false;
   private acctFetch: Promise<SealingAccount> | null = null;
+  /**
+   * Monotonic credential epoch (account-recovery hardening S1): bumped on EVERY
+   * credential swap — a confirmed recovery, an initAccount adoption, or a
+   * cross-tab storage adoption. Any async step that captured the epoch at
+   * start and finds it advanced on arrival (a late recovery result, a stale
+   * own-state refresh, an old socket's authOk/error frame) must discard its
+   * result instead of overwriting the winner's credential/state.
+   */
+  private credentialEpoch = 0;
+  /** Server-issued recovery generation last adopted, never a local counter. */
+  private storedGen = 0;
+  private scope: CredentialScope;
+  private accountIntent = 0;
+  private recoveryInFlight: { owner: string; promise: Promise<{ owner: string; recoveryNonce: number; credentialStorage: "persistent" | "session" }> } | null = null;
+  /** Cross-tab `storage` listener — registered in the constructor, removed in dispose(). */
+  private readonly storageListener: ((ev: StorageEvent) => void) | null = null;
   /**
    * Strictly-increasing order nonce carried inside the sealed terms. The gateway
    * ENFORCES strict monotonicity per account on the decrypted terms (replay
@@ -601,22 +631,37 @@ export class RealDarkPerpClient implements DarkPerpClient {
    */
   private lastNonce = 0n;
 
-  constructor(baseUrl: string, initial: ClientState) {
-    this.base = baseUrl.replace(/\/$/, "");
+  constructor(baseUrl: string, initial: ClientState, scope: CredentialScope) {
+    this.base = canonicalBase(baseUrl);
+    this.scope = scope;
     this.wsUrl = this.base.replace(/^http/, "ws") + "/ws";
     this.wsV1Url = this.base.replace(/^http/, "ws") + "/v1/ws";
     this.state = initial;
+    // Cross-tab credential propagation (S1): another tab's write of
+    // the scoped account key arrives here as a `storage` event (the writing tab itself
+    // never fires one). Same-tab writes and other keys are ignored by
+    // onStorageEvent.
+    if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
+      this.storageListener = (ev: StorageEvent) => {
+        if (ev.key !== credentialKey(this.scope) || (ev.storageArea && ev.storageArea !== localStorage)) return;
+        void this.onStorageEvent();
+      };
+      window.addEventListener("storage", this.storageListener);
+    }
     this.connect();
     this.connectV1();
   }
 
   /** One blocking fetch of the initial snapshot so the store has a non-null first state. */
   static async bootstrap(baseUrl: string): Promise<RealDarkPerpClient> {
-    const base = baseUrl.replace(/\/$/, "");
+    const base = canonicalBase(baseUrl);
     const res = await fetch(base + "/api/state");
     if (!res.ok) throw new Error(`gateway /api/state ${res.status}`);
     const initial = parseState((await res.json()) as WireState);
-    const client = new RealDarkPerpClient(base, initial);
+    // Learn the public deployment before reading or transmitting any credential.
+    const deployment = await boundedJson(base + "/v1/system/status");
+    if (!deployment.ok) throw new Error("Gateway deployment metadata unavailable.");
+    const client = new RealDarkPerpClient(base, initial, parseScope(base, deployment.value));
     // Prepare the sealed-order path (verified epoch key + /v1 trading account) up
     // front so the first order doesn't pay the round trips. A failure here is
     // non-fatal for the read-only UI — placeOrder retries and FAILS CLOSED (an
@@ -686,61 +731,106 @@ export class RealDarkPerpClient implements DarkPerpClient {
   }
 
   private async initAccount(): Promise<SealingAccount> {
-    const stored = this.readStoredAccount();
+    const epoch = this.credentialEpoch;
+    const intent = this.accountIntent;
+    const current = () => !this.disposed && epoch === this.credentialEpoch && intent === this.accountIntent;
+    const winner = (): SealingAccount => {
+      if (this.sealing) return this.sealing;
+      throw new Error("Account initialization superseded; use the selected account's recovery flow.");
+    };
+    let raw: string | null = null;
+    try { raw = localStorage.getItem(credentialKey(this.scope)); } catch { /* session-only browser */ }
+    if (raw !== null) this.everProvisioned = true;
+    const stored = parseCredential(raw, this.scope); // malformed data never triggers replacement registration
     if (stored) {
-      try {
-        const res = await fetch(this.base + "/v1/accounts/me", { headers: { "X-Api-Key": stored.apiKey } });
-        if (res.ok) {
-          this.sealing = stored;
-          this.everProvisioned = true;
-          this.tryAuthV1(); // the account stream may already be open and waiting
-          return stored;
-        }
-      } catch { /* unreachable/reset gateway — fall through and re-register */ }
+      const reply = await boundedJson(this.base + "/v1/accounts/me", { headers: { "X-Api-Key": stored.apiKey } });
+      if (!current()) return winner();
+      if (!reply.ok) throw new Error(`Saved account validation failed (${reply.status}); use wallet recovery, not a replacement account.`);
+      this.validateAccountReply(reply.value, stored);
+      const latest = this.readStoredRecord();
+      if (latest?.apiKey !== stored.apiKey || latest.recoveryNonce !== stored.recoveryNonce) {
+        throw new Error("Saved credential changed during initialization; retry using the newer saved account.");
+      }
+      this.installCredential(stored);
+      return this.sealing!;
     }
-    const res = await fetch(this.base + "/v1/accounts", { method: "POST" });
-    if (!res.ok) throw new Error(`/v1/accounts registration failed (${res.status})`);
-    const j = (await res.json()) as { apiKey?: unknown; owner?: unknown };
-    if (typeof j.apiKey !== "string" || typeof j.owner !== "string") {
-      throw new Error("/v1/accounts: malformed registration response");
+    let legacy: string | null = null;
+    try { legacy = localStorage.getItem(LEGACY_ACCOUNT_KEY); } catch { /* unavailable */ }
+    if (legacy !== null) {
+      this.everProvisioned = true;
+      throw new Error("Legacy saved account has no deployment scope. Use its owner id for wallet recovery; the saved record was not erased.");
     }
-    const acct: SealingAccount = { apiKey: j.apiKey, owner: strictHex(j.owner, 32) };
-    try {
-      localStorage.setItem(LS_ACCOUNT_KEY, JSON.stringify({ apiKey: j.apiKey, owner: j.owner }));
-    } catch { /* storage unavailable (private mode) — account lives for this session only */ }
-    this.sealing = acct;
-    this.everProvisioned = true;
-    this.tryAuthV1(); // the account stream may already be open and waiting
-    return acct;
+    if (!current()) return winner();
+    if (this.recoveryInFlight) throw new Error("Account recovery is in progress; replacement registration is paused.");
+    const reply = await boundedJson(this.base + "/v1/accounts", { method: "POST" });
+    if (!current()) return winner();
+    if (!reply.ok) throw new Error(`/v1/accounts registration failed (${reply.status})`);
+    const j = reply.value as Record<string, unknown>;
+    if (!sameScope(parseScope(this.base, j), this.scope)) throw new Error("Registration belongs to a different deployment.");
+    const record = makeCredential(this.scope, j);
+    if (record.recoveryNonce !== 0) throw new Error("Malformed registration generation.");
+    await persistCredential(record, current);
+    if (!current()) return winner();
+    this.installCredential(record);
+    return this.sealing!;
   }
 
+  private validateAccountReply(value: unknown, record: StoredCredential): void {
+    const v = value as Record<string, unknown> | null;
+    if (!v || typeof v.owner !== "string" || v.owner.toLowerCase() !== record.owner ||
+        v.recoveryNonce !== record.recoveryNonce || !sameScope(parseScope(this.base, v), this.scope)) {
+      throw new Error("Account identity, deployment or generation did not match the saved credential.");
+    }
+  }
+
+  private readStoredRecord(): StoredCredential | null {
+    try { return parseCredential(localStorage.getItem(credentialKey(this.scope)), this.scope); }
+    catch { return null; } // rendering must degrade; initAccount above fails closed
+  }
   private readStoredAccount(): SealingAccount | null {
+    const record = this.readStoredRecord();
+    return record ? { apiKey: record.apiKey, owner: strictHex(record.owner, 32) } : null;
+  }
+  private installCredential(record: StoredCredential): void {
+    this.sealing = { apiKey: record.apiKey, owner: strictHex(record.owner, 32) };
+    this.storedGen = record.recoveryNonce;
+    this.everProvisioned = true;
+    this.credentialEpoch++;
+    this.accountIntent++;
+    this.ownAccount = null;
+    this.ownOrders = null;
+    this.restartV1();
+    if (this.state) this.setState(this.state);
+  }
+  private restartV1(): void {
+    const previous = this.wsV1;
+    this.wsV1 = null; // old close/error callbacks no longer own this connection
+    this.v1Owner = null;
+    this.v1AuthSent = false;
+    if (this.reconnectV1Timer) { clearTimeout(this.reconnectV1Timer); this.reconnectV1Timer = null; }
+    try { previous?.close(); } catch { /* obsolete connection */ }
+    this.connectV1();
+  }
+  private async onStorageEvent(): Promise<void> {
+    // Re-read CURRENT storage, not a delayed event payload from an older write.
+    const record = this.readStoredRecord();
+    const known = this.sealing;
+    if (!record || !known || record.owner !== "0x" + bytesToHex(known.owner) || record.recoveryNonce <= this.storedGen) return;
+    const epoch = this.credentialEpoch;
     try {
-      const raw = localStorage.getItem(LS_ACCOUNT_KEY);
-      if (!raw) return null;
-      const j = JSON.parse(raw) as { apiKey?: unknown; owner?: unknown };
-      if (typeof j.apiKey !== "string" || typeof j.owner !== "string") return null;
-      return { apiKey: j.apiKey, owner: strictHex(j.owner, 32) };
-    } catch {
-      return null;
-    }
+      const response = await boundedJson(this.base + "/v1/accounts/me", { headers: { "X-Api-Key": record.apiKey } });
+      if (!response.ok) return;
+      this.validateAccountReply(response.value, record);
+      const latest = this.readStoredRecord();
+      if (this.disposed || epoch !== this.credentialEpoch || latest?.apiKey !== record.apiKey ||
+          latest.recoveryNonce !== record.recoveryNonce) return;
+      this.installCredential(record);
+      void this.refreshOwnState();
+    } catch { /* retain the current credential on failed adoption */ }
   }
 
-  /**
-   * Whether a /v1 account exists for this browser — emit()'s fallback gate
-   * (review F1, tightened at fix-wave-2 G1). `sealing` covers the provisioned
-   * account; the STORED account covers the two states where `sealing` is null
-   * yet an account exists: (a) the /v1/ws `error` branch dropped a dead key
-   * (F7) before any own read had succeeded, and (b) a returning browser whose
-   * stored key failed revalidation and whose re-registration also failed. In
-   * both, falling through to the public feed would render the shared demo
-   * wallet as the caller's account — the exact defect F1 removed, reopened by
-   * its neighbour. The `everProvisioned` latch (fix-wave-3 H3) covers the
-   * state where BOTH of those are gone — private mode (the storage write
-   * threw, so nothing was ever stored) or a cleared storage, followed by the
-   * F7 reset nulling `sealing` — because both sources are erasable and the
-   * in-memory latch is not. Both the fallback AND `accountUnavailable` key on
-   * this one predicate so the two can never disagree.
+  /** An existing or previously observed account fails closed to an unavailable
+   * view, never to the shared demo account, even when storage becomes unreadable.
    */
   private hasAccount(): boolean {
     // Cheap in-memory disjuncts first (H3): emit() runs this on every WS frame
@@ -819,10 +909,17 @@ export class RealDarkPerpClient implements DarkPerpClient {
       this.v1AuthSent = false;
       this.v1Owner = null;
       this.wsV1 = new WebSocket(this.wsV1Url);
-      this.wsV1.onopen = () => { this.tryAuthV1(); };
-      this.wsV1.onmessage = (ev) => { this.handleV1Frame(ev.data as string); };
-      this.wsV1.onclose = () => { this.scheduleReconnectV1(); };
-      this.wsV1.onerror = () => { try { this.wsV1?.close(); } catch { /* noop */ } };
+      // S1 epoch + identity pinning: the frame handler drops authOk/error
+      // frames whose socket is no longer the current one OR whose connect
+      // predates the current credential epoch — an old socket's late frame
+      // after a rotation-driven reconnect must not clear/replace the new
+      // credential/sealing.
+      const socket = this.wsV1;
+      const connectEpoch = this.credentialEpoch;
+      this.wsV1.onopen = () => { if (socket === this.wsV1 && connectEpoch === this.credentialEpoch) this.tryAuthV1(); };
+      this.wsV1.onmessage = (ev) => { this.handleV1Frame(ev.data as string, socket, connectEpoch); };
+      this.wsV1.onclose = () => { if (socket === this.wsV1 && connectEpoch === this.credentialEpoch) this.scheduleReconnectV1(); };
+      this.wsV1.onerror = () => { if (socket === this.wsV1 && connectEpoch === this.credentialEpoch) { try { socket.close(); } catch { /* noop */ } } };
     } catch {
       this.scheduleReconnectV1();
     }
@@ -870,7 +967,8 @@ export class RealDarkPerpClient implements DarkPerpClient {
    *   for the authenticated owner, and checked here against the VERIFIED
    *   owner so a confused or hostile stream still cannot cross accounts.
    */
-  private handleV1Frame(raw: string): void {
+  private handleV1Frame(raw: string, socket: WebSocket | null = null, connectEpoch = this.credentialEpoch): void {
+    if (this.disposed || (socket !== null && (socket !== this.wsV1 || connectEpoch !== this.credentialEpoch))) return;
     let v: { type?: unknown; owner?: unknown; message?: unknown };
     try {
       v = JSON.parse(raw) as { type?: unknown; owner?: unknown; message?: unknown };
@@ -878,7 +976,12 @@ export class RealDarkPerpClient implements DarkPerpClient {
       return; // malformed frame
     }
     if (typeof v !== "object" || v === null) return;
+    // S1: an authOk/error frame from a socket that is no longer current, or
+    // that connected under an older credential epoch (its auth handshake used
+    // a since-rotated key), can neither establish v1Owner nor clear sealing.
+    const staleSocket = socket !== null && (socket !== this.wsV1 || connectEpoch !== this.credentialEpoch);
     if (v.type === "authOk" && typeof v.owner === "string") {
+      if (staleSocket) return;
       // Review F8: verify the server's claimed owner against the owner WE
       // hold from registration — storing the echo and then "re-verifying"
       // events against it would compare the server to itself and provide
@@ -901,19 +1004,17 @@ export class RealDarkPerpClient implements DarkPerpClient {
       return;
     }
     if (v.type === "error") {
-      console.warn("[dark-perp] /v1/ws auth failed (account events unavailable):", v.message);
-      // Review F7: the server refused the api key ⇒ the cached account is
-      // dead (a state-wipe cutover with this tab open lands here). Leaving
-      // `v1AuthSent`/`sealing` set would wedge BOTH the socket (tryAuthV1
-      // never retries on it) and every /v1 read (ensureAccount returns the
-      // dead account forever, 401ing into the unavailable placeholder).
-      // Clear them so the NEXT ensureAccount() re-registers (initAccount
-      // revalidates the stored key and replaces it) and its tryAuthV1
-      // re-auths this same socket. No auto-retry here: a server answering
-      // `error` to every fresh key must not drive a registration loop.
+      if (staleSocket) return;
+      console.warn("[dark-perp] account stream unavailable; verify the account or use wallet recovery.");
+      // Authentication failed on the current stream. Clear only stream status;
+      // a transport error is not authority to erase credentials or register a
+      // replacement account. The saved key may need wallet-authorized recovery.
       this.v1AuthSent = false;
       this.v1Owner = null;
-      this.sealing = null;
+      // A stream error is not authority to erase a saved credential or silently
+      // register another account. The retained key may be revoked server-side.
+      this.ownAccount = null;
+      this.ownOrders = null;
       return;
     }
     if (v.type === "markets") return; // public frame — see doc above
@@ -1045,6 +1146,9 @@ export class RealDarkPerpClient implements DarkPerpClient {
   /** Tear down sockets + timers. The page-lifetime app never calls this; tests do. */
   dispose(): void {
     this.disposed = true;
+    if (this.storageListener && typeof window !== "undefined") {
+      window.removeEventListener("storage", this.storageListener);
+    }
     if (this.reconnectTimer) { clearTimeout(this.reconnectTimer); this.reconnectTimer = null; }
     if (this.reconnectV1Timer) { clearTimeout(this.reconnectV1Timer); this.reconnectV1Timer = null; }
     if (this.pollTimer) { clearInterval(this.pollTimer); this.pollTimer = null; }
@@ -1138,8 +1242,8 @@ export class RealDarkPerpClient implements DarkPerpClient {
   // ── own-account reads (SEC-025-E1) ──────────────────────────────────────────
 
   /** The account's orders from the authenticated `GET /v1/orders` (flat wire → TrackedOrder). */
-  async getOrders(): Promise<TrackedOrder[]> {
-    const acct = await this.ensureAccount();
+  async getOrders(account?: SealingAccount): Promise<TrackedOrder[]> {
+    const acct = account ?? await this.ensureAccount();
     const res = await fetch(this.base + "/v1/orders", { headers: { "X-Api-Key": acct.apiKey } });
     if (!res.ok) throw new Error(`/v1/orders ${res.status}`);
     const j = (await res.json()) as { orders?: unknown };
@@ -1150,8 +1254,8 @@ export class RealDarkPerpClient implements DarkPerpClient {
   }
 
   /** The account's open positions from the authenticated `GET /v1/positions`. */
-  async getPositions(): Promise<Position[]> {
-    const acct = await this.ensureAccount();
+  async getPositions(account?: SealingAccount): Promise<Position[]> {
+    const acct = account ?? await this.ensureAccount();
     const res = await fetch(this.base + "/v1/positions", { headers: { "X-Api-Key": acct.apiKey } });
     if (!res.ok) throw new Error(`/v1/positions ${res.status}`);
     const j = (await res.json()) as { positions?: unknown };
@@ -1169,8 +1273,8 @@ export class RealDarkPerpClient implements DarkPerpClient {
    * carries positions). Throws on absence/malformation: a refresh that cannot
    * source the balance must degrade WHOLE, never overlay positions alone.
    */
-  private async getSettledBalance(): Promise<bigint> {
-    const acct = await this.ensureAccount();
+  private async getSettledBalance(account?: SealingAccount): Promise<bigint> {
+    const acct = account ?? await this.ensureAccount();
     const res = await fetch(this.base + "/v1/accounts/me", { headers: { "X-Api-Key": acct.apiKey } });
     if (!res.ok) throw new Error(`/v1/accounts/me ${res.status}`);
     const j = (await res.json()) as { settledBalance?: unknown };
@@ -1224,13 +1328,18 @@ export class RealDarkPerpClient implements DarkPerpClient {
 
   /** One refresh pass — only refreshOwnState may call this (it holds the guard). */
   private async fetchOwnStateOnce(): Promise<void> {
+    // S1 epoch tagging: a refresh whose reads were issued under an OLDER
+    // credential (started before a recovery/rotation) must not overwrite the
+    // post-rotation ownOrders/ownAccount when its fetches resolve late.
     try {
+      const account = await this.ensureAccount();
+      const startEpoch = this.credentialEpoch;
       const [orders, positions, settledBalance] = await Promise.all([
-        this.getOrders(),
-        this.getPositions(),
-        this.getSettledBalance(),
+        this.getOrders(account),
+        this.getPositions(account),
+        this.getSettledBalance(account),
       ]);
-      if (this.disposed) return;
+      if (this.disposed || startEpoch !== this.credentialEpoch) return; // stale result — drop
       this.ownOrders = orders;
       // ONE account object, assembled atomically from this refresh: emit() swaps
       // it in whole, so the balance shown beside these positions is always the
@@ -1392,32 +1501,76 @@ export class RealDarkPerpClient implements DarkPerpClient {
   // yet; re-adding it as a reduce-only /v1 order submission is a product
   // decision for a later slice, not a transport fix.
 
-  /** A07: rotate a lost browser API key using the account's existing wallet/signer authority. */
-  async recoverAccount(ownerHex: string): Promise<{ owner: string; recoveryNonce: number }> {
-    if (!/^0x[0-9a-fA-F]{64}$/.test(ownerHex)) throw new Error("Owner must be a 32-byte 0x id.");
-    const metaRes=await fetch(this.base+`/v1/accounts/recovery/${encodeURIComponent(ownerHex)}`);
-    if(!metaRes.ok) throw new Error(`Recovery metadata unavailable (${metaRes.status}).`);
-    const m=await metaRes.json() as {owner?:unknown;authorizer?:unknown;recoveryNonce?:unknown;chainId?:unknown;vault?:unknown};
-    if(typeof m.owner!=="string"||m.owner.toLowerCase()!==ownerHex.toLowerCase()||
-       typeof m.authorizer!=="string"||!/^0x[0-9a-fA-F]{40}$/.test(m.authorizer)||
-       typeof m.recoveryNonce!=="number"||!Number.isSafeInteger(m.recoveryNonce)||m.recoveryNonce<0||
-       typeof m.chainId!=="number"||!Number.isSafeInteger(m.chainId)||m.chainId<0||
-       typeof m.vault!=="string"||!/^0x[0-9a-fA-F]{40}$/.test(m.vault)) throw new Error("Gateway returned malformed recovery metadata.");
-    const owner=strictHex(m.owner,32);
-    const digest=accountRecoveryDigest(BigInt(m.chainId),m.vault,owner,BigInt(m.recoveryNonce));
-    const signature=await personalSign("0x"+bytesToHex(digest),m.authorizer);
-    const out=await this.post<{apiKey?:unknown;owner?:unknown;recoveryNonce?:unknown;durability?:unknown}>(
-      "/v1/accounts/recovery",{owner:m.owner,nonce:m.recoveryNonce,signature});
-    if(typeof out.apiKey!=="string"||typeof out.owner!=="string"||out.owner.toLowerCase()!==m.owner.toLowerCase()||
-       typeof out.recoveryNonce!=="number"||out.recoveryNonce!==m.recoveryNonce+1||out.durability!=="confirmed"){
-      throw new Error("Gateway returned malformed or non-durable recovery result.");
+  /** Recover only with a freshly read nonce. Parallel calls join one operation;
+   * other tabs are fenced BEFORE signing or sending a rotation request.
+   */
+  recoverAccount(ownerHex: string): Promise<{ owner: string; recoveryNonce: number; credentialStorage: "persistent" | "session" }> {
+    if (!/^0x[0-9a-fA-F]{64}$/.test(ownerHex)) return Promise.reject(new Error("Owner must be a 32-byte 0x id."));
+    ownerHex = ownerHex.toLowerCase();
+    if (this.recoveryInFlight) {
+      if (this.recoveryInFlight.owner === ownerHex) return this.recoveryInFlight.promise;
+      return Promise.reject(new Error("Another account recovery is already in progress."));
     }
-    const acct:SealingAccount={apiKey:out.apiKey,owner};
-    localStorage.setItem(LS_ACCOUNT_KEY,JSON.stringify({apiKey:out.apiKey,owner:out.owner}));
-    this.sealing=acct; this.everProvisioned=true; this.ownAccount=null; this.ownOrders=null;
-    if(this.wsV1){try{this.wsV1.close();}catch{/* noop */}} else this.connectV1();
-    await this.refreshOwnState();
-    return {owner:out.owner,recoveryNonce:out.recoveryNonce};
+    const intent = ++this.accountIntent; // invalidate pending init/register, not the current credential
+    const epoch = this.credentialEpoch;
+    const current = () => !this.disposed && intent === this.accountIntent && epoch === this.credentialEpoch;
+    const promise = withRecoveryLock(this.scope, ownerHex, async () => {
+      let lastError: unknown;
+      for (let attempt = 0; attempt < MAX_RECOVERY_ATTEMPTS; attempt++) {
+        if (!current()) throw new Error("Recovery superseded by a newer credential swap.");
+        try { return await this.attemptRecovery(ownerHex, current); }
+        catch (e) {
+          if (!(e instanceof RecoveryAttemptError) || !e.retryable) throw e;
+          lastError = e;
+        }
+      }
+      throw new Error(`Account recovery failed after ${MAX_RECOVERY_ATTEMPTS} attempts: ${errMsg(lastError)} Saved credentials were retained but may already be revoked; retry with a fresh challenge.`);
+    });
+    this.recoveryInFlight = { owner: ownerHex, promise };
+    void promise.finally(() => { if (this.recoveryInFlight?.promise === promise) this.recoveryInFlight = null; }).catch(() => {});
+    return promise;
+  }
+
+  private async attemptRecovery(ownerHex: string, current: () => boolean): Promise<{ owner: string; recoveryNonce: number; credentialStorage: "persistent" | "session" }> {
+    let metadata: Awaited<ReturnType<typeof boundedJson>>;
+    try { metadata = await boundedJson(this.base + `/v1/accounts/recovery/${encodeURIComponent(ownerHex)}`); }
+    catch { throw new RecoveryAttemptError("Recovery metadata request failed or timed out.", true); }
+    if (!metadata.ok) throw new RecoveryAttemptError(`Recovery metadata unavailable (${metadata.status}).`, metadata.status >= 500);
+    const m = metadata.value as Record<string, unknown> | null;
+    if (!m || typeof m.owner !== "string" || m.owner.toLowerCase() !== ownerHex ||
+        typeof m.authorizer !== "string" || !/^0x[0-9a-fA-F]{40}$/.test(m.authorizer) ||
+        !validGeneration(m.recoveryNonce) || m.recoveryNonce >= Number.MAX_SAFE_INTEGER) {
+      throw new RecoveryAttemptError("Gateway returned malformed recovery metadata.", false);
+    }
+    if (!sameScope(parseScope(this.base, m), this.scope)) throw new RecoveryAttemptError("Recovery belongs to a different deployment.", false);
+    if (!current()) throw new RecoveryAttemptError("Recovery superseded before signing.", false);
+    const digest = accountRecoveryDigest(BigInt(this.scope.chainId), this.scope.vault, strictHex(ownerHex, 32), BigInt(m.recoveryNonce));
+    let signature: string;
+    try { signature = await personalSign("0x" + bytesToHex(digest), m.authorizer); }
+    catch { throw new RecoveryAttemptError("Wallet refused the recovery signature.", false); }
+    // The wallet dialog can stay open while a newer credential is adopted.
+    if (!current()) throw new RecoveryAttemptError("Recovery superseded before submission.", false);
+    let response: Awaited<ReturnType<typeof boundedJson>>;
+    try {
+      response = await boundedJson(this.base + "/v1/accounts/recovery", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ owner: ownerHex, nonce: m.recoveryNonce, signature }),
+      });
+    } catch { throw new RecoveryAttemptError("Recovery outcome is unknown after a network error or timeout.", true); }
+    if (!response.ok) throw new RecoveryAttemptError(`Recovery rotation failed (${response.status}).`, response.status >= 500);
+    const out = response.value as Record<string, unknown> | null;
+    if (!out || typeof out.apiKey !== "string" || !/^0x[0-9a-fA-F]{64}$/.test(out.apiKey) ||
+        typeof out.owner !== "string" || out.owner.toLowerCase() !== ownerHex ||
+        !validGeneration(out.recoveryNonce) || out.recoveryNonce !== m.recoveryNonce + 1 || out.durability !== "confirmed") {
+      throw new RecoveryAttemptError("Gateway returned malformed or non-durable recovery result.", true);
+    }
+    if (!current()) throw new RecoveryAttemptError("Recovery superseded by a newer credential swap.", false);
+    const record = makeCredential(this.scope, out);
+    const persisted = await persistCredential(record, current, true);
+    if (!current()) throw new RecoveryAttemptError("Recovery superseded during credential storage.", false);
+    this.installCredential(record); // retain the confirmed key even if storage is unavailable
+    void this.refreshOwnState(); // a stalled data refresh must not swallow confirmed key delivery
+    return { owner: ownerHex, recoveryNonce: record.recoveryNonce, credentialStorage: persisted ? "persistent" : "session" };
   }
 
   /**

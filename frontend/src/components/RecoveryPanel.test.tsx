@@ -31,3 +31,13 @@ describe("RecoveryPanel A07", () => {
     expect(screen.queryByRole("button")).toBeNull();
   });
 });
+
+
+it("warns that confirmed recovery is session-only when browser persistence fails", async () => {
+  const owner = "0x" + "22".repeat(32);
+  injected.client = { recoverAccount: vi.fn(async () => ({ owner, recoveryNonce: 3, credentialStorage: "session" })) };
+  render(<RecoveryPanel />);
+  fireEvent.change(screen.getByLabelText(/account owner id/i), { target: { value: owner } });
+  fireEvent.click(screen.getByRole("button", { name: /sign & recover/i }));
+  expect(await screen.findByRole("status")).toHaveProperty("textContent", expect.stringMatching(/this tab only.*old saved key may no longer work/i));
+});

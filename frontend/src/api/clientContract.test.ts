@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import { installTestLocks } from "../testSupport/locks";
 //
 // SEC-025-E1 Task 4 — ONE shared contract fixture BOTH clients must satisfy.
 //
@@ -371,15 +372,16 @@ function installRealHarness(gw: GatewayModel) {
         text: async () => JSON.stringify(v),
       });
       if (path === "/api/state") return json(wireState);
+      if (path === "/v1/system/status") return json({ chainId: 4242, vault: "0x" + "3b".repeat(20) });
       if (path === "/v1/enclave/epoch") return json(signedEpoch());
       if (path === "/v1/accounts" && method === "POST") {
-        return json({ apiKey: ACCT_KEY, owner: OWNER_HEX, callerSigned: false });
+        return json({ apiKey: ACCT_KEY, owner: OWNER_HEX, callerSigned: false, recoveryNonce: 0, chainId: 4242, vault: "0x" + "3b".repeat(20) });
       }
       if (path === "/v1/accounts/me") {
         if (init?.headers?.["X-Api-Key"] !== ACCT_KEY) return json({ error: "unknown account" }, 401);
         return json({
           owner: OWNER_HEX, settledBalance: "50000000000", depositAddress: null,
-          callerSigned: false, nextWithdrawNonce: 1, rebindCounter: 0, chainId: 4242,
+          callerSigned: false, nextWithdrawNonce: 1, rebindCounter: 0, recoveryNonce: 0, chainId: 4242,
           vault: "0x" + "3b".repeat(20),
         });
       }
@@ -526,6 +528,7 @@ async function realDriver(): Promise<Driver & { dispose(): void }> {
 
 describe("shared client contract (SEC-025-E1 Task 4): one fixture, both clients", () => {
   beforeEach(() => {
+  installTestLocks();
     lastWsV1 = null;
   });
   afterEach(() => {

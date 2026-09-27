@@ -1,3 +1,7 @@
+> **27 Eylül 2026 doğrudan düzeltme adayı:** PR19 tabanlı kaynak güncellendi.
+> [Yeni rapor](audits/2026-09-27-direct-remediation.md) ve makine kanıtı,
+> eski S1/S2 tamamlanma iddialarını daraltır. Merge/deployment/release onayı yoktur.
+
 # Dark-perp / Arcora Perp: audit ve canlıya çıkış roadmap'i
 
 **Güncelleme:** 19 Eylül 2026. **Kod tabanı:** `main@b3372caef14ff847f57e949dc3ccf2df30759350`.
@@ -70,25 +74,29 @@ Aşağıdaki kutular **açıktır**. Bunlar doğrulanmış yeni açıklar listes
 
 ### S1. Recovery HTTP dayanıklılığı, yetki ve WS oturum iptali
 
-Başlangıç: `crates/gateway/src/main.rs`, `account_recovery.rs`, `snapshot.rs`, mevcut recovery ve deposit testleri.
+27 Eylül doğrudan incelemesi PR19'un erken snapshot yayını, ortak WS kilidi ve
+idle kapanış testinin eksik başarı ölçütünü yeniden üretti ve düzeltti. Önceki
+round-3 açıklamaları güncel kapanış kanıtı değildir. Ayrıntı ve kaynak-bağlı
+koşular: [doğrudan rapor](audits/2026-09-27-direct-remediation.md).
 
-- [x] Recovery imzasında owner, chain/vault domain'i, mevcut authorizer, nonce/replay ve nonce taşması; yanlış signer, rebind ve eşzamanlı recovery yolları incelendi. (2026-09-19 S1 PR: handler + Gw testleri; rapor `audits/2026-09-19-s1-recovery-ws.md`)
-- [x] HTTP başarı yanıtının ilgili recovery generation'ını kapsayan dayanıklı ACK'e bağlı olduğu gerçek handler testleriyle gösterildi. Writer yokluğu, kapalı/dolu kuyruk, disk hatası (stub writer false-ACK), timeout ve request iptali başarı/secret sızdırmıyor.
-- [x] Rotation sonrası ACK belirsizliği ve kayıp HTTP yanıtı için güvenli yeniden deneme tanımlandı (idempotent retry, aynı imzalı authorization → byte-identical key, nonce çift artmaz, yine ACK şartı). Bellek/disk ayrışması sessiz rollback/nonce sıfırlama ile örtülmüyor; restart `recovery_last`'i unutur. Eşzamanlı rotation ile superseded key teslimi ayrıca ele alındı.
-- [x] Eski API key ile önceden açılmış authenticated WebSocket oturumu rotation sonrasında özel veri alamıyor ve bağlantısı kapatılıyor (oturum auth anındaki `recovery_nonce`'a pin'leniyor, her özel event ve non-auth frame'de güncel nonce doğrulanıyor). Reconnect yolları ve ilgisiz oturumlar gerçek socket testleriyle doğrulandı.
-- [x] PR #12'nin pending permit/credited receipt taşıması, hesap/emir kimliği ve deposit prefix/replay özellikleri bozulmadı (ilgili testler değişiklik görmeden geçti; tek istisna: uygulanmış authorization'ın replay'inin artık idempotent retry sayılması — superseded nonce reddi korundu).
-
-**Bitiş kanıtı:** `docs/audits/2026-09-19-s1-recovery-ws.md` + `...-evidence.json`. Exact base `b60e537f...`; `cargo test -p gateway` 338 passed/0 failed/1 ignored; `cargo test --workspace --locked` ve `cargo clippy --workspace --all-targets --locked -- -D warnings` ve `cargo fmt --all --check` exit 0; aynı head CI sonucu S1 PR açıklamasında. Fiziksel crash kanıtı ayrıca S6'dadır.
+- [x] Queue reservation mutasyon öncesinde, snapshot yayını mutasyon sonrasında;
+  aynı hesap fence'i ACK/response boyunca tutulur. Gerçek dosya restore testinde
+  confirmed yeni key çalışır, eski key reddedilir.
+- [x] Idle/queued WS iptali, bounded send ve disk ACK bekleyen hesabın başka hesabın
+  özel event teslimini kilitlememesi regresyonla sınanır. Timeout kapanış sayılmaz.
+- [x] Kullanılmış imza reddi ve fresh-challenge retry; A01 key referans taşıması korunur.
+- [ ] Tam rebind/yetki matrisi, gerçek TCP backpressure stress ve fiziksel crash drill.
 
 ### S2. Frontend credential storage ve eşzamanlı hesap yenileme
 
-Başlangıç: `frontend/src/api/realClient.ts`, `wallet.ts`, `client.ts`, `RecoveryPanel.tsx` ve ilgili testler.
-
-- [ ] Credential'ın kalıcı/geçici saklanma politikası, XSS/CSP ve log/URL/telemetry sızıntısı, bozuk veya erişilemeyen storage ve owner/deployment scope'u incelendi. Bir storage türünü değiştirmek tek başına güvenlik çözümü sayılmadı.
-- [ ] `401`, `503`, `durability: unknown`, timeout, bozuk yanıt ve wallet reddi eski kullanılabilir credential'ı yanlışlıkla silmiyor veya başarısız recovery'yi başarılı göstermiyor.
-- [ ] Rotation öncesi başlayan account/register/refresh isteğinin geç yanıtı yeni credential veya hesap state'ini ezemiyor. Tekrarlı tıklama, çok sekme, hesap/ağ değişimi ve WS reconnect yarışları test edildi.
-- [ ] Owner/domain/nonce ve büyük tamsayıların Rust↔TypeScript wire uyumu doğrulandı. Recovery sonrası yanlış hesaba emir, bakiye veya receipt gösterilmiyor.
-- [ ] Gerçek frontend↔gateway yerel E2E ve sürüm uyumsuzluğu testleri tamamlandı; mock bileşen testi bunun yerine kullanılmadı.
+- [x] Deployment-scoped schema 2; owner, gateway URL, chainId/vault ve sunucu
+  recoveryNonce kontrolü. Unscoped eski kayıt otomatik gönderilmez/silinmez.
+- [x] Init/register/refresh ve eski socket callback yarışları; 401/503 durumunda
+  sessiz replacement account yok. Confirmed response key biçimi doğrulanır.
+- [x] Web Locks ile recovery/yazım sıralaması ve kontrollü çoklu istemci testleri.
+  Storage başarısızlığında confirmed key bellekte ve UI session-only uyarısı vardır.
+- [ ] Gerçek tarayıcı çok-sekme stres/UX doğrulaması, tam XSS/CSP/storage politikası
+  ve genel mutation/market yarış matrisi. Bunlar dar regresyonlarla kapanmış sayılmaz.
 
 ### S3. V8 snapshot extension ayrıştırması ve göç
 

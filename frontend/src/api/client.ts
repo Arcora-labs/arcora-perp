@@ -147,7 +147,7 @@ export interface DarkPerpClient {
   recover?(seedHex: string): Promise<RecoveredNote[]>;
 
   /** A07 live recovery: wallet-authorized rotation of a lost browser API credential. */
-  recoverAccount?(ownerHex: string): Promise<{ owner: string; recoveryNonce: number }>;
+  recoverAccount?(ownerHex: string): Promise<{ owner: string; recoveryNonce: number; credentialStorage?: "persistent" | "session" }>;
 
   /// Demo: close a position with a reduce-only market order. There is NO /v1
   /// equivalent yet — implementing close as a reduce-only /v1 order submission
