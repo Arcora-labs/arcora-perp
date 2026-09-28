@@ -21,6 +21,9 @@
 use perp_core::Digest;
 use std::process::Command;
 
+mod observation;
+use observation::{abi_bool, abi_u128, abi_u64, CanonicalRead};
+
 /// keccak256("Deposit(address,bytes32,uint256,uint64,bytes32)") — the vault's deposit
 /// log topic0 for the SEC-019 event `Deposit(address indexed from, bytes32 indexed
 /// ownerCommit, uint256 amount, uint64 id, bytes32 newTip)`. Recomputed for the new
@@ -44,7 +47,7 @@ const CAST_WALL_TIMEOUT_SECS: u64 = 90;
 #[derive(Clone)]
 pub struct L1 {
     pub rpc: String,
-    /// Optional independent read endpoint. Used only by settlement recovery, never
+    /// Optional independent read endpoint. Used by authoritative state readers, never
     /// for transaction submission or signing. A configured witness must agree;
     /// unavailability cannot silently downgrade the observation to one provider.
     rpc_witness: Option<String>,
@@ -175,7 +178,10 @@ impl crate::deposit_rpc::Rpc for SettlementReader<'_> {
         method: &str,
         params: Vec<serde_json::Value>,
     ) -> Result<serde_json::Value, String> {
-        if !matches!(method, "eth_chainId" | "eth_getBlockByNumber" | "eth_call") {
+        if !matches!(
+            method,
+            "eth_chainId" | "eth_getBlockByNumber" | "eth_call" | "eth_getCode" | "eth_getLogs"
+        ) {
             return Err("settlement observation: unsupported read method".into());
         }
         let mut args = vec![
@@ -203,99 +209,15 @@ fn settlement_observation_from(
     expected_chain: Option<u64>,
     settlement: &str,
 ) -> Result<(u64, String, u128), String> {
-    use serde_json::json;
-    use sha3::{Digest as _, Keccak256};
-
-    fn quantity(v: &serde_json::Value) -> Result<u64, String> {
-        v.as_str()
-            .and_then(|s| s.strip_prefix("0x"))
-            .filter(|s| !s.is_empty() && s.len() <= 16 && s.bytes().all(|b| b.is_ascii_hexdigit()))
-            .and_then(|s| u64::from_str_radix(s, 16).ok())
-            .ok_or_else(|| "settlement observation: invalid RPC quantity".into())
-    }
-    fn header(v: &serde_json::Value) -> Result<(u64, Digest), String> {
-        let height = quantity(&v["number"])?;
-        let hash = v["hash"]
-            .as_str()
-            .and_then(parse_bytes32)
-            .ok_or("settlement observation: missing/invalid block hash")?;
-        Ok((height, hash))
-    }
-    if let Some(witness) = witness {
-        let expected_chain = expected_chain
-            .filter(|n| *n > 0)
-            .ok_or("settlement observation: missing expected witness chain")?;
-        let primary_chain = quantity(&rpc.call("eth_chainId", vec![])?)?;
-        let witness_chain = quantity(&witness.call("eth_chainId", vec![])?)?;
-        if primary_chain != expected_chain || witness_chain != expected_chain {
-            return Err("settlement observation: RPC chain disagrees with startup domain".into());
-        }
-    }
-    let anchor = header(&rpc.call(
-        "eth_getBlockByNumber",
-        vec![json!("finalized"), json!(false)],
-    )?)?;
-    let historical = vec![json!(format!("0x{:x}", anchor.0)), json!(false)];
-    if let Some(witness) = witness {
-        let head = header(&witness.call(
-            "eth_getBlockByNumber",
-            vec![json!("finalized"), json!(false)],
-        )?)?;
-        if head.0 < anchor.0 {
-            return Err("settlement observation: witness has not finalized the anchor".into());
-        }
-        if (head.0 == anchor.0 && head != anchor)
-            || header(&witness.call("eth_getBlockByNumber", historical.clone())?)? != anchor
-        {
-            return Err("settlement observation: witness finalized anchor disagreement".into());
-        }
-    }
-    let pin = json!({"blockHash": crate::hex32(&anchor.1), "requireCanonical": true});
-    let word = |signature: &str| -> Result<Digest, String> {
-        let selector = Keccak256::digest(signature.as_bytes());
-        let params = vec![
-            json!({"to": settlement, "data": crate::hex0x(&selector[..4])}),
-            pin.clone(),
-        ];
-        let parse = |value: serde_json::Value| {
-            value
-                .as_str()
-                .and_then(parse_bytes32)
-                .ok_or_else(|| format!("settlement observation: invalid ABI word for {signature}"))
-        };
-        let primary_word = parse(rpc.call("eth_call", params.clone())?)?;
-        if let Some(witness) = witness {
-            if parse(witness.call("eth_call", params)?)? != primary_word {
-                return Err(format!(
-                    "settlement observation: witness disagrees on {signature}"
-                ));
-            }
-        }
-        Ok(primary_word)
-    };
-    let batch = word("batchCount()")?;
-    if batch[..24].iter().any(|b| *b != 0) {
-        return Err("settlement observation: batchCount overflows u64".into());
-    }
-    let root = word("currentStateRoot()")?;
-    let bond = word("sequencerBond()")?;
-    if bond[..16].iter().any(|b| *b != 0) {
-        return Err("settlement observation: sequencerBond overflows u128".into());
-    }
-    // A configured witness never falls back to a primary-only observation.
-    if header(&rpc.call("eth_getBlockByNumber", historical.clone())?)? != anchor {
-        return Err("settlement observation: canonical block changed or provider disagrees".into());
-    }
-    if let Some(witness) = witness {
-        if header(&witness.call("eth_getBlockByNumber", historical)?)? != anchor {
-            return Err("settlement observation: witness canonical block changed".into());
-        }
-    }
-    Ok((
-        u64::from_be_bytes(batch[24..].try_into().unwrap()),
-        crate::hex32(&root),
-        u128::from_be_bytes(bond[16..].try_into().unwrap()),
-    ))
+    let read = CanonicalRead::new(rpc, witness, expected_chain)?;
+    let batch = abi_u64(read.word(settlement, "batchCount()", None)?, "batchCount")?;
+    let root = read.word(settlement, "currentStateRoot()", None)?;
+    let bond = abi_u128(
+        read.word(settlement, "sequencerBond()", None)?,
+        "sequencerBond",
+    )?;
+    read.finish()?;
+    Ok((batch, crate::hex32(&root), bond))
 }
 
 impl L1 {
@@ -324,7 +246,7 @@ impl L1 {
     /// Configure from env. Requires `L1_SETTLEMENT` + `L1_SEQUENCER_KEY`; RPC defaults
     /// to Base Sepolia. `L1_USDC` + `L1_VAULT` enable the USDC bond, deposit
     /// confirmation, and withdrawal-claim pruning. `L1_RPC_WITNESS` optionally
-    /// requires a second endpoint for finalized settlement recovery observations.
+    /// requires a second endpoint for authoritative finalized state observations.
     pub fn from_env() -> Option<L1> {
         let settlement = std::env::var("L1_SETTLEMENT").ok()?;
         let key = std::env::var("L1_SEQUENCER_KEY").ok()?;
@@ -410,16 +332,23 @@ impl L1 {
         method: &str,
         params: &[serde_json::Value],
     ) -> Result<serde_json::Value, String> {
-        let mut args = vec![
-            "rpc".to_string(),
-            "--rpc-url".to_string(),
-            self.rpc.clone(),
-            method.to_string(),
-        ];
-        args.extend(params.iter().map(|v| v.to_string()));
-        let refs: Vec<&str> = args.iter().map(String::as_str).collect();
-        let out = self.cast(&refs)?;
-        serde_json::from_str(&out).map_err(|e| format!("RPC response JSON: {e}"))
+        let primary = SettlementReader {
+            l1: self,
+            endpoint: &self.rpc,
+            role: "primary",
+        };
+        let witness = self.rpc_witness.as_ref().map(|endpoint| SettlementReader {
+            l1: self,
+            endpoint,
+            role: "witness",
+        });
+        observation::deposit_read(
+            &primary,
+            witness.as_ref().map(|r| r as &dyn crate::deposit_rpc::Rpc),
+            self.witness_chain,
+            method,
+            params.to_vec(),
+        )
     }
 
     /// The confirmed transaction count of the sequencer address = its next unused nonce.
@@ -552,42 +481,65 @@ impl L1 {
         let _ = std::fs::remove_dir_all(&self._keystore.0);
     }
 
-    /// The on-chain `currentStateRoot` (the required `prev` for the next settle).
+    /// Observe related values in one finalized EIP-1898 snapshot. A configured
+    /// witness is mandatory for every read and both canonical hashes are rechecked
+    /// before any result escapes. Callback errors return no partial observation.
+    fn observe<T>(
+        &self,
+        f: impl FnOnce(&CanonicalRead<'_>) -> Result<T, String>,
+    ) -> Result<T, String> {
+        self.observe_at(observation::AnchorPolicy::Finalized, f)
+    }
+
+    fn observe_at<T>(
+        &self,
+        policy: observation::AnchorPolicy,
+        f: impl FnOnce(&CanonicalRead<'_>) -> Result<T, String>,
+    ) -> Result<T, String> {
+        let primary = SettlementReader {
+            l1: self,
+            endpoint: &self.rpc,
+            role: "primary",
+        };
+        let witness = self.rpc_witness.as_ref().map(|endpoint| SettlementReader {
+            l1: self,
+            endpoint,
+            role: "witness",
+        });
+        let read = CanonicalRead::with_policy(
+            &primary,
+            witness.as_ref().map(|r| r as &dyn crate::deposit_rpc::Rpc),
+            self.witness_chain,
+            policy,
+        )?;
+        let result = f(&read)?;
+        read.finish()?;
+        Ok(result)
+    }
+
+    /// The finalized state root, also used to verify snapshot continuity at boot.
     pub fn current_root(&self) -> Result<String, String> {
-        self.cast(&[
-            "call",
-            &self.settlement,
-            "currentStateRoot()(bytes32)",
-            "--rpc-url",
-            &self.rpc,
-        ])
+        self.observe(|r| {
+            r.word(&self.settlement, "currentStateRoot()", None)
+                .map(|w| crate::hex32(&w))
+        })
     }
-
-    fn read_u(&self, sig: &str) -> Result<u128, String> {
-        let s = self.cast(&["call", &self.settlement, sig, "--rpc-url", &self.rpc])?;
-        // cast may print "0" or "0 [0e0]" — take the leading integer token.
-        s.split_whitespace()
-            .next()
-            .unwrap_or("0")
-            .parse::<u128>()
-            .map_err(|e| format!("parse {sig}: {e}"))
-    }
-
     pub fn sequencer_bond(&self) -> Result<u128, String> {
-        self.read_u("sequencerBond()(uint256)")
-    }
-    pub fn required_bond(&self) -> Result<u128, String> {
-        self.read_u("requiredBond()(uint256)")
+        self.observe_at(observation::AnchorPolicy::Latest, |r| {
+            abi_u128(
+                r.word(&self.settlement, "sequencerBond()", None)?,
+                "sequencerBond",
+            )
+        })
     }
     pub fn batch_count(&self) -> Result<u64, String> {
-        self.read_u("batchCount()(uint256)")
-            .and_then(|v| u64::try_from(v).map_err(|_| "batchCount overflows u64".into()))
+        self.observe_at(observation::AnchorPolicy::Latest, |r| {
+            abi_u64(
+                r.word(&self.settlement, "batchCount()", None)?,
+                "batchCount",
+            )
+        })
     }
-
-    /// Recovery reads at one finalized, hash-pinned block. Failure to provide
-    /// finalized/EIP-1898 data is a HOLD, never a fallback to independent latest reads.
-    /// With `L1_RPC_WITNESS`, both endpoints must attest the same chain, finalized
-    /// anchor and recovery words. This policy does not cover other L1 readers.
     pub fn settlement_observation(&self) -> Result<(u64, String, u128), String> {
         let primary = SettlementReader {
             l1: self,
@@ -607,69 +559,32 @@ impl L1 {
         )
     }
 
-    // ── SEC-025-D: block-pinned reads for the trading gate ───────────────────────
-    //
-    // `finalSettle` advances `currentStateRoot` and `batchCount` identically to
-    // `settleBatch`, so neither alone excludes a wind-down. What excludes it is that
-    // `finalSettle` requires `closeOnly == true` and `closeOnly` is terminal on-chain —
-    // but that argument only holds when all three values are read AT ONE BLOCK. Three
-    // "latest" reads through a lagging or load-balanced RPC could observe different
-    // heights and silently defeat it, so every reader here takes the block as a
-    // REQUIRED parameter — a caller physically cannot forget the pinning — and all
-    // three go through one `pinned_call` choke point.
-
-    /// One block-pinned `cast call` against `addr`. The single choke point for the
-    /// gate's three reads, so none of them can individually drop the `--block` flag.
-    // A source-scan tripwire in main.rs pins every occurrence of this symbol: the
-    // real argv crosses the subprocess boundary where unit tests cannot follow, so
-    // a reader that built its own argv (silently dropping the pin) would leave every
-    // test green — the scan is what catches it.
-    fn pinned_call(&self, addr: &str, sig: &str, block: u64) -> Result<String, String> {
-        let mut a = pinned_call_args(addr, sig, block);
-        a.extend(["--rpc-url".into(), self.rpc.clone()]);
-        let refs: Vec<&str> = a.iter().map(String::as_str).collect();
-        self.cast(&refs)
+    /// Gate-opening terms share a canonical hash at the existing confirmation
+    /// depth. Both providers must have that depth; no finalized/latest fallback.
+    pub fn gate_observation(&self) -> Result<(u64, u64, Digest, bool), String> {
+        self.observe_at(
+            observation::AnchorPolicy::Confirmed(crate::trading_gate::GATE_OPEN_CONFIRMATIONS),
+            |r| {
+                Ok((
+                    r.height(),
+                    abi_u64(
+                        r.word(&self.settlement, "batchCount()", None)?,
+                        "batchCount",
+                    )?,
+                    r.word(&self.settlement, "currentStateRoot()", None)?,
+                    abi_bool(r.word(&self.settlement, "closeOnly()", None)?, "closeOnly")?,
+                ))
+            },
+        )
     }
 
-    /// `closeOnly` at ONE named block — the gateway's first `closeOnly` read path.
-    /// This is the term that distinguishes a wind-down `finalSettle` from a normal
-    /// `settleBatch` (the other two values move identically under both).
-    // Caller: `observe_gate_once` (main.rs), the gate's observation read.
-    pub fn close_only_at(&self, block: u64) -> Result<bool, String> {
-        let out = self.pinned_call(&self.settlement, "closeOnly()(bool)", block)?;
-        parse_close_only(&out).map_err(|e| format!("{e} (block {block})"))
-    }
-
-    /// `batchCount` at ONE named block. Parsed directly as u64 (not `read_u`'s
-    /// u128-then-truncate): an overflowing count errs — fail closed, never wrap.
-    // Caller: `observe_gate_once` (main.rs), the gate's observation read.
-    pub fn batch_count_at(&self, block: u64) -> Result<u64, String> {
-        let s = self.pinned_call(&self.settlement, "batchCount()(uint256)", block)?;
-        // cast may print "8" or "8 [8e0]" — take the leading integer token (see read_u).
-        s.split_whitespace()
-            .next()
-            .unwrap_or("")
-            .parse::<u64>()
-            .map_err(|e| format!("batchCount at block {block}: parse: {e}"))
-    }
-
-    /// `currentStateRoot` at ONE named block, as the `[u8; 32]` the gate classifier
-    /// compares against the root we settled (`current_root` returns the hex string the
-    /// status surface wants; the classifier must not depend on hex-casing quirks).
-    // Caller: `observe_gate_once` (main.rs), the gate's observation read.
-    pub fn current_root_at(&self, block: u64) -> Result<Digest, String> {
-        let s = self.pinned_call(&self.settlement, "currentStateRoot()(bytes32)", block)?;
-        parse_bytes32(&s).ok_or_else(|| format!("currentStateRoot at block {block}: bad bytes32"))
-    }
-
-    /// The current chain height — the gate's ONE discovery read that may ask "latest",
-    /// because its whole job is to pick the block the three pinned reads then name
-    /// (`observe_gate_once` rewinds it by `GATE_OPEN_CONFIRMATIONS` first). Delegates
-    /// to the challenge watcher's `block_number` — same read, and an alias that
-    /// drifted from it would mean two notions of "head".
-    // Caller: `observe_gate_once` (main.rs), the gate's observation read.
-    pub fn head_block(&self) -> Result<u64, String> {
-        self.block_number()
+    pub fn close_only_observation(&self) -> Result<(u64, bool), String> {
+        self.observe_at(observation::AnchorPolicy::Latest, |r| {
+            Ok((
+                r.height(),
+                abi_bool(r.word(&self.settlement, "closeOnly()", None)?, "closeOnly")?,
+            ))
+        })
     }
 
     /// The sequencer key's address (the `cast wallet` derivation; no key is printed).
@@ -690,7 +605,18 @@ impl L1 {
     /// USDC-denominated so the posted bond shares a unit with the 5%-of-TVL floor (Q1).
     pub fn ensure_bond(&self) -> Result<Option<String>, String> {
         let usdc = self.usdc.as_ref().ok_or("L1_USDC not set")?;
-        let req = self.required_bond()?;
+        let (req, have) = self.observe_at(observation::AnchorPolicy::Latest, |r| {
+            Ok((
+                abi_u128(
+                    r.word(&self.settlement, "requiredBond()", None)?,
+                    "requiredBond",
+                )?,
+                abi_u128(
+                    r.word(&self.settlement, "sequencerBond()", None)?,
+                    "sequencerBond",
+                )?,
+            ))
+        })?;
         // No TVL yet ⇒ no bond required ⇒ post nothing. Forcing a floor here made the
         // bridge re-`mint` every tick while the previous mint was still pending, colliding
         // on the same nonce ("replacement transaction underpriced") — spurious churn that
@@ -698,7 +624,6 @@ impl L1 {
         if req == 0 {
             return Ok(None);
         }
-        let have = self.sequencer_bond()?;
         // target a 2x-floor cushion so TVL growth between settles stays covered.
         let target = req.saturating_add(req);
         if have >= target {
@@ -728,58 +653,36 @@ impl L1 {
         Ok(Some(tx))
     }
 
-    /// Has the vault already paid out this withdrawal leaf? Used to prune claimed
-    /// leaves from the cumulative root (the prover-side invariant on the vault).
-    pub fn claimed(&self, leaf: &str) -> Result<bool, String> {
+    /// All candidate claims share one finalized canonical snapshot. Any malformed
+    /// bool, disagreement, transport error or final reorg rejects the whole set;
+    /// callers retain every candidate on error instead of pruning a partial result.
+    pub fn claimed_many(&self, leaves: &[Digest]) -> Result<Vec<Digest>, String> {
         let vault = self.vault.as_ref().ok_or("L1_VAULT not set")?;
-        let out = self.cast(&[
-            "call",
-            vault,
-            "claimed(bytes32)(bool)",
-            leaf,
-            "--rpc-url",
-            &self.rpc,
-        ])?;
-        Ok(out.trim() == "true")
+        self.observe(|r| {
+            let mut claimed = Vec::new();
+            for leaf in leaves {
+                if abi_bool(r.word(vault, "claimed(bytes32)", Some(*leaf))?, "claimed")? {
+                    claimed.push(*leaf);
+                }
+            }
+            Ok(claimed)
+        })
     }
 
-    /// The vault's total on-chain deposit count (`depositCount`, a public uint64) —
-    /// the boot-time deposit-posture check compares the gateway's consumed-deposit
-    /// counter against it (SEC-025-C follow-up). Errs when `L1_VAULT` is unset: an
-    /// L1-configured gateway without a vault is a misconfiguration, and the caller
-    /// must fail closed, not skip.
-    pub fn vault_deposit_count(&self) -> Result<u64, String> {
+    /// Boot deposit posture: count and the consumed prefix tip MUST come from the
+    /// same finalized block, with a canonical recheck after both ABI words.
+    pub fn vault_deposit_observation(&self, consumed_count: u64) -> Result<(u64, String), String> {
         let vault = self.vault.as_ref().ok_or("L1_VAULT not set")?;
-        let s = self.cast(&[
-            "call",
-            vault,
-            "depositCount()(uint64)",
-            "--rpc-url",
-            &self.rpc,
-        ])?;
-        // cast may print "7" or "7 [7e0]" — take the leading integer token (see read_u).
-        s.split_whitespace()
-            .next()
-            .unwrap_or("0")
-            .parse::<u64>()
-            .map_err(|e| format!("parse depositCount: {e}"))
-    }
-
-    /// The vault's recorded deposit-chain prefix tip after its first `n` deposits
-    /// (`depositTipAt[n]`, a public mapping; `depositTipAt[0]` is never written — the
-    /// mapping default `bytes32(0)` IS the genesis tip, which is exactly what an
-    /// honest fresh gateway's `[0u8; 32]` fold compares equal to). Errs when
-    /// `L1_VAULT` is unset, same as `vault_deposit_count`.
-    pub fn vault_deposit_tip_at(&self, n: u64) -> Result<String, String> {
-        let vault = self.vault.as_ref().ok_or("L1_VAULT not set")?;
-        self.cast(&[
-            "call",
-            vault,
-            "depositTipAt(uint64)(bytes32)",
-            &n.to_string(),
-            "--rpc-url",
-            &self.rpc,
-        ])
+        self.observe(|r| {
+            Ok((
+                abi_u64(r.word(vault, "depositCount()", None)?, "depositCount")?,
+                crate::hex32(&r.word(
+                    vault,
+                    "depositTipAt(uint64)",
+                    Some(observation::u64_word(consumed_count)),
+                )?),
+            ))
+        })
     }
 
     /// Slice 3b-2a / SEC-025-B: submit the gateway-derived roots + the proof through the
@@ -799,96 +702,59 @@ impl L1 {
 
     // ── inclusion-challenge answering (audit DP-004) ─────────────────────────────
 
-    /// The current block number — the answering loop starts watching from here, skipping history.
-    pub fn block_number(&self) -> Result<u64, String> {
-        self.cast(&["block-number", "--rpc-url", &self.rpc])?
-            .split_whitespace()
-            .next()
-            .unwrap_or("")
-            .parse::<u64>()
-            .map_err(|e| format!("block-number parse: {e}"))
+    /// Latest canonical head and immutable challenge window read as one snapshot.
+    /// The watcher cannot substitute a guessed window after a read failure.
+    pub fn challenge_scan_start_observation(&self) -> Result<(u64, u64), String> {
+        self.observe_at(observation::AnchorPolicy::Latest, |r| {
+            Ok((
+                r.height(),
+                abi_u64(
+                    r.word(&self.settlement, "challengeWindowBlocks()", None)?,
+                    "challengeWindowBlocks",
+                )?,
+            ))
+        })
     }
 
-    /// The on-chain inclusion-challenge window in blocks (`challengeWindowBlocks`, a
-    /// public immutable). A challenge is answerable only within this many blocks of
-    /// being raised, so the watcher rewinds this far on boot to catch challenges raised
-    /// while the gateway was down (audit #8).
-    pub fn challenge_window_blocks(&self) -> Result<u64, String> {
-        self.cast(&[
-            "call",
-            &self.settlement,
-            "challengeWindowBlocks()(uint256)",
-            "--rpc-url",
-            &self.rpc,
-        ])?
-        // cast may render a uint as "300" or "300 [3e2]"; take the leading integer.
-        .split_whitespace()
-        .next()
-        .unwrap_or("")
-        .parse::<u64>()
-        .map_err(|e| format!("challengeWindowBlocks parse: {e}"))
+    /// Deadline-sensitive challenge discovery uses a bounded numeric range ending
+    /// at a hash shared by both providers. Empty pages still require agreement and
+    /// canonical rechecks. The cursor advances only through the checked page.
+    pub fn fetch_challenges(
+        &self,
+        from_block: u64,
+    ) -> Result<(Vec<String>, u64, Option<Digest>), String> {
+        self.observe_at(observation::AnchorPolicy::Latest, |r| {
+            r.challenges(&self.settlement, from_block)
+        })
     }
 
-    /// Order hashes with an `InclusionChallenged` log in `[from_block, latest]`, plus the
-    /// block to resume from next. Bounds the scan to the current chain tip and ALWAYS
-    /// advances the cursor to `latest + 1` — even when NO log is found — so the scanned
-    /// range stays small (≈ one settle interval of blocks) instead of growing without
-    /// bound. The previous version left the cursor at `from_block` whenever a scan found
-    /// no challenges, so with zero challenges the `from_block → latest` range grew every
-    /// cycle until it tripped the RPC's `getLogs` block-range cap and wedged the scan
-    /// (spamming "query exceeds max block range"). The order hash is the first indexed topic.
-    pub fn fetch_challenges(&self, from_block: u64) -> Result<(Vec<String>, u64), String> {
-        let latest = self.block_number()?;
-        if from_block > latest {
-            return Ok((Vec::new(), from_block)); // no new blocks since the last scan
-        }
-        let from = from_block.to_string();
-        let to = latest.to_string();
-        let out = self.cast(&[
-            "logs",
-            "--from-block",
-            &from,
-            "--to-block",
-            &to,
-            "--address",
-            &self.settlement,
-            "InclusionChallenged(bytes32,address,uint256)",
-            "--rpc-url",
-            &self.rpc,
-            "--json",
-        ])?;
-        let logs: serde_json::Value =
-            serde_json::from_str(&out).map_err(|e| format!("logs json: {e}"))?;
-        let mut hashes = Vec::new();
-        if let Some(arr) = logs.as_array() {
-            for log in arr {
-                if let Some(t1) = log
-                    .get("topics")
-                    .and_then(|t| t.as_array())
-                    .and_then(|t| t.get(1))
-                    .and_then(|t| t.as_str())
-                {
-                    hashes.push(t1.to_string());
-                }
+    /// Validate the prior scan anchor before choosing a later page. Both RPCs
+    /// agreeing on a replacement returns false; provider disagreement remains Err.
+    pub fn challenge_scan_anchor_matches(&self, height: u64, hash: Digest) -> Result<bool, String> {
+        self.observe_at(observation::AnchorPolicy::Latest, |r| {
+            r.anchor_matches(height, hash)
+        })
+    }
+
+    /// A challenge is answerable only while open and at/before its deadline.
+    /// Expired open entries remain on-chain until slashed; retrying their answer
+    /// would always revert and could starve later, still-live challenges.
+    pub fn challenge_answerable(&self, order_hash: &str) -> Result<bool, String> {
+        let order_hash = parse_bytes32(order_hash).ok_or("invalid challenge hash")?;
+        self.observe_at(observation::AnchorPolicy::Latest, |r| {
+            let words = r.words(&self.settlement, "challenges(bytes32)", Some(order_hash), 6)?;
+            if words[0][..12].iter().any(|b| *b != 0) {
+                return Err("settlement observation: malformed challenge address".into());
             }
-        }
-        // Advance to the scanned tip regardless of whether a log was found, so the next
-        // scan queries only new blocks (bounded range) instead of re-scanning from `from`.
-        Ok((hashes, latest + 1))
-    }
-
-    /// Is this order's inclusion challenge still open (not yet answered or slashed)? The
-    /// `Challenge` tuple's last field is `open`.
-    pub fn challenge_open(&self, order_hash: &str) -> Result<bool, String> {
-        let out = self.cast(&[
-            "call",
-            &self.settlement,
-            "challenges(bytes32)(address,uint64,uint256,uint256,uint256,bool)",
-            order_hash,
-            "--rpc-url",
-            &self.rpc,
-        ])?;
-        Ok(out.split_whitespace().last() == Some("true"))
+            abi_u64(words[1], "challenge batch hint")?;
+            let opened = abi_u64(words[2], "challenge opened block")?;
+            let deadline = abi_u64(words[3], "challenge deadline")?;
+            let open = abi_bool(words[5], "challenge open")?;
+            if open && (opened > r.height() || deadline < opened) {
+                return Err("settlement observation: impossible challenge timing".into());
+            }
+            Ok(open && r.height() <= deadline)
+        })
     }
 
     /// Answer an inclusion challenge: prove the order is in this batch's ordered root (matched,
@@ -993,33 +859,6 @@ fn send_args(
     }
     a.extend(["--rpc-url".into(), rpc.into(), "--json".into()]);
     a
-}
-
-/// The argv for a **block-pinned** `cast call` (`--rpc-url` is appended by
-/// `pinned_call`, which owns the transport). Pure (no subprocess, no `&self`) so the
-/// pinning is unit-testable, mirroring `send_args`: the block is a required `u64`
-/// parameter, never an `Option` — a `None`-means-latest arm would let one forgetful
-/// caller silently unpin the three-way read the gate's safety argument needs.
-fn pinned_call_args(addr: &str, sig: &str, block: u64) -> Vec<String> {
-    vec![
-        "call".into(),
-        addr.into(),
-        sig.into(),
-        "--block".into(),
-        block.to_string(),
-    ]
-}
-
-/// Strict parse of `cast call … (bool)` output for `closeOnly`. `false` is the
-/// PERMISSIVE answer — it is the value that lets the gate open — so unexpected output
-/// must be an error the caller treats as Inconclusive, never a silent `false` (the
-/// lenient `claimed`-style `out == "true"` would read garbage as "not close-only").
-fn parse_close_only(out: &str) -> Result<bool, String> {
-    match out.trim() {
-        "true" => Ok(true),
-        "false" => Ok(false),
-        other => Err(format!("closeOnly: unexpected cast output {other:?}")),
-    }
 }
 
 /// A 32-byte value as `0x`+64 hex, for cast calldata.
@@ -1511,58 +1350,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn a_pinned_read_names_its_block_and_an_unpinned_one_cannot_be_confused_for_it() {
-        // The whole safety argument is that the three reads see ONE block. Three "latest"
-        // calls through a lagging or load-balanced RPC could observe different heights and
-        // defeat it, and that failure is invisible at runtime — so pin the flag here.
-        let args = pinned_call_args("0xVAULT", "closeOnly()(bool)", 1234);
-        assert!(
-            args.windows(2).any(|w| w[0] == "--block" && w[1] == "1234"),
-            "a pinned read must pass --block: {args:?}"
-        );
-    }
-
-    // SEC-025-D: pin the WHOLE argv, not just the flag's presence — `cast call` takes
-    // the target and signature positionally, so a transposition (or a stray extra
-    // argument cast would read as calldata) only fails at runtime, on the one
-    // unrepeatable opening observation. `--rpc-url` is deliberately absent: transport
-    // belongs to `pinned_call`, and this builder must add nothing cast could misread.
-    #[test]
-    fn the_pinned_argv_is_exactly_call_addr_sig_block() {
-        assert_eq!(
-            pinned_call_args("0xSETTLEMENT", "batchCount()(uint256)", 42),
-            [
-                "call",
-                "0xSETTLEMENT",
-                "batchCount()(uint256)",
-                "--block",
-                "42"
-            ]
-        );
-    }
-
-    // SEC-025-D: `closeOnly` output must parse STRICTLY. `false` is the permissive
-    // answer (it lets the gate open), so garbage must become an Err the caller holds
-    // as Inconclusive — a lenient `out == "true"` parse would read an RPC hiccup as
-    // "not close-only" and could open the gate on a wound-down chain.
-    #[test]
-    fn close_only_parses_strictly_and_never_defaults_to_the_permissive_answer() {
-        assert_eq!(parse_close_only("true"), Ok(true));
-        assert_eq!(parse_close_only("false"), Ok(false));
-        assert_eq!(
-            parse_close_only(" true\n"),
-            Ok(true),
-            "cast output is trimmed"
-        );
-        for garbage in ["", "True", "0x1", "revert: whatever", "false true"] {
-            assert!(
-                parse_close_only(garbage).is_err(),
-                "{garbage:?} must be an error, not a silent bool"
-            );
-        }
-    }
-
     // audit DP-007: the mock-proof bridge may only settle against testnets; real-value
     // chains are refused unless the operator explicitly opts into the unsound verifier.
     #[test]
@@ -1788,3 +1575,6 @@ mod tests {
 
 #[cfg(test)]
 mod witness_tests;
+
+#[cfg(test)]
+mod state_read_tests;

@@ -1,0 +1,124 @@
+{
+  "base_commit": "e267a9f71d5ea65ed88ed458d4af5d8efd185e63",
+  "started_utc": "2026-09-28T17:10:41.127256+00:00",
+  "source_before": {
+    "Cargo.toml": "e3144a0ae3447244776e65b04cfff39267c238e410c2d9abf20b53e6b837bbfa",
+    "Cargo.lock": "e254915d19239a8ee90dfe04e2ad3799ffd848002f0024e3cfdc5ad92760587f",
+    "crates/gateway/Cargo.toml": "757c6b78726e9d54bb86141d6461dd477002fa6ee8cb292a292e4bcb15a8ec6a",
+    "crates/gateway/src/l1.rs": "992dedb1620e0fcfaa8bdc3304d9e62794935e0e849364f3edeb3a9f0970b63f",
+    "crates/gateway/src/l1/observation.rs": "34150730f3adfed720ee39a03e2f55eb7cf19e40b0efd9bc58fa6f10e5d87c4f",
+    "crates/gateway/src/l1/state_read_tests.rs": "91781e1f15fc57bf6a2ebdd2faad5505e2815425c29b06059e1166bd2c53a017",
+    "crates/gateway/src/l1/witness_tests.rs": "29046d542c3cb50440c85964122b9850dcbdfe89ad9e0ea197326cea427cde02",
+    "crates/gateway/src/main.rs": "a7ef6ca622bf26d57bd2d69d46613c1ec8fbba497239486db45f65780cc2b93b",
+    "crates/gateway/src/trading_gate.rs": "e98f26a488e5023ef7bdd868c9998ba51a88c1cabbf14a779be73809ec1878a8",
+    "crates/gateway/src/deposit_rpc.rs": "202af1698c912b3555677704ca5fd20c3294c0419b838b57525101da3fa4f23c",
+    "crates/gateway/src/challenge_scan.rs": "3cb55b290da98f6691df74e89effffaee692428229104e04a701df502bbfb690",
+    "docs/L1_RPC_WITNESS.md": "c19fdf3d38838eece5c8ac9a235e503471f49d4ea16635012df0cf4098fe754e"
+  },
+  "environment": {
+    "cargo": "cargo 1.95.0 (f2d3ce0bd 2026-03-21) (Homebrew)",
+    "rustc": "rustc 1.95.0 (59807616e 2026-04-14) (Homebrew)",
+    "cast": "cast Version: 1.7.2-nightly\nCommit SHA: dea99c55914d010b22d3f5532fca180a8ecafda1\nBuild Timestamp: 2026-06-05T07:27:50.230262000Z (1780644470)\nBuild Profile: dist"
+  },
+  "checks": [
+    {
+      "name": "l1-unit-final",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "gateway",
+        "l1::",
+        "--",
+        "--nocapture"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 7.844,
+      "summary": "test result: ok. 31 passed; 0 failed; 7 ignored",
+      "log": "l1-unit-final.log",
+      "sha256": "9d28551fec4f721574042ba5077afbea71239a03cf7b0359aba51c8589f3b755",
+      "passed": true
+    },
+    {
+      "name": "challenge-scan-final",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "gateway",
+        "challenge_scan::",
+        "--",
+        "--nocapture"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 0.234,
+      "summary": "test result: ok. 6 passed; 0 failed; 0 ignored",
+      "log": "challenge-scan-final.log",
+      "sha256": "15c0e73ea7101b22fbae6bbe7a36ae09a7d0aa77355897fc6ac3dc05f422bd13",
+      "passed": true
+    },
+    {
+      "name": "native-witness-final",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "gateway",
+        "runtime_witness_native_cast",
+        "--",
+        "--ignored",
+        "--nocapture"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 5.857,
+      "summary": "test result: ok. 2 passed; 0 failed; 0 ignored",
+      "log": "native-witness-final.log",
+      "sha256": "704879afa25b997d49b922308cd6f246f7e2017778b5e17f07aec4882bed778e",
+      "passed": true
+    },
+    {
+      "name": "native-state-final",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "gateway",
+        "runtime_state_native_cast",
+        "--",
+        "--ignored",
+        "--nocapture"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 12.041,
+      "summary": "test result: ok. 5 passed; 0 failed; 0 ignored",
+      "log": "native-state-final.log",
+      "sha256": "deb000dc2d621baac86f46e7f26a5b469343ae122a72bd0be167d9f675abb356",
+      "passed": true
+    }
+  ],
+  "limits": [
+    "Loopback RPC fixtures, no live provider/deployment/chain-write evidence.",
+    "No real proof or full-funds original S6-03 closure."
+  ],
+  "source_after": {
+    "Cargo.toml": "e3144a0ae3447244776e65b04cfff39267c238e410c2d9abf20b53e6b837bbfa",
+    "Cargo.lock": "e254915d19239a8ee90dfe04e2ad3799ffd848002f0024e3cfdc5ad92760587f",
+    "crates/gateway/Cargo.toml": "757c6b78726e9d54bb86141d6461dd477002fa6ee8cb292a292e4bcb15a8ec6a",
+    "crates/gateway/src/l1.rs": "992dedb1620e0fcfaa8bdc3304d9e62794935e0e849364f3edeb3a9f0970b63f",
+    "crates/gateway/src/l1/observation.rs": "34150730f3adfed720ee39a03e2f55eb7cf19e40b0efd9bc58fa6f10e5d87c4f",
+    "crates/gateway/src/l1/state_read_tests.rs": "91781e1f15fc57bf6a2ebdd2faad5505e2815425c29b06059e1166bd2c53a017",
+    "crates/gateway/src/l1/witness_tests.rs": "29046d542c3cb50440c85964122b9850dcbdfe89ad9e0ea197326cea427cde02",
+    "crates/gateway/src/main.rs": "a7ef6ca622bf26d57bd2d69d46613c1ec8fbba497239486db45f65780cc2b93b",
+    "crates/gateway/src/trading_gate.rs": "e98f26a488e5023ef7bdd868c9998ba51a88c1cabbf14a779be73809ec1878a8",
+    "crates/gateway/src/deposit_rpc.rs": "202af1698c912b3555677704ca5fd20c3294c0419b838b57525101da3fa4f23c",
+    "crates/gateway/src/challenge_scan.rs": "3cb55b290da98f6691df74e89effffaee692428229104e04a701df502bbfb690",
+    "docs/L1_RPC_WITNESS.md": "c19fdf3d38838eece5c8ac9a235e503471f49d4ea16635012df0cf4098fe754e"
+  },
+  "source_unchanged": true,
+  "passed": true,
+  "finished_utc": "2026-09-28T17:11:07.253918+00:00"
+}

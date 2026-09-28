@@ -1,0 +1,18 @@
+    Blocking waiting for file lock on artifact directory
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.29s
+     Running unittests src/main.rs (target/debug/deps/gateway-61fe52f6f92c0e7c)
+
+running 5 tests
+test l1::state_read_tests::runtime_state_native_cast_deposit_adapter_checks_secondary_code_logs_and_words ... ok
+test l1::state_read_tests::runtime_state_native_cast_prior_page_reorg_and_challenge_deadline_boundaries ... ok
+test l1::state_read_tests::runtime_state_native_cast_challenge_discovery_requires_matching_canonical_logs ... ok
+test l1::state_read_tests::runtime_state_native_cast_gate_vault_claims_terminal_and_bond_positive ... ok
+[gate] pinned observation read failed (settlement observation: invalid ABI bool for closeOnly) — inconclusive, not resolved
+[gate] pinned observation read failed (settlement observation: witness has not finalized the anchor or lacks required confirmations) — inconclusive, not resolved
+[gate] pinned observation read failed (settlement observation: witness canonical block changed) — inconclusive, not resolved
+[gate] pinned observation read failed (settlement observation: witness disagrees on closeOnly()) — inconclusive, not resolved
+[gate] pinned observation read failed (settlement observation: witness eth_call failed) — inconclusive, not resolved
+test l1::state_read_tests::runtime_state_native_cast_refusals_are_all_or_nothing_and_redacted ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 437 filtered out; finished in 8.72s
+

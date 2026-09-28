@@ -9,13 +9,20 @@ use std::sync::{
     Arc, Mutex,
 };
 
-const SETTLEMENT: &str = "0x00000000000000000000000000000000000000aa";
-const SECRET: &str = "SYNTHETIC_RPC_CREDENTIAL_MUST_NOT_ESCAPE";
+pub(super) const SETTLEMENT: &str = "0x00000000000000000000000000000000000000aa";
+pub(super) const SECRET: &str = "SYNTHETIC_RPC_CREDENTIAL_MUST_NOT_ESCAPE";
 #[derive(Clone, Copy, Debug, Default)]
-enum Fault {
+pub(super) enum Fault {
     #[default]
     None,
     Chain,
+    LaggingHead,
+    Bool,
+    Overflow,
+    Tuple,
+    Log(usize),
+    ForkWorld,
+    Deadline(u8),
     Lagging,
     FinalizedHash,
     AnchorHash,
@@ -25,12 +32,12 @@ enum Fault {
     MalformedWord,
     Failure(usize),
 }
-struct Fixture {
+pub(super) struct Fixture {
     fault: Fault,
-    calls: Mutex<Vec<(String, Vec<Value>)>>,
+    pub(super) calls: Mutex<Vec<(String, Vec<Value>)>>,
 }
 impl Fixture {
-    fn new(fault: Fault) -> Self {
+    pub(super) fn new(fault: Fault) -> Self {
         Self {
             fault,
             calls: Mutex::new(vec![]),
@@ -52,20 +59,27 @@ impl Rpc for Fixture {
             })),
             "eth_getBlockByNumber" => {
                 let finalized = params[0] == json!("finalized");
-                if !finalized {
-                    assert_eq!(params, vec![json!("0x10"), json!(false)]);
+                let latest = params[0] == json!("latest");
+                assert_eq!(params[1], json!(false));
+                if !finalized && !latest {
+                    assert!(params[0] == json!("0x10") || params[0] == json!("0x1c"));
                 }
                 let historical_reads = calls
                     .iter()
-                    .filter(|(m, p)| m == method && p[0] != json!("finalized"))
+                    .filter(|(m, p)| {
+                        m == method && p[0] != json!("finalized") && p[0] != json!("latest")
+                    })
                     .count();
-                let hash = if matches!(self.fault, Fault::FinalizedHash) && finalized
+                let hash = if matches!(self.fault, Fault::ForkWorld)
+                    || matches!(self.fault, Fault::FinalizedHash) && finalized
                     || matches!(self.fault, Fault::AnchorHash) && !finalized
                     || matches!(self.fault, Fault::CanonicalAfter)
                         && !finalized
                         && historical_reads >= 2
                 {
                     [8; 32]
+                } else if latest || params[0] == json!("0x1c") {
+                    [10; 32]
                 } else {
                     [9; 32]
                 };
@@ -73,6 +87,10 @@ impl Rpc for Fixture {
                     "0xf"
                 } else if matches!(self.fault, Fault::WrongHeight) && !finalized {
                     "0x11"
+                } else if latest && matches!(self.fault, Fault::LaggingHead) {
+                    "0x1b"
+                } else if latest || params[0] == json!("0x1c") {
+                    "0x1c"
                 } else {
                     "0x10"
                 };
@@ -81,32 +99,148 @@ impl Rpc for Fixture {
             "eth_call" => {
                 use sha3::{Digest as _, Keccak256};
                 assert_eq!(params[0]["to"], json!(SETTLEMENT));
+                let last_tag = &calls
+                    .iter()
+                    .rev()
+                    .find(|(m, _)| m == "eth_getBlockByNumber")
+                    .unwrap()
+                    .1[0];
+                let expected_hash = if matches!(self.fault, Fault::ForkWorld) {
+                    [8; 32]
+                } else if *last_tag == json!("latest") || *last_tag == json!("0x1c") {
+                    [10; 32]
+                } else {
+                    [9; 32]
+                };
                 assert_eq!(
                     params[1],
-                    json!({"blockHash": crate::hex32(&[9;32]), "requireCanonical": true})
+                    json!({"blockHash":crate::hex32(&expected_hash),"requireCanonical":true})
                 );
                 let words = [
                     ("batchCount()", 6),
                     ("currentStateRoot()", 3),
                     ("sequencerBond()", 77),
+                    ("closeOnly()", 0),
+                    ("depositCount()", 7),
+                    ("depositTipAt(uint64)", 4),
+                    ("claimed(bytes32)", 1),
+                    ("requiredBond()", 30),
+                    ("challengeWindowBlocks()", 200),
+                    ("challenges(bytes32)", 1),
                 ];
-                let (index, (_, value)) = words
+                let data = params[0]["data"].as_str().unwrap();
+                let (index, (signature, value)) = words
                     .iter()
                     .enumerate()
                     .find(|(_, (signature, _))| {
-                        params[0]["data"]
-                            == json!(crate::hex0x(&Keccak256::digest(signature.as_bytes())[..4]))
+                        data.starts_with(&crate::hex0x(
+                            &Keccak256::digest(signature.as_bytes())[..4],
+                        ))
                     })
-                    .expect("only the three recovery getters may be sent");
+                    .expect("known state getter");
+                assert_eq!(data.len(), if [5, 6, 9].contains(&index) { 74 } else { 10 });
+                if index == 5 {
+                    assert_eq!(&data[10..], &crate::hex32(&observation::u64_word(5))[2..]);
+                }
                 if matches!(self.fault, Fault::MalformedWord) {
                     return Ok(json!("0xbad"));
                 }
-                let mut word = if index == 1 { [*value; 32] } else { [0; 32] };
+                let mut word = if index == 1 || index == 5 {
+                    [*value; 32]
+                } else {
+                    [0; 32]
+                };
                 word[31] = *value;
+                if index == 6 && data.ends_with("02") {
+                    word[31] = 0;
+                }
                 if matches!(self.fault, Fault::Word(n) if n == index) {
                     word[31] += 1;
                 }
+                if matches!(self.fault, Fault::Bool) && [3, 6, 9].contains(&index) {
+                    word[31] = 2;
+                }
+                if matches!(self.fault, Fault::Overflow) {
+                    word[0] = 1;
+                }
+                if index == 9 {
+                    let mut tuple = vec![0; 192];
+                    tuple[63] = 16;
+                    tuple[95] = 16;
+                    tuple[127] = match self.fault {
+                        Fault::Deadline(n) => n,
+                        _ => 200,
+                    };
+                    tuple[160..].copy_from_slice(&word);
+                    if matches!(self.fault, Fault::Tuple) {
+                        tuple.pop();
+                    }
+                    return Ok(json!(crate::hex0x(&tuple)));
+                }
+                let _ = signature;
                 Ok(json!(crate::hex32(&word)))
+            }
+            "eth_getCode" => {
+                assert_eq!(
+                    params[1],
+                    json!({"blockHash":crate::hex32(&[9;32]),"requireCanonical":true})
+                );
+                Ok(json!(if matches!(self.fault, Fault::Word(10)) {
+                    "0x01"
+                } else {
+                    "0x"
+                }))
+            }
+            "eth_getLogs" => {
+                if params[0].get("blockHash").is_some() {
+                    assert_eq!(params[0]["blockHash"], json!(crate::hex32(&[9; 32])));
+                    return Ok(if matches!(self.fault, Fault::Word(11)) {
+                        json!([{"removed":true}])
+                    } else {
+                        json!([])
+                    });
+                }
+                use sha3::{Digest as _, Keccak256};
+                assert_eq!(params[0]["fromBlock"], json!("0x10"));
+                assert_eq!(params[0]["toBlock"], json!("0x1c"));
+                let topic = crate::hex0x(&Keccak256::digest(
+                    b"InclusionChallenged(bytes32,address,uint256)",
+                ));
+                assert_eq!(params[0]["topics"], json!([topic]));
+                assert_eq!(params[0]["address"], json!(SETTLEMENT));
+                if matches!(self.fault, Fault::Log(0)) {
+                    return Ok(json!([]));
+                }
+                let mut event = json!({"address":SETTLEMENT,"removed":false,"blockNumber":"0x10","blockHash":crate::hex32(&[9;32]),"transactionHash":crate::hex32(&[7;32]),"transactionIndex":"0x0","logIndex":"0x1","topics":[topic,crate::hex32(&[5;32]),crate::hex32(&observation::u64_word(1))],"data":crate::hex32(&observation::u64_word(200))});
+                match self.fault {
+                    Fault::ForkWorld => {
+                        event["blockHash"] = json!(crate::hex32(&[8; 32]));
+                        event["topics"][1] = json!(crate::hex32(&[6; 32]));
+                    }
+                    Fault::Log(1) => event["removed"] = json!(true),
+                    Fault::Log(2) => {
+                        event["address"] = json!("0x00000000000000000000000000000000000000bb")
+                    }
+                    Fault::Log(3) => event["topics"][0] = json!(crate::hex32(&[6; 32])),
+                    Fault::Log(4) => event["blockHash"] = json!(crate::hex32(&[8; 32])),
+                    Fault::Log(5) => event["blockNumber"] = json!("0xf"),
+                    Fault::Log(6) => event["data"] = json!("0xbad"),
+                    Fault::Log(7) => return Ok(json!([event, event])),
+                    Fault::Log(8) => {
+                        event["address"] =
+                            json!(format!("0x{}{}", "00".repeat(12), &SETTLEMENT[2..]))
+                    }
+                    Fault::Log(9) => {
+                        event["data"] = json!(crate::hex32(&observation::u64_word(16)))
+                    }
+                    Fault::Log(10) => {
+                        let mut duplicate = event.clone();
+                        duplicate["transactionIndex"] = json!("0x1");
+                        return Ok(json!([event, duplicate]));
+                    }
+                    _ => {}
+                }
+                Ok(json!([event]))
             }
             _ => panic!("non-read method reached fixture: {method}"),
         }
@@ -292,14 +426,14 @@ fn witness_transport_refuses_mutation_methods_before_spawning_cast() {
     );
 }
 
-struct Server {
-    url: String,
-    fixture: Arc<Fixture>,
+pub(super) struct Server {
+    pub(super) url: String,
+    pub(super) fixture: Arc<Fixture>,
     stop: Arc<AtomicBool>,
     thread: Option<std::thread::JoinHandle<()>>,
 }
 impl Server {
-    fn start(fault: Fault) -> Self {
+    pub(super) fn start(fault: Fault) -> Self {
         use std::io::{Read, Write};
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         listener.set_nonblocking(true).unwrap();

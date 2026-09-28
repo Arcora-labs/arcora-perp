@@ -1,0 +1,47 @@
+    Blocking waiting for file lock on build directory
+    Checking gateway v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/gateway)
+error[E0425]: cannot find function `parse_addr20` in module `super`
+    --> crates/gateway/src/l1/observation.rs:203:29
+     |
+ 203 |         let target = super::parse_addr20(settlement)
+     |                             ^^^^^^^^^^^^ not found in `super`
+     |
+note: found an item that was configured out
+    --> crates/gateway/src/l1.rs:1035:4
+     |
+1034 | #[cfg(test)]
+     |       ---- the item is gated here
+1035 | fn parse_addr20(s: &str) -> Option<[u8; 20]> {
+     |    ^^^^^^^^^^^^
+
+error[E0425]: cannot find value `parse_addr20` in module `super`
+    --> crates/gateway/src/l1/observation.rs:216:60
+     |
+ 216 |                 || log["address"].as_str().and_then(super::parse_addr20) != Some(target)
+     |                                                            ^^^^^^^^^^^^ not found in `super`
+     |
+note: found an item that was configured out
+    --> crates/gateway/src/l1.rs:1035:4
+     |
+1034 | #[cfg(test)]
+     |       ---- the item is gated here
+1035 | fn parse_addr20(s: &str) -> Option<[u8; 20]> {
+     |    ^^^^^^^^^^^^
+
+For more information about this error, try `rustc --explain E0425`.
+error: could not compile `gateway` (bin "gateway") due to 2 previous errors
+warning: build failed, waiting for other jobs to finish...
+error: you seem to be trying to use `match` for destructuring a single pattern. Consider using `if let`
+    --> crates/gateway/src/main.rs:8565:25
+     |
+8565 | /                         match l1c.ensure_bond()? {
+8566 | |                             Some(tx) => println!("[l1] bond topped up: {tx}"),
+8567 | |                             None => {}
+8568 | |                         }
+     | |_________________________^ help: try: `if let Some(tx) = l1c.ensure_bond()? { println!("[l1] bond topped up: {tx}") }`
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.95.0/index.html#single_match
+     = note: `-D clippy::single-match` implied by `-D warnings`
+     = help: to override `-D warnings` add `#[allow(clippy::single_match)]`
+
+error: could not compile `gateway` (bin "gateway" test) due to 1 previous error

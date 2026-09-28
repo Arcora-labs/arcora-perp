@@ -1,0 +1,69 @@
+{
+  "status": "PASS",
+  "scope": "Three local packages only; original release HOLD and seven remaining tasks unchanged.",
+  "source_sha256": "735ea61c4f847fdcadfb838043c5dc16c74c05f7cc5647a0dcf804a9f514ac81",
+  "checks": {
+    "fmt-complete": {
+      "exit_code": 0,
+      "source_sha256": "735ea61c4f847fdcadfb838043c5dc16c74c05f7cc5647a0dcf804a9f514ac81",
+      "rust_test_summaries": [],
+      "evidence": "checks/fmt-complete.json"
+    },
+    "clippy-complete": {
+      "exit_code": 0,
+      "source_sha256": "735ea61c4f847fdcadfb838043c5dc16c74c05f7cc5647a0dcf804a9f514ac81",
+      "rust_test_summaries": [],
+      "evidence": "checks/clippy-complete.json"
+    },
+    "gateway-tests-complete": {
+      "exit_code": 0,
+      "source_sha256": "735ea61c4f847fdcadfb838043c5dc16c74c05f7cc5647a0dcf804a9f514ac81",
+      "rust_test_summaries": [
+        [
+          "ok",
+          "433",
+          "0",
+          "9",
+          "0",
+          "0"
+        ]
+      ],
+      "evidence": "checks/gateway-tests-complete.json"
+    },
+    "gateway-build-complete": {
+      "exit_code": 0,
+      "source_sha256": "735ea61c4f847fdcadfb838043c5dc16c74c05f7cc5647a0dcf804a9f514ac81",
+      "rust_test_summaries": [],
+      "evidence": "checks/gateway-build-complete.json"
+    }
+  },
+  "l1": {
+    "unit_passed": 31,
+    "cursor_passed": 6,
+    "actual_cast_passed": 7,
+    "evidence": "l1/final-evidence.json",
+    "current_relevant_file_hashes_verified": true
+  },
+  "ack_crash": {
+    "cases_passed": 9,
+    "sigkill_exits": 27,
+    "evidence": "binary-binding.json"
+  },
+  "alerts": {
+    "tests_passed": 6,
+    "collector_cases": 4,
+    "payloads": 8,
+    "evidence": "alerts/result.json"
+  },
+  "ignored_gateway_tests": "Seven actual-cast tests explicitly executed separately; two ignored child-process helpers are invoked by their parent crash/parser tests.",
+  "independent_review": "review/combined-review.json",
+  "desktop_preserved": "desktop-preserved.json",
+  "original_tasks": {
+    "total": 15,
+    "closed": 8,
+    "closed_this_turn": 0,
+    "remaining": 7
+  },
+  "failed_attempts_preserved": "attempts/",
+  "ci": "To be queried for the PR head; local PASS does not claim CI completion."
+}

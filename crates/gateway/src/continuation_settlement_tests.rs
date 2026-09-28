@@ -221,6 +221,9 @@ enum Reply {
 }
 
 fn read_request(stream: &mut TcpStream) -> (String, prover::SealedWitness) {
+    // Accepted sockets inherit the listener's nonblocking mode on macOS. The
+    // parser below is deliberately blocking with bounded read/write timeouts.
+    stream.set_nonblocking(false).unwrap();
     stream
         .set_read_timeout(Some(Duration::from_secs(5)))
         .unwrap();

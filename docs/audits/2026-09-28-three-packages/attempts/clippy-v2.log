@@ -1,0 +1,23 @@
+    Blocking waiting for file lock on build directory
+    Checking gateway v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/gateway)
+error: this `if` has identical blocks
+  --> crates/gateway/src/l1/witness_tests.rs:73:70
+   |
+73 |                   let hash = if matches!(self.fault, Fault::ForkWorld) {
+   |  ______________________________________________________________________^
+74 | |                     [8; 32]
+75 | |                 } else if matches!(self.fault, Fault::FinalizedHash) && finalized
+   | |_________________^
+   |
+note: same as this
+  --> crates/gateway/src/l1/witness_tests.rs:80:17
+   |
+80 | /                 {
+81 | |                     [8; 32]
+82 | |                 } else if latest || params[0] == json!("0x1c") {
+   | |_________________^
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.95.0/index.html#if_same_then_else
+   = note: `-D clippy::if-same-then-else` implied by `-D warnings`
+   = help: to override `-D warnings` add `#[allow(clippy::if_same_then_else)]`
+
+error: could not compile `gateway` (bin "gateway" test) due to 1 previous error

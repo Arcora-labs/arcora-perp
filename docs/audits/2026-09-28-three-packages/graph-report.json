@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "task_id": "arcora-three-local-packages-2026-09-28",
+  "subject": "source-sha256:735ea61c4f847fdcadfb838043c5dc16c74c05f7cc5647a0dcf804a9f514ac81",
+  "checks": [
+    {
+      "criterion_id": "R1",
+      "subject": "source-sha256:735ea61c4f847fdcadfb838043c5dc16c74c05f7cc5647a0dcf804a9f514ac81",
+      "status": "PASS",
+      "assertion": "31 L1, 6 cursor and seven real cast transport tests passed; relevant current file hashes match.",
+      "command": "cargo test --locked -p gateway l1::; cargo test --locked -p gateway challenge_scan::; cargo test --locked -p gateway runtime_witness_native_cast -- --ignored; cargo test --locked -p gateway runtime_state_native_cast -- --ignored",
+      "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+      "exit_code": 0,
+      "evidence": {
+        "path": "l1/final-evidence.json",
+        "sha256": "053293144c1fd6875b99ced33751776f573b839fdfa1dcd8bb9dc4872a734b05"
+      }
+    },
+    {
+      "criterion_id": "C1",
+      "subject": "source-sha256:735ea61c4f847fdcadfb838043c5dc16c74c05f7cc5647a0dcf804a9f514ac81",
+      "status": "PASS",
+      "assertion": "Nine actual gateway HTTP SIGKILL cases pass; 27 owned exits and final binary identity verified.",
+      "command": "python3 scripts/local-verification/gateway_ack_crash_drill.py --gateway-bin target/debug/gateway --output-dir /tmp/arcora-three-final/ack-crash",
+      "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+      "exit_code": 0,
+      "evidence": {
+        "path": "binary-binding.json",
+        "sha256": "fa0fb6ed8d8bb1e4c525d3d0a6edb9eb95a164d5b9c104b5357ddfb6df964207"
+      }
+    },
+    {
+      "criterion_id": "A1",
+      "subject": "source-sha256:735ea61c4f847fdcadfb838043c5dc16c74c05f7cc5647a0dcf804a9f514ac81",
+      "status": "PASS",
+      "assertion": "Six source-bound alert tests pass, four actual loopback cases capture eight fixed-schema events.",
+      "command": "python3 scripts/local-verification/gateway_alert_drill.py --output-dir /tmp/arcora-three-alerts-20260928/socket-fix-final",
+      "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+      "exit_code": 0,
+      "evidence": {
+        "path": "alerts/result.json",
+        "sha256": "fa39c0b8719900787f7ac42627504d3c3be082508a51cfdfc8862a0d30ff9f1f"
+      }
+    },
+    {
+      "criterion_id": "V1",
+      "subject": "source-sha256:735ea61c4f847fdcadfb838043c5dc16c74c05f7cc5647a0dcf804a9f514ac81",
+      "status": "PASS",
+      "assertion": "Combined source passes fmt/clippy/433 gateway tests/build; independent findings resolved, original definitions and Desktop preserved.",
+      "reviewer": "root integration plus independent gateway_ack_crash and local_alert_delivery reviews",
+      "evidence": {
+        "path": "verification.json",
+        "sha256": "7c842cfadd16f813e56179b075f9ef2cb202f317b095d47b5824295dfa010396"
+      }
+    }
+  ],
+  "blockers": []
+}

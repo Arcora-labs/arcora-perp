@@ -1,0 +1,39 @@
+{
+  "at_utc": "2026-09-28T17:04:37.493004+00:00",
+  "review": "independent read-only review; execution results supplied separately by root/implementation agents",
+  "status": "CR01_CR02_RESOLVED_WITH_EXPLICIT_SCOPE_LIMIT",
+  "files": {
+    "crates/gateway/src/l1.rs": "77baf8a7fe57dd4369dd836483dd4378e86f11fa2a23bfacc81febf95bf975a1",
+    "crates/gateway/src/l1/observation.rs": "76005fb7a4c34ad46eb4645a6b8afd1cc86f3357ac48c11320ca3dcce97c68ea",
+    "crates/gateway/src/l1/state_read_tests.rs": "0e3bfa4ccac3cce4042cc0f52d71279d52f224dd9805993fcdb02ee7bf1a0b1f",
+    "crates/gateway/src/l1/witness_tests.rs": "2f8472933c15aa1fcb052fb5c7e8c6b86972f31bd5a4befd02507f034a69c0de",
+    "crates/gateway/src/main.rs": "870c5dedf8670f9faedee9efbb11775639ba2de9b3341e00dfd59e4dd08f3bc7",
+    "crates/gateway/src/challenge_scan.rs": "f87f42781c6c1d4066992d9d8cd3be497be7dbfa7a2607f8e6bd1bc75236f904",
+    "crates/gateway/src/ops_alerts.rs": "1921a40e54a4fd07d51593d054d4526cd47b19b14210bfb2c2513362a9e75840",
+    "crates/gateway/src/ops_alerts/integration_tests.rs": "b57da2e473d6ea3992b44f36afb5fe41a5a8b6ce8b5134f9698e7c52b906f28b",
+    "crates/gateway/src/settle_health.rs": "bcd7e90ad249221ab03090792843887034c36ad0533c0fd5881b6553cfef36e5",
+    "crates/gateway/src/deposit_ingestion.rs": "71372278e4b9a030d549e9893a743183979c36850d991d55d3a195a1b5851467"
+  },
+  "findings": [
+    {
+      "id": "CR-01",
+      "status": "CLOSED",
+      "resolution": "Bounded challenge pages compare both providers, validate metadata/canonical event headers, recheck page and current anchors before returning cursor."
+    },
+    {
+      "id": "CR-02",
+      "status": "CLOSED",
+      "resolution": "Strict startup paired observation and production-used challenge_scan::advance retain current page after start/fetch/answer failures. Partial-success retry regression verifies pending second callback retried."
+    }
+  ],
+  "scope_limit": "Challenge scanner retains a numeric cursor rather than prior scanned block hash. Observation-time reorgs are detected; reorg of an already completed nonfinal page between polls is not revisited by this numeric cursor. Report this limitation or retain/recheck prior scan anchor and rewind when it changes.",
+  "clear": [
+    "Typed ABI, canonical rechecks, configured witness refusal and post-send failure-to-journal-HOLD paths",
+    "Ops alert enum-only redacted schema, bounded shared worker, local URL restrictions, runtime-only serde skip field, write transition serialization"
+  ],
+  "limits": [
+    "Read-only review is not source-bound test execution",
+    "Alert delivery remains best effort; shutdown may drop queued notifications",
+    "No live funds, RPC provider reliability, true proof or release gate completion assessed"
+  ]
+}

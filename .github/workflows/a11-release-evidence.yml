@@ -99,6 +99,37 @@ jobs:
         with:
           name: a11-real-verifier-guards-only
           path: /tmp/arcora-real-verifier-guards
+  gateway-local-drills:
+    name: gateway RPC, crash and alert drills
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: foundry-rs/foundry-toolchain@v1
+      - uses: pnpm/action-setup@v4
+        with: { version: 10 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm, cache-dependency-path: frontend/pnpm-lock.yaml }
+      - name: Install locked local signing fixture dependencies
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+      - name: Build the actual gateway and record its source
+        run: python3 scripts/local-verification/run_check.py --output-dir /tmp/arcora-local-drills/checks gateway-build -- cargo build --locked -p gateway
+      - name: Real cast transport against owned RPC fixtures
+        run: |
+          python3 scripts/local-verification/run_check.py --output-dir /tmp/arcora-local-drills/checks recovery-rpc -- cargo test --locked -p gateway runtime_witness_native_cast -- --ignored --nocapture --test-threads=1
+          python3 scripts/local-verification/run_check.py --output-dir /tmp/arcora-local-drills/checks state-rpc -- cargo test --locked -p gateway runtime_state_native_cast -- --ignored --nocapture --test-threads=1
+      - name: Actual production event paths to a local alert collector
+        run: python3 scripts/local-verification/gateway_alert_drill.py --output-dir /tmp/arcora-local-drills/alerts
+      - name: Real gateway HTTP ACK, SIGKILL and encrypted restart matrix
+        run: python3 scripts/local-verification/gateway_ack_crash_drill.py --gateway-bin target/debug/gateway --output-dir /tmp/arcora-local-drills/ack-crash
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gateway-local-drills
+          path: /tmp/arcora-local-drills
   frontend:
     name: frontend release gate
     runs-on: ubuntu-latest

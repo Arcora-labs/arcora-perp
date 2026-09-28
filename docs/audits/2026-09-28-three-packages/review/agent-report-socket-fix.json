@@ -1,0 +1,16 @@
+{
+  "status": "PASS",
+  "diagnosis": "On this macOS host accepted std::net TcpStream inherited O_NONBLOCK: read returned WouldBlock after 0 ms despite a 150 ms read timeout; resetting blocking produced the expected 151 ms timeout.",
+  "fix": "Explicitly reset accepted/parser sockets to blocking; preserve existing 2s alert and 5s continuation I/O bounds. Alert collector cleanup preserves first failure and still rejects worker failure on normal teardown.",
+  "source_files": {
+    "crates/gateway/src/ops_alerts/integration_tests.rs": "be4578f961dcc4acd8ad85ecf0b9f74ad2363763690b045cc0166a528683633b",
+    "crates/gateway/src/continuation_settlement_tests.rs": "79709cf6fcd5e254486e11572d5e96300b1665974818718750e4bc74cad5cc2b"
+  },
+  "checks": {
+    "focused_six": "socket-fix-final/result.json",
+    "experiment_source": "socket-inheritance.rs",
+    "experiment_log": "socket-inheritance.log"
+  },
+  "review": "CLEAR for continuation read_request reset: only test fixture changes, all body/shape/length assertions and 5s read/write deadlines retained.",
+  "freeze": true
+}

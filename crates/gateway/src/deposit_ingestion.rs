@@ -379,6 +379,8 @@ pub async fn ingest_once(app: &Shared) -> Result<usize, String> {
     let cursor = {
         let gw = app.gw.lock().await;
         if let Some(e) = &gw.deposits.halt {
+            gw.ops_alerts
+                .activate(crate::ops_alerts::AlertKind::DepositHalted);
             return Err(format!("deposit safety halt: {e}"));
         }
         if gw
@@ -405,6 +407,8 @@ pub async fn ingest_once(app: &Shared) -> Result<usize, String> {
                 if let Error::Halt(reason) = &error {
                     gw.deposits.halt = Some(reason.clone());
                     gw.deposits.dirty = true;
+                    gw.ops_alerts
+                        .activate(crate::ops_alerts::AlertKind::DepositHalted);
                 }
             }
             if matches!(error, Error::Halt(_)) {
