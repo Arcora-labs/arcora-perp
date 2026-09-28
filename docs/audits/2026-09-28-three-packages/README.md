@@ -4,6 +4,8 @@ Kapsam: S6-03 RPC tutarlılığı, S6-02 gerçek gateway ACK/kesinti/restore mat
 
 **Doğrulama:** 433 gateway testi, 31 odaklı L1 testi, 6 cursor regresyonu, 7 gerçek cast/HTTP matrisi ve 6 alarm testi başarılı. ACK matrisi 9/9, gerçek SIGKILL sayısı 27. Test kümeleri örtüşür; sayılar toplanmaz. Fmt, tüm workspace Clippy ve production gateway build geçti.
 
+**Teslim:** [PR #25](https://github.com/Kubudak90/dark-perp/pull/25). GitHub Actions hesap ödeme/harcama limiti nedeniyle 13 işi runner atamadan durdurdu; Linux CI çalışmadı (`ci-evidence.json`). PR merge edilmedi. Yerel paket kapısı PASS, yayın kapısı HOLD.
+
 ## Tamamlanan uygulama
 
 - **RPC:** ilişkili L1 kelimeleri aynı canonical hash üzerinden okunur. Witness yapılandırılmışsa zincir, hash ve değer uyuşması zorunludur; hata tek sağlayıcıya düşmez. Gate mevcut 12 blok politikasını korur; terminal/challenge kontrolleri güncel blok kullanır. Vault count/tip ve claim budama birlikte doğrulanır. Challenge keşfi 1.024 blok/4.096 olay sınırındadır. Bekleyen en çok 16.384 hash, discovery imlecinden ayrı tutulur; başarısız veya henüz batch’i oluşmamış kayıt diğerlerini engellemez. Süresi dolan açık kayıt terminal sayılır. Önceki tarama hash’i fetch öncesi ve sonrası tekrar kontrol edilir; doğrulanmış reorg pencereye geri sarar. İmzalama/nonce/transaction gönderimi gözlem kapsamının dışındadır.

@@ -1,0 +1,307 @@
+{
+  "status": "BLOCKED_BEFORE_START",
+  "head_sha": "8d4cde178c370797e3a1d85dc1468dccdd6bd2dc",
+  "pr_url": "https://github.com/Kubudak90/dark-perp/pull/25",
+  "actions_jobs": [
+    {
+      "name": "rust",
+      "url": "https://github.com/Kubudak90/dark-perp/actions/runs/36457265131/job/109046664933",
+      "head_sha": "8d4cde178c370797e3a1d85dc1468dccdd6bd2dc",
+      "runner_id": 0,
+      "steps": [],
+      "conclusion": "failure",
+      "annotations": [
+        {
+          "path": ".github",
+          "blob_href": "https://github.com/Kubudak90/dark-perp/blob/8d4cde178c370797e3a1d85dc1468dccdd6bd2dc/.github",
+          "start_line": 1,
+          "start_column": null,
+          "end_line": 1,
+          "end_column": null,
+          "annotation_level": "failure",
+          "title": "",
+          "message": "The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings",
+          "raw_details": ""
+        }
+      ]
+    },
+    {
+      "name": "dependency advisories",
+      "url": "https://github.com/Kubudak90/dark-perp/actions/runs/36457265186/job/109046665873",
+      "head_sha": "8d4cde178c370797e3a1d85dc1468dccdd6bd2dc",
+      "runner_id": 0,
+      "steps": [],
+      "conclusion": "failure",
+      "annotations": [
+        {
+          "path": ".github",
+          "blob_href": "https://github.com/Kubudak90/dark-perp/blob/8d4cde178c370797e3a1d85dc1468dccdd6bd2dc/.github",
+          "start_line": 1,
+          "start_column": null,
+          "end_line": 1,
+          "end_column": null,
+          "annotation_level": "failure",
+          "title": "",
+          "message": "The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings",
+          "raw_details": ""
+        }
+      ]
+    },
+    {
+      "name": "offline-ingestion",
+      "url": "https://github.com/Kubudak90/dark-perp/actions/runs/36457265202/job/109046666801",
+      "head_sha": "8d4cde178c370797e3a1d85dc1468dccdd6bd2dc",
+      "runner_id": 0,
+      "steps": [],
+      "conclusion": "failure",
+      "annotations": [
+        {
+          "path": ".github",
+          "blob_href": "https://github.com/Kubudak90/dark-perp/blob/8d4cde178c370797e3a1d85dc1468dccdd6bd2dc/.github",
+          "start_line": 1,
+          "start_column": null,
+          "end_line": 1,
+          "end_column": null,
+          "annotation_level": "failure",
+          "title": "",
+          "message": "The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings",
+          "raw_details": ""
+        }
+      ]
+    },
+    {
+      "name": "rust (workspace)",
+      "url": "https://github.com/Kubudak90/dark-perp/actions/runs/36457265083/job/109046665066",
+      "head_sha": "8d4cde178c370797e3a1d85dc1468dccdd6bd2dc",
+      "runner_id": 0,
+      "steps": [],
+      "conclusion": "failure",
+      "annotations": [
+        {
+          "path": ".github",
+          "blob_href": "https://github.com/Kubudak90/dark-perp/blob/8d4cde178c370797e3a1d85dc1468dccdd6bd2dc/.github",
+          "start_line": 1,
+          "start_column": null,
+          "end_line": 1,
+          "end_column": null,
+          "annotation_level": "failure",
+          "title": "",
+          "message": "The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings",
+          "raw_details": ""
+        }
+      ]
+    },
+    {
+      "name": "frontend",
+      "url": "https://github.com/Kubudak90/dark-perp/actions/runs/36457265131/job/109046665094",
+      "head_sha": "8d4cde178c370797e3a1d85dc1468dccdd6bd2dc",
+      "runner_id": 0,
+      "steps": [],
+      "conclusion": "failure",
+      "annotations": [
+        {
+          "path": ".github",
+          "blob_href": "https://github.com/Kubudak90/dark-perp/blob/8d4cde178c370797e3a1d85dc1468dccdd6bd2dc/.github",
+          "start_line": 1,
+          "start_column": null,
+          "end_line": 1,
+          "end_column": null,
+          "annotation_level": "failure",
+          "title": "",
+          "message": "The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings",
+          "raw_details": ""
+        }
+      ]
+    },
+    {
+      "name": "release regression",
+      "url": "https://github.com/Kubudak90/dark-perp/actions/runs/36457265186/job/109046665963",
+      "head_sha": "8d4cde178c370797e3a1d85dc1468dccdd6bd2dc",
+      "runner_id": 0,
+      "steps": [],
+      "conclusion": "failure",
+      "annotations": [
+        {
+          "path": ".github",
+          "blob_href": "https://github.com/Kubudak90/dark-perp/blob/8d4cde178c370797e3a1d85dc1468dccdd6bd2dc/.github",
+          "start_line": 1,
+          "start_column": null,
+          "end_line": 1,
+          "end_column": null,
+          "annotation_level": "failure",
+          "title": "",
+          "message": "The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings",
+          "raw_details": ""
+        }
+      ]
+    },
+    {
+      "name": "prover crates (excluded, typecheck)",
+      "url": "https://github.com/Kubudak90/dark-perp/actions/runs/36457265083/job/109046665365",
+      "head_sha": "8d4cde178c370797e3a1d85dc1468dccdd6bd2dc",
+      "runner_id": 0,
+      "steps": [],
+      "conclusion": "failure",
+      "annotations": [
+        {
+          "path": ".github",
+          "blob_href": "https://github.com/Kubudak90/dark-perp/blob/8d4cde178c370797e3a1d85dc1468dccdd6bd2dc/.github",
+          "start_line": 1,
+          "start_column": null,
+          "end_line": 1,
+          "end_column": null,
+          "annotation_level": "failure",
+          "title": "",
+          "message": "The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings",
+          "raw_details": ""
+        }
+      ]
+    },
+    {
+      "name": "foundry release gate",
+      "url": "https://github.com/Kubudak90/dark-perp/actions/runs/36457265186/job/109046666459",
+      "head_sha": "8d4cde178c370797e3a1d85dc1468dccdd6bd2dc",
+      "runner_id": 0,
+      "steps": [],
+      "conclusion": "failure",
+      "annotations": [
+        {
+          "path": ".github",
+          "blob_href": "https://github.com/Kubudak90/dark-perp/blob/8d4cde178c370797e3a1d85dc1468dccdd6bd2dc/.github",
+          "start_line": 1,
+          "start_column": null,
+          "end_line": 1,
+          "end_column": null,
+          "annotation_level": "failure",
+          "title": "",
+          "message": "The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings",
+          "raw_details": ""
+        }
+      ]
+    },
+    {
+      "name": "contracts (foundry)",
+      "url": "https://github.com/Kubudak90/dark-perp/actions/runs/36457265083/job/109046665400",
+      "head_sha": "8d4cde178c370797e3a1d85dc1468dccdd6bd2dc",
+      "runner_id": 0,
+      "steps": [],
+      "conclusion": "failure",
+      "annotations": [
+        {
+          "path": ".github",
+          "blob_href": "https://github.com/Kubudak90/dark-perp/blob/8d4cde178c370797e3a1d85dc1468dccdd6bd2dc/.github",
+          "start_line": 1,
+          "start_column": null,
+          "end_line": 1,
+          "end_column": null,
+          "annotation_level": "failure",
+          "title": "",
+          "message": "The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings",
+          "raw_details": ""
+        }
+      ]
+    },
+    {
+      "name": "gateway RPC, crash and alert drills",
+      "url": "https://github.com/Kubudak90/dark-perp/actions/runs/36457265186/job/109046666008",
+      "head_sha": "8d4cde178c370797e3a1d85dc1468dccdd6bd2dc",
+      "runner_id": 0,
+      "steps": [],
+      "conclusion": "failure",
+      "annotations": [
+        {
+          "path": ".github",
+          "blob_href": "https://github.com/Kubudak90/dark-perp/blob/8d4cde178c370797e3a1d85dc1468dccdd6bd2dc/.github",
+          "start_line": 1,
+          "start_column": null,
+          "end_line": 1,
+          "end_column": null,
+          "annotation_level": "failure",
+          "title": "",
+          "message": "The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings",
+          "raw_details": ""
+        }
+      ]
+    },
+    {
+      "name": "frontend (vite)",
+      "url": "https://github.com/Kubudak90/dark-perp/actions/runs/36457265083/job/109046665275",
+      "head_sha": "8d4cde178c370797e3a1d85dc1468dccdd6bd2dc",
+      "runner_id": 0,
+      "steps": [],
+      "conclusion": "failure",
+      "annotations": [
+        {
+          "path": ".github",
+          "blob_href": "https://github.com/Kubudak90/dark-perp/blob/8d4cde178c370797e3a1d85dc1468dccdd6bd2dc/.github",
+          "start_line": 1,
+          "start_column": null,
+          "end_line": 1,
+          "end_column": null,
+          "annotation_level": "failure",
+          "title": "",
+          "message": "The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings",
+          "raw_details": ""
+        }
+      ]
+    },
+    {
+      "name": "frontend release gate",
+      "url": "https://github.com/Kubudak90/dark-perp/actions/runs/36457265186/job/109046665820",
+      "head_sha": "8d4cde178c370797e3a1d85dc1468dccdd6bd2dc",
+      "runner_id": 0,
+      "steps": [],
+      "conclusion": "failure",
+      "annotations": [
+        {
+          "path": ".github",
+          "blob_href": "https://github.com/Kubudak90/dark-perp/blob/8d4cde178c370797e3a1d85dc1468dccdd6bd2dc/.github",
+          "start_line": 1,
+          "start_column": null,
+          "end_line": 1,
+          "end_column": null,
+          "annotation_level": "failure",
+          "title": "",
+          "message": "The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings",
+          "raw_details": ""
+        }
+      ]
+    },
+    {
+      "name": "prover source / deployment binding",
+      "url": "https://github.com/Kubudak90/dark-perp/actions/runs/36457265186/job/109046665628",
+      "head_sha": "8d4cde178c370797e3a1d85dc1468dccdd6bd2dc",
+      "runner_id": 0,
+      "steps": [],
+      "conclusion": "failure",
+      "annotations": [
+        {
+          "path": ".github",
+          "blob_href": "https://github.com/Kubudak90/dark-perp/blob/8d4cde178c370797e3a1d85dc1468dccdd6bd2dc/.github",
+          "start_line": 1,
+          "start_column": null,
+          "end_line": 1,
+          "end_column": null,
+          "annotation_level": "failure",
+          "title": "",
+          "message": "The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings",
+          "raw_details": ""
+        }
+      ]
+    }
+  ],
+  "other_checks": [
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-28T17:19:15Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://socket.dev/dashboard/org/dustless/sbom/1386b06b-7360-418e-8388-41bc9a53186a",
+      "name": "Socket Security: Project Report",
+      "startedAt": "2026-09-28T17:19:11Z",
+      "status": "COMPLETED",
+      "workflowName": ""
+    }
+  ],
+  "reason": "GitHub account payment or spending-limit restriction; jobs never started, no runner assigned.",
+  "local_verification": "PASS; not a substitute for Linux CI"
+}

@@ -1,0 +1,12 @@
+{
+  "status": "LOCAL_PACKAGES_COMPLETE_CI_BLOCKED",
+  "pr_url": "https://github.com/Kubudak90/dark-perp/pull/25",
+  "implementation_commit": "8d4cde178c370797e3a1d85dc1468dccdd6bd2dc",
+  "source_sha256": "735ea61c4f847fdcadfb838043c5dc16c74c05f7cc5647a0dcf804a9f514ac81",
+  "local_graph": "PASS",
+  "ci": "BLOCKED_BEFORE_START",
+  "ci_evidence": "ci-evidence.json",
+  "merged": false,
+  "production_release": "HOLD",
+  "required_external_step": "GitHub Billing & plans payment/spending-limit restriction must be resolved before Actions can run."
+}
