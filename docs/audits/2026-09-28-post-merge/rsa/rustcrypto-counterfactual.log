@@ -1,0 +1,5 @@
+rsa v0.9.10
+└── dcap-qvl-webpki v0.103.4+dcap.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/vendor/dcap-qvl-webpki)
+    └── arcora-webpki-rustcrypto-check v0.0.0 (/var/folders/jz/7wbjs_5j45g915858xh6wm200000gn/T/arcora-webpki-rustcrypto-vr3_j1j5)
+     Locking 78 packages to latest compatible versions
+      Adding crypto-common v0.1.6 (available: v0.1.7)

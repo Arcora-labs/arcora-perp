@@ -1,0 +1,74 @@
+    Blocking waiting for file lock on artifact directory
+   Compiling dcap-qvl-webpki v0.103.4+dcap.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/vendor/dcap-qvl-webpki)
+   Compiling dcap-qvl v0.5.2
+   Compiling dark-perp-attestation v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/attestation)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 7.65s
+     Running unittests src/lib.rs (target/debug/deps/dark_perp_attestation-2b23f51d6cd54124)
+
+running 21 tests
+test nvidia_cc::tests::quote_fails_closed_when_cc_disabled ... ok
+test handshake::tests::ct_eq_matches_semantic_equality ... ok
+test nvidia_cc::tests::cc_on_stub_path_never_returns_ok ... ok
+test handshake::tests::token_binds_secret_and_not_after ... ok
+test handshake::tests::public_transcript_alone_cannot_reproduce_the_secret ... ok
+test tests::azure_quote_without_a_live_source_fails_closed ... ok
+test handshake::tests::secret_is_deterministic_transcript_and_shared_bound ... ok
+test tests::pinned_now_parses_intel_pcs_timestamps ... ok
+test vtpm::tests::ak_parser_preserves_leading_zero_normalization ... ok
+test handshake::tests::dh_agrees_from_both_directions ... ok
+test vtpm::tests::app_measurement_applies_the_tcb_gate ... ok
+test vtpm::tests::parse_pcrs_txt_rejects_malformed_captures ... ok
+test vtpm::tests::ak_parser_rejects_malformed_or_weak_public_keys ... ok
+test tests::pinned_now_lies_inside_the_collateral_windows ... ok
+test vtpm::tests::parses_the_fixture_pcrs_txt ... ok
+test tests::azure_verify_rejects_a_malformed_bundle ... ok
+test tests::azure_verify_rejects_a_mismatched_challenge ... ok
+test tests::azure_verify_accepts_the_bundle_at_app_level_with_matching_challenge ... ok
+test tests::azure_quote_assembles_the_full_bundle_and_round_trips ... ok
+test tests::azure_verify_rejects_a_firmware_only_expected_measurement ... ok
+test tests::azure_verify_rejects_a_tampered_quote_in_the_bundle ... ok
+
+test result: ok. 21 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/handshake_orchestration.rs (target/debug/deps/handshake_orchestration-05afe39333a1739e)
+
+running 4 tests
+test a_tampered_peer_bundle_fails_closed ... ok
+test a_mismatched_eph_pub_fails_closed ... ok
+test a_wrong_peer_measurement_fails_closed ... ok
+test both_sides_derive_the_identical_secret_and_token ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/verify_offline.rs (target/debug/deps/verify_offline-5bce7e704d5994e0)
+
+running 7 tests
+test key_release_gate_accepts_only_current_tcb ... ok
+test verifies_pinned_tdx_quote_and_extracts_measurements ... ok
+test rejects_an_outdated_platform_quote ... ok
+test acceptable_platform_yields_a_measurement ... ok
+test measurement_is_deterministic_and_binds_mrtd_and_rtmrs ... ok
+test rejects_a_tampered_quote ... ok
+test verifies_a_real_azure_tdx_quote_offline ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/vtpm_offline.rs (target/debug/deps/vtpm_offline-abfd19954521b794)
+
+running 7 tests
+test a_corrupt_hcl_header_is_rejected ... ok
+test a_tampered_hcl_report_breaks_the_td_binding ... ok
+test verifies_the_real_azure_vtpm_chain ... ok
+test tpm_signature_envelope_is_strictly_rsassa_sha256 ... ok
+test a_changed_signed_message_is_rejected ... ok
+test a_different_measured_boot_pcr_breaks_the_chain ... ok
+test a_changed_rsa_signature_is_rejected ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests dark_perp_attestation
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

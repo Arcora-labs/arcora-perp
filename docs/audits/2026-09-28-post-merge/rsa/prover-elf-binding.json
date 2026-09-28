@@ -1,0 +1,21 @@
+{
+  "source": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/sp1-guest/target/elf-compilation/riscv64im-succinct-zkvm-elf/release/perp-core-guest",
+  "source_sha256": "82938f5db13d7da2cc48fc18e36ba6a5e6d5f0736154ae9e105b33b8717918d7",
+  "consumer_elf": "/tmp/arcora-prover-service-target/elf-compilation/riscv64im-succinct-zkvm-elf/release/perp-core-guest",
+  "old_consumer_sha256": "a1f0a43033ffdd858bf99854cae814f5426c27db512088883ffa1a0e8f1c4e75",
+  "new_consumer_sha256": "82938f5db13d7da2cc48fc18e36ba6a5e6d5f0736154ae9e105b33b8717918d7",
+  "bytes": 515336,
+  "invalid_for_new_artifact": "checks/rsa-prover-service.json",
+  "final_check": "checks/rsa-prover-service-final.json",
+  "guest_build_skipped": true,
+  "proof_executed": false,
+  "consumer_sha256_after_test": "82938f5db13d7da2cc48fc18e36ba6a5e6d5f0736154ae9e105b33b8717918d7",
+  "test_binary": "/tmp/arcora-prover-service-target/release/deps/prover_service-cbeeb1073c540dc6",
+  "test_binary_sha256": "266485dc6d8ce2bd0f16da1d190f6f894ad8ab33f0f5f6e329061cbfe0fce2ff",
+  "dependency_file": "/tmp/arcora-prover-service-target/release/deps/prover_service-cbeeb1073c540dc6.d",
+  "dependency_file_sha256": "a51d65a5bd8673e6ceb8c14b634a34e09e98114024c0f9e252e68967f066d239",
+  "build_output": "/tmp/arcora-prover-service-target/release/build/prover-service-d12351086791cbb3/output",
+  "build_output_sha256": "de31e8533d920b52ab441c176fed5bc6410f8434312800ac15190597af126f2d",
+  "test_compiled_after_elf_replacement": true,
+  "final_test_exit_code": 0
+}

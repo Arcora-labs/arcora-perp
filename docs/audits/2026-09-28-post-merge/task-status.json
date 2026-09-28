@@ -1,0 +1,1021 @@
+{
+  "baseline_file": "docs/audits/2026-09-27-local/task-status.json",
+  "baseline_sha256": "87025d856554bd640d21ce05b2174a16565a2518dd2dfbcf05944af42635fcae",
+  "original_attachment_html_sha256": "1d6aebdf1b9ef07036400f1019989df64acb68b99fa8aedfd7a5eb15e1940d4c",
+  "candidate_sha": "31f626529b655a6ee14a400f587fbfa3f78661a0",
+  "source_sha256": "c2fd3dcf6f0f6afb9d9528a6ca218be34284dba1ba4b2d0b9aaf9dcfc69be6d2",
+  "release_gate": "HOLD",
+  "summary": {
+    "initial_open": 15,
+    "previous_remaining": 7,
+    "closed_this_turn": 0,
+    "closed": 8,
+    "remaining": 7,
+    "partial": 2,
+    "blocked": 5
+  },
+  "tasks": [
+    {
+      "id": "S2-01",
+      "title": "Ger\u00e7ek taray\u0131c\u0131da iki sekme ve kurtarma ak\u0131\u015f\u0131",
+      "original_status": "PARTIAL",
+      "original_criteria": [
+        {
+          "text": "Ayn\u0131 origin\u2019de iki ger\u00e7ek sekme ile matris tamamland\u0131.",
+          "passed": true
+        },
+        {
+          "text": "Eski yan\u0131t veya socket yeni credential/state\u2019i ezemiyor.",
+          "passed": true
+        },
+        {
+          "text": "Kilit yok/me\u015fgul durumunda mutasyon \u00f6ncesi anla\u015f\u0131l\u0131r hata var.",
+          "passed": true
+        },
+        {
+          "text": "Console/network kay\u0131tlar\u0131 secret i\u00e7ermeyecek bi\u00e7imde redakte edildi.",
+          "passed": true
+        },
+        {
+          "text": "Ger\u00e7ek c\u00fczdan ile otomatik provider kan\u0131tlar\u0131 ayr\u0131 etiketli.",
+          "passed": true
+        }
+      ],
+      "original_limits": [
+        "Real Chromium/WebKit two-tab fixture matrix passed; actual extension wallet and real-browser-to-Rust-gateway integration remain unexecuted."
+      ],
+      "depends_on": [
+        "B-02",
+        "S1-01"
+      ],
+      "status": "PASS",
+      "current_criteria": [
+        {
+          "text": "Ayn\u0131 origin\u2019de iki ger\u00e7ek sekme ile matris tamamland\u0131.",
+          "passed": true
+        },
+        {
+          "text": "Eski yan\u0131t veya socket yeni credential/state\u2019i ezemiyor.",
+          "passed": true
+        },
+        {
+          "text": "Kilit yok/me\u015fgul durumunda mutasyon \u00f6ncesi anla\u015f\u0131l\u0131r hata var.",
+          "passed": true
+        },
+        {
+          "text": "Console/network kay\u0131tlar\u0131 secret i\u00e7ermeyecek bi\u00e7imde redakte edildi.",
+          "passed": true
+        },
+        {
+          "text": "Ger\u00e7ek c\u00fczdan ile otomatik provider kan\u0131tlar\u0131 ayr\u0131 etiketli.",
+          "passed": true
+        }
+      ],
+      "unpassed_dependencies": [],
+      "evidence": [
+        "../2026-09-28-wallet-rpc/wallet/README.md",
+        "../2026-09-28-wallet-rpc/wallet/07b-final-checks-result.json",
+        "../2026-09-28-wallet-rpc/wallet/08-native-ws-auth-result.json",
+        "../2026-09-28-wallet-rpc/checks/frontend-verification.json"
+      ],
+      "scope_note": "Original local S2 criteria closed with actual extension/native gateway evidence plus current immutable-mutation/stale fixtures and retained threat inventory; no L1/proof/production certification implied."
+    },
+    {
+      "id": "S2-02",
+      "title": "Eski hesap ge\u00e7i\u015fi ve session-only eri\u015fim UX\u2019i",
+      "original_status": "PARTIAL",
+      "original_criteria": [
+        {
+          "text": "Eski hesap i\u00e7in anla\u015f\u0131l\u0131r, mevcut yetkiye dayanan ge\u00e7i\u015f yolu var.",
+          "passed": true
+        },
+        {
+          "text": "Legacy kay\u0131t silinmedi ve yanl\u0131\u015f deployment\u2019a credential s\u0131zmad\u0131.",
+          "passed": true
+        },
+        {
+          "text": "Session-only uyar\u0131s\u0131 ve reload davran\u0131\u015f\u0131 ger\u00e7ek taray\u0131c\u0131da do\u011fruland\u0131.",
+          "passed": true
+        },
+        {
+          "text": "Ge\u00e7i\u015f balance, snapshot veya chain reset gerektirmiyor.",
+          "passed": true
+        }
+      ],
+      "original_limits": [
+        "Local acceptance checks pass; S2-01 real-wallet dependency remains open."
+      ],
+      "depends_on": [
+        "S2-01"
+      ],
+      "status": "PASS",
+      "current_criteria": [
+        {
+          "text": "Eski hesap i\u00e7in anla\u015f\u0131l\u0131r, mevcut yetkiye dayanan ge\u00e7i\u015f yolu var.",
+          "passed": true
+        },
+        {
+          "text": "Legacy kay\u0131t silinmedi ve yanl\u0131\u015f deployment\u2019a credential s\u0131zmad\u0131.",
+          "passed": true
+        },
+        {
+          "text": "Session-only uyar\u0131s\u0131 ve reload davran\u0131\u015f\u0131 ger\u00e7ek taray\u0131c\u0131da do\u011fruland\u0131.",
+          "passed": true
+        },
+        {
+          "text": "Ge\u00e7i\u015f balance, snapshot veya chain reset gerektirmiyor.",
+          "passed": true
+        }
+      ],
+      "unpassed_dependencies": [],
+      "evidence": [
+        "../2026-09-28-wallet-rpc/wallet/README.md",
+        "../2026-09-28-wallet-rpc/wallet/07b-final-checks-result.json",
+        "../2026-09-28-wallet-rpc/wallet/08-native-ws-auth-result.json",
+        "../2026-09-28-wallet-rpc/checks/frontend-verification.json"
+      ],
+      "scope_note": "Original local S2 criteria closed with actual extension/native gateway evidence plus current immutable-mutation/stale fixtures and retained threat inventory; no L1/proof/production certification implied."
+    },
+    {
+      "id": "S2-03",
+      "title": "Emir, \u00e7ekim ve piyasa se\u00e7imi yar\u0131\u015f matrisi",
+      "original_status": "PARTIAL",
+      "original_criteria": [
+        {
+          "text": "Her mutation\u2019\u0131n hangi immutable ba\u011flamla g\u00f6nderildi\u011fi testli.",
+          "passed": false
+        },
+        {
+          "text": "Farkl\u0131 hesap/piyasa verileri ayn\u0131 state alt\u0131nda birle\u015fmiyor.",
+          "passed": true
+        },
+        {
+          "text": "Unknown sonu\u00e7ta sahte ba\u015far\u0131 veya otomatik \u00e7ift transfer yok.",
+          "passed": true
+        },
+        {
+          "text": "Execution miktar\u0131 ile finality eksenleri aray\u00fczde ayr\u0131 tutuluyor.",
+          "passed": true
+        }
+      ],
+      "original_limits": [
+        "Deposit wallet mint/approve/bind/authorize/credit transaction race matrix not executed."
+      ],
+      "depends_on": [
+        "S2-01"
+      ],
+      "status": "PASS",
+      "current_criteria": [
+        {
+          "text": "Her mutation\u2019\u0131n hangi immutable ba\u011flamla g\u00f6nderildi\u011fi testli.",
+          "passed": true
+        },
+        {
+          "text": "Farkl\u0131 hesap/piyasa verileri ayn\u0131 state alt\u0131nda birle\u015fmiyor.",
+          "passed": true
+        },
+        {
+          "text": "Unknown sonu\u00e7ta sahte ba\u015far\u0131 veya otomatik \u00e7ift transfer yok.",
+          "passed": true
+        },
+        {
+          "text": "Execution miktar\u0131 ile finality eksenleri aray\u00fczde ayr\u0131 tutuluyor.",
+          "passed": true
+        }
+      ],
+      "unpassed_dependencies": [],
+      "evidence": [
+        "../2026-09-28-wallet-rpc/wallet/README.md",
+        "../2026-09-28-wallet-rpc/wallet/07b-final-checks-result.json",
+        "../2026-09-28-wallet-rpc/wallet/08-native-ws-auth-result.json",
+        "../2026-09-28-wallet-rpc/checks/frontend-verification.json"
+      ],
+      "scope_note": "Original local S2 criteria closed with actual extension/native gateway evidence plus current immutable-mutation/stale fixtures and retained threat inventory; no L1/proof/production certification implied."
+    },
+    {
+      "id": "S2-04",
+      "title": "XSS, CSP ve credential saklama politikas\u0131",
+      "original_status": "PARTIAL",
+      "original_criteria": [
+        {
+          "text": "Riskli render ve d\u0131\u015f i\u00e7erik y\u00fczeylerinin kapsam listesi var.",
+          "passed": true
+        },
+        {
+          "text": "Credential URL, console, hata raporu ve telemetry\u2019ye ta\u015f\u0131nm\u0131yor.",
+          "passed": true
+        },
+        {
+          "text": "Yerelde uygulanm\u0131\u015f CSP ve wallet uyumluluk sonu\u00e7lar\u0131 kay\u0131tl\u0131.",
+          "passed": false
+        },
+        {
+          "text": "Storage g\u00fcven s\u0131n\u0131r\u0131 ile kalan XSS riski d\u00fcr\u00fcst\u00e7e belgeli.",
+          "passed": true
+        }
+      ],
+      "original_limits": [
+        "CSP applied only to local compiled fixture server; actual extension-wallet/production-CSP compatibility unverified."
+      ],
+      "depends_on": [
+        "S2-02"
+      ],
+      "status": "PASS",
+      "current_criteria": [
+        {
+          "text": "Riskli render ve d\u0131\u015f i\u00e7erik y\u00fczeylerinin kapsam listesi var.",
+          "passed": true
+        },
+        {
+          "text": "Credential URL, console, hata raporu ve telemetry\u2019ye ta\u015f\u0131nm\u0131yor.",
+          "passed": true
+        },
+        {
+          "text": "Yerelde uygulanm\u0131\u015f CSP ve wallet uyumluluk sonu\u00e7lar\u0131 kay\u0131tl\u0131.",
+          "passed": true
+        },
+        {
+          "text": "Storage g\u00fcven s\u0131n\u0131r\u0131 ile kalan XSS riski d\u00fcr\u00fcst\u00e7e belgeli.",
+          "passed": true
+        }
+      ],
+      "unpassed_dependencies": [],
+      "evidence": [
+        "../2026-09-28-wallet-rpc/wallet/README.md",
+        "../2026-09-28-wallet-rpc/wallet/07b-final-checks-result.json",
+        "../2026-09-28-wallet-rpc/wallet/08-native-ws-auth-result.json",
+        "../2026-09-28-wallet-rpc/checks/frontend-verification.json"
+      ],
+      "scope_note": "Original local S2 criteria closed with actual extension/native gateway evidence plus current immutable-mutation/stale fixtures and retained threat inventory; no L1/proof/production certification implied."
+    },
+    {
+      "id": "S4-03",
+      "title": "Sequencer, finality ve rollback journal",
+      "original_status": "PARTIAL",
+      "original_criteria": [
+        {
+          "text": "Finality i\u015faretleri ger\u00e7ek g\u00f6zlem ve commitment\u2019a ba\u011fl\u0131.",
+          "passed": true
+        },
+        {
+          "text": "Roll-forward/rollback/hold karar tablosu testli.",
+          "passed": true
+        },
+        {
+          "text": "Belirsiz durumda kan\u0131t yokken journal/state silinmiyor.",
+          "passed": false
+        },
+        {
+          "text": "Kesinti sonras\u0131 \u00e7ift settlement veya withdrawal k\u00f6k\u00fc sapmas\u0131 olu\u015fmuyor.",
+          "passed": false
+        }
+      ],
+      "original_limits": [
+        "Journal I/O fail-open fixed; seal-vs-snapshot atomicity, pending old transaction reconciliation and unpinned ambiguous settlement recheck remain release gates."
+      ],
+      "depends_on": [
+        "S4-02",
+        "S3-02"
+      ],
+      "status": "PASS",
+      "current_criteria": [
+        {
+          "text": "Finality i\u015faretleri ger\u00e7ek g\u00f6zlem ve commitment\u2019a ba\u011fl\u0131.",
+          "passed": true
+        },
+        {
+          "text": "Roll-forward/rollback/hold karar tablosu testli.",
+          "passed": true
+        },
+        {
+          "text": "Belirsiz durumda kan\u0131t yokken journal/state silinmiyor.",
+          "passed": true
+        },
+        {
+          "text": "Kesinti sonras\u0131 \u00e7ift settlement veya withdrawal k\u00f6k\u00fc sapmas\u0131 olu\u015fmuyor.",
+          "passed": true
+        }
+      ],
+      "unpassed_dependencies": [],
+      "evidence": [
+        "../2026-09-28-resolution/checks/gateway.json",
+        "../2026-09-28-resolution/checks/cast-loopback.json",
+        "../2026-09-28-resolution/review.md"
+      ],
+      "scope_note": "Original local/native or identity scope only; production gates remain separately open."
+    },
+    {
+      "id": "S4-05",
+      "title": "Witness ve prover ta\u015f\u0131ma s\u0131n\u0131r\u0131",
+      "original_status": "PARTIAL",
+      "original_criteria": [
+        {
+          "text": "Input/output ba\u011flama matrisi ve negatif vekt\u00f6rler mevcut.",
+          "passed": true
+        },
+        {
+          "text": "Production\u2019da dev bypass kabul edilmiyor.",
+          "passed": true
+        },
+        {
+          "text": "Retry/session d\u00f6n\u00fc\u015f\u00fcm\u00fc yanl\u0131\u015f batch veya root\u2019u kabul ettirmiyor.",
+          "passed": true
+        },
+        {
+          "text": "Ger\u00e7ek SP1 ispat\u0131 d\u0131\u015f\u0131ndaki kontroller a\u00e7\u0131k etiketli.",
+          "passed": true
+        }
+      ],
+      "original_limits": [
+        "Native transport checks and actual-ELF service validation are distinct from proof verification; S4-03 dependency unresolved."
+      ],
+      "depends_on": [
+        "S4-03"
+      ],
+      "status": "PASS",
+      "current_criteria": [
+        {
+          "text": "Input/output ba\u011flama matrisi ve negatif vekt\u00f6rler mevcut.",
+          "passed": true
+        },
+        {
+          "text": "Production\u2019da dev bypass kabul edilmiyor.",
+          "passed": true
+        },
+        {
+          "text": "Retry/session d\u00f6n\u00fc\u015f\u00fcm\u00fc yanl\u0131\u015f batch veya root\u2019u kabul ettirmiyor.",
+          "passed": true
+        },
+        {
+          "text": "Ger\u00e7ek SP1 ispat\u0131 d\u0131\u015f\u0131ndaki kontroller a\u00e7\u0131k etiketli.",
+          "passed": true
+        }
+      ],
+      "unpassed_dependencies": [],
+      "evidence": [
+        "../2026-09-28-resolution/settlement/focused.json",
+        "../2026-09-28-resolution/checks/gateway.json",
+        "../2026-09-28-resolution/checks/prover-service.json",
+        "../2026-09-28-resolution/review.md"
+      ],
+      "scope_note": "Original local/native or identity scope only; production gates remain separately open."
+    },
+    {
+      "id": "S4-07",
+      "title": "HTTP/WS y\u00fczeyi, kaynak s\u0131n\u0131rlar\u0131 ve kapan\u0131\u015f",
+      "original_status": "PARTIAL",
+      "original_criteria": [
+        {
+          "text": "T\u00fcm eri\u015filebilir route\u2019lar\u0131n g\u00fcvenlik envanteri var.",
+          "passed": true
+        },
+        {
+          "text": "Body/rate/socket kaynak s\u0131n\u0131rlar\u0131 tekrar \u00fcretilebilir bi\u00e7imde testli.",
+          "passed": false
+        },
+        {
+          "text": "Secret ta\u015f\u0131mayan ve kapal\u0131 varsay\u0131lan operasyon davran\u0131\u015f\u0131 var.",
+          "passed": false
+        },
+        {
+          "text": "Y\u00fck/ar\u0131za testi yaln\u0131z izole yerel hedefte \u00e7al\u0131\u015ft\u0131.",
+          "passed": true
+        }
+      ],
+      "original_limits": [
+        "No explicit gateway socket cap/origin gate; permissive CORS; prover512MiB body consumed before handler bearer check; no complete request-draining shutdown."
+      ],
+      "depends_on": [
+        "S1-02"
+      ],
+      "status": "PASS",
+      "current_criteria": [
+        {
+          "text": "T\u00fcm eri\u015filebilir route\u2019lar\u0131n g\u00fcvenlik envanteri var.",
+          "passed": true
+        },
+        {
+          "text": "Body/rate/socket kaynak s\u0131n\u0131rlar\u0131 tekrar \u00fcretilebilir bi\u00e7imde testli.",
+          "passed": true
+        },
+        {
+          "text": "Secret ta\u015f\u0131mayan ve kapal\u0131 varsay\u0131lan operasyon davran\u0131\u015f\u0131 var.",
+          "passed": true
+        },
+        {
+          "text": "Y\u00fck/ar\u0131za testi yaln\u0131z izole yerel hedefte \u00e7al\u0131\u015ft\u0131.",
+          "passed": true
+        }
+      ],
+      "unpassed_dependencies": [],
+      "evidence": [
+        "../2026-09-28-resolution/checks/gateway.json",
+        "../2026-09-28-resolution/checks/prover-service.json",
+        "../2026-09-28-runtime/gateway-process/result.json",
+        "../2026-09-28-resolution/review.md"
+      ],
+      "scope_note": "Original local/native or identity scope only; production gates remain separately open."
+    },
+    {
+      "id": "S5-01",
+      "title": "Release aday\u0131 ve ger\u00e7ek guest ELF",
+      "original_status": "PARTIAL",
+      "original_criteria": [
+        {
+          "text": "Release source SHA ve t\u00fcm ara\u00e7/ba\u011f\u0131ml\u0131l\u0131k s\u00fcr\u00fcmleri sabit.",
+          "passed": false
+        },
+        {
+          "text": "Ger\u00e7ek guest ELF \u00fcretildi; stub kullan\u0131m\u0131 yok.",
+          "passed": true
+        },
+        {
+          "text": "ELF SHA-256 ve build komutu/exit kodu kay\u0131tl\u0131.",
+          "passed": true
+        },
+        {
+          "text": "Derleme tekrar \u00fcretilebilirli\u011fi veya tespit edilen fark belgeli.",
+          "passed": true
+        }
+      ],
+      "original_limits": [
+        "Actual ELF and vkey generated; dirty source is content-pinned but no release commit or completed upstream graph gate."
+      ],
+      "depends_on": [
+        "S3-03",
+        "S4-05",
+        "S4-08"
+      ],
+      "status": "PASS",
+      "current_criteria": [
+        {
+          "text": "Release source SHA ve t\u00fcm ara\u00e7/ba\u011f\u0131ml\u0131l\u0131k s\u00fcr\u00fcmleri sabit.",
+          "passed": true
+        },
+        {
+          "text": "Ger\u00e7ek guest ELF \u00fcretildi; stub kullan\u0131m\u0131 yok.",
+          "passed": true
+        },
+        {
+          "text": "ELF SHA-256 ve build komutu/exit kodu kay\u0131tl\u0131.",
+          "passed": true
+        },
+        {
+          "text": "Derleme tekrar \u00fcretilebilirli\u011fi veya tespit edilen fark belgeli.",
+          "passed": true
+        }
+      ],
+      "unpassed_dependencies": [],
+      "evidence": [
+        "checks/sp1-guest-build-rustup.json",
+        "checks/release-guards.json"
+      ],
+      "scope_note": "Previously closed original identity criterion is retained. The new release identity is being refreshed for SP1 6.1.0; historical ELF/vkey evidence does not certify the new artifact. No proof or target-verifier acceptance is implied.",
+      "historical_evidence": [
+        "../2026-09-28-resolution/release-manifest.json",
+        "../2026-09-28-resolution/source-validation.json",
+        "../2026-09-28-resolution/tool-versions.json"
+      ],
+      "pending_evidence": [
+        "release-manifest.json"
+      ],
+      "progress": [
+        {
+          "status": "PASS",
+          "scope": "SP1 guest/host/prover and the SP1/slop dependency family are pinned to patched 6.1.0; actual guest ELF build completed. Final source/ELF/vkey identity is to be recorded in release-manifest.json."
+        }
+      ]
+    },
+    {
+      "id": "S5-02",
+      "title": "Native / guest byte-exact e\u015fitli\u011fi",
+      "original_status": "BLOCKED",
+      "original_criteria": [
+        {
+          "text": "Ayn\u0131 witness hash\u2019i her iki y\u00fcr\u00fctmede kullan\u0131ld\u0131.",
+          "passed": false
+        },
+        {
+          "text": "Normal ve A06 phase 1/2 \u00e7\u0131kt\u0131lar\u0131 byte-exact e\u015fit.",
+          "passed": false
+        },
+        {
+          "text": "Negatif vekt\u00f6rler ger\u00e7ek guest y\u00fcr\u00fctmesinde reddedildi.",
+          "passed": false
+        },
+        {
+          "text": "\u00c7\u0131kt\u0131 format\u0131 ve alan s\u0131ras\u0131 kontrat t\u00fcketicisiyle e\u015fle\u015fiyor.",
+          "passed": true
+        }
+      ],
+      "original_limits": [
+        "Normal deposit/withdraw native==guest passed; A06 delegated verification stopped by automatic safety review. Draft quarantined; not executed or integrated."
+      ],
+      "depends_on": [
+        "S5-01",
+        "S4-01",
+        "S4-03"
+      ],
+      "status": "BLOCKED",
+      "current_criteria": [
+        {
+          "text": "Ayn\u0131 witness hash\u2019i her iki y\u00fcr\u00fctmede kullan\u0131ld\u0131.",
+          "passed": false
+        },
+        {
+          "text": "Normal ve A06 phase 1/2 \u00e7\u0131kt\u0131lar\u0131 byte-exact e\u015fit.",
+          "passed": false
+        },
+        {
+          "text": "Negatif vekt\u00f6rler ger\u00e7ek guest y\u00fcr\u00fctmesinde reddedildi.",
+          "passed": false
+        },
+        {
+          "text": "\u00c7\u0131kt\u0131 format\u0131 ve alan s\u0131ras\u0131 kontrat t\u00fcketicisiyle e\u015fle\u015fiyor.",
+          "passed": true
+        }
+      ],
+      "unpassed_dependencies": [],
+      "evidence": [
+        "checks/normal-host-tests.json",
+        "checks/normal-guest-parity.json",
+        "normal/run-6.1.0/manifest.json"
+      ],
+      "scope_note": "Ordinary-only parity and two actual guest negatives passed; combined normal+A06 acceptance and current_criteria remain unchanged. S5-02 stays BLOCKED because the held A06 branch is not executed.",
+      "progress": [
+        {
+          "status": "PASS",
+          "scope": "Three ordinary synthetic guest execution cases completed on SP1 6.1.0: deposit/withdraw native==guest at the exact same witness; bad-manifest and unauthorized-withdrawal both rejected with expected guest exit 1 and zero public bytes. No genuine proof or A06 execution.",
+          "normal_case": {
+            "witness_sha256": "0f6f5c96dd9e195f32c63d3c2a72cefe4ef2bdc821fda52485d7fc03c4592dc7",
+            "commitment": "0xdba12bfa8b5b7c54bd7035e2fdc92615c9b1f653d16b2230f3a5da7a4ff57abd",
+            "guest_exit_code": 0,
+            "cycles": 449957
+          },
+          "negative_cases": [
+            {
+              "case": "bad-manifest",
+              "cycles": 115694,
+              "guest_exit_code": 1,
+              "native_error": "ManifestMismatch",
+              "public_values_bytes": 0,
+              "witness_sha256": "5777f76c6ce9d0156172115165bde15c75086c18f42dff11e8339f2ee11444c5"
+            },
+            {
+              "case": "unauthorized-withdrawal",
+              "cycles": 156555,
+              "guest_exit_code": 1,
+              "native_error": "BadSpendKey",
+              "public_values_bytes": 0,
+              "witness_sha256": "16295e94527b05f109ab2a13be6fb53afa8c94242f89928a169869da92d3b2ed"
+            }
+          ],
+          "evidence": [
+            "checks/normal-host-tests.json",
+            "checks/normal-guest-parity.json",
+            "normal/run-6.1.0/manifest.json"
+          ]
+        },
+        {
+          "status": "BLOCKED",
+          "scope": "The previous automatic-review hold on A06 phase 1/2 execution is unchanged; that branch has not been retried, rephrased or delegated."
+        }
+      ]
+    },
+    {
+      "id": "S5-03",
+      "title": "Vkey, ger\u00e7ek proof ve verifier do\u011frulamas\u0131",
+      "original_status": "BLOCKED",
+      "original_criteria": [
+        {
+          "text": "Ger\u00e7ek proof \u00fcretildi ve target verifier yolunda ge\u00e7ti.",
+          "passed": false
+        },
+        {
+          "text": "Yanl\u0131\u015f vkey/input/proof negatif kontrolleri ge\u00e7ti.",
+          "passed": false
+        },
+        {
+          "text": "Source\u2192ELF\u2192vkey\u2192witness\u2192proof hash zinciri eksiksiz.",
+          "passed": false
+        },
+        {
+          "text": "Yerel/\u00fccretli donan\u0131m ve maliyet yetkisi a\u00e7\u0131k\u00e7a kay\u0131tl\u0131.",
+          "passed": true
+        }
+      ],
+      "original_limits": [
+        "S5-02 incomplete; no real Groth16 proof. Configured Docker gnark backend unavailable; no paid/network/remote prover used."
+      ],
+      "depends_on": [
+        "S5-02",
+        "S4-04"
+      ],
+      "status": "BLOCKED",
+      "current_criteria": [
+        {
+          "text": "Ger\u00e7ek proof \u00fcretildi ve target verifier yolunda ge\u00e7ti.",
+          "passed": false
+        },
+        {
+          "text": "Yanl\u0131\u015f vkey/input/proof negatif kontrolleri ge\u00e7ti.",
+          "passed": false
+        },
+        {
+          "text": "Source\u2192ELF\u2192vkey\u2192witness\u2192proof hash zinciri eksiksiz.",
+          "passed": false
+        },
+        {
+          "text": "Yerel/\u00fccretli donan\u0131m ve maliyet yetkisi a\u00e7\u0131k\u00e7a kay\u0131tl\u0131.",
+          "passed": true
+        }
+      ],
+      "unpassed_dependencies": [
+        "S5-02"
+      ],
+      "evidence": [
+        "checks/release-guards.json",
+        "rsa/README.md",
+        "rsa/prover-audit.json"
+      ],
+      "scope_note": "S5-02, genuine proof/target-verifier positives and negatives, and complete source-to-proof identity remain open. SP1 upgrade or cargo-audit exit 0 does not establish proof security. The lru warnings belong to this existing release gate, not a new original task.",
+      "progress": [
+        {
+          "status": "PASS",
+          "scope": "Affected SP1 6.0.0 dependency family migrated to exactly 6.1.0; manifest/lock coherence guard and its regressions passed.",
+          "evidence": [
+            "checks/release-guards.json"
+          ]
+        },
+        {
+          "status": "PARTIAL",
+          "scope": "Real-proof CLI prepares exact witness/artifact binding and local SDK verification before success output; no genuine Groth16 proof or target verifier was executed in this turn."
+        },
+        {
+          "status": "BLOCKED",
+          "scope": "lru 0.12.5 unsoundness warnings remain in the SP1 prover dependency graph (RUSTSEC-2026-0002 and RUSTSEC-2026-0253). No ignore or proof-of-non-exposure claim; proof security gate remains HOLD.",
+          "evidence": [
+            "rsa/README.md",
+            "rsa/prover-audit.json"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S6-01",
+      "title": "Yerel tam fon ak\u0131\u015f\u0131 ve acil \u00e7\u0131k\u0131\u015f",
+      "original_status": "BLOCKED",
+      "original_criteria": [
+        {
+          "text": "Normal fon ak\u0131\u015f\u0131 ger\u00e7ek yerel s\u00f6zle\u015fme ve proof ile tamamland\u0131.",
+          "passed": false
+        },
+        {
+          "text": "Withdraw/claim sonucunda ger\u00e7ek test-token fark\u0131 do\u011fruland\u0131.",
+          "passed": false
+        },
+        {
+          "text": "Acil \u00e7\u0131k\u0131\u015f ve negatif duplicate/proof senaryolar\u0131 testli.",
+          "passed": false
+        },
+        {
+          "text": "Gateway-engine-vault muhasebesi her ad\u0131mda uzla\u015f\u0131yor.",
+          "passed": false
+        }
+      ],
+      "original_limits": [
+        "Real-proof dependency absent. Demo HTTP and native/Foundry mock flows do not establish actual full token lifecycle."
+      ],
+      "depends_on": [
+        "S5-03",
+        "S2-03"
+      ],
+      "status": "BLOCKED",
+      "current_criteria": [
+        {
+          "text": "Normal fon ak\u0131\u015f\u0131 ger\u00e7ek yerel s\u00f6zle\u015fme ve proof ile tamamland\u0131.",
+          "passed": false
+        },
+        {
+          "text": "Withdraw/claim sonucunda ger\u00e7ek test-token fark\u0131 do\u011fruland\u0131.",
+          "passed": false
+        },
+        {
+          "text": "Acil \u00e7\u0131k\u0131\u015f ve negatif duplicate/proof senaryolar\u0131 testli.",
+          "passed": false
+        },
+        {
+          "text": "Gateway-engine-vault muhasebesi her ad\u0131mda uzla\u015f\u0131yor.",
+          "passed": false
+        }
+      ],
+      "unpassed_dependencies": [
+        "S5-03"
+      ],
+      "evidence": [],
+      "scope_note": "See remaining-work.md; no newly discovered condition added to the original task.",
+      "progress": [
+        {
+          "status": "BLOCKED",
+          "scope": "No new real-token lifecycle, proof settlement, claim balance delta or CloseOnly/finalExit run was performed; S5-03 remains open."
+        }
+      ]
+    },
+    {
+      "id": "S6-02",
+      "title": "Disk hatas\u0131, process kill ve restore provas\u0131",
+      "original_status": "PARTIAL",
+      "original_criteria": [
+        {
+          "text": "Kontroll\u00fc kesinti matrisi kaynak/durum hash\u2019leriyle kay\u0131tl\u0131.",
+          "passed": false
+        },
+        {
+          "text": "Confirmed sonu\u00e7 restart sonras\u0131 korunuyor; unknown d\u00fcr\u00fcst kal\u0131yor.",
+          "passed": false
+        },
+        {
+          "text": "Veri silerek/resetleyerek sorun \u00f6rt\u00fclmedi.",
+          "passed": true
+        },
+        {
+          "text": "Ger\u00e7ek dosya, process-kill ve fiziksel g\u00fc\u00e7 kesintisi kapsamlar\u0131 ayr\u0131.",
+          "passed": true
+        }
+      ],
+      "original_limits": [
+        "Real filesystem failures and own-process periodic-snapshot SIGKILL/restore passed; exhaustive ACK/fsync/rename/prepared-settlement crash matrix not completed."
+      ],
+      "depends_on": [
+        "S6-01",
+        "S3-03"
+      ],
+      "status": "PARTIAL",
+      "current_criteria": [
+        {
+          "text": "Kontroll\u00fc kesinti matrisi kaynak/durum hash\u2019leriyle kay\u0131tl\u0131.",
+          "passed": false
+        },
+        {
+          "text": "Confirmed sonu\u00e7 restart sonras\u0131 korunuyor; unknown d\u00fcr\u00fcst kal\u0131yor.",
+          "passed": false
+        },
+        {
+          "text": "Veri silerek/resetleyerek sorun \u00f6rt\u00fclmedi.",
+          "passed": true
+        },
+        {
+          "text": "Ger\u00e7ek dosya, process-kill ve fiziksel g\u00fc\u00e7 kesintisi kapsamlar\u0131 ayr\u0131.",
+          "passed": true
+        }
+      ],
+      "unpassed_dependencies": [
+        "S6-01"
+      ],
+      "evidence": [],
+      "scope_note": "See remaining-work.md; no newly discovered condition added to the original task.",
+      "progress": [
+        {
+          "status": "PARTIAL",
+          "scope": "The previous 21 real SIGKILL/journal cases remain historical native evidence. Current witness recovery strengthens chain observation but does not substitute for the combined real-funds ACK/restart/crash matrix."
+        }
+      ]
+    },
+    {
+      "id": "S6-03",
+      "title": "RPC/finality/reorg ve deployment e\u015flemesi",
+      "original_status": "PARTIAL",
+      "original_criteria": [
+        {
+          "text": "Finality ve RPC disagreement politikas\u0131 testli.",
+          "passed": false
+        },
+        {
+          "text": "Replay/duplicate ingestion \u00e7ift kredi \u00fcretmiyor.",
+          "passed": true
+        },
+        {
+          "text": "Yerel ve canl\u0131 salt-okunur kan\u0131tlar ayr\u0131 etiketli.",
+          "passed": true
+        },
+        {
+          "text": "Deployment e\u015fle\u015fmesi do\u011frulanm\u0131\u015f veya a\u00e7\u0131k engel olarak kay\u0131tl\u0131.",
+          "passed": true
+        }
+      ],
+      "original_limits": [
+        "Finalized intake RPC fixtures pass; settlement two-read ambiguity remains. Public Base Sepolia endpoint returns HTTP403, so current deployment code/roles/vkey remain unknown."
+      ],
+      "depends_on": [
+        "S6-01"
+      ],
+      "status": "PARTIAL",
+      "current_criteria": [
+        {
+          "text": "Finality ve RPC disagreement politikas\u0131 testli.",
+          "passed": false
+        },
+        {
+          "text": "Replay/duplicate ingestion \u00e7ift kredi \u00fcretmiyor.",
+          "passed": true
+        },
+        {
+          "text": "Yerel ve canl\u0131 salt-okunur kan\u0131tlar ayr\u0131 etiketli.",
+          "passed": true
+        },
+        {
+          "text": "Deployment e\u015fle\u015fmesi do\u011frulanm\u0131\u015f veya a\u00e7\u0131k engel olarak kay\u0131tl\u0131.",
+          "passed": true
+        }
+      ],
+      "unpassed_dependencies": [
+        "S6-01"
+      ],
+      "evidence": [
+        "../2026-09-28-wallet-rpc/rpc/README.md",
+        "../2026-09-28-wallet-rpc/checks/deployment-reader.json",
+        "../2026-09-28-wallet-rpc/rpc/initial-observation-checks/deployment-observation.json"
+      ],
+      "scope_note": "Both audit reader and bounded runtime settlement-recovery witness work have local fixture evidence. This is not general gateway quorum or independent live-provider verification. The last recorded public RPC HTTP403 is historical (2026-09-28 12:44:39 UTC), not a new observation; S6-01 remains open.",
+      "progress": [
+        {
+          "status": "PASS",
+          "scope": "Optional L1_RPC_WITNESS now requires two endpoints to match the startup chain, same canonical finalized anchor and three recovery words. Stale/forked/unavailable/malformed/wrong-chain data fails closed without fallback. Nine focused unit tests and two actual-cast loopback matrix tests passed; final combined evidence is recorded by the root verification lane.",
+          "evidence": [
+            "../../../crates/gateway/src/l1.rs",
+            "../../../crates/gateway/src/l1/witness_tests.rs"
+          ]
+        },
+        {
+          "status": "PARTIAL",
+          "scope": "Witness policy covers settlement boot recovery and ambiguous-send reconciliation only. Other L1 readers, combined full-funds/reorg matrix, live configured deployment observation and source-bytecode equivalence remain open."
+        }
+      ]
+    },
+    {
+      "id": "S7-01",
+      "title": "Anahtarlar, g\u00f6zlem ve olay runbook\u2019lar\u0131",
+      "original_status": "BLOCKED",
+      "original_criteria": [
+        {
+          "text": "Rol/anahtar envanteri secret i\u00e7ermeden tamamland\u0131.",
+          "passed": true
+        },
+        {
+          "text": "Kritik alarmlar ar\u0131za enjekte edilerek s\u0131nand\u0131.",
+          "passed": false
+        },
+        {
+          "text": "Restore/CloseOnly/incident ak\u0131\u015f\u0131 yerelde tekrarland\u0131.",
+          "passed": false
+        },
+        {
+          "text": "Olay sahipleri ve ileti\u015fim s\u0131n\u0131rlar\u0131 belirli.",
+          "passed": false
+        }
+      ],
+      "original_limits": [
+        "Real incident owners/escalation destinations not supplied; no failure-injected pager/CloseOnly/full-funds drill."
+      ],
+      "depends_on": [
+        "S6-02",
+        "S6-03"
+      ],
+      "status": "BLOCKED",
+      "current_criteria": [
+        {
+          "text": "Rol/anahtar envanteri secret i\u00e7ermeden tamamland\u0131.",
+          "passed": true
+        },
+        {
+          "text": "Kritik alarmlar ar\u0131za enjekte edilerek s\u0131nand\u0131.",
+          "passed": false
+        },
+        {
+          "text": "Restore/CloseOnly/incident ak\u0131\u015f\u0131 yerelde tekrarland\u0131.",
+          "passed": false
+        },
+        {
+          "text": "Olay sahipleri ve ileti\u015fim s\u0131n\u0131rlar\u0131 belirli.",
+          "passed": false
+        }
+      ],
+      "unpassed_dependencies": [
+        "S6-02",
+        "S6-03"
+      ],
+      "evidence": [],
+      "scope_note": "See remaining-work.md; no newly discovered condition added to the original task.",
+      "progress": [
+        {
+          "status": "BLOCKED",
+          "scope": "Real incident owners, escalation destinations, alarm delivery and independent restore/CloseOnly drill remain missing. No messages or alarms were sent to other people."
+        }
+      ]
+    },
+    {
+      "id": "S7-02",
+      "title": "Ba\u011f\u0131ms\u0131z inceleme ve yay\u0131n karar kap\u0131s\u0131",
+      "original_status": "BLOCKED",
+      "original_criteria": [
+        {
+          "text": "Coverage ve a\u00e7\u0131k risk listesi ba\u011f\u0131ms\u0131z g\u00f6zden ge\u00e7irildi.",
+          "passed": false
+        },
+        {
+          "text": "A\u00e7\u0131k kritik/y\u00fcksek risk yay\u0131n engelleri kapand\u0131 veya yay\u0131n durduruldu.",
+          "passed": true
+        },
+        {
+          "text": "T\u00fcm release kan\u0131t\u0131 ayn\u0131 kaynak/toolchain/deployment kimli\u011fine ba\u011fl\u0131.",
+          "passed": false
+        },
+        {
+          "text": "Yay\u0131n karar\u0131 ayr\u0131 a\u00e7\u0131k yetkiyle verildi; bu rehber karar\u0131n yerine kullan\u0131lmad\u0131.",
+          "passed": false
+        }
+      ],
+      "original_limits": [
+        "Bounded local independent code review only; no full independent/external signoff. Release held; no deployment or release approval inferred."
+      ],
+      "depends_on": [
+        "S2-04",
+        "S4-07",
+        "S4-08",
+        "S5-03",
+        "S6-02",
+        "S6-03",
+        "S7-01"
+      ],
+      "status": "BLOCKED",
+      "current_criteria": [
+        {
+          "text": "Coverage ve a\u00e7\u0131k risk listesi ba\u011f\u0131ms\u0131z g\u00f6zden ge\u00e7irildi.",
+          "passed": false
+        },
+        {
+          "text": "A\u00e7\u0131k kritik/y\u00fcksek risk yay\u0131n engelleri kapand\u0131 veya yay\u0131n durduruldu.",
+          "passed": true
+        },
+        {
+          "text": "T\u00fcm release kan\u0131t\u0131 ayn\u0131 kaynak/toolchain/deployment kimli\u011fine ba\u011fl\u0131.",
+          "passed": false
+        },
+        {
+          "text": "Yay\u0131n karar\u0131 ayr\u0131 a\u00e7\u0131k yetkiyle verildi; bu rehber karar\u0131n yerine kullan\u0131lmad\u0131.",
+          "passed": false
+        }
+      ],
+      "unpassed_dependencies": [
+        "S5-03",
+        "S6-02",
+        "S6-03",
+        "S7-01"
+      ],
+      "evidence": [
+        "rsa/README.md",
+        "rsa/verification.json",
+        "rsa/vendor-provenance.json",
+        "checks/release-guards.json"
+      ],
+      "scope_note": "Dependency remediation and bounded local review advance existing risk criteria. External review, proof/funds/operations/deployment evidence, complete release identity and separately authorized publication remain open.",
+      "progress": [
+        {
+          "status": "PASS",
+          "scope": "RSA 0.9.10/RUSTSEC-2023-0071 removed from application dependency graphs by ring verification and a provenance-checked manifest-only vendor correction, without advisory suppression. Attestation positives and negatives passed.",
+          "evidence": [
+            "rsa/README.md",
+            "rsa/verification.json",
+            "rsa/vendor-provenance.json",
+            "rsa/workspace-audit.json",
+            "rsa/prover-audit.json",
+            "rsa/tee-audit-fixed.json"
+          ]
+        },
+        {
+          "status": "PARTIAL",
+          "scope": "Bounded independent local source review completed; it does not replace independent external signoff. lru 0.12.5 unsoundness warnings and other recorded dependency warnings remain open."
+        },
+        {
+          "status": "BLOCKED",
+          "scope": "Production release remains HOLD. User authorized PR23 merge only; this continuation does not presume authorization to merge its new PR or deploy."
+        }
+      ]
+    }
+  ],
+  "additional_work": "../2026-09-28-resolution/remaining-work.md#sonradan-bulunan-ek-i\u015fler--11-\u00f6zg\u00fcn-i\u015fin-say\u0131s\u0131na-eklenmedi",
+  "previous_report": "docs/audits/2026-09-28-wallet-rpc/task-status.json",
+  "identity_status": "CURRENT_SOURCE_ELF_VKEY_BOUND",
+  "release_manifest": "release-manifest.json",
+  "merge": {
+    "pr": 23,
+    "url": "https://github.com/Kubudak90/dark-perp/pull/23",
+    "status": "MERGED",
+    "merge_sha": "f866a94d383d507d0993bc00403f27bbdb25f192"
+  },
+  "delivery": {
+    "new_work": "READY_FOR_REVIEW",
+    "new_pr_merge_authorized": false,
+    "production_release_authorized": false
+  }
+}

@@ -1,0 +1,24 @@
+warning: sp1-host@0.0.0: rustc +succinct --version: "rustc 1.93.0-dev\n"
+warning: sp1-host@0.0.0: perp-core-guest built at 2026-09-28 16:52:37
+   Compiling sp1-host v0.0.0 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/sp1-host)
+    Finished `release` profile [optimized] target(s) in 1m 07s
+     Running `crates/sp1-host/target/release/sp1-host --check-negatives --output-dir docs/audits/2026-09-28-post-merge/normal/run-6.1.0`
+witness sha256    = 0f6f5c96dd9e195f32c63d3c2a72cefe4ef2bdc821fda52485d7fc03c4592dc7
+cycles            = 449957
+native commitment = 0xdba12bfa8b5b7c54bd7035e2fdc92615c9b1f653d16b2230f3a5da7a4ff57abd
+zkVM   commitment = 0xdba12bfa8b5b7c54bd7035e2fdc92615c9b1f653d16b2230f3a5da7a4ff57abd
+MATCH: native perp-core == SP1 guest
+stderr: 
+stderr: thread '<unnamed>' (1) panicked at src/main.rs:32:61:
+stderr: valid transition: ManifestMismatch
+stderr: stack backtrace:
+stderr: note: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.
+stderr: valid transition: ManifestMismatch
+REJECTED: bad-manifest native=ManifestMismatch guest_exit=1 public_bytes=0
+stderr: 
+stderr: thread '<unnamed>' (1) panicked at src/main.rs:32:61:
+stderr: valid transition: BadSpendKey
+stderr: stack backtrace:
+stderr: note: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.
+stderr: valid transition: BadSpendKey
+REJECTED: unauthorized-withdrawal native=BadSpendKey guest_exit=1 public_bytes=0

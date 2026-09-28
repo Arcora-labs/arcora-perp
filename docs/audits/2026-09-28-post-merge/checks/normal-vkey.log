@@ -1,0 +1,6 @@
+warning: sp1-host@0.0.0: rustc +succinct --version: "rustc 1.93.0-dev\n"
+warning: sp1-host@0.0.0: perp-core-guest built at 2026-09-28 16:52:37
+   Compiling sp1-host v0.0.0 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/sp1-host)
+    Finished `release` profile [optimized] target(s) in 1m 05s
+     Running `crates/sp1-host/target/release/vkey`
+VKEY=0x00ab0d3f8dbcadb423593ef582e637e864ef538537f43e433a8f1466aaa2dfcf

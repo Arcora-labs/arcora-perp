@@ -1,0 +1,18 @@
+ Downloading crates ...
+  Downloaded aws-lc-rs v1.18.1
+  Downloaded aws-lc-sys v0.45.0
+   Compiling aws-lc-sys v0.45.0
+   Compiling aws-lc-rs v1.18.1
+   Compiling rustls v0.23.45
+   Compiling crossbeam-epoch v0.9.20
+    Checking moka v0.12.15
+    Checking hickory-resolver v0.26.1
+    Checking rustls-webpki v0.103.15
+    Checking tokio-rustls v0.26.4
+    Checking rustls-platform-verifier v0.7.0
+    Checking ureq v3.3.0
+    Checking hyper-rustls v0.27.9
+    Checking reqwest v0.13.4
+    Checking dcap-qvl v0.5.2
+    Checking tee-capture v0.1.0 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/scripts/tee-capture)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 13.19s

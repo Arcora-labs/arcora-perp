@@ -1,0 +1,57 @@
+{
+  "host_rustc": {
+    "argv": [
+      "/Users/huseyinarslan/.cargo/bin/rustc",
+      "--version",
+      "--verbose"
+    ],
+    "output": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: aarch64-apple-darwin\nrelease: 1.95.0\nLLVM version: 22.1.2"
+  },
+  "guest_rustc": {
+    "argv": [
+      "/Users/huseyinarslan/.cargo/bin/rustc",
+      "+succinct",
+      "--version",
+      "--verbose"
+    ],
+    "output": "rustc 1.93.0-dev\nbinary: rustc\ncommit-hash: unknown\ncommit-date: unknown\nhost: aarch64-apple-darwin\nrelease: 1.93.0-dev\nLLVM version: 21.1.8",
+    "binary_sha256": "985c33069083f55ed42b68ef51a8528d0cb1632e43428ffdb5c489306154f964"
+  },
+  "cargo": {
+    "argv": [
+      "cargo",
+      "--version"
+    ],
+    "output": "cargo 1.95.0 (f2d3ce0bd 2026-03-21) (Homebrew)"
+  },
+  "cast": {
+    "argv": [
+      "cast",
+      "--version"
+    ],
+    "output": "cast Version: 1.7.2-nightly\nCommit SHA: dea99c55914d010b22d3f5532fca180a8ecafda1\nBuild Timestamp: 2026-06-05T07:27:50.230262000Z (1780644470)\nBuild Profile: dist"
+  },
+  "sp1_cli": {
+    "argv": [
+      "/tmp/arcora-tools/sp1-6.1.0/cargo-prove",
+      "prove",
+      "--version"
+    ],
+    "output": "cargo-prove sp1 (d454975 2026-04-11T01:51:47.829463000Z)",
+    "binary_sha256": "492b6e0a377683e17e2e7806af100319e9229eeaec1ac324c5ede53c1d89f64c"
+  },
+  "protoc": {
+    "argv": [
+      "/tmp/arcora-tools/protoc-29.3/bin/protoc",
+      "--version"
+    ],
+    "output": "libprotoc 29.3"
+  },
+  "python": {
+    "argv": [
+      "/opt/homebrew/bin/python3.13",
+      "--version"
+    ],
+    "output": "Python 3.13.14"
+  }
+}

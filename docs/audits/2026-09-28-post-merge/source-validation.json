@@ -1,0 +1,622 @@
+{
+  "status": "PASS",
+  "source_commit": "31f626529b655a6ee14a400f587fbfa3f78661a0",
+  "source_sha256": "c2fd3dcf6f0f6afb9d9528a6ca218be34284dba1ba4b2d0b9aaf9dcfc69be6d2",
+  "source_files": 677,
+  "source_matches_commit": true,
+  "checks": {
+    "workspace-tests": {
+      "exit_code": 0,
+      "log_sha256": "aeeaac1d068d99d67fafd72d5e4cfdad016e7000de869ffae82ddc8ae70f46ff",
+      "changed_during": [
+        "docs/L1_RPC_WITNESS.md",
+        "docs/SP1_LOCAL_VERIFICATION.md"
+      ],
+      "changed_since": [],
+      "relevant_source_current": true,
+      "rust_test_summaries": [
+        [
+          "ok",
+          "8",
+          "0",
+          "0",
+          "0",
+          "0"
+        ],
+        [
+          "ok",
+          "3",
+          "0",
+          "0",
+          "0",
+          "0"
+        ],
+        [
+          "ok",
+          "10",
+          "0",
+          "0",
+          "0",
+          "0"
+        ],
+        [
+          "ok",
+          "1",
+          "0",
+          "0",
+          "0",
+          "0"
+        ],
+        [
+          "ok",
+          "21",
+          "0",
+          "0",
+          "0",
+          "0"
+        ],
+        [
+          "ok",
+          "4",
+          "0",
+          "0",
+          "0",
+          "0"
+        ],
+        [
+          "ok",
+          "7",
+          "0",
+          "0",
+          "0",
+          "0"
+        ],
+        [
+          "ok",
+          "7",
+          "0",
+          "0",
+          "0",
+          "0"
+        ],
+        [
+          "ok",
+          "0",
+          "0",
+          "0",
+          "0",
+          "0"
+        ],
+        [
+          "ok",
+          "0",
+          "0",
+          "0",
+          "0",
+          "0"
+        ],
+        [
+          "ok",
+          "1",
+          "0",
+          "0",
+          "0",
+          "0"
+        ],
+        [
+          "ok",
+          "3",
+          "0",
+          "0",
+          "0",
+          "0"
+        ],
+        [
+          "ok",
+          "1",
+          "0",
+          "0",
+          "0",
+          "0"
+        ],
+        [
+          "ok",
+          "416",
+          "0",
+          "4",
+          "0",
+          "0"
+        ],
+        [
+          "ok",
+          "0",
+          "0",
+          "0",
+          "0",
+          "0"
+        ],
+        [
+          "ok",
+          "18",
+          "0",
+          "0",
+          "0",
+          "0"
+        ],
+        [
+          "ok",
+          "4",
+          "0",
+          "0",
+          "0",
+          "0"
+        ],
+        [
+          "ok",
+          "0",
+          "0",
+          "0",
+          "0",
+          "0"
+        ],
+        [
+          "ok",
+          "0",
+          "0",
+          "0",
+          "0",
+          "0"
+        ],
+        [
+          "ok",
+          "2",
+          "0",
+          "0",
+          "0",
+          "0"
+        ],
+        [
+          "ok",
+          "10",
+          "0",
+          "0",
+          "0",
+          "0"
+        ],
+        [
+          "ok",
+          "1",
+          "0",
+          "0",
+          "0",
+          "0"
+        ],
+        [
+          "ok",
+          "11",
+          "0",
+          "0",
+          "0",
+          "0"
+        ],
+        [
+          "ok",
+          "0",
+          "0",
+          "0",
+          "0",
+          "0"
+        ],
+        [
+          "ok",
+          "95",
+          "0",
+          "0",
+          "0",
+          "0"
+        ],
+        [
+          "ok",
+          "4",
+          "0",
+          "0",
+          "0",
+          "0"
+        ],
+        [
+          "ok",
+          "4",
+          "0",
+          "0",
+          "0",
+          "0"
+        ],
+        [
+          "ok",
+          "32",
+          "0",
+          "0",
+          "0",
+          "0"
+        ],
+        [
+          "ok",
+          "2",
+          "0",
+          "0",
+          "0",
+          "0"
+        ],
+        [
+          "ok",
+          "16",
+          "0",
+          "0",
+          "0",
+          "0"
+        ],
+        [
+          "ok",
+          "7",
+          "0",
+          "0",
+          "0",
+          "0"
+        ],
+        [
+          "ok",
+          "2",
+          "0",
+          "0",
+          "0",
+          "0"
+        ],
+        [
+          "ok",
+          "23",
+          "0",
+          "0",
+          "0",
+          "0"
+        ],
+        [
+          "ok",
+          "3",
+          "0",
+          "0",
+          "0",
+          "0"
+        ],
+        [
+          "ok",
+          "9",
+          "0",
+          "0",
+          "0",
+          "0"
+        ],
+        [
+          "ok",
+          "1",
+          "0",
+          "0",
+          "0",
+          "0"
+        ],
+        [
+          "ok",
+          "33",
+          "0",
+          "0",
+          "0",
+          "0"
+        ],
+        [
+          "ok",
+          "1",
+          "0",
+          "0",
+          "0",
+          "0"
+        ],
+        [
+          "ok",
+          "3",
+          "0",
+          "0",
+          "0",
+          "0"
+        ],
+        [
+          "ok",
+          "26",
+          "0",
+          "0",
+          "0",
+          "0"
+        ],
+        [
+          "ok",
+          "0",
+          "0",
+          "0",
+          "0",
+          "0"
+        ],
+        [
+          "ok",
+          "0",
+          "0",
+          "0",
+          "0",
+          "0"
+        ],
+        [
+          "ok",
+          "0",
+          "0",
+          "0",
+          "0",
+          "0"
+        ],
+        [
+          "ok",
+          "0",
+          "0",
+          "0",
+          "0",
+          "0"
+        ],
+        [
+          "ok",
+          "0",
+          "0",
+          "0",
+          "0",
+          "0"
+        ],
+        [
+          "ok",
+          "0",
+          "0",
+          "0",
+          "0",
+          "0"
+        ],
+        [
+          "ok",
+          "0",
+          "0",
+          "0",
+          "0",
+          "0"
+        ],
+        [
+          "ok",
+          "0",
+          "0",
+          "0",
+          "0",
+          "0"
+        ],
+        [
+          "ok",
+          "0",
+          "0",
+          "0",
+          "0",
+          "0"
+        ],
+        [
+          "ok",
+          "0",
+          "0",
+          "0",
+          "0",
+          "0"
+        ],
+        [
+          "ok",
+          "0",
+          "0",
+          "0",
+          "0",
+          "0"
+        ],
+        [
+          "ok",
+          "0",
+          "0",
+          "0",
+          "0",
+          "0"
+        ]
+      ]
+    },
+    "workspace-fmt": {
+      "exit_code": 0,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "changed_during": [],
+      "changed_since": [
+        "docs/L1_RPC_WITNESS.md",
+        "docs/SP1_LOCAL_VERIFICATION.md"
+      ],
+      "relevant_source_current": true,
+      "rust_test_summaries": []
+    },
+    "workspace-clippy": {
+      "exit_code": 0,
+      "log_sha256": "b262a98a1c2399f4a1c6940ae9ffbad3e4d4699c6e55b67ec3b3c7b00337693d",
+      "changed_during": [],
+      "changed_since": [],
+      "relevant_source_current": true,
+      "rust_test_summaries": []
+    },
+    "release-guards": {
+      "exit_code": 0,
+      "log_sha256": "0da0f09bd2612f724a8079834bc3fd28ae9b0d0bf587996dcd98ad3cce208bc9",
+      "changed_during": [],
+      "changed_since": [
+        "docs/L1_RPC_WITNESS.md",
+        "docs/SP1_LOCAL_VERIFICATION.md"
+      ],
+      "relevant_source_current": true,
+      "rust_test_summaries": []
+    },
+    "audit-all-locks": {
+      "exit_code": 0,
+      "log_sha256": "5cfef2346163a9abde46e44f67a55054f7c05f6c43a79682f8acd3ccd8b79b39",
+      "changed_during": [],
+      "changed_since": [
+        "docs/L1_RPC_WITNESS.md",
+        "docs/SP1_LOCAL_VERIFICATION.md"
+      ],
+      "relevant_source_current": true,
+      "rust_test_summaries": []
+    },
+    "deposit-cast-regression": {
+      "exit_code": 0,
+      "log_sha256": "3747937274708972c2fb1330be01999c957246ca3b05e2cbb678b9eb1e090d8a",
+      "changed_during": [],
+      "changed_since": [],
+      "relevant_source_current": true,
+      "rust_test_summaries": [
+        [
+          "ok",
+          "1",
+          "0",
+          "0",
+          "0",
+          "419"
+        ]
+      ]
+    },
+    "runtime-witness-cast": {
+      "exit_code": 0,
+      "log_sha256": "f5b4bcbb05a7f0b4847bc87d7800bb021aee69f2e13cb291a8e106bc6ef35356",
+      "changed_during": [],
+      "changed_since": [],
+      "relevant_source_current": true,
+      "rust_test_summaries": [
+        [
+          "ok",
+          "2",
+          "0",
+          "0",
+          "0",
+          "418"
+        ]
+      ]
+    },
+    "normal-host-tests": {
+      "exit_code": 0,
+      "log_sha256": "258de6c951aeabdef1ce707cdc1d53af86d27a50f2e232662f4af12886cbb60a",
+      "changed_during": [
+        "docs/L1_RPC_WITNESS.md",
+        "docs/SP1_LOCAL_VERIFICATION.md"
+      ],
+      "changed_since": [],
+      "relevant_source_current": true,
+      "rust_test_summaries": [
+        [
+          "ok",
+          "5",
+          "0",
+          "0",
+          "0",
+          "0"
+        ],
+        [
+          "ok",
+          "0",
+          "0",
+          "0",
+          "0",
+          "0"
+        ],
+        [
+          "ok",
+          "0",
+          "0",
+          "0",
+          "0",
+          "0"
+        ],
+        [
+          "ok",
+          "0",
+          "0",
+          "0",
+          "0",
+          "0"
+        ]
+      ]
+    },
+    "normal-guest-parity": {
+      "exit_code": 0,
+      "log_sha256": "a516a93e0e929a6891937b8adfe523d2180ebc8427725255cd3693c2a8ed2eb4",
+      "changed_during": [],
+      "changed_since": [],
+      "relevant_source_current": true,
+      "rust_test_summaries": []
+    },
+    "normal-vkey": {
+      "exit_code": 0,
+      "log_sha256": "419ea552107622b77bf599bdf1e4ce43158a3a1a83da8b018530919a48e9053c",
+      "changed_during": [],
+      "changed_since": [],
+      "relevant_source_current": true,
+      "rust_test_summaries": []
+    },
+    "rsa-prover-service-final": {
+      "exit_code": 0,
+      "log_sha256": "cebfe9b33e2f17db523103fc73825934a39ef1b5609b5eb12f2430b4d98d54f2",
+      "changed_during": [],
+      "changed_since": [],
+      "relevant_source_current": true,
+      "rust_test_summaries": [
+        [
+          "ok",
+          "8",
+          "0",
+          "1",
+          "0",
+          "0"
+        ],
+        [
+          "ok",
+          "0",
+          "0",
+          "0",
+          "0",
+          "0"
+        ]
+      ]
+    },
+    "sp1-guest-build-rustup": {
+      "exit_code": 0,
+      "log_sha256": "fd5a19e03c7b7945d63ae78126b8255b80f4a17ef8008f73ffc5b0db871a04aa",
+      "changed_during": [],
+      "changed_since": [
+        "crates/sp1-host/src/bin/prove.rs",
+        "crates/sp1-host/src/lib.rs",
+        "docs/L1_RPC_WITNESS.md",
+        "docs/SP1_LOCAL_VERIFICATION.md"
+      ],
+      "relevant_source_current": true,
+      "rust_test_summaries": []
+    },
+    "sp1-guest-clean-rebuild": {
+      "exit_code": 0,
+      "log_sha256": "fc3f6143e942d69aa41413233d3730c0ae7a766976760d2eae38f3a1de2122ce",
+      "changed_during": [
+        "docs/L1_RPC_WITNESS.md",
+        "docs/SP1_LOCAL_VERIFICATION.md"
+      ],
+      "changed_since": [],
+      "relevant_source_current": true,
+      "rust_test_summaries": []
+    }
+  },
+  "identity_limits": "Only documented non-input documentation/host-helper changes occurred in earlier commands. Final normal execution, vkey, prover consumer and runtime checks match the full frozen source. The initial wrong-Rust-path build and stale-ELF service run are not success evidence."
+}

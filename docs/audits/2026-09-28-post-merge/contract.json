@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "task_id": "arcora-post-merge-2026-09-28",
+  "criteria": [
+    {"id":"M1","description":"Confirm PR23 merged at its exact approved head with fresh GitHub merge identity and disclosed CI result; preserve Desktop checkout.","verifier":"inspection"},
+    {"id":"R1","description":"Public attestation signature and DCAP verification use the supported ring backend, real positive and meaningful malformed/tampered negatives execute, and all affected application resolved/locked graphs and unsuppressed audits exclude the RSA advisory. Vendored Rust and license remain upstream-identical with a verifiable feature-only manifest change.","verifier":"command"},
+    {"id":"W1","description":"Settlement recovery's optional witness agrees on startup expected chain, a finalized canonical hash and all three pinned ABI words; configured failures, stale finality, forks and mismatches cannot fall back, and endpoint secrets do not appear in errors. Execute real-cast loopback positives and negatives separately from ordinary tests.","verifier":"command"},
+    {"id":"N1","description":"Persist ordinary Deposit/Withdraw witness bytes, feed those exact bytes through native replay and guest execution, assert byte-exact public commitment parity, and execute independent ordinary malformed-manifest and unauthorized-withdrawal negative witnesses. Do not execute held A06 or claim real proof.","verifier":"command"},
+    {"id":"P1","description":"Align guest/host/prover SP1 and slop release family to patched6.1.0, validate locks and CLI identity, rebuild the real guest ELF and regenerate vkey/source identity. CI rejects known affected or inconsistent pins. Host/service compile against the real ELF; proof preparation enforces native public-byte equality and SDK verification before successful artifact output.","verifier":"inspection"},
+    {"id":"V1","description":"Validate final combined source with applicable tests/checks and before/after content fingerprints, independently inspect changes, and reconcile unchanged original acceptance and dependencies without counting partial work as task closure.","verifier":"inspection"}
+  ]
+}
