@@ -1,0 +1,146 @@
+{
+  "schemaVersion": 1,
+  "recordedAtUtc": "2026-09-28T07:44:06.166185+00:00",
+  "recordingMethod": "Observed completed tool exit codes and retained logs. Failing-before manifest combines the unchanged previous implementation hash with the new test hash; production and tests were not changed between each listed passing check.",
+  "checks": [
+    {
+      "name": "failing-before",
+      "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+      "argv": [
+        "pnpm",
+        "--dir",
+        "frontend",
+        "exec",
+        "vitest",
+        "run",
+        "src/api/realClient.test.ts",
+        "-t",
+        "order and legacy deposit mutation fencing"
+      ],
+      "exitCode": 1,
+      "sourceManifest": {
+        "path": "docs/audits/2026-09-28-merge/frontend-guard-before-source.json",
+        "sha256": "64212369f69634690d6f3372b794f65231d3a36ec286eb5ab3d64fe2c3a93d4e"
+      },
+      "log": {
+        "path": "docs/audits/2026-09-28-merge/frontend-guard-before.log",
+        "sha256": "2fc3fad733ef170ceb0ffc684a941a1a00900dde4cf95e1a15be0f34aeb4771f"
+      },
+      "counts": {
+        "failed": 10,
+        "passed": 2,
+        "filteredOut": 109,
+        "testFilesFailed": 1
+      }
+    },
+    {
+      "name": "focused-client-and-recovery",
+      "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+      "argv": [
+        "pnpm",
+        "--dir",
+        "frontend",
+        "exec",
+        "vitest",
+        "run",
+        "src/api/realClient.test.ts",
+        "src/api/realClient.recovery.test.ts"
+      ],
+      "exitCode": 0,
+      "sourceManifest": {
+        "path": "docs/audits/2026-09-28-merge/frontend-guard-source.json",
+        "sha256": "01d7e57fb5ec199a692b617e5102447a9bf1239c75388428dccb42719fc1a0ff"
+      },
+      "log": {
+        "path": "docs/audits/2026-09-28-merge/frontend-guard-focused.log",
+        "sha256": "fa2f9595ee979e4c89ee0e16f7d97c53b5871517189e6eca9e9ec8eae820a3b3"
+      },
+      "counts": {
+        "passed": 156,
+        "testFilesPassed": 2
+      }
+    },
+    {
+      "name": "full-unit",
+      "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+      "argv": [
+        "pnpm",
+        "--dir",
+        "frontend",
+        "test"
+      ],
+      "exitCode": 0,
+      "sourceManifest": {
+        "path": "docs/audits/2026-09-28-merge/frontend-guard-source.json",
+        "sha256": "01d7e57fb5ec199a692b617e5102447a9bf1239c75388428dccb42719fc1a0ff"
+      },
+      "log": {
+        "path": "docs/audits/2026-09-28-merge/frontend-guard-unit.log",
+        "sha256": "1a90893f1aa6de91c4b96c142551ff8228dd70f9d7b32a9524732d75187a2b61"
+      },
+      "counts": {
+        "passed": 408,
+        "skipped": 1,
+        "testFilesPassed": 28,
+        "testFilesSkipped": 1
+      }
+    },
+    {
+      "name": "production-build",
+      "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+      "argv": [
+        "pnpm",
+        "--dir",
+        "frontend",
+        "build"
+      ],
+      "exitCode": 0,
+      "sourceManifest": {
+        "path": "docs/audits/2026-09-28-merge/frontend-guard-source.json",
+        "sha256": "01d7e57fb5ec199a692b617e5102447a9bf1239c75388428dccb42719fc1a0ff"
+      },
+      "log": {
+        "path": "docs/audits/2026-09-28-merge/frontend-guard-build.log",
+        "sha256": "0382cd8219067933a2fcda125f2ce1b39efe55a9ba75e7217192fea52cc8a8af"
+      }
+    },
+    {
+      "name": "diff-check",
+      "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+      "argv": [
+        "git",
+        "diff",
+        "--check",
+        "--",
+        "frontend/src/api/realClient.ts",
+        "frontend/src/api/realClient.test.ts"
+      ],
+      "exitCode": 0,
+      "sourceManifest": {
+        "path": "docs/audits/2026-09-28-merge/frontend-guard-source.json",
+        "sha256": "01d7e57fb5ec199a692b617e5102447a9bf1239c75388428dccb42719fc1a0ff"
+      },
+      "log": {
+        "path": "docs/audits/2026-09-28-merge/frontend-guard-diff-check.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    }
+  ],
+  "previousEvidence": {
+    "manifest": {
+      "path": "docs/audits/2026-09-28-runtime/reconciliation-source.json",
+      "sha256": "1ab6b67de91e4f01e330ff0f60426122df939e28aecbe9a19c7758b91b854fd2"
+    },
+    "checks": {
+      "path": "docs/audits/2026-09-28-runtime/reconciliation-checks.json",
+      "sha256": "510c9dc4f4f9185a91f1b3ec8cf7d25bb292ef53d190cf98fe95c7892d8ab959"
+    },
+    "note": "Retained unchanged. Its 396-unit/72-browser results refer to the previous source, not this guard patch. Root is running a separate final browser check."
+  },
+  "limits": [
+    "Unit wallet/gateway interactions are deterministic fixtures, not a live wallet or chain rehearsal.",
+    "Existing explicit live-gateway e2e test remains skipped.",
+    "Unknown outcomes are rejected without automatic retries; original operation may already have executed server-side."
+  ],
+  "desktopCheckout": "Not edited. Existing unverified dirty work stays separate."
+}

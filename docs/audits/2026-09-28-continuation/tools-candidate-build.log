@@ -1,0 +1,7 @@
+[WARN] The "pnpm" field in package.json is no longer read by pnpm. The following keys were ignored: "pnpm.onlyBuiltDependencies". See https://pnpm.io/settings for the new home of each setting.
+$ tsc -b && vite build
+src/api/deadRoutes.test.ts(44,10): error TS2305: Module '"node:fs"' has no exported member 'readdirSync'.
+src/api/deadRoutes.test.ts(45,22): error TS2307: Cannot find module 'node:path' or its corresponding type declarations.
+src/api/realClient.e2e.test.ts(14,21): error TS2580: Cannot find name 'process'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node`.
+src/components/AccountPanel.tsx(8,3): error TS6133: 'COLLATERAL_VAULT' is declared but its value is never read.
+[ELIFECYCLE] Command failed with exit code 1.

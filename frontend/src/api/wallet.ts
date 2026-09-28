@@ -46,6 +46,8 @@ export const EXPLORER_TX = "https://sepolia.basescan.org/tx/";
 /// The minimal injected-provider surface this module uses (EIP-1193 `request`).
 export interface Eip1193Provider {
   request(args: { method: string; params?: unknown[] }): Promise<unknown>;
+  on?(event: string, callback: (...args: unknown[]) => void): void;
+  removeListener?(event: string, callback: (...args: unknown[]) => void): void;
 }
 
 declare global {
@@ -185,21 +187,36 @@ export async function sendTx(tx: {
   to: string;
   data: string;
   value?: string;
+  chainId?: string;
 }): Promise<string> {
   let hash: unknown;
   try {
     hash = await provider().request({
       method: "eth_sendTransaction",
-      params: [{ from: tx.from, to: tx.to, data: tx.data, ...(tx.value ? { value: tx.value } : {}) }],
+      params: [{ from: tx.from, to: tx.to, data: tx.data, ...(tx.value ? { value: tx.value } : {}), ...(tx.chainId ? { chainId: tx.chainId } : {}) }],
     });
   } catch (e) {
-    if (isUserRejection(e)) throw new Error("Transaction rejected in the wallet.");
-    throw new Error(`Transaction failed to send: ${errMessage(e)}`);
+    if (isUserRejection(e)) throw Object.assign(new Error("Transaction rejected in the wallet."), { code: USER_REJECTED });
+    throw new Error(`Transaction outcome is unknown: ${errMessage(e)}. Check wallet activity before any retry.`);
   }
   if (typeof hash !== "string" || !/^0x[0-9a-fA-F]{64}$/.test(hash)) {
     throw new Error("Wallet returned an invalid transaction hash.");
   }
   return hash.toLowerCase();
+}
+
+/** One read-only receipt check for a hash already recorded by the wallet flow.
+ * This never switches networks, asks for a signature, or sends a transaction. */
+export async function transactionStatus(hash: string): Promise<"pending" | "confirmed" | "reverted"> {
+  if (!/^0x[0-9a-f]{64}$/.test(hash)) throw new Error("Invalid saved transaction hash.");
+  const receipt = await provider().request({ method: "eth_getTransactionReceipt", params: [hash] });
+  if (receipt === null) return "pending";
+  if (!receipt || typeof receipt !== "object") throw new Error("Wallet returned an unreadable receipt; keep the original transaction and check again.");
+  const value = receipt as { transactionHash?: unknown; status?: unknown };
+  if (typeof value.transactionHash !== "string" || value.transactionHash.toLowerCase() !== hash) throw new Error("Wallet returned a receipt for another transaction.");
+  if (value.status === "0x1") return "confirmed";
+  if (value.status === "0x0") return "reverted";
+  throw new Error("Wallet returned an unknown transaction status; keep the original transaction and check again.");
 }
 
 /**
@@ -401,19 +418,55 @@ export function accountRecoveryDigest(chainId: bigint, vault: string, owner: Uin
  * client implements it (structurally); the in-browser mock does not — which is
  * exactly the live-mode gate for all wallet UI.
  */
+/** Immutable account/deployment intent retained across all wallet prompts.
+ * No credential is exposed; the creating client owns and validates the context. */
+export interface DepositContext {
+  readonly owner: string;
+  readonly base: string;
+  readonly chainId: number;
+  readonly vault: string;
+  readonly marketId: number;
+  readonly recoveryNonce: number;
+  assertCurrent(): void;
+}
+
+/** The provider is pinned for the run. Events invalidate even switch-away/back. */
+export function depositWalletGuard(address: string) {
+  const source = provider();
+  let invalidated = false;
+  const invalidate = () => { invalidated = true; };
+  for (const event of ["accountsChanged", "chainChanged", "disconnect"]) source.on?.(event, invalidate);
+  return {
+    async assertCurrent() {
+      if (source !== provider() || invalidated || connectedAddress() !== address) throw new Error("Wallet context changed; reconcile the original deposit before retrying.");
+      const accounts = await source.request({ method: "eth_accounts" });
+      const chain = await source.request({ method: "eth_chainId" });
+      if (source !== provider() || invalidated || connectedAddress() !== address ||
+          !Array.isArray(accounts) || typeof accounts[0] !== "string" || accounts[0].toLowerCase() !== address ||
+          typeof chain !== "string" || BigInt(chain) !== BigInt(BASE_SEPOLIA_CHAIN_ID)) {
+        throw new Error("Wallet account or network changed; reconcile the original deposit before retrying.");
+      }
+    },
+    dispose() {
+      for (const event of ["accountsChanged", "chainChanged", "disconnect"]) source.removeListener?.(event, invalidate);
+    },
+  };
+}
+
 export interface WalletDepositClient {
+  captureDepositContext(options?: { existingOnly?: boolean }): Promise<DepositContext>;
   /** The self-provisioned /v1 account (apiKey + 32-byte owner pubkey). */
   depositAccount(): Promise<{ apiKey: string; owner: Uint8Array }>;
   /** POST /v1/accounts/deposit/address — bind the EOA (ownership-proven). */
-  bindDepositAddress(address: string, signature: string): Promise<void>;
+  bindDepositAddress(address: string, signature: string, context?: DepositContext): Promise<void>;
   /** POST /v1/accounts/deposit/authorize — SEC-019: the gateway pre-authorizes
    *  this exact (from, amount), returning the blinded ownerCommit + 65-byte
    *  gateway sig that `deposit(amount, ownerCommit, sig)` requires on-chain.
    *  `from` must be the account's already-bound deposit address. */
-  authorizeDeposit(from: string, amount: bigint): Promise<{ ownerCommit: string; sig: string }>;
+  authorizeDeposit(from: string, amount: bigint, context?: DepositContext): Promise<{ ownerCommit: string; sig: string }>;
   /** POST /v1/accounts/deposit/onchain — credit a confirmed deposit tx. Returns
    *  the credited amount in USDC base units. */
-  creditOnchainDeposit(txHash: string): Promise<bigint>;
+  creditOnchainDeposit(txHash: string, context?: DepositContext): Promise<bigint>;
 }
 
 export function supportsWalletDeposit(c: unknown): c is WalletDepositClient {
@@ -421,6 +474,7 @@ export function supportsWalletDeposit(c: unknown): c is WalletDepositClient {
   return (
     typeof x === "object" &&
     x !== null &&
+    typeof x.captureDepositContext === "function" &&
     typeof x.depositAccount === "function" &&
     typeof x.bindDepositAddress === "function" &&
     typeof x.authorizeDeposit === "function" &&

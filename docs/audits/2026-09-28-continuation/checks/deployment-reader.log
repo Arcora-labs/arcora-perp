@@ -1,0 +1,8 @@
+test_changed_finalized_hash_is_blocked (__main__.DeploymentObservationTests) ... ok
+test_failed_required_call_is_partial_and_never_success (__main__.DeploymentObservationTests) ... ok
+test_hash_pins_every_contract_read_and_checks_token_binding (__main__.DeploymentObservationTests) ... ok
+
+----------------------------------------------------------------------
+Ran 3 tests in 0.018s
+
+OK

@@ -163,6 +163,7 @@ let v1WithdrawStatus = 200; // per-test override: gateway rejection of the REAL 
 let v1DepositStatus = 200; // per-test override: the production unbacked-mint refusal
 let v1CancelStatus = 200; // per-test override: gateway cancel refusal (sealed/finality)
 let onchainPending = false;
+let onchainBody: unknown = undefined;
 let authorizeStatus = 200; // per-test override: gateway rejection (bind-first etc.)
 let authorizeBody: unknown = null; // per-test override of the response body (null ⇒ well-formed default)
 let stateResponse: unknown = wireState; // per-test override of the /api/state snapshot
@@ -314,7 +315,11 @@ function installFetch() {
           await new Promise<void>((r) => setTimeout(r, 0)); // same ordering pin as withdraw
           afterOnchainPost();
         }
-        return onchainPending ? json({ status: "pendingFinalizedIngestion", credited: "0" }, 202) : json({ credited: "1000000" });
+        return onchainPending ? json({ status: "pendingFinalizedIngestion", credited: "0" }, 202) : json(onchainBody === undefined ? {
+          status: "credited", credited: "1000000", durability: "confirmed", purpose: "collateral",
+          marketId: JSON.parse(String(init?.body)).marketId, depositIds: [0],
+          account: { ...defaultMeFields(), owner: OWNER_HEX },
+        } : onchainBody);
       }
       if (path === "/v1/accounts/deposit/authorize" && method === "POST") {
         if (authorizeStatus !== 200) {
@@ -371,6 +376,8 @@ async function bootstrapClient() {
 }
 
 beforeEach(() => {
+  // Isolate proxy-bound Storage spies between Vitest 4 tests.
+  vi.stubGlobal("localStorage", new Storage());
   installTestLocks();
   calls = [];
   epochHits = 0;
@@ -381,6 +388,7 @@ beforeEach(() => {
   v1DepositStatus = 200;
   v1CancelStatus = 200;
   onchainPending = false;
+  onchainBody = undefined;
   authorizeStatus = 200;
   authorizeBody = null;
   stateResponse = wireState;
@@ -1785,5 +1793,304 @@ describe("native execution metadata transport", () => {
       execution: { status: "FILLED", remainingSize: "-1", unsettledSize: "bogus", settledSize: "0", available: true, proven: true } }] };
     const client = await bootstrapClient(); const [o] = await client.getOrders();
     expect(o.execution?.available).toBe(false); expect(o.execution?.proven).toBe(false); client.dispose();
+  });
+});
+
+
+describe("immutable deposit client context", () => {
+  it("captures a frozen public identity without exposing the account key", async () => {
+    const client = await bootstrapClient(), context = await client.captureDepositContext();
+    expect(Object.isFrozen(context)).toBe(true);
+    expect(context).toMatchObject({ chainId: CHAIN_ID, vault: VAULT, marketId: 0, recoveryNonce: 0 });
+    expect(JSON.stringify(context)).not.toContain(ACCT_KEY);
+    expect(() => context.assertCurrent()).not.toThrow();
+    client.dispose();
+  });
+  it("invalidates selection away and back before any deposit POST", async () => {
+    const client = await bootstrapClient(), context = await client.captureDepositContext();
+    client.selectMarket(1); client.selectMarket(0);
+    await expect(client.bindDepositAddress(BOUND, FAKE_SIG, context)).rejects.toThrow(/market changed/);
+    await expect(client.authorizeDeposit(BOUND, 1n, context)).rejects.toThrow(/market changed/);
+    await expect(client.creditOnchainDeposit("0x" + "ab".repeat(32), context)).rejects.toThrow(/market changed/);
+    expect(calls.filter(c => c.path.startsWith("/v1/accounts/deposit/") && c.method === "POST")).toEqual([]);
+    client.dispose();
+  });
+  it("refuses a context from another client even with the same stored account", async () => {
+    const a = await bootstrapClient(), b = await bootstrapClient();
+    const context = await a.captureDepositContext();
+    await expect(b.authorizeDeposit(BOUND, 1n, context)).rejects.toThrow(/another client/);
+    a.dispose(); b.dispose();
+  });
+  it("invalidates a saved owner or generation edit before storage event adoption", async () => {
+    const client = await bootstrapClient(), context = await client.captureDepositContext();
+    const key = Object.keys(localStorage).find(key => key.startsWith("darkperp.v2Account:"))!;
+    const record = JSON.parse(localStorage.getItem(key)!);
+    localStorage.setItem(key, JSON.stringify({ ...record, owner: "0x" + "99".repeat(32) }));
+    await expect(client.authorizeDeposit(BOUND, 1n, context)).rejects.toThrow(/credentials.*changed/);
+    localStorage.setItem(key, JSON.stringify({ ...record, recoveryNonce: record.recoveryNonce + 1 }));
+    await expect(client.authorizeDeposit(BOUND, 1n, context)).rejects.toThrow(/credentials.*changed/);
+    expect(calls.filter(c => c.path.endsWith("/deposit/authorize"))).toEqual([]);
+    client.dispose();
+  });
+  it("drops a credit reply when market changes after submission", async () => {
+    const client = await bootstrapClient(), context = await client.captureDepositContext();
+    afterOnchainPost = () => client.selectMarket(1);
+    await expect(client.creditOnchainDeposit("0x" + "ab".repeat(32), context)).rejects.toThrow(/market changed/);
+    expect(calls.find(c => c.path.endsWith("/deposit/onchain"))!.body).toMatchObject({ marketId: 0 });
+    client.dispose();
+  });
+});
+
+
+describe("durable deposit receipt validation", () => {
+  for (const body of [{}, { status: "unknown", credited: "1000000" }, null,
+    { status: "credited", credited: "0", durability: "confirmed" },
+    { status: "credited", credited: "-1", durability: "confirmed" }]) {
+    it(`refuses malformed or unconfirmed receipt ${JSON.stringify(body)}`, async () => {
+      const client = await bootstrapClient(); onchainBody = body;
+      await expect(client.creditOnchainDeposit("0x" + "ab".repeat(32))).rejects.toThrow(/receipt/);
+      client.dispose();
+    });
+  }
+  for (const update of [{ credited: "0" }, { credited: "-1" }, { credited: "1.5" }, { credited: "340282366920938463463374607431768211456" },
+    { status: "unknown" }, { durability: "unknown" }, { marketId: 999 }, { purpose: "insuranceBootstrap" },
+    { depositIds: [] }, { depositIds: [1, 1] }, { account: { ...defaultMeFields(), owner: "0x" + "99".repeat(32) } }]) {
+    it(`refuses receipt mismatch ${JSON.stringify(update)}`, async () => {
+      const client = await bootstrapClient();
+      onchainBody = { status: "credited", credited: "1000000", durability: "confirmed", marketId: 0,
+        purpose: "collateral", depositIds: [0], account: { ...defaultMeFields(), owner: OWNER_HEX }, ...update };
+      await expect(client.creditOnchainDeposit("0x" + "ab".repeat(32))).rejects.toThrow();
+      client.dispose();
+    });
+  }
+});
+
+
+describe("status-only account capture never registers", () => {
+  it("does not register when the saved account disappears between storage reads", async () => {
+    const seeded = await bootstrapClient();
+    const client = new RealDarkPerpClient("http://gw.test", seeded.getState(), { base: "http://gw.test", chainId: CHAIN_ID, vault: VAULT });
+    seeded.dispose();
+    const key = Object.keys(localStorage).find(key => key.startsWith("darkperp.v2Account:"))!;
+    const saved = localStorage.getItem(key)!;
+    const getItem = localStorage.getItem.bind(localStorage);
+    let reads = 0;
+    vi.spyOn(localStorage, "getItem").mockImplementation((name: string) => {
+      if (name === key && reads++ === 0) { localStorage.removeItem(key); return saved; }
+      return getItem(name);
+    });
+    const before = registrations;
+    await expect(client.captureDepositContext({ existingOnly: true })).rejects.toThrow(/credential changed|original trading account/);
+    expect(registrations).toBe(before);
+    // Repeat after the record is already gone: still no fall-through registration.
+    await expect(client.captureDepositContext({ existingOnly: true })).rejects.toThrow(/no replacement account/);
+    expect(registrations).toBe(before);
+    client.dispose();
+  });
+});
+
+describe("order and legacy deposit mutation fencing", () => {
+  const input = { marketId: 0, side: "Buy" as const, size: 1n, limitPrice: 1n, tif: "Gtc" as const, reduceOnly: false };
+  const mutate = (client: RealDarkPerpClient, kind: "order" | "deposit") =>
+    kind === "order" ? client.placeOrder(input) : client.deposit(1n);
+  const pathFor = (kind: "order" | "deposit") => kind === "order" ? "/v1/orders" : "/v1/accounts/deposit";
+  const postsFor = (kind: "order" | "deposit") => calls.filter(c => c.path === pathFor(kind) && c.method === "POST");
+  const barrier = () => {
+    let release!: () => void;
+    const promise = new Promise<void>(resolve => { release = resolve; });
+    return { promise, release };
+  };
+  function recoveryFetch(hook?: (path: string, init?: RequestInit) => Promise<void>, rejectRecovery = false) {
+    const original = globalThis.fetch;
+    vi.stubGlobal("fetch", vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+      const path = new URL(String(url)).pathname;
+      await hook?.(path, init);
+      if (path.includes("/accounts/recovery/")) return Response.json({
+        owner: OWNER_HEX, authorizer: BOUND, recoveryNonce: 0, chainId: CHAIN_ID, vault: VAULT,
+      });
+      if (path === "/v1/accounts/recovery") {
+        if (rejectRecovery) return Response.json({ error: "recovery refused" }, { status: 400 });
+        validKey = ACCT_KEY2; meFields.recoveryNonce = 1;
+        return Response.json({ owner: OWNER_HEX, apiKey: ACCT_KEY2, recoveryNonce: 1, durability: "confirmed" });
+      }
+      return original(url, init);
+    }));
+  }
+
+  it.each(["order", "deposit"] as const)("does not POST %s while recovery metadata is pending", async kind => {
+    const client = await bootstrapClient(), entered = barrier(), gate = barrier();
+    recoveryFetch(async path => { if (path.includes("/accounts/recovery/")) { entered.release(); await gate.promise; } });
+    const recovery = client.recoverAccount(OWNER_HEX);
+    await entered.promise;
+    const outcome = await mutate(client, kind).then(() => "unexpected success", error => String(error));
+    gate.release(); await recovery;
+    expect(outcome).toMatch(/recovery is in progress|credential changed/i);
+    expect(postsFor(kind)).toHaveLength(0);
+    client.dispose();
+  });
+
+  it("does not POST an order whose epoch read finishes after credential rotation", async () => {
+    epochResponse = () => signedEpoch({ notAfterMs: Date.now() - 1000 });
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const client = await bootstrapClient(), entered = barrier(), gate = barrier();
+    epochResponse = () => signedEpoch({ epochId: 2 });
+    recoveryFetch(async path => { if (path === "/v1/enclave/epoch") { entered.release(); await gate.promise; } });
+    const order = client.placeOrder(input).then(() => "unexpected success", error => String(error));
+    await entered.promise;
+    await client.recoverAccount(OWNER_HEX);
+    gate.release();
+    expect(await order).toMatch(/credential changed|account.*changed/i);
+    expect(ordersPosted()).toHaveLength(0);
+    client.dispose();
+  });
+
+  it.each(["order", "deposit"] as const)("does not report %s success or refresh from a pre-rotation response", async kind => {
+    const client = await bootstrapClient(), entered = barrier(), gate = barrier();
+    recoveryFetch();
+    const original = globalThis.fetch;
+    vi.stubGlobal("fetch", vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+      const response = await original(url, init);
+      if (new URL(String(url)).pathname === pathFor(kind) && init?.method === "POST") {
+        entered.release(); await gate.promise;
+      }
+      return response;
+    }));
+    const operation = mutate(client, kind).then(() => "unexpected success", error => String(error));
+    await entered.promise;
+    await client.recoverAccount(OWNER_HEX); await client.ownStateSettled();
+    const readsAfterRecovery = calls.filter(c => c.method === "GET").length;
+    gate.release();
+    expect(await operation).toMatch(/credential changed|account.*changed/i);
+    await client.ownStateSettled();
+    expect(calls.filter(c => c.method === "GET")).toHaveLength(readsAfterRecovery);
+    expect(postsFor(kind)).toHaveLength(1); // original outcome is not retried
+    client.dispose();
+  });
+
+  it.each(["order", "deposit"] as const)("refuses %s after explicit socket auth failure without replacing the account", async kind => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const client = await bootstrapClient();
+    const key = credentialKey({ base: "http://gw.test", chainId: CHAIN_ID, vault: VAULT });
+    const saved = localStorage.getItem(key);
+    lastWsV1!.open();
+    lastWsV1!.onmessage!({ data: JSON.stringify({ type: "error", message: "unknown api key" }) });
+    const outcome = await mutate(client, kind).then(() => "unexpected success", error => String(error));
+    expect(outcome).toMatch(/authentication.*refused|wallet recovery/i);
+    expect(postsFor(kind)).toHaveLength(0);
+    expect(registrations).toBe(1);
+    expect(localStorage.getItem(key)).toBe(saved);
+    client.dispose();
+  });
+
+  it.each(["order", "deposit"] as const)("does not accept a pending %s response after socket auth refusal", async kind => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const client = await bootstrapClient(), entered = barrier(), gate = barrier();
+    const original = globalThis.fetch;
+    vi.stubGlobal("fetch", vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+      const response = await original(url, init);
+      if (new URL(String(url)).pathname === pathFor(kind) && init?.method === "POST") {
+        entered.release(); await gate.promise;
+      }
+      return response;
+    }));
+    const operation = mutate(client, kind).then(() => "unexpected success", error => String(error));
+    await entered.promise;
+    lastWsV1!.onmessage!({ data: JSON.stringify({ type: "error", message: "revoked" }) });
+    gate.release();
+    expect(await operation).toMatch(/authentication.*refused|wallet recovery/i);
+    expect(postsFor(kind)).toHaveLength(1);
+    client.dispose();
+  });
+
+  it.each(["order", "deposit"] as const)("allows %s under a confirmed recovered credential after auth refusal", async kind => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const client = await bootstrapClient();
+    lastWsV1!.onmessage!({ data: JSON.stringify({ type: "error", message: "revoked" }) });
+    recoveryFetch();
+    await client.recoverAccount(OWNER_HEX);
+    await mutate(client, kind);
+    expect(postsFor(kind)).toHaveLength(1);
+    expect(postsFor(kind)[0].headers["X-Api-Key"]).toBe(ACCT_KEY2);
+    expect(registrations).toBe(1);
+    client.dispose();
+  });
+
+  it("invalidates a pending order even when an intervening recovery fails and retains the same key", async () => {
+    epochResponse = () => signedEpoch({ notAfterMs: Date.now() - 1000 });
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const client = await bootstrapClient(), entered = barrier(), gate = barrier();
+    epochResponse = () => signedEpoch({ epochId: 2 });
+    recoveryFetch(async path => { if (path === "/v1/enclave/epoch") { entered.release(); await gate.promise; } }, true);
+    const order = client.placeOrder(input).then(() => "unexpected success", error => String(error));
+    await entered.promise;
+    await expect(client.recoverAccount(OWNER_HEX)).rejects.toThrow(/400/);
+    gate.release();
+    expect(await order).toMatch(/credential changed|account.*changed/i);
+    expect(ordersPosted()).toHaveLength(0);
+    client.dispose();
+  });
+
+  it.each(["order", "deposit"] as const)("rejects an old %s response while a newer saved credential awaits adoption", async kind => {
+    const client = await bootstrapClient(), entered = barrier(), gate = barrier();
+    const adoptionEntered = barrier(), adoptionGate = barrier();
+    const original = globalThis.fetch;
+    vi.stubGlobal("fetch", vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+      const path = new URL(String(url)).pathname;
+      const response = await original(url, init);
+      if (path === pathFor(kind) && init?.method === "POST") { entered.release(); await gate.promise; }
+      if (path === "/v1/accounts/me" && new Headers(init?.headers).get("X-Api-Key") === ACCT_KEY2) {
+        adoptionEntered.release(); await adoptionGate.promise;
+      }
+      return response;
+    }));
+    const operation = mutate(client, kind).then(() => "unexpected success", error => String(error));
+    await entered.promise;
+    const scope = { base: "http://gw.test", chainId: CHAIN_ID, vault: VAULT }, key = credentialKey(scope);
+    const newValue = JSON.stringify({ ...scope, schema: 2, owner: OWNER_HEX, apiKey: ACCT_KEY2, recoveryNonce: 1 });
+    validKey = ACCT_KEY2; meFields.recoveryNonce = 1;
+    localStorage.setItem(key, newValue);
+    window.dispatchEvent(new StorageEvent("storage", { key, newValue, storageArea: localStorage }));
+    await adoptionEntered.promise;
+    gate.release();
+    const outcome = await operation;
+    adoptionGate.release(); await new Promise(resolve => setTimeout(resolve, 0)); await client.ownStateSettled();
+    expect(outcome).toMatch(/credential changed|account.*changed/i);
+    expect(postsFor(kind)).toHaveLength(1);
+    expect(postsFor(kind)[0].headers["X-Api-Key"]).toBe(ACCT_KEY);
+    client.dispose();
+  });
+
+  it("does not POST after a newer credential is saved while the epoch read waits without a storage event", async () => {
+    epochResponse = () => signedEpoch({ notAfterMs: Date.now() - 1000 });
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const client = await bootstrapClient(), entered = barrier(), gate = barrier();
+    epochResponse = () => signedEpoch({ epochId: 2 });
+    recoveryFetch(async path => { if (path === "/v1/enclave/epoch") { entered.release(); await gate.promise; } });
+    const order = client.placeOrder(input).then(() => "unexpected success", error => String(error));
+    await entered.promise;
+    const scope = { base: "http://gw.test", chainId: CHAIN_ID, vault: VAULT };
+    localStorage.setItem(credentialKey(scope), JSON.stringify({ ...scope, schema: 2, owner: OWNER_HEX, apiKey: ACCT_KEY2, recoveryNonce: 1 }));
+    gate.release();
+    expect(await order).toMatch(/credential changed|account.*changed/i);
+    expect(ordersPosted()).toHaveLength(0);
+    client.dispose();
+  });
+
+  it.each(["order", "deposit"] as const)("allows %s after confirmed session-only recovery leaves an old saved key", async kind => {
+    const client = await bootstrapClient();
+    const key = credentialKey({ base: "http://gw.test", chainId: CHAIN_ID, vault: VAULT });
+    const saved = localStorage.getItem(key), original = localStorage.setItem.bind(localStorage);
+    vi.spyOn(localStorage, "setItem").mockImplementation((name, value) => {
+      if (name === key) throw new DOMException("quota", "QuotaExceededError");
+      original(name, value);
+    });
+    recoveryFetch();
+    const recovered = await client.recoverAccount(OWNER_HEX);
+    expect(recovered.credentialStorage).toBe("session");
+    expect(localStorage.getItem(key)).toBe(saved);
+    await mutate(client, kind);
+    expect(postsFor(kind)).toHaveLength(1);
+    expect(postsFor(kind)[0].headers["X-Api-Key"]).toBe(ACCT_KEY2);
+    client.dispose();
   });
 });

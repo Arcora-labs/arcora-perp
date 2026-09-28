@@ -1,0 +1,126 @@
+   Compiling gateway v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/gateway)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.52s
+     Running unittests src/main.rs (/tmp/arcora-gateway-target/debug/deps/gateway-af1323d2b67b45c0)
+
+running 4 tests
+test snapshot::crash_tests::sigkill_initial_journal_publication_retains_preseal_state ... [oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+[state] genesis engine root 0x464f52b0bc0e452be7e050758e209d7a75708e98ea3eb4f0ffac4e5f6d7a5a28
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+S6_CRASH_CASE {"kind":"initial-stage1-journal","boundary":"temp-created-before-write","owned_pid":45010,"signal":9,"journal_present":false,"restored_keccak256":"0x2b319693f4d8586e39bd943ce4d3a991431d34e0455e78fa770497d015de4eb2","preseal_state":"unchanged","replay_root_and_withdrawals":"pass"}
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+[state] genesis engine root 0x464f52b0bc0e452be7e050758e209d7a75708e98ea3eb4f0ffac4e5f6d7a5a28
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+S6_CRASH_CASE {"kind":"initial-stage1-journal","boundary":"data-written-before-file-sync","owned_pid":45011,"signal":9,"journal_present":false,"restored_keccak256":"0x8d03d87ca1a54db2305868f09f2beab61607e463dfedee7c51116cf22926d6f7","preseal_state":"unchanged","replay_root_and_withdrawals":"pass"}
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+[state] genesis engine root 0x464f52b0bc0e452be7e050758e209d7a75708e98ea3eb4f0ffac4e5f6d7a5a28
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+S6_CRASH_CASE {"kind":"initial-stage1-journal","boundary":"file-synced-before-rename","owned_pid":45012,"signal":9,"journal_present":false,"restored_keccak256":"0x3c948d0c5c6df2780f18050f043baa6b4dd92d6d087d25c7acd2095bda604267","preseal_state":"unchanged","replay_root_and_withdrawals":"pass"}
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+[state] genesis engine root 0x464f52b0bc0e452be7e050758e209d7a75708e98ea3eb4f0ffac4e5f6d7a5a28
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+[recovery] rollback journal for window 0: pre-seal snapshot restored and the tx never landed — the seal effectively never happened; resolved, nothing to do
+S6_CRASH_CASE {"kind":"initial-stage1-journal","boundary":"renamed-before-directory-sync","owned_pid":45013,"signal":9,"journal_present":true,"restored_keccak256":"0xdb7fce2e90a790da50428e99cbbcaf287321f0634690200074f8c9f238ff7800","preseal_state":"unchanged","replay_root_and_withdrawals":"pass"}
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+[state] genesis engine root 0x464f52b0bc0e452be7e050758e209d7a75708e98ea3eb4f0ffac4e5f6d7a5a28
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+[recovery] rollback journal for window 0: pre-seal snapshot restored and the tx never landed — the seal effectively never happened; resolved, nothing to do
+S6_CRASH_CASE {"kind":"initial-stage1-journal","boundary":"directory-synced-before-return","owned_pid":45014,"signal":9,"journal_present":true,"restored_keccak256":"0x9df3566ef7d632b3d28bb98e1878229763b11f8851955db983803d38eddb28ff","preseal_state":"unchanged","replay_root_and_withdrawals":"pass"}
+ok
+test snapshot::crash_tests::sigkill_journal_atomic_boundaries_preserve_valid_stage_and_ambiguity ... [oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+[state] genesis engine root 0x464f52b0bc0e452be7e050758e209d7a75708e98ea3eb4f0ffac4e5f6d7a5a28
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+[recovery] rolled back window 0 at boot (seal persisted, tx never landed) — the next settle re-seals it under the same batch id
+S6_CRASH_CASE {"kind":"journal-stage1-to-prepared","boundary":"temp-created-before-write","owned_pid":45015,"signal":9,"prepared":false,"restored_keccak256":"0xd5dcf3a2a61d46eb1c1f5ee1b6aa9e200fd8f2f6fcff289e5786b676d7d3ab64","recovery":"DeleteJournal { mutated: true }"}
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+[state] genesis engine root 0x464f52b0bc0e452be7e050758e209d7a75708e98ea3eb4f0ffac4e5f6d7a5a28
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+[recovery] rolled back window 0 at boot (seal persisted, tx never landed) — the next settle re-seals it under the same batch id
+S6_CRASH_CASE {"kind":"journal-stage1-to-prepared","boundary":"data-written-before-file-sync","owned_pid":45016,"signal":9,"prepared":false,"restored_keccak256":"0xa7249928775ed8cd42fd974da47a48983f32ae6b0a5b3ccb7ee2e3a081954606","recovery":"DeleteJournal { mutated: true }"}
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+[state] genesis engine root 0x464f52b0bc0e452be7e050758e209d7a75708e98ea3eb4f0ffac4e5f6d7a5a28
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+[recovery] rolled back window 0 at boot (seal persisted, tx never landed) — the next settle re-seals it under the same batch id
+S6_CRASH_CASE {"kind":"journal-stage1-to-prepared","boundary":"file-synced-before-rename","owned_pid":45017,"signal":9,"prepared":false,"restored_keccak256":"0x7a63a994313a5915a17205f01312ff2a346a332a99e6477186e0100b71f93cb6","recovery":"DeleteJournal { mutated: true }"}
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+[state] genesis engine root 0x464f52b0bc0e452be7e050758e209d7a75708e98ea3eb4f0ffac4e5f6d7a5a28
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+[recovery] HOLDING: rollback journal window 0 matches no recovery row (snapshot Counter B 1, chain batchCount 0, chain root 0x00) — keeping the journal; operator must reconcile (startup is refused until this journal resolves)
+S6_CRASH_CASE {"kind":"journal-stage1-to-prepared","boundary":"renamed-before-directory-sync","owned_pid":45018,"signal":9,"prepared":true,"restored_keccak256":"0x3971b9db56b9f8afc547b31a08ef30d4b70600469d6f887a33166e4933f5fca4","recovery":"KeepJournal"}
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+[state] genesis engine root 0x464f52b0bc0e452be7e050758e209d7a75708e98ea3eb4f0ffac4e5f6d7a5a28
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+[recovery] HOLDING: rollback journal window 0 matches no recovery row (snapshot Counter B 1, chain batchCount 0, chain root 0x00) — keeping the journal; operator must reconcile (startup is refused until this journal resolves)
+S6_CRASH_CASE {"kind":"journal-stage1-to-prepared","boundary":"directory-synced-before-return","owned_pid":45019,"signal":9,"prepared":true,"restored_keccak256":"0xe38df0fc2965339b7fa0bd966247823e5bf24f8bfb64b77f11c782ed498aaceb","recovery":"KeepJournal"}
+ok
+test snapshot::crash_tests::sigkill_prepared_journal_commit_snapshot_gaps_recover_without_double_commit ... [oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+[state] genesis engine root 0x464f52b0bc0e452be7e050758e209d7a75708e98ea3eb4f0ffac4e5f6d7a5a28
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+[recovery] rolled forward window 0 at boot (tx landed, commit lost) — bookkeeping re-committed from the journal
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+[recovery] HOLDING: rollback journal window 0 matches no recovery row (snapshot Counter B 1, chain batchCount 0, chain root 0x00) — keeping the journal; operator must reconcile (startup is refused until this journal resolves)
+[recovery] rolled forward window 0 at boot (tx landed, commit lost) — bookkeeping re-committed from the journal
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+S6_CRASH_CASE {"kind":"prepared-journal-to-commit-snapshot","boundary":"prepared-journal-before-commit-snapshot","owned_pid":45020,"signal":9,"commit_snapshot_published":false,"restored_keccak256":"0x87323847407483a9777df390201e93d98a74edbe2d45af8e500f36985c609b51","retained_journal_keccak256":"0x2d494f339c4f9c94061c93c887ad6f7615c8fcb98da5bb96f25a3e417e072593","recovery":"DeleteJournal { mutated: true }","restore_after_resolution":"pass"}
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+[state] genesis engine root 0x464f52b0bc0e452be7e050758e209d7a75708e98ea3eb4f0ffac4e5f6d7a5a28
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+[recovery] rolled forward window 0 at boot (tx landed, commit lost) — bookkeeping re-committed from the journal
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+[recovery] HOLDING: rollback journal window 0 matches no recovery row (snapshot Counter B 1, chain batchCount 0, chain root 0x00) — keeping the journal; operator must reconcile (startup is refused until this journal resolves)
+[recovery] rolled forward window 0 at boot (tx landed, commit lost) — bookkeeping re-committed from the journal
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+S6_CRASH_CASE {"kind":"prepared-journal-to-commit-snapshot","boundary":"temp-created-before-write","owned_pid":45021,"signal":9,"commit_snapshot_published":false,"restored_keccak256":"0xe52d6f2bfbf9a0d2fcbc37e944ff04944f5f65c8cffb63ee6b58d9d997172417","retained_journal_keccak256":"0x9855663f14832d9734c47507a05d76515e3e6b5512a05be92743eb911008441d","recovery":"DeleteJournal { mutated: true }","restore_after_resolution":"pass"}
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+[state] genesis engine root 0x464f52b0bc0e452be7e050758e209d7a75708e98ea3eb4f0ffac4e5f6d7a5a28
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+[recovery] rolled forward window 0 at boot (tx landed, commit lost) — bookkeeping re-committed from the journal
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+[recovery] HOLDING: rollback journal window 0 matches no recovery row (snapshot Counter B 1, chain batchCount 0, chain root 0x00) — keeping the journal; operator must reconcile (startup is refused until this journal resolves)
+[recovery] rolled forward window 0 at boot (tx landed, commit lost) — bookkeeping re-committed from the journal
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+S6_CRASH_CASE {"kind":"prepared-journal-to-commit-snapshot","boundary":"data-written-before-file-sync","owned_pid":45022,"signal":9,"commit_snapshot_published":false,"restored_keccak256":"0x8ba9b6980270cde96c2847177892f882a45564b4576eec46db02816696945942","retained_journal_keccak256":"0x2f311ccadd329c0bdf214f744bc6bc5bef6f8d3a28b3b57983639f97bf8b2874","recovery":"DeleteJournal { mutated: true }","restore_after_resolution":"pass"}
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+[state] genesis engine root 0x464f52b0bc0e452be7e050758e209d7a75708e98ea3eb4f0ffac4e5f6d7a5a28
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+[recovery] rolled forward window 0 at boot (tx landed, commit lost) — bookkeeping re-committed from the journal
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+[recovery] HOLDING: rollback journal window 0 matches no recovery row (snapshot Counter B 1, chain batchCount 0, chain root 0x00) — keeping the journal; operator must reconcile (startup is refused until this journal resolves)
+[recovery] rolled forward window 0 at boot (tx landed, commit lost) — bookkeeping re-committed from the journal
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+S6_CRASH_CASE {"kind":"prepared-journal-to-commit-snapshot","boundary":"file-synced-before-rename","owned_pid":45023,"signal":9,"commit_snapshot_published":false,"restored_keccak256":"0xe8720b63245a6a3ced6b4aa200c20f30c257c9fa16ead4c9106a61f4133c063f","retained_journal_keccak256":"0xee56db034fadaf80521ab156875f93e2d76f0c01c305aad75f85abdd028e3077","recovery":"DeleteJournal { mutated: true }","restore_after_resolution":"pass"}
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+[state] genesis engine root 0x464f52b0bc0e452be7e050758e209d7a75708e98ea3eb4f0ffac4e5f6d7a5a28
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+[recovery] rolled forward window 0 at boot (tx landed, commit lost) — bookkeeping re-committed from the journal
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+[recovery] HOLDING: rollback journal window 0 matches no recovery row (snapshot Counter B 1, chain batchCount 0, chain root 0x00) — keeping the journal; operator must reconcile (startup is refused until this journal resolves)
+[recovery] rollback journal for window 0 is stale (its commit was already persisted) — resolved, nothing to do
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+S6_CRASH_CASE {"kind":"prepared-journal-to-commit-snapshot","boundary":"renamed-before-directory-sync","owned_pid":45024,"signal":9,"commit_snapshot_published":true,"restored_keccak256":"0x5800b6f7b08de1f4ff461dbca93cddc9755bcc07a34d64dd6c9ba128d441080e","retained_journal_keccak256":"0x6de15f372a03d4e30da5f15ca5badef0419ad0802c9977711efaf5ac6866c6da","recovery":"DeleteJournal { mutated: false }","restore_after_resolution":"pass"}
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+[state] genesis engine root 0x464f52b0bc0e452be7e050758e209d7a75708e98ea3eb4f0ffac4e5f6d7a5a28
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+[recovery] rolled forward window 0 at boot (tx landed, commit lost) — bookkeeping re-committed from the journal
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+[recovery] HOLDING: rollback journal window 0 matches no recovery row (snapshot Counter B 1, chain batchCount 0, chain root 0x00) — keeping the journal; operator must reconcile (startup is refused until this journal resolves)
+[recovery] rollback journal for window 0 is stale (its commit was already persisted) — resolved, nothing to do
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+S6_CRASH_CASE {"kind":"prepared-journal-to-commit-snapshot","boundary":"directory-synced-before-return","owned_pid":45025,"signal":9,"commit_snapshot_published":true,"restored_keccak256":"0xa12f812f676b00b1958dcb289e30a008c4ee2cac99412237e10b4debeb981b9e","retained_journal_keccak256":"0xdd002ae021323def3cc8edf17ab8742357e82efc7a5fecf7358109128b9c5983","recovery":"DeleteJournal { mutated: false }","restore_after_resolution":"pass"}
+ok
+test snapshot::crash_tests::sigkill_snapshot_atomic_boundaries_restore_exact_old_or_new_state ... [oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+[state] genesis engine root 0x464f52b0bc0e452be7e050758e209d7a75708e98ea3eb4f0ffac4e5f6d7a5a28
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+S6_CRASH_CASE {"kind":"snapshot","boundary":"temp-created-before-write","owned_pid":45026,"signal":9,"published":false,"restored_keccak256":"0x925c41f969bfe50c2976aa4d7b27dc85169adc028233674bb4831339a05740d1","state_root":"0x464f52b0bc0e452be7e050758e209d7a75708e98ea3eb4f0ffac4e5f6d7a5a28","next_write":"pass"}
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+S6_CRASH_CASE {"kind":"snapshot","boundary":"data-written-before-file-sync","owned_pid":45027,"signal":9,"published":false,"restored_keccak256":"0x37eadf05bf35aee1210e21aa4f06cf847f709a7e6a19c466f898c31813e521f7","state_root":"0x464f52b0bc0e452be7e050758e209d7a75708e98ea3eb4f0ffac4e5f6d7a5a28","next_write":"pass"}
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+S6_CRASH_CASE {"kind":"snapshot","boundary":"file-synced-before-rename","owned_pid":45028,"signal":9,"published":false,"restored_keccak256":"0x8af4938d4443581ecf2866d0206ba462d86cb45daa18953ac4854491bffb70d1","state_root":"0x464f52b0bc0e452be7e050758e209d7a75708e98ea3eb4f0ffac4e5f6d7a5a28","next_write":"pass"}
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+S6_CRASH_CASE {"kind":"snapshot","boundary":"renamed-before-directory-sync","owned_pid":45029,"signal":9,"published":true,"restored_keccak256":"0xc5eba9612bb00d543bf6202776a85373188ce8d927246502351b4f2baa39df48","state_root":"0xfcac8450ef2afeeb786f1e924841f68507ceda4064a79d826704ca5b20e34384","next_write":"pass"}
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+S6_CRASH_CASE {"kind":"snapshot","boundary":"directory-synced-before-return","owned_pid":45030,"signal":9,"published":true,"restored_keccak256":"0x2c67f32b5ee092d286a5cca1fb048863235188b812a861cb326677be47fdffd2","state_root":"0xfcac8450ef2afeeb786f1e924841f68507ceda4064a79d826704ca5b20e34384","next_write":"pass"}
+ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 399 filtered out; finished in 1.87s
+

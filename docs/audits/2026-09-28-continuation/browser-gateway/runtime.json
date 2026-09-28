@@ -1,0 +1,21 @@
+{
+  "status": "STOPPED",
+  "gateway_binary_sha256": "853aac86ab224aff9055e6cede7b1a512ce6893a41c358eb843e25521916ec99",
+  "scope": "Disposable demo state, real Rust HTTP/WS, compiled browser harness, no wallet extension/L1/proof",
+  "processes": [
+    {
+      "kind": "gateway",
+      "pid": 35457,
+      "exit_code": 0
+    },
+    {
+      "kind": "proxy",
+      "pid": 35458,
+      "exit_code": 0
+    }
+  ],
+  "url": "http://127.0.0.1:65383",
+  "gateway": "http://127.0.0.1:65384",
+  "shutdown_snapshot_present": true,
+  "shutdown_snapshot_sha256": "d7bba08302591fc850cc1856df16a158720b892a3ec76bb28eafc6a2ac8c6192"
+}

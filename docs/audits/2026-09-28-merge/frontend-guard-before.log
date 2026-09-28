@@ -1,0 +1,142 @@
+[WARN] The "pnpm" field in package.json is no longer read by pnpm. The following keys were ignored: "pnpm.onlyBuiltDependencies". See https://pnpm.io/settings for the new home of each setting.
+
+ RUN  v4.1.11 /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend
+
+ ❯ src/api/realClient.test.ts (121 tests | 10 failed | 109 skipped) 50ms
+     × does not POST order while recovery metadata is pending 12ms
+     × does not POST deposit while recovery metadata is pending 4ms
+     × does not POST an order whose epoch read finishes after credential rotation 5ms
+     × does not report order success or refresh from a pre-rotation response 4ms
+     × does not report deposit success or refresh from a pre-rotation response 2ms
+     × refuses order after explicit socket auth failure without replacing the account 3ms
+     × refuses deposit after explicit socket auth failure without replacing the account 2ms
+     × does not accept a pending order response after socket auth refusal 4ms
+     × does not accept a pending deposit response after socket auth refusal 2ms
+     × invalidates a pending order even when an intervening recovery fails and retains the same key 5ms
+
+⎯⎯⎯⎯⎯⎯ Failed Tests 10 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/api/realClient.test.ts > order and legacy deposit mutation fencing > does not POST order while recovery metadata is pending
+ FAIL  src/api/realClient.test.ts > order and legacy deposit mutation fencing > does not POST deposit while recovery metadata is pending
+AssertionError: expected 'unexpected success' to match /recovery is in progress|credential c…/i
+
+- Expected:
+/recovery is in progress|credential changed/i
+
++ Received:
+"unexpected success"
+
+ ❯ src/api/realClient.test.ts:1927:21
+    1925|     const outcome = await mutate(client, kind).then(() => "unexpected …
+    1926|     gate.release(); await recovery;
+    1927|     expect(outcome).toMatch(/recovery is in progress|credential change…
+       |                     ^
+    1928|     expect(postsFor(kind)).toHaveLength(0);
+    1929|     client.dispose();
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/10]⎯
+
+ FAIL  src/api/realClient.test.ts > order and legacy deposit mutation fencing > does not POST an order whose epoch read finishes after credential rotation
+AssertionError: expected 'unexpected success' to match /credential changed|account.*changed/i
+
+- Expected:
+/credential changed|account.*changed/i
+
++ Received:
+"unexpected success"
+
+ ❯ src/api/realClient.test.ts:1942:25
+    1940|     await client.recoverAccount(OWNER_HEX);
+    1941|     gate.release();
+    1942|     expect(await order).toMatch(/credential changed|account.*changed/i…
+       |                         ^
+    1943|     expect(ordersPosted()).toHaveLength(0);
+    1944|     client.dispose();
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/10]⎯
+
+ FAIL  src/api/realClient.test.ts > order and legacy deposit mutation fencing > does not report order success or refresh from a pre-rotation response
+ FAIL  src/api/realClient.test.ts > order and legacy deposit mutation fencing > does not report deposit success or refresh from a pre-rotation response
+AssertionError: expected 'unexpected success' to match /credential changed|account.*changed/i
+
+- Expected:
+/credential changed|account.*changed/i
+
++ Received:
+"unexpected success"
+
+ ❯ src/api/realClient.test.ts:1963:29
+    1961|     const readsAfterRecovery = calls.filter(c => c.method === "GET").l…
+    1962|     gate.release();
+    1963|     expect(await operation).toMatch(/credential changed|account.*chang…
+       |                             ^
+    1964|     await client.ownStateSettled();
+    1965|     expect(calls.filter(c => c.method === "GET")).toHaveLength(readsAf…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/10]⎯
+
+ FAIL  src/api/realClient.test.ts > order and legacy deposit mutation fencing > refuses order after explicit socket auth failure without replacing the account
+ FAIL  src/api/realClient.test.ts > order and legacy deposit mutation fencing > refuses deposit after explicit socket auth failure without replacing the account
+AssertionError: expected 'unexpected success' to match /authentication.*refused|wallet recov…/i
+
+- Expected:
+/authentication.*refused|wallet recovery/i
+
++ Received:
+"unexpected success"
+
+ ❯ src/api/realClient.test.ts:1978:21
+    1976|     lastWsV1!.onmessage!({ data: JSON.stringify({ type: "error", messa…
+    1977|     const outcome = await mutate(client, kind).then(() => "unexpected …
+    1978|     expect(outcome).toMatch(/authentication.*refused|wallet recovery/i…
+       |                     ^
+    1979|     expect(postsFor(kind)).toHaveLength(0);
+    1980|     expect(registrations).toBe(1);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/10]⎯
+
+ FAIL  src/api/realClient.test.ts > order and legacy deposit mutation fencing > does not accept a pending order response after socket auth refusal
+ FAIL  src/api/realClient.test.ts > order and legacy deposit mutation fencing > does not accept a pending deposit response after socket auth refusal
+AssertionError: expected 'unexpected success' to match /authentication.*refused|wallet recov…/i
+
+- Expected:
+/authentication.*refused|wallet recovery/i
+
++ Received:
+"unexpected success"
+
+ ❯ src/api/realClient.test.ts:2000:29
+    1998|     lastWsV1!.onmessage!({ data: JSON.stringify({ type: "error", messa…
+    1999|     gate.release();
+    2000|     expect(await operation).toMatch(/authentication.*refused|wallet re…
+       |                             ^
+    2001|     expect(postsFor(kind)).toHaveLength(1);
+    2002|     client.dispose();
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/10]⎯
+
+ FAIL  src/api/realClient.test.ts > order and legacy deposit mutation fencing > invalidates a pending order even when an intervening recovery fails and retains the same key
+AssertionError: expected 'unexpected success' to match /credential changed|account.*changed/i
+
+- Expected:
+/credential changed|account.*changed/i
+
++ Received:
+"unexpected success"
+
+ ❯ src/api/realClient.test.ts:2028:25
+    2026|     await expect(client.recoverAccount(OWNER_HEX)).rejects.toThrow(/40…
+    2027|     gate.release();
+    2028|     expect(await order).toMatch(/credential changed|account.*changed/i…
+       |                         ^
+    2029|     expect(ordersPosted()).toHaveLength(0);
+    2030|     client.dispose();
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/10]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  10 failed | 2 passed | 109 skipped (121)
+   Start at  10:41:13
+   Duration  424ms (transform 110ms, setup 0ms, import 159ms, tests 50ms, environment 144ms)
+

@@ -1,0 +1,11 @@
+[WARN] The "pnpm" field in package.json is no longer read by pnpm. The following keys were ignored: "pnpm.onlyBuiltDependencies". See https://pnpm.io/settings for the new home of each setting.
+
+ RUN  v2.1.9 /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend
+
+ ✓ src/components/AccountPanel.wallet.test.tsx (14 tests) 94ms
+
+ Test Files  1 passed (1)
+      Tests  14 passed (14)
+   Start at  09:39:34
+   Duration  562ms (transform 103ms, setup 0ms, collect 176ms, tests 94ms, environment 93ms, prepare 47ms)
+

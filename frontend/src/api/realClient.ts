@@ -25,7 +25,7 @@ import type {
   WithdrawalEntry,
 } from "../domain/types";
 import { seal, domainAad } from "./sealedBox";
-import { accountRecoveryDigest, personalSign } from "./wallet";
+import { accountRecoveryDigest, personalSign, type DepositContext } from "./wallet";
 import { boundedJson, canonicalBase, credentialKey, LEGACY_ACCOUNT_KEY, makeCredential, parseCredential, parseScope,
   persistCredential, sameScope, validGeneration, withRecoveryLock, type CredentialScope, type StoredCredential } from "./credentialStore";
 import { cancellationCapability } from "../domain/cancellation";
@@ -607,6 +607,9 @@ export class RealDarkPerpClient implements DarkPerpClient {
    */
   private everProvisioned = false;
   private acctFetch: Promise<SealingAccount> | null = null;
+  /** A refused stream auth cannot authorize mutations; retain the saved identity
+   * until a validated initialization or wallet recovery installs a credential. */
+  private accountAuthRefused = false;
   /**
    * Monotonic credential epoch (account-recovery hardening S1): bumped on EVERY
    * credential swap — a confirmed recovery, an initAccount adoption, or a
@@ -731,7 +734,7 @@ export class RealDarkPerpClient implements DarkPerpClient {
     return this.acctFetch;
   }
 
-  private async initAccount(): Promise<SealingAccount> {
+  private async initAccount(allowRegistration = true): Promise<SealingAccount> {
     const epoch = this.credentialEpoch;
     const intent = this.accountIntent;
     const current = () => !this.disposed && epoch === this.credentialEpoch && intent === this.accountIntent;
@@ -761,6 +764,7 @@ export class RealDarkPerpClient implements DarkPerpClient {
       this.everProvisioned = true;
       throw new Error("Legacy saved account has no deployment scope. Use its owner id for wallet recovery; the saved record was not erased.");
     }
+    if (!allowRegistration) throw new Error("Recover the original trading account before checking this deposit; no replacement account was created.");
     if (!current()) return winner();
     if (this.recoveryInFlight) throw new Error("Account recovery is in progress; replacement registration is paused.");
     const reply = await boundedJson(this.base + "/v1/accounts", { method: "POST" });
@@ -793,6 +797,7 @@ export class RealDarkPerpClient implements DarkPerpClient {
     return record ? { apiKey: record.apiKey, owner: strictHex(record.owner, 32) } : null;
   }
   private installCredential(record: StoredCredential, persisted = true): void {
+    this.accountAuthRefused = false;
     this.credentialStorage = persisted ? "persistent" : "session";
     this.sealing = { apiKey: record.apiKey, owner: strictHex(record.owner, 32) };
     this.storedGen = record.recoveryNonce;
@@ -1013,6 +1018,7 @@ export class RealDarkPerpClient implements DarkPerpClient {
       // replacement account. The saved key may need wallet-authorized recovery.
       this.v1AuthSent = false;
       this.v1Owner = null;
+      this.accountAuthRefused = true;
       // A stream error is not authority to erase a saved credential or silently
       // register another account. The retained key may be revoked server-side.
       this.ownAccount = null;
@@ -1196,9 +1202,32 @@ export class RealDarkPerpClient implements DarkPerpClient {
    * arriving after rotation is an unknown old-account outcome, never a success
    * notification for the newly selected credential. Do not automatically retry. */
   private assertMutationAccount(acct: SealingAccount): void {
+    if (this.accountAuthRefused) {
+      throw new Error("Account authentication was refused. Use wallet recovery or reload to revalidate the saved account before sending another operation.");
+    }
     if (this.disposed || this.recoveryInFlight || this.sealing?.apiKey !== acct.apiKey) {
       throw new Error("Account credential changed or recovery is in progress. Reconcile the original operation before retrying; no success is reported for the selected account.");
     }
+  }
+
+  private async captureMutationAccount(): Promise<{ acct: SealingAccount; assertCurrent(): void }> {
+    const epoch = this.credentialEpoch, intent = this.accountIntent;
+    const initialization = this.sealing ? 0 : 1;
+    const acct = await this.ensureAccount();
+    const recoveryNonce = this.storedGen, owner = "0x" + bytesToHex(acct.owner);
+    const assertCurrent = () => {
+      this.assertMutationAccount(acct);
+      const saved = this.readStoredRecord();
+      // An attempted recovery invalidates pending operations even if it fails
+      // and leaves the same key installed. A normal first initialization is OK.
+      if (this.credentialEpoch !== epoch + initialization || this.accountIntent !== intent + initialization ||
+          (this.credentialStorage === "persistent" && (!saved || saved.apiKey !== acct.apiKey ||
+            saved.owner !== owner || saved.recoveryNonce !== recoveryNonce))) {
+        throw new Error("Account credential changed while this operation was pending. Reconcile the original operation before retrying; no success is reported for the selected account.");
+      }
+    };
+    assertCurrent();
+    return { acct, assertCurrent };
   }
 
   private post<T>(path: string, body: unknown, headers?: Record<string, string>): Promise<T> {
@@ -1221,7 +1250,9 @@ export class RealDarkPerpClient implements DarkPerpClient {
    * closed) — there is no plaintext fallback.
    */
   async placeOrder(input: OrderInput): Promise<Receipt> {
-    const [acct, epoch] = await Promise.all([this.ensureAccount(), this.ensureEpoch()]);
+    const { acct, assertCurrent } = await this.captureMutationAccount();
+    const epoch = await this.ensureEpoch();
+    assertCurrent();
     const terms = serializeOrderTerms({
       marketId: BigInt(input.marketId),
       side: input.side,
@@ -1241,11 +1272,12 @@ export class RealDarkPerpClient implements DarkPerpClient {
       { epochId: epoch.epochId, sealed: "0x" + bytesToHex(sealed) },
       { "X-Api-Key": acct.apiKey },
     );
+    assertCurrent();
     // SEC-025-E1: the accepted order lands in the account's /v1 order list —
     // refresh the own-account view now instead of waiting for the /v1/ws
     // stream (an ACCEPTED order has no finality TRANSITION yet, so no event
     // announces it). Fire and forget: the receipt must return to the caller
-    // regardless.
+    // unless its account context was superseded while the POST was pending.
     void this.refreshOwnState();
     return receipt;
   }
@@ -1383,12 +1415,14 @@ export class RealDarkPerpClient implements DarkPerpClient {
    * /v1/ws event announces a deposit.
    */
   async deposit(amountQuote: bigint): Promise<void> {
-    const acct = await this.ensureAccount(); // no /v1 account ⇒ throw (fail closed)
+    const { acct, assertCurrent } = await this.captureMutationAccount();
+    assertCurrent();
     await this.post(
       "/v1/accounts/deposit",
       { marketId: this.clientSelectedMarket, amount: s(amountQuote) },
       { "X-Api-Key": acct.apiKey },
     );
+    assertCurrent();
     void this.refreshOwnState();
   }
   /**
@@ -1636,6 +1670,7 @@ export class RealDarkPerpClient implements DarkPerpClient {
     if (!st || !st.markets.some((m) => m.id === marketId)) return; // unknown id — ignore
     if (marketId === this.clientSelectedMarket) return;
     this.clientSelectedMarket = marketId;
+    this.depositMarketIntent++;
     // The previous market's fetched data must never render under the new one.
     this.selBook = null;
     this.selOracle = null;
@@ -1646,6 +1681,47 @@ export class RealDarkPerpClient implements DarkPerpClient {
   // ── injected-wallet deposit flow (see api/wallet.ts) ────────────────────────
   // These four methods make this client a `WalletDepositClient`: the wallet UI
   // is gated on their presence (the mock client lacks them ⇒ no wallet UI).
+
+  private depositMarketIntent = 0;
+  private readonly depositContexts = new WeakMap<DepositContext, SealingAccount>();
+
+  async captureDepositContext(options: { existingOnly?: boolean } = {}): Promise<DepositContext> {
+    const marketId = this.clientSelectedMarket, marketIntent = this.depositMarketIntent;
+    const intent = this.accountIntent, epochBefore = this.credentialEpoch;
+    const known = this.sealing;
+    const acct = await (options.existingOnly ? this.sealing ?? this.initAccount(false) : this.ensureAccount());
+    const initialization = known ? 0 : 1;
+    if (intent + initialization !== this.accountIntent || epochBefore + initialization !== this.credentialEpoch || marketIntent !== this.depositMarketIntent) {
+      throw new Error("Deposit account or market changed while preparing the deposit.");
+    }
+    this.assertMutationAccount(acct);
+    const epoch = this.credentialEpoch, capturedIntent = this.accountIntent;
+    const recoveryNonce = this.storedGen, scope = { ...this.scope };
+    const owner = "0x" + bytesToHex(acct.owner);
+    const context: DepositContext = Object.freeze({
+      ...scope, owner, marketId, recoveryNonce,
+      assertCurrent: () => {
+        this.assertMutationAccount(acct);
+        const saved = this.readStoredRecord();
+        if (epoch !== this.credentialEpoch || capturedIntent !== this.accountIntent ||
+            recoveryNonce !== this.storedGen || !sameScope(scope, this.scope) ||
+            marketIntent !== this.depositMarketIntent ||
+            (this.credentialStorage === "persistent" && (!saved || saved.apiKey !== acct.apiKey || saved.owner !== owner || saved.recoveryNonce !== recoveryNonce))) {
+          throw new Error("Deposit account, credentials, deployment or market changed; reconcile the original deposit before retrying.");
+        }
+      },
+    });
+    context.assertCurrent();
+    this.depositContexts.set(context, { apiKey: acct.apiKey, owner: acct.owner.slice() });
+    return context;
+  }
+
+  private depositContextAccount(context: DepositContext): SealingAccount {
+    const acct = this.depositContexts.get(context);
+    if (!acct) throw new Error("Deposit context belongs to another client.");
+    context.assertCurrent();
+    return acct;
+  }
 
   /**
    * The self-provisioned `/v1` account's identity — the wallet flow binds the
@@ -1662,13 +1738,15 @@ export class RealDarkPerpClient implements DarkPerpClient {
    * funds from. `signature` must recover to `address` over the bind digest
    * (raw or EIP-191 `personal_sign` form — the gateway accepts both).
    */
-  async bindDepositAddress(address: string, signature: string): Promise<void> {
-    const acct = await this.ensureAccount();
+  async bindDepositAddress(address: string, signature: string, context?: DepositContext): Promise<void> {
+    context ??= await this.captureDepositContext();
+    const acct = this.depositContextAccount(context);
     await this.post(
       "/v1/accounts/deposit/address",
       { address, signature },
       { "X-Api-Key": acct.apiKey },
     );
+    context.assertCurrent();
   }
 
   /**
@@ -1682,14 +1760,17 @@ export class RealDarkPerpClient implements DarkPerpClient {
   async authorizeDeposit(
     from: string,
     amount: bigint,
+    context?: DepositContext,
   ): Promise<{ ownerCommit: string; sig: string }> {
-    const marketId = this.clientSelectedMarket;
-    const acct = await this.ensureAccount();
+    context ??= await this.captureDepositContext();
+    const acct = this.depositContextAccount(context);
+    const marketId = context.marketId;
     const r = await this.post<{ ownerCommit?: unknown; sig?: unknown }>(
       "/v1/accounts/deposit/authorize",
       { from, amount: s(amount), marketId, purpose: "collateral" },
       { "X-Api-Key": acct.apiKey },
     );
+    context.assertCurrent();
     if (typeof r.ownerCommit !== "string" || !/^0x[0-9a-fA-F]{64}$/.test(r.ownerCommit)) {
       throw new Error("authorize: gateway returned a malformed ownerCommit (expected 32-byte 0x hex)");
     }
@@ -1704,21 +1785,34 @@ export class RealDarkPerpClient implements DarkPerpClient {
    * Cannot choose a new market or consume deposits out of order.
    * A pending result is not zero credit and never means send funds again.
    */
-  async creditOnchainDeposit(txHash: string): Promise<bigint> {
-    const acct = await this.ensureAccount();
-    const r = await this.post<{ credited?: unknown; status?: unknown }>(
+  async creditOnchainDeposit(txHash: string, context?: DepositContext): Promise<bigint> {
+    context ??= await this.captureDepositContext();
+    const acct = this.depositContextAccount(context);
+    const r = await this.post<{ credited?: unknown; status?: unknown; durability?: unknown; purpose?: unknown; marketId?: unknown; depositIds?: unknown; account?: unknown }>(
       "/v1/accounts/deposit/onchain",
-      { txHash, marketId: this.clientSelectedMarket },
+      { txHash, marketId: context.marketId },
       { "X-Api-Key": acct.apiKey },
     );
-    if (r.status === "pendingFinalizedIngestion") {
+    context.assertCurrent();
+    if (r?.status === "pendingFinalizedIngestion") {
       throw new Error("Deposit is not yet confirmed by the finalized ingester. Valid authorized deposits are credited automatically; do not send another deposit.");
     }
+    if (!r || r.status !== "credited" || r.durability !== "confirmed" ||
+        r.purpose !== "collateral" || r.marketId !== context.marketId ||
+        typeof r.credited !== "string" || !/^[1-9][0-9]*$/.test(r.credited) ||
+        !Array.isArray(r.depositIds) || r.depositIds.length === 0 ||
+        r.depositIds.some(id => !Number.isSafeInteger(id) || id < 0) || new Set(r.depositIds).size !== r.depositIds.length) {
+      throw new Error("Deposit credit receipt is malformed or not durably confirmed; retain the original transaction and retry only its credit check.");
+    }
+    this.validateAccountReply(r.account, { ...this.scope, schema: 2, apiKey: acct.apiKey,
+      owner: context.owner, recoveryNonce: context.recoveryNonce });
+    const credited = BigInt(r.credited);
+    if (credited > (1n << 128n) - 1n) throw new Error("Deposit credit receipt amount is out of range.");
     // Review F4: like requestWithdrawal — the credit moved the /v1 balance
     // and no /v1/ws event announces a deposit; re-read through the guarded
     // refresh or the balance stays stale until an unrelated fill.
     void this.refreshOwnState();
-    return typeof r.credited === "string" ? B(r.credited) : 0n;
+    return credited;
   }
 
   /**

@@ -1,0 +1,34 @@
+[WARN] The "pnpm" field in package.json is no longer read by pnpm. The following keys were ignored: "pnpm.onlyBuiltDependencies". See https://pnpm.io/settings for the new home of each setting.
+[2m[WebServer] [22m(node:48256) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[2m[WebServer] [22m(Use `node --trace-warnings ...` to show where the warning was created)
+[2m[WebServer] [22m[43m[33m[[39m[49m[43m[30mWARN[39m[49m[43m[33m][39m[49m The "pnpm" field in package.json is no longer read by pnpm. The following keys were ignored: "pnpm.onlyBuiltDependencies". See https://pnpm.io/settings for the new home of each setting.
+[2m[WebServer] [22m(node:48260) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[2m[WebServer] [22m(Use `node --trace-warnings ...` to show where the warning was created)
+[2m[WebServer] [22m(node:48284) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[2m[WebServer] [22m(Use `node --trace-warnings ...` to show where the warning was created)
+
+Running 17 tests using 1 worker
+
+(node:48285) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:48285) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓   1 [chromium] › tests/browser/deposit.spec.ts:80:1 › DP-01 full synthetic wallet pipeline retains exact calldata and scoped HTTP intent (528ms)
+  ✓   2 [chromium] › tests/browser/deposit.spec.ts:93:66 › DP-02 market changes during mint prompt stop all subsequent mutation (280ms)
+  ✓   3 [chromium] › tests/browser/deposit.spec.ts:93:66 › DP-02 market changes during approve prompt stop all subsequent mutation (294ms)
+  ✓   4 [chromium] › tests/browser/deposit.spec.ts:93:66 › DP-02 market changes during signature prompt stop all subsequent mutation (289ms)
+  ✓   5 [chromium] › tests/browser/deposit.spec.ts:93:66 › DP-02 market changes during deposit prompt stop all subsequent mutation (305ms)
+  ✓   6 [chromium] › tests/browser/deposit.spec.ts:105:1 › DP-03 native two-tab lock and credential propagation stop pending bind signature (690ms)
+  ✓   7 [chromium] › tests/browser/deposit.spec.ts:119:50 › DP-04 delayed authorize reply cannot succeed after credential rotation (660ms)
+  ✓   8 [chromium] › tests/browser/deposit.spec.ts:119:50 › DP-04 delayed onchain reply cannot succeed after credential rotation (624ms)
+  ✓   9 [chromium] › tests/browser/deposit.spec.ts:130:1 › DP-05 unknown wallet send survives reload and refuses duplicate transfer (378ms)
+  ✓  10 [chromium] › tests/browser/deposit.spec.ts:144:1 › DP-06 unknown credit response resumes recorded transaction after reload (516ms)
+  ✓  11 [chromium] › tests/browser/deposit.spec.ts:158:66 › DP-07 missing credit receipt retains journal and retries only original transaction (422ms)
+  ✓  12 [chromium] › tests/browser/deposit.spec.ts:158:66 › DP-07 unknown credit receipt retains journal and retries only original transaction (446ms)
+  ✓  13 [chromium] › tests/browser/deposit.spec.ts:158:66 › DP-07 zero credit receipt retains journal and retries only original transaction (436ms)
+  ✓  14 [chromium] › tests/browser/deposit.spec.ts:158:66 › DP-07 wrongAmount credit receipt retains journal and retries only original transaction (441ms)
+  ✓  15 [chromium] › tests/browser/deposit.spec.ts:178:1 › DP-08 status-only reconciliation after same-owner credential rotation retains the original hash (708ms)
+  ✓  16 [chromium] › tests/browser/deposit.spec.ts:197:1 › DP-09 original market must be restored before checking the recorded deposit (578ms)
+  ✓  17 [chromium] › tests/browser/deposit.spec.ts:212:1 › DP-10 pending and reverted status checks preserve the original operation without sends (627ms)
+
+  17 passed (10.3s)

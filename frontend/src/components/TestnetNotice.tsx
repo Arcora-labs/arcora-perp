@@ -1,13 +1,9 @@
 import { useState } from "react";
 import { MOCK_USDC, COLLATERAL_VAULT as VAULT } from "../api/wallet";
 
-/// Honest public-testnet disclosure: what is REAL and what is a STAND-IN, plus how
-/// to get test USDC. Dismissible (persisted), but shown on first visit so no one
-/// mistakes the testnet for a mainnet with real funds. Kept deliberately blunt.
-/// Contract addresses come from api/wallet.ts — ONE place to update on redeploy.
-// v4: RAM-fit clean redeploy (2026-07-11) — fresh stack again (reset so the
-// full-state proof fits GB10 RAM), faucet addresses changed; re-show once.
-const DISMISS_KEY = "dp_testnet_notice_dismissed_v4";
+// Configuration is not evidence of a running chain, attested enclave or proof.
+// v5 resurfaces the corrected environment/settlement wording once.
+const DISMISS_KEY = "dp_testnet_notice_dismissed_v5";
 
 export function TestnetNotice() {
   const [open, setOpen] = useState(() => {
@@ -31,15 +27,10 @@ export function TestnetNotice() {
       <div className="banner__main">
         <span className="banner__dot" />
         <span>
-          <strong className="banner__title">Public testnet — funds are not real.</strong>{" "}
+          <strong className="banner__title">Test environment — test assets only.</strong>{" "}
           <span className="banner__desc">
-            Settlement runs on Base Sepolia with <strong>test USDC</strong>. Matching runs
-            in a real Azure TDX enclave (attested), and settlement is now enforced by{" "}
-            <strong>real zk validity proofs</strong> (SP1/Groth16, verified on-chain) —
-            produced by a dev prover that is not yet TEE-attested. Deposits and orders
-            confirm instantly (soft finality); on-chain <strong>SETTLED</strong> finality
-            and withdrawals lag <strong>~a proof interval (~10–20&nbsp;min)</strong>. Orders
-            reach the gateway over TLS. Don't send anything you can't lose.
+            Order acceptance does not mean on-chain settlement. Check <strong>Health</strong>{" "}
+            and <strong>Explorer</strong> for deployment and transaction status.
           </span>
         </span>
       </div>
@@ -54,8 +45,8 @@ export function TestnetNotice() {
       {showFaucet && (
         <div className="banner__faucet">
           <p className="banner__desc">
-            The collateral token is an open-mint MockUSDC (6 decimals). Mint to your wallet,
-            then deposit to the vault — e.g. with Foundry <code>cast</code> (mints 1,000 USDC):
+            For the configured Base Sepolia deployment, mint test MockUSDC (6 decimals)
+            to your wallet. This Foundry <code>cast</code> example mints 1,000 test USDC:
           </p>
           <pre className="banner__code">
             {`# 1. mint 1,000 test USDC to yourself\n`}
@@ -74,8 +65,9 @@ export function TestnetNotice() {
             (<strong>Connect wallet → Deposit</strong>) — it authorizes and deposits for you.
           </p>
           <p className="banner__desc">
-            Then register an API key on the <strong>API</strong> tab and POST the deposit tx
-            hash to <code>/v1/accounts/deposit/onchain</code> to credit your account.
+            Keep the original deposit transaction hash. The finalized ingester credits
+            the authorized deposit to the same trading account when finalized. If credit
+            is still pending, check that transaction again — do not send another deposit.
           </p>
           <p className="banner__desc">
             You'll also need a little <strong>Base Sepolia ETH</strong> for gas (the deposit

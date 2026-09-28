@@ -1,0 +1,9 @@
+WARN gateway: oracle publisher signer is the PUBLIC dev default (ORACLE_SIGNER_KEY unset) — demo/test only, never production
+[sec-019] gateway deposit-authorization signer address 0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266 (must equal the deployed CollateralVault.gatewaySigner)
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+[state] restored sealed snapshot from /var/folders/jz/7wbjs_5j45g915858xh6wm200000gn/T/arcora-drain-9ye0m8ao/persistent.snapshot
+[state] sealed persistence ON → /var/folders/jz/7wbjs_5j45g915858xh6wm200000gn/T/arcora-drain-9ye0m8ao/persistent.snapshot
+dark-perp gateway listening on http://127.0.0.1:53270  (ws: /ws)
+[shutdown] admission closed; draining accepted HTTP, sockets and workers
+[state] shutdown snapshot saved
+[shutdown] drain complete — exiting 0

@@ -80,6 +80,70 @@ pub struct L1Status {
     pub withdrawals_root: String,
 }
 
+/// Separate transport from parsing so local fault fixtures exercise the exact
+/// observation routine used by live error reconciliation and boot recovery.
+fn settlement_observation_from(
+    rpc: &impl crate::deposit_rpc::Rpc,
+    settlement: &str,
+) -> Result<(u64, String, u128), String> {
+    use serde_json::json;
+    use sha3::{Digest as _, Keccak256};
+
+    fn header(v: &serde_json::Value) -> Result<(u64, Digest), String> {
+        let height = v["number"]
+            .as_str()
+            .and_then(|s| s.strip_prefix("0x"))
+            .and_then(|s| u64::from_str_radix(s, 16).ok())
+            .ok_or("settlement observation: missing/invalid finalized block number")?;
+        let hash = v["hash"]
+            .as_str()
+            .and_then(parse_bytes32)
+            .ok_or("settlement observation: missing/invalid finalized block hash")?;
+        Ok((height, hash))
+    }
+    let anchor = header(&rpc.call(
+        "eth_getBlockByNumber",
+        vec![json!("finalized"), json!(false)],
+    )?)?;
+    let pin = json!({"blockHash": crate::hex32(&anchor.1), "requireCanonical": true});
+    let word = |signature: &str| -> Result<Digest, String> {
+        let selector = Keccak256::digest(signature.as_bytes());
+        let value = rpc.call(
+            "eth_call",
+            vec![
+                json!({"to": settlement, "data": crate::hex0x(&selector[..4])}),
+                pin.clone(),
+            ],
+        )?;
+        value
+            .as_str()
+            .and_then(parse_bytes32)
+            .ok_or_else(|| format!("settlement observation: invalid ABI word for {signature}"))
+    };
+    let batch = word("batchCount()")?;
+    if batch[..24].iter().any(|b| *b != 0) {
+        return Err("settlement observation: batchCount overflows u64".into());
+    }
+    let root = word("currentStateRoot()")?;
+    let bond = word("sequencerBond()")?;
+    if bond[..16].iter().any(|b| *b != 0) {
+        return Err("settlement observation: sequencerBond overflows u128".into());
+    }
+    // Detect provider disagreement or a canonical hash changing during the read.
+    let after = header(&rpc.call(
+        "eth_getBlockByNumber",
+        vec![json!(format!("0x{:x}", anchor.0)), json!(false)],
+    )?)?;
+    if after != anchor {
+        return Err("settlement observation: canonical block changed or provider disagrees".into());
+    }
+    Ok((
+        u64::from_be_bytes(batch[24..].try_into().unwrap()),
+        crate::hex32(&root),
+        u128::from_be_bytes(bond[16..].try_into().unwrap()),
+    ))
+}
+
 impl L1 {
     #[cfg(test)]
     pub(crate) fn test_reader(rpc: String) -> Self {
@@ -331,7 +395,14 @@ impl L1 {
         self.read_u("requiredBond()(uint256)")
     }
     pub fn batch_count(&self) -> Result<u64, String> {
-        self.read_u("batchCount()(uint256)").map(|v| v as u64)
+        self.read_u("batchCount()(uint256)")
+            .and_then(|v| u64::try_from(v).map_err(|_| "batchCount overflows u64".into()))
+    }
+
+    /// Recovery reads at one finalized, hash-pinned block. Failure to provide
+    /// finalized/EIP-1898 data is a HOLD, never a fallback to independent latest reads.
+    pub fn settlement_observation(&self) -> Result<(u64, String, u128), String> {
+        settlement_observation_from(self, &self.settlement)
     }
 
     // ── SEC-025-D: block-pinned reads for the trading gate ───────────────────────
@@ -1056,6 +1127,124 @@ fn parse_u256_low128(s: &str) -> Option<u128> {
 
 #[cfg(test)]
 mod tests {
+    struct RecoveryRpc {
+        replies: std::sync::Mutex<std::collections::VecDeque<Result<serde_json::Value, String>>>,
+        calls: std::sync::Mutex<Vec<(String, Vec<serde_json::Value>)>>,
+    }
+    impl crate::deposit_rpc::Rpc for RecoveryRpc {
+        fn call(
+            &self,
+            method: &str,
+            params: Vec<serde_json::Value>,
+        ) -> Result<serde_json::Value, String> {
+            self.calls.lock().unwrap().push((method.into(), params));
+            self.replies
+                .lock()
+                .unwrap()
+                .pop_front()
+                .expect("unexpected extra recovery read")
+        }
+    }
+    fn recovery_rpc() -> RecoveryRpc {
+        use serde_json::json;
+        let block = json!({"number": "0x10", "hash": crate::hex32(&[9; 32])});
+        let mut batch = [0; 32];
+        batch[31] = 6;
+        let mut bond = [0; 32];
+        bond[31] = 77;
+        RecoveryRpc {
+            replies: std::sync::Mutex::new(
+                vec![
+                    Ok(block.clone()),
+                    Ok(json!(crate::hex32(&batch))),
+                    Ok(json!(crate::hex32(&[3; 32]))),
+                    Ok(json!(crate::hex32(&bond))),
+                    Ok(block),
+                ]
+                .into(),
+            ),
+            calls: std::sync::Mutex::new(vec![]),
+        }
+    }
+    #[test]
+    fn journal_recovery_observation_pins_every_term_to_one_finalized_hash() {
+        use serde_json::json;
+        use sha3::{Digest as _, Keccak256};
+        let rpc = recovery_rpc();
+        assert_eq!(
+            super::settlement_observation_from(&rpc, "0xvault").unwrap(),
+            (6, crate::hex32(&[3; 32]), 77)
+        );
+        let calls = rpc.calls.lock().unwrap();
+        assert_eq!(calls.len(), 5);
+        assert_eq!(
+            calls[0],
+            (
+                "eth_getBlockByNumber".into(),
+                vec![json!("finalized"), json!(false)]
+            )
+        );
+        for (i, signature) in ["batchCount()", "currentStateRoot()", "sequencerBond()"]
+            .iter()
+            .enumerate()
+        {
+            assert_eq!(calls[i + 1].0, "eth_call");
+            assert_eq!(
+                calls[i + 1].1[0],
+                json!({"to": "0xvault", "data": crate::hex0x(&Keccak256::digest(signature.as_bytes())[..4])})
+            );
+            assert_eq!(
+                calls[i + 1].1[1],
+                json!({"blockHash": crate::hex32(&[9;32]), "requireCanonical": true})
+            );
+        }
+        assert_eq!(
+            calls[4],
+            (
+                "eth_getBlockByNumber".into(),
+                vec![json!("0x10"), json!(false)]
+            )
+        );
+    }
+    #[test]
+    fn journal_recovery_observation_refuses_failure_at_every_read() {
+        for i in 0..5 {
+            let rpc = recovery_rpc();
+            rpc.replies.lock().unwrap()[i] = Err(format!("injected failure {i}"));
+            assert!(super::settlement_observation_from(&rpc, "0xvault")
+                .unwrap_err()
+                .contains("injected failure"));
+            assert_eq!(rpc.calls.lock().unwrap().len(), i + 1);
+        }
+    }
+    #[test]
+    fn journal_recovery_observation_refuses_malformed_overflow_and_forked_data() {
+        use serde_json::json;
+        let mut overflow_count = [0; 32];
+        overflow_count[23] = 1;
+        let mut overflow_bond = [0; 32];
+        overflow_bond[15] = 1;
+        for (i, bad) in [
+            (0, json!(null)),
+            (
+                0,
+                json!({"number":"0x10000000000000000", "hash":crate::hex32(&[9;32])}),
+            ),
+            (1, json!(crate::hex32(&overflow_count))),
+            (2, json!("0xdead")),
+            (3, json!(crate::hex32(&overflow_bond))),
+            (4, json!({"number":"0x10", "hash":crate::hex32(&[8;32])})),
+            (4, json!({"number":"0x11", "hash":crate::hex32(&[9;32])})),
+        ] {
+            let rpc = recovery_rpc();
+            rpc.replies.lock().unwrap()[i] = Ok(bad);
+            assert!(
+                super::settlement_observation_from(&rpc, "0xvault").is_err(),
+                "invalid reply {i} accepted"
+            );
+        }
+    }
+
     use super::*;
 
     // SEC-019 Task 7b: DEPOSIT_TOPIC0 MUST equal keccak256 of the new event signature.

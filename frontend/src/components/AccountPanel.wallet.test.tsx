@@ -6,7 +6,7 @@
 // the chain ensure, and resumes recorded tx hashes instead of re-sending),
 // bind memoization, and mock-mode hiding.
 
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
 import { render, screen, fireEvent, cleanup, waitFor } from "@testing-library/react";
 import { bytesToHex } from "@noble/hashes/utils";
 import { StoreProvider } from "../store";
@@ -14,9 +14,9 @@ import {
   AccountPanel,
   WalletDepositCard,
   WithdrawalsSection,
-  boundStorageKey,
 } from "./AccountPanel";
 import {
+  BASE_SEPOLIA_CHAIN_ID,
   COLLATERAL_VAULT,
   MOCK_USDC,
   bindDepositDigest,
@@ -27,6 +27,8 @@ import {
 } from "../api/wallet";
 import type { DarkPerpClient } from "../api/client";
 import type { WithdrawalEntry } from "../domain/types";
+import { installTestLocks } from "../testSupport/locks";
+beforeEach(installTestLocks);
 
 const ADDR = "0xAbCdEF0123456789AbCdEF0123456789AbCdEF01";
 const addr = ADDR.toLowerCase();
@@ -54,6 +56,8 @@ function makeProvider(
       const o = overrides[method];
       if (o) return o(call, calls);
       switch (method) {
+        case "eth_chainId": return BASE_SEPOLIA_CHAIN_ID;
+        case "eth_accounts":
         case "eth_requestAccounts":
           return [ADDR];
         case "wallet_switchEthereumChain":
@@ -62,7 +66,7 @@ function makeProvider(
           txCount += 1;
           return "0x" + txCount.toString(16).padStart(64, "0");
         case "eth_getTransactionReceipt":
-          return { status: "0x1" };
+          return { status: "0x1", transactionHash: params?.[0] };
         case "personal_sign":
           return SIG;
         default:
@@ -86,6 +90,7 @@ function makeClient() {
   const authorizeCalls: [string, bigint][] = [];
   const creditCalls: string[] = [];
   const client = {
+    captureDepositContext: async () => ({ owner: "0x" + bytesToHex(OWNER), base: "http://localhost", chainId: 84532, vault: COLLATERAL_VAULT, marketId: 0, recoveryNonce: 0, assertCurrent() {} }),
     depositAccount: async () => ({ apiKey: "0x" + "aa".repeat(32), owner: OWNER }),
     bindDepositAddress: async (a: string, s: string) => {
       bindCalls.push([a, s]);
@@ -96,7 +101,7 @@ function makeClient() {
     },
     creditOnchainDeposit: async (txHash: string) => {
       creditCalls.push(txHash);
-      return 1_000_000_000n;
+      return authorizeCalls[authorizeCalls.length - 1]?.[1] ?? 1_000_000_000n;
     },
   };
   return { client, bindCalls, authorizeCalls, creditCalls };
@@ -111,6 +116,7 @@ afterEach(() => {
   disconnectWallet();
   delete (window as unknown as { ethereum?: Eip1193Provider }).ethereum;
   localStorage.clear();
+  vi.unstubAllGlobals();
 });
 
 describe("WalletDepositCard", () => {
@@ -155,7 +161,7 @@ describe("WalletDepositCard", () => {
     expect(signs.length).toBe(1);
     expect(signs[0].params).toEqual(["0x" + bytesToHex(bindDepositDigest(OWNER, addr)), addr]);
     expect(bindCalls).toEqual([[addr, SIG]]);
-    expect(localStorage.getItem(boundStorageKey(bytesToHex(OWNER), addr))).toBe("1");
+    expect(Object.keys(localStorage).some(key => key.startsWith("darkperp.deposit.v1:"))).toBe(false);
 
     // [5] SEC-019 authorization for the exact (from, amount)
     expect(authorizeCalls).toEqual([[addr, 1_000_000_000n]]);
@@ -164,17 +170,20 @@ describe("WalletDepositCard", () => {
     expect(txField(txs[2], "to")).toBe(COLLATERAL_VAULT);
     expect(txField(txs[2], "data").startsWith("0x2b681307")).toBe(true);
     expect(txField(txs[2], "data")).toContain(COMMIT.slice(2));
-    for (const t of txs) expect(txField(t, "from")).toBe(addr);
+    for (const t of txs) {
+      expect(txField(t, "from")).toBe(addr);
+      expect((t.params![0] as Record<string, string>).chainId).toBe(BASE_SEPOLIA_CHAIN_ID);
+    }
 
     // [7] credit with the DEPOSIT tx hash (the 3rd fake hash the provider issued)
     expect(creditCalls).toEqual(["0x" + (3).toString(16).padStart(64, "0")]);
   });
 
-  it("skips the bind signature when the account+address pair is already bound", async () => {
+  it("does not trust an unscoped legacy binding cache", async () => {
     const p = makeProvider();
     install(p.provider);
     const { client, bindCalls } = makeClient();
-    localStorage.setItem(boundStorageKey(bytesToHex(OWNER), addr), "1");
+    localStorage.setItem(`darkperp.walletBound.${bytesToHex(OWNER)}.${addr}`, "1");
     render(<WalletDepositCard client={client} />);
 
     fireEvent.click(screen.getByRole("button", { name: /connect wallet/i }));
@@ -182,8 +191,8 @@ describe("WalletDepositCard", () => {
     fireEvent.click(screen.getByRole("button", { name: /^deposit$/i }));
     await screen.findByText(/credited to your trading account/i);
 
-    expect(p.signs().length).toBe(0);
-    expect(bindCalls.length).toBe(0);
+    expect(p.signs().length).toBe(1);
+    expect(bindCalls.length).toBe(1);
   });
 
   it("surfaces a readable error when the user rejects the connection", async () => {
@@ -275,14 +284,14 @@ describe("WalletDepositCard", () => {
 
     // Re-run: mint/approve/bind are skipped (done) but authorize runs AGAIN —
     // a fresh gateway sig for the re-sent deposit.
-    fireEvent.click(screen.getByRole("button", { name: /^deposit$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /resume original deposit/i }));
     expect(await screen.findByText(/credited to your trading account/i)).toBeTruthy();
     expect(authorizeCalls.length).toBe(2);
     expect(p.sent().length).toBe(4); // mint, approve, rejected deposit, re-sent deposit
     expect(creditCalls).toEqual(["0x" + (4).toString(16).padStart(64, "0")]);
   });
 
-  it("amount edit before the deposit landed resets the run — authorize uses the NEW amount", async () => {
+  it("retains the original amount when prerequisite transactions were already sent", async () => {
     let rejectDeposit = true;
     const p = makeProvider({
       eth_sendTransaction: (_call, calls) => {
@@ -306,17 +315,16 @@ describe("WalletDepositCard", () => {
     await screen.findByText(/Transaction rejected in the wallet/i);
     expect(authorizeCalls).toEqual([[addr, 1_000_000_000n]]);
 
-    // No deposit tx recorded → editing the amount resets the whole pipeline.
+    // The displayed amount remains pinned to the original saved intent.
     fireEvent.change(screen.getByLabelText(/deposit amount/i), { target: { value: "500" } });
-    fireEvent.click(screen.getByRole("button", { name: /^deposit$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /resume original deposit/i }));
     await screen.findByText(/credited to your trading account/i);
 
-    // Fresh run: mint(4) → approve(5) → deposit(6), and the authorization is
-    // for the NEW amount — the old sig (bound to 1000) was never reusable.
+    // Resume keeps the original mint/approval and re-authorizes its exact amount.
     expect(authorizeCalls.length).toBe(2);
-    expect(authorizeCalls[1]).toEqual([addr, 500_000_000n]);
-    expect(p.sent().length).toBe(6);
-    expect(creditCalls).toEqual(["0x" + (6).toString(16).padStart(64, "0")]);
+    expect(authorizeCalls[1]).toEqual([addr, 1_000_000_000n]);
+    expect(p.sent().length).toBe(4);
+    expect(creditCalls).toEqual(["0x" + (4).toString(16).padStart(64, "0")]);
   });
 
   it("re-invokes ensureBaseSepolia on a re-run after a chain-step error (never skipped)", async () => {
@@ -361,7 +369,7 @@ describe("WalletDepositCard", () => {
           failDepositReceipt = false; // one RPC hiccup while waiting for the deposit
           throw new Error("rpc hiccup");
         }
-        return { status: "0x1" };
+        return { status: "0x1", transactionHash: call.params?.[0] };
       },
     });
     install(p.provider);
@@ -378,8 +386,8 @@ describe("WalletDepositCard", () => {
 
     // Re-run: NO second deposit tx — the runner resumes waitForTx on the
     // recorded hash, and the credit is keyed to that same confirmed hash.
-    fireEvent.click(screen.getByRole("button", { name: /^deposit$/i }));
-    expect(await screen.findByText(/credited to your trading account/i)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /check original transaction/i }));
+    expect(await screen.findByText(/Original deposit.*is credited/i)).toBeTruthy();
     expect(p.sent().length).toBe(3); // still 3 — sendTx was NOT called again
     const depositPolls = p.calls.filter(
       (c) => c.method === "eth_getTransactionReceipt" && c.params?.[0] === DEPOSIT_HASH,
@@ -389,6 +397,25 @@ describe("WalletDepositCard", () => {
     // The recorded hash also means authorize is NOT re-run — the on-chain sig
     // was already consumed by the sent tx; only the wait + credit resume.
     expect(authorizeCalls.length).toBe(1);
+  });
+});
+
+describe("deposit form intent", () => {
+  it("rejects a programmatic amount change while bind signature is pending", async () => {
+    let release!: (signature: string) => void;
+    const p = makeProvider({ personal_sign: () => new Promise<string>(resolve => { release = resolve; }) });
+    install(p.provider);
+    const { client, bindCalls, authorizeCalls } = makeClient();
+    render(<WalletDepositCard client={client} />);
+    fireEvent.click(screen.getByRole("button", { name: /connect wallet/i }));
+    await screen.findByText(/0xabcd…ef01/);
+    fireEvent.click(screen.getByRole("button", { name: /^deposit$/i }));
+    await waitFor(() => expect(p.signs()).toHaveLength(1));
+    fireEvent.change(screen.getByLabelText(/deposit amount/i), { target: { value: "500" } });
+    release(SIG);
+    await screen.findByText(/form or wallet context changed/i);
+    expect(bindCalls).toHaveLength(0); expect(authorizeCalls).toHaveLength(0);
+    expect(p.sent()).toHaveLength(2);
   });
 });
 

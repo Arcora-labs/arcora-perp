@@ -1,0 +1,32 @@
+{
+  "head": "5c71b2d0a24e1e1e94efeff58df8e26b13190c1b",
+  "files": {
+    "frontend/package.json": "15fa1320c18353713a7706c26f4fec036464295d1784ee50b9063443786dac16",
+    "frontend/pnpm-lock.yaml": "192c680d74fe6a7f87fcb3c772720e61c2a72dfa91b79bd7372329f9d36ca0a9",
+    "frontend/src/App.tsx": "77f2fd0b6413530c41fdef855117206e50abff3ac0b4384bed437e5dc54623df",
+    "frontend/src/api/depositFlow.test.ts": "49e601eaed96a195ebcf5e9c2199f2bf057589c02f602f7daed6c861b5528b8e",
+    "frontend/src/api/depositFlow.ts": "7f4bdd8b6fdceab18b1e694e80abe0513e0eac67540cf9c1e020d330f3f16ba4",
+    "frontend/src/api/realClient.recovery.test.ts": "2d518b9683ed2730ffe9775241662a18bb427c7c1475091556d9333f804e794b",
+    "frontend/src/api/realClient.test.ts": "8d51562170d816b08ff049133206ec889d25334a2e2839c15dd2d4e982ffed23",
+    "frontend/src/api/realClient.ts": "29edec09c43794394f0a02cf31c2e55016aacf6367e52a1c9576c830cf495437",
+    "frontend/src/api/wallet.test.ts": "bd4730eba836b4abdaffadd44bd25b8642788fb36ea37ef3792642be263b78c6",
+    "frontend/src/api/wallet.ts": "83befe8a468d2542e1d221853738c815f6bcceda784e020b498218e71f414834",
+    "frontend/src/components/AccountPanel.tsx": "d07724f5529b3006d5d5f63a1322bc147d76a01600e6dbbcff20d6b6bab9acdc",
+    "frontend/src/components/AccountPanel.wallet.test.tsx": "67b650900d96ffaf9878d8eb9ff0f99ac4abd801966b13c4efc2ba3c6276c410",
+    "frontend/src/components/DepositRecoveryPanel.tsx": "056544a37d33db1c1e2317f852f87f763dedfde99d35388fab9ca0be5ffdbf97",
+    "frontend/src/components/TestnetNotice.test.tsx": "40289cf4e738aaa89c8f4e9c7541449d454d85bad0975cd9d8b794bdc0a0515a",
+    "frontend/src/components/TestnetNotice.tsx": "997abfb463b9f4ddd9a3f997438c42774b277baa8f7fe0d08f924e494137255d",
+    "frontend/tests/browser/deposit.spec.ts": "d74b8dfc6fc3c0b53cea49db88774ac7f085e61f17407593e6e016f4550174b9"
+  },
+  "node": "v24.12.0",
+  "pnpm": "11.5.1",
+  "validationScope": "Final frontend source with order/legacy-deposit mutation guards and current-socket auth-refusal mutation latch. Source previously validated by reconciliation checks is retained separately.",
+  "previousSourceManifest": {
+    "path": "docs/audits/2026-09-28-runtime/reconciliation-source.json",
+    "sha256": "1ab6b67de91e4f01e330ff0f60426122df939e28aecbe9a19c7758b91b854fd2"
+  },
+  "changedSincePrevious": [
+    "frontend/src/api/realClient.test.ts",
+    "frontend/src/api/realClient.ts"
+  ]
+}

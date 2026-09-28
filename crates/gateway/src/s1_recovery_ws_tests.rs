@@ -1774,7 +1774,14 @@ struct LocalWsServer {
     task: tokio::task::JoinHandle<()>,
 }
 impl LocalWsServer {
-    async fn start(app: Shared) -> Self {
+    async fn start(app: Shared, max_write_buffer_bytes: usize) -> Self {
+        let mut config = service_policy::Config::from_env(false).unwrap();
+        // This fixture deliberately tests transport backpressure after a large
+        // bounded write has been admitted. The production 1 MiB buffer cap is
+        // separately tested; only this in-process server allows the 8 MiB frame.
+        config.max_write_buffer_bytes = max_write_buffer_bytes;
+        config.send_timeout = crate::credential_session::SEND_TIMEOUT;
+        let policy = Arc::new(service_policy::ServicePolicy::new(config));
         let socket = tokio::net::TcpSocket::new_v4().unwrap();
         // Accepted sockets inherit this small send buffer. A single bounded
         // payload below fills it without an unbounded producer/flood loop.
@@ -1784,7 +1791,7 @@ impl LocalWsServer {
         let addr = listener.local_addr().unwrap();
         let (shutdown, stop) = tokio::sync::oneshot::channel();
         let task = tokio::spawn(async move {
-            axum::serve(listener, build_router(app, false))
+            axum::serve(listener, build_router_with_policy(app, false, policy))
                 .with_graceful_shutdown(async {
                     let _ = stop.await;
                 })
@@ -1823,7 +1830,7 @@ async fn local_tcp_backpressure_has_bounded_send_and_other_account_progress() {
     Arc::get_mut(&mut app).unwrap().snapshot_req = Some(tx);
     let (key_b, owner_b) = app.gw.lock().await.register_account(None);
     let baseline_receivers = app.events_tx.receiver_count();
-    let server = LocalWsServer::start(app.clone()).await;
+    let server = LocalWsServer::start(app.clone(), 16 * 1024 * 1024).await;
     let (mut slow, auth) = connect_auth(&server.base, &old_key).await;
     assert_eq!(auth["type"], "authOk");
     let (mut healthy, auth) = connect_auth(&server.base, &key_b).await;
@@ -2018,7 +2025,7 @@ async fn local_tcp_auth_ok_queued_behind_rotation_never_discloses_stale_success(
     let (tx, mut rx) = tokio::sync::mpsc::channel::<SnapshotAck>(2);
     Arc::get_mut(&mut app).unwrap().snapshot_req = Some(tx);
     let receivers_before = app.events_tx.receiver_count();
-    let server = LocalWsServer::start(app.clone()).await;
+    let server = LocalWsServer::start(app.clone(), 16 * 1024 * 1024).await;
     let control = app.gw.lock().await.recovery_control(&owner).unwrap();
     let gate = control.fence.clone().write_owned().await;
     let sig = signature(&app, &sk, &owner, 0).await;

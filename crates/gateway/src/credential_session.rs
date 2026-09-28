@@ -6,6 +6,7 @@ use super::*;
 use std::future::Future;
 use tokio::sync::{watch, RwLock};
 
+#[cfg(test)]
 pub(super) const SEND_TIMEOUT: Duration = Duration::from_secs(2);
 
 pub(super) struct Control {
@@ -55,7 +56,20 @@ impl Session {
 /// future is polled only after validation and while the account read lease lives.
 /// A failed/timed-out write MUST be followed by dropping the socket, never by
 /// flushing it again after the lease is released.
+#[cfg(test)]
 pub(super) async fn send_fenced<F, E>(app: &Shared, session: &Session, send: F) -> bool
+where
+    F: Future<Output = Result<(), E>>,
+{
+    send_fenced_with_timeout(app, session, SEND_TIMEOUT, send).await
+}
+
+async fn send_fenced_with_timeout<F, E>(
+    app: &Shared,
+    session: &Session,
+    timeout: Duration,
+    send: F,
+) -> bool
 where
     F: Future<Output = Result<(), E>>,
 {
@@ -75,16 +89,9 @@ where
         // No Gw guard survives the condition above. Only this account is fenced.
         send.await.is_ok()
     };
-    tokio::time::timeout(SEND_TIMEOUT, operation)
+    tokio::time::timeout(timeout, operation)
         .await
         .unwrap_or(false)
-}
-
-async fn public_send(socket: &mut WebSocket, message: Message) -> bool {
-    matches!(
-        tokio::time::timeout(SEND_TIMEOUT, socket.send(message)).await,
-        Ok(Ok(()))
-    )
 }
 
 async fn revoked(auth: &mut Option<Session>) {
@@ -96,12 +103,17 @@ async fn revoked(auth: &mut Option<Session>) {
     }
 }
 
-pub(super) async fn serve(mut socket: WebSocket, app: Shared) {
+pub(super) async fn serve(
+    mut socket: WebSocket,
+    app: Shared,
+    policy: Arc<service_policy::ServicePolicy>,
+) {
+    let mut message_budget = policy.message_budget();
     let mut ticks = app.tx.subscribe();
     let mut events = app.events_tx.subscribe();
     let mut auth: Option<Session> = None;
     let initial = { serde_json::to_string(&app.gw.lock().await.v1_public_json()).unwrap() };
-    if !public_send(&mut socket, Message::Text(initial)).await {
+    if !policy.send(&mut socket, Message::Text(initial)).await {
         return;
     }
     loop {
@@ -110,12 +122,15 @@ pub(super) async fn serve(mut socket: WebSocket, app: Shared) {
             _ = revoked(&mut auth) => {
                 // There is no unfinished private write on this path. The watch
                 // wakes idle sessions without requiring any market/client event.
-                let _ = public_send(&mut socket, Message::Text(
+                let _ = policy.send(&mut socket, Message::Text(
                     serde_json::json!({"type":"error","message":"api key rotated"}).to_string()
                 )).await;
                 break;
             }
             client = socket.recv() => {
+                // Bound parsing and authentication attempts for every admitted
+                // socket, including malformed JSON and non-text frames.
+                if !message_budget.take() { break; }
                 match client {
                     Some(Ok(Message::Text(text))) => {
                         let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) else { continue; };
@@ -127,8 +142,8 @@ pub(super) async fn serve(mut socket: WebSocket, app: Shared) {
                             };
                             if let Some(session) = &auth {
                                 let reply = serde_json::json!({"type":"authOk","owner":session.owner_hex});
-                                if !send_fenced(&app, session, socket.send(Message::Text(reply.to_string()))).await { break; }
-                            } else if !public_send(&mut socket, Message::Text(
+                                if !send_fenced_with_timeout(&app, session, policy.config.send_timeout, socket.send(Message::Text(reply.to_string()))).await { break; }
+                            } else if !policy.send(&mut socket, Message::Text(
                                 serde_json::json!({"type":"error","message":"unknown api key"}).to_string()
                             )).await { break; }
                         } else if let Some(session) = &auth {
@@ -149,9 +164,9 @@ pub(super) async fn serve(mut socket: WebSocket, app: Shared) {
                 }
                 let json = { serde_json::to_string(&app.gw.lock().await.v1_public_json()).unwrap() };
                 let ok = if let Some(session) = &auth {
-                    send_fenced(&app, session, socket.send(Message::Text(json))).await
+                    send_fenced_with_timeout(&app, session, policy.config.send_timeout, socket.send(Message::Text(json))).await
                 } else {
-                    public_send(&mut socket, Message::Text(json)).await
+                    policy.send(&mut socket, Message::Text(json)).await
                 };
                 if !ok { break; }
             }
@@ -165,7 +180,7 @@ pub(super) async fn serve(mut socket: WebSocket, app: Shared) {
                     let mine = serde_json::from_str::<serde_json::Value>(&json).ok()
                         .and_then(|v| v.get("owner").and_then(|v| v.as_str()).map(|o| o == session.owner_hex))
                         .unwrap_or(false);
-                    if mine && !send_fenced(&app, session, socket.send(Message::Text(json))).await { break; }
+                    if mine && !send_fenced_with_timeout(&app, session, policy.config.send_timeout, socket.send(Message::Text(json))).await { break; }
                 }
             }
         }

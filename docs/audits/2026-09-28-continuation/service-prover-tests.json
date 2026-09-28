@@ -1,0 +1,35 @@
+{
+  "argv": [
+    "cargo",
+    "test",
+    "--release",
+    "--locked",
+    "--offline",
+    "--manifest-path",
+    "crates/prover-service/Cargo.toml"
+  ],
+  "environment_overrides": {
+    "CARGO_TARGET_DIR": "/tmp/arcora-prover-service-target",
+    "PROTOC": "/tmp/arcora-tools/protoc-29.3/bin/protoc",
+    "PATH_prefix": [
+      "/Users/huseyinarslan/.cargo/bin",
+      "/tmp/arcora-tools/sp1-6.0.0"
+    ]
+  },
+  "exit_code": 0,
+  "tests_passed": 5,
+  "tests_failed": 0,
+  "real_guest_elf_build": true,
+  "real_proof_generated": false,
+  "evidence_kind": "actual standalone crate build and in-process admission tests; synthetic blocking worker only",
+  "log": "docs/audits/2026-09-28-continuation/service-prover-tests-final.log",
+  "log_sha256": "bf002ff644d4db6142cbc9a237df05573658b98483ceed3678789f39ba64e96d",
+  "source_sha256": {
+    "crates/prover-service/Cargo.toml": "7cd7a23f64a8b995cac65bb1bb17a5da00a85e270fd042fc93c3728706d2e743",
+    "crates/prover-service/Cargo.lock": "0aa85f2c4bbb45814257e86a20540098b4793ded2aa9b1a34afa211aec81bc32",
+    "crates/prover-service/src/main.rs": "03cf0d137a797515eec01f7c8541081ec8a948831f168a6e6d40ac6017d49118",
+    "crates/prover-service/src/admission.rs": "65d096569aad45cb4a8a67024698c3f9c5a27921e9419bbb8225f22fa6b622b9",
+    "crates/prover-service/src/sp1_prover.rs": "4d58cc1ccc089497d53f364daf2c1e38a07625717ca304acd1a177eefc34d9a2",
+    "crates/prover-service/build.rs": "7fd92f8513312a71c50c125f096625f5e322c6acf1544b75fc08e73a913b6664"
+  }
+}

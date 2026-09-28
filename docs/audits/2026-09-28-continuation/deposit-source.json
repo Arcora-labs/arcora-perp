@@ -1,0 +1,17 @@
+{
+  "head": "5c71b2d0a24e1e1e94efeff58df8e26b13190c1b",
+  "files": {
+    "frontend/src/api/depositFlow.test.ts": "a77acfe70073ac3bda97806d8b54fef341baba58023a31b7e25afda19de45ffe",
+    "frontend/src/api/depositFlow.ts": "1b43ad7d1f43e92f401b65b1f44c2ae2d67604d13c1ce1a3a94bc41a1479aed8",
+    "frontend/src/api/realClient.test.ts": "e977f93de054137ce485c3e10a393b079cff90d68b450f0c9e1f765076735bb8",
+    "frontend/src/api/realClient.ts": "7916ab74021e8690d37eaea9292d0daf41c86f5f1ed4097571dc2eaac85c404e",
+    "frontend/src/api/wallet.test.ts": "bd4730eba836b4abdaffadd44bd25b8642788fb36ea37ef3792642be263b78c6",
+    "frontend/src/api/wallet.ts": "09d42fc09c2fa2c70526833921957644c85b1937ca79d99249595688aa4633fe",
+    "frontend/src/components/AccountPanel.tsx": "329b40df2a4051df701b2cc4eebfe5f7019eef6a13416d7d9f139f95b9ed9b81",
+    "frontend/src/components/AccountPanel.wallet.test.tsx": "cc051915ebb515da1c3d0b519df2c3fb4d2b60829408f1b90cea38cc61ee3b88",
+    "frontend/tests/browser/deposit.spec.ts": "b1532fea5be0bfc98e1664e85139a2aafe67545c039cb675157a69686e9e6a3a"
+  },
+  "node": "v24.12.0",
+  "pnpm": "11.5.1",
+  "validationScope": "Deposit lane before root dependency upgrade; separate browser-final is current product code. Final component fixture array syntax adjustment verified by component-final and build."
+}

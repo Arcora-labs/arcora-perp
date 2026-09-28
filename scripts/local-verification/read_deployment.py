@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Read public deployment bindings at one finalized block; never submit transactions."""
+import argparse
 import datetime
 import hashlib
 import json
@@ -10,7 +11,11 @@ import urllib.request
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 CONFIG = ROOT / "contracts/deployments/base-sepolia.json"
-OUT = ROOT / "docs/audits/2026-09-27-local/protocol/block-pinned-deployment-manifest.json"
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument("--output", type=pathlib.Path,
+                    default=ROOT / "docs/audits/2026-09-28-continuation/deployment-observation.json")
+args = parser.parse_args()
+OUT = args.output
 config = json.loads(CONFIG.read_text())
 records = []
 
@@ -47,7 +52,7 @@ try:
     pin = {"blockHash": block["hash"], "requireCanonical": True}
     queries = {
         "DarkPerpSettlement": ["sequencer()", "enclaveSigner()", "verifier()", "vault()", "governance()", "currentStateRoot()", "batchCount()", "closeOnly()", "windDownSettled()"],
-        "CollateralVault": ["settlement()", "gatewaySigner()", "asset()", "depositCount()"],
+        "CollateralVault": ["settlement()", "gatewaySigner()", "token()", "depositCount()"],
         "SP1ZkVerifier": ["programVKey()", "gateway()"],
         "MockUSDC": [],
     }
@@ -69,12 +74,38 @@ try:
     key = result["contracts"]["SP1ZkVerifier"]["calls"]["programVKey()"].get("result")
     local_log = ROOT / "docs/audits/2026-09-27-local/checks/sp1-vkey.log"
     local_key = next(line.strip() for line in local_log.read_text().splitlines() if line.startswith("0x"))
-    result.update(status="OBSERVED", local_guest_vkey=local_key, deployed_vkey=key,
+    def address_result(name, signature):
+        value = result["contracts"][name]["calls"][signature].get("result")
+        if not isinstance(value, str) or len(value) != 66:
+            return None
+        return "0x" + value[-40:].lower()
+
+    expected = [
+        ("DarkPerpSettlement", "vault()", config["contracts"]["CollateralVault"]["address"]),
+        ("DarkPerpSettlement", "verifier()", config["contracts"]["SP1ZkVerifier"]["address"]),
+        ("DarkPerpSettlement", "sequencer()", config["params"]["sequencer"]),
+        ("DarkPerpSettlement", "enclaveSigner()", config["params"]["enclaveSigner"]),
+        ("CollateralVault", "settlement()", config["contracts"]["DarkPerpSettlement"]["address"]),
+        ("CollateralVault", "token()", config["contracts"]["MockUSDC"]["address"]),
+        ("SP1ZkVerifier", "gateway()", config["contracts"]["SP1ZkVerifier"]["sp1VerifierGateway"]),
+    ]
+    bindings = [{"contract": name, "getter": signature, "expected": value.lower(),
+                 "observed": address_result(name, signature),
+                 "matches": address_result(name, signature) == value.lower()}
+                for name, signature, value in expected]
+    call_errors = [{"contract": name, "getter": signature, "error": call["error"]}
+                   for name, item in result["contracts"].items()
+                   for signature, call in item["calls"].items() if "error" in call]
+    result.update(status="PARTIAL" if call_errors else "OBSERVED",
+                  local_guest_vkey=local_key, deployed_vkey=key,
                   vkey_matches_local=key == local_key,
+                  bindings=bindings, configured_bindings_match=all(v["matches"] for v in bindings),
+                  call_errors=call_errors,
                   deployment_matches_local_source="NOT_PROVEN: runtime hashes recorded, source bytecode equivalence not established")
 except Exception as exc:
     result["blocker"] = f"{type(exc).__name__}: {exc}"
 finally:
+    OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(json.dumps(result, indent=2) + "\n")
     print(json.dumps({k: v for k, v in result.items() if k not in {"contracts", "rpc_records"}}, indent=2))
 sys.exit(0 if result["status"] == "OBSERVED" else 1)

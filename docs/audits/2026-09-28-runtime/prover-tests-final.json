@@ -1,0 +1,135 @@
+{
+  "recorded_at": "2026-09-28T07:28:19.837897+00:00",
+  "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+  "argv": [
+    "cargo",
+    "test",
+    "--release",
+    "--locked",
+    "--offline",
+    "--manifest-path",
+    "crates/prover-service/Cargo.toml",
+    "--",
+    "--nocapture"
+  ],
+  "environment_overrides": {
+    "CARGO_TARGET_DIR": "/tmp/arcora-prover-service-target",
+    "PROTOC": "/tmp/arcora-tools/protoc-29.3/bin/protoc",
+    "PATH_prefix": [
+      "/Users/huseyinarslan/.cargo/bin",
+      "/tmp/arcora-tools/sp1-6.0.0"
+    ]
+  },
+  "exit_code": 0,
+  "tests_passed": 8,
+  "tests_failed": 0,
+  "ignored_fixture_count": 1,
+  "ignored_fixture_explanation": "owned_shutdown_child is executed explicitly by each of the two owned-process parent tests; not an unexecuted acceptance criterion",
+  "owned_process_observations": [
+    {
+      "cancelledHttpClient": false,
+      "handlerCancelledBeforeWorkerRelease": false,
+      "signal": "SIGTERM",
+      "listenerClosedBeforeWorkerRelease": true,
+      "slotRetainedAfterClientDisconnect": false,
+      "admissionClosed": true,
+      "postDrainAdmissionStatus": 503,
+      "workerCompletedBeforeExit": true,
+      "processExit": 0,
+      "elapsedAfterSignalMs": 137,
+      "realProof": false
+    },
+    {
+      "cancelledHttpClient": true,
+      "handlerCancelledBeforeWorkerRelease": true,
+      "signal": "SIGTERM",
+      "listenerClosedBeforeWorkerRelease": true,
+      "slotRetainedAfterClientDisconnect": true,
+      "admissionClosed": true,
+      "postDrainAdmissionStatus": 503,
+      "workerCompletedBeforeExit": true,
+      "processExit": 0,
+      "elapsedAfterSignalMs": 137,
+      "realProof": false
+    }
+  ],
+  "regression_before_fix": {
+    "log": "prover-shutdown-before-drain.log",
+    "exit_code": 101,
+    "passed": 1,
+    "failed": 1,
+    "failure": "Cancelled HTTP waiter allowed runtime teardown while blocking worker called its captured Tokio handle; worker panicked and completion outcome was absent."
+  },
+  "focused_after_fix": {
+    "log": "prover-shutdown-after-drain.log",
+    "exit_code": 0,
+    "passed": 2,
+    "failed": 0
+  },
+  "source_before": {
+    "crates/prover-service/Cargo.toml": "7cd7a23f64a8b995cac65bb1bb17a5da00a85e270fd042fc93c3728706d2e743",
+    "crates/prover-service/Cargo.lock": "0aa85f2c4bbb45814257e86a20540098b4793ded2aa9b1a34afa211aec81bc32",
+    "crates/prover-service/build.rs": "7fd92f8513312a71c50c125f096625f5e322c6acf1544b75fc08e73a913b6664",
+    "crates/prover-service/src/main.rs": "4b76b12f8a83197b5cd20d53b413a753bc9f7c882623e361e6afec74d9e8df88",
+    "crates/prover-service/src/admission.rs": "411db9185d40a20f32aef81bc485fe2b4dc7d6ae220f25cbf302a5eb4032b703",
+    "crates/prover-service/src/shutdown_tests.rs": "b1ed7317b0f589aa3d219048a0df1d678967fc6ad0fc2ed87b47e11da7551f43",
+    "crates/prover-service/src/sp1_prover.rs": "4d58cc1ccc089497d53f364daf2c1e38a07625717ca304acd1a177eefc34d9a2",
+    "crates/sp1-guest/Cargo.lock": "228b4111a7b18423e2450e81bf95ec54129d7757cd30f4397fc7b5dea504302d",
+    "crates/sp1-guest/Cargo.toml": "143fb1c758c933c97bfc0386a717d63054dc9ccc9499e51b43f9f3a9ccd27d69",
+    "crates/sp1-guest/src/main.rs": "e42786165b03b05d98af2391ab80a82f79ea3fa30ee7cd3a55f40c1bd01cb782"
+  },
+  "source_after": {
+    "crates/prover-service/Cargo.toml": "7cd7a23f64a8b995cac65bb1bb17a5da00a85e270fd042fc93c3728706d2e743",
+    "crates/prover-service/Cargo.lock": "0aa85f2c4bbb45814257e86a20540098b4793ded2aa9b1a34afa211aec81bc32",
+    "crates/prover-service/build.rs": "7fd92f8513312a71c50c125f096625f5e322c6acf1544b75fc08e73a913b6664",
+    "crates/prover-service/src/main.rs": "4b76b12f8a83197b5cd20d53b413a753bc9f7c882623e361e6afec74d9e8df88",
+    "crates/prover-service/src/admission.rs": "411db9185d40a20f32aef81bc485fe2b4dc7d6ae220f25cbf302a5eb4032b703",
+    "crates/prover-service/src/shutdown_tests.rs": "b1ed7317b0f589aa3d219048a0df1d678967fc6ad0fc2ed87b47e11da7551f43",
+    "crates/prover-service/src/sp1_prover.rs": "4d58cc1ccc089497d53f364daf2c1e38a07625717ca304acd1a177eefc34d9a2",
+    "crates/sp1-guest/Cargo.lock": "228b4111a7b18423e2450e81bf95ec54129d7757cd30f4397fc7b5dea504302d",
+    "crates/sp1-guest/Cargo.toml": "143fb1c758c933c97bfc0386a717d63054dc9ccc9499e51b43f9f3a9ccd27d69",
+    "crates/sp1-guest/src/main.rs": "e42786165b03b05d98af2391ab80a82f79ea3fa30ee7cd3a55f40c1bd01cb782"
+  },
+  "source_unchanged_during_final_check": true,
+  "manifest_and_lock_unchanged_in_runtime_lane": {
+    "crates/prover-service/Cargo.toml": true,
+    "crates/prover-service/Cargo.lock": true
+  },
+  "logs_sha256": {
+    "prover-shutdown-focused.log": "75734021e4aa7255f3ce55756370e8f912c6d96b0973633c8dfb11561193ee7b",
+    "prover-shutdown-before-drain.log": "d9d88de7ec63f0d28948ceabc1add8373127b677ce9d1bd9adbf0bb65213f56d",
+    "prover-shutdown-after-drain.log": "58ada0acc06b4cd84e38988e556323ab63d25b21e46de2ca0acc028ea3a59971",
+    "prover-tests-final.log": "a9ee6e66f8274c9a8d8c584798f5d0f88d781de6eb953a5d3701f7c0a8bdbd65",
+    "prover-fixture-readiness-before-fix.log": "ba7a9ee7a9845d59fa56499ff79b9f75f4b6cbbddbfb349ba8ccfd42ec69764c",
+    "prover-format.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "real_proof_generated": false,
+  "A06_executed": false,
+  "network_scope": "test-owned loopback listeners only; SIGTERM sent only to owned child processes",
+  "limitations": [
+    "Synthetic operation models captured-runtime use; no real SP1 proof/TEE/hardware process executed.",
+    "No bounded forced termination for a stuck worker.",
+    "Cancelled HTTP clients have no production durable result retrieval API; outcome files are test evidence only."
+  ],
+  "signal_readiness": "Production and child harness construct Unix SIGTERM/SIGINT streams synchronously before listener bind; no test-only pre-poll.",
+  "fixture_readiness_race": {
+    "log": "prover-fixture-readiness-before-fix.log",
+    "exit_code": 101,
+    "cause": "Parent could read a newly created address file before its contents were written; fixture now atomically renames the completed readiness address."
+  },
+  "standalone_format_check": {
+    "recorded_at": "2026-09-28T07:28:15.723806+00:00",
+    "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+    "argv": [
+      "cargo",
+      "fmt",
+      "--manifest-path",
+      "crates/prover-service/Cargo.toml",
+      "--",
+      "--check"
+    ],
+    "exit_code": 0,
+    "log": "prover-format.log",
+    "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  }
+}

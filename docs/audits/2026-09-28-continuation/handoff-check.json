@@ -1,0 +1,15 @@
+{
+  "links_valid": true,
+  "git_diff_check_exit": 0,
+  "owned_runtime_stopped": true,
+  "owned_ports_closed": {
+    "65383": true,
+    "65384": true
+  },
+  "source_sha256": "779c3a709e73749ef96d6ba82ae71bb3b89f42efa3c464550a522da43ad0e29f",
+  "remaining_tasks": {
+    "partial": 10,
+    "blocked": 5
+  },
+  "release": "HOLD"
+}

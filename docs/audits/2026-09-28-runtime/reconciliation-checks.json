@@ -1,0 +1,211 @@
+{
+  "schemaVersion": 1,
+  "recordedAtUtc": "2026-09-28T07:32:43.116743+00:00",
+  "recordingMethod": "Consolidated from completed tool runs and retained command logs; exit codes were observed at execution. No commands were rerun to reconstruct full-suite results.",
+  "head": "5c71b2d0a24e1e1e94efeff58df8e26b13190c1b",
+  "node": "v24.12.0",
+  "pnpm": "11.5.1",
+  "checks": [
+    {
+      "name": "full-unit-before-layout",
+      "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+      "argv": [
+        "pnpm",
+        "--dir",
+        "frontend",
+        "test"
+      ],
+      "exitCode": 0,
+      "sourceManifest": {
+        "path": "docs/audits/2026-09-28-runtime/reconciliation-source-pre-layout.json",
+        "sha256": "065de78337b37ee3449e72cfb99f4fba80265b50f726dc78788eb1159c9b0280"
+      },
+      "log": {
+        "path": "docs/audits/2026-09-28-runtime/reconciliation-unit-final.log",
+        "sha256": "ceaf521c4ddaf570367ffbfee70949f7465b1138191cd5986303e26ec89aba6d"
+      },
+      "counts": {
+        "passed": 396,
+        "skipped": 1,
+        "testFilesPassed": 28,
+        "testFilesSkipped": 1
+      },
+      "skipReason": "Explicitly skipped live-gateway e2e test."
+    },
+    {
+      "name": "full-browser-before-layout",
+      "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+      "argv": [
+        "pnpm",
+        "--dir",
+        "frontend",
+        "exec",
+        "playwright",
+        "test"
+      ],
+      "exitCode": 0,
+      "sourceManifest": {
+        "path": "docs/audits/2026-09-28-runtime/reconciliation-source-pre-layout.json",
+        "sha256": "065de78337b37ee3449e72cfb99f4fba80265b50f726dc78788eb1159c9b0280"
+      },
+      "log": {
+        "path": "docs/audits/2026-09-28-runtime/reconciliation-browser-final.log",
+        "sha256": "bc26164d2de315c45d81088e019ea400c16859d5d451bd5a33a29d04ae2198a1"
+      },
+      "counts": {
+        "passed": 72
+      },
+      "projects": [
+        "chromium",
+        "webkit"
+      ],
+      "reporterNote": "Retained full list reporter log is authoritative evidence for this completed run. The shared output/playwright/results.json was overwritten by the later narrow visual run and is not presented as the full72 result."
+    },
+    {
+      "name": "final-layout-components",
+      "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+      "argv": [
+        "pnpm",
+        "--dir",
+        "frontend",
+        "exec",
+        "vitest",
+        "run",
+        "src/components/AccountPanel.wallet.test.tsx",
+        "src/components/AccountPanel.test.tsx"
+      ],
+      "exitCode": 0,
+      "sourceManifest": {
+        "path": "docs/audits/2026-09-28-runtime/reconciliation-source.json",
+        "sha256": "1ab6b67de91e4f01e330ff0f60426122df939e28aecbe9a19c7758b91b854fd2"
+      },
+      "log": {
+        "path": "docs/audits/2026-09-28-runtime/reconciliation-layout-components.log",
+        "sha256": "36e52069153feff16f179273ea37eb4795be3e19e807c94a5b5a47f2eae99f50"
+      },
+      "counts": {
+        "passed": 24,
+        "testFilesPassed": 2
+      }
+    },
+    {
+      "name": "final-narrow-visual",
+      "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+      "argv": [
+        "pnpm",
+        "--dir",
+        "frontend",
+        "exec",
+        "playwright",
+        "test",
+        "reconciliation.visual.spec.ts",
+        "--project=chromium"
+      ],
+      "exitCode": 0,
+      "sourceManifest": {
+        "path": "docs/audits/2026-09-28-runtime/reconciliation-source.json",
+        "sha256": "1ab6b67de91e4f01e330ff0f60426122df939e28aecbe9a19c7758b91b854fd2"
+      },
+      "log": {
+        "path": "docs/audits/2026-09-28-runtime/reconciliation-visual.log",
+        "sha256": "c6c13f3eec15f20d3dadbd4c6bc46df4828cae0af6719a1ba3226e173bfd424d"
+      },
+      "counts": {
+        "passed": 1
+      },
+      "viewports": [
+        {
+          "width": 390,
+          "height": 844
+        },
+        {
+          "width": 320,
+          "height": 844
+        }
+      ],
+      "assertions": [
+        "Original deposit recovery region visible",
+        "document.documentElement.scrollWidth <= window.innerWidth at each viewport"
+      ],
+      "screenshots": [
+        {
+          "path": "docs/audits/2026-09-28-runtime/reconciliation-narrow-390.png",
+          "sha256": "48c45e41bbbe78bae98832673dca87414405b3d9170f4bb1725bd8d1a57ab50e"
+        },
+        {
+          "path": "docs/audits/2026-09-28-runtime/reconciliation-narrow-320.png",
+          "sha256": "c92ebfe191a87930fb0f44ec26c50c523385fb9c294825948b6ec982cee7c75c"
+        }
+      ],
+      "harness": {
+        "path": "docs/audits/2026-09-28-runtime/reconciliation-visual.fixture.ts",
+        "sha256": "fe10d6186c838284981d698d31575ae5b6526569c4c3fe673a0a501e1ca55704"
+      },
+      "reporter": {
+        "path": "docs/audits/2026-09-28-runtime/reconciliation-visual.results.json",
+        "sha256": "90aeb282b69e7441e7722bdfabcb819b81a0d4627bae1614e746c9a4b8891da0"
+      },
+      "harnessNote": "Temporary test was executed at frontend/tests/browser/reconciliation.visual.spec.ts and then moved to this evidence directory; it is not a persistent extra suite test. To reproduce, copy to that original path and run the recorded argv. The browser webServer command rebuilt the actual final source; no injected CSS was used."
+    },
+    {
+      "name": "final-production-build",
+      "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+      "argv": [
+        "pnpm",
+        "--dir",
+        "frontend",
+        "build"
+      ],
+      "exitCode": 0,
+      "sourceManifest": {
+        "path": "docs/audits/2026-09-28-runtime/reconciliation-source.json",
+        "sha256": "1ab6b67de91e4f01e330ff0f60426122df939e28aecbe9a19c7758b91b854fd2"
+      },
+      "log": {
+        "path": "docs/audits/2026-09-28-runtime/reconciliation-build-final.log",
+        "sha256": "a4d8ad9caf6a45b36c7e8145667649f4080dcfe0e2f7d254c50c3eeb96a4eb4d"
+      },
+      "buildTool": "TypeScript and Vite6.4.3"
+    },
+    {
+      "name": "final-diff-check",
+      "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+      "argv": [
+        "git",
+        "diff",
+        "--check",
+        "--",
+        "frontend"
+      ],
+      "exitCode": 0,
+      "sourceManifest": {
+        "path": "docs/audits/2026-09-28-runtime/reconciliation-source.json",
+        "sha256": "1ab6b67de91e4f01e330ff0f60426122df939e28aecbe9a19c7758b91b854fd2"
+      },
+      "log": {
+        "path": "docs/audits/2026-09-28-runtime/reconciliation-diff-check.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    }
+  ],
+  "postRunServerCheck": {
+    "argv": [
+      "lsof",
+      "-nP",
+      "-iTCP:4173",
+      "-sTCP:LISTEN"
+    ],
+    "exitCode": 1,
+    "interpretation": "No listener on Playwright port4173; no owned test server left running.",
+    "log": {
+      "path": "docs/audits/2026-09-28-runtime/reconciliation-server-cleanup.log",
+      "sha256": "bcfd5559a30e5cb39a0783bc2ca4a1c7f0b5d7226d7e89f3f94eb58757e542e6"
+    }
+  },
+  "limits": [
+    "Synthetic wallet RPC and gateway browser fixtures; no actual extension wallet or live-chain transfer.",
+    "Unknown transaction hashes are displayed and held, not discovered or accepted from user input.",
+    "Confirmed known transaction reconciliation does not authorize a replacement send.",
+    "Full396-unit and72-browser suites preceded only the explicitly recorded one-line layout style; final style has separate scoped tests/build."
+  ]
+}

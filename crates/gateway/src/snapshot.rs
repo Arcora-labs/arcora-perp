@@ -240,11 +240,24 @@ pub fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
         opts.mode(0o600);
     }
     let mut f = opts.open(&tmp)?;
+    // The boundary observer and its entire worker protocol exist only in Unix
+    // test binaries. Production has no environment-selectable failpoint.
+    #[cfg(all(test, unix))]
+    crash_tests::at_boundary(path, crash_tests::Boundary::TempCreated);
     let result = (|| {
         f.write_all(bytes)?;
+        #[cfg(all(test, unix))]
+        crash_tests::at_boundary(path, crash_tests::Boundary::DataWritten);
         f.sync_all()?;
+        #[cfg(all(test, unix))]
+        crash_tests::at_boundary(path, crash_tests::Boundary::FileSynced);
         std::fs::rename(&tmp, path)?;
-        directory.sync_all()
+        #[cfg(all(test, unix))]
+        crash_tests::at_boundary(path, crash_tests::Boundary::Renamed);
+        directory.sync_all()?;
+        #[cfg(all(test, unix))]
+        crash_tests::at_boundary(path, crash_tests::Boundary::DirectorySynced);
+        Ok(())
     })();
     // Remove only the exclusively created temporary file, never another writer's
     // target or an existing legacy .tmp path. A failed directory sync is still Err.
@@ -373,3 +386,9 @@ mod tests {
         std::fs::remove_dir_all(&dir).ok();
     }
 }
+
+// Real process-kill verification of this writer; excluded from production and
+// unsupported platforms rather than pretending another termination is SIGKILL.
+#[cfg(all(test, unix))]
+#[path = "snapshot_crash_tests.rs"]
+mod crash_tests;

@@ -1,0 +1,83 @@
+{
+  "checked_at": "2026-09-28T07:33:21.542259+00:00",
+  "source_manifest": "source-manifest.json",
+  "source_sha256": "056ee145a54e80119b1fc14f4f5531a94a0f2c8d89d64c6eef649cb102a87be6",
+  "head_sha": "5c71b2d0a24e1e1e94efeff58df8e26b13190c1b",
+  "status": "PASS",
+  "source_comparisons": {
+    "gateway-before": {
+      "recorded_files_checked": 350,
+      "matches_final_source": true,
+      "mismatches": []
+    },
+    "gateway-after": {
+      "recorded_files_checked": 350,
+      "matches_final_source": true,
+      "mismatches": []
+    },
+    "cast-loopback-before": {
+      "recorded_files_checked": 350,
+      "matches_final_source": true,
+      "mismatches": []
+    },
+    "cast-loopback-after": {
+      "recorded_files_checked": 350,
+      "matches_final_source": true,
+      "mismatches": []
+    },
+    "clippy-before": {
+      "recorded_files_checked": 350,
+      "matches_final_source": true,
+      "mismatches": []
+    },
+    "clippy-after": {
+      "recorded_files_checked": 350,
+      "matches_final_source": true,
+      "mismatches": []
+    },
+    "gateway-build-before": {
+      "recorded_files_checked": 350,
+      "matches_final_source": true,
+      "mismatches": []
+    },
+    "gateway-build-after": {
+      "recorded_files_checked": 350,
+      "matches_final_source": true,
+      "mismatches": []
+    },
+    "crash-matrix-selected": {
+      "recorded_files_checked": 7,
+      "matches_final_source": true,
+      "mismatches": []
+    },
+    "prover-before-selected": {
+      "recorded_files_checked": 10,
+      "matches_final_source": true,
+      "mismatches": []
+    },
+    "prover-after-selected": {
+      "recorded_files_checked": 10,
+      "matches_final_source": true,
+      "mismatches": []
+    },
+    "frontend-recorded": {
+      "recorded_files_checked": 16,
+      "matches_final_source": true,
+      "mismatches": []
+    }
+  },
+  "gateway_process_binary_matches_final_build": true,
+  "original_worktree_recorded_baseline_preserved": true,
+  "frontend_check_record": "reconciliation-checks.json",
+  "scope_limits": [
+    "Gateway comparisons cover host-workspace source/config and exclude documentation and standalone proving crates.",
+    "Prover comparisons cover its recorded files, manifests and guest source; gateway host checks also cover shared workspace source.",
+    "Frontend source comparison covers the files recorded by its lane; visual CSS-only follow-up and full-suite revisions are identified separately in its check record.",
+    "No actual guest execution, proof generation, real extension wallet or live deployment validation is inferred."
+  ],
+  "frontend_recorded_checks_and_log_hashes_verified": true,
+  "frontend_post_full_suite_changed_files": [
+    "frontend/src/components/AccountPanel.tsx"
+  ],
+  "frontend_post_full_suite_change": "One inline overflowWrap:anywhere layout change, followed by 24 component tests, 320/390px browser visual check, and production build."
+}

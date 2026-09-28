@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.0.1",
   "type": "module",
-  "description": "dark-perp web client — runnable skeleton with the protocol domain model and finality UX, ready for the design to be applied.",
+  "description": "dark-perp web client \u2014 runnable skeleton with the protocol domain model and finality UX, ready for the design to be applied.",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
@@ -23,13 +23,14 @@
     "@playwright/test": "1.58.2",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/react": "^16.3.2",
+    "@types/node": "22.20.4",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.4",
     "happy-dom": "^20.10.6",
     "typescript": "^5.6.3",
-    "vite": "^5.4.11",
-    "vitest": "^2.1.9"
+    "vite": "6.4.3",
+    "vitest": "4.1.11"
   },
   "pnpm": {
     "onlyBuiltDependencies": [

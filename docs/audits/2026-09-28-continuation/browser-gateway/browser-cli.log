@@ -1,0 +1,288 @@
+### Result
+{
+  "owner": "0x8a9617dd749fae7d095aec1a94865b0e69fbbbd50b31884bcb007c0c2f3efaca",
+  "gen": 0,
+  "publicWs": 1,
+  "privateWs": 1,
+  "authenticatedOwner": "0x8a9617dd749fae7d095aec1a94865b0e69fbbbd50b31884bcb007c0c2f3efaca",
+  "orders": 1
+}
+### Ran Playwright code
+```js
+await page.evaluate('async () => { const c=window.testClient; const a=await c.depositAccount(); window.__liveOwner="0x"+Array.from(a.owner,x=>x.toString(16).padStart(2,"0")).join(""); const orders=await c.getOrders(); if(c.ws.readyState!==1 || c.wsV1.readyState!==1 || c.v1Owner!==window.__liveOwner || orders.length!==1) throw new Error("HTTP/WS/order mismatch"); return {owner:window.__liveOwner,gen:c.storedGen,publicWs:c.ws.readyState,privateWs:c.wsV1.readyState,authenticatedOwner:c.v1Owner,orders:orders.length,orderHash:orders[0].orderHash}; }');
+```
+### Page
+- Page URL: http://127.0.0.1:65383/
+- Page Title: BTC/USDC 83,175.49 · Arcora Perp
+- Console: 0 errors, 1 warnings
+
+### Result
+{
+  "owner": "0x8a9617dd749fae7d095aec1a94865b0e69fbbbd50b31884bcb007c0c2f3efaca",
+  "gen": 0,
+  "publicWs": 1,
+  "privateWs": 1,
+  "authenticatedOwner": "0x8a9617dd749fae7d095aec1a94865b0e69fbbbd50b31884bcb007c0c2f3efaca",
+  "orders": 1
+}
+### Ran Playwright code
+```js
+await page.evaluate('async () => { const c=window.testClient; const a=await c.depositAccount(); window.__liveOwner="0x"+Array.from(a.owner,x=>x.toString(16).padStart(2,"0")).join(""); const orders=await c.getOrders(); if(c.ws.readyState!==1 || c.wsV1.readyState!==1 || c.v1Owner!==window.__liveOwner || orders.length!==1) throw new Error("HTTP/WS/order mismatch"); return {owner:window.__liveOwner,gen:c.storedGen,publicWs:c.ws.readyState,privateWs:c.wsV1.readyState,authenticatedOwner:c.v1Owner,orders:orders.length,orderHash:orders[0].orderHash}; }');
+```
+### Page
+- Page URL: http://127.0.0.1:65383/
+- Page Title: BTC/USDC 83,180.61 · Arcora Perp
+- Console: 0 errors, 1 warnings
+
+### Result
+{
+  "bound": true,
+  "syntheticAuthorizer": "0x7e5f4552091a69125d5dfcb7b8c2659029395bdf"
+}
+### Ran Playwright code
+```js
+await page.evaluate('async () => { await window.testClient.bindDepositAddress("0x7e5f4552091a69125d5dfcb7b8c2659029395bdf","0x986df7a5a78105a7dee9df6d3ac691db04dc03d997e56da2e2030aa6736300c718fc1e9feec7f3d399e2c3ab2abecbf104bc725bd318af8c6297a943a75d32b31b"); return {bound:true,syntheticAuthorizer:"0x7e5f4552091a69125d5dfcb7b8c2659029395bdf"}; }');
+```
+### Page
+- Page URL: http://127.0.0.1:65383/
+- Page Title: BTC/USDC 83,178.95 · Arcora Perp
+- Console: 0 errors, 1 warnings
+
+### Result
+{
+  "owner": "0x8a9617dd749fae7d095aec1a94865b0e69fbbbd50b31884bcb007c0c2f3efaca",
+  "authorizer": "0x7e5f4552091a69125d5dfcb7b8c2659029395bdf",
+  "recoveryNonce": 0,
+  "chainId": 84532,
+  "vault": "0x0000000000000000000000000000000000000000"
+}
+### Ran Playwright code
+```js
+await page.evaluate('async () => { const r=await fetch("/v1/accounts/recovery/"+window.__liveOwner); if(!r.ok) throw new Error("metadata "+r.status); return await r.json(); }');
+```
+
+### Result
+- 0: [BTC/USDC 83,178.95 · Arcora Perp](http://127.0.0.1:65383/)
+- 1: (current) [Arcora local browser verification](http://127.0.0.1:65383/)
+### Ran Playwright code
+```js
+await page.goto('http://127.0.0.1:65383');
+```
+### Open tabs
+- 0: [BTC/USDC 83,178.95 · Arcora Perp](http://127.0.0.1:65383/)
+- 1: (current) [BTC/USDC 83,178.95 · Arcora Perp](http://127.0.0.1:65383/)
+### Page
+- Page URL: http://127.0.0.1:65383/
+- Page Title: BTC/USDC 83,178.95 · Arcora Perp
+- Console: 0 errors, 1 warnings
+### Snapshot
+- [Snapshot](.playwright-cli/page-2026-09-28T06-48-41-522Z.yml)
+### Events
+- New console entries: .playwright-cli/console-2026-09-28T06-48-41-459Z.log#L1
+
+### Result
+- 0: (current) [BTC/USDC 83,181.00 · Arcora Perp](http://127.0.0.1:65383/)
+- 1: [BTC/USDC 83,181.00 · Arcora Perp](http://127.0.0.1:65383/)
+
+### Result
+{
+  "owner": "0x8a9617dd749fae7d095aec1a94865b0e69fbbbd50b31884bcb007c0c2f3efaca",
+  "gen": 0,
+  "publicWs": 1,
+  "privateWs": 1,
+  "authenticatedOwner": "0x8a9617dd749fae7d095aec1a94865b0e69fbbbd50b31884bcb007c0c2f3efaca",
+  "orders": 1
+}
+### Ran Playwright code
+```js
+await page.evaluate('async () => { const c=window.testClient; const a=await c.depositAccount(); window.__liveOwner="0x"+Array.from(a.owner,x=>x.toString(16).padStart(2,"0")).join(""); const orders=await c.getOrders(); if(c.ws.readyState!==1 || c.wsV1.readyState!==1 || c.v1Owner!==window.__liveOwner || orders.length!==1) throw new Error("HTTP/WS/order mismatch"); return {owner:window.__liveOwner,gen:c.storedGen,publicWs:c.ws.readyState,privateWs:c.wsV1.readyState,authenticatedOwner:c.v1Owner,orders:orders.length,orderHash:orders[0].orderHash}; }');
+```
+
+### Result
+{
+  "bound": true,
+  "syntheticAuthorizer": "0x7e5f4552091a69125d5dfcb7b8c2659029395bdf"
+}
+### Ran Playwright code
+```js
+await page.evaluate('async () => { await window.testClient.bindDepositAddress("0x7e5f4552091a69125d5dfcb7b8c2659029395bdf","0x986df7a5a78105a7dee9df6d3ac691db04dc03d997e56da2e2030aa6736300c718fc1e9feec7f3d399e2c3ab2abecbf104bc725bd318af8c6297a943a75d32b31b"); return {bound:true,syntheticAuthorizer:"0x7e5f4552091a69125d5dfcb7b8c2659029395bdf"}; }');
+```
+
+### Result
+{
+  "owner": "0x8a9617dd749fae7d095aec1a94865b0e69fbbbd50b31884bcb007c0c2f3efaca",
+  "authorizer": "0x7e5f4552091a69125d5dfcb7b8c2659029395bdf",
+  "recoveryNonce": 0,
+  "chainId": 84532,
+  "vault": "0x0000000000000000000000000000000000000000"
+}
+### Ran Playwright code
+```js
+await page.evaluate('async () => { const r=await fetch("/v1/accounts/recovery/"+window.__liveOwner); if(!r.ok) throw new Error("metadata "+r.status); return await r.json(); }');
+```
+### Open tabs
+- 0: (current) [BTC/USDC 83,178.28 · Arcora Perp](http://127.0.0.1:65383/)
+- 1: [BTC/USDC 83,178.28 · Arcora Perp](http://127.0.0.1:65383/)
+### Page
+- Page URL: http://127.0.0.1:65383/
+- Page Title: BTC/USDC 83,178.28 · Arcora Perp
+- Console: 0 errors, 1 warnings
+
+### Result
+- 0: [BTC/USDC 83,178.28 · Arcora Perp](http://127.0.0.1:65383/)
+- 1: (current) [BTC/USDC 83,178.28 · Arcora Perp](http://127.0.0.1:65383/)
+
+### Result
+{
+  "owner": "0x8a9617dd749fae7d095aec1a94865b0e69fbbbd50b31884bcb007c0c2f3efaca",
+  "generation": 0,
+  "privateWs": 1,
+  "selectedMarket": 1
+}
+### Ran Playwright code
+```js
+await page.evaluate('async () => {const c=window.testClient; for(let i=0;i<50&&!c?.v1Owner;i++) await new Promise(r=>setTimeout(r,100)); if(c.v1Owner!=="0x8a9617dd749fae7d095aec1a94865b0e69fbbbd50b31884bcb007c0c2f3efaca") throw new Error("sibling owner mismatch"); c.selectMarket(1); return {owner:c.v1Owner,generation:c.storedGen,privateWs:c.wsV1.readyState,selectedMarket:c.clientSelectedMarket}; }');
+```
+### Open tabs
+- 0: [BTC/USDC 83,178.28 · Arcora Perp](http://127.0.0.1:65383/)
+- 1: (current) [ETH/USDC 2,650.32 · Arcora Perp](http://127.0.0.1:65383/)
+### Page
+- Page URL: http://127.0.0.1:65383/
+- Page Title: ETH/USDC 2,650.32 · Arcora Perp
+- Console: 0 errors, 1 warnings
+
+### Result
+- 0: (current) [BTC/USDC 83,178.28 · Arcora Perp](http://127.0.0.1:65383/)
+- 1: [ETH/USDC 2,650.32 · Arcora Perp](http://127.0.0.1:65383/)
+
+### Result
+{
+  "rejected": true,
+  "credentialPreserved": true,
+  "generation": 0,
+  "selectedMarket": 0
+}
+### Ran Playwright code
+```js
+await page.evaluate('async () => {const c=window.testClient; window.__oldKey=c.sealing.apiKey; window.ethereum={request:async()=>{throw {code:4001};}}; let rejected=false; try {await c.recoverAccount(window.__liveOwner);} catch(e){rejected=true;} if(!rejected||c.sealing.apiKey!==window.__oldKey||c.storedGen!==0) throw new Error("rejection changed credential"); return {rejected,credentialPreserved:true,generation:c.storedGen,selectedMarket:c.clientSelectedMarket}; }');
+```
+
+### Result
+{
+  "owner": "0x8a9617dd749fae7d095aec1a94865b0e69fbbbd50b31884bcb007c0c2f3efaca",
+  "recoveryNonce": 1,
+  "credentialStorage": "persistent"
+}
+### Ran Playwright code
+```js
+await page.evaluate('async () => { const c=window.testClient; const fixture={"address": "0x7e5f4552091a69125d5dfcb7b8c2659029395bdf", "digest": "0x5a743dfac66442637122b398ba9879e87ca56113363c0a14e0e6f60de9ed5035", "signature": "0x5e16a690cae1272a14d7f39374d383112539a4a6dc44bfa18872c4ab57bd5e2244548ed3ccfe15c6ff0b5dc4cfebbe99a315165d8229cd09a64aa202d9c52c2f1b"}; window.ethereum={request:async({method,params})=>{if(method!=="personal_sign"||params[0]!==fixture.digest||params[1].toLowerCase()!==fixture.address)throw new Error("unexpected synthetic request"); return fixture.signature;}}; const result=await c.recoverAccount(window.__liveOwner); if(result.recoveryNonce!==1||result.credentialStorage!=="persistent"||c.sealing.apiKey===window.__oldKey) throw new Error("rotation failed"); return result; }');
+```
+### Open tabs
+- 0: (current) [BTC/USDC 83,178.28 · Arcora Perp](http://127.0.0.1:65383/)
+- 1: [ETH/USDC 2,650.27 · Arcora Perp](http://127.0.0.1:65383/)
+### Page
+- Page URL: http://127.0.0.1:65383/
+- Page Title: BTC/USDC 83,178.28 · Arcora Perp
+- Console: 0 errors, 2 warnings
+### Events
+- New console entries: .playwright-cli/console-2026-09-28T06-45-02-087Z.log#L11
+
+### Result
+{
+  "oldCredentialStatus": 401,
+  "authenticatedOwner": "0x8a9617dd749fae7d095aec1a94865b0e69fbbbd50b31884bcb007c0c2f3efaca",
+  "generation": 1,
+  "privateWs": 1
+}
+### Ran Playwright code
+```js
+await page.evaluate('async () => { const c=window.testClient; const r=await fetch("/v1/accounts/me",{headers:{"X-Api-Key":window.__oldKey}}); for(let i=0;i<50&&!c.v1Owner;i++) await new Promise(r=>setTimeout(r,100)); if(r.status!==401||c.v1Owner!==window.__liveOwner) throw new Error("revocation or reauth failed"); return {oldCredentialStatus:r.status,authenticatedOwner:c.v1Owner,generation:c.storedGen,privateWs:c.wsV1.readyState}; }');
+```
+### Open tabs
+- 0: (current) [BTC/USDC 83,178.28 · Arcora Perp](http://127.0.0.1:65383/)
+- 1: [ETH/USDC 2,650.27 · Arcora Perp](http://127.0.0.1:65383/)
+### Page
+- Page URL: http://127.0.0.1:65383/
+- Page Title: BTC/USDC 83,178.28 · Arcora Perp
+- Console: 1 errors, 2 warnings
+### Events
+- New console entries: .playwright-cli/console-2026-09-28T06-45-02-087Z.log#L12
+
+### Result
+- 0: [BTC/USDC 83,178.28 · Arcora Perp](http://127.0.0.1:65383/)
+- 1: (current) [ETH/USDC 2,650.27 · Arcora Perp](http://127.0.0.1:65383/)
+### Events
+- New console entries: .playwright-cli/console-2026-09-28T06-48-41-459Z.log#L2
+
+### Result
+{
+  "generation": 1,
+  "owner": "0x8a9617dd749fae7d095aec1a94865b0e69fbbbd50b31884bcb007c0c2f3efaca",
+  "selectedMarket": 1,
+  "orders": 1,
+  "privateWs": 1
+}
+### Ran Playwright code
+```js
+await page.evaluate('async () => {const c=window.testClient; for(let i=0;i<50&&(!c.v1Owner||c.storedGen!==1);i++) await new Promise(r=>setTimeout(r,100)); const orders=await c.getOrders(); if(c.storedGen!==1||c.v1Owner!=="0x8a9617dd749fae7d095aec1a94865b0e69fbbbd50b31884bcb007c0c2f3efaca"||c.clientSelectedMarket!==1||orders.length!==1) throw new Error("sibling rotation mismatch"); return {generation:c.storedGen,owner:c.v1Owner,selectedMarket:c.clientSelectedMarket,orders:orders.length,privateWs:c.wsV1.readyState}; }');
+```
+### Open tabs
+- 0: [BTC/USDC 83,178.27 · Arcora Perp](http://127.0.0.1:65383/)
+- 1: (current) [ETH/USDC 2,650.27 · Arcora Perp](http://127.0.0.1:65383/)
+### Page
+- Page URL: http://127.0.0.1:65383/
+- Page Title: ETH/USDC 2,650.27 · Arcora Perp
+- Console: 0 errors, 2 warnings
+
+### Ran Playwright code
+```js
+await page.reload();
+```
+### Open tabs
+- 0: [BTC/USDC 83,178.27 · Arcora Perp](http://127.0.0.1:65383/)
+- 1: (current) [Arcora local browser verification](http://127.0.0.1:65383/)
+### Page
+- Page URL: http://127.0.0.1:65383/
+- Page Title: Arcora local browser verification
+- Console: 0 errors, 1 warnings
+### Snapshot
+- [Snapshot](.playwright-cli/page-2026-09-28T06-49-30-293Z.yml)
+### Events
+- New console entries: .playwright-cli/console-2026-09-28T06-48-41-459Z.log#L3
+
+### Result
+{
+  "generation": 1,
+  "owner": "0x8a9617dd749fae7d095aec1a94865b0e69fbbbd50b31884bcb007c0c2f3efaca",
+  "privateWs": 1,
+  "orders": 1
+}
+### Ran Playwright code
+```js
+await page.evaluate('async () => {const c=window.testClient; for(let i=0;i<50&&!c?.v1Owner;i++) await new Promise(r=>setTimeout(r,100)); if(c.storedGen!==1||c.v1Owner!=="0x8a9617dd749fae7d095aec1a94865b0e69fbbbd50b31884bcb007c0c2f3efaca") throw new Error("reload lost rotation"); return {generation:c.storedGen,owner:c.v1Owner,privateWs:c.wsV1.readyState,orders:(await c.getOrders()).length}; }');
+```
+### Open tabs
+- 0: [BTC/USDC 83,178.27 · Arcora Perp](http://127.0.0.1:65383/)
+- 1: (current) [BTC/USDC 83,178.27 · Arcora Perp](http://127.0.0.1:65383/)
+### Page
+- Page URL: http://127.0.0.1:65383/
+- Page Title: BTC/USDC 83,178.27 · Arcora Perp
+- Console: 0 errors, 1 warnings
+
+### Result
+- [Screenshot of viewport](.playwright-cli/page-2026-09-28T06-49-32-275Z.png)
+### Ran Playwright code
+```js
+// Screenshot viewport and save it as .playwright-cli/page-2026-09-28T06-49-32-275Z.png
+await page.screenshot({
+  path: '.playwright-cli/page-2026-09-28T06-49-32-275Z.png',
+  scale: 'css',
+  type: 'png'
+});
+```
+
+### Result
+Total messages: 1 (Errors: 0, Warnings: 1)
+
+[WARNING] WebSocket connection to 'ws://127.0.0.1:65383/v1/ws' failed: WebSocket is closed before the connection is established. @ http://127.0.0.1:65383/assets/index-CVNPZRq9.js:39
+

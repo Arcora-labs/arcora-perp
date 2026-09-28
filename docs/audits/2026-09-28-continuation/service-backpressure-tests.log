@@ -1,0 +1,20 @@
+   Compiling gateway v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/gateway)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 6.60s
+     Running unittests src/main.rs (/tmp/arcora-gateway-target/debug/deps/gateway-af1323d2b67b45c0)
+
+running 1 test
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+[state] genesis engine root 0x45c35f80338a149a3d14d3dd8bfdd959f3dc769427b15c0e65ba817a54156436
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+[state] genesis engine root 0x464f52b0bc0e452be7e050758e209d7a75708e98ea3eb4f0ffac4e5f6d7a5a28
+LOCAL_TCP_OBSERVATION {"payloadBytes":8388608,"connections":3,"sendBufferRequested":8192,"otherAccountMs":1,"leaseReleaseMs":2090,"receiversAfter":0}
+test s1_recovery_ws_tests::local_tcp_backpressure_has_bounded_send_and_other_account_progress ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 391 filtered out; finished in 2.32s
+
+     Running tests/service_policy.rs (/tmp/arcora-gateway-target/debug/deps/service_policy-8d0e552151332633)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.00s
+

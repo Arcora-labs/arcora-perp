@@ -1,0 +1,24 @@
+{
+  "scope": "Observed CLI invocation against real disposable Rust gateway after test build pinned its known demo enclave signer; demo credit, no L1 settlement or proof",
+  "demo_credit_quote_units": "20000000000",
+  "input": {
+    "marketId": 0,
+    "side": "Buy",
+    "size": "10000000",
+    "limitPrice": "0",
+    "tif": "Ioc",
+    "reduceOnly": false
+  },
+  "receipt_order_hash": "0x3438367041d9308405943f58db763ca8285342e77304d86eb7c751ae2f559c17",
+  "receipt_fields": [
+    "orderHash",
+    "seqNo",
+    "recvTimeMs",
+    "batchIdHint",
+    "windowId",
+    "signature",
+    "enclaveSigner"
+  ],
+  "authenticated_order_count": 1,
+  "gateway_signer_pin": "0x4a62316623ad457f02cdc5d997ded67a383ec569"
+}
