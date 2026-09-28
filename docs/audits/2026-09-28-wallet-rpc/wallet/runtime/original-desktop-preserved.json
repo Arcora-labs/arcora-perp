@@ -1,0 +1,21 @@
+{
+  "manifest": "/Users/huseyinarslan/.codex/backups/arcora-desktop-pre-merge-20260928T073937Z/manifest.json",
+  "source": "/Users/huseyinarslan/Desktop/dark-perp",
+  "head": "f997f8b96279bd06ec1808f6b9cb2a6aeb25cc5e",
+  "expected_head": "f997f8b96279bd06ec1808f6b9cb2a6aeb25cc5e",
+  "files_checked": 62,
+  "file_differences": [],
+  "status_saved_contains_nul": true,
+  "status_exact_match": true,
+  "status_sha256": "7eb173d01c6f5a1880ad1f955fad4fca1ca8ad2fb3b46aaa017ef00c1798562b",
+  "saved_status_sha256": "7eb173d01c6f5a1880ad1f955fad4fca1ca8ad2fb3b46aaa017ef00c1798562b",
+  "status_argv": [
+    "git",
+    "status",
+    "--porcelain",
+    "-z"
+  ],
+  "status_records": 21,
+  "status_comparison_note": "Same porcelain-NUL command as backup used; explicit untracked-files=all expands directory entries and is not byte-compatible with original status capture.",
+  "status": "PASS"
+}

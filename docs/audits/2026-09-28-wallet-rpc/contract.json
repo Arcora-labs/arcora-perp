@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "task_id": "arcora-wallet-rpc-2026-09-28",
+  "criteria": [
+    {
+      "id": "W1",
+      "description": "Run the unmodified official MetaMask extension in a newly created disposable Chromium profile against the isolated local Rust gateway; record extension/package digest, browser/gateway versions, effective configuration and current source identity. Do not use an injected signing provider or a user wallet/profile for this evidence.",
+      "verifier": "inspection"
+    },
+    {
+      "id": "W2",
+      "description": "In two actual same-origin tabs using that extension and Rust gateway, demonstrate rejected recovery preserving the active credential, successful signed recovery rotating it, stale HTTP/socket activity unable to overwrite the new state, the second tab adopting the new credential, and reload retaining the recovered account/state. Assert observable outcomes without recording credentials or signatures.",
+      "verifier": "command"
+    },
+    {
+      "id": "W3",
+      "description": "In the real browser, exercise controlled storage-write failure and session-only reload behavior, and verify legacy/deployment-scoped records remain preserved without credentials being sent to the wrong deployment. Record the fault injection separately from the actual wallet and gateway integration.",
+      "verifier": "command"
+    },
+    {
+      "id": "W4",
+      "description": "Exercise the actual extension-backed local browser flow under the recorded applied CSP and inspect redacted console/network evidence for credential leakage and CSP violations affecting the flow. Document storage/XSS trust boundaries and label this local result separately from production hosting compatibility.",
+      "verifier": "inspection"
+    },
+    {
+      "id": "R1",
+      "description": "Add opt-in witness RPC agreement to the read-only deployment reader: a distinct endpoint must agree on chain, the same primary finalized block anchor, and hash-pinned code and deployment getter observations before the reader reports agreement. Preserve single-endpoint behavior and do not equate endpoint agreement with independent operators or release readiness.",
+      "verifier": "command"
+    },
+    {
+      "id": "R2",
+      "description": "Demonstrate the witness mode fails closed for disagreement, unavailable or malformed required observations, an insufficient finalized head, or an invalid witness selection; preserve hash-pinned reads and secret-free endpoint reporting. Meaningful positive and negative tests must execute.",
+      "verifier": "command"
+    },
+    {
+      "id": "R3",
+      "description": "Attempt the configured public deployment endpoint once using only read RPC methods and record the current observation or explicit blocker, separately from local fixture evidence. Do not infer verified deployment identity from a failed or incomplete observation.",
+      "verifier": "inspection"
+    },
+    {
+      "id": "V1",
+      "description": "Validate the combined changed source with applicable focused tests/build checks and source fingerprints before and after each check. Reconcile every criterion with actual evidence and original unchanged task dependencies; pending, skipped or blocked mandatory checks cannot be reported as passed.",
+      "verifier": "inspection"
+    }
+  ]
+}

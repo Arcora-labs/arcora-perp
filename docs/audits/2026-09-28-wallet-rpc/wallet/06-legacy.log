@@ -1,0 +1,39 @@
+### Result
+[{"id":"mismatch-scope-preserved","pass":true,"preserved":true,"authenticatedRequests":0,"replacementRegistrations":0},{"id":"corrupt-scope-preserved","pass":true,"preserved":true,"authenticatedRequests":0,"replacementRegistrations":0},{"id":"actual-legacy-wallet-recovery","pass":true,"generation":3,"ownerPreserved":true,"legacyUnchanged":true,"storage":"persistent","accountStatus":200}]
+### Ran Playwright code
+```js
+await (async page => {
+ const r=page.context().arcora;
+ r.saved=await page.evaluate(()=>{const key=Object.keys(localStorage).find(k=>k.startsWith('darkperp.v2Account:'));return {key,value:localStorage.getItem(key)};});
+ for(const mode of ['mismatch','corrupt']){
+  const expected=await page.evaluate(({saved,mode})=>{const rec=JSON.parse(saved.value);rec.vault='0x'+'99'.repeat(20);const raw=mode==='mismatch'?JSON.stringify(rec):'{corrupt';localStorage.setItem(saved.key,raw);return raw;},{saved:r.saved,mode});
+  const offset=r.aRequests.length;await page.reload();await page.waitForFunction(()=>!!window.testClient);await page.getByRole('button',{name:'Recover',exact:true}).click();
+  const preserved=await page.evaluate(({key,raw})=>localStorage.getItem(key)===raw,{key:r.saved.key,raw:expected});const calls=r.aRequests.slice(offset);const authenticated=calls.filter(q=>q.authenticated).length;const registrations=calls.filter(q=>q.path==='/v1/accounts'&&q.method==='POST').length;
+  if(!preserved||authenticated||registrations)throw new Error(JSON.stringify({mode,preserved,authenticated,registrations}));
+  r.observations.push({id:mode+'-scope-preserved',pass:true,preserved,authenticatedRequests:authenticated,replacementRegistrations:registrations});
+ }
+ await page.evaluate(saved=>{const rec=JSON.parse(saved.value);localStorage.removeItem(saved.key);localStorage.setItem('darkperp.v1Account',JSON.stringify({owner:rec.owner,apiKey:rec.apiKey}));},r.saved);
+ r.legacyRaw=await page.evaluate(()=>localStorage.getItem('darkperp.v1Account'));const offset=r.aRequests.length;
+ await page.reload();await page.waitForFunction(()=>!!window.testClient);await page.getByRole('button',{name:'Recover',exact:true}).click();await page.getByText(/Saved legacy account found/).waitFor();
+ if(await page.getByLabel('Account owner id').inputValue()!==r.owner)throw new Error('Wrong legacy owner hint');
+ const calls=r.aRequests.slice(offset);if(calls.some(q=>q.authenticated||q.path==='/v1/accounts'&&q.method==='POST'))throw new Error('Legacy credential used before authorization');
+ await page.getByRole('button',{name:/^(Sign & recover|Connect wallet & recover)$/}).click();await r.wallet.getByRole('button',{name:'Confirm',exact:true}).click();
+ await page.waitForFunction(()=>testClient.storedGen===3&&testClient.wsV1?.readyState===1);await r.b.waitForFunction(()=>testClient.storedGen===3&&testClient.wsV1?.readyState===1);
+ const result=await page.evaluate(async ({owner,legacy})=>({generation:testClient.storedGen,ownerPreserved:testClient.v1Owner===owner,legacyUnchanged:localStorage.getItem('darkperp.v1Account')===legacy,storage:testClient.credentialStorage,accountStatus:(await fetch('/v1/accounts/me',{headers:{'X-Api-Key':(await testClient.depositAccount()).apiKey}})).status}),{owner:r.owner,legacy:r.legacyRaw});
+ if(!result.ownerPreserved||!result.legacyUnchanged||result.storage!=='persistent'||result.accountStatus!==200)throw new Error(JSON.stringify(result));
+ r.finalKey=await page.evaluate(async()=>(await testClient.depositAccount()).apiKey);
+ r.observations.push({id:'actual-legacy-wallet-recovery',pass:true,...result});return r.observations.slice(-3);
+}
+)(page);
+```
+### Open tabs
+- 0: (current) [BTC/USDC 83,608.02 · Arcora Perp](http://127.0.0.1:49399/)
+- 1: [MetaMask](chrome-extension://akelmhopkdnbjkgehhjkidmakoiiiekb/home.html)
+- 2: [MetaMask](chrome-extension://akelmhopkdnbjkgehhjkidmakoiiiekb/sidepanel.html#/)
+- 3: [BTC/USDC 83,608.02 · Arcora Perp](http://127.0.0.1:49399/)
+### Page
+- Page URL: http://127.0.0.1:49399/
+- Page Title: BTC/USDC 83,608.02 · Arcora Perp
+- Console: 0 errors, 9 warnings
+### Events
+- New console entries: output/playwright/actual-wallet-run2/console-2026-09-28T12-55-15-295Z.log#L50-L141

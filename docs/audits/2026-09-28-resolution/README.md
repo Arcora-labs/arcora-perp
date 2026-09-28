@@ -1,3 +1,5 @@
+> Bu rapor önceki 11-iş durumunu korur. Güncel rapor: [7 kalan iş](../2026-09-28-wallet-rpc/remaining-work.md).
+
 # Arcora — 15 açık işten 11'e
 
 **Özgün kabul kapsamıyla 4 başlık kapandı: S4-03, S4-05, S4-07, S5-01. Kalan: 11 — 6 kısmi, 5 engelli. Production yayın kararı HOLD.** [Güncel kalan işler](remaining-work.md), [madde bazında durum](task-status.json), [kabul/kod incelemesi](review.md).

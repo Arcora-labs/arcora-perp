@@ -1,0 +1,33 @@
+### Result
+[{"id":"storage-quota-session-only","pass":true,"controlledFault":"Storage.setItem credential write throws QuotaExceededError","notice":"Account recovered. Credential generation is now #2. Account access is available for this tab only. Browser storage is unavailable. Keep this tab open; after reloading, use wallet recovery again. The old saved key may no longer work.","generation":2,"storage":"session","savedGeneration":1,"accountStatus":200},{"id":"session-only-reload","pass":true,"degradedVisible":true,"replacementRegistrations":0}]
+### Ran Playwright code
+```js
+await (async page => {
+ const r=page.context().arcora;
+ r.aRequests=[];page.on('request',q=>r.aRequests.push({path:q.url().replace(/^https?:\/\/[^/]+/,''),method:q.method(),authenticated:!!q.headers()['x-api-key']}));
+ await page.getByRole('button',{name:'Recover',exact:true}).click();await page.getByLabel('Account owner id').fill(r.owner);
+ await page.evaluate(()=>{const original=Storage.prototype.setItem;Storage.prototype.setItem=function(k,v){if(k.startsWith('darkperp.v2Account:'))throw new DOMException('quota','QuotaExceededError');return original.call(this,k,v);};});
+ await page.getByRole('button',{name:/^(Sign & recover|Connect wallet & recover)$/}).click();await r.wallet.getByRole('button',{name:'Confirm',exact:true}).click();
+ await page.waitForFunction(()=>testClient.storedGen===2);
+ const notice=await page.getByRole('status').innerText();
+ const result=await page.evaluate(async()=>({generation:testClient.storedGen,storage:testClient.credentialStorage,savedGeneration:JSON.parse(localStorage.getItem(Object.keys(localStorage).find(k=>k.startsWith('darkperp.v2Account:')))).recoveryNonce,accountStatus:(await fetch('/v1/accounts/me',{headers:{'X-Api-Key':(await testClient.depositAccount()).apiKey}})).status}));
+ if(result.storage!=='session'||result.savedGeneration!==1||result.accountStatus!==200||!notice.includes('this tab only'))throw new Error(JSON.stringify(result));
+ r.sessionKey=await page.evaluate(async()=>(await testClient.depositAccount()).apiKey);
+ r.observations.push({id:'storage-quota-session-only',pass:true,controlledFault:'Storage.setItem credential write throws QuotaExceededError',notice,...result});
+ const offset=r.aRequests.length;await page.reload();await page.waitForFunction(()=>!!window.testClient);await page.getByRole('button',{name:'Account',exact:true}).click();await page.getByText(/placeholders \(0\), not your/).waitFor();
+ const registrations=r.aRequests.slice(offset).filter(q=>q.path==='/v1/accounts'&&q.method==='POST').length;if(registrations)throw new Error('Replacement registration');
+ r.observations.push({id:'session-only-reload',pass:true,degradedVisible:true,replacementRegistrations:registrations});return r.observations.slice(-2);
+}
+)(page);
+```
+### Open tabs
+- 0: (current) [BTC/USDC 83,584.00 · Arcora Perp](http://127.0.0.1:49399/)
+- 1: [MetaMask](chrome-extension://akelmhopkdnbjkgehhjkidmakoiiiekb/home.html)
+- 2: [MetaMask](chrome-extension://akelmhopkdnbjkgehhjkidmakoiiiekb/sidepanel.html#/)
+- 3: [BTC/USDC 83,584.00 · Arcora Perp](http://127.0.0.1:49399/)
+### Page
+- Page URL: http://127.0.0.1:49399/
+- Page Title: BTC/USDC 83,584.00 · Arcora Perp
+- Console: 5 errors, 9 warnings
+### Events
+- New console entries: output/playwright/actual-wallet-run2/console-2026-09-28T12-55-15-295Z.log#L20-L49

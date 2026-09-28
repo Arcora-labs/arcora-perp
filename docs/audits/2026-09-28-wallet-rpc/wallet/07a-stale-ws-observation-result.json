@@ -1,0 +1,14 @@
+[
+  {
+    "event": "open"
+  },
+  {
+    "event": "message",
+    "type": "markets"
+  },
+  {
+    "event": "message",
+    "type": "error",
+    "message": "unknown api key"
+  }
+]

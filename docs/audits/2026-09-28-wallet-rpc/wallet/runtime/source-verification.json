@@ -1,0 +1,72 @@
+{
+  "status": "PASS",
+  "runtime_source_head": "5a3574612669baf153cca4515be95cf71da0ba73",
+  "current_head": "9bc9ae59e842206f36528e87978fbcd3defa20ac",
+  "scope_note": "Scoped file identities, not a claim that the whole repository remained unchanged during concurrent RPC audit work. Rust dependency/toolchain/source files match the build checkout commit, served frontend/proxy input hashes match current files, and the actual gateway binary is unchanged.",
+  "frontend_proxy_source_manifest_file": "source-manifest.json",
+  "frontend_proxy_source_file_count": 79,
+  "frontend_proxy_source_differences": [],
+  "frontend_proxy_source_sha256": "b74b910763e06137dde41e9a030b5bdba74f4b84d2820131ee12b8f54831c47a",
+  "frontend_source_file_count": 78,
+  "frontend_source_sha256": "9b509173589d22a6b580cef5ec66b54c22d46df1762a69b27e35536e83fdd154",
+  "gateway_source_file_count": 373,
+  "gateway_source_differences": [],
+  "gateway_source_sha256": "cf87016a441a4f5a6808a8ea5fc3b02a5466e3cbc3343a2a5186cdac20a55916",
+  "gateway_binary_sha256": "760297f52323bd4068568b1311f64fa7a3418c280cb68e3debbe73af709c3705",
+  "gateway_binary_matches_current": true,
+  "build_argv": {
+    "gateway": [
+      "cargo",
+      "build",
+      "--locked",
+      "-p",
+      "gateway"
+    ],
+    "frontend": [
+      "pnpm",
+      "exec",
+      "vite",
+      "build",
+      "--config",
+      "tests/browser/vite.config.ts"
+    ]
+  },
+  "frontend_build_config": {
+    "VITE_ENCLAVE_SIGNER": "0x4a62316623ad457f02cdc5d997ded67a383ec569",
+    "VITE_API_URL": "same-origin via test Vite config"
+  },
+  "served_assets": {
+    "assets/index-DDJoOHXU.css": "88e22f0a899fc51fc8767d7f463d4b6b3d371ff14a194e7b23bef6f40c3694d1",
+    "assets/index-Dl0mwSln.js": "b9b1fc1c64a23dbc5bb65e4654927d4df563e390a31e6dc1c3862b0897e08520",
+    "fonts/Inter-latin-ext.woff2": "a28eb6d3ccb534ae0c94ca999371df024aab60b08c3c8a5720ee9e32fa0faaa2",
+    "fonts/Inter-latin.woff2": "c940764593d0fe5d596be327ca7558855e018039fb78509aa21921fd3644c3e4",
+    "fonts/JetBrainsMono-latin-ext.woff2": "9c38cb2d0d2d93c1ee6e21fa78db76f13ea7e15e15cc64214c7ca89b6aaa35c4",
+    "fonts/JetBrainsMono-latin.woff2": "2c32b9b3ee358c119e210f6f5195f9bd34894d78a785ff2e95d60e718e400af4",
+    "tests/browser/index.html": "32b793903b9714f4a43096623641bee1468aac74f83c2271046a687080b7c285"
+  },
+  "served_assets_sha256": "c7c88cbea510befaaa9e9a5632542336c9554e7b47aaa3446de9e6eb7c5a94bb",
+  "cleanup": {
+    "status": "STOPPED",
+    "processes": [
+      {
+        "kind": "gateway",
+        "pid": 23067,
+        "exit_code": 0
+      },
+      {
+        "kind": "proxy",
+        "pid": 23078,
+        "exit_code": 0
+      }
+    ],
+    "prior_runtime_file": "runtime-v2-stopped.json",
+    "browser_profile": "Owned by root; not touched by this agent"
+  },
+  "omitted_material": [
+    "Snapshot file bytes",
+    "Browser profile",
+    "API credential values",
+    "Raw signatures",
+    "Browser network payloads"
+  ]
+}

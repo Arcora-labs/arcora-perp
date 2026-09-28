@@ -1,0 +1,13 @@
+{
+  "version": "13.50.0.0",
+  "official_url": "https://github.com/MetaMask/metamask-extension/releases/tag/v13.50.0",
+  "asset_url": "https://github.com/MetaMask/metamask-extension/releases/download/v13.50.0/metamask-chrome-13.50.0.zip",
+  "sha256": "b759caca275dec1a10edfebb9d1de1d26589a92104d8b0523ec442930e20e47c",
+  "expected_github_asset_sha256": "b759caca275dec1a10edfebb9d1de1d26589a92104d8b0523ec442930e20e47c",
+  "unmodified_files": 676,
+  "all_extracted_bytes_match": true,
+  "browser": "Playwright Chromium 154.0.8037.0",
+  "profiles": "Two fresh disposable profiles; no existing browser/wallet accessed",
+  "signing": "Actual extension personal_sign through visible approval UI; no ethereum override, no private-key/seed export",
+  "scope": "No L1 transactions, real tokens, proof, production CSP or hardware/Safari wallet certification"
+}

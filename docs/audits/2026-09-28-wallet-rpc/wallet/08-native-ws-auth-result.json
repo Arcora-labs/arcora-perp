@@ -1,0 +1,19 @@
+{
+  "gatewayRestart": "same durable snapshot, no reset",
+  "rows": [
+    {
+      "tab": "a",
+      "authOk": true,
+      "ownerPreserved": true,
+      "generation": 3,
+      "accountStatus": 200
+    },
+    {
+      "tab": "b",
+      "authOk": true,
+      "ownerPreserved": true,
+      "generation": 3,
+      "accountStatus": 200
+    }
+  ]
+}
