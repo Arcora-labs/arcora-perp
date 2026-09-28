@@ -27,6 +27,8 @@ Native workspace içinde bulunan `a06_*` testleri normal host testleri olarak ç
 
 Merge öncesi ek çapraz inceleme, order/demo deposit yollarında eksik mutation kontrolünü ve storage adoption tamamlanmadan eski yanıtın kabulünü buldu. Toplam 17 regresyon senaryosu eklendi; önce başarısız olan durumlar son kaynakta geçti. [Düzeltme ve inceleme](frontend-guard-final-review.md).
 
+Ham test logları içerik hash'lerini korumak için byte düzeyinde değiştirilmedi. Tam diff whitespace kontrolü bu ham logların sondaki boş satır/boşluklarını bildirir; kaynak kodu ve diğer metinler için `git diff --check origin/main...HEAD -- . ":(exclude)docs/audits/**/*.log"` geçti. Bu ayrım çalıştırılan testleri veya kabul sonuçlarını değiştirmez.
+
 ## Önceden var olan yerel çalışma
 
 `/Users/huseyinarslan/Desktop/dark-perp` üzerindeki kirli `main` checkout'u ayrı, önceden var olan A06 wind-down/v9 snapshot çalışmasını içerir. Bu checkout olduğu gibi korunmuştur; bu pakete taşınmamıştır. 62 değiştirilmiş/izlenmeyen dosyanın bytes/hash doğrulamalı yedeği, çalışma/index patch'leri ve porcelain durumu kayıt altına alınmıştır. [Korunum/yedek kaydı](original-preservation.json).
