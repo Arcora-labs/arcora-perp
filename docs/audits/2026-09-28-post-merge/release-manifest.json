@@ -1,0 +1,49 @@
+{
+  "source_commit": "31f626529b655a6ee14a400f587fbfa3f78661a0",
+  "source_sha256": "c2fd3dcf6f0f6afb9d9528a6ca218be34284dba1ba4b2d0b9aaf9dcfc69be6d2",
+  "sp1_version": "6.1.0",
+  "guest_elf": {
+    "path": "normal/run-6.1.0/guest.elf",
+    "sha256": "82938f5db13d7da2cc48fc18e36ba6a5e6d5f0736154ae9e105b33b8717918d7",
+    "size_bytes": 515336
+  },
+  "program_vkey": "0x00ab0d3f8dbcadb423593ef582e637e864ef538537f43e433a8f1466aaa2dfcf",
+  "program_vkey_generated_now": true,
+  "witness_sha256": "0f6f5c96dd9e195f32c63d3c2a72cefe4ef2bdc821fda52485d7fc03c4592dc7",
+  "normal_public_commitment": "0xdba12bfa8b5b7c54bd7035e2fdc92615c9b1f653d16b2230f3a5da7a4ff57abd",
+  "normal_native_guest_equal": true,
+  "normal_guest_negative_cases": [
+    {
+      "case": "bad-manifest",
+      "cycles": 115694,
+      "guest_exit_code": 1,
+      "native_error": "ManifestMismatch",
+      "public_values_bytes": 0,
+      "witness_sha256": "5777f76c6ce9d0156172115165bde15c75086c18f42dff11e8339f2ee11444c5"
+    },
+    {
+      "case": "unauthorized-withdrawal",
+      "cycles": 156555,
+      "guest_exit_code": 1,
+      "native_error": "BadSpendKey",
+      "public_values_bytes": 0,
+      "witness_sha256": "16295e94527b05f109ab2a13be6fb53afa8c94242f89928a169869da92d3b2ed"
+    }
+  ],
+  "same_host_clean_rebuild_byte_equal": true,
+  "cross_host_reproducibility": "not tested",
+  "lockfiles": {
+    "Cargo.lock": "e254915d19239a8ee90dfe04e2ad3799ffd848002f0024e3cfdc5ad92760587f",
+    "crates/sp1-host/Cargo.lock": "398e2734e852fad85e6381ba047bf439caa58aa6adfe73cff100c77d99137bcb",
+    "crates/sp1-guest/Cargo.lock": "113518cb212208aa46a629608af9d946f9a4006ac211035a15e9cb8c022fb8c3",
+    "crates/prover-service/Cargo.lock": "bcfdb59036a4098f4d42f4c7614e1e6fa743bfcc74ce7be34aee29b4158a9959",
+    "scripts/tee-capture/Cargo.lock": "7a4862deb7b835c559fb94e49af0841db671acd7d426a864b362c19880828603"
+  },
+  "tool_versions": "tool-versions.json",
+  "upstream_release_and_cli": "sp1-upstream-identity.json",
+  "proof_generated": false,
+  "a06_guest_executed": false,
+  "target_verifier_executed": false,
+  "release_gate": "HOLD",
+  "current_deployment_matches_this_vkey": "unverified; deployment unchanged"
+}

@@ -1,0 +1,10 @@
+[profile.default]
+src = "src"
+out = "../../out/sp1-upstream"
+cache_path = "../../cache/sp1-upstream"
+libs = ["lib"]
+test = "no-tests"
+script = "no-scripts"
+solc = "0.8.20"
+optimizer = true
+optimizer_runs = 200

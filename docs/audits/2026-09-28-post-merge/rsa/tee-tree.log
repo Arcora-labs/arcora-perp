@@ -1,0 +1,486 @@
+tee-capture v0.1.0 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/scripts/tee-capture)
+base64 v0.22.1
+dcap-qvl v0.5.2
+anyhow v1.0.103
+asn1_der v0.7.7
+base64 v0.22.1
+byteorder v1.5.0
+chrono v0.4.45
+num-traits v0.2.19
+autocfg v1.5.1
+serde v1.0.228
+serde_core v1.0.228
+serde_derive v1.0.228 (proc-macro)
+proc-macro2 v1.0.106
+unicode-ident v1.0.24
+quote v1.0.46
+proc-macro2 v1.0.106 (*)
+syn v2.0.118
+proc-macro2 v1.0.106 (*)
+quote v1.0.46 (*)
+unicode-ident v1.0.24
+const-oid v0.9.6
+dcap-qvl-webpki v0.103.4+dcap.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/vendor/dcap-qvl-webpki)
+ring v0.17.14
+cfg-if v1.0.4
+getrandom v0.2.17
+cfg-if v1.0.4
+libc v0.2.186
+libc v0.2.186
+untrusted v0.9.0
+cc v1.2.65
+find-msvc-tools v0.1.9
+jobserver v0.1.34
+libc v0.2.186
+libc v0.2.186
+shlex v2.0.1
+rustls-pki-types v1.15.0
+zeroize v1.9.0
+untrusted v0.9.0
+der v0.7.10
+const-oid v0.9.6
+der_derive v0.7.3 (proc-macro)
+proc-macro2 v1.0.106 (*)
+quote v1.0.46 (*)
+syn v2.0.118 (*)
+flagset v0.4.7
+derive_more v2.1.1
+derive_more-impl v2.1.1 (proc-macro)
+convert_case v0.10.0
+unicode-segmentation v1.13.3
+proc-macro2 v1.0.106 (*)
+quote v1.0.46 (*)
+syn v2.0.118 (*)
+unicode-xid v0.2.6
+rustc_version v0.4.1
+semver v1.0.28
+futures v0.3.32
+futures-channel v0.3.32
+futures-core v0.3.32
+futures-sink v0.3.32
+futures-core v0.3.32
+futures-executor v0.3.32
+futures-core v0.3.32
+futures-task v0.3.32
+futures-util v0.3.32
+futures-channel v0.3.32 (*)
+futures-core v0.3.32
+futures-io v0.3.32
+futures-macro v0.3.32 (proc-macro)
+proc-macro2 v1.0.106 (*)
+quote v1.0.46 (*)
+syn v2.0.118 (*)
+futures-sink v0.3.32
+futures-task v0.3.32
+memchr v2.8.2
+pin-project-lite v0.2.17
+slab v0.4.12
+futures-io v0.3.32
+futures-sink v0.3.32
+futures-task v0.3.32
+futures-util v0.3.32 (*)
+hex v0.4.3
+log v0.4.33
+parity-scale-codec v3.7.5
+arrayvec v0.7.8
+byte-slice-cast v1.2.3
+const_format v0.2.36
+const_format_proc_macros v0.2.34 (proc-macro)
+proc-macro2 v1.0.106 (*)
+quote v1.0.46 (*)
+unicode-xid v0.2.6
+konst v0.2.20
+konst_macro_rules v0.2.19
+impl-trait-for-tuples v0.2.3 (proc-macro)
+proc-macro2 v1.0.106 (*)
+quote v1.0.46 (*)
+syn v2.0.118 (*)
+parity-scale-codec-derive v3.7.5 (proc-macro)
+proc-macro-crate v3.5.0
+toml_edit v0.25.12+spec-1.1.0
+indexmap v2.14.0
+equivalent v1.0.2
+hashbrown v0.17.1
+toml_datetime v1.1.1+spec-1.1.0
+toml_parser v1.1.2+spec-1.1.0
+winnow v1.0.3
+winnow v1.0.3
+proc-macro2 v1.0.106 (*)
+quote v1.0.46 (*)
+syn v2.0.118 (*)
+serde v1.0.228 (*)
+rustversion v1.0.22 (proc-macro)
+pem v3.0.6
+base64 v0.22.1
+reqwest v0.13.4
+base64 v0.22.1
+bytes v1.12.0
+futures-core v0.3.32
+hickory-resolver v0.26.1
+cfg-if v1.0.4
+futures-util v0.3.32 (*)
+hickory-net v0.26.1
+async-trait v0.1.89 (proc-macro)
+proc-macro2 v1.0.106 (*)
+quote v1.0.46 (*)
+syn v2.0.118 (*)
+cfg-if v1.0.4
+data-encoding v2.11.0
+futures-channel v0.3.32 (*)
+futures-io v0.3.32
+futures-util v0.3.32 (*)
+hickory-proto v0.26.1
+data-encoding v2.11.0
+idna v1.1.0
+idna_adapter v1.2.2
+icu_normalizer v2.2.0
+icu_collections v2.2.0
+displaydoc v0.2.6 (proc-macro)
+proc-macro2 v1.0.106 (*)
+quote v1.0.46 (*)
+syn v2.0.118 (*)
+potential_utf v0.1.5
+zerovec v0.11.6
+yoke v0.8.3
+stable_deref_trait v1.2.1
+yoke-derive v0.8.2 (proc-macro)
+proc-macro2 v1.0.106 (*)
+quote v1.0.46 (*)
+syn v2.0.118 (*)
+synstructure v0.13.2
+proc-macro2 v1.0.106 (*)
+quote v1.0.46 (*)
+syn v2.0.118 (*)
+zerofrom v0.1.8
+zerofrom-derive v0.1.7 (proc-macro)
+proc-macro2 v1.0.106 (*)
+quote v1.0.46 (*)
+syn v2.0.118 (*)
+synstructure v0.13.2 (*)
+zerofrom v0.1.8 (*)
+zerovec-derive v0.11.3 (proc-macro)
+proc-macro2 v1.0.106 (*)
+quote v1.0.46 (*)
+syn v2.0.118 (*)
+utf8_iter v1.0.4
+yoke v0.8.3 (*)
+zerofrom v0.1.8 (*)
+zerovec v0.11.6 (*)
+icu_normalizer_data v2.2.0
+icu_provider v2.2.0
+displaydoc v0.2.6 (proc-macro) (*)
+icu_locale_core v2.2.0
+displaydoc v0.2.6 (proc-macro) (*)
+litemap v0.8.2
+tinystr v0.8.3
+displaydoc v0.2.6 (proc-macro) (*)
+zerovec v0.11.6 (*)
+writeable v0.6.3
+zerovec v0.11.6 (*)
+writeable v0.6.3
+yoke v0.8.3 (*)
+zerofrom v0.1.8 (*)
+zerotrie v0.2.4
+displaydoc v0.2.6 (proc-macro) (*)
+yoke v0.8.3 (*)
+zerofrom v0.1.8 (*)
+zerovec v0.11.6 (*)
+smallvec v1.15.2
+zerovec v0.11.6 (*)
+icu_properties v2.2.0
+icu_collections v2.2.0 (*)
+icu_locale_core v2.2.0 (*)
+icu_properties_data v2.2.0
+icu_provider v2.2.0 (*)
+zerotrie v0.2.4 (*)
+zerovec v0.11.6 (*)
+smallvec v1.15.2
+utf8_iter v1.0.4
+ipnet v2.12.0
+serde v1.0.228 (*)
+once_cell v1.21.4
+critical-section v1.2.0
+portable-atomic v1.13.1
+prefix-trie v0.8.4
+either v1.16.0
+ipnet v2.12.0 (*)
+num-traits v0.2.19 (*)
+rand v0.10.2
+chacha20 v0.10.1
+cfg-if v1.0.4
+rand_core v0.10.1
+getrandom v0.4.3
+cfg-if v1.0.4
+libc v0.2.186
+rand_core v0.10.1
+rand_core v0.10.1
+thiserror v2.0.18
+thiserror-impl v2.0.18 (proc-macro)
+proc-macro2 v1.0.106 (*)
+quote v1.0.46 (*)
+syn v2.0.118 (*)
+tinyvec v1.11.0
+tinyvec_macros v0.1.1
+tracing v0.1.44
+pin-project-lite v0.2.17
+tracing-attributes v0.1.31 (proc-macro)
+proc-macro2 v1.0.106 (*)
+quote v1.0.46 (*)
+syn v2.0.118 (*)
+tracing-core v0.1.36
+once_cell v1.21.4 (*)
+url v2.5.8
+form_urlencoded v1.2.2
+percent-encoding v2.3.2
+idna v1.1.0 (*)
+percent-encoding v2.3.2
+idna v1.1.0 (*)
+ipnet v2.12.0 (*)
+rand v0.10.2 (*)
+thiserror v2.0.18 (*)
+tinyvec v1.11.0 (*)
+tokio v1.52.3
+bytes v1.12.0
+libc v0.2.186
+mio v1.2.1
+libc v0.2.186
+pin-project-lite v0.2.17
+socket2 v0.6.4
+libc v0.2.186
+tokio-macros v2.7.0 (proc-macro)
+proc-macro2 v1.0.106 (*)
+quote v1.0.46 (*)
+syn v2.0.118 (*)
+tracing v0.1.44 (*)
+url v2.5.8 (*)
+hickory-proto v0.26.1 (*)
+ipnet v2.12.0 (*)
+moka v0.12.15
+crossbeam-channel v0.5.15
+crossbeam-utils v0.8.21
+crossbeam-epoch v0.9.20
+crossbeam-utils v0.8.21
+crossbeam-utils v0.8.21
+equivalent v1.0.2
+parking_lot v0.12.5
+lock_api v0.4.14
+scopeguard v1.2.0
+parking_lot_core v0.9.12
+cfg-if v1.0.4
+libc v0.2.186
+smallvec v1.15.2
+portable-atomic v1.13.1
+smallvec v1.15.2
+tagptr v0.2.0
+uuid v1.23.4
+getrandom v0.4.3 (*)
+once_cell v1.21.4 (*)
+parking_lot v0.12.5 (*)
+rand v0.10.2 (*)
+resolv-conf v0.7.6
+smallvec v1.15.2
+system-configuration v0.7.0
+bitflags v2.13.0
+core-foundation v0.9.4
+core-foundation-sys v0.8.7
+libc v0.2.186
+system-configuration-sys v0.6.0
+core-foundation-sys v0.8.7
+libc v0.2.186
+thiserror v2.0.18 (*)
+tokio v1.52.3 (*)
+tracing v0.1.44 (*)
+http v1.4.2
+bytes v1.12.0
+itoa v1.0.18
+http-body v1.0.1
+bytes v1.12.0
+http v1.4.2 (*)
+http-body-util v0.1.3
+bytes v1.12.0
+futures-core v0.3.32
+http v1.4.2 (*)
+http-body v1.0.1 (*)
+pin-project-lite v0.2.17
+hyper v1.10.1
+atomic-waker v1.1.2
+bytes v1.12.0
+futures-channel v0.3.32 (*)
+futures-core v0.3.32
+http v1.4.2 (*)
+http-body v1.0.1 (*)
+httparse v1.10.1
+itoa v1.0.18
+pin-project-lite v0.2.17
+smallvec v1.15.2
+tokio v1.52.3 (*)
+want v0.3.1
+try-lock v0.2.5
+hyper-rustls v0.27.9
+http v1.4.2 (*)
+hyper v1.10.1 (*)
+hyper-util v0.1.20
+base64 v0.22.1
+bytes v1.12.0
+futures-channel v0.3.32 (*)
+futures-util v0.3.32 (*)
+http v1.4.2 (*)
+http-body v1.0.1 (*)
+hyper v1.10.1 (*)
+ipnet v2.12.0 (*)
+libc v0.2.186
+percent-encoding v2.3.2
+pin-project-lite v0.2.17
+socket2 v0.6.4 (*)
+tokio v1.52.3 (*)
+tower-service v0.3.3
+tracing v0.1.44 (*)
+rustls v0.23.45
+aws-lc-rs v1.18.1
+aws-lc-sys v0.45.0
+cc v1.2.65 (*)
+cmake v0.1.58
+cc v1.2.65 (*)
+dunce v1.0.5
+fs_extra v1.3.0
+pkg-config v0.3.33
+zeroize v1.9.0
+log v0.4.33
+once_cell v1.21.4 (*)
+ring v0.17.14 (*)
+rustls-pki-types v1.15.0 (*)
+rustls-webpki v0.103.15
+aws-lc-rs v1.18.1 (*)
+ring v0.17.14 (*)
+rustls-pki-types v1.15.0 (*)
+untrusted v0.9.0
+subtle v2.6.1
+zeroize v1.9.0
+tokio v1.52.3 (*)
+tokio-rustls v0.26.4
+rustls v0.23.45 (*)
+tokio v1.52.3 (*)
+tower-service v0.3.3
+hyper-util v0.1.20 (*)
+log v0.4.33
+once_cell v1.21.4 (*)
+percent-encoding v2.3.2
+pin-project-lite v0.2.17
+rustls v0.23.45 (*)
+rustls-pki-types v1.15.0 (*)
+rustls-platform-verifier v0.7.0
+core-foundation v0.10.1
+core-foundation-sys v0.8.7
+libc v0.2.186
+core-foundation-sys v0.8.7
+log v0.4.33
+rustls v0.23.45 (*)
+security-framework v3.7.0
+bitflags v2.13.0
+core-foundation v0.10.1 (*)
+core-foundation-sys v0.8.7
+libc v0.2.186
+security-framework-sys v2.17.0
+core-foundation-sys v0.8.7
+libc v0.2.186
+security-framework-sys v2.17.0 (*)
+sync_wrapper v1.0.2
+futures-core v0.3.32
+tokio v1.52.3 (*)
+tokio-rustls v0.26.4 (*)
+tower v0.5.3
+futures-core v0.3.32
+futures-util v0.3.32 (*)
+pin-project-lite v0.2.17
+sync_wrapper v1.0.2 (*)
+tokio v1.52.3 (*)
+tower-layer v0.3.3
+tower-service v0.3.3
+tower-http v0.6.11
+bitflags v2.13.0
+bytes v1.12.0
+futures-util v0.3.32 (*)
+http v1.4.2 (*)
+http-body v1.0.1 (*)
+pin-project-lite v0.2.17
+tower v0.5.3 (*)
+tower-layer v0.3.3
+tower-service v0.3.3
+url v2.5.8 (*)
+tower-service v0.3.3
+url v2.5.8 (*)
+ring v0.17.14 (*)
+rustls-pki-types v1.15.0 (*)
+scale-info v2.11.6
+cfg-if v1.0.4
+derive_more v1.0.0
+derive_more-impl v1.0.0 (proc-macro)
+proc-macro2 v1.0.106 (*)
+quote v1.0.46 (*)
+syn v2.0.118 (*)
+parity-scale-codec v3.7.5 (*)
+scale-info-derive v2.11.6 (proc-macro)
+proc-macro-crate v3.5.0 (*)
+proc-macro2 v1.0.106 (*)
+quote v1.0.46 (*)
+syn v2.0.118 (*)
+serde v1.0.228 (*)
+serde-human-bytes v0.1.3
+base64 v0.13.1
+hex v0.4.3
+serde v1.0.228 (*)
+serde_json v1.0.150
+indexmap v2.14.0 (*)
+itoa v1.0.18
+memchr v2.8.2
+serde_core v1.0.228
+zmij v1.0.21
+tracing v0.1.44 (*)
+urlencoding v2.1.3
+wasm-bindgen-futures v0.4.76
+js-sys v0.3.103
+cfg-if v1.0.4
+futures-util v0.3.32 (*)
+wasm-bindgen v0.2.126
+cfg-if v1.0.4
+once_cell v1.21.4 (*)
+wasm-bindgen-macro v0.2.126 (proc-macro)
+quote v1.0.46 (*)
+wasm-bindgen-macro-support v0.2.126
+bumpalo v3.20.3
+proc-macro2 v1.0.106 (*)
+quote v1.0.46 (*)
+syn v2.0.118 (*)
+wasm-bindgen-shared v0.2.126
+unicode-ident v1.0.24
+wasm-bindgen-shared v0.2.126 (*)
+rustversion v1.0.22 (proc-macro)
+wasm-bindgen v0.2.126 (*)
+x509-cert v0.2.5
+const-oid v0.9.6
+der v0.7.10 (*)
+spki v0.7.3
+der v0.7.10 (*)
+serde v1.0.228 (*)
+serde_json v1.0.150 (*)
+tokio v1.52.3 (*)
+ureq v3.3.0
+base64 v0.22.1
+flate2 v1.1.9
+crc32fast v1.5.0
+cfg-if v1.0.4
+miniz_oxide v0.8.9
+adler2 v2.0.1
+simd-adler32 v0.3.9
+log v0.4.33
+percent-encoding v2.3.2
+rustls v0.23.45 (*)
+rustls-pki-types v1.15.0 (*)
+ureq-proto v0.6.0
+base64 v0.22.1
+http v1.4.2 (*)
+httparse v1.10.1
+log v0.4.33
+utf8-zero v0.8.1
+webpki-roots v1.0.8
+rustls-pki-types v1.15.0 (*)

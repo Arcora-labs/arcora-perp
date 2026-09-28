@@ -1,0 +1,10 @@
+cargo:warning=rustc +succinct --version: "rustc 1.95.0 (59807616e 2026-04-14) (Homebrew)\n"
+[sp1]  error: failed to run `rustc` to learn about target-specific information
+[sp1]  
+[sp1]  Caused by:
+[sp1]    process didn't exit successfully: `/opt/homebrew/Cellar/rust/1.95.0/bin/rustc - --crate-name ___ --print=file-names -C passes=lower-atomic -C link-arg=--image-base=2013265920 -C panic=abort --cfg 'getrandom_backend="custom"' -C llvm-args=-misched-prera-direction=bottomup -C llvm-args=-misched-postra-direction=bottomup --target riscv64im-succinct-zkvm-elf --crate-type bin --crate-type rlib --crate-type dylib --crate-type cdylib --crate-type staticlib --crate-type proc-macro --print=sysroot --print=split-debuginfo --print=crate-name --print=cfg -Wwarnings` (exit status: 1)
+[sp1]    --- stderr
+[sp1]    error: error loading target specification: could not find specification for target "riscv64im-succinct-zkvm-elf"
+[sp1]      |
+[sp1]      = help: run `rustc --print target-list` for a list of built-in targets
+[sp1]  

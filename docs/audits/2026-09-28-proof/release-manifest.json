@@ -1,0 +1,19 @@
+{
+  "candidate_sha": "1b7858925374569bc806ed1a9a29479e45c13b4f",
+  "source_sha256": "0a48d45862c1f2f177eb668bb6d549b32d6090dce5185e2bd0b7cc204895ee2a",
+  "sp1_version": "6.1.0",
+  "lru_version": "0.18.4",
+  "elf_sha256": "82938f5db13d7da2cc48fc18e36ba6a5e6d5f0736154ae9e105b33b8717918d7",
+  "program_vkey": "0x00ab0d3f8dbcadb423593ef582e637e864ef538537f43e433a8f1466aaa2dfcf",
+  "witness_sha256": "0f6f5c96dd9e195f32c63d3c2a72cefe4ef2bdc821fda52485d7fc03c4592dc7",
+  "prove_binary_sha256": "6623b86843167e36ffb8d2732fac85a3d1977ce9d63145e3ba50ac075864f4af",
+  "proof_generated": false,
+  "application_target_verifier_passed": false,
+  "a06_executed": false,
+  "production_deployed": false,
+  "circuit_archive_sha256": "18beebb6cd0cc9b4d4a240ee4f49511da6c2a7e51724bad4232de538a9147810",
+  "verifier_hash": "0x4388a21c687fdd5f218d7e3d13190cac4c5355818d3605fd5fb811df468ee696",
+  "proof_attempt_exit_code": 101,
+  "gnark_container_exit_code": 137,
+  "gnark_container_oom": true
+}

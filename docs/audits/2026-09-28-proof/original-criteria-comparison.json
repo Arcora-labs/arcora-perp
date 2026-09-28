@@ -1,0 +1,19 @@
+{
+  "baseline_sha256": "87025d856554bd640d21ce05b2174a16565a2518dd2dfbcf05944af42635fcae",
+  "original_ids_unchanged": true,
+  "original_criteria_unchanged": true,
+  "dependencies_unchanged": true,
+  "prior_remaining": 7,
+  "closed_this_turn": 0,
+  "remaining": 7,
+  "new_original_tasks": 0,
+  "ids_remaining": [
+    "S5-02",
+    "S5-03",
+    "S6-01",
+    "S6-02",
+    "S6-03",
+    "S7-01",
+    "S7-02"
+  ]
+}

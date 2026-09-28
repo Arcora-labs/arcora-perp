@@ -1,0 +1,74 @@
+{
+  "schema_version": 1,
+  "task_id": "arcora-ordinary-proof-2026-09-28",
+  "subject": "0a48d45862c1f2f177eb668bb6d549b32d6090dce5185e2bd0b7cc204895ee2a",
+  "checks": [
+    {
+      "criterion_id": "L1",
+      "subject": "0a48d45862c1f2f177eb668bb6d549b32d6090dce5185e2bd0b7cc204895ee2a",
+      "status": "PASS",
+      "assertion": "Manifest-only LRU fix, exact upstream source/license identity, host/cache/service tests and unsuppressed audits pass.",
+      "evidence": {
+        "path": "lru/report.json",
+        "sha256": "34301529ab7e50cade1dba53bb89e7f461329a1b5bbca1282fd5c95c1183638a"
+      },
+      "command": "Recorded Cargo tests/audits and provenance checks in lru/report.json and dependency-summary.json.",
+      "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+      "exit_code": 0
+    },
+    {
+      "criterion_id": "E1",
+      "subject": "0a48d45862c1f2f177eb668bb6d549b32d6090dce5185e2bd0b7cc204895ee2a",
+      "status": "PASS",
+      "assertion": "Pinned real verifier/gateway and Arcora identity; eight real guards, thirteen artifact-gate regressions and 96 existing Foundry tests pass.",
+      "evidence": {
+        "path": "verifier-guards/verification.json",
+        "sha256": "d5fdcd2b57db275d0c722aa0b576789e0c645a482bc47ed018c5d502a6a8ee19"
+      },
+      "command": "python3 verify_real_proof.py --guards-only; Python artifact gate suite; forge test --root contracts --summary",
+      "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+      "exit_code": 0
+    },
+    {
+      "criterion_id": "P1",
+      "subject": "0a48d45862c1f2f177eb668bb6d549b32d6090dce5185e2bd0b7cc204895ee2a",
+      "status": "BLOCKED",
+      "assertion": "Genuine local proof attempt reached Docker gnark and failed with recorded OOM/137; process exit101 and no completion manifest.",
+      "evidence": {
+        "path": "proof-attempt1.json",
+        "sha256": "6c1b3aef459c6b8792c82419ac4f06bf7daa60bed1f53a9e7e1ffc22d80da2d0"
+      },
+      "command": "Recorded proof-attempt1.json argv and environment.",
+      "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+      "exit_code": 101
+    },
+    {
+      "criterion_id": "E2",
+      "subject": "0a48d45862c1f2f177eb668bb6d549b32d6090dce5185e2bd0b7cc204895ee2a",
+      "status": "BLOCKED",
+      "assertion": "Application proof acceptance was not run because no valid completed proof exists.",
+      "evidence": {
+        "path": "release-manifest.json",
+        "sha256": "5d64897b986169d62fb8db6bc335ba2617b01209d935e425a3dde2d945346d08"
+      },
+      "command": "Not executed: successful proof prerequisite absent.",
+      "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+      "exit_code": null
+    },
+    {
+      "criterion_id": "V1",
+      "subject": "0a48d45862c1f2f177eb668bb6d549b32d6090dce5185e2bd0b7cc204895ee2a",
+      "status": "PASS",
+      "assertion": "Independent review fixes verified; exact relevant source freshness and unchanged original criteria/dependencies recorded; Desktop62files/HEAD/status preserved; code pushed to existing PR24 without merge.",
+      "evidence": {
+        "path": "source-validation.json",
+        "sha256": "18d915112fcf92111d9ac77a3d49c4ad92e32dd636ee17c684adda316a915e87"
+      },
+      "reviewer": "Root and proof_release_review independent bounded source review; CI outcome separately recorded."
+    }
+  ],
+  "blockers": [
+    "P1: actual Docker Groth16 wrapping OOM at the allocated 5 GiB limit; no successful proof artifact.",
+    "E2: the required successful Arcora proof does not exist, so the actual-proof 18-test acceptance matrix cannot run."
+  ]
+}

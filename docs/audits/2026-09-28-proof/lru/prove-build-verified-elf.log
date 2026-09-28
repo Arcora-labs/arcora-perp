@@ -1,0 +1,3 @@
+warning: sp1-host@0.0.0: Build skipped for perp-core-guest at 2026-09-28 18:34:28 due to SP1_SKIP_PROGRAM_BUILD flag
+   Compiling sp1-host v0.0.0 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/sp1-host)
+    Finished `release` profile [optimized] target(s) in 56.94s

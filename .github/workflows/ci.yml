@@ -67,6 +67,16 @@ jobs:
             crates/prover-service
       - name: install protoc (sp1-prover-types build script)
         run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+      - name: Require the patched coherent SP1 release
+        run: python3 scripts/local-verification/check_sp1_release.py
+      - name: Regenerate the real SP1 native runner after cache restore
+        # SP1 6.1.0 embeds a helper built under its registry source directory.
+        # rust-cache restores the outer build-script output, but not that nested
+        # binary. Invalidate only this package in each standalone target so the
+        # upstream build script rebuilds the real helper before include_bytes!.
+        run: |
+          cargo clean --locked --manifest-path crates/sp1-host/Cargo.toml --package sp1-core-executor-runner
+          cargo clean --locked --manifest-path crates/prover-service/Cargo.toml --package sp1-core-executor-runner
       - name: stub the guest ELF (guest build skipped; include_elf! needs the file)
         run: |
           mkdir -p crates/sp1-guest/target/elf-compilation/riscv64im-succinct-zkvm-elf/release

@@ -1,0 +1,80 @@
+{
+  "schema_version": 1,
+  "task_id": "arcora-post-merge-2026-09-28",
+  "subject": "c2fd3dcf6f0f6afb9d9528a6ca218be34284dba1ba4b2d0b9aaf9dcfc69be6d2",
+  "checks": [
+    {
+      "criterion_id": "M1",
+      "subject": "c2fd3dcf6f0f6afb9d9528a6ca218be34284dba1ba4b2d0b9aaf9dcfc69be6d2",
+      "status": "PASS",
+      "assertion": "PR23 merged at the authorized exact head;13checks passed and knownRSAaudit failed. Desktop HEAD/status/62file hashes preserved.",
+      "evidence": {
+        "path": "merge-delivery.json",
+        "sha256": "b00aafdf5f2b93fac92c400131c74dcf8d4c17d0fa0bb9ee87c338b17141ad6d"
+      },
+      "reviewer": "root; runtime_rpc_plan independent RSA/vendor/CI review completed before usage limit"
+    },
+    {
+      "criterion_id": "R1",
+      "subject": "c2fd3dcf6f0f6afb9d9528a6ca218be34284dba1ba4b2d0b9aaf9dcfc69be6d2",
+      "status": "PASS",
+      "assertion": "Ring verification positives and meaningful negatives passed, actual/locked RSA dependency removed without ignore, vendor provenance and rustcrypto counterfactual verified.",
+      "evidence": {
+        "path": "rsa/verification.json",
+        "sha256": "6f31741f1e3914392fd73dd9bafb33e8d7cf67ff58acbaa73104f9453475eb0c"
+      },
+      "command": "Recorded Cargo test, audit, tree and provenance commands in rsa/verification.json and their per-command records.",
+      "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+      "exit_code": 0
+    },
+    {
+      "criterion_id": "W1",
+      "subject": "c2fd3dcf6f0f6afb9d9528a6ca218be34284dba1ba4b2d0b9aaf9dcfc69be6d2",
+      "status": "PASS",
+      "assertion": "Actual cast subprocess loopback matrix passes agreement, expected-chain, finality/fork/word/failure and secret-redaction assertions.",
+      "evidence": {
+        "path": "checks/runtime-witness-cast.json",
+        "sha256": "fc2dd2d320267f5e00b0353464eebae3d7274e6e68df6649b86bccb717cfdbe2"
+      },
+      "command": "cargo test --locked -p gateway runtime_witness_native_cast -- --ignored",
+      "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+      "exit_code": 0
+    },
+    {
+      "criterion_id": "N1",
+      "subject": "c2fd3dcf6f0f6afb9d9528a6ca218be34284dba1ba4b2d0b9aaf9dcfc69be6d2",
+      "status": "PASS",
+      "assertion": "Actual ordinary guest positive and both intended negative executions passed; exact witness/artifacts independently hashed. No proof or A06 execution.",
+      "evidence": {
+        "path": "checks/normal-guest-parity.json",
+        "sha256": "da743dd54c607c5962e923f13c5bdc6e711ca9027bf987118153e677e3bff77a"
+      },
+      "command": "cargo run --release --locked --offline --manifest-path crates/sp1-host/Cargo.toml --bin sp1-host -- --check-negatives --output-dir docs/audits/2026-09-28-post-merge/normal/run-6.1.0",
+      "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+      "exit_code": 0
+    },
+    {
+      "criterion_id": "P1",
+      "subject": "c2fd3dcf6f0f6afb9d9528a6ca218be34284dba1ba4b2d0b9aaf9dcfc69be6d2",
+      "status": "PASS",
+      "assertion": "Patched6.1.0 family, real repeated ELF, new setup vkey, witness and consumer identity bound. Actual host/service compile and version guards passed; proof path statically verified only.",
+      "evidence": {
+        "path": "release-manifest.json",
+        "sha256": "b3ad6eabcafcb7ddd6468ec1884b2c2985aeba80cc067351b4f6dd29b2cec8b4"
+      },
+      "reviewer": "root; runtime_rpc_plan independent RSA/vendor/CI review completed before usage limit"
+    },
+    {
+      "criterion_id": "V1",
+      "subject": "c2fd3dcf6f0f6afb9d9528a6ca218be34284dba1ba4b2d0b9aaf9dcfc69be6d2",
+      "status": "PASS",
+      "assertion": "Final combined source validated with13source-bound checks; independent source reviews and unchanged original15task criteria/dependencies reconciled. Seven remain open.",
+      "evidence": {
+        "path": "review.md",
+        "sha256": "43f7baeb7c089dfd6907613e89cbd8400e960df3599f829dd116ac8ff17b86d6"
+      },
+      "reviewer": "root; runtime_rpc_plan independent RSA/vendor/CI review completed before usage limit"
+    }
+  ],
+  "blockers": []
+}

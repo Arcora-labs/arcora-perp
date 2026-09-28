@@ -1,0 +1,82 @@
+{
+  "schema_version": 1,
+  "kind": "real-sp1-verifier-guards",
+  "status": "PASS",
+  "target_verifier_executed": false,
+  "application_proof_accepted": false,
+  "a06_executed": false,
+  "production_deployed": false,
+  "local_evm_only": true,
+  "mock_verifier_used": false,
+  "scope": "Malformed-proof/deployment guards only.",
+  "verifier_hash": "0x4388a21c687fdd5f218d7e3d13190cac4c5355818d3605fd5fb811df468ee696",
+  "expected_arcora_guest": {
+    "elf_sha256": "82938f5db13d7da2cc48fc18e36ba6a5e6d5f0736154ae9e105b33b8717918d7",
+    "program_vkey": "0x00ab0d3f8dbcadb423593ef582e637e864ef538537f43e433a8f1466aaa2dfcf"
+  },
+  "vendor_upstreams": [
+    {
+      "repository": "https://github.com/succinctlabs/sp1-contracts",
+      "commit": "2ac5ecbbe473421a963d67e55f182e9a36576f7c",
+      "tag": "v6.1.0",
+      "archive_url": "https://codeload.github.com/succinctlabs/sp1-contracts/tar.gz/2ac5ecbbe473421a963d67e55f182e9a36576f7c",
+      "archive_sha256": "f9466b50856007220cc8e10cb9bd02a162c779ab0efc74668fe2906e4a8116a5"
+    },
+    {
+      "repository": "https://github.com/OpenZeppelin/openzeppelin-contracts",
+      "commit": "dbb6104ce834628e473d2173bbc9d47f81a9eec3",
+      "tag": "v5.0.2",
+      "archive_url": "https://codeload.github.com/OpenZeppelin/openzeppelin-contracts/tar.gz/dbb6104ce834628e473d2173bbc9d47f81a9eec3",
+      "archive_sha256": "4a9c091852052f4319173629e0bf0b5cdf7a39d70e5e2298a7a6a149eff9f385"
+    }
+  ],
+  "compiled_contracts": {
+    "verifier": {
+      "artifact_path": "out/sp1-upstream/SP1VerifierGroth16.sol/SP1Verifier.json",
+      "artifact_sha256": "baf5863b906904b51a2dfb684bc21a4dc147ab0b2c15021fb1e45dbbc6f51c0f",
+      "compiler": "0.8.20+commit.a1b79de6",
+      "creation_bytecode_sha256": "36c6488fc23bd3976d816e25c0c5b6aa638878e9493ccdac452d5c7604b7ce77",
+      "deployed_bytecode_template_sha256": "08c942deb02fbb08ace65bb355f25042975fd5f51087a0161e78dd1700f725b9",
+      "note": "Adapter deployed bytecode contains constructor immutables; this hash identifies its compiler template."
+    },
+    "gateway": {
+      "artifact_path": "out/sp1-upstream/SP1VerifierGateway.sol/SP1VerifierGateway.json",
+      "artifact_sha256": "e8bdc916a7fb3922edfcd7f1f565d750550c99db6af933b2ea1ebcb576ce6eef",
+      "compiler": "0.8.20+commit.a1b79de6",
+      "creation_bytecode_sha256": "47723ad4dd3b21eb622af635bfd4b5584e021c95808f5b5d9d812650705f1e14",
+      "deployed_bytecode_template_sha256": "6c03eace76fb336796cdf90a52aef0b07983233869b85f4c21567cb1a3b60a84",
+      "note": "Adapter deployed bytecode contains constructor immutables; this hash identifies its compiler template."
+    },
+    "adapter": {
+      "artifact_path": "out/SP1ZkVerifier.sol/SP1ZkVerifier.json",
+      "artifact_sha256": "921f44dc07a963c210810a6f43f468f52e9a3035e2ae6a41c5bcff0631d26193",
+      "compiler": "0.8.24+commit.e11b9ed9",
+      "creation_bytecode_sha256": "546169311f83a2a97005f36dc75f8a627dbdf94c9ba4964ae1b3117baa3bd7f7",
+      "deployed_bytecode_template_sha256": "add231cac455e09802b0076ad285a6c35cc81d3840465dd2e5285ba058deb70e",
+      "note": "Adapter deployed bytecode contains constructor immutables; this hash identifies its compiler template."
+    }
+  },
+  "forge_version": "forge Version: 1.7.2-nightly\nCommit SHA: dea99c55914d010b22d3f5532fca180a8ecafda1\nBuild Timestamp: 2026-06-05T07:27:50.230262000Z (1780644470)\nBuild Profile: dist",
+  "passed_test_counts": {
+    "SP1RealVerifierGuardTest": 8
+  },
+  "source_sha256": {
+    "contracts/foundry.toml": "b76c797309f683a3ef23f7427c07defcd9fec6df28330e6d3293758de7b5ef3e",
+    "contracts/integration/RealSP1TestBase.sol": "caa282d511ee9c55dd9867dda78830244d33ac27a6294a51f88384a53f66ce94",
+    "contracts/integration/SP1RealProof.t.sol": "99276963ae99ea5fae6f79fcc7e0337c0cd875e4548c006b6454119ee752a098",
+    "contracts/integration/SP1RealVerifierGuard.t.sol": "083a6eed433353b6c983fe8e733a25fe78a81935265242a752c9ad725026eb6b",
+    "contracts/src/SP1ZkVerifier.sol": "f73bf945ec0be9a134bfb43269ba2517e091daa1f25553e846670d8b47056a68",
+    "contracts/src/interfaces/ISP1Verifier.sol": "c0f8ea85c61074e8718b21ad1486aca13b3166cf6ec9d04d317d569b954dcdef",
+    "contracts/vendor/sp1-contracts/PROVENANCE.json": "46c7595268e5ed35e04feae8efb292ea25035398d57dae8f7cafa7f4f39add16",
+    "contracts/vendor/sp1-contracts/foundry.toml": "51a690aafc47c82d83ce89ebeea647a0519bf9742bbd0d6f59444859e0932e2d",
+    "scripts/local-verification/verify_real_proof.py": "523a34365c1cc36a4c946321ebdda02a6b65ecfc0bf97fa91bb842f86719843d"
+  },
+  "evidence_sha256": {
+    "forge-tests.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "forge-tests.stdout.log": "840494d8db47de75886300acda6fbc0ce0cd40723b836ed9a168398495193221",
+    "forge-version.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "forge-version.stdout.log": "62dd204634b8408d1500cb3d35718f5fae9ce3609e4893a5c52977cce77650c7",
+    "upstream-build.stderr.log": "af1c3f01062b0f278db4ab688e07d5987b9823e97ba1fb048469427d81ef8abb",
+    "upstream-build.stdout.log": "ebe83663236b4ed5f022b5a7ca1ab749d1980765e47d5347b77a686aa1f21c3c"
+  }
+}

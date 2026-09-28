@@ -1,0 +1,1827 @@
+prover-service v0.0.0 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/prover-service)
+axum v0.7.9
+async-trait v0.1.92 (proc-macro)
+proc-macro2 v1.0.107
+unicode-ident v1.0.26
+quote v1.0.47
+proc-macro2 v1.0.107 (*)
+syn v3.0.6
+proc-macro2 v1.0.107 (*)
+quote v1.0.47 (*)
+unicode-ident v1.0.26
+axum-core v0.4.5
+async-trait v0.1.92 (proc-macro) (*)
+bytes v1.12.1
+futures-util v0.3.34
+futures-channel v0.3.34
+futures-core v0.3.34
+futures-sink v0.3.34
+futures-core v0.3.34
+futures-io v0.3.34
+futures-macro v0.3.34 (proc-macro)
+proc-macro2 v1.0.107 (*)
+quote v1.0.47 (*)
+syn v3.0.6 (*)
+futures-sink v0.3.34
+futures-task v0.3.34
+memchr v2.8.3
+pin-project-lite v0.2.17
+slab v0.4.12
+http v1.5.0
+bytes v1.12.1
+itoa v1.0.18
+http-body v1.1.0
+bytes v1.12.1
+http v1.5.0 (*)
+http-body-util v0.1.5
+bytes v1.12.1
+futures-core v0.3.34
+http v1.5.0 (*)
+http-body v1.1.0 (*)
+pin-project-lite v0.2.17
+mime v0.3.17
+pin-project-lite v0.2.17
+rustversion v1.0.23 (proc-macro)
+sync_wrapper v1.0.2
+futures-core v0.3.34
+tower-layer v0.3.3
+tower-service v0.3.3
+tracing v0.1.44
+log v0.4.34
+pin-project-lite v0.2.17
+tracing-attributes v0.1.31 (proc-macro)
+proc-macro2 v1.0.107 (*)
+quote v1.0.47 (*)
+syn v2.0.119
+proc-macro2 v1.0.107 (*)
+quote v1.0.47 (*)
+unicode-ident v1.0.26
+tracing-core v0.1.36
+once_cell v1.21.4
+bytes v1.12.1
+futures-util v0.3.34 (*)
+http v1.5.0 (*)
+http-body v1.1.0 (*)
+http-body-util v0.1.5 (*)
+hyper v1.11.1
+atomic-waker v1.1.2
+bytes v1.12.1
+futures-channel v0.3.34 (*)
+futures-core v0.3.34
+h2 v0.4.19
+atomic-waker v1.1.2
+bytes v1.12.1
+fnv v1.0.7
+futures-core v0.3.34
+futures-sink v0.3.34
+http v1.5.0 (*)
+indexmap v2.14.2
+equivalent v1.0.2
+hashbrown v0.17.1
+slab v0.4.12
+tokio v1.53.1
+bytes v1.12.1
+libc v0.2.189
+mio v1.2.3
+libc v0.2.189
+parking_lot v0.12.5
+lock_api v0.4.14
+scopeguard v1.2.0
+parking_lot_core v0.9.12
+cfg-if v1.0.5
+libc v0.2.189
+smallvec v1.16.2
+serde v1.0.229
+serde_core v1.0.229
+serde_derive v1.0.229 (proc-macro)
+proc-macro2 v1.0.107 (*)
+quote v1.0.47 (*)
+syn v3.0.6 (*)
+pin-project-lite v0.2.17
+signal-hook-registry v1.4.8
+errno v0.3.14
+libc v0.2.189
+libc v0.2.189
+socket2 v0.6.5
+libc v0.2.189
+tokio-macros v2.7.2 (proc-macro)
+proc-macro2 v1.0.107 (*)
+quote v1.0.47 (*)
+syn v3.0.6 (*)
+tokio-util v0.7.19
+bytes v1.12.1
+futures-core v0.3.34
+futures-sink v0.3.34
+libc v0.2.189
+pin-project-lite v0.2.17
+tokio v1.53.1 (*)
+tracing v0.1.44 (*)
+http v1.5.0 (*)
+http-body v1.1.0 (*)
+httparse v1.10.1
+httpdate v1.0.3
+itoa v1.0.18
+pin-project-lite v0.2.17
+smallvec v1.16.2 (*)
+tokio v1.53.1 (*)
+want v0.3.1
+try-lock v0.2.5
+hyper-util v0.1.21
+base64 v0.23.1
+bytes v1.12.1
+futures-channel v0.3.34 (*)
+futures-util v0.3.34 (*)
+http v1.5.0 (*)
+http-body v1.1.0 (*)
+httparse v1.10.1
+hyper v1.11.1 (*)
+ipnet v2.12.2
+libc v0.2.189
+percent-encoding v2.3.2
+pin-project-lite v0.2.17
+socket2 v0.6.5 (*)
+tokio v1.53.1 (*)
+tower-service v0.3.3
+tracing v0.1.44 (*)
+itoa v1.0.18
+matchit v0.7.3
+memchr v2.8.3
+mime v0.3.17
+percent-encoding v2.3.2
+pin-project-lite v0.2.17
+rustversion v1.0.23 (proc-macro)
+serde v1.0.229 (*)
+serde_json v1.0.151
+indexmap v2.14.2 (*)
+itoa v1.0.18
+memchr v2.8.3
+serde_core v1.0.229
+zmij v1.0.23
+serde_path_to_error v0.1.20
+itoa v1.0.18
+serde_core v1.0.229
+serde_urlencoded v0.7.1
+form_urlencoded v1.2.2
+percent-encoding v2.3.2
+itoa v1.0.18
+ryu v1.0.23
+serde v1.0.229 (*)
+sync_wrapper v1.0.2 (*)
+tokio v1.53.1 (*)
+tower v0.5.3
+futures-core v0.3.34
+futures-util v0.3.34 (*)
+pin-project-lite v0.2.17
+sync_wrapper v1.0.2 (*)
+tokio v1.53.1 (*)
+tower-layer v0.3.3
+tower-service v0.3.3
+tracing v0.1.44 (*)
+tower-layer v0.3.3
+tower-service v0.3.3
+tracing v0.1.44 (*)
+dark-perp-attestation v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/attestation)
+base64 v0.22.1
+dcap-qvl v0.5.3
+anyhow v1.0.104
+asn1_der v0.7.7
+base64 v0.22.1
+byteorder v1.5.0
+chrono v0.4.45
+iana-time-zone v0.1.65
+core-foundation-sys v0.8.7
+num-traits v0.2.19
+autocfg v1.5.1
+serde v1.0.229 (*)
+const-oid v0.9.6
+dcap-qvl-webpki v0.103.4+dcap.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/vendor/dcap-qvl-webpki)
+ring v0.17.14
+cfg-if v1.0.5
+getrandom v0.2.17
+cfg-if v1.0.5
+libc v0.2.189
+libc v0.2.189
+untrusted v0.9.0
+cc v1.5.1
+find-msvc-tools v0.1.14
+shlex v2.0.1
+rustls-pki-types v1.15.1
+zeroize v1.9.0
+zeroize_derive v1.5.0 (proc-macro)
+proc-macro2 v1.0.107 (*)
+quote v1.0.47 (*)
+syn v2.0.119 (*)
+untrusted v0.9.0
+der v0.7.10
+const-oid v0.9.6
+der_derive v0.7.3 (proc-macro)
+proc-macro2 v1.0.107 (*)
+quote v1.0.47 (*)
+syn v2.0.119 (*)
+flagset v0.4.7
+pem-rfc7468 v0.7.0
+base64ct v1.8.3
+zeroize v1.9.0 (*)
+derive_more v2.1.1
+derive_more-impl v2.1.1 (proc-macro)
+convert_case v0.10.0
+unicode-segmentation v1.13.3
+proc-macro2 v1.0.107 (*)
+quote v1.0.47 (*)
+syn v2.0.119 (*)
+unicode-xid v0.2.6
+rustc_version v0.4.1
+semver v1.0.28
+serde_core v1.0.229
+hex v0.4.3
+log v0.4.34
+parity-scale-codec v3.7.5
+arrayvec v0.7.8
+byte-slice-cast v1.2.3
+const_format v0.2.36
+const_format_proc_macros v0.2.34 (proc-macro)
+proc-macro2 v1.0.107 (*)
+quote v1.0.47 (*)
+unicode-xid v0.2.6
+konst v0.2.20
+konst_macro_rules v0.2.19
+impl-trait-for-tuples v0.2.3 (proc-macro)
+proc-macro2 v1.0.107 (*)
+quote v1.0.47 (*)
+syn v2.0.119 (*)
+parity-scale-codec-derive v3.7.5 (proc-macro)
+proc-macro-crate v3.5.0
+toml_edit v0.25.15+spec-1.1.0
+indexmap v2.14.2 (*)
+toml_datetime v1.1.1+spec-1.1.0
+toml_parser v1.1.3+spec-1.1.0
+winnow v1.0.4
+winnow v1.0.4
+proc-macro2 v1.0.107 (*)
+quote v1.0.47 (*)
+syn v2.0.119 (*)
+serde v1.0.229 (*)
+rustversion v1.0.23 (proc-macro)
+pem v3.0.6
+base64 v0.22.1
+ring v0.17.14 (*)
+rustls-pki-types v1.15.1 (*)
+scale-info v2.11.6
+cfg-if v1.0.5
+derive_more v1.0.0
+derive_more-impl v1.0.0 (proc-macro)
+proc-macro2 v1.0.107 (*)
+quote v1.0.47 (*)
+syn v2.0.119 (*)
+parity-scale-codec v3.7.5 (*)
+scale-info-derive v2.11.6 (proc-macro)
+proc-macro-crate v3.5.0 (*)
+proc-macro2 v1.0.107 (*)
+quote v1.0.47 (*)
+syn v2.0.119 (*)
+serde v1.0.229 (*)
+serde-human-bytes v0.1.3
+base64 v0.13.1
+hex v0.4.3
+serde v1.0.229 (*)
+serde_json v1.0.151 (*)
+urlencoding v2.1.3
+wasm-bindgen-futures v0.4.79
+js-sys v0.3.106
+cfg-if v1.0.5
+futures-util v0.3.34 (*)
+wasm-bindgen v0.2.129
+cfg-if v1.0.5
+once_cell v1.21.4
+wasm-bindgen-macro v0.2.129 (proc-macro)
+quote v1.0.47 (*)
+wasm-bindgen-macro-support v0.2.129
+bumpalo v3.20.3
+proc-macro2 v1.0.107 (*)
+quote v1.0.47 (*)
+syn v3.0.6 (*)
+wasm-bindgen-shared v0.2.129
+unicode-ident v1.0.26
+wasm-bindgen-shared v0.2.129 (*)
+rustversion v1.0.23 (proc-macro)
+wasm-bindgen v0.2.129 (*)
+x509-cert v0.2.5
+const-oid v0.9.6
+der v0.7.10 (*)
+spki v0.7.3
+der v0.7.10 (*)
+hex v0.4.3
+perp-core v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/perp-core)
+k256 v0.13.4
+cfg-if v1.0.5
+ecdsa v0.16.9
+der v0.7.10 (*)
+digest v0.10.7
+block-buffer v0.10.4
+generic-array v0.14.9
+typenum v1.20.1
+zeroize v1.9.0 (*)
+version_check v0.9.5
+const-oid v0.9.6
+crypto-common v0.1.6
+generic-array v0.14.9 (*)
+typenum v1.20.1
+subtle v2.6.1
+elliptic-curve v0.13.8
+base16ct v0.2.0
+crypto-bigint v0.5.5
+generic-array v0.14.9 (*)
+rand_core v0.6.4
+getrandom v0.2.17 (*)
+subtle v2.6.1
+zeroize v1.9.0 (*)
+digest v0.10.7 (*)
+ff v0.13.1
+bitvec v1.1.1
+funty v2.0.0
+radium v0.7.0
+tap v1.0.1
+wyz v0.5.1
+tap v1.0.1
+byteorder v1.5.0
+ff_derive v0.13.1 (proc-macro)
+addchain v0.2.1
+num-bigint v0.3.3
+num-integer v0.1.47
+num-traits v0.2.19 (*)
+num-traits v0.2.19 (*)
+autocfg v1.5.1
+num-integer v0.1.47 (*)
+num-traits v0.2.19 (*)
+num-bigint v0.3.3 (*)
+num-integer v0.1.47 (*)
+num-traits v0.2.19 (*)
+proc-macro2 v1.0.107 (*)
+quote v1.0.47 (*)
+syn v1.0.109
+proc-macro2 v1.0.107 (*)
+quote v1.0.47 (*)
+unicode-ident v1.0.26
+rand_core v0.6.4 (*)
+subtle v2.6.1
+generic-array v0.14.9 (*)
+group v0.13.0
+ff v0.13.1 (*)
+rand_core v0.6.4 (*)
+subtle v2.6.1
+pem-rfc7468 v0.7.0 (*)
+pkcs8 v0.10.2
+der v0.7.10 (*)
+spki v0.7.3 (*)
+rand_core v0.6.4 (*)
+sec1 v0.7.3
+base16ct v0.2.0
+der v0.7.10 (*)
+generic-array v0.14.9 (*)
+pkcs8 v0.10.2 (*)
+serdect v0.2.0
+base16ct v0.2.0
+serde v1.0.229 (*)
+subtle v2.6.1
+zeroize v1.9.0 (*)
+serdect v0.2.0 (*)
+subtle v2.6.1
+zeroize v1.9.0 (*)
+rfc6979 v0.4.0
+hmac v0.12.1
+digest v0.10.7 (*)
+subtle v2.6.1
+serdect v0.2.0 (*)
+signature v2.2.0
+digest v0.10.7 (*)
+rand_core v0.6.4 (*)
+spki v0.7.3 (*)
+elliptic-curve v0.13.8 (*)
+once_cell v1.21.4
+serdect v0.2.0 (*)
+sha2 v0.10.9
+cfg-if v1.0.5
+cpufeatures v0.2.17
+libc v0.2.189
+digest v0.10.7 (*)
+signature v2.2.0 (*)
+serde v1.0.229 (*)
+tiny-keccak v2.0.2
+crunchy v0.2.4
+ring v0.17.14 (*)
+serde v1.0.229 (*)
+serde_json v1.0.151 (*)
+sha2 v0.10.9 (*)
+x25519-dalek v2.0.1
+curve25519-dalek v4.1.3
+cfg-if v1.0.5
+subtle v2.6.1
+rustc_version v0.4.1 (*)
+rand_core v0.6.4 (*)
+getrandom v0.2.17 (*)
+hex v0.4.3
+perp-core v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/perp-core) (*)
+postcard v1.1.3
+cobs v0.3.0
+thiserror v2.0.21
+thiserror-impl v2.0.21 (proc-macro)
+proc-macro2 v1.0.107 (*)
+quote v1.0.47 (*)
+syn v3.0.6 (*)
+heapless v0.7.17
+hash32 v0.2.1
+byteorder v1.5.0
+serde v1.0.229 (*)
+stable_deref_trait v1.2.1
+rustc_version v0.4.1 (*)
+serde v1.0.229 (*)
+prover v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/prover)
+hex v0.4.3
+perp-core v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/perp-core) (*)
+postcard v1.1.3 (*)
+serde v1.0.229 (*)
+serde v1.0.229 (*)
+serde_json v1.0.151 (*)
+sp1-sdk v6.1.0
+anyhow v1.0.104
+async-trait v0.1.92 (proc-macro) (*)
+bincode v1.3.3
+serde v1.0.229 (*)
+cfg-if v1.0.5
+dirs v5.0.1
+dirs-sys v0.4.1
+libc v0.2.189
+option-ext v0.2.0
+eventsource-stream v0.2.3
+futures-core v0.3.34
+nom v7.1.3
+memchr v2.8.3
+minimal-lexical v0.2.1
+pin-project-lite v0.2.17
+futures v0.3.34
+futures-channel v0.3.34
+futures-core v0.3.34
+futures-sink v0.3.34
+futures-core v0.3.34
+futures-executor v0.3.34
+futures-core v0.3.34
+futures-task v0.3.34
+futures-util v0.3.34
+futures-channel v0.3.34 (*)
+futures-core v0.3.34
+futures-io v0.3.34
+futures-macro v0.3.34 (proc-macro) (*)
+futures-sink v0.3.34
+futures-task v0.3.34
+memchr v2.8.3
+pin-project-lite v0.2.17
+slab v0.4.12
+futures-io v0.3.34
+futures-sink v0.3.34
+futures-task v0.3.34
+futures-util v0.3.34 (*)
+hex v0.4.3
+indicatif v0.17.11
+console v0.15.11
+libc v0.2.189
+once_cell v1.21.4
+unicode-width v0.2.2
+number_prefix v0.4.0
+portable-atomic v1.15.0
+unicode-width v0.2.2
+itertools v0.14.0
+either v1.18.0
+k256 v0.13.4 (*)
+num-bigint v0.4.8
+num-integer v0.1.47 (*)
+num-traits v0.2.19 (*)
+serde v1.0.229 (*)
+sha2 v0.10.9 (*)
+sp1-build v6.1.0
+anyhow v1.0.104
+cargo_metadata v0.18.1
+camino v1.2.6
+serde_core v1.0.229
+cargo-platform v0.1.9
+serde v1.0.229 (*)
+semver v1.0.28 (*)
+serde v1.0.229 (*)
+serde_json v1.0.151
+itoa v1.0.18
+memchr v2.8.3
+serde_core v1.0.229
+zmij v1.0.23
+thiserror v1.0.69
+thiserror-impl v1.0.69 (proc-macro)
+proc-macro2 v1.0.107 (*)
+quote v1.0.47 (*)
+syn v2.0.119 (*)
+chrono v0.4.45
+iana-time-zone v0.1.65 (*)
+num-traits v0.2.19 (*)
+clap v4.6.7
+clap_builder v4.6.7
+anstream v1.0.0
+anstyle v1.0.14
+anstyle-parse v1.0.0
+utf8parse v0.2.2
+anstyle-query v1.1.5
+colorchoice v1.0.5
+is_terminal_polyfill v1.70.2
+utf8parse v0.2.2
+anstyle v1.0.14
+clap_lex v1.1.1
+strsim v0.11.1
+clap_derive v4.6.7 (proc-macro)
+heck v0.5.0
+proc-macro2 v1.0.107 (*)
+quote v1.0.47 (*)
+syn v3.0.6 (*)
+dirs v5.0.1 (*)
+sp1-primitives v6.1.0
+bincode v1.3.3 (*)
+blake3 v1.8.7
+arrayvec v0.7.8
+cfg-if v1.0.5
+constant_time_eq v0.4.2
+cc v1.5.1 (*)
+elf v0.7.4
+hex v0.4.3
+itertools v0.14.0 (*)
+lazy_static v1.5.0
+spin v0.9.9
+num-bigint v0.4.8 (*)
+serde v1.0.229 (*)
+sha2 v0.10.9 (*)
+slop-algebra v6.1.0
+itertools v0.14.0 (*)
+p3-field v0.3.2-succinct
+itertools v0.12.1
+either v1.18.0
+num-bigint v0.4.8 (*)
+num-traits v0.2.19 (*)
+p3-util v0.3.2-succinct
+serde v1.0.229 (*)
+rand v0.8.8
+libc v0.2.189
+rand_chacha v0.3.1
+ppv-lite86 v0.2.21
+zerocopy v0.8.59
+rand_core v0.6.4 (*)
+rand_core v0.6.4 (*)
+serde v1.0.229 (*)
+serde v1.0.229 (*)
+slop-bn254 v6.1.0
+ff v0.13.1 (*)
+p3-bn254-fr v0.3.2-succinct
+ff v0.13.1 (*)
+num-bigint v0.4.8 (*)
+p3-field v0.3.2-succinct (*)
+p3-poseidon2 v0.3.2-succinct
+gcd v2.3.0
+p3-field v0.3.2-succinct (*)
+p3-mds v0.3.2-succinct
+itertools v0.12.1 (*)
+p3-dft v0.3.2-succinct
+p3-field v0.3.2-succinct (*)
+p3-matrix v0.3.2-succinct
+itertools v0.12.1 (*)
+p3-field v0.3.2-succinct (*)
+p3-maybe-rayon v0.3.2-succinct
+rayon v1.12.0
+either v1.18.0
+rayon-core v1.13.0
+crossbeam-deque v0.8.8
+crossbeam-epoch v0.9.21
+crossbeam-utils v0.8.23
+crossbeam-utils v0.8.23
+crossbeam-utils v0.8.23
+p3-util v0.3.2-succinct (*)
+rand v0.8.8 (*)
+serde v1.0.229 (*)
+tracing v0.1.44
+pin-project-lite v0.2.17
+tracing-attributes v0.1.31 (proc-macro) (*)
+tracing-core v0.1.36 (*)
+p3-maybe-rayon v0.3.2-succinct (*)
+p3-util v0.3.2-succinct (*)
+tracing v0.1.44 (*)
+p3-field v0.3.2-succinct (*)
+p3-matrix v0.3.2-succinct (*)
+p3-symmetric v0.3.2-succinct
+itertools v0.12.1 (*)
+p3-field v0.3.2-succinct (*)
+serde v1.0.229 (*)
+p3-util v0.3.2-succinct (*)
+rand v0.8.8 (*)
+p3-symmetric v0.3.2-succinct (*)
+rand v0.8.8 (*)
+serde v1.0.229 (*)
+p3-symmetric v0.3.2-succinct (*)
+rand v0.8.8 (*)
+serde v1.0.229 (*)
+serde v1.0.229 (*)
+slop-algebra v6.1.0 (*)
+slop-challenger v6.1.0
+futures v0.3.34 (*)
+p3-challenger v0.3.2-succinct
+p3-field v0.3.2-succinct (*)
+p3-maybe-rayon v0.3.2-succinct (*)
+p3-symmetric v0.3.2-succinct (*)
+p3-util v0.3.2-succinct (*)
+serde v1.0.229 (*)
+tracing v0.1.44 (*)
+serde v1.0.229 (*)
+slop-algebra v6.1.0 (*)
+slop-symmetric v6.1.0
+p3-symmetric v0.3.2-succinct (*)
+slop-poseidon2 v6.1.0
+p3-poseidon2 v0.3.2-succinct (*)
+slop-symmetric v6.1.0 (*)
+zkhash v0.2.0
+ark-ff v0.4.2
+ark-ff-asm v0.4.2 (proc-macro)
+quote v1.0.47 (*)
+syn v1.0.109 (*)
+ark-ff-macros v0.4.2 (proc-macro)
+num-bigint v0.4.8 (*)
+num-traits v0.2.19 (*)
+proc-macro2 v1.0.107 (*)
+quote v1.0.47 (*)
+syn v1.0.109 (*)
+ark-serialize v0.4.2
+ark-std v0.4.0
+num-traits v0.2.19 (*)
+rand v0.8.8 (*)
+digest v0.10.7 (*)
+num-bigint v0.4.8 (*)
+ark-std v0.4.0 (*)
+derivative v2.2.0 (proc-macro)
+proc-macro2 v1.0.107 (*)
+quote v1.0.47 (*)
+syn v1.0.109 (*)
+digest v0.10.7 (*)
+itertools v0.10.5
+either v1.18.0
+num-bigint v0.4.8 (*)
+num-traits v0.2.19 (*)
+paste v1.0.15 (proc-macro)
+zeroize v1.9.0
+zeroize_derive v1.5.0 (proc-macro) (*)
+rustc_version v0.4.1 (*)
+ark-std v0.4.0 (*)
+bitvec v1.1.1 (*)
+blake2 v0.10.6
+digest v0.10.7 (*)
+bls12_381 v0.7.1
+ff v0.12.1
+bitvec v1.1.1 (*)
+rand_core v0.6.4 (*)
+subtle v2.6.1
+group v0.12.1
+ff v0.12.1 (*)
+memuse v0.2.2
+rand_core v0.6.4 (*)
+subtle v2.6.1
+pairing v0.22.0
+group v0.12.1 (*)
+rand_core v0.6.4 (*)
+subtle v2.6.1
+byteorder v1.5.0
+cfg-if v1.0.5
+group v0.12.1 (*)
+group v0.13.0 (*)
+halo2 v0.1.0-beta.2
+halo2_proofs v0.1.0
+blake2b_simd v1.0.5
+arrayvec v0.7.8
+constant_time_eq v0.4.2
+ff v0.12.1 (*)
+group v0.12.1 (*)
+pasta_curves v0.4.1
+blake2b_simd v1.0.5 (*)
+ff v0.12.1 (*)
+group v0.12.1 (*)
+lazy_static v1.5.0 (*)
+rand v0.8.8 (*)
+static_assertions v1.1.0
+subtle v2.6.1
+rand_core v0.6.4 (*)
+rayon v1.12.0 (*)
+hex v0.4.3
+jubjub v0.9.0
+bitvec v1.1.1 (*)
+bls12_381 v0.7.1 (*)
+ff v0.12.1 (*)
+group v0.12.1 (*)
+rand_core v0.6.4 (*)
+subtle v2.6.1
+lazy_static v1.5.0 (*)
+pasta_curves v0.5.2
+blake2b_simd v1.0.5 (*)
+ff v0.13.1 (*)
+group v0.13.0 (*)
+lazy_static v1.5.0 (*)
+rand v0.8.8 (*)
+static_assertions v1.1.0
+subtle v2.6.1
+rand v0.8.8 (*)
+serde v1.0.229 (*)
+sha2 v0.10.9 (*)
+sha3 v0.10.9
+digest v0.10.7 (*)
+keccak v0.1.6
+cpufeatures v0.2.17 (*)
+subtle v2.6.1
+slop-challenger v6.1.0 (*)
+slop-koala-bear v6.1.0
+lazy_static v1.5.0 (*)
+p3-koala-bear v0.3.2-succinct
+num-bigint v0.4.8 (*)
+p3-field v0.3.2-succinct (*)
+p3-mds v0.3.2-succinct (*)
+p3-poseidon2 v0.3.2-succinct (*)
+p3-symmetric v0.3.2-succinct (*)
+rand v0.8.8 (*)
+serde v1.0.229 (*)
+serde v1.0.229 (*)
+slop-algebra v6.1.0 (*)
+slop-challenger v6.1.0 (*)
+slop-poseidon2 v6.1.0 (*)
+slop-symmetric v6.1.0 (*)
+slop-poseidon2 v6.1.0 (*)
+slop-primitives v6.1.0
+slop-algebra v6.1.0 (*)
+slop-symmetric v6.1.0 (*)
+sp1-core-executor v6.1.0
+bincode v1.3.3 (*)
+bytemuck v1.25.2
+bytemuck_derive v1.12.1 (proc-macro)
+proc-macro2 v1.0.107 (*)
+quote v1.0.47 (*)
+syn v3.0.6 (*)
+cfg-if v1.0.5
+clap v4.6.7 (*)
+deepsize2 v0.1.0
+deepsize_derive2 v0.1.0 (proc-macro)
+proc-macro2 v1.0.107 (*)
+quote v1.0.47 (*)
+syn v2.0.119 (*)
+hashbrown v0.14.5
+ahash v0.8.12
+cfg-if v1.0.5
+once_cell v1.21.4
+zerocopy v0.8.59
+version_check v0.9.5
+allocator-api2 v0.2.21
+serde v1.0.229 (*)
+elf v0.7.4
+enum-map v2.7.3
+enum-map-derive v0.17.0 (proc-macro)
+proc-macro2 v1.0.107 (*)
+quote v1.0.47 (*)
+syn v2.0.119 (*)
+serde v1.0.229 (*)
+eyre v0.6.14
+indenter v0.3.4
+once_cell v1.21.4
+autocfg v1.5.1
+hashbrown v0.14.5 (*)
+hex v0.4.3
+itertools v0.14.0 (*)
+memmap2 v0.9.11
+libc v0.2.189
+num v0.4.3
+num-bigint v0.4.8 (*)
+num-complex v0.4.6
+num-traits v0.2.19 (*)
+num-integer v0.1.47
+num-traits v0.2.19 (*)
+num-iter v0.1.46
+num-integer v0.1.47 (*)
+num-traits v0.2.19 (*)
+num-rational v0.4.2
+num-bigint v0.4.8 (*)
+num-integer v0.1.47 (*)
+num-traits v0.2.19 (*)
+num-traits v0.2.19 (*)
+rrs-succinct v0.2.0
+downcast-rs v1.2.1
+num_enum v0.5.11
+num_enum_derive v0.5.11 (proc-macro)
+proc-macro-crate v1.3.1
+once_cell v1.21.4
+toml_edit v0.19.15
+indexmap v2.14.2 (*)
+toml_datetime v0.6.11
+winnow v0.5.40
+proc-macro2 v1.0.107 (*)
+quote v1.0.47 (*)
+syn v1.0.109 (*)
+paste v1.0.15 (proc-macro)
+serde v1.0.229 (*)
+serde_arrays v0.2.0
+serde v1.0.229 (*)
+serde_json v1.0.151 (*)
+slop-air v6.1.0
+p3-air v0.3.2-succinct
+p3-field v0.3.2-succinct (*)
+p3-matrix v0.3.2-succinct (*)
+serde v1.0.229 (*)
+slop-algebra v6.1.0 (*)
+slop-maybe-rayon v6.1.0
+p3-maybe-rayon v0.3.2-succinct (*)
+slop-symmetric v6.1.0 (*)
+sp1-curves v6.1.0
+cfg-if v1.0.5
+dashu v0.4.4
+dashu-base v0.4.3
+dashu-float v0.4.5
+dashu-base v0.4.3
+dashu-int v0.4.3
+cfg-if v1.0.5
+dashu-base v0.4.3
+num-modular v0.6.5
+num-order v1.2.0
+num-modular v0.6.5
+rustversion v1.0.23 (proc-macro)
+static_assertions v1.1.0
+num-modular v0.6.5
+num-order v1.2.0 (*)
+rustversion v1.0.23 (proc-macro)
+static_assertions v1.1.0
+dashu-int v0.4.3 (*)
+dashu-macros v0.4.2 (proc-macro)
+dashu-base v0.4.3
+dashu-float v0.4.5 (*)
+dashu-int v0.4.3 (*)
+dashu-ratio v0.4.4
+dashu-base v0.4.3
+dashu-float v0.4.5 (*)
+dashu-int v0.4.3 (*)
+num-modular v0.6.5
+num-order v1.2.0 (*)
+rustversion v1.0.23 (proc-macro)
+pastey v0.2.3 (proc-macro)
+proc-macro2 v1.0.107 (*)
+quote v1.0.47 (*)
+rustversion v1.0.23 (proc-macro)
+dashu-ratio v0.4.4 (*)
+rustversion v1.0.23 (proc-macro)
+elliptic-curve v0.13.8 (*)
+generic-array v1.1.0
+serde v1.0.229 (*)
+typenum v1.20.1
+itertools v0.14.0 (*)
+k256 v0.13.4 (*)
+num v0.4.3 (*)
+p256 v0.13.2
+ecdsa v0.16.9 (*)
+elliptic-curve v0.13.8 (*)
+primeorder v0.13.6
+elliptic-curve v0.13.8 (*)
+sha2 v0.10.9 (*)
+serde v1.0.229 (*)
+slop-algebra v6.1.0 (*)
+snowbridge-amcl v1.0.2
+parity-scale-codec v3.7.5 (*)
+scale-info v2.11.6 (*)
+sp1-primitives v6.1.0 (*)
+typenum v1.20.1
+sp1-hypercube v6.1.0
+arrayref v0.3.9
+deepsize2 v0.1.0 (*)
+derive-where v1.7.0 (proc-macro)
+proc-macro2 v1.0.107 (*)
+quote v1.0.47 (*)
+syn v3.0.6 (*)
+futures v0.3.34 (*)
+hashbrown v0.14.5 (*)
+itertools v0.14.0 (*)
+num-bigint v0.4.8 (*)
+num-traits v0.2.19 (*)
+num_cpus v1.17.0
+libc v0.2.189
+rayon v1.12.0 (*)
+rayon-scan v0.1.1
+rayon v1.12.0 (*)
+serde v1.0.229 (*)
+slop-air v6.1.0 (*)
+slop-algebra v6.1.0 (*)
+slop-alloc v6.1.0
+serde v1.0.229 (*)
+slop-algebra v6.1.0 (*)
+thiserror v1.0.69 (*)
+slop-basefold v6.1.0
+derive-where v1.7.0 (proc-macro) (*)
+itertools v0.14.0 (*)
+serde v1.0.229 (*)
+slop-algebra v6.1.0 (*)
+slop-alloc v6.1.0 (*)
+slop-baby-bear v6.1.0
+lazy_static v1.5.0 (*)
+p3-baby-bear v0.3.2-succinct
+num-bigint v0.4.8 (*)
+p3-field v0.3.2-succinct (*)
+p3-mds v0.3.2-succinct (*)
+p3-poseidon2 v0.3.2-succinct (*)
+p3-symmetric v0.3.2-succinct (*)
+rand v0.8.8
+libc v0.2.189
+rand_chacha v0.3.1 (*)
+rand_core v0.6.4 (*)
+serde v1.0.229 (*)
+serde v1.0.229 (*)
+slop-algebra v6.1.0 (*)
+slop-challenger v6.1.0 (*)
+slop-poseidon2 v6.1.0 (*)
+slop-symmetric v6.1.0 (*)
+slop-bn254 v6.1.0 (*)
+slop-challenger v6.1.0 (*)
+slop-koala-bear v6.1.0 (*)
+slop-merkle-tree v6.1.0
+derive-where v1.7.0 (proc-macro) (*)
+ff v0.13.1 (*)
+itertools v0.14.0 (*)
+p3-merkle-tree v0.3.2-succinct
+itertools v0.12.1 (*)
+p3-commit v0.3.2-succinct
+itertools v0.12.1 (*)
+p3-challenger v0.3.2-succinct (*)
+p3-field v0.3.2-succinct (*)
+p3-matrix v0.3.2-succinct (*)
+p3-util v0.3.2-succinct (*)
+serde v1.0.229 (*)
+p3-field v0.3.2-succinct (*)
+p3-matrix v0.3.2-succinct (*)
+p3-maybe-rayon v0.3.2-succinct (*)
+p3-symmetric v0.3.2-succinct (*)
+p3-util v0.3.2-succinct (*)
+serde v1.0.229 (*)
+tracing v0.1.44 (*)
+serde v1.0.229 (*)
+slop-algebra v6.1.0 (*)
+slop-alloc v6.1.0 (*)
+slop-baby-bear v6.1.0 (*)
+slop-bn254 v6.1.0 (*)
+slop-challenger v6.1.0 (*)
+slop-commit v6.1.0
+p3-commit v0.3.2-succinct (*)
+serde v1.0.229 (*)
+slop-alloc v6.1.0 (*)
+slop-futures v6.1.0
+crossbeam v0.8.5
+crossbeam-channel v0.5.17
+crossbeam-utils v0.8.23
+crossbeam-deque v0.8.8 (*)
+crossbeam-epoch v0.9.21 (*)
+crossbeam-queue v0.3.14
+crossbeam-utils v0.8.23
+crossbeam-utils v0.8.23
+futures v0.3.34 (*)
+pin-project v1.1.13
+pin-project-internal v1.1.13 (proc-macro)
+proc-macro2 v1.0.107 (*)
+quote v1.0.47 (*)
+syn v2.0.119 (*)
+rayon v1.12.0 (*)
+thiserror v1.0.69 (*)
+tokio v1.53.1 (*)
+tracing v0.1.44 (*)
+slop-koala-bear v6.1.0 (*)
+slop-matrix v6.1.0
+p3-matrix v0.3.2-succinct (*)
+slop-poseidon2 v6.1.0 (*)
+slop-symmetric v6.1.0 (*)
+slop-tensor v6.1.0
+arrayvec v0.7.8
+derive-where v1.7.0 (proc-macro) (*)
+itertools v0.14.0 (*)
+rand v0.8.8 (*)
+rayon v1.12.0 (*)
+serde v1.0.229 (*)
+slop-algebra v6.1.0 (*)
+slop-alloc v6.1.0 (*)
+slop-futures v6.1.0 (*)
+slop-matrix v6.1.0 (*)
+thiserror v1.0.69 (*)
+transpose v0.2.3
+num-integer v0.1.47 (*)
+strength_reduce v0.2.4
+slop-utils v6.1.0
+p3-util v0.3.2-succinct (*)
+tracing-forest v0.1.6
+ansi_term v0.12.1
+smallvec v1.16.2 (*)
+thiserror v1.0.69 (*)
+tracing v0.1.44 (*)
+tracing-subscriber v0.3.23
+matchers v0.2.0
+regex-automata v0.4.18
+regex-syntax v0.8.11
+nu-ansi-term v0.50.3
+once_cell v1.21.4
+regex-automata v0.4.18 (*)
+sharded-slab v0.1.7
+lazy_static v1.5.0 (*)
+smallvec v1.16.2 (*)
+thread_local v1.1.10
+cfg-if v1.0.5
+tracing v0.1.44 (*)
+tracing-core v0.1.36 (*)
+tracing-log v0.2.0
+log v0.4.34
+once_cell v1.21.4
+tracing-core v0.1.36 (*)
+tracing-subscriber v0.3.23 (*)
+thiserror v1.0.69 (*)
+zkhash v0.2.0 (*)
+slop-multilinear v6.1.0
+derive-where v1.7.0 (proc-macro) (*)
+futures v0.3.34 (*)
+num_cpus v1.17.0 (*)
+rand v0.8.8 (*)
+rayon v1.12.0 (*)
+serde v1.0.229 (*)
+slop-algebra v6.1.0 (*)
+slop-alloc v6.1.0 (*)
+slop-challenger v6.1.0 (*)
+slop-commit v6.1.0 (*)
+slop-futures v6.1.0 (*)
+slop-matrix v6.1.0 (*)
+slop-tensor v6.1.0 (*)
+slop-primitives v6.1.0 (*)
+slop-tensor v6.1.0 (*)
+slop-utils v6.1.0 (*)
+thiserror v1.0.69 (*)
+slop-basefold-prover v6.1.0
+derive-where v1.7.0 (proc-macro) (*)
+itertools v0.14.0 (*)
+rand v0.8.8 (*)
+serde v1.0.229 (*)
+slop-algebra v6.1.0 (*)
+slop-alloc v6.1.0 (*)
+slop-baby-bear v6.1.0 (*)
+slop-basefold v6.1.0 (*)
+slop-bn254 v6.1.0 (*)
+slop-challenger v6.1.0 (*)
+slop-commit v6.1.0 (*)
+slop-dft v6.1.0
+p3-dft v0.3.2-succinct (*)
+serde v1.0.229 (*)
+slop-algebra v6.1.0 (*)
+slop-alloc v6.1.0 (*)
+slop-matrix v6.1.0 (*)
+slop-tensor v6.1.0 (*)
+slop-fri v6.1.0
+p3-fri v0.3.2-succinct
+itertools v0.12.1 (*)
+p3-challenger v0.3.2-succinct (*)
+p3-commit v0.3.2-succinct (*)
+p3-dft v0.3.2-succinct (*)
+p3-field v0.3.2-succinct (*)
+p3-interpolation v0.3.2-succinct
+p3-field v0.3.2-succinct (*)
+p3-matrix v0.3.2-succinct (*)
+p3-util v0.3.2-succinct (*)
+p3-matrix v0.3.2-succinct (*)
+p3-maybe-rayon v0.3.2-succinct (*)
+p3-util v0.3.2-succinct (*)
+serde v1.0.229 (*)
+tracing v0.1.44 (*)
+slop-futures v6.1.0 (*)
+slop-koala-bear v6.1.0 (*)
+slop-merkle-tree v6.1.0 (*)
+slop-multilinear v6.1.0 (*)
+slop-tensor v6.1.0 (*)
+thiserror v1.0.69 (*)
+slop-bn254 v6.1.0 (*)
+slop-challenger v6.1.0 (*)
+slop-commit v6.1.0 (*)
+slop-futures v6.1.0 (*)
+slop-jagged v6.1.0
+derive-where v1.7.0 (proc-macro) (*)
+futures v0.3.34 (*)
+itertools v0.14.0 (*)
+num_cpus v1.17.0 (*)
+rand v0.8.8 (*)
+rayon v1.12.0 (*)
+serde v1.0.229 (*)
+slop-algebra v6.1.0 (*)
+slop-alloc v6.1.0 (*)
+slop-baby-bear v6.1.0 (*)
+slop-basefold v6.1.0 (*)
+slop-basefold-prover v6.1.0 (*)
+slop-bn254 v6.1.0 (*)
+slop-challenger v6.1.0 (*)
+slop-commit v6.1.0 (*)
+slop-futures v6.1.0 (*)
+slop-koala-bear v6.1.0 (*)
+slop-merkle-tree v6.1.0 (*)
+slop-multilinear v6.1.0 (*)
+slop-stacked v6.1.0
+derive-where v1.7.0 (proc-macro) (*)
+futures v0.3.34 (*)
+itertools v0.14.0 (*)
+serde v1.0.229 (*)
+slop-algebra v6.1.0 (*)
+slop-alloc v6.1.0 (*)
+slop-basefold v6.1.0 (*)
+slop-basefold-prover v6.1.0 (*)
+slop-challenger v6.1.0 (*)
+slop-commit v6.1.0 (*)
+slop-futures v6.1.0 (*)
+slop-merkle-tree v6.1.0 (*)
+slop-multilinear v6.1.0 (*)
+slop-tensor v6.1.0 (*)
+thiserror v1.0.69 (*)
+slop-sumcheck v6.1.0
+futures v0.3.34 (*)
+itertools v0.14.0 (*)
+rayon v1.12.0 (*)
+serde v1.0.229 (*)
+slop-algebra v6.1.0 (*)
+slop-alloc v6.1.0 (*)
+slop-baby-bear v6.1.0 (*)
+slop-challenger v6.1.0 (*)
+slop-multilinear v6.1.0 (*)
+thiserror v1.0.69 (*)
+slop-symmetric v6.1.0 (*)
+slop-tensor v6.1.0 (*)
+slop-utils v6.1.0 (*)
+thiserror v1.0.69 (*)
+tracing v0.1.44 (*)
+slop-koala-bear v6.1.0 (*)
+slop-matrix v6.1.0 (*)
+slop-merkle-tree v6.1.0 (*)
+slop-multilinear v6.1.0 (*)
+slop-poseidon2 v6.1.0 (*)
+slop-stacked v6.1.0 (*)
+slop-sumcheck v6.1.0 (*)
+slop-symmetric v6.1.0 (*)
+slop-tensor v6.1.0 (*)
+slop-uni-stark v6.1.0
+p3-uni-stark v0.3.2-succinct
+itertools v0.12.1 (*)
+p3-air v0.3.2-succinct (*)
+p3-challenger v0.3.2-succinct (*)
+p3-commit v0.3.2-succinct (*)
+p3-dft v0.3.2-succinct (*)
+p3-field v0.3.2-succinct (*)
+p3-matrix v0.3.2-succinct (*)
+p3-maybe-rayon v0.3.2-succinct (*)
+p3-util v0.3.2-succinct (*)
+serde v1.0.229 (*)
+tracing v0.1.44 (*)
+slop-whir v6.1.0
+derive-where v1.7.0 (proc-macro) (*)
+futures v0.3.34 (*)
+itertools v0.14.0 (*)
+rand v0.8.8 (*)
+rayon v1.12.0 (*)
+serde v1.0.229 (*)
+slop-algebra v6.1.0 (*)
+slop-alloc v6.1.0 (*)
+slop-baby-bear v6.1.0 (*)
+slop-basefold v6.1.0 (*)
+slop-challenger v6.1.0 (*)
+slop-commit v6.1.0 (*)
+slop-dft v6.1.0 (*)
+slop-jagged v6.1.0 (*)
+slop-koala-bear v6.1.0 (*)
+slop-matrix v6.1.0 (*)
+slop-merkle-tree v6.1.0 (*)
+slop-multilinear v6.1.0 (*)
+slop-stacked v6.1.0 (*)
+slop-tensor v6.1.0 (*)
+slop-utils v6.1.0 (*)
+thiserror v1.0.69 (*)
+sp1-derive v6.1.0 (proc-macro)
+proc-macro2 v1.0.107 (*)
+quote v1.0.47 (*)
+syn v1.0.109 (*)
+sp1-primitives v6.1.0 (*)
+strum v0.27.2
+strum_macros v0.27.2 (proc-macro)
+heck v0.5.0
+proc-macro2 v1.0.107 (*)
+quote v1.0.47 (*)
+syn v2.0.119 (*)
+thiserror v1.0.69 (*)
+thousands v0.2.0
+tokio v1.53.1 (*)
+tracing v0.1.44 (*)
+sp1-jit v6.1.0
+dynasmrt v3.2.1
+byteorder v1.5.0
+dynasm v3.2.1 (proc-macro)
+bitflags v2.13.2
+byteorder v1.5.0
+lazy_static v1.5.0 (*)
+proc-macro-error2 v2.0.1
+proc-macro-error-attr2 v2.0.0 (proc-macro)
+proc-macro2 v1.0.107 (*)
+quote v1.0.47 (*)
+proc-macro2 v1.0.107 (*)
+quote v1.0.47 (*)
+syn v2.0.119 (*)
+proc-macro2 v1.0.107 (*)
+quote v1.0.47 (*)
+syn v2.0.119 (*)
+fnv v1.0.7
+memmap2 v0.9.11 (*)
+hashbrown v0.14.5 (*)
+libc v0.2.189
+memfd v0.6.6
+rustix v1.1.5
+bitflags v2.13.2
+errno v0.3.14 (*)
+libc v0.2.189
+memmap2 v0.9.11 (*)
+serde v1.0.229 (*)
+tracing v0.1.44 (*)
+uuid v1.26.1
+atomic v0.6.1
+bytemuck v1.25.2 (*)
+getrandom v0.4.3
+cfg-if v1.0.5
+libc v0.2.189
+md-5 v0.10.6
+cfg-if v1.0.5
+digest v0.10.7 (*)
+sha1_smol v1.0.1
+sp1-primitives v6.1.0 (*)
+strum v0.27.2 (*)
+subenum v1.2.0 (proc-macro)
+heck v0.5.0
+proc-macro2 v1.0.107 (*)
+quote v1.0.47 (*)
+syn v2.0.119 (*)
+thiserror v1.0.69 (*)
+tiny-keccak v2.0.2 (*)
+tracing v0.1.44 (*)
+typenum v1.20.1
+vec_map v0.8.2
+serde v1.0.229 (*)
+sp1-core-executor-runner v6.1.0
+base64 v0.22.1
+bincode v1.3.3 (*)
+hashbrown v0.14.5 (*)
+libc v0.2.189
+sp1-core-executor v6.1.0 (*)
+sp1-core-executor-runner-binary v6.1.0
+bincode v1.3.3 (*)
+crash-handler v0.7.0
+cfg-if v1.0.5
+crash-context v0.6.3
+cfg-if v1.0.5
+mach2 v0.4.3
+libc v0.2.189
+libc v0.2.189
+mach2 v0.4.3 (*)
+parking_lot v0.12.5 (*)
+libc v0.2.189
+serde v1.0.229 (*)
+sp1-core-executor v6.1.0 (*)
+sp1-jit v6.1.0 (*)
+tracing-subscriber v0.3.23 (*)
+sp1-core-executor v6.1.0 (*)
+sp1-jit v6.1.0 (*)
+sp1-primitives v6.1.0 (*)
+sysinfo v0.30.13
+cfg-if v1.0.5
+core-foundation-sys v0.8.7
+libc v0.2.189
+rayon v1.12.0 (*)
+tracing v0.1.44 (*)
+uuid v1.26.1 (*)
+cargo_metadata v0.18.1 (*)
+hex v0.4.3
+sha2 v0.10.9 (*)
+sp1-core-executor v6.1.0 (*)
+sp1-core-executor-runner-binary v6.1.0 (*)
+sp1-core-machine v6.1.0
+bincode v1.3.3 (*)
+cfg-if v1.0.5
+enum-map v2.7.3 (*)
+futures v0.3.34 (*)
+generic-array v1.1.0 (*)
+hashbrown v0.14.5 (*)
+itertools v0.14.0 (*)
+num v0.4.3 (*)
+num_cpus v1.17.0 (*)
+rayon v1.12.0 (*)
+rayon-scan v0.1.1 (*)
+rrs-succinct v0.2.0 (*)
+serde v1.0.229 (*)
+serde_json v1.0.151 (*)
+slop-air v6.1.0 (*)
+slop-algebra v6.1.0 (*)
+slop-challenger v6.1.0 (*)
+slop-futures v6.1.0 (*)
+slop-keccak-air v6.1.0
+p3-keccak-air v0.3.2-succinct
+p3-air v0.3.2-succinct (*)
+p3-field v0.3.2-succinct (*)
+p3-matrix v0.3.2-succinct (*)
+p3-maybe-rayon v0.3.2-succinct (*)
+p3-util v0.3.2-succinct (*)
+tracing v0.1.44 (*)
+slop-matrix v6.1.0 (*)
+slop-maybe-rayon v6.1.0 (*)
+slop-uni-stark v6.1.0 (*)
+snowbridge-amcl v1.0.2 (*)
+sp1-core-executor v6.1.0 (*)
+sp1-core-executor-runner v6.1.0 (*)
+sp1-curves v6.1.0 (*)
+sp1-derive v6.1.0 (proc-macro) (*)
+sp1-hypercube v6.1.0 (*)
+sp1-jit v6.1.0 (*)
+sp1-primitives v6.1.0 (*)
+static_assertions v1.1.0
+strum v0.27.2 (*)
+sysinfo v0.30.13 (*)
+tempfile v3.27.0
+fastrand v2.5.0
+getrandom v0.4.3 (*)
+once_cell v1.21.4
+rustix v1.1.5 (*)
+thiserror v1.0.69 (*)
+tokio v1.53.1 (*)
+tracing v0.1.44 (*)
+tracing-forest v0.1.6 (*)
+tracing-subscriber v0.3.23 (*)
+typenum v1.20.1
+sp1-hypercube v6.1.0 (*)
+sp1-primitives v6.1.0 (*)
+sp1-hypercube v6.1.0 (*)
+sp1-primitives v6.1.0 (*)
+sp1-prover v6.1.0
+anyhow v1.0.104
+bincode v1.3.3 (*)
+clap v4.6.7 (*)
+dirs v5.0.1 (*)
+either v1.18.0
+serde v1.0.229 (*)
+enum-map v2.7.3 (*)
+eyre v0.6.14 (*)
+futures v0.3.34 (*)
+hashbrown v0.14.5 (*)
+hex v0.4.3
+indicatif v0.17.11 (*)
+itertools v0.14.0 (*)
+lru v0.12.5
+hashbrown v0.15.5
+allocator-api2 v0.2.21
+equivalent v1.0.2
+foldhash v0.1.5
+mti v1.1.1
+typeid_prefix v1.2.1
+typeid_suffix v1.3.0
+uuid v1.26.1 (*)
+num-bigint v0.4.8 (*)
+opentelemetry v0.23.0
+futures-core v0.3.34
+futures-sink v0.3.34
+once_cell v1.21.4
+pin-project-lite v0.2.17
+thiserror v1.0.69 (*)
+pin-project v1.1.13 (*)
+rand v0.8.8 (*)
+reqwest v0.12.28
+base64 v0.22.1
+bytes v1.12.1
+futures-core v0.3.34
+futures-util v0.3.34 (*)
+http v1.5.0 (*)
+http-body v1.1.0 (*)
+http-body-util v0.1.5 (*)
+hyper v1.11.1 (*)
+hyper-rustls v0.27.10
+http v1.5.0 (*)
+hyper v1.11.1 (*)
+hyper-util v0.1.21 (*)
+rustls v0.23.45
+log v0.4.34
+once_cell v1.21.4
+ring v0.17.14 (*)
+rustls-pki-types v1.15.1 (*)
+rustls-webpki v0.103.15
+ring v0.17.14 (*)
+rustls-pki-types v1.15.1 (*)
+untrusted v0.9.0
+subtle v2.6.1
+zeroize v1.9.0 (*)
+tokio v1.53.1 (*)
+tokio-rustls v0.26.5
+rustls v0.23.45 (*)
+tokio v1.53.1 (*)
+tower-service v0.3.3
+webpki-roots v1.0.9
+rustls-pki-types v1.15.1 (*)
+hyper-util v0.1.21 (*)
+log v0.4.34
+percent-encoding v2.3.2
+pin-project-lite v0.2.17
+rustls v0.23.45 (*)
+rustls-pki-types v1.15.1 (*)
+serde v1.0.229 (*)
+serde_urlencoded v0.7.1 (*)
+sync_wrapper v1.0.2 (*)
+tokio v1.53.1 (*)
+tokio-rustls v0.26.5 (*)
+tokio-util v0.7.19 (*)
+tower v0.5.3 (*)
+tower-http v0.6.11
+bitflags v2.13.2
+bytes v1.12.1
+futures-util v0.3.34 (*)
+http v1.5.0 (*)
+http-body v1.1.0 (*)
+pin-project-lite v0.2.17
+tower v0.5.3 (*)
+tower-layer v0.3.3
+tower-service v0.3.3
+url v2.5.8
+form_urlencoded v1.2.2 (*)
+idna v1.1.0
+idna_adapter v1.2.2
+icu_normalizer v2.3.0
+icu_collections v2.3.0
+displaydoc v0.2.7 (proc-macro)
+proc-macro2 v1.0.107 (*)
+quote v1.0.47 (*)
+syn v3.0.6 (*)
+potential_utf v0.1.6
+zerovec v0.11.8
+yoke v0.8.3
+stable_deref_trait v1.2.1
+yoke-derive v0.8.3 (proc-macro)
+proc-macro2 v1.0.107 (*)
+quote v1.0.47 (*)
+syn v3.0.6 (*)
+synstructure v0.14.0
+proc-macro2 v1.0.107 (*)
+quote v1.0.47 (*)
+syn v3.0.6 (*)
+zerofrom v0.1.8
+zerofrom-derive v0.1.8 (proc-macro)
+proc-macro2 v1.0.107 (*)
+quote v1.0.47 (*)
+syn v3.0.6 (*)
+synstructure v0.14.0 (*)
+zerofrom v0.1.8 (*)
+zerovec-derive v0.11.6 (proc-macro)
+proc-macro2 v1.0.107 (*)
+quote v1.0.47 (*)
+syn v3.0.6 (*)
+utf8_iter v1.0.4
+yoke v0.8.3 (*)
+zerofrom v0.1.8 (*)
+zerovec v0.11.8 (*)
+icu_normalizer_data v2.3.0
+icu_provider v2.3.1
+displaydoc v0.2.7 (proc-macro) (*)
+icu_locale_core v2.3.0
+displaydoc v0.2.7 (proc-macro) (*)
+litemap v0.8.3
+tinystr v0.8.4
+displaydoc v0.2.7 (proc-macro) (*)
+zerovec v0.11.8 (*)
+writeable v0.6.4
+zerovec v0.11.8 (*)
+writeable v0.6.4
+yoke v0.8.3 (*)
+zerofrom v0.1.8 (*)
+zerotrie v0.2.5
+displaydoc v0.2.7 (proc-macro) (*)
+yoke v0.8.3 (*)
+zerofrom v0.1.8 (*)
+zerovec v0.11.8 (*)
+smallvec v1.16.2 (*)
+zerovec v0.11.8 (*)
+icu_properties v2.3.0
+displaydoc v0.2.7 (proc-macro) (*)
+icu_collections v2.3.0 (*)
+icu_locale_core v2.3.0 (*)
+icu_properties_data v2.3.0
+icu_provider v2.3.1 (*)
+zerotrie v0.2.5 (*)
+zerovec v0.11.8 (*)
+smallvec v1.16.2 (*)
+utf8_iter v1.0.4
+percent-encoding v2.3.2
+tower-service v0.3.3
+url v2.5.8 (*)
+webpki-roots v1.0.9 (*)
+serde v1.0.229 (*)
+serde_json v1.0.151 (*)
+serial_test v3.5.0
+futures-executor v0.3.34 (*)
+futures-util v0.3.34 (*)
+log v0.4.34
+once_cell v1.21.4
+parking_lot v0.12.5 (*)
+serial_test_derive v3.5.0 (proc-macro)
+proc-macro2 v1.0.107 (*)
+quote v1.0.47 (*)
+syn v2.0.119 (*)
+sha2 v0.10.9 (*)
+slop-air v6.1.0 (*)
+slop-algebra v6.1.0 (*)
+slop-basefold v6.1.0 (*)
+slop-bn254 v6.1.0 (*)
+slop-challenger v6.1.0 (*)
+slop-futures v6.1.0 (*)
+slop-jagged v6.1.0 (*)
+slop-multilinear v6.1.0 (*)
+slop-stacked v6.1.0 (*)
+slop-symmetric v6.1.0 (*)
+sp1-core-executor v6.1.0 (*)
+sp1-core-executor-runner v6.1.0 (*)
+sp1-core-machine v6.1.0 (*)
+sp1-derive v6.1.0 (proc-macro) (*)
+sp1-hypercube v6.1.0 (*)
+sp1-jit v6.1.0 (*)
+sp1-primitives v6.1.0 (*)
+sp1-prover-types v6.1.0
+anyhow v1.0.104
+async-scoped v0.9.0
+futures v0.3.34 (*)
+pin-project v1.1.13 (*)
+tokio v1.53.1 (*)
+bincode v1.3.3 (*)
+futures-util v0.3.34 (*)
+hashbrown v0.14.5 (*)
+mti v1.1.1 (*)
+prost v0.13.5
+bytes v1.12.1
+prost-derive v0.13.5 (proc-macro)
+anyhow v1.0.104
+itertools v0.14.0 (*)
+proc-macro2 v1.0.107 (*)
+quote v1.0.47 (*)
+syn v2.0.119 (*)
+serde v1.0.229 (*)
+tokio v1.53.1 (*)
+tonic v0.12.3
+async-stream v0.3.6
+async-stream-impl v0.3.6 (proc-macro)
+proc-macro2 v1.0.107 (*)
+quote v1.0.47 (*)
+syn v2.0.119 (*)
+futures-core v0.3.34
+pin-project-lite v0.2.17
+async-trait v0.1.92 (proc-macro) (*)
+axum v0.7.9 (*)
+base64 v0.22.1
+bytes v1.12.1
+h2 v0.4.19 (*)
+http v1.5.0 (*)
+http-body v1.1.0 (*)
+http-body-util v0.1.5 (*)
+hyper v1.11.1 (*)
+hyper-timeout v0.5.2
+hyper v1.11.1 (*)
+hyper-util v0.1.21 (*)
+pin-project-lite v0.2.17
+tokio v1.53.1 (*)
+tower-service v0.3.3
+hyper-util v0.1.21 (*)
+percent-encoding v2.3.2
+pin-project v1.1.13 (*)
+prost v0.13.5 (*)
+rustls-pemfile v2.2.0
+rustls-pki-types v1.15.1 (*)
+socket2 v0.5.10
+libc v0.2.189
+tokio v1.53.1 (*)
+tokio-rustls v0.26.5 (*)
+tokio-stream v0.1.19
+futures-core v0.3.34
+pin-project-lite v0.2.17
+tokio v1.53.1 (*)
+tower v0.4.13
+futures-core v0.3.34
+futures-util v0.3.34 (*)
+indexmap v1.9.3
+hashbrown v0.12.3
+autocfg v1.5.1
+pin-project v1.1.13 (*)
+pin-project-lite v0.2.17
+rand v0.8.8 (*)
+slab v0.4.12
+tokio v1.53.1 (*)
+tokio-util v0.7.19 (*)
+tower-layer v0.3.3
+tower-service v0.3.3
+tracing v0.1.44 (*)
+tower-layer v0.3.3
+tower-service v0.3.3
+tracing v0.1.44 (*)
+tracing v0.1.44 (*)
+chrono v0.4.45 (*)
+tonic-build v0.12.3
+prettyplease v0.2.37
+proc-macro2 v1.0.107 (*)
+syn v2.0.119 (*)
+proc-macro2 v1.0.107 (*)
+prost-build v0.13.5
+heck v0.5.0
+itertools v0.14.0 (*)
+log v0.4.34
+multimap v0.10.1
+once_cell v1.21.4
+petgraph v0.7.1
+fixedbitset v0.5.7
+indexmap v2.14.2 (*)
+prettyplease v0.2.37 (*)
+prost v0.13.5
+bytes v1.12.1
+prost-derive v0.13.5 (proc-macro) (*)
+prost-types v0.13.5
+prost v0.13.5 (*)
+regex v1.13.1
+regex-automata v0.4.18
+regex-syntax v0.8.11
+regex-syntax v0.8.11
+syn v2.0.119 (*)
+tempfile v3.27.0 (*)
+prost-types v0.13.5 (*)
+quote v1.0.47 (*)
+syn v2.0.119 (*)
+sp1-recursion-circuit v6.1.0
+bincode v1.3.3 (*)
+itertools v0.14.0 (*)
+rand v0.8.8 (*)
+rayon v1.12.0 (*)
+serde v1.0.229 (*)
+slop-air v6.1.0 (*)
+slop-algebra v6.1.0 (*)
+slop-alloc v6.1.0 (*)
+slop-basefold v6.1.0 (*)
+slop-basefold-prover v6.1.0 (*)
+slop-bn254 v6.1.0 (*)
+slop-challenger v6.1.0 (*)
+slop-commit v6.1.0 (*)
+slop-jagged v6.1.0 (*)
+slop-koala-bear v6.1.0 (*)
+slop-matrix v6.1.0 (*)
+slop-merkle-tree v6.1.0 (*)
+slop-multilinear v6.1.0 (*)
+slop-stacked v6.1.0 (*)
+slop-sumcheck v6.1.0 (*)
+slop-symmetric v6.1.0 (*)
+slop-tensor v6.1.0 (*)
+slop-whir v6.1.0 (*)
+sp1-core-executor v6.1.0 (*)
+sp1-core-machine v6.1.0 (*)
+sp1-derive v6.1.0 (proc-macro) (*)
+sp1-hypercube v6.1.0 (*)
+sp1-primitives v6.1.0 (*)
+sp1-recursion-compiler v6.1.0
+backtrace v0.3.76
+addr2line v0.25.1
+gimli v0.32.3
+cfg-if v1.0.5
+libc v0.2.189
+miniz_oxide v0.8.9
+adler2 v2.0.1
+object v0.37.3
+memchr v2.8.3
+rustc-demangle v0.1.28
+serde v1.0.229 (*)
+cfg-if v1.0.5
+itertools v0.14.0 (*)
+serde v1.0.229 (*)
+slop-algebra v6.1.0 (*)
+slop-bn254 v6.1.0 (*)
+slop-symmetric v6.1.0 (*)
+sp1-core-machine v6.1.0 (*)
+sp1-hypercube v6.1.0 (*)
+sp1-primitives v6.1.0 (*)
+sp1-recursion-executor v6.1.0
+backtrace v0.3.76 (*)
+cfg-if v1.0.5
+hashbrown v0.14.5 (*)
+itertools v0.14.0 (*)
+range-set-blaze v0.1.16
+gen_ops v0.4.0
+itertools v0.12.1 (*)
+num-integer v0.1.47 (*)
+num-traits v0.2.19 (*)
+serde v1.0.229 (*)
+slop-algebra v6.1.0 (*)
+slop-maybe-rayon v6.1.0 (*)
+slop-poseidon2 v6.1.0 (*)
+slop-symmetric v6.1.0 (*)
+smallvec v1.16.2 (*)
+sp1-derive v6.1.0 (proc-macro) (*)
+sp1-hypercube v6.1.0 (*)
+static_assertions v1.1.0
+thiserror v1.0.69 (*)
+tracing v0.1.44 (*)
+sp1-hypercube v6.1.0 (*)
+tracing v0.1.44 (*)
+vec_map v0.8.2 (*)
+sp1-recursion-executor v6.1.0 (*)
+sp1-recursion-machine v6.1.0
+itertools v0.14.0 (*)
+rand v0.8.8 (*)
+slop-air v6.1.0 (*)
+slop-algebra v6.1.0 (*)
+slop-basefold v6.1.0 (*)
+slop-matrix v6.1.0 (*)
+slop-maybe-rayon v6.1.0 (*)
+slop-symmetric v6.1.0 (*)
+sp1-derive v6.1.0 (proc-macro) (*)
+sp1-hypercube v6.1.0 (*)
+sp1-primitives v6.1.0 (*)
+sp1-recursion-executor v6.1.0 (*)
+strum v0.27.2 (*)
+tracing v0.1.44 (*)
+zkhash v0.2.0 (*)
+rand v0.8.8 (*)
+sp1-hypercube v6.1.0 (*)
+sp1-primitives v6.1.0 (*)
+sp1-recursion-executor v6.1.0 (*)
+tracing v0.1.44 (*)
+sp1-recursion-compiler v6.1.0 (*)
+sp1-recursion-executor v6.1.0 (*)
+sp1-recursion-gnark-ffi v6.1.0
+anyhow v1.0.104
+bincode v1.3.3 (*)
+cfg-if v1.0.5
+hex v0.4.3
+num-bigint v0.4.8 (*)
+serde v1.0.229 (*)
+serde_json v1.0.151 (*)
+sha2 v0.10.9 (*)
+slop-algebra v6.1.0 (*)
+slop-symmetric v6.1.0 (*)
+sp1-hypercube v6.1.0 (*)
+sp1-primitives v6.1.0 (*)
+sp1-recursion-compiler v6.1.0 (*)
+sp1-verifier v6.1.0
+bincode v1.3.3 (*)
+blake3 v1.8.7 (*)
+cfg-if v1.0.5
+hex v0.4.3
+lazy_static v1.5.0 (*)
+serde v1.0.229 (*)
+sha2 v0.10.9 (*)
+slop-algebra v6.1.0 (*)
+slop-challenger v6.1.0 (*)
+slop-primitives v6.1.0 (*)
+slop-symmetric v6.1.0 (*)
+sp1-hypercube v6.1.0 (*)
+sp1-primitives v6.1.0 (*)
+sp1-recursion-executor v6.1.0 (*)
+sp1-recursion-machine v6.1.0 (*)
+strum v0.27.2 (*)
+substrate-bn-succinct-rs v0.6.0
+bytemuck v1.25.2 (*)
+byteorder v1.5.0
+cfg-if v1.0.5
+crunchy v0.2.4
+lazy_static v1.5.0 (*)
+num-bigint v0.4.8 (*)
+rand v0.8.8 (*)
+rustc-hex v2.1.0
+thiserror v2.0.21 (*)
+dirs v5.0.1 (*)
+tempfile v3.27.0 (*)
+tracing v0.1.44 (*)
+cfg-if v1.0.5
+sp1-recursion-machine v6.1.0 (*)
+sp1-verifier v6.1.0 (*)
+static_assertions v1.1.0
+sysinfo v0.30.13 (*)
+tempfile v3.27.0 (*)
+thiserror v1.0.69 (*)
+tokio v1.53.1 (*)
+tonic v0.12.3 (*)
+tracing v0.1.44 (*)
+tracing-appender v0.2.5
+crossbeam-channel v0.5.17 (*)
+symlink v0.1.0
+thiserror v2.0.21 (*)
+time v0.3.55
+deranged v0.5.8
+num-conv v0.2.2
+powerfmt v0.2.0
+time-core v0.1.9
+tracing-subscriber v0.3.23 (*)
+tracing-subscriber v0.3.23 (*)
+sp1-prover-types v6.1.0 (*)
+sp1-recursion-executor v6.1.0 (*)
+sp1-verifier v6.1.0 (*)
+strum v0.27.2 (*)
+tempfile v3.27.0 (*)
+thiserror v1.0.69 (*)
+tokio v1.53.1 (*)
+tracing v0.1.44 (*)
+tokio v1.53.1 (*)
+sp1-build v6.1.0 (*)
+futures-util v0.3.34 (*)
+tower v0.5.3 (*)

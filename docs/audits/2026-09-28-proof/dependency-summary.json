@@ -1,0 +1,53 @@
+[
+  {
+    "name": "workspace",
+    "lock": "Cargo.lock",
+    "exit_code": 0,
+    "vulnerabilities": 0,
+    "warnings": {
+      "unmaintained": 1,
+      "yanked": 1
+    },
+    "ignore": []
+  },
+  {
+    "name": "host",
+    "lock": "crates/sp1-host/Cargo.lock",
+    "exit_code": 0,
+    "vulnerabilities": 0,
+    "warnings": {
+      "unmaintained": 8
+    },
+    "ignore": []
+  },
+  {
+    "name": "guest",
+    "lock": "crates/sp1-guest/Cargo.lock",
+    "exit_code": 0,
+    "vulnerabilities": 0,
+    "warnings": {
+      "unmaintained": 3
+    },
+    "ignore": []
+  },
+  {
+    "name": "service",
+    "lock": "crates/prover-service/Cargo.lock",
+    "exit_code": 0,
+    "vulnerabilities": 0,
+    "warnings": {
+      "unmaintained": 8
+    },
+    "ignore": []
+  },
+  {
+    "name": "tee",
+    "lock": "scripts/tee-capture/Cargo.lock",
+    "exit_code": 0,
+    "vulnerabilities": 0,
+    "warnings": {
+      "yanked": 1
+    },
+    "ignore": []
+  }
+]

@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "task_id": "arcora-ordinary-proof-2026-09-28",
+  "criteria": [
+    {"id":"L1","description":"Use the exact manifest-only SP1-prover LRU correction with full archive/license provenance, meaningful host/cache/service tests and five unsuppressed application lock audits denying unsound advisories.","verifier":"command"},
+    {"id":"E1","description":"Pin unmodified real SP1 verifier/gateway source and the reviewed Arcora ELF/vkey; compile the real target and pass malformed-proof guards, substituted-artifact rejection and existing contract regressions without claiming an application proof.","verifier":"command"},
+    {"id":"P1","description":"Generate a genuine ordinary local CPU Groth16 proof from the exact synthetic witness; verify native/public equality and local SDK acceptance, preserve hash-bound artifacts and unchanged relevant source identity. A resource stop or infrastructure failure cannot pass.","verifier":"command"},
+    {"id":"E2","description":"The produced Arcora proof must pass the actual pinned verifier, official gateway and adapter in local EVM, while wrong key/input/proof/selector/truncation and unavailable routes fail; all 18 integration tests must execute successfully.","verifier":"command"},
+    {"id":"V1","description":"Independently review changed code, reconcile current source/evidence identity and original unchanged task criteria/dependencies, preserve Desktop work, and update the reviewable existing PR without merging or claiming production readiness.","verifier":"inspection"}
+  ]
+}

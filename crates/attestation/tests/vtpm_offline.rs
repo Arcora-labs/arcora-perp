@@ -107,3 +107,57 @@ fn a_tampered_hcl_report_breaks_the_td_binding() {
         Err(VtpmError::HclBinding),
     );
 }
+
+#[test]
+fn a_changed_signed_message_is_rejected() {
+    let collateral = Collateral::from_json(AZURE_COLLATERAL).unwrap();
+    let td = verify_tdx_quote(AZURE_QUOTE, &collateral, AZURE_NOW).unwrap();
+    let mut message = AK_MSG.to_vec();
+    let last = message.len() - 1;
+    message[last] ^= 1;
+    assert_eq!(
+        vtpm::verify_azure_vtpm(&td, HCL, &message, AK_SIG, &pcrs()),
+        Err(VtpmError::Signature),
+    );
+}
+
+#[test]
+fn a_changed_rsa_signature_is_rejected() {
+    let collateral = Collateral::from_json(AZURE_COLLATERAL).unwrap();
+    let td = verify_tdx_quote(AZURE_QUOTE, &collateral, AZURE_NOW).unwrap();
+    let mut signature = AK_SIG.to_vec();
+    let last = signature.len() - 1;
+    signature[last] ^= 1;
+    assert_eq!(
+        vtpm::verify_azure_vtpm(&td, HCL, AK_MSG, &signature, &pcrs()),
+        Err(VtpmError::Signature),
+    );
+}
+
+#[test]
+fn tpm_signature_envelope_is_strictly_rsassa_sha256() {
+    let collateral = Collateral::from_json(AZURE_COLLATERAL).unwrap();
+    let td = verify_tdx_quote(AZURE_QUOTE, &collateral, AZURE_NOW).unwrap();
+    let mut wrong_signature_algorithm = AK_SIG.to_vec();
+    wrong_signature_algorithm[..2].copy_from_slice(&0x0016u16.to_be_bytes()); // RSA-PSS
+    let mut wrong_hash_algorithm = AK_SIG.to_vec();
+    wrong_hash_algorithm[2..4].copy_from_slice(&0x0004u16.to_be_bytes()); // SHA-1
+    let mut trailing_bytes = AK_SIG.to_vec();
+    trailing_bytes.push(0);
+    let mut wrong_length = AK_SIG.to_vec();
+    wrong_length[4..6].copy_from_slice(&1u16.to_be_bytes());
+    for signature in [
+        wrong_signature_algorithm,
+        wrong_hash_algorithm,
+        trailing_bytes,
+        wrong_length,
+        AK_SIG[..AK_SIG.len() - 1].to_vec(),
+        AK_SIG[..3].to_vec(),
+        Vec::new(),
+    ] {
+        assert_eq!(
+            vtpm::verify_azure_vtpm(&td, HCL, AK_MSG, &signature, &pcrs()),
+            Err(VtpmError::Signature),
+        );
+    }
+}

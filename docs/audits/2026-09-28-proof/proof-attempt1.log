@@ -1,0 +1,25 @@
+PREV_ROOT=0xda245ab4aff31fae5ac2c237ade01a2607c7e5d91e3e8a231b88f6329820d232
+MANIFEST_HASH=0xa8b0492b151b5cb7389be0a59eb3b1b1c23dedea16790a030fd5f64eb4b06fc2
+NEW_ROOT=0x73a7c5ae44df6cfd4e82245d91679c98886eb01b97518d86526664b7b05d5227
+ORDERED_ROOT=0x0000000000000000000000000000000000000000000000000000000000000000
+WITHDRAWALS_ROOT=0x69e35192c9cc77522e280e62a67d000ffb45cd7fedc84e3e28597502e855a19d
+REJECTED_ROOT=0x0000000000000000000000000000000000000000000000000000000000000000
+DEPOSITS_ROOT=0xbc57e60cf7286c5a124c5c646abf81bb81ff8c253761257d2b315cfc93865fce
+NEW_DEPOSIT_COUNT=1
+COMMITMENT=0xdba12bfa8b5b7c54bd7035e2fdc92615c9b1f653d16b2230f3a5da7a4ff57abd
+WITNESS_SHA256=0f6f5c96dd9e195f32c63d3c2a72cefe4ef2bdc821fda52485d7fc03c4592dc7
+VKEY=0x00ab0d3f8dbcadb423593ef582e637e864ef538537f43e433a8f1466aaa2dfcf
+PROVING_START groth16 (local CPU and Docker gnark wrapping)
+
+thread 'tokio-rt-worker' (2426036) panicked at /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/sp1-recursion-gnark-ffi-6.1.0/src/ffi/docker.rs:98:61:
+failed to prove with docker: Docker command failed 
+ --- stdout: --- 
+Setting environment variables took 1.039125ms
+
+ --- stderr: --- 
+
+
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+thread 'main' (2415178) panicked at src/bin/prove.rs:58:10:
+real local Groth16 proof: Unexpected(artifact not found)

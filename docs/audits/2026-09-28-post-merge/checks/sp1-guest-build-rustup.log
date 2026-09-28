@@ -1,0 +1,25 @@
+cargo:warning=rustc +succinct --version: "rustc 1.93.0-dev\n"
+[sp1]     Compiling p3-maybe-rayon v0.3.2-succinct
+[sp1]     Compiling p3-util v0.3.2-succinct
+[sp1]     Compiling sp1-zkvm v6.1.0
+[sp1]     Compiling p3-field v0.3.2-succinct
+[sp1]     Compiling p3-symmetric v0.3.2-succinct
+[sp1]     Compiling p3-matrix v0.3.2-succinct
+[sp1]     Compiling slop-algebra v6.1.0
+[sp1]     Compiling slop-symmetric v6.1.0
+[sp1]     Compiling p3-challenger v0.3.2-succinct
+[sp1]     Compiling slop-primitives v6.1.0
+[sp1]     Compiling p3-dft v0.3.2-succinct
+[sp1]     Compiling p3-mds v0.3.2-succinct
+[sp1]     Compiling slop-challenger v6.1.0
+[sp1]     Compiling p3-poseidon2 v0.3.2-succinct
+[sp1]     Compiling slop-poseidon2 v6.1.0
+[sp1]     Compiling p3-bn254-fr v0.3.2-succinct
+[sp1]     Compiling p3-koala-bear v0.3.2-succinct
+[sp1]     Compiling slop-koala-bear v6.1.0
+[sp1]     Compiling slop-bn254 v6.1.0
+[sp1]     Compiling sp1-primitives v6.1.0
+[sp1]     Compiling sp1-lib v6.1.0
+[sp1]     Compiling perp-core-guest v0.0.0 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/sp1-guest)
+[sp1]      Finished `release` profile [optimized] target(s) in 3.12s
+cargo:rustc-env=SP1_ELF_perp-core-guest=/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/sp1-guest/target/elf-compilation/riscv64im-succinct-zkvm-elf/release/perp-core-guest

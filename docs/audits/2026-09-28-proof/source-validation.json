@@ -1,0 +1,77 @@
+{
+  "subject": "0a48d45862c1f2f177eb668bb6d549b32d6090dce5185e2bd0b7cc204895ee2a",
+  "candidate_sha": "1b7858925374569bc806ed1a9a29479e45c13b4f",
+  "checks": [
+    {
+      "record": "lru/host-tests-final.json",
+      "passed": true,
+      "relevant_files": 68,
+      "current_relevant_source_equal": true
+    },
+    {
+      "record": "lru/cache-test.json",
+      "passed": true,
+      "relevant_files": 68,
+      "current_relevant_source_equal": true
+    },
+    {
+      "record": "lru/prove-build-verified-elf.json",
+      "passed": true,
+      "relevant_files": 68,
+      "current_relevant_source_equal": true
+    },
+    {
+      "record": "lru/service-tests.json",
+      "passed": true,
+      "relevant_files": 68,
+      "current_relevant_source_equal": true
+    },
+    {
+      "record": "lru/host-audit-final.json",
+      "passed": true,
+      "relevant_files": 68,
+      "current_relevant_source_equal": true
+    },
+    {
+      "record": "lru/service-audit-final.json",
+      "passed": true,
+      "relevant_files": 68,
+      "current_relevant_source_equal": true
+    },
+    {
+      "record": "checks/release-guards.json",
+      "passed": true,
+      "relevant_files": 72,
+      "current_relevant_source_equal": true,
+      "note": "Only exact relevant source is inherited; later CI-only and generated-bytecode-ignore changes do not affect these tests."
+    },
+    {
+      "record": "checks/artifact-gates.json",
+      "passed": true,
+      "relevant_files": 41,
+      "current_relevant_source_equal": true,
+      "note": "Only exact relevant source is inherited; later CI-only and generated-bytecode-ignore changes do not affect these tests."
+    },
+    {
+      "record": "checks/foundry.json",
+      "passed": true,
+      "relevant_files": 41,
+      "current_relevant_source_equal": true,
+      "note": "Only exact relevant source is inherited; later CI-only and generated-bytecode-ignore changes do not affect these tests."
+    },
+    {
+      "record": "checks/real-verifier-guards.json",
+      "passed": true,
+      "relevant_files": 41,
+      "current_relevant_source_equal": true,
+      "note": "Only exact relevant source is inherited; later CI-only and generated-bytecode-ignore changes do not affect these tests."
+    }
+  ],
+  "proof_attempt": {
+    "exit_code": 101,
+    "relevant_source_unchanged": true,
+    "completed_proof_present": false,
+    "status": "BLOCKED_BY_GNARK_MEMORY"
+  },
+  "scope": "Code/test freshness verification; not complete proof or original-task closure."
+}

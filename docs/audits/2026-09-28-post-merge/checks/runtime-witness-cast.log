@@ -1,0 +1,9 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.32s
+     Running unittests src/main.rs (target/debug/deps/gateway-61fe52f6f92c0e7c)
+
+running 2 tests
+test l1::witness_tests::runtime_witness_native_cast_failure_at_every_read_redacts_and_never_falls_back ... ok
+test l1::witness_tests::runtime_witness_native_cast_agreement_and_disagreement_matrix ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 418 filtered out; finished in 6.50s
+

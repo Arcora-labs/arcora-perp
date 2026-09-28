@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "scope": "Unmodified minimal v6.1.0 Groth16 verifier and gateway; no production deployment.",
+  "upstreams": [
+    {
+      "repository": "https://github.com/succinctlabs/sp1-contracts",
+      "commit": "2ac5ecbbe473421a963d67e55f182e9a36576f7c",
+      "tag": "v6.1.0",
+      "archive_url": "https://codeload.github.com/succinctlabs/sp1-contracts/tar.gz/2ac5ecbbe473421a963d67e55f182e9a36576f7c",
+      "archive_sha256": "f9466b50856007220cc8e10cb9bd02a162c779ab0efc74668fe2906e4a8116a5"
+    },
+    {
+      "repository": "https://github.com/OpenZeppelin/openzeppelin-contracts",
+      "commit": "dbb6104ce834628e473d2173bbc9d47f81a9eec3",
+      "tag": "v5.0.2",
+      "archive_url": "https://codeload.github.com/OpenZeppelin/openzeppelin-contracts/tar.gz/dbb6104ce834628e473d2173bbc9d47f81a9eec3",
+      "archive_sha256": "4a9c091852052f4319173629e0bf0b5cdf7a39d70e5e2298a7a6a149eff9f385"
+    }
+  ],
+  "files": {
+    "src/ISP1Verifier.sol": {
+      "sha256": "9e918032a5aa799c1319b14b013154d6a40ca6e5f2267c9f540560abd7fd7689",
+      "size_bytes": 955,
+      "repository": "https://github.com/succinctlabs/sp1-contracts",
+      "commit": "2ac5ecbbe473421a963d67e55f182e9a36576f7c",
+      "upstream_path": "contracts/src/ISP1Verifier.sol"
+    },
+    "src/ISP1VerifierGateway.sol": {
+      "sha256": "23ccc08eea99c09c943c0ad5fa16eb3edfcad4a35c18a56c6380ef14ea206a82",
+      "size_bytes": 3187,
+      "repository": "https://github.com/succinctlabs/sp1-contracts",
+      "commit": "2ac5ecbbe473421a963d67e55f182e9a36576f7c",
+      "upstream_path": "contracts/src/ISP1VerifierGateway.sol"
+    },
+    "src/SP1VerifierGateway.sol": {
+      "sha256": "f64ebba81d1884b144a8ce53c9563f04a88a65367760c0f6e34f5f8cc8a6e3ed",
+      "size_bytes": 2322,
+      "repository": "https://github.com/succinctlabs/sp1-contracts",
+      "commit": "2ac5ecbbe473421a963d67e55f182e9a36576f7c",
+      "upstream_path": "contracts/src/SP1VerifierGateway.sol"
+    },
+    "src/v6.1.0/SP1VerifierGroth16.sol": {
+      "sha256": "48e1db5baca3b102242ebd88280b3689a088076688146cd0d98876f5dacb76d0",
+      "size_bytes": 3236,
+      "repository": "https://github.com/succinctlabs/sp1-contracts",
+      "commit": "2ac5ecbbe473421a963d67e55f182e9a36576f7c",
+      "upstream_path": "contracts/src/v6.1.0/SP1VerifierGroth16.sol"
+    },
+    "src/v6.1.0/Groth16Verifier.sol": {
+      "sha256": "d5e777120d9f675aefcc8c0c8786d4043acb8e063646e60818564b44fb2ec457",
+      "size_bytes": 26770,
+      "repository": "https://github.com/succinctlabs/sp1-contracts",
+      "commit": "2ac5ecbbe473421a963d67e55f182e9a36576f7c",
+      "upstream_path": "contracts/src/v6.1.0/Groth16Verifier.sol"
+    },
+    "lib/openzeppelin-contracts/LICENSE": {
+      "sha256": "0e05b4f45c8769ece14ba2d202bf6f5ed7132600b642c981266f7255e0187ea3",
+      "size_bytes": 1107,
+      "repository": "https://github.com/OpenZeppelin/openzeppelin-contracts",
+      "commit": "dbb6104ce834628e473d2173bbc9d47f81a9eec3",
+      "upstream_path": "LICENSE"
+    },
+    "lib/openzeppelin-contracts/contracts/access/Ownable.sol": {
+      "sha256": "38578bd71c0a909840e67202db527cc6b4e6b437e0f39f0c909da32c1e30cb81",
+      "size_bytes": 3102,
+      "repository": "https://github.com/OpenZeppelin/openzeppelin-contracts",
+      "commit": "dbb6104ce834628e473d2173bbc9d47f81a9eec3",
+      "upstream_path": "contracts/access/Ownable.sol"
+    },
+    "lib/openzeppelin-contracts/contracts/utils/Context.sol": {
+      "sha256": "847fda5460fee70f56f4200f59b82ae622bb03c79c77e67af010e31b7e2cc5b6",
+      "size_bytes": 963,
+      "repository": "https://github.com/OpenZeppelin/openzeppelin-contracts",
+      "commit": "dbb6104ce834628e473d2173bbc9d47f81a9eec3",
+      "upstream_path": "contracts/utils/Context.sol"
+    }
+  }
+}

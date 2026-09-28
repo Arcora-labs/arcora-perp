@@ -1,0 +1,238 @@
+   Compiling num-bigint v0.4.8
+   Compiling num-traits v0.2.19
+   Compiling p3-util v0.3.2-succinct
+   Compiling p3-field v0.3.2-succinct
+   Compiling num-integer v0.1.47
+   Compiling p3-maybe-rayon v0.3.2-succinct
+   Compiling p3-matrix v0.3.2-succinct
+   Compiling zeroize v1.9.0
+   Compiling typenum v1.20.1
+   Compiling p3-symmetric v0.3.2-succinct
+   Compiling generic-array v0.14.9
+   Compiling ark-ff-macros v0.4.2
+   Compiling const-oid v0.9.6
+   Compiling crypto-common v0.1.6
+   Compiling block-buffer v0.10.4
+   Compiling digest v0.10.7
+   Compiling p3-dft v0.3.2-succinct
+   Compiling p3-challenger v0.3.2-succinct
+   Compiling futures-core v0.3.34
+   Compiling futures-channel v0.3.34
+   Compiling slop-algebra v6.1.0
+   Compiling futures-util v0.3.34
+   Compiling p3-mds v0.3.2-succinct
+   Compiling p3-poseidon2 v0.3.2-succinct
+   Compiling slop-symmetric v6.1.0
+   Compiling regex-syntax v0.8.11
+   Compiling futures-executor v0.3.34
+   Compiling futures v0.3.34
+   Compiling slop-challenger v6.1.0
+   Compiling regex-automata v0.4.18
+   Compiling sha2 v0.10.9
+   Compiling slop-poseidon2 v6.1.0
+   Compiling ark-serialize v0.4.2
+   Compiling p3-commit v0.3.2-succinct
+   Compiling ark-ff v0.4.2
+   Compiling sha3 v0.10.9
+   Compiling blake2 v0.10.6
+   Compiling zkhash v0.2.0
+   Compiling p3-koala-bear v0.3.2-succinct
+   Compiling p3-bn254-fr v0.3.2-succinct
+   Compiling crossbeam-channel v0.5.17
+   Compiling crossbeam-queue v0.3.14
+   Compiling smallvec v1.16.2
+   Compiling crossbeam v0.8.5
+   Compiling slop-bn254 v6.1.0
+   Compiling slop-koala-bear v6.1.0
+   Compiling slop-alloc v6.1.0
+   Compiling pin-project v1.1.13
+   Compiling tokio v1.53.1
+   Compiling strength_reduce v0.2.4
+   Compiling transpose v0.2.3
+   Compiling slop-primitives v6.1.0
+   Compiling slop-matrix v6.1.0
+   Compiling ark-std v0.4.0
+   Compiling base64ct v1.8.3
+   Compiling pem-rfc7468 v0.7.0
+   Compiling matchers v0.2.0
+   Compiling tracing-log v0.2.0
+   Compiling slop-futures v6.1.0
+   Compiling slop-tensor v6.1.0
+   Compiling sharded-slab v0.1.7
+   Compiling thread_local v1.1.10
+   Compiling nu-ansi-term v0.50.3
+   Compiling num-order v1.2.0
+   Compiling tracing-subscriber v0.3.23
+   Compiling der v0.7.10
+   Compiling slop-commit v6.1.0
+   Compiling dashu-int v0.4.3
+   Compiling p3-baby-bear v0.3.2-succinct
+   Compiling dashu-base v0.4.3
+   Compiling ansi_term v0.12.1
+   Compiling tracing-forest v0.1.6
+   Compiling slop-baby-bear v6.1.0
+   Compiling spki v0.7.3
+   Compiling num_cpus v1.17.0
+   Compiling slop-multilinear v6.1.0
+   Compiling pkcs8 v0.10.2
+   Compiling dashu-float v0.4.5
+   Compiling slop-utils v6.1.0
+   Compiling p3-merkle-tree v0.3.2-succinct
+   Compiling p3-interpolation v0.3.2-succinct
+   Compiling base16ct v0.2.0
+   Compiling sec1 v0.7.3
+   Compiling p3-fri v0.3.2-succinct
+   Compiling slop-merkle-tree v6.1.0
+   Compiling dashu-ratio v0.4.4
+   Compiling crypto-bigint v0.5.5
+   Compiling sp1-derive v6.1.0
+   Compiling konst_macro_rules v0.2.19
+   Compiling dashu-macros v0.4.2
+   Compiling sp1-primitives v6.1.0
+   Compiling konst v0.2.20
+   Compiling elliptic-curve v0.13.8
+   Compiling slop-basefold v6.1.0
+   Compiling slop-fri v6.1.0
+   Compiling slop-dft v6.1.0
+   Compiling ahash v0.8.12
+   Compiling hmac v0.12.1
+   Compiling parity-scale-codec v3.7.5
+   Compiling sp1-jit v6.1.0
+   Compiling rfc6979 v0.4.0
+   Compiling slop-basefold-prover v6.1.0
+   Compiling const_format v0.2.36
+   Compiling signature v2.2.0
+   Compiling p3-air v0.3.2-succinct
+   Compiling byte-slice-cast v1.2.3
+   Compiling allocator-api2 v0.2.21
+   Compiling hashbrown v0.14.5
+   Compiling ecdsa v0.16.9
+   Compiling slop-stacked v6.1.0
+   Compiling slop-sumcheck v6.1.0
+   Compiling derive_more v1.0.0
+   Compiling sp1-core-executor v6.1.0
+   Compiling scale-info v2.11.6
+   Compiling slop-jagged v6.1.0
+   Compiling p3-uni-stark v0.3.2-succinct
+   Compiling primeorder v0.13.6
+   Compiling crunchy v0.2.4
+   Compiling num-rational v0.4.2
+   Compiling num-iter v0.1.46
+   Compiling num-complex v0.4.6
+   Compiling memmap2 v0.9.11
+   Compiling fnv v1.0.7
+   Compiling num v0.4.3
+   Compiling dynasmrt v3.2.1
+   Compiling p256 v0.13.2
+   Compiling slop-uni-stark v6.1.0
+   Compiling slop-whir v6.1.0
+   Compiling snowbridge-amcl v1.0.2
+   Compiling k256 v0.13.4
+   Compiling deepsize2 v0.1.0
+   Compiling slop-air v6.1.0
+   Compiling eyre v0.6.14
+   Compiling num_enum v0.5.11
+   Compiling dashu v0.4.4
+   Compiling tiny-keccak v2.0.2
+   Compiling strum v0.27.2
+   Compiling uuid v1.26.1
+   Compiling memfd v0.6.6
+   Compiling generic-array v1.1.0
+   Compiling rayon-scan v0.1.1
+   Compiling arrayref v0.3.9
+   Compiling thousands v0.2.0
+   Compiling downcast-rs v1.2.1
+   Compiling indenter v0.3.4
+   Compiling rrs-succinct v0.2.0
+   Compiling sp1-hypercube v6.1.0
+   Compiling sp1-curves v6.1.0
+   Compiling enum-map v2.7.3
+   Compiling slop-maybe-rayon v6.1.0
+   Compiling vec_map v0.8.2
+   Compiling serde_arrays v0.2.0
+   Compiling bytemuck v1.25.2
+   Compiling sp1-core-executor-runner-binary v6.1.0
+   Compiling parking_lot_core v0.9.12
+   Compiling scopeguard v1.2.0
+   Compiling lock_api v0.4.14
+   Compiling mach2 v0.4.3
+   Compiling crash-context v0.6.3
+   Compiling parking_lot v0.12.5
+   Compiling crash-handler v0.7.0
+   Compiling bytes v1.12.1
+   Compiling prettyplease v0.2.37
+   Compiling prost v0.13.5
+   Compiling range-set-blaze v0.1.16
+   Compiling sp1-core-executor-runner v6.1.0
+   Compiling sp1-recursion-executor v6.1.0
+   Compiling prost-types v0.13.5
+   Compiling p3-keccak-air v0.3.2-succinct
+   Compiling regex v1.13.1
+   Compiling prost-build v0.13.5
+   Compiling slop-keccak-air v6.1.0
+   Compiling tonic-build v0.12.3
+   Compiling sp1-recursion-machine v6.1.0
+   Compiling substrate-bn-succinct-rs v0.6.0
+   Compiling chrono v0.4.45
+   Compiling sp1-prover-types v6.1.0
+   Compiling curve25519-dalek v4.1.3
+   Compiling sp1-recursion-gnark-ffi v6.1.0
+   Compiling sp1-verifier v6.1.0
+   Compiling sp1-build v6.1.0
+   Compiling reqwest v0.12.28
+   Compiling perp-core v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/perp-core)
+   Compiling dcap-qvl-webpki v0.103.4+dcap.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/vendor/dcap-qvl-webpki)
+   Compiling dcap-qvl v0.5.3
+   Compiling x25519-dalek v2.0.1
+   Compiling prover-service v0.0.0 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/prover-service)
+warning: prover-service@0.0.0: Build skipped for perp-core-guest at 2026-09-28 16:53:18 due to SP1_SKIP_PROGRAM_BUILD flag
+   Compiling dark-perp-attestation v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/attestation)
+warning: use of deprecated method `sha2::digest::generic_array::GenericArray::<T, N>::as_slice`: please upgrade to generic-array 1.x
+   --> /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/attestation/src/vtpm.rs:239:32
+    |
+239 |     if Sha256::digest(runtime).as_slice() != &td.report_data[..32] {
+    |                                ^^^^^^^^
+    |
+    = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated method `sha2::digest::generic_array::GenericArray::<T, N>::as_slice`: please upgrade to generic-array 1.x
+   --> /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/attestation/src/vtpm.rs:270:21
+    |
+270 |     if h.finalize().as_slice() != q.pcr_digest {
+    |                     ^^^^^^^^
+
+warning: `dark-perp-attestation` (lib) generated 2 warnings
+   Compiling prover v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/prover)
+   Compiling sp1-core-machine v6.1.0
+   Compiling sp1-recursion-compiler v6.1.0
+   Compiling sp1-recursion-circuit v6.1.0
+   Compiling sp1-prover v6.1.0
+   Compiling sp1-sdk v6.1.0
+    Finished `release` profile [optimized] target(s) in 4m 35s
+     Running unittests src/main.rs (/tmp/arcora-prover-service-target/release/deps/prover_service-cbeeb1073c540dc6)
+
+running 9 tests
+test shutdown_tests::owned_shutdown_child ... ignored, owned subprocess fixture; launched by the SIGTERM parent tests
+test admission::tests::token_and_configuration_boundaries_fail_closed ... ok
+
+thread 'tokio-rt-worker' (2275885) panicked at src/admission.rs:401:30:
+injected worker failure
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test admission::tests::overload_is_rejected_before_body_polling_and_shutdown_stays_closed ... ok
+test admission::tests::cancelling_waiter_does_not_release_a_running_blocking_worker_slot ... ok
+test admission::tests::worker_panic_remains_an_error_and_does_not_strand_shutdown ... ok
+test admission::tests::authentication_precedes_body_polling_and_json_errors ... ok
+test admission::tests::admitted_stalled_body_times_out_and_releases_its_slot ... ok
+PROVER_PROCESS_DRAIN {"cancelledHttpClient":false,"handlerCancelledBeforeWorkerRelease":false,"signal":"SIGTERM","listenerClosedBeforeWorkerRelease":true,"slotRetainedAfterClientDisconnect":false,"admissionClosed":true,"postDrainAdmissionStatus":503,"workerCompletedBeforeExit":true,"processExit":0,"elapsedAfterSignalMs":137,"realProof":false}
+test shutdown_tests::sigterm_drains_accepted_request_before_owned_process_exit ... ok
+PROVER_PROCESS_DRAIN {"cancelledHttpClient":true,"handlerCancelledBeforeWorkerRelease":true,"signal":"SIGTERM","listenerClosedBeforeWorkerRelease":true,"slotRetainedAfterClientDisconnect":true,"admissionClosed":true,"postDrainAdmissionStatus":503,"workerCompletedBeforeExit":true,"processExit":0,"elapsedAfterSignalMs":135,"realProof":false}
+test shutdown_tests::sigterm_after_http_cancellation_keeps_owned_worker_until_completion ... ok
+
+test result: ok. 8 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.16s
+
+     Running unittests src/bin/seal-client.rs (/tmp/arcora-prover-service-target/release/deps/seal_client-5f2c10bbdceee314)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

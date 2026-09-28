@@ -1,0 +1,66 @@
+{
+  "a06_executed": false,
+  "artifacts": {
+    "bad-manifest.witness.bin": {
+      "sha256": "5777f76c6ce9d0156172115165bde15c75086c18f42dff11e8339f2ee11444c5",
+      "size_bytes": 956
+    },
+    "guest.elf": {
+      "sha256": "82938f5db13d7da2cc48fc18e36ba6a5e6d5f0736154ae9e105b33b8717918d7",
+      "size_bytes": 515336
+    },
+    "normal.public-values.bin": {
+      "sha256": "e7eee1d27a0463030395307a87f61de2d86608d4998ab7cef0f947a8480a076a",
+      "size_bytes": 32
+    },
+    "normal.witness.bin": {
+      "sha256": "0f6f5c96dd9e195f32c63d3c2a72cefe4ef2bdc821fda52485d7fc03c4592dc7",
+      "size_bytes": 956
+    },
+    "unauthorized-withdrawal.witness.bin": {
+      "sha256": "16295e94527b05f109ab2a13be6fb53afa8c94242f89928a169869da92d3b2ed",
+      "size_bytes": 956
+    }
+  },
+  "cycles": 449957,
+  "guest_exit_code": 0,
+  "kind": "ordinary-native-guest-execution",
+  "native_deserialized_same_witness": true,
+  "native_guest_equal": true,
+  "negative_checks_requested": true,
+  "negatives": [
+    {
+      "case": "bad-manifest",
+      "cycles": 115694,
+      "guest_exit_code": 1,
+      "native_error": "ManifestMismatch",
+      "public_values_bytes": 0,
+      "witness_sha256": "5777f76c6ce9d0156172115165bde15c75086c18f42dff11e8339f2ee11444c5"
+    },
+    {
+      "case": "unauthorized-withdrawal",
+      "cycles": 156555,
+      "guest_exit_code": 1,
+      "native_error": "BadSpendKey",
+      "public_values_bytes": 0,
+      "witness_sha256": "16295e94527b05f109ab2a13be6fb53afa8c94242f89928a169869da92d3b2ed"
+    }
+  ],
+  "proof_generated": false,
+  "roots": {
+    "commitment": "0xdba12bfa8b5b7c54bd7035e2fdc92615c9b1f653d16b2230f3a5da7a4ff57abd",
+    "deposits_root": "0xbc57e60cf7286c5a124c5c646abf81bb81ff8c253761257d2b315cfc93865fce",
+    "manifest_hash": "0xa8b0492b151b5cb7389be0a59eb3b1b1c23dedea16790a030fd5f64eb4b06fc2",
+    "new_deposit_count": 1,
+    "new_root": "0x73a7c5ae44df6cfd4e82245d91679c98886eb01b97518d86526664b7b05d5227",
+    "ordered_root": "0x0000000000000000000000000000000000000000000000000000000000000000",
+    "prev_root": "0xda245ab4aff31fae5ac2c237ade01a2607c7e5d91e3e8a231b88f6329820d232",
+    "rejected_root": "0x0000000000000000000000000000000000000000000000000000000000000000",
+    "wind_down_phase": 0,
+    "withdrawals_root": "0x69e35192c9cc77522e280e62a67d000ffb45cd7fedc84e3e28597502e855a19d"
+  },
+  "schema_version": 1,
+  "scope": "Synthetic ordinary deposit/withdraw only; no observed L1 deposit, proof or token lifecycle. Does not close combined S5-02.",
+  "sdk_version": "6.1.0",
+  "witness_sha256": "0f6f5c96dd9e195f32c63d3c2a72cefe4ef2bdc821fda52485d7fc03c4592dc7"
+}

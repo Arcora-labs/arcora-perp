@@ -1,0 +1,50 @@
+{
+  "advisory": {
+    "ghsa_id": "GHSA-63x8-x938-vx33",
+    "cve_id": "CVE-2026-40323",
+    "html_url": "https://github.com/succinctlabs/sp1/security/advisories/GHSA-63x8-x938-vx33",
+    "summary": "Security Advisory: SP1 V6 Recursion Circuit Row-Count Binding Gap",
+    "severity": "high",
+    "published_at": "2026-04-11T04:28:35Z",
+    "updated_at": "2026-04-13T15:03:14Z",
+    "vulnerabilities": [
+      {
+        "package": {
+          "ecosystem": "rust",
+          "name": "sp1_sdk"
+        },
+        "vulnerable_version_range": "<6.0.2",
+        "patched_versions": "6.1.0",
+        "vulnerable_functions": []
+      },
+      {
+        "package": {
+          "ecosystem": "rust",
+          "name": "sp1_recursion_circuit"
+        },
+        "vulnerable_version_range": "<6.0.2",
+        "patched_versions": "6.1.0",
+        "vulnerable_functions": []
+      },
+      {
+        "package": {
+          "ecosystem": "rust",
+          "name": "sp1_prover"
+        },
+        "vulnerable_version_range": "<6.0.2",
+        "patched_versions": "6.1.0",
+        "vulnerable_functions": []
+      }
+    ]
+  },
+  "selected_release": "v6.1.0",
+  "release_url": "https://github.com/succinctlabs/sp1/releases/tag/v6.1.0",
+  "asset": {
+    "name": "cargo_prove_v6.1.0_darwin_arm64.tar.gz",
+    "browser_download_url": "https://github.com/succinctlabs/sp1/releases/download/v6.1.0/cargo_prove_v6.1.0_darwin_arm64.tar.gz",
+    "digest": "sha256:458d011e5cd7a8ce841e545a65b46c9a92bf5e01cbc0b9cf0bfc5c8f09dfaf1d"
+  },
+  "downloaded_archive_sha256": "458d011e5cd7a8ce841e545a65b46c9a92bf5e01cbc0b9cf0bfc5c8f09dfaf1d",
+  "asset_digest_matches": true,
+  "scope": "Official metadata identifies6.1.0 as patched. It inconsistently lists affected<6.0.2 in package metadata versus through6.0.2 in description; previous6.0.0 is affected under both. No exploit attempted. Other advisories remain separately tracked."
+}

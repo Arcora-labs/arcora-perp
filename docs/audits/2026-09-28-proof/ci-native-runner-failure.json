@@ -1,0 +1,11 @@
+{
+  "head": "d2caa303b701f05127f23a27a7ea874ac26dc1be",
+  "job_url": "https://github.com/Kubudak90/dark-perp/actions/runs/36446014399/job/109008386676",
+  "status": "FAILURE",
+  "cause": "Cached build-script output points to absent SP1 native-runner helper under registry source target; outer target cache does not preserve that nested binary.",
+  "fix": "Clean only sp1-core-executor-runner in both standalone targets after cache restore so upstream rebuilds the real helper. Real locked typechecks unchanged.",
+  "validation": "Actual fresh Linux CI passed at the fixed source head; neither real typecheck nor guest stub scope was widened.",
+  "fixed_head": "1b7858925374569bc806ed1a9a29479e45c13b4f",
+  "fixed_job_url": "https://github.com/Kubudak90/dark-perp/actions/runs/36447576381/job/109013742789",
+  "fixed_job_conclusion": "SUCCESS"
+}

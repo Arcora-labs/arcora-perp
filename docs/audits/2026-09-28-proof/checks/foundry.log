@@ -1,0 +1,249 @@
+Warning: This is a nightly build of Foundry. It is recommended to use the latest stable version. To mute this warning set `FOUNDRY_DISABLE_NIGHTLY_WARNING` in your environment. 
+
+Compiling 26 files with Solc 0.8.24
+Solc 0.8.24 finished in 1.97s
+Compiler run successful with warnings:
+Warning (2018): Function state mutability can be restricted to pure
+ --> test/DeployGuard.t.sol:9:5:
+  |
+9 |     function test_testnets_allow_the_mock_verifier() public {
+  |     ^ (Relevant source part starts here and spans across multiple lines).
+
+Warning (2018): Function state mutability can be restricted to pure
+  --> test/DeployGuard.t.sol:15:5:
+   |
+15 |     function test_real_value_chains_block_the_mock_verifier() public {
+   |     ^ (Relevant source part starts here and spans across multiple lines).
+
+Warning (2018): Function state mutability can be restricted to view
+  --> test/Fuzz.t.sol:90:5:
+   |
+90 |     function testFuzz_inclusion_leaf_is_not_an_internal_node(uint256 batchId, bytes32 orderHash) public {
+   |     ^ (Relevant source part starts here and spans across multiple lines).
+
+2026-09-28T15:43:57.223486Z  WARN forge::test: failed calling "targetArtifactSelectors()": execution reverted: EvmError: Revert (gas: 21232)
+2026-09-28T15:43:57.223436Z  WARN forge::test: failed calling "targetArtifactSelectors()": execution reverted: EvmError: Revert (gas: 21232)
+2026-09-28T15:43:57.223902Z  WARN forge::test: failed calling "targetArtifacts()": execution reverted: EvmError: Revert (gas: 21232)
+2026-09-28T15:43:57.223941Z  WARN forge::test: failed calling "targetArtifacts()": execution reverted: EvmError: Revert (gas: 21232)
+2026-09-28T15:43:57.223975Z  WARN forge::test: failed calling "excludeArtifacts()": execution reverted: EvmError: Revert (gas: 21232)
+2026-09-28T15:43:57.223959Z  WARN forge::test: failed calling "excludeArtifacts()": execution reverted: EvmError: Revert (gas: 21232)
+2026-09-28T15:43:57.224023Z  WARN forge::test: failed calling "targetSenders()": execution reverted: EvmError: Revert (gas: 21232)
+2026-09-28T15:43:57.224030Z  WARN forge::test: failed calling "targetSenders()": execution reverted: EvmError: Revert (gas: 21232)
+2026-09-28T15:43:57.224048Z  WARN forge::test: failed calling "excludeSenders()": execution reverted: EvmError: Revert (gas: 21232)
+2026-09-28T15:43:57.224067Z  WARN forge::test: failed calling "excludeSenders()": execution reverted: EvmError: Revert (gas: 21232)
+2026-09-28T15:43:57.224318Z  WARN forge::test: failed calling "excludeContracts()": execution reverted: EvmError: Revert (gas: 21232)
+2026-09-28T15:43:57.224319Z  WARN forge::test: failed calling "excludeContracts()": execution reverted: EvmError: Revert (gas: 21232)
+2026-09-28T15:43:57.224540Z  WARN forge::test: failed calling "targetInterfaces()": execution reverted: EvmError: Revert (gas: 21232)
+2026-09-28T15:43:57.224540Z  WARN forge::test: failed calling "targetInterfaces()": execution reverted: EvmError: Revert (gas: 21232)
+2026-09-28T15:43:57.224552Z  WARN forge::test: failed calling "targetSelectors()": execution reverted: EvmError: Revert (gas: 21232)
+2026-09-28T15:43:57.224572Z  WARN forge::test: failed calling "targetSelectors()": execution reverted: EvmError: Revert (gas: 21232)
+2026-09-28T15:43:57.224588Z  WARN forge::test: failed calling "excludeSelectors()": execution reverted: EvmError: Revert (gas: 21232)
+2026-09-28T15:43:57.224603Z  WARN forge::test: failed calling "excludeSelectors()": execution reverted: EvmError: Revert (gas: 21232)
+2026-09-28T15:43:57.229860Z  WARN forge::test: failed calling "targetArtifactSelectors()": execution reverted: EvmError: Revert (gas: 21232)
+2026-09-28T15:43:57.229878Z  WARN forge::test: failed calling "targetArtifacts()": execution reverted: EvmError: Revert (gas: 21232)
+2026-09-28T15:43:57.229887Z  WARN forge::test: failed calling "excludeArtifacts()": execution reverted: EvmError: Revert (gas: 21232)
+2026-09-28T15:43:57.229898Z  WARN forge::test: failed calling "targetSenders()": execution reverted: EvmError: Revert (gas: 21232)
+2026-09-28T15:43:57.229906Z  WARN forge::test: failed calling "excludeSenders()": execution reverted: EvmError: Revert (gas: 21232)
+2026-09-28T15:43:57.229929Z  WARN forge::test: failed calling "excludeContracts()": execution reverted: EvmError: Revert (gas: 21232)
+2026-09-28T15:43:57.229938Z  WARN forge::test: failed calling "targetInterfaces()": execution reverted: EvmError: Revert (gas: 21232)
+2026-09-28T15:43:57.229945Z  WARN forge::test: failed calling "targetSelectors()": execution reverted: EvmError: Revert (gas: 21232)
+2026-09-28T15:43:57.229951Z  WARN forge::test: failed calling "excludeSelectors()": execution reverted: EvmError: Revert (gas: 21232)
+2026-09-28T15:43:57.230834Z  WARN forge::test: failed calling "targetArtifactSelectors()": execution reverted: EvmError: Revert (gas: 21232)
+2026-09-28T15:43:57.230842Z  WARN forge::test: failed calling "targetArtifacts()": execution reverted: EvmError: Revert (gas: 21232)
+2026-09-28T15:43:57.230849Z  WARN forge::test: failed calling "excludeArtifacts()": execution reverted: EvmError: Revert (gas: 21232)
+2026-09-28T15:43:57.230857Z  WARN forge::test: failed calling "targetSenders()": execution reverted: EvmError: Revert (gas: 21232)
+2026-09-28T15:43:57.230863Z  WARN forge::test: failed calling "excludeSenders()": execution reverted: EvmError: Revert (gas: 21232)
+2026-09-28T15:43:57.230874Z  WARN forge::test: failed calling "excludeContracts()": execution reverted: EvmError: Revert (gas: 21232)
+2026-09-28T15:43:57.230884Z  WARN forge::test: failed calling "targetInterfaces()": execution reverted: EvmError: Revert (gas: 21232)
+2026-09-28T15:43:57.230889Z  WARN forge::test: failed calling "targetSelectors()": execution reverted: EvmError: Revert (gas: 21232)
+2026-09-28T15:43:57.230894Z  WARN forge::test: failed calling "excludeSelectors()": execution reverted: EvmError: Revert (gas: 21232)
+
+Ran 2 tests for test/DeployGuard.t.sol:DeployGuardTest
+[PASS] test_real_value_chains_block_the_mock_verifier() (gas: 1133)
+[PASS] test_testnets_allow_the_mock_verifier() (gas: 970)
+Suite result: ok. 2 passed; 0 failed; 0 skipped; finished in 118.67µs (16.83µs CPU time)
+
+Ran 5 tests for test/SP1ZkVerifier.t.sol:SP1ZkVerifierTest
+[PASS] test_immutables_pinned() (gas: 8474)
+[PASS] test_verify_false_on_bad_proof() (gas: 106799)
+[PASS] test_verify_false_on_wrong_commitment() (gas: 106521)
+[PASS] test_verify_false_on_wrong_vkey() (gas: 280898)
+[PASS] test_verify_true_on_matching_proof() (gas: 107112)
+Suite result: ok. 5 passed; 0 failed; 0 skipped; finished in 320.38µs (180.33µs CPU time)
+
+Ran 8 tests for test/AttestationRegistry.t.sol:AttestationRegistryTest
+[PASS] test_accepts_sw_hardening_needed() (gas: 690237)
+[PASS] test_register_rejects_a_non_owner() (gas: 656856)
+[PASS] test_registers_a_current_matching_enclave() (gas: 688293)
+[PASS] test_rejects_a_degraded_tcb() (gas: 668185)
+[PASS] test_rejects_a_measurement_mismatch() (gas: 666416)
+[PASS] test_rejects_an_rtmr_mismatch() (gas: 666663)
+[PASS] test_rejects_an_unverified_quote() (gas: 662872)
+[PASS] test_rejects_truncated_report_data() (gas: 634585)
+Suite result: ok. 8 passed; 0 failed; 0 skipped; finished in 2.42ms (1.56ms CPU time)
+
+Ran 1 test for test/DeployVerifierEnv.t.sol:DeployVerifierEnvTest
+[PASS] test_verifier_env_override() (gas: 26989017)
+Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 3.30ms (2.84ms CPU time)
+
+Ran 4 tests for test/CrossLayer.t.sol:CrossLayerTest
+[PASS] test_a06_wind_down_phase_one_commitment_matches_rust() (gas: 7818)
+[PASS] test_public_commitment_matches_rust() (gas: 6185)
+[PASS] test_real_rust_receipt_passes_ecrecover() (gas: 2536507)
+[PASS] test_receipt_digest_matches_rust() (gas: 10192)
+Suite result: ok. 4 passed; 0 failed; 0 skipped; finished in 4.71ms (3.90ms CPU time)
+
+Ran 4 tests for test/Integration.t.sol:IntegrationTest
+[PASS] test_bond_floor_immune_to_donations() (gas: 221147)
+[PASS] test_deposit_settle_then_claim_from_vault() (gas: 488450)
+[PASS] test_settle_requires_a_bond_scaled_to_tvl() (gas: 458895)
+[PASS] test_withdrawals_only_from_settled_batches() (gas: 205878)
+Suite result: ok. 4 passed; 0 failed; 0 skipped; finished in 5.61ms (4.35ms CPU time)
+
+Ran 23 tests for test/CollateralVault.t.sol:CollateralVaultTest
+[PASS] test_a_bad_signature_does_not_consume_the_authorization() (gas: 208321)
+[PASS] test_a_distinct_authorization_still_deposits() (gas: 265378)
+[PASS] test_a_failed_transfer_leaves_the_authorization_usable() (gas: 232478)
+[PASS] test_claim_against_settled_root() (gas: 326763)
+[PASS] test_claim_with_bad_proof_rejected() (gas: 250790)
+[PASS] test_constructor_rejects_zero_gateway_signer() (gas: 38969)
+[PASS] test_depositTipAt_records_every_prefix() (gas: 281304)
+[PASS] test_deposit_accrues_total() (gas: 203060)
+[PASS] test_deposit_advances_chain_matching_rust_KAT() (gas: 277922)
+[PASS] test_deposit_chain_is_order_sensitive() (gas: 969898)
+[PASS] test_deposit_id_is_pre_increment_count() (gas: 196169)
+[PASS] test_deposit_leaf_encoding() (gas: 1152)
+[PASS] test_deposit_requires_approval() (gas: 97232)
+[PASS] test_deposit_requires_gateway_signature() (gas: 106142)
+[PASS] test_deposit_with_valid_gateway_sig_advances_chain_to_KAT() (gas: 275525)
+[PASS] test_failed_deposit_does_not_advance_chain() (gas: 103178)
+[PASS] test_local_s4_signature_cannot_cross_vault_or_chain() (gas: 952950)
+[PASS] test_older_published_root_is_still_claimable() (gas: 370731)
+[PASS] test_only_settlement_publishes_root() (gas: 10983)
+[PASS] test_replayed_authorization_is_refused() (gas: 248007)
+[PASS] test_sig_is_bound_to_from_ownerCommit_amount() (gas: 313145)
+[PASS] test_two_leaf_merkle_claim() (gas: 326796)
+[PASS] test_zero_root_is_never_a_valid_claim_root() (gas: 23536)
+Suite result: ok. 23 passed; 0 failed; 0 skipped; finished in 18.57ms (12.74ms CPU time)
+
+Ran 43 tests for test/DarkPerpSettlement.t.sol:DarkPerpSettlementTest
+[PASS] test_a06_finalExit_rejects_before_phase_one() (gas: 62061)
+[PASS] test_a06_finalSettle_rejects_ordinary_phase_zero_proof() (gas: 75019)
+[PASS] test_a06_final_settle_is_one_shot_and_phase_two_exit_is_repeatable() (gas: 369996)
+[PASS] test_a06_settleBatch_rejects_phase_one_proof() (gas: 45291)
+[PASS] test_answer_by_rejection_requires_membership() (gas: 288246)
+[PASS] test_answer_forced_inclusion_refunds_challenger() (gas: 255291)
+[PASS] test_answer_presettled_forfeits_to_sequencer() (gas: 250901)
+[PASS] test_answer_refund_is_pull_not_push() (gas: 255504)
+[PASS] test_answer_rejected_when_batch_lacks_order() (gas: 288237)
+[PASS] test_answer_with_batch_settled_after_challenge_succeeds() (gas: 250205)
+[PASS] test_bad_receipt_signature_rejected() (gas: 32698)
+[PASS] test_cannot_withdraw_bond_after_slash() (gas: 279872)
+[PASS] test_cannot_withdraw_bond_below_required_floor() (gas: 299710)
+[PASS] test_challenge_allowed_after_ripe() (gas: 145136)
+[PASS] test_challenge_requires_bond() (gas: 17258)
+[PASS] test_challenge_reverts_before_ripe() (gas: 31877)
+[PASS] test_deposit_blocked_in_close_only() (gas: 275338)
+[PASS] test_finalSettle_publish_then_claim() (gas: 458985)
+[PASS] test_finalSettle_reverts_before_grace() (gas: 62026)
+[PASS] test_finalSettle_reverts_non_governance() (gas: 60504)
+[PASS] test_finalSettle_reverts_when_not_closeOnly() (gas: 28183)
+[PASS] test_finalSettle_works_when_slashed() (gas: 307555)
+[PASS] test_inclusion_answered_clears_challenge() (gas: 247574)
+[PASS] test_inclusion_unanswered_slashes_bond() (gas: 337876)
+[PASS] test_liveness_triggers_close_only() (gas: 46201)
+[PASS] test_local_s4_non_sequencer_cannot_configure_bond_or_settle() (gas: 24940)
+[PASS] test_non_canonical_signature_rejected() (gas: 25163)
+[PASS] test_public_commitment_7word_matches_rust() (gas: 6398)
+[PASS] test_rejection_answer_always_forfeits() (gas: 250712)
+[PASS] test_settleBatch_selector_matches_nine_param_signature() (gas: 414)
+[PASS] test_settle_accepts_a_proven_prefix_while_head_moved() (gas: 442083)
+[PASS] test_settle_advances_root() (gas: 126740)
+[PASS] test_settle_at_l1_deposit_head_succeeds() (gas: 440509)
+[PASS] test_settle_binds_withdrawals_root() (gas: 194866)
+[PASS] test_settle_blocked_in_close_only() (gas: 54955)
+[PASS] test_settle_rejects_bad_prev_root() (gas: 34343)
+[PASS] test_settle_rejects_bad_proof() (gas: 66424)
+[PASS] test_settle_reverts_on_deposit_root_mismatch() (gas: 285558)
+[PASS] test_settle_reverts_on_wrong_prefix_root() (gas: 371796)
+[PASS] test_slash_after_closeOnly_does_not_reset_grace() (gas: 313152)
+[PASS] test_valid_rejection_answers_challenge() (gas: 264256)
+[PASS] test_withdraw_excess_bond() (gas: 135084)
+[PASS] test_zero_value_deposit_cannot_stall_settlement() (gas: 436273)
+Suite result: ok. 43 passed; 0 failed; 0 skipped; finished in 18.37ms (11.83ms CPU time)
+
+Ran 4 tests for test/Fuzz.t.sol:FuzzTest
+[PASS] testFuzz_claim_only_exact_leaf(address,uint96,uint96) (runs: 256, μ: 157623, ~: 157623)
+[PASS] testFuzz_inclusion_leaf_distinct(uint256,bytes32,uint256,bytes32) (runs: 256, μ: 10038, ~: 10038)
+[PASS] testFuzz_inclusion_leaf_is_not_an_internal_node(uint256,bytes32) (runs: 256, μ: 6222, ~: 6222)
+[PASS] testFuzz_settle_binds_roots(bytes32,bytes32,bytes32,bytes32) (runs: 256, μ: 138758, ~: 138758)
+Suite result: ok. 4 passed; 0 failed; 0 skipped; finished in 18.26ms (44.73ms CPU time)
+
+Ran 1 test for test/VaultInvariant.t.sol:VaultInvariantTest
+[PASS]
+VaultInvariantTest invariants:
+[PASS] invariant_balance_bounded
+[PASS] invariant_vault_is_solvent
+ VaultInvariantTest invariants (runs: 256, calls: 128000, reverts: 42629)
+
+╭----------+-----------+-------+---------+----------╮
+| Contract | Selector  | Calls | Reverts | Discards |
++===================================================+
+| Handler  | claimLast | 42817 | 0       | 0        |
+|----------+-----------+-------+---------+----------|
+| Handler  | init      | 42629 | 42629   | 0        |
+|----------+-----------+-------+---------+----------|
+| Handler  | publish   | 42554 | 0       | 0        |
+╰----------+-----------+-------+---------+----------╯
+
+Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 2.52s (2.52s CPU time)
+
+Ran 1 test for test/SettlementInvariant.t.sol:SettlementInvariantTest
+[PASS]
+SettlementInvariantTest invariants:
+[PASS] invariant_honest_sequencer_is_never_griefed
+[PASS] invariant_honest_sequencer_not_slashed
+ SettlementInvariantTest invariants (runs: 256, calls: 128000, reverts: 25968)
+
+╭----------+--------------+-------+---------+----------╮
+| Contract | Selector     | Calls | Reverts | Discards |
++======================================================+
+| Handler  | actAnswer    | 25788 | 0       | 0        |
+|----------+--------------+-------+---------+----------|
+| Handler  | actChallenge | 25307 | 0       | 0        |
+|----------+--------------+-------+---------+----------|
+| Handler  | actRoll      | 25657 | 0       | 0        |
+|----------+--------------+-------+---------+----------|
+| Handler  | actSettle    | 25280 | 0       | 0        |
+|----------+--------------+-------+---------+----------|
+| Handler  | init         | 25968 | 25968   | 0        |
+╰----------+--------------+-------+---------+----------╯
+
+Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 2.62s (2.61s CPU time)
+
+╭-------------------------+--------+--------+---------╮
+| Test Suite              | Passed | Failed | Skipped |
++=====================================================+
+| AttestationRegistryTest | 8      | 0      | 0       |
+|-------------------------+--------+--------+---------|
+| CollateralVaultTest     | 23     | 0      | 0       |
+|-------------------------+--------+--------+---------|
+| CrossLayerTest          | 4      | 0      | 0       |
+|-------------------------+--------+--------+---------|
+| DarkPerpSettlementTest  | 43     | 0      | 0       |
+|-------------------------+--------+--------+---------|
+| DeployGuardTest         | 2      | 0      | 0       |
+|-------------------------+--------+--------+---------|
+| DeployVerifierEnvTest   | 1      | 0      | 0       |
+|-------------------------+--------+--------+---------|
+| FuzzTest                | 4      | 0      | 0       |
+|-------------------------+--------+--------+---------|
+| IntegrationTest         | 4      | 0      | 0       |
+|-------------------------+--------+--------+---------|
+| SP1ZkVerifierTest       | 5      | 0      | 0       |
+|-------------------------+--------+--------+---------|
+| SettlementInvariantTest | 1      | 0      | 0       |
+|-------------------------+--------+--------+---------|
+| VaultInvariantTest      | 1      | 0      | 0       |
+╰-------------------------+--------+--------+---------╯
+

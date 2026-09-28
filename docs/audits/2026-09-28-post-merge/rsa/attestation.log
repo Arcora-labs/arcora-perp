@@ -1,0 +1,106 @@
+   Compiling libc v0.2.186
+   Compiling rand_core v0.6.4
+   Compiling der v0.7.10
+   Compiling base16ct v0.2.0
+   Compiling num-traits v0.2.19
+   Compiling once_cell v1.21.4
+   Compiling futures-core v0.3.32
+   Compiling curve25519-dalek v4.1.3
+   Compiling serde_json v1.0.150
+   Compiling rustls-pki-types v1.14.1
+   Compiling ff v0.13.1
+   Compiling crypto-bigint v0.5.5
+   Compiling signature v2.2.0
+   Compiling futures-util v0.3.32
+   Compiling group v0.13.0
+   Compiling wasm-bindgen v0.2.126
+   Compiling memchr v2.8.2
+   Compiling byteorder v1.5.0
+   Compiling sec1 v0.7.3
+   Compiling spki v0.7.3
+   Compiling x509-cert v0.2.5
+   Compiling elliptic-curve v0.13.8
+   Compiling ecdsa v0.16.9
+   Compiling x25519-dalek v2.0.1
+   Compiling js-sys v0.3.103
+   Compiling chrono v0.4.45
+   Compiling getrandom v0.2.17
+   Compiling cpufeatures v0.2.17
+   Compiling sha2 v0.10.9
+   Compiling ring v0.17.14
+   Compiling k256 v0.13.4
+   Compiling perp-core v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/perp-core)
+   Compiling dcap-qvl-webpki v0.103.4+dcap.1
+   Compiling wasm-bindgen-futures v0.4.76
+   Compiling dcap-qvl v0.5.2
+   Compiling dark-perp-attestation v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/attestation)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 5.14s
+     Running unittests src/lib.rs (target/debug/deps/dark_perp_attestation-a37571b2ad0210b4)
+
+running 21 tests
+test handshake::tests::ct_eq_matches_semantic_equality ... ok
+test nvidia_cc::tests::cc_on_stub_path_never_returns_ok ... ok
+test handshake::tests::token_binds_secret_and_not_after ... ok
+test nvidia_cc::tests::quote_fails_closed_when_cc_disabled ... ok
+test handshake::tests::public_transcript_alone_cannot_reproduce_the_secret ... ok
+test handshake::tests::dh_agrees_from_both_directions ... ok
+test handshake::tests::secret_is_deterministic_transcript_and_shared_bound ... ok
+test tests::pinned_now_parses_intel_pcs_timestamps ... ok
+test tests::azure_quote_without_a_live_source_fails_closed ... ok
+test vtpm::tests::ak_parser_preserves_leading_zero_normalization ... ok
+test vtpm::tests::app_measurement_applies_the_tcb_gate ... ok
+test vtpm::tests::ak_parser_rejects_malformed_or_weak_public_keys ... ok
+test vtpm::tests::parse_pcrs_txt_rejects_malformed_captures ... ok
+test tests::pinned_now_lies_inside_the_collateral_windows ... ok
+test tests::azure_verify_rejects_a_malformed_bundle ... ok
+test vtpm::tests::parses_the_fixture_pcrs_txt ... ok
+test tests::azure_verify_accepts_the_bundle_at_app_level_with_matching_challenge ... ok
+test tests::azure_verify_rejects_a_mismatched_challenge ... ok
+test tests::azure_quote_assembles_the_full_bundle_and_round_trips ... ok
+test tests::azure_verify_rejects_a_firmware_only_expected_measurement ... ok
+test tests::azure_verify_rejects_a_tampered_quote_in_the_bundle ... ok
+
+test result: ok. 21 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests/handshake_orchestration.rs (target/debug/deps/handshake_orchestration-54652dc92f86026f)
+
+running 4 tests
+test a_tampered_peer_bundle_fails_closed ... ok
+test a_mismatched_eph_pub_fails_closed ... ok
+test a_wrong_peer_measurement_fails_closed ... ok
+test both_sides_derive_the_identical_secret_and_token ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/verify_offline.rs (target/debug/deps/verify_offline-caecee4312c1e296)
+
+running 7 tests
+test key_release_gate_accepts_only_current_tcb ... ok
+test acceptable_platform_yields_a_measurement ... ok
+test verifies_pinned_tdx_quote_and_extracts_measurements ... ok
+test rejects_a_tampered_quote ... ok
+test rejects_an_outdated_platform_quote ... ok
+test measurement_is_deterministic_and_binds_mrtd_and_rtmrs ... ok
+test verifies_a_real_azure_tdx_quote_offline ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/vtpm_offline.rs (target/debug/deps/vtpm_offline-bc40fd4148ef3002)
+
+running 7 tests
+test a_changed_signed_message_is_rejected ... ok
+test verifies_the_real_azure_vtpm_chain ... ok
+test a_changed_rsa_signature_is_rejected ... ok
+test a_tampered_hcl_report_breaks_the_td_binding ... ok
+test a_different_measured_boot_pcr_breaks_the_chain ... ok
+test a_corrupt_hcl_header_is_rejected ... ok
+test tpm_signature_envelope_is_strictly_rsassa_sha256 ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+   Doc-tests dark_perp_attestation
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

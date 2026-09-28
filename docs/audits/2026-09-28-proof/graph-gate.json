@@ -1,0 +1,10 @@
+{
+  "gate": "CLOSED",
+  "errors": [
+    "Açık engel: P1: actual Docker Groth16 wrapping OOM at the allocated 5 GiB limit; no successful proof artifact.",
+    "Açık engel: E2: the required successful Arcora proof does not exist, so the actual-proof 18-test acceptance matrix cannot run.",
+    "P1: zorunlu kontrol PASS değil (BLOCKED).",
+    "E2: zorunlu kontrol PASS değil (BLOCKED)."
+  ],
+  "notice": "Bu sonuç yalnızca rapor tutarlılığıdır; komut çalıştırma, kaynak kimliği, kriter yeterliliği ve yetkilendirme ayrıca doğrulanmalıdır."
+}

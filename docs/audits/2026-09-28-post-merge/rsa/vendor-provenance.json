@@ -1,0 +1,6 @@
+{
+  "upstream_files_checked": 29,
+  "unchanged_rust_source_files": 20,
+  "manifest_patch_only": true,
+  "failures": []
+}

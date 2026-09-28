@@ -1,0 +1,20 @@
+{
+  "files": {
+    "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/sp1-host/target/release/prove": {
+      "sha256": "6623b86843167e36ffb8d2732fac85a3d1977ce9d63145e3ba50ac075864f4af",
+      "bytes": 36729488
+    },
+    "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/sp1-host/target/release/deps/libsp1_prover-91596a51509ae0b6.rlib": {
+      "sha256": "8ea1866afbe84eec9a13a84be6055f18a3118597cf03d1a7a45801d1e0334379",
+      "bytes": 53105536
+    },
+    "/tmp/arcora-lru-20260928/cache-regression.rs": {
+      "sha256": "479256018425e67a551858d64125a5c8d466085917a584beb1a0ab2afbb2b4ec",
+      "bytes": 1304
+    },
+    "/tmp/arcora-lru-20260928/cache-regression": {
+      "sha256": "8abe89f794b1c31e3f799a6e447f285a6fc13ebe679ca33dcfb4cb274c097790",
+      "bytes": 1097936
+    }
+  }
+}

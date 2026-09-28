@@ -1,0 +1,21 @@
+{
+  "status": "PASS",
+  "same_elf_sha256": true,
+  "builds": [
+    {
+      "path": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/sp1-guest/target/elf-compilation/riscv64im-succinct-zkvm-elf/release/perp-core-guest",
+      "sha256": "82938f5db13d7da2cc48fc18e36ba6a5e6d5f0736154ae9e105b33b8717918d7",
+      "size": 515336
+    },
+    {
+      "path": "/private/tmp/arcora-sp1-6.1-repro-20260928/elf-compilation/riscv64im-succinct-zkvm-elf/release/perp-core-guest",
+      "sha256": "82938f5db13d7da2cc48fc18e36ba6a5e6d5f0736154ae9e105b33b8717918d7",
+      "size": 515336
+    }
+  ],
+  "checks": [
+    "checks/sp1-guest-build-rustup.json",
+    "checks/sp1-guest-clean-rebuild.json"
+  ],
+  "scope": "Same source/toolchain/host, second build used a fresh independent target directory. No cross-host reproducibility claim."
+}

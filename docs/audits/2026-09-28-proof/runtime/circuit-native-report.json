@@ -1,0 +1,59 @@
+{
+  "artifact": "/tmp/arcora-proof-runtime-20260928/circuits/groth16/v6.1.0/groth16_circuit.bin",
+  "file_bytes": 2437991441,
+  "header_bytes_read": 72,
+  "gnark_serialization_version": [
+    0,
+    14,
+    0
+  ],
+  "serialized_sections_bytes": {
+    "levels": 23491852,
+    "instructions": 23814228,
+    "calldata": 1496797172,
+    "body": 893820149
+  },
+  "calldata_u32_elements": 592659984,
+  "calldata_retained_array_bytes": 2370639936,
+  "pk_array_payload_lower_bound_bytes": 8009657488,
+  "pk_plus_one_r1cs_array_lower_bound_bytes": 10380297424,
+  "pk_plus_one_r1cs_array_lower_bound_gib": 9.6674053221941,
+  "excluded_allocations": [
+    "other R1CS fields including instructions, levels, debug metadata and coefficients",
+    "Go/runtime/allocation overhead",
+    "witness",
+    "solver arrays",
+    "MSM/FFT proving buffers",
+    "retained Rust memory"
+  ],
+  "sources": {
+    "outer_header": "https://github.com/p4u/gnark/blob/cd7874155e266e08ca8dc247dbc66efb1030bd3b/constraint/bn254/marshal.go#L51-L85",
+    "section_header": "https://github.com/p4u/gnark/blob/cd7874155e266e08ca8dc247dbc66efb1030bd3b/constraint/marshal.go#L139-L161",
+    "calldata_allocation": "https://github.com/p4u/gnark/blob/cd7874155e266e08ca8dc247dbc66efb1030bd3b/constraint/marshal.go#L300-L312",
+    "solver_extra_arrays": "https://github.com/p4u/gnark/blob/cd7874155e266e08ca8dc247dbc66efb1030bd3b/constraint/bn254/solver.go#L91-L118",
+    "prover_extra_arrays": "https://github.com/p4u/gnark/blob/cd7874155e266e08ca8dc247dbc66efb1030bd3b/backend/groth16/bn254/prove.go#L119-L153"
+  },
+  "native_feasibility": {
+    "released_feature_exists": true,
+    "cargo_feature": "sp1-sdk/native-gnark",
+    "build_mechanism": "The published SP1 6.1.0 feature selects native FFI instead of Docker and builds Go code as a c-archive with CGO_ENABLED=1. The build script explicitly links macOS CoreFoundation/Security; Go 1.24 supports darwin/arm64 c-archive.",
+    "prerequisites": [
+      "Go compatible with go.mod (go 1.24.0 minimum directive)",
+      "C compiler and libclang for bindgen"
+    ],
+    "built_or_run_in_this_diagnosis": false,
+    "memory_result": "Native compilation is a source-supported pathway, but PK plus only CallData already exceeds the current 8 GiB supervisor ceiling. No verified safe peak-memory estimate or successful 16 GiB native run is claimed. The current 5 GiB Docker configuration demonstrably OOM-killed the ordinary proof. No retry was made.",
+    "gomemlimit": "Soft Go runtime limit only; it excludes Rust/C allocations and cannot make live arrays fit a lower bound.",
+    "sources": {
+      "sdk_feature": "https://github.com/succinctlabs/sp1/blob/v6.1.0/crates/sdk/Cargo.toml",
+      "ffi_selection": "https://github.com/succinctlabs/sp1/blob/v6.1.0/crates/recursion/gnark-ffi/src/ffi/mod.rs",
+      "native_build_macos": "https://github.com/succinctlabs/sp1/blob/v6.1.0/crates/recursion/gnark-ffi/build.rs#L54-L106",
+      "go_version": "https://github.com/succinctlabs/sp1/blob/v6.1.0/crates/recursion/gnark-ffi/go/go.mod",
+      "darwin_arm64_c_archive": "https://github.com/golang/go/blob/go1.24.0/src/cmd/go/internal/work/init.go#L184-L203",
+      "go_supported_build_mode": "https://github.com/golang/go/blob/go1.24.0/src/internal/platform/supported.go#L123-L158",
+      "go_soft_memory_limit": "https://pkg.go.dev/runtime#hdr-Environment_Variables",
+      "official_general_ram_guidance": "https://github.com/succinctlabs/sp1-project-template#generate-an-evm-compatible-proof"
+    }
+  },
+  "finding_scope": "Insufficient capacity under the presently allocated environment. This is not a proof that all 16 GiB Mac configurations are impossible."
+}

@@ -1,81 +1,88 @@
-//! Generates a real SP1 Groth16 proof for the perp-core guest over the same
-//! deterministic witness as main.rs, and prints everything an on-chain settleBatch
-//! needs: the 6 DERIVED roots, the vkey, the Groth16 proof bytes, and the public
-//! values (== the 32-byte publicCommitment). CPU prover (Docker gnark wrap).
-use perp_core::commitment::derive_roots;
-use perp_core::engine::BatchOp;
+//! Real local CPU Groth16 proof for the shared ordinary synthetic witness.
+//! Optional: --output-dir NEW_DIRECTORY. Never selects a network or mock prover.
+
 use perp_core::hash::Keccak256;
-use perp_core::market::Market;
-use perp_core::note::{owner_from_spend_key, Note};
-use perp_core::order::BatchManifest;
-use perp_core::DefaultState;
-use sp1_sdk::{include_elf, Elf, HashableKey, ProveRequest, Prover, ProverClient, ProvingKey, SP1Stdin};
+use serde_json::json;
+use sp1_host::{
+    groth16_payload_for_verification, hex, native_from_bytes, normal_witness, options, roots_json,
+    sha256, witness_bytes, Artifacts,
+};
+use sp1_sdk::{
+    include_elf, Elf, HashableKey, ProveRequest, Prover, ProverClient, ProvingKey, SP1Stdin,
+};
 
 const ELF: Elf = include_elf!("perp-core-guest");
 
-fn hx(b: &[u8]) -> String {
-    b.iter().map(|x| format!("{x:02x}")).collect()
-}
-
 #[tokio::main]
 async fn main() {
-    // Same deterministic witness as main.rs (deposit + real withdraw).
-    let spend_key = [3u8; 32];
-    let owner = owner_from_spend_key::<Keccak256>(&spend_key);
-    let blind = [9u8; 32];
-    let amount = 1_000_000i128;
-    let mut state = DefaultState::new(16);
-    state.add_market(Market::conservative(0));
-    let cm = Note::new(owner, 0, amount, blind).commitment::<Keccak256>();
-    let ops = vec![
-        BatchOp::Deposit {
-            owner,
-            asset_id: 0,
-            amount,
-            blinding: blind,
-            // SEC-019: demo harness — a toy state whose first deposit is index 0. `from` and
-            // `deposit_blind` are placeholders; nothing here is bound to a real L1 event.
-            from: [0u8; 20],
-            deposit_id: 0,
-            deposit_blind: [0u8; 32],
-        },
-        BatchOp::Withdraw { note_commitment: cm, spend_key, to: Some([0xAB; 20]), nonce: 1 },
-    ];
-    let manifest = BatchManifest {
-        previous_state_root: state.state_root(),
-        batch_id: state.next_batch_id,
-        ordered: vec![],
-        rejected: vec![],
-        oracle_updates: vec![],
-        matching_rule_version: 0,
-        enclave_measurement: [0u8; 32],
-        sequencer_pubkey_epoch: 0,
-    };
+    let options = options(std::env::args().skip(1), false).expect("valid CLI arguments");
+    let bytes = witness_bytes(&normal_witness());
+    let (d, deposit_count) = native_from_bytes(&bytes).expect("valid normal native transition");
+    let expected = d.commitment::<Keccak256>();
+    let mut artifacts = options
+        .output_dir
+        .as_deref()
+        .map(Artifacts::new)
+        .transpose()
+        .expect("fresh output directory");
+    if let Some(output) = artifacts.as_mut() {
+        output.write("normal.witness.bin", &bytes).unwrap();
+        output.write("guest.elf", &ELF).unwrap();
+    }
+    println!("PREV_ROOT=0x{}", hex(&d.prev_state_root));
+    println!("MANIFEST_HASH=0x{}", hex(&d.manifest_hash));
+    println!("NEW_ROOT=0x{}", hex(&d.new_state_root));
+    println!("ORDERED_ROOT=0x{}", hex(&d.ordered_root));
+    println!("WITHDRAWALS_ROOT=0x{}", hex(&d.withdrawals_root));
+    println!("REJECTED_ROOT=0x{}", hex(&d.rejected_root));
+    println!("DEPOSITS_ROOT=0x{}", hex(&d.deposits_root));
+    println!("NEW_DEPOSIT_COUNT={deposit_count}");
+    println!("COMMITMENT=0x{}", hex(&expected));
+    println!("WITNESS_SHA256={}", sha256(&bytes));
 
-    // The 6 derived roots — settleBatch(prevRoot, manifestHash, newRoot, orderedRoot,
-    // withdrawalsRoot, rejectedRoot, proof). Printed BEFORE proving so we have them
-    // even if proving is slow.
-    let d = derive_roots(&mut state.clone(), &ops, &manifest).unwrap();
-    println!("PREV_ROOT=0x{}", hx(&d.prev_state_root));
-    println!("MANIFEST_HASH=0x{}", hx(&d.manifest_hash));
-    println!("NEW_ROOT=0x{}", hx(&d.new_state_root));
-    println!("ORDERED_ROOT=0x{}", hx(&d.ordered_root));
-    println!("WITHDRAWALS_ROOT=0x{}", hx(&d.withdrawals_root));
-    println!("REJECTED_ROOT=0x{}", hx(&d.rejected_root));
-    println!("COMMITMENT=0x{}", hx(&d.commitment::<Keccak256>()));
-
-    let witness: (DefaultState, Vec<BatchOp>, BatchManifest) = (state, ops, manifest);
-    let bytes = postcard::to_allocvec(&witness).unwrap();
     let mut stdin = SP1Stdin::new();
-    stdin.write_vec(bytes);
-
+    stdin.write_vec(bytes.clone());
     let client = ProverClient::builder().cpu().build().await;
-    let pk = client.setup(ELF).await.unwrap();
-    println!("VKEY={}", pk.verifying_key().bytes32());
+    let pk = client.setup(ELF).await.expect("local SP1 setup");
+    let vkey = pk.verifying_key().bytes32_raw();
+    println!("VKEY=0x{}", hex(&vkey));
+    if let Some(output) = artifacts.as_mut() {
+        output.write("program-vkey.bin", &vkey).unwrap();
+    }
 
-    println!("PROVING_START groth16 (first run pulls the gnark Docker image, be patient)...");
-    let proof = client.prove(&pk, stdin).groth16().await.unwrap();
-    println!("PROOF=0x{}", hx(&proof.bytes()));
-    println!("PUBLIC_VALUES=0x{}", hx(proof.public_values.as_slice()));
+    println!("PROVING_START groth16 (local CPU and Docker gnark wrapping)");
+    let proof = client
+        .prove(&pk, stdin)
+        .groth16()
+        .await
+        .expect("real local Groth16 proof");
+    let proof_bytes = groth16_payload_for_verification(&proof, &expected)
+        .expect("real Groth16 payload with matching commitment");
+    client
+        .verify(&proof, pk.verifying_key(), None)
+        .expect("real proof must pass local SP1 verification");
+
+    // No successful proof artifact is emitted until local verification passes.
+    println!("PROOF=0x{}", hex(&proof_bytes));
+    println!("PUBLIC_VALUES=0x{}", hex(proof.public_values.as_slice()));
+    println!("LOCAL_SDK_VERIFIED=true");
+    if let Some(mut output) = artifacts {
+        output.write("proof.bin", &proof_bytes).unwrap();
+        output
+            .write("public-values.bin", proof.public_values.as_slice())
+            .unwrap();
+        // SDK JSON preserves the full proof for deserialization and local re-verification.
+        output
+            .write("proof.sdk.json", &serde_json::to_vec(&proof).unwrap())
+            .unwrap();
+        output.finish(json!({
+            "kind": "ordinary-local-groth16-proof", "sdk_version": "6.1.0", "proof_sp1_version": proof.sp1_version,
+            "witness_sha256": sha256(&bytes), "native_deserialized_same_witness": true,
+            "roots": roots_json(&d, deposit_count), "program_vkey": format!("0x{}", hex(&vkey)),
+            "proof_generated": true, "local_sdk_verified": true, "native_guest_equal": true,
+            "target_verifier_executed": false, "a06_executed": false,
+            "scope": "Synthetic ordinary deposit/withdraw; local proof verification is not target-contract acceptance or a full token lifecycle."
+        })).unwrap();
+    }
     println!("PROVING_DONE");
 }

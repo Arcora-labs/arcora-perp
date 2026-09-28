@@ -1,0 +1,12 @@
+   Compiling sp1-host v0.0.0 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/sp1-host)
+warning: sp1-host@0.0.0: Build skipped for perp-core-guest at 2026-09-28 18:34:28 due to SP1_SKIP_PROGRAM_BUILD flag
+error: couldn't read `/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/sp1-host/target/elf-compilation/riscv64im-succinct-zkvm-elf/release/perp-core-guest`: No such file or directory (os error 2)
+  --> src/bin/prove.rs:14:18
+   |
+14 | const ELF: Elf = include_elf!("perp-core-guest");
+   |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: this error originates in the macro `include_bytes` which comes from the expansion of the macro `include_elf` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: sp1-host@0.0.0: Build skipped for perp-core-guest at 2026-09-28 18:34:28 due to SP1_SKIP_PROGRAM_BUILD flag
+error: could not compile `sp1-host` (bin "prove") due to 1 previous error

@@ -1,0 +1,14 @@
+{
+  "command": [
+    "cargo",
+    "tree",
+    "--offline",
+    "--manifest-path",
+    "/var/folders/jz/7wbjs_5j45g915858xh6wm200000gn/T/arcora-webpki-rustcrypto-vr3_j1j5/Cargo.toml",
+    "-i",
+    "rsa"
+  ],
+  "exit_code": 0,
+  "rsa_restored_when_rustcrypto_enabled": true,
+  "sha256": "6f4d0aa12abf5d5cfc3a3fc78cff8c2377981ae6868c1eae0ba01996e17b1871"
+}

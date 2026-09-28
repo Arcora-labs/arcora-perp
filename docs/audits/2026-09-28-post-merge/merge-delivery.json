@@ -1,0 +1,22 @@
+{
+  "pr": "https://github.com/Kubudak90/dark-perp/pull/23",
+  "state": "MERGED",
+  "approved_head": "03ee6ccd952af512db289a9a2927e5886aa38f19",
+  "merge_commit": "f866a94d383d507d0993bc00403f27bbdb25f192",
+  "checks_success": 13,
+  "checks_failure": 1,
+  "desktop_preserved": {
+    "source": "/Users/huseyinarslan/Desktop/dark-perp",
+    "backup": "/Users/huseyinarslan/.codex/backups/arcora-desktop-pre-merge-20260928T073937Z",
+    "head": "f997f8b96279bd06ec1808f6b9cb2a6aeb25cc5e",
+    "head_unchanged": true,
+    "files_checked": 62,
+    "changed_files": [],
+    "status_unchanged": true,
+    "status_sha256": "7eb173d01c6f5a1880ad1f955fad4fca1ca8ad2fb3b46aaa017ef00c1798562b"
+  },
+  "underlying_evidence_sha256": {
+    "merge-23.json": "be9a85ec8ec64dd32ced7bda23380f4f574992ffcab6f6cfbc4ea3ec886f09e7",
+    "desktop-preserved.json": "77d22530ae690169ee213637c4b97980772b7882ac4de2a5e8af6da2066c2962"
+  }
+}
