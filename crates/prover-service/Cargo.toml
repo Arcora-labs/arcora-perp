@@ -34,3 +34,4 @@ sp1-build = "=6.1.0"
 # Manifest-only fix for unused weak RSA dependencies; see vendor provenance.
 [patch.crates-io]
 dcap-qvl-webpki = { path = "../../vendor/dcap-qvl-webpki" }
+sp1-prover = { path = "../../vendor/sp1-prover" }

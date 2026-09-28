@@ -24,3 +24,7 @@ sha2 = "0.10"
 sp1-build = "=6.1.0"
 
 [workspace]
+
+# Use the manifest-only LRU dependency correction; see vendor provenance.
+[patch.crates-io]
+sp1-prover = { path = "../../vendor/sp1-prover" }

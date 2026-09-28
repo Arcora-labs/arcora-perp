@@ -8,3 +8,9 @@ optimizer = true
 optimizer_runs = 200
 # forge-std is unavailable in this environment (repo-scoped git proxy); tests use
 # the vendored minimal harness in test/utils/MiniTest.sol instead.
+
+# Explicit opt-in: these tests require separately compiled, unmodified upstream
+# verifier artifacts and (except the guards) an actual Arcora proof. Run through
+# scripts/local-verification/verify_real_proof.py, never a mock prover.
+[profile.real_proof]
+test = "integration"

@@ -15,6 +15,7 @@ class ReleaseGuard(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
+        shutil.copytree(MODULE.ROOT / "vendor/sp1-prover", self.root / "vendor/sp1-prover")
         for directory in MODULE.APPLICATIONS:
             target = self.root / directory
             target.mkdir(parents=True)
@@ -47,6 +48,34 @@ class ReleaseGuard(unittest.TestCase):
 
     def test_missing_lock_is_rejected(self):
         (self.root / "crates/sp1-guest/Cargo.lock").unlink()
+        self.assertFalse(MODULE.check(self.root)["passed"])
+
+    def test_wrong_vendor_path_is_rejected(self):
+        self.replace("crates/sp1-host/Cargo.toml", '../../vendor/sp1-prover', '../../another-prover')
+        self.assertFalse(MODULE.check(self.root)["passed"])
+
+    def test_vendor_source_change_is_rejected(self):
+        path = self.root / "vendor/sp1-prover/src/verify.rs"
+        path.write_text(path.read_text() + "\n// changed verifier\n")
+        self.assertFalse(MODULE.check(self.root)["passed"])
+
+    def test_changed_provenance_cannot_redefine_identity(self):
+        path = self.root / "vendor/sp1-prover/PROVENANCE.json"
+        path.write_bytes(path.read_bytes() + b"\n")
+        self.assertFalse(MODULE.check(self.root)["passed"])
+
+    def test_old_lru_is_rejected(self):
+        self.replace("crates/sp1-host/Cargo.lock", 'name = "lru"\nversion = "0.18.4"',
+                     'name = "lru"\nversion = "0.12.5"')
+        self.assertFalse(MODULE.check(self.root)["passed"])
+
+    def test_unreviewed_registry_exception_is_rejected(self):
+        self.replace("crates/sp1-host/Cargo.lock", 'name = "sp1-prover"\nversion = "6.1.0"',
+                     'name = "sp1-prover"\nversion = "6.1.0"\nsource = "registry+https://github.com/rust-lang/crates.io-index"')
+        self.assertFalse(MODULE.check(self.root)["passed"])
+
+    def test_injected_vendor_build_script_is_rejected(self):
+        (self.root / "vendor/sp1-prover/build.rs").write_text("fn main() {}\n")
         self.assertFalse(MODULE.check(self.root)["passed"])
 
 

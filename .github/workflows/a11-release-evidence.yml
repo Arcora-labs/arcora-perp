@@ -30,16 +30,17 @@ jobs:
       - name: Verify vendored source and patched SP1 release identity
         run: |
           python3 vendor/dcap-qvl-webpki/verify_provenance.py
+          python3 vendor/sp1-prover/verify_provenance.py
           python3 scripts/local-verification/check_sp1_release.py
           python3 -m unittest discover -s scripts/local-verification -p test_check_sp1_release.py
       - name: RustSec workspace and excluded application locks
         run: |
           set -o pipefail
-          cargo audit --json | tee cargo-audit.json
-          cargo audit --file crates/sp1-host/Cargo.lock --json | tee cargo-audit-host.json
-          cargo audit --file crates/sp1-guest/Cargo.lock --json | tee cargo-audit-guest.json
-          cargo audit --file crates/prover-service/Cargo.lock --json | tee cargo-audit-prover.json
-          cargo audit --file scripts/tee-capture/Cargo.lock --json | tee cargo-audit-tee.json
+          cargo audit --deny unsound --json | tee cargo-audit.json
+          cargo audit --deny unsound --file crates/sp1-host/Cargo.lock --json | tee cargo-audit-host.json
+          cargo audit --deny unsound --file crates/sp1-guest/Cargo.lock --json | tee cargo-audit-guest.json
+          cargo audit --deny unsound --file crates/prover-service/Cargo.lock --json | tee cargo-audit-prover.json
+          cargo audit --deny unsound --file scripts/tee-capture/Cargo.lock --json | tee cargo-audit-tee.json
       - uses: pnpm/action-setup@v4
         with: { version: 10 }
       - uses: actions/setup-node@v4
@@ -87,6 +88,17 @@ jobs:
       - uses: foundry-rs/foundry-toolchain@v1
       - run: forge build
       - run: forge test -vvv
+      - name: Real SP1 verifier guards (no application proof claim)
+        working-directory: .
+        run: python3 scripts/local-verification/verify_real_proof.py --guards-only --output-dir /tmp/arcora-real-verifier-guards
+      - name: Reject incomplete or substituted proof artifacts
+        working-directory: .
+        run: python3 -m unittest discover -s contracts/integration -p 'test_*.py'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: a11-real-verifier-guards-only
+          path: /tmp/arcora-real-verifier-guards
   frontend:
     name: frontend release gate
     runs-on: ubuntu-latest
