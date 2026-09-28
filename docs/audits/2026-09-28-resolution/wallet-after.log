@@ -1,0 +1,13 @@
+
+> dark-perp-frontend@0.0.1 test
+> vitest run src/api/wallet.test.ts
+
+
+ RUN  v4.1.11 /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend
+
+
+ Test Files  1 passed (1)
+      Tests  75 passed (75)
+   Start at  12:39:35
+   Duration  353ms (transform 91ms, setup 0ms, import 44ms, tests 109ms, environment 138ms)
+

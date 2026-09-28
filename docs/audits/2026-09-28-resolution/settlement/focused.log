@@ -1,0 +1,24 @@
+   Compiling gateway v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/gateway)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.75s
+     Running unittests src/main.rs (target/debug/deps/gateway-af1323d2b67b45c0)
+
+running 6 tests
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+[state] genesis engine root 0x464f52b0bc0e452be7e050758e209d7a75708e98ea3eb4f0ffac4e5f6d7a5a28
+[state] genesis engine root 0x464f52b0bc0e452be7e050758e209d7a75708e98ea3eb4f0ffac4e5f6d7a5a28
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+[recovery] rolled back window 0 at boot (seal persisted, tx never landed) — the next settle re-seals it under the same batch id
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+[recovery] rolled back window 0 at boot (seal persisted, tx never landed) — the next settle re-seals it under the same batch id
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+test continuation_settlement_tests::restart_wrong_manifest_batch_refuses_before_transport ... ok
+test continuation_settlement_tests::restart_wrong_manifest_previous_root_refuses_before_transport ... ok
+test continuation_settlement_tests::restart_phase_commitment_mismatch_after_reauth_never_prepares_or_claims ... ok
+test continuation_settlement_tests::restart_previous_root_mismatch_after_reauth_never_prepares_or_claims ... ok
+test continuation_settlement_tests::restart_expired_session_retry_pending_then_durable_roll_forward ... ok
+test continuation_settlement_tests::restart_second_401_is_terminal_and_unsubmitted_window_reseals ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 403 filtered out; finished in 0.79s
+

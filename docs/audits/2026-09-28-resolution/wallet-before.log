@@ -1,0 +1,242 @@
+
+> dark-perp-frontend@0.0.1 test
+> vitest run src/api/wallet.test.ts -t verifyFinalizedRevertedTransaction
+
+
+ RUN  v4.1.11 /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend
+
+ ❯ src/api/wallet.test.ts (72 tests | 41 failed | 31 skipped) 6ms
+     × returns pinned finalized revert evidence using only read-only RPC calls 2ms
+     × accepts a revert in the finalized block itself 0ms
+     × keeps retry blocked for a pending receipt 0ms
+     × keeps retry blocked for a successful receipt 0ms
+     × keeps retry blocked for a unknown status receipt 0ms
+     × keeps retry blocked for a noncanonical status receipt 0ms
+     × keeps retry blocked for a other transaction receipt 0ms
+     × keeps retry blocked for a missing transaction receipt 0ms
+     × keeps retry blocked for a missing block hash receipt 0ms
+     × keeps retry blocked for a invalid block hash receipt 0ms
+     × keeps retry blocked for a zero block hash receipt 0ms
+     × keeps retry blocked for a pending block number receipt 0ms
+     × keeps retry blocked for a decimal block number receipt 0ms
+     × keeps retry blocked for a numeric block number receipt 0ms
+     × keeps retry blocked for a padded block number receipt 0ms
+     × keeps retry blocked for a oversized block number receipt 0ms
+     × keeps retry blocked for a array receipt receipt 0ms
+     × keeps retry blocked with not finalized 0ms
+     × keeps retry blocked with missing finalized block 0ms
+     × keeps retry blocked with missing finalized height 0ms
+     × keeps retry blocked with noncanonical finalized height 0ms
+     × keeps retry blocked with invalid finalized hash 0ms
+     × keeps retry blocked with conflicting finalized block 0ms
+     × does not fall back to latest when finalized tags are unsupported 0ms
+     × keeps retry blocked for a missing canonical block 0ms
+     × keeps retry blocked for a reorganized block 0ms
+     × keeps retry blocked for a wrong canonical height 0ms
+     × keeps retry blocked for a malformed canonical block 0ms
+     × keeps retry blocked if the final receipt disappears 0ms
+     × keeps retry blocked if the final receipt succeeds 0ms
+     × keeps retry blocked if the final receipt moves to another block 0ms
+     × keeps retry blocked if the final receipt moves to another height 0ms
+     × rejects a malformed saved hash before any wallet RPC 0ms
+     × rejects wrong or malformed chain 0x1 0ms
+     × rejects wrong or malformed chain 84532 0ms
+     × rejects wrong or malformed chain 0x014a34 0ms
+     × rejects a provider replacement during a read 0ms
+     × rejects a chainChanged event even if chain ID reads remain unchanged 0ms
+     × rejects a disconnect event even if chain ID reads remain unchanged 0ms
+     × rejects a silent network change after the first receipt 0ms
+     × bounds an unresponsive provider and makes no follow-up requests after timeout 1ms
+
+⎯⎯⎯⎯⎯⎯ Failed Tests 41 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/api/wallet.test.ts > verifyFinalizedRevertedTransaction > returns pinned finalized revert evidence using only read-only RPC calls
+TypeError: verifyFinalizedRevertedTransaction is not a function
+ ❯ src/api/wallet.test.ts:372:18
+    370|   it("returns pinned finalized revert evidence using only read-only RP…
+    371|     const { calls, listeners } = scripted();
+    372|     await expect(verifyFinalizedRevertedTransaction(TX)).resolves.toEq…
+       |                  ^
+    373|       transactionHash: TX, blockHash: BLOCK, blockNumber: "0x2a",
+    374|       finalizedBlockHash: FINALIZED, finalizedBlockNumber: "0x30",
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/41]⎯
+
+ FAIL  src/api/wallet.test.ts > verifyFinalizedRevertedTransaction > accepts a revert in the finalized block itself
+TypeError: verifyFinalizedRevertedTransaction is not a function
+ ❯ src/api/wallet.test.ts:386:18
+    384|   it("accepts a revert in the finalized block itself", async () => {
+    385|     scripted({ finalized: canonical });
+    386|     await expect(verifyFinalizedRevertedTransaction(TX)).resolves.toMa…
+       |                  ^
+    387|   });
+    388|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/41]⎯
+
+ FAIL  src/api/wallet.test.ts > verifyFinalizedRevertedTransaction > keeps retry blocked for a pending receipt
+ FAIL  src/api/wallet.test.ts > verifyFinalizedRevertedTransaction > keeps retry blocked for a successful receipt
+ FAIL  src/api/wallet.test.ts > verifyFinalizedRevertedTransaction > keeps retry blocked for a unknown status receipt
+ FAIL  src/api/wallet.test.ts > verifyFinalizedRevertedTransaction > keeps retry blocked for a noncanonical status receipt
+ FAIL  src/api/wallet.test.ts > verifyFinalizedRevertedTransaction > keeps retry blocked for a other transaction receipt
+ FAIL  src/api/wallet.test.ts > verifyFinalizedRevertedTransaction > keeps retry blocked for a missing transaction receipt
+ FAIL  src/api/wallet.test.ts > verifyFinalizedRevertedTransaction > keeps retry blocked for a missing block hash receipt
+ FAIL  src/api/wallet.test.ts > verifyFinalizedRevertedTransaction > keeps retry blocked for a invalid block hash receipt
+ FAIL  src/api/wallet.test.ts > verifyFinalizedRevertedTransaction > keeps retry blocked for a zero block hash receipt
+ FAIL  src/api/wallet.test.ts > verifyFinalizedRevertedTransaction > keeps retry blocked for a pending block number receipt
+ FAIL  src/api/wallet.test.ts > verifyFinalizedRevertedTransaction > keeps retry blocked for a decimal block number receipt
+ FAIL  src/api/wallet.test.ts > verifyFinalizedRevertedTransaction > keeps retry blocked for a numeric block number receipt
+ FAIL  src/api/wallet.test.ts > verifyFinalizedRevertedTransaction > keeps retry blocked for a padded block number receipt
+ FAIL  src/api/wallet.test.ts > verifyFinalizedRevertedTransaction > keeps retry blocked for a oversized block number receipt
+ FAIL  src/api/wallet.test.ts > verifyFinalizedRevertedTransaction > keeps retry blocked for a array receipt receipt
+TypeError: verifyFinalizedRevertedTransaction is not a function
+ ❯ src/api/wallet.test.ts:407:18
+    405|   ])("keeps retry blocked for a %s receipt", async (_name, receipt, er…
+    406|     const { calls } = scripted({ receipt });
+    407|     await expect(verifyFinalizedRevertedTransaction(TX)).rejects.toThr…
+       |                  ^
+    408|     expect(calls.some(({ method }) => method === "eth_getBlockByNumber…
+    409|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/41]⎯
+
+ FAIL  src/api/wallet.test.ts > verifyFinalizedRevertedTransaction > keeps retry blocked with not finalized
+ FAIL  src/api/wallet.test.ts > verifyFinalizedRevertedTransaction > keeps retry blocked with missing finalized block
+ FAIL  src/api/wallet.test.ts > verifyFinalizedRevertedTransaction > keeps retry blocked with missing finalized height
+ FAIL  src/api/wallet.test.ts > verifyFinalizedRevertedTransaction > keeps retry blocked with noncanonical finalized height
+ FAIL  src/api/wallet.test.ts > verifyFinalizedRevertedTransaction > keeps retry blocked with invalid finalized hash
+ FAIL  src/api/wallet.test.ts > verifyFinalizedRevertedTransaction > keeps retry blocked with conflicting finalized block
+TypeError: verifyFinalizedRevertedTransaction is not a function
+ ❯ src/api/wallet.test.ts:420:18
+    418|   ])("keeps retry blocked with %s", async (_name, finality) => {
+    419|     scripted({ finalized: finality });
+    420|     await expect(verifyFinalizedRevertedTransaction(TX)).rejects.toThr…
+       |                  ^
+    421|   });
+    422|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/41]⎯
+
+ FAIL  src/api/wallet.test.ts > verifyFinalizedRevertedTransaction > does not fall back to latest when finalized tags are unsupported
+TypeError: verifyFinalizedRevertedTransaction is not a function
+ ❯ src/api/wallet.test.ts:425:18
+    423|   it("does not fall back to latest when finalized tags are unsupported…
+    424|     const { calls } = scripted({ rejectFinalized: true });
+    425|     await expect(verifyFinalizedRevertedTransaction(TX)).rejects.toThr…
+       |                  ^
+    426|     expect(calls.some(({ params }) => params?.[0] === "latest")).toBe(…
+    427|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/41]⎯
+
+ FAIL  src/api/wallet.test.ts > verifyFinalizedRevertedTransaction > keeps retry blocked for a missing canonical block
+ FAIL  src/api/wallet.test.ts > verifyFinalizedRevertedTransaction > keeps retry blocked for a reorganized block
+ FAIL  src/api/wallet.test.ts > verifyFinalizedRevertedTransaction > keeps retry blocked for a wrong canonical height
+ FAIL  src/api/wallet.test.ts > verifyFinalizedRevertedTransaction > keeps retry blocked for a malformed canonical block
+TypeError: verifyFinalizedRevertedTransaction is not a function
+ ❯ src/api/wallet.test.ts:436:18
+    434|   ])("keeps retry blocked for a %s", async (_name, block) => {
+    435|     scripted({ canonical: block });
+    436|     await expect(verifyFinalizedRevertedTransaction(TX)).rejects.toThr…
+       |                  ^
+    437|   });
+    438|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/41]⎯
+
+ FAIL  src/api/wallet.test.ts > verifyFinalizedRevertedTransaction > keeps retry blocked if the final receipt disappears
+ FAIL  src/api/wallet.test.ts > verifyFinalizedRevertedTransaction > keeps retry blocked if the final receipt succeeds
+ FAIL  src/api/wallet.test.ts > verifyFinalizedRevertedTransaction > keeps retry blocked if the final receipt moves to another block
+ FAIL  src/api/wallet.test.ts > verifyFinalizedRevertedTransaction > keeps retry blocked if the final receipt moves to another height
+TypeError: verifyFinalizedRevertedTransaction is not a function
+ ❯ src/api/wallet.test.ts:446:18
+    444|   ])("keeps retry blocked if the final receipt %s", async (_name, seco…
+    445|     scripted({ secondReceipt });
+    446|     await expect(verifyFinalizedRevertedTransaction(TX)).rejects.toThr…
+       |                  ^
+    447|   });
+    448|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/41]⎯
+
+ FAIL  src/api/wallet.test.ts > verifyFinalizedRevertedTransaction > rejects a malformed saved hash before any wallet RPC
+TypeError: verifyFinalizedRevertedTransaction is not a function
+ ❯ src/api/wallet.test.ts:451:18
+    449|   it("rejects a malformed saved hash before any wallet RPC", async () …
+    450|     const { calls } = scripted();
+    451|     await expect(verifyFinalizedRevertedTransaction("0x1234")).rejects…
+       |                  ^
+    452|     expect(calls).toEqual([]);
+    453|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[8/41]⎯
+
+ FAIL  src/api/wallet.test.ts > verifyFinalizedRevertedTransaction > rejects wrong or malformed chain 0x1
+ FAIL  src/api/wallet.test.ts > verifyFinalizedRevertedTransaction > rejects wrong or malformed chain 84532
+ FAIL  src/api/wallet.test.ts > verifyFinalizedRevertedTransaction > rejects wrong or malformed chain 0x014a34
+TypeError: verifyFinalizedRevertedTransaction is not a function
+ ❯ src/api/wallet.test.ts:457:18
+    455|   it.each(["0x1", "84532", "0x014a34"])("rejects wrong or malformed ch…
+    456|     const { calls } = scripted({ chain });
+    457|     await expect(verifyFinalizedRevertedTransaction(TX)).rejects.toThr…
+       |                  ^
+    458|     expect(calls.some(({ method }) => method !== "eth_chainId")).toBe(…
+    459|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[9/41]⎯
+
+ FAIL  src/api/wallet.test.ts > verifyFinalizedRevertedTransaction > rejects a provider replacement during a read
+TypeError: verifyFinalizedRevertedTransaction is not a function
+ ❯ src/api/wallet.test.ts:465:18
+    463|       if (method === "eth_getTransactionReceipt") install({ request: a…
+    464|     } });
+    465|     await expect(verifyFinalizedRevertedTransaction(TX)).rejects.toThr…
+       |                  ^
+    466|   });
+    467|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[10/41]⎯
+
+ FAIL  src/api/wallet.test.ts > verifyFinalizedRevertedTransaction > rejects a chainChanged event even if chain ID reads remain unchanged
+ FAIL  src/api/wallet.test.ts > verifyFinalizedRevertedTransaction > rejects a disconnect event even if chain ID reads remain unchanged
+TypeError: verifyFinalizedRevertedTransaction is not a function
+ ❯ src/api/wallet.test.ts:472:18
+    470|       if (method === "eth_getTransactionReceipt") state.emit(event);
+    471|     } });
+    472|     await expect(verifyFinalizedRevertedTransaction(TX)).rejects.toThr…
+       |                  ^
+    473|     expect([...state.listeners.values()].every((callbacks) => callback…
+    474|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[11/41]⎯
+
+ FAIL  src/api/wallet.test.ts > verifyFinalizedRevertedTransaction > rejects a silent network change after the first receipt
+TypeError: verifyFinalizedRevertedTransaction is not a function
+ ❯ src/api/wallet.test.ts:481:18
+    479|     const originalRequest = source.request;
+    480|     source.request = (request) => request.method === "eth_chainId" && …
+    481|     await expect(verifyFinalizedRevertedTransaction(TX)).rejects.toThr…
+       |                  ^
+    482|   });
+    483|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[12/41]⎯
+
+ FAIL  src/api/wallet.test.ts > verifyFinalizedRevertedTransaction > bounds an unresponsive provider and makes no follow-up requests after timeout
+TypeError: verifyFinalizedRevertedTransaction is not a function
+ ❯ src/api/wallet.test.ts:490:30
+    488|       const request = vi.fn(() => new Promise<unknown>((resolve) => { …
+    489|       install({ request });
+    490|       const pending = expect(verifyFinalizedRevertedTransaction(TX)).r…
+       |                              ^
+    491|       await vi.advanceTimersByTimeAsync(15_001);
+    492|       await pending;
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[13/41]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  41 failed | 31 skipped (72)
+   Start at  12:37:40
+   Duration  286ms (transform 33ms, setup 0ms, import 46ms, tests 6ms, environment 141ms)
+

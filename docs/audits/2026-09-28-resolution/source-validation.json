@@ -1,0 +1,53 @@
+{
+  "status": "PASS",
+  "candidate_sha": "79396952d3422b6cda5c83d05cf60bfa1cded410",
+  "source_sha256": "aa9619641fe067ab3c17a0262d9028473277003127366086085dda26bd4ffca0",
+  "checks": {
+    "cast-loopback": {
+      "exit_code": 0,
+      "source_matches_candidate": true,
+      "log_sha256": "5e0f405165a5694bc39ce6667ec87bc8ea1cfccab7426071a76a8c09b5797ad8",
+      "record": "checks/cast-loopback.json"
+    },
+    "frontend-browser": {
+      "exit_code": 0,
+      "source_matches_candidate": true,
+      "log_sha256": "8fef9de69fa783c240e2dbc20ea5ee0a356ca434290fa9c5cec70c392c0e8ea6",
+      "record": "checks/frontend-browser.json"
+    },
+    "frontend-build": {
+      "exit_code": 0,
+      "source_matches_candidate": true,
+      "log_sha256": "399bcc09525190d48e3cb3986ce415f680adc5d25d230d91bedc7e0ef04b55bc",
+      "record": "checks/frontend-build.json"
+    },
+    "frontend-unit": {
+      "exit_code": 0,
+      "source_matches_candidate": true,
+      "log_sha256": "505a907b269bc8bd5265015778571472375c14086cb4cc2938b2d01048645495",
+      "record": "checks/frontend-unit.json"
+    },
+    "gateway": {
+      "exit_code": 0,
+      "source_matches_candidate": true,
+      "log_sha256": "11f80a06371ae8a088be9bf1ee8e635b894189ce5e53e86b9ff38f16dcd5d830",
+      "record": "checks/gateway.json"
+    },
+    "prover-service": {
+      "exit_code": 0,
+      "source_matches_candidate": true,
+      "log_sha256": "73eb64d92585b97029bf5b94c0fbfe369e6f79ff5bc7bf38c605ba12098d9ed8",
+      "record": "checks/prover-service.json"
+    }
+  },
+  "desktop_preservation": {
+    "unchanged_files": 62,
+    "status_unchanged": true,
+    "reference_backup": "/Users/huseyinarslan/.codex/backups/arcora-desktop-pre-merge-20260928T073937Z"
+  },
+  "limits": [
+    "Synthetic EIP-1193 provider, no real wallet extension or live transfer.",
+    "Native CommitmentProver and scripted chain/session observations; no real SP1 proof.",
+    "Gateway real-process SIGTERM evidence is historical; production source unchanged, only cfg(test) module added."
+  ]
+}
