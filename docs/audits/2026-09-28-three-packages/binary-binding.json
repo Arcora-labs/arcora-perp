@@ -1,0 +1,9 @@
+{
+  "status": "PASS",
+  "source_sha256": "735ea61c4f847fdcadfb838043c5dc16c74c05f7cc5647a0dcf804a9f514ac81",
+  "build_record": "checks/gateway-build-complete.json",
+  "binary_sha256": "91942dd567a98c4b10bfc8cd8a6854e7eff17826ae7327dfc858ad7ef3a074d5",
+  "drill_record": "ack-crash/result.json",
+  "drill_script_sha256": "d0c58016d94d1fe8bc6d53c51b33ac5d30a2cababb5bb908a09e22cd36cf4bb9",
+  "note": "The final source-bound rebuild produced exactly the binary used by the final 9-case SIGKILL matrix. Subsequent source changes before this final build were test fixture changes only."
+}

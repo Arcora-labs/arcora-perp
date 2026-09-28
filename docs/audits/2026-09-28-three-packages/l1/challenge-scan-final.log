@@ -1,0 +1,13 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.20s
+     Running unittests src/main.rs (target/debug/deps/gateway-61fe52f6f92c0e7c)
+
+running 6 tests
+test challenge_scan::tests::bootstrap_and_fetch_failures_never_guess_or_advance_cursor ... ok
+test challenge_scan::tests::failed_discovery_still_retries_pending_and_terminal_entries_do_not_stall ... ok
+test challenge_scan::tests::failed_or_unsettled_answer_remains_pending_without_starving_later_pages ... ok
+test challenge_scan::tests::reorg_between_anchor_check_and_fetch_cannot_replace_cursor_silently ... ok
+test challenge_scan::tests::confirmed_cross_poll_reorg_rewinds_but_rpc_error_preserves_cursor ... ok
+test challenge_scan::tests::capacity_does_not_discard_page_and_can_drain_existing_pending ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 436 filtered out; finished in 0.01s
+

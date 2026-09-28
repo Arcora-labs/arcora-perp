@@ -1,0 +1,46 @@
+   Compiling gateway v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/gateway)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 6.06s
+     Running unittests src/main.rs (target/debug/deps/gateway-61fe52f6f92c0e7c)
+
+running 38 tests
+test l1::state_read_tests::runtime_state_native_cast_challenge_discovery_requires_matching_canonical_logs ... ignored, requires real cast; explicitly run in native verification
+test l1::state_read_tests::runtime_state_native_cast_deposit_adapter_checks_secondary_code_logs_and_words ... ignored, requires real cast; explicitly run in native verification
+test l1::state_read_tests::runtime_state_native_cast_gate_vault_claims_terminal_and_bond_positive ... ignored, requires real cast; explicitly run in native verification
+test l1::state_read_tests::runtime_state_native_cast_prior_page_reorg_and_challenge_deadline_boundaries ... ignored, requires real cast; explicitly run in native verification
+test l1::state_read_tests::runtime_state_native_cast_refusals_are_all_or_nothing_and_redacted ... ignored, requires real cast; explicitly run in native verification
+test l1::tests::a06_proven_phase_routes_only_to_its_l1_entrypoint ... ok
+test l1::tests::bridge_cross_checks_declared_chain_against_the_rpc ... ok
+test l1::state_read_tests::state_snapshot_abi_booleans_and_quantities_are_canonical_not_truthy ... ok
+test l1::state_read_tests::deposit_witness_adapter_rejects_unpinned_reads_before_transport ... ok
+test l1::tests::deposit_topic0_matches_event_signature ... ok
+test l1::state_read_tests::deposit_witness_adapter_requires_pinned_matching_words_code_logs_and_headers ... ok
+test l1::tests::journal_recovery_observation_pins_every_term_to_one_finalized_hash ... ok
+test l1::tests::journal_recovery_observation_refuses_failure_at_every_read ... ok
+test l1::state_read_tests::challenge_discovery_caps_page_size_and_never_uses_latest_as_log_bound ... ok
+test l1::state_read_tests::state_snapshot_terminal_policy_reads_latest_hash_without_finality_delay ... ok
+test l1::tests::mock_proof_bridge_allows_testnets_and_refuses_real_chains ... ok
+test l1::tests::settle_batch_signature_matches_solidity ... ok
+test l1::tests::l1_hex_parsers_reject_non_ascii_without_panic ... ok
+test l1::witness_tests::runtime_witness_native_cast_agreement_and_disagreement_matrix ... ignored, requires real cast; explicitly run in native verification
+test l1::witness_tests::runtime_witness_native_cast_failure_at_every_read_redacts_and_never_falls_back ... ignored, requires real cast; explicitly run in native verification
+test l1::tests::journal_recovery_observation_refuses_malformed_overflow_and_forked_data ... ok
+test l1::tests::settle_proved_argument_order_matches_solidity ... ok
+test l1::state_read_tests::state_snapshot_gate_retains_confirmation_depth_and_detects_mid_read_reorg ... ok
+test l1::tests::verify_deposit_tx_extracts_from_ownercommit_amount_id ... ok
+test l1::witness_tests::witness_policy_binds_agreement_to_the_startup_chain ... ok
+test l1::tests::post_bond_send_has_an_explicit_gas_limit_and_plain_sends_are_unchanged ... ok
+test l1::witness_tests::witness_configuration_rejects_same_host_aliases_without_echoing_credentials ... ok
+test l1::witness_tests::witness_policy_agreement_uses_same_finalized_canonical_hash_for_every_word ... ok
+test l1::witness_tests::witness_unsafe_override_requires_explicit_valid_chain ... ok
+test l1::witness_tests::witness_policy_accepts_ahead_finality_only_when_historical_anchor_agrees ... ok
+test l1::witness_tests::witness_policy_refuses_malformed_chain_and_finalized_header ... ok
+test l1::state_read_tests::state_snapshot_refuses_each_transport_failure_without_a_partial_pair ... ok
+test l1::state_read_tests::state_snapshot_refuses_chain_fork_prefix_disagreement_malformed_and_overflow ... ok
+test l1::witness_tests::witness_transport_refuses_mutation_methods_before_spawning_cast ... ok
+test l1::witness_tests::witness_policy_refuses_finality_chain_fork_and_each_getter_disagreement ... ok
+test l1::witness_tests::witness_policy_never_falls_back_when_either_provider_fails_any_read ... ok
+test l1::state_read_tests::challenge_discovery_binds_logs_to_canonical_page_and_refuses_malformed_events ... ok
+test l1::tests::keystore_roundtrips_the_sequencer_key ... ok
+
+test result: ok. 31 passed; 0 failed; 7 ignored; 0 measured; 404 filtered out; finished in 1.14s
+

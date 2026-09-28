@@ -1,0 +1,37 @@
+{
+  "at_utc": "2026-09-28T16:59:51.720781+00:00",
+  "review": "independent read-only review, no tests executed by this reviewer for these files",
+  "status": "FINDINGS",
+  "files": {
+    "crates/gateway/src/l1.rs": "4416f58fbaebcac5a7dfc7a61dfe076d1fb75058038177254cccbbfaa1c8c795",
+    "crates/gateway/src/l1/observation.rs": "ec70f5f2cdc17b0f4cfa89b9fbb5c8ffa2f97ecfd1ea430fde5d4b4f4306b964",
+    "crates/gateway/src/l1/state_read_tests.rs": "34c176739e9ae6badb650ba0d6bdac48cce8016fdff296e6be341224012634de",
+    "crates/gateway/src/l1/witness_tests.rs": "7f62cf9fe8afa254e1902d8d951efaa57ff672a61bb6a4b50d18f0a69cc327f6",
+    "crates/gateway/src/main.rs": "b2aaeca73a465434647193516516dbe1dcfc255ed69db770a928d4eca9cdd4b2",
+    "crates/gateway/src/ops_alerts.rs": "1921a40e54a4fd07d51593d054d4526cd47b19b14210bfb2c2513362a9e75840",
+    "crates/gateway/src/ops_alerts/integration_tests.rs": "b57da2e473d6ea3992b44f36afb5fe41a5a8b6ce8b5134f9698e7c52b906f28b",
+    "crates/gateway/src/settle_health.rs": "bcd7e90ad249221ab03090792843887034c36ad0533c0fd5881b6553cfef36e5",
+    "crates/gateway/src/deposit_ingestion.rs": "71372278e4b9a030d549e9893a743183979c36850d991d55d3a195a1b5851467"
+  },
+  "findings": [
+    {
+      "id": "CR-01",
+      "area": "L1::fetch_challenges",
+      "issue": "Discovery logs and head are still primary-only; skipped logs advance cursor and are not corroborated by optional witness. Pin and corroborate challenge log pages before returning next cursor."
+    },
+    {
+      "id": "CR-02",
+      "area": "main challenge watcher",
+      "issue": "Cursor is advanced before challenge_open/answer succeed. Temporary RPC/witness/send failure does not retry same challenge. Advance only after page resolution or retain bounded pending work; avoid boot default masking of failed observations."
+    }
+  ],
+  "clear": [
+    "Typed ABI, canonical anchor rechecks, configured witness fail-closed paths and post-send failure-to-journal-HOLD inspected without additional concrete finding",
+    "Ops alerts use fixed redacted schema, bounded shared episode worker, strict local transport, runtime-only serde-skip field; write completion event ordered by serialization guard"
+  ],
+  "limits": [
+    "Static review does not replace source-bound tests",
+    "Alert delivery is best effort; process exit may drop queued delivery",
+    "Challenge files were still being implemented while reviewed; findings need final re-review"
+  ]
+}

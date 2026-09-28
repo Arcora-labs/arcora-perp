@@ -1,0 +1,119 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.20s
+     Running unittests src/main.rs (target/debug/deps/gateway-61fe52f6f92c0e7c)
+
+running 6 tests
+test ops_alerts::integration_tests::collector_rejection_never_makes_failed_persistence_succeed ... [oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+[state] genesis engine root 0x464f52b0bc0e452be7e050758e209d7a75708e98ea3eb4f0ffac4e5f6d7a5a28
+[ops-alert] {"schema":"arcora.ops-alert.v1","event":"persistence_failed","transition":"active","episode":1}
+[state] snapshot write failed: Not a directory (os error 20)
+[state] snapshot write failed: Not a directory (os error 20)
+[ops-alert-delivery] failed; structured event remains in local log
+ALERT_DRILL_EVIDENCE {"case":"collector-503-retains-failure","transport":"actual-loopback-http","events":[{"schema":"arcora.ops-alert.v1","event":"persistence_failed","transition":"active","episode":1}]}
+ok
+test ops_alerts::integration_tests::configuration_accepts_only_explicit_local_fixture_and_safe_ntfy_topic ... ok
+test ops_alerts::integration_tests::deposit_halt_production_ingestion_delivers_once_and_stays_halted_after_restore ... [oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+[state] genesis engine root 0x464f52b0bc0e452be7e050758e209d7a75708e98ea3eb4f0ffac4e5f6d7a5a28
+[ops-alert] {"schema":"arcora.ops-alert.v1","event":"deposit_halted","transition":"active","episode":1}
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+ALERT_DRILL_EVIDENCE {"case":"durable-deposit-halt","transport":"actual-loopback-http","events":[{"schema":"arcora.ops-alert.v1","event":"deposit_halted","transition":"active","episode":1}]}
+ok
+test ops_alerts::integration_tests::held_production_transitions_deliver_once_recover_and_rearm ... [oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+[state] genesis engine root 0x464f52b0bc0e452be7e050758e209d7a75708e98ea3eb4f0ffac4e5f6d7a5a28
+[ops-alert] {"schema":"arcora.ops-alert.v1","event":"settlement_held","transition":"active","episode":1}
+[ops-alert] {"schema":"arcora.ops-alert.v1","event":"settlement_held","transition":"recovered","episode":1}
+[ops-alert] {"schema":"arcora.ops-alert.v1","event":"settlement_held","transition":"active","episode":2}
+
+thread '<unnamed>' (2682950) panicked at crates/gateway/src/ops_alerts/integration_tests.rs:83:42:
+called `Result::unwrap()` on an `Err` value: Os { code: 35, kind: WouldBlock, message: "Resource temporarily unavailable" }
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+[ops-alert-delivery] failed; structured event remains in local log
+
+thread 'ops_alerts::integration_tests::held_production_transitions_deliver_once_recover_and_rearm' (2682949) panicked at crates/gateway/src/ops_alerts/integration_tests.rs:183:5:
+assertion `left == right` failed
+  left: 2
+ right: 3
+
+thread 'ops_alerts::integration_tests::held_production_transitions_deliver_once_recover_and_rearm' (2682949) panicked at crates/gateway/src/ops_alerts/integration_tests.rs:76:44:
+called `Result::unwrap()` on an `Err` value: Any { .. }
+stack backtrace:
+   0:        0x103454a90 - <<std[4a10610fc1569c16]::sys::backtrace::BacktraceLock>::print::DisplayBacktrace as core[a385b85ab76da31e]::fmt::Display>::fmt
+   1:        0x1034696bc - core[a385b85ab76da31e]::fmt::write
+   2:        0x10345a248 - <std[4a10610fc1569c16]::sys::stdio::unix::Stderr as std[4a10610fc1569c16]::io::Write>::write_fmt
+   3:        0x103437d88 - std[4a10610fc1569c16]::panicking::default_hook::{closure#0}
+   4:        0x10344cea8 - std[4a10610fc1569c16]::panicking::default_hook
+   5:        0x10344d1d0 - std[4a10610fc1569c16]::panicking::panic_with_hook
+   6:        0x103437e34 - std[4a10610fc1569c16]::panicking::panic_handler::{closure#0}
+   7:        0x10342f1a8 - std[4a10610fc1569c16]::sys::backtrace::__rust_end_short_backtrace::<std[4a10610fc1569c16]::panicking::panic_handler::{closure#0}, !>
+   8:        0x103438af4 - __rustc[ae912ae0d9c47055]::rust_begin_unwind
+   9:        0x1034871e0 - core[a385b85ab76da31e]::panicking::panic_fmt
+  10:        0x103486fb8 - core[a385b85ab76da31e]::result::unwrap_failed
+  11:        0x1028bd538 - core::result::Result<T,E>::unwrap::h4975d41ba0c6e14b
+                               at /opt/homebrew/Cellar/rust/1.95.0/lib/rustlib/src/rust/library/core/src/result.rs:1233:23
+  12:        0x1028bd538 - <gateway::ops_alerts::integration_tests::Collector as core::ops::drop::Drop>::drop::h57097bb3fc829deb
+                               at /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/gateway/src/ops_alerts/integration_tests.rs:76:44
+  13:        0x10288f5f8 - core::ptr::drop_in_place<gateway::ops_alerts::integration_tests::Collector>::hd650cff614a2393d
+                               at /opt/homebrew/Cellar/rust/1.95.0/lib/rustlib/src/rust/library/core/src/ptr/mod.rs:805:1
+  14:        0x102cb1fa0 - gateway::ops_alerts::integration_tests::held_production_transitions_deliver_once_recover_and_rearm::{{closure}}::h83a8e099c8c40be4
+                               at /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/gateway/src/ops_alerts/integration_tests.rs:187:1
+  15:        0x102f2b744 - <core::pin::Pin<P> as core::future::future::Future>::poll::ha7f2b35dfb04727e
+                               at /opt/homebrew/Cellar/rust/1.95.0/lib/rustlib/src/rust/library/core/src/future/future.rs:133:9
+  16:        0x102f2bd4c - <core::pin::Pin<P> as core::future::future::Future>::poll::hee778411560ca7e8
+                               at /opt/homebrew/Cellar/rust/1.95.0/lib/rustlib/src/rust/library/core/src/future/future.rs:133:9
+  17:        0x102baa18c - tokio::runtime::scheduler::current_thread::CoreGuard::block_on::{{closure}}::{{closure}}::{{closure}}::h634e57431721284e
+                               at /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.52.3/src/runtime/scheduler/current_thread/mod.rs:778:70
+  18:        0x102ba9f4c - tokio::task::coop::with_budget::h6967b292b2dec3e2
+                               at /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.52.3/src/task/coop/mod.rs:167:5
+  19:        0x102ba9f4c - tokio::task::coop::budget::h7b238fcf03098d8b
+                               at /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.52.3/src/task/coop/mod.rs:133:5
+  20:        0x102ba9f4c - tokio::runtime::scheduler::current_thread::CoreGuard::block_on::{{closure}}::{{closure}}::h6097a0a1ea065ca6
+                               at /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.52.3/src/runtime/scheduler/current_thread/mod.rs:778:25
+  21:        0x102ba79b8 - tokio::runtime::scheduler::current_thread::Context::enter::h029c8bb055af36ce
+                               at /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.52.3/src/runtime/scheduler/current_thread/mod.rs:451:19
+  22:        0x102ba9804 - tokio::runtime::scheduler::current_thread::CoreGuard::block_on::{{closure}}::h17b874e22c453aa0
+                               at /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.52.3/src/runtime/scheduler/current_thread/mod.rs:777:44
+  23:        0x102ba8d50 - tokio::runtime::scheduler::current_thread::CoreGuard::enter::{{closure}}::h0b36ce887ce44717
+                               at /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.52.3/src/runtime/scheduler/current_thread/mod.rs:865:68
+  24:        0x102cab19c - tokio::runtime::context::scoped::Scoped<T>::set::h7bf70ceb4aac3a55
+                               at /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.52.3/src/runtime/context/scoped.rs:40:9
+  25:        0x102cb0d8c - tokio::runtime::context::set_scheduler::{{closure}}::h68b69151a1482342
+                               at /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.52.3/src/runtime/context.rs:181:38
+  26:        0x10298c77c - std::thread::local::LocalKey<T>::try_with::hde3598d628994ec1
+                               at /opt/homebrew/Cellar/rust/1.95.0/lib/rustlib/src/rust/library/std/src/thread/local.rs:513:12
+  27:        0x102985404 - std::thread::local::LocalKey<T>::with::h328013f0d7ef86d9
+                               at /opt/homebrew/Cellar/rust/1.95.0/lib/rustlib/src/rust/library/std/src/thread/local.rs:477:20
+  28:        0x102cb0d48 - tokio::runtime::context::set_scheduler::h86e8550e81eff2cf
+                               at /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.52.3/src/runtime/context.rs:181:17
+  29:        0x102ba8ba4 - tokio::runtime::scheduler::current_thread::CoreGuard::enter::hdad6c9786ea73a2a
+                               at /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.52.3/src/runtime/scheduler/current_thread/mod.rs:865:27
+  30:        0x102ba8dc8 - tokio::runtime::scheduler::current_thread::CoreGuard::block_on::h624273c10af9d628
+                               at /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.52.3/src/runtime/scheduler/current_thread/mod.rs:765:24
+  31:        0x102b9b7cc - tokio::runtime::scheduler::current_thread::CurrentThread::block_on::{{closure}}::he9767f84f1bb6f1e
+                               at /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.52.3/src/runtime/scheduler/current_thread/mod.rs:205:33
+  32:        0x102d96b60 - tokio::runtime::context::runtime::enter_runtime::hb182821b0c9f0b47
+                               at /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.52.3/src/runtime/context/runtime.rs:65:16
+  33:        0x102b9b3fc - tokio::runtime::scheduler::current_thread::CurrentThread::block_on::hac3eb2f11a772623
+                               at /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.52.3/src/runtime/scheduler/current_thread/mod.rs:193:9
+  34:        0x102ab9964 - tokio::runtime::runtime::Runtime::block_on_inner::h8d7cc0bb06615e36
+                               at /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.52.3/src/runtime/runtime.rs:371:52
+  35:        0x102ab9c04 - tokio::runtime::runtime::Runtime::block_on::h9c79877aadd4c628
+                               at /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.52.3/src/runtime/runtime.rs:345:18
+  36:        0x102cacdb0 - gateway::ops_alerts::integration_tests::held_production_transitions_deliver_once_recover_and_rearm::hbdfe63ccd865a718
+                               at /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/gateway/src/ops_alerts/integration_tests.rs:186:45
+  37:        0x102cb1e78 - gateway::ops_alerts::integration_tests::held_production_transitions_deliver_once_recover_and_rearm::{{closure}}::h1ef18433e32aa1c1
+                               at /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/gateway/src/ops_alerts/integration_tests.rs:150:70
+  38:        0x102832c30 - core::ops::function::FnOnce::call_once::ha826026d6a29cc5e
+                               at /opt/homebrew/Cellar/rust/1.95.0/lib/rustlib/src/rust/library/core/src/ops/function.rs:250:5
+  39:        0x102fb9268 - test[6929567d28ed0368]::__rust_begin_short_backtrace::<core[a385b85ab76da31e]::result::Result<(), alloc[a66ee3d32fe6f844]::string::String>, fn() -> core[a385b85ab76da31e]::result::Result<(), alloc[a66ee3d32fe6f844]::string::String>>
+  40:        0x102fc3474 - test[6929567d28ed0368]::run_test::{closure#0}
+  41:        0x102fbeeb8 - std[4a10610fc1569c16]::sys::backtrace::__rust_begin_short_backtrace::<test[6929567d28ed0368]::run_test::{closure#1}, ()>
+  42:        0x102fc574c - <std[4a10610fc1569c16]::thread::lifecycle::spawn_unchecked<test[6929567d28ed0368]::run_test::{closure#1}, ()>::{closure#1} as core[a385b85ab76da31e]::ops::function::FnOnce<()>>::call_once::{shim:vtable#0}
+  43:        0x103453bf8 - <std[4a10610fc1569c16]::sys::thread::unix::Thread>::new::thread_start
+  44:        0x1845ddc58 - __pthread_cond_wait
+
+thread 'ops_alerts::integration_tests::held_production_transitions_deliver_once_recover_and_rearm' (2682949) panicked at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/core/src/panicking.rs:233:5:
+panic in a destructor during cleanup
+thread caused non-unwinding panic. aborting.
+error: test failed, to rerun pass `-p gateway --bin gateway`
+
+Caused by:
+  process didn't exit successfully: `/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/target/debug/deps/gateway-61fe52f6f92c0e7c 'ops_alerts::' --nocapture --test-threads=1` (signal: 6, SIGABRT: process abort signal)

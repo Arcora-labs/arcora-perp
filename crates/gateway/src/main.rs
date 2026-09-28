@@ -46,6 +46,7 @@ use sequencer::{adl_tag, adl_tag_key, EnclaveIdentity, SealedBatch, Sequencer, W
 mod account_recovery;
 mod bootstrap;
 mod candles;
+mod challenge_scan;
 #[cfg(test)]
 mod continuation_settlement_tests;
 mod credential_session;
@@ -55,6 +56,7 @@ mod enclave_epoch;
 mod execution;
 mod l1;
 mod listen_config;
+mod ops_alerts;
 mod order_log;
 mod prover_client;
 mod rollback_journal;
@@ -166,10 +168,10 @@ const GATE_OBSERVE_WAIT_SECS: u64 = 120;
 const GATE_OBSERVE_POLL_SECS: u64 = 5;
 
 /// SEC-025-D: ONE block-pinned three-way gate observation. Reads `batchCount`,
-/// `currentStateRoot` and `closeOnly` at a SINGLE height `GATE_OPEN_CONFIRMATIONS`
-/// behind the current head and classifies the result. All three at one block, or
-/// the finalSettle exclusion does not hold (see the pinned readers' block comment
-/// in l1.rs); the depth means a reorg shallower than the confirmation policy
+/// `currentStateRoot` and `closeOnly` at a SINGLE canonical hash at height
+/// `GATE_OPEN_CONFIRMATIONS` behind the current head. Configured witness agreement
+/// and canonical rechecks are enforced by the L1 reader. All three at one block, or
+/// the finalSettle exclusion does not hold; the depth means a reorg shallower than the confirmation policy
 /// cannot unwind what an OPEN was decided on. Any failed read is `Inconclusive`,
 /// NEVER `StaysClosed`: the opening check runs once per commit and a commit is not
 /// repeatable, so resolving an errored read against opening could burn a launch's
@@ -181,11 +183,7 @@ fn observe_gate_once(
     our_new_root: Digest,
 ) -> trading_gate::GateObservation {
     let read = || -> Result<trading_gate::GateObservation, String> {
-        let head = l1.head_block()?;
-        let pinned = head.saturating_sub(trading_gate::GATE_OPEN_CONFIRMATIONS);
-        let count = l1.batch_count_at(pinned)?;
-        let root = l1.current_root_at(pinned)?;
-        let close_only = l1.close_only_at(pinned)?;
+        let (_block, count, root, close_only) = l1.gate_observation()?;
         Ok(trading_gate::classify(
             count,
             sealed_batch_id,
@@ -1202,6 +1200,9 @@ const MAX_RECEIPT_CACHE: usize = 4096;
 
 #[derive(Serialize, serde::Deserialize)]
 struct Gw {
+    /// Runtime-only alert episode state; never changes the frozen snapshot encoding.
+    #[serde(skip)]
+    ops_alerts: ops_alerts::OpsAlerts,
     // A01 extension is versioned outside the frozen v5 positional Gw encoding.
     #[serde(skip)]
     deposits: deposit_ingestion::DepositState,
@@ -1851,6 +1852,7 @@ impl Gw {
         // boot config). Log-only — no behavior change.
         println!("[state] genesis engine root {}", hex32(&genesis_root));
         let mut gw = Gw {
+            ops_alerts: Default::default(),
             deposits: Default::default(),
             seq,
             receipt_cache: ReceiptCache::default(),
@@ -2880,6 +2882,17 @@ impl Gw {
         self.l1_status = Some(l1_status);
     }
 
+    /// One shared production transition for prove-failure health and HELD alerts.
+    fn settle_breaker_failed(&mut self, error: String) -> (settle_health::NextAction, bool) {
+        let (action, just_held) = self.settle_health.on_failure(error);
+        if just_held {
+            self.settlement_held_since_ms = Some(now_ms());
+            self.ops_alerts
+                .activate(ops_alerts::AlertKind::SettlementHeld);
+        }
+        (action, just_held)
+    }
+
     /// FIN-001: clear the settlement circuit-breaker after a genuine settlement
     /// success — i.e. ANY path that reaches on-chain finality (the clean settle,
     /// or the ambiguous-but-landed roll-forward). Resets the failure streak/health
@@ -2893,6 +2906,8 @@ impl Gw {
         );
         self.settle_health.on_success();
         self.settlement_held_since_ms = None;
+        self.ops_alerts
+            .recover(ops_alerts::AlertKind::SettlementHeld);
         was_held
     }
 
@@ -5202,7 +5217,14 @@ async fn final_snapshot<'a>(
     })
     .await;
     let ok = matches!(saved, Ok(Ok(())));
-    if !ok {
+    if ok {
+        frozen
+            .ops_alerts
+            .recover(ops_alerts::AlertKind::PersistenceFailed);
+    } else {
+        frozen
+            .ops_alerts
+            .activate(ops_alerts::AlertKind::PersistenceFailed);
         eprintln!("[state] final snapshot failed: {saved:?}");
     }
     (frozen, ok)
@@ -5219,12 +5241,25 @@ async fn write_snapshot(
     serial: Arc<Mutex<()>>,
 ) -> bool {
     let guard = serial.lock_owned().await;
-    let plain = { app.gw.lock().await.snapshot_plain() };
+    let (plain, alerts) = {
+        let gw = app.gw.lock().await;
+        (gw.snapshot_plain(), gw.ops_alerts.clone())
+    };
     let path = path.to_path_buf();
+    let writer_alerts = alerts.clone();
     match tokio::task::spawn_blocking(move || {
         let _guard = guard;
         let sealed = snapshot::seal(&plain, &seed);
-        snapshot::write_atomic(&path, &sealed)
+        let result = snapshot::write_atomic(&path, &sealed);
+        // Publish the episode transition before releasing the same serialization
+        // guard as the write. A delayed successful caller must not clear an alert
+        // emitted by a later failed writer.
+        if result.is_ok() {
+            writer_alerts.recover(ops_alerts::AlertKind::PersistenceFailed);
+        } else {
+            writer_alerts.activate(ops_alerts::AlertKind::PersistenceFailed);
+        }
+        result
     })
     .await
     {
@@ -5234,6 +5269,7 @@ async fn write_snapshot(
             false
         }
         Err(e) => {
+            alerts.activate(ops_alerts::AlertKind::PersistenceFailed);
             eprintln!("[state] snapshot worker failed: {e}");
             false
         }
@@ -5899,6 +5935,8 @@ async fn hold_settlement_for_recovery(app: &Shared, error: String) {
     let mut gw = app.gw.lock().await;
     gw.settle_health.hold_for_recovery(error);
     gw.settlement_held_since_ms.get_or_insert_with(now_ms);
+    gw.ops_alerts
+        .activate(ops_alerts::AlertKind::SettlementHeld);
     app.force_settle
         .store(false, std::sync::atomic::Ordering::SeqCst);
 }
@@ -5987,11 +6025,7 @@ async fn post_v1_admin_wind_down(
         )
             .into_response();
     };
-    let observed = tokio::task::spawn_blocking(move || {
-        let block = l1.block_number()?;
-        Ok::<_, String>((block, l1.close_only_at(block)?))
-    })
-    .await;
+    let observed = tokio::task::spawn_blocking(move || l1.close_only_observation()).await;
     let (block, close_only) = match observed {
         Ok(Ok(v)) => v,
         Ok(Err(e)) => {
@@ -8115,13 +8149,9 @@ async fn main() {
         let gw_count = gw.seq.state.consumed_deposit_count;
         let vault_reads = {
             let l1c = l1c.clone();
-            tokio::task::spawn_blocking(move || {
-                let count = l1c.vault_deposit_count()?;
-                let tip = l1c.vault_deposit_tip_at(gw_count)?;
-                Ok::<(u64, String), String>((count, tip))
-            })
-            .await
-            .unwrap_or_else(|e| Err(e.to_string()))
+            tokio::task::spawn_blocking(move || l1c.vault_deposit_observation(gw_count))
+                .await
+                .unwrap_or_else(|e| Err(e.to_string()))
         };
         let gw_tip = hex32(&gw.seq.state.consumed_deposit_tip);
         match vault_reads {
@@ -8183,6 +8213,13 @@ async fn main() {
                 std::process::exit(1);
             }
         }
+    }
+    gw.ops_alerts = ops_alerts::OpsAlerts::from_env().unwrap_or_else(|error| {
+        eprintln!("[alerts] REFUSING to start: {error}");
+        std::process::exit(1);
+    });
+    if gw.deposits.halt.is_some() {
+        gw.ops_alerts.activate(ops_alerts::AlertKind::DepositHalted);
     }
     let (snapshot_req_tx, mut snapshot_req_rx) = tokio::sync::mpsc::channel::<SnapshotAck>(8);
     let snapshot_req = state_path.as_ref().map(|_| snapshot_req_tx);
@@ -8430,64 +8467,65 @@ async fn main() {
                 // honest sequencer be slashed for a challenge it could have answered. A
                 // challenge is answerable only within `challengeWindowBlocks`, so rewind
                 // past that window (see challenge_scan_start); over-scanning older /
-                // already-answered challenges is a harmless no-op (challenge_open gates
+                // already-answered challenges is a harmless no-op (challenge_answerable gates
                 // the answer). The data to answer is in the persisted batch_orders.
-                let mut from_block = {
-                    let l1c = l1a.clone();
-                    tokio::task::spawn_blocking(move || {
-                        let now = l1c.block_number().unwrap_or(0);
-                        let window = l1c.challenge_window_blocks().unwrap_or(300);
-                        challenge_scan_start(now, window)
-                    })
-                    .await
-                    .unwrap_or(0)
-                };
+                let mut from_block = challenge_scan::Cursor::default();
                 let mut iv = tokio::time::interval(Duration::from_secs(L1_SETTLE_SECS));
                 loop {
                     if !stop.next_tick(&mut iv).await { break; }
-                    let l1c = l1a.clone();
-                    let (hashes, next) =
-                        match tokio::task::spawn_blocking(move || l1c.fetch_challenges(from_block))
-                            .await
-                        {
-                            Ok(Ok(x)) => x,
-                            Ok(Err(e)) => {
-                                eprintln!("[l1] challenge scan failed: {e}");
-                                continue;
+                    let start_l1 = l1a.clone();
+                    let fetch_l1 = l1a.clone();
+                    let check_l1 = l1a.clone();
+                    let result = challenge_scan::advance(
+                        &mut from_block,
+                        || async move {
+                            tokio::task::spawn_blocking(move || {
+                                let (now, window) = start_l1.challenge_scan_start_observation()?;
+                                Ok(challenge_scan_start(now, window))
+                            }).await.map_err(|_| "challenge startup join failed".to_string())?
+                        },
+                        |height, hash| {
+                            let check_l1 = check_l1.clone();
+                            async move {
+                                tokio::task::spawn_blocking(move || check_l1.challenge_scan_anchor_matches(height, hash))
+                                    .await.map_err(|_| "challenge anchor join failed".to_string())?
                             }
-                            Err(e) => {
-                                eprintln!("[l1] challenge scan join: {e}");
-                                continue;
+                        },
+                        |from| async move {
+                            tokio::task::spawn_blocking(move || fetch_l1.fetch_challenges(from))
+                                .await.map_err(|_| "challenge scan join failed".to_string())?
+                        },
+                        |oh| {
+                            let app = app.clone();
+                            let l1c = l1a.clone();
+                            async move {
+                                let eligibility_l1 = l1c.clone();
+                                let eligibility_hash = oh.clone();
+                                let answerable = tokio::task::spawn_blocking(move || eligibility_l1.challenge_answerable(&eligibility_hash))
+                                    .await.map_err(|_| "challenge eligibility join failed".to_string())??;
+                                if !answerable { return Ok(()); }
+                                // Build the answer under the gw lock, then submit off-lock.
+                                let answer = {
+                                    let gw = app.gw.lock().await;
+                                    parse_hex32(&oh).and_then(|h| gw.build_challenge_answer(&h))
+                                };
+                                let Some((by_rejection, batch_id, proof)) = answer else {
+                                    // A batch may settle after the challenge opened. Keep
+                                    // this hash pending while discovery continues independently.
+                                    return Err("challenge awaiting retained batch".to_string());
+                                };
+                                tokio::task::spawn_blocking(move || {
+                                    if l1c.challenge_answerable(&oh)? {
+                                        let tx = l1c.answer_challenge(&oh, batch_id, &proof, by_rejection)?;
+                                        println!("[l1] answered inclusion challenge {oh} (batch {batch_id}, rejection={by_rejection}) tx {tx}");
+                                    }
+                                    Ok(())
+                                }).await.map_err(|_| "challenge answer join failed".to_string())?
                             }
-                        };
-                    from_block = next;
-                    for oh in hashes {
-                        // build the answer under the gw lock, then submit off-lock
-                        let answer = {
-                            let gw = app.gw.lock().await;
-                            parse_hex32(&oh).and_then(|h| gw.build_challenge_answer(&h))
-                        };
-                        let Some((by_rejection, batch_id, proof)) = answer else {
-                            continue; // not in any retained batch — a genuine withhold, unanswerable
-                        };
-                        let l1c = l1a.clone();
-                        let oh2 = oh.clone();
-                        let res = tokio::task::spawn_blocking(move || {
-                            if l1c.challenge_open(&oh2)? {
-                                l1c.answer_challenge(&oh2, batch_id, &proof, by_rejection)
-                            } else {
-                                Ok(String::new()) // already answered / slashed
-                            }
-                        })
-                        .await;
-                        match res {
-                            Ok(Ok(tx)) if !tx.is_empty() => println!(
-                                "[l1] answered inclusion challenge {oh} (batch {batch_id}, rejection={by_rejection}) tx {tx}"
-                            ),
-                            Ok(Ok(_)) => {}
-                            Ok(Err(e)) => eprintln!("[l1] answer failed for {oh}: {e}"),
-                            Err(e) => eprintln!("[l1] answer join: {e}"),
-                        }
+                        },
+                    ).await;
+                    if let Err(e) = result {
+                        eprintln!("[l1] challenge scan or pending answer will retry: {e}");
                     }
                 }
             }));
@@ -8538,10 +8576,8 @@ async fn main() {
                     // sequencer past the desync guard.
                     let l1c = l1.clone();
                     let bc = match tokio::task::spawn_blocking(move || -> Result<u64, String> {
-                        match l1c.ensure_bond() {
-                            Ok(Some(tx)) => println!("[l1] bond topped up: {tx}"),
-                            Ok(None) => {}
-                            Err(e) => eprintln!("[l1] bond top-up skipped: {e}"),
+                        if let Some(tx) = l1c.ensure_bond()? {
+                            println!("[l1] bond topped up: {tx}");
                         }
                         l1c.batch_count()
                     })
@@ -8666,11 +8702,17 @@ async fn main() {
                             }
                             match l1c.settle_proved(&prepared.outcome) {
                                 Ok(tx) => {
-                                    let bond = l1c.sequencer_bond().unwrap_or(0);
-                                    let claimed: Vec<[u8; 32]> = prune_candidates
-                                        .into_iter()
-                                        .filter(|leaf| l1c.claimed(&hex32(leaf)).unwrap_or(false))
-                                        .collect();
+                                    // A receipt may already exist; failed post-send
+                                    // corroboration must take the journal recovery path,
+                                    // never invent a bond or partially prune claims.
+                                    let bond = match l1c.sequencer_bond() {
+                                        Ok(bond) => bond,
+                                        Err(err) => return SettleAttempt::SettleFailed { err, prepared },
+                                    };
+                                    let claimed = match l1c.claimed_many(&prune_candidates) {
+                                        Ok(claimed) => claimed,
+                                        Err(err) => return SettleAttempt::SettleFailed { err, prepared },
+                                    };
                                     // SEC-025-D: the launch observation, AFTER the receipt —
                                     // an observation taken before broadcast could never see
                                     // our settle and would waste the whole wait. Skipped once
@@ -8764,10 +8806,7 @@ async fn main() {
                                 let mut gw = app.gw.lock().await;
                                 gw.seq.rollback_window(&witness_rb);
                                 gw.rollback_window_withdrawals(ww_rb);
-                                let (action, just_held) = gw.settle_health.on_failure(e);
-                                if just_held {
-                                    gw.settlement_held_since_ms = Some(now_ms());
-                                }
+                                let (action, just_held) = gw.settle_breaker_failed(e);
                                 (
                                     action,
                                     just_held,
@@ -8781,7 +8820,6 @@ async fn main() {
                             if just_held {
                                 let msg = crate::settle_health::held_alert_message(n, &last);
                                 eprintln!("{msg}");
-                                crate::settle_health::maybe_ntfy(&msg);
                             }
                             // Task 3 (WAL): keep the journal (boot's SEAL-NEVER-PERSISTED
                             // row resolves it once the rolled-back state persists); poke
@@ -10325,67 +10363,10 @@ mod tests {
         );
     }
 
-    /// SEC-025-D Task 4 (a Task-3 carry-forward): the one gate mutation the unit
-    /// suite cannot kill crosses the subprocess boundary — a reader that builds
-    /// its own `cast` argv, bypassing the choke point, still returns the right
-    /// VALUES under any in-process test while silently dropping the `--block`
-    /// pin, and three reads at different heights defeat the finalSettle
-    /// exclusion without failing anything. So pin the seam at the source level,
-    /// the same idiom as `unbacked_funding_has_exactly_the_known_call_sites`:
-    /// the choke point must be the only argv builder the three pinned readers
-    /// use, and the raw argv helper must have no consumer outside it. The
-    /// needles are `concat!`-split so this test does not count itself, and the
-    /// breakdowns below deliberately never spell a needle out in prose — this
-    /// scan counts occurrences across its own source file, so naming one here
-    /// would inflate the very count it describes (a prior task's edit failed
-    /// exactly that way).
-    #[test]
-    fn the_pinned_gate_readers_all_route_through_the_one_choke_point() {
-        let choke_needle = concat!("pinned_call", "(");
-        let argv_needle = concat!("pinned_call_args", "(");
-        let src_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
-        let mut sources: Vec<String> = Vec::new();
-        for entry in std::fs::read_dir(&src_dir).expect("gateway src dir") {
-            let path = entry.expect("dir entry").path();
-            if path.extension().and_then(|e| e.to_str()) == Some("rs") {
-                sources.push(std::fs::read_to_string(&path).expect("readable gateway source"));
-            }
-        }
-        assert!(
-            sources.len() >= 2,
-            "the scan must actually cover the gateway sources (found {} files)",
-            sources.len()
-        );
-        let count =
-            |needle: &str| -> usize { sources.iter().map(|s| s.matches(needle).count()).sum() };
-        let n = count(choke_needle);
-        assert_eq!(
-            n, 4,
-            "expected exactly 4 occurrences of `{choke_needle}` across the gateway \
-             sources (all in l1.rs): the definition and its three callers — the \
-             closeOnly, batchCount and currentStateRoot pinned readers the gate \
-             observation is classified from; found {n}. If an occurrence DISAPPEARED, \
-             a reader stopped routing through the choke point and its read is no \
-             longer provably block-pinned — that is the exact mutation the unit \
-             suite cannot see, because the real argv crosses the subprocess \
-             boundary. A legitimately added occurrence must prove it reads at ONE \
-             caller-named block and feeds `classify` (or is itself a new pinned \
-             reader doing so) — only then update this count and its breakdown."
-        );
-        let na = count(argv_needle);
-        assert_eq!(
-            na, 4,
-            "expected exactly 4 occurrences of `{argv_needle}` across the gateway \
-             sources (all in l1.rs): the pure argv builder's definition, its ONE \
-             production consumer (the choke point's body), and the 2 argv-shape \
-             tests; found {na}. Building the pinned argv anywhere else reopens the \
-             bypass the count above exists to close — one level down: a caller \
-             could assemble a correct-LOOKING read that drops or mistypes the \
-             block flag with every in-process test still green. A new consumer \
-             must instead call the choke point itself (and be accounted for in \
-             the count above)."
-        );
-    }
+    // Hash-pinning now has executable real-cast/loopback coverage in
+    // l1::witness_tests, including this module's gate classifier call path.
+    // The old textual argv occurrence count is obsolete: no cast-call argv
+    // builder remains in these typed observation paths.
 
     /// Whole-branch review item 5: the OpenAPI document must describe the MOUNTED
     /// surface. Task 3 removed `/v1/lp*` from the production router, so an

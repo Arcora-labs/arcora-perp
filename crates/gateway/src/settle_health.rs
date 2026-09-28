@@ -145,35 +145,13 @@ fn parse_env_u64(key: &str, default: u64) -> u64 {
     }
 }
 
-/// The single greppable HELD alert line.
-pub fn held_alert_message(consecutive: u32, last_error: &str) -> String {
+/// The single greppable HELD alert line. Diagnostic text is intentionally not
+/// included: prover/RPC errors can contain credential-bearing URLs or response data.
+pub fn held_alert_message(consecutive: u32, _last_error: &str) -> String {
     format!(
-        "[l1][HELD] settlement halted after {consecutive} consecutive prove failures: {last_error} \
-         — trading continues, L1 finality paused; fix the prover or POST /v1/admin/settlement/resume"
+        "[l1][HELD] settlement halted after {consecutive} consecutive prove failures \
+         — trading continues, L1 finality paused; inspect restricted diagnostics and fix the prover or POST /v1/admin/settlement/resume"
     )
-}
-
-/// Best-effort HELD alert to an optional ntfy topic (FIN_ALERT_NTFY_TOPIC). Never blocks the
-/// caller and never fails the loop: detached `curl`, errors ignored.
-pub fn maybe_ntfy(msg: &str) {
-    if let Ok(topic) = std::env::var("FIN_ALERT_NTFY_TOPIC") {
-        if topic.is_empty() {
-            return;
-        }
-        let msg = msg.to_string();
-        std::thread::spawn(move || {
-            let _ = std::process::Command::new("curl")
-                .args([
-                    "-s",
-                    "-m",
-                    "5",
-                    "-d",
-                    &msg,
-                    &format!("https://ntfy.sh/{topic}"),
-                ])
-                .status();
-        });
-    }
 }
 
 #[cfg(test)]
@@ -277,11 +255,11 @@ mod tests {
     }
 
     #[test]
-    fn alert_message_names_count_error_and_remedy() {
+    fn alert_message_names_count_and_remedy_without_raw_error() {
         let m = held_alert_message(3, "prover 503");
         assert!(m.contains("[l1][HELD]"));
         assert!(m.contains('3'));
-        assert!(m.contains("prover 503"));
+        assert!(!m.contains("prover 503"));
         assert!(m.contains("/v1/admin/settlement/resume"));
         assert!(m.contains("trading continues"));
     }

@@ -1,0 +1,16 @@
+{
+  "status": "PASS",
+  "checked_files": 62,
+  "changed_files": [],
+  "head": "f997f8b96279bd06ec1808f6b9cb2a6aeb25cc5e",
+  "expected_head": "f997f8b96279bd06ec1808f6b9cb2a6aeb25cc5e",
+  "porcelain_sha256": "7eb173d01c6f5a1880ad1f955fad4fca1ca8ad2fb3b46aaa017ef00c1798562b",
+  "expected_porcelain_sha256": "7eb173d01c6f5a1880ad1f955fad4fca1ca8ad2fb3b46aaa017ef00c1798562b",
+  "backup": "/Users/huseyinarslan/.codex/backups/arcora-desktop-pre-merge-20260928T073937Z",
+  "preliminary_check": {
+    "status": "INCOMPARABLE",
+    "reason": "--untracked-files=all expands 21 original status records into 62; no changed file hashes or HEAD",
+    "expanded_status_sha256": "42b900846439a6804bc13e2be005776f8f948b0f55e4412bf1c1e6cb6322a697"
+  },
+  "status_records": 21
+}

@@ -1,0 +1,50 @@
+{
+  "at_utc": "2026-09-28T17:10:42.265185+00:00",
+  "review": "independent read-only source review; test executions separately recorded by root and implementation agents",
+  "status": "CLEAR_WITHIN_REVIEWED_SCOPE",
+  "files": {
+    "crates/gateway/src/l1.rs": "992dedb1620e0fcfaa8bdc3304d9e62794935e0e849364f3edeb3a9f0970b63f",
+    "crates/gateway/src/l1/observation.rs": "34150730f3adfed720ee39a03e2f55eb7cf19e40b0efd9bc58fa6f10e5d87c4f",
+    "crates/gateway/src/l1/state_read_tests.rs": "91781e1f15fc57bf6a2ebdd2faad5505e2815425c29b06059e1166bd2c53a017",
+    "crates/gateway/src/l1/witness_tests.rs": "29046d542c3cb50440c85964122b9850dcbdfe89ad9e0ea197326cea427cde02",
+    "crates/gateway/src/main.rs": "a7ef6ca622bf26d57bd2d69d46613c1ec8fbba497239486db45f65780cc2b93b",
+    "crates/gateway/src/challenge_scan.rs": "3cb55b290da98f6691df74e89effffaee692428229104e04a701df502bbfb690",
+    "crates/gateway/src/ops_alerts.rs": "1921a40e54a4fd07d51593d054d4526cd47b19b14210bfb2c2513362a9e75840",
+    "crates/gateway/src/ops_alerts/integration_tests.rs": "b57da2e473d6ea3992b44f36afb5fe41a5a8b6ce8b5134f9698e7c52b906f28b",
+    "crates/gateway/src/settle_health.rs": "bcd7e90ad249221ab03090792843887034c36ad0533c0fd5881b6553cfef36e5",
+    "crates/gateway/src/deposit_ingestion.rs": "71372278e4b9a030d549e9893a743183979c36850d991d55d3a195a1b5851467"
+  },
+  "findings": [
+    {
+      "id": "CR-01",
+      "status": "CLOSED",
+      "resolution": "Bounded challenge pages compare providers, validate canonical event metadata, and recheck page/current anchors."
+    },
+    {
+      "id": "CR-02",
+      "status": "CLOSED",
+      "resolution": "Strict startup and production-used pending Cursor retain failed/missing-batch answers separately from page discovery; later hashes/pages proceed, completed or expired entries leave pending, capacity cannot silently discard page."
+    },
+    {
+      "id": "CR-03",
+      "status": "CLOSED",
+      "resolution": "Saved page hash is checked before next fetch; canonical replacement resets discovery and rewinds the coherent challenge window; provider failure preserves cursor. Pending entries each require current canonical eligibility before submission."
+    },
+    {
+      "id": "CROSS-REVIEW-04",
+      "status": "CLOSED",
+      "resolution": "Other reviewer identified a reorg between initial saved-anchor check and fetching the next page. Independently reviewed new second saved-anchor check after fetch before commit: changed branch clears discovery cursor/anchor for strict rewind; pending retained; dedicated sixth regression re-discovers replacement event behind the former cursor."
+    }
+  ],
+  "clear": [
+    "Typed ABI, EIP-1898 hash pins, configured witness fail-closed reads, canonical rechecks, and post-send failure-to-journal-HOLD",
+    "Ops enum-only redacted alert schema, bounded shared worker, loopback restrictions, runtime-only serde skip field and write transition serialization",
+    "Challenge deadline allows equality matching Solidity; missing retained answer is retried while live rather than dropped; expired open entries do not block other pending challenges"
+  ],
+  "limits": [
+    "Static review is not test execution",
+    "No real chain/RPC availability or deadline delivery guarantee assessed",
+    "Alerts are best effort; process exit may drop pending delivery",
+    "No A06, complete funds flow, real proof, or original release gate closure claimed"
+  ]
+}

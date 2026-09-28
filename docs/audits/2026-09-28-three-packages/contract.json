@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "task_id": "arcora-three-local-packages-2026-09-28",
+  "criteria": [
+    {"id":"R1","description":"Covered L1 reads use strict hash-pinned coherent observations and configured witness agreement; trading depth and timely terminal stop policy remain explicit. Meaningful RPC and real transport positive/negative cases pass.","verifier":"command"},
+    {"id":"C1","description":"Actual source-bound gateway binary passes authorize/recovery/cancel across pre-body, response-withheld and received-success SIGKILL/restart boundaries using encrypted disposable state; no false confirmed result or duplicate application.","verifier":"command"},
+    {"id":"A1","description":"Actual production event paths for HELD, persistence failure and deposit halt deliver redacted events to an owned local collector, with bounded transport, deduplication and verified recovery/rearm without weakening application safety.","verifier":"command"},
+    {"id":"V1","description":"Combined implementation is independently reviewed and relevant integrated checks pass with current source identities. Desktop work and all original task criteria/dependencies are preserved; proof, funds and release limits remain explicit.","verifier":"inspection"}
+  ]
+}
