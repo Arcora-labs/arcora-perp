@@ -219,6 +219,96 @@ export async function transactionStatus(hash: string): Promise<"pending" | "conf
   throw new Error("Wallet returned an unknown transaction status; keep the original transaction and check again.");
 }
 
+export interface FinalizedRevertedTransaction {
+  transactionHash: string;
+  blockHash: string;
+  blockNumber: string;
+  finalizedBlockHash: string;
+  finalizedBlockNumber: string;
+}
+
+/** Read-only evidence for an explicit retry of a saved, reverted transaction.
+ * A mined revert alone is insufficient: it must remain in the canonical chain
+ * at or below the provider's finalized block. Unsupported finality, timeouts,
+ * and any provider/network change leave the original transaction unresolved.
+ * There is no latest-block fallback, polling, signature, or transaction send. */
+export async function verifyFinalizedRevertedTransaction(hash: string): Promise<FinalizedRevertedTransaction> {
+  if (!/^0x[0-9a-fA-F]{64}$/.test(hash)) throw new Error("Invalid saved transaction hash.");
+  const transactionHash = hash.toLowerCase();
+  const source = provider();
+  const deadline = Date.now() + 15_000;
+  let invalidated = false;
+  const invalidate = () => { invalidated = true; };
+  const events = ["chainChanged", "disconnect"];
+  const assertProvider = () => {
+    if (window.ethereum !== source || invalidated) throw new Error("Wallet or network context changed; keep the original transaction and check again.");
+  };
+  // JSON-RPC QUANTITY is minimally encoded, bounded here to 256 bits. In
+  // particular decimal strings, pending nulls, and padded quantities fail.
+  const quantity = (value: unknown): value is string => typeof value === "string" && /^0x(?:0|[1-9a-fA-F][0-9a-fA-F]{0,63})$/.test(value);
+  const blockHash = (value: unknown): value is string => typeof value === "string" && /^0x[0-9a-fA-F]{64}$/.test(value) && !/^0x0{64}$/.test(value);
+  const record = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value);
+  const read = async (method: string, params?: unknown[]): Promise<unknown> => {
+    assertProvider();
+    const remaining = deadline - Date.now();
+    const timeoutError = () => {
+      invalidated = true;
+      return new Error("Finalized transaction verification timed out; keep the original transaction and check again.");
+    };
+    if (remaining <= 0) throw timeoutError();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const result = await Promise.race([
+        source.request({ method, ...(params ? { params } : {}) }),
+        new Promise<never>((_, reject) => { timer = setTimeout(() => reject(timeoutError()), remaining); }),
+      ]);
+      if (Date.now() >= deadline) throw timeoutError();
+      assertProvider();
+      return result;
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
+    }
+  };
+  const checkChain = async () => {
+    const chain = await read("eth_chainId");
+    if (!quantity(chain) || BigInt(chain) !== BigInt(BASE_SEPOLIA_CHAIN_ID)) throw new Error("Wallet network is not Base Sepolia; keep the original transaction and check again.");
+  };
+  const checkedRead = async (method: string, params: unknown[]) => {
+    const value = await read(method, params);
+    await checkChain();
+    return value;
+  };
+  const parseReceipt = (value: unknown) => {
+    if (value === null) throw new Error("Original transaction is pending or no longer mined; retry remains blocked.");
+    if (!record(value)) throw new Error("Wallet returned an unreadable transaction receipt.");
+    if (typeof value.transactionHash !== "string" || value.transactionHash.toLowerCase() !== transactionHash) throw new Error("Wallet returned a receipt for another transaction.");
+    if (value.status === "0x1") throw new Error("Original transaction succeeded; retry remains blocked.");
+    if (value.status !== "0x0") throw new Error("Original transaction does not have a valid reverted status.");
+    if (!blockHash(value.blockHash) || !quantity(value.blockNumber)) throw new Error("Wallet returned an invalid receipt block identity.");
+    return { blockHash: value.blockHash.toLowerCase(), blockNumber: value.blockNumber.toLowerCase() };
+  };
+  const parseBlock = (value: unknown, name: string) => {
+    if (!record(value) || !blockHash(value.hash) || !quantity(value.number)) throw new Error(`Wallet returned an invalid ${name} block.`);
+    return { hash: value.hash.toLowerCase(), number: value.number.toLowerCase() };
+  };
+  try {
+    for (const event of events) source.on?.(event, invalidate);
+    await checkChain();
+    const receipt = parseReceipt(await checkedRead("eth_getTransactionReceipt", [transactionHash]));
+    const finalized = parseBlock(await checkedRead("eth_getBlockByNumber", ["finalized", false]), "finalized");
+    if (BigInt(finalized.number) < BigInt(receipt.blockNumber)) throw new Error("Original reverted transaction is not finalized yet; retry remains blocked.");
+    if (finalized.number === receipt.blockNumber && finalized.hash !== receipt.blockHash) throw new Error("Original transaction block conflicts with the finalized block; retry remains blocked.");
+    const canonical = parseBlock(await checkedRead("eth_getBlockByNumber", [receipt.blockNumber, false]), "canonical");
+    if (canonical.number !== receipt.blockNumber || canonical.hash !== receipt.blockHash) throw new Error("Original transaction block is no longer canonical; retry remains blocked.");
+    const rechecked = parseReceipt(await checkedRead("eth_getTransactionReceipt", [transactionHash]));
+    if (rechecked.blockHash !== receipt.blockHash || rechecked.blockNumber !== receipt.blockNumber) throw new Error("Original transaction changed blocks during verification; retry remains blocked.");
+    assertProvider();
+    return { transactionHash, ...receipt, finalizedBlockHash: finalized.hash, finalizedBlockNumber: finalized.number };
+  } finally {
+    for (const event of events) source.removeListener?.(event, invalidate);
+  }
+}
+
 /**
  * Poll `eth_getTransactionReceipt` via the wallet's provider until the tx is
  * mined. Resolves on status 0x1; throws on revert (0x0) or after `timeoutMs`

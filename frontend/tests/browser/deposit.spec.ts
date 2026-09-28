@@ -18,6 +18,7 @@ async function fixture(context: BrowserContext) {
     if (!localStorage.getItem(KEY)) localStorage.setItem(KEY, JSON.stringify({ ...SCOPE, schema: 2, owner: OWNER, apiKey: OLD, recoveryNonce: 0 }));
     const listeners = new Map<string, Set<(...args: unknown[]) => void>>();
     const control = { sends: [] as any[], signs: 0, hold: '', fail: '', parked: '', release: null as (() => void) | null, receiptStatus: '0x1' as string | null,
+      revertedHash: '', finalizedNumber: '0x20',
       emit(event: string) { for (const fn of listeners.get(event) ?? []) fn(); } };
     const pause = async (stage: string) => {
       if (control.hold === stage) { control.parked = stage; await new Promise<void>(r => { control.release = r; }); control.hold = ''; }
@@ -33,10 +34,17 @@ async function fixture(context: BrowserContext) {
         if (method === 'personal_sign') { control.signs++; await pause('signature'); return '0x' + 'ab'.repeat(65); }
         if (method === 'eth_sendTransaction') {
           const tx = params![0] as any; control.sends.push(tx);
+          const count = Number(localStorage.getItem('test.walletTxCount') ?? '0') + 1;
+          localStorage.setItem('test.walletTxCount', String(count));
           await pause(tx.data.startsWith('0x40c10f19') ? 'mint' : tx.data.startsWith('0x095ea7b3') ? 'approve' : 'deposit');
-          return '0x' + control.sends.length.toString(16).padStart(64, '0');
+          return '0x' + count.toString(16).padStart(64, '0');
         }
-        if (method === 'eth_getTransactionReceipt') return control.receiptStatus === null ? null : { status: control.receiptStatus, transactionHash: params![0] };
+        if (method === 'eth_getTransactionReceipt') return control.receiptStatus === null ? null : { status: params![0] === control.revertedHash ? '0x0' : control.receiptStatus,
+          transactionHash: params![0], blockNumber: '0x10', blockHash: '0x' + '64'.padStart(64, '0') };
+        if (method === 'eth_getBlockByNumber') {
+          if (params![0] === 'finalized') { await pause('finality'); return { number: control.finalizedNumber, hash: '0x' + 'c8'.padStart(64, '0') }; }
+          return { number: params![0], hash: '0x' + '64'.padStart(64, '0') };
+        }
         throw new Error('Unexpected wallet method: ' + method);
       },
     } });
@@ -223,4 +231,65 @@ test('DP-10 pending and reverted status checks preserve the original operation w
   expect(f.calls.filter(call => call.path.endsWith('/deposit/onchain'))).toHaveLength(1);
   await expect(a.getByRole('button', { name: 'Deposit', exact: true })).toHaveCount(0);
   expect(await api(a, 'Object.keys(localStorage).filter(k => k.startsWith("darkperp.deposit.v1:")).length')).toBe(1);
+});
+
+test('DP-11 finalized failure is saved without sending, survives reload, and retries only the failed deposit', async ({ context }) => {
+  const f = await fixture(context), page = await open(context);
+  const failedHash = '0x' + '3'.padStart(64, '0');
+  await api(page, `window.depositWallet.revertedHash = '${failedHash}'`);
+  await start(page); await expect(error(page)).toContainText('reverted');
+  await page.getByRole('button', { name: 'Check original transaction', exact: true }).click();
+  await expect(page.getByRole('status')).toContainText('reverted');
+  const signs = await api(page, 'window.depositWallet.signs');
+  await page.getByRole('button', { name: 'Verify failure and allow retry', exact: true }).click();
+  await expect(page.getByRole('status')).toContainText('history has been saved');
+  expect(await api(page, 'window.depositWallet.sends.length')).toBe(3);
+  expect(await api(page, 'window.depositWallet.signs')).toBe(signs);
+  expect(f.calls.filter(call => call.path.endsWith('/deposit/onchain'))).toHaveLength(0);
+  await page.reload(); await page.waitForFunction(() => !!(window as any).testClient);
+  await page.getByRole('button', { name: 'Account', exact: true }).click();
+  await page.locator('.walletflow').getByRole('button', { name: 'Connect wallet', exact: true }).click();
+  await expect(page.getByRole('region', { name: 'Original deposit recovery' })).toContainText(failedHash);
+  await expect(page.getByRole('button', { name: 'Resume original deposit', exact: true })).toBeVisible();
+  expect(await api(page, 'window.depositWallet.sends.length')).toBe(0);
+  await page.getByRole('button', { name: 'Resume original deposit', exact: true }).click();
+  await expect(page.locator('.walletflow .notice--ok')).toContainText('credited to your trading account');
+  const sends = await api(page, 'window.depositWallet.sends');
+  expect(sends).toHaveLength(1); expect(sends[0].data.startsWith('0x2b681307')).toBe(true);
+  expect(f.calls.filter(call => call.path.endsWith('/deposit/authorize'))).toHaveLength(2);
+  expect(f.calls.filter(call => call.path.endsWith('/deposit/onchain')).map(call => call.body.txHash)).toEqual(['0x' + '4'.padStart(64, '0')]);
+  expect(await api(page, 'Object.keys(localStorage).filter(k => k.startsWith("darkperp.deposit.resolved.v1:")).length')).toBe(1);
+  expect(await api(page, 'Object.keys(localStorage).filter(k => k.startsWith("darkperp.deposit.v1:")).length')).toBe(0);
+});
+
+test('DP-12 an unfinalized revert retains its journal and cannot unlock a retry', async ({ context }) => {
+  await fixture(context); const page = await open(context);
+  await api(page, `window.depositWallet.revertedHash = '0x' + '3'.padStart(64, '0'); window.depositWallet.finalizedNumber = '0xf'`);
+  await start(page); await expect(error(page)).toContainText('reverted');
+  const original = await api(page, 'Object.keys(localStorage).filter(k => k.startsWith("darkperp.deposit.v1:")).map(k => localStorage.getItem(k))');
+  await page.getByRole('button', { name: 'Check original transaction', exact: true }).click();
+  await page.getByRole('button', { name: 'Verify failure and allow retry', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('not finalized');
+  await expect(page.getByRole('button', { name: 'Resume original deposit', exact: true })).toHaveCount(0);
+  expect(await api(page, 'window.depositWallet.sends.length')).toBe(3);
+  expect(await api(page, 'Object.keys(localStorage).filter(k => k.startsWith("darkperp.deposit.v1:")).map(k => localStorage.getItem(k))')).toEqual(original);
+});
+
+test('DP-13 another tab cannot resolve or resume while finality verification holds the native lock', async ({ context }) => {
+  await fixture(context); const a = await open(context), b = await open(context);
+  await api(a, `window.depositWallet.revertedHash = '0x' + '3'.padStart(64, '0')`);
+  await api(b, `window.depositWallet.revertedHash = '0x' + '3'.padStart(64, '0')`);
+  await start(a); await expect(error(a)).toContainText('reverted');
+  await a.getByRole('button', { name: 'Check original transaction', exact: true }).click();
+  await b.getByRole('button', { name: 'Check original transaction', exact: true }).click();
+  await api(a, 'window.depositWallet.hold = "finality"');
+  await a.getByRole('button', { name: 'Verify failure and allow retry', exact: true }).click();
+  await expect.poll(() => api(a, 'window.depositWallet.parked')).toBe('finality');
+  await b.getByRole('button', { name: 'Verify failure and allow retry', exact: true }).click();
+  await expect(b.getByRole('alert')).toContainText('another tab');
+  expect(await api(b, 'window.depositWallet.sends.length')).toBe(0);
+  await api(a, 'window.depositWallet.release()');
+  await expect(a.getByRole('button', { name: 'Resume original deposit', exact: true })).toBeVisible();
+  await expect(b.getByRole('button', { name: 'Resume original deposit', exact: true })).toBeVisible();
+  expect(await api(a, 'window.depositWallet.sends.length')).toBe(3);
 });

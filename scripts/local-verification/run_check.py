@@ -23,7 +23,7 @@ def identity():
     ).decode().split("\0")
     hashes = {}
     for name in sorted(set(files)):
-        if not name or name.startswith(("docs/audits/2026-09-27-local/", "docs/audits/2026-09-28-continuation/", "docs/audits/2026-09-28-runtime/", "docs/audits/2026-09-28-merge/")):
+        if not name or name.startswith(("docs/audits/2026-09-27-local/", "docs/audits/2026-09-28-continuation/", "docs/audits/2026-09-28-runtime/", "docs/audits/2026-09-28-merge/", "docs/audits/2026-09-28-resolution/")):
             continue
         path = ROOT / name
         if path.is_file():
