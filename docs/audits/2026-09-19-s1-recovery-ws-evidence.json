@@ -71,6 +71,13 @@
   "ci": {
     "workflows_triggered_by_pr_push": ["ci.yml", "a01-ingestion.yml", "a07-integration-hotfix.yml", "a10-trust-boundary.yml"],
     "deployment_or_live_interaction": "none; all triggered workflows are code-validation only (contents: read)",
-    "run_ids": "recorded in PR description after push"
+    "run_ids": {
+      "ci": {"run": 35446306970, "jobs": {"rust_workspace": "105905712651 success", "contracts_foundry": "105905712725 success", "frontend_vite": "105905712753 success", "prover_typecheck": "105905712778 success (typecheck only, NOT real SP1 proof)"}},
+      "a01_ingestion": {"run": 35446306976, "conclusion": "success"},
+      "a07_integration_hotfix": {"run": 35446306966, "conclusion": "success"},
+      "a11_release_evidence": {"run": 35446306965, "conclusion": "success"},
+      "pr": 14,
+      "head": "0cde5eeab74f8df87e98b950a754fb3e40564d57"
+    }
   }
 }
