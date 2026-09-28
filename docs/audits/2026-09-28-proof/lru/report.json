@@ -1,0 +1,92 @@
+{
+  "scope": "Manifest-only SP1 host/service LRU remediation. No proof or guest execution.",
+  "provenance_sha256": "e6f54c8692277d6bb7896cebb106d87fe9910e5cf00603ed894e835237f0c857",
+  "checks": {
+    "host-tests-final": {
+      "exit_code": 0,
+      "owned_source_unchanged": true,
+      "log_sha256": "f1d4452ed9ae6a64dff389688e24bc4bb771de41b891cb3e759f735a80dfd4c7",
+      "record_sha256": "ec998a1365d784254e20fa105873e7d3fa41083a1917cf18c7a59103031b6ab2"
+    },
+    "cache-compile-typed": {
+      "exit_code": 0,
+      "owned_source_unchanged": true,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "record_sha256": "cca44a218bd71613829ee8a9d19202190234816959b447c441af919d8390730b"
+    },
+    "cache-test": {
+      "exit_code": 0,
+      "owned_source_unchanged": true,
+      "log_sha256": "0784791fe11a53fd0322aa482595bc904428903d0142abc9cff1a3eed7e7bfe5",
+      "record_sha256": "6d82abdda478056eddfae44ac0dad7badd014ae762fdc977e75558ece003d263"
+    },
+    "prove-build-verified-elf": {
+      "exit_code": 0,
+      "owned_source_unchanged": true,
+      "log_sha256": "0e6b5d4b7c7b31e03ee6eb4193aa09291264e1f1f460cdedfdea9979a155034c",
+      "record_sha256": "6c8c2e97f961271c7be841b9eeb78f1b9cf9a3f66dd038f59f40abba6afc91d3"
+    },
+    "host-audit-final": {
+      "exit_code": 0,
+      "owned_source_unchanged": true,
+      "log_sha256": "a965f3675ed05dd06e6fe0e389b854b104f08e55cfa9e712c1a5d23584470d78",
+      "record_sha256": "33be9c6b830275dd10727dcd30aa7a703de88b30156195bf5da3d9647ac70704"
+    },
+    "service-audit-final": {
+      "exit_code": 0,
+      "owned_source_unchanged": true,
+      "log_sha256": "be1cc47fd16d793751a07e6f85ff28ac8ed4abe4633c71dba2f435b47c085375",
+      "record_sha256": "acd9dc8c53f8bae3e6adbae8ac4d74be34f201d74ded72bcb6b389bde0f735f1"
+    },
+    "service-tests": {
+      "exit_code": 0,
+      "owned_source_unchanged": true,
+      "log_sha256": "5da388f0cced2e83c2b56371e6983fbe2c5d99860cacfd6fa4472e311b4e16b9",
+      "record_sha256": "004f892b9deba1be5d7f231641bd48603499c5642f91d00bd72035fc3ee7f08b",
+      "passed": 8,
+      "ignored": 1,
+      "ignored_scope": "Owned subprocess fixture invoked by the SIGTERM parent tests."
+    }
+  },
+  "service_tests": "PASS",
+  "known_limits": [
+    "Original archive Cargo.lock retained as provenance, not application resolution.",
+    "Eight unmaintained notices remain in each SP1 application lock.",
+    "Real proof and target-contract verification belong to separate root work."
+  ],
+  "initial_failures": [
+    "First proof executable build found missing cachedELF at sharedtarget; fixed by copying byte-identical current6.1.0releaseELF, not rebuilding.",
+    "First externalcachetest needed explicit Arc::clone for type inference; corrected and passed.",
+    "Initial host check ran while only provenance/docs and service lock normalization were changing; final host test rerun has unchanged source identity."
+  ],
+  "status": "PASS",
+  "counts": {
+    "host_tests": 5,
+    "actual_sp1_cache_regression_tests": 1,
+    "service_tests": 8,
+    "service_owned_child_fixture_ignored_in_top_level": 1
+  },
+  "audit_summary": {
+    "host-audit-final": {
+      "vulnerabilities": 0,
+      "unsound": 0,
+      "unmaintained": 8,
+      "ignore": [],
+      "advisory_count": 1273
+    },
+    "service-audit-final": {
+      "vulnerabilities": 0,
+      "unsound": 0,
+      "unmaintained": 8,
+      "ignore": [],
+      "advisory_count": 1273
+    }
+  },
+  "evidence": [
+    "provenance.json",
+    "elf-binding.json",
+    "binary-binding.json",
+    "sp1-release-check.json",
+    "cache-regression.rs"
+  ]
+}

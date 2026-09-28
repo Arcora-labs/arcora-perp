@@ -1,0 +1,160 @@
+[
+  {
+    "Type": "container",
+    "Action": "create",
+    "Actor": {
+      "ID": "105ead8274950e096a3a91af00294f3dbc8a0cfd03025d393885d091808a5ada",
+      "Attributes": {
+        "arcora-proof-run": "ordinary-20260928-1",
+        "desktop.docker.io/binds/0/Source": "/var/folders/jz/7wbjs_5j45g915858xh6wm200000gn/T/.tmpgms7od",
+        "desktop.docker.io/binds/0/SourceKind": "hostFile",
+        "desktop.docker.io/binds/0/Target": "/output",
+        "desktop.docker.io/binds/1/Source": "/tmp/arcora-proof-runtime-20260928/circuits/groth16/v6.1.0",
+        "desktop.docker.io/binds/1/SourceKind": "hostFile",
+        "desktop.docker.io/binds/1/Target": "/circuit",
+        "desktop.docker.io/binds/2/Source": "/var/folders/jz/7wbjs_5j45g915858xh6wm200000gn/T/.tmpDMmfu0",
+        "desktop.docker.io/binds/2/SourceKind": "hostFile",
+        "desktop.docker.io/binds/2/Target": "/witness",
+        "desktop.docker.io/ports.scheme": "v2",
+        "image": "ghcr.io/succinctlabs/sp1-gnark@sha256:be8555f1ad90870acd8c6ec7fd3ba0b1a2133ea9cddf25e130665aa651129e54",
+        "name": "affectionate_austin",
+        "org.opencontainers.image.source": "https://github.com/succinctlabs/sp1"
+      }
+    },
+    "scope": "local",
+    "time": 1790610819,
+    "timeNano": 1790610819855114046
+  },
+  {
+    "Type": "container",
+    "Action": "attach",
+    "Actor": {
+      "ID": "105ead8274950e096a3a91af00294f3dbc8a0cfd03025d393885d091808a5ada",
+      "Attributes": {
+        "arcora-proof-run": "ordinary-20260928-1",
+        "desktop.docker.io/binds/0/Source": "/var/folders/jz/7wbjs_5j45g915858xh6wm200000gn/T/.tmpgms7od",
+        "desktop.docker.io/binds/0/SourceKind": "hostFile",
+        "desktop.docker.io/binds/0/Target": "/output",
+        "desktop.docker.io/binds/1/Source": "/tmp/arcora-proof-runtime-20260928/circuits/groth16/v6.1.0",
+        "desktop.docker.io/binds/1/SourceKind": "hostFile",
+        "desktop.docker.io/binds/1/Target": "/circuit",
+        "desktop.docker.io/binds/2/Source": "/var/folders/jz/7wbjs_5j45g915858xh6wm200000gn/T/.tmpDMmfu0",
+        "desktop.docker.io/binds/2/SourceKind": "hostFile",
+        "desktop.docker.io/binds/2/Target": "/witness",
+        "desktop.docker.io/ports.scheme": "v2",
+        "image": "ghcr.io/succinctlabs/sp1-gnark@sha256:be8555f1ad90870acd8c6ec7fd3ba0b1a2133ea9cddf25e130665aa651129e54",
+        "name": "affectionate_austin",
+        "org.opencontainers.image.source": "https://github.com/succinctlabs/sp1"
+      }
+    },
+    "scope": "local",
+    "time": 1790610819,
+    "timeNano": 1790610819858057713
+  },
+  {
+    "Type": "container",
+    "Action": "start",
+    "Actor": {
+      "ID": "105ead8274950e096a3a91af00294f3dbc8a0cfd03025d393885d091808a5ada",
+      "Attributes": {
+        "arcora-proof-run": "ordinary-20260928-1",
+        "desktop.docker.io/binds/0/Source": "/var/folders/jz/7wbjs_5j45g915858xh6wm200000gn/T/.tmpgms7od",
+        "desktop.docker.io/binds/0/SourceKind": "hostFile",
+        "desktop.docker.io/binds/0/Target": "/output",
+        "desktop.docker.io/binds/1/Source": "/tmp/arcora-proof-runtime-20260928/circuits/groth16/v6.1.0",
+        "desktop.docker.io/binds/1/SourceKind": "hostFile",
+        "desktop.docker.io/binds/1/Target": "/circuit",
+        "desktop.docker.io/binds/2/Source": "/var/folders/jz/7wbjs_5j45g915858xh6wm200000gn/T/.tmpDMmfu0",
+        "desktop.docker.io/binds/2/SourceKind": "hostFile",
+        "desktop.docker.io/binds/2/Target": "/witness",
+        "desktop.docker.io/ports.scheme": "v2",
+        "image": "ghcr.io/succinctlabs/sp1-gnark@sha256:be8555f1ad90870acd8c6ec7fd3ba0b1a2133ea9cddf25e130665aa651129e54",
+        "name": "affectionate_austin",
+        "org.opencontainers.image.source": "https://github.com/succinctlabs/sp1"
+      }
+    },
+    "scope": "local",
+    "time": 1790610820,
+    "timeNano": 1790610820060359046
+  },
+  {
+    "Type": "container",
+    "Action": "oom",
+    "Actor": {
+      "ID": "105ead8274950e096a3a91af00294f3dbc8a0cfd03025d393885d091808a5ada",
+      "Attributes": {
+        "arcora-proof-run": "ordinary-20260928-1",
+        "desktop.docker.io/binds/0/Source": "/var/folders/jz/7wbjs_5j45g915858xh6wm200000gn/T/.tmpgms7od",
+        "desktop.docker.io/binds/0/SourceKind": "hostFile",
+        "desktop.docker.io/binds/0/Target": "/output",
+        "desktop.docker.io/binds/1/Source": "/tmp/arcora-proof-runtime-20260928/circuits/groth16/v6.1.0",
+        "desktop.docker.io/binds/1/SourceKind": "hostFile",
+        "desktop.docker.io/binds/1/Target": "/circuit",
+        "desktop.docker.io/binds/2/Source": "/var/folders/jz/7wbjs_5j45g915858xh6wm200000gn/T/.tmpDMmfu0",
+        "desktop.docker.io/binds/2/SourceKind": "hostFile",
+        "desktop.docker.io/binds/2/Target": "/witness",
+        "desktop.docker.io/ports.scheme": "v2",
+        "image": "ghcr.io/succinctlabs/sp1-gnark@sha256:be8555f1ad90870acd8c6ec7fd3ba0b1a2133ea9cddf25e130665aa651129e54",
+        "name": "affectionate_austin",
+        "org.opencontainers.image.source": "https://github.com/succinctlabs/sp1"
+      }
+    },
+    "scope": "local",
+    "time": 1790610825,
+    "timeNano": 1790610825516582924
+  },
+  {
+    "Type": "container",
+    "Action": "die",
+    "Actor": {
+      "ID": "105ead8274950e096a3a91af00294f3dbc8a0cfd03025d393885d091808a5ada",
+      "Attributes": {
+        "arcora-proof-run": "ordinary-20260928-1",
+        "desktop.docker.io/binds/0/Source": "/var/folders/jz/7wbjs_5j45g915858xh6wm200000gn/T/.tmpgms7od",
+        "desktop.docker.io/binds/0/SourceKind": "hostFile",
+        "desktop.docker.io/binds/0/Target": "/output",
+        "desktop.docker.io/binds/1/Source": "/tmp/arcora-proof-runtime-20260928/circuits/groth16/v6.1.0",
+        "desktop.docker.io/binds/1/SourceKind": "hostFile",
+        "desktop.docker.io/binds/1/Target": "/circuit",
+        "desktop.docker.io/binds/2/Source": "/var/folders/jz/7wbjs_5j45g915858xh6wm200000gn/T/.tmpDMmfu0",
+        "desktop.docker.io/binds/2/SourceKind": "hostFile",
+        "desktop.docker.io/binds/2/Target": "/witness",
+        "desktop.docker.io/ports.scheme": "v2",
+        "execDuration": "5",
+        "exitCode": "137",
+        "image": "ghcr.io/succinctlabs/sp1-gnark@sha256:be8555f1ad90870acd8c6ec7fd3ba0b1a2133ea9cddf25e130665aa651129e54",
+        "name": "affectionate_austin",
+        "org.opencontainers.image.source": "https://github.com/succinctlabs/sp1"
+      }
+    },
+    "scope": "local",
+    "time": 1790610825,
+    "timeNano": 1790610825641900632
+  },
+  {
+    "Type": "container",
+    "Action": "destroy",
+    "Actor": {
+      "ID": "105ead8274950e096a3a91af00294f3dbc8a0cfd03025d393885d091808a5ada",
+      "Attributes": {
+        "arcora-proof-run": "ordinary-20260928-1",
+        "desktop.docker.io/binds/0/Source": "/var/folders/jz/7wbjs_5j45g915858xh6wm200000gn/T/.tmpgms7od",
+        "desktop.docker.io/binds/0/SourceKind": "hostFile",
+        "desktop.docker.io/binds/0/Target": "/output",
+        "desktop.docker.io/binds/1/Source": "/tmp/arcora-proof-runtime-20260928/circuits/groth16/v6.1.0",
+        "desktop.docker.io/binds/1/SourceKind": "hostFile",
+        "desktop.docker.io/binds/1/Target": "/circuit",
+        "desktop.docker.io/binds/2/Source": "/var/folders/jz/7wbjs_5j45g915858xh6wm200000gn/T/.tmpDMmfu0",
+        "desktop.docker.io/binds/2/SourceKind": "hostFile",
+        "desktop.docker.io/binds/2/Target": "/witness",
+        "desktop.docker.io/ports.scheme": "v2",
+        "image": "ghcr.io/succinctlabs/sp1-gnark@sha256:be8555f1ad90870acd8c6ec7fd3ba0b1a2133ea9cddf25e130665aa651129e54",
+        "name": "affectionate_austin",
+        "org.opencontainers.image.source": "https://github.com/succinctlabs/sp1"
+      }
+    },
+    "scope": "local",
+    "time": 1790610825,
+    "timeNano": 1790610825732766840
+  }
+]

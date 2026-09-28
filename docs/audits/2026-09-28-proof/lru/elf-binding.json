@@ -1,0 +1,8 @@
+{
+  "source": "crates/sp1-guest/target/elf-compilation/riscv64im-succinct-zkvm-elf/release/perp-core-guest",
+  "host_target_elf": "crates/sp1-host/target/elf-compilation/riscv64im-succinct-zkvm-elf/release/perp-core-guest",
+  "sha256": "82938f5db13d7da2cc48fc18e36ba6a5e6d5f0736154ae9e105b33b8717918d7",
+  "matches_release_manifest": true,
+  "guest_rebuilt": false,
+  "guest_executed": false
+}

@@ -1,0 +1,31 @@
+2026-09-28T15:46:55.3179608Z env:
+2026-09-28T15:46:55.3179842Z   SP1_SKIP_PROGRAM_BUILD: true
+2026-09-28T15:46:55.3180126Z   CARGO_HOME: /home/runner/.cargo
+2026-09-28T15:46:55.3180415Z   CARGO_INCREMENTAL: 0
+2026-09-28T15:46:55.3180655Z   CARGO_TERM_COLOR: always
+2026-09-28T15:46:55.3180899Z   CACHE_ON_FAILURE: false
+2026-09-28T15:46:55.3181144Z ##[endgroup]
+2026-09-28T15:46:56.0128023Z     Checking foldhash v0.2.0
+2026-09-28T15:46:56.0405321Z    Compiling sp1-prover-types v6.1.0
+2026-09-28T15:46:56.0900433Z     Checking hashbrown v0.17.1
+2026-09-28T15:46:56.2816963Z     Checking perp-core v0.0.1 (/home/runner/work/dark-perp/dark-perp/crates/perp-core)
+2026-09-28T15:46:56.6018601Z     Checking indexmap v2.14.2
+2026-09-28T15:46:57.1626818Z     Checking serde_json v1.0.151
+2026-09-28T15:46:57.2898305Z     Checking h2 v0.4.19
+2026-09-28T15:46:57.8877923Z     Checking sp1-core-executor v6.1.0
+2026-09-28T15:47:00.3777811Z     Checking hyper v1.11.1
+2026-09-28T15:47:01.3287616Z     Checking hyper-util v0.1.21
+2026-09-28T15:47:01.4897803Z     Checking sp1-core-executor-runner-binary v6.1.0
+2026-09-28T15:47:01.6537719Z     Checking sp1-core-executor-runner v6.1.0
+2026-09-28T15:47:01.7559478Z error: couldn't read `/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/sp1-core-executor-runner-6.1.0/target/sp1-native-bins/debug/sp1-core-executor-runner-binary`: No such file or directory (os error 2)
+2026-09-28T15:47:01.7564920Z   --> /home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/sp1-core-executor-runner-6.1.0/src/lib.rs:75:34
+2026-09-28T15:47:01.7566667Z    |
+2026-09-28T15:47:01.7567715Z 75 |             const BYTES: &[u8] = include_bytes!(env!("SP1_CORE_RUNNER_BINARY"));
+2026-09-28T15:47:01.7568995Z    |                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2026-09-28T15:47:01.7569684Z 
+2026-09-28T15:47:02.0375169Z warning: sp1-core-executor-runner@6.1.0: Built new runner binary.
+2026-09-28T15:47:02.0397723Z error: could not compile `sp1-core-executor-runner` (lib) due to 1 previous error
+2026-09-28T15:47:02.0417476Z warning: build failed, waiting for other jobs to finish...
+2026-09-28T15:47:02.3447722Z ##[error]Process completed with exit code 101.
+2026-09-28T15:47:02.3572380Z Post job cleanup.
+2026-09-28T15:47:02.4556996Z [command]/usr/bin/git version

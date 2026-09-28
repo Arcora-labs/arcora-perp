@@ -1,0 +1,17 @@
+{
+  "SP1VerifierGroth16.sol": {
+    "archive_sha256": "48e1db5baca3b102242ebd88280b3689a088076688146cd0d98876f5dacb76d0",
+    "vendored_sha256": "48e1db5baca3b102242ebd88280b3689a088076688146cd0d98876f5dacb76d0",
+    "byte_equal": true
+  },
+  "Groth16Verifier.sol": {
+    "archive_sha256": "d5e777120d9f675aefcc8c0c8786d4043acb8e063646e60818564b44fb2ec457",
+    "vendored_sha256": "d5e777120d9f675aefcc8c0c8786d4043acb8e063646e60818564b44fb2ec457",
+    "byte_equal": true
+  },
+  "groth16_vk.bin": {
+    "sha256": "4388a21c687fdd5f218d7e3d13190cac4c5355818d3605fd5fb811df468ee696",
+    "expected_verifier_hash": "4388a21c687fdd5f218d7e3d13190cac4c5355818d3605fd5fb811df468ee696",
+    "matches": true
+  }
+}

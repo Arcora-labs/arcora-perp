@@ -1,0 +1,8 @@
+{
+  "pid": 95218,
+  "pgid": 95218,
+  "paused_at_epoch": 1790610189.414571,
+  "reason": "Allow verified circuit prefetch to complete before SDK installer; retain current native proof state.",
+  "resumed_at_epoch": 1790610657.311141,
+  "resume_reason": "Complete official v6.1.0 circuit archive extracted and file hashes captured."
+}

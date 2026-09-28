@@ -1,0 +1,148 @@
+{
+  "headRefOid": "1b7858925374569bc806ed1a9a29479e45c13b4f",
+  "isDraft": true,
+  "state": "OPEN",
+  "statusCheckRollup": [
+    {
+      "__typename": "CheckRun",
+      "completedAt": "0001-01-01T00:00:00Z",
+      "conclusion": "",
+      "detailsUrl": "https://github.com/Kubudak90/dark-perp/actions/runs/36447576381/job/109013742336",
+      "name": "rust (workspace)",
+      "startedAt": "2026-09-28T15:58:09Z",
+      "status": "IN_PROGRESS",
+      "workflowName": "ci"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-28T16:01:26Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/Kubudak90/dark-perp/actions/runs/36447576168/job/109013740813",
+      "name": "rust",
+      "startedAt": "2026-09-28T15:58:28Z",
+      "status": "COMPLETED",
+      "workflowName": "A07 integration hotfix"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-28T15:58:40Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/Kubudak90/dark-perp/actions/runs/36447576086/job/109013740693",
+      "name": "dependency advisories",
+      "startedAt": "2026-09-28T15:58:10Z",
+      "status": "COMPLETED",
+      "workflowName": "A11 release evidence"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-28T15:59:05Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/Kubudak90/dark-perp/actions/runs/36447576080/job/109013740546",
+      "name": "offline-ingestion",
+      "startedAt": "2026-09-28T15:58:09Z",
+      "status": "COMPLETED",
+      "workflowName": "a01-ingestion"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-28T15:58:43Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/Kubudak90/dark-perp/actions/runs/36447576168/job/109013741115",
+      "name": "frontend",
+      "startedAt": "2026-09-28T15:58:09Z",
+      "status": "COMPLETED",
+      "workflowName": "A07 integration hotfix"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-28T16:05:32Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/Kubudak90/dark-perp/actions/runs/36447576086/job/109013740268",
+      "name": "release regression",
+      "startedAt": "2026-09-28T15:58:09Z",
+      "status": "COMPLETED",
+      "workflowName": "A11 release evidence"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-28T16:03:42Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/Kubudak90/dark-perp/actions/runs/36447576381/job/109013742789",
+      "name": "prover crates (excluded, typecheck)",
+      "startedAt": "2026-09-28T15:58:09Z",
+      "status": "COMPLETED",
+      "workflowName": "ci"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-28T15:58:39Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/Kubudak90/dark-perp/actions/runs/36447576086/job/109013740764",
+      "name": "foundry release gate",
+      "startedAt": "2026-09-28T15:58:09Z",
+      "status": "COMPLETED",
+      "workflowName": "A11 release evidence"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-28T15:58:36Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/Kubudak90/dark-perp/actions/runs/36447576381/job/109013742617",
+      "name": "contracts (foundry)",
+      "startedAt": "2026-09-28T15:58:09Z",
+      "status": "COMPLETED",
+      "workflowName": "ci"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-28T15:58:54Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/Kubudak90/dark-perp/actions/runs/36447576086/job/109013740683",
+      "name": "frontend release gate",
+      "startedAt": "2026-09-28T15:58:09Z",
+      "status": "COMPLETED",
+      "workflowName": "A11 release evidence"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-28T15:58:54Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/Kubudak90/dark-perp/actions/runs/36447576381/job/109013742467",
+      "name": "frontend (vite)",
+      "startedAt": "2026-09-28T15:58:09Z",
+      "status": "COMPLETED",
+      "workflowName": "ci"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-28T15:58:15Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/Kubudak90/dark-perp/actions/runs/36447576086/job/109013740898",
+      "name": "prover source / deployment binding",
+      "startedAt": "2026-09-28T15:58:09Z",
+      "status": "COMPLETED",
+      "workflowName": "A11 release evidence"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-28T15:58:19Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://socket.dev/dashboard/org/dustless/sbom/edc8c2b1-27f8-4a00-a5c8-ce63736ba13c",
+      "name": "Socket Security: Project Report",
+      "startedAt": "2026-09-28T15:58:07Z",
+      "status": "COMPLETED",
+      "workflowName": ""
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-28T15:58:25Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://socket.dev",
+      "name": "Socket Security: Pull Request Alerts",
+      "startedAt": "2026-09-28T15:58:19Z",
+      "status": "COMPLETED",
+      "workflowName": ""
+    }
+  ],
+  "captured_at": "2026-09-28T16:11:29.643993+00:00"
+}

@@ -1,0 +1,68 @@
+{
+  "artifact": "/tmp/arcora-proof-runtime-20260928/circuits/groth16/v6.1.0/groth16_pk.bin",
+  "file_bytes": 5862173061,
+  "header_bytes_read": 85,
+  "layout_ends_at_eof": true,
+  "marker": "efbeadde00000000",
+  "domain_cardinality": 16777216,
+  "domain_with_precompute": true,
+  "wires": 15747144,
+  "infinity_a": 2978799,
+  "infinity_b": 476595,
+  "commitments": 0,
+  "vectors": [
+    {
+      "name": "G1.A",
+      "elements": 12768345,
+      "element_bytes": 64,
+      "bytes": 817174080
+    },
+    {
+      "name": "G1.B",
+      "elements": 15270549,
+      "element_bytes": 64,
+      "bytes": 977315136
+    },
+    {
+      "name": "G1.Z",
+      "elements": 16777215,
+      "element_bytes": 64,
+      "bytes": 1073741760
+    },
+    {
+      "name": "G1.K",
+      "elements": 15747138,
+      "element_bytes": 64,
+      "bytes": 1007816832
+    },
+    {
+      "name": "G2.B",
+      "elements": 15270549,
+      "element_bytes": 128,
+      "bytes": 1954630272
+    }
+  ],
+  "raw_vectors_bytes": 5830678080,
+  "bool_arrays_bytes": 31494288,
+  "fft_field_arrays_bytes": 2147485120,
+  "pk_array_payload_lower_bound_bytes": 8009657488,
+  "pk_array_payload_lower_bound_gib": 7.459574833512306,
+  "docker_cap_bytes": 5368709120,
+  "raw_vectors_alone_exceed_docker_cap": true,
+  "excluded_allocations": [
+    "R1CS live object",
+    "Go/runtime/allocation overhead",
+    "witness",
+    "proof working buffers",
+    "Rust native prover"
+  ],
+  "finding": "The current 5 GiB gnark container limit is insufficient. This does not establish that every 16 GiB Mac configuration is infeasible.",
+  "sources": {
+    "sp1_release_dependency_pins": "https://github.com/succinctlabs/sp1/blob/v6.1.0/crates/recursion/gnark-ffi/go/go.mod",
+    "sp1_retains_r1cs_and_pk": "https://github.com/succinctlabs/sp1/blob/v6.1.0/crates/recursion/gnark-ffi/go/sp1/prove_groth16.go#L19-L96",
+    "gnark_pk_read_dump": "https://github.com/p4u/gnark/blob/cd7874155e266e08ca8dc247dbc66efb1030bd3b/backend/groth16/bn254/marshal.go#L422-L504",
+    "gnark_crypto_whole_slice_allocation": "https://github.com/Consensys/gnark-crypto/blob/022ec58e8c19be75662dd2f4f24b2488ec00fbbc/utils/unsafe/dump_slice.go#L32-L70",
+    "gnark_crypto_domain_precompute": "https://github.com/Consensys/gnark-crypto/blob/022ec58e8c19be75662dd2f4f24b2488ec00fbbc/ecc/bn254/fr/fft/domain.go#L224-L273",
+    "gnark_crypto_domain_read_from": "https://github.com/Consensys/gnark-crypto/blob/022ec58e8c19be75662dd2f4f24b2488ec00fbbc/ecc/bn254/fr/fft/domain.go#L355-L391"
+  }
+}

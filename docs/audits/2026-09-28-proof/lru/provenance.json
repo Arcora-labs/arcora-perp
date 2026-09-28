@@ -1,0 +1,7 @@
+{
+  "upstream_files_checked": 59,
+  "unchanged_rust_source_files": 41,
+  "restored_upstream_license_files": 2,
+  "manifest_patch_only": true,
+  "failures": []
+}

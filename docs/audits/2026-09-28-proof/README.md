@@ -1,0 +1,15 @@
+# Ordinary proof continuation — 2026-09-28
+
+Code candidate `1b7858925374569bc806ed1a9a29479e45c13b4f`; source digest `0a48d45862c1f2f177eb668bb6d549b32d6090dce5185e2bd0b7cc204895ee2a`. Existing [PR24](https://github.com/Kubudak90/dark-perp/pull/24) updated; no merge or production deployment. **Seven original tasks remain; zero top-level closures in this turn.**
+
+The LRU 0.12.5 unsoundness findings were removed through an exact 0.18.4 manifest-only correction in the published SP1-prover 6.1.0 package. All 41 Rust files remain byte-identical; all59 published files and both separately restored upstream licenses are provenance-checked. Five application lock audits deny unsound advisories, report zero vulnerability/unsound findings and use no ignores. Other warnings remain in `dependency-summary.json`.
+
+The pinned real SP1 v6.1.0 verifier and official gateway compile unchanged at Solidity0.8.20; Arcora's adapter remains0.8.24. Eight real malformed-proof guards, thirteen artifact-gate regressions, eleven release-identity regressions, 96 existing Foundry tests, five host tests, one actual SP1 cache regression and eight service tests passed. The intentionally ignored service child fixture is invoked by its real SIGTERM parent tests. These counts are separate scopes, not one end-to-end proof claim.
+
+**The actual normal Groth16 attempt is incomplete.** The exact witness/ELF/vkey matched the reviewed identities and local proving reached the Docker gnark step. The own container hit its5GiB memory limit (Docker OOM event and exit137); the producer exited101, with no successful proof manifest, proof bytes or application EVM acceptance. Native process peakRSS was4,436,148,224bytes, below the8GiB supervisor limit. The circuit archive and verifier bytes/vkey match the pinned upstream; the reproducible PK header analysis establishes a7.46GiB allocation lower bound before R1CS/runtime/witness/proof buffers. This diagnoses the allocated run, not every possible16GiB host configuration.
+
+The full eighteen-case application proof matrix remains blocked by the absent proof. The witness is synthetic and does not satisfy the full test-token deposit/trade/cancel/settle/claim flow. A06 has not been retried; the old flag's exact agent-turn scope is explained in `safety-flag-scope.md`.
+
+CI first exposed an upstream native-helper/cache mismatch; the scoped package-clean correction preserves both real locked typechecks. See `ci-current.json` for the latest observed Linux outcome. The Desktop checkout's62files, HEAD and exact status remain unchanged. Original criteria/dependencies compare exactly to the frozen baseline (`original-criteria-comparison.json`).
+
+Evidence: `lru/`, `checks/`, `verifier-guards/`, `proof-attempt1.json`, `runtime/docker-events-attempt1.json`, `runtime/gnark-memory-observed.json`, `source-validation.json`, `release-manifest.json`, `review.md`. The graph contract remains CLOSED while the mandatory proof/acceptance criteria are blocked; code readiness does not override that result.

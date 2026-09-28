@@ -1,0 +1,170 @@
+   Compiling tracing v0.1.44
+   Compiling const-oid v0.9.6
+   Compiling p3-matrix v0.3.2-succinct
+   Compiling digest v0.10.7
+   Compiling p3-dft v0.3.2-succinct
+   Compiling p3-challenger v0.3.2-succinct
+   Compiling p3-mds v0.3.2-succinct
+   Compiling p3-poseidon2 v0.3.2-succinct
+   Compiling sha2 v0.10.9
+   Compiling slop-challenger v6.1.0
+   Compiling p3-commit v0.3.2-succinct
+   Compiling slop-poseidon2 v6.1.0
+   Compiling ark-serialize v0.4.2
+   Compiling ark-ff v0.4.2
+   Compiling sha3 v0.10.9
+   Compiling blake2 v0.10.6
+   Compiling der_derive v0.7.3
+   Compiling flagset v0.4.7
+   Compiling der v0.7.10
+   Compiling slop-futures v6.1.0
+   Compiling p3-koala-bear v0.3.2-succinct
+   Compiling p3-bn254-fr v0.3.2-succinct
+   Compiling zkhash v0.2.0
+   Compiling slop-matrix v6.1.0
+   Compiling tracing-subscriber v0.3.23
+   Compiling slop-bn254 v6.1.0
+   Compiling slop-tensor v6.1.0
+   Compiling slop-koala-bear v6.1.0
+   Compiling spki v0.7.3
+   Compiling slop-commit v6.1.0
+   Compiling p3-baby-bear v0.3.2-succinct
+   Compiling tracing-forest v0.1.6
+   Compiling slop-baby-bear v6.1.0
+   Compiling slop-multilinear v6.1.0
+   Compiling slop-utils v6.1.0
+   Compiling pkcs8 v0.10.2
+   Compiling p3-merkle-tree v0.3.2-succinct
+   Compiling p3-interpolation v0.3.2-succinct
+   Compiling p3-fri v0.3.2-succinct
+   Compiling slop-merkle-tree v6.1.0
+   Compiling sec1 v0.7.3
+   Compiling p3-air v0.3.2-succinct
+   Compiling serde_json v1.0.151
+   Compiling elliptic-curve v0.13.8
+   Compiling slop-fri v6.1.0
+   Compiling slop-basefold v6.1.0
+   Compiling slop-dft v6.1.0
+   Compiling hmac v0.12.1
+   Compiling slop-basefold-prover v6.1.0
+   Compiling rfc6979 v0.4.0
+   Compiling signature v2.2.0
+   Compiling parity-scale-codec v3.7.5
+   Compiling sp1-primitives v6.1.0
+   Compiling ecdsa v0.16.9
+   Compiling slop-stacked v6.1.0
+   Compiling slop-sumcheck v6.1.0
+   Compiling byte-slice-cast v1.2.3
+   Compiling slop-jagged v6.1.0
+   Compiling p3-uni-stark v0.3.2-succinct
+   Compiling md-5 v0.10.6
+   Compiling slop-uni-stark v6.1.0
+   Compiling uuid v1.26.1
+   Compiling scale-info v2.11.6
+   Compiling slop-whir v6.1.0
+   Compiling k256 v0.13.4
+   Compiling slop-air v6.1.0
+   Compiling sp1-hypercube v6.1.0
+   Compiling wasm-bindgen-shared v0.2.129
+   Compiling primeorder v0.13.6
+   Compiling h2 v0.4.19
+   Compiling p256 v0.13.2
+   Compiling snowbridge-amcl v1.0.2
+   Compiling hyper v1.11.1
+   Compiling sp1-curves v6.1.0
+   Compiling sp1-jit v6.1.0
+   Compiling hyper-util v0.1.21
+   Compiling sp1-core-executor v6.1.0
+   Compiling sp1-recursion-executor v6.1.0
+   Compiling sp1-core-executor-runner-binary v6.1.0
+   Compiling tower v0.5.3
+   Compiling p3-keccak-air v0.3.2-succinct
+   Compiling bumpalo v3.20.3
+   Compiling wasm-bindgen-macro-support v0.2.129
+   Compiling slop-keccak-air v6.1.0
+   Compiling sp1-core-executor-runner v6.1.0
+   Compiling wasm-bindgen v0.2.129
+   Compiling unicode-ident v1.0.26
+   Compiling axum-core v0.4.5
+   Compiling sp1-core-machine v6.1.0
+   Compiling wasm-bindgen-macro v0.2.129
+   Compiling sp1-recursion-machine v6.1.0
+   Compiling serde_path_to_error v0.1.20
+   Compiling unicode-segmentation v1.13.3
+   Compiling convert_case v0.10.0
+   Compiling axum v0.7.9
+   Compiling chrono v0.4.45
+   Compiling sp1-recursion-compiler v6.1.0
+   Compiling tower v0.4.13
+   Compiling hyper-timeout v0.5.2
+   Compiling curve25519-dalek v4.1.3
+   Compiling typeid_suffix v1.3.0
+   Compiling tonic v0.12.3
+   Compiling mti v1.1.1
+   Compiling hyper-rustls v0.27.10
+   Compiling tower-http v0.6.11
+   Compiling js-sys v0.3.106
+   Compiling derive_more-impl v2.1.1
+   Compiling sp1-verifier v6.1.0
+   Compiling base64 v0.13.1
+   Compiling tracing-appender v0.2.5
+   Compiling serde-human-bytes v0.1.3
+   Compiling cargo_metadata v0.18.1
+   Compiling sp1-prover-types v6.1.0
+   Compiling sp1-recursion-gnark-ffi v6.1.0
+   Compiling derive_more v2.1.1
+   Compiling wasm-bindgen-futures v0.4.79
+   Compiling reqwest v0.12.28
+   Compiling sp1-recursion-circuit v6.1.0
+   Compiling perp-core v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/perp-core)
+   Compiling dcap-qvl-webpki v0.103.4+dcap.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/vendor/dcap-qvl-webpki)
+   Compiling pem v3.0.6
+   Compiling x509-cert v0.2.5
+   Compiling asn1_der v0.7.7
+   Compiling urlencoding v2.1.3
+   Compiling sp1-prover v6.1.0 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/vendor/sp1-prover)
+   Compiling dcap-qvl v0.5.3
+   Compiling x25519-dalek v2.0.1
+   Compiling prover-service v0.0.0 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/prover-service)
+   Compiling sp1-build v6.1.0
+   Compiling sp1-sdk v6.1.0
+warning: prover-service@0.0.0: Build skipped for perp-core-guest at 2026-09-28 18:38:09 due to SP1_SKIP_PROGRAM_BUILD flag
+   Compiling dark-perp-attestation v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/attestation)
+warning: use of deprecated method `sha2::digest::generic_array::GenericArray::<T, N>::as_slice`: please upgrade to generic-array 1.x
+   --> /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/attestation/src/vtpm.rs:239:32
+    |
+239 |     if Sha256::digest(runtime).as_slice() != &td.report_data[..32] {
+    |                                ^^^^^^^^
+    |
+    = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated method `sha2::digest::generic_array::GenericArray::<T, N>::as_slice`: please upgrade to generic-array 1.x
+   --> /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/attestation/src/vtpm.rs:270:21
+    |
+270 |     if h.finalize().as_slice() != q.pcr_digest {
+    |                     ^^^^^^^^
+
+warning: `dark-perp-attestation` (lib) generated 2 warnings
+   Compiling prover v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/prover)
+    Finished `release` profile [optimized] target(s) in 2m 04s
+     Running unittests src/main.rs (crates/sp1-host/target/release/deps/prover_service-c7ede5042f303be1)
+
+running 9 tests
+test shutdown_tests::owned_shutdown_child ... ignored, owned subprocess fixture; launched by the SIGTERM parent tests
+test admission::tests::token_and_configuration_boundaries_fail_closed ... ok
+test admission::tests::overload_is_rejected_before_body_polling_and_shutdown_stays_closed ... ok
+test admission::tests::cancelling_waiter_does_not_release_a_running_blocking_worker_slot ... ok
+test admission::tests::worker_panic_remains_an_error_and_does_not_strand_shutdown ... ok
+test admission::tests::authentication_precedes_body_polling_and_json_errors ... ok
+test admission::tests::admitted_stalled_body_times_out_and_releases_its_slot ... ok
+test shutdown_tests::sigterm_drains_accepted_request_before_owned_process_exit ... ok
+test shutdown_tests::sigterm_after_http_cancellation_keeps_owned_worker_until_completion ... ok
+
+test result: ok. 8 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.15s
+
+     Running unittests src/bin/seal-client.rs (crates/sp1-host/target/release/deps/seal_client-91948dafa788df50)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
