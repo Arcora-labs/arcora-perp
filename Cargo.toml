@@ -22,7 +22,7 @@ members = [
 # workspace — `cargo build --workspace` and CI never try to compile it. sp1-host
 # and prover-service both pull in the heavy sp1-sdk (Groth16/Docker/gnark) and are
 # standalone `[workspace]`s built only on the SP1-capable prover machine.
-exclude = ["crates/sp1-guest", "crates/sp1-host", "crates/prover-service"]
+exclude = ["crates/sp1-guest", "crates/sp1-host", "crates/prover-service", "vendor/dcap-qvl-webpki"]
 
 [workspace.package]
 version = "0.0.1"
@@ -37,3 +37,7 @@ unsafe_code = "forbid"
 [profile.release]
 lto = true
 codegen-units = 1
+
+# Manifest-only fix for unused weak RSA dependencies; see vendor provenance.
+[patch.crates-io]
+dcap-qvl-webpki = { path = "vendor/dcap-qvl-webpki" }

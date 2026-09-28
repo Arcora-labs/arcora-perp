@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "package": "dcap-qvl-webpki",
+  "version": "0.103.4+dcap.1",
+  "archive_url": "https://static.crates.io/crates/dcap-qvl-webpki/dcap-qvl-webpki-0.103.4+dcap.1.crate",
+  "archive_sha256": "d0af040afe66c4f26ca05f308482d98bd75a35a80a227d877c2e28c9947a9fa6",
+  "upstream_git_sha": "b4ab0ee84bb876b6602b7dcf9c736e3065c45342",
+  "upstream_files_sha256": {
+    ".cargo_vcs_info.json": "44e9b72d958d790776ec9fdb1d42e77d8190a9ca3ebac84e7ccf914c3e004816",
+    "Cargo.lock": "70630f968db43f8d232c28a7218e981c6f3296349131212289b3e7a8b81d5fcf",
+    "Cargo.toml": "82875ea3e1b5c0b28b9f7292574f68f48e4fc235a6744d31ade1a832ef5131fc",
+    "Cargo.toml.orig": "0d88e4a72d644ef22f31cfbaa166542e9e2cf26e3cd9d7d62ada74ebac3988c3",
+    "LICENSE": "5b698ca13897be3afdb7174256fa1574f8c6892b8bea1a66dd6469d3fe27885a",
+    "README.md": "084c37ee4b35887c813373cb98f3712e20d42e238cd16b59bd90dd8ae870dbf2",
+    "src/alg_tests.rs": "0d2c68947ad5d6774c09c72e31b5309c9380c292ae5b3551fb0f2efe4a764223",
+    "src/aws_lc_rs_algs.rs": "4abfc7a0ddf7df74f35270e470b48279f2946962ae7f88cabf168c9a15517990",
+    "src/cert.rs": "972379b92baae81506738b6805411433ee418c8ae122ced6e7f5f00bc69be34a",
+    "src/crl/mod.rs": "118bfbeab8b56d0e61fb64911e9331aa3809c1da1b310d11ccb84396dbfdd48f",
+    "src/crl/types.rs": "bf542bd44d03f4964d9ae47f2304ed9b077e4d6a9988c51dce4e72ee89036238",
+    "src/data/alg-rsa-pkcs1-sha256-absent-params.der": "269462d02de5597c547cc473cefb4471ee93d836c75d272a0e5a36863e96d228",
+    "src/data/alg-rsa-pkcs1-sha384-absent-params.der": "dc7e012a12d034dd581de85ad49913a020df7c8a684213f03629c1fd53dcf14f",
+    "src/data/alg-rsa-pkcs1-sha512-absent-params.der": "1c9021c531e93720d2539bd989fbd9f6ce34d24aa0b694c376a87c0a1ba9dd29",
+    "src/der.rs": "92c9545706fb969624d4670d925399fc3bfc811232ec0932e8d8cea2f86aadd9",
+    "src/end_entity.rs": "4f20a6788ece93e9df7545a3e2294cac376c284e7e4a535ed094d2e42e92f8ed",
+    "src/error.rs": "2a31e32b7a6ee815639ef7610ffc702fe901d0a46427777573292be50419170f",
+    "src/lib.rs": "12dccdf2e9f894a2eda3bdb5541532f4f2d8ad1504b63ecae976719f4c3ec81d",
+    "src/ring_algs.rs": "3d17369a2fa99171ad18c56b2f21460f271636a488a627bb722685580234404b",
+    "src/rpk_entity.rs": "29a59f4c5123fca851ff6b8a6a7f3120f2890df90d3169367f611dc05f31ed3b",
+    "src/rustcrypto_algs.rs": "0a9d90164f1473023f23d3cfdcfe992438220950051d58f9daff1b314b4a7f13",
+    "src/signed_data.rs": "86ab1b810558d0f990d4990a49108e0bc97d9d2067cbd285ad4912afc1b06993",
+    "src/subject_name/dns_name.rs": "1595fb34c399eeae045904ddc29567775d653b3bd2ba48a0b6216a781e78a604",
+    "src/subject_name/ip_address.rs": "41147201dfa8f472612a309b6229666c6d1e59597e86e4fd1217d68846cf4b29",
+    "src/subject_name/mod.rs": "7f61b34073c9376ad642e9956ff76760a723422e6aa9aafc6f4746dc90fea943",
+    "src/time.rs": "e92721be14ac2f99b4a9a28125947307bbb1f87136b64e2b51ea07644fafa7a6",
+    "src/trust_anchor.rs": "52ad6e4658c55d7435bd1297dd035ef2e274c043fe972d2bda48d69311e6344c",
+    "src/verify_cert.rs": "32058ed473901fdd5e41dec737f1cd6ebf0fd93c363a30c0c09d17097efc3ef9",
+    "src/x509.rs": "d86f0e3d6d6153d01c3c183cd26491c6a6a426f5adae021e4be56ca22743dd1a"
+  },
+  "modified_files": {
+    "Cargo.toml": {
+      "sha256": "a0285a919180127f0870540f338cf1c8232dc89f327590168399886a61ee1bbb",
+      "change": "Move rsa?/default from alloc to rsa/default in rustcrypto; all Rust source and license unchanged."
+    }
+  }
+}

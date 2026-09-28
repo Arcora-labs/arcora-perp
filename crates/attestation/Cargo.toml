@@ -8,11 +8,10 @@ license.workspace = true
 workspace = true
 
 [dependencies]
-# Offline TDX DCAP quote verification. Pure-Rust backend (`rustcrypto`, no `ring`
-# asm) so this crate builds clean under the workspace `unsafe_code = "forbid"`;
-# `report` (the reqwest live-collateral fetcher) is dropped — we only ever verify
-# against pinned collateral, never the network.
-dcap-qvl = { version = "0.5.2", default-features = false, features = ["std", "rustcrypto", "default-x509"] }
+# Offline TDX DCAP quote verification through the supported ring backend.
+# The rustcrypto backend pulls in rsa (RUSTSEC-2023-0071); disable it rather than
+# suppressing its advisory. `report` stays disabled: collateral is always pinned.
+dcap-qvl = { version = "0.5.2", default-features = false, features = ["std", "ring", "default-x509"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # Keccak256 + the `Measurement` domain tag, to fold the 48-byte MRTD into the
@@ -20,8 +19,9 @@ serde_json = "1"
 perp-core = { path = "../perp-core" }
 # Azure vTPM trust-chain verification (#5b): SHA-256 (HCL runtime-data binding +
 # PCR digest), RSA RSASSA-PKCS1v1.5 (the vTPM AK signature over the TPM quote),
-# and base64url (the AK pubkey n/e in the HCL runtime-data JSON). All pure-Rust.
-rsa = "0.9"
+# and base64url (the AK pubkey n/e in the HCL runtime-data JSON). Public-key
+# verification only; no RSA private-key operations or custom unsafe code.
+ring = "0.17.14"
 sha2 = "0.10"
 base64 = "0.22"
 # SEC-020 handshake: hex-encode the session token (also used by the tests).

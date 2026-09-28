@@ -20,7 +20,7 @@
 //! vTPM capture (see `tests/fixtures/azure/`).
 
 use base64::Engine;
-use rsa::{BigUint, Pkcs1v15Sign, RsaPublicKey};
+use ring::signature::{RsaPublicKeyComponents, RSA_PKCS1_2048_8192_SHA256};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
@@ -136,14 +136,51 @@ fn b64url(s: &str) -> Result<Vec<u8>, VtpmError> {
         .map_err(|_| VtpmError::AkParse)
 }
 
+/// Decode the unsigned JWK integers, retaining the prior parser's leading-zero
+/// normalization, odd modulus/exponent and exponent limits. Azure signing AKs
+/// must now also meet ring's 2048-bit minimum; the existing 4096-bit maximum is
+/// retained. Key validation fails before any signature is accepted.
+fn ak_public_key(ak: &Jwk) -> Result<RsaPublicKeyComponents<Vec<u8>>, VtpmError> {
+    fn integer(s: &str) -> Result<Vec<u8>, VtpmError> {
+        let bytes = b64url(s)?;
+        let first = bytes
+            .iter()
+            .position(|&b| b != 0)
+            .ok_or(VtpmError::AkParse)?;
+        Ok(bytes[first..].to_vec())
+    }
+    let n = integer(&ak.n)?;
+    let e = integer(&ak.e)?;
+    let bits = n.len() * 8 - n[0].leading_zeros() as usize;
+    if !(2048..=4096).contains(&bits)
+        || n[n.len() - 1] & 1 == 0
+        || e.len() > 5
+        || e.len() > n.len()
+        || (e.len() == n.len() && e >= n)
+    {
+        return Err(VtpmError::AkParse);
+    }
+    let exponent = e.iter().fold(0u64, |acc, &b| (acc << 8) | u64::from(b));
+    if !(3..=(1u64 << 33) - 1).contains(&exponent) || exponent & 1 == 0 {
+        return Err(VtpmError::AkParse);
+    }
+    Ok(RsaPublicKeyComponents { n, e })
+}
+
 /// Parse a `TPMT_SIGNATURE` and return the raw RSASSA signature bytes.
 fn rsassa_sig(sig: &[u8]) -> Result<&[u8], VtpmError> {
     let mut c = Cur::new(sig);
     if c.u16().map_err(|_| VtpmError::Signature)? != 0x0014 {
         return Err(VtpmError::Signature); // TPM_ALG_RSASSA
     }
-    let _hash = c.u16().map_err(|_| VtpmError::Signature)?; // TPM_ALG_SHA256
-    c.tpm2b().map_err(|_| VtpmError::Signature)
+    if c.u16().map_err(|_| VtpmError::Signature)? != 0x000b {
+        return Err(VtpmError::Signature); // TPM_ALG_SHA256
+    }
+    let signature = c.tpm2b().map_err(|_| VtpmError::Signature)?;
+    if c.o != sig.len() {
+        return Err(VtpmError::Signature);
+    }
+    Ok(signature)
 }
 
 /// The fields a `TPMS_ATTEST` quote yields.
@@ -216,17 +253,12 @@ pub fn verify_azure_vtpm(
         .iter()
         .find(|k| k.kid == "HCLAkPub" && k.key_ops.iter().any(|o| o == "sign"))
         .ok_or(VtpmError::AkParse)?;
-    let ak_pub = RsaPublicKey::new(
-        BigUint::from_bytes_be(&b64url(&ak.n)?),
-        BigUint::from_bytes_be(&b64url(&ak.e)?),
-    )
-    .map_err(|_| VtpmError::AkParse)?;
+    let ak_pub = ak_public_key(ak)?;
 
     // 3. The AK signs the TPM quote (RSASSA-PKCS#1 v1.5 / SHA-256).
     let sig = rsassa_sig(ak_quote_sig)?;
-    let hashed = Sha256::digest(ak_quote_msg);
     ak_pub
-        .verify(Pkcs1v15Sign::new::<Sha256>(), &hashed, sig)
+        .verify(&RSA_PKCS1_2048_8192_SHA256, ak_quote_msg, sig)
         .map_err(|_| VtpmError::Signature)?;
 
     // 4. The quote binds the measured-boot PCRs: pcrDigest == SHA-256(PCR values).
@@ -332,6 +364,80 @@ mod tests {
             nonce: Vec::new(),
             pcr_select: Vec::new(),
         }
+    }
+
+    fn fixture_ak() -> Jwk {
+        let runtime = runtime_data(include_bytes!("../tests/fixtures/azure/hcl_report.bin"))
+            .expect("fixture runtime claims");
+        let rd: RuntimeData = serde_json::from_slice(runtime).unwrap();
+        rd.keys.into_iter().find(|k| k.kid == "HCLAkPub").unwrap()
+    }
+
+    #[test]
+    fn ak_parser_rejects_malformed_or_weak_public_keys() {
+        let b64 = base64::engine::general_purpose::URL_SAFE_NO_PAD;
+        let good = ak_public_key(&fixture_ak()).expect("real Azure AK");
+        assert_eq!(good.n.len(), 256);
+        for bytes in [
+            vec![],
+            vec![0],
+            vec![1],
+            vec![2],
+            vec![4],
+            vec![2, 0, 0, 0, 1], // > prior 33-bit limit
+            vec![1; 9],
+        ] {
+            let mut ak = fixture_ak();
+            ak.e = b64.encode(bytes);
+            assert!(matches!(ak_public_key(&ak), Err(VtpmError::AkParse)));
+        }
+        let mut even = good.n.clone();
+        let last = even.len() - 1;
+        even[last] &= !1;
+        for bytes in [
+            vec![],
+            vec![0],
+            vec![0xff; 128], // 1024-bit keys are no longer accepted
+            vec![0xff; 255],
+            vec![0xff; 513], // retain the previous 4096-bit upper bound
+            even,
+        ] {
+            let mut ak = fixture_ak();
+            ak.n = b64.encode(bytes);
+            assert!(matches!(ak_public_key(&ak), Err(VtpmError::AkParse)));
+        }
+        for field in ["n", "e"] {
+            let mut ak = fixture_ak();
+            if field == "n" {
+                ak.n = "%%%".into();
+            } else {
+                ak.e = "%%%".into();
+            }
+            assert!(matches!(ak_public_key(&ak), Err(VtpmError::AkParse)));
+        }
+    }
+
+    #[test]
+    fn ak_parser_preserves_leading_zero_normalization() {
+        let b64 = base64::engine::general_purpose::URL_SAFE_NO_PAD;
+        let mut ak = fixture_ak();
+        let good = ak_public_key(&ak).unwrap();
+        let mut n = vec![0, 0];
+        n.extend_from_slice(&good.n);
+        let mut e = vec![0];
+        e.extend_from_slice(&good.e);
+        ak.n = b64.encode(n);
+        ak.e = b64.encode(e);
+        let parsed = ak_public_key(&ak).unwrap();
+        assert_eq!(parsed.n, good.n);
+        assert_eq!(parsed.e, good.e);
+        parsed
+            .verify(
+                &RSA_PKCS1_2048_8192_SHA256,
+                include_bytes!("../tests/fixtures/azure/ak_quote_msg.bin"),
+                rsassa_sig(include_bytes!("../tests/fixtures/azure/ak_quote_sig.bin")).unwrap(),
+            )
+            .expect("normalization retains valid fixture signature");
     }
 
     #[test]

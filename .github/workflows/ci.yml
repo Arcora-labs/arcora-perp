@@ -67,6 +67,8 @@ jobs:
             crates/prover-service
       - name: install protoc (sp1-prover-types build script)
         run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+      - name: Require the patched coherent SP1 release
+        run: python3 scripts/local-verification/check_sp1_release.py
       - name: stub the guest ELF (guest build skipped; include_elf! needs the file)
         run: |
           mkdir -p crates/sp1-guest/target/elf-compilation/riscv64im-succinct-zkvm-elf/release

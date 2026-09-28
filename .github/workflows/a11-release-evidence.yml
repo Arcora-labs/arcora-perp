@@ -8,6 +8,8 @@ on:
       - Cargo.lock
       - crates/**
       - scripts/local-verification/**
+      - scripts/tee-capture/**
+      - vendor/**
       - frontend/package.json
       - frontend/pnpm-lock.yaml
       - crates/sp1-guest/**
@@ -25,10 +27,19 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: taiki-e/install-action@cargo-audit
-      - name: RustSec workspace lock
+      - name: Verify vendored source and patched SP1 release identity
+        run: |
+          python3 vendor/dcap-qvl-webpki/verify_provenance.py
+          python3 scripts/local-verification/check_sp1_release.py
+          python3 -m unittest discover -s scripts/local-verification -p test_check_sp1_release.py
+      - name: RustSec workspace and excluded application locks
         run: |
           set -o pipefail
           cargo audit --json | tee cargo-audit.json
+          cargo audit --file crates/sp1-host/Cargo.lock --json | tee cargo-audit-host.json
+          cargo audit --file crates/sp1-guest/Cargo.lock --json | tee cargo-audit-guest.json
+          cargo audit --file crates/prover-service/Cargo.lock --json | tee cargo-audit-prover.json
+          cargo audit --file scripts/tee-capture/Cargo.lock --json | tee cargo-audit-tee.json
       - uses: pnpm/action-setup@v4
         with: { version: 10 }
       - uses: actions/setup-node@v4
@@ -45,6 +56,7 @@ jobs:
           name: a11-dependency-audits
           path: |
             cargo-audit.json
+            cargo-audit-*.json
             pnpm-audit.json
   release-regression:
     name: release regression

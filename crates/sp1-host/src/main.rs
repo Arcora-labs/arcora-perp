@@ -1,92 +1,108 @@
-//! SP1 host: prove native ⇄ zkVM equivalence.
-//!
-//! Runs the perp-core zkVM guest (`crates/sp1-guest`) in the SP1 RISC-V executor
-//! over a witness, and asserts the public value it commits — the cross-layer
-//! commitment — is byte-for-byte identical to the one native `perp-core` produces
-//! for the same transition. This is the executable proof that "written once, run
-//! natively AND in the zkVM" holds at the commitment level the L1 verifier checks.
-//!
-//! The witness is the 3-tuple `(state, ops, manifest)` — the four non-state roots
-//! are DERIVED (natively here, and inside the guest) via the shared
-//! `perp_core::commitment::derive_roots`, never accepted as trusted inputs (audit
-//! F2). The batch includes a real `Withdraw { to: Some(..) }` so the derived
-//! `withdrawals_root` is exercised end-to-end.
-//!
-//! The host's `build.rs` auto-builds the guest via `sp1-build`, so
-//! `cargo run --release` here builds and runs it in one step. (A standalone
-//! `cd ../sp1-guest && cargo prove build` is optional — verification only.)
+//! Execute the ordinary synthetic deposit/withdraw witness in native code and SP1.
+//! Optional: --check-negatives --output-dir NEW_DIRECTORY. No proof or chain writes.
 
-use perp_core::commitment::derive_roots;
-use perp_core::engine::BatchOp;
 use perp_core::hash::Keccak256;
-use perp_core::market::Market;
-use perp_core::note::{owner_from_spend_key, Note};
-use perp_core::order::BatchManifest;
-use perp_core::DefaultState;
-use sp1_sdk::{include_elf, Elf, Prover, ProverClient, SP1Stdin};
+use serde_json::json;
+use sp1_host::{
+    hex, native_from_bytes, normal_negative_cases, normal_witness, options, roots_json, sha256,
+    witness_bytes, Artifacts,
+};
+use sp1_sdk::{include_elf, Elf, Prover, ProverClient, SP1Stdin, StatusCode};
 
 const ELF: Elf = include_elf!("perp-core-guest");
 
 #[tokio::main]
 async fn main() {
-    // Deterministic witness: state + market + a deposit + a withdraw (exercises the
-    // derived withdrawals_root). The withdraw consumes the freshly deposited note,
-    // so note ownership (DP-003: owner = H(spend_key)) holds.
-    let spend_key = [3u8; 32];
-    let owner = owner_from_spend_key::<Keccak256>(&spend_key);
-    let blind = [9u8; 32];
-    let amount = 1_000_000i128;
-    let mut state = DefaultState::new(16);
-    state.add_market(Market::conservative(0));
-    let cm = Note::new(owner, 0, amount, blind).commitment::<Keccak256>();
-    let ops = vec![
-        BatchOp::Deposit {
-            owner,
-            asset_id: 0,
-            amount,
-            blinding: blind,
-            // SEC-019: demo harness — a toy state whose first deposit is index 0. `from` and
-            // `deposit_blind` are placeholders; nothing here is bound to a real L1 event.
-            from: [0u8; 20],
-            deposit_id: 0,
-            deposit_blind: [0u8; 32],
-        },
-        BatchOp::Withdraw { note_commitment: cm, spend_key, to: Some([0xAB; 20]), nonce: 1 },
-    ];
-    let manifest = BatchManifest {
-        previous_state_root: state.state_root(),
-        batch_id: state.next_batch_id,
-        ordered: vec![],
-        rejected: vec![],
-        oracle_updates: vec![],
-        matching_rule_version: 0,
-        enclave_measurement: [0u8; 32],
-        sequencer_pubkey_epoch: 0,
-    };
-
-    // Native reference commitment (what the sequencer/prover compute).
-    let native_commit = derive_roots(&mut state.clone(), &ops, &manifest)
-        .unwrap()
-        .commitment::<Keccak256>();
-
-    // Serialize the witness exactly as the guest reads it (postcard).
-    let witness: (DefaultState, Vec<BatchOp>, BatchManifest) = (state, ops, manifest);
-    let bytes = postcard::to_allocvec(&witness).unwrap();
-
+    let options = options(std::env::args().skip(1), true).expect("valid CLI arguments");
+    let bytes = witness_bytes(&normal_witness());
+    let (roots, deposit_count) = native_from_bytes(&bytes).expect("valid normal native transition");
+    let native_commit = roots.commitment::<Keccak256>();
+    let mut artifacts = options
+        .output_dir
+        .as_deref()
+        .map(Artifacts::new)
+        .transpose()
+        .expect("fresh output directory");
+    if let Some(output) = artifacts.as_mut() {
+        output.write("normal.witness.bin", &bytes).unwrap();
+        output.write("guest.elf", &ELF).unwrap();
+    }
     let mut stdin = SP1Stdin::new();
-    stdin.write_vec(bytes);
-
+    stdin.write_vec(bytes.clone());
     let client = ProverClient::builder().cpu().build().await;
-    let (public_values, report) = client.execute(ELF, stdin).await.expect("guest executes");
-    let zk_commit: [u8; 32] = public_values.as_slice().try_into().expect("32-byte commitment");
-
+    let (public_values, report) = client
+        .execute(ELF, stdin)
+        .expected_exit_code(StatusCode::SUCCESS)
+        .await
+        .expect("normal guest executes");
+    assert_eq!(
+        report.exit_code, 0,
+        "normal guest must terminate successfully"
+    );
+    let zk_commit: [u8; 32] = public_values
+        .as_slice()
+        .try_into()
+        .expect("32-byte commitment");
+    assert_eq!(
+        native_commit, zk_commit,
+        "native and zkVM commitments MUST match"
+    );
+    println!("witness sha256    = {}", sha256(&bytes));
     println!("cycles            = {}", report.total_instruction_count());
     println!("native commitment = 0x{}", hex(&native_commit));
     println!("zkVM   commitment = 0x{}", hex(&zk_commit));
-    assert_eq!(native_commit, zk_commit, "native and zkVM commitments MUST match");
     println!("MATCH: native perp-core == SP1 guest");
-}
 
-fn hex(b: &[u8]) -> String {
-    b.iter().map(|x| format!("{x:02x}")).collect()
+    let mut negatives = Vec::new();
+    if options.check_negatives {
+        for case in normal_negative_cases() {
+            assert_eq!(
+                native_from_bytes(&case.bytes).unwrap_err(),
+                case.expected_error
+            );
+            if let Some(output) = artifacts.as_mut() {
+                output
+                    .write(&format!("{}.witness.bin", case.name), &case.bytes)
+                    .unwrap();
+            }
+            let mut stdin = SP1Stdin::new();
+            stdin.write_vec(case.bytes.clone());
+            // Require an actual guest panic with no commitment. Infrastructure and
+            // executor failures are errors, never passing negative cases.
+            let (public_values, report) = client
+                .execute(ELF, stdin)
+                .expected_exit_code(StatusCode::PANIC)
+                .await
+                .expect("negative guest reaches expected rejection");
+            assert_eq!(report.exit_code, 1, "negative guest must reject");
+            assert!(
+                public_values.as_slice().is_empty(),
+                "rejected guest must not commit a public value"
+            );
+            println!(
+                "REJECTED: {} native={:?} guest_exit={} public_bytes=0",
+                case.name, case.expected_error, report.exit_code
+            );
+            negatives.push(json!({
+                "case": case.name, "witness_sha256": sha256(&case.bytes),
+                "native_error": format!("{:?}", case.expected_error),
+                "guest_exit_code": report.exit_code, "public_values_bytes": 0,
+                "cycles": report.total_instruction_count()
+            }));
+        }
+    }
+    if let Some(mut output) = artifacts {
+        output
+            .write("normal.public-values.bin", public_values.as_slice())
+            .unwrap();
+        output.finish(json!({
+            "kind": "ordinary-native-guest-execution", "sdk_version": "6.1.0",
+            "witness_sha256": sha256(&bytes), "native_deserialized_same_witness": true,
+            "native_guest_equal": true, "guest_exit_code": report.exit_code,
+            "cycles": report.total_instruction_count(), "roots": roots_json(&roots, deposit_count),
+            "negative_checks_requested": options.check_negatives, "negatives": negatives,
+            "proof_generated": false, "a06_executed": false,
+            "scope": "Synthetic ordinary deposit/withdraw only; no observed L1 deposit, proof or token lifecycle. Does not close combined S5-02."
+        })).unwrap();
+    }
 }

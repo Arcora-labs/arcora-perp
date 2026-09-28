@@ -12,8 +12,14 @@ publish = false
 
 [dependencies]
 base64 = "0.22"
-dcap-qvl = "0.5"
+# Match the offline verifier backend without enabling the vulnerable rsa graph.
+# The capture tool still needs `report` to fetch fresh collateral on the CVM.
+dcap-qvl = { version = "0.5", default-features = false, features = ["std", "report", "ring", "default-x509"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 ureq = "3"
+
+# Manifest-only fix for unused weak RSA dependencies; see vendor provenance.
+[patch.crates-io]
+dcap-qvl-webpki = { path = "../../vendor/dcap-qvl-webpki" }

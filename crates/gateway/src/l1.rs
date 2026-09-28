@@ -44,6 +44,13 @@ const CAST_WALL_TIMEOUT_SECS: u64 = 90;
 #[derive(Clone)]
 pub struct L1 {
     pub rpc: String,
+    /// Optional independent read endpoint. Used only by settlement recovery, never
+    /// for transaction submission or signing. A configured witness must agree;
+    /// unavailability cannot silently downgrade the observation to one provider.
+    rpc_witness: Option<String>,
+    /// Chain identity established before key setup. Witness agreement on a
+    /// different chain is still a refusal, even if both endpoints switch together.
+    witness_chain: Option<u64>,
     pub settlement: String,
     /// Path to the V3 keystore encrypting the sequencer key, and to its (0600) password
     /// file. `cast` signs via `--keystore`/`--password-file`, so the raw key never enters a
@@ -80,45 +87,191 @@ pub struct L1Status {
     pub withdrawals_root: String,
 }
 
+/// Reject aliases of the same endpoint host before a two-provider policy can be
+/// enabled. Distinct hosts are a configuration guard, not proof of independent
+/// operators (DNS, proxies and shared upstreams still require operator review).
+fn witness_endpoint(primary: &str, witness: Option<String>) -> Result<Option<String>, String> {
+    fn identity(value: &str) -> Result<String, String> {
+        let uri: axum::http::Uri = value.parse().map_err(|_| "invalid RPC endpoint URL")?;
+        if !matches!(uri.scheme_str(), Some("http" | "https")) {
+            return Err("RPC endpoint must use HTTP(S)".into());
+        }
+        let authority = uri.authority().ok_or("RPC endpoint requires a host")?;
+        let host = authority.host().trim_end_matches('.').to_ascii_lowercase();
+        let host_port = authority.as_str().rsplit('@').next().unwrap_or_default();
+        let port_suffix = &host_port[authority.host().len()..];
+        if host.is_empty()
+            || value.contains('#')
+            || (!port_suffix.is_empty()
+                && port_suffix
+                    .strip_prefix(':')
+                    .and_then(|p| p.parse::<u16>().ok())
+                    .is_none())
+        {
+            return Err("invalid RPC endpoint host or port".into());
+        }
+        let bare = host.trim_start_matches('[').trim_end_matches(']');
+        if let Ok(ip) = bare.parse::<std::net::IpAddr>() {
+            let ip = match ip {
+                std::net::IpAddr::V6(v) => {
+                    v.to_ipv4_mapped().map(std::net::IpAddr::V4).unwrap_or(ip)
+                }
+                _ => ip,
+            };
+            return Ok(if ip.is_loopback() {
+                "loopback".into()
+            } else {
+                ip.to_string()
+            });
+        }
+        if host == "localhost" || host.ends_with(".localhost") {
+            return Ok("loopback".into());
+        }
+        // Ambiguous shortened, octal or hexadecimal IPv4 strings must not pass
+        // as a second DNS host and then normalize back to the same address in cast.
+        if host.bytes().all(|b| b.is_ascii_digit() || b == b'.')
+            || host.split('.').any(|part| part.starts_with("0x"))
+            || !host
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'.' || b == b'-')
+            || host
+                .split('.')
+                .any(|label| label.is_empty() || label.starts_with('-') || label.ends_with('-'))
+        {
+            return Err("invalid or ambiguous RPC endpoint host".into());
+        }
+        Ok(host)
+    }
+    if let Some(ref value) = witness {
+        if identity(primary)? == identity(value)? {
+            return Err("L1_RPC_WITNESS must use a distinct endpoint host".into());
+        }
+    }
+    Ok(witness)
+}
+
+fn witness_chain_override(declared: Option<&str>) -> Result<u64, String> {
+    declared
+        .filter(|s| !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit()))
+        .and_then(|s| s.parse::<u64>().ok())
+        .filter(|n| *n > 0)
+        .ok_or_else(|| {
+            "L1_RPC_WITNESS with L1_ALLOW_MOCK_PROOF requires an explicit nonzero L1_CHAIN_ID"
+                .into()
+        })
+}
+
+/// A restricted adapter for the optional witness policy. Neither endpoint receives
+/// keys or mutation calls. Do not propagate cast stderr or provider JSON errors:
+/// those can echo credential-bearing URL paths, userinfo, queries or response data.
+struct SettlementReader<'a> {
+    l1: &'a L1,
+    endpoint: &'a str,
+    role: &'static str,
+}
+impl crate::deposit_rpc::Rpc for SettlementReader<'_> {
+    fn call(
+        &self,
+        method: &str,
+        params: Vec<serde_json::Value>,
+    ) -> Result<serde_json::Value, String> {
+        if !matches!(method, "eth_chainId" | "eth_getBlockByNumber" | "eth_call") {
+            return Err("settlement observation: unsupported read method".into());
+        }
+        let mut args = vec![
+            "rpc".to_string(),
+            "--rpc-url".into(),
+            self.endpoint.into(),
+            method.into(),
+        ];
+        args.extend(params.iter().map(|v| v.to_string()));
+        let refs: Vec<&str> = args.iter().map(String::as_str).collect();
+        let out = self
+            .l1
+            .cast(&refs)
+            .map_err(|_| format!("settlement observation: {} {method} failed", self.role))?;
+        serde_json::from_str(&out)
+            .map_err(|_| format!("settlement observation: {} invalid RPC response", self.role))
+    }
+}
+
 /// Separate transport from parsing so local fault fixtures exercise the exact
 /// observation routine used by live error reconciliation and boot recovery.
 fn settlement_observation_from(
     rpc: &impl crate::deposit_rpc::Rpc,
+    witness: Option<&dyn crate::deposit_rpc::Rpc>,
+    expected_chain: Option<u64>,
     settlement: &str,
 ) -> Result<(u64, String, u128), String> {
     use serde_json::json;
     use sha3::{Digest as _, Keccak256};
 
-    fn header(v: &serde_json::Value) -> Result<(u64, Digest), String> {
-        let height = v["number"]
-            .as_str()
+    fn quantity(v: &serde_json::Value) -> Result<u64, String> {
+        v.as_str()
             .and_then(|s| s.strip_prefix("0x"))
+            .filter(|s| !s.is_empty() && s.len() <= 16 && s.bytes().all(|b| b.is_ascii_hexdigit()))
             .and_then(|s| u64::from_str_radix(s, 16).ok())
-            .ok_or("settlement observation: missing/invalid finalized block number")?;
+            .ok_or_else(|| "settlement observation: invalid RPC quantity".into())
+    }
+    fn header(v: &serde_json::Value) -> Result<(u64, Digest), String> {
+        let height = quantity(&v["number"])?;
         let hash = v["hash"]
             .as_str()
             .and_then(parse_bytes32)
-            .ok_or("settlement observation: missing/invalid finalized block hash")?;
+            .ok_or("settlement observation: missing/invalid block hash")?;
         Ok((height, hash))
+    }
+    if let Some(witness) = witness {
+        let expected_chain = expected_chain
+            .filter(|n| *n > 0)
+            .ok_or("settlement observation: missing expected witness chain")?;
+        let primary_chain = quantity(&rpc.call("eth_chainId", vec![])?)?;
+        let witness_chain = quantity(&witness.call("eth_chainId", vec![])?)?;
+        if primary_chain != expected_chain || witness_chain != expected_chain {
+            return Err("settlement observation: RPC chain disagrees with startup domain".into());
+        }
     }
     let anchor = header(&rpc.call(
         "eth_getBlockByNumber",
         vec![json!("finalized"), json!(false)],
     )?)?;
+    let historical = vec![json!(format!("0x{:x}", anchor.0)), json!(false)];
+    if let Some(witness) = witness {
+        let head = header(&witness.call(
+            "eth_getBlockByNumber",
+            vec![json!("finalized"), json!(false)],
+        )?)?;
+        if head.0 < anchor.0 {
+            return Err("settlement observation: witness has not finalized the anchor".into());
+        }
+        if (head.0 == anchor.0 && head != anchor)
+            || header(&witness.call("eth_getBlockByNumber", historical.clone())?)? != anchor
+        {
+            return Err("settlement observation: witness finalized anchor disagreement".into());
+        }
+    }
     let pin = json!({"blockHash": crate::hex32(&anchor.1), "requireCanonical": true});
     let word = |signature: &str| -> Result<Digest, String> {
         let selector = Keccak256::digest(signature.as_bytes());
-        let value = rpc.call(
-            "eth_call",
-            vec![
-                json!({"to": settlement, "data": crate::hex0x(&selector[..4])}),
-                pin.clone(),
-            ],
-        )?;
-        value
-            .as_str()
-            .and_then(parse_bytes32)
-            .ok_or_else(|| format!("settlement observation: invalid ABI word for {signature}"))
+        let params = vec![
+            json!({"to": settlement, "data": crate::hex0x(&selector[..4])}),
+            pin.clone(),
+        ];
+        let parse = |value: serde_json::Value| {
+            value
+                .as_str()
+                .and_then(parse_bytes32)
+                .ok_or_else(|| format!("settlement observation: invalid ABI word for {signature}"))
+        };
+        let primary_word = parse(rpc.call("eth_call", params.clone())?)?;
+        if let Some(witness) = witness {
+            if parse(witness.call("eth_call", params)?)? != primary_word {
+                return Err(format!(
+                    "settlement observation: witness disagrees on {signature}"
+                ));
+            }
+        }
+        Ok(primary_word)
     };
     let batch = word("batchCount()")?;
     if batch[..24].iter().any(|b| *b != 0) {
@@ -129,13 +282,14 @@ fn settlement_observation_from(
     if bond[..16].iter().any(|b| *b != 0) {
         return Err("settlement observation: sequencerBond overflows u128".into());
     }
-    // Detect provider disagreement or a canonical hash changing during the read.
-    let after = header(&rpc.call(
-        "eth_getBlockByNumber",
-        vec![json!(format!("0x{:x}", anchor.0)), json!(false)],
-    )?)?;
-    if after != anchor {
+    // A configured witness never falls back to a primary-only observation.
+    if header(&rpc.call("eth_getBlockByNumber", historical.clone())?)? != anchor {
         return Err("settlement observation: canonical block changed or provider disagrees".into());
+    }
+    if let Some(witness) = witness {
+        if header(&witness.call("eth_getBlockByNumber", historical)?)? != anchor {
+            return Err("settlement observation: witness canonical block changed".into());
+        }
     }
     Ok((
         u64::from_be_bytes(batch[24..].try_into().unwrap()),
@@ -155,6 +309,8 @@ impl L1 {
         std::fs::create_dir(&dir).unwrap();
         Self {
             rpc,
+            rpc_witness: None,
+            witness_chain: None,
             settlement: String::new(),
             keystore_path: String::new(),
             password_file: String::new(),
@@ -167,12 +323,28 @@ impl L1 {
 
     /// Configure from env. Requires `L1_SETTLEMENT` + `L1_SEQUENCER_KEY`; RPC defaults
     /// to Base Sepolia. `L1_USDC` + `L1_VAULT` enable the USDC bond, deposit
-    /// confirmation, and withdrawal-claim pruning.
+    /// confirmation, and withdrawal-claim pruning. `L1_RPC_WITNESS` optionally
+    /// requires a second endpoint for finalized settlement recovery observations.
     pub fn from_env() -> Option<L1> {
         let settlement = std::env::var("L1_SETTLEMENT").ok()?;
         let key = std::env::var("L1_SEQUENCER_KEY").ok()?;
         let allow_unsafe = std::env::var("L1_ALLOW_MOCK_PROOF").ok().as_deref() == Some("1");
         let rpc = std::env::var("L1_RPC").unwrap_or_else(|_| "https://sepolia.base.org".into());
+        let configured_witness = match std::env::var("L1_RPC_WITNESS") {
+            Ok(value) => Some(value),
+            Err(std::env::VarError::NotPresent) => None,
+            Err(std::env::VarError::NotUnicode(_)) => {
+                eprintln!("[l1] REFUSING to start: invalid L1_RPC_WITNESS encoding");
+                std::process::exit(1);
+            }
+        };
+        let rpc_witness = match witness_endpoint(&rpc, configured_witness) {
+            Ok(value) => value,
+            Err(e) => {
+                eprintln!("[l1] REFUSING to start: {e}");
+                std::process::exit(1);
+            }
+        };
         // audit DP-007 (+ code-review): this bridge submits mock-shaped proofs (proof ==
         // publicCommitment), which only MockZkVerifier accepts, so it must run ONLY on an
         // allowlisted testnet. Skip the RPC query entirely when explicitly overridden (its
@@ -181,7 +353,7 @@ impl L1 {
         // on the RPC's actual chain — so upgrading without the new var no longer crashes boot.
         // The chain check runs BEFORE creating any on-disk key material, so a refusal leaks no
         // keystore, and the query retries so a transient RPC blip doesn't crash startup.
-        if !allow_unsafe {
+        let witness_chain = if !allow_unsafe {
             let actual = query_chain_id_retry(&rpc);
             let declared = std::env::var("L1_CHAIN_ID")
                 .ok()
@@ -197,7 +369,18 @@ impl L1 {
                 );
                 std::process::exit(1);
             }
-        }
+            rpc_witness.as_ref().map(|_| actual)
+        } else if rpc_witness.is_some() {
+            match witness_chain_override(std::env::var("L1_CHAIN_ID").ok().as_deref()) {
+                Ok(chain) => Some(chain),
+                Err(e) => {
+                    eprintln!("[l1] REFUSING to start: {e}");
+                    std::process::exit(1);
+                }
+            }
+        } else {
+            None
+        };
         // audit DP-013: encrypt the key into a keystore, so it never enters a cast argv.
         let (keystore_path, password_file, dir) = match create_keystore(&key) {
             Ok(k) => k,
@@ -208,6 +391,8 @@ impl L1 {
         };
         Some(L1 {
             rpc,
+            rpc_witness,
+            witness_chain,
             settlement,
             keystore_path,
             password_file,
@@ -401,8 +586,25 @@ impl L1 {
 
     /// Recovery reads at one finalized, hash-pinned block. Failure to provide
     /// finalized/EIP-1898 data is a HOLD, never a fallback to independent latest reads.
+    /// With `L1_RPC_WITNESS`, both endpoints must attest the same chain, finalized
+    /// anchor and recovery words. This policy does not cover other L1 readers.
     pub fn settlement_observation(&self) -> Result<(u64, String, u128), String> {
-        settlement_observation_from(self, &self.settlement)
+        let primary = SettlementReader {
+            l1: self,
+            endpoint: &self.rpc,
+            role: "primary",
+        };
+        let witness = self.rpc_witness.as_ref().map(|endpoint| SettlementReader {
+            l1: self,
+            endpoint,
+            role: "witness",
+        });
+        settlement_observation_from(
+            &primary,
+            witness.as_ref().map(|r| r as &dyn crate::deposit_rpc::Rpc),
+            self.witness_chain,
+            &self.settlement,
+        )
     }
 
     // ── SEC-025-D: block-pinned reads for the trading gate ───────────────────────
@@ -1172,7 +1374,7 @@ mod tests {
         use sha3::{Digest as _, Keccak256};
         let rpc = recovery_rpc();
         assert_eq!(
-            super::settlement_observation_from(&rpc, "0xvault").unwrap(),
+            super::settlement_observation_from(&rpc, None, None, "0xvault").unwrap(),
             (6, crate::hex32(&[3; 32]), 77)
         );
         let calls = rpc.calls.lock().unwrap();
@@ -1211,9 +1413,11 @@ mod tests {
         for i in 0..5 {
             let rpc = recovery_rpc();
             rpc.replies.lock().unwrap()[i] = Err(format!("injected failure {i}"));
-            assert!(super::settlement_observation_from(&rpc, "0xvault")
-                .unwrap_err()
-                .contains("injected failure"));
+            assert!(
+                super::settlement_observation_from(&rpc, None, None, "0xvault")
+                    .unwrap_err()
+                    .contains("injected failure")
+            );
             assert_eq!(rpc.calls.lock().unwrap().len(), i + 1);
         }
     }
@@ -1239,7 +1443,7 @@ mod tests {
             let rpc = recovery_rpc();
             rpc.replies.lock().unwrap()[i] = Ok(bad);
             assert!(
-                super::settlement_observation_from(&rpc, "0xvault").is_err(),
+                super::settlement_observation_from(&rpc, None, None, "0xvault").is_err(),
                 "invalid reply {i} accepted"
             );
         }
@@ -1581,3 +1785,6 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+mod witness_tests;

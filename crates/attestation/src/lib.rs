@@ -6,8 +6,9 @@
 //! MRTD is what gates measurement-bound key release (`SealKeyProvider`) and
 //! identifies the enclave (`EnclaveIdentity`).
 //!
-//! The crypto backend is pure-Rust (`rustcrypto`, no `ring`/asm), so the crate
-//! builds clean under the workspace `unsafe_code = "forbid"` lint.
+//! DCAP and vTPM verification use the supported `ring` backend. This crate
+//! contains no unsafe code and retains the workspace `unsafe_code = "forbid"`
+//! lint; the backend supplies its own platform-specific implementation.
 
 use dcap_qvl::QuoteCollateralV3;
 
@@ -117,7 +118,7 @@ pub fn verify_tdx_quote(
     collateral: &Collateral,
     now_secs: u64,
 ) -> Result<VerifiedAttestation, AttestationError> {
-    let report = dcap_qvl::verify::verify(quote, &collateral.0, now_secs)
+    let report = dcap_qvl::verify::ring::verify(quote, &collateral.0, now_secs)
         .map_err(|e| AttestationError::Verify(format!("{e:?}")))?;
 
     // A TDX quote carries either a TD1.0 or a TD1.5 report body; TD1.5 embeds the
