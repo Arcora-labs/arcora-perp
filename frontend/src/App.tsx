@@ -89,11 +89,11 @@ export default function App() {
           <div className="sidebar__foot">
             <div className="card netcard">
               <div className="netcard__row">
-                <span className="netcard__label">Network</span>
-                <span className="netcard__live"><span className="dot dot--live" /> LIVE</span>
+                <span className="netcard__label">Wallet network</span>
+                <span className="netcard__live">TEST</span>
               </div>
               <p className="netcard__net">Base Sepolia</p>
-              <p className="netcard__hint">SETTLES → ETHEREUM L1</p>
+              <p className="netcard__hint">CONFIGURED · TEST ASSETS</p>
             </div>
           </div>
         </aside>
@@ -114,7 +114,7 @@ export default function App() {
               ))}
             </nav>
             <div className="app__wallet">
-              <span className="app__net"><span className="dot dot--live" /> Testnet · {IS_LIVE ? "Live engine" : "Mock"}</span>
+              <span className="app__net">Test · {IS_LIVE ? "Gateway" : "Demo"}</span>
               <WalletButton />
             </div>
           </header>
@@ -183,8 +183,7 @@ export default function App() {
             )}
 
             <footer className="app__footer">
-              Arcora Perp · live engine settling on Base Sepolia · trade via the browser or the
-              external <code>/v1</code> API.
+              Arcora Perp · {IS_LIVE ? "gateway mode" : "browser demo"} · test assets only.
             </footer>
           </main>
         </div>

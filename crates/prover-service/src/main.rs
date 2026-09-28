@@ -2,10 +2,15 @@
 //! `SoftwareSealProvider` stand-in (P3 replaces the SealKeyProvider with real TDX/Nitro
 //! key-release). `POST /prove` takes a sealed witness, opens+derives+proves+zeroizes, and
 //! returns the 6 roots, the commitment, and the real Groth16 proof.
+mod admission;
+#[cfg(all(test, unix))]
+mod shutdown_tests;
 mod sp1_prover;
 
+use admission::{Gate, Limits, ProofAdmission};
+
 use axum::{
-    extract::State,
+    extract::{FromRef, Request, State},
     http::StatusCode,
     routing::{get, post},
     Json, Router,
@@ -16,7 +21,7 @@ use axum::{
 // DH transcript math is shared with the gateway. `StaticSecret` is the
 // attestation crate's re-export of the ephemeral x25519 secret type.
 use dark_perp_attestation::{
-    ct_eq, derive_session, dh_shared, ephemeral_keypair, Attestor as _, AzureTdxAttestor,
+    derive_session, dh_shared, ephemeral_keypair, Attestor as _, AzureTdxAttestor,
     NvidiaCcAttestor, StaticSecret, DEV_INSECURE_SESSION_TOKEN,
 };
 use perp_core::hash::Digest;
@@ -35,14 +40,11 @@ fn measurement() -> Digest {
 }
 
 struct App {
+    admission: Gate,
+    limits: Limits,
     prover: AttestedProver<Sp1GnarkProver>,
     vkey: String,
     measurement: Digest,
-    /// SEC-020 Task 4/5: the session token minted by the boot mutual-attestation
-    /// handshake. `None` ⇒ the handshake refused or failed (fail-closed) — the
-    /// `/prove` gate then rejects every caller (see `session_authorized`). Task 5
-    /// makes `prove` read this to authorize `Authorization: Bearer` requests.
-    session_token: Option<String>,
     /// SEC-020 Phase-2 (C3): this prover's per-boot ephemeral x25519 DH PUBLIC
     /// key — served in /attest (and bound as our self-quote challenge) so the
     /// gateway derives the shared transcript. Freshness = this single-use key;
@@ -83,69 +85,21 @@ fn hx(b: &[u8]) -> String {
     format!("0x{}", hex::encode(b))
 }
 
-/// SEC-020 Task 5 + C5: does the request carry the live, UNEXPIRED attestation
-/// session token?
-///
-/// Fail-closed on an absent/empty stored token. When the boot mutual-attestation
-/// handshake refused (Phase-1 prod: NVIDIA CC off), `App.session_token` is `None`,
-/// so there is NO bearer that can authorize `/prove` — reject BEFORE any
-/// comparison. An empty stored token is treated identically, so a caller sending
-/// `Bearer ` (empty) can never match. Only a present, non-empty stored token is
-/// compared against the presented bearer — in constant time (`ct_eq`) now that
-/// the token is a real DH-bound secret — and even a matching token is rejected
-/// once past `stored_not_after` (`now_ms > stored_not_after` ⇒ expired ⇒ 401;
-/// a token exactly AT `not_after` is still valid).
-fn session_authorized(
-    stored: Option<&str>,
-    stored_not_after: u64,
-    headers: &axum::http::HeaderMap,
-    now_ms: u64,
-) -> bool {
-    // No minted token (handshake refused) or an empty one ⇒ closed: nothing can
-    // authorize /prove. This guard MUST run before the compare so an absent/empty
-    // stored token never matches any caller-supplied bearer.
-    let Some(stored) = stored.filter(|t| !t.is_empty()) else {
-        return false;
-    };
-    let Some(bearer) = headers
-        .get(axum::http::header::AUTHORIZATION)
-        .and_then(|h| h.to_str().ok())
-        .and_then(|s| s.strip_prefix("Bearer "))
-    else {
-        return false;
-    };
-    // C5: constant-time compare (the token is now a real DH-bound secret) AND
-    // reject a token past its advertised not_after.
-    ct_eq(bearer.as_bytes(), stored.as_bytes()) && now_ms <= stored_not_after
+impl FromRef<Arc<App>> for Gate {
+    fn from_ref(app: &Arc<App>) -> Self {
+        app.admission.clone()
+    }
 }
 
 async fn prove(
     State(app): State<Arc<App>>,
-    headers: axum::http::HeaderMap,
-    Json(req): Json<ProveReq>,
+    admission: ProofAdmission,
+    request: Request,
 ) -> Result<Json<ProveResp>, (StatusCode, String)> {
-    // SEC-020 Task 5 + C5: gate /prove behind the session token minted by the
-    // boot mutual-attestation handshake. A missing/invalid/EXPIRED
-    // `Authorization: Bearer` ⇒ 401. Fail-closed: when the handshake refused,
-    // `session_token` is `None` and EVERY request is rejected here (see
-    // `session_authorized`) — proving stays closed until Phase-2 CC key-release
-    // makes a real handshake succeed.
-    // (C5) One real clock read per request; a pre-epoch clock reads as u64::MAX
-    // so the expiry check fails closed (401) instead of panicking the handler.
-    let now_ms = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(u64::MAX, |d| d.as_millis() as u64);
-    if !session_authorized(
-        app.session_token.as_deref(),
-        app.session_not_after,
-        &headers,
-        now_ms,
-    ) {
-        return Err((
-            StatusCode::UNAUTHORIZED,
-            "attestation session required".into(),
-        ));
-    }
+    // The parts-only extractor above authenticates and reserves capacity before
+    // Json can poll the body. Also limit how long reception may occupy a slot.
+    let Json(req) =
+        admission::read_json::<ProveReq, _>(request, &app, app.limits.body_timeout).await?;
     // Bad hex / bad postcard are caller errors: 400 so a client checking the status
     // sees the failure (axum's `IntoResponse for String` would 200 the error text).
     let raw = hex::decode(req.sealed.trim_start_matches("0x"))
@@ -154,7 +108,8 @@ async fn prove(
         postcard::from_bytes(&raw).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
     // The SP1 prove blocks; run the whole open+derive+prove off the async worker.
     let app2 = app.clone();
-    let bp = tokio::task::spawn_blocking(move || app2.prover.prove_batch(&sealed))
+    let bp = admission
+        .run_blocking(move || app2.prover.prove_batch(&sealed))
         .await
         // A panicked/cancelled blocking task is a server fault: 500.
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
@@ -353,6 +308,10 @@ async fn attest(
 
 #[tokio::main]
 async fn main() {
+    let limits = Limits::from_env().unwrap_or_else(|error| {
+        eprintln!("prover-service: {error}");
+        std::process::exit(1);
+    });
     let m = measurement();
     let backend = Sp1GnarkProver::new(m).await;
     let program_vkey = backend.vkey();
@@ -460,11 +419,13 @@ async fn main() {
         );
         std::process::exit(1);
     };
+    let admission = Gate::new(session_token, session_not_after, limits.max_concurrent);
     let app = Arc::new(App {
+        admission: admission.clone(),
+        limits: limits.clone(),
         prover: AttestedProver::from_boxed(backend, seal_provider),
         vkey: program_vkey,
         measurement: m,
-        session_token,
         pv_pub,
         session_not_after,
         dev_insecure,
@@ -478,226 +439,60 @@ async fn main() {
         // The /prove body is the sealed witness, which embeds the full engine pre_state
         // (hex-encoded) and grows with the number of accounts — it exceeds axum's 2 MB
         // default once the state is non-trivial (413 Payload Too Large → settles wedge).
-        // Raise the cap generously; the witness is trusted, gateway-produced input.
+        // Authenticated admissions alone can reach this configurable bounded cap.
         // NOTE: the full-state witness is a scaling limit (proof cost grows with total
         // accounts, not window activity) — a sparse-witness redesign is post-alpha.
-        .layer(axum::extract::DefaultBodyLimit::max(512 * 1024 * 1024))
+        .layer(axum::extract::DefaultBodyLimit::max(limits.body_bytes))
         .with_state(app);
     let bind = std::env::var("PROVER_BIND").unwrap_or_else(|_| "127.0.0.1:8091".into());
+    let shutdown = shutdown_signal(admission.clone());
     println!("prover-service on {bind}");
     let listener = tokio::net::TcpListener::bind(&bind).await.unwrap();
-    axum::serve(listener, router).await.unwrap();
+    serve_until_shutdown(listener, router, admission.clone(), shutdown)
+        .await
+        .unwrap();
 }
 
-#[cfg(test)]
-mod prove_gate {
-    //! SEC-020 Task 5: the `/prove` session-token gate.
-    //!
-    //! NOTE: `prover-service` is a standalone workspace whose `build.rs` runs the
-    //! SP1 program build, so it does not compile in the host CI/dev environment
-    //! (Task-1/Task-4 precedent). These tests were RUN in a scratch crate that
-    //! provides a same-API `Sp1GnarkProver` stub delegating to `CommitmentProver`
-    //! (the lightweight `Prover` impl from `crates/prover`), per the task brief.
-    //! On the GB10 prover machine they run against the real SP1 backend unchanged
-    //! (the gate rejects before any proving, so the backend is never exercised).
-    use super::*;
-    use axum::extract::State;
-    use axum::http::{header::AUTHORIZATION, HeaderMap, StatusCode};
+/// Axum can finish draining after an HTTP client disconnects while its blocking
+/// proof still runs. Keep the runtime (timers, I/O, spawned async work) alive
+/// until those admitted workers finish, including after a listener error.
+async fn serve_until_shutdown<F>(
+    listener: tokio::net::TcpListener,
+    router: Router,
+    admission: Gate,
+    shutdown: F,
+) -> std::io::Result<()>
+where
+    F: std::future::Future<Output = ()> + Send + 'static,
+{
+    let result = axum::serve(listener, router)
+        .with_graceful_shutdown(shutdown)
+        .await;
+    admission.drain().await;
+    result
+}
 
-    fn headers_with(auth: Option<&str>) -> HeaderMap {
-        let mut h = HeaderMap::new();
-        if let Some(v) = auth {
-            h.insert(AUTHORIZATION, v.parse().unwrap());
+// Construct the signal streams before opening the listener. A lazily polled
+// async function can otherwise accept work before installing the OS handlers.
+fn shutdown_signal(admission: Gate) -> impl std::future::Future<Output = ()> + Send {
+    #[cfg(unix)]
+    let mut terminate = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+        .expect("install SIGTERM handler");
+    #[cfg(unix)]
+    let mut interrupt = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt())
+        .expect("install SIGINT handler");
+    async move {
+        #[cfg(unix)]
+        tokio::select! {
+            _ = interrupt.recv() => {},
+            _ = terminate.recv() => {},
         }
-        h
-    }
-
-    fn hdr(bearer: &str) -> axum::http::HeaderMap {
-        let mut h = axum::http::HeaderMap::new();
-        h.insert(
-            axum::http::header::AUTHORIZATION,
-            format!("Bearer {bearer}").parse().unwrap(),
-        );
-        h
-    }
-
-    // ── the security core: `session_authorized` fail-closed table ─────────────
-
-    /// SEC-020 C5 (Task 4): the gate enforces `not_after` and the constant-time
-    /// compare — valid+unexpired passes; expired, wrong-same-length, and
-    /// absent/empty stored all fail closed.
-    #[test]
-    fn gate_accepts_valid_unexpired_and_rejects_expired_or_wrong() {
-        let tok = "0xabc123";
-        // valid + unexpired
-        assert!(session_authorized(Some(tok), 1_000, &hdr(tok), 500));
-        // expired
-        assert!(!session_authorized(Some(tok), 1_000, &hdr(tok), 1_001));
-        // wrong token, same length (constant-time path)
-        assert!(!session_authorized(Some(tok), 1_000, &hdr("0xabc124"), 500));
-        // absent/empty stored
-        assert!(!session_authorized(None, 1_000, &hdr(tok), 500));
-        assert!(!session_authorized(Some(""), 1_000, &hdr(tok), 500));
-    }
-
-    #[test]
-    fn present_token_matches_only_its_exact_bearer() {
-        let h = headers_with(Some("Bearer s3cret"));
-        assert!(session_authorized(Some("s3cret"), 1_000, &h, 500));
-        assert!(!session_authorized(Some("other"), 1_000, &h, 500));
-    }
-
-    #[test]
-    fn no_bearer_is_rejected() {
-        assert!(!session_authorized(
-            Some("s3cret"),
-            1_000,
-            &headers_with(None),
-            500
-        ));
-    }
-
-    #[test]
-    fn non_bearer_scheme_is_rejected() {
-        assert!(!session_authorized(
-            Some("s3cret"),
-            1_000,
-            &headers_with(Some("Basic s3cret")),
-            500
-        ));
-    }
-
-    /// THE most important assertion (SEC-020 fail-closed): an absent stored token
-    /// can never be matched — a caller WITH some bearer is still rejected.
-    #[test]
-    fn absent_stored_token_never_matches_any_bearer() {
-        assert!(!session_authorized(
-            None,
-            1_000,
-            &headers_with(Some("Bearer s3cret")),
-            500
-        ));
-        // an empty `Bearer ` must not sneak past an absent token either
-        assert!(!session_authorized(
-            None,
-            1_000,
-            &headers_with(Some("Bearer ")),
-            500
-        ));
-        assert!(!session_authorized(None, 1_000, &headers_with(None), 500));
-    }
-
-    /// An EMPTY stored token must never match — not even an empty `Bearer `.
-    #[test]
-    fn empty_stored_token_never_matches() {
-        assert!(!session_authorized(
-            Some(""),
-            1_000,
-            &headers_with(Some("Bearer ")),
-            500
-        ));
-        assert!(!session_authorized(
-            Some(""),
-            1_000,
-            &headers_with(Some("Bearer s3cret")),
-            500
-        ));
-        assert!(!session_authorized(
-            Some(""),
-            1_000,
-            &headers_with(None),
-            500
-        ));
-    }
-
-    /// (C5) Expiry boundary: `not_after` is INCLUSIVE — a token presented exactly
-    /// AT `not_after` is still valid; one tick after is expired.
-    #[test]
-    fn expiry_boundary_is_inclusive() {
-        let h = headers_with(Some("Bearer s3cret"));
-        assert!(session_authorized(Some("s3cret"), 1_000, &h, 1_000));
-        assert!(!session_authorized(Some("s3cret"), 1_000, &h, 1_001));
-    }
-
-    // ── handler-level: the /prove gate returns 401 / lets a valid bearer in ────
-
-    async fn app_with_token(tok: Option<String>, not_after: u64) -> Arc<App> {
-        let m = measurement();
-        let backend = Sp1GnarkProver::new(m).await;
-        Arc::new(App {
-            prover: AttestedProver::new(backend, SoftwareSealProvider::new([0x5Eu8; 32], m)),
-            vkey: "vk-test".into(),
-            measurement: m,
-            session_token: tok,
-            pv_pub: [0u8; 32],
-            session_not_after: not_after,
-            dev_insecure: false,
-            nv: NvidiaCcAttestor::detect(),
-        })
-    }
-
-    #[tokio::test]
-    async fn prove_without_bearer_is_401() {
-        let app = app_with_token(Some("tok".into()), u64::MAX).await;
-        let res = prove(
-            State(app),
-            headers_with(None),
-            axum::Json(ProveReq {
-                sealed: "0x00".into(),
-            }),
-        )
-        .await;
-        assert!(matches!(res, Err((StatusCode::UNAUTHORIZED, _))));
-    }
-
-    /// Fail-closed: even WITH a bearer, an empty stored token (handshake refused)
-    /// must 401 — the empty token can never authorize a request.
-    #[tokio::test]
-    async fn prove_with_empty_stored_token_is_401_even_with_bearer() {
-        let app = app_with_token(Some(String::new()), u64::MAX).await;
-        let res = prove(
-            State(app),
-            headers_with(Some("Bearer anything")),
-            axum::Json(ProveReq {
-                sealed: "0x00".into(),
-            }),
-        )
-        .await;
-        assert!(matches!(res, Err((StatusCode::UNAUTHORIZED, _))));
-    }
-
-    /// (C5) An EXPIRED session must 401 even with the exactly-matching bearer:
-    /// `not_after: 0` is in the past for the handler's real clock read.
-    #[tokio::test]
-    async fn prove_with_expired_session_is_401_even_with_matching_bearer() {
-        let app = app_with_token(Some("tok".into()), 0).await;
-        let res = prove(
-            State(app),
-            headers_with(Some("Bearer tok")),
-            axum::Json(ProveReq {
-                sealed: "0x00".into(),
-            }),
-        )
-        .await;
-        assert!(matches!(res, Err((StatusCode::UNAUTHORIZED, _))));
-    }
-
-    #[tokio::test]
-    async fn prove_with_valid_bearer_reaches_handler() {
-        let app = app_with_token(Some("tok".into()), u64::MAX).await;
-        let res = prove(
-            State(app),
-            headers_with(Some("Bearer tok")),
-            axum::Json(ProveReq {
-                sealed: "0x00".into(),
-            }),
-        )
-        .await;
-        // Gate passed → body decoding runs → the dummy `0x00` fails to postcard-
-        // decode into a SealedWitness → 400, NOT 401. The gate let it through.
-        match res {
-            Err((code, _)) => assert_eq!(code, StatusCode::BAD_REQUEST),
-            Ok(_) => panic!("a dummy body must not produce a proof"),
-        }
+        #[cfg(not(unix))]
+        tokio::signal::ctrl_c()
+            .await
+            .expect("install ctrl-c handler");
+        // Stop admission before asking axum to stop accepting and drain requests.
+        // serve_until_shutdown explicitly drains admitted workers before Tokio exits.
+        admission.close();
     }
 }

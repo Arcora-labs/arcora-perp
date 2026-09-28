@@ -1,0 +1,51 @@
+{
+  "status": "PASS",
+  "binary_sha256": "4d1162aa657acb81337ad617070eda2db3a4e80a421c19ef51004285a4aa72b2",
+  "scope": "Real owned gateway processes, HTTP sockets, SIGTERM and encrypted snapshot restart; demo only, no L1/proof",
+  "cases": [
+    {
+      "case": "persistent",
+      "admission_barrier": "HTTP 100 Continue",
+      "accepted_response_status": 200,
+      "process_alive_after_signal_before_body_complete": true,
+      "exit_code": 0,
+      "snapshot_sha256": "420ec12187eaf43922d9c3d983776790b66f8083b4ca6bafa1dcf28988f56628",
+      "restored_original_credential_status": 200,
+      "restored_exit_code": 0
+    },
+    {
+      "case": "memory-only",
+      "admission_barrier": "HTTP 100 Continue",
+      "accepted_response_status": 200,
+      "process_alive_after_signal_before_body_complete": true,
+      "exit_code": 0
+    },
+    {
+      "case": "stalled-body",
+      "body_timeout_status": 408,
+      "exit_code": 0
+    }
+  ],
+  "owned_processes": [
+    {
+      "pid": 45058,
+      "exit_code": 0,
+      "forced_cleanup": false
+    },
+    {
+      "pid": 45095,
+      "exit_code": 0,
+      "forced_cleanup": false
+    },
+    {
+      "pid": 45096,
+      "exit_code": 0,
+      "forced_cleanup": false
+    },
+    {
+      "pid": 45097,
+      "exit_code": 0,
+      "forced_cleanup": false
+    }
+  ]
+}

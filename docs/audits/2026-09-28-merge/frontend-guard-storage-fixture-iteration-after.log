@@ -1,0 +1,29 @@
+[WARN] The "pnpm" field in package.json is no longer read by pnpm. The following keys were ignored: "pnpm.onlyBuiltDependencies". See https://pnpm.io/settings for the new home of each setting.
+
+ RUN  v4.1.11 /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend
+
+ ❯ src/api/realClient.test.ts (126 tests | 2 failed) 258ms
+     × rejects an old order response while a newer saved credential awaits adoption 4ms
+     × rejects an old deposit response while a newer saved credential awaits adoption 2ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/api/realClient.test.ts > order and legacy deposit mutation fencing > rejects an old order response while a newer saved credential awaits adoption
+ FAIL  src/api/realClient.test.ts > order and legacy deposit mutation fencing > rejects an old deposit response while a newer saved credential awaits adoption
+ReferenceError: macrotask is not defined
+ ❯ src/api/realClient.test.ts:2056:29
+    2054|     gate.release();
+    2055|     const outcome = await operation;
+    2056|     adoptionGate.release(); await macrotask(); await client.ownStateSe…
+       |                             ^
+    2057|     expect(outcome).toMatch(/credential changed|account.*changed/i);
+    2058|     expect(postsFor(kind)).toHaveLength(1);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+
+ Test Files  1 failed | 1 passed (2)
+      Tests  2 failed | 159 passed (161)
+   Start at  10:46:51
+   Duration  549ms (transform 153ms, setup 0ms, import 232ms, tests 294ms, environment 213ms)
+

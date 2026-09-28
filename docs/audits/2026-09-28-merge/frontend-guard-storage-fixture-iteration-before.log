@@ -1,0 +1,65 @@
+[WARN] The "pnpm" field in package.json is no longer read by pnpm. The following keys were ignored: "pnpm.onlyBuiltDependencies". See https://pnpm.io/settings for the new home of each setting.
+
+ RUN  v4.1.11 /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend
+
+stderr | src/api/realClient.test.ts > order and legacy deposit mutation fencing > rejects an old order response while a newer saved credential awaits adoption
+[dark-perp] /v1 own-account read failed (own view degraded until a read succeeds): Error: /v1/orders 401
+    at RealDarkPerpClient.getOrders (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/src/api/realClient.ts:1287:24)
+    at processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async Promise.all (index 0)
+    at RealDarkPerpClient.fetchOwnStateOnce (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/src/api/realClient.ts:1376:51)
+    at /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/src/api/realClient.ts:1350:11
+
+stderr | src/api/realClient.test.ts > order and legacy deposit mutation fencing > rejects an old deposit response while a newer saved credential awaits adoption
+[dark-perp] /v1 own-account read failed (own view degraded until a read succeeds): Error: /v1/orders 401
+    at RealDarkPerpClient.getOrders (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/src/api/realClient.ts:1287:24)
+    at processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async Promise.all (index 0)
+    at RealDarkPerpClient.fetchOwnStateOnce (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/src/api/realClient.ts:1376:51)
+    at /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/src/api/realClient.ts:1350:11
+
+ ❯ src/api/realClient.test.ts (126 tests | 3 failed | 109 skipped) 55ms
+     × rejects an old order response while a newer saved credential awaits adoption 7ms
+     × rejects an old deposit response while a newer saved credential awaits adoption 2ms
+     × does not POST after a newer credential is saved while the epoch read waits without a storage event 5ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/api/realClient.test.ts > order and legacy deposit mutation fencing > rejects an old order response while a newer saved credential awaits adoption
+ FAIL  src/api/realClient.test.ts > order and legacy deposit mutation fencing > rejects an old deposit response while a newer saved credential awaits adoption
+ReferenceError: macrotask is not defined
+ ❯ src/api/realClient.test.ts:2056:29
+    2054|     gate.release();
+    2055|     const outcome = await operation;
+    2056|     adoptionGate.release(); await macrotask(); await client.ownStateSe…
+       |                             ^
+    2057|     expect(outcome).toMatch(/credential changed|account.*changed/i);
+    2058|     expect(postsFor(kind)).toHaveLength(1);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/3]⎯
+
+ FAIL  src/api/realClient.test.ts > order and legacy deposit mutation fencing > does not POST after a newer credential is saved while the epoch read waits without a storage event
+AssertionError: expected 'unexpected success' to match /credential changed|account.*changed/i
+
+- Expected:
+/credential changed|account.*changed/i
+
++ Received:
+"unexpected success"
+
+ ❯ src/api/realClient.test.ts:2074:25
+    2072|     localStorage.setItem(credentialKey(scope), JSON.stringify({ ...sco…
+    2073|     gate.release();
+    2074|     expect(await order).toMatch(/credential changed|account.*changed/i…
+       |                         ^
+    2075|     expect(ordersPosted()).toHaveLength(0);
+    2076|     client.dispose();
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/3]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  3 failed | 14 passed | 109 skipped (126)
+   Start at  10:46:33
+   Duration  412ms (transform 99ms, setup 0ms, import 144ms, tests 55ms, environment 146ms)
+

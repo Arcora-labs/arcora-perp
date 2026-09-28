@@ -1,0 +1,13 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.30s
+     Running unittests src/main.rs (/tmp/arcora-gateway-target/debug/deps/gateway-af1323d2b67b45c0)
+
+running 6 tests
+test service_policy::tests::message_budget_is_per_connection_and_refills_after_one_second ... ok
+test service_policy::tests::origin_policy_is_explicit_and_configuration_is_fail_closed ... ok
+test service_policy::tests::disallowed_origin_is_rejected_before_handler_and_cors_is_exact ... ok
+test service_policy::tests::loopback_upgrade_caps_connections_messages_and_releases_on_close ... ok
+test service_policy_integration_tests::actual_registration_rejects_bad_origin_before_body_and_mutation ... ok
+test service_policy_integration_tests::actual_ws_routes_share_capacity_and_release_on_disconnect_and_message_limit ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 388 filtered out; finished in 0.04s
+

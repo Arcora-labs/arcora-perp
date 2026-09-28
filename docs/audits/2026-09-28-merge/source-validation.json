@@ -1,0 +1,79 @@
+{
+  "status": "PASS",
+  "recorded_at": "2026-09-28T07:50:59.718649+00:00",
+  "source_manifest": "source-manifest.json",
+  "source_sha256": "197b6774a08be0ce164136e007d76643734681a72a713d6ed9ac3e6e2d9dfb5b",
+  "base_head": "5c71b2d0a24e1e1e94efeff58df8e26b13190c1b",
+  "source_comparisons": {
+    "workspace-before": {
+      "files_checked": 350,
+      "matches": true,
+      "mismatches": []
+    },
+    "workspace-after": {
+      "files_checked": 350,
+      "matches": true,
+      "mismatches": []
+    },
+    "clippy-before": {
+      "files_checked": 350,
+      "matches": true,
+      "mismatches": []
+    },
+    "clippy-after": {
+      "files_checked": 350,
+      "matches": true,
+      "mismatches": []
+    },
+    "browser-before": {
+      "files_checked": 93,
+      "matches": true,
+      "mismatches": []
+    },
+    "browser-after": {
+      "files_checked": 93,
+      "matches": true,
+      "mismatches": []
+    },
+    "frontend-final-selected": {
+      "files_checked": 16,
+      "matches": true,
+      "mismatches": []
+    },
+    "prover-unchanged-from-release-check": {
+      "files_checked": 10,
+      "matches": true,
+      "mismatches": []
+    },
+    "crash-matrix-source": {
+      "files_checked": 7,
+      "matches": true,
+      "mismatches": []
+    },
+    "cast-host-source": {
+      "files_checked": 350,
+      "matches": true,
+      "mismatches": []
+    }
+  },
+  "full_workspace": {
+    "passed": 769,
+    "failed": 0,
+    "ignored": 2
+  },
+  "frontend": {
+    "passed": 413,
+    "skipped": 1,
+    "browser_passed": 72
+  },
+  "prover": {
+    "passed": 8,
+    "source_unchanged": true
+  },
+  "scope_limits": [
+    "Full workspace ran concurrently with frontend guard edits, so only unchanged host source is matched to that run.",
+    "The final browser run and final frontend guard checks match the final frontend source.",
+    "Prior runtime frontend results retain their older source identity; no stale check is relabeled.",
+    "Native tests and simulated wallet/chain/prover fixtures do not close the real-wallet/guest/proof/funds release gates."
+  ]
+}

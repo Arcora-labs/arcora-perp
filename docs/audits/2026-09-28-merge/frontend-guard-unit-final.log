@@ -1,0 +1,11 @@
+[WARN] The "pnpm" field in package.json is no longer read by pnpm. The following keys were ignored: "pnpm.onlyBuiltDependencies". See https://pnpm.io/settings for the new home of each setting.
+$ vitest run
+
+ RUN  v4.1.11 /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend
+
+
+ Test Files  28 passed | 1 skipped (29)
+      Tests  413 passed | 1 skipped (414)
+   Start at  10:47:57
+   Duration  2.06s (transform 1.75s, setup 0ms, import 4.69s, tests 3.88s, environment 4.89s)
+

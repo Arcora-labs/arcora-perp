@@ -1,0 +1,165 @@
+{
+  "schemaVersion": 1,
+  "recordedAtUtc": "2026-09-28T07:49:28.466982+00:00",
+  "recordingMethod": "Observed completed command exits and retained logs. Final implementation/tests unchanged between final focused, full-unit and build checks. Prior manifests/checks/logs were not overwritten.",
+  "checks": [
+    {
+      "name": "storage-failing-before",
+      "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+      "argv": [
+        "pnpm",
+        "--dir",
+        "frontend",
+        "exec",
+        "vitest",
+        "run",
+        "src/api/realClient.test.ts",
+        "-t",
+        "order and legacy deposit mutation fencing"
+      ],
+      "exitCode": 1,
+      "sourceManifest": {
+        "path": "docs/audits/2026-09-28-merge/frontend-guard-storage-before-source.json",
+        "sha256": "db80727d324a70c8b56ee3514fb3418b92e354d6a511396f9bdfcecf468a04ce"
+      },
+      "log": {
+        "path": "docs/audits/2026-09-28-merge/frontend-guard-storage-before.log",
+        "sha256": "b7dd63d6a6c03e37ab765093e30cb72fe9e97e06130a31ac25cceed3595fdde5"
+      },
+      "counts": {
+        "failed": 3,
+        "passed": 14,
+        "filteredOut": 109,
+        "testFilesFailed": 1
+      }
+    },
+    {
+      "name": "final-focused-client-and-recovery",
+      "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+      "argv": [
+        "pnpm",
+        "--dir",
+        "frontend",
+        "exec",
+        "vitest",
+        "run",
+        "src/api/realClient.test.ts",
+        "src/api/realClient.recovery.test.ts"
+      ],
+      "exitCode": 0,
+      "sourceManifest": {
+        "path": "docs/audits/2026-09-28-merge/frontend-guard-final-source.json",
+        "sha256": "76b02ac003c7c3b4d1248c1b72fd4c116b7e074e06516674e98c4110296ea46c"
+      },
+      "log": {
+        "path": "docs/audits/2026-09-28-merge/frontend-guard-focused-final.log",
+        "sha256": "088a769c5a04a492189d70bc9ab4f94f758f8a82490cf08b669459c2b58e8e81"
+      },
+      "counts": {
+        "passed": 161,
+        "testFilesPassed": 2
+      }
+    },
+    {
+      "name": "final-full-unit",
+      "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+      "argv": [
+        "pnpm",
+        "--dir",
+        "frontend",
+        "test"
+      ],
+      "exitCode": 0,
+      "sourceManifest": {
+        "path": "docs/audits/2026-09-28-merge/frontend-guard-final-source.json",
+        "sha256": "76b02ac003c7c3b4d1248c1b72fd4c116b7e074e06516674e98c4110296ea46c"
+      },
+      "log": {
+        "path": "docs/audits/2026-09-28-merge/frontend-guard-unit-final.log",
+        "sha256": "b0046a7db1dbf4a443b7fda0f250af5d69fe11a79a808d535c18b69090ec7ac7"
+      },
+      "counts": {
+        "passed": 413,
+        "skipped": 1,
+        "testFilesPassed": 28,
+        "testFilesSkipped": 1
+      }
+    },
+    {
+      "name": "final-production-build",
+      "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+      "argv": [
+        "pnpm",
+        "--dir",
+        "frontend",
+        "build"
+      ],
+      "exitCode": 0,
+      "sourceManifest": {
+        "path": "docs/audits/2026-09-28-merge/frontend-guard-final-source.json",
+        "sha256": "76b02ac003c7c3b4d1248c1b72fd4c116b7e074e06516674e98c4110296ea46c"
+      },
+      "log": {
+        "path": "docs/audits/2026-09-28-merge/frontend-guard-build-final.log",
+        "sha256": "b7220f5eb114420889efd8d274c9d65622e4847d4a0a6d71aba2933abcf6c168"
+      }
+    },
+    {
+      "name": "final-diff-check",
+      "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+      "argv": [
+        "git",
+        "diff",
+        "--check",
+        "--",
+        "frontend/src/api/realClient.ts",
+        "frontend/src/api/realClient.test.ts"
+      ],
+      "exitCode": 0,
+      "sourceManifest": {
+        "path": "docs/audits/2026-09-28-merge/frontend-guard-final-source.json",
+        "sha256": "76b02ac003c7c3b4d1248c1b72fd4c116b7e074e06516674e98c4110296ea46c"
+      },
+      "log": {
+        "path": "docs/audits/2026-09-28-merge/frontend-guard-diff-check-final.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    }
+  ],
+  "initialGuardEvidence": {
+    "manifest": {
+      "path": "docs/audits/2026-09-28-merge/frontend-guard-source.json",
+      "sha256": "01d7e57fb5ec199a692b617e5102447a9bf1239c75388428dccb42719fc1a0ff"
+    },
+    "checks": {
+      "path": "docs/audits/2026-09-28-merge/frontend-guard-checks.json",
+      "sha256": "9830e0767ba17321ab0f321dc953dc3082c851ed6720a93f628dbb0c8109421c"
+    },
+    "note": "Initial guard revision:156 focused/408 full unit. Preserved unchanged. Root browser revision1 result also refers to that prior source."
+  },
+  "fixtureAuthoringIterations": {
+    "reason": "Two delayed-adoption tests initially called a helper scoped to another describe block. Replaced with a local zero-delay task before meaningful failing-before and final runs. These logs are retained for transparency and are not claimed as regression proof.",
+    "logs": [
+      {
+        "path": "docs/audits/2026-09-28-merge/frontend-guard-storage-fixture-iteration-before.log",
+        "sha256": "630fa8f56b59a079f62bbaceaf55d11c21b33c63d26a80d4ae3d584028d1b9c4"
+      },
+      {
+        "path": "docs/audits/2026-09-28-merge/frontend-guard-storage-fixture-iteration-after.log",
+        "sha256": "0fbd55bafeb0e935fc590c641f2f1d1cb240641b766cd9b06fff803e05868400"
+      }
+    ],
+    "exitCodes": [
+      1,
+      1
+    ]
+  },
+  "regressionCount": 17,
+  "limits": [
+    "Wallet/RPC/account calls in unit tests are deterministic fixtures, not live wallet/chain evidence.",
+    "One live-gateway e2e case is explicitly skipped.",
+    "Root owns the final browser run and its source-bound result; earlier browser results are not relabeled as final.",
+    "A rejected stale response can correspond to a server-side operation that already executed. No automatic mutation retry occurs."
+  ],
+  "desktopCheckout": "Not edited. Existing dirty work remains separate."
+}

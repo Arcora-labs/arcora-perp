@@ -15,7 +15,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use axum::{
     extract::ws::{Message, WebSocket, WebSocketUpgrade},
-    extract::{ConnectInfo, Path, State},
+    extract::{ConnectInfo, Extension, Path, State},
     http::{HeaderMap, StatusCode},
     response::IntoResponse,
     routing::{delete, get, post},
@@ -31,7 +31,6 @@ use dark_perp_attestation::{
 };
 use serde::{Deserialize, Serialize};
 use tokio::sync::{broadcast, Mutex};
-use tower_http::cors::CorsLayer;
 
 use note_archive::{NoteArchive, Wallet};
 use perp_core::engine::BatchOp;
@@ -57,6 +56,12 @@ mod listen_config;
 mod order_log;
 mod prover_client;
 mod rollback_journal;
+mod service_policy;
+#[cfg(test)]
+mod service_policy_integration_tests;
+mod service_shutdown;
+#[cfg(test)]
+mod service_shutdown_tests;
 mod settle_health;
 mod snapshot;
 mod trading_gate;
@@ -128,23 +133,17 @@ fn deposit_posture(
     DepositPosture::Ok
 }
 
-/// What to do with a sealed-but-settle-failed window, given the on-chain batchCount
-/// re-read AFTER the failure. `seal_window` bumped the local per-window counter to
-/// `sealed_batch_id + 1`, so `chain_batch_count == sealed_batch_id` means the tx never
-/// landed (undo the seal), `== sealed_batch_id + 1` means it landed despite the cast
-/// error (commit the bookkeeping), and anything else is unexpected (hold, let the
-/// operator reconcile — a rollback there could strand the sequencer either way).
+/// A send error is ambiguous: an unchanged counter cannot prove a previously
+/// broadcast transaction will never land. Only a matching advanced counter may
+/// roll forward (the caller must also confirm the prepared root); otherwise HOLD.
 #[derive(Debug, PartialEq, Eq)]
 enum RollAction {
-    RollBack,
     RollForward,
     Hold,
 }
 
 fn settle_failure_action(sealed_batch_id: u64, chain_batch_count: u64) -> RollAction {
-    if chain_batch_count == sealed_batch_id {
-        RollAction::RollBack
-    } else if chain_batch_count == sealed_batch_id + 1 {
+    if Some(chain_batch_count) == sealed_batch_id.checked_add(1) {
         RollAction::RollForward
     } else {
         RollAction::Hold
@@ -235,27 +234,6 @@ fn observe_gate(
     }
 }
 
-/// Fix round 2 (final-review TOCTOU): whether the boot-recovery chain read must
-/// be CONFIRMED by a delayed second read before feeding the recovery decision.
-///
-/// The settle loop journals `prepared` (stage 2) strictly BEFORE the tx
-/// broadcast, so `has_prepared == false` PROVES no tx was ever sent — the first
-/// read is authoritative and RollBack is immediately safe. With `prepared`
-/// present, a first read of `batch_count == j.batch_id` is ambiguous: the crash
-/// may sit in the ~2-4 s window between the broadcast and its mining, and a
-/// RollBack decided on that stale read rewinds Counter B and deletes the journal
-/// (the only `prepared` copy) right before the tx lands — chain J+1 vs local J,
-/// the unreconcilable wedge this recovery exists to kill. Any other first read
-/// already disambiguates (landed → RollForward row, weirder → Hold), so no wait.
-fn needs_confirm_delay(has_prepared: bool, first_bc: u64, j_batch: u64) -> bool {
-    has_prepared && first_bc == j_batch
-}
-
-/// How long the boot-recovery block waits before the confirming re-read when
-/// `needs_confirm_delay` fires — comfortably past Base Sepolia's ~2 s blocks and
-/// the observed 2-4 s propagation window, cheap enough for a boot path.
-const RECOVERY_CONFIRM_DELAY_SECS: u64 = 15;
-
 /// Task 3 (crash recovery): what `apply_boot_recovery` decided about the journal
 /// FILE. The function itself only mutates the `Gw` — it is pure of file I/O, so
 /// the boot call site (and the tests, which have no journal file) own the delete.
@@ -271,8 +249,7 @@ enum BootRecoveryOutcome {
     /// SealNeverPersisted) resolve to the state already on disk, so they delete
     /// without a write.
     DeleteJournal { mutated: bool },
-    /// HOLD: keep the journal for the operator / a later boot. The boot
-    /// continuity check remains the final arbiter of whether startup proceeds.
+    /// HOLD: keep the journal and refuse startup until a later boot can resolve it.
     KeepJournal,
 }
 
@@ -390,8 +367,7 @@ fn apply_boot_recovery(
             eprintln!(
                 "[recovery] HOLDING: rollback journal window {} matches no recovery row \
                  (snapshot Counter B {b_snap}, chain batchCount {chain_bc}, chain root \
-                 {chain_root}) — keeping the journal; operator must reconcile (the continuity \
-                 check decides whether boot proceeds)",
+                 {chain_root}) — keeping the journal; operator must reconcile (startup is refused until this journal resolves)",
                 j.batch_id
             );
             BootRecoveryOutcome::KeepJournal
@@ -2820,6 +2796,9 @@ impl Gw {
                 "batch_id desync: window {expected} vs chain {chain_batch_count} (recovery is 3b-3)"
             ));
         }
+        expected
+            .checked_add(1)
+            .ok_or("window batch counter exhausted")?;
         let witness = self.seq.seal_window();
         let ww = core::mem::take(&mut self.window_withdrawals);
         Ok(Some((witness, ww)))
@@ -5198,6 +5177,35 @@ async fn snapshot_now(req: &Option<tokio::sync::mpsc::Sender<SnapshotAck>>) -> R
         .map_err(|_| format!("snapshot request timed out after {SNAPSHOT_ACK_TIMEOUT_SECS}s (queue or writer stalled)"))?
 }
 
+/// Stop state mutations before the final capture and keep them stopped through
+/// process exit. The returned guard is deliberately retained by the signal task;
+/// releasing it after a successful save would permit an acknowledged API mutation
+/// or a new seal to slip into the save-to-exit gap.
+async fn final_snapshot<'a>(
+    app: &'a Shared,
+    path: &std::path::Path,
+    seed: [u8; 32],
+    serial: Arc<Mutex<()>>,
+) -> (tokio::sync::MutexGuard<'a, Gw>, bool) {
+    let serial = serial.lock_owned().await;
+    let frozen = app.gw.lock().await;
+    let plain = frozen.snapshot_plain();
+    let path = path.to_owned();
+    let saved = tokio::task::spawn_blocking(move || {
+        // Cancellation must not release serialization while the filesystem worker
+        // continues using the shared atomic-write temporary path.
+        let _serial = serial;
+        let sealed = snapshot::seal(&plain, &seed);
+        snapshot::write_atomic(&path, &sealed)
+    })
+    .await;
+    let ok = matches!(saved, Ok(Ok(())));
+    if !ok {
+        eprintln!("[state] final snapshot failed: {saved:?}");
+    }
+    (frozen, ok)
+}
+
 /// All runtime snapshot callers share `serial`. Acquire it BEFORE capturing state,
 /// otherwise an older capture could overwrite a newer acknowledged snapshot.
 /// Move the owned guard into the blocking worker: cancelling the async caller must
@@ -5873,6 +5881,26 @@ fn admin_resume_authz(configured: Option<&str>, presented: Option<&str>) -> Admi
     }
 }
 
+/// Called under Gw's lock so an admin retry cannot race a recovery hold.
+fn request_settlement_retry(
+    gw: &Gw,
+    force: &std::sync::atomic::AtomicBool,
+) -> Result<String, &'static str> {
+    if gw.settle_health.recovery_required() {
+        return Err("settlement outcome is unresolved; reconcile the pending transaction and restart before retrying");
+    }
+    force.store(true, std::sync::atomic::Ordering::SeqCst);
+    Ok(gw.settle_health.health().as_str().to_string())
+}
+
+async fn hold_settlement_for_recovery(app: &Shared, error: String) {
+    let mut gw = app.gw.lock().await;
+    gw.settle_health.hold_for_recovery(error);
+    gw.settlement_held_since_ms.get_or_insert_with(now_ms);
+    app.force_settle
+        .store(false, std::sync::atomic::Ordering::SeqCst);
+}
+
 /// FIN-001 Task 4: `POST /v1/admin/settlement/resume` — an OPERATOR (not user) action that,
 /// once the prover is fixed, forces an immediate settle attempt instead of waiting out the
 /// HELD backoff. It is gated by the dedicated `FIN_ADMIN_KEY` (0x+64hex) via the `X-Admin-Key`
@@ -5896,25 +5924,25 @@ async fn post_v1_admin_resume(State(app): State<Shared>, headers: HeaderMap) -> 
         )
             .into_response(),
         AdminAuthz::Ok => {
-            app.force_settle
-                .store(true, std::sync::atomic::Ordering::SeqCst);
-            let health = {
-                app.gw
-                    .lock()
-                    .await
-                    .settle_health
-                    .health()
-                    .as_str()
-                    .to_string()
+            let result = {
+                let gw = app.gw.lock().await;
+                request_settlement_retry(&gw, &app.force_settle)
             };
-            (
-                StatusCode::OK,
-                Json(serde_json::json!({
-                    "status": "settlement retry forced on next tick",
-                    "settlement_health": health
-                })),
-            )
-                .into_response()
+            match result {
+                Ok(health) => (
+                    StatusCode::OK,
+                    Json(serde_json::json!({
+                        "status": "settlement retry forced on next tick",
+                        "settlement_health": health
+                    })),
+                )
+                    .into_response(),
+                Err(error) => (
+                    StatusCode::CONFLICT,
+                    Json(serde_json::json!({"error": error, "settlement_health": "HELD"})),
+                )
+                    .into_response(),
+            }
         }
     }
 }
@@ -6909,15 +6937,32 @@ async fn get_v1_openapi(State(app): State<Shared>) -> impl IntoResponse {
     let prod = app.gw.lock().await.prod;
     Json(v1_openapi_json(prod))
 }
-async fn ws_v1_handler(State(app): State<Shared>, ws: WebSocketUpgrade) -> impl IntoResponse {
-    ws.on_upgrade(move |socket| ws_v1_loop(socket, app))
+async fn ws_v1_handler(
+    State(app): State<Shared>,
+    Extension(policy): Extension<Arc<service_policy::ServicePolicy>>,
+    headers: HeaderMap,
+    ws: WebSocketUpgrade,
+) -> axum::response::Response {
+    let permit = match policy.admit(&headers) {
+        Ok(permit) => permit,
+        Err(code) => return code.into_response(),
+    };
+    policy.configure(ws).on_upgrade(move |socket| async move {
+        let _permit = permit;
+        let stop = policy.shutdown.clone();
+        tokio::select! {
+            biased;
+            _ = stop.cancelled() => {},
+            _ = ws_v1_loop(socket, app, policy) => {},
+        }
+    })
 }
 /// `/v1/ws`: public live-market snapshots every tick, PLUS — after the client sends
 /// `{"type":"auth","apiKey":"0x.."}` — that account's own events (fills, order
 /// finality, ADL haircuts). Events are filtered to the authenticated owner; an
 /// unauthenticated connection sees only public market data.
-async fn ws_v1_loop(socket: WebSocket, app: Shared) {
-    credential_session::serve(socket, app).await;
+async fn ws_v1_loop(socket: WebSocket, app: Shared, policy: Arc<service_policy::ServicePolicy>) {
+    credential_session::serve(socket, app, policy).await;
 }
 
 async fn get_state(State(app): State<Shared>) -> impl IntoResponse {
@@ -7126,24 +7171,51 @@ async fn post_recover(State(app): State<Shared>, Json(req): Json<SeedReq>) -> im
     Json(serde_json::Value::Array(gw.recover(&req.seed)))
 }
 
-async fn ws_handler(State(app): State<Shared>, ws: WebSocketUpgrade) -> impl IntoResponse {
-    ws.on_upgrade(move |socket| ws_loop(socket, app))
+async fn ws_handler(
+    State(app): State<Shared>,
+    Extension(policy): Extension<Arc<service_policy::ServicePolicy>>,
+    headers: HeaderMap,
+    ws: WebSocketUpgrade,
+) -> axum::response::Response {
+    let permit = match policy.admit(&headers) {
+        Ok(permit) => permit,
+        Err(code) => return code.into_response(),
+    };
+    policy.configure(ws).on_upgrade(move |socket| async move {
+        let _permit = permit;
+        let stop = policy.shutdown.clone();
+        tokio::select! {
+            biased;
+            _ = stop.cancelled() => {},
+            _ = ws_loop(socket, app, policy) => {},
+        }
+    })
 }
-async fn ws_loop(mut socket: WebSocket, app: Shared) {
+async fn ws_loop(mut socket: WebSocket, app: Shared, policy: Arc<service_policy::ServicePolicy>) {
     let mut rx = app.tx.subscribe();
-    // initial snapshot
+    let mut budget = policy.message_budget();
     let initial = {
         serde_json::to_string(&WsMsg::State {
             state: app.gw.lock().await.snapshot(),
         })
         .unwrap()
     };
-    if socket.send(Message::Text(initial)).await.is_err() {
+    if !policy.send(&mut socket, Message::Text(initial)).await {
         return;
     }
-    while let Ok(msg) = rx.recv().await {
-        if socket.send(Message::Text(msg)).await.is_err() {
-            break;
+    loop {
+        tokio::select! {
+            incoming = socket.recv() => {
+                match incoming {
+                    Some(Ok(Message::Close(_))) | Some(Err(_)) | None => break,
+                    Some(Ok(_)) if !budget.take() => break,
+                    Some(Ok(_)) => {},
+                }
+            }
+            message = rx.recv() => {
+                let Ok(message) = message else { break; };
+                if !policy.send(&mut socket, Message::Text(message)).await { break; }
+            }
         }
     }
 }
@@ -7367,7 +7439,18 @@ fn vault_binding_ok_for_mode(prod: bool, vault: [u8; 20]) -> bool {
 /// Assemble the HTTP router. In production mode the legacy, UNAUTHENTICATED `/api/*`
 /// mutation routes are omitted (audit DP-010) — only the read-only demo state/websocket
 /// and the API-key-authenticated `/v1` surface are exposed.
+#[cfg(test)]
 fn build_router(app: Shared, prod: bool) -> Router {
+    let policy =
+        Arc::new(service_policy::ServicePolicy::from_env(prod).expect("gateway service policy"));
+    build_router_with_policy(app, prod, policy)
+}
+
+fn build_router_with_policy(
+    app: Shared,
+    prod: bool,
+    policy: Arc<service_policy::ServicePolicy>,
+) -> Router {
     let mut router = Router::new()
         .route("/api/state", get(get_state))
         // SEC-020 Task 4: this host's quote for the peer's handshake half —
@@ -7448,8 +7531,41 @@ fn build_router(app: Shared, prod: bool) -> Router {
         .route("/v1/enclave/epoch", get(get_v1_enclave_epoch))
         .route("/v1/openapi.json", get(get_v1_openapi))
         .route("/v1/ws", get(ws_v1_handler))
-        .layer(CorsLayer::permissive())
+        .layer(policy.cors())
+        .layer(axum::middleware::from_fn_with_state(
+            policy.clone(),
+            service_policy::enforce_origin,
+        ))
+        .layer(Extension(policy))
         .with_state(app)
+}
+
+/// Seal and persist stage 1 under the same Gw guard used by snapshot capture.
+/// A writer can observe either the pre-seal state or a sealed state whose rollback
+/// record is already durable, never the gap between them. On failure the seal is
+/// undone before the caller releases the guard. The previous resolution must be
+/// snapshotted before calling this helper and replacing the previous journal.
+fn begin_journaled_window_settle(
+    gw: &mut Gw,
+    chain_batch_count: u64,
+    path: Option<&std::path::Path>,
+    seed: &[u8; 32],
+) -> Result<Option<rollback_journal::RollbackJournal>, String> {
+    let Some((witness, ww)) = gw.begin_window_settle(chain_batch_count)? else {
+        return Ok(None);
+    };
+    let journal = rollback_journal::RollbackJournal {
+        batch_id: witness.batch_id,
+        witness,
+        ww,
+        prepared: None,
+    };
+    if let Err(error) = after_settle_journal(path, &journal, seed, || ()) {
+        gw.seq.rollback_window(&journal.witness);
+        gw.rollback_window_withdrawals(journal.ww);
+        return Err(format!("stage-1 rollback journal is not durable: {error}"));
+    }
+    Ok(Some(journal))
 }
 
 /// A configured journal is a durability barrier before proving/broadcasting.
@@ -7484,6 +7600,15 @@ async fn main() {
     // posture, so compute `prod` BEFORE building the client — a prod boot with an
     // unset PROVER_SEAL_ROOT (or a DEV_INSECURE escape) must refuse to start.
     let prod = production_mode(l1.is_some());
+    let service_policy = Arc::new(
+        service_policy::ServicePolicy::from_env(prod).unwrap_or_else(|error| {
+            eprintln!("[listener] REFUSING to start: {error}");
+            if let Some(l1c) = &l1 {
+                l1c.cleanup_keystore();
+            }
+            std::process::exit(1);
+        }),
+    );
     // SEC-020 Task 4: the DEV_INSECURE escape is refused outright in production
     // (Task-1 posture). `resolve_seal_root` only refuses it when the seal root
     // is ALSO unset; the handshake escape must be prod-forbidden unconditionally.
@@ -7717,7 +7842,7 @@ async fn main() {
         .map(std::path::PathBuf::from);
     // Task 3 (crash recovery): whether a sealed snapshot was actually restored —
     // a rollback journal is only meaningful against the state it was written
-    // beside; on a fresh boot a leftover journal is deleted below, unapplied.
+    // beside; a journal without its snapshot now refuses startup for reconciliation.
     let mut restored_from_snapshot = false;
     // SEC-025-C: the genesis mode is computed BEFORE boot and passed as a parameter —
     // `gw.prod` is assigned two lines after boot returns, so a field read inside
@@ -7820,17 +7945,8 @@ async fn main() {
     if let Some(sp) = &state_path {
         let jp = rollback_journal::journal_path(sp);
         if !restored_from_snapshot {
-            // FRESH boot (no snapshot restored): a leftover journal references a
-            // state that no longer exists (e.g. the operator wiped the snapshot
-            // but not the sidecar) — meaningless; drop it so a later boot cannot
-            // misapply it to unrelated state.
             if jp.exists() {
-                eprintln!(
-                    "[recovery] rollback journal {} found on a FRESH boot (no snapshot \
-                     restored) — deleting the meaningless leftover",
-                    jp.display()
-                );
-                rollback_journal::delete(&jp);
+                eprintln!("[recovery] HOLDING: rollback journal {} exists without a restored snapshot; preserve both files and reconcile before restart", jp.display());
             }
         } else {
             match rollback_journal::read(&jp, &enclave_seed) {
@@ -7840,8 +7956,7 @@ async fn main() {
                     // need, never guess — HOLD and fall through.
                     eprintln!(
                         "[recovery] HOLDING: rollback journal {} exists but is unreadable \
-                         ({e}) — keeping the file; operator must reconcile (the continuity \
-                         check decides whether boot proceeds)",
+                         ({e}) — keeping the file; operator must reconcile (startup is refused until this journal resolves)",
                         jp.display()
                     );
                 }
@@ -7856,64 +7971,13 @@ async fn main() {
                         );
                     }
                     Some(l1c) => {
-                        // chain reads exactly like the continuity check below
-                        // (spawn_blocking — the L1 client is blocking).
+                        // Counter/root/bond are read at one finalized canonical block hash.
+                        // No finite delay proves an unmined prepared transaction absent.
                         let reads = {
                             let l1c = l1c.clone();
-                            tokio::task::spawn_blocking(
-                                move || -> Result<(u64, String, u128), String> {
-                                    let bc = l1c.batch_count()?;
-                                    let root = l1c.current_root()?;
-                                    let bond = l1c.sequencer_bond().unwrap_or(0);
-                                    Ok((bc, root, bond))
-                                },
-                            )
-                            .await
-                            .unwrap_or_else(|e| Err(e.to_string()))
-                        };
-                        // Fix round 2 (final-review TOCTOU): if the journal has a
-                        // `prepared` outcome (a settle tx MAY have been broadcast)
-                        // and the chain still reads the pre-settle batchCount, the
-                        // crash may sit between the broadcast and its mining — a
-                        // RollBack decided on this first read would delete the only
-                        // `prepared` copy right before the tx lands. Wait out the
-                        // propagation window and let a SECOND read decide; a failed
-                        // re-read proves nothing and flows into the HOLD arm below,
-                        // exactly like any other failed chain read.
-                        let reads = match reads {
-                            Ok((bc, _, bond))
-                                if needs_confirm_delay(j.prepared.is_some(), bc, j.batch_id) =>
-                            {
-                                eprintln!(
-                                    "[recovery] journal window {} has a prepared outcome and the \
-                                     chain still reads batchCount {bc} — the settle tx may be \
-                                     broadcast but not yet mined; waiting \
-                                     {RECOVERY_CONFIRM_DELAY_SECS}s and re-reading the chain \
-                                     before deciding",
-                                    j.batch_id
-                                );
-                                tokio::time::sleep(Duration::from_secs(
-                                    RECOVERY_CONFIRM_DELAY_SECS,
-                                ))
-                                .await;
-                                let l1c = l1c.clone();
-                                tokio::task::spawn_blocking(
-                                    move || -> Result<(u64, String, u128), String> {
-                                        let bc = l1c.batch_count()?;
-                                        let root = l1c.current_root()?;
-                                        Ok((bc, root, bond))
-                                    },
-                                )
+                            tokio::task::spawn_blocking(move || l1c.settlement_observation())
                                 .await
                                 .unwrap_or_else(|e| Err(e.to_string()))
-                                .map_err(|e| {
-                                    format!(
-                                        "confirming re-read after the {RECOVERY_CONFIRM_DELAY_SECS}s \
-                                         in-flight-tx wait failed: {e}"
-                                    )
-                                })
-                            }
-                            other => other,
                         };
                         match reads {
                             Ok((chain_bc, chain_root, bond)) => {
@@ -7970,14 +8034,25 @@ async fn main() {
                                 // a failed read proves nothing — HOLD, never guess.
                                 eprintln!(
                                     "[recovery] HOLDING: cannot read the chain to resolve the \
-                                     rollback journal ({e}) — keeping the file; the continuity \
-                                     check decides whether boot proceeds"
+                                     rollback journal ({e}) — keeping the file; startup is refused until this journal resolves"
                                 );
                             }
                         }
                     }
                 },
             }
+        }
+    }
+    // A matching old settled root alone does not resolve an in-flight journal.
+    // Never start another settlement loop that could overwrite this recovery record.
+    if let Some(sp) = &state_path {
+        let jp = rollback_journal::journal_path(sp);
+        if jp.try_exists().unwrap_or(true) {
+            eprintln!("[recovery] REFUSING to start: unresolved rollback journal {}; reconcile the pending transaction and restart", jp.display());
+            if let Some(l1c) = &l1 {
+                l1c.cleanup_keystore();
+            }
+            std::process::exit(1);
         }
     }
     // State ↔ L1 continuity, on EVERY L1-configured boot (SEC-025-C): the gateway's
@@ -8132,18 +8207,25 @@ async fn main() {
         force_settle: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
     });
 
+    let signals = service_shutdown::Signals::new().expect("shutdown signal handlers");
+    let mut background = Vec::new();
+    let cleanup_l1 = l1.clone();
+
     if app.deposit_source.is_some() {
         let app = app.clone();
-        tokio::spawn(async move {
+        let stop = service_policy.shutdown.clone();
+        background.push(tokio::spawn(async move {
             let mut interval = tokio::time::interval(std::time::Duration::from_secs(2));
             interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
             loop {
-                interval.tick().await;
+                if !stop.next_tick(&mut interval).await {
+                    break;
+                }
                 if let Err(e) = deposit_ingestion::ingest_once(&app).await {
                     eprintln!("[deposit-ingester] paused: {e}");
                 }
             }
-        });
+        }));
     }
 
     // One-shot REAL history backfill for feed-backed markets (chart past bars):
@@ -8151,13 +8233,17 @@ async fn main() {
     // degrade to shorter history, never block boot.
     {
         let app = app.clone();
-        tokio::spawn(async move {
+        let stop = service_policy.shutdown.clone();
+        background.push(tokio::spawn(async move {
             let feeds: Vec<(u64, &'static str)> = MARKETS
                 .iter()
                 .filter_map(|m| m.feed.map(|f| (m.id, f)))
                 .collect();
             for (id, inst) in feeds {
                 for (tf_idx, (tf, _, cc_tf)) in candles::TFS.iter().enumerate() {
+                    if stop.started() {
+                        return;
+                    }
                     let fetched = tokio::task::spawn_blocking(move || {
                         oracle_feed::fetch_candles(inst, cc_tf, candles::CAP)
                     })
@@ -8184,7 +8270,7 @@ async fn main() {
                 }
             }
             println!("[candles] exchange backfill complete");
-        });
+        }));
     }
 
     // Task 2 (crash recovery): the settle loop asks for an immediate snapshot right
@@ -8197,89 +8283,48 @@ async fn main() {
     // persistence is off (`notify_one` with no listener is a no-op).
     let snapshot_notify = Arc::new(tokio::sync::Notify::new());
 
-    // Periodic sealed-snapshot writer + graceful-shutdown save (SIGTERM/ctrl-c).
-    if let Some(path) = state_path.clone() {
-        let snapshot_serial = Arc::new(Mutex::new(()));
-        let write = {
-            let app = app.clone();
-            let path = path.clone();
-            move || {
-                let app = app.clone();
-                let path = path.clone();
-                let serial = snapshot_serial.clone();
-                async move { write_snapshot(&app, &path, enclave_seed, serial).await }
-            }
-        };
-        {
-            let write = write.clone();
-            let notify = snapshot_notify.clone();
-            tokio::spawn(async move {
-                let mut iv = tokio::time::interval(Duration::from_secs(SNAPSHOT_SECS));
-                iv.tick().await; // skip the immediate first tick
-                loop {
-                    // Task 2: wake on the timer OR on demand (the settle loop's
-                    // stage-1 journal write). Notify stores a permit if we're
-                    // mid-write, so a wake-up is never lost — at worst it costs one
-                    // extra snapshot.
-                    // Acknowledged requests use the same serialized capture/write
-                    // operation as periodic saves and graceful shutdown.
-                    let mut ack: Option<SnapshotAck> = None;
-                    tokio::select! {
-                        _ = iv.tick() => {}
-                        _ = notify.notified() => {}
-                        Some(a) = snapshot_req_rx.recv() => { ack = Some(a); }
-                    }
-                    let ok = write().await;
-                    if let Some(a) = ack {
-                        let _ = a.send(ok);
-                    }
-                }
-            });
-        }
-        {
-            let write = write.clone();
-            let l1_ks = l1.clone();
-            tokio::spawn(async move {
-                let term = async {
-                    #[cfg(unix)]
-                    {
-                        let mut sig = tokio::signal::unix::signal(
-                            tokio::signal::unix::SignalKind::terminate(),
-                        )
-                        .expect("SIGTERM handler");
-                        sig.recv().await;
-                    }
-                    #[cfg(not(unix))]
-                    std::future::pending::<()>().await;
-                };
-                tokio::select! {
-                    _ = tokio::signal::ctrl_c() => {}
-                    _ = term => {}
-                }
-                let ok = write().await;
-                // audit #6: process::exit skips Drop, so the KeystoreDir RAII guard never
-                // fires on a graceful stop — remove the keystore temp dir (encrypted key +
-                // 0600 password) explicitly here so it doesn't persist / accumulate.
-                if let Some(l1) = &l1_ks {
-                    l1.cleanup_keystore();
-                }
-                println!(
-                    "[state] shutdown snapshot {} — exiting",
-                    if ok { "saved" } else { "FAILED" }
-                );
-                std::process::exit(if ok { 0 } else { 1 });
-            });
-        }
+    // Keep the writer alive until accepted HTTP and background work have
+    // finished every durability ACK. Only then stop it and capture final state.
+    let snapshot_serial = Arc::new(Mutex::new(()));
+    let snapshot_stop = Arc::new(service_shutdown::Shutdown::default());
+    let snapshot_writer = if let Some(path) = state_path.clone() {
+        let app = app.clone();
+        let serial = snapshot_serial.clone();
+        let stop = snapshot_stop.clone();
+        let notify = snapshot_notify.clone();
         println!("[state] sealed persistence ON → {}", path.display());
-    }
+        Some(tokio::spawn(async move {
+            let mut iv = tokio::time::interval(Duration::from_secs(SNAPSHOT_SECS));
+            iv.tick().await;
+            loop {
+                let mut ack: Option<SnapshotAck> = None;
+                tokio::select! {
+                    biased;
+                    _ = stop.cancelled() => break,
+                    Some(a) = snapshot_req_rx.recv() => { ack = Some(a); }
+                    _ = notify.notified() => {}
+                    _ = iv.tick() => {}
+                }
+                let ok = write_snapshot(&app, &path, enclave_seed, serial.clone()).await;
+                if let Some(ack) = ack {
+                    let _ = ack.send(ok);
+                }
+            }
+        }))
+    } else {
+        None
+    };
 
     // background tick loop
     {
         let app = app.clone();
-        tokio::spawn(async move {
+        let stop = service_policy.shutdown.clone();
+        background.push(tokio::spawn(async move {
             let mut iv = tokio::time::interval(Duration::from_millis(TICK_MS));
             loop {
-                iv.tick().await;
+                if !stop.next_tick(&mut iv).await {
+                    break;
+                }
                 let (events, acct_events) = { app.gw.lock().await.tick() };
                 // fold the fresh marks into the REAL candle history (chart past bars)
                 {
@@ -8312,14 +8357,15 @@ async fn main() {
                     let _ = app.events_tx.send(ev);
                 }
             }
-        });
+        }));
     }
 
     // live oracle: pull real prices for feed-backed markets from Crypto.com every 5s
     // and feed them into the engine (markets without a feed keep the sim walk).
     {
         let app = app.clone();
-        tokio::spawn(async move {
+        let stop = service_policy.shutdown.clone();
+        background.push(tokio::spawn(async move {
             let (feeds, oracle_signer): (Vec<(u64, &'static str)>, k256::ecdsa::SigningKey) = {
                 let gw = app.gw.lock().await;
                 let feeds = gw
@@ -8336,8 +8382,13 @@ async fn main() {
             }
             let mut iv = tokio::time::interval(Duration::from_secs(5));
             loop {
-                iv.tick().await;
+                if !stop.next_tick(&mut iv).await {
+                    break;
+                }
                 for &(id, inst) in &feeds {
+                    if stop.started() {
+                        break;
+                    }
                     let now = now_ms();
                     let signer = oracle_signer.clone();
                     match tokio::task::spawn_blocking(move || {
@@ -8353,7 +8404,7 @@ async fn main() {
                     }
                 }
             }
-        });
+        }));
     }
 
     // optional L1 settlement bridge: top up the USDC bond, advance the on-chain root
@@ -8370,7 +8421,8 @@ async fn main() {
         {
             let app = app.clone();
             let l1a = l1.clone();
-            tokio::spawn(async move {
+            let stop = service_policy.shutdown.clone();
+            background.push(tokio::spawn(async move {
                 // audit #8: DON'T start at the current block — that silently skips any
                 // InclusionChallenged raised while we were restarting/down, letting an
                 // honest sequencer be slashed for a challenge it could have answered. A
@@ -8390,7 +8442,7 @@ async fn main() {
                 };
                 let mut iv = tokio::time::interval(Duration::from_secs(L1_SETTLE_SECS));
                 loop {
-                    iv.tick().await;
+                    if !stop.next_tick(&mut iv).await { break; }
                     let l1c = l1a.clone();
                     let (hashes, next) =
                         match tokio::task::spawn_blocking(move || l1c.fetch_challenges(from_block))
@@ -8436,7 +8488,7 @@ async fn main() {
                         }
                     }
                 }
-            });
+            }));
         }
         let app = app.clone();
         // Task 2 (crash recovery): journal in-flight window settles to the sealed
@@ -8447,10 +8499,11 @@ async fn main() {
         // BOOT is the only deleter (deleting here would leave a crash inside the
         // resolution→snapshot window with a restored pre-resolution state and no
         // journal to reconcile it — the Task-2 residual wedge). No persistence path
-        // (`None`) = no journal — the settle loop behaves exactly as before.
+        // (`None`) has no journal; production refuses settlement without snapshot ACKs.
         let jpath = state_path.as_deref().map(rollback_journal::journal_path);
         let snapshot_notify = snapshot_notify.clone();
-        tokio::spawn(async move {
+        let stop = service_policy.shutdown.clone();
+        background.push(tokio::spawn(async move {
             // start the first settle one period out, so it never races the bond's
             // confirmation (tokio's plain `interval` would fire immediately).
             let mut iv = tokio::time::interval_at(
@@ -8463,7 +8516,7 @@ async fn main() {
             // starts open (now) so the first tick attempts normally.
             let mut next_attempt = tokio::time::Instant::now();
             loop {
-                iv.tick().await;
+                if !stop.next_tick(&mut iv).await { break; }
                 // FIN-001 Task 4: an operator forced a resume (POST /v1/admin/settlement/resume) —
                 // collapse the backoff deadline to now so this tick attempts a settle immediately
                 // instead of waiting out the HELD backoff. `swap` consumes the one-shot flag.
@@ -8502,113 +8555,63 @@ async fn main() {
                             continue;
                         }
                     };
-                    // (B) seal the window under the lock (or skip)
+                    // Persist the previous resolution before replacing its journal.
+                    // This also covers a previous rollback or a committed window whose
+                    // asynchronous save has not completed yet.
+                    if prod || jpath.is_some() {
+                        if let Err(error) = snapshot_now(&app.snapshot_req).await {
+                            eprintln!("[recovery] prior window state is not durable: {error}; keeping the journal and skipping seal");
+                            continue;
+                        }
+                    }
+                    // Stage 1 and seal share Gw's lock with every snapshot capture.
                     let begun = {
                         let mut gw = app.gw.lock().await;
-                        match gw.begin_window_settle(bc) {
-                            Ok(Some(x)) => {
+                        match begin_journaled_window_settle(
+                            &mut gw,
+                            bc,
+                            jpath.as_deref(),
+                            &enclave_seed,
+                        ) {
+                            Ok(Some(journal)) => {
                                 let cand: Vec<[u8; 32]> =
                                     gw.pending_withdrawals.iter().map(|w| w.leaf()).collect();
-                                // SEC-025-A Task 5: does the window just sealed carry the
-                                // insurance bootstrap's SECOND leg? Read under the same
-                                // guard as the seal, acted on (a durability barrier)
-                                // AFTER the guard drops.
-                                let deposit_window = matches!(
-                                    gw.bootstrap,
-                                    bootstrap::Bootstrap::InsuranceApplied { window_id }
-                                        if window_id == x.0.batch_id
-                                ) || x
-                                    .0
-                                    .ops
-                                    .iter()
-                                    .any(|op| matches!(op, BatchOp::Deposit { .. }));
-                                // SEC-025-D: whether the launch gate still needs an
-                                // observation, read under the same guard as the seal.
-                                // Sound to act on later without re-reading: only
-                                // `commit_window_settle` opens the gate, and this loop
-                                // is the sole live committer — no open can interleave
-                                // between the seal and this window's own commit.
                                 let gate_was_closed =
                                     gw.trading_gate == trading_gate::TradingGate::Closed;
-                                Some((x, cand, deposit_window, gate_was_closed))
+                                Some((journal, cand, gate_was_closed))
                             }
                             Ok(None) => None,
-                            Err(e) => {
-                                eprintln!("[l1] window settle skipped: {e}");
+                            Err(error) => {
+                                eprintln!("[l1] window settle skipped: {error}");
                                 None
                             }
                         }
                     };
-                    let Some(((witness, ww), prune_candidates, deposit_window, gate_was_closed)) =
-                        begun
-                    else {
+                    let Some((mut journal, prune_candidates, gate_was_closed)) = begun else {
                         continue;
                     };
-                    // capture the manifest's ordered/rejected for the DP-004 challenge store
-                    let ordered = witness.manifest.ordered.clone();
-                    let rejected: Vec<Digest> =
-                        witness.manifest.rejected.iter().map(|(h, _)| *h).collect();
-                    let batch_id = witness.batch_id;
-                    // keep rollback copies for the failure path (a per-settle DefaultState
-                    // clone — far rarer than the per-tick snapshot clone, so negligible).
-                    let witness_rb = witness.clone();
-                    let ww_rb = ww.clone();
-                    // Stage 1: persist the rollback inputs before proving or
-                    // broadcasting a sealed window. A configured write failure
-                    // rolls back in memory and requests a fresh snapshot instead
-                    // of continuing without a recovery record. This barrier does
-                    // not make the seal and the independent periodic snapshot
-                    // writer one atomic operation.
-                    let mut journal = rollback_journal::RollbackJournal {
-                        batch_id,
-                        witness,
-                        ww,
-                        prepared: None,
-                    };
-                    if let Err(error) =
-                        after_settle_journal(jpath.as_deref(), &journal, &enclave_seed, || ())
-                    {
-                        eprintln!("[recovery] stage-1 rollback journal is not durable: {error} — rolling back before proving");
-                        {
-                            let mut gw = app.gw.lock().await;
-                            gw.seq.rollback_window(&witness_rb);
-                            gw.rollback_window_withdrawals(ww_rb);
-                        }
-                        snapshot_notify.notify_one();
-                        continue;
-                    }
-                    if jpath.is_some() {
-                        snapshot_notify.notify_one();
-                    }
-                    // A01: every deposit-bearing window and resumed bootstrap second leg needs durability;
-                    // its post-seal snapshot must be durably ACKNOWLEDGED before the settle
-                    // can broadcast. If the window lands on-chain before that snapshot
-                    // persists, boot restores Counter B at J while the chain reads J+1,
-                    // the recovery table returns Hold rather than RollForward,
-                    // `commit_window_settle` never runs, and a genuinely settled bootstrap
-                    // never reaches `Complete`. The one-shot is NOT spent (the record sits at
-                    // `InsuranceApplied`, not `Complete`), but the cost is worse than that: a `Hold`
-                    // leaves Counter B at J against a chain at J+1, so `begin_window_settle`'s desync
-                    // guard rejects EVERY subsequent tick — settlement wedges entirely. The
-                    // stage-1 notify above is fire-and-forget and cannot carry this
-                    // guarantee. Awaited with NO `gw` guard held: the snapshot writer
-                    // takes that same lock, so a holder wedges the gateway for the full
-                    // ack timeout (see `snapshot_now`). On failure, roll the seal back and
-                    // retry the whole settle next tick — fail-closed, nothing broadcast.
-                    if deposit_window {
-                        if let Err(e) = snapshot_now(&app.snapshot_req).await {
-                            eprintln!(
-                                "[l1] deposit window {batch_id}: post-seal snapshot is not \
-                                 durable ({e}) — rolling back; the settle retries next tick"
-                            );
+                    let ordered = journal.witness.manifest.ordered.clone();
+                    let rejected: Vec<Digest> = journal
+                        .witness
+                        .manifest
+                        .rejected
+                        .iter()
+                        .map(|(h, _)| *h)
+                        .collect();
+                    let batch_id = journal.batch_id;
+                    let witness_rb = journal.witness.clone();
+                    let ww_rb = journal.ww.clone();
+                    // Every configured window must persist its post-seal Counter B
+                    // before a transaction may be broadcast, including manifest-only
+                    // windows and windows with no deposits. Release Gw before waiting.
+                    if prod || jpath.is_some() {
+                        if let Err(error) = snapshot_now(&app.snapshot_req).await {
+                            eprintln!("[l1] window {batch_id}: post-seal snapshot is not durable ({error}); rolling back before proving");
                             {
                                 let mut gw = app.gw.lock().await;
                                 gw.seq.rollback_window(&witness_rb);
                                 gw.rollback_window_withdrawals(ww_rb);
                             }
-                            // Task 3 (WAL): keep the journal (boot's SEAL-NEVER-PERSISTED
-                            // row resolves it once the rolled-back state persists); poke
-                            // the writer in case only the ack path is broken.
                             snapshot_notify.notify_one();
                             continue;
                         }
@@ -8784,33 +8787,14 @@ async fn main() {
                             snapshot_notify.notify_one();
                         }
                         Ok(SettleAttempt::SettleFailed { err, prepared }) => {
-                            // ambiguous: re-read batchCount (+ currentStateRoot to confirm WHICH
-                            // window landed, + bond for a roll-forward status).
+                            // All recovery terms name one finalized block hash.
                             let l1c = l1.clone();
-                            let recheck = tokio::task::spawn_blocking(
-                                move || -> Result<(u64, String, u128), String> {
-                                    let bc = l1c.batch_count()?;
-                                    let root = l1c.current_root()?;
-                                    let bond = l1c.sequencer_bond().unwrap_or(0);
-                                    Ok((bc, root, bond))
-                                },
-                            )
-                            .await;
+                            let recheck =
+                                tokio::task::spawn_blocking(move || l1c.settlement_observation())
+                                    .await;
                             match recheck {
                                 Ok(Ok((now_bc, now_root, bond))) => {
                                     match settle_failure_action(batch_id, now_bc) {
-                                        RollAction::RollBack => {
-                                            eprintln!("[l1] settle failed: {err} — tx did not land (batchCount still {batch_id}); rolled back");
-                                            {
-                                                let mut gw = app.gw.lock().await;
-                                                gw.seq.rollback_window(&witness_rb);
-                                                gw.rollback_window_withdrawals(ww_rb);
-                                            }
-                                            // Task 3 (WAL): keep the journal (boot's
-                                            // SEAL-NEVER-PERSISTED row resolves it once the
-                                            // rolled-back state persists); poke the writer.
-                                            snapshot_notify.notify_one();
-                                        }
                                         RollAction::RollForward => {
                                             // The tx landed (batchCount advanced), but confirm it
                                             // settled OUR window's root — not a re-sealed one from a
@@ -8820,7 +8804,9 @@ async fn main() {
                                             if !now_root.eq_ignore_ascii_case(&our_root) {
                                                 // Task 2: HOLD keeps the journal — the operator (and
                                                 // Task-3 boot recovery) still needs the rollback inputs.
-                                                eprintln!("[l1] settle reported '{err}' and batchCount advanced to {now_bc}, but currentStateRoot {now_root} != our new_root {our_root} — a DIFFERENT window settled; HOLDING (no commit); operator must reconcile");
+                                                eprintln!("[l1] settle reported '{err}' and batchCount advanced to {now_bc}, but currentStateRoot {now_root} != our new_root {our_root} — HOLDING; settlement loop stopped until restart reconciliation");
+                                                hold_settlement_for_recovery(&app, format!("settlement root mismatch after ambiguous send: {err}; reconcile journal and restart")).await;
+                                                break;
                                             } else {
                                                 // SEC-025-D: this roll-forward COMMITS, and it is
                                                 // exactly where a wind-down finalSettle could be
@@ -8895,40 +8881,26 @@ async fn main() {
                                         RollAction::Hold => {
                                             // Task 2: HOLD keeps the journal (rollback inputs preserved
                                             // for the operator / Task-3 boot recovery).
-                                            eprintln!("[l1] settle failed AND on-chain batchCount is {now_bc} for window {batch_id} — HOLDING (no rollback/commit); operator must reconcile");
+                                            eprintln!("[l1] settle failed AND finalized batchCount is {now_bc} for window {batch_id} — HOLDING; transaction may still land; settlement loop stopped until restart reconciliation");
+                                            hold_settlement_for_recovery(&app, format!("unresolved settlement send: {err}; finalized batchCount {now_bc}; reconcile journal and restart")).await;
+                                            break;
                                         }
                                     }
                                 }
                                 _ => {
                                     // Task 2: HOLD keeps the journal.
-                                    eprintln!("[l1] settle failed ({err}) and the batchCount re-read failed — HOLDING (no rollback/commit); operator must reconcile");
+                                    eprintln!("[l1] settle failed ({err}) and the pinned observation failed — HOLDING; settlement loop stopped until restart reconciliation");
+                                    hold_settlement_for_recovery(&app, format!("unresolved settlement send and failed pinned observation: {err}; reconcile journal and restart")).await;
+                                    break;
                                 }
                             }
                         }
                         Err(join) => {
-                            // the settle task panicked — `prepared` is lost, so we cannot roll
-                            // forward. Re-read batchCount and roll back ONLY if it confirms the
-                            // tx did not land; otherwise hold.
-                            let l1c = l1.clone();
-                            let re = tokio::task::spawn_blocking(move || l1c.batch_count()).await;
-                            match re {
-                                Ok(Ok(now_bc)) if now_bc == batch_id => {
-                                    eprintln!("[l1] settle task join error: {join} — tx did not land; rolled back");
-                                    {
-                                        let mut gw = app.gw.lock().await;
-                                        gw.seq.rollback_window(&witness_rb);
-                                        gw.rollback_window_withdrawals(ww_rb);
-                                    }
-                                    // Task 3 (WAL): keep the journal (boot's
-                                    // SEAL-NEVER-PERSISTED row resolves it once the
-                                    // rolled-back state persists); poke the writer.
-                                    snapshot_notify.notify_one();
-                                }
-                                _ => {
-                                    // Task 2: HOLD keeps the journal.
-                                    eprintln!("[l1] settle task join error: {join} — cannot confirm the tx did not land (no prepared to roll forward); HOLDING; operator must reconcile");
-                                }
-                            }
+                            // The worker may have broadcast before panicking. Neither a
+                            // failed read nor an unchanged counter proves that impossible.
+                            eprintln!("[l1] settle task join error: {join} — HOLDING; preserving journal and stopping settlement until restart reconciliation");
+                            hold_settlement_for_recovery(&app, format!("settlement worker failed after possible broadcast: {join}; reconcile journal and restart")).await;
+                            break;
                         }
                     }
                 }
@@ -8939,20 +8911,66 @@ async fn main() {
                 // prover-free role through the window path above with the correct ABI;
                 // with no prover configured the loop settles nothing.
             }
-        });
+        }));
     }
 
-    let router = build_router(app, prod);
-
+    let router = build_router_with_policy(app.clone(), prod, service_policy.clone());
     let listener = tokio::net::TcpListener::bind(addr).await.expect("bind");
     let addr = listener.local_addr().expect("bound listener address");
     println!("dark-perp gateway listening on http://{addr}  (ws: /ws)");
-    axum::serve(
+    let stop = service_policy.shutdown.clone();
+    let served = axum::serve(
         listener,
         router.into_make_service_with_connect_info::<SocketAddr>(),
     )
-    .await
-    .expect("serve");
+    .with_graceful_shutdown(async move {
+        signals.wait().await;
+        stop.begin();
+        println!("[shutdown] admission closed; draining accepted HTTP, sockets and workers");
+    })
+    .await;
+    // Also stop background work if the listener fails independently of a signal.
+    service_policy.shutdown.begin();
+    let mut clean = served.is_ok();
+    if let Err(error) = served {
+        eprintln!("[shutdown] server failed: {error}");
+    }
+    service_policy.wait_for_sockets().await;
+    for worker in background {
+        if let Err(error) = worker.await {
+            clean = false;
+            eprintln!("[shutdown] background worker failed: {error}");
+        }
+    }
+    snapshot_stop.begin();
+    if let Some(writer) = snapshot_writer {
+        if let Err(error) = writer.await {
+            clean = false;
+            eprintln!("[shutdown] snapshot writer failed: {error}");
+        }
+    }
+    // No handler or worker can now mutate state. Retain the freeze through exit
+    // anyway, so future shutdown changes cannot reopen a save-to-exit gap.
+    let frozen = if let Some(path) = state_path.as_ref() {
+        let capture = final_snapshot(&app, path, enclave_seed, snapshot_serial).await;
+        clean &= capture.1;
+        println!(
+            "[state] shutdown snapshot {}",
+            if capture.1 { "saved" } else { "FAILED" }
+        );
+        Some(capture)
+    } else {
+        None
+    };
+    if let Some(l1) = cleanup_l1 {
+        l1.cleanup_keystore();
+    }
+    println!(
+        "[shutdown] drain complete — exiting {}",
+        if clean { 0 } else { 1 }
+    );
+    let _frozen = frozen;
+    std::process::exit(if clean { 0 } else { 1 });
 }
 
 #[cfg(test)]
@@ -10280,8 +10298,8 @@ mod tests {
         );
         let deposit_ops = count(deposit_op_needle);
         assert_eq!(
-            deposit_ops, 9,
-            "expected exactly 9 occurrences of `{deposit_op_needle}` across the \
+            deposit_ops, 8,
+            "expected exactly 8 occurrences of `{deposit_op_needle}` across the \
              gateway sources: 4 in main.rs — the `seq.apply(..)` constructions \
              inside `fund_amount` (the only position-credit minter), \
              `seed_insurance_unbacked` (SEC-024: the UNBACKED insurance funnel, \
@@ -10293,7 +10311,7 @@ mod tests {
              pre-mints a colliding note to force leg 1's DuplicateCommitment — \
              and 3 in prover_client.rs, all \
              `cfg(test)` `matches!`/filter PATTERNS that inspect ops without \
-             constructing one; plus A01 atomic intake and its post-seal persistence pattern; found {deposit_ops}. Applying this op anywhere \
+             constructing one; plus A01 atomic intake (all windows now require post-seal persistence, so the deposit-only pattern was removed); found {deposit_ops}. Applying this op anywhere \
              else mints collateral below BOTH `refuse_unbacked_mint` and the \
              funnels' bookkeeping, so a new construction site is almost \
              certainly wrong; a legitimate credit path MUST route through \
@@ -10749,34 +10767,19 @@ mod tests {
     #[test]
     fn settle_failure_action_decides_by_batch_count() {
         use crate::RollAction;
-        // chain still at the pre-seal count -> the tx did not land -> roll back.
-        assert_eq!(crate::settle_failure_action(5, 5), RollAction::RollBack);
+        // The old transaction can land later even if repeated reads are unchanged.
+        assert_eq!(crate::settle_failure_action(5, 5), RollAction::Hold);
         // chain advanced by exactly one -> the tx landed despite the error -> roll forward.
         assert_eq!(crate::settle_failure_action(5, 6), RollAction::RollForward);
         // anything else is unexpected -> hold (no mutation).
         assert_eq!(crate::settle_failure_action(5, 7), RollAction::Hold);
         assert_eq!(crate::settle_failure_action(5, 4), RollAction::Hold);
-        assert_eq!(crate::settle_failure_action(0, 0), RollAction::RollBack);
-    }
-
-    /// Fix round 2 (final-review TOCTOU): the boot-recovery confirm-delay fires
-    /// ONLY in the ambiguous row — `prepared` journaled (so a settle tx may have
-    /// been broadcast) AND the first chain read still shows the pre-settle
-    /// batchCount (so the tx may be mined-but-not-yet-visible). `prepared`
-    /// absent PROVES no broadcast ever happened (stage-2 journal write precedes
-    /// the broadcast), and any other batchCount already disambiguates — no wait.
-    #[test]
-    fn needs_confirm_delay_only_for_ambiguous_prepared_row() {
-        // ambiguous: prepared present + chain still at the journal's window id.
-        assert!(crate::needs_confirm_delay(true, 5, 5));
-        assert!(crate::needs_confirm_delay(true, 0, 0));
-        // no prepared -> no tx was ever broadcast -> first read is authoritative.
-        assert!(!crate::needs_confirm_delay(false, 5, 5));
-        assert!(!crate::needs_confirm_delay(false, 0, 0));
-        // chain already advanced (or is otherwise off) -> already disambiguated.
-        assert!(!crate::needs_confirm_delay(true, 6, 5));
-        assert!(!crate::needs_confirm_delay(true, 4, 5));
-        assert!(!crate::needs_confirm_delay(false, 6, 5));
+        assert_eq!(crate::settle_failure_action(0, 0), RollAction::Hold);
+        assert_eq!(
+            crate::settle_failure_action(u64::MAX, u64::MAX),
+            RollAction::Hold
+        );
+        assert_eq!(crate::settle_failure_action(u64::MAX, 0), RollAction::Hold);
     }
 
     /// SEC-025-C: the pure comparator refuses a root mismatch (and its sibling
@@ -14649,6 +14652,209 @@ mod tests {
         dir
     }
 
+    #[tokio::test]
+    async fn journal_ambiguous_hold_surfaces_health_and_refuses_admin_retry() {
+        let app = test_app();
+        app.force_settle
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+        hold_settlement_for_recovery(&app, "ambiguous send; reconcile journal and restart".into())
+            .await;
+        let gw = app.gw.lock().await;
+        assert_eq!(gw.settle_health.health(), settle_health::Health::Held);
+        assert!(gw.settlement_held_since_ms.is_some());
+        assert!(gw.snapshot().settlement_health == "HELD");
+        assert!(request_settlement_retry(&gw, &app.force_settle)
+            .unwrap_err()
+            .contains("reconcile"));
+        assert!(!app.force_settle.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(gw
+            .settle_health
+            .last_error()
+            .unwrap()
+            .contains("ambiguous send"));
+    }
+
+    #[test]
+    fn journal_window_counter_exhaustion_refuses_before_any_mutation() {
+        let mut gw = Gw::boot();
+        gw.seq.state.next_batch_id = u64::MAX;
+        let before = gw.snapshot_plain();
+        let error = match begin_journaled_window_settle(&mut gw, u64::MAX, None, &[42; 32]) {
+            Err(error) => error,
+            Ok(_) => panic!("an exhausted window must not seal"),
+        };
+        assert!(error.contains("counter exhausted"));
+        assert_eq!(gw.snapshot_plain(), before);
+    }
+
+    #[test]
+    fn journal_stage1_failure_rolls_back_before_snapshot_can_capture() {
+        let dir = settle_journal_guard_scratch();
+        let path = dir.join("missing").join("state.rollback");
+        let mut gw = Gw::boot();
+        let (key, sk) = register_withdrawer(&mut gw);
+        gw.account_deposit(&key, 0, 20_000 * QUOTE_SCALE).unwrap();
+        signed_withdraw(&mut gw, &key, &sk, 0, 5_000 * QUOTE_SCALE, [7; 20]).unwrap();
+        let root = gw.seq.state.state_root();
+        let bid = gw.seq.state.next_batch_id;
+        let leaves: Vec<_> = gw.window_withdrawals.iter().map(|w| w.leaf()).collect();
+        assert!(begin_journaled_window_settle(&mut gw, bid, Some(&path), &[42; 32]).is_err());
+        assert_eq!(gw.seq.state.next_batch_id, bid);
+        assert_eq!(gw.seq.state.state_root(), root);
+        assert_eq!(
+            gw.window_withdrawals
+                .iter()
+                .map(|w| w.leaf())
+                .collect::<Vec<_>>(),
+            leaves
+        );
+        let restored = Gw::boot_restored(&gw.snapshot_plain()).unwrap();
+        assert_eq!(restored.seq.state.next_batch_id, bid);
+        assert_eq!(restored.seq.state.state_root(), root);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[tokio::test]
+    async fn journal_seal_and_snapshot_capture_share_the_state_lock() {
+        let dir = settle_journal_guard_scratch();
+        let path = dir.join("state.rollback");
+        let seed = [42; 32];
+        let app = test_app();
+        let mut state = app.gw.lock().await;
+        let (key, _) = state.register_account(None);
+        state
+            .account_deposit(&key, 0, 20_000 * QUOTE_SCALE)
+            .unwrap();
+        let bid = state.seq.state.next_batch_id;
+        let (entered, receiver) = tokio::sync::oneshot::channel();
+        let reader_app = app.clone();
+        let reader_path = path.clone();
+        let reader = tokio::spawn(async move {
+            entered.send(()).unwrap();
+            let state = reader_app.gw.lock().await;
+            let journal = rollback_journal::read(&reader_path, &seed)
+                .unwrap()
+                .expect("sealed snapshot always has journal");
+            assert_eq!(state.seq.state.next_batch_id, journal.batch_id + 1);
+            state.snapshot_plain()
+        });
+        receiver.await.unwrap();
+        assert!(
+            !reader.is_finished(),
+            "snapshot waits for seal+journal guard"
+        );
+        let journal = begin_journaled_window_settle(&mut state, bid, Some(&path), &seed)
+            .unwrap()
+            .unwrap();
+        assert!(!reader.is_finished());
+        drop(state);
+        let captured = reader.await.unwrap();
+        let mut restored = Gw::boot_restored(&captured).unwrap();
+        assert_eq!(
+            apply_boot_recovery(
+                &mut restored,
+                journal,
+                bid,
+                "0x00",
+                0,
+                trading_gate::GateObservation::Inconclusive
+            ),
+            BootRecoveryOutcome::DeleteJournal { mutated: true }
+        );
+        assert_eq!(restored.seq.state.next_batch_id, bid);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn journal_late_transaction_keeps_original_until_matching_landed_root() {
+        use crate::prover_client::{prove_and_prepare, MockProverClient};
+        let dir = settle_journal_guard_scratch();
+        let path = dir.join("state.rollback");
+        let seed = [42; 32];
+        let mut gw = Gw::boot();
+        let (key, sk) = register_withdrawer(&mut gw);
+        gw.account_deposit(&key, 0, 20_000 * QUOTE_SCALE).unwrap();
+        signed_withdraw(&mut gw, &key, &sk, 0, 5_000 * QUOTE_SCALE, [7; 20]).unwrap();
+        let pre_seal = gw.snapshot_plain();
+        let bid = gw.seq.state.next_batch_id;
+        let mut journal = begin_journaled_window_settle(&mut gw, bid, Some(&path), &seed)
+            .unwrap()
+            .unwrap();
+        let prepared = prove_and_prepare(&MockProverClient, &journal.witness, &journal.ww).unwrap();
+        let root = hex32(&prepared.outcome.new_root);
+        let proofs = prepared.withdraw_proofs.clone();
+        journal.prepared = Some(prepared);
+        rollback_journal::write(&path, &journal, &seed).unwrap();
+        let on_disk = std::fs::read(&path).unwrap();
+        let post_seal = gw.snapshot_plain();
+        // Repeated old observations are still ambiguous; neither a pre-seal nor a
+        // post-seal restored snapshot may authorize resealing/deleting prepared data.
+        for snap in [&pre_seal, &post_seal] {
+            let mut restored = Gw::boot_restored(snap).unwrap();
+            let before = restored.snapshot_plain();
+            for _ in 0..3 {
+                let pending = rollback_journal::read(&path, &seed).unwrap().unwrap();
+                assert_eq!(
+                    apply_boot_recovery(
+                        &mut restored,
+                        pending,
+                        bid,
+                        "0x00",
+                        0,
+                        trading_gate::GateObservation::Inconclusive
+                    ),
+                    BootRecoveryOutcome::KeepJournal
+                );
+                assert_eq!(restored.snapshot_plain(), before);
+                assert_eq!(std::fs::read(&path).unwrap(), on_disk);
+            }
+        }
+        // The OLD transaction finally lands: the same retained prepared window
+        // remains recoverable, with exactly its original withdrawal proofs.
+        let mut restored = Gw::boot_restored(&post_seal).unwrap();
+        let pending = rollback_journal::read(&path, &seed).unwrap().unwrap();
+        assert_eq!(
+            apply_boot_recovery(
+                &mut restored,
+                pending,
+                bid + 1,
+                &root,
+                77,
+                trading_gate::GateObservation::Inconclusive
+            ),
+            BootRecoveryOutcome::DeleteJournal { mutated: true }
+        );
+        assert_eq!(restored.withdraw_proofs, proofs);
+        assert_eq!(restored.l1_status.as_ref().unwrap().settled_root, root);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[tokio::test]
+    async fn journal_shutdown_snapshot_holds_mutations_until_exit_guard_drops() {
+        let dir = settle_journal_guard_scratch();
+        let path = dir.join("state");
+        let app = test_app();
+        let seed = [42; 32];
+        let serial = Arc::new(Mutex::new(()));
+        let (frozen, saved) = final_snapshot(&app, &path, seed, serial.clone()).await;
+        assert!(saved);
+        assert!(
+            app.gw.try_lock().is_err(),
+            "no mutation in snapshot-to-exit gap"
+        );
+        let back = snapshot::open(&std::fs::read(&path).unwrap(), &seed).unwrap();
+        assert_eq!(back, frozen.snapshot_plain());
+        drop(frozen);
+        assert!(app.gw.try_lock().is_ok());
+        // Failure also freezes mutations until the failure exit, so no success is
+        // falsely acknowledged in the failed-save-to-exit gap.
+        let (frozen, saved) = final_snapshot(&app, &path.join("invalid"), seed, serial).await;
+        assert!(!saved);
+        assert!(app.gw.try_lock().is_err());
+        drop(frozen);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
     #[test]
     fn settle_journal_guard_stage1_fs_failure_never_reaches_prove_callback() {
         let dir = settle_journal_guard_scratch();
@@ -14813,6 +15019,11 @@ mod tests {
         let s2p = s2.prepared.expect("stage 2 carries the prove outcome");
         assert_eq!(s2p.outcome.new_root, prepared.outcome.new_root);
         assert_eq!(s2p.withdraw_proofs, prepared.withdraw_proofs);
+
+        // This fixture now models positive evidence that no broadcast occurred.
+        // An unchanged chain counter alone must retain stage-2 as ambiguous.
+        journal.prepared = None;
+        rollback_journal::write(&jp, &journal, &seed).expect("known pre-broadcast stage");
 
         // the rollback arm: undo the seal + re-inject the withdrawals — and KEEP
         // the journal (Task 3 WAL: a resolving arm only pokes the snapshot writer;

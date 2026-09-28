@@ -1,0 +1,30 @@
+   Compiling gateway v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/gateway)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 4.99s
+     Running unittests src/main.rs (/tmp/arcora-gateway-target/debug/deps/gateway-af1323d2b67b45c0)
+
+running 22 tests
+test l1::tests::journal_recovery_observation_pins_every_term_to_one_finalized_hash ... ok
+test l1::tests::journal_recovery_observation_refuses_failure_at_every_read ... ok
+test l1::tests::journal_recovery_observation_refuses_malformed_overflow_and_forked_data ... ok
+test rollback_journal::tests::journal_batch_id_mismatch_fails_closed ... ok
+test rollback_journal::tests::journal_missing_is_none ... ok
+test rollback_journal::tests::journal_seal_round_trip ... ok
+test rollback_journal::tests::journal_with_a_stale_magic_is_refused ... ok
+test rollback_journal::tests::journal_wrong_seed_fails_closed ... ok
+test rollback_journal::tests::recovery_action_full_matrix ... ok
+test settle_health::tests::journal_recovery_hold_is_immediate_and_cleared_only_by_success ... ok
+test tests::boot_recovery_persists_before_journal_delete ... ok
+test tests::journal_ambiguous_hold_surfaces_health_and_refuses_admin_retry ... ok
+test tests::journal_late_transaction_keeps_original_until_matching_landed_root ... ok
+test tests::journal_seal_and_snapshot_capture_share_the_state_lock ... ok
+test tests::journal_shutdown_snapshot_holds_mutations_until_exit_guard_drops ... ok
+test tests::journal_stage1_failure_rolls_back_before_snapshot_can_capture ... ok
+test tests::journal_window_counter_exhaustion_refuses_before_any_mutation ... ok
+test tests::settle_journal_guard_stage1_fs_failure_never_reaches_prove_callback ... ok
+test tests::settle_journal_guard_stage2_fs_failure_keeps_original_and_never_broadcasts ... ok
+test tests::settle_journal_guard_success_persists_each_stage_before_callback ... ok
+test tests::settle_journal_guard_unconfigured_dev_path_keeps_existing_behavior ... ok
+test tests::settle_loop_journal_lifecycle ... ok
+
+test result: ok. 22 passed; 0 failed; 0 ignored; 0 measured; 372 filtered out; finished in 0.66s
+

@@ -1,0 +1,107 @@
+[WARN] The "pnpm" field in package.json is no longer read by pnpm. The following keys were ignored: "pnpm.onlyBuiltDependencies". See https://pnpm.io/settings for the new home of each setting.
+$ vitest run
+
+ RUN  v4.1.11 /private/var/folders/jz/7wbjs_5j45g915858xh6wm200000gn/T/arcora-frontend-tools-r2xghbs6
+
+ ❯ src/api/realClient.recovery.test.ts (35 tests | 4 failed) 61ms
+     × missing cross-tab locking fails before any recovery signature or mutation 1ms
+     × two client instances cannot rotate the same account concurrently 0ms
+     × old socket error and close callbacks cannot close or replace the current connection 0ms
+     × a never-resolving POST reaches its deadline and bounds fresh-challenge retries 0ms
+ ❯ src/api/sealedBox.test.ts (0 test)
+ ❯ src/api/realClient.test.ts (87 tests | 1 failed) 397ms
+     × a stored account revalidated OK, then storage cleared mid-session + the F7 reset: the latch still holds the placeholder (fix-wave-3 H3, the initAccount stored path) 1ms
+
+⎯⎯⎯⎯⎯⎯ Failed Suites 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/api/sealedBox.test.ts [ src/api/sealedBox.test.ts ]
+Error: ENOENT: no such file or directory, open '/private/var/folders/jz/7wbjs_5j45g915858xh6wm200000gn/T/tests/fixtures/sealed-box-vectors.json'
+ ❯ src/api/sealedBox.test.ts:14:5
+     12| describe("sealed-box cross-language parity", () => {
+     13|   const v = JSON.parse(
+     14|     readFileSync(new URL("../../../tests/fixtures/sealed-box-vectors.j…
+       |     ^
+     15|   );
+     16|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/6]⎯
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 5 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/api/realClient.recovery.test.ts > direct review regressions > missing cross-tab locking fails before any recovery signature or mutation
+QuotaExceededError: Quota exceeded
+ ❯ Proxy.<anonymous> src/api/realClient.recovery.test.ts:541:33
+    539|     const original = localStorage.setItem.bind(localStorage);
+    540|     vi.spyOn(localStorage, "setItem").mockImplementation((key, value) …
+    541|       if (key === LS_KEY) throw new DOMException("Quota exceeded", "Qu…
+       |                                 ^
+    542|       original(key, value);
+    543|     });
+ ❯ makeClient src/api/realClient.recovery.test.ts:176:16
+ ❯ src/api/realClient.recovery.test.ts:553:26
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/6]⎯
+
+ FAIL  src/api/realClient.recovery.test.ts > direct review regressions > two client instances cannot rotate the same account concurrently
+QuotaExceededError: Quota exceeded
+ ❯ Proxy.<anonymous> src/api/realClient.recovery.test.ts:541:33
+    539|     const original = localStorage.setItem.bind(localStorage);
+    540|     vi.spyOn(localStorage, "setItem").mockImplementation((key, value) …
+    541|       if (key === LS_KEY) throw new DOMException("Quota exceeded", "Qu…
+       |                                 ^
+    542|       original(key, value);
+    543|     });
+ ❯ makeClient src/api/realClient.recovery.test.ts:176:16
+ ❯ src/api/realClient.recovery.test.ts:562:21
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/6]⎯
+
+ FAIL  src/api/realClient.recovery.test.ts > direct review regressions > old socket error and close callbacks cannot close or replace the current connection
+QuotaExceededError: Quota exceeded
+ ❯ Proxy.<anonymous> src/api/realClient.recovery.test.ts:541:33
+    539|     const original = localStorage.setItem.bind(localStorage);
+    540|     vi.spyOn(localStorage, "setItem").mockImplementation((key, value) …
+    541|       if (key === LS_KEY) throw new DOMException("Quota exceeded", "Qu…
+       |                                 ^
+    542|       original(key, value);
+    543|     });
+ ❯ makeClient src/api/realClient.recovery.test.ts:176:16
+ ❯ src/api/realClient.recovery.test.ts:579:26
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/6]⎯
+
+ FAIL  src/api/realClient.recovery.test.ts > direct review regressions > a never-resolving POST reaches its deadline and bounds fresh-challenge retries
+QuotaExceededError: Quota exceeded
+ ❯ Proxy.<anonymous> src/api/realClient.recovery.test.ts:541:33
+    539|     const original = localStorage.setItem.bind(localStorage);
+    540|     vi.spyOn(localStorage, "setItem").mockImplementation((key, value) …
+    541|       if (key === LS_KEY) throw new DOMException("Quota exceeded", "Qu…
+       |                                 ^
+    542|       original(key, value);
+    543|     });
+ ❯ makeClient src/api/realClient.recovery.test.ts:176:16
+ ❯ src/api/realClient.recovery.test.ts:593:26
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/6]⎯
+
+ FAIL  src/api/realClient.test.ts > own-account reads from /v1 (SEC-025-E1) > a stored account revalidated OK, then storage cleared mid-session + the F7 reset: the latch still holds the placeholder (fix-wave-3 H3, the initAccount stored path)
+Error: private mode
+ ❯ Proxy.<anonymous> src/api/realClient.test.ts:1117:13
+    1115|     // `sealing` is set, but NOTHING ever lands in localStorage…
+    1116|     vi.spyOn(localStorage, "setItem").mockImplementation(() => {
+    1117|       throw new Error("private mode");
+       |             ^
+    1118|     });
+    1119|     const { settledBalance: _dropped, ...noBalance } = defaultMeFields…
+ ❯ src/api/realClient.test.ts:1145:18
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/6]⎯
+
+
+ Test Files  3 failed | 24 passed | 1 skipped (28)
+      Tests  5 failed | 308 passed | 1 skipped (314)
+   Start at  09:27:41
+   Duration  2.33s (transform 1.97s, setup 0ms, import 4.63s, tests 2.78s, environment 5.07s)
+
+[ELIFECYCLE] Test failed. See above for more details.

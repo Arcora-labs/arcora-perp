@@ -1,0 +1,3 @@
+lsof -nP -iTCP:4173 -sTCP:LISTEN
+exitCode: 1
+No listener returned. Playwright-owned server terminated after completed run.

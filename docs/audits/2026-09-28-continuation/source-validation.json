@@ -1,0 +1,70 @@
+{
+  "source_sha256": "779c3a709e73749ef96d6ba82ae71bb3b89f42efa3c464550a522da43ad0e29f",
+  "checks": [
+    {
+      "check": "gateway-final",
+      "exit_code": 0,
+      "log_hash_valid": true,
+      "scoped_source_changed_since_start": [
+        "crates/gateway/README.md",
+        "crates/gateway/src/service_policy.rs",
+        "crates/gateway/tests/service_policy.rs"
+      ],
+      "difference_assessment": "service_policy.rs comment clarified message accounting; final six policy/router tests and clippy pass. Removed duplicate standalone harness is superseded by integrated module tests; full 393 unit tests include production integration. Gateway README changed only documentation."
+    },
+    {
+      "check": "gateway-clippy",
+      "exit_code": 0,
+      "log_hash_valid": true,
+      "scoped_source_changed_since_start": [
+        "crates/gateway/README.md",
+        "crates/gateway/tests/service_policy.rs"
+      ],
+      "difference_assessment": "Documentation updated and duplicate standalone harness removed after production-module integration. No compiled product source differs from clippy input."
+    },
+    {
+      "check": "gateway-policy-final",
+      "exit_code": 0,
+      "log_hash_valid": true,
+      "scoped_source_changed_since_start": []
+    },
+    {
+      "check": "cast-loopback",
+      "exit_code": 0,
+      "log_hash_valid": true,
+      "scoped_source_changed_since_start": []
+    },
+    {
+      "check": "frontend-final",
+      "exit_code": 0,
+      "log_hash_valid": true,
+      "scoped_source_changed_since_start": [
+        "frontend/src/App.tsx"
+      ],
+      "difference_assessment": "Only App.tsx header text shortened from Test environment to Test to avoid wallet label wrapping; final production build and actual Chromium visual/no-overflow checks pass. No API/wallet/test/dependency change."
+    },
+    {
+      "check": "frontend-browser",
+      "exit_code": 0,
+      "log_hash_valid": true,
+      "scoped_source_changed_since_start": [
+        "frontend/src/App.tsx"
+      ],
+      "difference_assessment": "Only App.tsx header text shortened from Test environment to Test to avoid wallet label wrapping; final production build and actual Chromium visual/no-overflow checks pass. No API/wallet/test/dependency change."
+    },
+    {
+      "check": "frontend-build",
+      "exit_code": 0,
+      "log_hash_valid": true,
+      "scoped_source_changed_since_start": []
+    },
+    {
+      "check": "prover-service",
+      "exit_code": 0,
+      "log_hash_valid": true,
+      "scoped_source_changed": []
+    }
+  ],
+  "release_readiness": "HOLD",
+  "notes": "Scopes and explicit minor-difference assessments are part of the evidence; no whole-tree identical-source claim is made for earlier runs."
+}

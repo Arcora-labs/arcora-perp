@@ -1,0 +1,12 @@
+{
+  "crates/prover-service/Cargo.toml": "7cd7a23f64a8b995cac65bb1bb17a5da00a85e270fd042fc93c3728706d2e743",
+  "crates/prover-service/Cargo.lock": "0aa85f2c4bbb45814257e86a20540098b4793ded2aa9b1a34afa211aec81bc32",
+  "crates/prover-service/build.rs": "7fd92f8513312a71c50c125f096625f5e322c6acf1544b75fc08e73a913b6664",
+  "crates/prover-service/src/main.rs": "4b76b12f8a83197b5cd20d53b413a753bc9f7c882623e361e6afec74d9e8df88",
+  "crates/prover-service/src/admission.rs": "411db9185d40a20f32aef81bc485fe2b4dc7d6ae220f25cbf302a5eb4032b703",
+  "crates/prover-service/src/shutdown_tests.rs": "b1ed7317b0f589aa3d219048a0df1d678967fc6ad0fc2ed87b47e11da7551f43",
+  "crates/prover-service/src/sp1_prover.rs": "4d58cc1ccc089497d53f364daf2c1e38a07625717ca304acd1a177eefc34d9a2",
+  "crates/sp1-guest/Cargo.lock": "228b4111a7b18423e2450e81bf95ec54129d7757cd30f4397fc7b5dea504302d",
+  "crates/sp1-guest/Cargo.toml": "143fb1c758c933c97bfc0386a717d63054dc9ccc9499e51b43f9f3a9ccd27d69",
+  "crates/sp1-guest/src/main.rs": "e42786165b03b05d98af2391ab80a82f79ea3fa30ee7cd3a55f40c1bd01cb782"
+}

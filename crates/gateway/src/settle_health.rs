@@ -42,6 +42,7 @@ pub struct SettleHealth {
     cap: Duration,
     last_error: Option<String>,
     alerted: bool,
+    recovery_required: bool,
 }
 
 impl SettleHealth {
@@ -53,6 +54,7 @@ impl SettleHealth {
             cap,
             last_error: None,
             alerted: false,
+            recovery_required: false,
         }
     }
 
@@ -70,6 +72,20 @@ impl SettleHealth {
         self.consecutive_failures = 0;
         self.last_error = None;
         self.alerted = false;
+        self.recovery_required = false;
+    }
+
+    /// A transaction may already have been broadcast. Retrying/resealing is not
+    /// authorized by elapsed time or an admin retry: journal reconciliation is
+    /// required first. The boot path separately refuses an unresolved journal.
+    pub fn hold_for_recovery(&mut self, error: String) {
+        self.recovery_required = true;
+        self.consecutive_failures = self.consecutive_failures.saturating_add(1);
+        self.last_error = Some(error);
+    }
+
+    pub fn recovery_required(&self) -> bool {
+        self.recovery_required
     }
 
     pub fn on_failure(&mut self, err: String) -> (NextAction, bool) {
@@ -92,7 +108,9 @@ impl SettleHealth {
     }
 
     pub fn health(&self) -> Health {
-        if self.consecutive_failures == 0 {
+        if self.recovery_required {
+            Health::Held
+        } else if self.consecutive_failures == 0 {
             Health::Healthy
         } else if self.consecutive_failures >= self.threshold {
             Health::Held
@@ -165,6 +183,20 @@ mod tests {
 
     fn sh() -> SettleHealth {
         SettleHealth::new(3, Duration::from_secs(30), Duration::from_secs(300))
+    }
+
+    #[test]
+    fn journal_recovery_hold_is_immediate_and_cleared_only_by_success() {
+        let mut h = sh();
+        h.hold_for_recovery("ambiguous broadcast; reconcile journal and restart".into());
+        assert_eq!(h.health(), Health::Held);
+        assert!(h.recovery_required());
+        assert_eq!(h.consecutive_failures(), 1);
+        assert!(h.last_error().unwrap().contains("ambiguous broadcast"));
+        h.on_success();
+        assert!(!h.recovery_required());
+        assert_eq!(h.health(), Health::Healthy);
+        assert_eq!(h.last_error(), None);
     }
 
     #[test]

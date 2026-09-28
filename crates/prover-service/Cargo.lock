@@ -3296,6 +3296,7 @@ version = "0.0.0"
 dependencies = [
  "axum",
  "dark-perp-attestation",
+ "futures-util",
  "getrandom 0.2.17",
  "hex",
  "perp-core",
@@ -3306,6 +3307,7 @@ dependencies = [
  "sp1-build",
  "sp1-sdk",
  "tokio",
+ "tower 0.5.3",
 ]
 
 [[package]]

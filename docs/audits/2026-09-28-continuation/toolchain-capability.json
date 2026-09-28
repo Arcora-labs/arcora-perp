@@ -1,0 +1,44 @@
+{
+  "rustc": {
+    "exit_code": 0,
+    "version": "rustc 1.95.0 (59807616e 2026-04-14) (Homebrew)"
+  },
+  "cargo": {
+    "exit_code": 0,
+    "version": "cargo 1.95.0 (f2d3ce0bd 2026-03-21) (Homebrew)"
+  },
+  "node": {
+    "exit_code": 0,
+    "version": "v24.12.0"
+  },
+  "pnpm": {
+    "exit_code": 0,
+    "version": "11.5.1"
+  },
+  "forge": {
+    "exit_code": 0,
+    "version": "forge Version: 1.7.2-nightly\nCommit SHA: dea99c55914d010b22d3f5532fca180a8ecafda1\nBuild Timestamp: 2026-06-05T07:27:50.230262000Z (1780644470)\nBuild Profile: dist"
+  },
+  "docker": {
+    "exit_code": 1,
+    "daemon_available": false
+  },
+  "crates/sp1-guest/target/elf-compilation/riscv64im-succinct-zkvm-elf/release/perp-core-guest": {
+    "exists": true,
+    "sha256": "a1f0a43033ffdd858bf99854cae814f5426c27db512088883ffa1a0e8f1c4e75"
+  },
+  "crates/sp1-guest/Cargo.lock": {
+    "exists": true,
+    "sha256": "228b4111a7b18423e2450e81bf95ec54129d7757cd30f4397fc7b5dea504302d"
+  },
+  "crates/sp1-host/Cargo.lock": {
+    "exists": true,
+    "sha256": "345a845740dc17eb0718f4b5d9bf207988780530d1dd21a5af04d2ace81612d5"
+  },
+  "Cargo.lock": {
+    "exists": true,
+    "sha256": "0db4f88b8f0c4a67ae57b04ae26eaec8ff98370d79677bae63da8053714f2479"
+  },
+  "guest_execution": "Not run; recorded A06 automatic-review gate preserved",
+  "proof": "Not produced; native/guest parity gate open and Docker daemon unavailable"
+}

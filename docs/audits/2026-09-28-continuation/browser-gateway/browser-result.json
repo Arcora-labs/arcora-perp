@@ -1,0 +1,89 @@
+{
+  "status": "PASS",
+  "scope": "Real Chromium browser, two same-origin tabs, real Rust gateway HTTP/WS under same-origin CSP. Synthetic EIP-1193 signature provider and demo credit; no extension wallet, L1 transaction, proof or production attestation.",
+  "checks": [
+    {
+      "check": "real_http_ws_and_prior_encrypted_order",
+      "result": {
+        "owner": "0x8a9617dd749fae7d095aec1a94865b0e69fbbbd50b31884bcb007c0c2f3efaca",
+        "gen": 0,
+        "publicWs": 1,
+        "privateWs": 1,
+        "authenticatedOwner": "0x8a9617dd749fae7d095aec1a94865b0e69fbbbd50b31884bcb007c0c2f3efaca",
+        "orders": 1
+      }
+    },
+    {
+      "check": "bind_synthetic_eoa",
+      "result": {
+        "bound": true,
+        "syntheticAuthorizer": "0x7e5f4552091a69125d5dfcb7b8c2659029395bdf"
+      }
+    },
+    {
+      "check": "recovery_metadata",
+      "result": {
+        "owner": "0x8a9617dd749fae7d095aec1a94865b0e69fbbbd50b31884bcb007c0c2f3efaca",
+        "authorizer": "0x7e5f4552091a69125d5dfcb7b8c2659029395bdf",
+        "recoveryNonce": 0,
+        "chainId": 84532,
+        "vault": "0x0000000000000000000000000000000000000000"
+      }
+    },
+    {
+      "check": "second_tab_adopts_saved_account",
+      "result": {
+        "owner": "0x8a9617dd749fae7d095aec1a94865b0e69fbbbd50b31884bcb007c0c2f3efaca",
+        "generation": 0,
+        "privateWs": 1,
+        "selectedMarket": 1
+      }
+    },
+    {
+      "check": "wallet_rejection_retains_credential",
+      "result": {
+        "rejected": true,
+        "credentialPreserved": true,
+        "generation": 0,
+        "selectedMarket": 0
+      }
+    },
+    {
+      "check": "durable_real_gateway_recovery",
+      "result": {
+        "owner": "0x8a9617dd749fae7d095aec1a94865b0e69fbbbd50b31884bcb007c0c2f3efaca",
+        "recoveryNonce": 1,
+        "credentialStorage": "persistent"
+      }
+    },
+    {
+      "check": "old_credential_rejected_and_private_socket_reauth",
+      "result": {
+        "oldCredentialStatus": 401,
+        "authenticatedOwner": "0x8a9617dd749fae7d095aec1a94865b0e69fbbbd50b31884bcb007c0c2f3efaca",
+        "generation": 1,
+        "privateWs": 1
+      }
+    },
+    {
+      "check": "second_tab_rotated_and_market_isolated",
+      "result": {
+        "generation": 1,
+        "owner": "0x8a9617dd749fae7d095aec1a94865b0e69fbbbd50b31884bcb007c0c2f3efaca",
+        "selectedMarket": 1,
+        "orders": 1,
+        "privateWs": 1
+      }
+    },
+    {
+      "check": "reload_preserves_rotated_account",
+      "result": {
+        "generation": 1,
+        "owner": "0x8a9617dd749fae7d095aec1a94865b0e69fbbbd50b31884bcb007c0c2f3efaca",
+        "privateWs": 1,
+        "orders": 1
+      }
+    }
+  ],
+  "log_sha256": "16d39c9005394805710f015b317ed0fbac19ed8f2d7a8993039a5fe86eb9ab3a"
+}

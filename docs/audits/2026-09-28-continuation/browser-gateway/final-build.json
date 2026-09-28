@@ -1,0 +1,25 @@
+{
+  "command": "VITE_ENCLAVE_SIGNER=0x4a62316623ad457f02cdc5d997ded67a383ec569 pnpm --dir frontend exec vite build --config tests/browser/vite.config.ts --outDir output/playwright/actual-gateway",
+  "exit_code": 0,
+  "artifact_sha256": {
+    "frontend/output/playwright/actual-gateway/tests/browser/index.html": "8b8cb8f0b060072ee85d4ba9cb4d69183fdd5228e0edc64dc02028c1767604b2",
+    "frontend/output/playwright/actual-gateway/fonts/JetBrainsMono-latin-ext.woff2": "9c38cb2d0d2d93c1ee6e21fa78db76f13ea7e15e15cc64214c7ca89b6aaa35c4",
+    "frontend/output/playwright/actual-gateway/fonts/Inter-latin.woff2": "c940764593d0fe5d596be327ca7558855e018039fb78509aa21921fd3644c3e4",
+    "frontend/output/playwright/actual-gateway/fonts/Inter-latin-ext.woff2": "a28eb6d3ccb534ae0c94ca999371df024aab60b08c3c8a5720ee9e32fa0faaa2",
+    "frontend/output/playwright/actual-gateway/fonts/JetBrainsMono-latin.woff2": "2c32b9b3ee358c119e210f6f5195f9bd34894d78a785ff2e95d60e718e400af4",
+    "frontend/output/playwright/actual-gateway/assets/index-DDJoOHXU.css": "88e22f0a899fc51fc8767d7f463d4b6b3d371ff14a194e7b23bef6f40c3694d1",
+    "frontend/output/playwright/actual-gateway/assets/index-iPfkZF_9.js": "a31dd2fee6ff0091d74fd036a08e9210da376ef414d63521a04bb45f66755fae"
+  },
+  "post_build_browser_checks": {
+    "disclosureCorrected": true,
+    "generation": 1,
+    "privateWs": 1,
+    "owner": "0x8a9617dd749fae7d095aec1a94865b0e69fbbbd50b31884bcb007c0c2f3efaca"
+  },
+  "final_ui_check": {
+    "shortBadge": true,
+    "badgeHeight": 15.75,
+    "noHorizontalOverflow": true,
+    "visual_inspected": true
+  }
+}

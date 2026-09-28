@@ -21,6 +21,10 @@ postcard = { version = "1", features = ["alloc"] }
 # SEC-020 Task 4: fresh per-boot handshake nonce from the OS CSPRNG.
 getrandom = "0.2"
 
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
+futures-util = "0.3"
+
 [build-dependencies]
 sp1-build = "=6.0.0"
 

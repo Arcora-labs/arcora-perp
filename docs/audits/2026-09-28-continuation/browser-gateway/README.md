@@ -1,0 +1,15 @@
+# Gerçek tarayıcı → Rust gateway kontrolü
+
+28 Eylül 2026: Chromium'da aynı origin'deki iki sekme, derlenmiş gerçek `RealDarkPerpClient`, gerçek Rust gateway ve şeffaf HTTP/WebSocket proxy ile kontrol edildi. Gateway binary hash'i `runtime.json`, sonuçlar `browser-result.json`, CLI assertion/çıktıları `browser-cli.log` içindedir. `headers.json` test sunucusunun uyguladığı aynı-origin CSP'yi kaydeder. HTTP/WS yanıtları taklit edilmedi.
+
+Geçen senaryolar: hesap oluşturma/kalıcı kayıttan edinme; public ve authenticated private WS; şifreli emrin kabul makbuzu ve authenticated order listesi; ikinci sekmenin aynı hesabı edinmesi; sekmelerin bağımsız market seçimi; imza reddinde credential'ın korunması; imzalı recovery'nin snapshot ACK sonrası anahtar döndürmesi; eski anahtara gerçek HTTP 401; yeni anahtarın diğer sekmeye storage olayıyla taşınması ve private WS yeniden doğrulaması; reload sonrası nesil 1/aynı hesap/emir kaydının korunması.
+
+**Sınır:** Tek kullanımlık demo state ve public demo enclave kimliği kullanıldı. Cüzdan yalnızca test hesabına ait EIP-191 imzası döndüren sentetik EIP-1193 sağlayıcısıydı; tarayıcı eklentisi yoktu. Fonlama demo credit idi. L1, test-token transferi, finalized deposit ingest, gerçek TEE attestation, prover veya gerçek proof çalıştırılmadı. Public oracle/candle okumaları gateway'in olağan demo davranışı olarak açıktı. Bu kayıt production veya gerçek wallet provası değildir. WebKit gerçek gateway'e bağlanmadı; onun 33 senaryosu ayrı fixture paketindedir.
+
+İlk test derlemesi enclave signer pin'i olmadığı için sealed order'ı doğru biçimde reddetti. Gateway kaynak kodundaki public demo seed'den türetilen adres (`0x4a62316623ad457f02cdc5d997ded67a383ec569`) yalnızca test derlemesine `VITE_ENCLAVE_SIGNER` ile sabitlendi; doğrulama kapatılmadı. Sonraki gerçek sealed-order sonucu `encrypted-order.json` içindedir. İlk açılışta eksik favicon 404 ve kısa ömürlü bootstrap WebSocket uyarısı görüldü; son sekmede 0 console error ve 1 erken kapatılmış socket uyarısı vardı. İki aktif socket ve authenticated owner assertion'ları geçti; konsolun tamamen temiz olduğu iddia edilmiyor.
+
+CLI sürücüsünde iki yerel harness hatası düzeltildi: Node stdin `argv` indisi ve `tab-new` metin sonucunu JSON sanan parser. Başarılı kontrol öncesindeki account bind tekrarları aynı disposable hesaba aynı adresi bağladı; recovery veya token transferi kör tekrarlanmadı. Başarılı sonuç 9 ayrı assertion kaydı içerir.
+
+Görsel kontrol, eski notice'ın yerel demo gateway için bile gerçek attestation/proof/TLS/zaman iddiasında bulunduğunu gösterdi (`before-disclosure-fix.png`). Bu yanlış sabit metin App/TestnetNotice içinde düzeltildi; son görsel `after-disclosure-fix.png` olarak kaydedilir. Bu kopya düzeltmesi protokol doğrulaması veya canlı deployment doğrulaması değildir.
+
+Gateway geçici snapshot dizini ve boşta loopback portlarında başlatıldı. Test bitiminde yalnızca bu çalışmanın oluşturduğu browser/proxy/gateway kapatıldı; `runtime.json` kapanış ve son snapshot hash'ini kaydeder. Snapshot dosyasının varlığı tam process-kill/fsync veya restore matrisi anlamına gelmez.

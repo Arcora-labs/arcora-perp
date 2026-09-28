@@ -1,29 +1,23 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useStore } from "../store";
 import { formatUsd, parseUsd, shortHash } from "../domain/format";
 import { accountSummary } from "../domain/risk";
 import type { WithdrawalEntry } from "../domain/types";
 import type { DarkPerpClient } from "../api/client";
 import {
-  COLLATERAL_VAULT,
   EXPLORER_TX,
-  MOCK_USDC,
-  bindDepositDigest,
   connect,
-  encodeApprove,
   encodeClaim,
-  encodeDeposit,
-  encodeMint,
   ensureBaseSepolia,
   hasInjected,
-  personalSign,
   sendTx,
   supportsWalletDeposit,
   useWalletAddress,
   waitForTx,
   type WalletDepositClient,
 } from "../api/wallet";
-import { bytesToHex } from "@noble/hashes/utils";
+import { runWalletDeposit } from "../api/depositFlow";
+import { DepositRecoveryPanel, usePendingDeposits } from "./DepositRecoveryPanel";
 
 /// Consolidated account health: equity, used vs free margin, unrealized PnL, and
 /// account-wide leverage — aggregated across the open positions and free balance.
@@ -186,7 +180,7 @@ export function AccountPanel() {
         ) : auth.depositAddress ? (
           <div className="field">
             <span className="field__label">Withdrawing to (bound deposit address)</span>
-            <code className="mono small">{auth.depositAddress}</code>
+            <code className="mono small" style={{ overflowWrap: "anywhere" }}>{auth.depositAddress}</code>
             <p className="muted small">
               Funds always return to the address you deposited from — your wallet
               signs the withdrawal with it.
@@ -235,7 +229,7 @@ const WALLET_STEPS: { id: StepId; label: string }[] = [
   { id: "chain", label: "Switch wallet to Base Sepolia" },
   { id: "mint", label: "Mint test USDC to your wallet" },
   { id: "approve", label: "Approve the vault to pull USDC" },
-  { id: "bind", label: "Bind wallet to trading account (one-time signature)" },
+  { id: "bind", label: "Bind wallet to trading account (signature)" },
   { id: "authorize", label: "Authorize the deposit with the gateway (SEC-019)" },
   { id: "deposit", label: "Deposit USDC into the vault" },
   { id: "credit", label: "Credit the trading account" },
@@ -245,38 +239,13 @@ const idleSteps = (): Record<StepId, StepStatus> => ({
   chain: "idle", mint: "idle", approve: "idle", bind: "idle", authorize: "idle", deposit: "idle", credit: "idle",
 });
 
-/// localStorage key remembering that `address` is already bound to the account
-/// whose owner pubkey is `ownerHex` — so re-deposits skip the signature prompt.
-/// (Re-binding the same pair is idempotent server-side; this is purely UX.)
-export function boundStorageKey(ownerHex: string, address: string): string {
-  return `darkperp.walletBound.${ownerHex.toLowerCase()}.${address.toLowerCase()}`;
-}
-
 const STEP_GLYPH: Record<StepStatus, string> = { idle: "○", pending: "…", done: "✓", error: "✕" };
 const STEP_COLOR: Record<StepStatus, string> = {
   idle: "var(--muted, inherit)", pending: "var(--accent)", done: "var(--buy)", error: "var(--sell)",
 };
 
-/**
- * The full on-chain deposit pipeline driven by an injected wallet (MetaMask-
- * class): [1] ensure Base Sepolia [2] mint test USDC (open mint — testnet
- * convenience) [3] approve the vault [4] bind the EOA to the /v1 account (one
- * `personal_sign`, remembered per account+address — MUST precede authorize:
- * the gateway only authorizes a bound payer) [5] SEC-019 gateway authorization
- * (`ownerCommit` + sig for this exact amount) [6] `vault.deposit(amount,
- * ownerCommit, sig)` [7] credit via `POST /v1/accounts/deposit/onchain`.
- *
- * Recoverability: per-step progress is kept across attempts, so a re-run after
- * an error SKIPS the already-done steps — with three guards: the chain step
- * ALWAYS re-runs (the user may have manually switched networks; a no-op when
- * already on Base Sepolia); the authorize step re-runs whenever the deposit tx
- * was NOT yet sent (the sig binds the amount, and the authorization lives only
- * in the run closure — a fresh run needs a fresh sig; re-authorizing is free
- * server-side); and a tx-sending step whose hash was recorded but not confirmed
- * RESUMES by waiting on that hash instead of sending a duplicate tx. Editing
- * the amount before the deposit landed resets the run — mint/approve simply
- * redo with the new amount (both are idempotent enough).
- */
+/** Wallet prompts retain one immutable account/deployment/market/amount intent.
+ * Progress is journaled before sending; retries only resume known hashes. */
 export function WalletDepositCard({ client }: { client: WalletDepositClient }) {
   const address = useWalletAddress();
   const [amount, setAmount] = useState("1000");
@@ -285,10 +254,20 @@ export function WalletDepositCard({ client }: { client: WalletDepositClient }) {
   const [running, setRunning] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
+  const { pending, issue } = usePendingDeposits();
+  const original = pending.find(item => item.wallet === address);
+  const statusOnly = !!original && (original.unknownSend || original.hasDeposit);
+  const active = useRef(false);
+  const view = useRef({ client, address, amount, mounted: true });
+  view.current = { client, address, amount, mounted: true };
+  useEffect(() => () => { view.current.mounted = false; }, []);
 
   if (!hasInjected()) {
     return (
       <div className="walletflow">
+        <DepositRecoveryPanel client={client} pending={pending} issue={issue} active={running}
+          onCheckStart={() => { setErr(null); setOk(null); }}
+          onCredited={() => { setSteps(idleSteps()); setTxs({}); }} />
         <p className="muted small">
           <strong>No browser wallet detected.</strong> Install{" "}
           <a href="https://metamask.io" target="_blank" rel="noreferrer">MetaMask</a> to
@@ -323,103 +302,43 @@ export function WalletDepositCard({ client }: { client: WalletDepositClient }) {
   }
 
   async function run() {
-    if (!address || running) return;
-    const v = parseUsd(amount); // QUOTE_SCALE == USDC base units (both 1e6)
+    if (!address || active.current) return;
+    const v = original?.amount ?? parseUsd(amount);
     if (v === null || v <= 0n) return setErr("Enter a valid amount.");
-    setErr(null);
-    setOk(null);
-    setRunning(true);
-    // Local copies so the sequential loop sees its own progress synchronously
-    // (React state updates are async).
-    const st = { ...steps };
-    const tx = { ...txs };
-    const mark = (id: StepId, s: StepStatus) => { st[id] = s; setSteps({ ...st }); };
-    // SEC-019: the gateway authorization for THIS run — consumed by the deposit
-    // step's calldata. Never persisted: a run that must re-send the deposit
-    // always re-authorizes first (see the loop's re-run guards).
-    let auth: { ownerCommit: string; sig: string } | null = null;
-    const sendAndWait = async (id: StepId, to: string, data: () => string) => {
-      // Resume, don't resend: a prior attempt may have SENT this step's tx but
-      // failed while waiting for it (RPC hiccup / confirmation timeout). The
-      // hash is already recorded, so re-await the SAME tx instead of proposing
-      // a second one (a duplicate vault.deposit would double-deposit). `data`
-      // is lazy so a resumed step never rebuilds calldata it doesn't need.
-      const prior = tx[id];
-      if (prior) {
-        await waitForTx(prior);
-        return;
+    active.current = true;
+    setErr(null); setOk(null); setRunning(true);
+    const assertView = () => {
+      const current = view.current;
+      if (!current.mounted || current.client !== client || current.address !== address || current.amount !== amount) {
+        throw new Error("Deposit form or wallet context changed; reconcile the original deposit before retrying.");
       }
-      const h = await sendTx({ from: address, to, data: data() });
-      tx[id] = h;
-      setTxs({ ...tx });
-      await waitForTx(h);
     };
-    const executors: [StepId, () => Promise<void>][] = [
-      ["chain", () => ensureBaseSepolia()],
-      ["mint", () => sendAndWait("mint", MOCK_USDC, () => encodeMint(address, v))],
-      ["approve", () => sendAndWait("approve", MOCK_USDC, () => encodeApprove(COLLATERAL_VAULT, v))],
-      ["bind", async () => {
-        const acct = await client.depositAccount();
-        const key = boundStorageKey(bytesToHex(acct.owner), address);
-        let bound = false;
-        try { bound = localStorage.getItem(key) === "1"; } catch { /* private mode */ }
-        if (!bound) {
-          const digest = bindDepositDigest(acct.owner, address);
-          const sig = await personalSign("0x" + bytesToHex(digest), address);
-          await client.bindDepositAddress(address, sig);
-          try { localStorage.setItem(key, "1"); } catch { /* private mode — re-bind next time (idempotent) */ }
-        }
-      }],
-      ["authorize", async () => {
-        auth = await client.authorizeDeposit(address, v);
-      }],
-      ["deposit", () => sendAndWait("deposit", COLLATERAL_VAULT, () => {
-        if (!auth) throw new Error("internal: missing gateway authorization");
-        return encodeDeposit(v, auth.ownerCommit, auth.sig);
-      })],
-      ["credit", async () => {
-        const dep = tx.deposit;
-        if (!dep) throw new Error("internal: missing deposit tx hash");
-        const credited = await client.creditOnchainDeposit(dep);
-        setOk(`Deposited ${formatUsd(credited)} — credited to your trading account.`);
-      }],
-    ];
     try {
-      for (const [id, fn] of executors) {
-        // Recovered run — skip what already succeeded, EXCEPT: the chain step
-        // ALWAYS re-runs (the user may have switched networks between
-        // attempts), and the authorize step re-runs whenever the deposit tx
-        // was NOT yet sent (`auth` lives only in this closure and the sig
-        // binds the amount — a fresh run must fetch a fresh authorization
-        // before it can build the deposit calldata).
-        const mustRerun = id === "chain" || (id === "authorize" && !tx.deposit);
-        if (st[id] === "done" && !mustRerun) continue;
-        mark(id, "pending");
-        try {
-          await fn();
-        } catch (e) {
-          mark(id, "error");
-          const m = e instanceof Error ? e.message : String(e);
-          setErr(
-            tx.deposit && id === "credit"
-              ? `${m} — your deposit tx ${shortHash(tx.deposit)} IS on-chain; press Deposit again to finish (completed steps are skipped).`
-              : m,
-          );
-          return;
-        }
-        mark(id, "done");
-      }
-      // Full success → fresh slate for the next deposit.
-      setSteps(idleSteps());
-      setTxs({});
+      const credited = await runWalletDeposit({
+        client, address, amount: v, assertView, resume: original,
+        progress: ({ step, status, txs: hashes }) => {
+          try { assertView(); } catch { return; }
+          setSteps(previous => ({ ...previous, [step]: status }));
+          setTxs(hashes);
+        },
+      });
+      assertView();
+      setOk(`Deposited ${formatUsd(credited)} — credited to your trading account.`);
+      setSteps(idleSteps()); setTxs({});
+    } catch (error) {
+      if (view.current.mounted) setErr(error instanceof Error ? error.message : String(error));
     } finally {
-      setRunning(false);
+      active.current = false;
+      if (view.current.mounted) setRunning(false);
     }
   }
 
   const anyProgress = WALLET_STEPS.some(({ id }) => steps[id] !== "idle");
   return (
     <div className="walletflow">
+      <DepositRecoveryPanel client={client} pending={pending} issue={issue} active={running}
+          onCheckStart={() => { setErr(null); setOk(null); }}
+          onCredited={() => { setSteps(idleSteps()); setTxs({}); }} />
       {!address ? (
         <>
           <p className="muted small">
@@ -441,15 +360,15 @@ export function WalletDepositCard({ client }: { client: WalletDepositClient }) {
             <span className="field__label">Deposit amount (USDC)</span>
             <input
               className="field__input"
-              value={amount}
+              value={original ? formatUsd(original.amount, 6).replace(/[$,]/g, "") : amount}
               onChange={(e) => onAmountChange(e.target.value)}
               inputMode="decimal"
-              disabled={running}
+              disabled={running || !!original}
             />
           </label>
-          <button type="button" className="btn btn--ghost" onClick={run} disabled={running}>
-            {running ? "Working…" : "Deposit"}
-          </button>
+          {!statusOnly && <button type="button" className="btn btn--ghost" onClick={run} disabled={running || !!issue}>
+            {running ? "Working…" : original ? "Resume original deposit" : "Deposit"}
+          </button>}
           {(anyProgress || running) && (
             <ol className="walletflow__steps" style={{ listStyle: "none", margin: "8px 0 0", padding: 0 }}>
               {WALLET_STEPS.map(({ id, label }, i) => {

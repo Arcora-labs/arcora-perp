@@ -1,0 +1,24 @@
+{
+  "status": " M crates/gateway/src/deposit_ingestion.rs\u0000 M crates/gateway/src/deposit_ingestion/tests.rs\u0000 M crates/gateway/src/execution_regression_tests.rs\u0000 M crates/gateway/src/l1.rs\u0000 M crates/gateway/src/main.rs\u0000 M crates/gateway/src/snapshot.rs\u0000 M crates/perp-core/tests/lifecycle.rs\u0000 M frontend/src/api/client.ts\u0000 M frontend/src/api/realClient.test.ts\u0000 M frontend/src/api/realClient.ts\u0000 M frontend/src/components/RecoveryPanel.test.tsx\u0000 M frontend/src/components/RecoveryPanel.tsx\u0000?? RobinX-Game-v0.1.zip\u0000?? codex-session-01a0b067-e313-72b1-98be-46f653d0344c.md\u0000?? crates/gateway/src/wind_down.rs\u0000?? docs/audits/2026-09-24-evidence/\u0000?? docs/audits/2026-09-24-fresh-audit.md\u0000?? docs/audits/2026-09-24-remediation-evidence/\u0000?? docs/audits/2026-09-24-remediation.md\u0000?? frontend/src/api/accountLifecycle.test.ts\u0000?? kimi-seeklogo-small.png\u0000",
+  "files": {
+    "crates/gateway/src/deposit_ingestion.rs": "0e110ac5c64148be59c7770bb4e38a88ed2c37152a07c43582165bc344b9a45a",
+    "crates/gateway/src/deposit_ingestion/tests.rs": "97e9b8def12e58384871795bb906dc3d943d000823bf6f7f51ffc919aead82a6",
+    "crates/gateway/src/execution_regression_tests.rs": "805370ae058f6cb4cfe8d91ed446df5bf259cc7b9424527a4054a1b66a6b41fa",
+    "crates/gateway/src/l1.rs": "3bc0e8d80c40bac619c7720c19f0f4390d6cd13eb8e42b4f1bbe076abb95ec09",
+    "crates/gateway/src/main.rs": "08371d53f83f2158bbd33d838287cef94064eb2c384fd9e0f998461883b48983",
+    "crates/gateway/src/snapshot.rs": "6c74b22814860abe28c80c0a46730cb353ae1ba20f0fd6b0375651e46827e75f",
+    "crates/perp-core/tests/lifecycle.rs": "3eb6dd8aa95f0a39e495746bce02b8db67c36fae09324beba3992436d3200a47",
+    "frontend/src/api/client.ts": "546c293e16235245a5a95e68c7f7e1c7dca055ed7f52bbbcaaea854ac9846f61",
+    "frontend/src/api/realClient.test.ts": "f68a5f83d59fddfdf2decd1b69dcce56372a9ecd8d994bc68494a89bc450b092",
+    "frontend/src/api/realClient.ts": "fb96ba1018a1461a85e7d8ce0b899891bced308e3ade6507032ba8590f324038",
+    "frontend/src/components/RecoveryPanel.test.tsx": "cf943659b3e2ab4693e75be38f4a1ce0e1738748b833e0dba20f40cdc24b7e6b",
+    "frontend/src/components/RecoveryPanel.tsx": "9f6d96213895e191faa02179cbf8e8be12a5348427aaf46b8dafbcf90cc2effb",
+    "RobinX-Game-v0.1.zip": "336a141129e5f43f5a77c620ce5fdd71e7545dd82204d8c68ab5cc3f2e23b57a",
+    "codex-session-01a0b067-e313-72b1-98be-46f653d0344c.md": "863bb660f4800adeac4c24111f8de8f544830bd3f8ef6d27057837cd93a02f40",
+    "crates/gateway/src/wind_down.rs": "74744adcf164509550f359deaa13a30a2dd653aa4588f5b78a6727e5deffdc66",
+    "docs/audits/2026-09-24-fresh-audit.md": "8a124e258d63a728f9ac9646a1f840040d2c35dd0ec8f4a06ab0179405337bc9",
+    "docs/audits/2026-09-24-remediation.md": "39742dbce424f622c7753e0f085cdb756bca3ba2a78de6e35744c425aa4e1987",
+    "frontend/src/api/accountLifecycle.test.ts": "8b22aac2b6e6f38f52a1bc687a33e21ff2ba048c6ae7beca79e39058e6f4c43f",
+    "kimi-seeklogo-small.png": "f103ae8ef40fc3da6be5a5aea8e49b25ad1491eb6d11f966bf1f0e02ed43ba85"
+  }
+}

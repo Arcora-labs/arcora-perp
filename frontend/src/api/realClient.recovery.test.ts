@@ -178,6 +178,8 @@ async function makeClient() {
 }
 
 beforeEach(() => {
+  // Isolate proxy-bound Storage spies between Vitest 4 tests.
+  vi.stubGlobal("localStorage", new Storage());
   installTestLocks();
   keyGenerations = new Map([[OLD_KEY, 0]]);
   calls = [];

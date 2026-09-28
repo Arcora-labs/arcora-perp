@@ -1,0 +1,57 @@
+warning: associated function `from_env` is never used
+  --> crates/gateway/tests/../src/service_policy.rs:30:19
+   |
+29 | impl Config {
+   | ----------- associated function in this implementation
+30 |     pub(crate) fn from_env(prod: bool) -> Result<Self, String> {
+   |                   ^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: associated function `from_env` is never used
+   --> crates/gateway/tests/../src/service_policy.rs:120:19
+    |
+112 | impl ServicePolicy {
+    | ------------------ associated function in this implementation
+...
+120 |     pub(crate) fn from_env(prod: bool) -> Result<Self, String> {
+    |                   ^^^^^^^^
+
+   Compiling gateway v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/gateway)
+warning: `gateway` (test "service_policy") generated 2 warnings
+error[E0061]: this function takes 3 arguments but 2 arguments were supplied
+    --> crates/gateway/src/main.rs:6923:5
+     |
+6923 |     credential_session::serve(socket, app).await;
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^------------- argument #3 is missing
+     |
+note: function defined here
+    --> crates/gateway/src/credential_session.rs:106:21
+     |
+ 106 | pub(super) async fn serve(
+     |                     ^^^^^
+...
+ 109 |     policy: Arc<service_policy::ServicePolicy>,
+     |     ------------------------------------------
+help: provide the argument
+     |
+6923 |     credential_session::serve(socket, app, /* policy */).await;
+     |                                          ++++++++++++++
+
+error[E0433]: cannot find module or crate `service_policy` in this scope
+   --> crates/gateway/src/credential_session.rs:109:17
+    |
+109 |     policy: Arc<service_policy::ServicePolicy>,
+    |                 ^^^^^^^^^^^^^^ use of unresolved module or unlinked crate `service_policy`
+    |
+help: to make use of source file crates/gateway/src/service_policy.rs, use `mod service_policy` in this file to declare the module
+   --> crates/gateway/src/main.rs:11:1
+    |
+ 11 + mod service_policy;
+    |
+
+Some errors have detailed explanations: E0061, E0433.
+For more information about an error, try `rustc --explain E0061`.
+error: could not compile `gateway` (bin "gateway") due to 2 previous errors
+warning: build failed, waiting for other jobs to finish...
+error: could not compile `gateway` (bin "gateway" test) due to 2 previous errors

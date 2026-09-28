@@ -1,0 +1,8 @@
+{
+  "cwd": "/var/folders/jz/7wbjs_5j45g915858xh6wm200000gn/T/arcora-frontend-tools-r2xghbs6",
+  "exit_codes": {
+    "tools-candidate-test": 1,
+    "tools-candidate-build": 1,
+    "tools-candidate-audit": 0
+  }
+}

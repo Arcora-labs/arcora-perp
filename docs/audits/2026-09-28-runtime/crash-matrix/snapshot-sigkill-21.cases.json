@@ -1,0 +1,270 @@
+{
+  "scope": "Actual owned subprocess SIGKILL at cfg(test, unix) pipe barriers; process crash, not power loss",
+  "source_head": "5c71b2d0a24e1e1e94efeff58df8e26b13190c1b",
+  "source_sha256": "8bcf99c1496e300dd5904924d5170bbc458c50c21918323968927e3afc5f4b2a",
+  "selected_source_files_sha256": {
+    "Cargo.lock": "0db4f88b8f0c4a67ae57b04ae26eaec8ff98370d79677bae63da8053714f2479",
+    "Cargo.toml": "f18c3368075ac65c9c084cac8cf3ae6d8f5d40428552b821744ebd4a7ed3775c",
+    "crates/gateway/Cargo.toml": "757c6b78726e9d54bb86141d6461dd477002fa6ee8cb292a292e4bcb15a8ec6a",
+    "crates/gateway/src/snapshot.rs": "aea94834c18039da544ce5025759a207bb9459c649578be8b671e0afc5e48316",
+    "crates/gateway/src/snapshot_crash_tests.rs": "1b1547490cd3fd64bd9fa2d66019214c0c17c7061d8d9922f0a1c684a3f47b48",
+    "crates/gateway/src/rollback_journal.rs": "9f7c73825e98d1262f33acf68ebc67aae9de004463a95fad99bd4208069dcd11",
+    "crates/gateway/src/main.rs": "03cf6023295e9d44b1df84fcd3bb6114ab538861bd3d20434e054128386d6448"
+  },
+  "source_unchanged_during_check": true,
+  "log": "snapshot-sigkill-21.log",
+  "log_sha256": "ae170a0cc68b85a18d88700f2cf5152b78c9c9480f25b5e3c52eb0db1aa04a10",
+  "argv": [
+    "env",
+    "CARGO_TARGET_DIR=/tmp/arcora-gateway-target",
+    "CARGO_BUILD_JOBS=2",
+    "cargo",
+    "test",
+    "--locked",
+    "-p",
+    "gateway",
+    "--bin",
+    "gateway",
+    "sigkill_",
+    "--",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "exit_code": 0,
+  "rust_test_summaries": [
+    [
+      "ok",
+      "4",
+      "0",
+      "0",
+      "0",
+      "399"
+    ]
+  ],
+  "case_count": 21,
+  "counts_by_kind": {
+    "initial-stage1-journal": 5,
+    "journal-stage1-to-prepared": 5,
+    "prepared-journal-to-commit-snapshot": 6,
+    "snapshot": 5
+  },
+  "cases": [
+    {
+      "kind": "initial-stage1-journal",
+      "boundary": "temp-created-before-write",
+      "owned_pid": 45010,
+      "signal": 9,
+      "journal_present": false,
+      "restored_keccak256": "0x2b319693f4d8586e39bd943ce4d3a991431d34e0455e78fa770497d015de4eb2",
+      "preseal_state": "unchanged",
+      "replay_root_and_withdrawals": "pass"
+    },
+    {
+      "kind": "initial-stage1-journal",
+      "boundary": "data-written-before-file-sync",
+      "owned_pid": 45011,
+      "signal": 9,
+      "journal_present": false,
+      "restored_keccak256": "0x8d03d87ca1a54db2305868f09f2beab61607e463dfedee7c51116cf22926d6f7",
+      "preseal_state": "unchanged",
+      "replay_root_and_withdrawals": "pass"
+    },
+    {
+      "kind": "initial-stage1-journal",
+      "boundary": "file-synced-before-rename",
+      "owned_pid": 45012,
+      "signal": 9,
+      "journal_present": false,
+      "restored_keccak256": "0x3c948d0c5c6df2780f18050f043baa6b4dd92d6d087d25c7acd2095bda604267",
+      "preseal_state": "unchanged",
+      "replay_root_and_withdrawals": "pass"
+    },
+    {
+      "kind": "initial-stage1-journal",
+      "boundary": "renamed-before-directory-sync",
+      "owned_pid": 45013,
+      "signal": 9,
+      "journal_present": true,
+      "restored_keccak256": "0xdb7fce2e90a790da50428e99cbbcaf287321f0634690200074f8c9f238ff7800",
+      "preseal_state": "unchanged",
+      "replay_root_and_withdrawals": "pass"
+    },
+    {
+      "kind": "initial-stage1-journal",
+      "boundary": "directory-synced-before-return",
+      "owned_pid": 45014,
+      "signal": 9,
+      "journal_present": true,
+      "restored_keccak256": "0x9df3566ef7d632b3d28bb98e1878229763b11f8851955db983803d38eddb28ff",
+      "preseal_state": "unchanged",
+      "replay_root_and_withdrawals": "pass"
+    },
+    {
+      "kind": "journal-stage1-to-prepared",
+      "boundary": "temp-created-before-write",
+      "owned_pid": 45015,
+      "signal": 9,
+      "prepared": false,
+      "restored_keccak256": "0xd5dcf3a2a61d46eb1c1f5ee1b6aa9e200fd8f2f6fcff289e5786b676d7d3ab64",
+      "recovery": "DeleteJournal { mutated: true }"
+    },
+    {
+      "kind": "journal-stage1-to-prepared",
+      "boundary": "data-written-before-file-sync",
+      "owned_pid": 45016,
+      "signal": 9,
+      "prepared": false,
+      "restored_keccak256": "0xa7249928775ed8cd42fd974da47a48983f32ae6b0a5b3ccb7ee2e3a081954606",
+      "recovery": "DeleteJournal { mutated: true }"
+    },
+    {
+      "kind": "journal-stage1-to-prepared",
+      "boundary": "file-synced-before-rename",
+      "owned_pid": 45017,
+      "signal": 9,
+      "prepared": false,
+      "restored_keccak256": "0x7a63a994313a5915a17205f01312ff2a346a332a99e6477186e0100b71f93cb6",
+      "recovery": "DeleteJournal { mutated: true }"
+    },
+    {
+      "kind": "journal-stage1-to-prepared",
+      "boundary": "renamed-before-directory-sync",
+      "owned_pid": 45018,
+      "signal": 9,
+      "prepared": true,
+      "restored_keccak256": "0x3971b9db56b9f8afc547b31a08ef30d4b70600469d6f887a33166e4933f5fca4",
+      "recovery": "KeepJournal"
+    },
+    {
+      "kind": "journal-stage1-to-prepared",
+      "boundary": "directory-synced-before-return",
+      "owned_pid": 45019,
+      "signal": 9,
+      "prepared": true,
+      "restored_keccak256": "0xe38df0fc2965339b7fa0bd966247823e5bf24f8bfb64b77f11c782ed498aaceb",
+      "recovery": "KeepJournal"
+    },
+    {
+      "kind": "prepared-journal-to-commit-snapshot",
+      "boundary": "prepared-journal-before-commit-snapshot",
+      "owned_pid": 45020,
+      "signal": 9,
+      "commit_snapshot_published": false,
+      "restored_keccak256": "0x87323847407483a9777df390201e93d98a74edbe2d45af8e500f36985c609b51",
+      "retained_journal_keccak256": "0x2d494f339c4f9c94061c93c887ad6f7615c8fcb98da5bb96f25a3e417e072593",
+      "recovery": "DeleteJournal { mutated: true }",
+      "restore_after_resolution": "pass"
+    },
+    {
+      "kind": "prepared-journal-to-commit-snapshot",
+      "boundary": "temp-created-before-write",
+      "owned_pid": 45021,
+      "signal": 9,
+      "commit_snapshot_published": false,
+      "restored_keccak256": "0xe52d6f2bfbf9a0d2fcbc37e944ff04944f5f65c8cffb63ee6b58d9d997172417",
+      "retained_journal_keccak256": "0x9855663f14832d9734c47507a05d76515e3e6b5512a05be92743eb911008441d",
+      "recovery": "DeleteJournal { mutated: true }",
+      "restore_after_resolution": "pass"
+    },
+    {
+      "kind": "prepared-journal-to-commit-snapshot",
+      "boundary": "data-written-before-file-sync",
+      "owned_pid": 45022,
+      "signal": 9,
+      "commit_snapshot_published": false,
+      "restored_keccak256": "0x8ba9b6980270cde96c2847177892f882a45564b4576eec46db02816696945942",
+      "retained_journal_keccak256": "0x2f311ccadd329c0bdf214f744bc6bc5bef6f8d3a28b3b57983639f97bf8b2874",
+      "recovery": "DeleteJournal { mutated: true }",
+      "restore_after_resolution": "pass"
+    },
+    {
+      "kind": "prepared-journal-to-commit-snapshot",
+      "boundary": "file-synced-before-rename",
+      "owned_pid": 45023,
+      "signal": 9,
+      "commit_snapshot_published": false,
+      "restored_keccak256": "0xe8720b63245a6a3ced6b4aa200c20f30c257c9fa16ead4c9106a61f4133c063f",
+      "retained_journal_keccak256": "0xee56db034fadaf80521ab156875f93e2d76f0c01c305aad75f85abdd028e3077",
+      "recovery": "DeleteJournal { mutated: true }",
+      "restore_after_resolution": "pass"
+    },
+    {
+      "kind": "prepared-journal-to-commit-snapshot",
+      "boundary": "renamed-before-directory-sync",
+      "owned_pid": 45024,
+      "signal": 9,
+      "commit_snapshot_published": true,
+      "restored_keccak256": "0x5800b6f7b08de1f4ff461dbca93cddc9755bcc07a34d64dd6c9ba128d441080e",
+      "retained_journal_keccak256": "0x6de15f372a03d4e30da5f15ca5badef0419ad0802c9977711efaf5ac6866c6da",
+      "recovery": "DeleteJournal { mutated: false }",
+      "restore_after_resolution": "pass"
+    },
+    {
+      "kind": "prepared-journal-to-commit-snapshot",
+      "boundary": "directory-synced-before-return",
+      "owned_pid": 45025,
+      "signal": 9,
+      "commit_snapshot_published": true,
+      "restored_keccak256": "0xa12f812f676b00b1958dcb289e30a008c4ee2cac99412237e10b4debeb981b9e",
+      "retained_journal_keccak256": "0xdd002ae021323def3cc8edf17ab8742357e82efc7a5fecf7358109128b9c5983",
+      "recovery": "DeleteJournal { mutated: false }",
+      "restore_after_resolution": "pass"
+    },
+    {
+      "kind": "snapshot",
+      "boundary": "temp-created-before-write",
+      "owned_pid": 45026,
+      "signal": 9,
+      "published": false,
+      "restored_keccak256": "0x925c41f969bfe50c2976aa4d7b27dc85169adc028233674bb4831339a05740d1",
+      "state_root": "0x464f52b0bc0e452be7e050758e209d7a75708e98ea3eb4f0ffac4e5f6d7a5a28",
+      "next_write": "pass"
+    },
+    {
+      "kind": "snapshot",
+      "boundary": "data-written-before-file-sync",
+      "owned_pid": 45027,
+      "signal": 9,
+      "published": false,
+      "restored_keccak256": "0x37eadf05bf35aee1210e21aa4f06cf847f709a7e6a19c466f898c31813e521f7",
+      "state_root": "0x464f52b0bc0e452be7e050758e209d7a75708e98ea3eb4f0ffac4e5f6d7a5a28",
+      "next_write": "pass"
+    },
+    {
+      "kind": "snapshot",
+      "boundary": "file-synced-before-rename",
+      "owned_pid": 45028,
+      "signal": 9,
+      "published": false,
+      "restored_keccak256": "0x8af4938d4443581ecf2866d0206ba462d86cb45daa18953ac4854491bffb70d1",
+      "state_root": "0x464f52b0bc0e452be7e050758e209d7a75708e98ea3eb4f0ffac4e5f6d7a5a28",
+      "next_write": "pass"
+    },
+    {
+      "kind": "snapshot",
+      "boundary": "renamed-before-directory-sync",
+      "owned_pid": 45029,
+      "signal": 9,
+      "published": true,
+      "restored_keccak256": "0xc5eba9612bb00d543bf6202776a85373188ce8d927246502351b4f2baa39df48",
+      "state_root": "0xfcac8450ef2afeeb786f1e924841f68507ceda4064a79d826704ca5b20e34384",
+      "next_write": "pass"
+    },
+    {
+      "kind": "snapshot",
+      "boundary": "directory-synced-before-return",
+      "owned_pid": 45030,
+      "signal": 9,
+      "published": true,
+      "restored_keccak256": "0x2c67f32b5ee092d286a5cca1fb048863235188b812a861cb326677be47fdffd2",
+      "state_root": "0xfcac8450ef2afeeb786f1e924841f68507ceda4064a79d826704ca5b20e34384",
+      "next_write": "pass"
+    }
+  ],
+  "limits": [
+    "Unix only; actual tested host macOS; no power-loss or kernel crash guarantee",
+    "Boundaries before/after complete write_all, sync_all and rename calls; no interruption inside a kernel syscall",
+    "Test binary executes actual persistence/recovery helpers with native mock proof preparation and synthetic chain observations",
+    "No real gateway process shutdown, wallet extension, chain transaction, SP1 guest execution or production funds validation"
+  ]
+}

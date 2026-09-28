@@ -1,0 +1,30 @@
+warning: use of deprecated method `sha2::digest::generic_array::GenericArray::<T, N>::as_slice`: please upgrade to generic-array 1.x
+   --> /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/attestation/src/vtpm.rs:202:32
+    |
+202 |     if Sha256::digest(runtime).as_slice() != &td.report_data[..32] {
+    |                                ^^^^^^^^
+    |
+    = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated method `sha2::digest::generic_array::GenericArray::<T, N>::as_slice`: please upgrade to generic-array 1.x
+   --> /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/attestation/src/vtpm.rs:238:21
+    |
+238 |     if h.finalize().as_slice() != q.pcr_digest {
+    |                     ^^^^^^^^
+
+warning: prover-service@0.0.0: rustc +succinct --version: "rustc 1.93.0-dev\n"
+warning: prover-service@0.0.0: perp-core-guest built at 2026-09-28 09:31:43
+warning: `dark-perp-attestation` (lib) generated 2 warnings
+   Compiling prover-service v0.0.0 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/prover-service)
+    Finished `release` profile [optimized] target(s) in 3.67s
+     Running unittests src/main.rs (/tmp/arcora-prover-service-target/release/deps/prover_service-05b6d6b18b4df6e9)
+
+running 3 tests
+test shutdown_tests::owned_shutdown_child ... ignored, owned subprocess fixture; launched by the SIGTERM parent tests
+PROVER_PROCESS_DRAIN {"cancelledHttpClient":true,"handlerCancelledBeforeWorkerRelease":true,"signal":"SIGTERM","listenerClosedBeforeWorkerRelease":true,"slotRetainedAfterClientDisconnect":true,"admissionClosed":true,"postDrainAdmissionStatus":503,"workerCompletedBeforeExit":true,"processExit":0,"elapsedAfterSignalMs":121,"realProof":false}
+test shutdown_tests::sigterm_after_http_cancellation_keeps_owned_worker_until_completion ... ok
+PROVER_PROCESS_DRAIN {"cancelledHttpClient":false,"handlerCancelledBeforeWorkerRelease":false,"signal":"SIGTERM","listenerClosedBeforeWorkerRelease":true,"slotRetainedAfterClientDisconnect":false,"admissionClosed":true,"postDrainAdmissionStatus":503,"workerCompletedBeforeExit":true,"processExit":0,"elapsedAfterSignalMs":123,"realProof":false}
+test shutdown_tests::sigterm_drains_accepted_request_before_owned_process_exit ... ok
+
+test result: ok. 2 passed; 0 failed; 1 ignored; 0 measured; 5 filtered out; finished in 0.15s
+

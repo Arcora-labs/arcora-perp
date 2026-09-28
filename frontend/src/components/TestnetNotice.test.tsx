@@ -7,13 +7,14 @@ afterEach(cleanup);
 beforeEach(() => localStorage.clear());
 
 describe("TestnetNotice", () => {
-  it("discloses that funds are not real and settlement is real zk proofs", () => {
+  it("describes a test environment without asserting deployment capabilities", () => {
     render(<TestnetNotice />);
-    expect(screen.getByText(/funds are not real/i)).toBeTruthy();
-    // The 2026-07-09 live migration replaced mocked proofs with real Groth16 —
-    // the notice must disclose the real-proof posture and its settle lag.
-    expect(screen.getByText(/real zk validity proofs/i)).toBeTruthy();
-    expect(screen.getByText(/~10–20 min/)).toBeTruthy();
+    const notice = screen.getByRole("note");
+    expect(notice.textContent).toContain("Test environment — test assets only.");
+    expect(notice.textContent).toContain("Order acceptance does not mean on-chain settlement.");
+    expect(notice.textContent).toContain("Health");
+    expect(notice.textContent).toContain("Explorer");
+    expect(notice.textContent).not.toMatch(/Azure|TDX|Groth16|TLS|10–20|real zk|confirm instantly/i);
   });
 
   it("reveals the test-USDC mint instructions on demand", () => {
@@ -25,14 +26,26 @@ describe("TestnetNotice", () => {
     // it) — the notice must point at the gateway-authorized in-app flow instead.
     expect(screen.queryByText(/deposit\(uint256\)/)).toBeNull();
     expect(screen.getByText(/deposit\/authorize/)).toBeTruthy();
+    expect(screen.getByText(/original deposit transaction hash/i)).toBeTruthy();
+    expect(screen.getByText(/do not send another deposit/i)).toBeTruthy();
+    expect(screen.queryByText(/register an API key/i)).toBeNull();
   });
 
   it("stays dismissed once acknowledged", () => {
     const { unmount } = render(<TestnetNotice />);
     fireEvent.click(screen.getByText(/got it/i));
-    expect(screen.queryByText(/funds are not real/i)).toBeNull();
+    expect(screen.queryByText(/test assets only/i)).toBeNull();
     unmount();
     render(<TestnetNotice />);
-    expect(screen.queryByText(/funds are not real/i)).toBeNull();
+    expect(screen.queryByText(/test assets only/i)).toBeNull();
   });
+});
+
+
+it("resurfaces the corrected notice after the old version was dismissed", () => {
+  localStorage.setItem("dp_testnet_notice_dismissed_v4", "1");
+  render(<TestnetNotice />);
+  expect(screen.getByRole("note")).toBeTruthy();
+  fireEvent.click(screen.getByText(/got it/i));
+  expect(localStorage.getItem("dp_testnet_notice_dismissed_v5")).toBe("1");
 });

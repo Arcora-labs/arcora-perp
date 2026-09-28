@@ -348,8 +348,9 @@ describe("personalSign", () => {
 });
 
 describe("supportsWalletDeposit", () => {
-  it("true only when all four wallet-deposit methods exist", () => {
+  it("true only when the immutable context and wallet-deposit methods exist", () => {
     const full = {
+      captureDepositContext: vi.fn(),
       depositAccount: vi.fn(),
       bindDepositAddress: vi.fn(),
       authorizeDeposit: vi.fn(),

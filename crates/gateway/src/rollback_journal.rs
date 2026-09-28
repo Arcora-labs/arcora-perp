@@ -136,17 +136,15 @@ pub fn delete(path: &Path) {
 pub enum RecoveryAction {
     /// Commit already happened and was persisted — delete the journal.
     Stale,
-    /// Pre-seal snapshot AND the tx never landed — the seal effectively never
-    /// happened; delete the journal.
+    /// Pre-seal snapshot and stage 1 proves no broadcast occurred; delete the journal.
     SealNeverPersisted,
-    /// Seal persisted but the tx never landed — replay the journal's rollback
-    /// inputs, then delete.
+    /// Seal persisted and stage 1 proves no broadcast occurred; replay rollback
+    /// inputs, persist the resolution, then delete.
     RollBack,
     /// The tx landed but the commit was lost — re-commit from the journal's
     /// `prepared`, then delete.
     RollForward,
-    /// Anything else — keep the journal, log loudly ("HOLDING"), and let the boot
-    /// continuity check decide whether to proceed.
+    /// Anything else: retain the journal and refuse startup until reconciled.
     Hold,
 }
 
@@ -170,6 +168,9 @@ pub fn recovery_action(
     let sealed_persisted = Some(b_snap) == j_batch.checked_add(1);
     let tx_landed = Some(chain_bc) == j_batch.checked_add(1);
 
+    // A prepared stage-2 journal is evidence a transaction MAY have been sent.
+    // Unchanged counters, even after a long wait, cannot prove it will never land.
+    // Rollback and pre-seal deletion therefore require stage 1 (no prepared data).
     // Row order IS the precedence: STALE must beat ROLL-FORWARD (same counters —
     // if the settled root already matches the chain, the commit was persisted and
     // re-committing would double-apply the window).
@@ -186,9 +187,9 @@ pub fn recovery_action(
     // as `root_matches_settled == false` and falls through to ROLL-FORWARD.
     if sealed_persisted && tx_landed && root_matches_settled {
         RecoveryAction::Stale
-    } else if b_snap == j_batch && chain_bc == j_batch {
+    } else if !has_prepared && b_snap == j_batch && chain_bc == j_batch {
         RecoveryAction::SealNeverPersisted
-    } else if sealed_persisted && chain_bc == j_batch {
+    } else if !has_prepared && sealed_persisted && chain_bc == j_batch {
         RecoveryAction::RollBack
     } else if sealed_persisted && tx_landed && has_prepared && root_matches_prepared {
         RecoveryAction::RollForward
@@ -424,20 +425,25 @@ mod tests {
                 assert_eq!(recovery_action(5, prep, 6, 6, rmp, true), Stale);
             }
         }
-        // SEAL-NEVER-PERSISTED: pre-seal snapshot restored AND the tx never landed
-        // — the seal effectively never happened.
+        // A stage-1 pre-seal snapshot can resolve; stage 2 remains ambiguous.
         for prep in bools {
             for rmp in bools {
                 for rms in bools {
-                    assert_eq!(recovery_action(5, prep, 5, 5, rmp, rms), SealNeverPersisted);
+                    assert_eq!(
+                        recovery_action(5, prep, 5, 5, rmp, rms),
+                        if prep { Hold } else { SealNeverPersisted }
+                    );
                 }
             }
         }
-        // ROLLBACK: post-seal snapshot restored but the tx never landed.
+        // A stage-1 post-seal snapshot can roll back; stage 2 must HOLD.
         for prep in bools {
             for rmp in bools {
                 for rms in bools {
-                    assert_eq!(recovery_action(5, prep, 6, 5, rmp, rms), RollBack);
+                    assert_eq!(
+                        recovery_action(5, prep, 6, 5, rmp, rms),
+                        if prep { Hold } else { RollBack }
+                    );
                 }
             }
         }

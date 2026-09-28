@@ -1,0 +1,40 @@
+[WARN] The "pnpm" field in package.json is no longer read by pnpm. The following keys were ignored: "pnpm.onlyBuiltDependencies". See https://pnpm.io/settings for the new home of each setting.
+[2m[WebServer] [22m(node:50513) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[2m[WebServer] [22m(Use `node --trace-warnings ...` to show where the warning was created)
+[2m[WebServer] [22m[43m[33m[[39m[49m[43m[30mWARN[39m[49m[43m[33m][39m[49m The "pnpm" field in package.json is no longer read by pnpm. The following keys were ignored: "pnpm.onlyBuiltDependencies". See https://pnpm.io/settings for the new home of each setting.
+[2m[WebServer] [22m(node:50514) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[2m[WebServer] [22m(Use `node --trace-warnings ...` to show where the warning was created)
+[2m[WebServer] [22m(node:50521) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[2m[WebServer] [22m(Use `node --trace-warnings ...` to show where the warning was created)
+
+Running 1 test using 1 worker
+
+(node:50522) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:50522) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+{"width":390,"dimensions":{"width":390,"scrollWidth":390},"overflow":[{"tag":"BUTTON","class":"navlink ","text":"Recover","right":398.640625,"width":94.765625},{"tag":"BUTTON","class":"navlink ","text":"Explorer","right":498.6875,"width":96.046875},{"tag":"svg","class":{},"text":"","right":428.640625,"width":15},{"tag":"path","class":{},"text":"","right":426.765625,"width":11.25},{"tag":"path","class":{},"text":"","right":426.765625,"width":11.25},{"tag":"path","class":{},"text":"","right":426.765625,"width":11.25},{"tag":"BUTTON","class":"navlink ","text":"Health","right":588.515625,"width":85.828125},{"tag":"svg","class":{},"text":"","right":528.6875,"width":15},{"tag":"path","class":{},"text":"","right":527.4375,"width":12.5},{"tag":"BUTTON","class":"navlink ","text":"API","right":660.03125,"width":67.515625},{"tag":"svg","class":{},"text":"","right":618.515625,"width":15},{"tag":"polyline","class":{},"text":"","right":609.765625,"width":3.75},{"tag":"line","class":{},"text":"","right":616.015625,"width":5}]}
+{"width":320,"dimensions":{"width":320,"scrollWidth":369},"overflow":[{"tag":"BUTTON","class":"navlink ","text":"Recover","right":370.640625,"width":94.765625},{"tag":"BUTTON","class":"navlink ","text":"Explorer","right":470.6875,"width":96.046875},{"tag":"svg","class":{},"text":"","right":400.640625,"width":15},{"tag":"path","class":{},"text":"","right":398.765625,"width":11.25},{"tag":"path","class":{},"text":"","right":398.765625,"width":11.25},{"tag":"path","class":{},"text":"","right":398.765625,"width":11.25},{"tag":"BUTTON","class":"navlink ","text":"Health","right":560.515625,"width":85.828125},{"tag":"svg","class":{},"text":"","right":500.6875,"width":15},{"tag":"path","class":{},"text":"","right":499.4375,"width":12.5},{"tag":"BUTTON","class":"navlink ","text":"API","right":632.03125,"width":67.515625},{"tag":"svg","class":{},"text":"","right":590.515625,"width":15},{"tag":"polyline","class":{},"text":"","right":581.765625,"width":3.75},{"tag":"line","class":{},"text":"","right":588.015625,"width":5},{"tag":"DIV","class":"card","text":"AccountSettled balance (withdrawable)$123.00Original deposit in progressOriginal","right":340.5,"width":354.5},{"tag":"DIV","class":"card card--flush","text":"PositionsNo open positions. Place an order to open one.","right":340.5,"width":354.5},{"tag":"H3","class":"card__title","text":"Positions","right":339.5,"width":352.5},{"tag":"P","class":"empty","text":"No open positions. Place an order to open one.","right":339.5,"width":352.5}]}
+  ✘  1 [chromium] › tests/browser/reconciliation.visual.spec.ts:81:1 › temporary narrow recovery visual check (567ms)
+
+
+  1) [chromium] › tests/browser/reconciliation.visual.spec.ts:81:1 › temporary narrow recovery visual check 
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBeLessThanOrEqual[2m([22m[32mexpected[39m[2m)[22m
+
+    Expected: <= [32m320[39m
+    Received:    [31m369[39m
+
+      91 |     console.log(JSON.stringify({ width, dimensions, overflow: await page.evaluate(() => [...document.querySelectorAll('body *')].map(el => ({ tag: el.tagName, class: el.className, text: el.textContent?.slice(0, 80), right: el.getBoundingClientRect().right, width: el.getBoundingClientRect().width })).filter(el => el.right > window.innerWidth + 1).slice(0, 24)) }));
+      92 |     await page.screenshot({ path: `../docs/audits/2026-09-28-runtime/reconciliation-narrow-${width}.png`, fullPage: true });
+    > 93 |     expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.width);
+         |                                    ^
+      94 |   }
+      95 | });
+      96 |
+        at /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/tests/browser/reconciliation.visual.spec.ts:93:36
+
+    Error Context: output/playwright/results/reconciliation.visual-temporary-narrow-recovery-visual-check-chromium/error-context.md
+
+  1 failed
+    [chromium] › tests/browser/reconciliation.visual.spec.ts:81:1 › temporary narrow recovery visual check 
