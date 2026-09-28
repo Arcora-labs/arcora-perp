@@ -1,0 +1,14 @@
+{
+  "browser_cli_closed": true,
+  "profiles": [
+    {
+      "disposable_profile": "/var/folders/jz/7wbjs_5j45g915858xh6wm200000gn/T/arcora-mm-20260928-qgf998bz",
+      "removed": true
+    },
+    {
+      "disposable_profile": "/var/folders/jz/7wbjs_5j45g915858xh6wm200000gn/T/arcora-mm-second-rv1dzc87",
+      "removed": true
+    }
+  ],
+  "user_profiles_touched": false
+}

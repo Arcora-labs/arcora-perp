@@ -17,6 +17,9 @@ frontend/node_modules/
 .superpowers/
 .vercel/
 
+# Disposable browser captures; reviewed, redacted evidence lives in docs/audits.
+/output/playwright/
+
 # Excluded prover applications retain lockfiles for source/toolchain binding.
 crates/sp1-guest/target/
 crates/sp1-host/target/

@@ -1,0 +1,104 @@
+{
+  "schema_version": 1,
+  "task_id": "arcora-wallet-rpc-2026-09-28",
+  "subject": "08137009327fd66fac659face0eb611aa3104ec0900add759d39fb127e2c0e74",
+  "checks": [
+    {
+      "criterion_id": "W1",
+      "subject": "08137009327fd66fac659face0eb611aa3104ec0900add759d39fb127e2c0e74",
+      "status": "PASS",
+      "assertion": "Official unmodified extension676files and isolated profile observed; runtime source/config recorded.",
+      "evidence": {
+        "path": "wallet/extension-identity.json",
+        "sha256": "caedb0c5cd7492f76118d1e4560c134ee0da10f01b3fd448cb8bf4dd3641309a"
+      },
+      "reviewer": "root, with independent graph_records acceptance/code review"
+    },
+    {
+      "criterion_id": "W2",
+      "subject": "08137009327fd66fac659face0eb611aa3104ec0900add759d39fb127e2c0e74",
+      "status": "PASS",
+      "assertion": "Actual two-tab rejection/rotation/revocation/reload passed; exact private WS authOk observed after native restart.",
+      "evidence": {
+        "path": "wallet/verification.json",
+        "sha256": "6a4859a7735f7ba30f8f699189d14341bf180291afab24a996a11d3ae7c8dc17"
+      },
+      "command": "Recorded Playwright CLI scenarios01\u201308 through wallet/capture_cli.py",
+      "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+      "exit_code": 0
+    },
+    {
+      "criterion_id": "W3",
+      "subject": "08137009327fd66fac659face0eb611aa3104ec0900add759d39fb127e2c0e74",
+      "status": "PASS",
+      "assertion": "Controlled storage/scope/legacy faults and actual wallet recovery passed without replacement account or lost legacy record.",
+      "evidence": {
+        "path": "wallet/verification.json",
+        "sha256": "6a4859a7735f7ba30f8f699189d14341bf180291afab24a996a11d3ae7c8dc17"
+      },
+      "command": "Recorded Playwright CLI scenarios01\u201308 through wallet/capture_cli.py",
+      "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+      "exit_code": 0
+    },
+    {
+      "criterion_id": "W4",
+      "subject": "08137009327fd66fac659face0eb611aa3104ec0900add759d39fb127e2c0e74",
+      "status": "PASS",
+      "assertion": "Applied strict CSP supports actual extension flow; four credential values absent from exported console/network records. Trust boundaries documented.",
+      "evidence": {
+        "path": "wallet/07b-final-checks-result.json",
+        "sha256": "316a09541957e492ebc32234c9064362bde2258b51f97d4266d00a4f563cf3d0"
+      },
+      "reviewer": "root, with independent graph_records acceptance/code review"
+    },
+    {
+      "criterion_id": "R1",
+      "subject": "08137009327fd66fac659face0eb611aa3104ec0900add759d39fb127e2c0e74",
+      "status": "PASS",
+      "assertion": "Positive witness anchor/code/getter agreement and current source-bound tests passed.",
+      "evidence": {
+        "path": "checks/deployment-reader.json",
+        "sha256": "7528a897ecc6c7b1f862cd12d99f405b4a40c55280138175a286aa1944a2ebfd"
+      },
+      "command": "python3 -m unittest discover -s scripts/local-verification -p test_read_deployment.py -v",
+      "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+      "exit_code": 0
+    },
+    {
+      "criterion_id": "R2",
+      "subject": "08137009327fd66fac659face0eb611aa3104ec0900add759d39fb127e2c0e74",
+      "status": "PASS",
+      "assertion": "Disagreement/malformed/unavailable/lag/invalid endpoint/redaction matrix passed29tests under optimized Python.",
+      "evidence": {
+        "path": "checks/deployment-reader-optimized.json",
+        "sha256": "38bba457e876d2cc92d88330851d90cfd7887e4cced13f4871128ddacfe2ca26"
+      },
+      "command": "python3 -O -m unittest discover -s scripts/local-verification -p test_read_deployment.py -v",
+      "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+      "exit_code": 0
+    },
+    {
+      "criterion_id": "R3",
+      "subject": "08137009327fd66fac659face0eb611aa3104ec0900add759d39fb127e2c0e74",
+      "status": "PASS",
+      "assertion": "Single fresh configured public read attempt recorded HTTP403; no deployment identity inferred.",
+      "evidence": {
+        "path": "rpc/initial-observation-checks/deployment-observation.json",
+        "sha256": "a127a659ecbe08e41baf799d324a1a848088f9a75528ba6b2e71fa847ac06a0b"
+      },
+      "reviewer": "root, with independent graph_records acceptance/code review"
+    },
+    {
+      "criterion_id": "V1",
+      "subject": "08137009327fd66fac659face0eb611aa3104ec0900add759d39fb127e2c0e74",
+      "status": "PASS",
+      "assertion": "Independent review, exact frozen task criteria, focused validation and scoped source hashes reconciled.",
+      "evidence": {
+        "path": "review.md",
+        "sha256": "17adfcc9057e53ad8dbca029939116c4ce6316ae4d4e25a2e49dc03b24f5a776"
+      },
+      "reviewer": "root, with independent graph_records acceptance/code review"
+    }
+  ],
+  "blockers": []
+}

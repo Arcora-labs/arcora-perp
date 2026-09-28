@@ -1,0 +1,27 @@
+test_ahead_witness_uses_primary_anchor_not_a_mixed_newer_state (test_read_deployment.DeploymentObservationTests) ... ok
+test_canonical_change_after_reads_blocks_either_endpoint (test_read_deployment.DeploymentObservationTests) ... ok
+test_changed_finalized_hash_is_blocked (test_read_deployment.DeploymentObservationTests) ... ok
+test_code_disagreement_at_same_anchor_blocks (test_read_deployment.DeploymentObservationTests) ... ok
+test_credential_bearing_witness_url_is_rejected_and_not_printed (test_read_deployment.DeploymentObservationTests) ... ok
+test_failed_required_call_is_partial_and_never_success (test_read_deployment.DeploymentObservationTests) ... ok
+test_getter_disagreement_at_same_anchor_blocks (test_read_deployment.DeploymentObservationTests) ... ok
+test_hash_pins_every_contract_read_and_checks_token_binding (test_read_deployment.DeploymentObservationTests) ... ok
+test_historical_header_same_hash_wrong_number_is_not_accepted (test_read_deployment.DeploymentObservationTests) ... ok
+test_malformed_header_and_abi_data_fail_closed (test_read_deployment.DeploymentObservationTests) ... ok
+test_nonzero_address_padding_does_not_match_a_configured_binding (test_read_deployment.DeploymentObservationTests) ... ok
+test_same_host_alias_is_not_an_independent_witness (test_read_deployment.DeploymentObservationTests) ... ok
+test_single_endpoint_same_hash_wrong_height_is_blocked (test_read_deployment.DeploymentObservationTests) ... ok
+test_single_endpoint_short_abi_word_is_partial (test_read_deployment.DeploymentObservationTests) ... ok
+test_transport_failure_blocks_without_retry_or_fallback (test_read_deployment.DeploymentObservationTests) ... ok
+test_two_endpoints_agree_on_every_pinned_read_and_recheck_headers (test_read_deployment.DeploymentObservationTests) ... ok
+test_unbound_json_rpc_response_is_rejected (test_read_deployment.DeploymentObservationTests) ... ok
+test_witness_conflicting_finalized_and_historical_header_blocks (test_read_deployment.DeploymentObservationTests) ... ok
+test_witness_finality_lag_does_not_fall_back_to_unfinalized_height (test_read_deployment.DeploymentObservationTests) ... ok
+test_witness_historical_header_disagreement_blocks (test_read_deployment.DeploymentObservationTests) ... ok
+test_witness_rpc_error_is_not_silently_a_single_endpoint_success (test_read_deployment.DeploymentObservationTests) ... ok
+test_wrong_witness_chain_blocks_before_contract_reads (test_read_deployment.DeploymentObservationTests) ... ok
+
+----------------------------------------------------------------------
+Ran 22 tests in 0.135s
+
+OK

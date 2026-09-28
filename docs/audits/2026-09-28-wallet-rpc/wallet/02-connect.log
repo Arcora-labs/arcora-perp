@@ -1,0 +1,26 @@
+### Result
+{"address":"0x6ec487ae4bf9fedbe4b98f25a45bdc42511a3faf","owner":"0x84339ff96e5cafee192e00dac79c041025fca2188ab8c8dd9b862345969dab21","generation":0}
+### Ran Playwright code
+```js
+await (async page => {
+ const c=page.context(),r=c.arcora;
+ const s=await c.browser().newBrowserCDPSession(); const ts=await s.send('Target.getTargets'); await s.detach();
+ const target=ts.targetInfos.find(t=>t.type==='page'&&t.url.includes('/sidepanel.html#/connect/')); if(!target)throw new Error('No extension connect approval target');
+ r.wallet=await c.newPage();await r.wallet.goto(target.url);
+ await r.wallet.getByRole('button',{name:'Connect',exact:true}).click();
+ await page.waitForFunction(async()=> (await ethereum.request({method:'eth_accounts'})).length===1);
+ await page.locator('button.wallet-btn').click();
+ const account=await page.evaluate(async()=>({address:(await ethereum.request({method:'eth_accounts'}))[0],owner:window.testClient.v1Owner,generation:testClient.storedGen}));
+ r.owner=account.owner;r.address=account.address;
+ return account;
+}
+)(page);
+```
+### Open tabs
+- 0: (current) [BTC/USDC 83,545.43 · Arcora Perp](http://127.0.0.1:49399/)
+- 1: [MetaMask](chrome-extension://akelmhopkdnbjkgehhjkidmakoiiiekb/home.html)
+- 2: [MetaMask](chrome-extension://akelmhopkdnbjkgehhjkidmakoiiiekb/sidepanel.html#/connect/KRa1CBKp734rBXEzDuGpa)
+### Page
+- Page URL: http://127.0.0.1:49399/
+- Page Title: BTC/USDC 83,545.43 · Arcora Perp
+- Console: 1 errors, 6 warnings

@@ -1,0 +1,11 @@
+{
+  "status": "PASS",
+  "source_commit": "9bc9ae59e842206f36528e87978fbcd3defa20ac",
+  "source_sha256": "08137009327fd66fac659face0eb611aa3104ec0900add759d39fb127e2c0e74",
+  "tracked_source_files_equal_commit": true,
+  "source_file_count": 639,
+  "checks": {
+    "deployment-reader": "source content matches current commit",
+    "deployment-reader-optimized": "source content matches current commit"
+  }
+}

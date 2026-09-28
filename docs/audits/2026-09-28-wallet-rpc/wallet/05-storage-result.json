@@ -1,0 +1,18 @@
+[
+  {
+    "id": "storage-quota-session-only",
+    "pass": true,
+    "controlledFault": "Storage.setItem credential write throws QuotaExceededError",
+    "notice": "Account recovered. Credential generation is now #2. Account access is available for this tab only. Browser storage is unavailable. Keep this tab open; after reloading, use wallet recovery again. The old saved key may no longer work.",
+    "generation": 2,
+    "storage": "session",
+    "savedGeneration": 1,
+    "accountStatus": 200
+  },
+  {
+    "id": "session-only-reload",
+    "pass": true,
+    "degradedVisible": true,
+    "replacementRegistrations": 0
+  }
+]

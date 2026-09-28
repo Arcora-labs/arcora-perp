@@ -1,0 +1,20 @@
+### Result
+[{"event":"open"},{"event":"message","type":"markets"},{"event":"message","type":"error","message":"unknown api key"}]
+### Ran Playwright code
+```js
+await (async page => {
+ const r=page.context().arcora;
+ const observation=await page.evaluate(key=>new Promise(resolve=>{const ws=new WebSocket('ws://127.0.0.1:49399/v1/ws');const events=[];const finish=()=>{ws.close();resolve(events);};const timer=setTimeout(finish,3000);ws.onopen=()=>{events.push({event:'open'});ws.send(JSON.stringify({type:'auth',apiKey:key}));};ws.onmessage=e=>{const m=JSON.parse(e.data);events.push({event:'message',type:m.type,message:m.message});if(m.type==='error'||m.type==='authOk'){clearTimeout(timer);finish();}};ws.onclose=e=>events.push({event:'close',code:e.code});}),r.oldKey);
+ return observation;
+}
+)(page);
+```
+### Open tabs
+- 0: (current) [BTC/USDC 83,560.63 · Arcora Perp](http://127.0.0.1:49399/)
+- 1: [MetaMask](chrome-extension://akelmhopkdnbjkgehhjkidmakoiiiekb/home.html)
+- 2: [MetaMask](chrome-extension://akelmhopkdnbjkgehhjkidmakoiiiekb/sidepanel.html#/)
+- 3: [BTC/USDC 83,560.63 · Arcora Perp](http://127.0.0.1:49399/)
+### Page
+- Page URL: http://127.0.0.1:49399/
+- Page Title: BTC/USDC 83,560.63 · Arcora Perp
+- Console: 0 errors, 9 warnings

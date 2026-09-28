@@ -1,0 +1,9 @@
+{
+  "Content-Security-Policy": "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; font-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'",
+  "X-Content-Type-Options": "nosniff",
+  "Referrer-Policy": "no-referrer",
+  "content-type": "text/html",
+  "Date": "Mon, 28 Sep 2026 12:44:38 GMT",
+  "Connection": "close",
+  "Content-Length": "306"
+}

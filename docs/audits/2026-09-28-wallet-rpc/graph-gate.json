@@ -1,0 +1,5 @@
+{
+  "gate": "PASS",
+  "errors": [],
+  "notice": "Bu sonuç yalnızca rapor tutarlılığıdır; komut çalıştırma, kaynak kimliği, kriter yeterliliği ve yetkilendirme ayrıca doğrulanmalıdır."
+}

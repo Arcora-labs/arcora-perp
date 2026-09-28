@@ -1,0 +1,29 @@
+### Result
+{"gatewayRestart":"same durable snapshot, no reset","rows":[{"tab":"a","authOk":true,"ownerPreserved":true,"generation":3,"accountStatus":200},{"tab":"b","authOk":true,"ownerPreserved":true,"generation":3,"accountStatus":200}]}
+### Ran Playwright code
+```js
+await (async page => {
+ const r=page.context().arcora;const rows=[];
+ for(const [name,p] of [['a',r.a],['b',r.b]]){
+  const frames=[];p.on('websocket',ws=>{if(ws.url().endsWith('/v1/ws'))ws.on('framereceived',f=>{try{const m=JSON.parse(String(f.payload));if(m.type==='authOk'||m.type==='error')frames.push({type:m.type,owner:m.owner,message:m.message});}catch{}});});
+  await p.reload();await p.waitForFunction(()=>window.testClient?.storedGen===3 && !!testClient.v1Owner && testClient.wsV1?.readyState===1);
+  if(!frames.some(m=>m.type==='authOk'&&m.owner===r.owner))throw new Error('Missing actual private WS authOk for '+name);
+  const state=await p.evaluate(async owner=>({ownerPreserved:testClient.v1Owner===owner,generation:testClient.storedGen,accountStatus:(await fetch('/v1/accounts/me',{headers:{'X-Api-Key':(await testClient.depositAccount()).apiKey}})).status}),r.owner);
+  if(!state.ownerPreserved||state.accountStatus!==200)throw new Error('Snapshot restart account mismatch');
+  rows.push({tab:name,authOk:true,...state});
+ }
+ r.observations.push({id:'native-private-ws-auth-after-gateway-restart',pass:true,tabs:rows});return {gatewayRestart:'same durable snapshot, no reset',rows};
+}
+)(page);
+```
+### Open tabs
+- 0: (current) [BTC/USDC 83,449.73 · Arcora Perp](http://127.0.0.1:49399/)
+- 1: [MetaMask](chrome-extension://akelmhopkdnbjkgehhjkidmakoiiiekb/home.html)
+- 2: [MetaMask](chrome-extension://akelmhopkdnbjkgehhjkidmakoiiiekb/sidepanel.html#/)
+- 3: [BTC/USDC 83,449.73 · Arcora Perp](http://127.0.0.1:49399/)
+### Page
+- Page URL: http://127.0.0.1:49399/
+- Page Title: BTC/USDC 83,449.73 · Arcora Perp
+- Console: 0 errors, 7 warnings
+### Events
+- New console entries: output/playwright/actual-wallet-run2/console-2026-09-28T12-55-15-295Z.log#L149-L191

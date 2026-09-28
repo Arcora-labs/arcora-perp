@@ -1,0 +1,3 @@
+### Error
+Error: page.evaluate: Error: stale WS timeout
+    at eval (eval at evaluate (:367:30), <anonymous>:1:136)

@@ -1,5 +1,7 @@
 # Arcora — birleştirme sonrası kalan iş planı
 
+> Bu kayıt PR #22 anındaki tarihsel durumdur. Sonraki çalışma S4-03, S4-05, S4-07 ve S5-01'i özgün kabul kapsamıyla kapattı: **güncel kalan 11 iş** [burada](../2026-09-28-resolution/remaining-work.md). Aşağıdaki 15 sayısı güncel toplam değildir.
+
 **15 üst görev açık: 10 kısmi, 5 engelli. Yayın kararı HOLD.** Kullanıcının kod birleştirme yetkisi production deploy veya yayın onayı değildir; birleştirme bu görevlerin kabul koşullarını kendiliğinden kapatmaz. Birleştirilen kodun kapsamı ve son kontroller [birleştirme kaydında](README.md); aşağıdaki maddeler production kabulü için açık kalır.
 
 Önce yerelde ilerletilebilen settlement/prover/restart senaryolarını aynı akışta birleştirin. Paralelde gerçek extension cüzdanlı test profili, erişilebilir salt-okunur RPC ve olay sahibi/reviewer erişimini hazırlayın. Gerçek proof ve tam fon döngüsü, A06 inceleme kapısı ve proving altyapısı açıldıktan sonra izole test ortamında ilerlemelidir.

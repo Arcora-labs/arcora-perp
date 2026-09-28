@@ -1,0 +1,22 @@
+{
+  "command": [
+    "cargo",
+    "test",
+    "--locked",
+    "-p",
+    "gateway",
+    "continuation_settlement_tests",
+    "--",
+    "--nocapture"
+  ],
+  "worktree": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+  "head": "98e0c51f27b42daa4454d22f183aaa96d165b1e5",
+  "exit_code": 0,
+  "duration_seconds": 3.093,
+  "rust_sources_unchanged": true,
+  "source_file_count": 134,
+  "rust_source_sha256": "0f776dffa9a617c9e11651fa851905bbfe604fff78ca8147e7db1ecac0ade45f",
+  "changed_files": [],
+  "cases": 6,
+  "scope": "Native gateway HTTP/curl, authenticated seal opening with fixture session secrets, host CommitmentProver, durable journal/snapshot recovery. Scripted chain observations. No real attestation, real proof, chain execution or guest verification."
+}

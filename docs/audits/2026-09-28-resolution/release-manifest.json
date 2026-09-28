@@ -1,0 +1,80 @@
+{
+  "status": "PASS",
+  "task": "S5-01",
+  "candidate_sha": "79396952d3422b6cda5c83d05cf60bfa1cded410",
+  "source_sha256": "aa9619641fe067ab3c17a0262d9028473277003127366086085dda26bd4ffca0",
+  "source_manifest": "source-manifest.json",
+  "source_validation": "source-validation.json",
+  "upstream_tasks": {
+    "S3-03": "previously PASS",
+    "S4-05": "PASS under original local acceptance; review.md",
+    "S4-08": "previously PASS"
+  },
+  "lockfiles_sha256": {
+    "Cargo.lock": "0db4f88b8f0c4a67ae57b04ae26eaec8ff98370d79677bae63da8053714f2479",
+    "crates/prover-service/Cargo.lock": "0aa85f2c4bbb45814257e86a20540098b4793ded2aa9b1a34afa211aec81bc32",
+    "crates/sp1-guest/Cargo.lock": "228b4111a7b18423e2450e81bf95ec54129d7757cd30f4397fc7b5dea504302d",
+    "crates/sp1-host/Cargo.lock": "345a845740dc17eb0718f4b5d9bf207988780530d1dd21a5af04d2ace81612d5",
+    "frontend/pnpm-lock.yaml": "192c680d74fe6a7f87fcb3c772720e61c2a72dfa91b79bd7372329f9d36ca0a9",
+    "scripts/tee-capture/Cargo.lock": "f97c8e6527cdc6e76bf0930ba73ea0fb3f86a49f9b17b0d2cf7c40fc5c06676b"
+  },
+  "tool_versions": "tool-versions.json",
+  "sp1_cli_archive_binary_matches": true,
+  "guest_identity_preflight": "guest-identity-preflight.json",
+  "guest_source_files_matched_to_candidate": 21,
+  "guest_source_closure_sha256": "3ed0cdde35a0a79c098cb615696ce04310508aef08d381d0a405edfe45eb1753",
+  "elf": {
+    "path": "crates/sp1-guest/target/elf-compilation/riscv64im-succinct-zkvm-elf/release/perp-core-guest",
+    "recorded_sha256": "a1f0a43033ffdd858bf99854cae814f5426c27db512088883ffa1a0e8f1c4e75",
+    "current_sha256": "a1f0a43033ffdd858bf99854cae814f5426c27db512088883ffa1a0e8f1c4e75",
+    "matches": true,
+    "size_bytes": 515096,
+    "format": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/sp1-guest/target/elf-compilation/riscv64im-succinct-zkvm-elf/release/perp-core-guest: ELF 64-bit LSB executable, UCB RISC-V, soft-float ABI, version 1 (SYSV), statically linked, not stripped"
+  },
+  "program_vkey": "0x0051a1c5d05d246f51d8dae1041d1faa9d73330b29bd2ce4ea13360a5154ad63",
+  "historical_build": {
+    "record": "docs/audits/2026-09-27-local/checks/guest-rebuild-pinned-path.json",
+    "argv": [
+      "python3",
+      "-c",
+      "import subprocess; subprocess.run([\"/tmp/arcora-tools/sp1-6.0.0/cargo-prove\",\"prove\",\"build\",\"--locked\"],cwd=\"crates/sp1-guest\",check=True)"
+    ],
+    "exit_code": 0,
+    "log_sha256": "f0744866d747f3e06e9045c0c8e540d1f08defc7c94330b81d3c6027a5fe86cf",
+    "log_matches_record": true,
+    "reproduction": {
+      "before_sha256": "a1f0a43033ffdd858bf99854cae814f5426c27db512088883ffa1a0e8f1c4e75",
+      "after_sha256": "a1f0a43033ffdd858bf99854cae814f5426c27db512088883ffa1a0e8f1c4e75",
+      "equal": true,
+      "exit_code": 0,
+      "size": 515096,
+      "method": "Same environment/cache; mtime forces guest recompilation. Not independent clean-container reproducibility. Earlier hash difference invalidated because core engine formatting changed; intervening wrong-PATH attempt failed before compiling."
+    }
+  },
+  "historical_vkey": {
+    "program_vkey": "0x0051a1c5d05d246f51d8dae1041d1faa9d73330b29bd2ce4ea13360a5154ad63",
+    "record": "docs/audits/2026-09-27-local/checks/sp1-vkey.json",
+    "argv": [
+      "/tmp/arcora-tools/sp1-6.0.0/cargo-prove",
+      "prove",
+      "vkey",
+      "--elf",
+      "crates/sp1-guest/target/elf-compilation/riscv64im-succinct-zkvm-elf/release/perp-core-guest"
+    ],
+    "exit_code": 0,
+    "log_sha256": "d061f5e97fe9066b03d9b6c4968b839fe45602dc314f9678d119dd46ec8dd417",
+    "log_matches_record": true,
+    "vkey_present_in_log": true,
+    "global_source_unchanged_during_historical_vkey": false,
+    "guest_closure_unchanged_during_historical_vkey": true
+  },
+  "candidate_binding_complete": true,
+  "release_decision": "HOLD",
+  "limits": [
+    "Historical ELF/vkey verified by unchanged guest source/dependency and tool identity, not newly generated this turn.",
+    "ELF and vkey are not proof generation, guest execution or verifier acceptance.",
+    "Historical repeat build used same machine/cache; independent clean-container reproduction is not established.",
+    "PATH solc0.8.20 differs from configured Foundry0.8.24; this candidate pins configured0.8.24 in tool-versions.",
+    "Candidate selection is local; no publication, merge or production release is implied."
+  ]
+}

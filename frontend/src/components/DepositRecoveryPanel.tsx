@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { formatUsd } from "../domain/format";
 import { EXPLORER_TX, useWalletAddress, type WalletDepositClient } from "../api/wallet";
-import { DEPOSIT_JOURNAL_EVENT, pendingDeposits, reconcileDeposit, type PendingDeposit } from "../api/depositFlow";
+import { DEPOSIT_JOURNAL_EVENT, pendingDeposits, prepareRevertedDepositRetry, reconcileDeposit, type PendingDeposit } from "../api/depositFlow";
 
 export function usePendingDeposits() {
   const read = () => {
@@ -30,13 +30,13 @@ export function DepositRecoveryPanel({ client, pending, issue, active, onCheckSt
 }) {
   const wallet = useWalletAddress();
   const [busy, setBusy] = useState<string | null>(null);
-  const [result, setResult] = useState<{ id: string; text: string; error: boolean } | null>(null);
+  const [result, setResult] = useState<{ id: string; revision: string; text: string; error: boolean; reverted?: boolean } | null>(null);
   const checking = useRef(false);
   const view = useRef({ client, wallet, mounted: true });
   view.current = { client, wallet, mounted: true };
   useEffect(() => () => { view.current.mounted = false; }, []);
 
-  async function check(original: PendingDeposit) {
+  async function check(original: PendingDeposit, prepareRetry = false) {
     if (checking.current || active) return;
     checking.current = true; setBusy(original.id); setResult(null); onCheckStart?.();
     const assertView = () => {
@@ -45,19 +45,21 @@ export function DepositRecoveryPanel({ client, pending, issue, active, onCheckSt
       }
     };
     try {
-      const response = await reconcileDeposit(client, original, assertView);
+      const response = await (prepareRetry ? prepareRevertedDepositRetry : reconcileDeposit)(client, original, assertView);
       assertView();
-      const text = response.status === "credited"
+      const text = response.status === "retry-ready"
+        ? "The failed transaction is finalized and its history has been saved. Resume the original deposit when ready. No new transaction was sent."
+        : response.status === "credited"
         ? `Original deposit of ${formatUsd(original.amount, 6)} is credited. No new transaction was sent.`
         : response.status === "pending"
           ? "The original transaction is still pending. Check its status again after it is mined. No new transaction was sent."
           : response.status === "reverted"
-            ? "The original transaction reverted. Keep its hash and review the failure in the explorer before deciding how to proceed. No new transaction was sent."
+            ? "The original transaction reverted. Review the failure in the explorer. Verify that the failure is finalized before allowing a retry. No new transaction was sent."
             : `${stepNames[response.step]} is confirmed. No vault deposit is recorded yet. Resume the original deposit when ready; this check sent no transaction.`;
-      setResult({ id: original.id, text, error: false });
+      setResult({ id: original.id, revision: original.revision, text, error: false, reverted: response.status === "reverted" });
       if (response.status === "credited") onCredited?.();
     } catch (error) {
-      if (view.current.mounted) setResult({ id: original.id, text: error instanceof Error ? error.message : String(error), error: true });
+      if (view.current.mounted) setResult({ id: original.id, revision: original.revision, text: error instanceof Error ? error.message : String(error), error: true });
     } finally {
       checking.current = false;
       if (view.current.mounted) setBusy(null);
@@ -84,9 +86,12 @@ export function DepositRecoveryPanel({ client, pending, issue, active, onCheckSt
               ? original.chainId === 84532
                 ? <a href={`${EXPLORER_TX}${original.hash}`} target="_blank" rel="noreferrer">{original.hash}</a>
                 : <code>{original.hash}</code>
-              : "Not returned by wallet"}</dd>
+              : original.retryReady ? "Ready for an explicit retry" : "Not returned by wallet"}</dd>
+            {original.previousHash && <><dt>Previous failed transaction</dt><dd><code>{original.previousHash}</code></dd></>}
           </dl>
-          {original.unknownSend ? (
+          {original.retryReady ? (
+            <p className="small">The finalized failure is saved. Resume the original deposit to retry the failed step; completed mint and approval steps will be kept.</p>
+          ) : original.unknownSend ? (
             <p className="small">
               {active ? "Waiting for the wallet's transaction response. " : "The transaction outcome is unknown because the wallet did not return its hash. "}
               Open this wallet’s activity on the displayed network and locate the original {stepNames[original.step].toLowerCase()} transaction for this amount.
@@ -99,6 +104,10 @@ export function DepositRecoveryPanel({ client, pending, issue, active, onCheckSt
               <button type="button" className="btn btn--ghost" disabled={active || busy !== null || wallet !== original.wallet} onClick={() => check(original)}>
                 {busy === original.id ? "Checking original transaction…" : "Check original transaction"}
               </button>
+              {result?.id === original.id && result.revision === original.revision && result.reverted && <button type="button" className="btn btn--ghost"
+                disabled={active || busy !== null || wallet !== original.wallet} onClick={() => check(original, true)}>
+                Verify failure and allow retry
+              </button>}
             </>
           )}
         </div>

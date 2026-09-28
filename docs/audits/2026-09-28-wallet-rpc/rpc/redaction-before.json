@@ -1,0 +1,23 @@
+{
+  "command": [
+    "python3",
+    "-m",
+    "unittest",
+    "discover",
+    "-s",
+    "scripts/local-verification",
+    "-p",
+    "test_read_deployment.py",
+    "-k",
+    "redaction",
+    "-v"
+  ],
+  "exit_code": 1,
+  "source_files": {
+    "scripts/local-verification/read_deployment.py": "b134ee6e2160ba22fda88f5d7a7ecafebcb1545ee6b779c2f5c5bd19490c25f2",
+    "scripts/local-verification/test_read_deployment.py": "bf7d62ed7fd8c4502866c900ec900b4abc84d7bd6e49892ac4ffd809f288eb05"
+  },
+  "log": "docs/audits/2026-09-28-wallet-rpc/rpc/redaction-before.log",
+  "log_sha256": "946fa2dbdf8f20215f6e8c7da494eb76ae58f56eb4e017928302e767f9ac579b",
+  "note": "Synthetic fixture token only; four redaction tests fail in nine subcases before correction."
+}

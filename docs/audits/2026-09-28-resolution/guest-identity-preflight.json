@@ -1,0 +1,384 @@
+{
+  "observed_utc": "2026-09-28T09:52:43.057238+00:00",
+  "head_observed": "79396952d3422b6cda5c83d05cf60bfa1cded410",
+  "candidate_commit": null,
+  "scope": "Read-only identity verification; no guest execution, build, proving, or deployment performed. Root will select source commit.",
+  "original_s5_01": "S5-01 Release aday\u0131 ve ger\u00e7ek guest ELF P0 K\u0131smi Do\u011frulanan SP1 6.0.0 ailesi sabitlendi; bo\u015f olmayan ger\u00e7ek guest ELF ve vkey \u00fcretildi. Ayn\u0131 ortam/cache\u2019de zorlanan tekrar derlemede ELF hash\u2019i e\u015fit; komut, s\u00fcr\u00fcm ve hash kay\u0131tl\u0131. Kapan\u0131\u015f i\u00e7in gereken Kod ve kan\u0131t art\u0131k commit kimli\u011fine sahip; fakat \u00fcst ba\u011f\u0131ml\u0131l\u0131klar\u0131n kapanmas\u0131, nihai release aday\u0131n\u0131n se\u00e7ilmesi ve t\u00fcm kan\u0131t\u0131n o kaynak/toolchain ile tekrar e\u015flenmesi h\u00e2l\u00e2 gerekli. Release source SHA ve t\u00fcm ara\u00e7/ba\u011f\u0131ml\u0131l\u0131k s\u00fcr\u00fcmleri sabit. Sonraki somut ad\u0131m \u00dcst kap\u0131lar kapan\u0131nca birle\u015ftirilmi\u015f kaynaktan release aday\u0131 SHA se\u00e7. Lockfile ve Rust/Node/pnpm/Foundry/Solidity/SP1 s\u00fcr\u00fcmlerini sabitle; guest ELF/vkey manifest\u2019ini o SHA ile \u00fcret veya i\u00e7erik e\u015fle\u015fmesini do\u011frula. \u0130kinci build\u2019in kapsam\u0131n\u0131 a\u00e7\u0131k\u00e7a kaydet. Ba\u011f\u0131ml\u0131l\u0131klar S3-03 (Tamamland\u0131) \u00b7 S4-05 (K\u0131smi) \u00b7 S4-08 (Tamamland\u0131) Kan\u0131t\u0131n s\u0131n\u0131r\u0131 Commit\u2019in olu\u015fmas\u0131 g\u00f6revi kendili\u011finden tamamlamaz. E\u015fit ELF hash\u2019i ayn\u0131 makine/cache i\u00e7in \u00f6l\u00e7\u00fcld\u00fc; ba\u011f\u0131ms\u0131z temiz container yeniden \u00fcretimi kan\u0131tlanmad\u0131. ELF/vkey, proof de\u011fildir. protocol/release-manifest.json protocol/guest-reproducibility-pinned-path.json checks/guest-build-family-locked.json",
+  "source_closure": {
+    "description": "All current tracked/untracked guest and perp-core source plus inherited workspace manifest and lockfiles; perp-core is the guest only path dependency.",
+    "file_count": 21,
+    "files": {
+      "Cargo.lock": {
+        "recorded_sha256": "0db4f88b8f0c4a67ae57b04ae26eaec8ff98370d79677bae63da8053714f2479",
+        "current_sha256": "0db4f88b8f0c4a67ae57b04ae26eaec8ff98370d79677bae63da8053714f2479",
+        "matches": true
+      },
+      "Cargo.toml": {
+        "recorded_sha256": "f18c3368075ac65c9c084cac8cf3ae6d8f5d40428552b821744ebd4a7ed3775c",
+        "current_sha256": "f18c3368075ac65c9c084cac8cf3ae6d8f5d40428552b821744ebd4a7ed3775c",
+        "matches": true
+      },
+      "crates/perp-core/Cargo.toml": {
+        "recorded_sha256": "3bfb6981fa34a967185ce75abd07683e5262a694ebd60eb45a4f5c55aaf9704c",
+        "current_sha256": "3bfb6981fa34a967185ce75abd07683e5262a694ebd60eb45a4f5c55aaf9704c",
+        "matches": true
+      },
+      "crates/perp-core/src/commitment.rs": {
+        "recorded_sha256": "e69ca8b7ed56ea9e26dac5f9192f49e520bf1843a5de3c01da74754af28850eb",
+        "current_sha256": "e69ca8b7ed56ea9e26dac5f9192f49e520bf1843a5de3c01da74754af28850eb",
+        "matches": true
+      },
+      "crates/perp-core/src/engine.rs": {
+        "recorded_sha256": "4d6037f1189939a71a41e31882012e6fa50b887087b5ccc2bfce4502b61d0f9e",
+        "current_sha256": "4d6037f1189939a71a41e31882012e6fa50b887087b5ccc2bfce4502b61d0f9e",
+        "matches": true
+      },
+      "crates/perp-core/src/error.rs": {
+        "recorded_sha256": "8d4e0833fbb1b9a15955fcee9f4308b31c227dda8184ca88fa865367eba04454",
+        "current_sha256": "8d4e0833fbb1b9a15955fcee9f4308b31c227dda8184ca88fa865367eba04454",
+        "matches": true
+      },
+      "crates/perp-core/src/fixed.rs": {
+        "recorded_sha256": "fc77559a31c1cfdd7a641cafbd773871aeb203849e165dbd158aa7a1b65ef7cd",
+        "current_sha256": "fc77559a31c1cfdd7a641cafbd773871aeb203849e165dbd158aa7a1b65ef7cd",
+        "matches": true
+      },
+      "crates/perp-core/src/funding.rs": {
+        "recorded_sha256": "8f782cf3a4403c717eda44c6d2955789c31e4ef2a04bb4fdac8e61916018e781",
+        "current_sha256": "8f782cf3a4403c717eda44c6d2955789c31e4ef2a04bb4fdac8e61916018e781",
+        "matches": true
+      },
+      "crates/perp-core/src/hash.rs": {
+        "recorded_sha256": "88430a8c2558b247bcf241035ad48fa1dbf8a3e77a0d176dfdbd608c930f93b9",
+        "current_sha256": "88430a8c2558b247bcf241035ad48fa1dbf8a3e77a0d176dfdbd608c930f93b9",
+        "matches": true
+      },
+      "crates/perp-core/src/lib.rs": {
+        "recorded_sha256": "bcccb82908ab23e1bb448ded275a4f2589356b9f27e03afe814945c03f6cbca1",
+        "current_sha256": "bcccb82908ab23e1bb448ded275a4f2589356b9f27e03afe814945c03f6cbca1",
+        "matches": true
+      },
+      "crates/perp-core/src/market.rs": {
+        "recorded_sha256": "8053e89a9b1021d6e461d46d733dfb1935aff5fc2a45be8121f96560fa4ddc2d",
+        "current_sha256": "8053e89a9b1021d6e461d46d733dfb1935aff5fc2a45be8121f96560fa4ddc2d",
+        "matches": true
+      },
+      "crates/perp-core/src/merkle.rs": {
+        "recorded_sha256": "173f4667178ba4aa4048e43c2aeb9fa337918d6225b98c6597c004b59bc3a8f6",
+        "current_sha256": "173f4667178ba4aa4048e43c2aeb9fa337918d6225b98c6597c004b59bc3a8f6",
+        "matches": true
+      },
+      "crates/perp-core/src/note.rs": {
+        "recorded_sha256": "5cece4d513537c10464bd64b4612f829cd32cb9c1a80d3c8e40c573aace62423",
+        "current_sha256": "5cece4d513537c10464bd64b4612f829cd32cb9c1a80d3c8e40c573aace62423",
+        "matches": true
+      },
+      "crates/perp-core/src/nullifier.rs": {
+        "recorded_sha256": "a252799c62dc42ec37c91ba6fd7674117b33c98c7f83e86b168f70898966ea78",
+        "current_sha256": "a252799c62dc42ec37c91ba6fd7674117b33c98c7f83e86b168f70898966ea78",
+        "matches": true
+      },
+      "crates/perp-core/src/oracle.rs": {
+        "recorded_sha256": "91ae09655e35432aafa1135b23588d6f1f324b41a278ac640ebc30f106d17da2",
+        "current_sha256": "91ae09655e35432aafa1135b23588d6f1f324b41a278ac640ebc30f106d17da2",
+        "matches": true
+      },
+      "crates/perp-core/src/order.rs": {
+        "recorded_sha256": "18dec398dce17d39aaf425b11b493369b7fc8775d8353d9ebb9d4066d8b0e78e",
+        "current_sha256": "18dec398dce17d39aaf425b11b493369b7fc8775d8353d9ebb9d4066d8b0e78e",
+        "matches": true
+      },
+      "crates/perp-core/src/position.rs": {
+        "recorded_sha256": "99d120139086092d2dae4ed11d3a677906c1cf3efd7aff9e58f27f3437f2ae66",
+        "current_sha256": "99d120139086092d2dae4ed11d3a677906c1cf3efd7aff9e58f27f3437f2ae66",
+        "matches": true
+      },
+      "crates/perp-core/src/state.rs": {
+        "recorded_sha256": "4c33e4141f4368c1398e863d4cab034a91bb77df6804f952ed3b3072fff2d42f",
+        "current_sha256": "4c33e4141f4368c1398e863d4cab034a91bb77df6804f952ed3b3072fff2d42f",
+        "matches": true
+      },
+      "crates/sp1-guest/Cargo.lock": {
+        "recorded_sha256": "228b4111a7b18423e2450e81bf95ec54129d7757cd30f4397fc7b5dea504302d",
+        "current_sha256": "228b4111a7b18423e2450e81bf95ec54129d7757cd30f4397fc7b5dea504302d",
+        "matches": true
+      },
+      "crates/sp1-guest/Cargo.toml": {
+        "recorded_sha256": "143fb1c758c933c97bfc0386a717d63054dc9ccc9499e51b43f9f3a9ccd27d69",
+        "current_sha256": "143fb1c758c933c97bfc0386a717d63054dc9ccc9499e51b43f9f3a9ccd27d69",
+        "matches": true
+      },
+      "crates/sp1-guest/src/main.rs": {
+        "recorded_sha256": "e42786165b03b05d98af2391ab80a82f79ea3fa30ee7cd3a55f40c1bd01cb782",
+        "current_sha256": "e42786165b03b05d98af2391ab80a82f79ea3fa30ee7cd3a55f40c1bd01cb782",
+        "matches": true
+      }
+    },
+    "all_match_recorded_successful_build": true,
+    "new_unrecorded_files": [],
+    "source_stable_during_historical_build": true,
+    "closure_sha256": "3ed0cdde35a0a79c098cb615696ce04310508aef08d381d0a405edfe45eb1753"
+  },
+  "elf": {
+    "path": "crates/sp1-guest/target/elf-compilation/riscv64im-succinct-zkvm-elf/release/perp-core-guest",
+    "recorded_sha256": "a1f0a43033ffdd858bf99854cae814f5426c27db512088883ffa1a0e8f1c4e75",
+    "current_sha256": "a1f0a43033ffdd858bf99854cae814f5426c27db512088883ffa1a0e8f1c4e75",
+    "matches": true,
+    "size_bytes": 515096,
+    "format": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/sp1-guest/target/elf-compilation/riscv64im-succinct-zkvm-elf/release/perp-core-guest: ELF 64-bit LSB executable, UCB RISC-V, soft-float ABI, version 1 (SYSV), statically linked, not stripped"
+  },
+  "historical_build": {
+    "record": "docs/audits/2026-09-27-local/checks/guest-rebuild-pinned-path.json",
+    "argv": [
+      "python3",
+      "-c",
+      "import subprocess; subprocess.run([\"/tmp/arcora-tools/sp1-6.0.0/cargo-prove\",\"prove\",\"build\",\"--locked\"],cwd=\"crates/sp1-guest\",check=True)"
+    ],
+    "exit_code": 0,
+    "log_sha256": "f0744866d747f3e06e9045c0c8e540d1f08defc7c94330b81d3c6027a5fe86cf",
+    "log_matches_record": true,
+    "reproduction": {
+      "before_sha256": "a1f0a43033ffdd858bf99854cae814f5426c27db512088883ffa1a0e8f1c4e75",
+      "after_sha256": "a1f0a43033ffdd858bf99854cae814f5426c27db512088883ffa1a0e8f1c4e75",
+      "equal": true,
+      "exit_code": 0,
+      "size": 515096,
+      "method": "Same environment/cache; mtime forces guest recompilation. Not independent clean-container reproducibility. Earlier hash difference invalidated because core engine formatting changed; intervening wrong-PATH attempt failed before compiling."
+    }
+  },
+  "historical_vkey": {
+    "program_vkey": "0x0051a1c5d05d246f51d8dae1041d1faa9d73330b29bd2ce4ea13360a5154ad63",
+    "record": "docs/audits/2026-09-27-local/checks/sp1-vkey.json",
+    "argv": [
+      "/tmp/arcora-tools/sp1-6.0.0/cargo-prove",
+      "prove",
+      "vkey",
+      "--elf",
+      "crates/sp1-guest/target/elf-compilation/riscv64im-succinct-zkvm-elf/release/perp-core-guest"
+    ],
+    "exit_code": 0,
+    "log_sha256": "d061f5e97fe9066b03d9b6c4968b839fe45602dc314f9678d119dd46ec8dd417",
+    "log_matches_record": true,
+    "vkey_present_in_log": true,
+    "global_source_unchanged_during_historical_vkey": false,
+    "guest_closure_unchanged_during_historical_vkey": true
+  },
+  "lockfiles": {
+    "Cargo.lock": {
+      "recorded_sha256": "0db4f88b8f0c4a67ae57b04ae26eaec8ff98370d79677bae63da8053714f2479",
+      "current_sha256": "0db4f88b8f0c4a67ae57b04ae26eaec8ff98370d79677bae63da8053714f2479",
+      "matches": true
+    },
+    "frontend/pnpm-lock.yaml": {
+      "recorded_sha256": "153011d388345922c0775c99ac5a779c13049bc77dbf05b6e0567e1d4347bd6c",
+      "current_sha256": "192c680d74fe6a7f87fcb3c772720e61c2a72dfa91b79bd7372329f9d36ca0a9",
+      "matches": false
+    },
+    "crates/sp1-guest/Cargo.lock": {
+      "recorded_sha256": "228b4111a7b18423e2450e81bf95ec54129d7757cd30f4397fc7b5dea504302d",
+      "current_sha256": "228b4111a7b18423e2450e81bf95ec54129d7757cd30f4397fc7b5dea504302d",
+      "matches": true
+    },
+    "crates/sp1-host/Cargo.lock": {
+      "recorded_sha256": "345a845740dc17eb0718f4b5d9bf207988780530d1dd21a5af04d2ace81612d5",
+      "current_sha256": "345a845740dc17eb0718f4b5d9bf207988780530d1dd21a5af04d2ace81612d5",
+      "matches": true
+    },
+    "crates/prover-service/Cargo.lock": {
+      "recorded_sha256": "c1e85ae35501c47ed0bcc433c32e27f771b3e565a8747865f02de4e6cf235dbc",
+      "current_sha256": "0aa85f2c4bbb45814257e86a20540098b4793ded2aa9b1a34afa211aec81bc32",
+      "matches": false
+    }
+  },
+  "tool_versions_file": "tool-versions.json",
+  "sp1_cli_binary_sha256": "efa4dd8f87f599d3161905ca2eb3de18af0bf66315f3e1272ad813d9a8636167",
+  "sp1_cli_archive_paths": [
+    {
+      "path": "/tmp/arcora-tools/sp1-6.0.0/cli.tar.gz",
+      "sha256": "04bc59c91993002fcea9265e5694a78ced7fe92cb42a25e8ce29acec3c366393"
+    }
+  ],
+  "limits": [
+    "Source commit has not been selected here.",
+    "ELF/vkey are identity evidence, not proof or verifier execution.",
+    "Historical repeat build used same machine/cache, with forced recompilation; no independent clean-container claim.",
+    "Current tool binary versions and hashes are recorded without modifying project/tool installation."
+  ],
+  "missing_identity": [
+    "At least one wider application lockfile differs from prior manifest and must be pinned to candidate.",
+    "Root must select candidate source commit and confirm its guest/core/manifest/lockfile bytes match these observed files."
+  ],
+  "sp1_cli_archive": {
+    "path": "/tmp/arcora-tools/sp1-6.0.0/cli.tar.gz",
+    "sha256": "04bc59c91993002fcea9265e5694a78ced7fe92cb42a25e8ce29acec3c366393",
+    "recorded_release_archive_sha256": "04bc59c91993002fcea9265e5694a78ced7fe92cb42a25e8ce29acec3c366393",
+    "matches": true,
+    "note": "The old sp1-toolchain cli_sha256 field hashes the archive, not the installed cargo-prove binary.",
+    "installed_cli_matches_archive_member": true,
+    "member_sha256": "efa4dd8f87f599d3161905ca2eb3de18af0bf66315f3e1272ad813d9a8636167"
+  },
+  "solidity": {
+    "configured": "0.8.24",
+    "foundry_config_verified": true,
+    "selected_binary": {
+      "argv": [
+        "/Users/huseyinarslan/Library/Application Support/svm/0.8.24/solc-0.8.24",
+        "--version"
+      ],
+      "exit_code": 0,
+      "stdout": "solc, the solidity compiler commandline interface\nVersion: 0.8.24+commit.e11b9ed9.Darwin.appleclang",
+      "stderr": "",
+      "binary_sha256": "1cb1bfc4cdf6873ebf36dc65317a8a0614096b9c2bcca5bb1f70d57d319c50a6",
+      "resolved_path": "/Users/huseyinarslan/Library/Application Support/svm/0.8.24/solc-0.8.24"
+    },
+    "path_default": "0.8.20",
+    "note": "Use Foundry configured compiler 0.8.24; PATH solc 0.8.20 is not the configured compiler."
+  },
+  "observed_head_blob_binding": {
+    "head": "79396952d3422b6cda5c83d05cf60bfa1cded410",
+    "all_match": true,
+    "files": {
+      "Cargo.lock": {
+        "current_sha256": "0db4f88b8f0c4a67ae57b04ae26eaec8ff98370d79677bae63da8053714f2479",
+        "head_blob_sha256": "0db4f88b8f0c4a67ae57b04ae26eaec8ff98370d79677bae63da8053714f2479",
+        "matches": true
+      },
+      "Cargo.toml": {
+        "current_sha256": "f18c3368075ac65c9c084cac8cf3ae6d8f5d40428552b821744ebd4a7ed3775c",
+        "head_blob_sha256": "f18c3368075ac65c9c084cac8cf3ae6d8f5d40428552b821744ebd4a7ed3775c",
+        "matches": true
+      },
+      "contracts/foundry.toml": {
+        "current_sha256": "63c8ffaf5f94a4443156bcd1b082c7e45bb497bc74de7db85998371aec931dea",
+        "head_blob_sha256": "63c8ffaf5f94a4443156bcd1b082c7e45bb497bc74de7db85998371aec931dea",
+        "matches": true
+      },
+      "crates/perp-core/Cargo.toml": {
+        "current_sha256": "3bfb6981fa34a967185ce75abd07683e5262a694ebd60eb45a4f5c55aaf9704c",
+        "head_blob_sha256": "3bfb6981fa34a967185ce75abd07683e5262a694ebd60eb45a4f5c55aaf9704c",
+        "matches": true
+      },
+      "crates/perp-core/src/commitment.rs": {
+        "current_sha256": "e69ca8b7ed56ea9e26dac5f9192f49e520bf1843a5de3c01da74754af28850eb",
+        "head_blob_sha256": "e69ca8b7ed56ea9e26dac5f9192f49e520bf1843a5de3c01da74754af28850eb",
+        "matches": true
+      },
+      "crates/perp-core/src/engine.rs": {
+        "current_sha256": "4d6037f1189939a71a41e31882012e6fa50b887087b5ccc2bfce4502b61d0f9e",
+        "head_blob_sha256": "4d6037f1189939a71a41e31882012e6fa50b887087b5ccc2bfce4502b61d0f9e",
+        "matches": true
+      },
+      "crates/perp-core/src/error.rs": {
+        "current_sha256": "8d4e0833fbb1b9a15955fcee9f4308b31c227dda8184ca88fa865367eba04454",
+        "head_blob_sha256": "8d4e0833fbb1b9a15955fcee9f4308b31c227dda8184ca88fa865367eba04454",
+        "matches": true
+      },
+      "crates/perp-core/src/fixed.rs": {
+        "current_sha256": "fc77559a31c1cfdd7a641cafbd773871aeb203849e165dbd158aa7a1b65ef7cd",
+        "head_blob_sha256": "fc77559a31c1cfdd7a641cafbd773871aeb203849e165dbd158aa7a1b65ef7cd",
+        "matches": true
+      },
+      "crates/perp-core/src/funding.rs": {
+        "current_sha256": "8f782cf3a4403c717eda44c6d2955789c31e4ef2a04bb4fdac8e61916018e781",
+        "head_blob_sha256": "8f782cf3a4403c717eda44c6d2955789c31e4ef2a04bb4fdac8e61916018e781",
+        "matches": true
+      },
+      "crates/perp-core/src/hash.rs": {
+        "current_sha256": "88430a8c2558b247bcf241035ad48fa1dbf8a3e77a0d176dfdbd608c930f93b9",
+        "head_blob_sha256": "88430a8c2558b247bcf241035ad48fa1dbf8a3e77a0d176dfdbd608c930f93b9",
+        "matches": true
+      },
+      "crates/perp-core/src/lib.rs": {
+        "current_sha256": "bcccb82908ab23e1bb448ded275a4f2589356b9f27e03afe814945c03f6cbca1",
+        "head_blob_sha256": "bcccb82908ab23e1bb448ded275a4f2589356b9f27e03afe814945c03f6cbca1",
+        "matches": true
+      },
+      "crates/perp-core/src/market.rs": {
+        "current_sha256": "8053e89a9b1021d6e461d46d733dfb1935aff5fc2a45be8121f96560fa4ddc2d",
+        "head_blob_sha256": "8053e89a9b1021d6e461d46d733dfb1935aff5fc2a45be8121f96560fa4ddc2d",
+        "matches": true
+      },
+      "crates/perp-core/src/merkle.rs": {
+        "current_sha256": "173f4667178ba4aa4048e43c2aeb9fa337918d6225b98c6597c004b59bc3a8f6",
+        "head_blob_sha256": "173f4667178ba4aa4048e43c2aeb9fa337918d6225b98c6597c004b59bc3a8f6",
+        "matches": true
+      },
+      "crates/perp-core/src/note.rs": {
+        "current_sha256": "5cece4d513537c10464bd64b4612f829cd32cb9c1a80d3c8e40c573aace62423",
+        "head_blob_sha256": "5cece4d513537c10464bd64b4612f829cd32cb9c1a80d3c8e40c573aace62423",
+        "matches": true
+      },
+      "crates/perp-core/src/nullifier.rs": {
+        "current_sha256": "a252799c62dc42ec37c91ba6fd7674117b33c98c7f83e86b168f70898966ea78",
+        "head_blob_sha256": "a252799c62dc42ec37c91ba6fd7674117b33c98c7f83e86b168f70898966ea78",
+        "matches": true
+      },
+      "crates/perp-core/src/oracle.rs": {
+        "current_sha256": "91ae09655e35432aafa1135b23588d6f1f324b41a278ac640ebc30f106d17da2",
+        "head_blob_sha256": "91ae09655e35432aafa1135b23588d6f1f324b41a278ac640ebc30f106d17da2",
+        "matches": true
+      },
+      "crates/perp-core/src/order.rs": {
+        "current_sha256": "18dec398dce17d39aaf425b11b493369b7fc8775d8353d9ebb9d4066d8b0e78e",
+        "head_blob_sha256": "18dec398dce17d39aaf425b11b493369b7fc8775d8353d9ebb9d4066d8b0e78e",
+        "matches": true
+      },
+      "crates/perp-core/src/position.rs": {
+        "current_sha256": "99d120139086092d2dae4ed11d3a677906c1cf3efd7aff9e58f27f3437f2ae66",
+        "head_blob_sha256": "99d120139086092d2dae4ed11d3a677906c1cf3efd7aff9e58f27f3437f2ae66",
+        "matches": true
+      },
+      "crates/perp-core/src/state.rs": {
+        "current_sha256": "4c33e4141f4368c1398e863d4cab034a91bb77df6804f952ed3b3072fff2d42f",
+        "head_blob_sha256": "4c33e4141f4368c1398e863d4cab034a91bb77df6804f952ed3b3072fff2d42f",
+        "matches": true
+      },
+      "crates/prover-service/Cargo.lock": {
+        "current_sha256": "0aa85f2c4bbb45814257e86a20540098b4793ded2aa9b1a34afa211aec81bc32",
+        "head_blob_sha256": "0aa85f2c4bbb45814257e86a20540098b4793ded2aa9b1a34afa211aec81bc32",
+        "matches": true
+      },
+      "crates/prover-service/Cargo.toml": {
+        "current_sha256": "7cd7a23f64a8b995cac65bb1bb17a5da00a85e270fd042fc93c3728706d2e743",
+        "head_blob_sha256": "7cd7a23f64a8b995cac65bb1bb17a5da00a85e270fd042fc93c3728706d2e743",
+        "matches": true
+      },
+      "crates/sp1-guest/Cargo.lock": {
+        "current_sha256": "228b4111a7b18423e2450e81bf95ec54129d7757cd30f4397fc7b5dea504302d",
+        "head_blob_sha256": "228b4111a7b18423e2450e81bf95ec54129d7757cd30f4397fc7b5dea504302d",
+        "matches": true
+      },
+      "crates/sp1-guest/Cargo.toml": {
+        "current_sha256": "143fb1c758c933c97bfc0386a717d63054dc9ccc9499e51b43f9f3a9ccd27d69",
+        "head_blob_sha256": "143fb1c758c933c97bfc0386a717d63054dc9ccc9499e51b43f9f3a9ccd27d69",
+        "matches": true
+      },
+      "crates/sp1-guest/src/main.rs": {
+        "current_sha256": "e42786165b03b05d98af2391ab80a82f79ea3fa30ee7cd3a55f40c1bd01cb782",
+        "head_blob_sha256": "e42786165b03b05d98af2391ab80a82f79ea3fa30ee7cd3a55f40c1bd01cb782",
+        "matches": true
+      },
+      "crates/sp1-host/Cargo.lock": {
+        "current_sha256": "345a845740dc17eb0718f4b5d9bf207988780530d1dd21a5af04d2ace81612d5",
+        "head_blob_sha256": "345a845740dc17eb0718f4b5d9bf207988780530d1dd21a5af04d2ace81612d5",
+        "matches": true
+      },
+      "crates/sp1-host/Cargo.toml": {
+        "current_sha256": "cbcba29488dbe68a6f80277a24675046e3f1e5277758a981460a66e2438941e4",
+        "head_blob_sha256": "cbcba29488dbe68a6f80277a24675046e3f1e5277758a981460a66e2438941e4",
+        "matches": true
+      },
+      "frontend/package.json": {
+        "current_sha256": "15fa1320c18353713a7706c26f4fec036464295d1784ee50b9063443786dac16",
+        "head_blob_sha256": "15fa1320c18353713a7706c26f4fec036464295d1784ee50b9063443786dac16",
+        "matches": true
+      },
+      "frontend/pnpm-lock.yaml": {
+        "current_sha256": "192c680d74fe6a7f87fcb3c772720e61c2a72dfa91b79bd7372329f9d36ca0a9",
+        "head_blob_sha256": "192c680d74fe6a7f87fcb3c772720e61c2a72dfa91b79bd7372329f9d36ca0a9",
+        "matches": true
+      }
+    },
+    "note": "Read-only comparison against observed HEAD; candidate selection remains with root."
+  }
+}

@@ -1,0 +1,95 @@
+{
+  "observed_at_utc": "2026-09-28T12:52:46.746611+00:00",
+  "head": "5a3574612669baf153cca4515be95cf71da0ba73",
+  "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+  "source_files": {
+    "scripts/local-verification/read_deployment.py": "d61305b3e48dd2a3fef392c7b906396ed69d711d9b9e6b633ee8e4eb152724ca",
+    "scripts/local-verification/test_read_deployment.py": "518fb38a7449c55ef5397d77b08e5a5ea53c97b5fce906cf891034056c0e29f1",
+    "contracts/deployments/base-sepolia.json": "fc9a79ea4893d6d68c4b0aa34df57d365ac11137857eba58926cba8f0e8652be"
+  },
+  "source_unchanged_after_checks": true,
+  "checks": [
+    {
+      "name": "reader-tests",
+      "command": [
+        "python3",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "scripts/local-verification",
+        "-p",
+        "test_read_deployment.py",
+        "-v"
+      ],
+      "exit_code": 0,
+      "duration_seconds": 0.188,
+      "log": "docs/audits/2026-09-28-wallet-rpc/rpc/reader-tests.log",
+      "log_sha256": "d7beca5de52c0a8838184185e13be0607fc02f076a3a54c112041703bc77b52f"
+    },
+    {
+      "name": "reader-tests-optimized",
+      "command": [
+        "python3",
+        "-O",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "scripts/local-verification",
+        "-p",
+        "test_read_deployment.py",
+        "-v"
+      ],
+      "exit_code": 0,
+      "duration_seconds": 0.194,
+      "log": "docs/audits/2026-09-28-wallet-rpc/rpc/reader-tests-optimized.log",
+      "log_sha256": "d7beca5de52c0a8838184185e13be0607fc02f076a3a54c112041703bc77b52f"
+    },
+    {
+      "name": "syntax",
+      "command": [
+        "python3",
+        "-m",
+        "py_compile",
+        "scripts/local-verification/read_deployment.py",
+        "scripts/local-verification/test_read_deployment.py"
+      ],
+      "exit_code": 0,
+      "duration_seconds": 0.028,
+      "log": "docs/audits/2026-09-28-wallet-rpc/rpc/syntax.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "diff-check",
+      "command": [
+        "git",
+        "diff",
+        "--check",
+        "--",
+        "scripts/local-verification/read_deployment.py",
+        "scripts/local-verification/test_read_deployment.py"
+      ],
+      "exit_code": 0,
+      "duration_seconds": 0.014,
+      "log": "docs/audits/2026-09-28-wallet-rpc/rpc/diff-check.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "unit_tests": 29,
+  "redaction_regression": {
+    "before": "redaction-before.json",
+    "before_tests": 4,
+    "before_failing_subcases": 9,
+    "after_tests_included_in_unit_tests": 4,
+    "synthetic_fixture_only": true
+  },
+  "live_refresh": {
+    "attempts": 1,
+    "evidence": "docs/audits/2026-09-28-wallet-rpc/rpc/initial-observation-checks/deployment-observation.json",
+    "source_identity": "docs/audits/2026-09-28-wallet-rpc/rpc/initial-observation-checks/verification.json",
+    "result": "BLOCKED HTTP403",
+    "final_source_replayed_against_live_endpoint": false
+  },
+  "verdict": "PASS for offline reader acceptance; S6-03 remains PARTIAL"
+}

@@ -1,0 +1,43 @@
+{
+  "status": "STOPPED",
+  "scope": "Real compiled browser App + real Rust gateway HTTP/WS + actual extension to be driven by parent; NO L1/real token/proof",
+  "scratch": "/tmp/arcora-extension-wallet-2vhdkiab",
+  "repo": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+  "supervisor_pid": 23066,
+  "source_head": "5a3574612669baf153cca4515be95cf71da0ba73",
+  "gateway_binary_sha256": "760297f52323bd4068568b1311f64fa7a3418c280cb68e3debbe73af709c3705",
+  "frontend_source_manifest_sha256": "ac689b166a9e55cbd7e45f9c44c3552f13c17f7e33e98631d0650ac7758427d4",
+  "processes": [
+    {
+      "kind": "gateway",
+      "pid": 23067,
+      "exit_code": 0
+    },
+    {
+      "kind": "proxy",
+      "pid": 23078,
+      "exit_code": 0
+    }
+  ],
+  "logs": {
+    "gateway": "/tmp/arcora-extension-wallet-2vhdkiab/gateway-v2.log",
+    "proxy": "/tmp/arcora-extension-wallet-2vhdkiab/proxy-v2.log"
+  },
+  "snapshot_path": "/tmp/arcora-extension-wallet-2vhdkiab/gateway.snapshot",
+  "csp": "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; font-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'",
+  "gateway_url": "http://127.0.0.1:49395",
+  "browser_url": "http://127.0.0.1:49399",
+  "smoke": {
+    "allowed_origin_account_post": 200,
+    "untrusted_origin_account_post": 403,
+    "/ws_allowed_origin_handshake": 101,
+    "/ws_untrusted_origin_handshake": 403,
+    "/v1/ws_allowed_origin_handshake": 101,
+    "/v1/ws_untrusted_origin_handshake": 403,
+    "strict_csp_index": 200
+  },
+  "allowed_origins": [
+    "http://127.0.0.1:49399"
+  ],
+  "restart_reason": "Exact browser proxy origin was missing from gateway allowlist; initial GET-only smoke did not detect POST/WS refusal. Existing snapshot and origin retained."
+}

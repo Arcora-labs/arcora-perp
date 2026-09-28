@@ -1,0 +1,385 @@
+{
+  "status": "PASS",
+  "source_sha256": "08137009327fd66fac659face0eb611aa3104ec0900add759d39fb127e2c0e74",
+  "runtime_source_proof": "runtime/source-verification.json",
+  "checks": [
+    {
+      "id": "01-onboard",
+      "exit_code": 0,
+      "time": 1790600140.276167,
+      "code_file": "01-onboard.js",
+      "result": {
+        "onboarded": true,
+        "provider": "Unmodified official MetaMask",
+        "noSeedRead": true
+      },
+      "log_sha256": "155d0d54a92b8997993889ca89842e66f621f300b754a5227b173828e6be7bda",
+      "script_sha256": "33ffe34b82f04610aa89a9ed8c0ba236ded04114984f3a77cdee900df04adbd5"
+    },
+    {
+      "id": "02-connect",
+      "exit_code": 0,
+      "time": 1790600162.292934,
+      "code_file": "02-connect.js",
+      "result": {
+        "address": "0x6ec487ae4bf9fedbe4b98f25a45bdc42511a3faf",
+        "owner": "0x84339ff96e5cafee192e00dac79c041025fca2188ab8c8dd9b862345969dab21",
+        "generation": 0
+      },
+      "log_sha256": "292843b3cf9c6951ab0ee4ba94161d70bb85b441bb7e74e54771ed1d7c241a9e",
+      "script_sha256": "6ab51b4a6cf5253e7540f0a9d07ee39e3ab1f9cde7628dd0c601d8bd0668368a"
+    },
+    {
+      "id": "03-bind",
+      "exit_code": 0,
+      "time": 1790600194.227551,
+      "code_file": "03-bind.js",
+      "result": [
+        {
+          "id": "real-metamask-bind",
+          "pass": true
+        }
+      ],
+      "log_sha256": "27702c3bd58c1b692ee66bb58651b0b2cb1b2c0cbb81266932825ceaaf346888",
+      "script_sha256": "5c9c37589de45a582399999a9327a767e710234bdd102fe5fc249bc03cc23e85"
+    },
+    {
+      "id": "04-rotation",
+      "exit_code": 0,
+      "time": 1790600230.126941,
+      "code_file": "04-rotation.js",
+      "result": [
+        {
+          "id": "real-metamask-bind",
+          "pass": true
+        },
+        {
+          "id": "native-lock-busy",
+          "pass": true,
+          "alert": "Recovery is already in progress in another tab. Finish it there before retrying."
+        },
+        {
+          "id": "actual-rejection",
+          "pass": true,
+          "unchanged": true,
+          "rejection": "Wallet refused the recovery signature."
+        },
+        {
+          "id": "rotation-old-access-revoked",
+          "pass": true,
+          "generation": 1,
+          "oldHttpStatus": 401,
+          "oldSocketClosed": true,
+          "socketReplaced": true,
+          "ownerPreserved": true
+        },
+        {
+          "id": "sibling-key-and-private-ws-adopted",
+          "pass": true
+        },
+        {
+          "id": "reload-a",
+          "pass": true,
+          "generation": 1
+        },
+        {
+          "id": "reload-b",
+          "pass": true,
+          "generation": 1
+        }
+      ],
+      "log_sha256": "c17879c7462e2a1d76cdecd6b2ad42f5667314e2d988c1e71c56f7516290c369",
+      "script_sha256": "334409b84340fc23966f9d0ad22d77c73f0aef3d78240a1e7b4c7f2a667a772d"
+    },
+    {
+      "id": "05-storage",
+      "exit_code": 0,
+      "time": 1790600264.7995038,
+      "code_file": "05-storage.js",
+      "result": [
+        {
+          "id": "storage-quota-session-only",
+          "pass": true,
+          "controlledFault": "Storage.setItem credential write throws QuotaExceededError",
+          "notice": "Account recovered. Credential generation is now #2. Account access is available for this tab only. Browser storage is unavailable. Keep this tab open; after reloading, use wallet recovery again. The old saved key may no longer work.",
+          "generation": 2,
+          "storage": "session",
+          "savedGeneration": 1,
+          "accountStatus": 200
+        },
+        {
+          "id": "session-only-reload",
+          "pass": true,
+          "degradedVisible": true,
+          "replacementRegistrations": 0
+        }
+      ],
+      "log_sha256": "559006254d79d157d18d6463e6b810f0c03b736991222536f70ea3e50a77b886",
+      "script_sha256": "f32666805d08cc88cb9565c72c56397b9e6bb400cebbf1ddde9056a83a555213"
+    },
+    {
+      "id": "06-legacy",
+      "exit_code": 0,
+      "time": 1790600312.272913,
+      "code_file": "06-legacy.js",
+      "result": [
+        {
+          "id": "mismatch-scope-preserved",
+          "pass": true,
+          "preserved": true,
+          "authenticatedRequests": 0,
+          "replacementRegistrations": 0
+        },
+        {
+          "id": "corrupt-scope-preserved",
+          "pass": true,
+          "preserved": true,
+          "authenticatedRequests": 0,
+          "replacementRegistrations": 0
+        },
+        {
+          "id": "actual-legacy-wallet-recovery",
+          "pass": true,
+          "generation": 3,
+          "ownerPreserved": true,
+          "legacyUnchanged": true,
+          "storage": "persistent",
+          "accountStatus": 200
+        }
+      ],
+      "log_sha256": "c677ecb95256bc52d9aae5593f8495d64e4993f1e7751498a3939b0d11d002a5",
+      "script_sha256": "a74851488a7d79a8381fc97344709101fd84d09fe2f9a8e61ccca7c421d7aae3"
+    },
+    {
+      "id": "07b-final-checks",
+      "exit_code": 0,
+      "time": 1790600402.377603,
+      "code_file": "07b-final-checks.js",
+      "result": {
+        "browser": "154.0.8037.0",
+        "wallet": "MetaMask 13.50.0 official unmodified extension",
+        "scope": "Real wallet signing + native Rust gateway, no L1/token/proof",
+        "observations": [
+          {
+            "id": "real-metamask-bind",
+            "pass": true
+          },
+          {
+            "id": "native-lock-busy",
+            "pass": true,
+            "alert": "Recovery is already in progress in another tab. Finish it there before retrying."
+          },
+          {
+            "id": "actual-rejection",
+            "pass": true,
+            "unchanged": true,
+            "rejection": "Wallet refused the recovery signature."
+          },
+          {
+            "id": "rotation-old-access-revoked",
+            "pass": true,
+            "generation": 1,
+            "oldHttpStatus": 401,
+            "oldSocketClosed": true,
+            "socketReplaced": true,
+            "ownerPreserved": true
+          },
+          {
+            "id": "sibling-key-and-private-ws-adopted",
+            "pass": true
+          },
+          {
+            "id": "reload-a",
+            "pass": true,
+            "generation": 1
+          },
+          {
+            "id": "reload-b",
+            "pass": true,
+            "generation": 1
+          },
+          {
+            "id": "storage-quota-session-only",
+            "pass": true,
+            "controlledFault": "Storage.setItem credential write throws QuotaExceededError",
+            "notice": "Account recovered. Credential generation is now #2. Account access is available for this tab only. Browser storage is unavailable. Keep this tab open; after reloading, use wallet recovery again. The old saved key may no longer work.",
+            "generation": 2,
+            "storage": "session",
+            "savedGeneration": 1,
+            "accountStatus": 200
+          },
+          {
+            "id": "session-only-reload",
+            "pass": true,
+            "degradedVisible": true,
+            "replacementRegistrations": 0
+          },
+          {
+            "id": "mismatch-scope-preserved",
+            "pass": true,
+            "preserved": true,
+            "authenticatedRequests": 0,
+            "replacementRegistrations": 0
+          },
+          {
+            "id": "corrupt-scope-preserved",
+            "pass": true,
+            "preserved": true,
+            "authenticatedRequests": 0,
+            "replacementRegistrations": 0
+          },
+          {
+            "id": "actual-legacy-wallet-recovery",
+            "pass": true,
+            "generation": 3,
+            "ownerPreserved": true,
+            "legacyUnchanged": true,
+            "storage": "persistent",
+            "accountStatus": 200
+          },
+          {
+            "id": "old-key-new-websocket-denied",
+            "pass": true,
+            "authOk": false,
+            "error": true,
+            "serverError": "unknown api key",
+            "clientClosedAfterError": true
+          },
+          {
+            "id": "missing-lock-fails-before-mutation",
+            "pass": true,
+            "alert": "Recovery needs a secure browser tab with cross-tab locking enabled.",
+            "posts": 0
+          },
+          {
+            "id": "actual-csp-and-redaction",
+            "pass": true,
+            "csp": "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; font-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'",
+            "credentialValuesChecked": 4,
+            "credentialLeaks": 0,
+            "cspViolations": 0
+          }
+        ],
+        "console": [
+          "MetaMask - RPC Error: User rejected the request. {code: 4001, message: User rejected the request., data: Object, stack: {\n  \"code\": 4001,\n  \"message\": \"User rejected the \u2026dmakoiiiekb/4305.59927e55333e8c371c76.js:1:143815}",
+          "[dark-perp] account stream unavailable; verify the account or use wallet recovery.",
+          "[dark-perp] account stream unavailable; verify the account or use wallet recovery.",
+          "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+          "MaxListenersExceededWarning: Possible EventEmitter memory leak detected. 11 close listeners added. Use emitter.setMaxListeners() to increase limit",
+          "MaxListenersExceededWarning: Possible EventEmitter memory leak detected. 11 end listeners added. Use emitter.setMaxListeners() to increase limit",
+          "ObjectMultiplex - orphaned data for stream \"app-init-liveness\"",
+          "ObjectMultiplex - orphaned data for stream \"app-init-liveness\"",
+          "ObjectMultiplex - orphaned data for stream \"background-liveness\"",
+          "ObjectMultiplex - orphaned data for stream \"background-liveness\"",
+          "WebSocket connection to 'ws://127.0.0.1:49399/v1/ws' failed: WebSocket is closed before the connection is established.",
+          "MaxListenersExceededWarning: Possible EventEmitter memory leak detected. 11 close listeners added. Use emitter.setMaxListeners() to increase limit",
+          "MaxListenersExceededWarning: Possible EventEmitter memory leak detected. 11 end listeners added. Use emitter.setMaxListeners() to increase limit",
+          "ObjectMultiplex - orphaned data for stream \"app-init-liveness\"",
+          "ObjectMultiplex - orphaned data for stream \"app-init-liveness\"",
+          "ObjectMultiplex - orphaned data for stream \"background-liveness\"",
+          "ObjectMultiplex - orphaned data for stream \"background-liveness\"",
+          "WebSocket connection to 'ws://127.0.0.1:49399/v1/ws' failed: WebSocket is closed before the connection is established.",
+          "[dark-perp] account stream unavailable; verify the account or use wallet recovery.",
+          "[dark-perp] account stream unavailable; verify the account or use wallet recovery.",
+          "MaxListenersExceededWarning: Possible EventEmitter memory leak detected. 11 close listeners added. Use emitter.setMaxListeners() to increase limit",
+          "MaxListenersExceededWarning: Possible EventEmitter memory leak detected. 11 end listeners added. Use emitter.setMaxListeners() to increase limit",
+          "ObjectMultiplex - orphaned data for stream \"app-init-liveness\"",
+          "ObjectMultiplex - orphaned data for stream \"app-init-liveness\"",
+          "ObjectMultiplex - orphaned data for stream \"background-liveness\"",
+          "ObjectMultiplex - orphaned data for stream \"background-liveness\"",
+          "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+          "[dark-perp] sealed-order setup failed at bootstrap (will retry on first order): Error: Saved account validation failed (401); use wallet recovery, not a replacement account.\n    at es.initAccount (http://127.0.0.1:49399/assets/index-Dl0mwSln.js:40:148939)\n    at async Promise.all (index 0)\n    at async es.prepareSealing (http://127.0.0.1:49399/assets/index-Dl0mwSln.js:40:147548)\n    at async es.bootstrap (http://127.0.0.1:49399/assets/index-Dl0mwSln.js:40:147358)\n    at async es.bootstrap (http://127.0.0.1:49399/assets/index-Dl0mwSln.js:62:6184)",
+          "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+          "[dark-perp] /v1 own-account read failed (own view degraded until a read succeeds): Error: Saved account validation failed (401); use wallet recovery, not a replacement account.\n    at es.initAccount (http://127.0.0.1:49399/assets/index-Dl0mwSln.js:40:148939)\n    at async es.fetchOwnStateOnce (http://127.0.0.1:49399/assets/index-Dl0mwSln.js:40:160634)\n    at async http://127.0.0.1:49399/assets/index-Dl0mwSln.js:40:160410\n    at async es.bootstrap (http://127.0.0.1:49399/assets/index-Dl0mwSln.js:40:147497)\n    at async es.bootstrap (http://127.0.0.1:49399/assets/index-Dl0mwSln.js:62:6184)",
+          "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+          "[dark-perp] /v1 own-account read failed (own view degraded until a read succeeds): Error: Saved account validation failed (401); use wallet recovery, not a replacement account.\n    at es.initAccount (http://127.0.0.1:49399/assets/index-Dl0mwSln.js:40:148939)\n    at async es.fetchOwnStateOnce (http://127.0.0.1:49399/assets/index-Dl0mwSln.js:40:160634)\n    at async http://127.0.0.1:49399/assets/index-Dl0mwSln.js:40:160410\n    at async es.bootstrap (http://127.0.0.1:49399/assets/index-Dl0mwSln.js:40:147497)\n    at async es.bootstrap (http://127.0.0.1:49399/assets/index-Dl0mwSln.js:62:6184)",
+          "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+          "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+          "[dark-perp] account stream unavailable; verify the account or use wallet recovery.",
+          "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+          "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+          "MaxListenersExceededWarning: Possible EventEmitter memory leak detected. 11 close listeners added. Use emitter.setMaxListeners() to increase limit",
+          "MaxListenersExceededWarning: Possible EventEmitter memory leak detected. 11 end listeners added. Use emitter.setMaxListeners() to increase limit",
+          "ObjectMultiplex - orphaned data for stream \"app-init-liveness\"",
+          "ObjectMultiplex - orphaned data for stream \"app-init-liveness\"",
+          "ObjectMultiplex - orphaned data for stream \"background-liveness\"",
+          "ObjectMultiplex - orphaned data for stream \"background-liveness\"",
+          "[dark-perp] sealed-order setup failed at bootstrap (will retry on first order): Error: Saved credential does not match this deployment; use wallet recovery. Nothing was erased.\n    at Bo (http://127.0.0.1:49399/assets/index-Dl0mwSln.js:40:119163)\n    at es.initAccount (http://127.0.0.1:49399/assets/index-Dl0mwSln.js:40:148803)\n    at es.ensureAccount (http://127.0.0.1:49399/assets/index-Dl0mwSln.js:40:148347)\n    at es.prepareSealing (http://127.0.0.1:49399/assets/index-Dl0mwSln.js:40:147572)\n    at es.bootstrap (http://127.0.0.1:49399/assets/index-Dl0mwSln.js:40:147366)\n    at async es.bootstrap (http://127.0.0.1:49399/assets/index-Dl0mwSln.js:62:6184)",
+          "[dark-perp] /v1 own-account read failed (own view degraded until a read succeeds): Error: Saved credential does not match this deployment; use wallet recovery. Nothing was erased.\n    at Bo (http://127.0.0.1:49399/assets/index-Dl0mwSln.js:40:119163)\n    at es.initAccount (http://127.0.0.1:49399/assets/index-Dl0mwSln.js:40:148803)\n    at es.ensureAccount (http://127.0.0.1:49399/assets/index-Dl0mwSln.js:40:148347)\n    at es.fetchOwnStateOnce (http://127.0.0.1:49399/assets/index-Dl0mwSln.js:40:160645)\n    at http://127.0.0.1:49399/assets/index-Dl0mwSln.js:40:160421\n    at es.refreshOwnState (http://127.0.0.1:49399/assets/index-Dl0mwSln.js:40:160516)\n    at es.bootstrap (http://127.0.0.1:49399/assets/index-Dl0mwSln.js:40:147505)\n    at async es.bootstrap (http://127.0.0.1:49399/assets/index-Dl0mwSln.js:62:6184)",
+          "[dark-perp] /v1 own-account read failed (own view degraded until a read succeeds): Error: Saved credential does not match this deployment; use wallet recovery. Nothing was erased.\n    at Bo (http://127.0.0.1:49399/assets/index-Dl0mwSln.js:40:119163)\n    at es.initAccount (http://127.0.0.1:49399/assets/index-Dl0mwSln.js:40:148803)\n    at es.ensureAccount (http://127.0.0.1:49399/assets/index-Dl0mwSln.js:40:148347)\n    at es.fetchOwnStateOnce (http://127.0.0.1:49399/assets/index-Dl0mwSln.js:40:160645)\n    at http://127.0.0.1:49399/assets/index-Dl0mwSln.js:40:160421\n    at es.refreshOwnState (http://127.0.0.1:49399/assets/index-Dl0mwSln.js:40:160516)\n    at es.refreshAfterDeposit (http://127.0.0.1:49399/assets/index-Dl0mwSln.js:40:152901)\n    at ws.onmessage (http://127.0.0.1:49399/assets/index-Dl0mwSln.js:40:152292)",
+          "MaxListenersExceededWarning: Possible EventEmitter memory leak detected. 11 close listeners added. Use emitter.setMaxListeners() to increase limit",
+          "MaxListenersExceededWarning: Possible EventEmitter memory leak detected. 11 end listeners added. Use emitter.setMaxListeners() to increase limit",
+          "ObjectMultiplex - orphaned data for stream \"app-init-liveness\"",
+          "ObjectMultiplex - orphaned data for stream \"app-init-liveness\"",
+          "ObjectMultiplex - orphaned data for stream \"background-liveness\"",
+          "ObjectMultiplex - orphaned data for stream \"background-liveness\"",
+          "[dark-perp] sealed-order setup failed at bootstrap (will retry on first order): Error: Saved credential is malformed; use wallet recovery. The saved record was not erased.\n    at Bo (http://127.0.0.1:49399/assets/index-Dl0mwSln.js:40:118829)\n    at es.initAccount (http://127.0.0.1:49399/assets/index-Dl0mwSln.js:40:148803)\n    at es.ensureAccount (http://127.0.0.1:49399/assets/index-Dl0mwSln.js:40:148347)\n    at es.prepareSealing (http://127.0.0.1:49399/assets/index-Dl0mwSln.js:40:147572)\n    at es.bootstrap (http://127.0.0.1:49399/assets/index-Dl0mwSln.js:40:147366)\n    at async es.bootstrap (http://127.0.0.1:49399/assets/index-Dl0mwSln.js:62:6184)",
+          "[dark-perp] /v1 own-account read failed (own view degraded until a read succeeds): Error: Saved credential is malformed; use wallet recovery. The saved record was not erased.\n    at Bo (http://127.0.0.1:49399/assets/index-Dl0mwSln.js:40:118829)\n    at es.initAccount (http://127.0.0.1:49399/assets/index-Dl0mwSln.js:40:148803)\n    at es.ensureAccount (http://127.0.0.1:49399/assets/index-Dl0mwSln.js:40:148347)\n    at es.fetchOwnStateOnce (http://127.0.0.1:49399/assets/index-Dl0mwSln.js:40:160645)\n    at http://127.0.0.1:49399/assets/index-Dl0mwSln.js:40:160421\n    at es.refreshOwnState (http://127.0.0.1:49399/assets/index-Dl0mwSln.js:40:160516)\n    at es.bootstrap (http://127.0.0.1:49399/assets/index-Dl0mwSln.js:40:147505)\n    at async es.bootstrap (http://127.0.0.1:49399/assets/index-Dl0mwSln.js:62:6184)",
+          "[dark-perp] /v1 own-account read failed (own view degraded until a read succeeds): Error: Saved credential is malformed; use wallet recovery. The saved record was not erased.\n    at Bo (http://127.0.0.1:49399/assets/index-Dl0mwSln.js:40:118829)\n    at es.initAccount (http://127.0.0.1:49399/assets/index-Dl0mwSln.js:40:148803)\n    at es.ensureAccount (http://127.0.0.1:49399/assets/index-Dl0mwSln.js:40:148347)\n    at es.fetchOwnStateOnce (http://127.0.0.1:49399/assets/index-Dl0mwSln.js:40:160645)\n    at http://127.0.0.1:49399/assets/index-Dl0mwSln.js:40:160421\n    at es.refreshOwnState (http://127.0.0.1:49399/assets/index-Dl0mwSln.js:40:160516)\n    at es.refreshAfterDeposit (http://127.0.0.1:49399/assets/index-Dl0mwSln.js:40:152901)\n    at ws.onmessage (http://127.0.0.1:49399/assets/index-Dl0mwSln.js:40:152292)",
+          "MaxListenersExceededWarning: Possible EventEmitter memory leak detected. 11 close listeners added. Use emitter.setMaxListeners() to increase limit",
+          "MaxListenersExceededWarning: Possible EventEmitter memory leak detected. 11 end listeners added. Use emitter.setMaxListeners() to increase limit",
+          "ObjectMultiplex - orphaned data for stream \"app-init-liveness\"",
+          "ObjectMultiplex - orphaned data for stream \"app-init-liveness\"",
+          "ObjectMultiplex - orphaned data for stream \"background-liveness\"",
+          "ObjectMultiplex - orphaned data for stream \"background-liveness\"",
+          "[dark-perp] sealed-order setup failed at bootstrap (will retry on first order): Error: Legacy saved account has no deployment scope. Use its owner id for wallet recovery; the saved record was not erased.\n    at es.initAccount (http://127.0.0.1:49399/assets/index-Dl0mwSln.js:40:149432)\n    at es.ensureAccount (http://127.0.0.1:49399/assets/index-Dl0mwSln.js:40:148347)\n    at es.prepareSealing (http://127.0.0.1:49399/assets/index-Dl0mwSln.js:40:147572)\n    at es.bootstrap (http://127.0.0.1:49399/assets/index-Dl0mwSln.js:40:147366)\n    at async es.bootstrap (http://127.0.0.1:49399/assets/index-Dl0mwSln.js:62:6184)",
+          "[dark-perp] /v1 own-account read failed (own view degraded until a read succeeds): Error: Legacy saved account has no deployment scope. Use its owner id for wallet recovery; the saved record was not erased.\n    at es.initAccount (http://127.0.0.1:49399/assets/index-Dl0mwSln.js:40:149432)\n    at es.ensureAccount (http://127.0.0.1:49399/assets/index-Dl0mwSln.js:40:148347)\n    at es.fetchOwnStateOnce (http://127.0.0.1:49399/assets/index-Dl0mwSln.js:40:160645)\n    at http://127.0.0.1:49399/assets/index-Dl0mwSln.js:40:160421\n    at es.refreshOwnState (http://127.0.0.1:49399/assets/index-Dl0mwSln.js:40:160516)\n    at es.bootstrap (http://127.0.0.1:49399/assets/index-Dl0mwSln.js:40:147505)\n    at async es.bootstrap (http://127.0.0.1:49399/assets/index-Dl0mwSln.js:62:6184)",
+          "[dark-perp] /v1 own-account read failed (own view degraded until a read succeeds): Error: Legacy saved account has no deployment scope. Use its owner id for wallet recovery; the saved record was not erased.\n    at es.initAccount (http://127.0.0.1:49399/assets/index-Dl0mwSln.js:40:149432)\n    at es.ensureAccount (http://127.0.0.1:49399/assets/index-Dl0mwSln.js:40:148347)\n    at es.fetchOwnStateOnce (http://127.0.0.1:49399/assets/index-Dl0mwSln.js:40:160645)\n    at http://127.0.0.1:49399/assets/index-Dl0mwSln.js:40:160421\n    at es.refreshOwnState (http://127.0.0.1:49399/assets/index-Dl0mwSln.js:40:160516)\n    at es.refreshAfterDeposit (http://127.0.0.1:49399/assets/index-Dl0mwSln.js:40:152901)\n    at ws.onmessage (http://127.0.0.1:49399/assets/index-Dl0mwSln.js:40:152292)",
+          "MaxListenersExceededWarning: Possible EventEmitter memory leak detected. 11 close listeners added. Use emitter.setMaxListeners() to increase limit",
+          "MaxListenersExceededWarning: Possible EventEmitter memory leak detected. 11 end listeners added. Use emitter.setMaxListeners() to increase limit",
+          "ObjectMultiplex - orphaned data for stream \"app-init-liveness\"",
+          "ObjectMultiplex - orphaned data for stream \"app-init-liveness\"",
+          "ObjectMultiplex - orphaned data for stream \"background-liveness\"",
+          "ObjectMultiplex - orphaned data for stream \"background-liveness\"",
+          "WebSocket connection to 'ws://127.0.0.1:49399/v1/ws' failed: WebSocket is closed before the connection is established."
+        ],
+        "network": {
+          "POST /v1/accounts/deposit/address": 1,
+          "GET /": 8,
+          "GET /assets/index-Dl0mwSln.js": 8,
+          "GET /assets/index-DDJoOHXU.css": 8,
+          "GET /api/state": 8,
+          "GET /v1/system/status": 8,
+          "GET /v1/accounts/me": 36,
+          "GET /v1/enclave/epoch": 8,
+          "GET /v1/orders": 22,
+          "GET /v1/positions": 22,
+          "GET /v1/markets/0/candles?tf=15m&limit=120": 8,
+          "GET /v1/accounts/recovery/0x84339ff96e5cafee192e00dac79c041025fca2188ab8c8dd9b862345969dab21": 4,
+          "POST /v1/accounts/recovery": 3,
+          "GET /v1/accounts/withdrawals": 2
+        },
+        "redaction": "API credentials, Authorization headers, response bodies and raw signatures omitted; key leak comparisons performed in memory."
+      },
+      "log_sha256": "4ff0fe843f702dbc373b253d1846e252a4dbd0224568b523f383678e64800249",
+      "script_sha256": "a65007defaafd0179c18114cf8df7bf7c0750f59c0f0b21ea2d2c0a69049caa1"
+    },
+    {
+      "id": "08-native-ws-auth",
+      "exit_code": 0,
+      "time": 1790600566.8854442,
+      "code_file": "08-native-ws-auth.js",
+      "result": {
+        "gatewayRestart": "same durable snapshot, no reset",
+        "rows": [
+          {
+            "tab": "a",
+            "authOk": true,
+            "ownerPreserved": true,
+            "generation": 3,
+            "accountStatus": 200
+          },
+          {
+            "tab": "b",
+            "authOk": true,
+            "ownerPreserved": true,
+            "generation": 3,
+            "accountStatus": 200
+          }
+        ]
+      },
+      "log_sha256": "6afb6edba0b34b16ed5b57d50471f007cec5c5375027fff4ca27f61b54b45e9e",
+      "script_sha256": "31fd0bf06de3a8d2e433d7dfae8f74d4aeaf810c7fbb0f4ccb46fb5847638562"
+    }
+  ]
+}

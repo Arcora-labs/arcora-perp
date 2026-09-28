@@ -46,6 +46,8 @@ use sequencer::{adl_tag, adl_tag_key, EnclaveIdentity, SealedBatch, Sequencer, W
 mod account_recovery;
 mod bootstrap;
 mod candles;
+#[cfg(test)]
+mod continuation_settlement_tests;
 mod credential_session;
 mod deposit_ingestion;
 mod deposit_rpc;

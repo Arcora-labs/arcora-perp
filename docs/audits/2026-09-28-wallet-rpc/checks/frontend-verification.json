@@ -1,0 +1,81 @@
+{
+  "status": "PASS",
+  "scope": "Current frontend source, browser fixture/config and dependency files. Controlled provider/HTTP fixture browser evidence remains separate from actual MetaMask-to-Rust session.",
+  "checks": {
+    "frontend-unit": {
+      "exit_code": 0,
+      "duration_seconds": 2.861,
+      "log_sha256": "fb537adb14c802d49427b7c53bbd0d808c509b81573c8b5f1736002c6fda7ede",
+      "run_check_source_unchanged": true,
+      "run_check_changed_paths": [],
+      "frontend_file_count": 93,
+      "frontend_before_sha256": "3bf22ed9311efe6741a28be92f6edd40318bb2ff1069bc4939a29593c0c1dc27",
+      "frontend_after_sha256": "3bf22ed9311efe6741a28be92f6edd40318bb2ff1069bc4939a29593c0c1dc27",
+      "frontend_current_sha256": "3bf22ed9311efe6741a28be92f6edd40318bb2ff1069bc4939a29593c0c1dc27",
+      "frontend_unchanged_during_check_and_matches_current": true,
+      "counts": {
+        "passed": 481,
+        "failed": 0,
+        "skipped": 1,
+        "skip_reason": "Explicit realClient.e2e.test.ts live-gateway test when GATEWAY_URL is unset"
+      }
+    },
+    "frontend-browser": {
+      "exit_code": 0,
+      "duration_seconds": 131.448,
+      "log_sha256": "5a05b880c2f81611732021256b31b17e523a53d1067a09e00fade653fde03df5",
+      "run_check_source_unchanged": false,
+      "run_check_changed_paths": [
+        ".gitignore",
+        "output/playwright/actual-wallet-run2/console-2026-09-28T12-55-15-295Z.log",
+        "output/playwright/actual-wallet-run2/console-2026-09-28T12-55-16-350Z.log",
+        "output/playwright/actual-wallet-run2/page-2026-09-28T12-55-15-485Z.yml",
+        "output/playwright/actual-wallet/console-2026-09-28T12-45-08-222Z.log",
+        "output/playwright/actual-wallet/console-2026-09-28T12-45-10-146Z.log",
+        "output/playwright/actual-wallet/console-2026-09-28T12-48-22-010Z.log",
+        "output/playwright/actual-wallet/console-2026-09-28T12-49-55-696Z.log",
+        "output/playwright/actual-wallet/console-2026-09-28T12-51-19-808Z.log",
+        "output/playwright/actual-wallet/page-2026-09-28T12-45-08-853Z.yml",
+        "output/playwright/actual-wallet/page-2026-09-28T12-45-40-058Z.yml",
+        "output/playwright/actual-wallet/page-2026-09-28T12-45-54-879Z.yml",
+        "output/playwright/actual-wallet/page-2026-09-28T12-45-59-795Z.yml",
+        "output/playwright/actual-wallet/page-2026-09-28T12-46-43-573Z.yml",
+        "output/playwright/actual-wallet/page-2026-09-28T12-46-49-548Z.yml",
+        "output/playwright/actual-wallet/page-2026-09-28T12-46-58-504Z.yml",
+        "output/playwright/actual-wallet/page-2026-09-28T12-47-06-383Z.yml",
+        "output/playwright/actual-wallet/page-2026-09-28T12-47-13-841Z.yml",
+        "output/playwright/actual-wallet/page-2026-09-28T12-47-44-872Z.yml",
+        "output/playwright/actual-wallet/page-2026-09-28T12-48-22-327Z.yml",
+        "output/playwright/actual-wallet/page-2026-09-28T12-48-41-441Z.yml",
+        "output/playwright/actual-wallet/page-2026-09-28T12-49-56-060Z.yml",
+        "output/playwright/actual-wallet/page-2026-09-28T12-50-09-787Z.yml",
+        "output/playwright/actual-wallet/page-2026-09-28T12-50-57-323Z.yml",
+        "output/playwright/actual-wallet/page-2026-09-28T12-52-12-514Z.yml",
+        "output/playwright/actual-wallet/page-2026-09-28T12-53-45-659Z.yml"
+      ],
+      "frontend_file_count": 93,
+      "frontend_before_sha256": "3bf22ed9311efe6741a28be92f6edd40318bb2ff1069bc4939a29593c0c1dc27",
+      "frontend_after_sha256": "3bf22ed9311efe6741a28be92f6edd40318bb2ff1069bc4939a29593c0c1dc27",
+      "frontend_current_sha256": "3bf22ed9311efe6741a28be92f6edd40318bb2ff1069bc4939a29593c0c1dc27",
+      "frontend_unchanged_during_check_and_matches_current": true,
+      "counts": {
+        "startTime": "2026-09-28T12:55:29.817Z",
+        "duration": 130068.444,
+        "expected": 78,
+        "skipped": 0,
+        "unexpected": 0,
+        "flaky": 0
+      },
+      "projects": {
+        "chromium": 39,
+        "webkit": 39
+      }
+    }
+  },
+  "whole_tree_note": "The browser whole-tree fingerprint changed because .gitignore added /output/playwright/ and unreviewed actual-wallet capture paths stopped being included. Per-file frontend identity is unchanged throughout and matches current source.",
+  "actual_wallet_runtime_preserved": {
+    "browser": "http://127.0.0.1:49399",
+    "gateway": "http://127.0.0.1:49395",
+    "both_system_status": 200
+  }
+}

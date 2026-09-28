@@ -1,0 +1,40 @@
+[
+  {
+    "id": "real-metamask-bind",
+    "pass": true
+  },
+  {
+    "id": "native-lock-busy",
+    "pass": true,
+    "alert": "Recovery is already in progress in another tab. Finish it there before retrying."
+  },
+  {
+    "id": "actual-rejection",
+    "pass": true,
+    "unchanged": true,
+    "rejection": "Wallet refused the recovery signature."
+  },
+  {
+    "id": "rotation-old-access-revoked",
+    "pass": true,
+    "generation": 1,
+    "oldHttpStatus": 401,
+    "oldSocketClosed": true,
+    "socketReplaced": true,
+    "ownerPreserved": true
+  },
+  {
+    "id": "sibling-key-and-private-ws-adopted",
+    "pass": true
+  },
+  {
+    "id": "reload-a",
+    "pass": true,
+    "generation": 1
+  },
+  {
+    "id": "reload-b",
+    "pass": true,
+    "generation": 1
+  }
+]

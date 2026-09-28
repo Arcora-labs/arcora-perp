@@ -1,0 +1,25 @@
+[
+  {
+    "id": "mismatch-scope-preserved",
+    "pass": true,
+    "preserved": true,
+    "authenticatedRequests": 0,
+    "replacementRegistrations": 0
+  },
+  {
+    "id": "corrupt-scope-preserved",
+    "pass": true,
+    "preserved": true,
+    "authenticatedRequests": 0,
+    "replacementRegistrations": 0
+  },
+  {
+    "id": "actual-legacy-wallet-recovery",
+    "pass": true,
+    "generation": 3,
+    "ownerPreserved": true,
+    "legacyUnchanged": true,
+    "storage": "persistent",
+    "accountStatus": 200
+  }
+]

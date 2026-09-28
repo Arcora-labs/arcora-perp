@@ -1,0 +1,71 @@
+{
+  "observed_at_utc": "2026-09-28T12:44:39.613588+00:00",
+  "head": "5a3574612669baf153cca4515be95cf71da0ba73",
+  "source_files": {
+    "scripts/local-verification/read_deployment.py": "84c9201ebe19e66e2db8ed4e63b3e33834398450ef5bb050fa5dd5e371647c1a",
+    "scripts/local-verification/test_read_deployment.py": "4dcb3215ed05da1ca56150a80b544abb906b1739db6b956c2565d554b252a254",
+    "contracts/deployments/base-sepolia.json": "fc9a79ea4893d6d68c4b0aa34df57d365ac11137857eba58926cba8f0e8652be"
+  },
+  "source_unchanged_after_checks": true,
+  "checks": [
+    {
+      "name": "reader-tests",
+      "command": [
+        "python3",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "scripts/local-verification",
+        "-p",
+        "test_read_deployment.py",
+        "-v"
+      ],
+      "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+      "exit_code": 0,
+      "duration_seconds": 0.126,
+      "log": "/tmp/arcora-rpc-remaining-20260928/reader-tests.log",
+      "log_sha256": "7766bd409ddcc5164c2bfd1c8a6133ba91ea0e03e03e843b9ec88609d9e5f2e0"
+    },
+    {
+      "name": "reader-tests-optimized",
+      "command": [
+        "python3",
+        "-O",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "scripts/local-verification",
+        "-p",
+        "test_read_deployment.py",
+        "-v"
+      ],
+      "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+      "exit_code": 0,
+      "duration_seconds": 0.372,
+      "log": "/tmp/arcora-rpc-remaining-20260928/reader-tests-optimized.log",
+      "log_sha256": "41c87193dac8a98fbaa47d7fa8ccd4cc6d5f96bc733d419ea56f735776894c2d"
+    },
+    {
+      "name": "deployment-refresh",
+      "command": [
+        "python3",
+        "scripts/local-verification/read_deployment.py",
+        "--output",
+        "/tmp/arcora-rpc-remaining-20260928/deployment-observation.json"
+      ],
+      "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+      "exit_code": 1,
+      "duration_seconds": 0.19,
+      "log": "/tmp/arcora-rpc-remaining-20260928/deployment-refresh.log",
+      "log_sha256": "eaaf9da35a72fccc8f890d8c5c6227546e663a85cc5a32a36382e53fccfb2f4b"
+    }
+  ],
+  "limits": [
+    "Unit tests use controlled offline JSON-RPC responses; not live operator independence.",
+    "Live configured primary endpoint queried once; no credential, alternate endpoint or write used.",
+    "S6-03 remains partial pending live deployment equivalence and combined S6-01 funds/reorg proof.",
+    "Gateway runtime remains a single-provider fail-closed reader; witness corroboration is opt-in audit tool only."
+  ]
+}

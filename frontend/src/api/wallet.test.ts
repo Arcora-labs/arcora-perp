@@ -29,6 +29,7 @@ import {
   selectorHex,
   sendTx,
   supportsWalletDeposit,
+  verifyFinalizedRevertedTransaction,
   waitForTx,
   type Eip1193Provider,
 } from "./wallet";
@@ -315,6 +316,224 @@ describe("waitForTx", () => {
   it("times out readably when the receipt never lands", async () => {
     install({ request: async () => null });
     await expect(waitForTx(TX, { pollMs: 5, timeoutMs: 20 })).rejects.toThrow(/not confirmed/i);
+  });
+});
+
+describe("verifyFinalizedRevertedTransaction", () => {
+  const BLOCK = "0x" + "ab".repeat(32);
+  const FINALIZED = "0x" + "cd".repeat(32);
+  const OTHER = "0x" + "ef".repeat(32);
+  const reverted = { transactionHash: TX, status: "0x0", blockHash: BLOCK, blockNumber: "0x2a" };
+  const finalized = { hash: FINALIZED, number: "0x30" };
+  const canonical = { hash: BLOCK, number: "0x2a" };
+  type Read = { method: string; params?: unknown[] };
+
+  function scripted(options: {
+    receipt?: unknown;
+    secondReceipt?: unknown;
+    finalized?: unknown;
+    canonical?: unknown;
+    afterRead?: (request: Read, index: number) => void;
+    chain?: string;
+    rejectFinalized?: boolean;
+  } = {}) {
+    const calls: Read[] = [];
+    const listeners = new Map<string, Set<(...args: unknown[]) => void>>();
+    let receiptReads = 0;
+    const source: Eip1193Provider = {
+      on: (event, callback) => {
+        if (!listeners.has(event)) listeners.set(event, new Set());
+        listeners.get(event)!.add(callback);
+      },
+      removeListener: (event, callback) => { listeners.get(event)?.delete(callback); },
+      request: async (request) => {
+        calls.push(request);
+        let response: unknown;
+        if (request.method === "eth_chainId") response = options.chain ?? BASE_SEPOLIA_CHAIN_ID;
+        else if (request.method === "eth_getTransactionReceipt") {
+          receiptReads++;
+          response = receiptReads > 1 && "secondReceipt" in options ? options.secondReceipt : "receipt" in options ? options.receipt : reverted;
+        } else if (request.method === "eth_getBlockByNumber" && request.params?.[0] === "finalized") {
+          if (options.rejectFinalized) throw new Error("finalized tag unsupported");
+          response = "finalized" in options ? options.finalized : finalized;
+        } else if (request.method === "eth_getBlockByNumber" && request.params?.[0] === "0x2a") {
+          response = "canonical" in options ? options.canonical : canonical;
+        } else throw new Error(`Unexpected wallet request: ${request.method}`);
+        options.afterRead?.(request, calls.length);
+        return response;
+      },
+    };
+    install(source);
+    return { calls, source, listeners, emit: (event: string) => listeners.get(event)?.forEach((callback) => callback()) };
+  }
+
+  it("returns pinned finalized revert evidence using only read-only RPC calls", async () => {
+    const { calls, listeners } = scripted();
+    await expect(verifyFinalizedRevertedTransaction(TX)).resolves.toEqual({
+      transactionHash: TX, blockHash: BLOCK, blockNumber: "0x2a",
+      finalizedBlockHash: FINALIZED, finalizedBlockNumber: "0x30",
+    });
+    expect(calls.filter(({ method }) => method === "eth_getTransactionReceipt")).toEqual([
+      { method: "eth_getTransactionReceipt", params: [TX] },
+      { method: "eth_getTransactionReceipt", params: [TX] },
+    ]);
+    expect(calls.every(({ method }) => ["eth_chainId", "eth_getTransactionReceipt", "eth_getBlockByNumber"].includes(method))).toBe(true);
+    expect([...listeners.values()].every((callbacks) => callbacks.size === 0)).toBe(true);
+  });
+
+  it("accepts a revert in the finalized block itself", async () => {
+    scripted({ finalized: canonical });
+    await expect(verifyFinalizedRevertedTransaction(TX)).resolves.toMatchObject({ finalizedBlockHash: BLOCK, finalizedBlockNumber: "0x2a" });
+  });
+
+  it("normalizes valid mixed-case RPC hashes and quantities", async () => {
+    scripted({
+      receipt: { ...reverted, blockHash: BLOCK.toUpperCase().replace("0X", "0x"), blockNumber: "0x2A" },
+      finalized: { ...finalized, hash: FINALIZED.toUpperCase().replace("0X", "0x") },
+    });
+    await expect(verifyFinalizedRevertedTransaction(TX)).resolves.toMatchObject({ blockHash: BLOCK, blockNumber: "0x2a", finalizedBlockHash: FINALIZED });
+  });
+
+  it.each([
+    ["pending", null, /pending|not mined/i],
+    ["successful", { ...reverted, status: "0x1" }, /succeeded|successful/i],
+    ["unknown status", { ...reverted, status: "0x2" }, /status|reverted/i],
+    ["noncanonical status", { ...reverted, status: "0x00" }, /status|reverted/i],
+    ["other transaction", { ...reverted, transactionHash: OTHER }, /transaction/i],
+    ["missing transaction", { ...reverted, transactionHash: undefined }, /transaction/i],
+    ["missing block hash", { ...reverted, blockHash: null }, /block|receipt/i],
+    ["invalid block hash", { ...reverted, blockHash: "0x1234" }, /block|receipt/i],
+    ["zero block hash", { ...reverted, blockHash: "0x" + "00".repeat(32) }, /block|receipt/i],
+    ["pending block number", { ...reverted, blockNumber: null }, /block|receipt/i],
+    ["decimal block number", { ...reverted, blockNumber: "42" }, /block|receipt/i],
+    ["numeric block number", { ...reverted, blockNumber: 42 }, /block|receipt/i],
+    ["padded block number", { ...reverted, blockNumber: "0x02a" }, /block|receipt/i],
+    ["oversized block number", { ...reverted, blockNumber: "0x" + "f".repeat(65) }, /block|receipt/i],
+    ["array receipt", [], /receipt/i],
+  ])("keeps retry blocked for a %s receipt", async (_name, receipt, error) => {
+    const { calls } = scripted({ receipt });
+    await expect(verifyFinalizedRevertedTransaction(TX)).rejects.toThrow(error as RegExp);
+    expect(calls.some(({ method }) => method === "eth_getBlockByNumber")).toBe(false);
+  });
+
+  it.each([
+    ["not finalized", { ...finalized, number: "0x29" }],
+    ["missing finalized block", null],
+    ["missing finalized height", { hash: FINALIZED }],
+    ["noncanonical finalized height", { ...finalized, number: "0x030" }],
+    ["invalid finalized hash", { ...finalized, hash: "0x1234" }],
+    ["conflicting finalized block", { ...finalized, number: "0x2a" }],
+  ])("keeps retry blocked with %s", async (_name, finality) => {
+    scripted({ finalized: finality });
+    await expect(verifyFinalizedRevertedTransaction(TX)).rejects.toThrow(/final|block|canonical/i);
+  });
+
+  it("does not fall back to latest when finalized tags are unsupported", async () => {
+    const { calls } = scripted({ rejectFinalized: true });
+    await expect(verifyFinalizedRevertedTransaction(TX)).rejects.toThrow(/finalized tag unsupported/);
+    expect(calls.some(({ params }) => params?.[0] === "latest")).toBe(false);
+  });
+
+  it.each([
+    ["missing canonical block", null],
+    ["reorganized block", { ...canonical, hash: OTHER }],
+    ["wrong canonical height", { ...canonical, number: "0x2b" }],
+    ["malformed canonical block", { ...canonical, hash: "0x1" }],
+  ])("keeps retry blocked for a %s", async (_name, block) => {
+    scripted({ canonical: block });
+    await expect(verifyFinalizedRevertedTransaction(TX)).rejects.toThrow(/canonical|block/i);
+  });
+
+  it.each([
+    ["disappears", null],
+    ["succeeds", { ...reverted, status: "0x1" }],
+    ["moves to another block", { ...reverted, blockHash: OTHER }],
+    ["moves to another height", { ...reverted, blockNumber: "0x2b" }],
+  ])("keeps retry blocked if the final receipt %s", async (_name, secondReceipt) => {
+    scripted({ secondReceipt });
+    await expect(verifyFinalizedRevertedTransaction(TX)).rejects.toThrow(/pending|succeed|changed|block/i);
+  });
+
+  it("rejects a malformed saved hash before any wallet RPC", async () => {
+    const { calls } = scripted();
+    await expect(verifyFinalizedRevertedTransaction("0x1234")).rejects.toThrow(/transaction hash/i);
+    expect(calls).toEqual([]);
+  });
+
+  it.each(["0x1", "84532", "0x014a34"])("rejects wrong or malformed chain %s", async (chain) => {
+    const { calls } = scripted({ chain });
+    await expect(verifyFinalizedRevertedTransaction(TX)).rejects.toThrow(/network|chain|Base Sepolia/i);
+    expect(calls.some(({ method }) => method !== "eth_chainId")).toBe(false);
+  });
+
+  it("rejects a provider replacement during a read", async () => {
+    scripted({ afterRead: ({ method }) => {
+      if (method === "eth_getTransactionReceipt") install({ request: async () => BASE_SEPOLIA_CHAIN_ID });
+    } });
+    await expect(verifyFinalizedRevertedTransaction(TX)).rejects.toThrow(/wallet|provider|context/i);
+  });
+
+  it("rejects provider replacement during the final chain confirmation", async () => {
+    let receipts = 0;
+    scripted({ afterRead: ({ method }) => {
+      if (method === "eth_getTransactionReceipt") receipts++;
+      if (method === "eth_chainId" && receipts === 2) install({ request: async () => BASE_SEPOLIA_CHAIN_ID });
+    } });
+    await expect(verifyFinalizedRevertedTransaction(TX)).rejects.toThrow(/wallet|provider|context/i);
+  });
+
+  it.each(["chainChanged", "disconnect"])("rejects a %s event even if chain ID reads remain unchanged", async (event) => {
+    const state = scripted({ afterRead: ({ method }) => {
+      if (method === "eth_getTransactionReceipt") state.emit(event);
+    } });
+    await expect(verifyFinalizedRevertedTransaction(TX)).rejects.toThrow(/wallet|network|context/i);
+    expect([...state.listeners.values()].every((callbacks) => callbacks.size === 0)).toBe(true);
+  });
+
+  it("rejects a silent network change after the first receipt", async () => {
+    let changed = false;
+    const { source } = scripted({ afterRead: ({ method }) => { if (method === "eth_getTransactionReceipt") changed = true; } });
+    const originalRequest = source.request;
+    source.request = (request) => request.method === "eth_chainId" && changed ? Promise.resolve("0x1") : originalRequest(request);
+    await expect(verifyFinalizedRevertedTransaction(TX)).rejects.toThrow(/network|chain|Base Sepolia/i);
+  });
+
+  it("bounds an unresponsive provider and makes no follow-up requests after timeout", async () => {
+    vi.useFakeTimers();
+    try {
+      let release!: (value: unknown) => void;
+      const request = vi.fn(() => new Promise<unknown>((resolve) => { release = resolve; }));
+      install({ request });
+      const pending = expect(verifyFinalizedRevertedTransaction(TX)).rejects.toThrow(/timed out/i);
+      await vi.advanceTimersByTimeAsync(15_001);
+      await pending;
+      release(BASE_SEPOLIA_CHAIN_ID);
+      await Promise.resolve();
+      expect(request).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("uses one total deadline for successive slow RPC reads", async () => {
+    vi.useFakeTimers();
+    try {
+      const { source, calls } = scripted();
+      const originalRequest = source.request;
+      source.request = async (request) => {
+        await new Promise((resolve) => setTimeout(resolve, 2_000));
+        return originalRequest(request);
+      };
+      const pending = expect(verifyFinalizedRevertedTransaction(TX)).rejects.toThrow(/timed out/i);
+      await vi.advanceTimersByTimeAsync(15_001);
+      await pending;
+      await vi.advanceTimersByTimeAsync(5_000);
+      // The delayed read can settle after timeout, but no new RPC may start.
+      expect(calls.filter(({ method }) => method === "eth_getTransactionReceipt")).toHaveLength(2);
+      expect(calls.at(-1)?.method).toBe("eth_getTransactionReceipt");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
