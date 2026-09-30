@@ -69,6 +69,7 @@ mod service_shutdown_tests;
 mod settle_health;
 mod snapshot;
 mod trading_gate;
+mod wind_down;
 mod withdrawals;
 use l1::{L1Status, L1};
 // SEC-025-B: `merkle_root` left the production import set with the legacy settle body
@@ -1203,6 +1204,12 @@ struct Gw {
     /// Runtime-only alert episode state; never changes the frozen snapshot encoding.
     #[serde(skip)]
     ops_alerts: ops_alerts::OpsAlerts,
+    /// Persisted in the v9 envelope prefix, outside the frozen positional Gw layout.
+    /// Freezes ordinary ops after SettleAll or on ambiguous legacy CloseOnly.
+    /// It never proves phase-1 completion; only a canonical L1 read does that.
+    #[serde(skip)]
+    wind_down_started: bool,
+
     // A01 extension is versioned outside the frozen v5 positional Gw encoding.
     #[serde(skip)]
     deposits: deposit_ingestion::DepositState,
@@ -1853,6 +1860,7 @@ impl Gw {
         println!("[state] genesis engine root {}", hex32(&genesis_root));
         let mut gw = Gw {
             ops_alerts: Default::default(),
+            wind_down_started: false,
             deposits: Default::default(),
             seq,
             receipt_cache: ReceiptCache::default(),
@@ -1928,7 +1936,9 @@ impl Gw {
             .iter()
             .map(|m| (m.id, m.reference_price, m.px, m.live))
             .collect();
-        let mut bytes = account_recovery::SNAPSHOT_V8.to_vec();
+        let mut bytes = wind_down::SNAPSHOT_V9.to_vec();
+        bytes.push(u8::from(self.wind_down_started));
+        bytes.extend_from_slice(account_recovery::SNAPSHOT_V8);
         bytes.extend_from_slice(deposit_ingestion::SNAPSHOT_V6);
         bytes.extend(
             postcard::to_allocvec(&(self, mkt_px, &self.deposits)).expect("snapshot encode"),
@@ -1949,6 +1959,7 @@ impl Gw {
                     .into(),
             );
         }
+        let (plain, wind_down_started) = wind_down::snapshot_payload(plain)?;
         let (plain, version7, version8) =
             if let Some(payload) = plain.strip_prefix(account_recovery::SNAPSHOT_V8) {
                 (payload, true, true)
@@ -2009,6 +2020,13 @@ impl Gw {
             account_recovery::restore(&mut legacy.0, &[])?;
             legacy
         };
+        // Old snapshots cannot distinguish a circuit breaker from SettleAll.
+        // Conservatively freeze ordinary ingress in legacy CloseOnly; the pinned
+        // admin/withdraw routes can still select the correct L1 phase.
+        gw.wind_down_started = wind_down_started.unwrap_or(gw.seq.state.mode == Mode::CloseOnly);
+        if gw.wind_down_started && gw.seq.state.mode != Mode::CloseOnly {
+            return Err("wind-down snapshot latch requires CloseOnly".into());
+        }
         gw.validate_deposit_state()?;
 
         let attestation = attest_from_env();
@@ -2203,6 +2221,7 @@ impl Gw {
         from: [u8; 20],
         amount: u128,
     ) -> Result<[u8; 32], String> {
+        self.refuse_if_wind_down_started()?;
         // `from` must be the account's bound deposit address, mirroring the credit-side
         // binding — a signature is only ever issued for the payer the account owns.
         let (owner, bound) = {
@@ -2634,6 +2653,7 @@ impl Gw {
     /// (`authorizing_address`) — the API key alone must never move funds. All
     /// checks run BEFORE the first `seq.apply` (fail-closed: a rejection mutates
     /// nothing and burns no nonce).
+    #[cfg(test)]
     fn account_withdraw(
         &mut self,
         key: &[u8; 32],
@@ -2643,6 +2663,26 @@ impl Gw {
         auth_nonce: u64,
         sig: &[u8; 65],
     ) -> Result<Withdrawal, String> {
+        self.account_withdraw_observed(key, market, amount, to, (auth_nonce, sig), None)
+    }
+
+    fn account_withdraw_observed(
+        &mut self,
+        key: &[u8; 32],
+        market: u64,
+        amount: i128,
+        to: [u8; 20],
+        auth: (u64, &[u8; 65]),
+        wind_down: Option<&wind_down::Observation>,
+    ) -> Result<Withdrawal, String> {
+        let (auth_nonce, sig) = auth;
+        // Validate BEFORE any unbind, note burn, or nonce mutation. A local
+        // CloseOnly circuit breaker alone never authorizes phase-2 operations.
+        if self.seq.state.mode == Mode::CloseOnly {
+            wind_down
+                .ok_or("wind-down requires a fresh L1 phase-1 observation")?
+                .check_exit(self)?;
+        }
         self.deposits.check_ready()?;
         if amount <= 0 {
             return Err("Amount must be positive.".into());
@@ -2787,8 +2827,12 @@ impl Gw {
         // answer paths require a settled batch, so a root-only predicate leaves an honest
         // sequencer unable to answer a ripe challenge. Still returns None when the window
         // is empty in both senses, so idle ticks burn no proofs.
+        // SettleAll still needs a phase-1 proof when a circuit breaker has
+        // already flattened all positions and its state root is unchanged.
+        let pending_wind_down = self.seq.window_has_pending_settle_all();
         if self.seq.state.state_root() == self.last_settled_root
             && !self.seq.window_has_pending_manifest()
+            && !pending_wind_down
         {
             return Ok(None);
         }
@@ -3000,6 +3044,7 @@ impl Gw {
 
     /// Deposit external collateral into an account's market bucket.
     fn account_deposit(&mut self, key: &[u8; 32], market: u64, amount: i128) -> Result<(), String> {
+        self.refuse_if_wind_down_started()?;
         if self.prod {
             // audit DP-001: self-service in-memory credit would let anyone mint unbacked
             // collateral and withdraw it against real vault funds. In production, collateral
@@ -3048,6 +3093,7 @@ impl Gw {
     /// deployment has not launched. They stack on the same handler, and an operator who
     /// reads one message while the other is the real cause diagnoses the wrong system.
     fn refuse_if_gate_closed(&self) -> Result<(), String> {
+        self.refuse_if_wind_down_started()?;
         self.deposits.check_ready()?;
         if self.trading_gate == trading_gate::TradingGate::Closed {
             return Err(
@@ -3331,6 +3377,7 @@ impl Gw {
     /// The handler and tick loop hold the SAME Gw mutex. Keep lookup, matcher
     /// cancellation, manifest recording and ingress removal inside that lock.
     fn account_cancel(&mut self, key: &[u8; 32], order_id: &str) -> Result<i128, String> {
+        self.refuse_if_wind_down_started()?;
         let acct = self.accounts.get_mut(key).ok_or("Unknown account.")?;
         let order = acct
             .orders
@@ -3771,6 +3818,7 @@ impl Gw {
     /// Unbind+Withdraw on `from` (external_out) then Deposit+Fund on `to` (external_in),
     /// net-zero externally. `from` must have `value` free in market 0.
     fn pool_transfer(&mut self, from: &Wallet, to: &Wallet, value: i128) -> Result<(), String> {
+        self.refuse_if_wind_down_started()?;
         // SEC-025-C: the credit leg below is an unbacked mint, refused in production
         // by `fund_amount_unbacked`. But the debit leg (Unbind+Withdraw) is applied
         // FIRST, so relying on the mint-site refusal alone would return `Err` with
@@ -4177,6 +4225,7 @@ impl Gw {
     }
 
     fn deposit(&mut self, amount: i128) -> Result<(), String> {
+        self.refuse_if_wind_down_started()?;
         if amount <= 0 {
             return Err("Amount must be positive.".into());
         }
@@ -4267,6 +4316,7 @@ impl Gw {
     }
 
     fn cancel(&mut self, order_id: &str) -> Result<Vec<WEvent>, String> {
+        self.refuse_if_wind_down_started()?;
         let o = self
             .orders
             .iter_mut()
@@ -4284,6 +4334,9 @@ impl Gw {
     }
 
     fn set_mode(&mut self, mode: &str) {
+        if self.wind_down_started {
+            return;
+        }
         if mode == "CloseOnly" {
             let _ = self.seq.apply(&BatchOp::EnterCloseOnly);
         } else {
@@ -4324,7 +4377,7 @@ impl Gw {
 
     // ── tick: oracle walk, seal pending + MM counters, settle, maintenance ───
     fn tick(&mut self) -> (Vec<WEvent>, Vec<String>) {
-        if self.deposits.check_ready().is_err() {
+        if self.wind_down_started || self.deposits.check_ready().is_err() {
             return (vec![], vec![]);
         }
         self.tick += 1;
@@ -6025,8 +6078,8 @@ async fn post_v1_admin_wind_down(
         )
             .into_response();
     };
-    let observed = tokio::task::spawn_blocking(move || l1.close_only_observation()).await;
-    let (block, close_only) = match observed {
+    let observed = tokio::task::spawn_blocking(move || wind_down::Observation::read(&l1)).await;
+    let observation = match observed {
         Ok(Ok(v)) => v,
         Ok(Err(e)) => {
             return (
@@ -6043,18 +6096,13 @@ async fn post_v1_admin_wind_down(
                 .into_response()
         }
     };
-    if !close_only {
-        return (StatusCode::CONFLICT, Json(serde_json::json!({"error":"L1 settlement is not in close-only","observedBlock":block}))).into_response();
-    }
+    let block = observation.block;
     {
         let mut gw = app.gw.lock().await;
-        if gw.seq.open_window_has_ops() {
-            return (StatusCode::CONFLICT, Json(serde_json::json!({"error":"seal the current ordinary window before starting wind-down"}))).into_response();
-        }
-        if gw.seq.state.mode == Mode::CloseOnly {
+        if let Err(error) = observation.check_start(&gw) {
             return (
                 StatusCode::CONFLICT,
-                Json(serde_json::json!({"error":"wind-down phase 1 already applied locally"})),
+                Json(serde_json::json!({"error":error,"observedBlock":block})),
             )
                 .into_response();
         }
@@ -6086,6 +6134,7 @@ async fn post_v1_admin_wind_down(
         if let Err(e) = gw.seq.apply(&BatchOp::SettleAll) {
             return err400(format!("SettleAll refused: {e:?}")).into_response();
         }
+        gw.wind_down_started = true;
         for (note, view) in archive_targets {
             gw.archive.record(window, &note, &view, rand::rngs::OsRng);
         }
@@ -6463,11 +6512,45 @@ async fn post_v1_withdraw(
             return err400("`signature` is required (65-byte 0x hex r‖s‖v)".into()).into_response()
         }
     };
+    // Avoid RPC work for ordinary withdrawals; recheck the mode under the
+    // mutation lock below so a concurrent circuit breaker fails closed.
+    let needs_wind_down = {
+        let gw = app.gw.lock().await;
+        if !gw.accounts.contains_key(&key) {
+            return err400("Unknown account.".into()).into_response();
+        }
+        gw.seq.state.mode == Mode::CloseOnly
+    };
+    let observation = if needs_wind_down {
+        let Some(l1) = app.l1.clone() else {
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(serde_json::json!({"error":"wind-down requires L1 phase-1 verification"})),
+            )
+                .into_response();
+        };
+        match tokio::task::spawn_blocking(move || wind_down::Observation::read(&l1)).await {
+            Ok(Ok(value)) => Some(value),
+            _ => {
+                return (
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    Json(serde_json::json!({"error":"cannot verify L1 wind-down phase"})),
+                )
+                    .into_response()
+            }
+        }
+    } else {
+        None
+    };
     let r = {
-        app.gw
-            .lock()
-            .await
-            .account_withdraw(&key, req.market_id, amount, to, nonce, &sig)
+        app.gw.lock().await.account_withdraw_observed(
+            &key,
+            req.market_id,
+            amount,
+            to,
+            (nonce, &sig),
+            observation.as_ref(),
+        )
     };
     match r {
         Ok(w) => Json(serde_json::json!({
@@ -11338,10 +11421,10 @@ mod tests {
 
     // FIN-001 Task 4: the async handler flips the shared force flag ONLY on an exact
     // FIN_ADMIN_KEY match; wrong/absent key ⇒ 401 (no action); key unset ⇒ 503.
-    // Env is process-global; no other gateway test reads FIN_ADMIN_KEY, so this test
-    // owns that var (set + remove within), matching the existing PROVER_SEAL_ROOT test.
+    // Serialize with wind-down route tests: FIN_ADMIN_KEY is process-global.
     #[tokio::test]
     async fn resume_sets_force_flag_when_authorized() {
+        let _env = wind_down::ADMIN_ENV_LOCK.lock().await;
         use axum::http::HeaderMap;
         use std::sync::atomic::Ordering;
 

@@ -60,9 +60,10 @@ use std::path::Path;
 /// without changing its guard — the exact misread the magic exists to refuse.
 // v6: explicit A01 extension; the legacy Gw/Account positional encoding is frozen.
 // v7: A05 execution metadata wraps the unchanged A01 v6 payload.
-// The v7 MAC binds its version; authenticated v5/v6 remain readable losslessly.
+// Version-bound v7/v8/v9 MACs; authenticated v5/v6 remain readable losslessly.
 // Formats older than v5 remain refused; no automatic wipe or downgrade.
-const MAGIC: &[u8; 8] = b"DPSNAP8\0";
+const MAGIC: &[u8; 8] = b"DPSNAP9\0";
+const A07_MAGIC: &[u8; 8] = b"DPSNAP8\0";
 const A05_MAGIC: &[u8; 8] = b"DPSNAP7\0";
 const A01_MAGIC: &[u8; 8] = b"DPSNAP6\0";
 const LEGACY_MAGIC: &[u8; 8] = b"DPSNAP5\0";
@@ -150,7 +151,7 @@ pub fn seal(plain: &[u8], seed: &[u8; 32]) -> Vec<u8> {
 
     let ks = keystream(seed, &nonce, plain.len());
     let ciphertext: Vec<u8> = plain.iter().zip(ks).map(|(p, k)| p ^ k).collect();
-    let tag = mac_version(seed, &nonce, &ciphertext, 8);
+    let tag = mac_version(seed, &nonce, &ciphertext, 9);
 
     let mut out = Vec::with_capacity(8 + 32 + 32 + ciphertext.len());
     out.extend_from_slice(MAGIC);
@@ -170,6 +171,7 @@ pub fn open(sealed: &[u8], seed: &[u8; 32]) -> Result<Vec<u8>, String> {
         return Err("snapshot too short".into());
     }
     if &sealed[..8] != MAGIC
+        && &sealed[..8] != A07_MAGIC
         && &sealed[..8] != A05_MAGIC
         && &sealed[..8] != A01_MAGIC
         && &sealed[..8] != LEGACY_MAGIC
@@ -182,6 +184,8 @@ pub fn open(sealed: &[u8], seed: &[u8; 32]) -> Result<Vec<u8>, String> {
     tag.copy_from_slice(&sealed[40..72]);
     let ciphertext = &sealed[72..];
     let expected = if &sealed[..8] == MAGIC {
+        mac_version(seed, &nonce, ciphertext, 9)
+    } else if &sealed[..8] == A07_MAGIC {
         mac_version(seed, &nonce, ciphertext, 8)
     } else if &sealed[..8] == A05_MAGIC {
         mac_version(seed, &nonce, ciphertext, 7)
@@ -277,6 +281,22 @@ mod tests {
         let plain = b"the engine state".to_vec();
         let sealed = seal(&plain, &seed);
         assert_eq!(open(&sealed, &seed).unwrap(), plain);
+    }
+
+    #[test]
+    fn v9_authenticates_its_version_and_still_reads_v8() {
+        let seed = [42; 32];
+        let mut sealed = seal(b"legacy v8 plaintext", &seed);
+        assert_eq!(&sealed[..8], MAGIC);
+        sealed[..8].copy_from_slice(A07_MAGIC);
+        assert!(
+            open(&sealed, &seed).is_err(),
+            "header downgrade must invalidate the MAC"
+        );
+        let nonce = sealed[8..40].try_into().unwrap();
+        let tag = mac_version(&seed, &nonce, &sealed[72..], 8);
+        sealed[40..72].copy_from_slice(&tag);
+        assert_eq!(open(&sealed, &seed).unwrap(), b"legacy v8 plaintext");
     }
 
     #[test]

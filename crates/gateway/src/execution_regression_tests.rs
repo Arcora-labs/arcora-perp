@@ -315,11 +315,11 @@ mod execution_regressions {
         assert!(Gw::boot_restored(&bytes).is_err());
     }
     #[test]
-    fn snapshot_envelope_has_one_way_v8_guard_and_accepts_v5() {
+    fn snapshot_envelope_has_one_way_v9_guard_and_accepts_v5() {
         let (gw, _, _, _) = paired();
         let seed = [42; 32];
         let current = snapshot::seal(&gw.snapshot_plain(), &seed);
-        assert_eq!(&current[..8], b"DPSNAP8\0");
+        assert_eq!(&current[..8], b"DPSNAP9\0");
         let markets: Vec<_> = gw
             .mkts
             .iter()
@@ -476,7 +476,7 @@ mod execution_regressions {
         assert!(restored.accounts.values().all(|a| a.recovery_nonce == 0));
         assert_eq!(v7_snapshot(&restored), old);
         let upgraded = restored.snapshot_plain();
-        assert!(upgraded.starts_with(account_recovery::SNAPSHOT_V8));
+        assert!(upgraded.starts_with(wind_down::SNAPSHOT_V9));
         assert_eq!(Gw::boot_restored(&upgraded).unwrap().snapshot_plain(), upgraded);
         assert_replay(&mut restored);
     }
@@ -485,10 +485,11 @@ mod execution_regressions {
     fn a07_v8_preserves_generation_and_rejects_truncation_or_downgrade() {
         let (mut gw, maker, _, _) = paired();
         gw.accounts.get_mut(&maker).unwrap().recovery_nonce = 7;
-        let raw = gw.snapshot_plain();
-        let restored = Gw::boot_restored(&raw).unwrap();
+        let current = gw.snapshot_plain();
+        let raw = wind_down::snapshot_payload(&current).unwrap().0;
+        let restored = Gw::boot_restored(raw).unwrap();
         assert_eq!(restored.accounts[&maker].recovery_nonce, 7);
-        assert_eq!(restored.snapshot_plain(), raw);
+        assert_eq!(restored.snapshot_plain(), current);
         let payload = raw
             .strip_prefix(account_recovery::SNAPSHOT_V8)
             .unwrap()
@@ -538,7 +539,7 @@ mod execution_regressions {
         assert_eq!(opened, old);
         let restored = Gw::boot_restored(&opened).unwrap();
         assert_eq!(v7_snapshot(&restored), old);
-        assert!(restored.snapshot_plain().starts_with(account_recovery::SNAPSHOT_V8));
+        assert!(restored.snapshot_plain().starts_with(wind_down::SNAPSHOT_V9));
     }
 
     #[test]

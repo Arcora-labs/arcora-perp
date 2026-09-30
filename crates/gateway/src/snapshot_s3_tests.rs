@@ -235,7 +235,7 @@ fn s3_historical_writers_preserve_state_authority_and_replay() {
         assert_eq!(
             upgraded.snapshot_plain(),
             upgrade,
-            "{version} -> v8 is stable"
+            "{version} -> v9 is stable"
         );
         let key = parse_hex32(meta["replay_key"].as_str().unwrap()).unwrap();
         gw.account_cancel(&key, "o2").unwrap();

@@ -1380,6 +1380,15 @@ impl Sequencer {
         !self.window_ops.is_empty()
     }
 
+    /// SettleAll requires a phase-1 proof even when it leaves the engine root
+    /// unchanged. Ordinary zero-delta ops must not force idle proofs. This is
+    /// intent only: the prover still rejects mixed or duplicate phase windows.
+    pub fn window_has_pending_settle_all(&self) -> bool {
+        self.window_ops
+            .iter()
+            .any(|op| matches!(op, BatchOp::SettleAll))
+    }
+
     /// SEC-025-C (unbacked-mint refusal tests): the number of ops staged in the
     /// open window's op-log. `state_root()` commits only `perp_core::State`, so a
     /// "refused call mutated nothing" assertion cannot observe a stray op pushed

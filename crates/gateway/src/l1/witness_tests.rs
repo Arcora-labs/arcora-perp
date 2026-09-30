@@ -127,6 +127,7 @@ impl Rpc for Fixture {
                     ("requiredBond()", 30),
                     ("challengeWindowBlocks()", 200),
                     ("challenges(bytes32)", 1),
+                    ("windDownSettled()", 0),
                 ];
                 let data = params[0]["data"].as_str().unwrap();
                 let (index, (signature, value)) = words
