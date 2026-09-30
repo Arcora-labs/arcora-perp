@@ -578,6 +578,27 @@ impl L1 {
         )
     }
 
+    /// All terminal terms belong to one hash-pinned observation, corroborated by
+    /// the configured witness and rechecked before the gateway can mutate state.
+    pub(crate) fn wind_down_observation(&self) -> Result<crate::wind_down::Observation, String> {
+        self.observe_at(observation::AnchorPolicy::Latest, |r| {
+            Ok(crate::wind_down::Observation {
+                block: r.height(),
+                close_only: abi_bool(r.word(&self.settlement, "closeOnly()", None)?, "closeOnly")?,
+                settled: abi_bool(
+                    r.word(&self.settlement, "windDownSettled()", None)?,
+                    "windDownSettled",
+                )?,
+                batch_count: abi_u64(
+                    r.word(&self.settlement, "batchCount()", None)?,
+                    "batchCount",
+                )?,
+                root: r.word(&self.settlement, "currentStateRoot()", None)?,
+            })
+        })
+    }
+
+    #[cfg(test)]
     pub fn close_only_observation(&self) -> Result<(u64, bool), String> {
         self.observe_at(observation::AnchorPolicy::Latest, |r| {
             Ok((

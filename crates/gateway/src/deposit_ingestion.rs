@@ -213,6 +213,7 @@ impl Gw {
     /// Commit one complete block, including replay ops and all consumption records,
     /// under the gateway lock. Preparation and engine errors leave money untouched.
     fn apply_deposit_page(&mut self, page: Page) -> Result<usize, String> {
+        self.refuse_if_wind_down_started()?;
         if self.deposit_cursor() != page.start {
             return Err("stale deposit page; retry".into());
         }

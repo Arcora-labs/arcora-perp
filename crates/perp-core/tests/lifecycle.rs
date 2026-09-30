@@ -700,6 +700,34 @@ fn true_insolvency_trips_close_only_when_winners_have_exited() {
         "true insolvency trips the depletion halt"
     );
     assert!(s.conservation_holds());
+    // Emergency phase-1 must remain possible after the actual insolvency
+    // circuit breaker, and flatten the surviving maker without an oracle.
+    s.apply_batch(&[BatchOp::SettleAll]).unwrap();
+    assert!(s
+        .positions
+        .values()
+        .all(|p| p.size == 0 && p.collateral >= 0));
+    assert!(s.conservation_holds());
+    let blind = [0xA6; 32];
+    let note = perp_core::note::Note::new(b, 0, QUOTE_SCALE, blind);
+    let exit = s
+        .apply_batch(&[
+            BatchOp::WindDownUnbind {
+                owner: b,
+                market_id: 0,
+                amount: QUOTE_SCALE,
+                blinding: blind,
+            },
+            BatchOp::WindDownWithdraw {
+                note_commitment: note.commitment::<Keccak256>(),
+                spend_key: [2; 32],
+                to: Some([0x44; 20]),
+                nonce: 1,
+            },
+        ])
+        .unwrap();
+    assert_eq!(exit.withdrawals.len(), 1);
+    assert!(s.conservation_holds());
 }
 
 #[test]

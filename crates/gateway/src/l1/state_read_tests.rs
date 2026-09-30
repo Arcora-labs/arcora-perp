@@ -533,3 +533,48 @@ fn runtime_state_native_cast_prior_page_reorg_and_challenge_deadline_boundaries(
         );
     }
 }
+
+#[test]
+#[ignore = "requires real cast and local loopback; explicitly run in native verification"]
+fn runtime_state_native_cast_wind_down_pair_is_hash_pinned() {
+    let primary = Server::start(Fault::None);
+    let witness = Server::start(Fault::None);
+    let observed = configured(&primary, &witness)
+        .wind_down_observation()
+        .unwrap();
+    assert_eq!(observed.block, 28);
+    assert!(!observed.close_only);
+    assert!(!observed.settled);
+    assert_eq!(observed.batch_count, 6);
+    assert_eq!(observed.root, [3; 32]);
+    for fixture in [&primary.fixture, &witness.fixture] {
+        let calls = fixture.calls.lock().unwrap();
+        assert_eq!(calls.iter().filter(|(m, _)| m == "eth_call").count(), 4);
+        assert_eq!(calls.last().unwrap().1[0], json!("0x1c"));
+    }
+}
+
+#[test]
+#[ignore = "requires real cast and local loopback; explicitly run in native verification"]
+fn runtime_state_native_cast_wind_down_refuses_incoherent_or_failed_reads() {
+    for fault in [
+        Fault::Chain,
+        Fault::ForkWorld,
+        Fault::CanonicalAfter,
+        Fault::Word(10),
+        Fault::Word(0),
+        Fault::Word(1),
+        Fault::Bool,
+        Fault::MalformedWord,
+        Fault::Failure(4),
+    ] {
+        let primary = Server::start(Fault::None);
+        let witness = Server::start(fault);
+        assert!(
+            configured(&primary, &witness)
+                .wind_down_observation()
+                .is_err(),
+            "{fault:?}"
+        );
+    }
+}
