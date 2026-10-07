@@ -1,0 +1,32 @@
+[
+  {
+    "path": "/",
+    "status": 200,
+    "sha256": "eb108d3863437581710e1fae72b457217edca4e17de6033ddde823eb1af4ccd2",
+    "matchesTestedBuild": true
+  },
+  {
+    "path": "/docs/index.html",
+    "status": 200,
+    "sha256": "b3119537e7b0d1c322fe69422eda8b6c6b87135c2a5678b13fe79affc421678d",
+    "matchesTestedBuild": true
+  },
+  {
+    "path": "/design-system/index.html",
+    "status": 200,
+    "sha256": "61b07009e4728cbb489478e765746bd311d48af7f76ebc1f52f043c29dc6b3a3",
+    "matchesTestedBuild": true
+  },
+  {
+    "path": "/assets/index-BokHaU_U.js",
+    "status": 200,
+    "sha256": "ea0709a5e057151dffc4cbbd5560afa7d329b57748a2d82236d0ffa9947ca10a",
+    "matchesTestedBuild": true
+  },
+  {
+    "path": "/assets/index-su91hYnR.css",
+    "status": 200,
+    "sha256": "594ad3965e19df96831053d5b086ec4a3ad2a535616c706a797c1b4307544dae",
+    "matchesTestedBuild": true
+  }
+]

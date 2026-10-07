@@ -32,7 +32,7 @@
 | Global | Wallet and test environment, notifications, unavailable states, CloseOnly | Warm shell, keyboard, mobile, reduced motion, gateway retry |
 
 ## Current status
-N1–N5 PASS. N6 PARTIAL: both production builds promoted; arcoralabs.xyz is live and verified. perp.arcoralabs.xyz DNS remains at the old gateway until the user completes Vercel CLI's mandatory interactive confirmation. No attempt to bypass that confirmation was made.
+N1–N6 PASS. DONE for the authorized browser-demo and portfolio release. Both production builds are promoted, and arcoralabs.xyz and perp.arcoralabs.xyz are verified over public HTTPS. Source delivered in draft PR #28; no merge performed.
 
 ## Current evidence
 - Source: source-fingerprint.json (154 frontend/site files; SHA-256 724d6569ada31c09cd3511b23e716eaca5ce1142db7a28ae15dadd909d8f0f00). pnpm lockfile unchanged. Node 24.12.0; Vite 6.4.3; Playwright 1.58.2; Vercel CLI 59.16.0.
@@ -40,7 +40,7 @@ N1–N5 PASS. N6 PARTIAL: both production builds promoted; arcoralabs.xyz is liv
 - Production compilation: build.log and vercel-build-perp.log; exact same hashed CSS/JS. No dependencies added. Static output has no source maps, .env files, node_modules or application source.
 - Browser regressions: 78 passed in Chromium and WebKit (browser-regression-final.log). Uses real browsers against synthetic wallet/HTTP fixtures, not real-chain evidence.
 - UI and Labs checks: ui-browser.log, labs-browser.log, chart-mode-browser.log. Six widths (360,390,760,1024,1440,1600); no overflow, broken images or page errors. Order review/confirmation/receipt, search, every navigation destination, mobile panels, film/captions, reduced motion, MA/fullscreen, globally visible CloseOnly checked.
-- Production: perp-live-browser.log on arcora-perp.vercel.app; labs-live-browser.log on arcoralabs.xyz. Corresponding deployment and promote logs identify immutable releases.
+- Production: perp-custom-domain-browser.log on perp.arcoralabs.xyz (all checks pass, zero page errors); perp-custom-domain-http.json confirms the HTML, docs, design system and compiled CSS/JS match the tested build byte-for-byte. domain-perp-final.json reports configured-correctly. Earlier perp-live-browser.log on arcora-perp.vercel.app; labs-live-browser.log on arcoralabs.xyz. Corresponding deployment and promote logs identify immutable releases.
 - Perp: dpl_L9Frjuj7NWpBta8LuPhqivizsTSc, https://arcora-perp-beqyzo4z2-kubudak90s-projects.vercel.app.
 - Labs: dpl_43bZmmXs5988pd51uZJMxXbFi18o, https://arcora-labs-11711o9in-kubudak90s-projects.vercel.app.
 
@@ -49,12 +49,12 @@ N1–N5 PASS. N6 PARTIAL: both production builds promoted; arcoralabs.xyz is liv
 - Corrected narrow-screen chart toolbar and decorative Labs orbit overflow; all widths now pass. Headed screenshot capture timed out under local desktop load; headless Chromium completed equivalent interaction checks and captures. Full-page tiled screenshot artifact was reviewed with a separate viewport capture at the project section (DOM has one hero and five projects).
 - Initial nested Labs `vercel build` produced an empty output because the configured monorepo root was applied twice. Rebuilt in isolated labs-release root with apps/labs-site intact; inspected nine allowlisted static files before upload. Empty output was not deployed.
 - Gateway remains deferred by user decision. No claim of real settlement, attestation verification, live-chain trading, or production fund custody.
-- Domain change requested: existing perp A 104.42.53.250, record rec_8d38154e72f2109aeb21b63f -> CNAME 4447cfc81a0cd727.vercel-dns-017.com. (returned by Vercel domain verification). Mail DNS and other projects are untouched. CLI rejected noninteractive overwrite and requires the user's terminal confirmation.
+- Domain completed: the user changed existing perp A record rec_8d38154e72f2109aeb21b63f from 104.42.53.250 to Vercel's rank-1 recommended A target 216.198.79.1 after interactive confirmation. The earlier attempt to change the record type to CNAME was rejected by Vercel. Keeping type A and updating only its value succeeded. Public DNS, Vercel verification, HTTPS, artifact identity and full browser flow all pass. Mail DNS and other projects are untouched.
 
 ## Reproduction and release
 Perp: from repository root, `vercel link --project arcora-perp --scope kubudak90s-projects`, `vercel pull --yes --environment=production`, `vercel build --prod`; inspect .vercel/output/static, then `vercel deploy --prebuilt --prod --skip-domain`. Keep VITE_API_URL empty for this demo. Promote the tested immutable production URL.
 
 Labs: use an isolated release root containing apps/labs-site with only index.html, style.css, script.js, assets, fonts, robots.txt, sitemap.xml and vercel.json. Link that root to arcora-labs; project rootDirectory is apps/labs-site. Pull/build/deploy from the release root, not the nested app directory. Inspect static output before promotion. The same rootDirectory supports future Git integration builds after source review/merge.
 
-Do not publish .vercel files, pulled environments, or source maps. A domain verification error is not success; after the user's DNS confirmation, rerun verification and public HTTPS/browser checks.
+Do not publish .vercel files, pulled environments, or source maps. A domain verification error is not success; after any future DNS change, rerun verification and public HTTPS/browser checks.
 Financial and chain semantics remain owned by existing adapters. ZIP trade.js simulation is excluded from the application. Local mock and mocked HTTP verification do not establish live settlement or deployment.
