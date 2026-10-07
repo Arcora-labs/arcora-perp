@@ -1,0 +1,79 @@
+[
+  {
+    "url": "https://arcoralabs.xyz/",
+    "status": 200,
+    "contentType": "text/html; charset=utf-8",
+    "contentLength": 12187,
+    "csp": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'none'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'"
+  },
+  {
+    "url": "https://arcoralabs.xyz/style.css",
+    "status": 200,
+    "contentType": "text/css; charset=utf-8",
+    "contentLength": 19416,
+    "csp": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'none'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'"
+  },
+  {
+    "url": "https://arcoralabs.xyz/script.js",
+    "status": 200,
+    "contentType": "application/javascript; charset=utf-8",
+    "contentLength": 1222,
+    "csp": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'none'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'"
+  },
+  {
+    "url": "https://arcoralabs.xyz/assets/social.png",
+    "status": 200,
+    "contentType": "image/png",
+    "contentLength": 200198,
+    "csp": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'none'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'"
+  },
+  {
+    "url": "https://arcoralabs.xyz/robots.txt",
+    "status": 200,
+    "contentType": "text/plain; charset=utf-8",
+    "contentLength": 67,
+    "csp": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'none'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'"
+  },
+  {
+    "url": "https://arcoralabs.xyz/sitemap.xml",
+    "status": 200,
+    "contentType": "application/xml",
+    "contentLength": 154,
+    "csp": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'none'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'"
+  },
+  {
+    "url": "https://arcora-perp.vercel.app/",
+    "status": 200,
+    "contentType": "text/html; charset=utf-8",
+    "contentLength": 1594,
+    "csp": null
+  },
+  {
+    "url": "https://arcora-perp.vercel.app/docs/",
+    "status": 200,
+    "contentType": "text/html; charset=utf-8",
+    "contentLength": 7720,
+    "csp": null
+  },
+  {
+    "url": "https://arcora-perp.vercel.app/docs/quickstart.html",
+    "status": 200,
+    "contentType": "text/html; charset=utf-8",
+    "contentLength": 7626,
+    "csp": null
+  },
+  {
+    "url": "https://arcora-perp.vercel.app/design-system/",
+    "status": 200,
+    "contentType": "text/html; charset=utf-8",
+    "contentLength": 10907,
+    "csp": null
+  },
+  {
+    "url": "https://arcora-perp.vercel.app/trade",
+    "status": 200,
+    "contentType": "text/html; charset=utf-8",
+    "contentLength": 1594,
+    "csp": null
+  }
+]
