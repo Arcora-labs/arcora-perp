@@ -1,6 +1,5 @@
 # SEC-022 — Fill-price band + closed-position debt — Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Close the hole where two accounts cross off-market, drive one side's collateral negative on a leg that ends `size == 0`, and withdraw the counterparty's fabricated gain from the real vault.
 
@@ -1490,6 +1489,6 @@ the banned orders' absence would have produced."
 ## Branch completion
 
 - [ ] `cargo test --workspace` green; `cargo fmt --all -- --check` clean; `cargo clippy --workspace --all-targets` clean.
-- [ ] Run `superpowers:requesting-code-review` on the whole branch, and send the diff to Codex (`mcp__codex__codex`, `sandbox: read-only`, `cwd` = repo) — **seven of eight specs in this workstream were broken on first review; verify every finding at source before accepting it.**
+- [ ] Request an independent review of the branch — **seven of eight specs in this workstream were broken on first review; verify every finding at source before accepting it.**
 - [ ] Confirm hazard 1 (a below-maintenance position can no longer reduce) is reported explicitly to the user, with the tests that pin it.
 - [ ] Do **not** deploy. This branch joins the cutover bundle (SEC-022 + SEC-024 + SEC-026 + 025-A/B/C/D) and forces a vkey re-pin, a `GENESIS_ROOT` move, fresh `Settlement`/`Vault`/`USDC`, and a snapshot + rollback-journal wipe. `crates/prover-service/src/bin/seal-client.rs` and `crates/sp1-host/src/{main.rs,bin/prove.rs}` **still do not build** (pre-SEC-019 four-field `BatchOp::Deposit`) and will stop the cutover at the prover — that is 025-B, tracked separately.

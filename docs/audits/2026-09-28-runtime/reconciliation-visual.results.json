@@ -1,7 +1,7 @@
 {
   "config": {
-    "configFile": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/playwright.config.ts",
-    "rootDir": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/tests/browser",
+    "configFile": "<repo>/frontend/playwright.config.ts",
+    "rootDir": "<repo>/frontend/tests/browser",
     "forbidOnly": false,
     "fullyParallel": false,
     "globalSetup": null,
@@ -16,7 +16,7 @@
     "preserveOutput": "always",
     "projects": [
       {
-        "outputDir": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/output/playwright/results",
+        "outputDir": "<repo>/frontend/output/playwright/results",
         "repeatEach": 1,
         "retries": 0,
         "metadata": {
@@ -24,7 +24,7 @@
         },
         "id": "chromium",
         "name": "chromium",
-        "testDir": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/tests/browser",
+        "testDir": "<repo>/frontend/tests/browser",
         "testIgnore": [],
         "testMatch": [
           "**/*.spec.ts"
@@ -32,7 +32,7 @@
         "timeout": 65000
       },
       {
-        "outputDir": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/output/playwright/results",
+        "outputDir": "<repo>/frontend/output/playwright/results",
         "repeatEach": 1,
         "retries": 0,
         "metadata": {
@@ -40,7 +40,7 @@
         },
         "id": "webkit",
         "name": "webkit",
-        "testDir": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/tests/browser",
+        "testDir": "<repo>/frontend/tests/browser",
         "testIgnore": [],
         "testMatch": [
           "**/*.spec.ts"

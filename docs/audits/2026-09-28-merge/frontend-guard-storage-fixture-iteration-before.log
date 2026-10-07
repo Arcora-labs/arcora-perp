@@ -1,22 +1,22 @@
 [WARN] The "pnpm" field in package.json is no longer read by pnpm. The following keys were ignored: "pnpm.onlyBuiltDependencies". See https://pnpm.io/settings for the new home of each setting.
 
- RUN  v4.1.11 /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend
+ RUN  v4.1.11 <repo>/frontend
 
 stderr | src/api/realClient.test.ts > order and legacy deposit mutation fencing > rejects an old order response while a newer saved credential awaits adoption
 [dark-perp] /v1 own-account read failed (own view degraded until a read succeeds): Error: /v1/orders 401
-    at RealDarkPerpClient.getOrders (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/src/api/realClient.ts:1287:24)
+    at RealDarkPerpClient.getOrders (<repo>/frontend/src/api/realClient.ts:1287:24)
     at processTicksAndRejections (node:internal/process/task_queues:103:5)
     at async Promise.all (index 0)
-    at RealDarkPerpClient.fetchOwnStateOnce (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/src/api/realClient.ts:1376:51)
-    at /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/src/api/realClient.ts:1350:11
+    at RealDarkPerpClient.fetchOwnStateOnce (<repo>/frontend/src/api/realClient.ts:1376:51)
+    at <repo>/frontend/src/api/realClient.ts:1350:11
 
 stderr | src/api/realClient.test.ts > order and legacy deposit mutation fencing > rejects an old deposit response while a newer saved credential awaits adoption
 [dark-perp] /v1 own-account read failed (own view degraded until a read succeeds): Error: /v1/orders 401
-    at RealDarkPerpClient.getOrders (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/src/api/realClient.ts:1287:24)
+    at RealDarkPerpClient.getOrders (<repo>/frontend/src/api/realClient.ts:1287:24)
     at processTicksAndRejections (node:internal/process/task_queues:103:5)
     at async Promise.all (index 0)
-    at RealDarkPerpClient.fetchOwnStateOnce (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/src/api/realClient.ts:1376:51)
-    at /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/src/api/realClient.ts:1350:11
+    at RealDarkPerpClient.fetchOwnStateOnce (<repo>/frontend/src/api/realClient.ts:1376:51)
+    at <repo>/frontend/src/api/realClient.ts:1350:11
 
  ❯ src/api/realClient.test.ts (126 tests | 3 failed | 109 skipped) 55ms
      × rejects an old order response while a newer saved credential awaits adoption 7ms

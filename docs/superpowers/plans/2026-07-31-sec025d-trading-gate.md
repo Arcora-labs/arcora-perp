@@ -1,6 +1,5 @@
 # SEC-025-D Trading Gate Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Keep order ingress closed on a fresh production deployment until it is genuinely capitalized and has demonstrably settled a normal `settleBatch`, and make sure a wind-down can never open it.
 
@@ -561,7 +560,7 @@ git commit -m "docs(sec025d): the launch gate, and what it does not make safe"
 
 - [ ] `cargo test --workspace` green; `forge test` still **85**; fmt and clippy clean.
 - [ ] Confirm which tests were verified to **fail before the change**, and report any you could not make die.
-- [ ] Run `superpowers:requesting-code-review` on the whole branch, and send the diff to Codex (`mcp__codex__codex`, `sandbox: read-only`, `cwd` = repo). **Codex rejected this piece's spec twice** — expect it to find more in the implementation. Verify every finding at source before accepting it.
+- [ ] Request an independent review of the branch. **Codex rejected this piece's spec twice** — expect it to find more in the implementation. Verify every finding at source before accepting it.
 - [ ] **Do not deploy.** No `perp-core` change, so no vkey or root moves. `DPSNAP5` and `DPRBJL5` both require the cutover's state wipe.
 - [ ] **025-A and 025-D ship together.** They share `MIN_BOOTSTRAP_INSURANCE`, and a floor differing between builds recreates the deadlock.
 - [ ] **025-E is still the honest blocker for opening to users** — it is not in the cutover bundle, but the gate should stay closed on any real deployment until execution reporting is honest.

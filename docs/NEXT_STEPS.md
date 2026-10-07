@@ -1,6 +1,6 @@
 # HANDOFF — next steps (continue in a clean session)
 
-Snapshot for resuming the dark-perp work. Repo lives at `~/Desktop/dark-perp`.
+Snapshot for resuming the dark-perp work. Repo lives at `<repo>`.
 
 ## Where things stand (2026-06-26)
 
@@ -36,7 +36,7 @@ Increments (the plan we set):
 2. ⬜ **Order encryption** — client encrypts the order to the enclave's epoch key (X25519/HPKE, or a Keccak-based scheme consistent with the crate); wire `Order.ciphertext_commit` to a real ciphertext; the enclave decrypts inside. **Buildable locally, no cloud.** ← natural NEXT.
 3. ⬜ **Encrypted append-only order log** (§2). Buildable locally.
 4. ✅ **Attestation verification** — DONE. `crates/attestation` verifies a real Azure TDX DCAP quote (offline, pure-Rust dcap-qvl) + the vTPM measured-boot chain, with real captured fixtures. On-chain `AttestationRegistry` + `MockDcapAttestation`.
-5. ✅ **Confidential-VM run + real attest** — **DONE (2026-07-03).** The gateway runs on the real `perp-seq` DC2es_v6 CVM (westus, reused from the #5a capture — it was deallocated, not deleted) and verifies its **OWN live quote** at boot: `scripts/tee-capture/capture.sh` produces the six `ATTESTATION_DIR` artifacts live (fresh PCS collateral, `UpToDate`, zero advisories), and the enclave identity is bound to the live measurement `0x422890f6…faf55bd`. Production posture smoke-tested both ways (correct pin serves `/v1`; wrong pin refuses, exit 1). See `docs/ATTESTATION.md` #5c (including the re-pin-after-reboot ops note). Remaining TEE work: back `SealKeyProvider` with real vTPM key-release (#5d).
+5. ✅ **Confidential-VM run + real attest** — **DONE (2026-07-03).** The gateway runs on a real Azure DC2es_v6 confidential VM (westus, reused from the #5a capture — it was deallocated, not deleted) and verifies its **OWN live quote** at boot: `scripts/tee-capture/capture.sh` produces the six `ATTESTATION_DIR` artifacts live (fresh PCS collateral, `UpToDate`, zero advisories), and the enclave identity is bound to the live measurement `0x422890f6…faf55bd`. Production posture smoke-tested both ways (correct pin serves `/v1`; wrong pin refuses, exit 1). See `docs/ATTESTATION.md` #5c (including the re-pin-after-reboot ops note). Remaining TEE work: back `SealKeyProvider` with real vTPM key-release (#5d).
 
 ## What the user must provide (and when)
 
@@ -117,8 +117,7 @@ cargo test --workspace
 - `docs/SECURITY.md` — threat model + production prerequisites + open design items (P3b on-chain rejection-proof path, P6 cumulative withdrawals root, spend-key↔owner binding).
 - `docs/DECISIONS.md` — ADRs. `docs/architecture.html` — the standalone technical doc.
 
-## Constraints (carry into every session)
+## Constraints
 
-- Commits: the user's account (**Kubudak90**), **NO Claude/AI attribution** anywhere.
 - **Never** change the cross-layer public-input vectors (`crates/prover/tests/vectors.rs` ↔ `contracts/test/CrossLayer.t.sol`) or `PublicInputs::commitment` — they are byte-locked to L1.
 - `unsafe_code` is forbidden workspace-wide; `perp-core` must keep building `--no-default-features --features serde` (the no_std zkVM-guest config).

@@ -2,7 +2,7 @@
   "created_at_utc": "2026-09-27T19:56:30.785220+00:00",
   "status": "PARTIAL",
   "release_gate": "CLOSED",
-  "worktree": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+  "worktree": "<repo>",
   "branch": "audit/arcora-local-20260927",
   "source": {
     "head_sha": "098e4952c189f92e4293ed7d49f81222b626e406",

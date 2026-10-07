@@ -1,6 +1,5 @@
 # SEC-021 / SEC-021b Withdrawal Authorization Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make every withdrawal require a secp256k1 signature from an address the account has proven it controls, and stop a leaked API key from rebinding that address.
 

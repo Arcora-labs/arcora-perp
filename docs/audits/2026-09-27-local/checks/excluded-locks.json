@@ -4,7 +4,7 @@
     "-c",
     "import subprocess; [subprocess.run([\"cargo\",\"generate-lockfile\",\"--manifest-path\",f\"crates/{p}/Cargo.toml\"],check=True) for p in [\"sp1-guest\",\"sp1-host\",\"prover-service\"]]"
   ],
-  "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+  "cwd": "<repo>",
   "exit_code": 0,
   "duration_seconds": 23.775,
   "log_sha256": "0e31e66aff32a2ae57b43ccd8e397d39c47e74c0b1b0c47fe2d11e53f913fd04",

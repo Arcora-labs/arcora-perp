@@ -1,4 +1,4 @@
-prover-service v0.0.0 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/prover-service)
+prover-service v0.0.0 (<repo>/crates/prover-service)
 axum v0.7.9
 async-trait v0.1.92 (proc-macro)
 proc-macro2 v1.0.107
@@ -180,7 +180,7 @@ tracing v0.1.44 (*)
 tower-layer v0.3.3
 tower-service v0.3.3
 tracing v0.1.44 (*)
-dark-perp-attestation v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/attestation)
+dark-perp-attestation v0.0.1 (<repo>/crates/attestation)
 base64 v0.22.1
 dcap-qvl v0.5.3
 anyhow v1.0.104
@@ -194,7 +194,7 @@ num-traits v0.2.19
 autocfg v1.5.1
 serde v1.0.229 (*)
 const-oid v0.9.6
-dcap-qvl-webpki v0.103.4+dcap.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/vendor/dcap-qvl-webpki)
+dcap-qvl-webpki v0.103.4+dcap.1 (<repo>/vendor/dcap-qvl-webpki)
 ring v0.17.14
 cfg-if v1.0.5
 getrandom v0.2.17
@@ -311,7 +311,7 @@ der v0.7.10 (*)
 spki v0.7.3
 der v0.7.10 (*)
 hex v0.4.3
-perp-core v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/perp-core)
+perp-core v0.0.1 (<repo>/crates/perp-core)
 k256 v0.13.4
 cfg-if v1.0.5
 ecdsa v0.16.9
@@ -420,7 +420,7 @@ rustc_version v0.4.1 (*)
 rand_core v0.6.4 (*)
 getrandom v0.2.17 (*)
 hex v0.4.3
-perp-core v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/perp-core) (*)
+perp-core v0.0.1 (<repo>/crates/perp-core) (*)
 postcard v1.1.3
 cobs v0.3.0
 thiserror v2.0.21
@@ -435,9 +435,9 @@ serde v1.0.229 (*)
 stable_deref_trait v1.2.1
 rustc_version v0.4.1 (*)
 serde v1.0.229 (*)
-prover v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/prover)
+prover v0.0.1 (<repo>/crates/prover)
 hex v0.4.3
-perp-core v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/perp-core) (*)
+perp-core v0.0.1 (<repo>/crates/perp-core) (*)
 postcard v1.1.3 (*)
 serde v1.0.229 (*)
 serde v1.0.229 (*)

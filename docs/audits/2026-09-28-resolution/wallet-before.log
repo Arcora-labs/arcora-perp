@@ -3,7 +3,7 @@
 > vitest run src/api/wallet.test.ts -t verifyFinalizedRevertedTransaction
 
 
- RUN  v4.1.11 /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend
+ RUN  v4.1.11 <repo>/frontend
 
  ❯ src/api/wallet.test.ts (72 tests | 41 failed | 31 skipped) 6ms
      × returns pinned finalized revert evidence using only read-only RPC calls 2ms

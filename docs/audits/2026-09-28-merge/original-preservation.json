@@ -1,6 +1,6 @@
 {
   "created_at_utc": "20260928T073937Z",
-  "source": "/Users/huseyinarslan/Desktop/dark-perp",
+  "source": "<repo>",
   "head": "f997f8b96279bd06ec1808f6b9cb2a6aeb25cc5e",
   "files_sha256": {
     "RobinX-Game-v0.1.zip": "336a141129e5f43f5a77c620ce5fdd71e7545dd82204d8c68ab5cc3f2e23b57a",
@@ -66,6 +66,6 @@
     "frontend/src/components/RecoveryPanel.tsx": "9f6d96213895e191faa02179cbf8e8be12a5348427aaf46b8dafbcf90cc2effb",
     "kimi-seeklogo-small.png": "f103ae8ef40fc3da6be5a5aea8e49b25ad1491eb6d11f966bf1f0e02ed43ba85"
   },
-  "backup": "/Users/huseyinarslan/.codex/backups/arcora-desktop-pre-merge-20260928T073937Z",
+  "backup": "<local-backup>/arcora-desktop-pre-merge-20260928T073937Z",
   "no_source_modification": true
 }

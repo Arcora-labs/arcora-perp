@@ -12,6 +12,6 @@
     "--nocapture"
   ],
   "exit_code": 0,
-  "log": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/docs/audits/2026-09-27-local/snapshot/historical-v8.log",
+  "log": "<repo>/docs/audits/2026-09-27-local/snapshot/historical-v8.log",
   "generator_changes": "appended test-only module; production source unchanged"
 }

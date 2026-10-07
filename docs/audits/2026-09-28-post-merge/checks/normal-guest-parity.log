@@ -1,6 +1,6 @@
 warning: sp1-host@0.0.0: rustc +succinct --version: "rustc 1.93.0-dev\n"
 warning: sp1-host@0.0.0: perp-core-guest built at 2026-09-28 16:52:37
-   Compiling sp1-host v0.0.0 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/sp1-host)
+   Compiling sp1-host v0.0.0 (<repo>/crates/sp1-host)
     Finished `release` profile [optimized] target(s) in 1m 07s
      Running `crates/sp1-host/target/release/sp1-host --check-negatives --output-dir docs/audits/2026-09-28-post-merge/normal/run-6.1.0`
 witness sha256    = 0f6f5c96dd9e195f32c63d3c2a72cefe4ef2bdc821fda52485d7fc03c4592dc7

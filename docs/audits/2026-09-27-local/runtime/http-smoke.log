@@ -1,6 +1,6 @@
 [WARN] The "pnpm" field in package.json is no longer read by pnpm. The following keys were ignored: "pnpm.onlyBuiltDependencies". See https://pnpm.io/settings for the new home of each setting.
 
- RUN  v2.1.9 /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend
+ RUN  v2.1.9 <repo>/frontend
 
 stderr | src/api/realClient.e2e.test.ts > sealed order round trip against a live gateway > bootstrap verifies the epoch, deposit funds the /v1 account, and a SEALED order is decrypted + ACCEPTED by the enclave
 [dark-perp] VITE_ENCLAVE_SIGNER not set — enclave epoch signer UNPINNED (dev mode). Recovered signer: 0x4a62316623ad457f02cdc5d997ded67a383ec569

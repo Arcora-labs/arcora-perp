@@ -12,7 +12,7 @@
   "docker": {
     "exit_code": 1,
     "stdout": "null\n",
-    "stderr": "Cannot connect to the Docker daemon at unix:///Users/huseyinarslan/.docker/run/docker.sock. Is the docker daemon running?\n"
+    "stderr": "Cannot connect to the Docker daemon at unix://<local-home>/.docker/run/docker.sock. Is the docker daemon running?\n"
   },
   "available_launchers": {
     "colima": "/opt/homebrew/bin/colima",

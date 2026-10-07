@@ -9,7 +9,7 @@
     "--",
     "--nocapture"
   ],
-  "worktree": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+  "worktree": "<repo>",
   "head": "98e0c51f27b42daa4454d22f183aaa96d165b1e5",
   "exit_code": 0,
   "duration_seconds": 3.093,

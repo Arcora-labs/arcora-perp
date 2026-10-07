@@ -431,7 +431,7 @@
 error: failed to run custom build command for `sp1-prover-types v6.0.0`
 
 Caused by:
-  process didn't exit successfully: `/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/sp1-host/target/release/build/sp1-prover-types-cb113046700a53be/build-script-build` (exit status: 1)
+  process didn't exit successfully: `<repo>/crates/sp1-host/target/release/build/sp1-prover-types-cb113046700a53be/build-script-build` (exit status: 1)
   --- stdout
   cargo:rerun-if-changed=proto/worker.proto
   cargo:rerun-if-changed=proto/cluster.proto

@@ -10,7 +10,7 @@ The preceding accepted report has 11 remaining original tasks (6 partial, 5 bloc
 
 - Original acceptance: `../2026-09-27-local/task-status.json`, SHA-256 `87025d856554bd640d21ce05b2174a16565a2518dd2dfbcf05944af42635fcae`.
 - Frozen preceding status: `../2026-09-28-resolution/task-status.json`, SHA-256 `a538aad1d9fcf9561b3f274ce1c05081dfff14a2beed53a42c3e85ff16aa708e`.
-- Worktree: `/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp`.
+- Worktree: `<repo>`.
 - Starting HEAD: `5a3574612669baf153cca4515be95cf71da0ba73`; branch `fix/arcora-deposit-resolution-20260928`.
 - Existing delivery: draft PR #23, <https://github.com/Kubudak90/dark-perp/pull/23>.
 - Source identity for each new check must be freshly calculated from the combined source, including uncommitted/untracked changes. The starting HEAD is not the tested identity of later changes. This audit directory is excluded from the source digest so evidence creation cannot alter its own subject; evidence files receive separate SHA-256 hashes.

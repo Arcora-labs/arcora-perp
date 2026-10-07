@@ -4,10 +4,10 @@
   "baseline": "098e4952c189f92e4293ed7d49f81222b626e406",
   "updatedAt": "2026-09-27T19:54:33.635773+00:00",
   "environment": {
-    "worktree": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+    "worktree": "<repo>",
     "head": "098e4952c189f92e4293ed7d49f81222b626e406 + dirty sha256 4285ad1425cc350c8e6d2b6314aa3f03fc33d93ff61d533ebe5b4218025e6e1d",
     "platform": "macOS arm64; Chromium145 / WebKit26; Rust1.95; SP1 6.0.0",
-    "evidenceDir": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/docs/audits/2026-09-27-local",
+    "evidenceDir": "<repo>/docs/audits/2026-09-27-local",
     "reviewer": "Local agent review only; external signoff missing",
     "activeTask": "S4-03 crash/reconciliation next; overall PARTIAL, release CLOSED"
   },

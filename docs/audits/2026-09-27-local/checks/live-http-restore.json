@@ -4,7 +4,7 @@
     "scripts/local-verification/smoke_gateway.py",
     "/tmp/arcora-gateway-target/debug/gateway"
   ],
-  "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+  "cwd": "<repo>",
   "exit_code": 0,
   "duration_seconds": 31.014,
   "log_sha256": "f9ed3fddb80999c709bb32a59afb03d92a9bc08d01cad2b2aa32857a3bacbfbf",

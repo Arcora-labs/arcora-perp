@@ -6,7 +6,7 @@
     "contracts",
     "-vvv"
   ],
-  "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+  "cwd": "<repo>",
   "exit_code": 0,
   "duration_seconds": 5.635,
   "log_sha256": "65f8e7dd16364c58d965ed2251370f1af17156424d97e4bb48f32ec02ead7111",

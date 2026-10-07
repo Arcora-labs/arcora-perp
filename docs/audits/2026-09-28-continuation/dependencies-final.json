@@ -6,7 +6,7 @@
     "audit",
     "--json"
   ],
-  "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend",
+  "cwd": "<repo>/frontend",
   "exit_code": 0,
   "audit_json_parse_error": null,
   "vulnerability_counts": {
@@ -37,17 +37,17 @@
     "vite": {
       "manifest_pin": "6.4.3",
       "installed_version": "6.4.3",
-      "installed_path": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/node_modules/.pnpm/vite@6.4.3_@types+node@22.20.4/node_modules/vite/package.json"
+      "installed_path": "<repo>/frontend/node_modules/.pnpm/vite@6.4.3_@types+node@22.20.4/node_modules/vite/package.json"
     },
     "vitest": {
       "manifest_pin": "4.1.11",
       "installed_version": "4.1.11",
-      "installed_path": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/node_modules/.pnpm/vitest@4.1.11_@types+node@22.20.4_happy-dom@20.10.6_vite@6.4.3_@types+node@22.20.4_/node_modules/vitest/package.json"
+      "installed_path": "<repo>/frontend/node_modules/.pnpm/vitest@4.1.11_@types+node@22.20.4_happy-dom@20.10.6_vite@6.4.3_@types+node@22.20.4_/node_modules/vitest/package.json"
     },
     "@types/node": {
       "manifest_pin": "22.20.4",
       "installed_version": "22.20.4",
-      "installed_path": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/node_modules/.pnpm/@types+node@22.20.4/node_modules/@types/node/package.json"
+      "installed_path": "<repo>/frontend/node_modules/.pnpm/@types+node@22.20.4/node_modules/@types/node/package.json"
     }
   },
   "pnpm_list_exit_code": 0,
@@ -55,38 +55,38 @@
     {
       "name": "dark-perp-frontend",
       "version": "0.0.1",
-      "path": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend",
+      "path": "<repo>/frontend",
       "private": true,
       "dependencies": {
         "@noble/ciphers": {
           "from": "@noble/ciphers",
           "version": "1.3.0",
           "resolved": "https://registry.npmjs.org/@noble/ciphers/-/ciphers-1.3.0.tgz",
-          "path": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/node_modules/.pnpm/@noble+ciphers@1.3.0/node_modules/@noble/ciphers"
+          "path": "<repo>/frontend/node_modules/.pnpm/@noble+ciphers@1.3.0/node_modules/@noble/ciphers"
         },
         "@noble/curves": {
           "from": "@noble/curves",
           "version": "1.9.0",
           "resolved": "https://registry.npmjs.org/@noble/curves/-/curves-1.9.0.tgz",
-          "path": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/node_modules/.pnpm/@noble+curves@1.9.0/node_modules/@noble/curves"
+          "path": "<repo>/frontend/node_modules/.pnpm/@noble+curves@1.9.0/node_modules/@noble/curves"
         },
         "@noble/hashes": {
           "from": "@noble/hashes",
           "version": "1.8.0",
           "resolved": "https://registry.npmjs.org/@noble/hashes/-/hashes-1.8.0.tgz",
-          "path": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/node_modules/.pnpm/@noble+hashes@1.8.0/node_modules/@noble/hashes"
+          "path": "<repo>/frontend/node_modules/.pnpm/@noble+hashes@1.8.0/node_modules/@noble/hashes"
         },
         "react": {
           "from": "react",
           "version": "18.3.1",
           "resolved": "https://registry.npmjs.org/react/-/react-18.3.1.tgz",
-          "path": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/node_modules/.pnpm/react@18.3.1/node_modules/react"
+          "path": "<repo>/frontend/node_modules/.pnpm/react@18.3.1/node_modules/react"
         },
         "react-dom": {
           "from": "react-dom",
           "version": "18.3.1",
           "resolved": "https://registry.npmjs.org/react-dom/-/react-dom-18.3.1.tgz",
-          "path": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom"
+          "path": "<repo>/frontend/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom"
         }
       },
       "devDependencies": {
@@ -94,67 +94,67 @@
           "from": "@playwright/test",
           "version": "1.58.2",
           "resolved": "https://registry.npmjs.org/@playwright/test/-/test-1.58.2.tgz",
-          "path": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/node_modules/.pnpm/@playwright+test@1.58.2/node_modules/@playwright/test"
+          "path": "<repo>/frontend/node_modules/.pnpm/@playwright+test@1.58.2/node_modules/@playwright/test"
         },
         "@testing-library/dom": {
           "from": "@testing-library/dom",
           "version": "10.4.1",
           "resolved": "https://registry.npmjs.org/@testing-library/dom/-/dom-10.4.1.tgz",
-          "path": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/node_modules/.pnpm/@testing-library+dom@10.4.1/node_modules/@testing-library/dom"
+          "path": "<repo>/frontend/node_modules/.pnpm/@testing-library+dom@10.4.1/node_modules/@testing-library/dom"
         },
         "@testing-library/react": {
           "from": "@testing-library/react",
           "version": "16.3.2",
           "resolved": "https://registry.npmjs.org/@testing-library/react/-/react-16.3.2.tgz",
-          "path": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/node_modules/.pnpm/@testing-library+react@16.3.2_@testing-library+dom@10.4.1_@types+react-dom@18.3.7_@type_b0bbe147884ef4cbbf95e64a97c782e8/node_modules/@testing-library/react"
+          "path": "<repo>/frontend/node_modules/.pnpm/@testing-library+react@16.3.2_@testing-library+dom@10.4.1_@types+react-dom@18.3.7_@type_b0bbe147884ef4cbbf95e64a97c782e8/node_modules/@testing-library/react"
         },
         "@types/node": {
           "from": "@types/node",
           "version": "22.20.4",
           "resolved": "https://registry.npmjs.org/@types/node/-/node-22.20.4.tgz",
-          "path": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/node_modules/.pnpm/@types+node@22.20.4/node_modules/@types/node"
+          "path": "<repo>/frontend/node_modules/.pnpm/@types+node@22.20.4/node_modules/@types/node"
         },
         "@types/react": {
           "from": "@types/react",
           "version": "18.3.31",
           "resolved": "https://registry.npmjs.org/@types/react/-/react-18.3.31.tgz",
-          "path": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/node_modules/.pnpm/@types+react@18.3.31/node_modules/@types/react"
+          "path": "<repo>/frontend/node_modules/.pnpm/@types+react@18.3.31/node_modules/@types/react"
         },
         "@types/react-dom": {
           "from": "@types/react-dom",
           "version": "18.3.7",
           "resolved": "https://registry.npmjs.org/@types/react-dom/-/react-dom-18.3.7.tgz",
-          "path": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/node_modules/.pnpm/@types+react-dom@18.3.7_@types+react@18.3.31/node_modules/@types/react-dom"
+          "path": "<repo>/frontend/node_modules/.pnpm/@types+react-dom@18.3.7_@types+react@18.3.31/node_modules/@types/react-dom"
         },
         "@vitejs/plugin-react": {
           "from": "@vitejs/plugin-react",
           "version": "4.7.0",
           "resolved": "https://registry.npmjs.org/@vitejs/plugin-react/-/plugin-react-4.7.0.tgz",
-          "path": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/node_modules/.pnpm/@vitejs+plugin-react@4.7.0_vite@6.4.3_@types+node@22.20.4_/node_modules/@vitejs/plugin-react"
+          "path": "<repo>/frontend/node_modules/.pnpm/@vitejs+plugin-react@4.7.0_vite@6.4.3_@types+node@22.20.4_/node_modules/@vitejs/plugin-react"
         },
         "happy-dom": {
           "from": "happy-dom",
           "version": "20.10.6",
           "resolved": "https://registry.npmjs.org/happy-dom/-/happy-dom-20.10.6.tgz",
-          "path": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/node_modules/.pnpm/happy-dom@20.10.6/node_modules/happy-dom"
+          "path": "<repo>/frontend/node_modules/.pnpm/happy-dom@20.10.6/node_modules/happy-dom"
         },
         "typescript": {
           "from": "typescript",
           "version": "5.9.3",
           "resolved": "https://registry.npmjs.org/typescript/-/typescript-5.9.3.tgz",
-          "path": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/node_modules/.pnpm/typescript@5.9.3/node_modules/typescript"
+          "path": "<repo>/frontend/node_modules/.pnpm/typescript@5.9.3/node_modules/typescript"
         },
         "vite": {
           "from": "vite",
           "version": "6.4.3",
           "resolved": "https://registry.npmjs.org/vite/-/vite-6.4.3.tgz",
-          "path": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/node_modules/.pnpm/vite@6.4.3_@types+node@22.20.4/node_modules/vite"
+          "path": "<repo>/frontend/node_modules/.pnpm/vite@6.4.3_@types+node@22.20.4/node_modules/vite"
         },
         "vitest": {
           "from": "vitest",
           "version": "4.1.11",
           "resolved": "https://registry.npmjs.org/vitest/-/vitest-4.1.11.tgz",
-          "path": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/node_modules/.pnpm/vitest@4.1.11_@types+node@22.20.4_happy-dom@20.10.6_vite@6.4.3_@types+node@22.20.4_/node_modules/vitest"
+          "path": "<repo>/frontend/node_modules/.pnpm/vitest@4.1.11_@types+node@22.20.4_happy-dom@20.10.6_vite@6.4.3_@types+node@22.20.4_/node_modules/vitest"
         }
       }
     }

@@ -35,7 +35,7 @@ Running 2 tests using 1 worker
       194 |   expect(f.calls.filter(c => c.path === '/v1/accounts/withdraw')).toHaveLength(0);
       195 | });
       196 |
-        at /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/tests/browser/local.spec.ts:193:42
+        at <repo>/frontend/tests/browser/local.spec.ts:193:42
 
     Error Context: output/playwright/results/local-BR-08-cross-tab-rota-7734f-e-waits-aborts-old-mutation-chromium/error-context.md
 
@@ -52,7 +52,7 @@ Running 2 tests using 1 worker
           |                                                             ^
       203 | });
       204 |
-        at /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/tests/browser/local.spec.ts:202:61
+        at <repo>/frontend/tests/browser/local.spec.ts:202:61
 
     Error Context: output/playwright/results/local-BR-07-stale-withdraw-21fdc-is-discarded-after-rotation-chromium/error-context.md
 

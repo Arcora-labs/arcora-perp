@@ -9,7 +9,7 @@
     "gateway",
     "service_policy"
   ],
-  "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+  "cwd": "<repo>",
   "exit_code": 0,
   "duration_seconds": 0.426,
   "log_sha256": "14dc52d62b28f68fbb0f54d98575bd978ecd9003191985cf7b51f769815763ee",

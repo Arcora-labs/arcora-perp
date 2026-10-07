@@ -50,57 +50,57 @@ stack backtrace:
   11:        0x1028bd538 - core::result::Result<T,E>::unwrap::h4975d41ba0c6e14b
                                at /opt/homebrew/Cellar/rust/1.95.0/lib/rustlib/src/rust/library/core/src/result.rs:1233:23
   12:        0x1028bd538 - <gateway::ops_alerts::integration_tests::Collector as core::ops::drop::Drop>::drop::h57097bb3fc829deb
-                               at /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/gateway/src/ops_alerts/integration_tests.rs:76:44
+                               at <repo>/crates/gateway/src/ops_alerts/integration_tests.rs:76:44
   13:        0x10288f5f8 - core::ptr::drop_in_place<gateway::ops_alerts::integration_tests::Collector>::hd650cff614a2393d
                                at /opt/homebrew/Cellar/rust/1.95.0/lib/rustlib/src/rust/library/core/src/ptr/mod.rs:805:1
   14:        0x102cb1fa0 - gateway::ops_alerts::integration_tests::held_production_transitions_deliver_once_recover_and_rearm::{{closure}}::h83a8e099c8c40be4
-                               at /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/gateway/src/ops_alerts/integration_tests.rs:187:1
+                               at <repo>/crates/gateway/src/ops_alerts/integration_tests.rs:187:1
   15:        0x102f2b744 - <core::pin::Pin<P> as core::future::future::Future>::poll::ha7f2b35dfb04727e
                                at /opt/homebrew/Cellar/rust/1.95.0/lib/rustlib/src/rust/library/core/src/future/future.rs:133:9
   16:        0x102f2bd4c - <core::pin::Pin<P> as core::future::future::Future>::poll::hee778411560ca7e8
                                at /opt/homebrew/Cellar/rust/1.95.0/lib/rustlib/src/rust/library/core/src/future/future.rs:133:9
   17:        0x102baa18c - tokio::runtime::scheduler::current_thread::CoreGuard::block_on::{{closure}}::{{closure}}::{{closure}}::h634e57431721284e
-                               at /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.52.3/src/runtime/scheduler/current_thread/mod.rs:778:70
+                               at <cargo-home>/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.52.3/src/runtime/scheduler/current_thread/mod.rs:778:70
   18:        0x102ba9f4c - tokio::task::coop::with_budget::h6967b292b2dec3e2
-                               at /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.52.3/src/task/coop/mod.rs:167:5
+                               at <cargo-home>/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.52.3/src/task/coop/mod.rs:167:5
   19:        0x102ba9f4c - tokio::task::coop::budget::h7b238fcf03098d8b
-                               at /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.52.3/src/task/coop/mod.rs:133:5
+                               at <cargo-home>/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.52.3/src/task/coop/mod.rs:133:5
   20:        0x102ba9f4c - tokio::runtime::scheduler::current_thread::CoreGuard::block_on::{{closure}}::{{closure}}::h6097a0a1ea065ca6
-                               at /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.52.3/src/runtime/scheduler/current_thread/mod.rs:778:25
+                               at <cargo-home>/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.52.3/src/runtime/scheduler/current_thread/mod.rs:778:25
   21:        0x102ba79b8 - tokio::runtime::scheduler::current_thread::Context::enter::h029c8bb055af36ce
-                               at /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.52.3/src/runtime/scheduler/current_thread/mod.rs:451:19
+                               at <cargo-home>/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.52.3/src/runtime/scheduler/current_thread/mod.rs:451:19
   22:        0x102ba9804 - tokio::runtime::scheduler::current_thread::CoreGuard::block_on::{{closure}}::h17b874e22c453aa0
-                               at /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.52.3/src/runtime/scheduler/current_thread/mod.rs:777:44
+                               at <cargo-home>/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.52.3/src/runtime/scheduler/current_thread/mod.rs:777:44
   23:        0x102ba8d50 - tokio::runtime::scheduler::current_thread::CoreGuard::enter::{{closure}}::h0b36ce887ce44717
-                               at /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.52.3/src/runtime/scheduler/current_thread/mod.rs:865:68
+                               at <cargo-home>/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.52.3/src/runtime/scheduler/current_thread/mod.rs:865:68
   24:        0x102cab19c - tokio::runtime::context::scoped::Scoped<T>::set::h7bf70ceb4aac3a55
-                               at /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.52.3/src/runtime/context/scoped.rs:40:9
+                               at <cargo-home>/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.52.3/src/runtime/context/scoped.rs:40:9
   25:        0x102cb0d8c - tokio::runtime::context::set_scheduler::{{closure}}::h68b69151a1482342
-                               at /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.52.3/src/runtime/context.rs:181:38
+                               at <cargo-home>/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.52.3/src/runtime/context.rs:181:38
   26:        0x10298c77c - std::thread::local::LocalKey<T>::try_with::hde3598d628994ec1
                                at /opt/homebrew/Cellar/rust/1.95.0/lib/rustlib/src/rust/library/std/src/thread/local.rs:513:12
   27:        0x102985404 - std::thread::local::LocalKey<T>::with::h328013f0d7ef86d9
                                at /opt/homebrew/Cellar/rust/1.95.0/lib/rustlib/src/rust/library/std/src/thread/local.rs:477:20
   28:        0x102cb0d48 - tokio::runtime::context::set_scheduler::h86e8550e81eff2cf
-                               at /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.52.3/src/runtime/context.rs:181:17
+                               at <cargo-home>/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.52.3/src/runtime/context.rs:181:17
   29:        0x102ba8ba4 - tokio::runtime::scheduler::current_thread::CoreGuard::enter::hdad6c9786ea73a2a
-                               at /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.52.3/src/runtime/scheduler/current_thread/mod.rs:865:27
+                               at <cargo-home>/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.52.3/src/runtime/scheduler/current_thread/mod.rs:865:27
   30:        0x102ba8dc8 - tokio::runtime::scheduler::current_thread::CoreGuard::block_on::h624273c10af9d628
-                               at /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.52.3/src/runtime/scheduler/current_thread/mod.rs:765:24
+                               at <cargo-home>/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.52.3/src/runtime/scheduler/current_thread/mod.rs:765:24
   31:        0x102b9b7cc - tokio::runtime::scheduler::current_thread::CurrentThread::block_on::{{closure}}::he9767f84f1bb6f1e
-                               at /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.52.3/src/runtime/scheduler/current_thread/mod.rs:205:33
+                               at <cargo-home>/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.52.3/src/runtime/scheduler/current_thread/mod.rs:205:33
   32:        0x102d96b60 - tokio::runtime::context::runtime::enter_runtime::hb182821b0c9f0b47
-                               at /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.52.3/src/runtime/context/runtime.rs:65:16
+                               at <cargo-home>/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.52.3/src/runtime/context/runtime.rs:65:16
   33:        0x102b9b3fc - tokio::runtime::scheduler::current_thread::CurrentThread::block_on::hac3eb2f11a772623
-                               at /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.52.3/src/runtime/scheduler/current_thread/mod.rs:193:9
+                               at <cargo-home>/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.52.3/src/runtime/scheduler/current_thread/mod.rs:193:9
   34:        0x102ab9964 - tokio::runtime::runtime::Runtime::block_on_inner::h8d7cc0bb06615e36
-                               at /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.52.3/src/runtime/runtime.rs:371:52
+                               at <cargo-home>/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.52.3/src/runtime/runtime.rs:371:52
   35:        0x102ab9c04 - tokio::runtime::runtime::Runtime::block_on::h9c79877aadd4c628
-                               at /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.52.3/src/runtime/runtime.rs:345:18
+                               at <cargo-home>/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.52.3/src/runtime/runtime.rs:345:18
   36:        0x102cacdb0 - gateway::ops_alerts::integration_tests::held_production_transitions_deliver_once_recover_and_rearm::hbdfe63ccd865a718
-                               at /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/gateway/src/ops_alerts/integration_tests.rs:186:45
+                               at <repo>/crates/gateway/src/ops_alerts/integration_tests.rs:186:45
   37:        0x102cb1e78 - gateway::ops_alerts::integration_tests::held_production_transitions_deliver_once_recover_and_rearm::{{closure}}::h1ef18433e32aa1c1
-                               at /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/gateway/src/ops_alerts/integration_tests.rs:150:70
+                               at <repo>/crates/gateway/src/ops_alerts/integration_tests.rs:150:70
   38:        0x102832c30 - core::ops::function::FnOnce::call_once::ha826026d6a29cc5e
                                at /opt/homebrew/Cellar/rust/1.95.0/lib/rustlib/src/rust/library/core/src/ops/function.rs:250:5
   39:        0x102fb9268 - test[6929567d28ed0368]::__rust_begin_short_backtrace::<core[a385b85ab76da31e]::result::Result<(), alloc[a66ee3d32fe6f844]::string::String>, fn() -> core[a385b85ab76da31e]::result::Result<(), alloc[a66ee3d32fe6f844]::string::String>>
@@ -116,4 +116,4 @@ thread caused non-unwinding panic. aborting.
 error: test failed, to rerun pass `-p gateway --bin gateway`
 
 Caused by:
-  process didn't exit successfully: `/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/target/debug/deps/gateway-61fe52f6f92c0e7c 'ops_alerts::' --nocapture --test-threads=1` (signal: 6, SIGABRT: process abort signal)
+  process didn't exit successfully: `<repo>/target/debug/deps/gateway-61fe52f6f92c0e7c 'ops_alerts::' --nocapture --test-threads=1` (signal: 6, SIGABRT: process abort signal)

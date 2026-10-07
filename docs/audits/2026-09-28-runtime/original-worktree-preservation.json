@@ -1,6 +1,6 @@
 {
   "checked_at": "2026-09-28T07:34:09.306107+00:00",
-  "checkout": "/Users/huseyinarslan/Desktop/dark-perp",
+  "checkout": "<repo>",
   "baseline": "../2026-09-28-continuation/original-worktree-preservation.json",
   "recorded_file_count": 19,
   "status_matches_baseline": true,

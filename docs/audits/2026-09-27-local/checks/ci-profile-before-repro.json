@@ -4,7 +4,7 @@
     "scripts/local-verification/check_release_profile.py",
     "/tmp/arcora-a11-before.yml"
   ],
-  "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+  "cwd": "<repo>",
   "exit_code": 101,
   "duration_seconds": 1.253,
   "log_sha256": "ee14fc6bbb809a5e7590da4d3a48744a4d5d2497dc34957374cb76b382cae91b",

@@ -47,7 +47,7 @@ Running 3 tests using 1 worker
       138 |     await expect(page.getByLabel('Account owner id')).toHaveValue(OWNER);
       139 |     expect(await page.evaluate(() => localStorage.getItem('darkperp.v1Account') !== null)).toBe(true);
       140 |   }
-        at /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/tests/browser/local.spec.ts:137:59
+        at <repo>/frontend/tests/browser/local.spec.ts:137:59
 
     Error Context: output/playwright/results/local-BR-06-legacy-record--03288-ey-or-registers-replacement-chromium/error-context.md
 
@@ -65,7 +65,7 @@ Running 3 tests using 1 worker
       150 | });
       151 |
       152 | test('BR-07 cancel response after recovery cannot emit success into new credential context', async ({ context }) => {
-        at /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/tests/browser/local.spec.ts:149:80
+        at <repo>/frontend/tests/browser/local.spec.ts:149:80
 
     Error Context: output/playwright/results/local-BR-08-withdrawal-ret-2d48e-hanges-during-wallet-prompt-chromium/error-context.md
 
@@ -83,7 +83,7 @@ Running 3 tests using 1 worker
       158 |   expect(await api(page, 'window.events.length')).toBe(0);
       159 | });
       160 |
-        at /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/tests/browser/local.spec.ts:157:61
+        at <repo>/frontend/tests/browser/local.spec.ts:157:61
 
     Error Context: output/playwright/results/local-BR-07-cancel-respons-8f5bb-into-new-credential-context-chromium/error-context.md
 

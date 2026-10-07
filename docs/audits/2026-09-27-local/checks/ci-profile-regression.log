@@ -1,4 +1,4 @@
-Workflow: /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/.github/workflows/a11-release-evidence.yml Settings: {'CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS': 'true', 'CARGO_PROFILE_RELEASE_OVERFLOW_CHECKS': 'true'}
+Workflow: <repo>/.github/workflows/a11-release-evidence.yml Settings: {'CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS': 'true', 'CARGO_PROFILE_RELEASE_OVERFLOW_CHECKS': 'true'}
    Compiling arcora-profile-control v0.0.0 (/var/folders/jz/7wbjs_5j45g915858xh6wm200000gn/T/arcora-release-profile-i297pn2u)
     Finished `release` profile [optimized] target(s) in 0.14s
      Running unittests src/lib.rs (/var/folders/jz/7wbjs_5j45g915858xh6wm200000gn/T/arcora-release-profile-i297pn2u/target/release/deps/arcora_profile_control-8a6867e8fbd8a1d7)

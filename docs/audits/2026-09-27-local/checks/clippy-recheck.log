@@ -1,11 +1,11 @@
     Blocking waiting for file lock on package cache
     Blocking waiting for file lock on package cache
-    Checking gateway v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/gateway)
-    Checking perp-core v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/perp-core)
-    Checking prover v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/prover)
-    Checking sequencer v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/sequencer)
-    Checking matcher v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/matcher)
-    Checking loadbot v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/loadbot)
-    Checking committee v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/committee)
-    Checking bridge v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/bridge)
+    Checking gateway v0.0.1 (<repo>/crates/gateway)
+    Checking perp-core v0.0.1 (<repo>/crates/perp-core)
+    Checking prover v0.0.1 (<repo>/crates/prover)
+    Checking sequencer v0.0.1 (<repo>/crates/sequencer)
+    Checking matcher v0.0.1 (<repo>/crates/matcher)
+    Checking loadbot v0.0.1 (<repo>/crates/loadbot)
+    Checking committee v0.0.1 (<repo>/crates/committee)
+    Checking bridge v0.0.1 (<repo>/crates/bridge)
     Finished `dev` profile [unoptimized + debuginfo] target(s) in 4.22s

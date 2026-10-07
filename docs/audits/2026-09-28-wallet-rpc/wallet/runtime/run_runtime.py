@@ -1,5 +1,5 @@
 import pathlib,json,subprocess,os,time,hashlib,re,urllib.request,urllib.error,signal,socket,base64,sys
-root=pathlib.Path('/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp')
+root=pathlib.Path('<repo>')
 scratch=pathlib.Path('/tmp/arcora-extension-wallet-2vhdkiab')
 old=json.loads((scratch/'runtime.json').read_text())
 (scratch/'runtime-initial.json').write_text(json.dumps(old,indent=2)+'\n')

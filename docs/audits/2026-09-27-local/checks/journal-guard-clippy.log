@@ -1,4 +1,4 @@
-    Checking sealed-box v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/sealed-box)
-    Checking note-archive v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/note-archive)
-    Checking gateway v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/gateway)
+    Checking sealed-box v0.0.1 (<repo>/crates/sealed-box)
+    Checking note-archive v0.0.1 (<repo>/crates/note-archive)
+    Checking gateway v0.0.1 (<repo>/crates/gateway)
     Finished `dev` profile [unoptimized + debuginfo] target(s) in 3.48s

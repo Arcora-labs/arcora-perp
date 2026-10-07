@@ -5,7 +5,7 @@
   "checks": [
     {
       "name": "storage-failing-before",
-      "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+      "cwd": "<repo>",
       "argv": [
         "pnpm",
         "--dir",
@@ -35,7 +35,7 @@
     },
     {
       "name": "final-focused-client-and-recovery",
-      "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+      "cwd": "<repo>",
       "argv": [
         "pnpm",
         "--dir",
@@ -62,7 +62,7 @@
     },
     {
       "name": "final-full-unit",
-      "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+      "cwd": "<repo>",
       "argv": [
         "pnpm",
         "--dir",
@@ -87,7 +87,7 @@
     },
     {
       "name": "final-production-build",
-      "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+      "cwd": "<repo>",
       "argv": [
         "pnpm",
         "--dir",
@@ -106,7 +106,7 @@
     },
     {
       "name": "final-diff-check",
-      "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+      "cwd": "<repo>",
       "argv": [
         "git",
         "diff",

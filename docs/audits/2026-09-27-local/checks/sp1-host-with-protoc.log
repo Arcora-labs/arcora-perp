@@ -31,7 +31,7 @@
    Compiling chrono v0.4.45
    Compiling sp1-build v6.0.0
    Compiling hash32 v0.2.1
-   Compiling sp1-host v0.0.0 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/sp1-host)
+   Compiling sp1-host v0.0.0 (<repo>/crates/sp1-host)
    Compiling sp1-cuda v6.0.0
    Compiling eventsource-stream v0.2.3
    Compiling cobs v0.3.0
@@ -39,7 +39,7 @@
    Compiling sp1-sdk v6.0.0
 warning: sp1-host@0.0.0: rustc +succinct --version: "rustc 1.93.0-dev\n"
 warning: sp1-host@0.0.0: perp-core-guest built at 2026-09-27 22:34:06
-   Compiling perp-core v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/perp-core)
+   Compiling perp-core v0.0.1 (<repo>/crates/perp-core)
     Finished `release` profile [optimized] target(s) in 2m 12s
      Running `crates/sp1-host/target/release/sp1-host`
 cycles            = 449953

@@ -14,7 +14,7 @@
     "--output-dir",
     "docs/audits/2026-09-28-post-merge/normal/run-6.1.0"
   ],
-  "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+  "cwd": "<repo>",
   "exit_code": 0,
   "duration_seconds": 83.043,
   "log_sha256": "a516a93e0e929a6891937b8adfe523d2180ebc8427725255cd3693c2a8ed2eb4",

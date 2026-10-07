@@ -1,156 +1,156 @@
 [WARN] The "pnpm" field in package.json is no longer read by pnpm. The following keys were ignored: "pnpm.onlyBuiltDependencies". See https://pnpm.io/settings for the new home of each setting.
 $ vitest run
 
- RUN  v2.1.9 /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend
+ RUN  v2.1.9 <repo>/frontend
 
  ✓ src/api/wallet.test.ts (31 tests) 124ms
 stderr | src/api/realClient.recovery.test.ts > S1 recovery: confirmed success > swaps the stored credential + sealing, bumps the epoch, and closes the old socket
 [dark-perp] sealed-order setup failed at bootstrap (will retry on first order): Error: epoch unreachable in recovery tests
-    at /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/src/api/realClient.recovery.test.ts:91:47
+    at <repo>/frontend/src/api/realClient.recovery.test.ts:91:47
     at processTicksAndRejections (node:internal/process/task_queues:103:5)
 
 stderr | src/api/realClient.recovery.test.ts > S1 recovery: failure matrix keeps the OLD credential + sealing intact > 400 bad signature/params
 [dark-perp] sealed-order setup failed at bootstrap (will retry on first order): Error: epoch unreachable in recovery tests
-    at /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/src/api/realClient.recovery.test.ts:91:47
+    at <repo>/frontend/src/api/realClient.recovery.test.ts:91:47
     at processTicksAndRejections (node:internal/process/task_queues:103:5)
 
 stderr | src/api/realClient.recovery.test.ts > S1 recovery: failure matrix keeps the OLD credential + sealing intact > 401 unknown authorization
 [dark-perp] sealed-order setup failed at bootstrap (will retry on first order): Error: epoch unreachable in recovery tests
-    at /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/src/api/realClient.recovery.test.ts:91:47
+    at <repo>/frontend/src/api/realClient.recovery.test.ts:91:47
     at processTicksAndRejections (node:internal/process/task_queues:103:5)
 
 stderr | src/api/realClient.recovery.test.ts > S1 recovery: failure matrix keeps the OLD credential + sealing intact > 409 superseded by a newer rotation
 [dark-perp] sealed-order setup failed at bootstrap (will retry on first order): Error: epoch unreachable in recovery tests
-    at /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/src/api/realClient.recovery.test.ts:91:47
+    at <repo>/frontend/src/api/realClient.recovery.test.ts:91:47
     at processTicksAndRejections (node:internal/process/task_queues:103:5)
 
 stderr | src/api/realClient.recovery.test.ts > S1 recovery: failure matrix keeps the OLD credential + sealing intact > 503 (unconfirmed durability) retries bounded, then gives up — old credential intact
 [dark-perp] sealed-order setup failed at bootstrap (will retry on first order): Error: epoch unreachable in recovery tests
-    at /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/src/api/realClient.recovery.test.ts:91:47
+    at <repo>/frontend/src/api/realClient.recovery.test.ts:91:47
     at processTicksAndRejections (node:internal/process/task_queues:103:5)
 
 stderr | src/api/realClient.recovery.test.ts > S1 recovery: failure matrix keeps the OLD credential + sealing intact > network error on the POST retries bounded, then gives up
 [dark-perp] sealed-order setup failed at bootstrap (will retry on first order): Error: epoch unreachable in recovery tests
-    at /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/src/api/realClient.recovery.test.ts:91:47
+    at <repo>/frontend/src/api/realClient.recovery.test.ts:91:47
     at processTicksAndRejections (node:internal/process/task_queues:103:5)
 
 stderr | src/api/realClient.recovery.test.ts > S1 recovery: failure matrix keeps the OLD credential + sealing intact > malformed response: missing apiKey
 [dark-perp] sealed-order setup failed at bootstrap (will retry on first order): Error: epoch unreachable in recovery tests
-    at /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/src/api/realClient.recovery.test.ts:91:47
+    at <repo>/frontend/src/api/realClient.recovery.test.ts:91:47
     at processTicksAndRejections (node:internal/process/task_queues:103:5)
 
 stderr | src/api/realClient.recovery.test.ts > S1 recovery: failure matrix keeps the OLD credential + sealing intact > malformed response: wrong owner
 [dark-perp] sealed-order setup failed at bootstrap (will retry on first order): Error: epoch unreachable in recovery tests
-    at /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/src/api/realClient.recovery.test.ts:91:47
+    at <repo>/frontend/src/api/realClient.recovery.test.ts:91:47
     at processTicksAndRejections (node:internal/process/task_queues:103:5)
 
 stderr | src/api/realClient.recovery.test.ts > S1 recovery: failure matrix keeps the OLD credential + sealing intact > malformed response: durability missing
 [dark-perp] sealed-order setup failed at bootstrap (will retry on first order): Error: epoch unreachable in recovery tests
-    at /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/src/api/realClient.recovery.test.ts:91:47
+    at <repo>/frontend/src/api/realClient.recovery.test.ts:91:47
     at processTicksAndRejections (node:internal/process/task_queues:103:5)
 
 stderr | src/api/realClient.recovery.test.ts > S1 recovery: failure matrix keeps the OLD credential + sealing intact > malformed response: recoveryNonce not nonce+1
 [dark-perp] sealed-order setup failed at bootstrap (will retry on first order): Error: epoch unreachable in recovery tests
-    at /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/src/api/realClient.recovery.test.ts:91:47
+    at <repo>/frontend/src/api/realClient.recovery.test.ts:91:47
     at processTicksAndRejections (node:internal/process/task_queues:103:5)
 
 stderr | src/api/realClient.recovery.test.ts > S1 recovery: failure matrix keeps the OLD credential + sealing intact > malformed response: unreadable body (missing response)
 [dark-perp] sealed-order setup failed at bootstrap (will retry on first order): Error: epoch unreachable in recovery tests
-    at /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/src/api/realClient.recovery.test.ts:91:47
+    at <repo>/frontend/src/api/realClient.recovery.test.ts:91:47
     at processTicksAndRejections (node:internal/process/task_queues:103:5)
 
 stderr | src/api/realClient.recovery.test.ts > S1 recovery: failure matrix keeps the OLD credential + sealing intact > wallet rejection does not retry and never reaches the POST
 [dark-perp] sealed-order setup failed at bootstrap (will retry on first order): Error: epoch unreachable in recovery tests
-    at /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/src/api/realClient.recovery.test.ts:91:47
+    at <repo>/frontend/src/api/realClient.recovery.test.ts:91:47
     at processTicksAndRejections (node:internal/process/task_queues:103:5)
 
 stderr | src/api/realClient.recovery.test.ts > S1 recovery: dropped response re-GETs fresh metadata and re-signs the new nonce > 503 once, then confirmed success on the retry with the FRESH nonce and a NEW signature
 [dark-perp] sealed-order setup failed at bootstrap (will retry on first order): Error: epoch unreachable in recovery tests
-    at /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/src/api/realClient.recovery.test.ts:91:47
+    at <repo>/frontend/src/api/realClient.recovery.test.ts:91:47
     at processTicksAndRejections (node:internal/process/task_queues:103:5)
 
 stderr | src/api/realClient.recovery.test.ts > S1 recovery: epoch guard > concurrent same-account recoveries share one wallet signature and one POST
 [dark-perp] sealed-order setup failed at bootstrap (will retry on first order): Error: epoch unreachable in recovery tests
-    at /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/src/api/realClient.recovery.test.ts:91:47
+    at <repo>/frontend/src/api/realClient.recovery.test.ts:91:47
     at processTicksAndRejections (node:internal/process/task_queues:103:5)
 
 stderr | src/api/realClient.recovery.test.ts > S1 recovery: epoch guard > a refresh started before rotation cannot overwrite post-rotation own state
 [dark-perp] sealed-order setup failed at bootstrap (will retry on first order): Error: epoch unreachable in recovery tests
-    at /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/src/api/realClient.recovery.test.ts:91:47
+    at <repo>/frontend/src/api/realClient.recovery.test.ts:91:47
 
 stderr | src/api/realClient.recovery.test.ts > S1 recovery: /v1/ws old-socket frames cannot clear or replace the new credential > late authOk and error frames from the pre-rotation socket are ignored
 [dark-perp] sealed-order setup failed at bootstrap (will retry on first order): Error: epoch unreachable in recovery tests
-    at /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/src/api/realClient.recovery.test.ts:91:47
+    at <repo>/frontend/src/api/realClient.recovery.test.ts:91:47
 
 stderr | src/api/realClient.recovery.test.ts > S1 recovery: multi-tab propagation > adopts a newer-generation record for the SAME owner (sealing + epoch + re-auth)
 [dark-perp] sealed-order setup failed at bootstrap (will retry on first order): Error: epoch unreachable in recovery tests
-    at /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/src/api/realClient.recovery.test.ts:91:47
+    at <repo>/frontend/src/api/realClient.recovery.test.ts:91:47
 
 stderr | src/api/realClient.recovery.test.ts > S1 recovery: multi-tab propagation > ignores a record for a DIFFERENT owner
 [dark-perp] sealed-order setup failed at bootstrap (will retry on first order): Error: epoch unreachable in recovery tests
-    at /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/src/api/realClient.recovery.test.ts:91:47
+    at <repo>/frontend/src/api/realClient.recovery.test.ts:91:47
 
 stderr | src/api/realClient.recovery.test.ts > S1 recovery: multi-tab propagation > ignores an older-or-equal generation echo
 [dark-perp] sealed-order setup failed at bootstrap (will retry on first order): Error: epoch unreachable in recovery tests
-    at /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/src/api/realClient.recovery.test.ts:91:47
+    at <repo>/frontend/src/api/realClient.recovery.test.ts:91:47
 
 stderr | src/api/realClient.recovery.test.ts > S1 recovery: multi-tab propagation > a stale tab refuses to overwrite a newer stored generation
 [dark-perp] sealed-order setup failed at bootstrap (will retry on first order): Error: epoch unreachable in recovery tests
-    at /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/src/api/realClient.recovery.test.ts:91:47
+    at <repo>/frontend/src/api/realClient.recovery.test.ts:91:47
 
 stderr | src/api/realClient.recovery.test.ts > direct review regressions > rejects a confirmed malformed string key "" without replacing saved credentials
 [dark-perp] sealed-order setup failed at bootstrap (will retry on first order): Error: epoch unreachable in recovery tests
-    at /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/src/api/realClient.recovery.test.ts:91:47
+    at <repo>/frontend/src/api/realClient.recovery.test.ts:91:47
 
 stderr | src/api/realClient.recovery.test.ts > direct review regressions > rejects a confirmed malformed string key "not-a-key" without replacing saved credentials
 [dark-perp] sealed-order setup failed at bootstrap (will retry on first order): Error: epoch unreachable in recovery tests
-    at /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/src/api/realClient.recovery.test.ts:91:47
+    at <repo>/frontend/src/api/realClient.recovery.test.ts:91:47
 
 stderr | src/api/realClient.recovery.test.ts > direct review regressions > rejects a confirmed malformed string key "0x01" without replacing saved credentials
 [dark-perp] sealed-order setup failed at bootstrap (will retry on first order): Error: epoch unreachable in recovery tests
-    at /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/src/api/realClient.recovery.test.ts:91:47
+    at <repo>/frontend/src/api/realClient.recovery.test.ts:91:47
 
 stderr | src/api/realClient.recovery.test.ts > direct review regressions > late stored-account validation cannot overwrite a confirmed recovery
 [dark-perp] sealed-order setup failed at bootstrap (will retry on first order): Error: epoch unreachable in recovery tests
-    at /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/src/api/realClient.recovery.test.ts:91:47
+    at <repo>/frontend/src/api/realClient.recovery.test.ts:91:47
 
 stderr | src/api/realClient.recovery.test.ts > direct review regressions > late registration cannot overwrite a recovery that starts while it is pending
 [dark-perp] sealed-order setup failed at bootstrap (will retry on first order): Error: epoch unreachable in recovery tests
-    at /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/src/api/realClient.recovery.test.ts:91:47
+    at <repo>/frontend/src/api/realClient.recovery.test.ts:91:47
 
 stderr | src/api/realClient.recovery.test.ts > direct review regressions > validation HTTP 401 must not create a replacement account
 [dark-perp] sealed-order setup failed at bootstrap (will retry on first order): Error: epoch unreachable in recovery tests
-    at /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/src/api/realClient.recovery.test.ts:91:47
+    at <repo>/frontend/src/api/realClient.recovery.test.ts:91:47
 
 stderr | src/api/realClient.recovery.test.ts > direct review regressions > validation HTTP 503 must not create a replacement account
 [dark-perp] sealed-order setup failed at bootstrap (will retry on first order): Error: epoch unreachable in recovery tests
-    at /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/src/api/realClient.recovery.test.ts:91:47
+    at <repo>/frontend/src/api/realClient.recovery.test.ts:91:47
 
 stderr | src/api/realClient.recovery.test.ts > direct review regressions > foreign-vault recovery metadata is rejected before wallet approval or POST
 [dark-perp] sealed-order setup failed at bootstrap (will retry on first order): Error: epoch unreachable in recovery tests
-    at /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/src/api/realClient.recovery.test.ts:91:47
+    at <repo>/frontend/src/api/realClient.recovery.test.ts:91:47
 
 stderr | src/api/realClient.recovery.test.ts > direct review regressions > a confirmed rotation survives storage failure in memory and reports session-only access
 [dark-perp] sealed-order setup failed at bootstrap (will retry on first order): Error: epoch unreachable in recovery tests
-    at /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/src/api/realClient.recovery.test.ts:91:47
+    at <repo>/frontend/src/api/realClient.recovery.test.ts:91:47
 
 stderr | src/api/realClient.recovery.test.ts > direct review regressions > missing cross-tab locking fails before any recovery signature or mutation
 [dark-perp] sealed-order setup failed at bootstrap (will retry on first order): Error: epoch unreachable in recovery tests
-    at /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/src/api/realClient.recovery.test.ts:91:47
+    at <repo>/frontend/src/api/realClient.recovery.test.ts:91:47
 
 stderr | src/api/realClient.recovery.test.ts > direct review regressions > two client instances cannot rotate the same account concurrently
 [dark-perp] sealed-order setup failed at bootstrap (will retry on first order): Error: epoch unreachable in recovery tests
-    at /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/src/api/realClient.recovery.test.ts:91:47
+    at <repo>/frontend/src/api/realClient.recovery.test.ts:91:47
 [dark-perp] sealed-order setup failed at bootstrap (will retry on first order): Error: epoch unreachable in recovery tests
-    at /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/src/api/realClient.recovery.test.ts:91:47
+    at <repo>/frontend/src/api/realClient.recovery.test.ts:91:47
 
 stderr | src/api/realClient.recovery.test.ts > direct review regressions > old socket error and close callbacks cannot close or replace the current connection
 [dark-perp] sealed-order setup failed at bootstrap (will retry on first order): Error: epoch unreachable in recovery tests
-    at /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/src/api/realClient.recovery.test.ts:91:47
+    at <repo>/frontend/src/api/realClient.recovery.test.ts:91:47
 
 stderr | src/api/realClient.recovery.test.ts > direct review regressions > a never-resolving POST reaches its deadline and bounds fresh-challenge retries
 [dark-perp] sealed-order setup failed at bootstrap (will retry on first order): Error: epoch unreachable in recovery tests
-    at /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/src/api/realClient.recovery.test.ts:91:47
+    at <repo>/frontend/src/api/realClient.recovery.test.ts:91:47
 
  ✓ src/api/realClient.recovery.test.ts (35 tests) 88ms
  ✓ src/api/clientContract.test.ts (2 tests) 67ms
@@ -159,16 +159,16 @@ stderr | src/api/realClient.recovery.test.ts > direct review regressions > a nev
  ✓ src/components/AccountPanel.wallet.test.tsx (13 tests) 330ms
 stderr | src/api/realClient.test.ts > RealDarkPerpClient.requestWithdrawal > refuses when the gateway does not serve the SEC-021 fields (too old) — never signs a guessed digest
 [dark-perp] /v1 own-account read failed (own view degraded until a read succeeds): Error: /v1/accounts/me: missing settledBalance
-    at RealDarkPerpClient.getSettledBalance (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/src/api/realClient.ts:1293:13)
+    at RealDarkPerpClient.getSettledBalance (<repo>/frontend/src/api/realClient.ts:1293:13)
     at processTicksAndRejections (node:internal/process/task_queues:103:5)
     at async Promise.all (index 2)
-    at RealDarkPerpClient.fetchOwnStateOnce (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/src/api/realClient.ts:1348:51)
-    at /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/src/api/realClient.ts:1322:11
-    at RealDarkPerpClient.bootstrap (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/src/api/realClient.ts:680:5)
-    at /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/src/api/realClient.test.ts:730:20
-    at file:///Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/node_modules/.pnpm/@vitest+runner@2.1.9/node_modules/@vitest/runner/dist/index.js:533:5
-    at runTest (file:///Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/node_modules/.pnpm/@vitest+runner@2.1.9/node_modules/@vitest/runner/dist/index.js:1056:11)
-    at runSuite (file:///Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/node_modules/.pnpm/@vitest+runner@2.1.9/node_modules/@vitest/runner/dist/index.js:1205:15)
+    at RealDarkPerpClient.fetchOwnStateOnce (<repo>/frontend/src/api/realClient.ts:1348:51)
+    at <repo>/frontend/src/api/realClient.ts:1322:11
+    at RealDarkPerpClient.bootstrap (<repo>/frontend/src/api/realClient.ts:680:5)
+    at <repo>/frontend/src/api/realClient.test.ts:730:20
+    at file://<repo>/frontend/node_modules/.pnpm/@vitest+runner@2.1.9/node_modules/@vitest/runner/dist/index.js:533:5
+    at runTest (file://<repo>/frontend/node_modules/.pnpm/@vitest+runner@2.1.9/node_modules/@vitest/runner/dist/index.js:1056:11)
+    at runSuite (file://<repo>/frontend/node_modules/.pnpm/@vitest+runner@2.1.9/node_modules/@vitest/runner/dist/index.js:1205:15)
 
  ✓ src/App.test.tsx (5 tests) 318ms
  ↓ src/api/realClient.e2e.test.ts (1 test | 1 skipped)

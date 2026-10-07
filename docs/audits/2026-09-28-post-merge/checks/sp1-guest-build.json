@@ -4,7 +4,7 @@
     "-c",
     "cd crates/sp1-guest && /tmp/arcora-tools/sp1-6.1.0/cargo-prove prove build --locked"
   ],
-  "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+  "cwd": "<repo>",
   "exit_code": 101,
   "duration_seconds": 0.159,
   "log_sha256": "7d0e95c776a11549fc63001d033e8749514dd0c67a27f3b447171c761863e907",

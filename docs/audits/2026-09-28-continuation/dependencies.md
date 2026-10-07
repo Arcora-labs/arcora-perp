@@ -25,7 +25,7 @@ patched-version list. No suppression or blanket dependency downgrade was added.
 That report also retains the `atomic-polyfill` unmaintained and `spin 0.9.8`
 yanked warnings. Cargo audit was not rerun in this final frontend-only check.
 
-The original `/Users/huseyinarslan/Desktop/dark-perp` checkout still matches the
+The original `<repo>` checkout still matches the
 recorded baseline: identical porcelain status and all **19** recorded file
 SHA-256 hashes. `original-worktree-preservation.json` records this comparison.
 The baseline did not hash the contents of collapsed untracked directories or

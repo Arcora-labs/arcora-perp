@@ -2,7 +2,7 @@
   "status": "STOPPED",
   "scope": "Real compiled browser App + real Rust gateway HTTP/WS + actual extension to be driven by parent; NO L1/real token/proof",
   "scratch": "/tmp/arcora-extension-wallet-2vhdkiab",
-  "repo": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+  "repo": "<repo>",
   "supervisor_pid": 16880,
   "source_head": "5a3574612669baf153cca4515be95cf71da0ba73",
   "gateway_binary_sha256": "760297f52323bd4068568b1311f64fa7a3418c280cb68e3debbe73af709c3705",

@@ -30,7 +30,7 @@
     "exit_code": 0,
     "stdout": "v24.12.0",
     "stderr": "",
-    "resolved_path": "/Users/huseyinarslan/.nvm/versions/node/v24.12.0/bin/node",
+    "resolved_path": "<local-home>/.nvm/versions/node/v24.12.0/bin/node",
     "binary_or_script_sha256": "90ee1d271eec831fd38d16c78c19cc36809548ac5cd034a6e0c10c4389c881ef"
   },
   "pnpm": {
@@ -41,7 +41,7 @@
     "exit_code": 0,
     "stdout": "11.5.1",
     "stderr": "",
-    "resolved_path": "/Users/huseyinarslan/.nvm/versions/node/v24.12.0/lib/node_modules/corepack/dist/pnpm.js",
+    "resolved_path": "<local-home>/.nvm/versions/node/v24.12.0/lib/node_modules/corepack/dist/pnpm.js",
     "binary_or_script_sha256": "7c2a67995976b5b592b611d8b236e3b0633bd654fb49aedd96c6eb7ce04c9cbb"
   },
   "forge": {
@@ -52,7 +52,7 @@
     "exit_code": 0,
     "stdout": "forge Version: 1.7.2-nightly\nCommit SHA: dea99c55914d010b22d3f5532fca180a8ecafda1\nBuild Timestamp: 2026-06-05T07:27:50.230262000Z (1780644470)\nBuild Profile: dist",
     "stderr": "",
-    "resolved_path": "/Users/huseyinarslan/.foundry/bin/forge",
+    "resolved_path": "<local-home>/.foundry/bin/forge",
     "binary_or_script_sha256": "52ba7d69c3c4dccaceb8810826305e68166f231eb19db080e0e599500fcce8de"
   },
   "cast": {
@@ -63,7 +63,7 @@
     "exit_code": 0,
     "stdout": "cast Version: 1.7.2-nightly\nCommit SHA: dea99c55914d010b22d3f5532fca180a8ecafda1\nBuild Timestamp: 2026-06-05T07:27:50.230262000Z (1780644470)\nBuild Profile: dist",
     "stderr": "",
-    "resolved_path": "/Users/huseyinarslan/.foundry/bin/cast",
+    "resolved_path": "<local-home>/.foundry/bin/cast",
     "binary_or_script_sha256": "21e2c1f8f6d60e14395929a2b0a1bb58dc062f577540c7aad7e45edbf78d15df"
   },
   "anvil": {
@@ -74,7 +74,7 @@
     "exit_code": 0,
     "stdout": "anvil Version: 1.7.2-nightly\nCommit SHA: dea99c55914d010b22d3f5532fca180a8ecafda1\nBuild Timestamp: 2026-06-05T07:27:50.230262000Z (1780644470)\nBuild Profile: dist",
     "stderr": "",
-    "resolved_path": "/Users/huseyinarslan/.foundry/bin/anvil",
+    "resolved_path": "<local-home>/.foundry/bin/anvil",
     "binary_or_script_sha256": "e5c91df8b665424d575809428f962a5d80a7cc832a66a87247e2f42cb9c15a91"
   },
   "solc": {
@@ -112,7 +112,7 @@
     "exit_code": 0,
     "stdout": "rustc 1.93.0-dev\nbinary: rustc\ncommit-hash: unknown\ncommit-date: unknown\nhost: aarch64-apple-darwin\nrelease: 1.93.0-dev\nLLVM version: 21.1.8",
     "stderr": "",
-    "resolved_path": "/Users/huseyinarslan/.cargo/bin/rustup",
+    "resolved_path": "<cargo-home>/bin/rustup",
     "binary_or_script_sha256": "aeb4105778ca1bd3c6b0e75768f581c656633cd51368fa61289b6a71696ac7e1",
     "compiler_sha256": "985c33069083f55ed42b68ef51a8528d0cb1632e43428ffdb5c489306154f964"
   },
@@ -125,20 +125,20 @@
       "rustc"
     ],
     "exit_code": 0,
-    "stdout": "/Users/huseyinarslan/.rustup/toolchains/succinct/bin/rustc",
+    "stdout": "<local-home>/.rustup/toolchains/succinct/bin/rustc",
     "stderr": "",
-    "resolved_path": "/Users/huseyinarslan/.cargo/bin/rustup",
+    "resolved_path": "<cargo-home>/bin/rustup",
     "binary_or_script_sha256": "aeb4105778ca1bd3c6b0e75768f581c656633cd51368fa61289b6a71696ac7e1"
   },
   "configured_solidity_compiler": {
     "argv": [
-      "/Users/huseyinarslan/Library/Application Support/svm/0.8.24/solc-0.8.24",
+      "<local-home>/Library/Application Support/svm/0.8.24/solc-0.8.24",
       "--version"
     ],
     "exit_code": 0,
     "stdout": "solc, the solidity compiler commandline interface\nVersion: 0.8.24+commit.e11b9ed9.Darwin.appleclang",
     "stderr": "",
     "binary_sha256": "1cb1bfc4cdf6873ebf36dc65317a8a0614096b9c2bcca5bb1f70d57d319c50a6",
-    "resolved_path": "/Users/huseyinarslan/Library/Application Support/svm/0.8.24/solc-0.8.24"
+    "resolved_path": "<local-home>/Library/Application Support/svm/0.8.24/solc-0.8.24"
   }
 }

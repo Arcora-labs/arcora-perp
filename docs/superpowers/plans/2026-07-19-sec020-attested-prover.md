@@ -1,6 +1,5 @@
 # SEC-020 Attested-Prover Boundary (Phase 1) Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Close SEC-020's two active code holes — fail-open seal root and unauthenticated `/prove` — by making the seal root fail-CLOSED and gating `/prove` behind a startup mutual-attestation handshake, with pluggable `Attestor`s so the real GB10 CC key-release drops in later (Phase 2) without an interface change.
 
@@ -588,6 +587,6 @@ git commit -m "feat(sec-020): AttestedSealProvider — seal key bound to attesta
 - `cargo fmt --check` + `cargo clippy --workspace --all-targets` clean.
 - Manual: start prover-service with no `PROVER_SEAL_ROOT` and `PROD=1` → exits 1 with the SEC-020 message. `curl -XPOST /prove` without a bearer → `401`.
 - Grep confirms no remaining `[0x5E` seal-root default in `crates/prover-service` or `crates/gateway`.
-- Run `superpowers:requesting-code-review` on the branch before merge.
+- Request an independent review of the branch.
 - Phase 2 (separate plan, after GB10 CC enabled): implement `probe_cc_enabled`/`quote`/`verify` in `nvidia_cc.rs` + swap `AttestedSealProvider`'s secret source for real CC key-release.
 ```

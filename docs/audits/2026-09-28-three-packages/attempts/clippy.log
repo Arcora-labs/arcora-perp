@@ -1,5 +1,5 @@
     Blocking waiting for file lock on build directory
-    Checking gateway v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/gateway)
+    Checking gateway v0.0.1 (<repo>/crates/gateway)
 error[E0425]: cannot find function `parse_addr20` in module `super`
     --> crates/gateway/src/l1/observation.rs:203:29
      |

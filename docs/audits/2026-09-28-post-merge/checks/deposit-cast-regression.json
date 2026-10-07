@@ -9,7 +9,7 @@
     "--",
     "--ignored"
   ],
-  "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+  "cwd": "<repo>",
   "exit_code": 0,
   "duration_seconds": 1.234,
   "log_sha256": "3747937274708972c2fb1330be01999c957246ca3b05e2cbb678b9eb1e090d8a",

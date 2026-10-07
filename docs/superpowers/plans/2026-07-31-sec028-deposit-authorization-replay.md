@@ -1,6 +1,5 @@
 # SEC-028 Deposit Authorization Replay — Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make a gateway deposit authorization one-shot on-chain, so a replayed signature can no longer mint a second, permanently uncreditable leaf that wedges the deposit queue forever.
 
@@ -227,6 +226,6 @@ git commit -m "docs(sec028): what the mapping establishes, and what it does not"
 
 - [ ] `forge test` green; `cargo test --workspace` **unchanged at 593 / 50**; fmt and clippy clean.
 - [ ] Report every pre-existing forge test you had to adjust, and confirm none was relying on replay being possible.
-- [ ] Run `superpowers:requesting-code-review` on the whole branch, and send the diff to Codex (`mcp__codex__codex`, `sandbox: read-only`, `cwd` = repo). Codex independently verified this finding and proposed this remedy over the gateway-side alternative; ask it to check the placement and the storage-write cost.
+- [ ] Request an independent review of the branch. Codex independently verified this finding and proposed this remedy over the gateway-side alternative; ask it to check the placement and the storage-write cost.
 - [ ] **Do not deploy.** This is a contract change, so it needs a fresh `CollateralVault`. The cutover already deploys fresh contracts, so it costs nothing extra — but it does mean the wedge stays reachable on the currently deployed stack until then.
 - [ ] **SEC-028's second cause remains open.** Authorizations live in memory until the next periodic snapshot, so a crash between issuing a signature and snapshotting still leaves an uncreditable leaf, with no attacker and no replay. 025-A works around it for its own cutover step only; ordinary users have no barrier.

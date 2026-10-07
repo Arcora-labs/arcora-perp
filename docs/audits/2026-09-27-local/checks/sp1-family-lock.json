@@ -3,7 +3,7 @@
     "/opt/homebrew/bin/python3",
     "/tmp/arcora-pin-sp1.py"
   ],
-  "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+  "cwd": "<repo>",
   "exit_code": 1,
   "duration_seconds": 3.322,
   "log_sha256": "9e1e56c708605b4e6d87c6411c8dddfae71511e7471866c0402bf62d2fb0217b",

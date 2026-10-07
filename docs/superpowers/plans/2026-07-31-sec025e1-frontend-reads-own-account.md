@@ -1,6 +1,5 @@
 # SEC-025-E1 Frontend Reads Its Own Account — Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make the production browser show the caller's own orders, positions and balance instead of the shared demo wallet's.
 
@@ -109,6 +108,6 @@ Seven routes the client calls 404 in production. Three report failure to the use
 - [ ] Frontend suite green; `cargo test --workspace` **593 / 50** and `forge test` **89**, both unchanged unless Task 1 chose option (c) — in which case say so.
 - [ ] Report which receipt option Task 1 chose and why.
 - [ ] Report any test you could not make die.
-- [ ] Run `superpowers:requesting-code-review` on the whole branch and send the diff to Codex. **Every whole-branch review in this workstream has held the merge for prose claiming more than the code performs** — sweep comments, names and `docs/API.md` before submitting.
+- [ ] Request an independent review of the branch. **Every whole-branch review in this workstream has held the merge for prose claiming more than the code performs** — sweep comments, names and `docs/API.md` before submitting.
 - [ ] **Do not deploy.**
 - [ ] **E2 is the follow-up that makes cancel work**, and E3 is what makes the numbers real. Neither is done by this branch, and the PR must say so.

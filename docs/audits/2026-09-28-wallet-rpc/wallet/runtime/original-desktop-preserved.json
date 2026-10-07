@@ -1,6 +1,6 @@
 {
-  "manifest": "/Users/huseyinarslan/.codex/backups/arcora-desktop-pre-merge-20260928T073937Z/manifest.json",
-  "source": "/Users/huseyinarslan/Desktop/dark-perp",
+  "manifest": "<local-backup>/arcora-desktop-pre-merge-20260928T073937Z/manifest.json",
+  "source": "<repo>",
   "head": "f997f8b96279bd06ec1808f6b9cb2a6aeb25cc5e",
   "expected_head": "f997f8b96279bd06ec1808f6b9cb2a6aeb25cc5e",
   "files_checked": 62,

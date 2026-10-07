@@ -1,6 +1,5 @@
 # ZK Verifier P2 — Slice 2: Attested Prover Service Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** A standalone attested prover service that receives a witness sealed to the prover measurement, opens it, derives the batch roots, generates a real SP1 Groth16 proof, zeroizes the plaintext, and returns `{proof, 6 roots, commitment}` — so the sequencer/gateway (Slice 3) can settle with real proofs.
 
@@ -17,7 +16,7 @@
 - **§10b boundary via the stand-in:** sealing uses the existing `SoftwareSealProvider` + `AttestedProver`. P3 swaps ONLY the `SealKeyProvider`. Do NOT change the `Prover`, `Verifier`, or `SealKeyProvider` traits, or `SealedWitness`.
 - **Witness wire = postcard `(DefaultState, Vec<BatchOp>, BatchManifest)`** — the exact tuple the guest reads (locked by `perp-core/tests/serde_witness.rs`). The service seals/opens these bytes.
 - **6-field commitment unchanged** (`Domain::StateRoot`, byte-identical to guest / `SP1ZkVerifier` / on-chain). The real proof's `public_values` == the 32-byte commitment.
-- **Not buildable in this environment (no SP1 toolchain):** `crates/prover-service` (Tasks 2-3) is written here, verified against perp-core/prover/sp1-sdk APIs, and BUILT + RUN on the GB10 (`huseyinarslan@192.168.1.108`, SP1 v6.3.1 installed, qemu amd64 for the gnark wrap). Task 1 (`prover` crate) IS workspace-testable here.
+- **Not buildable in this environment (no SP1 toolchain):** `crates/prover-service` (Tasks 2-3) is written here, verified against perp-core/prover/sp1-sdk APIs, and BUILT + RUN on the GB10 (`<operator>@<prover-host>`, SP1 v6.3.1 installed, qemu amd64 for the gnark wrap). Task 1 (`prover` crate) IS workspace-testable here.
 - **GB10 real-proof gotchas (from Slice 1):** the gnark wrapper image is amd64-only → run with `DOCKER_DEFAULT_PLATFORM=linux/amd64` (qemu binfmt installed); `sp1-sdk` imports need `ProveRequest` (for `.groth16()`) + `ProvingKey` (for `.verifying_key()`) + `HashableKey` (for `.bytes32()`); the working prove pattern is in `crates/sp1-host/src/bin/prove.rs`.
 - **Model policy:** NO Haiku; Fable exhausted → Opus (Sonnet OK for GB10-only crate transcription / docs).
 

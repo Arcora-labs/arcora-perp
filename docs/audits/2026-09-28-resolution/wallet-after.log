@@ -3,7 +3,7 @@
 > vitest run src/api/wallet.test.ts
 
 
- RUN  v4.1.11 /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend
+ RUN  v4.1.11 <repo>/frontend
 
 
  Test Files  1 passed (1)

@@ -29,11 +29,11 @@
    Compiling sha2 v0.10.9
    Compiling ring v0.17.14
    Compiling k256 v0.13.4
-   Compiling perp-core v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/perp-core)
+   Compiling perp-core v0.0.1 (<repo>/crates/perp-core)
    Compiling dcap-qvl-webpki v0.103.4+dcap.1
    Compiling wasm-bindgen-futures v0.4.76
    Compiling dcap-qvl v0.5.2
-   Compiling dark-perp-attestation v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/attestation)
+   Compiling dark-perp-attestation v0.0.1 (<repo>/crates/attestation)
     Finished `test` profile [unoptimized + debuginfo] target(s) in 5.14s
      Running unittests src/lib.rs (target/debug/deps/dark_perp_attestation-a37571b2ad0210b4)
 

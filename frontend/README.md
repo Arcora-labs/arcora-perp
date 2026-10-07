@@ -1,4 +1,4 @@
-# frontend — dark-perp web client
+# frontend — Arcora Perp web client
 
 A runnable Vite + React + TypeScript app skinned with the **Celari Perp** design
 system (Lumina Finance handoff): a near-black terminal surface, a single

@@ -4,7 +4,7 @@
     "prove",
     "install-toolchain"
   ],
-  "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+  "cwd": "<repo>",
   "exit_code": 0,
   "duration_seconds": 246.763,
   "log_sha256": "859b6ed8c8c8a83f477e3c6297cf9998a1e0b49f51c333f67b6434f5990b3753",

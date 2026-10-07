@@ -1,6 +1,5 @@
 # Privacy / Encryption Layer Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Replace the XOR note-encryption stand-in and add client→enclave encrypted order ingress plus a hash-chained encrypted order log, all on one production-grade `sealed-box` primitive.
 

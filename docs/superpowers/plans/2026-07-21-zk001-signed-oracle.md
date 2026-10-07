@@ -1,6 +1,5 @@
 # ZK-001 Publisher-Signed Oracle Transcript Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Bind every price used in-circuit to a per-market publisher signature verified inside the circuit, so a malicious prover can only relay a genuinely-signed price, never fabricate one — closing ZK-001/ORA-001.
 

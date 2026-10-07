@@ -9,7 +9,7 @@
     "-p",
     "test_check_sp1_release.py"
   ],
-  "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+  "cwd": "<repo>",
   "exit_code": 0,
   "duration_seconds": 0.712,
   "log_sha256": "5553f85a3955e2d16dac3a30bab4221c7347562c268686c2f2ce33fbd644fecb",

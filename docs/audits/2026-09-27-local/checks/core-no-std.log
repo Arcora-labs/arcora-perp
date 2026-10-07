@@ -20,5 +20,5 @@
     Checking elliptic-curve v0.13.8
     Checking ecdsa v0.16.9
     Checking k256 v0.13.4
-    Checking perp-core v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/perp-core)
+    Checking perp-core v0.0.1 (<repo>/crates/perp-core)
     Finished `dev` profile [unoptimized + debuginfo] target(s) in 1.34s

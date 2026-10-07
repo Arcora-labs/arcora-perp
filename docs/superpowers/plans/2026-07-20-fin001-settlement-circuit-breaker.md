@@ -1,6 +1,5 @@
 # FIN-001 Settlement Circuit-Breaker Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Replace the L1 settle loop's unbounded, silent prove-retry with a bounded-retry → backoff → HELD circuit-breaker (halt-and-alert), so a persistent prove failure becomes a loud, self-healing, operator-visible HELD state instead of wedging settlement forever — without ever auto-rejecting a valid order.
 

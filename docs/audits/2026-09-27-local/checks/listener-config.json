@@ -2,7 +2,7 @@
   "argv": [
     "/tmp/arcora-listen-tests"
   ],
-  "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+  "cwd": "<repo>",
   "exit_code": 0,
   "duration_seconds": 0.446,
   "log_sha256": "13ec1ea15db6c8ce3442bbbe8065960c14a2dc2fad58b73f95e6bf2d398bd614",

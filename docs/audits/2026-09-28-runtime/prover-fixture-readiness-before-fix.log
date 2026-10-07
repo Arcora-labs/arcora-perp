@@ -1,7 +1,7 @@
 warning: prover-service@0.0.0: rustc +succinct --version: "rustc 1.93.0-dev\n"
 warning: prover-service@0.0.0: perp-core-guest built at 2026-09-28 09:31:43
 warning: use of deprecated method `sha2::digest::generic_array::GenericArray::<T, N>::as_slice`: please upgrade to generic-array 1.x
-   --> /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/attestation/src/vtpm.rs:202:32
+   --> <repo>/crates/attestation/src/vtpm.rs:202:32
     |
 202 |     if Sha256::digest(runtime).as_slice() != &td.report_data[..32] {
     |                                ^^^^^^^^
@@ -9,13 +9,13 @@ warning: use of deprecated method `sha2::digest::generic_array::GenericArray::<T
     = note: `#[warn(deprecated)]` on by default
 
 warning: use of deprecated method `sha2::digest::generic_array::GenericArray::<T, N>::as_slice`: please upgrade to generic-array 1.x
-   --> /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/attestation/src/vtpm.rs:238:21
+   --> <repo>/crates/attestation/src/vtpm.rs:238:21
     |
 238 |     if h.finalize().as_slice() != q.pcr_digest {
     |                     ^^^^^^^^
 
 warning: `dark-perp-attestation` (lib) generated 2 warnings
-   Compiling prover-service v0.0.0 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/prover-service)
+   Compiling prover-service v0.0.0 (<repo>/crates/prover-service)
     Finished `release` profile [optimized] target(s) in 3.47s
      Running unittests src/main.rs (/tmp/arcora-prover-service-target/release/deps/prover_service-05b6d6b18b4df6e9)
 

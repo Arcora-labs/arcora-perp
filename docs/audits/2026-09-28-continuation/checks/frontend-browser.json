@@ -5,7 +5,7 @@
     "frontend",
     "test:browser"
   ],
-  "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+  "cwd": "<repo>",
   "exit_code": 0,
   "duration_seconds": 121.403,
   "log_sha256": "efc10a14e69258d0f30f302bcb31ed7a9a87e8d4ddc6552cb92d77a88aa47d31",

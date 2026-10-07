@@ -13,7 +13,7 @@
         "sha256": "34301529ab7e50cade1dba53bb89e7f461329a1b5bbca1282fd5c95c1183638a"
       },
       "command": "Recorded Cargo tests/audits and provenance checks in lru/report.json and dependency-summary.json.",
-      "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+      "cwd": "<repo>",
       "exit_code": 0
     },
     {
@@ -26,7 +26,7 @@
         "sha256": "d5fdcd2b57db275d0c722aa0b576789e0c645a482bc47ed018c5d502a6a8ee19"
       },
       "command": "python3 verify_real_proof.py --guards-only; Python artifact gate suite; forge test --root contracts --summary",
-      "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+      "cwd": "<repo>",
       "exit_code": 0
     },
     {
@@ -39,7 +39,7 @@
         "sha256": "6c1b3aef459c6b8792c82419ac4f06bf7daa60bed1f53a9e7e1ffc22d80da2d0"
       },
       "command": "Recorded proof-attempt1.json argv and environment.",
-      "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+      "cwd": "<repo>",
       "exit_code": 101
     },
     {
@@ -52,7 +52,7 @@
         "sha256": "5d64897b986169d62fb8db6bc335ba2617b01209d935e425a3dde2d945346d08"
       },
       "command": "Not executed: successful proof prerequisite absent.",
-      "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+      "cwd": "<repo>",
       "exit_code": null
     },
     {

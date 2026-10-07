@@ -7,7 +7,7 @@
     "--file",
     "scripts/tee-capture/Cargo.lock"
   ],
-  "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+  "cwd": "<repo>",
   "exit_code": 1,
   "duration_seconds": 0.207,
   "log_sha256": "8365e8be89fbd042b56066e06fddf39eb7379412eb6dff415cb28929b2568436",

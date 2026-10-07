@@ -1,6 +1,5 @@
 # SEC-024 — Insurance L1 binding (+ two SEC-022 carry-ins) — Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Remove the only unbounded external-value assertion in the proven transition — `SeedInsurance` fabricates the accounting representation of collateral that never entered the system — and fold in the two `perp-core` items deferred from SEC-022 while the vkey is moving anyway.
 
@@ -678,7 +677,7 @@ decoded under the new meaning."
 
 - [ ] `cargo test --workspace` green; `cd contracts && forge test` still **85**; fmt and clippy clean.
 - [ ] Confirm which tests were verified to **fail before the change**: Task 1's atomicity and legacy-bytes tests, Task 3's liquidation overflow.
-- [ ] Run `superpowers:requesting-code-review` on the whole branch, and send the diff to Codex (`mcp__codex__codex`, `sandbox: read-only`, `cwd` = repo). **Codex found six defects in this piece's spec across two passes — expect it to find more in the implementation.** Verify every finding at source before accepting it.
+- [ ] Request an independent review of the branch. **Codex found six defects in this piece's spec across two passes — expect it to find more in the implementation.** Verify every finding at source before accepting it.
 - [ ] **Do not deploy.** This moves the guest ELF and the **vkey**, so the cutover needs a rebuilt guest and a fresh `SP1ZkVerifier`. It does **not** move the production `GENESIS_ROOT` (025-C already did); the **demo** root moves.
 - [ ] **Do not enable order ingress on a fresh deployment until an SEC-025-A `FundInsurance` has settled.** This branch makes a zero-insurance production genesis shippable, and the spec's §Genesis gates trading on the capitalization batch: with `insurance_fund` at zero, the first bad debt goes straight to ADL (clawing real users) or — absent winners — parks the debt and trips `Mode::CloseOnly`, from which there is no proven transition back. One early gap could wind the deployment down permanently.
 - [ ] **025-A is unblocked by this**, and the two must cut over together: 025-A's deliverable is the gateway path that leaves a note unspent for `FundInsurance` to consume.

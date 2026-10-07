@@ -6,7 +6,7 @@
     "-p",
     "gateway"
   ],
-  "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+  "cwd": "<repo>",
   "exit_code": 0,
   "duration_seconds": 11.084,
   "log_sha256": "ce5f3ab94a8bd65059e081494d21c71897fda4932ae93bb62e72cdc9d890ee34",

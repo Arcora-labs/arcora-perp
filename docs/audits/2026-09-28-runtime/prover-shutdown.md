@@ -58,7 +58,7 @@ and source hashes were refreshed after the formatting-only adjustment.
 ```bash
 CARGO_TARGET_DIR=/tmp/arcora-prover-service-target \
 PROTOC=/tmp/arcora-tools/protoc-29.3/bin/protoc \
-PATH=/Users/huseyinarslan/.cargo/bin:/tmp/arcora-tools/sp1-6.0.0:$PATH \
+PATH=<cargo-home>/bin:/tmp/arcora-tools/sp1-6.0.0:$PATH \
 cargo test --release --locked --offline --manifest-path crates/prover-service/Cargo.toml -- --nocapture
 ```
 

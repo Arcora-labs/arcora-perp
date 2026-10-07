@@ -6,7 +6,7 @@
     "--manifest-path",
     "scripts/tee-capture/Cargo.toml"
   ],
-  "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+  "cwd": "<repo>",
   "exit_code": 0,
   "duration_seconds": 13.265,
   "log_sha256": "c13e9539584a3ecc92522a3f5f24b208907e26db841ce38fc72b791f9600c919",

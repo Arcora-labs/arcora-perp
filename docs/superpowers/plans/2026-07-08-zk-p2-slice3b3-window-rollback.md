@@ -1,6 +1,5 @@
 # ZK P2 Slice 3b-3 — Per-Window Rollback + Content-Derived Nonce — Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** A prove/settle failure in the new (PROVER_URL) settle path rolls the sealed window back so the next settle re-seals it under the same batch_id (no wedge, no lost op), and the seal nonce is content-derived so the re-seal can't reuse a keystream.
 

@@ -91,8 +91,8 @@ write("dependency-summary.json", {"audits": audit_summary, "all_rsa_removed": Tr
 
 tools = {}
 for name, command in {
-    "host_rustc": ["/Users/huseyinarslan/.cargo/bin/rustc", "--version", "--verbose"],
-    "guest_rustc": ["/Users/huseyinarslan/.cargo/bin/rustc", "+succinct", "--version", "--verbose"],
+    "host_rustc": ["<cargo-home>/bin/rustc", "--version", "--verbose"],
+    "guest_rustc": ["<cargo-home>/bin/rustc", "+succinct", "--version", "--verbose"],
     "cargo": ["cargo", "--version"], "cast": ["cast", "--version"],
     "sp1_cli": ["/tmp/arcora-tools/sp1-6.1.0/cargo-prove", "prove", "--version"],
     "protoc": ["/tmp/arcora-tools/protoc-29.3/bin/protoc", "--version"],

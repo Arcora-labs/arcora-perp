@@ -1,2 +1,2 @@
 COMMAND   PID          USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME
-gateway 37446 huseyinarslan    9u  IPv4 0x9e8bcfdf16b1eb5e      0t0  TCP 127.0.0.1:61529 (LISTEN)
+gateway 37446 <local-user>    9u  IPv4 0x9e8bcfdf16b1eb5e      0t0  TCP 127.0.0.1:61529 (LISTEN)

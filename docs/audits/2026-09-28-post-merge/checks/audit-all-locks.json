@@ -4,7 +4,7 @@
     "-c",
     "set -e; for lock in Cargo.lock crates/sp1-host/Cargo.lock crates/sp1-guest/Cargo.lock crates/prover-service/Cargo.lock scripts/tee-capture/Cargo.lock; do cargo audit --no-fetch --file \"$lock\" --json; done"
   ],
-  "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+  "cwd": "<repo>",
   "exit_code": 0,
   "duration_seconds": 1.303,
   "log_sha256": "5cfef2346163a9abde46e44f67a55054f7c05f6c43a79682f8acd3ccd8b79b39",

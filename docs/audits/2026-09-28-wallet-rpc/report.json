@@ -24,7 +24,7 @@
         "sha256": "6a4859a7735f7ba30f8f699189d14341bf180291afab24a996a11d3ae7c8dc17"
       },
       "command": "Recorded Playwright CLI scenarios01\u201308 through wallet/capture_cli.py",
-      "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+      "cwd": "<repo>",
       "exit_code": 0
     },
     {
@@ -37,7 +37,7 @@
         "sha256": "6a4859a7735f7ba30f8f699189d14341bf180291afab24a996a11d3ae7c8dc17"
       },
       "command": "Recorded Playwright CLI scenarios01\u201308 through wallet/capture_cli.py",
-      "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+      "cwd": "<repo>",
       "exit_code": 0
     },
     {
@@ -61,7 +61,7 @@
         "sha256": "7528a897ecc6c7b1f862cd12d99f405b4a40c55280138175a286aa1944a2ebfd"
       },
       "command": "python3 -m unittest discover -s scripts/local-verification -p test_read_deployment.py -v",
-      "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+      "cwd": "<repo>",
       "exit_code": 0
     },
     {
@@ -74,7 +74,7 @@
         "sha256": "38bba457e876d2cc92d88330851d90cfd7887e4cced13f4871128ddacfe2ca26"
       },
       "command": "python3 -O -m unittest discover -s scripts/local-verification -p test_read_deployment.py -v",
-      "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+      "cwd": "<repo>",
       "exit_code": 0
     },
     {

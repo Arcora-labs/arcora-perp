@@ -1,6 +1,6 @@
 {
   "recorded_at": "2026-09-28T07:28:15.723806+00:00",
-  "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+  "cwd": "<repo>",
   "argv": [
     "cargo",
     "fmt",

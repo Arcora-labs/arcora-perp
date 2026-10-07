@@ -1,6 +1,5 @@
 # Live Migration Cutover — Implementation Plan (Runbook)
 
-> **For agentic workers:** Task 0 (code tooling) uses superpowers:subagent-driven-development. Phases 0–5 are a LIVE-OPS runbook — executed interactively with the user (SSH/cast/systemctl), NOT via SDD. Steps use checkbox (`- [ ]`) tracking.
 
 **Goal:** Flip the public testnet (perp.arcoralabs.xyz, Base Sepolia) from the legacy MockZkVerifier path to the new window-settle path with real Groth16 proofs from GB10, settled against a fresh DarkPerpSettlement bound to SP1ZkVerifier `0xCbdD…`.
 
@@ -10,7 +9,7 @@
 
 ## Global Constraints
 
-- **Hosts:** CVM `azureuser@104.42.53.250` (`ssh -i ~/.ssh/id_ed25519`); GB10 `huseyinarslan@192.168.1.108` (`ssh -i ~/.ssh/id_ed25519`); local Mac = repo `/Users/huseyinarslan/Desktop/dark-perp`; Base Sepolia RPC `https://sepolia.base.org`.
+- **Hosts:** CVM `<ssh-user>@<gateway-host>`; prover `<operator>@<prover-host>`; local checkout `<repo>`; Base Sepolia RPC `https://sepolia.base.org`. Do not commit SSH keys, host addresses, or deployer key material.
 - **Live contracts (current):** Settlement `0x27Fc1bDa0B04163ABDf310ABC1391AD9778cfA82` (batchCount 1, root `0x4d1ae1d2…`), Vault `0x71a19b16F400752a1c0761dEF7bBA208eDFf37EA`, MockUSDC `0x5DCd457B723F81531753fE92B82696e771671557`.
 - **Reusable:** SP1ZkVerifier `0xCbdD7381766f3021C5fae2a5bBeAe5CF0Fc20bcF` (programVKey `0x00f4a7109bcff4e78a6f5e2a6d30ed39582f4386d58b71c025e0822fdc8c9024`).
 - **Identities that STAY:** enclaveSigner `0x92173839C6B3b717179ba5505CCE31bD2131EbA0`; sequencer/deployer `0xed37B7fc534Cc93D4195b4F11ADc5C14237cd287` (its key = the CVM gateway.env `L1_SEQUENCER_KEY`).
@@ -93,7 +92,7 @@ contract DeployVerifierEnvTest is Test {
 
 - [ ] **Step 3: Run the forge tests**
 
-Run: `cd /Users/huseyinarslan/Desktop/dark-perp/contracts && FOUNDRY_DISABLE_NIGHTLY_WARNING=1 forge test --match-contract DeployVerifierEnvTest -vvv`
+Run: `cd <repo>/contracts && FOUNDRY_DISABLE_NIGHTLY_WARNING=1 forge test --match-contract DeployVerifierEnvTest -vvv`
 Expected: both tests PASS. Also `forge test` (whole suite) stays green.
 
 - [ ] **Step 4: Gateway — log the genesis engine root at boot**
@@ -123,11 +122,11 @@ Task 0 lands via SDD (implement → task review → whole-branch review) and mer
 
 ## RUNBOOK — Phases 0–5 (LIVE OPS, executed with the user)
 
-> Each step is tagged `[Mac]` (local, Claude can run read-only), `[CVM]` (`ssh azureuser@104.42.53.250`), `[GB10]` (`ssh huseyinarslan@192.168.1.108`), or `[cast]` (Base Sepolia, read-only ok by Claude; writes by the user with `$DEPLOYER_KEY`). Live writes (deploys, service restart) are run by the user.
+> Each step is tagged `[local]` (read-only checkout), `[CVM]` (`ssh <ssh-user>@<gateway-host>`), `[prover]` (`ssh <operator>@<prover-host>`), or `[cast]` (Base Sepolia; writes use `$DEPLOYER_KEY` from outside git). Live writes (deploys, service restart) are run by the operator.
 
 ### Phase 0 — Pre-flight (read-only + backups)
 
-- [ ] **0.1 `[Mac]` Confirm `main` is green** (Task 0 merged): `git -C /Users/huseyinarslan/Desktop/dark-perp log --oneline -1 main`; `cargo test --workspace` green; `cd contracts && forge test` green.
+- [ ] **0.1 `[Mac]` Confirm `main` is green** (Task 0 merged): `git -C <repo> log --oneline -1 main`; `cargo test --workspace` green; `cd contracts && forge test` green.
 - [ ] **0.2 `[cast]` Confirm the reusable verifier + deployer funds.**
 ```bash
 export FOUNDRY_DISABLE_NIGHTLY_WARNING=1; RPC=https://sepolia.base.org
@@ -186,7 +185,7 @@ sudo env $(grep -v '^L1_SETTLEMENT=' /etc/darkperp/gateway.env | grep -v '^PROVE
 
 - [ ] **3.1 `[cast]` (user, with `$DEPLOYER_KEY`) Deploy via the Task-0 script.**
 ```bash
-cd /Users/huseyinarslan/Desktop/dark-perp/contracts
+cd <repo>/contracts
 export FOUNDRY_DISABLE_NIGHTLY_WARNING=1
 ( set +o history; export DEPLOYER_KEY=$(cat ~/path/to/deployer.key)   # never echoed
   VERIFIER=0xCbdD7381766f3021C5fae2a5bBeAe5CF0Fc20bcF \
@@ -247,7 +246,7 @@ sudo journalctl -u darkperp-gateway -n 60 -f
 - [ ] **5.2 Confirm the settle loop serializes** (proof ≫ window): `journalctl` shows one window sealed→proved→settled at a time; no `batch_id desync` storm; soft-finality (MATCHED) stays instant for orders.
 - [ ] **5.3 Full e2e** (mirror the 2026-07-05 verification): register → USDC deposit + attribution → order fills at oracle mark → withdraw → cumulative root published on the real settle → `vault.claim` pays USDC → re-claim reverts `AlreadyClaimed`.
 - [ ] **5.4 3b-4 reconciliation live:** a POST `/v1/orders` receipt carries `windowId`; `GET /v1/batch/<counterA>` returns `{windowId, settled}`; `/v1/system/status` `openWindowId` tracks `l1.batchCount`.
-- [ ] **5.5 Fold the fault-path runbook items:** add an ops alert on the gateway `HOLDING` log lines (extend `darkperp-health`/ntfy `darkperp-ops-perpseq`); do ONE deliberate wedged-RPC forced-failure probe (temporarily point `L1_RPC` at a dead endpoint for one settle) to observe roll-forward/rollback recovery, then restore. Update the TestnetNotice copy: "real Groth16 proofs (dev prover); SETTLED finality lags ~a proof interval."
+- [ ] **5.5 Fold the fault-path runbook items:** add an ops alert on the gateway `HOLDING` log lines (optional ntfy topic, kept out of git); do ONE deliberate wedged-RPC forced-failure probe (temporarily point `L1_RPC` at a dead endpoint for one settle) to observe roll-forward/rollback recovery, then restore. Update the TestnetNotice copy: "real Groth16 proofs (dev prover); SETTLED finality lags ~a proof interval."
 - **GATE 5:** a real proof settled on-chain (status 1) + e2e green + reconciliation endpoints correct.
 
 ---

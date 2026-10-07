@@ -1,6 +1,5 @@
 # ZK P2 Slice 3b-4 — Off-Chain Receipt/Inclusion Re-Keying — Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add an enclave-signed `window_id` (Counter B) to the receipt and a finality-pruned A→B map so a user can reconcile a receipt against the on-chain window/challenge — additively (Approach B), keeping the per-tick Counter-A view.
 

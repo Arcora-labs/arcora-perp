@@ -1,6 +1,5 @@
 # ZK Verifier P2 — Slice 3a: Provable Transition (Sequencer Op-Log) Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** `seal_batch` emits and retains, per batch, the ordered `Vec<BatchOp>` it applied (fills + funding + liquidation), so `derive_roots(pre_state, ops, manifest)` reproduces the sealed `new_state_root` — the faithful witness Slice 3b will seal and POST to the prover-service.
 

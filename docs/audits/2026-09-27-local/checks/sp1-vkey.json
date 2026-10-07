@@ -6,7 +6,7 @@
     "--elf",
     "crates/sp1-guest/target/elf-compilation/riscv64im-succinct-zkvm-elf/release/perp-core-guest"
   ],
-  "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+  "cwd": "<repo>",
   "exit_code": 0,
   "duration_seconds": 17.386,
   "log_sha256": "d061f5e97fe9066b03d9b6c4968b839fe45602dc314f9678d119dd46ec8dd417",

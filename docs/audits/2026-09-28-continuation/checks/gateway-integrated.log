@@ -17,7 +17,7 @@ warning: associated function `from_env` is never used
 120 |     pub(crate) fn from_env(prod: bool) -> Result<Self, String> {
     |                   ^^^^^^^^
 
-   Compiling gateway v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/gateway)
+   Compiling gateway v0.0.1 (<repo>/crates/gateway)
 warning: `gateway` (test "service_policy") generated 2 warnings
     Finished `test` profile [unoptimized + debuginfo] target(s) in 32.47s
      Running unittests src/main.rs (/tmp/arcora-gateway-target/debug/deps/gateway-af1323d2b67b45c0)

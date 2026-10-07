@@ -15,12 +15,9 @@ import { keccak_256 } from "@noble/hashes/sha3";
 import { bytesToHex, hexToBytes, utf8ToBytes, concatBytes } from "@noble/hashes/utils";
 
 // ── chain + contract facts (Base Sepolia public testnet) ─────────────────────
-// Deployed 2026-07-09 (clean pre-alpha stack — PRE-SEC-019 contracts).
-// ⚠ REDEPLOY GATE: the SEC-019/ZK-001 redeploy replaces BOTH addresses (new
-// CollateralVault arity deposit(uint256,bytes32,bytes) + clean prod genesis).
-// Until then the deposit flow below cannot land on-chain (old vault, new
-// calldata). Must match TestnetNotice.tsx and deployments/base-sepolia.json —
-// update BOTH on any redeploy.
+// Current stack deployed 2026-07-11. Must match
+// contracts/deployments/base-sepolia.json and TestnetNotice.tsx — update both
+// on any redeploy. The SEC-019/ZK-001 redeploy replaces these addresses.
 
 /// Base Sepolia chainId 84532, as the 0x-hex EIP-695 form wallets speak.
 export const BASE_SEPOLIA_CHAIN_ID = "0x14a34";

@@ -31,6 +31,6 @@ Ham test logları içerik hash'lerini korumak için byte düzeyinde değiştiril
 
 ## Önceden var olan yerel çalışma
 
-`/Users/huseyinarslan/Desktop/dark-perp` üzerindeki kirli `main` checkout'u ayrı, önceden var olan A06 wind-down/v9 snapshot çalışmasını içerir. Bu checkout olduğu gibi korunmuştur; bu pakete taşınmamıştır. 62 değiştirilmiş/izlenmeyen dosyanın bytes/hash doğrulamalı yedeği, çalışma/index patch'leri ve porcelain durumu kayıt altına alınmıştır. [Korunum/yedek kaydı](original-preservation.json).
+`<repo>` üzerindeki kirli `main` checkout'u ayrı, önceden var olan A06 wind-down/v9 snapshot çalışmasını içerir. Bu checkout olduğu gibi korunmuştur; bu pakete taşınmamıştır. 62 değiştirilmiş/izlenmeyen dosyanın bytes/hash doğrulamalı yedeği, çalışma/index patch'leri ve porcelain durumu kayıt altına alınmıştır. [Korunum/yedek kaydı](original-preservation.json).
 
 Yerel eski `main` checkout'unu `origin/main` üzerine güncellemek, o ayrı çalışmanın çakışmalarını çözmeyi gerektirir. Bu merge, ilgili yerel dosyaları sıfırlama veya geçmişteki A06 çalışmasını kaybetme işlemi değildir.

@@ -1,9 +1,9 @@
 {
-  "name": "dark-perp-frontend",
+  "name": "arcora-perp-frontend",
   "private": true,
   "version": "0.0.1",
   "type": "module",
-  "description": "dark-perp web client \u2014 runnable skeleton with the protocol domain model and finality UX, ready for the design to be applied.",
+  "description": "Arcora Perp web client — runnable skeleton with the protocol domain model and finality UX, ready for the design to be applied.",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",

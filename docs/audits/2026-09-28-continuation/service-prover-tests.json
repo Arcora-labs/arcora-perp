@@ -12,7 +12,7 @@
     "CARGO_TARGET_DIR": "/tmp/arcora-prover-service-target",
     "PROTOC": "/tmp/arcora-tools/protoc-29.3/bin/protoc",
     "PATH_prefix": [
-      "/Users/huseyinarslan/.cargo/bin",
+      "<cargo-home>/bin",
       "/tmp/arcora-tools/sp1-6.0.0"
     ]
   },

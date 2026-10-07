@@ -1,6 +1,5 @@
 # Settle Crash-Recovery + ensure_bond Gas Fix — Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: superpowers:subagent-driven-development.
 > Spec: `docs/superpowers/specs/2026-07-09-settle-crash-recovery-design.md` (read it first — it is the contract).
 
 **Goal:** A gateway restart during an in-flight window settle recovers automatically at boot (rollback or roll-forward from a sealed sidecar journal) instead of wedging forever; and `ensure_bond`'s postBond no longer fails on drpc's lagging gas estimation.

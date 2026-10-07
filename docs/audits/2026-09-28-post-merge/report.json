@@ -24,7 +24,7 @@
         "sha256": "6f31741f1e3914392fd73dd9bafb33e8d7cf67ff58acbaa73104f9453475eb0c"
       },
       "command": "Recorded Cargo test, audit, tree and provenance commands in rsa/verification.json and their per-command records.",
-      "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+      "cwd": "<repo>",
       "exit_code": 0
     },
     {
@@ -37,7 +37,7 @@
         "sha256": "fc2dd2d320267f5e00b0353464eebae3d7274e6e68df6649b86bccb717cfdbe2"
       },
       "command": "cargo test --locked -p gateway runtime_witness_native_cast -- --ignored",
-      "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+      "cwd": "<repo>",
       "exit_code": 0
     },
     {
@@ -50,7 +50,7 @@
         "sha256": "da743dd54c607c5962e923f13c5bdc6e711ca9027bf987118153e677e3bff77a"
       },
       "command": "cargo run --release --locked --offline --manifest-path crates/sp1-host/Cargo.toml --bin sp1-host -- --check-negatives --output-dir docs/audits/2026-09-28-post-merge/normal/run-6.1.0",
-      "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+      "cwd": "<repo>",
       "exit_code": 0
     },
     {

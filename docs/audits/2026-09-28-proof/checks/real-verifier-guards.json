@@ -6,7 +6,7 @@
     "--output-dir",
     "docs/audits/2026-09-28-proof/verifier-guards"
   ],
-  "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+  "cwd": "<repo>",
   "exit_code": 0,
   "duration_seconds": 0.471,
   "log_sha256": "9f3c83e93b266a7939dc03edab842f4dc81bb992ff4ce83789a750fea973b8f7",

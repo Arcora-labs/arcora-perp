@@ -104,7 +104,7 @@ for task in tasks["tasks"]:
     report["checks"].append(check)
 write("graph-contract.json", contract)
 write("graph-report.json", report)
-gate = subprocess.run(["python3", "/Users/huseyinarslan/.codex/skills/graph-engineering/scripts/check_gate.py",
+gate = subprocess.run(["python3", "<local-tooling>/skills/graph-engineering/scripts/check_gate.py",
                        str(OUT / "graph-contract.json"), str(OUT / "graph-report.json"),
                        "--expected-subject", subject["source_sha256"]], text=True, capture_output=True)
 (OUT / "graph-gate.json").write_text(gate.stdout)
