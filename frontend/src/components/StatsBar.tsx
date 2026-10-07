@@ -5,7 +5,7 @@ import { useFlash } from "../hooks/useFlash";
 
 /// Live market stats strip. Values are mock-derived; the design restyles the
 /// presentation, the data stays.
-export function StatsBar() {
+export function StatsBar({ onSelect }: { onSelect?: () => void }) {
   const { state } = useStore();
   const mark = state.oracle.price;
   const flash = useFlash(mark);
@@ -13,10 +13,7 @@ export function StatsBar() {
   // 24h change vs the market's reference price (the real 24h open once the live
   // oracle reports it, else the session seed).
   const baseline = state.market.referencePrice > 0n ? state.market.referencePrice : mark;
-  const changePct = Number(((mark - baseline) * 10_000n) / baseline) / 100;
-
-  // funding rate (mock): premium of mark over baseline, clamped
-  const fundingPct = Math.max(-5, Math.min(5, changePct / 10));
+  const changePct = Number(((mark - baseline) * 10_000n) / (baseline || 1n)) / 100;
 
   // YOUR notional in this market = Σ |size| · mark over your positions. (True
   // market-wide open interest needs every trader's positions, which a single-user
@@ -33,7 +30,7 @@ export function StatsBar() {
   return (
     <div className="statsbar">
       <div className="statsbar__market">
-        <span className="statsbar__symbol">{state.market.symbol}</span>
+        <button className="statsbar__symbol" onClick={onSelect} aria-label="Select market">{state.market.symbol} <span aria-hidden>⌄</span></button>
         <span className={`statsbar__price ${up ? "pos" : "neg"} ${flash}`}>{formatPrice(mark)}</span>
         <span
           className={`oracle-tag ${state.market.live ? "oracle-tag--live" : "oracle-tag--sim"}`}
@@ -42,9 +39,9 @@ export function StatsBar() {
           <span className="dot" /> {state.market.live ? "live oracle" : "sim"}
         </span>
       </div>
-      <Stat label="24h" value={`${up ? "+" : ""}${changePct.toFixed(2)}%`} tone={up ? "pos" : "neg"} />
+      <Stat label="Since reference" value={`${up ? "+" : ""}${changePct.toFixed(2)}%`} tone={up ? "pos" : "neg"} />
       <Stat label="Index" value={formatPrice(state.oracle.price)} />
-      <Stat label="Funding / 1h" value={`${fundingPct >= 0 ? "+" : ""}${fundingPct.toFixed(3)}%`} tone={fundingPct >= 0 ? "pos" : "neg"} />
+      <Stat label="Funding rate" value="Not published" />
       {/* SEC-025-E1 fix-wave-2 G2: `accountUnavailable` means the account is
           an EMPTY PLACEHOLDER (read failure, realClient emit()) — "$0" here
           would present the placeholder as the caller's actual exposure. */}

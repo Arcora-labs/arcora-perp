@@ -1,3 +1,4 @@
+import { OrderHistory } from "./OrderHistory";
 import { useState } from "react";
 import { useStore } from "../store";
 import { formatPrice, formatSignedSize, formatUsd, shortHash } from "../domain/format";
@@ -214,7 +215,7 @@ export function OrdersTable() {
 /// Combined Positions / Orders card with tabs (Celari trade layout).
 export function PositionsOrders() {
   const { state } = useStore();
-  const [tab, setTab] = useState<"positions" | "orders">("positions");
+  const [tab, setTab] = useState<"positions" | "orders" | "history">("positions");
   return (
     <div className="card card--flush">
       <div className="tabs">
@@ -226,8 +227,9 @@ export function PositionsOrders() {
         <button className={`tab ${tab === "orders" ? "is-active" : ""}`} onClick={() => setTab("orders")}>
           Orders · {state.accountUnavailable ? "—" : state.orders.length}
         </button>
+        <button className={`tab ${tab === "history" ? "is-active" : ""}`} onClick={() => setTab("history")}>History</button>
       </div>
-      {tab === "positions" ? <PositionsBody /> : <OrdersBody />}
+      {tab === "positions" ? <PositionsBody /> : tab === "orders" ? <OrdersBody /> : <OrderHistory />}
     </div>
   );
 }

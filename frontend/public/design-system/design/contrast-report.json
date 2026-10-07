@@ -1,0 +1,50 @@
+[
+  {
+    "name": "Primary text",
+    "foreground": "#292523",
+    "background": "#FAF7F2",
+    "ratio": 14.207,
+    "normal_text_target": 4.5,
+    "passes_selected_token_pair": true
+  },
+  {
+    "name": "Secondary text",
+    "foreground": "#746C66",
+    "background": "#FFFEFB",
+    "ratio": 5.104,
+    "normal_text_target": 4.5,
+    "passes_selected_token_pair": true
+  },
+  {
+    "name": "Brand text",
+    "foreground": "#A63F2B",
+    "background": "#FCEADD",
+    "ratio": 5.331,
+    "normal_text_target": 4.5,
+    "passes_selected_token_pair": true
+  },
+  {
+    "name": "Positive text",
+    "foreground": "#147D61",
+    "background": "#E3F3EA",
+    "ratio": 4.419,
+    "normal_text_target": 4.5,
+    "passes_selected_token_pair": false
+  },
+  {
+    "name": "Negative text",
+    "foreground": "#BB3C51",
+    "background": "#FCE9ED",
+    "ratio": 4.646,
+    "normal_text_target": 4.5,
+    "passes_selected_token_pair": true
+  },
+  {
+    "name": "Primary CTA label",
+    "foreground": "#3F281F",
+    "background": "#F47B60",
+    "ratio": 5.114,
+    "normal_text_target": 4.5,
+    "passes_selected_token_pair": true
+  }
+]

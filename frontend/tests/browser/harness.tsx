@@ -4,6 +4,7 @@ import ReactDOM from "react-dom/client";
 import App from "../../src/App";
 import { RealDarkPerpClient } from "../../src/api/realClient";
 import "../../src/styles.css";
+import "../../src/theme.css";
 const bootstrap = RealDarkPerpClient.bootstrap.bind(RealDarkPerpClient);
 RealDarkPerpClient.bootstrap = async (...args) => {
   const client = await bootstrap(...args);

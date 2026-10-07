@@ -3,7 +3,7 @@ import { test, expect, type BrowserContext, type Page, type Route } from '@playw
 // All credentials and addresses below are public, synthetic test fixtures.
 const OWNER = '0x' + '22'.repeat(32), OLD = '0x' + '11'.repeat(32), NEW = '0x' + '77'.repeat(32);
 const AUTH = '0x' + '44'.repeat(20), VAULT = '0x' + '3b'.repeat(20);
-const SCOPE = { base: 'http://127.0.0.1:4173', chainId: 4242, vault: VAULT };
+const SCOPE = { base: `http://127.0.0.1:${process.env.ARCORA_BROWSER_PORT || 4173}`, chainId: 4242, vault: VAULT };
 const KEY = `darkperp.v2Account:${JSON.stringify([SCOPE.base, SCOPE.chainId, VAULT])}`;
 const record = (apiKey = OLD, recoveryNonce = 0) => ({ ...SCOPE, schema: 2, owner: OWNER, apiKey, recoveryNonce });
 const market = { id: 0, symbol: 'BTC/USDC', maxLeverage: 20, maintenanceMarginRatio: .05, initialMarginRatio: .1, referencePrice: '6450000000000', live: false, takerFeeBps: 8, makerRebateBps: 2 };
@@ -124,7 +124,7 @@ test('BR-05 storage quota failure retains new key in memory and warns after conf
   expect(await api(page, 'window.testClient.depositAccount().then(a => a.apiKey === "' + NEW + '")')).toBe(true);
   expect(await page.evaluate(key => JSON.parse(localStorage.getItem(key)!).apiKey === '0x' + '11'.repeat(32), KEY)).toBe(true);
   await page.reload(); await page.waitForFunction(() => !!(window as any).testClient);
-  await page.getByRole('button', { name: 'Account', exact: true }).click();
+  await page.getByRole('button', { name: 'Portfolio', exact: true }).click();
   await expect(page.getByText(/placeholders \(0\), not your/)).toBeVisible();
   expect(f.calls.filter(c => c.path === '/v1/accounts' && c.method === 'POST')).toHaveLength(0);
 });
@@ -169,7 +169,7 @@ test('S2-04 CSP blocks inline script and external connect; errors render only te
   });
   expect(checks).toEqual({ executed: false, blocked: true });
   f.setHook(async (route, c) => { if (c.path === '/v1/accounts/withdraw') { await route.fulfill({ status: 400, json: { error: '<img src=x onerror="window.xssExecuted=true">' } }); return true; } return false; });
-  await page.getByRole('button', { name: 'Account', exact: true }).click();
+  await page.getByRole('button', { name: 'Portfolio', exact: true }).click();
   await page.getByRole('button', { name: 'Withdraw', exact: true }).click();
   await expect(page.locator('.notice--error')).toContainText('<img');
   expect(await api(page, '!!window.xssExecuted')).toBe(false);
@@ -257,7 +257,7 @@ test('BR-05 session-only warning survives leaving and returning to recovery pane
   await fixture(context); const page = await open(context);
   await page.evaluate(key => { const original = Storage.prototype.setItem; Storage.prototype.setItem = function(k, v) { if (k === key) throw new DOMException('quota', 'QuotaExceededError'); original.call(this, k, v); }; }, KEY);
   await recover(page); await expect(page.getByRole('status')).toContainText('this tab only');
-  await page.getByRole('button', { name: 'Account', exact: true }).click();
+  await page.getByRole('button', { name: 'Portfolio', exact: true }).click();
   await page.getByRole('button', { name: 'Recover', exact: true }).click();
   await expect(page.getByRole('status')).toContainText('this tab only');
 });

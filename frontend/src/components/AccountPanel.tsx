@@ -36,16 +36,16 @@ export function AccountSummary() {
   );
   return (
     <div className="statgrid">
-      <StatCard label="Equity" value={formatUsd(s.equity)} sub="Net account value" glow icon={equityIcon} />
-      <StatCard label="Free · Withdrawable" value={formatUsd(s.freeBalance)} sub="SETTLED · spendable now" glow tone="pos" />
-      <StatCard label="Used Margin" value={formatUsd(s.usedMargin)} sub="Locked by open positions" />
+      <StatCard label="Equity" value={state.accountUnavailable ? "—" : formatUsd(s.equity)} sub="Net account value" glow icon={equityIcon} />
+      <StatCard label="Free · Withdrawable" value={state.accountUnavailable ? "—" : formatUsd(s.freeBalance)} sub="SETTLED · spendable now" glow tone="pos" />
+      <StatCard label="Used Margin" value={state.accountUnavailable ? "—" : formatUsd(s.usedMargin)} sub="Locked by open positions" />
       <StatCard
         label="Unrealized PnL"
-        value={formatUsd(s.upnl)}
+        value={state.accountUnavailable ? "—" : formatUsd(s.upnl)}
         sub="At current mark"
         tone={s.upnl > 0n ? "pos" : s.upnl < 0n ? "neg" : undefined}
       />
-      <StatCard label="Acct Leverage" value={`${s.leverage.toFixed(2)}×`} sub="Notional ÷ equity" glow accent icon={levIcon} />
+      <StatCard label="Acct Leverage" value={state.accountUnavailable ? "—" : `${s.leverage.toFixed(2)}×`} sub="Notional ÷ equity" glow accent icon={levIcon} />
     </div>
   );
 }

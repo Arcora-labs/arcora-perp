@@ -1,0 +1,40 @@
+Vercel CLI 59.16.0 (Node.js 24.12.0)
+Deploying arcora-perp
+Uploading [--------------------] (0.0B/7.5MB)
+Uploading [=====---------------] (1.9MB/7.5MB)
+Uploading [==========----------] (3.8MB/7.5MB)
+Uploading [===============-----] (5.7MB/7.5MB)
+Uploading [====================] (7.5MB/7.5MB)
+  Inspect         https://vercel.com/kubudak90s-projects/arcora-perp/L9Frjuj7NWpBta8LuPhqivizsTSc
+▲ Production      https://arcora-perp-beqyzo4z2-kubudak90s-projects.vercel.app
+Building…
+Building…
+[2K[1A[2K[G▲ Production      https://arcora-perp-beqyzo4z2-kubudak90s-projects.vercel.app
+Completing…
+▲ Aliased         https://arcora-perp-kubudak90s-projects.vercel.app
+{
+  "status": "ok",
+  "deployment": {
+    "id": "dpl_L9Frjuj7NWpBta8LuPhqivizsTSc",
+    "url": "https://arcora-perp-beqyzo4z2-kubudak90s-projects.vercel.app",
+    "inspectorUrl": "https://vercel.com/kubudak90s-projects/arcora-perp/L9Frjuj7NWpBta8LuPhqivizsTSc",
+    "readyState": "READY",
+    "target": "production",
+    "deploymentApiUrl": "https://api.vercel.com/v13/deployments/dpl_L9Frjuj7NWpBta8LuPhqivizsTSc"
+  },
+  "message": "Deployment arcora-perp-beqyzo4z2-kubudak90s-projects.vercel.app ready.",
+  "next": [
+    {
+      "command": "vercel curl https://arcora-perp-beqyzo4z2-kubudak90s-projects.vercel.app",
+      "when": "Verify deployment, including when Deployment Protection is enabled"
+    },
+    {
+      "command": "vercel inspect arcora-perp-beqyzo4z2-kubudak90s-projects.vercel.app --scope kubudak90s-projects",
+      "when": "Inspect deployment"
+    },
+    {
+      "command": "vercel deploy --prod --scope kubudak90s-projects",
+      "when": "Promote to production"
+    }
+  ]
+}

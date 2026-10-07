@@ -1,0 +1,1310 @@
+[WARN] The "pnpm" field in package.json is no longer read by pnpm. The following keys were ignored: "pnpm.onlyBuiltDependencies". See https://pnpm.io/settings for the new home of each setting.
+$ vitest run
+
+ RUN  v4.1.11 /Users/huseyinarslan/.codex/worktrees/arcora-warm-ui-20261007/arcora-perp/frontend
+
+ ❯ src/App.test.tsx (5 tests | 3 failed) 431ms
+     × mounts the full app (store + every panel) without crashing 149ms
+     × navigates between the trade / account / recover tabs 84ms
+     × click-to-price: clicking an order-book level fills the ticket's limit price 70ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/App.test.tsx > App smoke > mounts the full app (store + every panel) without crashing
+TestingLibraryElementError: Found multiple elements with the text: Trade
+
+Here are the matching elements:
+
+Ignored nodes: comments, script, style
+[36m<button[39m
+  [33maria-current[39m=[32m"page"[39m
+  [33mclass[39m=[32m"navlink is-active"[39m
+[36m>[39m
+  [36m<svg[39m
+    [33mfill[39m=[32m"none"[39m
+    [33mstroke[39m=[32m"currentColor"[39m
+    [33mstroke-linecap[39m=[32m"round"[39m
+    [33mstroke-linejoin[39m=[32m"round"[39m
+    [33mstroke-width[39m=[32m"1.75"[39m
+    [33mviewBox[39m=[32m"0 0 24 24"[39m
+  [36m>[39m
+    [36m<polyline[39m
+      [33mpoints[39m=[32m"22 7 13.5 15.5 8.5 10.5 2 17"[39m
+    [36m/>[39m
+    [36m<polyline[39m
+      [33mpoints[39m=[32m"16 7 22 7 22 13"[39m
+    [36m/>[39m
+  [36m</svg>[39m
+  [0mTrade[0m
+[36m</button>[39m
+
+Ignored nodes: comments, script, style
+[36m<button[39m
+  [33maria-pressed[39m=[32m"false"[39m
+[36m>[39m
+  [0mTrade[0m
+[36m</button>[39m
+
+(If this is intentional, then use the `*AllBy*` variant of the query (like `queryAllByText`, `getAllByText`, or `findAllByText`)).
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div>[39m
+    [36m<a[39m
+      [33mclass[39m=[32m"skip-link"[39m
+      [33mhref[39m=[32m"#workspace-main"[39m
+    [36m>[39m
+      [0mSkip to workspace[0m
+    [36m</a>[39m
+    [36m<div[39m
+      [33mclass[39m=[32m"app"[39m
+    [36m>[39m
+      [36m<aside[39m
+        [33mclass[39m=[32m"sidebar "[39m
+      [36m>[39m
+        [36m<a[39m
+          [33maria-label[39m=[32m"Arcora home"[39m
+          [33mclass[39m=[32m"sidebar__brand"[39m
+          [33mhref[39m=[32m"/"[39m
+        [36m>[39m
+          [36m<img[39m
+            [33malt[39m=[32m"Arcora"[39m
+            [33msrc[39m=[32m"/assets/arcora-logo.png"[39m
+          [36m/>[39m
+          [36m<span[39m
+            [33mclass[39m=[32m"sr-only"[39m
+          [36m>[39m
+            [0mARCORA[0m
+          [36m</span>[39m
+        [36m</a>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"sidebar__scroll"[39m
+        [36m>[39m
+          [36m<p[39m
+            [33mclass[39m=[32m"sidebar__section"[39m
+          [36m>[39m
+            [0mYour workspace[0m
+          [36m</p>[39m
+          [36m<nav[39m
+            [33maria-label[39m=[32m"Primary"[39m
+            [33mclass[39m=[32m"workspace-nav"[39m
+          [36m>[39m
+            [36m<button[39m
+              [33maria-current[39m=[32m"page"[39m
+              [33mclass[39m=[32m"navlink is-active"[39m
+            [36m>[39m
+              [36m<svg[39m
+                [33mfill[39m=[32m"none"[39m
+                [33mstroke[39m=[32m"currentColor"[39m
+                [33mstroke-linecap[39m=[32m"round"[39m
+                [33mstroke-linejoin[39m=[32m"round"[39m
+                [33mstroke-width[39m=[32m"1.75"[39m
+                [33mviewBox[39m=[32m"0 0 24 24"[39m
+              [36m>[39m
+                [36m<polyline[39m
+                  [33mpoints[39m=[32m"22 7 13.5 15.5 8.5 10.5 2 17"[39m
+                [36m/>[39m
+                [36m<polyline[39m
+                  [33mpoints[39m=[32m"16 7 22 7 22 13"[39m
+                [36m/>[39m
+              [36m</svg>[39m
+              [0mTrade[0m
+            [36m</button>[39m
+            [36m<button[39m
+              [33mclass[39m=[32m"navlink "[39m
+            [36m>[39m
+              [36m<svg[39m
+                [33mfill[39m=[32m"none"[39m
+                [33mstroke[39m=[32m"currentColor"[39m
+                [33mstroke-linecap[39m=[32m"round"[39m
+                [33mstroke-linejoin[39m=[32m"round"[39m
+                [33mstroke-width[39m=[32m"1.75"[39m
+                [33mviewBox[39m=[32m"0 0 24 24"[39m
+              [36m>[39m
+                [36m<polyline[39m
+                  [33mpoints[39m=[32m"22 7 13.5 15.5 8.5 10.5 2 17"[39m
+                [36m/>[39m
+                [36m<polyline[39m
+                  [33mpoints[39m=[32m"16 7 22 7 22 13"[39m
+                [36m/>[39m
+              [36m</svg>[39m
+              [0mMarkets[0m
+            [36m</button>[39m
+            [36m<button[39m
+              [33mclass[39m=[32m"navlink "[39m
+            [36m>[39m
+              [36m<svg[39m
+                [33mfill[39m=[32m"none"[39m
+                [33mstroke[39m=[32m"currentColor"[39m
+                [33mstroke-linecap[39m=[32m"round"[39m
+                [33mstroke-linejoin[39m=[32m"round"[39m
+                [33mstroke-width[39m=[32m"1.75"[39m
+                [33mviewBox[39m=[32m"0 0 24 24"[39m
+              [36m>[39m
+                [36m<path[39m
+                  [33md[39m=[32m"M21 12V7H5a2 2 0 0 1 0-4h14v4"[39m
+                [36m/>[39m
+                [36m<path[39m
+                  [33md[39m=[32m"M3 5v14a2 2 0 0 0 2 2h16v-5"[39m
+                [36m/>[39m
+                [36m<path[39m
+                  [33md[39m=[32m"M18 12a2 2 0 0 0 0 4h4v-4Z"[39m
+                [36m/>[39m
+              [36m</svg>[39m
+              [0mPortfolio[0m
+            [36m</button>[39m
+            [36m<button[39m
+              [33mclass[39m=[32m"navlink "[39m
+            [36m>[39m
+              [36m<svg[39m
+                [33mfill[39m=[32m"none"[39m
+                [33mstroke[39m=[32m"currentColor"[39m
+                [33mstroke-linecap[39m=[32m"round"[39m
+                [33mstroke-linejoin[39m=[32m"round"[39m
+                [33mstroke-width[39m=[32m"1.75"[39m
+                [33mviewBox[39m=[32m"0 0 24 24"[39m
+              [36m>[39m
+                [36m<path[39m
+                  [33md[39m=[32m"M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"[39m
+                [36m/>[39m
+              [36m</svg>[39m
+              [0mVault[0m
+            [36m</button>[39m
+            [36m<button[39m
+              [33mclass[39m=[32m"navlink "[39m
+            [36m>[39m
+              [36m<svg[39m
+                [33mfill[39m=[32m"none"[39m
+                [33mstroke[39m=[32m"currentColor"[39m
+                [33mstroke-linecap[39m=[32m"round"[39m
+                [33mstroke-linejoin[39m=[32m"round"[39m
+                [33mstroke-width[39m=[32m"1.75"[39m
+                [33mviewBox[39m=[32m"0 0 24 24"[39m
+              [36m>[39m
+                [36m<path[39m
+                  [33md[39m=[32m"m12 2 9 5-9 5-9-5 9-5Z"[39m
+                [36m/>[39m
+                [36m<path[39m
+                  [33md[39m=[32m"m3 12 9 5 9-5"[39m
+                [36m/>[39m
+                [36m<path[39m
+                  [33md[39m=[32m"m3 17 9 5 9-5"[39m
+                [36m/>[39m
+              [36m</svg>[39m
+              [0mExplorer[0m
+            [36m</button>[39m
+            [36m<button[39m
+              [33mclass[39m=[32m"navlink "[39m
+            [36m>[39m
+              [36m<svg[39m
+                [33mfill[39m=[32m"none"[39m
+                [33mstroke[39m=[32m"currentColor"[39m
+                [33mstroke-linecap[39m=[32m"round"[39m
+                [33mstroke-linejoin[39m=[32m"round"[39m
+                [33mstroke-width[39m=[32m"1.75"[39m
+                [33mviewBox[39m=[32m"0 0 24 24"[39m
+              [36m>[39m
+                [36m<path[39m
+                  [33md[39m=[32m"M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"[39m
+                [36m/>[39m
+              [36m</svg>[39m
+              [0mRecover[0m
+            [36m</button>[39m
+            [36m<button[39m
+              [33mclass[39m=[32m"navlink "[39m
+            [36m>[39m
+              [36m<svg[39m
+                [33mfill[39m=[32m"none"[39m
+                [33mstroke[39m=[32m"currentColor"[39m
+                [33mstroke-linecap[39m=[32m"round"[39m
+                [33mstroke-linejoin[39m=[32m"round"[39m
+                [33mstroke-width[39m=[32m"1.75"[39m
+                [33mviewBox[39m=[32m"0 0 24 24"[39m
+              [36m>[39m
+                [36...
+ ❯ Object.getElementError node_modules/.pnpm/@testing-library+dom@10.4.1/node_modules/@testing-library/dom/dist/config.js:37:19
+ ❯ getElementError node_modules/.pnpm/@testing-library+dom@10.4.1/node_modules/@testing-library/dom/dist/query-helpers.js:20:35
+ ❯ getMultipleElementsFoundError node_modules/.pnpm/@testing-library+dom@10.4.1/node_modules/@testing-library/dom/dist/query-helpers.js:23:10
+ ❯ node_modules/.pnpm/@testing-library+dom@10.4.1/node_modules/@testing-library/dom/dist/query-helpers.js:55:13
+ ❯ node_modules/.pnpm/@testing-library+dom@10.4.1/node_modules/@testing-library/dom/dist/query-helpers.js:95:19
+ ❯ src/App.test.tsx:15:19
+     13|     // brand + primary nav are always present (Arcora sidebar)
+     14|     expect(screen.getByText("ARCORA")).toBeTruthy();
+     15|     expect(screen.getByText("Trade")).toBeTruthy();
+       |                   ^
+     16|     // the default trade view shows the selected market and the book
+     17|     expect(screen.getAllByText(/BTC\/USDC/).length).toBeGreaterThan(0);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/3]⎯
+
+ FAIL  src/App.test.tsx > App smoke > navigates between the trade / account / recover tabs
+TestingLibraryElementError: Unable to find an accessible element with the role "button" and name `/^account$/i`
+
+Here are the accessible roles:
+
+  link:
+
+  Name "Skip to workspace":
+  [36m<a[39m
+    [33mclass[39m=[32m"skip-link"[39m
+    [33mhref[39m=[32m"#workspace-main"[39m
+  [36m/>[39m
+
+  Name "Arcora home":
+  [36m<a[39m
+    [33maria-label[39m=[32m"Arcora home"[39m
+    [33mclass[39m=[32m"sidebar__brand"[39m
+    [33mhref[39m=[32m"/"[39m
+  [36m/>[39m
+
+  Name "A new perspective Less noise. More possibility.":
+  [36m<a[39m
+    [33mclass[39m=[32m"sidebar-story"[39m
+    [33mhref[39m=[32m"/"[39m
+  [36m/>[39m
+
+  Name "Help & documentation ↗":
+  [36m<a[39m
+    [33mclass[39m=[32m"navlink"[39m
+    [33mhref[39m=[32m"/docs/"[39m
+  [36m/>[39m
+
+  Name "Arcora home":
+  [36m<a[39m
+    [33maria-label[39m=[32m"Arcora home"[39m
+    [33mclass[39m=[32m"mobile-logo"[39m
+    [33mhref[39m=[32m"/"[39m
+  [36m/>[39m
+
+  Name "Warm Precision ↗":
+  [36m<a[39m
+    [33mhref[39m=[32m"/design-system/"[39m
+  [36m/>[39m
+
+  --------------------------------------------------
+  complementary:
+
+  Name "":
+  [36m<aside[39m
+    [33mclass[39m=[32m"sidebar "[39m
+  [36m/>[39m
+
+  --------------------------------------------------
+  img:
+
+  Name "Arcora":
+  [36m<img[39m
+    [33malt[39m=[32m"Arcora"[39m
+    [33msrc[39m=[32m"/assets/arcora-logo.png"[39m
+  [36m/>[39m
+
+  Name "Arcora":
+  [36m<img[39m
+    [33malt[39m=[32m"Arcora"[39m
+    [33msrc[39m=[32m"/assets/arcora-logo.png"[39m
+  [36m/>[39m
+
+  --------------------------------------------------
+  paragraph:
+
+  Name "":
+  [36m<p[39m
+    [33mclass[39m=[32m"sidebar__section"[39m
+  [36m/>[39m
+
+  Name "":
+  [36m<p />[39m
+
+  Name "":
+  [36m<p[39m
+    [33mclass[39m=[32m"ticket-balance"[39m
+  [36m/>[39m
+
+  Name "":
+  [36m<p[39m
+    [33mclass[39m=[32m"order-ticket__foot"[39m
+  [36m/>[39m
+
+  Name "":
+  [36m<p[39m
+    [33mclass[39m=[32m"finality-legend__hint"[39m
+  [36m/>[39m
+
+  Name "":
+  [36m<p[39m
+    [33mclass[39m=[32m"finality-legend__hint"[39m
+  [36m/>[39m
+
+  Name "":
+  [36m<p[39m
+    [33mclass[39m=[32m"finality-legend__hint"[39m
+  [36m/>[39m
+
+  Name "":
+  [36m<p[39m
+    [33mclass[39m=[32m"finality-legend__warn"[39m
+  [36m/>[39m
+
+  Name "":
+  [36m<p[39m
+    [33mclass[39m=[32m"empty"[39m
+  [36m/>[39m
+
+  Name "":
+  [36m<p[39m
+    [33mclass[39m=[32m"muted"[39m
+  [36m/>[39m
+
+  --------------------------------------------------
+  navigation:
+
+  Name "Primary":
+  [36m<nav[39m
+    [33maria-label[39m=[32m"Primary"[39m
+    [33mclass[39m=[32m"workspace-nav"[39m
+  [36m/>[39m
+
+  --------------------------------------------------
+  button:
+
+  Name "Trade":
+  [36m<button[39m
+    [33maria-current[39m=[32m"page"[39m
+    [33mclass[39m=[32m"navlink is-active"[39m
+  [36m/>[39m
+
+  Name "Markets":
+  [36m<button[39m
+    [33mclass[39m=[32m"navlink "[39m
+  [36m/>[39m
+
+  Name "Portfolio":
+  [36m<button[39m
+    [33mclass[39m=[32m"navlink "[39m
+  [36m/>[39m
+
+  Name "Vault":
+  [36m<button[39m
+    [33mclass[39m=[32m"navlink "[39m
+  [36m/>[39m
+
+  Name "Explorer":
+  [36m<button[39m
+    [33mclass[39m=[32m"navlink "[39m
+  [36m/>[39m
+
+  Name "Recover":
+  [36m<button[39m
+    [33mclass[39m=[32m"navlink "[39m
+  [36m/>[39m
+
+  Name "Health":
+  [36m<button[39m
+    [33mclass[39m=[32m"navlink "[39m
+  [36m/>[39m
+
+  Name "API":
+  [36m<button[39m
+    [33mclass[39m=[32m"navlink "[39m
+  [36m/>[39m
+
+  Name "Toggle navigation":
+  [36m<button[39m
+    [33maria-expanded[39m=[32m"false"[39m
+    [33maria-label[39m=[32m"Toggle navigation"[39m
+    [33mclass[39m=[32m"menu-toggle"[39m
+  [36m/>[39m
+
+  Name "Find your market ⌘ K":
+  [36m<button[39m
+    [33mclass[39m=[32m"market-search"[39m
+  [36m/>[39m
+
+  Name "Get test USDC":
+  [36m<button[39m
+    [33mclass[39m=[32m"banner__btn"[39m
+  [36m/>[39m
+
+  Name "Dismiss":
+  [36m<button[39m
+    [33maria-label[39m=[32m"Dismiss"[39m
+    [33mclass[39m=[32m"banner__btn"[39m
+  [36m/>[39m
+
+  Name "Select market":
+  [36m<button[39m
+    [33maria-label[39m=[32m"Select market"[39m
+    [33mclass[39m=[32m"statsbar__symbol"[39m
+  [36m/>[39m
+
+  Name "Chart":
+  [36m<button[39m
+    [33maria-pressed[39m=[32m"true"[39m
+  [36m/>[39m
+
+  Name "Trade":
+  [36m<button[39m
+    [33maria-pressed[39m=[32m"false"[39m
+  [36m/>[39m
+
+  Name "Activity":
+  [36m<button[39m
+    [33maria-pressed[39m=[32m"false"[39m
+  [36m/>[39m
+
+  Name "1m":
+  [36m<button[39m
+    [33mclass[39m=[32m"chart__tf "[39m
+  [36m/>[39m
+
+  Name "5m":
+  [36m<button[39m
+    [33mclass[39m=[32m"chart__tf "[39m
+  [36m/>[39m
+
+  Name "15m":
+  [36m<button[39m
+    [33mclass[39m=[32m"chart__tf is-active"[39m
+  [36m/>[39m
+
+  Name "1H":
+  [36m<button[39m
+    [33mclass[39m=[32m"chart__tf "[39m
+  [36m/>[39m
+
+  Name "4H":
+  [36m<button[39m
+    [33mclass[39m=[32m"chart__tf "[39m
+  [36m/>[39m
+
+  Name "1D":
+  [36m<button[39m
+    [33mclass[39m=[32m"chart__tf "[39m
+  [36m/>[39m
+
+  Name "Cursor":
+  [36m<button[39m
+    [33maria-label[39m=[32m"Cursor"[39m
+    [33mclass[39m=[32m"chart__draw is-active"[39m
+    [33mtitle[39m=[32m"Cursor"[39m
+  [36m/>[39m
+
+  Name "Trend line":
+  [36m<button[39m
+    [33maria-label[39m=[32m"Trend line"[39m
+    [33mclass[39m=[32m"chart__draw "[39m
+    [33mtitle[39m=[32m"Trend line"[39m
+  [36m/>[39m
+
+  Name "Horizontal line":
+  [36m<button[39m
+    [33maria-label[39m=[32m"Horizontal line"[39m
+    [33mclass[39m=[32m"chart__draw "[39m
+    [33mtitle[39m=[32m"Horizontal line"[39m
+  [36m/>[39m
+
+  Name "Erase":
+  [36m<button[39m
+    [33maria-label[39m=[32m"Erase"[39m
+    [33mclass[39m=[32m"chart__draw "[39m
+    [33mtitle[39m=[32m"Erase"[39m
+  [36m/>[39m
+
+  Name "Clear":
+  [36m<button[39m
+    [33mclass[39m=[32m"chart__tf"[39m
+  [36m/>[39m
+
+  Name "View order book":
+  [36m<button[39m
+    [33maria-expanded[39m=[32m"false"[39m
+    [33mclass[39m=[32m"btn btn--ghost"[39m
+  [36m/>[39m
+
+  Name "Buy / Long":
+  [36m<button[39m
+    [33maria-pressed[39m=[32m"true"[39m
+    [33mclass[39m=[32m"seg__btn is-active seg__btn--buy"[39m
+    [33mtype[39m=[32m"button"[39m
+  [36m/>[39m
+
+  Name "Sell / Short":
+  [36m<button[39m
+    [33maria-pressed[39m=[32m"false"[39m
+    [33mclass[39m=[32m"seg__btn "[39m
+    [33mtype[39m=[32m"button"[39m
+  [36m/>[39m
+
+  Name "Market":
+  [36m<button[39m
+    [33maria-pressed[39m=[32m"true"[39m
+    [33mtype[39m=[32m"button"[39m
+  [36m/>[39m
+
+  Name "Limit":
+  [36m<button[39m
+    [33maria-pressed[39m=[32m"false"[39m
+    [33mtype[39m=[32m"button"[39m
+  [36m/>[39m
+
+  Name "25%":
+  [36m<button[39m
+    [33mclass[39m=[32m"quicksize__btn"[39m
+    [33mtype[39m=[32m"button"[39m
+  [36m/>[39m
+
+  Name "50%":
+  [36m<button[39m
+    [33mclass[39m=[32m"quicksize__btn"[39m
+    [33mtype[39m=[32m"button"[39m
+  [36m/>[39m
+
+  Name "75%":
+  [36m<button[39m
+    [33mclass[39m=[32m"quicksize__btn"[39m
+    [33mtype[39m=[32m"button"[39m
+  [36m/>[39m
+
+  Name "Max":
+  [36m<button[39m
+    [33mclass[39m=[32m"quicksize__btn"[39m
+    [33mtype[39m=[32m"button"[39m
+  [36m/>[39m
+
+  Name "Preview buy BTC/USDC":
+  [36m<button[39m
+    [33mclass[39m=[32m"btn btn--buy"[39m
+  [36m/>[39m
+
+  Name "Positions · 0":
+  [36m<button[39m
+    [33mclass[39m=[32m"tab is-active"[39m
+  [36m/>[39m
+
+  Name "Orders · 0":
+  [36m<button[39m
+    [33mclass[39m=[32m"tab "[39m
+  [36m/>[39m
+
+  Name "Simulate ADL":
+  [36m<button[39m
+    [33mclass[39m=[32m"btn btn--tiny"[39m
+    [33mtitle[39m=[32m"Simulate a bad-debt cascade that auto-deleverages your winning position (audit Q2)"[39m
+  [36m/>[39m
+
+  Name "Simulate forced exit":
+  [36m<button[39m
+    [33mclass[39m=[32m"btn btn--tiny"[39m
+    [33mtitle[39m=[32m"Simulate liveness failure / circuit breaker"[39m
+  [36m/>[39m
+
+  --------------------------------------------------
+  group:
+
+  Name "":
+  [36m<details[39m
+    [33mclass[39m=[32m"sidebar-markets"[39m
+  [36m/>[39m
+
+  Name "Trading panels":
+  [36m<div[39m
+    [33maria-label[39m=[32m"Trading panels"[39m
+    [33mclass[39m=[32m"mobile-panels"[39m
+    [33mrole[39m=[32m"group"[39m
+  [36m/>[39m
+
+  Name "Order type":
+  [36m<div[39m
+    [33maria-label[39m=[32m"Order type"[39m
+    [33mclass[39m=[32m"ticket-types"[39m
+    [33mrole[39m=[32m"group"[39m
+  [36m/>[39m
+
+  Name "Size as a fraction of buying power":
+  [36m<div[39m
+    [33maria-label[39m=[32m"Size as a fraction of buying power"[39m
+    [33mclass[39m=[32m"quicksize"[39m
+    [33mrole[39m=[32m"group"[39m
+  [36m/>[39m
+
+  Name "":
+  [36m<details[39m
+    [33mclass[39m=[32m"system-controls"[39m
+  [36m/>[39m
+
+  --------------------------------------------------
+  tablist:
+
+  Name "Markets":
+  [36m<div[39m
+    [33maria-label[39m=[32m"Markets"[39m
+    [33mclass[39m=[32m"market-list"[39m
+    [33mrole[39m=[32m"tablist"[39m
+  [36m/>[39m
+
+  --------------------------------------------------
+  tab:
+
+  Name "BTC/USDC":
+  [36m<button[39m
+    [33maria-label[39m=[32m"BTC/USDC"[39m
+    [33maria-selected[39m=[32m"true"[39m
+    [33mclass[39m=[32m"market-row is-active"[39m
+    [33mrole[39m=[32m"tab"[39m
+  [36m/>[39m
+
+  Name "ETH/USDC":
+  [36m<button[39m
+    [33maria-label[39m=[32m"ETH/USDC"[39m
+    [33maria-selected[39m=[32m"false"[39m
+    [33mclass[39m=[32m"market-row "[39m
+    [33mrole[39m=[32m"tab"[39m
+  [36m/>[39m
+
+  Name "SOL/USDC":
+  [36m<button[39m
+    [33maria-label[39m=[32m"SOL/USDC"[39m
+    [33maria-selected[39m=[32m"false"[39m
+    [33mclass[39m=[32m"market-row "[39m
+    [33mrole[39m=[32m"tab"[39m
+  [36m/>[39m
+
+  --------------------------------------------------
+  strong:
+
+  Name "":
+  [36m<strong />[39m
+
+  Name "":
+  [36m<strong[39m
+    [33mclass[39m=[32m"banner__title"[39m
+  [36m/>[39m
+
+  Name "":
+  [36m<strong />[39m
+
+  Name "":
+  [36m<strong />[39m
+
+  Name "":
+  [36m<strong />[39m
+
+  Name "":
+  [36m<strong />[39m
+
+  Name "":
+  [36m<strong />[39m
+
+  Name "":
+  [36m<strong />[39m
+
+  --------------------------------------------------
+  banner:
+
+  Name "":
+  [36m<header[39m
+    [33mclass[39m=[32m"app__header"[39m
+  [36m/>[39m
+
+  --------------------------------------------------
+  main:
+
+  Name "":
+  [36m<main[39m
+    [33mclass[39m=[32m"app__main"[39m
+    [33mid[39m=[32m"workspace-main"[39m
+    [33mtabindex[39m=[32m"-1"[39m
+  [36m/>[39m
+
+  --------------------------------------------------
+  note:
+
+  Name "":
+  [36m<div[39m
+    [33mclass[39m=[32m"banner banner--notice"[39m
+    [33mrole[39m=[32m"note"[39m
+  [36m/>[39m
+
+  --------------------------------------------------
+  region:
+
+  Name "Market pulse":
+  [36m<section[39m
+    [33maria-label[39m=[32m"Market pulse"[39m
+    [33mclass[39m=[32m"card market-pulse"[39m
+  [36m/>[39m
+
+  --------------------------------------------------
+  heading:
+
+  Name "Market pulse":
+  [36m<h2 />[39m
+
+  Name "Your activity. Your space.":
+  [36m<h3 />[39m
+
+  Name "Make your move":
+  [36m<h3[39m
+    [33mclass[39m=[32m"card__title"[39m
+  [36m/>[39m
+
+  Name "Finality":
+  [36m<h3[39m
+    [33mclass[39m=[32m"card__title"[39m
+  [36m/>[39m
+
+  Name "Activity":
+  [36m<h3[39m
+    [33mclass[39m=[32m"card__title"[39m
+  [36m/>[39m
+
+  --------------------------------------------------
+  term:
+
+  Name "":
+  [36m<dt />[39m
+
+  Name "":
+  [36m<dt />[39m
+
+  Name "":
+  [36m<dt />[39m
+
+  Name "":
+  [36m<dt />[39m
+
+  Name "":
+  [36m<dt />[39m
+
+  Name "":
+  [36m<dt />[39m
+
+  Name "":
+  [36m<dt />[39m
+
+  Name "":
+  [36m<dt />[39m
+
+  Name "":
+  [36m<dt />[39m
+
+  --------------------------------------------------
+  definition:
+
+  Name "":
+  [36m<dd />[39m
+
+  Name "":
+  [36m<dd />[39m
+
+  Name "":
+  [36m<dd />[39m
+
+  Name "":
+  [36m<dd />[39m
+
+  Name "":
+  [36m<dd[39m
+    [33mclass[39m=[32m"mono"[39m
+  [36m/>[39m
+
+  Name "":
+  [36m<dd[39m
+    [33mclass[39m=[32m"mono"[39m
+  [36m/>[39m
+
+  Name "":
+  [36m<dd[39m
+    [33mclass[39m=[32m"mono"[39m
+  [36m/>[39m
+
+  Name "":
+  [36m<dd[39m
+    [33mclass[39m=[32m"mono"[39m
+  [36m/>[39m
+
+  Name "":
+  [36m<dd[39m
+    [33mclass[39m=[32m"mono"[39m
+  [36m/>[39m
+
+  --------------------------------------------------
+  textbox:
+
+  Name "Size (BTC)":
+  [36m<input[39m
+    [33mclass[39m=[32m"field__input"[39m
+    [33minputmode[39m=[32m"decimal"[39m
+    [33mvalue[39m=[32m"0.10"[39m
+  [36m/>[39m
+
+  Name "Limit price (blank = market)":
+  [36m<input[39m
+    [33mclass[39m=[32m"field__input"[39m
+    [33minputmode[39m=[32m"decimal"[39m
+    [33mplaceholder[39m=[32m"market"[39m
+    [33mvalue[39m=[32m""[39m
+  [36m/>[39m
+
+  --------------------------------------------------
+  combobox:
+
+  Name "Time in force":
+  [36m<select[39m
+    [33mclass[39m=[32m"field__input"[39m
+  [36m/>[39m
+
+  --------------------------------------------------
+  option:
+
+  Name "Gtc":
+  [36m<option[39m
+    [33mvalue[39m=[32m"Gtc"[39m
+  [36m/>[39m
+
+  Name "Ioc":
+  [36m<option[39m
+    [33mvalue[39m=[32m"Ioc"[39m
+  [36m/>[39m
+
+  Name "Fok":
+  [36m<option[39m
+    [33mvalue[39m=[32m"Fok"[39m
+  [36m/>[39m
+
+  Name "PostOnly":
+  [36m<option[39m
+    [33mvalue[39m=[32m"PostOnly"[39m
+  [36m/>[39m
+
+  --------------------------------------------------
+  checkbox:
+
+  Name "Reduce-only":
+  [36m<input[39m
+    [33mtype[39m=[32m"checkbox"[39m
+  [36m/>[39m
+
+  --------------------------------------------------
+  list:
+
+  Name "":
+  [36m<ol[39m
+    [33mclass[39m=[32m"finality-legend__steps"[39m
+  [36m/>[39m
+
+  --------------------------------------------------
+  listitem:
+
+  Name "":
+  [36m<li[39m
+    [33mclass[39m=[32m"finality-legend__step"[39m
+  [36m/>[39m
+
+  Name "":
+  [36m<li[39m
+    [33mclass[39m=[32m"finality-legend__step"[39m
+  [36m/>[39m
+
+  Name "":
+  [36m<li[39m
+    [33mclass[39m=[32m"finality-legend__step"[39m
+  [36m/>[39m
+
+  --------------------------------------------------
+  contentinfo:
+
+  Name "":
+  [36m<footer[39m
+    [33mclass[39m=[32m"app__footer"[39m
+  [36m/>[39m
+
+  --------------------------------------------------
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div>[39m
+    [36m<a[39m
+      [33mclass[39m=[32m"skip-link"[39m
+      [33mhref[39m=[32m"#workspace-main"[39m
+    [36m>[39m
+      [0mSkip to workspace[0m
+    [36m</a>[39m
+    [36m<div[39m
+      [33mclass[39m=[32m"app"[39m
+    [36m>[39m
+      [36m<aside[39m
+        [33mclass[39m=[32m"sidebar "[39m
+      [36m>[39m
+        [36m<a[39m
+          [33maria-label[39m=[32m"Arcora home"[39m
+          [33mclass[39m=[32m"sidebar__brand"[39m
+          [33mhref[39m=[32m"/"[39m
+        [36m>[39m
+          [36m<img[39m
+            [33malt[39m=[32m"Arcora"[39m
+            [33msrc[39m=[32m"/assets/arcora-logo.png"[39m
+          [36m/>[39m
+          [36m<span[39m
+            [33mclass[39m=[32m"sr-only"[39m
+          [36m>[39m
+            [0mARCORA[0m
+          [36m</span>[39m
+        [36m</a>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"sidebar__scroll"[39m
+        [36m>[39m
+          [36m<p[39m
+            [33mclass[39m=[32m"sidebar__section"[39m
+          [36m>[39m
+            [0mYour workspace[0m
+          [36m</p>[39m
+          [36m<nav[39m
+            [33maria-label[39m=[32m"Primary"[39m
+            [33mclass[39m=[32m"workspace-nav"[39m
+          [36m>[39m
+            [36m<button[39m
+              [33maria-current[39m=[32m"page"[39m
+              [33mclass[39m=[32m"navlink is-active"[39m
+            [36m>[39m
+              [36m<svg[39m
+                [33mfill[39m=[32m"none"[39m
+                [33mstroke[39m=[32m"currentColor"[39m
+                [33mstroke-linecap[39m=[32m"round"[39m
+                [33mstroke-linejoin[39m=[32m"round"[39m
+                [33mstroke-width[39m=[32m"1.75"[39m
+                [33mviewBox[39m=[32m"0 0 24 24"[39m
+              [36m>[39m
+                [36m<polyline[39m
+                  [33mpoints[39m=[32m"22 7 13.5 15.5 8.5 10.5 2 17"[39m
+                [36m/>[39m
+                [36m<polyline[39m
+                  [33mpoints[39m=[32m"16 7 22 7 22 13"[39m
+                [36m/>[39m
+              [36m</svg>[39m
+              [0mTrade[0m
+            [36m</button>[39m
+            [36m<button[39m
+              [33mclass[39m=[32m"navlink "[39m
+            [36m>[39m
+              [36m<svg[39m
+                [33mfill[39m=[32m"none"[39m
+                [33mstroke[39m=[32m"currentColor"[39m
+                [33mstroke-linecap[39m=[32m"round"[39m
+                [33mstroke-linejoin[39m=[32m"round"[39m
+                [33mstroke-width[39m=[32m"1.75"[39m
+                [33mviewBox[39m=[32m"0 0 24 24"[39m
+              [36m>[39m
+                [36m<polyline[39m
+                  [33mpoints[39m=[32m"22 7 13.5 15.5 8.5 10.5 2 17"[39m
+                [36m/>[39m
+                [36m<polyline[39m
+                  [33mpoints[39m=[32m"16 7 22 7 22 13"[39m
+                [36m/>[39m
+              [36m</svg>[39m
+              [0mMarkets[0m
+            [36m</button>[39m
+            [36m<button[39m
+              [33mclass[39m=[32m"navlink "[39m
+            [36m>[39m
+              [36m<svg[39m
+                [33mfill[39m=[32m"none"[39m
+                [33mstroke[39m=[32m"currentColor"[39m
+                [33mstroke-linecap[39m=[32m"round"[39m
+                [33mstroke-linejoin[39m=[32m"round"[39m
+                [33mstroke-width[39m=[32m"1.75"[39m
+                [33mviewBox[39m=[32m"0 0 24 24"[39m
+              [36m>[39m
+                [36m<path[39m
+                  [33md[39m=[32m"M21 12V7H5a2 2 0 0 1 0-4h14v4"[39m
+                [36m/>[39m
+                [36m<path[39m
+                  [33md[39m=[32m"M3 5v14a2 2 0 0 0 2 2h16v-5"[39m
+                [36m/>[39m
+                [36m<path[39m
+                  [33md[39m=[32m"M18 12a2 2 0 0 0 0 4h4v-4Z"[39m
+                [36m/>[39m
+              [36m</svg>[39m
+              [0mPortfolio[0m
+            [36m</button>[39m
+            [36m<button[39m
+              [33mclass[39m=[32m"navlink "[39m
+            [36m>[39m
+              [36m<svg[39m
+                [33mfill[39m=[32m"none"[39m
+                [33mstroke[39m=[32m"currentColor"[39m
+                [33mstroke-linecap[39m=[32m"round"[39m
+                [33mstroke-linejoin[39m=[32m"round"[39m
+                [33mstroke-width[39m=[32m"1.75"[39m
+                [33mviewBox[39m=[32m"0 0 24 24"[39m
+              [36m>[39m
+                [36m<path[39m
+                  [33md[39m=[32m"M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"[39m
+                [36m/>[39m
+              [36m</svg>[39m
+              [0mVault[0m
+            [36m</button>[39m
+            [36m<button[39m
+              [33mclass[39m=[32m"navlink "[39m
+            [36m>[39m
+              [36m<svg[39m
+                [33mfill[39m=[32m"none"[39m
+                [33mstroke[39m=[32m"currentColor"[39m
+                [33mstroke-linecap[39m=[32m"round"[39m
+                [33mstroke-linejoin[39m=[32m"round"[39m
+                [33mstroke-width[39m=[32m"1.75"[39m
+                [33mviewBox[39m=[32m"0 0 24 24"[39m
+              [36m>[39m
+                [36m<path[39m
+                  [33md[39m=[32m"m12 2 9 5-9 5-9-5 9-5Z"[39m
+                [36m/>[39m
+                [36m<path[39m
+                  [33md[39m=[32m"m3 12 9 5 9-5"[39m
+                [36m/>[39m
+                [36m<path[39m
+                  [33md[39m=[32m"m3 17 9 5 9-5"[39m
+                [36m/>[39m
+              [36m</svg>[39m
+              [0mExplorer[0m
+            [36m</button>[39m
+            [36m<button[39m
+              [33mclass[39m=[32m"navlink "[39m
+            [36m>[39m
+              [36m<svg[39m
+                [33mfill[39m=[32m"none"[39m
+                [33mstroke[39m=[32m"currentColor"[39m
+                [33mstroke-linecap[39m=[32m"round"[39m
+                [33mstroke-linejoin[39m=[32m"round"[39m
+                [33mstroke-width[39m=[32m"1.75"[39m
+                [33mviewBox[39m=[32m"0 0 24 24"[39m
+              [36m>[39m
+                [36m<path[39m
+                  [33md[39m=[32m"M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"[39m
+                [36m/>[39m
+              [36m</svg>[39m
+              [0mRecover[0m
+            [36m</button>[39m
+            [36m<button[39m
+              [33mclass[39m=[32m"navlink "[39m
+            [36m>[39m
+              [36m<svg[39m
+                [33mfill[39m=[32m"none"[39m
+                [33mstroke[39m=[32m"currentColor"[39m
+                [33mstroke-linecap[39m=[32m"round"[39m
+                [33mstroke-linejoin[39m=[32m"round"[39m
+                [33mstroke-width[39m=[32m"1.75"[39m
+                [33mviewBox[39m=[32m"0 0 24 24"[39m
+              [36m>[39m
+                [36...
+ ❯ Object.getElementError node_modules/.pnpm/@testing-library+dom@10.4.1/node_modules/@testing-library/dom/dist/config.js:37:19
+ ❯ node_modules/.pnpm/@testing-library+dom@10.4.1/node_modules/@testing-library/dom/dist/query-helpers.js:76:38
+ ❯ node_modules/.pnpm/@testing-library+dom@10.4.1/node_modules/@testing-library/dom/dist/query-helpers.js:52:17
+ ❯ node_modules/.pnpm/@testing-library+dom@10.4.1/node_modules/@testing-library/dom/dist/query-helpers.js:95:19
+ ❯ src/App.test.tsx:45:28
+     43|     render(<App />);
+     44|     // Account tab → deposit/withdraw surface
+     45|     fireEvent.click(screen.getByRole("button", { name: /^account$/i })…
+       |                            ^
+     46|     expect(screen.getByRole("button", { name: /^deposit$/i })).toBeTru…
+     47|     // Recover tab → A07 account-recovery surface. The default mock cl…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/3]⎯
+
+ FAIL  src/App.test.tsx > App smoke > click-to-price: clicking an order-book level fills the ticket's limit price
+TestingLibraryElementError: Unable to find an element with the title: /as limit price/i.
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div>[39m
+    [36m<a[39m
+      [33mclass[39m=[32m"skip-link"[39m
+      [33mhref[39m=[32m"#workspace-main"[39m
+    [36m>[39m
+      [0mSkip to workspace[0m
+    [36m</a>[39m
+    [36m<div[39m
+      [33mclass[39m=[32m"app"[39m
+    [36m>[39m
+      [36m<aside[39m
+        [33mclass[39m=[32m"sidebar "[39m
+      [36m>[39m
+        [36m<a[39m
+          [33maria-label[39m=[32m"Arcora home"[39m
+          [33mclass[39m=[32m"sidebar__brand"[39m
+          [33mhref[39m=[32m"/"[39m
+        [36m>[39m
+          [36m<img[39m
+            [33malt[39m=[32m"Arcora"[39m
+            [33msrc[39m=[32m"/assets/arcora-logo.png"[39m
+          [36m/>[39m
+          [36m<span[39m
+            [33mclass[39m=[32m"sr-only"[39m
+          [36m>[39m
+            [0mARCORA[0m
+          [36m</span>[39m
+        [36m</a>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"sidebar__scroll"[39m
+        [36m>[39m
+          [36m<p[39m
+            [33mclass[39m=[32m"sidebar__section"[39m
+          [36m>[39m
+            [0mYour workspace[0m
+          [36m</p>[39m
+          [36m<nav[39m
+            [33maria-label[39m=[32m"Primary"[39m
+            [33mclass[39m=[32m"workspace-nav"[39m
+          [36m>[39m
+            [36m<button[39m
+              [33maria-current[39m=[32m"page"[39m
+              [33mclass[39m=[32m"navlink is-active"[39m
+            [36m>[39m
+              [36m<svg[39m
+                [33mfill[39m=[32m"none"[39m
+                [33mstroke[39m=[32m"currentColor"[39m
+                [33mstroke-linecap[39m=[32m"round"[39m
+                [33mstroke-linejoin[39m=[32m"round"[39m
+                [33mstroke-width[39m=[32m"1.75"[39m
+                [33mviewBox[39m=[32m"0 0 24 24"[39m
+              [36m>[39m
+                [36m<polyline[39m
+                  [33mpoints[39m=[32m"22 7 13.5 15.5 8.5 10.5 2 17"[39m
+                [36m/>[39m
+                [36m<polyline[39m
+                  [33mpoints[39m=[32m"16 7 22 7 22 13"[39m
+                [36m/>[39m
+              [36m</svg>[39m
+              [0mTrade[0m
+            [36m</button>[39m
+            [36m<button[39m
+              [33mclass[39m=[32m"navlink "[39m
+            [36m>[39m
+              [36m<svg[39m
+                [33mfill[39m=[32m"none"[39m
+                [33mstroke[39m=[32m"currentColor"[39m
+                [33mstroke-linecap[39m=[32m"round"[39m
+                [33mstroke-linejoin[39m=[32m"round"[39m
+                [33mstroke-width[39m=[32m"1.75"[39m
+                [33mviewBox[39m=[32m"0 0 24 24"[39m
+              [36m>[39m
+                [36m<polyline[39m
+                  [33mpoints[39m=[32m"22 7 13.5 15.5 8.5 10.5 2 17"[39m
+                [36m/>[39m
+                [36m<polyline[39m
+                  [33mpoints[39m=[32m"16 7 22 7 22 13"[39m
+                [36m/>[39m
+              [36m</svg>[39m
+              [0mMarkets[0m
+            [36m</button>[39m
+            [36m<button[39m
+              [33mclass[39m=[32m"navlink "[39m
+            [36m>[39m
+              [36m<svg[39m
+                [33mfill[39m=[32m"none"[39m
+                [33mstroke[39m=[32m"currentColor"[39m
+                [33mstroke-linecap[39m=[32m"round"[39m
+                [33mstroke-linejoin[39m=[32m"round"[39m
+                [33mstroke-width[39m=[32m"1.75"[39m
+                [33mviewBox[39m=[32m"0 0 24 24"[39m
+              [36m>[39m
+                [36m<path[39m
+                  [33md[39m=[32m"M21 12V7H5a2 2 0 0 1 0-4h14v4"[39m
+                [36m/>[39m
+                [36m<path[39m
+                  [33md[39m=[32m"M3 5v14a2 2 0 0 0 2 2h16v-5"[39m
+                [36m/>[39m
+                [36m<path[39m
+                  [33md[39m=[32m"M18 12a2 2 0 0 0 0 4h4v-4Z"[39m
+                [36m/>[39m
+              [36m</svg>[39m
+              [0mPortfolio[0m
+            [36m</button>[39m
+            [36m<button[39m
+              [33mclass[39m=[32m"navlink "[39m
+            [36m>[39m
+              [36m<svg[39m
+                [33mfill[39m=[32m"none"[39m
+                [33mstroke[39m=[32m"currentColor"[39m
+                [33mstroke-linecap[39m=[32m"round"[39m
+                [33mstroke-linejoin[39m=[32m"round"[39m
+                [33mstroke-width[39m=[32m"1.75"[39m
+                [33mviewBox[39m=[32m"0 0 24 24"[39m
+              [36m>[39m
+                [36m<path[39m
+                  [33md[39m=[32m"M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"[39m
+                [36m/>[39m
+              [36m</svg>[39m
+              [0mVault[0m
+            [36m</button>[39m
+            [36m<button[39m
+              [33mclass[39m=[32m"navlink "[39m
+            [36m>[39m
+              [36m<svg[39m
+                [33mfill[39m=[32m"none"[39m
+                [33mstroke[39m=[32m"currentColor"[39m
+                [33mstroke-linecap[39m=[32m"round"[39m
+                [33mstroke-linejoin[39m=[32m"round"[39m
+                [33mstroke-width[39m=[32m"1.75"[39m
+                [33mviewBox[39m=[32m"0 0 24 24"[39m
+              [36m>[39m
+                [36m<path[39m
+                  [33md[39m=[32m"m12 2 9 5-9 5-9-5 9-5Z"[39m
+                [36m/>[39m
+                [36m<path[39m
+                  [33md[39m=[32m"m3 12 9 5 9-5"[39m
+                [36m/>[39m
+                [36m<path[39m
+                  [33md[39m=[32m"m3 17 9 5 9-5"[39m
+                [36m/>[39m
+              [36m</svg>[39m
+              [0mExplorer[0m
+            [36m</button>[39m
+            [36m<button[39m
+              [33mclass[39m=[32m"navlink "[39m
+            [36m>[39m
+              [36m<svg[39m
+                [33mfill[39m=[32m"none"[39m
+                [33mstroke[39m=[32m"currentColor"[39m
+                [33mstroke-linecap[39m=[32m"round"[39m
+                [33mstroke-linejoin[39m=[32m"round"[39m
+                [33mstroke-width[39m=[32m"1.75"[39m
+                [33mviewBox[39m=[32m"0 0 24 24"[39m
+              [36m>[39m
+                [36m<path[39m
+                  [33md[39m=[32m"M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"[39m
+                [36m/>[39m
+              [36m</svg>[39m
+              [0mRecover[0m
+            [36m</button>[39m
+            [36m<button[39m
+              [33mclass[39m=[32m"navlink "[39m
+            [36m>[39m
+              [36m<svg[39m
+                [33mfill[39m=[32m"none"[39m
+                [33mstroke[39m=[32m"currentColor"[39m
+                [33mstroke-linecap[39m=[32m"round"[39m
+                [33mstroke-linejoin[39m=[32m"round"[39m
+                [33mstroke-width[39m=[32m"1.75"[39m
+                [33mviewBox[39m=[32m"0 0 24 24"[39m
+              [36m>[39m
+                [36...
+ ❯ Object.getElementError node_modules/.pnpm/@testing-library+dom@10.4.1/node_modules/@testing-library/dom/dist/config.js:37:19
+ ❯ node_modules/.pnpm/@testing-library+dom@10.4.1/node_modules/@testing-library/dom/dist/query-helpers.js:76:38
+ ❯ node_modules/.pnpm/@testing-library+dom@10.4.1/node_modules/@testing-library/dom/dist/query-helpers.js:109:15
+ ❯ src/App.test.tsx:63:27
+     61|     expect(limit.value).toBe(""); // starts as a market order (blank)
+     62|     // each book level is a button titled "Use <price> as limit price"
+     63|     const levels = screen.getAllByTitle(/as limit price/i);
+       |                           ^
+     64|     expect(levels.length).toBeGreaterThan(0);
+     65|     fireEvent.click(levels[0]);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/3]⎯
+
+
+ Test Files  1 failed | 27 passed | 1 skipped (29)
+      Tests  3 failed | 478 passed | 1 skipped (482)
+   Start at  20:09:35
+   Duration  2.06s (transform 1.46s, setup 0ms, import 4.34s, tests 4.49s, environment 4.89s)
+
+[ELIFECYCLE] Test failed. See above for more details.

@@ -1,9 +1,10 @@
 // @vitest-environment happy-dom
-import { describe, it, expect, afterEach } from "vitest";
-import { render, screen, fireEvent, cleanup } from "@testing-library/react";
+import { describe, it, expect, afterEach, beforeEach } from "vitest";
+import { render, screen, fireEvent, cleanup, within } from "@testing-library/react";
 import App from "./App";
 
 afterEach(cleanup);
+beforeEach(() => { window.history.replaceState(null, "", "/"); });
 
 describe("App smoke", () => {
   it("mounts the full app (store + every panel) without crashing", () => {
@@ -12,7 +13,7 @@ describe("App smoke", () => {
     render(<App />);
     // brand + primary nav are always present (Arcora sidebar)
     expect(screen.getByText("ARCORA")).toBeTruthy();
-    expect(screen.getByText("Trade")).toBeTruthy();
+    expect(within(screen.getByRole("navigation", { name: "Primary" })).getByRole("button", { name: /^Trade$/ })).toBeTruthy();
     // the default trade view shows the selected market and the book
     expect(screen.getAllByText(/BTC\/USDC/).length).toBeGreaterThan(0);
     expect(screen.getByText(/order book/i)).toBeTruthy();
@@ -42,7 +43,7 @@ describe("App smoke", () => {
   it("navigates between the trade / account / recover tabs", () => {
     render(<App />);
     // Account tab → deposit/withdraw surface
-    fireEvent.click(screen.getByRole("button", { name: /^account$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^portfolio$/i }));
     expect(screen.getByRole("button", { name: /^deposit$/i })).toBeTruthy();
     // Recover tab → A07 account-recovery surface. The default mock client does
     // not expose live credential rotation, so the UI must fail closed rather
@@ -51,7 +52,7 @@ describe("App smoke", () => {
     expect(screen.getByRole("heading", { name: /^account recovery$/i })).toBeTruthy();
     expect(screen.getByText(/unavailable on this gateway build/i)).toBeTruthy();
     // back to Trade → the order ticket's submit button returns
-    fireEvent.click(screen.getByRole("button", { name: /^trade$/i }));
+    fireEvent.click(within(screen.getByRole("navigation", { name: "Primary" })).getByRole("button", { name: /^Trade$/ }));
     expect(screen.getByRole("button", { name: /buy btc\/usdc/i })).toBeTruthy();
   });
 
@@ -60,6 +61,7 @@ describe("App smoke", () => {
     const limit = screen.getByLabelText(/limit price/i) as HTMLInputElement;
     expect(limit.value).toBe(""); // starts as a market order (blank)
     // each book level is a button titled "Use <price> as limit price"
+    fireEvent.click(screen.getByRole("button", { name: "View order book" }));
     const levels = screen.getAllByTitle(/as limit price/i);
     expect(levels.length).toBeGreaterThan(0);
     fireEvent.click(levels[0]);
