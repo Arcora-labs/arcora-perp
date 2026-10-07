@@ -1,6 +1,5 @@
 # ZK Verifier P2 — Slice 1: On-chain SP1 verifier adapter Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add a `SP1ZkVerifier is IZkVerifier` adapter (with forge tests) that makes SP1's revert-based on-chain verifier satisfy the bool `IZkVerifier` interface `DarkPerpSettlement.settleBatch` already calls, plus the SP1 host harness fix and the infra runbook.
 

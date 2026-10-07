@@ -1,5 +1,5 @@
     Blocking waiting for file lock on build directory
-    Checking gateway v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/gateway)
+    Checking gateway v0.0.1 (<repo>/crates/gateway)
 error: this `if` has identical blocks
   --> crates/gateway/src/l1/witness_tests.rs:73:70
    |

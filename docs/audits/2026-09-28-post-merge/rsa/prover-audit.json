@@ -7,7 +7,7 @@
     "--file",
     "crates/prover-service/Cargo.lock"
   ],
-  "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+  "cwd": "<repo>",
   "exit_code": 0,
   "duration_seconds": 0.358,
   "log_sha256": "816cd4462169dc78fdade17889bb949e1b8e673d3233dda3b96319cc4ff28a0d",

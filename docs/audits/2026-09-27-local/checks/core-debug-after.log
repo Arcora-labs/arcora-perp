@@ -1,4 +1,4 @@
-   Compiling perp-core v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/perp-core)
+   Compiling perp-core v0.0.1 (<repo>/crates/perp-core)
     Finished `test` profile [unoptimized + debuginfo] target(s) in 3.23s
      Running unittests src/lib.rs (/tmp/arcora-core-target/debug/deps/perp_core-92c7af20978e962f)
 

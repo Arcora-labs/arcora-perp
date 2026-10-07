@@ -1,6 +1,6 @@
-   Compiling sp1-host v0.0.0 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/sp1-host)
+   Compiling sp1-host v0.0.0 (<repo>/crates/sp1-host)
 warning: sp1-host@0.0.0: Build skipped for perp-core-guest at 2026-09-28 18:34:28 due to SP1_SKIP_PROGRAM_BUILD flag
-error: couldn't read `/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/sp1-host/target/elf-compilation/riscv64im-succinct-zkvm-elf/release/perp-core-guest`: No such file or directory (os error 2)
+error: couldn't read `<repo>/crates/sp1-host/target/elf-compilation/riscv64im-succinct-zkvm-elf/release/perp-core-guest`: No such file or directory (os error 2)
   --> src/bin/prove.rs:14:18
    |
 14 | const ELF: Elf = include_elf!("perp-core-guest");

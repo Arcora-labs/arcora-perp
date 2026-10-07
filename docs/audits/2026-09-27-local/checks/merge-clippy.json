@@ -9,7 +9,7 @@
     "-D",
     "warnings"
   ],
-  "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+  "cwd": "<repo>",
   "exit_code": 0,
   "duration_seconds": 1.541,
   "log_sha256": "09e372406a84c88c912dc3bd927b60349edad0892046971235d21efb96109384",

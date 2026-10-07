@@ -4,7 +4,7 @@
     "scripts/local-verification/test_read_deployment.py",
     "-v"
   ],
-  "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+  "cwd": "<repo>",
   "exit_code": 0,
   "duration_seconds": 0.133,
   "log_sha256": "a7108b3c0abdd040c3d4a07cd60abc3a327f41409f29afeb31a96ecbf4d05236",

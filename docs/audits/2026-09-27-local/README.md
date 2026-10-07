@@ -1,6 +1,6 @@
 # Arcora — 27 Eylül 2026 yerel çalışma sonucu
 
-**Durum: PARTIAL. 27 görevden 12 PASS, 10 PARTIAL, 5 BLOCKED. Yayın kapısı kapalı.** Güncel GitHub `origin/main` çekildi ve rehberin tabanı ile eşleşti: `098e4952c189f92e4293ed7d49f81222b626e406`, tree `c6e9d4af0257531cd77e45ca5b3939c6ea7a0fa4`. Çalışma `audit/arcora-local-20260927` dalında, `/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp` dizinindedir.
+**Durum: PARTIAL. 27 görevden 12 PASS, 10 PARTIAL, 5 BLOCKED. Yayın kapısı kapalı.** Güncel GitHub `origin/main` çekildi ve rehberin tabanı ile eşleşti: `098e4952c189f92e4293ed7d49f81222b626e406`, tree `c6e9d4af0257531cd77e45ca5b3939c6ea7a0fa4`. Çalışma `audit/arcora-local-20260927` dalında, `<repo>` dizinindedir.
 
 Masaüstündeki asıl checkout'un durumu ve 62 kaydedilmiş dosya hash'i değişmedi. O checkout `f997f8b9` üzerinde bırakıldı; yeni kod ve düzeltmeler ayrı worktree'dedir. İlk yerel değerlendirme sırasında push, PR, merge veya deploy yapılmamıştı. Kullanıcının sonraki merge talebiyle [PR #21](https://github.com/Kubudak90/dark-perp/pull/21) açıldı; birleştirme durumu PR üzerinden doğrulanmalıdır. Yayın kapısı kapalıdır. Base CI run 36337867266'nın dört işi de güncel olarak başarılı gözlendi; bu uzak koşu yerel değişiklikleri kapsamaz.
 

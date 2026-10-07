@@ -180,15 +180,15 @@
    Compiling sp1-verifier v6.1.0
    Compiling sp1-build v6.1.0
    Compiling reqwest v0.12.28
-   Compiling perp-core v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/perp-core)
-   Compiling dcap-qvl-webpki v0.103.4+dcap.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/vendor/dcap-qvl-webpki)
+   Compiling perp-core v0.0.1 (<repo>/crates/perp-core)
+   Compiling dcap-qvl-webpki v0.103.4+dcap.1 (<repo>/vendor/dcap-qvl-webpki)
    Compiling dcap-qvl v0.5.3
    Compiling x25519-dalek v2.0.1
-   Compiling prover-service v0.0.0 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/prover-service)
+   Compiling prover-service v0.0.0 (<repo>/crates/prover-service)
 warning: prover-service@0.0.0: Build skipped for perp-core-guest at 2026-09-28 16:53:18 due to SP1_SKIP_PROGRAM_BUILD flag
-   Compiling dark-perp-attestation v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/attestation)
+   Compiling dark-perp-attestation v0.0.1 (<repo>/crates/attestation)
 warning: use of deprecated method `sha2::digest::generic_array::GenericArray::<T, N>::as_slice`: please upgrade to generic-array 1.x
-   --> /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/attestation/src/vtpm.rs:239:32
+   --> <repo>/crates/attestation/src/vtpm.rs:239:32
     |
 239 |     if Sha256::digest(runtime).as_slice() != &td.report_data[..32] {
     |                                ^^^^^^^^
@@ -196,13 +196,13 @@ warning: use of deprecated method `sha2::digest::generic_array::GenericArray::<T
     = note: `#[warn(deprecated)]` on by default
 
 warning: use of deprecated method `sha2::digest::generic_array::GenericArray::<T, N>::as_slice`: please upgrade to generic-array 1.x
-   --> /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/attestation/src/vtpm.rs:270:21
+   --> <repo>/crates/attestation/src/vtpm.rs:270:21
     |
 270 |     if h.finalize().as_slice() != q.pcr_digest {
     |                     ^^^^^^^^
 
 warning: `dark-perp-attestation` (lib) generated 2 warnings
-   Compiling prover v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/prover)
+   Compiling prover v0.0.1 (<repo>/crates/prover)
    Compiling sp1-core-machine v6.1.0
    Compiling sp1-recursion-compiler v6.1.0
    Compiling sp1-recursion-circuit v6.1.0

@@ -272,7 +272,7 @@
         "--format",
         "{p}"
       ],
-      "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+      "cwd": "<repo>",
       "exit_code": 0,
       "rsa_nodes": 0,
       "log_sha256": "35d9a93a0847cb7c23b104712456ddc1d06f5ac20160378214f8a2c58a138197"
@@ -291,7 +291,7 @@
         "--format",
         "{p}"
       ],
-      "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+      "cwd": "<repo>",
       "exit_code": 0,
       "rsa_nodes": 0,
       "log_sha256": "aa5923dde3d073cee8da377d7e11adabcd3dce3e2e6c72c7884572cac6403d0a"
@@ -310,7 +310,7 @@
         "--format",
         "{p}"
       ],
-      "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+      "cwd": "<repo>",
       "exit_code": 0,
       "rsa_nodes": 0,
       "log_sha256": "2497cc62ad4b71e177a5c5e993ebc68ffb27e3772288255614c6f91802f7d7ee"

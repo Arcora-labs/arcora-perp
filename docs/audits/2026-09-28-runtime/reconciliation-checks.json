@@ -8,7 +8,7 @@
   "checks": [
     {
       "name": "full-unit-before-layout",
-      "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+      "cwd": "<repo>",
       "argv": [
         "pnpm",
         "--dir",
@@ -34,7 +34,7 @@
     },
     {
       "name": "full-browser-before-layout",
-      "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+      "cwd": "<repo>",
       "argv": [
         "pnpm",
         "--dir",
@@ -63,7 +63,7 @@
     },
     {
       "name": "final-layout-components",
-      "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+      "cwd": "<repo>",
       "argv": [
         "pnpm",
         "--dir",
@@ -90,7 +90,7 @@
     },
     {
       "name": "final-narrow-visual",
-      "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+      "cwd": "<repo>",
       "argv": [
         "pnpm",
         "--dir",
@@ -149,7 +149,7 @@
     },
     {
       "name": "final-production-build",
-      "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+      "cwd": "<repo>",
       "argv": [
         "pnpm",
         "--dir",
@@ -169,7 +169,7 @@
     },
     {
       "name": "final-diff-check",
-      "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+      "cwd": "<repo>",
       "argv": [
         "git",
         "diff",

@@ -1,4 +1,4 @@
-tee-capture v0.1.0 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/scripts/tee-capture)
+tee-capture v0.1.0 (<repo>/scripts/tee-capture)
 base64 v0.22.1
 dcap-qvl v0.5.2
 anyhow v1.0.103
@@ -20,7 +20,7 @@ proc-macro2 v1.0.106 (*)
 quote v1.0.46 (*)
 unicode-ident v1.0.24
 const-oid v0.9.6
-dcap-qvl-webpki v0.103.4+dcap.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/vendor/dcap-qvl-webpki)
+dcap-qvl-webpki v0.103.4+dcap.1 (<repo>/vendor/dcap-qvl-webpki)
 ring v0.17.14
 cfg-if v1.0.4
 getrandom v0.2.17

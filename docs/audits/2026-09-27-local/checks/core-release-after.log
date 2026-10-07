@@ -43,7 +43,7 @@
    Compiling cobs v0.3.0
    Compiling k256 v0.13.4
    Compiling postcard v1.1.3
-   Compiling perp-core v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/perp-core)
+   Compiling perp-core v0.0.1 (<repo>/crates/perp-core)
     Finished `release` profile [optimized] target(s) in 30.15s
      Running unittests src/lib.rs (/tmp/arcora-core-release-target/release/deps/perp_core-f312cfbd4d4fa86f)
 

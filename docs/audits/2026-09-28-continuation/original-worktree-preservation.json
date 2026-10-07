@@ -1,6 +1,6 @@
 {
   "checked_at": "2026-09-28T06:45:39.339531+00:00",
-  "checkout": "/Users/huseyinarslan/Desktop/dark-perp",
+  "checkout": "<repo>",
   "baseline": "docs/audits/2026-09-28-continuation/original-worktree.json",
   "git_status_argv": [
     "git",

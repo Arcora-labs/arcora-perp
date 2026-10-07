@@ -1,6 +1,5 @@
 # ZK P2 Slice 3b-3.1 — Ambiguous Landed-Tx Recovery — Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** On a settle failure, re-read the on-chain `batchCount` and roll back (tx didn't land), roll forward + commit (tx landed despite the error), or hold — closing the 3b-3 reverse-wedge + slashing gap.
 

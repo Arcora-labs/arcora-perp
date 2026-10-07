@@ -18,7 +18,7 @@ sp1-guest [('slop-algebra', '6.0.0'), ('slop-bn254', '6.0.0'), ('slop-challenger
 error: failed to select a version for the requirement `sp1-core-executor-runner = "=6.0.0"`
 candidate versions found which didn't match: 6.8.1, 6.8.0, 6.7.0, ...
 location searched: crates.io index
-required by package `sp1-host v0.0.0 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/sp1-host)`
+required by package `sp1-host v0.0.0 (<repo>/crates/sp1-host)`
 Traceback (most recent call last):
   File "/tmp/arcora-pin-sp1.py", line 10, in <module>
     subprocess.run(['cargo','generate-lockfile','--manifest-path',str(manifest)],check=True)

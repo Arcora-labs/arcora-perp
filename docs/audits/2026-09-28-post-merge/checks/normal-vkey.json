@@ -10,7 +10,7 @@
     "--bin",
     "vkey"
   ],
-  "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+  "cwd": "<repo>",
   "exit_code": 0,
   "duration_seconds": 80.493,
   "log_sha256": "419ea552107622b77bf599bdf1e4ce43158a3a1a83da8b018530919a48e9053c",

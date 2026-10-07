@@ -8,7 +8,8 @@ liveness/recovery from forced exit + an encrypted note archive.
 > **Live public testnet alpha** — [perp.arcoralabs.xyz](https://perp.arcoralabs.xyz)
 > (Base Sepolia). Docs: [perpdocs.arcoralabs.xyz](https://perpdocs.arcoralabs.xyz) ·
 > Technical brief: [`docs/litepaper`](docs/litepaper/arcora-perp-litepaper.md).
-> Codename in-repo: `dark-perp`.
+> This repository is `arcora-perp` (formerly `dark-perp`). Protocol domain
+> separators such as `dark-perp:withdraw:` are wire format, not the product name.
 
 One line: *confidential matching in an attested TEE, proof-gated public settlement,
 permissionless Merkle claims from settled withdrawal roots, sequencing accountability
@@ -146,14 +147,14 @@ USDC via the in-app **"Get test USDC"** button (open-mint MockUSDC), the docs
 [quickstart](https://perpdocs.arcoralabs.xyz/quickstart.html), or the faucet
 snippet in `docs/API.md`.
 
-**Live contracts** (Base Sepolia, deployed 2026-07-09):
+**Live contracts** (Base Sepolia, deployed 2026-07-11; same addresses as `frontend/src/api/wallet.ts`):
 
 | Contract | Address |
 |---|---|
-| `DarkPerpSettlement` | [`0xf5D6Aa9CC96E2ac8AC5564df5E8475bDb13BCDCF`](https://sepolia.basescan.org/address/0xf5D6Aa9CC96E2ac8AC5564df5E8475bDb13BCDCF) |
-| `CollateralVault` | [`0xC3EBc0f7301D5a914b01b8d2a1B5574764330c05`](https://sepolia.basescan.org/address/0xC3EBc0f7301D5a914b01b8d2a1B5574764330c05) |
+| `DarkPerpSettlement` | [`0x08695Aa7127AA50E164042Dc1328E8079A3a4f6F`](https://sepolia.basescan.org/address/0x08695Aa7127AA50E164042Dc1328E8079A3a4f6F) |
+| `CollateralVault` | [`0x57e951F6a378E00e4F1b26510380E089D7c07b8B`](https://sepolia.basescan.org/address/0x57e951F6a378E00e4F1b26510380E089D7c07b8B) |
 | `SP1ZkVerifier` | [`0x8012F3b35B9884f86a3F8f39B79e82eC410E1160`](https://sepolia.basescan.org/address/0x8012F3b35B9884f86a3F8f39B79e82eC410E1160) |
-| `MockUSDC` (open mint, 6dp) | [`0x9F5365c947eCaBaf62f42EF0Fe92ab909f709bDA`](https://sepolia.basescan.org/address/0x9F5365c947eCaBaf62f42EF0Fe92ab909f709bDA) |
+| `MockUSDC` (open mint, 6dp) | [`0x8a52d127b556465F613766b903B717e19b3eaE7B`](https://sepolia.basescan.org/address/0x8a52d127b556465F613766b903B717e19b3eaE7B) |
 
 Markets: BTC / ETH / SOL perpetuals. See
 [`contracts/deployments/base-sepolia.json`](contracts/deployments/base-sepolia.json)
@@ -231,7 +232,7 @@ SETTLED is withdrawable** (§3), and a **close-only / forced-exit** mode (§6).
 cargo test --workspace                           # 351 tests (engine, sequencer, gateway, e2e)
 cargo build -p perp-core --no-default-features   # proves the no_std zkVM-guest build
 cargo clippy --workspace --all-targets           # clean (-D warnings)
-cd frontend && npm test && npm run build         # 161 frontend tests + vite build
+cd frontend && pnpm install --frozen-lockfile && pnpm test && pnpm build
 ```
 
 The prover-service is a standalone workspace (SP1 SDK isolation); build it from

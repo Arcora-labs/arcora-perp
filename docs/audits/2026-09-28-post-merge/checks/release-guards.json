@@ -4,7 +4,7 @@
     "-c",
     "/opt/homebrew/bin/python3.13 scripts/local-verification/check_sp1_release.py && /opt/homebrew/bin/python3.13 -m unittest discover -s scripts/local-verification -p test_check_sp1_release.py && python3 vendor/dcap-qvl-webpki/verify_provenance.py"
   ],
-  "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+  "cwd": "<repo>",
   "exit_code": 0,
   "duration_seconds": 0.471,
   "log_sha256": "0da0f09bd2612f724a8079834bc3fd28ae9b0d0bf587996dcd98ad3cce208bc9",

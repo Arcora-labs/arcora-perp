@@ -29,7 +29,7 @@
     "current_sha256": "a1f0a43033ffdd858bf99854cae814f5426c27db512088883ffa1a0e8f1c4e75",
     "matches": true,
     "size_bytes": 515096,
-    "format": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/sp1-guest/target/elf-compilation/riscv64im-succinct-zkvm-elf/release/perp-core-guest: ELF 64-bit LSB executable, UCB RISC-V, soft-float ABI, version 1 (SYSV), statically linked, not stripped"
+    "format": "<repo>/crates/sp1-guest/target/elf-compilation/riscv64im-succinct-zkvm-elf/release/perp-core-guest: ELF 64-bit LSB executable, UCB RISC-V, soft-float ABI, version 1 (SYSV), statically linked, not stripped"
   },
   "program_vkey": "0x0051a1c5d05d246f51d8dae1041d1faa9d73330b29bd2ce4ea13360a5154ad63",
   "historical_build": {

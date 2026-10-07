@@ -1,4 +1,4 @@
-   Compiling gateway v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/gateway)
+   Compiling gateway v0.0.1 (<repo>/crates/gateway)
     Finished `test` profile [unoptimized + debuginfo] target(s) in 9.81s
      Running unittests src/lib.rs (/tmp/arcora-gateway-target/debug/deps/bridge-563b0b6cb67c9263)
 

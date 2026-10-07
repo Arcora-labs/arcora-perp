@@ -1,7 +1,7 @@
 {
   "host_rustc": {
     "argv": [
-      "/Users/huseyinarslan/.cargo/bin/rustc",
+      "<cargo-home>/bin/rustc",
       "--version",
       "--verbose"
     ],
@@ -9,7 +9,7 @@
   },
   "guest_rustc": {
     "argv": [
-      "/Users/huseyinarslan/.cargo/bin/rustc",
+      "<cargo-home>/bin/rustc",
       "+succinct",
       "--version",
       "--verbose"

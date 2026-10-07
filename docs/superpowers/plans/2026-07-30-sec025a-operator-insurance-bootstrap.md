@@ -1,6 +1,5 @@
 # SEC-025-A Operator Insurance Bootstrap Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Give `BatchOp::FundInsurance` its first production caller — an admin-gated endpoint that routes the operator's own real L1 deposit into `insurance_fund`, tracked by a persisted state machine that survives crashes and cannot complete without a settled second leg.
 
@@ -966,7 +965,7 @@ git commit -m "docs(sec025a): the bootstrap endpoint, and what it does not promi
 
 - [ ] `cargo test --workspace` green; `forge test` still **85**; fmt and clippy clean.
 - [ ] Confirm which tests were verified to **fail before the change** — at minimum the payer binding, the below-floor refusal, and the second-leg window keying.
-- [ ] Run `superpowers:requesting-code-review` on the whole branch, and send the diff to Codex (`mcp__codex__codex`, `sandbox: read-only`, `cwd` = repo). **Codex rejected this piece's spec twice and found three more issues on the third pass — expect it to find more in the implementation.** Verify every finding at source before accepting it.
+- [ ] Request an independent review of the branch. **Codex rejected this piece's spec twice and found three more issues on the third pass — expect it to find more in the implementation.** Verify every finding at source before accepting it.
 - [ ] **Do not deploy.** No `perp-core` change, so no vkey and no root movement. `DPSNAP3 → DPSNAP4` means the cutover's state wipe is still required.
 - [ ] **025-D must land before launch** and takes `DPSNAP5`. It reads
   `bootstrap::MIN_BOOTSTRAP_INSURANCE`, and **A and D must ship as one artifact** — they are one

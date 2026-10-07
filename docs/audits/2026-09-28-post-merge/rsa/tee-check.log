@@ -175,7 +175,7 @@
     Checking serde-human-bytes v0.1.3
     Checking futures v0.3.32
     Checking flate2 v1.1.9
-    Checking dcap-qvl-webpki v0.103.4+dcap.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/vendor/dcap-qvl-webpki)
+    Checking dcap-qvl-webpki v0.103.4+dcap.1 (<repo>/vendor/dcap-qvl-webpki)
     Checking chrono v0.4.45
     Checking hickory-net v0.26.1
     Checking ureq-proto v0.6.0
@@ -196,5 +196,5 @@
     Checking hyper-rustls v0.27.9
     Checking reqwest v0.13.4
     Checking dcap-qvl v0.5.2
-    Checking tee-capture v0.1.0 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/scripts/tee-capture)
+    Checking tee-capture v0.1.0 (<repo>/scripts/tee-capture)
     Finished `dev` profile [unoptimized + debuginfo] target(s) in 21.33s

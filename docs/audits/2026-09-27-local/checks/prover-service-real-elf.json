@@ -7,7 +7,7 @@
     "--manifest-path",
     "crates/prover-service/Cargo.toml"
   ],
-  "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+  "cwd": "<repo>",
   "exit_code": 0,
   "duration_seconds": 94.57,
   "log_sha256": "4c4b67dee26cf2eebbb5490ff17385e61b517619aa3b027b34af17b726b17ce8",

@@ -1,14 +1,14 @@
 {
   "argv": [
-    "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/sp1-host/target/release/prove",
+    "<repo>/crates/sp1-host/target/release/prove",
     "--output-dir",
-    "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/docs/audits/2026-09-28-proof/normal-proof-attempt1"
+    "<repo>/docs/audits/2026-09-28-proof/normal-proof-attempt1"
   ],
   "environment_overrides": {
-    "PATH": "/tmp/arcora-proof-runtime-20260928/bin:/Users/huseyinarslan/.cargo/bin:/tmp/arcora-tools/sp1-6.1.0:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+    "PATH": "/tmp/arcora-proof-runtime-20260928/bin:<cargo-home>/bin:/tmp/arcora-tools/sp1-6.1.0:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin",
     "PROTOC": "/tmp/arcora-tools/protoc-29.3/bin/protoc",
     "DOCKER_CONFIG": "/tmp/arcora-proof-runtime-20260928/docker-anonymous",
-    "DOCKER_HOST": "unix:///Users/huseyinarslan/.docker/run/docker.sock",
+    "DOCKER_HOST": "unix://<local-home>/.docker/run/docker.sock",
     "DOCKER_DEFAULT_PLATFORM": "linux/amd64",
     "SP1_GNARK_IMAGE": "ghcr.io/succinctlabs/sp1-gnark@sha256:be8555f1ad90870acd8c6ec7fd3ba0b1a2133ea9cddf25e130665aa651129e54",
     "SP1_GROTH16_CIRCUIT_PATH": "/tmp/arcora-proof-runtime-20260928/circuits/groth16",

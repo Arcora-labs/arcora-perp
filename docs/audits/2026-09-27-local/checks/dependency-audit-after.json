@@ -4,7 +4,7 @@
     "audit",
     "--json"
   ],
-  "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+  "cwd": "<repo>",
   "exit_code": 1,
   "duration_seconds": 1.803,
   "log_sha256": "0619d6e1327ecb95b369f253c01746125c26f85131eb03659b7eee69e5abcb07",

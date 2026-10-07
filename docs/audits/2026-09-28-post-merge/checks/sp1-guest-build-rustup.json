@@ -1,12 +1,12 @@
 {
   "argv": [
     "env",
-    "PATH=/Users/huseyinarslan/.cargo/bin:/tmp/arcora-tools/sp1-6.1.0:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+    "PATH=<cargo-home>/bin:/tmp/arcora-tools/sp1-6.1.0:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin",
     "sh",
     "-c",
     "cd crates/sp1-guest && cargo prove build --locked"
   ],
-  "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+  "cwd": "<repo>",
   "exit_code": 0,
   "duration_seconds": 3.611,
   "log_sha256": "fd5a19e03c7b7945d63ae78126b8255b80f4a17ef8008f73ffc5b0db871a04aa",

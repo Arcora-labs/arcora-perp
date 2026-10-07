@@ -3,7 +3,7 @@
     "python3",
     "scripts/local-verification/read_deployment.py"
   ],
-  "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+  "cwd": "<repo>",
   "exit_code": 0,
   "duration_seconds": 0.395,
   "log_sha256": "08056e04f84a32484b1a0a3f3dae2b7613769710d6a3942d5a2b2e94436bffe2",

@@ -1,6 +1,5 @@
 # ZK Verifier P1 — Circuit Root-Derivation Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make the sp1-guest circuit (and the prover/host) **derive** all four proof roots — `manifest_hash`, `ordered_root`, `rejected_root`, `withdrawals_root` — from a single `(state, ops, manifest)` witness, instead of echoing them as trusted inputs.
 

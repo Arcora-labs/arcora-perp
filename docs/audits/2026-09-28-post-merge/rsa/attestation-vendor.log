@@ -1,7 +1,7 @@
     Blocking waiting for file lock on artifact directory
-   Compiling dcap-qvl-webpki v0.103.4+dcap.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/vendor/dcap-qvl-webpki)
+   Compiling dcap-qvl-webpki v0.103.4+dcap.1 (<repo>/vendor/dcap-qvl-webpki)
    Compiling dcap-qvl v0.5.2
-   Compiling dark-perp-attestation v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/attestation)
+   Compiling dark-perp-attestation v0.0.1 (<repo>/crates/attestation)
     Finished `test` profile [unoptimized + debuginfo] target(s) in 7.65s
      Running unittests src/lib.rs (target/debug/deps/dark_perp_attestation-2b23f51d6cd54124)
 

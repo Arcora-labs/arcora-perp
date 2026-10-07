@@ -9,7 +9,7 @@
     "--bin",
     "sp1-host"
   ],
-  "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+  "cwd": "<repo>",
   "exit_code": 101,
   "duration_seconds": 0.335,
   "log_sha256": "ab17df7a51c1da3139df4203b21421a33d57f8fb4303d2aa12f562fc9231eb4c",

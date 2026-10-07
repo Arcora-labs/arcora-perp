@@ -8,7 +8,7 @@
     "--features",
     "serde"
   ],
-  "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+  "cwd": "<repo>",
   "exit_code": 0,
   "duration_seconds": 172.715,
   "log_sha256": "973d3b23d9b4310f28443e199348a84c6e196a4662e288e64b3c4eea54458918",

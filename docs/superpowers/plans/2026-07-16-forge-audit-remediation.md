@@ -1,6 +1,5 @@
 # Forge-audit Remediation Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Close the three fixable-now audit findings (SEQ-001 censorship economics, EXIT-001 open-position escape, LIQ-001 privacy fail-open) and align the docs with reality.
 
@@ -779,4 +778,4 @@ git commit -m "docs: honesty pass — mark deposit/oracle/forced-close/attestati
 - `cargo test --workspace` — all green (new LIQ-001 tests + pre-existing).
 - `forge fmt --check` and `cargo fmt --check` clean; `cargo clippy --workspace --all-targets` clean.
 - Grep confirms `liquidation_price_guard` no longer appears in `docs/`.
-- Run `superpowers:requesting-code-review` on the whole branch before merge.
+- Request an independent review of the branch.

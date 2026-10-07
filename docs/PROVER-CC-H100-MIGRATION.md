@@ -100,8 +100,8 @@ separate; it lives on the Azure TDX CVM, not this host.)
   attested seal round-trips under the real measurement (deferred (b)/(c)/(d) all
   exercised).
 
-**5. Retire GX10 from dark-perp.** Stop the un-attested prover-service on GX10;
-GX10 keeps Quetzal + llama-server. No GX10 reboot at any point in this plan.
+**5. Retire the dev GPU box from this service.** Stop the un-attested
+prover-service there. Do not reboot that host if other workloads depend on it.
 
 ## Cost / ops
 

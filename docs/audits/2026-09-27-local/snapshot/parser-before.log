@@ -1,8 +1,8 @@
    Compiling rustls v0.23.45
    Compiling rustls-webpki v0.103.15
    Compiling ureq v2.12.1
-   Compiling oracle-feed v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/oracle-feed)
-   Compiling gateway v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/gateway)
+   Compiling oracle-feed v0.0.1 (<repo>/crates/oracle-feed)
+   Compiling gateway v0.0.1 (<repo>/crates/gateway)
     Finished `test` profile [unoptimized + debuginfo] target(s) in 12.71s
      Running unittests src/main.rs (/tmp/arcora-gateway-target/debug/deps/gateway-af1323d2b67b45c0)
 

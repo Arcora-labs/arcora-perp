@@ -37,7 +37,7 @@ Running 1 test using 1 worker
       284 |   expect(f.posts()).toHaveLength(1);
       285 |   expect(await api(page, 'window.testClient.credentialStorage')).toBe('session');
       286 | });
-        at /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/tests/browser/local.spec.ts:283:29
+        at <repo>/frontend/tests/browser/local.spec.ts:283:29
 
     Error Context: output/playwright/results/local-BR-05-session-only-w-d809d-er-rejected-second-recovery-chromium/error-context.md
 

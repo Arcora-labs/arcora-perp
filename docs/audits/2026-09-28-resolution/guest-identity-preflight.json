@@ -125,7 +125,7 @@
     "current_sha256": "a1f0a43033ffdd858bf99854cae814f5426c27db512088883ffa1a0e8f1c4e75",
     "matches": true,
     "size_bytes": 515096,
-    "format": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/sp1-guest/target/elf-compilation/riscv64im-succinct-zkvm-elf/release/perp-core-guest: ELF 64-bit LSB executable, UCB RISC-V, soft-float ABI, version 1 (SYSV), statically linked, not stripped"
+    "format": "<repo>/crates/sp1-guest/target/elf-compilation/riscv64im-succinct-zkvm-elf/release/perp-core-guest: ELF 64-bit LSB executable, UCB RISC-V, soft-float ABI, version 1 (SYSV), statically linked, not stripped"
   },
   "historical_build": {
     "record": "docs/audits/2026-09-27-local/checks/guest-rebuild-pinned-path.json",
@@ -222,14 +222,14 @@
     "foundry_config_verified": true,
     "selected_binary": {
       "argv": [
-        "/Users/huseyinarslan/Library/Application Support/svm/0.8.24/solc-0.8.24",
+        "<local-home>/Library/Application Support/svm/0.8.24/solc-0.8.24",
         "--version"
       ],
       "exit_code": 0,
       "stdout": "solc, the solidity compiler commandline interface\nVersion: 0.8.24+commit.e11b9ed9.Darwin.appleclang",
       "stderr": "",
       "binary_sha256": "1cb1bfc4cdf6873ebf36dc65317a8a0614096b9c2bcca5bb1f70d57d319c50a6",
-      "resolved_path": "/Users/huseyinarslan/Library/Application Support/svm/0.8.24/solc-0.8.24"
+      "resolved_path": "<local-home>/Library/Application Support/svm/0.8.24/solc-0.8.24"
     },
     "path_default": "0.8.20",
     "note": "Use Foundry configured compiler 0.8.24; PATH solc 0.8.20 is not the configured compiler."

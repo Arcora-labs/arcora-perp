@@ -1,6 +1,5 @@
 # SEC-025 025-B — Finish the SEC-019 settlement path — Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make the repo settle end-to-end again, so SEC-021, SEC-022 and SEC-026 — merged but undeployable — can reach a chain.
 
@@ -1107,6 +1106,6 @@ escape hatch, read under duress, so being wrong there is expensive."
 
 - [ ] `cargo test --workspace` green; `cargo fmt --all -- --check` clean; `cargo clippy --workspace --all-targets` clean.
 - [ ] `cargo check` passes on **both** excluded crates, and failed at the branch point (Task 1, Step 5).
-- [ ] Run `superpowers:requesting-code-review` on the whole branch, and send the diff to Codex (`mcp__codex__codex`, `sandbox: read-only`, `cwd` = repo). **Codex found defects in all seven claims it examined in this piece's design; expect it to find more in the implementation.** Verify every finding at source before accepting it.
+- [ ] Request an independent review of the branch. **Codex found defects in all seven claims it examined in this piece's design; expect it to find more in the implementation.** Verify every finding at source before accepting it.
 - [ ] Confirm in the final report which tests were verified to **fail at the parent commit**: Task 1 Step 5, Task 2's no-`deposits_root` parse, Task 6's manifest-only settle. These are the rows that prove the branch does something.
 - [ ] **Do not deploy.** This branch joins the cutover bundle (SEC-022 + SEC-024 + SEC-026 + 025-A/B/C/D). It does not itself move the vkey or `GENESIS_ROOT`, but the bundle does, and 025-A/C/D are not written.

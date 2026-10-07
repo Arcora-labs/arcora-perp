@@ -32,7 +32,7 @@ Running 1 test using 1 worker
       94 |   }
       95 | });
       96 |
-        at /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/tests/browser/reconciliation.visual.spec.ts:93:36
+        at <repo>/frontend/tests/browser/reconciliation.visual.spec.ts:93:36
 
     Error Context: output/playwright/results/reconciliation.visual-temporary-narrow-recovery-visual-check-chromium/error-context.md
 

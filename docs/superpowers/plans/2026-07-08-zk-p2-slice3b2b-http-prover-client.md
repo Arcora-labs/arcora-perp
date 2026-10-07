@@ -1,6 +1,5 @@
 # ZK P2 Slice 3b-2b — HttpProverClient + Real Groth16 Proof — Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Implement the `HttpProverClient` (curl subprocess) so `PROVER_URL=<url>` runs the gateway's
 window-settle path against the real attested prover-service, plus the two 3b-2a review carry-forwards.
@@ -684,7 +683,7 @@ greenlight — it deploys a contract and runs real proving; it does NOT touch `p
    `prev_root`; `settleBatch` reverts unless `prevRoot == currentStateRoot`).
 3. Run the gateway with `PROVER_URL=<gb10 service url>` at that settlement; drive a window (deposit + fill);
    confirm the settle loop seals → curl POSTs → real Groth16 → `settleBatch(6 roots, proof)` → **status 1**,
-   `currentStateRoot` advances. GB10: `ssh -i ~/.ssh/id_ed25519 huseyinarslan@192.168.1.108`.
+   `currentStateRoot` advances. GB10: `ssh <operator>@<prover-host>`.
 
 ---
 

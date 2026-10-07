@@ -35,6 +35,6 @@ Kayıtlı mint, approve veya deposit işlemi revert ettiğinde kullanıcı önce
 | Prover release paketi | [8 geçti](checks/prover-service.json); bağlı/kopmuş HTTP ile gerçek SIGTERM; sentetik worker |
 | Rust format ve gateway clippy | [Format](settlement/format.json), [clippy](settlement/clippy.json) geçti |
 
-Prover komutunun ortamı: `CARGO_TARGET_DIR=/tmp/arcora-prover-service-target`, `PROTOC=/tmp/arcora-tools/protoc-29.3/bin/protoc`, PATH başında `/Users/huseyinarslan/.cargo/bin:/tmp/arcora-tools/sp1-6.0.0`. Gerçek guest ELF derleme altyapısı mevcut; bu testler guest yürütme/gerçek proof üretimi değildir. Paket çıktısındaki worker panic bilinçli test enjeksiyonudur ve testi geçmiştir. Mevcut deprecated uyarılar logda korunmuştur.
+Prover komutunun ortamı: `CARGO_TARGET_DIR=/tmp/arcora-prover-service-target`, `PROTOC=/tmp/arcora-tools/protoc-29.3/bin/protoc`, PATH başında `<cargo-home>/bin:/tmp/arcora-tools/sp1-6.0.0`. Gerçek guest ELF derleme altyapısı mevcut; bu testler guest yürütme/gerçek proof üretimi değildir. Paket çıktısındaki worker panic bilinçli test enjeksiyonudur ve testi geçmiştir. Mevcut deprecated uyarılar logda korunmuştur.
 
 Desktop'taki asıl checkout'un **62 dosya hash'i ve git durumu aynı**. Kendi test süreçleri kapandı; canlı cüzdan/zincir mutasyonu, deployment, dış kişiye mesaj veya engelli guest/proof yürütmesi yapılmadı. Önceden kayıtlı RSA bulgusu ve yayın kapıları bu çalışmayla kapanmış sayılmaz.

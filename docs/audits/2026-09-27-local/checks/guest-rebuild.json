@@ -4,7 +4,7 @@
     "-c",
     "import subprocess; subprocess.run([\"/tmp/arcora-tools/sp1-6.0.0/cargo-prove\",\"prove\",\"build\",\"--locked\"],cwd=\"crates/sp1-guest\",check=True)"
   ],
-  "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+  "cwd": "<repo>",
   "exit_code": 0,
   "duration_seconds": 2.726,
   "log_sha256": "75a8095a266c5f3370a2060e9fc2d9753b86c9532f23ac0cddcd950f82cb2591",

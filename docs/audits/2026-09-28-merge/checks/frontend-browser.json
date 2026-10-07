@@ -7,7 +7,7 @@
     "playwright",
     "test"
   ],
-  "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+  "cwd": "<repo>",
   "exit_code": 0,
   "duration_seconds": 124.904,
   "log_sha256": "e77a23f3ff55af6808db7dcf4fd0376804825412251f6b4ca99adbd838cbb6f6",

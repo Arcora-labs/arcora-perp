@@ -5,7 +5,7 @@
     "--workspace",
     "--locked"
   ],
-  "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+  "cwd": "<repo>",
   "exit_code": 0,
   "duration_seconds": 290.223,
   "log_sha256": "154f47d4326286817a8330121cccf5618490148d710c1e1bbb62e119b4b7dde1",

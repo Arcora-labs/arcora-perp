@@ -1,6 +1,5 @@
 # SEC-020 Phase-2 (local-soundness slice) Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Close SEC-020 Phase-2 findings C1–C5 + constant-time compare with a DH-bound session secret, app-level Azure measurement + vTPM freshness, a `not_after` token TTL, and a re-handshake that refreshes the secret — all TDD-able reboot-free; defer only the live GB10/Azure confirmation to the maintenance window.
 
@@ -16,12 +15,7 @@
 - **Clean cutover** of the handshake crypto: the OLD nonce-based `session_secret(gw_nonce, pv_nonce, gw_meas, pv_meas)` and `session_token(secret, epoch)` are REPLACED, not kept alongside. Phase-1 mints no real token (prod → `None`; `DEV_INSECURE` → the fixed labeled constant), so no live token breaks.
 - **Secrets never logged or served.** `session_secret`, the ephemeral x25519 private key, and the DH shared secret stay in process memory; no `Debug` that prints them, never in a response body or log line.
 - **Live-deferred items are documented, not dropped** — Task 6 records each in the runbook §0a + ledger so the window smoke covers them.
-- All commands run from `/Users/huseyinarslan/Desktop/dark-perp`.
-- Every commit message ends with:
-  ```
-  Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
-  Claude-Session: https://claude.ai/code/session_01ETwC8Rv9KSWVBUH6ik1CQX
-  ```
+- All commands run from `<repo>`.
 - Branch: create `feat/sec020-phase2-local` off `main`; commit there, never switch branches.
 
 **Pinned facts (verified against `main` 2026-07-23 — do not re-derive):**
@@ -833,7 +827,7 @@ git commit -m "docs(sec020): record Phase-2 local-soundness done + the window-sm
 - [ ] Run the full soundness gate:
 
 ```bash
-cd /Users/huseyinarslan/Desktop/dark-perp
+cd <repo>
 cargo test -p dark-perp-attestation -p gateway -p prover \
   && cargo check --manifest-path crates/prover-service/Cargo.toml \
   && cargo fmt --check \

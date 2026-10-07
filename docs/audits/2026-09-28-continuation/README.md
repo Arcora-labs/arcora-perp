@@ -33,7 +33,7 @@ Testten sonraki yalnızca metin/yorum farkları `source-validation.json` içinde
 
 ## Kaynak ve teslim
 
-Çalışma dizini: `/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp`.
+Çalışma dizini: `<repo>`.
 
 Taban: `5c71b2d0a24e1e1e94efeff58df8e26b13190c1b` (`audit/arcora-local-20260927`). Değişiklikler bu ayrı çalışma kopyasında, commit edilmemiş durumda. Masaüstündeki checkout'un kaydedilmiş git durumu ve 19 dosya hash'i değişmedi; denetimin kapsamı [koruma kaydında](original-worktree-preservation.json) belirtilidir. Tam nihai dosya kimliği `source-manifest.json`, doğrulama eşlikleri `source-validation.json` içindedir. Commit, push, PR, deploy veya canlı zincir işlemi yapılmadı.
 

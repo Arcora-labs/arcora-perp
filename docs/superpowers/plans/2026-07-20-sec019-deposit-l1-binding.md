@@ -1,6 +1,5 @@
 # SEC-019 L1-Bound Deposits Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Bind every credited deposit to a real, ordered, correctly-attributed L1 deposit event via an on-chain hash-chain accumulator mirrored by an in-circuit incremental fold — closing deposit inflation ("mint from thin air") and misattribution.
 

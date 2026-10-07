@@ -11,7 +11,7 @@ WITNESS_SHA256=0f6f5c96dd9e195f32c63d3c2a72cefe4ef2bdc821fda52485d7fc03c4592dc7
 VKEY=0x00ab0d3f8dbcadb423593ef582e637e864ef538537f43e433a8f1466aaa2dfcf
 PROVING_START groth16 (local CPU and Docker gnark wrapping)
 
-thread 'tokio-rt-worker' (2426036) panicked at /Users/huseyinarslan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/sp1-recursion-gnark-ffi-6.1.0/src/ffi/docker.rs:98:61:
+thread 'tokio-rt-worker' (2426036) panicked at <cargo-home>/registry/src/index.crates.io-1949cf8c6b5b557f/sp1-recursion-gnark-ffi-6.1.0/src/ffi/docker.rs:98:61:
 failed to prove with docker: Docker command failed 
  --- stdout: --- 
 Setting environment variables took 1.039125ms

@@ -21,7 +21,7 @@
         "test_read_deployment.py",
         "-v"
       ],
-      "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+      "cwd": "<repo>",
       "exit_code": 0,
       "duration_seconds": 0.126,
       "log": "/tmp/arcora-rpc-remaining-20260928/reader-tests.log",
@@ -41,7 +41,7 @@
         "test_read_deployment.py",
         "-v"
       ],
-      "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+      "cwd": "<repo>",
       "exit_code": 0,
       "duration_seconds": 0.372,
       "log": "/tmp/arcora-rpc-remaining-20260928/reader-tests-optimized.log",
@@ -55,7 +55,7 @@
         "--output",
         "/tmp/arcora-rpc-remaining-20260928/deployment-observation.json"
       ],
-      "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+      "cwd": "<repo>",
       "exit_code": 1,
       "duration_seconds": 0.19,
       "log": "/tmp/arcora-rpc-remaining-20260928/deployment-refresh.log",

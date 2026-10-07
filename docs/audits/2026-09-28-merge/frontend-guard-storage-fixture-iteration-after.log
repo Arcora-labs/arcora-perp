@@ -1,6 +1,6 @@
 [WARN] The "pnpm" field in package.json is no longer read by pnpm. The following keys were ignored: "pnpm.onlyBuiltDependencies". See https://pnpm.io/settings for the new home of each setting.
 
- RUN  v4.1.11 /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend
+ RUN  v4.1.11 <repo>/frontend
 
  ❯ src/api/realClient.test.ts (126 tests | 2 failed) 258ms
      × rejects an old order response while a newer saved credential awaits adoption 4ms

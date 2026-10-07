@@ -15,5 +15,5 @@
   "log": "stale-cache-attempt-early-v6.log",
   "generator_changes": "appended test-only module; production source unchanged",
   "evidence_validity": "INVALIDATED: archive preserved old mtimes and Cargo reused old workspace crate artifacts; not evidence of historical source behavior",
-  "original_log_path": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/docs/audits/2026-09-27-local/snapshot/historical-v6.log"
+  "original_log_path": "<repo>/docs/audits/2026-09-27-local/snapshot/historical-v6.log"
 }

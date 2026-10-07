@@ -6,7 +6,7 @@
   "expected_head": "f997f8b96279bd06ec1808f6b9cb2a6aeb25cc5e",
   "porcelain_sha256": "7eb173d01c6f5a1880ad1f955fad4fca1ca8ad2fb3b46aaa017ef00c1798562b",
   "expected_porcelain_sha256": "7eb173d01c6f5a1880ad1f955fad4fca1ca8ad2fb3b46aaa017ef00c1798562b",
-  "backup": "/Users/huseyinarslan/.codex/backups/arcora-desktop-pre-merge-20260928T073937Z",
+  "backup": "<local-backup>/arcora-desktop-pre-merge-20260928T073937Z",
   "preliminary_check": {
     "status": "INCOMPARABLE",
     "reason": "--untracked-files=all expands 21 original status records into 62; no changed file hashes or HEAD",

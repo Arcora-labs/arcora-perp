@@ -8,7 +8,7 @@
     "--bin",
     "gateway"
   ],
-  "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+  "cwd": "<repo>",
   "exit_code": 0,
   "duration_seconds": 17.677,
   "log_sha256": "c10812d49b90e956ebd23719f549187a77e94b6ab9228d7ea8040d045f894bad",

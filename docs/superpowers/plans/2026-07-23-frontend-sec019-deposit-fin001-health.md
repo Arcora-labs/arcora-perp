@@ -1,6 +1,5 @@
 # Frontend SEC-019 Deposit Flow + FIN-001 Health Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Cut the frontend deposit flow over to the SEC-019 contract (`deposit(uint256,bytes32,bytes)` via `POST /v1/accounts/deposit/authorize`), and surface the FIN-001 settle-loop breaker state in the HealthPanel.
 
@@ -14,12 +13,7 @@
 - **Clean cutover:** the final tree contains NO `deposit(uint256)` encoder/selector residue (`grep -F 'deposit(uint256)' frontend/src` must only hit the 3-arg form, i.e. zero exact matches).
 - **Addresses stay hardcoded** (`MOCK_USDC`, `COLLATERAL_VAULT` in `wallet.ts`) — do NOT invent a config endpoint. They change only in the future redeploy commit.
 - **Defensive wire parsing** (house style of `realClient.ts`): malformed server data → readable throw (POST paths) or `null` (state-snapshot paths), never a crash.
-- All commands run from `/Users/huseyinarslan/Desktop/dark-perp/frontend`.
-- Every commit message ends with:
-  ```
-  Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
-  Claude-Session: https://claude.ai/code/session_01ETwC8Rv9KSWVBUH6ik1CQX
-  ```
+- All commands run from `<repo>/frontend`.
 
 **Pinned facts (verified against `main` 2026-07-23 — do not re-derive):**
 - Gateway endpoint: `POST /v1/accounts/deposit/authorize`, auth `X-Api-Key`, body `{ "from": "0x…20-byte", "amount": "<u128 decimal string>" }` → `{ "ownerCommit": "0x…32-byte", "sig": "0x…65-byte" }`. Errors are `{ "error": "…" }` with 400 (e.g. `"Bind a deposit address first (POST /v1/accounts/deposit/address)."`).
@@ -903,7 +897,7 @@ git commit -m "feat(frontend): FIN-001 settle-loop breaker row in HealthPanel (s
 - [ ] Run the spec's success criteria in one shot:
 
 ```bash
-cd /Users/huseyinarslan/Desktop/dark-perp/frontend
+cd <repo>/frontend
 pnpm typecheck && pnpm vitest run && { grep -rFn 'deposit(uint256)' src/ && echo "RESIDUE FOUND" || echo "clean cutover ✓"; }
 ```
 

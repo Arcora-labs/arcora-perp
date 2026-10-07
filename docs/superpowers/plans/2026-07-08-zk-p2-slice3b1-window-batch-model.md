@@ -1,6 +1,5 @@
 # ZK Verifier P2 — Slice 3b-1: Window Batch Model Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** The sequencer accumulates a window's ops across ticks and produces one `WindowWitness { batch_id, pre_state, ops, manifest }` per `seal_window()` such that `derive_roots(pre_state, ops, manifest).new_state_root == the live window-end state_root`, advancing `state.next_batch_id` exactly once per window.
 

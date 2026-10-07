@@ -43,7 +43,7 @@
   "desktop_preservation": {
     "unchanged_files": 62,
     "status_unchanged": true,
-    "reference_backup": "/Users/huseyinarslan/.codex/backups/arcora-desktop-pre-merge-20260928T073937Z"
+    "reference_backup": "<local-backup>/arcora-desktop-pre-merge-20260928T073937Z"
   },
   "limits": [
     "Synthetic EIP-1193 provider, no real wallet extension or live transfer.",

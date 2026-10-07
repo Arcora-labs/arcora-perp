@@ -7,8 +7,8 @@ Confidential Computing (NVIDIA-confirmed, §0b), so SEC-020's attested prover
 moves to a **CC-capable H100 host** (Phala / Azure NCC H100 v5), NOT a GX10
 reboot. The two legs are now cleanly decoupled:
 - **CC-prover leg** — provision a CC-H100, deploy the prover there, wire real
-  NVIDIA GPU attestation. GX10 stays up (Quetzal + llama-server undisturbed).
-  No reboot, no co-tenant downtime for this leg. Plan: `docs/PROVER-CC-H100-MIGRATION.md`.
+  NVIDIA GPU attestation. The current prover workstation stays up.
+  No reboot of that host for this leg. Plan: `docs/PROVER-CC-H100-MIGRATION.md`.
 - **Redeploy leg** — Azure TDX gateway + Base-Sepolia contracts (new VK / clean
   genesis) + frontend. Its in-zkVM proof smoke runs on whichever prover is live
   (the new CC-H100 once migrated, else GX10 un-attested). Independent of CC.
@@ -97,8 +97,8 @@ silicon. So the 2026-07-19 `confidential compute = False` was never a missing
 toggle; GX10 can **never** report `True`. `nvidia_gpu_tools.py --set-cc-mode=on`
 (the real enable path for H100 / datacenter Blackwell) is unsupported on GB10.
 → **There is no "enable CC on GX10" step. The prover-service migrates to a
-CC-capable H100 host; GX10 stays as-is for Quetzal + llama-server (no reboot for
-dark-perp).** See the migration plan `docs/PROVER-CC-H100-MIGRATION.md`.
+CC-capable H100 host; the current prover workstation stays as-is for its other
+workloads (no reboot for this service).** See the migration plan `docs/PROVER-CC-H100-MIGRATION.md`.
 - Provider shortlist (all give real NVIDIA GPU CC attestation the `NvidiaCcAttestor` consumes, except where noted):
   - **Phala GPU TEE** — H100 in NVIDIA CC mode + Intel-TDX CPU (same TEE family as the Azure gateway) + separate NVIDIA-signed GPU quote. **~$2.38/hr reserved, $3.08 trial.** Best price + arch fit; confirm the tenant-facing attestation API (direct `nv-local-gpu-verifier` vs Phala's combined verifier) before committing.
   - **Azure NCC H100 v5** (`Standard_NCC40ads_H100_v5`) — H100 NVL 94GB + confidential-GPU driver + NVIDIA GPU attestation (cgpu onboarding `aka.ms/cgpu-onboarding-steps`), AMD SEV-SNP CPU. **~$5.60/hr**, GA East US2 / West Europe. Safest code-fit (reference model, zero prover code change).
@@ -135,13 +135,13 @@ changes) + `contracts/deployments/base-sepolia.json` + the `TestnetNotice`
 deploy-info line get filled mid-window. Pre-run `pnpm typecheck && pnpm vitest
 run` (183) so the only window-day delta is the constants.
 
-**0f. Co-tenant prep (GX10).**
-- Quetzal: back up aggregator/faucet state; announce downtime; confirm the
-  boot procedure that brought it up on 2026-07-18 is written down (reverse SSH
-  tunnel to box 161; Caddy stays untouched).
-- llama-server (8091 → azureuser@104.42.53.250): warn its user; it also frees
-  ~30 GB during the proof smoke if left down until Phase 2 completes.
-- Old dark-perp stack (optional but honest): wind down via
+**0f. Shared-host prep.**
+- If the prover workstation runs other workloads, back those up outside this
+  repo and schedule their downtime separately. Do not record co-tenant names,
+  reverse-SSH tunnels, SSH users, host addresses, or alert topics here.
+- Proof smoke needs RAM headroom. Pause non-essential local workloads until
+  Phase 2 completes, then restore them (~30 GB was the observed headroom gap).
+- Old stack (optional but honest): wind down via
   `docs/FINAL_SETTLE_RUNBOOK.md` (close-only + `finalSettle`) so any old-stack
   balances become claimable instead of stranded. Testnet — operator's call.
 
@@ -152,8 +152,8 @@ run` (183) so the only window-day delta is the constants.
 Full detail: `docs/PROVER-CC-H100-MIGRATION.md`. Window-level steps:
 
 1. Provision the chosen CC-H100 host (§0b: Phala reserved / Azure NCC H100 v5),
-   complete the confidential-GPU driver + attestation onboarding. **GX10 is NOT
-   touched — Quetzal + llama-server keep running.**
+   complete the confidential-GPU driver + attestation onboarding. **The current
+   prover workstation is not touched — its other workloads keep running.**
 2. Verify on the host: `nv-attestation-sdk` / `nv-local-gpu-verifier` reports
    `confidential compute = True` + a verifiable GPU quote → record the real GPU
    measurement as `PROVER_EXPECTED_MEASUREMENT`.
@@ -242,7 +242,8 @@ publish this phase immediately after Phase 2's boot check passes.
 
 ## Phase 4 — Post-window
 
-- Watch ntfy alerts + Quetzal health for 24h; confirm GX10 stayed up.
+- Watch operator alerts for 24h; confirm the prover host stayed up. Do not
+  commit alert topics or webhook URLs.
 - Update `.superpowers/sdd/progress.md` + operator notes: what shipped, new
   addresses, whether the CC leg ran.
 - Rollback note: the OLD stack addresses remain on-chain and archived in the
@@ -258,4 +259,4 @@ publish this phase immediately after Phase 2's boot check passes.
 | 1 | CC leg in or out of this window | In ONLY if the 0a branch (`feat/sec020-phase2-local`, code done) is merged and 0b confirmed a procedure; the 0a deferred items (a)–(d) run IN the window and gate CC-enable; else redeploy-only window |
 | 2 | Wind down the old stack via finalSettle | Yes (honest exit; cheap on testnet) |
 | 3 | Reuse `MockUSDC 0x8a52` | Yes, if `Deploy.s.sol` accepts an existing token address at dry-run |
-| 4 | llama-server during window | Down until Phase 2 smoke passes (RAM headroom), then restore |
+| 4 | Other workloads on the prover host | Pause until Phase 2 smoke passes (RAM headroom), then restore |

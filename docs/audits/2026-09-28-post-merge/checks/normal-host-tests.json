@@ -9,7 +9,7 @@
     "crates/sp1-host/Cargo.toml",
     "--all-targets"
   ],
-  "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+  "cwd": "<repo>",
   "exit_code": 0,
   "duration_seconds": 269.129,
   "log_sha256": "258de6c951aeabdef1ce707cdc1d53af86d27a50f2e232662f4af12886cbb60a",

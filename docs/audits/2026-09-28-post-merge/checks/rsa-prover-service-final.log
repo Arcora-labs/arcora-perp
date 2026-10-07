@@ -1,5 +1,5 @@
 warning: use of deprecated method `sha2::digest::generic_array::GenericArray::<T, N>::as_slice`: please upgrade to generic-array 1.x
-   --> /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/attestation/src/vtpm.rs:239:32
+   --> <repo>/crates/attestation/src/vtpm.rs:239:32
     |
 239 |     if Sha256::digest(runtime).as_slice() != &td.report_data[..32] {
     |                                ^^^^^^^^
@@ -7,14 +7,14 @@ warning: use of deprecated method `sha2::digest::generic_array::GenericArray::<T
     = note: `#[warn(deprecated)]` on by default
 
 warning: use of deprecated method `sha2::digest::generic_array::GenericArray::<T, N>::as_slice`: please upgrade to generic-array 1.x
-   --> /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/attestation/src/vtpm.rs:270:21
+   --> <repo>/crates/attestation/src/vtpm.rs:270:21
     |
 270 |     if h.finalize().as_slice() != q.pcr_digest {
     |                     ^^^^^^^^
 
 warning: `dark-perp-attestation` (lib) generated 2 warnings
 warning: prover-service@0.0.0: Build skipped for perp-core-guest at 2026-09-28 16:53:18 due to SP1_SKIP_PROGRAM_BUILD flag
-   Compiling prover-service v0.0.0 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/prover-service)
+   Compiling prover-service v0.0.0 (<repo>/crates/prover-service)
     Finished `release` profile [optimized] target(s) in 5.85s
      Running unittests src/main.rs (/tmp/arcora-prover-service-target/release/deps/prover_service-cbeeb1073c540dc6)
 

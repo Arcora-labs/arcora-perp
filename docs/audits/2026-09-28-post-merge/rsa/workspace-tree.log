@@ -1,5 +1,5 @@
-bridge v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/bridge)
-perp-core v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/perp-core)
+bridge v0.0.1 (<repo>/crates/bridge)
+perp-core v0.0.1 (<repo>/crates/perp-core)
 k256 v0.13.4
 cfg-if v1.0.4
 ecdsa v0.16.9
@@ -101,15 +101,15 @@ semver v1.0.28
 serde v1.0.228 (*)
 serde v1.0.228 (*)
 
-committee v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/committee)
+committee v0.0.1 (<repo>/crates/committee)
 k256 v0.13.4 (*)
-perp-core v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/perp-core) (*)
+perp-core v0.0.1 (<repo>/crates/perp-core) (*)
 sha3 v0.10.9
 digest v0.10.7 (*)
 keccak v0.1.6
 cpufeatures v0.2.17 (*)
 
-dark-perp-attestation v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/attestation)
+dark-perp-attestation v0.0.1 (<repo>/crates/attestation)
 base64 v0.22.1
 dcap-qvl v0.5.2
 anyhow v1.0.103
@@ -121,7 +121,7 @@ num-traits v0.2.19
 autocfg v1.5.1
 serde v1.0.228 (*)
 const-oid v0.9.6
-dcap-qvl-webpki v0.103.4+dcap.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/vendor/dcap-qvl-webpki)
+dcap-qvl-webpki v0.103.4+dcap.1 (<repo>/vendor/dcap-qvl-webpki)
 ring v0.17.14
 cfg-if v1.0.4
 getrandom v0.2.17 (*)
@@ -236,7 +236,7 @@ const-oid v0.9.6
 der v0.7.10 (*)
 spki v0.7.3 (*)
 hex v0.4.3
-perp-core v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/perp-core) (*)
+perp-core v0.0.1 (<repo>/crates/perp-core) (*)
 ring v0.17.14 (*)
 serde v1.0.228 (*)
 serde_json v1.0.150 (*)
@@ -248,17 +248,17 @@ subtle v2.6.1
 rustc_version v0.4.1 (*)
 rand_core v0.6.4 (*)
 
-demo v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/demo)
-bridge v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/bridge) (*)
-committee v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/committee) (*)
+demo v0.0.1 (<repo>/crates/demo)
+bridge v0.0.1 (<repo>/crates/bridge) (*)
+committee v0.0.1 (<repo>/crates/committee) (*)
 k256 v0.13.4 (*)
-matcher v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/matcher)
-perp-core v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/perp-core) (*)
+matcher v0.0.1 (<repo>/crates/matcher)
+perp-core v0.0.1 (<repo>/crates/perp-core) (*)
 serde v1.0.228 (*)
-note-archive v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/note-archive)
-perp-core v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/perp-core) (*)
+note-archive v0.0.1 (<repo>/crates/note-archive)
+perp-core v0.0.1 (<repo>/crates/perp-core) (*)
 rand_core v0.6.4 (*)
-sealed-box v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/sealed-box)
+sealed-box v0.0.1 (<repo>/crates/sealed-box)
 chacha20poly1305 v0.10.1
 aead v0.5.2
 crypto-common v0.1.7 (*)
@@ -288,28 +288,28 @@ serde v1.0.228 (*)
 serde_json v1.0.150 (*)
 serde v1.0.228 (*)
 rand_core v0.6.4 (*)
-perp-core v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/perp-core) (*)
-prover v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/prover)
+perp-core v0.0.1 (<repo>/crates/perp-core) (*)
+prover v0.0.1 (<repo>/crates/prover)
 hex v0.4.3
-perp-core v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/perp-core) (*)
+perp-core v0.0.1 (<repo>/crates/perp-core) (*)
 postcard v1.1.3 (*)
 serde v1.0.228 (*)
 rand_core v0.6.4 (*)
-sequencer v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/sequencer)
+sequencer v0.0.1 (<repo>/crates/sequencer)
 k256 v0.13.4 (*)
-matcher v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/matcher) (*)
-perp-core v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/perp-core) (*)
+matcher v0.0.1 (<repo>/crates/matcher) (*)
+perp-core v0.0.1 (<repo>/crates/perp-core) (*)
 serde v1.0.228 (*)
 sha3 v0.10.9 (*)
 
-e2e v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/e2e)
-dark-perp-attestation v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/attestation) (*)
+e2e v0.0.1 (<repo>/crates/e2e)
+dark-perp-attestation v0.0.1 (<repo>/crates/attestation) (*)
 k256 v0.13.4 (*)
-matcher v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/matcher) (*)
-note-archive v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/note-archive) (*)
-oracle-feed v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/oracle-feed)
+matcher v0.0.1 (<repo>/crates/matcher) (*)
+note-archive v0.0.1 (<repo>/crates/note-archive) (*)
+oracle-feed v0.0.1 (<repo>/crates/oracle-feed)
 k256 v0.13.4 (*)
-perp-core v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/perp-core) (*)
+perp-core v0.0.1 (<repo>/crates/perp-core) (*)
 serde_json v1.0.150 (*)
 ureq v2.12.1
 base64 v0.22.1
@@ -401,12 +401,12 @@ percent-encoding v2.3.2
 webpki-roots v0.26.11
 webpki-roots v1.0.8
 rustls-pki-types v1.14.1 (*)
-perp-core v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/perp-core) (*)
-prover v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/prover) (*)
+perp-core v0.0.1 (<repo>/crates/perp-core) (*)
+prover v0.0.1 (<repo>/crates/prover) (*)
 rand_core v0.6.4 (*)
-sequencer v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/sequencer) (*)
+sequencer v0.0.1 (<repo>/crates/sequencer) (*)
 
-gateway v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/gateway)
+gateway v0.0.1 (<repo>/crates/gateway)
 axum v0.7.9
 async-trait v0.1.89 (proc-macro)
 proc-macro2 v1.0.106 (*)
@@ -542,7 +542,7 @@ tracing v0.1.44 (*)
 tower-layer v0.3.3
 tower-service v0.3.3
 tracing v0.1.44 (*)
-dark-perp-attestation v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/attestation) (*)
+dark-perp-attestation v0.0.1 (<repo>/crates/attestation) (*)
 eth-keystore v0.5.0
 aes v0.8.4
 cfg-if v1.0.4
@@ -572,14 +572,14 @@ getrandom v0.2.17 (*)
 serde v1.0.228 (*)
 getrandom v0.2.17 (*)
 k256 v0.13.4 (*)
-note-archive v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/note-archive) (*)
-oracle-feed v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/oracle-feed) (*)
-perp-core v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/perp-core) (*)
+note-archive v0.0.1 (<repo>/crates/note-archive) (*)
+oracle-feed v0.0.1 (<repo>/crates/oracle-feed) (*)
+perp-core v0.0.1 (<repo>/crates/perp-core) (*)
 postcard v1.1.3 (*)
-prover v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/prover) (*)
+prover v0.0.1 (<repo>/crates/prover) (*)
 rand v0.8.6 (*)
-sealed-box v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/sealed-box) (*)
-sequencer v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/sequencer) (*)
+sealed-box v0.0.1 (<repo>/crates/sealed-box) (*)
+sequencer v0.0.1 (<repo>/crates/sequencer) (*)
 serde v1.0.228 (*)
 serde_json v1.0.150 (*)
 sha3 v0.10.9 (*)
@@ -598,26 +598,26 @@ tokio v1.52.3 (*)
 tokio-tungstenite v0.24.0 (*)
 tower v0.5.3 (*)
 
-loadbot v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/loadbot)
-matcher v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/matcher) (*)
-perp-core v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/perp-core) (*)
+loadbot v0.0.1 (<repo>/crates/loadbot)
+matcher v0.0.1 (<repo>/crates/matcher) (*)
+perp-core v0.0.1 (<repo>/crates/perp-core) (*)
 
-matcher v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/matcher) (*)
+matcher v0.0.1 (<repo>/crates/matcher) (*)
 
-node v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/node)
+node v0.0.1 (<repo>/crates/node)
 k256 v0.13.4 (*)
-oracle-feed v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/oracle-feed) (*)
-perp-core v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/perp-core) (*)
-sequencer v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/sequencer) (*)
+oracle-feed v0.0.1 (<repo>/crates/oracle-feed) (*)
+perp-core v0.0.1 (<repo>/crates/perp-core) (*)
+sequencer v0.0.1 (<repo>/crates/sequencer) (*)
 
-note-archive v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/note-archive) (*)
+note-archive v0.0.1 (<repo>/crates/note-archive) (*)
 
-oracle-feed v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/oracle-feed) (*)
+oracle-feed v0.0.1 (<repo>/crates/oracle-feed) (*)
 
-perp-core v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/perp-core) (*)
+perp-core v0.0.1 (<repo>/crates/perp-core) (*)
 
-prover v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/prover) (*)
+prover v0.0.1 (<repo>/crates/prover) (*)
 
-sealed-box v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/sealed-box) (*)
+sealed-box v0.0.1 (<repo>/crates/sealed-box) (*)
 
-sequencer v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/sequencer) (*)
+sequencer v0.0.1 (<repo>/crates/sequencer) (*)

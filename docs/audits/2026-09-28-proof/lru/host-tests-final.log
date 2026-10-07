@@ -1,6 +1,6 @@
     Blocking waiting for file lock on artifact directory
 warning: sp1-host@0.0.0: Build skipped for perp-core-guest at 2026-09-28 18:34:28 due to SP1_SKIP_PROGRAM_BUILD flag
-   Compiling sp1-host v0.0.0 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/sp1-host)
+   Compiling sp1-host v0.0.0 (<repo>/crates/sp1-host)
     Finished `release` profile [optimized] target(s) in 18.69s
      Running unittests src/lib.rs (crates/sp1-host/target/release/deps/sp1_host-cd12325bbac85493)
 

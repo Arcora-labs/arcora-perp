@@ -1,6 +1,5 @@
 # SEC-025 025-C — Honest genesis — Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make a production gateway able to settle against a real vault, by never fabricating a deposit the L1 chain cannot match.
 
@@ -647,6 +646,6 @@ Plus an enumeration guard: a new unbacked-funding call site must break a test."
 
 - [ ] `cargo test --workspace` green; `cd contracts && forge test` still **85 passed**; `cargo fmt --all -- --check` and `cargo clippy --workspace --all-targets` clean.
 - [ ] Confirm which tests were verified to **fail at the parent commit**: Task 2's LP and `simulate_adl` refusals, Task 3's route absence, Task 4's `l1_status == None` continuity. These are what prove the branch does something.
-- [ ] Run `superpowers:requesting-code-review` on the whole branch, and send the diff to Codex (`mcp__codex__codex`, `sandbox: read-only`, `cwd` = repo). **Codex found six defects in this piece's design, four of which changed it — expect it to find more in the implementation.** Verify every finding at source before accepting it.
+- [ ] Request an independent review of the branch. **Codex found six defects in this piece's design, four of which changed it — expect it to find more in the implementation.** Verify every finding at source before accepting it.
 - [ ] **Do not deploy.** `GENESIS_ROOT` moves, so this needs a fresh `DarkPerpSettlement` deploy and a snapshot wipe. The cutover also needs SEC-024, 025-A and 025-D; **025-B + 025-C is the smallest set that *settles*, not the smallest set that is *safe to launch*** — production starts with zero insurance until 025-A, and nothing gates trading on it until 025-D.
 - [ ] **Runbook item for the cutover:** the live testnet loses its funded MM, demo user, LP pool and insurance. Liquidity must be re-established through real deposits (faucet → `CollateralVault.deposit` → `account_confirm_deposit`). If that proves impractical the fallback is a thinner book — **never reintroducing unbacked minting**, which would re-break settling.

@@ -1,6 +1,5 @@
 # P3 Slice A — Secret-keyed seal-witness nonce Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Key the clear seal-witness nonce with the secret `seal_root` so it stops being a plaintext-confirmation oracle, while preserving its content-derived rollback/retry safety.
 

@@ -1,6 +1,5 @@
 # ZK P2 Slice 3b-2a — Gateway Window-Settle Path + Incremental Withdrawals — Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Wire the dormant `seq.seal_window()` into the gateway settle path behind a `ProverClient`
 abstraction whose first impl is a local `MockProverClient`, and rework withdrawals publish from a cumulative
@@ -33,7 +32,7 @@ is thin glue over them. The legacy cumulative + mock path is preserved byte-for-
   skips the settle and logs (no rollback — that is Slice 3b-3).
 - **serde compatibility:** every new `Gw` field is `#[serde(default)]` so pre-upgrade sealed snapshots still
   load (`Gw` derives `Serialize`/`Deserialize`; `boot_restored` deserializes).
-- **Run tests from the repo root** `/Users/huseyinarslan/Desktop/dark-perp` with `cargo test -p gateway`.
+- **Run tests from the repo root** `<repo>` with `cargo test -p gateway`.
 
 ---
 

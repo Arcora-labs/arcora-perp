@@ -16,7 +16,7 @@ verify a genuine Intel **TDX DCAP quote**, extract + bind the enclave measuremen
 | **#5c Gateway live-boot on the CVM (its OWN quote)** | ✅ **Done (2026-07-03)** — see below |
 | #5d Real TEE key-release (`TeeSealProvider` backed by the vTPM) | ⬜ remaining — `SoftwareSealProvider` is still the stand-in |
 
-### #5c live-boot verification (2026-07-03, `perp-seq` DC2es_v6, westus)
+### #5c live-boot verification (2026-07-03, Azure DC2es_v6 CVM, westus)
 
 `scripts/tee-capture/capture.sh` captured the six live `ATTESTATION_DIR`
 artifacts on the running CVM (HCL report via owner-auth NV read of `0x01400001`,

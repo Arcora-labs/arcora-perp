@@ -9,6 +9,6 @@
    Compiling axum v0.7.9
    Compiling wasm-bindgen-futures v0.4.76
    Compiling dcap-qvl v0.5.2
-   Compiling dark-perp-attestation v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/attestation)
-   Compiling gateway v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/gateway)
+   Compiling dark-perp-attestation v0.0.1 (<repo>/crates/attestation)
+   Compiling gateway v0.0.1 (<repo>/crates/gateway)
     Finished `dev` profile [unoptimized + debuginfo] target(s) in 10.44s

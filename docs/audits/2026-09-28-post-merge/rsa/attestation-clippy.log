@@ -23,11 +23,11 @@
     Checking ring v0.17.14
     Checking elliptic-curve v0.13.8
     Checking ecdsa v0.16.9
-    Checking dcap-qvl-webpki v0.103.4+dcap.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/vendor/dcap-qvl-webpki)
+    Checking dcap-qvl-webpki v0.103.4+dcap.1 (<repo>/vendor/dcap-qvl-webpki)
     Checking js-sys v0.3.103
     Checking k256 v0.13.4
-    Checking perp-core v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/perp-core)
+    Checking perp-core v0.0.1 (<repo>/crates/perp-core)
     Checking wasm-bindgen-futures v0.4.76
     Checking dcap-qvl v0.5.2
-    Checking dark-perp-attestation v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/attestation)
+    Checking dark-perp-attestation v0.0.1 (<repo>/crates/attestation)
     Finished `dev` profile [unoptimized + debuginfo] target(s) in 3.58s

@@ -1,7 +1,7 @@
     Blocking waiting for file lock on package cache
     Blocking waiting for file lock on package cache
 warning: use of deprecated method `sha2::digest::generic_array::GenericArray::<T, N>::as_slice`: please upgrade to generic-array 1.x
-   --> /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/attestation/src/vtpm.rs:202:32
+   --> <repo>/crates/attestation/src/vtpm.rs:202:32
     |
 202 |     if Sha256::digest(runtime).as_slice() != &td.report_data[..32] {
     |                                ^^^^^^^^
@@ -9,7 +9,7 @@ warning: use of deprecated method `sha2::digest::generic_array::GenericArray::<T
     = note: `#[warn(deprecated)]` on by default
 
 warning: use of deprecated method `sha2::digest::generic_array::GenericArray::<T, N>::as_slice`: please upgrade to generic-array 1.x
-   --> /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/attestation/src/vtpm.rs:238:21
+   --> <repo>/crates/attestation/src/vtpm.rs:238:21
     |
 238 |     if h.finalize().as_slice() != q.pcr_digest {
     |                     ^^^^^^^^

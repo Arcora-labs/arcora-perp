@@ -1,6 +1,6 @@
 import hashlib,json,os,subprocess,sys,time
 from pathlib import Path
-root=Path('/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp')
+root=Path('<repo>')
 evidence=Path('/tmp/arcora-lru-20260928')
 name=sys.argv[1]
 argv=sys.argv[2:]

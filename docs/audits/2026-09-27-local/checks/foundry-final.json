@@ -8,7 +8,7 @@
     "--fuzz-seed",
     "0x27"
   ],
-  "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+  "cwd": "<repo>",
   "exit_code": 0,
   "duration_seconds": 5.061,
   "log_sha256": "ab03c13b6799db369eac59a3266f15f8b6b04021068d4fd897913c04cfa3a8b2",

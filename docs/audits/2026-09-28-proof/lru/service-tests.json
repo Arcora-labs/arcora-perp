@@ -8,11 +8,11 @@
     "--manifest-path",
     "crates/prover-service/Cargo.toml"
   ],
-  "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+  "cwd": "<repo>",
   "environment": {
     "SP1_SKIP_PROGRAM_BUILD": "true",
     "PROTOC": "/tmp/arcora-tools/protoc-29.3/bin/protoc",
-    "CARGO_TARGET_DIR": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/sp1-host/target",
+    "CARGO_TARGET_DIR": "<repo>/crates/sp1-host/target",
     "CARGO_BUILD_JOBS": "2"
   },
   "exit_code": 0,

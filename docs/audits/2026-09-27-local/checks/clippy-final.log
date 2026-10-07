@@ -46,7 +46,7 @@
     Checking ecdsa v0.16.9
    Compiling zerofrom-derive v0.1.7
     Checking k256 v0.13.4
-    Checking perp-core v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/perp-core)
+    Checking perp-core v0.0.1 (<repo>/crates/perp-core)
     Checking zerofrom v0.1.8
    Compiling yoke-derive v0.8.2
     Checking log v0.4.33
@@ -83,7 +83,7 @@
     Checking thiserror v2.0.18
     Checking ppv-lite86 v0.2.21
     Checking icu_provider v2.2.0
-    Checking matcher v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/matcher)
+    Checking matcher v0.0.1 (<repo>/crates/matcher)
     Checking hash32 v0.2.1
     Checking hex v0.4.3
     Checking heapless v0.7.17
@@ -118,7 +118,7 @@
    Compiling proc-macro-crate v3.5.0
     Checking rustls v0.23.45
     Checking num-integer v0.1.46
-    Checking sequencer v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/sequencer)
+    Checking sequencer v0.0.1 (<repo>/crates/sequencer)
     Checking universal-hash v0.5.1
     Checking konst_macro_rules v0.2.19
     Checking spin v0.9.8
@@ -154,7 +154,7 @@
    Compiling derive_more-impl v2.1.1
     Checking p384 v0.13.1
     Checking p256 v0.13.2
-    Checking oracle-feed v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/oracle-feed)
+    Checking oracle-feed v0.0.1 (<repo>/crates/oracle-feed)
    Compiling scale-info-derive v2.11.6
     Checking base64 v0.13.1
     Checking serde-human-bytes v0.1.3
@@ -163,7 +163,7 @@
     Checking dcap-qvl-webpki v0.103.4+dcap.1
     Checking derive_more v2.1.1
     Checking anyhow v1.0.103
-    Checking sealed-box v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/sealed-box)
+    Checking sealed-box v0.0.1 (<repo>/crates/sealed-box)
     Checking chrono v0.4.45
     Checking pem v3.0.6
     Checking x509-cert v0.2.5
@@ -171,11 +171,11 @@
     Checking urlencoding v2.1.3
     Checking http v1.4.2
     Checking dcap-qvl v0.5.2
-    Checking note-archive v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/note-archive)
-    Checking prover v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/prover)
+    Checking note-archive v0.0.1 (<repo>/crates/note-archive)
+    Checking prover v0.0.1 (<repo>/crates/prover)
     Checking errno v0.3.14
     Checking signal-hook-registry v1.4.8
-    Checking dark-perp-attestation v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/attestation)
+    Checking dark-perp-attestation v0.0.1 (<repo>/crates/attestation)
     Checking http-body v1.0.1
    Compiling tokio-macros v2.7.0
     Checking mio v1.2.1
@@ -209,21 +209,21 @@
     Checking axum-core v0.4.5
     Checking tokio-tungstenite v0.24.0
     Checking tower v0.5.3
-    Checking node v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/node)
+    Checking node v0.0.1 (<repo>/crates/node)
     Checking aes v0.8.4
     Checking ctr v0.9.2
-    Checking committee v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/committee)
-    Checking bridge v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/bridge)
+    Checking committee v0.0.1 (<repo>/crates/committee)
+    Checking bridge v0.0.1 (<repo>/crates/bridge)
     Checking serde_path_to_error v0.1.20
     Checking uuid v0.8.2
     Checking matchit v0.7.3
-    Checking e2e v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/e2e)
+    Checking e2e v0.0.1 (<repo>/crates/e2e)
     Checking bitflags v2.13.0
     Checking axum v0.7.9
     Checking tower-http v0.5.2
     Checking eth-keystore v0.5.0
-    Checking demo v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/demo)
-    Checking gateway v0.0.1 (/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/crates/gateway)
+    Checking demo v0.0.1 (<repo>/crates/demo)
+    Checking gateway v0.0.1 (<repo>/crates/gateway)
 error: length comparison to zero
    --> crates/gateway/src/snapshot_s3_tests.rs:212:17
     |

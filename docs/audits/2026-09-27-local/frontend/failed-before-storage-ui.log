@@ -42,7 +42,7 @@ Running 2 tests using 1 worker
       263 | });
       264 |
       265 | test('S2-02 disabled storage does not crash application shell', async ({ context }) => {
-        at /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/tests/browser/local.spec.ts:262:42
+        at <repo>/frontend/tests/browser/local.spec.ts:262:42
 
     Error Context: output/playwright/results/local-BR-05-session-only-w-a93d8-returning-to-recovery-panel-chromium/error-context.md
 
@@ -66,7 +66,7 @@ Running 2 tests using 1 worker
           |                                                                            ^
       270 | });
       271 |
-        at /Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp/frontend/tests/browser/local.spec.ts:269:76
+        at <repo>/frontend/tests/browser/local.spec.ts:269:76
 
   2 failed
     [chromium] › tests/browser/local.spec.ts:256:1 › BR-05 session-only warning survives leaving and returning to recovery panel 

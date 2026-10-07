@@ -1,7 +1,7 @@
 {
   "observed_at_utc": "2026-09-28T12:52:46.746611+00:00",
   "head": "5a3574612669baf153cca4515be95cf71da0ba73",
-  "cwd": "/Users/huseyinarslan/.codex/worktrees/arcora-local-verification/dark-perp",
+  "cwd": "<repo>",
   "source_files": {
     "scripts/local-verification/read_deployment.py": "d61305b3e48dd2a3fef392c7b906396ed69d711d9b9e6b633ee8e4eb152724ca",
     "scripts/local-verification/test_read_deployment.py": "518fb38a7449c55ef5397d77b08e5a5ea53c97b5fce906cf891034056c0e29f1",
