@@ -1,0 +1,14 @@
+Vercel CLI 59.16.0 (Node.js 24.12.0)
+{
+  "status": "ok",
+  "outputDir": "/Users/huseyinarslan/.codex/worktrees/arcora-warm-ui-20261007/labs-redesign-release/.vercel/output",
+  "outputDirRelative": ".vercel/output",
+  "target": "production",
+  "message": "Build completed successfully.",
+  "next": [
+    {
+      "command": "vercel deploy --scope kubudak90s-projects",
+      "when": "Deploy the build output"
+    }
+  ]
+}

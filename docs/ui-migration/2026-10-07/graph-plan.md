@@ -1,5 +1,7 @@
 # Warm Precision frontend migration
 
+Labs visual identity was subsequently replaced by the independent studio design; see `labs-redesign/plan.md` and its source fingerprint for current Labs evidence. Perp is unchanged.
+
 ## Contract
 - Source: https://github.com/Arcora-labs/arcora-perp, main 73e87c18d2431e7b0815906c216c7fd99db61dea, verified with ls-remote. Dedicated clone and feat/warm-precision-ui branch. Original dirty checkout untouched.
 - Design: Arcora-Warm-Precision-UI-Motion.zip SHA256 985f8e72535a125422ae07932f82e3e4329d4357f44999ed8b4af2a2c2403dea.

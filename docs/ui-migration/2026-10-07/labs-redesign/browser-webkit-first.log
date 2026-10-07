@@ -1,0 +1,56 @@
+### Result
+{"failures":["keyboard skip link"],"errors":[],"consoleErrors":["Refused to apply a stylesheet because its hash, its nonce, or 'unsafe-inline' does not appear in the style-src directive of the Content Security Policy.","Refused to apply a stylesheet because its hash, its nonce, or 'unsafe-inline' does not appear in the style-src directive of the Content Security Policy.","Refused to apply a stylesheet because its hash, its nonce, or 'unsafe-inline' does not appear in the style-src directive of the Content Security Policy.","Refused to apply a stylesheet because its hash, its nonce, or 'unsafe-inline' does not appear in the style-src directive of the Content Security Policy.","Refused to apply a stylesheet because its hash, its nonce, or 'unsafe-inline' does not appear in the style-src directive of the Content Security Policy.","Refused to apply a stylesheet because its hash, its nonce, or 'unsafe-inline' does not appear in the style-src directive of the Content Security Policy.","Refused to apply a stylesheet because its hash, its nonce, or 'unsafe-inline' does not appear in the style-src directive of the Content Security Policy.","Refused to apply a stylesheet because its hash, its nonce, or 'unsafe-inline' does not appear in the style-src directive of the Content Security Policy."],"links":["https://arcorapay.xyz/","https://celariwallet.com/","https://swap.arcorapay.xyz/","https://quetzaldex.xyz/","https://perp.arcoralabs.xyz/"],"checks":"5 real product screenshots; all preview/link states; category counts; 320–1600px; image loads; keyboard; reduced motion"}
+### Ran Playwright code
+```js
+await (async (page) => {
+ const failures=[],errors=[],consoleErrors=[];
+ page.on('pageerror',error=>errors.push(error.message));
+ page.on('console',message=>{if(message.type()==='error')consoleErrors.push(message.text())});
+ const check=(value,label)=>{if(!value)failures.push(label)};
+ await page.setViewportSize({width:1440,height:1000});
+ await page.goto('https://arcoralabs.xyz/');
+ await page.evaluate(()=>document.fonts.ready);
+ await page.screenshot({path:'output/playwright/labs-v2-webkit-desktop.png'});
+ const previews=[['Arcora Pay','pay','https://arcorapay.xyz/'],['Celari Wallet','celari','https://celariwallet.com/'],['ArcoraDEX','swap','https://swap.arcorapay.xyz/'],['Quetzal DEX','quetzal','https://quetzaldex.xyz/'],['Arcora Perp','perp','https://perp.arcoralabs.xyz/']];
+ for(const [name,id,url] of previews){
+  const button=page.getByRole('group',{name:'Choose a project preview'}).getByRole('button',{name,exact:true});
+  await button.click();
+  check(await button.getAttribute('aria-pressed')==='true','preview selection '+name);
+  check(await page.locator('.selected-screen').evaluate(el=>el.href)===url,'preview link '+name);
+  check((await page.locator('#selected-image').getAttribute('src')).endsWith(id+'.jpg'),'preview image '+name);
+ }
+ await page.getByRole('group',{name:'Choose a project preview'}).getByRole('button',{name:'Arcora Pay',exact:true}).click();
+ for(const [category,count] of [['Trading',3],['Payments',1],['Wallets',1],['All projects 5',5]]){
+  await page.getByRole('group',{name:'Filter projects'}).getByRole('button',{name:category,exact:true}).click();
+  check(await page.locator('.project:visible').count()===count,'filter '+category);
+ }
+ const links=await page.locator('.project-link').evaluateAll(as=>as.map(a=>a.href));
+ check(links.length===5&&new Set(links).size===5,'five distinct project links');
+ for(const id of ['pay','celari','swap','quetzal','perp']){
+  const project=page.locator('#project-'+id);
+  await project.scrollIntoViewIfNeeded();
+  await project.locator('img').evaluate(img=>img.decode());
+  await project.screenshot({path:'output/playwright/labs-v2-webkit-project-'+id+'.png'});
+ }
+ for(const width of [320,360,390,760,1024,1440,1600]){
+  await page.setViewportSize({width,height:width<800?844:1000});
+  await page.evaluate(()=>scrollTo(0,0));
+  const bounds=await page.evaluate(()=>({width:document.documentElement.clientWidth,scroll:document.documentElement.scrollWidth,broken:[...document.images].filter(i=>!i.complete||!i.naturalWidth).map(i=>i.src)}));
+  check(bounds.scroll<=bounds.width,'horizontal overflow '+width+' '+JSON.stringify(bounds));
+  check(!bounds.broken.length,'broken images '+width);
+  if(width===390)await page.screenshot({path:'output/playwright/labs-v2-webkit-mobile.png'});
+ }
+ await page.setViewportSize({width:390,height:844});
+ await page.locator('#project-celari').scrollIntoViewIfNeeded();
+ await page.locator('#project-celari').screenshot({path:'output/playwright/labs-v2-webkit-mobile-project.png'});
+ await page.emulateMedia({reducedMotion:'reduce'});
+ check(await page.locator('.selected-screen').evaluate(el=>getComputedStyle(el).transitionDuration)==='0s','reduced motion');
+ await page.setViewportSize({width:1440,height:1000});
+ await page.goto('https://arcoralabs.xyz/');await page.keyboard.press('Tab');
+ check(await page.getByRole('link',{name:'Skip to content'}).evaluate(el=>el===document.activeElement),'keyboard skip link');
+ check(await page.locator('h1').count()===1,'one h1');
+ return {failures,errors,consoleErrors,links,checks:'5 real product screenshots; all preview/link states; category counts; 320–1600px; image loads; keyboard; reduced motion'};
+})(page);
+```
+### Events
+- New console entries: .playwright-cli/console-2026-10-07T18-52-05-484Z.log#L1-L8

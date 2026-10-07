@@ -1,9 +1,11 @@
 # Arcora Labs
 
-English portfolio at arcoralabs.xyz. Static HTML/CSS/JS; no API, analytics, forms or runtime dependencies. Served project assets only, with local Inter font.
+Independent blue/white studio identity at arcoralabs.xyz. Static HTML/CSS/JS, locally hosted Archivo font, no analytics or runtime dependencies. Perp's Warm Precision palette and product illustrations are not used by the corporate theme.
 
 Local: `python3 -m http.server 5189 --bind 127.0.0.1 --directory apps/labs-site`
 
-Project names and descriptions were checked against arcorapay.xyz, swap.arcorapay.xyz, celariwallet.com and quetzaldex.xyz on 2026-10-07. Illustrations are authored representations, not screenshots or live product data. Do not add unverified traction, funding or partnership claims.
+The five project JPEGs in `assets/projects/` are unaltered browser screenshots captured at 1440×1000 from the linked public websites on 2026-10-07. They preserve the original product typography, colors, layouts and visible state. Celari uses its English locale. Screenshots are dated in the page captions and are not live data. ArcoraDEX is on Base Sepolia (not Arc); Arcora Pay is on Arc testnet. Product content is based on the actual current websites.
 
-Vercel target: kubudak90s-projects/arcora-labs. Domain: arcoralabs.xyz. This directory is the deployment root and contains no Perp gateway configuration. Preserve mail DNS records when configuring the website.
+Project selector controls the cover screenshot and link; category filters show matching project spreads. Both are native buttons with visible focus and `aria-pressed`. All project links remain available without JavaScript. Reduced motion removes transitions.
+
+Vercel project: kubudak90s-projects/arcora-labs; rootDirectory: apps/labs-site. Deploy from a repository-shaped isolated root, not from the nested site directory. Stage a production build, verify it, then promote the same immutable URL. Do not change Perp or DNS when deploying Labs.
