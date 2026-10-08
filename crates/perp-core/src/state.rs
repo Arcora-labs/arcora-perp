@@ -114,6 +114,20 @@ impl<H: Hasher> State<H> {
         self.markets.insert(market.id, market);
     }
 
+    /// 2026-10-08 review: the state root hashes the `markets` map KEY, never
+    /// `Market.id`, so a witness could carry `Market { id: X }` under key `Y ≠ X`
+    /// with an unchanged state root. `add_market` keys by `id`, but a decoded
+    /// witness state is not so constrained — re-check at root-derivation time
+    /// (fail-closed) before trusting any digest over this map.
+    pub fn validate_market_keys(&self) -> Result<(), crate::EngineError> {
+        for (key, market) in &self.markets {
+            if *key != market.id {
+                return Err(crate::EngineError::MarketIdMismatch);
+            }
+        }
+        Ok(())
+    }
+
     /// Sum of all unspent note amounts.
     pub fn notes_value(&self) -> i128 {
         self.notes.values().map(|n| n.amount).sum()

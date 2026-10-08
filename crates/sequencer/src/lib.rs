@@ -1218,6 +1218,11 @@ impl Sequencer {
         let manifest = BatchManifest {
             previous_state_root: prev_state_root,
             batch_id,
+            // 2026-10-08 review: the committed batch clock. Every clock-carrying op in
+            // this batch was stamped with this same `now_ms`, and `derive_roots`
+            // rejects any op whose clock disagrees — so oracle freshness is checked
+            // against a time committed in the manifest hash, not a prover-chosen one.
+            batch_time_ms: now_ms,
             ordered,
             rejected,
             oracle_updates,
@@ -1403,6 +1408,29 @@ impl Sequencer {
     /// `apply_batch`), drain the window op-log into the witness, and reopen a fresh
     /// window from the current (post-bump) state. `derive_roots(pre_state, ops, manifest)
     /// .new_state_root` equals the live state root after this call.
+    ///
+    /// 2026-10-08 review — committed batch clock: the window accumulates ops across
+    /// ticks, each stamped with its own tick time, but the proven transition must
+    /// check oracle freshness against ONE time committed in the manifest — a per-op
+    /// prover-chosen clock would let a prover backdate `now_ms` to pass a stale
+    /// price. So every clock-carrying op is re-stamped to the window's single
+    /// reference clock, which the manifest commits as `batch_time_ms`.
+    ///
+    /// The reference clock is DETERMINISTIC — the maximum `now_ms` already carried by
+    /// the window's ops (≈ the last tick that contributed, i.e. seal time). This is
+    /// required, not cosmetic: `rollback_window` re-seals the same op log after a
+    /// failed settle, and the re-sealed witness must be byte-identical to the first
+    /// seal or the recovery flow breaks. A wall-clock seal time would make every
+    /// re-seal diverge.
+    ///
+    /// Oracle transcripts are re-stamped ONLY when they would fail the freshness gate
+    /// at the committed clock (an op from an earlier tick whose publish time is older
+    /// than the market's `max_oracle_staleness_ms` at seal). A fresh transcript is
+    /// kept byte-identical, preserving re-seal identity; a stale one is refreshed
+    /// from the sequencer's latest per-market transcript (the feed task keeps each
+    /// within one fetch interval). This preserves legitimate delayed proof
+    /// generation: the clock binds to SEAL time, never to settlement time, so a proof
+    /// built minutes after sealing still validates the same transcripts.
     pub fn seal_window(&mut self) -> WindowWitness {
         let batch_id = self.state.next_batch_id;
         let oracle_updates: Vec<Digest> = self
@@ -1410,9 +1438,109 @@ impl Sequencer {
             .values()
             .map(|t| t.hash::<Keccak256>())
             .collect();
+        // Determistic reference clock: the latest op time already in the window.
+        let now_ms = self
+            .window_ops
+            .iter()
+            .filter_map(|op| match op {
+                BatchOp::Fill { now_ms, .. }
+                | BatchOp::AccrueFunding { now_ms, .. }
+                | BatchOp::Liquidate { now_ms, .. }
+                | BatchOp::Unbind { now_ms, .. } => Some(*now_ms),
+                _ => None,
+            })
+            .max()
+            .unwrap_or(0);
+        // Re-stamp clock-carrying ops to the committed window clock, refreshing the
+        // embedded oracle transcript from the freshest available per-market transcript
+        // — the sequencer's latest, or the freshest one embedded in the window's own
+        // ops (both are publisher-signed transcripts for that market) — but ONLY where
+        // the embedded one would fail the freshness gate at the committed clock. A
+        // fresh transcript is kept byte-identical, preserving re-seal identity; where
+        // no fresher transcript exists the op's own is kept and the engine's
+        // staleness gate rejects it fail-closed rather than accepting an unchecked
+        // price.
+        let mut freshest_embedded: std::collections::BTreeMap<MarketId, OracleTranscript> =
+            std::collections::BTreeMap::new();
+        for op in &self.window_ops {
+            let (market_id, oracle) = match op {
+                BatchOp::Fill {
+                    market_id, oracle, ..
+                }
+                | BatchOp::AccrueFunding {
+                    market_id, oracle, ..
+                }
+                | BatchOp::Liquidate {
+                    market_id, oracle, ..
+                }
+                | BatchOp::Unbind {
+                    market_id, oracle, ..
+                } => (market_id, oracle),
+                _ => continue,
+            };
+            let entry = freshest_embedded.entry(*market_id).or_insert(*oracle);
+            if oracle.publish_time_ms > entry.publish_time_ms {
+                *entry = *oracle;
+            }
+        }
+        for op in &mut self.window_ops {
+            let (market_id, oracle_slot, now_slot) = match op {
+                BatchOp::Fill {
+                    market_id,
+                    oracle,
+                    now_ms,
+                    ..
+                }
+                | BatchOp::AccrueFunding {
+                    market_id,
+                    oracle,
+                    now_ms,
+                    ..
+                }
+                | BatchOp::Liquidate {
+                    market_id,
+                    oracle,
+                    now_ms,
+                    ..
+                }
+                | BatchOp::Unbind {
+                    market_id,
+                    oracle,
+                    now_ms,
+                    ..
+                } => (market_id, oracle, now_ms),
+                _ => continue,
+            };
+            let staleness = self
+                .state
+                .markets
+                .get(market_id)
+                .map(|m| m.max_oracle_staleness_ms)
+                .unwrap_or(0);
+            let stale_at_clock = oracle_slot.publish_time_ms > now_ms
+                || now_ms - oracle_slot.publish_time_ms > staleness;
+            if stale_at_clock {
+                let candidate = self
+                    .oracles
+                    .get(market_id)
+                    .copied()
+                    .into_iter()
+                    .chain(freshest_embedded.get(market_id).copied())
+                    .max_by_key(|t| t.publish_time_ms);
+                if let Some(fresher) = candidate {
+                    let fresh_at_clock = fresher.publish_time_ms <= now_ms
+                        && now_ms - fresher.publish_time_ms <= staleness;
+                    if fresh_at_clock {
+                        *oracle_slot = fresher;
+                    }
+                }
+            }
+            *now_slot = now_ms;
+        }
         let manifest = BatchManifest {
             previous_state_root: self.window_start_state.state_root(),
             batch_id,
+            batch_time_ms: now_ms,
             ordered: self.window_ordered.clone(),
             rejected: self.window_rejected.clone(),
             oracle_updates,

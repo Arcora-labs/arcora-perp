@@ -154,10 +154,16 @@ impl<'a> CanonicalRead<'a> {
                     "settlement observation: invalid ABI word for {signature}"
                 ));
             }
-            Ok(bytes
+            // Length is checked exactly above, so each chunk is a 32-byte word; map the
+            // conversion failure to an error instead of unwrapping (clippy-clean).
+            bytes
                 .chunks_exact(32)
-                .map(|w| w.try_into().unwrap())
-                .collect())
+                .map(|w| {
+                    w.try_into().map_err(|_| {
+                        format!("settlement observation: invalid ABI word for {signature}")
+                    })
+                })
+                .collect()
         };
         let words = parse(self.primary.call("eth_call", params.clone())?)?;
         if let Some(witness) = self.witness {
@@ -319,13 +325,19 @@ pub(super) fn abi_u64(word: Digest, label: &str) -> Result<u64, String> {
     if word[..24].iter().any(|b| *b != 0) {
         return Err(format!("settlement observation: {label} overflows u64"));
     }
-    Ok(u64::from_be_bytes(word[24..].try_into().unwrap()))
+    let bytes: [u8; 8] = word[24..]
+        .try_into()
+        .map_err(|_| format!("settlement observation: {label} not a u64 word"))?;
+    Ok(u64::from_be_bytes(bytes))
 }
 pub(super) fn abi_u128(word: Digest, label: &str) -> Result<u128, String> {
     if word[..16].iter().any(|b| *b != 0) {
         return Err(format!("settlement observation: {label} overflows u128"));
     }
-    Ok(u128::from_be_bytes(word[16..].try_into().unwrap()))
+    let bytes: [u8; 16] = word[16..]
+        .try_into()
+        .map_err(|_| format!("settlement observation: {label} not a u128 word"))?;
+    Ok(u128::from_be_bytes(bytes))
 }
 pub(super) fn abi_bool(word: Digest, label: &str) -> Result<bool, String> {
     if word[..31].iter().any(|b| *b != 0) || word[31] > 1 {
@@ -343,16 +355,15 @@ fn hex_bytes(value: &Value) -> Result<Vec<u8>, String> {
     if data.len() % 2 != 0 {
         return Err("settlement observation: invalid RPC hex length".into());
     }
-    data.as_bytes()
-        .chunks_exact(2)
-        .map(|p| {
-            Ok(
-                crate::hex_nibble(p[0]).ok_or("settlement observation: invalid RPC hex data")? * 16
-                    + crate::hex_nibble(p[1])
-                        .ok_or("settlement observation: invalid RPC hex data")?,
-            )
-        })
-        .collect()
+    let mut out = Vec::with_capacity(data.len() / 2);
+    for pair in data.as_bytes().chunks_exact(2) {
+        let hi =
+            crate::hex_nibble(pair[0]).ok_or("settlement observation: invalid RPC hex data")?;
+        let lo =
+            crate::hex_nibble(pair[1]).ok_or("settlement observation: invalid RPC hex data")?;
+        out.push(hi * 16 + lo);
+    }
+    Ok(out)
 }
 
 /// The deposit page validator already binds logs and prefix calls to canonical

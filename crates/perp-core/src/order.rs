@@ -160,11 +160,22 @@ pub enum RejectReason {
 /// Anyone can recompute [`BatchManifest::hash`] and check their receipt's
 /// `order_hash` is in `ordered` (included) or `rejected` (with a reason). The
 /// hash is anchored on L1 with the proof, making inclusion auditable.
+///
+/// 2026-10-08 review: `batch_time_ms` is the batch's reference clock. Oracle
+/// freshness (`publish_time ∈ [now - max_staleness, now]`) is checked against
+/// the `now_ms` embedded in each op; `derive_roots` rejects any op whose
+/// `now_ms` differs from this committed field, so the freshness clock is no
+/// longer a prover-chosen private witness value — it is part of the manifest
+/// preimage anyone can recompute from the anchored `manifest_hash`. The value
+/// is the SEAL-time clock: delayed proof generation must not retroactively
+/// re-stamp ops, so this binds freshness to batching, not settlement.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct BatchManifest {
     pub previous_state_root: Digest,
     pub batch_id: u64,
+    /// SEAL-time reference clock every op's `now_ms` must equal (see type docs).
+    pub batch_time_ms: u64,
     pub ordered: Vec<Digest>,
     pub rejected: Vec<(Digest, RejectReason)>,
     pub oracle_updates: Vec<Digest>,
@@ -176,10 +187,12 @@ pub struct BatchManifest {
 impl BatchManifest {
     /// Canonical manifest hash, bound into the proof's public inputs (§2, §10b).
     pub fn hash<H: Hasher>(&self) -> Digest {
-        let mut words: Vec<Digest> = Vec::new();
-        words.push(self.previous_state_root);
-        words.push(word_u64(self.batch_id));
-        words.push(word_u64(self.ordered.len() as u64));
+        let mut words: Vec<Digest> = alloc::vec![
+            self.previous_state_root,
+            word_u64(self.batch_id),
+            word_u64(self.batch_time_ms),
+            word_u64(self.ordered.len() as u64),
+        ];
         words.extend_from_slice(&self.ordered);
         words.push(word_u64(self.rejected.len() as u64));
         for (h, r) in &self.rejected {
@@ -256,6 +269,7 @@ mod tests {
         let m = BatchManifest {
             previous_state_root: [0u8; 32],
             batch_id: 1,
+            batch_time_ms: 0,
             ordered: alloc::vec![oh],
             rejected: alloc::vec![],
             oracle_updates: alloc::vec![],

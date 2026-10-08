@@ -93,6 +93,25 @@ pub fn derive_roots(
     if manifest.previous_state_root != prev_state_root || manifest.batch_id != batch_id {
         return Err(EngineError::ManifestMismatch);
     }
+    // 2026-10-08 review: the state root hashes the markets map KEY, never
+    // `Market.id` — a decoded witness state could carry `Market { id: X }` under
+    // key `Y ≠ X` with an unchanged root. Fail closed before deriving anything.
+    state.validate_market_keys()?;
+    // 2026-10-08 review: every clock-carrying op must agree with the manifest's
+    // committed reference clock, so oracle freshness is checked against a publicly
+    // committed time (see `BatchManifest::batch_time_ms`), not a per-op private value.
+    for op in ops {
+        let op_now = match op {
+            BatchOp::Fill { now_ms, .. }
+            | BatchOp::AccrueFunding { now_ms, .. }
+            | BatchOp::Liquidate { now_ms, .. }
+            | BatchOp::Unbind { now_ms, .. } => *now_ms,
+            _ => continue,
+        };
+        if op_now != manifest.batch_time_ms {
+            return Err(EngineError::ClockMismatch);
+        }
+    }
     let outputs = state.apply_batch(ops)?;
     let new_state_root = state.state_root();
     // SEC-019: the POST-apply tip — every deposit this batch consumed is already
@@ -137,6 +156,7 @@ mod tests {
         BatchManifest {
             previous_state_root: state.state_root(),
             batch_id: state.next_batch_id,
+            batch_time_ms: 0,
             ordered,
             rejected: vec![],
             oracle_updates: vec![],
@@ -144,6 +164,62 @@ mod tests {
             enclave_measurement: [0u8; 32],
             sequencer_pubkey_epoch: 0,
         }
+    }
+
+    #[test]
+    fn rejects_market_id_not_matching_map_key() {
+        let mut s = DefaultState::new(16);
+        s.add_market(Market::conservative(0));
+        // Corrupt the in-map copy's id after insertion, simulating a witness whose
+        // Market.id disagrees with the map key it was decoded under.
+        s.markets.get_mut(&0).unwrap().id = 99;
+        assert_eq!(s.validate_market_keys(), Err(EngineError::MarketIdMismatch));
+        let manifest = manifest_for(&s, vec![]);
+        assert_eq!(
+            derive_roots(&mut s, &[], &manifest).unwrap_err(),
+            EngineError::MarketIdMismatch
+        );
+    }
+
+    #[test]
+    fn rejects_op_clock_disagreeing_with_manifest_time() {
+        let mut s = DefaultState::new(16);
+        s.add_market(Market::conservative(0));
+        let manifest = manifest_for(&s, vec![]);
+        // manifest.batch_time_ms = 0; the op claims a different clock. The
+        // transcript is never validated — ClockMismatch fires first.
+        let ops = vec![BatchOp::AccrueFunding {
+            market_id: 0,
+            mark: 1_000 * QUOTE_SCALE,
+            oracle: crate::oracle::OracleTranscript {
+                price: 1_000 * crate::fixed::PRICE_SCALE,
+                publish_time_ms: 0,
+                confidence: 0,
+                backup_twap: 1_000 * crate::fixed::PRICE_SCALE,
+                signature: crate::oracle::OracleSig {
+                    r: [0u8; 32],
+                    s: [0u8; 32],
+                    v: 0,
+                },
+            },
+            now_ms: 60_000,
+        }];
+        assert_eq!(
+            derive_roots(&mut s, &ops, &manifest).unwrap_err(),
+            EngineError::ClockMismatch
+        );
+    }
+
+    #[test]
+    fn manifest_hash_binds_batch_time() {
+        let s = DefaultState::new(16);
+        let mut m1 = manifest_for(&s, vec![]);
+        let mut m2 = m1.clone();
+        m2.batch_time_ms = 1;
+        assert_ne!(m1.hash::<Keccak256>(), m2.hash::<Keccak256>());
+        // sanity: identical manifests hash identically
+        m1.batch_time_ms = 1;
+        assert_eq!(m1.hash::<Keccak256>(), m2.hash::<Keccak256>());
     }
 
     #[test]

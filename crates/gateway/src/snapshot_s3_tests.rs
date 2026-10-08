@@ -275,6 +275,19 @@ fn s3_historical_writers_preserve_state_authority_and_replay() {
             postcard::to_allocvec(&upgraded.seq.state).unwrap()
         );
         assert!(gw.seq.state.conservation_holds());
+        // 2026-10-08 review: the committed batch clock binds every op's `now_ms`, so a
+        // window's oracle transcripts must be fresh at SEAL time. Production's feed
+        // task keeps every market's transcript within one fetch interval; this
+        // historical snapshot's markets 1/2 oracles are long dead, so refresh them
+        // exactly as the feed would before sealing.
+        {
+            // Reuse the same clock the newest op was stamped with, so the refreshed
+            // transcripts are fresh AT the committed batch clock, not after it.
+            for id in gw.seq.state.markets.keys().copied().collect::<Vec<_>>() {
+                let t = oracle_of(gw.px_of(id), now, id, &gw.oracle_signer);
+                gw.seq.set_oracle(id, t);
+            }
+        }
         let witness = gw.seq.seal_window();
         let replayed = perp_core::commitment::derive_roots(
             &mut witness.pre_state.clone(),

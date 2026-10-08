@@ -419,8 +419,24 @@ contract DarkPerpSettlementTest is MiniTest {
         assertEq(s.pendingEth(challenger), 0, "challenger not refunded");
     }
 
-    function test_rejection_answer_always_forfeits() public {
-        // Even if the rejection batch post-dates the challenge, answerByRejection pays the sequencer.
+    function _settleRejectionBatch(bytes32 orderHash) internal returns (uint256 batchId) {
+        batchId = s.batchCount();
+        bytes32 rejected = s.rejectionLeaf(batchId, orderHash); // single-leaf root
+        bytes32 prev = s.currentStateRoot();
+        bytes32 newRoot = keccak256(abi.encodePacked("rej", batchId));
+        (bytes32 dTip, uint64 dCount) = _head();
+        bytes32 commitment =
+            s.publicCommitment(prev, bytes32("m"), newRoot, bytes32(0), bytes32(0), rejected, dTip);
+        s.settleBatch(
+            prev, bytes32("m"), newRoot, bytes32(0), bytes32(0), rejected, dTip, dCount, abi.encodePacked(commitment)
+        );
+    }
+
+    function test_rejection_answer_postdating_challenge_refunds() public {
+        // 2026-10-08 review: mirror of answerChallenge's SEQ-001 gate. If the rejecting
+        // batch settles only AFTER the (ripe) challenge opened, the challenger is what
+        // forced the order's on-chain disposition to be published — the bond refunds
+        // to the challenger instead of paying the sequencer.
         bytes32 orderHash = keccak256("rejected-order");
         uint64 recvTimeMs = 1000;
         bytes32 digest = s.receiptDigest(orderHash, 1, recvTimeMs, 0);
@@ -432,19 +448,34 @@ contract DarkPerpSettlementTest is MiniTest {
         s.challengeInclusion{value: CHALLENGE_BOND}(orderHash, 1, recvTimeMs, 0, v, r, sig);
 
         // settle a batch (after the challenge) whose rejectedRoot contains orderHash.
-        uint256 batchId = s.batchCount();
-        bytes32 rejected = s.rejectionLeaf(batchId, orderHash);
-        bytes32 prev = s.currentStateRoot();
-        bytes32 newRoot = keccak256(abi.encodePacked("rej", batchId));
-        (bytes32 dTip, uint64 dCount) = _head();
-        bytes32 commitment = s.publicCommitment(prev, bytes32("m"), newRoot, bytes32(0), bytes32(0), rejected, dTip);
-        s.settleBatch(
-            prev, bytes32("m"), newRoot, bytes32(0), bytes32(0), rejected, dTip, dCount, abi.encodePacked(commitment)
-        );
+        vm.roll(block.number + 1);
+        uint256 batchId = _settleRejectionBatch(orderHash);
 
         s.answerByRejection(orderHash, batchId, new bytes32[](0));
-        assertEq(s.pendingEth(address(this)), CHALLENGE_BOND, "rejection forfeits to sequencer");
-        assertEq(s.pendingEth(challenger), 0, "challenger not refunded on valid rejection");
+        assertEq(s.pendingEth(challenger), CHALLENGE_BOND, "post-challenge rejection refunds the challenger");
+        assertEq(s.pendingEth(address(this)), 0, "sequencer not paid for a late-published rejection");
+    }
+
+    function test_rejection_answer_presettled_forfeits_to_sequencer() public {
+        // The rejecting batch settled BEFORE the challenge opened: the reject
+        // disposition was already public and checkable, so the challenge was mistaken
+        // (or griefing) and the stake forfeits to the sequencer.
+        bytes32 orderHash = keccak256("rejected-order");
+        uint256 batchId = _settleRejectionBatch(orderHash);
+
+        uint64 recvTimeMs = 1000;
+        bytes32 digest = s.receiptDigest(orderHash, 1, recvTimeMs, 0);
+        (uint8 v, bytes32 r, bytes32 sig) = vm.sign(ENCLAVE_PK, digest);
+        address challenger = address(0xBEEF);
+        vm.deal(challenger, CHALLENGE_BOND);
+        vm.warp(recvTimeMs / 1000 + INCLUSION_DEADLINE + 1);
+        vm.roll(block.number + 1);
+        vm.prank(challenger);
+        s.challengeInclusion{value: CHALLENGE_BOND}(orderHash, 1, recvTimeMs, 0, v, r, sig);
+
+        s.answerByRejection(orderHash, batchId, new bytes32[](0));
+        assertEq(s.pendingEth(address(this)), CHALLENGE_BOND, "pre-settled rejection forfeits to sequencer");
+        assertEq(s.pendingEth(challenger), 0, "challenger not refunded");
     }
 
     function _depositToVault(uint256 amount) internal {

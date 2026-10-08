@@ -91,6 +91,18 @@ pub enum EngineError {
     WindDownGrammar,
     /// The terminal socialization set cannot absorb the remaining deficit.
     WindDownInsolvent,
+    /// 2026-10-08 review: a `Market` stored in the canonical state's `markets` map
+    /// under a key different from its own `id`. Every state root hashes the map KEY,
+    /// never `Market.id`, so a witness carrying `Market { id: X }` under key `Y ≠ X`
+    /// produced the identical digest and the circuit was blind to the mismatch.
+    /// Rejected fail-closed at root-derivation time.
+    MarketIdMismatch,
+    /// 2026-10-08 review: an op carrying a `now_ms` different from the manifest's
+    /// committed `batch_time_ms`. The freshness window
+    /// (`publish_time ∈ [now - max_staleness, now]`) is checked against the op clock;
+    /// binding every op to the single manifest time makes that clock publicly
+    /// committed (the manifest hash is anchored on L1) instead of prover-chosen.
+    ClockMismatch,
 }
 
 impl From<RiskError> for EngineError {

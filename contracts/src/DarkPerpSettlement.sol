@@ -633,10 +633,22 @@ contract DarkPerpSettlement {
         }
         delete challenges[orderHash];
         emit RejectionAnswered(orderHash, batchId);
-        // A valid rejection proves the challenger was mistaken (the order was never
-        // withheld, just legitimately rejected), so the stake always forfeits to the
-        // sequencer here — unlike `answerChallenge`, there is no forced-inclusion refund.
-        pendingEth[sequencer] += c.bond;
+        // 2026-10-08 review: mirror `answerChallenge`'s SEQ-001 refund gate. A rejection
+        // answer is only unambiguous proof the challenger was mistaken when the rejecting
+        // batch had ALREADY settled when they challenged — the reject disposition was
+        // already public and checkable before the stake went down. If the batch settled
+        // only AFTER the (ripe) challenge opened, the challenger is what forced the
+        // order's on-chain disposition to be published at all; taking their stake would
+        // make censorship-then-reject-under-pressure free to dismiss, so the bond
+        // refunds to the challenger exactly as on forced inclusion. This is a refund
+        // gate, not a slash gate; slashing stays exclusively in `slashUnanswered`.
+        // (Rejection REASONS remain unconstrained until Proof-v2 — see the SOUNDNESS
+        // caveat above; this gate does not claim to prove them.)
+        if (batches[batchId].settledAtBlock > c.openedBlock) {
+            pendingEth[c.challenger] += c.bond;
+        } else {
+            pendingEth[sequencer] += c.bond;
+        }
     }
 
     /// @notice After the window expires unanswered, slash the sequencer bond to the

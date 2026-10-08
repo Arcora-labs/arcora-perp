@@ -46,6 +46,7 @@ pub fn normal_witness() -> Witness {
     let manifest = BatchManifest {
         previous_state_root: state.state_root(),
         batch_id: state.next_batch_id,
+        batch_time_ms: 0,
         ordered: vec![],
         rejected: vec![],
         oracle_updates: vec![],
@@ -75,7 +76,7 @@ pub struct NegativeCase {
     pub expected_error: EngineError,
 }
 
-pub fn normal_negative_cases() -> [NegativeCase; 2] {
+pub fn normal_negative_cases() -> [NegativeCase; 3] {
     let mut bad_manifest = normal_witness();
     bad_manifest.2.previous_state_root[0] ^= 1;
     let mut bad_spend = normal_witness();
@@ -83,6 +84,12 @@ pub fn normal_negative_cases() -> [NegativeCase; 2] {
         BatchOp::Withdraw { spend_key, .. } => *spend_key = [4u8; 32],
         _ => unreachable!("the second normal operation is a withdrawal"),
     }
+    // 2026-10-08 review: a witness state whose in-map Market.id disagrees with its
+    // map key must be rejected even though the state root hashes only the key.
+    // (The ClockMismatch case needs a signed oracle transcript; it is covered in
+    // perp-core's `rejects_op_clock_disagreeing_with_manifest_time`.)
+    let mut bad_market_id = normal_witness();
+    bad_market_id.0.markets.get_mut(&0).expect("market 0").id = 99;
     [
         NegativeCase {
             name: "bad-manifest",
@@ -93,6 +100,11 @@ pub fn normal_negative_cases() -> [NegativeCase; 2] {
             name: "unauthorized-withdrawal",
             bytes: witness_bytes(&bad_spend),
             expected_error: EngineError::BadSpendKey,
+        },
+        NegativeCase {
+            name: "market-id-not-map-key",
+            bytes: witness_bytes(&bad_market_id),
+            expected_error: EngineError::MarketIdMismatch,
         },
     ]
 }
