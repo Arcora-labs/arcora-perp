@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Security &amp; Trust — Arcora Perp Docs</title>
+<meta name="description" content="The honest trust model of the Arcora Perp testnet alpha: what the zk proof guarantees, what the TEE guarantees, and the current gaps.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="deployment-note"><strong>Public browser demo.</strong> The current app simulates balances, orders and settlement. These documents describe the protocol and gateway integration; they are not evidence of a live gateway. <a href="/#/trade">Explore the demo →</a></div>
+<header class="topbar">
+  <a class="brand" href="index.html">Arcora Perp <span>Docs</span></a>
+  <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="sidenav">Menu</button>
+</header>
+<aside class="sidenav" id="sidenav">
+  <a class="brand" href="index.html">Arcora Perp <span>Docs</span></a>
+  <nav>
+    <a href="index.html">Overview</a>
+    <a href="quickstart.html">Quickstart</a>
+    <a href="trading.html">Trading</a>
+    <a href="api.html">API Reference</a>
+    <a href="architecture.html">Architecture</a>
+    <a href="security.html" class="current">Security &amp; Trust</a>
+    <a href="arcora-perp-litepaper.html">Litepaper</a>
+  </nav>
+  <div class="nav-foot"><a href="https://perp.arcoralabs.xyz">Open the app &rarr;</a></div>
+</aside>
+<main>
+<div class="content">
+
+<h1>Security &amp; Trust</h1>
+<p class="lede">This page states exactly what the current alpha guarantees, what it does not, and what secures your funds in between. We would rather you trust Arcora Perp for the right reasons than for vague ones.</p>
+
+<h2>What the zk proof guarantees</h2>
+<p>Every settled state root must satisfy the SP1 zkVM guest: the proof re-executes the committed window and the on-chain verifier rejects a transition that does not satisfy that program. All six commitment roots are derived inside the guest rather than accepted as arbitrary host-provided roots.</p>
+<p><strong>That is a transition-validity guarantee, not a complete operator-independence guarantee.</strong> The current alpha gateway holds server-custody spend keys and the oracle publisher authority. The proof does not independently establish that an operation reflects a user's intent when the gateway already possesses that user's custody key, and it does not establish external price truth when the accepted oracle transcript is signed by a gateway-controlled publisher key. Permissionless Merkle claims enforce the destination and amount committed by a settled withdrawals root; they do not erase those upstream trust assumptions.</p>
+
+<h2>What the TEE guarantees</h2>
+<p>Matching and ordering run inside an Intel TDX confidential VM. The TEE provides matching/ordering <strong>privacy and integrity attested to Intel TDX hardware</strong>, with the enclave identity (its signing key) sealed to the attested measurement. Signed receipts, the sealed order ingress, and shielded account state all hang off this identity.</p>
+
+<h2>Current gaps (testnet alpha)</h2>
+<div class="callout danger">
+  <p class="callout-title">Read this before depositing anything you care about</p>
+  <ol>
+    <li><strong>The gateway is a trusted/custodial component in this alpha.</strong> It holds server-custody account spend keys in process memory and controls the oracle publisher key. A gateway compromise can therefore affect fund authorization and market inputs even though invalid guest transitions remain unprovable. This is the principal A10 trust boundary.</li>
+    <li>The <strong>zk prover currently runs on a development workstation and is NOT yet TEE-attested</strong>. The witness leaves the sequencer enclave sealed, but the prover machine's measurement is a stub. Roadmap: attestation-gated key release to an x86_64 TDX prover.</li>
+    <li><strong>Operator liveness is a single point of failure.</strong> If the sequencer goes down, trading halts. Funds remain safe and withdrawable via forced-exit after the liveness window (7,200 blocks), but there is no failover operator.</li>
+    <li><strong>Ordering fairness is not yet zk-proven.</strong> The proof attests correct <em>execution</em> of the sequenced operations; the sequencing itself is enclave-attested only. A matching-fairness proof (&ldquo;Proof v2&rdquo;) is on the roadmap.</li>
+    <li><strong>Proof cadence:</strong> settles land roughly every 10&ndash;20 minutes — one proof per window, with a full-state witness. A sparse-witness redesign (proof cost independent of total account count) is on the roadmap.</li>
+    <li>The contracts are <strong>internally audited</strong> (multi-agent adversarial audits; 13 findings remediated pre-alpha) but there is <strong>no third-party audit yet</strong>.</li>
+  </ol>
+</div>
+<p>Between MATCHED and SETTLED, your fills are attested by the TEE and secured economically by the operator's bond — not yet by a zk proof. If that distinction matters to your strategy, wait for SETTLED (<a href="trading.html#finality">finality model</a>).</p>
+
+<h2>What secures you in between</h2>
+<ul>
+  <li><strong>Operator bond</strong>: floor of 5% of vault TVL (<code>requiredBond()</code>), slashable through the challenge game.</li>
+  <li><strong>Inclusion challenges</strong>: any holder of an enclave-signed receipt can challenge a settled window on-chain (challenge bond 0.01 ETH, 300-block window). Failure to prove inclusion slashes the operator's bond to the challenger.</li>
+  <li><strong>Forced exit</strong>: after 7,200 blocks without a settle, the system enters forced-exit / close-only and settled state remains withdrawable.</li>
+</ul>
+
+<h2>Contract addresses (Base Sepolia, chain ID 84532)</h2>
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Contract</th><th>Address</th></tr></thead>
+  <tbody>
+    <tr><td>DarkPerpSettlement</td><td class="addr"><a href="https://sepolia.basescan.org/address/0xf5D6Aa9CC96E2ac8AC5564df5E8475bDb13BCDCF">0xf5D6Aa9CC96E2ac8AC5564df5E8475bDb13BCDCF</a></td></tr>
+    <tr><td>CollateralVault</td><td class="addr"><a href="https://sepolia.basescan.org/address/0xC3EBc0f7301D5a914b01b8d2a1B5574764330c05">0xC3EBc0f7301D5a914b01b8d2a1B5574764330c05</a></td></tr>
+    <tr><td>MockUSDC (open mint, 6 decimals)</td><td class="addr"><a href="https://sepolia.basescan.org/address/0x9F5365c947eCaBaf62f42EF0Fe92ab909f709bDA">0x9F5365c947eCaBaf62f42EF0Fe92ab909f709bDA</a></td></tr>
+    <tr><td>SP1ZkVerifier</td><td class="addr"><a href="https://sepolia.basescan.org/address/0x8012F3b35B9884f86a3F8f39B79e82eC410E1160">0x8012F3b35B9884f86a3F8f39B79e82eC410E1160</a></td></tr>
+    <tr><td>SP1VerifierGateway (canonical)</td><td class="addr"><a href="https://sepolia.basescan.org/address/0x397A5f7f3dBd538f23DE225B51f532c34448dA9B">0x397A5f7f3dBd538f23DE225B51f532c34448dA9B</a></td></tr>
+    <tr><td>Sequencer / operator</td><td class="addr"><a href="https://sepolia.basescan.org/address/0xed37B7fc534Cc93D4195b4F11ADc5C14237cd287">0xed37B7fc534Cc93D4195b4F11ADc5C14237cd287</a></td></tr>
+    <tr><td>Enclave signer (receipts recover to)</td><td class="addr"><a href="https://sepolia.basescan.org/address/0x92173839C6B3b717179ba5505CCE31bD2131EbA0">0x92173839C6B3b717179ba5505CCE31bD2131EbA0</a></td></tr>
+  </tbody>
+</table>
+</div>
+<p>SP1 program verification key (bound in SP1ZkVerifier; proofs verify through the canonical SP1VerifierGateway):</p>
+<pre><code>0x000a2f9bc04612ca95b3b26dc65f5dc463bba65ce1dff5eb3725545679bda5ed</code></pre>
+
+<h2>Protocol parameters</h2>
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Parameter</th><th>Value</th></tr></thead>
+  <tbody>
+    <tr><td>Operator bond floor</td><td>5% of vault TVL (BOND_BPS = 500)</td></tr>
+    <tr><td>Challenge bond</td><td>0.01 ETH</td></tr>
+    <tr><td>Challenge window</td><td>300 blocks</td></tr>
+    <tr><td>Liveness window (forced exit)</td><td>7,200 blocks</td></tr>
+    <tr><td>Insurance fund seed</td><td>25,000 USDC</td></tr>
+    <tr><td>Order rate limit</td><td>10/s per account</td></tr>
+    <tr><td>Proof cadence</td><td>~10&ndash;20 minutes per window</td></tr>
+    <tr><td>Scales</td><td>price/size &times;1e8, quote (USDC) &times;1e6</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h2>Testing &amp; audit status</h2>
+<ul>
+  <li>351 automated tests across the workspace — engine, sequencer, gateway, and a dedicated Foundry suite for the contracts — including proof-replay merge gates and crash-recovery drills.</li>
+  <li>Internal multi-agent adversarial audits; 13 findings remediated before alpha.</li>
+  <li><strong>No third-party audit yet.</strong> One is on the roadmap before mainnet.</li>
+</ul>
+
+<h2>Roadmap</h2>
+<ol>
+  <li><strong>TEE-attested zk prover</strong> — attestation-gated witness key release to an x86_64 TDX prover.</li>
+  <li><strong>Sparse-witness proving</strong> — proof cost independent of total accounts, for faster settles at scale.</li>
+  <li><strong>Matching-fairness zk proof (Proof v2)</strong> — prove the ordering policy, not just the execution.</li>
+  <li><strong>Third-party security audit</strong> &rarr; incentivized testnet &rarr; mainnet.</li>
+</ol>
+
+<footer>
+  <p>Arcora Perp is a <strong>public testnet alpha</strong> on Base Sepolia (chain ID 84532). All funds are test funds (open-mint MockUSDC). The contracts have not been audited by a third party — do not treat this as production software.</p>
+  <p><a href="https://perp.arcoralabs.xyz">perp.arcoralabs.xyz</a> &middot; <a href="index.html">Docs home</a></p>
+</footer>
+
+</div>
+</main>
+<script>
+(function () {
+  var t = document.querySelector(".nav-toggle");
+  var n = document.getElementById("sidenav");
+  t.addEventListener("click", function () {
+    var open = n.classList.toggle("open");
+    t.setAttribute("aria-expanded", open ? "true" : "false");
+  });
+})();
+</script>
+</body>
+</html>

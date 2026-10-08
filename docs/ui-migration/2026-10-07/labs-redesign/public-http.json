@@ -1,0 +1,100 @@
+[
+  {
+    "url": "https://arcoralabs.xyz/assets/labs-mark.svg",
+    "status": 200,
+    "matchesTestedBuild": true,
+    "sha256": "a16b0b4479d8681dafd63a7535aa2df197f57222af13e0a00ed5144610b835c4",
+    "contentType": "image/svg+xml"
+  },
+  {
+    "url": "https://arcoralabs.xyz/assets/projects/celari.jpg",
+    "status": 200,
+    "matchesTestedBuild": true,
+    "sha256": "58fd5d36a107bac339570d1e679b494f7f77395e3917cf1c8ea7ec70a8402e17",
+    "contentType": "image/jpeg"
+  },
+  {
+    "url": "https://arcoralabs.xyz/assets/projects/pay.jpg",
+    "status": 200,
+    "matchesTestedBuild": true,
+    "sha256": "c915684befb40e1e322497fc78870a1d351695e8d90ce9206c7aea078047f974",
+    "contentType": "image/jpeg"
+  },
+  {
+    "url": "https://arcoralabs.xyz/assets/projects/perp.jpg",
+    "status": 200,
+    "matchesTestedBuild": true,
+    "sha256": "aa6230cbd6507463d6667f58dd3732f81148a0f2dd7be65c76895a9086bc8d56",
+    "contentType": "image/jpeg"
+  },
+  {
+    "url": "https://arcoralabs.xyz/assets/projects/quetzal.jpg",
+    "status": 200,
+    "matchesTestedBuild": true,
+    "sha256": "b0f66abad10bc7c04773c55f25543ab64d3fc7afbb055e95147eba7332fca74d",
+    "contentType": "image/jpeg"
+  },
+  {
+    "url": "https://arcoralabs.xyz/assets/projects/swap.jpg",
+    "status": 200,
+    "matchesTestedBuild": true,
+    "sha256": "fe634ee70b03205798446a5758dc909810d5f75e74fc48d2c8dbb7b9af60b12b",
+    "contentType": "image/jpeg"
+  },
+  {
+    "url": "https://arcoralabs.xyz/assets/social.png",
+    "status": 200,
+    "matchesTestedBuild": true,
+    "sha256": "6a39e2156685c9bb4bf6c6488b2616f580d53b6775049122d5a548aaab9878aa",
+    "contentType": "image/png"
+  },
+  {
+    "url": "https://arcoralabs.xyz/fonts/Archivo-LICENSE.txt",
+    "status": 200,
+    "matchesTestedBuild": true,
+    "sha256": "108b4e57c9c796d3d38d0428ca7ee39de47ad93187302718d9b2d8864b9b716b",
+    "contentType": "text/plain; charset=utf-8"
+  },
+  {
+    "url": "https://arcoralabs.xyz/fonts/Archivo-latin.woff2",
+    "status": 200,
+    "matchesTestedBuild": true,
+    "sha256": "7150c0ec5ad356453013d11affec1fbab95de0dd2dcecb043b4f1cb7f87c4ba4",
+    "contentType": "font/woff2"
+  },
+  {
+    "url": "https://arcoralabs.xyz/",
+    "status": 200,
+    "matchesTestedBuild": true,
+    "sha256": "dbd57880d491990ca902b0fac8510654b460058e1349034ae3a24fa9c8846fe7",
+    "contentType": "text/html; charset=utf-8"
+  },
+  {
+    "url": "https://arcoralabs.xyz/robots.txt",
+    "status": 200,
+    "matchesTestedBuild": true,
+    "sha256": "2a44b01e4d70b5c6e1b73c1a2a5d0095ba3574844da70a6f02314667bed00faf",
+    "contentType": "text/plain; charset=utf-8"
+  },
+  {
+    "url": "https://arcoralabs.xyz/script.js",
+    "status": 200,
+    "matchesTestedBuild": true,
+    "sha256": "a301fa270c94169c5552e6e789989dc607425479af48da4cbc414131ebbc1bc6",
+    "contentType": "application/javascript; charset=utf-8"
+  },
+  {
+    "url": "https://arcoralabs.xyz/sitemap.xml",
+    "status": 200,
+    "matchesTestedBuild": true,
+    "sha256": "6e6aa93462fb09f5b426d5f470d421d334e7a75bf05cf13980a80db2a235e6ab",
+    "contentType": "application/xml"
+  },
+  {
+    "url": "https://arcoralabs.xyz/style.css",
+    "status": 200,
+    "matchesTestedBuild": true,
+    "sha256": "a486c0e694f34491f23fcac81f2492d04fc78d7fd80ebd52bc1ec53dc7740fbb",
+    "contentType": "text/css; charset=utf-8"
+  }
+]

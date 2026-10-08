@@ -1,0 +1,310 @@
+{
+  "$description": "Arcora Warm Precision v1.0. Design concept tokens; no protocol claims.",
+  "color": {
+    "canvas": {
+      "$type": "color",
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.980392,
+          0.968627,
+          0.94902
+        ],
+        "alpha": 1,
+        "hex": "#FAF7F2"
+      },
+      "$description": "Canvas"
+    },
+    "surface": {
+      "$type": "color",
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          1.0,
+          0.996078,
+          0.984314
+        ],
+        "alpha": 1,
+        "hex": "#FFFEFB"
+      },
+      "$description": "Surface"
+    },
+    "ink": {
+      "$type": "color",
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.160784,
+          0.145098,
+          0.137255
+        ],
+        "alpha": 1,
+        "hex": "#292523"
+      },
+      "$description": "Ink"
+    },
+    "muted": {
+      "$type": "color",
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.454902,
+          0.423529,
+          0.4
+        ],
+        "alpha": 1,
+        "hex": "#746C66"
+      },
+      "$description": "Muted"
+    },
+    "brand": {
+      "$type": "color",
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.956863,
+          0.482353,
+          0.376471
+        ],
+        "alpha": 1,
+        "hex": "#F47B60"
+      },
+      "$description": "Coral"
+    },
+    "apricot": {
+      "$type": "color",
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          1.0,
+          0.74902,
+          0.470588
+        ],
+        "alpha": 1,
+        "hex": "#FFBF78"
+      },
+      "$description": "Apricot"
+    },
+    "positive": {
+      "$type": "color",
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.078431,
+          0.490196,
+          0.380392
+        ],
+        "alpha": 1,
+        "hex": "#147D61"
+      },
+      "$description": "Positive"
+    },
+    "negative": {
+      "$type": "color",
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.733333,
+          0.235294,
+          0.317647
+        ],
+        "alpha": 1,
+        "hex": "#BB3C51"
+      },
+      "$description": "Negative"
+    },
+    "base": {
+      "$type": "color",
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.0,
+          0.321569,
+          1.0
+        ],
+        "alpha": 1,
+        "hex": "#0052FF"
+      },
+      "$description": "Base"
+    },
+    "brand-strong": {
+      "$type": "color",
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.65098,
+          0.247059,
+          0.168627
+        ],
+        "alpha": 1,
+        "hex": "#A63F2B"
+      },
+      "$description": "Brand text"
+    }
+  },
+  "space": {
+    "4": {
+      "$type": "dimension",
+      "$value": {
+        "value": 4,
+        "unit": "px"
+      }
+    },
+    "8": {
+      "$type": "dimension",
+      "$value": {
+        "value": 8,
+        "unit": "px"
+      }
+    },
+    "12": {
+      "$type": "dimension",
+      "$value": {
+        "value": 12,
+        "unit": "px"
+      }
+    },
+    "16": {
+      "$type": "dimension",
+      "$value": {
+        "value": 16,
+        "unit": "px"
+      }
+    },
+    "20": {
+      "$type": "dimension",
+      "$value": {
+        "value": 20,
+        "unit": "px"
+      }
+    },
+    "24": {
+      "$type": "dimension",
+      "$value": {
+        "value": 24,
+        "unit": "px"
+      }
+    },
+    "32": {
+      "$type": "dimension",
+      "$value": {
+        "value": 32,
+        "unit": "px"
+      }
+    },
+    "40": {
+      "$type": "dimension",
+      "$value": {
+        "value": 40,
+        "unit": "px"
+      }
+    },
+    "48": {
+      "$type": "dimension",
+      "$value": {
+        "value": 48,
+        "unit": "px"
+      }
+    },
+    "64": {
+      "$type": "dimension",
+      "$value": {
+        "value": 64,
+        "unit": "px"
+      }
+    }
+  },
+  "radius": {
+    "6": {
+      "$type": "dimension",
+      "$value": {
+        "value": 6,
+        "unit": "px"
+      }
+    },
+    "10": {
+      "$type": "dimension",
+      "$value": {
+        "value": 10,
+        "unit": "px"
+      }
+    },
+    "16": {
+      "$type": "dimension",
+      "$value": {
+        "value": 16,
+        "unit": "px"
+      }
+    },
+    "24": {
+      "$type": "dimension",
+      "$value": {
+        "value": 24,
+        "unit": "px"
+      }
+    },
+    "32": {
+      "$type": "dimension",
+      "$value": {
+        "value": 32,
+        "unit": "px"
+      }
+    },
+    "999": {
+      "$type": "dimension",
+      "$value": {
+        "value": 999,
+        "unit": "px"
+      }
+    }
+  },
+  "duration": {
+    "fast": {
+      "$type": "duration",
+      "$value": {
+        "value": 140,
+        "unit": "ms"
+      }
+    },
+    "base": {
+      "$type": "duration",
+      "$value": {
+        "value": 240,
+        "unit": "ms"
+      }
+    },
+    "panel": {
+      "$type": "duration",
+      "$value": {
+        "value": 420,
+        "unit": "ms"
+      }
+    },
+    "reveal": {
+      "$type": "duration",
+      "$value": {
+        "value": 720,
+        "unit": "ms"
+      }
+    }
+  },
+  "font": {
+    "ui": {
+      "$type": "fontFamily",
+      "$value": [
+        "Manrope",
+        "Inter",
+        "system-ui",
+        "sans-serif"
+      ]
+    },
+    "technical": {
+      "$type": "fontFamily",
+      "$value": [
+        "SFMono-Regular",
+        "Consolas",
+        "monospace"
+      ]
+    }
+  }
+}

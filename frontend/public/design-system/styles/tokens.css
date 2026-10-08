@@ -1,0 +1,15 @@
+/* Arcora / Warm Precision v1.0 | Public prototype tokens. */
+:root {
+--canvas:#FAF7F2;--surface:#FFFEFB;--white:#FFFFFF;--ink:#292523;--muted:#746C66;--subtle:#998F86;--line:#E8E0D8;
+--brand:#F47B60;--brand-strong:#A63F2B;--apricot:#FFBF78;--peach:#FCEADD;--peach-light:#FFF4E9;
+--positive:#147D61;--positive-soft:#E3F3EA;--negative:#BB3C51;--negative-soft:#FCE9ED;--base:#0052FF;
+--warning:#825414;--warning-soft:#FFF1D7;--focus:#0052FF;
+--gradient:linear-gradient(115deg,#FFBF78 0%,#FF9673 52%,#F47B60 100%);
+--font:'Manrope','Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+--font-mono:'SFMono-Regular',Consolas,'Liberation Mono',monospace;
+--radius-xs:6px;--radius-sm:10px;--radius-md:16px;--radius-lg:24px;--radius-xl:32px;--radius-pill:999px;
+--shadow-sm:0 2px 8px #3F281208;--shadow-card:0 8px 32px #3F281208;--shadow-float:0 24px 80px -32px #71472740;
+--space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:20px;--space-6:24px;--space-8:32px;--space-10:40px;--space-12:48px;--space-16:64px;
+--ease-out:cubic-bezier(.22,1,.36,1);--ease-standard:cubic-bezier(.2,.8,.2,1);--motion-fast:140ms;--motion-base:240ms;--motion-panel:420ms;--motion-reveal:720ms;
+}
+@media(prefers-reduced-motion:reduce){:root{--motion-fast:0ms;--motion-base:0ms;--motion-panel:0ms;--motion-reveal:0ms}}

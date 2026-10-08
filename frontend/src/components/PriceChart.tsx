@@ -90,6 +90,9 @@ export function PriceChart() {
   const { state } = useStore();
   const { oracle, selectedMarketId, market } = state;
 
+  const cardRef = useRef<HTMLDivElement>(null);
+  const [indicator, setIndicator] = useState(false);
+  const [chartError, setChartError] = useState<string | null>(null);
   const [tf, setTf] = useState<string>("15m");
   const [tool, setTool] = useState<Tool>("cursor");
   const [drawings, setDrawings] = useState<Drawing[]>([]);
@@ -152,28 +155,30 @@ export function PriceChart() {
     const py = (y: number) => lo + (1 - (y - plotT) / ph) * span;
     geoRef.current = { plotL, plotR, plotT, plotB, X: Xf, Y, xf, py };
 
-    ctx.font = '10px "JetBrains Mono", ui-monospace, monospace';
+    const theme = getComputedStyle(c);
+    const color = (name: string) => theme.getPropertyValue(name).trim();
+    ctx.font = '10px Inter, sans-serif';
     ctx.textBaseline = "middle";
     const steps = 5;
     for (let i = 0; i <= steps; i++) {
       const p = lo + (span * i) / steps, y = Y(p);
-      ctx.strokeStyle = "rgba(255,255,255,0.045)"; ctx.lineWidth = 1;
+      ctx.strokeStyle = color("--border"); ctx.lineWidth = 1;
       ctx.beginPath(); ctx.moveTo(plotL, y); ctx.lineTo(plotR, y); ctx.stroke();
-      ctx.fillStyle = "#8E9299"; ctx.textAlign = "left"; ctx.fillText(fmtN(p), plotR + 7, y);
+      ctx.fillStyle = color("--text-dim"); ctx.textAlign = "left"; ctx.fillText(fmtN(p), plotR + 7, y);
     }
     const tfMin = TF_MIN[tf] || 15;
     const tl = 6; ctx.textAlign = "center";
     for (let i = 0; i <= tl; i++) {
       const idx = Math.floor((visN * i) / tl), x = plotL + idx * cw;
-      ctx.strokeStyle = "rgba(255,255,255,0.035)";
+      ctx.strokeStyle = color("--border");
       ctx.beginPath(); ctx.moveTo(x, plotT); ctx.lineTo(x, plotB); ctx.stroke();
       if (i > 0 && i < tl) {
         const d = new Date(Date.now() - (visN - idx) * tfMin * 60000);
-        ctx.fillStyle = "#5b5f6b";
+        ctx.fillStyle = color("--text-dim");
         ctx.fillText(String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0"), x, plotB + 12);
       }
     }
-    const upc = "#34d399", dnc = "#fb7185", bw = Math.max(1, Math.min(cw * 0.62, 13));
+    const upc = color("--buy"), dnc = color("--sell"), bw = Math.max(1, Math.min(cw * 0.62, 13));
     vis.forEach((k, i) => {
       const x = Xi(i), col = k.c >= k.o ? upc : dnc;
       ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = 1;
@@ -182,46 +187,54 @@ export function PriceChart() {
       ctx.fillRect(x - bw / 2, top, bw, Math.max(1, Math.abs(yc - yo)));
     });
 
+    if (indicator) {
+      ctx.save(); ctx.strokeStyle = color("--accent"); ctx.lineWidth = 1.5; ctx.beginPath();
+      for (let i = 9; i < vis.length; i++) {
+        const average = vis.slice(i - 9, i + 1).reduce((sum, k) => sum + k.c, 0) / 10;
+        if (i === 9) ctx.moveTo(Xi(i), Y(average)); else ctx.lineTo(Xi(i), Y(average));
+      }
+      ctx.stroke(); ctx.restore();
+    }
     const last = vis[vis.length - 1].c, ly = Y(last);
-    ctx.save(); ctx.strokeStyle = "#b0c4ff"; ctx.setLineDash([3, 3]); ctx.lineWidth = 1;
+    ctx.save(); ctx.strokeStyle = color("--accent"); ctx.setLineDash([3, 3]); ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(plotL, ly); ctx.lineTo(plotR, ly); ctx.stroke(); ctx.restore();
-    ctx.fillStyle = "#b0c4ff"; ctx.fillRect(plotR, ly - 8, 62, 16);
-    ctx.fillStyle = "#0a0a0b"; ctx.textAlign = "left"; ctx.fillText(fmtN(last), plotR + 5, ly);
+    ctx.fillStyle = color("--accent"); ctx.fillRect(plotR, ly - 8, 62, 16);
+    ctx.fillStyle = color("--bg-elev"); ctx.textAlign = "left"; ctx.fillText(fmtN(last), plotR + 5, ly);
     const lx = Xi(visN - 1), aa = 0.5 + 0.5 * Math.cos(((Date.now() % 1600) / 1600) * Math.PI * 2);
-    ctx.fillStyle = "rgba(176,196,255," + 0.22 * aa + ")";
-    ctx.beginPath(); ctx.arc(lx, ly, 4 + 5 * (1 - aa), 0, 7); ctx.fill();
-    ctx.fillStyle = "#b0c4ff"; ctx.beginPath(); ctx.arc(lx, ly, 3, 0, 7); ctx.fill();
+    ctx.globalAlpha = 0.22 * aa; ctx.fillStyle = color("--accent");
+    ctx.beginPath(); ctx.arc(lx, ly, 4 + 5 * (1 - aa), 0, 7); ctx.fill(); ctx.globalAlpha = 1;
+    ctx.fillStyle = color("--accent"); ctx.beginPath(); ctx.arc(lx, ly, 3, 0, 7); ctx.fill();
 
     const all: Drawing[] = [...drawings];
     if (draftRef.current) all.push(draftRef.current);
     all.forEach((d) => {
       if (d.type === "hline") {
         const y = Y(d.p);
-        ctx.save(); ctx.strokeStyle = "rgba(176,196,255,0.65)"; ctx.setLineDash([5, 3]); ctx.lineWidth = 1.2;
+        ctx.save(); ctx.strokeStyle = color("--accent"); ctx.setLineDash([5, 3]); ctx.lineWidth = 1.2;
         ctx.beginPath(); ctx.moveTo(plotL, y); ctx.lineTo(plotR, y); ctx.stroke(); ctx.restore();
-        ctx.fillStyle = "rgba(176,196,255,0.16)"; ctx.fillRect(plotR, y - 8, 62, 16);
-        ctx.fillStyle = "#b0c4ff"; ctx.fillText(fmtN(d.p), plotR + 5, y);
+        ctx.fillStyle = color("--bg-elev-3"); ctx.fillRect(plotR, y - 8, 62, 16);
+        ctx.fillStyle = color("--accent"); ctx.fillText(fmtN(d.p), plotR + 5, y);
       } else {
         const x1 = Xf(d.x1f), y1 = Y(d.p1), x2 = Xf(d.x2f), y2 = Y(d.p2);
-        ctx.strokeStyle = "#b0c4ff"; ctx.lineWidth = 1.5;
+        ctx.strokeStyle = color("--accent"); ctx.lineWidth = 1.5;
         ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
-        ctx.fillStyle = "#b0c4ff";
+        ctx.fillStyle = color("--accent");
         [[x1, y1], [x2, y2]].forEach((pt) => { ctx.beginPath(); ctx.arc(pt[0], pt[1], 2.6, 0, 7); ctx.fill(); });
       }
     });
 
     const ms = mouseRef.current;
     if (ms.in && ms.x >= plotL && ms.x <= plotR && ms.y >= plotT && ms.y <= plotB) {
-      ctx.save(); ctx.strokeStyle = "rgba(255,255,255,0.22)"; ctx.setLineDash([4, 4]); ctx.lineWidth = 1;
+      ctx.save(); ctx.strokeStyle = color("--border-strong"); ctx.setLineDash([4, 4]); ctx.lineWidth = 1;
       ctx.beginPath(); ctx.moveTo(ms.x, plotT); ctx.lineTo(ms.x, plotB); ctx.moveTo(plotL, ms.y); ctx.lineTo(plotR, ms.y); ctx.stroke(); ctx.restore();
-      ctx.fillStyle = "#27272a"; ctx.fillRect(plotR, ms.y - 8, 62, 16);
-      ctx.fillStyle = "#fff"; ctx.textAlign = "left"; ctx.fillText(fmtN(py(ms.y)), plotR + 5, ms.y);
+      ctx.fillStyle = color("--text"); ctx.fillRect(plotR, ms.y - 8, 62, 16);
+      ctx.fillStyle = color("--bg-elev"); ctx.textAlign = "left"; ctx.fillText(fmtN(py(ms.y)), plotR + 5, ms.y);
       const bi = Math.max(0, Math.min(visN - 1, Math.floor((ms.x - plotL) / cw))), k = vis[bi];
       if (k) {
         const tip = `O ${fmtN(k.o)}  H ${fmtN(k.h)}  L ${fmtN(k.l)}  C ${fmtN(k.c)}`;
         const twd = ctx.measureText(tip).width + 12;
-        ctx.fillStyle = "rgba(17,17,19,0.92)"; ctx.fillRect(plotL, plotT, twd, 17);
-        ctx.fillStyle = "#8E9299"; ctx.fillText(tip, plotL + 6, plotT + 8.5);
+        ctx.fillStyle = color("--bg-elev"); ctx.fillRect(plotL, plotT, twd, 17);
+        ctx.fillStyle = color("--text-dim"); ctx.fillText(tip, plotL + 6, plotT + 8.5);
       }
     }
   };
@@ -252,7 +265,7 @@ export function PriceChart() {
       })
       .catch(() => { /* unreachable endpoint → the chart fills from live ticks */ });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedMarketId, tf]);
+  }, [selectedMarketId, tf, market.live]);
 
   // live tick → fold into the forming candle; roll on the timeframe boundary
   // (live mode, matching the server's buckets) or every few ticks (mock mode)
@@ -342,7 +355,7 @@ export function PriceChart() {
   ];
 
   return (
-    <div className="card">
+    <div className="card price-chart" ref={cardRef}>
       <div className="chart__head">
         <div className="chart__id">
           <span className="chart__sym">{market.symbol}</span>
@@ -363,8 +376,15 @@ export function PriceChart() {
             ))}
           </div>
           <button className="chart__tf" onClick={() => setDrawings([])}>Clear</button>
+          <button className={`chart__tf ${indicator ? "is-active" : ""}`} aria-label="Moving average (10 bars)" aria-pressed={indicator} onClick={() => setIndicator(v => !v)}>MA</button>
+          <button className="chart__tf" aria-label="Expand chart" onClick={async () => {
+            setChartError(null);
+            try { if (document.fullscreenElement) await document.exitFullscreen(); else await cardRef.current?.requestFullscreen(); }
+            catch { setChartError("Fullscreen is unavailable in this browser."); }
+          }}>⛶</button>
         </div>
       </div>
+      {chartError && <p role="status" className="notice notice--warn">{chartError}</p>}
       <div className="chart__wrap">
         <canvas
           ref={canvasRef}
@@ -377,7 +397,7 @@ export function PriceChart() {
       </div>
       <div className="chart__foot">
         <span className="chart__hint">{hint}</span>
-        <span>DARK BOOK · INDEX PRICE</span>
+        <span>{API ? "Gateway oracle history" : "Demo chart · synthetic history"}</span>
       </div>
     </div>
   );

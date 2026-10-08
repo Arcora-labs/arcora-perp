@@ -1,0 +1,88 @@
+{
+  "status": "action_required",
+  "reason": "invalid_configuration",
+  "message": "perp.arcoralabs.xyz has an invalid DNS configuration. Apply the recommended DNS changes, then retry verification.",
+  "userActionRequired": true,
+  "hint": "Apply the recommended records or nameservers at the DNS provider, then run the suggested verify command.",
+  "next": [
+    {
+      "command": "vercel domains verify perp.arcoralabs.xyz --project arcora-perp --json --scope kubudak90s-projects",
+      "when": "Re-check after completing the required changes"
+    }
+  ],
+  "domain": "perp.arcoralabs.xyz",
+  "domainStatus": "invalid-configuration",
+  "configurationStatus": "invalid-configuration",
+  "ok": false,
+  "issues": [
+    {
+      "domainStatus": "invalid-configuration",
+      "reason": "invalid_configuration",
+      "message": "perp.arcoralabs.xyz has an invalid DNS configuration. Apply the recommended DNS changes, then retry verification.",
+      "userActionRequired": true,
+      "hint": "Apply the recommended records or nameservers at the DNS provider, then run the suggested verify command."
+    }
+  ],
+  "misconfigured": true,
+  "configuredBy": null,
+  "serviceType": "zeit.world",
+  "ipStatus": null,
+  "dnssecEnabled": false,
+  "acceptedChallenges": [
+    "dns-01"
+  ],
+  "current": {
+    "nameservers": [
+      "ns1.vercel-dns.com",
+      "ns2.vercel-dns.com"
+    ],
+    "cnames": [],
+    "aValues": [
+      "104.42.53.250"
+    ]
+  },
+  "recommended": {
+    "ipv4": [
+      {
+        "rank": 1,
+        "value": [
+          "216.198.79.1",
+          "64.29.17.1"
+        ]
+      },
+      {
+        "rank": 2,
+        "value": [
+          "76.76.21.21"
+        ]
+      }
+    ],
+    "cname": [
+      {
+        "rank": 1,
+        "value": "4447cfc81a0cd727.vercel-dns-017.com."
+      },
+      {
+        "rank": 2,
+        "value": "cname.vercel-dns.com."
+      }
+    ],
+    "records": [
+      {
+        "type": "CNAME",
+        "name": "perp",
+        "value": "4447cfc81a0cd727.vercel-dns-017.com."
+      }
+    ],
+    "nameservers": []
+  },
+  "conflicts": [],
+  "domainOwnership": "current-scope",
+  "project": {
+    "idOrName": "arcora-perp",
+    "attached": true,
+    "verified": true,
+    "verification": [],
+    "verificationError": null
+  }
+}

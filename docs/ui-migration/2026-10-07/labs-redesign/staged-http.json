@@ -1,0 +1,22 @@
+[
+  {
+    "path": "index.html",
+    "matchesLocalSource": true,
+    "sha256": "dbd57880d491990ca902b0fac8510654b460058e1349034ae3a24fa9c8846fe7"
+  },
+  {
+    "path": "style.css",
+    "matchesLocalSource": true,
+    "sha256": "a486c0e694f34491f23fcac81f2492d04fc78d7fd80ebd52bc1ec53dc7740fbb"
+  },
+  {
+    "path": "script.js",
+    "matchesLocalSource": true,
+    "sha256": "a301fa270c94169c5552e6e789989dc607425479af48da4cbc414131ebbc1bc6"
+  },
+  {
+    "path": "assets/projects/celari.jpg",
+    "matchesLocalSource": true,
+    "sha256": "58fd5d36a107bac339570d1e679b494f7f77395e3917cf1c8ea7ec70a8402e17"
+  }
+]

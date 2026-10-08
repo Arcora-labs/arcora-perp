@@ -1,0 +1,61 @@
+### Result
+{"failures":[],"errors":[],"checks":"trade/review/receipt/search/7 pages/mobile panels/6 widths/film/reduced-motion"}
+### Ran Playwright code
+```js
+await (async (page) => {
+ await page.setViewportSize({width:1440,height:1000});
+ await page.emulateMedia({reducedMotion:"no-preference"});
+ await page.goto("https://arcora-perp.vercel.app/#/trade");
+  const failures = [], errors = [];
+  page.on('pageerror', e => errors.push(e.message));
+  const check = (value, label) => { if (!value) failures.push(label); };
+  await page.getByRole('button', { name: 'Preview buy BTC/USDC' }).click();
+  check(await page.getByRole('dialog').isVisible(), 'review opens');
+  await page.getByRole('button', { name: 'Confirm demo order' }).click();
+  await page.locator('.order-ticket [role=status]').waitFor();
+  await page.getByRole('button', { name: 'History', exact: true }).click();
+  await page.getByRole('button', { name: 'View receipt', exact: true }).first().click();
+  check(await page.getByRole('dialog').isVisible(), 'receipt opens');
+  await page.getByRole('button', { name: 'Close dialog' }).click();
+  await page.getByRole('button', { name: 'Find your market ⌘ K' }).click();
+  await page.getByRole('searchbox').fill('ETH');
+  await page.getByRole('dialog').getByRole('button', { name: /ETH\/USDC/ }).click();
+  check((await page.title()).includes('ETH'), 'market selection');
+  for (const name of ['Portfolio','Vault','Explorer','Recover','Health','API','Markets']) {
+    await page.getByRole('navigation', { name: 'Primary' }).getByRole('button', { name, exact: true }).click();
+    check(await page.getByRole('heading', { name, exact: true }).isVisible(), 'page '+name);
+  }
+  await page.getByRole('navigation', { name: 'Primary' }).getByRole('button', { name: 'Trade', exact: true }).click();
+  if(await page.getByRole('button', { name: 'Dismiss', exact: true }).count()) await page.getByRole('button', { name: 'Dismiss', exact: true }).click();
+  for(const width of [360,390,760,1024,1440,1600]) {
+    await page.setViewportSize({ width, height: width<800?844:1100 });
+    const dimensions = await page.evaluate(() => ({ width:document.documentElement.clientWidth, scroll:document.documentElement.scrollWidth, broken:[...document.images].filter(i=>!i.complete||!i.naturalWidth).length }));
+    check(dimensions.scroll <= dimensions.width, 'trade overflow '+width); check(!dimensions.broken,'trade images '+width);
+    if(width<800) {
+      await page.getByRole('group',{name:'Trading panels'}).getByRole('button',{name:'Trade',exact:true}).click();
+      check(await page.getByRole('button',{name:/Preview buy ETH/}).isVisible(),'mobile ticket '+width);
+      await page.screenshot({path:`output/playwright/trade-${width}-ticket.png`});
+      await page.getByRole('group',{name:'Trading panels'}).getByRole('button',{name:'Activity',exact:true}).click();
+      check(await page.getByRole('button',{name:'History',exact:true}).isVisible(),'mobile activity '+width);
+      await page.getByRole('group',{name:'Trading panels'}).getByRole('button',{name:'Chart',exact:true}).click();
+    }
+    if([390,1440,1600].includes(width)) await page.screenshot({path:`output/playwright/trade-${width}.png`,fullPage:true, animations:"disabled", timeout:8000});
+  }
+  await page.goto('https://arcora-perp.vercel.app/');
+  for (const width of [360,390,760,1024,1440,1600]) {
+    await page.setViewportSize({width,height:width<800?844:1000});
+    check(await page.evaluate(()=>document.documentElement.scrollWidth<=document.documentElement.clientWidth),'landing overflow '+width);
+    if(width===390) await page.screenshot({path:'output/playwright/landing-mobile.png',fullPage:true, animations:"disabled", timeout:8000});
+  }
+  await page.getByRole('button',{name:'Watch the film 24s'}).click();
+  await page.waitForFunction(()=>document.querySelector('video')?.readyState >= 2);
+  check(await page.locator('video').evaluate(v=>v.duration>20&&v.currentTime>=0),'film playable');
+  await page.keyboard.press('Escape'); check(await page.getByRole('dialog').count()===0,'film Escape');
+  await page.emulateMedia({reducedMotion:'reduce'});
+  check(await page.locator('.hero-mark').evaluate(el=>getComputedStyle(el).animationName)==='none','reduced motion');
+  return {failures,errors,checks:'trade/review/receipt/search/7 pages/mobile panels/6 widths/film/reduced-motion'};
+})(page);
+```
+### Page
+- Page URL: https://arcora-perp.vercel.app/
+- Page Title: Arcora — A brighter way to trade perps

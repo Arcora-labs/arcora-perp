@@ -1,0 +1,62 @@
+[
+  {
+    "project": "pay",
+    "url": "https://arcorapay.xyz/",
+    "captured": "2026-10-07",
+    "viewport": {
+      "width": 1440,
+      "height": 1000
+    },
+    "asset": "apps/labs-site/assets/projects/pay.jpg",
+    "sha256": "c915684befb40e1e322497fc78870a1d351695e8d90ce9206c7aea078047f974",
+    "method": "Playwright Chromium viewport screenshot, JPEG quality 90; no edits or recoloring"
+  },
+  {
+    "project": "celari",
+    "url": "https://celariwallet.com/en",
+    "captured": "2026-10-07",
+    "viewport": {
+      "width": 1440,
+      "height": 1000
+    },
+    "asset": "apps/labs-site/assets/projects/celari.jpg",
+    "sha256": "58fd5d36a107bac339570d1e679b494f7f77395e3917cf1c8ea7ec70a8402e17",
+    "method": "Playwright Chromium viewport screenshot, JPEG quality 90; no edits or recoloring"
+  },
+  {
+    "project": "swap",
+    "url": "https://swap.arcorapay.xyz/",
+    "captured": "2026-10-07",
+    "viewport": {
+      "width": 1440,
+      "height": 1000
+    },
+    "asset": "apps/labs-site/assets/projects/swap.jpg",
+    "sha256": "fe634ee70b03205798446a5758dc909810d5f75e74fc48d2c8dbb7b9af60b12b",
+    "method": "Playwright Chromium viewport screenshot, JPEG quality 90; no edits or recoloring"
+  },
+  {
+    "project": "quetzal",
+    "url": "https://quetzaldex.xyz/",
+    "captured": "2026-10-07",
+    "viewport": {
+      "width": 1440,
+      "height": 1000
+    },
+    "asset": "apps/labs-site/assets/projects/quetzal.jpg",
+    "sha256": "b0f66abad10bc7c04773c55f25543ab64d3fc7afbb055e95147eba7332fca74d",
+    "method": "Playwright Chromium viewport screenshot, JPEG quality 90; no edits or recoloring"
+  },
+  {
+    "project": "perp",
+    "url": "https://perp.arcoralabs.xyz/",
+    "captured": "2026-10-07",
+    "viewport": {
+      "width": 1440,
+      "height": 1000
+    },
+    "asset": "apps/labs-site/assets/projects/perp.jpg",
+    "sha256": "aa6230cbd6507463d6667f58dd3732f81148a0f2dd7be65c76895a9086bc8d56",
+    "method": "Playwright Chromium viewport screenshot, JPEG quality 90; no edits or recoloring"
+  }
+]

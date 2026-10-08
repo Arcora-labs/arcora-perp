@@ -1,0 +1,30 @@
+### Result
+{"failures":[],"errors":[],"links":["https://perp.arcoralabs.xyz/","https://arcorapay.xyz/","https://swap.arcorapay.xyz/","https://celariwallet.com/","https://quetzaldex.xyz/"]}
+### Ran Playwright code
+```js
+await (async (page) => {
+ await page.setViewportSize({width:1440,height:1000});
+ await page.emulateMedia({reducedMotion:"no-preference"});
+ await page.goto("http://127.0.0.1:5189/");
+ const failures=[],errors=[]; page.on('pageerror',e=>errors.push(e.message));
+ const check=(value,label)=>{if(!value)failures.push(label)};
+ for(const width of [360,390,760,1024,1440,1600]) {
+  await page.setViewportSize({width,height:width<800?844:1000});
+  check(await page.evaluate(()=>document.documentElement.scrollWidth<=document.documentElement.clientWidth),'overflow '+width);
+  check(await page.evaluate(()=>[...document.images].every(i=>i.complete&&i.naturalWidth)),'images '+width);
+  if([390,1440].includes(width)) await page.screenshot({path:`output/playwright/labs-${width}.png`,fullPage:true, animations:"disabled", timeout:8000});
+ }
+ for(const [name,count] of [['Payments',1],['Wallets',1],['Trading',3],['All projects 5',5]]) {
+  await page.getByRole('button',{name,exact:true}).click(); check(await page.locator('.project:visible').count()===count,'filter '+name);
+ }
+ const links=await page.locator('.project-info h3 a').evaluateAll(as=>as.map(a=>a.href));
+ check(links.length===5,'five project links');
+ await page.getByRole('button',{name:'Pause ambient motion'}).click();
+ check(await page.locator('.art-core img').evaluate(el=>getComputedStyle(el).animationName)==='none','motion pause');
+ await page.emulateMedia({reducedMotion:'reduce'});
+ check(await page.locator('.art-core img').evaluate(el=>getComputedStyle(el).animationName)==='none','reduced motion');
+ await page.setViewportSize({width:1200,height:630});await page.goto('http://127.0.0.1:5189/');
+ await page.screenshot({path:'../apps/labs-site/assets/social.png'});
+ return {failures,errors,links};
+})(page);
+```

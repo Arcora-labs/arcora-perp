@@ -1,4 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { Dialog } from "./Dialog";
+import { IS_LIVE } from "../api/apiBase";
 import { useStore } from "../store";
 import { baseAsset, formatPrice, formatSize, formatUsd, parsePrice, parseSize } from "../domain/format";
 import { maxOrderSize, orderRisk } from "../domain/risk";
@@ -60,6 +62,16 @@ export function OrderTicket() {
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
+  const [review, setReview] = useState<{ input: OrderInput; mark: bigint; symbol: string } | null>(null);
+  const [accepted, setAccepted] = useState<string | null>(null);
+  const submitting = useRef(false);
+  const lastMarket = useRef(state.selectedMarketId);
+  useEffect(() => {
+    if (lastMarket.current !== state.selectedMarketId) {
+      lastMarket.current = state.selectedMarketId;
+      setPriceStr(""); setError(null); setAccepted(null); setReview(null);
+    }
+  }, [state.selectedMarketId]);
   const closeOnly = state.mode === "CloseOnly";
   // preview inputs: parsed size, and the entry estimate (limit price, else mark)
   const previewSize = parseSize(sizeStr) ?? 0n;
@@ -84,20 +96,39 @@ export function OrderTicket() {
       tif: isMarket ? "Ioc" : tif,
       reduceOnly,
     };
-    setPending(true);
+    if (state.accountUnavailable) return setError("Your account could not be read. Reload before placing an order.");
+    if (closeOnly && !reduceOnly) return setError("Close-only mode: use reduce-only to decrease an existing position.");
+    if (IS_LIVE && (state.oracle.price <= 0n || Date.now() - state.oracle.publishTimeMs > 30_000)) return setError("Price data is stale. Check Health and wait for a fresh price.");
+    setAccepted(null);
+    setReview({ input, mark: previewMark, symbol: state.market.symbol });
+  }
+
+  async function confirm() {
+    if (!review || submitting.current) return;
+    const current = client.getState();
+    if (current.selectedMarketId !== review.input.marketId || current.accountUnavailable) {
+      setReview(null); setError("Market or account changed. Review the order again."); return;
+    }
+    if (current.mode === "CloseOnly" && !review.input.reduceOnly) {
+      setReview(null); setError("Close-only mode: this order can no longer be submitted."); return;
+    }
+    if (IS_LIVE && (current.oracle.price <= 0n || Date.now() - current.oracle.publishTimeMs > 30_000)) {
+      setReview(null); setError("Price data is stale. Review the order again after it updates."); return;
+    }
+    submitting.current = true; setPending(true); setError(null);
     try {
-      await client.placeOrder(input);
-      setError(null);
+      const receipt = await client.placeOrder(review.input);
+      setAccepted(`Order accepted · receipt #${receipt.seqNo}. Follow its execution and settlement below.`);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
-      setPending(false);
+      submitting.current = false; setPending(false); setReview(null);
     }
   }
 
   return (
     <form className="card order-ticket" onSubmit={submit}>
-      <h3 className="card__title">{state.market.symbol}</h3>
+      <h3 className="card__title">Make your move</h3>
 
       <div className="seg">
         <button
@@ -118,6 +149,11 @@ export function OrderTicket() {
         </button>
       </div>
 
+      <div className="ticket-types" role="group" aria-label="Order type">
+        <button type="button" aria-pressed={!priceStr.trim()} onClick={() => setPriceStr("")}>Market</button>
+        <button type="button" aria-pressed={!!priceStr.trim()} onClick={() => setPriceStr(formatPrice(state.oracle.price))}>Limit</button>
+      </div>
+      <p className="ticket-balance"><span>Available</span><strong>{state.accountUnavailable ? "Unreadable" : formatUsd(state.account.settledBalance)} <small>USDC</small></strong></p>
       <label className="field">
         <span className="field__label">Size ({baseAsset(state.market.symbol)})</span>
         <input className="field__input" value={sizeStr} onChange={(e) => setSizeStr(e.target.value)} inputMode="decimal" />
@@ -150,7 +186,7 @@ export function OrderTicket() {
 
       <label className="field">
         <span className="field__label">Time in force</span>
-        <select className="field__input" value={tif} onChange={(e) => setTif(e.target.value as TimeInForce)}>
+        <select className="field__input" value={priceStr.trim() ? tif : "Ioc"} disabled={!priceStr.trim()} onChange={(e) => setTif(e.target.value as TimeInForce)}>
           {TIFS.map((t) => (
             <option key={t} value={t}>
               {t}
@@ -171,15 +207,29 @@ export function OrderTicket() {
       {closeOnly && (
         <p className="notice notice--warn">Close-only mode: opening/increasing is blocked (§6).</p>
       )}
-      {error && <p className="notice notice--error">{error}</p>}
+      {error && <p className="notice notice--error" role="alert">{error}</p>}
+      {accepted && <p className="notice notice--ok" role="status">{accepted}</p>}
 
       <button className={`btn btn--${side === "Buy" ? "buy" : "sell"}`} disabled={pending}>
-        {pending ? "Submitting…" : `${side} ${state.market.symbol}`}
+        {pending ? "Submitting…" : `Preview ${side.toLowerCase()} ${state.market.symbol}`}
       </button>
       <p className="order-ticket__foot">
-        Your order returns a signed receipt (ACCEPTED). It is binding only when
-        SETTLED — that lands with the next zk proof, typically ~10–20 min.
+        Review before submitting. Acceptance and matching are provisional; only settlement establishes binding finality.
       </p>
+      {review && <Dialog title={`Review ${review.input.side === "Buy" ? "long" : "short"} order`} onClose={() => setReview(null)} busy={pending}>
+        <p className="muted small">{IS_LIVE ? "Test gateway · Base Sepolia" : "Browser simulation · no real funds"}</p>
+        <dl className="review-rows">
+          <div><dt>Market</dt><dd>{review.symbol}</dd></div>
+          <div><dt>Direction</dt><dd>{review.input.side === "Buy" ? "Buy / Long" : "Sell / Short"}</dd></div>
+          <div><dt>Quantity</dt><dd>{formatSize(review.input.size)} {baseAsset(review.symbol)}</dd></div>
+          <div><dt>Order type</dt><dd>{review.input.limitPrice === 0n ? "Market · IOC" : `Limit · ${review.input.tif}`}</dd></div>
+          <div><dt>{review.input.limitPrice === 0n ? "Reference price" : "Limit price"}</dt><dd>{formatPrice(review.mark)}</dd></div>
+          <div><dt>Reduce-only</dt><dd>{review.input.reduceOnly ? "Yes" : "No"}</dd></div>
+        </dl>
+        {!review.input.reduceOnly && <OrderPreview size={review.input.size} mark={review.mark} side={review.input.side} imr={state.market.initialMarginRatio} mmr={state.market.maintenanceMarginRatio} takerFeeBps={state.market.takerFeeBps} />}
+        <p className="notice notice--warn">Execution price and fees can change. Liquidation is an estimate; funding and price movement can change your risk.</p>
+        <button type="button" className="btn btn--buy" disabled={pending} onClick={() => void confirm()}>{pending ? "Submitting…" : IS_LIVE ? "Confirm order" : "Confirm demo order"}</button>
+      </Dialog>}
     </form>
   );
 }

@@ -4,7 +4,7 @@ import { test, expect, type BrowserContext, type Page, type Route } from '@playw
 // origin locks/storage; no RPC, extension wallet, or actual chain write occurs.
 const OWNER = '0x' + '22'.repeat(32), OLD = '0x' + '11'.repeat(32), NEW = '0x' + '77'.repeat(32);
 const ADDRESS = '0x' + '44'.repeat(20), VAULT = '0x57e951f6a378e00e4f1b26510380e089d7c07b8b';
-const SCOPE = { base: 'http://127.0.0.1:4173', chainId: 84532, vault: VAULT };
+const SCOPE = { base: `http://127.0.0.1:${process.env.ARCORA_BROWSER_PORT || 4173}`, chainId: 84532, vault: VAULT };
 const KEY = `darkperp.v2Account:${JSON.stringify([SCOPE.base, SCOPE.chainId, VAULT])}`;
 const market = { id: 0, symbol: 'BTC/USDC', maxLeverage: 20, maintenanceMarginRatio: .05, initialMarginRatio: .1, referencePrice: '6450000000000', live: false, takerFeeBps: 8, makerRebateBps: 2 };
 const state = { markets: [market, { ...market, id: 1, symbol: 'ETH/USDC' }], selectedMarketId: 0, market, mode: 'Normal', oracle: { marketId: 0, price: '6450000000000', confidence: '1', publishTimeMs: 0 }, book: { marketId: 0, bids: [], asks: [] }, marks: { 0: '6450000000000', 1: '350000000000' }, account: { settledBalance: '0', positions: [] }, orders: [], batches: [], insuranceFund: '0', treasury: '0', userAdlClawed: '0', lp: { tvl: '0', navPerShare: '1.000000', totalShares: '0', myShares: '0', myValue: '0' }, mmHedge: [], l1: null, attestation: null };
@@ -77,7 +77,7 @@ async function fixture(context: BrowserContext) {
 async function open(context: BrowserContext) {
   const page = await context.newPage(); await page.goto('/');
   await page.waitForFunction(() => !!(window as any).testClient);
-  await page.getByRole('button', { name: 'Account', exact: true }).click();
+  await page.getByRole('button', { name: 'Portfolio', exact: true }).click();
   await page.locator('.walletflow').getByRole('button', { name: 'Connect wallet', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Deposit', exact: true })).toBeVisible();
   return page;
@@ -140,7 +140,7 @@ test('DP-05 unknown wallet send survives reload and refuses duplicate transfer',
   await api(a, "window.depositWallet.fail = 'deposit'"); await start(a);
   await expect(error(a)).toContainText('outcome is unknown');
   await a.reload(); await a.waitForFunction(() => !!(window as any).testClient);
-  await a.getByRole('button', { name: 'Account', exact: true }).click();
+  await a.getByRole('button', { name: 'Portfolio', exact: true }).click();
   await a.locator('.walletflow').getByRole('button', { name: 'Connect wallet', exact: true }).click();
   await expect(a.getByRole('region', { name: 'Original deposit recovery' })).toContainText('outcome is unknown');
   await expect(a.getByRole('button', { name: 'Deposit', exact: true })).toHaveCount(0);
@@ -154,7 +154,7 @@ test('DP-06 unknown credit response resumes recorded transaction after reload', 
   f.setHook(async (route, call) => { if (call.path.endsWith('/deposit/onchain') && once) { once = false; await route.abort(); return true; } return false; });
   await start(a); await expect(error(a)).toBeVisible();
   await a.reload(); await a.waitForFunction(() => !!(window as any).testClient);
-  await a.getByRole('button', { name: 'Account', exact: true }).click();
+  await a.getByRole('button', { name: 'Portfolio', exact: true }).click();
   await a.locator('.walletflow').getByRole('button', { name: 'Connect wallet', exact: true }).click();
   await a.getByRole('button', { name: 'Check original transaction', exact: true }).click();
   await expect(a.getByRole('status')).toContainText('Original deposit of $1,000.000000 is credited');
@@ -247,7 +247,7 @@ test('DP-11 finalized failure is saved without sending, survives reload, and ret
   expect(await api(page, 'window.depositWallet.signs')).toBe(signs);
   expect(f.calls.filter(call => call.path.endsWith('/deposit/onchain'))).toHaveLength(0);
   await page.reload(); await page.waitForFunction(() => !!(window as any).testClient);
-  await page.getByRole('button', { name: 'Account', exact: true }).click();
+  await page.getByRole('button', { name: 'Portfolio', exact: true }).click();
   await page.locator('.walletflow').getByRole('button', { name: 'Connect wallet', exact: true }).click();
   await expect(page.getByRole('region', { name: 'Original deposit recovery' })).toContainText(failedHash);
   await expect(page.getByRole('button', { name: 'Resume original deposit', exact: true })).toBeVisible();

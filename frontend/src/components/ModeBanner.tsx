@@ -34,7 +34,7 @@ export function ModeBanner() {
   return (
     <div className="banner banner--ok">
       <span>
-        <strong>Normal.</strong> Continuous dark CLOB, operator-blind matching.
+        <strong>Normal.</strong> Trading enabled. Check Health for enclave and settlement evidence.
       </span>
       <span className="banner__actions">
         {client.simulateAdl && (

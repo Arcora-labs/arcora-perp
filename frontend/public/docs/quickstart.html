@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quickstart — Arcora Perp Docs</title>
+<meta name="description" content="Six steps from an empty wallet to a settled withdrawal on the Arcora Perp testnet alpha.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="deployment-note"><strong>Public browser demo.</strong> The current app simulates balances, orders and settlement. These documents describe the protocol and gateway integration; they are not evidence of a live gateway. <a href="/#/trade">Explore the demo →</a></div>
+<header class="topbar">
+  <a class="brand" href="index.html">Arcora Perp <span>Docs</span></a>
+  <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="sidenav">Menu</button>
+</header>
+<aside class="sidenav" id="sidenav">
+  <a class="brand" href="index.html">Arcora Perp <span>Docs</span></a>
+  <nav>
+    <a href="index.html">Overview</a>
+    <a href="quickstart.html" class="current">Quickstart</a>
+    <a href="trading.html">Trading</a>
+    <a href="api.html">API Reference</a>
+    <a href="architecture.html">Architecture</a>
+    <a href="security.html">Security &amp; Trust</a>
+    <a href="arcora-perp-litepaper.html">Litepaper</a>
+  </nav>
+  <div class="nav-foot"><a href="https://perp.arcoralabs.xyz">Open the app &rarr;</a></div>
+</aside>
+<main>
+<div class="content">
+
+<h1>Quickstart</h1>
+<p class="lede">Six steps from an empty wallet to a settled withdrawal. You need a Base Sepolia EOA and, for the command-line steps, Foundry's <code>cast</code> — the app UI at <a href="https://perp.arcoralabs.xyz">perp.arcoralabs.xyz</a> walks you through the same flow interactively.</p>
+
+<div class="callout">
+  <p class="callout-title">Before you start</p>
+  <p>Everything below runs against Base Sepolia (chain ID 84532) with test funds only. RPC used in the commands: <code>https://sepolia.base.org</code>. Replace <code>&lt;YOU&gt;</code> with your address and <code>&lt;KEY&gt;</code> with its private key — use a throwaway testnet key, never a mainnet one.</p>
+</div>
+
+<div class="step">
+<h3><span class="step-num">1</span> Get Base Sepolia ETH</h3>
+<p>You need a little ETH for gas. Use a faucet, e.g. <a href="https://www.alchemy.com/faucets/base-sepolia">alchemy.com/faucets/base-sepolia</a>.</p>
+</div>
+
+<div class="step">
+<h3><span class="step-num">2</span> Mint test USDC</h3>
+<p>The collateral token is an open-mint MockUSDC (6 decimals) — anyone can mint. This mints 1,000 USDC (<code>1000000000</code> base units) to yourself:</p>
+<pre><code>cast send 0x9F5365c947eCaBaf62f42EF0Fe92ab909f709bDA \
+  "mint(address,uint256)" &lt;YOU&gt; 1000000000 \
+  --rpc-url https://sepolia.base.org --private-key &lt;KEY&gt;</code></pre>
+</div>
+
+<div class="step">
+<h3><span class="step-num">3</span> Approve and deposit into the vault</h3>
+<p>Collateral is custodied by the CollateralVault. Approve it, then deposit:</p>
+<pre><code><span class="c"># approve the vault to pull your USDC</span>
+cast send 0x9F5365c947eCaBaf62f42EF0Fe92ab909f709bDA \
+  "approve(address,uint256)" 0xC3EBc0f7301D5a914b01b8d2a1B5574764330c05 1000000000 \
+  --rpc-url https://sepolia.base.org --private-key &lt;KEY&gt;
+
+<span class="c"># deposit 1,000 USDC</span>
+cast send 0xC3EBc0f7301D5a914b01b8d2a1B5574764330c05 \
+  "deposit(uint256)" 1000000000 \
+  --rpc-url https://sepolia.base.org --private-key &lt;KEY&gt;</code></pre>
+<p class="dim">Keep the deposit transaction hash — you need it in the next step.</p>
+</div>
+
+<div class="step">
+<h3><span class="step-num">4</span> Bind your address and credit the deposit</h3>
+<p>Open <a href="https://perp.arcoralabs.xyz">the app</a>. The browser self-provisions a <code>/v1</code> trading account for you (the API key is stored in your browser's localStorage). To credit the on-chain deposit to that account:</p>
+<ol>
+  <li><strong>Bind the EOA you deposited from</strong> — in the app's API tab, or via <code>POST /v1/accounts/deposit/address</code>. The binding is ownership-proven: you sign a message with the EOA's key.</li>
+  <li><strong>Credit the deposit by transaction hash</strong> — via <code>POST /v1/accounts/deposit/onchain</code> with <code>{"txHash": "0x&hellip;", "marketId": 0}</code>. The gateway verifies the transaction on-chain and credits your trading balance.</li>
+</ol>
+<p class="dim">Request and signature details for both endpoints are in the <a href="api.html#accounts">API reference</a>.</p>
+</div>
+
+<div class="step">
+<h3><span class="step-num">5</span> Trade</h3>
+<p>Place orders on the Trade tab. Order terms are sealed (encrypted) in your browser to the matching enclave's key — no plaintext terms travel on the wire. You get:</p>
+<ul>
+  <li><span class="pill accepted">ACCEPTED</span> — an enclave-signed receipt, within milliseconds;</li>
+  <li><span class="pill matched">MATCHED</span> — a fill, also within milliseconds (soft finality);</li>
+  <li><span class="pill settled">SETTLED</span> — when the window's zk proof is verified on-chain, roughly every 10&ndash;20 minutes.</li>
+</ul>
+<p class="dim">MATCHED is not SETTLED — read <a href="trading.html#finality">the finality model</a> before sizing positions.</p>
+</div>
+
+<div class="step">
+<h3><span class="step-num">6</span> Withdraw and claim</h3>
+<p>Withdraw on the Account tab. The app asks your wallet to sign the withdrawal (every withdrawal is wallet-signed — the API key alone cannot move funds), and the destination is your bound deposit address. The withdrawal goes through three visible stages:</p>
+<ol>
+  <li>The withdrawal is recorded off-chain and shows as <em>&ldquo;Settling on-chain&hellip;&rdquo;</em> while it waits to be included in a settlement window.</li>
+  <li>Once that window's proof settles, it becomes <em>&ldquo;Claimable&rdquo;</em> — the withdrawal is now a leaf in an on-chain Merkle root.</li>
+  <li>Copy the <code>cast</code> command the UI builds for you and run it <strong>from any funded address</strong> — claims are permissionless, and funds can only ever go to the address bound into the leaf:</li>
+</ol>
+<pre><code><span class="c"># exact arguments are generated by the app's Account tab</span>
+cast send 0xC3EBc0f7301D5a914b01b8d2a1B5574764330c05 \
+  "claim(address,uint256,uint256,bytes32,bytes32[])" \
+  &lt;TO&gt; &lt;AMOUNT&gt; &lt;NONCE&gt; &lt;ROOT&gt; &lt;PROOF&gt; \
+  --rpc-url https://sepolia.base.org --private-key &lt;ANY_FUNDED_KEY&gt;</code></pre>
+<p class="dim">Each claim can execute once (<code>AlreadyClaimed</code> on replay), and any historically published root stays claimable — a later root can never strand your withdrawal.</p>
+</div>
+
+<h2>Next steps</h2>
+<ul class="next-links">
+  <li><a href="trading.html">Order types &amp; the finality model</a></li>
+  <li><a href="api.html">Build a bot against the /v1 API</a></li>
+</ul>
+
+<footer>
+  <p>Arcora Perp is a <strong>public testnet alpha</strong> on Base Sepolia (chain ID 84532). All funds are test funds (open-mint MockUSDC). The contracts have not been audited by a third party — do not treat this as production software.</p>
+  <p><a href="https://perp.arcoralabs.xyz">perp.arcoralabs.xyz</a> &middot; <a href="security.html">Trust model &amp; current gaps</a></p>
+</footer>
+
+</div>
+</main>
+<script>
+(function () {
+  var t = document.querySelector(".nav-toggle");
+  var n = document.getElementById("sidenav");
+  t.addEventListener("click", function () {
+    var open = n.classList.toggle("open");
+    t.setAttribute("aria-expanded", open ? "true" : "false");
+  });
+})();
+</script>
+</body>
+</html>

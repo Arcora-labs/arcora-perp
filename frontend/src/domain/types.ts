@@ -23,15 +23,15 @@ export function isWithdrawable(f: Finality): boolean {
 export const FINALITY_COPY: Record<Finality, { label: string; hint: string }> = {
   ACCEPTED: {
     label: "Accepted",
-    hint: "The enclave received your order and signed a receipt (your inclusion proof).",
+    hint: "Order acknowledged with a receipt. Acceptance is not proof of execution.",
   },
   MATCHED: {
     label: "Matched",
-    hint: "Soft preconfirmation. Good-faith, not final — not yet withdrawable. Typically settles on-chain within ~10–20 min (one proof interval).",
+    hint: "Soft preconfirmation, not final and not yet withdrawable. Execution and settlement evidence are tracked separately.",
   },
   SETTLED: {
     label: "Settled",
-    hint: "ZK proof verified on-chain (Base Sepolia). Hard finality — withdrawable.",
+    hint: "Hard finality: settled balance is withdrawable. Check Explorer for chain evidence; demo settlement is simulated.",
   },
 };
 

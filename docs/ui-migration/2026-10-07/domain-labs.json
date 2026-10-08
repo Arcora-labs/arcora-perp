@@ -1,0 +1,79 @@
+{
+  "status": "ok",
+  "reason": "configured_correctly",
+  "message": "arcoralabs.xyz has a valid configuration and is verified for project arcora-labs.",
+  "domain": "arcoralabs.xyz",
+  "domainStatus": "configured-correctly",
+  "configurationStatus": "configured-correctly",
+  "ok": true,
+  "issues": [],
+  "misconfigured": false,
+  "configuredBy": "A",
+  "serviceType": "zeit.world",
+  "ipStatus": "no-change",
+  "dnssecEnabled": false,
+  "acceptedChallenges": [
+    "http-01",
+    "dns-01"
+  ],
+  "current": {
+    "nameservers": [
+      "ns1.vercel-dns.com",
+      "ns2.vercel-dns.com"
+    ],
+    "cnames": [],
+    "aValues": [
+      "216.198.79.65",
+      "216.198.79.1"
+    ]
+  },
+  "recommended": {
+    "ipv4": [
+      {
+        "rank": 1,
+        "value": [
+          "216.198.79.1",
+          "64.29.17.1"
+        ]
+      },
+      {
+        "rank": 2,
+        "value": [
+          "76.76.21.21"
+        ]
+      }
+    ],
+    "cname": [
+      {
+        "rank": 1,
+        "value": "ad25a5a025330191.vercel-dns-017.com."
+      },
+      {
+        "rank": 2,
+        "value": "cname.vercel-dns.com."
+      }
+    ],
+    "records": [
+      {
+        "type": "A",
+        "name": "@",
+        "value": "216.198.79.1"
+      },
+      {
+        "type": "A",
+        "name": "@",
+        "value": "64.29.17.1"
+      }
+    ],
+    "nameservers": []
+  },
+  "conflicts": [],
+  "domainOwnership": "current-scope",
+  "project": {
+    "idOrName": "arcora-labs",
+    "attached": true,
+    "verified": true,
+    "verification": [],
+    "verificationError": null
+  }
+}

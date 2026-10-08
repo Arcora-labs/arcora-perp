@@ -26,7 +26,7 @@ import { RecoveryPanel } from "./RecoveryPanel";
 import { PositionsOrders } from "./Tables";
 import { LpVault } from "./LpVault";
 import { HealthPanel } from "./HealthPanel";
-import { AccountPanel } from "./AccountPanel";
+import { AccountPanel, AccountSummary } from "./AccountPanel";
 import { StatsBar } from "./StatsBar";
 
 // ── module-mocked store: each test injects its client + state ────────────────
@@ -446,4 +446,10 @@ describe("Tables use the gateway remainder capability", () => {
     fireEvent.click(screen.getByRole("button", { name: /^cancel$/i }));
     expect(await screen.findByRole("alert")).toHaveProperty("textContent", refusal);
   });
+});
+
+it("Portfolio summary never presents unreadable placeholders as zero balances", () => {
+  injected.client = realShaped(); injected.state = unavailableState();
+  const { container } = render(<AccountSummary />);
+  expect(Array.from(container.querySelectorAll(".statcard__value")).map(el => el.textContent)).toEqual(["—", "—", "—", "—", "—"]);
 });

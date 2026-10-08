@@ -1,0 +1,45 @@
+Vercel CLI 59.16.0 (Node.js 24.12.0)
+Deploying arcora-labs
+Uploading [--------------------] (0.0B/234.1KB)
+Uploading [=====---------------] (69.3KB/234.1KB)
+Uploading [==========----------] (118.6KB/234.1KB)
+Uploading [===============-----] (182.6KB/234.1KB)
+Uploading [====================] (234.1KB/234.1KB)
+  Inspect         https://vercel.com/kubudak90s-projects/arcora-labs/43bZmmXs5988pd51uZJMxXbFi18o
+▲ Production      https://arcora-labs-11711o9in-kubudak90s-projects.vercel.app
+Building…
+Building…
+Running build in Washington, D.C., USA (East) – iad1
+Build machine configuration: 2 cores, 8 GB
+Retrieving list of deployment files...
+Previous build caches not available.
+Downloading 14 deployment files...
+[2K[1A[2K[G▲ Production      https://arcora-labs-11711o9in-kubudak90s-projects.vercel.app
+Completing…
+▲ Aliased         https://arcora-labs-kubudak90s-projects.vercel.app
+{
+  "status": "ok",
+  "deployment": {
+    "id": "dpl_43bZmmXs5988pd51uZJMxXbFi18o",
+    "url": "https://arcora-labs-11711o9in-kubudak90s-projects.vercel.app",
+    "inspectorUrl": "https://vercel.com/kubudak90s-projects/arcora-labs/43bZmmXs5988pd51uZJMxXbFi18o",
+    "readyState": "READY",
+    "target": "production",
+    "deploymentApiUrl": "https://api.vercel.com/v13/deployments/dpl_43bZmmXs5988pd51uZJMxXbFi18o"
+  },
+  "message": "Deployment arcora-labs-11711o9in-kubudak90s-projects.vercel.app ready.",
+  "next": [
+    {
+      "command": "vercel curl https://arcora-labs-11711o9in-kubudak90s-projects.vercel.app",
+      "when": "Verify deployment, including when Deployment Protection is enabled"
+    },
+    {
+      "command": "vercel inspect arcora-labs-11711o9in-kubudak90s-projects.vercel.app --scope kubudak90s-projects",
+      "when": "Inspect deployment"
+    },
+    {
+      "command": "vercel deploy --prod --scope kubudak90s-projects",
+      "when": "Promote to production"
+    }
+  ]
+}

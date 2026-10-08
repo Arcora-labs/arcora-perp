@@ -36,10 +36,12 @@ function MockStoreProvider({ children }: { children: ReactNode }) {
 function RealStoreProvider({ url, children }: { url: string; children: ReactNode }) {
   const [client, setClient] = useState<DarkPerpClient | null>(null);
   const [state, setState] = useState<ClientState | null>(null);
+  const [attempt, setAttempt] = useState(0);
   const [err, setErr] = useState<string | null>(null);
   const [prefillPrice, setPrefillPrice] = useState<bigint | null>(null);
 
   useEffect(() => {
+    setErr(null);
     let unsub = () => {};
     let alive = true;
     RealDarkPerpClient.bootstrap(url)
@@ -51,7 +53,7 @@ function RealStoreProvider({ url, children }: { url: string; children: ReactNode
       })
       .catch((e) => alive && setErr(e instanceof Error ? e.message : String(e)));
     return () => { alive = false; unsub(); };
-  }, [url]);
+  }, [url, attempt]);
 
   if (err) {
     return (
@@ -59,9 +61,10 @@ function RealStoreProvider({ url, children }: { url: string; children: ReactNode
         <div className="card" style={{ maxWidth: 480, textAlign: "center" }}>
           <h3 className="card__title">Gateway unreachable</h3>
           <p className="muted small" style={{ margin: 0 }}>
-            Could not reach the Arcora Perp gateway at <code>{url}</code> — {err}.<br />
-            Start it with <code>cargo run -p gateway</code>, or unset <code>VITE_API_URL</code> to use the mock.
+            We could not connect to the trading gateway. Check your connection and try again.
           </p>
+          <button className="btn btn--buy" style={{ marginTop: 20 }} onClick={() => setAttempt(n => n + 1)}>Try again</button>
+          <a href="/" className="navlink">Back to Arcora</a>
         </div>
       </div>
     );

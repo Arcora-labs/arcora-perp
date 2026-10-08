@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>API Reference — Arcora Perp Docs</title>
+<meta name="description" content="The Arcora Perp /v1 HTTP API: accounts, orders, market data, withdrawals — and the sealed order wire format for bot authors.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="deployment-note"><strong>Public browser demo.</strong> The current app simulates balances, orders and settlement. These documents describe the protocol and gateway integration; they are not evidence of a live gateway. <a href="/#/trade">Explore the demo →</a></div>
+<header class="topbar">
+  <a class="brand" href="index.html">Arcora Perp <span>Docs</span></a>
+  <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="sidenav">Menu</button>
+</header>
+<aside class="sidenav" id="sidenav">
+  <a class="brand" href="index.html">Arcora Perp <span>Docs</span></a>
+  <nav>
+    <a href="index.html">Overview</a>
+    <a href="quickstart.html">Quickstart</a>
+    <a href="trading.html">Trading</a>
+    <a href="api.html" class="current">API Reference</a>
+    <a href="architecture.html">Architecture</a>
+    <a href="security.html">Security &amp; Trust</a>
+    <a href="arcora-perp-litepaper.html">Litepaper</a>
+  </nav>
+  <div class="nav-foot"><a href="https://perp.arcoralabs.xyz">Open the app &rarr;</a></div>
+</aside>
+<main>
+<div class="content">
+
+<h1>API Reference</h1>
+<p class="lede">The gateway exposes a JSON HTTP API under <code>/v1</code>, served from the app origin <code>https://perp.arcoralabs.xyz</code>. A machine-readable spec is available at <code>GET /v1/openapi.json</code>.</p>
+
+<h2>Conventions</h2>
+<ul>
+  <li><strong>Auth</strong>: pass your API key in the <code>X-Api-Key</code> header. Get one from <code>POST /v1/accounts</code>.</li>
+  <li><strong>Amounts are decimal strings of scaled integers</strong>: quote (USDC) amounts are scaled by <code>1e6</code>, sizes and prices by <code>1e8</code>. Example: 1,000 USDC = <code>"1000000000"</code>; 0.5 BTC = <code>"50000000"</code>.</li>
+  <li><strong>Rate limit</strong>: order placement is limited to <strong>10 orders/second per account</strong>; excess returns <code>429</code>.</li>
+  <li><strong>Sealed ingress</strong>: in production posture, <code>POST /v1/orders</code> refuses plaintext order terms — orders must arrive sealed to the enclave's epoch key. See <a href="#sealed">the wire format</a> below.</li>
+</ul>
+
+<h2 id="accounts">Accounts</h2>
+
+<div class="endpoint">
+  <div class="sig"><span class="method post">POST</span>/v1/accounts</div>
+  <p>Register a trading account. Returns <code>{apiKey, owner, callerSigned}</code> — the API key authenticates all further calls; <code>owner</code> is the account's 32-byte owner public key (the value sealed-order AAD binds to). Optionally pass <code>{"signer": "0x&hellip;"}</code> to register in caller-signed mode, where each order additionally carries a 65-byte secp256k1 <code>signature</code> over the <strong>raw</strong> order hash (no EIP-191 prefix) made with your own key. <strong>Caution:</strong> the registered <code>signer</code> also becomes the <em>only</em> key that can authorize withdrawals — it takes precedence over a bound deposit address, so losing the signer key strands the account's funds even if the deposit-address key is safe.</p>
+</div>
+
+<div class="endpoint">
+  <div class="sig"><span class="method get">GET</span>/v1/accounts/me</div>
+  <p>Your account: balance, positions, <code>nextNonce</code> (the nonce your next sealed order must carry), and the withdrawal-authorization state: <code>depositAddress</code>, <code>callerSigned</code>, <code>nextWithdrawNonce</code> (the nonce your next withdrawal must carry), <code>rebindCounter</code>, and the deployment identity <code>chainId</code> + <code>vault</code> that withdrawal digests bind — read these from here, never hardcode them. The <code>vault</code> served here is normalized lowercase hex and is the exact byte sequence hashed into the digests (the <code>vault</code> echoed by <code>GET /v1/accounts/withdrawals</code> is the raw configured string and may be EIP-55 mixed-case — don't compare the two as strings).</p>
+</div>
+
+<div class="endpoint">
+  <div class="sig"><span class="method post">POST</span>/v1/accounts/deposit/address</div>
+  <p>Bind the external EOA you fund USDC from. Body: <code>{"address": "0x&hellip;", "signature": "0x&hellip;"}</code>. The binding is ownership-proven: <code>signature</code> is a 65-byte <code>r&#8214;s&#8214;v</code> secp256k1 signature (<code>v</code> &isin; {27, 28} as wallets produce it; any <code>v</code> in {0&ndash;3} or {27&ndash;30} is accepted) made with the <em>deposit EOA's</em> key over this digest:</p>
+<pre><code>digest = keccak256(
+    "dark-perp:bind-deposit:"  <span class="c">// fixed ASCII prefix (23 bytes)</span>
+ &#8214; owner            (32)      <span class="c">// your account owner, from POST /v1/accounts</span>
+ &#8214; depositAddress   (20)      <span class="c">// the EOA being bound</span>
+)</code></pre>
+  <p>The ASCII prefix <code>"dark-perp:bind-deposit:"</code> is a fixed protocol identifier — use it verbatim. The signature is accepted over any of three shapes of the digest: the <strong>raw 32-byte digest</strong> (CLI signers, e.g. <code>cast wallet sign --no-hash</code>), EIP-191 <code>personal_sign</code> over the 32 digest bytes, or EIP-191 over the digest's lowercase <code>"0x&hellip;"</code> hex string — so browser-wallet <code>personal_sign</code> works too. It must recover to the address being bound. Binding the account owner into the digest means the proof cannot be replayed to bind your address to someone else's account, and an address can be bound to at most one account. The app's API tab produces this signature for you.</p>
+  <p><strong>Rebinding requires the current address's consent.</strong> If the account already has a bound address, changing it must additionally carry <code>currentSignature</code> — a signature from the <em>currently bound</em> address over <code>keccak256("dark-perp:rebind-deposit:" &#8214; chainId(u64 BE) &#8214; vault(20) &#8214; owner(32) &#8214; rebindCounter(u64 BE) &#8214; oldAddr(20) &#8214; newAddr(20))</code>, with <code>chainId</code>/<code>vault</code>/<code>rebindCounter</code> read from <code>GET /v1/accounts/me</code>; the same three signature shapes are accepted. Re-binding the same address is an idempotent no-op.</p>
+  <p><strong>Plan for two deliberate consequences.</strong> (1) There is <em>no recovery path</em> for a lost bound-address key: no timelock, no operator unbind — and since withdrawals are pinned to the bound address, losing that key makes the account's funds permanently unwithdrawable. Keep the key you deposited from. (2) <em>First bind wins, permanently</em>: someone holding only your API key can bind their own address to an account that never bound one, and it cannot be overwritten (such an account can hold no funds, so this is griefing, not theft) — bind your address immediately after registering.</p>
+</div>
+
+<div class="endpoint">
+  <div class="sig"><span class="method post">POST</span>/v1/accounts/deposit/onchain</div>
+  <p>Credit a real on-chain vault deposit to your trading account. Body: <code>{"txHash": "0x&hellip;", "marketId": 0}</code>. The gateway verifies the transaction on-chain (it must be a vault deposit from your bound address) and credits your balance.</p>
+</div>
+
+<div class="endpoint">
+  <div class="sig"><span class="method post">POST</span>/v1/accounts/withdraw</div>
+  <p>Record an authorized withdrawal. Body: <code>{"marketId": 0, "amount": "1000000000", "to": "0x&hellip;", "nonce": 1, "signature": "0x&hellip;"}</code>. <strong>Every withdrawal must be wallet-signed</strong> — the API key alone can never move funds. <code>signature</code> is a 65-byte <code>r&#8214;s&#8214;v</code> secp256k1 signature recovering to the account's <em>authorizing address</em> — the registered caller-signed <code>signer</code> if there is one (it takes precedence), otherwise the bound deposit address — over this digest:</p>
+<pre><code>digest = keccak256(
+    "dark-perp:withdraw:"      <span class="c">// fixed ASCII prefix (19 bytes)</span>
+ &#8214; chainId   as u64 BE  (8)   <span class="c">// from GET /v1/accounts/me</span>
+ &#8214; vault              (20)    <span class="c">// from GET /v1/accounts/me (lowercase hex → bytes)</span>
+ &#8214; owner              (32)    <span class="c">// your account owner</span>
+ &#8214; marketId  as u64 BE  (8)
+ &#8214; amount    as i128 BE (16)
+ &#8214; to                 (20)
+ &#8214; nonce     as u64 BE  (8)   <span class="c">// nextWithdrawNonce from GET /v1/accounts/me</span>
+)                              <span class="c">// 131-byte preimage</span></code></pre>
+  <p>The same three signature shapes as the deposit-address bind are accepted (raw digest, EIP-191 over the 32 bytes, EIP-191 over the lowercase hex string), so both CLI signers and browser-wallet <code>personal_sign</code> work. The nonce must strictly increase per account (it is shared with <code>POST /v1/lp/withdraw</code>) and commits only when the withdrawal succeeds — a rejected request doesn't burn it. <strong>Server-custody accounts may only withdraw to their bound deposit address</strong> (<code>to</code> must equal it); caller-signed accounts keep a free destination. The withdrawal enters the current settlement window; once that window settles, it is claimable on-chain. See <a href="trading.html#finality">what is withdrawable, when</a>.</p>
+</div>
+
+<div class="endpoint">
+  <div class="sig"><span class="method get">GET</span>/v1/accounts/withdrawals</div>
+  <p>Your withdrawals with their status and Merkle claim proofs — everything needed to call <code>claim(to, amount, nonce, root, proof)</code> on the vault.</p>
+</div>
+
+<h2>Orders</h2>
+
+<div class="endpoint">
+  <div class="sig"><span class="method post">POST</span>/v1/orders</div>
+  <p>Place an order. Sealed body: <code>{"epochId": &lt;n&gt;, "sealed": "0x&hellip;"}</code> (see <a href="#sealed">wire format</a>). Returns an <strong>enclave-signed receipt</strong> — store it; it is your inclusion evidence in the on-chain challenge game. Responses: <code>200</code> signed receipt, <code>400</code> rejected, <code>429</code> rate-limited (10/s per account).</p>
+</div>
+
+<div class="endpoint">
+  <div class="sig"><span class="method get">GET</span>/v1/orders</div>
+  <p>Your orders with their finality state (<code>ACCEPTED</code> / <code>MATCHED</code> / <code>SETTLED</code>).</p>
+</div>
+
+<div class="endpoint">
+  <div class="sig"><span class="method del">DELETE</span>/v1/orders/:orderId</div>
+  <p>Cancel a resting (ACCEPTED) order.</p>
+</div>
+
+<div class="endpoint">
+  <div class="sig"><span class="method get">GET</span>/v1/positions</div>
+  <p>Your open positions.</p>
+</div>
+
+<h2>Market data</h2>
+
+<div class="endpoint">
+  <div class="sig"><span class="method get">GET</span>/v1/markets &nbsp;&middot;&nbsp; <span class="method get">GET</span>/v1/markets/:id</div>
+  <p>All markets, or one market (<code>id</code> = 0 BTC, 1 ETH, 2 SOL). Public, no auth.</p>
+</div>
+
+<div class="endpoint">
+  <div class="sig"><span class="method get">GET</span>/v1/markets/:id/orderbook</div>
+  <p>Aggregate order book depth. Public — per-account balances and positions are never visible here.</p>
+</div>
+
+<div class="endpoint">
+  <div class="sig"><span class="method get">GET</span>/v1/markets/:id/candles?tf=15m&amp;limit=120</div>
+  <p>Price history (engine marks; exchange-backfilled for feed markets). <code>tf</code> &isin; <code>1m, 5m, 15m, 1h, 4h, 1d</code> (default <code>15m</code>); <code>limit</code> up to 240 (default 120). Returns <code>candles[]</code> of <code>{t, o, h, l, c}</code> with 1e8-scaled string prices.</p>
+</div>
+
+<div class="endpoint">
+  <div class="sig"><span class="method get">GET</span>/v1/markets/:id/oracle</div>
+  <p>The current validated oracle price for the market.</p>
+</div>
+
+<h2 id="lp">LP pool</h2>
+
+<div class="endpoint">
+  <div class="sig"><span class="method get">GET</span>/v1/lp &nbsp;&middot;&nbsp; <span class="method post">POST</span>/v1/lp/deposit &nbsp;&middot;&nbsp; <span class="method post">POST</span>/v1/lp/withdraw</div>
+  <p>The house market maker's equity pool. <code>GET /v1/lp</code> returns the pool's stats and your own stake. Stake with <code>POST /v1/lp/deposit</code>, body <code>{"amount": "1000000000"}</code> (USDC, 1e6-scaled string) &rarr; <code>{"sharesMinted"}</code>; unstake with <code>POST /v1/lp/withdraw</code>, body <code>{"shares": "&hellip;", "nonce": 1, "signature": "0x&hellip;"}</code> &rarr; <code>{"withdrawnValue"}</code>. All three are authenticated.</p>
+  <p>An LP withdrawal is <strong>wallet-signed like an account withdrawal</strong> (same authorizing address, same shared <code>nextWithdrawNonce</code>, same three accepted signature shapes), but over its own digest — <code>keccak256("dark-perp:lp-withdraw:" &#8214; chainId(u64 BE) &#8214; vault(20) &#8214; owner(32) &#8214; shares(u128 BE) &#8214; nonce(u64 BE))</code>, a 106-byte preimage with a distinct prefix so a withdraw signature can never be replayed as an LP one or vice versa. There is no <code>to</code>: the value is paid into your account's own market-0 balance, never to L1.</p>
+</div>
+
+<h2>System</h2>
+
+<div class="endpoint">
+  <div class="sig"><span class="method get">GET</span>/v1/system/status</div>
+  <p>System status, including settlement-window progress you can compare against the on-chain batch count.</p>
+</div>
+
+<div class="endpoint">
+  <div class="sig"><span class="method get">GET</span>/v1/batch/:id</div>
+  <p>Settlement status of a window: <code>{windowId, settled}</code>.</p>
+</div>
+
+<div class="endpoint">
+  <div class="sig"><span class="method get">GET</span>/v1/enclave/epoch</div>
+  <p>The enclave's current order-ingress key: <code>{epochId, x25519Pub, notAfterMs, measurement, sig}</code>, signed by the enclave's secp256k1 identity. <strong>Verify before sealing</strong> — see below.</p>
+</div>
+
+<div class="endpoint">
+  <div class="sig"><span class="method ws">WS</span>/v1/ws</div>
+  <p>WebSocket: public live-market snapshots every tick. After sending <code>{"type": "auth", "apiKey": "0x&hellip;"}</code>, you also receive your own account events — fills, order finality transitions, ADL haircuts.</p>
+</div>
+
+<h2 id="sealed">Sealed order wire format (for bot authors)</h2>
+<p>Order terms never travel in plaintext: the client serializes them to a canonical 51-byte layout, encrypts (&ldquo;seals&rdquo;) them to the enclave's rotating X25519 epoch key, and POSTs only <code>{epochId, sealed}</code>. The reference implementation lives in the repository at <code>frontend/src/api/sealedBox.ts</code> (the sealed-box primitive) and <code>frontend/src/api/realClient.ts</code> (epoch verification, serialization, and the full submit flow) — both pinned byte-for-byte against the Rust side by cross-language test vectors.</p>
+
+<h3>Step 1 — fetch and verify the epoch key</h3>
+<p><code>GET /v1/enclave/epoch</code> returns <code>{epochId, x25519Pub, notAfterMs, measurement, sig}</code>. Before sealing anything, verify the signature — fail closed on any mismatch:</p>
+<pre><code>digest = keccak256(
+    0x19                       <span class="c">// domain tag byte 25</span>
+ &#8214; epochId  as u64 LE (8)
+ &#8214; x25519Pub        (32)
+ &#8214; notAfterMs as u64 LE (8)
+)                              <span class="c">// 49-byte preimage</span></code></pre>
+<p><code>sig</code> is a 65-byte <code>r&#8214;s&#8214;v</code> secp256k1 signature (<code>v</code> &isin; {27, 28}). Recover the public key from <code>digest</code> and require its Ethereum address to equal the enclave signer <code class="addr">0x92173839C6B3b717179ba5505CCE31bD2131EbA0</code>. <code>notAfterMs</code> is an advisory expiry — refetch the epoch once it passes.</p>
+
+<h3>Step 2 — serialize the order terms (51 bytes, all little-endian)</h3>
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Offset</th><th>Field</th><th>Type</th><th>Bytes</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td><code>0</code></td><td><code>marketId</code></td><td>u64 LE</td><td>8</td><td>0 = BTC, 1 = ETH, 2 = SOL</td></tr>
+    <tr><td><code>8</code></td><td><code>side</code></td><td>u8</td><td>1</td><td><code>1</code> = Buy, <code>2</code> = Sell</td></tr>
+    <tr><td><code>9</code></td><td><code>size</code></td><td>i128 LE</td><td>16</td><td>1e8 scale; must be &gt; 0</td></tr>
+    <tr><td><code>25</code></td><td><code>limitPrice</code></td><td>i128 LE</td><td>16</td><td>1e8 scale; <code>0</code> = market order</td></tr>
+    <tr><td><code>41</code></td><td><code>tif</code></td><td>u8</td><td>1</td><td><code>1</code> = GTC, <code>2</code> = IOC, <code>3</code> = FOK, <code>4</code> = PostOnly</td></tr>
+    <tr><td><code>42</code></td><td><code>reduceOnly</code></td><td>u8</td><td>1</td><td><code>0</code> = false, <code>1</code> = true</td></tr>
+    <tr><td><code>43</code></td><td><code>nonce</code></td><td>u64 LE</td><td>8</td><td>strictly increasing per account</td></tr>
+  </tbody>
+</table>
+</div>
+<p>The nonce must strictly increase per account — fetch the expected value as <code>nextNonce</code> from <code>GET /v1/accounts/me</code>. A captured <code>{epochId, sealed}</code> body that is re-POSTed is rejected.</p>
+
+<h3>Step 3 — seal to the verified epoch key</h3>
+<p>The sealed box is X25519 ECDH &rarr; HKDF-SHA256 &rarr; XChaCha20-Poly1305:</p>
+<ol>
+  <li>Generate an ephemeral X25519 keypair (<code>esk</code>, <code>epk</code>) and a random 24-byte nonce.</li>
+  <li>Compute the shared secret: <code>X25519(esk, x25519Pub)</code>.</li>
+  <li>Derive the AEAD key: <code>HKDF-SHA256(ikm = shared, salt = epk &#8214; x25519Pub, info = "arcora/sealed-box/v1")</code> &rarr; 32 bytes.</li>
+  <li>Build the AAD, binding the ciphertext to this epoch <em>and</em> your account (no cross-account replay):
+<pre><code>aad = 0x1C                     <span class="c">// domain tag byte 28</span>
+   &#8214; epochId as u64 LE (8)
+   &#8214; owner           (32)     <span class="c">// from POST /v1/accounts</span></code></pre></li>
+  <li>Encrypt the 51-byte terms with XChaCha20-Poly1305 under that key, nonce, and AAD.</li>
+</ol>
+<p>The wire format is version byte <code>0x01</code>, then the ephemeral public key, nonce, and ciphertext with its tag:</p>
+<pre><code>sealed = 0x01 &#8214; epk(32) &#8214; nonce(24) &#8214; ciphertext&#8214;tag
+       <span class="c">// 51-byte plaintext &rarr; 1 + 32 + 24 + 51 + 16 = 124 bytes</span></code></pre>
+
+<h3>Step 4 — submit</h3>
+<pre><code>POST /v1/orders
+X-Api-Key: &lt;your api key&gt;
+Content-Type: application/json
+
+{"epochId": 3, "sealed": "0x01&hellip;"}</code></pre>
+<p>The response is an enclave-signed receipt. Keep it: it proves your order was accepted, and it is the evidence you would use in the <a href="architecture.html#challenge">on-chain inclusion challenge</a> if a settled window ever omitted your order.</p>
+
+<footer>
+  <p>Arcora Perp is a <strong>public testnet alpha</strong> on Base Sepolia (chain ID 84532). All funds are test funds (open-mint MockUSDC). The contracts have not been audited by a third party — do not treat this as production software.</p>
+  <p><a href="https://perp.arcoralabs.xyz">perp.arcoralabs.xyz</a> &middot; <a href="security.html">Trust model &amp; current gaps</a></p>
+</footer>
+
+</div>
+</main>
+<script>
+(function () {
+  var t = document.querySelector(".nav-toggle");
+  var n = document.getElementById("sidenav");
+  t.addEventListener("click", function () {
+    var open = n.classList.toggle("open");
+    t.setAttribute("aria-expanded", open ? "true" : "false");
+  });
+})();
+</script>
+</body>
+</html>

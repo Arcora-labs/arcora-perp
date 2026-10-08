@@ -1,0 +1,9 @@
+### Result
+{"ma":"true","fullscreen":true,"closeOnly":true,"globalCloseOnly":true}
+### Ran Playwright code
+```js
+await (async(page)=>{await page.setViewportSize({width:1440,height:1000});await page.goto("http://127.0.0.1:5188/#/trade");await page.getByRole("button",{name:"Moving average (10 bars)"}).click();const ma=await page.getByRole("button",{name:"Moving average (10 bars)"}).getAttribute("aria-pressed");await page.getByRole("button",{name:"Expand chart"}).click();const fullscreen=await page.evaluate(()=>!!document.fullscreenElement);if(fullscreen)await page.evaluate(()=>document.exitFullscreen());await page.locator(".system-controls summary").click();await page.getByRole("button",{name:"Simulate forced exit"}).click();const closeOnly=await page.getByText("Close-only mode.",{exact:true}).isVisible();await page.getByRole("navigation",{name:"Primary"}).getByRole("button",{name:"Portfolio",exact:true}).click();const globalCloseOnly=await page.getByText("Close-only mode.",{exact:true}).isVisible();return {ma,fullscreen,closeOnly,globalCloseOnly};})(page);
+```
+### Page
+- Page URL: http://127.0.0.1:5188/#/account
+- Page Title: BTC/USDC 83,171.00 · Arcora Perp
