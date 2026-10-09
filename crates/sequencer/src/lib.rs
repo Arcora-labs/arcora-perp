@@ -1218,6 +1218,8 @@ impl Sequencer {
         let manifest = BatchManifest {
             previous_state_root: prev_state_root,
             batch_id,
+            // A consistency summary only. Preserve the original operation times.
+            batch_time_ms: perp_core::commitment::batch_time_ms(&ops),
             ordered,
             rejected,
             oracle_updates,
@@ -1403,16 +1405,31 @@ impl Sequencer {
     /// `apply_batch`), drain the window op-log into the witness, and reopen a fresh
     /// window from the current (post-bump) state. `derive_roots(pre_state, ops, manifest)
     /// .new_state_root` equals the live state root after this call.
+    ///
+    /// Seal the exact execution log, including each operation's original clock
+    /// and signed oracle. The manifest timestamp is only the maximum operation
+    /// time; it is not proof of external time. Never refresh historical inputs
+    /// from the live feed: a delayed proof or retry must replay the original state.
     pub fn seal_window(&mut self) -> WindowWitness {
         let batch_id = self.state.next_batch_id;
+        // Commit observations actually used by these operations, not the mutable
+        // live feed. This also preserves manifest identity on rollback/re-seal.
         let oracle_updates: Vec<Digest> = self
-            .oracles
-            .values()
-            .map(|t| t.hash::<Keccak256>())
+            .window_ops
+            .iter()
+            .filter_map(|op| match op {
+                BatchOp::Fill { oracle, .. }
+                | BatchOp::AccrueFunding { oracle, .. }
+                | BatchOp::Liquidate { oracle, .. }
+                | BatchOp::Unbind { oracle, .. } => Some(oracle.hash::<Keccak256>()),
+                _ => None,
+            })
             .collect();
+        let now_ms = perp_core::commitment::batch_time_ms(&self.window_ops);
         let manifest = BatchManifest {
             previous_state_root: self.window_start_state.state_root(),
             batch_id,
+            batch_time_ms: now_ms,
             ordered: self.window_ordered.clone(),
             rejected: self.window_rejected.clone(),
             oracle_updates,

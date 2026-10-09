@@ -219,7 +219,8 @@ def main():
                     # The baseline authorization's genuine durability ACK captures
                     # registration, address binding and (for cancel) the pending order.
                     baseline_permit = ok(port, 'POST', '/v1/accounts/deposit/authorize', permit, key)
-                    require(state.read_bytes().startswith(b'DPSNAP8\0'), 'encrypted snapshot format')
+                    # New snapshots use v9; v8 is supported only as a legacy reader format.
+                    require(state.read_bytes().startswith(b'DPSNAP9\0'), 'encrypted snapshot format')
                     baseline_hash = sha256(state)
                     baseline_account = ok(port, 'GET', '/v1/accounts/me', key=key)
                     if operation == 'authorize':

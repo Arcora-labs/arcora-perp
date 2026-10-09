@@ -165,6 +165,7 @@ fn full_witness_round_trips_and_rederives_commitment() {
     let manifest = BatchManifest {
         previous_state_root: s.state_root(),
         batch_id: s.next_batch_id,
+        batch_time_ms: 2_000, // matches the op's now_ms above
         ordered: vec![],
         rejected: vec![],
         oracle_updates: vec![],

@@ -91,6 +91,15 @@ pub enum EngineError {
     WindDownGrammar,
     /// The terminal socialization set cannot absorb the remaining deficit.
     WindDownInsolvent,
+    /// 2026-10-08 review: a `Market` stored in the canonical state's `markets` map
+    /// under a key different from its own `id`. Every state root hashes the map KEY,
+    /// never `Market.id`, so a witness carrying `Market { id: X }` under key `Y ≠ X`
+    /// produced the identical digest and the circuit was blind to the mismatch.
+    /// Rejected fail-closed at root-derivation time.
+    MarketIdMismatch,
+    /// The manifest timestamp differs from the maximum original operation time.
+    /// This consistency check does not authenticate external/L1 time.
+    ClockMismatch,
 }
 
 impl From<RiskError> for EngineError {

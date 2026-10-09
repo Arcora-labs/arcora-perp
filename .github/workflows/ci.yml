@@ -6,19 +6,35 @@ on:
   pull_request:
 
 jobs:
-  rust:
-    name: rust (workspace)
+  rust-lint:
+    name: rust (lint, 1.99)
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
+          toolchain: 1.99.0
           components: clippy, rustfmt
       - uses: Swatinem/rust-cache@v2
       - name: fmt
         run: cargo fmt --all --check
       - name: clippy
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+  rust:
+    name: rust (workspace)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # Independent job: a lint failure must not prevent test execution.
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.99.0
+      - uses: Swatinem/rust-cache@v2
+      - name: Install cast for localhost L1 fixture tests
+        uses: foundry-rs/foundry-toolchain@v1
       - name: test
         run: cargo test --workspace --locked
       - name: witness serialization (serde feature)

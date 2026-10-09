@@ -546,6 +546,7 @@ mod tests {
         BatchManifest {
             previous_state_root: s.state_root(),
             batch_id: s.next_batch_id,
+            batch_time_ms: 0,
             ordered: vec![],
             rejected: vec![],
             oracle_updates: vec![],
@@ -890,6 +891,7 @@ mod tests {
         let manifest = BatchManifest {
             previous_state_root: s.state_root(),
             batch_id: s.next_batch_id,
+            batch_time_ms: 0,
             ordered: vec![],
             rejected: vec![],
             oracle_updates: vec![],

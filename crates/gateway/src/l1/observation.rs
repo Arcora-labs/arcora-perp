@@ -154,10 +154,9 @@ impl<'a> CanonicalRead<'a> {
                     "settlement observation: invalid ABI word for {signature}"
                 ));
             }
-            Ok(bytes
-                .chunks_exact(32)
-                .map(|w| w.try_into().unwrap())
-                .collect())
+            // Exact length validation above guarantees no trailing bytes. Fixed-size
+            // array chunks avoid fallible slice conversions and preserve word order.
+            Ok(bytes.as_chunks::<32>().0.to_vec())
         };
         let words = parse(self.primary.call("eth_call", params.clone())?)?;
         if let Some(witness) = self.witness {
@@ -319,13 +318,19 @@ pub(super) fn abi_u64(word: Digest, label: &str) -> Result<u64, String> {
     if word[..24].iter().any(|b| *b != 0) {
         return Err(format!("settlement observation: {label} overflows u64"));
     }
-    Ok(u64::from_be_bytes(word[24..].try_into().unwrap()))
+    let bytes: [u8; 8] = word[24..]
+        .try_into()
+        .map_err(|_| format!("settlement observation: {label} not a u64 word"))?;
+    Ok(u64::from_be_bytes(bytes))
 }
 pub(super) fn abi_u128(word: Digest, label: &str) -> Result<u128, String> {
     if word[..16].iter().any(|b| *b != 0) {
         return Err(format!("settlement observation: {label} overflows u128"));
     }
-    Ok(u128::from_be_bytes(word[16..].try_into().unwrap()))
+    let bytes: [u8; 16] = word[16..]
+        .try_into()
+        .map_err(|_| format!("settlement observation: {label} not a u128 word"))?;
+    Ok(u128::from_be_bytes(bytes))
 }
 pub(super) fn abi_bool(word: Digest, label: &str) -> Result<bool, String> {
     if word[..31].iter().any(|b| *b != 0) || word[31] > 1 {
@@ -343,16 +348,15 @@ fn hex_bytes(value: &Value) -> Result<Vec<u8>, String> {
     if data.len() % 2 != 0 {
         return Err("settlement observation: invalid RPC hex length".into());
     }
-    data.as_bytes()
-        .chunks_exact(2)
-        .map(|p| {
-            Ok(
-                crate::hex_nibble(p[0]).ok_or("settlement observation: invalid RPC hex data")? * 16
-                    + crate::hex_nibble(p[1])
-                        .ok_or("settlement observation: invalid RPC hex data")?,
-            )
-        })
-        .collect()
+    let mut out = Vec::with_capacity(data.len() / 2);
+    for pair in data.as_bytes().as_chunks::<2>().0 {
+        let hi =
+            crate::hex_nibble(pair[0]).ok_or("settlement observation: invalid RPC hex data")?;
+        let lo =
+            crate::hex_nibble(pair[1]).ok_or("settlement observation: invalid RPC hex data")?;
+        out.push(hi * 16 + lo);
+    }
+    Ok(out)
 }
 
 /// The deposit page validator already binds logs and prefix calls to canonical
@@ -420,4 +424,31 @@ pub(super) fn deposit_read(
         return Err("deposit observation: witness disagreement".into());
     }
     Ok(value)
+}
+
+#[cfg(test)]
+mod strict_hex_tests {
+    use super::*;
+
+    #[test]
+    fn rpc_hex_preserves_byte_order_and_leading_zeroes() {
+        assert_eq!(hex_bytes(&json!("0x00ff10Ab")).unwrap(), [0, 255, 16, 171]);
+        assert!(hex_bytes(&json!("0x")).unwrap().is_empty());
+    }
+
+    #[test]
+    fn rpc_hex_rejects_odd_length_instead_of_dropping_the_tail() {
+        for value in ["0x0", "0x001", "0x00ff1"] {
+            assert!(hex_bytes(&json!(value)).is_err(), "accepted {value}");
+        }
+    }
+
+    #[test]
+    fn rpc_hex_rejects_invalid_prefix_digits_and_non_strings() {
+        for value in ["", "00", "0X00", "0x0g", "0xg0", "0xé", "0x 0"] {
+            assert!(hex_bytes(&json!(value)).is_err(), "accepted {value}");
+        }
+        assert!(hex_bytes(&Value::Null).is_err());
+        assert!(hex_bytes(&json!(0)).is_err());
+    }
 }

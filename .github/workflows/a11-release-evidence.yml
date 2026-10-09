@@ -72,6 +72,8 @@ jobs:
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - name: Check release profile flags take effect
         run: python3 scripts/local-verification/check_release_profile.py
+      - name: Install cast for localhost L1 fixture tests
+        uses: foundry-rs/foundry-toolchain@v1
       - name: release workspace tests
         env:
           CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS: 'true'
