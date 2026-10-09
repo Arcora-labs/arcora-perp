@@ -4,16 +4,12 @@
 use perp_core::hash::Keccak256;
 use serde_json::{json, Value};
 use sp1_host::{groth16_payload_for_verification, hex, sha256};
-use sp1_sdk::{
-    include_elf, Elf, HashableKey, Prover, ProverClient, ProvingKey, SP1Proof,
-    SP1ProofWithPublicValues, SP1PublicValues,
-};
+use sp1_sdk::{include_elf, Elf, SP1Proof, SP1ProofWithPublicValues, SP1PublicValues};
 use sp1_verifier::ProofBn254;
 use std::{fs, path::PathBuf};
 const ELF: Elf = include_elf!("perp-core-guest");
 
-#[tokio::main]
-async fn main() {
+fn main() {
     let a: Vec<String> = std::env::args().skip(1).collect();
     assert_eq!(
         a.len(),
@@ -68,17 +64,47 @@ async fn main() {
     let proof = SP1ProofWithPublicValues::new(
         SP1Proof::Groth16(groth),
         SP1PublicValues::from(&expected),
-        "6.1.0".into(),
+        sp1_sdk::SP1_CIRCUIT_VERSION.to_string(),
     );
-    let client = ProverClient::builder().cpu().build().await;
-    let pk = client.setup(ELF).await.expect("actual guest setup");
-    let vkey = pk.verifying_key().bytes32_raw();
-    assert_eq!(fs::read(original.join("program-vkey.bin")).unwrap(), vkey);
-    assert_eq!(record["program_vkey"], format!("0x{}", hex(&vkey)));
-    client
-        .verify(&proof, pk.verifying_key(), None)
-        .expect("resumed Groth16 must pass real SDK verification");
+    // Reuse the independently pinned setup-derived guest key. Verification does
+    // not require constructing a multi-gigabyte CPU proving backend again.
+    let vkey = fs::read(original.join("program-vkey.bin")).unwrap();
+    let vkey_hex = format!("0x{}", hex(&vkey));
+    assert_eq!(
+        vkey_hex,
+        "0x0017893c7ff3395d60b57d25eaa08cf1542fc7bc3cdfd74468133562994b8353"
+    );
+    assert_eq!(record["program_vkey"], vkey_hex);
+    let embedded_vk: &[u8] = &sp1_verifier::GROTH16_VK_BYTES;
+    assert_eq!(vk_bytes.as_slice(), embedded_vk);
     let payload = groth16_payload_for_verification(&proof, &expected).unwrap();
+    sp1_verifier::Groth16Verifier::verify(&payload, &expected, &vkey_hex, embedded_vk)
+        .expect("actual SP1 Groth16 verification");
+    let mut mutated = payload.clone();
+    let end = mutated.len() - 1;
+    mutated[end] ^= 1;
+    assert!(
+        sp1_verifier::Groth16Verifier::verify(&mutated, &expected, &vkey_hex, embedded_vk,)
+            .is_err(),
+        "tampered proof must fail"
+    );
+    let mut wrong_public = expected;
+    wrong_public[0] ^= 1;
+    assert!(
+        sp1_verifier::Groth16Verifier::verify(&payload, &wrong_public, &vkey_hex, embedded_vk,)
+            .is_err(),
+        "changed public value must fail"
+    );
+    assert!(
+        sp1_verifier::Groth16Verifier::verify(
+            &payload,
+            &expected,
+            &format!("0x{}", "01".repeat(32)),
+            embedded_vk,
+        )
+        .is_err(),
+        "wrong guest key must fail"
+    );
     // All guards and cryptographic verification completed before success is emitted.
     fs::create_dir(&output).unwrap();
     for name in [
@@ -97,7 +123,11 @@ async fn main() {
     )
     .unwrap();
     record["proof_generated"] = json!(true);
-    record["local_sdk_verified"] = json!(true);
+    record["local_sdk_verified"] = json!(false);
+    record["rust_sp1_verifier_verified"] = json!(true);
+    record["rust_verifier_version"] = json!("6.1.0");
+    record["rust_verifier_negatives"] =
+        json!(["tampered-proof", "wrong-public-values", "wrong-guest-key"]);
     record["resumed_gnark_wrapper"] = json!(true);
     record["wrapper_output_sha256"] = json!(sha256(&raw));
     record["proof_sha256"] = json!(sha256(&payload));
@@ -109,7 +139,7 @@ async fn main() {
     )
     .unwrap();
     println!(
-        "RESUMED_CLOCK_GROTH16_SDK_VERIFIED bytes={} commitment=0x{}",
+        "RESUMED_CLOCK_GROTH16_RUST_VERIFIED bytes={} commitment=0x{}",
         payload.len(),
         hex(&expected)
     );

@@ -94,14 +94,32 @@ jobs:
       - name: Real SP1 verifier guards (no application proof claim)
         working-directory: .
         run: python3 scripts/local-verification/verify_real_proof.py --guards-only --output-dir /tmp/arcora-real-verifier-guards
-      - name: Reject incomplete or substituted proof artifacts
+      - name: Real clock-v2 proof through adapter, settlement and vault
         working-directory: .
-        run: python3 -m unittest discover -s contracts/integration -p 'test_*.py'
+        run: |
+          python3 -m unittest discover -s scripts/local-verification -p test_verify_clock_proof.py
+          python3 scripts/local-verification/verify_clock_fixture.py --output-dir /tmp/arcora-clock-real-proof
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: a11-real-verifier-guards-only
-          path: /tmp/arcora-real-verifier-guards
+          name: a11-clock-real-proof
+          path: /tmp/arcora-clock-real-proof
+      - name: Reject incomplete or substituted proof artifacts
+        working-directory: .
+        run: python3 -m unittest discover -s contracts/integration -p 'test_*.py'
+      - name: Reject incomplete clock artifacts and changed guest sources
+        working-directory: .
+        run: python3 -m unittest discover -s scripts/local-verification -p test_verify_clock_proof.py
+      - name: Real clock proof through verifier, settlement and vault
+        working-directory: .
+        run: python3 scripts/local-verification/verify_clock_proof.py --artifact-dir contracts/integration/fixtures/clock-v2-verified --output-dir /tmp/arcora-clock-real-proof
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: a11-real-verifier-and-clock-proof
+          path: |
+            /tmp/arcora-real-verifier-guards
+            /tmp/arcora-clock-real-proof
   gateway-local-drills:
     name: gateway RPC, crash and alert drills
     runs-on: ubuntu-latest

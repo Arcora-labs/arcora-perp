@@ -1,0 +1,44 @@
+{
+  "commitment": "0x4fc574af6cf22bc0aaf7a4d72532aabc2a7db8f2cda8d3872c47cf07b18f139e",
+  "cycles": 6035092,
+  "elf_sha256": "df59a19b310258b4d01d0d5e3cfa31bb7de9ca2f4ea7c2302cf76650c79967c5",
+  "kind": "clock-v2-native-guest",
+  "native_guest_equal": true,
+  "negatives": [
+    {
+      "guest_exit": 1,
+      "name": "wrong-bounds",
+      "public_bytes": 0,
+      "witness_sha256": "e4057d36e7aec9f61eb537d46957d6ede75c7706c328c699025fbefcfbd26bf5"
+    },
+    {
+      "guest_exit": 1,
+      "name": "wrong-count",
+      "public_bytes": 0,
+      "witness_sha256": "8b3ce13a156da3ea015181ee6e70478dd85eec8b4575dc8602ca276387695e46"
+    },
+    {
+      "guest_exit": 1,
+      "name": "wrong-batch",
+      "public_bytes": 0,
+      "witness_sha256": "20c6cd884979d825e456666c8c67b77137761f1e192552d8ef6b06d626034d32"
+    },
+    {
+      "guest_exit": 1,
+      "name": "wrong-base",
+      "public_bytes": 0,
+      "witness_sha256": "bfbd0612d87718c7560d188a5801e7bca14a9df7216a19177ce0f32fa962e611"
+    },
+    {
+      "guest_exit": 1,
+      "name": "backdated",
+      "public_bytes": 0,
+      "witness_sha256": "0ea2e8577cd965c2ea42ba8bc7a2381239ef01e9b6798c862877a20645136c71"
+    }
+  ],
+  "program_vkey": "0x0017893c7ff3395d60b57d25eaa08cf1542fc7bc3cdfd74468133562994b8353",
+  "proof_generated": false,
+  "sdk_version": "6.1.0",
+  "target_contract_verified": false,
+  "witness_sha256": "e3bbb0db665d9c9394170dcf9c95af15bdbafbe13dd9127088e28babccfd570f"
+}

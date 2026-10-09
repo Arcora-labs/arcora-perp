@@ -2,10 +2,29 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 import verify_clock_proof as clock
 
 
 class ClockProofArtifactGuards(unittest.TestCase):
+    def test_checked_out_guest_source_matches_independent_pin(self):
+        self.assertEqual(clock.verify_guest_source(), clock.EXPECTED_GUEST_SOURCES)
+
+    def test_changed_guest_cannot_reuse_a_passing_old_proof(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            original = clock.target.ROOT
+            for name in clock.EXPECTED_GUEST_SOURCES:
+                destination = root / name
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                destination.write_bytes((original / name).read_bytes())
+            with patch.object(clock.target, "ROOT", root):
+                clock.verify_guest_source()
+                file = root / "crates/sp1-guest/src/main.rs"
+                file.write_bytes(file.read_bytes() + b"\n// changed guest input\n")
+                with self.assertRaisesRegex(ValueError, "guest source changed"):
+                    clock.verify_guest_source()
+
     def test_missing_success_record_is_not_an_execution_pass(self):
         with tempfile.TemporaryDirectory() as directory:
             with self.assertRaisesRegex(ValueError, "missing"):
