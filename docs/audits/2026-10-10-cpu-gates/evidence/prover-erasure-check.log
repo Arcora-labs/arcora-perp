@@ -1,0 +1,20 @@
+   Compiling prover-service v0.0.0 (<HOME>/Desktop/arcora-perp/repo/crates/prover-service)
+warning: use of deprecated method `sha2::digest::generic_array::GenericArray::<T, N>::as_slice`: please upgrade to generic-array 1.x
+   --> <HOME>/Desktop/arcora-perp/repo/crates/attestation/src/vtpm.rs:239:32
+    |
+239 |     if Sha256::digest(runtime).as_slice() != &td.report_data[..32] {
+    |                                ^^^^^^^^
+    |
+    = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated method `sha2::digest::generic_array::GenericArray::<T, N>::as_slice`: please upgrade to generic-array 1.x
+   --> <HOME>/Desktop/arcora-perp/repo/crates/attestation/src/vtpm.rs:270:21
+    |
+270 |     if h.finalize().as_slice() != q.pcr_digest {
+    |                     ^^^^^^^^
+
+warning: `dark-perp-attestation` (lib) generated 2 warnings
+warning: prover-service@0.0.0: Build skipped for perp-core-guest at 2026-10-10 02:03:32 due to SP1_SKIP_PROGRAM_BUILD flag
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1.95s
+warning: the following packages contain code that will be rejected by a future version of Rust: proc-macro-error2 v2.0.1
+note: to see what the problems were, use the option `--future-incompat-report`, or run `cargo report future-incompatibilities --id 1`

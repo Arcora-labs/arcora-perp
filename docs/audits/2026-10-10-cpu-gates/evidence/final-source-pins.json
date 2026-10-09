@@ -1,0 +1,20 @@
+{
+  "reviewed_guest_source_pins_unchanged": 21,
+  "reviewed_elf_sha256": "df59a19b310258b4d01d0d5e3cfa31bb7de9ca2f4ea7c2302cf76650c79967c5",
+  "lock_changes": {
+    "Cargo.lock": {
+      "removed_or_upgraded": [],
+      "new_packages": [
+        [
+          "zeroize_derive",
+          "1.5.0",
+          "registry+https://github.com/rust-lang/crates.io-index"
+        ]
+      ]
+    },
+    "crates/prover-service/Cargo.lock": {
+      "removed_or_upgraded": [],
+      "new_packages": []
+    }
+  }
+}

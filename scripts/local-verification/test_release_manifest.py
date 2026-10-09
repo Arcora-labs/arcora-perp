@@ -565,10 +565,37 @@ class AnvilTargetTests(unittest.TestCase):
         public = config()
         public["addresses"] = addresses
         public["gateway"].update({env: addresses[role] for env, role in release.ENV_ADDRESSES.items()})
+        public["operator_policy"] = {
+            "settlement": {"sequencer": owner, "enclave_signer": accounts[1], "governance": owner,
+                           "liveness_timeout_blocks": 100, "challenge_window_blocks": 50,
+                           "challenge_bond_wei": 1000, "inclusion_deadline_seconds": 600,
+                           "final_settle_grace_blocks": 10},
+            "vault": {"gateway_signer": accounts[2]},
+            "clock_verifier": {"configurator": owner},
+            "sp1_gateway": {"owner": owner},
+        }
         manifest = release.build_manifest(release.ROOT, public)
-        observed = release.observe_target(release.ROOT, manifest, public, release.TargetRPC(url))
+        observed = release.observe_target(release.ROOT, manifest, public, release.TargetRPC(url),
+                                          require_operator_policy=True)
         self.assertEqual(observed["status"], "VERIFIED_AT_FINALIZED_BLOCK", observed)
         self.assertEqual(len(observed["contracts"]), 6)
+        self.assertTrue(observed["scope"]["operator_and_settlement_policy_matches"])
+        self.assertFalse(observed["scope"]["operator_and_settlement_policy_approved"])
+        policy_rejections = {}
+        for field, wrong in (("governance", accounts[3]), ("challenge_bond_wei", 1001)):
+            bad_public = copy.deepcopy(public)
+            bad_public["operator_policy"]["settlement"][field] = wrong
+            # A new declared policy requires its own manifest identity. The
+            # observer must still reject it against actual same-block getters.
+            bad_manifest = copy.deepcopy(manifest)
+            bad_manifest["public_config"] = release.public_config(bad_public)
+            bad_manifest["public_config_sha256"] = release.digest(release.canonical(bad_manifest["public_config"]))
+            rejected = release.observe_target(release.ROOT, bad_manifest, bad_public, release.TargetRPC(url),
+                                               require_operator_policy=True)
+            self.assertEqual(rejected["status"], "BLOCKED", rejected)
+            self.assertIn("target binding mismatch", rejected["blocker"])
+            self.assertFalse(rejected["scope"]["operator_and_settlement_policy_matches"])
+            policy_rejections[field] = rejected
         transact(release.deployment_reader.selector("freezeRoute(bytes4)") + release.clock.target.VERIFIER_HASH[:8] + "0" * 56,
                  addresses["sp1_gateway"])
         local_rpc("anvil_mine", ["0x80"])
@@ -578,7 +605,8 @@ class AnvilTargetTests(unittest.TestCase):
         evidence = os.environ.get("ARCORA_MANIFEST_ANVIL_EVIDENCE")
         if evidence:
             Path(evidence).write_text(json.dumps({"scope": "Owned local Anvil; real compiled constructors and RPC, mock token, no proof submission or target deployment.",
-                                                "pass": observed, "frozen_route_rejected": frozen}, indent=2) + "\n")
+                                                "pass": observed, "policy_mismatches_rejected": policy_rejections,
+                                                "frozen_route_rejected": frozen}, indent=2) + "\n")
 
 
 if __name__ == "__main__":

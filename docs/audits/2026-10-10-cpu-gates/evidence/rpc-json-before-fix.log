@@ -1,0 +1,34 @@
+test_duplicate_id_is_rejected (__main__.BaselineRpcRegressions.test_duplicate_id_is_rejected) ... FAIL
+test_duplicate_result_is_rejected (__main__.BaselineRpcRegressions.test_duplicate_result_is_rejected) ... FAIL
+test_nonfinite_result_is_rejected (__main__.BaselineRpcRegressions.test_nonfinite_result_is_rejected) ... FAIL
+
+======================================================================
+FAIL: test_duplicate_id_is_rejected (__main__.BaselineRpcRegressions.test_duplicate_id_is_rejected)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<stdin>", line 18, in test_duplicate_id_is_rejected
+  File "<stdin>", line 13, in check_rejected
+AssertionError: ValueError not raised
+
+======================================================================
+FAIL: test_duplicate_result_is_rejected (__main__.BaselineRpcRegressions.test_duplicate_result_is_rejected)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<stdin>", line 16, in test_duplicate_result_is_rejected
+  File "<stdin>", line 13, in check_rejected
+AssertionError: ValueError not raised
+
+======================================================================
+FAIL: test_nonfinite_result_is_rejected (__main__.BaselineRpcRegressions.test_nonfinite_result_is_rejected)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<stdin>", line 20, in test_nonfinite_result_is_rejected
+  File "<stdin>", line 13, in check_rejected
+AssertionError: ValueError not raised
+
+----------------------------------------------------------------------
+Ran 3 tests in 0.020s
+
+FAILED (failures=3)
+Baseline source: 1a900dd6f370b4b1535865f52395ea8f87cd3a9c
+EXPECTED_BASELINE_REGRESSION_FAILURES: 3 ERRORS: 0

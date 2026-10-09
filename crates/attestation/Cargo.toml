@@ -27,5 +27,7 @@ base64 = "0.22"
 # SEC-020 handshake: hex-encode the session token (also used by the tests).
 hex = "0.4"
 # SEC-020 Phase-2 (C3): ephemeral x25519 for the DH-bound session secret — the
-# SAME crate/features as crates/sealed-box, so the workspace resolves one copy.
-x25519-dalek = { version = "2", default-features = false, features = ["static_secrets"] }
+# same crate family as sealed-box; required erasure is explicit here.
+# Enable erasing Drop explicitly; disabled defaults otherwise remove it.
+x25519-dalek = { version = "2", default-features = false, features = ["static_secrets", "zeroize"] }
+zeroize = { version = "1", default-features = false }

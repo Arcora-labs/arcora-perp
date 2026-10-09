@@ -18,13 +18,15 @@ pub mod vtpm;
 
 pub use handshake::{
     ct_eq, derive_session, dh_shared, ephemeral_keypair, session_secret, session_token,
-    DEV_INSECURE_SESSION_TOKEN,
+    validate_session_expiry, DEV_INSECURE_SESSION_TOKEN,
 };
 pub use nvidia_cc::NvidiaCcAttestor;
 /// Re-exported so handshake callers (gateway, prover-service, tests) can NAME
 /// the ephemeral-DH secret type `ephemeral_keypair` returns without taking a
 /// direct x25519-dalek dependency of their own.
 pub use x25519_dalek::StaticSecret;
+/// Drop-erasing host handshake input and shared-secret buffer.
+pub use zeroize::Zeroizing;
 
 /// The verified, security-relevant outputs of a TDX DCAP quote.
 #[derive(Debug, Clone)]
@@ -197,8 +199,8 @@ pub(crate) fn measurement_of(att: &VerifiedAttestation) -> [u8; 32] {
 /// The repo's 32-byte measurement digest (what `enclave_measurement` yields).
 pub type Digest = [u8; 32];
 
-/// Why an `Attestor` operation failed. Fail-closed: every arm is an error the
-/// caller must refuse on — there is no "verified but degraded" success state.
+/// Why an attestation or handshake operation failed. Fail-closed: callers must
+/// refuse every error — there is no "verified but degraded" success state.
 #[derive(Debug)]
 pub enum AttestError {
     /// The underlying TDX verification failed (crypto, collateral, or an
@@ -211,6 +213,11 @@ pub enum AttestError {
     MeasurementMismatch,
     /// The quote verified but does not bind the caller's freshness nonce.
     NonceMismatch,
+    /// The peer's X25519 key produced a non-contributory (all-zero) shared
+    /// secret. No shared bytes or session material may be released.
+    NonContributoryKey,
+    /// The handshake completed after the prover-owned session expiry.
+    SessionExpired { not_after_ms: u64, now_ms: u64 },
     /// The Azure vTPM chain (HCL binding / AK signature / PCR digest) failed.
     VtpmChain(String),
     /// The attestation backend itself failed (no quote source, unreadable

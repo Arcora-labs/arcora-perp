@@ -143,9 +143,12 @@ A successful report says `VERIFIED_AT_FINALIZED_BLOCK`, with runtime and target
 observation fields set true. It still records `release_gate: HOLD`. RPC responses
 are trusted; this is not a light-client check or independent RPC consensus. The
 sequencer, enclave signer, governance, gateway signer, SP1 gateway owner and
-settlement timing/bond parameters are recorded for review, but the current public
-configuration does not approve those values. `operator_and_settlement_policy_approved`
-therefore remains false, even if the observed value is zero. The token's runtime,
+settlement timing/bond parameters are recorded for review. An optional, complete
+`operator_policy` in the public configuration pins all eleven expected values;
+any mismatch fails closed. `operator_and_settlement_policy_matches` is true only
+after every runtime, getter, finality and source recheck passes. This is matching
+a declaration, not a security/economic review: `operator_and_settlement_policy_approved`
+always remains false, even when explicit zero values match. The token's runtime,
 proxy/admin/issuance policy, service config/identity, real proof generation,
 capacity, custody loss and state migration remain separate acceptance gates.
 
@@ -166,6 +169,54 @@ ARCORA_RUN_MANIFEST_ANVIL=1 \
 Optional `ARCORA_MANIFEST_ANVIL_EVIDENCE=/path/to/local-observation.json` captures
 both observations. This is local contract/RPC evidence with a mock token; it does
 not generate or settle a proof, attest a service, or verify a public deployment.
+
+
+## Pin operator identities and settlement policy
+
+The optional `operator_policy` is included in the manifest's public configuration
+hash. Every field below is required when the section is present. Missing fields,
+unknown fields, malformed addresses, booleans/floats/strings in integer positions,
+and integers outside the Solidity uint256 range are refused. Values are never
+inferred from the queried chain: doing so would turn observation into self-approval.
+Duplicate JSON keys and non-finite JSON numbers are rejected in config and RPC data.
+
+**The following values are synthetic examples, not an approved target policy.**
+Add this section to a separately reviewed public release configuration:
+
+```json
+"operator_policy": {
+  "settlement": {
+    "sequencer": "0x0000000000000000000000000000000000000011",
+    "enclave_signer": "0x0000000000000000000000000000000000000012",
+    "governance": "0x0000000000000000000000000000000000000013",
+    "liveness_timeout_blocks": 100,
+    "challenge_window_blocks": 50,
+    "challenge_bond_wei": 1000,
+    "inclusion_deadline_seconds": 600,
+    "final_settle_grace_blocks": 10
+  },
+  "vault": {"gateway_signer": "0x0000000000000000000000000000000000000014"},
+  "clock_verifier": {"configurator": "0x0000000000000000000000000000000000000015"},
+  "sp1_gateway": {"owner": "0x0000000000000000000000000000000000000016"}
+}
+```
+
+Pass `observe-target --require-operator-policy` to reject a missing policy before
+any chain reads. Without that flag, old configs still support observation, but
+cannot claim a policy match. With a policy supplied, comparisons are mandatory
+regardless of the flag. All eleven getters use the same finalized block hash as
+the runtime checks. A late chain/source change prevents the policy match flag
+from becoming true. The report also records the canonical policy SHA-256.
+
+Zero addresses and zero numeric values must be explicit. The parser allows them
+to describe renounced ownership or other intentional configurations; it does not
+endorse them as safe. Review governance availability, signer authority, economic
+bounds and recovery separately. This observer does not change deployed settings,
+rotate keys, audit token proxies, or promote `release_gate` beyond `HOLD`.
+
+CPU tests: `python3 -m unittest discover -s scripts/local-verification -p test_operator_policy.py -v`.
+The owned-Anvil integration additionally verifies the actual declared policy and
+rejects wrong governance, wrong challenge bond and a frozen SP1 verifier route.
 
 ## Remaining R02 acceptance gates
 
