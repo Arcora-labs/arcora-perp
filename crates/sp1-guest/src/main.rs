@@ -26,9 +26,18 @@ type Witness = (DefaultState, Vec<BatchOp>, BatchManifest);
 
 pub fn main() {
     let bytes = sp1_zkvm::io::read_vec();
-    let (mut state, ops, manifest): Witness =
-        postcard::from_bytes(&bytes).expect("witness decode");
-
-    let derived = derive_roots(&mut state, &ops, &manifest).expect("valid transition");
-    sp1_zkvm::io::commit_slice(&derived.commitment::<Keccak256>());
+    let commitment = if let Some(body) = bytes.strip_prefix(perp_core::clock::WIRE_MAGIC) {
+        let ((mut state, ops, manifest, clock), rest): (perp_core::clock::ClockWitness, _) =
+            postcard::take_from_bytes(body).expect("v2 witness decode");
+        assert!(rest.is_empty(), "trailing witness bytes");
+        let roots = derive_roots(&mut state, &ops, &manifest).expect("valid transition");
+        clock.validate(manifest.batch_id, &roots, &ops).expect("clock context");
+        clock.commitment()
+    } else {
+        let ((mut state, ops, manifest), rest): (Witness, _) =
+            postcard::take_from_bytes(&bytes).expect("legacy witness decode");
+        assert!(rest.is_empty(), "trailing witness bytes");
+        derive_roots(&mut state, &ops, &manifest).expect("valid transition").commitment::<Keccak256>()
+    };
+    sp1_zkvm::io::commit_slice(&commitment);
 }

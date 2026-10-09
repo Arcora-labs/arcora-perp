@@ -120,6 +120,24 @@ pub trait ProverClient: Send + Sync {
     /// Returns the prover's RAW response. The gateway derives the authoritative roots
     /// itself in `prove_and_prepare`; a client is trusted only for `proof` bytes.
     fn prove(&self, witness: &WindowWitness) -> Result<RemoteProveResp, ProverClientError>;
+    fn clock_enabled(&self) -> bool {
+        false
+    }
+    fn clock_context(
+        &self,
+        _w: &WindowWitness,
+    ) -> Result<Option<perp_core::clock::ClockContext>, ProverClientError> {
+        Ok(None)
+    }
+    fn prove_clocked(
+        &self,
+        _w: &WindowWitness,
+        _clock: &perp_core::clock::ClockContext,
+    ) -> Result<RemoteProveResp, ProverClientError> {
+        Err(ProverClientError::Decode(
+            "client does not support clock-bound proofs".into(),
+        ))
+    }
 }
 
 /// In-process client: derive the roots locally and use the commitment as the proof
@@ -168,145 +186,124 @@ pub struct PreparedSettle {
 /// asserts its root byte-matches the locally derived `withdrawals_root` — the two are
 /// the same `merkle_root` over the same `withdrawal_leaf`s, so any divergence is a
 /// hard error, never silently published.
+/// Local-only preparation. An empty proof is a durable *intent*, never a valid
+/// proof. Clock registration must not happen until this is in the encrypted WAL.
+pub fn prepare_unproved(
+    witness: &WindowWitness,
+    ww: &[Withdrawal],
+) -> Result<PreparedSettle, String> {
+    let mut post = witness.pre_state.clone();
+    if witness.batch_id != witness.manifest.batch_id {
+        return Err("local replay failed: ManifestMismatch (witness batch differs)".into());
+    }
+    let d = derive_roots(&mut post, &witness.ops, &witness.manifest)
+        .map_err(|e| format!("local replay failed: {e:?}"))?;
+    let outcome = ProveOutcome {
+        prev_root: d.prev_state_root,
+        manifest_hash: d.manifest_hash,
+        new_root: d.new_state_root,
+        ordered_root: d.ordered_root,
+        withdrawals_root: d.withdrawals_root,
+        rejected_root: d.rejected_root,
+        deposits_root: d.deposits_root,
+        wind_down_phase: d.wind_down_phase,
+        new_deposit_count: post.consumed_deposit_count,
+        post_mode_is_normal: post.mode == perp_core::Mode::Normal,
+        post_insurance_fund: post.insurance_fund,
+        commitment: d.commitment::<Keccak256>(),
+        proof: Vec::new(),
+    };
+    let leaves: Vec<Digest> = ww.iter().map(|w| w.leaf()).collect();
+    if merkle_root(&leaves) != outcome.withdrawals_root {
+        return Err("withdrawals root mismatch: gateway tree vs derived".into());
+    }
+    let withdraw_proofs = ww
+        .iter()
+        .enumerate()
+        .map(|(i, w)| {
+            (
+                w.leaf(),
+                (outcome.withdrawals_root, merkle_proof(&leaves, i)),
+            )
+        })
+        .collect();
+    Ok(PreparedSettle {
+        outcome,
+        withdraw_proofs,
+    })
+}
+
 pub fn prove_and_prepare(
     client: &dyn ProverClient,
     witness: &WindowWitness,
     ww: &[Withdrawal],
 ) -> Result<PreparedSettle, String> {
-    // SEC-025-B §1 — derive the answer ourselves. `derive_roots` is pure over explicit
-    // inputs (no clock: `now_ms` is a stored BatchOp field), so replaying the witness we
-    // are about to send is deterministic and reproduces what the prover must derive.
-    // This replaces a check that re-hashed the PROVER's own roots and therefore only
-    // established that the prover agreed with itself.
-    let mut post = witness.pre_state.clone();
-    let derived = derive_roots(&mut post, &witness.ops, &witness.manifest)
-        .map_err(|e| format!("local replay failed: {e:?}"))?;
-    let local_commitment = derived.commitment::<Keccak256>();
-
-    let remote = client.prove(witness).map_err(|e| format!("prove: {e:?}"))?;
-
-    // The commitment is a keccak over all seven roots, so this ONE comparison verifies
-    // every root. The per-root loop below exists only to turn "commitment mismatch" into
-    // "the prover's new_root differs", which is the difference between a five-minute and
-    // a five-hour cutover debug.
-    if remote.commitment != local_commitment {
+    let mut prepared = prepare_unproved(witness, ww)?;
+    let o = &prepared.outcome;
+    let clock = client
+        .clock_context(witness)
+        .map_err(|e| format!("clock preparation: {e:?}"))?;
+    if client.clock_enabled() && clock.is_none() {
+        return Err("clock-required client omitted context".into());
+    }
+    let expected = match &clock {
+        Some(c) => {
+            let mut post = witness.pre_state.clone();
+            let roots = derive_roots(&mut post, &witness.ops, &witness.manifest)
+                .map_err(|e| format!("local replay: {e:?}"))?;
+            c.validate(witness.batch_id, &roots, &witness.ops)
+                .map_err(|e| format!("clock context: {e:?}"))?;
+            c.commitment()
+        }
+        None => o.commitment,
+    };
+    let remote = match &clock {
+        Some(c) => client.prove_clocked(witness, c),
+        None => client.prove(witness),
+    }
+    .map_err(|e| format!("prove: {e:?}"))?;
+    if remote.commitment != expected {
         let mut which = Vec::new();
         for (name, ours, theirs) in [
-            ("prev_root", derived.prev_state_root, remote.roots.prev_root),
-            (
-                "manifest_hash",
-                derived.manifest_hash,
-                remote.roots.manifest_hash,
-            ),
-            ("new_root", derived.new_state_root, remote.roots.new_root),
-            (
-                "ordered_root",
-                derived.ordered_root,
-                remote.roots.ordered_root,
-            ),
+            ("prev_root", o.prev_root, remote.roots.prev_root),
+            ("manifest_hash", o.manifest_hash, remote.roots.manifest_hash),
+            ("new_root", o.new_root, remote.roots.new_root),
+            ("ordered_root", o.ordered_root, remote.roots.ordered_root),
             (
                 "withdrawals_root",
-                derived.withdrawals_root,
+                o.withdrawals_root,
                 remote.roots.withdrawals_root,
             ),
-            (
-                "rejected_root",
-                derived.rejected_root,
-                remote.roots.rejected_root,
-            ),
-            (
-                "deposits_root",
-                derived.deposits_root,
-                remote.roots.deposits_root,
-            ),
+            ("rejected_root", o.rejected_root, remote.roots.rejected_root),
+            ("deposits_root", o.deposits_root, remote.roots.deposits_root),
         ] {
-            if let Some(t) = theirs {
-                if t != ours {
-                    which.push(format!(
-                        "{name} (ours {} vs prover {})",
-                        crate::hex32(&ours),
-                        crate::hex32(&t)
-                    ));
-                }
+            if theirs.is_some_and(|t| t != ours) {
+                which.push(name);
             }
         }
-        let detail = if which.is_empty() {
-            // either the prover itemised no roots, or every root it DID itemise matches
-            // ours — then the commitment derivation itself (domain tag / hash) differs
-            "no itemised prover root differs (roots absent or all matching ours)".to_string()
-        } else {
-            which.join(", ")
-        };
         return Err(format!(
-            "commitment mismatch: ours {} vs prover {} — {detail}",
-            crate::hex32(&local_commitment),
-            crate::hex32(&remote.commitment)
+            "commitment mismatch: {}",
+            if which.is_empty() {
+                "no itemised prover root differs (roots absent or all matching ours)".into()
+            } else {
+                which.join(", ")
+            }
         ));
     }
-
-    // Whole-branch review item 3: an empty proof can never verify on-chain, but
-    // nothing downstream would catch it — `decode_hex("0x")` is `Some(vec![])`,
-    // `parse_prove_resp` has no length floor, and the commitment check above says
-    // nothing about the proof bytes. Left alone it would be journaled at stage 2,
-    // broadcast, and fail only in `settleBatch` — burning gas and a rollback cycle.
-    // The design principle is the opposite: turn a late, expensive, on-chain failure
-    // into an immediate prover-side error.
-
-    // Whole-branch review item 3: an empty proof can never verify on-chain, but
-    // nothing downstream would catch it — `decode_hex("0x")` is `Some(vec![])`,
-    // `parse_prove_resp` has no length floor, and the commitment check above says
-    // nothing about the proof bytes. Left alone it would be journaled at stage 2,
-    // broadcast, and fail only in `settleBatch` — burning gas and a rollback cycle.
-    // The design principle is the opposite: turn a late, expensive, on-chain failure
-    // into an immediate prover-side error.
     if remote.proof.is_empty() {
-        return Err(
-            "prover returned an empty proof (commitment matched, but empty \
-                    bytes cannot verify on-chain)"
-                .to_string(),
-        );
+        return Err("prover returned an empty proof".into());
     }
-
-    let outcome = ProveOutcome {
-        prev_root: derived.prev_state_root,
-        manifest_hash: derived.manifest_hash,
-        new_root: derived.new_state_root,
-        ordered_root: derived.ordered_root,
-        withdrawals_root: derived.withdrawals_root,
-        rejected_root: derived.rejected_root,
-        deposits_root: derived.deposits_root,
-        wind_down_phase: derived.wind_down_phase,
-        new_deposit_count: post.consumed_deposit_count,
-        post_mode_is_normal: post.mode == perp_core::Mode::Normal,
-        post_insurance_fund: post.insurance_fund,
-        commitment: local_commitment,
-        proof: remote.proof,
+    // The journal retains the base transition commitment. The configured on-chain
+    // adapter recomputes the bound digest from its immutable registered receipt.
+    prepared.outcome.proof = if let Some(c) = clock {
+        let mut envelope = perp_core::clock::PROOF_MAGIC.to_vec();
+        envelope.extend_from_slice(&c.receipt());
+        envelope.extend(remote.proof);
+        envelope
+    } else {
+        remote.proof
     };
-
-    // Independent gateway-internal consistency check (kept from 3b-2a): the drained
-    // window withdrawal set must byte-match the withdrawals the replay derived. Under
-    // SEC-025-B the prover can no longer steer `withdrawals_root`; a mismatch here
-    // means the gateway's own `ww` drifted from the witness ops — still a hard error.
-    let leaves: Vec<[u8; 32]> = ww.iter().map(|w| w.leaf()).collect();
-    let wroot = merkle_root(&leaves);
-    if wroot != outcome.withdrawals_root {
-        return Err(format!(
-            "withdrawals root mismatch: gateway tree {} vs derived {}",
-            crate::hex32(&wroot),
-            crate::hex32(&outcome.withdrawals_root)
-        ));
-    }
-    let mut withdraw_proofs = BTreeMap::new();
-    for (i, w) in ww.iter().enumerate() {
-        withdraw_proofs.insert(
-            w.leaf(),
-            (outcome.withdrawals_root, merkle_proof(&leaves, i)),
-        );
-    }
-    Ok(PreparedSettle {
-        outcome,
-        withdraw_proofs,
-    })
+    Ok(prepared)
 }
 
 /// The clear per-seal nonce, secret-keyed with `seal_root`:
@@ -343,8 +340,25 @@ pub fn seal_witness(
     measurement: &Digest,
     session_secret: Option<&[u8; 32]>,
 ) -> Result<String, ProverClientError> {
-    let bytes = postcard::to_allocvec(&(&w.pre_state, &w.ops, &w.manifest))
-        .map_err(|e| ProverClientError::Decode(format!("witness encode: {e}")))?;
+    seal_witness_with_clock(w, root, measurement, session_secret, None)
+}
+
+fn seal_witness_with_clock(
+    w: &WindowWitness,
+    root: &[u8; 32],
+    measurement: &Digest,
+    session_secret: Option<&[u8; 32]>,
+    clock: Option<&perp_core::clock::ClockContext>,
+) -> Result<String, ProverClientError> {
+    let bytes = match clock {
+        None => postcard::to_allocvec(&(&w.pre_state, &w.ops, &w.manifest)),
+        Some(c) => postcard::to_allocvec(&(&w.pre_state, &w.ops, &w.manifest, c)).map(|body| {
+            let mut bytes = perp_core::clock::WIRE_MAGIC.to_vec();
+            bytes.extend(body);
+            bytes
+        }),
+    }
+    .map_err(|e| ProverClientError::Decode(format!("witness encode: {e}")))?;
     // Secret-keyed, content-derived nonce (see `seal_nonce`): keyed with `root` so the
     // clear nonce is not a plaintext-confirmation oracle, while identical re-seals still
     // reproduce it (rollback/retry-safe, no two-time pad).
@@ -683,6 +697,22 @@ fn prove_with_reauth(
 
 impl ProverClient for HttpProverClient {
     fn prove(&self, w: &WindowWitness) -> Result<RemoteProveResp, ProverClientError> {
+        self.prove_http(w, None)
+    }
+    fn prove_clocked(
+        &self,
+        w: &WindowWitness,
+        c: &perp_core::clock::ClockContext,
+    ) -> Result<RemoteProveResp, ProverClientError> {
+        self.prove_http(w, Some(c))
+    }
+}
+impl HttpProverClient {
+    fn prove_http(
+        &self,
+        w: &WindowWitness,
+        clock: Option<&perp_core::clock::ClockContext>,
+    ) -> Result<RemoteProveResp, ProverClientError> {
         // Snapshot the token (lock released at the end of this statement — never
         // held across the multi-minute POST). `None` ⇒ no bearer sent ⇒ the
         // prover 401s (fail-closed).
@@ -696,8 +726,16 @@ impl ProverClient for HttpProverClient {
                 // the retry must seal under the REFRESHED secret, or the rebooted
                 // prover (new secret) rejects the stale-keyed seal (C4).
                 let secret = self.session.lock().unwrap().secret;
-                let sealed_hex =
-                    seal_witness(w, &self.seal_root, &self.measurement, secret.as_ref())?;
+                let sealed_hex = match clock {
+                    None => seal_witness(w, &self.seal_root, &self.measurement, secret.as_ref())?,
+                    Some(c) => seal_witness_with_clock(
+                        w,
+                        &self.seal_root,
+                        &self.measurement,
+                        secret.as_ref(),
+                        Some(c),
+                    )?,
+                };
                 let body = serde_json::json!({ "sealed": sealed_hex }).to_string();
                 let resp = http_post(&self.url, &body, self.timeout_secs, bearer)?;
                 parse_prove_resp(&resp)
@@ -1509,5 +1547,144 @@ mod reauth_tests {
             |_, _, _| panic!("must not store on success"),
         );
         assert!(out.is_ok());
+    }
+}
+
+#[cfg(test)]
+mod clock_pipeline_tests {
+    use super::*;
+    use perp_core::clock::{ClockContext, TimeBounds};
+    struct NativeClockClient {
+        c: ClockContext,
+        tamper: bool,
+    }
+    impl ProverClient for NativeClockClient {
+        fn prove(&self, _: &WindowWitness) -> Result<RemoteProveResp, ProverClientError> {
+            panic!("legacy downgrade");
+        }
+        fn clock_enabled(&self) -> bool {
+            true
+        }
+        fn clock_context(
+            &self,
+            _: &WindowWitness,
+        ) -> Result<Option<ClockContext>, ProverClientError> {
+            Ok(Some(self.c))
+        }
+        fn prove_clocked(
+            &self,
+            w: &WindowWitness,
+            c: &ClockContext,
+        ) -> Result<RemoteProveResp, ProverClientError> {
+            let mut wire = perp_core::clock::WIRE_MAGIC.to_vec();
+            wire.extend(postcard::to_allocvec(&(&w.pre_state, &w.ops, &w.manifest, c)).unwrap());
+            let p = prover::public_from_witness(&wire).unwrap();
+            let mut commitment = p.commitment::<Keccak256>();
+            if self.tamper {
+                commitment[0] ^= 1;
+            }
+            Ok(RemoteProveResp {
+                roots: RemoteRoots::default(),
+                commitment,
+                proof: p.commitment::<Keccak256>().to_vec(),
+            })
+        }
+    }
+    fn client(w: &WindowWitness) -> NativeClockClient {
+        let mut post = w.pre_state.clone();
+        let d = derive_roots(&mut post, &w.ops, &w.manifest).unwrap();
+        let b = TimeBounds::derive(&w.ops).unwrap();
+        NativeClockClient {
+            c: ClockContext {
+                chain_id: 84532,
+                verifier: [1; 20],
+                settlement: [2; 20],
+                batch_id: w.batch_id,
+                previous_root: d.prev_state_root,
+                base_commitment: d.commitment::<Keccak256>(),
+                phase: d.wind_down_phase,
+                first_ms: b.first_ms,
+                last_ms: b.last_ms,
+                timed_ops: b.count,
+                anchored_at_ms: b.last_ms,
+                max_window_ms: 60_000,
+                clock_skew_ms: 2_000,
+            },
+            tamper: false,
+        }
+    }
+    #[test]
+    fn clock_pipeline_uses_v2_native_derivation_and_journals_bound_proof() {
+        let (w, ww) = tests_support::sample_window();
+        let c = client(&w);
+        let prepared = prove_and_prepare(&c, &w, &ww).unwrap();
+        let body = prepared
+            .outcome
+            .proof
+            .strip_prefix(perp_core::clock::PROOF_MAGIC)
+            .unwrap();
+        assert_eq!(&body[..32], c.c.receipt());
+        assert_eq!(&body[32..], c.c.commitment());
+        assert_eq!(prepared.outcome.commitment, c.c.base_commitment);
+        let bytes = postcard::to_allocvec(&prepared).unwrap();
+        let restored: PreparedSettle = postcard::from_bytes(&bytes).unwrap();
+        assert_eq!(restored.outcome.proof, prepared.outcome.proof);
+    }
+    #[test]
+    fn clock_pipeline_rejects_mismatched_prover_commitment() {
+        let (w, ww) = tests_support::sample_window();
+        let mut c = client(&w);
+        c.tamper = true;
+        assert!(prove_and_prepare(&c, &w, &ww)
+            .unwrap_err()
+            .contains("commitment mismatch"));
+    }
+    #[test]
+    fn clock_pipeline_validates_context_before_prover_call() {
+        let (w, ww) = tests_support::sample_window();
+        let mut c = client(&w);
+        c.c.timed_ops += 1;
+        assert!(prove_and_prepare(&c, &w, &ww)
+            .unwrap_err()
+            .contains("clock context"));
+    }
+    #[test]
+    fn clock_pipeline_intent_survives_encrypted_journal_and_cannot_rollback() {
+        let (w, ww) = tests_support::sample_window();
+        let b = w.batch_id;
+        let prepared = prepare_unproved(&w, &ww).unwrap();
+        assert!(prepared.outcome.proof.is_empty());
+        let j = crate::rollback_journal::RollbackJournal {
+            batch_id: b,
+            witness: w,
+            ww,
+            prepared: Some(prepared),
+        };
+        let path = std::env::temp_dir().join(format!(
+            "arcora-clock-intent-{}-{}",
+            std::process::id(),
+            rand::random::<u64>()
+        ));
+        crate::rollback_journal::write(&path, &j, &[3; 32]).unwrap();
+        let back = crate::rollback_journal::read(&path, &[3; 32])
+            .unwrap()
+            .unwrap();
+        std::fs::remove_file(path).unwrap();
+        assert!(back.prepared.unwrap().outcome.proof.is_empty());
+        use crate::rollback_journal::{recovery_action, RecoveryAction};
+        assert_eq!(
+            recovery_action(b, true, b + 1, b, false, false),
+            RecoveryAction::Hold
+        );
+        assert_eq!(
+            recovery_action(b, true, b, b, false, false),
+            RecoveryAction::Hold
+        );
+    }
+    #[test]
+    fn clock_pipeline_refuses_unsupported_legacy_client() {
+        let (w, _) = tests_support::sample_window();
+        let c = client(&w);
+        assert!(MockProverClient.prove_clocked(&w, &c.c).is_err());
     }
 }

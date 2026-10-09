@@ -133,10 +133,19 @@ impl<'a> CanonicalRead<'a> {
         arg: Option<Digest>,
         count: usize,
     ) -> Result<Vec<Digest>, String> {
+        self.words_args(to, signature, &arg.into_iter().collect::<Vec<_>>(), count)
+    }
+    pub fn words_args(
+        &self,
+        to: &str,
+        signature: &str,
+        args: &[Digest],
+        count: usize,
+    ) -> Result<Vec<Digest>, String> {
         let hash = Keccak256::digest(signature.as_bytes());
         let mut calldata = hash[..4].to_vec();
-        if let Some(arg) = arg {
-            calldata.extend(arg);
+        for arg in args {
+            calldata.extend_from_slice(arg);
         }
         let params = vec![
             json!({"to":to,"data":crate::hex0x(&calldata)}),

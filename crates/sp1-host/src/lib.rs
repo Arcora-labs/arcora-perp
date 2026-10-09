@@ -17,6 +17,36 @@ use std::path::{Component, Path, PathBuf};
 
 pub type Witness = (DefaultState, Vec<BatchOp>, BatchManifest);
 
+/// Fail before expensive proving when an interrupted SDK download left a directory
+/// that exists but has no usable circuit files. This is a prerequisite check, not
+/// proof verification or a guarantee that all proving-key bytes are uncorrupted.
+pub fn check_groth16_prerequisites(directory: &Path) -> io::Result<()> {
+    for name in ["groth16_vk.bin", "groth16_circuit.bin", "groth16_pk.bin"] {
+        let metadata = fs::symlink_metadata(directory.join(name))?;
+        if !metadata.file_type().is_file() || metadata.len() == 0 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("missing regular nonempty circuit artifact: {name}"),
+            ));
+        }
+    }
+    let key = directory.join("groth16_vk.bin");
+    if fs::metadata(&key)?.len() != 492 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "wrong SP1 6.1.0 verification-key size",
+        ));
+    }
+    if sha256(&fs::read(key)?) != "4388a21c687fdd5f218d7e3d13190cac4c5355818d3605fd5fb811df468ee696"
+    {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "circuit key differs from the pinned real target verifier",
+        ));
+    }
+    Ok(())
+}
+
 pub fn normal_witness() -> Witness {
     // Public test values. This deposit is NOT an observed L1 event.
     let spend_key = [3u8; 32];
@@ -239,7 +269,7 @@ mod tests {
         assert_eq!(count, 1);
         assert_eq!(
             hex(&roots.commitment::<Keccak256>()),
-            "dba12bfa8b5b7c54bd7035e2fdc92615c9b1f653d16b2230f3a5da7a4ff57abd"
+            "acae55ada5a17dbe4d154d2ac84570cca242bb50839122a4bc90438d161b2245"
         );
         let fields = roots_json(&roots, count);
         assert_eq!(fields["new_deposit_count"], 1);
@@ -334,5 +364,53 @@ mod tests {
             groth16_payload_for_verification(&divergent, &expected),
             Err("guest/native divergence")
         );
+    }
+}
+
+#[cfg(test)]
+mod circuit_prerequisite_tests {
+    use super::*;
+    struct Scratch(PathBuf);
+    impl Scratch {
+        fn new() -> Self {
+            let stamp = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos();
+            let p = std::env::temp_dir().join(format!(
+                "arcora-circuit-preflight-{}-{stamp}",
+                std::process::id()
+            ));
+            fs::create_dir(&p).unwrap();
+            Self(p)
+        }
+    }
+    impl Drop for Scratch {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+    #[test]
+    fn partial_download_directory_is_not_ready_for_proving() {
+        let dir = Scratch::new();
+        fs::write(dir.0.join("artifacts.tar.gz"), b"partial download").unwrap();
+        assert_eq!(
+            check_groth16_prerequisites(&dir.0).unwrap_err().kind(),
+            io::ErrorKind::NotFound
+        );
+    }
+    #[test]
+    fn fabricated_or_truncated_circuit_key_is_refused() {
+        let dir = Scratch::new();
+        for name in ["groth16_circuit.bin", "groth16_pk.bin"] {
+            fs::write(dir.0.join(name), b"placeholder").unwrap();
+        }
+        for key in [vec![0; 1], vec![0; 492]] {
+            fs::write(dir.0.join("groth16_vk.bin"), key).unwrap();
+            assert_eq!(
+                check_groth16_prerequisites(&dir.0).unwrap_err().kind(),
+                io::ErrorKind::InvalidData
+            );
+        }
     }
 }

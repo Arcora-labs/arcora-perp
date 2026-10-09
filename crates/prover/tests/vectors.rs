@@ -40,6 +40,7 @@ fn public_commitment_vector() {
     // This is KAT-COMMIT7: keccak256 over the one-byte `Domain::StateRoot` tag (0x07)
     // followed by the seven 32-byte words in order — a 225-byte preimage.
     let public = PublicInputs {
+        clock_receipt: None,
         prev_state_root: [0x01u8; 32],
         batch_manifest_hash: [0x02u8; 32],
         new_state_root: [0x03u8; 32],
@@ -61,6 +62,7 @@ fn public_commitment_vector() {
 #[test]
 fn a06_wind_down_phase_one_commitment_kat() {
     let p = PublicInputs {
+        clock_receipt: None,
         prev_state_root: [1; 32],
         batch_manifest_hash: [2; 32],
         new_state_root: [3; 32],

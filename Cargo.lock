@@ -1441,6 +1441,7 @@ name = "prover"
 version = "0.0.1"
 dependencies = [
  "hex",
+ "k256",
  "perp-core",
  "postcard",
  "serde",

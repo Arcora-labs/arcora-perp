@@ -1,0 +1,22 @@
+[
+  {
+    "name": "finish-light-format",
+    "exit_code": 0,
+    "seconds": 0.24
+  },
+  {
+    "name": "finish-light-build",
+    "exit_code": 0,
+    "seconds": 7.19
+  },
+  {
+    "name": "rust-verify",
+    "exit_code": 0,
+    "seconds": 3.4
+  },
+  {
+    "name": "evm-verify",
+    "exit_code": 0,
+    "seconds": 1.65
+  }
+]

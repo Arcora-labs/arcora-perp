@@ -1,3 +1,8 @@
+> PR #30 now also contains a clock-bound integration candidate under
+> `contracts/src/ClockBoundVerifier.sol`. This original experimental contract
+> remains isolated and is not used by that candidate. See
+> [integration scope and release blockers](../../../docs/audits/2026-10-09-clock-integration.md).
+
 # Batch clock anchoring: isolated prototype
 
 **Status: experimental, not wired into production settlement or the SP1 guest.**

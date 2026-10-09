@@ -67,6 +67,8 @@ pub struct PublicInputs {
     /// commitments remain byte-for-byte legacy-compatible; only nonzero phases
     /// append this word to the commitment.
     pub wind_down_phase: u8,
+    /// Version-2 receipt; None is the explicit legacy commitment path.
+    pub clock_receipt: Option<Digest>,
 }
 
 impl PublicInputs {
@@ -85,13 +87,15 @@ impl PublicInputs {
             self.rejected_root,
             self.deposits_root,
         ];
-        if self.wind_down_phase == 0 {
+        let base = if self.wind_down_phase == 0 {
             H::hash_words(Domain::StateRoot, &ordinary)
         } else {
             let mut words = ordinary.to_vec();
             words.push(perp_core::hash::word_u64(self.wind_down_phase as u64));
             H::hash_words(Domain::StateRoot, &words)
-        }
+        };
+        self.clock_receipt
+            .map_or(base, |r| perp_core::clock::bind_commitment(base, r))
     }
 }
 
@@ -105,6 +109,7 @@ pub fn run_transition(
 ) -> Result<PublicInputs, EngineError> {
     let d = perp_core::commitment::derive_roots(state, ops, manifest)?;
     Ok(PublicInputs {
+        clock_receipt: None,
         prev_state_root: d.prev_state_root,
         batch_manifest_hash: d.manifest_hash,
         new_state_root: d.new_state_root,
@@ -114,6 +119,38 @@ pub fn run_transition(
         deposits_root: d.deposits_root,
         wind_down_phase: d.wind_down_phase,
     })
+}
+
+/// Native twin of the guest's versioned wire decoder. Reject trailing bytes;
+/// malformed v2 never falls back to legacy. Original operation times are retained.
+pub fn public_from_witness(bytes: &[u8]) -> Result<PublicInputs, ProverError> {
+    if let Some(body) = bytes.strip_prefix(perp_core::clock::WIRE_MAGIC) {
+        let ((mut state, ops, manifest, clock), rest): (perp_core::clock::ClockWitness, _) =
+            postcard::take_from_bytes(body).map_err(|_| ProverError::WitnessDecode)?;
+        if !rest.is_empty() {
+            return Err(ProverError::WitnessDecode);
+        }
+        let roots = perp_core::commitment::derive_roots(&mut state, &ops, &manifest)?;
+        clock.validate(manifest.batch_id, &roots, &ops)?;
+        Ok(PublicInputs {
+            prev_state_root: roots.prev_state_root,
+            batch_manifest_hash: roots.manifest_hash,
+            new_state_root: roots.new_state_root,
+            ordered_root: roots.ordered_root,
+            withdrawals_root: roots.withdrawals_root,
+            rejected_root: roots.rejected_root,
+            deposits_root: roots.deposits_root,
+            wind_down_phase: roots.wind_down_phase,
+            clock_receipt: Some(clock.receipt()),
+        })
+    } else {
+        let ((mut state, ops, manifest), rest): ((DefaultState, Vec<BatchOp>, BatchManifest), _) =
+            postcard::take_from_bytes(bytes).map_err(|_| ProverError::WitnessDecode)?;
+        if !rest.is_empty() {
+            return Err(ProverError::WitnessDecode);
+        }
+        run_transition(&mut state, &ops, &manifest).map_err(Into::into)
+    }
 }
 
 /// A produced proof: the public inputs, opaque proof bytes, and the measurement
@@ -481,10 +518,15 @@ impl<P: Prover> AttestedProver<P> {
     /// the prover derives the roots, never trusts an external claim), prove, and zeroize.
     /// The witness is postcard `(DefaultState, Vec<BatchOp>, BatchManifest)`.
     pub fn prove_batch(&self, sealed: &SealedWitness) -> Result<BatchProof, ProverError> {
-        let witness = self.open(sealed)?;
-        let (mut state, ops, manifest): (DefaultState, Vec<BatchOp>, BatchManifest) =
-            postcard::from_bytes(&witness).map_err(|_| ProverError::WitnessDecode)?;
-        let public = run_transition(&mut state, &ops, &manifest)?;
+        let mut witness = self.open(sealed)?;
+        let public = match public_from_witness(&witness) {
+            Ok(public) => public,
+            Err(error) => {
+                witness.fill(0);
+                core::hint::black_box(&witness);
+                return Err(error);
+            }
+        };
         Ok(self.prove_opened(witness, &public))
     }
 
@@ -608,6 +650,7 @@ mod tests {
     #[test]
     fn commitment_binds_the_rejected_root() {
         let base = PublicInputs {
+            clock_receipt: None,
             prev_state_root: [1u8; 32],
             batch_manifest_hash: [2u8; 32],
             new_state_root: [3u8; 32],
@@ -646,6 +689,7 @@ mod tests {
         ];
         for c in cases {
             let public = PublicInputs {
+                clock_receipt: None,
                 prev_state_root: [c[0]; 32],
                 batch_manifest_hash: [c[1]; 32],
                 new_state_root: [c[2]; 32],
@@ -681,6 +725,7 @@ mod tests {
             0x82, 0x7d, 0x89, 0x02,
         ];
         let canonical = PublicInputs {
+            clock_receipt: None,
             prev_state_root: [1u8; 32],
             batch_manifest_hash: [2u8; 32],
             new_state_root: [3u8; 32],
@@ -829,6 +874,7 @@ mod tests {
         // the proof bytes (proof is a 32-byte commitment, not the witness)
         let prover = AttestedProver::new(CommitmentProver::new(M), prov(M));
         let public = PublicInputs {
+            clock_receipt: None,
             prev_state_root: [0; 32],
             batch_manifest_hash: [0; 32],
             new_state_root: [1; 32],

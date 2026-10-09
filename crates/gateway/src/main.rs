@@ -47,6 +47,9 @@ mod account_recovery;
 mod bootstrap;
 mod candles;
 mod challenge_scan;
+mod clock_admission;
+mod clock_client;
+mod clock_wait;
 #[cfg(test)]
 mod continuation_settlement_tests;
 mod credential_session;
@@ -5330,6 +5333,7 @@ async fn write_snapshot(
 }
 
 struct App {
+    clock_admission: Arc<clock_admission::ClockAdmission>,
     deposit_source: Option<Arc<dyn deposit_rpc::DepositSource>>,
     deposit_serial: Mutex<()>,
     gw: Mutex<Gw>,
@@ -7656,6 +7660,10 @@ fn build_router_with_policy(
             service_policy::enforce_origin,
         ))
         .layer(Extension(policy))
+        .layer(axum::middleware::from_fn_with_state(
+            app.clone(),
+            clock_admission::http_gate,
+        ))
         .with_state(app)
 }
 
@@ -7728,6 +7736,19 @@ async fn main() {
             std::process::exit(1);
         }),
     );
+    let l1 = l1.map(|chain| chain.with_clock_shutdown(service_policy.shutdown.clone()));
+    let clock_settle_period = if let Some(chain) = l1.as_ref().filter(|c| c.clock_enabled()) {
+        let chain = chain.clone();
+        match tokio::task::spawn_blocking(move || chain.clock_seal_period()).await {
+            Ok(Ok(period)) => period,
+            _ => {
+                eprintln!("[clock] REFUSING startup: cannot verify timing policy and seal cadence");
+                std::process::exit(1);
+            }
+        }
+    } else {
+        Duration::from_secs(L1_SETTLE_SECS)
+    };
     // SEC-020 Task 4: the DEV_INSECURE escape is refused outright in production
     // (Task-1 posture). `resolve_seal_root` only refuses it when the seal root
     // is ALSO unset; the handshake escape must be prod-forbidden unconditionally.
@@ -7821,6 +7842,19 @@ async fn main() {
             std::process::exit(1);
         }
     };
+    let prover: Option<Arc<dyn prover_client::ProverClient>> = match (prover, &l1) {
+        (Some(inner), Some(chain)) if chain.clock_enabled() => {
+            Some(Arc::new(clock_client::ClockProverClient {
+                inner,
+                l1: chain.clone(),
+            }))
+        }
+        (p, _) => p,
+    };
+    if prod && !prover.as_ref().is_some_and(|p| p.clock_enabled()) {
+        eprintln!("[clock] REFUSING production without CLOCK_BOUND_VERIFIER and L1_CHAIN_ID; explicit legacy mode is development-only");
+        std::process::exit(1);
+    }
     if prover.is_some() {
         println!("[prover] window-settle path ON (PROVER_URL)");
     } else if l1.is_some() {
@@ -7962,6 +7996,10 @@ async fn main() {
     // Task 3 (crash recovery): whether a sealed snapshot was actually restored —
     // a rollback journal is only meaningful against the state it was written
     // beside; a journal without its snapshot now refuses startup for reconciliation.
+    if prover.as_ref().is_some_and(|p| p.clock_enabled()) && state_path.is_none() {
+        eprintln!("[clock] REFUSING to start without DARKPERP_STATE durability");
+        std::process::exit(1);
+    }
     let mut restored_from_snapshot = false;
     // SEC-025-C: the genesis mode is computed BEFORE boot and passed as a parameter —
     // `gw.prod` is assigned two lines after boot returns, so a field read inside
@@ -8079,7 +8117,7 @@ async fn main() {
                         jp.display()
                     );
                 }
-                Ok(Some(j)) => match &l1 {
+                Ok(Some(mut j)) => match &l1 {
                     None => {
                         // can't resolve the journal against a chain we can't read.
                         eprintln!(
@@ -8092,12 +8130,34 @@ async fn main() {
                     Some(l1c) => {
                         // Counter/root/bond are read at one finalized canonical block hash.
                         // No finite delay proves an unmined prepared transaction absent.
-                        let reads = {
+                        let mut reads = {
                             let l1c = l1c.clone();
                             tokio::task::spawn_blocking(move || l1c.settlement_observation())
                                 .await
                                 .unwrap_or_else(|e| Err(e.to_string()))
                         };
+                        // Resume only the exact immutable, durably prepared clock
+                        // window. Finality lag or a reorg keeps the WAL and refuses
+                        // startup; it never turns into a legacy rollback/re-seal.
+                        if let (Ok((bc, root, _)), Some(client)) = (&reads, &prover) {
+                            if client.clock_enabled()
+                                && j.prepared.is_some()
+                                && *bc == j.batch_id
+                                && Some(gw.seq.state.next_batch_id) == j.batch_id.checked_add(1)
+                                && root
+                                    .eq_ignore_ascii_case(&hex32(&j.witness.pre_state.state_root()))
+                            {
+                                let (chain, client, mut saved, path) =
+                                    (l1c.clone(), client.clone(), j.clone(), jp.clone());
+                                match tokio::task::spawn_blocking(move || {
+                                    let observation = clock_client::resume_exact(&chain, client.as_ref(), &mut saved, &path, &enclave_seed)?;
+                                    Ok::<_,String>((saved, observation))
+                                }).await {
+                                    Ok(Ok((saved, observation))) => { j = saved; reads = Ok(observation); }
+                                    _ => eprintln!("[clock] exact-journal recovery unresolved; preserve WAL and retry after canonical finality"),
+                                }
+                            }
+                        }
                         match reads {
                             Ok((chain_bc, chain_root, bond)) => {
                                 // SEC-025-D: the boot roll-forward COMMITS a settle, so it
@@ -8310,7 +8370,16 @@ async fn main() {
         gw.deposits.required = true;
         Arc::new(deposit_rpc::VaultSource::new(l.clone())) as Arc<dyn deposit_rpc::DepositSource>
     });
+    if l1.as_ref().is_some_and(|chain| chain.clock_enabled())
+        && gw.window_withdrawals.is_empty()
+        && gw.seq.state.state_root() == gw.last_settled_root
+    {
+        gw.seq.discard_idle_funding_window();
+    }
     let app = Arc::new(App {
+        clock_admission: clock_admission::ClockAdmission::new(
+            prover.as_ref().is_some_and(|p| p.clock_enabled()),
+        ),
         deposit_source,
         deposit_serial: Mutex::new(()),
         gw: Mutex::new(gw),
@@ -8447,7 +8516,12 @@ async fn main() {
                 if !stop.next_tick(&mut iv).await {
                     break;
                 }
-                let (events, acct_events) = { app.gw.lock().await.tick() };
+                let (events, acct_events) = {
+                    let Ok(_admission) = app.clock_admission.enter() else {
+                        continue;
+                    };
+                    app.gw.lock().await.tick()
+                };
                 // fold the fresh marks into the REAL candle history (chart past bars)
                 {
                     let marks: Vec<(u64, i128)> = {
@@ -8630,9 +8704,10 @@ async fn main() {
             // start the first settle one period out, so it never races the bond's
             // confirmation (tokio's plain `interval` would fire immediately).
             let mut iv = tokio::time::interval_at(
-                tokio::time::Instant::now() + Duration::from_secs(L1_SETTLE_SECS),
-                Duration::from_secs(L1_SETTLE_SECS),
+                tokio::time::Instant::now() + clock_settle_period,
+                clock_settle_period,
             );
+            iv.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
             // FIN-001: gate settle attempts on a backoff deadline. The base cadence is
             // the L1_SETTLE_SECS interval above; after a prove failure the SettleHealth
             // machine dictates the next delay (exponential → HELD cap). `next_attempt`
@@ -8653,6 +8728,9 @@ async fn main() {
                     continue;
                 }
                 if let Some(client) = app.prover.clone() {
+                    let mut admission = match app.clock_admission.pause(&stop).await {
+                        Ok(p) => p, Err(_) => break,
+                    };
                     // (A) top up the sequencer bond (as the legacy path does) + read the
                     // on-chain batch count (RPC, no lock). The bond top-up runs BEFORE the
                     // window is sealed, so an underbond settleBatch revert cannot strand the
@@ -8688,6 +8766,10 @@ async fn main() {
                     // Stage 1 and seal share Gw's lock with every snapshot capture.
                     let begun = {
                         let mut gw = app.gw.lock().await;
+                        if client.clock_enabled()
+                            && gw.window_withdrawals.is_empty()
+                            && gw.seq.state.state_root() == gw.last_settled_root
+                        { gw.seq.discard_idle_funding_window(); }
                         match begin_journaled_window_settle(
                             &mut gw,
                             bc,
@@ -8711,6 +8793,7 @@ async fn main() {
                     let Some((mut journal, prune_candidates, gate_was_closed)) = begun else {
                         continue;
                     };
+                    if let Some(p) = admission.as_mut() { p.arm(); }
                     let ordered = journal.witness.manifest.ordered.clone();
                     let rejected: Vec<Digest> = journal
                         .witness
@@ -8737,6 +8820,17 @@ async fn main() {
                             continue;
                         }
                     }
+                    if client.clock_enabled() {
+                        let intent = prover_client::prepare_unproved(&journal.witness, &journal.ww);
+                        let durable = intent.and_then(|p| {
+                            journal.prepared = Some(p);
+                            rollback_journal::write(jpath.as_deref().ok_or("clock registration requires journal")?, &journal, &enclave_seed)
+                        });
+                        if let Err(error) = durable {
+                            hold_settlement_for_recovery(&app, format!("clock intent not durable: {error}")).await;
+                            break;
+                        }
+                    }
                     // (C) prove + settle (lock-free). Distinguish a prove failure (no tx
                     // was ever broadcast -> unconditional rollback) from a settle failure
                     // (cast send broadcasts THEN waits for the receipt, so a 90s-kill/RPC
@@ -8754,6 +8848,7 @@ async fn main() {
                             observation: trading_gate::GateObservation,
                         },
                         ProveFailed(String),
+                        ClockFailed(String),
                         SettleFailed {
                             err: String,
                             prepared: prover_client::PreparedSettle,
@@ -8762,6 +8857,7 @@ async fn main() {
                     let l1c = l1.clone();
                     let jpath_bg = jpath.clone();
                     let deposit_guard_app = app.clone();
+                    let clock_mode = client.clock_enabled();
                     let res = tokio::task::spawn_blocking(move || -> SettleAttempt {
                         let prepared = match prover_client::prove_and_prepare(
                             client.as_ref(),
@@ -8769,7 +8865,7 @@ async fn main() {
                             &journal.ww,
                         ) {
                             Ok(p) => p,
-                            Err(e) => return SettleAttempt::ProveFailed(e),
+                            Err(e) => return if clock_mode { SettleAttempt::ClockFailed(e) } else { SettleAttempt::ProveFailed(e) },
                         };
                         // Persist the prepared outcome before the broadcast continuation.
                         if jpath_bg.is_some() {
@@ -8781,7 +8877,7 @@ async fn main() {
                             if let Err(e) =
                                 deposit_guard_app.gw.blocking_lock().deposits.check_ready()
                             {
-                                return SettleAttempt::ProveFailed(e);
+                                return if clock_mode { SettleAttempt::ClockFailed(e) } else { SettleAttempt::ProveFailed(e) };
                             }
                             match l1c.settle_proved(&prepared.outcome) {
                                 Ok(tx) => {
@@ -8819,9 +8915,8 @@ async fn main() {
                             }
                         })
                         .unwrap_or_else(|error| {
-                            SettleAttempt::ProveFailed(format!(
-                                "stage-2 rollback journal is not durable: {error}"
-                            ))
+                            let error = format!("stage-2 rollback journal is not durable: {error}");
+                            if clock_mode { SettleAttempt::ClockFailed(error) } else { SettleAttempt::ProveFailed(error) }
                         })
                     })
                     .await;
@@ -8865,6 +8960,13 @@ async fn main() {
                                     println!("[l1] settlement recovered → HEALTHY");
                                 }
                             }
+                            if let Some(p) = admission.as_mut() {
+                                if let Err(error) = snapshot_now(&app.snapshot_req).await {
+                                    hold_settlement_for_recovery(&app, format!("clock commit snapshot not durable: {error}")).await;
+                                    break;
+                                }
+                                p.resolved();
+                            }
                             next_attempt = tokio::time::Instant::now();
                             // Task 3 (WAL): the journal outlives the commit — boot's STALE
                             // row resolves it. Poke the single snapshot writer instead, so
@@ -8876,6 +8978,12 @@ async fn main() {
                             let _ = app.tx.send(
                                 serde_json::to_string(&WsMsg::State { state: snap }).unwrap(),
                             );
+                        }
+                        Ok(SettleAttempt::ClockFailed(e)) => {
+                            // A registration may already be mined or pending. Never
+                            // merge this immutable window with newer ops on a retry.
+                            hold_settlement_for_recovery(&app, format!("clock-bound window unresolved: {e}; retain journal and restart to resume exact witness")).await;
+                            break;
                         }
                         Ok(SettleAttempt::ProveFailed(e)) => {
                             eprintln!(
@@ -8987,6 +9095,13 @@ async fn main() {
                                                 }
                                                 // a landed settlement is a success — resume the
                                                 // normal settle cadence (mirror the clean Ok arm).
+                                                if let Some(p) = admission.as_mut() {
+                                                    if let Err(error) = snapshot_now(&app.snapshot_req).await {
+                                                        hold_settlement_for_recovery(&app, format!("clock recovered snapshot not durable: {error}")).await;
+                                                        break;
+                                                    }
+                                                    p.resolved();
+                                                }
                                                 next_attempt = tokio::time::Instant::now();
                                                 // Task 3 (WAL): the journal outlives the commit —
                                                 // boot's STALE row resolves it; poke the writer so
@@ -10667,6 +10782,7 @@ mod tests {
         // (no handshake runs; /attest 503s on `attestor: None` anyway).
         let (gw_eph_secret, gw_pub) = ephemeral_keypair(&[0u8; 32]);
         Arc::new(App {
+            clock_admission: clock_admission::ClockAdmission::new(false),
             deposit_source: None,
             deposit_serial: Mutex::new(()),
             gw: Mutex::new(Gw::boot()),

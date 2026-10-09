@@ -1,0 +1,32 @@
+{
+  "ClockBoundRealProofTest": {
+    "test_real_clock_proof_cannot_authorize_next_batch()": "Success",
+    "test_real_clock_proof_cannot_replay_after_chain_change()": "Success",
+    "test_real_clock_proof_cannot_use_restamped_anchor()": "Success",
+    "test_real_clock_proof_settles_and_authorizes_only_proven_withdrawal()": "Success",
+    "test_real_clock_proof_without_anchor_is_rejected()": "Success",
+    "test_tampered_real_clock_proof_is_rejected()": "Success"
+  },
+  "SP1RealProofTest": {
+    "test_adapter_accepts_arcora_proof()": "Success",
+    "test_changed_proof_rejected_by_verifier_and_adapter()": "Success",
+    "test_frozen_gateway_route_rejects_valid_proof()": "Success",
+    "test_real_gateway_accepts_arcora_proof()": "Success",
+    "test_real_verifier_accepts_arcora_proof()": "Success",
+    "test_truncated_proof_rejected_by_verifier_and_adapter()": "Success",
+    "test_unconfigured_gateway_rejects_valid_proof()": "Success",
+    "test_wrong_commitment_rejected_by_verifier_and_adapter()": "Success",
+    "test_wrong_program_key_rejected_by_verifier_and_adapter()": "Success",
+    "test_wrong_selector_rejected_by_verifier_and_adapter()": "Success"
+  },
+  "SP1RealVerifierGuardTest": {
+    "test_empty_proof_rejected()": "Success",
+    "test_nonzero_exit_rejected()": "Success",
+    "test_pinned_verifier_identity_and_route()": "Success",
+    "test_selector_without_payload_rejected()": "Success",
+    "test_short_selector_rejected()": "Success",
+    "test_unknown_selector_rejected()": "Success",
+    "test_wrong_recursion_root_rejected()": "Success",
+    "test_zero_curve_points_rejected()": "Success"
+  }
+}

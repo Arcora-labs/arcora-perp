@@ -161,6 +161,7 @@ fn deposit_match_settle_prove_recover() {
 
     // --- prove the transition (attested confidential prover, §10b) ------------
     let public = PublicInputs {
+        clock_receipt: None,
         prev_state_root: sealed.prev_state_root,
         batch_manifest_hash: sealed.manifest_hash,
         new_state_root: sealed.new_state_root,
