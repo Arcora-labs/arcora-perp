@@ -1,0 +1,61 @@
+name: Clock proof wrapping
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/clock-proof-wrap.yml'
+      - 'contracts/integration/fixtures/clock-v2/**'
+      - 'scripts/local-verification/download_clock_circuit.py'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  wrap:
+    name: clock-v2 Groth16 wrapping (artifact only)
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 70
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Prepare pinned public synthetic fixture
+        run: |
+          mkdir -p "$RUNNER_TEMP/clock-proof"
+          python3 - <<'PYTHON'
+          import gzip, hashlib, os
+          from pathlib import Path
+          raw = gzip.decompress(Path('contracts/integration/fixtures/clock-v2/gnark-witness.json.gz').read_bytes())
+          assert hashlib.sha256(raw).hexdigest() == '607d17f7b7adad2c8ff7b9a7d564c99027157b3d3e367822e9517e2c402aae94'
+          assert len(raw) == 2803473
+          (Path(os.environ['RUNNER_TEMP']) / 'clock-proof/witness.json').write_bytes(raw)
+          PYTHON
+      - name: Download and verify exact circuit
+        run: python3 scripts/local-verification/download_clock_circuit.py "$RUNNER_TEMP/clock-proof/circuit"
+      - name: Fetch pinned upstream CPU wrapper
+        run: docker pull --platform linux/amd64 ghcr.io/succinctlabs/sp1-gnark@sha256:e1a1cd62838b561ca301f9b2c26475c4a92bfe0e2c916e9bba213062e1548c4d
+      - name: Complete arithmetic with no network or credentials in container
+        run: |
+          set -euo pipefail
+          directory="$RUNNER_TEMP/clock-proof"
+          touch "$directory/proof-bn254.bin"
+          docker run --rm --network none --cpus 4 --memory 13g --memory-swap 13g \
+            -e GOMAXPROCS=4 -e GOMEMLIMIT=11GiB \
+            -v "$directory/circuit:/circuit:ro" \
+            -v "$directory/witness.json:/witness:ro" \
+            -v "$directory/proof-bn254.bin:/output:rw" \
+            ghcr.io/succinctlabs/sp1-gnark@sha256:e1a1cd62838b561ca301f9b2c26475c4a92bfe0e2c916e9bba213062e1548c4d \
+            prove --system groth16 /circuit /witness /output 2>&1 | tee "$directory/wrap.log"
+          test -s "$directory/proof-bn254.bin"
+          sha256sum "$directory/proof-bn254.bin" > "$directory/proof.sha256"
+      - name: Retain small output only; no circuits, secrets or production data
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: clock-v2-wrap-${{ github.event.pull_request.head.sha || github.sha }}
+          retention-days: 1
+          if-no-files-found: error
+          path: |
+            ${{ runner.temp }}/clock-proof/proof-bn254.bin
+            ${{ runner.temp }}/clock-proof/proof.sha256
+            ${{ runner.temp }}/clock-proof/wrap.log
+            ${{ runner.temp }}/clock-proof/circuit/verified.json
