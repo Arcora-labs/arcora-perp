@@ -1,0 +1,10 @@
+{
+  "configuration": "PASS",
+  "id": 24812584,
+  "url": "https://github.com/Arcora-labs/arcora-perp/rules/24812584",
+  "bypassActors": [],
+  "requiredReviewCount": 1,
+  "requiredChecks": 11,
+  "negativeMergeDrill": "NOT_RUN",
+  "sourcePushOrMerge": false
+}

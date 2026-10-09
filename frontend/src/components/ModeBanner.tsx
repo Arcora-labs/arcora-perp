@@ -11,13 +11,23 @@ import { useStore } from "../store";
 /// itself always renders (state.mode is real either way).
 export function ModeBanner() {
   const { client, state } = useStore();
+  if (state.clockAdmission?.paused) {
+    return (
+      <div className="banner banner--danger" role="status">
+        <span><strong>Trading temporarily paused.</strong> A batch is awaiting settlement or recovery.
+          New orders, cancellations, collateral changes and withdrawal requests are paused, including position closes.
+          Existing on-chain withdrawal claims remain available. No automatic order retry is sent; review your orders before trying again.</span>
+      </div>
+    );
+  }
   if (state.mode === "CloseOnly") {
     return (
       <div className="banner banner--danger">
         <span>
           <strong>Close-only mode.</strong> The sequencer is unavailable or a breaker
-          tripped — you can reduce/close and withdraw against the last settled state, but
-          cannot open or increase (§6).
+          tripped. Opening and increasing positions is blocked. Closing positions and creating
+          new withdrawals still require an available gateway and settlement path. Existing
+          published withdrawal claims can be claimed directly from the vault.
         </span>
         {client.resumeNormal && (
           <button

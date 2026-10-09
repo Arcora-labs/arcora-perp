@@ -79,7 +79,7 @@ describe("AccountPanel deposit/withdraw", () => {
     fireEvent.change(screen.getByLabelText(/amount/i), { target: { value: "100" } });
     fireEvent.click(screen.getByRole("button", { name: /^withdraw$/i }));
     expect(await screen.findByText(/Settling on-chain/i)).toBeTruthy();
-    expect(screen.getByText(/Claimable in ~10–20 min/i)).toBeTruthy();
+    expect(screen.getByText(/Claimable after its batch settles/i)).toBeTruthy();
     // SEC-021 removed the free-text destination — nothing address-like persists.
     expect(localStorage.getItem("darkperp.withdrawTo")).toBeNull();
   });

@@ -13,10 +13,10 @@
 //!    from the *verifier*, never from the *prover* — a bare prover farm would see
 //!    every position, fill, and margin in plaintext. So the witness is **sealed
 //!    to the attested prover measurement**: it opens only inside a prover whose
-//!    measurement matches, and is **zeroized the instant the job finishes**. A
-//!    public/outsourced GPU proving network (SP1/Risc0 marketplaces) has no
-//!    matching measurement and therefore *cannot* open the witness — which is the
-//!    whole point: private batches require a self-hosted attested prover.
+//!    measurement matches. The locally opened byte buffer is wiped on return or
+//!    panic unwind. This does not erase decoded state or backend-created copies,
+//!    and operator-blindness requires hardware-backed key release beyond the
+//!    software providers used in local tests.
 //!
 //! ## The guest program
 //!
@@ -32,6 +32,7 @@ use perp_core::engine::BatchOp;
 use perp_core::hash::{Digest, Domain, Hasher, Keccak256};
 use perp_core::order::BatchManifest;
 use perp_core::{DefaultState, EngineError};
+use zeroize::Zeroize;
 
 mod seal_root;
 pub use seal_root::{resolve_seal_root, SealRootError};
@@ -443,8 +444,18 @@ impl SealedWitness {
     }
 }
 
-/// An attested confidential prover (§10b): opens the sealed witness only if its
-/// measurement matches, runs the proof, and **zeroizes** the opened plaintext.
+/// Wipe the opened bytes before their owning allocation is freed, including on
+/// panic unwind. Borrowing lets tests inspect the same live buffer after unwind.
+struct OpenedWitness<'a>(&'a mut [u8]);
+
+impl Drop for OpenedWitness<'_> {
+    fn drop(&mut self) {
+        self.0.zeroize();
+    }
+}
+
+/// Opens the witness through a measurement-gated provider, runs the proof, and
+/// wipes the local plaintext byte buffer. Backend/decoded copies are separate.
 pub struct AttestedProver<P: Prover> {
     backend: P,
     /// The TEE key-release boundary: yields the seal key only for an authorized
@@ -510,8 +521,8 @@ impl<P: Prover> AttestedProver<P> {
         sealed: &SealedWitness,
         public: &PublicInputs,
     ) -> Result<BatchProof, ProverError> {
-        let witness = self.open(sealed)?;
-        Ok(self.prove_opened(witness, public))
+        let mut witness = self.open(sealed)?;
+        self.prove_opened(&mut witness, Some(public))
     }
 
     /// Open a sealed witness, DERIVE its public inputs from the batch itself (F2-safe:
@@ -519,38 +530,30 @@ impl<P: Prover> AttestedProver<P> {
     /// The witness is postcard `(DefaultState, Vec<BatchOp>, BatchManifest)`.
     pub fn prove_batch(&self, sealed: &SealedWitness) -> Result<BatchProof, ProverError> {
         let mut witness = self.open(sealed)?;
-        let public = match public_from_witness(&witness) {
-            Ok(public) => public,
-            Err(error) => {
-                witness.fill(0);
-                core::hint::black_box(&witness);
-                return Err(error);
-            }
-        };
-        Ok(self.prove_opened(witness, &public))
+        self.prove_opened(&mut witness, None)
     }
 
-    /// Prove over an already-opened witness and zeroize it before returning. The zeroing
-    /// is followed by a `black_box` optimization barrier so it is not elided (§10b).
-    ///
-    /// Zeroize the opened witness, then force the optimizer to treat the buffer as
-    /// observed via `black_box`: a plain `*b = 0` on a value dropped immediately after is
-    /// a dead store the optimizer may elide, leaving the plaintext witness in prover
-    /// memory — defeating the §10b "deleted after the job" guarantee. `black_box(&witness)`
-    /// is a safe (no `unsafe`) optimization barrier that prevents the zeroing from being
-    /// elided.
-    fn prove_opened(&self, mut witness: Vec<u8>, public: &PublicInputs) -> BatchProof {
-        let proof_bytes = self.backend.prove(public, &witness);
-        for b in witness.iter_mut() {
-            *b = 0;
-        }
-        core::hint::black_box(&witness);
-        drop(witness);
-        BatchProof {
-            public: *public,
+    /// Keep a wipe guard alive across both native derivation and backend proving.
+    /// `zeroize` uses volatile writes and a compiler fence, including when `?`
+    /// returns an error or a backend panic unwinds. Abort/SIGKILL cannot run Drop;
+    /// this guard also makes no claim about decoded state, register copies, or
+    /// plaintext copied into backend-owned buffers (for example SP1Stdin).
+    fn prove_opened(
+        &self,
+        witness: &mut [u8],
+        public: Option<&PublicInputs>,
+    ) -> Result<BatchProof, ProverError> {
+        let witness = OpenedWitness(witness);
+        let public = match public {
+            Some(public) => *public,
+            None => public_from_witness(witness.0)?,
+        };
+        let proof_bytes = self.backend.prove(&public, witness.0);
+        Ok(BatchProof {
+            public,
             proof_bytes,
             prover_measurement: self.backend.measurement(),
-        }
+        })
     }
 }
 
@@ -750,6 +753,57 @@ mod tests {
         let proof = prover.prove_sealed(&sealed, &public).unwrap();
         assert!(CommitmentProver::new(M).verify(&proof));
         assert_eq!(proof.public, public);
+    }
+
+    #[test]
+    fn opened_witness_is_wiped_when_backend_panics() {
+        struct PanickingProver;
+        impl Prover for PanickingProver {
+            fn measurement(&self) -> Digest {
+                M
+            }
+            fn prove(&self, _: &PublicInputs, witness: &[u8]) -> Vec<u8> {
+                assert_eq!(witness, b"private test witness");
+                panic!("deliberate backend panic");
+            }
+        }
+        let (mut state, ops) = state_with_deposit();
+        let manifest = empty_manifest(&state);
+        let public = run_transition(&mut state, &ops, &manifest).unwrap();
+        let prover = AttestedProver::new(PanickingProver, prov(M));
+        let mut witness = b"private test witness".to_vec();
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            prover.prove_opened(&mut witness, Some(&public))
+        }));
+        let panic = result.expect_err("the backend panic must propagate");
+        assert_eq!(
+            panic.downcast_ref::<&str>(),
+            Some(&"deliberate backend panic")
+        );
+        assert_eq!(witness.len(), b"private test witness".len());
+        assert!(
+            witness.iter().all(|byte| *byte == 0),
+            "the same opened buffer must be wiped during unwind, before its owner frees it"
+        );
+    }
+
+    #[test]
+    fn opened_witness_is_wiped_after_success_and_decode_error() {
+        let (mut state, ops) = state_with_deposit();
+        let manifest = empty_manifest(&state);
+        let public = run_transition(&mut state, &ops, &manifest).unwrap();
+        let prover = AttestedProver::new(CommitmentProver::new(M), prov(M));
+        let mut witness = b"private test witness".to_vec();
+        let proof = prover.prove_opened(&mut witness, Some(&public)).unwrap();
+        assert!(CommitmentProver::new(M).verify(&proof));
+        assert!(witness.iter().all(|byte| *byte == 0));
+
+        let mut malformed = b"not a witness".to_vec();
+        assert_eq!(
+            prover.prove_opened(&mut malformed, None),
+            Err(ProverError::WitnessDecode)
+        );
+        assert!(malformed.iter().all(|byte| *byte == 0));
     }
 
     #[test]

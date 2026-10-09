@@ -97,6 +97,7 @@ export function OrderTicket() {
       reduceOnly,
     };
     if (state.accountUnavailable) return setError("Your account could not be read. Reload before placing an order.");
+    if (state.clockAdmission?.paused) return setError("Trading is paused for settlement. Review the order again when admission resumes.");
     if (closeOnly && !reduceOnly) return setError("Close-only mode: use reduce-only to decrease an existing position.");
     if (IS_LIVE && (state.oracle.price <= 0n || Date.now() - state.oracle.publishTimeMs > 30_000)) return setError("Price data is stale. Check Health and wait for a fresh price.");
     setAccepted(null);
@@ -106,6 +107,9 @@ export function OrderTicket() {
   async function confirm() {
     if (!review || submitting.current) return;
     const current = client.getState();
+    if (current.clockAdmission?.paused) {
+      setReview(null); setError("Trading is paused for settlement. No order was sent. Review it again when admission resumes."); return;
+    }
     if (current.selectedMarketId !== review.input.marketId || current.accountUnavailable) {
       setReview(null); setError("Market or account changed. Review the order again."); return;
     }
@@ -210,7 +214,7 @@ export function OrderTicket() {
       {error && <p className="notice notice--error" role="alert">{error}</p>}
       {accepted && <p className="notice notice--ok" role="status">{accepted}</p>}
 
-      <button className={`btn btn--${side === "Buy" ? "buy" : "sell"}`} disabled={pending}>
+      <button className={`btn btn--${side === "Buy" ? "buy" : "sell"}`} disabled={pending || state.clockAdmission?.paused}>
         {pending ? "Submitting…" : `Preview ${side.toLowerCase()} ${state.market.symbol}`}
       </button>
       <p className="order-ticket__foot">

@@ -1,22 +1,9 @@
 name: A11 release evidence
 on:
   push:
-    branches: ['fix/a11-release-evidence-2026-09-18']
+    branches: [main, 'fix/a11-release-evidence-2026-09-18']
+  # Every PR must emit these required checks, including documentation-only changes.
   pull_request:
-    paths:
-      - Cargo.toml
-      - Cargo.lock
-      - crates/**
-      - scripts/local-verification/**
-      - scripts/tee-capture/**
-      - vendor/**
-      - frontend/package.json
-      - frontend/pnpm-lock.yaml
-      - crates/sp1-guest/**
-      - crates/sp1-host/**
-      - crates/prover-service/**
-      - contracts/**
-      - .github/workflows/a11-release-evidence.yml
 permissions:
   contents: read
 jobs:
@@ -34,6 +21,11 @@ jobs:
           python3 scripts/local-verification/check_sp1_release.py
           python3 -m unittest discover -s scripts/local-verification -p test_check_sp1_release.py
           python3 -m unittest discover -s scripts/local-verification -p test_verify_clock_proof.py
+      - name: Release manifest and repository protection policy guards
+        run: |
+          python3 -m unittest discover -s scripts/local-verification -p test_release_manifest.py
+          python3 -m unittest discover -s scripts/local-verification -p test_repository_policy.py
+          python3 -m unittest discover -s scripts/local-verification -p test_read_deployment.py
       - name: RustSec workspace and excluded application locks
         run: |
           set -o pipefail
@@ -139,6 +131,10 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Build the actual gateway and record its source
         run: python3 scripts/local-verification/run_check.py --output-dir /tmp/arcora-local-drills/checks gateway-build -- cargo build --locked -p gateway
+      - name: Local wallet funds lifecycle (native proof and explicit mock verifier)
+        run: |
+          forge build --root contracts
+          ARCORA_FUNDS_EVIDENCE=/tmp/arcora-local-drills/funds-lifecycle.json cargo test -p gateway funds_lifecycle_tests --locked -- --ignored --nocapture
       - name: Real cast transport against owned RPC fixtures
         run: |
           python3 scripts/local-verification/run_check.py --output-dir /tmp/arcora-local-drills/checks recovery-rpc -- cargo test --locked -p gateway runtime_witness_native_cast -- --ignored --nocapture --test-threads=1
@@ -190,10 +186,11 @@ jobs:
           cat > a11-limitations.txt <<'EOF'
           This CI job does NOT build the SP1 guest ELF, derive its vkey, generate a Groth16 proof,
           query the live chain, or prove that the deployment record matches the current source.
-          A06 changed the guest semantics after the recorded July deployment. Mainnet/redeployment
-          remains blocked until an SP1-capable release runner rebuilds the ELF, executes native/guest
-          parity, derives the program vkey, produces and verifies a real proof, and compares the
-          deployed verifier/vkey using pinned chain data.
+          PR #31 includes a source-pinned clock guest, native/guest parity and a real proof verified
+          by the Rust and Solidity verifiers (checked in the foundry release gate). That evidence
+          does not bind the July deployment to the new guest. A target rollout still requires a clean
+          reproducible release build, a manifest covering service config and compiled contracts,
+          and pinned-chain address, runtime bytecode, program-vkey and state-migration checks.
           EOF
       - uses: actions/upload-artifact@v4
         with:

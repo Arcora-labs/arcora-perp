@@ -89,6 +89,19 @@ class DeploymentObservationTests(unittest.TestCase):
         self.assertIn("token()", getters)
         self.assertNotIn("asset()", getters)
 
+    def test_observation_compares_to_reviewed_clock_guest_not_historical_build_log(self):
+        from verify_clock_proof import EXPECTED_VKEY
+        def change(_, method, params, response, __):
+            if method == "eth_call" and params[0]["data"] == "programVKey()":
+                response["result"] = EXPECTED_VKEY
+            return response
+        result, _, code = self.observe(change=change)
+        self.assertEqual(code, 0)
+        self.assertEqual(result["local_guest_vkey"], EXPECTED_VKEY)
+        self.assertTrue(result["vkey_matches_local"])
+        self.assertIn("clock-v2", result["local_guest_reference"])
+        self.assertIn("NOT_PROVEN", result["deployment_matches_local_source"])
+
     def test_single_endpoint_same_hash_wrong_height_is_blocked(self):
         def change(_, method, params, response, __):
             if method == "eth_getBlockByNumber" and params[0] != "finalized":

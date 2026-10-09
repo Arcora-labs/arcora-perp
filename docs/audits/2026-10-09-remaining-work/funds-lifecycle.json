@@ -1,0 +1,110 @@
+{
+  "status": "PASS",
+  "elapsedSeconds": 9.121703417,
+  "timingScope": "local native/mock flow including HTTP and EVM transactions; excludes SP1 proof timing, clock admission duration and target-chain finality",
+  "host": {
+    "os": "macos",
+    "arch": "aarch64",
+    "cpu": "Apple M4",
+    "availableParallelism": 10,
+    "rustupToolchain": "1.99.0-aarch64-apple-darwin",
+    "anvil": "anvil Version: 1.7.2-nightly\nCommit SHA: dea99c55914d010b22d3f5532fca180a8ecafda1\nBuild Timestamp: 2026-06-05T07:27:50.230262000Z (1780644470)\nBuild Profile: dist"
+  },
+  "proofBackend": "native replay + MockZkVerifier (NOT SP1)",
+  "chainId": 31337,
+  "gatewayTransport": "real loopback HTTP",
+  "restart": "encrypted snapshot and WAL restoration after mined settlement before local commit; not OS crash",
+  "deposits": [
+    {
+      "payer": "0x19e7e376e7c213b7e7e7e46cc70a5dd086daff2a",
+      "amount": "10000000000",
+      "tx": "0xc0176b7bc878ab3ef40d143401477c9867028245de90e346f6a06b25bb20c848"
+    },
+    {
+      "payer": "0x2bd0c9fe079c8fca0e3352eb3d02839c371e5c41",
+      "amount": "20000000000",
+      "tx": "0x6c0a393e3dc6dfcf0285f8dd962539e99d518a925120b929629793693e830ac5"
+    },
+    {
+      "payer": "0x1563915e194d8cfba1943570603f7606a3115508",
+      "amount": "20000000000",
+      "tx": "0x69709a0dfdbd572ebdd9c6b3e9403870667dde601f7b42a2a87f53e383b2921b"
+    }
+  ],
+  "orders": [
+    "0xc9a31b23ea82cc724ccb5abc7fcc2ed790bd4f0c96706030b00803ac24d17715",
+    "0xf34099a9bed0bdb9efa08adde9f642a28662867ee5e115a72176c5d1f3f016e7",
+    "0x8b20602f73ca1589e56d1c46f4451d0911a719f9a74b531905be5baa4cd59f92",
+    "0x7acc7c1f14afd3885e9c491ef786fcd3bee6a27353acc48a6aa54ce5f133e174"
+  ],
+  "batches": [
+    {
+      "batch": 0,
+      "tx": "0x1479206ff077daccebc3000498a30ca820bd718235506aa7f331700cf09a75b8",
+      "stateRoot": "0x7170c396ac8e3f48972d522b90c025d38901331a306b4fb86d248d3018126da7",
+      "depositTip": "0x6fec3850407b5d5235d8bfc3eda6a8b134ecee7a9f67f4188df0221aad570ccc",
+      "depositCount": 3,
+      "withdrawalsRoot": "0x0000000000000000000000000000000000000000000000000000000000000000",
+      "recoveredAfterMining": false
+    },
+    {
+      "batch": 1,
+      "tx": "0x5f337774aa47c9ddf1910f7df8dc7ab4fda4616cf904ce0f3c9318ebedd53b01",
+      "stateRoot": "0xfc0cf0297330c862a015a287dbb3cd6eb9a291a79e519d8bc41b6afb85bbd233",
+      "depositTip": "0x6fec3850407b5d5235d8bfc3eda6a8b134ecee7a9f67f4188df0221aad570ccc",
+      "depositCount": 3,
+      "withdrawalsRoot": "0x0000000000000000000000000000000000000000000000000000000000000000",
+      "recoveredAfterMining": false
+    },
+    {
+      "batch": 2,
+      "tx": "0xfd96133946572e42ab55f00d85952c84682cc936f82d744c6cbb920f0c3f902d",
+      "stateRoot": "0x27f7dfbf3488b5fa512a47f26805846ee6cc8ff34af156f3a631deb1a58286b6",
+      "depositTip": "0x6fec3850407b5d5235d8bfc3eda6a8b134ecee7a9f67f4188df0221aad570ccc",
+      "depositCount": 3,
+      "withdrawalsRoot": "0x0000000000000000000000000000000000000000000000000000000000000000",
+      "recoveredAfterMining": false
+    },
+    {
+      "batch": 3,
+      "tx": "0x63a318803c3f45ddd668aa567380e3dd0fea48426d9989ba15bd3b5a824c3cb8",
+      "stateRoot": "0xbf845dd2fa5585106a9991e2037672824b3fc00952e9b7f11027c9c9ea97c1d3",
+      "depositTip": "0x6fec3850407b5d5235d8bfc3eda6a8b134ecee7a9f67f4188df0221aad570ccc",
+      "depositCount": 3,
+      "withdrawalsRoot": "0x619484fc5579105095eca3ed9af343610edc622c7c9c2ae12209cfb2e3eb434a",
+      "recoveredAfterMining": true
+    }
+  ],
+  "claims": [
+    {
+      "to": "0x2bd0c9fe079c8fca0e3352eb3d02839c371e5c41",
+      "amount": "10000000000",
+      "tx": "0xdc03c0371d930b4bc9452537ac8c8a813b9996029d8a87beec62a2fa47429d4b",
+      "balanceAfter": "30000000000"
+    },
+    {
+      "to": "0x1563915e194d8cfba1943570603f7606a3115508",
+      "amount": "10000000000",
+      "tx": "0x519965d5308240acf80d6ff18f0f8b72f352cdd68857eeef2b025f19e6c5bb18",
+      "balanceAfter": "30000000000"
+    }
+  ],
+  "contracts": {
+    "token": "0xae519fc2ba8e6ffe6473195c092bf1bae986ff90",
+    "vault": "0x08425d9df219f93d5763c3e85204cb5b4ce33aaa",
+    "settlement": "0x7d73424a8256c0b2ba245e5d5a3de8820e45f390"
+  },
+  "negativeCases": [
+    "missing allowance",
+    "wrong deposit tuple",
+    "replayed deposit authorization",
+    "nonexistent deposit credited zero",
+    "wrong order signer",
+    "duplicate signed order",
+    "wrong withdrawal destination",
+    "duplicate withdrawal authorization",
+    "unsettled withdrawal claim",
+    "invalid mock proof",
+    "duplicate vault claim"
+  ]
+}

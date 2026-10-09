@@ -295,6 +295,8 @@
 <blockquote class="pull"><span class="lede">The trust statement in one line</span>
 <p>The proof verifies that a settled transition satisfies the zk guest and its committed inputs; it does not independently prove user intent or external price truth. The alpha gateway still custodies account spend keys and controls the oracle publisher key.</p></blockquote>
 
+<aside><strong>Source/status update — 2026-10-09:</strong> PR #31 real clock-proof evidence is source-pinned; the July testnet deployment record is older. Live infrastructure and target capacity need separate verification. Clock settlement/recovery pauses new orders, closes, cancellations, collateral changes and withdrawal requests. Historical timing and live descriptions below are not fresh deployment evidence.</aside>
+
 <!-- ================= 2 PROBLEM ================= -->
 <h2>The problem</h2>
 
@@ -325,7 +327,7 @@
 <ul>
   <li>The <strong>TEE</strong> is responsible for <em>confidentiality and speed</em>: private matching, millisecond acknowledgements, and an attested identity that signs receipts.</li>
   <li>The <strong>zk proof</strong> is responsible for <em>correctness</em>: every settled state root must be reproduced by re-executing the engine inside a zkVM. Integrity does not rest on the hardware.</li>
-  <li>The <strong>L1 contract</strong> is responsible for <em>custody and escape hatches</em>: it holds the collateral, enforces state-root continuity, adjudicates challenges, and guarantees exit if the operator disappears.</li>
+  <li>The <strong>L1 contract</strong> is responsible for <em>custody and escape hatches</em>: it holds the collateral, enforces state-root continuity, adjudicates challenges, and permits claims against already published withdrawal roots. New exit roots still require operator/prover service and governance during final wind-down.</li>
 </ul>
 
 <p>The result: a trader experiences CEX-like latency and CEX-like privacy, while the on-chain contract only ever advances to states that carry a validity proof.</p>
@@ -395,7 +397,7 @@
 
 <h3>Liveness and forced exit</h3>
 
-<p>If the sequencer stops settling for 7200 blocks (<code>livenessBlocks</code>), the contract enters forced-exit/close-only mode. The last settled state remains fully withdrawable through the same permissionless Merkle claims. An operator outage — or an operator that simply walks away — can halt <em>trading</em>, but it cannot trap funds beyond the liveness window.</p>
+<p>If the sequencer stops settling for 7200 blocks (<code>livenessBlocks</code>), the contract enters forced-exit/close-only mode. Only withdrawals already included in published roots can be claimed independently with their Merkle data. Account balances and open positions are not withdrawal leaves. New exits need the operator/prover and, for finalSettle/finalExit, governance; the liveness timeout does not remove these dependencies.</p>
 
 <h3>Crash safety</h3>
 
@@ -424,7 +426,7 @@
 </table>
 </div>
 
-<p>The honest boundary: entering and exiting the system are public L1 events, as on any rollup — the depositing address, the claim destination, and those amounts are visible on Base Sepolia. The privacy guarantee applies to everything <em>between</em> deposit and withdrawal: trading activity, positions, and balances.</p>
+<p>The honest boundary: entering and exiting the system are public L1 events, as on any rollup — the depositing address, the claim destination, and those amounts are visible on Base Sepolia. Trading data is hidden from public-chain observers, but the custodial gateway and development prover remain inside the privacy trust boundary.</p>
 
 <!-- ================= 6 SECURITY & TRUST ================= -->
 <h2>Security and trust model</h2>
@@ -433,7 +435,7 @@
 
 <h3>What the zk proof guarantees</h3>
 
-<p>The operator cannot forge state transitions, inflate balances, or fake fills into settled state — every settled root is proven byte-exact by re-executing the engine inside the zkVM, and the contract refuses any root that breaks prev-root continuity. Withdrawals from settled state require no trust in the operator at all: they are permissionless Merkle claims against roots the proof itself derived.</p>
+<p>A proof rejects transitions that violate the guest program. The alpha gateway still holds spending keys and price-publisher authority, so user intent and external price truth are separate trust assumptions. Only existing withdrawal leaves in published roots support independent claims with their Merkle data; creating new roots requires operator/prover service and governance during final wind-down.</p>
 
 <h3>What the TEE guarantees</h3>
 
@@ -447,20 +449,20 @@
 
 <ol class="limits">
   <li><strong>The zk prover is not yet TEE-attested.</strong> It currently runs on a development workstation; the witness leaves the sequencer enclave sealed, but the prover machine's attestation measurement is a stub. Consequence, stated plainly: the plaintext window witness is exposed to operator-controlled prover hardware today, so the privacy perimeter currently includes that machine. State <em>integrity</em> is unaffected — the chain still accepts nothing without a valid proof. Roadmap fix: attestation-gated witness-key release to an x86_64 TDX prover.</li>
-  <li><strong>Operator liveness is a single point of failure.</strong> If the sequencer goes down, trading halts. Funds remain safe and withdrawable — via normal claims against settled state, and via forced-exit after the 7200-block liveness window — but availability is not yet decentralized.</li>
+  <li><strong>Operator liveness is a single point of failure.</strong> If the sequencer goes down, trading halts. Existing published claims remain available with their Merkle data. New withdrawal roots require operator/prover service and, in final wind-down, governance; the timeout alone does not make every balance independently withdrawable.</li>
   <li><strong>Ordering fairness is not yet zk-proven.</strong> The proof attests correct <em>execution</em> of the sequenced operations; the <em>sequencing itself</em> is enclave-attested only. A matching-fairness proof ("Proof v2") — proving the ordering policy, not just the execution — is on the roadmap.</li>
-  <li><strong>Proof cadence is ~10–20 minutes.</strong> One proof per window, over a full-state witness, so hard finality lags soft finality by that interval and proving cost grows with total account count. A sparse-witness redesign (proof cost independent of total accounts) is on the roadmap.</li>
+  <li><strong>Clock proving has no accepted latency bound yet.</strong> The old ~10–20 minute observation is not a current capacity guarantee. One proof per window, over a full-state witness, so hard finality lags soft finality by that interval and proving cost grows with total account count. A sparse-witness redesign (proof cost independent of total accounts) is on the roadmap.</li>
   <li><strong>No third-party audit yet.</strong> The contracts and engine have been through internal multi-agent adversarial audits — 13 findings were remediated before alpha — but no independent firm has audited the system. Treat it accordingly.</li>
 </ol>
 
-<p>Test coverage stands at <strong>351 automated tests</strong> across the workspace — engine, sequencer, gateway, and the contracts' own forge suite — including proof-replay merge gates and crash-recovery drills.</p>
+<p>Test coverage must be read from the command results for the reviewed source, across the workspace — engine, sequencer, gateway, and the contracts' own forge suite — including proof-replay merge gates and crash-recovery drills.</p>
 
 <!-- ================= 7 STATUS TODAY ================= -->
 <h2>Status today</h2>
 
-<p>Arcora Perp is live as a <strong>public testnet alpha on Base Sepolia</strong> (chainId 84532). These are not simulated proofs: every settlement window produces a real Groth16 proof, verified on-chain by the SP1 verifier before the state root advances. The full user journey — sealed order in, house-MM fill, receipt in milliseconds, withdrawal, permissionless on-chain claim — has been exercised end to end on the current stack, and the crash-recovery drill in &sect;4.6 was passed in production.</p>
+<p>PR #31 records a real clock proof for a pinned guest and local verifier stack. The July Base Sepolia addresses describe a historical deployment, not verified parity with that guest. The new normal-wallet HTTP lifecycle is tested locally using Anvil and an explicit mock verifier. The same full lifecycle with real clock proofs, target capacity and infrastructure disaster recovery remain release gates.</p>
 
-<h3>Live contracts (Base Sepolia, deployed 2026-07-09)</h3>
+<h3>Historical deployment contracts (Base Sepolia, deployed 2026-07-09)</h3>
 
 <div class="tablewrap">
 <table>

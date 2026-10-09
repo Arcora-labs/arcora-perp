@@ -19,15 +19,20 @@ and the SP1 host all call it, so they compute byte-identical roots. They are **n
 trusted-sequencer calldata: `withdrawals_root` is derived from the batch's burned
 notes (a prover cannot invent a withdrawal without a real burn — audit F2), and
 `ordered_root` / `rejected_root` by merklizing the manifest's committed order-hash
-lists. So the sequencer cannot publish an arbitrary withdrawals root to drain the
-vault, nor a fake ordered root to dodge inclusion challenges (security audit
-findings F1/F2).
+lists. This prevents roots that disagree with the witnessed manifest, and binds
+withdrawals to real note burns (security audit findings F1/F2). It does not bind
+the manifest's claimed order dispositions to matching execution.
 
 CAVEAT (Proof-v2): the ordered-vs-rejected SPLIT itself — whether the matcher's
 inclusion/rejection decisions obey the matching rule — is **not** proven here; that
-is Proof-v2, constrained in the interim by receipts + inclusion slashing. And this
-derivation only *enforces* anything under a real verifier + vkey binding (the P2
-gate); under `MockZkVerifier` it is a stand-in, not on-chain enforcement today.
+is Proof-v2. Receipts + inclusion slashing do **not** close this gap: a sequencer
+can declare a valid order rejected, derive its committed root, and use membership
+in that root to dismiss a challenge. A late-publication stake refund does not
+prove rejection legitimacy. Authenticated order bodies, receipt priority,
+committed book/lifecycle state, and deterministic matcher replay are still needed.
+See the [R04 boundary evidence](audits/2026-10-09-rejection-boundary.md).
+Root derivation itself only *enforces* anything under a real verifier + vkey
+binding (the P2 gate); under `MockZkVerifier` it is a stand-in.
 
 `run_transition()` runs the **perp-core engine** — the same `apply_batch` used on
 the hot path — over the batch's ops and returns these derived public inputs. The L1

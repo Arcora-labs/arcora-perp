@@ -1,0 +1,1237 @@
+   Compiling sealed-box v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/repo/crates/sealed-box)
+   Compiling prover v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/repo/crates/prover)
+   Compiling node v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/repo/crates/node)
+   Compiling committee v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/repo/crates/committee)
+   Compiling bridge v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/repo/crates/bridge)
+   Compiling dark-perp-attestation v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/repo/crates/attestation)
+   Compiling note-archive v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/repo/crates/note-archive)
+   Compiling oracle-feed v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/repo/crates/oracle-feed)
+   Compiling sequencer v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/repo/crates/sequencer)
+   Compiling loadbot v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/repo/crates/loadbot)
+   Compiling matcher v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/repo/crates/matcher)
+   Compiling perp-core v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/repo/crates/perp-core)
+   Compiling e2e v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/repo/crates/e2e)
+   Compiling demo v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/repo/crates/demo)
+   Compiling gateway v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/repo/crates/gateway)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 11.66s
+     Running unittests src/lib.rs (target/debug/deps/bridge-110c2394b353619a)
+
+running 8 tests
+test tests::negative_amount_is_surfaced_not_swallowed ... ok
+test tests::sub_unit_remainder_leaks_explicitly ... ok
+test tests::decompose_is_exact_when_divisible ... ok
+test tests::entries_plus_remainder_always_equal_amount ... ok
+test tests::mix_commitment_is_domain_separated_from_note_commitment ... ok
+test tests::same_denomination_shares_anonymity_set ... ok
+test tests::mix_preserves_multiset_but_reorders ... ok
+test tests::mix_is_deterministic_for_a_seed ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/fuzz.rs (target/debug/deps/fuzz-def5d1fdc92bae3f)
+
+running 3 tests
+test fuzz_negative_amount_is_surfaced ... ok
+test fuzz_decompose_is_value_exact ... ok
+test fuzz_mix_preserves_multiset ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.54s
+
+     Running unittests src/lib.rs (target/debug/deps/committee-9d2aff7375cb7409)
+
+running 10 tests
+test shamir::tests::duplicate_x_rejected ... ok
+test shamir::tests::t_equals_n_needs_everyone ... ok
+test shamir::tests::fewer_than_t_does_not_reveal ... ok
+test shamir::tests::any_t_subset_reconstructs ... ok
+test tests::non_member_signature_ignored ... ok
+test tests::wrong_digest_signature_does_not_count ... ok
+test tests::below_threshold_fails ... ok
+test tests::malleated_signature_cannot_inflate_quorum_weight ... ok
+test tests::duplicate_signer_counts_once ... ok
+test tests::quorum_reached_with_threshold_signers ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests/fuzz.rs (target/debug/deps/fuzz-670b8135a185e682)
+
+running 1 test
+test fuzz_any_t_subset_reconstructs ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.26s
+
+     Running unittests src/lib.rs (target/debug/deps/dark_perp_attestation-202d0037b0d4f542)
+
+running 21 tests
+test nvidia_cc::tests::quote_fails_closed_when_cc_disabled ... ok
+test nvidia_cc::tests::cc_on_stub_path_never_returns_ok ... ok
+test handshake::tests::ct_eq_matches_semantic_equality ... ok
+test handshake::tests::token_binds_secret_and_not_after ... ok
+test handshake::tests::public_transcript_alone_cannot_reproduce_the_secret ... ok
+test handshake::tests::dh_agrees_from_both_directions ... ok
+test tests::pinned_now_parses_intel_pcs_timestamps ... ok
+test handshake::tests::secret_is_deterministic_transcript_and_shared_bound ... ok
+test vtpm::tests::ak_parser_rejects_malformed_or_weak_public_keys ... ok
+test vtpm::tests::app_measurement_applies_the_tcb_gate ... ok
+test vtpm::tests::parse_pcrs_txt_rejects_malformed_captures ... ok
+test vtpm::tests::ak_parser_preserves_leading_zero_normalization ... ok
+test tests::pinned_now_lies_inside_the_collateral_windows ... ok
+test tests::azure_quote_without_a_live_source_fails_closed ... ok
+test vtpm::tests::parses_the_fixture_pcrs_txt ... ok
+test tests::azure_verify_rejects_a_mismatched_challenge ... ok
+test tests::azure_verify_accepts_the_bundle_at_app_level_with_matching_challenge ... ok
+test tests::azure_verify_rejects_a_malformed_bundle ... ok
+test tests::azure_quote_assembles_the_full_bundle_and_round_trips ... ok
+test tests::azure_verify_rejects_a_firmware_only_expected_measurement ... ok
+test tests::azure_verify_rejects_a_tampered_quote_in_the_bundle ... ok
+
+test result: ok. 21 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/handshake_orchestration.rs (target/debug/deps/handshake_orchestration-85d069c752d8520c)
+
+running 4 tests
+test a_tampered_peer_bundle_fails_closed ... ok
+test a_mismatched_eph_pub_fails_closed ... ok
+test a_wrong_peer_measurement_fails_closed ... ok
+test both_sides_derive_the_identical_secret_and_token ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/verify_offline.rs (target/debug/deps/verify_offline-2188235531165182)
+
+running 7 tests
+test key_release_gate_accepts_only_current_tcb ... ok
+test rejects_an_outdated_platform_quote ... ok
+test verifies_pinned_tdx_quote_and_extracts_measurements ... ok
+test verifies_a_real_azure_tdx_quote_offline ... ok
+test rejects_a_tampered_quote ... ok
+test measurement_is_deterministic_and_binds_mrtd_and_rtmrs ... ok
+test acceptable_platform_yields_a_measurement ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/vtpm_offline.rs (target/debug/deps/vtpm_offline-b4a1a3106ecbf49d)
+
+running 7 tests
+test a_corrupt_hcl_header_is_rejected ... ok
+test a_changed_signed_message_is_rejected ... ok
+test a_changed_rsa_signature_is_rejected ... ok
+test a_different_measured_boot_pcr_breaks_the_chain ... ok
+test a_tampered_hcl_report_breaks_the_td_binding ... ok
+test verifies_the_real_azure_vtpm_chain ... ok
+test tpm_signature_envelope_is_strictly_rsassa_sha256 ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running unittests src/main.rs (target/debug/deps/demo-55bbcad8835f47e5)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/e2e-dddae1882f93b372)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/attestation_binding.rs (target/debug/deps/attestation_binding-b27de0b2c80fb321)
+
+running 1 test
+test attested_measurement_seeds_identity_and_gates_seal_release ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/full_flow.rs (target/debug/deps/full_flow-2e13844665cb51b4)
+
+running 3 tests
+test deposit_match_settle_prove_recover ... ok
+test close_only_blocks_open_but_allows_exit ... ok
+test failed_batch_rolls_back_but_settled_history_and_recovery_survive ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+     Running tests/oracle_path.rs (target/debug/deps/oracle_path-5a13acc3c9d12007)
+
+running 1 test
+test real_ticker_feeds_the_sequencer_and_a_trade_settles ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running unittests src/main.rs (target/debug/deps/gateway-ab4e0d076f10cb06)
+
+running 480 tests
+test account_recovery::snapshot_s3_tests::s3_recovery_legacy_absence_cannot_downgrade_existing_generation ... ok
+test account_recovery::snapshot_s3_tests::s3_recovery_error_preserves_existing_state ... ok
+test account_recovery::snapshot_s3_tests::s3_execution_error_preserves_existing_state ... ok
+test bootstrap::tests::the_floor_rejects_a_dust_bootstrap_and_accepts_exactly_the_floor ... ok
+test bootstrap::tests::the_record_round_trips_through_postcard_in_every_state ... ok
+test candles::tests::backfill_prepends_history_without_rewriting_live_bars ... ok
+test candles::tests::record_folds_ohlc_and_rolls_buckets ... ok
+test candles::tests::ring_is_capped_and_out_of_order_stamps_are_ignored ... ok
+test candles::tests::unknown_market_or_timeframe_is_none ... ok
+test challenge_scan::tests::bootstrap_and_fetch_failures_never_guess_or_advance_cursor ... ok
+test account_recovery::tests::local_rebind_nonce_exhaustion_rejects_before_any_mutation ... ok
+test challenge_scan::tests::confirmed_cross_poll_reorg_rewinds_but_rpc_error_preserves_cursor ... ok
+test challenge_scan::tests::failed_discovery_still_retries_pending_and_terminal_entries_do_not_stall ... ok
+test challenge_scan::tests::failed_or_unsettled_answer_remains_pending_without_starving_later_pages ... ok
+test challenge_scan::tests::reorg_between_anchor_check_and_fetch_cannot_replace_cursor_silently ... ok
+test account_recovery::tests::a07_rotation_preserves_pending_routes_and_other_accounts ... ok
+test account_recovery::snapshot_s3_tests::s3_marker_inside_execution_payload_is_not_a_delimiter ... ok
+test challenge_scan::tests::capacity_does_not_discard_page_and_can_drain_existing_pending ... ok
+test clock_admission::tests::clock_admission_legacy_mode_is_unchanged ... ok
+test clock_admission::tests::clock_admission_shutdown_interrupts_drain_without_reopening ... ok
+test account_recovery::tests::a07_rotation_preserves_ingested_receipts_prefix_and_proof_replay ... ok
+test clock_admission::tests::clock_admission_drains_active_work_and_does_not_queue_new_work ... ok
+test clock_wait::tests::clock_wait_eventual_finality_returns_without_restart ... ok
+test clock_admission::tests::clock_admission_unresolved_or_panicked_worker_never_reopens ... ok
+test clock_wait::tests::clock_wait_invalid_context_is_not_treated_as_finality_lag ... ok
+test clock_wait::tests::clock_wait_shutdown_cancels_before_another_read ... ok
+test clock_wait::tests::clock_wait_timeout_does_not_forge_a_receipt_or_remove_intent ... ok
+test account_recovery::snapshot_s3_tests::s3_file_limits_and_failed_write_preserve_durable_target ... ok
+test clock_admission::tests::clock_admission_blocks_direct_deposit_intake_without_snapshot_changes ... ok
+test clock_admission::tests::clock_admission_http_refuses_mutation_but_preserves_reads ... ok
+test clock_admission::tests::clock_admission_status_exposes_pause_sticky_hold_and_resolution ... ok
+test account_recovery::tests::local_recovery_authority_and_domain_matrix_preserves_rejected_state ... ok
+test deposit_ingestion::receipt_tests::a01_receipt_read_after_a_later_poll_cannot_claim_undurable_credit ... ok
+test deposit_ingestion::receipt_tests::a01_receipt_read_after_ack_returns_the_original_credit_without_reapplying ... ok
+test deposit_ingestion::receipt_tests::a01_receipt_read_does_not_reroute_a_durable_credit ... ok
+test deposit_ingestion::receipt_tests::a01_receipt_read_rechecks_reorg_and_restart_barriers ... ok
+test deposit_ingestion::tests::a01_actual_frozen_v5_fixture_migrates_losslessly_with_pending_permit ... ok
+test deposit_ingestion::tests::a01_atomic_second_funding_failure_preserves_every_account_and_replay_op ... ok
+test account_recovery::snapshot_s3_tests::s3_historical_writers_preserve_state_authority_and_replay ... ok
+test deposit_ingestion::tests::a01_auto_and_manual_race_wait_for_durable_ack_then_credit_once ... ok
+test deposit_ingestion::tests::a01_bootstrap_then_customer_prefix_and_rollback_proof_replay_agree ... ok
+test deposit_ingestion::tests::a01_corrupt_receipt_prefix_or_snapshot_version_refuses_restore ... ok
+test account_recovery::snapshot_s3_tests::s3_envelope_mutations_wrong_seed_and_versions_are_rejected ... ok
+test deposit_ingestion::tests::a01_counter_overflow_and_duplicate_commit_leave_no_partial_credit ... ok
+test deposit_ingestion::tests::a01_explicit_legacy_adoption_is_owned_and_immutable ... ok
+test deposit_ingestion::tests::a01_cancellation_at_ack_keeps_barrier_and_retry_never_recredits ... ok
+test deposit_ingestion::tests::a01_insurance_is_never_user_collateral ... ok
+test deposit_ingestion::tests::a01_disk_failure_retries_persistence_before_rpc_and_restart_is_exactly_once ... ok
+test deposit_ingestion::tests::a01_legacy_permits_are_preserved_without_automatic_routing ... ok
+test deposit_ingestion::tests::a01_offline_customers_and_same_transaction_credit_once_in_l1_order ... ok
+test deposit_ingestion::tests::a01_legacy_bootstrap_half_transfer_resumes_without_minting_or_user_credit ... ok
+test deposit_ingestion::tests::a01_snapshot_v6_roundtrip_preserves_routing_and_consumption ... ok
+test deposit_ingestion::tests::a01_rpc_failure_preserves_cursor_and_finalized_reorg_halt_survives_restart ... ok
+test deposit_rpc::tests::a01_native_cast_hash_pinned_jsonrpc_roundtrip ... ignored, requires the real cast binary; explicitly exercised by A01 verification
+test deposit_rpc::tests::a01_missing_finalized_header_is_not_an_empty_page ... ok
+test deposit_rpc::tests::a01_rpc_domain_prefix_and_credited_anchor_reorg_are_durable_halts ... ok
+test deposit_rpc::tests::a01_rpc_legacy_midblock_prefix_resumes_without_skipping_or_recrediting ... ok
+test deposit_rpc::tests::a01_rpc_failure_at_each_read_never_becomes_an_empty_success ... ok
+test deposit_rpc::tests::a01_rpc_malformed_removed_forked_or_conflicting_logs_fail_closed ... ok
+test deposit_ingestion::tests::a05_a01_v6_migration_preserves_credits_routes_secrets_and_replay_bytes ... ok
+test deposit_rpc::tests::a01_rpc_missing_log_and_reordered_ids_do_not_advance_prefix ... ok
+test deposit_rpc::tests::a01_rpc_pages_whole_blocks_in_canonical_order_deduplicates_and_catches_up ... ok
+test deposit_rpc::tests::a01_rpc_wrong_historical_header_number_is_rejected ... ok
+test enclave_epoch::tests::epoch_key_is_seed_scoped_and_stable ... ok
+test enclave_epoch::tests::old_epoch_secret_retained_for_grace ... ok
+test execution::arithmetic_tests::exact_vwap_keeps_fractional_remainders_across_many_fills ... ok
+test execution::arithmetic_tests::excess_fill_fails_closed_as_unavailable_metadata ... ok
+test enclave_epoch::tests::published_epoch_sig_recovers_to_enclave_identity ... ok
+test execution::arithmetic_tests::maximum_positive_i128_size_and_price_do_not_overflow_metadata ... ok
+test funds_lifecycle_tests::real_http_evm_funds_lifecycle_with_native_mock_proof ... ignored, requires forge-built contracts, Anvil, cast and curl; explicitly uses mock proof
+test l1::clock_binding::configuration_tests::clock_config_is_explicit_and_never_truthy ... ok
+test l1::clock_binding::rpc_tests::runtime_clock_native_cast_rechecks_receipt_before_broadcast ... ignored, requires real cast and owned loopback; run explicitly in CI
+test l1::clock_binding::rpc_tests::runtime_clock_native_cast_refuses_wrong_chain_receipt_and_mid_read_reorg ... ignored, requires real cast and owned loopback; run explicitly in CI
+test l1::clock_binding::rpc_tests::runtime_clock_native_cast_waits_for_finality_without_restamping_or_sending ... ignored, requires real cast and owned loopback; run explicitly in CI
+test l1::observation::strict_hex_tests::rpc_hex_preserves_byte_order_and_leading_zeroes ... ok
+test continuation_settlement_tests::restart_wrong_manifest_batch_refuses_before_transport ... ok
+test l1::observation::strict_hex_tests::rpc_hex_rejects_invalid_prefix_digits_and_non_strings ... ok
+test l1::observation::strict_hex_tests::rpc_hex_rejects_odd_length_instead_of_dropping_the_tail ... ok
+test l1::state_read_tests::challenge_discovery_caps_page_size_and_never_uses_latest_as_log_bound ... ok
+test l1::state_read_tests::challenge_discovery_binds_logs_to_canonical_page_and_refuses_malformed_events ... ok
+test l1::state_read_tests::deposit_witness_adapter_rejects_unpinned_reads_before_transport ... ok
+test l1::state_read_tests::deposit_witness_adapter_requires_pinned_matching_words_code_logs_and_headers ... ok
+test l1::state_read_tests::runtime_state_native_cast_challenge_discovery_requires_matching_canonical_logs ... ignored, requires real cast; explicitly run in native verification
+test l1::state_read_tests::runtime_state_native_cast_deposit_adapter_checks_secondary_code_logs_and_words ... ignored, requires real cast; explicitly run in native verification
+test l1::state_read_tests::runtime_state_native_cast_gate_vault_claims_terminal_and_bond_positive ... ignored, requires real cast; explicitly run in native verification
+test l1::state_read_tests::runtime_state_native_cast_prior_page_reorg_and_challenge_deadline_boundaries ... ignored, requires real cast; explicitly run in native verification
+test l1::state_read_tests::runtime_state_native_cast_refusals_are_all_or_nothing_and_redacted ... ignored, requires real cast; explicitly run in native verification
+test l1::state_read_tests::runtime_state_native_cast_wind_down_pair_is_hash_pinned ... ignored, requires real cast and local loopback; explicitly run in native verification
+test l1::state_read_tests::runtime_state_native_cast_wind_down_refuses_incoherent_or_failed_reads ... ignored, requires real cast and local loopback; explicitly run in native verification
+test l1::clock_binding::configuration_tests::clock_sender_refuses_untagged_or_truncated_v2_proof_without_rpc ... ok
+test l1::state_read_tests::state_snapshot_abi_booleans_and_quantities_are_canonical_not_truthy ... ok
+test l1::clock_binding::configuration_tests::clock_sender_rejects_tagged_proof_when_binding_disabled ... ok
+test l1::state_read_tests::state_snapshot_gate_retains_confirmation_depth_and_detects_mid_read_reorg ... ok
+test l1::state_read_tests::state_snapshot_refuses_each_transport_failure_without_a_partial_pair ... ok
+test l1::state_read_tests::state_snapshot_terminal_policy_reads_latest_hash_without_finality_delay ... ok
+test l1::state_read_tests::state_snapshot_refuses_chain_fork_prefix_disagreement_malformed_and_overflow ... ok
+test l1::tests::a06_proven_phase_routes_only_to_its_l1_entrypoint ... ok
+test l1::tests::bridge_cross_checks_declared_chain_against_the_rpc ... ok
+test l1::tests::deposit_topic0_matches_event_signature ... ok
+test l1::tests::journal_recovery_observation_pins_every_term_to_one_finalized_hash ... ok
+test l1::tests::l1_hex_parsers_reject_non_ascii_without_panic ... ok
+test l1::tests::journal_recovery_observation_refuses_failure_at_every_read ... ok
+test l1::tests::mock_proof_bridge_allows_testnets_and_refuses_real_chains ... ok
+test l1::tests::post_bond_send_has_an_explicit_gas_limit_and_plain_sends_are_unchanged ... ok
+test l1::tests::settle_batch_signature_matches_solidity ... ok
+test l1::tests::settle_proved_argument_order_matches_solidity ... ok
+test l1::witness_tests::runtime_witness_native_cast_agreement_and_disagreement_matrix ... ignored, requires real cast; explicitly run in native verification
+test l1::witness_tests::runtime_witness_native_cast_failure_at_every_read_redacts_and_never_falls_back ... ignored, requires real cast; explicitly run in native verification
+test l1::tests::verify_deposit_tx_extracts_from_ownercommit_amount_id ... ok
+test l1::tests::journal_recovery_observation_refuses_malformed_overflow_and_forked_data ... ok
+test continuation_settlement_tests::restart_wrong_manifest_previous_root_refuses_before_transport ... ok
+test l1::witness_tests::witness_configuration_rejects_same_host_aliases_without_echoing_credentials ... ok
+test l1::witness_tests::witness_policy_binds_agreement_to_the_startup_chain ... ok
+test l1::witness_tests::witness_policy_accepts_ahead_finality_only_when_historical_anchor_agrees ... ok
+test l1::witness_tests::witness_policy_refuses_malformed_chain_and_finalized_header ... ok
+test l1::witness_tests::witness_policy_agreement_uses_same_finalized_canonical_hash_for_every_word ... ok
+test l1::witness_tests::witness_transport_refuses_mutation_methods_before_spawning_cast ... ok
+test l1::witness_tests::witness_unsafe_override_requires_explicit_valid_chain ... ok
+test listen_config::tests::existing_deployment_default_is_preserved ... ok
+test listen_config::tests::invalid_configuration_never_falls_back_to_a_public_listener ... ok
+test listen_config::tests::local_listener_is_explicitly_loopback ... ok
+test ops_alerts::integration_tests::configuration_accepts_only_explicit_local_fixture_and_safe_ntfy_topic ... ok
+test l1::witness_tests::witness_policy_never_falls_back_when_either_provider_fails_any_read ... ok
+test l1::witness_tests::witness_policy_refuses_finality_chain_fork_and_each_getter_disagreement ... ok
+test ops_alerts::integration_tests::collector_rejection_never_makes_failed_persistence_succeed ... ok
+test ops_alerts::integration_tests::deposit_halt_production_ingestion_delivers_once_and_stays_halted_after_restore ... ok
+test order_log::tests::append_chains_and_is_tamper_evident ... ok
+test order_log::tests::chain_link_is_domain_tagged ... ok
+test order_log::tests::entries_are_sealed_not_plaintext_and_open_only_with_log_secret ... ok
+test ops_alerts::integration_tests::held_production_transitions_deliver_once_recover_and_rearm ... ok
+test ops_alerts::integration_tests::real_snapshot_write_failure_delivers_once_and_real_write_recovers ... ok
+test prover_client::clock_pipeline_tests::clock_pipeline_refuses_unsupported_legacy_client ... ok
+test prover_client::clock_pipeline_tests::clock_pipeline_intent_survives_encrypted_journal_and_cannot_rollback ... ok
+test prover_client::clock_pipeline_tests::clock_pipeline_rejects_mismatched_prover_commitment ... ok
+test prover_client::prove_curl_tests::args_carry_the_transport_hardening_flags_in_pairs ... ok
+test prover_client::prove_curl_tests::bearer_is_attached_when_present ... ok
+test prover_client::prove_curl_tests::no_bearer_header_when_token_absent ... ok
+test prover_client::prove_curl_tests::split_status_separates_body_and_code ... ok
+test prover_client::prove_curl_tests::status_is_captured_via_write_out ... ok
+test prover_client::reauth_tests::no_rehandshake_means_401_is_terminal ... ok
+test prover_client::reauth_tests::re_handshakes_once_and_retries_on_401 ... ok
+test prover_client::reauth_tests::rehandshake_refreshes_the_stored_secret_not_only_the_token ... ok
+test prover_client::reauth_tests::second_401_is_terminal ... ok
+test prover_client::reauth_tests::success_does_not_rehandshake ... ok
+test prover_client::seal_nonce_tests::nonce_is_deterministic_for_same_root_and_plaintext ... ok
+test prover_client::seal_nonce_tests::nonce_is_not_the_public_plaintext_hash ... ok
+test prover_client::seal_nonce_tests::nonce_varies_with_plaintext_and_with_root ... ok
+test prover_client::clock_pipeline_tests::clock_pipeline_uses_v2_native_derivation_and_journals_bound_proof ... ok
+test prover_client::clock_pipeline_tests::clock_pipeline_validates_context_before_prover_call ... ok
+test prover_client::tests::a_disagreeing_prover_is_refused ... ok
+test prover_client::tests::a_disagreeing_prover_names_the_differing_root ... ok
+test prover_client::tests::a_window_that_enters_close_only_reports_a_non_normal_post_state ... ok
+test prover_client::tests::an_empty_proof_is_refused_before_broadcast ... ok
+test prover_client::tests::parses_a_response_with_deposits_root ... ok
+test prover_client::tests::parses_a_response_without_deposits_root ... ok
+test prover_client::tests::rejects_a_present_but_malformed_root ... ok
+test prover_client::tests::rejects_a_response_missing_the_commitment ... ok
+test prover_client::tests::new_deposit_count_is_cumulative_not_per_window ... ok
+test prover_client::tests::local_derivation_matches_the_mock_prover_on_all_seven_roots ... ok
+test prover_client::tests::zero_deposit_window_submits_the_prestate_count ... ok
+test prover_client::tests::the_outcome_carries_the_proven_post_state_terms_the_gate_judges ... ok
+test rollback_journal::tests::journal_missing_is_none ... ok
+test prover_client::tests::the_insurance_term_is_the_post_state_not_the_pre_state ... ok
+test rollback_journal::tests::journal_with_a_stale_magic_is_refused ... ok
+test rollback_journal::tests::journal_batch_id_mismatch_fails_closed ... ok
+test rollback_journal::tests::recovery_action_full_matrix ... ok
+test rollback_journal::tests::journal_seal_round_trip ... ok
+test continuation_settlement_tests::restart_second_401_is_terminal_and_unsubmitted_window_reseals ... ok
+test rollback_journal::tests::journal_wrong_seed_fails_closed ... ok
+test continuation_settlement_tests::restart_phase_commitment_mismatch_after_reauth_never_prepares_or_claims ... ok
+test s1_recovery_ws_tests::direct_idle_revocation_requires_transport_closure_not_silence ... ok
+test continuation_settlement_tests::restart_previous_root_mismatch_after_reauth_never_prepares_or_claims ... ok
+test continuation_settlement_tests::restart_expired_session_retry_pending_then_durable_roll_forward ... ok
+test s1_recovery_ws_tests::direct_other_account_delivers_while_recovery_waits_for_disk ... ok
+test s1_recovery_ws_tests::local_http_body_and_registration_limits_are_bounded ... ok
+test s1_recovery_ws_tests::local_tcp_auth_ok_queued_behind_rotation_never_discloses_stale_success ... ok
+test s1_recovery_ws_tests::recovery_closed_queue_is_preflight_503_and_state_unchanged ... ok
+test s1_recovery_ws_tests::direct_no_snapshot_request_before_mutation_and_real_restore ... ok
+test s1_recovery_ws_tests::recovery_dropped_ack_then_fresh_challenge_succeeds ... ok
+test s1_recovery_ws_tests::recovery_confirmed_via_real_snapshot_write_and_restore ... ok
+test s1_recovery_ws_tests::recovery_false_ack_then_fresh_challenge_succeeds ... ok
+test s1_recovery_ws_tests::local_real_rebind_before_recovery_rechecks_current_authorizer ... ok
+test s1_recovery_ws_tests::recovery_full_queue_is_preflight_503_and_state_unchanged ... ok
+test s1_recovery_ws_tests::recovery_racing_sequential_nonces_and_stale_retry_is_rejected ... ok
+test s1_recovery_ws_tests::local_same_nonce_race_has_one_winner_and_no_secret_for_loser ... ok
+test s1_recovery_ws_tests::recovery_rejections_and_nonce_overflow ... ok
+test s1_recovery_ws_tests::recovery_restart_drops_pending_retry_and_rejects_old_authorization ... ok
+test s1_recovery_ws_tests::recovery_dropped_request_then_fresh_challenge_succeeds ... ok
+test s1_recovery_ws_tests::recovery_without_writer_is_503_and_state_unchanged ... ok
+test s1_recovery_ws_tests::recovery_wedged_writer_times_out_then_fresh_challenge_succeeds ... ok
+test s1_recovery_ws_tests::s1f_full_and_closed_snapshot_queues_do_not_disclose_credentials ... ok
+test s1_recovery_ws_tests::s1f_idle_authenticated_socket_closes_without_traffic ... ok
+test s1_recovery_ws_tests::s1f_post_ack_authorizer_change_is_conflict_without_secret ... ok
+test s1_recovery_ws_tests::recovery_rotations_serialize_against_inflight_ack ... ok
+test s1_recovery_ws_tests::s1f_queued_private_event_cannot_cross_rotation ... ok
+test s1_recovery_ws_tests::s1f_actual_snapshot_restore_after_cancelled_response_allows_fresh_recovery ... ok
+test s1_recovery_ws_tests::s1f_stalled_send_releases_lease_on_deadline ... ok
+test s1_recovery_ws_tests::ws_non_auth_command_frames_do_not_mutate_state ... ok
+test service_policy::tests::disallowed_origin_is_rejected_before_handler_and_cors_is_exact ... ok
+test service_policy::tests::loopback_upgrade_caps_connections_messages_and_releases_on_close ... ok
+test service_policy::tests::message_budget_is_per_connection_and_refills_after_one_second ... ok
+test service_policy::tests::origin_policy_is_explicit_and_configuration_is_fail_closed ... ok
+test s1_recovery_ws_tests::ws_revocation_race_slow_consumer_and_no_lock_across_send ... ok
+test s1_recovery_ws_tests::s1f_concurrent_rotation_is_serialized_through_ack ... ok
+test s1_recovery_ws_tests::ws_session_revoked_after_key_rotation ... ok
+test s1_recovery_ws_tests::ws_unrelated_sessions_unaffected_by_rotation ... ok
+test service_policy_integration_tests::actual_registration_rejects_bad_origin_before_body_and_mutation ... ok
+test service_shutdown_tests::shutdown_is_sticky_and_prevents_even_ready_next_tick ... ok
+test settle_health::tests::alert_message_names_count_and_remedy_without_raw_error ... ok
+test settle_health::tests::backoff_never_exceeds_cap ... ok
+test settle_health::tests::first_failure_degraded_base_backoff ... ok
+test settle_health::tests::healthy_initially ... ok
+test settle_health::tests::journal_recovery_hold_is_immediate_and_cleared_only_by_success ... ok
+test settle_health::tests::second_failure_exponential ... ok
+test settle_health::tests::success_resets_and_rearms_alert ... ok
+test settle_health::tests::third_failure_enters_held_alerts_once ... ok
+test settle_health::tests::threshold_floor_is_one ... ok
+test snapshot::crash_tests::atomic_write_crash_worker ... ignored, private subprocess worker; invoked by SIGKILL parent tests only
+test service_policy_integration_tests::actual_ws_routes_share_capacity_and_release_on_disconnect_and_message_limit ... ok
+test service_shutdown_tests::shutdown_drains_admitted_mutation_but_refuses_new_body_and_capacity ... ok
+test service_shutdown_tests::shutdown_closes_both_socket_streams_and_joins_upgraded_tasks ... ok
+test service_shutdown_tests::shutdown_http_body_deadline_and_size_leave_no_mutation_and_return_capacity ... ok
+test snapshot::tests::a_stale_snapshot_magic_is_refused ... ok
+test snapshot::tests::distinct_nonces_no_keystream_reuse ... ok
+test snapshot::tests::seal_hides_plaintext ... ok
+test snapshot::tests::seal_open_round_trip ... ok
+test snapshot::tests::tampered_ciphertext_rejected ... ok
+test snapshot::tests::truncated_or_wrong_magic_rejected ... ok
+test snapshot::tests::v9_authenticates_its_version_and_still_reads_v8 ... ok
+test snapshot::tests::write_atomic_tmp_names_distinct_per_target ... ok
+test s1_recovery_ws_tests::s1f_send_lease_fences_rotation_without_holding_gw ... ok
+test snapshot::tests::wrong_seed_rejected ... ok
+test tests::a_below_floor_bootstrap_is_refused_before_either_leg_applies ... ok
+test tests::a_first_leg_refusal_leaves_the_bootstrap_record_untouched ... ok
+test tests::a_correct_rebind_digest_signed_by_the_wrong_key_is_rejected ... ok
+test tests::a_fund_above_the_floor_alone_does_not_complete_the_bootstrap ... ok
+test tests::a_manifest_only_window_still_settles ... ok
+test tests::a_production_genesis_window_submits_the_zero_prefix ... ok
+test tests::a_production_lp_transfer_is_refused ... ok
+test tests::a_production_simulate_adl_is_refused ... ok
+test tests::a_rejected_only_window_still_settles ... ok
+test tests::a_rebind_authorization_cannot_be_replayed_after_returning_to_the_old_address ... ok
+test tests::a_second_leg_failure_records_deposit_applied_with_the_minted_notes_identity ... ok
+test tests::a_resume_from_deposit_applied_applies_only_the_second_leg ... ok
+test tests::a_testnet_may_still_use_the_mock_prover ... ok
+test tests::a_truly_empty_window_still_returns_none ... ok
+test tests::a_successful_bootstrap_raises_insurance_without_raising_external_in_twice ... ok
+test tests::a_wind_down_shaped_commit_does_not_open_the_gate ... ok
+test tests::accepted_order_appends_to_encrypted_order_log ... ok
+test tests::account_cancel_cannot_reach_another_accounts_order ... ok
+test tests::account_snapshot_round_trips_with_withdraw_nonce ... ok
+test tests::account_lp_withdraw_requires_its_own_signature ... ok
+test tests::admin_key_check_is_fail_closed_and_constant_shape ... ok
+test tests::account_withdraw_records_window_withdrawal ... ok
+test tests::an_inconclusive_observation_leaves_the_gate_unresolved_rather_than_closed ... ok
+test tests::an_undercapitalized_deployment_does_not_open_on_a_clean_settle ... ok
+test snapshot::crash_tests::sigkill_snapshot_atomic_boundaries_restore_exact_old_or_new_state ... ok
+test tests::audit_cancellation::cancellation_only_window_is_not_skipped_and_original_inclusion_is_preferred ... ok
+test tests::audit_cancellation::cancelled_snapshot_restores_without_resurrecting_depth_or_ingress ... ok
+test tests::audit_cancellation::full_snapshot_queue_times_out_without_success ... ok
+test tests::audit_cancellation::failed_write_is_not_reported_as_success_and_does_not_restore_the_quote ... ok
+test tests::audit_cancellation::identical_order_ids_remain_account_scoped_after_sealing ... ok
+test tests::audit_cancellation::pending_cancel_is_committed_instead_of_silently_dropping_a_receipted_order ... ok
+test tests::audit_cancellation::partial_cancel_reads_the_matcher_not_the_legacy_fabricated_fill_field ... ok
+test tests::audit_cancellation::production_without_persistence_refuses_before_cancelling ... ok
+test tests::audit_cancellation::production_success_waits_for_durable_cancellation ... ok
+test snapshot::crash_tests::sigkill_initial_journal_publication_retains_preseal_state ... ok
+test tests::audit_remediation::a_full_queue_is_inside_the_snapshot_deadline ... ok
+test tests::audit_cancellation::sealed_resting_order_cancels_and_appears_in_the_window_manifest ... ok
+test tests::audit_remediation::atomic_writer_never_follows_a_preexisting_tmp_symlink ... ok
+test tests::audit_remediation::every_production_book_surface_explicitly_withholds_depth ... ok
+test tests::audit_remediation::authorization_without_persistence_releases_no_signature ... ok
+test tests::audit_remediation::failed_atomic_rename_retains_the_existing_target_and_cleans_only_its_tmp ... ok
+test tests::audit_remediation::authorization_waits_for_disk_before_signature_and_restores_creditably ... ok
+test tests::audit_remediation::failed_disk_ack_releases_no_signature_and_drops_the_unsigned_permit ... ok
+test snapshot::crash_tests::sigkill_journal_atomic_boundaries_preserve_valid_stage_and_ambiguity ... ok
+test tests::audit_remediation::oversized_deposit_is_rejected_before_creating_an_authorization ... ok
+test tests::audit_remediation::order_post_and_list_both_deliver_the_same_acceptance_signature ... ok
+test tests::audit_remediation::public_oracle_time_is_observation_time_not_request_time ... ok
+test tests::audit_remediation::pending_deposit_permits_prevent_a_rebind_from_stranding_the_queue ... ok
+test tests::auth_digests_match_known_answer_vectors ... ok
+test tests::audit_remediation::receipt_cache_is_bounded_metadata_bound_and_not_persisted ... ok
+test l1::tests::keystore_roundtrips_the_sequencer_key ... ok
+test tests::audit_cancellation::settled_partial_maker_survives_history_pruning_and_remains_cancellable ... ok
+test tests::begin_window_settle_errors_on_desync_without_mutating ... ok
+test tests::begin_window_settle_none_when_unchanged ... ok
+test tests::boot_funds_user_to_15k ... ok
+test tests::begin_window_settle_seals_and_takes_withdrawals ... ok
+test tests::audit_remediation::served_receipt_reproduces_original_signature_and_survives_restore ... ok
+test tests::audit_remediation::snapshot_serialization_precedes_state_capture ... ok
+test tests::build_challenge_answer_produces_a_verifying_proof ... ok
+test tests::caller_signed_account_cannot_withdraw_without_a_signature ... ok
+test tests::caller_signed_orders_bind_reduce_only ... ok
+test tests::boot_recovery_roll_forward_commits ... ok
+test tests::boot_recovery_rollback_restores_reseal ... ok
+test tests::cap_history_evicts_oldest_terminal_only ... ok
+test tests::challenge_scan_start_rewinds_past_the_window ... ok
+test tests::client_ip_trusts_proxy_only_from_loopback ... ok
+test tests::caller_signed_orders_require_a_valid_signature ... ok
+test tests::candles_endpoint_serves_recorded_history ... ok
+test tests::cancellation_durability_tests::no_persistence_refuses_without_cancelling_a_live_order ... ok
+test tests::boot_recovery_persists_before_journal_delete ... ok
+test tests::cancellation_durability_tests::cancellation_waits_for_ack_retries_safely_and_uses_only_private_stream ... ok
+test tests::commit_window_settle_accumulates_and_advances ... ok
+test tests::completion_requires_the_floor_not_just_the_window_id ... ok
+test tests::completion_requires_the_window_carrying_the_second_leg ... ok
+test tests::complete_plaintext_order_still_succeeds_in_demo ... ok
+test tests::continuity_comparison_ignores_hex_case ... ok
+test tests::continuity_comparator_rejects_a_mismatch ... ok
+test tests::decode_hex_rejects_non_ascii_without_panic ... ok
+test tests::confirm_deposit_absent_or_mismatched_blind_is_refused ... ok
+test tests::confirm_deposit_duplicate_commitment_is_clean_err_and_retriable ... ok
+test tests::deployment_identity_env_vars_fall_back_only_when_unset ... ok
+test tests::commit_window_settle_extends_proofs_across_windows ... ok
+test tests::confirm_deposit_matching_blind_advances_tip_to_vault_fold ... ok
+test tests::deposit_posture_accepts_a_backed_count_and_matching_tip ... ok
+test tests::deposit_posture_accepts_a_gateway_behind_the_vault ... ok
+test tests::deposit_posture_accepts_the_honest_genesis ... ok
+test tests::deposit_posture_refuses_a_tip_mismatch_at_an_equal_count ... ok
+test tests::deposit_posture_refuses_an_unbacked_count ... ok
+test tests::empty_configured_admin_key_is_disabled_not_authorizing ... ok
+test tests::enclave_seed_validation_and_demo_detection ... ok
+test tests::demo_genesis_is_still_funded ... ok
+test tests::every_ingress_path_refuses_while_the_gate_is_closed ... ok
+test tests::demo_withdraw_same_amount_sixty_ticks_apart_succeeds ... ok
+test tests::demo_deposit_same_amount_sixty_ticks_apart_succeeds ... ok
+test tests::deposit_address_bind_requires_ownership_proof ... ok
+test tests::deposit_address_bind_accepts_eip191_personal_sign_forms ... ok
+test tests::execution_regressions::a05_v7_cannot_silently_drop_execution_extension ... ok
+test tests::execution_regressions::a07_authenticated_v7_envelope_remains_readable ... ok
+test tests::execution_regressions::a05_duplicate_tick_notification_is_idempotent_before_and_after_restart ... ok
+test tests::execution_regressions::a05_reported_fills_match_successful_replay_ops_and_bad_attribution_is_unavailable ... ok
+test tests::execution_regressions::changing_v8_to_a_legacy_header_does_not_bypass_authentication ... ok
+test tests::execution_regressions::cancel_before_seal_retains_original_receipt_and_is_idempotent ... ok
+test tests::execution_regressions::challenge_prefers_earlier_ordered_evidence_over_later_cancellation ... ok
+test tests::execution_regressions::a07_v8_preserves_generation_and_rejects_truncation_or_downgrade ... ok
+test tests::execution_regressions::corrupt_execution_trailer_is_not_silently_ignored ... ok
+test tests::execution_regressions::a07_v7_migration_preserves_partial_execution_and_replay ... ok
+test tests::execution_regressions::full_fill_cannot_be_cancelled_and_foreign_key_cannot_cancel ... ok
+test tests::execution_regressions::ioc_partial_cancels_only_unfilled_remainder ... ok
+test tests::execution_regressions::legacy_maker_finishing_remainder_is_not_actionable_or_fabricated ... ok
+test snapshot::crash_tests::sigkill_prepared_journal_commit_snapshot_gaps_recover_without_double_commit ... ok
+test tests::execution_regressions::failed_window_retains_cancel_and_rebinds_intervening_fills ... ok
+test tests::execution_regressions::rejected_orders_have_zero_fills_and_specific_reason ... ok
+test tests::execution_regressions::multi_level_taker_uses_execution_vwap_not_limit_or_zero ... ok
+test tests::execution_regressions::later_partial_after_settle_keeps_finality_and_tracks_new_unsettled_size ... ok
+test tests::execution_regressions::partial_maker_reports_actual_size_and_emits_fill_once ... ok
+test tests::fixed_len_hex_parsers_reject_non_ascii_without_panic ... ok
+test tests::execution_regressions::sealed_maker_cancel_removes_remainder_and_commits_manifest ... ok
+test tests::execution_regressions::self_trade_removal_is_visible_without_fake_execution ... ok
+test tests::gateway_signature_round_trips_and_matches_solidity_digest ... ok
+test tests::gateway_oracle_path_produces_a_validatable_signed_transcript ... ok
+test tests::failed_withdrawal_does_not_burn_its_nonce ... ok
+test tests::execution_regressions::snapshot_envelope_has_one_way_v9_guard_and_accepts_v5 ... ok
+test tests::journal_ambiguous_hold_surfaces_health_and_refuses_admin_retry ... ok
+test tests::execution_regressions::v5_migration_preserves_accounts_but_marks_fabricated_history_unavailable ... ok
+test tests::ioc_taker_cannot_open_a_position_below_the_oracle_mark ... ok
+test tests::ioc_taker_cannot_open_a_short_above_the_oracle_mark ... ok
+test tests::l1_enabled_implies_production_mode ... ok
+test tests::l1_without_a_prover_must_not_simulate_settled ... ok
+test tests::execution_regressions::snapshot_roundtrip_preserves_partial_vwap_and_cancelled_remainder ... ok
+test tests::journal_seal_and_snapshot_capture_share_the_state_lock ... ok
+test tests::journal_window_counter_exhaustion_refuses_before_any_mutation ... ok
+test tests::journal_stage1_failure_rolls_back_before_snapshot_can_capture ... ok
+test tests::legacy_deposit_is_refused_in_production ... ok
+test tests::leaked_api_key_alone_cannot_rebind_deposit_address ... ok
+test tests::journal_shutdown_snapshot_holds_mutations_until_exit_guard_drops ... ok
+test tests::legacy_lp_withdraw_primitive_still_works_for_the_demo_wallet ... ok
+test tests::lp_deposit_debits_the_depositor_no_free_mint ... ok
+test tests::lp_withdraw_with_no_signer_and_no_bound_address_is_refused ... ok
+test tests::journal_late_transaction_keeps_original_until_matching_landed_root ... ok
+test tests::openapi_advertises_lp_only_in_demo ... ok
+test tests::mock_prover_client_matches_derive_roots ... ok
+test tests::order_terms_layout_is_stable_and_51_bytes ... ok
+test tests::parse_prove_resp_decodes_all_fields ... ok
+test tests::parse_prove_resp_rejects_malformed ... ok
+test tests::market_order_fills_even_when_the_mark_moves_after_accept ... ok
+test tests::lp_routes_are_present_in_demo ... ok
+test tests::lp_routes_are_absent_in_production ... ok
+test tests::pre_upgrade_account_encoding_behaviour_is_pinned ... ok
+test tests::plaintext_order_missing_side_is_rejected ... ok
+test tests::plaintext_order_with_empty_or_unknown_tif_is_rejected ... ok
+test tests::prod_posture_rejects_unsealed_plaintext_order ... ok
+test tests::plaintext_order_with_unknown_side_is_rejected ... ok
+test tests::market_order_still_fills_at_the_mark ... ok
+test tests::production_genesis_leaves_no_staged_ops ... ok
+test tests::production_genesis_matches_a_fresh_vault_prefix ... ok
+test tests::prod_unbound_account_cannot_be_credited_by_either_path ... ok
+test tests::production_pins_the_expected_measurement ... ok
+test tests::production_requires_a_real_vault_binding ... ok
+test tests::production_requires_a_secret_enclave_seed ... ok
+test tests::production_requires_a_secret_oracle_signer ... ok
+test tests::production_requires_verified_attestation ... ok
+test tests::production_genesis_mints_nothing ... ok
+test tests::prod_snapshot_omits_mm_hedge ... ok
+test tests::production_mode_refuses_self_service_deposit ... ok
+test tests::prover_from_str_selects_path ... ok
+test tests::prove_and_prepare_rejects_commitment_mismatch ... ok
+test tests::rebind_auth_digest_binds_both_addresses_in_order ... ok
+test tests::prove_and_prepare_rejects_wroot_mismatch ... ok
+test tests::production_mode_drops_legacy_unauthenticated_api_mutations ... ok
+test tests::prune_claimed_withdrawals_removes_only_claimed ... ok
+test tests::legacy_mode_settles_after_ticks_unchanged ... ok
+test tests::recover_does_not_leak_another_accounts_notes ... ok
+test tests::rebinding_the_same_address_is_a_no_op_and_burns_no_generation ... ok
+test tests::resume_sets_force_flag_when_authorized ... ok
+test tests::prove_and_prepare_withdrawal_tree_byte_matches_circuit ... ok
+test tests::same_address_short_circuit_still_requires_the_control_proof ... ok
+test tests::registered_signer_takes_precedence_over_bound_address ... ok
+test tests::rejected_lp_withdrawal_does_not_burn_its_nonce ... ok
+test tests::order_opens_position_and_advances_finality ... ok
+test tests::rollback_window_withdrawals_prepends ... ok
+test tests::sealed_order_non_ascii_wire_is_cleanly_rejected ... ok
+test tests::seal_witness_is_well_formed_and_addressed ... ok
+test tests::sealed_only_wire_body_parses_and_places_the_order ... ok
+test tests::settle_failure_action_decides_by_batch_count ... ok
+test tests::self_service_deposit_is_still_refused_in_production ... ok
+test tests::sealed_order_replay_of_same_body_is_rejected ... ok
+test tests::sealed_order_wrong_or_expired_epoch_is_rejected ... ok
+test tests::settle_breaker_recovered_clears_held_state ... ok
+test tests::server_custody_withdrawal_requires_bound_address_signature_and_destination ... ok
+test tests::sealed_order_decrypts_and_opens_position ... ok
+test tests::settle_journal_guard_stage1_fs_failure_never_reaches_prove_callback ... ok
+test tests::snapshot_now_times_out_instead_of_hanging_when_the_writer_never_replies ... ok
+test tests::snapshot_now_reports_the_writers_verdict_and_refuses_when_unconfigured ... ok
+test tests::settle_journal_guard_unconfigured_dev_path_keeps_existing_behavior ... ok
+test tests::strict_prod_refuses_a_proverless_settle_path ... ok
+test ops_alerts::integration_tests::transport_has_bounded_timeout_and_rejects_redirects ... ok
+test tests::snapshot_exposes_settlement_health ... ok
+test tests::snapshot_wrong_enclave_seed_fails_closed ... ok
+test tests::settle_journal_guard_stage2_fs_failure_keeps_original_and_never_broadcasts ... ok
+test tests::the_bootstrap_driver_refuses_a_non_operator_payer ... ok
+test tests::snapshot_restart_round_trip_preserves_state ... ok
+test tests::settle_journal_guard_success_persists_each_stage_before_callback ... ok
+test tests::the_bootstrap_record_survives_a_snapshot_round_trip ... ok
+test tests::tampering_with_a_signed_withdrawal_invalidates_it ... ok
+test tests::the_gate_does_not_re_close_when_the_fund_is_later_drained ... ok
+test tests::the_boot_roll_forward_arm_carries_the_gate_observation_both_ways ... ok
+test tests::unbacked_funding_has_exactly_the_known_call_sites ... ok
+test tests::the_one_shot_reopens_only_when_the_fund_falls_below_the_floor ... ok
+test tests::unset_prover_url_outside_strict_prod_yields_no_client ... ok
+test tests::the_tx_dedup_guard_refuses_a_replayed_hash_on_its_own ... ok
+test tests::unbacked_funding_is_refused_in_production ... ok
+test tests::unbacked_insurance_seeding_is_refused_in_production ... ok
+test tests::settle_loop_journal_lifecycle ... ok
+test tests::the_trading_gate_survives_a_snapshot_round_trip ... ok
+test tests::validated_deposit_checks_without_mutating_and_bookkeeping_is_separable ... ok
+test tests::v1_withdrawals_json_serves_root_and_proof ... ok
+test tests::withdraw_auth_digest_binds_every_field ... ok
+test tests::v1_orders_carry_the_acceptance_receipt ... ok
+test tests::withdrawal_digests_are_domain_separated_from_each_other_and_from_bind ... ok
+test tests::v1_batch_json_reconciles_tick_to_window ... ok
+test tests::v1_account_exposes_withdrawal_authorization_state ... ok
+test trading_gate::tests::a_close_only_chain_never_opens_the_gate_even_on_a_perfect_match ... ok
+test trading_gate::tests::a_lagging_read_is_inconclusive_and_a_diverged_one_is_not ... ok
+test trading_gate::tests::the_predicate_needs_every_term_and_a_dust_fund_does_not_pass ... ok
+test tests::v1_accounts_are_isolated_and_trade ... ok
+test tests::the_house_mm_injector_stages_no_counter_order_while_the_gate_is_closed ... ok
+test tests::the_v1_account_injector_stages_no_counter_order_while_the_gate_is_closed ... ok
+test wind_down::tests::exit_rejects_missing_or_stale_phase_observation_without_mutation ... ok
+test tests::withdrawal_signature_does_not_replay_across_accounts ... ok
+test tests::withdrawal_signature_does_not_replay_across_deployments ... ok
+test wind_down::tests::legacy_mixed_phase_window_remains_rejected ... ok
+test wind_down::tests::legacy_ordinary_noop_stays_idle_across_migration_and_restart ... ok
+test wind_down::tests::root_neutral_settle_all_is_sealed_after_restart ... ok
+test withdrawals::tests::challenge_leaves_match_solidity ... ok
+test withdrawals::tests::empty_tree_is_zero_root ... ok
+test withdrawals::tests::leaf_matches_solidity_abi_encode_packed ... ok
+test wind_down::tests::legacy_root_neutral_phase_one_survives_failed_proof_retry ... ok
+test withdrawals::tests::single_leaf_root_is_the_leaf_with_empty_proof ... ok
+test withdrawals::tests::two_leaf_round_trip ... ok
+test withdrawals::tests::n_leaf_proofs_all_verify ... ok
+test wind_down::tests::snapshot_migrates_legacy_close_only_and_validates_the_terminal_latch ... ok
+test wind_down::tests::unknown_account_is_rejected_before_l1_reads ... ok
+test wind_down::tests::ordinary_idle_funding_does_not_force_a_proof ... ok
+test tests::withdrawal_accepts_all_three_prehash_shapes ... ok
+test s1_recovery_ws_tests::local_tcp_backpressure_has_bounded_send_and_other_account_progress ... ok
+test tests::window_mode_defers_settled_until_commit ... ok
+test wind_down::tests::close_only_phase_one_restart_and_phase_two_are_distinct ... ok
+test account_recovery::snapshot_s3_tests::s3_authenticated_parser_mutation_budget ... ok
+
+test result: ok. 465 passed; 0 failed; 15 ignored; 0 measured; 0 filtered out; finished in 18.39s
+
+     Running unittests src/main.rs (target/debug/deps/loadbot-18ba3444685be9a0)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/matcher-dc52a828cfd1279a)
+
+running 18 tests
+test tests::expired_order_rejected ... ok
+test tests::fok_all_or_nothing ... ok
+test tests::market_buy_sweeps_multiple_levels ... ok
+test tests::expired_resting_maker_does_not_trade ... ok
+test tests::ioc_cancels_remainder ... ok
+test tests::partial_fill_rests_remainder ... ok
+test tests::fok_ignores_expired_resting_liquidity ... ok
+test tests::deterministic_across_runs ... ok
+test tests::post_only_rejects_even_against_own_order ... ok
+test tests::fok_excludes_self_liquidity ... ok
+test execution_removal_tests::expiry_and_liquidation_removals_retain_attribution ... ok
+test tests::reap_expired_clears_stale_makers_from_the_book ... ok
+test tests::self_trade_prevention_cancels_maker ... ok
+test tests::resting_then_cross_produces_fill ... ok
+test tests::stream_collects_manifest_lists ... ok
+test tests::sell_crosses_best_bid_first ... ok
+test tests::price_time_priority ... ok
+test tests::post_only_rejects_if_it_would_take ... ok
+
+test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/fuzz.rs (target/debug/deps/fuzz-75796fed417fe0c7)
+
+running 4 tests
+test negative_limit_price_is_rejected ... ok
+test fuzz_matcher_deterministic ... ok
+test fuzz_expired_makers_never_trade ... ok
+test fuzz_matcher_invariants ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.23s
+
+     Running unittests src/lib.rs (target/debug/deps/node-94db212c4df95690)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/main.rs (target/debug/deps/node-33fc3757d1f48cf7)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/lifecycle.rs (target/debug/deps/lifecycle-48a76285b7ee5ed5)
+
+running 2 tests
+test boot_is_deterministic ... ok
+test thin_long_liquidates_and_conservation_holds_every_tick ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.14s
+
+     Running unittests src/lib.rs (target/debug/deps/note_archive-03eda367c900279c)
+
+running 10 tests
+test tests::owner_view_spend_are_distinct ... ok
+test tests::serialize_roundtrips ... ok
+test tests::key_derivation_is_domain_separated_from_state_root ... ok
+test tests::viewing_keypair_is_deterministic_and_scoped ... ok
+test tests::archive_host_without_key_reads_nothing ... ok
+test tests::sealed_note_scans_for_owner_only ... ok
+test tests::recover_balance_excludes_spent ... ok
+test tests::cannot_read_others_notes ... ok
+test tests::recover_my_notes_from_seed ... ok
+test tests::swapped_commitment_ciphertext_is_rejected_by_aad_binding ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/fuzz.rs (target/debug/deps/fuzz-41ff096b3907dbf0)
+
+running 1 test
+test fuzz_recovery_is_exact_and_isolated ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 11.37s
+
+     Running unittests src/lib.rs (target/debug/deps/oracle_feed-4a9f17c71c011cb7)
+
+running 11 tests
+test tests::publish_time_prefers_exchange_timestamp_but_never_future ... ok
+test tests::parses_decimal_prices_exactly ... ok
+test tests::parses_candlesticks_ascending_and_skips_malformed_rows ... ok
+test tests::rejects_nonpositive_or_unparseable_last ... ok
+test tests::one_sided_book_outage_falls_back_to_last_and_still_marks ... ok
+test tests::a_book_outage_falls_back_to_last_and_still_marks ... ok
+test tests::builds_a_valid_transcript_that_passes_the_oracle_gate ... ok
+test tests::produced_transcript_signature_recovers_to_signer ... ok
+test tests::fat_finger_last_outside_the_book_is_rejected_by_the_gate ... ok
+test tests::absurd_spread_book_is_rejected_by_the_gate ... ok
+test tests::a_frozen_exchange_timestamp_goes_stale_at_the_gate ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running unittests src/bin/probe.rs (target/debug/deps/probe-c8ffee632d3cf6a0)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/perp_core-3a3971ca18309173)
+
+running 98 tests
+test commitment::tests::commitment_is_seven_field_state_root_domain ... ok
+test engine::tests::apply_batch_emits_only_real_l1_withdrawal_outputs ... ok
+test commitment::tests::rejects_manifest_with_wrong_batch_id ... ok
+test commitment::tests::rejects_market_id_not_matching_map_key ... ok
+test commitment::tests::rejects_op_clock_disagreeing_with_manifest_time ... ok
+test fixed::tests::apply_rate_basic ... ok
+test fixed::tests::notional_handles_fractional_size ... ok
+test commitment::tests::manifest_hash_binds_batch_time ... ok
+test commitment::tests::rejects_manifest_with_wrong_prev_root ... ok
+test fixed::tests::notional_of_one_btc_at_100k ... ok
+test funding::tests::discount_makes_shorts_pay ... ok
+test funding::tests::extreme_negative_mark_clamps_to_minus_max ... ok
+test funding::tests::accrue_moves_index_up_on_premium ... ok
+test funding::tests::manipulated_mark_cannot_inflate_the_funding_notional ... ok
+test funding::tests::overflow_clamp_preserves_sign ... ok
+test funding::tests::funding_tracks_elapsed_time_not_call_count ... ok
+test funding::tests::premium_makes_longs_pay ... ok
+test funding::tests::small_premium_not_clamped ... ok
+test commitment::tests::derives_withdrawals_root_from_burned_note ... ok
+test engine::tests::deposit_binds_order_and_folds_chain ... ok
+test hash::tests::deterministic ... ok
+test hash::tests::new_encryption_domains_are_stable ... ok
+test hash::tests::domains_separate ... ok
+test hash::tests::sign_extension_distinguishes ... ok
+test market::tests::conservative_is_coherent ... ok
+test market::tests::fill_band_and_taker_fee_are_jointly_bounded_by_maintenance ... ok
+test market::tests::fill_deviation_ratio_must_be_positive ... ok
+test market::tests::incoherent_rejected ... ok
+test market::tests::liquidation_fee_must_be_below_maintenance ... ok
+test market::tests::live_fee_schedule_is_jointly_coherent ... ok
+test market::tests::mark_deviation_ratio_must_be_positive ... ok
+test market::tests::max_leverage_is_10x ... ok
+test market::tests::taker_fee_must_be_below_maintenance ... ok
+test funding::tests::low_priced_market_still_accrues_funding_via_the_carry ... ok
+test merkle::settlement_tests::challenge_leaves_domain_separated ... ok
+test merkle::settlement_tests::challenge_leaves_match_solidity_vectors ... ok
+test merkle::settlement_tests::empty_merkle_root_is_zero ... ok
+test commitment::tests::deposits_root_is_post_batch_tip_and_in_commitment ... ok
+test engine::tests::deposit_folds_blinded_owner_commit_not_raw_owner ... ok
+test merkle::settlement_tests::deposit_leaf_matches_abi_encodepacked ... ok
+test merkle::settlement_tests::owner_commit_is_keccak_owner_blind ... ok
+test merkle::settlement_tests::rejected_and_withdrawals_roots_compose_their_leaves ... ok
+test merkle::settlement_tests::withdrawal_leaf_matches_solidity_vector ... ok
+test merkle::tests::capacity_enforced ... ok
+test merkle::tests::contains_leaf_tracks_every_append ... ok
+test merkle::settlement_tests::deposit_chain_fold_and_root_are_ordered ... ok
+test merkle::settlement_tests::ordered_root_matches_manual_tree ... ok
+test merkle::tests::append_changes_root ... ok
+test merkle::tests::empty_root_stable ... ok
+test note::tests::commitment_is_binding ... ok
+test note::tests::commitment_is_hiding_on_blinding ... ok
+test note::tests::nullifier_is_deterministic ... ok
+test nullifier::tests::digest_is_an_incremental_chain_over_insertion_order ... ok
+test nullifier::tests::double_spend_rejected ... ok
+test merkle::tests::tampered_sibling_rejected ... ok
+test merkle::tests::internal_node_is_not_a_valid_leaf ... ok
+test merkle::tests::proof_is_bound_to_its_leaf_index ... ok
+test oracle::tests::rejects_backup_deviation ... ok
+test merkle::tests::sec026_deserialize_rebuilds_leaf_index_exactly ... ok
+test engine::tests::accrue_funding_bounds_mark_against_signed_index ... ok
+test oracle::tests::extreme_price_is_rejected_not_wrapped ... ok
+test oracle::tests::accepts_fresh_tight_price ... ok
+test order::tests::manifest_inclusion_and_hash_stable ... ok
+test order::tests::only_settled_is_withdrawable ... ok
+test order::tests::order_hash_depends_on_nonce ... ok
+test order::tests::signing_digest_ignores_window_id ... ok
+test position::tests::check_maintenance_margin_fails_closed_on_overflow_unlike_is_liquidatable ... ok
+test position::tests::flip_to_smaller_opposite_still_requires_margin ... ok
+test position::tests::funding_debits_long ... ok
+test position::tests::hedge_signal_reports_the_offsetting_external_position ... ok
+test position::tests::increases_exposure_does_not_overflow_at_the_size_bound ... ok
+test position::tests::liquidatable_when_equity_below_maintenance ... ok
+test position::tests::long_pnl_positive_when_price_rises ... ok
+test position::tests::pre_trade_blocks_overleverage_allows_reduce ... ok
+test position::tests::realize_pnl_on_close ... ok
+test oracle::tests::oracle_sig_round_trips_and_binds_digest ... ok
+test position::tests::short_pnl_positive_when_price_falls ... ok
+test position::tests::vwap_on_increase ... ok
+test hash::tests::all_domains_pairwise_distinct ... ok
+test state::tests::empty_state_conserves ... ok
+test oracle::tests::rejects_wide_confidence ... ok
+test state::tests::market_binds_max_mark_deviation_ratio_in_digest ... ok
+test state::tests::market_binds_oracle_pubkey_in_digest ... ok
+test oracle::tests::rejects_future_price ... ok
+test state::tests::sec026_postcard_encoding_is_pinned ... ok
+test state::tests::market_binds_max_fill_deviation_ratio_in_digest ... ok
+test state::tests::state_root_binds_mode ... ok
+test state::tests::state_root_binds_nullifier_contents_not_just_count ... ok
+test state::tests::state_root_binds_deposit_accumulator ... ok
+test state::tests::state_root_binds_sequence_and_batch ... ok
+test state::tests::state_root_binds_unspent_notes ... ok
+test state::tests::state_root_changes_with_external_flow ... ok
+test state::tests::state_root_binds_market_config ... ok
+test merkle::settlement_tests::settlement_proofs_round_trip ... ok
+test oracle::tests::rejects_stale ... ok
+test oracle::tests::zero_backup_twap_is_rejected_not_skipped ... ok
+test merkle::tests::proofs_verify_for_all_leaves ... ok
+test oracle::tests::validate_requires_correct_publisher_signature ... ok
+
+test result: ok. 98 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running tests/a06_wind_down.rs (target/debug/deps/a06_wind_down-a6e41600da161c7e)
+
+running 4 tests
+test a06_settle_all_reconciles_preexisting_pool_deficit_globally ... ok
+test a06_stranded_healthy_position_closes_without_counterparty_or_oracle ... ok
+test a06_mixed_wind_down_batch_is_rejected_before_mutation ... ok
+test a06_settle_all_is_atomic_when_note_reissue_cannot_fit_tree ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/clock_anchor_vectors.rs (target/debug/deps/clock_anchor_vectors-54ea8d463664ab65)
+
+running 1 test
+test experimental_clock_anchor_matches_solidity_abi_vector ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/fuzz.rs (target/debug/deps/fuzz-0f6c8a51744ac127)
+
+running 4 tests
+test fuzz_state_root_is_deterministic ... ok
+test fuzz_merkle_proofs_sound_and_second_preimage_safe ... ok
+test fuzz_oracle_validate_is_total_and_sound ... ok
+test fuzz_conservation_holds_over_random_sessions has been running for over 60 seconds
+test fuzz_conservation_holds_over_random_sessions ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 138.67s
+
+     Running tests/lifecycle.rs (target/debug/deps/lifecycle-b8fd116840e7adb1)
+
+running 32 tests
+test external_in_has_exactly_one_writer_and_it_is_op_deposit ... ok
+test fund_insurance_moves_note_value_without_asserting_new_external_value ... ok
+test duplicate_commitment_deposit_rejected ... ok
+test deprecated_seed_insurance_is_always_rejected ... ok
+test a_liquidation_absorbed_by_insurance_reports_no_adl_haircuts ... ok
+test forced_exit_close_only_blocks_increase ... ok
+test full_lifecycle_conserves_throughout ... ok
+test adl_surfaces_the_per_winner_haircut_attribution ... ok
+test fund_insurance_overflow_leaves_state_byte_identical ... ok
+test fund_insurance_rejects_a_wrong_spend_key ... ok
+test adl_covers_residual_after_insurance ... ok
+test legacy_seed_insurance_bytes_decode_to_the_stub_and_stay_aligned ... ok
+test invariant_no_double_spend ... ok
+test fund_insurance_with_non_canonical_asset_is_rejected_untouched ... ok
+test sec026_deposit_spend_deposit_same_tuple_rejected ... ok
+test bad_debt_is_clawed_from_the_winners_via_adl ... ok
+test insurance_backstop_absorbs_bad_debt ... ok
+test adl_distributes_pro_rata_across_multiple_winners ... ok
+test invariant_post_fill_margin_sufficiency ... ok
+test invariant_oracle_freshness_enforced ... ok
+test invariant_liquidation_threshold ... ok
+test sec026_duplicate_unbind_while_unspent_rejected ... ok
+test sec026_mints_differing_only_in_blinding_both_accepted ... ok
+test liquidation_overflow_in_vault_pool_leaves_state_byte_identical ... ok
+test liquidation_overflow_in_insurance_fund_leaves_state_byte_identical ... ok
+test self_trade_is_rejected_at_settlement ... ok
+test sec026_deposit_spend_unbind_same_tuple_rejected ... ok
+test trading_fees_pay_the_maker_and_fund_insurance ... ok
+test sec026_unbind_spend_deposit_same_tuple_rejected ... ok
+test true_insolvency_trips_close_only_when_winners_have_exited ... ok
+test sec026_unbind_withdraw_unbind_same_tuple_rejected ... ok
+test invariant_collateral_conservation_under_random_ops ... ok
+
+test result: ok. 32 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+
+     Running tests/local_s4.rs (target/debug/deps/local_s4-7faea6885ae44ade)
+
+running 2 tests
+test exhausted_batch_counter_rejects_before_deposit_mutation ... ok
+test last_representable_batch_completes_then_empty_batch_rejects ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/oracle_trust_boundary.rs (target/debug/deps/oracle_trust_boundary-45862aedc901721d)
+
+running 1 test
+test trusted_publisher_can_reprice_primary_and_backup_together ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/rejection_boundary.rs (target/debug/deps/rejection_boundary-e7b80e006891ce07)
+
+running 3 tests
+test proof_v1_accepts_duplicate_and_overlapping_dispositions ... ok
+test proof_v1_accepts_reordered_manifest_without_changed_operations ... ok
+test proof_v1_accepts_fabricated_expiry_rejection ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/sec022_fill_band.rs (target/debug/deps/sec022_fill_band-77b067ce58ea49c3)
+
+running 16 tests
+test inflated_price_cannot_widen_its_own_band ... ok
+test closed_leg_with_negative_collateral_is_rejected ... ok
+test close_landing_at_exactly_zero_collateral_is_accepted ... ok
+test fill_exactly_at_the_band_edge_is_accepted ... ok
+test band_arithmetic_overflow_rejects_without_panicking ... ok
+test insurance_overflow_leaves_state_untouched ... ok
+test fill_leaving_an_open_leg_below_maintenance_is_rejected ... ok
+test off_market_cross_is_rejected_with_state_unchanged ... ok
+test fill_just_outside_the_band_is_rejected_in_both_directions ... ok
+test unsigned_oracle_is_rejected_before_the_band ... ok
+test maker_leg_below_maintenance_is_attributed_to_the_maker ... ok
+test treasury_overflow_leaves_state_untouched ... ok
+test vault_pool_overflow_leaves_state_untouched ... ok
+test healthy_position_can_close_in_small_fragments ... ok
+test maintenance_boundary_position_closes_at_the_band_edge ... ok
+test every_in_band_reduction_of_a_healthy_position_succeeds ... ok
+
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.19s
+
+     Running tests/serde_witness.rs (target/debug/deps/serde_witness-6715a1f774c68b7e)
+
+running 7 tests
+test sec026_overflowing_deposit_leaves_postcard_bytes_unchanged ... ok
+test sec026_tree_full_deposit_leaves_postcard_bytes_unchanged ... ok
+test sec026_rejected_duplicate_leaves_postcard_bytes_unchanged ... ok
+test sec026_restored_state_still_rejects_historical_duplicates ... ok
+test state_round_trips_losslessly ... ok
+test full_witness_round_trips_and_rederives_commitment ... ok
+test ops_round_trip_and_replay_identically ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running tests/spend_binding.rs (target/debug/deps/spend_binding-33a2982d9d619422)
+
+running 2 tests
+test withdraw_rejects_a_spend_key_that_does_not_derive_the_owner ... ok
+test fund_position_rejects_a_spend_key_that_does_not_derive_the_owner ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/wind_down_policy.rs (target/debug/deps/wind_down_policy-da2fddb98a3b2692)
+
+running 1 test
+test wind_down_uses_insurance_then_treasury_then_pro_rata_position_and_note ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/prover-8dfa19fad5906e24)
+
+running 25 tests
+test tests::attested_prover_is_send_sync ... ok
+test seal_root::tests::unset_and_not_dev_refuses ... ok
+test seal_root::tests::dev_insecure_gives_non_5e_root_in_nonprod ... ok
+test tests::commitment_binds_the_rejected_root ... ok
+test seal_root::tests::dev_insecure_refused_in_prod ... ok
+test seal_root::tests::bad_hex_errors ... ok
+test seal_root::tests::explicit_hex_is_used ... ok
+test tests::commitment_matches_perp_core_derived_roots ... ok
+test tests::correct_open_recovers_exact_plaintext ... ok
+test tests::attested_seal_roundtrip_binds_measurement_and_secret ... ok
+test tests::distinct_nonces_avoid_two_time_pad ... ok
+test tests::seal_actually_hides_plaintext ... ok
+test tests::prove_batch_garbage_witness_is_witness_decode ... ok
+test tests::sealed_witness_postcard_round_trips ... ok
+test tests::tampered_ciphertext_fails_authentication ... ok
+test tests::wrong_measurement_cannot_even_seal ... ok
+test tests::rejected_transition_propagates ... ok
+test tests::opened_witness_is_wiped_after_success_and_decode_error ... ok
+test tests::prove_and_verify_roundtrip ... ok
+test tests::wrong_measurement_cannot_open_witness ... ok
+test tests::transition_derives_roots_from_manifest ... ok
+test tests::opened_witness_is_wiped_when_backend_panics ... ok
+test tests::tampered_public_inputs_break_verification ... ok
+test tests::prove_batch_wrong_measurement_cannot_open ... ok
+test tests::prove_batch_opens_derives_and_proves ... ok
+
+test result: ok. 25 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/clock_bound.rs (target/debug/deps/clock_bound-3ac24659815b0693)
+
+running 8 tests
+test clock_empty_and_terminal_batches_are_price_free_not_fake_timestamps ... ok
+test clock_receipt_matches_solidity_v2_vector ... ok
+test clock_bounds_reject_backward_order_without_rewriting_inputs ... ok
+test clock_wire_rejects_trailing_truncated_and_misversioned_payloads ... ok
+test clock_receipt_domain_and_every_policy_field_is_bound ... ok
+test clock_wire_native_derives_bound_commitment_and_keeps_legacy_distinct ... ok
+test clock_wire_refuses_backdating_future_dating_and_zero_policy ... ok
+test clock_wire_derives_every_time_and_count_instead_of_trusting_bounds ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s
+
+     Running tests/vectors.rs (target/debug/deps/vectors-da656339083b72b6)
+
+running 3 tests
+test receipt_signing_digest_vector ... ok
+test public_commitment_vector ... ok
+test a06_wind_down_phase_one_commitment_kat ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/sealed_box-4cbc230e88be439b)
+
+running 9 tests
+test kdf_tests::domain_aad_prefixes_the_byte ... ok
+test tests::version_is_one ... ok
+test kdf_tests::different_info_gives_different_key ... ok
+test seal_tests::wire_roundtrips ... ok
+test seal_tests::roundtrip ... ok
+test kdf_tests::keypair_is_deterministic ... ok
+test seal_tests::wrong_key_fails ... ok
+test seal_tests::aad_mismatch_fails ... ok
+test seal_tests::tamper_fails ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/vectors.rs (target/debug/deps/vectors-c51502c6a1158804)
+
+running 1 test
+test cross_language_vector ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/sequencer-ba7dc6ddaf007b04)
+
+running 33 tests
+test cancellation::tests::already_processed_ioc_is_not_a_pending_cancellable_order ... ok
+test cancellation::tests::legacy_tick_rollback_cannot_restore_a_cancelled_maker ... ok
+test cancellation::tests::wrong_owner_and_unknown_order_cannot_cancel ... ok
+test cancellation::tests::full_fill_has_no_cancellable_remainder ... ok
+test cancellation::tests::resting_cancel_removes_depth_and_records_manifest_without_mutating_accounting ... ok
+test cancellation::tests::settled_partial_fill_does_not_block_remainder_cancellation ... ok
+test tests::a_failed_fill_is_attributed_to_the_offending_leg_only ... ok
+test tests::a_fill_margin_failure_names_the_offending_leg ... ok
+test tests::a_band_violation_at_settlement_rejects_only_the_resting_maker ... ok
+test cancellation::tests::window_rollback_preserves_intervening_cancellation_and_its_manifest ... ok
+test cancellation::tests::partial_cancel_uses_real_remaining_size_and_preserves_the_fill ... ok
+test tests::book_mid_is_overflow_safe_at_extreme_prices ... ok
+test cancellation::tests::pending_cancellation_resolves_the_acceptance_receipt ... ok
+test tests::a_drifted_resting_maker_is_banned_from_the_book_not_just_the_stream ... ok
+test tests::a_ban_survives_an_earlier_innocent_record_of_the_same_hash ... ok
+test tests::enforce_tick_window_cap_bounds_the_map ... ok
+test tests::a_bankrupting_reduction_is_banned_and_burns_no_resting_liquidity ... ok
+test tests::mark_failed_no_longer_prunes_the_window_map ... ok
+test tests::a_ban_commits_the_offending_legs_reason_not_an_earlier_innocent_records ... ok
+test tests::prune_tick_window_settled_keeps_grace_drops_old ... ok
+test tests::a_rejected_fill_does_not_consume_resting_liquidity ... ok
+test tests::settlement_reason_is_unchanged_by_the_leg ... ok
+test tests::seal_genesis_baseline_rebases_window_zero_to_full_boot_state ... ok
+test tests::mark_settled_no_longer_prunes_the_window_map ... ok
+test cancellation::tests::both_cancel_fill_orderings_replay_to_the_live_root ... ok
+test tests::rollback_keeps_the_window_map_correct ... ok
+test tests::a_reduce_only_settlement_violation_bans_the_offender_and_spares_the_counterparty ... ok
+test tests::a_healthy_position_closes_against_fragmented_resting_liquidity ... ok
+test tests::receipt_window_id_is_open_window_and_map_tracks_it ... ok
+test tests::two_drifted_makers_are_banned_in_separate_rounds_before_the_loop_settles ... ok
+test tests::mark_window_settled_hardens_through_window ... ok
+test tests::rematch_loop_terminates_when_every_fill_is_offending ... ok
+test tests::window_mode_skips_tick_rollback_snapshots ... ok
+
+test result: ok. 33 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.15s
+
+     Running tests/fixture.rs (target/debug/deps/fixture-4b2a7d7018743467)
+
+running 1 test
+test emit_receipt_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/fuzz.rs (target/debug/deps/fuzz-a2d9ae4a26748473)
+
+running 3 tests
+test fuzz_rejected_orders_are_not_inclusion_violations ... ok
+test fuzz_settling_a_height_finalizes_all_prior_batches ... ok
+test fuzz_sequencer_multi_batch_invariants has been running for over 60 seconds
+test fuzz_sequencer_multi_batch_invariants ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 77.77s
+
+     Running tests/spine.rs (target/debug/deps/spine-97d198140b440dbf)
+
+running 31 tests
+test clock_idle_funding_noops_do_not_create_an_unbounded_window ... ok
+test clock_idle_compaction_cannot_drop_actual_funding_or_terminal_intent ... ok
+test accept_then_seal_keeps_one_seq ... ok
+test manifest_hash_is_stable_and_binds_roots ... ok
+test honest_flow_has_no_inclusion_violations ... ok
+test maintenance_reaps_expired_makers_so_they_do_not_anchor_the_mark ... ok
+test maintenance_liquidates_underwater_position ... ok
+test liquidation_cancels_resting_orders ... ok
+test auto_deleverage_publishes_an_attributable_receipt ... ok
+test match_settles_and_advances_finality ... ok
+test failed_batch_rolls_back_to_hard_state ... ok
+test manifest_ordered_rejected_disjoint_invariant ... ok
+test receipt_is_signed_and_verifies ... ok
+test marking_a_height_settled_finalizes_every_prior_pending_batch ... ok
+test missing_adl_key_falls_back_to_secret_not_public_owner ... ok
+test review_batch_timestamp_rejects_both_earlier_and_later_summaries ... ok
+test missing_liq_key_falls_back_to_secret_not_public_owner ... ok
+test reduce_only_order_cannot_open_a_position ... ok
+test pre_trade_risk_rejects_unmarginable_before_matching ... ok
+test multi_market_positions_are_isolated ... ok
+test reduce_only_behind_an_earlier_same_batch_order_is_rejected ... ok
+test review_seal_preserves_nonzero_funding_across_distinct_tick_times ... ok
+test review_seal_keeps_historical_signed_oracles_across_a_long_window ... ok
+test rejected_for_cause_is_not_an_inclusion_violation ... ok
+test reduce_only_order_may_shrink_a_position ... ok
+test unknown_market_order_is_tagged_invalid_not_reduce_only ... ok
+test run_maintenance_ops_replay_reproduces_state ... ok
+test rollback_window_restores_and_reseals_to_live_root ... ok
+test seal_window_replays_multi_tick_window_to_live_root ... ok
+test seal_window_two_tick_fills_only_round_trips ... ok
+test withheld_order_becomes_inclusion_violation ... ok
+
+test result: ok. 31 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.13s
+
+   Doc-tests bridge
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests committee
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests dark_perp_attestation
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests e2e
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests matcher
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests node
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests note_archive
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests oracle_feed
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests perp_core
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests prover
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests sealed_box
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests sequencer
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

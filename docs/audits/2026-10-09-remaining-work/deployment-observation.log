@@ -1,0 +1,13 @@
+{
+  "observed_at_utc": "2026-10-09T19:45:58.819701+00:00",
+  "scope": "Public read-only RPC. No private key, live mutation, account query or load test.",
+  "config_sha256": "d666470e5b52af47a10e1bfd06ef5ed70a95cc146a7e0b33a50706988c2e528e",
+  "status": "BLOCKED",
+  "rpc_agreement": {
+    "status": "NOT_REQUESTED",
+    "policy": "Both endpoints must agree on chain, finalized anchor, code and all getters; any failure blocks. No majority or latest fallback.",
+    "limitation": "Distinct endpoint hosts do not prove independent operators; agreement does not establish source-bytecode equivalence or release readiness."
+  },
+  "rpc_url": "https://sepolia.base.org",
+  "blocker": "ObservationError: primary: eth_chainId: HTTPError: HTTP status 403"
+}

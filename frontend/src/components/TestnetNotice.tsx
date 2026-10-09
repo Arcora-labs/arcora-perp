@@ -2,8 +2,8 @@ import { useState } from "react";
 import { MOCK_USDC, COLLATERAL_VAULT as VAULT } from "../api/wallet";
 
 // Configuration is not evidence of a running chain, attested enclave or proof.
-// v5 resurfaces the corrected environment/settlement wording once.
-const DISMISS_KEY = "dp_testnet_notice_dismissed_v5";
+// v6 resurfaces the custody, price and exit trust boundaries once.
+const DISMISS_KEY = "dp_testnet_notice_dismissed_v6";
 
 export function TestnetNotice() {
   const [open, setOpen] = useState(() => {
@@ -31,6 +31,9 @@ export function TestnetNotice() {
           <span className="banner__desc">
             Order acceptance does not mean on-chain settlement. Check <strong>Health</strong>{" "}
             and <strong>Explorer</strong> for deployment and transaction status.
+            {" "}This alpha is custodial: the gateway holds spending keys and signs prices.
+            The prover operator can access private trade data. Only published withdrawal claims
+            can be claimed independently; new exits depend on the operator and, during final wind-down, governance.
           </span>
         </span>
       </div>

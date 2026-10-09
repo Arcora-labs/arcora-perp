@@ -289,11 +289,10 @@ contract DarkPerpSettlementTest is MiniTest {
         s.answerChallenge(orderHash, 0, proof);
     }
 
-    function test_valid_rejection_answers_challenge() public {
-        // audit DP-004: an order the sequencer VALIDLY REJECTED (e.g. an unfillable FOK)
-        // still carries an enclave ACCEPTED receipt, so a user can open an inclusion
-        // challenge the sequencer cannot answer by inclusion. Proving the order is in the
-        // batch's committed rejectedRoot must clear the challenge — no wrongful slash.
+    function test_declared_rejection_membership_answers_challenge() public {
+        // audit DP-004: membership in rejectedRoot clears the challenge. This test
+        // uses MockZkVerifier and proves neither a rejection reason nor matcher
+        // correctness. R04 remains open even with the real Proof-v1 verifier.
         bytes32 orderHash = keccak256("validly-rejected");
         (uint8 v, bytes32 r, bytes32 sig) = vm.sign(ENCLAVE_PK, s.receiptDigest(orderHash, 1, 1, 0));
         address challenger = address(0xBEEF);
@@ -316,12 +315,12 @@ contract DarkPerpSettlementTest is MiniTest {
         bytes32[] memory proof = new bytes32[](0);
         s.answerByRejection(orderHash, 0, proof);
         (,,,,, bool open) = s.challenges(orderHash);
-        assertFalse(open, "challenge answered by valid rejection, no wrongful slash");
+        assertFalse(open, "challenge answered by declared rejection membership");
     }
 
     function test_answer_by_rejection_requires_membership() public {
-        // a sequencer cannot fabricate a rejection: an order NOT in the batch's committed
-        // rejectedRoot cannot be answered by rejection, so real censorship stays slashable.
+        // An order outside the committed rejectedRoot cannot answer by membership.
+        // A dishonest order already IN that list is a separate, still-open R04 gap.
         bytes32 orderHash = keccak256("actually-withheld");
         (uint8 v, bytes32 r, bytes32 sig) = vm.sign(ENCLAVE_PK, s.receiptDigest(orderHash, 1, 1, 0));
         address challenger = address(0xBEEF);
@@ -419,6 +418,33 @@ contract DarkPerpSettlementTest is MiniTest {
         assertEq(s.pendingEth(challenger), 0, "challenger not refunded");
     }
 
+    function test_same_block_forced_inclusion_refunds_challenger() public {
+        bytes32 orderHash = keccak256("same-block-withheld");
+        address challenger = address(0xC0FFEE);
+        _openRipeChallenge(orderHash, challenger);
+        uint256 challengeBlock = block.number;
+
+        // Transaction order matters even when the block number is identical.
+        (uint256 batchId, bytes32[] memory proof) = _settleBatchWithOrder(orderHash);
+        s.answerChallenge(orderHash, batchId, proof);
+
+        assertEq(block.number, challengeBlock, "no block advance");
+        assertEq(s.pendingEth(challenger), CHALLENGE_BOND, "same-block forced inclusion refunds challenger");
+        assertEq(s.pendingEth(address(this)), 0, "sequencer cannot confiscate same-block forced inclusion stake");
+        vm.expectRevert(DarkPerpSettlement.NoSuchChallenge.selector);
+        s.answerChallenge(orderHash, batchId, proof);
+    }
+
+    function _openRipeChallenge(bytes32 orderHash, address challenger) internal {
+        uint64 recvTimeMs = 1000;
+        bytes32 digest = s.receiptDigest(orderHash, 1, recvTimeMs, 0);
+        (uint8 v, bytes32 r, bytes32 sig) = vm.sign(ENCLAVE_PK, digest);
+        vm.deal(challenger, CHALLENGE_BOND);
+        vm.warp(recvTimeMs / 1000 + INCLUSION_DEADLINE + 1);
+        vm.prank(challenger);
+        s.challengeInclusion{value: CHALLENGE_BOND}(orderHash, 1, recvTimeMs, 0, v, r, sig);
+    }
+
     function _settleRejectionBatch(bytes32 orderHash) internal returns (uint256 batchId) {
         batchId = s.batchCount();
         bytes32 rejected = s.rejectionLeaf(batchId, orderHash); // single-leaf root
@@ -476,6 +502,75 @@ contract DarkPerpSettlementTest is MiniTest {
         s.answerByRejection(orderHash, batchId, new bytes32[](0));
         assertEq(s.pendingEth(address(this)), CHALLENGE_BOND, "pre-settled rejection forfeits to sequencer");
         assertEq(s.pendingEth(challenger), 0, "challenger not refunded");
+    }
+
+    function test_same_block_late_rejection_refunds_challenger() public {
+        bytes32 orderHash = keccak256("same-block-late-rejection");
+        address challenger = address(0xD00D);
+        _openRipeChallenge(orderHash, challenger);
+        uint256 challengeBlock = block.number;
+
+        uint256 batchId = _settleRejectionBatch(orderHash);
+        s.answerByRejection(orderHash, batchId, new bytes32[](0));
+
+        assertEq(block.number, challengeBlock, "no block advance");
+        assertEq(s.pendingEth(challenger), CHALLENGE_BOND, "same-block late rejection refunds challenger");
+        assertEq(s.pendingEth(address(this)), 0, "sequencer cannot confiscate same-block late rejection stake");
+        vm.expectRevert(DarkPerpSettlement.NoSuchChallenge.selector);
+        s.answerByRejection(orderHash, batchId, new bytes32[](0));
+    }
+
+    function test_same_block_presettled_rejection_forfeits_to_sequencer() public {
+        bytes32 orderHash = keccak256("same-block-presettled-rejection");
+        address challenger = address(0xD00D);
+        uint256 batchId = _settleRejectionBatch(orderHash);
+        uint256 settledBlock = block.number;
+        _openRipeChallenge(orderHash, challenger);
+
+        s.answerByRejection(orderHash, batchId, new bytes32[](0));
+
+        assertEq(block.number, settledBlock, "no block advance");
+        assertEq(s.pendingEth(address(this)), CHALLENGE_BOND, "same-block prior settlement forfeits stake");
+        assertEq(s.pendingEth(challenger), 0, "preexisting rejection does not refund challenger");
+    }
+
+    function test_reopened_challenge_uses_current_settlement_boundary() public {
+        bytes32 orderHash = keccak256("reopened-challenge");
+        address challenger = address(0xD00D);
+        _openRipeChallenge(orderHash, challenger);
+        uint256 batchId = _settleRejectionBatch(orderHash);
+        s.answerByRejection(orderHash, batchId, new bytes32[](0));
+        assertEq(s.pendingEth(challenger), CHALLENGE_BOND, "first challenge forced publication");
+
+        _openRipeChallenge(orderHash, challenger);
+        s.answerByRejection(orderHash, batchId, new bytes32[](0));
+        assertEq(s.pendingEth(challenger), CHALLENGE_BOND, "repeated challenge earns no second refund");
+        assertEq(s.pendingEth(address(this)), CHALLENGE_BOND, "already settled batch forfeits reopened stake");
+    }
+
+    function testFuzz_same_block_refund_follows_transaction_order(
+        uint8 priorBatches,
+        bool rejection,
+        bool settleFirst
+    ) public {
+        // Exercise a nonzero boundary as well as genesis; every operation stays
+        // in one block, so a block-number comparison cannot distinguish cases.
+        for (uint256 i; i < priorBatches % 4; ++i) {
+            _settleBatchWithOrder(keccak256(abi.encodePacked("prior", i)));
+        }
+        bytes32 orderHash = keccak256("fuzz-challenged-order");
+        address challenger = address(0xD00D);
+        uint256 batchId = s.batchCount();
+        if (!settleFirst) _openRipeChallenge(orderHash, challenger);
+        if (rejection) _settleRejectionBatch(orderHash);
+        else _settleBatchWithOrder(orderHash);
+        if (settleFirst) _openRipeChallenge(orderHash, challenger);
+
+        if (rejection) s.answerByRejection(orderHash, batchId, new bytes32[](0));
+        else s.answerChallenge(orderHash, batchId, new bytes32[](0));
+
+        assertEq(s.pendingEth(challenger), settleFirst ? 0 : CHALLENGE_BOND, "refund follows transaction order");
+        assertEq(s.pendingEth(address(this)), settleFirst ? CHALLENGE_BOND : 0, "forfeit follows transaction order");
     }
 
     function _depositToVault(uint256 amount) internal {
@@ -977,6 +1072,23 @@ contract DarkPerpSettlementTest is MiniTest {
         bytes32 c = s.windDownCommitment(prev, bytes32("x"), bytes32("y"), bytes32(0), bytes32(0), bytes32(0), tip, 2);
         vm.expectRevert(bytes("wind-down not settled"));
         s.finalExit(prev, bytes32("x"), bytes32("y"), bytes32(0), bytes32(0), bytes32(0), tip, count, abi.encodePacked(c));
+    }
+
+    function test_a06_finalExit_reverts_non_governance() public {
+        _enterCloseOnlyViaLiveness();
+        vm.roll(block.number + GRACE + 1);
+        _governanceFinalSettle();
+        bytes32 prev = s.currentStateRoot();
+        (bytes32 tip, uint64 count) = _head();
+        bytes32 commitment =
+            s.windDownCommitment(prev, bytes32("x"), bytes32("y"), bytes32(0), bytes32(0), bytes32(0), tip, 2);
+
+        vm.prank(address(0xBAD));
+        vm.expectRevert(DarkPerpSettlement.NotGovernance.selector);
+        s.finalExit(
+            prev, bytes32("x"), bytes32("y"), bytes32(0), bytes32(0), bytes32(0), tip, count, abi.encodePacked(commitment)
+        );
+        assertEq(s.currentStateRoot(), prev, "unauthorized exit cannot advance state");
     }
 
     receive() external payable {}

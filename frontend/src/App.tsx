@@ -111,7 +111,7 @@ function Workspace() {
         <Toaster />
         <main className="app__main" id="workspace-main" tabIndex={-1}>
           {IS_LIVE ? <TestnetNotice /> : <div className="banner demo-notice" role="note"><strong>Browser demo · no real funds</strong><span>Balances, orders and settlement are simulated. No wallet signatures or on-chain transactions.</span></div>}
-          {state.mode === "CloseOnly" && <ModeBanner />}
+          {(state.mode === "CloseOnly" || state.clockAdmission?.paused) && <ModeBanner />}
           {tab !== "trade" && <div className="page-heading"><h1>{TAB_LABEL[tab]}</h1><p>{PAGE_COPY[tab]}</p></div>}
           <div hidden={tab !== "trade"} className="trade-workspace">
             <StatsBar onSelect={() => setSearch(true)} />
@@ -124,7 +124,7 @@ function Workspace() {
               <div className="col--tables"><PositionsOrders /></div>
               <div className="col--activity"><ActivityFeed /></div>
             </section>
-            {state.mode !== "CloseOnly" && <details className="system-controls"><summary>System status & demo controls</summary><ModeBanner /></details>}
+            {state.mode !== "CloseOnly" && !state.clockAdmission?.paused && <details className="system-controls"><summary>System status & demo controls</summary><ModeBanner /></details>}
           </div>
           {tab === "markets" && <section className="card"><Markets onSelect={() => navigate("trade")} /></section>}
           {tab === "account" && <><AccountSummary /><section className="grid grid--two"><AccountPanel /><PositionsTable /></section></>}

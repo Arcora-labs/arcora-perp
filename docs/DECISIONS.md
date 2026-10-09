@@ -155,11 +155,9 @@ the slashing game (custodying only its own sequencer bond + challenge stakes);
 **`CollateralVault` holds the user collateral** and releases it only against a
 withdrawals root published *by* a settled batch.
 
-**Why.** §0/§10's damage-containment: a compromised or stalled sequencer must be
-able to censor or halt but **never steal user funds**. Separating the authority
-(settlement — which custodies only its own bond + challenge stakes, never user
-collateral) from custody of user funds (vault, settlement-gated) means fund release
-is a function
-of verified state, not operator action — withdrawals are only ever authorized from
-SETTLED state (§3) and survive into forced-exit (§6) against the last settled
-root.
+**Why.** The vault constrains direct payout to published withdrawal leaves. This
+separates contract responsibilities; it does not remove the alpha gateway's
+custody-key or oracle-publisher authority. A valid proof establishes the guest's
+transition rules, not independently authenticated user intent. Existing claims
+survive an operator outage if their Merkle data is available, while creating new
+exit roots still requires operator/prover service and governance in final wind-down.

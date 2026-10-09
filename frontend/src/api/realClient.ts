@@ -64,6 +64,7 @@ interface WireState {
   attestation: { measurement: string; tcb: string; quoteVersion: number } | null;
   /// FIN-001 (absent on an old gateway) — validated field-by-field at parse time.
   depositIngestion?: unknown;
+  clockAdmission?: unknown;
   settlementHealth?: unknown;
   settlementConsecutiveFailures?: unknown;
   settlementLastError?: unknown;
@@ -221,7 +222,15 @@ function parseState(w: WireState): ClientState {
       : null,
     attestation: w.attestation,
     settlement: pSettlement(w),
+    clockAdmission: parseClockAdmission(w.clockAdmission),
   };
+}
+
+function parseClockAdmission(value: unknown): ClientState["clockAdmission"] {
+  if (!value || typeof value !== "object") return null;
+  const v = value as Record<string, unknown>;
+  if (typeof v.enabled !== "boolean" || typeof v.paused !== "boolean" || (!v.enabled && v.paused)) return null;
+  return { enabled: v.enabled, paused: v.paused };
 }
 
 const s = (v: bigint) => v.toString();

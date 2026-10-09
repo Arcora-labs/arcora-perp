@@ -43,7 +43,7 @@ contract DarkPerpSettlement {
     struct Batch {
         bytes32 manifestHash;
         bytes32 orderedRoot; // Merkle root of the manifest's ordered order hashes
-        bytes32 rejectedRoot; // Merkle root of the manifest's validly-rejected order hashes (audit DP-004)
+        bytes32 rejectedRoot; // Merkle root of declared rejections; legitimacy is not proven by Proof-v1.
         uint256 settledAtBlock;
     }
 
@@ -115,6 +115,10 @@ contract DarkPerpSettlement {
 
     mapping(uint256 => Batch) public batches;
     mapping(bytes32 => Challenge) public challenges; // orderHash => challenge
+    /// First unsettled batch when the challenge opened. Unlike block numbers,
+    /// this boundary distinguishes transaction order within the same block.
+    /// Kept separately to preserve the public `challenges` getter's six-word ABI.
+    mapping(bytes32 => uint256) private _challengeBatchCount;
     /// Pull-payment ledger for native-token refunds (a challenger's stake returned to the
     /// sequencer on a successful answer, or to the challenger on a slash). Credited rather
     /// than pushed, so a non-payable recipient can never brick the challenge-answer or the
@@ -244,8 +248,9 @@ contract DarkPerpSettlement {
     /// derive_roots`) — `withdrawalsRoot` from the batch's burned notes (audit F2),
     /// `orderedRoot`/`rejectedRoot` by merklizing the manifest's committed order-hash
     /// lists. CAVEAT (Proof-v2): the ordered-vs-rejected SPLIT is not itself proven —
-    /// a dishonest matcher's split is constrained by receipts + inclusion slashing
-    /// until Proof-v2. Enforcement of the derived values requires the real verifier
+    /// receipts + inclusion slashing do not prevent a dishonest rejection from
+    /// dismissing a challenge. Rejection legitimacy still trusts the matcher.
+    /// Enforcement of the derived values requires the real verifier
     /// (P2); under MockZkVerifier the check is a stand-in.
     /// `depositsRoot` (SEC-019) is likewise DERIVED by the guest circuit, by folding
     /// the same keccak hash chain over exactly the deposits the batch credits. It is
@@ -559,13 +564,14 @@ contract DarkPerpSettlement {
             bond: msg.value,
             open: true
         });
+        _challengeBatchCount[orderHash] = batchCount;
         emit InclusionChallenged(orderHash, msg.sender, block.number + challengeWindowBlocks);
     }
 
     /// @notice Sequencer answers a challenge by proving the order hash is a member
     /// of a **genuinely settled** batch, via a Merkle proof over the
-    /// domain-separated `inclusionLeaf`. On success the challenger's stake is
-    /// forfeited to the sequencer (F3).
+    /// domain-separated `inclusionLeaf`. The stake is forfeited only if that batch
+    /// was already settled when the challenge opened; otherwise it is refunded.
     ///
     /// The batch is NOT required to predate the challenge. Settlement is async
     /// (ACCEPTED → MATCHED → SETTLED spans several blocks, and resting orders settle
@@ -590,7 +596,9 @@ contract DarkPerpSettlement {
         if (!batches[batchId].orderedRoot.verify(inclusionLeaf(batchId, orderHash), proof)) {
             revert NotIncluded();
         }
+        bool settledAfterChallenge = batchId >= _challengeBatchCount[orderHash];
         delete challenges[orderHash];
+        delete _challengeBatchCount[orderHash];
         emit InclusionAnswered(orderHash, batchId);
         // SEQ-001 (audit-P2 reconciliation): route the challenger's stake by WHEN the
         // order settled. If it settled only AFTER this (ripe) challenge opened, the
@@ -600,27 +608,32 @@ contract DarkPerpSettlement {
         // concern does not apply; the ripeness gate (see `challengeInclusion`) already
         // makes normal-latency orders unchallengeable. No slash on answer — slashing
         // stays exclusively in `slashUnanswered`. Credited for pull, never pushed (DP-011).
-        if (batches[batchId].settledAtBlock > c.openedBlock) {
+        // Use the captured batch boundary: settlement after challenge-open can
+        // occur in the SAME block and still owes the victim their stake.
+        if (settledAfterChallenge) {
             pendingEth[c.challenger] += c.bond;
         } else {
             pendingEth[sequencer] += c.bond;
         }
     }
 
-    /// @notice Sequencer answers a challenge by proving the order was VALIDLY REJECTED
-    /// — a member of a settled batch's committed `rejectedRoot` — rather than withheld.
+    /// @notice Sequencer answers a challenge by proving the order was DECLARED REJECTED
+    /// in a settled batch's committed `rejectedRoot`. This is membership, not proof
+    /// that the reason was legitimate.
     /// Without this, an honest sequencer could be slashed for an order it legitimately
     /// rejected (e.g. an unfillable FOK, a post-only that would take): the user still
     /// holds an enclave ACCEPTED receipt, but the order never entered any `orderedRoot`,
     /// so `answerChallenge` cannot answer it (audit DP-004). Slashing now requires that the
-    /// sequencer can prove NEITHER inclusion NOR valid rejection.
+    /// sequencer can prove NEITHER inclusion NOR membership in the rejected list.
     ///
     /// SOUNDNESS (P1): `rejectedRoot` is DERIVED by the guest circuit
     /// (`perp_core::commitment::derive_roots`, by merklizing the manifest's committed
     /// rejected order-hash list), so this path removes the WRONGFUL slash of an HONEST
     /// sequencer. CAVEAT (Proof-v2): the ordered-vs-rejected SPLIT is not itself proven —
-    /// a dishonest matcher's split is constrained by receipts + inclusion slashing until
-    /// Proof-v2. Enforcement of the derived value requires the real verifier (P2); under
+    /// a dishonest matcher can place a valid order in the rejected list and dismiss
+    /// its challenge. Receipts + inclusion slashing do not close this gap. The refund
+    /// rule below protects the stake on late publication, not rejection legitimacy.
+    /// Enforcement of the derived value requires the real verifier (P2); under
     /// MockZkVerifier the check is a stand-in.
     function answerByRejection(bytes32 orderHash, uint256 batchId, bytes32[] calldata proof) external onlySequencer {
         Challenge memory c = challenges[orderHash];
@@ -631,10 +644,12 @@ contract DarkPerpSettlement {
         if (!batches[batchId].rejectedRoot.verify(rejectionLeaf(batchId, orderHash), proof)) {
             revert NotRejected();
         }
+        bool settledAfterChallenge = batchId >= _challengeBatchCount[orderHash];
         delete challenges[orderHash];
+        delete _challengeBatchCount[orderHash];
         emit RejectionAnswered(orderHash, batchId);
         // 2026-10-08 review: mirror `answerChallenge`'s SEQ-001 refund gate. A rejection
-        // answer is only unambiguous proof the challenger was mistaken when the rejecting
+        // answer charges the challenger only when the rejecting
         // batch had ALREADY settled when they challenged — the reject disposition was
         // already public and checkable before the stake went down. If the batch settled
         // only AFTER the (ripe) challenge opened, the challenger is what forced the
@@ -644,7 +659,7 @@ contract DarkPerpSettlement {
         // gate, not a slash gate; slashing stays exclusively in `slashUnanswered`.
         // (Rejection REASONS remain unconstrained until Proof-v2 — see the SOUNDNESS
         // caveat above; this gate does not claim to prove them.)
-        if (batches[batchId].settledAtBlock > c.openedBlock) {
+        if (settledAfterChallenge) {
             pendingEth[c.challenger] += c.bond;
         } else {
             pendingEth[sequencer] += c.bond;
@@ -659,6 +674,7 @@ contract DarkPerpSettlement {
         if (block.number <= c.deadlineBlock) revert ChallengeNotExpired();
 
         delete challenges[orderHash];
+        delete _challengeBatchCount[orderHash];
         slashed = true;
         closeOnly = true;
         // Latch on first entry only — `closeOnlyBlock` marks when close-only was FIRST

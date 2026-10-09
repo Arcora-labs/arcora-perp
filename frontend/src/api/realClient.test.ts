@@ -2094,3 +2094,19 @@ describe("order and legacy deposit mutation fencing", () => {
     client.dispose();
   });
 });
+
+describe("clock admission status", () => {
+  it.each([
+    [{ enabled: true, paused: true }, { enabled: true, paused: true }],
+    [{ enabled: true, paused: false }, { enabled: true, paused: false }],
+    [{ enabled: false, paused: false }, { enabled: false, paused: false }],
+    [{ enabled: false, paused: true }, null],
+    [{ enabled: true, paused: "false" }, null],
+    [undefined, null],
+  ])("validates a status frame without inventing admission certainty: %j", async (clockAdmission, expected) => {
+    const client = await bootstrapClient();
+    lastWs!.onmessage!({ data: JSON.stringify({ type: "state", state: { ...wireState, clockAdmission } }) });
+    expect(client.getState().clockAdmission).toEqual(expected);
+    client.dispose();
+  });
+});
