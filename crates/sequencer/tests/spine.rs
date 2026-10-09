@@ -1161,3 +1161,117 @@ fn rollback_window_restores_and_reseals_to_live_root() {
         "the intervening deposit is included, after the failed window's ops"
     );
 }
+
+#[test]
+fn review_seal_preserves_nonzero_funding_across_distinct_tick_times() {
+    let mut seq = Sequencer::new(enclave(), 20);
+    seq.add_market(test_market(0));
+    seq.seal_genesis_baseline();
+    for (time, mark) in [(1_000, 101_000), (3_000, 99_000)] {
+        let transcript = oracle(100_000, time);
+        seq.set_oracle(0, transcript);
+        seq.apply(&BatchOp::AccrueFunding {
+            market_id: 0,
+            mark: mark * PRICE_SCALE,
+            oracle: transcript,
+            now_ms: time,
+        })
+        .unwrap();
+    }
+    let witness = seq.seal_window();
+    let mut replay = witness.pre_state.clone();
+    let derived = perp_core::commitment::derive_roots(&mut replay, &witness.ops, &witness.manifest)
+        .expect("an honestly executed window must replay");
+    assert_eq!(
+        replay.funding, seq.state.funding,
+        "sealing must not rewrite historical funding clocks"
+    );
+    assert_eq!(derived.new_state_root, seq.state.state_root());
+}
+
+#[test]
+fn review_seal_keeps_historical_signed_oracles_across_a_long_window() {
+    let mut seq = Sequencer::new(enclave(), 20);
+    seq.add_market(test_market(0));
+    seq.seal_genesis_baseline();
+    let mut expected = Vec::new();
+    for (time, price, mark) in [(1_000, 100_000, 101_000), (30_000, 80_000, 79_000)] {
+        let transcript = oracle(price, time);
+        expected.push((time, transcript));
+        seq.set_oracle(0, transcript);
+        seq.apply(&BatchOp::AccrueFunding {
+            market_id: 0,
+            mark: mark * PRICE_SCALE,
+            oracle: transcript,
+            now_ms: time,
+        })
+        .unwrap();
+    }
+    // A newer feed is not permission to rewrite already executed operations.
+    seq.set_oracle(0, oracle(90_000, 60_000));
+    let witness = seq.seal_window();
+    assert_eq!(witness.manifest.batch_time_ms, 30_000);
+    for (op, (time, transcript)) in witness.ops.iter().zip(&expected) {
+        match op {
+            BatchOp::AccrueFunding { now_ms, oracle, .. } => {
+                assert_eq!(now_ms, time);
+                assert_eq!(oracle, transcript);
+            }
+            _ => panic!("unexpected operation"),
+        }
+    }
+    assert_eq!(
+        witness.manifest.oracle_updates,
+        expected
+            .iter()
+            .map(|(_, t)| t.hash::<Keccak256>())
+            .collect::<Vec<_>>()
+    );
+    let derived = perp_core::commitment::derive_roots(
+        &mut witness.pre_state.clone(),
+        &witness.ops,
+        &witness.manifest,
+    )
+    .expect("freshness is evaluated at execution, not later seal/proof time");
+    assert_eq!(derived.new_state_root, seq.state.state_root());
+    seq.rollback_window(&witness);
+    seq.set_oracle(0, oracle(70_000, 90_000));
+    let retry = seq.seal_window();
+    assert_eq!(
+        retry.manifest, witness.manifest,
+        "new feed data must not change the retried manifest"
+    );
+    let replayed = perp_core::commitment::derive_roots(
+        &mut retry.pre_state.clone(),
+        &retry.ops,
+        &retry.manifest,
+    )
+    .unwrap();
+    assert_eq!(replayed.new_state_root, derived.new_state_root);
+}
+
+#[test]
+fn review_batch_timestamp_rejects_both_earlier_and_later_summaries() {
+    let mut seq = Sequencer::new(enclave(), 20);
+    seq.add_market(test_market(0));
+    seq.seal_genesis_baseline();
+    seq.apply(&BatchOp::AccrueFunding {
+        market_id: 0,
+        mark: 101_000 * PRICE_SCALE,
+        oracle: oracle(100_000, 1_000),
+        now_ms: 1_000,
+    })
+    .unwrap();
+    let witness = seq.seal_window();
+    for incorrect in [999, 1001] {
+        let mut manifest = witness.manifest.clone();
+        manifest.batch_time_ms = incorrect;
+        let mut state = witness.pre_state.clone();
+        let before = state.state_root();
+        assert_eq!(
+            perp_core::commitment::derive_roots(&mut state, &witness.ops, &manifest),
+            Err(perp_core::EngineError::ClockMismatch)
+        );
+        assert_eq!(state.state_root(), before);
+    }
+}

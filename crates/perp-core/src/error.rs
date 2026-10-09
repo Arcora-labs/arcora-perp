@@ -97,11 +97,8 @@ pub enum EngineError {
     /// produced the identical digest and the circuit was blind to the mismatch.
     /// Rejected fail-closed at root-derivation time.
     MarketIdMismatch,
-    /// 2026-10-08 review: an op carrying a `now_ms` different from the manifest's
-    /// committed `batch_time_ms`. The freshness window
-    /// (`publish_time ∈ [now - max_staleness, now]`) is checked against the op clock;
-    /// binding every op to the single manifest time makes that clock publicly
-    /// committed (the manifest hash is anchored on L1) instead of prover-chosen.
+    /// The manifest timestamp differs from the maximum original operation time.
+    /// This consistency check does not authenticate external/L1 time.
     ClockMismatch,
 }
 

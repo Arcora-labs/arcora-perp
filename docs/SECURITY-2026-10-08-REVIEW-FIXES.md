@@ -27,56 +27,39 @@ it changes the digest value for *honest* states, moving every existing state
 root including genesis — a far heavier migration (see §5). The runtime check
 detects the mismatch at zero honest-state cost.
 
-## 2. Oracle freshness clock bound to a committed batch time
+## 2. Execution-clock consistency; external-time anchoring remains OPEN
 
-**Finding.** Oracle freshness (`publish_time ∈ [now - max_staleness, now]`,
-`OracleTranscript::validate`) was checked against a `now_ms` embedded per-op in
-the *private* witness. The manifest doc-comment claimed the clock was
-"committed in the manifest", but `BatchManifest` had no time field — the
-freshness clock was prover-chosen and unverifiable by anyone holding only the
-committed data.
+`BatchManifest.batch_time_ms` is included in `manifest_hash`, after `batch_id`.
+It is the maximum timestamp carried by the batch's original clock-bearing
+operations, or zero when there are none. `derive_roots` checks that exact summary
+before state mutation. This commits a summary; it does **not** authenticate time.
+A malicious sequencer can still backdate the entire log and its manifest.
 
-**Fix.**
-- `BatchManifest` gains `batch_time_ms: u64`, hashed into `manifest_hash`
-  (word order: after `batch_id`). The freshness clock is now part of the
-  manifest preimage anyone can recompute from the anchored `manifest_hash`.
-- `derive_roots` rejects (`EngineError::ClockMismatch`) any clock-carrying op
-  (`Fill`/`AccrueFunding`/`Liquidate`/`Unbind`) whose `now_ms` ≠
-  `manifest.batch_time_ms`, before any state change.
-- `Sequencer::seal_batch` stamps the manifest with its `now_ms` (every op in a
-  per-tick batch already shares it).
-- `Sequencer::seal_window` commits the window's single reference clock =
-  **max op `now_ms` in the window** (deterministic; see below), re-stamps every
-  clock-carrying op to it, and — only where the embedded transcript would fail
-  the freshness gate at that clock — refreshes it from the freshest available
-  per-market transcript (the sequencer's latest, else the freshest embedded in
-  the window; both publisher-signed). Ops that remain stale are left alone and
-  rejected fail-closed by the engine's staleness gate.
-- Regression tests: `commitment::rejects_op_clock_disagreeing_with_manifest_time`,
-  `commitment::manifest_hash_binds_batch_time`, `serde_witness` round-trip with
-  a matching clock.
+### Pre-merge correction, 2026-10-09
 
-**Design constraints honored.**
-- *Delayed proof generation*: the clock binds to **seal time, never settlement
-  time**. A proof built minutes after sealing validates the same transcripts;
-  nothing re-stamps at prove/settle time.
-- *Re-seal identity*: `rollback_window` re-seals the same op log after a failed
-  settle and recovery flows compare witnesses byte-for-byte, so the committed
-  clock must be a deterministic function of the window content — the max op
-  time — not a wall-clock reading. A wall-clock seal time was implemented first
-  and reverted because it made every re-seal diverge.
-- *Mixed-era windows* (snapshot restore + new ops): the conditional refresh
-  keeps earlier-era ops provable exactly when a fresh signed transcript exists,
-  as production's feed task (≤ one fetch interval old) guarantees.
+The first PR revision re-stamped historical operations to the final tick and
+sometimes replaced their signed oracle transcripts with newer feed observations.
+A new regression reproduced a live funding index of **-13889** and a replayed
+index of **41666** from the same two honestly executed operations. This can stop
+settlement through a replay/root mismatch. A fresh oracle cannot retrospectively
+change an executed fill, liquidation, or funding interval.
 
-**Residual limitation.** `batch_time_ms` is sequencer-attested, not anchored to
-L1 time: nothing on L1 carries a trustworthy wall-clock for the batch (only
-`settledAtBlock`, recorded after settlement, and delayed proving must not be
-broken by binding to it). The clock is now *public and committed* — a
-back-dated manifest is visible in the manifest preimage and attributable to the
-bonded, slashable sequencer — but the circuit cannot prove the wall clock was
-honest. Closing that fully requires an L1-anchored time source (e.g. a
-`block.timestamp` commitment at batch submission), tracked as future work.
+The corrected sealer never changes operation times or signed oracle inputs.
+It derives its oracle-update list from the actual operation log, not the mutable
+latest feed. Funding intervals, historical prices, and rollback/re-seal identity
+are preserved, even when proof generation is delayed or the feed advances.
+`ClockMismatch` rejects an incorrect maximum summary, not legitimate distinct
+per-operation times. Each oracle is validated against its original op time.
+
+Regression coverage includes nonzero funding with opposite premium signs,
+a window longer than oracle freshness bounds, feed changes during delayed
+sealing and rollback, and both earlier/later incorrect timestamp summaries.
+
+**Still open:** an independently checked L1 batch-time interval, cryptographic
+binding of that interval to the guest's public inputs, and refusal of stale or
+backdated logs. A pre-proof anchoring step can separate execution-time validation
+from proof latency; that design requires explicit contract/gateway integration.
+The current code must not be presented as having closed the freshness attack.
 
 ## 3. rejectedRoot challenge dismissal
 
@@ -101,13 +84,14 @@ sequencer cannot fabricate a `rejectedRoot`. The residual gaps:
   the challenger's bond". Regression tests
   `test_rejection_answer_postdating_challenge_refunds` and
   `test_rejection_answer_presettled_forfeits_to_sequencer`.
-- (1)/(2) **Fail-closed statement where not provable:** rejection-reason
+- (1)/(2) **Documented limitation, not an enforced fail-closed fix:** rejection-reason
   semantics cannot be proven by the Proof-v1 circuit (that is Proof-v2's
   matcher-rerun scope), and MockZkVerifier deployments cannot enforce even the
   structural binding. Therefore: **a deployment running MockZkVerifier, or any
   pre-Proof-v2 deployment, must not treat a rejection answer as proof that the
   rejection was legitimate** — the challenge game's correctness in that regime
-  rests on the sequencer's bond and the refund gate, not on the proof.
+  still depends on honest sequencing. A refund is not a validity proof, and a
+  dishonest rejection can still dismiss an inclusion challenge.
 
 **Deliberately not done:** a manifest ordered∩rejected disjointness check was
 implemented and removed — double-listing is a *legitimate* pattern (a resting
@@ -158,8 +142,8 @@ includes all of `perp-core` — changes the vkey. Both fixes in §1 and §2 modi
 - **What does NOT migrate / what is preserved:**
   - `State`'s postcard encoding and every honest `state_root` (including
     genesis) are unchanged — `sec026_postcard_encoding_is_pinned` and the
-    commitment KATs still pass unmodified. No state migration is needed; the
-    chain of state roots survives the cutover.
+    commitment KATs still pass unmodified. This establishes serialization/root
+    compatibility only, not a safe live migration or transfer of vault funds.
   - The 7-word public commitment format is unchanged
     (`commitment_is_seven_field_state_root_domain` / KAT-COMMIT7).
 - **What changes at the cutover:**
@@ -167,23 +151,26 @@ includes all of `perp-core` — changes the vkey. Both fixes in §1 and §2 modi
     recomputing manifest hashes must include `batch_time_ms`.
   - The witness postcard encoding (`BatchManifest` field added) — proof
     pipeline (gateway → prover-service → sp1-host) versions must move together.
-  - Operational note: the sequencer must keep every market's oracle transcript
-    fresh at seal time (production feed cadence already does); a market with a
-    dead feed at seal now fails closed instead of settling on an old price.
+  - Historical operation times and signed transcripts must remain unchanged.
+    Freshness is checked at each original operation time, not at seal/proof time.
 
 **Rollout recommendation:** regenerate the vkey (`crates/sp1-host/src/bin/vkey.rs`),
 redeploy `SP1ZkVerifier` + `DarkPerpSettlement` with the new vkey, and cut over
-at a batch boundary (prev-root continuity makes the cutover a no-op for state).
+at a controlled boundary. Unchanged honest state roots do not migrate collateral:
+`CollateralVault.settlement` is immutable too. Vault, deposit-prefix history,
+withdrawal claims, and custody migration need a separate reviewed plan.
 Until cutover, the on-chain system retains the pre-fix semantics documented
 above; MockZkVerifier deployments must not carry real collateral.
 
-## 6. Rust 1.99 clippy — `observation.rs`
+## 6. Rust 1.99 CI and verification fixtures
 
-The flagged regions (`crates/gateway/src/l1/observation.rs`, the ABI-word parse
-closure ~line 158 and the hex/`ok_or(...)? * 16 + ok_or(...)?` arithmetic
-~line 347, plus the same `try_into().unwrap()` pattern in `abi_u64`/`abi_u128`)
-were rewritten to plain fallible forms with no `unwrap` and no `?` inside
-arithmetic expressions. Tests never depended on clippy (CI runs clippy and
-tests as separate jobs); the local toolchain here is 1.95, so the 1.99 lint set
-itself could not be executed — the rewrite targets the patterns rather than a
-reproduced diagnostic and keeps `-D warnings` clean on 1.95.
+The follow-up commit uses fixed-size `as_chunks`, retains strict ABI/hex length
+checks, and adds three parser regressions. Lint and workspace tests are separate
+Rust 1.99.0 jobs. Jobs running the native localhost L1 fixture install cast.
+The seal-client initializes the manifest timestamp for its clock-free witness;
+the ACK/crash drill requires the current `DPSNAP9` writer envelope, not legacy v8.
+
+Rust 1.99 Clippy and focused tests were rerun for the pre-merge clock correction.
+See `docs/audits/2026-10-09-clock-replay.md` and exact-head GitHub Actions for the
+verification scope. Neither typechecking nor unit tests establish real SP1 proof
+or deployed-verifier compatibility.

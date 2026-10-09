@@ -78,6 +78,22 @@ impl DerivedRoots {
     }
 }
 
+/// Canonical upper timestamp of an immutable execution log. This is consistency
+/// metadata, not an authenticated wall clock. Each operation keeps the time and
+/// signed oracle transcript against which it was originally executed.
+pub fn batch_time_ms(ops: &[BatchOp]) -> u64 {
+    ops.iter()
+        .filter_map(|op| match op {
+            BatchOp::Fill { now_ms, .. }
+            | BatchOp::AccrueFunding { now_ms, .. }
+            | BatchOp::Liquidate { now_ms, .. }
+            | BatchOp::Unbind { now_ms, .. } => Some(*now_ms),
+            _ => None,
+        })
+        .max()
+        .unwrap_or(0)
+}
+
 /// Execute the batch transition and DERIVE all seven roots. Mutates `state` to the
 /// post-state. Fails `ManifestMismatch` if the manifest is not the one for this
 /// pre-state, or propagates any engine rejection.
@@ -97,20 +113,11 @@ pub fn derive_roots(
     // `Market.id` — a decoded witness state could carry `Market { id: X }` under
     // key `Y ≠ X` with an unchanged root. Fail closed before deriving anything.
     state.validate_market_keys()?;
-    // 2026-10-08 review: every clock-carrying op must agree with the manifest's
-    // committed reference clock, so oracle freshness is checked against a publicly
-    // committed time (see `BatchManifest::batch_time_ms`), not a per-op private value.
-    for op in ops {
-        let op_now = match op {
-            BatchOp::Fill { now_ms, .. }
-            | BatchOp::AccrueFunding { now_ms, .. }
-            | BatchOp::Liquidate { now_ms, .. }
-            | BatchOp::Unbind { now_ms, .. } => *now_ms,
-            _ => continue,
-        };
-        if op_now != manifest.batch_time_ms {
-            return Err(EngineError::ClockMismatch);
-        }
+    // Validate the summary without rewriting historical execution. Replacing all
+    // operation times with the last tick changes funding intervals and may change
+    // liquidation outcomes. External/L1 time anchoring remains a separate gate.
+    if manifest.batch_time_ms != batch_time_ms(ops) {
+        return Err(EngineError::ClockMismatch);
     }
     let outputs = state.apply_batch(ops)?;
     let new_state_root = state.state_root();

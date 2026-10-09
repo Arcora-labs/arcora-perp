@@ -161,20 +161,17 @@ pub enum RejectReason {
 /// `order_hash` is in `ordered` (included) or `rejected` (with a reason). The
 /// hash is anchored on L1 with the proof, making inclusion auditable.
 ///
-/// 2026-10-08 review: `batch_time_ms` is the batch's reference clock. Oracle
-/// freshness (`publish_time ∈ [now - max_staleness, now]`) is checked against
-/// the `now_ms` embedded in each op; `derive_roots` rejects any op whose
-/// `now_ms` differs from this committed field, so the freshness clock is no
-/// longer a prover-chosen private witness value — it is part of the manifest
-/// preimage anyone can recompute from the anchored `manifest_hash`. The value
-/// is the SEAL-time clock: delayed proof generation must not retroactively
-/// re-stamp ops, so this binds freshness to batching, not settlement.
+/// `batch_time_ms` is the maximum timestamp in the immutable execution log (or
+/// zero with no clock-carrying operations). The guest checks this consistency
+/// summary. It does NOT authenticate external time: the sequencer can still choose
+/// a backdated log until a separate L1 time anchor is enforced. Oracle freshness
+/// is checked at each operation's original execution time, never at proof time.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct BatchManifest {
     pub previous_state_root: Digest,
     pub batch_id: u64,
-    /// SEAL-time reference clock every op's `now_ms` must equal (see type docs).
+    /// Maximum original operation time; not an authenticated wall clock.
     pub batch_time_ms: u64,
     pub ordered: Vec<Digest>,
     pub rejected: Vec<(Digest, RejectReason)>,
