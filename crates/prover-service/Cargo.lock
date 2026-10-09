@@ -3157,6 +3157,7 @@ dependencies = [
  "perp-core",
  "postcard",
  "serde",
+ "zeroize",
 ]
 
 [[package]]

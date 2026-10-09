@@ -1,0 +1,61 @@
+   Compiling prover v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/repo/crates/prover)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.65s
+     Running unittests src/lib.rs (target/debug/deps/prover-0dfeb90128b006a1)
+
+running 25 tests
+test tests::attested_prover_is_send_sync ... ok
+test seal_root::tests::bad_hex_errors ... ok
+test seal_root::tests::dev_insecure_gives_non_5e_root_in_nonprod ... ok
+test seal_root::tests::dev_insecure_refused_in_prod ... ok
+test tests::commitment_binds_the_rejected_root ... ok
+test seal_root::tests::unset_and_not_dev_refuses ... ok
+test seal_root::tests::explicit_hex_is_used ... ok
+test tests::attested_seal_roundtrip_binds_measurement_and_secret ... ok
+test tests::commitment_matches_perp_core_derived_roots ... ok
+test tests::distinct_nonces_avoid_two_time_pad ... ok
+test tests::prove_batch_garbage_witness_is_witness_decode ... ok
+test tests::correct_open_recovers_exact_plaintext ... ok
+test tests::seal_actually_hides_plaintext ... ok
+test tests::sealed_witness_postcard_round_trips ... ok
+test tests::tampered_ciphertext_fails_authentication ... ok
+test tests::wrong_measurement_cannot_even_seal ... ok
+test tests::opened_witness_is_wiped_when_backend_panics ... ok
+test tests::rejected_transition_propagates ... ok
+test tests::tampered_public_inputs_break_verification ... ok
+test tests::prove_batch_wrong_measurement_cannot_open ... ok
+test tests::prove_and_verify_roundtrip ... ok
+test tests::opened_witness_is_wiped_after_success_and_decode_error ... ok
+test tests::wrong_measurement_cannot_open_witness ... ok
+test tests::transition_derives_roots_from_manifest ... ok
+test tests::prove_batch_opens_derives_and_proves ... ok
+
+test result: ok. 25 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/clock_bound.rs (target/debug/deps/clock_bound-8511010c342c5033)
+
+running 8 tests
+test clock_empty_and_terminal_batches_are_price_free_not_fake_timestamps ... ok
+test clock_receipt_matches_solidity_v2_vector ... ok
+test clock_wire_rejects_trailing_truncated_and_misversioned_payloads ... ok
+test clock_receipt_domain_and_every_policy_field_is_bound ... ok
+test clock_bounds_reject_backward_order_without_rewriting_inputs ... ok
+test clock_wire_native_derives_bound_commitment_and_keeps_legacy_distinct ... ok
+test clock_wire_refuses_backdating_future_dating_and_zero_policy ... ok
+test clock_wire_derives_every_time_and_count_instead_of_trusting_bounds ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s
+
+     Running tests/vectors.rs (target/debug/deps/vectors-8b2e5c1f0bf15276)
+
+running 3 tests
+test receipt_signing_digest_vector ... ok
+test a06_wind_down_phase_one_commitment_kat ... ok
+test public_commitment_vector ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests prover
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s

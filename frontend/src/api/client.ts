@@ -83,6 +83,8 @@ export interface ClientState {
   attestation: Attestation | null;
   /// FIN-001 settle-loop health, or null when the gateway predates it (or mock).
   settlement: SettlementHealth | null;
+  /// Missing on older gateways. This is a read snapshot, not an admission permit.
+  clockAdmission?: { enabled: boolean; paused: boolean } | null;
   /// SEC-025-E1 (whole-branch review F1): true when the caller HAS a /v1
   /// account but its state could not be read — `account`/`orders` are then
   /// EMPTY PLACEHOLDERS (zero balance, no positions, no rows), which is a

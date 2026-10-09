@@ -12,7 +12,19 @@ pub(crate) struct ClockAdmission {
     closed: AtomicBool,
     lock: Arc<RwLock<()>>,
 }
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct Status {
+    enabled: bool,
+    paused: bool,
+}
 impl ClockAdmission {
+    pub(crate) fn status(&self) -> Status {
+        Status {
+            enabled: self.enabled,
+            paused: self.enabled && self.closed.load(Ordering::Acquire),
+        }
+    }
     pub(crate) fn new(enabled: bool) -> Arc<Self> {
         Arc::new(Self {
             enabled,
@@ -185,6 +197,51 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(response.status(), axum::http::StatusCode::OK);
+    }
+    #[tokio::test]
+    async fn clock_admission_status_exposes_pause_sticky_hold_and_resolution() {
+        let mut app = crate::tests::test_app();
+        Arc::get_mut(&mut app).unwrap().clock_admission = ClockAdmission::new(true);
+        let stop = crate::service_shutdown::Shutdown::default();
+        let router = crate::build_router(app.clone(), false);
+        async fn read(router: axum::Router, path: &str) -> serde_json::Value {
+            let response = router
+                .oneshot(
+                    axum::http::Request::builder()
+                        .uri(path)
+                        .body(axum::body::Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(response.status(), axum::http::StatusCode::OK);
+            let body = axum::body::to_bytes(response.into_body(), 1024 * 1024)
+                .await
+                .unwrap();
+            serde_json::from_slice::<serde_json::Value>(&body).unwrap()["clockAdmission"].clone()
+        }
+        assert_eq!(
+            read(router.clone(), "/api/state").await,
+            serde_json::json!({"enabled": true, "paused": false})
+        );
+        let mut pause = app.clock_admission.pause(&stop).await.unwrap().unwrap();
+        pause.arm();
+        assert_eq!(read(router.clone(), "/api/state").await["paused"], true);
+        assert_eq!(
+            read(router.clone(), "/v1/system/status").await["paused"],
+            true
+        );
+        let mut receiver = app.tx.subscribe();
+        app.broadcast(&*app.gw.lock().await).await;
+        let frame: serde_json::Value =
+            serde_json::from_str(&receiver.recv().await.unwrap()).unwrap();
+        assert_eq!(frame["state"]["clockAdmission"]["paused"], true);
+        drop(pause);
+        assert_eq!(read(router.clone(), "/api/state").await["paused"], true);
+        let mut pause = app.clock_admission.pause(&stop).await.unwrap().unwrap();
+        pause.resolved();
+        drop(pause);
+        assert_eq!(read(router, "/api/state").await["paused"], false);
     }
     #[tokio::test]
     async fn clock_admission_blocks_direct_deposit_intake_without_snapshot_changes() {

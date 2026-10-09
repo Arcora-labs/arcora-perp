@@ -1,0 +1,42 @@
+   Compiling gateway v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/repo/crates/gateway)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.17s
+     Running unittests src/main.rs (target/debug/deps/gateway-61fe52f6f92c0e7c)
+
+running 6 tests
+test ops_alerts::integration_tests::collector_rejection_never_makes_failed_persistence_succeed ... [oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+[state] genesis engine root 0x464f52b0bc0e452be7e050758e209d7a75708e98ea3eb4f0ffac4e5f6d7a5a28
+[ops-alert] {"schema":"arcora.ops-alert.v1","event":"persistence_failed","transition":"active","episode":1}
+[state] snapshot write failed: Not a directory (os error 20)
+[state] snapshot write failed: Not a directory (os error 20)
+[ops-alert-delivery] failed; structured event remains in local log
+ALERT_DRILL_EVIDENCE {"case":"collector-503-retains-failure","transport":"actual-loopback-http","events":[{"schema":"arcora.ops-alert.v1","event":"persistence_failed","transition":"active","episode":1}]}
+ok
+test ops_alerts::integration_tests::configuration_accepts_only_explicit_local_fixture_and_safe_ntfy_topic ... ok
+test ops_alerts::integration_tests::deposit_halt_production_ingestion_delivers_once_and_stays_halted_after_restore ... [oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+[state] genesis engine root 0x464f52b0bc0e452be7e050758e209d7a75708e98ea3eb4f0ffac4e5f6d7a5a28
+[ops-alert] {"schema":"arcora.ops-alert.v1","event":"deposit_halted","transition":"active","episode":1}
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+ALERT_DRILL_EVIDENCE {"case":"durable-deposit-halt","transport":"actual-loopback-http","events":[{"schema":"arcora.ops-alert.v1","event":"deposit_halted","transition":"active","episode":1}]}
+ok
+test ops_alerts::integration_tests::held_production_transitions_deliver_once_recover_and_rearm ... [oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+[state] genesis engine root 0x464f52b0bc0e452be7e050758e209d7a75708e98ea3eb4f0ffac4e5f6d7a5a28
+[ops-alert] {"schema":"arcora.ops-alert.v1","event":"settlement_held","transition":"active","episode":1}
+[ops-alert] {"schema":"arcora.ops-alert.v1","event":"settlement_held","transition":"recovered","episode":1}
+[ops-alert] {"schema":"arcora.ops-alert.v1","event":"settlement_held","transition":"active","episode":2}
+ALERT_DRILL_EVIDENCE {"case":"held-recovery-rearm","transport":"actual-loopback-http","events":[{"schema":"arcora.ops-alert.v1","event":"settlement_held","transition":"active","episode":1},{"schema":"arcora.ops-alert.v1","event":"settlement_held","transition":"recovered","episode":1},{"schema":"arcora.ops-alert.v1","event":"settlement_held","transition":"active","episode":2}]}
+ok
+test ops_alerts::integration_tests::real_snapshot_write_failure_delivers_once_and_real_write_recovers ... [oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+[state] genesis engine root 0x464f52b0bc0e452be7e050758e209d7a75708e98ea3eb4f0ffac4e5f6d7a5a28
+[ops-alert] {"schema":"arcora.ops-alert.v1","event":"persistence_failed","transition":"active","episode":1}
+[state] snapshot write failed: Not a directory (os error 20)
+[state] snapshot write failed: Not a directory (os error 20)
+[state] final snapshot failed: Ok(Err(Os { code: 20, kind: NotADirectory, message: "Not a directory" }))
+[ops-alert] {"schema":"arcora.ops-alert.v1","event":"persistence_failed","transition":"recovered","episode":1}
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+[ops-alert] {"schema":"arcora.ops-alert.v1","event":"persistence_failed","transition":"active","episode":2}
+[state] snapshot write failed: Not a directory (os error 20)
+ALERT_DRILL_EVIDENCE {"case":"filesystem-failure-recovery-rearm","transport":"actual-loopback-http","events":[{"schema":"arcora.ops-alert.v1","event":"persistence_failed","transition":"active","episode":1},{"schema":"arcora.ops-alert.v1","event":"persistence_failed","transition":"recovered","episode":1},{"schema":"arcora.ops-alert.v1","event":"persistence_failed","transition":"active","episode":2}]}
+ok
+test ops_alerts::integration_tests::transport_has_bounded_timeout_and_rejects_redirects ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 474 filtered out; finished in 2.55s

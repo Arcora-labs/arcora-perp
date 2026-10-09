@@ -3,6 +3,7 @@ import { useStore } from "../store";
 import { formatUsd, parseUsd, shortHash } from "../domain/format";
 import { accountSummary } from "../domain/risk";
 import type { WithdrawalEntry } from "../domain/types";
+import { validateWithdrawal } from "../domain/withdrawal";
 import type { DarkPerpClient } from "../api/client";
 import {
   EXPLORER_TX,
@@ -133,7 +134,7 @@ export function AccountPanel() {
         const dest = auth?.depositAddress;
         setMsg(
           `Withdrawal of ${formatUsd(v)}${dest ? ` to ${shortHash(dest)}` : ""} requested — it appears below as ` +
-            `“Settling on-chain…” and becomes Claimable in ~10–20 min (one proof interval).`,
+            `“Settling on-chain…” and becomes Claimable after its batch settles; timing varies.`,
         );
       }
     } catch (e) {
@@ -212,7 +213,7 @@ export function AccountPanel() {
       <p className="muted small">
         Withdrawals release only from SETTLED state (§3). Open-position collateral
         cannot be withdrawn until the position is closed (§6). A requested
-        withdrawal becomes claimable on-chain once its window settles (~10–20 min).
+        withdrawal becomes claimable on-chain once its batch settles; timing varies.
       </p>
 
       <WithdrawalsSection client={client} />
@@ -403,6 +404,7 @@ export function WalletDepositCard({ client }: { client: WalletDepositClient }) {
 /// the sender), so the private key stays a placeholder: the UI must NEVER ask
 /// for or handle a real key.
 export function buildClaimCommand(w: WithdrawalEntry, vault: string): string {
+  validateWithdrawal(w, vault);
   return [
     "cast send",
     vault,
@@ -426,7 +428,7 @@ interface ClaimTxState {
 
 /// Requested withdrawals with their settle→claim lifecycle. The withdrawal flow
 /// used to dead-end at "requested" — this closes it: while the window is proving
-/// the entry shows the ~10–20 min expectation, and once `claimable` the user gets
+/// the entry shows pending settlement, and once `claimable` the user gets
 /// the on-chain claim — sent directly from a connected wallet, with the
 /// copy-pasteable `cast` command kept as the fallback. Hidden entirely when the
 /// client reports null (mock mode / no provisioned account).
@@ -446,7 +448,7 @@ export function WithdrawalsSection({ client }: { client: DarkPerpClient }) {
         .catch(() => { /* transient fetch failure — keep the last good list, the poll retries */ });
     };
     load();
-    // Poll: claimability flips server-side when the window settles (~10–20 min),
+    // Poll: claimability flips server-side when the batch settles,
     // with no push channel for it — 30 s keeps the flip visible without load.
     const timer = setInterval(load, 30_000);
     return () => { alive = false; clearInterval(timer); };
@@ -471,6 +473,7 @@ export function WithdrawalsSection({ client }: { client: DarkPerpClient }) {
     const set = (s: ClaimTxState) => setClaims((c) => ({ ...c, [w.nonce]: s }));
     set({ status: "pending" });
     try {
+      validateWithdrawal(w, data.vault);
       await ensureBaseSepolia();
       const hash = await sendTx({ from: wallet, to: data.vault, data: encodeClaim(w) });
       set({ status: "pending", hash });
@@ -495,7 +498,7 @@ export function WithdrawalsSection({ client }: { client: DarkPerpClient }) {
             <div className="withdrawals__row">
               <span className="stat__value">{formatUsd(w.amount)}</span>
               <span className={`badge badge--${w.claimable ? "settled" : "matched"}`}>
-                {w.claimable ? "Claimable" : "Settling on-chain… (~10–20 min)"}
+                {w.claimable ? "Claimable" : "Awaiting on-chain settlement…"}
               </span>
             </div>
             <div className="withdrawals__row muted small mono">

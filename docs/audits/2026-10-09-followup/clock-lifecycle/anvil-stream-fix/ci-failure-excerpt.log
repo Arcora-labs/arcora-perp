@@ -1,0 +1,24 @@
+2026-10-09T21:06:38.3656406Z thread 'funds_lifecycle_tests::real_http_evm_funds_lifecycle_with_native_mock_proof' (2955) panicked at crates/gateway/src/funds_lifecycle_tests.rs:20:5:
+2026-10-09T21:06:38.3658108Z subprocess failed:
+2026-10-09T21:06:38.3660262Z thread 'funds_lifecycle_tests::real_http_evm_funds_lifecycle_with_native_mock_proof' (2957) panicked at crates/gateway/src/funds_lifecycle_tests.rs:121:14:
+2026-10-09T21:06:38.3661317Z owned Anvil must announce allocated port: Timeout
+2026-10-09T21:06:38.3661979Z note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+2026-10-09T21:06:38.3662372Z
+2026-10-09T21:06:38.3662746Z note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+2026-10-09T21:06:38.3664123Z test funds_lifecycle_tests::real_http_evm_funds_lifecycle_with_native_mock_proof ... FAILED
+2026-10-09T21:06:38.3664740Z
+2026-10-09T21:06:38.3664899Z failures:
+2026-10-09T21:06:38.3665092Z
+2026-10-09T21:06:38.3665227Z failures:
+2026-10-09T21:06:38.3665874Z     funds_lifecycle_tests::real_http_evm_funds_lifecycle_with_native_mock_proof
+2026-10-09T21:06:38.3666421Z
+2026-10-09T21:06:38.3667106Z test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 479 filtered out; finished in 10.01s
+2026-10-09T21:06:38.3667766Z
+2026-10-09T21:06:38.3668590Z error: test failed, to rerun pass `-p gateway --bin gateway`
+2026-10-09T21:06:38.3732713Z ##[error]Process completed with exit code 101.
+2026-10-09T21:06:38.3820171Z ##[group]Run actions/upload-artifact@v4
+2026-10-09T21:06:38.3820486Z with:
+2026-10-09T21:06:38.3820716Z   name: gateway-local-drills
+2026-10-09T21:06:38.3820994Z   path: /tmp/arcora-local-drills
+2026-10-09T21:06:38.3821284Z   if-no-files-found: warn
+2026-10-09T21:06:38.3821540Z   compression-level: 6

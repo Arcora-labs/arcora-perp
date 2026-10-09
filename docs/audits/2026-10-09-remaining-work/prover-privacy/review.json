@@ -1,0 +1,230 @@
+{
+  "scope": "Local native Rust/loopback HTTP/owned-subprocess testing only; no external host or live hardware inspected",
+  "logs": {
+    "attestation-prover-tests.log": {
+      "sha256": "a6fcf99d16d8a51ff871860d45fbe5861c8715d5bab9db6ec4b01898cef1e08c",
+      "summaries": [
+        {
+          "status": "ok",
+          "passed": 21,
+          "failed": 0,
+          "ignored": 0,
+          "measured": 0,
+          "filtered": 0
+        },
+        {
+          "status": "ok",
+          "passed": 4,
+          "failed": 0,
+          "ignored": 0,
+          "measured": 0,
+          "filtered": 0
+        },
+        {
+          "status": "ok",
+          "passed": 7,
+          "failed": 0,
+          "ignored": 0,
+          "measured": 0,
+          "filtered": 0
+        },
+        {
+          "status": "ok",
+          "passed": 7,
+          "failed": 0,
+          "ignored": 0,
+          "measured": 0,
+          "filtered": 0
+        },
+        {
+          "status": "ok",
+          "passed": 23,
+          "failed": 0,
+          "ignored": 0,
+          "measured": 0,
+          "filtered": 0
+        },
+        {
+          "status": "ok",
+          "passed": 8,
+          "failed": 0,
+          "ignored": 0,
+          "measured": 0,
+          "filtered": 0
+        },
+        {
+          "status": "ok",
+          "passed": 3,
+          "failed": 0,
+          "ignored": 0,
+          "measured": 0,
+          "filtered": 0
+        },
+        {
+          "status": "ok",
+          "passed": 0,
+          "failed": 0,
+          "ignored": 0,
+          "measured": 0,
+          "filtered": 0
+        },
+        {
+          "status": "ok",
+          "passed": 0,
+          "failed": 0,
+          "ignored": 0,
+          "measured": 0,
+          "filtered": 0
+        }
+      ]
+    },
+    "ops-alert-tests.log": {
+      "sha256": "2f83308cf457e2a4cb33e7151178fc18496f00518ff2d2b8119116b5b0313bf6",
+      "summaries": [
+        {
+          "status": "ok",
+          "passed": 6,
+          "failed": 0,
+          "ignored": 0,
+          "measured": 0,
+          "filtered": 474
+        }
+      ]
+    },
+    "panic-wipe-before.log": {
+      "sha256": "3b511feabeaa8e68ad970f3bc4b19e71a9a7981af53964c8b837573286915754",
+      "summaries": [
+        {
+          "status": "FAILED",
+          "passed": 0,
+          "failed": 1,
+          "ignored": 0,
+          "measured": 0,
+          "filtered": 24
+        }
+      ]
+    },
+    "panic-wipe-release.log": {
+      "sha256": "64762bd4a7f7f239721fba3951b7b5f4657202077c8518c6619cfaf097049959",
+      "summaries": [
+        {
+          "status": "ok",
+          "passed": 2,
+          "failed": 0,
+          "ignored": 0,
+          "measured": 0,
+          "filtered": 23
+        },
+        {
+          "status": "ok",
+          "passed": 0,
+          "failed": 0,
+          "ignored": 0,
+          "measured": 0,
+          "filtered": 8
+        },
+        {
+          "status": "ok",
+          "passed": 0,
+          "failed": 0,
+          "ignored": 0,
+          "measured": 0,
+          "filtered": 3
+        }
+      ]
+    },
+    "prover-after-wipe-tests.log": {
+      "sha256": "84c715c6cd9a7a808bc24a2a49b1fa07245568f6cc1085bfe29b74df79fc04d3",
+      "summaries": [
+        {
+          "status": "ok",
+          "passed": 25,
+          "failed": 0,
+          "ignored": 0,
+          "measured": 0,
+          "filtered": 0
+        },
+        {
+          "status": "ok",
+          "passed": 8,
+          "failed": 0,
+          "ignored": 0,
+          "measured": 0,
+          "filtered": 0
+        },
+        {
+          "status": "ok",
+          "passed": 3,
+          "failed": 0,
+          "ignored": 0,
+          "measured": 0,
+          "filtered": 0
+        },
+        {
+          "status": "ok",
+          "passed": 0,
+          "failed": 0,
+          "ignored": 0,
+          "measured": 0,
+          "filtered": 0
+        }
+      ]
+    },
+    "prover-reauth-tests.log": {
+      "sha256": "d3db77a9bbda21af4a8ab543cb6737264f1261b741e2f3f45c035a12b82f5a34",
+      "summaries": [
+        {
+          "status": "ok",
+          "passed": 5,
+          "failed": 0,
+          "ignored": 0,
+          "measured": 0,
+          "filtered": 475
+        }
+      ]
+    },
+    "snapshot-crash-tests.log": {
+      "sha256": "7ec3b625d8d53255379563a98258af0e852c1d259aa8ddfb9d82e3ddaf83c892",
+      "summaries": [
+        {
+          "status": "ok",
+          "passed": 4,
+          "failed": 0,
+          "ignored": 1,
+          "measured": 0,
+          "filtered": 475
+        }
+      ]
+    }
+  },
+  "crash_scenarios": 21,
+  "all_crash_signals_are_sigkill": true,
+  "alert_cases": [
+    {
+      "case": "collector-503-retains-failure",
+      "transport": "actual-loopback-http",
+      "events": 1
+    },
+    {
+      "case": "durable-deposit-halt",
+      "transport": "actual-loopback-http",
+      "events": 1
+    },
+    {
+      "case": "held-recovery-rearm",
+      "transport": "actual-loopback-http",
+      "events": 3
+    },
+    {
+      "case": "filesystem-failure-recovery-rearm",
+      "transport": "actual-loopback-http",
+      "events": 3
+    }
+  ],
+  "hardware_status": "BLOCKED: Nvidia detect always false; enabled branch also unimplemented; prover measurement static [0xAB;32]",
+  "cleanup_fix": "OpenedWitness RAII guard wipes the same local plaintext slice on success, native derive error, or backend panic unwind. Fail-before and optimized-release pass logs retained. Does not wipe backend/decoded copies or run on abort/SIGKILL.",
+  "freshness_limits": "Azure adapter evaluates collateral at its internally selected validity-window midpoint; real capture/key binding, fresh collateral policy, hardware restart and rotation remain unverified.",
+  "reauth_limits": "Gateway refreshes token+secret+expiry once on 401; prover boot expiry fixed 15 minutes; no in-process renewal found.",
+  "logging_scan": "No explicit plaintext witness or session token logging in scanned attestation/prover/prover-service production source. This is not a dump/log/filesystem forensic audit.",
+  "excluded_service_build": "Not built; SP1 toolchain build not required or claimed. Cargo metadata --locked --offline --no-deps succeeded for prover-service and sp1-host locks."
+}

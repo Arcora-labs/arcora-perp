@@ -1,0 +1,4 @@
+
+thread 'main' (10650476) panicked at src/bin/replay-funds.rs:15:5:
+regular input file required
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace

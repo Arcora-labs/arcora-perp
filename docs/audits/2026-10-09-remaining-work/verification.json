@@ -1,0 +1,497 @@
+{
+  "generated_at_utc": "2026-10-09T19:53:04.117990+00:00",
+  "status": "LOCAL_ALPHA_FIXES_VERIFIED",
+  "release_gate": "HOLD",
+  "base_commit": "b2a3c357c6b345726a7a85b5cc55484d6bef8c98",
+  "source_sha256": "44bdca648ac0bf572c1a4b11b8d50edf1a814a68d8779b18421da6ba2a288b62",
+  "code_remote_published": false,
+  "code_deployed": false,
+  "repository_ruleset_applied": 24812584,
+  "checks": [
+    {
+      "name": "Rust workspace",
+      "status": "PASS",
+      "exit_code": 0,
+      "command": "cargo +1.99.0 test --workspace --locked",
+      "log": "workspace-final.log",
+      "log_sha256": "2a966bd2ea1b6a70b800bd26a19c689954fef9c5db22bed7e26fc1539c112fe7",
+      "counts": {
+        "suite_summaries": [
+          {
+            "result": "ok",
+            "passed": 8,
+            "failed": 0,
+            "ignored": 0
+          },
+          {
+            "result": "ok",
+            "passed": 3,
+            "failed": 0,
+            "ignored": 0
+          },
+          {
+            "result": "ok",
+            "passed": 10,
+            "failed": 0,
+            "ignored": 0
+          },
+          {
+            "result": "ok",
+            "passed": 1,
+            "failed": 0,
+            "ignored": 0
+          },
+          {
+            "result": "ok",
+            "passed": 21,
+            "failed": 0,
+            "ignored": 0
+          },
+          {
+            "result": "ok",
+            "passed": 4,
+            "failed": 0,
+            "ignored": 0
+          },
+          {
+            "result": "ok",
+            "passed": 7,
+            "failed": 0,
+            "ignored": 0
+          },
+          {
+            "result": "ok",
+            "passed": 7,
+            "failed": 0,
+            "ignored": 0
+          },
+          {
+            "result": "ok",
+            "passed": 0,
+            "failed": 0,
+            "ignored": 0
+          },
+          {
+            "result": "ok",
+            "passed": 0,
+            "failed": 0,
+            "ignored": 0
+          },
+          {
+            "result": "ok",
+            "passed": 1,
+            "failed": 0,
+            "ignored": 0
+          },
+          {
+            "result": "ok",
+            "passed": 3,
+            "failed": 0,
+            "ignored": 0
+          },
+          {
+            "result": "ok",
+            "passed": 1,
+            "failed": 0,
+            "ignored": 0
+          },
+          {
+            "result": "ok",
+            "passed": 465,
+            "failed": 0,
+            "ignored": 15
+          },
+          {
+            "result": "ok",
+            "passed": 0,
+            "failed": 0,
+            "ignored": 0
+          },
+          {
+            "result": "ok",
+            "passed": 18,
+            "failed": 0,
+            "ignored": 0
+          },
+          {
+            "result": "ok",
+            "passed": 4,
+            "failed": 0,
+            "ignored": 0
+          },
+          {
+            "result": "ok",
+            "passed": 0,
+            "failed": 0,
+            "ignored": 0
+          },
+          {
+            "result": "ok",
+            "passed": 0,
+            "failed": 0,
+            "ignored": 0
+          },
+          {
+            "result": "ok",
+            "passed": 2,
+            "failed": 0,
+            "ignored": 0
+          },
+          {
+            "result": "ok",
+            "passed": 10,
+            "failed": 0,
+            "ignored": 0
+          },
+          {
+            "result": "ok",
+            "passed": 1,
+            "failed": 0,
+            "ignored": 0
+          },
+          {
+            "result": "ok",
+            "passed": 11,
+            "failed": 0,
+            "ignored": 0
+          },
+          {
+            "result": "ok",
+            "passed": 0,
+            "failed": 0,
+            "ignored": 0
+          },
+          {
+            "result": "ok",
+            "passed": 98,
+            "failed": 0,
+            "ignored": 0
+          },
+          {
+            "result": "ok",
+            "passed": 4,
+            "failed": 0,
+            "ignored": 0
+          },
+          {
+            "result": "ok",
+            "passed": 1,
+            "failed": 0,
+            "ignored": 0
+          },
+          {
+            "result": "ok",
+            "passed": 4,
+            "failed": 0,
+            "ignored": 0
+          },
+          {
+            "result": "ok",
+            "passed": 32,
+            "failed": 0,
+            "ignored": 0
+          },
+          {
+            "result": "ok",
+            "passed": 2,
+            "failed": 0,
+            "ignored": 0
+          },
+          {
+            "result": "ok",
+            "passed": 1,
+            "failed": 0,
+            "ignored": 0
+          },
+          {
+            "result": "ok",
+            "passed": 3,
+            "failed": 0,
+            "ignored": 0
+          },
+          {
+            "result": "ok",
+            "passed": 16,
+            "failed": 0,
+            "ignored": 0
+          },
+          {
+            "result": "ok",
+            "passed": 7,
+            "failed": 0,
+            "ignored": 0
+          },
+          {
+            "result": "ok",
+            "passed": 2,
+            "failed": 0,
+            "ignored": 0
+          },
+          {
+            "result": "ok",
+            "passed": 1,
+            "failed": 0,
+            "ignored": 0
+          },
+          {
+            "result": "ok",
+            "passed": 25,
+            "failed": 0,
+            "ignored": 0
+          },
+          {
+            "result": "ok",
+            "passed": 8,
+            "failed": 0,
+            "ignored": 0
+          },
+          {
+            "result": "ok",
+            "passed": 3,
+            "failed": 0,
+            "ignored": 0
+          },
+          {
+            "result": "ok",
+            "passed": 9,
+            "failed": 0,
+            "ignored": 0
+          },
+          {
+            "result": "ok",
+            "passed": 1,
+            "failed": 0,
+            "ignored": 0
+          },
+          {
+            "result": "ok",
+            "passed": 33,
+            "failed": 0,
+            "ignored": 0
+          },
+          {
+            "result": "ok",
+            "passed": 1,
+            "failed": 0,
+            "ignored": 0
+          },
+          {
+            "result": "ok",
+            "passed": 3,
+            "failed": 0,
+            "ignored": 0
+          },
+          {
+            "result": "ok",
+            "passed": 31,
+            "failed": 0,
+            "ignored": 0
+          },
+          {
+            "result": "ok",
+            "passed": 0,
+            "failed": 0,
+            "ignored": 0
+          },
+          {
+            "result": "ok",
+            "passed": 0,
+            "failed": 0,
+            "ignored": 0
+          },
+          {
+            "result": "ok",
+            "passed": 0,
+            "failed": 0,
+            "ignored": 0
+          },
+          {
+            "result": "ok",
+            "passed": 0,
+            "failed": 0,
+            "ignored": 0
+          },
+          {
+            "result": "ok",
+            "passed": 0,
+            "failed": 0,
+            "ignored": 0
+          },
+          {
+            "result": "ok",
+            "passed": 0,
+            "failed": 0,
+            "ignored": 0
+          },
+          {
+            "result": "ok",
+            "passed": 0,
+            "failed": 0,
+            "ignored": 0
+          },
+          {
+            "result": "ok",
+            "passed": 0,
+            "failed": 0,
+            "ignored": 0
+          },
+          {
+            "result": "ok",
+            "passed": 0,
+            "failed": 0,
+            "ignored": 0
+          },
+          {
+            "result": "ok",
+            "passed": 0,
+            "failed": 0,
+            "ignored": 0
+          },
+          {
+            "result": "ok",
+            "passed": 0,
+            "failed": 0,
+            "ignored": 0
+          },
+          {
+            "result": "ok",
+            "passed": 0,
+            "failed": 0,
+            "ignored": 0
+          }
+        ]
+      },
+      "scope": "Includes native property tests. Ignored opt-in tests are not treated as passed."
+    },
+    {
+      "name": "Clippy",
+      "status": "PASS",
+      "exit_code": 0,
+      "command": "cargo +1.99.0 clippy --workspace --all-targets --locked -- -D warnings",
+      "log": "clippy-final.log",
+      "log_sha256": "d130e36568077ebbf378c9278403573806a602602022a4a42b0a06560c27d43e"
+    },
+    {
+      "name": "Gateway binary build",
+      "status": "PASS",
+      "exit_code": 0,
+      "command": "cargo +1.99.0 build -p gateway --locked",
+      "log": "gateway-build-final.log",
+      "log_sha256": "cf2542d63e18b2b8aed82dae6b56d46024b85d234a0add93a05f950a759d7aa1"
+    },
+    {
+      "name": "Solidity",
+      "status": "PASS",
+      "exit_code": 0,
+      "command": "forge test --root contracts",
+      "log": "foundry-final.log",
+      "log_sha256": "f0d7b03615e55a75900e51af0abcfd9d71bafd363d92bd82471a089d30c4e4b3",
+      "counts": {
+        "passed": 126,
+        "failed": 0,
+        "skipped": 0
+      }
+    },
+    {
+      "name": "Existing real clock proof",
+      "status": "PASS",
+      "exit_code": 0,
+      "command": "python3.11 scripts/local-verification/verify_clock_proof.py --artifact-dir contracts/integration/fixtures/clock-v2-verified --output-dir ...",
+      "log": "real-clock-proof-run.log",
+      "log_sha256": "a580ca347c0f81dcdb54fcf19b8da8d67afdf49850dbabd90e811bad448f263d",
+      "counts": {
+        "passed": 24
+      },
+      "scope": "Existing real SP1 fixture through actual Solidity verifier/clock/settlement/vault in local EVM; synthetic addresses/payer and mock token, no new proof."
+    },
+    {
+      "name": "Frontend",
+      "status": "PASS",
+      "exit_code": 0,
+      "command": "pnpm --dir frontend test",
+      "log": "frontend-tests-final.log",
+      "log_sha256": "721d78f375272ce2e3d6ba21fc0ec8d0fc9ae74383040c1c7cc9e63c32248d4a",
+      "counts": {
+        "passed": 496,
+        "skipped": 1
+      },
+      "scope": "Unit/DOM tests; not live browser or physical device verification."
+    },
+    {
+      "name": "Frontend build",
+      "status": "PASS",
+      "exit_code": 0,
+      "command": "pnpm --dir frontend build",
+      "log": "frontend-build-final.log",
+      "log_sha256": "e9178473a01367637e10e759a33b2163510c1cb004aeed4b2eb3ab248d383275"
+    },
+    {
+      "name": "Python guard suites",
+      "status": "PASS",
+      "exit_code": 0,
+      "command": "python3.11 -m unittest discover -s scripts/local-verification -p 'test_*.py'",
+      "log": "python-tests-final.log",
+      "log_sha256": "7afcf4753d5c41118f843151ebca77dd81ce3f96c4e31ffe387b866a0d17e261",
+      "counts": {
+        "passed": 69
+      }
+    },
+    {
+      "name": "Normal wallet HTTP/EVM lifecycle",
+      "status": "PASS",
+      "exit_code": 0,
+      "command": "ARCORA_FUNDS_EVIDENCE=... cargo +1.99.0 test -p gateway funds_lifecycle_tests --locked -- --ignored --nocapture",
+      "log": "funds-lifecycle-final.log",
+      "log_sha256": "7d63fbc68965f7a95c6210da1764437ae7bc665e2872894f6c08de8f3663c8ac",
+      "counts": {
+        "passed": 1
+      },
+      "scope": "Native replay + MockZkVerifier, real local HTTP/ERC20/EVM, encrypted same-process restore; not SP1/clock/OS crash."
+    },
+    {
+      "name": "Real gateway ACK/SIGKILL/restart",
+      "status": "PASS",
+      "exit_code": 0,
+      "command": "python3.11 scripts/local-verification/gateway_ack_crash_drill.py --gateway-bin target/debug/gateway --output-dir ...",
+      "log": "ack-crash-run.log",
+      "log_sha256": "f8d4323180b8418b31201d7de98eeda6116b1c9dd0ddabd8e33538a3b3badd8a",
+      "counts": {
+        "cases": 9,
+        "owned_sigkill_processes": 27
+      },
+      "scope": "Local public HTTP mutation/recovery boundary matrix, not in-flight full clock settlement."
+    },
+    {
+      "name": "Panic wipe release regression",
+      "status": "PASS",
+      "exit_code": 0,
+      "command": "cargo +1.99.0 test --release --locked -p prover opened_witness",
+      "log": "prover-privacy/panic-wipe-release.log",
+      "log_sha256": "64762bd4a7f7f239721fba3951b7b5f4657202077c8518c6619cfaf097049959",
+      "counts": {
+        "passed": 2
+      },
+      "scope": "Local opened bytes only; abort/backend copies excluded."
+    }
+  ],
+  "additional_checks": {
+    "fmt": "PASS",
+    "git_diff_check": "PASS",
+    "workflow_yaml": "PASS",
+    "policy_after_ci_review": "3 PASS",
+    "prover_source_dependency_lock_metadata": "PASS, --locked --offline for sp1-host and prover-service; not full typecheck"
+  },
+  "explicit_open_gates": [
+    "fresh real clock proof joined with normal-wallet funds lifecycle",
+    "target deployment and runtime identity; public RPC HTTP403",
+    "real prover load/RSS/admission-duration measurements",
+    "rejection legitimacy and matching fairness",
+    "independent oracle price truth",
+    "new exit availability without operator/prover/governance",
+    "real prover hardware attestation and all witness copies",
+    "actual negative remote merge drill and issue records",
+    "target infrastructure recovery and real operator alert receipt",
+    "independent protocol and economic review"
+  ],
+  "artifact_scope": "Original report R01-R10 remains broader than this local alpha hardening package."
+}

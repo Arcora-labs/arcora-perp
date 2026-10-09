@@ -1,0 +1,4 @@
+
+thread 'main' (10650464) panicked at src/bin/replay-funds.rs:62:14:
+clock-v2 input required
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace

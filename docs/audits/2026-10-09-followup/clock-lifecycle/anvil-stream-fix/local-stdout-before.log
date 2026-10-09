@@ -1,0 +1,22 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.37s
+     Running unittests src/main.rs (target/debug/deps/gateway-5bdde49e6ccce77a)
+
+running 1 test
+
+thread 'funds_lifecycle_tests::real_http_evm_funds_lifecycle_with_native_mock_proof' (10663240) panicked at crates/gateway/src/funds_lifecycle_tests.rs:20:5:
+subprocess failed:
+thread 'funds_lifecycle_tests::real_http_evm_funds_lifecycle_with_native_mock_proof' (10663251) panicked at crates/gateway/src/funds_lifecycle_tests.rs:121:14:
+owned Anvil must announce allocated port: Disconnected
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test funds_lifecycle_tests::real_http_evm_funds_lifecycle_with_native_mock_proof ... FAILED
+
+failures:
+
+failures:
+    funds_lifecycle_tests::real_http_evm_funds_lifecycle_with_native_mock_proof
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 479 filtered out; finished in 0.03s
+
+error: test failed, to rerun pass `-p gateway --bin gateway`

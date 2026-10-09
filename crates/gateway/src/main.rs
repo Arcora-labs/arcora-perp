@@ -57,6 +57,8 @@ mod deposit_ingestion;
 mod deposit_rpc;
 mod enclave_epoch;
 mod execution;
+#[cfg(test)]
+mod funds_lifecycle_tests;
 mod l1;
 mod listen_config;
 mod ops_alerts;
@@ -931,6 +933,8 @@ struct WBatch {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct WState {
+    /// Admission is independent of the settlement failure circuit breaker.
+    clock_admission: Option<clock_admission::Status>,
     markets: Vec<WMarket>,
     selected_market_id: u64,
     market: WMarket,
@@ -4883,6 +4887,7 @@ impl Gw {
                 bond_usdc: s.bond.clone(),
                 withdrawals_root: s.withdrawals_root.clone(),
             }),
+            clock_admission: None,
             settlement_health: self.settle_health.health().as_str().to_string(),
             deposit_ingestion: serde_json::json!({
                 "state": if self.deposits.halt.is_some() { "halted" } else if self.deposits.check_ready().is_err() { "paused" } else { "ready" },
@@ -5403,9 +5408,14 @@ struct App {
 }
 
 impl App {
+    fn snapshot(&self, gw: &Gw) -> WState {
+        let mut state = gw.snapshot();
+        state.clock_admission = Some(self.clock_admission.status());
+        state
+    }
     async fn broadcast(&self, gw: &Gw) {
         let msg = WsMsg::State {
-            state: gw.snapshot(),
+            state: self.snapshot(gw),
         };
         let _ = self.tx.send(serde_json::to_string(&msg).unwrap());
     }
@@ -6910,7 +6920,9 @@ async fn get_v1_candles(
     Json(serde_json::json!({ "marketId": id, "tf": tf, "candles": out })).into_response()
 }
 async fn get_v1_status(State(app): State<Shared>) -> impl IntoResponse {
-    Json(app.gw.lock().await.v1_status_json())
+    let mut status = app.gw.lock().await.v1_status_json();
+    status["clockAdmission"] = serde_json::to_value(app.clock_admission.status()).unwrap();
+    Json(status)
 }
 async fn get_v1_batch(State(app): State<Shared>, Path(id): Path<u64>) -> impl IntoResponse {
     Json(app.gw.lock().await.v1_batch_json(id))
@@ -7090,7 +7102,7 @@ async fn ws_v1_loop(socket: WebSocket, app: Shared, policy: Arc<service_policy::
 
 async fn get_state(State(app): State<Shared>) -> impl IntoResponse {
     let gw = app.gw.lock().await;
-    Json(serde_json::to_value(gw.snapshot()).unwrap())
+    Json(serde_json::to_value(app.snapshot(&gw)).unwrap())
 }
 
 async fn post_order(State(app): State<Shared>, Json(req): Json<OrderReq>) -> impl IntoResponse {
@@ -7100,7 +7112,7 @@ async fn post_order(State(app): State<Shared>, Json(req): Json<OrderReq>) -> imp
     };
     match res {
         Ok((receipt, events)) => {
-            let snap = { app.gw.lock().await.snapshot() };
+            let snap = { app.snapshot(&*app.gw.lock().await) };
             let _ = app
                 .tx
                 .send(serde_json::to_string(&WsMsg::State { state: snap }).unwrap());
@@ -7210,7 +7222,7 @@ async fn post_close(State(app): State<Shared>, Json(req): Json<MarketReq>) -> im
     let res = { app.gw.lock().await.close(req.market_id) };
     match res {
         Ok((_r, events)) => {
-            let snap = { app.gw.lock().await.snapshot() };
+            let snap = { app.snapshot(&*app.gw.lock().await) };
             let _ = app
                 .tx
                 .send(serde_json::to_string(&WsMsg::State { state: snap }).unwrap());
@@ -7227,7 +7239,7 @@ async fn post_cancel(State(app): State<Shared>, Json(req): Json<CancelReq>) -> i
     let res = { app.gw.lock().await.cancel(&req.order_id) };
     match res {
         Ok(events) => {
-            let snap = { app.gw.lock().await.snapshot() };
+            let snap = { app.snapshot(&*app.gw.lock().await) };
             let _ = app
                 .tx
                 .send(serde_json::to_string(&WsMsg::State { state: snap }).unwrap());
@@ -7319,7 +7331,7 @@ async fn ws_loop(mut socket: WebSocket, app: Shared, policy: Arc<service_policy:
     let mut budget = policy.message_budget();
     let initial = {
         serde_json::to_string(&WsMsg::State {
-            state: app.gw.lock().await.snapshot(),
+            state: app.snapshot(&*app.gw.lock().await),
         })
         .unwrap()
     };
@@ -8518,6 +8530,9 @@ async fn main() {
                 }
                 let (events, acct_events) = {
                     let Ok(_admission) = app.clock_admission.enter() else {
+                        // The paused gate stops financial ticks, not read-only status.
+                        // Existing WebSocket clients must see the pause/recovery hold.
+                        app.broadcast(&*app.gw.lock().await).await;
                         continue;
                     };
                     app.gw.lock().await.tick()
@@ -8539,7 +8554,7 @@ async fn main() {
                         cs.record(id, now, px);
                     }
                 }
-                let snap = { app.gw.lock().await.snapshot() };
+                let snap = { app.snapshot(&*app.gw.lock().await) };
                 let _ = app
                     .tx
                     .send(serde_json::to_string(&WsMsg::State { state: snap }).unwrap());
@@ -8974,7 +8989,7 @@ async fn main() {
                             // crash inside the old ≤SNAPSHOT_SECS window no longer wedges
                             // the boot continuity check.
                             snapshot_notify.notify_one();
-                            let snap = { app.gw.lock().await.snapshot() };
+                            let snap = { app.snapshot(&*app.gw.lock().await) };
                             let _ = app.tx.send(
                                 serde_json::to_string(&WsMsg::State { state: snap }).unwrap(),
                             );
@@ -9107,7 +9122,7 @@ async fn main() {
                                                 // boot's STALE row resolves it; poke the writer so
                                                 // the commit persists promptly.
                                                 snapshot_notify.notify_one();
-                                                let snap = { app.gw.lock().await.snapshot() };
+                                                let snap = { app.snapshot(&*app.gw.lock().await) };
                                                 let _ = app.tx.send(
                                                     serde_json::to_string(&WsMsg::State {
                                                         state: snap,

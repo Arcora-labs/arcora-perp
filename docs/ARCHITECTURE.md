@@ -117,7 +117,7 @@ SETTLED  = ZK proof Ethereum'da verify oldu (hard)
 |---|---|
 | MATCHED + batch prove edildi | Normal → SETTLED |
 | MATCHED + batch prove edilemedi | Batch reddedilir; etkilenen fill'ler **rollback**; insurance yalnızca kanıtlı protokol hatasında |
-| MATCHED + enclave crash | Kullanıcı **receipt + son hard root** ile forced-exit (§6); SETTLED olmayan fill bağlayıcı değil |
+| MATCHED + enclave crash | Önceden yayımlanmış çekim kökü ve Merkle verisiyle claim yapılabilir; receipt + state root tek başına çıkış hakkı değildir. Yeni çıkış operator/prover ve final wind-down sırasında governance gerektirir |
 | MATCHED var, L1 hard root yok | Withdraw **mümkün değil** |
 | Receipt var, MATCHED yok, timeout aşıldı | Inclusion ihlali → slashing + forced-exit |
 

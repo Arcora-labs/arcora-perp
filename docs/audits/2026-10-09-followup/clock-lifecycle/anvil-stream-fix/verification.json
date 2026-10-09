@@ -1,0 +1,41 @@
+{
+  "status": "LOCAL_ANVIL_STREAM_REGRESSION_FIXED",
+  "remote_ci_for_fix": "not yet run in this report",
+  "failed_head": "1bf7642",
+  "failed_job": "https://github.com/Arcora-labs/arcora-perp/actions/runs/37991243922/job/114025658385",
+  "cause": "CI Foundry Anvil 1.8.5 emits Listening on through sh_println!/stdout; local 1.7.2 emitted the banner on stderr. The prior harness discarded stdout and timed out.",
+  "change": "Drain both pipes of the owned child, recognize exact loopback banner after ANSI CSI normalization, join both drain threads at teardown; preserve port0, bounded startup, gateway/writer stop and offline claims.",
+  "source_sha256": {
+    "crates/gateway/src/funds_lifecycle_tests.rs": "bfd03d990734f4bc9351bf2298364b991f310db375fdee8b915164278ac82346"
+  },
+  "checks": {
+    "stdout_reroute_before": "FAIL exit101 missing owned banner",
+    "native_stderr_after": "PASS 10.86s full funds lifecycle",
+    "forced_stdout_after": "PASS 10.63s full funds lifecycle",
+    "parser_regression": "PASS plain and ANSI; rejects wrong interface, zero, overflow and invalid suffix",
+    "gateway_clippy_all_targets": "PASS 2.10s"
+  },
+  "logs": {
+    "local-stdout-before.log": {
+      "raw_sha256": "eacd08e2c809c038a1d1e6738aadca8aaa91d584fa57d604bdd3edf8611bbc70",
+      "normalized_sha256": "9c0629e88d4a7e5e046e831390e859267b0099797d3b550988fe6a9d880c7c0e"
+    },
+    "local-native-after.log": {
+      "raw_sha256": "20110fc47f54b6bcb19b82eb639b1f769296287e9f2d9b78f491517ddf482baf",
+      "normalized_sha256": "921fffc5a8c5a64cdd271de6edfc7d3ea435ef0fae278bf9deb644a6aa7767ee"
+    },
+    "local-stdout-after.log": {
+      "raw_sha256": "3ee31c3f43089bebb5e4dcfdc8fba59e51a440f6e65dc46e35fca7fe01790908",
+      "normalized_sha256": "0e07f1f8758f3cb6d54c3fb4ac22c6ba74e6afadad5c23770a6c274ca8b37ec3"
+    },
+    "banner-parser.log": {
+      "raw_sha256": "f0dccdc881a31137619a118d96ed07f14b53c7f5a1d3deaed1de7dd224edfc75",
+      "normalized_sha256": "61052517b8ddb95244e8abfcf8aa5511cccf86799d60ce2157031288a31b4e0c"
+    },
+    "clippy.log": {
+      "raw_sha256": "a81fbd4503c76f45348ac4bb78508ae65514aa391956b955389f0627784cbe5e",
+      "normalized_sha256": "a81fbd4503c76f45348ac4bb78508ae65514aa391956b955389f0627784cbe5e"
+    }
+  },
+  "scope": "Test harness portability correction only; witness encoding, guest source, contracts and proof pins unchanged. Prior SP1 evidence remains bound to its recorded witness/source hashes."
+}

@@ -1,0 +1,19 @@
+FUNDS_CLOCK_REPLAY_PASS guest_executed=true
+       32.48 real        54.93 user         1.85 sys
+          3116449792  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+              826673  page reclaims
+                 422  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   0  messages sent
+                   0  messages received
+                   0  signals received
+                  27  voluntary context switches
+               36339  involuntary context switches
+       1016641186944  instructions retired
+        223886759860  cycles elapsed
+          7690918248  peak memory footprint

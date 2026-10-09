@@ -45,9 +45,9 @@
   <ol>
     <li><strong>The gateway is a trusted/custodial component in this alpha.</strong> It holds server-custody account spend keys in process memory and controls the oracle publisher key. A gateway compromise can therefore affect fund authorization and market inputs even though invalid guest transitions remain unprovable. This is the principal A10 trust boundary.</li>
     <li>The <strong>zk prover currently runs on a development workstation and is NOT yet TEE-attested</strong>. The witness leaves the sequencer enclave sealed, but the prover machine's measurement is a stub. Roadmap: attestation-gated key release to an x86_64 TDX prover.</li>
-    <li><strong>Operator liveness is a single point of failure.</strong> If the sequencer goes down, trading halts. Funds remain safe and withdrawable via forced-exit after the liveness window (7,200 blocks), but there is no failover operator.</li>
+    <li><strong>Operator liveness is a single point of failure.</strong> If the sequencer goes down, trading halts. Existing published withdrawal claims remain usable with their Merkle data. New exits still need operator/prover service and, during final wind-down, governance. The liveness timeout does not make account balances or positions independently withdrawable.</li>
     <li><strong>Ordering fairness is not yet zk-proven.</strong> The proof attests correct <em>execution</em> of the sequenced operations; the sequencing itself is enclave-attested only. A matching-fairness proof (&ldquo;Proof v2&rdquo;) is on the roadmap.</li>
-    <li><strong>Proof cadence:</strong> settles land roughly every 10&ndash;20 minutes — one proof per window, with a full-state witness. A sparse-witness redesign (proof cost independent of total account count) is on the roadmap.</li>
+    <li><strong>Proof cadence:</strong> historical 10&ndash;20 minute observations are not a current clock-mode capacity guarantee — one proof per window, with a full-state witness. A sparse-witness redesign (proof cost independent of total account count) is on the roadmap.</li>
     <li>The contracts are <strong>internally audited</strong> (multi-agent adversarial audits; 13 findings remediated pre-alpha) but there is <strong>no third-party audit yet</strong>.</li>
   </ol>
 </div>
@@ -57,10 +57,11 @@
 <ul>
   <li><strong>Operator bond</strong>: floor of 5% of vault TVL (<code>requiredBond()</code>), slashable through the challenge game.</li>
   <li><strong>Inclusion challenges</strong>: any holder of an enclave-signed receipt can challenge a settled window on-chain (challenge bond 0.01 ETH, 300-block window). Failure to prove inclusion slashes the operator's bond to the challenger.</li>
-  <li><strong>Forced exit</strong>: after 7,200 blocks without a settle, the system enters forced-exit / close-only and settled state remains withdrawable.</li>
+  <li><strong>Forced exit</strong>: after 7,200 blocks without a settle, the system enters forced-exit / close-only and new risk is restricted. Existing published withdrawal claims are independent; new exits retain the operator/prover and governance dependencies described above.</li>
 </ul>
 
-<h2>Contract addresses (Base Sepolia, chain ID 84532)</h2>
+<h2>Historical contract addresses (Base Sepolia, chain ID 84532)</h2>
+<p>These are historical records, not verification of the currently running source or program key. In clock mode, registration/proving/finality and unresolved recovery pause financial requests, including closes, margin changes, cancellations and withdrawal creation. PR #31 source-proof evidence does not establish deployment parity.</p>
 <div class="table-wrap">
 <table>
   <thead><tr><th>Contract</th><th>Address</th></tr></thead>
@@ -97,7 +98,7 @@
 
 <h2>Testing &amp; audit status</h2>
 <ul>
-  <li>351 automated tests across the workspace — engine, sequencer, gateway, and a dedicated Foundry suite for the contracts — including proof-replay merge gates and crash-recovery drills.</li>
+  <li>Version-specific automated tests across the workspace — engine, sequencer, gateway, and a dedicated Foundry suite for the contracts — including proof-replay merge gates and crash-recovery drills.</li>
   <li>Internal multi-agent adversarial audits; 13 findings remediated before alpha.</li>
   <li><strong>No third-party audit yet.</strong> One is on the roadmap before mainnet.</li>
 </ul>

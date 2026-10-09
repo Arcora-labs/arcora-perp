@@ -1,0 +1,69 @@
+   Compiling prover v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/repo/crates/prover)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.19s
+     Running tests/privacy_environment.rs (target/debug/deps/privacy_environment-e9c0329ad58bc9ad)
+
+running 4 tests
+test privacy_environment_worker ... ignored, isolated environment worker; invoked by the parent tests
+test non_utf8_diagnostic_configuration_fails_closed ... FAILED
+test diagnostic_outputs_are_refused_before_key_release_or_backend_access ... FAILED
+test unset_or_explicitly_disabled_dump_preserves_normal_proving ... ok
+
+failures:
+
+---- non_utf8_diagnostic_configuration_fails_closed stdout ----
+
+thread 'non_utf8_diagnostic_configuration_fails_closed' (10561610) panicked at crates/prover/tests/privacy_environment.rs:28:5:
+isolated Some("SP1_DUMP") case failed:
+
+running 1 test
+test privacy_environment_worker ... FAILED
+
+failures:
+
+failures:
+    privacy_environment_worker
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+
+
+thread 'privacy_environment_worker' (10561616) panicked at crates/prover/tests/privacy_environment.rs:120:9:
+assertion `left == right` failed: released a seal key
+  left: 2
+ right: 0
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- diagnostic_outputs_are_refused_before_key_release_or_backend_access stdout ----
+
+thread 'diagnostic_outputs_are_refused_before_key_release_or_backend_access' (10561609) panicked at crates/prover/tests/privacy_environment.rs:28:5:
+isolated Some("SP1_DUMP") case failed:
+
+running 1 test
+test privacy_environment_worker ... FAILED
+
+failures:
+
+failures:
+    privacy_environment_worker
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+
+
+thread 'privacy_environment_worker' (10561615) panicked at crates/prover/tests/privacy_environment.rs:120:9:
+assertion `left == right` failed: released a seal key
+  left: 2
+ right: 0
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+
+failures:
+    diagnostic_outputs_are_refused_before_key_release_or_backend_access
+    non_utf8_diagnostic_configuration_fails_closed
+
+test result: FAILED. 1 passed; 2 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+error: test failed, to rerun pass `-p prover --test privacy_environment`

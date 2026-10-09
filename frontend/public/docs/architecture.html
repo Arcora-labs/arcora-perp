@@ -85,7 +85,7 @@
   <li><strong>Operator bond.</strong> The operator posts a USDC bond with a floor of <strong>5% of vault TVL</strong> (<code>requiredBond()</code>, BOND_BPS = 500).</li>
   <li><strong>Inclusion challenges.</strong> Anyone holding an enclave-signed receipt can open an on-chain inclusion challenge against a settled window. Challenges are themselves bonded at <strong>0.01 ETH</strong> to prevent griefing, with a <strong>300-block</strong> challenge window to answer.</li>
   <li><strong>Slashing.</strong> If the sequencer cannot prove that the receipt's order was included in a settled window, the operator's bond is slashed to the challenger (pull-payment).</li>
-  <li><strong>Liveness / forced exit.</strong> If the sequencer stops settling for <strong>7,200 blocks</strong>, the system enters forced-exit / close-only mode. The settled state remains withdrawable — an offline operator can halt trading, but cannot trap settled funds.</li>
+  <li><strong>Liveness / forced exit.</strong> If the sequencer stops settling for <strong>7,200 blocks</strong>, the system enters forced-exit / close-only mode. Existing published withdrawal claims remain claimable with their Merkle data. Creating new withdrawals still requires operator/prover service, and final wind-down additionally requires governance.</li>
 </ul>
 
 <h2>Privacy layer</h2>

@@ -1,0 +1,90 @@
+{
+  "name": "Arcora main review and verification",
+  "target": "branch",
+  "enforcement": "active",
+  "bypass_actors": [],
+  "conditions": {
+    "ref_name": {
+      "include": [
+        "refs/heads/main"
+      ],
+      "exclude": []
+    }
+  },
+  "rules": [
+    {
+      "type": "deletion"
+    },
+    {
+      "type": "non_fast_forward"
+    },
+    {
+      "type": "pull_request",
+      "parameters": {
+        "dismiss_stale_reviews_on_push": true,
+        "require_code_owner_review": false,
+        "require_last_push_approval": true,
+        "required_approving_review_count": 1,
+        "required_review_thread_resolution": true,
+        "allowed_merge_methods": [
+          "squash",
+          "rebase",
+          "merge"
+        ]
+      }
+    },
+    {
+      "type": "required_status_checks",
+      "parameters": {
+        "strict_required_status_checks_policy": true,
+        "do_not_enforce_on_create": false,
+        "required_status_checks": [
+          {
+            "context": "rust (lint, 1.99)",
+            "integration_id": 15368
+          },
+          {
+            "context": "rust (workspace)",
+            "integration_id": 15368
+          },
+          {
+            "context": "prover crates (excluded, typecheck)",
+            "integration_id": 15368
+          },
+          {
+            "context": "contracts (foundry)",
+            "integration_id": 15368
+          },
+          {
+            "context": "frontend (vite)",
+            "integration_id": 15368
+          },
+          {
+            "context": "dependency advisories",
+            "integration_id": 15368
+          },
+          {
+            "context": "release regression",
+            "integration_id": 15368
+          },
+          {
+            "context": "foundry release gate",
+            "integration_id": 15368
+          },
+          {
+            "context": "gateway RPC, crash and alert drills",
+            "integration_id": 15368
+          },
+          {
+            "context": "frontend release gate",
+            "integration_id": 15368
+          },
+          {
+            "context": "prover source / deployment binding",
+            "integration_id": 15368
+          }
+        ]
+      }
+    }
+  ]
+}

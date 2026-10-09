@@ -1,0 +1,156 @@
+    Blocking waiting for file lock on build directory
+   Compiling crypto-bigint v0.5.5
+   Compiling signature v2.2.0
+   Compiling sha2 v0.10.9
+   Compiling sec1 v0.7.3
+   Compiling futures-core v0.3.32
+   Compiling once_cell v1.21.4
+   Compiling getrandom v0.2.17
+   Compiling serde_json v1.0.150
+   Compiling spki v0.7.3
+   Compiling rustls-pki-types v1.14.1
+   Compiling wasm-bindgen v0.2.126
+   Compiling futures-util v0.3.32
+   Compiling ring v0.17.14
+   Compiling memchr v2.8.2
+   Compiling x509-cert v0.2.5
+   Compiling heapless v0.7.17
+   Compiling x25519-dalek v2.0.1
+   Compiling postcard v1.1.3
+   Compiling elliptic-curve v0.13.8
+   Compiling ecdsa v0.16.9
+   Compiling dcap-qvl-webpki v0.103.4+dcap.1 (/Users/huseyinarslan/Desktop/arcora-perp/repo/vendor/dcap-qvl-webpki)
+   Compiling k256 v0.13.4
+   Compiling js-sys v0.3.103
+   Compiling perp-core v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/repo/crates/perp-core)
+   Compiling prover v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/repo/crates/prover)
+   Compiling wasm-bindgen-futures v0.4.76
+   Compiling dcap-qvl v0.5.2
+   Compiling dark-perp-attestation v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/repo/crates/attestation)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 21.40s
+     Running unittests src/lib.rs (target/debug/deps/dark_perp_attestation-c79ffe16c4a0d7a5)
+
+running 21 tests
+test nvidia_cc::tests::quote_fails_closed_when_cc_disabled ... ok
+test handshake::tests::ct_eq_matches_semantic_equality ... ok
+test nvidia_cc::tests::cc_on_stub_path_never_returns_ok ... ok
+test handshake::tests::token_binds_secret_and_not_after ... ok
+test tests::azure_quote_without_a_live_source_fails_closed ... ok
+test handshake::tests::dh_agrees_from_both_directions ... ok
+test handshake::tests::secret_is_deterministic_transcript_and_shared_bound ... ok
+test tests::pinned_now_parses_intel_pcs_timestamps ... ok
+test handshake::tests::public_transcript_alone_cannot_reproduce_the_secret ... ok
+test vtpm::tests::ak_parser_preserves_leading_zero_normalization ... ok
+test vtpm::tests::app_measurement_applies_the_tcb_gate ... ok
+test tests::pinned_now_lies_inside_the_collateral_windows ... ok
+test vtpm::tests::parse_pcrs_txt_rejects_malformed_captures ... ok
+test vtpm::tests::ak_parser_rejects_malformed_or_weak_public_keys ... ok
+test vtpm::tests::parses_the_fixture_pcrs_txt ... ok
+test tests::azure_verify_accepts_the_bundle_at_app_level_with_matching_challenge ... ok
+test tests::azure_quote_assembles_the_full_bundle_and_round_trips ... ok
+test tests::azure_verify_rejects_a_malformed_bundle ... ok
+test tests::azure_verify_rejects_a_firmware_only_expected_measurement ... ok
+test tests::azure_verify_rejects_a_tampered_quote_in_the_bundle ... ok
+test tests::azure_verify_rejects_a_mismatched_challenge ... ok
+
+test result: ok. 21 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/handshake_orchestration.rs (target/debug/deps/handshake_orchestration-f942b582edc92e7c)
+
+running 4 tests
+test a_tampered_peer_bundle_fails_closed ... ok
+test a_mismatched_eph_pub_fails_closed ... ok
+test a_wrong_peer_measurement_fails_closed ... ok
+test both_sides_derive_the_identical_secret_and_token ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/verify_offline.rs (target/debug/deps/verify_offline-44cb0c6e436ef0e6)
+
+running 7 tests
+test key_release_gate_accepts_only_current_tcb ... ok
+test rejects_a_tampered_quote ... ok
+test rejects_an_outdated_platform_quote ... ok
+test verifies_pinned_tdx_quote_and_extracts_measurements ... ok
+test verifies_a_real_azure_tdx_quote_offline ... ok
+test acceptable_platform_yields_a_measurement ... ok
+test measurement_is_deterministic_and_binds_mrtd_and_rtmrs ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/vtpm_offline.rs (target/debug/deps/vtpm_offline-37b3333a62e64482)
+
+running 7 tests
+test a_tampered_hcl_report_breaks_the_td_binding ... ok
+test a_changed_rsa_signature_is_rejected ... ok
+test a_different_measured_boot_pcr_breaks_the_chain ... ok
+test verifies_the_real_azure_vtpm_chain ... ok
+test a_corrupt_hcl_header_is_rejected ... ok
+test a_changed_signed_message_is_rejected ... ok
+test tpm_signature_envelope_is_strictly_rsassa_sha256 ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/prover-3c3e46207dac99ca)
+
+running 23 tests
+test tests::attested_prover_is_send_sync ... ok
+test seal_root::tests::dev_insecure_gives_non_5e_root_in_nonprod ... ok
+test seal_root::tests::unset_and_not_dev_refuses ... ok
+test seal_root::tests::dev_insecure_refused_in_prod ... ok
+test seal_root::tests::explicit_hex_is_used ... ok
+test seal_root::tests::bad_hex_errors ... ok
+test tests::commitment_binds_the_rejected_root ... ok
+test tests::attested_seal_roundtrip_binds_measurement_and_secret ... ok
+test tests::prove_batch_garbage_witness_is_witness_decode ... ok
+test tests::distinct_nonces_avoid_two_time_pad ... ok
+test tests::correct_open_recovers_exact_plaintext ... ok
+test tests::commitment_matches_perp_core_derived_roots ... ok
+test tests::sealed_witness_postcard_round_trips ... ok
+test tests::wrong_measurement_cannot_even_seal ... ok
+test tests::tampered_ciphertext_fails_authentication ... ok
+test tests::seal_actually_hides_plaintext ... ok
+test tests::rejected_transition_propagates ... ok
+test tests::prove_and_verify_roundtrip ... ok
+test tests::tampered_public_inputs_break_verification ... ok
+test tests::wrong_measurement_cannot_open_witness ... ok
+test tests::transition_derives_roots_from_manifest ... ok
+test tests::prove_batch_wrong_measurement_cannot_open ... ok
+test tests::prove_batch_opens_derives_and_proves ... ok
+
+test result: ok. 23 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/clock_bound.rs (target/debug/deps/clock_bound-a5be2c7b2bc1f6bd)
+
+running 8 tests
+test clock_empty_and_terminal_batches_are_price_free_not_fake_timestamps ... ok
+test clock_receipt_matches_solidity_v2_vector ... ok
+test clock_receipt_domain_and_every_policy_field_is_bound ... ok
+test clock_wire_rejects_trailing_truncated_and_misversioned_payloads ... ok
+test clock_bounds_reject_backward_order_without_rewriting_inputs ... ok
+test clock_wire_native_derives_bound_commitment_and_keeps_legacy_distinct ... ok
+test clock_wire_refuses_backdating_future_dating_and_zero_policy ... ok
+test clock_wire_derives_every_time_and_count_instead_of_trusting_bounds ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s
+
+     Running tests/vectors.rs (target/debug/deps/vectors-38de8344b12c3874)
+
+running 3 tests
+test receipt_signing_digest_vector ... ok
+test a06_wind_down_phase_one_commitment_kat ... ok
+test public_commitment_vector ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests dark_perp_attestation
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests prover
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s

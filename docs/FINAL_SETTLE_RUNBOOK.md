@@ -1,5 +1,27 @@
 # A06 final-settle runbook — terminating CloseOnly wind-down
 
+## Alpha acceptance boundary (2026-10-09)
+
+The selected model remains custodial. The liveness timeout does not make all
+balances independently withdrawable. Existing vault withdrawal roots and their
+Merkle data support permissionless claims; balances or open positions that have
+not become withdrawal leaves still depend on operator/prover service. Both
+`finalSettle` and `finalExit` require governance. Loss of governance therefore
+blocks new wind-down roots even when existing claims work.
+
+The economic rule below is unchanged: positions close at their own entry price,
+so unrealized mark-to-market PnL is not paid out. Committed funding is settled;
+positive insurance and treasury absorb deficits before the global proportional
+haircut to positive collateral and unspent notes. Users must not infer mark-price
+profits or an unconditional redemption right from a displayed account balance.
+
+An infrastructure acceptance drill must retain claim data outside the gateway,
+claim an existing root while the gateway/prover are unavailable, then explicitly
+record which new exits stop when prover or governance access is removed. Restore
+from encrypted backup on another machine, reconcile state/deposit roots and
+withdrawal nonces, and measure elapsed recovery and lost acknowledgements. Local
+tests cover accounting and contract authorization; they do not complete this drill.
+
 A06 replaces the old counterparty-dependent loop. Once the L1 settlement contract is in
 `closeOnly`, governance lands exactly one proof-bound `SettleAll`, then users exit through
 price-free phase-2 proofs. Ordinary `settleBatch` cannot accept either phase.

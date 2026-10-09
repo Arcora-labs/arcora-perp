@@ -1,0 +1,14 @@
+{
+  "status": "PASS",
+  "elf_path": "/tmp/arcora-normalized-current-target-20261010/riscv64im-succinct-zkvm-elf/release/perp-core-guest",
+  "elf_sha256": "df59a19b310258b4d01d0d5e3cfa31bb7de9ca2f4ea7c2302cf76650c79967c5",
+  "program_vkey": "0x0017893c7ff3395d60b57d25eaa08cf1542fc7bc3cdfd74468133562994b8353",
+  "matches_reviewed_pin": true,
+  "fresh_key_derivation": true,
+  "proof_generated": false,
+  "cpu_setup_only": true,
+  "elapsed_seconds": 33.91,
+  "host_source_sha256": "72cb87c978fa47f5401aa602757a205d0b9cf02d78f958ea85a540053ff7759b",
+  "host_binary_sha256": "1c097df32acf661958a81e1b6c8d5cbe4d9119c05a7ff3988b29b01f586d5064",
+  "log_sha256": "3d353859192cd39f617a3b86844f169523447fb5cfb0b18eb44a726239d5a66b"
+}

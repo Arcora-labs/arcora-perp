@@ -283,15 +283,18 @@ directly:
    can't be double-spent) and records an authorized withdrawal leaf
    `keccak256(to, amount, nonce)`. `nonce` + `signature` are **required** — see
    § Withdrawal authorization for who must sign, what they sign, and the `to` rule.
-2. On the next L1 settle (~30s) the gateway publishes the **cumulative** withdrawals
+2. After the containing batch is proven and finalized (no accepted time bound) the gateway publishes the **cumulative** withdrawals
    root (every still-unclaimed leaf) to the vault.
 3. `GET /v1/accounts/withdrawals` → `{ vault, withdrawals: [{ to, amount, nonce, leaf,
    claimable, proof }] }`. Once `claimable` is `true`, `proof` is the Merkle path.
 4. On Base Sepolia: `vault.claim(to, amount, nonce, proof)` releases the USDC. The
    leaf is single-claim (`AlreadyClaimed` on replay).
 
-This is the forced-exit path too (§6): even in close-only the authority is the
-settled root, so funds can be stalled but not stolen.
+Existing published withdrawal leaves are claimable with their Merkle data even
+when the gateway is offline. Account balances and positions are not withdrawal
+leaves: new withdrawals still need operator/prover service and final wind-down
+requires governance. Custody keys and oracle authority remain trusted alpha
+components; proof validity does not establish independent user authorization.
 
 ## Withdrawal authorization (SEC-021)
 

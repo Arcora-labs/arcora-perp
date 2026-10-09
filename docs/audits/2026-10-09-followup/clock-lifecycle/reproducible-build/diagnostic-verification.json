@@ -1,0 +1,91 @@
+{
+  "status": "PASS_BYTE_EXACT_REVIEWED_ELF_REBUILD",
+  "elf_sha256": "df59a19b310258b4d01d0d5e3cfa31bb7de9ca2f4ea7c2302cf76650c79967c5",
+  "elf_bytes": 525824,
+  "byte_exact_equal_to_reviewed": true,
+  "current_source_guest_pins": {
+    "Cargo.toml": "e3144a0ae3447244776e65b04cfff39267c238e410c2d9abf20b53e6b837bbfa",
+    "crates/perp-core/Cargo.toml": "3bfb6981fa34a967185ce75abd07683e5262a694ebd60eb45a4f5c55aaf9704c",
+    "crates/perp-core/src/clock.rs": "e89e50e11b3ffb3a4a1a89ab6dd4854b61606cc17eb1236492994df0b59d50e7",
+    "crates/perp-core/src/commitment.rs": "43582ef5048d0d725e53976e3c2a1dfcf32984ed2ad1bb2ebd2032463e26ea92",
+    "crates/perp-core/src/engine.rs": "4d6037f1189939a71a41e31882012e6fa50b887087b5ccc2bfce4502b61d0f9e",
+    "crates/perp-core/src/error.rs": "0738da822be5639737e67f04a0f500af57fcc1f085dd64bec7fbe3b016c515c6",
+    "crates/perp-core/src/fixed.rs": "fc77559a31c1cfdd7a641cafbd773871aeb203849e165dbd158aa7a1b65ef7cd",
+    "crates/perp-core/src/funding.rs": "8f782cf3a4403c717eda44c6d2955789c31e4ef2a04bb4fdac8e61916018e781",
+    "crates/perp-core/src/hash.rs": "88430a8c2558b247bcf241035ad48fa1dbf8a3e77a0d176dfdbd608c930f93b9",
+    "crates/perp-core/src/lib.rs": "8f070fbec0f4b3d3fab5e594bcf808845803a59ece403dc42cb0f0df6e6253b5",
+    "crates/perp-core/src/market.rs": "8053e89a9b1021d6e461d46d733dfb1935aff5fc2a45be8121f96560fa4ddc2d",
+    "crates/perp-core/src/merkle.rs": "173f4667178ba4aa4048e43c2aeb9fa337918d6225b98c6597c004b59bc3a8f6",
+    "crates/perp-core/src/note.rs": "5cece4d513537c10464bd64b4612f829cd32cb9c1a80d3c8e40c573aace62423",
+    "crates/perp-core/src/nullifier.rs": "a252799c62dc42ec37c91ba6fd7674117b33c98c7f83e86b168f70898966ea78",
+    "crates/perp-core/src/oracle.rs": "91ae09655e35432aafa1135b23588d6f1f324b41a278ac640ebc30f106d17da2",
+    "crates/perp-core/src/order.rs": "99bb9b2be4948bcf8365c3022ef444be5941201ec6535de73d45a777e5a206d7",
+    "crates/perp-core/src/position.rs": "99d120139086092d2dae4ed11d3a677906c1cf3efd7aff9e58f27f3437f2ae66",
+    "crates/perp-core/src/state.rs": "e1026c1e2b56cfcbee4eff812e88ff3dcde052e46818deab980a071fcdbec388",
+    "crates/sp1-guest/Cargo.lock": "113518cb212208aa46a629608af9d946f9a4006ac211035a15e9cb8c022fb8c3",
+    "crates/sp1-guest/Cargo.toml": "d0ed7050076bb3548b9e3410f63066068752382f4dab31e344096c9c3e42dc85",
+    "crates/sp1-guest/src/main.rs": "c0d33ff8645ebdcc8994d4d65729b8a60a224bcda18415423da15ed875c16f5c"
+  },
+  "reference_source_pins_equal": true,
+  "fresh_target": true,
+  "dependency_registry_cache_reused": true,
+  "independent_machine": false,
+  "compiler_metadata_normalization": {
+    "perp_core": "85153213d10819ef",
+    "perp_core_guest": "2c8a895641ad00f3"
+  },
+  "normalization_origin": "Exact original Cargo rustc invocations captured in a new copy-on-write target; source21pins matched. Original source/target not modified.",
+  "path_remap": {
+    "from": "/Users/huseyinarslan/Desktop/arcora-perp/repo",
+    "to": "/Users/huseyinarslan/kimi-bridge/worktrees/Arcora-labs__arcora-perp/clock-anchor-20261009"
+  },
+  "normalization_scope": "Only those two named RISC-V crate compiler invocations; Cargo-generated output filenames, dependencies, source and all other compiler flags retained.",
+  "compiler_flags": [
+    "-C",
+    "passes=lower-atomic",
+    "-C",
+    "link-arg=--image-base=2013265920",
+    "-C",
+    "panic=abort",
+    "--cfg",
+    "getrandom_backend=\"custom\"",
+    "-C",
+    "llvm-args=-misched-prera-direction=bottomup",
+    "-C",
+    "llvm-args=-misched-postra-direction=bottomup"
+  ],
+  "rustc": "rustc 1.93.0-dev\nbinary: rustc\ncommit-hash: unknown\ncommit-date: unknown\nhost: aarch64-apple-darwin\nrelease: 1.93.0-dev\nLLVM version: 21.1.8",
+  "cargo": "cargo 1.99.0 (5f94df478 2026-08-27)",
+  "build_seconds": 38.03,
+  "build_command": [
+    "cargo",
+    "+1.99.0",
+    "build",
+    "--manifest-path",
+    "crates/sp1-guest/Cargo.toml",
+    "--locked",
+    "--offline",
+    "--release",
+    "--target",
+    "riscv64im-succinct-zkvm-elf"
+  ],
+  "build_env": {
+    "CARGO_BUILD_JOBS": "2",
+    "CARGO_TARGET_DIR": "/tmp/arcora-normalized-current-target-20261010",
+    "RUSTC": "/Users/huseyinarslan/.sp1/toolchains/z4qbuzauUe/bin/rustc",
+    "RUSTC_BOOTSTRAP": "1",
+    "RUSTC_WRAPPER": "/tmp/arcora-normalize-reviewed-identities-20261010.py",
+    "CARGO_ENCODED_RUSTFLAGS": "unit-separator-joined compiler_flags"
+  },
+  "artifacts": {
+    "/tmp/arcora-normalized-current-target-20261010/riscv64im-succinct-zkvm-elf/release/perp-core-guest": "df59a19b310258b4d01d0d5e3cfa31bb7de9ca2f4ea7c2302cf76650c79967c5",
+    "/tmp/arcora-normalize-reviewed-identities-20261010.py": "e14879e61769c9709ee4d3cf4ba6ba886266a2e0708bf9ecdee302d56fca50ad",
+    "/tmp/arcora-original-identities-20261010.jsonl": "d9a372e6d04535714bb58803efa6c307328e55d857208c1d30007208d50a7fcb",
+    "/tmp/arcora-normalized-identities-20261010.jsonl": "7f61cdb192d33ca29a9f7087af46aeb9c4f851135f3f528c2ee9803b8490e1e8",
+    "/tmp/arcora-normalized-current-build-20261010.log": "60b04c7037a5398c7e9fc78ecba08ee127df8641e4a8373ec90f80a12df6c36b"
+  },
+  "proof_generated": false,
+  "guest_executed_in_this_diagnostic": false,
+  "program_key_rederived_in_this_diagnostic": false,
+  "scope": "Local clean-target source rebuild to exact existing reviewed ELF. Same local compiler and dependency cache; not independent environment, fresh proof, or target deployment evidence."
+}

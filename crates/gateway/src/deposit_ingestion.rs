@@ -438,7 +438,7 @@ pub async fn ingest_once(app: &Shared) -> Result<usize, String> {
     app.gw.lock().await.deposits.last_error = None;
     if applied > 0 {
         // A refresh hint carries no secret account identifiers or permit data.
-        let snapshot = app.gw.lock().await.snapshot();
+        let snapshot = app.snapshot(&*app.gw.lock().await);
         let _ = app
             .tx
             .send(serde_json::to_string(&WsMsg::State { state: snapshot }).unwrap());

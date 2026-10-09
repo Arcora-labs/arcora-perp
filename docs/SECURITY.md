@@ -129,29 +129,37 @@ no single failure is catastrophic.
 |---|---|---|
 | **TEE confidentiality** (side-channel, §10) | order/position privacy leaks; MM gets a latency edge | committee-of-enclaves t-of-n (§11, `committee`) — needs t-1 enclaves to leak; funds still safe (ZK) |
 | **TEE integrity** (bad matching, preconf lies) | wrong fills, unreliable MATCHED preconfs, market-integrity abuse | quorum preconf (`committee`), Proof-v2 matching determinism (future); MATCHED is non-binding (§3) |
-| **Sequencer liveness** (halts) | no new batches | anyone triggers close-only after the timeout; users force-exit against the last settled root (§6, `DarkPerpSettlement.triggerCloseOnly`) |
-| **Sequencer censors an order** | a user's order is withheld | signed receipt + inclusion timeout → on-chain challenge → bond slashed, close-only (§2, `challengeInclusion`/`slashUnanswered`) |
-| **Sequencer tries to steal funds** | — | it can't: the vault releases only against a SETTLED withdrawals root; the settlement contract has no authority over the vault's collateral — it custodies only its own sequencer bond + challenge stakes (§0, ADR-0010) |
-| **Prover sees the witness** (bare prover farm, §10b) | positions/fills/margins leak to the prover | sealed witness opens only at the attested measurement, zeroized after the job (`prover::AttestedProver`); public proving networks can't open it |
-| **Oracle manipulation** (§8) | bad liquidations / funding | transcript sanity gates (staleness, confidence, backup-deviation) re-proven in ZK; anomaly → close-only breaker (`oracle.rs`, `Market` bounds) |
+| **Sequencer liveness** (halts) | no new batches | anyone can trigger close-only after the timeout; existing published withdrawal claims remain available with Merkle data; new exits still require operator/prover and final wind-down governance |
+| **Sequencer censors an order** | a user's order is withheld | unanswered challenges can slash the bond, but rejected-root membership does not prove a truthful rejection reason; fairness remains an explicit limitation |
+| **Gateway custody-key compromise** | unauthorized guest-valid operations can affect funds | vault roots constrain direct payout; guest validity alone does not authenticate user intent independently of server-held keys |
+| **Prover sees the witness** (bare prover farm, §10b) | positions/fills/margins leak to the prover | the intended boundary is attestation-gated key release; the development prover is inside the current privacy trust boundary. Hardware deployment and full witness-copy cleanup remain unverified |
+| **Oracle manipulation** (§8) | bad liquidations / funding | signature, freshness, confidence and backup-deviation checks run in-guest, but one publisher signs both price and backup and can lie consistently; external price truth is still trusted |
 | **Invalid state transition** (any of the above) | — | ZK validity proof: the L1 verifier rejects it, the root never advances (§3, `IZkVerifier`) |
 | **User loses device** | — | seed → view-key → scan the encrypted note archive → recover notes/positions (§7, `note-archive`) |
 
-## What an attacker can NEVER do (given the ZK root holds)
+## Current alpha proof and custody boundary (2026-10-09)
 
-- **Steal user funds from the vault.** Withdrawals require a Merkle proof against a
-  withdrawals root published only by a *settled* batch; the settlement contract has
-  no authority over the vault's collateral (it custodies only its own sequencer bond
-  and challenge stakes, moved via pull-payment). A broken sequencer can stall or
-  censor, never steal user funds.
-- **Advance the state root without a valid proof.** `settleBatch` checks the proof
-  against the public-input commitment binding `(prevRoot, manifestHash, newRoot)`.
-- **Mint value.** Collateral conservation is an exact integer identity re-proven in
-  ZK (Proof-v1): `Σ notes + Σ collateral + insurance + vault_pool + treasury ==
-  external_in − external_out`. *(Residual: this binds `external_in` internally but
-  not yet to real L1 deposit events — a compromised enclave can inflate `external_in`
-  via a fabricated `op_deposit` and mint against it; deposit-event-root binding is a
-  tracked P3 item, SEC-019.)*
+The gateway holds user spending keys and price-publisher authority. A gateway
+compromise can authorize guest-valid operations or sign false prices; a validity
+proof alone does not independently establish user intent or external market truth.
+
+- The vault requires a Merkle claim against a published withdrawal root and binds
+  its destination, amount and nonce. This prevents arbitrary direct vault claims,
+  but does not eliminate upstream custody-key risk. New exits require the
+  operator/prover and governance during final wind-down.
+- Settlement checks the guest public-input commitment and previous-state-root
+  continuity. The deployed verifier/program key must match the reviewed source.
+- Conservation is enforced by the engine. SEC-019 additionally binds deposits to
+  the vault's ordered count/tip prefix; fabricated native deposits cannot be
+  treated as confirmed L1 deposits. The full normal-wallet flow with a real clock
+  proof remains a distinct release acceptance test.
+- Rejection membership and order hashes are committed, but truthful rejection
+  reasons and matching fairness are not proven. See
+  [the current rejection review](audits/2026-10-09-rejection-boundary.md).
+
+The older phase notes below describe historical design work, not fresh deployment
+or release acceptance. Current task state is in
+[the follow-up report](audits/2026-10-09-remaining-work/README.md).
 
 ## Residual / honestly-acknowledged leakage
 
@@ -161,8 +169,7 @@ no single failure is catastrophic.
 - **Sub-unit bridge remainders leak** (§13): amounts below the smallest
   denomination can't be bucketed and are reported explicitly (`bridge`).
 - **Confidentiality depends on hardware** until the committee/MPC hardening lands;
-  a single compromised enclave (pre-committee) leaks confidentiality (but not
-  funds).
+  a compromised gateway also retains the custody and oracle risks described above.
 - **Insurance fund is a one-way penalty sink** (Phase 0): liquidation penalties flow
   *into* it, but it is not yet drawn on to socialize bad debt. A gap-down past the
   maintenance buffer parks the shortfall as negative collateral, absorbed by the

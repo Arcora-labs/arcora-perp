@@ -1,0 +1,68 @@
+   Compiling version_check v0.9.5
+   Compiling zeroize v1.9.0
+   Compiling typenum v1.20.1
+   Compiling subtle v2.6.1
+   Compiling proc-macro2 v1.0.106
+   Compiling quote v1.0.46
+   Compiling unicode-ident v1.0.24
+   Compiling const-oid v0.9.6
+   Compiling rand_core v0.6.4
+   Compiling serde_core v1.0.228
+   Compiling libc v0.2.186
+   Compiling der v0.7.10
+   Compiling ff v0.13.1
+   Compiling serde v1.0.228
+   Compiling semver v1.0.28
+   Compiling generic-array v0.14.7
+   Compiling base16ct v0.2.0
+   Compiling group v0.13.0
+   Compiling crunchy v0.2.4
+   Compiling thiserror v2.0.18
+   Compiling rustc_version v0.4.1
+   Compiling tiny-keccak v2.0.2
+   Compiling cfg-if v1.0.4
+   Compiling byteorder v1.5.0
+   Compiling stable_deref_trait v1.2.1
+   Compiling heapless v0.7.17
+   Compiling hash32 v0.2.1
+   Compiling hex v0.4.3
+   Compiling cpufeatures v0.2.17
+   Compiling syn v2.0.118
+   Compiling crypto-common v0.1.7
+   Compiling block-buffer v0.10.4
+   Compiling sec1 v0.7.3
+   Compiling crypto-bigint v0.5.5
+   Compiling digest v0.10.7
+   Compiling hmac v0.12.1
+   Compiling signature v2.2.0
+   Compiling sha2 v0.10.9
+   Compiling rfc6979 v0.4.0
+   Compiling elliptic-curve v0.13.8
+   Compiling serde_derive v1.0.228
+   Compiling thiserror-impl v2.0.18
+   Compiling ecdsa v0.16.9
+   Compiling k256 v0.13.4
+   Compiling cobs v0.3.0
+   Compiling perp-core v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/repo/crates/perp-core)
+   Compiling postcard v1.1.3
+   Compiling prover v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/repo/crates/prover)
+    Finished `release` profile [optimized] target(s) in 9.84s
+     Running unittests src/lib.rs (target/release/deps/prover-43420be30b59caea)
+
+running 2 tests
+test tests::opened_witness_is_wiped_after_success_and_decode_error ... ok
+test tests::opened_witness_is_wiped_when_backend_panics ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 23 filtered out; finished in 0.00s
+
+     Running tests/clock_bound.rs (target/release/deps/clock_bound-b73f3e728e368699)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 8 filtered out; finished in 0.00s
+
+     Running tests/vectors.rs (target/release/deps/vectors-b19ec58721a0926b)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s

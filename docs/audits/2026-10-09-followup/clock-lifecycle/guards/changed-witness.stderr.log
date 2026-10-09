@@ -1,0 +1,6 @@
+
+thread 'main' (10650440) panicked at src/bin/replay-funds.rs:55:9:
+assertion `left == right` failed
+  left: String("0xb3f4b4c3d09c2c356eaa16090ac1c34c5f4f629633e7cba913973403907febb1")
+ right: "0x28cab78d6b448c7bcc6ff25fc2d28833884ea22172cd48b8b0cd904deebeb73d"
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace

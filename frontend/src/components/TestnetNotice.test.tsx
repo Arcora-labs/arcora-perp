@@ -43,9 +43,9 @@ describe("TestnetNotice", () => {
 
 
 it("resurfaces the corrected notice after the old version was dismissed", () => {
-  localStorage.setItem("dp_testnet_notice_dismissed_v4", "1");
+  localStorage.setItem("dp_testnet_notice_dismissed_v5", "1");
   render(<TestnetNotice />);
   expect(screen.getByRole("note")).toBeTruthy();
   fireEvent.click(screen.getByText(/got it/i));
-  expect(localStorage.getItem("dp_testnet_notice_dismissed_v5")).toBe("1");
+  expect(localStorage.getItem("dp_testnet_notice_dismissed_v6")).toBe("1");
 });

@@ -79,7 +79,7 @@ describe("AccountPanel deposit/withdraw", () => {
     fireEvent.change(screen.getByLabelText(/amount/i), { target: { value: "100" } });
     fireEvent.click(screen.getByRole("button", { name: /^withdraw$/i }));
     expect(await screen.findByText(/Settling on-chain/i)).toBeTruthy();
-    expect(screen.getByText(/Claimable in ~10–20 min/i)).toBeTruthy();
+    expect(screen.getByText(/Claimable after its batch settles/i)).toBeTruthy();
     // SEC-021 removed the free-text destination — nothing address-like persists.
     expect(localStorage.getItem("darkperp.withdrawTo")).toBeNull();
   });
@@ -114,5 +114,22 @@ describe("buildClaimCommand", () => {
 
   it("never embeds a key — only the <YOUR_KEY> placeholder", () => {
     expect(buildClaimCommand(entry, vault)).toContain("--private-key <YOUR_KEY>");
+  });
+
+  it("rejects shell syntax and invalid claim fields before creating a command", () => {
+    const cases: Array<[WithdrawalEntry, string]> = [
+      [entry, `${vault}; echo injected`],
+      [{ ...entry, to: "$(echo injected)" }, vault],
+      [{ ...entry, root: "`echo injected`" }, vault],
+      [{ ...entry, proof: ['$(echo injected)'] }, vault],
+      [{ ...entry, leaf: "invalid" }, vault],
+      [{ ...entry, amount: -1n }, vault],
+      [{ ...entry, amount: 1n << 256n }, vault],
+      [{ ...entry, nonce: -1 }, vault],
+      [{ ...entry, nonce: Number.MAX_SAFE_INTEGER + 1 }, vault],
+    ];
+    for (const [withdrawal, target] of cases) {
+      expect(() => buildClaimCommand(withdrawal, target)).toThrow();
+    }
   });
 });

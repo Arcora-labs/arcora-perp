@@ -1,0 +1,10 @@
+[WARN] The "pnpm" field in package.json is no longer read by pnpm. The following keys were ignored: "pnpm.onlyBuiltDependencies". See https://pnpm.io/settings for the new home of each setting.
+$ vitest run
+
+ RUN  v4.1.11 /Users/huseyinarslan/Desktop/arcora-perp/repo/frontend
+
+
+ Test Files  31 passed | 1 skipped (32)
+      Tests  509 passed | 1 skipped (510)
+   Start at  23:54:01
+   Duration  2.49s (transform 1.55s, setup 0ms, import 5.17s, tests 4.74s, environment 6.90s)

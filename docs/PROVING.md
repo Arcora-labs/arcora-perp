@@ -19,15 +19,20 @@ and the SP1 host all call it, so they compute byte-identical roots. They are **n
 trusted-sequencer calldata: `withdrawals_root` is derived from the batch's burned
 notes (a prover cannot invent a withdrawal without a real burn — audit F2), and
 `ordered_root` / `rejected_root` by merklizing the manifest's committed order-hash
-lists. So the sequencer cannot publish an arbitrary withdrawals root to drain the
-vault, nor a fake ordered root to dodge inclusion challenges (security audit
-findings F1/F2).
+lists. This prevents roots that disagree with the witnessed manifest, and binds
+withdrawals to real note burns (security audit findings F1/F2). It does not bind
+the manifest's claimed order dispositions to matching execution.
 
 CAVEAT (Proof-v2): the ordered-vs-rejected SPLIT itself — whether the matcher's
 inclusion/rejection decisions obey the matching rule — is **not** proven here; that
-is Proof-v2, constrained in the interim by receipts + inclusion slashing. And this
-derivation only *enforces* anything under a real verifier + vkey binding (the P2
-gate); under `MockZkVerifier` it is a stand-in, not on-chain enforcement today.
+is Proof-v2. Receipts + inclusion slashing do **not** close this gap: a sequencer
+can declare a valid order rejected, derive its committed root, and use membership
+in that root to dismiss a challenge. A late-publication stake refund does not
+prove rejection legitimacy. Authenticated order bodies, receipt priority,
+committed book/lifecycle state, and deterministic matcher replay are still needed.
+See the [R04 boundary evidence](audits/2026-10-09-rejection-boundary.md).
+Root derivation itself only *enforces* anything under a real verifier + vkey
+binding (the P2 gate); under `MockZkVerifier` it is a stand-in.
 
 `run_transition()` runs the **perp-core engine** — the same `apply_batch` used on
 the hot path — over the batch's ops and returns these derived public inputs. The L1
@@ -155,7 +160,8 @@ bare prover farm would see every position, fill, and margin in plaintext. So:
 
 - The witness is **sealed to the attested prover measurement** (`SealedWitness`).
 - `AttestedProver::prove_sealed` opens it **only if its measurement matches**, and
-  **zeroizes** the plaintext the moment the job finishes.
+  wipes its opened byte buffer on return or panic unwind. Decoded state and
+  SDK-owned copies are separate; process abort/SIGKILL cannot run the wipe guard.
 - A prover with the wrong measurement — e.g. a **public/outsourced GPU proving
   network (SP1/Risc0 marketplaces)** — gets `MeasurementMismatch` and cannot open
   the witness. Hence: *private batches require a self-hosted attested prover.*
@@ -170,6 +176,21 @@ sealed witnesses would leak the XOR of two private ledgers (a two-time pad). The
 nonce uniqueness requirement is exactly what a real AEAD/key-release scheme also
 demands. Replacing the stand-in with real attested sealing is a backend change;
 the typed boundary (`SealedWitness` + `AttestedProver` + zeroization) stays.
+
+### Diagnostic output guard
+
+Private proving refuses `SP1_DUMP` unless it is absent or explicitly `0`/`false`
+(case-insensitive `false`). `SP1_DUMP_SHARD_DIR` and `TRACE_FILE` must be absent,
+including in development: an empty string, `0`, or `false` is still a configured
+path. Non-UTF8 or unknown values fail closed, without printing their contents.
+
+This matters because pinned SP1 6.1.0 can write raw stdin and execution records to
+disk through diagnostic switches; its stdin dump then exits without unwinding.
+The service checks before SDK setup and body decoding, the sealed entrypoints
+check before key release, and the direct SP1 backend checks before copying stdin.
+This prevents the known diagnostic paths. It does not establish hardware-backed
+confidentiality or erase decoded state, SDK copies, OS core dumps/swap, or backend
+scratch files. See the [R08 regression evidence](audits/2026-10-09-prover-diagnostic-privacy.md).
 
 ### Future hardening (post-v1, §10b)
 

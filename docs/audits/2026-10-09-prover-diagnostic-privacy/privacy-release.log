@@ -1,0 +1,11 @@
+   Compiling prover v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/repo/crates/prover)
+    Finished `release` profile [optimized] target(s) in 5.51s
+     Running tests/privacy_environment.rs (target/release/deps/privacy_environment-c1e7211f78b5582d)
+
+running 4 tests
+test privacy_environment_worker ... ignored, isolated environment worker; invoked by the parent tests
+test non_utf8_diagnostic_configuration_fails_closed ... ok
+test unset_or_explicitly_disabled_dump_preserves_normal_proving ... ok
+test diagnostic_outputs_are_refused_before_key_release_or_backend_access ... ok
+
+test result: ok. 3 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.07s

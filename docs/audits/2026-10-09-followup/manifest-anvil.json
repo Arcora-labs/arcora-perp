@@ -1,0 +1,407 @@
+{
+  "scope": "Owned local Anvil; real compiled constructors and RPC, mock token, no proof submission or target deployment.",
+  "pass": {
+    "status": "VERIFIED_AT_FINALIZED_BLOCK",
+    "observed_at_utc": "2026-10-09T20:56:44.075694+00:00",
+    "manifest_sha256": "0ada5b909f6c479971be7eb3f6bc23897d5c758986a9e81a9af2eb7726056a0c",
+    "contracts": {
+      "settlement": {
+        "address": "0x5fc8d32690cc91d4c39d9d3abcbd16989f875707",
+        "runtime_sha256": "11ab7d95373cc32325c269467e9e47f23e6bca562dd6fdabc9c606afad8c213a",
+        "runtime_bytes": 11146,
+        "immutable_words_by_compiler_id": {
+          "1782": "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+          "1785": "0x00000000000000000000000070997970c51812dc3a010c7d01b50e0d17dc79c8",
+          "1788": "0x000000000000000000000000dc64a140aa3e981100a9beca4e685f962f0cf6c9",
+          "1806": "0x0000000000000000000000000000000000000000000000000000000000000064",
+          "1808": "0x0000000000000000000000000000000000000000000000000000000000000032",
+          "1811": "0x00000000000000000000000000000000000000000000000000000000000003e8",
+          "1814": "0x0000000000000000000000000000000000000000000000000000000000000258",
+          "1823": "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+          "1826": "0x000000000000000000000000000000000000000000000000000000000000000a"
+        },
+        "runtime_matches_compiler_template": true,
+        "getters": {
+          "verifier()": "0xdc64a140aa3e981100a9beca4e685f962f0cf6c9",
+          "vault()": "0xa513e6e4b8f2a923d98304ec87f64353c4d5c853",
+          "sequencer()": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+          "enclaveSigner()": "0x70997970c51812dc3a010c7d01b50e0d17dc79c8",
+          "governance()": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+          "livenessTimeoutBlocks()": 100,
+          "challengeWindowBlocks()": 50,
+          "challengeBond()": 1000,
+          "inclusionDeadlineSecs()": 600,
+          "finalSettleGraceBlocks()": 10
+        }
+      },
+      "vault": {
+        "address": "0xa513e6e4b8f2a923d98304ec87f64353c4d5c853",
+        "runtime_sha256": "850606c22ab88480eb466e2d5c42d3e21ba9472bdccdd6272abe841cc88f8d3f",
+        "runtime_bytes": 3257,
+        "immutable_words_by_compiler_id": {
+          "1214": "0x0000000000000000000000005fc8d32690cc91d4c39d9d3abcbd16989f875707",
+          "1218": "0x0000000000000000000000000165878a594ca255338adfa4d48449f69242eb8f"
+        },
+        "runtime_matches_compiler_template": true,
+        "getters": {
+          "settlement()": "0x5fc8d32690cc91d4c39d9d3abcbd16989f875707",
+          "token()": "0x0165878a594ca255338adfa4d48449f69242eb8f",
+          "gatewaySigner()": "0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc"
+        }
+      },
+      "sp1_adapter": {
+        "address": "0xcf7ed3acca5a467e9e704c703e8d87f634fb0fc9",
+        "runtime_sha256": "a2f77a51e560861d87387a259a74ae57b4eb542b96b0305d08060fcc71249445",
+        "runtime_bytes": 734,
+        "immutable_words_by_compiler_id": {
+          "3468": "0x0017893c7ff3395d60b57d25eaa08cf1542fc7bc3cdfd74468133562994b8353",
+          "3471": "0x000000000000000000000000e7f1725e7734ce288f8367e1bb143e90bb3f0512"
+        },
+        "runtime_matches_compiler_template": true,
+        "getters": {
+          "gateway()": "0xe7f1725e7734ce288f8367e1bb143e90bb3f0512",
+          "programVKey()": "0x0017893c7ff3395d60b57d25eaa08cf1542fc7bc3cdfd74468133562994b8353"
+        }
+      },
+      "clock_verifier": {
+        "address": "0xdc64a140aa3e981100a9beca4e685f962f0cf6c9",
+        "runtime_sha256": "9b20ec2406fe26eb17db181c8d7783527ad1934d143fa28f6b8894fed55dc0d7",
+        "runtime_bytes": 5498,
+        "immutable_words_by_compiler_id": {
+          "531": "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+          "534": "0x000000000000000000000000cf7ed3acca5a467e9e704c703e8d87f634fb0fc9",
+          "536": "0x0000000000000000000000000000000000000000000000000000000000007530",
+          "538": "0x0000000000000000000000000000000000000000000000000000000000002710"
+        },
+        "runtime_matches_compiler_template": true,
+        "getters": {
+          "settlement()": "0x5fc8d32690cc91d4c39d9d3abcbd16989f875707",
+          "innerVerifier()": "0xcf7ed3acca5a467e9e704c703e8d87f634fb0fc9",
+          "maxWindowMs()": 30000,
+          "clockSkewMs()": 10000,
+          "proofVersion()": 2,
+          "configurator()": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266"
+        }
+      },
+      "sp1_gateway": {
+        "address": "0xe7f1725e7734ce288f8367e1bb143e90bb3f0512",
+        "runtime_sha256": "6c03eace76fb336796cdf90a52aef0b07983233869b85f4c21567cb1a3b60a84",
+        "runtime_bytes": 1931,
+        "immutable_words_by_compiler_id": {},
+        "runtime_matches_compiler_template": true,
+        "getters": {
+          "owner()": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266"
+        }
+      },
+      "sp1_verifier": {
+        "address": "0x5fbdb2315678afecb367f032d93f642f64180aa3",
+        "runtime_sha256": "08c942deb02fbb08ace65bb355f25042975fd5f51087a0161e78dd1700f725b9",
+        "runtime_bytes": 6741,
+        "immutable_words_by_compiler_id": {},
+        "runtime_matches_compiler_template": true,
+        "getters": {
+          "VERIFIER_HASH()": "0x4388a21c687fdd5f218d7e3d13190cac4c5355818d3605fd5fb811df468ee696"
+        }
+      }
+    },
+    "bindings": [
+      {
+        "contract": "settlement",
+        "getter": "verifier()",
+        "expected": "0xdc64a140aa3e981100a9beca4e685f962f0cf6c9",
+        "matches": true
+      },
+      {
+        "contract": "settlement",
+        "getter": "vault()",
+        "expected": "0xa513e6e4b8f2a923d98304ec87f64353c4d5c853",
+        "matches": true
+      },
+      {
+        "contract": "vault",
+        "getter": "settlement()",
+        "expected": "0x5fc8d32690cc91d4c39d9d3abcbd16989f875707",
+        "matches": true
+      },
+      {
+        "contract": "vault",
+        "getter": "token()",
+        "expected": "0x0165878a594ca255338adfa4d48449f69242eb8f",
+        "matches": true
+      },
+      {
+        "contract": "clock_verifier",
+        "getter": "settlement()",
+        "expected": "0x5fc8d32690cc91d4c39d9d3abcbd16989f875707",
+        "matches": true
+      },
+      {
+        "contract": "clock_verifier",
+        "getter": "innerVerifier()",
+        "expected": "0xcf7ed3acca5a467e9e704c703e8d87f634fb0fc9",
+        "matches": true
+      },
+      {
+        "contract": "sp1_adapter",
+        "getter": "gateway()",
+        "expected": "0xe7f1725e7734ce288f8367e1bb143e90bb3f0512",
+        "matches": true
+      },
+      {
+        "contract": "sp1_adapter",
+        "getter": "programVKey()",
+        "expected": "0x0017893c7ff3395d60b57d25eaa08cf1542fc7bc3cdfd74468133562994b8353",
+        "matches": true
+      },
+      {
+        "contract": "clock_verifier",
+        "getter": "maxWindowMs()",
+        "expected": 30000,
+        "matches": true
+      },
+      {
+        "contract": "clock_verifier",
+        "getter": "clockSkewMs()",
+        "expected": 10000,
+        "matches": true
+      },
+      {
+        "contract": "clock_verifier",
+        "getter": "proofVersion()",
+        "expected": 2,
+        "matches": true
+      },
+      {
+        "contract": "sp1_verifier",
+        "getter": "VERIFIER_HASH()",
+        "expected": "0x4388a21c687fdd5f218d7e3d13190cac4c5355818d3605fd5fb811df468ee696",
+        "matches": true
+      }
+    ],
+    "scope": {
+      "local_identity_checked": true,
+      "target_chain_observed": true,
+      "runtime_bytecode_verified": true,
+      "running_services_attested": false,
+      "fresh_guest_build_performed": false,
+      "state_migration_rehearsed": false,
+      "release_gate": "HOLD",
+      "operator_and_settlement_policy_approved": false,
+      "token_runtime_verified": false
+    },
+    "limitations": [
+      "RPC responses are trusted; no light-client or independent endpoint consensus.",
+      "Constructor operator identities and settlement timing/bond policy are observed, not approved.",
+      "Token code presence is checked; its implementation, proxy and issuance policy are not audited.",
+      "No proof is generated or submitted; no service identity, state migration or release readiness is established."
+    ],
+    "rpc_origin": "http://127.0.0.1:49914",
+    "chain_id": 31337,
+    "block_number": 74,
+    "block_hash": "0x15fdc82c23e1f36be879451d869bdebe11383c9761e42cea972c8169640b8812",
+    "token": {
+      "address": "0x0165878a594ca255338adfa4d48449f69242eb8f",
+      "runtime_sha256": "c7bd69ee5d65129bff0f0755b6f82b36ce97db992f5e55cd1ab85cae03496afa",
+      "runtime_bytes": 1442
+    },
+    "sp1_route": {
+      "selector": "0x4388a21c",
+      "verifier": "0x5fbdb2315678afecb367f032d93f642f64180aa3",
+      "frozen": false
+    }
+  },
+  "frozen_route_rejected": {
+    "status": "BLOCKED",
+    "observed_at_utc": "2026-10-09T20:56:45.219255+00:00",
+    "manifest_sha256": "0ada5b909f6c479971be7eb3f6bc23897d5c758986a9e81a9af2eb7726056a0c",
+    "contracts": {
+      "settlement": {
+        "address": "0x5fc8d32690cc91d4c39d9d3abcbd16989f875707",
+        "runtime_sha256": "11ab7d95373cc32325c269467e9e47f23e6bca562dd6fdabc9c606afad8c213a",
+        "runtime_bytes": 11146,
+        "immutable_words_by_compiler_id": {
+          "1782": "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+          "1785": "0x00000000000000000000000070997970c51812dc3a010c7d01b50e0d17dc79c8",
+          "1788": "0x000000000000000000000000dc64a140aa3e981100a9beca4e685f962f0cf6c9",
+          "1806": "0x0000000000000000000000000000000000000000000000000000000000000064",
+          "1808": "0x0000000000000000000000000000000000000000000000000000000000000032",
+          "1811": "0x00000000000000000000000000000000000000000000000000000000000003e8",
+          "1814": "0x0000000000000000000000000000000000000000000000000000000000000258",
+          "1823": "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+          "1826": "0x000000000000000000000000000000000000000000000000000000000000000a"
+        },
+        "runtime_matches_compiler_template": true,
+        "getters": {
+          "verifier()": "0xdc64a140aa3e981100a9beca4e685f962f0cf6c9",
+          "vault()": "0xa513e6e4b8f2a923d98304ec87f64353c4d5c853"
+        }
+      },
+      "vault": {
+        "address": "0xa513e6e4b8f2a923d98304ec87f64353c4d5c853",
+        "runtime_sha256": "850606c22ab88480eb466e2d5c42d3e21ba9472bdccdd6272abe841cc88f8d3f",
+        "runtime_bytes": 3257,
+        "immutable_words_by_compiler_id": {
+          "1214": "0x0000000000000000000000005fc8d32690cc91d4c39d9d3abcbd16989f875707",
+          "1218": "0x0000000000000000000000000165878a594ca255338adfa4d48449f69242eb8f"
+        },
+        "runtime_matches_compiler_template": true,
+        "getters": {
+          "settlement()": "0x5fc8d32690cc91d4c39d9d3abcbd16989f875707",
+          "token()": "0x0165878a594ca255338adfa4d48449f69242eb8f"
+        }
+      },
+      "sp1_adapter": {
+        "address": "0xcf7ed3acca5a467e9e704c703e8d87f634fb0fc9",
+        "runtime_sha256": "a2f77a51e560861d87387a259a74ae57b4eb542b96b0305d08060fcc71249445",
+        "runtime_bytes": 734,
+        "immutable_words_by_compiler_id": {
+          "3468": "0x0017893c7ff3395d60b57d25eaa08cf1542fc7bc3cdfd74468133562994b8353",
+          "3471": "0x000000000000000000000000e7f1725e7734ce288f8367e1bb143e90bb3f0512"
+        },
+        "runtime_matches_compiler_template": true,
+        "getters": {
+          "gateway()": "0xe7f1725e7734ce288f8367e1bb143e90bb3f0512",
+          "programVKey()": "0x0017893c7ff3395d60b57d25eaa08cf1542fc7bc3cdfd74468133562994b8353"
+        }
+      },
+      "clock_verifier": {
+        "address": "0xdc64a140aa3e981100a9beca4e685f962f0cf6c9",
+        "runtime_sha256": "9b20ec2406fe26eb17db181c8d7783527ad1934d143fa28f6b8894fed55dc0d7",
+        "runtime_bytes": 5498,
+        "immutable_words_by_compiler_id": {
+          "531": "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+          "534": "0x000000000000000000000000cf7ed3acca5a467e9e704c703e8d87f634fb0fc9",
+          "536": "0x0000000000000000000000000000000000000000000000000000000000007530",
+          "538": "0x0000000000000000000000000000000000000000000000000000000000002710"
+        },
+        "runtime_matches_compiler_template": true,
+        "getters": {
+          "settlement()": "0x5fc8d32690cc91d4c39d9d3abcbd16989f875707",
+          "innerVerifier()": "0xcf7ed3acca5a467e9e704c703e8d87f634fb0fc9",
+          "maxWindowMs()": 30000,
+          "clockSkewMs()": 10000,
+          "proofVersion()": 2
+        }
+      },
+      "sp1_gateway": {
+        "address": "0xe7f1725e7734ce288f8367e1bb143e90bb3f0512",
+        "runtime_sha256": "6c03eace76fb336796cdf90a52aef0b07983233869b85f4c21567cb1a3b60a84",
+        "runtime_bytes": 1931,
+        "immutable_words_by_compiler_id": {},
+        "runtime_matches_compiler_template": true,
+        "getters": {}
+      },
+      "sp1_verifier": {
+        "address": "0x5fbdb2315678afecb367f032d93f642f64180aa3",
+        "runtime_sha256": "08c942deb02fbb08ace65bb355f25042975fd5f51087a0161e78dd1700f725b9",
+        "runtime_bytes": 6741,
+        "immutable_words_by_compiler_id": {},
+        "runtime_matches_compiler_template": true,
+        "getters": {
+          "VERIFIER_HASH()": "0x4388a21c687fdd5f218d7e3d13190cac4c5355818d3605fd5fb811df468ee696"
+        }
+      }
+    },
+    "bindings": [
+      {
+        "contract": "settlement",
+        "getter": "verifier()",
+        "expected": "0xdc64a140aa3e981100a9beca4e685f962f0cf6c9",
+        "matches": true
+      },
+      {
+        "contract": "settlement",
+        "getter": "vault()",
+        "expected": "0xa513e6e4b8f2a923d98304ec87f64353c4d5c853",
+        "matches": true
+      },
+      {
+        "contract": "vault",
+        "getter": "settlement()",
+        "expected": "0x5fc8d32690cc91d4c39d9d3abcbd16989f875707",
+        "matches": true
+      },
+      {
+        "contract": "vault",
+        "getter": "token()",
+        "expected": "0x0165878a594ca255338adfa4d48449f69242eb8f",
+        "matches": true
+      },
+      {
+        "contract": "clock_verifier",
+        "getter": "settlement()",
+        "expected": "0x5fc8d32690cc91d4c39d9d3abcbd16989f875707",
+        "matches": true
+      },
+      {
+        "contract": "clock_verifier",
+        "getter": "innerVerifier()",
+        "expected": "0xcf7ed3acca5a467e9e704c703e8d87f634fb0fc9",
+        "matches": true
+      },
+      {
+        "contract": "sp1_adapter",
+        "getter": "gateway()",
+        "expected": "0xe7f1725e7734ce288f8367e1bb143e90bb3f0512",
+        "matches": true
+      },
+      {
+        "contract": "sp1_adapter",
+        "getter": "programVKey()",
+        "expected": "0x0017893c7ff3395d60b57d25eaa08cf1542fc7bc3cdfd74468133562994b8353",
+        "matches": true
+      },
+      {
+        "contract": "clock_verifier",
+        "getter": "maxWindowMs()",
+        "expected": 30000,
+        "matches": true
+      },
+      {
+        "contract": "clock_verifier",
+        "getter": "clockSkewMs()",
+        "expected": 10000,
+        "matches": true
+      },
+      {
+        "contract": "clock_verifier",
+        "getter": "proofVersion()",
+        "expected": 2,
+        "matches": true
+      },
+      {
+        "contract": "sp1_verifier",
+        "getter": "VERIFIER_HASH()",
+        "expected": "0x4388a21c687fdd5f218d7e3d13190cac4c5355818d3605fd5fb811df468ee696",
+        "matches": true
+      }
+    ],
+    "scope": {
+      "local_identity_checked": true,
+      "target_chain_observed": false,
+      "runtime_bytecode_verified": false,
+      "running_services_attested": false,
+      "fresh_guest_build_performed": false,
+      "state_migration_rehearsed": false,
+      "release_gate": "HOLD",
+      "operator_and_settlement_policy_approved": false,
+      "token_runtime_verified": false
+    },
+    "limitations": [
+      "RPC responses are trusted; no light-client or independent endpoint consensus.",
+      "Constructor operator identities and settlement timing/bond policy are observed, not approved.",
+      "Token code presence is checked; its implementation, proxy and issuance policy are not audited.",
+      "No proof is generated or submitted; no service identity, state migration or release readiness is established."
+    ],
+    "rpc_origin": "http://127.0.0.1:49914",
+    "chain_id": 31337,
+    "block_number": 203,
+    "block_hash": "0x017160edafc7a44b2960b5a5bd32662b5c7f10191c197063d3df905565f9532e",
+    "token": {
+      "address": "0x0165878a594ca255338adfa4d48449f69242eb8f",
+      "runtime_sha256": "c7bd69ee5d65129bff0f0755b6f82b36ce97db992f5e55cd1ab85cae03496afa",
+      "runtime_bytes": 1442
+    },
+    "blocker": "SP1 gateway route is wrong or frozen"
+  }
+}

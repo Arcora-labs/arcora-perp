@@ -1,0 +1,27 @@
+    Blocking waiting for file lock on build directory
+   Compiling serde v1.0.228
+   Compiling heapless v0.7.17
+   Compiling perp-core v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/repo/crates/perp-core)
+   Compiling postcard v1.1.3
+   Compiling prover v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/repo/crates/prover)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 10.19s
+     Running unittests src/lib.rs (target/debug/deps/prover-ee7b637342b59c20)
+
+running 1 test
+
+thread 'tests::opened_witness_is_wiped_when_backend_panics' (10443996) panicked at crates/prover/src/lib.rs:764:17:
+deliberate backend panic
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+thread 'tests::opened_witness_is_wiped_when_backend_panics' (10443996) panicked at crates/prover/src/lib.rs:778:9:
+the same opened buffer must be wiped during unwind, before its owner frees it
+test tests::opened_witness_is_wiped_when_backend_panics ... FAILED
+
+failures:
+
+failures:
+    tests::opened_witness_is_wiped_when_backend_panics
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 24 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p prover --lib`
