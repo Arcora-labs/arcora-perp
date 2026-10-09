@@ -51,9 +51,9 @@ impl Prover for Sp1GnarkProver {
         self.measurement
     }
 
-    /// Generate a real Groth16 proof. `witness` is the postcard `(state, ops, manifest)`
-    /// the guest reads; the guest DERIVES the roots inside, so the proof's public values
-    /// equal `public.commitment()`. Blocks on the async SP1 client (call inside a
+    /// Generate a real Groth16 proof. `witness` is the explicit legacy tuple or
+    /// DPCLK2-prefixed clock-context tuple. The guest derives the roots and validates
+    /// the clock context, so public values equal `public.commitment()`. Call inside a
     /// blocking task — see the service).
     fn prove(&self, public: &PublicInputs, witness: &[u8]) -> Vec<u8> {
         let mut stdin = SP1Stdin::new();

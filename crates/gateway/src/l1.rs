@@ -21,7 +21,9 @@
 use perp_core::Digest;
 use std::process::Command;
 
+mod clock_binding;
 mod observation;
+use clock_binding::ClockConfig;
 use observation::{abi_bool, abi_u128, abi_u64, CanonicalRead};
 
 /// keccak256("Deposit(address,bytes32,uint256,uint64,bytes32)") — the vault's deposit
@@ -46,6 +48,7 @@ const CAST_WALL_TIMEOUT_SECS: u64 = 90;
 /// L1 bridge configuration, read from env. `None` ⇒ L1 mode off (pure in-memory).
 #[derive(Clone)]
 pub struct L1 {
+    clock: Option<ClockConfig>,
     pub rpc: String,
     /// Optional independent read endpoint. Used by authoritative state readers, never
     /// for transaction submission or signing. A configured witness must agree;
@@ -230,6 +233,7 @@ impl L1 {
         ));
         std::fs::create_dir(&dir).unwrap();
         Self {
+            clock: None,
             rpc,
             rpc_witness: None,
             witness_chain: None,
@@ -303,6 +307,10 @@ impl L1 {
         } else {
             None
         };
+        let clock = ClockConfig::from_env().unwrap_or_else(|error| {
+            eprintln!("[clock] REFUSING to start: {error}");
+            std::process::exit(1);
+        });
         // audit DP-013: encrypt the key into a keystore, so it never enters a cast argv.
         let (keystore_path, password_file, dir) = match create_keystore(&key) {
             Ok(k) => k,
@@ -312,6 +320,7 @@ impl L1 {
             }
         };
         Some(L1 {
+            clock,
             rpc,
             rpc_witness,
             witness_chain,
@@ -715,7 +724,9 @@ impl L1 {
         &self,
         out: &crate::prover_client::ProveOutcome,
     ) -> Result<String, String> {
-        let args = settle_proved_args(out);
+        let mut checked = out.clone();
+        checked.proof = self.clock_proof_for_send(out)?;
+        let args = settle_proved_args(&checked);
         let refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
         let sig = settle_sig_for_phase(out.wind_down_phase)?;
         self.send(&self.settlement.clone(), sig, &refs)

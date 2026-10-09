@@ -47,6 +47,7 @@ mod account_recovery;
 mod bootstrap;
 mod candles;
 mod challenge_scan;
+mod clock_client;
 #[cfg(test)]
 mod continuation_settlement_tests;
 mod credential_session;
@@ -7821,6 +7822,19 @@ async fn main() {
             std::process::exit(1);
         }
     };
+    let prover: Option<Arc<dyn prover_client::ProverClient>> = match (prover, &l1) {
+        (Some(inner), Some(chain)) if chain.clock_enabled() => {
+            Some(Arc::new(clock_client::ClockProverClient {
+                inner,
+                l1: chain.clone(),
+            }))
+        }
+        (p, _) => p,
+    };
+    if prod && !prover.as_ref().is_some_and(|p| p.clock_enabled()) {
+        eprintln!("[clock] REFUSING production without CLOCK_BOUND_VERIFIER and L1_CHAIN_ID; explicit legacy mode is development-only");
+        std::process::exit(1);
+    }
     if prover.is_some() {
         println!("[prover] window-settle path ON (PROVER_URL)");
     } else if l1.is_some() {
@@ -7962,6 +7976,10 @@ async fn main() {
     // Task 3 (crash recovery): whether a sealed snapshot was actually restored —
     // a rollback journal is only meaningful against the state it was written
     // beside; a journal without its snapshot now refuses startup for reconciliation.
+    if prover.as_ref().is_some_and(|p| p.clock_enabled()) && state_path.is_none() {
+        eprintln!("[clock] REFUSING to start without DARKPERP_STATE durability");
+        std::process::exit(1);
+    }
     let mut restored_from_snapshot = false;
     // SEC-025-C: the genesis mode is computed BEFORE boot and passed as a parameter —
     // `gw.prod` is assigned two lines after boot returns, so a field read inside
@@ -8079,7 +8097,7 @@ async fn main() {
                         jp.display()
                     );
                 }
-                Ok(Some(j)) => match &l1 {
+                Ok(Some(mut j)) => match &l1 {
                     None => {
                         // can't resolve the journal against a chain we can't read.
                         eprintln!(
@@ -8092,12 +8110,34 @@ async fn main() {
                     Some(l1c) => {
                         // Counter/root/bond are read at one finalized canonical block hash.
                         // No finite delay proves an unmined prepared transaction absent.
-                        let reads = {
+                        let mut reads = {
                             let l1c = l1c.clone();
                             tokio::task::spawn_blocking(move || l1c.settlement_observation())
                                 .await
                                 .unwrap_or_else(|e| Err(e.to_string()))
                         };
+                        // Resume only the exact immutable, durably prepared clock
+                        // window. Finality lag or a reorg keeps the WAL and refuses
+                        // startup; it never turns into a legacy rollback/re-seal.
+                        if let (Ok((bc, root, _)), Some(client)) = (&reads, &prover) {
+                            if client.clock_enabled()
+                                && j.prepared.is_some()
+                                && *bc == j.batch_id
+                                && Some(gw.seq.state.next_batch_id) == j.batch_id.checked_add(1)
+                                && root
+                                    .eq_ignore_ascii_case(&hex32(&j.witness.pre_state.state_root()))
+                            {
+                                let (chain, client, mut saved, path) =
+                                    (l1c.clone(), client.clone(), j.clone(), jp.clone());
+                                match tokio::task::spawn_blocking(move || {
+                                    let observation = clock_client::resume_exact(&chain, client.as_ref(), &mut saved, &path, &enclave_seed)?;
+                                    Ok::<_,String>((saved, observation))
+                                }).await {
+                                    Ok(Ok((saved, observation))) => { j = saved; reads = Ok(observation); }
+                                    _ => eprintln!("[clock] exact-journal recovery unresolved; preserve WAL and retry after canonical finality"),
+                                }
+                            }
+                        }
                         match reads {
                             Ok((chain_bc, chain_root, bond)) => {
                                 // SEC-025-D: the boot roll-forward COMMITS a settle, so it
@@ -8737,6 +8777,17 @@ async fn main() {
                             continue;
                         }
                     }
+                    if client.clock_enabled() {
+                        let intent = prover_client::prepare_unproved(&journal.witness, &journal.ww);
+                        let durable = intent.and_then(|p| {
+                            journal.prepared = Some(p);
+                            rollback_journal::write(jpath.as_deref().ok_or("clock registration requires journal")?, &journal, &enclave_seed)
+                        });
+                        if let Err(error) = durable {
+                            hold_settlement_for_recovery(&app, format!("clock intent not durable: {error}")).await;
+                            break;
+                        }
+                    }
                     // (C) prove + settle (lock-free). Distinguish a prove failure (no tx
                     // was ever broadcast -> unconditional rollback) from a settle failure
                     // (cast send broadcasts THEN waits for the receipt, so a 90s-kill/RPC
@@ -8754,6 +8805,7 @@ async fn main() {
                             observation: trading_gate::GateObservation,
                         },
                         ProveFailed(String),
+                        ClockFailed(String),
                         SettleFailed {
                             err: String,
                             prepared: prover_client::PreparedSettle,
@@ -8762,6 +8814,7 @@ async fn main() {
                     let l1c = l1.clone();
                     let jpath_bg = jpath.clone();
                     let deposit_guard_app = app.clone();
+                    let clock_mode = client.clock_enabled();
                     let res = tokio::task::spawn_blocking(move || -> SettleAttempt {
                         let prepared = match prover_client::prove_and_prepare(
                             client.as_ref(),
@@ -8769,7 +8822,7 @@ async fn main() {
                             &journal.ww,
                         ) {
                             Ok(p) => p,
-                            Err(e) => return SettleAttempt::ProveFailed(e),
+                            Err(e) => return if clock_mode { SettleAttempt::ClockFailed(e) } else { SettleAttempt::ProveFailed(e) },
                         };
                         // Persist the prepared outcome before the broadcast continuation.
                         if jpath_bg.is_some() {
@@ -8781,7 +8834,7 @@ async fn main() {
                             if let Err(e) =
                                 deposit_guard_app.gw.blocking_lock().deposits.check_ready()
                             {
-                                return SettleAttempt::ProveFailed(e);
+                                return if clock_mode { SettleAttempt::ClockFailed(e) } else { SettleAttempt::ProveFailed(e) };
                             }
                             match l1c.settle_proved(&prepared.outcome) {
                                 Ok(tx) => {
@@ -8819,9 +8872,8 @@ async fn main() {
                             }
                         })
                         .unwrap_or_else(|error| {
-                            SettleAttempt::ProveFailed(format!(
-                                "stage-2 rollback journal is not durable: {error}"
-                            ))
+                            let error = format!("stage-2 rollback journal is not durable: {error}");
+                            if clock_mode { SettleAttempt::ClockFailed(error) } else { SettleAttempt::ProveFailed(error) }
                         })
                     })
                     .await;
@@ -8876,6 +8928,12 @@ async fn main() {
                             let _ = app.tx.send(
                                 serde_json::to_string(&WsMsg::State { state: snap }).unwrap(),
                             );
+                        }
+                        Ok(SettleAttempt::ClockFailed(e)) => {
+                            // A registration may already be mined or pending. Never
+                            // merge this immutable window with newer ops on a retry.
+                            hold_settlement_for_recovery(&app, format!("clock-bound window unresolved: {e}; retain journal and restart to resume exact witness")).await;
+                            break;
                         }
                         Ok(SettleAttempt::ProveFailed(e)) => {
                             eprintln!(

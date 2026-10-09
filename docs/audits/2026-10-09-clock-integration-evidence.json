@@ -1,0 +1,160 @@
+{
+  "schema": "arcora-clock-integration-evidence/v1",
+  "base_commit": "45f6a1c1f4a07f8b8f3c6a64f32b17f8f02ff30e",
+  "original_test_base": "f91fbd81841785f7bae88cb50c898653114a72c5",
+  "base_tree_identical": true,
+  "workspace": {
+    "argv": [
+      "rustup",
+      "run",
+      "1.99.0",
+      "cargo",
+      "test",
+      "--workspace",
+      "--locked"
+    ],
+    "exit_code": 0,
+    "seconds": 273.51,
+    "rust_tests": {
+      "passed": 842,
+      "failed": 0,
+      "ignored": 11
+    }
+  },
+  "focused_checks": {
+    "v2_native_constraints": {
+      "passed": 8,
+      "failed": 0
+    },
+    "new_gateway_clock_tests": {
+      "passed": 8,
+      "failed": 0
+    },
+    "existing_gateway_prover_tests": {
+      "passed": 13,
+      "failed": 0
+    },
+    "contracts": {
+      "passed": 118,
+      "failed": 0,
+      "new_clock_tests_included": 21
+    },
+    "serde_witness": {
+      "passed": 7,
+      "failed": 0
+    },
+    "rustfmt": {
+      "exit_code": 0
+    },
+    "rust_1_99_workspace_clippy": {
+      "exit_code": 0
+    },
+    "perp_core_no_std_serde": {
+      "exit_code": 0
+    }
+  },
+  "counting_note": "Focused Rust selections overlap the workspace result. Contract mock-proof tests are not real SP1 proofs.",
+  "limitations": [
+    "Long-proof admission/backpressure was not applied and remains a release blocker.",
+    "RPC registration/finality/reorg and exact-journal boot-resume code is not validated by a complete end-to-end transport failure matrix.",
+    "No real guest ELF build, SP1 execution, vkey generation, Groth16 proof, chain deployment, or vault migration in this work.",
+    "Local excluded host/service typecheck unavailable: protoc and cargo-prove not on PATH; remote CI is reported separately."
+  ],
+  "source_sha256": {
+    "Cargo.lock": "8c46d7a16c4458ea289db1b7802b8cc1d0f187befc0b5ec1a0972fe89c85e7ad",
+    "crates/demo/src/main.rs": "4f0af6f4b1209b302f9a095045e70921cbcb47bb417e4b02698687bbcfec5477",
+    "crates/e2e/tests/full_flow.rs": "d4b571472446c2bf0f5c17db297d373e0982d9ff2e7e37aeb1b88f333164b654",
+    "crates/gateway/src/l1.rs": "53e9c365dde9bca1b0948eb600ec6379a60f814c9cc6dfbe3e159f6e0c14abc9",
+    "crates/gateway/src/l1/observation.rs": "a65365167ce480a5210d139303a37db6fe2d3bd2595ed9c78da54c608095bc9d",
+    "crates/gateway/src/main.rs": "6b38d574796bfe725c0dc787d09f34bd4aab197ea7819efe166e16e74275cc49",
+    "crates/gateway/src/prover_client.rs": "daacb0e32df1d2b551e677c1b39312839e5a9dcf9f38e7e5e38a7fe878a487c9",
+    "crates/gateway/src/rollback_journal.rs": "b48ff00a4e90d715f2bfcc585d52a0b2a8292a774ad5bdc81d6f63c067294580",
+    "crates/perp-core/src/lib.rs": "8f070fbec0f4b3d3fab5e594bcf808845803a59ece403dc42cb0f0df6e6253b5",
+    "crates/prover/Cargo.toml": "ba791ba62a3a50e12d35de01b0e4852d4348fb2a51e38a08f7d7bb7254636b12",
+    "crates/prover/src/lib.rs": "4327b3ed88387f350f27a2949e4cb8b3bf959b2b11e958c72985128188ac4be9",
+    "crates/prover/tests/vectors.rs": "25beed954764113a29d5ea95461fb4df27c23f9df904607551912486aca35027",
+    "crates/sp1-guest/src/main.rs": "c0d33ff8645ebdcc8994d4d65729b8a60a224bcda18415423da15ed875c16f5c",
+    "contracts/src/ClockBoundVerifier.sol": "b3621bdf61c08caace8b7038c9dfed43074d267f51afa468a1d8869baeb6a913",
+    "contracts/test/ClockBoundVerifier.t.sol": "be6fa90f9c84a8e3ee7257ef4312b8d9b2891838c544d8e20b6b5f5165212702",
+    "crates/gateway/src/clock_client.rs": "c0252b05040de571f35f51e63a4e1f9d60ae6b848cbde21a6cbeaee156aed33d",
+    "crates/gateway/src/l1/clock_binding.rs": "050ca4a6557305e207db435ec750414b628e49de329fb49bde457fe2f55ff6f5",
+    "crates/perp-core/src/clock.rs": "e89e50e11b3ffb3a4a1a89ab6dd4854b61606cc17eb1236492994df0b59d50e7",
+    "crates/prover/tests/clock_bound.rs": "96f4073771ccf459601d8741e68eca953664a60e27559fb4e66b207e6c47af7c",
+    "docs/audits/2026-10-09-clock-integration.md": "e23846cb4848a60f2472d555e151837105ddb76d6adaad815f82cd0b1b50e90f",
+    "contracts/experimental/batch-clock/README.md": "a139403dcf7ae2ee8f9ddb3b2fb56cc80e55ad7793b77d724b7fd2a32ce537aa",
+    "crates/prover-service/src/sp1_prover.rs": "a16f5a16cca6a44b0d260200117b46da6d05e56face09ec1bd4140ca113c7301"
+  },
+  "log_sha256": {
+    "workspace-corrected.log": "8c5d91bb2d822e539455add3e2a75a77582658bbac2bca253881c193954c74d7",
+    "workspace.log": "3fe8294ac5db4388e874a3d37caa8258b8f837f5a6f031484e177b1420bc19d2",
+    "clock-rust-tests.log": "f6d053791a16dff981c83f0c7f0984dd50e52aee9f5fef6d69bec78400c80fb3",
+    "clock-contract-tests.log": "e4303be18812778adb505a83b60eb04a4473940c98a11df71d7c5e691bc1c03f",
+    "new-gateway-tests.log": "b53b61bb1469eb16a25c623f0e33ce6871c6da59bf90c06403d3de7bbecd003b",
+    "gateway-tests.log": "2ae9e7e7ec816c19ca9b157c1b7675aba1e58e658377b9adbe79d274478a8637",
+    "clippy.log": "6209e2faa6369dd6e13314674e41f8922030ed1e0b814615abfb4be5112a68c5",
+    "serde-witness.log": "c46a1fff10ba0b0d369ec2d90736fde636a3d333ecf821db4ccf2d8b509154cd",
+    "no-std.log": "1c672a913f5b593c079e39e3b10682cdc2768dd9cc940c3634061b0dfd8415d4",
+    "contracts.log": "f243065798a98258e8bc4764d95ae4dff9e2e4f6ec01bc040996609ce97ebc2e",
+    "solidity-fmt.log": "15f14df62f4ff73e2f1794183a9f7ba3a6a1199abce9fc910b53e4ac71b5aeeb",
+    "fmt-final.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "clippy-final.log": "2369cbbfce5396aa326e5333b179d2b34fd026739286120256948d8e4bd6b6dc",
+    "contracts-final.log": "b577c0f34474f8ed4ed39001453ec7d489b224db6e4b1ed491cc9d5be7cd55c7"
+  },
+  "final_format_and_checks": [
+    {
+      "name": "solidity-fmt",
+      "argv": [
+        "forge",
+        "fmt",
+        "contracts/src/ClockBoundVerifier.sol",
+        "contracts/test/ClockBoundVerifier.t.sol"
+      ],
+      "exit_code": 0,
+      "seconds": 0.06
+    },
+    {
+      "name": "fmt-final",
+      "argv": [
+        "rustup",
+        "run",
+        "1.99.0",
+        "cargo",
+        "fmt",
+        "--all",
+        "--check"
+      ],
+      "exit_code": 0,
+      "seconds": 0.49
+    },
+    {
+      "name": "clippy-final",
+      "argv": [
+        "rustup",
+        "run",
+        "1.99.0",
+        "cargo",
+        "clippy",
+        "--workspace",
+        "--all-targets",
+        "--locked",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "exit_code": 0,
+      "seconds": 2.8
+    },
+    {
+      "name": "contracts-final",
+      "argv": [
+        "forge",
+        "test",
+        "--root",
+        "/Users/huseyinarslan/kimi-bridge/worktrees/Arcora-labs__arcora-perp/clock-anchor-20261009/contracts",
+        "-vv"
+      ],
+      "exit_code": 0,
+      "seconds": 3.25
+    }
+  ]
+}

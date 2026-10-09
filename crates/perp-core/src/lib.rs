@@ -67,3 +67,5 @@ pub use state::{Mode, State};
 /// The default native state type using Keccak-256 (Phase 0). The proving phase
 /// instantiates [`state::State`] with a Poseidon hasher instead (§10b).
 pub type DefaultState = State<Keccak256>;
+
+pub mod clock;

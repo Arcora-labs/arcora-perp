@@ -190,6 +190,7 @@ fn main() {
 
     // prove the transition with the attested confidential prover
     let public = PublicInputs {
+        clock_receipt: None,
         prev_state_root: prev_root,
         batch_manifest_hash: sealed.manifest_hash,
         new_state_root: sealed.new_state_root,

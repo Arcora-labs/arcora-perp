@@ -53,13 +53,15 @@ const MAGIC: &[u8; 8] = b"DPRBJL5\0";
 /// the sequencer rollback input (`witness`), the withdrawal rollback input (`ww`,
 /// the set `begin_window_settle` drained), and — once the prove has returned —
 /// the `prepared` outcome whose `new_root`/claim proofs a roll-forward re-commits.
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub struct RollbackJournal {
     pub batch_id: u64,
     pub witness: sequencer::WindowWitness,
     pub ww: Vec<Withdrawal>,
-    /// `None` between seal and prove (Stage 1); `Some` once `prove_and_prepare`
-    /// succeeded (Stage 2) — the precondition for a roll-forward at boot.
+    /// `None` before any potential chain mutation (Stage 1). Clock mode first
+    /// stores `Some` with an EMPTY proof as its durable registration intent;
+    /// that may HOLD/resume the exact witness but is never broadcast as a proof.
+    /// A nonempty prepared proof is persisted again before settlement broadcast.
     pub prepared: Option<crate::prover_client::PreparedSettle>,
 }
 
