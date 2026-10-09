@@ -115,6 +115,8 @@ jobs:
         run: forge build
       - name: test
         run: forge test -vvv
+      - name: Experimental batch clock anchor (not production integration)
+        run: forge test --root experimental/batch-clock -vv
 
   frontend:
     name: frontend (vite)
