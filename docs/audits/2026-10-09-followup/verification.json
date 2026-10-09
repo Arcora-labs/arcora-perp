@@ -2,7 +2,7 @@
   "generated_at_utc": "2026-10-09T21:04:52.034599+00:00",
   "status": "LOCAL_FOLLOWUP_VERIFIED",
   "release_gate": "HOLD",
-  "source_sha256": "962f14199088549693726076143dcccc80dd1ba8b918097f53f347f0281c0be6",
+  "source_sha256": "cf3fa7529d7edfd77dc6e96c83d394dbd5c9aadbc5878979c7235bf9215b63ec",
   "pull_request": "https://github.com/Arcora-labs/arcora-perp/pull/32",
   "remote_ci": "Query PR checks at exact head SHA; local evidence is not remote CI completion.",
   "checks": {
@@ -41,6 +41,14 @@
     "replay_guards": {
       "positive": true,
       "negative_cases_passed": 7
+    },
+    "anvil_stream_regression": {
+      "fail_before": "confirmed forced-stdout startup rejection",
+      "native_stderr_full_flow": "PASS",
+      "forced_stdout_full_flow": "PASS",
+      "banner_parser": "PASS",
+      "gateway_clippy_all_targets": "PASS",
+      "evidence": "clock-lifecycle/anvil-stream-fix/verification.json"
     }
   },
   "log_sha256": {
@@ -56,7 +64,8 @@
   "verification_scope_notes": [
     "Ignored lifecycle test received stronger subprocess shutdown/port-ownership assertions after the combined workspace run; its final opt-in run and gateway Clippy passed separately. Production Rust changes were unchanged.",
     "Fresh direct and path-remapped guest builds differ from reviewed ELF; neither was accepted as the reviewed program.",
-    "No production rollout, main merge, state migration, real TEE or real-operator alert delivery."
+    "No production rollout, main merge, state migration, real TEE or real-operator alert delivery.",
+    "After the combined suites, only the ignored lifecycle subprocess I/O fixture and a banner-parser regression changed to support Anvil stdout/stderr version differences; both full flow variants, parser and gateway Clippy passed. Prior guest/witness evidence retains its historical source hashes."
   ],
   "remaining": [
     "Fresh real proofs for exact four wallet witnesses and real-verifier settlement",
@@ -65,5 +74,6 @@
     "Representative proof capacity/p95/RSS, finality and admission pause",
     "Rejection fairness, independent oracle policy, new-exit dependencies",
     "Target TEE and cross-machine recovery/operational acceptance"
-  ]
+  ],
+  "prior_source_sha256": "962f14199088549693726076143dcccc80dd1ba8b918097f53f347f0281c0be6"
 }

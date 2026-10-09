@@ -25,6 +25,15 @@ SP1 CPU işlemi başlangıç dahil 32,48 saniye sürdü. macOS `time -l`, maksim
 raporladı. Bunlar bir yürütmenin ölçümüdür; gerçek proof p95 veya hedef ortam
 kapasitesi ölçümü değildir. Tam [çıktı](sp1-replay.log) korunur.
 
+Sonraki [Linux CI çalışması](https://github.com/Arcora-labs/arcora-perp/actions/runs/37991243922/job/114025658385)
+Anvil 1.8.5'in port duyurusunu stdout'a yazdığını ortaya çıkardı; yerel 1.7.2
+stderr kullanıyordu. Harness iki owned pipe'ı da okuyacak şekilde düzeltildi.
+Stdout'a yönlendiren yerel shim ile önce hata yeniden üretildi, düzeltmeden sonra
+hem doğal stderr akışı (10,86 s) hem zorlanmış stdout akışı (10,63 s) tam fon
+testini geçti. ANSI parser regresyonu ve Clippy de geçti. [Düzeltme kanıtı](anvil-stream-fix/verification.json)
+bu ek kaynak sürümünü ayrı hash ile kaydeder; yukarıdaki witness/guest kanıtlarının
+kaynak hash'leri tarihsel kayıt olarak korunur.
+
 Yeni checkout'ta değişmemiş kaynakla guest yeniden derlendi ancak ELF pinine
 eşleşmedi (`556e2966…009628`). Panic string'lerinde checkout'un mutlak yolu
 bulunuyor. Eski yola bir kez remap edilerek izole, boş target altında yapılan

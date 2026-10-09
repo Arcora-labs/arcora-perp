@@ -58,6 +58,15 @@ Test loglarında terminal renk kodları, satır sonu boşlukları ve sondaki bo�
 ayıklanır; test assertion/sonuç metni değiştirilmez. Önceki ham log baytları ilk
 commit'te korunur; ilk paketin dönüşümü ayrıca `log-normalization.json` ile kayıtlıdır.
 
+## Linux CI düzeltmesi
+
+İlk devam commit’inin Linux CI koşusunda Anvil 1.8.5 port duyurusunu stdout’a
+yazdı; yalnızca stderr okuyan test başlamadan durdu. Her iki çıktı kanalı artık
+sahip olunan alt süreçten okunup temizlenir. Eski davranış zorlanınca regresyon
+başarısız oldu; düzeltmeden sonra hem stderr hem stdout üzerinden tam clock/claim
+akışı geçti. Port 0 tahsisi, gateway/writer kapanışını bekleme ve bütün mali
+assertion’lar korundu. [Önce/sonra ve kaynak kanıtı](clock-lifecycle/anvil-stream-fix/verification.json).
+
 ## Açık kabul kapıları
 
 Normal cüzdan akışının aynı v2 witness'larıyla fresh gerçek proof üretimi ve chain

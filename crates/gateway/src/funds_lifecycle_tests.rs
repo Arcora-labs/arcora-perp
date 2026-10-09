@@ -58,8 +58,79 @@ struct Evm {
     child: Child,
     url: String,
     scratch: PathBuf,
-    output: Option<std::thread::JoinHandle<()>>,
+    output: Vec<std::thread::JoinHandle<()>>,
 }
+
+fn announced_anvil_port(line: &str) -> Option<u16> {
+    // Foundry versions differ in stream selection and terminal colour defaults.
+    // Strip ANSI CSI sequences, then accept only the owned child's exact banner.
+    let mut plain = String::new();
+    let mut chars = line.chars();
+    while let Some(c) = chars.next() {
+        if c == '\u{1b}' && chars.next() == Some('[') {
+            for c in chars.by_ref() {
+                if ('@'..='~').contains(&c) {
+                    break;
+                }
+            }
+        } else {
+            plain.push(c);
+        }
+    }
+    plain
+        .trim()
+        .strip_prefix("Listening on 127.0.0.1:")?
+        .parse::<u16>()
+        .ok()
+        .filter(|p| *p != 0)
+}
+
+fn drain_anvil_output(
+    stream: impl std::io::Read + Send + 'static,
+    send: std::sync::mpsc::Sender<u16>,
+) -> std::thread::JoinHandle<()> {
+    std::thread::spawn(move || {
+        use std::io::BufRead as _;
+        let mut reader = std::io::BufReader::new(stream);
+        let mut line = String::new();
+        let mut startup_bytes = 0;
+        let mut found = false;
+        while reader.read_line(&mut line).is_ok_and(|n| n > 0) {
+            if !found {
+                startup_bytes += line.len();
+                if startup_bytes > 128 * 1024 {
+                    return;
+                }
+                if let Some(port) = announced_anvil_port(&line) {
+                    let _ = send.send(port);
+                    found = true;
+                }
+            }
+            line.clear(); // Drain both owned pipes without printing fixture keys.
+        }
+    })
+}
+
+#[test]
+fn owned_anvil_banner_accepts_plain_and_colored_streams() {
+    assert_eq!(
+        announced_anvil_port("Listening on 127.0.0.1:31337\n"),
+        Some(31337)
+    );
+    assert_eq!(
+        announced_anvil_port("\x1b[32mListening on \x1b[0m127.0.0.1:\x1b[1m31337\x1b[0m\r\n"),
+        Some(31337)
+    );
+    for invalid in [
+        "Listening on 0.0.0.0:31337",
+        "Listening on 127.0.0.1:0",
+        "Listening on 127.0.0.1:65536",
+        "Listening on 127.0.0.1:31337bad",
+    ] {
+        assert_eq!(announced_anvil_port(invalid), None);
+    }
+}
+
 impl Evm {
     fn start() -> Self {
         let scratch = std::env::temp_dir().join(format!(
@@ -79,42 +150,20 @@ impl Evm {
                 "--slots-in-an-epoch",
                 "1",
             ])
-            .stdout(Stdio::null())
+            .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
             .unwrap();
-        let startup_output = child.stderr.take().unwrap();
         let (send, receive) = std::sync::mpsc::channel();
-        let output = std::thread::spawn(move || {
-            use std::io::BufRead as _;
-            let mut reader = std::io::BufReader::new(startup_output);
-            let mut line = String::new();
-            let mut startup_bytes = 0;
-            let mut found = false;
-            while reader.read_line(&mut line).is_ok_and(|n| n > 0) {
-                if !found {
-                    startup_bytes += line.len();
-                    if startup_bytes > 128 * 1024 {
-                        return;
-                    }
-                    if let Some(port) = line
-                        .trim()
-                        .strip_prefix("Listening on 127.0.0.1:")
-                        .and_then(|s| s.parse::<u16>().ok())
-                        .filter(|p| *p != 0)
-                    {
-                        let _ = send.send(port);
-                        found = true;
-                    }
-                }
-                line.clear(); // Drain owned child's output; never print test key banners.
-            }
-        });
+        let output = vec![
+            drain_anvil_output(child.stdout.take().unwrap(), send.clone()),
+            drain_anvil_output(child.stderr.take().unwrap(), send),
+        ];
         let mut evm = Self {
             child,
             url: String::new(),
             scratch,
-            output: Some(output),
+            output,
         };
         let port = receive
             .recv_timeout(Duration::from_secs(10))
@@ -229,7 +278,7 @@ impl Drop for Evm {
     fn drop(&mut self) {
         let _ = self.child.kill();
         let _ = self.child.wait();
-        if let Some(output) = self.output.take() {
+        for output in self.output.drain(..) {
             let _ = output.join();
         }
         let _ = std::fs::remove_dir_all(&self.scratch);

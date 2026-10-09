@@ -1,7 +1,7 @@
 {
-  "base_commit": "97983ec2389aa98610df84b5a2744af5836cb2bc",
+  "base_commit": "1bf7642911f7093262695a93dbdef6db40a29fe2",
   "scope": "all tracked and nonignored untracked files except docs/audits evidence",
-  "sha256": "962f14199088549693726076143dcccc80dd1ba8b918097f53f347f0281c0be6",
+  "sha256": "cf3fa7529d7edfd77dc6e96c83d394dbd5c9aadbc5878979c7235bf9215b63ec",
   "files": {
     ".github/main-ruleset.json": "213ec7edc40f2286b84d3c20c6e8e084aaef65cc89e897d7c5a244c3f489335c",
     ".github/workflows/a01-ingestion.yml": "dd2cdc0659a3d7712e6f0a03c997114b041bcefff1d92e22c16b0dd94c6fcdc0",
@@ -158,7 +158,7 @@
     "crates/gateway/src/enclave_epoch.rs": "90903ee19cfaf7ad16afd31340d8ba34160a925ce651781ff8c8d316df66b24b",
     "crates/gateway/src/execution.rs": "e8104657f76b69a8485d4cccfbea8e91cb469d1ae9e16d08e43509ea967a3fbe",
     "crates/gateway/src/execution_regression_tests.rs": "cedac083625c9866c2e8eaf2e10733b0ae948a4ed6b17f813e42032dd37055c1",
-    "crates/gateway/src/funds_lifecycle_tests.rs": "ce18763deaaf9d3b62cbc0a54e2221d6bec5e7a9ad86aa9119c05a957ea6ccba",
+    "crates/gateway/src/funds_lifecycle_tests.rs": "bfd03d990734f4bc9351bf2298364b991f310db375fdee8b915164278ac82346",
     "crates/gateway/src/l1.rs": "73047824d4b2badc34c1a34b25d6d044be01578e287d27ebddf0815c412c6499",
     "crates/gateway/src/l1/clock_binding.rs": "0300e1869cce4fc5d63606bf217e936533c95dd5c434b05c8fdc2c9318b435ac",
     "crates/gateway/src/l1/clock_rpc_tests.rs": "ad773ee2b7ef606d37ced82ac8216cf3b37a57faed21c0ff436198938680256f",

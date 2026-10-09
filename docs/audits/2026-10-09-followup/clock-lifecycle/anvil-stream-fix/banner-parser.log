@@ -1,0 +1,8 @@
+   Compiling gateway v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/repo/crates/gateway)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 5.76s
+     Running unittests src/main.rs (target/debug/deps/gateway-5bdde49e6ccce77a)
+
+running 1 test
+test funds_lifecycle_tests::owned_anvil_banner_accepts_plain_and_colored_streams ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 480 filtered out; finished in 0.00s
