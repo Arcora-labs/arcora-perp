@@ -40,6 +40,8 @@ fn main() {
     let manifest = BatchManifest {
         previous_state_root: state.state_root(),
         batch_id: state.next_batch_id,
+        // This fixture has no clock-carrying operations.
+        batch_time_ms: 0,
         ordered: vec![],
         rejected: vec![],
         oracle_updates: vec![],

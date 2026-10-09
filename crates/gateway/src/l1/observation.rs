@@ -154,16 +154,9 @@ impl<'a> CanonicalRead<'a> {
                     "settlement observation: invalid ABI word for {signature}"
                 ));
             }
-            // Length is checked exactly above, so each chunk is a 32-byte word; map the
-            // conversion failure to an error instead of unwrapping (clippy-clean).
-            bytes
-                .chunks_exact(32)
-                .map(|w| {
-                    w.try_into().map_err(|_| {
-                        format!("settlement observation: invalid ABI word for {signature}")
-                    })
-                })
-                .collect()
+            // Exact length validation above guarantees no trailing bytes. Fixed-size
+            // array chunks avoid fallible slice conversions and preserve word order.
+            Ok(bytes.as_chunks::<32>().0.to_vec())
         };
         let words = parse(self.primary.call("eth_call", params.clone())?)?;
         if let Some(witness) = self.witness {
@@ -356,7 +349,7 @@ fn hex_bytes(value: &Value) -> Result<Vec<u8>, String> {
         return Err("settlement observation: invalid RPC hex length".into());
     }
     let mut out = Vec::with_capacity(data.len() / 2);
-    for pair in data.as_bytes().chunks_exact(2) {
+    for pair in data.as_bytes().as_chunks::<2>().0 {
         let hi =
             crate::hex_nibble(pair[0]).ok_or("settlement observation: invalid RPC hex data")?;
         let lo =
@@ -431,4 +424,31 @@ pub(super) fn deposit_read(
         return Err("deposit observation: witness disagreement".into());
     }
     Ok(value)
+}
+
+#[cfg(test)]
+mod strict_hex_tests {
+    use super::*;
+
+    #[test]
+    fn rpc_hex_preserves_byte_order_and_leading_zeroes() {
+        assert_eq!(hex_bytes(&json!("0x00ff10Ab")).unwrap(), [0, 255, 16, 171]);
+        assert!(hex_bytes(&json!("0x")).unwrap().is_empty());
+    }
+
+    #[test]
+    fn rpc_hex_rejects_odd_length_instead_of_dropping_the_tail() {
+        for value in ["0x0", "0x001", "0x00ff1"] {
+            assert!(hex_bytes(&json!(value)).is_err(), "accepted {value}");
+        }
+    }
+
+    #[test]
+    fn rpc_hex_rejects_invalid_prefix_digits_and_non_strings() {
+        for value in ["", "00", "0X00", "0x0g", "0xg0", "0xé", "0x 0"] {
+            assert!(hex_bytes(&json!(value)).is_err(), "accepted {value}");
+        }
+        assert!(hex_bytes(&Value::Null).is_err());
+        assert!(hex_bytes(&json!(0)).is_err());
+    }
 }
