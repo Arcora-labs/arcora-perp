@@ -112,7 +112,7 @@ jobs:
         run: python3 -m unittest discover -s scripts/local-verification -p test_verify_clock_proof.py
       - name: Real clock proof through verifier, settlement and vault
         working-directory: .
-        run: python3 scripts/local-verification/verify_clock_proof.py --artifact-dir contracts/integration/fixtures/clock-v2-verified --output-dir /tmp/arcora-clock-real-proof
+        run: python3 scripts/local-verification/verify_clock_proof.py --artifact-dir contracts/integration/fixtures/clock-v2-verified --output-dir /tmp/arcora-clock-complete-proof
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -120,6 +120,7 @@ jobs:
           path: |
             /tmp/arcora-real-verifier-guards
             /tmp/arcora-clock-real-proof
+            /tmp/arcora-clock-complete-proof
   gateway-local-drills:
     name: gateway RPC, crash and alert drills
     runs-on: ubuntu-latest
