@@ -1,0 +1,99 @@
+{
+  "status": "PASS_LOCAL_SOURCE_TO_EXACT_REVIEWED_ELF_AND_KEY",
+  "date": "2026-10-10",
+  "release_gate": "HOLD",
+  "elf_sha256": "df59a19b310258b4d01d0d5e3cfa31bb7de9ca2f4ea7c2302cf76650c79967c5",
+  "elf_bytes": 525824,
+  "byte_exact_equal_diagnostic_recipe_and_reviewed": true,
+  "program_vkey": "0x0017893c7ff3395d60b57d25eaa08cf1542fc7bc3cdfd74468133562994b8353",
+  "diagnostic_build_seconds": 38.03,
+  "packaged_recipe_build_seconds": 40.61608829104807,
+  "fresh_cpu_setup_seconds": 33.91,
+  "source_pins_verified": 21,
+  "source_layout_and_additional_build_input_guards": true,
+  "recipe_tests_passed": 8,
+  "compiler_metadata_normalization": {
+    "perp_core": "85153213d10819ef",
+    "perp_core_guest": "2c8a895641ad00f3"
+  },
+  "normalization_origin": "Original Cargo compiler argv captured using an owned APFS copy-on-write target clone; both original and current21sourcepins matched. Probe exited86 at selected workspace invocation, original sources/targets untouched.",
+  "normalization_scope": "Only -C metadata values for perp_core/perp_core_guest plus source path remap; all other rustc arguments retained. No ELF patch or copy into output target.",
+  "fresh_target": true,
+  "dependency_registry_cache_reused": true,
+  "independent_machine": false,
+  "proof_generated": false,
+  "lifecycle_new_proofs_generated": false,
+  "vkey_setup_scope": "Fresh CPU setup used the diagnostic rebuilt ELF; packaged recipe ELF independently matches it byte-for-byte.",
+  "source_sha256": {
+    "scripts/local-verification/rebuild_reviewed_guest.py": "12b75077e306ace453eadcf8b61c6122e948ade49d1227b237ba4daa5ce02d0d",
+    "scripts/local-verification/test_rebuild_reviewed_guest.py": "1e217b61fbbf62ddd2cc86f57d1e2a1f35c0a9b4abe4408c4c3b37120c2fe124",
+    "crates/sp1-host/src/bin/vkey.rs": "72cb87c978fa47f5401aa602757a205d0b9cf02d78f958ea85a540053ff7759b"
+  },
+  "files": {
+    "diagnostic-verification.json": {
+      "sha256": "38bf77fa15e6dcc1ef25cd4bf9323fb7192fd73b9d78ec726655d42823e4ab49",
+      "raw_sha256": "38bf77fa15e6dcc1ef25cd4bf9323fb7192fd73b9d78ec726655d42823e4ab49"
+    },
+    "diagnostic-build.log": {
+      "sha256": "60b04c7037a5398c7e9fc78ecba08ee127df8641e4a8373ec90f80a12df6c36b",
+      "raw_sha256": "60b04c7037a5398c7e9fc78ecba08ee127df8641e4a8373ec90f80a12df6c36b"
+    },
+    "diagnostic-wrapper.py": {
+      "sha256": "e14879e61769c9709ee4d3cf4ba6ba886266a2e0708bf9ecdee302d56fca50ad",
+      "raw_sha256": "e14879e61769c9709ee4d3cf4ba6ba886266a2e0708bf9ecdee302d56fca50ad"
+    },
+    "diagnostic-compiler-invocations.jsonl": {
+      "sha256": "7f61cdb192d33ca29a9f7087af46aeb9c4f851135f3f528c2ee9803b8490e1e8",
+      "raw_sha256": "7f61cdb192d33ca29a9f7087af46aeb9c4f851135f3f528c2ee9803b8490e1e8"
+    },
+    "original-compiler-invocations.jsonl": {
+      "sha256": "d9a372e6d04535714bb58803efa6c307328e55d857208c1d30007208d50a7fcb",
+      "raw_sha256": "d9a372e6d04535714bb58803efa6c307328e55d857208c1d30007208d50a7fcb"
+    },
+    "original-core-probe.log": {
+      "sha256": "1b82be8d36e93bb0ec064b6ebab507c76e3092b77d3144b23a64a392100bc316",
+      "raw_sha256": "1b82be8d36e93bb0ec064b6ebab507c76e3092b77d3144b23a64a392100bc316"
+    },
+    "original-guest-probe.log": {
+      "sha256": "6ad65cccd312b82271dd5e5a33eb3e238a1228ae9bcff1b679d1498b9beccbbc",
+      "raw_sha256": "6ad65cccd312b82271dd5e5a33eb3e238a1228ae9bcff1b679d1498b9beccbbc"
+    },
+    "original-probe-wrapper.py": {
+      "sha256": "4428c2bc41551e75d2829a1c2fbe673a9b0e13ac3ff123b283fcae510f5ef68d",
+      "raw_sha256": "4428c2bc41551e75d2829a1c2fbe673a9b0e13ac3ff123b283fcae510f5ef68d"
+    },
+    "recipe-verification.json": {
+      "sha256": "4e976062a2955e41f9b8326371f478a18d8922cd61d6298e31f59182401d8106",
+      "raw_sha256": "4e976062a2955e41f9b8326371f478a18d8922cd61d6298e31f59182401d8106"
+    },
+    "recipe-build.log": {
+      "sha256": "e67de593e60279ffe6709f0da6347c43a2f70c25357e587dfc58b9ea227a5596",
+      "raw_sha256": "e67de593e60279ffe6709f0da6347c43a2f70c25357e587dfc58b9ea227a5596"
+    },
+    "recipe-compiler-invocations.jsonl": {
+      "sha256": "318fda39b492dc232e8f341522e27889ab6a0dd83311d848b7fc966e05d03799",
+      "raw_sha256": "318fda39b492dc232e8f341522e27889ab6a0dd83311d848b7fc966e05d03799"
+    },
+    "vkey-verification.json": {
+      "sha256": "3038b8927e239b107f390f14c9c38ce471aea4adb5f6242c9c4194befeffba31",
+      "raw_sha256": "3038b8927e239b107f390f14c9c38ce471aea4adb5f6242c9c4194befeffba31"
+    },
+    "vkey-setup.log": {
+      "sha256": "3d353859192cd39f617a3b86844f169523447fb5cfb0b18eb44a726239d5a66b",
+      "raw_sha256": "3d353859192cd39f617a3b86844f169523447fb5cfb0b18eb44a726239d5a66b"
+    },
+    "vkey-host-build.log": {
+      "sha256": "0b59e0a90da9edd0e20b12d72b4b83bee39517e15ac3bc8aad4644baa8d80bee",
+      "raw_sha256": "0b59e0a90da9edd0e20b12d72b4b83bee39517e15ac3bc8aad4644baa8d80bee"
+    },
+    "recipe-tests.log": {
+      "sha256": "4d533bc426ee4e01c0087d858b5eec541f65c63fddbbb30e8759790436ee12ff"
+    }
+  },
+  "log_normalization": "ANSI, trailing whitespace and terminal blank lines removed; raw and normalized hashes recorded, outcome lines preserved.",
+  "remaining": [
+    "Independent cold build environment",
+    "New proofs for exact lifecycle witnesses and real verifier settlement",
+    "Target service/release identity and production lifecycle/finality/load measurements"
+  ]
+}

@@ -29,10 +29,16 @@ Bu klasör, [ilk doğrulama raporunun](../2026-10-09-remaining-work/README.md) d
   [Kapsam ve komutlar](../../FUNDS_LIFECYCLE.md). Aynı dört tam witness, reviewed
   SP1 ELF üzerinde CPU ile yürütüldü; tüm public commitment’lar native sonuçla
   birebir eşleşti. [Kanıtlar](clock-lifecycle/verification.json).
-- **R02 build bulgusu:** Aynı guest kaynaklarının doğrudan ve yol eşleme ile iki
-  fresh derlemesi reviewed ELF hash’inden farklı çıktı. Araç mismatch’i reddetti.
-  Dört batch’in başarılı SP1 yürütmesi açıkça mevcut sabitlenmiş ELF’i kullanır;
-  fresh source→ELF→vkey tekrar üretilebilirliği hâlâ açık.
+- **R02 yerel build eşleşmesi:** İlk iki fresh derlemedeki farkın Cargo crate
+  kimlikleri ve kaynak yolu bilgisinden geldiği doğrulandı. Aynı 21 kaynak piniyle,
+  yalnızca iki crate kimliği ve derleme yolu normalize edilince yeni boş target’ta
+  derlenen 525.824 baytlık ELF reviewed ELF ile birebir eşleşti
+  (`df59a19b…79967c5`). Bu yeni ELF üzerinden CPU setup ile türetilen program
+  anahtarı da mevcut `0x0017893c…62994b8353` piniyle eşleşti.
+  Kaynak veya ELF yamalanmadı; reviewed pin değişmedi.
+  Bu aynı makinenin compiler ve dependency cache’iyle alınmış yerel build
+  kanıtıdır; farklı ortamda bağımsız derleme ve gerçek proof kabulü açık kalır.
+  [Tekrar üretim komutu ve kanıtlar](clock-lifecycle/reproducible-build/README.md).
 
 ## Tamamlanan kontroller
 
@@ -42,7 +48,7 @@ Bu klasör, [ilk doğrulama raporunun](../2026-10-09-remaining-work/README.md) d
 | [Frontend](frontend-tests.log) | 509 PASS, 1 SKIPPED | Birim/DOM testleri |
 | [Frontend build](frontend-build.log) | PASS | TypeScript + Vite |
 | [Tarayıcı](browser-tests.log) | 78 PASS | Chromium + WebKit; yerel, sentetik HTTP/wallet fixture |
-| [Python](python-tests.log) | 85 PASS, 1 SKIPPED | Anvil opt-in testi ayrı çalıştırıldı |
+| [Python son kontrol](python-final-tests.log) | 93 PASS, 1 SKIPPED | 8 build-recipe regresyonu dahil; Anvil opt-in testi ayrıca çalıştırıldı |
 | [Manifest Anvil](manifest-tests.log) | 36 PASS | [Gerçek yerel runtime/route sonucu](manifest-anvil.json); canlı hedef değil |
 | [Clock cüzdan akışı](clock-lifecycle/witnesses/lifecycle.json) | 4 batch, 2 gateway kapalı claim PASS | Gerçek clock adapter + mock inner verifier |
 | [SP1 guest replay](clock-lifecycle/guest-replay/manifest.json) | 4/4 native eşitliği PASS | Reviewed ELF; fresh proof üretimi yok |
@@ -53,6 +59,9 @@ CI artık dört sentetik cüzdan witness’ını reviewed guest üzerinde yürü
 export ve altı sözleşmeli manifest testi de gateway job’ına eklendi. Eski
 `prover crates (excluded, typecheck)` job adı required check uyumluluğu için korundu;
 step adları typecheck, native guard ve gerçek guest execution kapsamlarını ayırır.
+Yaklaşık 98 milyon guest cycle için host `--release` ile derlenir; tanık ve
+commitment assertion’ları korunur. Yerel optimize yürütme 32,48 saniyede tamamlandı;
+bu süre Linux CI veya production kapasite ölçümü değildir.
 
 Test loglarında terminal renk kodları, satır sonu boşlukları ve sondaki boş satırlar
 ayıklanır; test assertion/sonuç metni değiştirilmez. Önceki ham log baytları ilk

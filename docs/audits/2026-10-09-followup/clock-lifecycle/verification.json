@@ -111,5 +111,12 @@
     "Production service-loop and target-chain finality/complete crash continuation",
     "Reproducible fresh source-to-reviewed-ELF/key binding",
     "Representative prover load/p95/RSS and admission pause measurement"
-  ]
+  ],
+  "historical_scope": "Initial lifecycle/replay run; original build mismatches and source hashes retained. Later build/key result is linked separately.",
+  "reproducible_build_followup": {
+    "report": "reproducible-build/verification.json",
+    "sha256": "2a239e869e8c102bd9b26a29b284dc69bbbcf7ef99268053c3613c34d592b747",
+    "status": "PASS_LOCAL_SOURCE_TO_EXACT_REVIEWED_ELF_AND_KEY",
+    "fresh_proof_generated": false
+  }
 }

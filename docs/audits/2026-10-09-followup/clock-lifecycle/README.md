@@ -34,12 +34,15 @@ testini geçti. ANSI parser regresyonu ve Clippy de geçti. [Düzeltme kanıtı]
 bu ek kaynak sürümünü ayrı hash ile kaydeder; yukarıdaki witness/guest kanıtlarının
 kaynak hash'leri tarihsel kayıt olarak korunur.
 
-Yeni checkout'ta değişmemiş kaynakla guest yeniden derlendi ancak ELF pinine
-eşleşmedi (`556e2966…009628`). Panic string'lerinde checkout'un mutlak yolu
-bulunuyor. Eski yola bir kez remap edilerek izole, boş target altında yapılan
-ikinci build de eşleşmedi (`a99995bf…15375b`). Bunun tek nedeninin yol olduğu
-iddia edilmiyor; yeni vkey üretilmedi, reviewed ELF/vkey pinleri değiştirilmedi.
-Bu nedenle tekrar üretilebilir kaynak → ELF → key bağı R02 için açık kalır.
+İlk yeni-checkout build'i (`556e2966…009628`) ve yalnız yol remap edilen build
+(`a99995bf…15375b`) ELF pinine eşleşmedi. Sonraki inceleme gömülü kaynak yolu
+yanında Cargo'nun kaynak konumuna bağlı crate kimliklerini belirledi. İki workspace
+crate'in derleyici metadata değerleri ve yolları normalize edilerek boş target'ta
+aynı reviewed ELF byte-byte tekrar üretildi; bu yeni ELF üzerinden CPU setup aynı
+program key'i yeniden türetti. [Tarif ve kanıt](reproducible-build/README.md) ilk
+hataları da korur. Kaynak/ELF/vkey pinleri değiştirilmedi. Bu, aynı makinede cache'li
+bağımlılıkla yerel kaynak → ELF → key bağıdır; bağımsız soğuk ortam ve R02'nin hedef
+sürüm/servis bağı hâlâ ayrı kapılardır. Yeni proof üretilmedi.
 
 Yerel Groth16 cache, gerekli circuit/vk/pk dosyaları yerine yalnızca kısmi bir
 arşiv içeriyor. Bu dört yeni witness için gerçek proof ve gerçek verifier ile

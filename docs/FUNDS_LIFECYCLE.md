@@ -62,11 +62,33 @@ python3 scripts/local-verification/verify_funds_replay.py \
 `--elf` explicitly selects a reviewed artifact, still requiring its exact pinned
 hash. The report labels it as an explicit artifact; that is not a source build
 claim. Without `--elf`, the host's freshly built embedded guest is used and must
-match the same pin. On 2026-10-09, a clean build in the new checkout differed from
-the reviewed ELF. Absolute source paths occur in its panic strings; one isolated
-build remapping the checkout path also differed. Reproducible fresh source to
-reviewed ELF binding remains open. The replay tool never changes the ELF/vkey pin
-to make these builds pass.
+match the same pin. The first new-checkout and path-remapped builds differed from
+the reviewed ELF. Investigation found both embedded source paths and Cargo's
+path-dependent crate metadata identities. A later clean-target build normalized
+only the two reviewed workspace crate identities and paths, reproduced the exact
+reviewed ELF, and a fresh CPU setup derived the same pinned program key.
+The [reproduction evidence](audits/2026-10-09-followup/clock-lifecycle/reproducible-build/README.md)
+preserves both initial mismatches and the successful compiler arguments. This is
+a same-machine build using cached dependencies, not an independent cold build or
+a fresh proof. The replay tool never changes the ELF/vkey pins.
+
+The separate recipe requires Python 3.11+, Cargo 1.99.0 and the recorded ARM64
+macOS SP1 compiler. It verifies all 21 source pins, the exact source layout and
+absence of extra build/config inputs before normalization and again after build.
+It uses `--locked --offline`, creates an exclusive empty target outside the source
+checkout, preserves existing targets, and writes its success manifest only after
+the independently pinned ELF hash matches. Select a new output path each time:
+
+```sh
+python3.11 scripts/local-verification/rebuild_reviewed_guest.py \
+  --cargo "$HOME/.cargo/bin/cargo" \
+  --rustc "$HOME/.sp1/toolchains/z4qbuzauUe/bin/rustc" \
+  --output-dir /tmp/arcora-reviewed-build-NEW
+```
+
+Use the resulting `target/riscv64im-succinct-zkvm-elf/release/perp-core-guest`
+as replay's `--elf` argument and retain the build manifest alongside the replay
+manifest. Replay itself cannot establish how its supplied ELF was built.
 
 `--native-only` performs the input validation and native continuity stage without
 initializing the SP1 CPU executor. Its report explicitly sets `guest_executed` and

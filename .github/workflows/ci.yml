@@ -70,7 +70,7 @@ jobs:
     name: prover crates (excluded, typecheck)
     runs-on: ubuntu-latest
     # Each excluded application has a reviewed lockfile. Keep the expensive
-    # typecheck bounded; this job still does not execute or prove the guest.
+    # typecheck and execution bounded. Guest execution is CPU-only; no proof is generated.
     timeout-minutes: 30
     env:
       SP1_SKIP_PROGRAM_BUILD: "true"
@@ -102,14 +102,18 @@ jobs:
         run: cargo check --locked --manifest-path crates/sp1-host/Cargo.toml
       - name: native host fixture and artifact guards (not guest execution)
         run: cargo test --locked --manifest-path crates/sp1-host/Cargo.toml --lib
-      - name: Build exact synthetic funds replay host (guest build skipped)
+      - name: typecheck prover-service
+        run: cargo check --locked --manifest-path crates/prover-service/Cargo.toml
+      # The four reviewed witnesses execute about 98 million guest cycles.
+      # Optimize the host executor so debug-mode overhead does not dominate CI.
+      - name: Build optimized exact synthetic funds replay host (guest build skipped)
         env:
           CARGO_BUILD_JOBS: '2'
-        run: cargo build --locked --manifest-path crates/sp1-host/Cargo.toml --bin replay-funds
+        run: cargo build --release --locked --manifest-path crates/sp1-host/Cargo.toml --bin replay-funds
       - name: Reject incomplete or substituted normal-wallet witnesses
         run: |
           python3 scripts/local-verification/verify_funds_replay.py \
-            --binary crates/sp1-host/target/debug/replay-funds \
+            --binary crates/sp1-host/target/release/replay-funds \
             --elf contracts/integration/fixtures/clock-v2-verified/guest.elf \
             --witness-dir docs/audits/2026-10-09-followup/clock-lifecycle/witnesses \
             --output-dir /tmp/arcora-funds-replay-guards
@@ -117,7 +121,7 @@ jobs:
         env:
           RAYON_NUM_THREADS: '2'
         run: |
-          crates/sp1-host/target/debug/replay-funds \
+          crates/sp1-host/target/release/replay-funds \
             docs/audits/2026-10-09-followup/clock-lifecycle/witnesses \
             /tmp/arcora-funds-guest-execution \
             --elf contracts/integration/fixtures/clock-v2-verified/guest.elf
@@ -128,8 +132,6 @@ jobs:
           path: |
             /tmp/arcora-funds-replay-guards
             /tmp/arcora-funds-guest-execution
-      - name: typecheck prover-service
-        run: cargo check --locked --manifest-path crates/prover-service/Cargo.toml
 
   contracts:
     name: contracts (foundry)

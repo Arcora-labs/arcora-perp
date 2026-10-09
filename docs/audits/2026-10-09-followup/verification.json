@@ -1,8 +1,8 @@
 {
-  "generated_at_utc": "2026-10-09T21:04:52.034599+00:00",
+  "generated_at_utc": "2026-10-09T21:23:48.558162+00:00",
   "status": "LOCAL_FOLLOWUP_VERIFIED",
   "release_gate": "HOLD",
-  "source_sha256": "cf3fa7529d7edfd77dc6e96c83d394dbd5c9aadbc5878979c7235bf9215b63ec",
+  "source_sha256": "a532c96bf7a6410bfaef5fda993e37d41e075f46dee413e0af3ee0287b7f6f75",
   "pull_request": "https://github.com/Arcora-labs/arcora-perp/pull/32",
   "remote_ci": "Query PR checks at exact head SHA; local evidence is not remote CI completion.",
   "checks": {
@@ -49,7 +49,22 @@
       "banner_parser": "PASS",
       "gateway_clippy_all_targets": "PASS",
       "evidence": "clock-lifecycle/anvil-stream-fix/verification.json"
-    }
+    },
+    "python_final": {
+      "passed": 93,
+      "skipped": 1,
+      "includes_reviewed_rebuild_recipe_guards": 8
+    },
+    "reviewed_guest_rebuild": {
+      "local_clean_target": true,
+      "same_machine_compiler_and_dependency_cache": true,
+      "elf_bytes": 525824,
+      "elf_sha256": "df59a19b310258b4d01d0d5e3cfa31bb7de9ca2f4ea7c2302cf76650c79967c5",
+      "source_pins_unchanged": 21,
+      "fresh_cpu_setup_program_vkey": "0x0017893c7ff3395d60b57d25eaa08cf1542fc7bc3cdfd74468133562994b8353",
+      "fresh_proof_generated": false
+    },
+    "vkey_cli_invalid_inputs": 3
   },
   "log_sha256": {
     "browser-tests.log": "d031bfb7f9d7edba2a9646f9e587ec2ff7e877c93d23b0dd7e38cca644b62945",
@@ -59,21 +74,23 @@
     "frontend-tests.log": "c23101f8bf3db076ff24b3073af555e7d4c1a180de3808a740f20948d94d670b",
     "manifest-tests.log": "13bf11e802ee8157d862992a2713422d771b441faf1bee3bc1057d38bee99ab4",
     "python-tests.log": "61788b88c560045dbb586954dc50d0ef87106991df05a611049e59d628cc4cd0",
-    "workspace.log": "55803fbeca76f7082ca2fbce625ac7839679821ea0b1fc176df3d311d17b3646"
+    "workspace.log": "55803fbeca76f7082ca2fbce625ac7839679821ea0b1fc176df3d311d17b3646",
+    "python-final-tests.log": "573635aa2aca0fa0445ed5540000e6b76cd538284b7ddd69ec7cc72853937493"
   },
   "verification_scope_notes": [
     "Ignored lifecycle test received stronger subprocess shutdown/port-ownership assertions after the combined workspace run; its final opt-in run and gateway Clippy passed separately. Production Rust changes were unchanged.",
-    "Fresh direct and path-remapped guest builds differ from reviewed ELF; neither was accepted as the reviewed program.",
+    "Initial direct/path-only rebuilds were rejected as ELF mismatches. The subsequent guarded two-crate metadata/path-normalized build reproduces the reviewed ELF byte-for-byte; fresh CPU setup matches the pinned program key. Independent-environment reproduction is still open.",
     "No production rollout, main merge, state migration, real TEE or real-operator alert delivery.",
-    "After the combined suites, only the ignored lifecycle subprocess I/O fixture and a banner-parser regression changed to support Anvil stdout/stderr version differences; both full flow variants, parser and gateway Clippy passed. Prior guest/witness evidence retains its historical source hashes."
+    "After the combined suites, only the ignored lifecycle subprocess I/O fixture and a banner-parser regression changed to support Anvil stdout/stderr version differences; both full flow variants, parser and gateway Clippy passed. Prior guest/witness evidence retains its historical source hashes.",
+    "After the full production-code checks, changes were limited to a guarded local rebuild recipe/tests, an explicit artifact argument for the vkey utility, optimized replay CI configuration, and evidence docs. Final Python suite: 93 pass, 1 opt-in skip; vkey release build/setup, invalid CLI checks and format passed."
   ],
   "remaining": [
     "Fresh real proofs for exact four wallet witnesses and real-verifier settlement",
-    "Reproducible source-to-reviewed-ELF/vkey build",
+    "Independent-environment source-to-reviewed-ELF/vkey reproduction and target build identity",
     "Target deployment and service identity, migration and full crash recovery",
     "Representative proof capacity/p95/RSS, finality and admission pause",
     "Rejection fairness, independent oracle policy, new-exit dependencies",
     "Target TEE and cross-machine recovery/operational acceptance"
   ],
-  "prior_source_sha256": "962f14199088549693726076143dcccc80dd1ba8b918097f53f347f0281c0be6"
+  "prior_source_sha256": "cf3fa7529d7edfd77dc6e96c83d394dbd5c9aadbc5878979c7235bf9215b63ec"
 }
