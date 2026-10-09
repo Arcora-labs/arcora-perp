@@ -1,0 +1,6 @@
+
+thread 'main' (10650403) panicked at src/bin/replay-funds.rs:45:5:
+assertion `left == right` failed: complete four-window lifecycle required
+  left: 3
+ right: 4
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace

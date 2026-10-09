@@ -2095,6 +2095,26 @@ describe("order and legacy deposit mutation fencing", () => {
   });
 });
 
+describe("withdrawal claim transport", () => {
+  it("retains a valid claim but drops command injection and malformed claim data", async () => {
+    const client = await bootstrapClient();
+    const valid = {
+      to: "0x" + "11".repeat(20), amount: "100000000", nonce: 3,
+      leaf: "0x" + "aa".repeat(32), root: "0x" + "bb".repeat(32),
+      claimable: true, proof: [],
+    };
+    const vault = "0x" + "22".repeat(20);
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+      vault, withdrawals: [valid, { ...valid, proof: ['$(echo unsafe)'] }, { ...valid, amount: '-1' }],
+    }))));
+    expect(await client.listWithdrawals()).toEqual({ vault, withdrawals: [{ ...valid, amount: 100000000n }] });
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+      vault: `${vault}; echo unsafe`, withdrawals: [valid],
+    }))));
+    expect(await client.listWithdrawals()).toBeNull();
+  });
+});
+
 describe("clock admission status", () => {
   it.each([
     [{ enabled: true, paused: true }, { enabled: true, paused: true }],

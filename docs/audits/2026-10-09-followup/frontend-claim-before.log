@@ -1,0 +1,29 @@
+[WARN] The "pnpm" field in package.json is no longer read by pnpm. The following keys were ignored: "pnpm.onlyBuiltDependencies". See https://pnpm.io/settings for the new home of each setting.
+$ vitest run src/components/AccountPanel.test.tsx
+
+ RUN  v4.1.11 /Users/huseyinarslan/Desktop/arcora-perp/repo/frontend
+
+ ❯ src/components/AccountPanel.test.tsx (11 tests | 1 failed) 48ms
+     × rejects shell syntax and invalid claim fields before creating a command 3ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/components/AccountPanel.test.tsx > buildClaimCommand > rejects shell syntax and invalid claim fields before creating a command
+AssertionError: expected [Function] to throw an error
+ ❯ src/components/AccountPanel.test.tsx:132:59
+    130|     ];
+    131|     for (const [withdrawal, target] of cases) {
+    132|       expect(() => buildClaimCommand(withdrawal, target)).toThrow();
+       |                                                           ^
+    133|     }
+    134|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 10 passed (11)
+   Start at  23:52:11
+   Duration  627ms (transform 166ms, setup 0ms, import 303ms, tests 48ms, environment 194ms)
+
+[ELIFECYCLE] Test failed. See above for more details.

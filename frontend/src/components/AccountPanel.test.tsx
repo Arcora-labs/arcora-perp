@@ -115,4 +115,21 @@ describe("buildClaimCommand", () => {
   it("never embeds a key — only the <YOUR_KEY> placeholder", () => {
     expect(buildClaimCommand(entry, vault)).toContain("--private-key <YOUR_KEY>");
   });
+
+  it("rejects shell syntax and invalid claim fields before creating a command", () => {
+    const cases: Array<[WithdrawalEntry, string]> = [
+      [entry, `${vault}; echo injected`],
+      [{ ...entry, to: "$(echo injected)" }, vault],
+      [{ ...entry, root: "`echo injected`" }, vault],
+      [{ ...entry, proof: ['$(echo injected)'] }, vault],
+      [{ ...entry, leaf: "invalid" }, vault],
+      [{ ...entry, amount: -1n }, vault],
+      [{ ...entry, amount: 1n << 256n }, vault],
+      [{ ...entry, nonce: -1 }, vault],
+      [{ ...entry, nonce: Number.MAX_SAFE_INTEGER + 1 }, vault],
+    ];
+    for (const [withdrawal, target] of cases) {
+      expect(() => buildClaimCommand(withdrawal, target)).toThrow();
+    }
+  });
 });

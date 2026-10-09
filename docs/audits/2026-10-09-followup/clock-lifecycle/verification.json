@@ -1,0 +1,115 @@
+{
+  "status": "LOCAL_CLOCK_LIFECYCLE_AND_PINNED_GUEST_REPLAY_PASS",
+  "release_gate": "HOLD",
+  "source_sha256": {
+    "crates/gateway/src/funds_lifecycle_tests.rs": "ce18763deaaf9d3b62cbc0a54e2221d6bec5e7a9ad86aa9119c05a957ea6ccba",
+    "crates/sp1-host/src/bin/replay-funds.rs": "b0d9e591e2482a697578aeef8dbe7879b8dce376a9f688bc26df218f68acd2c9",
+    "scripts/local-verification/verify_funds_replay.py": "e21a2eb753678885e67e50862df6b9b25474de27283b99a0e1e25315d10d4ef9",
+    "docs/FUNDS_LIFECYCLE.md": "cf78458468f711bb2efc8b3ea19e0c17b51cc148cdbe6467de5f332d675619f4"
+  },
+  "reviewed_guest_source_pins_verified": {
+    "Cargo.toml": "e3144a0ae3447244776e65b04cfff39267c238e410c2d9abf20b53e6b837bbfa",
+    "crates/perp-core/Cargo.toml": "3bfb6981fa34a967185ce75abd07683e5262a694ebd60eb45a4f5c55aaf9704c",
+    "crates/perp-core/src/clock.rs": "e89e50e11b3ffb3a4a1a89ab6dd4854b61606cc17eb1236492994df0b59d50e7",
+    "crates/perp-core/src/commitment.rs": "43582ef5048d0d725e53976e3c2a1dfcf32984ed2ad1bb2ebd2032463e26ea92",
+    "crates/perp-core/src/engine.rs": "4d6037f1189939a71a41e31882012e6fa50b887087b5ccc2bfce4502b61d0f9e",
+    "crates/perp-core/src/error.rs": "0738da822be5639737e67f04a0f500af57fcc1f085dd64bec7fbe3b016c515c6",
+    "crates/perp-core/src/fixed.rs": "fc77559a31c1cfdd7a641cafbd773871aeb203849e165dbd158aa7a1b65ef7cd",
+    "crates/perp-core/src/funding.rs": "8f782cf3a4403c717eda44c6d2955789c31e4ef2a04bb4fdac8e61916018e781",
+    "crates/perp-core/src/hash.rs": "88430a8c2558b247bcf241035ad48fa1dbf8a3e77a0d176dfdbd608c930f93b9",
+    "crates/perp-core/src/lib.rs": "8f070fbec0f4b3d3fab5e594bcf808845803a59ece403dc42cb0f0df6e6253b5",
+    "crates/perp-core/src/market.rs": "8053e89a9b1021d6e461d46d733dfb1935aff5fc2a45be8121f96560fa4ddc2d",
+    "crates/perp-core/src/merkle.rs": "173f4667178ba4aa4048e43c2aeb9fa337918d6225b98c6597c004b59bc3a8f6",
+    "crates/perp-core/src/note.rs": "5cece4d513537c10464bd64b4612f829cd32cb9c1a80d3c8e40c573aace62423",
+    "crates/perp-core/src/nullifier.rs": "a252799c62dc42ec37c91ba6fd7674117b33c98c7f83e86b168f70898966ea78",
+    "crates/perp-core/src/oracle.rs": "91ae09655e35432aafa1135b23588d6f1f324b41a278ac640ebc30f106d17da2",
+    "crates/perp-core/src/order.rs": "99bb9b2be4948bcf8365c3022ef444be5941201ec6535de73d45a777e5a206d7",
+    "crates/perp-core/src/position.rs": "99d120139086092d2dae4ed11d3a677906c1cf3efd7aff9e58f27f3437f2ae66",
+    "crates/perp-core/src/state.rs": "e1026c1e2b56cfcbee4eff812e88ff3dcde052e46818deab980a071fcdbec388",
+    "crates/sp1-guest/Cargo.lock": "113518cb212208aa46a629608af9d946f9a4006ac211035a15e9cb8c022fb8c3",
+    "crates/sp1-guest/Cargo.toml": "d0ed7050076bb3548b9e3410f63066068752382f4dab31e344096c9c3e42dc85",
+    "crates/sp1-guest/src/main.rs": "c0d33ff8645ebdcc8994d4d65729b8a60a224bcda18415423da15ed875c16f5c"
+  },
+  "synthetic_wallets_only": true,
+  "mock_inner_verifier": true,
+  "real_clock_adapter_and_anchor_transactions": true,
+  "gateway_listener_and_writer_stopped_and_awaited_before_two_claims": true,
+  "funds_flow_elapsed_seconds": 10.795931166,
+  "guest_executed_batches": 4,
+  "guest_execution_cycles_total": 97859962,
+  "guest_execution_process_seconds": 32.48,
+  "guest_execution_process_maximum_rss_bytes": 3116449792,
+  "macos_peak_memory_footprint_bytes": 7690918248,
+  "measurement_scope": "One CPU guest execution run including client initialization; not proving p95 or production capacity/finality/admission downtime. macOS time maximum RSS and peak footprint are separate fields.",
+  "guest_elf_used": {
+    "origin": "existing independently pinned reviewed artifact",
+    "sha256": "df59a19b310258b4d01d0d5e3cfa31bb7de9ca2f4ea7c2302cf76650c79967c5"
+  },
+  "fresh_proof_generated": false,
+  "input_guard_positive_pass": true,
+  "input_guard_negative_cases_passed": 7,
+  "fresh_guest_builds": [
+    {
+      "method": "unchanged SP1 6.1.0 host build script; fresh checkout target",
+      "status": "BUILT_BUT_PIN_MISMATCH",
+      "elf_sha256": "556e29664b8dc5cbaac1b731717aae4ef3f34a748d4b9fde2cc7196bfe009628",
+      "bytes": 525736
+    },
+    {
+      "method": "fresh isolated target; official SP1 rust flags; rustc wrapper remapping current checkout path to prior fixture path",
+      "status": "BUILT_BUT_PIN_MISMATCH",
+      "elf_sha256": "a99995bf31af306b1ab8da02e77ec227a431620b3fa61c0c5a3c1e6b5915375b",
+      "bytes": 525832
+    }
+  ],
+  "rebuild_finding": "Absolute checkout paths are visible in panic strings. One path-remapped build still differs; no claim this is the only cause, no new vkey derived and no reviewed pins changed.",
+  "protoc": {
+    "source": "https://github.com/protocolbuffers/protobuf/releases/download/v29.3/protoc-29.3-osx-aarch_64.zip",
+    "sha256": "2b8a3403cd097f95f3ba656e14b76c732b6b26d7f183330b11e36ef2bc028765",
+    "installed": "owned /tmp directory only"
+  },
+  "proof_prerequisite": "Only partial 81,872,451-byte Groth16 artifact archive in local cache; required circuit/vk/pk files absent. No paid/network proving used.",
+  "logs": {
+    "lifecycle.log": {
+      "raw_sha256": "498bd00ce807296592b940df0c9bcaf5db3d782885a2cbd343b32e84e9d66d9f",
+      "normalized_sha256": "60c5dc4a2114dec0ed2771581a3f6897054a48cf8f24e487ec15ccaccdcc9146",
+      "normalization": "ANSI removed, trailing whitespace and terminal blank lines removed; outcomes preserved"
+    },
+    "gateway-clippy.log": {
+      "raw_sha256": "15944a1293b594c5283bd9810a987a659b6e6e6df90e097dd037d38bb6ba6a01",
+      "normalized_sha256": "15944a1293b594c5283bd9810a987a659b6e6e6df90e097dd037d38bb6ba6a01",
+      "normalization": "ANSI removed, trailing whitespace and terminal blank lines removed; outcomes preserved"
+    },
+    "sp1-replay.log": {
+      "raw_sha256": "d61b34b5331559006f1a4d5cde6eb35db518b540555b219d734d9e67be271247",
+      "normalized_sha256": "d61b34b5331559006f1a4d5cde6eb35db518b540555b219d734d9e67be271247",
+      "normalization": "ANSI removed, trailing whitespace and terminal blank lines removed; outcomes preserved"
+    },
+    "host-build.log": {
+      "raw_sha256": "baae0a399764b294b56aac8c258a47ad510ab25809ecd126a8334475c3cc9ef0",
+      "normalized_sha256": "baae0a399764b294b56aac8c258a47ad510ab25809ecd126a8334475c3cc9ef0",
+      "normalization": "ANSI removed, trailing whitespace and terminal blank lines removed; outcomes preserved"
+    },
+    "initial-host-protoc-missing.log": {
+      "raw_sha256": "67c85dd0de205fbe99cc11ff307a030f187eb9ea61990caa2412d8a5ee21504d",
+      "normalized_sha256": "67c85dd0de205fbe99cc11ff307a030f187eb9ea61990caa2412d8a5ee21504d",
+      "normalization": "ANSI removed, trailing whitespace and terminal blank lines removed; outcomes preserved"
+    },
+    "direct-guest-build.log": {
+      "raw_sha256": "a181172566a3fbac0db368ce353626131f086cad6738e047db556412e085925d",
+      "normalized_sha256": "a181172566a3fbac0db368ce353626131f086cad6738e047db556412e085925d",
+      "normalization": "ANSI removed, trailing whitespace and terminal blank lines removed; outcomes preserved"
+    },
+    "remapped-guest-build.log": {
+      "raw_sha256": "7337b917eda83b457fa59e37fafba2662ee8c899826809484d3ed3e23ab94dd2",
+      "normalized_sha256": "7337b917eda83b457fa59e37fafba2662ee8c899826809484d3ed3e23ab94dd2",
+      "normalization": "ANSI removed, trailing whitespace and terminal blank lines removed; outcomes preserved"
+    }
+  },
+  "remaining": [
+    "Fresh real SP1 proofs for these exact four clock witnesses and real verifier settlement",
+    "Production service-loop and target-chain finality/complete crash continuation",
+    "Reproducible fresh source-to-reviewed-ELF/key binding",
+    "Representative prover load/p95/RSS and admission pause measurement"
+  ]
+}

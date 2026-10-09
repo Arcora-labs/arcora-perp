@@ -5,6 +5,10 @@ Tarih: 2026-10-09 (Europe/Istanbul). Başlangıç kaynağı:
 Yerel dal: `fix/remaining-work-20261009`.
 Kapsam kararı: kullanıcı **mevcut custodial alpha modelini sağlamlaştırmayı** seçti.
 
+**Devam kaydı:** Bu ilk raporun ardından değişiklikler [PR #32](https://github.com/Arcora-labs/arcora-perp/pull/32)
+ile GitHub'a gönderildi. Aşağıdaki push edilmedi ifadeleri ilk doğrulama anını
+anlatır. Yeni düzeltmeler ve güncel teslim durumu [devam raporundadır](../2026-10-09-followup/README.md).
+
 Bu çalışma rapordaki R01–R10'u güncel kaynak, yerel testler ve GitHub API'siyle
 karşılaştırır. İki somut hata düzeltildi: aynı blok içindeki geç settlement'ın
 itiraz teminatını yanlış tarafa vermesi ve prover panic durumunda açılmış witness

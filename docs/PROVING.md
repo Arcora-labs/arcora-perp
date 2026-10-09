@@ -160,7 +160,8 @@ bare prover farm would see every position, fill, and margin in plaintext. So:
 
 - The witness is **sealed to the attested prover measurement** (`SealedWitness`).
 - `AttestedProver::prove_sealed` opens it **only if its measurement matches**, and
-  **zeroizes** the plaintext the moment the job finishes.
+  wipes its opened byte buffer on return or panic unwind. Decoded state and
+  SDK-owned copies are separate; process abort/SIGKILL cannot run the wipe guard.
 - A prover with the wrong measurement — e.g. a **public/outsourced GPU proving
   network (SP1/Risc0 marketplaces)** — gets `MeasurementMismatch` and cannot open
   the witness. Hence: *private batches require a self-hosted attested prover.*
@@ -175,6 +176,21 @@ sealed witnesses would leak the XOR of two private ledgers (a two-time pad). The
 nonce uniqueness requirement is exactly what a real AEAD/key-release scheme also
 demands. Replacing the stand-in with real attested sealing is a backend change;
 the typed boundary (`SealedWitness` + `AttestedProver` + zeroization) stays.
+
+### Diagnostic output guard
+
+Private proving refuses `SP1_DUMP` unless it is absent or explicitly `0`/`false`
+(case-insensitive `false`). `SP1_DUMP_SHARD_DIR` and `TRACE_FILE` must be absent,
+including in development: an empty string, `0`, or `false` is still a configured
+path. Non-UTF8 or unknown values fail closed, without printing their contents.
+
+This matters because pinned SP1 6.1.0 can write raw stdin and execution records to
+disk through diagnostic switches; its stdin dump then exits without unwinding.
+The service checks before SDK setup and body decoding, the sealed entrypoints
+check before key release, and the direct SP1 backend checks before copying stdin.
+This prevents the known diagnostic paths. It does not establish hardware-backed
+confidentiality or erase decoded state, SDK copies, OS core dumps/swap, or backend
+scratch files. See the [R08 regression evidence](audits/2026-10-09-prover-diagnostic-privacy.md).
 
 ### Future hardening (post-v1, §10b)
 

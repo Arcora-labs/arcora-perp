@@ -1,0 +1,69 @@
+{
+  "generated_at_utc": "2026-10-09T21:04:52.034599+00:00",
+  "status": "LOCAL_FOLLOWUP_VERIFIED",
+  "release_gate": "HOLD",
+  "source_sha256": "962f14199088549693726076143dcccc80dd1ba8b918097f53f347f0281c0be6",
+  "pull_request": "https://github.com/Arcora-labs/arcora-perp/pull/32",
+  "remote_ci": "Query PR checks at exact head SHA; local evidence is not remote CI completion.",
+  "checks": {
+    "workspace": "PASS",
+    "clippy_workspace_all_targets": "PASS",
+    "rust_format_workspace_and_host": "PASS",
+    "frontend": {
+      "passed": 509,
+      "skipped": 1,
+      "build": "PASS"
+    },
+    "browser": {
+      "passed": 78,
+      "scope": "Chromium and WebKit; local synthetic HTTP and wallet"
+    },
+    "python": {
+      "passed": 85,
+      "skipped": 1,
+      "opt_in_anvil_suite_passed": 36
+    },
+    "prover_privacy": {
+      "passed": 40,
+      "optimized_environment_cases": 23
+    },
+    "funds_clock_lifecycle": {
+      "batches": 4,
+      "claims_after_gateway_and_writer_shutdown": 2,
+      "inner_verifier": "explicit mock"
+    },
+    "sp1_cpu": {
+      "exact_wallet_witnesses_executed": 4,
+      "native_public_commitments_equal": true,
+      "fresh_proof_generated": false,
+      "elf_origin": "existing independently pinned reviewed artifact"
+    },
+    "replay_guards": {
+      "positive": true,
+      "negative_cases_passed": 7
+    }
+  },
+  "log_sha256": {
+    "browser-tests.log": "d031bfb7f9d7edba2a9646f9e587ec2ff7e877c93d23b0dd7e38cca644b62945",
+    "clippy.log": "2f414cea074f914354f0bb1e8bb24dcebfb692c52fe81686fda9fcc2c4c83cdb",
+    "frontend-build.log": "fd7220e2cdf7bc8c7c85397e7143587fe9a18023bf6fc1cbfc3ea79bcdcbcd1d",
+    "frontend-claim-before.log": "51aa9f543014221c625f97bd19db570c0a7654b90d71b1e1fbf715fc0067d6b1",
+    "frontend-tests.log": "c23101f8bf3db076ff24b3073af555e7d4c1a180de3808a740f20948d94d670b",
+    "manifest-tests.log": "13bf11e802ee8157d862992a2713422d771b441faf1bee3bc1057d38bee99ab4",
+    "python-tests.log": "61788b88c560045dbb586954dc50d0ef87106991df05a611049e59d628cc4cd0",
+    "workspace.log": "55803fbeca76f7082ca2fbce625ac7839679821ea0b1fc176df3d311d17b3646"
+  },
+  "verification_scope_notes": [
+    "Ignored lifecycle test received stronger subprocess shutdown/port-ownership assertions after the combined workspace run; its final opt-in run and gateway Clippy passed separately. Production Rust changes were unchanged.",
+    "Fresh direct and path-remapped guest builds differ from reviewed ELF; neither was accepted as the reviewed program.",
+    "No production rollout, main merge, state migration, real TEE or real-operator alert delivery."
+  ],
+  "remaining": [
+    "Fresh real proofs for exact four wallet witnesses and real-verifier settlement",
+    "Reproducible source-to-reviewed-ELF/vkey build",
+    "Target deployment and service identity, migration and full crash recovery",
+    "Representative proof capacity/p95/RSS, finality and admission pause",
+    "Rejection fairness, independent oracle policy, new-exit dependencies",
+    "Target TEE and cross-machine recovery/operational acceptance"
+  ]
+}

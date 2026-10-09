@@ -63,7 +63,8 @@ jobs:
     #     SP1 guest, which needs the succinct toolchain (`cargo prove`).
     #   - stub ELF: `include_elf!` is an `include_bytes!` of the path sp1-build
     #     emits even when skipped, so the file must exist. An empty file is fine —
-    #     we type-check the host sources, we never execute the guest. The path
+    #     for typechecking. The separate replay steps explicitly load the SHA-pinned
+    #     reviewed ELF and execute it; they do not claim a fresh guest build. The path
     #     comes from sp1-build's HELPER_TARGET_SUBDIR/DEFAULT_TARGET constants; if
     #     an sp1 upgrade moves it, this job fails loudly on the include_bytes.
     name: prover crates (excluded, typecheck)
@@ -101,6 +102,32 @@ jobs:
         run: cargo check --locked --manifest-path crates/sp1-host/Cargo.toml
       - name: native host fixture and artifact guards (not guest execution)
         run: cargo test --locked --manifest-path crates/sp1-host/Cargo.toml --lib
+      - name: Build exact synthetic funds replay host (guest build skipped)
+        env:
+          CARGO_BUILD_JOBS: '2'
+        run: cargo build --locked --manifest-path crates/sp1-host/Cargo.toml --bin replay-funds
+      - name: Reject incomplete or substituted normal-wallet witnesses
+        run: |
+          python3 scripts/local-verification/verify_funds_replay.py \
+            --binary crates/sp1-host/target/debug/replay-funds \
+            --elf contracts/integration/fixtures/clock-v2-verified/guest.elf \
+            --witness-dir docs/audits/2026-10-09-followup/clock-lifecycle/witnesses \
+            --output-dir /tmp/arcora-funds-replay-guards
+      - name: Execute reviewed SP1 guest on all four exact wallet witnesses (not proof generation)
+        env:
+          RAYON_NUM_THREADS: '2'
+        run: |
+          crates/sp1-host/target/debug/replay-funds \
+            docs/audits/2026-10-09-followup/clock-lifecycle/witnesses \
+            /tmp/arcora-funds-guest-execution \
+            --elf contracts/integration/fixtures/clock-v2-verified/guest.elf
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: exact-funds-guest-replay
+          path: |
+            /tmp/arcora-funds-replay-guards
+            /tmp/arcora-funds-guest-execution
       - name: typecheck prover-service
         run: cargo check --locked --manifest-path crates/prover-service/Cargo.toml
 

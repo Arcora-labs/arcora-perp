@@ -34,6 +34,8 @@ use perp_core::order::BatchManifest;
 use perp_core::{DefaultState, EngineError};
 use zeroize::Zeroize;
 
+mod privacy;
+pub use privacy::{validate_sp1_environment, Sp1PrivacyError};
 mod seal_root;
 pub use seal_root::{resolve_seal_root, SealRootError};
 
@@ -178,6 +180,9 @@ pub enum ProverError {
     /// The opened witness did not decode as the postcard `(DefaultState, Vec<BatchOp>,
     /// BatchManifest)` tuple the guest reads (a malformed or wrong-format witness).
     WitnessDecode,
+    /// A diagnostic output setting could persist private witness/trace data.
+    /// Refused before the seal provider releases a key or the witness is opened.
+    UnsafeEnvironment(Sp1PrivacyError),
 }
 
 impl From<EngineError> for ProverError {
@@ -521,6 +526,7 @@ impl<P: Prover> AttestedProver<P> {
         sealed: &SealedWitness,
         public: &PublicInputs,
     ) -> Result<BatchProof, ProverError> {
+        validate_sp1_environment().map_err(ProverError::UnsafeEnvironment)?;
         let mut witness = self.open(sealed)?;
         self.prove_opened(&mut witness, Some(public))
     }
@@ -529,6 +535,7 @@ impl<P: Prover> AttestedProver<P> {
     /// the prover derives the roots, never trusts an external claim), prove, and zeroize.
     /// The witness is postcard `(DefaultState, Vec<BatchOp>, BatchManifest)`.
     pub fn prove_batch(&self, sealed: &SealedWitness) -> Result<BatchProof, ProverError> {
+        validate_sp1_environment().map_err(ProverError::UnsafeEnvironment)?;
         let mut witness = self.open(sealed)?;
         self.prove_opened(&mut witness, None)
     }

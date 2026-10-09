@@ -131,10 +131,14 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Build the actual gateway and record its source
         run: python3 scripts/local-verification/run_check.py --output-dir /tmp/arcora-local-drills/checks gateway-build -- cargo build --locked -p gateway
-      - name: Local wallet funds lifecycle (native proof and explicit mock verifier)
+      - name: Local clock wallet lifecycle and gateway-offline claims (explicit mock verifier)
         run: |
           forge build --root contracts
-          ARCORA_FUNDS_EVIDENCE=/tmp/arcora-local-drills/funds-lifecycle.json cargo test -p gateway funds_lifecycle_tests --locked -- --ignored --nocapture
+          ARCORA_FUNDS_EVIDENCE=/tmp/arcora-local-drills/funds-lifecycle.json ARCORA_FUNDS_WITNESS_DIR=/tmp/arcora-local-drills/funds-witnesses cargo test -p gateway funds_lifecycle_tests --locked -- --ignored --nocapture
+      - name: Release manifest against owned six-contract Anvil stack
+        run: |
+          forge build --root contracts/vendor/sp1-contracts
+          ARCORA_RUN_MANIFEST_ANVIL=1 ARCORA_MANIFEST_ANVIL_EVIDENCE=/tmp/arcora-local-drills/manifest-anvil.json python3 -m unittest discover -s scripts/local-verification -p test_release_manifest.py -v
       - name: Real cast transport against owned RPC fixtures
         run: |
           python3 scripts/local-verification/run_check.py --output-dir /tmp/arcora-local-drills/checks recovery-rpc -- cargo test --locked -p gateway runtime_witness_native_cast -- --ignored --nocapture --test-threads=1

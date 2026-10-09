@@ -1,8 +1,10 @@
 //! Opt-in real HTTP + local EVM funds lifecycle. The proof backend is explicitly
-//! MockProverClient/MockZkVerifier: this is NOT an SP1, clock, TEE or release gate.
+//! ClockBoundVerifier + MockZkVerifier: this is NOT an SP1, TEE or release gate.
+//! Optional ARCORA_FUNDS_WITNESS_DIR exports exact synthetic v2 inputs for guest replay.
 //! Run `forge build --root contracts`, then the ignored test below. All wallets,
 //! contracts, ports and snapshots are disposable; no configured chain is used.
 use super::*;
+use k256::sha2::{Digest as _, Sha256};
 use serde_json::{json, Value};
 use std::path::{Path as FsPath, PathBuf};
 use std::process::{Child, Command, Output, Stdio};
@@ -56,6 +58,7 @@ struct Evm {
     child: Child,
     url: String,
     scratch: PathBuf,
+    output: Option<std::thread::JoinHandle<()>>,
 }
 impl Evm {
     fn start() -> Self {
@@ -65,38 +68,63 @@ impl Evm {
             rand::random::<u64>()
         ));
         std::fs::create_dir(&scratch).unwrap();
-        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        let port = listener.local_addr().unwrap().port();
-        drop(listener);
-        let child = Command::new("anvil")
+        let mut child = Command::new("anvil")
             .args([
                 "--host",
                 "127.0.0.1",
                 "--port",
-                &port.to_string(),
+                "0",
                 "--chain-id",
                 "31337",
-                "--silent",
                 "--slots-in-an-epoch",
                 "1",
             ])
             .stdout(Stdio::null())
-            .stderr(Stdio::null())
+            .stderr(Stdio::piped())
             .spawn()
             .unwrap();
+        let startup_output = child.stderr.take().unwrap();
+        let (send, receive) = std::sync::mpsc::channel();
+        let output = std::thread::spawn(move || {
+            use std::io::BufRead as _;
+            let mut reader = std::io::BufReader::new(startup_output);
+            let mut line = String::new();
+            let mut startup_bytes = 0;
+            let mut found = false;
+            while reader.read_line(&mut line).is_ok_and(|n| n > 0) {
+                if !found {
+                    startup_bytes += line.len();
+                    if startup_bytes > 128 * 1024 {
+                        return;
+                    }
+                    if let Some(port) = line
+                        .trim()
+                        .strip_prefix("Listening on 127.0.0.1:")
+                        .and_then(|s| s.parse::<u16>().ok())
+                        .filter(|p| *p != 0)
+                    {
+                        let _ = send.send(port);
+                        found = true;
+                    }
+                }
+                line.clear(); // Drain owned child's output; never print test key banners.
+            }
+        });
         let mut evm = Self {
             child,
-            url: format!("http://127.0.0.1:{port}"),
+            url: String::new(),
             scratch,
+            output: Some(output),
         };
-        for _ in 0..100 {
-            assert!(evm.child.try_wait().unwrap().is_none(), "test Anvil exited");
-            if std::net::TcpStream::connect(("127.0.0.1", port)).is_ok() {
-                return evm;
-            }
-            std::thread::sleep(Duration::from_millis(20));
-        }
-        panic!("test Anvil did not listen");
+        let port = receive
+            .recv_timeout(Duration::from_secs(10))
+            .expect("owned Anvil must announce allocated port");
+        assert!(
+            evm.child.try_wait().unwrap().is_none(),
+            "owned Anvil exited"
+        );
+        evm.url = format!("http://127.0.0.1:{port}");
+        evm
     }
     fn cast(&self, args: &[&str]) -> Output {
         let mut all = vec![args[0], "--rpc-url", &self.url];
@@ -201,6 +229,9 @@ impl Drop for Evm {
     fn drop(&mut self) {
         let _ = self.child.kill();
         let _ = self.child.wait();
+        if let Some(output) = self.output.take() {
+            let _ = output.join();
+        }
         let _ = std::fs::remove_dir_all(&self.scratch);
     }
 }
@@ -403,7 +434,45 @@ impl Drop for Http {
     }
 }
 
-async fn settle(http: &Http, evm: &Evm, operator: &User, settlement: &str, recover: bool) -> Value {
+struct ClockMock(perp_core::clock::ClockContext);
+impl prover_client::ProverClient for ClockMock {
+    fn clock_enabled(&self) -> bool {
+        true
+    }
+    fn clock_context(
+        &self,
+        _: &sequencer::WindowWitness,
+    ) -> Result<Option<perp_core::clock::ClockContext>, prover_client::ProverClientError> {
+        Ok(Some(self.0))
+    }
+    fn prove(
+        &self,
+        _: &sequencer::WindowWitness,
+    ) -> Result<prover_client::RemoteProveResp, prover_client::ProverClientError> {
+        panic!("clock test must not use legacy prove")
+    }
+    fn prove_clocked(
+        &self,
+        _: &sequencer::WindowWitness,
+        clock: &perp_core::clock::ClockContext,
+    ) -> Result<prover_client::RemoteProveResp, prover_client::ProverClientError> {
+        assert_eq!(*clock, self.0);
+        Ok(prover_client::RemoteProveResp {
+            roots: Default::default(),
+            commitment: clock.commitment(),
+            proof: clock.commitment().to_vec(),
+        })
+    }
+}
+
+async fn settle(
+    http: &Http,
+    evm: &Evm,
+    operator: &User,
+    settlement: &str,
+    clock_verifier: &str,
+    recover: bool,
+) -> Value {
     let batch = evm
         .call(settlement, "batchCount()(uint64)", &[])
         .parse::<u64>()
@@ -417,12 +486,75 @@ async fn settle(http: &Http, evm: &Evm, operator: &User, settlement: &str, recov
         persist_recovery(&gw, &http.state, &SEED).unwrap();
         j
     };
-    let prepared = prover_client::prove_and_prepare(
-        &prover_client::MockProverClient,
-        &journal.witness,
-        &journal.ww,
+    // Write the immutable unproved intent BEFORE the on-chain registration.
+    journal.prepared =
+        Some(prover_client::prepare_unproved(&journal.witness, &journal.ww).unwrap());
+    rollback_journal::write(&jpath, &journal, &SEED).unwrap();
+    let w = &journal.witness;
+    let bounds = perp_core::clock::TimeBounds::derive(&w.ops).unwrap();
+    let base = &journal.prepared.as_ref().unwrap().outcome;
+    let registration = evm.send(
+        operator,
+        clock_verifier,
+        "register(uint64,bytes32,bytes32,uint64,uint64,uint64,uint8)",
+        &[
+            batch.to_string(),
+            hex0x(&base.prev_root),
+            hex0x(&base.commitment),
+            bounds.first_ms.to_string(),
+            bounds.last_ms.to_string(),
+            bounds.count.to_string(),
+            "0".into(),
+        ],
+    );
+    let block = evm.rpc(
+        "eth_getBlockByHash",
+        &[registration["blockHash"].clone(), json!(false)],
+    );
+    let anchored_at_ms = u64::from_str_radix(
+        block["timestamp"]
+            .as_str()
+            .unwrap()
+            .trim_start_matches("0x"),
+        16,
     )
-    .unwrap();
+    .unwrap()
+        * 1000;
+    let clock = perp_core::clock::ClockContext {
+        chain_id: CHAIN,
+        verifier: parse_addr20_hex(clock_verifier).unwrap(),
+        settlement: parse_addr20_hex(settlement).unwrap(),
+        batch_id: batch,
+        previous_root: base.prev_root,
+        base_commitment: base.commitment,
+        phase: 0,
+        first_ms: bounds.first_ms,
+        last_ms: bounds.last_ms,
+        timed_ops: bounds.count,
+        anchored_at_ms,
+        max_window_ms: 60_000,
+        clock_skew_ms: 60_000,
+    };
+    let mut bytes = perp_core::clock::WIRE_MAGIC.to_vec();
+    bytes.extend(postcard::to_allocvec(&(&w.pre_state, &w.ops, &w.manifest, clock)).unwrap());
+    let public = prover::public_from_witness(&bytes).unwrap();
+    assert_eq!(public.commitment::<Keccak256>(), clock.commitment());
+    // The adapter must reject a legacy (unbound) commitment, even though the
+    // inner mock would accept it directly. Its actual receipt is checked below
+    // by successful bound settlement, not merely by trusting these host fields.
+    let prepared = prover_client::prove_and_prepare(&ClockMock(clock), w, &journal.ww).unwrap();
+    if let Some(dir) = std::env::var_os("ARCORA_FUNDS_WITNESS_DIR") {
+        use std::io::Write as _;
+        let path = PathBuf::from(dir).join(format!("batch-{batch}.witness.bin"));
+        std::fs::OpenOptions::new()
+            .create_new(true)
+            .write(true)
+            .open(path)
+            .unwrap()
+            .write_all(&bytes)
+            .unwrap();
+    }
+    let clock_evidence = json!({"receipt":hex0x(&clock.receipt()),"commitment":hex0x(&clock.commitment()),"registrationTx":registration["transactionHash"],"registrationBlock":registration["blockHash"],"anchoredAtMs":anchored_at_ms,"timedOps":bounds.count,"witnessSha256":hex0x(&Sha256::digest(&bytes)),"witnessBytes":bytes.len(),"filename":format!("batch-{batch}.witness.bin")});
     let p = &prepared.outcome;
     let signature =
         "settleBatch(bytes32,bytes32,bytes32,bytes32,bytes32,bytes32,bytes32,uint64,bytes)";
@@ -442,7 +574,11 @@ async fn settle(http: &Http, evm: &Evm, operator: &User, settlement: &str, recov
         evm.call(settlement, "currentStateRoot()(bytes32)", &[]),
         hex0x(&p.prev_root)
     );
-    args[8] = hex0x(&p.proof);
+    args[8] = hex0x(&p.commitment);
+    evm.reject(operator, settlement, signature, &args);
+    let envelope = p.proof.strip_prefix(perp_core::clock::PROOF_MAGIC).unwrap();
+    assert_eq!(&envelope[..32], clock.receipt());
+    args[8] = hex0x(&envelope[32..]);
     journal.prepared = Some(prepared.clone());
     rollback_journal::write(&jpath, &journal, &SEED).unwrap();
     let receipt = evm.send(operator, settlement, signature, &args);
@@ -502,7 +638,7 @@ async fn settle(http: &Http, evm: &Evm, operator: &User, settlement: &str, recov
         );
         persist_recovery(&gw, &http.state, &SEED).unwrap();
     }
-    json!({"batch":batch,"tx":receipt["transactionHash"],"stateRoot":hex0x(&p.new_root),"depositTip":hex0x(&p.deposits_root),"depositCount":p.new_deposit_count,"withdrawalsRoot":hex0x(&p.withdrawals_root),"recoveredAfterMining":recover})
+    json!({"batch":batch,"tx":receipt["transactionHash"],"stateRoot":hex0x(&p.new_root),"depositTip":hex0x(&p.deposits_root),"depositCount":p.new_deposit_count,"withdrawalsRoot":hex0x(&p.withdrawals_root),"recoveredAfterMining":recover,"clock":clock_evidence})
 }
 
 #[test]
@@ -550,8 +686,25 @@ async fn run_lifecycle() {
     assert_eq!(gw.seq.state.consumed_deposit_count, 0);
     assert_eq!(gw.seq.state.external_in, 0);
     let token = evm.deploy(&operator, "MockUSDC.sol/MockUSDC.json", None);
-    let verifier = evm.deploy(&operator, "MockZkVerifier.sol/MockZkVerifier.json", None);
-    let settlement = evm.deploy(&operator, "DarkPerpSettlement.sol/DarkPerpSettlement.json", Some(("constructor(address,address,address,bytes32,uint64,uint64,uint256,uint64,address,uint64)", vec![hex0x(&operator.address),hex0x(&operator.address),verifier,hex0x(&gw.seq.state.state_root()),"100000".into(),"100".into(),"0".into(),"0".into(),hex0x(&operator.address),"0".into()])));
+    if let Some(dir) = std::env::var_os("ARCORA_FUNDS_WITNESS_DIR") {
+        std::fs::create_dir(dir).expect("witness export requires a fresh directory");
+    }
+    let inner_verifier = evm.deploy(&operator, "MockZkVerifier.sol/MockZkVerifier.json", None);
+    let verifier = evm.deploy(
+        &operator,
+        "ClockBoundVerifier.sol/ClockBoundVerifier.json",
+        Some((
+            "constructor(address,uint64,uint64)",
+            vec![inner_verifier, "60000".into(), "60000".into()],
+        )),
+    );
+    let settlement = evm.deploy(&operator, "DarkPerpSettlement.sol/DarkPerpSettlement.json", Some(("constructor(address,address,address,bytes32,uint64,uint64,uint256,uint64,address,uint64)", vec![hex0x(&operator.address),hex0x(&operator.address),verifier.clone(),hex0x(&gw.seq.state.state_root()),"100000".into(),"100".into(),"0".into(),"0".into(),hex0x(&operator.address),"0".into()])));
+    evm.send(
+        &operator,
+        &verifier,
+        "bindSettlement(address)",
+        std::slice::from_ref(&settlement),
+    );
     let signer = GatewaySigner::from_parts([0x33; 32], CHAIN, [0; 20])
         .unwrap()
         .address();
@@ -587,7 +740,7 @@ async fn run_lifecycle() {
         "postBond(uint256)",
         &["10000000000".into()],
     );
-    let http = Http::start(gw, &evm, &vault).await;
+    let mut http = Http::start(gw, &evm, &vault).await;
     for user in [&mut operator, &mut alice, &mut bob] {
         http.register(user);
     }
@@ -685,7 +838,7 @@ async fn run_lifecycle() {
     );
     assert_eq!(absent["credited"], "0");
     assert_eq!(http.app.gw.lock().await.seq.state.consumed_deposit_count, 3);
-    let mut batches = vec![settle(&http, &evm, &operator, &settlement, false).await];
+    let mut batches = vec![settle(&http, &evm, &operator, &settlement, &verifier, false).await];
     assert_eq!(
         http.app.gw.lock().await.trading_gate,
         trading_gate::TradingGate::Open
@@ -717,7 +870,7 @@ async fn run_lifecycle() {
             assert_eq!(gw.seq.state.position(&bob.owner, 0).unwrap().size, expected);
             assert!(gw.seq.state.conservation_holds());
         }
-        batches.push(settle(&http, &evm, &operator, &settlement, false).await);
+        batches.push(settle(&http, &evm, &operator, &settlement, &verifier, false).await);
     }
     let mut claims = Vec::new();
     for user in [&alice, &bob] {
@@ -759,10 +912,35 @@ async fn run_lifecycle() {
             ],
         );
     }
-    batches.push(settle(&http, &evm, &operator, &settlement, true).await);
+    batches.push(settle(&http, &evm, &operator, &settlement, &verifier, true).await);
     deposit_ingestion::ingest_once(&http.app).await.unwrap();
-    for user in [&alice, &bob] {
-        let rows = http.request("GET", "/v1/accounts/withdrawals", &user.key, None, 200);
+    let retained: Vec<Value> = [&alice, &bob]
+        .into_iter()
+        .map(|user| http.request("GET", "/v1/accounts/withdrawals", &user.key, None, 200))
+        .collect();
+    {
+        let gw = http.app.gw.lock().await;
+        assert_eq!(gw.seq.state.consumed_deposit_count, 3);
+        assert_eq!(gw.seq.state.external_out, 20_000 * QUOTE_SCALE);
+        assert!(gw.seq.state.conservation_holds());
+    }
+    let stopped_address = http.url.strip_prefix("http://").unwrap().to_string();
+    http.server.abort();
+    http.writer.abort();
+    assert!((&mut http.server).await.unwrap_err().is_cancelled());
+    assert!((&mut http.writer).await.unwrap_err().is_cancelled());
+    drop(http); // Both owned tasks have stopped BEFORE either claim.
+    for _ in 0..100 {
+        if std::net::TcpStream::connect(&stopped_address).is_err() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    assert!(
+        std::net::TcpStream::connect(&stopped_address).is_err(),
+        "gateway must be offline before claims"
+    );
+    for (user, rows) in [&alice, &bob].into_iter().zip(&retained) {
         let withdrawal = &rows["withdrawals"][0];
         assert_eq!(withdrawal["claimable"], true);
         let proof = format!(
@@ -813,10 +991,6 @@ async fn run_lifecycle() {
         );
         claims.push(json!({"to":hex0x(&user.address),"amount":args[1],"tx":receipt["transactionHash"],"balanceAfter":after.to_string()}));
     }
-    let gw = http.app.gw.lock().await;
-    assert_eq!(gw.seq.state.consumed_deposit_count, 3);
-    assert_eq!(gw.seq.state.external_out, 20_000 * QUOTE_SCALE);
-    assert!(gw.seq.state.conservation_holds());
     assert_eq!(
         evm.call(&vault, "totalDeposited()(uint256)", &[]),
         "50000000000"
@@ -845,7 +1019,7 @@ async fn run_lifecycle() {
             "rustupToolchain": std::env::var("RUSTUP_TOOLCHAIN").ok(),
             "anvil": successful(command("anvil", &["--version"]))
         },
-        "proofBackend": "native replay + MockZkVerifier (NOT SP1)",
+        "proofBackend": "native replay + real ClockBoundVerifier + MockZkVerifier (NOT SP1)",
         "chainId": CHAIN,
         "gatewayTransport": "real loopback HTTP",
         "restart": "encrypted snapshot and WAL restoration after mined settlement before local commit; not OS crash",
@@ -853,14 +1027,28 @@ async fn run_lifecycle() {
         "orders": order_hashes,
         "batches": batches,
         "claims": claims,
-        "contracts": { "token": token, "vault": vault, "settlement": settlement },
+        "contracts": { "token": token, "vault": vault, "settlement": settlement, "clockVerifier": verifier },
+        "syntheticWitnesses": true,
+        "operatorOutageClaims": {"gatewayStoppedBeforeClaims":true,"retainedClaimData":true,"successfulClaims":2,"scope":"Previously published roots and saved proof data only; no new exit or production service loss claim"},
+        "clockRegistration": "real owned-Anvil registration and adapter verification; test inner verifier; no target finality or production L1 reader claim",
+        "clockPolicyMs": { "maxWindow": 60000, "skew": 60000 },
         "negativeCases": [
             "missing allowance", "wrong deposit tuple", "replayed deposit authorization",
             "nonexistent deposit credited zero", "wrong order signer", "duplicate signed order",
             "wrong withdrawal destination", "duplicate withdrawal authorization",
-            "unsettled withdrawal claim", "invalid mock proof", "duplicate vault claim"
+            "unsettled withdrawal claim", "invalid mock proof", "legacy proof rejected by clock adapter", "duplicate vault claim"
         ]
     });
+    if let Some(dir) = std::env::var_os("ARCORA_FUNDS_WITNESS_DIR") {
+        use std::io::Write as _;
+        std::fs::OpenOptions::new()
+            .create_new(true)
+            .write(true)
+            .open(PathBuf::from(dir).join("lifecycle.json"))
+            .unwrap()
+            .write_all(&serde_json::to_vec_pretty(&report).unwrap())
+            .unwrap();
+    }
     if let Ok(path) = std::env::var("ARCORA_FUNDS_EVIDENCE") {
         std::fs::write(path, serde_json::to_vec_pretty(&report).unwrap()).unwrap();
     }

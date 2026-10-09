@@ -29,6 +29,9 @@ impl Sp1GnarkProver {
     /// Build the CPU prover, run `setup(ELF)` ONCE (cache pk), capture the vkey. Call from
     /// an async context (holds the current runtime handle for later `block_on`).
     pub async fn new(measurement: Digest) -> Self {
+        // Worker configuration captures dump paths at construction, so checking
+        // only at prove time would be too late if the environment later changed.
+        prover::validate_sp1_environment().expect("private SP1 proving environment");
         let client = ProverClient::builder().cpu().build().await;
         let pk = client.setup(ELF).await.expect("sp1 setup");
         let vkey = pk.verifying_key().bytes32();
@@ -56,6 +59,9 @@ impl Prover for Sp1GnarkProver {
     /// the clock context, so public values equal `public.commitment()`. Call inside a
     /// blocking task — see the service).
     fn prove(&self, public: &PublicInputs, witness: &[u8]) -> Vec<u8> {
+        // Also protect direct backend callers before the first SDK-owned copy.
+        // The sealed entrypoint has already refused before opening its witness.
+        prover::validate_sp1_environment().expect("private SP1 proving environment");
         let mut stdin = SP1Stdin::new();
         stdin.write_vec(witness.to_vec());
         let client = self.client.clone();

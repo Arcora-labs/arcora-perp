@@ -3,6 +3,7 @@ import { useStore } from "../store";
 import { formatUsd, parseUsd, shortHash } from "../domain/format";
 import { accountSummary } from "../domain/risk";
 import type { WithdrawalEntry } from "../domain/types";
+import { validateWithdrawal } from "../domain/withdrawal";
 import type { DarkPerpClient } from "../api/client";
 import {
   EXPLORER_TX,
@@ -403,6 +404,7 @@ export function WalletDepositCard({ client }: { client: WalletDepositClient }) {
 /// the sender), so the private key stays a placeholder: the UI must NEVER ask
 /// for or handle a real key.
 export function buildClaimCommand(w: WithdrawalEntry, vault: string): string {
+  validateWithdrawal(w, vault);
   return [
     "cast send",
     vault,
@@ -471,6 +473,7 @@ export function WithdrawalsSection({ client }: { client: DarkPerpClient }) {
     const set = (s: ClaimTxState) => setClaims((c) => ({ ...c, [w.nonce]: s }));
     set({ status: "pending" });
     try {
+      validateWithdrawal(w, data.vault);
       await ensureBaseSepolia();
       const hash = await sendTx({ from: wallet, to: data.vault, data: encodeClaim(w) });
       set({ status: "pending", hash });

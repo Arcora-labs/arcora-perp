@@ -1,0 +1,102 @@
+{
+  "schema": 1,
+  "status": "LOCAL_DIAGNOSTIC_OUTPUT_GUARD_VERIFIED",
+  "base_commit": "97983ec2389aa98610df84b5a2744af5836cb2bc",
+  "checks": [
+    {
+      "log": "privacy-before.log",
+      "sha256": "f38c93f90e1263d79edbea4ac042ee3c588e3829e664019f1ad1b1f61452b935",
+      "outcome": "EXPECTED_FAILURE"
+    },
+    {
+      "log": "privacy-after.log",
+      "sha256": "5e35e9e8fcb0c3c4883b45618a241cb95fe9d4d7308792c1afbe4bdcc6777122",
+      "outcome": "PASS"
+    },
+    {
+      "log": "privacy-release.log",
+      "sha256": "3edddd2c860788bda42ed3c52d86d4f41063cdbee9f32048ea20db81a812f41d",
+      "outcome": "PASS"
+    },
+    {
+      "log": "privacy-clippy.log",
+      "sha256": "df4c9dbe34e799ae9b3c31d836441090224a47b2b953db489d1bbd8a3ef38c27",
+      "outcome": "PASS"
+    }
+  ],
+  "sources": [
+    {
+      "path": "crates/prover/src/privacy.rs",
+      "sha256": "b30ac74349d77e841ef5e2f99a5226f6aece3367c8cc41d0f5e51dd0a60f4209"
+    },
+    {
+      "path": "crates/prover/src/lib.rs",
+      "sha256": "01521fa9dd705f609fe53f877c166db0e4b7e75d4e94f30cde8806473ae0f309"
+    },
+    {
+      "path": "crates/prover/tests/privacy_environment.rs",
+      "sha256": "26c5400952baf3ef0f18a93a8251b139534a2115e76816cc4a5a6c6369d6385c"
+    },
+    {
+      "path": "crates/prover-service/src/main.rs",
+      "sha256": "0b6f6669b14d3cf50eeb375fec661494ca0fe30e22f37d78ba2d2a2efebb90d2"
+    },
+    {
+      "path": "crates/prover-service/src/sp1_prover.rs",
+      "sha256": "149005aaf5ee77b6c712e20bbafc07e04d4a5c82f99facc79815a1ff0622e4b3"
+    },
+    {
+      "path": "sp1-sdk-6.1.0/src/utils.rs",
+      "sha256": "da58572bdfa3f96254e8a286df644293e702b243185a29f8c548bfc1941b6e8a"
+    },
+    {
+      "path": "sp1-sdk-6.1.0/src/cpu/prove.rs",
+      "sha256": "20823069c29c5f58fb0dc1e253d24edc92a0dbfb19137cf5de1f3673809c1d0d"
+    },
+    {
+      "path": "vendor/sp1-prover/src/worker/config.rs",
+      "sha256": "2b02e8897e1e7ee9a69ba73ce78afaa55f43381009bce973cb2822c8bc8cb5ae"
+    },
+    {
+      "path": "vendor/sp1-prover/src/worker/prover/core.rs",
+      "sha256": "6ebea0c6bf57cf993571325b3259248ed7c2d8b918145325cc380a4b3569fd92"
+    },
+    {
+      "path": "sp1-core-executor-6.1.0/src/minimal/arch/portable/mod.rs",
+      "sha256": "b43f85cf13fa1b07fef27222b6c0535db5e459438c6b0403d7f1f733f71345d1"
+    }
+  ],
+  "tests": {
+    "prover_package_passed": 40,
+    "privacy_parent_tests_passed": 3,
+    "child_environment_cases": 23,
+    "denied_cases": 18,
+    "allowed_cases": 5,
+    "ignored_test": "child worker invoked explicitly by parents",
+    "release_privacy_parent_tests_passed": 3,
+    "fail_before": "2 parent regressions fail because both sealed entrypoints still release a key under unsafe diagnostic environment; normal configuration passes"
+  },
+  "limits": [
+    "Real SP1 backend was not executed in this test; its diagnostic behavior was inspected in pinned 6.1.0 source.",
+    "Excluded prover-service requires separate typecheck in CI.",
+    "No new proof, guest build, target hardware, no-disk forensic examination, or whole-process memory wipe is established.",
+    "Runtime environment mutation by trusted code remains outside this guard; SDK state already captured at startup cannot be reset by checking later.",
+    "Decoded state, SDK allocations, crypto backend scratch files, core dumps, swap, and SIGKILL/abort cleanup remain outside this change."
+  ],
+  "release_gate": "HOLD",
+  "log_normalization": {
+    "scope": "trailing whitespace and terminal blank lines only; outcomes unchanged",
+    "files": [
+      {
+        "path": "privacy-after.log",
+        "raw_sha256": "78dc63c88e6871e167c7f4faa4fbeca5a6be8a35a8a6e73947cd74ed8049b809",
+        "normalized_sha256": "5e35e9e8fcb0c3c4883b45618a241cb95fe9d4d7308792c1afbe4bdcc6777122"
+      },
+      {
+        "path": "privacy-release.log",
+        "raw_sha256": "889523d9b0ddcdedb43e81385513d8189df552398d0ba4a4dcf2d57cae5fe513",
+        "normalized_sha256": "3edddd2c860788bda42ed3c52d86d4f41063cdbee9f32048ea20db81a812f41d"
+      }
+    ]
+  }
+}

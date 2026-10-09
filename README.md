@@ -136,7 +136,7 @@ remain outside the guest's proven statement.
 
 ## Verification status
 
-Use current command results and the [dated follow-up report](docs/audits/2026-10-09-remaining-work/README.md)
+Use current command results and the [GitHub delivery and follow-up report](docs/audits/2026-10-09-followup/README.md)
 for counts and limitations. The PR #31 real proof remains valid evidence for its
 pinned guest; native lifecycle tests using a mock verifier are a separate layer.
 A new deployment still requires release identity, full clock proof lifecycle,

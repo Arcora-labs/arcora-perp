@@ -30,6 +30,7 @@ import { boundedJson, canonicalBase, credentialKey, LEGACY_ACCOUNT_KEY, makeCred
   persistCredential, sameScope, validGeneration, withRecoveryLock, type CredentialScope, type StoredCredential } from "./credentialStore";
 import { cancellationCapability } from "../domain/cancellation";
 import { parseExecution } from "../domain/execution";
+import { isWithdrawalAddress, parseWithdrawal } from "../domain/withdrawal";
 import { secp256k1 } from "@noble/curves/secp256k1";
 import { keccak_256 } from "@noble/hashes/sha3";
 import { bytesToHex, hexToBytes, utf8ToBytes, concatBytes } from "@noble/hashes/utils";
@@ -75,10 +76,6 @@ interface WireHedge {
 }
 interface WireL1 {
   settledRoot: string; batchCount: number; lastTx: string; bondUsdc: string; withdrawalsRoot: string;
-}
-interface WireWithdrawal {
-  to: string; amount: string; nonce: number; leaf: string; root: string;
-  claimable: boolean; proof: string[];
 }
 /// The gateway's WReceipt wire shape — the domain `Receipt` plus `windowId`.
 interface WireV1Receipt { signature?: string; enclaveSigner?: string; orderHash: string; seqNo: number; recvTimeMs: number; batchIdHint: number; windowId: number }
@@ -1850,34 +1847,13 @@ export class RealDarkPerpClient implements DarkPerpClient {
       return null;
     }
     if (this.disposed || epoch !== this.credentialEpoch) return null;
-    if (typeof j !== "object" || j === null || !Array.isArray(j.withdrawals) || typeof j.vault !== "string") {
+    if (typeof j !== "object" || j === null || !Array.isArray(j.withdrawals) || !isWithdrawalAddress(j.vault)) {
       return null;
     }
     const withdrawals: WithdrawalEntry[] = [];
-    for (const raw of j.withdrawals as Partial<WireWithdrawal>[]) {
-      try {
-        if (
-          typeof raw !== "object" || raw === null ||
-          typeof raw.to !== "string" || typeof raw.amount !== "string" ||
-          typeof raw.nonce !== "number" || !Number.isSafeInteger(raw.nonce) ||
-          typeof raw.leaf !== "string" || typeof raw.root !== "string" ||
-          typeof raw.claimable !== "boolean" || !Array.isArray(raw.proof) ||
-          !raw.proof.every((p): p is string => typeof p === "string")
-        ) {
-          continue;
-        }
-        withdrawals.push({
-          to: raw.to,
-          amount: B(raw.amount), // throws on a non-decimal string → entry dropped
-          nonce: raw.nonce,
-          leaf: raw.leaf,
-          root: raw.root,
-          claimable: raw.claimable,
-          proof: raw.proof,
-        });
-      } catch {
-        /* drop the malformed entry, keep the rest */
-      }
+    for (const raw of j.withdrawals) {
+      const withdrawal = parseWithdrawal(raw, j.vault);
+      if (withdrawal) withdrawals.push(withdrawal);
     }
     return { withdrawals, vault: j.vault };
   }

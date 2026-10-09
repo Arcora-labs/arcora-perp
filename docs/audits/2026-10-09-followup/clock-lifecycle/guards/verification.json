@@ -1,0 +1,46 @@
+{
+  "status": "PASS",
+  "kind": "synthetic-funds-replay-input-guards",
+  "binary_sha256": "e6593683a0ec34dc41eb499e79837c61a86e0f19cb8610990a211fd4a29bd9ba",
+  "lifecycle_manifest_sha256": "96e477be92a199f80acd6d1a33feca1bc99852c368198357dd3520d068e78d26",
+  "native_positive_control": true,
+  "guest_executed": false,
+  "proof_generated": false,
+  "negative_controls": [
+    {
+      "case": "missing-window",
+      "status": "PASS",
+      "exit_code": 101
+    },
+    {
+      "case": "reordered-window",
+      "status": "PASS",
+      "exit_code": 101
+    },
+    {
+      "case": "substituted-commitment",
+      "status": "PASS",
+      "exit_code": 101
+    },
+    {
+      "case": "changed-witness",
+      "status": "PASS",
+      "exit_code": 101
+    },
+    {
+      "case": "trailing-witness",
+      "status": "PASS",
+      "exit_code": 101
+    },
+    {
+      "case": "legacy-witness",
+      "status": "PASS",
+      "exit_code": 101
+    },
+    {
+      "case": "symlink-witness",
+      "status": "PASS",
+      "exit_code": 101
+    }
+  ]
+}

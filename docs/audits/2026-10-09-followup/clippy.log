@@ -1,0 +1,5 @@
+    Checking demo v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/repo/crates/demo)
+    Checking e2e v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/repo/crates/e2e)
+    Checking gateway v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/repo/crates/gateway)
+    Checking prover v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/repo/crates/prover)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 4.06s

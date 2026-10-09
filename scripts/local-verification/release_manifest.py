@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-"""Bind the reviewed clock guest, local contract artifacts and public service config.
+"""Bind reviewed clock identities; optionally observe a target with read-only RPC.
 
-This offline preflight does not deploy, query a chain, build an ELF, verify a new
-proof, or attest a running prover. Manifest integrity is relative to a trusted
-copy of this script and release manifest; it is not a signature/authenticity check.
+Manifest create/validate are offline. observe-target checks finalized runtime
+and contract links, without submitting transactions. Neither operation builds an
+ELF, verifies a new proof, or attests a running prover. Manifest integrity is
+relative to a trusted script and release manifest, not a release signature.
 """
 import argparse
+import datetime
 import hashlib
 import json
 import os
@@ -13,12 +15,14 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+import urllib.request
 
 if sys.version_info < (3, 11):
     sys.exit("Release preflight requires Python 3.11+ (tomllib).")
 
 import check_sp1_release
 import verify_clock_proof as clock
+import read_deployment as deployment_reader
 
 ROOT = Path(__file__).resolve().parents[2]
 SCHEMA = "arcora-clock-release/v1"
@@ -272,6 +276,177 @@ def check_deployment_config(deployment):
         require(int(address, 16) != 0, "zero deployment address")
 
 
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        raise ValueError("RPC redirects are not accepted")
+
+
+class TargetRPC:
+    """Strict read-only transport. Diagnostics never include a URL or RPC payload."""
+    def __init__(self, url):
+        self.origin = deployment_reader.public_endpoint(url)
+        self.url = url
+        self.sequence = 0
+        self.opener = urllib.request.build_opener(NoRedirect)
+
+    def __call__(self, method, params):
+        require(method in deployment_reader.READ_METHODS, "RPC method outside read-only allowlist")
+        self.sequence += 1
+        request = urllib.request.Request(self.url, data=canonical({
+            "jsonrpc": "2.0", "id": self.sequence, "method": method, "params": params,
+        }), headers={"Content-Type": "application/json"})
+        try:
+            with self.opener.open(request, timeout=15) as response:
+                body = response.read(deployment_reader.MAX_RPC_RESPONSE_BYTES + 1)
+        except Exception as error:
+            raise ValueError("target RPC transport failed: " + deployment_reader.safe_error(error)) from None
+        require(len(body) <= deployment_reader.MAX_RPC_RESPONSE_BYTES, "RPC response exceeds size limit")
+        try:
+            value = json.loads(body)
+        except (ValueError, UnicodeError):
+            raise ValueError("invalid RPC JSON response") from None
+        require(isinstance(value, dict) and value.get("jsonrpc") == "2.0"
+                and type(value.get("id")) is int and value["id"] == self.sequence,
+                "invalid JSON-RPC response envelope")
+        require("error" not in value and "result" in value, "RPC did not return a successful result")
+        return value["result"]
+
+
+def runtime_identity(artifact, deployed, role):
+    """Match every byte; substitute only compiler-declared immutable words.
+
+    Each occurrence of the same immutable must agree. Values are OBSERVED,
+    not approved constructor parameters. Configured links/key/clock policy are
+    checked separately via the same-block getters of the matched runtime.
+    """
+    template = deployment_reader.hex_data(artifact["deployedBytecode"]["object"])
+    require(template and len(template) == len(deployed), "runtime size mismatch: " + role)
+    references = artifact["deployedBytecode"].get("immutableReferences", {})
+    require(isinstance(references, dict), "invalid compiler immutable references: " + role)
+    rebuilt = bytearray(template)
+    occupied = set()
+    values = {}
+    for name, locations in references.items():
+        require(isinstance(name, str) and name.isdecimal() and isinstance(locations, list) and locations,
+                "invalid compiler immutable reference: " + role)
+        word = None
+        for location in locations:
+            exact_keys(location, {"start", "length"}, "immutable reference")
+            start, length = location["start"], location["length"]
+            require(type(start) is int and type(length) is int and length == 32
+                    and 0 <= start <= len(template) - length, "invalid immutable range: " + role)
+            offsets = set(range(start, start + length))
+            require(not occupied.intersection(offsets), "overlapping immutable references: " + role)
+            occupied.update(offsets)
+            require(template[start:start + length] == bytes(32), "nonzero immutable placeholder: " + role)
+            actual = deployed[start:start + length]
+            require(word is None or word == actual, "inconsistent immutable occurrences: " + role)
+            word = actual
+            rebuilt[start:start + length] = word
+        values[name] = "0x" + word.hex()
+    require(bytes(rebuilt) == deployed, "runtime bytecode mismatch outside immutables: " + role)
+    return {"runtime_sha256": digest(deployed), "runtime_bytes": len(deployed),
+            "immutable_words_by_compiler_id": values,
+            "runtime_matches_compiler_template": True}
+
+
+def observe_target(root, manifest, config, rpc):
+    """Observe the complete clock stack at a single finalized, hash-pinned block.
+
+    `rpc` is injectable for deterministic failure tests. The CLI always uses the
+    read-only TargetRPC; this function never deploys or repairs contract state.
+    """
+    result = {"status": "BLOCKED", "observed_at_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+              "manifest_sha256": digest(canonical(manifest)), "contracts": {}, "bindings": [],
+              "scope": {**SCOPE, "local_identity_checked": False, "operator_and_settlement_policy_approved": False,
+                        "token_runtime_verified": False},
+              "limitations": ["RPC responses are trusted; no light-client or independent endpoint consensus.",
+                              "Constructor operator identities and settlement timing/bond policy are observed, not approved.",
+                              "Token code presence is checked; its implementation, proxy and issuance policy are not audited.",
+                              "No proof is generated or submitted; no service identity, state migration or release readiness is established."]}
+    try:
+        validated = validate_manifest(root, manifest, config)
+        result["scope"]["local_identity_checked"] = True
+        public = validated["public_config"]
+        addresses = public["addresses"]
+        if isinstance(rpc, TargetRPC):
+            result["rpc_origin"] = rpc.origin
+        chain = deployment_reader.quantity(rpc("eth_chainId", []))
+        require(chain == public["chain_id"], "target chain_id mismatch")
+        height, block_hash = deployment_reader.header(rpc("eth_getBlockByNumber", ["finalized", False]))
+        result.update(chain_id=chain, block_number=height, block_hash=block_hash)
+        pin = {"blockHash": block_hash, "requireCanonical": True}
+        for role, (relative, _, _) in CONTRACTS.items():
+            artifact_bytes = regular(root, "contracts/" + relative).read_bytes()
+            require(digest(artifact_bytes) == validated["compiled_contracts"][role]["sha256"],
+                    "compiled artifact changed during observation: " + role)
+            artifact = json.loads(artifact_bytes)
+            code = deployment_reader.hex_data(rpc("eth_getCode", [addresses[role], pin]))
+            result["contracts"][role] = {"address": addresses[role], **runtime_identity(artifact, code, role), "getters": {}}
+        token = deployment_reader.hex_data(rpc("eth_getCode", [addresses["token"], pin]))
+        require(token, "no token code at configured address")
+        result["token"] = {"address": addresses["token"], "runtime_sha256": digest(token), "runtime_bytes": len(token)}
+
+        def getter(role, signature, kind="address", expected=None, argument=""):
+            data = deployment_reader.selector(signature) + argument
+            raw = deployment_reader.hex_data(rpc("eth_call", [{"to": addresses[role], "data": data}, pin]), 32)
+            if kind == "address":
+                require(raw[:12] == bytes(12), "noncanonical ABI address: " + role + "." + signature)
+                value = "0x" + raw[12:].hex()
+            elif kind == "uint":
+                value = int.from_bytes(raw, "big")
+            else:
+                value = "0x" + raw.hex()
+            result["contracts"][role]["getters"][signature] = value
+            if expected is not None:
+                require(value == expected, "target binding mismatch: " + role + "." + signature)
+                result["bindings"].append({"contract": role, "getter": signature, "expected": expected, "matches": True})
+            return value
+
+        for role, signature, target in (
+            ("settlement", "verifier()", "clock_verifier"), ("settlement", "vault()", "vault"),
+            ("vault", "settlement()", "settlement"), ("vault", "token()", "token"),
+            ("clock_verifier", "settlement()", "settlement"), ("clock_verifier", "innerVerifier()", "sp1_adapter"),
+            ("sp1_adapter", "gateway()", "sp1_gateway"),
+        ):
+            getter(role, signature, expected=addresses[target])
+        getter("sp1_adapter", "programVKey()", "bytes32", public["program_vkey"])
+        getter("clock_verifier", "maxWindowMs()", "uint", public["clock"]["max_window_ms"])
+        getter("clock_verifier", "clockSkewMs()", "uint", public["clock"]["clock_skew_ms"])
+        getter("clock_verifier", "proofVersion()", "uint", 2)
+        verifier_hash = "0x" + clock.target.VERIFIER_HASH
+        getter("sp1_verifier", "VERIFIER_HASH()", "bytes32", verifier_hash)
+        # bytes4 is left-aligned in a 32-byte ABI word. The gateway returns
+        # (address,bool); both canonical encodings and the unfrozen route matter.
+        route_data = deployment_reader.selector("routes(bytes4)") + verifier_hash[2:10] + "0" * 56
+        route = deployment_reader.hex_data(rpc("eth_call", [{"to": addresses["sp1_gateway"], "data": route_data}, pin]), 64)
+        require(route[:12] == bytes(12) and route[32:] in (bytes(32), bytes(31) + b"\x01"),
+                "noncanonical SP1 gateway route ABI")
+        require("0x" + route[12:32].hex() == addresses["sp1_verifier"] and route[32:] == bytes(32),
+                "SP1 gateway route is wrong or frozen")
+        result["sp1_route"] = {"selector": verifier_hash[:10], "verifier": addresses["sp1_verifier"], "frozen": False}
+        # These affect trust/liveness/economics, but the public manifest currently
+        # does not approve values for them. Preserve that explicit acceptance gap.
+        for role, signature in (("settlement", "sequencer()"), ("settlement", "enclaveSigner()"),
+                                ("settlement", "governance()"), ("vault", "gatewaySigner()"),
+                                ("clock_verifier", "configurator()"), ("sp1_gateway", "owner()")):
+            getter(role, signature)
+        for signature in ("livenessTimeoutBlocks()", "challengeWindowBlocks()", "challengeBond()",
+                          "inclusionDeadlineSecs()", "finalSettleGraceBlocks()"):
+            getter("settlement", signature, "uint")
+        require(deployment_reader.header(rpc("eth_getBlockByNumber", [hex(height), False]), height) == (height, block_hash),
+                "finalized block changed during observation")
+        require(deployment_reader.quantity(rpc("eth_chainId", [])) == chain, "chain changed during observation")
+        # Source/artifacts/config must still be the validated release at completion.
+        validate_manifest(root, manifest, config)
+        result["status"] = "VERIFIED_AT_FINALIZED_BLOCK"
+        result["scope"].update(target_chain_observed=True, runtime_bytecode_verified=True)
+    except Exception as error:
+        # Never expose provider error data, response body, credential URL or paths.
+        result["blocker"] = str(error) if type(error) is ValueError else deployment_reader.safe_error(error)
+    return result
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
@@ -284,10 +459,22 @@ def main():
     validate.add_argument("--check-process-env", action="store_true", help="compare allowlisted gateway variables before startup")
     deployment = commands.add_parser("check-deployment", help="check recorded deployment key only, without RPC")
     deployment.add_argument("--deployment", type=Path, required=True)
+    target = commands.add_parser("observe-target", help="read-only finalized clock-stack runtime and binding verification; release remains HOLD")
+    target.add_argument("--manifest", type=Path, required=True)
+    target.add_argument("--config", type=Path, required=True)
+    target.add_argument("--rpc", required=True, help="anonymous public HTTP(S) RPC; no keys or credentials")
+    target.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     if args.command == "check-deployment":
         check_deployment_config(read_json(args.deployment))
         print(json.dumps({"status": "PASS", "scope": "recorded key and address shape only; no RPC or runtime verification"}))
+    elif args.command == "observe-target":
+        result = observe_target(ROOT, read_json(args.manifest), read_json(args.config), TargetRPC(args.rpc))
+        with args.output.open("x") as output:
+            output.write(json.dumps(result, sort_keys=True, indent=2) + "\n")
+        print(json.dumps({key: result[key] for key in ("status", "scope", "blocker") if key in result}))
+        if result["status"] != "VERIFIED_AT_FINALIZED_BLOCK":
+            sys.exit(1)
     elif args.command == "create":
         result = build_manifest(ROOT, read_json(args.config))
         with args.output.open("x") as output:

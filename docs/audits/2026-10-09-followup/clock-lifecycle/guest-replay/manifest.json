@@ -1,0 +1,91 @@
+{
+  "artifacts": {
+    "batch-0.public-values.bin": {
+      "sha256": "dc321a8a55e1058c0271f1a5efe87b7952fac1b49449c962643d63d8d43ee0ac",
+      "size_bytes": 32
+    },
+    "batch-1.public-values.bin": {
+      "sha256": "35eca1aa6b313b7815b00c566d43afd2e769fabbc954d2f05f2afdee72683501",
+      "size_bytes": 32
+    },
+    "batch-2.public-values.bin": {
+      "sha256": "a245fc45118dbbd0467c650ce43697dec43e6ba3ed8316684299ff3f66ae6a4b",
+      "size_bytes": 32
+    },
+    "batch-3.public-values.bin": {
+      "sha256": "465d31368f7ae783a50ea392a83fe0054da8073b4af50552a8aa3da74eb0b332",
+      "size_bytes": 32
+    }
+  },
+  "batches": [
+    {
+      "batch": 0,
+      "commitment": "0x993f91f779a078193a103f28e9fab401cfeb973a7b95404997b0398bd223bd61",
+      "deposit_count": 3,
+      "guest_cycles": 890224,
+      "guest_exit_code": 0,
+      "guest_seconds": 0.02419025,
+      "native_replay_seconds": 0.000594,
+      "operations": 6,
+      "position_entries": 2,
+      "state_root": "0x5e3dfb45f76a834f93034b67858c34706bf43ed201e0253e601d766eb3c1467b",
+      "timed_operations": 0,
+      "witness_sha256": "0xc2ca4a2eb3b0f12846b8e2b4619e137b9d436eb9f3517eb56dec517166d5d9ba"
+    },
+    {
+      "batch": 1,
+      "commitment": "0x3b39c0ea8bf09bd3e9a7f180de82ec8e0bbeaf03b331f58ea2798d0b5ef0f91b",
+      "deposit_count": 3,
+      "guest_cycles": 45186945,
+      "guest_exit_code": 0,
+      "guest_seconds": 1.003973833,
+      "native_replay_seconds": 0.004285625,
+      "operations": 16,
+      "position_entries": 2,
+      "state_root": "0x2056b71927e13c0a7355f38a1e82733e95976271487b0eb91b3510a5409d4f4d",
+      "timed_operations": 16,
+      "witness_sha256": "0xb3f4b4c3d09c2c356eaa16090ac1c34c5f4f629633e7cba913973403907febb1"
+    },
+    {
+      "batch": 2,
+      "commitment": "0x5287cdbe7774e8f8978bdf594100fc88ab4e9b570b65dc5d928e0cc44690385e",
+      "deposit_count": 3,
+      "guest_cycles": 45177218,
+      "guest_exit_code": 0,
+      "guest_seconds": 0.928347333,
+      "native_replay_seconds": 0.004055709,
+      "operations": 16,
+      "position_entries": 2,
+      "state_root": "0x9686bb1a6aa3ce51190cf037723ca4f37e4daa8aa8bede993d26f70350d78685",
+      "timed_operations": 16,
+      "witness_sha256": "0xdf9fe1c3b8bf27e4875eacf475c54e9f42e5bb0c70cf36c9c9a45e03c66259f8"
+    },
+    {
+      "batch": 3,
+      "commitment": "0xaea224c5d00b17473da7ed9ab7373742cff9b7c765ac8738e1661d6df075c60c",
+      "deposit_count": 3,
+      "guest_cycles": 6605575,
+      "guest_exit_code": 0,
+      "guest_seconds": 0.144081375,
+      "native_replay_seconds": 0.000657084,
+      "operations": 4,
+      "position_entries": 2,
+      "state_root": "0x549ca4a9ca7c962ab93a6d855137f4f70f41d520b5cd3fbbddf7e2da0517a16d",
+      "timed_operations": 2,
+      "witness_sha256": "0x98ba1f9504adfc377949337b3b179bf18a3a6a738f7c85a48921c12efd42136e"
+    }
+  ],
+  "elf_origin": "explicit reviewed artifact; no fresh build claim",
+  "elf_sha256": "df59a19b310258b4d01d0d5e3cfa31bb7de9ca2f4ea7c2302cf76650c79967c5",
+  "fresh_guest_build_performed": false,
+  "guest_executed": true,
+  "kind": "synthetic-wallet-clock-v2-replay",
+  "lifecycle_manifest_sha256": "96e477be92a199f80acd6d1a33feca1bc99852c368198357dd3520d068e78d26",
+  "native_guest_equal": true,
+  "proof_generated": false,
+  "schema_version": 1,
+  "scope": "Exact synthetic normal-wallet HTTP/Anvil lifecycle witnesses. Native replay and optional SP1 CPU execution; no fresh proof, production TEE/service loop, finality SLA, or proving capacity claim.",
+  "sdk_version": "6.1.0",
+  "status": "PASS",
+  "target_contract_verified_with_real_proof": false
+}

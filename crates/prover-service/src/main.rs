@@ -96,6 +96,10 @@ async fn prove(
     admission: ProofAdmission,
     request: Request,
 ) -> Result<Json<ProveResp>, (StatusCode, String)> {
+    // Recheck before receiving/decoding the sealed body. A diagnostic output
+    // setting is a server configuration fault, not unprocessable client input.
+    prover::validate_sp1_environment()
+        .map_err(|error| (StatusCode::SERVICE_UNAVAILABLE, error.to_string()))?;
     // The parts-only extractor above authenticates and reserves capacity before
     // Json can poll the body. Also limit how long reception may occupy a slot.
     let Json(req) =
@@ -308,6 +312,12 @@ async fn attest(
 
 #[tokio::main]
 async fn main() {
+    // SP1 captures worker dump paths during setup. Refuse before constructing
+    // the client or accepting requests; Drop cannot undo a dump followed by exit.
+    prover::validate_sp1_environment().unwrap_or_else(|error| {
+        eprintln!("prover-service: {error}");
+        std::process::exit(1);
+    });
     let limits = Limits::from_env().unwrap_or_else(|error| {
         eprintln!("prover-service: {error}");
         std::process::exit(1);
