@@ -18,6 +18,24 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+      - name: Provision bounded swap on this disposable GitHub VM only
+        run: |
+          set -euo pipefail
+          # Only preinstalled, unused SDKs on the fresh hosted runner are removed.
+          # No user device, repository file, cache service or paid larger runner.
+          available=$(df --output=avail -B1 "$RUNNER_TEMP" | tail -1)
+          if [ "$available" -lt 30000000000 ]; then
+            sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc
+          fi
+          available=$(df --output=avail -B1 "$RUNNER_TEMP" | tail -1)
+          test "$available" -gt 28000000000
+          swap="$RUNNER_TEMP/clock-proof.swap"
+          sudo install -m 600 /dev/null "$swap"
+          sudo fallocate -l 16G "$swap"
+          sudo mkswap "$swap"
+          sudo swapon "$swap"
+          free -h
+          df -h "$RUNNER_TEMP"
       - name: Prepare pinned public synthetic fixture
         run: |
           mkdir -p "$RUNNER_TEMP/clock-proof"
@@ -38,13 +56,19 @@ jobs:
           set -euo pipefail
           directory="$RUNNER_TEMP/clock-proof"
           touch "$directory/proof-bn254.bin"
-          docker run --rm --network none --cpus 4 --memory 13g --memory-swap 13g \
+          set +e
+          docker run --name clock-proof-run --network none --cpus 4 --memory 13g --memory-swap 29g \
             -e GOMAXPROCS=4 -e GOMEMLIMIT=11GiB \
             -v "$directory/circuit:/circuit:ro" \
             -v "$directory/witness.json:/witness:ro" \
             -v "$directory/proof-bn254.bin:/output:rw" \
             ghcr.io/succinctlabs/sp1-gnark@sha256:e1a1cd62838b561ca301f9b2c26475c4a92bfe0e2c916e9bba213062e1548c4d \
             prove --system groth16 /circuit /witness /output 2>&1 | tee "$directory/wrap.log"
+          result=${PIPESTATUS[0]}
+          set -e
+          docker inspect clock-proof-run --format '{{json .State}}' > "$directory/container-result.json"
+          docker rm clock-proof-run
+          test "$result" -eq 0
           test -s "$directory/proof-bn254.bin"
           sha256sum "$directory/proof-bn254.bin" > "$directory/proof.sha256"
       - name: Retain small output only; no circuits, secrets or production data
@@ -58,4 +82,5 @@ jobs:
             ${{ runner.temp }}/clock-proof/proof-bn254.bin
             ${{ runner.temp }}/clock-proof/proof.sha256
             ${{ runner.temp }}/clock-proof/wrap.log
+            ${{ runner.temp }}/clock-proof/container-result.json
             ${{ runner.temp }}/clock-proof/circuit/verified.json
