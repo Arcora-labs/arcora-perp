@@ -47,7 +47,9 @@ mod account_recovery;
 mod bootstrap;
 mod candles;
 mod challenge_scan;
+mod clock_admission;
 mod clock_client;
+mod clock_wait;
 #[cfg(test)]
 mod continuation_settlement_tests;
 mod credential_session;
@@ -5331,6 +5333,7 @@ async fn write_snapshot(
 }
 
 struct App {
+    clock_admission: Arc<clock_admission::ClockAdmission>,
     deposit_source: Option<Arc<dyn deposit_rpc::DepositSource>>,
     deposit_serial: Mutex<()>,
     gw: Mutex<Gw>,
@@ -7657,6 +7660,10 @@ fn build_router_with_policy(
             service_policy::enforce_origin,
         ))
         .layer(Extension(policy))
+        .layer(axum::middleware::from_fn_with_state(
+            app.clone(),
+            clock_admission::http_gate,
+        ))
         .with_state(app)
 }
 
@@ -7729,6 +7736,19 @@ async fn main() {
             std::process::exit(1);
         }),
     );
+    let l1 = l1.map(|chain| chain.with_clock_shutdown(service_policy.shutdown.clone()));
+    let clock_settle_period = if let Some(chain) = l1.as_ref().filter(|c| c.clock_enabled()) {
+        let chain = chain.clone();
+        match tokio::task::spawn_blocking(move || chain.clock_seal_period()).await {
+            Ok(Ok(period)) => period,
+            _ => {
+                eprintln!("[clock] REFUSING startup: cannot verify timing policy and seal cadence");
+                std::process::exit(1);
+            }
+        }
+    } else {
+        Duration::from_secs(L1_SETTLE_SECS)
+    };
     // SEC-020 Task 4: the DEV_INSECURE escape is refused outright in production
     // (Task-1 posture). `resolve_seal_root` only refuses it when the seal root
     // is ALSO unset; the handshake escape must be prod-forbidden unconditionally.
@@ -8351,6 +8371,9 @@ async fn main() {
         Arc::new(deposit_rpc::VaultSource::new(l.clone())) as Arc<dyn deposit_rpc::DepositSource>
     });
     let app = Arc::new(App {
+        clock_admission: clock_admission::ClockAdmission::new(
+            prover.as_ref().is_some_and(|p| p.clock_enabled()),
+        ),
         deposit_source,
         deposit_serial: Mutex::new(()),
         gw: Mutex::new(gw),
@@ -8487,7 +8510,12 @@ async fn main() {
                 if !stop.next_tick(&mut iv).await {
                     break;
                 }
-                let (events, acct_events) = { app.gw.lock().await.tick() };
+                let (events, acct_events) = {
+                    let Ok(_admission) = app.clock_admission.enter() else {
+                        continue;
+                    };
+                    app.gw.lock().await.tick()
+                };
                 // fold the fresh marks into the REAL candle history (chart past bars)
                 {
                     let marks: Vec<(u64, i128)> = {
@@ -8670,9 +8698,10 @@ async fn main() {
             // start the first settle one period out, so it never races the bond's
             // confirmation (tokio's plain `interval` would fire immediately).
             let mut iv = tokio::time::interval_at(
-                tokio::time::Instant::now() + Duration::from_secs(L1_SETTLE_SECS),
-                Duration::from_secs(L1_SETTLE_SECS),
+                tokio::time::Instant::now() + clock_settle_period,
+                clock_settle_period,
             );
+            iv.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
             // FIN-001: gate settle attempts on a backoff deadline. The base cadence is
             // the L1_SETTLE_SECS interval above; after a prove failure the SettleHealth
             // machine dictates the next delay (exponential → HELD cap). `next_attempt`
@@ -8693,6 +8722,9 @@ async fn main() {
                     continue;
                 }
                 if let Some(client) = app.prover.clone() {
+                    let mut admission = match app.clock_admission.pause(&stop).await {
+                        Ok(p) => p, Err(_) => break,
+                    };
                     // (A) top up the sequencer bond (as the legacy path does) + read the
                     // on-chain batch count (RPC, no lock). The bond top-up runs BEFORE the
                     // window is sealed, so an underbond settleBatch revert cannot strand the
@@ -8728,6 +8760,10 @@ async fn main() {
                     // Stage 1 and seal share Gw's lock with every snapshot capture.
                     let begun = {
                         let mut gw = app.gw.lock().await;
+                        if client.clock_enabled()
+                            && gw.window_withdrawals.is_empty()
+                            && gw.seq.state.state_root() == gw.last_settled_root
+                        { gw.seq.discard_idle_funding_window(); }
                         match begin_journaled_window_settle(
                             &mut gw,
                             bc,
@@ -8751,6 +8787,7 @@ async fn main() {
                     let Some((mut journal, prune_candidates, gate_was_closed)) = begun else {
                         continue;
                     };
+                    if let Some(p) = admission.as_mut() { p.arm(); }
                     let ordered = journal.witness.manifest.ordered.clone();
                     let rejected: Vec<Digest> = journal
                         .witness
@@ -8917,6 +8954,13 @@ async fn main() {
                                     println!("[l1] settlement recovered → HEALTHY");
                                 }
                             }
+                            if let Some(p) = admission.as_mut() {
+                                if let Err(error) = snapshot_now(&app.snapshot_req).await {
+                                    hold_settlement_for_recovery(&app, format!("clock commit snapshot not durable: {error}")).await;
+                                    break;
+                                }
+                                p.resolved();
+                            }
                             next_attempt = tokio::time::Instant::now();
                             // Task 3 (WAL): the journal outlives the commit — boot's STALE
                             // row resolves it. Poke the single snapshot writer instead, so
@@ -9045,6 +9089,13 @@ async fn main() {
                                                 }
                                                 // a landed settlement is a success — resume the
                                                 // normal settle cadence (mirror the clean Ok arm).
+                                                if let Some(p) = admission.as_mut() {
+                                                    if let Err(error) = snapshot_now(&app.snapshot_req).await {
+                                                        hold_settlement_for_recovery(&app, format!("clock recovered snapshot not durable: {error}")).await;
+                                                        break;
+                                                    }
+                                                    p.resolved();
+                                                }
                                                 next_attempt = tokio::time::Instant::now();
                                                 // Task 3 (WAL): the journal outlives the commit —
                                                 // boot's STALE row resolves it; poke the writer so
@@ -10725,6 +10776,7 @@ mod tests {
         // (no handshake runs; /attest 503s on `attestor: None` anyway).
         let (gw_eph_secret, gw_pub) = ephemeral_keypair(&[0u8; 32]);
         Arc::new(App {
+            clock_admission: clock_admission::ClockAdmission::new(false),
             deposit_source: None,
             deposit_serial: Mutex::new(()),
             gw: Mutex::new(Gw::boot()),

@@ -729,7 +729,22 @@ impl L1 {
         let args = settle_proved_args(&checked);
         let refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
         let sig = settle_sig_for_phase(out.wind_down_phase)?;
-        self.send(&self.settlement.clone(), sig, &refs)
+        let batch = if self.clock_enabled() {
+            Some(self.batch_count()?)
+        } else {
+            None
+        };
+        if self.clock_stopping() {
+            return Err("clock settlement cancelled before broadcast; retain journal".into());
+        }
+        let sent = self.send(&self.settlement.clone(), sig, &refs);
+        if let Some(batch) = batch {
+            self.wait_clock_settled(batch, out)?;
+            return Ok(
+                sent.unwrap_or_else(|_| "(clock settlement confirmed after ambiguous send)".into())
+            );
+        }
+        sent
     }
 
     // ── inclusion-challenge answering (audit DP-004) ─────────────────────────────

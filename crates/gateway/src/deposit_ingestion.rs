@@ -365,6 +365,7 @@ impl Gw {
 /// the durable ACK. Do not hold Gw across RPC or disk I/O. Cancellation leaves the
 /// dirty barrier armed; the next caller retries persistence before doing more work.
 pub async fn ingest_once(app: &Shared) -> Result<usize, String> {
+    let _admission = app.clock_admission.enter().map_err(str::to_string)?;
     let _serial = app.deposit_serial.lock().await;
     if app.snapshot_req.is_none() {
         return Err("state persistence is required for deposit intake".into());

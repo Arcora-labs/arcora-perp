@@ -31,6 +31,11 @@ impl ProverClient for ClockProverClient {
         w: &WindowWitness,
         c: &ClockContext,
     ) -> Result<RemoteProveResp, ProverClientError> {
+        if self.l1.clock_stopping() {
+            return Err(ProverClientError::Http(
+                "clock proof cancelled; retain exact journal".into(),
+            ));
+        }
         self.inner.prove_clocked(w, c)
     }
 }
@@ -64,7 +69,17 @@ pub(crate) fn resume_exact(
     {
         return Err("clock resume batch/root changed".into());
     }
-    let prepared = crate::prover_client::prove_and_prepare(client, &journal.witness, &journal.ww)?;
+    // Reuse a durable proof after a crash. It is still tied to the same receipt;
+    // no new timestamp or re-proving is needed merely because the reply was lost.
+    let prepared = match journal.prepared.as_ref() {
+        Some(p)
+            if p.outcome.proof.starts_with(perp_core::clock::PROOF_MAGIC)
+                && p.outcome.proof.len() > perp_core::clock::PROOF_MAGIC.len() + 32 =>
+        {
+            p.clone()
+        }
+        _ => crate::prover_client::prove_and_prepare(client, &journal.witness, &journal.ww)?,
+    };
     journal.prepared = Some(prepared.clone());
     crate::rollback_journal::write(path, journal, seed)?;
     l1.settle_proved(&prepared.outcome)?;

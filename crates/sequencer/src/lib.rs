@@ -1396,6 +1396,25 @@ impl Sequencer {
     /// "refused call mutated nothing" assertion cannot observe a stray op pushed
     /// into the window log through the root alone — it must count the log
     /// directly. Read-only accessor so the field itself stays private.
+    /// Drop only unreceipted funding-only no-ops whose complete canonical state
+    /// equals the window baseline. No batch counter is advanced and no user intent,
+    /// withdrawal or terminal operation can enter this branch. This prevents an
+    /// idle period from accumulating old clock witnesses without burning proofs.
+    pub fn discard_idle_funding_window(&mut self) -> bool {
+        if self.window_ops.is_empty()
+            || self.window_has_pending_manifest()
+            || self
+                .window_ops
+                .iter()
+                .any(|op| !matches!(op, BatchOp::AccrueFunding { .. }))
+            || self.state.state_root() != self.window_start_state.state_root()
+        {
+            return false;
+        }
+        self.window_ops.clear();
+        true
+    }
+
     pub fn window_op_count(&self) -> usize {
         self.window_ops.len()
     }

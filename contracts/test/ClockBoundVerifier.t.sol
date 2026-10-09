@@ -5,6 +5,11 @@ import {ClockBoundVerifier, IClockSettlement} from "../src/ClockBoundVerifier.so
 import {DarkPerpSettlement} from "../src/DarkPerpSettlement.sol";
 import {MockZkVerifier} from "../src/mocks/MockZkVerifier.sol";
 
+interface ClockReorgVm {
+    function snapshotState() external returns (uint256);
+    function revertToState(uint256 snapshotId) external returns (bool);
+}
+
 /// Tests exercise REAL settlement entrypoints with an explicitly mock proof
 /// backend. They do not establish SP1 proof soundness or deployed-vkey identity.
 contract ClockBoundVerifierTest is MiniTest {
@@ -184,6 +189,25 @@ contract ClockBoundVerifierTest is MiniTest {
         r = c.register(1, NEXT, b, 0, 0, 0, 2);
         s.finalExit(NEXT, M, n, Z, Z, Z, Z, 0, proof(b, r));
         assertEq(s.batchCount(), 2, "phase2");
+    }
+
+    function test_reorg_removes_anchor_and_old_proof_cannot_authorize_new_receipt() public {
+        ClockReorgVm reorg = ClockReorgVm(address(vm));
+        uint256 checkpoint = reorg.snapshotState();
+        bytes32 b = base();
+        bytes32 oldReceipt = register(99_000, 100_000, 2);
+        bytes memory oldProof = proof(b, oldReceipt);
+        settle(oldProof);
+        assertEq(s.batchCount(), 1, "original branch settled");
+        assertTrue(reorg.revertToState(checkpoint), "owned test-chain reorg");
+        assertEq(s.batchCount(), 0, "reorg restored batch");
+        settleFails(oldProof);
+        vm.warp(101);
+        bytes32 newReceipt = register(99_000, 100_000, 2);
+        assertTrue(oldReceipt != newReceipt, "registration block time changed");
+        settleFails(oldProof);
+        settle(proof(b, newReceipt));
+        assertEq(s.batchCount(), 1, "only canonical receipt settles");
     }
 
     function test_solidity_v2_encoding_matches_rust() public pure {

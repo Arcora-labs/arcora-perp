@@ -4,10 +4,11 @@ use super::*;
 use crate::deposit_rpc::Rpc;
 use perp_core::clock::{ClockContext, TimeBounds};
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub(crate) struct ClockConfig {
     pub verifier: [u8; 20],
     pub chain_id: u64,
+    pub stop: Option<std::sync::Arc<crate::service_shutdown::Shutdown>>,
 }
 impl ClockConfig {
     pub(crate) fn from_values(
@@ -25,7 +26,11 @@ impl ClockConfig {
             .and_then(|s| s.parse::<u64>().ok())
             .filter(|n| *n > 0)
             .ok_or("clock binding requires a nonzero L1_CHAIN_ID")?;
-        Ok(Some(Self { verifier, chain_id }))
+        Ok(Some(Self {
+            verifier,
+            chain_id,
+            stop: None,
+        }))
     }
     pub(crate) fn from_env() -> Result<Option<Self>, String> {
         let v = match std::env::var("CLOCK_BOUND_VERIFIER") {
@@ -45,6 +50,74 @@ fn address(word: Digest) -> Result<[u8; 20], String> {
         .map_err(|_| "invalid clock address".into())
 }
 impl L1 {
+    pub(crate) fn with_clock_shutdown(
+        mut self,
+        stop: std::sync::Arc<crate::service_shutdown::Shutdown>,
+    ) -> Self {
+        if let Some(c) = self.clock.as_mut() {
+            c.stop = Some(stop);
+        }
+        self
+    }
+    pub(crate) fn clock_stopping(&self) -> bool {
+        self.clock_stop()
+            .is_some_and(crate::service_shutdown::Shutdown::started)
+    }
+    fn clock_stop(&self) -> Option<&crate::service_shutdown::Shutdown> {
+        self.clock.as_ref().and_then(|c| c.stop.as_deref())
+    }
+    pub(crate) fn clock_seal_period(&self) -> Result<std::time::Duration, String> {
+        let cfg = self.clock.as_ref().ok_or("clock mode not configured")?;
+        let verifier = crate::hex0x(&cfg.verifier);
+        let (window, skew) = self.observe_at(observation::AnchorPolicy::Latest, |r| {
+            if address(r.word(&self.settlement, "verifier()", None)?)? != cfg.verifier {
+                return Err("clock verifier mismatch".into());
+            }
+            Ok((
+                abi_u64(r.word(&verifier, "maxWindowMs()", None)?, "maxWindowMs")?,
+                abi_u64(r.word(&verifier, "clockSkewMs()", None)?, "clockSkewMs")?,
+            ))
+        })?;
+        let millis = (window / 4).min(skew / 4).min(crate::L1_SETTLE_SECS * 1000);
+        if millis < 100 {
+            return Err("clock timing policy is too narrow for gateway cadence".into());
+        }
+        Ok(std::time::Duration::from_millis(millis))
+    }
+    pub(crate) fn wait_clock_settled(
+        &self,
+        batch: u64,
+        out: &crate::prover_client::ProveOutcome,
+    ) -> Result<(u64, String, u128), String> {
+        let next = batch.checked_add(1).ok_or("clock batch overflow")?;
+        crate::clock_wait::wait_for(
+            crate::clock_wait::FINALITY_BUDGET,
+            crate::clock_wait::POLL_INTERVAL,
+            self.clock_stop(),
+            || {
+                let observed = match self.settlement_observation() {
+                    Ok(o) => o,
+                    Err(_) => return Ok(None),
+                };
+                if observed.0 == next
+                    && observed
+                        .1
+                        .eq_ignore_ascii_case(&crate::hex32(&out.new_root))
+                {
+                    return Ok(Some(observed));
+                }
+                if observed.0 < batch
+                    || (observed.0 == batch
+                        && observed
+                            .1
+                            .eq_ignore_ascii_case(&crate::hex32(&out.prev_root)))
+                {
+                    return Ok(None);
+                }
+                Err("clock settlement diverged from the immutable journal; retain intent".into())
+            },
+        )
+    }
     /// The configuration is immutable for this L1 instance. No late env fallback.
     pub(crate) fn clock_enabled(&self) -> bool {
         self.clock.is_some()
@@ -138,6 +211,9 @@ impl L1 {
         &self,
         w: &sequencer::WindowWitness,
     ) -> Result<ClockContext, String> {
+        if self.clock_stopping() {
+            return Err("clock registration cancelled; retain journal".into());
+        }
         let mut post = w.pre_state.clone();
         let roots = perp_core::commitment::derive_roots(&mut post, &w.ops, &w.manifest)
             .map_err(|e| format!("clock replay: {e:?}"))?;
@@ -165,23 +241,36 @@ impl L1 {
             ];
             let args: Vec<&str> = values.iter().map(String::as_str).collect();
             // Errors are ambiguous: caller retains the pre-registration WAL intent.
-            self.send(
+            // A lost receipt is ambiguous. Do not submit changed data or roll back;
+            // observe finalized state until this SAME registration resolves.
+            if self.clock_stopping() {
+                return Err("clock registration cancelled before broadcast; retain journal".into());
+            }
+            let _send_result = self.send(
                 &crate::hex0x(&cfg.verifier),
                 "register(uint64,bytes32,bytes32,uint64,uint64,uint64,uint8)",
                 &args,
-            )
-            .map_err(|_| "clock registration send unresolved; retain journal".to_string())?;
+            );
         }
-        let c = self
-            .clock_read(
-                w.batch_id,
-                roots.wind_down_phase,
-                observation::AnchorPolicy::Finalized,
-            )?
-            .ok_or("clock registration is not finalized; retain exact journal and resume later")?;
-        c.validate(w.batch_id, &roots, &w.ops)
-            .map_err(|_| "finalized clock context differs")?;
-        Ok(c)
+        crate::clock_wait::wait_for(
+            crate::clock_wait::FINALITY_BUDGET,
+            crate::clock_wait::POLL_INTERVAL,
+            self.clock_stop(),
+            || {
+                // Failed or lagging reads never authorize a proof. No latest fallback.
+                let c = match self.clock_read(
+                    w.batch_id,
+                    roots.wind_down_phase,
+                    observation::AnchorPolicy::Finalized,
+                ) {
+                    Ok(Some(c)) => c,
+                    Ok(None) | Err(_) => return Ok(None),
+                };
+                c.validate(w.batch_id, &roots, &w.ops)
+                    .map_err(|_| "finalized clock context differs")?;
+                Ok(Some(c))
+            },
+        )
     }
     /// Recheck the exact receipt before broadcast; strip only the internal envelope.
     pub(crate) fn clock_proof_for_send(
@@ -263,6 +352,7 @@ mod configuration_tests {
         l1.clock = Some(ClockConfig {
             verifier: [1; 20],
             chain_id: 84532,
+            stop: None,
         });
         p.outcome.proof = vec![1; 32];
         assert!(l1.clock_proof_for_send(&p.outcome).is_err());
@@ -271,3 +361,7 @@ mod configuration_tests {
         assert!(l1.clock_proof_for_send(&p.outcome).is_err());
     }
 }
+
+#[cfg(test)]
+#[path = "clock_rpc_tests.rs"]
+mod rpc_tests;

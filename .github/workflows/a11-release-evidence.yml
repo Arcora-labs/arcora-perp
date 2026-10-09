@@ -123,6 +123,8 @@ jobs:
         run: |
           python3 scripts/local-verification/run_check.py --output-dir /tmp/arcora-local-drills/checks recovery-rpc -- cargo test --locked -p gateway runtime_witness_native_cast -- --ignored --nocapture --test-threads=1
           python3 scripts/local-verification/run_check.py --output-dir /tmp/arcora-local-drills/checks state-rpc -- cargo test --locked -p gateway runtime_state_native_cast -- --ignored --nocapture --test-threads=1
+      - name: Clock finality and reorg checks through real cast transport
+        run: python3 scripts/local-verification/run_check.py --output-dir /tmp/arcora-local-drills/checks clock-rpc -- cargo test --locked -p gateway runtime_clock_native_cast -- --ignored --nocapture --test-threads=1
       - name: Actual production event paths to a local alert collector
         run: python3 scripts/local-verification/gateway_alert_drill.py --output-dir /tmp/arcora-local-drills/alerts
       - name: Real gateway HTTP ACK, SIGKILL and encrypted restart matrix

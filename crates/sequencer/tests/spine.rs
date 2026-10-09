@@ -1275,3 +1275,48 @@ fn review_batch_timestamp_rejects_both_earlier_and_later_summaries() {
         assert_eq!(state.state_root(), before);
     }
 }
+
+#[test]
+fn clock_idle_funding_noops_do_not_create_an_unbounded_window() {
+    let mut seq = setup();
+    seq.seal_genesis_baseline();
+    let before = seq.state.state_root();
+    let batch = seq.state.next_batch_id;
+    for now_ms in [1000, 1_000_000] {
+        seq.apply(&BatchOp::AccrueFunding {
+            market_id: 0,
+            mark: 100_000 * PRICE_SCALE,
+            oracle: oracle(100_000, now_ms),
+            now_ms,
+        })
+        .unwrap();
+    }
+    assert!(seq.window_op_count() > 0);
+    assert_eq!(seq.state.state_root(), before);
+    assert!(seq.discard_idle_funding_window());
+    assert_eq!(seq.window_op_count(), 0);
+    assert_eq!(seq.state.state_root(), before);
+    assert_eq!(seq.state.next_batch_id, batch);
+}
+
+#[test]
+fn clock_idle_compaction_cannot_drop_actual_funding_or_terminal_intent() {
+    let mut seq = setup();
+    seq.seal_genesis_baseline();
+    seq.apply(&BatchOp::AccrueFunding {
+        market_id: 0,
+        mark: 100_001 * PRICE_SCALE,
+        oracle: oracle(100_000, 10_000),
+        now_ms: 10_000,
+    })
+    .unwrap();
+    let count = seq.window_op_count();
+    assert!(!seq.discard_idle_funding_window());
+    assert_eq!(seq.window_op_count(), count);
+    let mut seq = setup();
+    seq.seal_genesis_baseline();
+    seq.apply(&BatchOp::EnterCloseOnly).unwrap();
+    seq.apply(&BatchOp::SettleAll).unwrap();
+    assert!(!seq.discard_idle_funding_window());
+    assert!(seq.window_has_pending_settle_all());
+}
