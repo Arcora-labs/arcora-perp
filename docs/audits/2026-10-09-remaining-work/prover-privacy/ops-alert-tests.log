@@ -40,4 +40,3 @@ ok
 test ops_alerts::integration_tests::transport_has_bounded_timeout_and_rejects_redirects ... ok
 
 test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 474 filtered out; finished in 2.55s
-

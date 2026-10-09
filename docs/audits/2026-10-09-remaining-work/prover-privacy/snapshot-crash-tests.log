@@ -123,4 +123,3 @@ S6_CRASH_CASE {"kind":"snapshot","boundary":"directory-synced-before-return","ow
 ok
 
 test result: ok. 4 passed; 0 failed; 1 ignored; 0 measured; 475 filtered out; finished in 2.04s
-

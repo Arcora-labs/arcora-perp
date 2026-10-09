@@ -9,4 +9,3 @@ test prover_client::reauth_tests::re_handshakes_once_and_retries_on_401 ... ok
 test prover_client::reauth_tests::rehandshake_refreshes_the_stored_secret_not_only_the_token ... ok
 
 test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 475 filtered out; finished in 0.01s
-

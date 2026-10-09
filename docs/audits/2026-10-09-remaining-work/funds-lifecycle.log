@@ -18,4 +18,3 @@ test funds_lifecycle_tests::real_http_evm_funds_lifecycle_with_native_mock_proof
 test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 479 filtered out; finished in 9.13stest funds_lifecycle_tests::real_http_evm_funds_lifecycle_with_native_mock_proof ... ok
 
 test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 479 filtered out; finished in 9.14s
-

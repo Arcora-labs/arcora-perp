@@ -2,7 +2,7 @@
   "scope": "Local native Rust/loopback HTTP/owned-subprocess testing only; no external host or live hardware inspected",
   "logs": {
     "attestation-prover-tests.log": {
-      "sha256": "1c8338980bf6fb5249b8b235445007a280ca7c497be678e2f1da8a89c7ce4384",
+      "sha256": "a6fcf99d16d8a51ff871860d45fbe5861c8715d5bab9db6ec4b01898cef1e08c",
       "summaries": [
         {
           "status": "ok",
@@ -79,7 +79,7 @@
       ]
     },
     "ops-alert-tests.log": {
-      "sha256": "de84170f85ecab848f99e883b9299be2be6d7a1fe9a3904dfdb67275ace13b4f",
+      "sha256": "2f83308cf457e2a4cb33e7151178fc18496f00518ff2d2b8119116b5b0313bf6",
       "summaries": [
         {
           "status": "ok",
@@ -105,7 +105,7 @@
       ]
     },
     "panic-wipe-release.log": {
-      "sha256": "ab742a4983a4b7ca8462e311eda821dfcdde3145f5bcc1c401ed00f01bd45b58",
+      "sha256": "64762bd4a7f7f239721fba3951b7b5f4657202077c8518c6619cfaf097049959",
       "summaries": [
         {
           "status": "ok",
@@ -134,7 +134,7 @@
       ]
     },
     "prover-after-wipe-tests.log": {
-      "sha256": "6995d72c6fc61b145a882c20d31d53e4933b5c2ec7f9c97ab4d249bfaed13642",
+      "sha256": "84c715c6cd9a7a808bc24a2a49b1fa07245568f6cc1085bfe29b74df79fc04d3",
       "summaries": [
         {
           "status": "ok",
@@ -171,7 +171,7 @@
       ]
     },
     "prover-reauth-tests.log": {
-      "sha256": "45d36086b7c033c14b9b4818366651a4133f84877464bf8e13170ad6782f853c",
+      "sha256": "d3db77a9bbda21af4a8ab543cb6737264f1261b741e2f3f45c035a12b82f5a34",
       "summaries": [
         {
           "status": "ok",
@@ -184,7 +184,7 @@
       ]
     },
     "snapshot-crash-tests.log": {
-      "sha256": "0c64d5863e3c3466e8f8b9b35d7d48953d82a18cbbbbe0ecea31d9031e5f2e19",
+      "sha256": "7ec3b625d8d53255379563a98258af0e852c1d259aa8ddfb9d82e3ddaf83c892",
       "summaries": [
         {
           "status": "ok",

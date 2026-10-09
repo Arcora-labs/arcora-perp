@@ -14,7 +14,7 @@
       "exit_code": 0,
       "command": "cargo +1.99.0 test --workspace --locked",
       "log": "workspace-final.log",
-      "log_sha256": "8cbd871a363397d1b4c2ef00a231a69e510bc9c68151b58596f577fb4ac2d218",
+      "log_sha256": "2a966bd2ea1b6a70b800bd26a19c689954fef9c5db22bed7e26fc1539c112fe7",
       "counts": {
         "suite_summaries": [
           {
@@ -385,7 +385,7 @@
       "exit_code": 0,
       "command": "forge test --root contracts",
       "log": "foundry-final.log",
-      "log_sha256": "43d4eeca4123973d4b5d871dc7037aaa23f37a3ee67645a84718d261361709db",
+      "log_sha256": "f0d7b03615e55a75900e51af0abcfd9d71bafd363d92bd82471a089d30c4e4b3",
       "counts": {
         "passed": 126,
         "failed": 0,
@@ -410,7 +410,7 @@
       "exit_code": 0,
       "command": "pnpm --dir frontend test",
       "log": "frontend-tests-final.log",
-      "log_sha256": "0167d8e2556bd4db28be8853d672fb819b1edc76b79ca3aa7fb13bd2a572c947",
+      "log_sha256": "721d78f375272ce2e3d6ba21fc0ec8d0fc9ae74383040c1c7cc9e63c32248d4a",
       "counts": {
         "passed": 496,
         "skipped": 1
@@ -442,7 +442,7 @@
       "exit_code": 0,
       "command": "ARCORA_FUNDS_EVIDENCE=... cargo +1.99.0 test -p gateway funds_lifecycle_tests --locked -- --ignored --nocapture",
       "log": "funds-lifecycle-final.log",
-      "log_sha256": "be2386063a9ec7020b6e575db594c4d43827dd55ed5d30bc790aad6bb20ddf7b",
+      "log_sha256": "7d63fbc68965f7a95c6210da1764437ae7bc665e2872894f6c08de8f3663c8ac",
       "counts": {
         "passed": 1
       },
@@ -467,7 +467,7 @@
       "exit_code": 0,
       "command": "cargo +1.99.0 test --release --locked -p prover opened_witness",
       "log": "prover-privacy/panic-wipe-release.log",
-      "log_sha256": "ab742a4983a4b7ca8462e311eda821dfcdde3145f5bcc1c401ed00f01bd45b58",
+      "log_sha256": "64762bd4a7f7f239721fba3951b7b5f4657202077c8518c6619cfaf097049959",
       "counts": {
         "passed": 2
       },
