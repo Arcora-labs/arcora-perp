@@ -4234,6 +4234,7 @@ dependencies = [
 name = "sp1-host"
 version = "0.0.0"
 dependencies = [
+ "bincode",
  "k256",
  "perp-core",
  "postcard",
@@ -4242,6 +4243,7 @@ dependencies = [
  "sha2",
  "sp1-build",
  "sp1-sdk",
+ "sp1-verifier",
  "tokio",
 ]
 

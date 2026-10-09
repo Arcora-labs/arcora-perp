@@ -99,6 +99,8 @@ jobs:
           touch crates/sp1-guest/target/elf-compilation/riscv64im-succinct-zkvm-elf/release/perp-core-guest
       - name: typecheck sp1-host
         run: cargo check --locked --manifest-path crates/sp1-host/Cargo.toml
+      - name: native host fixture and artifact guards (not guest execution)
+        run: cargo test --locked --manifest-path crates/sp1-host/Cargo.toml --lib
       - name: typecheck prover-service
         run: cargo check --locked --manifest-path crates/prover-service/Cargo.toml
 

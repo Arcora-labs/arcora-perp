@@ -6,6 +6,7 @@ import {DarkPerpSettlement} from "../src/DarkPerpSettlement.sol";
 import {MockZkVerifier} from "../src/mocks/MockZkVerifier.sol";
 
 interface ClockReorgVm {
+    function chainId(uint256 chainId_) external;
     function snapshotState() external returns (uint256);
     function revertToState(uint256 snapshotId) external returns (bool);
 }
@@ -208,6 +209,19 @@ contract ClockBoundVerifierTest is MiniTest {
         settleFails(oldProof);
         settle(proof(b, newReceipt));
         assertEq(s.batchCount(), 1, "only canonical receipt settles");
+    }
+
+    function test_stored_receipt_cannot_replay_after_chain_id_change() public {
+        uint256 originalChain = block.chainid;
+        bytes32 b = base();
+        bytes32 r = register(99_000, 100_000, 2);
+        bytes memory valid = proof(b, r);
+        ClockReorgVm(address(vm)).chainId(originalChain + 1);
+        settleFails(valid);
+        assertEq(s.batchCount(), 0, "wrong-chain record must not advance state");
+        ClockReorgVm(address(vm)).chainId(originalChain);
+        settle(valid);
+        assertEq(s.batchCount(), 1, "original domain still accepts its valid proof");
     }
 
     function test_solidity_v2_encoding_matches_rust() public pure {

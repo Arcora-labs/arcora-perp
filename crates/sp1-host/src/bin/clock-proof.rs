@@ -26,6 +26,16 @@ async fn main() {
         args.len() == 1 || (args.len() == 2 && args[1] == "--prove"),
         "usage: clock-proof NEW_OUTPUT_DIRECTORY [--prove]"
     );
+    if args.len() == 2 {
+        let base = std::env::var_os("SP1_GROTH16_CIRCUIT_PATH")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| {
+                std::path::PathBuf::from(std::env::var_os("HOME").expect("HOME required"))
+                    .join(".sp1/circuits/groth16")
+            });
+        sp1_host::check_groth16_prerequisites(&base.join("v6.1.0"))
+            .expect("install complete official SP1 6.1.0 circuit artifacts before --prove; a partial archive is not sufficient");
+    }
     let dir = std::path::PathBuf::from(&args[0]);
     std::fs::create_dir(&dir).expect("fresh output directory");
     let mut w = normal_witness();

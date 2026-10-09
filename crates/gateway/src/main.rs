@@ -8370,6 +8370,12 @@ async fn main() {
         gw.deposits.required = true;
         Arc::new(deposit_rpc::VaultSource::new(l.clone())) as Arc<dyn deposit_rpc::DepositSource>
     });
+    if l1.as_ref().is_some_and(|chain| chain.clock_enabled())
+        && gw.window_withdrawals.is_empty()
+        && gw.seq.state.state_root() == gw.last_settled_root
+    {
+        gw.seq.discard_idle_funding_window();
+    }
     let app = Arc::new(App {
         clock_admission: clock_admission::ClockAdmission::new(
             prover.as_ref().is_some_and(|p| p.clock_enabled()),

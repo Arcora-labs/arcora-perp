@@ -128,13 +128,41 @@ contract ClockBoundVerifier is IZkVerifier {
         return receipt;
     }
 
+    /// Recompute against the current chain/domain, not only the stored hash.
+    /// A copied pre-fork record must not authorize the same proof after a chain-ID change.
+    function _currentReceipt(uint64 batchId, uint8 phase_, Anchor storage a) private view returns (bytes32) {
+        return keccak256(
+            abi.encode(
+                DOMAIN,
+                block.chainid,
+                address(this),
+                address(settlement),
+                batchId,
+                a.previousRoot,
+                a.baseCommitment,
+                phase_,
+                a.firstMs,
+                a.lastMs,
+                a.timedOps,
+                a.anchoredAtMs,
+                maxWindowMs,
+                clockSkewMs
+            )
+        );
+    }
+
     function verify(bytes32 baseCommitment, bytes calldata proof) external view returns (bool) {
         if (
             address(settlement) == address(0) || msg.sender != address(settlement)
                 || settlement.batchCount() > type(uint64).max || proof.length == 0
         ) return false;
-        Anchor storage a = anchors[uint64(settlement.batchCount())][phase()];
-        if (!a.exists || a.previousRoot != settlement.currentStateRoot() || a.baseCommitment != baseCommitment) {
+        uint64 batchId = uint64(settlement.batchCount());
+        uint8 phase_ = phase();
+        Anchor storage a = anchors[batchId][phase_];
+        if (
+            !a.exists || a.previousRoot != settlement.currentStateRoot() || a.baseCommitment != baseCommitment
+                || a.receipt != _currentReceipt(batchId, phase_, a)
+        ) {
             return false;
         }
         // Consumed by the parent's atomic batchCount/root advance. Old anchors can
@@ -142,8 +170,7 @@ contract ClockBoundVerifier is IZkVerifier {
         bytes32 bound = keccak256(abi.encode(DOMAIN, baseCommitment, a.receipt));
         try innerVerifier.verify(bound, proof) returns (bool ok) {
             return ok;
-        }
-            catch {
+        } catch {
             return false;
         }
     }

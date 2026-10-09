@@ -33,6 +33,7 @@ jobs:
           python3 vendor/sp1-prover/verify_provenance.py
           python3 scripts/local-verification/check_sp1_release.py
           python3 -m unittest discover -s scripts/local-verification -p test_check_sp1_release.py
+          python3 -m unittest discover -s scripts/local-verification -p test_verify_clock_proof.py
       - name: RustSec workspace and excluded application locks
         run: |
           set -o pipefail
