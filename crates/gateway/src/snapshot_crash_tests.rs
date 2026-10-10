@@ -580,7 +580,7 @@ fn sigkill_prepared_journal_commit_snapshot_gaps_recover_without_double_commit()
         assert_eq!(back.seq.state.next_batch_id, journal.batch_id + 1);
         // Persist first, then delete, exactly as the boot caller does; a second
         // restoration must already be committed with no need to replay the journal.
-        crate::finish_boot_recovery(&back, !published, &target, &journal_path, &SEED);
+        crate::finish_boot_recovery(&back, !published, &target, &journal_path, &SEED, false);
         assert!(!journal_path.exists());
         let final_state = restored(&target);
         assert_eq!(state_bytes(&final_state), state_bytes(&back));

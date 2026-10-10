@@ -379,3 +379,25 @@ guards OK (21+9 pins intact).
 - Validation: cargo metadata resolves; cargo test -p gateway 524 passed /
   0 failed; clippy 0 warnings; fmt clean; repository/operator/SP1-release/
   chainlink-replay/release-manifest guards OK (21+9 pins intact).
+
+## Final review round (2026-10-12): self-authenticating candidate snapshots
+- Gap closed: marker absence cannot prove "never candidate" — a candidate
+  snapshot with an OPEN/unsealed window (archive-admitted ops, no journal yet)
+  could be restored with the `.chainlink` marker lost and MODE omitted, and
+  boot as legacy. Candidate mode now prefixes every snapshot it writes with a
+  versioned tag INSIDE the sealed plaintext (DPCAS1): persist_recovery (boot
+  recovery persistence), write_snapshot and final_snapshot (the runtime
+  writers). Restore detects and strips the tag and refuses the legacy boot
+  (`snapshot_mode_refusal`) BEFORE any recovery branch when candidate config is
+  absent. Valid legacy snapshot bytes are NEVER tagged and restore exactly as
+  before — no snapshot wire migration, no live-state change.
+- Marker semantics corrected: `mode_gate(Ok(None), None)` is documented as the
+  reviewed legacy path for UNTAGGED state, explicitly NOT as proof of never-
+  candidate; the tag is the authenticated identity.
+- Test: `candidate_snapshot_refuses_legacy_boot_after_marker_loss_open_window`
+  — a REAL Gw snapshot persisted via the real persist_recovery(candidate=true),
+  marker deleted/omitted, MODE unset → refusal; config restored → proceed;
+  legacy untagged positive control proceeds; untagged-with-marker still refuses.
+- Validation: cargo test -p gateway 524 passed / 0 failed; clippy 0 warnings;
+  fmt clean; all guards OK. chainlink-oracle pins untouched (0 commits/0 diff).
+- PR #44 remains DRAFT per reviewer until scoped acceptance passes.

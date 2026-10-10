@@ -92,6 +92,51 @@ pub(crate) fn read_marker(
     Ok(Some(policy_binding))
 }
 
+/// Candidate snapshot tag, INSIDE the authenticated plaintext (after
+/// `snapshot::open`, before `Gw::boot_restored`). Candidate mode prefixes every
+/// snapshot it writes with this versioned magic; valid legacy snapshot bytes
+/// are NEVER tagged and restore exactly as before. This closes the open-window
+/// hole the sidecar marker cannot: a candidate snapshot with an UNSEALED window
+/// (archive-admitted ops not yet journaled) remains SELF-AUTHENTICATING even if
+/// the `.chainlink` marker is lost and the env config omitted — boot refuses
+/// the legacy downgrade instead of settling unbound windows.
+pub(crate) const SNAPSHOT_TAG_MAGIC: &[u8; 8] = b"DPCAS1\0\0";
+
+pub(crate) fn tag_snapshot_plain(plain: &mut Vec<u8>) {
+    let mut tagged = Vec::with_capacity(SNAPSHOT_TAG_MAGIC.len() + plain.len());
+    tagged.extend_from_slice(SNAPSHOT_TAG_MAGIC);
+    tagged.extend_from_slice(plain);
+    *plain = tagged;
+}
+
+pub(crate) fn snapshot_is_candidate(plain: &[u8]) -> bool {
+    plain.starts_with(SNAPSHOT_TAG_MAGIC)
+}
+
+/// Strip the tag before state decode. Caller must have checked
+/// `snapshot_is_candidate`.
+pub(crate) fn untag_snapshot_plain(plain: &mut Vec<u8>) {
+    plain.drain(..SNAPSHOT_TAG_MAGIC.len());
+}
+
+/// Pure boot decision: an authenticated CANDIDATE snapshot may never boot as
+/// legacy. `None` = proceed (subject to the marker gate); `Some(reason)` =
+/// refuse before any recovery branch.
+pub(crate) fn snapshot_mode_refusal(
+    snapshot_tagged: bool,
+    configured: Option<[u8; 32]>,
+) -> Option<String> {
+    if snapshot_tagged && configured.is_none() {
+        return Some(
+            "authenticated candidate snapshot (tagged DPCAS1) restored without \
+             candidate configuration; refusing to boot it as legacy — an open \
+             window may carry archive-admitted ops"
+                .into(),
+        );
+    }
+    None
+}
+
 /// Pure boot-gate decision over (persisted marker, configured binding).
 /// Testable without env or filesystem; the caller performs the IO.
 #[derive(Debug, PartialEq, Eq)]
@@ -114,7 +159,15 @@ pub(crate) fn mode_gate(
         (Err(e), _) => ModeGate::Refuse(format!(
             "candidate mode marker exists but is unreadable ({e}); refusing to boot rather than guess the mode"
         )),
-        (Ok(None), None) => ModeGate::Legacy,
+        (Ok(None), None) => {
+            // Marker absence is NOT proof of "never candidate" — but with no
+            // marker, no config, and an untagged snapshot there is nothing
+            // authenticated to distinguish, and this remains the reviewed
+            // legacy path. Any snapshot that ever ran candidate IS tagged
+            // (DPCAS1) and is refused here via `snapshot_mode_refusal`, and
+            // any marker that exists is refused by the arms below.
+            ModeGate::Legacy
+        }
         (Ok(None), Some(_pb)) => ModeGate::CandidateWriteMarker,
         (Ok(Some(_persisted)), None) => ModeGate::Refuse(
             "state was persisted in candidate archive mode (marker present) but \

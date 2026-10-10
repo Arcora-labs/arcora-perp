@@ -391,8 +391,19 @@ fn apply_boot_recovery(
 /// `write_atomic`). At this point in boot the snapshot writer task is not spawned
 /// yet, so the snapshot file still has exactly one writer (this call); there is
 /// no `.tmp`-rename race to worry about.
-fn persist_recovery(gw: &Gw, path: &std::path::Path, seed: &[u8; 32]) -> Result<(), String> {
-    let plain = gw.snapshot_plain();
+fn persist_recovery(
+    gw: &Gw,
+    path: &std::path::Path,
+    seed: &[u8; 32],
+    candidate: bool,
+) -> Result<(), String> {
+    let mut plain = gw.snapshot_plain();
+    // Candidate snapshots are self-authenticating (see report_archive_binding):
+    // the tag lives INSIDE the sealed plaintext, so candidate state can never
+    // be reinterpreted as legacy even if the marker sidecar is lost.
+    if candidate {
+        report_archive_binding::tag_snapshot_plain(&mut plain);
+    }
     let sealed = snapshot::seal(&plain, seed);
     snapshot::write_atomic(path, &sealed).map_err(|e| format!("snapshot write: {e}"))
 }
@@ -418,9 +429,10 @@ fn finish_boot_recovery(
     state_path: &std::path::Path,
     journal_path: &std::path::Path,
     seed: &[u8; 32],
+    candidate: bool,
 ) -> bool {
     if mutated {
-        if let Err(e) = persist_recovery(gw, state_path, seed) {
+        if let Err(e) = persist_recovery(gw, state_path, seed, candidate) {
             eprintln!(
                 "[recovery] HOLDING: window recovery applied in memory but the post-recovery \
                  snapshot could not be persisted ({e}) — keeping the rollback journal {} as \
@@ -5320,7 +5332,12 @@ async fn final_snapshot<'a>(
 ) -> (tokio::sync::MutexGuard<'a, Gw>, bool) {
     let serial = serial.lock_owned().await;
     let frozen = app.gw.lock().await;
-    let plain = frozen.snapshot_plain();
+    let mut plain = frozen.snapshot_plain();
+    if app.archive.is_some() {
+        // Candidate snapshots are self-authenticating (tag inside the sealed
+        // plaintext) so candidate state can never boot as legacy later.
+        report_archive_binding::tag_snapshot_plain(&mut plain);
+    }
     let path = path.to_owned();
     let saved = tokio::task::spawn_blocking(move || {
         // Cancellation must not release serialization while the filesystem worker
@@ -5355,10 +5372,13 @@ async fn write_snapshot(
     serial: Arc<Mutex<()>>,
 ) -> bool {
     let guard = serial.lock_owned().await;
-    let (plain, alerts) = {
+    let (mut plain, alerts) = {
         let gw = app.gw.lock().await;
         (gw.snapshot_plain(), gw.ops_alerts.clone())
     };
+    if app.archive.is_some() {
+        report_archive_binding::tag_snapshot_plain(&mut plain);
+    }
     let path = path.to_path_buf();
     let writer_alerts = alerts.clone();
     match tokio::task::spawn_blocking(move || {
@@ -8224,14 +8244,25 @@ async fn main() {
     } else {
         GenesisMode::Demo
     };
+    let mut restored_candidate_snapshot = false;
     let mut gw = match (&state_path, startup_snapshot) {
         (Some(p), Some(sealed)) => {
-            let restored =
-                snapshot::open(&sealed, &enclave_seed).and_then(|plain| Gw::boot_restored(&plain));
+            let restored = snapshot::open(&sealed, &enclave_seed).and_then(|mut plain| {
+                // A candidate-tagged snapshot is authenticated candidate state:
+                // strip the tag for decode and REMEMBER it — the mode gate below
+                // refuses to boot it as legacy even if the marker sidecar is
+                // gone and the env config omitted (open-window gap).
+                let tagged = report_archive_binding::snapshot_is_candidate(&plain);
+                if tagged {
+                    report_archive_binding::untag_snapshot_plain(&mut plain);
+                }
+                Gw::boot_restored(&plain).map(|gw| (gw, tagged))
+            });
             match restored {
-                Ok(gw) => {
+                Ok((gw, tagged)) => {
                     println!("[state] restored sealed snapshot from {}", p.display());
                     restored_from_snapshot = true;
+                    restored_candidate_snapshot = tagged;
                     gw
                 }
                 Err(e) => {
@@ -8349,6 +8380,15 @@ async fn main() {
     // treated as absent. Legacy state (no marker, no config) is untouched.
     if let Some(sp) = &state_path {
         let configured = archive_binding.as_ref().map(|b| b.policy_binding());
+        // Authenticated-candidate snapshot without candidate configuration:
+        // refuse BEFORE any recovery branch. Marker absence proves nothing —
+        // the tag inside the sealed snapshot does.
+        if let Some(reason) =
+            report_archive_binding::snapshot_mode_refusal(restored_candidate_snapshot, configured)
+        {
+            eprintln!("[chainlink-archive] REFUSING to start: {reason}");
+            std::process::exit(1);
+        }
         let gate = report_archive_binding::mode_gate(
             report_archive_binding::read_marker(
                 &report_archive_binding::marker_path(sp),
@@ -8590,6 +8630,7 @@ async fn main() {
                                                     sp,
                                                     &jp,
                                                     &enclave_seed,
+                                                    archive_binding.is_some(),
                                                 );
                                             }
                                             BootRecoveryOutcome::KeepJournal => {}
@@ -16328,7 +16369,9 @@ mod tests {
         assert_eq!(out, BootRecoveryOutcome::DeleteJournal { mutated: true });
 
         // the call-site glue: persist the post-recovery snapshot, THEN delete.
-        assert!(finish_boot_recovery(&restored, true, &state, &jp, &seed));
+        assert!(finish_boot_recovery(
+            &restored, true, &state, &jp, &seed, false
+        ));
         // (a) the snapshot on disk now decodes to the ROLLED-BACK Counter B — a
         // hard crash right here re-resolves from the snapshot alone.
         let plain2 = snapshot::open(&std::fs::read(&state).unwrap(), &seed).expect("open post");
@@ -16347,12 +16390,16 @@ mod tests {
         let bad_state = std::env::temp_dir()
             .join(format!("darkperp-no-such-dir-{sfx}"))
             .join("state.snap");
-        assert!(!finish_boot_recovery(&after, true, &bad_state, &jp, &seed));
+        assert!(!finish_boot_recovery(
+            &after, true, &bad_state, &jp, &seed, false
+        ));
         assert!(jp.exists(), "failed persist keeps the journal");
 
         // non-mutating resolutions stay delete-without-write: the same unwritable
         // snapshot path does not block the delete (nothing changed to persist).
-        assert!(finish_boot_recovery(&after, false, &bad_state, &jp, &seed));
+        assert!(finish_boot_recovery(
+            &after, false, &bad_state, &jp, &seed, false
+        ));
         assert!(
             !jp.exists(),
             "non-mutating rows delete without a snapshot write"

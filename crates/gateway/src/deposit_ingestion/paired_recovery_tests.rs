@@ -109,7 +109,7 @@ fn create_fixture(directory: &Path) -> serde_json::Value {
     wire[64] = 27 + recid.to_byte();
     // The normal production writer's ACK is modeled by an actual file persist;
     // this fixture has no live RPC source, remote attestation or admission service.
-    crate::persist_recovery(&gw, &state, &TEST_SEED).unwrap();
+    crate::persist_recovery(&gw, &state, &TEST_SEED, false).unwrap();
     gw.deposits.dirty = false;
     gw.account_withdraw(&key, 0, 5_000_000, [0x71; 20], 1, &wire)
         .unwrap();
@@ -126,7 +126,7 @@ fn create_fixture(directory: &Path) -> serde_json::Value {
     let (_, third) = permit(&mut gw, 11_000_000, None);
     assert_eq!(gw.apply_deposit_page(page(&gw, &[third])).unwrap(), 1);
     gw.validate_deposit_state().unwrap();
-    crate::persist_recovery(&gw, &state, &TEST_SEED).unwrap();
+    crate::persist_recovery(&gw, &state, &TEST_SEED, false).unwrap();
     rollback_journal::write(
         &rollback_journal::journal_path(&state),
         &journal,
@@ -224,7 +224,7 @@ fn verify_recovery(directory: &Path, meta: &serde_json::Value) {
     let jp = rollback_journal::journal_path(&state);
     std::fs::copy(directory.join("state.snapshot.rollback"), &jp).unwrap();
     assert!(crate::finish_boot_recovery(
-        &gw, true, &state, &jp, &TEST_SEED
+        &gw, true, &state, &jp, &TEST_SEED, false
     ));
     assert!(!jp.exists());
     let mut gw = Gw::boot_restored(
