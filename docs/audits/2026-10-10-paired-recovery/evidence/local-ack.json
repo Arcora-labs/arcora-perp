@@ -1,0 +1,330 @@
+{
+  "status": "PASS",
+  "binary_sha256": "f9a3048c3b8a349dc73326e48a9f60e5db6ac738df10f376039dec61ab30cd1a",
+  "script_sha256": "603573f626bbf3884b2dd91d5e8051854ae157150d1823b4c7d221bbd28e42ed",
+  "cases": [
+    {
+      "operation": "authorize",
+      "stage": "before-request-body",
+      "signal": 9,
+      "baseline_snapshot_sha256": "f80f0a2dc1a71acdc4fa4bbe9b03dc4a0e94f3897e1f0f69d908538cdb481450",
+      "barrier": "HTTP 100 Continue; body withheld",
+      "client_final_response_bytes": 0,
+      "client_outcome": "unknown",
+      "snapshot_after_kill_sha256": "f80f0a2dc1a71acdc4fa4bbe9b03dc4a0e94f3897e1f0f69d908538cdb481450",
+      "restored_encrypted_snapshot": true,
+      "account_balances_positions_order_and_withdraw_nonces_preserved": true,
+      "same_permit_route_repeated": 2,
+      "conflicting_route_status": 400,
+      "lost_permit_automatically_reissued": false,
+      "onchain_send_attempts": 0,
+      "client_resolution": "request body never sent; original baseline permit retained",
+      "second_sigkill_resolution_retained": true,
+      "status": "PASS"
+    },
+    {
+      "operation": "authorize",
+      "stage": "response-lost",
+      "signal": 9,
+      "baseline_snapshot_sha256": "315f97c72218c55dffc66861959646de7f2afe429bc59a83db272b89c6ca004b",
+      "client_final_response_bytes": 0,
+      "client_outcome": "unknown",
+      "barrier": "real handler complete; response withheld at proxy",
+      "server_status_observed_privately": 200,
+      "snapshot_after_kill_sha256": "9bacb5f293d4f7311545531ef9c7bef84f6f4c89488d0183dbd3c48a4da7ac2c",
+      "restored_encrypted_snapshot": true,
+      "account_balances_positions_order_and_withdraw_nonces_preserved": true,
+      "same_permit_route_repeated": 2,
+      "conflicting_route_status": 400,
+      "lost_permit_automatically_reissued": false,
+      "onchain_send_attempts": 0,
+      "client_resolution": "unresolved lost signature; no blind retry or on-chain send",
+      "second_sigkill_resolution_retained": true,
+      "status": "PASS"
+    },
+    {
+      "operation": "authorize",
+      "stage": "ack-received",
+      "signal": 9,
+      "baseline_snapshot_sha256": "aadea3f5017225f6ab462877e5799e3bc88ba2a8ddbe41388b2eab7dc4c683e6",
+      "client_final_response_bytes": 268,
+      "client_outcome": "confirmed",
+      "barrier": "real handler complete; response delivered",
+      "server_status_observed_privately": 200,
+      "snapshot_after_kill_sha256": "35ac455861731aad65a07e0ae6e3e83810b9d4d629e08875fc51c1b88345e9ec",
+      "restored_encrypted_snapshot": true,
+      "account_balances_positions_order_and_withdraw_nonces_preserved": true,
+      "same_permit_route_repeated": 2,
+      "conflicting_route_status": 400,
+      "lost_permit_automatically_reissued": false,
+      "onchain_send_attempts": 0,
+      "client_resolution": "received authorization retained",
+      "second_sigkill_resolution_retained": true,
+      "status": "PASS"
+    },
+    {
+      "operation": "recovery",
+      "stage": "before-request-body",
+      "signal": 9,
+      "baseline_snapshot_sha256": "290c3028f88f2a6bdd7c4fd72bfe6e497ab7750f59344488a09bf95d24e91929",
+      "barrier": "HTTP 100 Continue; body withheld",
+      "client_final_response_bytes": 0,
+      "client_outcome": "unknown",
+      "snapshot_after_kill_sha256": "290c3028f88f2a6bdd7c4fd72bfe6e497ab7750f59344488a09bf95d24e91929",
+      "restored_encrypted_snapshot": true,
+      "restored_recovery_nonce": 0,
+      "old_key_status": 200,
+      "fresh_resolution_nonce": 1,
+      "original_nonce_replay_status": 400,
+      "client_resolution": "fresh public challenge and new confirmed recovery",
+      "account_balances_positions_order_and_withdraw_nonces_preserved": true,
+      "second_sigkill_resolution_retained": true,
+      "status": "PASS"
+    },
+    {
+      "operation": "recovery",
+      "stage": "response-lost",
+      "signal": 9,
+      "baseline_snapshot_sha256": "bfc6cfb50e5358bb0fb6a634fc315d9a2b8b796ddfc6f00bdcc98a662e1ddec2",
+      "client_final_response_bytes": 0,
+      "client_outcome": "unknown",
+      "barrier": "real handler complete; response withheld at proxy",
+      "server_status_observed_privately": 200,
+      "snapshot_after_kill_sha256": "b64f42c769c145400d94c4fec9b8015735d0879ce0207ed4bc27285b5a930821",
+      "restored_encrypted_snapshot": true,
+      "restored_recovery_nonce": 1,
+      "old_key_status": 401,
+      "fresh_resolution_nonce": 2,
+      "original_nonce_replay_status": 400,
+      "client_resolution": "fresh public challenge and new confirmed recovery",
+      "account_balances_positions_order_and_withdraw_nonces_preserved": true,
+      "second_sigkill_resolution_retained": true,
+      "status": "PASS"
+    },
+    {
+      "operation": "recovery",
+      "stage": "ack-received",
+      "signal": 9,
+      "baseline_snapshot_sha256": "2059c8330fa87895cfdc09bc0fd73270e112875924c734579d4b70ab074f3484",
+      "client_final_response_bytes": 206,
+      "client_outcome": "confirmed",
+      "barrier": "real handler complete; response delivered",
+      "server_status_observed_privately": 200,
+      "snapshot_after_kill_sha256": "278519dd6646f0476026974aeddf017fb5ba1464e091706f350bb3c7bc2a5898",
+      "restored_encrypted_snapshot": true,
+      "restored_recovery_nonce": 1,
+      "old_key_status": 401,
+      "original_nonce_replay_status": 400,
+      "client_resolution": "received replacement key retained",
+      "account_balances_positions_order_and_withdraw_nonces_preserved": true,
+      "second_sigkill_resolution_retained": true,
+      "status": "PASS"
+    },
+    {
+      "operation": "cancel",
+      "stage": "before-request-body",
+      "signal": 9,
+      "baseline_snapshot_sha256": "6082a6b674cd3fceeb1ff921041d1dacc22dd8ba394656ddfab39fffe62b0ac7",
+      "barrier": "HTTP 100 Continue; body withheld",
+      "client_final_response_bytes": 0,
+      "client_outcome": "unknown",
+      "snapshot_after_kill_sha256": "6082a6b674cd3fceeb1ff921041d1dacc22dd8ba394656ddfab39fffe62b0ac7",
+      "restored_encrypted_snapshot": true,
+      "account_balances_positions_order_and_withdraw_nonces_preserved": true,
+      "retry_historical_cancelled_size": "10000000",
+      "repeated_receipt_identical": true,
+      "retry_execution_unchanged": true,
+      "original_receipt_preserved": true,
+      "client_resolution": "durable cancellation reconciled and idempotent retry confirmed",
+      "second_sigkill_resolution_retained": true,
+      "status": "PASS"
+    },
+    {
+      "operation": "cancel",
+      "stage": "response-lost",
+      "signal": 9,
+      "baseline_snapshot_sha256": "b1f6edda35edfeeeeed324227ad8c1a3cacedbf22d7b99ee05c182ea6368f672",
+      "client_final_response_bytes": 0,
+      "client_outcome": "unknown",
+      "barrier": "real handler complete; response withheld at proxy",
+      "server_status_observed_privately": 200,
+      "snapshot_after_kill_sha256": "973c83eeb0553eab97571235a872406b17b42a40d8164217ffa250a0fc543de2",
+      "restored_encrypted_snapshot": true,
+      "account_balances_positions_order_and_withdraw_nonces_preserved": true,
+      "retry_historical_cancelled_size": "10000000",
+      "repeated_receipt_identical": true,
+      "retry_execution_unchanged": true,
+      "original_receipt_preserved": true,
+      "client_resolution": "durable cancellation reconciled and idempotent retry confirmed",
+      "second_sigkill_resolution_retained": true,
+      "status": "PASS"
+    },
+    {
+      "operation": "cancel",
+      "stage": "ack-received",
+      "signal": 9,
+      "baseline_snapshot_sha256": "79b0239d4dcdc9df3c4d402612a2f927772d97a8f8b61c9bbac6e49edbf50da9",
+      "client_final_response_bytes": 65,
+      "client_outcome": "confirmed",
+      "barrier": "real handler complete; response delivered",
+      "server_status_observed_privately": 200,
+      "snapshot_after_kill_sha256": "884db498f505491f0831c119b5c3c4c70c741f6297f7c384e680caad4ee96fc8",
+      "restored_encrypted_snapshot": true,
+      "account_balances_positions_order_and_withdraw_nonces_preserved": true,
+      "retry_historical_cancelled_size": "10000000",
+      "repeated_receipt_identical": true,
+      "retry_execution_unchanged": true,
+      "original_receipt_preserved": true,
+      "client_resolution": "durable cancellation reconciled and idempotent retry confirmed",
+      "second_sigkill_resolution_retained": true,
+      "status": "PASS"
+    }
+  ],
+  "scope": "Production gateway executable in disposable demo mode; real HTTP, SIGKILL and encrypted snapshot restart",
+  "limits": [
+    "Process crashes, not power-loss/fsync fault injection; no internal snapshot boundary chosen",
+    "Demo collateral and unsealed test orders; no live deposits, L1 transaction, proof or settlement",
+    "Authorization endpoint creates fresh permits and has no idempotency key; a lost permit is not automatically re-issued",
+    "Lost responses are withheld by a controlled proxy after the handler completed; this is not evidence of all possible mid-handler failures",
+    "Public demo price/candle reads remain enabled; all listeners and mutation requests are owned loopback",
+    "Caller must separately bind the executable build to its source; current git HEAD alone is not build provenance"
+  ],
+  "owned_processes": [
+    {
+      "pid": 47336,
+      "exit_code": -9,
+      "failure_cleanup": false
+    },
+    {
+      "pid": 47339,
+      "exit_code": -9,
+      "failure_cleanup": false
+    },
+    {
+      "pid": 47340,
+      "exit_code": -9,
+      "failure_cleanup": false
+    },
+    {
+      "pid": 47341,
+      "exit_code": -9,
+      "failure_cleanup": false
+    },
+    {
+      "pid": 47344,
+      "exit_code": -9,
+      "failure_cleanup": false
+    },
+    {
+      "pid": 47345,
+      "exit_code": -9,
+      "failure_cleanup": false
+    },
+    {
+      "pid": 47346,
+      "exit_code": -9,
+      "failure_cleanup": false
+    },
+    {
+      "pid": 47349,
+      "exit_code": -9,
+      "failure_cleanup": false
+    },
+    {
+      "pid": 47350,
+      "exit_code": -9,
+      "failure_cleanup": false
+    },
+    {
+      "pid": 47351,
+      "exit_code": -9,
+      "failure_cleanup": false
+    },
+    {
+      "pid": 47356,
+      "exit_code": -9,
+      "failure_cleanup": false
+    },
+    {
+      "pid": 47358,
+      "exit_code": -9,
+      "failure_cleanup": false
+    },
+    {
+      "pid": 47359,
+      "exit_code": -9,
+      "failure_cleanup": false
+    },
+    {
+      "pid": 47363,
+      "exit_code": -9,
+      "failure_cleanup": false
+    },
+    {
+      "pid": 47365,
+      "exit_code": -9,
+      "failure_cleanup": false
+    },
+    {
+      "pid": 47366,
+      "exit_code": -9,
+      "failure_cleanup": false
+    },
+    {
+      "pid": 47371,
+      "exit_code": -9,
+      "failure_cleanup": false
+    },
+    {
+      "pid": 47372,
+      "exit_code": -9,
+      "failure_cleanup": false
+    },
+    {
+      "pid": 47373,
+      "exit_code": -9,
+      "failure_cleanup": false
+    },
+    {
+      "pid": 47376,
+      "exit_code": -9,
+      "failure_cleanup": false
+    },
+    {
+      "pid": 47377,
+      "exit_code": -9,
+      "failure_cleanup": false
+    },
+    {
+      "pid": 47378,
+      "exit_code": -9,
+      "failure_cleanup": false
+    },
+    {
+      "pid": 47381,
+      "exit_code": -9,
+      "failure_cleanup": false
+    },
+    {
+      "pid": 47382,
+      "exit_code": -9,
+      "failure_cleanup": false
+    },
+    {
+      "pid": 47383,
+      "exit_code": -9,
+      "failure_cleanup": false
+    },
+    {
+      "pid": 47386,
+      "exit_code": -9,
+      "failure_cleanup": false
+    },
+    {
+      "pid": 47387,
+      "exit_code": -9,
+      "failure_cleanup": false
+    }
+  ],
+  "elapsed_seconds": 2.47
+}

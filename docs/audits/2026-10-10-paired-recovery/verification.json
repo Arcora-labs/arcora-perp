@@ -1,0 +1,83 @@
+{
+  "status": "PASS_PAIRED_CHECKPOINT_AND_PUBLIC_FIXTURE_RECOVERY",
+  "functional_commit": "27023614509acf5c676433b72f50a46678d76622",
+  "base_commit": "29b9790746890d92b50b94b541bc00789219c301",
+  "tested_source_sha256": {
+    ".github/workflows/a11-release-evidence.yml": "a1b3b78d09b9112cf4c266aa8fbb3a34ec939852509438e2d0b93b5a20f3d70c",
+    "crates/gateway/src/deposit_ingestion.rs": "0119409e07913c18ac1d3dd2a6f22b34fd44d6facb2aa60c1e1b158105758d22",
+    "crates/gateway/src/deposit_ingestion/paired_recovery_tests.rs": "709a1d3497a303d2437a3c467d288989375916669ec6bb016f4710f86e0d20c4",
+    "crates/gateway/src/main.rs": "d5935e5118f1791bcf6a39572308953c6069285630580e4fb3d5ec2140cc32cf",
+    "crates/gateway/src/recovery_checkpoint.rs": "1dbbc92dc967374a592b8a044f1fe3bc98b3146eb939af79d8449d742bf6c250",
+    "crates/gateway/src/rollback_journal.rs": "350add9c4bf606b071ffa654921c810d393d1d233aad800968be887f79fc13cb",
+    "crates/gateway/src/snapshot.rs": "42fce86e397f85a087bbe1320b63b50a2c4d9deae80930f51e8c11d0dfa1e467",
+    "crates/gateway/tests/fixtures/paired-recovery/README.md": "912a57a11bc3e446b2dac95e6de185197bff20ed15828d610fef759b33974327",
+    "crates/gateway/tests/fixtures/paired-recovery/checkpoint.json": "e38d2553ae73c7159c83ab0ce911d99ca6fdc579a5b5fd4a95cd09a5a60b649d",
+    "crates/gateway/tests/fixtures/paired-recovery/state.snapshot": "a1d0036155f3cd37a2f65f45fe909a57918f2d2087423c0722da525db04ab73e",
+    "crates/gateway/tests/fixtures/paired-recovery/state.snapshot.rollback": "055c42499b46300e23f8ce5cd25d7d890e63d49d507f3d17db9c03622cc5ac18",
+    "docs/RECOVERY_RESTORE.md": "59e4b35be4ecb28a6a0521019f4f43713138f2ed66a9bff5bc933075b478009b",
+    "scripts/local-verification/gateway_restore_drill.py": "ae8e35048ca3169c5437272fc1644e080790fb594f8210b768b95dd6ba2e23b5"
+  },
+  "gateway_binary_sha256": "f9a3048c3b8a349dc73326e48a9f60e5db6ac738df10f376039dec61ab30cd1a",
+  "results": {
+    "gateway_passed": 478,
+    "gateway_ignored": 16,
+    "python_passed": 136,
+    "restore_refusals": 17,
+    "restore_successes": 2,
+    "ack_cases": 9,
+    "ack_sigkill_exits": 27,
+    "public_fixture_export": "macos/aarch64",
+    "public_fixture_verify": "linux/x86_64"
+  },
+  "evidence": {
+    "gateway-tests.log": {
+      "raw_local_sha256": "e5e6b6637d25a4e205f87ee1394e5813e634bf3edee5073280078d977cf3a1ce",
+      "published_sha256": "6dc39a036108cdc94ee0ed1c48a288f5206f75175d3b686eee38834f352b987d"
+    },
+    "python-tests.log": {
+      "raw_local_sha256": "9987e6428ba577b161efe103ec96f17cca7a1e908b74682ce20c68a64a0ae03d",
+      "published_sha256": "4bcaa30e59dae9199003433f4cba3cc9689087dd909245e50ef2156081a9eb35"
+    },
+    "clippy.log": {
+      "raw_local_sha256": "a1af932e658e6168ecab749b3096c81078a0fcf60bed3c4bce2f6a58254216b4",
+      "published_sha256": "cd78e3955c22a295fb5e949be5e7088ea7eaa7eae7d7ba6367fccebd81db46b3"
+    },
+    "build.log": {
+      "raw_local_sha256": "edeb8de85dd10dbc9cdd543c006590016965a205c10fa53d545328b288fa8007",
+      "published_sha256": "13f1d8ccc4deffce5911e76b4ff73b72d085e94f46e50cc7ad4bbd130fd0cfeb"
+    },
+    "macos-pair.json": {
+      "raw_local_sha256": "a11644e193cce6d2aa8599bea49b202eeeb3e4f195a1b1181831f622d37b781c",
+      "published_sha256": "ab5e51de65acad0d0b46b2795859656bdee6c6da3e8e04d522c53d1e805740b6"
+    },
+    "linux-pair.json": {
+      "raw_local_sha256": "d3e04725aae75fec0679d738dffff40b839c1c242f971400a03cb97f4d187019",
+      "published_sha256": "d3e04725aae75fec0679d738dffff40b839c1c242f971400a03cb97f4d187019"
+    },
+    "linux-restore.json": {
+      "raw_local_sha256": "22f4f9b26c3df47303351e553f9dea5be84462e4ae4d4139e3107790c3ef0168",
+      "published_sha256": "22f4f9b26c3df47303351e553f9dea5be84462e4ae4d4139e3107790c3ef0168"
+    },
+    "linux-ack.json": {
+      "raw_local_sha256": "cfa170d9273ddb7532c72f3182430150f812d3c1538454e986654d4d4c8a8a8b",
+      "published_sha256": "cfa170d9273ddb7532c72f3182430150f812d3c1538454e986654d4d4c8a8a8b"
+    },
+    "local-restore.json": {
+      "raw_local_sha256": "822e12217ef8896e3a667f327b044264ba4089b69d3cc364cdfff6831d9bcc9f",
+      "published_sha256": "822e12217ef8896e3a667f327b044264ba4089b69d3cc364cdfff6831d9bcc9f"
+    },
+    "local-ack.json": {
+      "raw_local_sha256": "8613699eeb9e4db7410bb4276613e21318a91fb966d3c9659443ca0b54bb837f",
+      "published_sha256": "8613699eeb9e4db7410bb4276613e21318a91fb966d3c9659443ca0b54bb837f"
+    },
+    "fixture-export.log": {
+      "raw_local_sha256": "027731671c4fab95cdd7914d0dcf48c79514e6a3057c6bdf7ebc67d01cfaf6e1",
+      "published_sha256": "36a9d239db5e639ccc7e36c0f232f14f8a579d2a3c4061808c52072212305790"
+    }
+  },
+  "normalization": "Home directory prefix and trailing whitespace only; outcomes unchanged.",
+  "production_service_relocated": false,
+  "live_chain_verified": false,
+  "fresh_real_proof_generated": false,
+  "release_gate": "HOLD"
+}

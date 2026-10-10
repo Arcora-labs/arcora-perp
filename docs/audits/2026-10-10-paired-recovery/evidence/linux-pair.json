@@ -1,0 +1,21 @@
+{
+  "status": "PASS_PUBLIC_FIXTURE_PAIRED_RECOVERY",
+  "fixture_source_os": "macos",
+  "fixture_source_arch": "aarch64",
+  "execution_os": "linux",
+  "execution_arch": "x86_64",
+  "snapshot_sha256": "a1d0036155f3cd37a2f65f45fe909a57918f2d2087423c0722da525db04ab73e",
+  "journal_sha256": "055c42499b46300e23f8ce5cd25d7d890e63d49d507f3d17db9c03622cc5ac18",
+  "deposit_records": 3,
+  "drained_withdrawal_leaves": 1,
+  "rollback_replay_deposits": 3,
+  "hold_no_mutation": true,
+  "roll_forward_claims": 1,
+  "repeat_commit_no_mutation": true,
+  "stale_deposit_page_rejected": true,
+  "fresh_l1_revalidation_still_required": true,
+  "live_chain_verified": false,
+  "new_proof_generated": false,
+  "production_service_relocated": false,
+  "release_gate": "HOLD"
+}

@@ -1,0 +1,271 @@
+{
+  "status": "PASS",
+  "binary_sha256": "242f2d7defdb2feb7a4574cd66ed119d9515455d707d1e6b4885977cfe4816d9",
+  "script_sha256": "ae8e35048ca3169c5437272fc1644e080790fb594f8210b768b95dd6ba2e23b5",
+  "cases": [
+    {
+      "case": "missing-state-setting",
+      "status": "PASS",
+      "exit_code": 1,
+      "listener_started": false,
+      "existing_snapshot_preserved": false
+    },
+    {
+      "case": "missing-snapshot",
+      "status": "PASS",
+      "exit_code": 1,
+      "listener_started": false,
+      "existing_snapshot_preserved": false
+    },
+    {
+      "case": "pin-alone-requires-snapshot",
+      "status": "PASS",
+      "exit_code": 1,
+      "listener_started": false,
+      "existing_snapshot_preserved": false
+    },
+    {
+      "case": "invalid-mode",
+      "status": "PASS",
+      "exit_code": 1,
+      "listener_started": false,
+      "existing_snapshot_preserved": false
+    },
+    {
+      "case": "invalid-checkpoint",
+      "status": "PASS",
+      "exit_code": 1,
+      "listener_started": false,
+      "existing_snapshot_preserved": false
+    },
+    {
+      "case": "wrong-seed",
+      "status": "PASS",
+      "exit_code": 1,
+      "listener_started": false,
+      "existing_snapshot_preserved": true
+    },
+    {
+      "case": "truncated-snapshot",
+      "status": "PASS",
+      "exit_code": 1,
+      "listener_started": false,
+      "existing_snapshot_preserved": true
+    },
+    {
+      "case": "tampered-snapshot",
+      "status": "PASS",
+      "exit_code": 1,
+      "listener_started": false,
+      "existing_snapshot_preserved": true
+    },
+    {
+      "case": "stale-checkpoint",
+      "status": "PASS",
+      "exit_code": 1,
+      "listener_started": false,
+      "existing_snapshot_preserved": true
+    },
+    {
+      "case": "wrong-checkpoint",
+      "status": "PASS",
+      "exit_code": 1,
+      "listener_started": false,
+      "existing_snapshot_preserved": true
+    },
+    {
+      "case": "flag-zero-cannot-disable-pin",
+      "status": "PASS",
+      "exit_code": 1,
+      "listener_started": false,
+      "existing_snapshot_preserved": true
+    },
+    {
+      "case": "directory-not-snapshot",
+      "status": "PASS",
+      "exit_code": 1,
+      "listener_started": false,
+      "existing_snapshot_preserved": false
+    },
+    {
+      "case": "paired-journal-missing",
+      "status": "PASS",
+      "exit_code": 1,
+      "listener_started": false,
+      "existing_snapshot_preserved": true
+    },
+    {
+      "case": "paired-journal-wrong",
+      "status": "PASS",
+      "exit_code": 1,
+      "listener_started": false,
+      "existing_snapshot_preserved": true
+    },
+    {
+      "case": "paired-absence-violated",
+      "status": "PASS",
+      "exit_code": 1,
+      "listener_started": false,
+      "existing_snapshot_preserved": true
+    },
+    {
+      "case": "paired-snapshot-pin-missing",
+      "status": "PASS",
+      "exit_code": 1,
+      "listener_started": false,
+      "existing_snapshot_preserved": true
+    },
+    {
+      "case": "paired-valid-hash-invalid-journal",
+      "status": "PASS",
+      "exit_code": 1,
+      "listener_started": false,
+      "existing_snapshot_preserved": true
+    }
+  ],
+  "restore_samples": [
+    {
+      "attempt": 1,
+      "status": "PASS",
+      "checkpoint_sha256": "23a4ce03d2dc6fdc37e6e95afb5fbf5ec25e82c74bbc78c638cb0332811c5684",
+      "copy_to_verified_state_seconds": 0.114349,
+      "account_fields_preserved": 8,
+      "original_order_receipt_preserved": true,
+      "revoked_key_status": 401,
+      "recovery_replay_status": 400,
+      "confirmed_observations_lost": 0,
+      "original_configured_path_absent": true
+    },
+    {
+      "attempt": 2,
+      "status": "PASS",
+      "checkpoint_sha256": "8e9e1e713a9dab967aecb3098e65e84b3218ee512496846c11a9c32a1d4c0f72",
+      "copy_to_verified_state_seconds": 0.11821,
+      "account_fields_preserved": 8,
+      "original_order_receipt_preserved": true,
+      "revoked_key_status": 401,
+      "recovery_replay_status": 400,
+      "confirmed_observations_lost": 0,
+      "original_configured_path_absent": true
+    }
+  ],
+  "scope": "Same-machine, fresh-directory restore of real gateway snapshots in disposable demo mode.",
+  "release_gate": "HOLD",
+  "fresh_proof_generated": false,
+  "public_chain_transactions": 0,
+  "independent_machine": false,
+  "production_rto_rpo_measured": false,
+  "limitations": [
+    "Checkpoint trust is supplied by this test, not an independent signed backup authority.",
+    "Hash matching does not establish latest state: an older valid snapshot with its own trusted pin remains valid.",
+    "Snapshots only; no production rollback journal, L1 cursors, remote backup store or hardware key release.",
+    "RTO samples cover local copy to verified HTTP state, not detection, provisioning or key recovery.",
+    "Zero lost checked observations is not a fleet RPO or unacknowledged-write guarantee.",
+    "Demo collateral, no real funds withdrawal or operator-loss exit; public price reads may occur."
+  ],
+  "checkpoint_sha256": "23a4ce03d2dc6fdc37e6e95afb5fbf5ec25e82c74bbc78c638cb0332811c5684",
+  "older_checkpoint_sha256": "71dc528f3af3b4dac01c2edbf512d28757d2df92560eae591165b8502a664f2a",
+  "owned_processes": [
+    {
+      "case": "missing-state-setting",
+      "exit_code": 1,
+      "failure_cleanup": false
+    },
+    {
+      "case": "missing-snapshot",
+      "exit_code": 1,
+      "failure_cleanup": false
+    },
+    {
+      "case": "pin-alone-requires-snapshot",
+      "exit_code": 1,
+      "failure_cleanup": false
+    },
+    {
+      "case": "invalid-mode",
+      "exit_code": 1,
+      "failure_cleanup": false
+    },
+    {
+      "case": "invalid-checkpoint",
+      "exit_code": 1,
+      "failure_cleanup": false
+    },
+    {
+      "case": "source-process",
+      "exit_code": -9,
+      "failure_cleanup": false
+    },
+    {
+      "case": "wrong-seed",
+      "exit_code": 1,
+      "failure_cleanup": false
+    },
+    {
+      "case": "truncated-snapshot",
+      "exit_code": 1,
+      "failure_cleanup": false
+    },
+    {
+      "case": "tampered-snapshot",
+      "exit_code": 1,
+      "failure_cleanup": false
+    },
+    {
+      "case": "stale-checkpoint",
+      "exit_code": 1,
+      "failure_cleanup": false
+    },
+    {
+      "case": "wrong-checkpoint",
+      "exit_code": 1,
+      "failure_cleanup": false
+    },
+    {
+      "case": "flag-zero-cannot-disable-pin",
+      "exit_code": 1,
+      "failure_cleanup": false
+    },
+    {
+      "case": "directory-not-snapshot",
+      "exit_code": 1,
+      "failure_cleanup": false
+    },
+    {
+      "case": "paired-journal-missing",
+      "exit_code": 1,
+      "failure_cleanup": false
+    },
+    {
+      "case": "paired-journal-wrong",
+      "exit_code": 1,
+      "failure_cleanup": false
+    },
+    {
+      "case": "paired-absence-violated",
+      "exit_code": 1,
+      "failure_cleanup": false
+    },
+    {
+      "case": "paired-snapshot-pin-missing",
+      "exit_code": 1,
+      "failure_cleanup": false
+    },
+    {
+      "case": "paired-valid-hash-invalid-journal",
+      "exit_code": 1,
+      "failure_cleanup": false
+    },
+    {
+      "case": "restored-process-1",
+      "exit_code": -9,
+      "failure_cleanup": false
+    },
+    {
+      "case": "restored-process-2",
+      "exit_code": -9,
+      "failure_cleanup": false
+    }
+  ],
+  "elapsed_seconds": 1.234
+}
