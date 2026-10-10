@@ -1,0 +1,47 @@
+{
+  "run_id": 38050043453,
+  "run_url": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38050043453",
+  "tested_head": "69a1b721c1664a5f293036c621301f52ab21d996",
+  "checkout_commit": "c2222eb4bf6ec8ef793dca24e5386a9cad176a3d",
+  "tree": "da2a5bc442bca75cb06a6aec9ade0e8650b2ac4c",
+  "github_hosted_arm64_mac_verified": true,
+  "artifact_elf_matches_reviewed_byte_for_byte": true,
+  "elf_sha256": "df59a19b310258b4d01d0d5e3cfa31bb7de9ca2f4ea7c2302cf76650c79967c5",
+  "elf_bytes": 525824,
+  "locked_registry_archives": 159,
+  "source_files_verified": 5762,
+  "commands": [
+    {
+      "argv": [
+        "/Users/runner/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/cargo",
+        "fetch",
+        "--manifest-path",
+        "/Users/runner/work/arcora-perp/arcora-perp/crates/sp1-guest/Cargo.toml",
+        "--locked"
+      ],
+      "seconds": 2.099358,
+      "exit_code": 0
+    },
+    {
+      "argv": [
+        "/Users/runner/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/cargo",
+        "build",
+        "--manifest-path",
+        "/Users/runner/work/arcora-perp/arcora-perp/crates/sp1-guest/Cargo.toml",
+        "--locked",
+        "--offline",
+        "--release",
+        "--target",
+        "riscv64im-succinct-zkvm-elf"
+      ],
+      "seconds": 71.93576,
+      "exit_code": 0
+    }
+  ],
+  "fresh_proof_generated": false,
+  "program_vkey_rederived": false,
+  "release_gate": "HOLD",
+  "artifact_id": 11668883475,
+  "artifact_zip_sha256": "sha256:a739937c1d6497cc7048a0062d411dc2374ec87dec8047924c55829de5aaafda",
+  "artifact_zip_matches_github_digest": true
+}
