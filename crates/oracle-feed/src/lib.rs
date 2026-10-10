@@ -1,12 +1,17 @@
 //! Live oracle adapter (§8): turns a real exchange ticker into the protocol's
 //! [`OracleTranscript`] — the signed price the engine marks, liquidates, and funds
 //! against. The conversion (decimal price strings → fixed-point, spread → confidence
-//! band, mid → backup TWAP) is a pure, offline-testable function; the optional
+//! band, same-book midpoint → legacy backup field) is offline-testable; the optional
 //! `http` feature adds a live fetch from Crypto.com's public REST API.
 //!
 //! This is the backend counterpart to the frontend's `oracleFeed.ts`: both feed the
 //! SAME `OracleTranscript` shape, so swapping the source (Crypto.com now, Pyth /
 //! committee-attested later) is a parser change, not an architecture change.
+
+#[cfg(feature = "http")]
+mod live;
+#[cfg(feature = "http")]
+pub use live::{fetch_candles, fetch_transcript, parse_ticker_response};
 
 use k256::ecdsa::SigningKey;
 use perp_core::fixed::PRICE_SCALE;
@@ -45,16 +50,34 @@ pub fn signer_address(signer: &SigningKey) -> [u8; 20] {
 /// Silent by design (no boot log): the address is logged by [`signer_from_env`] at the
 /// actual load, so this up-front check does not double-print it.
 pub fn signer_from_env_checked() -> Result<(SigningKey, bool), String> {
-    let (key, is_default) = match std::env::var("ORACLE_SIGNER_KEY") {
+    signer_from_value(std::env::var("ORACLE_SIGNER_KEY"))
+}
+
+fn signer_from_value(
+    value: Result<String, std::env::VarError>,
+) -> Result<(SigningKey, bool), String> {
+    let (key, is_default) = match value {
         Ok(s) => (
             parse_hex32(&s).ok_or("ORACLE_SIGNER_KEY is set but is not a 32-byte hex value")?,
             false,
         ),
-        Err(_) => (DEV_ORACLE_SIGNER_KEY, true),
+        Err(std::env::VarError::NotPresent) => (DEV_ORACLE_SIGNER_KEY, true),
+        Err(std::env::VarError::NotUnicode(_)) => {
+            return Err("ORACLE_SIGNER_KEY is not valid UTF-8".into())
+        }
     };
     let signer = SigningKey::from_slice(&key)
         .map_err(|e| format!("ORACLE_SIGNER_KEY is not a valid secp256k1 scalar: {e}"))?;
     Ok((signer, is_default))
+}
+
+/// Detect the known public demonstration publisher even if explicitly configured.
+/// This does not establish secrecy or compromise status of any other key.
+pub fn is_known_dev_signer(signer: &SigningKey) -> bool {
+    signer.verifying_key()
+        == SigningKey::from_slice(&DEV_ORACLE_SIGNER_KEY)
+            .expect("valid public fixture scalar")
+            .verifying_key()
 }
 
 /// Load the oracle-publisher signing key from the environment (mirrors SEC-019's
@@ -108,49 +131,44 @@ fn hex20(a: &[u8; 20]) -> String {
     s
 }
 
-/// Overall per-request timeout for a live fetch. ureq's default agent has NO read
-/// timeout, so a black-hole connection (TCP up, no response bytes) would block the
-/// poll thread forever; bounding it keeps a hung feed from stalling the poll loop
-/// (and, since freshness now advances only on a successful fetch, lets the market go
-/// cleanly stale instead of freezing the gateway) (audit review).
-#[cfg(feature = "http")]
-const FETCH_TIMEOUT_SECS: u64 = 5;
-
 /// Parse a decimal price string (e.g. "59585.60") into a [`PRICE_SCALE`] i128,
 /// without floats. Returns `None` on malformed input or overflow.
 pub fn parse_price(s: &str) -> Option<i128> {
+    // Bound work/allocation independently of the transport. Preserve the existing
+    // eight-decimal truncation contract, not Rust's permissive integer signs.
+    if s.len() > 96 {
+        return None;
+    }
     let s = s.trim();
     let neg = s.starts_with('-');
     let body = s.strip_prefix('-').unwrap_or(s);
     let (whole, frac) = body.split_once('.').unwrap_or((body, ""));
-    // A string with no digits at all ("", "-", ".", "-.") is ABSENT, not zero —
-    // returning None lets callers (transcript_from_ticker) fall a missing bid/ask
-    // back to `last` via unwrap_or, instead of reading an empty side as a literal 0
-    // and computing a giant spurious spread that the §8 gate would reject.
-    if whole.is_empty() && frac.is_empty() {
+    if (whole.is_empty() && frac.is_empty())
+        || !whole.bytes().all(|b| b.is_ascii_digit())
+        || !frac.bytes().all(|b| b.is_ascii_digit())
+    {
         return None;
     }
-    let whole: i128 = if whole.is_empty() {
-        0
+    let integer = whole.bytes().try_fold(0i128, |value, digit| {
+        value.checked_mul(10)?.checked_add(i128::from(digit - b'0'))
+    })?;
+    let mut fractional = 0i128;
+    for index in 0..8 {
+        let digit = frac.as_bytes().get(index).copied().unwrap_or(b'0') - b'0';
+        fractional = fractional.checked_mul(10)?.checked_add(i128::from(digit))?;
+    }
+    let scaled = integer.checked_mul(PRICE_SCALE)?.checked_add(fractional)?;
+    if neg {
+        scaled.checked_neg()
     } else {
-        whole.parse().ok()?
-    };
-    if !frac.chars().all(|c| c.is_ascii_digit()) {
-        return None;
+        Some(scaled)
     }
-    let mut fp = frac.to_string();
-    fp.truncate(8);
-    while fp.len() < 8 {
-        fp.push('0');
-    }
-    let frac_val: i128 = if fp.is_empty() { 0 } else { fp.parse().ok()? };
-    let v = whole.checked_mul(PRICE_SCALE)?.checked_add(frac_val)?;
-    Some(if neg { -v } else { v })
 }
 
 /// Build an [`OracleTranscript`] from a ticker's last/bid/ask decimal strings at
-/// `now_ms`. Confidence is the bid/ask spread (the live uncertainty band); the
-/// backup TWAP is the mid. Returns `None` if the last price is unparseable / ≤ 0.
+/// `now_ms`. Confidence is the bid/ask spread; the legacy `backup_twap` field
+/// is this SAME book's midpoint, not an independent TWAP. All three prices must
+/// parse positive; a missing or crossed book is refused, not replaced with last.
 ///
 /// ZK-001 (Task 5): the produced transcript carries the publisher's signature over
 /// `oracle_digest(market_id, price, publish_time_ms, confidence, backup_twap)` —
@@ -171,10 +189,13 @@ pub fn transcript_from_ticker(
     if price <= 0 {
         return None;
     }
-    let b = parse_price(bid).unwrap_or(price);
-    let a = parse_price(ask).unwrap_or(price);
-    let spread = (a - b).abs();
-    let mid = if a > 0 && b > 0 { (a + b) / 2 } else { price };
+    let b = parse_price(bid)?;
+    let a = parse_price(ask)?;
+    if b <= 0 || a <= 0 || b > a {
+        return None;
+    }
+    let spread = a.checked_sub(b)?;
+    let mid = b.checked_add(spread / 2)?;
     let publish_time_ms = now_ms;
     // a tiny floor so a zero-spread snapshot still has a non-zero band
     let confidence = spread.max(price / 1_000_000);
@@ -192,45 +213,11 @@ pub fn transcript_from_ticker(
     })
 }
 
-/// Choose a transcript's publish time. Prefer the exchange's OWN ticker timestamp
-/// (`t`) so a frozen-but-responsive feed (HTTP 200, stale price) trips the §8
-/// staleness gate instead of being re-stamped fresh forever. Never let a
-/// clock-skewed future timestamp exceed local `now_ms` (the gate rejects a
-/// publish time in the future); fall back to `now_ms` when the exchange omits `t`.
-pub fn publish_ms(exchange_t: Option<u64>, now_ms: u64) -> u64 {
-    match exchange_t {
-        Some(t) => t.min(now_ms),
-        None => now_ms,
-    }
-}
-
-/// Live fetch (opt-in `http`): pull a single instrument's ticker from Crypto.com's
-/// public REST API and convert it to an [`OracleTranscript`]. The transcript is
-/// stamped with the exchange's own ticker timestamp (falling back to `now_ms`), so
-/// a frozen feed goes stale rather than reading as perpetually fresh.
-#[cfg(feature = "http")]
-pub fn fetch_transcript(
-    instrument: &str,
-    now_ms: u64,
-    market_id: u64,
-    signer: &SigningKey,
-) -> Result<OracleTranscript, String> {
-    let url = format!(
-        "https://api.crypto.com/exchange/v1/public/get-tickers?instrument_name={instrument}"
-    );
-    let body: serde_json::Value = ureq::get(&url)
-        .timeout(std::time::Duration::from_secs(FETCH_TIMEOUT_SECS))
-        .call()
-        .map_err(|e| e.to_string())?
-        .into_json()
-        .map_err(|e| e.to_string())?;
-    let row = body["result"]["data"]
-        .get(0)
-        .ok_or_else(|| "no ticker data".to_string())?;
-    let get = |k: &str| row[k].as_str().unwrap_or("").to_string();
-    let publish = publish_ms(row["t"].as_u64(), now_ms);
-    transcript_from_ticker(&get("a"), &get("b"), &get("k"), publish, market_id, signer)
-        .ok_or_else(|| "unparseable ticker".to_string())
+/// Preserve a valid exchange timestamp. Missing, zero or future time is not
+/// repaired with receipt time. Market-specific maximum age is checked at gateway
+/// admission and again by the unchanged guest oracle gate.
+pub fn publish_ms(exchange_t: Option<u64>, now_ms: u64) -> Option<u64> {
+    exchange_t.filter(|t| *t > 0 && *t <= now_ms)
 }
 
 /// One historical OHLC bar from the exchange, [`PRICE_SCALE`]-scaled — the raw
@@ -276,26 +263,6 @@ pub fn parse_candles(body: &serde_json::Value) -> Result<Vec<FeedCandle>, String
     }
     out.sort_by_key(|c| c.start_ms);
     Ok(out)
-}
-
-/// Live fetch (opt-in `http`): historical candles for `instrument` at a Crypto.com
-/// `timeframe` (`M1`/`M5`/`M15`/`H1`/`H4`/`D1`), ascending, at most `count` bars.
-#[cfg(feature = "http")]
-pub fn fetch_candles(
-    instrument: &str,
-    timeframe: &str,
-    count: usize,
-) -> Result<Vec<FeedCandle>, String> {
-    let url = format!(
-        "https://api.crypto.com/exchange/v1/public/get-candlestick?instrument_name={instrument}&timeframe={timeframe}&count={count}"
-    );
-    let body: serde_json::Value = ureq::get(&url)
-        .timeout(std::time::Duration::from_secs(FETCH_TIMEOUT_SECS))
-        .call()
-        .map_err(|e| e.to_string())?
-        .into_json()
-        .map_err(|e| e.to_string())?;
-    parse_candles(&body)
 }
 
 #[cfg(test)]
@@ -374,8 +341,7 @@ mod tests {
         assert_eq!(parse_price("1.123456789"), Some(PRICE_SCALE + 12_345_678)); // 9th dropped
         assert_eq!(parse_price("bogus"), None);
         assert_eq!(parse_price("1.2x"), None);
-        // a digit-less string is ABSENT (None), not a silent zero — so a missing
-        // bid/ask falls back to `last` rather than reading as 0.
+        // A digit-less string is absent, not a zero or an invented book side.
         assert_eq!(parse_price(""), None);
         assert_eq!(parse_price("   "), None);
         assert_eq!(parse_price("."), None);
@@ -403,14 +369,12 @@ mod tests {
     // AUDIT (oracle staleness): the transcript must be stamped with the exchange's
     // own timestamp so a frozen-but-responsive feed goes stale, not re-stamped fresh.
     #[test]
-    fn publish_time_prefers_exchange_timestamp_but_never_future() {
-        // a PAST exchange timestamp is used verbatim → a frozen feed will go stale
-        assert_eq!(publish_ms(Some(1_000), 9_000), 1_000);
-        // a FUTURE exchange timestamp (clock skew) is clamped to now (the gate rejects
-        // a publish time in the future)
-        assert_eq!(publish_ms(Some(9_000), 5_000), 5_000);
-        // no exchange timestamp → fall back to now
-        assert_eq!(publish_ms(None, 5_000), 5_000);
+    fn publish_time_preserves_source_and_refuses_missing_zero_or_future() {
+        assert_eq!(publish_ms(Some(1_000), 9_000), Some(1_000));
+        assert_eq!(publish_ms(Some(5_000), 5_000), Some(5_000));
+        assert_eq!(publish_ms(Some(9_000), 5_000), None);
+        assert_eq!(publish_ms(None, 5_000), None);
+        assert_eq!(publish_ms(Some(0), 5_000), None);
     }
 
     #[test]
@@ -471,30 +435,35 @@ mod tests {
     }
 
     #[test]
-    fn one_sided_book_outage_falls_back_to_last_and_still_marks() {
-        // Only ONE side of the book drops (ask feed momentarily empty, bid present).
-        // Graceful degradation must fall the missing side back to `last`, not treat
-        // the empty string as a literal 0 — which would make spread = |0 − bid| a
-        // huge spurious band and get the whole transcript rejected by the §8 gate,
-        // stalling the mark on a perfectly healthy `last`.
-        let m = test_market();
-        let t = signed_transcript("59585.6", "59586.7", "", 1_000).unwrap();
-        assert_eq!(
-            t.validate(&m, 1_000),
-            Ok(t.price),
-            "a one-sided book outage must still mark against a healthy last"
-        );
+    fn missing_bid_or_ask_refuses_transcript_instead_of_inventing_backup() {
+        assert!(signed_transcript("59585.6", "59586.7", "", 1_000).is_none());
+        assert!(signed_transcript("59585.6", "", "59586.8", 1_000).is_none());
+        assert!(signed_transcript("59585.6", "", "", 1_000).is_none());
     }
 
     #[test]
-    fn a_book_outage_falls_back_to_last_and_still_marks() {
-        // bid/ask unparseable (a book outage): the adapter falls back to `last`
-        // for both the band floor and the TWAP, so a healthy last still produces
-        // a transcript that clears the gate (graceful degradation, not a stall).
-        let m = test_market();
-        let t = signed_transcript("59585.6", "", "", 1_000).unwrap();
-        assert_eq!(t.backup_twap, t.price);
-        assert_eq!(t.validate(&m, 1_000), Ok(t.price));
+    fn signer_configuration_only_falls_back_when_truly_absent() {
+        use std::env::VarError;
+        let (default, used_default) = signer_from_value(Err(VarError::NotPresent)).unwrap();
+        assert!(used_default && is_known_dev_signer(&default));
+        let configured: String = DEV_ORACLE_SIGNER_KEY
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect();
+        let (explicit, used_default) = signer_from_value(Ok(configured)).unwrap();
+        assert!(!used_default && is_known_dev_signer(&explicit));
+        assert!(!is_known_dev_signer(
+            &SigningKey::from_slice(&[0x33; 32]).unwrap()
+        ));
+        for bad in [
+            "private-sentinel".to_string(),
+            "00".repeat(32),
+            "ff".repeat(32),
+        ] {
+            let error = signer_from_value(Ok(bad)).unwrap_err();
+            assert!(!error.contains("private-sentinel"));
+        }
+        assert!(signer_from_value(Err(VarError::NotUnicode("private-sentinel".into()))).is_err());
     }
 
     #[cfg(feature = "http")]

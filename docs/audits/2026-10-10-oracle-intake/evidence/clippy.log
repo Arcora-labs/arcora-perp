@@ -1,0 +1,5 @@
+    Checking oracle-feed v0.0.1 (<HOME>/Desktop/arcora-perp/repo/crates/oracle-feed)
+    Checking node v0.0.1 (<HOME>/Desktop/arcora-perp/repo/crates/node)
+    Checking gateway v0.0.1 (<HOME>/Desktop/arcora-perp/repo/crates/gateway)
+    Checking e2e v0.0.1 (<HOME>/Desktop/arcora-perp/repo/crates/e2e)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1.81s

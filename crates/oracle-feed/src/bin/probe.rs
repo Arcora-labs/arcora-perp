@@ -18,7 +18,6 @@ const MARKETS: &[(&str, &str)] = &[
 ];
 
 fn main() {
-    let now_ms = 0u64;
     let market_id = 0u64;
     // ZK-001: the probe signs each transcript with the operator publisher key and
     // pins the market's oracle_pubkey to that signer, so the fetched price clears the
@@ -28,13 +27,22 @@ fn main() {
     market.oracle_pubkey = oracle_feed::signer_address(&signer);
     println!("\n=== dark-perp live oracle probe (Crypto.com) ===\n");
     for (symbol, instrument) in MARKETS {
+        let now_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("valid wall clock")
+            .as_millis()
+            .try_into()
+            .expect("clock fits u64");
         match oracle_feed::fetch_transcript(instrument, now_ms, market_id, &signer) {
             Ok(t) => {
-                // NB: do NOT re-stamp `publish_time_ms` here — it is a SIGNED field
-                // (ZK-001), and `fetch_transcript` already stamped it via
-                // `publish_ms(exchange_t, now_ms)`; mutating it would break the signature
-                // and the §8 gate would reject the price.
-                let gate = match t.validate(&market, now_ms) {
+                // Preserve the signed exchange time; validate at receipt, not request start.
+                let received_ms = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .expect("valid wall clock")
+                    .as_millis()
+                    .try_into()
+                    .expect("clock fits u64");
+                let gate = match t.validate(&market, received_ms) {
                     Ok(_) => "passes §8 gate",
                     Err(e) => {
                         eprintln!("{symbol:<10} gate rejected: {e:?}");
@@ -42,7 +50,7 @@ fn main() {
                     }
                 };
                 println!(
-                    "{symbol:<10} price ${:<12} conf ${:<8} twap ${:<12} [{gate}]",
+                    "{symbol:<10} price ${:<12} conf ${:<8} book-mid ${:<12} [{gate}]",
                     fmt(t.price),
                     fmt(t.confidence),
                     fmt(t.backup_twap),

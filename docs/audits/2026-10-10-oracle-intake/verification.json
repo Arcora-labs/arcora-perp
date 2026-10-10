@@ -1,0 +1,92 @@
+{
+  "date": "2026-10-10",
+  "base_commit": "0bcb0dd901da72422b933537693d636db205c176",
+  "merged_pr": 37,
+  "merge_commit": "0bcb0dd901da72422b933537693d636db205c176",
+  "merge_required_checks_passed": 17,
+  "branch": "fix/oracle-feed-safety-20261010",
+  "status": "CPU_ORACLE_INTAKE_VALIDATED",
+  "source_sha256": {
+    ".github/workflows/a11-release-evidence.yml": "c8caf12f64fd51a70a246123aacfa532995762cb8ada9e88f656e13052fe6bce",
+    "Cargo.lock": "ae46d708915dfd198ae9b66e51f1652c1f073e09f2b1a358fe97fa1019e20210",
+    "crates/gateway/src/main.rs": "2c0b2f1500936d6be0ff68b59ee8c8fcf559806eea6bb349c04ef66dab90e7c8",
+    "crates/gateway/src/audit_remediation_tests.rs": "e2744fb663a404aec61e8c9c0ae06ee0c436911f8a726967a85844ba37676246",
+    "crates/gateway/src/oracle_intake_tests.rs": "ffcbce69724d950b9de5ef91ad180487af24c1220b83f48c498b325797ab71b7",
+    "crates/oracle-feed/Cargo.toml": "e7172b7ad62b101c1b5d261ad2f7176da4856c4277e770817a7a5976261ad4bd",
+    "crates/oracle-feed/src/lib.rs": "3bae75df9cf1d7be1a73ed5f6022338cb6f34d6f6576645b42735d8bedac9bde",
+    "crates/oracle-feed/src/live.rs": "1f209021cbb727bf4f369cd7243adccab62254702b6287da407dfc743dc274f1",
+    "crates/oracle-feed/src/live_tests.rs": "f2b33e14cb41eb737dbc9f01d0dd5bd313d92c7a914df6ce57f664fc336cc3b9",
+    "crates/oracle-feed/src/bin/probe.rs": "86ea240b4980233f65434334399d48eeb21cf8577319897123ef062ec43edfb9",
+    "crates/oracle-feed/tests/intake_regressions.rs": "48a2130abe39bab5238ad6f3417cf80508ff8d2089a262aac3611ef2e3b8ae82",
+    "docs/ORACLE_INTAKE.md": "06838ffe63d6dc2ac4ac3c2547790c37c5b270d0852ac4b8cd982259c3f47bb7"
+  },
+  "gateway_binary_sha256": "52e6a1d5456b6fdb3c19e8647ebc35b2e8dd934e43877900aba37eb7af5dfbff",
+  "results": {
+    "workspace_passed": 915,
+    "workspace_failed": 0,
+    "workspace_ignored": 17,
+    "gateway_passed_in_workspace": 490,
+    "gateway_ignored": 16,
+    "oracle_default_passed": 15,
+    "oracle_http_passed": 28,
+    "python_passed": 136,
+    "python_skipped": 0,
+    "before_fix_failures": 12,
+    "restore_refusals": 17,
+    "restore_successes": 2,
+    "ack_cases": 9,
+    "ack_sigkill_exits": 27
+  },
+  "evidence": {
+    "workspace-tests.log": {
+      "raw_sha256": "4a5fb65f85923e667cf215b0e289ee0224b87784a3d41b0a1c6fb06d51e19c19",
+      "published_sha256": "df63304a10fc0850ee0a50859de91bad7a2174f8693e60a2b131ace884bd978d",
+      "normalization": "Home prefix and trailing whitespace only; results unchanged."
+    },
+    "clippy.log": {
+      "raw_sha256": "3572adefde22e79aabe785309ddb8b0ea352a8cf8d981df6502374cc07d7fffa",
+      "published_sha256": "46845dee66b33d4e07646ee382f2255e92183634051f40ebd84c7e2cf5e07fac",
+      "normalization": "Home prefix and trailing whitespace only; results unchanged."
+    },
+    "python-tests.log": {
+      "raw_sha256": "e182a2acb9ac233aa7f5e0c69c2cf9ae81ffb261318b31594e93498cacc44115",
+      "published_sha256": "188892c29f84ea43afb205078b6b0e899456266ba6e439908895fb89a27fc64c",
+      "normalization": "Home prefix and trailing whitespace only; results unchanged."
+    },
+    "feed-http-tests.log": {
+      "raw_sha256": "4b832592d63333f45eda168b91a0b4766a1345548c62f10c8b7f48662d712d15",
+      "published_sha256": "45b78e75e6b5b06686efcfb3b7391abce190783e31894a189aeab0ee53f1d38b",
+      "normalization": "Home prefix and trailing whitespace only; results unchanged."
+    },
+    "feed-default-tests.log": {
+      "raw_sha256": "c8f5e749606add8800fa545f7b5b1134d01b4265cb96064848d869d424c3cd88",
+      "published_sha256": "857e93d88d54f46032dbf70c711942ef86ec64c6172964d5ac4d9811eb97c17d",
+      "normalization": "Home prefix and trailing whitespace only; results unchanged."
+    },
+    "gateway-build.log": {
+      "raw_sha256": "e125638df9df994c19aeb1164c48c918d7541427d6445fbd5aff537969652b5e",
+      "published_sha256": "3f2e242f9c637ff38ba7f62f0f6c3741428f15f6e7a7a90149dd7ec3eec2d556",
+      "normalization": "Home prefix and trailing whitespace only; results unchanged."
+    },
+    "restore-result.json": {
+      "raw_sha256": "8f4aa349082a593b7c9d70058cf1c62c4f19f06f4faeebb71dace5b773177efd",
+      "published_sha256": "8f4aa349082a593b7c9d70058cf1c62c4f19f06f4faeebb71dace5b773177efd",
+      "normalization": "Home prefix and trailing whitespace only; results unchanged."
+    },
+    "ack-result.json": {
+      "raw_sha256": "8fdb466080bbdbffc3c3017faded6ccf273182c92353ee2bcc862e2ce107001e",
+      "published_sha256": "8fdb466080bbdbffc3c3017faded6ccf273182c92353ee2bcc862e2ce107001e",
+      "normalization": "Home prefix and trailing whitespace only; results unchanged."
+    },
+    "pin-check.json": {
+      "raw_sha256": "d3cbacd4d94ed6419e700b8e357e2df842a2f89e5c238f20f637d77669c52e89",
+      "published_sha256": "d3cbacd4d94ed6419e700b8e357e2df842a2f89e5c238f20f637d77669c52e89",
+      "normalization": "Home prefix and trailing whitespace only; results unchanged."
+    }
+  },
+  "production_deployed": false,
+  "fresh_proof_generated": false,
+  "multi_source_oracle": false,
+  "publisher_trust_closed": false,
+  "release_gate": "HOLD"
+}
