@@ -32,3 +32,21 @@ jobs:
           python3 -c 'import sys;sys.path.insert(0,"scripts/local-verification");from verify_clock_proof import verify_guest_source;print(len(verify_guest_source()))'
       - name: Replay evidence parser guards (offline synthetic test reports)
         run: python3 -m unittest discover -s scripts/local-verification -p 'test_chainlink_replay.py' -v
+
+  rest-client:
+    name: Chainlink REST client (runtime regressions)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.99.0
+          components: clippy, rustfmt
+      - name: Format and typecheck isolated host client (NOT a live or runtime test)
+        run: |
+          cargo fmt --manifest-path crates/chainlink-streams-client/Cargo.toml --check
+          cargo check --locked --manifest-path crates/chainlink-streams-client/Cargo.toml
+          cargo clippy --locked --manifest-path crates/chainlink-streams-client/Cargo.toml --all-targets -- -D warnings
+      - name: Real runtime and owned loopback tests (not live DON verification)
+        run: cargo test --locked --manifest-path crates/chainlink-streams-client/Cargo.toml
