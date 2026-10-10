@@ -109,7 +109,7 @@ jobs:
       - name: Build optimized exact synthetic funds replay host (guest build skipped)
         env:
           CARGO_BUILD_JOBS: '2'
-        run: cargo build --release --locked --manifest-path crates/sp1-host/Cargo.toml --bin replay-funds
+        run: cargo build --release --locked --manifest-path crates/sp1-host/Cargo.toml --bin replay-funds --bin replay-chainlink
       - name: Reject incomplete or substituted normal-wallet witnesses
         run: |
           python3 scripts/local-verification/verify_funds_replay.py \
@@ -125,6 +125,22 @@ jobs:
             docs/audits/2026-10-09-followup/clock-lifecycle/witnesses \
             /tmp/arcora-funds-guest-execution \
             --elf contracts/integration/fixtures/clock-v2-verified/guest.elf
+      - name: Execute separately pinned Chainlink candidate (synthetic, no DON or proof)
+        run: |
+          python3 scripts/local-verification/run_chainlink_replay.py \
+            --binary crates/sp1-host/target/release/replay-chainlink \
+            --elf contracts/integration/fixtures/chainlink-candidate-v1/guest.elf \
+            --output-dir /tmp/arcora-chainlink-candidate-replay
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: chainlink-candidate-guest-replay
+          path: |
+            /tmp/arcora-chainlink-candidate-replay/verification.json
+            /tmp/arcora-chainlink-candidate-replay/execution/manifest.json
+            /tmp/arcora-chainlink-candidate-replay/execution/*.public-values.bin
+            /tmp/arcora-chainlink-candidate-replay/execution.log
+            /tmp/arcora-chainlink-candidate-replay/guards/*.log
       - uses: actions/upload-artifact@v4
         if: always()
         with:

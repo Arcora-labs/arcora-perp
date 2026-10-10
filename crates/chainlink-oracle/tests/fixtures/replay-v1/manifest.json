@@ -1,0 +1,160 @@
+{
+  "kind": "synthetic-chainlink-replay-v1",
+  "synthetic": true,
+  "real_chainlink_signatures": false,
+  "candidate_elf_sha256": "48a8eb8e6acd96057a72ca74db5077ac9e85d30d2ec830518ef1f1ac3832ef1f",
+  "cases": [
+    {
+      "name": "funding",
+      "outcome": "PASS",
+      "expected_commitment": "80dcbd322990b2bae84bd1e1bfaa25374f616d34fd5975a2b44393d17f377b0f",
+      "native_error": null,
+      "witness_sha256": "5483e313c7541b3e636f24b964e9281908767b56db9464c17934d9f2779f9ed0",
+      "witness_bytes": 1684
+    },
+    {
+      "name": "depeg-funding",
+      "outcome": "PASS",
+      "expected_commitment": "6538273f1b0d164c89f1d474668409099624b3ceb04d4b389745efebd3961d96",
+      "native_error": null,
+      "witness_sha256": "36a36454a6f374e74b303e8bf94499474676774a1787fac79792f3050e580e3c",
+      "witness_bytes": 1684
+    },
+    {
+      "name": "two-observations",
+      "outcome": "PASS",
+      "expected_commitment": "9eb8155ea5ddd27be8744ad97aae9bd1f3c7367b391981c15cf22611c01caab6",
+      "native_error": null,
+      "witness_sha256": "020975a257323b51f78bd9cc9d20f4c422aa161d895b8ef240076210c94a56bc",
+      "witness_bytes": 2366
+    },
+    {
+      "name": "price-free-empty",
+      "outcome": "PASS",
+      "expected_commitment": "3896449331d0bfe134f39e9b1f43b06975701f964dd27114a108bb05c6c276fa",
+      "native_error": null,
+      "witness_sha256": "b376715ff1385efc8c33b33e80cfbd1f3c2d2b1eded742a771be27a4a8afba9c",
+      "witness_bytes": 996
+    },
+    {
+      "name": "missing-evidence",
+      "outcome": "REJECT",
+      "expected_commitment": null,
+      "native_error": "Evidence",
+      "witness_sha256": "80704fe4c6fa12c000b8904e0e3a99579d5664d7c9391a4a019b96a01b0012bc",
+      "witness_bytes": 1100
+    },
+    {
+      "name": "extra-evidence",
+      "outcome": "REJECT",
+      "expected_commitment": null,
+      "native_error": "Evidence",
+      "witness_sha256": "061f5dbf7b14b19c73f7e87194006c045f5ccd37c282eeeb27ddf9df7d49820b",
+      "witness_bytes": 2268
+    },
+    {
+      "name": "wrong-market",
+      "outcome": "REJECT",
+      "expected_commitment": null,
+      "native_error": "Evidence",
+      "witness_sha256": "f9879aefa23a3cb4f522082cc1ef206a957354bb72a5e70b1dba4571db0a2ab4",
+      "witness_bytes": 1684
+    },
+    {
+      "name": "wrong-feed",
+      "outcome": "REJECT",
+      "expected_commitment": null,
+      "native_error": "Feed",
+      "witness_sha256": "e0f7ef65ff54ef227dde022832e9aeb9054e553d73a45a041d362bd192124cee",
+      "witness_bytes": 1684
+    },
+    {
+      "name": "stale-quote",
+      "outcome": "REJECT",
+      "expected_commitment": null,
+      "native_error": "Time",
+      "witness_sha256": "1386b1748065784e050da22caf35c99092e895b8c89b7b79d6277d924fee9e98",
+      "witness_bytes": 1684
+    },
+    {
+      "name": "future-quote",
+      "outcome": "REJECT",
+      "expected_commitment": null,
+      "native_error": "Time",
+      "witness_sha256": "9b43bb949feba989f93bd7dedd838c2a851285e6257115dae5b32c88681f576b",
+      "witness_bytes": 1684
+    },
+    {
+      "name": "forged-funding",
+      "outcome": "REJECT",
+      "expected_commitment": null,
+      "native_error": "Oracle",
+      "witness_sha256": "13a97acefc9161342b8ac09a292d3ddeaaa7f45065f0e09fff8fe30ac3ac8df2",
+      "witness_bytes": 1684
+    },
+    {
+      "name": "forged-fill",
+      "outcome": "REJECT",
+      "expected_commitment": null,
+      "native_error": "Oracle",
+      "witness_sha256": "e19e60cdb931b3fc72453d71d2ef2bcbf53e2f56913ba27264f3e95eda50d270",
+      "witness_bytes": 1750
+    },
+    {
+      "name": "forged-liquidation",
+      "outcome": "REJECT",
+      "expected_commitment": null,
+      "native_error": "Oracle",
+      "witness_sha256": "e88da56be94c854eeffa3ec3ed42af0e5ae1ba00b72f222c49fbc1f4338d83d2",
+      "witness_bytes": 1709
+    },
+    {
+      "name": "forged-unbind",
+      "outcome": "REJECT",
+      "expected_commitment": null,
+      "native_error": "Oracle",
+      "witness_sha256": "f3d17b31bcf07d242a48904ff81c79669ed305f0be4176cdf6c28b21fe0c0a7f",
+      "witness_bytes": 1742
+    },
+    {
+      "name": "wrong-chain-context",
+      "outcome": "REJECT",
+      "expected_commitment": null,
+      "native_error": "Policy",
+      "witness_sha256": "d74202c51e803ddc69cde7a07f47d50cd8a8c34a9983050dd4fc1f9d5bc22f0e",
+      "witness_bytes": 1683
+    },
+    {
+      "name": "wrong-clock-context",
+      "outcome": "REJECT",
+      "expected_commitment": null,
+      "native_error": "Clock",
+      "witness_sha256": "039f61effa98b5f4d2a652f4514ca9c11fd2c6aafb9911b54cbe39fc67e1352d",
+      "witness_bytes": 1684
+    },
+    {
+      "name": "invalid-state-market",
+      "outcome": "REJECT",
+      "expected_commitment": null,
+      "native_error": "Transition",
+      "witness_sha256": "414ad33db56da83c549dee53a005abcb1fe51b7140df26cd2a84cd525780d2ff",
+      "witness_bytes": 1684
+    },
+    {
+      "name": "trailing-bytes",
+      "outcome": "REJECT",
+      "expected_commitment": null,
+      "native_error": "Encoding",
+      "witness_sha256": "5625bbd10189c90fa396a3032a1024d5136db75b90aa0a7a25b34b8884197a87",
+      "witness_bytes": 1685
+    },
+    {
+      "name": "legacy-wire",
+      "outcome": "REJECT",
+      "expected_commitment": null,
+      "native_error": "Version",
+      "witness_sha256": "5bf57a26b2121c3349acc8b6e9c420bcb99ef4658a7f04cc60f4a34964cd7a0b",
+      "witness_bytes": 1684
+    }
+  ]
+}

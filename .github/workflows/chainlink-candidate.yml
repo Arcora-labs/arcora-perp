@@ -30,3 +30,5 @@ jobs:
           python3 scripts/local-verification/check_sp1_release.py
           python3 scripts/local-verification/check_chainlink_candidate.py
           python3 -c 'import sys;sys.path.insert(0,"scripts/local-verification");from verify_clock_proof import verify_guest_source;print(len(verify_guest_source()))'
+      - name: Replay evidence parser guards (offline synthetic test reports)
+        run: python3 -m unittest discover -s scripts/local-verification -p 'test_chainlink_replay.py' -v
