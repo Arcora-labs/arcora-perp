@@ -102,7 +102,7 @@ impl RestorePolicy {
         )
     }
 
-    fn parse(required: Option<&str>, checkpoint: Option<&str>) -> Result<Self, String> {
+    pub(super) fn parse(required: Option<&str>, checkpoint: Option<&str>) -> Result<Self, String> {
         let required = match required {
             None | Some("0") => false,
             Some("1") => true,

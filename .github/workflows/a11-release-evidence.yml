@@ -133,6 +133,9 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Build the actual gateway and record its source
         run: python3 scripts/local-verification/run_check.py --output-dir /tmp/arcora-local-drills/checks gateway-build -- cargo build --locked -p gateway
+      - name: Public macOS snapshot and journal on Linux recovery code
+        run: |
+          ARCORA_PAIR_EVIDENCE=/tmp/arcora-local-drills/paired-recovery.json cargo test --locked -p gateway public_macos_pair_restores -- --nocapture
       - name: Local clock wallet lifecycle and gateway-offline claims (explicit mock verifier)
         run: |
           forge build --root contracts

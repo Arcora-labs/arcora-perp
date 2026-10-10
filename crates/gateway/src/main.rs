@@ -64,6 +64,7 @@ mod listen_config;
 mod ops_alerts;
 mod order_log;
 mod prover_client;
+mod recovery_checkpoint;
 mod rollback_journal;
 mod service_policy;
 #[cfg(test)]
@@ -413,7 +414,7 @@ fn finish_boot_recovery(
     state_path: &std::path::Path,
     journal_path: &std::path::Path,
     seed: &[u8; 32],
-) {
+) -> bool {
     if mutated {
         if let Err(e) = persist_recovery(gw, state_path, seed) {
             eprintln!(
@@ -422,10 +423,11 @@ fn finish_boot_recovery(
                  the recovery source (the next boot re-resolves it); fix the snapshot path",
                 journal_path.display()
             );
-            return;
+            return false;
         }
     }
     rollback_journal::delete(journal_path);
+    !journal_path.try_exists().unwrap_or(true)
 }
 
 // ── constants ────────────────────────────────────────────────────────────────
@@ -8015,6 +8017,13 @@ async fn main() {
             eprintln!("[state] REFUSING to start: {error}");
             std::process::exit(1);
         });
+    let startup_journal = recovery_checkpoint::JournalPolicy::from_env()
+        .and_then(|policy| policy.read_for_boot(state_path.as_deref()))
+        .unwrap_or_else(|error| {
+            eprintln!("[recovery] REFUSING to start: {error}");
+            std::process::exit(1);
+        });
+    let mut unresolved_startup_journal = startup_journal.is_some();
     // Task 3 (crash recovery): whether a sealed snapshot was actually restored —
     // a rollback journal is only meaningful against the state it was written
     // beside; a journal without its snapshot now refuses startup for reconciliation.
@@ -8123,11 +8132,15 @@ async fn main() {
     if let Some(sp) = &state_path {
         let jp = rollback_journal::journal_path(sp);
         if !restored_from_snapshot {
-            if jp.exists() {
+            if unresolved_startup_journal {
                 eprintln!("[recovery] HOLDING: rollback journal {} exists without a restored snapshot; preserve both files and reconcile before restart", jp.display());
             }
         } else {
-            match rollback_journal::read(&jp, &enclave_seed) {
+            match startup_journal
+                .as_deref()
+                .map(|bytes| rollback_journal::open(bytes, &enclave_seed))
+                .transpose()
+            {
                 Ok(None) => {} // no journal — nothing was in flight
                 Err(e) => {
                     // present but unreadable: never delete data the operator may
@@ -8225,7 +8238,13 @@ async fn main() {
                                     // (and a failed persist keeps the journal) —
                                     // see finish_boot_recovery.
                                     BootRecoveryOutcome::DeleteJournal { mutated } => {
-                                        finish_boot_recovery(&gw, mutated, sp, &jp, &enclave_seed);
+                                        unresolved_startup_journal = !finish_boot_recovery(
+                                            &gw,
+                                            mutated,
+                                            sp,
+                                            &jp,
+                                            &enclave_seed,
+                                        );
                                     }
                                     BootRecoveryOutcome::KeepJournal => {}
                                 }
@@ -8247,7 +8266,7 @@ async fn main() {
     // Never start another settlement loop that could overwrite this recovery record.
     if let Some(sp) = &state_path {
         let jp = rollback_journal::journal_path(sp);
-        if jp.try_exists().unwrap_or(true) {
+        if unresolved_startup_journal || jp.try_exists().unwrap_or(true) {
             eprintln!("[recovery] REFUSING to start: unresolved rollback journal {}; reconcile the pending transaction and restart", jp.display());
             if let Some(l1c) = &l1 {
                 l1c.cleanup_keystore();
@@ -15603,7 +15622,7 @@ mod tests {
         assert_eq!(out, BootRecoveryOutcome::DeleteJournal { mutated: true });
 
         // the call-site glue: persist the post-recovery snapshot, THEN delete.
-        finish_boot_recovery(&restored, true, &state, &jp, &seed);
+        assert!(finish_boot_recovery(&restored, true, &state, &jp, &seed));
         // (a) the snapshot on disk now decodes to the ROLLED-BACK Counter B — a
         // hard crash right here re-resolves from the snapshot alone.
         let plain2 = snapshot::open(&std::fs::read(&state).unwrap(), &seed).expect("open post");
@@ -15622,12 +15641,12 @@ mod tests {
         let bad_state = std::env::temp_dir()
             .join(format!("darkperp-no-such-dir-{sfx}"))
             .join("state.snap");
-        finish_boot_recovery(&after, true, &bad_state, &jp, &seed);
+        assert!(!finish_boot_recovery(&after, true, &bad_state, &jp, &seed));
         assert!(jp.exists(), "failed persist keeps the journal");
 
         // non-mutating resolutions stay delete-without-write: the same unwritable
         // snapshot path does not block the delete (nothing changed to persist).
-        finish_boot_recovery(&after, false, &bad_state, &jp, &seed);
+        assert!(finish_boot_recovery(&after, false, &bad_state, &jp, &seed));
         assert!(
             !jp.exists(),
             "non-mutating rows delete without a snapshot write"

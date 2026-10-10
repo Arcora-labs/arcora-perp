@@ -92,6 +92,7 @@ pub fn write(path: &Path, j: &RollbackJournal, seed: &[u8; 32]) -> Result<(), St
 /// (clean shutdown — the common case), `Ok(Some)` = an in-flight window to resolve,
 /// `Err` = a journal EXISTS but is unreadable (wrong seed / tampered / truncated /
 /// future format) — the caller must HOLD, never treat it as absent.
+#[cfg(test)]
 pub fn read(path: &Path, seed: &[u8; 32]) -> Result<Option<RollbackJournal>, String> {
     let sealed = match snapshot::read_file(path) {
         Ok(bytes) => bytes,
@@ -100,7 +101,13 @@ pub fn read(path: &Path, seed: &[u8; 32]) -> Result<Option<RollbackJournal>, Str
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(e) => return Err(format!("journal read: {e}")),
     };
-    let plain = snapshot::open(&sealed, seed).map_err(|e| format!("journal open: {e}"))?;
+    open(&sealed, seed).map(Some)
+}
+
+/// Decode exactly the bytes admitted by the startup checkpoint. Never reopen a
+/// file after comparing its hash; the existing authenticated format is unchanged.
+pub fn open(sealed: &[u8], seed: &[u8; 32]) -> Result<RollbackJournal, String> {
+    let plain = snapshot::open(sealed, seed).map_err(|e| format!("journal open: {e}"))?;
     let body = plain
         .strip_prefix(MAGIC.as_slice())
         .ok_or("journal magic/version mismatch")?;
@@ -118,7 +125,7 @@ pub fn read(path: &Path, seed: &[u8; 32]) -> Result<Option<RollbackJournal>, Str
             j.batch_id, j.witness.batch_id
         ));
     }
-    Ok(Some(j))
+    Ok(j)
 }
 
 /// Best-effort removal once the window is resolved (commit, rollback, or stale).
