@@ -115,7 +115,10 @@ reviewed v2 guest/ELF/vkey/public input ve prover yönlendirmesi DEĞİŞMEDİ):
   policy/market/op zamanıyla çözümlenmeli ve op transcript'iyle birebir
   eşleşmeli; eksik/bozuk/uyumsuz kayıt = sürümlü HOLD (dosya korunur, başlangıç reddedilir).
 - Sıralı dayanıklılık engelleri: arşiv kalıcı → state değiştiren admission;
-  authenticated journal kalıcı → prove/broadcast yan etkisi.
+  authenticated journal kalıcı → herhangi bir submission'dan önce kontroller.
+- Candidate modda v2 submission YOK: pencere seal+journal sonrası HOLD eder
+  (v3 chainlink proving bağlanana kadar; sıfır-oracle pencere dahil). Sayaçlı
+  prover testi reddedilen yolda 0 çağrı doğrular.
 - Candidate modda legacy feed intake bastırılır (startup, politika tüm marketleri
   kapsamıyorsa reddeder); varsayılan feed'li market setleriyle candidate artık
   erişilebilir. DEMO boot'un tohum fiyatları candidate'da bağlanamaz — pencere

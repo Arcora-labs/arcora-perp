@@ -196,6 +196,25 @@ fn config_env(name: &str) -> Result<Option<String>, BindError> {
     }
 }
 
+/// The operator-pinned policy is PUBLIC data, never credentials: it must be a
+/// bounded, regular, non-symlink file. A symlink, directory, empty file, or
+/// oversized file refuses — no substitution, no discovery.
+fn read_policy_file(path: &std::path::Path) -> Result<Vec<u8>, BindError> {
+    const MAX_POLICY_BYTES: u64 = 64 * 1024;
+    let meta = std::fs::symlink_metadata(path).map_err(|_| BindError::Config)?;
+    if meta.file_type().is_symlink() || !meta.file_type().is_file() {
+        return Err(BindError::Config);
+    }
+    if meta.len() == 0 || meta.len() > MAX_POLICY_BYTES {
+        return Err(BindError::Config);
+    }
+    let bytes = std::fs::read(path).map_err(|_| BindError::Config)?;
+    if bytes.len() as u64 != meta.len() {
+        return Err(BindError::Config); // changed under us
+    }
+    Ok(bytes)
+}
+
 /// Candidate mode requires the pinned policy to cover EVERY configured
 /// gateway market — otherwise some price could be admitted outside the archive
 /// and every price-bearing window would wedge at seal time. Returns the first
@@ -253,30 +272,45 @@ pub(crate) fn used_oracle(
 
 impl ArchiveBinding {
     /// Opt-in config: absent / "disabled" ⇒ `None` (legacy behavior everywhere);
-    /// "candidate" ⇒ an operator-owned archive dir plus an operator-pinned policy
-    /// file. Anything else refuses startup.
+    /// "candidate" ⇒ an operator-owned archive dir plus an operator-pinned
+    /// policy file. STRICT partial-config handling: a DIR or POLICY setting
+    /// without `MODE=candidate` is an ERROR, never a silent disable; an
+    /// explicitly disabled mode must not carry candidate settings either.
     pub(crate) fn from_env() -> Result<Option<Self>, BindError> {
-        let Some(mode) = config_env(MODE_ENV)? else {
-            return Ok(None);
-        };
-        if mode == "disabled" {
-            return Ok(None);
+        Self::configured(
+            config_env(MODE_ENV)?,
+            config_env(DIR_ENV)?,
+            config_env(POLICY_ENV)?,
+        )
+    }
+
+    pub(crate) fn configured(
+        mode: Option<String>,
+        dir: Option<String>,
+        policy: Option<String>,
+    ) -> Result<Option<Self>, BindError> {
+        match mode.as_deref() {
+            None | Some("disabled") => {
+                if dir.is_some() || policy.is_some() {
+                    // Partial candidate settings must fail loudly, not disable.
+                    return Err(BindError::Config);
+                }
+                Ok(None)
+            }
+            Some("candidate") => {
+                let dir = dir.ok_or(BindError::Config)?;
+                let policy_path = policy.ok_or(BindError::Config)?;
+                // Recovery never creates an empty archive in place of a missing
+                // backup; the directory and its parents belong to the operator.
+                let archive = ReportArchive::open_existing(std::path::Path::new(&dir))
+                    .map_err(|_| BindError::Archive)?;
+                let bytes = read_policy_file(std::path::Path::new(&policy_path))?;
+                let policy: Policy =
+                    serde_json::from_slice(&bytes).map_err(|_| BindError::Config)?;
+                Self::new(archive, policy).map(Some)
+            }
+            Some(_) => Err(BindError::Config),
         }
-        if mode != "candidate" {
-            return Err(BindError::Config);
-        }
-        let dir = config_env(DIR_ENV)?
-            .ok_or(BindError::Config)
-            .map(std::path::PathBuf::from)?;
-        // Recovery never creates an empty archive in place of a missing backup.
-        let archive = ReportArchive::open_existing(&dir).map_err(|_| BindError::Archive)?;
-        let policy_path = config_env(POLICY_ENV)?
-            .ok_or(BindError::Config)
-            .map(std::path::PathBuf::from)?;
-        let policy: Policy =
-            serde_json::from_slice(&std::fs::read(&policy_path).map_err(|_| BindError::Config)?)
-                .map_err(|_| BindError::Config)?;
-        Self::new(archive, policy).map(Some)
     }
 
     #[cfg(test)]

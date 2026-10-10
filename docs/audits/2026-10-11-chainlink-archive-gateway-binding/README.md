@@ -292,3 +292,64 @@ Prover/chain barriers:
   marks remain unbindable in candidate mode (documented deliberate boundary).
 - Re-run: cargo test -p gateway → 521 passed / 0 failed; clippy 0 warnings;
   fmt clean.
+
+## Consolidated final review (2026-10-12): all 7 items, final state
+1. Binding: exact (market, accepted-transcript) identity -> ORIGINAL ArchiveId,
+   installed only on successful gateway admission; insert-if-absent (equal-
+   normalized siblings never replace); existence barrier at seal; capacity
+   refuses. Tests: rejected duplicate, same-normalization/different-bytes
+   siblings, deletion of the selected record, historical/repeated ops.
+2. Poisoned archive mutex: archive_slot (NotConfigured/Guard/Poisoned) HOLDs
+   the settle; candidate + path=None refused BEFORE any mutation, and
+   after_settle_journal independently refuses an archive-bound stage without a
+   path before the continuation.
+3. Submission gate: ensure_submission_supported refuses ALL v2 submission in
+   candidate mode BEFORE the clock intent, register_clock, prove, or broadcast —
+   including zero-oracle batches; counting-prover test shows 0 invocations on
+   the refused path, 1 on the legacy control. V2 exact-resume rejects candidate
+   journals first (round 2).
+4. Decoder: take_from_bytes + empty remainder for both versions; v6 also
+   canonical re-encode; authenticated-plaintext trailing and v6-under-v5-magic
+   version-confusion tests; deliberate byte-compatible v5. Envelope retention
+   verified at every later stage write (clock intent, stage 2; resume refuses
+   candidate so its write is v5-only by construction).
+5. Restart survival: sealed versioned mode marker <state>.chainlink (DPCAM1)
+   + boot gate before ALL recovery branches (incl. Stale/SealNeverPersisted);
+   marker+omitted-config refuses, unreadable marker refuses, open-unsealed-
+   window restart tested; snapshot wire bytes untouched.
+6. Reachable candidate path: legacy/simulated intake suppressed, policy must
+   cover every market, crosscheck refused; submission routes refused until v3.
+   THE end-to-end success test uses real signatures and a real engine fill:
+   production-style fresh oracles -> archived pair through the real
+   apply_validated_real_oracle_at -> real market-order fill at the archived
+   mark -> real window seal -> encrypted v6 journal -> exact read/recovery ->
+   real replay prove (identical commitments).
+7. Config: partial settings (DIR/POLICY without MODE, or with disabled/unknown
+   mode) FAIL; policy read is bounded (64 KiB), regular, non-symlink public
+   data; policy_binding commits proxy/wrapper addresses (Policy::hash alone
+   does not).
+
+Final validation on head: cargo test -p gateway 524 passed / 0 failed;
+streams-client 62/62 debug + release; chainlink-oracle 16; clippy 0 warnings;
+fmt clean; repository/operator/SP1-release/chainlink-replay/release-manifest
+guards OK (21+9 pins intact).
+
+## Remaining candidate/live limitations (exact)
+- No supported submission route in candidate mode until real v3 chainlink
+  proving is wired: windows seal, journal, and HOLD; boot recovery rolls the
+  stage-1 window back. No v3 witness is constructed or sent to the v2 prover.
+- Live Data Streams pull requires explicit credentials; without them the
+  stream stays DEFERRED (user-deferred discovery/entitlement after HTTP 403).
+  Synthetic fixtures and an explicit public operator policy only.
+- Demo-posture seeded marks are unbindable in candidate mode (documented); the
+  reachable path is production-style fresh oracles fed by the archive intake.
+- Wind-down windows flow through the same settle loop and are refused
+  submission in candidate mode like any other window.
+- Imported archive provenance: PreparedPair/ReportArchive and their tests/docs
+  were copied uncommitted from the primary checkout (Desktop repo, HEAD
+  2a03bb0) and reconciled onto post-#43 main; per-file sha256 inventory above
+  (5 files carry only this branch's additive edits; the rest match exactly).
+  The primary checkout was not modified.
+- Publication: PR #44 OPEN (not merged, candidate, PRODUCTION RELEASE HOLD).
+  The bridge publication monitor's /history route 404 is a monitor issue; the
+  normal gh publication path succeeded and the PR state was verified directly.

@@ -60,7 +60,7 @@ const CANDIDATE_MAGIC: &[u8; 8] = b"DPRBJL6\0";
 /// the op's (market_id, now_ms) plus the archive record's content hash. Repeated
 /// use of the same record yields one ref PER OP, in op order — the archive stream,
 /// not a manifest/reference list, is what is bound.
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ArchiveRef {
     pub market_id: u64,
     pub now_ms: u64,

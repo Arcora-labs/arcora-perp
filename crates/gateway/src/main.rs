@@ -7822,6 +7822,27 @@ fn archive_slot<'a>(
     }
 }
 
+/// Submission-route gate. Until real v3 chainlink proving is wired, candidate
+/// mode has NO supported submission route: the v2 path (prove_and_prepare —
+/// whose clock client performs the register_clock CHAIN MUTATION — then
+/// settle_proved) is refused for EVERY candidate window, INCLUDING zero-oracle
+/// batches. Refusal happens AFTER the window is durably journaled and the
+/// archive guard passes, so it is a clean HOLD: no prover construction, no
+/// registration, no broadcast, and boot recovery can roll the sealed window
+/// back from the stage-1 journal. Legacy mode (no envelope) is unchanged.
+fn ensure_submission_supported(
+    envelope: Option<&rollback_journal::ArchiveEnvelope>,
+) -> Result<(), String> {
+    if envelope.is_some() {
+        return Err(
+            "candidate archive mode has no supported submission route (v3 chainlink \
+             proving is not wired); refusing v2 prove/register/broadcast side effects"
+                .into(),
+        );
+    }
+    Ok(())
+}
+
 /// The archive-required guard for PROVER/CHAIN side effects. Bind-once at seal
 /// time is not enough on its own: this re-verification runs immediately before
 /// any `prove_and_prepare` (which for clock clients performs the
@@ -9352,6 +9373,15 @@ async fn main() {
                     let Some((mut journal, envelope, prune_candidates, gate_was_closed)) = begun else {
                         continue;
                     };
+                    // Candidate mode: no supported submission route (v3 unwired).
+                    // Refuse BEFORE the clock-registration intent, any prove, or
+                    // any broadcast — including zero-oracle batches. The window
+                    // is durably journaled; the hold leaves recovery a stage-1
+                    // rollback with zero chain mutations.
+                    if let Err(error) = ensure_submission_supported(envelope.as_ref()) {
+                        hold_settlement_for_recovery(&app, format!("unsupported candidate submission: {error}")).await;
+                        break;
+                    }
                     if let Some(p) = admission.as_mut() { p.arm(); }
                     let ordered = journal.witness.manifest.ordered.clone();
                     let rejected: Vec<Digest> = journal

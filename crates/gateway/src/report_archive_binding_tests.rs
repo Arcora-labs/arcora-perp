@@ -275,9 +275,8 @@ fn bind_handles_multiple_observations_per_market_in_op_order_with_repeated_use()
     );
     assert!(b.verify(&ops, &env).is_ok());
 
-    // Substitution guard: swap ONE op's transcript to the other observation's
-    // value at the wrong identity? No — both are valid identities; instead an
-    // unarchived transcript in the middle of the stream fails the whole seal.
+    // An unarchived transcript injected mid-stream fails the whole seal, even
+    // though every other op still traces to exact records.
     let mut bad = ops.clone();
     bad[2] = fill(
         0,
@@ -992,4 +991,353 @@ fn policy_coverage_is_the_candidate_startup_requirement() {
     assert_eq!(super::uncovered_market(&policy(), &[0]), None);
     assert_eq!(super::uncovered_market(&policy(), &[0, 1]), Some(1));
     assert_eq!(super::uncovered_market(&policy(), &[]), None);
+}
+
+/// Consolidated review: until v3 routing is wired, candidate mode has NO
+/// supported submission route. The gate must refuse BEFORE any prover
+/// construction / register_clock / broadcast — including zero-oracle batches —
+/// while legacy mode proceeds unchanged. A counting prover proves no call
+/// happens on the refused path.
+#[test]
+fn candidate_submission_refused_before_any_prover_call_incl_zero_oracle() {
+    use crate::prover_client::{
+        MockProverClient, ProverClient, ProverClientError, RemoteProveResp,
+    };
+    use std::sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    };
+    struct Counting(Arc<AtomicUsize>);
+    impl ProverClient for Counting {
+        fn prove(
+            &self,
+            w: &sequencer::WindowWitness,
+        ) -> Result<RemoteProveResp, ProverClientError> {
+            self.0.fetch_add(1, Ordering::SeqCst);
+            MockProverClient.prove(w)
+        }
+    }
+    fn submit(
+        prover: &Counting,
+        envelope: Option<&crate::rollback_journal::ArchiveEnvelope>,
+    ) -> Result<(), String> {
+        crate::ensure_submission_supported(envelope)?;
+        crate::prover_client::prove_and_prepare(prover, &real_deposit_window().0, &Vec::new())?;
+        Ok(())
+    }
+    let (_t, mut b) = binding("submit-gate");
+    let n = admit_installed(
+        &mut b,
+        0,
+        base_report(100, NOW),
+        quote_report(100, NOW),
+        NOW,
+    );
+    let (witness, _ww) = real_deposit_window();
+    let mut ops = witness.ops.clone();
+    ops.push(fill(0, NOW, transcript_of(n)));
+    let envelope = b.bind_ops(&ops).unwrap();
+    // Candidate envelope (oracle-bearing): refused, prover untouched.
+    let prover = Counting(Arc::new(AtomicUsize::new(0)));
+    let err = submit(&prover, Some(&envelope)).expect_err("candidate submission must refuse");
+    assert!(
+        err.contains("no supported submission route"),
+        "unexpected: {err}"
+    );
+    assert_eq!(prover.0.load(Ordering::SeqCst), 0);
+    // Zero-oracle candidate batch (empty refs): STILL refused — no v3 route.
+    let empty_env = crate::rollback_journal::ArchiveEnvelope {
+        policy_binding: envelope.policy_binding,
+        refs: Vec::new(),
+    };
+    let prover = Counting(Arc::new(AtomicUsize::new(0)));
+    assert!(submit(&prover, Some(&empty_env)).is_err());
+    assert_eq!(
+        prover.0.load(Ordering::SeqCst),
+        0,
+        "zero-oracle candidate batch must not submit either"
+    );
+    // Legacy control: no envelope → the prover IS invoked.
+    let prover = Counting(Arc::new(AtomicUsize::new(0)));
+    submit(&prover, None).expect("legacy submission proceeds");
+    assert_eq!(prover.0.load(Ordering::SeqCst), 1);
+}
+
+/// A REAL sealed window (deposit) via the real Gw, shared by the submission
+/// tests; replayable, so the counting prover's success path is genuine.
+fn real_deposit_window() -> (
+    sequencer::WindowWitness,
+    Vec<crate::withdrawals::Withdrawal>,
+) {
+    let mut gw = crate::Gw::boot();
+    let (key, _owner) = gw.register_account(None);
+    gw.account_deposit(&key, 0, 20_000 * perp_core::fixed::QUOTE_SCALE)
+        .unwrap();
+    let bc = gw.seq.state.next_batch_id;
+    gw.begin_window_settle(bc).unwrap().expect("window sealed")
+}
+
+/// Consolidated review: partial candidate configuration must FAIL, never
+/// silently disable; the policy file must be bounded, regular, non-symlink
+/// public data.
+#[test]
+fn partial_candidate_config_fails_and_policy_file_is_hardened() {
+    use super::ArchiveBinding;
+    let t = Temp::new("config");
+    let dir = t.0.join("store");
+    // A candidate binding is needed up front to obtain a valid archive dir.
+    let (_tb, b0) = binding("config-seed");
+    let _ = &b0;
+    let archive_dir = {
+        // create a fresh operator-style dir via the streams-client API
+        chainlink_streams_client::report_archive::ReportArchive::create(&dir).unwrap();
+        dir.to_string_lossy().into_owned()
+    };
+    let policy_path = t.0.join("policy.json");
+    std::fs::write(&policy_path, serde_json::to_vec(&policy()).unwrap()).unwrap();
+    let pp = policy_path.to_string_lossy().into_owned();
+
+    // Full candidate config: accepted.
+    assert!(ArchiveBinding::configured(
+        Some("candidate".into()),
+        Some(archive_dir.clone()),
+        Some(pp.clone())
+    )
+    .unwrap()
+    .is_some());
+    // DIR or POLICY without MODE: ERROR, not silent disable.
+    assert!(matches!(
+        ArchiveBinding::configured(None, Some(archive_dir.clone()), None),
+        Err(BindError::Config)
+    ));
+    assert!(matches!(
+        ArchiveBinding::configured(None, None, Some(pp.clone())),
+        Err(BindError::Config)
+    ));
+    assert!(matches!(
+        ArchiveBinding::configured(None, Some(archive_dir.clone()), Some(pp.clone())),
+        Err(BindError::Config)
+    ));
+    // Explicitly disabled must be clean.
+    assert!(matches!(
+        ArchiveBinding::configured(Some("disabled".into()), Some(archive_dir.clone()), None),
+        Err(BindError::Config)
+    ));
+    assert!(
+        ArchiveBinding::configured(Some("disabled".into()), None, None)
+            .unwrap()
+            .is_none()
+    );
+    // Unknown mode refuses.
+    assert!(matches!(
+        ArchiveBinding::configured(Some("enabled".into()), None, None),
+        Err(BindError::Config)
+    ));
+
+    // Policy file hardening: symlink, directory, empty, and oversized refuse.
+    let link = t.0.join("policy-link.json");
+    std::os::unix::fs::symlink(&policy_path, &link).unwrap();
+    assert!(matches!(
+        ArchiveBinding::configured(
+            Some("candidate".into()),
+            Some(archive_dir.clone()),
+            Some(link.to_string_lossy().into_owned())
+        ),
+        Err(BindError::Config)
+    ));
+    assert!(matches!(
+        ArchiveBinding::configured(
+            Some("candidate".into()),
+            Some(archive_dir.clone()),
+            Some(t.0.to_string_lossy().into_owned())
+        ),
+        Err(BindError::Config)
+    ));
+    let empty = t.0.join("empty.json");
+    std::fs::write(&empty, b"").unwrap();
+    assert!(matches!(
+        ArchiveBinding::configured(
+            Some("candidate".into()),
+            Some(archive_dir.clone()),
+            Some(empty.to_string_lossy().into_owned())
+        ),
+        Err(BindError::Config)
+    ));
+    let fat = t.0.join("fat.json");
+    std::fs::write(&fat, vec![b' '; 64 * 1024 + 1]).unwrap();
+    assert!(matches!(
+        ArchiveBinding::configured(
+            Some("candidate".into()),
+            Some(archive_dir.clone()),
+            Some(fat.to_string_lossy().into_owned())
+        ),
+        Err(BindError::Config)
+    ));
+}
+
+/// THE full gateway success path, end to end, with REAL signatures and a REAL
+/// engine fill (no zero-sig fixture): production-style fresh oracles → archived
+/// pair admitted through the real `apply_validated_real_oracle_at` → real order
+/// fills at the archived mark → real window seal → encrypted v6 journal →
+/// exact read/recovery → real replay prove.
+#[test]
+fn real_admission_to_sealed_window_to_v6_journal_to_recovery_proves_end_to_end() {
+    use crate::prover_client::{MockProverClient, ProverClient as _};
+    use crate::{Gw, OrderReq};
+    use perp_core::fixed::{QUOTE_SCALE, SIZE_SCALE};
+    use perp_core::oracle::OracleSig;
+
+    // Candidate mode (like the startup check) requires the pinned policy to
+    // cover EVERY configured market — real windows carry maintenance oracle ops
+    // for all of them.
+    let mut gw = Gw::boot();
+    let market_ids: Vec<u64> = gw.mkts.iter().map(|m| m.id).collect();
+    let t = Temp::new("e2e");
+    let mut full = policy();
+    for id in market_ids.iter().skip(1).copied() {
+        let mut m = full.markets[0].clone();
+        m.market_id = id;
+        m.base_usd_feed = feed(0x11 + id as u8);
+        m.usdc_usd_feed = feed(0x22 + id as u8);
+        full.markets.push(m);
+    }
+    full.markets.sort_by_key(|m| m.market_id);
+    let mut b = ArchiveBinding::create_in(&t.0, full).unwrap();
+    let (key, _owner) = gw.register_account(None);
+    gw.account_deposit(&key, 0, 200_000 * QUOTE_SCALE).unwrap();
+    // Production-style posture without the prod ingress gate (so the order
+    // path stays reachable in the test): the demo-seeded mark must not
+    // authorize trading — the ONLY subsequent price is the archived admission.
+    // (In the real gateway `require_fresh_production_oracles` does this under
+    // prod; here we reset market 0 directly.)
+    gw.seq.set_oracle(
+        0,
+        perp_core::oracle::OracleTranscript {
+            price: 0,
+            publish_time_ms: 0,
+            confidence: 0,
+            backup_twap: 0,
+            signature: OracleSig {
+                r: [0; 32],
+                s: [0; 32],
+                v: 0,
+            },
+        },
+    );
+    if let Some(m) = gw.mkts.iter_mut().find(|m| m.id == 0) {
+        m.live = false;
+        m.feed_ts = 0;
+        m.px_ms = 0;
+    }
+
+    // REAL admissions for every market: archive first, then the gateway-signed
+    // transcript through the real validated path (the signature recovers to the
+    // market's pinned oracle_pubkey).
+    let now = crate::now_ms();
+    let observed = now / 1000;
+    let mut transcripts = std::collections::HashMap::new();
+    for &id in &market_ids {
+        let base = report(feed(0x11 + id as u8), 6_000_000_000_000, observed, now);
+        let quote = report(feed(0x22 + id as u8), 100_000_000, observed, now);
+        let pending = b.admit(id, base, quote, now).unwrap();
+        let transcript = pending.transcript.with_signature(OracleSig::sign(
+            &gw.oracle_signer,
+            &crate::oracle_digest(
+                id,
+                pending.transcript.price,
+                pending.transcript.publish_time_ms,
+                pending.transcript.confidence,
+                pending.transcript.backup_twap,
+            ),
+        ));
+        assert!(
+            gw.apply_validated_real_oracle_at(id, transcript, now),
+            "real archived admission must be accepted by the gateway"
+        );
+        b.install(pending).unwrap();
+        transcripts.insert(id, pending.transcript);
+    }
+
+    // REAL fill: a market order crosses the house MM at the archived mark, so
+    // the sealed window's Fill op carries EXACTLY the archived transcript.
+    gw.account_place_order(
+        &key,
+        &OrderReq {
+            market_id: 0,
+            side: "Buy".into(),
+            size: (SIZE_SCALE / 10).to_string(),
+            limit_price: "0".into(),
+            tif: "Ioc".into(),
+            reduce_only: false,
+            nonce: None,
+            signature: None,
+            ..Default::default()
+        },
+    )
+    .expect("order admitted");
+    gw.tick();
+
+    // Real window seal + archive binding + encrypted v6 journal, exactly as the
+    // settle loop does it.
+    let bc = gw.seq.state.next_batch_id;
+    let (journal, envelope) = crate::begin_journaled_window_settle(
+        &mut gw,
+        bc,
+        Some(&t.0.join("state.rollback")),
+        &[42u8; 32],
+        Some(&b),
+    )
+    .unwrap()
+    .expect("candidate window sealed and journaled");
+    let envelope = envelope.expect("candidate mode always binds an envelope");
+    // At least the real fill; windows may also carry funding-maintenance ops.
+    assert!(
+        !envelope.refs.is_empty(),
+        "every oracle-bearing op is bound"
+    );
+    assert!(
+        envelope
+            .refs
+            .iter()
+            .all(|r| transcripts.contains_key(&r.market_id)),
+        "every bound op traces to an archived admission"
+    );
+
+    // Encrypted v6 journal: exact read, version dispatch, recovery verify.
+    let sealed = std::fs::read(t.0.join("state.rollback")).unwrap();
+    let reopened =
+        crate::rollback_journal::open_versioned(&sealed, &[42u8; 32]).expect("v6 journal opens");
+    let crate::rollback_journal::OpenedJournal::Candidate {
+        journal: back,
+        envelope: back_env,
+    } = reopened
+    else {
+        panic!("must reopen as Candidate, never Legacy")
+    };
+    assert_eq!(back.witness.batch_id, journal.batch_id);
+    assert!(
+        back_env.policy_binding == envelope.policy_binding && back_env.refs == envelope.refs,
+        "envelope survives the sealed round trip"
+    );
+    b.verify(&back.witness.ops, &back_env)
+        .expect("recovery binding verifies");
+    // The restored witness carries REAL oracle ops with REAL signatures: the
+    // fill's transcript is exactly the archived market-0 admission.
+    let m0 = transcripts[&0];
+    assert!(back.witness.ops.iter().any(|op| matches!(
+        op,
+        BatchOp::Fill { oracle, .. } if oracle.price == m0.price
+            && oracle.publish_time_ms == m0.publish_time_ms
+            && oracle.signature != (OracleSig { r: [0; 32], s: [0; 32], v: 0 })
+    )));
+
+    // Real replay: the restored v6 witness proves to the SAME commitment a
+    // fresh prove of the original produces — the full success path.
+    let replay = MockProverClient
+        .prove(&back.witness)
+        .expect("replay proves");
+    let fresh = MockProverClient
+        .prove(&journal.witness)
+        .expect("fresh proves");
+    assert_eq!(replay.commitment, fresh.commitment);
 }
