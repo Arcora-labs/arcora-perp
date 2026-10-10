@@ -32,8 +32,12 @@ const MAX_ADMISSIONS: usize = 4096;
 
 pub(crate) struct Admission {
     pub(crate) market_id: u64,
-    pub(crate) prepared_at_ms: u64,
     pub(crate) id: ArchiveId,
+    /// The exact normalization admitted at `prepared_at_ms`. Binding keys on
+    /// this VALUE (with the market), never on recency: a window may carry both
+    /// earlier and later transcripts for the same market, and repeated use of
+    /// the same valid archive ID is legitimate.
+    transcript: Normalized,
 }
 
 pub(crate) struct ArchiveBinding {
@@ -186,8 +190,8 @@ impl ArchiveBinding {
         let stored = self.archive.store(&pair).map_err(|_| BindError::Archive)?;
         self.admissions.push_back(Admission {
             market_id,
-            prepared_at_ms: now_ms,
             id: stored.id,
+            transcript: normalized,
         });
         if self.admissions.len() > MAX_ADMISSIONS {
             self.admissions.pop_front();
@@ -196,20 +200,53 @@ impl ArchiveBinding {
     }
 
     /// Bind the ACTUAL op stream — ordered, one ref per oracle-bearing op,
-    /// repeated use included — to exact archived records. Each op is matched by
-    /// VALUE: the archived pair re-normalized at the op's own `now_ms` must equal
-    /// the transcript the op carries. No manifest, no reference list, no
-    /// latest-file fallback: an op with no exact record fails the seal.
+    /// repeated use included — to exact archived records. References are
+    /// derived in OP ORDER from an index of retained admissions keyed by exact
+    /// (market, transcript) IDENTITY: an op binds iff some admission produced
+    /// precisely the transcript the op carries. This is deliberately NOT a
+    /// latest-pair-per-market map and NOT recency selection — a window can
+    /// contain both an earlier and a later transcript for the same market, and
+    /// the same archive ID may be referenced by many ops (duplicate usage is
+    /// not invalid; identical report bytes hash to the same record anyway).
+    /// No manifest, no reference list, no latest-file fallback: an op whose
+    /// exact (market, transcript) identity has no archived admission fails the
+    /// seal. (Identity comparison uses the admission-time normalization: price,
+    /// publish time, confidence and backup TWAP are all derived from the
+    /// immutable report bytes, independent of the op's own clock.)
     pub(crate) fn bind_ops(&self, ops: &[BatchOp]) -> Result<ArchiveEnvelope, BindError> {
         let mut refs = Vec::new();
         for op in ops {
             let Some((market_id, now_ms, oracle)) = used_oracle(op) else {
                 continue;
             };
+            // Exact (market, transcript) identity — never recency, never a
+            // latest-pair-per-market map.
+            let want = Normalized {
+                price: oracle.price,
+                publish_time_ms: oracle.publish_time_ms,
+                confidence: oracle.confidence,
+                backup_twap: oracle.backup_twap,
+            };
+            let mut found: Option<ArchiveId> = None;
+            for a in &self.admissions {
+                if a.market_id == market_id && a.transcript == want {
+                    found = Some(a.id);
+                    break;
+                }
+            }
+            let Some(id) = found else {
+                return Err(
+                    if self.admissions.iter().any(|a| a.market_id == market_id) {
+                        BindError::Mismatch
+                    } else {
+                        BindError::NoAdmission
+                    },
+                );
+            };
             refs.push(ArchiveRef {
                 market_id,
                 now_ms,
-                archive_id: self.exact_record(market_id, now_ms, oracle)?,
+                archive_id: id,
             });
         }
         Ok(ArchiveEnvelope {
@@ -251,40 +288,6 @@ impl ArchiveBinding {
             }
         }
         Ok(())
-    }
-
-    fn exact_record(
-        &self,
-        market_id: u64,
-        now_ms: u64,
-        oracle: &perp_core::oracle::OracleTranscript,
-    ) -> Result<ArchiveId, BindError> {
-        // Newest-first: an admission can only bind ops at or after its own
-        // preparation time, and the first VALUE match is the exact record.
-        let candidates: Vec<ArchiveId> = self
-            .admissions
-            .iter()
-            .rev()
-            .filter(|a| a.market_id == market_id && a.prepared_at_ms <= now_ms)
-            .map(|a| a.id)
-            .collect();
-        if candidates.is_empty() {
-            return Err(BindError::NoAdmission);
-        }
-        for id in candidates {
-            let Ok(pair) = self.archive.load(id, &self.policy, market_id) else {
-                // A referenced-but-unreadable admission is corruption, not a
-                // signal to try an older record: the op must trace to an intact one.
-                continue;
-            };
-            let Ok((normalized, _)) = pair.for_operation(now_ms) else {
-                continue;
-            };
-            if normalized.matches(oracle) {
-                return Ok(id);
-            }
-        }
-        Err(BindError::Mismatch)
     }
 }
 

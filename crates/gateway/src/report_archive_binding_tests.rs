@@ -180,6 +180,88 @@ fn bind_binds_the_actual_op_stream_in_order_with_repeated_use() {
     assert!(b.verify(&ops, &env).is_ok());
 }
 
+/// Review focus: a window can contain BOTH an earlier and a later transcript
+/// for the same market. Binding is keyed by exact (market, transcript)
+/// identity and derived in op order — never a latest-pair-per-market map —
+/// and repeated use of the same valid archive ID is legitimate.
+#[test]
+fn bind_handles_multiple_observations_per_market_in_op_order_with_repeated_use() {
+    let (_t, mut b) = binding("multi-obs");
+    // Two observations of the same market, distinguishable prices.
+    let early = b
+        .admit(
+            0,
+            base_report_price(100, 6_000_000_000_000, NOW),
+            quote_report(100, NOW),
+            NOW,
+        )
+        .unwrap();
+    let mid = NOW + 4_000;
+    let late = b
+        .admit(
+            0,
+            base_report_price(101, 6_200_000_000_000, mid),
+            quote_report(101, mid),
+            mid,
+        )
+        .unwrap();
+    let early_id = b.admissions[0].id;
+    let late_id = b.admissions[1].id;
+    assert_ne!(
+        early_id, late_id,
+        "different reports hash to different records"
+    );
+
+    // Op times are deliberately NOT monotonic and the op types vary; the same
+    // archive ID appears several times (repeated use is not invalid).
+    let liquidate = |now_ms: u64, oracle: perp_core::oracle::OracleTranscript| BatchOp::Liquidate {
+        owner: [3; 32],
+        market_id: 0,
+        oracle,
+        now_ms,
+    };
+    let ops = [
+        fill(0, NOW, transcript_of(early)),   // 0: early
+        fill(0, mid, transcript_of(late)),    // 1: late
+        liquidate(NOW, transcript_of(early)), // 2: early again, EARLIER timestamp after later op
+        fill(0, mid, transcript_of(late)),    // 3: late again (duplicate usage)
+        BatchOp::AccrueFunding {
+            market_id: 0,
+            mark: late.price,
+            oracle: transcript_of(late),
+            now_ms: mid,
+        }, // 4: late
+        fill(0, NOW, transcript_of(early)),   // 5: early
+    ];
+    let env = b.bind_ops(&ops).expect("all ops trace to exact records");
+    let ids: Vec<_> = env.refs.iter().map(|r| r.archive_id).collect();
+    assert_eq!(
+        ids,
+        vec![early_id, late_id, early_id, late_id, late_id, early_id],
+        "refs must follow the ACTUAL op stream (identity per op), not recency"
+    );
+    assert_eq!(
+        env.refs.iter().map(|r| r.now_ms).collect::<Vec<_>>(),
+        vec![NOW, mid, NOW, mid, mid, NOW],
+        "each ref carries its own op's exact timestamp"
+    );
+    assert!(b.verify(&ops, &env).is_ok());
+
+    // Substitution guard: swap ONE op's transcript to the other observation's
+    // value at the wrong identity? No — both are valid identities; instead an
+    // unarchived transcript in the middle of the stream fails the whole seal.
+    let mut bad = ops.clone();
+    bad[2] = fill(
+        0,
+        NOW,
+        transcript_of(Normalized {
+            price: early.price + 1,
+            ..early
+        }),
+    );
+    assert_eq!(b.bind_ops(&bad).unwrap_err(), BindError::Mismatch);
+}
+
 #[test]
 fn bind_fails_closed_for_unarchived_or_substituted_transcripts() {
     let (_t, mut b) = binding("closed");
@@ -196,7 +278,11 @@ fn bind_fails_closed_for_unarchived_or_substituted_transcripts() {
         )
         .unwrap();
     assert!(b.bind_ops(&[fill(0, NOW, transcript_of(later))]).is_ok());
-    // A transcript NO archived record reproduces (one-off price) refuses.
+    // Identity binding is clock-independent: an op timestamped BEFORE the
+    // admission still binds, because the match is the exact transcript value,
+    // not recency (the op can only carry a transcript some admission produced).
+    assert!(b.bind_ops(&[fill(0, NOW - 1, transcript_of(a))]).is_ok());
+    // A transcript NO archived record reproduces (one-off price) refuses…
     let ghost = transcript_of(Normalized {
         price: a.price + 1,
         ..a
@@ -205,10 +291,10 @@ fn bind_fails_closed_for_unarchived_or_substituted_transcripts() {
         b.bind_ops(&[fill(0, NOW, ghost)]).unwrap_err(),
         BindError::Mismatch
     );
-    // An op at a time BEFORE every admission: no candidate at all.
+    // …and a market with NO admission at all reports NoAdmission.
+    let (_t2, b2) = binding("closed-empty");
     assert_eq!(
-        b.bind_ops(&[fill(0, NOW - 1, transcript_of(a))])
-            .unwrap_err(),
+        b2.bind_ops(&[fill(0, NOW, transcript_of(a))]).unwrap_err(),
         BindError::NoAdmission
     );
     // Non-oracle ops bind nothing.

@@ -205,3 +205,21 @@ Prover/chain barriers:
   discards suffixes); v6 additionally requires canonical re-encoding; a v6
   payload under the v5 magic is refused as version confusion; valid v5 output
   still opens through both decoders (deliberate compatibility).
+
+## Review round 4 (2026-10-11): identity-keyed binding, not recency
+- `bind_ops` now derives references in OP ORDER from retained admissions keyed
+  by exact (market, transcript) IDENTITY (price, publish time, confidence,
+  backup TWAP — all derived from immutable report bytes, clock-independent).
+  The previous newest-first/recency candidate scan is gone: a window can hold
+  both an earlier and a later transcript for the same market, and repeated use
+  of the same valid archive ID is legitimate (identical report bytes hash to
+  the same record anyway). `PreparedPair::for_operation`'s
+  original-operation >= preparation-time rule is unchanged and still enforced
+  at admission/verification; the policy binding continues to include the
+  wrapper/proxy addresses that `Policy::hash` omits.
+- New test: `bind_handles_multiple_observations_per_market_in_op_order_with_
+  repeated_use` — non-monotonic op timestamps, Fill/Liquidate/AccrueFunding
+  mix, same ID referenced 3x, refs asserted in exact op order, verify accepts,
+  and a mid-stream unarchived transcript fails the whole seal.
+- Re-run: cargo test -p gateway → 511 passed / 0 failed; clippy 0 warnings;
+  fmt clean.
