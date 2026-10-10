@@ -284,19 +284,20 @@ dependencies = [
 ]
 
 [[package]]
-name = "chainlink-oracle"
+name = "chainlink-oracle-host"
 version = "0.0.1"
 dependencies = [
+ "k256",
  "perp-core",
  "postcard",
  "serde",
 ]
 
 [[package]]
-name = "chainlink-streams-client"
+name = "chainlink-streams-client-host"
 version = "0.0.1"
 dependencies = [
- "chainlink-oracle",
+ "chainlink-oracle-host",
  "hmac",
  "serde",
  "serde_json",
@@ -822,8 +823,8 @@ name = "gateway"
 version = "0.0.1"
 dependencies = [
  "axum",
- "chainlink-oracle",
- "chainlink-streams-client",
+ "chainlink-oracle-host",
+ "chainlink-streams-client-host",
  "dark-perp-attestation",
  "eth-keystore",
  "futures-util",

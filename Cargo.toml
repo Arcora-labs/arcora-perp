@@ -22,12 +22,7 @@ members = [
 # workspace — `cargo build --workspace` and CI never try to compile it. sp1-host
 # and prover-service both pull in the heavy sp1-sdk (Groth16/Docker/gnark) and are
 # standalone `[workspace]`s built only on the SP1-capable prover machine.
-# The Chainlink candidate crates are also standalone `[workspace]`s (host-only;
-# not host-workspace members), but the gateway's opt-in candidate archive binding
-# path-depends on them — excluding them here is what lets a member path-depend on
-# an in-tree crate that keeps its own workspace root. No versions or pins change.
-exclude = ["crates/sp1-guest", "crates/sp1-host", "crates/prover-service", "vendor/dcap-qvl-webpki",
-    "crates/chainlink-oracle", "crates/chainlink-streams-client"]
+exclude = ["crates/sp1-guest", "crates/sp1-host", "crates/prover-service", "vendor/dcap-qvl-webpki"]
 
 [workspace.package]
 version = "0.0.1"

@@ -19,11 +19,13 @@ sealed-box = { path = "../sealed-box", default-features = false }
 dark-perp-attestation = { path = "../attestation" }
 oracle-feed = { path = "../oracle-feed", features = ["http"] }
 # Candidate Chainlink report-archive binding (opt-in; PRODUCTION RELEASE HOLD).
-# Host-only path deps; neither pinned guest depends on these crates. The
-# chainlink-streams-client crate is itself unix-only for its archive module —
-# the gateway's binding module is likewise host-only code.
-chainlink-oracle = { path = "../chainlink-oracle", features = ["std"] }
-chainlink-streams-client = { path = "../chainlink-streams-client" }
+# Host facades: the gateway path-depends on the pinned crates' EXACT original
+# sources via thin manifests (crates/*-host) because the standalone crates are
+# their own `[workspace]`s and the root manifest is a reviewed pin that must
+# not change. Dependency keys keep the original Rust crate names
+# (chainlink_oracle / chainlink_streams_client).
+chainlink-oracle = { package = "chainlink-oracle-host", path = "../chainlink-oracle-host", features = ["std"] }
+chainlink-streams-client = { package = "chainlink-streams-client-host", path = "../chainlink-streams-client-host" }
 
 axum = { version = "0.7", features = ["ws"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "signal"] }

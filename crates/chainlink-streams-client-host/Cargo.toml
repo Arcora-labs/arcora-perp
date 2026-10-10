@@ -1,0 +1,30 @@
+# HOST FACADE — thin manifest only; NO source of its own.
+#
+# See ../chainlink-oracle-host/Cargo.toml for the rationale. This facade reuses
+# `../chainlink-streams-client/src/lib.rs` (and its modules) verbatim under the
+# gateway workspace, with the pinned `chainlink-oracle` dependency aliased to
+# the host facade package. `test = false` / `doctest = false`: the standalone
+# crate's 62-test suite keeps running under its ORIGINAL manifest (no
+# CARGO_MANIFEST_DIR-relative fixtures are used through this facade).
+[package]
+name = "chainlink-streams-client-host"
+version = "0.0.1"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[lib]
+path = "../chainlink-streams-client/src/lib.rs"
+test = false
+doctest = false
+
+[dependencies]
+# Same pinned versions as the standalone manifest; the oracle comes from the
+# host facade so the gateway never path-depends on the standalone workspace.
+chainlink-oracle = { package = "chainlink-oracle-host", path = "../chainlink-oracle-host" }
+hmac = "=0.12.1"
+sha2 = "=0.10.9"
+zeroize = "=1.9.0"
+ureq = { version = "=2.12.1", default-features = false, features = ["tls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

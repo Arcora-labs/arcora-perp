@@ -353,3 +353,29 @@ guards OK (21+9 pins intact).
 - Publication: PR #44 OPEN (not merged, candidate, PRODUCTION RELEASE HOLD).
   The bridge publication monitor's /history route 404 is a monitor issue; the
   normal gh publication path succeeded and the PR state was verified directly.
+
+## Build review fix (2026-10-12): host facades instead of a root-manifest edit
+- Root Cargo.toml restored to the EXACT reviewed bytes (sha256 e3144a0a…,
+  matches base c34fb56; the earlier exclude-list edit is reverted). No guest
+  manifests, locks, verify_clock_proof pins, or expected hashes touched.
+- New thin manifests only, NO duplicated source:
+  - crates/chainlink-oracle-host/Cargo.toml — [lib] path =
+    "../chainlink-oracle/src/lib.rs", test = false, doctest = false; same
+    runtime features (std = perp-core/std) and dependency pins.
+  - crates/chainlink-streams-client-host/Cargo.toml — [lib] path =
+    "../chainlink-streams-client/src/lib.rs", test = false, doctest = false;
+    chainlink-oracle aliased to the host package; identical version pins.
+  Cargo auto-includes both facades as workspace members (no [workspace] table),
+  so the root manifest stays byte-identical. Gateway dependency keys keep the
+  original Rust crate names (chainlink_oracle / chainlink_streams_client).
+- Source identity: facades compile the untouched originals
+  (lib.rs sha256 a107bf74… / 4a63eec6… — same files as the standalone crates).
+  Standalone suites still run under their ORIGINAL manifests (62/62 debug and
+  release; oracle 16/16); no CARGO_MANIFEST_DIR-relative fixtures are used
+  through the facades.
+- Cargo.lock delta: exactly the two local package identities renamed to
+  *-host (plus k256 now listed as the facade declares the same dev-dependency).
+  NO registry version or checksum changed; shared locked dependencies: 41.
+- Validation: cargo metadata resolves; cargo test -p gateway 524 passed /
+  0 failed; clippy 0 warnings; fmt clean; repository/operator/SP1-release/
+  chainlink-replay/release-manifest guards OK (21+9 pins intact).
