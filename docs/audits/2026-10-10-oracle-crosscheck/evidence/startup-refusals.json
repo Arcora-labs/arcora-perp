@@ -1,0 +1,69 @@
+{
+  "binary_sha256": "45de73256010ed2b6f1e4173f5e6c8fe85125b9bfe5357795dddced272e725c8",
+  "minimal_environment_not_inherited": true,
+  "network_sandbox_claimed": false,
+  "cases": [
+    {
+      "name": "current-quote-binding",
+      "exit_code": 1,
+      "expected_refusal": "oracle spot instrument / market quote mismatch",
+      "matched": true,
+      "success": true,
+      "seconds": 0.807,
+      "log": "target/oracle-crosscheck-20261010/startup-20261010T145353817158Z/current-quote-binding.log",
+      "log_sha256": "a1e452d39ba5746c705babd325fd15e0732080de19d27ecf9c6faff5143bc361",
+      "test_environment_keys": [
+        "DARKPERP_ORACLE_CROSSCHECK_MAX_DEVIATION_PPM",
+        "GATEWAY_BIND_ADDRESS",
+        "HOME",
+        "LANG",
+        "PATH",
+        "PORT",
+        "TMPDIR"
+      ],
+      "input_value": "1000"
+    },
+    {
+      "name": "empty-policy",
+      "exit_code": 1,
+      "expected_refusal": "crosscheck deviation requires an explicit integer ppm value",
+      "matched": true,
+      "success": true,
+      "seconds": 0.004,
+      "log": "target/oracle-crosscheck-20261010/startup-20261010T145353817158Z/empty-policy.log",
+      "log_sha256": "b746394f04919a5b45de36da4f1d4eecc71915b001d5ab80ee6f2a833a5ffb7e",
+      "test_environment_keys": [
+        "DARKPERP_ORACLE_CROSSCHECK_MAX_DEVIATION_PPM",
+        "GATEWAY_BIND_ADDRESS",
+        "HOME",
+        "LANG",
+        "PATH",
+        "PORT",
+        "TMPDIR"
+      ],
+      "input_value": ""
+    },
+    {
+      "name": "nonutf8-policy",
+      "exit_code": 1,
+      "expected_refusal": "crosscheck policy is not UTF-8",
+      "matched": true,
+      "success": true,
+      "seconds": 0.004,
+      "log": "target/oracle-crosscheck-20261010/startup-20261010T145353817158Z/nonutf8-policy.log",
+      "log_sha256": "00d08348ecca647daefa7936e273fc47eb3d6a0da442b0f2b6b87e3fc173f83a",
+      "test_environment_keys": [
+        "DARKPERP_ORACLE_CROSSCHECK_MAX_DEVIATION_PPM",
+        "GATEWAY_BIND_ADDRESS",
+        "HOME",
+        "LANG",
+        "PATH",
+        "PORT",
+        "TMPDIR"
+      ],
+      "input_value": {
+        "raw_hex": "ff"
+      }
+    }
+  ]
+}

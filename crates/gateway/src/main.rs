@@ -62,6 +62,7 @@ mod funds_lifecycle_tests;
 mod l1;
 mod listen_config;
 mod ops_alerts;
+mod oracle_crosscheck;
 #[cfg(test)]
 mod oracle_intake_tests;
 mod order_log;
@@ -1399,6 +1400,9 @@ struct Gw {
     /// markets were pinned to.
     #[serde(skip, default = "boot_oracle_signer")]
     oracle_signer: k256::ecdsa::SigningKey,
+    /// Runtime-only paired-source watermarks; boot/restore reinstalls explicit policy.
+    #[serde(skip)]
+    oracle_crosschecks: HashMap<u64, oracle_feed::crosscheck::CrosscheckGate>,
 }
 
 /// The oracle-publisher signer every market's `oracle_pubkey` is pinned to (ZK-001).
@@ -1931,6 +1935,7 @@ impl Gw {
             epochs: enclave_epoch::EnclaveEpochs::derive(enclave_seed, 1, now, ORDER_EPOCH_TTL_MS),
             order_log: order_log::OrderLog::new(derive_log_pub(&enclave_seed)),
             oracle_signer,
+            oracle_crosschecks: HashMap::new(),
         };
         // seed total LP shares to the boot pool equity (the operator's stake), so the
         // initial NAV per share is 1.0 and LP deposits price in proportionally.
@@ -4022,6 +4027,19 @@ impl Gw {
         transcript: OracleTranscript,
         received_ms: u64,
     ) -> bool {
+        // A valid single publisher signature must not bypass configured host corroboration.
+        if self.oracle_crosschecks.contains_key(&market) {
+            return false;
+        }
+        self.apply_validated_real_oracle_at(market, transcript, received_ms)
+    }
+
+    fn apply_validated_real_oracle_at(
+        &mut self,
+        market: u64,
+        transcript: OracleTranscript,
+        received_ms: u64,
+    ) -> bool {
         let Some(policy) = self.seq.state.markets.get(&market) else {
             return false;
         };
@@ -4050,7 +4068,7 @@ impl Gw {
     /// validated feed observation. This changes runtime admission, not snapshots
     /// or the reviewed guest's public-input/consensus format.
     fn require_fresh_production_oracles(&mut self) {
-        if !self.prod {
+        if !self.prod && self.oracle_crosschecks.is_empty() {
             return;
         }
         for m in &mut self.mkts {
@@ -4427,7 +4445,10 @@ impl Gw {
         //    stops advancing the publish time and the §8 staleness gate trips (audit).
         //    Feed-less markets keep the simulated random walk.
         for i in 0..self.mkts.len() {
-            if self.prod || self.mkts[i].live {
+            if self.prod
+                || self.mkts[i].live
+                || self.oracle_crosschecks.contains_key(&self.mkts[i].id)
+            {
                 continue; // No simulated fallback on an unavailable production feed.
             }
             let m = &self.mkts[i];
@@ -7755,6 +7776,13 @@ fn after_settle_journal<T>(
 
 #[tokio::main]
 async fn main() {
+    let oracle_crosscheck_policy = oracle_feed::crosscheck::CrosscheckPolicy::from_value(
+        std::env::var("DARKPERP_ORACLE_CROSSCHECK_MAX_DEVIATION_PPM"),
+    )
+    .unwrap_or_else(|error| {
+        eprintln!("[oracle] REFUSING to start: {error}");
+        std::process::exit(1);
+    });
     let addr = listen_config::parse(
         std::env::var("GATEWAY_BIND_ADDRESS").ok().as_deref(),
         std::env::var("PORT").ok().as_deref(),
@@ -8093,6 +8121,11 @@ async fn main() {
         (None, Some(_)) => unreachable!("startup snapshot requires a configured path"),
     };
     gw.prod = prod;
+    gw.configure_oracle_crosscheck(oracle_crosscheck_policy)
+        .unwrap_or_else(|error| {
+            eprintln!("[oracle] REFUSING crosscheck startup: {error}");
+            std::process::exit(1);
+        });
     gw.require_fresh_production_oracles();
     // SEC-021: bind withdrawal authorization to this deployment — the same env source
     // the deposit-authorization signer uses, so both digest families agree on chain id
@@ -8626,8 +8659,8 @@ async fn main() {
         }));
     }
 
-    // live oracle: pull real prices for feed-backed markets from Crypto.com every 5s
-    // and feed them into the engine (markets without a feed keep the sim walk).
+    // Live oracle: legacy single venue, or explicitly configured two-venue guard.
+    // A paired failure never falls back to single-source price admission.
     {
         let app = app.clone();
         let stop = service_policy.shutdown.clone();
@@ -8657,18 +8690,39 @@ async fn main() {
                     }
                     let now = now_ms();
                     let signer = oracle_signer.clone();
+                    let pair = app.gw.lock().await.oracle_crosschecks.get(&id)
+                        .map(|gate| gate.pair().clone());
                     match tokio::task::spawn_blocking(move || {
-                        oracle_feed::fetch_transcript(inst, now, id, &signer)
+                        match pair {
+                            Some(pair) => oracle_feed::crosscheck_http::fetch_spot_pair(&pair, now, id, &signer)
+                                .map(|pair| oracle_crosscheck::FetchedOracle::Pair(Box::new(pair))),
+                            None => oracle_feed::fetch_transcript(inst, now, id, &signer)
+                                .map(oracle_crosscheck::FetchedOracle::Single),
+                        }
                     })
                     .await
                     {
-                        Ok(Ok(t)) => {
-                            if !app.gw.lock().await.apply_real_oracle(id, t) {
-                                eprintln!("[oracle] {inst} observation rejected: source time, signature or market bounds; previous observation is not refreshed");
+                        Ok(Ok(observation)) => {
+                            let mut gw = app.gw.lock().await;
+                            let accepted = match observation {
+                                oracle_crosscheck::FetchedOracle::Single(t) => gw.apply_real_oracle(id, t),
+                                oracle_crosscheck::FetchedOracle::Pair(pair) => {
+                                    let (primary, secondary) = *pair;
+                                    gw.apply_crosschecked_oracle_at(id, primary, secondary, now_ms())
+                                }
+                            };
+                            if !accepted {
+                                eprintln!("[oracle] {inst} observation rejected; no price/receipt refresh; configured crosscheck admission halted");
                             }
                         }
-                        Ok(Err(e)) => eprintln!("[oracle] {inst} fetch failed: {e}"),
-                        Err(e) => eprintln!("[oracle] {inst} join: {e}"),
+                        Ok(Err(e)) => {
+                            app.gw.lock().await.halt_crosschecked_oracle(id);
+                            eprintln!("[oracle] {inst} fetch failed: {e}");
+                        }
+                        Err(_) => {
+                            app.gw.lock().await.halt_crosschecked_oracle(id);
+                            eprintln!("[oracle] {inst} fetch task failed");
+                        },
                     }
                 }
             }
