@@ -8,11 +8,11 @@ use std::{
     time::{Duration, Instant},
 };
 
-const TICKER_URL: &str = "https://api.crypto.com/exchange/v1/public/get-tickers";
+pub(crate) const TICKER_URL: &str = "https://api.crypto.com/exchange/v1/public/get-tickers";
 const CANDLE_URL: &str = "https://api.crypto.com/exchange/v1/public/get-candlestick";
-const TICKER_LIMIT: usize = 64 * 1024;
+pub(crate) const TICKER_LIMIT: usize = 64 * 1024;
 const CANDLE_LIMIT: usize = 1024 * 1024;
-const FETCH_TIMEOUT: Duration = Duration::from_secs(5);
+pub(crate) const FETCH_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(Deserialize)]
 struct Envelope {
@@ -77,14 +77,14 @@ pub fn parse_ticker_response(
         .ok_or_else(|| "invalid last price or two-sided book".into())
 }
 
-fn agent(timeout: Duration) -> ureq::Agent {
+pub(crate) fn agent(timeout: Duration) -> ureq::Agent {
     ureq::AgentBuilder::new()
         .redirects(0)
         .timeout(timeout)
         .build()
 }
 
-fn read_body(request: ureq::Request, limit: usize) -> Result<Vec<u8>, String> {
+pub(crate) fn read_body(request: ureq::Request, limit: usize) -> Result<Vec<u8>, String> {
     let response = request.call().map_err(|_| "exchange transport failure")?;
     if response.status() != 200 {
         return Err("exchange HTTP status is not 200".into());
@@ -108,7 +108,7 @@ fn read_body(request: ureq::Request, limit: usize) -> Result<Vec<u8>, String> {
     Ok(body)
 }
 
-fn received_time(start_ms: u64, elapsed: Duration) -> Result<u64, String> {
+pub(crate) fn received_time(start_ms: u64, elapsed: Duration) -> Result<u64, String> {
     if start_ms == 0 {
         return Err("valid request-start clock required".into());
     }

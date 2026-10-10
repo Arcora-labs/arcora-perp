@@ -1,0 +1,251 @@
+{
+  "recorded_at_utc": "2026-10-10T14:58:43.411325+00:00",
+  "base_commit": "8ed3fc2fb2776a6e711ac24d6e804ab6539cfd6a",
+  "branch": "feat/oracle-crosscheck-20261010",
+  "release_decision": "PRODUCTION RELEASE HOLD",
+  "status": "local_cpu_verification_complete; pull_request_not_yet_created",
+  "default_mode": "legacy_single_source_unchanged",
+  "opt_in_activation": "blocked_by_current_USDC_market_labels_vs_USDT_spot_feeds",
+  "live_two_source_deployment_proven": false,
+  "independent_publisher_quorum_proven": false,
+  "tests": {
+    "workspace": {
+      "passed": 947,
+      "failed": 0,
+      "ignored": 17
+    },
+    "gateway_included_in_workspace": {
+      "passed": 500,
+      "failed": 0,
+      "ignored": 16
+    },
+    "oracle_default_separate_run": {
+      "passed": 27,
+      "failed": 0,
+      "ignored": 0
+    },
+    "oracle_http_included_in_workspace": {
+      "passed": 50,
+      "failed": 0,
+      "ignored": 0,
+      "composition": "45 library + 5 integration"
+    },
+    "new_tests_added": 32,
+    "real_gateway_startup_refusals": 3
+  },
+  "checks": [
+    {
+      "name": "format",
+      "command": [
+        "cargo",
+        "+1.99.0",
+        "fmt",
+        "--all",
+        "--check"
+      ],
+      "exit_code": 0,
+      "duration_seconds": 0.344,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "log": "target/oracle-crosscheck-20261010/verification-20261010T144816920060Z/format.log"
+    },
+    {
+      "name": "diff-check",
+      "command": [
+        "git",
+        "diff",
+        "--check"
+      ],
+      "exit_code": 0,
+      "duration_seconds": 0.029,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "log": "target/oracle-crosscheck-20261010/verification-20261010T144816920060Z/diff-check.log"
+    },
+    {
+      "name": "oracle-default",
+      "command": [
+        "cargo",
+        "+1.99.0",
+        "test",
+        "--locked",
+        "--offline",
+        "-p",
+        "oracle-feed"
+      ],
+      "exit_code": 0,
+      "duration_seconds": 1.856,
+      "log_sha256": "77e14412077614795f42365c86796a94ffd9ba484c8b65b34acd727956584781",
+      "log": "target/oracle-crosscheck-20261010/verification-20261010T144816920060Z/oracle-default.log"
+    },
+    {
+      "name": "workspace",
+      "command": [
+        "cargo",
+        "+1.99.0",
+        "test",
+        "--workspace",
+        "--locked",
+        "--offline"
+      ],
+      "exit_code": 0,
+      "duration_seconds": 262.184,
+      "log_sha256": "ddc39e1aeed2d74efc0de53aa92bd3af754eabaef4ea1b46c6a9b3324851d871",
+      "log": "target/oracle-crosscheck-20261010/verification-20261010T144816920060Z/workspace.log"
+    },
+    {
+      "name": "clippy",
+      "command": [
+        "cargo",
+        "+1.99.0",
+        "clippy",
+        "--workspace",
+        "--all-targets",
+        "--locked",
+        "--offline",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "exit_code": 0,
+      "duration_seconds": 4.074,
+      "log_sha256": "c17e91e85313d54dea965b230859a94113eb33b4637a800889efdc492691551d",
+      "log": "target/oracle-crosscheck-20261010/verification-20261010T144816920060Z/clippy.log"
+    },
+    {
+      "name": "no-std",
+      "command": [
+        "cargo",
+        "+1.99.0",
+        "check",
+        "--locked",
+        "--offline",
+        "-p",
+        "perp-core",
+        "--no-default-features"
+      ],
+      "exit_code": 0,
+      "duration_seconds": 1.236,
+      "log_sha256": "c9326efcaf20408c83df970fe2c518e1710cd7a7d38807cbcca79aa6bf6d4413",
+      "log": "target/oracle-crosscheck-20261010/verification-20261010T144816920060Z/no-std.log"
+    },
+    {
+      "name": "sp1-release",
+      "command": [
+        "python3.12",
+        "scripts/local-verification/check_sp1_release.py"
+      ],
+      "exit_code": 0,
+      "duration_seconds": 0.085,
+      "log_sha256": "9189d4751f9a5a116d3fb275d396e5871d6e40c9df208c763d29ad33098f80d8",
+      "log": "target/oracle-crosscheck-20261010/verification-20261010T144816920060Z/sp1-release.log"
+    },
+    {
+      "name": "guest-pins",
+      "command": [
+        "python3.12",
+        "-c",
+        "import sys,json;sys.path.insert(0,\"scripts/local-verification\");from verify_clock_proof import verify_guest_source;print(json.dumps(verify_guest_source(),sort_keys=True))"
+      ],
+      "exit_code": 0,
+      "duration_seconds": 0.03,
+      "log_sha256": "e7f0226001d12c80d7c9d53cacc9cea03f1f42d567e8aff41421610a574a10b2",
+      "log": "target/oracle-crosscheck-20261010/verification-20261010T144816920060Z/guest-pins.log"
+    },
+    {
+      "name": "gateway-build",
+      "command": [
+        "cargo",
+        "+1.99.0",
+        "build",
+        "--locked",
+        "--offline",
+        "-p",
+        "gateway"
+      ],
+      "exit_code": 0,
+      "duration_seconds": 4.967,
+      "log_sha256": "33292d65d4c930501f916d31d13e263748168af137e2a98db7d0fc1e06cf1da3",
+      "log": "target/oracle-crosscheck-20261010/verification-20261010T144816920060Z/gateway-build.log"
+    }
+  ],
+  "source_sha256": {
+    "crates/gateway/src/main.rs": "fe610de64d15c80fa49308ae1cfe8f56a875ec7f05a95ea268bb55949c0fc3d3",
+    "crates/gateway/src/oracle_crosscheck.rs": "c516f8cbfdc48d83dde09d3fcda84bd99f69557769c5509afb6b0e14a95f099a",
+    "crates/gateway/src/oracle_crosscheck_tests.rs": "0273d30017a29f9b5630b1e5049f33dafbb9e722d2eed745877472ccb3635bc2",
+    "crates/oracle-feed/src/lib.rs": "7fcc04a0c35c89376c666702cc26304eb3a6d2702122b44c70511f09336de434",
+    "crates/oracle-feed/src/live.rs": "4613ceca14fa968eba7a992fb533bac3445ecaae6b976ba2844aab63489457da",
+    "crates/oracle-feed/src/crosscheck.rs": "1e0b076e5972cad4bad57390e3b4418bace5eea7d3742c1a2c4ee5d708e7c98f",
+    "crates/oracle-feed/src/crosscheck_tests.rs": "1a8cb87029ceb59950da29375f54501b415febeb2dbef1bc71434f9332b2e9a6",
+    "crates/oracle-feed/src/crosscheck_http.rs": "4a200447abf5f2e5bd4455053a46a1762348e7a5b49627da5d9de482e554ae0c",
+    "crates/oracle-feed/src/crosscheck_http_tests.rs": "83a70f9dfad3849ac8bb803ec70f816a62d186e13433f47c754f19300c34d03d",
+    "docs/ORACLE_INTAKE.md": "fae7b54b9d645741f2f9da75d50de91043fec24233059c6c04d0dfb8ac8aea09",
+    "docs/ORACLE_CROSSCHECK.md": "bcd1d2617a3862a5c8a82e93d81870fd1b1822dada0b2babff4759eede58d591"
+  },
+  "guest_sources_sha256": {
+    "Cargo.toml": "e3144a0ae3447244776e65b04cfff39267c238e410c2d9abf20b53e6b837bbfa",
+    "crates/perp-core/Cargo.toml": "3bfb6981fa34a967185ce75abd07683e5262a694ebd60eb45a4f5c55aaf9704c",
+    "crates/perp-core/src/clock.rs": "e89e50e11b3ffb3a4a1a89ab6dd4854b61606cc17eb1236492994df0b59d50e7",
+    "crates/perp-core/src/commitment.rs": "43582ef5048d0d725e53976e3c2a1dfcf32984ed2ad1bb2ebd2032463e26ea92",
+    "crates/perp-core/src/engine.rs": "4d6037f1189939a71a41e31882012e6fa50b887087b5ccc2bfce4502b61d0f9e",
+    "crates/perp-core/src/error.rs": "0738da822be5639737e67f04a0f500af57fcc1f085dd64bec7fbe3b016c515c6",
+    "crates/perp-core/src/fixed.rs": "fc77559a31c1cfdd7a641cafbd773871aeb203849e165dbd158aa7a1b65ef7cd",
+    "crates/perp-core/src/funding.rs": "8f782cf3a4403c717eda44c6d2955789c31e4ef2a04bb4fdac8e61916018e781",
+    "crates/perp-core/src/hash.rs": "88430a8c2558b247bcf241035ad48fa1dbf8a3e77a0d176dfdbd608c930f93b9",
+    "crates/perp-core/src/lib.rs": "8f070fbec0f4b3d3fab5e594bcf808845803a59ece403dc42cb0f0df6e6253b5",
+    "crates/perp-core/src/market.rs": "8053e89a9b1021d6e461d46d733dfb1935aff5fc2a45be8121f96560fa4ddc2d",
+    "crates/perp-core/src/merkle.rs": "173f4667178ba4aa4048e43c2aeb9fa337918d6225b98c6597c004b59bc3a8f6",
+    "crates/perp-core/src/note.rs": "5cece4d513537c10464bd64b4612f829cd32cb9c1a80d3c8e40c573aace62423",
+    "crates/perp-core/src/nullifier.rs": "a252799c62dc42ec37c91ba6fd7674117b33c98c7f83e86b168f70898966ea78",
+    "crates/perp-core/src/oracle.rs": "91ae09655e35432aafa1135b23588d6f1f324b41a278ac640ebc30f106d17da2",
+    "crates/perp-core/src/order.rs": "99bb9b2be4948bcf8365c3022ef444be5941201ec6535de73d45a777e5a206d7",
+    "crates/perp-core/src/position.rs": "99d120139086092d2dae4ed11d3a677906c1cf3efd7aff9e58f27f3437f2ae66",
+    "crates/perp-core/src/state.rs": "e1026c1e2b56cfcbee4eff812e88ff3dcde052e46818deab980a071fcdbec388",
+    "crates/sp1-guest/Cargo.lock": "113518cb212208aa46a629608af9d946f9a4006ac211035a15e9cb8c022fb8c3",
+    "crates/sp1-guest/Cargo.toml": "d0ed7050076bb3548b9e3410f63066068752382f4dab31e344096c9c3e42dc85",
+    "crates/sp1-guest/src/main.rs": "c0d33ff8645ebdcc8994d4d65729b8a60a224bcda18415423da15ed875c16f5c"
+  },
+  "reviewed_elf": {
+    "path": "contracts/integration/fixtures/clock-v2-verified/guest.elf",
+    "sha256": "df59a19b310258b4d01d0d5e3cfa31bb7de9ca2f4ea7c2302cf76650c79967c5"
+  },
+  "program_key_pin_unchanged": "0x0017893c7ff3395d60b57d25eaa08cf1542fc7bc3cdfd74468133562994b8353",
+  "program_key_setup_rerun": false,
+  "new_proof_generated": false,
+  "unchanged_paths_checked_against_base": [
+    "crates/perp-core",
+    "crates/sp1-guest",
+    "contracts",
+    "Cargo.lock",
+    "scripts/local-verification/verify_clock_proof.py",
+    "scripts/local-verification/check_sp1_release.py",
+    ".github"
+  ],
+  "verification_environment": {
+    "platform": "macOS ARM64",
+    "rust_toolchain": "1.99.0",
+    "cargo_locked": true,
+    "cargo_offline": true,
+    "cargo_test_unset_environment_keys": [
+      "ORACLE_SIGNER_KEY",
+      "ENCLAVE_SEED",
+      "GATEWAY_SIGNER_KEY"
+    ],
+    "startup_environment": "minimal explicit env with empty disposable HOME; no inherited credentials"
+  },
+  "not_rerun_locally": [
+    "full Python/Anvil suite",
+    "complete restore and ACK/crash drills",
+    "frontend/contracts suites",
+    "workspace-excluded SP1 host/prover-service typecheck"
+  ],
+  "raw_logs_retained_locally": true,
+  "full_raw_logs_embedded": false,
+  "evidence_sha256": {
+    "startup-refusals.json": "976ee79da020fea1c2b0cc533071284304218b547f9cb3abbe2f78652b058570",
+    "workspace-results.txt": "cb2e0b09a85dfd8f8f1d5a7f82b3afcd77c14ca7e63526c4eadaff83dc049aa8"
+  },
+  "official_documentation": [
+    "https://exchange-developer.crypto.com/exchange/v1/docs/api/rest-single-page/",
+    "https://tr.okx.com/docs-v5/",
+    "https://www.okx.com/docs-v5/log_en/"
+  ]
+}
