@@ -5,9 +5,12 @@
 //! `http` feature adds a live fetch from Crypto.com's public REST API.
 //!
 //! This is the backend counterpart to the frontend's `oracleFeed.ts`: both feed the
-//! SAME `OracleTranscript` shape, so swapping the source (Crypto.com now, Pyth /
-//! committee-attested later) is a parser change, not an architecture change.
+//! SAME `OracleTranscript` shape. Independent publisher quorum would require a
+//! separate guest-affecting design; changing parsers alone does not provide it.
 
+pub mod crosscheck;
+#[cfg(feature = "http")]
+pub mod crosscheck_http;
 #[cfg(feature = "http")]
 mod live;
 #[cfg(feature = "http")]

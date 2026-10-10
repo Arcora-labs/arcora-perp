@@ -1,6 +1,9 @@
 # Oracle kaynak kabulü ve kalan güven sınırı
 
 Bu belge 10 Ekim 2026 tarihli host-side fiyat kabul paketini açıklar.
+Sonraki isteğe bağlı iki-borsa kontrolü ve mevcut USDT/USDC etkinleştirme engeli
+[ORACLE_CROSSCHECK.md](ORACLE_CROSSCHECK.md) içinde açıklanır; aşağıdaki
+tek-kaynak sözleşmesi, yeni ayar unset olduğunda değişmeden geçerlidir.
 **Production RELEASE HOLD devam eder.** Tek borsa ve tek güvenilen publisher
 modeli bu paketle çoklu kaynak/quorum modeline dönüşmez.
 

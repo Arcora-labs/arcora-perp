@@ -1,0 +1,200 @@
+Selected test names and summaries from the raw workspace log; not a full transcript.
+
+     Running unittests src/lib.rs (target/debug/deps/bridge-97c8ecbf2df12e32)
+running 8 tests
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running tests/fuzz.rs (target/debug/deps/fuzz-6b4256c91ee19076)
+running 3 tests
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.52s
+     Running unittests src/lib.rs (target/debug/deps/committee-489770c0e6eb7248)
+running 10 tests
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+     Running tests/fuzz.rs (target/debug/deps/fuzz-2045880fcabb639a)
+running 1 test
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.26s
+     Running unittests src/lib.rs (target/debug/deps/dark_perp_attestation-070b3be9c3fb2e2d)
+running 24 tests
+test result: ok. 24 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+     Running tests/handshake_orchestration.rs (target/debug/deps/handshake_orchestration-bc0be36d44ba4e51)
+running 8 tests
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+     Running tests/verify_offline.rs (target/debug/deps/verify_offline-8922ec9c7ce6a851)
+running 7 tests
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running tests/vtpm_offline.rs (target/debug/deps/vtpm_offline-8016671901463dc2)
+running 7 tests
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+     Running unittests src/main.rs (target/debug/deps/demo-fdaa8f081053473c)
+running 0 tests
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running unittests src/lib.rs (target/debug/deps/e2e-1b72f2e23cf2c93c)
+running 0 tests
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running tests/attestation_binding.rs (target/debug/deps/attestation_binding-dad7cdc12467e8d6)
+running 1 test
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+     Running tests/full_flow.rs (target/debug/deps/full_flow-f7c03a0a65807865)
+running 3 tests
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+     Running tests/oracle_path.rs (target/debug/deps/oracle_path-b9293d10fa6ea6ee)
+running 1 test
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+     Running unittests src/main.rs (target/debug/deps/gateway-c7e7bea259dcdbb1)
+running 516 tests
+test oracle_crosscheck::tests::configured_single_source_valid_signature_cannot_bypass_guard ... ok
+test oracle_crosscheck::tests::configured_start_requires_pair_and_does_not_simulate_even_in_demo ... ok
+test oracle_crosscheck::tests::current_usdc_labels_and_usdt_sources_refuse_opt_in_without_partial_mutation ... ok
+test oracle_crosscheck::tests::downstream_rejection_does_not_commit_candidate_watermarks ... ok
+test oracle_crosscheck::tests::missing_source_invalidates_prior_admission_without_signed_price_fabrication ... ok
+test oracle_crosscheck::tests::disagreement_halts_immediately_keeps_price_times_and_recovers_with_fresh_pair ... ok
+test oracle_crosscheck::tests::queued_first_source_is_rechecked_at_gateway_receipt ... ok
+test oracle_crosscheck::tests::unset_policy_preserves_legacy_mode_without_claiming_two_sources ... ok
+test oracle_crosscheck::tests::repeated_secondary_does_not_refresh_price_or_consume_primary_watermark ... ok
+test oracle_crosscheck::tests::restore_does_not_persist_host_gate_or_bypass_fresh_pair_requirement ... ok
+test result: ok. 500 passed; 0 failed; 16 ignored; 0 measured; 0 filtered out; finished in 17.42s
+     Running unittests src/main.rs (target/debug/deps/loadbot-b6734ad0850aa480)
+running 0 tests
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running unittests src/lib.rs (target/debug/deps/matcher-f5aa0cde665b05c8)
+running 18 tests
+test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running tests/fuzz.rs (target/debug/deps/fuzz-3cf7bd500cd89e06)
+running 4 tests
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.16s
+     Running unittests src/lib.rs (target/debug/deps/node-348055acd5565653)
+running 0 tests
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running unittests src/main.rs (target/debug/deps/node-c2d9f937bf369587)
+running 0 tests
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running tests/lifecycle.rs (target/debug/deps/lifecycle-146eba604f5823d3)
+running 2 tests
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.15s
+     Running unittests src/lib.rs (target/debug/deps/note_archive-a103f92fe182be71)
+running 10 tests
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running tests/fuzz.rs (target/debug/deps/fuzz-edd1b4224eb8944b)
+running 1 test
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 11.14s
+     Running unittests src/lib.rs (target/debug/deps/oracle_feed-3e6a8f7e72ec2f8f)
+running 45 tests
+test crosscheck::tests::explicit_symmetric_deviation_is_inclusive_without_rounding_loophole ... ok
+test crosscheck::tests::configuration_never_invents_thresholds_or_repairs_malformed_values ... ok
+test crosscheck::tests::quote_units_and_spot_contracts_are_never_implicitly_substituted ... ok
+test crosscheck_http::tests::critical_duplicates_escaped_names_trailing_and_oversized_json_rejected ... ok
+test crosscheck::tests::source_identity_is_not_publisher_independence ... ok
+test crosscheck_http::tests::okx_exact_spot_identity_and_source_timestamp_preserved ... ok
+test crosscheck_http::tests::primary_failure_does_not_contact_secondary_or_return_partial_pair ... ok
+test crosscheck::tests::two_venues_preserve_primary_commitment_signature_and_legacy_backup ... ok
+test crosscheck::tests::matching_last_does_not_hide_disagreeing_order_books ... ok
+test crosscheck::tests::both_sources_revalidated_after_second_fetch_and_gateway_queue ... ok
+test crosscheck_http::tests::real_second_source_redirect_never_contacts_target ... ok
+test crosscheck_http::tests::real_second_source_declared_eof_and_chunked_size_limits_apply ... ok
+test crosscheck::tests::same_venue_wrong_base_quote_order_or_market_is_not_independent_evidence ... ok
+test crosscheck_http::tests::real_second_source_errors_identity_and_partial_body_do_not_yield_primary_success ... ok
+test crosscheck_http::tests::wrong_status_count_kind_base_or_quote_never_falls_back ... ok
+test crosscheck::tests::older_secondary_cannot_hide_behind_fresher_primary_guest_timestamp ... ok
+test crosscheck_http::tests::real_two_loopback_sources_feed_same_production_request_path ... ok
+test crosscheck::tests::old_but_advancing_independent_tape_never_becomes_fresh ... ok
+test crosscheck::tests::either_stale_future_zero_negative_confidence_or_wrong_signer_fails ... ok
+test crosscheck_http::tests::required_fields_wrong_types_books_and_timestamps_rejected ... ok
+test crosscheck::tests::both_source_watermarks_must_advance_and_failure_is_atomic ... ok
+test crosscheck_http::tests::real_second_source_missing_transport_or_stalled_body_fails_closed ... ok
+test result: ok. 45 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.36s
+     Running unittests src/bin/probe.rs (target/debug/deps/probe-f0a7a70710401cad)
+running 0 tests
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running tests/intake_regressions.rs (target/debug/deps/intake_regressions-df154136dfa5f96c)
+running 5 tests
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+     Running unittests src/lib.rs (target/debug/deps/perp_core-f4d7c408bee81467)
+running 98 tests
+test result: ok. 98 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+     Running tests/a06_wind_down.rs (target/debug/deps/a06_wind_down-92fdba428646b1ef)
+running 4 tests
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running tests/clock_anchor_vectors.rs (target/debug/deps/clock_anchor_vectors-8878c6733a617ae6)
+running 1 test
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running tests/fuzz.rs (target/debug/deps/fuzz-7121d45e5a150f16)
+running 4 tests
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 135.79s
+     Running tests/lifecycle.rs (target/debug/deps/lifecycle-b837122f0941a161)
+running 32 tests
+test result: ok. 32 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+     Running tests/local_s4.rs (target/debug/deps/local_s4-1b99c49744ab8113)
+running 2 tests
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running tests/oracle_trust_boundary.rs (target/debug/deps/oracle_trust_boundary-1f0fcd74c8c11e67)
+running 1 test
+test trusted_publisher_can_reprice_primary_and_backup_together ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+     Running tests/rejection_boundary.rs (target/debug/deps/rejection_boundary-88e359b8d5c8b9ba)
+running 3 tests
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running tests/sec022_fill_band.rs (target/debug/deps/sec022_fill_band-1e1fc1edbdb07d01)
+running 16 tests
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.20s
+     Running tests/serde_witness.rs (target/debug/deps/serde_witness-6f9528d3a2a4411b)
+running 7 tests
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+     Running tests/spend_binding.rs (target/debug/deps/spend_binding-d8f96e800889388a)
+running 2 tests
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running tests/wind_down_policy.rs (target/debug/deps/wind_down_policy-40a6155bbe99b40a)
+running 1 test
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running unittests src/lib.rs (target/debug/deps/prover-b03ed0051fd9b021)
+running 26 tests
+test result: ok. 26 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running tests/clock_bound.rs (target/debug/deps/clock_bound-2e666f335b856cd4)
+running 8 tests
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s
+     Running tests/privacy_environment.rs (target/debug/deps/privacy_environment-5ef274da3ae2b2f4)
+running 4 tests
+test result: ok. 3 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.03s
+     Running tests/vectors.rs (target/debug/deps/vectors-3b8113824272bc5e)
+running 3 tests
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running unittests src/lib.rs (target/debug/deps/sealed_box-412e2aa261fb8586)
+running 9 tests
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running tests/vectors.rs (target/debug/deps/vectors-df0a78b7e1b412fd)
+running 1 test
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running unittests src/lib.rs (target/debug/deps/sequencer-f4d335e257853598)
+running 33 tests
+test result: ok. 33 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.17s
+     Running tests/fixture.rs (target/debug/deps/fixture-d02ab1219fecdcbc)
+running 1 test
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+     Running tests/fuzz.rs (target/debug/deps/fuzz-f8168698bfb9f77c)
+running 3 tests
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 76.34s
+     Running tests/spine.rs (target/debug/deps/spine-df0d898bdd53fc9f)
+running 31 tests
+test result: ok. 31 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.13s
+running 0 tests
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+running 0 tests
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+running 0 tests
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+running 0 tests
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+running 0 tests
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+running 0 tests
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+running 0 tests
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+running 0 tests
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+running 0 tests
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+running 0 tests
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+running 0 tests
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+running 0 tests
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
