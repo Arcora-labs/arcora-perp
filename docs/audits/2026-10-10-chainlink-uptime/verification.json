@@ -1,0 +1,197 @@
+{
+  "observed_at": "2026-10-10T16:17:47.363176+00:00",
+  "worktree_base": "a4a6ae8a8181eaa1cd9e61daa8c0b1c50769bd96",
+  "source_sha256": {
+    "contracts/src/SequencerUptime.sol": "e20d66f3d929f8c4af2baaab220994411c9388fd74287ecfd31fba957809bbd6",
+    "contracts/src/ChainlinkOracleVerifier.sol": "9f6245fc873fb2e5cb8cfe607c4cb4859a207c70c66708fe2ce56ed7b05f62eb",
+    "contracts/test/ChainlinkOracleVerifier.t.sol": "696c71ccdcae89df95c897ef88e9d7433f25052d0c5b4f06f983099b5a9f6c52",
+    "contracts/test/ChainlinkSequencerUptime.t.sol": "d5841bb64539c8893f6143face09a6566492966872d41ba5d1866aa48f3b98ac",
+    "contracts/test/utils/MockSequencerUptime.sol": "1ff28c57ba56324a8ef5fbfe737d8b97d749b9262ea00635d39856778a41c612",
+    "docs/CHAINLINK_SEQUENCER_GUARD.md": "d17c75501394326eb7f1d1a435ba399a5f4300e1bc867e1389e251e9dca585ea",
+    "docs/ACTIVE_WORK.md": "0308cf0e3585b085d111ee4df322a51936e59fddf4bc390320dc3be83cb7cf34"
+  },
+  "commands": [
+    {
+      "name": "contracts",
+      "command": [
+        "forge",
+        "test",
+        "--summary"
+      ],
+      "exit_code": 0,
+      "log_sha256": "e3c19bc78392a0d126198c217784691a6cd670e80fab3a091a3387d65621e148",
+      "at": "2026-10-10T16:13:29.529290+00:00",
+      "log_path": "target/chainlink-uptime-20261010T160847Z/verification/contracts.log"
+    },
+    {
+      "name": "contract-format",
+      "command": [
+        "forge",
+        "fmt",
+        "--check",
+        "src/SequencerUptime.sol",
+        "src/ChainlinkOracleVerifier.sol",
+        "test/ChainlinkOracleVerifier.t.sol",
+        "test/ChainlinkSequencerUptime.t.sol",
+        "test/utils/MockSequencerUptime.sol"
+      ],
+      "exit_code": 0,
+      "log_sha256": "a0ad7e8d070ba08623019896aca4918443fc77af564c9e33fb029035ad11e98e",
+      "at": "2026-10-10T16:13:34.006390+00:00",
+      "log_path": "target/chainlink-uptime-20261010T160847Z/verification/contract-format.log"
+    },
+    {
+      "name": "core-tests",
+      "command": [
+        "cargo",
+        "+1.99.0",
+        "test",
+        "--manifest-path",
+        "crates/chainlink-oracle/Cargo.toml",
+        "--locked",
+        "--offline"
+      ],
+      "exit_code": 0,
+      "log_sha256": "aad480509c5d6b077b03b324a65b586ac0c8bd9c1c7b67d065822bf876c67aae",
+      "at": "2026-10-10T16:13:34.017250+00:00",
+      "log_path": "target/chainlink-uptime-20261010T160847Z/verification/core-tests.log"
+    },
+    {
+      "name": "candidate-lock",
+      "command": [
+        "python3.12",
+        "scripts/local-verification/check_chainlink_candidate.py"
+      ],
+      "exit_code": 0,
+      "log_sha256": "2098e68e75a17ef7de525984a1425a3c666fa90e8333453246d09d0cf5f31d6e",
+      "at": "2026-10-10T16:13:39.407213+00:00",
+      "log_path": "target/chainlink-uptime-20261010T160847Z/verification/candidate-lock.log"
+    },
+    {
+      "name": "reviewed-pins",
+      "command": [
+        "python3.12",
+        "-c",
+        "import sys;sys.path.insert(0,\"scripts/local-verification\");from verify_clock_proof import verify_guest_source;print(len(verify_guest_source()))"
+      ],
+      "exit_code": 0,
+      "log_sha256": "6e2ae11dad0616f66bbb2b6e6556f580bb987fd911d7132aa6bee2bfc7cc7b52",
+      "at": "2026-10-10T16:13:39.443502+00:00",
+      "log_path": "target/chainlink-uptime-20261010T160847Z/verification/reviewed-pins.log"
+    },
+    {
+      "name": "release",
+      "command": [
+        "python3.12",
+        "scripts/local-verification/check_sp1_release.py"
+      ],
+      "exit_code": 0,
+      "log_sha256": "9189d4751f9a5a116d3fb275d396e5871d6e40c9df208c763d29ad33098f80d8",
+      "at": "2026-10-10T16:13:39.477107+00:00",
+      "log_path": "target/chainlink-uptime-20261010T160847Z/verification/release.log"
+    }
+  ],
+  "contract_suites": {
+    "AttestationRegistryTest": {
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0
+    },
+    "ChainlinkOracleVerifierTest": {
+      "passed": 15,
+      "failed": 0,
+      "skipped": 0
+    },
+    "ChainlinkSequencerUptimeTest": {
+      "passed": 20,
+      "failed": 0,
+      "skipped": 0
+    },
+    "ClockBoundVerifierTest": {
+      "passed": 23,
+      "failed": 0,
+      "skipped": 0
+    },
+    "CollateralVaultTest": {
+      "passed": 23,
+      "failed": 0,
+      "skipped": 0
+    },
+    "CrossLayerTest": {
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0
+    },
+    "DarkPerpSettlementTest": {
+      "passed": 50,
+      "failed": 0,
+      "skipped": 0
+    },
+    "DeployGuardTest": {
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    "DeployVerifierEnvTest": {
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    "FuzzTest": {
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0
+    },
+    "IntegrationTest": {
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0
+    },
+    "SP1ZkVerifierTest": {
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0
+    },
+    "SettlementInvariantTest": {
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    "VaultInvariantTest": {
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    }
+  },
+  "totals": {
+    "contracts_passed": 161,
+    "contracts_failed": 0,
+    "contracts_skipped": 0,
+    "new_uptime_tests_in_contract_total": 20,
+    "standalone_rust_passed": 15
+  },
+  "reviewed_v2_pins_unchanged": 21,
+  "candidate_rust_guest_changed": false,
+  "live_chainlink_verified": false,
+  "proof_generated": false,
+  "production_deployed": false,
+  "release_hold": true,
+  "blocked_extra_fuzz_tests_not_added": true,
+  "published_evidence_sha256": {
+    "contract-results.txt": "3f723573b1e584fac7e284820754babc42f79643db886ad5c805379e5d0aa041"
+  },
+  "pr_base_main": "40b8c61cba9755e80fc17e0cf01950ee8aaa4574",
+  "pr40_merge_tree_matches_checked_head": true,
+  "preceding_merges": {
+    "39": {
+      "merge_commit": "2d3349486e868ad0caf84f89eaee0e5177ffac78",
+      "successful_checks": 17
+    },
+    "40": {
+      "merge_commit": "40b8c61cba9755e80fc17e0cf01950ee8aaa4574",
+      "checked_head": "a4a6ae8a8181eaa1cd9e61daa8c0b1c50769bd96",
+      "successful_checks": 18,
+      "base": "main"
+    }
+  }
+}

@@ -2,39 +2,59 @@
 
 Güncelleme: 10 Ekim 2026. **PRODUCTION RELEASE HOLD**.
 Bu belge güncel çalışma sırasıdır; tarihsel `NEXT_STEPS.md` yerine kullanın.
-Başlangıç main: `8ed3fc2fb2776a6e711ac24d6e804ab6539cfd6a`.
+Son birleşen main: `40b8c61cba9755e80fc17e0cf01950ee8aaa4574`.
 
-## Korunan tamamlanmış işler
+## Birleşmiş ve korunan çalışmalar
 
 #33 DH/zeroize/deployment policy; #35 zorunlu restore; #36 bağımsız ARM64 cold
-guest build; #37 paired journal/cursor recovery; #38 oracle intake main'dedir.
+build; #37 paired journal/cursor recovery; #38 oracle intake main'dedir.
 Bu alt ölçütler yeniden açık iş sayılmaz; canlı kullanım kabulü değildir.
-#39 iki borsa host kontrolünün 17/17 CI kontrolü başarılıdır, fakat merge çağrısı
-araç güvenlik engeline takıldı. Başka kanalla merge denenmedi; PR açık bırakıldı.
-Chainlink dalı doğrudan main'den açıldı, #39'a bağımlı değildir.
 
-## Aktif paket: Chainlink Data Streams
+#39 iki borsa host kontrolü, 17/17 başarılı kontrolle normal merge edildi:
+`2d3349486e868ad0caf84f89eaee0e5177ffac78`.
+#40 ayrı Chainlink rapor-bağlı aday core/guest/sözleşme paketi, #39 ile güncellenip
+18/18 başarılı kontrolle normal merge edildi:
+`40b8c61cba9755e80fc17e0cf01950ee8aaa4574`.
+#40 merge ağacı kontrol edilmiş `a4a6ae8a8181eaa1cd9e61daa8c0b1c50769bd96`
+ağacıyla aynıdır. Önceki merge engeli bu turda sürmedi; korumalar gevşetilmedi.
 
-Amaç: authenticated rapor alma, katı v3 decode, açık USD/USDC dönüşümü ve
-kullanılan HER oracle işlemini DON tarafından doğrulanan rapora bağlayan ayrı
-v3 aday proof yolu. Mevcut reviewed v2 ELF/vkey/pinleri değiştirilmez.
-Kaynak değişimi, mevcut oracle listesini manifest'e koymakla yeterli olmaz:
-reviewed derive_roots manifest.oracle_updates ile op oracle'larını eşleştirmez.
-Yeni yol doğrudan Fill/AccrueFunding/Liquidate/Unbind işlemlerini taramalıdır.
+## Bu dalın paketi: Chainlink adayında uptime/grace
 
-API istemcisini yazan araç çağrısı ayrıca güvenlik engeline takıldı; aynı işlem
-başka yoldan denenmedi. Bu turda canlı/authenticated API istemcisi tamamlanmış
-sayılmaz. Çalışma odağı offline rapor doğrulama ve aday proof bağıdır.
+Dal: `fix/chainlink-uptime-20261010`; doğrudan yukarıdaki güncel main'den açıldı.
+Solidity aday wrapper'ına zorunlu, immutable uptime feed ve açık grace süresi
+bağlandı. Özgün işlem zamanı, rapor kaydı ve settlement aynı sağlıklı uptime
+dönemiyle sınırlandı. Eski proof toparlanma sonrası başka döneme taşınamaz.
+Fiyat gerektirmeyen wind-down/exit yolları uptime arızasına bağımlı bırakılmadı.
+
+Yerel: 161 sözleşme testi (20 yeni uptime testi dahil), ayrı 15 Rust testi,
+format, candidate lock/release ve 21/21 reviewed v2 kaynak pini başarılı.
+Ayrıntılar: `CHAINLINK_SEQUENCER_GUARD.md` ve
+`audits/2026-10-10-chainlink-uptime/`. Bu kayıt yerel kapsamı bildirir;
+PR'ın sonraki CI/merge durumu ayrıca kontrol edilmelidir.
+
+## Chainlink geçişi henüz canlı değildir
+
+Mevcut gateway hâlâ önceki fiyat yolunu kullanır. #39 opt-in iki-borsa modu
+USDT/USDC eşleşme engelini gizlemez; iki publisher quorum'u değildir.
+#40'ın ayrı guest'i derlendi, fakat yeni guest execution/vkey/gerçek proof
+kabulü tamamlanmadı. Normalizasyon açık asset/USD ÷ USDC/USD aday tarifidir;
+üretim ekonomik onayı yoktur ve backup alanı bağımsız TWAP değildir.
+
+Authenticated stream istemcisi önceki araç engelinden sonra tamamlanmadı;
+bu paket onu başka yoldan uygulamaz. Canlı feed/decimal/quote pinleri, gerçek
+DON verifier, gateway/prover/L1 bağlantısı ve rapor kalıcılığı açık kalır.
 
 ## Açık işler ve kapanış ölçütleri
 
 | Öncelik | İş | Kapanış ölçütü |
 |---|---|---|
 | P0 | Dört exact wallet witness proof'u | Yeni gerçek proof + gerçek SP1/clock/settlement/claim doğrulaması; CPU execution/setup sayılmaz |
-| P0 | Deployment/servis kimliği | Hedef chain, runtime/immutable/config/vkey ve çalışan servis eşleşmesi |
+| P0 | Deployment/servis kimliği | Hedef chain, runtime/immutable/config/vkey ve çalışan servis eşleşmesi; yeni wrapper'ın uptime feed/grace immutables dahil |
 | P0 | NVIDIA CC/key release | Gerçek backend, evidence, nonce/measurement pinleri ve canlı handshake; mevcut backend fail-closed stub |
-| P1 | Chainlink canlı entegrasyon | Yetkili stream erişimi; gerçek feed/decimal/quote pinleri; DON verifier; yeni guest kimliği ve proof; gateway/prover/L1 uçtan uca bağlantı |
-| P1 | Oracle ekonomisi | USD/USDC değerleme, rapor zaman politikası ve likidite zarfı bağımsız değerlendirme; TWAP/quorum iddiası yok |
+| P1 | Chainlink canlı entegrasyon | Yetkili stream erişimi; gerçek feed/decimal/quote pinleri; DON verifier; yeni guest kimliği/proof; gateway/prover/L1 uçtan uca bağlantı |
+| P1 | Uptime canlı kabulü | Resmi hedef feed/runtime, onaylı grace, gateway observer ve gerçek ağ/servis tatbikatı; mevcut testler sentetiktir |
+| P1 | Kesinti sonrası pending batch recovery | Yeni uptime döneminde eski clock/rapor kaydını yeniden kullanmadan HOLD, uzlaşma, rollback/yeniden admission ve wind-down senaryoları |
+| P1 | Oracle ekonomisi | USD/USDC değerleme, rapor zaman politikası ve likidite zarfı dış değerlendirme; TWAP/quorum iddiası yok |
 | P1 | Prover kapasite/finalite | Gerçek proof p95/RSS, yükte admission duruşu ve risk eşikleri |
 | P1 | Operatör/prover/governance kaybında exit | Yeni withdrawal ve bağımsız claim verisi erişimi, gerçek verifier ile fon senaryoları |
 | P1 | Matching fairness/ret meşruiyeti | Sıra ve ret kurallarının guest içinde doğrulanması; ayrı guest-affecting çalışma |
@@ -44,7 +64,7 @@ sayılmaz. Çalışma odağı offline rapor doğrulama ve aday proof bağıdır.
 
 ## Değişmez sınırlar
 
-Gerçek key/seed/credential dosyaları okunmaz veya yayınlanmaz. Ücretli abonelik,
-GPU/prover, zincir yazısı, state migration ve production rollout bu pakette yok.
-Mock DON/SP1 testleri canlı imza veya proof değildir. Yeni aday guest kaynakları,
-reviewed guest'in yerine geçirilmez. Gerçek fonlu yayın kararı açık kalır.
+Gerçek credential dosyaları okunmaz veya yayınlanmaz. Ücretli abonelik, GPU/prover,
+kamu zincirine işlem, state migration ve production rollout yapılmadı.
+Mock uptime/DON/SP1 testleri canlı doğrulama veya gerçek proof değildir.
+Ayrı aday guest, reviewed v2 ELF/vkey'nin yerine geçirilmez.

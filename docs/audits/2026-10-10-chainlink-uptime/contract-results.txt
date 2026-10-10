@@ -1,0 +1,267 @@
+Ran 2 tests for test/DeployGuard.t.sol:DeployGuardTest
+[PASS] test_real_value_chains_block_the_mock_verifier() (gas: 1133)
+[PASS] test_testnets_allow_the_mock_verifier() (gas: 970)
+Suite result: ok. 2 passed; 0 failed; 0 skipped; finished in 3.87ms (678.42µs CPU time)
+Ran 8 tests for test/AttestationRegistry.t.sol:AttestationRegistryTest
+[PASS] test_accepts_sw_hardening_needed() (gas: 690237)
+[PASS] test_register_rejects_a_non_owner() (gas: 656856)
+[PASS] test_registers_a_current_matching_enclave() (gas: 688293)
+[PASS] test_rejects_a_degraded_tcb() (gas: 668185)
+[PASS] test_rejects_a_measurement_mismatch() (gas: 666416)
+[PASS] test_rejects_an_rtmr_mismatch() (gas: 666663)
+[PASS] test_rejects_an_unverified_quote() (gas: 662872)
+[PASS] test_rejects_truncated_report_data() (gas: 634585)
+Suite result: ok. 8 passed; 0 failed; 0 skipped; finished in 6.56ms (2.36ms CPU time)
+Ran 23 tests for test/ClockBoundVerifier.t.sol:ClockBoundVerifierTest
+[PASS] test_actual_settlement_requires_registration() (gas: 34219)
+[PASS] test_batch_time_monotonicity_crosses_settlement() (gas: 258108)
+[PASS] test_bound_proof_settles_through_existing_entrypoint() (gas: 246601)
+[PASS] test_clock_does_not_accept_future_batch() (gas: 26851)
+[PASS] test_clock_does_not_replace_root_continuity() (gas: 27790)
+[PASS] test_legacy_proof_cannot_bypass_registered_clock() (gas: 168632)
+[PASS] test_only_bound_settlement_can_call_verify() (gas: 150997)
+[PASS] test_previous_anchor_cannot_be_used_for_next_batch() (gas: 257255)
+[PASS] test_price_free_window_has_canonical_zero_bounds() (gas: 258535)
+[PASS] test_proof_delay_keeps_original_receipt() (gas: 258251)
+[PASS] test_rebinding_is_impossible() (gas: 12933)
+[PASS] test_refuses_backdated_window() (gas: 30839)
+[PASS] test_refuses_future_window() (gas: 30902)
+[PASS] test_refuses_overlong_window() (gas: 30428)
+[PASS] test_refuses_reversed_window() (gas: 30321)
+[PASS] test_registration_is_immutable_even_with_valid_new_clock() (gas: 157086)
+[PASS] test_registration_requires_role_authorization() (gas: 21224)
+[PASS] test_reorg_removes_anchor_and_old_proof_cannot_authorize_new_receipt() (gas: 534060)
+[PASS] test_solidity_v2_encoding_matches_rust() (gas: 983)
+[PASS] test_stored_receipt_cannot_replay_after_chain_id_change() (gas: 264065)
+[PASS] test_terminal_settlement_and_exit_also_require_bound_proofs() (gas: 539596)
+[PASS] test_time_overflow_rejected() (gas: 32950)
+[PASS] test_wrong_manifest_cannot_replace_same_batch() (gas: 154863)
+Suite result: ok. 23 passed; 0 failed; 0 skipped; finished in 8.09ms (2.36ms CPU time)
+Ran 1 test for test/DeployVerifierEnv.t.sol:DeployVerifierEnvTest
+[PASS] test_verifier_env_override() (gas: 26907570)
+Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 4.16ms (4.03ms CPU time)
+Ran 4 tests for test/CrossLayer.t.sol:CrossLayerTest
+[PASS] test_a06_wind_down_phase_one_commitment_matches_rust() (gas: 7818)
+[PASS] test_public_commitment_matches_rust() (gas: 6185)
+[PASS] test_real_rust_receipt_passes_ecrecover() (gas: 2530040)
+[PASS] test_receipt_digest_matches_rust() (gas: 10192)
+Suite result: ok. 4 passed; 0 failed; 0 skipped; finished in 8.78ms (4.58ms CPU time)
+Ran 15 tests for test/ChainlinkOracleVerifier.t.sol:ChainlinkOracleVerifierTest
+[PASS] test_bad_verified_body_is_refused() (gas: 678990)
+[PASS] test_both_reports_are_required_and_partial_failure_is_atomic() (gas: 610901)
+[PASS] test_clock_cannot_be_rebound() (gas: 12827)
+[PASS] test_clock_or_report_registration_cannot_be_omitted() (gas: 601927)
+[PASS] test_different_payload_cannot_replace_registered_evidence() (gas: 719703)
+[PASS] test_exact_retry_is_immutable_even_after_report_expiry() (gas: 820131)
+[PASS] test_expired_or_future_report_is_refused() (gas: 853948)
+[PASS] test_new_bound_route_reaches_real_settlement_with_mock_don_and_sp1() (gas: 795530)
+[PASS] test_no_oracle_operation_path_still_requires_new_bound_proof() (gas: 354215)
+[PASS] test_plain_v2_proof_is_rejected_even_after_reports_registered() (gas: 720829)
+[PASS] test_registrar_and_verifier_caller_are_bound() (gas: 712677)
+[PASS] test_rust_solidity_policy_evidence_and_bound_vectors_match() (gas: 4044)
+[PASS] test_wrong_batch_phase_or_changed_chain_is_refused() (gas: 750968)
+[PASS] test_wrong_operation_time_is_refused() (gas: 588174)
+[PASS] test_zero_or_extra_evidence_cannot_hide_timed_ops() (gas: 186415)
+Suite result: ok. 15 passed; 0 failed; 0 skipped; finished in 8.96ms (3.35ms CPU time)
+Ran 5 tests for test/SP1ZkVerifier.t.sol:SP1ZkVerifierTest
+[PASS] test_immutables_pinned() (gas: 8474)
+[PASS] test_verify_false_on_bad_proof() (gas: 106799)
+[PASS] test_verify_false_on_wrong_commitment() (gas: 106521)
+[PASS] test_verify_false_on_wrong_vkey() (gas: 280898)
+[PASS] test_verify_true_on_matching_proof() (gas: 107112)
+Suite result: ok. 5 passed; 0 failed; 0 skipped; finished in 150.75µs (91.46µs CPU time)
+Ran 4 tests for test/Integration.t.sol:IntegrationTest
+[PASS] test_bond_floor_immune_to_donations() (gas: 221147)
+[PASS] test_deposit_settle_then_claim_from_vault() (gas: 488450)
+[PASS] test_settle_requires_a_bond_scaled_to_tvl() (gas: 458895)
+[PASS] test_withdrawals_only_from_settled_batches() (gas: 205878)
+Suite result: ok. 4 passed; 0 failed; 0 skipped; finished in 10.56ms (4.88ms CPU time)
+Ran 20 tests for test/ChainlinkSequencerUptime.t.sol:ChainlinkSequencerUptimeTest
+[PASS] test_uptime_constructor_requires_feed_code_and_nonzero_explicit_grace() (gas: 143180)
+[PASS] test_uptime_delayed_registration_cannot_launder_grace_period_execution() (gas: 619257)
+[PASS] test_uptime_down_prevents_registration_atomically() (gas: 634052)
+[PASS] test_uptime_empty_evidence_cannot_masquerade_as_price_free() (gas: 234654)
+[PASS] test_uptime_exact_retry_does_not_bypass_current_outage() (gas: 757723)
+[PASS] test_uptime_external_verifier_status_change_reverts_entire_registration() (gas: 6371054)
+[PASS] test_uptime_grace_exact_boundary_is_not_ready() (gas: 618553)
+[PASS] test_uptime_noncanonical_unknown_status_and_invalid_time_fail_closed() (gas: 886307)
+[PASS] test_uptime_old_unchanged_status_is_not_a_stale_price() (gas: 801853)
+[PASS] test_uptime_one_second_after_grace_accepts_original_operation() (gas: 813796)
+[PASS] test_uptime_pre_outage_proof_cannot_be_revived_in_new_epoch() (gas: 750550)
+[PASS] test_uptime_price_free_batch_does_not_depend_on_feed_liveness() (gas: 364491)
+[PASS] test_uptime_price_free_wind_down_and_final_exit_keep_actual_contract_routes() (gas: 718323)
+[PASS] test_uptime_registration_after_recovery_refuses_pre_recovery_operations() (gas: 614885)
+[PASS] test_uptime_retry_cannot_repin_record_to_another_healthy_epoch() (gas: 730653)
+[PASS] test_uptime_revert_empty_short_and_oversized_replies_are_rejected() (gas: 2242777)
+[PASS] test_uptime_round_change_even_with_equal_timestamp_cannot_reuse_record() (gas: 725375)
+[PASS] test_uptime_settlement_rechecks_after_report_registration() (gas: 751778)
+[PASS] test_uptime_start_change_even_with_equal_round_cannot_reuse_record() (gas: 725492)
+[PASS] test_uptime_unavailable_at_settlement_fails_closed_without_state_change() (gas: 714576)
+Suite result: ok. 20 passed; 0 failed; 0 skipped; finished in 11.71ms (6.09ms CPU time)
+Ran 23 tests for test/CollateralVault.t.sol:CollateralVaultTest
+[PASS] test_a_bad_signature_does_not_consume_the_authorization() (gas: 208321)
+[PASS] test_a_distinct_authorization_still_deposits() (gas: 265378)
+[PASS] test_a_failed_transfer_leaves_the_authorization_usable() (gas: 232478)
+[PASS] test_claim_against_settled_root() (gas: 326763)
+[PASS] test_claim_with_bad_proof_rejected() (gas: 250790)
+[PASS] test_constructor_rejects_zero_gateway_signer() (gas: 38969)
+[PASS] test_depositTipAt_records_every_prefix() (gas: 281304)
+[PASS] test_deposit_accrues_total() (gas: 203060)
+[PASS] test_deposit_advances_chain_matching_rust_KAT() (gas: 277922)
+[PASS] test_deposit_chain_is_order_sensitive() (gas: 969898)
+[PASS] test_deposit_id_is_pre_increment_count() (gas: 196169)
+[PASS] test_deposit_leaf_encoding() (gas: 1152)
+[PASS] test_deposit_requires_approval() (gas: 97232)
+[PASS] test_deposit_requires_gateway_signature() (gas: 106142)
+[PASS] test_deposit_with_valid_gateway_sig_advances_chain_to_KAT() (gas: 275525)
+[PASS] test_failed_deposit_does_not_advance_chain() (gas: 103178)
+[PASS] test_local_s4_signature_cannot_cross_vault_or_chain() (gas: 952950)
+[PASS] test_older_published_root_is_still_claimable() (gas: 370731)
+[PASS] test_only_settlement_publishes_root() (gas: 10983)
+[PASS] test_replayed_authorization_is_refused() (gas: 248007)
+[PASS] test_sig_is_bound_to_from_ownerCommit_amount() (gas: 313145)
+[PASS] test_two_leaf_merkle_claim() (gas: 326796)
+[PASS] test_zero_root_is_never_a_valid_claim_root() (gas: 23536)
+Suite result: ok. 23 passed; 0 failed; 0 skipped; finished in 36.55ms (9.79ms CPU time)
+Ran 4 tests for test/Fuzz.t.sol:FuzzTest
+[PASS] testFuzz_claim_only_exact_leaf(address,uint96,uint96) (runs: 256, μ: 157623, ~: 157623)
+[PASS] testFuzz_inclusion_leaf_distinct(uint256,bytes32,uint256,bytes32) (runs: 256, μ: 10038, ~: 10038)
+[PASS] testFuzz_inclusion_leaf_is_not_an_internal_node(uint256,bytes32) (runs: 256, μ: 6222, ~: 6222)
+[PASS] testFuzz_settle_binds_roots(bytes32,bytes32,bytes32,bytes32) (runs: 256, μ: 138758, ~: 138758)
+Suite result: ok. 4 passed; 0 failed; 0 skipped; finished in 28.03ms (79.58ms CPU time)
+Ran 50 tests for test/DarkPerpSettlement.t.sol:DarkPerpSettlementTest
+[PASS] testFuzz_same_block_refund_follows_transaction_order(uint8,bool,bool) (runs: 256, μ: 364710, ~: 355697)
+[PASS] test_a06_finalExit_rejects_before_phase_one() (gas: 62055)
+[PASS] test_a06_finalExit_reverts_non_governance() (gas: 230694)
+[PASS] test_a06_finalSettle_rejects_ordinary_phase_zero_proof() (gas: 75013)
+[PASS] test_a06_final_settle_is_one_shot_and_phase_two_exit_is_repeatable() (gas: 369984)
+[PASS] test_a06_settleBatch_rejects_phase_one_proof() (gas: 45313)
+[PASS] test_answer_by_rejection_requires_membership() (gas: 290650)
+[PASS] test_answer_forced_inclusion_refunds_challenger() (gas: 257297)
+[PASS] test_answer_presettled_forfeits_to_sequencer() (gas: 268812)
+[PASS] test_answer_refund_is_pull_not_push() (gas: 273353)
+[PASS] test_answer_rejected_when_batch_lacks_order() (gas: 290641)
+[PASS] test_answer_with_batch_settled_after_challenge_succeeds() (gas: 252203)
+[PASS] test_bad_receipt_signature_rejected() (gas: 32771)
+[PASS] test_cannot_withdraw_bond_after_slash() (gas: 283476)
+[PASS] test_cannot_withdraw_bond_below_required_floor() (gas: 299705)
+[PASS] test_challenge_allowed_after_ripe() (gas: 149539)
+[PASS] test_challenge_requires_bond() (gas: 17309)
+[PASS] test_challenge_reverts_before_ripe() (gas: 31973)
+[PASS] test_declared_rejection_membership_answers_challenge() (gas: 266376)
+[PASS] test_deposit_blocked_in_close_only() (gas: 275412)
+[PASS] test_finalSettle_publish_then_claim() (gas: 459002)
+[PASS] test_finalSettle_reverts_before_grace() (gas: 62042)
+[PASS] test_finalSettle_reverts_non_governance() (gas: 60454)
+[PASS] test_finalSettle_reverts_when_not_closeOnly() (gas: 28228)
+[PASS] test_finalSettle_works_when_slashed() (gas: 309593)
+[PASS] test_inclusion_answered_clears_challenge() (gas: 265510)
+[PASS] test_inclusion_unanswered_slashes_bond() (gas: 341558)
+[PASS] test_liveness_triggers_close_only() (gas: 46195)
+[PASS] test_local_s4_non_sequencer_cannot_configure_bond_or_settle() (gas: 24985)
+[PASS] test_non_canonical_signature_rejected() (gas: 25236)
+[PASS] test_public_commitment_7word_matches_rust() (gas: 6376)
+[PASS] test_rejection_answer_postdating_challenge_refunds() (gas: 255482)
+[PASS] test_rejection_answer_presettled_forfeits_to_sequencer() (gas: 269094)
+[PASS] test_reopened_challenge_uses_current_settlement_boundary() (gas: 391657)
+[PASS] test_same_block_forced_inclusion_refunds_challenger() (gas: 255056)
+[PASS] test_same_block_late_rejection_refunds_challenger() (gas: 254998)
+[PASS] test_same_block_presettled_rejection_forfeits_to_sequencer() (gas: 268859)
+[PASS] test_settleBatch_selector_matches_nine_param_signature() (gas: 458)
+[PASS] test_settle_accepts_a_proven_prefix_while_head_moved() (gas: 442132)
+[PASS] test_settle_advances_root() (gas: 126784)
+[PASS] test_settle_at_l1_deposit_head_succeeds() (gas: 440576)
+[PASS] test_settle_binds_withdrawals_root() (gas: 194888)
+[PASS] test_settle_blocked_in_close_only() (gas: 54933)
+[PASS] test_settle_rejects_bad_prev_root() (gas: 34365)
+[PASS] test_settle_rejects_bad_proof() (gas: 66468)
+[PASS] test_settle_reverts_on_deposit_root_mismatch() (gas: 285572)
+[PASS] test_settle_reverts_on_wrong_prefix_root() (gas: 371864)
+[PASS] test_slash_after_closeOnly_does_not_reset_grace() (gas: 315128)
+[PASS] test_withdraw_excess_bond() (gas: 135116)
+[PASS] test_zero_value_deposit_cannot_stall_settlement() (gas: 436253)
+Suite result: ok. 50 passed; 0 failed; 0 skipped; finished in 39.43ms (59.43ms CPU time)
+Ran 1 test for test/VaultInvariant.t.sol:VaultInvariantTest
+[PASS]
+[PASS] invariant_balance_bounded
+[PASS] invariant_vault_is_solvent
+Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 2.48s (2.48s CPU time)
+Ran 1 test for test/SettlementInvariant.t.sol:SettlementInvariantTest
+[PASS]
+[PASS] invariant_honest_sequencer_is_never_griefed
+[PASS] invariant_honest_sequencer_not_slashed
+Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 2.62s (2.61s CPU time)
+
+Contract suite summary (invariant handler call/revert counts are not test totals):
+{
+  "AttestationRegistryTest": {
+    "passed": 8,
+    "failed": 0,
+    "skipped": 0
+  },
+  "ChainlinkOracleVerifierTest": {
+    "passed": 15,
+    "failed": 0,
+    "skipped": 0
+  },
+  "ChainlinkSequencerUptimeTest": {
+    "passed": 20,
+    "failed": 0,
+    "skipped": 0
+  },
+  "ClockBoundVerifierTest": {
+    "passed": 23,
+    "failed": 0,
+    "skipped": 0
+  },
+  "CollateralVaultTest": {
+    "passed": 23,
+    "failed": 0,
+    "skipped": 0
+  },
+  "CrossLayerTest": {
+    "passed": 4,
+    "failed": 0,
+    "skipped": 0
+  },
+  "DarkPerpSettlementTest": {
+    "passed": 50,
+    "failed": 0,
+    "skipped": 0
+  },
+  "DeployGuardTest": {
+    "passed": 2,
+    "failed": 0,
+    "skipped": 0
+  },
+  "DeployVerifierEnvTest": {
+    "passed": 1,
+    "failed": 0,
+    "skipped": 0
+  },
+  "FuzzTest": {
+    "passed": 4,
+    "failed": 0,
+    "skipped": 0
+  },
+  "IntegrationTest": {
+    "passed": 4,
+    "failed": 0,
+    "skipped": 0
+  },
+  "SP1ZkVerifierTest": {
+    "passed": 5,
+    "failed": 0,
+    "skipped": 0
+  },
+  "SettlementInvariantTest": {
+    "passed": 1,
+    "failed": 0,
+    "skipped": 0
+  },
+  "VaultInvariantTest": {
+    "passed": 1,
+    "failed": 0,
+    "skipped": 0
+  }
+}
