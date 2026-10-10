@@ -40,6 +40,23 @@ impl ProverClient for ClockProverClient {
     }
 }
 
+/// Version gate for the exact-resume path, hoisted out of `resume_exact` so it
+/// is unit-testable without an L1 handle. The reviewed v2 resume re-submits the
+/// window through the v2 prover/L1 (`prove_and_prepare` → `settle_proved`); a
+/// candidate-bound journal (DPRBJL6 envelope) must NOT take that path until real
+/// v3 submission is wired — reject it and let the caller HOLD with the WAL kept.
+pub(crate) fn ensure_resume_supported(
+    envelope: Option<&crate::rollback_journal::ArchiveEnvelope>,
+) -> Result<(), String> {
+    if envelope.is_some() {
+        return Err(
+            "candidate-bound journal: exact v2 resume is unsupported until v3 submission is wired"
+                .into(),
+        );
+    }
+    Ok(())
+}
+
 /// Reconstruct only from the encrypted WAL, never from the current live op log.
 /// Re-proving is safe after session expiry: the receipt itself stays immutable.
 pub(crate) fn resume_exact(
@@ -50,6 +67,9 @@ pub(crate) fn resume_exact(
     path: &std::path::Path,
     seed: &[u8; 32],
 ) -> Result<(u64, String, u128), String> {
+    // BEFORE any L1 read, clock registration, prove, or journal rewrite: a
+    // candidate-bound journal can never be resumed through the v2 path.
+    ensure_resume_supported(envelope)?;
     if !client.clock_enabled() || !l1.clock_enabled() {
         return Err("clock resume requires version 2".into());
     }

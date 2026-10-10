@@ -7789,6 +7789,26 @@ fn begin_journaled_window_settle(
     Ok(Some((journal, envelope)))
 }
 
+/// The archive-required guard for PROVER/CHAIN side effects. Bind-once at seal
+/// time is not enough on its own: this re-verification runs immediately before
+/// any `prove_and_prepare` (which for clock clients performs the
+/// `register_clock` CHAIN MUTATION via `ClockProverClient::clock_context`) so a
+/// record deleted or corrupted between seal and prove, or an op stream that no
+/// longer matches its envelope, stops the settle BEFORE the prover client or
+/// the chain is touched. `None`/`None` = legacy mode, no-op.
+fn ensure_archive_binding_current(
+    archive: Option<&report_archive_binding::ArchiveBinding>,
+    journal: &rollback_journal::RollbackJournal,
+    envelope: Option<&rollback_journal::ArchiveEnvelope>,
+) -> Result<(), String> {
+    match (archive, envelope) {
+        (Some(a), Some(env)) => a
+            .verify(&journal.witness.ops, env)
+            .map_err(|e| format!("sealed window's archive binding no longer verifies: {e}")),
+        _ => Ok(()),
+    }
+}
+
 /// A configured journal is a durability barrier before proving/broadcasting.
 /// Do not invoke the continuation after any write or fsync failure. `None`
 /// preserves the explicitly unjournaled dev path; it is not durable evidence.
@@ -8367,16 +8387,37 @@ async fn main() {
                                             &j.witness.pre_state.state_root(),
                                         ))
                                     {
-                                        let (chain, client, mut saved, path) =
-                                            (l1c.clone(), client.clone(), j.clone(), jp.clone());
-                                        let envelope = envelope.clone();
-                                        match tokio::task::spawn_blocking(move || {
+                                        // A candidate-bound journal is NEVER
+                                        // resumed through the v2 path (which
+                                        // re-submits via prove_and_prepare →
+                                        // settle_proved). resume_exact re-checks
+                                        // this; the boot block refuses earlier so
+                                        // no L1 read/prover construction happens.
+                                        if let Err(error) =
+                                            clock_client::ensure_resume_supported(envelope.as_ref())
+                                        {
+                                            eprintln!(
+                                                "[chainlink-archive] HOLDING: window {} ({error}) \
+                                                 — keeping the WAL; startup is refused until v3 \
+                                                 submission is wired or the window resolves on-chain",
+                                                j.batch_id
+                                            );
+                                        } else {
+                                            let (chain, client, mut saved, path) = (
+                                                l1c.clone(),
+                                                client.clone(),
+                                                j.clone(),
+                                                jp.clone(),
+                                            );
+                                            let envelope = envelope.clone();
+                                            match tokio::task::spawn_blocking(move || {
                                     let observation = clock_client::resume_exact(&chain, client.as_ref(), &mut saved, envelope.as_ref(), &path, &enclave_seed)?;
                                     Ok::<_,String>((saved, observation))
                                 }).await {
                                     Ok(Ok((saved, observation))) => { j = saved; reads = Ok(observation); }
                                     _ => eprintln!("[clock] exact-journal recovery unresolved; preserve WAL and retry after canonical finality"),
                                 }
+                                        }
                                     }
                                 }
                                 match reads {
@@ -9227,6 +9268,25 @@ async fn main() {
                             hold_settlement_for_recovery(&app, format!("clock intent not durable: {error}")).await;
                             break;
                         }
+                    }
+                    // Archive-required guard BEFORE any prover/chain side effect:
+                    // prove_and_prepare performs the clock-registration chain
+                    // mutation (ClockProverClient::clock_context → register_clock)
+                    // for clock clients, so a missing/corrupt record or an
+                    // op/envelope mismatch discovered after sealing must stop the
+                    // attempt here — hold settlement with the journal kept; boot
+                    // recovery resolves the sealed window.
+                    let archive_guard = match app.archive.as_ref() {
+                        Some(m) => match m.lock() {
+                            Ok(g) => ensure_archive_binding_current(Some(&g), &journal, envelope.as_ref()),
+                            Err(_) => Err("archive binding lock is poisoned".to_string()),
+                        },
+                        None => Ok(()),
+                    };
+                    if let Err(error) = archive_guard {
+                        eprintln!("[l1] window {batch_id}: {error}; holding settlement before prove");
+                        hold_settlement_for_recovery(&app, format!("archive binding not current: {error}")).await;
+                        break;
                     }
                     // (C) prove + settle (lock-free). Distinguish a prove failure (no tx
                     // was ever broadcast -> unconditional rollback) from a settle failure

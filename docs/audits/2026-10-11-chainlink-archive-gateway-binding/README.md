@@ -114,3 +114,24 @@ snapshot_crash_tests, continuation_settlement_tests, funds_lifecycle_tests — a
 - Root Cargo.toml delta: exclude list gains the two chainlink crates (host-only
   workspace membership); no versions/pins/members changed. Cargo.lock delta is
   additive only (two package entries + two gateway deps).
+
+## Review round 2 (2026-10-11): guard placement before prover/chain side effects
+- `ensure_archive_binding_current` (main.rs) re-verifies the sealed window's
+  archive binding immediately before the settle loop's `prove_and_prepare`
+  (whose clock-client `clock_context` performs the `register_clock` CHAIN
+  MUTATION); failure holds settlement with the journal kept. Bind-at-seal alone
+  was insufficient: records can be corrupted/deleted between seal and prove.
+- `clock_client::ensure_resume_supported` rejects candidate-bound journals in
+  the v2 exact-resume path; `resume_exact` re-checks it as its first statement
+  (before any L1 read/registration/prove), and the boot block refuses before
+  even constructing the resume call. Legacy (envelope-less) resume unchanged.
+- No fallback: a candidate journal with missing archive references still opens
+  as Candidate (never Legacy), and `verify` fails → recovery HOLD. An unproved
+  (prepared=None) candidate journal resolves only via the existing stage-1 rows
+  (SealNeverPersisted/RollBack); the v2 resume is never attempted for it.
+- New tests (2): a counting prover shows ZERO invocations on missing/corrupt
+  record and on op/envelope mismatch (and exactly one on the intact control);
+  candidate-bound journals are rejected by the v2 resume gate and never demote
+  to legacy.
+- Re-run: cargo test -p gateway → 507 passed / 0 failed; clippy 0 warnings;
+  fmt clean.

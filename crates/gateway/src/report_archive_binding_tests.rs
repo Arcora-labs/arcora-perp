@@ -360,3 +360,216 @@ fn candidate_journal_round_trips_through_the_real_sealed_journal_path() {
     std::fs::remove_file(&path).ok();
     std::fs::remove_file(&legacy_path).ok();
 }
+
+/// Review gate: the archive-required guard must run BEFORE any prover client
+/// invocation (prove_and_prepare performs the clock-registration chain
+/// mutation for clock clients). A counting prover proves no call happened when
+/// a record goes missing or an op no longer matches its envelope.
+#[test]
+fn archive_guard_blocks_prover_invocation_on_missing_or_mismatched_records() {
+    use crate::prover_client::{
+        MockProverClient, ProverClient, ProverClientError, RemoteProveResp,
+    };
+    use std::sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    };
+
+    struct CountingProver(Arc<AtomicUsize>);
+    impl ProverClient for CountingProver {
+        fn prove(
+            &self,
+            w: &sequencer::WindowWitness,
+        ) -> Result<RemoteProveResp, ProverClientError> {
+            self.0.fetch_add(1, Ordering::SeqCst);
+            MockProverClient.prove(w)
+        }
+    }
+
+    /// The exact pre-prove sequence of the settle loop: guard first, prove only
+    /// if the sealed window's archive binding still verifies against disk.
+    fn guard_then_prove(
+        prover: &CountingProver,
+        binding: &ArchiveBinding,
+        journal: &crate::rollback_journal::RollbackJournal,
+        envelope: &crate::rollback_journal::ArchiveEnvelope,
+    ) -> Result<(), String> {
+        crate::ensure_archive_binding_current(Some(binding), journal, Some(envelope))?;
+        crate::prover_client::prove_and_prepare(prover, &journal.witness, &journal.ww)?;
+        Ok(())
+    }
+
+    let (t, mut b) = binding("guard");
+    // Negative fixtures carry an oracle-bearing op but are never replayed (the
+    // guard must reject them before any prove); the positive control proves a
+    // REAL sealed window, which replays cleanly.
+    let now = crate::now_ms();
+    let observed = now / 1000 - 1;
+    let normalized = b
+        .admit(
+            0,
+            base_report(observed, now),
+            quote_report(observed, now),
+            now,
+        )
+        .unwrap();
+    let mut gw = crate::Gw::boot();
+    let (key, _owner) = gw.register_account(None);
+    gw.account_deposit(&key, 0, 20_000 * perp_core::fixed::QUOTE_SCALE)
+        .unwrap();
+    let bc = gw.seq.state.next_batch_id;
+    let (witness, ww) = gw.begin_window_settle(bc).unwrap().expect("window sealed");
+
+    // Oracle-bearing journal: the real sealed witness plus one archived Fill.
+    // (Appended after sealing, so it cannot be proven — that is exactly why the
+    // negatives must be stopped by the guard, not by a replay error.)
+    let mut ops = witness.ops.clone();
+    ops.push(fill(0, now, transcript_of(normalized)));
+    let envelope = b.bind_ops(&ops).unwrap();
+    let op_journal = crate::rollback_journal::RollbackJournal {
+        batch_id: witness.batch_id,
+        witness: sequencer::WindowWitness {
+            ops,
+            ..witness.clone()
+        },
+        ww: ww.clone(),
+        prepared: None,
+    };
+    let record =
+        t.0.join("store")
+            .join(format!("{}.json", envelope.refs[0].archive_id.hex()));
+
+    // Intact archive: the guard passes and the prover IS invoked (control case)
+    // — a REAL sealed window with its (empty-ref) envelope, proven for real.
+    let control_env = b
+        .bind_ops(&witness.ops)
+        .expect("deposit-only window binds with an empty ref list");
+    let control_journal = crate::rollback_journal::RollbackJournal {
+        batch_id: witness.batch_id,
+        witness,
+        ww,
+        prepared: None,
+    };
+    let prover = CountingProver(Arc::new(AtomicUsize::new(0)));
+    guard_then_prove(&prover, &b, &control_journal, &control_env).expect("intact binding proves");
+    assert_eq!(
+        prover.0.load(Ordering::SeqCst),
+        1,
+        "the counting prover must run exactly once when the binding verifies"
+    );
+
+    // Missing record: guard fails, prover untouched.
+    std::fs::remove_file(&record).unwrap();
+    let prover = CountingProver(Arc::new(AtomicUsize::new(0)));
+    let err = guard_then_prove(&prover, &b, &op_journal, &envelope)
+        .expect_err("a missing record must stop the attempt");
+    assert!(err.contains("archive binding"), "unexpected error: {err}");
+    assert_eq!(
+        prover.0.load(Ordering::SeqCst),
+        0,
+        "no prover invocation is permitted with a missing archive record"
+    );
+
+    // Corrupt record (preserved, not repaired): same fail-closed posture.
+    std::fs::write(&record, b"corrupt").unwrap();
+    let prover = CountingProver(Arc::new(AtomicUsize::new(0)));
+    assert!(guard_then_prove(&prover, &b, &op_journal, &envelope).is_err());
+    assert_eq!(prover.0.load(Ordering::SeqCst), 0);
+    assert_eq!(std::fs::read(&record).unwrap(), b"corrupt");
+
+    // Op/envelope mismatch (a price-bearing op substituted after sealing):
+    // the envelope's referenced record cannot reproduce the journaled op.
+    let mut tampered_ops = op_journal.witness.ops.clone();
+    tampered_ops.push(fill(
+        0,
+        now,
+        transcript_of(Normalized {
+            price: normalized.price + 1,
+            ..normalized
+        }),
+    ));
+    let tampered = crate::rollback_journal::RollbackJournal {
+        witness: sequencer::WindowWitness {
+            ops: tampered_ops,
+            ..op_journal.witness.clone()
+        },
+        ..op_journal.clone()
+    };
+    let prover = CountingProver(Arc::new(AtomicUsize::new(0)));
+    let err = guard_then_prove(&prover, &b, &tampered, &envelope)
+        .expect_err("a mismatched op stream must stop the attempt");
+    assert!(err.contains("archive binding"), "unexpected error: {err}");
+    assert_eq!(
+        prover.0.load(Ordering::SeqCst),
+        0,
+        "no prover invocation is permitted with a mismatched op stream"
+    );
+}
+
+/// Review gate: the v2 exact-resume path must reject candidate-bound journals
+/// (resume_exact re-submits via prove_and_prepare → settle_proved; that stays
+/// v2-only until real v3 submission is wired), and an unverifiable candidate
+/// journal must never demote to "legacy" at recovery — it stays Candidate and
+/// the caller HOLDs.
+#[test]
+fn candidate_bound_journal_is_rejected_by_v2_resume_and_never_falls_back_to_legacy() {
+    use crate::rollback_journal;
+    let (t, mut b) = binding("resume");
+    let normalized = b
+        .admit(0, base_report(100, NOW), quote_report(100, NOW), NOW)
+        .unwrap();
+    let mut gw = crate::Gw::boot();
+    let (key, _owner) = gw.register_account(None);
+    gw.account_deposit(&key, 0, 20_000 * perp_core::fixed::QUOTE_SCALE)
+        .unwrap();
+    let bc = gw.seq.state.next_batch_id;
+    let (mut witness, ww) = gw.begin_window_settle(bc).unwrap().expect("window sealed");
+    witness.ops.push(fill(0, NOW, transcript_of(normalized)));
+    let envelope = b.bind_ops(&witness.ops).unwrap();
+    let journal = rollback_journal::RollbackJournal {
+        batch_id: witness.batch_id,
+        witness,
+        ww,
+        prepared: None, // the unproved stage-1 shape
+    };
+    let seed = [42u8; 32];
+    let path = t.0.join("candidate.rollback");
+    rollback_journal::write_versioned(&path, &journal, Some(&envelope), &seed).unwrap();
+    let sealed = std::fs::read(&path).unwrap();
+
+    // 1) The v2 resume gate refuses the candidate envelope — before any L1 or
+    //    prover involvement (this predicate is resume_exact's first check).
+    let err = clock_client_resume_gate(Some(&envelope)).expect_err("v2 resume must reject");
+    assert!(err.contains("v3"), "unexpected error: {err}");
+    assert!(
+        clock_client_resume_gate(None).is_ok(),
+        "legacy resume stays allowed"
+    );
+
+    // 2) Even with its record deleted (archive references missing) or its op
+    //    stream tampered, the sealed journal still opens as CANDIDATE — never
+    //    demoted to Legacy — and verification fails, so recovery HOLDs instead
+    //    of falling back to the unbound path.
+    std::fs::remove_dir_all(t.0.join("store")).unwrap();
+    let opened = rollback_journal::open_versioned(&sealed, &seed).expect("v6 opens");
+    let rollback_journal::OpenedJournal::Candidate {
+        journal: reopened,
+        envelope: reopened_env,
+    } = opened
+    else {
+        panic!("a candidate journal must never read back as Legacy");
+    };
+    assert_eq!(reopened.batch_id, journal.batch_id);
+    assert!(
+        b.verify(&reopened.witness.ops, &reopened_env).is_err(),
+        "with the archive gone the binding must refuse (HOLD), not fall back"
+    );
+}
+
+/// Indirection so the test names the gate the boot block and resume_exact both
+/// call, without needing an L1 handle.
+fn clock_client_resume_gate(
+    envelope: Option<&crate::rollback_journal::ArchiveEnvelope>,
+) -> Result<(), String> {
+    crate::clock_client::ensure_resume_supported(envelope)
+}
