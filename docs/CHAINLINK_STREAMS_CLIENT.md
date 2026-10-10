@@ -112,3 +112,12 @@ Bu paketin testleri canlı erişimi veya TLS endpoint kimliğini doğrulamaz.
 
 Güncel ham kayıtlar: `target/chainlink-client-fix-20261010T190741085776Z/`.
 Önceki compile-only ve başarısız regresyon kayıtları tarihsel olarak korunur.
+
+## Host katmanları: rapor çifti arşivi ve gateway bağlantısı
+
+10 Ekim 2026 devamında PreparedPair ve Unix ReportArchive eklendi; kullanım ve
+test sınırları CHAINLINK_REPORT_ARCHIVE.md içindedir. PR #43 (istemci) main'e
+birleştirildi; arşiv kodu ve yeni opt-in candidate gateway intake/seal/journal/
+recovery bağlantısı bu dalda (PRODUCTION RELEASE HOLD; canlı gateway geçişi ve
+canlı DON doğrulaması iddiası yok). Kullanıcı kararıyla gerçek feed keşfi/erişimi
+ertelenmiştir; önceki 403 nedeninin veya feed kimliklerinin çözüldüğü iddia edilmez.

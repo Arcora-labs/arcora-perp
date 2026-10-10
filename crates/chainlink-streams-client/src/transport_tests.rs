@@ -478,3 +478,85 @@ fn real_http_unknown_transfer_encoding_rejected_even_when_chunk_decode_would_wor
         assert!(once(wire(200, extra, &chunk)).is_err());
     }
 }
+
+#[cfg(unix)]
+#[test]
+fn real_http_pair_archive_witness_handoff_preserves_source_bytes() {
+    use crate::{report_archive::ReportArchive, report_pair::PreparedPair, FeedId};
+    use chainlink_oracle::policy::{MarketFeed, Policy};
+    let primary = Server::new(vec![healthy()]);
+    let mut raw = crate::tests::full_report();
+    let mut quote_id = crate::tests::feed().bytes();
+    quote_id[2] = 0x22;
+    raw[256..288].copy_from_slice(&quote_id);
+    for i in [6, 7, 8] {
+        let start = 256 + i * 32;
+        raw[start..start + 32].fill(0);
+        raw[start + 24..start + 32].copy_from_slice(&100_000_000u64.to_be_bytes());
+    }
+    let mut json = value();
+    json["report"]["feedID"] = serde_json::json!(format!("0x{}", crate::hex(&quote_id)));
+    json["report"]["fullReport"] = serde_json::json!(format!("0x{}", crate::hex(&raw)));
+    let secondary = Server::new(vec![Reply::new(framed(
+        200,
+        &serde_json::to_vec(&json).unwrap(),
+    ))]);
+    let base = fetch(&primary).unwrap();
+    let req = Request::new(
+        Network::Testnet,
+        FeedId::parse_v3(&format!("0x{}", crate::hex(&quote_id))).unwrap(),
+        10_000,
+    )
+    .unwrap();
+    let quote = client()
+        .fetch_at(&req, &secondary.origin, || Ok(NOW))
+        .unwrap();
+    let policy = Policy {
+        chain_id: 84532,
+        network: 0,
+        verifier_proxy: [3; 20],
+        oracle_wrapper: [4; 20],
+        markets: vec![MarketFeed {
+            market_id: 0,
+            base_symbol: "BTC".into(),
+            base_usd_feed: crate::tests::feed().bytes(),
+            base_decimals: 8,
+            usdc_usd_feed: quote_id,
+            usdc_decimals: 8,
+            max_report_age_ms: 10_000,
+            max_pair_skew_ms: 1_000,
+        }],
+    };
+    let prepared_at = base.received_ms().max(quote.received_ms());
+    let pair = PreparedPair::new(&policy, 0, base, quote, prepared_at).unwrap();
+    let path = std::env::temp_dir().join(format!(
+        "arcora-http-pair-{}-{}",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let archive = ReportArchive::create(&path).unwrap();
+    struct Cleanup(std::path::PathBuf);
+    impl Drop for Cleanup {
+        fn drop(&mut self) {
+            std::fs::remove_dir_all(&self.0).unwrap();
+        }
+    }
+    let _cleanup = Cleanup(path.clone());
+    let stored = archive.store(&pair).unwrap();
+    drop(archive);
+    let archive = ReportArchive::open_existing(&path).unwrap();
+    let loaded = archive.load(stored.id, &policy, 0).unwrap();
+    let (normalized, evidence) = loaded.for_operation(prepared_at + 1).unwrap();
+    assert_eq!(normalized.price, 6_000_000_000_000);
+    assert_eq!(normalized.publish_time_ms, NOW);
+    assert_eq!(loaded.base().full_report(), crate::tests::full_report());
+    assert_eq!(loaded.quote().full_report(), raw);
+    assert_eq!(evidence.base, pair.base().body().clone());
+    assert_eq!(evidence.quote, pair.quote().body().clone());
+    assert_eq!(primary.count(), 1);
+    assert_eq!(secondary.count(), 1);
+    assert!(loaded.for_operation(NOW + 10_001).is_err());
+}
