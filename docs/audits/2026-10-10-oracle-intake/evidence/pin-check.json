@@ -1,0 +1,9 @@
+{
+  "base_commit": "0bcb0dd901da72422b933537693d636db205c176",
+  "guest_sources_unchanged": 21,
+  "guest_elf_sha256": "df59a19b310258b4d01d0d5e3cfa31bb7de9ca2f4ea7c2302cf76650c79967c5",
+  "sp1_release_guard_passed": true,
+  "dependency_packages_unchanged": true,
+  "dependency_change": "Existing serde added directly to oracle-feed HTTP feature; no package/version/source/checksum changed.",
+  "production_release_gate": "HOLD"
+}

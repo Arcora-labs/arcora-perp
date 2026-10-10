@@ -1,0 +1,34 @@
+{
+  "gateway-before-fix": {
+    "base_commit": "0bcb0dd901da72422b933537693d636db205c176",
+    "regression_failures": [
+      "oracle_intake_tests::oracle_intake_preserves_signed_exchange_timestamp",
+      "oracle_intake_tests::oracle_intake_rejects_unknown_market",
+      "oracle_intake_tests::oracle_intake_refuses_bad_confidence_before_mutating_mark",
+      "oracle_intake_tests::oracle_intake_refuses_future",
+      "oracle_intake_tests::oracle_intake_refuses_old_advance",
+      "oracle_intake_tests::oracle_intake_refuses_wrong_publisher_before_resigning",
+      "oracle_intake_tests::production_tick_does_not_simulate_before_live_feed"
+    ],
+    "passed": 0,
+    "failed": 7,
+    "exit_code": 101,
+    "raw_log_sha256": "a978553a25a501aa2c29b23c96800da0e209c7a4729fd90f681d07cfacb9e845",
+    "scope": "New regression assertions executed before replacing their production implementation; all keys/state synthetic test data."
+  },
+  "feed-before-fix": {
+    "base_commit": "0bcb0dd901da72422b933537693d636db205c176",
+    "regression_failures": [
+      "duplicate_sign_and_exponent_cannot_become_positive_price",
+      "individually_representable_book_prices_do_not_overflow_midpoint",
+      "malformed_or_nonpositive_book_is_not_a_valid_backup",
+      "crossed_book_is_refused_instead_of_absolutizing_spread",
+      "missing_book_cannot_be_replaced_by_last_trade"
+    ],
+    "passed": 0,
+    "failed": 5,
+    "exit_code": 101,
+    "raw_log_sha256": "e2d7c5efb7eec73308efa3a244ffa5b481e2680f7b774b61f9597683e1175de4",
+    "scope": "New regression assertions executed before replacing their production implementation; all keys/state synthetic test data."
+  }
+}

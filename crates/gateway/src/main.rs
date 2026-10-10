@@ -62,6 +62,8 @@ mod funds_lifecycle_tests;
 mod l1;
 mod listen_config;
 mod ops_alerts;
+#[cfg(test)]
+mod oracle_intake_tests;
 mod order_log;
 mod prover_client;
 mod recovery_checkpoint;
@@ -1079,10 +1081,9 @@ struct Mkt {
     live: bool,
     /// Crypto.com instrument for a live feed (`None` ⇒ sim walk only).
     feed: Option<&'static str>,
-    /// Local ms when the feed's own (exchange) timestamp last ADVANCED — the freshness
-    /// clock the live oracle is stamped with. A frozen-but-200 feed (its timestamp
-    /// stops) and a dead/hung feed both stop advancing this and go stale, while the
-    /// exchange clock's absolute skew/lag never causes a false stall. Not serialized.
+    /// Local receipt time of the last accepted source observation, for telemetry
+    /// only. The signed exchange timestamp remains the freshness authority.
+    /// Duplicate, old, invalid and future observations never refresh this field.
     px_ms: u64,
     /// Last exchange ticker timestamp seen, to detect the advance above.
     feed_ts: u64,
@@ -4008,43 +4009,68 @@ impl Gw {
         })
     }
 
-    fn apply_real_oracle(&mut self, market: u64, transcript: OracleTranscript) {
-        let now = now_ms();
-        if let Some(m) = self.mkts.iter_mut().find(|m| m.id == market) {
-            // Advance the freshness clock ONLY when the exchange's own timestamp advances
-            // (recorded in local time): a frozen-but-200 feed and a dead/hung feed both
-            // stop advancing px_ms and go stale, while the exchange clock's absolute
-            // skew/lag never false-stalls a healthy feed (audit review of #7).
-            let exch_ts = transcript.publish_time_ms;
-            if m.live && exch_ts <= m.feed_ts {
-                return; // duplicate/out-of-order source data cannot refresh or alter the price
-            }
-            m.feed_ts = exch_ts;
-            m.px_ms = now;
-            m.px = transcript.price;
-            m.live = true;
-            // Keep the real confidence/backup_twap band, but stamp freshness from px_ms
-            // so tick() need not re-stamp (which would mask a frozen feed forever).
-            let mut t = transcript;
-            t.publish_time_ms = m.px_ms;
-            // ZK-001 (Hazard #1): we just MUTATED a signed field (`publish_time_ms`) —
-            // remapping it onto the local freshness clock (audit review of #7: immune to
-            // exchange-clock skew, and a frozen feed still goes stale). That invalidates
-            // the feed's original signature, so re-sign over the FINAL field values with
-            // the operator's oracle key (the market's `oracle_pubkey` is this signer's
-            // address) — otherwise the §8 in-circuit gate rejects EVERY live price. The
-            // digest is produced by CALLING `oracle_digest`, never hand-rolled.
-            let digest = oracle_digest(
-                market,
-                t.price,
-                t.publish_time_ms,
-                t.confidence,
-                t.backup_twap,
+    /// Validate source signature, source age and market bounds before touching
+    /// either the displayed mark or the sequencer. Receipt time is telemetry,
+    /// never permission to re-stamp an old exchange observation as fresh.
+    fn apply_real_oracle(&mut self, market: u64, transcript: OracleTranscript) -> bool {
+        self.apply_real_oracle_at(market, transcript, now_ms())
+    }
+
+    fn apply_real_oracle_at(
+        &mut self,
+        market: u64,
+        transcript: OracleTranscript,
+        received_ms: u64,
+    ) -> bool {
+        let Some(policy) = self.seq.state.markets.get(&market) else {
+            return false;
+        };
+        if transcript.publish_time_ms == 0
+            || transcript.confidence < 0
+            || transcript.validate(policy, received_ms).is_err()
+        {
+            return false;
+        }
+        let Some(m) = self.mkts.iter_mut().find(|m| m.id == market) else {
+            return false;
+        };
+        if m.live && transcript.publish_time_ms <= m.feed_ts {
+            return false;
+        }
+        m.feed_ts = transcript.publish_time_ms;
+        m.px_ms = received_ms;
+        m.px = transcript.price;
+        m.live = true;
+        self.seq.set_oracle(market, transcript);
+        true
+    }
+
+    /// Called when main activates production posture, including restored state.
+    /// Demo seeds and persisted marks cannot authorize trading before a newly
+    /// validated feed observation. This changes runtime admission, not snapshots
+    /// or the reviewed guest's public-input/consensus format.
+    fn require_fresh_production_oracles(&mut self) {
+        if !self.prod {
+            return;
+        }
+        for m in &mut self.mkts {
+            m.live = false;
+            m.px_ms = 0;
+            m.feed_ts = 0;
+            self.seq.set_oracle(
+                m.id,
+                OracleTranscript {
+                    price: 0,
+                    publish_time_ms: 0,
+                    confidence: 0,
+                    backup_twap: 0,
+                    signature: OracleSig {
+                        r: [0; 32],
+                        s: [0; 32],
+                        v: 0,
+                    },
+                },
             );
-            t.signature = OracleSig::sign(&self.oracle_signer, &digest);
-            self.seq.set_oracle(market, t);
-        } else {
-            self.seq.set_oracle(market, transcript);
         }
     }
 
@@ -4401,8 +4427,8 @@ impl Gw {
         //    stops advancing the publish time and the §8 staleness gate trips (audit).
         //    Feed-less markets keep the simulated random walk.
         for i in 0..self.mkts.len() {
-            if self.mkts[i].live {
-                continue;
+            if self.prod || self.mkts[i].live {
+                continue; // No simulated fallback on an unavailable production feed.
             }
             let m = &self.mkts[i];
             let p = m.px;
@@ -7942,10 +7968,10 @@ async fn main() {
     // refused BEFORE boot pins every Market.oracle_pubkey to the public dev address. Without
     // this, a prod gateway booted without ORACLE_SIGNER_KEY would trust a well-known scalar,
     // letting anyone sign fabricated oracle transcripts that clear the §8 gate (re-opening
-    // the price-fabrication hole ZK-001 closes). The signer VALUE is not needed here — boot
-    // re-derives it via boot_oracle_signer, which logs the address for on-chain pinning.
+    // the price-fabrication hole ZK-001 closes). Explicitly setting the known public
+    // key is also refused; presence in an environment variable is not secrecy.
     let oracle_signer_is_default = match oracle_feed::signer_from_env_checked() {
-        Ok((_signer, is_default)) => is_default,
+        Ok((signer, is_default)) => is_default || oracle_feed::is_known_dev_signer(&signer),
         Err(e) => {
             eprintln!(
                 "[oracle] REFUSING to start: {e}. Set ORACLE_SIGNER_KEY to a valid 32-byte hex \
@@ -8067,6 +8093,7 @@ async fn main() {
         (None, Some(_)) => unreachable!("startup snapshot requires a configured path"),
     };
     gw.prod = prod;
+    gw.require_fresh_production_oracles();
     // SEC-021: bind withdrawal authorization to this deployment — the same env source
     // the deposit-authorization signer uses, so both digest families agree on chain id
     // + vault by construction. Set HERE, beside `prod` (review Finding 8): the signer
@@ -8636,7 +8663,9 @@ async fn main() {
                     .await
                     {
                         Ok(Ok(t)) => {
-                            app.gw.lock().await.apply_real_oracle(id, t);
+                            if !app.gw.lock().await.apply_real_oracle(id, t) {
+                                eprintln!("[oracle] {inst} observation rejected: source time, signature or market bounds; previous observation is not refreshed");
+                            }
                         }
                         Ok(Err(e)) => eprintln!("[oracle] {inst} fetch failed: {e}"),
                         Err(e) => eprintln!("[oracle] {inst} join: {e}"),
@@ -10653,12 +10682,9 @@ mod tests {
         );
     }
 
-    // ZK-001 (Hazard #1): a transcript pushed through the LIVE oracle path
-    // (`apply_real_oracle`, which remaps `publish_time_ms` onto the local freshness
-    // clock) must STILL recover to the market's `oracle_pubkey` — i.e. the gateway
-    // re-signs after mutating the signed field, so the stored price clears the
-    // in-circuit §8 signature gate. If this regresses, EVERY live price on the
-    // market is silently rejected (`WrongOraclePublisher`/`BadOracleSig`).
+    // Live ingress must preserve the source's exact signed transcript. The same
+    // source timestamp, signature and bounds are then checked inside the guest;
+    // successful receipt cannot turn stale input into a fresh publisher statement.
     #[test]
     fn gateway_oracle_path_produces_a_validatable_signed_transcript() {
         let mut gw = Gw::boot();
@@ -10671,10 +10697,10 @@ mod tests {
             "59585.6", "59586.7", "59586.8", now, market_id, &signer,
         )
         .expect("ticker → signed transcript");
-        // Drive the live path — it remaps publish_time_ms and MUST re-sign.
+        // Drive the live path: validate without re-stamping or re-signing.
         gw.apply_real_oracle(market_id, fetched);
-        // The STORED transcript must validate under the market whose `oracle_pubkey`
-        // the gateway pinned at boot, at its own (remapped) publish time.
+        // The stored transcript is byte-identical and validates against the pin.
+        assert_eq!(gw.seq.oracle(market_id).copied(), Some(fetched));
         let stored = *gw.seq.oracle(market_id).expect("oracle stored for market");
         let market = *gw
             .seq
@@ -10690,7 +10716,7 @@ mod tests {
         assert_eq!(
             stored.validate(&market, stored.publish_time_ms),
             Ok(stored.price),
-            "a live-path transcript must recover to the market's oracle_pubkey (re-signed after remap)"
+            "a live-path transcript must preserve the source signature under the market pin"
         );
     }
 

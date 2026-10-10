@@ -5,10 +5,10 @@ edition.workspace = true
 license.workspace = true
 
 [features]
-# `http` pulls a blocking client (native-tls → trusts the system/proxy CA) so the
+# `http` pulls a blocking TLS client so the
 # adapter can fetch live; default-off keeps the core build and CI dependency-light.
 default = []
-http = ["dep:ureq", "dep:serde_json"]
+http = ["dep:ureq", "dep:serde", "dep:serde_json"]
 
 [dependencies]
 perp-core = { path = "../perp-core" }
@@ -19,6 +19,7 @@ perp-core = { path = "../perp-core" }
 k256 = { version = "0.13", features = ["ecdsa"] }
 ureq = { version = "2", default-features = false, features = ["tls", "json"], optional = true }
 serde_json = { version = "1", optional = true }
+serde = { version = "1", features = ["derive"], optional = true }
 
 # Live probe: prints an OracleTranscript per market from the real Crypto.com feed.
 # Requires the `http` feature: cargo run -p oracle-feed --features http --bin probe

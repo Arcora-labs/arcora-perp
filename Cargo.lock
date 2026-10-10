@@ -1296,6 +1296,7 @@ version = "0.0.1"
 dependencies = [
  "k256",
  "perp-core",
+ "serde",
  "serde_json",
  "ureq",
 ]

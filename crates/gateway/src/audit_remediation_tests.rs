@@ -366,12 +366,16 @@ mod audit_remediation {
     fn public_oracle_time_is_observation_time_not_request_time() {
         let mut gw = Gw::boot();
         let t = oracle_of(usd(60_000.0), 12345, 0, &gw.oracle_signer);
-        gw.apply_real_oracle(0, t);
+        // Synthetic clock keeps this test about publication vs receipt time,
+        // not permission to accept a decades-old source observation today.
+        assert!(gw.apply_real_oracle_at(0, t, 20_000));
+        assert_eq!(gw.seq.oracle(0), Some(&t));
+        assert_eq!(gw.v1_oracle_json(0).unwrap()["receivedTimeMs"], 20_000);
         assert_eq!(gw.v1_oracle_json(0).unwrap()["publishTimeMs"], 12345);
         assert_eq!(gw.snapshot().oracle.publish_time_ms, 12345);
         let first = *gw.seq.oracle(0).unwrap();
-        gw.apply_real_oracle(0, oracle_of(usd(62_000.0), 12344, 0, &gw.oracle_signer));
-        gw.apply_real_oracle(0, oracle_of(usd(63_000.0), 12345, 0, &gw.oracle_signer));
+        assert!(!gw.apply_real_oracle_at(0, oracle_of(usd(62_000.0), 12344, 0, &gw.oracle_signer), 20_001));
+        assert!(!gw.apply_real_oracle_at(0, oracle_of(usd(63_000.0), 12345, 0, &gw.oracle_signer), 20_001));
         assert_eq!(
             gw.seq.oracle(0).unwrap().publish_time_ms,
             first.publish_time_ms
