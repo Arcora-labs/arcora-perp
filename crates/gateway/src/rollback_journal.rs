@@ -168,11 +168,40 @@ pub fn write_versioned(
 /// Decode a sealed journal of EITHER authenticated version, dispatching on the
 /// inner magic. Same fail-closed posture as `open`: wrong seed/tamper/trailing
 /// bytes/magic mismatch are `Err`, never a guess.
+///
+/// postcard note: `postcard::from_bytes` SILENTLY DISCARDS a remaining suffix
+/// (postcard 1.x docs) — a body that decodes cleanly but carries trailing bytes
+/// must be refused, not truncated-accepted. Both versions therefore decode with
+/// `take_from_bytes` and require an EMPTY remainder; the candidate v6 body must
+/// ALSO re-encode to exactly the input bytes (postcard's encoding is canonical,
+/// so a decodable-but-differently-encoded body is treated as corrupt). v5 gets
+/// the trailing-byte check only: its writers are `to_allocvec`-canonical by
+/// construction, and a re-encode equality check on the legacy path could refuse
+/// a historical journal this binary never wrote — v5 compatibility is
+/// deliberate, limited to what `write` has always produced.
 pub fn open_versioned(sealed: &[u8], seed: &[u8; 32]) -> Result<OpenedJournal, String> {
     let plain = snapshot::open(sealed, seed).map_err(|e| format!("journal open: {e}"))?;
     if let Some(body) = plain.strip_prefix(CANDIDATE_MAGIC.as_slice()) {
-        let CandidateJournalV6 { journal, envelope } =
-            postcard::from_bytes(body).map_err(|e| format!("journal decode: {e}"))?;
+        let (CandidateJournalV6 { journal, envelope }, rest) =
+            postcard::take_from_bytes(body).map_err(|e| format!("journal decode: {e}"))?;
+        if !rest.is_empty() {
+            return Err(format!(
+                "candidate journal decode: {} trailing bytes after the envelope",
+                rest.len()
+            ));
+        }
+        // Canonical re-encoding: postcard's derive encoding is deterministic, so
+        // a body produced by `write_versioned` round-trips byte-exactly. A body
+        // that decodes but re-encodes differently is corrupt in a way the length-
+        // blind decode happened to tolerate — refuse it.
+        let reencoded = postcard::to_allocvec(&CandidateJournalV6 {
+            journal: journal.clone(),
+            envelope: envelope.clone(),
+        })
+        .map_err(|e| format!("journal re-encode: {e}"))?;
+        if reencoded != body {
+            return Err("candidate journal decode: non-canonical body encoding".into());
+        }
         if journal.batch_id != journal.witness.batch_id {
             return Err(format!(
                 "journal batch_id mismatch: batch_id {} != witness.batch_id {}",
@@ -213,8 +242,20 @@ pub fn open(sealed: &[u8], seed: &[u8; 32]) -> Result<RollbackJournal, String> {
     let body = plain
         .strip_prefix(MAGIC.as_slice())
         .ok_or("journal magic/version mismatch")?;
-    let j: RollbackJournal =
-        postcard::from_bytes(body).map_err(|e| format!("journal decode: {e}"))?;
+    // `from_bytes` would silently discard a remaining suffix (postcard 1.x):
+    // a journal that decodes cleanly but carries trailing bytes is refused, so
+    // a v6 payload (or anything else) concatenated after a valid v5 body can
+    // never read as an accepted legacy journal. Valid v5 payloads — everything
+    // `write` has ever produced, `to_allocvec`-canonical with no suffix — are
+    // unaffected; this is the deliberate extent of the v5 tightening.
+    let (j, rest): (RollbackJournal, &[u8]) =
+        postcard::take_from_bytes(body).map_err(|e| format!("journal decode: {e}"))?;
+    if !rest.is_empty() {
+        return Err(format!(
+            "journal decode: {} trailing bytes after the v5 payload",
+            rest.len()
+        ));
+    }
     // Defense-in-depth: the window id lives in the journal twice — `batch_id`
     // (what the boot recovery table keys on) and `witness.batch_id` (what
     // `rollback_window` asserts on). They are written equal; a decoded journal
@@ -454,6 +495,122 @@ mod tests {
         // Err — NOT Ok(None): the file exists, so a wrong seed must read as
         // "unreadable journal → HOLD", never as "no journal → clean boot".
         assert!(read(&path, &[43u8; 32]).is_err());
+        std::fs::remove_file(&path).ok();
+    }
+
+    /// Decoder review: `postcard::from_bytes` DISCARDS a remaining suffix, so a
+    /// journal whose AUTHENTICATED plaintext (MAC-verified by `snapshot::open`)
+    /// decodes cleanly but carries trailing bytes must be refused — for BOTH
+    /// versions. Such bytes can only be produced with the enclave seed, but the
+    /// decoder must not be the place that trusts the writer's framing.
+    #[test]
+    fn authenticated_plaintext_with_trailing_bytes_is_refused_both_versions() {
+        let (witness, ww) = sealed_window();
+        let seed = [42u8; 32];
+        let j = RollbackJournal {
+            batch_id: witness.batch_id,
+            witness,
+            ww,
+            prepared: None,
+        };
+
+        // v5: valid payload + 2 trailing bytes inside the sealed plaintext.
+        let mut v5_plain = MAGIC.to_vec();
+        v5_plain.extend_from_slice(&postcard::to_allocvec(&j).expect("v5 encode"));
+        v5_plain.extend_from_slice([0xde, 0xad].as_slice());
+        let sealed = snapshot::seal(&v5_plain, &seed);
+        let err = match open(&sealed, &seed) {
+            Err(e) => e,
+            Ok(_) => panic!("v5 with trailing bytes must fail closed"),
+        };
+        assert!(err.contains("trailing"), "unexpected error: {err}");
+        let err = match open_versioned(&sealed, &seed) {
+            Err(e) => e,
+            Ok(_) => panic!("v5 with trailing bytes must fail closed (versioned path)"),
+        };
+        assert!(err.contains("trailing"), "unexpected error: {err}");
+
+        // v6: valid candidate payload + trailing bytes, same refusal.
+        let payload = CandidateJournalV6 {
+            journal: j.clone(),
+            envelope: ArchiveEnvelope {
+                policy_binding: [7; 32],
+                refs: Vec::new(),
+            },
+        };
+        let mut v6_plain = CANDIDATE_MAGIC.to_vec();
+        v6_plain.extend_from_slice(&postcard::to_allocvec(&payload).expect("v6 encode"));
+        v6_plain.extend_from_slice([0xbe, 0xef].as_slice());
+        let sealed = snapshot::seal(&v6_plain, &seed);
+        let err = match open_versioned(&sealed, &seed) {
+            Err(e) => e,
+            Ok(_) => panic!("v6 with trailing bytes must fail closed"),
+        };
+        assert!(err.contains("trailing"), "unexpected error: {err}");
+    }
+
+    /// Version confusion: a candidate (v6) payload sealed under the LEGACY v5
+    /// magic must never present as an acceptable legacy journal. `take_from_bytes`
+    /// either fails to decode or leaves a non-empty remainder — both are Err.
+    #[test]
+    fn v6_payload_under_v5_magic_is_version_confusion_refused() {
+        let (witness, ww) = sealed_window();
+        let seed = [42u8; 32];
+        let j = RollbackJournal {
+            batch_id: witness.batch_id,
+            witness,
+            ww,
+            prepared: None,
+        };
+        let payload = CandidateJournalV6 {
+            journal: j,
+            envelope: ArchiveEnvelope {
+                policy_binding: [7; 32],
+                refs: Vec::new(),
+            },
+        };
+        let mut plain = MAGIC.to_vec();
+        plain.extend_from_slice(&postcard::to_allocvec(&payload).expect("v6 encode"));
+        let sealed = snapshot::seal(&plain, &seed);
+        assert!(
+            open(&sealed, &seed).is_err(),
+            "a v6 payload under the v5 magic must never decode as a legacy journal"
+        );
+        match open_versioned(&sealed, &seed) {
+            Err(_) => {}
+            Ok(OpenedJournal::Legacy(_)) => {
+                panic!("version confusion must not yield an accepted legacy journal")
+            }
+            Ok(OpenedJournal::Candidate { .. }) => {
+                panic!("the v5 magic must never dispatch to the candidate decoder")
+            }
+        }
+    }
+
+    /// Deliberate v5 compatibility: a journal written by the legacy `write` path
+    /// (everything pre-candidate binaries produce) still opens through BOTH
+    /// decoders — the trailing-byte tightening touches only non-canonical input.
+    #[test]
+    fn v5_write_output_still_opens_through_both_decoders() {
+        let (witness, ww) = sealed_window();
+        let j = RollbackJournal {
+            batch_id: witness.batch_id,
+            witness,
+            ww,
+            prepared: None,
+        };
+        let path = scratch_path("v5-compat");
+        let seed = [42u8; 32];
+        write(&path, &j, &seed).expect("legacy write");
+        let sealed = std::fs::read(&path).unwrap();
+        let legacy = open(&sealed, &seed).expect("v5 open");
+        assert_eq!(legacy.batch_id, j.batch_id);
+        match open_versioned(&sealed, &seed).expect("v5 versioned open") {
+            OpenedJournal::Legacy(v) => assert_eq!(v.batch_id, j.batch_id),
+            OpenedJournal::Candidate { .. } => {
+                panic!("a v5-magic journal must never open as Candidate")
+            }
+        }
         std::fs::remove_file(&path).ok();
     }
 

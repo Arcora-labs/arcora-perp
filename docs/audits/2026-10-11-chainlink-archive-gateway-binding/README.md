@@ -135,3 +135,73 @@ snapshot_crash_tests, continuation_settlement_tests, funds_lifecycle_tests — a
   to legacy.
 - Re-run: cargo test -p gateway → 507 passed / 0 failed; clippy 0 warnings;
   fmt clean.
+
+## Archive-copy inventory: primary checkout → task worktree (sha256, verified identical)
+Source: /Users/huseyinarslan/Desktop/arcora-perp/repo (branch feat/chainlink-streams-client-20261010, HEAD 2a03bb0, uncommitted task work)
+
+MATCH  4a63eec6941704583a83b395a5c8f34c5e685c33950c7e7bf96eb9999479de54  crates/chainlink-streams-client/src/lib.rs
+MATCH  17259c937c1d90e3b0950fadf78d71caaab2e6d1bf0b457cae93b83a486c4079  crates/chainlink-streams-client/src/transport_tests.rs
+DIFFERS  7f9154fe5cafe182ed5bdc80976b44f19667bc4747ac801f3cec583de362ad7a  crates/chainlink-streams-client/src/report_pair.rs
+DIFFERS  7ce55278f094ff7ad67e1dc9fbbe8f4744b1e29ef1f6304f6a5e70594bd2805e  crates/chainlink-streams-client/src/report_archive.rs
+MATCH  e26ad11aac0d1510354003e3cc6ec494b06b6938c1d4778bfa46135fe80c04ab  crates/chainlink-streams-client/src/report_archive_tests.rs
+DIFFERS  57d2fd9fe21055c7e2c269d272a4f12436b4f75c8f479a74913c5307849924c1  docs/ACTIVE_WORK.md
+DIFFERS  923ce0fbca1aab31f61fd0d23c542c0f6575b0089032085e13ce61d5d766d9f2  docs/CHAINLINK_STREAMS_CLIENT.md
+DIFFERS  b150b8a38bef610f5fe25bfef30aee87b5d07ca0435b350fdb45bac68f8672f8  docs/CHAINLINK_REPORT_ARCHIVE.md
+MATCH  2c1ce26530e60512a630e039b7b3ed4f644de43ede8dad86f905bf3c94e25c07  docs/audits/2026-10-10-chainlink-report-archive/README.md
+MATCH  8fe1cceb492aa4a00019f1138dcc7086d618b771c15415d7c89709480672bd9c  docs/audits/2026-10-10-chainlink-report-archive/client-debug.txt
+MATCH  200dcb6a224946470eee5349dc4f04077fa4e02bd6104e9a8a9d10a1b031ed98  docs/audits/2026-10-10-chainlink-report-archive/client-release.txt
+MATCH  48e36c7a0e9d641c64badc95fa235bb3a5e024163ecc361372ea57307946490b  docs/audits/2026-10-10-chainlink-report-archive/publication-state.json
+MATCH  95b9e0448233ba84bc24c05bc581b4c9ea56b23a1ca838f1950c846457c390b7  docs/audits/2026-10-10-chainlink-report-archive/verification.json
+
+DIFFERS entries are the task's own subsequent edits, not copy drift:
+- report_pair.rs / report_archive.rs: additive API only (pub policy_binding,
+  serde on ArchiveId) made in this branch for the gateway envelope.
+- docs/ACTIVE_WORK.md, CHAINLINK_STREAMS_CLIENT.md, CHAINLINK_REPORT_ARCHIVE.md:
+  updated on this branch to record PR #43 merged, the gateway binding, and the
+  deferred live work. The primary checkout's copies are untouched.
+
+Nothing was written back to the primary checkout; its working tree retains
+the same uncommitted set (git status below, captured 2026-10-11 after the copy):
+ M crates/chainlink-streams-client/src/lib.rs
+ M crates/chainlink-streams-client/src/transport_tests.rs
+ M docs/ACTIVE_WORK.md
+ M docs/CHAINLINK_STREAMS_CLIENT.md
+?? crates/chainlink-streams-client/src/report_archive.rs
+?? crates/chainlink-streams-client/src/report_archive_tests.rs
+?? crates/chainlink-streams-client/src/report_pair.rs
+?? docs/CHAINLINK_REPORT_ARCHIVE.md
+?? docs/audits/2026-10-10-chainlink-report-archive/
+HEAD: 2a03bb03a7db9736e72573fa22d8fe8f4fe37f94
+
+## Source and prover barriers
+Source barriers (verified by this branch's changes and the repo guards):
+- Reviewed v2 guest/perp-core sources, ELF/vkey pins, public input and risk
+  thresholds: unchanged; `scripts/local-verification` guards (repository
+  policy, operator policy, SP1 release, chainlink replay, release manifest)
+  all pass on this branch.
+- `chainlink-oracle` and `chainlink-streams-client` remain host-only: neither
+  is a dependency of any guest root; the root workspace `exclude` list change
+  is membership-only. Root pin tests were updated for one legitimate new
+  PATTERN use (the binding's `used_oracle` classifier), per that test's own
+  contract; expected hashes were not altered.
+- Gateway-side transcript format is unchanged (ZK-001 gateway-signed
+  OracleTranscript); chainlink data is archived corroboration, never marked
+  DON-verified, no source timestamp refreshing, no latest-file fallback.
+
+Prover/chain barriers:
+- Durability order is enforced at three points: archive durable before
+  state-changing admission (ArchiveBinding::admit), bind+seal before the
+  stage-1 journal (begin_journaled_window_settle), and
+  `ensure_archive_binding_current` re-verification immediately before
+  `prove_and_prepare` — the call that performs the `register_clock` CHAIN
+  MUTATION via ClockProverClient::clock_context. A counting-prover test shows
+  zero prover invocations on missing/corrupt records and op/envelope mismatch.
+- The v2 exact-resume path rejects candidate-bound journals
+  (`clock_client::ensure_resume_supported`, checked at boot and first in
+  `resume_exact`) until real v3 submission is wired; no v3 witness is
+  constructed or submitted anywhere.
+- Decoder barriers: both journal versions decode with
+  `postcard::take_from_bytes` + empty-remainder (postcard `from_bytes`
+  discards suffixes); v6 additionally requires canonical re-encoding; a v6
+  payload under the v5 magic is refused as version confusion; valid v5 output
+  still opens through both decoders (deliberate compatibility).
