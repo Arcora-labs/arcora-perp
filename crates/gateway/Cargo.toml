@@ -28,6 +28,8 @@ getrandom = "0.2"
 # raw keccak for the withdrawals Merkle tree (must match MerkleLib.sol) and
 # secp256k1 recovery for caller-signed orders (matches the contract's ecrecover).
 sha3 = "0.10"
+# Startup restore checkpoint; same SHA-256 release already present in Cargo.lock.
+sha2 = "0.10"
 k256 = { version = "0.13", features = ["ecdsa"] }
 # audit DP-013: encrypt the L1 sequencer key into a V3 keystore in-process so the raw key
 # never appears in a `cast` argv (it is fed via --keystore + --password-file instead).

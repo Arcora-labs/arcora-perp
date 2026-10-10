@@ -25,6 +25,7 @@ jobs:
         run: |
           python3 -m unittest discover -s scripts/local-verification -p test_release_manifest.py
           python3 -m unittest discover -s scripts/local-verification -p test_operator_policy.py
+          python3 -m unittest discover -s scripts/local-verification -p test_gateway_restore_drill.py
           python3 -m unittest discover -s scripts/local-verification -p test_repository_policy.py
           python3 -m unittest discover -s scripts/local-verification -p test_read_deployment.py
       - name: RustSec workspace and excluded application locks
@@ -150,6 +151,8 @@ jobs:
         run: python3 scripts/local-verification/gateway_alert_drill.py --output-dir /tmp/arcora-local-drills/alerts
       - name: Real gateway HTTP ACK, SIGKILL and encrypted restart matrix
         run: python3 scripts/local-verification/gateway_ack_crash_drill.py --gateway-bin target/debug/gateway --output-dir /tmp/arcora-local-drills/ack-crash
+      - name: Required snapshot restore and fresh-directory recovery drill
+        run: python3 scripts/local-verification/gateway_restore_drill.py --gateway-bin target/debug/gateway --output-dir /tmp/arcora-local-drills/restore
       - uses: actions/upload-artifact@v4
         if: always()
         with:

@@ -1,0 +1,280 @@
+test_changed_provenance_cannot_redefine_identity (test_check_sp1_release.ReleaseGuard.test_changed_provenance_cannot_redefine_identity) ... ok
+test_current_complete_release_passes (test_check_sp1_release.ReleaseGuard.test_current_complete_release_passes) ... ok
+test_injected_vendor_build_script_is_rejected (test_check_sp1_release.ReleaseGuard.test_injected_vendor_build_script_is_rejected) ... ok
+test_known_affected_sdk_is_rejected (test_check_sp1_release.ReleaseGuard.test_known_affected_sdk_is_rejected) ... ok
+test_missing_lock_is_rejected (test_check_sp1_release.ReleaseGuard.test_missing_lock_is_rejected) ... ok
+test_mixed_transitive_release_is_rejected (test_check_sp1_release.ReleaseGuard.test_mixed_transitive_release_is_rejected) ... ok
+test_old_lru_is_rejected (test_check_sp1_release.ReleaseGuard.test_old_lru_is_rejected) ... ok
+test_unpinned_guest_is_rejected (test_check_sp1_release.ReleaseGuard.test_unpinned_guest_is_rejected) ... ok
+test_unreviewed_registry_exception_is_rejected (test_check_sp1_release.ReleaseGuard.test_unreviewed_registry_exception_is_rejected) ... ok
+test_vendor_source_change_is_rejected (test_check_sp1_release.ReleaseGuard.test_vendor_source_change_is_rejected) ... ok
+test_wrong_vendor_path_is_rejected (test_check_sp1_release.ReleaseGuard.test_wrong_vendor_path_is_rejected) ... ok
+test_boolean_cannot_impersonate_integer_nonce (test_gateway_restore_drill.RestoreEvidenceTests.test_boolean_cannot_impersonate_integer_nonce) ... ok
+test_complete_same_account_is_accepted (test_gateway_restore_drill.RestoreEvidenceTests.test_complete_same_account_is_accepted) ... ok
+test_every_changed_account_field_is_rejected (test_gateway_restore_drill.RestoreEvidenceTests.test_every_changed_account_field_is_rejected) ... ok
+test_every_missing_account_field_is_rejected (test_gateway_restore_drill.RestoreEvidenceTests.test_every_missing_account_field_is_rejected) ... ok
+test_fixed_failure_labels_do_not_echo_checkpoint_contents (test_gateway_restore_drill.RestoreEvidenceTests.test_fixed_failure_labels_do_not_echo_checkpoint_contents) ... ok
+test_missing_extra_or_changed_order_is_rejected (test_gateway_restore_drill.RestoreEvidenceTests.test_missing_extra_or_changed_order_is_rejected) ... ok
+test_same_cancelled_order_is_accepted (test_gateway_restore_drill.RestoreEvidenceTests.test_same_cancelled_order_is_accepted) ... ok
+test_addresses_require_full_abi_shape (test_operator_policy.PolicyConfigTests.test_addresses_require_full_abi_shape) ... ok
+test_complete_policy_is_normalized_and_part_of_public_config_digest (test_operator_policy.PolicyConfigTests.test_complete_policy_is_normalized_and_part_of_public_config_digest) ... ok
+test_explicit_zero_is_preserved_not_approved_as_economically_safe (test_operator_policy.PolicyConfigTests.test_explicit_zero_is_preserved_not_approved_as_economically_safe) ... ok
+test_missing_role_or_any_field_has_no_inferred_default (test_operator_policy.PolicyConfigTests.test_missing_role_or_any_field_has_no_inferred_default) ... ok
+test_uint256_policy_is_exact_and_does_not_accept_bool_float_or_string (test_operator_policy.PolicyConfigTests.test_uint256_policy_is_exact_and_does_not_accept_bool_float_or_string) ... ok
+test_wrong_types_extra_fields_and_secret_values_are_not_echoed (test_operator_policy.PolicyConfigTests.test_wrong_types_extra_fields_and_secret_values_are_not_echoed) ... ok
+test_complete_policy_checks_all_eleven_getters_at_same_block (test_operator_policy.PolicyTargetTests.test_complete_policy_checks_all_eleven_getters_at_same_block) ... ok
+test_each_address_and_economic_policy_mismatch_blocks (test_operator_policy.PolicyTargetTests.test_each_address_and_economic_policy_mismatch_blocks) ... ok
+test_explicit_zero_policy_is_actually_compared (test_operator_policy.PolicyTargetTests.test_explicit_zero_policy_is_actually_compared) ... ok
+test_late_source_or_chain_change_cannot_leave_policy_match_true (test_operator_policy.PolicyTargetTests.test_late_source_or_chain_change_cannot_leave_policy_match_true) ... ok
+test_legacy_observation_cannot_claim_policy_match (test_operator_policy.PolicyTargetTests.test_legacy_observation_cannot_claim_policy_match) ... ok
+test_malformed_required_flag_fails_before_rpc (test_operator_policy.PolicyTargetTests.test_malformed_required_flag_fails_before_rpc) ... ok
+test_required_missing_policy_stops_before_any_rpc (test_operator_policy.PolicyTargetTests.test_required_missing_policy_stops_before_any_rpc) ... ok
+test_duplicate_keys_and_nonfinite_values_are_rejected_without_echo (test_operator_policy.StrictJsonTransportTests.test_duplicate_keys_and_nonfinite_values_are_rejected_without_echo) ... ok
+test_standard_response_still_works (test_operator_policy.StrictJsonTransportTests.test_standard_response_still_works) ... ok
+test_ahead_witness_uses_primary_anchor_not_a_mixed_newer_state (test_read_deployment.DeploymentObservationTests.test_ahead_witness_uses_primary_anchor_not_a_mixed_newer_state) ... ok
+test_all_rpc_error_codes_fail_closed_even_with_a_result (test_read_deployment.DeploymentObservationTests.test_all_rpc_error_codes_fail_closed_even_with_a_result) ... ok
+test_canonical_change_after_reads_blocks_either_endpoint (test_read_deployment.DeploymentObservationTests.test_canonical_change_after_reads_blocks_either_endpoint) ... ok
+test_changed_finalized_hash_is_blocked (test_read_deployment.DeploymentObservationTests.test_changed_finalized_hash_is_blocked) ... ok
+test_code_disagreement_at_same_anchor_blocks (test_read_deployment.DeploymentObservationTests.test_code_disagreement_at_same_anchor_blocks) ... ok
+test_credential_bearing_witness_url_is_rejected_and_not_printed (test_read_deployment.DeploymentObservationTests.test_credential_bearing_witness_url_is_rejected_and_not_printed) ... ok
+test_explicit_empty_or_invalid_witness_cannot_disable_agreement (test_read_deployment.DeploymentObservationTests.test_explicit_empty_or_invalid_witness_cannot_disable_agreement) ... ok
+test_failed_required_call_is_partial_and_never_success (test_read_deployment.DeploymentObservationTests.test_failed_required_call_is_partial_and_never_success) ... ok
+test_getter_disagreement_at_same_anchor_blocks (test_read_deployment.DeploymentObservationTests.test_getter_disagreement_at_same_anchor_blocks) ... ok
+test_hash_pins_every_contract_read_and_checks_token_binding (test_read_deployment.DeploymentObservationTests.test_hash_pins_every_contract_read_and_checks_token_binding) ... ok
+test_historical_header_same_hash_wrong_number_is_not_accepted (test_read_deployment.DeploymentObservationTests.test_historical_header_same_hash_wrong_number_is_not_accepted) ... ok
+test_malformed_header_and_abi_data_fail_closed (test_read_deployment.DeploymentObservationTests.test_malformed_header_and_abi_data_fail_closed) ... ok
+test_nonzero_address_padding_does_not_match_a_configured_binding (test_read_deployment.DeploymentObservationTests.test_nonzero_address_padding_does_not_match_a_configured_binding) ... ok
+test_observation_compares_to_reviewed_clock_guest_not_historical_build_log (test_read_deployment.DeploymentObservationTests.test_observation_compares_to_reviewed_clock_guest_not_historical_build_log) ... ok
+test_oversized_rpc_response_is_blocked_before_hashing_or_logging_it (test_read_deployment.DeploymentObservationTests.test_oversized_rpc_response_is_blocked_before_hashing_or_logging_it) ... ok
+test_redaction_ignores_extra_fields_and_rejects_unvalidated_echoes (test_read_deployment.DeploymentObservationTests.test_redaction_ignores_extra_fields_and_rejects_unvalidated_echoes) ... ok
+test_redaction_invalid_url_port_never_echoes_supplied_value (test_read_deployment.DeploymentObservationTests.test_redaction_invalid_url_port_never_echoes_supplied_value) ... ok
+test_redaction_rpc_error_payload_and_error_code_never_echo_url_path (test_read_deployment.DeploymentObservationTests.test_redaction_rpc_error_payload_and_error_code_never_echo_url_path) ... ok
+test_redaction_transport_exceptions_never_echo_url_path (test_read_deployment.DeploymentObservationTests.test_redaction_transport_exceptions_never_echo_url_path) ... ok
+test_same_host_alias_is_not_an_independent_witness (test_read_deployment.DeploymentObservationTests.test_same_host_alias_is_not_an_independent_witness) ... ok
+test_single_endpoint_same_hash_wrong_height_is_blocked (test_read_deployment.DeploymentObservationTests.test_single_endpoint_same_hash_wrong_height_is_blocked) ... ok
+test_single_endpoint_short_abi_word_is_partial (test_read_deployment.DeploymentObservationTests.test_single_endpoint_short_abi_word_is_partial) ... ok
+test_transport_failure_blocks_without_retry_or_fallback (test_read_deployment.DeploymentObservationTests.test_transport_failure_blocks_without_retry_or_fallback) ... ok
+test_two_endpoints_agree_on_every_pinned_read_and_recheck_headers (test_read_deployment.DeploymentObservationTests.test_two_endpoints_agree_on_every_pinned_read_and_recheck_headers) ... ok
+test_unbound_json_rpc_response_is_rejected (test_read_deployment.DeploymentObservationTests.test_unbound_json_rpc_response_is_rejected) ... ok
+test_witness_conflicting_finalized_and_historical_header_blocks (test_read_deployment.DeploymentObservationTests.test_witness_conflicting_finalized_and_historical_header_blocks) ... ok
+test_witness_finality_lag_does_not_fall_back_to_unfinalized_height (test_read_deployment.DeploymentObservationTests.test_witness_finality_lag_does_not_fall_back_to_unfinalized_height) ... ok
+test_witness_historical_header_disagreement_blocks (test_read_deployment.DeploymentObservationTests.test_witness_historical_header_disagreement_blocks) ... ok
+test_witness_rpc_error_is_not_silently_a_single_endpoint_success (test_read_deployment.DeploymentObservationTests.test_witness_rpc_error_is_not_silently_a_single_endpoint_success) ... ok
+test_wrong_witness_chain_blocks_before_contract_reads (test_read_deployment.DeploymentObservationTests.test_wrong_witness_chain_blocks_before_contract_reads) ... ok
+test_cargo_rustup_shim_is_not_dereferenced (test_rebuild_reviewed_guest.ReviewedGuestRecipeTests.test_cargo_rustup_shim_is_not_dereferenced) ... ok
+test_current_reviewed_source_passes (test_rebuild_reviewed_guest.ReviewedGuestRecipeTests.test_current_reviewed_source_passes) ... ok
+test_modified_source_rejected_before_tools_output_or_normalization (test_rebuild_reviewed_guest.ReviewedGuestRecipeTests.test_modified_source_rejected_before_tools_output_or_normalization) ... ok
+test_only_metadata_and_path_are_normalized (test_rebuild_reviewed_guest.ReviewedGuestRecipeTests.test_only_metadata_and_path_are_normalized) ... ok
+test_output_is_exclusive_and_outside_checkout (test_rebuild_reviewed_guest.ReviewedGuestRecipeTests.test_output_is_exclusive_and_outside_checkout) ... ok
+test_registry_and_host_compiles_are_unchanged (test_rebuild_reviewed_guest.ReviewedGuestRecipeTests.test_registry_and_host_compiles_are_unchanged) ... ok
+test_unpinned_build_inputs_and_symlink_rejected (test_rebuild_reviewed_guest.ReviewedGuestRecipeTests.test_unpinned_build_inputs_and_symlink_rejected) ... ok
+test_wrong_source_missing_or_duplicate_metadata_and_remap_fail (test_rebuild_reviewed_guest.ReviewedGuestRecipeTests.test_wrong_source_missing_or_duplicate_metadata_and_remap_fail) ... ok
+test_actual_deployed_stack_matches_then_frozen_route_fails (test_release_manifest.AnvilTargetTests.test_actual_deployed_stack_matches_then_frozen_route_fails)
+Deploy only to a new child Anvil; no external URL or key is accepted. ... Warning: This is a nightly build of Foundry. It is recommended to use the latest stable version. To mute this warning set `FOUNDRY_DISABLE_NIGHTLY_WARNING` in your environment.
+
+Warning: This is a nightly build of Foundry. It is recommended to use the latest stable version. To mute this warning set `FOUNDRY_DISABLE_NIGHTLY_WARNING` in your environment.
+
+Warning: This is a nightly build of Foundry. It is recommended to use the latest stable version. To mute this warning set `FOUNDRY_DISABLE_NIGHTLY_WARNING` in your environment.
+
+Warning: This is a nightly build of Foundry. It is recommended to use the latest stable version. To mute this warning set `FOUNDRY_DISABLE_NIGHTLY_WARNING` in your environment.
+
+Warning: This is a nightly build of Foundry. It is recommended to use the latest stable version. To mute this warning set `FOUNDRY_DISABLE_NIGHTLY_WARNING` in your environment.
+
+Warning: This is a nightly build of Foundry. It is recommended to use the latest stable version. To mute this warning set `FOUNDRY_DISABLE_NIGHTLY_WARNING` in your environment.
+
+Warning: This is a nightly build of Foundry. It is recommended to use the latest stable version. To mute this warning set `FOUNDRY_DISABLE_NIGHTLY_WARNING` in your environment.
+
+Warning: This is a nightly build of Foundry. It is recommended to use the latest stable version. To mute this warning set `FOUNDRY_DISABLE_NIGHTLY_WARNING` in your environment.
+
+Warning: This is a nightly build of Foundry. It is recommended to use the latest stable version. To mute this warning set `FOUNDRY_DISABLE_NIGHTLY_WARNING` in your environment.
+
+Warning: This is a nightly build of Foundry. It is recommended to use the latest stable version. To mute this warning set `FOUNDRY_DISABLE_NIGHTLY_WARNING` in your environment.
+
+Warning: This is a nightly build of Foundry. It is recommended to use the latest stable version. To mute this warning set `FOUNDRY_DISABLE_NIGHTLY_WARNING` in your environment.
+
+Warning: This is a nightly build of Foundry. It is recommended to use the latest stable version. To mute this warning set `FOUNDRY_DISABLE_NIGHTLY_WARNING` in your environment.
+
+Warning: This is a nightly build of Foundry. It is recommended to use the latest stable version. To mute this warning set `FOUNDRY_DISABLE_NIGHTLY_WARNING` in your environment.
+
+Warning: This is a nightly build of Foundry. It is recommended to use the latest stable version. To mute this warning set `FOUNDRY_DISABLE_NIGHTLY_WARNING` in your environment.
+
+Warning: This is a nightly build of Foundry. It is recommended to use the latest stable version. To mute this warning set `FOUNDRY_DISABLE_NIGHTLY_WARNING` in your environment.
+
+Warning: This is a nightly build of Foundry. It is recommended to use the latest stable version. To mute this warning set `FOUNDRY_DISABLE_NIGHTLY_WARNING` in your environment.
+
+Warning: This is a nightly build of Foundry. It is recommended to use the latest stable version. To mute this warning set `FOUNDRY_DISABLE_NIGHTLY_WARNING` in your environment.
+
+Warning: This is a nightly build of Foundry. It is recommended to use the latest stable version. To mute this warning set `FOUNDRY_DISABLE_NIGHTLY_WARNING` in your environment.
+
+Warning: This is a nightly build of Foundry. It is recommended to use the latest stable version. To mute this warning set `FOUNDRY_DISABLE_NIGHTLY_WARNING` in your environment.
+
+Warning: This is a nightly build of Foundry. It is recommended to use the latest stable version. To mute this warning set `FOUNDRY_DISABLE_NIGHTLY_WARNING` in your environment.
+
+Warning: This is a nightly build of Foundry. It is recommended to use the latest stable version. To mute this warning set `FOUNDRY_DISABLE_NIGHTLY_WARNING` in your environment.
+
+Warning: This is a nightly build of Foundry. It is recommended to use the latest stable version. To mute this warning set `FOUNDRY_DISABLE_NIGHTLY_WARNING` in your environment.
+
+Warning: This is a nightly build of Foundry. It is recommended to use the latest stable version. To mute this warning set `FOUNDRY_DISABLE_NIGHTLY_WARNING` in your environment.
+
+Warning: This is a nightly build of Foundry. It is recommended to use the latest stable version. To mute this warning set `FOUNDRY_DISABLE_NIGHTLY_WARNING` in your environment.
+
+Warning: This is a nightly build of Foundry. It is recommended to use the latest stable version. To mute this warning set `FOUNDRY_DISABLE_NIGHTLY_WARNING` in your environment.
+
+Warning: This is a nightly build of Foundry. It is recommended to use the latest stable version. To mute this warning set `FOUNDRY_DISABLE_NIGHTLY_WARNING` in your environment.
+
+Warning: This is a nightly build of Foundry. It is recommended to use the latest stable version. To mute this warning set `FOUNDRY_DISABLE_NIGHTLY_WARNING` in your environment.
+
+Warning: This is a nightly build of Foundry. It is recommended to use the latest stable version. To mute this warning set `FOUNDRY_DISABLE_NIGHTLY_WARNING` in your environment.
+
+Warning: This is a nightly build of Foundry. It is recommended to use the latest stable version. To mute this warning set `FOUNDRY_DISABLE_NIGHTLY_WARNING` in your environment.
+
+Warning: This is a nightly build of Foundry. It is recommended to use the latest stable version. To mute this warning set `FOUNDRY_DISABLE_NIGHTLY_WARNING` in your environment.
+
+Warning: This is a nightly build of Foundry. It is recommended to use the latest stable version. To mute this warning set `FOUNDRY_DISABLE_NIGHTLY_WARNING` in your environment.
+
+Warning: This is a nightly build of Foundry. It is recommended to use the latest stable version. To mute this warning set `FOUNDRY_DISABLE_NIGHTLY_WARNING` in your environment.
+
+Warning: This is a nightly build of Foundry. It is recommended to use the latest stable version. To mute this warning set `FOUNDRY_DISABLE_NIGHTLY_WARNING` in your environment.
+
+Warning: This is a nightly build of Foundry. It is recommended to use the latest stable version. To mute this warning set `FOUNDRY_DISABLE_NIGHTLY_WARNING` in your environment.
+
+Warning: This is a nightly build of Foundry. It is recommended to use the latest stable version. To mute this warning set `FOUNDRY_DISABLE_NIGHTLY_WARNING` in your environment.
+
+Warning: This is a nightly build of Foundry. It is recommended to use the latest stable version. To mute this warning set `FOUNDRY_DISABLE_NIGHTLY_WARNING` in your environment.
+
+Warning: This is a nightly build of Foundry. It is recommended to use the latest stable version. To mute this warning set `FOUNDRY_DISABLE_NIGHTLY_WARNING` in your environment.
+
+Warning: This is a nightly build of Foundry. It is recommended to use the latest stable version. To mute this warning set `FOUNDRY_DISABLE_NIGHTLY_WARNING` in your environment.
+
+Warning: This is a nightly build of Foundry. It is recommended to use the latest stable version. To mute this warning set `FOUNDRY_DISABLE_NIGHTLY_WARNING` in your environment.
+
+Warning: This is a nightly build of Foundry. It is recommended to use the latest stable version. To mute this warning set `FOUNDRY_DISABLE_NIGHTLY_WARNING` in your environment.
+
+Warning: This is a nightly build of Foundry. It is recommended to use the latest stable version. To mute this warning set `FOUNDRY_DISABLE_NIGHTLY_WARNING` in your environment.
+
+Warning: This is a nightly build of Foundry. It is recommended to use the latest stable version. To mute this warning set `FOUNDRY_DISABLE_NIGHTLY_WARNING` in your environment.
+
+Warning: This is a nightly build of Foundry. It is recommended to use the latest stable version. To mute this warning set `FOUNDRY_DISABLE_NIGHTLY_WARNING` in your environment.
+
+Warning: This is a nightly build of Foundry. It is recommended to use the latest stable version. To mute this warning set `FOUNDRY_DISABLE_NIGHTLY_WARNING` in your environment.
+
+Warning: This is a nightly build of Foundry. It is recommended to use the latest stable version. To mute this warning set `FOUNDRY_DISABLE_NIGHTLY_WARNING` in your environment.
+
+Warning: This is a nightly build of Foundry. It is recommended to use the latest stable version. To mute this warning set `FOUNDRY_DISABLE_NIGHTLY_WARNING` in your environment.
+
+Warning: This is a nightly build of Foundry. It is recommended to use the latest stable version. To mute this warning set `FOUNDRY_DISABLE_NIGHTLY_WARNING` in your environment.
+
+Warning: This is a nightly build of Foundry. It is recommended to use the latest stable version. To mute this warning set `FOUNDRY_DISABLE_NIGHTLY_WARNING` in your environment.
+
+Warning: This is a nightly build of Foundry. It is recommended to use the latest stable version. To mute this warning set `FOUNDRY_DISABLE_NIGHTLY_WARNING` in your environment.
+
+Warning: This is a nightly build of Foundry. It is recommended to use the latest stable version. To mute this warning set `FOUNDRY_DISABLE_NIGHTLY_WARNING` in your environment.
+
+Warning: This is a nightly build of Foundry. It is recommended to use the latest stable version. To mute this warning set `FOUNDRY_DISABLE_NIGHTLY_WARNING` in your environment.
+
+Warning: This is a nightly build of Foundry. It is recommended to use the latest stable version. To mute this warning set `FOUNDRY_DISABLE_NIGHTLY_WARNING` in your environment.
+
+Warning: This is a nightly build of Foundry. It is recommended to use the latest stable version. To mute this warning set `FOUNDRY_DISABLE_NIGHTLY_WARNING` in your environment.
+
+Warning: This is a nightly build of Foundry. It is recommended to use the latest stable version. To mute this warning set `FOUNDRY_DISABLE_NIGHTLY_WARNING` in your environment.
+
+Warning: This is a nightly build of Foundry. It is recommended to use the latest stable version. To mute this warning set `FOUNDRY_DISABLE_NIGHTLY_WARNING` in your environment.
+
+Warning: This is a nightly build of Foundry. It is recommended to use the latest stable version. To mute this warning set `FOUNDRY_DISABLE_NIGHTLY_WARNING` in your environment.
+
+Warning: This is a nightly build of Foundry. It is recommended to use the latest stable version. To mute this warning set `FOUNDRY_DISABLE_NIGHTLY_WARNING` in your environment.
+
+Warning: This is a nightly build of Foundry. It is recommended to use the latest stable version. To mute this warning set `FOUNDRY_DISABLE_NIGHTLY_WARNING` in your environment.
+
+Warning: This is a nightly build of Foundry. It is recommended to use the latest stable version. To mute this warning set `FOUNDRY_DISABLE_NIGHTLY_WARNING` in your environment.
+
+Warning: This is a nightly build of Foundry. It is recommended to use the latest stable version. To mute this warning set `FOUNDRY_DISABLE_NIGHTLY_WARNING` in your environment.
+
+Warning: This is a nightly build of Foundry. It is recommended to use the latest stable version. To mute this warning set `FOUNDRY_DISABLE_NIGHTLY_WARNING` in your environment.
+
+Warning: This is a nightly build of Foundry. It is recommended to use the latest stable version. To mute this warning set `FOUNDRY_DISABLE_NIGHTLY_WARNING` in your environment.
+
+Warning: This is a nightly build of Foundry. It is recommended to use the latest stable version. To mute this warning set `FOUNDRY_DISABLE_NIGHTLY_WARNING` in your environment.
+
+Warning: This is a nightly build of Foundry. It is recommended to use the latest stable version. To mute this warning set `FOUNDRY_DISABLE_NIGHTLY_WARNING` in your environment.
+
+Warning: This is a nightly build of Foundry. It is recommended to use the latest stable version. To mute this warning set `FOUNDRY_DISABLE_NIGHTLY_WARNING` in your environment.
+
+Warning: This is a nightly build of Foundry. It is recommended to use the latest stable version. To mute this warning set `FOUNDRY_DISABLE_NIGHTLY_WARNING` in your environment.
+
+Warning: This is a nightly build of Foundry. It is recommended to use the latest stable version. To mute this warning set `FOUNDRY_DISABLE_NIGHTLY_WARNING` in your environment.
+
+Warning: This is a nightly build of Foundry. It is recommended to use the latest stable version. To mute this warning set `FOUNDRY_DISABLE_NIGHTLY_WARNING` in your environment.
+
+Warning: This is a nightly build of Foundry. It is recommended to use the latest stable version. To mute this warning set `FOUNDRY_DISABLE_NIGHTLY_WARNING` in your environment.
+
+Warning: This is a nightly build of Foundry. It is recommended to use the latest stable version. To mute this warning set `FOUNDRY_DISABLE_NIGHTLY_WARNING` in your environment.
+
+Warning: This is a nightly build of Foundry. It is recommended to use the latest stable version. To mute this warning set `FOUNDRY_DISABLE_NIGHTLY_WARNING` in your environment.
+
+Warning: This is a nightly build of Foundry. It is recommended to use the latest stable version. To mute this warning set `FOUNDRY_DISABLE_NIGHTLY_WARNING` in your environment.
+
+Warning: This is a nightly build of Foundry. It is recommended to use the latest stable version. To mute this warning set `FOUNDRY_DISABLE_NIGHTLY_WARNING` in your environment.
+
+Warning: This is a nightly build of Foundry. It is recommended to use the latest stable version. To mute this warning set `FOUNDRY_DISABLE_NIGHTLY_WARNING` in your environment.
+
+Warning: This is a nightly build of Foundry. It is recommended to use the latest stable version. To mute this warning set `FOUNDRY_DISABLE_NIGHTLY_WARNING` in your environment.
+
+Warning: This is a nightly build of Foundry. It is recommended to use the latest stable version. To mute this warning set `FOUNDRY_DISABLE_NIGHTLY_WARNING` in your environment.
+
+Warning: This is a nightly build of Foundry. It is recommended to use the latest stable version. To mute this warning set `FOUNDRY_DISABLE_NIGHTLY_WARNING` in your environment.
+
+Warning: This is a nightly build of Foundry. It is recommended to use the latest stable version. To mute this warning set `FOUNDRY_DISABLE_NIGHTLY_WARNING` in your environment.
+
+Warning: This is a nightly build of Foundry. It is recommended to use the latest stable version. To mute this warning set `FOUNDRY_DISABLE_NIGHTLY_WARNING` in your environment.
+
+ok
+test_compiled_artifact_binds_both_bytecodes (test_release_manifest.ArtifactTests.test_compiled_artifact_binds_both_bytecodes) ... ok
+test_duplicate_json_keys_are_rejected (test_release_manifest.ArtifactTests.test_duplicate_json_keys_are_rejected) ... ok
+test_even_tracked_dotenv_and_credential_files_are_excluded (test_release_manifest.ArtifactTests.test_even_tracked_dotenv_and_credential_files_are_excluded) ... ok
+test_missing_fields_and_forged_readiness_do_not_pass (test_release_manifest.ArtifactTests.test_missing_fields_and_forged_readiness_do_not_pass) ... ok
+test_new_guest_source_and_build_inputs_require_new_provenance (test_release_manifest.ArtifactTests.test_new_guest_source_and_build_inputs_require_new_provenance) ... ok
+test_path_traversal_absolute_and_parent_symlinks_are_rejected (test_release_manifest.ArtifactTests.test_path_traversal_absolute_and_parent_symlinks_are_rejected) ... ok
+test_stale_compiler_source_is_rejected (test_release_manifest.ArtifactTests.test_stale_compiler_source_is_rejected) ... ok
+test_untracked_new_source_invalidates_inventory (test_release_manifest.ArtifactTests.test_untracked_new_source_invalidates_inventory) ... ok
+test_wrong_compiler_target_and_unlinked_bytecode_are_rejected (test_release_manifest.ArtifactTests.test_wrong_compiler_target_and_unlinked_bytecode_are_rejected) ... ok
+test_bad_types_and_unschedulable_clock_policy_are_rejected (test_release_manifest.ConfigTests.test_bad_types_and_unschedulable_clock_policy_are_rejected) ... ok
+test_legacy_stack_with_new_key_is_still_rejected (test_release_manifest.ConfigTests.test_legacy_stack_with_new_key_is_still_rejected) ... ok
+test_matching_explicit_public_settings (test_release_manifest.ConfigTests.test_matching_explicit_public_settings) ... ok
+test_mock_mode_and_missing_explicit_mode_are_rejected (test_release_manifest.ConfigTests.test_mock_mode_and_missing_explicit_mode_are_rejected) ... ok
+test_old_deployment_key_is_rejected (test_release_manifest.ConfigTests.test_old_deployment_key_is_rejected) ... ok
+test_old_prover_key_or_guest_cannot_be_mixed (test_release_manifest.ConfigTests.test_old_prover_key_or_guest_cannot_be_mixed) ... ok
+test_process_environment_must_match_and_does_not_echo_secrets (test_release_manifest.ConfigTests.test_process_environment_must_match_and_does_not_echo_secrets) ... ok
+test_unknown_or_secret_config_keys_are_rejected_without_echo (test_release_manifest.ConfigTests.test_unknown_or_secret_config_keys_are_rejected_without_echo) ... ok
+test_wrong_gateway_chain_vault_or_clock_is_rejected (test_release_manifest.ConfigTests.test_wrong_gateway_chain_vault_or_clock_is_rejected) ... ok
+test_zero_duplicate_and_malformed_addresses_are_rejected (test_release_manifest.ConfigTests.test_zero_duplicate_and_malformed_addresses_are_rejected) ... ok
+test_changed_opcode_metadata_length_or_repeated_immutable_is_rejected (test_release_manifest.RuntimeTests.test_changed_opcode_metadata_length_or_repeated_immutable_is_rejected) ... ok
+test_exact_runtime_including_consistent_immutable_substitution (test_release_manifest.RuntimeTests.test_exact_runtime_including_consistent_immutable_substitution) ... ok
+test_malformed_overlapping_and_nonzero_placeholder_ranges_are_rejected (test_release_manifest.RuntimeTests.test_malformed_overlapping_and_nonzero_placeholder_ranges_are_rejected) ... ok
+test_all_six_runtimes_bindings_route_and_one_finalized_hash_are_checked (test_release_manifest.TargetTests.test_all_six_runtimes_bindings_route_and_one_finalized_hash_are_checked) ... ok
+test_changed_artifact_or_source_during_observation_blocks (test_release_manifest.TargetTests.test_changed_artifact_or_source_during_observation_blocks) ... ok
+test_each_configured_address_key_clock_and_proof_version_mismatch_blocks (test_release_manifest.TargetTests.test_each_configured_address_key_clock_and_proof_version_mismatch_blocks) ... ok
+test_empty_token_code_blocks_but_token_runtime_is_never_approved (test_release_manifest.TargetTests.test_empty_token_code_blocks_but_token_runtime_is_never_approved) ... ok
+test_invalid_manifest_never_claims_local_identity_or_queries_rpc (test_release_manifest.TargetTests.test_invalid_manifest_never_claims_local_identity_or_queries_rpc) ... ok
+test_missing_code_or_wrong_runtime_blocks (test_release_manifest.TargetTests.test_missing_code_or_wrong_runtime_blocks) ... ok
+test_noncanonical_address_and_truncated_getter_are_rejected (test_release_manifest.TargetTests.test_noncanonical_address_and_truncated_getter_are_rejected) ... ok
+test_route_wrong_frozen_or_noncanonical_cannot_pass (test_release_manifest.TargetTests.test_route_wrong_frozen_or_noncanonical_cannot_pass) ... ok
+test_transport_failure_omits_private_response_text (test_release_manifest.TargetTests.test_transport_failure_omits_private_response_text) ... ok
+test_unconfigured_operator_policy_is_observed_without_approval (test_release_manifest.TargetTests.test_unconfigured_operator_policy_is_observed_without_approval) ... ok
+test_wrong_chain_missing_finality_and_reorganization_have_no_latest_fallback (test_release_manifest.TargetTests.test_wrong_chain_missing_finality_and_reorganization_have_no_latest_fallback) ... ok
+test_bad_envelope_rpc_error_oversize_and_redirect_fail_closed (test_release_manifest.TransportTests.test_bad_envelope_rpc_error_oversize_and_redirect_fail_closed) ... ok
+test_read_allowlist_precedes_transport_and_rejects_credential_urls (test_release_manifest.TransportTests.test_read_allowlist_precedes_transport_and_rejects_credential_urls) ... ok
+test_refuses_disabled_bypass_missing_proof_check_or_forged_check_issuer (test_repository_policy.RepositoryPolicyTests.test_refuses_disabled_bypass_missing_proof_check_or_forged_check_issuer) ... ok
+test_required_workflows_run_on_every_pull_request (test_repository_policy.RepositoryPolicyTests.test_required_workflows_run_on_every_pull_request) ... ok
+test_reviewed_policy (test_repository_policy.RepositoryPolicyTests.test_reviewed_policy) ... ok
+test_arbitrary_guest_cannot_nominate_its_own_vkey (test_verify_clock_proof.ClockProofArtifactGuards.test_arbitrary_guest_cannot_nominate_its_own_vkey) ... ok
+test_artifact_symlink_is_not_followed (test_verify_clock_proof.ClockProofArtifactGuards.test_artifact_symlink_is_not_followed) ... ok
+test_changed_guest_cannot_reuse_a_passing_old_proof (test_verify_clock_proof.ClockProofArtifactGuards.test_changed_guest_cannot_reuse_a_passing_old_proof) ... ok
+test_checked_out_guest_source_matches_independent_pin (test_verify_clock_proof.ClockProofArtifactGuards.test_checked_out_guest_source_matches_independent_pin) ... ok
+test_missing_success_record_is_not_an_execution_pass (test_verify_clock_proof.ClockProofArtifactGuards.test_missing_success_record_is_not_an_execution_pass) ... ok
+test_unverified_or_wrong_version_evidence_is_refused (test_verify_clock_proof.ClockProofArtifactGuards.test_unverified_or_wrong_version_evidence_is_refused) ... ok
+
+----------------------------------------------------------------------
+Ran 116 tests in 3.569s
+
+OK
