@@ -1,0 +1,81 @@
+name: Cold reviewed guest rebuild
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/guest-cold-rebuild.yml'
+      - 'scripts/local-verification/cold_rebuild_reviewed_guest.py'
+      - 'scripts/local-verification/test_cold_rebuild_reviewed_guest.py'
+      - 'scripts/local-verification/rebuild_reviewed_guest.py'
+      - 'scripts/local-verification/verify_clock_proof.py'
+      - 'scripts/local-verification/release_manifest.py'
+      - 'crates/sp1-guest/**'
+      - 'crates/perp-core/**'
+      - 'Cargo.toml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cold-guest:
+    name: cold guest build (macOS ARM64)
+    runs-on: macos-14
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: '1.99.0'
+      - name: Guard tests
+        run: python3 -m unittest discover -s scripts/local-verification -p test_cold_rebuild_reviewed_guest.py -v
+      - name: Fetch pinned official compiler archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = arm64
+          curl --fail --location --retry 2 --max-time 300 --silent --show-error \
+            https://github.com/succinctlabs/rust/releases/download/succinct-1.93.0-64bit/rust-toolchain-aarch64-apple-darwin.tar.gz \
+            --output "$RUNNER_TEMP/sp1-reviewed-toolchain.tar.gz"
+          echo "8ee4ea0f27efbf73ddfe8a2038ced4c0802fdcf9e1ee109349763b9f4a808cf6  $RUNNER_TEMP/sp1-reviewed-toolchain.tar.gz" | shasum -a 256 --check
+      - name: Build from fresh registry and compare reviewed ELF
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/local-verification/cold_rebuild_reviewed_guest.py \
+            --cargo "$(rustup which --toolchain 1.99.0 cargo)" \
+            --archive "$RUNNER_TEMP/sp1-reviewed-toolchain.tar.gz" \
+            --output-dir "$RUNNER_TEMP/arcora-cold-guest" \
+            --timeout-seconds 600
+      - name: Record runner context separately from build identity
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/arcora-cold-guest"
+          python3 - <<'PY' > "$RUNNER_TEMP/arcora-cold-guest/runner-context.json"
+          import json, os, subprocess
+          keys = ('GITHUB_REPOSITORY', 'GITHUB_SHA', 'GITHUB_REF', 'GITHUB_RUN_ID', 'GITHUB_RUN_ATTEMPT',
+                  'RUNNER_OS', 'RUNNER_ARCH', 'RUNNER_ENVIRONMENT', 'ImageOS', 'ImageVersion')
+          record = {k: os.environ.get(k) for k in keys}
+          record['checkout_commit'] = subprocess.check_output(['git','rev-parse','HEAD'], text=True).strip()
+          record['scope'] = 'Self-reported context; validate against the GitHub run API and artifact provenance.'
+          print(json.dumps(record, indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cold-reviewed-guest
+          retention-days: 14
+          if-no-files-found: error
+          path: |
+            ${{ runner.temp }}/arcora-cold-guest/verification.json
+            ${{ runner.temp }}/arcora-cold-guest/runner-context.json
+            ${{ runner.temp }}/arcora-cold-guest/fetch.log
+            ${{ runner.temp }}/arcora-cold-guest/build.log
+            ${{ runner.temp }}/arcora-cold-guest/compiler-invocations.jsonl
+            ${{ runner.temp }}/arcora-cold-guest/guest.elf
