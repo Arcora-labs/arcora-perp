@@ -1,0 +1,307 @@
+{
+  "artifacts": {
+    "depeg-funding.public-values.bin": {
+      "sha256": "b298bb98db010dc72d197c337e39107b72b8d2cc6dd516e0fb2e2b85e083eeec",
+      "size_bytes": 32
+    },
+    "extra-evidence.public-values.bin": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size_bytes": 0
+    },
+    "forged-fill.public-values.bin": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size_bytes": 0
+    },
+    "forged-funding.public-values.bin": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size_bytes": 0
+    },
+    "forged-liquidation.public-values.bin": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size_bytes": 0
+    },
+    "forged-unbind.public-values.bin": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size_bytes": 0
+    },
+    "funding.public-values.bin": {
+      "sha256": "eb0293e46f7ea94a8f3588661205d7b1da386eafc061990b63b477ffdeef32da",
+      "size_bytes": 32
+    },
+    "future-quote.public-values.bin": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size_bytes": 0
+    },
+    "invalid-state-market.public-values.bin": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size_bytes": 0
+    },
+    "legacy-wire.public-values.bin": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size_bytes": 0
+    },
+    "missing-evidence.public-values.bin": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size_bytes": 0
+    },
+    "price-free-empty.public-values.bin": {
+      "sha256": "cc664e053744ffb17dcdcd4e25412061e509fc680924005701eca50e75efdc7b",
+      "size_bytes": 32
+    },
+    "stale-quote.public-values.bin": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size_bytes": 0
+    },
+    "trailing-bytes.public-values.bin": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size_bytes": 0
+    },
+    "two-observations.public-values.bin": {
+      "sha256": "580143fe91058533def3aa7059d93e62e2564a41a7b8bc4bdabe8e30d249b144",
+      "size_bytes": 32
+    },
+    "wrong-chain-context.public-values.bin": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size_bytes": 0
+    },
+    "wrong-clock-context.public-values.bin": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size_bytes": 0
+    },
+    "wrong-feed.public-values.bin": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size_bytes": 0
+    },
+    "wrong-market.public-values.bin": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size_bytes": 0
+    }
+  },
+  "candidate_elf_sha256": "48a8eb8e6acd96057a72ca74db5077ac9e85d30d2ec830518ef1f1ac3832ef1f",
+  "cases": [
+    {
+      "case": "funding",
+      "expected_outcome": "PASS",
+      "guest_cycles": 3284192,
+      "guest_exit_code": 0,
+      "guest_seconds": 0.336200416,
+      "native_error": null,
+      "public_values_bytes": 32,
+      "public_values_hex": "80dcbd322990b2bae84bd1e1bfaa25374f616d34fd5975a2b44393d17f377b0f",
+      "witness_sha256": "5483e313c7541b3e636f24b964e9281908767b56db9464c17934d9f2779f9ed0"
+    },
+    {
+      "case": "depeg-funding",
+      "expected_outcome": "PASS",
+      "guest_cycles": 3281325,
+      "guest_exit_code": 0,
+      "guest_seconds": 0.313859709,
+      "native_error": null,
+      "public_values_bytes": 32,
+      "public_values_hex": "6538273f1b0d164c89f1d474668409099624b3ceb04d4b389745efebd3961d96",
+      "witness_sha256": "36a36454a6f374e74b303e8bf94499474676774a1787fac79792f3050e580e3c"
+    },
+    {
+      "case": "two-observations",
+      "expected_outcome": "PASS",
+      "guest_cycles": 6119637,
+      "guest_exit_code": 0,
+      "guest_seconds": 0.612315416,
+      "native_error": null,
+      "public_values_bytes": 32,
+      "public_values_hex": "9eb8155ea5ddd27be8744ad97aae9bd1f3c7367b391981c15cf22611c01caab6",
+      "witness_sha256": "020975a257323b51f78bd9cc9d20f4c422aa161d895b8ef240076210c94a56bc"
+    },
+    {
+      "case": "price-free-empty",
+      "expected_outcome": "PASS",
+      "guest_cycles": 447749,
+      "guest_exit_code": 0,
+      "guest_seconds": 0.055081625,
+      "native_error": null,
+      "public_values_bytes": 32,
+      "public_values_hex": "3896449331d0bfe134f39e9b1f43b06975701f964dd27114a108bb05c6c276fa",
+      "witness_sha256": "b376715ff1385efc8c33b33e80cfbd1f3c2d2b1eded742a771be27a4a8afba9c"
+    },
+    {
+      "case": "missing-evidence",
+      "expected_outcome": "REJECT",
+      "guest_cycles": 143452,
+      "guest_exit_code": 1,
+      "guest_seconds": 0.034410041,
+      "native_error": "Evidence",
+      "public_values_bytes": 0,
+      "public_values_hex": "",
+      "witness_sha256": "80704fe4c6fa12c000b8904e0e3a99579d5664d7c9391a4a019b96a01b0012bc"
+    },
+    {
+      "case": "extra-evidence",
+      "expected_outcome": "REJECT",
+      "guest_cycles": 162666,
+      "guest_exit_code": 1,
+      "guest_seconds": 0.068066583,
+      "native_error": "Evidence",
+      "public_values_bytes": 0,
+      "public_values_hex": "",
+      "witness_sha256": "061f5dbf7b14b19c73f7e87194006c045f5ccd37c282eeeb27ddf9df7d49820b"
+    },
+    {
+      "case": "wrong-market",
+      "expected_outcome": "REJECT",
+      "guest_cycles": 169191,
+      "guest_exit_code": 1,
+      "guest_seconds": 0.04215,
+      "native_error": "Evidence",
+      "public_values_bytes": 0,
+      "public_values_hex": "",
+      "witness_sha256": "f9879aefa23a3cb4f522082cc1ef206a957354bb72a5e70b1dba4571db0a2ab4"
+    },
+    {
+      "case": "wrong-feed",
+      "expected_outcome": "REJECT",
+      "guest_cycles": 171718,
+      "guest_exit_code": 1,
+      "guest_seconds": 0.039514541,
+      "native_error": "Feed",
+      "public_values_bytes": 0,
+      "public_values_hex": "",
+      "witness_sha256": "e0f7ef65ff54ef227dde022832e9aeb9054e553d73a45a041d362bd192124cee"
+    },
+    {
+      "case": "stale-quote",
+      "expected_outcome": "REJECT",
+      "guest_cycles": 171984,
+      "guest_exit_code": 1,
+      "guest_seconds": 0.039113292,
+      "native_error": "Time",
+      "public_values_bytes": 0,
+      "public_values_hex": "",
+      "witness_sha256": "1386b1748065784e050da22caf35c99092e895b8c89b7b79d6277d924fee9e98"
+    },
+    {
+      "case": "future-quote",
+      "expected_outcome": "REJECT",
+      "guest_cycles": 171982,
+      "guest_exit_code": 1,
+      "guest_seconds": 0.033423125,
+      "native_error": "Time",
+      "public_values_bytes": 0,
+      "public_values_hex": "",
+      "witness_sha256": "9b43bb949feba989f93bd7dedd838c2a851285e6257115dae5b32c88681f576b"
+    },
+    {
+      "case": "forged-funding",
+      "expected_outcome": "REJECT",
+      "guest_cycles": 173164,
+      "guest_exit_code": 1,
+      "guest_seconds": 0.053154125,
+      "native_error": "Oracle",
+      "public_values_bytes": 0,
+      "public_values_hex": "",
+      "witness_sha256": "13a97acefc9161342b8ac09a292d3ddeaaa7f45065f0e09fff8fe30ac3ac8df2"
+    },
+    {
+      "case": "forged-fill",
+      "expected_outcome": "REJECT",
+      "guest_cycles": 174229,
+      "guest_exit_code": 1,
+      "guest_seconds": 0.0460365,
+      "native_error": "Oracle",
+      "public_values_bytes": 0,
+      "public_values_hex": "",
+      "witness_sha256": "e19e60cdb931b3fc72453d71d2ef2bcbf53e2f56913ba27264f3e95eda50d270"
+    },
+    {
+      "case": "forged-liquidation",
+      "expected_outcome": "REJECT",
+      "guest_cycles": 173482,
+      "guest_exit_code": 1,
+      "guest_seconds": 0.038068167,
+      "native_error": "Oracle",
+      "public_values_bytes": 0,
+      "public_values_hex": "",
+      "witness_sha256": "e88da56be94c854eeffa3ec3ed42af0e5ae1ba00b72f222c49fbc1f4338d83d2"
+    },
+    {
+      "case": "forged-unbind",
+      "expected_outcome": "REJECT",
+      "guest_cycles": 173937,
+      "guest_exit_code": 1,
+      "guest_seconds": 0.035897459,
+      "native_error": "Oracle",
+      "public_values_bytes": 0,
+      "public_values_hex": "",
+      "witness_sha256": "f3d17b31bcf07d242a48904ff81c79669ed305f0be4176cdf6c28b21fe0c0a7f"
+    },
+    {
+      "case": "wrong-chain-context",
+      "expected_outcome": "REJECT",
+      "guest_cycles": 44079,
+      "guest_exit_code": 1,
+      "guest_seconds": 0.022135,
+      "native_error": "Policy",
+      "public_values_bytes": 0,
+      "public_values_hex": "",
+      "witness_sha256": "d74202c51e803ddc69cde7a07f47d50cd8a8c34a9983050dd4fc1f9d5bc22f0e"
+    },
+    {
+      "case": "wrong-clock-context",
+      "expected_outcome": "REJECT",
+      "guest_cycles": 3193456,
+      "guest_exit_code": 1,
+      "guest_seconds": 0.391772416,
+      "native_error": "Clock",
+      "public_values_bytes": 0,
+      "public_values_hex": "",
+      "witness_sha256": "039f61effa98b5f4d2a652f4514ca9c11fd2c6aafb9911b54cbe39fc67e1352d"
+    },
+    {
+      "case": "invalid-state-market",
+      "expected_outcome": "REJECT",
+      "guest_cycles": 320198,
+      "guest_exit_code": 1,
+      "guest_seconds": 0.053468458,
+      "native_error": "Transition",
+      "public_values_bytes": 0,
+      "public_values_hex": "",
+      "witness_sha256": "414ad33db56da83c549dee53a005abcb1fe51b7140df26cd2a84cd525780d2ff"
+    },
+    {
+      "case": "trailing-bytes",
+      "expected_outcome": "REJECT",
+      "guest_cycles": 43668,
+      "guest_exit_code": 1,
+      "guest_seconds": 0.024014125,
+      "native_error": "Encoding",
+      "public_values_bytes": 0,
+      "public_values_hex": "",
+      "witness_sha256": "5625bbd10189c90fa396a3032a1024d5136db75b90aa0a7a25b34b8884197a87"
+    },
+    {
+      "case": "legacy-wire",
+      "expected_outcome": "REJECT",
+      "guest_cycles": 9392,
+      "guest_exit_code": 1,
+      "guest_seconds": 0.016039083,
+      "native_error": "Version",
+      "public_values_bytes": 0,
+      "public_values_hex": "",
+      "witness_sha256": "5bf57a26b2121c3349acc8b6e9c420bcb99ef4658a7f04cc60f4a34964cd7a0b"
+    }
+  ],
+  "fixture_manifest_sha256": "cc697713834cb455bb1a7cab24f419fe2badc84205a528f78ff710b7a0bd2567",
+  "fresh_guest_build_performed": false,
+  "guest_executed": true,
+  "kind": "synthetic-chainlink-candidate-cpu-replay",
+  "live_deployment": false,
+  "native_guest_equal": true,
+  "program_vkey": "0x006aa3cfa389566dd318c9bf12f3946a623555e5f624359037e2d5c4d35ad590",
+  "proof_generated": false,
+  "real_don_verified": false,
+  "schema_version": 1,
+  "scope": "Pinned candidate ELF; four synthetic success cases and fifteen expected guest rejections. No actual Chainlink signatures, proof generation, wallet lifecycle, deployment or network proving.",
+  "sdk_version": "6.1.0",
+  "setup_seconds": 13.549221083,
+  "status": "PASS",
+  "synthetic_inputs": true
+}

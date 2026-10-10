@@ -1,0 +1,57 @@
+{
+  "status": "PASS",
+  "observed_at": "2026-10-10T17:14:42.993325+00:00",
+  "command": [
+    "$CHECKOUT/crates/sp1-host/target/release/replay-chainlink",
+    "--elf",
+    "$CHECKOUT/contracts/integration/fixtures/chainlink-candidate-v1/guest.elf",
+    "--output-dir",
+    "$RUN/execution"
+  ],
+  "exit_code": 0,
+  "elapsed_seconds": 109.24970995797776,
+  "binary_sha256": "e2e235d1962ea208b9cbbd4659a88715fc6a6d3d11aa9d88f9cddb03ac2092b9",
+  "candidate_elf_sha256": "48a8eb8e6acd96057a72ca74db5077ac9e85d30d2ec830518ef1f1ac3832ef1f",
+  "program_vkey": "0x006aa3cfa389566dd318c9bf12f3946a623555e5f624359037e2d5c4d35ad590",
+  "candidate_sources_sha256": {
+    "crates/chainlink-oracle/Cargo.lock": "62f58aa9da1592de0a4419052c5145128425976b0e0c5520fcce0bb6c936b246",
+    "crates/chainlink-oracle/Cargo.toml": "0b05c79f8fa37dd643466ad9e4b0013d6d6d257d7cfc414b8351cc7a11a88421",
+    "crates/chainlink-oracle/src/binding.rs": "8c66dba2a1d49825c1c13b89aa1a55d47fcab42abe481a0fce308128215cc877",
+    "crates/chainlink-oracle/src/lib.rs": "a107bf7464fe8654c69d9864c5ab6bcac6728d993634004d6d0075fbb707e224",
+    "crates/chainlink-oracle/src/policy.rs": "c36d89a3212cd5d9893b19e77b6b4dba5dba364dcb2135b24424fdab5a42b285",
+    "crates/chainlink-oracle/src/report.rs": "91b824e8a20bc7b1d8aa907813eb95061c659a655f72ef01fdc68409b7232d26",
+    "crates/sp1-chainlink-guest/Cargo.lock": "de6dbb43b0b85968fa2f7f7de0d71d53c54adacebbc9786cfd17197491142cbe",
+    "crates/sp1-chainlink-guest/Cargo.toml": "9f47d6f2cfc08fb71fdfcbc0877f09f083685a1ea016bbd67ea87dd60c8edc55",
+    "crates/sp1-chainlink-guest/src/main.rs": "9e403b9f241e0a53afc2e58baa7bf978ddf81c28e5704acc7a6f734962874187"
+  },
+  "log_sha256": "f16df15924f8086bfb8d2ef0edb52d3c57131dbd9219a25e19a561bb776ce411",
+  "reviewed_pins_unchanged": 21,
+  "guards": [
+    {
+      "name": "wrong-elf",
+      "exit_code": 1
+    },
+    {
+      "name": "symlink-elf",
+      "exit_code": 1
+    },
+    {
+      "name": "directory-elf",
+      "exit_code": 1
+    },
+    {
+      "name": "duplicate-argument",
+      "exit_code": 1
+    },
+    {
+      "name": "existing-output",
+      "exit_code": 1
+    }
+  ],
+  "success_cases": 4,
+  "rejected_cases": 15,
+  "proof_generated": false,
+  "real_don_verified": false,
+  "live_deployment": false,
+  "execution_manifest_sha256": "c16aca306913b6c098198a2df14558d9893a9ac40d2ae9b9c92d1d9d070d1a76"
+}

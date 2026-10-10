@@ -1,0 +1,268 @@
+{
+  "status": "PASS",
+  "observed_at": "2026-10-10T17:19:52.319888+00:00",
+  "base_main": "9483e33607f964138108094b04ca8b27dedcd637",
+  "source_sha256": {
+    ".github/workflows/chainlink-candidate.yml": "a429191d20d2242e94b53881b5bb045a77cf4bdf9dc3e5e25a6dd86d0da7849d",
+    ".github/workflows/ci.yml": "965d2461436e074590ca014b9281d3804816178f15c840c0d47bc0870afebfd6",
+    "contracts/integration/fixtures/chainlink-candidate-v1/README.md": "32684480fe2821045a7d9576d0a8dc27cc7c792f2cc80211fb3a38fd0e2f10f8",
+    "contracts/integration/fixtures/chainlink-candidate-v1/guest.elf": "48a8eb8e6acd96057a72ca74db5077ac9e85d30d2ec830518ef1f1ac3832ef1f",
+    "contracts/integration/fixtures/chainlink-candidate-v1/metadata.json": "d0a1be2b345f688b3bd102dbd6d5d6512aae1caaae6a996ba9f8b8fe411dd696",
+    "crates/chainlink-oracle/src/replay_vectors.rs": "512a4966a886231ceb94fd034f94135b98b4ee4dfc3e894e45912da93ca1b54c",
+    "crates/chainlink-oracle/src/tests.rs": "42396d0053fc92062acb33f67ecd253c590a09a18bb23cda72566e5092b9702f",
+    "crates/chainlink-oracle/tests/fixtures/replay-v1/depeg-funding.witness.bin": "36a36454a6f374e74b303e8bf94499474676774a1787fac79792f3050e580e3c",
+    "crates/chainlink-oracle/tests/fixtures/replay-v1/extra-evidence.witness.bin": "061f5dbf7b14b19c73f7e87194006c045f5ccd37c282eeeb27ddf9df7d49820b",
+    "crates/chainlink-oracle/tests/fixtures/replay-v1/forged-fill.witness.bin": "e19e60cdb931b3fc72453d71d2ef2bcbf53e2f56913ba27264f3e95eda50d270",
+    "crates/chainlink-oracle/tests/fixtures/replay-v1/forged-funding.witness.bin": "13a97acefc9161342b8ac09a292d3ddeaaa7f45065f0e09fff8fe30ac3ac8df2",
+    "crates/chainlink-oracle/tests/fixtures/replay-v1/forged-liquidation.witness.bin": "e88da56be94c854eeffa3ec3ed42af0e5ae1ba00b72f222c49fbc1f4338d83d2",
+    "crates/chainlink-oracle/tests/fixtures/replay-v1/forged-unbind.witness.bin": "f3d17b31bcf07d242a48904ff81c79669ed305f0be4176cdf6c28b21fe0c0a7f",
+    "crates/chainlink-oracle/tests/fixtures/replay-v1/funding.witness.bin": "5483e313c7541b3e636f24b964e9281908767b56db9464c17934d9f2779f9ed0",
+    "crates/chainlink-oracle/tests/fixtures/replay-v1/future-quote.witness.bin": "9b43bb949feba989f93bd7dedd838c2a851285e6257115dae5b32c88681f576b",
+    "crates/chainlink-oracle/tests/fixtures/replay-v1/invalid-state-market.witness.bin": "414ad33db56da83c549dee53a005abcb1fe51b7140df26cd2a84cd525780d2ff",
+    "crates/chainlink-oracle/tests/fixtures/replay-v1/legacy-wire.witness.bin": "5bf57a26b2121c3349acc8b6e9c420bcb99ef4658a7f04cc60f4a34964cd7a0b",
+    "crates/chainlink-oracle/tests/fixtures/replay-v1/manifest.json": "cc697713834cb455bb1a7cab24f419fe2badc84205a528f78ff710b7a0bd2567",
+    "crates/chainlink-oracle/tests/fixtures/replay-v1/missing-evidence.witness.bin": "80704fe4c6fa12c000b8904e0e3a99579d5664d7c9391a4a019b96a01b0012bc",
+    "crates/chainlink-oracle/tests/fixtures/replay-v1/native-results.tsv": "9f51b43c1c8753825054640c563e0b4ba409d66fdb183e1c43a2024b33af1a2e",
+    "crates/chainlink-oracle/tests/fixtures/replay-v1/price-free-empty.witness.bin": "b376715ff1385efc8c33b33e80cfbd1f3c2d2b1eded742a771be27a4a8afba9c",
+    "crates/chainlink-oracle/tests/fixtures/replay-v1/stale-quote.witness.bin": "1386b1748065784e050da22caf35c99092e895b8c89b7b79d6277d924fee9e98",
+    "crates/chainlink-oracle/tests/fixtures/replay-v1/trailing-bytes.witness.bin": "5625bbd10189c90fa396a3032a1024d5136db75b90aa0a7a25b34b8884197a87",
+    "crates/chainlink-oracle/tests/fixtures/replay-v1/two-observations.witness.bin": "020975a257323b51f78bd9cc9d20f4c422aa161d895b8ef240076210c94a56bc",
+    "crates/chainlink-oracle/tests/fixtures/replay-v1/wrong-chain-context.witness.bin": "d74202c51e803ddc69cde7a07f47d50cd8a8c34a9983050dd4fc1f9d5bc22f0e",
+    "crates/chainlink-oracle/tests/fixtures/replay-v1/wrong-clock-context.witness.bin": "039f61effa98b5f4d2a652f4514ca9c11fd2c6aafb9911b54cbe39fc67e1352d",
+    "crates/chainlink-oracle/tests/fixtures/replay-v1/wrong-feed.witness.bin": "e0f7ef65ff54ef227dde022832e9aeb9054e553d73a45a041d362bd192124cee",
+    "crates/chainlink-oracle/tests/fixtures/replay-v1/wrong-market.witness.bin": "f9879aefa23a3cb4f522082cc1ef206a957354bb72a5e70b1dba4571db0a2ab4",
+    "crates/sp1-host/src/bin/replay-chainlink.rs": "f8bc7b3818af88b69a9c38c1a61a175d1d430be7d5ee1f6783725da1775b0932",
+    "docs/ACTIVE_WORK.md": "b0e24bfb119fbb2d36b8bb22ad8538da150b63ba2b5c95535aaca21d9ff741f3",
+    "docs/CHAINLINK_GUEST_REPLAY.md": "0349fbad2e83f5be109ee9719378e63277ddade4a3c67e6d4e33078c9223cec3",
+    "scripts/local-verification/run_chainlink_replay.py": "1fb99a9ac0f5ac69c228e60e73d43a48c88f2616e7cc31c155d166c90cde82fc",
+    "scripts/local-verification/test_chainlink_replay.py": "bee0b008a8b1b766d48cf52162c9510485f121f71a0c379fd5c8057af8dc2be7"
+  },
+  "evidence_sha256": {
+    "README.md": "975f3cdc47b750a8908ff18e47a97ddf98fdae1eb106443b5c4301e41bbfec97",
+    "build-verification.json": "b9d7a47ae1de6534e572dfff2824fc8a152fe64d0cf736524a45ef15ae36e24d",
+    "cpu-execution/depeg-funding.public-values.bin": "b298bb98db010dc72d197c337e39107b72b8d2cc6dd516e0fb2e2b85e083eeec",
+    "cpu-execution/extra-evidence.public-values.bin": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "cpu-execution/forged-fill.public-values.bin": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "cpu-execution/forged-funding.public-values.bin": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "cpu-execution/forged-liquidation.public-values.bin": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "cpu-execution/forged-unbind.public-values.bin": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "cpu-execution/funding.public-values.bin": "eb0293e46f7ea94a8f3588661205d7b1da386eafc061990b63b477ffdeef32da",
+    "cpu-execution/future-quote.public-values.bin": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "cpu-execution/invalid-state-market.public-values.bin": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "cpu-execution/legacy-wire.public-values.bin": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "cpu-execution/manifest.json": "c16aca306913b6c098198a2df14558d9893a9ac40d2ae9b9c92d1d9d070d1a76",
+    "cpu-execution/missing-evidence.public-values.bin": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "cpu-execution/price-free-empty.public-values.bin": "cc664e053744ffb17dcdcd4e25412061e509fc680924005701eca50e75efdc7b",
+    "cpu-execution/stale-quote.public-values.bin": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "cpu-execution/trailing-bytes.public-values.bin": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "cpu-execution/two-observations.public-values.bin": "580143fe91058533def3aa7059d93e62e2564a41a7b8bc4bdabe8e30d249b144",
+    "cpu-execution/wrong-chain-context.public-values.bin": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "cpu-execution/wrong-clock-context.public-values.bin": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "cpu-execution/wrong-feed.public-values.bin": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "cpu-execution/wrong-market.public-values.bin": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "execution-results.txt": "2635a1493aac329c024bf67c6e36f62c46555a97ed0a8aafeefe2cd49a5d5eb4",
+    "execution-verification.json": "2c71f126cc8457d6605ecf2ad0059468efbb4cce7e022dcee9d1807fb04b3146",
+    "pr41-merge.json": "c4361cbdc7fc1aa8b76b0e4d3ce5773a6b7bd84c3f72a04aceef60b0a64c59a0"
+  },
+  "local_checks": [
+    {
+      "name": "core-tests",
+      "command": [
+        "cargo",
+        "+1.99.0",
+        "test",
+        "--manifest-path",
+        "crates/chainlink-oracle/Cargo.toml",
+        "--locked",
+        "--offline"
+      ],
+      "exit_code": 0,
+      "seconds": 1.459,
+      "log": "target/chainlink-replay-20261010T170217Z/core-tests-final.log",
+      "log_sha256": "22148aaad89d1e0fdff9bd2ca965b1bb3a9b3c36dd33b3cc125c238231547ff8"
+    },
+    {
+      "name": "core-clippy",
+      "command": [
+        "cargo",
+        "+1.99.0",
+        "clippy",
+        "--manifest-path",
+        "crates/chainlink-oracle/Cargo.toml",
+        "--all-targets",
+        "--locked",
+        "--offline",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "exit_code": 0,
+      "seconds": 0.407,
+      "log": "target/chainlink-replay-20261010T170217Z/core-clippy-final.log",
+      "log_sha256": "f4403412cb20dc7d8a0a94c08c9c8853e4bac9b3e8489158834f30512311ed97"
+    },
+    {
+      "name": "core-no-std",
+      "command": [
+        "cargo",
+        "+1.99.0",
+        "check",
+        "--manifest-path",
+        "crates/chainlink-oracle/Cargo.toml",
+        "--no-default-features",
+        "--locked",
+        "--offline"
+      ],
+      "exit_code": 0,
+      "seconds": 0.344,
+      "log": "target/chainlink-replay-20261010T170217Z/core-no-std-final.log",
+      "log_sha256": "d7dae192715495fa89ccbe279af3efb9792c1dae1768228e369035e68a1df673"
+    },
+    {
+      "name": "python-tests",
+      "command": [
+        "python3.12",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "scripts/local-verification",
+        "-p",
+        "test_chainlink_replay.py",
+        "-v"
+      ],
+      "exit_code": 0,
+      "seconds": 0.614,
+      "log": "target/chainlink-replay-20261010T170217Z/python-tests-final.log",
+      "log_sha256": "d3dbd5f0cdff1a0708d17d0bdec86009f4a9ae7f08bebd11d65d5301b5602fc8"
+    },
+    {
+      "name": "core-fmt",
+      "command": [
+        "cargo",
+        "+1.99.0",
+        "fmt",
+        "--manifest-path",
+        "crates/chainlink-oracle/Cargo.toml",
+        "--check"
+      ],
+      "exit_code": 0,
+      "seconds": 0.272,
+      "log": "target/chainlink-replay-20261010T170217Z/core-fmt-final.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "host-fmt",
+      "command": [
+        "cargo",
+        "+1.99.0",
+        "fmt",
+        "--manifest-path",
+        "crates/sp1-host/Cargo.toml",
+        "--check"
+      ],
+      "exit_code": 0,
+      "seconds": 0.198,
+      "log": "target/chainlink-replay-20261010T170217Z/host-fmt-final.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "candidate-lock",
+      "command": [
+        "python3.12",
+        "scripts/local-verification/check_chainlink_candidate.py"
+      ],
+      "exit_code": 0,
+      "seconds": 0.136,
+      "log": "target/chainlink-replay-20261010T170217Z/candidate-lock-final.log",
+      "log_sha256": "2098e68e75a17ef7de525984a1425a3c666fa90e8333453246d09d0cf5f31d6e"
+    },
+    {
+      "name": "sp1-release",
+      "command": [
+        "python3.12",
+        "scripts/local-verification/check_sp1_release.py"
+      ],
+      "exit_code": 0,
+      "seconds": 0.327,
+      "log": "target/chainlink-replay-20261010T170217Z/sp1-release-final.log",
+      "log_sha256": "9189d4751f9a5a116d3fb275d396e5871d6e40c9df208c763d29ad33098f80d8"
+    },
+    {
+      "name": "diff-check",
+      "command": [
+        "git",
+        "diff",
+        "--check"
+      ],
+      "exit_code": 0,
+      "seconds": 0.069,
+      "log": "target/chainlink-replay-20261010T170217Z/diff-check-final.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "host-clippy",
+      "command": [
+        "cargo",
+        "+1.99.0",
+        "clippy",
+        "--release",
+        "--locked",
+        "--offline",
+        "--manifest-path",
+        "crates/sp1-host/Cargo.toml",
+        "--bin",
+        "replay-chainlink",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "env": {
+        "SP1_SKIP_PROGRAM_BUILD": "true",
+        "CARGO_BUILD_JOBS": "2",
+        "PROTOC": "configured local protoc"
+      },
+      "exit_code": 0,
+      "log": "target/chainlink-replay-20261010T170217Z/host-clippy.log",
+      "log_sha256": "1278cfaf8400ae41cc76a9ca456488180e1275e00a70363aae6a6e72886b99a4"
+    }
+  ],
+  "candidate_runtime_sources_sha256": {
+    "crates/chainlink-oracle/Cargo.lock": "62f58aa9da1592de0a4419052c5145128425976b0e0c5520fcce0bb6c936b246",
+    "crates/chainlink-oracle/Cargo.toml": "0b05c79f8fa37dd643466ad9e4b0013d6d6d257d7cfc414b8351cc7a11a88421",
+    "crates/chainlink-oracle/src/binding.rs": "8c66dba2a1d49825c1c13b89aa1a55d47fcab42abe481a0fce308128215cc877",
+    "crates/chainlink-oracle/src/lib.rs": "a107bf7464fe8654c69d9864c5ab6bcac6728d993634004d6d0075fbb707e224",
+    "crates/chainlink-oracle/src/policy.rs": "c36d89a3212cd5d9893b19e77b6b4dba5dba364dcb2135b24424fdab5a42b285",
+    "crates/chainlink-oracle/src/report.rs": "91b824e8a20bc7b1d8aa907813eb95061c659a655f72ef01fdc68409b7232d26",
+    "crates/sp1-chainlink-guest/Cargo.lock": "de6dbb43b0b85968fa2f7f7de0d71d53c54adacebbc9786cfd17197491142cbe",
+    "crates/sp1-chainlink-guest/Cargo.toml": "9f47d6f2cfc08fb71fdfcbc0877f09f083685a1ea016bbd67ea87dd60c8edc55",
+    "crates/sp1-chainlink-guest/src/main.rs": "9e403b9f241e0a53afc2e58baa7bf978ddf81c28e5704acc7a6f734962874187"
+  },
+  "reviewed_v2_sources_unchanged": 21,
+  "candidate_elf_sha256": "48a8eb8e6acd96057a72ca74db5077ac9e85d30d2ec830518ef1f1ac3832ef1f",
+  "program_vkey": "0x006aa3cfa389566dd318c9bf12f3946a623555e5f624359037e2d5c4d35ad590",
+  "guest_success_cases": 4,
+  "guest_rejection_cases": 15,
+  "guard_process_cases": 5,
+  "native_rust": {
+    "passed": 16,
+    "failed": 0,
+    "ignored": 1,
+    "export_test_separate_pass": 1
+  },
+  "python_tests": {
+    "passed": 12,
+    "failed": 0
+  },
+  "source_and_runtime_changes": "testing/runner/docs/CI only; existing guest/core/gateway/contracts/dependency locks unchanged",
+  "proof_generated": false,
+  "real_don_verified": false,
+  "production_approved": false,
+  "raw_files_sha256": {
+    "execution_verification": "0209cbcb977548246edd73580f284821eeca1df5102b73fe235c2083eba1bb8d",
+    "execution_log": "f16df15924f8086bfb8d2ef0edb52d3c57131dbd9219a25e19a561bb776ce411",
+    "build_result": "c886432f998c8d58642cd31988a085bc94035674fef8de9ca4508b38bdfa140f",
+    "host_build_log": "78fdc131c249861ed2b262e4c4f2a3945da5d44f08905ca9c3106071ef7d1217"
+  },
+  "normalization": "Published absolute checkout/home/run paths replaced; execution manifest/public-values copied byte-for-byte. Selected execution lines are not the full log."
+}

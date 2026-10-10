@@ -452,3 +452,6 @@ fn binding_vectors_for_solidity() {
         "237fcafee06b3ff6c4de8de8b6699ad97a6b12fb82600b599f32257627934d00"
     );
 }
+
+#[path = "replay_vectors.rs"]
+mod replay_vectors;

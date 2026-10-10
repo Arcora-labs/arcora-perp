@@ -2,7 +2,7 @@
 
 Güncelleme: 10 Ekim 2026. **PRODUCTION RELEASE HOLD**.
 Bu belge güncel çalışma sırasıdır; tarihsel `NEXT_STEPS.md` yerine kullanın.
-Son birleşen main: `40b8c61cba9755e80fc17e0cf01950ee8aaa4574`.
+Son birleşen main: `9483e33607f964138108094b04ca8b27dedcd637`.
 
 ## Birleşmiş ve korunan çalışmalar
 
@@ -18,9 +18,11 @@ Bu alt ölçütler yeniden açık iş sayılmaz; canlı kullanım kabulü değil
 #40 merge ağacı kontrol edilmiş `a4a6ae8a8181eaa1cd9e61daa8c0b1c50769bd96`
 ağacıyla aynıdır. Önceki merge engeli bu turda sürmedi; korumalar gevşetilmedi.
 
-## Bu dalın paketi: Chainlink adayında uptime/grace
+## Birleşmiş #41: Chainlink adayında uptime/grace
 
-Dal: `fix/chainlink-uptime-20261010`; doğrudan yukarıdaki güncel main'den açıldı.
+#41, 10 Ekim 2026 20:02:20 Türkiye saatinde 17/17 başarılı kontrolle normal
+merge edildi: `9483e33607f964138108094b04ca8b27dedcd637`.
+Merge ağacı test edilmiş `7e1adb9` kaynak ağacıyla aynıdır.
 Solidity aday wrapper'ına zorunlu, immutable uptime feed ve açık grace süresi
 bağlandı. Özgün işlem zamanı, rapor kaydı ve settlement aynı sağlıklı uptime
 dönemiyle sınırlandı. Eski proof toparlanma sonrası başka döneme taşınamaz.
@@ -30,14 +32,31 @@ Yerel: 161 sözleşme testi (20 yeni uptime testi dahil), ayrı 15 Rust testi,
 format, candidate lock/release ve 21/21 reviewed v2 kaynak pini başarılı.
 Ayrıntılar: `CHAINLINK_SEQUENCER_GUARD.md` ve
 `audits/2026-10-10-chainlink-uptime/`. Bu kayıt yerel kapsamı bildirir;
-PR'ın sonraki CI/merge durumu ayrıca kontrol edilmelidir.
+Bu PR artık main'dedir; merge sonrası push CI ayrı kayıttır.
+
+## Bu dalın paketi: aday guest CPU yürütmesi
+
+Dal: `feat/chainlink-guest-replay-20261010`, taban main `9483e33`.
+19 sabit, açık sentetik witness ve bunları gerçek SP1 CPU yürütücüsünde çalıştıran
+`replay-chainlink` eklendi. 4 başarıda native public commitment birebir eşleşti;
+15 negatifte gerçek guest exit 1 ve sıfır public çıktı görüldü. Beş ayrı gerçek
+süreç guard'ı da geçti. Fixture/kanıt denetimi için 12 Python testi ve native
+kaynakta 16 test geçti; açık export testi ayrıca bir kez çalıştırıldı.
+Ayrı aday ELF aynı Mac'te yeniden üretildi; önceki adayla byte-byte aynı kaldı.
+Ölçülen aday vkey: `0x006aa3cfa389566dd318c9bf12f3946a623555e5f624359037e2d5c4d35ad590`.
+Eski reviewed guest'in 21 pini ve aday runtime'ın 9 girdisi değişmedi.
+CI'a gerçek CPU adımı eklendi; bu dalın sonraki PR/CI sonucu ayrıca okunmalıdır.
+Kılavuz: `CHAINLINK_GUEST_REPLAY.md`; kanıt: `audits/2026-10-10-chainlink-guest-replay/`.
+Bu 4 başarılı senaryo önceki 4 normal-wallet exact witness değildir; funding ve
+boş batch regresyonlarıdır. CPU setup/execution, proof veya gerçek DON değildir.
 
 ## Chainlink geçişi henüz canlı değildir
 
 Mevcut gateway hâlâ önceki fiyat yolunu kullanır. #39 opt-in iki-borsa modu
 USDT/USDC eşleşme engelini gizlemez; iki publisher quorum'u değildir.
-#40'ın ayrı guest'i derlendi, fakat yeni guest execution/vkey/gerçek proof
-kabulü tamamlanmadı. Normalizasyon açık asset/USD ÷ USDC/USD aday tarifidir;
+#40'ın ayrı guest'i için yeni yerel CPU yürütmesi ve setup/vkey kimliği
+doğrulandı: 4 sentetik başarılı girdi + 15 çıktısız guest reddi. Yeni gerçek
+proof ve production guest/deployment kabulü tamamlanmadı. Normalizasyon açık asset/USD ÷ USDC/USD aday tarifidir;
 üretim ekonomik onayı yoktur ve backup alanı bağımsız TWAP değildir.
 
 Authenticated stream istemcisi önceki araç engelinden sonra tamamlanmadı;
