@@ -1,0 +1,886 @@
+{
+  "status": "PASS_COLD_BYTE_EXACT_REVIEWED_ELF_REBUILD",
+  "phase": "complete",
+  "release_gate": "HOLD",
+  "proof_generated": false,
+  "guest_executed": false,
+  "program_vkey_rederived": false,
+  "dependency_registry_cache_reused": false,
+  "fresh_home": true,
+  "fresh_target": true,
+  "machine_independence_asserted": false,
+  "commands": [
+    {
+      "argv": [
+        "/Users/runner/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/cargo",
+        "fetch",
+        "--manifest-path",
+        "/Users/runner/work/arcora-perp/arcora-perp/crates/sp1-guest/Cargo.toml",
+        "--locked"
+      ],
+      "seconds": 2.099358,
+      "exit_code": 0
+    },
+    {
+      "argv": [
+        "/Users/runner/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/cargo",
+        "build",
+        "--manifest-path",
+        "/Users/runner/work/arcora-perp/arcora-perp/crates/sp1-guest/Cargo.toml",
+        "--locked",
+        "--offline",
+        "--release",
+        "--target",
+        "riscv64im-succinct-zkvm-elf"
+      ],
+      "seconds": 71.93576,
+      "exit_code": 0
+    }
+  ],
+  "cargo": "cargo 1.99.0 (5f94df478 2026-08-27)",
+  "rustc": "rustc 1.93.0-dev\nbinary: rustc\ncommit-hash: unknown\ncommit-date: unknown\nhost: aarch64-apple-darwin\nrelease: 1.93.0-dev\nLLVM version: 21.1.8",
+  "cargo_sha256": "fc7aa5077deca8abc0651f329e8ec1d968f520e996a93b428f9935014362b382",
+  "rustc_sha256": "985c33069083f55ed42b68ef51a8528d0cb1632e43428ffdb5c489306154f964",
+  "toolchain_archive_sha256": "8ee4ea0f27efbf73ddfe8a2038ced4c0802fdcf9e1ee109349763b9f4a808cf6",
+  "toolchain_source": "https://github.com/succinctlabs/rust/releases/download/succinct-1.93.0-64bit/rust-toolchain-aarch64-apple-darwin.tar.gz",
+  "os": "Darwin",
+  "architecture": "arm64",
+  "source_pins_before_and_after": {
+    "Cargo.toml": "e3144a0ae3447244776e65b04cfff39267c238e410c2d9abf20b53e6b837bbfa",
+    "crates/perp-core/Cargo.toml": "3bfb6981fa34a967185ce75abd07683e5262a694ebd60eb45a4f5c55aaf9704c",
+    "crates/perp-core/src/clock.rs": "e89e50e11b3ffb3a4a1a89ab6dd4854b61606cc17eb1236492994df0b59d50e7",
+    "crates/perp-core/src/commitment.rs": "43582ef5048d0d725e53976e3c2a1dfcf32984ed2ad1bb2ebd2032463e26ea92",
+    "crates/perp-core/src/engine.rs": "4d6037f1189939a71a41e31882012e6fa50b887087b5ccc2bfce4502b61d0f9e",
+    "crates/perp-core/src/error.rs": "0738da822be5639737e67f04a0f500af57fcc1f085dd64bec7fbe3b016c515c6",
+    "crates/perp-core/src/fixed.rs": "fc77559a31c1cfdd7a641cafbd773871aeb203849e165dbd158aa7a1b65ef7cd",
+    "crates/perp-core/src/funding.rs": "8f782cf3a4403c717eda44c6d2955789c31e4ef2a04bb4fdac8e61916018e781",
+    "crates/perp-core/src/hash.rs": "88430a8c2558b247bcf241035ad48fa1dbf8a3e77a0d176dfdbd608c930f93b9",
+    "crates/perp-core/src/lib.rs": "8f070fbec0f4b3d3fab5e594bcf808845803a59ece403dc42cb0f0df6e6253b5",
+    "crates/perp-core/src/market.rs": "8053e89a9b1021d6e461d46d733dfb1935aff5fc2a45be8121f96560fa4ddc2d",
+    "crates/perp-core/src/merkle.rs": "173f4667178ba4aa4048e43c2aeb9fa337918d6225b98c6597c004b59bc3a8f6",
+    "crates/perp-core/src/note.rs": "5cece4d513537c10464bd64b4612f829cd32cb9c1a80d3c8e40c573aace62423",
+    "crates/perp-core/src/nullifier.rs": "a252799c62dc42ec37c91ba6fd7674117b33c98c7f83e86b168f70898966ea78",
+    "crates/perp-core/src/oracle.rs": "91ae09655e35432aafa1135b23588d6f1f324b41a278ac640ebc30f106d17da2",
+    "crates/perp-core/src/order.rs": "99bb9b2be4948bcf8365c3022ef444be5941201ec6535de73d45a777e5a206d7",
+    "crates/perp-core/src/position.rs": "99d120139086092d2dae4ed11d3a677906c1cf3efd7aff9e58f27f3437f2ae66",
+    "crates/perp-core/src/state.rs": "e1026c1e2b56cfcbee4eff812e88ff3dcde052e46818deab980a071fcdbec388",
+    "crates/sp1-guest/Cargo.lock": "113518cb212208aa46a629608af9d946f9a4006ac211035a15e9cb8c022fb8c3",
+    "crates/sp1-guest/Cargo.toml": "d0ed7050076bb3548b9e3410f63066068752382f4dab31e344096c9c3e42dc85",
+    "crates/sp1-guest/src/main.rs": "c0d33ff8645ebdcc8994d4d65729b8a60a224bcda18415423da15ed875c16f5c"
+  },
+  "recipe_sha256": "02755152a087d186ae31e0fa613b7817f237c9cd251f961f4e27f743dca15ad6",
+  "base_recipe_sha256": "12b75077e306ace453eadcf8b61c6122e948ade49d1227b237ba4daa5ce02d0d",
+  "registry_archives_sha256": {
+    "autocfg-1.5.1.crate": "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53",
+    "sha2-0.10.9.crate": "a7507d819769d01a365ab707794a4084392c824f54a7a6a7862f8c3d0892b283",
+    "r-efi-5.3.0.crate": "69cdb34c158ceb288df11e18b4bd39de994f6657d83847bdffdbd7f346754b0f",
+    "getrandom-0.3.4.crate": "899def5c37c4fd7b2664648c28120ecec138e4d395b459e5ca34f9cce2dd77fd",
+    "ecdsa-0.16.9.crate": "ee27f32b5c5292967d2d4a9d7f1e0b0aed2c15daded5a60300e4abb9d8020bca",
+    "rlsf-0.2.3.crate": "07393724337be2ee43a9d86164df4505746874a3fa65913374bc6d6a92314362",
+    "ff_derive-0.13.1.crate": "f10d12652036b0e99197587c6ba87a8fc3031986499973c030d8b44fcc151b60",
+    "proc-macro2-1.0.107.crate": "985e7ec9bb745e6ce6535b544d84d6cd6f7ad8bd711c398938ae983b91a766d9",
+    "const-default-1.0.0.crate": "0b396d1f76d455557e1218ec8066ae14bba60b4b36ecd55577ba979f5db7ecaa",
+    "syn-1.0.109.crate": "72b64191b275b66ffe2469e8af2c1cfe3bafa67b529ead792a6d0160888b4237",
+    "unicode-ident-1.0.26.crate": "d245f478577f809a851594d02313b640fb437e0bb33866753cff937863096954",
+    "shlex-2.0.1.crate": "f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba",
+    "cobs-0.3.0.crate": "0fa961b519f0b462e3a3b4a34b64d119eeaca1d59af726fe450bbba07a9fc0a1",
+    "p3-dft-0.3.2-succinct.crate": "56a1f81101bff744b7ebba7f4497e917a2c6716d6e62736e4a56e555a2d98cb7",
+    "p3-maybe-rayon-0.3.2-succinct.crate": "e524d47a49fb4265611303339c4ef970d892817b006cc330dad18afb91e411b1",
+    "crypto-common-0.1.6.crate": "1bfb12502f3fc46cca1bb51ac28df9d618d813cdc3d2f25b9fe775a34af26bb3",
+    "tracing-attributes-0.1.31.crate": "7490cfa5ec963746568740651ac6781f701c9c5ea257c58e057f3ba8cf69e8da",
+    "tracing-0.1.44.crate": "63e71662fa4b2a2c3a26f570f037eb95bb1f85397f3cd8076caed2f026a6d100",
+    "memchr-2.8.3.crate": "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98",
+    "once_cell-1.21.4.crate": "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50",
+    "getrandom-0.2.17.crate": "ff2abc00be7fca6ebc474524697ae276ad847ad0a6b3faa4bcb027e9a4614ad0",
+    "num-bigint-0.3.3.crate": "5f6f7833f2cbf2360a6cfd58cd41a53aa7a90bd4c202f5b1c7dd2ed73c57b2c3",
+    "slop-poseidon2-6.1.0.crate": "5b06e4a24cba104a0a39740eedd97e60e8896926cc38e6a58d5866cc9811affa",
+    "arrayvec-0.7.8.crate": "d3fb67a6e08acf24fdeccbac2cb6ac4305825bd1f117462e0e6f2f193345ad56",
+    "zerocopy-derive-0.8.59.crate": "ac4f328cf2f05d084e496c3e9c3f33ed0a183656a16e1fcec4d464d8373aec82",
+    "sha3-0.10.9.crate": "77fd7028345d415a4034cf8777cd4f8ab1851274233b45f84e3d955502d93874",
+    "slop-primitives-6.1.0.crate": "0b0b66701c82f6aab97f4990b5d9ed7463beb5b5042dbe5eda5f6c71a6207b35",
+    "crossbeam-deque-0.8.8.crate": "622f3fc73690be383c7214310406f28a90e6edeadc3cea882f9d71e495b9711a",
+    "constant_time_eq-0.4.2.crate": "3d52eff69cd5e647efe296129160853a42795992097e8af39800e1060caeea9b",
+    "pasta_curves-0.4.1.crate": "5cc65faf8e7313b4b1fbaa9f7ca917a0eed499a9663be71477f87993604341d8",
+    "group-0.12.1.crate": "5dfbfb3a6cfbd390d5c9564ab283a0349b9b9fcd46a706c1eb10e0db70bfbac7",
+    "ark-ff-macros-0.4.2.crate": "7abe79b0e4288889c4574159ab790824d0033b9fdcb2a112a3182fac2e514565",
+    "jubjub-0.9.0.crate": "a575df5f985fe1cd5b2b05664ff6accfc46559032b954529fd225a2168d27b0f",
+    "embedded-alloc-0.6.0.crate": "8f2de9133f68db0d4627ad69db767726c99ff8585272716708227008d3f1bddd",
+    "num-bigint-0.4.8.crate": "c89e69e7e0f03bea5ef08013795c25018e101932225a656383bd384495ecc367",
+    "critical-section-1.2.0.crate": "790eea4361631c5e7d22598ecd5723ff611904e3344ce8720784c93e3d83d40b",
+    "halo2-0.1.0-beta.2.crate": "2a23c779b38253fe1538102da44ad5bd5378495a61d2c4ee18d64eaa61ae5995",
+    "itertools-0.12.1.crate": "ba291022dbbd398a455acf126c1e341954079855bc60dfdda641363bd6922569",
+    "p3-util-0.3.2-succinct.crate": "ec5f0388aa6d935ca3a17444086120f393f0b2f0816010b5ff95998c1c4095e3",
+    "hex-0.4.3.crate": "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70",
+    "crunchy-0.2.4.crate": "460fbee9c2c2f33933d720630a6a0bac33ba7053db5344fac858d4b8952d77d5",
+    "ark-serialize-0.4.2.crate": "adb7b85a02b83d2f22f89bd5cac66c9c89474240cb6207cb1efc16d098e822a5",
+    "thiserror-impl-2.0.21.crate": "fe5197923287db20a58125f0bc85c062f7f2c892de97b18c356f9efb14b28524",
+    "futures-executor-0.3.34.crate": "031b47cf1a3c6cc8bc2fc76cd437f521619387907d469316e7c0bc278f1f5432",
+    "pasta_curves-0.5.2.crate": "3437083215c505e867eea5478371feba43d7689d6d15ec0a209eb46fb0d4cda6",
+    "blake2b_simd-1.0.5.crate": "3560a7b1951efe814fcd721938313adc56753ca39f4b23847d7e9a2402f5dbff",
+    "ff-0.12.1.crate": "d013fc25338cc558c5c2cfbad646908fb23591e2404481826742b651c9af7160",
+    "find-msvc-tools-0.1.14.crate": "aedcfb3409746eddb02b9e19ebda1c3394f759a152e48ee875a0844d1b955484",
+    "crossbeam-utils-0.8.23.crate": "a31eee39dddec8330830986fcd7625edb5a24ec90ea038215273bbc3adb08ac6",
+    "addchain-0.2.1.crate": "2e33f6a175ec6a9e0aca777567f9ff7c3deefc255660df887e7fa3585e9801d8",
+    "group-0.13.0.crate": "f0f9ef7462f7c099f518d754361858f86d8a07af53ba9af0fe635bbccb151a63",
+    "wasip2-1.0.4+wasi-0.2.12.crate": "b67efb37e106e55ce722a510d6b5f9c17f083e5fc79afc2badeb12cc313d9487",
+    "zkhash-0.2.0.crate": "4352d1081da6922701401cdd4cbf29a2723feb4cfabb5771f6fee8e9276da1c7",
+    "funty-2.0.0.crate": "e6d5a32815ae3f33302d95fdcb2ce17862f8c65363dcfd29360480ba1001fc9c",
+    "ark-ff-0.4.2.crate": "ec847af850f44ad29048935519032c33da8aa03340876d351dfab5660d2966ba",
+    "futures-util-0.3.34.crate": "0d50a92467f8ba5dd6e3ee5d4bd04d73ab2e4e1c44474a0674821dfce14b79bc",
+    "sec1-0.7.3.crate": "d3e97a565f76233a6003f9f5c54be1d9c5bdfa3eccfb189469f11ec4901c47dc",
+    "wit-bindgen-0.57.1.crate": "1ebf944e87a7c253233ad6766e082e3cd714b5d03812acc24c318f549614536e",
+    "blake2-0.10.6.crate": "46502ad458c9a52b69d4d4d32775c788b7a1b85e8bc9d482d92250fc0e3f8efe",
+    "p3-bn254-fr-0.3.2-succinct.crate": "9abf208fbfe540d6e2a6caaa2a9a345b1c8cb23ffdcdfcc6987244525d4fc821",
+    "futures-io-0.3.34.crate": "53c0fa8157de1303bfffdaa1cc2a673bfffb60102f76b0ef4441659124373fed",
+    "elf-0.7.4.crate": "4445909572dbd556c457c849c4ca58623d84b27c8fff1e74b0b4227d8b90d17b",
+    "tracing-core-0.1.36.crate": "db97caf9d906fbde555dd62fa95ddba9eecfd14cb388e4f491a66d74cd5fb79a",
+    "linked_list_allocator-0.10.6.crate": "2b23ac50abb8261cb38c6e2a7192d3302e0836dac1628f6a93b82b4fad185897",
+    "itertools-0.10.5.crate": "b0fd2260e829bddf4cb6ea802289de2f86d6a7a690192fbe91b3f46e0f2c8473",
+    "either-1.18.0.crate": "252afb9ae5eaa683babdc6a068b3f5726eb19e05070c731f9b2a23a7c3e8ed34",
+    "rand_chacha-0.3.1.crate": "e6c10a63a0fa32252be49d21e7709d4d4baf8d231c2dbce1eaa8141b9b127d88",
+    "sp1-primitives-6.1.0.crate": "b6b77098dae9d62e080be3af253188c08e7e96e666423306654eede0110bf363",
+    "serde_derive-1.0.229.crate": "e7a5d71263a5a7d47b41f6b3f06ba276f10cc18b0931f1799f710578e2309348",
+    "bitvec-1.1.1.crate": "ddcec3d12c579d40898fe0a9a358a803c23e9c52ca3c425707f81c9436211837",
+    "radium-0.7.0.crate": "dc33ff2d4973d518d823d61aa239014831e521c75da58e3df4840d3f47749d09",
+    "tiny-keccak-2.0.2.crate": "2c9d3793400a45f954c52e73d068316d76b6f4e36977e3fcebb13a2721e80237",
+    "wyz-0.5.1.crate": "05f360fc0b24296329c78fda852a1e9ae82de9cf7b27dae4b7f62f118f77b9ed",
+    "num-integer-0.1.47.crate": "7ce2d95d4b3734dc35aa2f45e1aa22cd416814592a4f9d9205e11affd5b8e10b",
+    "futures-task-0.3.34.crate": "cd417de3d1d015fc3bfd2b1ea46dfc7bab72ef86f1cc7cc9c78e728b34a6d1fd",
+    "p3-challenger-0.3.2-succinct.crate": "42b725b453bbb35117a1abf0ddfd900b0676063d6e4231e0fa6bb0d76018d8ad",
+    "postcard-1.1.3.crate": "6764c3b5dd454e283a30e6dfe78e9b31096d9e32036b5d1eaac7a6119ccb9a24",
+    "ff-0.13.1.crate": "c0b50bfb653653f9ca9095b427bed08ab8d75a137839d9ad64eb11810d5b6393",
+    "blake3-1.8.7.crate": "6d9e454fc11f76977dc803893aff6304ed33d6a26efae8696573bea74baa27ae",
+    "const-oid-0.9.6.crate": "c2459377285ad874054d797f3ccebf984978aa39129f6eafde5cdc8315b612f8",
+    "rfc6979-0.4.0.crate": "f8dd2a808d456c4a54e300a23e9f5a67e122c3024119acbfd73e3bf664491cb2",
+    "generic-array-0.14.9.crate": "4bb6743198531e02858aeaea5398fcc883e71851fcbcb5a2f773e2fb6cb1edf2",
+    "k256-0.13.4.crate": "f6e3919bbaa2945715f0bb6d3934a173d1e9a59ac23767fbaaef277265a7411b",
+    "rustversion-1.0.23.crate": "cf54715a573b99ac80df0bc206da022bcd442c974952c7b9720069370852e21f",
+    "digest-0.10.7.crate": "9ed9a281f7bc9b7576e61468ba615a66a5c8cfdff42420a70aa82701a3b1e292",
+    "semver-1.0.28.crate": "8a7852d02fc848982e0c167ef163aaff9cd91dc640ba85e263cb1ce46fae51cd",
+    "pairing-0.22.0.crate": "135590d8bdba2b31346f9cd1fb2a912329f5135e832a4f422942eb6ead8b6b3b",
+    "slop-bn254-6.1.0.crate": "a71b23ede427299e139fb822c5d0ea8fb931dc297eba0c6e2f30f774c04ebc81",
+    "crossbeam-epoch-0.9.21.crate": "dc74980687109a3b14c72fd458107bf0baa1da1a1a805e178d15501ba9b86d9d",
+    "paste-1.0.15.crate": "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a",
+    "spin-0.9.9.crate": "3763264f6b73151db08c50ff20d7d8a0b8796e021cdea7ceedad07b80155fa0e",
+    "tap-1.0.1.crate": "55937e1799185b12863d447f42597ed69d9928686b8d88a1df17376a097d8369",
+    "cfg-if-1.0.5.crate": "4e7648175b45a9a48536d676f68d918270699102aa8dab5496df06904c914600",
+    "zeroize-1.9.0.crate": "e13c156562582aa81c60cb29407084cdb54c4164760106ab78e6c5b0858cf64e",
+    "futures-0.3.34.crate": "9a31d2a3fbaaeb2af2368bbdd904aa8e812d3c04a1ee10d3171f52d556e5d0a3",
+    "gcd-2.3.0.crate": "1d758ba1b47b00caf47f24925c0074ecb20d6dfcffe7f6d53395c0465674841a",
+    "futures-macro-0.3.34.crate": "9fb9654ba8355388abeb8dcb4fc62f511300867002afc858860463bdd9fe0c44",
+    "slop-koala-bear-6.1.0.crate": "8986e94b9a43d58fc8ce5bf111b0985479ab888ced923e3052fb19943f7859b4",
+    "halo2_proofs-0.1.0.crate": "e925780549adee8364c7f2b685c753f6f3df23bde520c67416e93bf615933760",
+    "byteorder-1.5.0.crate": "1fd0f2584146f6f2ef48085050886acf353beff7305ebd1ae69500e27c67f64b",
+    "subtle-2.6.1.crate": "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292",
+    "keccak-0.1.6.crate": "cb26cec98cce3a3d96cbb7bced3c4b16e3d13f27ec56dbd62cbc8f39cfb9d653",
+    "futures-channel-0.3.34.crate": "b1f9e3d69d39e4862ffed03ed071a76f9a13ba1d9109d355b0f0aa6b15e393c4",
+    "slop-algebra-6.1.0.crate": "733912d564a68ff209707e71fdc517d4ff82d4362b6a409f6a8241dfcb7a576a",
+    "p3-mds-0.3.2-succinct.crate": "4f6cb8edcb276033d43769a3725570c340d2ed6f35c3cca4cddeee07718fa376",
+    "slop-symmetric-6.1.0.crate": "e6d159948b924fd00f280064d7a049e43dceb2f26067f32fb99570d3169969ee",
+    "zerocopy-0.8.59.crate": "6df92bf3d9227be3d53173901ddbffac2babc27ae50f397776ffd6dc33f800cb",
+    "static_assertions-1.1.0.crate": "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f",
+    "rand-0.8.8.crate": "e058c7de0b26af77780c769414d6257830bb240f3c38477dbc2c16e5f54d6d4c",
+    "block-buffer-0.10.4.crate": "3078c7629b62d3f0439517fa394996acacc5cbc91c5a20d8c658e77abd503a71",
+    "libm-0.2.16.crate": "b6d2cec3eae94f9f509c767b45932f1ada8350c4bdb85af2fcab4a3c14807981",
+    "elliptic-curve-0.13.8.crate": "b5e6043086bf7973472e0c7dff2142ea0b680d30e18d9cc40f267efbf222bd47",
+    "typenum-1.20.1.crate": "b6f5e870be6c3b371b77fe0ee0bafb859fa4964b4404c27de1d380043c4dda20",
+    "rayon-core-1.13.0.crate": "22e18b0f0062d30d4230b2e85ff77fdfe4326feb054b9783a3460d8435c8ab91",
+    "rustc_version-0.4.1.crate": "cfcb3a22ef46e85b45de6ee7e79d063319ebb6594faafcf1c225ea92ab6e9b92",
+    "ark-std-0.4.0.crate": "94893f1e0c6eeab764ade8dc4c0db24caf4fe7cbbaafc0eba0a9030f447b5185",
+    "quote-1.0.47.crate": "1fbf4db142a473a8d80c26bbf18454ed458bf8d26c8219c331daecfdbd079001",
+    "rand_core-0.6.4.crate": "ec0be4795e2f6a28069bec0b5ff3e2ac9bafc99e6a9a7dc3547996c5c816922c",
+    "itertools-0.14.0.crate": "2b192c782037fadd9cfa75548310488aabdbf3d2da73885b31bd0abd03351285",
+    "p3-symmetric-0.3.2-succinct.crate": "3a1d3b5202096bca57cde912fbbb9cbaedaf5ac7c42a924c7166b98709d64d21",
+    "serde_core-1.0.229.crate": "67dca2c9c51e58a4791a4b1ed58308b39c64224d349a935ab5039aa360942a48",
+    "serde-1.0.229.crate": "4148590afebada386688f18773da617792bf2ef03ffc1e4cbd2b1d45b023e0ba",
+    "embedded-io-0.6.1.crate": "edd0f118536f44f5ccd48bcb8b111bdc3de888b58c74639dfb034a357d0f206d",
+    "slab-0.4.12.crate": "0c790de23124f9ab44544d7ac05d60440adc586479ce501c1d6d7da3cd8c9cf5",
+    "futures-core-0.3.34.crate": "92d699e522242e69e3003b94ecc1f960f3a5e015aa7c5d7486e65ad01dd94f5e",
+    "p3-field-0.3.2-succinct.crate": "36459d4acb03d08097d713f336c7393990bb489ab19920d4f68658c7a5c10968",
+    "lazy_static-1.5.0.crate": "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe",
+    "slop-challenger-6.1.0.crate": "59e4993210936ab317c0d56ee8257e1cdfe6c2fae4df1e158737f034e21d45f9",
+    "cpufeatures-0.2.17.crate": "59ed5838eebb26a2bb2e58f6d5b5316989ae9d08bab10e0e6d103e656d1b0280",
+    "signature-2.2.0.crate": "77549399552de45a898a580c1b41d445bf730df867cc44e6c0233bbc4b8329de",
+    "cpufeatures-0.3.1.crate": "5ca28b0ae3115b884660db4118d803791fd6756b6e88f39c0f3f7859060d7566",
+    "der-0.7.10.crate": "e7c1832837b905bbfb5101e07cc24c8deddf52f93225eee6ead5f4d63d53ddcb",
+    "p3-poseidon2-0.3.2-succinct.crate": "5a26197df2097b98ab7038d59a01e1fe1a0f545e7e04aa9436b2454b1836654f",
+    "cc-1.5.1.crate": "f360145194ee8e21db5ee7f3fcd4fe52210864c75c985dae33218202c8bbe040",
+    "wasi-0.11.1+wasi-snapshot-preview1.crate": "ccf3ec651a847eb01de73ccad15eb7d99f80485de043efb2f370cd654f4ea44b",
+    "bincode-1.3.3.crate": "b1f45e9417d87227c7a56d22e471c6206462cba514c7590c09aff4cf6d1ddcad",
+    "ppv-lite86-0.2.21.crate": "85eae3c4ed2f50dcfe72643da4befc30deadb458a9b590d720cde2f2b1e97da9",
+    "version_check-0.9.5.crate": "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a",
+    "p3-matrix-0.3.2-succinct.crate": "5583e9cd136a4095a25c41a9edfdcce2dfae58ef01639317813bdbbd5b55c583",
+    "rayon-1.12.0.crate": "fb39b166781f92d482534ef4b4b1b2568f42613b53e5b6c160e24cfbfa30926d",
+    "hmac-0.12.1.crate": "6c49c37c09c17a53d937dfbb742eb3a961d65a994e6bcdcf37e7399d0cc8ab5e",
+    "sp1-lib-6.1.0.crate": "9b96392c1b1c197beaa6b0806099a8d73643a09d5ac0874e26c9c5153a7fcb4c",
+    "crypto-bigint-0.5.5.crate": "0dc92fb57ca44df6db8059111ab3af99a63d5d0f8375d9972e319a379c6bab76",
+    "pin-project-lite-0.2.17.crate": "a89322df9ebe1c1578d689c92318e070967d1042b512afbe49518723f4e6d5cd",
+    "syn-2.0.119.crate": "872831b642d1a07999a962a351ed35b955ea2cfc8f3862091e2a240a84f17297",
+    "p3-koala-bear-0.3.2-succinct.crate": "eb1f52bcb6be38bdc8fa6b38b3434d4eedd511f361d4249fd798c6a5ef817b40",
+    "bls12_381-0.7.1.crate": "a3c196a77437e7cc2fb515ce413a6401291578b5afc8ecb29a3c7ab957f05941",
+    "zeroize_derive-1.5.0.crate": "3c50655cbb0fe3fc43170059e702f1ce5e19b84cec58dc87b037a09935c2f328",
+    "memuse-0.2.2.crate": "3d97bbf43eb4f088f8ca469930cde17fa036207c9a5e02ccc5107c4e8b17c964",
+    "ark-ff-asm-0.4.2.crate": "3ed4aa4fe255d0bc6d79373f7e31d2ea147bcf486cba1be5ba7ea85abdb92348",
+    "embedded-io-0.4.0.crate": "ef1a6892d9eef45c8fa6b9e0086428a2cca8491aca8f787c534a3d6d0bcb3ced",
+    "base16ct-0.2.0.crate": "4c7f02d4ea65f2c1853089ffd8d2787bdbc63de2f0d29dedbcf8ccdfa0ccd4cf",
+    "sp1-zkvm-6.1.0.crate": "d31a7c3f072f248342284031684c9195e2264422964129c3b8652f9196ecc937",
+    "libc-0.2.189.crate": "3eaf3ede3fee6db1a4c2ee091bf8a8b4dccdc6d17f656fb07896ee72867612f2",
+    "derivative-2.2.0.crate": "fcc3dd5e9e9c0b295d6e1e4d811fb6f157d5ffd784b8d202fc62eac8035a770b",
+    "syn-3.0.6.crate": "8593e8e72159ed2257d083c7a454a85cbf854f37a0966d8d483aff8c8a3ebcee",
+    "futures-sink-0.3.34.crate": "1944426bf7d03f1d14f708785e4b33efd750b36d48a157b836b3efc15ede8e1d",
+    "num-traits-0.2.19.crate": "071dfc062690e90b734c0b2273ce72ad0ffa95f0c74596bc250dcfd960262841",
+    "thiserror-2.0.21.crate": "09e52cb86a36cede5cb101bf8908837b3e4c6e5e59fe7fd85c23fb56200d189e"
+  },
+  "registry_sources": {
+    "addchain-0.2.1": {
+      "files": 11,
+      "source_tree_sha256": "62d2eb9e7b33cb524df61f474aec585f8aadf4a4ddbae055c3baec817f5efe27"
+    },
+    "ark-ff-0.4.2": {
+      "files": 41,
+      "source_tree_sha256": "6133e636696358849f18580e1efe507f6ec5138f3c970ce594974617d164d7f0"
+    },
+    "ark-ff-asm-0.4.2": {
+      "files": 8,
+      "source_tree_sha256": "70ffbe94139e6dbe38b74fbdfec34d10db9cafa48768c9e9301cc804962c02a2"
+    },
+    "ark-ff-macros-0.4.2": {
+      "files": 15,
+      "source_tree_sha256": "489f7b44736ef4f6b3036715ddc3e877f95d5aff9557b6063e63316d0383240c"
+    },
+    "ark-serialize-0.4.2": {
+      "files": 10,
+      "source_tree_sha256": "8b2e02fd6884ae0d116da023ba0dd828c9ecc2ec35c909d463d63cd1f9d488ae"
+    },
+    "ark-std-0.4.0": {
+      "files": 14,
+      "source_tree_sha256": "d55f61589f352b482cf70863c0e8b25ab905b0da9a7995ef3d0718c2f72254ca"
+    },
+    "arrayvec-0.7.8": {
+      "files": 22,
+      "source_tree_sha256": "f7fb091d552ec177e72bcd0890f23d0fb7d085d299b052cb91f18f3019254c6e"
+    },
+    "autocfg-1.5.1": {
+      "files": 23,
+      "source_tree_sha256": "43b8a4c4dc9b355ee65971d70adf1eb5b4c96545a8e43efeef26cf40bd6e00fa"
+    },
+    "base16ct-0.2.0": {
+      "files": 15,
+      "source_tree_sha256": "5d97e3ac4c81019fc80d604a1ee4c8900cda870db00af211f0683f6678ffacd3"
+    },
+    "bincode-1.3.3": {
+      "files": 23,
+      "source_tree_sha256": "50177186d3d4d11269575b624ffb1fca3a894408dbf90b0377a2b21fbc27b744"
+    },
+    "bitvec-1.1.1": {
+      "files": 238,
+      "source_tree_sha256": "773e5071e06a80f1d92191333726043462098368b1b5e4c68bd22693deeb4d33"
+    },
+    "blake2-0.10.6": {
+      "files": 27,
+      "source_tree_sha256": "1c2c44600109b93aae0c548dd9fe89844df10db94a552162d26854bf38dffa82"
+    },
+    "blake2b_simd-1.0.5": {
+      "files": 13,
+      "source_tree_sha256": "bae67556dc7913ae882ae197d34835e0d81c9f6d545e830735a117906ff1f15e"
+    },
+    "blake3-1.8.7": {
+      "files": 80,
+      "source_tree_sha256": "6ddd06623d8668f0cf26e36cdd7107014e744e9476679d9e284ded8d86618426"
+    },
+    "block-buffer-0.10.4": {
+      "files": 10,
+      "source_tree_sha256": "0c23d0f27bb8d9ce06bccbea75209025cfda5ac668c1798eebfa8efbe35e60a8"
+    },
+    "bls12_381-0.7.1": {
+      "files": 37,
+      "source_tree_sha256": "6a079b77e1d1db6a1a75381c3d647c638d297b76ac6fe6d7006b8898ba02853e"
+    },
+    "byteorder-1.5.0": {
+      "files": 14,
+      "source_tree_sha256": "19f60c300a4750e1c5fc311d0abc16c8da5916357900a928606c2f570acf23a3"
+    },
+    "cc-1.5.1": {
+      "files": 31,
+      "source_tree_sha256": "b75324ceabb9d2d471f414f9166d481da07ac8c3c9ae5d4d85bd6fc4b0c49dc6"
+    },
+    "cfg-if-1.0.5": {
+      "files": 14,
+      "source_tree_sha256": "ca5d16fc5975021244447571ccd3d5557f14e03072d88278ede83f90a916f446"
+    },
+    "cobs-0.3.0": {
+      "files": 14,
+      "source_tree_sha256": "00d0db4f4434b2e05497dee379b4db4b796206224a2a27f6accf97ce8f848309"
+    },
+    "const-default-1.0.0": {
+      "files": 11,
+      "source_tree_sha256": "0c537c82f7809294ae23114a6cb3667a1298219b1b3dda341d9f5ccbf30cb223"
+    },
+    "const-oid-0.9.6": {
+      "files": 16,
+      "source_tree_sha256": "53e129506b4092f29223f1e337ef5ac4648d4e5195fd78a4933be7de3ca62013"
+    },
+    "constant_time_eq-0.4.2": {
+      "files": 24,
+      "source_tree_sha256": "2f41a8af42f69c70921dd513feed30dee44229c9f7235a905ba3db7b83aeac21"
+    },
+    "cpufeatures-0.2.17": {
+      "files": 16,
+      "source_tree_sha256": "fd08b5dbefd3c652d5def850501b27bb0cbcb33377f18e6b93ddb67fa5f940ab"
+    },
+    "cpufeatures-0.3.1": {
+      "files": 16,
+      "source_tree_sha256": "81444810a906b2f21e49d25e12167d0ff153f8ad98818f0fb6f01a821f749626"
+    },
+    "critical-section-1.2.0": {
+      "files": 18,
+      "source_tree_sha256": "f5e1fa905f0621bb6505a4ef257580363c3cedc95e79332016498c2c5f71f6db"
+    },
+    "crossbeam-deque-0.8.8": {
+      "files": 15,
+      "source_tree_sha256": "59f726232bd90d96c431c3d2f921f99e7f04dd13fda99d7702888eca203300dc"
+    },
+    "crossbeam-epoch-0.9.21": {
+      "files": 26,
+      "source_tree_sha256": "7a4d5f5fa361663bf69a59a6d678afec58174717571bfed62621014cb32a2d5b"
+    },
+    "crossbeam-utils-0.8.23": {
+      "files": 32,
+      "source_tree_sha256": "6c63d97f344fdca6aca92f429681613c30beb9b68f6c5898ed303fd8251022b1"
+    },
+    "crunchy-0.2.4": {
+      "files": 9,
+      "source_tree_sha256": "3c7a98eb4b19064251a42e1689e5ff8858d9ca1ba762af848e1f0990d19be6c1"
+    },
+    "crypto-bigint-0.5.5": {
+      "files": 99,
+      "source_tree_sha256": "5cf90894a0647fe28371eaa2643f2b7e1ca513e27cd7754dae71f1385289706e"
+    },
+    "crypto-common-0.1.6": {
+      "files": 8,
+      "source_tree_sha256": "c176a0abb8b71d9af2c29df132af36a61e23a1a1fddcb07858dd4992f6e19024"
+    },
+    "der-0.7.10": {
+      "files": 68,
+      "source_tree_sha256": "10af72a699e9d778676665723c7fb704b0165dace2ce2a2572bea904a3f31605"
+    },
+    "derivative-2.2.0": {
+      "files": 126,
+      "source_tree_sha256": "bcdd3bd3da515ff0b1de1937fd7939f483121a0bae3ca6b0701aa271884601ca"
+    },
+    "digest-0.10.7": {
+      "files": 21,
+      "source_tree_sha256": "ee85ad31f42d2e282c4543c8516c065dd0b5ef018ef05ba0bbfaf2717a01a911"
+    },
+    "ecdsa-0.16.9": {
+      "files": 16,
+      "source_tree_sha256": "01f61c824d5903979802e098f6f8a0dbe64e2c0c0a906d00c075d9b98049c679"
+    },
+    "either-1.18.0": {
+      "files": 15,
+      "source_tree_sha256": "9608fb15d1d0a0037146673bcb72865f3c67861ad38af1470c03fea954f55a56"
+    },
+    "elf-0.7.4": {
+      "files": 26,
+      "source_tree_sha256": "ba88f0c45dbb6c01dee9433fa8e8df9b5ac49afd9b5e83e42d6a3c8aa51b2de9"
+    },
+    "elliptic-curve-0.13.8": {
+      "files": 42,
+      "source_tree_sha256": "a46eb0875d2156493dc9ef95b6155bfa7f5c550d754122db83fec74bee82d00c"
+    },
+    "embedded-alloc-0.6.0": {
+      "files": 22,
+      "source_tree_sha256": "5ae5b15532ba2dd26384b68fb3a0e26aa4f73b54eeb3434df24a3796504e9966"
+    },
+    "embedded-io-0.4.0": {
+      "files": 19,
+      "source_tree_sha256": "9e079a69e41a76a4bcd23a637c073b7c218b5eb38d91b1e0f2a0656103ef183d"
+    },
+    "embedded-io-0.6.1": {
+      "files": 13,
+      "source_tree_sha256": "630ebc234b1db0b82d40c8c1d3158d9ce0b54706830845cdaeb5b1d0101ac9da"
+    },
+    "ff-0.12.1": {
+      "files": 13,
+      "source_tree_sha256": "62454d162d20202547dca6eed5c39f32f11a88c94402d6cf8792c18b7874c3e3"
+    },
+    "ff-0.13.1": {
+      "files": 14,
+      "source_tree_sha256": "69a1a0f3afe2c5e836adc3d9f0fcea98858cfa295ee72d756468b09e38afeb29"
+    },
+    "ff_derive-0.13.1": {
+      "files": 5,
+      "source_tree_sha256": "ef224147539717a3baed8125a7d2ba993b3d5d4244f855bf5ea15cdbf8ba7165"
+    },
+    "find-msvc-tools-0.1.14": {
+      "files": 19,
+      "source_tree_sha256": "374c47ac5267282877f4c9b8ea75e9ad43327446d2ff8e58562da04fdae7fe2d"
+    },
+    "funty-2.0.0": {
+      "files": 5,
+      "source_tree_sha256": "57206f8b2c3a391aebba595267e0bf83767335a3947300890e43040420679c34"
+    },
+    "futures-0.3.34": {
+      "files": 68,
+      "source_tree_sha256": "e87f0204169482956d19f576365b96484a9d1201c5504420e420f22b5d955036"
+    },
+    "futures-channel-0.3.34": {
+      "files": 19,
+      "source_tree_sha256": "bad506a5d28c96d7de5cb2f0291a38dd9cfd725dd26a0ed08716f551b64f4553"
+    },
+    "futures-core-0.3.34": {
+      "files": 14,
+      "source_tree_sha256": "1f958f7f7e7155223245bac3fcc77241a504e2b2b50a20cb237c996f830d7768"
+    },
+    "futures-executor-0.3.34": {
+      "files": 14,
+      "source_tree_sha256": "d5205b1dbcb5068a1adbaa8e6d17876a9c9110a1891de9841e5b37af1dba5162"
+    },
+    "futures-io-0.3.34": {
+      "files": 8,
+      "source_tree_sha256": "4285e791f98a1057a91d37d74cf4978600aa2ac668773e63ef40974975f48b88"
+    },
+    "futures-macro-0.3.34": {
+      "files": 11,
+      "source_tree_sha256": "d7240e25d87818f8adbf6c61d141886a74809e5692ef59fdebd610fdb2a7ea14"
+    },
+    "futures-sink-0.3.34": {
+      "files": 8,
+      "source_tree_sha256": "be2ca566a20d1f7047514e415c3e10b776f168310bfe97fc846d0b834cc876cf"
+    },
+    "futures-task-0.3.34": {
+      "files": 14,
+      "source_tree_sha256": "e84a6180a2de34f4cea81efe3829795e85c88a884ff839b56ab0db39bd6951c6"
+    },
+    "futures-util-0.3.34": {
+      "files": 193,
+      "source_tree_sha256": "ce5645058edec19c8d1ee5478f029d10cb37e556165b9354241ab9728e1a4e7c"
+    },
+    "gcd-2.3.0": {
+      "files": 10,
+      "source_tree_sha256": "872529b70c796d04f16a9bd01166491ec5d3fe6711164d528d96118e6b0c98b8"
+    },
+    "generic-array-0.14.9": {
+      "files": 17,
+      "source_tree_sha256": "dc2f05b5767c9d9eb81ce5dc46dc5f18409d92e33232bc58e62661470ecaafed"
+    },
+    "getrandom-0.2.17": {
+      "files": 38,
+      "source_tree_sha256": "7caa85e30ea60d3b2b505fa515ec0d51c32a3fd37b54e24c458b95342739738e"
+    },
+    "getrandom-0.3.4": {
+      "files": 43,
+      "source_tree_sha256": "2037f298a29d5f722fdc530455f36acddfeb87882899198d6b9b23b109ee4a04"
+    },
+    "group-0.12.1": {
+      "files": 16,
+      "source_tree_sha256": "c24149f980ca813ce51733a2e1e84011890e32854703db239dcca158914036e8"
+    },
+    "group-0.13.0": {
+      "files": 16,
+      "source_tree_sha256": "728bc66be7ded4595cec93c2803563606c5e6e5c8b462279946b57c4e8aab8b6"
+    },
+    "halo2-0.1.0-beta.2": {
+      "files": 6,
+      "source_tree_sha256": "a3fcc01b28a36fac55fb16353620616661763c5579a431804b0024b79b534b73"
+    },
+    "halo2_proofs-0.1.0": {
+      "files": 68,
+      "source_tree_sha256": "b210a7143f1cc5fa6895a6f207cf69d807e366d5ecde0ca63139e66b462f05a4"
+    },
+    "hex-0.4.3": {
+      "files": 16,
+      "source_tree_sha256": "950bf82be1a8b68b0f5e7f6989f20e6475d4bcc8d459ff0a974995c7d70373e2"
+    },
+    "hmac-0.12.1": {
+      "files": 22,
+      "source_tree_sha256": "10124dd47a05a53a95520a0318b1af97f813c2a860596e6099c4856667fd6290"
+    },
+    "itertools-0.10.5": {
+      "files": 81,
+      "source_tree_sha256": "57adc6a3878355556a835f8072cf9769d3abcf65a58e9f0998e2cae5287f495c"
+    },
+    "itertools-0.12.1": {
+      "files": 85,
+      "source_tree_sha256": "36cd4b1a03b8672a2d6b19be0d330096d38e7b5d46a4cb7158c9b50e28ae01b1"
+    },
+    "itertools-0.14.0": {
+      "files": 88,
+      "source_tree_sha256": "94ffe5b6e1514e0e3282bc074e3b210ae4bf1678ecd15cd940b9229b33930422"
+    },
+    "jubjub-0.9.0": {
+      "files": 37,
+      "source_tree_sha256": "09c7304f6f882e8c9fc7d320f3d9b425922b14ab57a03c425a29c44bb35adf20"
+    },
+    "k256-0.13.4": {
+      "files": 34,
+      "source_tree_sha256": "6664ee14258d62517c4dd16066a276100edb3cc9374c723f30da5299d7899070"
+    },
+    "keccak-0.1.6": {
+      "files": 12,
+      "source_tree_sha256": "3ad9d0c57b54d189e0d4bd3172894805608d8b99efc44aa3f1a1d997ea9abcc6"
+    },
+    "lazy_static-1.5.0": {
+      "files": 21,
+      "source_tree_sha256": "2a32d19a37612f2faba7cb94a2ddd48c5ccf108361e596c661044a16be4a78af"
+    },
+    "libc-0.2.189": {
+      "files": 404,
+      "source_tree_sha256": "fbc59b0a697eb20769a23c54fec4b3795ec25c5d25f1b5d6185fef157fe9cd6f"
+    },
+    "libm-0.2.16": {
+      "files": 155,
+      "source_tree_sha256": "d42694b25f4520e874bd1b5e5023d1e0093bf470e9a102dc1f9c6bb72d284611"
+    },
+    "linked_list_allocator-0.10.6": {
+      "files": 15,
+      "source_tree_sha256": "9b12f5938e658c4b06fb589a0acab410e5a94a6925760ba9ff93be0e613b4643"
+    },
+    "memchr-2.8.3": {
+      "files": 59,
+      "source_tree_sha256": "4d8cc12ffde71c113b03b3ae3f2fb7cc43b1c41e71e18d373874dad9487e7890"
+    },
+    "memuse-0.2.2": {
+      "files": 15,
+      "source_tree_sha256": "dc2c6135aa5542fd67e9f632b5aa0a46461f344037283f373e854286bc2847de"
+    },
+    "num-bigint-0.3.3": {
+      "files": 50,
+      "source_tree_sha256": "fc54a132b77e37547303b342d66e2bf6dcb38abc894131a03a6f371e6495d28c"
+    },
+    "num-bigint-0.4.8": {
+      "files": 53,
+      "source_tree_sha256": "fde365a7cbda3ddf113bc0d10ae9502de6d19403502a81f25ebde8f40fa83517"
+    },
+    "num-integer-0.1.47": {
+      "files": 17,
+      "source_tree_sha256": "b6d606bdd8d5c70797fbc68d062401225ac079c4b3e9d93859b25862228430a3"
+    },
+    "num-traits-0.2.19": {
+      "files": 29,
+      "source_tree_sha256": "343bf3acec0b2a1a1dac0412db0bb8d03f980aa32e77578eb218ec377a9f77bd"
+    },
+    "once_cell-1.21.4": {
+      "files": 29,
+      "source_tree_sha256": "b6e4d2b22def8eb72b6c32d860cdd151e4ed238dc10c7203d70a896d8f2d9860"
+    },
+    "p3-bn254-fr-0.3.2-succinct": {
+      "files": 7,
+      "source_tree_sha256": "bc553d0c35e356772d8525fd78869104f1e8a96447d687f2bc6a17bf03c993e9"
+    },
+    "p3-challenger-0.3.2-succinct": {
+      "files": 10,
+      "source_tree_sha256": "2dd88008d5668d37ae52294d4ab127e32376c24f31c62803ba85578140cac53e"
+    },
+    "p3-dft-0.3.2-succinct": {
+      "files": 14,
+      "source_tree_sha256": "2537895ccba921d5576d3d86739c12fa62fba38709c794d42ad3943b0bd28f9a"
+    },
+    "p3-field-0.3.2-succinct": {
+      "files": 14,
+      "source_tree_sha256": "9ac8e967e1332a6b0c3f3854ca7fe79d26d0be9444f5de8a42ae1ab4dffe13e3"
+    },
+    "p3-koala-bear-0.3.2-succinct": {
+      "files": 18,
+      "source_tree_sha256": "21ead07e302fe5091fac4d4362c4acd1fddbacd574c944f9f4f4e5854a6e0f94"
+    },
+    "p3-matrix-0.3.2-succinct": {
+      "files": 15,
+      "source_tree_sha256": "315626062f408ba2fb6815f31bfaa564ed917a1059be6932e53c7c24e9603b8b"
+    },
+    "p3-maybe-rayon-0.3.2-succinct": {
+      "files": 6,
+      "source_tree_sha256": "a2221efcafd4c0217ced36078ec4dd8f403c35eb8647d8e60c47b320312cdd1e"
+    },
+    "p3-mds-0.3.2-succinct": {
+      "files": 11,
+      "source_tree_sha256": "928dab694abf0a77f5cf19f1def673a8e03a6336f43e77a029f88295470cf21d"
+    },
+    "p3-poseidon2-0.3.2-succinct": {
+      "files": 9,
+      "source_tree_sha256": "6014013dadcaadbb9e60f3e33dac718a37110282d41c681ad9b10b850634237a"
+    },
+    "p3-symmetric-0.3.2-succinct": {
+      "files": 11,
+      "source_tree_sha256": "a92e6b8e5e89d477af7406b3ec53c166ed83a3b7e4393837e2071a11d08b499d"
+    },
+    "p3-util-0.3.2-succinct": {
+      "files": 7,
+      "source_tree_sha256": "5dd68a7d9a081bfaad3df2a6a747203fe4663d174e948ec3d4bc4119e27e429d"
+    },
+    "pairing-0.22.0": {
+      "files": 12,
+      "source_tree_sha256": "7723c9e9e65903692304ba342efb50ede0a48547720bcc60178757ecc3034b67"
+    },
+    "pasta_curves-0.4.1": {
+      "files": 39,
+      "source_tree_sha256": "4fc13365dfd5e22149ef8e84fd0fccc0c632d5cb34869d41c095281132d535df"
+    },
+    "pasta_curves-0.5.2": {
+      "files": 53,
+      "source_tree_sha256": "5e0461ae1e62bcbfede4c4e3955eb3b4455cca7d12c6f5971cf46d8585318726"
+    },
+    "paste-1.0.15": {
+      "files": 47,
+      "source_tree_sha256": "b093222c72fe42b4535c11f4e4d125763364834e7a6f4b8925df1710b57f1d27"
+    },
+    "pin-project-lite-0.2.17": {
+      "files": 81,
+      "source_tree_sha256": "7633c3a8184812edcf4c48d74b86209b6e02edff22b067dca6513d97467db0db"
+    },
+    "postcard-1.1.3": {
+      "files": 24,
+      "source_tree_sha256": "17a5b553cbda65fc660a872dcf28eb75a333d9a688242d8544eb2d1fd088124b"
+    },
+    "ppv-lite86-0.2.21": {
+      "files": 12,
+      "source_tree_sha256": "be6631c04d17bd0537963e9f7cb6a5f3c488d35ddc810edc54d0815c574aeaa9"
+    },
+    "proc-macro2-1.0.107": {
+      "files": 33,
+      "source_tree_sha256": "ee793c83b55353af8accd7e6c65fbbc686eee2aefcb4717852e4223d31247c45"
+    },
+    "quote-1.0.47": {
+      "files": 35,
+      "source_tree_sha256": "608bf46e13612b2721911c92a9fe9b1b9234e436d498826e351a65e20d12f2d0"
+    },
+    "r-efi-5.3.0": {
+      "files": 69,
+      "source_tree_sha256": "fecaeb9fa6f72fca4b6380aefbb4463fe57e92132cf5a7f24ba20ba2e9fa999e"
+    },
+    "radium-0.7.0": {
+      "files": 10,
+      "source_tree_sha256": "8ac4d2885aaa06852842f3e24d7c8552b9e34869bbe6c9bd0f1dd985dc228da7"
+    },
+    "rand-0.8.8": {
+      "files": 35,
+      "source_tree_sha256": "372c9abb1842760f0bef8f2a11b24c0f2955207cfedb1a3e16c7bde47d3d53d5"
+    },
+    "rand_chacha-0.3.1": {
+      "files": 11,
+      "source_tree_sha256": "bd3cc502583cf75b25909cc113ee1f6125eb354859f24b4540641eb740927746"
+    },
+    "rand_core-0.6.4": {
+      "files": 14,
+      "source_tree_sha256": "01422480a04edc88565e35564ab1df1ca34b7b3d5d0a8eff960b80286dafab36"
+    },
+    "rayon-1.12.0": {
+      "files": 127,
+      "source_tree_sha256": "c3c583506b4bc25a33cde99cc17444cbee625e32528cb89fa09e97863677efbe"
+    },
+    "rayon-core-1.13.0": {
+      "files": 42,
+      "source_tree_sha256": "d51c0e54490ef09da8f704a3b1bf786c411615321c02b97a0f4d2aed2ba247b4"
+    },
+    "rfc6979-0.4.0": {
+      "files": 10,
+      "source_tree_sha256": "e475d506ffca8c284bd866078db45adc825a21057561c43f2f63a556e7ebeb7a"
+    },
+    "rlsf-0.2.3": {
+      "files": 20,
+      "source_tree_sha256": "a0091a92dc3e5ed3dc6a8875a4ebabe8a553e3221632117404bea1e49199f782"
+    },
+    "rustc_version-0.4.1": {
+      "files": 13,
+      "source_tree_sha256": "d7088ddf2a9183908898629d9ba315d0501c8c4e40ea3578fe1270e0aba00756"
+    },
+    "rustversion-1.0.23": {
+      "files": 39,
+      "source_tree_sha256": "8406ec8a64c8a8ecadbcca95887ba618f225d35349097ea5b596fa687b646e7d"
+    },
+    "sec1-0.7.3": {
+      "files": 17,
+      "source_tree_sha256": "2ede0a85d5014d316e8c8959c1265c61e3000d56727af9d0d6c0e55100847571"
+    },
+    "semver-1.0.28": {
+      "files": 25,
+      "source_tree_sha256": "f7f290f741ecd73b4bbc217481fe2108ac61547e6c76152566209353b3cc01c7"
+    },
+    "serde-1.0.229": {
+      "files": 33,
+      "source_tree_sha256": "fe5bc562588100795b4762806a908bb725cb190b99703e61ba6051735aec2777"
+    },
+    "serde_core-1.0.229": {
+      "files": 27,
+      "source_tree_sha256": "d85b951b88b709d6d938b9e06f7d020e29ea9df01636147157b7384a222a0e4f"
+    },
+    "serde_derive-1.0.229": {
+      "files": 36,
+      "source_tree_sha256": "084983f088f5ca3d1e7562253cd62adf95bbc1a07b22ef7574147d58f3a1023f"
+    },
+    "sha2-0.10.9": {
+      "files": 31,
+      "source_tree_sha256": "2b30f15d218c8d2c22f387a6d16794fca81caa9224fcc955e6d7b248dbe8cda3"
+    },
+    "sha3-0.10.9": {
+      "files": 31,
+      "source_tree_sha256": "56b94ba05e365c1e83c19a7aa1a59806b2904e9076cd7d01a6710e74c30cff5c"
+    },
+    "shlex-2.0.1": {
+      "files": 13,
+      "source_tree_sha256": "e6a936c18bdb1e14bc4791a593dcaf43e73f09fa08f58f03495703c64b7b929f"
+    },
+    "signature-2.2.0": {
+      "files": 16,
+      "source_tree_sha256": "9e000daf52198fd7d2f77f2300f9a11adf7a54b3eb3dd9dad336d40cf043892b"
+    },
+    "slab-0.4.12": {
+      "files": 13,
+      "source_tree_sha256": "59401aef91ed46b1b7846bb8d8f405134468df97dffc0d5219b527d4759dab57"
+    },
+    "slop-algebra-6.1.0": {
+      "files": 8,
+      "source_tree_sha256": "3965145432789c95a4be324109af556849a9730272f1412f9f262d87f9f69b61"
+    },
+    "slop-bn254-6.1.0": {
+      "files": 6,
+      "source_tree_sha256": "64a0538c913360b1eace1327fa20ba2b8fcecda689e68cab045b358518058df7"
+    },
+    "slop-challenger-6.1.0": {
+      "files": 7,
+      "source_tree_sha256": "3362a9d322339acd3df6d5857d2c7f57212848ecb29b4030f9bfa4ff05d46b1c"
+    },
+    "slop-koala-bear-6.1.0": {
+      "files": 7,
+      "source_tree_sha256": "f6265a5088f52e94826ff4c37c0d36c6208a8e05852ec0cca8cc80184b069088"
+    },
+    "slop-poseidon2-6.1.0": {
+      "files": 6,
+      "source_tree_sha256": "94e0e33540fad695a7b2a4f63c84a9c6173dd9e8399dc425bf7e860837b9396a"
+    },
+    "slop-primitives-6.1.0": {
+      "files": 6,
+      "source_tree_sha256": "88622c4009c06ba8f98f7806f1abdeab27b3177a2ef55d21f0a26242eb6d1e0e"
+    },
+    "slop-symmetric-6.1.0": {
+      "files": 6,
+      "source_tree_sha256": "f4c73cdc0585637132477815e35082cb6de35adac9333d6bf4c53aaea21c88b3"
+    },
+    "sp1-lib-6.1.0": {
+      "files": 20,
+      "source_tree_sha256": "5b5a0bdf722f58191c6f5964076c5fcebb653d1a365581a53d7f76c5da921362"
+    },
+    "sp1-primitives-6.1.0": {
+      "files": 12,
+      "source_tree_sha256": "02379662576f76c37f5715dd83dd0270315204bd83355d0cf2653ed759bf9590"
+    },
+    "sp1-zkvm-6.1.0": {
+      "files": 35,
+      "source_tree_sha256": "1d8d7d304bb9867352be7e9cc254e9ea899bd029ea84335e1e142cc26064d66b"
+    },
+    "spin-0.9.9": {
+      "files": 23,
+      "source_tree_sha256": "9feb53315f673e67234d5a5801629eb914bbd97ecaf75c20ee05b79bd6028eb5"
+    },
+    "static_assertions-1.1.0": {
+      "files": 17,
+      "source_tree_sha256": "48b49a043babab4ae01f02d17c0534f50dd6c7f628f9e82075980f1637ea73e4"
+    },
+    "subtle-2.6.1": {
+      "files": 10,
+      "source_tree_sha256": "5a77869dc6ed9b5078dc53bcba3d9a046e122fce11cbad8c7f910e7180594228"
+    },
+    "syn-1.0.109": {
+      "files": 98,
+      "source_tree_sha256": "aaffebf276cab55a317cedaaa2382e025785fc5350fc90e8f0d06277b6b6175e"
+    },
+    "syn-2.0.119": {
+      "files": 105,
+      "source_tree_sha256": "c73afaca38c11781e988c2b9557e9785a42a503ecfc965a22baecd0727792ac7"
+    },
+    "syn-3.0.6": {
+      "files": 104,
+      "source_tree_sha256": "19b05ef4f5335e26e47e367b6979001b1eddc4d693e78d80954cd5f06ec8dd3a"
+    },
+    "tap-1.0.1": {
+      "files": 9,
+      "source_tree_sha256": "31cacd9856b123bfc73a36efaf43f4c04708620ee875728c0c749ea6e24cfc3a"
+    },
+    "thiserror-2.0.21": {
+      "files": 105,
+      "source_tree_sha256": "edbc8e35e5d912571d852096237667fd06acb74cd02d1066380cc15c6d34efb0"
+    },
+    "thiserror-impl-2.0.21": {
+      "files": 17,
+      "source_tree_sha256": "2c91fd9754200bc1db9ff39a4105de023ac01dc639e85adbcf5fef509414145d"
+    },
+    "tiny-keccak-2.0.2": {
+      "files": 32,
+      "source_tree_sha256": "86f290695027cfd37668a001c985d9428a03fdad6947a2dc0ad6a5545205a3c4"
+    },
+    "tracing-0.1.44": {
+      "files": 93,
+      "source_tree_sha256": "40ecdc42a36c706a403d36004292e77d81597161b192ae6d3adf787c8da349ec"
+    },
+    "tracing-attributes-0.1.31": {
+      "files": 30,
+      "source_tree_sha256": "bdfbe06f36b6f04aad6ecdaf305717e77288f1750181e7e2ca827375a46ed0ac"
+    },
+    "tracing-core-0.1.36": {
+      "files": 28,
+      "source_tree_sha256": "bb42aaeafec41b30094bd48d23d02cea3aeacebceddf5fa44b2f36396a32a74a"
+    },
+    "typenum-1.20.1": {
+      "files": 26,
+      "source_tree_sha256": "b366964addd932fe130b8d1bcdda26eb0f4901410c326c8722b95da41d60e5f4"
+    },
+    "unicode-ident-1.0.26": {
+      "files": 26,
+      "source_tree_sha256": "5a7c8d9ddcea41f9c76cea2d85271c2b2c478a17c363b13e314980ffb26bf5d3"
+    },
+    "version_check-0.9.5": {
+      "files": 13,
+      "source_tree_sha256": "12b7f8b050873ada46368d909bfd39b82b01708c8032071bf9eb270f6daef6bc"
+    },
+    "wasi-0.11.1+wasi-snapshot-preview1": {
+      "files": 17,
+      "source_tree_sha256": "9e50339c7021642da625f6669fa2384705b8b6f20abcd36cda23a7116c56db5f"
+    },
+    "wasip2-1.0.4+wasi-0.2.12": {
+      "files": 28,
+      "source_tree_sha256": "dcc98741c867de2d6ae1b11f0a9ec0194efa07ba21b6264167bf1f91d43c30ac"
+    },
+    "wit-bindgen-0.57.1": {
+      "files": 42,
+      "source_tree_sha256": "c9bb62c9006887b663658c4e9922da5d98edf25c9f58157f78f06b2b296ae28a"
+    },
+    "wyz-0.5.1": {
+      "files": 12,
+      "source_tree_sha256": "782b6e5b4bf95fe6d5c8aafb490db2dfa75320598decd7b01589d69042ee9a90"
+    },
+    "zerocopy-0.8.59": {
+      "files": 309,
+      "source_tree_sha256": "95f81bd71c1a9077e15ecf49e3ee1b6128fa6d67c379086698c0c72ecba22d35"
+    },
+    "zerocopy-derive-0.8.59": {
+      "files": 174,
+      "source_tree_sha256": "66ff8328d94b7a863b3a52d3d790676a6fc9a30d143d40bffb379311d3d982b0"
+    },
+    "zeroize-1.9.0": {
+      "files": 16,
+      "source_tree_sha256": "8496d96eaab300cd57b13a348d40aa5ab054924949362a155fc9878ffea33a76"
+    },
+    "zeroize_derive-1.5.0": {
+      "files": 9,
+      "source_tree_sha256": "404cf10c71b3d80b639bc70d3352fdd1f0f5362c6d5c65eb4cf24f9b9e9ffa81"
+    },
+    "zkhash-0.2.0": {
+      "files": 57,
+      "source_tree_sha256": "d4aa6f11e87fc0afd059efaf6e64b2b25b63803cb5f46ca632f17faa7079d3da"
+    }
+  },
+  "elf_sha256": "df59a19b310258b4d01d0d5e3cfa31bb7de9ca2f4ea7c2302cf76650c79967c5",
+  "elf_bytes": 525824,
+  "compiler_invocations_sha256": "7baff78a82046166a96b9939cb3e86fe6b0c8f6ba1696ca3b6e82d5c95ae862c",
+  "normalization": {
+    "workspace_metadata": {
+      "perp_core": "85153213d10819ef",
+      "perp_core_guest": "2c8a895641ad00f3"
+    },
+    "checkout_path": "<HOME>/kimi-bridge/worktrees/Arcora-labs__arcora-perp/clock-anchor-20261009",
+    "cargo_home_path": "<HOME>/.cargo"
+  },
+  "scope": "Fresh registry/home/target and pinned official compiler archive. Offline Cargo compilation, not a network sandbox or independent compiler bootstrap. Machine independence requires external runner provenance; no proof, hardware attestation or deployment claim.",
+  "fetch_log_sha256": "f795fd1ea5403fb8a58f66653a311e6c47bba122c18380bff0907bed675561b9",
+  "build_log_sha256": "22299d548dc280f2fe4bfb734dc2a10eb4fbc5bcfbe165a1210b89f448a96799"
+}

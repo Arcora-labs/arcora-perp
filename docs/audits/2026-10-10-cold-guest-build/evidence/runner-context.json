@@ -1,0 +1,14 @@
+{
+  "GITHUB_REPOSITORY": "Arcora-labs/arcora-perp",
+  "GITHUB_SHA": "c2222eb4bf6ec8ef793dca24e5386a9cad176a3d",
+  "GITHUB_REF": "refs/pull/36/merge",
+  "GITHUB_RUN_ID": "38050043453",
+  "GITHUB_RUN_ATTEMPT": "1",
+  "RUNNER_OS": "macOS",
+  "RUNNER_ARCH": "ARM64",
+  "RUNNER_ENVIRONMENT": "github-hosted",
+  "ImageOS": "macos14",
+  "ImageVersion": "20260831.0302.1",
+  "checkout_commit": "c2222eb4bf6ec8ef793dca24e5386a9cad176a3d",
+  "scope": "Self-reported context; validate against the GitHub run API and artifact provenance."
+}

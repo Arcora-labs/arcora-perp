@@ -1,0 +1,20 @@
+{
+  "status": "PASS_FRESH_CPU_SETUP_OF_INDEPENDENT_BUILD",
+  "elf_sha256": "df59a19b310258b4d01d0d5e3cfa31bb7de9ca2f4ea7c2302cf76650c79967c5",
+  "program_vkey": "0x0017893c7ff3395d60b57d25eaa08cf1542fc7bc3cdfd74468133562994b8353",
+  "host_binary_sha256": "1c097df32acf661958a81e1b6c8d5cbe4d9119c05a7ff3988b29b01f586d5064",
+  "host_source_sha256": "72cb87c978fa47f5401aa602757a205d0b9cf02d78f958ea85a540053ff7759b",
+  "host_lock_sha256": "859da83e32b762e038cf5858ae9c445922f147c0e406a0907baa42386b8fbbe8",
+  "command": {
+    "argv": [
+      "<HOME>/Desktop/arcora-perp/repo/crates/sp1-host/target/release/vkey",
+      "--elf",
+      "<HOME>/Desktop/arcora-perp/repo/target/cold-guest-20261010/hosted-artifact/guest.elf"
+    ],
+    "seconds": 15.592524,
+    "exit_code": 0
+  },
+  "setup_machine": "original ARM64 Mac; input is downloaded independent GitHub build",
+  "proof_generated": false,
+  "release_gate": "HOLD"
+}

@@ -1,0 +1,88 @@
+{
+  "status": "PASS_INDEPENDENT_COLD_REBUILD_AND_LOCAL_CPU_SETUP",
+  "date": "2026-10-10",
+  "tested_commit": "69a1b721c1664a5f293036c621301f52ab21d996",
+  "source_sha256": {
+    ".github/workflows/guest-cold-rebuild.yml": "cdab69198009dc8190235bfd68a892563d7b1feaee103428e55d720b7e7e7944",
+    "scripts/local-verification/cold_rebuild_reviewed_guest.py": "02755152a087d186ae31e0fa613b7817f237c9cd251f961f4e27f743dca15ad6",
+    "scripts/local-verification/test_cold_rebuild_reviewed_guest.py": "271342dd7359eea0b52c8d61cf9067fa2ba0d0658a18bbeb3dd4ba0e36c88e57",
+    "scripts/local-verification/rebuild_reviewed_guest.py": "12b75077e306ace453eadcf8b61c6122e948ade49d1227b237ba4daa5ce02d0d",
+    "scripts/local-verification/release_manifest.py": "c9dbcadd5d2fcead58938d81ff2755cf2e326cf29c2cee9ba8a56dcae1aaebf2",
+    "scripts/local-verification/verify_clock_proof.py": "6399cdcecd6ad022257ffad32bb66c7082aa83469d929c48bd4caa36777128b5"
+  },
+  "independent_run_id": 38050043453,
+  "independent_elf_matches_reviewed": true,
+  "elf_sha256": "df59a19b310258b4d01d0d5e3cfa31bb7de9ca2f4ea7c2302cf76650c79967c5",
+  "elf_bytes": 525824,
+  "guest_sources_unchanged": 21,
+  "locked_registry_archives": 159,
+  "verified_unpacked_source_files": 5762,
+  "fresh_cpu_setup_matches_reviewed_vkey": true,
+  "program_vkey": "0x0017893c7ff3395d60b57d25eaa08cf1542fc7bc3cdfd74468133562994b8353",
+  "setup_machine": "original Mac using downloaded independent-build ELF",
+  "python_tests_passed": 136,
+  "python_tests_skipped": 0,
+  "new_guard_tests": 20,
+  "code_changes": "build/test/workflow only; guest, contracts, custody and live services unchanged",
+  "new_proof_generated": false,
+  "hardware_attestation_verified": false,
+  "target_deployment_verified": false,
+  "production_release_gate": "HOLD",
+  "evidence": {
+    "hosted-verification.json": {
+      "raw_sha256": "f611f51114bc0200429e6b3412f5f07bf638848e52cacf7c83be70b850824bee",
+      "published_sha256": "53b483519fef31db66e5438a856eb9f525787196c896a44303486b2f1e154844",
+      "normalization": "Original-user home prefix and trailing whitespace only. Hash values/test outcomes unchanged; runner paths preserved."
+    },
+    "runner-context.json": {
+      "raw_sha256": "6a7ec8f9e9a93b25b5b6ea209a8279b28e09ddaeca226ddb16b65098cee8cf19",
+      "published_sha256": "6a7ec8f9e9a93b25b5b6ea209a8279b28e09ddaeca226ddb16b65098cee8cf19",
+      "normalization": "Original-user home prefix and trailing whitespace only. Hash values/test outcomes unchanged; runner paths preserved."
+    },
+    "hosted-fetch.log": {
+      "raw_sha256": "f795fd1ea5403fb8a58f66653a311e6c47bba122c18380bff0907bed675561b9",
+      "published_sha256": "f795fd1ea5403fb8a58f66653a311e6c47bba122c18380bff0907bed675561b9",
+      "normalization": "Original-user home prefix and trailing whitespace only. Hash values/test outcomes unchanged; runner paths preserved."
+    },
+    "hosted-build.log": {
+      "raw_sha256": "22299d548dc280f2fe4bfb734dc2a10eb4fbc5bcfbe165a1210b89f448a96799",
+      "published_sha256": "22299d548dc280f2fe4bfb734dc2a10eb4fbc5bcfbe165a1210b89f448a96799",
+      "normalization": "Original-user home prefix and trailing whitespace only. Hash values/test outcomes unchanged; runner paths preserved."
+    },
+    "hosted-compiler-invocations.jsonl": {
+      "raw_sha256": "7baff78a82046166a96b9939cb3e86fe6b0c8f6ba1696ca3b6e82d5c95ae862c",
+      "published_sha256": "3f7e00e8db6badca44a9277ddd96e24463bda783d8883ce5b1ca1b5c913e802f",
+      "normalization": "Original-user home prefix and trailing whitespace only. Hash values/test outcomes unchanged; runner paths preserved."
+    },
+    "local-cold-verification.json": {
+      "raw_sha256": "a5831ee27dca0ce229a93e62a1af27dc1cba1954537e8e4a2544d3a02988dd7f",
+      "published_sha256": "833370983990e9ce3b77f998fde27df048d0d59c0ebb5706901e47a4933a8c21",
+      "normalization": "Original-user home prefix and trailing whitespace only. Hash values/test outcomes unchanged; runner paths preserved."
+    },
+    "independent-verification.json": {
+      "raw_sha256": "718e7e57c30039b9ce3ca094a63cc58ef0abc595367e8ec5516c314b5bd33e6c",
+      "published_sha256": "718e7e57c30039b9ce3ca094a63cc58ef0abc595367e8ec5516c314b5bd33e6c",
+      "normalization": "Original-user home prefix and trailing whitespace only. Hash values/test outcomes unchanged; runner paths preserved."
+    },
+    "cpu-setup-verification.json": {
+      "raw_sha256": "d723ea634e4fa8ce579429f2ed03d4c94039b9de4b8bfd97ced8e535768a729f",
+      "published_sha256": "ef6bc9e47358f61d254f3594dbf6a648df9941cef48c6baa7afb4faab5dd7675",
+      "normalization": "Original-user home prefix and trailing whitespace only. Hash values/test outcomes unchanged; runner paths preserved."
+    },
+    "cpu-setup.log": {
+      "raw_sha256": "3d353859192cd39f617a3b86844f169523447fb5cfb0b18eb44a726239d5a66b",
+      "published_sha256": "3d353859192cd39f617a3b86844f169523447fb5cfb0b18eb44a726239d5a66b",
+      "normalization": "Original-user home prefix and trailing whitespace only. Hash values/test outcomes unchanged; runner paths preserved."
+    },
+    "cpu-setup-host-build.log": {
+      "raw_sha256": "db4cc7bd067275edfdd5cd0cb82fa064478213dfae76d66fc2cadea6e9d41ad4",
+      "published_sha256": "a588b2caf381060f7d268cbc74f8d94f5a3add87f9f399513c52fe13bcd83a15",
+      "normalization": "Original-user home prefix and trailing whitespace only. Hash values/test outcomes unchanged; runner paths preserved."
+    },
+    "python-tests.log": {
+      "raw_sha256": "8e20d75b08e07f84be71b1f222e1a3eafa6c79f7f148ecb00772ca004df488fc",
+      "published_sha256": "968a320f19e697315e31684211af7d33170eda73f46b3f0145d515c7100c25a2",
+      "normalization": "Original-user home prefix and trailing whitespace only. Hash values/test outcomes unchanged; runner paths preserved."
+    }
+  }
+}

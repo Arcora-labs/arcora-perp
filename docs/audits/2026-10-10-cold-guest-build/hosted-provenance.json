@@ -1,0 +1,131 @@
+{
+  "repository": "Arcora-labs/arcora-perp",
+  "run_id": 38050043453,
+  "run_attempt": 1,
+  "head_sha": "69a1b721c1664a5f293036c621301f52ab21d996",
+  "event": "pull_request",
+  "status": "completed",
+  "conclusion": "success",
+  "workflow_path": ".github/workflows/guest-cold-rebuild.yml",
+  "created_at": "2026-10-10T11:54:14Z",
+  "updated_at": "2026-10-10T11:56:12Z",
+  "html_url": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38050043453",
+  "jobs": [
+    {
+      "id": 114207161555,
+      "name": "cold guest build (macOS ARM64)",
+      "status": "completed",
+      "conclusion": "success",
+      "runner_name": "GitHub Actions 1000000388",
+      "labels": [
+        "macos-14"
+      ],
+      "started_at": "2026-10-10T11:54:20Z",
+      "completed_at": "2026-10-10T11:56:11Z",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1,
+          "started_at": "2026-10-10T11:54:21Z",
+          "completed_at": "2026-10-10T11:54:22Z"
+        },
+        {
+          "name": "Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2,
+          "started_at": "2026-10-10T11:54:22Z",
+          "completed_at": "2026-10-10T11:54:25Z"
+        },
+        {
+          "name": "Run actions/setup-python@v5",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3,
+          "started_at": "2026-10-10T11:54:25Z",
+          "completed_at": "2026-10-10T11:54:26Z"
+        },
+        {
+          "name": "Run dtolnay/rust-toolchain@stable",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4,
+          "started_at": "2026-10-10T11:54:26Z",
+          "completed_at": "2026-10-10T11:54:32Z"
+        },
+        {
+          "name": "Guard tests",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 5,
+          "started_at": "2026-10-10T11:54:32Z",
+          "completed_at": "2026-10-10T11:54:33Z"
+        },
+        {
+          "name": "Fetch pinned official compiler archive",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6,
+          "started_at": "2026-10-10T11:54:33Z",
+          "completed_at": "2026-10-10T11:54:42Z"
+        },
+        {
+          "name": "Build from fresh registry and compare reviewed ELF",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 7,
+          "started_at": "2026-10-10T11:54:42Z",
+          "completed_at": "2026-10-10T11:56:04Z"
+        },
+        {
+          "name": "Record runner context separately from build identity",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 8,
+          "started_at": "2026-10-10T11:56:04Z",
+          "completed_at": "2026-10-10T11:56:04Z"
+        },
+        {
+          "name": "Run actions/upload-artifact@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 9,
+          "started_at": "2026-10-10T11:56:04Z",
+          "completed_at": "2026-10-10T11:56:06Z"
+        },
+        {
+          "name": "Post Run actions/setup-python@v5",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 17,
+          "started_at": "2026-10-10T11:56:06Z",
+          "completed_at": "2026-10-10T11:56:07Z"
+        },
+        {
+          "name": "Post Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 18,
+          "started_at": "2026-10-10T11:56:07Z",
+          "completed_at": "2026-10-10T11:56:07Z"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 19,
+          "started_at": "2026-10-10T11:56:07Z",
+          "completed_at": "2026-10-10T11:56:08Z"
+        }
+      ]
+    }
+  ],
+  "artifact_id": 11668883475,
+  "artifact_zip_sha256": "sha256:a739937c1d6497cc7048a0062d411dc2374ec87dec8047924c55829de5aaafda",
+  "synthetic_merge_parents_verified": true,
+  "synthetic_merge_tree_matches_tested_head": true,
+  "same_machine_as_original": false,
+  "compiler_source_bootstrap_verified": false
+}
