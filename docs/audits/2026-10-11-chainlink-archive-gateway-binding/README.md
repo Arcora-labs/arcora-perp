@@ -275,3 +275,20 @@ Prover/chain barriers:
 - Historical/repeated ops remain covered by the round-4 multi-observation test.
 - Re-run: cargo test -p gateway → 517 passed / 0 failed; clippy 0 warnings;
   fmt clean.
+
+## Review round 7 (2026-10-12): no silent downgrade; reachable candidate path
+- Poisoned archive mutex: the settle loop's `.map(lock).and_then(ok)` collapse
+  is replaced by `archive_slot` (NotConfigured vs Guard vs Poisoned); Poisoned
+  HOLDs the settle and never seals a candidate window unbound. Regression test
+  poisons a real mutex and asserts the distinction.
+- Missing journal path in archive-required mode: `begin_journaled_window_settle`
+  refuses BEFORE the seal (Counter B unchanged) and `after_settle_journal`
+  independently refuses an archive-bound stage with `path=None` before invoking
+  the continuation. Both regression-tested.
+- Reachability: candidate startup no longer refuses on default feed-backed
+  markets; the legacy oracle loop is suppressed in candidate mode and the only
+  startup requirement is policy coverage of every configured market
+  (`uncovered_market`, tested) plus the crosscheck incompatibility. Demo-seeded
+  marks remain unbindable in candidate mode (documented deliberate boundary).
+- Re-run: cargo test -p gateway → 521 passed / 0 failed; clippy 0 warnings;
+  fmt clean.

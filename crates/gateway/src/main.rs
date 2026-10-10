@@ -7762,6 +7762,17 @@ fn begin_journaled_window_settle(
     )>,
     String,
 > {
+    // Archive-required mode REQUIRES the durability barrier: without a journal
+    // path the window could be sealed, proven, and broadcast with no
+    // authenticated binding anywhere. Refuse BEFORE any mutation (the seal
+    // below) — not at journal-write time.
+    if archive.is_some() && path.is_none() {
+        return Err(
+            "archive-required mode requires a configured rollback journal (DARKPERP_STATE); \
+             refusing to seal without durability"
+                .into(),
+        );
+    }
     let Some((witness, ww)) = gw.begin_window_settle(chain_batch_count)? else {
         return Ok(None);
     };
@@ -7787,6 +7798,28 @@ fn begin_journaled_window_settle(
         return Err(format!("stage-1 rollback journal is not durable: {error}"));
     }
     Ok(Some((journal, envelope)))
+}
+
+/// How the settle loop's stage-1 archive access resolved. A POISONED mutex is
+/// distinct from NOT CONFIGURED: the former must HOLD the settle (never seal a
+/// candidate window without its binding), while the latter is the reviewed
+/// legacy path. Unit-tested against mutex poisoning regressions.
+enum ArchiveSlot<'a> {
+    NotConfigured,
+    Guard(std::sync::MutexGuard<'a, report_archive_binding::ArchiveBinding>),
+    Poisoned,
+}
+
+fn archive_slot<'a>(
+    archive: Option<&'a std::sync::Mutex<report_archive_binding::ArchiveBinding>>,
+) -> ArchiveSlot<'a> {
+    match archive {
+        None => ArchiveSlot::NotConfigured,
+        Some(m) => match m.lock() {
+            Ok(g) => ArchiveSlot::Guard(g),
+            Err(_) => ArchiveSlot::Poisoned,
+        },
+    }
 }
 
 /// The archive-required guard for PROVER/CHAIN side effects. Bind-once at seal
@@ -7821,6 +7854,17 @@ fn after_settle_journal<T>(
     envelope: Option<&rollback_journal::ArchiveEnvelope>,
     next: impl FnOnce() -> T,
 ) -> Result<T, String> {
+    // Defense in depth: an archive-bound stage must never reach the
+    // continuation without journal durability — `path = None` is only the
+    // explicitly unjournaled DEV path, and candidate mode has already refused
+    // it before sealing; this keeps the invariant at the barrier itself.
+    if path.is_none() && envelope.is_some() {
+        return Err(
+            "archive-bound journal stage invoked without a journal path; \
+             refusing to continue without durability"
+                .into(),
+        );
+    }
     if let Some(path) = path {
         rollback_journal::write_versioned(path, journal, envelope, seed)?;
     }
@@ -8190,11 +8234,14 @@ async fn main() {
             std::process::exit(1);
         });
     gw.require_fresh_production_oracles();
-    // Candidate archive mode replaces the legacy oracle intakes: any admission
-    // that does not flow through the archive would make every subsequent
-    // price-bearing window unsealable (bind_ops fails closed). Refuse the mixed
-    // configuration at startup instead of silently wedging the settle loop.
-    if archive_binding.is_some() {
+    // Candidate archive mode REPLACES the legacy oracle intakes. The default
+    // gateway markets all carry feeds, so refusing on `m.feed.is_some()` would
+    // make candidate mode unreachable on a real gateway; instead the legacy
+    // fetch loop is suppressed below and admission flows only through the
+    // archive. What must hold: the pinned policy covers EVERY configured
+    // market (no price can be admitted outside the archive), and the two-venue
+    // crosscheck — which admits outside the archive — is never co-configured.
+    if let Some(binding) = &archive_binding {
         if !gw.oracle_crosschecks.is_empty() {
             eprintln!(
                 "[chainlink-archive] REFUSING to start: candidate archive mode cannot be \
@@ -8202,13 +8249,20 @@ async fn main() {
             );
             std::process::exit(1);
         }
-        if gw.mkts.iter().any(|m| m.feed.is_some()) {
+        let market_ids: Vec<u64> = gw.mkts.iter().map(|m| m.id).collect();
+        if let Some(id) = report_archive_binding::uncovered_market(binding.policy(), &market_ids) {
             eprintln!(
-                "[chainlink-archive] REFUSING to start: candidate archive mode cannot be \
-                 combined with legacy feed-backed oracle markets"
+                "[chainlink-archive] REFUSING to start: candidate archive mode requires \
+                 the pinned policy to cover every configured market (market {id} has no \
+                 policy feed mapping; unarchived admission would wedge sealing)"
             );
             std::process::exit(1);
         }
+        println!(
+            "[chainlink-archive] candidate mode: legacy feed intake suppressed; \
+             {} markets covered by the pinned policy",
+            gw.mkts.len()
+        );
     }
     // SEC-021: bind withdrawal authorization to this deployment — the same env source
     // the deposit-authorization signer uses, so both digest families agree on chain id
@@ -8875,7 +8929,10 @@ async fn main() {
 
     // Live oracle: legacy single venue, or explicitly configured two-venue guard.
     // A paired failure never falls back to single-source price admission.
-    {
+    // SUPPRESSED in candidate archive mode: the archive intake loop above is the
+    // only admission path (the startup policy-coverage check guarantees every
+    // market is archive-fed), so no unarchived admission can occur.
+    if app.archive.is_none() {
         let app = app.clone();
         let stop = service_policy.shutdown.clone();
         background.push(tokio::spawn(async move {
@@ -9255,17 +9312,28 @@ async fn main() {
                             && gw.window_withdrawals.is_empty()
                             && gw.seq.state.state_root() == gw.last_settled_root
                         { gw.seq.discard_idle_funding_window(); }
-                        match begin_journaled_window_settle(
-                            &mut gw,
-                            bc,
-                            jpath.as_deref(),
-                            &enclave_seed,
-                            app.archive
-                                .as_ref()
-                                .map(std::sync::Mutex::lock)
-                                .and_then(|g| g.ok())
-                                .as_deref(),
-                        ) {
+                        // A poisoned archive mutex must HOLD the settle. The old
+                        // `.map(lock).and_then(ok)` silently became `None` and
+                        // sealed candidate windows with NO binding — a legacy
+                        // v5 journal for archive-required state. Distinguish
+                        // "not configured" from "poisoned": only the former
+                        // binds nothing.
+                        let slot = archive_slot(app.archive.as_ref());
+                        if matches!(slot, ArchiveSlot::Poisoned) {
+                            eprintln!("[l1] archive binding lock is poisoned; holding settlement — refusing to seal a candidate window without its binding");
+                            None
+                        } else {
+                            let archive_ref = match &slot {
+                                ArchiveSlot::Guard(g) => Some(&**g),
+                                _ => None,
+                            };
+                            match begin_journaled_window_settle(
+                                &mut gw,
+                                bc,
+                                jpath.as_deref(),
+                                &enclave_seed,
+                                archive_ref,
+                            ) {
                             Ok(Some((journal, envelope))) => {
                                 let cand: Vec<[u8; 32]> =
                                     gw.pending_withdrawals.iter().map(|w| w.leaf()).collect();
@@ -9277,6 +9345,7 @@ async fn main() {
                             Err(error) => {
                                 eprintln!("[l1] window settle skipped: {error}");
                                 None
+                            }
                             }
                         }
                     };
@@ -15344,6 +15413,141 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("darkperp-journal-guard-{name}"));
         std::fs::create_dir(&dir).unwrap();
         dir
+    }
+
+    /// Acceptance regression: archive-required mode with NO journal path must
+    /// refuse BEFORE any mutation. Previously `after_settle_journal(path=None,
+    /// ...)` silently ran the continuation with zero durability — a candidate
+    /// window could be sealed, proven, and broadcast with no authenticated
+    /// binding anywhere.
+    fn feed_arr(b: u8) -> [u8; 32] {
+        let mut a = [b; 32];
+        a[0] = 0;
+        a[1] = 3;
+        a
+    }
+
+    #[test]
+    fn archive_required_refuses_unjournaled_seal_before_any_mutation() {
+        let mut gw = Gw::boot();
+        let (key, _owner) = gw.register_account(None);
+        gw.account_deposit(&key, 0, 20_000 * QUOTE_SCALE).unwrap();
+        let bid = gw.seq.state.next_batch_id;
+        // An empty-admission binding is sufficient: a deposit-only window binds
+        // with an empty ref list, which is exactly what this regression needs.
+        let binding = {
+            let tmp = settle_journal_guard_scratch();
+            report_archive_binding::ArchiveBinding::create_in(&tmp, {
+                use chainlink_oracle::policy::{MarketFeed, Policy};
+                Policy {
+                    chain_id: 84532,
+                    network: 0,
+                    verifier_proxy: [3; 20],
+                    oracle_wrapper: [4; 20],
+                    markets: vec![MarketFeed {
+                        market_id: 0,
+                        base_symbol: "BTC".into(),
+                        base_usd_feed: feed_arr(0x11),
+                        base_decimals: 8,
+                        usdc_usd_feed: feed_arr(0x22),
+                        usdc_decimals: 8,
+                        max_report_age_ms: 10_000,
+                        max_pair_skew_ms: 1_000,
+                    }],
+                }
+            })
+            .unwrap()
+        };
+        let before_b = gw.seq.state.next_batch_id;
+        let err = match begin_journaled_window_settle(&mut gw, bid, None, &[42; 32], Some(&binding))
+        {
+            Err(e) => e,
+            Ok(_) => panic!("archive-required mode must refuse an unjournaled seal"),
+        };
+        assert!(
+            err.contains("requires a configured rollback journal"),
+            "unexpected error: {err}"
+        );
+        assert_eq!(
+            gw.seq.state.next_batch_id, before_b,
+            "the seal must not have happened — refusal precedes any mutation"
+        );
+    }
+
+    /// Acceptance regression: an archive-bound journal stage must never reach
+    /// its continuation without journal durability, no matter the caller.
+    #[test]
+    fn archive_bound_journal_stage_without_path_refuses_before_continuation() {
+        let journal = settle_journal_guard_fixture();
+        let envelope = rollback_journal::ArchiveEnvelope {
+            policy_binding: [7; 32],
+            refs: Vec::new(),
+        };
+        let mut continued = false;
+        let result = after_settle_journal(None, &journal, &[42; 32], Some(&envelope), || {
+            continued = true;
+        });
+        assert!(result.is_err(), "must refuse, not continue silently");
+        assert!(
+            !continued,
+            "the continuation must never run without durability"
+        );
+        // And the durable control: with a path, the stage writes and continues.
+        let dir = settle_journal_guard_scratch();
+        let path = dir.join("state.rollback");
+        let mut continued = false;
+        after_settle_journal(Some(&path), &journal, &[42; 32], Some(&envelope), || {
+            continued = true;
+        })
+        .unwrap();
+        assert!(continued);
+        assert!(path.exists());
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    /// Acceptance regression: a poisoned archive mutex must resolve to its own
+    /// slot — the settle loop HOLDs on Poisoned and only NotConfigured binds
+    /// nothing. The old `.map(lock).and_then(ok)` collapsed poisoning into
+    /// `None`, silently writing legacy v5 journals for archive-required state.
+    #[test]
+    fn poisoned_archive_mutex_is_distinct_from_not_configured() {
+        let tmp = settle_journal_guard_scratch();
+        let binding = {
+            use chainlink_oracle::policy::{MarketFeed, Policy};
+            report_archive_binding::ArchiveBinding::create_in(
+                &tmp,
+                Policy {
+                    chain_id: 84532,
+                    network: 0,
+                    verifier_proxy: [3; 20],
+                    oracle_wrapper: [4; 20],
+                    markets: vec![MarketFeed {
+                        market_id: 0,
+                        base_symbol: "BTC".into(),
+                        base_usd_feed: feed_arr(0x11),
+                        base_decimals: 8,
+                        usdc_usd_feed: feed_arr(0x22),
+                        usdc_decimals: 8,
+                        max_report_age_ms: 10_000,
+                        max_pair_skew_ms: 1_000,
+                    }],
+                },
+            )
+            .unwrap()
+        };
+        let mutex = std::sync::Mutex::new(binding);
+        assert!(matches!(archive_slot(None), ArchiveSlot::NotConfigured));
+        assert!(matches!(archive_slot(Some(&mutex)), ArchiveSlot::Guard(_)));
+        // Poison it: a panic while the lock is held poisons the mutex.
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _guard = mutex.lock().unwrap();
+            panic!("poison the archive mutex");
+        }));
+        assert!(
+            matches!(archive_slot(Some(&mutex)), ArchiveSlot::Poisoned),
+            "a poisoned archive mutex must be distinguishable so the settle HOLDs"
+        );
+        std::fs::remove_dir_all(tmp).ok();
     }
 
     #[tokio::test]

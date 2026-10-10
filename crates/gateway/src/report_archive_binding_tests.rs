@@ -982,3 +982,14 @@ fn capacity_refuses_instead_of_silently_evicting() {
         BindError::Mismatch
     );
 }
+
+/// Candidate reachability: the startup check requires the pinned policy to
+/// cover EVERY configured market (pure helper), so default feed-backed market
+/// sets are servable in candidate mode — the legacy intake is suppressed, not
+/// the configuration refused.
+#[test]
+fn policy_coverage_is_the_candidate_startup_requirement() {
+    assert_eq!(super::uncovered_market(&policy(), &[0]), None);
+    assert_eq!(super::uncovered_market(&policy(), &[0, 1]), Some(1));
+    assert_eq!(super::uncovered_market(&policy(), &[]), None);
+}

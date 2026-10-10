@@ -196,6 +196,17 @@ fn config_env(name: &str) -> Result<Option<String>, BindError> {
     }
 }
 
+/// Candidate mode requires the pinned policy to cover EVERY configured
+/// gateway market — otherwise some price could be admitted outside the archive
+/// and every price-bearing window would wedge at seal time. Returns the first
+/// uncovered market id. Pure and unit-tested.
+pub(crate) fn uncovered_market(policy: &Policy, market_ids: &[u64]) -> Option<u64> {
+    market_ids
+        .iter()
+        .copied()
+        .find(|id| policy.market(*id).is_err())
+}
+
 /// Classify oracle-bearing ops EXACTLY like the candidate guest
 /// (crates/chainlink-oracle/src/binding.rs::used_oracle): a new BatchOp variant
 /// must be added here in the same change that adds it there, or seal-time binding
@@ -269,7 +280,7 @@ impl ArchiveBinding {
     }
 
     #[cfg(test)]
-    fn create_in(dir: &std::path::Path, policy: Policy) -> Result<Self, BindError> {
+    pub(crate) fn create_in(dir: &std::path::Path, policy: Policy) -> Result<Self, BindError> {
         Self::new(
             ReportArchive::create(&dir.join("store")).map_err(|_| BindError::Archive)?,
             policy,

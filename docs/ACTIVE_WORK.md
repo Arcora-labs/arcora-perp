@@ -116,6 +116,12 @@ reviewed v2 guest/ELF/vkey/public input ve prover yönlendirmesi DEĞİŞMEDİ):
   eşleşmeli; eksik/bozuk/uyumsuz kayıt = sürümlü HOLD (dosya korunur, başlangıç reddedilir).
 - Sıralı dayanıklılık engelleri: arşiv kalıcı → state değiştiren admission;
   authenticated journal kalıcı → prove/broadcast yan etkisi.
+- Candidate modda legacy feed intake bastırılır (startup, politika tüm marketleri
+  kapsamıyorsa reddeder); varsayılan feed'li market setleriyle candidate artık
+  erişilebilir. DEMO boot'un tohum fiyatları candidate'da bağlanamaz — pencere
+  seal edilmez (bilinçli sınır; üretim postürü + archive intake kullanılır).
+- Aday mod journal yolu yapılandırılmamışsa (DARKPERP_STATE yok) reddeder;
+  zehirlenmiş arşiv mutex'i settlement'ı HOLD eder, asla v5 downgrade yok.
 
 Sıradaki yazılım: canlı Data Streams entitlement sonrası uçtan uca aday döngü,
 v3 chainlink guest'in gerçek prover bağlantısı (şu an açıkça devre dışı;
