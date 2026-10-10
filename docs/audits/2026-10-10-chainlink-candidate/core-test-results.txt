@@ -1,0 +1,20 @@
+running 15 tests
+test tests::different_decimals_and_rounding_enclose_liquidity_range ... ok
+test tests::extreme_values_cannot_overflow_normalization ... ok
+test tests::report_intervals_zero_future_stale_and_expiration_fail_closed ... ok
+test tests::canonical_size_schema_uint_padding_and_signed_ranges_are_enforced ... ok
+test tests::unsigned_structural_container_is_never_called_verified ... ok
+test tests::usdc_depeg_changes_quote_price_instead_of_assuming_one_dollar ... ok
+test tests::v3_decodes_canonical_body_without_authenticity_claim ... ok
+test tests::policy_commits_network_addresses_feed_mapping_and_limits ... ok
+test tests::wrong_feed_old_quote_future_quote_and_pair_skew_are_rejected ... ok
+test tests::binding_vectors_for_solidity ... ok
+test tests::all_four_oracle_operation_variants_require_matching_evidence ... ok
+test tests::missing_extra_reordered_or_wrong_market_evidence_cannot_be_hidden_by_manifest ... ok
+test tests::v2_publisher_fabrication_passes_old_transition_but_not_new_binding ... ok
+test tests::real_native_transition_produces_distinct_candidate_commitment ... ok
+test tests::stale_replay_and_tampered_chain_context_are_rejected ... ok
+test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+   Doc-tests chainlink_oracle
+running 0 tests
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s

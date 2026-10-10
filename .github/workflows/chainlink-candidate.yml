@@ -1,0 +1,32 @@
+name: Chainlink candidate
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  candidate:
+    name: Chainlink candidate core (not live verification)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.99.0
+          components: clippy, rustfmt
+      - name: Standalone candidate formatting
+        run: |
+          cargo fmt --manifest-path crates/chainlink-oracle/Cargo.toml --check
+          cargo fmt --manifest-path crates/sp1-chainlink-guest/Cargo.toml --check
+      - name: Explicit standalone tests and no_std check
+        run: |
+          cargo test --locked --manifest-path crates/chainlink-oracle/Cargo.toml
+          cargo check --locked --manifest-path crates/chainlink-oracle/Cargo.toml --no-default-features
+          cargo clippy --locked --manifest-path crates/chainlink-oracle/Cargo.toml --all-targets -- -D warnings
+      - name: Preserve reviewed v2 inputs
+        run: |
+          python3 scripts/local-verification/check_sp1_release.py
+          python3 scripts/local-verification/check_chainlink_candidate.py
+          python3 -c 'import sys;sys.path.insert(0,"scripts/local-verification");from verify_clock_proof import verify_guest_source;print(len(verify_guest_source()))'

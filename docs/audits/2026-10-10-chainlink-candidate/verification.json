@@ -1,0 +1,316 @@
+{
+  "observed_at": "2026-10-10T15:48:26.531915+00:00",
+  "base_commit": "8ed3fc2fb2776a6e711ac24d6e804ab6539cfd6a",
+  "branch": "feat/chainlink-streams-20261010",
+  "status": "CANDIDATE_ONLY_PRODUCTION_HOLD",
+  "source_sha256": {
+    ".github/workflows/chainlink-candidate.yml": "1da0909a367117766d2bb0167c2a0a2a5e69b319d6ccd2bf44be3cb4e23d9dbe",
+    "contracts/src/ChainlinkOracleVerifier.sol": "0658867915419bd0676d57e703c99995041748540fe9b1e03402245ff0c1b9c0",
+    "contracts/test/ChainlinkOracleVerifier.t.sol": "5e20ed3df467af202a76fc0b32ce884f8a610518beef2f9e37d100651eced362",
+    "crates/chainlink-oracle/.gitignore": "306fd52e74fca6746e12acc750f232de15e71da917756a1270d74c91f5eb7368",
+    "crates/chainlink-oracle/Cargo.lock": "62f58aa9da1592de0a4419052c5145128425976b0e0c5520fcce0bb6c936b246",
+    "crates/chainlink-oracle/Cargo.toml": "0b05c79f8fa37dd643466ad9e4b0013d6d6d257d7cfc414b8351cc7a11a88421",
+    "crates/chainlink-oracle/src/binding.rs": "8c66dba2a1d49825c1c13b89aa1a55d47fcab42abe481a0fce308128215cc877",
+    "crates/chainlink-oracle/src/lib.rs": "a107bf7464fe8654c69d9864c5ab6bcac6728d993634004d6d0075fbb707e224",
+    "crates/chainlink-oracle/src/policy.rs": "c36d89a3212cd5d9893b19e77b6b4dba5dba364dcb2135b24424fdab5a42b285",
+    "crates/chainlink-oracle/src/report.rs": "91b824e8a20bc7b1d8aa907813eb95061c659a655f72ef01fdc68409b7232d26",
+    "crates/chainlink-oracle/src/tests.rs": "5532ebac0ac1557b2882dce06b822568e604464924dafeaa44c65da505e10b75",
+    "crates/sp1-chainlink-guest/.gitignore": "906f62dbe09b5a51e60f3129b4a509c831bfd868cb34eedfd10dffce5f22bfb4",
+    "crates/sp1-chainlink-guest/Cargo.lock": "de6dbb43b0b85968fa2f7f7de0d71d53c54adacebbc9786cfd17197491142cbe",
+    "crates/sp1-chainlink-guest/Cargo.toml": "9f47d6f2cfc08fb71fdfcbc0877f09f083685a1ea016bbd67ea87dd60c8edc55",
+    "crates/sp1-chainlink-guest/src/main.rs": "9e403b9f241e0a53afc2e58baa7bf978ddf81c28e5704acc7a6f734962874187",
+    "docs/ACTIVE_WORK.md": "1d320340858cbd5ab857a63e1101610dc46327f90d08d697b2b68088ca8b72d8",
+    "scripts/local-verification/build_chainlink_candidate.py": "2a909adbacde36668aef273a3dc93b9ac0134b2b22b1247de9188dd925169b8c",
+    "scripts/local-verification/check_chainlink_candidate.py": "e21ce3fa01419b0a651470157339bd31c00a5db9e4ae90abf256a9d7bea159a7"
+  },
+  "final_checks": [
+    {
+      "name": "core-tests",
+      "command": [
+        "cargo",
+        "+1.99.0",
+        "test",
+        "--locked",
+        "--offline",
+        "--manifest-path",
+        "crates/chainlink-oracle/Cargo.toml"
+      ],
+      "exit_code": 0,
+      "seconds": 1.245,
+      "log": "target/chainlink-20261010/final-20261010T154540060166Z/core-tests.log",
+      "sha256": "91fc6b233797d917da412afde71b695078b26a64feee6e8689eab71e97bfd7e2"
+    },
+    {
+      "name": "core-clippy",
+      "command": [
+        "cargo",
+        "+1.99.0",
+        "clippy",
+        "--locked",
+        "--offline",
+        "--manifest-path",
+        "crates/chainlink-oracle/Cargo.toml",
+        "--all-targets",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "exit_code": 0,
+      "seconds": 0.258,
+      "log": "target/chainlink-20261010/final-20261010T154540060166Z/core-clippy.log",
+      "sha256": "173101cbb5bcd7bc98f27b0cf147386182fbdd023e75572efb5c2a6f00f92d60"
+    },
+    {
+      "name": "core-no-std",
+      "command": [
+        "cargo",
+        "+1.99.0",
+        "check",
+        "--locked",
+        "--offline",
+        "--manifest-path",
+        "crates/chainlink-oracle/Cargo.toml",
+        "--no-default-features"
+      ],
+      "exit_code": 0,
+      "seconds": 0.192,
+      "log": "target/chainlink-20261010/final-20261010T154540060166Z/core-no-std.log",
+      "sha256": "e999d6c611be8e252e35e03e28b318bbc9d85e3bda5fb3ca2a6ef29a0c1f875a"
+    },
+    {
+      "name": "core-format",
+      "command": [
+        "cargo",
+        "+1.99.0",
+        "fmt",
+        "--manifest-path",
+        "crates/chainlink-oracle/Cargo.toml",
+        "--check"
+      ],
+      "exit_code": 0,
+      "seconds": 0.046,
+      "log": "target/chainlink-20261010/final-20261010T154540060166Z/core-format.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "guest-format",
+      "command": [
+        "cargo",
+        "+1.99.0",
+        "fmt",
+        "--manifest-path",
+        "crates/sp1-chainlink-guest/Cargo.toml",
+        "--check"
+      ],
+      "exit_code": 0,
+      "seconds": 0.039,
+      "log": "target/chainlink-20261010/final-20261010T154540060166Z/guest-format.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "workspace-format",
+      "command": [
+        "cargo",
+        "+1.99.0",
+        "fmt",
+        "--all",
+        "--check"
+      ],
+      "exit_code": 0,
+      "seconds": 0.301,
+      "log": "target/chainlink-20261010/final-20261010T154540060166Z/workspace-format.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "candidate-lock",
+      "command": [
+        "python3.12",
+        "scripts/local-verification/check_chainlink_candidate.py"
+      ],
+      "exit_code": 0,
+      "seconds": 0.029,
+      "log": "target/chainlink-20261010/final-20261010T154540060166Z/candidate-lock.log",
+      "sha256": "2098e68e75a17ef7de525984a1425a3c666fa90e8333453246d09d0cf5f31d6e"
+    },
+    {
+      "name": "reviewed-release",
+      "command": [
+        "python3.12",
+        "scripts/local-verification/check_sp1_release.py"
+      ],
+      "exit_code": 0,
+      "seconds": 0.065,
+      "log": "target/chainlink-20261010/final-20261010T154540060166Z/reviewed-release.log",
+      "sha256": "9189d4751f9a5a116d3fb275d396e5871d6e40c9df208c763d29ad33098f80d8"
+    },
+    {
+      "name": "reviewed-pins",
+      "command": [
+        "python3.12",
+        "-c",
+        "import sys,json;sys.path.insert(0,\"scripts/local-verification\");from verify_clock_proof import verify_guest_source;print(json.dumps(verify_guest_source(),sort_keys=True))"
+      ],
+      "exit_code": 0,
+      "seconds": 0.026,
+      "log": "target/chainlink-20261010/final-20261010T154540060166Z/reviewed-pins.log",
+      "sha256": "e7f0226001d12c80d7c9d53cacc9cea03f1f42d567e8aff41421610a574a10b2"
+    },
+    {
+      "name": "contracts",
+      "command": [
+        "forge",
+        "test",
+        "--summary"
+      ],
+      "cwd": "contracts",
+      "exit_code": 0,
+      "seconds": 2.873,
+      "log": "target/chainlink-20261010/final-fixes-20261010T154742949466Z/contracts.log",
+      "sha256": "8c3da63ed7227b1d733aabee5915c0134698de9034a21ffda6dc966b52eba437"
+    },
+    {
+      "name": "contract-format",
+      "command": [
+        "forge",
+        "fmt",
+        "--check",
+        "src/ChainlinkOracleVerifier.sol",
+        "test/ChainlinkOracleVerifier.t.sol"
+      ],
+      "cwd": "contracts",
+      "exit_code": 0,
+      "seconds": 0.009,
+      "log": "target/chainlink-20261010/final-fixes-20261010T154742949466Z/contract-format.log",
+      "sha256": "a0ad7e8d070ba08623019896aca4918443fc77af564c9e33fb029035ad11e98e"
+    },
+    {
+      "name": "diff-check",
+      "command": [
+        "git",
+        "diff",
+        "--check"
+      ],
+      "cwd": ".",
+      "exit_code": 0,
+      "seconds": 0.011,
+      "log": "target/chainlink-20261010/final-fixes-20261010T154742949466Z/diff-check.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "superseded_checks": [
+    {
+      "name": "contract-format",
+      "command": [
+        "forge",
+        "fmt",
+        "--root",
+        "contracts",
+        "--check",
+        "contracts/src/ChainlinkOracleVerifier.sol",
+        "contracts/test/ChainlinkOracleVerifier.t.sol"
+      ],
+      "exit_code": 1,
+      "seconds": 0.01,
+      "log": "target/chainlink-20261010/final-20261010T154540060166Z/contract-format.log",
+      "sha256": "1cb5dbf2f52def59e8e285442025fe83984871a1e5e9feff48011dac2c3c1e4e"
+    }
+  ],
+  "rust_core": {
+    "passed": 15,
+    "failed": 0,
+    "ignored": 0
+  },
+  "contracts": {
+    "passed": 141,
+    "failed": 0,
+    "skipped": 0,
+    "includes_new_candidate_tests": 15
+  },
+  "build": {
+    "command": [
+      "$CARGO_1_99_0",
+      "build",
+      "--manifest-path",
+      "crates/sp1-chainlink-guest/Cargo.toml",
+      "--locked",
+      "--offline",
+      "--release",
+      "--target",
+      "riscv64im-succinct-zkvm-elf"
+    ],
+    "exit_code": 0,
+    "elapsed_seconds": 41.831,
+    "source_sha256": {
+      "crates/chainlink-oracle/Cargo.lock": "62f58aa9da1592de0a4419052c5145128425976b0e0c5520fcce0bb6c936b246",
+      "crates/chainlink-oracle/Cargo.toml": "0b05c79f8fa37dd643466ad9e4b0013d6d6d257d7cfc414b8351cc7a11a88421",
+      "crates/chainlink-oracle/src/binding.rs": "8c66dba2a1d49825c1c13b89aa1a55d47fcab42abe481a0fce308128215cc877",
+      "crates/chainlink-oracle/src/lib.rs": "a107bf7464fe8654c69d9864c5ab6bcac6728d993634004d6d0075fbb707e224",
+      "crates/chainlink-oracle/src/policy.rs": "c36d89a3212cd5d9893b19e77b6b4dba5dba364dcb2135b24424fdab5a42b285",
+      "crates/chainlink-oracle/src/report.rs": "91b824e8a20bc7b1d8aa907813eb95061c659a655f72ef01fdc68409b7232d26",
+      "crates/chainlink-oracle/src/tests.rs": "5532ebac0ac1557b2882dce06b822568e604464924dafeaa44c65da505e10b75",
+      "crates/sp1-chainlink-guest/Cargo.lock": "de6dbb43b0b85968fa2f7f7de0d71d53c54adacebbc9786cfd17197491142cbe",
+      "crates/sp1-chainlink-guest/Cargo.toml": "9f47d6f2cfc08fb71fdfcbc0877f09f083685a1ea016bbd67ea87dd60c8edc55",
+      "crates/sp1-chainlink-guest/src/main.rs": "9e403b9f241e0a53afc2e58baa7bf978ddf81c28e5704acc7a6f734962874187"
+    },
+    "rustc_sha256": "985c33069083f55ed42b68ef51a8528d0cb1632e43428ffdb5c489306154f964",
+    "cargo_sha256": "fc7aa5077deca8abc0651f329e8ec1d968f520e996a93b428f9935014362b382",
+    "reviewed_v2_pins_unchanged": 21,
+    "cache": "existing local; NOT cold or independent",
+    "proof_generated": false,
+    "guest_executed": false,
+    "log_sha256": "497e23628ee24a4d1c2e995c9bbc2fbab06454a3a7fa02348478de2cd63cb175",
+    "observed_at": "2026-10-10T15:47:20.954991+00:00",
+    "candidate_elf_path": "target/chainlink-20261010/coherent-guest-final-20261010T154639Z/target/riscv64im-succinct-zkvm-elf/release/arcora-chainlink-candidate-guest",
+    "candidate_elf_sha256": "48a8eb8e6acd96057a72ca74db5077ac9e85d30d2ec830518ef1f1ac3832ef1f",
+    "candidate_elf_bytes": 540704
+  },
+  "reviewed_v2_sources": {
+    "Cargo.toml": "e3144a0ae3447244776e65b04cfff39267c238e410c2d9abf20b53e6b837bbfa",
+    "crates/perp-core/Cargo.toml": "3bfb6981fa34a967185ce75abd07683e5262a694ebd60eb45a4f5c55aaf9704c",
+    "crates/perp-core/src/clock.rs": "e89e50e11b3ffb3a4a1a89ab6dd4854b61606cc17eb1236492994df0b59d50e7",
+    "crates/perp-core/src/commitment.rs": "43582ef5048d0d725e53976e3c2a1dfcf32984ed2ad1bb2ebd2032463e26ea92",
+    "crates/perp-core/src/engine.rs": "4d6037f1189939a71a41e31882012e6fa50b887087b5ccc2bfce4502b61d0f9e",
+    "crates/perp-core/src/error.rs": "0738da822be5639737e67f04a0f500af57fcc1f085dd64bec7fbe3b016c515c6",
+    "crates/perp-core/src/fixed.rs": "fc77559a31c1cfdd7a641cafbd773871aeb203849e165dbd158aa7a1b65ef7cd",
+    "crates/perp-core/src/funding.rs": "8f782cf3a4403c717eda44c6d2955789c31e4ef2a04bb4fdac8e61916018e781",
+    "crates/perp-core/src/hash.rs": "88430a8c2558b247bcf241035ad48fa1dbf8a3e77a0d176dfdbd608c930f93b9",
+    "crates/perp-core/src/lib.rs": "8f070fbec0f4b3d3fab5e594bcf808845803a59ece403dc42cb0f0df6e6253b5",
+    "crates/perp-core/src/market.rs": "8053e89a9b1021d6e461d46d733dfb1935aff5fc2a45be8121f96560fa4ddc2d",
+    "crates/perp-core/src/merkle.rs": "173f4667178ba4aa4048e43c2aeb9fa337918d6225b98c6597c004b59bc3a8f6",
+    "crates/perp-core/src/note.rs": "5cece4d513537c10464bd64b4612f829cd32cb9c1a80d3c8e40c573aace62423",
+    "crates/perp-core/src/nullifier.rs": "a252799c62dc42ec37c91ba6fd7674117b33c98c7f83e86b168f70898966ea78",
+    "crates/perp-core/src/oracle.rs": "91ae09655e35432aafa1135b23588d6f1f324b41a278ac640ebc30f106d17da2",
+    "crates/perp-core/src/order.rs": "99bb9b2be4948bcf8365c3022ef444be5941201ec6535de73d45a777e5a206d7",
+    "crates/perp-core/src/position.rs": "99d120139086092d2dae4ed11d3a677906c1cf3efd7aff9e58f27f3437f2ae66",
+    "crates/perp-core/src/state.rs": "e1026c1e2b56cfcbee4eff812e88ff3dcde052e46818deab980a071fcdbec388",
+    "crates/sp1-guest/Cargo.lock": "113518cb212208aa46a629608af9d946f9a4006ac211035a15e9cb8c022fb8c3",
+    "crates/sp1-guest/Cargo.toml": "d0ed7050076bb3548b9e3410f63066068752382f4dab31e344096c9c3e42dc85",
+    "crates/sp1-guest/src/main.rs": "c0d33ff8645ebdcc8994d4d65729b8a60a224bcda18415423da15ed875c16f5c"
+  },
+  "reviewed_elf_sha256": "df59a19b310258b4d01d0d5e3cfa31bb7de9ca2f4ea7c2302cf76650c79967c5",
+  "live_don_verified": false,
+  "real_proof_generated": false,
+  "new_guest_executed": false,
+  "live_gateway_integrated": false,
+  "authenticated_client_implemented": false,
+  "new_vkey_reviewed": false,
+  "production_deployed": false,
+  "upstream_pr39_merged": false,
+  "tool_blocked_actions": [
+    "pr39_merge",
+    "authenticated_api_client_write",
+    "extended_architecture_document_write"
+  ],
+  "local_test_scope": "Native transition, parser/policy and real settlement/clock with explicit mock DON and SP1 backends.",
+  "not_rerun_locally": [
+    "root Rust workspace",
+    "existing standalone sp1-host and prover-service",
+    "frontend",
+    "Python/Anvil/restore/ACK-crash suite"
+  ],
+  "evidence_sha256": {
+    "core-test-results.txt": "71aa612319340c1842488fae9754aa5296f9a386f5dd1414ecc63796a2a3817a",
+    "contract-test-results.txt": "d4282fba580896a0157aa11549aaed310651655497c02c236bf98406f6e23d23"
+  },
+  "published_log_normalization": "contract test log: repository path replaced with $REPO; trailing whitespace/empty EOF lines removed; raw log hash remains in final_checks."
+}
