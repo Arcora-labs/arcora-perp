@@ -8263,6 +8263,44 @@ async fn main() {
         );
         std::process::exit(1);
     }
+    // Candidate-mode persistence boundary, checked BEFORE the crash-recovery
+    // block below: `apply_boot_recovery` (and its Stale/SealNeverPersisted
+    // journal DELETIONS) may only ever run after the mode is settled. The
+    // archive requirement is a runtime gate (env + in-memory binding) that
+    // serde skips everywhere; the sealed `.chainlink` marker makes it durable.
+    // A state that ever ran candidate MUST refuse to boot as legacy — including
+    // with a restored snapshot and an unsealed open window admitted from
+    // archived reports — and a marker that exists but cannot be read is never
+    // treated as absent. Legacy state (no marker, no config) is untouched.
+    if let Some(sp) = &state_path {
+        let configured = archive_binding.as_ref().map(|b| b.policy_binding());
+        let gate = report_archive_binding::mode_gate(
+            report_archive_binding::read_marker(
+                &report_archive_binding::marker_path(sp),
+                &enclave_seed,
+            ),
+            configured,
+        );
+        match gate {
+            report_archive_binding::ModeGate::Legacy => {}
+            report_archive_binding::ModeGate::CandidateContinue => {}
+            report_archive_binding::ModeGate::CandidateWriteMarker => {
+                if let Err(e) = report_archive_binding::write_marker(
+                    &report_archive_binding::marker_path(sp),
+                    configured.expect("write-marker gate implies a configured binding"),
+                    &enclave_seed,
+                ) {
+                    eprintln!("[chainlink-archive] REFUSING to start: candidate mode marker is not durable: {e}");
+                    std::process::exit(1);
+                }
+                println!("[chainlink-archive] candidate mode marker persisted (state will refuse legacy boots)");
+            }
+            report_archive_binding::ModeGate::Refuse(reason) => {
+                eprintln!("[chainlink-archive] REFUSING to start: {reason}");
+                std::process::exit(1);
+            }
+        }
+    }
     // Task 3 (crash recovery): resolve any in-flight window settle the rollback
     // journal recorded. The settle loop journals every seal and NEVER deletes
     // (the journal is a WAL for the latest sealed window; resolving arms only

@@ -223,3 +223,29 @@ Prover/chain barriers:
   and a mid-stream unarchived transcript fails the whole seal.
 - Re-run: cargo test -p gateway → 511 passed / 0 failed; clippy 0 warnings;
   fmt clean.
+
+## Review round 5 (2026-10-11): durable candidate-mode boundary
+- New sealed, versioned mode marker `<state>.chainlink` (magic DPCAM1): written
+  only in candidate mode, sealed with the enclave seed exactly like the
+  rollback journal, holding the policy binding. Snapshot wire bytes are
+  unchanged; the marker is a separate sidecar and is never deleted by the
+  gateway (leaving candidate mode is a conscious operator act).
+- Boot order: the mode gate (pure, unit-tested `mode_gate`) runs BEFORE the
+  crash-recovery block, so apply_boot_recovery — including its
+  Stale/SealNeverPersisted journal deletions — can only ever run after the
+  mode is settled. Cases: no marker + no config = legacy (unchanged); no
+  marker + config = persist the marker first (refuse startup if the marker
+  cannot be made durable); marker + matching config = continue; marker with
+  config omitted/disabled or policy-mismatched = REFUSE; marker present but
+  unreadable (wrong seed/tamper/future magic/trailing bytes) = REFUSE, never
+  treated as absent.
+- This closes the open-unsealed-window hole: a candidate gateway that
+  persisted state mid-window (restored snapshot, archive-admitted ops, no
+  `.rollback` journal yet) previously could reboot with the env flag omitted
+  and settle unbound windows as legacy — the journal-level guards never saw
+  it. Tested explicitly.
+- New tests: mode_gate matrix (disabled/missing/mismatch/unreadable),
+  open-unsealed-window restart refusal + legacy-state controls, marker IO
+  round trip + fail-closed postures.
+- Re-run: cargo test -p gateway → 514 passed / 0 failed; clippy 0 warnings;
+  fmt clean.

@@ -25,6 +25,115 @@ pub(crate) const MODE_ENV: &str = "DARKPERP_CHAINLINK_ARCHIVE";
 pub(crate) const DIR_ENV: &str = "DARKPERP_CHAINLINK_ARCHIVE_DIR";
 pub(crate) const POLICY_ENV: &str = "DARKPERP_CHAINLINK_POLICY_JSON";
 
+/// Candidate-mode persistence boundary.
+///
+/// The archive requirement is a RUNTIME gate (env + in-memory binding), which
+/// serde skips everywhere — a gateway that ever settled candidate windows and
+/// persisted state must not be able to boot as legacy just because the
+/// operator omitted the flag (a restored snapshot, including one with an
+/// UNSEALED open window admitted from archived reports, would then keep
+/// settling unbound). This sidecar is the durable answer: written ONLY in
+/// candidate mode, sealed exactly like the rollback journal, versioned by
+/// magic. It never touches the snapshot wire bytes.
+const MARKER_MAGIC: &[u8; 8] = b"DPCAM1\0\0";
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct CandidateModeMarkerV1 {
+    policy_binding: [u8; 32],
+}
+
+/// `<state>.chainlink` (appended, like the `.rollback` sidecar).
+pub(crate) fn marker_path(state_path: &std::path::Path) -> std::path::PathBuf {
+    let mut os = state_path.as_os_str().to_os_string();
+    os.push(".chainlink");
+    std::path::PathBuf::from(os)
+}
+
+pub(crate) fn write_marker(
+    path: &std::path::Path,
+    policy_binding: [u8; 32],
+    seed: &[u8; 32],
+) -> Result<(), String> {
+    let body = postcard::to_allocvec(&CandidateModeMarkerV1 { policy_binding })
+        .map_err(|e| format!("mode marker encode: {e}"))?;
+    let mut plain = Vec::with_capacity(MARKER_MAGIC.len() + body.len());
+    plain.extend_from_slice(MARKER_MAGIC);
+    plain.extend_from_slice(&body);
+    let sealed = crate::snapshot::seal(&plain, seed);
+    crate::snapshot::write_atomic(path, &sealed).map_err(|e| format!("mode marker write: {e}"))
+}
+
+/// `Ok(None)` = no marker (legacy state, never candidate). `Ok(Some(binding))`
+/// = sealed marker. `Err` = a marker EXISTS but is unreadable (wrong seed /
+/// tampered / future version): never treated as absent — the caller refuses
+/// startup rather than risk a legacy boot of candidate-used state.
+pub(crate) fn read_marker(
+    path: &std::path::Path,
+    seed: &[u8; 32],
+) -> Result<Option<[u8; 32]>, String> {
+    let sealed = match crate::snapshot::read_file(path) {
+        Ok(bytes) => bytes,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => return Err(format!("mode marker read: {e}")),
+    };
+    let plain =
+        crate::snapshot::open(&sealed, seed).map_err(|e| format!("mode marker open: {e}"))?;
+    let body = plain
+        .strip_prefix(MARKER_MAGIC.as_slice())
+        .ok_or("mode marker magic/version mismatch")?;
+    let (CandidateModeMarkerV1 { policy_binding }, rest) =
+        postcard::take_from_bytes(body).map_err(|e| format!("mode marker decode: {e}"))?;
+    if !rest.is_empty() {
+        return Err(format!(
+            "mode marker decode: {} trailing bytes after the payload",
+            rest.len()
+        ));
+    }
+    Ok(Some(policy_binding))
+}
+
+/// Pure boot-gate decision over (persisted marker, configured binding).
+/// Testable without env or filesystem; the caller performs the IO.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum ModeGate {
+    /// Legacy state, legacy config: unchanged behavior.
+    Legacy,
+    /// Candidate-configured boot must durably write the marker first.
+    CandidateWriteMarker,
+    /// Candidate-configured boot with a matching persisted marker.
+    CandidateContinue,
+    /// Refuse startup before ANY recovery mutation, with the reason.
+    Refuse(String),
+}
+
+pub(crate) fn mode_gate(
+    marker: Result<Option<[u8; 32]>, String>,
+    configured: Option<[u8; 32]>,
+) -> ModeGate {
+    match (marker, configured) {
+        (Err(e), _) => ModeGate::Refuse(format!(
+            "candidate mode marker exists but is unreadable ({e}); refusing to boot rather than guess the mode"
+        )),
+        (Ok(None), None) => ModeGate::Legacy,
+        (Ok(None), Some(_pb)) => ModeGate::CandidateWriteMarker,
+        (Ok(Some(_persisted)), None) => ModeGate::Refuse(
+            "state was persisted in candidate archive mode (marker present) but \
+             DARKPERP_CHAINLINK_ARCHIVE is not configured; refusing to boot as legacy"
+                .into(),
+        ),
+        (Ok(Some(persisted)), Some(pb)) => {
+            if persisted == pb {
+                ModeGate::CandidateContinue
+            } else {
+                ModeGate::Refuse(
+                    "candidate mode marker policy binding does not match the configured policy"
+                        .into(),
+                )
+            }
+        }
+    }
+}
+
 /// Retained admissions available for op binding at seal time. Bounded: sealing
 /// consumes by VALUE match, not by recency alone, so only the window depth
 /// matters; the bound is a memory ceiling, never a correctness input.
@@ -167,6 +276,10 @@ impl ArchiveBinding {
 
     pub(crate) fn policy(&self) -> &Policy {
         &self.policy
+    }
+
+    pub(crate) fn policy_binding(&self) -> [u8; 32] {
+        self.policy_binding
     }
 
     /// Durable archive FIRST, admission SECOND. The stored record is immutable

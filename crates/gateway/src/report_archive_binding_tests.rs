@@ -659,3 +659,140 @@ fn clock_client_resume_gate(
 ) -> Result<(), String> {
     crate::clock_client::ensure_resume_supported(envelope)
 }
+
+/// Recovery boundary review: candidate mode is a runtime gate (env + in-memory
+/// binding) that serde skips everywhere. The sealed `.chainlink` marker makes
+/// the requirement durable: state that ever ran candidate MUST refuse to boot
+/// as legacy, and the decision runs BEFORE apply_boot_recovery (incl. its
+/// Stale/SealNeverPersisted journal deletions). This is the pure decision
+/// matrix; main() performs the IO directly ahead of the recovery block.
+#[test]
+fn mode_gate_matrix_covers_disabled_missing_mismatched_and_unreadable() {
+    use super::{mode_gate, ModeGate};
+    let pb = [7u8; 32];
+    let other = [9u8; 32];
+
+    // Never candidate, nothing configured: the reviewed legacy path, unchanged.
+    assert_eq!(mode_gate(Ok(None), None), ModeGate::Legacy);
+    // First candidate boot: persist the marker before any window settles.
+    assert_eq!(
+        mode_gate(Ok(None), Some(pb)),
+        ModeGate::CandidateWriteMarker
+    );
+    // Candidate reboot with the same policy: continue.
+    assert_eq!(
+        mode_gate(Ok(Some(pb)), Some(pb)),
+        ModeGate::CandidateContinue
+    );
+
+    // DISABLED CONFIGURATION with candidate-persisted state: refuse — this is
+    // the open-unsealed-window restart hazard (see next test).
+    let refuse = mode_gate(Ok(Some(pb)), None);
+    assert!(
+        matches!(&refuse, ModeGate::Refuse(r) if r.contains("not configured")),
+        "expected a not-configured refusal, got {refuse:?}"
+    );
+    // Mismatched policy on a marked state: refuse.
+    let refuse = mode_gate(Ok(Some(pb)), Some(other));
+    assert!(
+        matches!(&refuse, ModeGate::Refuse(r) if r.contains("does not match")),
+        "expected a policy-mismatch refusal, got {refuse:?}"
+    );
+    // A marker that EXISTS but cannot be read is never treated as absent.
+    let refuse = mode_gate(Err("mode marker open: wrong seed".into()), None);
+    assert!(
+        matches!(&refuse, ModeGate::Refuse(r) if r.contains("unreadable")),
+        "expected an unreadable-marker refusal, got {refuse:?}"
+    );
+    let refuse = mode_gate(Err("tampered".into()), Some(pb));
+    assert!(matches!(&refuse, ModeGate::Refuse(r) if r.contains("unreadable")));
+}
+
+/// The exact restart hazard the marker exists for: a candidate-mode gateway
+/// persisted state MID-WINDOW (restored snapshot, ops admitted from archived
+/// reports, window not yet sealed — so there is NO rollback journal for any
+/// journal-level guard to catch) and reboots with the env flag omitted. Only
+/// the durable marker stands between that state and a silent legacy boot that
+/// would keep settling unbound windows. It must refuse.
+#[test]
+fn candidate_state_with_open_unsealed_window_refuses_legacy_boot() {
+    use super::{marker_path, mode_gate, read_marker, write_marker, ModeGate};
+    let t = Temp::new("marker-gate");
+    let state = t.0.join("state.snapshot");
+    let seed = [42u8; 32];
+    let pb = policy_binding(&policy()).unwrap();
+
+    // Candidate mode ran and persisted its marker; the window was never sealed,
+    // so no `.rollback` journal exists.
+    write_marker(&marker_path(&state), pb, &seed).expect("marker write");
+    assert!(matches!(
+        mode_gate(read_marker(&marker_path(&state), &seed), None),
+        ModeGate::Refuse(_)
+    ));
+
+    // With the flag restored (same policy), the same state boots and continues.
+    assert_eq!(
+        mode_gate(read_marker(&marker_path(&state), &seed), Some(pb)),
+        ModeGate::CandidateContinue
+    );
+
+    // A legacy state (no marker) with the flag omitted boots unchanged, and a
+    // first candidate boot on it knows it must persist the marker first.
+    let legacy = Temp::new("marker-legacy");
+    let legacy_state = legacy.0.join("state.snapshot");
+    assert_eq!(
+        mode_gate(read_marker(&marker_path(&legacy_state), &seed), None),
+        ModeGate::Legacy
+    );
+    assert_eq!(
+        mode_gate(read_marker(&marker_path(&legacy_state), &seed), Some(pb)),
+        ModeGate::CandidateWriteMarker
+    );
+}
+
+/// Marker IO discipline: sealed round trip, absent-vs-unreadable distinction,
+/// version/magic confusion, wrong seed, and trailing bytes inside the
+/// authenticated plaintext all behave fail-closed.
+#[test]
+fn mode_marker_round_trip_and_fail_closed_postures() {
+    use super::{marker_path, read_marker, write_marker};
+    use crate::snapshot;
+    let t = Temp::new("marker-io");
+    let state = t.0.join("state.snapshot");
+    let seed = [42u8; 32];
+    let pb = [3u8; 32];
+    let mp = marker_path(&state);
+
+    // Absent is the only "no marker" answer.
+    assert_eq!(read_marker(&mp, &seed), Ok(None));
+    write_marker(&mp, pb, &seed).expect("marker write");
+    assert_eq!(read_marker(&mp, &seed), Ok(Some(pb)));
+
+    // Wrong seed: the marker EXISTS but is unreadable → Err, never Ok(None).
+    assert!(read_marker(&mp, &[43u8; 32]).is_err());
+    // Tampered ciphertext → Err.
+    let mut bytes = std::fs::read(&mp).unwrap();
+    bytes[10] ^= 1;
+    std::fs::write(&mp, &bytes).unwrap();
+    assert!(read_marker(&mp, &seed).is_err());
+
+    // Version confusion: a valid marker payload sealed under a FUTURE/unknown
+    // magic is a mismatch, not an absent marker.
+    let payload =
+        postcard::to_allocvec(&super::CandidateModeMarkerV1 { policy_binding: pb }).unwrap();
+    let mut plain = b"DPCAM9\0\0".to_vec();
+    plain.extend_from_slice(&payload);
+    std::fs::write(&mp, snapshot::seal(&plain, &seed)).unwrap();
+    assert!(read_marker(&mp, &seed).is_err());
+
+    // Trailing bytes inside the authenticated plaintext are refused
+    // (postcard take_from_bytes + empty-remainder, same decoder rule as the
+    // rollback journal).
+    let mut plain = b"DPCAM1\0\0".to_vec();
+    plain.extend_from_slice(
+        &postcard::to_allocvec(&super::CandidateModeMarkerV1 { policy_binding: pb }).unwrap(),
+    );
+    plain.extend_from_slice([0xaa].as_slice());
+    std::fs::write(&mp, snapshot::seal(&plain, &seed)).unwrap();
+    assert!(read_marker(&mp, &seed).is_err());
+}
