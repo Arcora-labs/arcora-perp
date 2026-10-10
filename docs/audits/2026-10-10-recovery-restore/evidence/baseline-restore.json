@@ -1,0 +1,28 @@
+{
+  "base_commit": "e9e3f23f2f2bb72f15d5755182684bc94c96287a",
+  "binary_sha256": "17ac5733c36dc07bf3e83f63a1b8134aaf857c6394673a62345d477171091145",
+  "cases": [
+    {
+      "case": "required-missing",
+      "expected": "refuse before listening",
+      "observed_listening": true,
+      "regression_reproduced": true,
+      "exit_before_cleanup": null
+    },
+    {
+      "case": "pinned-missing",
+      "expected": "refuse before listening",
+      "observed_listening": true,
+      "regression_reproduced": true,
+      "exit_before_cleanup": null
+    },
+    {
+      "case": "invalid-mode",
+      "expected": "refuse before listening",
+      "observed_listening": true,
+      "regression_reproduced": true,
+      "exit_before_cleanup": null
+    }
+  ],
+  "scope": "Owned disposable demo startup; generated seed, no external transaction or proof."
+}

@@ -8006,11 +8006,15 @@ async fn main() {
         std::process::exit(1);
     }
     // Sealed state persistence: DARKPERP_STATE=<path> restores the engine across
-    // restarts. A present-but-unopenable snapshot is fail-closed (never silently
-    // wipe balances) — the operator deletes the file to consciously boot fresh.
-    let state_path = std::env::var("DARKPERP_STATE")
-        .ok()
-        .map(std::path::PathBuf::from);
+    // restarts. Required restore/pinned checkpoint modes never interpret a
+    // missing backup as permission to start a new genesis.
+    let state_path = std::env::var_os("DARKPERP_STATE").map(std::path::PathBuf::from);
+    let startup_snapshot = snapshot::RestorePolicy::from_env()
+        .and_then(|policy| policy.read_for_boot(state_path.as_deref()))
+        .unwrap_or_else(|error| {
+            eprintln!("[state] REFUSING to start: {error}");
+            std::process::exit(1);
+        });
     // Task 3 (crash recovery): whether a sealed snapshot was actually restored —
     // a rollback journal is only meaningful against the state it was written
     // beside; a journal without its snapshot now refuses startup for reconciliation.
@@ -8029,12 +8033,10 @@ async fn main() {
     } else {
         GenesisMode::Demo
     };
-    let mut gw = match &state_path {
-        Some(p) if p.exists() => {
-            let restored = snapshot::read_file(p)
-                .map_err(|e| e.to_string())
-                .and_then(|sealed| snapshot::open(&sealed, &enclave_seed))
-                .and_then(|plain| Gw::boot_restored(&plain));
+    let mut gw = match (&state_path, startup_snapshot) {
+        (Some(p), Some(sealed)) => {
+            let restored =
+                snapshot::open(&sealed, &enclave_seed).and_then(|plain| Gw::boot_restored(&plain));
             match restored {
                 Ok(gw) => {
                     println!("[state] restored sealed snapshot from {}", p.display());
@@ -8052,7 +8054,8 @@ async fn main() {
                 }
             }
         }
-        _ => Gw::boot_with(genesis_mode),
+        (_, None) => Gw::boot_with(genesis_mode),
+        (None, Some(_)) => unreachable!("startup snapshot requires a configured path"),
     };
     gw.prod = prod;
     // SEC-021: bind withdrawal authorization to this deployment — the same env source

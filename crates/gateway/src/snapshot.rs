@@ -26,6 +26,7 @@
 //! the witness seal enforces (see the prover's two-time-pad regression).
 
 use perp_core::hash::{word_u64, Digest, Domain, Hasher, Keccak256};
+use sha2::{Digest as _, Sha256};
 use std::io::{Read, Write};
 use std::path::Path;
 
@@ -74,11 +75,103 @@ const LEGACY_MAGIC: &[u8; 8] = b"DPSNAP5\0";
 pub const MAX_PLAIN_BYTES: usize = 64 * 1024 * 1024;
 pub const MAX_SEALED_BYTES: usize = MAX_PLAIN_BYTES + 72;
 
+/// Explicit recovery intent, separate from an initial deployment's fresh genesis.
+/// A supplied checkpoint always requires a snapshot, even when the flag is "0".
+/// The hash must come from a trusted recovery record; matching it is not proof of
+/// freshness, chain consistency, key custody or completeness of other state files.
+#[derive(Debug, PartialEq, Eq)]
+pub struct RestorePolicy {
+    required: bool,
+    sha256: Option<[u8; 32]>,
+}
+
+impl RestorePolicy {
+    pub fn from_env() -> Result<Self, String> {
+        fn optional(name: &str) -> Result<Option<String>, String> {
+            match std::env::var(name) {
+                Ok(value) => Ok(Some(value)),
+                Err(std::env::VarError::NotPresent) => Ok(None),
+                Err(std::env::VarError::NotUnicode(_)) => {
+                    Err("restore configuration must be valid UTF-8".into())
+                }
+            }
+        }
+        Self::parse(
+            optional("DARKPERP_REQUIRE_RESTORE")?.as_deref(),
+            optional("DARKPERP_RESTORE_SHA256")?.as_deref(),
+        )
+    }
+
+    fn parse(required: Option<&str>, checkpoint: Option<&str>) -> Result<Self, String> {
+        let required = match required {
+            None | Some("0") => false,
+            Some("1") => true,
+            _ => return Err("DARKPERP_REQUIRE_RESTORE must be 0 or 1".into()),
+        };
+        let sha256 = match checkpoint {
+            None => None,
+            Some(value) => {
+                if value.len() != 64 || !value.bytes().all(|b| b.is_ascii_hexdigit()) {
+                    return Err("DARKPERP_RESTORE_SHA256 must be exactly 64 hex digits".into());
+                }
+                let nibble = |b: u8| match b {
+                    b'0'..=b'9' => b - b'0',
+                    b'a'..=b'f' => b - b'a' + 10,
+                    b'A'..=b'F' => b - b'A' + 10,
+                    _ => unreachable!("validated ASCII hex"),
+                };
+                let mut bytes = [0; 32];
+                for (output, pair) in bytes.iter_mut().zip(value.as_bytes().as_chunks::<2>().0) {
+                    *output = (nibble(pair[0]) << 4) | nibble(pair[1]);
+                }
+                Some(bytes)
+            }
+        };
+        Ok(Self {
+            required: required || sha256.is_some(),
+            sha256,
+        })
+    }
+
+    /// Read once, bind the checkpoint to those bytes, then give the SAME bytes
+    /// to the existing authenticated snapshot opener. No exists()/reopen gap.
+    pub fn read_for_boot(&self, path: Option<&Path>) -> Result<Option<Vec<u8>>, String> {
+        let Some(path) = path else {
+            return if self.required {
+                Err("required restore has no DARKPERP_STATE path".into())
+            } else {
+                Ok(None)
+            };
+        };
+        let bytes = match read_file(path) {
+            Ok(bytes) => bytes,
+            Err(error) if !self.required && error.kind() == std::io::ErrorKind::NotFound => {
+                return Ok(None);
+            }
+            Err(_) => return Err("configured snapshot cannot be read; refusing fresh start".into()),
+        };
+        if let Some(expected) = self.sha256 {
+            let actual: [u8; 32] = Sha256::digest(&bytes).into();
+            if actual != expected {
+                return Err("restore checkpoint SHA-256 mismatch; preserve snapshot".into());
+            }
+        }
+        Ok(Some(bytes))
+    }
+}
+
 /// Bound the actual descriptor read (including a concurrent file growth), not
 /// merely a racy metadata check followed by an unbounded `std::fs::read`.
 pub fn read_file(path: &Path) -> std::io::Result<Vec<u8>> {
     let file = std::fs::File::open(path)?;
-    if file.metadata()?.len() > MAX_SEALED_BYTES as u64 {
+    let metadata = file.metadata()?;
+    if !metadata.is_file() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "regular snapshot file required",
+        ));
+    }
+    if metadata.len() > MAX_SEALED_BYTES as u64 {
         return Err(size_error());
     }
     let mut bytes = Vec::new();
@@ -274,6 +367,101 @@ pub fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    struct RestoreScratch(std::path::PathBuf);
+    impl RestoreScratch {
+        fn new() -> Self {
+            let mut random = [0; 16];
+            getrandom::getrandom(&mut random).unwrap();
+            let suffix: String = random.iter().map(|b| format!("{b:02x}")).collect();
+            let path = std::env::temp_dir().join(format!("arcora-restore-policy-{suffix}"));
+            std::fs::create_dir(&path).unwrap();
+            Self(path)
+        }
+    }
+    impl Drop for RestoreScratch {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn restore_policy_parsing_is_strict_and_never_echoes_values() {
+        assert!(!RestorePolicy::parse(None, None).unwrap().required);
+        assert!(!RestorePolicy::parse(Some("0"), None).unwrap().required);
+        assert!(RestorePolicy::parse(Some("1"), None).unwrap().required);
+        for value in ["", "true", "yes", "2", " 1", "private-sentinel", "é"] {
+            let error = RestorePolicy::parse(Some(value), None).unwrap_err();
+            assert!(!error.contains("private-sentinel"));
+        }
+        for value in [
+            "".to_string(),
+            "aa".repeat(31),
+            "gg".repeat(32),
+            "é".repeat(32),
+            format!("0x{}", "aa".repeat(32)),
+            "private-sentinel".into(),
+        ] {
+            assert!(RestorePolicy::parse(None, Some(&value)).is_err());
+        }
+    }
+
+    #[test]
+    fn restore_checkpoint_implies_required_and_normalizes_hex_case() {
+        let lower = RestorePolicy::parse(Some("0"), Some(&"ab".repeat(32))).unwrap();
+        let upper = RestorePolicy::parse(None, Some(&"AB".repeat(32))).unwrap();
+        assert_eq!(lower, upper);
+        assert!(lower.required);
+        assert_eq!(lower.sha256, Some([0xab; 32]));
+    }
+
+    #[test]
+    fn restore_missing_path_never_falls_back_when_required() {
+        let scratch = RestoreScratch::new();
+        let missing = scratch.0.join("not-present");
+        for policy in [
+            RestorePolicy::parse(Some("1"), None).unwrap(),
+            RestorePolicy::parse(None, Some(&"00".repeat(32))).unwrap(),
+        ] {
+            assert!(policy.read_for_boot(None).is_err());
+            assert!(policy.read_for_boot(Some(&missing)).is_err());
+            assert!(!missing.exists());
+        }
+        let fresh = RestorePolicy::parse(None, None).unwrap();
+        assert_eq!(fresh.read_for_boot(None).unwrap(), None);
+        assert_eq!(fresh.read_for_boot(Some(&missing)).unwrap(), None);
+    }
+
+    #[test]
+    fn restore_checkpoint_uses_the_exact_bytes_later_authenticated() {
+        let scratch = RestoreScratch::new();
+        let path = scratch.0.join("snapshot");
+        let sealed = seal(b"checkpoint payload", &[7; 32]);
+        std::fs::write(&path, &sealed).unwrap();
+        let digest: String = Sha256::digest(&sealed)
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect();
+        let policy = RestorePolicy::parse(None, Some(&digest)).unwrap();
+        let checked = policy.read_for_boot(Some(&path)).unwrap().unwrap();
+        // Replacing a file after intake cannot replace the already checked bytes.
+        std::fs::write(&path, seal(b"other checkpoint", &[7; 32])).unwrap();
+        assert_eq!(open(&checked, &[7; 32]).unwrap(), b"checkpoint payload");
+        assert!(open(&checked, &[8; 32]).is_err());
+        assert!(policy.read_for_boot(Some(&path)).is_err());
+    }
+
+    #[test]
+    fn restore_directory_and_corrupt_snapshot_do_not_become_fresh_genesis() {
+        let scratch = RestoreScratch::new();
+        let policy = RestorePolicy::parse(Some("1"), None).unwrap();
+        assert!(policy.read_for_boot(Some(&scratch.0)).is_err());
+        let path = scratch.0.join("short");
+        std::fs::write(&path, b"bad").unwrap();
+        let bytes = policy.read_for_boot(Some(&path)).unwrap().unwrap();
+        assert!(open(&bytes, &[7; 32]).is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), b"bad");
+    }
 
     #[test]
     fn seal_open_round_trip() {

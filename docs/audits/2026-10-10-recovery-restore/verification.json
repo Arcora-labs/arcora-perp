@@ -1,0 +1,67 @@
+{
+  "base_commit": "e9e3f23f2f2bb72f15d5755182684bc94c96287a",
+  "branch": "fix/cpu-recovery-drill-20261010",
+  "status": "VALIDATED_CPU_RECOVERY_PACKAGE",
+  "binary_sha256": "f8873863605c288f810cf51d9f0290a8e8a91cd608e30ebb54f70495b5d05726",
+  "tested_source_sha256": {
+    ".github/workflows/a11-release-evidence.yml": "0dc05208bbaa1f1df6a1cc29680282982114563d5ab685649c29c23fe4d03680",
+    "Cargo.lock": "36a8f82dd0276c954ff56a0557fe154383a5878b1dbfbd7070a049418b87aed4",
+    "crates/gateway/Cargo.toml": "4c81d6e67df0eae24c753383f20055d2d55fb0fd02192620c1109c8599ec3090",
+    "crates/gateway/src/main.rs": "de262bdcea3a6c12f94402090d42eeadc586edab655d6629e508f16e590611e7",
+    "crates/gateway/src/snapshot.rs": "d9f179c97644d0296d2959f2a6cbb8e359efae29be5b6901a546edc18f5198dd",
+    "scripts/local-verification/gateway_restore_drill.py": "168e8159e55383ea1c986c4261903305272aa0c1511e4768097ae037723edd00",
+    "scripts/local-verification/test_gateway_restore_drill.py": "ad74390bd9eafff8864335dadf3cb8176cb18c1631441782bf88d1ca8e60fd7e"
+  },
+  "guest_source_pins_unchanged": 21,
+  "dependency_packages_unchanged": true,
+  "source_build_independently_reproduced": false,
+  "results": {
+    "gateway_passed": 471,
+    "gateway_ignored": 15,
+    "gateway_failed": 0,
+    "python_passed": 116,
+    "restore_refusals": 12,
+    "restores": 2,
+    "legacy_ack_cases": 9,
+    "legacy_sigkill_exits": 27
+  },
+  "evidence": {
+    "baseline-restore.json": {
+      "raw_sha256": "be2b4508f52f3de772bc708b86835eb714a98ac271daa4253a2f4f8b175108b3",
+      "published_sha256": "be2b4508f52f3de772bc708b86835eb714a98ac271daa4253a2f4f8b175108b3",
+      "normalization": "Home path and trailing whitespace only; results unchanged."
+    },
+    "build-final.log": {
+      "raw_sha256": "3d4a877ae56b9c9a2cd08bcac2ce0c5d4132e380deb76f52f5b04b2cd856dd52",
+      "published_sha256": "3564f1bb8ec65bded7b0b2b084ad1ed6e6a7ce7a3129952de029e7f48f40358c",
+      "normalization": "Home path and trailing whitespace only; results unchanged."
+    },
+    "gateway-tests.log": {
+      "raw_sha256": "754025c6400ab9f69ff180ef5a0a9f3a42815107ba6b2309fcca51e47db593db",
+      "published_sha256": "7990103a65418d50229006ad587a719162641e7bbfb42ede3dfd807549305b02",
+      "normalization": "Home path and trailing whitespace only; results unchanged."
+    },
+    "gateway-clippy.log": {
+      "raw_sha256": "99477c210b0bfbb519686f23c421ae97ad76f5cf57f622e20f29a0397151b34f",
+      "published_sha256": "c81b3bc872f240fdbe66c7fea45ade6e7443c7faa18b567370b1b1a13e6b4fd6",
+      "normalization": "Home path and trailing whitespace only; results unchanged."
+    },
+    "python-tests.log": {
+      "raw_sha256": "9f471ae7d789cfbaf73d06cb423ab0141e0c56cd5036b052563c1d6677c366e9",
+      "published_sha256": "a244421a32f54490104377ba5083a8da6142335917b2202d018f3b05d3ca501f",
+      "normalization": "Home path and trailing whitespace only; results unchanged."
+    },
+    "restore-result.json": {
+      "raw_sha256": "e7e40bca6ea0a45382e3b43f98633a1a5e3a31333238d94e03de69000af1ca7f",
+      "published_sha256": "e7e40bca6ea0a45382e3b43f98633a1a5e3a31333238d94e03de69000af1ca7f",
+      "normalization": "Home path and trailing whitespace only; results unchanged."
+    },
+    "ack-result.json": {
+      "raw_sha256": "a768f771464c766ada63538542abf2ae2dd217c638e162ff544466dc39d2c63c",
+      "published_sha256": "a768f771464c766ada63538542abf2ae2dd217c638e162ff544466dc39d2c63c",
+      "normalization": "Home path and trailing whitespace only; results unchanged."
+    }
+  },
+  "release_gate": "HOLD",
+  "production_rto_rpo_measured": false
+}
