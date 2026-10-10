@@ -1341,3 +1341,139 @@ fn real_admission_to_sealed_window_to_v6_journal_to_recovery_proves_end_to_end()
         .expect("fresh proves");
     assert_eq!(replay.commitment, fresh.commitment);
 }
+
+#[test]
+fn admission_callback_and_index_update_share_one_exclusive_boundary() {
+    let (_t, mut b) = binding("atomic-admit");
+    let mut seen = None;
+    assert!(!b
+        .admit_with(0, base_report(100, NOW), quote_report(100, NOW), NOW, |n| {
+            seen = Some(n);
+            false
+        })
+        .unwrap());
+    assert!(b.admissions.is_empty());
+    let oracle = transcript_of(seen.unwrap());
+    assert!(b.bind_ops(&[fill(0, NOW, oracle)]).is_err());
+    assert!(b
+        .admit_with(
+            0,
+            base_report(100, NOW),
+            quote_report(100, NOW),
+            NOW,
+            |_| true
+        )
+        .unwrap());
+    let original = b.bind_ops(&[fill(0, NOW, oracle)]).unwrap().refs[0].archive_id;
+    let mut alternate = full_report(feed(0x11), 6_000_000_000_000, 100);
+    alternate[576] ^= 1; // different synthetic signature bytes, same normalized price
+    assert!(b
+        .admit_with(
+            0,
+            report_from_full(alternate, 100, NOW),
+            quote_report(100, NOW),
+            NOW,
+            |_| true
+        )
+        .unwrap());
+    assert_eq!(b.admissions.len(), 1);
+    assert_eq!(
+        b.bind_ops(&[fill(0, NOW, oracle)]).unwrap().refs[0].archive_id,
+        original
+    );
+}
+
+#[test]
+fn capacity_and_archive_failure_never_invoke_admission_callback() {
+    let (_t, b) = binding("atomic-capacity");
+    let mut b = b.with_capacity(0);
+    assert_eq!(
+        b.admit_with(
+            0,
+            base_report(100, NOW),
+            quote_report(100, NOW),
+            NOW,
+            |_| { panic!("full index must refuse before gateway mutation") }
+        ),
+        Err(BindError::Capacity)
+    );
+    let (t, mut b) = binding("atomic-storage");
+    std::fs::rename(t.0.join("store"), t.0.join("moved-store")).unwrap();
+    assert_eq!(
+        b.admit_with(
+            0,
+            base_report(100, NOW),
+            quote_report(100, NOW),
+            NOW,
+            |_| { panic!("missing archive must refuse before gateway mutation") }
+        ),
+        Err(BindError::Archive)
+    );
+    assert!(b.admissions.is_empty());
+}
+
+#[test]
+fn mismatched_archive_and_envelope_options_cannot_be_legacy_success() {
+    let (t, b) = binding("option-guard");
+    let mut gw = crate::Gw::boot();
+    let (key, _) = gw.register_account(None);
+    gw.account_deposit(&key, 0, 20_000 * perp_core::fixed::QUOTE_SCALE)
+        .unwrap();
+    let batch = gw.seq.state.next_batch_id;
+    let (journal, envelope) = crate::begin_journaled_window_settle(
+        &mut gw,
+        batch,
+        Some(&t.0.join("state.rollback")),
+        &[42; 32],
+        Some(&b),
+    )
+    .unwrap()
+    .unwrap();
+    assert!(crate::ensure_archive_binding_current(Some(&b), &journal, envelope.as_ref()).is_ok());
+    assert!(crate::ensure_archive_binding_current(None, &journal, None).is_ok());
+    assert!(crate::ensure_archive_binding_current(None, &journal, envelope.as_ref()).is_err());
+    assert!(crate::ensure_archive_binding_current(Some(&b), &journal, None).is_err());
+}
+
+#[test]
+fn candidate_snapshot_refuses_legacy_boot_after_marker_loss_open_window() {
+    let t = Temp::new("tagged-snapshot");
+    let path = t.0.join("candidate.snapshot");
+    let seed = [0x5du8; 32]; // synthetic test seal key
+    let pb = policy_binding(&policy()).unwrap();
+    let mut gw = crate::Gw::boot();
+    let (key, _) = gw.register_account(None);
+    gw.account_deposit(&key, 0, 20_000 * perp_core::fixed::QUOTE_SCALE)
+        .unwrap();
+    assert!(gw.seq.open_window_has_ops());
+    assert!(!crate::rollback_journal::journal_path(&path).exists());
+    write_marker(&marker_path(&path), pb, &seed).unwrap();
+    crate::persist_recovery(&gw, &path, &seed, true).unwrap();
+    std::fs::remove_file(marker_path(&path)).unwrap();
+    assert_eq!(read_marker(&marker_path(&path), &seed).unwrap(), None);
+    let bytes = std::fs::read(&path).unwrap();
+    let mut plain = crate::snapshot::open(&bytes, &seed).unwrap();
+    assert!(snapshot_is_candidate(&plain));
+    assert!(snapshot_mode_refusal(snapshot_is_candidate(&plain), None).is_some());
+    assert!(snapshot_mode_refusal(snapshot_is_candidate(&plain), Some(pb)).is_none());
+    assert!(
+        crate::Gw::boot_restored(&plain).is_err(),
+        "legacy decoder must reject the tagged format"
+    );
+    untag_snapshot_plain(&mut plain);
+    let restored = crate::Gw::boot_restored(&plain).unwrap();
+    assert_eq!(restored.seq.state.state_root(), gw.seq.state.state_root());
+    assert!(restored.seq.open_window_has_ops());
+    assert!(crate::snapshot::open(&bytes, &[0x6e; 32]).is_err());
+    let legacy_path = t.0.join("legacy.snapshot");
+    crate::persist_recovery(&gw, &legacy_path, &seed, false).unwrap();
+    let legacy = crate::snapshot::open(&std::fs::read(legacy_path).unwrap(), &seed).unwrap();
+    assert_eq!(
+        legacy,
+        gw.snapshot_plain(),
+        "valid legacy plaintext bytes are unchanged"
+    );
+    assert!(!snapshot_is_candidate(&legacy));
+    assert!(snapshot_mode_refusal(false, None).is_none());
+    assert!(crate::Gw::boot_restored(&legacy).is_ok());
+}

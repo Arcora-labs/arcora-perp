@@ -7879,7 +7879,8 @@ fn ensure_archive_binding_current(
         (Some(a), Some(env)) => a
             .verify(&journal.witness.ops, env)
             .map_err(|e| format!("sealed window's archive binding no longer verifies: {e}")),
-        _ => Ok(()),
+        (None, None) => Ok(()),
+        _ => Err("archive configuration and authenticated journal binding disagree".into()),
     }
 }
 
@@ -9149,49 +9150,27 @@ async fn main() {
                         let mut gw = app.gw.lock().await;
                         let accepted = match fetched {
                             Ok(Ok((base, quote))) => {
-                                // Archive durable FIRST; the ledger entry is
-                                // installed ONLY if the gateway accepts the
-                                // transcript — a rejected admission never
-                                // becomes selectable (no shadowing/replacement).
-                                let pending = app
-                                    .archive
-                                    .as_ref()
-                                    .and_then(|b| b.lock().ok())
-                                    .filter(|b| !b.is_full())
-                                    .and_then(|mut b| b.admit(market, base, quote, now).ok());
-                                match pending {
-                                    Some(pending) => {
-                                        let transcript = OracleTranscript {
-                                            price: pending.transcript.price,
-                                            publish_time_ms: pending.transcript.publish_time_ms,
-                                            confidence: pending.transcript.confidence,
-                                            backup_twap: pending.transcript.backup_twap,
-                                            signature: OracleSig::sign(
+                                match archive_slot(app.archive.as_ref()) {
+                                    ArchiveSlot::Guard(mut binding) => binding
+                                        .admit_with(market, base, quote, now, |normalized| {
+                                            let signature = OracleSig::sign(
                                                 &gw.oracle_signer,
                                                 &oracle_digest(
                                                     market,
-                                                    pending.transcript.price,
-                                                    pending.transcript.publish_time_ms,
-                                                    pending.transcript.confidence,
-                                                    pending.transcript.backup_twap,
+                                                    normalized.price,
+                                                    normalized.publish_time_ms,
+                                                    normalized.confidence,
+                                                    normalized.backup_twap,
                                                 ),
-                                            ),
-                                        };
-                                        if gw.apply_validated_real_oracle_at(market, transcript, now)
-                                        {
-                                            if let Some(m) = app.archive.as_ref() {
-                                                if let Ok(mut g) = m.lock() {
-                                                    if let Err(e) = g.install(pending) {
-                                                        eprintln!("[chainlink-archive] market {market} admission not installed: {e}");
-                                                    }
-                                                }
-                                            }
-                                            true
-                                        } else {
-                                            false
-                                        }
-                                    }
-                                    None => false,
+                                            );
+                                            gw.apply_validated_real_oracle_at(
+                                                market,
+                                                normalized.with_signature(signature),
+                                                now,
+                                            )
+                                        })
+                                        .unwrap_or(false),
+                                    ArchiveSlot::Poisoned | ArchiveSlot::NotConfigured => false,
                                 }
                             }
                             _ => false,
@@ -9473,7 +9452,7 @@ async fn main() {
                             Ok(g) => ensure_archive_binding_current(Some(&g), &journal, envelope.as_ref()),
                             Err(_) => Err("archive binding lock is poisoned".to_string()),
                         },
-                        None => Ok(()),
+                        None => ensure_archive_binding_current(None, &journal, envelope.as_ref()),
                     };
                     if let Err(error) = archive_guard {
                         eprintln!("[l1] window {batch_id}: {error}; holding settlement before prove");

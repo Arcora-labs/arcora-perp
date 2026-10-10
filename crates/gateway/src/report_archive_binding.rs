@@ -436,6 +436,42 @@ impl ArchiveBinding {
         })
     }
 
+    /// One exclusive binding borrow covers durable storage, downstream acceptance
+    /// and the index update. No fallible index step or mutex reacquisition occurs
+    /// AFTER the gateway has accepted the price. A rejected callback leaves only
+    /// an unreferenced immutable record, never a selectable admission.
+    pub(crate) fn admit_with(
+        &mut self,
+        market_id: u64,
+        base: UnverifiedReport,
+        quote: UnverifiedReport,
+        now_ms: u64,
+        accept: impl FnOnce(Normalized) -> bool,
+    ) -> Result<bool, BindError> {
+        if self.is_full() {
+            return Err(BindError::Capacity);
+        }
+        let pending = self.admit(market_id, base, quote, now_ms)?;
+        let already_selected = self
+            .admissions
+            .iter()
+            .any(|a| a.market_id == pending.market_id && a.transcript == pending.transcript);
+        if !accept(pending.transcript) {
+            return Ok(false);
+        }
+        // The callback cannot mutate this exclusively borrowed index. Capacity
+        // was checked before storage; inserting this one entry cannot fail a
+        // policy check after downstream mutation. Keep the first selected ID.
+        if !already_selected {
+            self.admissions.push_back(Admission {
+                market_id: pending.market_id,
+                id: pending.id,
+                transcript: pending.transcript,
+            });
+        }
+        Ok(true)
+    }
+
     /// Install an ACCEPTED admission into the binding index. The index maps
     /// each (market, transcript) identity to exactly ONE canonical ArchiveId —
     /// the FIRST accepted admission for that identity. Two different original
@@ -445,6 +481,7 @@ impl ArchiveBinding {
     /// never installed at all). Capacity REFUSES rather than silently evicting:
     /// an evicted entry could strand an unsealed window's ops, so the caller
     /// must reject the admission and reconcile instead.
+    #[cfg(test)]
     pub(crate) fn install(&mut self, pending: PendingAdmission) -> Result<(), BindError> {
         if self
             .admissions
