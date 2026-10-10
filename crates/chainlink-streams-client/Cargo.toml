@@ -1,0 +1,18 @@
+[package]
+name = "chainlink-streams-client"
+version = "0.0.1"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[dependencies]
+chainlink-oracle = { path = "../chainlink-oracle" }
+hmac = "=0.12.1"
+sha2 = "=0.10.9"
+zeroize = "=1.9.0"
+ureq = { version = "=2.12.1", default-features = false, features = ["tls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Host-only. Never add transport/authentication to either pinned zkVM guest.
+[workspace]

@@ -2,7 +2,7 @@
 
 Güncelleme: 10 Ekim 2026. **PRODUCTION RELEASE HOLD**.
 Bu belge güncel çalışma sırasıdır; tarihsel `NEXT_STEPS.md` yerine kullanın.
-Son birleşen main: `9483e33607f964138108094b04ca8b27dedcd637`.
+Son birleşen main: `e552bbab6868b070ff9c3b8f4ed3b9dec1230288`.
 
 ## Birleşmiş ve korunan çalışmalar
 
@@ -34,7 +34,7 @@ Ayrıntılar: `CHAINLINK_SEQUENCER_GUARD.md` ve
 `audits/2026-10-10-chainlink-uptime/`. Bu kayıt yerel kapsamı bildirir;
 Bu PR artık main'dedir; merge sonrası push CI ayrı kayıttır.
 
-## Bu dalın paketi: aday guest CPU yürütmesi
+## Birleşmiş #42: aday guest CPU yürütmesi
 
 Dal: `feat/chainlink-guest-replay-20261010`, taban main `9483e33`.
 19 sabit, açık sentetik witness ve bunları gerçek SP1 CPU yürütücüsünde çalıştıran
@@ -45,7 +45,9 @@ kaynakta 16 test geçti; açık export testi ayrıca bir kez çalıştırıldı.
 Ayrı aday ELF aynı Mac'te yeniden üretildi; önceki adayla byte-byte aynı kaldı.
 Ölçülen aday vkey: `0x006aa3cfa389566dd318c9bf12f3946a623555e5f624359037e2d5c4d35ad590`.
 Eski reviewed guest'in 21 pini ve aday runtime'ın 9 girdisi değişmedi.
-CI'a gerçek CPU adımı eklendi; bu dalın sonraki PR/CI sonucu ayrıca okunmalıdır.
+CI'a gerçek CPU adımı eklendi. #42, 18/18 başarılı exact-head kontrolüyle
+10 Ekim 2026 20:37:31 Türkiye saatinde normal merge edildi: `e552bbab6868b070ff9c3b8f4ed3b9dec1230288`.
+Merge ağacı `2598acf` kaynak ağacıyla eşittir; push CI ayrı kayıttır.
 Kılavuz: `CHAINLINK_GUEST_REPLAY.md`; kanıt: `audits/2026-10-10-chainlink-guest-replay/`.
 Bu 4 başarılı senaryo önceki 4 normal-wallet exact witness değildir; funding ve
 boş batch regresyonlarıdır. CPU setup/execution, proof veya gerçek DON değildir.
@@ -59,9 +61,19 @@ doğrulandı: 4 sentetik başarılı girdi + 15 çıktısız guest reddi. Yeni g
 proof ve production guest/deployment kabulü tamamlanmadı. Normalizasyon açık asset/USD ÷ USDC/USD aday tarifidir;
 üretim ekonomik onayı yoktur ve backup alanı bağımsız TWAP değildir.
 
-Authenticated stream istemcisi önceki araç engelinden sonra tamamlanmadı;
-bu paket onu başka yoldan uygulamaz. Canlı feed/decimal/quote pinleri, gerçek
-DON verifier, gateway/prover/L1 bağlantısı ve rapor kalıcılığı açık kalır.
+## Aktif paket: authenticated REST istemcisi taslağı
+
+Dal `feat/chainlink-streams-client-20261010`, taban `e552bba`.
+Ayrı `chainlink-streams-client` crate'i: explicit credential/network, fixed HTTPS,
+HMAC, bounded read/retry, strict metadata/body eşleşmesi ve UnverifiedReport
+uygulandı. Derleme ve Clippy doğrulandı. Yeni testleri ekleyen çağrı araç güvenlik
+kontrolüne takıldı; dosyalar oluşmadı, engellenen işlem tekrarlanmadı.
+**İstemci runtime testleri yoktur; merge-ready veya canlı kabulü tamamlanmış değildir.**
+WebSocket/poll scheduler ve gateway bağlantısı da yoktur.
+Public discovery'ye ayrı kimliksiz testnet/mainnet GET'leri HTTP403 döndürdü;
+gerçek feed/decimal/quote pinleri tahmin edilmedi. Bu authentication testi değildir.
+Detay: `CHAINLINK_STREAMS_CLIENT.md`.
+Canlı DON verifier, gateway/prover/L1 bağlantısı ve rapor kalıcılığı açık kalır.
 
 ## Açık işler ve kapanış ölçütleri
 

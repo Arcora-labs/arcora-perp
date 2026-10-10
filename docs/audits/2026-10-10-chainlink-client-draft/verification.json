@@ -1,0 +1,140 @@
+{
+  "observed_at": "2026-10-10T17:45:34.785527+00:00",
+  "base_commit": "e552bbab6868b070ff9c3b8f4ed3b9dec1230288",
+  "status": "DRAFT_RUNTIME_TESTS_BLOCKED",
+  "results": [
+    {
+      "name": "format",
+      "command": [
+        "cargo",
+        "+1.99.0",
+        "fmt",
+        "--manifest-path",
+        "crates/chainlink-streams-client/Cargo.toml",
+        "--check"
+      ],
+      "exit_code": 0,
+      "duration_seconds": 0.604,
+      "log": "target/chainlink-client-20261010T173729Z/final/format.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "build",
+      "command": [
+        "cargo",
+        "+1.99.0",
+        "build",
+        "--locked",
+        "--offline",
+        "--manifest-path",
+        "crates/chainlink-streams-client/Cargo.toml"
+      ],
+      "exit_code": 0,
+      "duration_seconds": 35.156,
+      "log": "target/chainlink-client-20261010T173729Z/final/build.log",
+      "sha256": "e3d889e529acd4a3458471438d87c06143f1e88bf1c78bcb8ed3bf16e69ce96b"
+    },
+    {
+      "name": "clippy",
+      "command": [
+        "cargo",
+        "+1.99.0",
+        "clippy",
+        "--locked",
+        "--offline",
+        "--manifest-path",
+        "crates/chainlink-streams-client/Cargo.toml",
+        "--all-targets",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "exit_code": 0,
+      "duration_seconds": 0.844,
+      "log": "target/chainlink-client-20261010T173729Z/final/clippy.log",
+      "sha256": "a8dd5b4f852b782842253d071162bc7c3c44c3a9a07131cd1159e45bbb802a10"
+    },
+    {
+      "name": "reviewed-release",
+      "command": [
+        "python3.12",
+        "scripts/local-verification/check_sp1_release.py"
+      ],
+      "exit_code": 0,
+      "duration_seconds": 0.43,
+      "log": "target/chainlink-client-20261010T173729Z/final/reviewed-release.log",
+      "sha256": "9189d4751f9a5a116d3fb275d396e5871d6e40c9df208c763d29ad33098f80d8"
+    },
+    {
+      "name": "candidate-lock",
+      "command": [
+        "python3.12",
+        "scripts/local-verification/check_chainlink_candidate.py"
+      ],
+      "exit_code": 0,
+      "duration_seconds": 0.165,
+      "log": "target/chainlink-client-20261010T173729Z/final/candidate-lock.log",
+      "sha256": "2098e68e75a17ef7de525984a1425a3c666fa90e8333453246d09d0cf5f31d6e"
+    }
+  ],
+  "reviewed_source_pins": {
+    "Cargo.toml": "e3144a0ae3447244776e65b04cfff39267c238e410c2d9abf20b53e6b837bbfa",
+    "crates/perp-core/Cargo.toml": "3bfb6981fa34a967185ce75abd07683e5262a694ebd60eb45a4f5c55aaf9704c",
+    "crates/perp-core/src/clock.rs": "e89e50e11b3ffb3a4a1a89ab6dd4854b61606cc17eb1236492994df0b59d50e7",
+    "crates/perp-core/src/commitment.rs": "43582ef5048d0d725e53976e3c2a1dfcf32984ed2ad1bb2ebd2032463e26ea92",
+    "crates/perp-core/src/engine.rs": "4d6037f1189939a71a41e31882012e6fa50b887087b5ccc2bfce4502b61d0f9e",
+    "crates/perp-core/src/error.rs": "0738da822be5639737e67f04a0f500af57fcc1f085dd64bec7fbe3b016c515c6",
+    "crates/perp-core/src/fixed.rs": "fc77559a31c1cfdd7a641cafbd773871aeb203849e165dbd158aa7a1b65ef7cd",
+    "crates/perp-core/src/funding.rs": "8f782cf3a4403c717eda44c6d2955789c31e4ef2a04bb4fdac8e61916018e781",
+    "crates/perp-core/src/hash.rs": "88430a8c2558b247bcf241035ad48fa1dbf8a3e77a0d176dfdbd608c930f93b9",
+    "crates/perp-core/src/lib.rs": "8f070fbec0f4b3d3fab5e594bcf808845803a59ece403dc42cb0f0df6e6253b5",
+    "crates/perp-core/src/market.rs": "8053e89a9b1021d6e461d46d733dfb1935aff5fc2a45be8121f96560fa4ddc2d",
+    "crates/perp-core/src/merkle.rs": "173f4667178ba4aa4048e43c2aeb9fa337918d6225b98c6597c004b59bc3a8f6",
+    "crates/perp-core/src/note.rs": "5cece4d513537c10464bd64b4612f829cd32cb9c1a80d3c8e40c573aace62423",
+    "crates/perp-core/src/nullifier.rs": "a252799c62dc42ec37c91ba6fd7674117b33c98c7f83e86b168f70898966ea78",
+    "crates/perp-core/src/oracle.rs": "91ae09655e35432aafa1135b23588d6f1f324b41a278ac640ebc30f106d17da2",
+    "crates/perp-core/src/order.rs": "99bb9b2be4948bcf8365c3022ef444be5941201ec6535de73d45a777e5a206d7",
+    "crates/perp-core/src/position.rs": "99d120139086092d2dae4ed11d3a677906c1cf3efd7aff9e58f27f3437f2ae66",
+    "crates/perp-core/src/state.rs": "e1026c1e2b56cfcbee4eff812e88ff3dcde052e46818deab980a071fcdbec388",
+    "crates/sp1-guest/Cargo.lock": "113518cb212208aa46a629608af9d946f9a4006ac211035a15e9cb8c022fb8c3",
+    "crates/sp1-guest/Cargo.toml": "d0ed7050076bb3548b9e3410f63066068752382f4dab31e344096c9c3e42dc85",
+    "crates/sp1-guest/src/main.rs": "c0d33ff8645ebdcc8994d4d65729b8a60a224bcda18415423da15ed875c16f5c"
+  },
+  "candidate_runtime_pins": {
+    "crates/chainlink-oracle/Cargo.lock": "62f58aa9da1592de0a4419052c5145128425976b0e0c5520fcce0bb6c936b246",
+    "crates/chainlink-oracle/Cargo.toml": "0b05c79f8fa37dd643466ad9e4b0013d6d6d257d7cfc414b8351cc7a11a88421",
+    "crates/chainlink-oracle/src/binding.rs": "8c66dba2a1d49825c1c13b89aa1a55d47fcab42abe481a0fce308128215cc877",
+    "crates/chainlink-oracle/src/lib.rs": "a107bf7464fe8654c69d9864c5ab6bcac6728d993634004d6d0075fbb707e224",
+    "crates/chainlink-oracle/src/policy.rs": "c36d89a3212cd5d9893b19e77b6b4dba5dba364dcb2135b24424fdab5a42b285",
+    "crates/chainlink-oracle/src/report.rs": "91b824e8a20bc7b1d8aa907813eb95061c659a655f72ef01fdc68409b7232d26",
+    "crates/sp1-chainlink-guest/Cargo.lock": "de6dbb43b0b85968fa2f7f7de0d71d53c54adacebbc9786cfd17197491142cbe",
+    "crates/sp1-chainlink-guest/Cargo.toml": "9f47d6f2cfc08fb71fdfcbc0877f09f083685a1ea016bbd67ea87dd60c8edc55",
+    "crates/sp1-chainlink-guest/src/main.rs": "9e403b9f241e0a53afc2e58baa7bf978ddf81c28e5704acc7a6f734962874187"
+  },
+  "dependency_registry_packages": 99,
+  "new_registry_identities": [],
+  "runtime_tests_added": 0,
+  "runtime_tests_executed": 0,
+  "loopback_authentication_test_performed": false,
+  "live_authenticated_request_performed": false,
+  "gateway_connected": false,
+  "production_release": "HOLD",
+  "source_sha256": {
+    ".github/workflows/chainlink-candidate.yml": "d2fce7b890e94b96622f58d1b6cf11278c290c70540f4660f39426d8e7af4448",
+    "docs/ACTIVE_WORK.md": "1f74c4eb23118d33a553caeb2eedee2fb50a81ba99ed7c59e3cdeaf5f60fccbc",
+    "docs/CHAINLINK_STREAMS_CLIENT.md": "9e77a1695da3e8b4f8d1a3f32d3a838fcf51f522bbf7f590bea984b7397a22cd",
+    "crates/chainlink-streams-client/.gitignore": "306fd52e74fca6746e12acc750f232de15e71da917756a1270d74c91f5eb7368",
+    "crates/chainlink-streams-client/Cargo.toml": "9e8cc825192982218ad848e88ab11a0fa58a44e46ccf59f57fea3963bec80c73",
+    "crates/chainlink-streams-client/Cargo.lock": "c0b29e553e285e59b453149501cbb20e1f5861979990932d9e4de60c05f75ae0",
+    "crates/chainlink-streams-client/src/lib.rs": "594cfffc0fd8552c3bd00d5b228e96d57a48da7b28b4879c1a32b14b12a15612",
+    "crates/chainlink-streams-client/src/auth.rs": "93122e475c5a3a03cd3bf8077209ae5f3e793330d2bc428303b129f33b0d2fd2",
+    "crates/chainlink-streams-client/src/transport.rs": "75bcccf91de2fef7bbe33614f87ae2e13a1d71873066ae0925583c846b43618c"
+  },
+  "evidence_sha256": {
+    "docs/audits/2026-10-10-chainlink-client-draft/pr42-merge.json": "6757dc15efd192d671585ed5399488f78285b7d59b27f952a9d1f64d2b7e916b",
+    "docs/audits/2026-10-10-chainlink-client-draft/public-discovery-observations.json": "311d65c083da31f5bb507e4d23a14fb48944005c04b7a65ebf2464027e469f0f"
+  },
+  "test_writing_action": "blocked by tool safety control; not retried; test files absent",
+  "independent_audit": false,
+  "cold_build": false
+}
