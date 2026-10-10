@@ -26,8 +26,8 @@ use axum::{
 // prover-service. `StaticSecret` is the attestation crate's re-export of the
 // ephemeral x25519 secret type (no direct x25519-dalek dependency here).
 use dark_perp_attestation::{
-    derive_session, dh_shared, ephemeral_keypair, Attestor as _, AzureTdxAttestor,
-    NvidiaCcAttestor, StaticSecret, DEV_INSECURE_SESSION_TOKEN,
+    derive_session, dh_shared, ephemeral_keypair, validate_session_expiry, Attestor as _,
+    AzureTdxAttestor, NvidiaCcAttestor, StaticSecret, Zeroizing, DEV_INSECURE_SESSION_TOKEN,
 };
 use serde::{Deserialize, Serialize};
 use tokio::sync::{broadcast, Mutex};
@@ -713,7 +713,10 @@ fn prover_handshake(
     // verify enforces the same pin on its half). The ECDH `shared` requires OUR
     // ephemeral PRIVATE key, so the secret is not derivable from the public
     // /attest transcript (C3).
-    let shared = dh_shared(gw_sk, &pv_pub);
+    let shared =
+        Zeroizing::new(dh_shared(gw_sk, &pv_pub).map_err(|e| format!("prover DH: {e:?}"))?);
+    validate_session_expiry(not_after, now_ms())
+        .map_err(|e| format!("prover session expiry: {e:?}"))?;
     let (secret, token) =
         derive_session(&shared, &gw_expected, &pv_meas, gw_pub, &pv_pub, not_after);
     Ok((token, secret, not_after))
@@ -7781,7 +7784,10 @@ async fn main() {
     // /attest (and is the challenge a live self-quote binds); the SECRET half is
     // what makes the session secret underivable from the public transcript. It
     // is never logged or served.
-    let (gw_eph_secret, gw_pub) = ephemeral_keypair(&csprng_bytes32());
+    let ikm = Zeroizing::new(csprng_bytes32());
+    let (gw_eph_secret, gw_pub) = ephemeral_keypair(&ikm);
+    // Erase the owned random seed after key construction.
+    drop(ikm);
     // SEC-020 Task 6: capture the raw `session_secret` alongside the token — the
     // attested seal key rests on it (never logged/served). `None` on both the dev
     // and refused-prod paths ⇒ the gateway seals with the DEV_INSECURE

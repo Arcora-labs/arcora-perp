@@ -1,0 +1,106 @@
+{
+  "date": "2026-10-10",
+  "base_commit": "1a900dd6f370b4b1535865f52395ea8f87cd3a9c",
+  "branch": "fix/cpu-release-gates-20261010",
+  "status": "CPU_PACKAGE_VALIDATED_RELEASE_HOLD",
+  "tested_changed_sources_sha256": {
+    ".github/workflows/a11-release-evidence.yml": "62661cbef3b3a3be0ad4749c964d32c28a2430ffc1976586119b28d8001670ec",
+    "Cargo.lock": "341436fede030f85595d88ce7932ebc92dcb09e515f8c7b7538e1720fc4a19fb",
+    "crates/attestation/Cargo.toml": "bb595849c3ff6ea0464679e77bb31ee233a315cd8c42e3ee9b2ebb6ba4b8ff3b",
+    "crates/attestation/src/handshake.rs": "fb5a3c94c75eac3aba4fed356750d9cce3bcd547ba1773d749ece14468af4a1d",
+    "crates/attestation/src/lib.rs": "94b79df937239ec80f5c293b0ff1890bbfc62204079325415dd65f2471f9a33e",
+    "crates/attestation/tests/handshake_orchestration.rs": "be98d4da0182bfd4ae625d49ff3e0b7eb0711d839e84b15a03f4db8b115886eb",
+    "crates/gateway/src/main.rs": "55b8df8910db3f9fe63179bddaa6da3fca0f63d3cc8e9d68e6f1354fff737bf3",
+    "crates/prover-service/Cargo.lock": "ba5bf3580c75419e1d3b13767f26991fb2626e893157dd49bb891bf96b721fea",
+    "crates/prover-service/src/main.rs": "ac76b7ba7d16dede1b6e9748728c60bca97f46c370d19249a37d5e0a19a44cbc",
+    "docs/RELEASE_MANIFEST.md": "6f494804dc87156e6697a005cc56b2034ba1898740c3d66bd91351d042f9890a",
+    "scripts/local-verification/release_manifest.py": "c9dbcadd5d2fcead58938d81ff2755cf2e326cf29c2cee9ba8a56dcae1aaebf2",
+    "scripts/local-verification/test_operator_policy.py": "c692b1bb9063e62e8506b44175cafdb56784d1e13f31fb1bb7db045ebc3c48ff",
+    "scripts/local-verification/test_release_manifest.py": "90fb2d43b0d5ef6824fd210125bdba9b16eb47186111418baed86871f861f2a4"
+  },
+  "results": {
+    "workspace_passed": 874,
+    "workspace_ignored": 16,
+    "workspace_failed": 0,
+    "python_passed": 109,
+    "python_skipped": 0,
+    "prover_admission_passed": 6
+  },
+  "evidence": {
+    "handshake-before-fix-tmp.log": {
+      "raw_local_sha256": "c7e8489d1b2d05ec846bbafd48302bb8b3848a097965740cef99c75c82b2bd61",
+      "published_sha256": "16a937d72d13e1013e53d1346674694499266ad7a80bf10308e5d5f1147457c0",
+      "normalization": "Home-directory/protoc paths and trailing whitespace only; test outcomes unchanged."
+    },
+    "rpc-json-before-fix.log": {
+      "raw_local_sha256": "80c72be17cfbae23efb089ec3471f193181ba920eb9609e59256b0082b5c3149",
+      "published_sha256": "80c72be17cfbae23efb089ec3471f193181ba920eb9609e59256b0082b5c3149",
+      "normalization": "Home-directory/protoc paths and trailing whitespace only; test outcomes unchanged."
+    },
+    "prover-final-clippy.log": {
+      "raw_local_sha256": "77993e706759637630a580f887fc1b0f1122301b4a7ff742e7e839ff038679bf",
+      "published_sha256": "08388b1563e6cd046aa179a7139ef0314f38e9723eff311678342424dea86604",
+      "normalization": "Home-directory/protoc paths and trailing whitespace only; test outcomes unchanged."
+    },
+    "workspace-final-tests.log": {
+      "raw_local_sha256": "586604fad385ae7dbaecc16fdbfa31537f8ffd6ef25dcf89c81b1698d40f7b22",
+      "published_sha256": "ae315f418f8a08543748d949196e6d497d1a8ee5bc121f415a0e689d0accddf2",
+      "normalization": "Home-directory/protoc paths and trailing whitespace only; test outcomes unchanged."
+    },
+    "workspace-final-clippy.log": {
+      "raw_local_sha256": "743a8be02b56f85e03b286cfd7b51ad1f134ff3b755c75afea191eb38aa8b8df",
+      "published_sha256": "7e562f36eb1856ee36e858e91a40ff6b60d972a90f44e8db7a9f78482c257b4b",
+      "normalization": "Home-directory/protoc paths and trailing whitespace only; test outcomes unchanged."
+    },
+    "python-final-with-anvil.log": {
+      "raw_local_sha256": "011bc5d1a43a9e50660a71d585575034f8ae80c8bf00967f4f8adc5aeae85268",
+      "published_sha256": "ae7d4018ad0d3aedbbcb7df880b0c3b779113cbec046cbe2d295e22b6466a604",
+      "normalization": "Home-directory/protoc paths and trailing whitespace only; test outcomes unchanged."
+    },
+    "prover-erasure-check.log": {
+      "raw_local_sha256": "c9d639615dc55ae069cc5667e11c2050dc5c625a2af1ca7a43e04d147d2bebf7",
+      "published_sha256": "5dc45885fa9fd649b58ba06c292bc28804773b6ac29c308af2d6a377d8a3a284",
+      "normalization": "Home-directory/protoc paths and trailing whitespace only; test outcomes unchanged."
+    },
+    "prover-erasure-clippy.log": {
+      "raw_local_sha256": "2580e83a3f207c4147668822da94145ffe6fb90bbecbc191ef1c31a42e1b4610",
+      "published_sha256": "0059e35bf785b2a066d72f1586a1820ee27dd498dbdbfb835d4292adedfe341e",
+      "normalization": "Home-directory/protoc paths and trailing whitespace only; test outcomes unchanged."
+    },
+    "prover-erasure-tests.log": {
+      "raw_local_sha256": "b18c4ccce9888c3f7f92122fa57054ccc939b5d0c322c9e2ef3acf73ac757128",
+      "published_sha256": "7eaca51efd5674c8b3ea4276d3571f29a730766388c9ba48738cc190aab60952",
+      "normalization": "Home-directory/protoc paths and trailing whitespace only; test outcomes unchanged."
+    },
+    "final-format.log": {
+      "raw_local_sha256": "3eae4d986d731bd1777364f1998dbea02926dcf466b414a817e50148803efaf6",
+      "published_sha256": "3eae4d986d731bd1777364f1998dbea02926dcf466b414a817e50148803efaf6",
+      "normalization": "Home-directory/protoc paths and trailing whitespace only; test outcomes unchanged."
+    },
+    "anvil-operator-policy-final.json": {
+      "raw_local_sha256": "36bb3e4aa5019477e8dff7969a719a2ec40f88f5851c1dbbb030c5546f673a54",
+      "published_sha256": "36bb3e4aa5019477e8dff7969a719a2ec40f88f5851c1dbbb030c5546f673a54",
+      "normalization": "Home-directory/protoc paths and trailing whitespace only; test outcomes unchanged."
+    },
+    "final-source-pins.json": {
+      "raw_local_sha256": "5043dfdd6f3581c80f6406ad7fea960cea489f8740aa888887048d1e603c7114",
+      "published_sha256": "5043dfdd6f3581c80f6406ad7fea960cea489f8740aa888887048d1e603c7114",
+      "normalization": "Home-directory/protoc paths and trailing whitespace only; test outcomes unchanged."
+    },
+    "host-check-elf.json": {
+      "raw_local_sha256": "bce149878341960d9fa9d024ade8d8a6f7798d8861a439a3fd04b49197841730",
+      "published_sha256": "bce149878341960d9fa9d024ade8d8a6f7798d8861a439a3fd04b49197841730",
+      "normalization": "Home-directory/protoc paths and trailing whitespace only; test outcomes unchanged."
+    },
+    "sp1-release-guard-final.json": {
+      "raw_local_sha256": "9189d4751f9a5a116d3fb275d396e5871d6e40c9df208c763d29ad33098f80d8",
+      "published_sha256": "9189d4751f9a5a116d3fb275d396e5871d6e40c9df208c763d29ad33098f80d8",
+      "normalization": "Home-directory/protoc paths and trailing whitespace only; test outcomes unchanged."
+    }
+  },
+  "fresh_proof_generated": false,
+  "live_tee_verified": false,
+  "independent_machine_build": false,
+  "public_chain_transactions": false,
+  "release_gate": "HOLD"
+}

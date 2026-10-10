@@ -1,0 +1,13 @@
+{
+  "reviewed_sp1_release": "6.1.0",
+  "reviewed_lru_release": "0.18.4",
+  "advisory": "https://github.com/succinctlabs/sp1/security/advisories/GHSA-63x8-x938-vx33",
+  "family_packages_checked": {
+    "crates/sp1-guest": 10,
+    "crates/sp1-host": 47,
+    "crates/prover-service": 47
+  },
+  "passed": true,
+  "errors": [],
+  "scope": "Manifest and lock identity only; guest execution, proof and target verifier require separate evidence."
+}

@@ -1,0 +1,9 @@
+{
+  "source": "contracts/integration/fixtures/clock-v2-verified/guest.elf",
+  "destination": "target/cpu-gates-20261010/prover-build/elf-compilation/riscv64im-succinct-zkvm-elf/release/perp-core-guest",
+  "sha256": "df59a19b310258b4d01d0d5e3cfa31bb7de9ca2f4ea7c2302cf76650c79967c5",
+  "size_bytes": 525824,
+  "scope": "Real reviewed ELF copied into isolated host typecheck/test target. Guest rebuild skipped, no proof generation, no deployment.",
+  "guest_rebuilt": false,
+  "proof_generated": false
+}

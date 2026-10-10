@@ -21,8 +21,8 @@ use axum::{
 // DH transcript math is shared with the gateway. `StaticSecret` is the
 // attestation crate's re-export of the ephemeral x25519 secret type.
 use dark_perp_attestation::{
-    derive_session, dh_shared, ephemeral_keypair, Attestor as _, AzureTdxAttestor,
-    NvidiaCcAttestor, StaticSecret, DEV_INSECURE_SESSION_TOKEN,
+    derive_session, dh_shared, ephemeral_keypair, validate_session_expiry, Attestor as _,
+    AzureTdxAttestor, NvidiaCcAttestor, StaticSecret, Zeroizing, DEV_INSECURE_SESSION_TOKEN,
 };
 use perp_core::hash::Digest;
 use prover::{
@@ -195,7 +195,8 @@ fn expected_measurement_env(var: &str) -> Result<Digest, String> {
 /// SEC-020 Phase-2 (C5): how long a boot-minted attestation session lives. The
 /// PROVER owns expiry (it enforces the /prove gate): `not_after = now +
 /// SESSION_TTL_MS` is computed ONCE at boot, advertised on /attest, and bound
-/// into both sides' tokens. This is the ONLY clock read in the token path.
+/// into both sides' tokens. The handshake rechecks the clock before derivation
+/// so a slow exchange cannot mint an already-expired session.
 const SESSION_TTL_MS: u64 = 15 * 60 * 1000;
 
 /// SEC-020 Phase-2 (C3): the prover's side of the boot mutual-attestation
@@ -268,7 +269,15 @@ fn boot_handshake(
     // NVIDIA-side verify enforces the same pin on its half). The ECDH `shared`
     // requires OUR ephemeral PRIVATE key, so the secret is not derivable from
     // the public /attest transcript (C3).
-    let shared = dh_shared(pv_sk, &gw_pub);
+    let shared =
+        Zeroizing::new(dh_shared(pv_sk, &gw_pub).map_err(|e| format!("gateway DH: {e:?}"))?);
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|e| format!("handshake clock: {e}"))?
+        .as_millis();
+    let now_ms = u64::try_from(now_ms).map_err(|_| "handshake clock exceeds u64 milliseconds")?;
+    validate_session_expiry(not_after, now_ms)
+        .map_err(|e| format!("gateway session expiry: {e:?}"))?;
     let (secret, token) =
         derive_session(&shared, &gw_meas, &pv_expected, &gw_pub, pv_pub, not_after);
     Ok((token, secret))
@@ -356,12 +365,14 @@ async fn main() {
     // /attest (and is the challenge our self-quote binds); the SECRET half is
     // consumed by boot_handshake below and dropped (zeroize-on-drop) — it is
     // never stored, logged, or served.
-    let mut ikm = [0u8; 32];
-    getrandom::getrandom(&mut ikm).expect("OS CSPRNG");
+    let mut ikm = Zeroizing::new([0u8; 32]);
+    getrandom::getrandom(&mut *ikm).expect("OS CSPRNG");
     let (pv_sk, pv_pub) = ephemeral_keypair(&ikm);
+    // Erase the owned random seed after key construction.
+    drop(ikm);
     // (C5) The PROVER owns session expiry: `not_after` is computed ONCE at
     // boot, advertised on /attest, and bound into both sides' tokens — the
-    // /prove gate compares against it. This is the only boot-time clock read.
+    // /prove gate compares against it. The handshake rechecks expiry before minting.
     // DEV_INSECURE (non-prod only; prod exits above): the FIXED dev token
     // never expires — `u64::MAX` keeps the dev gate open for the whole run.
     let session_not_after = if dev_insecure {

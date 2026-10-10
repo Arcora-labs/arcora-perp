@@ -24,6 +24,7 @@ jobs:
       - name: Release manifest and repository protection policy guards
         run: |
           python3 -m unittest discover -s scripts/local-verification -p test_release_manifest.py
+          python3 -m unittest discover -s scripts/local-verification -p test_operator_policy.py
           python3 -m unittest discover -s scripts/local-verification -p test_repository_policy.py
           python3 -m unittest discover -s scripts/local-verification -p test_read_deployment.py
       - name: RustSec workspace and excluded application locks

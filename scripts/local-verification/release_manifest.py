@@ -41,6 +41,22 @@ ENV_ADDRESSES = {
 }
 ADDRESS_ROLES = set(CONTRACTS) | {"token"}
 GATEWAY_KEYS = set(ENV_ADDRESSES) | {"L1_CHAIN_ID", "L1_ALLOW_MOCK_PROOF"}
+# Public, independently reviewed expected values. Reading a getter must never
+# silently approve the identity or economic policy it happens to return.
+OPERATOR_ADDRESSES = {
+    "settlement": {"sequencer": "sequencer()", "enclave_signer": "enclaveSigner()",
+                   "governance": "governance()"},
+    "vault": {"gateway_signer": "gatewaySigner()"},
+    "clock_verifier": {"configurator": "configurator()"},
+    "sp1_gateway": {"owner": "owner()"},
+}
+SETTLEMENT_POLICY = {
+    "liveness_timeout_blocks": "livenessTimeoutBlocks()",
+    "challenge_window_blocks": "challengeWindowBlocks()",
+    "challenge_bond_wei": "challengeBond()",
+    "inclusion_deadline_seconds": "inclusionDeadlineSecs()",
+    "final_settle_grace_blocks": "finalSettleGraceBlocks()",
+}
 SCOPE = {
     "local_identity_checked": True,
     "target_chain_observed": False,
@@ -65,14 +81,20 @@ def canonical(value):
     return json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
 
 
-def read_json(path):
+def decode_json(data):
     def unique(pairs):
         result = {}
         for key, value in pairs:
             require(key not in result, "duplicate JSON key")
             result[key] = value
         return result
-    return json.loads(Path(path).read_text(), object_pairs_hook=unique)
+    def invalid_constant(_value):
+        raise ValueError("non-finite JSON number")
+    return json.loads(data, object_pairs_hook=unique, parse_constant=invalid_constant)
+
+
+def read_json(path):
+    return decode_json(Path(path).read_text())
 
 
 def exact_keys(value, keys, label):
@@ -102,8 +124,34 @@ def normalized_hex(value, size, label):
     return value.lower()
 
 
+def operator_policy(value):
+    """Validate public identity/ABI policy pins, not their economic suitability.
+
+    Explicit zero addresses/values are retained, never filled in or inferred:
+    renounced governance and zero bonds are review decisions, not parser defaults.
+    Unknown fields (including credentials) fail without echoing their values.
+    """
+    exact_keys(value, OPERATOR_ADDRESSES, "operator policy")
+    result = {}
+    for role, fields in OPERATOR_ADDRESSES.items():
+        keys = set(fields) | (set(SETTLEMENT_POLICY) if role == "settlement" else set())
+        exact_keys(value[role], keys, "operator policy " + role)
+        result[role] = {name: normalized_hex(value[role][name], 20, role + "." + name)
+                        for name in fields}
+        if role == "settlement":
+            for name in SETTLEMENT_POLICY:
+                number = value[role][name]
+                require(type(number) is int and 0 <= number < 2**256,
+                        "invalid settlement policy " + name)
+                result[role][name] = number
+    return result
+
+
 def public_config(value):
-    exact_keys(value, {"chain_id", "addresses", "program_vkey", "clock", "gateway", "prover"}, "public config")
+    keys = {"chain_id", "addresses", "program_vkey", "clock", "gateway", "prover"}
+    if isinstance(value, dict) and "operator_policy" in value:
+        keys.add("operator_policy")
+    exact_keys(value, keys, "public config")
     require(type(value["chain_id"]) is int and 0 < value["chain_id"] < 2**64, "invalid chain_id")
     exact_keys(value["addresses"], ADDRESS_ROLES, "addresses")
     addresses = {key: normalized_hex(address, 20, key) for key, address in value["addresses"].items()}
@@ -125,9 +173,12 @@ def public_config(value):
     prover_key = normalized_hex(value["prover"]["program_vkey"], 32, "prover program_vkey")
     require(prover_key == key, "prover program_vkey mismatch")
     require(value["prover"]["guest_elf_sha256"] == clock.EXPECTED_ELF, "prover guest ELF mismatch")
-    return {"chain_id": value["chain_id"], "addresses": addresses, "program_vkey": key,
-            "clock": dict(value["clock"]), "gateway": gateway,
-            "prover": {"program_vkey": prover_key, "guest_elf_sha256": clock.EXPECTED_ELF}}
+    result = {"chain_id": value["chain_id"], "addresses": addresses, "program_vkey": key,
+              "clock": dict(value["clock"]), "gateway": gateway,
+              "prover": {"program_vkey": prover_key, "guest_elf_sha256": clock.EXPECTED_ELF}}
+    if "operator_policy" in value:
+        result["operator_policy"] = operator_policy(value["operator_policy"])
+    return result
 
 
 def check_environment(config, env):
@@ -302,7 +353,7 @@ class TargetRPC:
             raise ValueError("target RPC transport failed: " + deployment_reader.safe_error(error)) from None
         require(len(body) <= deployment_reader.MAX_RPC_RESPONSE_BYTES, "RPC response exceeds size limit")
         try:
-            value = json.loads(body)
+            value = decode_json(body)
         except (ValueError, UnicodeError):
             raise ValueError("invalid RPC JSON response") from None
         require(isinstance(value, dict) and value.get("jsonrpc") == "2.0"
@@ -350,7 +401,7 @@ def runtime_identity(artifact, deployed, role):
             "runtime_matches_compiler_template": True}
 
 
-def observe_target(root, manifest, config, rpc):
+def observe_target(root, manifest, config, rpc, *, require_operator_policy=False):
     """Observe the complete clock stack at a single finalized, hash-pinned block.
 
     `rpc` is injectable for deterministic failure tests. The CLI always uses the
@@ -359,9 +410,10 @@ def observe_target(root, manifest, config, rpc):
     result = {"status": "BLOCKED", "observed_at_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
               "manifest_sha256": digest(canonical(manifest)), "contracts": {}, "bindings": [],
               "scope": {**SCOPE, "local_identity_checked": False, "operator_and_settlement_policy_approved": False,
+                        "operator_and_settlement_policy_matches": False,
                         "token_runtime_verified": False},
               "limitations": ["RPC responses are trusted; no light-client or independent endpoint consensus.",
-                              "Constructor operator identities and settlement timing/bond policy are observed, not approved.",
+                              "Declared operator/settlement policy can be matched; its security and economic suitability are not approved.",
                               "Token code presence is checked; its implementation, proxy and issuance policy are not audited.",
                               "No proof is generated or submitted; no service identity, state migration or release readiness is established."]}
     try:
@@ -369,6 +421,12 @@ def observe_target(root, manifest, config, rpc):
         result["scope"]["local_identity_checked"] = True
         public = validated["public_config"]
         addresses = public["addresses"]
+        require(type(require_operator_policy) is bool, "invalid operator policy requirement")
+        policy = public.get("operator_policy")
+        require(not require_operator_policy or policy is not None, "explicit operator policy required")
+        if policy is not None:
+            policy = operator_policy(policy)
+            result["operator_policy_sha256"] = digest(canonical(policy))
         if isinstance(rpc, TargetRPC):
             result["rpc_origin"] = rpc.origin
         chain = deployment_reader.quantity(rpc("eth_chainId", []))
@@ -425,22 +483,22 @@ def observe_target(root, manifest, config, rpc):
         require("0x" + route[12:32].hex() == addresses["sp1_verifier"] and route[32:] == bytes(32),
                 "SP1 gateway route is wrong or frozen")
         result["sp1_route"] = {"selector": verifier_hash[:10], "verifier": addresses["sp1_verifier"], "frozen": False}
-        # These affect trust/liveness/economics, but the public manifest currently
-        # does not approve values for them. Preserve that explicit acceptance gap.
-        for role, signature in (("settlement", "sequencer()"), ("settlement", "enclaveSigner()"),
-                                ("settlement", "governance()"), ("vault", "gatewaySigner()"),
-                                ("clock_verifier", "configurator()"), ("sp1_gateway", "owner()")):
-            getter(role, signature)
-        for signature in ("livenessTimeoutBlocks()", "challengeWindowBlocks()", "challengeBond()",
-                          "inclusionDeadlineSecs()", "finalSettleGraceBlocks()"):
-            getter("settlement", signature, "uint")
+        # Compare only with explicitly supplied, manifest-bound policy. Omitting
+        # a policy keeps legacy observation mode; it cannot produce a match claim.
+        for role, fields in OPERATOR_ADDRESSES.items():
+            for name, signature in fields.items():
+                getter(role, signature, expected=policy[role][name] if policy is not None else None)
+        for name, signature in SETTLEMENT_POLICY.items():
+            getter("settlement", signature, "uint",
+                   policy["settlement"][name] if policy is not None else None)
         require(deployment_reader.header(rpc("eth_getBlockByNumber", [hex(height), False]), height) == (height, block_hash),
                 "finalized block changed during observation")
         require(deployment_reader.quantity(rpc("eth_chainId", [])) == chain, "chain changed during observation")
         # Source/artifacts/config must still be the validated release at completion.
         validate_manifest(root, manifest, config)
         result["status"] = "VERIFIED_AT_FINALIZED_BLOCK"
-        result["scope"].update(target_chain_observed=True, runtime_bytecode_verified=True)
+        result["scope"].update(target_chain_observed=True, runtime_bytecode_verified=True,
+                               operator_and_settlement_policy_matches=policy is not None)
     except Exception as error:
         # Never expose provider error data, response body, credential URL or paths.
         result["blocker"] = str(error) if type(error) is ValueError else deployment_reader.safe_error(error)
@@ -464,12 +522,15 @@ def main():
     target.add_argument("--config", type=Path, required=True)
     target.add_argument("--rpc", required=True, help="anonymous public HTTP(S) RPC; no keys or credentials")
     target.add_argument("--output", type=Path, required=True)
+    target.add_argument("--require-operator-policy", action="store_true",
+                        help="refuse before RPC unless a complete expected operator/settlement policy is bound")
     args = parser.parse_args()
     if args.command == "check-deployment":
         check_deployment_config(read_json(args.deployment))
         print(json.dumps({"status": "PASS", "scope": "recorded key and address shape only; no RPC or runtime verification"}))
     elif args.command == "observe-target":
-        result = observe_target(ROOT, read_json(args.manifest), read_json(args.config), TargetRPC(args.rpc))
+        result = observe_target(ROOT, read_json(args.manifest), read_json(args.config), TargetRPC(args.rpc),
+                                require_operator_policy=args.require_operator_policy)
         with args.output.open("x") as output:
             output.write(json.dumps(result, sort_keys=True, indent=2) + "\n")
         print(json.dumps({key: result[key] for key in ("status", "scope", "blocker") if key in result}))

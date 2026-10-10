@@ -9,7 +9,7 @@
 //! binds a `not_after` expiry (C5). Pure functions — no I/O, no clock, no env —
 //! so both binaries derive byte-identical values from the same transcript.
 
-use crate::Digest;
+use crate::{AttestError, Digest};
 use perp_core::hash::{word_u64, Domain, Hasher, Keccak256};
 use x25519_dalek::{PublicKey, StaticSecret};
 
@@ -32,10 +32,31 @@ pub fn ephemeral_keypair(ikm: &[u8; 32]) -> (StaticSecret, [u8; 32]) {
 
 /// The x25519 ECDH shared point between our ephemeral secret and the peer's
 /// ephemeral public key. Symmetric: both sides compute the identical value.
-pub fn dh_shared(my_secret: &StaticSecret, peer_pub: &[u8; 32]) -> [u8; 32] {
-    my_secret
-        .diffie_hellman(&PublicKey::from(*peer_pub))
-        .to_bytes()
+///
+/// Reject non-contributory peers before exposing any shared bytes. Attestation
+/// binding a peer key does not make that key contributory: low-order points
+/// force a public all-zero result (RFC 7748 sections 6/7). Use dalek's
+/// constant-time check, including for non-canonical encodings and aliases.
+pub fn dh_shared(my_secret: &StaticSecret, peer_pub: &[u8; 32]) -> Result<[u8; 32], AttestError> {
+    let shared = my_secret.diffie_hellman(&PublicKey::from(*peer_pub));
+    if !shared.was_contributory() {
+        return Err(AttestError::NonContributoryKey);
+    }
+    Ok(shared.to_bytes())
+}
+
+/// Refuse to mint session material for a transcript that has already expired.
+/// Check immediately before derivation, after potentially slow I/O/verification.
+/// `not_after_ms` is inclusive, matching the prover's `/prove` admission gate.
+/// The clock is supplied by the caller; transcript/token encoding is unchanged.
+pub fn validate_session_expiry(not_after_ms: u64, now_ms: u64) -> Result<(), AttestError> {
+    if now_ms > not_after_ms {
+        return Err(AttestError::SessionExpired {
+            not_after_ms,
+            now_ms,
+        });
+    }
+    Ok(())
 }
 
 /// Deterministic session secret from a completed DH mutual-attestation transcript.
@@ -113,8 +134,8 @@ mod tests {
         let (gw_sk, gw_pk) = ephemeral_keypair(&GW_IKM);
         let (pv_sk, pv_pk) = ephemeral_keypair(&PV_IKM);
         // Each side computes ECDH with its own secret + the peer's public.
-        let shared_gw = dh_shared(&gw_sk, &pv_pk);
-        let shared_pv = dh_shared(&pv_sk, &gw_pk);
+        let shared_gw = dh_shared(&gw_sk, &pv_pk).unwrap();
+        let shared_pv = dh_shared(&pv_sk, &gw_pk).unwrap();
         assert_eq!(shared_gw, shared_pv, "x25519 ECDH is symmetric");
         assert_ne!(shared_gw, [0u8; 32], "a real shared point, not zero");
     }
@@ -123,13 +144,13 @@ mod tests {
     fn secret_is_deterministic_transcript_and_shared_bound() {
         let (gw_sk, gw_pk) = ephemeral_keypair(&GW_IKM);
         let (pv_sk, pv_pk) = ephemeral_keypair(&PV_IKM);
-        let shared = dh_shared(&gw_sk, &pv_pk);
+        let shared = dh_shared(&gw_sk, &pv_pk).unwrap();
         let (m1, m2) = ([3u8; 32], [4u8; 32]);
         let s = session_secret(&shared, &m1, &m2, &gw_pk, &pv_pk);
         // Deterministic.
         assert_eq!(s, session_secret(&shared, &m1, &m2, &gw_pk, &pv_pk));
         // Both sides derive the identical secret (pv computes the same shared).
-        let shared_pv = dh_shared(&pv_sk, &gw_pk);
+        let shared_pv = dh_shared(&pv_sk, &gw_pk).unwrap();
         assert_eq!(s, session_secret(&shared_pv, &m1, &m2, &gw_pk, &pv_pk));
         // Order-bound: swapping the gateway/prover halves changes it.
         assert_ne!(s, session_secret(&shared, &m2, &m1, &pv_pk, &gw_pk));
@@ -146,7 +167,7 @@ mod tests {
         // hashing the public tuple. It must NOT equal the real secret.
         let (gw_sk, gw_pk) = ephemeral_keypair(&GW_IKM);
         let (_pv_sk, pv_pk) = ephemeral_keypair(&PV_IKM);
-        let shared = dh_shared(&gw_sk, &pv_pk);
+        let shared = dh_shared(&gw_sk, &pv_pk).unwrap();
         let (m1, m2) = ([3u8; 32], [4u8; 32]);
         let real = session_secret(&shared, &m1, &m2, &gw_pk, &pv_pk);
         // The attacker lacks `shared`; substituting anything public (e.g. a zero
@@ -170,5 +191,54 @@ mod tests {
         assert!(!ct_eq(b"abc", b"abd"));
         assert!(!ct_eq(b"abc", b"ab")); // length mismatch
         assert!(ct_eq(b"", b""));
+    }
+
+    #[test]
+    fn dh_matches_rfc7748_section_6_1() {
+        let alice_ikm =
+            hex::decode("77076d0a7318a57d3c16c17251b26645df4c2f87ebc0992ab177fba51db92c2a")
+                .unwrap()
+                .try_into()
+                .unwrap();
+        let bob_pub =
+            hex::decode("de9edb7d7b7dc1b4d35b61c2ece435373f8343c85b78674dadfc7e146f882b4f")
+                .unwrap()
+                .try_into()
+                .unwrap();
+        let (alice_sk, _) = ephemeral_keypair(&alice_ikm);
+        assert_eq!(
+            hex::encode(dh_shared(&alice_sk, &bob_pub).unwrap()),
+            "4a5d9d5ba4ce2de1728e3bf480350f25e07e21c947d19e3376f09b3c1e161742"
+        );
+    }
+
+    #[test]
+    fn secret_erasure_features_are_enabled_in_this_crate() {
+        // This crate must request erasing Drop rather than relying on another
+        // workspace member to enable it through Cargo feature unification.
+        assert!(std::mem::needs_drop::<StaticSecret>());
+        assert!(std::mem::needs_drop::<x25519_dalek::SharedSecret>());
+        assert!(std::mem::needs_drop::<zeroize::Zeroizing<[u8; 32]>>());
+        let (mut secret, _) = ephemeral_keypair(&[0x11; 32]);
+        zeroize::Zeroize::zeroize(&mut secret);
+        assert_eq!(secret.as_bytes(), &[0; 32]);
+    }
+
+    #[test]
+    fn session_expiry_matches_inclusive_admission_boundary() {
+        assert!(validate_session_expiry(1_000, 999).is_ok());
+        assert!(validate_session_expiry(1_000, 1_000).is_ok());
+        assert!(matches!(
+            validate_session_expiry(1_000, 1_001),
+            Err(AttestError::SessionExpired {
+                not_after_ms: 1_000,
+                now_ms: 1_001
+            })
+        ));
+        assert!(matches!(
+            validate_session_expiry(0, 1),
+            Err(AttestError::SessionExpired { .. })
+        ));
+        assert!(validate_session_expiry(u64::MAX, u64::MAX).is_ok());
     }
 }
