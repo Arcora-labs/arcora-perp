@@ -529,9 +529,10 @@ async fn settle(
     let jpath = rollback_journal::journal_path(&http.state);
     let mut journal = {
         let mut gw = http.app.gw.lock().await;
-        let j = begin_journaled_window_settle(&mut gw, batch, Some(&jpath), &SEED)
-            .unwrap()
-            .unwrap();
+        let (j, _envelope) =
+            begin_journaled_window_settle(&mut gw, batch, Some(&jpath), &SEED, None)
+                .unwrap()
+                .unwrap();
         persist_recovery(&gw, &http.state, &SEED).unwrap();
         j
     };

@@ -46,6 +46,7 @@ pub(crate) fn resume_exact(
     l1: &L1,
     client: &dyn ProverClient,
     journal: &mut crate::rollback_journal::RollbackJournal,
+    envelope: Option<&crate::rollback_journal::ArchiveEnvelope>,
     path: &std::path::Path,
     seed: &[u8; 32],
 ) -> Result<(u64, String, u128), String> {
@@ -81,7 +82,9 @@ pub(crate) fn resume_exact(
         _ => crate::prover_client::prove_and_prepare(client, &journal.witness, &journal.ww)?,
     };
     journal.prepared = Some(prepared.clone());
-    crate::rollback_journal::write(path, journal, seed)?;
+    // The rewrite keeps the journal's authenticated version: a candidate v6
+    // journal must stay v6 (envelope intact), a legacy journal stays v5.
+    crate::rollback_journal::write_versioned(path, journal, envelope, seed)?;
     l1.settle_proved(&prepared.outcome)?;
     l1.settlement_observation()
 }

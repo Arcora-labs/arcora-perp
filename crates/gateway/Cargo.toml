@@ -18,6 +18,12 @@ note-archive = { path = "../note-archive", features = ["std", "serde"] }
 sealed-box = { path = "../sealed-box", default-features = false }
 dark-perp-attestation = { path = "../attestation" }
 oracle-feed = { path = "../oracle-feed", features = ["http"] }
+# Candidate Chainlink report-archive binding (opt-in; PRODUCTION RELEASE HOLD).
+# Host-only path deps; neither pinned guest depends on these crates. The
+# chainlink-streams-client crate is itself unix-only for its archive module —
+# the gateway's binding module is likewise host-only code.
+chainlink-oracle = { path = "../chainlink-oracle", features = ["std"] }
+chainlink-streams-client = { path = "../chainlink-streams-client" }
 
 axum = { version = "0.7", features = ["ws"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "signal"] }

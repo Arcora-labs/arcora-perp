@@ -49,6 +49,53 @@ use std::path::{Path, PathBuf};
 /// refusal, never a silent misparse.
 const MAGIC: &[u8; 8] = b"DPRBJL5\0";
 
+/// Candidate (opt-in Chainlink report archive) journal magic. A v6 journal is a
+/// v5 `RollbackJournal` PLUS an authenticated `ArchiveEnvelope`; the distinct magic
+/// keeps the legacy v5 read/write path byte-identical and makes a pre-candidate
+/// binary refuse this journal (and a candidate-required boot refuse a legacy-only
+/// journal) as a versioned mismatch, never a silent postcard misparse.
+const CANDIDATE_MAGIC: &[u8; 8] = b"DPRBJL6\0";
+
+/// One oracle-bearing op's exact binding to an immutable archived report pair:
+/// the op's (market_id, now_ms) plus the archive record's content hash. Repeated
+/// use of the same record yields one ref PER OP, in op order — the archive stream,
+/// not a manifest/reference list, is what is bound.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct ArchiveRef {
+    pub market_id: u64,
+    pub now_ms: u64,
+    pub archive_id: chainlink_streams_client::report_archive::ArchiveId,
+}
+
+/// The candidate envelope sealed inside the v6 journal. `policy_binding` is
+/// `chainlink_streams_client::report_pair::policy_binding` of the operator-pinned
+/// policy; recovery refuses a journal whose envelope does not match the configured
+/// policy, and every referenced record must decode and re-normalize to the exact
+/// op transcript under that policy.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct ArchiveEnvelope {
+    pub policy_binding: [u8; 32],
+    pub refs: Vec<ArchiveRef>,
+}
+
+/// The sealed candidate payload: the unchanged v5 journal plus its archive envelope.
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+struct CandidateJournalV6 {
+    journal: RollbackJournal,
+    envelope: ArchiveEnvelope,
+}
+
+/// Boot-facing decode result: which authenticated envelope the sealed bytes carry.
+pub enum OpenedJournal {
+    /// Legacy v5 journal — no archive binding. Refused in archive-required mode.
+    Legacy(RollbackJournal),
+    /// Candidate v6 journal with its archive envelope.
+    Candidate {
+        journal: RollbackJournal,
+        envelope: ArchiveEnvelope,
+    },
+}
+
 /// Everything boot recovery needs to resolve one in-flight window settle:
 /// the sequencer rollback input (`witness`), the withdrawal rollback input (`ww`,
 /// the set `begin_window_settle` drained), and — once the prove has returned —
@@ -79,13 +126,68 @@ pub fn journal_path(state_path: &Path) -> PathBuf {
 /// torn journal). `Err` means durability was not acknowledged. The live settle
 /// loop must stop before proving/broadcasting when configured persistence fails;
 /// it must not delete the existing recovery record or treat the write as success.
+/// Legacy v5 write path — the exact pre-candidate bytes. Retained for the
+/// existing tests and any non-candidate tooling; production writes go through
+/// [`write_versioned`].
+#[allow(dead_code)]
 pub fn write(path: &Path, j: &RollbackJournal, seed: &[u8; 32]) -> Result<(), String> {
-    let body = postcard::to_allocvec(j).map_err(|e| format!("journal encode: {e}"))?;
-    let mut plain = Vec::with_capacity(MAGIC.len() + body.len());
-    plain.extend_from_slice(MAGIC);
+    write_versioned(path, j, None, seed)
+}
+
+/// Versioned persistence: `None` writes exactly the legacy v5 envelope;
+/// `Some` writes the candidate v6 envelope (same seal, same atomic write).
+pub fn write_versioned(
+    path: &Path,
+    j: &RollbackJournal,
+    envelope: Option<&ArchiveEnvelope>,
+    seed: &[u8; 32],
+) -> Result<(), String> {
+    let (magic, body) = match envelope {
+        None => (
+            MAGIC,
+            postcard::to_allocvec(j).map_err(|e| format!("journal encode: {e}"))?,
+        ),
+        Some(env) => {
+            let payload = CandidateJournalV6 {
+                journal: j.clone(),
+                envelope: env.clone(),
+            };
+            (
+                CANDIDATE_MAGIC,
+                postcard::to_allocvec(&payload).map_err(|e| format!("journal encode: {e}"))?,
+            )
+        }
+    };
+    let mut plain = Vec::with_capacity(magic.len() + body.len());
+    plain.extend_from_slice(magic);
     plain.extend_from_slice(&body);
     let sealed = snapshot::seal(&plain, seed);
     snapshot::write_atomic(path, &sealed).map_err(|e| format!("journal write: {e}"))
+}
+
+/// Decode a sealed journal of EITHER authenticated version, dispatching on the
+/// inner magic. Same fail-closed posture as `open`: wrong seed/tamper/trailing
+/// bytes/magic mismatch are `Err`, never a guess.
+pub fn open_versioned(sealed: &[u8], seed: &[u8; 32]) -> Result<OpenedJournal, String> {
+    let plain = snapshot::open(sealed, seed).map_err(|e| format!("journal open: {e}"))?;
+    if let Some(body) = plain.strip_prefix(CANDIDATE_MAGIC.as_slice()) {
+        let CandidateJournalV6 { journal, envelope } =
+            postcard::from_bytes(body).map_err(|e| format!("journal decode: {e}"))?;
+        if journal.batch_id != journal.witness.batch_id {
+            return Err(format!(
+                "journal batch_id mismatch: batch_id {} != witness.batch_id {}",
+                journal.batch_id, journal.witness.batch_id
+            ));
+        }
+        // An empty REF list is legitimate (a window with no oracle-bearing ops —
+        // recovery verifies `refs.len() == used-op count`); only a missing policy
+        // binding would be indistinguishable from a legacy journal under downgrade.
+        if envelope.policy_binding == [0; 32] {
+            return Err("candidate journal carries an empty policy binding".into());
+        }
+        return Ok(OpenedJournal::Candidate { journal, envelope });
+    }
+    open(sealed, seed).map(OpenedJournal::Legacy)
 }
 
 /// Load the journal, distinguishing the three boot cases: `Ok(None)` = no journal

@@ -147,10 +147,15 @@ impl Fixture {
     }
     fn seal_and_persist(&mut self) -> rollback_journal::RollbackJournal {
         let batch = self.gw.seq.state.next_batch_id;
-        let journal =
-            begin_journaled_window_settle(&mut self.gw, batch, Some(&self.dir.journal()), &SEED)
-                .unwrap()
-                .unwrap();
+        let (journal, _envelope) = begin_journaled_window_settle(
+            &mut self.gw,
+            batch,
+            Some(&self.dir.journal()),
+            &SEED,
+            None,
+        )
+        .unwrap()
+        .unwrap();
         assert!(journal.witness.manifest.ordered.contains(&self.order));
         assert_eq!(journal.ww.len(), 1);
         assert_eq!(journal.ww[0].leaf(), self.leaf);
@@ -377,7 +382,7 @@ fn restart_expired_session_retry_pending_then_durable_roll_forward() {
             let withdrawal_root = prepared.outcome.withdrawals_root;
             let batch = journal.batch_id;
             journal.prepared = Some(prepared);
-            after_settle_journal(Some(&f.dir.journal()), &journal, &SEED, || ()).unwrap();
+            after_settle_journal(Some(&f.dir.journal()), &journal, &SEED, None, || ()).unwrap();
             let journal_bytes = std::fs::read(f.dir.journal()).unwrap();
             f.restore();
             let before = f.gw.snapshot_plain();
