@@ -134,19 +134,30 @@ pub(crate) fn mode_gate(
     }
 }
 
-/// Retained admissions available for op binding at seal time. Bounded: sealing
-/// consumes by VALUE match, not by recency alone, so only the window depth
-/// matters; the bound is a memory ceiling, never a correctness input.
+/// Default admission-index ceiling. Hitting it REFUSES new admissions (the
+/// operator must reconcile); it never evicts — an evicted identity could
+/// strand the ops of an unsealed window.
 const MAX_ADMISSIONS: usize = 4096;
 
 pub(crate) struct Admission {
     pub(crate) market_id: u64,
     pub(crate) id: ArchiveId,
-    /// The exact normalization admitted at `prepared_at_ms`. Binding keys on
+    /// The exact normalization admitted at preparation time. Binding keys on
     /// this VALUE (with the market), never on recency: a window may carry both
     /// earlier and later transcripts for the same market, and repeated use of
     /// the same valid archive ID is legitimate.
     transcript: Normalized,
+}
+
+/// A durably stored record awaiting the caller's downstream admission result.
+/// The ledger entry is installed ONLY via `ArchiveBinding::install`, after the
+/// gateway has ACCEPTED the transcript — a rejected admission never becomes
+/// selectable, so it can never shadow or replace an existing identity.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct PendingAdmission {
+    pub(crate) market_id: u64,
+    pub(crate) id: ArchiveId,
+    pub(crate) transcript: Normalized,
 }
 
 pub(crate) struct ArchiveBinding {
@@ -154,6 +165,7 @@ pub(crate) struct ArchiveBinding {
     policy: Policy,
     policy_binding: [u8; 32],
     admissions: VecDeque<Admission>,
+    max_admissions: usize,
 }
 
 /// Why a binding step refused. Fixed categories only — never credential, path,
@@ -165,6 +177,9 @@ pub(crate) enum BindError {
     Archive,
     NoAdmission,
     Mismatch,
+    /// The admission index is at capacity; the caller must reject the
+    /// admission and reconcile rather than silently lose a binding.
+    Capacity,
 }
 
 impl std::fmt::Display for BindError {
@@ -271,7 +286,14 @@ impl ArchiveBinding {
             policy,
             policy_binding,
             admissions: VecDeque::new(),
+            max_admissions: MAX_ADMISSIONS,
         })
+    }
+
+    #[cfg(test)]
+    fn with_capacity(mut self, n: usize) -> Self {
+        self.max_admissions = n;
+        self
     }
 
     pub(crate) fn policy(&self) -> &Policy {
@@ -282,71 +304,97 @@ impl ArchiveBinding {
         self.policy_binding
     }
 
-    /// Durable archive FIRST, admission SECOND. The stored record is immutable
-    /// and hash-named; the returned normalization is what the caller signs and
-    /// admits. If admission later refuses the transcript, the archived record
-    /// simply stays unreferenced — it is never replayed as fresh admission.
+    /// Whether the admission index is at capacity (install would refuse).
+    /// Lets the intake reject a fetch BEFORE storing/admitting downstream.
+    pub(crate) fn is_full(&self) -> bool {
+        self.admissions.len() >= self.max_admissions
+    }
+
+    /// Durable archive FIRST, ledger entry NEVER. Stores the immutable
+    /// hash-named record (file + directory fsync) and returns the exact
+    /// normalization plus the record's ID. The caller applies the transcript
+    /// downstream and calls `install` ONLY on acceptance; a refused admission
+    /// leaves the record permanently unreferenced — never replayed as fresh
+    /// admission, never selectable for binding.
     pub(crate) fn admit(
         &mut self,
         market_id: u64,
         base: UnverifiedReport,
         quote: UnverifiedReport,
         now_ms: u64,
-    ) -> Result<Normalized, BindError> {
+    ) -> Result<PendingAdmission, BindError> {
         let pair = PreparedPair::new(&self.policy, market_id, base, quote, now_ms)
             .map_err(|_| BindError::Policy)?;
         let (normalized, _) = pair
             .for_operation(now_ms)
             .map_err(|_| BindError::Mismatch)?;
-        // The durability barrier: the record (file + directory fsync) exists
-        // before any state-changing admission can cite it.
+        // The durability barrier: the record exists before any state-changing
+        // admission can cite it.
         let stored = self.archive.store(&pair).map_err(|_| BindError::Archive)?;
-        self.admissions.push_back(Admission {
+        Ok(PendingAdmission {
             market_id,
             id: stored.id,
             transcript: normalized,
-        });
-        if self.admissions.len() > MAX_ADMISSIONS {
-            self.admissions.pop_front();
+        })
+    }
+
+    /// Install an ACCEPTED admission into the binding index. The index maps
+    /// each (market, transcript) identity to exactly ONE canonical ArchiveId —
+    /// the FIRST accepted admission for that identity. Two different original
+    /// full-report records CAN normalize identically; the original selection
+    /// is NEVER replaced by a later equal-value record (insert-if-absent), and
+    /// a later record can never shadow a rejected one (rejected admissions are
+    /// never installed at all). Capacity REFUSES rather than silently evicting:
+    /// an evicted entry could strand an unsealed window's ops, so the caller
+    /// must reject the admission and reconcile instead.
+    pub(crate) fn install(&mut self, pending: PendingAdmission) -> Result<(), BindError> {
+        if self
+            .admissions
+            .iter()
+            .any(|a| a.market_id == pending.market_id && a.transcript == pending.transcript)
+        {
+            return Ok(()); // canonical ID already installed; the original wins
         }
-        Ok(normalized)
+        if self.admissions.len() >= self.max_admissions {
+            return Err(BindError::Capacity);
+        }
+        self.admissions.push_back(Admission {
+            market_id: pending.market_id,
+            id: pending.id,
+            transcript: pending.transcript,
+        });
+        Ok(())
     }
 
     /// Bind the ACTUAL op stream — ordered, one ref per oracle-bearing op,
     /// repeated use included — to exact archived records. References are
-    /// derived in OP ORDER from an index of retained admissions keyed by exact
-    /// (market, transcript) IDENTITY: an op binds iff some admission produced
-    /// precisely the transcript the op carries. This is deliberately NOT a
-    /// latest-pair-per-market map and NOT recency selection — a window can
-    /// contain both an earlier and a later transcript for the same market, and
-    /// the same archive ID may be referenced by many ops (duplicate usage is
-    /// not invalid; identical report bytes hash to the same record anyway).
-    /// No manifest, no reference list, no latest-file fallback: an op whose
-    /// exact (market, transcript) identity has no archived admission fails the
-    /// seal. (Identity comparison uses the admission-time normalization: price,
-    /// publish time, confidence and backup TWAP are all derived from the
-    /// immutable report bytes, independent of the op's own clock.)
+    /// derived in OP ORDER from the binding index: an op binds to the
+    /// canonical ArchiveId of the (market, transcript) identity the gateway
+    /// actually admitted — never a reverse scan by value, never a fallback to
+    /// an equal-price or same-normalized sibling record. Before the envelope is
+    /// returned, every SELECTED record is loaded from the durable archive: a
+    /// missing exact ID is Err → the seal fails, even when another record with
+    /// an identical normalization exists. (Repeated use of one ID is
+    /// legitimate; each unique ID is loaded once.)
     pub(crate) fn bind_ops(&self, ops: &[BatchOp]) -> Result<ArchiveEnvelope, BindError> {
         let mut refs = Vec::new();
         for op in ops {
             let Some((market_id, now_ms, oracle)) = used_oracle(op) else {
                 continue;
             };
-            // Exact (market, transcript) identity — never recency, never a
-            // latest-pair-per-market map.
+            // Canonical (market, transcript) identity — never recency, never a
+            // latest-pair-per-market map, never substitution on load failure.
             let want = Normalized {
                 price: oracle.price,
                 publish_time_ms: oracle.publish_time_ms,
                 confidence: oracle.confidence,
                 backup_twap: oracle.backup_twap,
             };
-            let mut found: Option<ArchiveId> = None;
-            for a in &self.admissions {
-                if a.market_id == market_id && a.transcript == want {
-                    found = Some(a.id);
-                    break;
-                }
-            }
+            let found = self
+                .admissions
+                .iter()
+                .find(|a| a.market_id == market_id && a.transcript == want)
+                .map(|a| a.id);
             let Some(id) = found else {
                 return Err(
                     if self.admissions.iter().any(|a| a.market_id == market_id) {
@@ -361,6 +409,20 @@ impl ArchiveBinding {
                 now_ms,
                 archive_id: id,
             });
+        }
+        // Existence barrier at seal time: the EXACT selected record must be
+        // loadable from the durable archive. No substitution: an unreadable
+        // selected ID fails the whole seal even if an equal-normalized sibling
+        // exists — the envelope may only ever name the original record.
+        let mut checked: Vec<ArchiveId> = Vec::new();
+        for r in &refs {
+            if checked.contains(&r.archive_id) {
+                continue;
+            }
+            checked.push(r.archive_id);
+            self.archive
+                .load(r.archive_id, &self.policy, r.market_id)
+                .map_err(|_| BindError::Archive)?;
         }
         Ok(ArchiveEnvelope {
             policy_binding: self.policy_binding,

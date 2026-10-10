@@ -249,3 +249,29 @@ Prover/chain barriers:
   round trip + fail-closed postures.
 - Re-run: cargo test -p gateway → 514 passed / 0 failed; clippy 0 warnings;
   fmt clean.
+
+## Review round 6 (2026-10-11): no substitution/fallback path in binding
+- The old newest-first candidate scan is gone entirely (it was already
+  replaced by identity matching in round 4; this round closes the remaining
+  holes). `admit()` now stores the record durably and returns a
+  PendingAdmission WITHOUT touching the ledger; `install()` is called by the
+  intake ONLY after `apply_validated_real_oracle_at` accepts the transcript.
+  A rejected admission can never become selectable or shadow an identity.
+- The binding index maps each (market, transcript) identity to exactly ONE
+  canonical ArchiveId: the FIRST accepted admission (insert-if-absent). Two
+  different original full-report records CAN normalize identically; a later
+  equal-normalized record is stored but never replaces the selection.
+- `bind_ops` resolves ops in op order against that index and then loads every
+  SELECTED record from the durable archive before the envelope is returned: a
+  missing exact ID fails the seal (Err/Archive) even when an equal-normalized
+  sibling exists. Repeated use of one valid ID is legitimate (loaded once).
+- Capacity refuses (new BindError::Capacity) instead of silently evicting; the
+  intake pre-checks `is_full()` so a full index rejects the fetch before any
+  downstream admission. No eviction path remains.
+- New tests: rejected admission never installed / cannot replace or shadow;
+  same-normalized-but-different-full-report siblings keep the original ID and
+  missing-the-exact-ID fails the seal and recovery even with the sibling
+  present; capacity refusal with retained identities still binding.
+- Historical/repeated ops remain covered by the round-4 multi-observation test.
+- Re-run: cargo test -p gateway → 517 passed / 0 failed; clippy 0 warnings;
+  fmt clean.

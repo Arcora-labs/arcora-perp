@@ -9030,33 +9030,47 @@ async fn main() {
                         let mut gw = app.gw.lock().await;
                         let accepted = match fetched {
                             Ok(Ok((base, quote))) => {
-                                let admission = app
+                                // Archive durable FIRST; the ledger entry is
+                                // installed ONLY if the gateway accepts the
+                                // transcript — a rejected admission never
+                                // becomes selectable (no shadowing/replacement).
+                                let pending = app
                                     .archive
                                     .as_ref()
                                     .and_then(|b| b.lock().ok())
+                                    .filter(|b| !b.is_full())
                                     .and_then(|mut b| b.admit(market, base, quote, now).ok());
-                                match admission {
-                                    // Archive durable first; only then sign and
-                                    // admit the normalized transcript. A rejected
-                                    // admission leaves the record unreferenced.
-                                    Some(normalized) => {
+                                match pending {
+                                    Some(pending) => {
                                         let transcript = OracleTranscript {
-                                            price: normalized.price,
-                                            publish_time_ms: normalized.publish_time_ms,
-                                            confidence: normalized.confidence,
-                                            backup_twap: normalized.backup_twap,
+                                            price: pending.transcript.price,
+                                            publish_time_ms: pending.transcript.publish_time_ms,
+                                            confidence: pending.transcript.confidence,
+                                            backup_twap: pending.transcript.backup_twap,
                                             signature: OracleSig::sign(
                                                 &gw.oracle_signer,
                                                 &oracle_digest(
                                                     market,
-                                                    normalized.price,
-                                                    normalized.publish_time_ms,
-                                                    normalized.confidence,
-                                                    normalized.backup_twap,
+                                                    pending.transcript.price,
+                                                    pending.transcript.publish_time_ms,
+                                                    pending.transcript.confidence,
+                                                    pending.transcript.backup_twap,
                                                 ),
                                             ),
                                         };
-                                        gw.apply_validated_real_oracle_at(market, transcript, now)
+                                        if gw.apply_validated_real_oracle_at(market, transcript, now)
+                                        {
+                                            if let Some(m) = app.archive.as_ref() {
+                                                if let Ok(mut g) = m.lock() {
+                                                    if let Err(e) = g.install(pending) {
+                                                        eprintln!("[chainlink-archive] market {market} admission not installed: {e}");
+                                                    }
+                                                }
+                                            }
+                                            true
+                                        } else {
+                                            false
+                                        }
                                     }
                                     None => false,
                                 }

@@ -69,10 +69,11 @@ fn full_report(id: [u8; 32], price: u64, observed: u64) -> Vec<u8> {
     full[640..672].fill(0x22);
     full
 }
-fn report(id: [u8; 32], price: u64, observed: u64, received: u64) -> UnverifiedReport {
+fn report_from_full(full: Vec<u8>, observed: u64, received: u64) -> UnverifiedReport {
+    let id: [u8; 32] = full[256..288].try_into().unwrap();
     let v = serde_json::json!({"report":{"feedID":format!("0x{}",hex(&id)),
         "validFromTimestamp":observed,"observationsTimestamp":observed,
-        "fullReport":format!("0x{}",hex(&full_report(id,price,observed)))}});
+        "fullReport":format!("0x{}",hex(&full))}});
     let req = Request::new(
         Network::Testnet,
         FeedId::parse_v3(&format!("0x{}", hex(&id))).unwrap(),
@@ -80,6 +81,9 @@ fn report(id: [u8; 32], price: u64, observed: u64, received: u64) -> UnverifiedR
     )
     .unwrap();
     parse_response(&serde_json::to_vec(&v).unwrap(), &req, received).unwrap()
+}
+fn report(id: [u8; 32], price: u64, observed: u64, received: u64) -> UnverifiedReport {
+    report_from_full(full_report(id, price, observed), observed, received)
 }
 fn base_report(observed: u64, received: u64) -> UnverifiedReport {
     base_report_price(observed, 6_000_000_000_000, received)
@@ -131,12 +135,30 @@ fn binding(tag: &str) -> (Temp, ArchiveBinding) {
     (t, b)
 }
 
+/// The production contract: store durable → downstream admission → install
+/// ONLY on acceptance. Tests model a successful admission.
+fn admit_installed(
+    b: &mut ArchiveBinding,
+    market: u64,
+    base: UnverifiedReport,
+    quote: UnverifiedReport,
+    now: u64,
+) -> Normalized {
+    let pending = b.admit(market, base, quote, now).unwrap();
+    b.install(pending).unwrap();
+    pending.transcript
+}
+
 #[test]
 fn admit_persists_the_exact_record_before_returning() {
     let (_t, mut b) = binding("admit");
-    let n = b
-        .admit(0, base_report(100, NOW), quote_report(100, NOW), NOW)
-        .unwrap();
+    let n = admit_installed(
+        &mut b,
+        0,
+        base_report(100, NOW),
+        quote_report(100, NOW),
+        NOW,
+    );
     assert_eq!(n.price, 6_000_000_000_000);
     assert_eq!(n.publish_time_ms, NOW);
     // The durable barrier: the record is loadable immediately, from disk, with
@@ -150,13 +172,21 @@ fn admit_persists_the_exact_record_before_returning() {
 #[test]
 fn bind_binds_the_actual_op_stream_in_order_with_repeated_use() {
     let (_t, mut b) = binding("order");
-    let a = b
-        .admit(0, base_report(100, NOW), quote_report(100, NOW), NOW)
-        .unwrap();
+    let a = admit_installed(
+        &mut b,
+        0,
+        base_report(100, NOW),
+        quote_report(100, NOW),
+        NOW,
+    );
     let later = NOW + 5_000;
-    let bpair = b
-        .admit(0, base_report(101, later), quote_report(101, later), later)
-        .unwrap();
+    let bpair = admit_installed(
+        &mut b,
+        0,
+        base_report(101, later),
+        quote_report(101, later),
+        later,
+    );
     let ops = [
         fill(0, NOW, transcript_of(a)),
         fill(0, later, transcript_of(bpair)),
@@ -188,23 +218,21 @@ fn bind_binds_the_actual_op_stream_in_order_with_repeated_use() {
 fn bind_handles_multiple_observations_per_market_in_op_order_with_repeated_use() {
     let (_t, mut b) = binding("multi-obs");
     // Two observations of the same market, distinguishable prices.
-    let early = b
-        .admit(
-            0,
-            base_report_price(100, 6_000_000_000_000, NOW),
-            quote_report(100, NOW),
-            NOW,
-        )
-        .unwrap();
+    let early = admit_installed(
+        &mut b,
+        0,
+        base_report_price(100, 6_000_000_000_000, NOW),
+        quote_report(100, NOW),
+        NOW,
+    );
     let mid = NOW + 4_000;
-    let late = b
-        .admit(
-            0,
-            base_report_price(101, 6_200_000_000_000, mid),
-            quote_report(101, mid),
-            mid,
-        )
-        .unwrap();
+    let late = admit_installed(
+        &mut b,
+        0,
+        base_report_price(101, 6_200_000_000_000, mid),
+        quote_report(101, mid),
+        mid,
+    );
     let early_id = b.admissions[0].id;
     let late_id = b.admissions[1].id;
     assert_ne!(
@@ -265,18 +293,21 @@ fn bind_handles_multiple_observations_per_market_in_op_order_with_repeated_use()
 #[test]
 fn bind_fails_closed_for_unarchived_or_substituted_transcripts() {
     let (_t, mut b) = binding("closed");
-    let a = b
-        .admit(0, base_report(100, NOW), quote_report(100, NOW), NOW)
-        .unwrap();
+    let a = admit_installed(
+        &mut b,
+        0,
+        base_report(100, NOW),
+        quote_report(100, NOW),
+        NOW,
+    );
     // A transcript from any real archived admission binds by exact value.
-    let later = b
-        .admit(
-            0,
-            base_report_price(100, 6_100_000_000_000, NOW),
-            quote_report(100, NOW),
-            NOW,
-        )
-        .unwrap();
+    let later = admit_installed(
+        &mut b,
+        0,
+        base_report_price(100, 6_100_000_000_000, NOW),
+        quote_report(100, NOW),
+        NOW,
+    );
     assert!(b.bind_ops(&[fill(0, NOW, transcript_of(later))]).is_ok());
     // Identity binding is clock-independent: an op timestamped BEFORE the
     // admission still binds, because the match is the exact transcript value,
@@ -314,9 +345,13 @@ fn verify_fails_closed_on_missing_corrupt_or_mismatched_records() {
     // Fresh bound fixture: one archived admission, one op using its transcript.
     let fresh = |tag: &str| {
         let (t, mut b) = binding(tag);
-        let n = b
-            .admit(0, base_report(100, NOW), quote_report(100, NOW), NOW)
-            .unwrap();
+        let n = admit_installed(
+            &mut b,
+            0,
+            base_report(100, NOW),
+            quote_report(100, NOW),
+            NOW,
+        );
         let ops = [fill(0, NOW, transcript_of(n))];
         let env = b.bind_ops(&ops).unwrap();
         (t, b, ops, env, n)
@@ -378,9 +413,13 @@ fn candidate_journal_round_trips_through_the_real_sealed_journal_path() {
     use perp_core::fixed::QUOTE_SCALE;
 
     let (_t, mut b) = binding("journal");
-    let normalized = b
-        .admit(0, base_report(100, NOW), quote_report(100, NOW), NOW)
-        .unwrap();
+    let normalized = admit_installed(
+        &mut b,
+        0,
+        base_report(100, NOW),
+        quote_report(100, NOW),
+        NOW,
+    );
 
     // A real sealed window (deposit), with one archived-price-bearing Fill op
     // appended so the journaled op stream carries an oracle transcript.
@@ -491,14 +530,13 @@ fn archive_guard_blocks_prover_invocation_on_missing_or_mismatched_records() {
     // REAL sealed window, which replays cleanly.
     let now = crate::now_ms();
     let observed = now / 1000 - 1;
-    let normalized = b
-        .admit(
-            0,
-            base_report(observed, now),
-            quote_report(observed, now),
-            now,
-        )
-        .unwrap();
+    let normalized = admit_installed(
+        &mut b,
+        0,
+        base_report(observed, now),
+        quote_report(observed, now),
+        now,
+    );
     let mut gw = crate::Gw::boot();
     let (key, _owner) = gw.register_account(None);
     gw.account_deposit(&key, 0, 20_000 * perp_core::fixed::QUOTE_SCALE)
@@ -601,9 +639,13 @@ fn archive_guard_blocks_prover_invocation_on_missing_or_mismatched_records() {
 fn candidate_bound_journal_is_rejected_by_v2_resume_and_never_falls_back_to_legacy() {
     use crate::rollback_journal;
     let (t, mut b) = binding("resume");
-    let normalized = b
-        .admit(0, base_report(100, NOW), quote_report(100, NOW), NOW)
-        .unwrap();
+    let normalized = admit_installed(
+        &mut b,
+        0,
+        base_report(100, NOW),
+        quote_report(100, NOW),
+        NOW,
+    );
     let mut gw = crate::Gw::boot();
     let (key, _owner) = gw.register_account(None);
     gw.account_deposit(&key, 0, 20_000 * perp_core::fixed::QUOTE_SCALE)
@@ -795,4 +837,148 @@ fn mode_marker_round_trip_and_fail_closed_postures() {
     plain.extend_from_slice([0xaa].as_slice());
     std::fs::write(&mp, snapshot::seal(&plain, &seed)).unwrap();
     assert!(read_marker(&mp, &seed).is_err());
+}
+
+/// Review blocker: an admission REJECTED downstream must never enter the
+/// binding index — it cannot become the selectable record for its identity,
+/// and it cannot shadow the accepted one.
+#[test]
+fn rejected_admission_is_never_installed_and_cannot_replace_or_shadow() {
+    let (_t, mut b) = binding("rejected");
+    // Accepted admission for identity A.
+    let a = admit_installed(
+        &mut b,
+        0,
+        base_report(100, NOW),
+        quote_report(100, NOW),
+        NOW,
+    );
+    // A later pair with a DIFFERENT transcript (identity B): stored, but the
+    // gateway rejects it downstream — install is never called.
+    let rejected = b
+        .admit(
+            0,
+            base_report_price(100, 6_500_000_000_000, NOW),
+            quote_report(100, NOW),
+            NOW,
+        )
+        .unwrap();
+    assert_eq!(
+        b.admissions.len(),
+        1,
+        "rejected admission must not enter the index"
+    );
+    // The rejected transcript is unbindable even though its record is on disk…
+    assert_eq!(
+        b.bind_ops(&[fill(0, NOW, transcript_of(rejected.transcript))])
+            .unwrap_err(),
+        BindError::Mismatch
+    );
+    // …and the accepted identity still binds to its ORIGINAL ID.
+    let env = b.bind_ops(&[fill(0, NOW, transcript_of(a))]).unwrap();
+    assert_eq!(env.refs[0].archive_id, b.admissions[0].id);
+}
+
+/// Review blocker: two DIFFERENT original full-report records can normalize
+/// identically. The FIRST ACCEPTED admission is the canonical ID for the
+/// identity; a later equal-normalized record is stored but NEVER replaces the
+/// selection, and missing the exact ID must Err even though the sibling exists.
+#[test]
+fn same_normalized_different_full_reports_keep_original_id_and_missing_exact_id_fails() {
+    let (t, mut b) = binding("siblings");
+    // Same body (same normalization) but different original full-report bytes:
+    // vary a byte inside the (deliberately fake) signature region, which is
+    // part of the archived record's identity but not of the price normalization.
+    let mut first_full = full_report(feed(0x11), 6_000_000_000_000, 100);
+    first_full[600] = 0x11;
+    let first = report_from_full(first_full, 100, NOW);
+    let mut second_full = full_report(feed(0x11), 6_000_000_000_000, 100);
+    second_full[600] = 0x22;
+    let second = report_from_full(second_full, 100, NOW);
+    let quote = quote_report(100, NOW);
+
+    let p1 = b.admit(0, first, quote.clone(), NOW).unwrap();
+    b.install(p1).unwrap();
+    let p2 = b.admit(0, second, quote, NOW).unwrap();
+    b.install(p2).unwrap();
+    assert_eq!(
+        p1.transcript, p2.transcript,
+        "same body normalizes identically"
+    );
+    assert_ne!(
+        p1.id, p2.id,
+        "different original full reports hash differently"
+    );
+
+    // Both admissions installed, but the identity resolves to the ORIGINAL ID.
+    let env = b
+        .bind_ops(&[fill(0, NOW, transcript_of(p1.transcript))])
+        .unwrap();
+    assert_eq!(
+        env.refs[0].archive_id, p1.id,
+        "the first accepted record is canonical"
+    );
+
+    // Delete the SELECTED record: seal must fail even though the equal-
+    // normalized sibling exists. No substitution, no fallback.
+    std::fs::remove_file(t.0.join("store").join(format!("{}.json", p1.id.hex()))).unwrap();
+    assert_eq!(
+        b.bind_ops(&[fill(0, NOW, transcript_of(p1.transcript))])
+            .unwrap_err(),
+        BindError::Archive,
+        "a missing exact ID must fail the seal even with an equal-normalized sibling"
+    );
+    // Recovery verification agrees: HOLD, never the sibling.
+    assert_eq!(
+        b.verify(&[fill(0, NOW, transcript_of(p1.transcript))], &env),
+        Err(BindError::Archive)
+    );
+}
+
+/// Review blocker: capacity REFUSES rather than silently evicting — an evicted
+/// identity could strand the ops of an unsealed window.
+#[test]
+fn capacity_refuses_instead_of_silently_evicting() {
+    let t = Temp::new("capacity");
+    let mut b = ArchiveBinding::create_in(&t.0, policy())
+        .unwrap()
+        .with_capacity(2);
+    assert!(!b.is_full());
+    let p1 = b
+        .admit(0, base_report(100, NOW), quote_report(100, NOW), NOW)
+        .unwrap();
+    b.install(p1).unwrap();
+    let p2 = b
+        .admit(
+            0,
+            base_report_price(100, 6_100_000_000_000, NOW),
+            quote_report(100, NOW),
+            NOW,
+        )
+        .unwrap();
+    b.install(p2).unwrap();
+    assert!(b.is_full());
+    // Third DISTINCT identity: install refuses; nothing is evicted.
+    let p3 = b
+        .admit(
+            0,
+            base_report_price(100, 6_200_000_000_000, NOW),
+            quote_report(100, NOW),
+            NOW,
+        )
+        .unwrap();
+    assert_eq!(b.install(p3), Err(BindError::Capacity));
+    assert_eq!(b.admissions.len(), 2, "no silent eviction");
+    // The two retained identities still bind exactly; the refused one does not.
+    assert!(b
+        .bind_ops(&[fill(0, NOW, transcript_of(p1.transcript))])
+        .is_ok());
+    assert!(b
+        .bind_ops(&[fill(0, NOW, transcript_of(p2.transcript))])
+        .is_ok());
+    assert_eq!(
+        b.bind_ops(&[fill(0, NOW, transcript_of(p3.transcript))])
+            .unwrap_err(),
+        BindError::Mismatch
+    );
 }
