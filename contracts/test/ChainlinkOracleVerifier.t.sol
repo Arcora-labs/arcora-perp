@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 import {MiniTest} from "./utils/MiniTest.sol";
+import {MockSequencerUptime} from "./utils/MockSequencerUptime.sol";
 import {ChainlinkOracleVerifier, IChainlinkStreamsVerifier} from "../src/ChainlinkOracleVerifier.sol";
 import {ClockBoundVerifier, IClockSettlement} from "../src/ClockBoundVerifier.sol";
 import {DarkPerpSettlement} from "../src/DarkPerpSettlement.sol";
@@ -22,12 +23,13 @@ contract MockStreamsForCandidate is IChainlinkStreamsVerifier {
     }
 }
 
-contract ChainlinkOracleVerifierTest is MiniTest {
+abstract contract ChainlinkCandidateFixture is MiniTest {
     ChainlinkOracleVerifier o;
     ClockBoundVerifier c;
     DarkPerpSettlement s;
     MockStreamsForCandidate don;
     MockZkVerifier inner;
+    MockSequencerUptime uptime;
     bytes32 constant R = bytes32(uint256(1));
     bytes32 constant N = bytes32(uint256(2));
     bytes32 constant M = bytes32(uint256(3));
@@ -40,7 +42,8 @@ contract ChainlinkOracleVerifierTest is MiniTest {
         vm.roll(1);
         inner = new MockZkVerifier();
         don = new MockStreamsForCandidate();
-        o = new ChainlinkOracleVerifier(inner, don, PH);
+        uptime = new MockSequencerUptime();
+        o = new ChainlinkOracleVerifier(inner, don, PH, address(uptime), 10);
         c = new ClockBoundVerifier(o, 10_000, 2_000);
         s = new DarkPerpSettlement(address(this), address(0x123), c, R, 100, 50, 1 ether, 600, address(this), 10);
         c.bindSettlement(IClockSettlement(address(s)));
@@ -96,7 +99,9 @@ contract ChainlinkOracleVerifierTest is MiniTest {
     function settle(bytes memory proof) internal {
         s.settleBatch(R, M, N, Z, Z, Z, Z, 0, proof);
     }
+}
 
+contract ChainlinkOracleVerifierTest is ChainlinkCandidateFixture {
     function test_new_bound_route_reaches_real_settlement_with_mock_don_and_sp1() public {
         bytes32 cb = anchor(1);
         bytes32 eh = o.register(0, 0, entries());

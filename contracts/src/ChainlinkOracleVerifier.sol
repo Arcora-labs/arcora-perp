@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 import {IZkVerifier} from "./interfaces/IZkVerifier.sol";
+import {SequencerUptime} from "./SequencerUptime.sol";
 import {ClockBoundVerifier, IClockSettlement} from "./ClockBoundVerifier.sol";
 
 interface IChainlinkStreamsVerifier {
@@ -22,6 +23,8 @@ contract ChainlinkOracleVerifier is IZkVerifier {
     bytes32 public immutable policyHash;
     uint256 public immutable deploymentChainId;
     address public immutable configurator;
+    address public immutable sequencerUptimeFeed;
+    uint64 public immutable sequencerGraceSeconds;
     ClockBoundVerifier public clockVerifier;
     bool private busy;
 
@@ -50,17 +53,28 @@ contract ChainlinkOracleVerifier is IZkVerifier {
         int192 ask;
     }
     mapping(bytes32 => Record) public records;
+    // Zero epoch is used ONLY for a clock- and guest-proven price-free batch.
+    mapping(bytes32 => SequencerUptime.Epoch) public uptimeEpochs;
     error Configuration();
     error Unauthorized();
     error Context();
     error Evidence();
     error Replacement();
+    error SequencerUnavailable();
+    error SequencerEpochChanged();
     event ClockBound(address indexed clock);
     event ReportsRegistered(bytes32 indexed clockCommitment, bytes32 evidenceHash);
 
-    constructor(IZkVerifier inner_, IChainlinkStreamsVerifier streams_, bytes32 policy_) {
+    constructor(
+        IZkVerifier inner_,
+        IChainlinkStreamsVerifier streams_,
+        bytes32 policy_,
+        address uptimeFeed_,
+        uint64 graceSeconds_
+    ) {
         if (
             address(inner_).code.length == 0 || address(streams_).code.length == 0 || policy_ == bytes32(0)
+                || uptimeFeed_.code.length == 0 || graceSeconds_ == 0
                 || (block.chainid != 8453 && block.chainid != 84532)
         ) revert Configuration();
         innerVerifier = inner_;
@@ -68,6 +82,8 @@ contract ChainlinkOracleVerifier is IZkVerifier {
         policyHash = policy_;
         deploymentChainId = block.chainid;
         configurator = msg.sender;
+        sequencerUptimeFeed = uptimeFeed_;
+        sequencerGraceSeconds = graceSeconds_;
     }
 
     function bindClock(ClockBoundVerifier clock_) external {
@@ -102,9 +118,12 @@ contract ChainlinkOracleVerifier is IZkVerifier {
         ) revert Evidence();
         bytes32 clockCommitment = keccak256(abi.encode(clockVerifier.DOMAIN(), a.baseCommitment, a.receipt));
         bytes32 inputHash = keccak256(abi.encode(entries));
+        SequencerUptime.Epoch memory epoch;
+        if (entries.length != 0) epoch = _requireUptime(a.firstMs);
         Record storage previous = records[clockCommitment];
         if (previous.exists) {
             if (previous.inputHash != inputHash) revert Replacement();
+            if (!SequencerUptime.same(uptimeEpochs[clockCommitment], epoch)) revert SequencerEpochChanged();
             return previous.evidenceHash; // exact retries never re-stamp or re-verify expired evidence
         }
         bytes32 h = keccak256(abi.encode(EVIDENCE_DOMAIN, policyHash, entries.length));
@@ -120,9 +139,33 @@ contract ChainlinkOracleVerifier is IZkVerifier {
             bytes memory quote = _verifyBody(e.quoteReport, e.nowMs);
             h = keccak256(abi.encode(h, e.marketId, e.nowMs, keccak256(base), keccak256(quote)));
         }
+        // Re-check after external DON calls before committing any registration.
+        if (entries.length != 0 && !SequencerUptime.same(epoch, _requireUptime(a.firstMs))) {
+            revert SequencerEpochChanged();
+        }
+        uptimeEpochs[clockCommitment] = epoch;
         records[clockCommitment] = Record(h, inputHash, true);
         emit ReportsRegistered(clockCommitment, h);
         return h;
+    }
+
+    /// Exposes the same check used for registration/settlement to a future gateway
+    /// observer. This is an onchain read; gateway wiring is a separate task.
+    function uptimeStatus() external view returns (bool ready, uint80 roundId, uint64 startedAt) {
+        SequencerUptime.Epoch memory epoch;
+        (ready, epoch) = SequencerUptime.read(sequencerUptimeFeed, sequencerGraceSeconds);
+        return (ready, epoch.roundId, epoch.startedAt);
+    }
+
+    function _requireUptime(uint64 firstOperationMs) private view returns (SequencerUptime.Epoch memory epoch) {
+        bool ready;
+        (ready, epoch) = SequencerUptime.read(sequencerUptimeFeed, sequencerGraceSeconds);
+        uint64 firstSeconds = firstOperationMs / 1000;
+        // Waiting to register until recovery must not launder operations performed
+        // during the outage or its grace period. Compare the ORIGINAL operation time.
+        if (!ready || firstSeconds <= epoch.startedAt || firstSeconds - epoch.startedAt <= sequencerGraceSeconds) {
+            revert SequencerUnavailable();
+        }
     }
 
     function _verifyBody(bytes calldata full, uint64 nowMs) private returns (bytes memory body) {
@@ -148,11 +191,17 @@ contract ChainlinkOracleVerifier is IZkVerifier {
 
     function verify(bytes32 clockCommitment, bytes calldata proof) external view returns (bool) {
         if (
-            msg.sender != address(clockVerifier) || address(clockVerifier) == address(0)
+            busy || msg.sender != address(clockVerifier) || address(clockVerifier) == address(0)
                 || block.chainid != deploymentChainId || proof.length == 0
         ) return false;
         Record storage r = records[clockCommitment];
         if (!r.exists) return false;
+        SequencerUptime.Epoch memory registered = uptimeEpochs[clockCommitment];
+        if (registered.roundId != 0) {
+            (bool ready, SequencerUptime.Epoch memory current) =
+                SequencerUptime.read(sequencerUptimeFeed, sequencerGraceSeconds);
+            if (!ready || !SequencerUptime.same(registered, current)) return false;
+        }
         try innerVerifier.verify(boundCommitment(clockCommitment, r.evidenceHash), proof) returns (bool ok) {
             return ok;
         } catch {
