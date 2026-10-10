@@ -1,0 +1,53 @@
+   Compiling chainlink-streams-client v0.0.1 (<REPO>/crates/chainlink-streams-client)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.37s
+     Running unittests src/lib.rs (crates/chainlink-streams-client/target/debug/deps/chainlink_streams_client-1b2e0e3784cbb4ad)
+
+running 40 tests
+test tests::credentials_reject_missing_malformed_and_header_injection_values ... ok
+test tests::networks_and_feed_path_are_explicit_not_response_selected ... ok
+test tests::hmac_binds_path_identity_time_and_secret_without_demo_fallback ... ok
+test tests::hmac_matches_independent_python_hashlib_vector ... ok
+test tests::credential_debug_is_redacted_and_errors_do_not_contain_input ... ok
+test tests::original_full_report_and_source_times_survive_parsing_exactly ... ok
+test tests::duplicate_critical_fields_including_escaped_names_are_rejected ... ok
+test tests::outer_metadata_cannot_override_abi_feed_or_timestamp ... ok
+test tests::trailing_invalid_utf8_and_nonfinite_json_are_rejected ... ok
+test transport::receipt_clock_tests::elapsed_time_overflow_is_rejected_instead_of_wrapping ... ok
+test transport::receipt_clock_tests::forward_step_retains_elapsed_time_at_the_age_boundary ... ok
+test transport::receipt_clock_tests::ordinary_wall_time_and_elapsed_time_are_not_double_counted ... ok
+test transport::receipt_clock_tests::repeated_submillisecond_samples_keep_the_original_anchor ... ok
+test transport::receipt_clock_tests::retry_samples_do_not_erase_time_after_a_forward_step ... ok
+test transport::receipt_clock_tests::zero_backward_and_reversed_monotonic_samples_fail_closed ... ok
+test tests::response_byte_limit_is_inclusive_and_applies_before_decode ... ok
+test tests::stale_future_zero_and_queue_delay_are_not_restamped ... ok
+test tests::report_hex_abi_offsets_and_signature_syntax_are_bounded ... ok
+test tests::critical_fields_are_required_and_strictly_typed ... ok
+test transport::tests::real_http_accepts_correct_chunked_framing ... ok
+test transport::tests::real_http_duplicate_transfer_encoding_rejected_even_with_valid_chunks ... ok
+test transport::tests::real_http_failed_or_backward_clock_does_not_refresh_data ... ok
+test transport::tests::real_http_network_mismatch_refuses_before_clock_or_connection ... ok
+test transport::tests::real_http_retry_clock_rollback_stops_before_second_request ... ok
+test transport::tests::real_http_redirect_does_not_send_credentials_to_target ... ok
+test transport::tests::real_http_reconnects_after_truncated_body ... ok
+test transport::tests::real_http_malformed_metadata_and_stale_report_do_not_retry ... ok
+test transport::tests::real_http_sends_canonical_hmac_headers_and_preserves_report_bytes ... ok
+test transport::tests::real_http_bounds_content_length_chunked_and_eof_bodies ... ok
+test transport::tests::real_http_total_deadline_prevents_backoff_and_extra_request ... ok
+test transport::tests::real_http_signed_content_length_must_not_be_accepted ... ok
+test transport::tests::real_http_retry_count_is_bounded_and_error_body_not_echoed ... ok
+test transport::tests::real_http_ambiguous_or_encoded_framing_is_rejected ... ok
+test transport::tests::real_http_unknown_transfer_encoding_rejected_even_when_chunk_decode_would_work ... ok
+test transport::tests::real_http_unknown_or_duplicate_transfer_encoding_must_not_be_treated_as_plain_json ... ok
+test transport::tests::real_http_retryable_statuses_retry_with_new_auth_timestamp ... ok
+test transport::tests::real_http_auth_rate_limit_redirect_and_non_200_do_not_retry ... ok
+test transport::tests::real_http_forward_clock_step_cannot_hide_attempt_elapsed_time ... ok
+test transport::tests::real_http_monotonic_receipt_counts_elapsed_time_when_wall_clock_stalls ... ok
+test transport::tests::real_http_stalled_body_timeout_never_yields_partial_success ... ok
+
+test result: ok. 40 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.37s
+
+   Doc-tests chainlink_streams_client
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s

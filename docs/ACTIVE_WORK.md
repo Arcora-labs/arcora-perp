@@ -61,19 +61,25 @@ doğrulandı: 4 sentetik başarılı girdi + 15 çıktısız guest reddi. Yeni g
 proof ve production guest/deployment kabulü tamamlanmadı. Normalizasyon açık asset/USD ÷ USDC/USD aday tarifidir;
 üretim ekonomik onayı yoktur ve backup alanı bağımsız TWAP değildir.
 
-## Aktif paket: authenticated REST istemcisi taslağı
+## Aktif PR #43: REST istemcisi runtime doğrulaması
 
 Dal `feat/chainlink-streams-client-20261010`, taban `e552bba`.
-Ayrı `chainlink-streams-client` crate'i: explicit credential/network, fixed HTTPS,
-HMAC, bounded read/retry, strict metadata/body eşleşmesi ve UnverifiedReport
-uygulandı. Derleme ve Clippy doğrulandı. Yeni testleri ekleyen çağrı araç güvenlik
-kontrolüne takıldı; dosyalar oluşmadı, engellenen işlem tekrarlanmadı.
-**İstemci runtime testleri yoktur; merge-ready veya canlı kabulü tamamlanmış değildir.**
-WebSocket/poll scheduler ve gateway bağlantısı da yoktur.
-Public discovery'ye ayrı kimliksiz testnet/mainnet GET'leri HTTP403 döndürdü;
-gerçek feed/decimal/quote pinleri tahmin edilmedi. Bu authentication testi değildir.
-Detay: `CHAINLINK_STREAMS_CLIENT.md`.
-Canlı DON verifier, gateway/prover/L1 bağlantısı ve rapor kalıcılığı açık kalır.
+Dört gerçek regresyon düzeltildi: ileri saat adımında eksik I/O yaş hesabı,
++ işaretli Content-Length, yinelenen ve desteklenmeyen Transfer-Encoding.
+Önceki 34 test değişmedi; 6 deterministik saat testi eklendi. Yerel debug ve release
+sonuçlarının her biri 40 PASS, 0 FAIL, 0 IGNORE. Clippy/format/lock/release kontrolleri geçti;
+21 reviewed v2 ve 9 aday runtime girdisi değişmedi. Exact-head PR CI sonucu
+ayrıca doğrulanmalı; eski compile-only yeşil CI yeni test yerine geçmez.
+
+Önceki yazma engeli kullanıcının yeniden deneme talebinde sürmedi; kaynak
+hash'i doğrulanarak yama uygulandı. Araç güvenlik/OS izin ayarı değiştirilmedi.
+Eski başarısız test kayıtları korunmuştur. Güncel kaynak/komut/çıktı kanıtı:
+`audits/2026-10-10-chainlink-client-fixed/` ve `CHAINLINK_STREAMS_CLIENT.md`.
+
+Sıradaki odak gerçek feed/decimal/USDC kimlikleri ve yetkili stream okumasıdır.
+Gateway bağlantısı, scheduler, kalıcı rapor arşivi ve recovery henüz yoktur.
+İstemci sonucu UnverifiedReport kalır; DON doğrulaması veya canlı oracle geçişi
+iddiası yoktur. Ücretli erişim ve gerçek credential kullanımı ayrıca yetki ister.
 
 ## Açık işler ve kapanış ölçütleri
 

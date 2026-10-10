@@ -208,3 +208,6 @@ fn decode_hex(value: &str, limit: usize) -> Result<Vec<u8>> {
         .map(|p| Ok(digit(p[0])? * 16 + digit(p[1])?))
         .collect()
 }
+
+#[cfg(test)]
+mod tests;

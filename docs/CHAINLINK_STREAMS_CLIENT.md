@@ -1,4 +1,4 @@
-# Chainlink Data Streams REST istemcisi: testleri bekleyen taslak
+# Chainlink Data Streams REST istemcisi: doğrulanmış host paketi
 
 Tarih: 10 Ekim 2026. **PRODUCTION RELEASE HOLD.**
 Bu bir canlı oracle geçişi değildir. Yeni paket gateway'e bağlı değildir ve
@@ -52,31 +52,53 @@ verilmelidir. İstemci oracle fiyatını yeniden imzalamaz veya settlement'e gö
 Kuyruk gecikmesinde `check_freshness` çağrısı gerekir; receipt zamanı kaynak zamanının
 yerine geçmez. Replay/dedup, gateway admission ve kalıcı rapor eşlemesi sonraki iştir.
 
-## Gerçekte doğrulanan kapsam ve araç engeli
+## Güncel çalışma zamanı doğrulaması
 
-Yerel compile/typecheck, format ve Clippy çalıştırıldı. **Yeni istemci runtime
-ve loopback testleri çalıştırılmadı.** Bunları ekleyen tek araç çağrısı güvenlik
-kontrolü tarafından reddedildi; dosyaların oluşmadığı doğrulandı. Engellenen test
-paketi başka yoldan tekrarlanmadı. Oluşmamış test dosyalarına ait module bildirimleri
-kaldırıldı; boş/sahte testlerle PASS üretilmedi. Bu taslak merge için hazır değildir.
+10 Ekim 2026 devamında dört ret regresyonu düzeltildi. Önceki 34 test
+aynen korundu; altı deterministik saat testi eklendi. Debug ve release koşularının her birinde
+**40 PASS, 0 FAIL, 0 IGNORE**. Clippy, format, reviewed release ve candidate lock
+kontrolleri başarılı; 21 reviewed v2 ve 9 aday runtime girdisi aynı.
+PR CI sonucu bu yerel sonuçtan ayrı kayıttır.
 
-Yeni CI işi açıkça `compile-only, runtime tests pending` adı taşır. Bu işin
-başarısı çalışma zamanı güvenliği veya canlı authentication testi sayılmaz.
+`ReceiptClock`, ileri saat sıçramasında yeni monotonic referans kurar. Duvar saati
+sonra dursa bile istek/retry süresi ve alt-milisaniye kalanı kaybolmaz. Normal
+ilerleyen duvar saati ile geçen süre iki kez toplanmaz. Sıfır/geriye giden saat,
+ters monotonic referans ve aritmetik taşma reddedilir. HMAC zamanı gerçek duvar
+saati örneğidir; hesaplanan receipt alt sınırıyla auth zamanı veya raporun
+kaynak zamanı yeniden yazılmaz.
 
-Gerçek kimlik bilgisi kullanılmadı. Ayrı, kimliksiz public discovery denemesinde
-testnet ve mainnet endpoint'leri bu ortamdan HTTP 403 döndürdü. Bu sonuç
-endpoint'in mutlaka ücretli/auth-required olduğu anlamına gelmez; erişim nedeni
-burada belirlenemedi. Feed/scale/quote kimlikleri gözlemlenemediği için seçilmedi.
-Bu deneme yeni Rust istemcisinin authentication testi değildir.
+Content-Length yalnız ASCII rakamlarından oluşabilir; + işareti kabul edilmez.
+Transfer-Encoding ya yoktur ya da tek `chunked` alanıdır. Yinelenen alanlar,
+desteklenmeyen kodlama/listeler ve Content-Length ile birlikte bulunması,
+gövde decoder'ına geçilmeden reddedilir. Geçerli chunked ve EOF yanıtları mevcut
+bayt sınırıyla kabul edilebilir. Bu sıkı politika genel amaçlı bütün HTTP
+kodlamalarını destekleme iddiası değildir.
 
-## Tamamlama ölçütleri
+Testlerde yalnız açık sentetik UUID/secret ve sahte, sıfır olmayan imza kelimeleri
+kullanılır. 13 saf HMAC/parser testi, 21 gerçek owned-loopback HTTP testi ve
+6 deterministik saat testi vardır. Gerçek credential dosyası okunmaz. HMAC
+known-answer değeri Python stdlib ile bağımsız hesaplanmış vektördür, canlı
+Chainlink cevabı değildir. Redirect hedefinin hiç bağlantı almadığı, tekrar
+sınırları, partial/stalled/oversize yanıtlar, metadata ve kaynak yaşı sınanır.
+HTTP/parser başarısı DON imzası doğrulaması değildir. Public HTTPS hedef kısıtı,
+TLS ve proxy/redirect davranışı gevşetilmedi; test origin'i private yoldan verilir.
 
-Önce gerçek HMAC known-answer ve request-path/header eşitliği testleri; katı
-JSON/ABI/feed/time retleri; owned-loopback timeout, redirect, bounded body,
-retry-budget ve error-redaction testleri geçmelidir. Ardından doğru account
-entitlement ve gerçek v3 feed metadata/scale bağları doğrulanmalıdır. Sonraki
-paketler gateway-prover-L1 bağlantısı, rapor kalıcılığı/kurtarma ve tam yaşam
-döngüsüdür. Ücretli erişim, gerçek credential veya zincir yazısı ayrıca yetki ister.
+Önceki yazma reddinin ayrıntılı nedeni bu oturumda doğrulanamadı. Kullanıcının
+tekrar deneme talebi üzerine aynı yetkili Mac'te yazma başarılı oldu; hiçbir
+araç güvenlik ayarı veya işletim sistemi izni değiştirilmedi. Önceki 30/4 sonuçları
+`audits/2026-10-10-chainlink-client-regressions/` altında tarihsel kayıt olarak
+korundu. Güncel dört düzeltme ve test kayıtları:
+`audits/2026-10-10-chainlink-client-fixed/`.
+
+## Kalan kabul ölçütleri
+
+İstemci yerel runtime testi alt işi tamamlandı. Gerçek account/feed erişimi,
+feed/scale/quote kimliklerinin bağımsız doğrulanması, gateway scheduler/admission,
+DON doğrulaması, rapor kalıcılığı/kurtarma ve uçtan uca yaşam döngüsü açık kalır.
+Mevcut gateway'in fiyat kaynağı değiştirilmedi. Gerçek credential, ücretli erişim,
+kamu zincirine işlem, state migration veya production rollout yapılmadı.
+Önceki kimliksiz discovery HTTP403 gözlemleri tarihsel olup sebebi belirlenmemiştir.
+Bu paketin testleri canlı erişimi veya TLS endpoint kimliğini doğrulamaz.
 
 ## Resmi referanslar (10 Ekim 2026 okuması)
 
@@ -85,5 +107,8 @@ döngüsüdür. Ücretli erişim, gerçek credential veya zincir yazısı ayrıc
 - v3 şema: https://docs.chain.link/data-streams/reference/report-schema-v3
 - Public discovery: https://docs.chain.link/data-streams/reference/data-streams-api/discovery-endpoint
 
-Ham yerel kayıtlar: `target/chainlink-client-20261010T173729Z/`.
-Kalıcı kanıt: `docs/audits/2026-10-10-chainlink-client-draft/`.
+- HTTP Content-Length: https://www.rfc-editor.org/rfc/rfc9110.html#name-content-length
+- HTTP/1.1 framing: https://www.rfc-editor.org/rfc/rfc9112.html#name-transfer-encoding
+
+Güncel ham kayıtlar: `target/chainlink-client-fix-20261010T190741085776Z/`.
+Önceki compile-only ve başarısız regresyon kayıtları tarihsel olarak korunur.

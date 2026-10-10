@@ -1,0 +1,207 @@
+{
+  "status": "PASS_LOCAL_RUNTIME_NOT_LIVE",
+  "observed_at": "2026-10-10T19:10:47.285966+00:00",
+  "repository": "Arcora-labs/arcora-perp",
+  "pr": 43,
+  "previous_head": "8eab00f23a4c02c0fd9eca86decf8759290fd71e",
+  "base_main": "e552bbab6868b070ff9c3b8f4ed3b9dec1230288",
+  "commands": [
+    {
+      "name": "client-tests",
+      "command": [
+        "cargo",
+        "+1.99.0",
+        "test",
+        "--locked",
+        "--offline",
+        "--manifest-path",
+        "crates/chainlink-streams-client/Cargo.toml"
+      ],
+      "exit_code": 0,
+      "seconds": 2.359,
+      "log": "target/chainlink-client-fix-20261010T190741085776Z/client-tests.log",
+      "log_sha256": "256a3da1305a5057fa6e8d5490ba987a9424888f34c5e316a59d682a65571ed5"
+    },
+    {
+      "name": "client-clippy",
+      "command": [
+        "cargo",
+        "+1.99.0",
+        "clippy",
+        "--locked",
+        "--offline",
+        "--manifest-path",
+        "crates/chainlink-streams-client/Cargo.toml",
+        "--all-targets",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "exit_code": 0,
+      "seconds": 0.409,
+      "log": "target/chainlink-client-fix-20261010T190741085776Z/client-clippy.log",
+      "log_sha256": "feb035e861837f0378ecb453976fa08ff7530dc2d496d86c24d114a5f11c5b31"
+    },
+    {
+      "name": "client-format",
+      "command": [
+        "cargo",
+        "+1.99.0",
+        "fmt",
+        "--manifest-path",
+        "crates/chainlink-streams-client/Cargo.toml",
+        "--check"
+      ],
+      "exit_code": 0,
+      "seconds": 0.079,
+      "log": "target/chainlink-client-fix-20261010T190741085776Z/client-format.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "reviewed-release",
+      "command": [
+        "/opt/homebrew/bin/python3.12",
+        "scripts/local-verification/check_sp1_release.py"
+      ],
+      "exit_code": 0,
+      "seconds": 0.09,
+      "log": "target/chainlink-client-fix-20261010T190741085776Z/reviewed-release.log",
+      "log_sha256": "9189d4751f9a5a116d3fb275d396e5871d6e40c9df208c763d29ad33098f80d8"
+    },
+    {
+      "name": "candidate-lock",
+      "command": [
+        "/opt/homebrew/bin/python3.12",
+        "scripts/local-verification/check_chainlink_candidate.py"
+      ],
+      "exit_code": 0,
+      "seconds": 0.038,
+      "log": "target/chainlink-client-fix-20261010T190741085776Z/candidate-lock.log",
+      "log_sha256": "2098e68e75a17ef7de525984a1425a3c666fa90e8333453246d09d0cf5f31d6e"
+    },
+    {
+      "name": "pins",
+      "command": [
+        "/opt/homebrew/bin/python3.12",
+        "-c",
+        "import sys,json;sys.path.insert(0,\"scripts/local-verification\");from verify_clock_proof import verify_guest_source;from run_chainlink_replay import candidate_sources;print(json.dumps({\"reviewed\":verify_guest_source(),\"candidate\":candidate_sources()},sort_keys=True))"
+      ],
+      "exit_code": 0,
+      "seconds": 0.045,
+      "log": "target/chainlink-client-fix-20261010T190741085776Z/pins.log",
+      "log_sha256": "8b38ed57077466f916742ee0bd4f02a97a37b8b0f88a74f422feae6b8b7fdfec"
+    },
+    {
+      "name": "diff-check",
+      "command": [
+        "git",
+        "diff",
+        "--check"
+      ],
+      "exit_code": 0,
+      "seconds": 0.02,
+      "log": "target/chainlink-client-fix-20261010T190741085776Z/diff-check.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "client-release-tests",
+      "command": [
+        "cargo",
+        "+1.99.0",
+        "test",
+        "--release",
+        "--locked",
+        "--offline",
+        "--manifest-path",
+        "crates/chainlink-streams-client/Cargo.toml"
+      ],
+      "exit_code": 0,
+      "seconds": 12.109,
+      "log": "target/chainlink-client-fix-20261010T190741085776Z/client-release-tests.log",
+      "log_sha256": "ad9aa880f29c9e7d1f7f8a2bb52de55a78d19a7d671c70bc7b6007ea068d4748"
+    }
+  ],
+  "tests": {
+    "debug": {
+      "pass": 40,
+      "fail": 0,
+      "ignored": 0
+    },
+    "release": {
+      "pass": 40,
+      "fail": 0,
+      "ignored": 0
+    },
+    "unique_runtime_tests": 40,
+    "existing_runtime_tests": 34,
+    "new_deterministic_clock_tests": 6
+  },
+  "original_34_test_files_sha256": {
+    "crates/chainlink-streams-client/src/tests.rs": "4db520b7c5891607b05aee1e936ce2796d4f10ac1f2f09711238ee9ea1f3afbf",
+    "crates/chainlink-streams-client/src/transport_tests.rs": "47e0b3c92b433d83bb6b3a4c383b0ba2e290875a38d6fef3da9f7745a2928d0c"
+  },
+  "source_sha256": {
+    ".github/workflows/chainlink-candidate.yml": "c13eba23984bf5d6b8f3655e57c41c5473940d08bafff521d315194f10623fa9",
+    "crates/chainlink-streams-client/Cargo.toml": "9e8cc825192982218ad848e88ab11a0fa58a44e46ccf59f57fea3963bec80c73",
+    "crates/chainlink-streams-client/Cargo.lock": "c0b29e553e285e59b453149501cbb20e1f5861979990932d9e4de60c05f75ae0",
+    "crates/chainlink-streams-client/src/auth.rs": "93122e475c5a3a03cd3bf8077209ae5f3e793330d2bc428303b129f33b0d2fd2",
+    "crates/chainlink-streams-client/src/lib.rs": "77caecd0659a9891d4609469a63dbcbdd72c79770f04f8512c9c386545fc3ab8",
+    "crates/chainlink-streams-client/src/transport.rs": "9e580dd2da0f74459646b74c5005878977b14a4265de63bf5654c0fa8a004c72",
+    "crates/chainlink-streams-client/src/tests.rs": "4db520b7c5891607b05aee1e936ce2796d4f10ac1f2f09711238ee9ea1f3afbf",
+    "crates/chainlink-streams-client/src/transport_tests.rs": "47e0b3c92b433d83bb6b3a4c383b0ba2e290875a38d6fef3da9f7745a2928d0c",
+    "docs/ACTIVE_WORK.md": "8ddcb09a023a6b8127dc4be19bab924dfc3e2807e4237b892c7ed29512959040",
+    "docs/CHAINLINK_STREAMS_CLIENT.md": "fab71c2e6d524f8b38bc5ff93feb631801eac1e23ddc182ded0142360d70514b"
+  },
+  "artifact_sha256": {
+    "docs/audits/2026-10-10-chainlink-client-fixed/README.md": "35d8fd909cd5f74ad369805824091d3ac5786241f8ee4164843d3219f48485e3",
+    "docs/audits/2026-10-10-chainlink-client-fixed/client-release-tests.txt": "fe81baff2d804107a4cd10f3a87e23cb39b87ff6dafa2071d8ca77cda412a65c",
+    "docs/audits/2026-10-10-chainlink-client-fixed/client-tests.txt": "f447e326104ac7c3890f6d35c926858b93e337464e0d3f5481c1538e1dd5f957"
+  },
+  "reviewed_guest_sources_sha256": {
+    "Cargo.toml": "e3144a0ae3447244776e65b04cfff39267c238e410c2d9abf20b53e6b837bbfa",
+    "crates/perp-core/Cargo.toml": "3bfb6981fa34a967185ce75abd07683e5262a694ebd60eb45a4f5c55aaf9704c",
+    "crates/perp-core/src/clock.rs": "e89e50e11b3ffb3a4a1a89ab6dd4854b61606cc17eb1236492994df0b59d50e7",
+    "crates/perp-core/src/commitment.rs": "43582ef5048d0d725e53976e3c2a1dfcf32984ed2ad1bb2ebd2032463e26ea92",
+    "crates/perp-core/src/engine.rs": "4d6037f1189939a71a41e31882012e6fa50b887087b5ccc2bfce4502b61d0f9e",
+    "crates/perp-core/src/error.rs": "0738da822be5639737e67f04a0f500af57fcc1f085dd64bec7fbe3b016c515c6",
+    "crates/perp-core/src/fixed.rs": "fc77559a31c1cfdd7a641cafbd773871aeb203849e165dbd158aa7a1b65ef7cd",
+    "crates/perp-core/src/funding.rs": "8f782cf3a4403c717eda44c6d2955789c31e4ef2a04bb4fdac8e61916018e781",
+    "crates/perp-core/src/hash.rs": "88430a8c2558b247bcf241035ad48fa1dbf8a3e77a0d176dfdbd608c930f93b9",
+    "crates/perp-core/src/lib.rs": "8f070fbec0f4b3d3fab5e594bcf808845803a59ece403dc42cb0f0df6e6253b5",
+    "crates/perp-core/src/market.rs": "8053e89a9b1021d6e461d46d733dfb1935aff5fc2a45be8121f96560fa4ddc2d",
+    "crates/perp-core/src/merkle.rs": "173f4667178ba4aa4048e43c2aeb9fa337918d6225b98c6597c004b59bc3a8f6",
+    "crates/perp-core/src/note.rs": "5cece4d513537c10464bd64b4612f829cd32cb9c1a80d3c8e40c573aace62423",
+    "crates/perp-core/src/nullifier.rs": "a252799c62dc42ec37c91ba6fd7674117b33c98c7f83e86b168f70898966ea78",
+    "crates/perp-core/src/oracle.rs": "91ae09655e35432aafa1135b23588d6f1f324b41a278ac640ebc30f106d17da2",
+    "crates/perp-core/src/order.rs": "99bb9b2be4948bcf8365c3022ef444be5941201ec6535de73d45a777e5a206d7",
+    "crates/perp-core/src/position.rs": "99d120139086092d2dae4ed11d3a677906c1cf3efd7aff9e58f27f3437f2ae66",
+    "crates/perp-core/src/state.rs": "e1026c1e2b56cfcbee4eff812e88ff3dcde052e46818deab980a071fcdbec388",
+    "crates/sp1-guest/Cargo.lock": "113518cb212208aa46a629608af9d946f9a4006ac211035a15e9cb8c022fb8c3",
+    "crates/sp1-guest/Cargo.toml": "d0ed7050076bb3548b9e3410f63066068752382f4dab31e344096c9c3e42dc85",
+    "crates/sp1-guest/src/main.rs": "c0d33ff8645ebdcc8994d4d65729b8a60a224bcda18415423da15ed875c16f5c"
+  },
+  "candidate_sources_sha256": {
+    "crates/chainlink-oracle/Cargo.lock": "62f58aa9da1592de0a4419052c5145128425976b0e0c5520fcce0bb6c936b246",
+    "crates/chainlink-oracle/Cargo.toml": "0b05c79f8fa37dd643466ad9e4b0013d6d6d257d7cfc414b8351cc7a11a88421",
+    "crates/chainlink-oracle/src/binding.rs": "8c66dba2a1d49825c1c13b89aa1a55d47fcab42abe481a0fce308128215cc877",
+    "crates/chainlink-oracle/src/lib.rs": "a107bf7464fe8654c69d9864c5ab6bcac6728d993634004d6d0075fbb707e224",
+    "crates/chainlink-oracle/src/policy.rs": "c36d89a3212cd5d9893b19e77b6b4dba5dba364dcb2135b24424fdab5a42b285",
+    "crates/chainlink-oracle/src/report.rs": "91b824e8a20bc7b1d8aa907813eb95061c659a655f72ef01fdc68409b7232d26",
+    "crates/sp1-chainlink-guest/Cargo.lock": "de6dbb43b0b85968fa2f7f7de0d71d53c54adacebbc9786cfd17197491142cbe",
+    "crates/sp1-chainlink-guest/Cargo.toml": "9f47d6f2cfc08fb71fdfcbc0877f09f083685a1ea016bbd67ea87dd60c8edc55",
+    "crates/sp1-chainlink-guest/src/main.rs": "9e403b9f241e0a53afc2e58baa7bf978ddf81c28e5704acc7a6f734962874187"
+  },
+  "patch_input_sha256": "5c151f2c8c869d122466d766868660b25cec5ffb900b6ecb270d1a4763cbfe00",
+  "patch_output_sha256": "9e580dd2da0f74459646b74c5005878977b14a4265de63bf5654c0fa8a004c72",
+  "historical_regression_record": "docs/audits/2026-10-10-chainlink-client-regressions/verification.json",
+  "remote_write_succeeded": true,
+  "permission_or_protection_change": false,
+  "prior_denial_root_cause": "not established; no detailed prior denial available",
+  "live_chainlink_authentication": false,
+  "real_credentials_used": false,
+  "don_signature_verified": false,
+  "proof_generated": false,
+  "production_release_hold": true,
+  "source_scope": "host client, tests, CI and docs; no guest/contract/price policy change",
+  "log_normalization": "checkout path replaced by <REPO>; trailing whitespace normalized; raw SHA256 retained"
+}
