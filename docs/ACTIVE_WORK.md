@@ -61,9 +61,11 @@ doğrulandı: 4 sentetik başarılı girdi + 15 çıktısız guest reddi. Yeni g
 proof ve production guest/deployment kabulü tamamlanmadı. Normalizasyon açık asset/USD ÷ USDC/USD aday tarifidir;
 üretim ekonomik onayı yoktur ve backup alanı bağımsız TWAP değildir.
 
-## Aktif PR #43: REST istemcisi runtime doğrulaması
+## PR #43: REST istemcisi runtime doğrulaması (BİRLEŞTİRİLDİ)
 
-Dal `feat/chainlink-streams-client-20261010`, taban `e552bba`.
+Dal `feat/chainlink-streams-client-20261010` (head 2a03bb0) main'e birleştirildi
+(merge commit c34fb56, 11 Ekim 2026 salt-okuma kontrolü). Aşağıdaki kayıt
+tarihseldir:
 Dört gerçek regresyon düzeltildi: ileri saat adımında eksik I/O yaş hesabı,
 + işaretli Content-Length, yinelenen ve desteklenmeyen Transfer-Encoding.
 Önceki 34 test değişmedi; 6 deterministik saat testi eklendi. Yerel debug ve release
@@ -76,10 +78,50 @@ hash'i doğrulanarak yama uygulandı. Araç güvenlik/OS izin ayarı değiştiri
 Eski başarısız test kayıtları korunmuştur. Güncel kaynak/komut/çıktı kanıtı:
 `audits/2026-10-10-chainlink-client-fixed/` ve `CHAINLINK_STREAMS_CLIENT.md`.
 
-Sıradaki odak gerçek feed/decimal/USDC kimlikleri ve yetkili stream okumasıdır.
-Gateway bağlantısı, scheduler, kalıcı rapor arşivi ve recovery henüz yoktur.
-İstemci sonucu UnverifiedReport kalır; DON doğrulaması veya canlı oracle geçişi
-iddiası yoktur. Ücretli erişim ve gerçek credential kullanımı ayrıca yetki ister.
+## Kullanıcı kararı: canlı feed keşfi şimdilik ertelendi
+
+10 Ekim 2026: önceki public discovery testnet/mainnet HTTP403 bulgusu nedeniyle
+kullanıcı feed erişimi/keşfi adımını atlayıp raporda açık tutmamızı istedi.
+Bu tur yeniden discovery çağrısı yapılmadı. Gerçek feed/scale/USDC/entitlement
+kimlikleri **ERTELENDİ / AÇIK**; güvenlik kabulünden çıkarılmadı veya tamamlandı
+sayılmadı. Varsayılan feed, USD=USDC eşitliği veya gerçek credential eklenmedi.
+
+## PR #43 birleştirildi (11 Ekim 2026 salt-okuma kontrolü)
+
+Main artık c34fb56 (merge PR #43, head 2a03bb0). Bu dala (#43 sonrası main
+tabanlı) daha önce yerel/commitlenmemiş olarak kalan PreparedPair, ReportArchive
+ve rapor-arşivi belge/audit kayıtları taşındı; kullanıcının o checkout'undaki
+özgün yerel çalışması korundu, başka bir arşiv yeniden inşa edilmedi.
+
+## Aktif paket: arşiv → gateway → mühürlü journal → recovery bağı (aday)
+
+Yeni opt-in/candidate gateway kodu eklendi (PRODUCTION RELEASE HOLD sürüyor;
+reviewed v2 guest/ELF/vkey/public input ve prover yönlendirmesi DEĞİŞMEDİ):
+
+- `DARKPERP_CHAINLINK_ARCHIVE=disabled` (varsayılan, davranış aynen korunur) |
+  `candidate` + `DARKPERP_CHAINLINK_ARCHIVE_DIR` + `DARKPERP_CHAINLINK_POLICY_JSON`.
+- Aday intake: politika marketleri için base/USD + USDC/USD çifti çekilir
+  (`DARKPERP_CHAINLINK_ACCESS_KEY`/`_SECRET` yoksa canlı pull DEFERRED kalır),
+  **önce** ReportArchive'e kalıcı yazılır, **sonra** normalleşmiş fiyatın
+  gateway imzalı transcript'i admission olarak uygulanır.
+- Window seal (`begin_journaled_window_settle`): gerçek Fill/AccrueFunding/
+  Liquidate/Unbind op akışı (sıralı, tekrarlı kullanım dahil) arşiv kayıtlarına
+  **değer eşleşmesiyle** bağlanır; bağlanamayan pencere seal edilmez (fail-closed).
+- Rollback journal yeni açık sürüm `DPRBJL6\0`: v5 journal + authenticated
+  ArchiveEnvelope (policy binding + op başına archive ID). v5 ok/yaz davranışı
+  aynen korunur; aday-gerekli modda legacy journal reddedilir; legacy modda v6
+  journal reddedilir; saat modu `resume_exact` zarfı düşürmeden yazar.
+- Boot recovery: açılan aday journal'ın her referanslı kaydı var olmalı,
+  policy/market/op zamanıyla çözümlenmeli ve op transcript'iyle birebir
+  eşleşmeli; eksik/bozuk/uyumsuz kayıt = sürümlü HOLD (dosya korunur, başlangıç reddedilir).
+- Sıralı dayanıklılık engelleri: arşiv kalıcı → state değiştiren admission;
+  authenticated journal kalıcı → prove/broadcast yan etkisi.
+
+Sıradaki yazılım: canlı Data Streams entitlement sonrası uçtan uca aday döngü,
+v3 chainlink guest'in gerçek prover bağlantısı (şu an açıkça devre dışı;
+v3 witness v2 prover'a GÖNDERİLMEZ), admission dedup/scheduler. İstemci ve arşiv
+sonucu DON açısından doğrulanmamıştır. Ücretli erişim ve gerçek credential
+kullanımı ayrıca yetki ister.
 
 ## Açık işler ve kapanış ölçütleri
 
@@ -105,3 +147,10 @@ Gerçek credential dosyaları okunmaz veya yayınlanmaz. Ücretli abonelik, GPU/
 kamu zincirine işlem, state migration ve production rollout yapılmadı.
 Mock uptime/DON/SP1 testleri canlı doğrulama veya gerçek proof değildir.
 Ayrı aday guest, reviewed v2 ELF/vkey'nin yerine geçirilmez.
+
+## Son yayın durumu: aday gateway bağlantısı PR'ı açık
+
+11 Ekim 2026: #43 main'de (c34fb56). Bu dal (#43 sonrası main tabanlı) önceki
+yerel arşiv çalışmasını taşır ve üzerine opt-in candidate gateway intake/seal/
+journal/recovery bağını ekler; PR main'e açıktır, merge yapılmadı, PRODUCTION
+RELEASE HOLD sürüyor. Kanıt: `audits/2026-10-11-chainlink-archive-gateway-binding/`.
