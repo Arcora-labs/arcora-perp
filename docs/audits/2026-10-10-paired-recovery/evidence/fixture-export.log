@@ -1,0 +1,18 @@
+   Compiling gateway v0.0.1 (<HOME>/Desktop/arcora-perp/repo/crates/gateway)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 13.67s
+     Running unittests src/main.rs (target/debug/deps/gateway-d98298fc6d4753ec)
+
+running 1 test
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+[state] genesis engine root 0x45c35f80338a149a3d14d3dd8bfdd959f3dc769427b15c0e65ba817a54156436
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+[recovery] HOLDING: rollback journal window 0 matches no recovery row (snapshot Counter B 1, chain batchCount 2, chain root 0x00) — keeping the journal; operator must reconcile (startup is refused until this journal resolves)
+[recovery] rolled back window 0 at boot (seal persisted, tx never landed) — the next settle re-seals it under the same batch id
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+[recovery] rolled forward window 0 at boot (tx landed, commit lost) — bookkeeping re-committed from the journal
+[recovery] rollback journal for window 0 is stale (its commit was already persisted) — resolved, nothing to do
+PAIR_EXPORT public synthetic fixture verified; no live chain or proof
+test deposit_ingestion::paired_recovery_tests::export_paired_recovery_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 492 filtered out; finished in 0.45s

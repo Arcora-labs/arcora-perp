@@ -610,3 +610,7 @@ mod tests;
 #[cfg(test)]
 #[path = "deposit_ingestion/receipt_tests.rs"]
 mod receipt_tests;
+
+#[cfg(test)]
+#[path = "deposit_ingestion/paired_recovery_tests.rs"]
+mod paired_recovery_tests;

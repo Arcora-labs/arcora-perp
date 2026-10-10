@@ -66,7 +66,7 @@ class OwnedGateways:
     def __init__(self, binary, scratch):
         self.binary, self.scratch, self.children = binary, scratch, []
 
-    def launch(self, name, state, seed, *, required=None, checkpoint=None):
+    def launch(self, name, state, seed, *, required=None, checkpoint=None, journal=None):
         directory = self.scratch / name
         directory.mkdir()
         log = directory / 'gateway.log'
@@ -79,6 +79,8 @@ class OwnedGateways:
             env['DARKPERP_REQUIRE_RESTORE'] = required
         if checkpoint is not None:
             env['DARKPERP_RESTORE_SHA256'] = checkpoint
+        if journal is not None:
+            env['DARKPERP_RESTORE_JOURNAL'] = journal
         with log.open('wb') as output:
             child = subprocess.Popen([str(self.binary)], cwd=directory, env=env,
                                      stdout=output, stderr=subprocess.STDOUT)
@@ -215,6 +217,24 @@ def run(binary, out):
                     bad.write_bytes(content)
                     result['cases'].append(owned.refusal(label, bad, test_seed, **options))
                 result['cases'].append(owned.refusal('directory-not-snapshot', scratch, seed, required='1'))
+                for label, content, journal_pin, snapshot_pin in (
+                    ('paired-journal-missing', None, latest_hash, latest_hash),
+                    ('paired-journal-wrong', latest, '00' * 32, latest_hash),
+                    ('paired-absence-violated', latest, 'absent', latest_hash),
+                    ('paired-snapshot-pin-missing', None, 'absent', None),
+                    # Correct digest never substitutes for actual journal decoding.
+                    ('paired-valid-hash-invalid-journal', latest, latest_hash, latest_hash),
+                ):
+                    paired_state = scratch / (label + '.snapshot')
+                    paired_state.write_bytes(latest)
+                    sidecar = Path(str(paired_state) + '.rollback')
+                    if content is not None:
+                        sidecar.write_bytes(content)
+                    outcome = owned.refusal(label, paired_state, seed, required='1',
+                                            checkpoint=snapshot_pin, journal=journal_pin)
+                    require((not sidecar.exists()) if content is None else sidecar.read_bytes() == content,
+                            'refused journal is not created deleted or replaced')
+                    result['cases'].append(outcome)
                 selected = latest
                 for number in (1, 2):
                     destination = scratch / ('restore-data-' + str(number))
@@ -224,7 +244,7 @@ def run(binary, out):
                     restored_state.write_bytes(selected)
                     checkpoint_hash = sha(selected)
                     restored, restored_log = owned.launch('restored-process-' + str(number), restored_state,
-                                                         seed, required='1', checkpoint=checkpoint_hash)
+                                                         seed, required='1', checkpoint=checkpoint_hash, journal='absent')
                     restored_port = owned.ready(restored, restored_log)
                     require('[state] restored sealed snapshot from ' in restored_log.read_text(), 'actual snapshot startup path used')
                     verify_account(expected, ok(restored_port, 'GET', '/v1/accounts/me', key=current_key))
@@ -251,7 +271,7 @@ def run(binary, out):
                     selected = restored_state.read_bytes()
                     # The periodic writer may reseal identical state with a new
                     # nonce. Pin the selected checkpoint for the next startup.
-                require(len(result['cases']) == 12 and len(result['restore_samples']) == 2, 'complete restore matrix')
+                require(len(result['cases']) == 17 and len(result['restore_samples']) == 2, 'complete restore matrix')
                 require(sha(binary.read_bytes()) == result['binary_sha256'], 'binary unchanged during drill')
                 require(sha(Path(__file__).read_bytes()) == result['script_sha256'], 'script unchanged during drill')
                 result['status'] = 'PASS'

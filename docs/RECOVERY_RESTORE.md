@@ -91,10 +91,11 @@ emir iptali ve dayanıklı credential recovery akışını gerçek HTTP üzerind
 özgün emir receipt'i ve iptal durumu doğrulanır; eski API key 401, eski recovery
 imzası 400 alır. Deposit route ve idempotent iptal sonucu korunur.
 
-On iki reddetme durumu ayrıca çalışır: eksik state ayarı, eksik dosya, yalnız pin
+On yedi reddetme durumu ayrıca çalışır: eksik state ayarı, eksik dosya, yalnız pin
 ile eksik dosya, bozuk mode/hash ayarı, yanlış seed, kesik/tahrif edilmiş snapshot,
 eski veya yanlış checkpoint, `0` ile pin'i devre dışı bırakma girişimi ve dosya
-yerine dizin. Reddedilen mevcut dosya byte-byte korunur; eksik dosyanın yerine
+yerine dizin; ayrıca eksik/yanlış journal, beklenmeyen sidecar, snapshot pin'i
+olmadan journal seçimi ve doğru hash'li fakat geçersiz journal. Reddedilen mevcut dosya byte-byte korunur; eksik dosyanın yerine
 yeni snapshot üretilmez.
 
 `copy_to_verified_state_seconds` yalnız yerel kopyadan HTTP/state doğrulamasına
@@ -115,3 +116,56 @@ python3 -m unittest discover -s scripts/local-verification \
   -p test_gateway_restore_drill.py -v
 cargo test --locked -p gateway snapshot::tests::restore_
 ```
+
+
+## Snapshot ve journal'ı birlikte sabitleme
+
+`DARKPERP_RESTORE_JOURNAL=<64 ASCII hex>` beklenen `.rollback` dosyasını bağlar.
+`DARKPERP_RESTORE_JOURNAL=absent` seçilen checkpoint'te journal bulunmadığını
+**açıkça** belirtir. Her iki durumda da geçerli `DARKPERP_RESTORE_SHA256` gerekir;
+yalnız journal'ı sabitlemek ilgili snapshot'ı bağlamaz. Değer unset ise mevcut
+journal keşfi sürer; bu legacy mod eksik bir journal'ın yedekten unutulduğunu
+tek başına saptayamaz. Yanlış/bilinmeyen/boş değerler reddedilir.
+
+Örnek (değerler daha önce incelenmiş aynı checkpoint kaydından gelmelidir):
+
+```sh
+DARKPERP_STATE=/restore/state.snapshot \
+DARKPERP_REQUIRE_RESTORE=1 \
+DARKPERP_RESTORE_SHA256="$APPROVED_SNAPSHOT_SHA256" \
+DARKPERP_RESTORE_JOURNAL="$APPROVED_JOURNAL_SHA256_OR_ABSENT" \
+  ./gateway
+```
+
+Journal hash'i eşleşse bile MAC, format ve recovery tablosu kontrolü devam eder.
+Hash'i doğrulanan journal baytları yeniden dosya açılmadan decoder'a verilir.
+Yüklenmiş fakat çözülememiş journal bellek içi olarak da takip edilir; dosyanın
+sonradan yok olması çözüldüğü anlamına gelmez. Mutasyonun kalıcı kaydı başarısızsa
+başlangıç kapalı kalır. Symlink ve nonregular journal girişleri reddedilir;
+parent dizinler ve servis ayarları yine güvenilen operatör sınırındadır.
+
+Snapshot/journal kopyası alınırken yazıcıların durdurulması veya koordineli bir
+checkpoint alınması gerekir. İki ayrı hash birbirleriyle semantik uyumu ya da
+son zincir durumunu kendiliğinden kanıtlamaz. Bu değişiklik canlı backup alma,
+ikili dosyanın atomik kopyalanması, rollback korumalı uzaktan imza veya key release
+servisi kurmaz.
+
+**Cursor yerleşimi:** deposit domain, tüketilen count/tip, receipt ledger ve
+finalized anchor snapshot içindedir; ayrıca taşınacak bir deposit-cursor dosyası
+yoktur. Restore sonrası L1 prefix/anchor doğrulaması yeniden gerekir. Challenge
+tarama cursor'u kalıcı dosya değildir; boot'ta mevcut challenge penceresini geri
+sararak yeniden kurulur. Uzun kesintide kaçmış challenge deadline'ları bu testle
+kapanmış sayılmaz.
+
+`deposit_ingestion::paired_recovery_tests` üç sentetik deposit (biri pencere
+mühürlendikten sonra), imzalı bir çekim ve gerçek şifreli snapshot/journal ile
+HOLD, rollback/reseal, roll-forward ve tekrar commit senaryolarını sınar. Deposit
+cursor/ledger kaybolmamalı, eski sayfa yeniden credit edilmemeli ve çekim yaprağı
+korunmalıdır. Zincir gözlemleri test girdisi, prover açıkça mock'tur.
+
+`crates/gateway/tests/fixtures/paired-recovery/` fixture'ı ARM64 macOS'te yalnız
+yeni oluşturulmuş test hesaplarından üretilmiştir. Bilinen açık test seed'iyle
+şifrelenir; kullanıcı/üretim verisi veya kullanılabilir fon içermez. Linux CI bu
+aynı baytları gerçek decoder/recovery fonksiyonlarıyla açar. Bu, fixture ve
+kurtarma mantığının platformlar arası testidir; canlı production servisi, RPC,
+attestation, anahtar temini ve gerçek fonların başka makineye taşınması değildir.

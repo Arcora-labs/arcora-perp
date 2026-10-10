@@ -1,0 +1,144 @@
+{
+  "repository": "Arcora-labs/arcora-perp",
+  "run_id": 38054411406,
+  "job_id": 114219817507,
+  "job_conclusion": "success",
+  "runner_name": "GitHub Actions 1000000426",
+  "labels": [
+    "ubuntu-latest"
+  ],
+  "tested_head": "27023614509acf5c676433b72f50a46678d76622",
+  "base_sha": "29b9790746890d92b50b94b541bc00789219c301",
+  "synthetic_merge_sha": "75eeeb835f745251c96df8a587632ac0d724e0fe",
+  "tree_matches_head": true,
+  "artifact_id": 11670748502,
+  "artifact_zip_digest": "sha256:92040b06f3d5313433d6e3657464eee5dce2fe6097d558b17773a1f2d1526dac",
+  "snapshot_sha256": "a1d0036155f3cd37a2f65f45fe909a57918f2d2087423c0722da525db04ab73e",
+  "journal_sha256": "055c42499b46300e23f8ce5cd25d7d890e63d49d507f3d17db9c03622cc5ac18",
+  "export_host": "original ARM64 Mac",
+  "verify_host": "GitHub-hosted x86_64 Linux",
+  "steps": [
+    {
+      "name": "Set up job",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Run actions/checkout@v4",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Run dtolnay/rust-toolchain@stable",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Run Swatinem/rust-cache@v2",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Run foundry-rs/foundry-toolchain@v1",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Run pnpm/action-setup@v4",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Run actions/setup-node@v4",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Install locked local signing fixture dependencies",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Build the actual gateway and record its source",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Public macOS snapshot and journal on Linux recovery code",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Local clock wallet lifecycle and gateway-offline claims (explicit mock verifier)",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Release manifest against owned six-contract Anvil stack",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Real cast transport against owned RPC fixtures",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Clock finality and reorg checks through real cast transport",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Actual production event paths to a local alert collector",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Real gateway HTTP ACK, SIGKILL and encrypted restart matrix",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Required snapshot restore and fresh-directory recovery drill",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Run actions/upload-artifact@v4",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Post Run actions/setup-node@v4",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Post Run pnpm/action-setup@v4",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Post Run foundry-rs/foundry-toolchain@v1",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Post Run Swatinem/rust-cache@v2",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Post Run actions/checkout@v4",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Complete job",
+      "status": "completed",
+      "conclusion": "success"
+    }
+  ],
+  "scope": "Public synthetic fixture portability and real recovery functions; not a production service migration.",
+  "release_gate": "HOLD"
+}

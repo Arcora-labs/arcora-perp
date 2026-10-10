@@ -1,0 +1,4 @@
+    Checking dark-perp-attestation v0.0.1 (<HOME>/Desktop/arcora-perp/repo/crates/attestation)
+    Checking prover v0.0.1 (<HOME>/Desktop/arcora-perp/repo/crates/prover)
+    Checking gateway v0.0.1 (<HOME>/Desktop/arcora-perp/repo/crates/gateway)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 24.11s
