@@ -89,8 +89,11 @@ Tested code commit: `df3f296bfa22d2e632f8985d462db27b320b40ad`.
 The first focused run passed 24 tests; final coverage added pre-attempt Absent
 recovery and in-invocation finality watermark cases. No failed run occurred.
 The final root run finished at 14:12:38 UTC. All five source files remained byte
-identical throughout the combined checks. A later publication commit adds only
-documentation and evidence. Final command results and source/log hashes are in
+identical throughout the combined checks. Later publication commits add only
+documentation, evidence and a narrowly scoped audit-log whitespace attribute.
+Cargo's terminal empty lines are preserved byte for byte; only those log files
+omit Git's blank-at-EOF check, retaining trailing-space and space-before-tab checks.
+Final command results and source/log hashes are in
 [verification.json](verification.json).
 The previous #48 contract and CPU results remain historical evidence. Its four
 golden builder sources, contract files, corpus and pinned runtime inputs are

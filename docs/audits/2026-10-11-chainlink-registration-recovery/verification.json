@@ -1,6 +1,6 @@
 {
   "schema": "arcora-offline-registration-recovery-evidence-v1",
-  "observed_utc": "2026-10-11T14:13:14.802395+00:00",
+  "observed_utc": "2026-10-11T14:14:54.570363+00:00",
   "tested_code_commit": "df3f296bfa22d2e632f8985d462db27b320b40ad",
   "base_main": "5dac90412b65c299cb62bcff1ab2e1ae0533b6a0",
   "source_sha256": {
@@ -385,6 +385,11 @@
       "All four original fixture builders remain byte-identical to merged main base; production HOLD and live gates remain unchanged."
     ]
   },
+  "audit_log_whitespace_metadata": {
+    "path": ".gitattributes",
+    "sha256": "9ea82d093299be56eacf4aec19e9a8858aa107f6750a4c56f76cc960b25f7048",
+    "scope": "only this audit logs/*.log, terminal blank line preserved; blank-at-eol and space-before-tab still checked"
+  },
   "four_golden_builder_sources_unchanged": {
     "crates/gateway/src/candidate_registration.rs": "86ffc1032f31952fad4e0c815a9564397c2d86cff5c62e23a664538209ba4c37",
     "crates/gateway/src/report_archive_binding.rs": "1204db404b472c8c77a56e23fe2e59d4577d5d2bb334c8f0f4880449352812a9",
@@ -446,8 +451,8 @@
   "physical_power_loss_or_process_kill_test": false,
   "artifacts": {
     "README.md": {
-      "sha256": "aabbf44f70eae2ac7e8544785f64bfd910a704742dcfc5eeaf16bd1ede83f7fd",
-      "bytes": 6696
+      "sha256": "56a0a007e1bc8cbd227fa939b48ce08d8ceddca859e29cfca0eab9f3f7ba2b6f",
+      "bytes": 6908
     },
     "focused-validation.json": {
       "sha256": "53528c8517e94d1447cec46705e4b16007047e4c6e6316ceff5cf6b3454fb78d",
