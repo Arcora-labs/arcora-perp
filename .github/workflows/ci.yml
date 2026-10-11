@@ -25,7 +25,7 @@ jobs:
   rust:
     name: rust (workspace)
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     # Independent job: a lint failure must not prevent test execution.
     # The frozen HTTP archive fixture has a real 2-second freshness deadline.
     # Bound scheduling contention; do not loosen report freshness or assertions.
