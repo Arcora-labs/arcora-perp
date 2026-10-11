@@ -1,0 +1,62 @@
+{
+  "final1_json_sha256": "58029d6a2dbfa231ee97a4b896df79b58020a8e134ea2f6af3b502c7a0eaf3ce",
+  "final2_json_sha256": "1263230407bfe0c340a61d4106e952812abd7f16e93cac3397d3e68412bf2067",
+  "unchanged_native_helper_sha256": "86ffc1032f31952fad4e0c815a9564397c2d86cff5c62e23a664538209ba4c37",
+  "changed_sources": [
+    "candidate_protocol_tests.rs"
+  ],
+  "cases": [
+    {
+      "name": "normal-lifecycle",
+      "exactly_unchanged_fields": [
+        "entries_abi",
+        "input_hash",
+        "evidence_hash",
+        "policy_hash",
+        "original_entries",
+        "entries",
+        "first_ms",
+        "last_ms",
+        "timed_ops",
+        "policy"
+      ],
+      "changed_clock_fields": [
+        "previous_root",
+        "base_commitment"
+      ],
+      "old_witness_sha256": "0xe50f6b15f4088c173d0cee3ccc67dbf8e352561ec06e2d57c6ff70cf3ce5843c",
+      "new_witness_sha256": "0x8f23160f0a0ff9d004c4c78a25877fc84f4e50e8263b46115695f1d212f9e937",
+      "fresh_witness_identity": true
+    },
+    {
+      "name": "liquidation",
+      "exactly_unchanged_fields": [
+        "entries_abi",
+        "input_hash",
+        "evidence_hash",
+        "policy_hash",
+        "original_entries",
+        "entries",
+        "first_ms",
+        "last_ms",
+        "timed_ops",
+        "policy"
+      ],
+      "changed_clock_fields": [
+        "previous_root",
+        "base_commitment"
+      ],
+      "old_witness_sha256": "0x9cbf509059a44fa91899b4e4651f1e5b3fea460a130f3d1a66769db963896da4",
+      "new_witness_sha256": "0xba6b4cd72a38db1c4b0188b9eff98e41022dffceca7dd5de5ff47b0f5adb0337",
+      "fresh_witness_identity": true
+    }
+  ],
+  "solidity_only_json_sha_comment_changed": true,
+  "normalized_old_solidity_sha256": "4f219b46afe76a00bcbab302472fd328629e826177dd4b4657405168a20d726a",
+  "final2_solidity_sha256": "6a854f62f20f9f270db49963c73e0e0b70170594dd969169567ad3eb286decdc",
+  "contract_test_source_sha256": "a3dddb532abef84ac38c149c86a4f3112cb431a74361bf76fc1afa49bfc8bba7",
+  "independent_abi_body_input_keccak_rebuild": "PASS",
+  "focused_foundry_repeated": false,
+  "reason": "Exact ABI/full report bytes/hash values and contract test source unchanged; only generation identity comment changed",
+  "final2_generation_sources_current": true
+}

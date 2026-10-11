@@ -1,0 +1,12 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.63s
+     Running unittests src/main.rs (target/debug/deps/gateway-610b7230a2c5bb73)
+
+running 5 tests
+test candidate_intent::tests::actual_pre_rename_io_failure_keeps_old_target_bytes ... ok
+test candidate_intent::tests::authentication_file_and_vector_bounds_refuse_before_replacement ... ok
+test candidate_intent::tests::durable_intent_restart_requires_exact_request_and_prepared_bytes ... ok
+test candidate_intent::tests::failed_prepared_save_preserves_previous_exact_checkpoint ... ok
+test candidate_intent::tests::authenticated_foreign_v2_or_malformed_records_are_never_replaced ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 585 filtered out; finished in 0.16s
+

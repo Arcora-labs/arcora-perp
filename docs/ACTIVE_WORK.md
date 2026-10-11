@@ -5,7 +5,8 @@ Bu belge güncel çalışma sırasıdır; tarihsel `NEXT_STEPS.md` yerine kullan
 Son doğrulanan main: `969ecec2fecd29621c5508ab58fb778617b9bce2` (#47).
 #44 ve #45, güncel yayın head'lerinde ayrı ayrı 19/19 başarılı kontrol sonrası
 normal merge edildi; repository korumaları değiştirilmedi. #44 merge kimliği
-`e697b2f19d74b1021ba3a32b64b4f15ceb159880`, #45 merge kimliği yukarıdadır.
+`e697b2f19d74b1021ba3a32b64b4f15ceb159880`, #45 merge kimliği
+`c82dd492f74a47ab3806395dd05b46b3dff884e4`.
 #45'in main ile güncellenmiş kontrol head'i `0f2fc42964bd25d5cd36e20f98d8edc61ab22210`;
 test edilmiş A1 ağacıyla eşitliği doğrulandı. Gözlem kaydı:
 [merge-observations.json](audits/2026-10-11-chainlink-archive-retention/merge-observations.json).
@@ -196,19 +197,25 @@ değildir. Kanıt: [A3 fiyat yaşam döngüsü](audits/2026-10-11-chainlink-pric
 |---|---|---|
 | A0 | #44 final evidence ve eski audit düzeltmesi | #44 yayın head'i `5cb1470`, 19/19 başarılı kontrol sonrası normal merge edildi. |
 | A1 | Açık pencerenin özgün kabul ID'lerini kalıcılaştırma | #45 güncel head `0f2fc42`, 19/19 başarılı kontrol sonrası normal merge edildi. DPCAS2 + özgün v6 journal ID recovery; snapshot sonrası her admission için ayrı WAL garantisi yok. |
-| A2 | İndeks kapasitesi ve retention | Referansları doğrulayan checkpoint sonrası indeks retirement, DPCAS3 WAL beklentisi ve admission öncesi sonlu arşiv kotası uygulandı. 4.100 admission/restart dahil nihai yerel sonuç ayrı A2 kanıt kaydındadır; fiziksel GC yapılmaz. |
-| A3 | Fiyat kullanan bütün gateway yolları | Aday priced mutasyon preflight'ları ve özgün withdrawal transcript'i uygulandı. 550 gateway PASS; iki gerçek gateway sentetik lifecycle witness'ında native/gerçek SP1 CPU commitment eşit, üç negatif exit 1/boş public çıktı. Yeni PR CI ayrı; submission HOLD. |
-| A4 | Ayrı aday prover/settlement protokolü | Doğru witness/program/vkey/report/clock/uptime bağları; yanlış sürümde sıfır registration/prove/broadcast; yerel harness ardından gerçek proof/verifier kabulü. |
+| A2 | İndeks kapasitesi ve retention | #46 güncel head `b3a9507`, 19/19 başarılı kontrol sonrası normal merge edildi. Referansları doğrulayan checkpoint sonrası indeks retirement, DPCAS3 WAL beklentisi ve admission öncesi sonlu arşiv kotası uygulandı. 4.100 admission/restart dahil nihai yerel sonuç ayrı A2 kanıt kaydındadır; fiziksel GC yapılmaz. |
+| A3 | Fiyat kullanan bütün gateway yolları | Aday priced mutasyon preflight'ları ve özgün withdrawal transcript'i uygulandı. 550 gateway PASS; iki gerçek gateway sentetik lifecycle witness'ında native/gerçek SP1 CPU commitment eşit, üç negatif exit 1/boş public çıktı. #47 güncel head `15bdf54`, 19/19 başarılı kontrol sonrası normal merge edildi; submission HOLD. |
+| A4 | Ayrı aday prover/settlement protokolü | İlk test-only offline harness, özgün rapor ABI/body hash parity ve authenticated intent/prepared retry uygulandı. Yerel kanıt ayrı kayıttadır; gerçek proof, canlı servis/target ve L1 uzlaşma kabulü açık. |
 
 Canlı feed keşfi/entitlement kullanıcı kararıyla ertelenmiştir; A1–A4 yazılım
 hazırlığını durdurmaz. Yeniden discovery/credential denemesi veya feed/eşik
 tahmini yapılmaz. DON doğrulaması, yeni proof ve canlı deployment kabulü olmadan
 aday gönderim engeli kaldırılmaz; v3 witness v2 prover'a GÖNDERİLMEZ.
 Ücretli erişim, gerçek credential/fon ve kamu zinciri işlemi ayrıca yetki ister.
-A4'ün ilk ayrı yazılım paketi için [offline protocol tasarımı](audits/2026-10-11-chainlink-price-lifecycle/next-a4-design.md)
-hazırlandı; henüz uygulanmış değildir. V3 witness v2 inner clock kullanır;
-full-report ABI input hash'i evidence body hash'inden ayrıdır ve uptime epoch
-wrapper kayıt durumudur. Bu bağlar prover/settlement harness'ında ayrıca sınanır.
+A4'ün ilk ayrı yazılım paketi, [önceki offline protokol tasarımı](audits/2026-10-11-chainlink-price-lifecycle/next-a4-design.md)
+doğrultusunda uygulandı. Yeni protokol modülleri yalnız `cfg(test)`
+kapsamındadır; canlı bir transport veya `PreparedSettle` dönüşümü eklemez. V3
+witness v2 inner clock kullanır; full-report ABI input hash'i evidence body
+hash'inden ayrıdır ve uptime epoch wrapper kayıt durumudur. Authenticated
+`DPCINT3` intent/prepared kaydı immutable request/material/target/epoch ile
+restart/retry sınar. Final CPU corpus iki actual gateway sentetik akışından
+gelir; contract parity gerçek wrapper'lar ve mock DON/SP1/uptime ile sınanır.
+Contract fixture kökleri native tam commitment yerine geçmez. Kanıt:
+[A4 offline aday protokolü](audits/2026-10-11-chainlink-candidate-protocol/README.md).
 
 ## Açık işler ve kapanış ölçütleri
 

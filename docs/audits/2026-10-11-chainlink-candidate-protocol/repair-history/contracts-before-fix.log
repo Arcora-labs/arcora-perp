@@ -1,0 +1,24 @@
+Warning: This is a nightly build of Foundry. It is recommended to use the latest stable version. To mute this warning set `FOUNDRY_DISABLE_NIGHTLY_WARNING` in your environment. 
+
+No files changed, compilation skipped
+
+Ran 7 tests for test/ChainlinkCandidateProtocol.t.sol:ChainlinkCandidateProtocolTest
+[PASS] test_native_liquidation_abi_and_mock_contract_lifecycle() (gas: 8257199)
+[PASS] test_native_normal_abi_and_mock_contract_lifecycle() (gas: 8319332)
+[PASS] test_omitted_and_extra_actual_entries_fail_atomically() (gas: 7884354)
+[FAIL: next call did not revert as expected] test_registered_actual_entries_cannot_settle_in_different_epoch() (gas: 8115866)
+[PASS] test_reordered_registered_material_cannot_replace_original() (gas: 8239616)
+[PASS] test_same_bodies_different_signature_container_refuses_replacement() (gas: 8432792)
+[FAIL: next call did not revert as expected] test_wrong_clock_endpoint_refuses_reports_and_settlement() (gas: 7847214)
+Suite result: FAILED. 5 passed; 2 failed; 0 skipped; finished in 19.55ms (46.56ms CPU time)
+
+Ran 1 test suite in 30.12ms (19.55ms CPU time): 5 tests passed, 2 failed, 0 skipped (7 total tests)
+
+Failing tests:
+Encountered 2 failing tests in test/ChainlinkCandidateProtocol.t.sol:ChainlinkCandidateProtocolTest
+[FAIL: next call did not revert as expected] test_registered_actual_entries_cannot_settle_in_different_epoch() (gas: 8115866)
+[FAIL: next call did not revert as expected] test_wrong_clock_endpoint_refuses_reports_and_settlement() (gas: 7847214)
+
+Encountered a total of 2 failing tests, 5 tests succeeded
+
+Tip: Run `forge test --rerun` to retry only the 2 failed tests

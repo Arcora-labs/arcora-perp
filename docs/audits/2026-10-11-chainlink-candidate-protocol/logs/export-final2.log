@@ -1,0 +1,9 @@
+   Compiling gateway v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 20.16s
+     Running unittests src/main.rs (target/debug/deps/gateway-610b7230a2c5bb73)
+
+running 1 test
+test candidate_protocol_tests::export_actual_a3_candidate_registration_parity ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 589 filtered out; finished in 3.36s
+

@@ -1,0 +1,16 @@
+Diff in /Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/main.rs:45:
+ 
+ mod account_recovery;
+ mod bootstrap;
+-mod candles;
+ #[cfg(test)]
+ mod candidate_intent;
+ #[cfg(test)]
+Diff in /Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/main.rs:54:
+ mod candidate_protocol_tests;
+ #[cfg(test)]
+ mod candidate_registration;
++mod candles;
+ mod challenge_scan;
+ mod clock_admission;
+ mod clock_client;
