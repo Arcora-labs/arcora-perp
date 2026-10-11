@@ -1,0 +1,32 @@
+{
+  "observed_start_utc": "2026-10-11T13:38:47.003105+00:00",
+  "base_main": "5dac90412b65c299cb62bcff1ab2e1ae0533b6a0",
+  "scope": "cfg(test) durable intermediate registration anchors and offline finality/reorg reconciliation",
+  "authorized_merge48_complete": true,
+  "production_release": "HOLD",
+  "new_live_transport_or_production_route": false,
+  "four_original_golden_builder_sources_sha256": {
+    "candidate_registration.rs": "86ffc1032f31952fad4e0c815a9564397c2d86cff5c62e23a664538209ba4c37",
+    "report_archive_binding.rs": "1204db404b472c8c77a56e23fe2e59d4577d5d2bb334c8f0f4880449352812a9",
+    "price_lifecycle_tests.rs": "cba6cb30039894e128e8ee19b32f1a9ed1fca2d7616c73af8570d2ce885472dd",
+    "candidate_protocol_tests.rs": "b7b5304d771c9f5505db67737c20793696eff7367724e529bc4030a3a97e7b40"
+  },
+  "cpu_evidence_from_merged48_reexecution_planned": false,
+  "acceptance": [
+    "Fresh/Resume boundary; missing expected state and v3 cross-resume fail closed",
+    "authenticated canonical bounded monotonic stage records before callbacks; immutable original request/anchors",
+    "durable ClockObserved/ReportsObserved before later mutation/prove; exact partial restart uses lookups only",
+    "canonical/finalized anchor and original healthy epoch required; absent/unknown/reorg/pending cannot auto-register",
+    "Prepared exactresponse/recheck shared validators; no candidate-to-v2 downgrade",
+    "save failures stop subsequent callbacks; pre-rename old bytes; post-rename ambiguity preserved",
+    "original dirty checkouts,21reviewed/9candidate pins and4golden fixture builder bytes unchanged",
+    "final focused/full gateway,workspace Clippy,format,47guards and current PR CI observation"
+  ],
+  "open_gates": [
+    "real chain RPC/finality/reorg observer authentication",
+    "live candidate service/deployment/DON/uptime acceptance",
+    "real candidate proof and exact verifier/settlement/claim bridge",
+    "broadcast transaction outcome WAL and cross-process coordination",
+    "production/custody/capacity/audit acceptance"
+  ]
+}

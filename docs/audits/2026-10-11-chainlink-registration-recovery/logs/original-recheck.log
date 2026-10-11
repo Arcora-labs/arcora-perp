@@ -1,0 +1,87 @@
+{
+  "observed_utc": "2026-10-11T14:12:40.765497+00:00",
+  "primary_files": [
+    {
+      "path": "crates/chainlink-streams-client/src/lib.rs",
+      "sha256": "4a63eec6941704583a83b395a5c8f34c5e685c33950c7e7bf96eb9999479de54",
+      "original_sha256": "4a63eec6941704583a83b395a5c8f34c5e685c33950c7e7bf96eb9999479de54",
+      "unchanged": true
+    },
+    {
+      "path": "crates/chainlink-streams-client/src/transport_tests.rs",
+      "sha256": "17259c937c1d90e3b0950fadf78d71caaab2e6d1bf0b457cae93b83a486c4079",
+      "original_sha256": "17259c937c1d90e3b0950fadf78d71caaab2e6d1bf0b457cae93b83a486c4079",
+      "unchanged": true
+    },
+    {
+      "path": "docs/ACTIVE_WORK.md",
+      "sha256": "57d2fd9fe21055c7e2c269d272a4f12436b4f75c8f479a74913c5307849924c1",
+      "original_sha256": "57d2fd9fe21055c7e2c269d272a4f12436b4f75c8f479a74913c5307849924c1",
+      "unchanged": true
+    },
+    {
+      "path": "docs/CHAINLINK_STREAMS_CLIENT.md",
+      "sha256": "923ce0fbca1aab31f61fd0d23c542c0f6575b0089032085e13ce61d5d766d9f2",
+      "original_sha256": "923ce0fbca1aab31f61fd0d23c542c0f6575b0089032085e13ce61d5d766d9f2",
+      "unchanged": true
+    },
+    {
+      "path": "crates/chainlink-streams-client/src/report_archive.rs",
+      "sha256": "7ce55278f094ff7ad67e1dc9fbbe8f4744b1e29ef1f6304f6a5e70594bd2805e",
+      "original_sha256": "7ce55278f094ff7ad67e1dc9fbbe8f4744b1e29ef1f6304f6a5e70594bd2805e",
+      "unchanged": true
+    },
+    {
+      "path": "crates/chainlink-streams-client/src/report_archive_tests.rs",
+      "sha256": "e26ad11aac0d1510354003e3cc6ec494b06b6938c1d4778bfa46135fe80c04ab",
+      "original_sha256": "e26ad11aac0d1510354003e3cc6ec494b06b6938c1d4778bfa46135fe80c04ab",
+      "unchanged": true
+    },
+    {
+      "path": "crates/chainlink-streams-client/src/report_pair.rs",
+      "sha256": "7f9154fe5cafe182ed5bdc80976b44f19667bc4747ac801f3cec583de362ad7a",
+      "original_sha256": "7f9154fe5cafe182ed5bdc80976b44f19667bc4747ac801f3cec583de362ad7a",
+      "unchanged": true
+    },
+    {
+      "path": "docs/CHAINLINK_REPORT_ARCHIVE.md",
+      "sha256": "b150b8a38bef610f5fe25bfef30aee87b5d07ca0435b350fdb45bac68f8672f8",
+      "original_sha256": "b150b8a38bef610f5fe25bfef30aee87b5d07ca0435b350fdb45bac68f8672f8",
+      "unchanged": true
+    },
+    {
+      "path": "docs/audits/2026-10-10-chainlink-report-archive/README.md",
+      "sha256": "2c1ce26530e60512a630e039b7b3ed4f644de43ede8dad86f905bf3c94e25c07",
+      "original_sha256": "2c1ce26530e60512a630e039b7b3ed4f644de43ede8dad86f905bf3c94e25c07",
+      "unchanged": true
+    },
+    {
+      "path": "docs/audits/2026-10-10-chainlink-report-archive/client-debug.txt",
+      "sha256": "8fe1cceb492aa4a00019f1138dcc7086d618b771c15415d7c89709480672bd9c",
+      "original_sha256": "8fe1cceb492aa4a00019f1138dcc7086d618b771c15415d7c89709480672bd9c",
+      "unchanged": true
+    },
+    {
+      "path": "docs/audits/2026-10-10-chainlink-report-archive/client-release.txt",
+      "sha256": "200dcb6a224946470eee5349dc4f04077fa4e02bd6104e9a8a9d10a1b031ed98",
+      "original_sha256": "200dcb6a224946470eee5349dc4f04077fa4e02bd6104e9a8a9d10a1b031ed98",
+      "unchanged": true
+    },
+    {
+      "path": "docs/audits/2026-10-10-chainlink-report-archive/publication-state.json",
+      "sha256": "48e36c7a0e9d641c64badc95fa235bb3a5e024163ecc361372ea57307946490b",
+      "original_sha256": "48e36c7a0e9d641c64badc95fa235bb3a5e024163ecc361372ea57307946490b",
+      "unchanged": true
+    },
+    {
+      "path": "docs/audits/2026-10-10-chainlink-report-archive/verification.json",
+      "sha256": "95b9e0448233ba84bc24c05bc581b4c9ea56b23a1ca838f1950c846457c390b7",
+      "original_sha256": "95b9e0448233ba84bc24c05bc581b4c9ea56b23a1ca838f1950c846457c390b7",
+      "unchanged": true
+    }
+  ],
+  "primary_files_unchanged": true,
+  "job17_staged_diff_sha256": "0262e9d202a41c184a4352691be1a8aa2c9c6b24a62ef65b421eadaa0249a849",
+  "job17_staged_unchanged": true,
+  "job17_head": "e283958109fc6b434b7049d523bbd3378e2e6c27"
+}

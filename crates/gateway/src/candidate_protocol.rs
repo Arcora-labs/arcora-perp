@@ -175,12 +175,23 @@ pub(crate) trait OfflineTransport {
     fn broadcast(&mut self, prepared: &PreparedCandidate) -> Result<(), ()>;
 }
 
-struct Validated {
+pub(crate) struct Validated {
     clock: ClockContext,
     native: CandidateOutput,
     registration: Registration,
 }
-fn validate(
+impl Validated {
+    pub(crate) fn clock(&self) -> &ClockContext {
+        &self.clock
+    }
+    pub(crate) fn native(&self) -> CandidateOutput {
+        self.native
+    }
+    pub(crate) fn registration(&self) -> &Registration {
+        &self.registration
+    }
+}
+pub(crate) fn validate(
     request: &ProtocolRequest,
     trusted: &TrustedRequest,
 ) -> Result<Validated, ProtocolError> {
@@ -314,7 +325,7 @@ fn validate(
     })
 }
 
-fn valid_clock(
+pub(crate) fn valid_clock(
     request: &ProtocolRequest,
     clock: &ClockContext,
     observation: &ClockObservation,
@@ -325,7 +336,7 @@ fn valid_clock(
         && observation.registration_block != 0
         && observation.registration_block_hash != [0; 32]
 }
-fn valid_reports(
+pub(crate) fn valid_reports(
     request: &ProtocolRequest,
     valid: &Validated,
     observation: &ReportObservation,
@@ -345,7 +356,7 @@ fn valid_reports(
         )
         .is_ok()
 }
-fn valid_response(
+pub(crate) fn valid_response(
     request: &ProtocolRequest,
     native: CandidateOutput,
     response: &CandidateProofResponse,
@@ -355,6 +366,46 @@ fn valid_response(
         && response.public_values.as_slice() == native.commitment
         && !response.proof.is_empty()
         && response.proof.len() <= 1024 * 1024
+}
+
+/// One canonical Prepared decoder shared by both offline runners. Exposing the
+/// validated plan does not let staged recovery weaken these response bindings.
+pub(crate) fn decode_prepared(
+    request: &ProtocolRequest,
+    valid: &Validated,
+    payload: &[u8],
+) -> Result<PreparedCandidate, ProtocolError> {
+    let request_bytes = postcard::to_allocvec(request).map_err(|_| ProtocolError::Capacity)?;
+    let (prepared, rest): (PreparedCandidate, _) =
+        postcard::take_from_bytes(payload).map_err(|_| ProtocolError::Recovery)?;
+    if !rest.is_empty()
+        || postcard::to_allocvec(&prepared).map_err(|_| ProtocolError::Recovery)? != payload
+        || prepared.request_sha256 != sha256(&request_bytes)
+        || prepared.native != valid.native
+        || !valid_clock(request, &valid.clock, &prepared.clock)
+        || !valid_reports(request, valid, &prepared.reports)
+        || !valid_response(request, valid.native, &prepared.response)
+    {
+        return Err(ProtocolError::Recovery);
+    }
+    Ok(prepared)
+}
+
+pub(crate) fn valid_recheck(
+    request: &ProtocolRequest,
+    valid: &Validated,
+    prepared: &PreparedCandidate,
+    clock: &ClockObservation,
+    reports: &ReportObservation,
+) -> bool {
+    clock == &prepared.clock
+        && valid_reports(request, valid, reports)
+        && reports.target == prepared.reports.target
+        && reports.clock_commitment == prepared.reports.clock_commitment
+        && reports.input_hash == prepared.reports.input_hash
+        && reports.evidence_hash == prepared.reports.evidence_hash
+        && reports.epoch == prepared.reports.epoch
+        && reports.observed_at_seconds >= prepared.reports.observed_at_seconds
 }
 
 /// Persist immutable intent before any mock registration. Every later failure
@@ -372,19 +423,7 @@ pub(crate) fn execute(
         .map_err(|_| ProtocolError::Durability)?;
     let prepared = if intent.stage == IntentStage::Prepared {
         let payload = intent.prepared.ok_or(ProtocolError::Recovery)?;
-        let (prepared, rest): (PreparedCandidate, _) =
-            postcard::take_from_bytes(&payload).map_err(|_| ProtocolError::Recovery)?;
-        if !rest.is_empty()
-            || postcard::to_allocvec(&prepared).map_err(|_| ProtocolError::Recovery)? != payload
-            || prepared.request_sha256 != sha256(&bytes)
-            || prepared.native != valid.native
-            || !valid_clock(request, &valid.clock, &prepared.clock)
-            || !valid_reports(request, &valid, &prepared.reports)
-            || !valid_response(request, valid.native, &prepared.response)
-        {
-            return Err(ProtocolError::Recovery);
-        }
-        prepared
+        decode_prepared(request, &valid, &payload)?
     } else {
         transport
             .register_clock(&valid.clock)
@@ -428,15 +467,7 @@ pub(crate) fn execute(
         .map_err(|_| ProtocolError::Callback(Action::Recheck))?;
     // observed_at can advance on a later read, but the original epoch, record,
     // anchor block/receipt and all deployment identities must remain exact.
-    if clock != prepared.clock
-        || !valid_reports(request, &valid, &reports)
-        || reports.target != prepared.reports.target
-        || reports.clock_commitment != prepared.reports.clock_commitment
-        || reports.input_hash != prepared.reports.input_hash
-        || reports.evidence_hash != prepared.reports.evidence_hash
-        || reports.epoch != prepared.reports.epoch
-        || reports.observed_at_seconds < prepared.reports.observed_at_seconds
-    {
+    if !valid_recheck(request, &valid, &prepared, &clock, &reports) {
         return Err(ProtocolError::Observation);
     }
     transport

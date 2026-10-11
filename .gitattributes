@@ -1,0 +1,2 @@
+# Preserve exact Cargo audit output, including its terminal empty line.
+docs/audits/2026-10-11-chainlink-registration-recovery/logs/*.log whitespace=blank-at-eol,space-before-tab,-blank-at-eof

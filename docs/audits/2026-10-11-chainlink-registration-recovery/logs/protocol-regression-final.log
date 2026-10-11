@@ -1,0 +1,18 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.03s
+     Running unittests src/main.rs (target/debug/deps/gateway-610b7230a2c5bb73)
+
+running 11 tests
+test candidate_protocol_tests::candidate_protocol_price_free_wind_down_uses_zero_epoch_and_exact_restart ... ok
+test candidate_protocol_tests::export_actual_a3_candidate_registration_parity ... ignored, explicit fresh-directory export of owned synthetic original A3 material
+test candidate_protocol_tests::candidate_protocol_malformed_or_trailing_witness_calls_nothing ... ok
+test candidate_protocol_tests::candidate_protocol_pending_restart_changed_epoch_cannot_resume_old_intent ... ok
+test candidate_protocol_tests::candidate_protocol_prepared_restart_reuses_exact_request_without_v2_or_refresh ... ok
+test candidate_protocol_tests::candidate_protocol_failed_intent_and_prepared_save_preserve_recovery_cut ... ok
+test candidate_protocol_tests::candidate_protocol_known_invalid_identity_material_and_capacity_call_nothing ... ok
+test candidate_protocol_tests::candidate_protocol_actual_close_withdraw_and_liquidation_complete_offline_stages ... ok
+test candidate_protocol_tests::candidate_protocol_each_later_callback_fault_stops_only_subsequent_actions ... ok
+test candidate_protocol_tests::candidate_protocol_authenticated_invalid_prepared_payload_never_calls_recheck ... ok
+test candidate_protocol_tests::candidate_protocol_receipt_report_epoch_and_typed_response_faults_hold ... ok
+
+test result: ok. 10 passed; 0 failed; 1 ignored; 0 measured; 604 filtered out; finished in 18.02s
+
