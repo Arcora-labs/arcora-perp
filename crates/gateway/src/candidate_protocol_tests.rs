@@ -274,7 +274,10 @@ fn candidate_protocol_actual_close_withdraw_and_liquidation_complete_offline_sta
         assert_eq!(mock.calls, ACTIONS);
         assert_eq!(result.response.public_values, result.native.commitment);
         assert_eq!(store.load().unwrap().unwrap().stage, IntentStage::Prepared);
-        assert_eq!(mock.prove_inputs, [rig.request.witness.clone()]);
+        assert_eq!(
+            mock.prove_inputs.as_slice(),
+            std::slice::from_ref(&rig.request.witness)
+        );
         assert_eq!(
             rig.request.material.refs.len(),
             rig.request.material.entries.len()

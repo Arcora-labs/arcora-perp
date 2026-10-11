@@ -2,7 +2,7 @@
 pragma solidity ^0.8.24;
 
 // Generated from test-only actual A3 original archive containers. PUBLIC synthetic.
-// JSON SHA256: 58029d6a2dbfa231ee97a4b896df79b58020a8e134ea2f6af3b502c7a0eaf3ce
+// JSON SHA256: 1263230407bfe0c340a61d4106e952812abd7f16e93cac3397d3e68412bf2067
 // No DON signature authentication, SP1 proof or live registration is claimed.
 library ChainlinkCandidateProtocolVector {
     struct Data {
