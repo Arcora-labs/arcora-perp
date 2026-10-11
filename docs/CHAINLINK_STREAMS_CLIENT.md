@@ -4,7 +4,8 @@ Güncelleme: 11 Ekim 2026. **PRODUCTION RELEASE HOLD.**
 #43 REST istemcisi main'dedir. #44, PreparedPair/ReportArchive ile opt-in aday
 gateway intake/seal/journal bağlantısını ekler; canlı oracle geçişi veya yeni
 prover/settlement kabulü değildir. Legacy varsayılan davranış korunur.
-Güncel exact-code kanıtı: [son doğrulama](audits/2026-10-11-chainlink-archive-gateway-binding/README.md).
+`e283958` için exact-code kanıtı: [önceki doğrulama](audits/2026-10-11-chainlink-archive-gateway-binding/README.md).
+A1 devam kodunun ayrı kaydı: [kabul indeksi recovery](audits/2026-10-11-chainlink-admission-recovery/README.md).
 
 ## Uygulanan kod
 
@@ -56,8 +57,11 @@ imzası değildir. Aynı original fullReport daha sonra gerçek Chainlink verifi
 verilmelidir. İstemci oracle fiyatını yeniden imzalamaz veya settlement'e göndermez.
 Kuyruk gecikmesinde `check_freshness` çağrısı gerekir; receipt zamanı kaynak zamanının
 yerine geçmez. #44 mühürlenmiş pencereyi ilk kabul edilen özgün rapor ID'lerine
-bağlar. Açık pencerenin kabul indeksinin kalıcı kurtarması ve tam retention
-politikası sonraki iştir; canlı DON doğrulaması hâlâ ayrıdır.
+bağlar. A1 devam kodu açık pencerenin state/politika bağı/kabul indeksini aynı
+authenticated DPCAS2 checkpoint'te saklar ve özgün ID'lerle geri kurar.
+Kalıcılık başarıyla yazılmış snapshot kesitiyle sınırlıdır; her admission
+için ayrı WAL garantisi ve tam retention politikası yoktur. Canlı DON
+doğrulaması hâlâ ayrıdır.
 
 ## #43 tarihsel REST çalışma zamanı doğrulaması (10 Ekim)
 
@@ -102,9 +106,20 @@ korundu. Güncel dört düzeltme ve test kayıtları:
 #43 istemci runtime alt işi tamamlandı; #44 ile standalone istemci/arşiv toplamı
 debug ve release profillerinin her birinde 62 PASS, 0 FAIL, 1 yardımcı ignored
 sürücüdür. Bunlar aynı 62 testtir. #44 aday scheduler/admission, özgün rapor
-kalıcılığı ve mühürlü journal kurtarma doğrulamasını bağlar. Henüz açık olanlar:
-açık pencerenin kabul indeksi/state kurtarması, kapasite/retention, bütün fiyat
-yolları, ayrı aday prover/settlement ve tam yaşam döngüsü. Gerçek account/feed,
+kalıcılığı ve mühürlü journal kurtarma doğrulamasını bağlar. A1 devam kodu
+açık pencerenin state'i, tam politika bağı ve kanonik ilk kabul ID'lerini
+`DPCAS2\0\0` authenticated checkpoint'ine birlikte alır. Intake/seal/checkpoint
+aynı gateway → archive kilit sırasını kullanır. Startup seçilmiş bütün
+özgün kayıtları ve restore edilen op akışını doğrular; v6 journal daha yeni
+özgün ID'leri conflict/kapasite kontrolüyle recovery kararı öncesinde indekse
+geri kurar. Hata WAL'ı koruyarak HOLD eder. Legacy snapshot baytları korunur;
+indekssiz DPCAS1 uzlaştırma için reddedilir, referans tahminiyle upgrade olmaz.
+
+Bu yeni uygulamanın test ve yayın kanıtı önceki 62-test/e283958 kaydından
+ayrıdır. Başarıyla kalıcı yazılmış snapshot kesiti sonrası admission'lar için
+ayrı WAL garantisi eklenmedi; mevcut pre-seal `SealNeverPersisted` davranışı
+ve RPO sınırı geçerlidir. Henüz açık olanlar: kapasite/retention (A2), bütün fiyat
+yolları (A3), ayrı aday prover/settlement (A4) ve tam yaşam döngüsü. Gerçek account/feed,
 feed/scale/quote ve DON kabulü ayrıca açıktır. Aday sıfır-oracle pencereler dahil
 eski v2 gönderim/exact-resume engeli korunur; varsayılan legacy yol değişmez.
 Gerçek credential, ücretli erişim,

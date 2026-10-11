@@ -32,9 +32,9 @@ pub(crate) const POLICY_ENV: &str = "DARKPERP_CHAINLINK_POLICY_JSON";
 /// persisted state must not be able to boot as legacy just because the
 /// operator omitted the flag (a restored snapshot, including one with an
 /// UNSEALED open window admitted from archived reports, would then keep
-/// settling unbound). This sidecar is the durable answer: written ONLY in
+/// settling unbound). This sidecar adds mode protection: written ONLY in
 /// candidate mode, sealed exactly like the rollback journal, versioned by
-/// magic. It never touches the snapshot wire bytes.
+/// magic. The snapshot envelope separately persists the policy and index.
 const MARKER_MAGIC: &[u8; 8] = b"DPCAM1\0\0";
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -92,49 +92,124 @@ pub(crate) fn read_marker(
     Ok(Some(policy_binding))
 }
 
-/// Candidate snapshot tag, INSIDE the authenticated plaintext (after
-/// `snapshot::open`, before `Gw::boot_restored`). Candidate mode prefixes every
-/// snapshot it writes with this versioned magic; valid legacy snapshot bytes
-/// are NEVER tagged and restore exactly as before. This closes the open-window
-/// hole the sidecar marker cannot: a candidate snapshot with an UNSEALED window
-/// (archive-admitted ops not yet journaled) remains SELF-AUTHENTICATING even if
-/// the `.chainlink` marker is lost and the env config omitted — boot refuses
-/// the legacy downgrade instead of settling unbound windows.
-pub(crate) const SNAPSHOT_TAG_MAGIC: &[u8; 8] = b"DPCAS1\0\0";
+/// Candidate recovery envelope INSIDE the authenticated snapshot plaintext.
+/// The state bytes (including the open operation window), policy binding and
+/// canonical admitted identities are captured under the same gateway/archive
+/// locks and committed by one atomic snapshot write. The sidecar is additional
+/// mode protection, never the source of the admission index.
+pub(crate) const SNAPSHOT_TAG_MAGIC: &[u8; 8] = b"DPCAS2\0\0";
+const OLD_SNAPSHOT_TAG_MAGIC: &[u8; 8] = b"DPCAS1\0\0";
 
-pub(crate) fn tag_snapshot_plain(plain: &mut Vec<u8>) {
-    let mut tagged = Vec::with_capacity(SNAPSHOT_TAG_MAGIC.len() + plain.len());
-    tagged.extend_from_slice(SNAPSHOT_TAG_MAGIC);
-    tagged.extend_from_slice(plain);
-    *plain = tagged;
+#[derive(serde::Serialize, serde::Deserialize)]
+struct CandidateSnapshotV2 {
+    state_plain: Vec<u8>,
+    policy_binding: [u8; 32],
+    #[serde(deserialize_with = "deserialize_admissions")]
+    admissions: Vec<Admission>,
 }
 
-pub(crate) fn snapshot_is_candidate(plain: &[u8]) -> bool {
-    plain.starts_with(SNAPSHOT_TAG_MAGIC)
+/// Reject the encoded admission count before allocating or decoding entries.
+/// A successfully authenticated malformed snapshot is still untrusted input.
+fn deserialize_admissions<'de, D>(deserializer: D) -> Result<Vec<Admission>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    struct AdmissionsVisitor;
+    impl<'de> serde::de::Visitor<'de> for AdmissionsVisitor {
+        type Value = Vec<Admission>;
+
+        fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+            write!(formatter, "at most {MAX_ADMISSIONS} canonical admissions")
+        }
+
+        fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+        where
+            A: serde::de::SeqAccess<'de>,
+        {
+            let size = seq.size_hint().unwrap_or(0);
+            if size > MAX_ADMISSIONS {
+                return Err(serde::de::Error::custom("admission count exceeds capacity"));
+            }
+            let mut admissions = Vec::with_capacity(size);
+            while let Some(admission) = seq.next_element()? {
+                if admissions.len() >= MAX_ADMISSIONS {
+                    return Err(serde::de::Error::custom("admission count exceeds capacity"));
+                }
+                admissions.push(admission);
+            }
+            Ok(admissions)
+        }
+    }
+    deserializer.deserialize_seq(AdmissionsVisitor)
 }
 
-/// Strip the tag before state decode. Caller must have checked
-/// `snapshot_is_candidate`.
-pub(crate) fn untag_snapshot_plain(plain: &mut Vec<u8>) {
-    plain.drain(..SNAPSHOT_TAG_MAGIC.len());
-}
-
-/// Pure boot decision: an authenticated CANDIDATE snapshot may never boot as
-/// legacy. `None` = proceed (subject to the marker gate); `Some(reason)` =
-/// refuse before any recovery branch.
-pub(crate) fn snapshot_mode_refusal(
-    snapshot_tagged: bool,
-    configured: Option<[u8; 32]>,
-) -> Option<String> {
-    if snapshot_tagged && configured.is_none() {
-        return Some(
-            "authenticated candidate snapshot (tagged DPCAS1) restored without \
-             candidate configuration; refusing to boot it as legacy — an open \
-             window may carry archive-admitted ops"
+/// Decode only the authenticated envelope, verify every EXACT archived record
+/// under the configured policy at its original preparation time, then replace
+/// the admission index atomically. No archive discovery or sibling fallback.
+/// The caller decodes `Gw` from the returned bytes before any recovery mutation.
+pub(crate) fn restore_snapshot_plain(
+    plain: &[u8],
+    binding: Option<&mut ArchiveBinding>,
+) -> Result<Vec<u8>, String> {
+    if plain.len() > crate::snapshot::MAX_PLAIN_BYTES {
+        return Err("candidate snapshot exceeds 64 MiB payload limit".into());
+    }
+    if plain.starts_with(OLD_SNAPSHOT_TAG_MAGIC) {
+        return Err(
+            "candidate snapshot DPCAS1 has no canonical admission index; preserve it for reconciliation"
                 .into(),
         );
     }
-    None
+    let Some(body) = plain.strip_prefix(SNAPSHOT_TAG_MAGIC.as_slice()) else {
+        if plain.starts_with(b"DPCAS") {
+            return Err("candidate snapshot magic/version mismatch".into());
+        }
+        return Ok(plain.to_vec()); // valid legacy plaintext bytes are unchanged
+    };
+    let binding = binding.ok_or(
+        "authenticated candidate snapshot restored without candidate configuration; refusing legacy boot",
+    )?;
+    let (envelope, rest): (CandidateSnapshotV2, _) = postcard::take_from_bytes(body)
+        .map_err(|_| "candidate snapshot decode failed or admission count exceeds capacity")?;
+    if !rest.is_empty() {
+        return Err("candidate snapshot has trailing bytes".into());
+    }
+    if postcard::to_allocvec(&envelope).map_err(|_| "candidate snapshot re-encode failed")? != body
+    {
+        return Err("candidate snapshot encoding is not canonical".into());
+    }
+    if envelope.state_plain.is_empty() || envelope.state_plain.starts_with(b"DPCAS") {
+        return Err("candidate snapshot state payload is empty or nested".into());
+    }
+    if envelope.policy_binding != binding.policy_binding {
+        return Err("candidate snapshot policy binding does not match configured policy".into());
+    }
+    if envelope.admissions.len() > binding.max_admissions {
+        return Err("candidate snapshot admission count exceeds configured capacity".into());
+    }
+    let mut restored = VecDeque::with_capacity(envelope.admissions.len());
+    for admission in envelope.admissions {
+        if restored.iter().any(|existing: &Admission| {
+            existing.market_id == admission.market_id && existing.transcript == admission.transcript
+        }) {
+            return Err("candidate snapshot has duplicate canonical admission identity".into());
+        }
+        let pair = binding
+            .archive
+            .load(admission.id, &binding.policy, admission.market_id)
+            .map_err(|_| "candidate snapshot selected archive record is missing or invalid")?;
+        let (normalized, _) = pair
+            .for_operation(pair.prepared_at_ms())
+            .map_err(|_| "candidate snapshot selected archive record does not normalize")?;
+        if normalized != admission.transcript {
+            return Err(
+                "candidate snapshot admitted transcript does not match selected record".into(),
+            );
+        }
+        restored.push_back(admission);
+    }
+    binding.admissions = restored;
+    Ok(envelope.state_plain)
 }
 
 /// Pure boot-gate decision over (persisted marker, configured binding).
@@ -164,7 +239,7 @@ pub(crate) fn mode_gate(
             // marker, no config, and an untagged snapshot there is nothing
             // authenticated to distinguish, and this remains the reviewed
             // legacy path. Any snapshot that ever ran candidate IS tagged
-            // (DPCAS1) and is refused here via `snapshot_mode_refusal`, and
+            // (DPCAS2) and is refused by `restore_snapshot_plain`, and
             // any marker that exists is refused by the arms below.
             ModeGate::Legacy
         }
@@ -192,6 +267,7 @@ pub(crate) fn mode_gate(
 /// strand the ops of an unsealed window.
 const MAX_ADMISSIONS: usize = 4096;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct Admission {
     pub(crate) market_id: u64,
     pub(crate) id: ArchiveId,
@@ -233,6 +309,8 @@ pub(crate) enum BindError {
     /// The admission index is at capacity; the caller must reject the
     /// admission and reconcile rather than silently lose a binding.
     Capacity,
+    /// Invalid or oversized candidate snapshot envelope.
+    Snapshot,
 }
 
 impl std::fmt::Display for BindError {
@@ -400,6 +478,77 @@ impl ArchiveBinding {
 
     pub(crate) fn policy_binding(&self) -> [u8; 32] {
         self.policy_binding
+    }
+
+    /// The caller holds both gateway and archive locks so `state_plain` and
+    /// this canonical index describe one cut. Snapshot encryption and atomic
+    /// file replacement apply to the entire returned envelope together.
+    pub(crate) fn snapshot_plain(&self, state_plain: Vec<u8>) -> Result<Vec<u8>, BindError> {
+        if self.admissions.len() > self.max_admissions || self.admissions.len() > MAX_ADMISSIONS {
+            return Err(BindError::Capacity);
+        }
+        if state_plain.is_empty()
+            || state_plain.starts_with(b"DPCAS")
+            || state_plain.len() > crate::snapshot::MAX_PLAIN_BYTES
+        {
+            return Err(BindError::Snapshot);
+        }
+        let envelope = CandidateSnapshotV2 {
+            state_plain,
+            policy_binding: self.policy_binding,
+            admissions: self.admissions.iter().copied().collect(),
+        };
+        let body = postcard::to_allocvec(&envelope).map_err(|_| BindError::Snapshot)?;
+        if body.len() > crate::snapshot::MAX_PLAIN_BYTES - SNAPSHOT_TAG_MAGIC.len() {
+            return Err(BindError::Snapshot);
+        }
+        let mut plain = Vec::with_capacity(SNAPSHOT_TAG_MAGIC.len() + body.len());
+        plain.extend_from_slice(SNAPSHOT_TAG_MAGIC);
+        plain.extend(body);
+        Ok(plain)
+    }
+
+    /// An authenticated sealed journal can be newer than its paired snapshot.
+    /// After exact verification, restore the accepted identities it names so a
+    /// rollback can return those operations to the open window without losing
+    /// their canonical IDs. Existing selections may never be replaced, even by
+    /// an equal-normalized sibling. Install nothing on any verification failure.
+    pub(crate) fn recover_journal(
+        &mut self,
+        ops: &[BatchOp],
+        envelope: &ArchiveEnvelope,
+    ) -> Result<(), BindError> {
+        self.verify(ops, envelope)?;
+        let mut restored = self.admissions.clone();
+        for ((market_id, _, oracle), reference) in
+            ops.iter().filter_map(used_oracle).zip(&envelope.refs)
+        {
+            let transcript = Normalized {
+                price: oracle.price,
+                publish_time_ms: oracle.publish_time_ms,
+                confidence: oracle.confidence,
+                backup_twap: oracle.backup_twap,
+            };
+            if let Some(existing) = restored
+                .iter()
+                .find(|a| a.market_id == market_id && a.transcript == transcript)
+            {
+                if existing.id != reference.archive_id {
+                    return Err(BindError::Mismatch);
+                }
+            } else {
+                if restored.len() >= self.max_admissions || restored.len() >= MAX_ADMISSIONS {
+                    return Err(BindError::Capacity);
+                }
+                restored.push_back(Admission {
+                    market_id,
+                    id: reference.archive_id,
+                    transcript,
+                });
+            }
+        }
+        self.admissions = restored;
+        Ok(())
     }
 
     /// Whether the admission index is at capacity (install would refuse).

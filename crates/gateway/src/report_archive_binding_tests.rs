@@ -1175,13 +1175,14 @@ fn partial_candidate_config_fails_and_policy_file_is_hardened() {
     ));
 }
 
-/// THE full gateway success path, end to end, with REAL signatures and a REAL
-/// engine fill (no zero-sig fixture): production-style fresh oracles → archived
+/// Gateway recovery with REAL gateway signatures and REAL engine fills
+/// (synthetic reports): production-style fresh oracles → archived
 /// pair admitted through the real `apply_validated_real_oracle_at` → real order
 /// fills at the archived mark → real window seal → encrypted v6 journal →
-/// exact read/recovery → real replay prove.
+/// exact read/recovery → native MockProverClient replay. No cryptographic SP1
+/// proof or live Chainlink/DON authentication is produced here.
 #[test]
-fn real_admission_to_sealed_window_to_v6_journal_to_recovery_proves_end_to_end() {
+fn real_admission_to_sealed_window_to_v6_journal_to_recovery_replays_end_to_end() {
     use crate::prover_client::{MockProverClient, ProverClient as _};
     use crate::{Gw, OrderReq};
     use perp_core::fixed::{QUOTE_SCALE, SIZE_SCALE};
@@ -1234,7 +1235,7 @@ fn real_admission_to_sealed_window_to_v6_journal_to_recovery_proves_end_to_end()
     // transcript through the real validated path (the signature recovers to the
     // market's pinned oracle_pubkey).
     let now = crate::now_ms();
-    let observed = now / 1000;
+    let observed = now / 1000 - 1;
     let mut transcripts = std::collections::HashMap::new();
     for &id in &market_ids {
         let base = report(feed(0x11 + id as u8), 6_000_000_000_000, observed, now);
@@ -1277,13 +1278,114 @@ fn real_admission_to_sealed_window_to_v6_journal_to_recovery_proves_end_to_end()
     .expect("order admitted");
     gw.tick();
 
+    // A second REAL accepted source observation and fill in the SAME open
+    // window must retain both canonical report selections across restart.
+    let early = transcripts[&0];
+    let later_now = crate::now_ms();
+    let pending = b
+        .admit(
+            0,
+            base_report(observed + 1, later_now),
+            quote_report(observed + 1, later_now),
+            later_now,
+        )
+        .unwrap();
+    let late = pending.transcript;
+    assert_ne!(early.publish_time_ms, late.publish_time_ms);
+    let transcript = late.with_signature(OracleSig::sign(
+        &gw.oracle_signer,
+        &crate::oracle_digest(
+            0,
+            late.price,
+            late.publish_time_ms,
+            late.confidence,
+            late.backup_twap,
+        ),
+    ));
+    assert!(gw.apply_validated_real_oracle_at(0, transcript, later_now));
+    b.install(pending).unwrap();
+    transcripts.insert(0, late);
+    gw.account_place_order(
+        &key,
+        &OrderReq {
+            market_id: 0,
+            side: "Buy".into(),
+            size: (SIZE_SCALE / 10).to_string(),
+            limit_price: "0".into(),
+            tif: "Ioc".into(),
+            reduce_only: false,
+            nonce: None,
+            signature: None,
+            ..Default::default()
+        },
+    )
+    .expect("second order admitted");
+    gw.tick();
+
+    // Snapshot BEFORE seal. A brand-new binding starts empty and rebuilds ONLY
+    // from the exact authenticated entries, preserving state, op order and IDs.
+    let expected_witness = open_window_witness(&gw);
+    let expected_envelope = b.bind_ops(&expected_witness.ops).unwrap();
+    for admitted in [early, late] {
+        assert!(expected_witness.ops.iter().any(|op| matches!(
+            op,
+            BatchOp::Fill { market_id: 0, oracle, .. } if admitted.matches(oracle)
+        )));
+    }
+    let snapshot_path = t.0.join("state.snapshot");
+    let missing = b.admissions.pop_front().unwrap();
+    let half_state = gw.snapshot_plain();
+    assert!(crate::snapshot_plain_with_archive(&gw, Some(&b)).is_err());
+    assert_eq!(
+        gw.snapshot_plain(),
+        half_state,
+        "failed capture never drains ops"
+    );
+    b.admissions.push_front(missing);
+    crate::persist_recovery(&gw, &snapshot_path, &[42; 32], Some(&b)).unwrap();
+    let snapshot =
+        crate::snapshot::open(&std::fs::read(&snapshot_path).unwrap(), &[42; 32]).unwrap();
+    let mut restarted = ArchiveBinding::new(
+        ReportArchive::open_existing(&t.0.join("store")).unwrap(),
+        b.policy.clone(),
+    )
+    .unwrap();
+    assert!(restarted.admissions.is_empty());
+    let state = restore_snapshot_plain(&snapshot, Some(&mut restarted)).unwrap();
+    let restored_gw = Gw::boot_restored(&state).unwrap();
+    crate::verify_open_window_archive(&restored_gw, &restarted).unwrap();
+    assert_eq!(restored_gw.snapshot_plain(), gw.snapshot_plain());
+    assert_eq!(restarted.admissions, b.admissions);
+    let restored_witness = open_window_witness(&restored_gw);
+    assert_eq!(
+        postcard::to_allocvec(&restored_witness.ops).unwrap(),
+        postcard::to_allocvec(&expected_witness.ops).unwrap()
+    );
+    assert_eq!(
+        restarted.bind_ops(&restored_witness.ops).unwrap().refs,
+        expected_envelope.refs
+    );
+    assert_eq!(
+        MockProverClient
+            .prove(&restored_witness)
+            .unwrap()
+            .commitment,
+        MockProverClient
+            .prove(&expected_witness)
+            .unwrap()
+            .commitment
+    );
+    gw = restored_gw;
+    b = restarted;
+
     // Real window seal + archive binding + encrypted v6 journal, exactly as the
     // settle loop does it.
     let bc = gw.seq.state.next_batch_id;
+    let journal_path = crate::rollback_journal::journal_path(&snapshot_path);
     let (journal, envelope) = crate::begin_journaled_window_settle(
         &mut gw,
         bc,
-        Some(&t.0.join("state.rollback")),
+        Some(&journal_path),
         &[42u8; 32],
         Some(&b),
     )
@@ -1304,7 +1406,7 @@ fn real_admission_to_sealed_window_to_v6_journal_to_recovery_proves_end_to_end()
     );
 
     // Encrypted v6 journal: exact read, version dispatch, recovery verify.
-    let sealed = std::fs::read(t.0.join("state.rollback")).unwrap();
+    let sealed = std::fs::read(&journal_path).unwrap();
     let reopened =
         crate::rollback_journal::open_versioned(&sealed, &[42u8; 32]).expect("v6 journal opens");
     let crate::rollback_journal::OpenedJournal::Candidate {
@@ -1331,15 +1433,122 @@ fn real_admission_to_sealed_window_to_v6_journal_to_recovery_proves_end_to_end()
             && oracle.signature != (OracleSig { r: [0; 32], s: [0; 32], v: 0 })
     )));
 
-    // Real replay: the restored v6 witness proves to the SAME commitment a
-    // fresh prove of the original produces — the full success path.
+    // Native mock replay of both witnesses produces the same commitment. This
+    // checks deterministic execution, not cryptographic SP1 proof generation.
     let replay = MockProverClient
         .prove(&back.witness)
-        .expect("replay proves");
+        .expect("native mock replay");
     let fresh = MockProverClient
         .prove(&journal.witness)
-        .expect("fresh proves");
+        .expect("native mock original replay");
     assert_eq!(replay.commitment, fresh.commitment);
+
+    // Simulate a second restart AFTER the seal itself was saved. The stage-1
+    // authenticated WAL supplies the rollback operations and exact IDs before
+    // any recovery mutation, and the post-recovery checkpoint must be durable
+    // before that WAL can be deleted.
+    assert_eq!(gw.seq.state.next_batch_id, bc + 1);
+    crate::persist_recovery(&gw, &snapshot_path, &[42; 32], Some(&b)).unwrap();
+    let postseal_checkpoint = std::fs::read(&snapshot_path).unwrap();
+    let postseal_plain = crate::snapshot::open(&postseal_checkpoint, &[42; 32]).unwrap();
+    let mut recovery_binding = reopened_binding(&t, &b);
+    let recovered_state =
+        restore_snapshot_plain(&postseal_plain, Some(&mut recovery_binding)).unwrap();
+    let mut recovered_gw = Gw::boot_restored(&recovered_state).unwrap();
+    crate::verify_open_window_archive(&recovered_gw, &recovery_binding).unwrap();
+    recovery_binding
+        .recover_journal(&back.witness.ops, &back_env)
+        .unwrap();
+    assert_eq!(recovery_binding.admissions, b.admissions);
+    assert_eq!(
+        crate::apply_boot_recovery(
+            &mut recovered_gw,
+            back,
+            bc,
+            &crate::hex32(&journal.witness.pre_state.state_root()),
+            0,
+            crate::trading_gate::GateObservation::Inconclusive,
+        ),
+        crate::BootRecoveryOutcome::DeleteJournal { mutated: true }
+    );
+    assert!(
+        journal_path.exists(),
+        "applying rollback alone never deletes its WAL"
+    );
+    assert_eq!(recovered_gw.seq.state.next_batch_id, bc);
+    let recovered_witness = open_window_witness(&recovered_gw);
+    assert_eq!(
+        postcard::to_allocvec(&recovered_witness.ops).unwrap(),
+        postcard::to_allocvec(&journal.witness.ops).unwrap()
+    );
+    assert_eq!(
+        recovery_binding
+            .bind_ops(&recovered_witness.ops)
+            .unwrap()
+            .refs,
+        back_env.refs
+    );
+
+    // A deterministic filesystem failure retains the old whole checkpoint
+    // AND the stage-1 WAL, so another restart can resolve the same inputs.
+    let blocked = t.0.join("r".repeat(240));
+    std::fs::rename(&snapshot_path, &blocked).unwrap();
+    assert!(!crate::finish_boot_recovery(
+        &recovered_gw,
+        true,
+        &blocked,
+        &journal_path,
+        &[42; 32],
+        Some(&recovery_binding),
+    ));
+    assert!(
+        journal_path.exists(),
+        "failed post-recovery save retains the WAL"
+    );
+    assert_eq!(std::fs::read(&journal_path).unwrap(), sealed);
+    assert_eq!(std::fs::read(&blocked).unwrap(), postseal_checkpoint);
+    std::fs::rename(&blocked, &snapshot_path).unwrap();
+    assert!(crate::finish_boot_recovery(
+        &recovered_gw,
+        true,
+        &snapshot_path,
+        &journal_path,
+        &[42; 32],
+        Some(&recovery_binding),
+    ));
+    assert!(
+        !journal_path.exists(),
+        "durable recovered checkpoint permits WAL deletion"
+    );
+    let final_plain =
+        crate::snapshot::open(&std::fs::read(&snapshot_path).unwrap(), &[42; 32]).unwrap();
+    let mut final_binding = reopened_binding(&t, &recovery_binding);
+    let final_state = restore_snapshot_plain(&final_plain, Some(&mut final_binding)).unwrap();
+    let mut final_gw = Gw::boot_restored(&final_state).unwrap();
+    crate::verify_open_window_archive(&final_gw, &final_binding).unwrap();
+    let (final_witness, _) = final_gw
+        .begin_window_settle(bc)
+        .unwrap()
+        .expect("durably recovered window re-seals under its original batch id");
+    assert_eq!(final_witness.batch_id, journal.batch_id);
+    assert_eq!(
+        postcard::to_allocvec(&final_witness.ops).unwrap(),
+        postcard::to_allocvec(&journal.witness.ops).unwrap()
+    );
+    assert_eq!(final_binding.admissions, recovery_binding.admissions);
+    assert_eq!(
+        final_binding.bind_ops(&final_witness.ops).unwrap().refs,
+        back_env.refs
+    );
+    assert_eq!(
+        MockProverClient.prove(&final_witness).unwrap().commitment,
+        fresh.commitment,
+        "final manifest={:?}, initial manifest={:?}; pre roots {:?}/{:?}",
+        final_witness.manifest,
+        journal.witness.manifest,
+        final_witness.pre_state.state_root(),
+        journal.witness.pre_state.state_root()
+    );
 }
 
 #[test]
@@ -1441,6 +1650,7 @@ fn candidate_snapshot_refuses_legacy_boot_after_marker_loss_open_window() {
     let path = t.0.join("candidate.snapshot");
     let seed = [0x5du8; 32]; // synthetic test seal key
     let pb = policy_binding(&policy()).unwrap();
+    let mut b = ArchiveBinding::create_in(&t.0, policy()).unwrap();
     let mut gw = crate::Gw::boot();
     let (key, _) = gw.register_account(None);
     gw.account_deposit(&key, 0, 20_000 * perp_core::fixed::QUOTE_SCALE)
@@ -1448,32 +1658,404 @@ fn candidate_snapshot_refuses_legacy_boot_after_marker_loss_open_window() {
     assert!(gw.seq.open_window_has_ops());
     assert!(!crate::rollback_journal::journal_path(&path).exists());
     write_marker(&marker_path(&path), pb, &seed).unwrap();
-    crate::persist_recovery(&gw, &path, &seed, true).unwrap();
+    crate::persist_recovery(&gw, &path, &seed, Some(&b)).unwrap();
     std::fs::remove_file(marker_path(&path)).unwrap();
     assert_eq!(read_marker(&marker_path(&path), &seed).unwrap(), None);
     let bytes = std::fs::read(&path).unwrap();
-    let mut plain = crate::snapshot::open(&bytes, &seed).unwrap();
-    assert!(snapshot_is_candidate(&plain));
-    assert!(snapshot_mode_refusal(snapshot_is_candidate(&plain), None).is_some());
-    assert!(snapshot_mode_refusal(snapshot_is_candidate(&plain), Some(pb)).is_none());
+    let plain = crate::snapshot::open(&bytes, &seed).unwrap();
+    assert!(plain.starts_with(SNAPSHOT_TAG_MAGIC));
+    assert!(restore_snapshot_plain(&plain, None).is_err());
+    let mut wrong = policy();
+    wrong.oracle_wrapper = [9; 20];
+    let mut wrong_binding = ArchiveBinding::new(
+        ReportArchive::open_existing(&t.0.join("store")).unwrap(),
+        wrong,
+    )
+    .unwrap();
+    assert!(restore_snapshot_plain(&plain, Some(&mut wrong_binding)).is_err());
     assert!(
         crate::Gw::boot_restored(&plain).is_err(),
         "legacy decoder must reject the tagged format"
     );
-    untag_snapshot_plain(&mut plain);
+    let plain = restore_snapshot_plain(&plain, Some(&mut b)).unwrap();
     let restored = crate::Gw::boot_restored(&plain).unwrap();
     assert_eq!(restored.seq.state.state_root(), gw.seq.state.state_root());
     assert!(restored.seq.open_window_has_ops());
     assert!(crate::snapshot::open(&bytes, &[0x6e; 32]).is_err());
     let legacy_path = t.0.join("legacy.snapshot");
-    crate::persist_recovery(&gw, &legacy_path, &seed, false).unwrap();
+    crate::persist_recovery(&gw, &legacy_path, &seed, None).unwrap();
     let legacy = crate::snapshot::open(&std::fs::read(legacy_path).unwrap(), &seed).unwrap();
     assert_eq!(
         legacy,
         gw.snapshot_plain(),
         "valid legacy plaintext bytes are unchanged"
     );
-    assert!(!snapshot_is_candidate(&legacy));
-    assert!(snapshot_mode_refusal(false, None).is_none());
+    assert!(!legacy.starts_with(SNAPSHOT_TAG_MAGIC));
+    assert_eq!(restore_snapshot_plain(&legacy, None).unwrap(), legacy);
     assert!(crate::Gw::boot_restored(&legacy).is_ok());
+}
+
+fn reopened_binding(t: &Temp, b: &ArchiveBinding) -> ArchiveBinding {
+    ArchiveBinding::new(
+        ReportArchive::open_existing(&t.0.join("store")).unwrap(),
+        b.policy.clone(),
+    )
+    .unwrap()
+}
+
+fn encoded_envelope(envelope: &CandidateSnapshotV2) -> Vec<u8> {
+    let mut plain = SNAPSHOT_TAG_MAGIC.to_vec();
+    plain.extend(postcard::to_allocvec(envelope).unwrap());
+    plain
+}
+
+fn open_window_witness(gw: &crate::Gw) -> sequencer::WindowWitness {
+    let bytes = postcard::to_allocvec(&gw.seq).unwrap();
+    let mut copy: sequencer::Sequencer = postcard::from_bytes(&bytes).unwrap();
+    copy.seal_window()
+}
+
+#[test]
+fn candidate_snapshot_recovers_only_accepted_canonical_ids_not_rejected_orphans() {
+    let (t, mut b) = binding("snapshot-rejected");
+    let accepted = admit_installed(
+        &mut b,
+        0,
+        base_report(100, NOW),
+        quote_report(100, NOW),
+        NOW,
+    );
+    let mut rejected = None;
+    assert!(!b
+        .admit_with(
+            0,
+            base_report_price(100, 6_100_000_000_000, NOW),
+            quote_report(100, NOW),
+            NOW,
+            |n| {
+                rejected = Some(n);
+                false
+            },
+        )
+        .unwrap());
+    // An equal-normalized orphan also exists but never replaces the selected ID.
+    let mut sibling = full_report(feed(0x11), 6_000_000_000_000, 100);
+    sibling[600] ^= 1;
+    b.admit(
+        0,
+        report_from_full(sibling, 100, NOW),
+        quote_report(100, NOW),
+        NOW,
+    )
+    .unwrap();
+    let state = crate::Gw::boot().snapshot_plain();
+    let snapshot = b.snapshot_plain(state.clone()).unwrap();
+    let mut restored = reopened_binding(&t, &b);
+    assert_eq!(
+        restore_snapshot_plain(&snapshot, Some(&mut restored)).unwrap(),
+        state
+    );
+    assert_eq!(restored.admissions, b.admissions);
+    assert_eq!(restored.admissions.len(), 1);
+    assert!(restored
+        .bind_ops(&[fill(0, NOW, transcript_of(accepted))])
+        .is_ok());
+    assert!(restored
+        .bind_ops(&[fill(0, NOW, transcript_of(rejected.unwrap()))])
+        .is_err());
+}
+
+#[test]
+fn candidate_snapshot_missing_or_corrupt_exact_id_never_uses_equal_sibling() {
+    for corrupt in [false, true] {
+        let (t, mut b) = binding("snapshot-exact-id");
+        let n = admit_installed(
+            &mut b,
+            0,
+            base_report(100, NOW),
+            quote_report(100, NOW),
+            NOW,
+        );
+        let original = b.admissions[0].id;
+        let mut full = full_report(feed(0x11), 6_000_000_000_000, 100);
+        full[600] ^= 1;
+        let sibling = b
+            .admit(
+                0,
+                report_from_full(full, 100, NOW),
+                quote_report(100, NOW),
+                NOW,
+            )
+            .unwrap();
+        assert_eq!(sibling.transcript, n);
+        assert_ne!(sibling.id, original);
+        let snapshot = b.snapshot_plain(vec![1, 2, 3]).unwrap();
+        let mut restored = reopened_binding(&t, &b);
+        admit_installed(
+            &mut restored,
+            0,
+            base_report_price(100, 6_200_000_000_000, NOW),
+            quote_report(100, NOW),
+            NOW,
+        );
+        let before = restored.admissions.clone();
+        let path = t.0.join("store").join(format!("{}.json", original.hex()));
+        if corrupt {
+            std::fs::write(path, b"corrupt selected record").unwrap();
+        } else {
+            std::fs::remove_file(path).unwrap();
+        }
+        assert!(b.archive.load(sibling.id, &b.policy, 0).is_ok());
+        assert!(restore_snapshot_plain(&snapshot, Some(&mut restored)).is_err());
+        assert_eq!(restored.admissions, before, "failed restore is atomic");
+    }
+}
+
+#[test]
+fn candidate_snapshot_refuses_malformed_authenticated_envelopes_atomically() {
+    let (_t, mut b) = binding("snapshot-malformed");
+    admit_installed(
+        &mut b,
+        0,
+        base_report(100, NOW),
+        quote_report(100, NOW),
+        NOW,
+    );
+    let entry = b.admissions[0];
+    let make = |admissions| CandidateSnapshotV2 {
+        state_plain: vec![1, 2, 3],
+        policy_binding: b.policy_binding,
+        admissions,
+    };
+    let valid = encoded_envelope(&make(vec![entry]));
+    let mut vectors = Vec::new();
+    vectors.push(encoded_envelope(&make(vec![entry, entry])));
+    let mut mismatched = entry;
+    mismatched.transcript.price += 1;
+    vectors.push(encoded_envelope(&make(vec![mismatched])));
+    let mut wrong_market = entry;
+    wrong_market.market_id = 1;
+    vectors.push(encoded_envelope(&make(vec![wrong_market])));
+    vectors.push(encoded_envelope(&make(vec![entry; MAX_ADMISSIONS + 1])));
+    let mut trailing = valid.clone();
+    trailing.push(0);
+    vectors.push(trailing);
+    vectors.push(valid[..valid.len() - 1].to_vec());
+    vectors.push(b"DPCAS".to_vec());
+    vectors.push(SNAPSHOT_TAG_MAGIC[..7].to_vec());
+    let mut future = valid.clone();
+    future[5] = b'9';
+    vectors.push(future);
+    let mut old = OLD_SNAPSHOT_TAG_MAGIC.to_vec();
+    old.extend([1, 2, 3]);
+    vectors.push(old);
+    let mut nested = make(vec![entry]);
+    nested.state_plain = valid.clone();
+    vectors.push(encoded_envelope(&nested));
+    let mut empty = make(vec![entry]);
+    empty.state_plain.clear();
+    vectors.push(encoded_envelope(&empty));
+    // Overlong postcard varint for the state length: valid value, noncanonical bytes.
+    let mut noncanonical = valid.clone();
+    noncanonical.splice(8..9, [0x83, 0x00]);
+    vectors.push(noncanonical);
+    let before = b.admissions.clone();
+    for plain in vectors {
+        // Authentication succeeds: semantic framing still MUST refuse.
+        let sealed = crate::snapshot::seal(&plain, &[42; 32]);
+        let authenticated = crate::snapshot::open(&sealed, &[42; 32]).unwrap();
+        assert!(restore_snapshot_plain(&authenticated, Some(&mut b)).is_err());
+        assert_eq!(b.admissions, before);
+    }
+    let mut limited = b.with_capacity(0);
+    assert!(restore_snapshot_plain(&valid, Some(&mut limited)).is_err());
+    assert_eq!(limited.admissions, before);
+    assert!(limited.snapshot_plain(vec![1]).is_err());
+}
+
+#[test]
+fn candidate_journal_recovers_newer_accepted_ids_for_exact_reseal() {
+    let (t, mut b) = binding("journal-newer");
+    let early = admit_installed(
+        &mut b,
+        0,
+        base_report(100, NOW),
+        quote_report(100, NOW),
+        NOW,
+    );
+    let snapshot = b.snapshot_plain(vec![1, 2, 3]).unwrap();
+    let late = admit_installed(
+        &mut b,
+        0,
+        base_report(101, NOW + 1_000),
+        quote_report(101, NOW + 1_000),
+        NOW + 1_000,
+    );
+    let ops = vec![
+        fill(0, NOW, transcript_of(early)),
+        fill(0, NOW + 1_000, transcript_of(late)),
+        fill(0, NOW + 1_001, transcript_of(early)),
+    ];
+    let envelope = b.bind_ops(&ops).unwrap();
+    let mut restored = reopened_binding(&t, &b);
+    restore_snapshot_plain(&snapshot, Some(&mut restored)).unwrap();
+    assert_eq!(restored.admissions.len(), 1);
+    assert!(restored.bind_ops(&ops).is_err());
+    restored.recover_journal(&ops, &envelope).unwrap();
+    assert_eq!(restored.admissions, b.admissions);
+    assert_eq!(restored.bind_ops(&ops).unwrap().refs, envelope.refs);
+    let before = restored.admissions.clone();
+    restored.recover_journal(&ops, &envelope).unwrap();
+    assert_eq!(
+        restored.admissions, before,
+        "journal recovery is idempotent"
+    );
+}
+
+#[test]
+fn candidate_journal_conflict_missing_record_and_capacity_install_nothing() {
+    let (t, mut b) = binding("journal-atomic");
+    let early = admit_installed(
+        &mut b,
+        0,
+        base_report(100, NOW),
+        quote_report(100, NOW),
+        NOW,
+    );
+    let late = admit_installed(
+        &mut b,
+        0,
+        base_report(101, NOW + 1_000),
+        quote_report(101, NOW + 1_000),
+        NOW + 1_000,
+    );
+    let ops = vec![
+        fill(0, NOW, transcript_of(early)),
+        fill(0, NOW + 1_000, transcript_of(late)),
+    ];
+    let envelope = b.bind_ops(&ops).unwrap();
+    let mut full = full_report(feed(0x11), 6_000_000_000_000, 100);
+    full[600] ^= 1;
+    let sibling = b
+        .admit(
+            0,
+            report_from_full(full, 100, NOW),
+            quote_report(100, NOW),
+            NOW,
+        )
+        .unwrap();
+    let mut conflict = envelope.clone();
+    conflict.refs[0].archive_id = sibling.id;
+    let before = b.admissions.clone();
+    assert_eq!(b.recover_journal(&ops, &conflict), Err(BindError::Mismatch));
+    assert_eq!(b.admissions, before);
+    let mut limited = reopened_binding(&t, &b).with_capacity(1);
+    assert_eq!(
+        limited.recover_journal(&ops, &envelope),
+        Err(BindError::Capacity)
+    );
+    assert!(
+        limited.admissions.is_empty(),
+        "partial capacity recovery is not installed"
+    );
+    let mut empty = reopened_binding(&t, &b);
+    std::fs::remove_file(
+        t.0.join("store")
+            .join(format!("{}.json", envelope.refs[1].archive_id.hex())),
+    )
+    .unwrap();
+    assert_eq!(
+        empty.recover_journal(&ops, &envelope),
+        Err(BindError::Archive)
+    );
+    assert!(
+        empty.admissions.is_empty(),
+        "valid earlier ref must not be installed on later failure"
+    );
+}
+
+#[tokio::test]
+async fn candidate_runtime_and_final_snapshot_persist_index_and_failed_writes_keep_checkpoint() {
+    use std::sync::Arc;
+    let (t, mut b) = binding("runtime-snapshot");
+    admit_installed(
+        &mut b,
+        0,
+        base_report(100, NOW),
+        quote_report(100, NOW),
+        NOW,
+    );
+    let mut app = crate::tests::test_app();
+    Arc::get_mut(&mut app).unwrap().archive = Some(std::sync::Mutex::new(b));
+    let path = t.0.join("state.snapshot");
+    let seed = [42; 32];
+    let serial = Arc::new(tokio::sync::Mutex::new(()));
+    assert!(crate::write_snapshot(&app, &path, seed, serial.clone()).await);
+    let sealed = std::fs::read(&path).unwrap();
+    let plain = crate::snapshot::open(&sealed, &seed).unwrap();
+    {
+        let binding = app.archive.as_ref().unwrap().lock().unwrap();
+        let mut restarted = reopened_binding(&t, &binding);
+        let state = restore_snapshot_plain(&plain, Some(&mut restarted)).unwrap();
+        assert_eq!(restarted.admissions, binding.admissions);
+        assert!(crate::Gw::boot_restored(&state).is_ok());
+    }
+    let (frozen, saved) = crate::final_snapshot(&app, &path, seed, serial.clone()).await;
+    assert!(saved);
+    let state = frozen.snapshot_plain();
+    drop(frozen);
+    let checkpoint = std::fs::read(&path).unwrap();
+    let plain = crate::snapshot::open(&checkpoint, &seed).unwrap();
+    let before = {
+        let binding = app.archive.as_ref().unwrap().lock().unwrap();
+        let mut restarted = reopened_binding(&t, &binding);
+        assert_eq!(
+            restore_snapshot_plain(&plain, Some(&mut restarted)).unwrap(),
+            state
+        );
+        assert_eq!(restarted.admissions, binding.admissions);
+        binding.admissions.clone()
+    };
+    // The target remains legal, while its randomized atomic-write temp name
+    // exceeds NAME_MAX, producing deterministic write failure on Unix.
+    let blocked = t.0.join("s".repeat(240));
+    std::fs::rename(&path, &blocked).unwrap();
+    assert!(!crate::write_snapshot(&app, &blocked, seed, serial.clone()).await);
+    assert_eq!(std::fs::read(&blocked).unwrap(), checkpoint);
+    assert_eq!(
+        app.archive.as_ref().unwrap().lock().unwrap().admissions,
+        before
+    );
+    let (frozen, saved) = crate::final_snapshot(&app, &blocked, seed, serial).await;
+    assert!(!saved);
+    drop(frozen);
+    assert_eq!(std::fs::read(&blocked).unwrap(), checkpoint);
+    assert_eq!(
+        app.archive.as_ref().unwrap().lock().unwrap().admissions,
+        before
+    );
+}
+
+#[tokio::test]
+async fn poisoned_archive_cannot_publish_legacy_runtime_or_final_snapshot() {
+    use std::sync::Arc;
+    let (t, b) = binding("poisoned-snapshot");
+    let mut app = crate::tests::test_app();
+    Arc::get_mut(&mut app).unwrap().archive = Some(std::sync::Mutex::new(b));
+    let path = t.0.join("state.snapshot");
+    let seed = [42; 32];
+    let serial = Arc::new(tokio::sync::Mutex::new(()));
+    assert!(crate::write_snapshot(&app, &path, seed, serial.clone()).await);
+    let before = std::fs::read(&path).unwrap();
+    let poisoned = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let _guard = app.archive.as_ref().unwrap().lock().unwrap();
+        panic!("synthetic archive poison");
+    }));
+    assert!(poisoned.is_err());
+    assert!(!crate::write_snapshot(&app, &path, seed, serial.clone()).await);
+    assert_eq!(std::fs::read(&path).unwrap(), before);
+    let (frozen, saved) = crate::final_snapshot(&app, &path, seed, serial).await;
+    assert!(!saved);
+    drop(frozen);
+    assert_eq!(std::fs::read(&path).unwrap(), before);
 }

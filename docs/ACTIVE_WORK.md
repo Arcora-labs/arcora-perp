@@ -4,7 +4,9 @@ Güncelleme: 11 Ekim 2026. **PRODUCTION RELEASE HOLD**.
 Bu belge güncel çalışma sırasıdır; tarihsel `NEXT_STEPS.md` yerine kullanın.
 Son doğrulanan main: `c34fb56b05db13ce09efc0104c2d44abba6d6895` (#43).
 Aktif PR #44; doğrulanmış kod `e283958109fc6b434b7049d523bbd3378e2e6c27`.
-Dokümantasyon head'i ve her sonraki head için CI ayrıca kontrol edilir.
+A0 dokümantasyonu `5cb1470` ile yayımlandı. A1 checkpoint/recovery kodu bu
+devam çalışmasında uygulandı; yeni yerel kanıt ve yayın head'inin CI sonucu
+ayrıca kaydedilir. Eski test sonucu yeni kodu kapsamaz.
 
 ## Birleşmiş ve korunan çalışmalar
 
@@ -117,7 +119,9 @@ reviewed v2 guest/ELF/vkey/public input ve prover yönlendirmesi DEĞİŞMEDİ):
   reddedilir. `resume_exact` aday journal'ı ilk noktada reddeder; v2 yola yazmaz.
 - Boot recovery: açılan aday journal'ın her referanslı kaydı var olmalı,
   policy/market/op zamanıyla çözümlenmeli ve op transcript'iyle birebir
-  eşleşmeli; eksik/bozuk/uyumsuz kayıt = sürümlü HOLD (dosya korunur, başlangıç reddedilir).
+  eşleşmeli. Authenticated v6 journal'ın referansları ilk seçilmiş özgün
+  ID'leri kabul indeksine geri kurar; mevcut ID ile çatışma veya kapasite
+  aşımı dahil her hata recovery kararından önce HOLD eder ve WAL korunur.
 - Sıralı dayanıklılık engelleri: arşiv kalıcı → state değiştiren admission;
   authenticated journal kalıcı → herhangi bir submission'dan önce kontroller.
 - Candidate modda v2 submission YOK: pencere seal+journal sonrası HOLD eder
@@ -133,16 +137,29 @@ reviewed v2 guest/ELF/vkey/public input ve prover yönlendirmesi DEĞİŞMEDİ):
 - `admit_with`, kapasite → arşiv kalıcılığı → gateway kabulü → ilk ID seçimini
   aynı kilit kesitinde yapar; ret indekse girmez, alternatif kayıt seçilmiş ID'yi
   değiştirmez. 4096 sınırında sessiz eviction yoktur; kapasite çözümü açık.
-- Aday snapshot authenticated plaintext etiketi `DPCAS1\0\0` içerir;
-  marker kaybı/ayar eksikliğinde legacy açılış reddedilir. Bu etiket açık
-  pencerenin admission indeksini/politikasını tam geri kurmuş sayılmaz.
+- A1 aday checkpoint'i authenticated plaintext içinde `DPCAS2\0\0` taşır:
+  gateway state'i/açık op penceresi, tam politika bağı ve kanonik
+  `(market, transcript) → ilk ArchiveId` kabul indeksi birlikte saklanır.
+  Intake/seal/checkpoint aynı gateway → archive kilit sırasıyla tek tutarlı
+  kesit alır. Startup seçilmiş her özgün kaydı ve restore edilmiş op akışını
+  doğrular; yanlış politika, eksik/bozuk kayıt, kanonik olmayan/tekrarlı
+  indeks ve uyumsuz op başlangıcı reddeder. Legacy snapshot baytları korunur.
+- Eski `DPCAS1\0\0` yalnız modu işaretlediği için uzlaştırma amacıyla
+  korunarak reddedilir; eksik kabul referansları tahmin edilip otomatik
+  yükseltme yapılmaz. Marker kaybı/ayar eksikliği legacy açılışa dönüşmez.
+
+A1 dayanıklılığı, başarıyla kalıcı yazılan snapshot kesitinin state ve kabul
+ID'lerini kapsar. Son snapshot'tan sonraki her admission için ayrı WAL veya
+sıfır veri kaybı garantisi eklenmedi. Mevcut pre-seal `SealNeverPersisted`
+recovery satırı ve RPO sınırı korunur. Yeni kodun doğrulama kaydı:
+[A1 kabul indeksi recovery](audits/2026-10-11-chainlink-admission-recovery/README.md).
 
 ## Önce kapanacak GPU'suz yazılım paketleri
 
 | Sıra | İş | Kapanış ölçütü |
 |---|---|---|
-| A0 | #44 final evidence ve eski audit düzeltmesi | Exact kod SHA'sına bağlı doğrulanmış JSON, tutarlı kılavuz/backlog ve yeni yayın head'inde CI. Kanıt dosyaları bu dokümantasyon paketinde eklendi; yeni head kontrolü ayrı. |
-| A1 | Açık pencerenin özgün kabul ID'lerini kalıcılaştırma | Politika/state/checkpoint ve kabul indeksi aynı authenticated kesitte; restart sonrası aynı op sırası/özgün ID'lerle seal. Eksik/bozuk/alternatif rapor, yanlış politika, marker kaybı, yarım kabul ve yazım hatasında güvenli ret. |
+| A0 | #44 final evidence ve eski audit düzeltmesi | Exact kod SHA'sına bağlı JSON ve düzeltilmiş audit `5cb1470` ile yayımlandı; yayın head'inin CI kontrolü ayrı. |
+| A1 | Açık pencerenin özgün kabul ID'lerini kalıcılaştırma | DPCAS2 checkpoint ve doğrulanmış v6 journal'dan özgün ID recovery uygulandı. 535 gateway PASS (29 binding/restart dahil), 47 guard ve Clippy/format temiz; yeni PR head CI ayrı. Snapshot kesiti sonrası admission'lar için tüm-admission WAL garantisi yok. |
 | A2 | İndeks kapasitesi ve retention | 4096'yı aşan uzun koşuda aktif açık pencere/journal/recovery referanslarını kaybetmeden güvenli serbest bırakma; disk/indeks doluluk duruşu ve restart tutarlılığı. |
 | A3 | Fiyat kullanan bütün gateway yolları | Fill/funding/liquidation/close/mark/matching ve withdrawal aday yaşam döngüsü; eksik/eski/yanlış raporda ret; yeni guest CPU/native karşılaştırması ayrı. |
 | A4 | Ayrı aday prover/settlement protokolü | Doğru witness/program/vkey/report/clock/uptime bağları; yanlış sürümde sıfır registration/prove/broadcast; yerel harness ardından gerçek proof/verifier kabulü. |
