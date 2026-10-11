@@ -1,6 +1,6 @@
 {
   "schema": "arcora-offline-registration-recovery-evidence-v1",
-  "observed_utc": "2026-10-11T14:14:54.570363+00:00",
+  "observed_utc": "2026-10-11T14:16:08.463033+00:00",
   "tested_code_commit": "df3f296bfa22d2e632f8985d462db27b320b40ad",
   "base_main": "5dac90412b65c299cb62bcff1ab2e1ae0533b6a0",
   "source_sha256": {
@@ -387,7 +387,7 @@
   },
   "audit_log_whitespace_metadata": {
     "path": ".gitattributes",
-    "sha256": "9ea82d093299be56eacf4aec19e9a8858aa107f6750a4c56f76cc960b25f7048",
+    "sha256": "a4cd47b31142fa2312fe7a8968f69fd50e9738d2d69995bcde647c582cb4f04f",
     "scope": "only this audit logs/*.log, terminal blank line preserved; blank-at-eol and space-before-tab still checked"
   },
   "four_golden_builder_sources_unchanged": {
@@ -451,8 +451,8 @@
   "physical_power_loss_or_process_kill_test": false,
   "artifacts": {
     "README.md": {
-      "sha256": "56a0a007e1bc8cbd227fa939b48ce08d8ceddca859e29cfca0eab9f3f7ba2b6f",
-      "bytes": 6908
+      "sha256": "1569bfb15001c7646af99fd5f59ef3e1d84891c1a350eceb13134db03af61161",
+      "bytes": 7148
     },
     "focused-validation.json": {
       "sha256": "53528c8517e94d1447cec46705e4b16007047e4c6e6316ceff5cf6b3454fb78d",
@@ -490,6 +490,10 @@
       "sha256": "5ac59cfc71c7bbf034ae251f3d49c69f2b2fa1621690b69233a13c2850d55ac2",
       "bytes": 1559
     },
+    "logs/publication-diff.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
     "logs/python-guards.log": {
       "sha256": "d2aa2738bc5314e7a1869adf5f8a364613aa658fe623d69eff39bf9b0c8ee20b",
       "bytes": 7032
@@ -525,6 +529,10 @@
     "plan.json": {
       "sha256": "2aca9058bfd73cc9fea9a0c352840d263813faf898886154d58a8f5813acbde7",
       "bytes": 2057
+    },
+    "publication-checks.json": {
+      "sha256": "848517e1086b2445721568b2c6f412304ba02456767f3df5e35f267bc0691ed2",
+      "bytes": 918
     },
     "root-validation.json": {
       "sha256": "cf1f410dd868c83ec35f512b0bfe4820a73a6a770de3bba0ea833b66788409f0",

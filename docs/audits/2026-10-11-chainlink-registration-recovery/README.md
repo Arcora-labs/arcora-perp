@@ -87,7 +87,10 @@ Tested code commit: `df3f296bfa22d2e632f8985d462db27b320b40ad`.
 | Reviewed/candidate source pins | 21 / 9 unchanged; release/candidate locks PASS |
 
 The first focused run passed 24 tests; final coverage added pre-attempt Absent
-recovery and in-invocation finality watermark cases. No failed run occurred.
+recovery and in-invocation finality watermark cases. Rust and guard commands had
+no failed run. Publication whitespace checks found Cargo terminal empty lines;
+the audit-only attribute required explicit `-blank-at-eof` and now passes while
+preserving all raw log hashes. [Publication check](publication-checks.json).
 The final root run finished at 14:12:38 UTC. All five source files remained byte
 identical throughout the combined checks. Later publication commits add only
 documentation, evidence and a narrowly scoped audit-log whitespace attribute.

@@ -1,0 +1,25 @@
+{
+  "observed_utc": "2026-10-11T14:16:07.462144+00:00",
+  "final_diff_command": [
+    "git",
+    "diff",
+    "--check",
+    "5dac90412b65c299cb62bcff1ab2e1ae0533b6a0"
+  ],
+  "final_diff_exit_code": 0,
+  "raw_cargo_log_bytes_edited": false,
+  "only_audit_log_terminal_blank_line_check_disabled": true,
+  "failed_before": [
+    {
+      "stage": "initial staged audit publication check",
+      "observed": "four raw Cargo logs end with terminal empty lines; warning output; combined shell final status came from stat, no independent git-check exit recorded"
+    },
+    {
+      "stage": "first scoped attribute omitted explicit minus",
+      "git_diff_check_exit_code": 2,
+      "observed": "same four terminal-empty-line warnings"
+    }
+  ],
+  "repair": "explicit -blank-at-eof on this audit logs/*.log only; trailing-space and space-before-tab remain enabled",
+  "rust_or_guard_source_changed_after_validation": false
+}
