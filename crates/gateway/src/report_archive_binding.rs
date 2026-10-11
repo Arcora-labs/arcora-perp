@@ -21,6 +21,67 @@ use chainlink_streams_client::{
 use perp_core::engine::BatchOp;
 use std::collections::VecDeque;
 
+/// Offline harness material extracted from the exact accepted archive IDs.
+/// These types and their constructor are absent from the production gateway.
+#[cfg(test)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub(crate) struct CandidateReportEntry {
+    pub(crate) market_id: u64,
+    pub(crate) now_ms: u64,
+    pub(crate) base_report: Vec<u8>,
+    pub(crate) quote_report: Vec<u8>,
+}
+
+#[cfg(test)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub(crate) struct CandidateMaterial {
+    pub(crate) policy: Policy,
+    pub(crate) policy_binding: [u8; 32],
+    pub(crate) refs: Vec<ArchiveRef>,
+    pub(crate) evidence: Vec<chainlink_oracle::binding::PairEvidence>,
+    pub(crate) entries: Vec<CandidateReportEntry>,
+    pub(crate) material_hash: [u8; 32],
+}
+
+#[cfg(test)]
+impl CandidateMaterial {
+    /// An integrity pin over original full containers and ordered body evidence.
+    /// It does not authenticate a DON signature or independently rederive an
+    /// archive ID after material leaves the trusted extraction boundary.
+    pub(crate) fn recomputed_hash(&self) -> Result<[u8; 32], BindError> {
+        use sha2::{Digest as _, Sha256};
+        // Includes the 32-market/16-byte-symbol bounds before serialization.
+        self.policy.hash().map_err(|_| BindError::Policy)?;
+        let count = self.refs.len();
+        if count > chainlink_oracle::binding::MAX_ENTRIES
+            || self.evidence.len() != count
+            || self.entries.len() != count
+            || self.evidence.iter().any(|entry| {
+                entry.base.0.len() != chainlink_oracle::report::BODY_LEN
+                    || entry.quote.0.len() != chainlink_oracle::report::BODY_LEN
+            })
+            || self.entries.iter().any(|entry| {
+                entry.base_report.len() > chainlink_oracle::report::MAX_FULL_REPORT
+                    || entry.quote_report.len() > chainlink_oracle::report::MAX_FULL_REPORT
+            })
+        {
+            return Err(BindError::Capacity);
+        }
+        let bytes = postcard::to_allocvec(&(
+            &self.policy,
+            self.policy_binding,
+            &self.refs,
+            &self.evidence,
+            &self.entries,
+        ))
+        .map_err(|_| BindError::Snapshot)?;
+        let mut hash = Sha256::new();
+        hash.update(b"arcora:candidate-material:v3");
+        hash.update(bytes);
+        Ok(hash.finalize().into())
+    }
+}
+
 pub(crate) const MODE_ENV: &str = "DARKPERP_CHAINLINK_ARCHIVE";
 pub(crate) const DIR_ENV: &str = "DARKPERP_CHAINLINK_ARCHIVE_DIR";
 pub(crate) const POLICY_ENV: &str = "DARKPERP_CHAINLINK_POLICY_JSON";
@@ -971,6 +1032,55 @@ impl ArchiveBinding {
             return Err(BindError::Mismatch);
         }
         Ok(())
+    }
+
+    /// Offline candidate protocol extraction only. A supplied journal envelope
+    /// must name the current canonical admissions, even if an equal-normalized
+    /// sibling archive record exists. Each evidence/entry pair uses the exact
+    /// operation time and original full containers; no receipt refresh occurs.
+    #[cfg(test)]
+    pub(crate) fn candidate_material(
+        &self,
+        ops: &[BatchOp],
+        envelope: &ArchiveEnvelope,
+    ) -> Result<CandidateMaterial, BindError> {
+        let count = ops.iter().filter_map(used_oracle).count();
+        if count > chainlink_oracle::binding::MAX_ENTRIES {
+            return Err(BindError::Capacity);
+        }
+        self.verify(ops, envelope)?;
+        let canonical = self.bind_ops(ops)?;
+        if canonical.policy_binding != envelope.policy_binding || canonical.refs != envelope.refs {
+            return Err(BindError::Mismatch);
+        }
+        let mut evidence = Vec::with_capacity(count);
+        let mut entries = Vec::with_capacity(count);
+        for reference in &envelope.refs {
+            let pair = self
+                .archive
+                .load(reference.archive_id, &self.policy, reference.market_id)
+                .map_err(|_| BindError::Archive)?;
+            let (_, body_evidence) = pair
+                .for_operation(reference.now_ms)
+                .map_err(|_| BindError::Mismatch)?;
+            entries.push(CandidateReportEntry {
+                market_id: reference.market_id,
+                now_ms: reference.now_ms,
+                base_report: pair.base().full_report().to_vec(),
+                quote_report: pair.quote().full_report().to_vec(),
+            });
+            evidence.push(body_evidence);
+        }
+        let mut material = CandidateMaterial {
+            policy: self.policy.clone(),
+            policy_binding: self.policy_binding,
+            refs: envelope.refs.clone(),
+            evidence,
+            entries,
+            material_hash: [0; 32],
+        };
+        material.material_hash = material.recomputed_hash()?;
+        Ok(material)
     }
 
     /// Recovery/handoff: the sealed envelope must name THIS policy and every

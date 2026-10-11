@@ -1,0 +1,20 @@
+diff --git a/crates/gateway/src/main.rs b/crates/gateway/src/main.rs
+index c2b492b..53654bc 100644
+--- a/crates/gateway/src/main.rs
++++ b/crates/gateway/src/main.rs
+@@ -45,7 +45,6 @@ use sequencer::{adl_tag, adl_tag_key, EnclaveIdentity, SealedBatch, Sequencer, W
+ 
+ mod account_recovery;
+ mod bootstrap;
+-mod candles;
+ #[cfg(test)]
+ mod candidate_intent;
+ #[cfg(test)]
+@@ -54,6 +53,7 @@ mod candidate_protocol;
+ mod candidate_protocol_tests;
+ #[cfg(test)]
+ mod candidate_registration;
++mod candles;
+ mod challenge_scan;
+ mod clock_admission;
+ mod clock_client;

@@ -15,7 +15,7 @@ const NOW: u64 = 2_000_000;
 const AGE: u64 = 2_000;
 const SEED: [u8; 32] = [0x39; 32];
 
-struct Fixture {
+pub(super) struct Fixture {
     dir: PathBuf,
     gw: Gw,
     binding: ArchiveBinding,
@@ -23,6 +23,11 @@ struct Fixture {
     owner: PubKey,
     signer: k256::ecdsa::SigningKey,
     to: [u8; 20],
+}
+impl Fixture {
+    pub(super) fn protocol_dir(&self) -> &std::path::Path {
+        &self.dir
+    }
 }
 impl Drop for Fixture {
     fn drop(&mut self) {
@@ -525,6 +530,159 @@ fn run_liquidation() -> (Fixture, CandidateWitness) {
     (f, input)
 }
 
+/// Reuse actual gateway operations and exact original archive containers for
+/// the test-only candidate protocol. The returned guard owns their lifetime.
+pub(super) fn protocol_fixture(
+    liquidation: bool,
+) -> (
+    Fixture,
+    CandidateWitness,
+    report_archive_binding::CandidateMaterial,
+) {
+    let (fixture, witness) = if liquidation {
+        run_liquidation()
+    } else {
+        let (fixture, _, witness) = run_lifecycle();
+        (fixture, witness)
+    };
+    let envelope = fixture.binding.bind_ops(&witness.clock.1).unwrap();
+    let material = fixture
+        .binding
+        .candidate_material(&witness.clock.1, &envelope)
+        .unwrap();
+    (fixture, witness, material)
+}
+
+pub(super) fn protocol_price_free_fixture() -> (
+    Fixture,
+    CandidateWitness,
+    report_archive_binding::CandidateMaterial,
+) {
+    let (fixture, window) = run_wind_down();
+    let witness = candidate(
+        &window,
+        &fixture.binding,
+        &fixture.dir.join("archive/store"),
+    );
+    assert_eq!(witness.clock.3.timed_ops, 0);
+    assert!(witness.evidence.is_empty());
+    let envelope = fixture.binding.bind_ops(&window.ops).unwrap();
+    assert!(
+        ensure_submission_supported(Some(&envelope)).is_err(),
+        "price-free candidate remains submission HOLD"
+    );
+    let material = fixture
+        .binding
+        .candidate_material(&window.ops, &envelope)
+        .unwrap();
+    chainlink_oracle::binding::run(witness.clone()).unwrap();
+    (fixture, witness, material)
+}
+
+#[test]
+fn candidate_material_requires_original_selected_ids_full_reports_and_order() {
+    let (fixture, witness, material) = protocol_fixture(false);
+    let envelope = fixture.binding.bind_ops(&witness.clock.1).unwrap();
+    let archive = chainlink_streams_client::report_archive::ReportArchive::open_existing(
+        &fixture.dir.join("archive/store"),
+    )
+    .unwrap();
+    assert_eq!(material.refs, envelope.refs);
+    for (reference, entry) in material.refs.iter().zip(&material.entries) {
+        let pair = archive
+            .load(
+                reference.archive_id,
+                fixture.binding.policy(),
+                reference.market_id,
+            )
+            .unwrap();
+        assert_eq!(
+            (entry.market_id, entry.now_ms),
+            (reference.market_id, reference.now_ms)
+        );
+        assert_eq!(entry.base_report, pair.base().full_report());
+        assert_eq!(entry.quote_report, pair.quote().full_report());
+    }
+    let first = &envelope.refs[0];
+    let sibling = chainlink_streams_client::report_pair::PreparedPair::new(
+        fixture.binding.policy(),
+        first.market_id,
+        report(
+            feed(0x11 + first.market_id as u8),
+            60_000 * 100_000_000,
+            NOW / 1000,
+            NOW,
+            0x77,
+        ),
+        report(
+            feed(0x61 + first.market_id as u8),
+            100_000_000,
+            NOW / 1000,
+            NOW,
+            0x77,
+        ),
+        NOW,
+    )
+    .unwrap();
+    let sibling_id = archive.store(&sibling).unwrap().id;
+    assert_ne!(sibling_id, first.archive_id);
+    let mut substituted = envelope.clone();
+    substituted.refs[0].archive_id = sibling_id;
+    fixture
+        .binding
+        .verify(&witness.clock.1, &substituted)
+        .unwrap();
+    assert!(
+        fixture
+            .binding
+            .candidate_material(&witness.clock.1, &substituted)
+            .is_err(),
+        "same body sibling cannot replace selected original containers"
+    );
+    let selected = fixture
+        .dir
+        .join("archive/store")
+        .join(format!("{}.json", first.archive_id.hex()));
+    let held = fixture.dir.join("selected-backup.json");
+    std::fs::rename(&selected, &held).unwrap();
+    assert!(
+        fixture
+            .binding
+            .candidate_material(&witness.clock.1, &envelope)
+            .is_err(),
+        "selected missing; sibling must not become fallback"
+    );
+    std::fs::rename(&held, &selected).unwrap();
+    let original = std::fs::read(&selected).unwrap();
+    std::fs::write(&selected, b"owned corrupted archive").unwrap();
+    assert!(fixture
+        .binding
+        .candidate_material(&witness.clock.1, &envelope)
+        .is_err());
+    std::fs::write(&selected, original).unwrap();
+    let mut reordered = envelope.clone();
+    let different = reordered.refs.iter().position(|r| r != first).unwrap();
+    reordered.refs.swap(0, different);
+    assert!(fixture
+        .binding
+        .candidate_material(&witness.clock.1, &reordered)
+        .is_err());
+    let mut bad_id = envelope.clone();
+    bad_id.refs[0].archive_id = ArchiveId::parse(&"ff".repeat(32)).unwrap();
+    assert!(fixture
+        .binding
+        .candidate_material(&witness.clock.1, &bad_id)
+        .is_err());
+    assert_eq!(
+        fixture
+            .binding
+            .candidate_material(&witness.clock.1, &envelope)
+            .unwrap()
+            .material_hash,
+        material.material_hash
+    );
+}
+
 #[test]
 fn archived_liquidation_succeeds_with_valid_position_and_preserves_evidence() {
     let _ = run_liquidation();
@@ -686,8 +844,7 @@ fn candidate_refuses_synthetic_demo_prices_and_unguarded_entrypoints() {
     assert_eq!(f.fingerprint(), before);
 }
 
-#[test]
-fn terminal_wind_down_withdrawal_does_not_require_a_price_or_archive() {
+fn run_wind_down() -> (Fixture, sequencer::WindowWitness) {
     let mut f = Fixture::new("wind-down");
     f.gw.seq.apply(&BatchOp::EnterCloseOnly).unwrap();
     f.gw.seq.apply(&BatchOp::SettleAll).unwrap();
@@ -723,6 +880,12 @@ fn terminal_wind_down_withdrawal_does_not_require_a_price_or_archive() {
         .ops
         .iter()
         .any(|op| matches!(op, BatchOp::SettleAll)));
+    (f, next)
+}
+
+#[test]
+fn terminal_wind_down_withdrawal_does_not_require_a_price_or_archive() {
+    let _ = run_wind_down();
 }
 
 #[tokio::test]

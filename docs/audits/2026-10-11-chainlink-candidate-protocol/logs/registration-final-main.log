@@ -1,0 +1,13 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.35s
+     Running unittests src/main.rs (target/debug/deps/gateway-610b7230a2c5bb73)
+
+running 6 tests
+test candidate_registration::tests::epoch_grace_is_strict_at_observation_and_first_operation ... ok
+test candidate_registration::tests::missing_extra_reordered_wrong_clock_and_bad_container_fail ... ok
+test candidate_registration::tests::full_signature_container_changes_input_but_preserves_body_evidence ... ok
+test candidate_registration::tests::exact_nested_abi_offsets_and_independent_a3_body_evidence ... ok
+test candidate_registration::tests::encoding_is_bounded_and_price_free_array_has_two_words ... ok
+test candidate_registration::tests::committed_original_archive_vectors_match_native_and_solidity_bytes ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 584 filtered out; finished in 0.18s
+

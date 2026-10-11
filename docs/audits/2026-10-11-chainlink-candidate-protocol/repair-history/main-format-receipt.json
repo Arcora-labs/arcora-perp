@@ -1,0 +1,11 @@
+{
+  "before_commit": "d92ecd1c0121c0b5b34c52ebdb337282f58e5f2e",
+  "before_main_sha256": "e24a28b1a29ab6c62f13760045f2da0533e3d125d4d0a5a39e42ea56411707c8",
+  "after_main_sha256": "280e731cacc19d800e2ed05224992295ca429934c175ef2c24152bb26c9f8313",
+  "only_difference": "cfg(test) candidate module declaration placement before candles",
+  "four_export_builder_sources_byte_identical": true,
+  "definitive_corpus": "/tmp/arcora-candidate-protocol-20261011-a4-parity-final2",
+  "manifest_sha256": "3147718b8db6036f0ecb540157dfaea260f010726abdc2895d53baf4d08c6480",
+  "export_ran_before_main_declaration_format": true,
+  "unused_final3_export_not_authoritative": true
+}

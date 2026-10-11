@@ -1,0 +1,36 @@
+{
+  "synthetic": true,
+  "real_don_verified": false,
+  "proof_generated": false,
+  "candidate_submission": "HOLD",
+  "sources_sha256": {
+    "candidate_registration.rs": "0x86ffc1032f31952fad4e0c815a9564397c2d86cff5c62e23a664538209ba4c37",
+    "report_archive_binding.rs": "0x1204db404b472c8c77a56e23fe2e59d4577d5d2bb334c8f0f4880449352812a9",
+    "price_lifecycle_tests.rs": "0xcba6cb30039894e128e8ee19b32f1a9ed1fca2d7616c73af8570d2ce885472dd",
+    "candidate_protocol_tests.rs": "0xb7b5304d771c9f5505db67737c20793696eff7367724e529bc4030a3a97e7b40"
+  },
+  "cases": [
+    {
+      "name": "normal-lifecycle",
+      "witness_file": "normal-lifecycle.witness.bin",
+      "witness_sha256": "8f23160f0a0ff9d004c4c78a25877fc84f4e50e8263b46115695f1d212f9e937",
+      "witness_bytes": 9460,
+      "outcome": "PASS",
+      "native_error": null,
+      "expected_commitment": "4331d2a3aaadffb65b1cb945246e498580e7eb86e2cac6d34a462fca25c1097f",
+      "op_count": 10,
+      "evidence_count": 9
+    },
+    {
+      "name": "liquidation",
+      "witness_file": "liquidation.witness.bin",
+      "witness_sha256": "ba6b4cd72a38db1c4b0188b9eff98e41022dffceca7dd5de5ff47b0f5adb0337",
+      "witness_bytes": 8490,
+      "outcome": "PASS",
+      "native_error": null,
+      "expected_commitment": "cf1861676e0236049aa4385ec844148361eff3bec8c1b7aa7deb4c7e66642184",
+      "op_count": 8,
+      "evidence_count": 8
+    }
+  ]
+}

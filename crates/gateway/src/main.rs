@@ -45,6 +45,14 @@ use sequencer::{adl_tag, adl_tag_key, EnclaveIdentity, SealedBatch, Sequencer, W
 
 mod account_recovery;
 mod bootstrap;
+#[cfg(test)]
+mod candidate_intent;
+#[cfg(test)]
+mod candidate_protocol;
+#[cfg(test)]
+mod candidate_protocol_tests;
+#[cfg(test)]
+mod candidate_registration;
 mod candles;
 mod challenge_scan;
 mod clock_admission;

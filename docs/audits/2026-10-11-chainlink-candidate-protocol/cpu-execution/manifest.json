@@ -1,0 +1,44 @@
+{
+  "artifacts": {
+    "liquidation.public-values.bin": {
+      "sha256": "b493a1c3abccb6de0f6f467c983f67e7d7cda44004c0298aa3f9a4529f9b14db",
+      "size_bytes": 32
+    },
+    "normal-lifecycle.public-values.bin": {
+      "sha256": "1416555e0d7656adc3d6f9b6eff85fb9952d685be58cd91624a77c04f515d66b",
+      "size_bytes": 32
+    }
+  },
+  "candidate_elf_sha256": "48a8eb8e6acd96057a72ca74db5077ac9e85d30d2ec830518ef1f1ac3832ef1f",
+  "candidate_submission": "HOLD",
+  "cases": [
+    {
+      "cycles": 27237960,
+      "elapsed_seconds": 3.352551708,
+      "guest_exit_code": 0,
+      "name": "normal-lifecycle",
+      "outcome": "PASS",
+      "public_values_hex": "4331d2a3aaadffb65b1cb945246e498580e7eb86e2cac6d34a462fca25c1097f",
+      "witness_sha256": "8f23160f0a0ff9d004c4c78a25877fc84f4e50e8263b46115695f1d212f9e937"
+    },
+    {
+      "cycles": 24293454,
+      "elapsed_seconds": 3.2332701249999998,
+      "guest_exit_code": 0,
+      "name": "liquidation",
+      "outcome": "PASS",
+      "public_values_hex": "cf1861676e0236049aa4385ec844148361eff3bec8c1b7aa7deb4c7e66642184",
+      "witness_sha256": "ba6b4cd72a38db1c4b0188b9eff98e41022dffceca7dd5de5ff47b0f5adb0337"
+    }
+  ],
+  "fixture_manifest_sha256": "3147718b8db6036f0ecb540157dfaea260f010726abdc2895d53baf4d08c6480",
+  "guest_executed": true,
+  "native_guest_equal": true,
+  "program_vkey": "0x006aa3cfa389566dd318c9bf12f3946a623555e5f624359037e2d5c4d35ad590",
+  "proof_generated": false,
+  "real_don_verified": false,
+  "schema": "arcora-chainlink-lifecycle-cpu-v1",
+  "schema_version": 1,
+  "status": "PASS",
+  "synthetic": true
+}

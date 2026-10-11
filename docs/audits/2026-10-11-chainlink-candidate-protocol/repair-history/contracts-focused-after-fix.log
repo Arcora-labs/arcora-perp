@@ -1,0 +1,17 @@
+Warning: This is a nightly build of Foundry. It is recommended to use the latest stable version. To mute this warning set `FOUNDRY_DISABLE_NIGHTLY_WARNING` in your environment. 
+
+Compiling 1 files with Solc 0.8.24
+Solc 0.8.24 finished in 9.26s
+Compiler run successful!
+
+Ran 7 tests for test/ChainlinkCandidateProtocol.t.sol:ChainlinkCandidateProtocolTest
+[PASS] test_native_liquidation_abi_and_mock_contract_lifecycle() (gas: 8257187)
+[PASS] test_native_normal_abi_and_mock_contract_lifecycle() (gas: 8319320)
+[PASS] test_omitted_and_extra_actual_entries_fail_atomically() (gas: 7884343)
+[PASS] test_registered_actual_entries_cannot_settle_in_different_epoch() (gas: 8137320)
+[PASS] test_reordered_registered_material_cannot_replace_original() (gas: 8239616)
+[PASS] test_same_bodies_different_signature_container_refuses_replacement() (gas: 8432792)
+[PASS] test_wrong_clock_endpoint_refuses_reports_and_settlement() (gas: 7866605)
+Suite result: ok. 7 passed; 0 failed; 0 skipped; finished in 26.29ms (54.96ms CPU time)
+
+Ran 1 test suite in 58.20ms (26.29ms CPU time): 7 tests passed, 0 failed, 0 skipped (7 total tests)
