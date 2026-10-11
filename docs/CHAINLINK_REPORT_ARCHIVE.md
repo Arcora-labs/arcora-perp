@@ -2,9 +2,10 @@
 
 11 Ekim 2026. **PRODUCTION RELEASE HOLD.**
 PreparedPair/ReportArchive host istemci bileşenidir. #44 bunu opt-in aday
-gateway intake, authenticated v6 journal ve aday snapshot etiketiyle bağlar.
+gateway intake, authenticated v6 journal ve aday checkpoint ile bağlar.
 Legacy varsayılan davranış korunur; aday prover/settlement yolu kapalıdır.
-Güncel exact-code kanıtı: [son doğrulama](audits/2026-10-11-chainlink-archive-gateway-binding/README.md).
+`e283958` için exact-code kanıtı: [önceki doğrulama](audits/2026-10-11-chainlink-archive-gateway-binding/README.md).
+A1 devam kodunun ayrı kaydı: [kabul indeksi recovery](audits/2026-10-11-chainlink-admission-recovery/README.md).
 `chainlink-oracle` normalizasyon kodu aday guest'in de bağımlılığıdır; bütün
 Chainlink katmanı host-only değildir.
 
@@ -66,8 +67,15 @@ Yeni işlemde güncel güvenilir işlem saatiyle `for_operation` yeniden çağr�
 özgün işlemin yeniden yürütülmesinde o işlemin orijinal saati kullanılır.
 Çağıran hizmet beklenen ID'yi kendi kalıcı, bütünlüğü korunan journal'ına
 bağlamalıdır. #44'te mühürlenmiş pencere için bu bağlantı authenticated v6
-journal ile vardır. Açık, henüz mühürlenmemiş pencerenin bellek içi admission
-indeksi henüz kalıcı değildir; restart sonrası tam kurtarma tamamlanmamıştır.
+journal ile vardır. A1 devamında açık pencerenin özgün kabul indeksi,
+gateway state'i ve tam politika bağı aynı authenticated DPCAS2 checkpoint
+kesitine alınır. Başarıyla yazılmış bu snapshot'tan restart, seçilmiş özgün
+ID'leri ve op sırasını geri kurar; yeni işlem tazeliği yine ayrıca sınanır.
+
+Checkpoint kesiti sonrası her admission için ayrı WAL garantisi verilmez.
+Arşiv kaydının diskte bulunması, sonraki state değişiminin de kalıcı olduğunu
+göstermez. Mevcut pre-seal `SealNeverPersisted` recovery davranışı ve RPO
+sınırı korunur; bu paket sıfır veri kaybı iddiası değildir.
 
 ## Kullanım sırası
 
@@ -115,9 +123,9 @@ cargo +1.99.0 clippy --locked --offline --manifest-path crates/chainlink-streams
 İki guest programı/pinleri, reviewed root Cargo.toml, public input ve risk
 eşikleri korunur. Kök lock host facade girdileri nedeniyle değişmiştir;
 244 registry kimliği değişmemiştir. Production ayarı ve gerçek fon değişmedi.
-Sıradaki yazılım: açık-pencere kabul indeksinin authenticated snapshot/state ile
-kalıcılığı; güvenli kapasite/retention; bütün fiyat kullanan yollar; ayrı aday
-prover/settlement protokolü. Canlı feed erişimi ayrıca ertelenmiş açık kapıdır.
+Sıradaki yazılım: güvenli kapasite/retention (A2); bütün fiyat kullanan yollar
+(A3); ayrı aday prover/settlement protokolü (A4). Canlı feed erişimi ayrıca
+ertelenmiş açık kapıdır.
 Yeni aday witness reviewed v2 prover'a gönderilmez.
 
 11 Ekim 2026 güncellemesi: gateway/journal bağlantısı bu dalda eklendi
@@ -129,8 +137,23 @@ Aday modda bağlanamayan oracle op'lu pencere seal edilmez; recovery eksik/bozuk
 uyumsuz kayıtta HOLD eder. `admit_with` arşiv-kabul-indeks bağlantısını tek kilit
 kesitinde kurar; ilk seçilen ID sonradan eşdeğer fiyatlı kayıtla değiştirilemez.
 İndeks 4096 girdide sessiz eviction yerine reddeder; uzun süreli retention açık.
-Aday snapshot authenticated plaintext etiketi `DPCAS1\0\0` ile mod düşürmeyi
-engeller; kabul indeksini veya politikanın tamamını kendiliğinden geri kurmaz.
+A1 devamı: aday snapshot authenticated plaintext zarfı `DPCAS2\0\0` içinde
+state/açık pencere, tam politika bağı ve kanonik ilk kabul ID'lerini taşır.
+Gateway → archive kilit sırası intake/seal/checkpoint için aynıdır; kesit
+tam zarf olarak mühürlenip atomik yazılır. Startup, politika bağı ile her
+seçilmiş kayıt/transcript'i ve restore edilen gerçek op akışını doğrular.
+Eksik/bozuk seçilmiş kayıt yerine alternatif kullanılmaz. Yanlış politika,
+tekrarlı/kanonik olmayan veya kapasiteyi aşan indeks güvenli ret nedenidir.
+Legacy snapshot baytları aynıdır.
+Eski `DPCAS1\0\0` kabul indeksi içermediğinden dosya uzlaştırma için korunur
+ve açılış reddedilir; eksik referanslar tahmin edilip otomatik upgrade yapılmaz.
+
+Doğrulanmış authenticated v6 journal, snapshot'tan daha yeni özgün ID'leri
+recovery kararı öncesinde yeniden indekse kurar. Mevcut canonical seçimle
+çatışma veya kapasite aşımı dahil bir hata indeksin kısmen kurulmasına izin
+vermez; WAL korunur ve startup HOLD eder. Bu, journal'ın bildirmediği bütün
+admission'ların ayrıca kalıcı olduğu anlamına gelmez. A1 yeni test/yayın
+kanıtı eski `e283958` sonuçlarından ayrı kaydedilir.
 Sıfır-oracle ve wind-down dahil aday normal gönderim/exact-resume eski v2 yolda
 HOLD olur. Native MockProverClient replay gerçek SP1 proof değildir.
 

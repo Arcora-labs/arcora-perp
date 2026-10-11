@@ -1,0 +1,168 @@
+{
+  "schema": "arcora-admission-recovery-validation-v1",
+  "observed_start_utc": "2026-10-11T10:21:33.156945+00:00",
+  "verified_code_commit": "4977d54d35501234e6307555ce7aed7a70e62c07",
+  "base_code_commit": "e283958109fc6b434b7049d523bbd3378e2e6c27",
+  "source_sha256": {
+    "crates/gateway/src/continuation_settlement_tests.rs": "d4a28bae547bd4ec111a3c98d9919d8353c8a459dfe86d3c943c13a1b7624624",
+    "crates/gateway/src/deposit_ingestion/paired_recovery_tests.rs": "aee1e46d9cef044a1232ec1cd33a2ba7ab248d5cf6e74bab436f87e930ad0614",
+    "crates/gateway/src/funds_lifecycle_tests.rs": "83c452dd4ec2af9427816643faf67d96447a6659fa2fa01db914c7c596cc6e90",
+    "crates/gateway/src/main.rs": "d06f8be01d82c49ab533266b11b9529a9e1e540144e663ff045c94b2c65135e5",
+    "crates/gateway/src/report_archive_binding.rs": "eb348d772fce1dcf2502bb91e4eecdd447d43e2b478b84bd729bcbea15d9194e",
+    "crates/gateway/src/report_archive_binding_tests.rs": "a67b525e09db9b2540ecdb0b558c3dd002c307b14dd5845796f0f885b18d217b",
+    "crates/gateway/src/snapshot_crash_tests.rs": "dbe53b2398afc93b7a9f397f788b1402f4ab3a6bc6ac9b52393836290e3bf06c"
+  },
+  "proof_generated": false,
+  "live_chainlink_verified": false,
+  "production_release": "HOLD",
+  "commands": [
+    {
+      "name": "format",
+      "command": [
+        "rustup",
+        "run",
+        "1.99.0",
+        "cargo",
+        "fmt",
+        "--all",
+        "--check"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 0.328,
+      "log": "target/continuation-validation-20261011/format.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "test_summaries": []
+    },
+    {
+      "name": "gateway-binding",
+      "command": [
+        "rustup",
+        "run",
+        "1.99.0",
+        "cargo",
+        "test",
+        "-p",
+        "gateway",
+        "report_archive_binding",
+        "--locked",
+        "--offline"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 1.051,
+      "log": "target/continuation-validation-20261011/gateway-binding.log",
+      "log_sha256": "c50ec40951e60695d20ff220f29e78aebca15cb6e0d3253f0cee2a4636e4c2d9",
+      "test_summaries": [
+        "test result: ok. 29 passed; 0 failed; 0 ignored; 0 measured; 522 filtered out; finished in 0.83s"
+      ]
+    },
+    {
+      "name": "gateway-full",
+      "command": [
+        "rustup",
+        "run",
+        "1.99.0",
+        "cargo",
+        "test",
+        "-p",
+        "gateway",
+        "--locked",
+        "--offline"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 17.974,
+      "log": "target/continuation-validation-20261011/gateway-full.log",
+      "log_sha256": "b10d125ce926fc44596c72ee5dbd82c8590a2934216c70b8a53e9067717d55ed",
+      "test_summaries": [
+        "test result: ok. 535 passed; 0 failed; 16 ignored; 0 measured; 0 filtered out; finished in 17.88s"
+      ]
+    },
+    {
+      "name": "workspace-clippy",
+      "command": [
+        "rustup",
+        "run",
+        "1.99.0",
+        "cargo",
+        "clippy",
+        "--workspace",
+        "--all-targets",
+        "--locked",
+        "--offline",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 2.691,
+      "log": "target/continuation-validation-20261011/workspace-clippy.log",
+      "log_sha256": "7f3669ca36098ee6ea703a696a6105ed1cd3efaf8ac2130055b8cfe9320ad6e1",
+      "test_summaries": []
+    }
+  ],
+  "source_sha256_after": {
+    "crates/gateway/src/continuation_settlement_tests.rs": "d4a28bae547bd4ec111a3c98d9919d8353c8a459dfe86d3c943c13a1b7624624",
+    "crates/gateway/src/deposit_ingestion/paired_recovery_tests.rs": "aee1e46d9cef044a1232ec1cd33a2ba7ab248d5cf6e74bab436f87e930ad0614",
+    "crates/gateway/src/funds_lifecycle_tests.rs": "83c452dd4ec2af9427816643faf67d96447a6659fa2fa01db914c7c596cc6e90",
+    "crates/gateway/src/main.rs": "d06f8be01d82c49ab533266b11b9529a9e1e540144e663ff045c94b2c65135e5",
+    "crates/gateway/src/report_archive_binding.rs": "eb348d772fce1dcf2502bb91e4eecdd447d43e2b478b84bd729bcbea15d9194e",
+    "crates/gateway/src/report_archive_binding_tests.rs": "a67b525e09db9b2540ecdb0b558c3dd002c307b14dd5845796f0f885b18d217b",
+    "crates/gateway/src/snapshot_crash_tests.rs": "dbe53b2398afc93b7a9f397f788b1402f4ab3a6bc6ac9b52393836290e3bf06c"
+  },
+  "sources_unchanged": true,
+  "observed_end_utc": "2026-10-11T10:21:55.211827+00:00",
+  "python_guards": {
+    "command": [
+      "/opt/homebrew/bin/python3.12",
+      "-c",
+      "import sys,unittest;sys.path.insert(0,\"scripts/local-verification\");names=[\"test_verify_clock_proof\",\"test_check_sp1_release\",\"test_chainlink_replay\",\"test_repository_policy\",\"test_operator_policy\"];s=unittest.defaultTestLoader.loadTestsFromNames(names);r=unittest.TextTestRunner(verbosity=2).run(s);sys.exit(not r.wasSuccessful())"
+    ],
+    "exit_code": 0,
+    "seconds": 0.78,
+    "log": "target/continuation-validation-20261011/python-guards.log",
+    "sha256": "525eb195c92a54c2ec08e6de42037fa28b862daf423caeebf97d4125475abe6b",
+    "tail": [
+      "",
+      "----------------------------------------------------------------------",
+      "Ran 47 tests in 0.684s",
+      "",
+      "OK"
+    ]
+  },
+  "local_verification_scope": {
+    "gateway_passed": 535,
+    "gateway_ignored": 16,
+    "binding_passed_within_total": 29,
+    "python_guard_passed": 47,
+    "workspace_tests_rerun": false,
+    "standalone_client_tests_rerun": false,
+    "fresh_sp1_proof_generated": false,
+    "native_mock_replay_only": true,
+    "physical_power_cut_test": false,
+    "live_chainlink_calls": false
+  },
+  "reviewed_v2_guest_files_changed": false,
+  "candidate_guest_files_changed": false,
+  "root_manifests_locks_changed": false,
+  "original_checkouts_preserved": {
+    "primary_head": "2a03bb03a7db9736e72573fa22d8fe8f4fe37f94",
+    "primary_dirty_files": 13,
+    "primary_hashes_preserved": 13,
+    "job17_head": "e283958109fc6b434b7049d523bbd3378e2e6c27",
+    "job17_staged_diff_preserved": true
+  },
+  "earlier_attempts": [
+    {
+      "result": "FAIL",
+      "scope": "initial new test compilation",
+      "code_commit": "5404b2f",
+      "cause": "nested legacy test call sites retained bool after API changed to optional binding",
+      "corrected": "three paired recovery call sites migrated to None"
+    },
+    {
+      "result": "FAIL",
+      "scope": "added rollback assertion fixture",
+      "cause": "serialized inspection copy uses runtime enclave defaults; comparison was to actual gateway manifest",
+      "corrected": "actual gateway begin_window_settle now verifies same batch/ops/exact IDs/native commitment; final source fingerprint stable"
+    }
+  ]
+}
