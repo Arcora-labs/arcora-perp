@@ -52,6 +52,12 @@ mod candidate_protocol;
 #[cfg(test)]
 mod candidate_protocol_tests;
 #[cfg(test)]
+mod candidate_recovery;
+#[cfg(test)]
+mod candidate_recovery_store;
+#[cfg(test)]
+mod candidate_recovery_tests;
+#[cfg(test)]
 mod candidate_registration;
 mod candles;
 mod challenge_scan;
