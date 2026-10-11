@@ -90,7 +90,7 @@ fn retention_protects_open_live_and_journal_refs_and_rejects_stale_plans() {
     );
     // A live-only mark remains usable after its source op window has closed.
     assert_eq!(
-        b.bind_ops(&[fill(0, NOW + 2000, live[0].1.clone())])
+        b.bind_ops(&[fill(0, NOW + 2000, live[0].1)])
             .unwrap()
             .refs[0]
             .archive_id,
@@ -286,7 +286,7 @@ async fn retention_failed_runtime_and_final_save_keep_previous_checkpoint_and_wh
     let restored =
         crate::Gw::boot_restored(&restore_snapshot_plain(&plain, Some(&mut restarted)).unwrap())
             .unwrap();
-    let live = restored.seq.oracle(0).unwrap().clone();
+    let live = *restored.seq.oracle(0).unwrap();
     assert_eq!(
         restarted.bind_ops(&[fill(0, 102_000, live)]).unwrap().refs[0].archive_id,
         b.admissions[0].id
@@ -489,7 +489,7 @@ async fn retention_real_gateway_continues_past_4096_cumulative_admissions_and_re
         let mut b = app.archive.as_ref().unwrap().lock().unwrap();
         for observed in 100..100 + MAX_ADMISSIONS as u64 {
             accept_archive_observation(&mut gw, &mut b, observed);
-            protected_ops.push(fill(0, observed * 1000, gw.seq.oracle(0).unwrap().clone()));
+            protected_ops.push(fill(0, observed * 1000, *gw.seq.oracle(0).unwrap()));
         }
         assert_eq!(b.admissions.len(), 4096);
         let all_live = b.plan_retention(&protected_ops, &[], None).unwrap();
@@ -550,7 +550,7 @@ async fn retention_real_gateway_continues_past_4096_cumulative_admissions_and_re
     let mut restarted = reopened_binding(&t, &b);
     let state = restore_snapshot_plain(&plain, Some(&mut restarted)).unwrap();
     let gw = crate::Gw::boot_restored(&state).unwrap();
-    let live = gw.seq.oracle(0).unwrap().clone();
+    let live = *gw.seq.oracle(0).unwrap();
     assert_eq!(live.publish_time_ms, 4_199_000);
     assert_eq!(restarted.admissions, b.admissions);
     let ops = [fill(0, 4_199_000, live)];

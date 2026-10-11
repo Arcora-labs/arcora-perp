@@ -391,6 +391,7 @@ fn apply_boot_recovery(
 /// `write_atomic`). At this point in boot the snapshot writer task is not spawned
 /// yet, so the snapshot file still has exactly one writer (this call); there is
 /// no `.tmp`-rename race to worry about.
+#[cfg(test)]
 fn persist_recovery(
     gw: &Gw,
     path: &std::path::Path,
