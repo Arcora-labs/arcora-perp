@@ -2,16 +2,21 @@
 
 Güncelleme: 11 Ekim 2026. **PRODUCTION RELEASE HOLD**.
 Bu belge güncel çalışma sırasıdır; tarihsel `NEXT_STEPS.md` yerine kullanın.
-Son doğrulanan main: `c82dd492f74a47ab3806395dd05b46b3dff884e4` (#45).
+Son doğrulanan main: `969ecec2fecd29621c5508ab58fb778617b9bce2` (#47).
 #44 ve #45, güncel yayın head'lerinde ayrı ayrı 19/19 başarılı kontrol sonrası
 normal merge edildi; repository korumaları değiştirilmedi. #44 merge kimliği
 `e697b2f19d74b1021ba3a32b64b4f15ceb159880`, #45 merge kimliği yukarıdadır.
 #45'in main ile güncellenmiş kontrol head'i `0f2fc42964bd25d5cd36e20f98d8edc61ab22210`;
 test edilmiş A1 ağacıyla eşitliği doğrulandı. Gözlem kaydı:
 [merge-observations.json](audits/2026-10-11-chainlink-archive-retention/merge-observations.json).
-A2 kapasite/indeks retention taslak #46'dadır. Bu dal A3 fiyat yaşam döngüsü
-paketidir ve #46 üzerine kuruludur. Her paketin yerel kanıtı ve yeni yayın
-head'inin CI sonucu ayrı kaydedilir; önceki yeşil sonuç aktarılmaz.
+A2 kapasite/indeks retention #46, `b3a9507` head'inde 19/19 başarılı kontrolden
+sonra normal merge edildi: `c32432f69bf60610e41ff6ef87fb0c5f5981e79d`.
+A3 fiyat yaşam döngüsü #47, main ile güncellenmiş `15bdf54` head'inde yeniden
+19/19 başarılı kontrolden sonra normal merge edildi: main kimliği yukarıdadır.
+#47 güncellenmiş head'i, önceki test edilmiş `095ab735` head'i ve merge edilmiş
+main aynı `bccdbe38e617500595c68744c839470bc951344e` kaynak ağacını taşır.
+Repository korumaları değiştirilmedi. Bu dal A4'ün ilk offline yazılım paketidir;
+her paketin yerel kanıtı ve yayın head'inin CI sonucu ayrı kaydedilir.
 
 ## Birleşmiş ve korunan çalışmalar
 
