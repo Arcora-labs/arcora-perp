@@ -1492,22 +1492,25 @@ fn real_admission_to_sealed_window_to_v6_journal_to_recovery_replays_end_to_end(
     // A deterministic filesystem failure retains the old whole checkpoint
     // AND the stage-1 WAL, so another restart can resolve the same inputs.
     let blocked = t.0.join("r".repeat(240));
+    let blocked_journal = crate::rollback_journal::journal_path(&blocked);
     std::fs::rename(&snapshot_path, &blocked).unwrap();
+    std::fs::rename(&journal_path, &blocked_journal).unwrap();
     assert!(!crate::finish_boot_recovery(
         &recovered_gw,
         true,
         &blocked,
-        &journal_path,
+        &blocked_journal,
         &[42; 32],
         Some(&recovery_binding),
     ));
     assert!(
-        journal_path.exists(),
+        blocked_journal.exists(),
         "failed post-recovery save retains the WAL"
     );
-    assert_eq!(std::fs::read(&journal_path).unwrap(), sealed);
+    assert_eq!(std::fs::read(&blocked_journal).unwrap(), sealed);
     assert_eq!(std::fs::read(&blocked).unwrap(), postseal_checkpoint);
     std::fs::rename(&blocked, &snapshot_path).unwrap();
+    std::fs::rename(&blocked_journal, &journal_path).unwrap();
     assert!(crate::finish_boot_recovery(
         &recovered_gw,
         true,
@@ -1704,7 +1707,7 @@ fn reopened_binding(t: &Temp, b: &ArchiveBinding) -> ArchiveBinding {
 }
 
 fn encoded_envelope(envelope: &CandidateSnapshotV2) -> Vec<u8> {
-    let mut plain = SNAPSHOT_TAG_MAGIC.to_vec();
+    let mut plain = SNAPSHOT_V2_MAGIC.to_vec();
     plain.extend(postcard::to_allocvec(envelope).unwrap());
     plain
 }
@@ -2059,3 +2062,5 @@ async fn poisoned_archive_cannot_publish_legacy_runtime_or_final_snapshot() {
     drop(frozen);
     assert_eq!(std::fs::read(&path).unwrap(), before);
 }
+
+include!("report_archive_retention_tests.rs");

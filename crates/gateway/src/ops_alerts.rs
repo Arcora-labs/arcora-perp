@@ -15,6 +15,7 @@ pub enum AlertKind {
     SettlementHeld,
     PersistenceFailed,
     DepositHalted,
+    ArchivePressure,
 }
 
 #[derive(Clone, Copy, Debug, Serialize)]
@@ -135,7 +136,7 @@ enum Work {
 }
 #[derive(Default)]
 struct Episodes {
-    // (last episode number, currently active). Only the three closed enum values
+    // (last episode number, currently active). Only the four closed enum values
     // can enter this map; untrusted errors cannot grow this state.
     state: BTreeMap<AlertKind, (u64, bool)>,
     delivery: Option<mpsc::SyncSender<Work>>,

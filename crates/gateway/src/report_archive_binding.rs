@@ -14,7 +14,7 @@
 use crate::rollback_journal::{ArchiveEnvelope, ArchiveRef};
 use chainlink_oracle::policy::{Normalized, Policy};
 use chainlink_streams_client::{
-    report_archive::{ArchiveId, ReportArchive},
+    report_archive::{ArchiveError, ArchiveId, ArchiveLimits, ArchiveUsage, ReportArchive},
     report_pair::{policy_binding, PreparedPair},
     UnverifiedReport,
 };
@@ -24,6 +24,10 @@ use std::collections::VecDeque;
 pub(crate) const MODE_ENV: &str = "DARKPERP_CHAINLINK_ARCHIVE";
 pub(crate) const DIR_ENV: &str = "DARKPERP_CHAINLINK_ARCHIVE_DIR";
 pub(crate) const POLICY_ENV: &str = "DARKPERP_CHAINLINK_POLICY_JSON";
+pub(crate) const MAX_BYTES_ENV: &str = "DARKPERP_CHAINLINK_ARCHIVE_MAX_BYTES";
+pub(crate) const MAX_RECORDS_ENV: &str = "DARKPERP_CHAINLINK_ARCHIVE_MAX_RECORDS";
+const DEFAULT_ARCHIVE_BYTES: u64 = 256 * 1024 * 1024;
+const DEFAULT_ARCHIVE_RECORDS: usize = 65_536;
 
 /// Candidate-mode persistence boundary.
 ///
@@ -97,7 +101,8 @@ pub(crate) fn read_marker(
 /// canonical admitted identities are captured under the same gateway/archive
 /// locks and committed by one atomic snapshot write. The sidecar is additional
 /// mode protection, never the source of the admission index.
-pub(crate) const SNAPSHOT_TAG_MAGIC: &[u8; 8] = b"DPCAS2\0\0";
+pub(crate) const SNAPSHOT_TAG_MAGIC: &[u8; 8] = b"DPCAS3\0\0";
+const SNAPSHOT_V2_MAGIC: &[u8; 8] = b"DPCAS2\0\0";
 const OLD_SNAPSHOT_TAG_MAGIC: &[u8; 8] = b"DPCAS1\0\0";
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -106,6 +111,15 @@ struct CandidateSnapshotV2 {
     policy_binding: [u8; 32],
     #[serde(deserialize_with = "deserialize_admissions")]
     admissions: Vec<Admission>,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct CandidateSnapshotV3 {
+    state_plain: Vec<u8>,
+    policy_binding: [u8; 32],
+    #[serde(deserialize_with = "deserialize_admissions")]
+    admissions: Vec<Admission>,
+    journal_expected: bool,
 }
 
 /// Reject the encoded admission count before allocating or decoding entries.
@@ -160,7 +174,15 @@ pub(crate) fn restore_snapshot_plain(
                 .into(),
         );
     }
-    let Some(body) = plain.strip_prefix(SNAPSHOT_TAG_MAGIC.as_slice()) else {
+    let tagged = plain
+        .strip_prefix(SNAPSHOT_TAG_MAGIC.as_slice())
+        .map(|body| (body, true))
+        .or_else(|| {
+            plain
+                .strip_prefix(SNAPSHOT_V2_MAGIC.as_slice())
+                .map(|body| (body, false))
+        });
+    let Some((body, version3)) = tagged else {
         if plain.starts_with(b"DPCAS") {
             return Err("candidate snapshot magic/version mismatch".into());
         }
@@ -169,13 +191,33 @@ pub(crate) fn restore_snapshot_plain(
     let binding = binding.ok_or(
         "authenticated candidate snapshot restored without candidate configuration; refusing legacy boot",
     )?;
-    let (envelope, rest): (CandidateSnapshotV2, _) = postcard::take_from_bytes(body)
-        .map_err(|_| "candidate snapshot decode failed or admission count exceeds capacity")?;
+    let (envelope, journal_expected, rest, canonical) = if version3 {
+        let (v3, rest): (CandidateSnapshotV3, _) = postcard::take_from_bytes(body)
+            .map_err(|_| "candidate snapshot decode failed or admission count exceeds capacity")?;
+        let canonical =
+            postcard::to_allocvec(&v3).map_err(|_| "candidate snapshot re-encode failed")?;
+        let expected = v3.journal_expected;
+        (
+            CandidateSnapshotV2 {
+                state_plain: v3.state_plain,
+                policy_binding: v3.policy_binding,
+                admissions: v3.admissions,
+            },
+            expected,
+            rest,
+            canonical,
+        )
+    } else {
+        let (v2, rest): (CandidateSnapshotV2, _) = postcard::take_from_bytes(body)
+            .map_err(|_| "candidate snapshot decode failed or admission count exceeds capacity")?;
+        let canonical =
+            postcard::to_allocvec(&v2).map_err(|_| "candidate snapshot re-encode failed")?;
+        (v2, false, rest, canonical)
+    };
     if !rest.is_empty() {
         return Err("candidate snapshot has trailing bytes".into());
     }
-    if postcard::to_allocvec(&envelope).map_err(|_| "candidate snapshot re-encode failed")? != body
-    {
+    if canonical != body {
         return Err("candidate snapshot encoding is not canonical".into());
     }
     if envelope.state_plain.is_empty() || envelope.state_plain.starts_with(b"DPCAS") {
@@ -209,6 +251,7 @@ pub(crate) fn restore_snapshot_plain(
         restored.push_back(admission);
     }
     binding.admissions = restored;
+    binding.note_journal(journal_expected);
     Ok(envelope.state_plain)
 }
 
@@ -295,6 +338,22 @@ pub(crate) struct ArchiveBinding {
     policy_binding: [u8; 32],
     admissions: VecDeque<Admission>,
     max_admissions: usize,
+    archive_limits: ArchiveLimits,
+    journal_expected: std::sync::atomic::AtomicBool,
+}
+
+/// A proposed index cut. Full immutable records remain append-only, including
+/// records needed by older checkpoints, backups and historical data access.
+pub(crate) struct RetentionPlan {
+    original: VecDeque<Admission>,
+    retained: VecDeque<Admission>,
+    journal_expected: bool,
+}
+
+impl RetentionPlan {
+    pub(crate) fn resolved_journal(&mut self) {
+        self.journal_expected = false;
+    }
 }
 
 /// Why a binding step refused. Fixed categories only — never credential, path,
@@ -408,11 +467,41 @@ impl ArchiveBinding {
     /// without `MODE=candidate` is an ERROR, never a silent disable; an
     /// explicitly disabled mode must not carry candidate settings either.
     pub(crate) fn from_env() -> Result<Option<Self>, BindError> {
-        Self::configured(
+        let bytes = config_env(MAX_BYTES_ENV)?;
+        let records = config_env(MAX_RECORDS_ENV)?;
+        let mut configured = Self::configured(
             config_env(MODE_ENV)?,
             config_env(DIR_ENV)?,
             config_env(POLICY_ENV)?,
-        )
+        )?;
+        match configured.as_mut() {
+            None if bytes.is_some() || records.is_some() => return Err(BindError::Config),
+            Some(binding) => {
+                let max_bytes = bytes
+                    .map(|v| v.parse())
+                    .transpose()
+                    .map_err(|_| BindError::Config)?
+                    .unwrap_or(DEFAULT_ARCHIVE_BYTES);
+                let max_records = records
+                    .map(|v| v.parse())
+                    .transpose()
+                    .map_err(|_| BindError::Config)?
+                    .unwrap_or(DEFAULT_ARCHIVE_RECORDS);
+                binding
+                    .archive
+                    .set_limits(ArchiveLimits {
+                        max_bytes,
+                        max_records,
+                    })
+                    .map_err(|_| BindError::Config)?;
+                binding.archive_limits = ArchiveLimits {
+                    max_bytes,
+                    max_records,
+                };
+            }
+            None => {}
+        }
+        Ok(configured)
     }
 
     pub(crate) fn configured(
@@ -457,12 +546,23 @@ impl ArchiveBinding {
         // computable archive binding before any admission is accepted.
         let policy_binding = policy_binding(&policy).map_err(|_| BindError::Policy)?;
         policy.hash().map_err(|_| BindError::Policy)?;
+        let archive = archive
+            .with_limits(ArchiveLimits {
+                max_bytes: DEFAULT_ARCHIVE_BYTES,
+                max_records: DEFAULT_ARCHIVE_RECORDS,
+            })
+            .map_err(|_| BindError::Config)?;
         Ok(Self {
             archive,
             policy,
             policy_binding,
             admissions: VecDeque::new(),
             max_admissions: MAX_ADMISSIONS,
+            archive_limits: ArchiveLimits {
+                max_bytes: DEFAULT_ARCHIVE_BYTES,
+                max_records: DEFAULT_ARCHIVE_RECORDS,
+            },
+            journal_expected: std::sync::atomic::AtomicBool::new(false),
         })
     }
 
@@ -480,11 +580,116 @@ impl ArchiveBinding {
         self.policy_binding
     }
 
+    pub(crate) fn usage(&self) -> Result<ArchiveUsage, BindError> {
+        self.archive.usage().map_err(|_| BindError::Archive)
+    }
+
+    pub(crate) fn under_pressure(&self) -> Result<bool, BindError> {
+        let usage = self.usage()?;
+        Ok(self.admissions.len() >= self.max_admissions
+            || (usage.bytes as u128) * 10 >= (self.archive_limits.max_bytes as u128) * 9
+            || (usage.records as u128) * 10 >= (self.archive_limits.max_records as u128) * 9)
+    }
+
+    pub(crate) fn journal_expected(&self) -> bool {
+        self.journal_expected
+            .load(std::sync::atomic::Ordering::SeqCst)
+    }
+
+    pub(crate) fn note_journal(&self, expected: bool) {
+        self.journal_expected
+            .store(expected, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    /// Keep all oracle identities still usable by live state, open operations
+    /// or the authenticated WAL. No entry is released until this exact plan is
+    /// captured in a successfully acknowledged whole checkpoint.
+    pub(crate) fn plan_retention(
+        &self,
+        open_ops: &[BatchOp],
+        live_oracles: &[(u64, perp_core::oracle::OracleTranscript)],
+        journal: Option<(&[BatchOp], &ArchiveEnvelope)>,
+    ) -> Result<RetentionPlan, BindError> {
+        let open = self.bind_ops(open_ops)?;
+        self.verify(open_ops, &open)?;
+        let mut protected: Vec<ArchiveId> = open.refs.iter().map(|r| r.archive_id).collect();
+        for (market, oracle) in live_oracles {
+            if let Some(entry) = self
+                .admissions
+                .iter()
+                .find(|a| a.market_id == *market && a.transcript.matches(oracle))
+            {
+                protected.push(entry.id);
+            }
+        }
+        if let Some((ops, envelope)) = journal {
+            self.verify(ops, envelope)?;
+            let canonical = self.bind_ops(ops)?;
+            if canonical.refs != envelope.refs {
+                return Err(BindError::Mismatch);
+            }
+            protected.extend(envelope.refs.iter().map(|r| r.archive_id));
+        }
+        let retained: VecDeque<_> = self
+            .admissions
+            .iter()
+            .copied()
+            .filter(|a| protected.contains(&a.id))
+            .collect();
+        for entry in &retained {
+            let pair = self
+                .archive
+                .load(entry.id, &self.policy, entry.market_id)
+                .map_err(|_| BindError::Archive)?;
+            let (normalized, _) = pair
+                .for_operation(pair.prepared_at_ms())
+                .map_err(|_| BindError::Mismatch)?;
+            if normalized != entry.transcript {
+                return Err(BindError::Mismatch);
+            }
+        }
+        Ok(RetentionPlan {
+            original: self.admissions.clone(),
+            retained,
+            journal_expected: journal.is_some(),
+        })
+    }
+
+    pub(crate) fn commit_retention(&mut self, plan: RetentionPlan) -> Result<(), BindError> {
+        if self.admissions != plan.original {
+            return Err(BindError::Mismatch); // a stale capture never evicts a later acceptance
+        }
+        self.admissions = plan.retained;
+        self.note_journal(plan.journal_expected);
+        Ok(())
+    }
+
+    pub(crate) fn snapshot_with_retention(
+        &self,
+        state_plain: Vec<u8>,
+        plan: &RetentionPlan,
+    ) -> Result<Vec<u8>, BindError> {
+        if self.admissions != plan.original {
+            return Err(BindError::Mismatch);
+        }
+        self.encode_snapshot(state_plain, &plan.retained, plan.journal_expected)
+    }
+
     /// The caller holds both gateway and archive locks so `state_plain` and
     /// this canonical index describe one cut. Snapshot encryption and atomic
     /// file replacement apply to the entire returned envelope together.
+    #[cfg(test)]
     pub(crate) fn snapshot_plain(&self, state_plain: Vec<u8>) -> Result<Vec<u8>, BindError> {
-        if self.admissions.len() > self.max_admissions || self.admissions.len() > MAX_ADMISSIONS {
+        self.encode_snapshot(state_plain, &self.admissions, self.journal_expected())
+    }
+
+    fn encode_snapshot(
+        &self,
+        state_plain: Vec<u8>,
+        admissions: &VecDeque<Admission>,
+        journal_expected: bool,
+    ) -> Result<Vec<u8>, BindError> {
+        if admissions.len() > self.max_admissions || admissions.len() > MAX_ADMISSIONS {
             return Err(BindError::Capacity);
         }
         if state_plain.is_empty()
@@ -493,10 +698,11 @@ impl ArchiveBinding {
         {
             return Err(BindError::Snapshot);
         }
-        let envelope = CandidateSnapshotV2 {
+        let envelope = CandidateSnapshotV3 {
             state_plain,
             policy_binding: self.policy_binding,
-            admissions: self.admissions.iter().copied().collect(),
+            admissions: admissions.iter().copied().collect(),
+            journal_expected,
         };
         let body = postcard::to_allocvec(&envelope).map_err(|_| BindError::Snapshot)?;
         if body.len() > crate::snapshot::MAX_PLAIN_BYTES - SNAPSHOT_TAG_MAGIC.len() {
@@ -548,6 +754,7 @@ impl ArchiveBinding {
             }
         }
         self.admissions = restored;
+        self.note_journal(true);
         Ok(())
     }
 
@@ -577,7 +784,10 @@ impl ArchiveBinding {
             .map_err(|_| BindError::Mismatch)?;
         // The durability barrier: the record exists before any state-changing
         // admission can cite it.
-        let stored = self.archive.store(&pair).map_err(|_| BindError::Archive)?;
+        let stored = self.archive.store(&pair).map_err(|e| match e {
+            ArchiveError::Capacity => BindError::Capacity,
+            _ => BindError::Archive,
+        })?;
         Ok(PendingAdmission {
             market_id,
             id: stored.id,
@@ -597,6 +807,28 @@ impl ArchiveBinding {
         now_ms: u64,
         accept: impl FnOnce(Normalized) -> bool,
     ) -> Result<bool, BindError> {
+        let pair = PreparedPair::new(&self.policy, market_id, base.clone(), quote.clone(), now_ms)
+            .map_err(|_| BindError::Policy)?;
+        let (transcript, _) = pair
+            .for_operation(now_ms)
+            .map_err(|_| BindError::Mismatch)?;
+        if let Some(selected) = self
+            .admissions
+            .iter()
+            .find(|a| a.market_id == market_id && a.transcript == transcript)
+        {
+            let original = self
+                .archive
+                .load(selected.id, &self.policy, market_id)
+                .map_err(|_| BindError::Archive)?;
+            let (normalized, _) = original
+                .for_operation(now_ms)
+                .map_err(|_| BindError::Mismatch)?;
+            if normalized != transcript {
+                return Err(BindError::Mismatch);
+            }
+            return Ok(accept(transcript));
+        }
         if self.is_full() {
             return Err(BindError::Capacity);
         }
