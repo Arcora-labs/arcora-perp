@@ -1,0 +1,449 @@
+{
+  "schema": "arcora-archive-retention-validation-v1",
+  "observed_start_utc": "2026-10-11T11:11:44.966252+00:00",
+  "verified_code_commit": "1b5dcaac31e409fde1f554c5182c65c192da5c59",
+  "base_code_commit": "0f2fc42964bd25d5cd36e20f98d8edc61ab22210",
+  "source_sha256": {
+    "crates/chainlink-streams-client/src/report_archive.rs": "46409d67a92f50d1d8514fe435b76827b8388e3e38d8e701b8b483764bd3a039",
+    "crates/chainlink-streams-client/src/report_archive_tests.rs": "ed761cbf924757c97485bc21a882e2b6bc90c118ffb378643de23b0857e22cec",
+    "crates/gateway/src/main.rs": "ca2f4d01e4452a9283c99518f14474472a8d9cc656792db1eee3c7d4443c7a3c",
+    "crates/gateway/src/ops_alerts.rs": "df9878e8bddf729d5c30d58c57cde6b3186a4b9c7ffd80bddc4fc9ba520b2300",
+    "crates/gateway/src/report_archive_binding.rs": "93eabf7c91c185af753ea8f42d950e61bd53e34111ebe4728bd11ee276390eb3",
+    "crates/gateway/src/report_archive_binding_tests.rs": "1e1c99fb1740beb2ee232089b5aecd08b100d40b7b15b91487c418744490022a",
+    "crates/gateway/src/report_archive_retention_tests.rs": "82f2ac32d5799f373f3952c14248bb09f8b20625f74d2ef8d95bff57b89f5d3b"
+  },
+  "commands": [
+    {
+      "name": "format",
+      "command": [
+        "rustup",
+        "run",
+        "1.99.0",
+        "cargo",
+        "fmt",
+        "--all",
+        "--check"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 0.505,
+      "log": "target/retention-validation-20261011/format.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "test_summaries": []
+    },
+    {
+      "name": "gateway-full",
+      "command": [
+        "rustup",
+        "run",
+        "1.99.0",
+        "cargo",
+        "test",
+        "-p",
+        "gateway",
+        "--locked",
+        "--offline"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 152.054,
+      "log": "target/retention-validation-20261011/gateway-full.log",
+      "log_sha256": "e46d564d0cf183555e843eec6a3843072846316b640270770a4afbd29b81724a",
+      "test_summaries": [
+        "test result: ok. 541 passed; 0 failed; 16 ignored; 0 measured; 0 filtered out; finished in 151.74s"
+      ]
+    },
+    {
+      "name": "client-debug",
+      "command": [
+        "rustup",
+        "run",
+        "1.99.0",
+        "cargo",
+        "test",
+        "--manifest-path",
+        "crates/chainlink-streams-client/Cargo.toml",
+        "--locked",
+        "--offline"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 1.045,
+      "log": "target/retention-validation-20261011/client-debug.log",
+      "log_sha256": "5c8a9239b89fc8cc235f4d45dec7dcbed4b9a6a4ddec19e14d9951eb5afb9467",
+      "test_summaries": [
+        "test result: ok. 69 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.77s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+      ]
+    },
+    {
+      "name": "client-release",
+      "command": [
+        "rustup",
+        "run",
+        "1.99.0",
+        "cargo",
+        "test",
+        "--release",
+        "--manifest-path",
+        "crates/chainlink-streams-client/Cargo.toml",
+        "--locked",
+        "--offline"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 0.92,
+      "log": "target/retention-validation-20261011/client-release.log",
+      "log_sha256": "ce85dc18463b11bb23e247776ebb204b13c90178e57460dcec18680c028446d2",
+      "test_summaries": [
+        "test result: ok. 69 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.71s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+      ]
+    },
+    {
+      "name": "workspace-clippy",
+      "command": [
+        "rustup",
+        "run",
+        "1.99.0",
+        "cargo",
+        "clippy",
+        "--workspace",
+        "--all-targets",
+        "--locked",
+        "--offline",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 5.332,
+      "log": "target/retention-validation-20261011/workspace-clippy.log",
+      "log_sha256": "02f45dc7081745119f1e30248c730d136523cc624aacf05aee4cd97c172f6358",
+      "test_summaries": []
+    },
+    {
+      "name": "client-clippy",
+      "command": [
+        "rustup",
+        "run",
+        "1.99.0",
+        "cargo",
+        "clippy",
+        "--manifest-path",
+        "crates/chainlink-streams-client/Cargo.toml",
+        "--all-targets",
+        "--locked",
+        "--offline",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 0.4,
+      "log": "target/retention-validation-20261011/client-clippy.log",
+      "log_sha256": "6ddd81a3f86229b303a828388c9b83d3843d01989a7acb901a51771c07c85c7c",
+      "test_summaries": []
+    },
+    {
+      "name": "python-guards",
+      "command": [
+        "/opt/homebrew/bin/python3.12",
+        "-c",
+        "import sys,unittest;sys.path.insert(0,\"scripts/local-verification\");s=unittest.defaultTestLoader.loadTestsFromNames([\"test_verify_clock_proof\",\"test_check_sp1_release\",\"test_chainlink_replay\",\"test_repository_policy\",\"test_operator_policy\"]);r=unittest.TextTestRunner(verbosity=2).run(s);sys.exit(not r.wasSuccessful())"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 1.074,
+      "log": "target/retention-validation-20261011/python-guards.log",
+      "log_sha256": "3ee295c561a7f60968744537c8f54b2f7f5a51c4a30d6c5d376c33b5971e9d9d",
+      "test_summaries": [
+        "Ran 47 tests in 0.970s"
+      ]
+    },
+    {
+      "name": "runtime-pins",
+      "command": [
+        "/opt/homebrew/bin/python3.12",
+        "-c",
+        "import sys,json;sys.path.insert(0,\"scripts/local-verification\");from verify_clock_proof import verify_guest_source;from run_chainlink_replay import candidate_sources;from check_sp1_release import check;from check_chainlink_candidate import check as candidate_check;r={\"reviewed_pins\":len(verify_guest_source()),\"candidate_pins\":len(candidate_sources()),\"release\":check(),\"candidate_lock\":candidate_check()};print(json.dumps(r));assert r[\"release\"][\"passed\"] and r[\"candidate_lock\"][\"passed\"]"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 0.068,
+      "log": "target/retention-validation-20261011/runtime-pins.log",
+      "log_sha256": "cd6f22387ed79a9c83c6a2c15b82e4ccd1dfe70f0444399a72b604e82c1f09a4",
+      "test_summaries": []
+    },
+    {
+      "name": "client-format",
+      "command": [
+        "rustup",
+        "run",
+        "1.99.0",
+        "cargo",
+        "fmt",
+        "--manifest-path",
+        "crates/chainlink-streams-client/Cargo.toml",
+        "--check"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 0.048,
+      "log": "target/retention-validation-20261011/client-format.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "test_summaries": []
+    }
+  ],
+  "fresh_proof_generated": false,
+  "live_chainlink_verified": false,
+  "production_release": "HOLD",
+  "physical_record_deletion": false,
+  "source_sha256_after": {
+    "crates/chainlink-streams-client/src/report_archive.rs": "46409d67a92f50d1d8514fe435b76827b8388e3e38d8e701b8b483764bd3a039",
+    "crates/chainlink-streams-client/src/report_archive_tests.rs": "ed761cbf924757c97485bc21a882e2b6bc90c118ffb378643de23b0857e22cec",
+    "crates/gateway/src/main.rs": "ca2f4d01e4452a9283c99518f14474472a8d9cc656792db1eee3c7d4443c7a3c",
+    "crates/gateway/src/ops_alerts.rs": "df9878e8bddf729d5c30d58c57cde6b3186a4b9c7ffd80bddc4fc9ba520b2300",
+    "crates/gateway/src/report_archive_binding.rs": "93eabf7c91c185af753ea8f42d950e61bd53e34111ebe4728bd11ee276390eb3",
+    "crates/gateway/src/report_archive_binding_tests.rs": "1e1c99fb1740beb2ee232089b5aecd08b100d40b7b15b91487c418744490022a",
+    "crates/gateway/src/report_archive_retention_tests.rs": "82f2ac32d5799f373f3952c14248bb09f8b20625f74d2ef8d95bff57b89f5d3b"
+  },
+  "sources_unchanged": true,
+  "observed_end_utc": "2026-10-11T11:14:26.462890+00:00",
+  "main_base_commit": "c82dd492f74a47ab3806395dd05b46b3dff884e4",
+  "counts": {
+    "gateway_passed": 541,
+    "gateway_failed": 0,
+    "gateway_ignored": 16,
+    "client_debug_passed": 69,
+    "client_release_passed": 69,
+    "client_helper_ignored_each": 1,
+    "python_guards_passed": 47,
+    "reviewed_source_pins": 21,
+    "candidate_source_pins": 9
+  },
+  "original_checkouts": {
+    "primary_original_files": [
+      {
+        "path": "crates/chainlink-streams-client/src/lib.rs",
+        "unchanged": true
+      },
+      {
+        "path": "crates/chainlink-streams-client/src/transport_tests.rs",
+        "unchanged": true
+      },
+      {
+        "path": "docs/ACTIVE_WORK.md",
+        "unchanged": true
+      },
+      {
+        "path": "docs/CHAINLINK_STREAMS_CLIENT.md",
+        "unchanged": true
+      },
+      {
+        "path": "crates/chainlink-streams-client/src/report_archive.rs",
+        "unchanged": true
+      },
+      {
+        "path": "crates/chainlink-streams-client/src/report_archive_tests.rs",
+        "unchanged": true
+      },
+      {
+        "path": "crates/chainlink-streams-client/src/report_pair.rs",
+        "unchanged": true
+      },
+      {
+        "path": "docs/CHAINLINK_REPORT_ARCHIVE.md",
+        "unchanged": true
+      },
+      {
+        "path": "docs/audits/2026-10-10-chainlink-report-archive/README.md",
+        "unchanged": true
+      },
+      {
+        "path": "docs/audits/2026-10-10-chainlink-report-archive/client-debug.txt",
+        "unchanged": true
+      },
+      {
+        "path": "docs/audits/2026-10-10-chainlink-report-archive/client-release.txt",
+        "unchanged": true
+      },
+      {
+        "path": "docs/audits/2026-10-10-chainlink-report-archive/publication-state.json",
+        "unchanged": true
+      },
+      {
+        "path": "docs/audits/2026-10-10-chainlink-report-archive/verification.json",
+        "unchanged": true
+      }
+    ],
+    "primary_original_files_unchanged": true,
+    "job17_staged_diff_sha256": "0262e9d202a41c184a4352691be1a8aa2c9c6b24a62ef65b421eadaa0249a849",
+    "job17_head": "e283958109fc6b434b7049d523bbd3378e2e6c27",
+    "job17_staged_paths": [
+      "docs/ACTIVE_WORK.md",
+      "docs/CHAINLINK_REPORT_ARCHIVE.md",
+      "docs/CHAINLINK_STREAMS_CLIENT.md",
+      "docs/audits/2026-10-11-chainlink-archive-gateway-binding/README.md",
+      "docs/audits/2026-10-11-chainlink-archive-gateway-binding/evidence-recheck.json",
+      "docs/audits/2026-10-11-chainlink-archive-gateway-binding/final-verification.json",
+      "docs/audits/2026-10-11-chainlink-archive-gateway-binding/historical-notes.md"
+    ]
+  },
+  "guest_root_manifest_and_lock_unchanged": true,
+  "prior_failed_attempts": [
+    {
+      "attempt": "pre-lint-repair",
+      "verified_code_commit": "c1c179406c16c385942e27b9f44107eb6cf5cab1",
+      "commands": [
+        {
+          "name": "format",
+          "command": [
+            "rustup",
+            "run",
+            "1.99.0",
+            "cargo",
+            "fmt",
+            "--all",
+            "--check"
+          ],
+          "exit_code": 0,
+          "elapsed_seconds": 0.441,
+          "log": "target/retention-validation-20261011/format.log",
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "test_summaries": []
+        },
+        {
+          "name": "gateway-full",
+          "command": [
+            "rustup",
+            "run",
+            "1.99.0",
+            "cargo",
+            "test",
+            "-p",
+            "gateway",
+            "--locked",
+            "--offline"
+          ],
+          "exit_code": 0,
+          "elapsed_seconds": 156.46,
+          "log": "target/retention-validation-20261011/gateway-full.log",
+          "log_sha256": "9dae1410f32f6af63a8b3d653dc9b16a05c3a1fc76f91ece19ff67b23c7e06ec",
+          "test_summaries": [
+            "test result: ok. 541 passed; 0 failed; 16 ignored; 0 measured; 0 filtered out; finished in 156.18s"
+          ]
+        },
+        {
+          "name": "client-debug",
+          "command": [
+            "rustup",
+            "run",
+            "1.99.0",
+            "cargo",
+            "test",
+            "--manifest-path",
+            "crates/chainlink-streams-client/Cargo.toml",
+            "--locked",
+            "--offline"
+          ],
+          "exit_code": 0,
+          "elapsed_seconds": 2.22,
+          "log": "target/retention-validation-20261011/client-debug.log",
+          "log_sha256": "80a50c194122385b195ecc824b2b657b80d986287aef60e893a9a363c023d3de",
+          "test_summaries": [
+            "test result: ok. 69 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.77s",
+            "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+          ]
+        },
+        {
+          "name": "client-release",
+          "command": [
+            "rustup",
+            "run",
+            "1.99.0",
+            "cargo",
+            "test",
+            "--release",
+            "--manifest-path",
+            "crates/chainlink-streams-client/Cargo.toml",
+            "--locked",
+            "--offline"
+          ],
+          "exit_code": 0,
+          "elapsed_seconds": 12.645,
+          "log": "target/retention-validation-20261011/client-release.log",
+          "log_sha256": "3093fe9f56ab993e3cd58b96e9302b2bfbe8fd2663bf0697e44acbe35041b0b8",
+          "test_summaries": [
+            "test result: ok. 69 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.82s",
+            "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+          ]
+        },
+        {
+          "name": "workspace-clippy",
+          "command": [
+            "rustup",
+            "run",
+            "1.99.0",
+            "cargo",
+            "clippy",
+            "--workspace",
+            "--all-targets",
+            "--locked",
+            "--offline",
+            "--",
+            "-D",
+            "warnings"
+          ],
+          "exit_code": 101,
+          "elapsed_seconds": 5.542,
+          "log": "target/retention-validation-20261011/workspace-clippy.log",
+          "log_sha256": "3697d9562363bc146f7c1dd0f22daf4e5aafb09b647958232a34dd7e67659102",
+          "test_summaries": []
+        }
+      ],
+      "failure_preserved": true
+    },
+    {
+      "attempt": "pre-worker-handshake-repair",
+      "verified_code_commit": "afbb1f68aca7433437bcdaf55b9ac973446d1052",
+      "commands": [
+        {
+          "name": "format",
+          "command": [
+            "rustup",
+            "run",
+            "1.99.0",
+            "cargo",
+            "fmt",
+            "--all",
+            "--check"
+          ],
+          "exit_code": 0,
+          "elapsed_seconds": 0.379,
+          "log": "target/retention-validation-20261011/format.log",
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "test_summaries": []
+        },
+        {
+          "name": "gateway-full",
+          "command": [
+            "rustup",
+            "run",
+            "1.99.0",
+            "cargo",
+            "test",
+            "-p",
+            "gateway",
+            "--locked",
+            "--offline"
+          ],
+          "exit_code": 101,
+          "elapsed_seconds": 170.786,
+          "log": "target/retention-validation-20261011/gateway-full.log",
+          "log_sha256": "3f911ffa62e0657bb27276e4d5596bc896db3ab627f2e579e039a349170ecd3d",
+          "test_summaries": [
+            "test result: FAILED. 540 passed; 1 failed; 16 ignored; 0 measured; 0 filtered out; finished in 163.40s"
+          ]
+        }
+      ],
+      "failure_preserved": true
+    }
+  ],
+  "review_scope": "Independent code review plus local tests; no live feed, proof, physical disk durability or production gate completion.",
+  "raw_logs_published": false,
+  "publication_time_utc": "2026-10-11T11:15:49.867331+00:00"
+}

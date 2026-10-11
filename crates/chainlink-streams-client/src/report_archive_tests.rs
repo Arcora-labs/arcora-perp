@@ -73,6 +73,22 @@ fn pair() -> PreparedPair {
     )
     .unwrap()
 }
+fn polled_pair(received: u64) -> PreparedPair {
+    PreparedPair::new(
+        &policy(),
+        0,
+        report(
+            feed(0x11),
+            6_000_000_000_000,
+            100,
+            received,
+            Network::Testnet,
+        ),
+        report(feed(0x22), 100_000_000, 100, received, Network::Testnet),
+        received,
+    )
+    .unwrap()
+}
 struct Temp(PathBuf);
 impl Temp {
     fn new() -> Self {
@@ -388,9 +404,302 @@ fn partial_temporary_files_are_never_promoted_to_final_entries() {
     let id = ReportArchive::id_for(&pair()).unwrap();
     let leftover = a.root.join(".pending-previous-crash");
     fs::write(&leftover, b"partial").unwrap();
+    fs::set_permissions(&leftover, fs::Permissions::from_mode(0o600)).unwrap();
     assert!(a.load(id, &policy(), 0).is_err());
     a.store(&pair()).unwrap();
     assert_eq!(fs::read(leftover).unwrap(), b"partial");
+}
+
+#[test]
+fn finite_limits_validate_without_destroying_existing_history() {
+    let t = Temp::new();
+    let mut a = t.archive();
+    let original = a.store(&pair()).unwrap();
+    // An operator can lower the quota below a sizeable already-retained
+    // history. Inventory bounds must not shrink with that quota.
+    for n in 1..=100 {
+        install(&a, &encode(&polled_pair(NOW + n)).unwrap());
+    }
+    for limits in [
+        ArchiveLimits {
+            max_bytes: 0,
+            max_records: 1,
+        },
+        ArchiveLimits {
+            max_bytes: 1,
+            max_records: 0,
+        },
+        ArchiveLimits {
+            max_bytes: 1,
+            max_records: MAX_ARCHIVE_RECORDS + 1,
+        },
+    ] {
+        assert_eq!(a.set_limits(limits), Err(ArchiveError::Bounds));
+    }
+    a.set_limits(ArchiveLimits {
+        max_bytes: 1,
+        max_records: 1,
+    })
+    .unwrap();
+    assert_eq!(
+        a.store(&pair()).unwrap(),
+        original,
+        "exact existing ID never consumes quota"
+    );
+    assert_eq!(
+        a.store(&polled_pair(NOW + 101)),
+        Err(ArchiveError::Capacity)
+    );
+    assert!(a.load(original.id, &policy(), 0).is_ok());
+}
+
+#[test]
+fn novel_records_stop_at_byte_or_record_quota_before_any_temporary_write() {
+    for by_bytes in [false, true] {
+        let t = Temp::new();
+        let p = pair();
+        let bytes = encode(&p).unwrap().len() as u64;
+        let a = t
+            .archive()
+            .with_limits(ArchiveLimits {
+                max_bytes: if by_bytes { bytes } else { bytes * 10 },
+                max_records: if by_bytes { 10 } else { 1 },
+            })
+            .unwrap();
+        let first = a.store(&p).unwrap();
+        let inode = fs::metadata(a.path(first.id)).unwrap().ino();
+        assert_eq!(a.usage().unwrap(), ArchiveUsage { bytes, records: 1 });
+        let mut callback = false;
+        assert_eq!(
+            a.store_with_checkpoint(&polled_pair(NOW + 1), |_| {
+                callback = true;
+                Ok(())
+            }),
+            Err(ArchiveError::Capacity)
+        );
+        assert!(
+            !callback,
+            "quota refusal precedes all publication checkpoints"
+        );
+        assert_eq!(fs::read_dir(&a.root).unwrap().count(), 1);
+        assert_eq!(a.store(&p).unwrap(), first);
+        assert_eq!(fs::metadata(a.path(first.id)).unwrap().ino(), inode);
+        assert!(a.load(first.id, &policy(), 0).is_ok());
+    }
+}
+
+#[test]
+fn unchanged_source_poll_siblings_cannot_grow_archive_beyond_quota() {
+    let t = Temp::new();
+    let a = t
+        .archive()
+        .with_limits(ArchiveLimits {
+            max_bytes: 1_000_000,
+            max_records: 4,
+        })
+        .unwrap();
+    let mut ids = Vec::new();
+    let normalized = pair().for_operation(NOW).unwrap().0;
+    for n in 0..16 {
+        // Same full report/source time, different receipt/preparation time. Even
+        // when downstream rejects stale observations, each stored sibling is
+        // charged, preventing the rejected-poll history from growing forever.
+        let p = polled_pair(NOW + n);
+        assert_eq!(p.for_operation(NOW + n).unwrap().0, normalized);
+        if n < 4 {
+            ids.push(a.store(&p).unwrap().id);
+        } else {
+            assert_eq!(a.store(&p), Err(ArchiveError::Capacity));
+        }
+    }
+    assert_eq!(a.usage().unwrap().records, 4);
+    assert!(ids.windows(2).all(|ids| ids[0] != ids[1]));
+    drop(a);
+    let a = ReportArchive::open_existing(&t.0.join("store"))
+        .unwrap()
+        .with_limits(ArchiveLimits {
+            max_bytes: 1_000_000,
+            max_records: 4,
+        })
+        .unwrap();
+    assert_eq!(a.usage().unwrap().records, 4);
+    assert_eq!(a.store(&polled_pair(NOW + 17)), Err(ArchiveError::Capacity));
+    for id in ids {
+        assert!(a.load(id, &policy(), 0).is_ok());
+    }
+}
+
+#[test]
+fn crash_leftovers_consume_bytes_and_slots_without_promotion_or_deletion() {
+    for by_bytes in [false, true] {
+        let t = Temp::new();
+        let bytes = encode(&pair()).unwrap().len() as u64;
+        let a = t
+            .archive()
+            .with_limits(ArchiveLimits {
+                max_bytes: if by_bytes { bytes } else { bytes * 10 },
+                max_records: if by_bytes { 10 } else { 1 },
+            })
+            .unwrap();
+        let pending = a.root.join(".pending-previous-crash");
+        let mut f = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .open(&pending)
+            .unwrap();
+        f.write_all(b"partial").unwrap();
+        assert_eq!(
+            a.usage().unwrap(),
+            ArchiveUsage {
+                bytes: 7,
+                records: 1
+            }
+        );
+        assert_eq!(a.store(&pair()), Err(ArchiveError::Capacity));
+        assert_eq!(fs::read(&pending).unwrap(), b"partial");
+        assert!(matches!(
+            a.load(ReportArchive::id_for(&pair()).unwrap(), &policy(), 0),
+            Err(ArchiveError::Missing)
+        ));
+    }
+}
+
+#[test]
+fn quota_inventory_refuses_foreign_symlink_directory_and_oversized_entries() {
+    for kind in [
+        "foreign",
+        "symlink",
+        "directory",
+        "empty",
+        "oversized",
+        "insecure",
+    ] {
+        let t = Temp::new();
+        let a = t.archive();
+        let expected = a.store(&pair()).unwrap().id;
+        let path = a.root.join(if kind == "foreign" {
+            "foreign.backup".into()
+        } else {
+            format!("{}.json", "a".repeat(64))
+        });
+        match kind {
+            "symlink" => symlink(a.path(expected), &path).unwrap(),
+            "directory" => fs::create_dir(&path).unwrap(),
+            _ => {
+                let mut f = OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .mode(if kind == "insecure" { 0o644 } else { 0o600 })
+                    .open(&path)
+                    .unwrap();
+                f.write_all(if kind == "empty" { &[] } else { b"foreign" })
+                    .unwrap();
+                if kind == "oversized" {
+                    f.set_len(MAX_RECORD as u64 + 1).unwrap();
+                }
+                if kind == "insecure" {
+                    fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();
+                }
+            }
+        }
+        assert!(a.usage().is_err(), "inventory must refuse {kind}");
+        let mut reached = false;
+        assert!(a
+            .store_with_checkpoint(&polled_pair(NOW + 1), |_| {
+                reached = true;
+                Ok(())
+            })
+            .is_err());
+        assert!(!reached);
+        assert!(
+            path.symlink_metadata().is_ok(),
+            "foreign entry is preserved"
+        );
+        assert!(
+            a.load(expected, &policy(), 0).is_ok(),
+            "recovery load ignores quota inventory"
+        );
+    }
+}
+
+#[test]
+fn uncertain_published_record_counts_at_quota_and_exact_retry_does_not_grow() {
+    let t = Temp::new();
+    let a = t
+        .archive()
+        .with_limits(ArchiveLimits {
+            max_bytes: 1_000_000,
+            max_records: 1,
+        })
+        .unwrap();
+    let p = pair();
+    let id = ReportArchive::id_for(&p).unwrap();
+    assert_eq!(
+        a.store_with_checkpoint(&p, |stage| {
+            if stage == "published" {
+                Err(ArchiveError::Io)
+            } else {
+                Ok(())
+            }
+        }),
+        Err(ArchiveError::Io)
+    );
+    assert_eq!(a.usage().unwrap().records, 1);
+    assert!(a.load(id, &policy(), 0).is_ok());
+    assert_eq!(a.store(&polled_pair(NOW + 1)), Err(ArchiveError::Capacity));
+    assert_eq!(a.store(&p).unwrap().id, id);
+    assert_eq!(a.usage().unwrap().records, 1);
+}
+
+#[test]
+fn inventory_scan_is_bounded_and_shared_handle_quota_is_serialized() {
+    let t = Temp::new();
+    let a = t
+        .archive()
+        .with_limits(ArchiveLimits {
+            max_bytes: 1_000_000,
+            max_records: 1,
+        })
+        .unwrap();
+    for n in 0..67 {
+        OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .open(a.root.join(format!(".pending-{n}")))
+            .unwrap();
+    }
+    assert_eq!(a.inventory_with_budget(66), Err(ArchiveError::Capacity));
+    assert_eq!(
+        a.usage().unwrap().records,
+        67,
+        "lowered quota does not hide retained inventory"
+    );
+    let t = Temp::new();
+    let a = Arc::new(
+        t.archive()
+            .with_limits(ArchiveLimits {
+                max_bytes: 1_000_000,
+                max_records: 2,
+            })
+            .unwrap(),
+    );
+    let workers: Vec<_> = (0..8)
+        .map(|n| {
+            let a = a.clone();
+            thread::spawn(move || a.store(&polled_pair(NOW + n)))
+        })
+        .collect();
+    let results: Vec<_> = workers
+        .into_iter()
+        .map(|worker| worker.join().unwrap())
+        .collect();
+    assert_eq!(results.iter().filter(|result| result.is_ok()).count(), 2);
+    assert!(results
+        .iter()
+        .all(|result| result.is_ok() || *result == Err(ArchiveError::Capacity)));
+    assert_eq!(a.usage().unwrap().records, 2);
 }
 #[test]
 fn concurrent_equal_writes_converge_without_partial_or_duplicate_final_record() {

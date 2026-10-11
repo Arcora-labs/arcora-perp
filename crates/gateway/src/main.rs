@@ -391,13 +391,36 @@ fn apply_boot_recovery(
 /// `write_atomic`). At this point in boot the snapshot writer task is not spawned
 /// yet, so the snapshot file still has exactly one writer (this call); there is
 /// no `.tmp`-rename race to worry about.
+#[cfg(test)]
 fn persist_recovery(
     gw: &Gw,
     path: &std::path::Path,
     seed: &[u8; 32],
     archive: Option<&report_archive_binding::ArchiveBinding>,
 ) -> Result<(), String> {
-    let plain = snapshot_plain_with_archive(gw, archive)?;
+    persist_recovery_cut(gw, path, seed, archive, false)
+}
+
+fn persist_recovery_cut(
+    gw: &Gw,
+    path: &std::path::Path,
+    seed: &[u8; 32],
+    archive: Option<&report_archive_binding::ArchiveBinding>,
+    resolved_journal: bool,
+) -> Result<(), String> {
+    let plain = if let Some(binding) = archive {
+        let (plain, mut plan) = planned_candidate_checkpoint(gw, binding, path, seed)?;
+        if resolved_journal {
+            plan.resolved_journal();
+            binding
+                .snapshot_with_retention(gw.snapshot_plain(), &plan)
+                .map_err(|e| e.to_string())?
+        } else {
+            plain
+        }
+    } else {
+        gw.snapshot_plain()
+    };
     let sealed = snapshot::seal(&plain, seed);
     snapshot::write_atomic(path, &sealed).map_err(|e| format!("snapshot write: {e}"))
 }
@@ -425,8 +448,8 @@ fn finish_boot_recovery(
     seed: &[u8; 32],
     archive: Option<&report_archive_binding::ArchiveBinding>,
 ) -> bool {
-    if mutated {
-        if let Err(e) = persist_recovery(gw, state_path, seed, archive) {
+    if mutated || archive.is_some_and(|binding| binding.journal_expected()) {
+        if let Err(e) = persist_recovery_cut(gw, state_path, seed, archive, true) {
             eprintln!(
                 "[recovery] HOLDING: window recovery applied in memory but the post-recovery \
                  snapshot could not be persisted ({e}) — keeping the rollback journal {} as \
@@ -437,7 +460,13 @@ fn finish_boot_recovery(
         }
     }
     rollback_journal::delete(journal_path);
-    !journal_path.try_exists().unwrap_or(true)
+    let deleted = !journal_path.try_exists().unwrap_or(true);
+    if deleted {
+        if let Some(binding) = archive {
+            binding.note_journal(false);
+        }
+    }
+    deleted
 }
 
 // ── constants ────────────────────────────────────────────────────────────────
@@ -5310,6 +5339,7 @@ fn verify_open_window_archive(
         .map_err(|e| e.to_string())
 }
 
+#[cfg(test)]
 fn snapshot_plain_with_archive(
     gw: &Gw,
     archive: Option<&report_archive_binding::ArchiveBinding>,
@@ -5324,13 +5354,78 @@ fn snapshot_plain_with_archive(
     }
 }
 
-/// Caller holds the gateway lock, then takes the archive lock in the same
-/// order as intake and seal. A poisoned binding cannot become a legacy save.
-fn capture_snapshot_plain(app: &App, gw: &Gw) -> Result<Vec<u8>, String> {
+fn planned_candidate_checkpoint(
+    gw: &Gw,
+    binding: &report_archive_binding::ArchiveBinding,
+    path: &std::path::Path,
+    seed: &[u8; 32],
+) -> Result<(Vec<u8>, report_archive_binding::RetentionPlan), String> {
+    if gw.seq.state.next_batch_id == u64::MAX {
+        return Err("candidate checkpoint batch counter exhausted".into());
+    }
+    let bytes = postcard::to_allocvec(&gw.seq)
+        .map_err(|_| "candidate checkpoint sequencer encode failed")?;
+    let mut copied: Sequencer =
+        postcard::from_bytes(&bytes).map_err(|_| "candidate checkpoint sequencer decode failed")?;
+    let witness = copied.seal_window();
+    let live: Vec<_> = gw
+        .mkts
+        .iter()
+        .filter_map(|m| gw.seq.oracle(m.id).cloned().map(|o| (m.id, o)))
+        .collect();
+    let journal = retention_journal(binding, path, seed)?;
+    let journal_ref = match journal.as_ref() {
+        Some(rollback_journal::OpenedJournal::Candidate { journal, envelope }) => {
+            Some((journal.witness.ops.as_slice(), envelope))
+        }
+        Some(rollback_journal::OpenedJournal::Legacy(_)) => {
+            return Err("candidate retention refuses an unbound legacy journal".into())
+        }
+        None => None,
+    };
+    let plan = binding
+        .plan_retention(&witness.ops, &live, journal_ref)
+        .map_err(|e| e.to_string())?;
+    let plain = binding
+        .snapshot_with_retention(gw.snapshot_plain(), &plan)
+        .map_err(|e| e.to_string())?;
+    Ok((plain, plan))
+}
+
+fn retention_journal(
+    binding: &report_archive_binding::ArchiveBinding,
+    path: &std::path::Path,
+    seed: &[u8; 32],
+) -> Result<Option<rollback_journal::OpenedJournal>, String> {
+    let journal_path = rollback_journal::journal_path(path);
+    let journal = match snapshot::read_file(&journal_path) {
+        Ok(bytes) => Some(rollback_journal::open_versioned(&bytes, seed)?),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound && !binding.journal_expected() => None,
+        Err(_) => {
+            return Err("candidate retention requires its expected authenticated journal".into())
+        }
+    };
+    match journal.as_ref() {
+        Some(rollback_journal::OpenedJournal::Candidate { journal, envelope }) => binding
+            .verify(&journal.witness.ops, envelope)
+            .map_err(|e| e.to_string())?,
+        Some(rollback_journal::OpenedJournal::Legacy(_)) => {
+            return Err("candidate retention refuses an unbound legacy journal".into())
+        }
+        None => {}
+    }
+    Ok(journal)
+}
+
+fn commit_candidate_retention(
+    app: &App,
+    plan: report_archive_binding::RetentionPlan,
+) -> Result<(), String> {
     match archive_slot(app.archive.as_ref()) {
-        ArchiveSlot::Guard(binding) => snapshot_plain_with_archive(gw, Some(&binding)),
-        ArchiveSlot::NotConfigured => snapshot_plain_with_archive(gw, None),
-        ArchiveSlot::Poisoned => Err("candidate checkpoint archive lock poisoned".into()),
+        ArchiveSlot::Guard(mut binding) => {
+            binding.commit_retention(plan).map_err(|e| e.to_string())
+        }
+        _ => Err("candidate retention archive lock unavailable".into()),
     }
 }
 
@@ -5372,12 +5467,23 @@ async fn final_snapshot<'a>(
 ) -> (tokio::sync::MutexGuard<'a, Gw>, bool) {
     let serial = serial.lock_owned().await;
     let frozen = app.gw.lock().await;
-    let plain = match capture_snapshot_plain(app, &frozen) {
-        Ok(plain) => plain,
+    let capture = match archive_slot(app.archive.as_ref()) {
+        ArchiveSlot::Guard(binding) => planned_candidate_checkpoint(&frozen, &binding, path, &seed)
+            .map(|(plain, plan)| (plain, Some(plan))),
+        ArchiveSlot::NotConfigured => Ok((frozen.snapshot_plain(), None)),
+        ArchiveSlot::Poisoned => Err("candidate checkpoint archive lock poisoned".into()),
+    };
+    let (plain, plan) = match capture {
+        Ok(capture) => capture,
         Err(error) => {
             frozen
                 .ops_alerts
                 .activate(ops_alerts::AlertKind::PersistenceFailed);
+            if app.archive.is_some() {
+                frozen
+                    .ops_alerts
+                    .activate(ops_alerts::AlertKind::ArchivePressure);
+            }
             eprintln!("[state] final checkpoint refused: {error}");
             return (frozen, false);
         }
@@ -5391,15 +5497,35 @@ async fn final_snapshot<'a>(
         snapshot::write_atomic(&path, &sealed)
     })
     .await;
-    let ok = matches!(saved, Ok(Ok(())));
+    let mut ok = matches!(saved, Ok(Ok(())));
+    if ok {
+        if let Some(plan) = plan {
+            ok = commit_candidate_retention(app, plan).is_ok();
+        }
+    }
     if ok {
         frozen
             .ops_alerts
             .recover(ops_alerts::AlertKind::PersistenceFailed);
+        if app.archive.is_some() {
+            match archive_slot(app.archive.as_ref()) {
+                ArchiveSlot::Guard(binding) if binding.under_pressure() == Ok(false) => frozen
+                    .ops_alerts
+                    .recover(ops_alerts::AlertKind::ArchivePressure),
+                _ => frozen
+                    .ops_alerts
+                    .activate(ops_alerts::AlertKind::ArchivePressure),
+            }
+        }
     } else {
         frozen
             .ops_alerts
             .activate(ops_alerts::AlertKind::PersistenceFailed);
+        if app.archive.is_some() {
+            frozen
+                .ops_alerts
+                .activate(ops_alerts::AlertKind::ArchivePressure);
+        }
         eprintln!("[state] final snapshot failed: {saved:?}");
     }
     (frozen, ok)
@@ -5415,23 +5541,88 @@ async fn write_snapshot(
     seed: [u8; 32],
     serial: Arc<Mutex<()>>,
 ) -> bool {
+    write_snapshot_with_entry(app, path, seed, serial, SnapshotWorkerEntry::default()).await
+}
+
+/// Per-call test synchronization; the production type has no fields. Signal
+/// from inside the blocking worker, after it owns serialization, so a test can
+/// distinguish worker entry from a queued async mutex reservation.
+#[derive(Default)]
+struct SnapshotWorkerEntry {
+    #[cfg(test)]
+    entered: Option<tokio::sync::oneshot::Sender<()>>,
+}
+impl SnapshotWorkerEntry {
+    fn notify(self) {
+        #[cfg(test)]
+        if let Some(entered) = self.entered {
+            let _ = entered.send(());
+        }
+    }
+}
+
+async fn write_snapshot_with_entry(
+    app: &Shared,
+    path: &std::path::Path,
+    seed: [u8; 32],
+    serial: Arc<Mutex<()>>,
+    entry: SnapshotWorkerEntry,
+) -> bool {
     let guard = serial.lock_owned().await;
+    if app.archive.is_some() {
+        let app = app.clone();
+        let path = path.to_owned();
+        // Capture, durable publication and index installation share one
+        // uncancellable worker and mutation lock. Caller cancellation cannot
+        // release the gateway or serialization barriers halfway through.
+        return tokio::task::spawn_blocking(move || {
+            let _serial = guard;
+            entry.notify();
+            let gw = app.gw.blocking_lock();
+            let result = (|| {
+                let (plain, plan) = match archive_slot(app.archive.as_ref()) {
+                    ArchiveSlot::Guard(binding) => {
+                        planned_candidate_checkpoint(&gw, &binding, &path, &seed)?
+                    }
+                    _ => return Err("candidate checkpoint archive lock unavailable".to_string()),
+                };
+                snapshot::write_atomic(&path, &snapshot::seal(&plain, &seed))
+                    .map_err(|_| "candidate checkpoint filesystem write failed".to_string())?;
+                commit_candidate_retention(&app, plan)
+            })();
+            if result.is_ok() {
+                gw.ops_alerts
+                    .recover(ops_alerts::AlertKind::PersistenceFailed);
+                match archive_slot(app.archive.as_ref()) {
+                    ArchiveSlot::Guard(binding) if binding.under_pressure() == Ok(false) => gw
+                        .ops_alerts
+                        .recover(ops_alerts::AlertKind::ArchivePressure),
+                    _ => gw
+                        .ops_alerts
+                        .activate(ops_alerts::AlertKind::ArchivePressure),
+                }
+            } else {
+                gw.ops_alerts
+                    .activate(ops_alerts::AlertKind::PersistenceFailed);
+                gw.ops_alerts
+                    .activate(ops_alerts::AlertKind::ArchivePressure);
+                eprintln!("[state] candidate checkpoint refused: {result:?}");
+            }
+            result.is_ok()
+        })
+        .await
+        .unwrap_or(false);
+    }
     let (plain, alerts) = {
         let gw = app.gw.lock().await;
         let alerts = gw.ops_alerts.clone();
-        match capture_snapshot_plain(app, &gw) {
-            Ok(plain) => (plain, alerts),
-            Err(error) => {
-                alerts.activate(ops_alerts::AlertKind::PersistenceFailed);
-                eprintln!("[state] checkpoint refused: {error}");
-                return false;
-            }
-        }
+        (gw.snapshot_plain(), alerts)
     };
     let path = path.to_path_buf();
     let writer_alerts = alerts.clone();
     match tokio::task::spawn_blocking(move || {
         let _guard = guard;
+        entry.notify();
         let sealed = snapshot::seal(&plain, &seed);
         let result = snapshot::write_atomic(&path, &sealed);
         // Publish the episode transition before releasing the same serialization
@@ -7866,6 +8057,9 @@ fn begin_journaled_window_settle(
         gw.rollback_window_withdrawals(journal.ww);
         return Err(format!("stage-1 rollback journal is not durable: {error}"));
     }
+    if let Some(binding) = archive {
+        binding.note_journal(true);
+    }
     Ok(Some((journal, envelope)))
 }
 
@@ -8304,6 +8498,16 @@ async fn main() {
                 let gw = Gw::boot_restored(&state_plain)?;
                 if let Some(binding) = archive_binding.as_ref() {
                     verify_open_window_archive(&gw, binding)?;
+                    // Older candidate envelopes did not remember WAL need.
+                    // A detectable persisted uncommitted seal still requires
+                    // the WAL; never interpret its loss as a completed window.
+                    if plain.starts_with(b"DPCAS2\0\0")
+                        && gw.seq.state.next_batch_id
+                            > gw.l1_status.as_ref().map_or(0, |status| status.batch_count)
+                    {
+                        binding.note_journal(true);
+                    }
+                    retention_journal(binding, p, &enclave_seed)?;
                 }
                 Ok(gw)
             });
@@ -9191,8 +9395,8 @@ async fn main() {
                         let accepted = match fetched {
                             Ok(Ok((base, quote))) => {
                                 match archive_slot(app.archive.as_ref()) {
-                                    ArchiveSlot::Guard(mut binding) => binding
-                                        .admit_with(market, base, quote, now, |normalized| {
+                                    ArchiveSlot::Guard(mut binding) => {
+                                        let result = binding.admit_with(market, base, quote, now, |normalized| {
                                             let signature = OracleSig::sign(
                                                 &gw.oracle_signer,
                                                 &oracle_digest(
@@ -9208,8 +9412,14 @@ async fn main() {
                                                 normalized.with_signature(signature),
                                                 now,
                                             )
-                                        })
-                                        .unwrap_or(false),
+                                        });
+                                        if result.is_err() || binding.under_pressure() != Ok(false) {
+                                            gw.ops_alerts.activate(ops_alerts::AlertKind::ArchivePressure);
+                                        } else {
+                                            gw.ops_alerts.recover(ops_alerts::AlertKind::ArchivePressure);
+                                        }
+                                        result.unwrap_or(false)
+                                    },
                                     ArchiveSlot::Poisoned | ArchiveSlot::NotConfigured => false,
                                 }
                             }

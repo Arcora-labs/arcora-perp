@@ -1,6 +1,8 @@
 //! Immutable paired-report archive for a trusted, private Unix service directory.
 //! Hashes detect substitution only when the expected ID comes from a trusted journal.
-//! They are not DON signatures. No latest-file fallback, deletion policy, or key storage.
+//! They are not DON signatures. Full records remain append-only; finite logical
+//! byte/entry limits refuse growth rather than deleting recovery or user history.
+//! No latest-file fallback or key storage.
 use crate::{
     decode_hex, hex,
     report_pair::{policy_binding, PairError, PreparedPair},
@@ -18,10 +20,44 @@ use std::{
     io::{Read, Write},
     os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt},
     path::{Path, PathBuf},
-    sync::atomic::{AtomicU64, Ordering},
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Mutex,
+    },
 };
 
 const MAX_RECORD: usize = 32 * 1024;
+pub const MAX_ARCHIVE_RECORDS: usize = 65_536;
+/// Host operational limits, separate from the report or guest protocol limits.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ArchiveLimits {
+    pub max_bytes: u64,
+    pub max_records: usize,
+}
+impl Default for ArchiveLimits {
+    fn default() -> Self {
+        Self {
+            max_bytes: 256 * 1024 * 1024,
+            max_records: MAX_ARCHIVE_RECORDS,
+        }
+    }
+}
+impl ArchiveLimits {
+    fn validate(self) -> Result<Self> {
+        if self.max_bytes == 0 || self.max_records == 0 || self.max_records > MAX_ARCHIVE_RECORDS {
+            return Err(ArchiveError::Bounds);
+        }
+        Ok(self)
+    }
+}
+/// Conservative logical directory usage. Crash-leftover `.pending-` files are
+/// charged as entries and bytes too, including any hard-linked duplicate. This
+/// is a quota, not a guarantee of free physical filesystem blocks.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ArchiveUsage {
+    pub bytes: u64,
+    pub records: usize,
+}
 static NEXT_TEMP: AtomicU64 = AtomicU64::new(0);
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ArchiveError {
@@ -31,6 +67,7 @@ pub enum ArchiveError {
     Bounds,
     Encoding,
     Identity,
+    Capacity,
     Pair(PairError),
 }
 impl fmt::Display for ArchiveError {
@@ -159,6 +196,8 @@ pub struct ReportArchive {
     directory: File,
     device: u64,
     inode: u64,
+    limits: ArchiveLimits,
+    writer: Mutex<()>,
 }
 impl ReportArchive {
     /// Create a NEW private directory. Existing directories are never silently reused.
@@ -192,7 +231,68 @@ impl ReportArchive {
             directory,
             device: m.dev(),
             inode: m.ino(),
+            limits: ArchiveLimits::default(),
+            writer: Mutex::new(()),
         })
+    }
+    /// Configure finite host limits. Lowering a limit never removes existing
+    /// history: exact idempotent writes remain available; novel IDs HOLD.
+    pub fn with_limits(mut self, limits: ArchiveLimits) -> Result<Self> {
+        self.set_limits(limits)?;
+        Ok(self)
+    }
+    pub fn set_limits(&mut self, limits: ArchiveLimits) -> Result<()> {
+        self.limits = limits.validate()?;
+        Ok(())
+    }
+    /// Inventory only the private archive's direct entries. Never follow links,
+    /// recurse, adopt foreign files, or promote crash leftovers. Enumeration is
+    /// bounded even when an unexpected number of entries exists.
+    pub fn usage(&self) -> Result<ArchiveUsage> {
+        let _writer = self.writer.lock().map_err(|_| ArchiveError::Io)?;
+        self.inventory()
+    }
+    fn inventory(&self) -> Result<ArchiveUsage> {
+        // Independent of a lowered quota: existing valid history must remain
+        // available for exact idempotent reconciliation above the new limit.
+        self.inventory_with_budget(MAX_ARCHIVE_RECORDS * 2 + 64)
+    }
+    fn inventory_with_budget(&self, scan_limit: usize) -> Result<ArchiveUsage> {
+        self.check_root()?;
+        // A store transiently has both a temp and immutable hard-link. Allow
+        // bounded crash leftovers in the scan while charging them to the quota.
+        let mut usage = ArchiveUsage::default();
+        for entry in fs::read_dir(&self.root)? {
+            let entry = entry?;
+            if usage.records >= scan_limit {
+                return Err(ArchiveError::Capacity);
+            }
+            let name = entry.file_name();
+            let name = name.to_str().ok_or(ArchiveError::Path)?;
+            let pending = name
+                .strip_prefix(".pending-")
+                .is_some_and(|suffix| !suffix.is_empty());
+            let record = name
+                .strip_suffix(".json")
+                .is_some_and(|id| ArchiveId::parse(id).is_ok());
+            if !pending && !record {
+                return Err(ArchiveError::Path);
+            }
+            let metadata = fs::symlink_metadata(entry.path())?;
+            if !metadata.is_file() || metadata.mode() & 0o077 != 0 {
+                return Err(ArchiveError::Path);
+            }
+            if metadata.len() > MAX_RECORD as u64 || (record && metadata.len() == 0) {
+                return Err(ArchiveError::Bounds);
+            }
+            usage.records += 1;
+            usage.bytes = usage
+                .bytes
+                .checked_add(metadata.len())
+                .ok_or(ArchiveError::Bounds)?;
+        }
+        self.check_root()?;
+        Ok(usage)
     }
     fn check_root(&self) -> Result<()> {
         let m = fs::symlink_metadata(&self.root)?;
@@ -216,10 +316,38 @@ impl ReportArchive {
         pair: &PreparedPair,
         mut checkpoint: impl FnMut(&str) -> Result<()>,
     ) -> Result<StoredPair> {
+        // One archive handle serializes quota preflight and publication, including
+        // its concurrent callers. The private directory must have one owning
+        // service writer; separate processes are not a distributed quota lock.
+        let _writer = self.writer.lock().map_err(|_| ArchiveError::Io)?;
         self.check_root()?;
         let bytes = encode(pair)?;
         let id = ArchiveId::of(&bytes);
         let target = self.path(id);
+        let usage = self.inventory()?;
+        match fs::symlink_metadata(&target) {
+            Ok(_) => {
+                if self.read_exact(id)? != bytes {
+                    return Err(ArchiveError::Identity);
+                }
+                File::open(&target)?.sync_all()?;
+                self.directory.sync_all()?;
+                return Ok(StoredPair {
+                    id,
+                    bytes: bytes.len(),
+                });
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(e.into()),
+        }
+        if usage.records >= self.limits.max_records
+            || usage
+                .bytes
+                .checked_add(bytes.len() as u64)
+                .is_none_or(|next| next > self.limits.max_bytes)
+        {
+            return Err(ArchiveError::Capacity);
+        }
         let (temporary, mut file) = self.new_temporary()?;
         // A drop guard cleans only this call's create_new-owned temporary file.
         let cleanup = Temporary(temporary);
