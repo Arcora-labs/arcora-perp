@@ -410,6 +410,9 @@ fn persist_recovery_cut(
     archive: Option<&report_archive_binding::ArchiveBinding>,
     resolved_journal: bool,
 ) -> Result<(), String> {
+    if gw.candidate_archive_required && archive.is_none() {
+        return Err("candidate recovery checkpoint requires its configured archive".into());
+    }
     let plain = if let Some(binding) = archive {
         let (plain, mut plan) = planned_candidate_checkpoint(gw, binding, path, seed)?;
         if resolved_journal {
@@ -450,6 +453,13 @@ fn finish_boot_recovery(
     seed: &[u8; 32],
     archive: Option<&report_archive_binding::ArchiveBinding>,
 ) -> bool {
+    if gw.candidate_archive_required && archive.is_none() {
+        eprintln!(
+            "[recovery] HOLDING: candidate recovery requires its configured archive; keeping {}",
+            journal_path.display()
+        );
+        return false;
+    }
     if mutated || archive.is_some_and(|binding| binding.journal_expected()) {
         if let Err(e) = persist_recovery_cut(gw, state_path, seed, archive, true) {
             eprintln!(
@@ -5614,6 +5624,9 @@ async fn final_snapshot<'a>(
     let capture = match archive_slot(app.archive.as_ref()) {
         ArchiveSlot::Guard(binding) => planned_candidate_checkpoint(&frozen, &binding, path, &seed)
             .map(|(plain, plan)| (plain, Some(plan))),
+        ArchiveSlot::NotConfigured if frozen.candidate_archive_required => {
+            Err("candidate final checkpoint requires its configured archive".into())
+        }
         ArchiveSlot::NotConfigured => Ok((frozen.snapshot_plain(), None)),
         ArchiveSlot::Poisoned => Err("candidate checkpoint archive lock poisoned".into()),
     };
@@ -5623,7 +5636,7 @@ async fn final_snapshot<'a>(
             frozen
                 .ops_alerts
                 .activate(ops_alerts::AlertKind::PersistenceFailed);
-            if app.archive.is_some() {
+            if frozen.candidate_archive_required || app.archive.is_some() {
                 frozen
                     .ops_alerts
                     .activate(ops_alerts::AlertKind::ArchivePressure);
@@ -5759,6 +5772,14 @@ async fn write_snapshot_with_entry(
     }
     let (plain, alerts) = {
         let gw = app.gw.lock().await;
+        if gw.candidate_archive_required {
+            gw.ops_alerts
+                .activate(ops_alerts::AlertKind::PersistenceFailed);
+            gw.ops_alerts
+                .activate(ops_alerts::AlertKind::ArchivePressure);
+            eprintln!("[state] candidate checkpoint requires its configured archive");
+            return false;
+        }
         let alerts = gw.ops_alerts.clone();
         (gw.snapshot_plain(), alerts)
     };

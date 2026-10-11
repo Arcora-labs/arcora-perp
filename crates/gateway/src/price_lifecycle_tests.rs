@@ -418,12 +418,56 @@ fn run_lifecycle() -> (Fixture, sequencer::WindowWitness, CandidateWitness) {
             }
         )
         .is_err());
+    assert!(
+        recovered
+            .require_candidate_price(
+                0,
+                PriceUse {
+                    archive: Some(&restored),
+                    now_ms: NOW + 1_100,
+                },
+            )
+            .is_err(),
+        "restored marks require fresh archive admission"
+    );
+    let fresh_at = NOW + 2_000;
+    assert!(restored
+        .admit_with(
+            0,
+            report(
+                feed(0x11),
+                60_020 * 100_000_000,
+                fresh_at / 1000,
+                fresh_at,
+                0x33
+            ),
+            report(feed(0x61), 100_000_000, fresh_at / 1000, fresh_at, 0x33),
+            fresh_at,
+            |normalized| {
+                let signature = OracleSig::sign(
+                    &recovered.oracle_signer,
+                    &oracle_digest(
+                        0,
+                        normalized.price,
+                        normalized.publish_time_ms,
+                        normalized.confidence,
+                        normalized.backup_twap,
+                    ),
+                );
+                recovered.apply_validated_real_oracle_at(
+                    0,
+                    normalized.with_signature(signature),
+                    fresh_at,
+                )
+            },
+        )
+        .unwrap());
     recovered
         .require_candidate_price(
             0,
             PriceUse {
                 archive: Some(&restored),
-                now_ms: NOW + 1_100,
+                now_ms: fresh_at + 100,
             },
         )
         .unwrap();
@@ -697,7 +741,7 @@ async fn runtime_order_withdraw_routes_require_archive_before_financial_mutation
         ..std::sync::Arc::try_unwrap(app).ok().unwrap()
     });
     std::mem::swap(&mut *app.gw.lock().await, &mut f.gw);
-    let before = fingerprint(&app.gw.lock().await);
+    let before = fingerprint(&*app.gw.lock().await);
     let req = || {
         axum::http::Request::builder().method("POST").uri("/v1/orders")
         .header("Content-Type","application/json").header("X-Api-Key",hex0x(&f.key))
@@ -728,7 +772,7 @@ async fn runtime_order_withdraw_routes_require_archive_before_financial_mutation
             .status(),
         StatusCode::BAD_REQUEST
     );
-    assert_eq!(fingerprint(&app.gw.lock().await), before);
+    assert_eq!(fingerprint(&*app.gw.lock().await), before);
     std::mem::swap(
         &mut *app.archive.as_ref().unwrap().lock().unwrap(),
         &mut f.binding,
@@ -749,7 +793,7 @@ async fn runtime_order_withdraw_routes_require_archive_before_financial_mutation
             .status(),
         StatusCode::OK
     );
-    let before = fingerprint(&app.gw.lock().await);
+    let before = fingerprint(&*app.gw.lock().await);
     let app2 = app.clone();
     let _ = std::thread::spawn(move || {
         let _g = app2.archive.as_ref().unwrap().lock().unwrap();
@@ -772,7 +816,7 @@ async fn runtime_order_withdraw_routes_require_archive_before_financial_mutation
             .status(),
         StatusCode::BAD_REQUEST
     );
-    assert_eq!(fingerprint(&app.gw.lock().await), before);
+    assert_eq!(fingerprint(&*app.gw.lock().await), before);
 }
 
 #[test]
@@ -789,6 +833,69 @@ fn candidate_seal_and_checkpoint_cannot_downgrade_when_archive_context_is_missin
     assert!(snapshot_plain_with_archive(&f.gw, None).is_err());
     assert_eq!(fingerprint(&f.gw), before);
     assert!(!journal_path.exists());
+}
+
+#[tokio::test]
+async fn composed_runtime_recovery_and_final_checkpoints_preserve_candidate_mode() {
+    let mut f = Fixture::new("composed-checkpoints");
+    f.order("Buy", SIZE_SCALE, false, NOW).unwrap();
+    f.tick(NOW).unwrap();
+    let path = f.dir.join("runtime.snapshot");
+    persist_recovery_cut(&f.gw, &path, &SEED, Some(&f.binding), false).unwrap();
+    let mut app = tests::test_app();
+    let empty = binding_at(&f.dir.join("checkpoint-empty"), f.binding.policy().clone()).unwrap();
+    std::sync::Arc::get_mut(&mut app).unwrap().archive = Some(std::sync::Mutex::new(empty));
+    std::mem::swap(&mut *app.gw.lock().await, &mut f.gw);
+    std::mem::swap(
+        &mut *app.archive.as_ref().unwrap().lock().unwrap(),
+        &mut f.binding,
+    );
+    let serial = std::sync::Arc::new(tokio::sync::Mutex::new(()));
+    assert!(write_snapshot(&app, &path, SEED, serial.clone()).await);
+    let checkpoint = std::fs::read(&path).unwrap();
+    let plain = snapshot::open(&checkpoint, &SEED).unwrap();
+    assert!(plain.starts_with(report_archive_binding::SNAPSHOT_TAG_MAGIC));
+    assert!(report_archive_binding::restore_snapshot_plain(&plain, None).is_err());
+    let (frozen, saved) = final_snapshot(&app, &path, SEED, serial.clone()).await;
+    assert!(saved);
+    let before = fingerprint(&frozen);
+    drop(frozen);
+    let checkpoint = std::fs::read(&path).unwrap();
+    std::sync::Arc::get_mut(&mut app).unwrap().archive = None;
+    {
+        let gw = app.gw.lock().await;
+        assert!(persist_recovery_cut(&gw, &path, &SEED, None, false).is_err());
+        assert!(persist_recovery_cut(&gw, &path, &SEED, None, true).is_err());
+        let journal_path = rollback_journal::journal_path(&path);
+        let journal_bytes = b"owned WAL must be preserved without its candidate archive";
+        std::fs::write(&journal_path, journal_bytes).unwrap();
+        assert!(!finish_boot_recovery(
+            &gw,
+            false,
+            &path,
+            &journal_path,
+            &SEED,
+            None
+        ));
+        assert!(!finish_boot_recovery(
+            &gw,
+            true,
+            &path,
+            &journal_path,
+            &SEED,
+            None
+        ));
+        assert_eq!(std::fs::read(&journal_path).unwrap(), journal_bytes);
+        assert_eq!(std::fs::read(&path).unwrap(), checkpoint);
+        assert_eq!(fingerprint(&gw), before);
+    }
+    assert!(!write_snapshot(&app, &path, SEED, serial.clone()).await);
+    assert_eq!(std::fs::read(&path).unwrap(), checkpoint);
+    assert_eq!(fingerprint(&*app.gw.lock().await), before);
+    let (frozen, saved) = final_snapshot(&app, &path, SEED, serial).await;
+    assert!(!saved);
+    assert_eq!(fingerprint(&frozen), before);
+    assert_eq!(std::fs::read(&path).unwrap(), checkpoint);
 }
 
 /// Export the exact successful gateway v3 lifecycle for separate pinned-ELF CPU
