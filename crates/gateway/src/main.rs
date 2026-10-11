@@ -5541,6 +5541,33 @@ async fn write_snapshot(
     seed: [u8; 32],
     serial: Arc<Mutex<()>>,
 ) -> bool {
+    write_snapshot_with_entry(app, path, seed, serial, SnapshotWorkerEntry::default()).await
+}
+
+/// Per-call test synchronization; the production type has no fields. Signal
+/// from inside the blocking worker, after it owns serialization, so a test can
+/// distinguish worker entry from a queued async mutex reservation.
+#[derive(Default)]
+struct SnapshotWorkerEntry {
+    #[cfg(test)]
+    entered: Option<tokio::sync::oneshot::Sender<()>>,
+}
+impl SnapshotWorkerEntry {
+    fn notify(self) {
+        #[cfg(test)]
+        if let Some(entered) = self.entered {
+            let _ = entered.send(());
+        }
+    }
+}
+
+async fn write_snapshot_with_entry(
+    app: &Shared,
+    path: &std::path::Path,
+    seed: [u8; 32],
+    serial: Arc<Mutex<()>>,
+    entry: SnapshotWorkerEntry,
+) -> bool {
     let guard = serial.lock_owned().await;
     if app.archive.is_some() {
         let app = app.clone();
@@ -5550,6 +5577,7 @@ async fn write_snapshot(
         // release the gateway or serialization barriers halfway through.
         return tokio::task::spawn_blocking(move || {
             let _serial = guard;
+            entry.notify();
             let gw = app.gw.blocking_lock();
             let result = (|| {
                 let (plain, plan) = match archive_slot(app.archive.as_ref()) {
@@ -5594,6 +5622,7 @@ async fn write_snapshot(
     let writer_alerts = alerts.clone();
     match tokio::task::spawn_blocking(move || {
         let _guard = guard;
+        entry.notify();
         let sealed = snapshot::seal(&plain, &seed);
         let result = snapshot::write_atomic(&path, &sealed);
         // Publish the episode transition before releasing the same serialization

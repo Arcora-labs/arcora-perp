@@ -90,10 +90,7 @@ fn retention_protects_open_live_and_journal_refs_and_rejects_stale_plans() {
     );
     // A live-only mark remains usable after its source op window has closed.
     assert_eq!(
-        b.bind_ops(&[fill(0, NOW + 2000, live[0].1)])
-            .unwrap()
-            .refs[0]
-            .archive_id,
+        b.bind_ops(&[fill(0, NOW + 2000, live[0].1)]).unwrap().refs[0].archive_id,
         before[2].id
     );
     assert!(
@@ -423,22 +420,31 @@ async fn retention_cancelled_caller_keeps_serial_and_mutation_barriers_until_sav
     let path = t.0.join("state.snapshot");
     let seed = [42; 32];
     let serial = Arc::new(tokio::sync::Mutex::new(()));
+    let (worker_entered, entered) = tokio::sync::oneshot::channel();
     let first = tokio::spawn({
         let app = app.clone();
         let path = path.clone();
         let serial = serial.clone();
-        async move { crate::write_snapshot(&app, &path, seed, serial).await }
-    });
-    tokio::time::timeout(std::time::Duration::from_secs(5), async {
-        loop {
-            if serial.try_lock().is_err() {
-                break;
-            }
-            tokio::task::yield_now().await;
+        async move {
+            crate::write_snapshot_with_entry(
+                &app,
+                &path,
+                seed,
+                serial,
+                crate::SnapshotWorkerEntry {
+                    entered: Some(worker_entered),
+                },
+            )
+            .await
         }
-    })
-    .await
-    .unwrap();
+    });
+    // A failed try_lock can merely observe an unpolled lock_owned reservation.
+    // Await actual blocking-worker entry while Gw remains frozen; cancellation
+    // now targets a started, uncancellable worker that already owns serial.
+    tokio::time::timeout(std::time::Duration::from_secs(5), entered)
+        .await
+        .unwrap()
+        .unwrap();
     first.abort();
     assert!(first.await.unwrap_err().is_cancelled());
     assert!(
