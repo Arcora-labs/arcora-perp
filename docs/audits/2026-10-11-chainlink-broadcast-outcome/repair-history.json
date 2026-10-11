@@ -1,0 +1,38 @@
+{
+  "schema": "arcora-broadcast-outcome-repair-v1",
+  "initial_targeted_budget": 2,
+  "rounds": [
+    {
+      "round": 1,
+      "trigger": "focused-initial compile exit 101, three unresolved hex references in new tests",
+      "change": "local bounded hex decoding and existing hex formatting; no dependency or manifest update; add actual dispatcher process and nested-length acceptance coverage from independent review",
+      "validation": "focused-repair1:26 PASS/0 FAIL/1 intentional ignored"
+    },
+    {
+      "round": 2,
+      "trigger": "clippy-initial exit101, large_enum_variant and manual_range_patterns",
+      "change": "boxed fixed success effect, range pattern, parent-owned child scratch cleanup after SIGKILL; no lint suppression or guard weakening",
+      "validation": "clippy-final PASS with -D warnings; focused-final26 PASS/0 FAIL/1 ignored"
+    },
+    {
+      "round": 3,
+      "trigger": "CI lint, A07 and release regression at c98ff6e3 all failed chunks_exact_to_as_chunks, candidate_broadcast_tests.rs:55; Linux A07 gateway 628/0/21 passed before lint",
+      "change": "Use fixed-size as_chunks::<2>().0.iter() with unchanged even-length guard; prepend exact installed Rust1.99 toolchain bin to per-command PATH; no global toolchain, lint suppression, dependency or original source change",
+      "code_commit": "92d469335c67967d45fa7d0360d7345329e57bb1",
+      "validation": "Fresh corrected-toolchain receipts retained under *-ci-repair; publication-head CI is a separate merge gate",
+      "observed_utc": "2026-10-11T21:15:16.275017+00:00",
+      "additional_trigger": "Initial workspace jobcancelled at20min06s; mainworkspace stepSUCCESS15m20, witnessstepactively successful4m13, nostdSKIPPED. Previous50 samejobSUCCESS17m08.",
+      "additional_change": "Only workspacejob timeout20 to30min; commands/assertions/RUST_TEST_THREADS2 retained, exact one-line change independently checked",
+      "ci_configuration_commit": "eb07a79297dcf2e4ac3e8b6506c8a7b5007a96bc"
+    }
+  ],
+  "acceptance_criteria_weakened": false,
+  "old_source_bytes_changed": true,
+  "raw_failed_outputs_retained": true,
+  "additional_ci_repair_budget": 1,
+  "additional_ci_repair_reason": "Fresh Linux CI exposed a Rust 1.99 lint absent from Homebrew Clippy 1.95 selected by local PATH; original two local repair rounds remain retained. The same initialpublication later exceeded the20min workspacejob ceiling after active successful test progress.",
+  "old_protocol_source_bytes_changed": false,
+  "existing_file_changes": [
+    ".github/workflows/ci.yml: workspace timeout20 to30"
+  ]
+}

@@ -1,0 +1,33 @@
+    Checking gateway v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway)
+error: large size difference between variants
+   --> crates/gateway/src/candidate_broadcast.rs:97:1
+    |
+ 97 | / pub(crate) enum OutcomeStatus {
+ 98 | |     Success(SettlementEffect),
+    | |     ------------------------- the largest variant contains at least 240 bytes
+ 99 | |     /// A finalized mock receipt with revert status. No global rollback claim.
+100 | |     Reverted(#[serde(deserialize_with = "deserialize_revert")] Vec<u8>),
+    | |     ------------------------------------------------------------------- the second-largest variant contains at least 24 bytes
+101 | | }
+    | |_^ the entire enum is at least 248 bytes
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.95.0/index.html#large_enum_variant
+    = note: `-D clippy::large-enum-variant` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::large_enum_variant)]`
+help: consider boxing the large fields or introducing indirection in some other way to reduce the total size of the enum
+    |
+ 98 -     Success(SettlementEffect),
+ 98 +     Success(Box<SettlementEffect>),
+    |
+
+error: this OR pattern can be rewritten using a range
+   --> crates/gateway/src/candidate_broadcast_tests.rs:923:13
+    |
+923 |             3 | 4 | 5 | 6 => {
+    |             ^^^^^^^^^^^^^ help: try: `3..=6`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.95.0/index.html#manual_range_patterns
+    = note: `-D clippy::manual-range-patterns` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::manual_range_patterns)]`
+
+error: could not compile `gateway` (bin "gateway" test) due to 2 previous errors

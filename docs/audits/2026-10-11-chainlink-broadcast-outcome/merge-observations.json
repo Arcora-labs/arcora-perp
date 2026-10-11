@@ -1,0 +1,410 @@
+{
+  "schema": "arcora-pr50-merge-v1",
+  "before_ready": {
+    "observed_utc": "2026-10-11T20:23:56.830316+00:00",
+    "pr": {
+      "headRefOid": "d792d323d53fda6974096aa474f9b8313b8e7adb",
+      "isDraft": true,
+      "mergeStateStatus": "CLEAN",
+      "mergeable": "MERGEABLE",
+      "number": 50,
+      "state": "OPEN",
+      "statusCheckRollup": [
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-11T16:00:31Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38153378874/job/114511259235",
+          "name": "rust",
+          "startedAt": "2026-10-11T15:56:34Z",
+          "status": "COMPLETED",
+          "workflowName": "A07 integration hotfix"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-11T15:57:02Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38153378891/job/114511259281",
+          "name": "dependency advisories",
+          "startedAt": "2026-10-11T15:56:34Z",
+          "status": "COMPLETED",
+          "workflowName": "A11 release evidence"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-11T15:57:00Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38153378883/job/114511259185",
+          "name": "Chainlink candidate core (not live verification)",
+          "startedAt": "2026-10-11T15:56:34Z",
+          "status": "COMPLETED",
+          "workflowName": "Chainlink candidate"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-11T15:57:42Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38153378895/job/114511259119",
+          "name": "offline-ingestion",
+          "startedAt": "2026-10-11T15:56:34Z",
+          "status": "COMPLETED",
+          "workflowName": "a01-ingestion"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-11T15:57:01Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38153378881/job/114511259254",
+          "name": "rust (lint, 1.99)",
+          "startedAt": "2026-10-11T15:56:34Z",
+          "status": "COMPLETED",
+          "workflowName": "ci"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-11T15:57:05Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38153378874/job/114511259054",
+          "name": "frontend",
+          "startedAt": "2026-10-11T15:56:34Z",
+          "status": "COMPLETED",
+          "workflowName": "A07 integration hotfix"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-11T16:01:54Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38153378891/job/114511259363",
+          "name": "release regression",
+          "startedAt": "2026-10-11T15:56:34Z",
+          "status": "COMPLETED",
+          "workflowName": "A11 release evidence"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-11T15:57:07Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38153378883/job/114511259295",
+          "name": "Chainlink REST client (runtime regressions)",
+          "startedAt": "2026-10-11T15:56:34Z",
+          "status": "COMPLETED",
+          "workflowName": "Chainlink candidate"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-11T16:13:42Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38153378881/job/114511259020",
+          "name": "rust (workspace)",
+          "startedAt": "2026-10-11T15:56:34Z",
+          "status": "COMPLETED",
+          "workflowName": "ci"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-11T15:57:10Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38153378891/job/114511259315",
+          "name": "foundry release gate",
+          "startedAt": "2026-10-11T15:56:34Z",
+          "status": "COMPLETED",
+          "workflowName": "A11 release evidence"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-11T16:09:21Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38153378881/job/114511259163",
+          "name": "prover crates (excluded, typecheck)",
+          "startedAt": "2026-10-11T15:56:34Z",
+          "status": "COMPLETED",
+          "workflowName": "ci"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-11T15:59:09Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38153378891/job/114511259324",
+          "name": "gateway RPC, crash and alert drills",
+          "startedAt": "2026-10-11T15:56:34Z",
+          "status": "COMPLETED",
+          "workflowName": "A11 release evidence"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-11T15:56:59Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38153378881/job/114511259168",
+          "name": "contracts (foundry)",
+          "startedAt": "2026-10-11T15:56:34Z",
+          "status": "COMPLETED",
+          "workflowName": "ci"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-11T15:57:02Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38153378891/job/114511259297",
+          "name": "frontend release gate",
+          "startedAt": "2026-10-11T15:56:34Z",
+          "status": "COMPLETED",
+          "workflowName": "A11 release evidence"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-11T15:56:55Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38153378881/job/114511259322",
+          "name": "frontend (vite)",
+          "startedAt": "2026-10-11T15:56:34Z",
+          "status": "COMPLETED",
+          "workflowName": "ci"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-11T15:56:41Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38153378891/job/114511259144",
+          "name": "prover source / deployment binding",
+          "startedAt": "2026-10-11T15:56:34Z",
+          "status": "COMPLETED",
+          "workflowName": "A11 release evidence"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-11T15:56:44Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://vercel.com/github",
+          "name": "Vercel Preview Comments",
+          "startedAt": "2026-10-11T15:56:44Z",
+          "status": "COMPLETED",
+          "workflowName": ""
+        },
+        {
+          "__typename": "StatusContext",
+          "context": "Vercel \u2013 arcora-labs",
+          "startedAt": "2026-10-11T15:56:27Z",
+          "state": "SUCCESS",
+          "targetUrl": "https://vercel.com/kubudak90s-projects/arcora-labs/7wrKNkBVCUquvYdVAANVG79yc72A"
+        },
+        {
+          "__typename": "StatusContext",
+          "context": "Vercel \u2013 arcora-perp",
+          "startedAt": "2026-10-11T15:56:42Z",
+          "state": "SUCCESS",
+          "targetUrl": "https://vercel.com/kubudak90s-projects/arcora-perp/Hs1gLiZxc6rz36dQCu6ozscgz6Wk"
+        }
+      ],
+      "url": "https://github.com/Arcora-labs/arcora-perp/pull/50"
+    }
+  },
+  "ready": {
+    "headRefOid": "d792d323d53fda6974096aa474f9b8313b8e7adb",
+    "isDraft": false,
+    "mergeStateStatus": "CLEAN",
+    "mergeable": "MERGEABLE",
+    "number": 50,
+    "state": "OPEN",
+    "statusCheckRollup": [
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-10-11T16:00:31Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38153378874/job/114511259235",
+        "name": "rust",
+        "startedAt": "2026-10-11T15:56:34Z",
+        "status": "COMPLETED",
+        "workflowName": "A07 integration hotfix"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-10-11T15:57:02Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38153378891/job/114511259281",
+        "name": "dependency advisories",
+        "startedAt": "2026-10-11T15:56:34Z",
+        "status": "COMPLETED",
+        "workflowName": "A11 release evidence"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-10-11T15:57:00Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38153378883/job/114511259185",
+        "name": "Chainlink candidate core (not live verification)",
+        "startedAt": "2026-10-11T15:56:34Z",
+        "status": "COMPLETED",
+        "workflowName": "Chainlink candidate"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-10-11T15:57:42Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38153378895/job/114511259119",
+        "name": "offline-ingestion",
+        "startedAt": "2026-10-11T15:56:34Z",
+        "status": "COMPLETED",
+        "workflowName": "a01-ingestion"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-10-11T15:57:01Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38153378881/job/114511259254",
+        "name": "rust (lint, 1.99)",
+        "startedAt": "2026-10-11T15:56:34Z",
+        "status": "COMPLETED",
+        "workflowName": "ci"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-10-11T15:57:05Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38153378874/job/114511259054",
+        "name": "frontend",
+        "startedAt": "2026-10-11T15:56:34Z",
+        "status": "COMPLETED",
+        "workflowName": "A07 integration hotfix"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-10-11T16:01:54Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38153378891/job/114511259363",
+        "name": "release regression",
+        "startedAt": "2026-10-11T15:56:34Z",
+        "status": "COMPLETED",
+        "workflowName": "A11 release evidence"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-10-11T15:57:07Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38153378883/job/114511259295",
+        "name": "Chainlink REST client (runtime regressions)",
+        "startedAt": "2026-10-11T15:56:34Z",
+        "status": "COMPLETED",
+        "workflowName": "Chainlink candidate"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-10-11T16:13:42Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38153378881/job/114511259020",
+        "name": "rust (workspace)",
+        "startedAt": "2026-10-11T15:56:34Z",
+        "status": "COMPLETED",
+        "workflowName": "ci"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-10-11T15:57:10Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38153378891/job/114511259315",
+        "name": "foundry release gate",
+        "startedAt": "2026-10-11T15:56:34Z",
+        "status": "COMPLETED",
+        "workflowName": "A11 release evidence"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-10-11T16:09:21Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38153378881/job/114511259163",
+        "name": "prover crates (excluded, typecheck)",
+        "startedAt": "2026-10-11T15:56:34Z",
+        "status": "COMPLETED",
+        "workflowName": "ci"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-10-11T15:59:09Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38153378891/job/114511259324",
+        "name": "gateway RPC, crash and alert drills",
+        "startedAt": "2026-10-11T15:56:34Z",
+        "status": "COMPLETED",
+        "workflowName": "A11 release evidence"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-10-11T15:56:59Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38153378881/job/114511259168",
+        "name": "contracts (foundry)",
+        "startedAt": "2026-10-11T15:56:34Z",
+        "status": "COMPLETED",
+        "workflowName": "ci"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-10-11T15:57:02Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38153378891/job/114511259297",
+        "name": "frontend release gate",
+        "startedAt": "2026-10-11T15:56:34Z",
+        "status": "COMPLETED",
+        "workflowName": "A11 release evidence"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-10-11T15:56:55Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38153378881/job/114511259322",
+        "name": "frontend (vite)",
+        "startedAt": "2026-10-11T15:56:34Z",
+        "status": "COMPLETED",
+        "workflowName": "ci"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-10-11T15:56:41Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38153378891/job/114511259144",
+        "name": "prover source / deployment binding",
+        "startedAt": "2026-10-11T15:56:34Z",
+        "status": "COMPLETED",
+        "workflowName": "A11 release evidence"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-10-11T15:56:44Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://vercel.com/github",
+        "name": "Vercel Preview Comments",
+        "startedAt": "2026-10-11T15:56:44Z",
+        "status": "COMPLETED",
+        "workflowName": ""
+      },
+      {
+        "__typename": "StatusContext",
+        "context": "Vercel \u2013 arcora-labs",
+        "startedAt": "2026-10-11T15:56:27Z",
+        "state": "SUCCESS",
+        "targetUrl": "https://vercel.com/kubudak90s-projects/arcora-labs/7wrKNkBVCUquvYdVAANVG79yc72A"
+      },
+      {
+        "__typename": "StatusContext",
+        "context": "Vercel \u2013 arcora-perp",
+        "startedAt": "2026-10-11T15:56:42Z",
+        "state": "SUCCESS",
+        "targetUrl": "https://vercel.com/kubudak90s-projects/arcora-perp/Hs1gLiZxc6rz36dQCu6ozscgz6Wk"
+      }
+    ],
+    "url": "https://github.com/Arcora-labs/arcora-perp/pull/50"
+  },
+  "merged": {
+    "headRefOid": "d792d323d53fda6974096aa474f9b8313b8e7adb",
+    "isDraft": false,
+    "mergeCommit": {
+      "oid": "0ea5048627840cbe7e125d7b914b1303b109b224"
+    },
+    "mergedAt": "2026-10-11T20:26:38Z",
+    "number": 50,
+    "state": "MERGED",
+    "url": "https://github.com/Arcora-labs/arcora-perp/pull/50"
+  },
+  "tree_equality": "tested_tree=146b6da49f322bcabf68a7e5fca1e216aea52c45\nmerged_tree=146b6da49f322bcabf68a7e5fca1e216aea52c45\n",
+  "normal_merge": true,
+  "protections_modified": false
+}

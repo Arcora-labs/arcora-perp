@@ -1,0 +1,78 @@
+{
+  "observed_utc": "2026-10-11T20:55:10.926246+00:00",
+  "github": {
+    "data": {
+      "repository": {
+        "defaultBranchRef": {
+          "name": "main",
+          "target": {
+            "oid": "0ea5048627840cbe7e125d7b914b1303b109b224"
+          }
+        },
+        "p44": {
+          "number": 44,
+          "state": "MERGED",
+          "mergedAt": "2026-10-11T10:34:16Z",
+          "headRefOid": "5cb14707e6b23c502a351b6d8a540b9e89f28b4b",
+          "mergeCommit": {
+            "oid": "e697b2f19d74b1021ba3a32b64b4f15ceb159880"
+          }
+        },
+        "p45": {
+          "number": 45,
+          "state": "MERGED",
+          "mergedAt": "2026-10-11T10:53:21Z",
+          "headRefOid": "0f2fc42964bd25d5cd36e20f98d8edc61ab22210",
+          "mergeCommit": {
+            "oid": "c82dd492f74a47ab3806395dd05b46b3dff884e4"
+          }
+        },
+        "p46": {
+          "number": 46,
+          "state": "MERGED",
+          "mergedAt": "2026-10-11T12:11:25Z",
+          "headRefOid": "b3a9507ad5bda336511aba6869745b19b7b66f19",
+          "mergeCommit": {
+            "oid": "c32432f69bf60610e41ff6ef87fb0c5f5981e79d"
+          }
+        },
+        "p47": {
+          "number": 47,
+          "state": "MERGED",
+          "mergedAt": "2026-10-11T12:27:29Z",
+          "headRefOid": "15bdf54b2d5bae67bab7d52826cc4224f17dea49",
+          "mergeCommit": {
+            "oid": "969ecec2fecd29621c5508ab58fb778617b9bce2"
+          }
+        },
+        "p48": {
+          "number": 48,
+          "state": "MERGED",
+          "mergedAt": "2026-10-11T13:34:36Z",
+          "headRefOid": "f0f1d40679d6a6d6f9e9732bd149c41af32b1b7e",
+          "mergeCommit": {
+            "oid": "5dac90412b65c299cb62bcff1ab2e1ae0533b6a0"
+          }
+        },
+        "p49": {
+          "number": 49,
+          "state": "MERGED",
+          "mergedAt": "2026-10-11T14:40:27Z",
+          "headRefOid": "9567f23004e636a0274eadd373c170d2764a4a44",
+          "mergeCommit": {
+            "oid": "dc00f5ac9a846139d04a82f0689d02a75e5de6d0"
+          }
+        },
+        "p50": {
+          "number": 50,
+          "state": "MERGED",
+          "mergedAt": "2026-10-11T20:26:38Z",
+          "headRefOid": "d792d323d53fda6974096aa474f9b8313b8e7adb",
+          "mergeCommit": {
+            "oid": "0ea5048627840cbe7e125d7b914b1303b109b224"
+          }
+        }
+      }
+    }
+  }
+}

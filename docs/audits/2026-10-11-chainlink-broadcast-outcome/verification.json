@@ -1,0 +1,1454 @@
+{
+  "schema": "arcora-broadcast-outcome-evidence-v1",
+  "observed_utc": "2026-10-11T21:27:44.439381+00:00",
+  "base_main": "0ea5048627840cbe7e125d7b914b1303b109b224",
+  "tested_code_commit": "92d469335c67967d45fa7d0360d7345329e57bb1",
+  "source_sha256": {
+    "crates/gateway/src/main.rs": "b96da2d2f9f72d295ff217868cee673a96e3cf8d08a30a4fa0a8fd93271bf8da",
+    "crates/gateway/src/candidate_broadcast_tests.rs": "ad0b3cb02659dc70e72af246a019503a90510b7ae78ce55fac3fb44c31224cf9",
+    "crates/gateway/src/candidate_broadcast.rs": "1c8fdabe0e1bdbad9e70cd326eef827f3bd0169be9ae55f1e6678bee87ec3be4",
+    "crates/gateway/src/candidate_broadcast_store.rs": "8446227d06d285557bfd1f8434d5587e3f0c5b9c36865bc88f41eb03904c249e",
+    "crates/gateway/src/candidate_broadcast_lock_tests.rs": "49e0557acaf802cc4c38b36a685f6abd4c40b0d7e46696cf1482917cd28695e7",
+    "crates/gateway/src/candidate_recovery.rs": "feac38afe3e307597d099f7f19e2c9c21645496a5b9a6dfffbc1bd84d20335f4",
+    "crates/gateway/src/candidate_recovery_store.rs": "7e84cd99cd59dfba309af240b8a70dbfb66b84184008caa5137d06de9387d0df",
+    "crates/gateway/src/candidate_protocol.rs": "f77c040320f7d1d5c75c42222250e5eebc64ea9f953fa50f0f82f4e2da7045ca",
+    "docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/bridge.json": "5cda286c90aff435e9f702f75ea77d22d68839a90fc638dca5465beeb6df41d7",
+    "docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/normal-lifecycle.material.bin": "acce1057df0eeb9b81ae13429f7576a40c05a7bf7935837b95225d1a6e76c420",
+    "docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/liquidation.material.bin": "34fede6f3e60fb29c7e515bd0d9c8be1dfa983f3b7e3db11b286b5ea7ee6dce6",
+    "docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/liquidation.native-public.bin": "1824361932bce2332d31f38af9c5f5cc0999bb3ff564e62cbb5a800a89f2c7f7",
+    "docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/manifest.json": "bd90b18d505d11be60e5ade812c467cb713b3568ad9636de1720ee3b0df7b49b",
+    "docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/normal-lifecycle.witness.bin": "24b4e42a71ea3c595bdb6b33ab5f76eb3bf8e2d1d78ca11b12f26951d46a2e8b",
+    "docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/normal-lifecycle.native-public.bin": "4830af4cf12d9a6ab20c1e9ff37906c89cc9abaa9005ff220796ff0999db097d",
+    "docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/liquidation.witness.bin": "3bc9cacd53408bfab5ad7c5efadde48fd7ad357c3189479bb9f4564c31781086",
+    "docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/9b1f12b4dffcdeb191631083f640315da831d90de9399073cc0ab03827f01412.json": "9b1f12b4dffcdeb191631083f640315da831d90de9399073cc0ab03827f01412",
+    "docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/63e5fd2dd0756cdc81c2808221c0469a136fbc42f997cd200e1d271e0f14cc3e.json": "63e5fd2dd0756cdc81c2808221c0469a136fbc42f997cd200e1d271e0f14cc3e",
+    "docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/02bc2acf1a2aeffd49166bc07bd5bff8d43f46d6eee5f6b75e39c901dbe500e5.json": "02bc2acf1a2aeffd49166bc07bd5bff8d43f46d6eee5f6b75e39c901dbe500e5",
+    "docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/a134735ad626e7b563046d6282927fe566d0176d25d8beaf5b4af446af3b9bcd.json": "a134735ad626e7b563046d6282927fe566d0176d25d8beaf5b4af446af3b9bcd",
+    "docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/59ec653b15058cef6dd003f29bff9580ae0b85171264ccedd98295d2def79f26.json": "59ec653b15058cef6dd003f29bff9580ae0b85171264ccedd98295d2def79f26",
+    "docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/d1f1e3f32942ba4fe4429550bfd8cf7205be6cc02431500b37f50ac5de710bac.json": "d1f1e3f32942ba4fe4429550bfd8cf7205be6cc02431500b37f50ac5de710bac",
+    "docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/9b1f12b4dffcdeb191631083f640315da831d90de9399073cc0ab03827f01412.json": "9b1f12b4dffcdeb191631083f640315da831d90de9399073cc0ab03827f01412",
+    "docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/72f8182043c9160a7d586c52de2d4a357763e6c4b0a8ba2665bfe84d32e85a93.json": "72f8182043c9160a7d586c52de2d4a357763e6c4b0a8ba2665bfe84d32e85a93",
+    "docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/39bc768876b8965c23fea8a5e39a55251ebbcad62f6bd67bb69587ce00039363.json": "39bc768876b8965c23fea8a5e39a55251ebbcad62f6bd67bb69587ce00039363",
+    "docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/59ec653b15058cef6dd003f29bff9580ae0b85171264ccedd98295d2def79f26.json": "59ec653b15058cef6dd003f29bff9580ae0b85171264ccedd98295d2def79f26",
+    "docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/d1f1e3f32942ba4fe4429550bfd8cf7205be6cc02431500b37f50ac5de710bac.json": "d1f1e3f32942ba4fe4429550bfd8cf7205be6cc02431500b37f50ac5de710bac",
+    "docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/0cb1c94914f05443a96cb061dd49b0c5a49a3a0e41660ddbfa4cb19e61180636.json": "0cb1c94914f05443a96cb061dd49b0c5a49a3a0e41660ddbfa4cb19e61180636"
+  },
+  "source_bytes_unchanged_during_final_checks": true,
+  "commands": [
+    {
+      "schema": "arcora-broadcast-outcome-command-v1",
+      "observed_start_utc": "2026-10-11T21:10:25.051097+00:00",
+      "observed_end_utc": "2026-10-11T21:10:25.794827+00:00",
+      "name": "toolchain-ci-repair",
+      "argv": [
+        "/opt/homebrew/bin/python3.12",
+        "-c",
+        "import os,shutil,subprocess;print(\"PATH=\"+os.environ[\"PATH\"]);[(print(\"TOOL=\"+str(shutil.which(t))),subprocess.run([t,\"--version\"],check=True)) for t in [\"rustc\",\"cargo\",\"cargo-clippy\",\"clippy-driver\",\"cargo-fmt\",\"rustfmt\"]]"
+      ],
+      "cwd": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011",
+      "environment": {
+        "PATH": "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/pkg/env/global/bin:/Library/Apple/usr/bin:/opt/homebrew/bin:/Users/huseyinarslan/.kimi-code/bin:/Applications/ChatGPT.app/Contents/Resources/codex-cli/codex-path:/Users/huseyinarslan/.codex/tmp/arg0/codex-arg0nejDBu:/Users/huseyinarslan/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/override:/Users/huseyinarslan/.grok/bin:/Users/huseyinarslan/.aztec/current/bin:/Users/huseyinarslan/.aztec/bin:/Users/huseyinarslan/.bb:/Users/huseyinarslan/.antigravity/antigravity/bin:/Users/huseyinarslan/.nvm/versions/node/v24.12.0/bin:/opt/homebrew/sbin:/Users/huseyinarslan/.local/bin:/Users/huseyinarslan/.cargo/bin:/Users/huseyinarslan/.foundry/bin:/Users/huseyinarslan/.nargo/bin:/Users/huseyinarslan/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/fallback:/Applications/ChatGPT.app/Contents/Resources:/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS",
+        "RUSTUP_TOOLCHAIN": "1.99.0"
+      },
+      "exit_code": 0,
+      "elapsed_seconds": 0.755,
+      "source_sha256_before": {
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/main.rs": "b96da2d2f9f72d295ff217868cee673a96e3cf8d08a30a4fa0a8fd93271bf8da",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_broadcast_tests.rs": "ad0b3cb02659dc70e72af246a019503a90510b7ae78ce55fac3fb44c31224cf9",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_broadcast.rs": "1c8fdabe0e1bdbad9e70cd326eef827f3bd0169be9ae55f1e6678bee87ec3be4",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_broadcast_store.rs": "8446227d06d285557bfd1f8434d5587e3f0c5b9c36865bc88f41eb03904c249e",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_broadcast_lock_tests.rs": "49e0557acaf802cc4c38b36a685f6abd4c40b0d7e46696cf1482917cd28695e7",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_recovery.rs": "feac38afe3e307597d099f7f19e2c9c21645496a5b9a6dfffbc1bd84d20335f4",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_recovery_store.rs": "7e84cd99cd59dfba309af240b8a70dbfb66b84184008caa5137d06de9387d0df",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_protocol.rs": "f77c040320f7d1d5c75c42222250e5eebc64ea9f953fa50f0f82f4e2da7045ca",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/bridge.json": "5cda286c90aff435e9f702f75ea77d22d68839a90fc638dca5465beeb6df41d7",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/normal-lifecycle.material.bin": "acce1057df0eeb9b81ae13429f7576a40c05a7bf7935837b95225d1a6e76c420",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/liquidation.material.bin": "34fede6f3e60fb29c7e515bd0d9c8be1dfa983f3b7e3db11b286b5ea7ee6dce6",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/liquidation.native-public.bin": "1824361932bce2332d31f38af9c5f5cc0999bb3ff564e62cbb5a800a89f2c7f7",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/manifest.json": "bd90b18d505d11be60e5ade812c467cb713b3568ad9636de1720ee3b0df7b49b",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/normal-lifecycle.witness.bin": "24b4e42a71ea3c595bdb6b33ab5f76eb3bf8e2d1d78ca11b12f26951d46a2e8b",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/normal-lifecycle.native-public.bin": "4830af4cf12d9a6ab20c1e9ff37906c89cc9abaa9005ff220796ff0999db097d",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/liquidation.witness.bin": "3bc9cacd53408bfab5ad7c5efadde48fd7ad357c3189479bb9f4564c31781086",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/9b1f12b4dffcdeb191631083f640315da831d90de9399073cc0ab03827f01412.json": "9b1f12b4dffcdeb191631083f640315da831d90de9399073cc0ab03827f01412",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/63e5fd2dd0756cdc81c2808221c0469a136fbc42f997cd200e1d271e0f14cc3e.json": "63e5fd2dd0756cdc81c2808221c0469a136fbc42f997cd200e1d271e0f14cc3e",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/02bc2acf1a2aeffd49166bc07bd5bff8d43f46d6eee5f6b75e39c901dbe500e5.json": "02bc2acf1a2aeffd49166bc07bd5bff8d43f46d6eee5f6b75e39c901dbe500e5",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/a134735ad626e7b563046d6282927fe566d0176d25d8beaf5b4af446af3b9bcd.json": "a134735ad626e7b563046d6282927fe566d0176d25d8beaf5b4af446af3b9bcd",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/59ec653b15058cef6dd003f29bff9580ae0b85171264ccedd98295d2def79f26.json": "59ec653b15058cef6dd003f29bff9580ae0b85171264ccedd98295d2def79f26",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/d1f1e3f32942ba4fe4429550bfd8cf7205be6cc02431500b37f50ac5de710bac.json": "d1f1e3f32942ba4fe4429550bfd8cf7205be6cc02431500b37f50ac5de710bac",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/9b1f12b4dffcdeb191631083f640315da831d90de9399073cc0ab03827f01412.json": "9b1f12b4dffcdeb191631083f640315da831d90de9399073cc0ab03827f01412",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/72f8182043c9160a7d586c52de2d4a357763e6c4b0a8ba2665bfe84d32e85a93.json": "72f8182043c9160a7d586c52de2d4a357763e6c4b0a8ba2665bfe84d32e85a93",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/39bc768876b8965c23fea8a5e39a55251ebbcad62f6bd67bb69587ce00039363.json": "39bc768876b8965c23fea8a5e39a55251ebbcad62f6bd67bb69587ce00039363",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/59ec653b15058cef6dd003f29bff9580ae0b85171264ccedd98295d2def79f26.json": "59ec653b15058cef6dd003f29bff9580ae0b85171264ccedd98295d2def79f26",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/d1f1e3f32942ba4fe4429550bfd8cf7205be6cc02431500b37f50ac5de710bac.json": "d1f1e3f32942ba4fe4429550bfd8cf7205be6cc02431500b37f50ac5de710bac",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/0cb1c94914f05443a96cb061dd49b0c5a49a3a0e41660ddbfa4cb19e61180636.json": "0cb1c94914f05443a96cb061dd49b0c5a49a3a0e41660ddbfa4cb19e61180636"
+      },
+      "source_sha256_after": {
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/main.rs": "b96da2d2f9f72d295ff217868cee673a96e3cf8d08a30a4fa0a8fd93271bf8da",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_broadcast_tests.rs": "ad0b3cb02659dc70e72af246a019503a90510b7ae78ce55fac3fb44c31224cf9",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_broadcast.rs": "1c8fdabe0e1bdbad9e70cd326eef827f3bd0169be9ae55f1e6678bee87ec3be4",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_broadcast_store.rs": "8446227d06d285557bfd1f8434d5587e3f0c5b9c36865bc88f41eb03904c249e",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_broadcast_lock_tests.rs": "49e0557acaf802cc4c38b36a685f6abd4c40b0d7e46696cf1482917cd28695e7",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_recovery.rs": "feac38afe3e307597d099f7f19e2c9c21645496a5b9a6dfffbc1bd84d20335f4",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_recovery_store.rs": "7e84cd99cd59dfba309af240b8a70dbfb66b84184008caa5137d06de9387d0df",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_protocol.rs": "f77c040320f7d1d5c75c42222250e5eebc64ea9f953fa50f0f82f4e2da7045ca",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/bridge.json": "5cda286c90aff435e9f702f75ea77d22d68839a90fc638dca5465beeb6df41d7",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/normal-lifecycle.material.bin": "acce1057df0eeb9b81ae13429f7576a40c05a7bf7935837b95225d1a6e76c420",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/liquidation.material.bin": "34fede6f3e60fb29c7e515bd0d9c8be1dfa983f3b7e3db11b286b5ea7ee6dce6",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/liquidation.native-public.bin": "1824361932bce2332d31f38af9c5f5cc0999bb3ff564e62cbb5a800a89f2c7f7",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/manifest.json": "bd90b18d505d11be60e5ade812c467cb713b3568ad9636de1720ee3b0df7b49b",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/normal-lifecycle.witness.bin": "24b4e42a71ea3c595bdb6b33ab5f76eb3bf8e2d1d78ca11b12f26951d46a2e8b",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/normal-lifecycle.native-public.bin": "4830af4cf12d9a6ab20c1e9ff37906c89cc9abaa9005ff220796ff0999db097d",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/liquidation.witness.bin": "3bc9cacd53408bfab5ad7c5efadde48fd7ad357c3189479bb9f4564c31781086",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/9b1f12b4dffcdeb191631083f640315da831d90de9399073cc0ab03827f01412.json": "9b1f12b4dffcdeb191631083f640315da831d90de9399073cc0ab03827f01412",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/63e5fd2dd0756cdc81c2808221c0469a136fbc42f997cd200e1d271e0f14cc3e.json": "63e5fd2dd0756cdc81c2808221c0469a136fbc42f997cd200e1d271e0f14cc3e",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/02bc2acf1a2aeffd49166bc07bd5bff8d43f46d6eee5f6b75e39c901dbe500e5.json": "02bc2acf1a2aeffd49166bc07bd5bff8d43f46d6eee5f6b75e39c901dbe500e5",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/a134735ad626e7b563046d6282927fe566d0176d25d8beaf5b4af446af3b9bcd.json": "a134735ad626e7b563046d6282927fe566d0176d25d8beaf5b4af446af3b9bcd",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/59ec653b15058cef6dd003f29bff9580ae0b85171264ccedd98295d2def79f26.json": "59ec653b15058cef6dd003f29bff9580ae0b85171264ccedd98295d2def79f26",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/d1f1e3f32942ba4fe4429550bfd8cf7205be6cc02431500b37f50ac5de710bac.json": "d1f1e3f32942ba4fe4429550bfd8cf7205be6cc02431500b37f50ac5de710bac",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/9b1f12b4dffcdeb191631083f640315da831d90de9399073cc0ab03827f01412.json": "9b1f12b4dffcdeb191631083f640315da831d90de9399073cc0ab03827f01412",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/72f8182043c9160a7d586c52de2d4a357763e6c4b0a8ba2665bfe84d32e85a93.json": "72f8182043c9160a7d586c52de2d4a357763e6c4b0a8ba2665bfe84d32e85a93",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/39bc768876b8965c23fea8a5e39a55251ebbcad62f6bd67bb69587ce00039363.json": "39bc768876b8965c23fea8a5e39a55251ebbcad62f6bd67bb69587ce00039363",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/59ec653b15058cef6dd003f29bff9580ae0b85171264ccedd98295d2def79f26.json": "59ec653b15058cef6dd003f29bff9580ae0b85171264ccedd98295d2def79f26",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/d1f1e3f32942ba4fe4429550bfd8cf7205be6cc02431500b37f50ac5de710bac.json": "d1f1e3f32942ba4fe4429550bfd8cf7205be6cc02431500b37f50ac5de710bac",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/0cb1c94914f05443a96cb061dd49b0c5a49a3a0e41660ddbfa4cb19e61180636.json": "0cb1c94914f05443a96cb061dd49b0c5a49a3a0e41660ddbfa4cb19e61180636"
+      },
+      "source_bytes_unchanged": true,
+      "log": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/broadcast-outcome-validation-20261011/toolchain-ci-repair.log",
+      "log_sha256": "815aae25e332466459c3aa9efe1ac02215b07364c29f96005a10d576cef99dc6",
+      "stdout_log": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/broadcast-outcome-validation-20261011/toolchain-ci-repair.stdout.log",
+      "stderr_log": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/broadcast-outcome-validation-20261011/toolchain-ci-repair.stderr.log",
+      "summaries": []
+    },
+    {
+      "schema": "arcora-broadcast-outcome-command-v1",
+      "observed_start_utc": "2026-10-11T21:10:26.810987+00:00",
+      "observed_end_utc": "2026-10-11T21:15:39.911111+00:00",
+      "name": "clippy-ci-repair",
+      "argv": [
+        "rustup",
+        "run",
+        "1.99.0",
+        "cargo",
+        "clippy",
+        "--workspace",
+        "--all-targets",
+        "--locked",
+        "--offline",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "cwd": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011",
+      "environment": {
+        "PATH": "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/pkg/env/global/bin:/Library/Apple/usr/bin:/opt/homebrew/bin:/Users/huseyinarslan/.kimi-code/bin:/Applications/ChatGPT.app/Contents/Resources/codex-cli/codex-path:/Users/huseyinarslan/.codex/tmp/arg0/codex-arg0nejDBu:/Users/huseyinarslan/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/override:/Users/huseyinarslan/.grok/bin:/Users/huseyinarslan/.aztec/current/bin:/Users/huseyinarslan/.aztec/bin:/Users/huseyinarslan/.bb:/Users/huseyinarslan/.antigravity/antigravity/bin:/Users/huseyinarslan/.nvm/versions/node/v24.12.0/bin:/opt/homebrew/sbin:/Users/huseyinarslan/.local/bin:/Users/huseyinarslan/.cargo/bin:/Users/huseyinarslan/.foundry/bin:/Users/huseyinarslan/.nargo/bin:/Users/huseyinarslan/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/fallback:/Applications/ChatGPT.app/Contents/Resources:/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS",
+        "RUSTUP_TOOLCHAIN": "1.99.0"
+      },
+      "exit_code": 0,
+      "elapsed_seconds": 313.103,
+      "source_sha256_before": {
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/main.rs": "b96da2d2f9f72d295ff217868cee673a96e3cf8d08a30a4fa0a8fd93271bf8da",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_broadcast_tests.rs": "ad0b3cb02659dc70e72af246a019503a90510b7ae78ce55fac3fb44c31224cf9",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_broadcast.rs": "1c8fdabe0e1bdbad9e70cd326eef827f3bd0169be9ae55f1e6678bee87ec3be4",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_broadcast_store.rs": "8446227d06d285557bfd1f8434d5587e3f0c5b9c36865bc88f41eb03904c249e",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_broadcast_lock_tests.rs": "49e0557acaf802cc4c38b36a685f6abd4c40b0d7e46696cf1482917cd28695e7",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_recovery.rs": "feac38afe3e307597d099f7f19e2c9c21645496a5b9a6dfffbc1bd84d20335f4",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_recovery_store.rs": "7e84cd99cd59dfba309af240b8a70dbfb66b84184008caa5137d06de9387d0df",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_protocol.rs": "f77c040320f7d1d5c75c42222250e5eebc64ea9f953fa50f0f82f4e2da7045ca",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/bridge.json": "5cda286c90aff435e9f702f75ea77d22d68839a90fc638dca5465beeb6df41d7",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/normal-lifecycle.material.bin": "acce1057df0eeb9b81ae13429f7576a40c05a7bf7935837b95225d1a6e76c420",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/liquidation.material.bin": "34fede6f3e60fb29c7e515bd0d9c8be1dfa983f3b7e3db11b286b5ea7ee6dce6",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/liquidation.native-public.bin": "1824361932bce2332d31f38af9c5f5cc0999bb3ff564e62cbb5a800a89f2c7f7",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/manifest.json": "bd90b18d505d11be60e5ade812c467cb713b3568ad9636de1720ee3b0df7b49b",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/normal-lifecycle.witness.bin": "24b4e42a71ea3c595bdb6b33ab5f76eb3bf8e2d1d78ca11b12f26951d46a2e8b",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/normal-lifecycle.native-public.bin": "4830af4cf12d9a6ab20c1e9ff37906c89cc9abaa9005ff220796ff0999db097d",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/liquidation.witness.bin": "3bc9cacd53408bfab5ad7c5efadde48fd7ad357c3189479bb9f4564c31781086",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/9b1f12b4dffcdeb191631083f640315da831d90de9399073cc0ab03827f01412.json": "9b1f12b4dffcdeb191631083f640315da831d90de9399073cc0ab03827f01412",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/63e5fd2dd0756cdc81c2808221c0469a136fbc42f997cd200e1d271e0f14cc3e.json": "63e5fd2dd0756cdc81c2808221c0469a136fbc42f997cd200e1d271e0f14cc3e",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/02bc2acf1a2aeffd49166bc07bd5bff8d43f46d6eee5f6b75e39c901dbe500e5.json": "02bc2acf1a2aeffd49166bc07bd5bff8d43f46d6eee5f6b75e39c901dbe500e5",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/a134735ad626e7b563046d6282927fe566d0176d25d8beaf5b4af446af3b9bcd.json": "a134735ad626e7b563046d6282927fe566d0176d25d8beaf5b4af446af3b9bcd",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/59ec653b15058cef6dd003f29bff9580ae0b85171264ccedd98295d2def79f26.json": "59ec653b15058cef6dd003f29bff9580ae0b85171264ccedd98295d2def79f26",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/d1f1e3f32942ba4fe4429550bfd8cf7205be6cc02431500b37f50ac5de710bac.json": "d1f1e3f32942ba4fe4429550bfd8cf7205be6cc02431500b37f50ac5de710bac",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/9b1f12b4dffcdeb191631083f640315da831d90de9399073cc0ab03827f01412.json": "9b1f12b4dffcdeb191631083f640315da831d90de9399073cc0ab03827f01412",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/72f8182043c9160a7d586c52de2d4a357763e6c4b0a8ba2665bfe84d32e85a93.json": "72f8182043c9160a7d586c52de2d4a357763e6c4b0a8ba2665bfe84d32e85a93",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/39bc768876b8965c23fea8a5e39a55251ebbcad62f6bd67bb69587ce00039363.json": "39bc768876b8965c23fea8a5e39a55251ebbcad62f6bd67bb69587ce00039363",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/59ec653b15058cef6dd003f29bff9580ae0b85171264ccedd98295d2def79f26.json": "59ec653b15058cef6dd003f29bff9580ae0b85171264ccedd98295d2def79f26",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/d1f1e3f32942ba4fe4429550bfd8cf7205be6cc02431500b37f50ac5de710bac.json": "d1f1e3f32942ba4fe4429550bfd8cf7205be6cc02431500b37f50ac5de710bac",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/0cb1c94914f05443a96cb061dd49b0c5a49a3a0e41660ddbfa4cb19e61180636.json": "0cb1c94914f05443a96cb061dd49b0c5a49a3a0e41660ddbfa4cb19e61180636"
+      },
+      "source_sha256_after": {
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/main.rs": "b96da2d2f9f72d295ff217868cee673a96e3cf8d08a30a4fa0a8fd93271bf8da",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_broadcast_tests.rs": "ad0b3cb02659dc70e72af246a019503a90510b7ae78ce55fac3fb44c31224cf9",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_broadcast.rs": "1c8fdabe0e1bdbad9e70cd326eef827f3bd0169be9ae55f1e6678bee87ec3be4",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_broadcast_store.rs": "8446227d06d285557bfd1f8434d5587e3f0c5b9c36865bc88f41eb03904c249e",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_broadcast_lock_tests.rs": "49e0557acaf802cc4c38b36a685f6abd4c40b0d7e46696cf1482917cd28695e7",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_recovery.rs": "feac38afe3e307597d099f7f19e2c9c21645496a5b9a6dfffbc1bd84d20335f4",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_recovery_store.rs": "7e84cd99cd59dfba309af240b8a70dbfb66b84184008caa5137d06de9387d0df",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_protocol.rs": "f77c040320f7d1d5c75c42222250e5eebc64ea9f953fa50f0f82f4e2da7045ca",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/bridge.json": "5cda286c90aff435e9f702f75ea77d22d68839a90fc638dca5465beeb6df41d7",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/normal-lifecycle.material.bin": "acce1057df0eeb9b81ae13429f7576a40c05a7bf7935837b95225d1a6e76c420",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/liquidation.material.bin": "34fede6f3e60fb29c7e515bd0d9c8be1dfa983f3b7e3db11b286b5ea7ee6dce6",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/liquidation.native-public.bin": "1824361932bce2332d31f38af9c5f5cc0999bb3ff564e62cbb5a800a89f2c7f7",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/manifest.json": "bd90b18d505d11be60e5ade812c467cb713b3568ad9636de1720ee3b0df7b49b",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/normal-lifecycle.witness.bin": "24b4e42a71ea3c595bdb6b33ab5f76eb3bf8e2d1d78ca11b12f26951d46a2e8b",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/normal-lifecycle.native-public.bin": "4830af4cf12d9a6ab20c1e9ff37906c89cc9abaa9005ff220796ff0999db097d",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/liquidation.witness.bin": "3bc9cacd53408bfab5ad7c5efadde48fd7ad357c3189479bb9f4564c31781086",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/9b1f12b4dffcdeb191631083f640315da831d90de9399073cc0ab03827f01412.json": "9b1f12b4dffcdeb191631083f640315da831d90de9399073cc0ab03827f01412",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/63e5fd2dd0756cdc81c2808221c0469a136fbc42f997cd200e1d271e0f14cc3e.json": "63e5fd2dd0756cdc81c2808221c0469a136fbc42f997cd200e1d271e0f14cc3e",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/02bc2acf1a2aeffd49166bc07bd5bff8d43f46d6eee5f6b75e39c901dbe500e5.json": "02bc2acf1a2aeffd49166bc07bd5bff8d43f46d6eee5f6b75e39c901dbe500e5",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/a134735ad626e7b563046d6282927fe566d0176d25d8beaf5b4af446af3b9bcd.json": "a134735ad626e7b563046d6282927fe566d0176d25d8beaf5b4af446af3b9bcd",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/59ec653b15058cef6dd003f29bff9580ae0b85171264ccedd98295d2def79f26.json": "59ec653b15058cef6dd003f29bff9580ae0b85171264ccedd98295d2def79f26",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/d1f1e3f32942ba4fe4429550bfd8cf7205be6cc02431500b37f50ac5de710bac.json": "d1f1e3f32942ba4fe4429550bfd8cf7205be6cc02431500b37f50ac5de710bac",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/9b1f12b4dffcdeb191631083f640315da831d90de9399073cc0ab03827f01412.json": "9b1f12b4dffcdeb191631083f640315da831d90de9399073cc0ab03827f01412",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/72f8182043c9160a7d586c52de2d4a357763e6c4b0a8ba2665bfe84d32e85a93.json": "72f8182043c9160a7d586c52de2d4a357763e6c4b0a8ba2665bfe84d32e85a93",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/39bc768876b8965c23fea8a5e39a55251ebbcad62f6bd67bb69587ce00039363.json": "39bc768876b8965c23fea8a5e39a55251ebbcad62f6bd67bb69587ce00039363",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/59ec653b15058cef6dd003f29bff9580ae0b85171264ccedd98295d2def79f26.json": "59ec653b15058cef6dd003f29bff9580ae0b85171264ccedd98295d2def79f26",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/d1f1e3f32942ba4fe4429550bfd8cf7205be6cc02431500b37f50ac5de710bac.json": "d1f1e3f32942ba4fe4429550bfd8cf7205be6cc02431500b37f50ac5de710bac",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/0cb1c94914f05443a96cb061dd49b0c5a49a3a0e41660ddbfa4cb19e61180636.json": "0cb1c94914f05443a96cb061dd49b0c5a49a3a0e41660ddbfa4cb19e61180636"
+      },
+      "source_bytes_unchanged": true,
+      "log": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/broadcast-outcome-validation-20261011/clippy-ci-repair.log",
+      "log_sha256": "1f0b2275d07e5eebdf8c412a96f57f2d97a8e26c84d04ee1d20a9bb51cf1e220",
+      "stdout_log": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/broadcast-outcome-validation-20261011/clippy-ci-repair.stdout.log",
+      "stderr_log": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/broadcast-outcome-validation-20261011/clippy-ci-repair.stderr.log",
+      "summaries": []
+    },
+    {
+      "schema": "arcora-broadcast-outcome-command-v1",
+      "observed_start_utc": "2026-10-11T21:16:06.693528+00:00",
+      "observed_end_utc": "2026-10-11T21:22:42.808837+00:00",
+      "name": "focused-ci-repair",
+      "argv": [
+        "rustup",
+        "run",
+        "1.99.0",
+        "cargo",
+        "test",
+        "-p",
+        "gateway",
+        "--locked",
+        "--offline",
+        "--bin",
+        "gateway",
+        "candidate_broadcast",
+        "--",
+        "--test-threads=2"
+      ],
+      "cwd": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011",
+      "environment": {
+        "PATH": "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/pkg/env/global/bin:/Library/Apple/usr/bin:/opt/homebrew/bin:/Users/huseyinarslan/.kimi-code/bin:/Applications/ChatGPT.app/Contents/Resources/codex-cli/codex-path:/Users/huseyinarslan/.codex/tmp/arg0/codex-arg0nejDBu:/Users/huseyinarslan/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/override:/Users/huseyinarslan/.grok/bin:/Users/huseyinarslan/.aztec/current/bin:/Users/huseyinarslan/.aztec/bin:/Users/huseyinarslan/.bb:/Users/huseyinarslan/.antigravity/antigravity/bin:/Users/huseyinarslan/.nvm/versions/node/v24.12.0/bin:/opt/homebrew/sbin:/Users/huseyinarslan/.local/bin:/Users/huseyinarslan/.cargo/bin:/Users/huseyinarslan/.foundry/bin:/Users/huseyinarslan/.nargo/bin:/Users/huseyinarslan/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/fallback:/Applications/ChatGPT.app/Contents/Resources:/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS",
+        "RUSTUP_TOOLCHAIN": "1.99.0"
+      },
+      "exit_code": 0,
+      "elapsed_seconds": 396.126,
+      "source_sha256_before": {
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/main.rs": "b96da2d2f9f72d295ff217868cee673a96e3cf8d08a30a4fa0a8fd93271bf8da",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_broadcast_tests.rs": "ad0b3cb02659dc70e72af246a019503a90510b7ae78ce55fac3fb44c31224cf9",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_broadcast.rs": "1c8fdabe0e1bdbad9e70cd326eef827f3bd0169be9ae55f1e6678bee87ec3be4",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_broadcast_store.rs": "8446227d06d285557bfd1f8434d5587e3f0c5b9c36865bc88f41eb03904c249e",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_broadcast_lock_tests.rs": "49e0557acaf802cc4c38b36a685f6abd4c40b0d7e46696cf1482917cd28695e7",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_recovery.rs": "feac38afe3e307597d099f7f19e2c9c21645496a5b9a6dfffbc1bd84d20335f4",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_recovery_store.rs": "7e84cd99cd59dfba309af240b8a70dbfb66b84184008caa5137d06de9387d0df",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_protocol.rs": "f77c040320f7d1d5c75c42222250e5eebc64ea9f953fa50f0f82f4e2da7045ca",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/bridge.json": "5cda286c90aff435e9f702f75ea77d22d68839a90fc638dca5465beeb6df41d7",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/normal-lifecycle.material.bin": "acce1057df0eeb9b81ae13429f7576a40c05a7bf7935837b95225d1a6e76c420",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/liquidation.material.bin": "34fede6f3e60fb29c7e515bd0d9c8be1dfa983f3b7e3db11b286b5ea7ee6dce6",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/liquidation.native-public.bin": "1824361932bce2332d31f38af9c5f5cc0999bb3ff564e62cbb5a800a89f2c7f7",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/manifest.json": "bd90b18d505d11be60e5ade812c467cb713b3568ad9636de1720ee3b0df7b49b",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/normal-lifecycle.witness.bin": "24b4e42a71ea3c595bdb6b33ab5f76eb3bf8e2d1d78ca11b12f26951d46a2e8b",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/normal-lifecycle.native-public.bin": "4830af4cf12d9a6ab20c1e9ff37906c89cc9abaa9005ff220796ff0999db097d",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/liquidation.witness.bin": "3bc9cacd53408bfab5ad7c5efadde48fd7ad357c3189479bb9f4564c31781086",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/9b1f12b4dffcdeb191631083f640315da831d90de9399073cc0ab03827f01412.json": "9b1f12b4dffcdeb191631083f640315da831d90de9399073cc0ab03827f01412",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/63e5fd2dd0756cdc81c2808221c0469a136fbc42f997cd200e1d271e0f14cc3e.json": "63e5fd2dd0756cdc81c2808221c0469a136fbc42f997cd200e1d271e0f14cc3e",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/02bc2acf1a2aeffd49166bc07bd5bff8d43f46d6eee5f6b75e39c901dbe500e5.json": "02bc2acf1a2aeffd49166bc07bd5bff8d43f46d6eee5f6b75e39c901dbe500e5",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/a134735ad626e7b563046d6282927fe566d0176d25d8beaf5b4af446af3b9bcd.json": "a134735ad626e7b563046d6282927fe566d0176d25d8beaf5b4af446af3b9bcd",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/59ec653b15058cef6dd003f29bff9580ae0b85171264ccedd98295d2def79f26.json": "59ec653b15058cef6dd003f29bff9580ae0b85171264ccedd98295d2def79f26",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/d1f1e3f32942ba4fe4429550bfd8cf7205be6cc02431500b37f50ac5de710bac.json": "d1f1e3f32942ba4fe4429550bfd8cf7205be6cc02431500b37f50ac5de710bac",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/9b1f12b4dffcdeb191631083f640315da831d90de9399073cc0ab03827f01412.json": "9b1f12b4dffcdeb191631083f640315da831d90de9399073cc0ab03827f01412",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/72f8182043c9160a7d586c52de2d4a357763e6c4b0a8ba2665bfe84d32e85a93.json": "72f8182043c9160a7d586c52de2d4a357763e6c4b0a8ba2665bfe84d32e85a93",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/39bc768876b8965c23fea8a5e39a55251ebbcad62f6bd67bb69587ce00039363.json": "39bc768876b8965c23fea8a5e39a55251ebbcad62f6bd67bb69587ce00039363",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/59ec653b15058cef6dd003f29bff9580ae0b85171264ccedd98295d2def79f26.json": "59ec653b15058cef6dd003f29bff9580ae0b85171264ccedd98295d2def79f26",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/d1f1e3f32942ba4fe4429550bfd8cf7205be6cc02431500b37f50ac5de710bac.json": "d1f1e3f32942ba4fe4429550bfd8cf7205be6cc02431500b37f50ac5de710bac",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/0cb1c94914f05443a96cb061dd49b0c5a49a3a0e41660ddbfa4cb19e61180636.json": "0cb1c94914f05443a96cb061dd49b0c5a49a3a0e41660ddbfa4cb19e61180636"
+      },
+      "source_sha256_after": {
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/main.rs": "b96da2d2f9f72d295ff217868cee673a96e3cf8d08a30a4fa0a8fd93271bf8da",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_broadcast_tests.rs": "ad0b3cb02659dc70e72af246a019503a90510b7ae78ce55fac3fb44c31224cf9",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_broadcast.rs": "1c8fdabe0e1bdbad9e70cd326eef827f3bd0169be9ae55f1e6678bee87ec3be4",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_broadcast_store.rs": "8446227d06d285557bfd1f8434d5587e3f0c5b9c36865bc88f41eb03904c249e",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_broadcast_lock_tests.rs": "49e0557acaf802cc4c38b36a685f6abd4c40b0d7e46696cf1482917cd28695e7",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_recovery.rs": "feac38afe3e307597d099f7f19e2c9c21645496a5b9a6dfffbc1bd84d20335f4",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_recovery_store.rs": "7e84cd99cd59dfba309af240b8a70dbfb66b84184008caa5137d06de9387d0df",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_protocol.rs": "f77c040320f7d1d5c75c42222250e5eebc64ea9f953fa50f0f82f4e2da7045ca",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/bridge.json": "5cda286c90aff435e9f702f75ea77d22d68839a90fc638dca5465beeb6df41d7",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/normal-lifecycle.material.bin": "acce1057df0eeb9b81ae13429f7576a40c05a7bf7935837b95225d1a6e76c420",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/liquidation.material.bin": "34fede6f3e60fb29c7e515bd0d9c8be1dfa983f3b7e3db11b286b5ea7ee6dce6",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/liquidation.native-public.bin": "1824361932bce2332d31f38af9c5f5cc0999bb3ff564e62cbb5a800a89f2c7f7",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/manifest.json": "bd90b18d505d11be60e5ade812c467cb713b3568ad9636de1720ee3b0df7b49b",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/normal-lifecycle.witness.bin": "24b4e42a71ea3c595bdb6b33ab5f76eb3bf8e2d1d78ca11b12f26951d46a2e8b",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/normal-lifecycle.native-public.bin": "4830af4cf12d9a6ab20c1e9ff37906c89cc9abaa9005ff220796ff0999db097d",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/liquidation.witness.bin": "3bc9cacd53408bfab5ad7c5efadde48fd7ad357c3189479bb9f4564c31781086",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/9b1f12b4dffcdeb191631083f640315da831d90de9399073cc0ab03827f01412.json": "9b1f12b4dffcdeb191631083f640315da831d90de9399073cc0ab03827f01412",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/63e5fd2dd0756cdc81c2808221c0469a136fbc42f997cd200e1d271e0f14cc3e.json": "63e5fd2dd0756cdc81c2808221c0469a136fbc42f997cd200e1d271e0f14cc3e",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/02bc2acf1a2aeffd49166bc07bd5bff8d43f46d6eee5f6b75e39c901dbe500e5.json": "02bc2acf1a2aeffd49166bc07bd5bff8d43f46d6eee5f6b75e39c901dbe500e5",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/a134735ad626e7b563046d6282927fe566d0176d25d8beaf5b4af446af3b9bcd.json": "a134735ad626e7b563046d6282927fe566d0176d25d8beaf5b4af446af3b9bcd",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/59ec653b15058cef6dd003f29bff9580ae0b85171264ccedd98295d2def79f26.json": "59ec653b15058cef6dd003f29bff9580ae0b85171264ccedd98295d2def79f26",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/d1f1e3f32942ba4fe4429550bfd8cf7205be6cc02431500b37f50ac5de710bac.json": "d1f1e3f32942ba4fe4429550bfd8cf7205be6cc02431500b37f50ac5de710bac",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/9b1f12b4dffcdeb191631083f640315da831d90de9399073cc0ab03827f01412.json": "9b1f12b4dffcdeb191631083f640315da831d90de9399073cc0ab03827f01412",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/72f8182043c9160a7d586c52de2d4a357763e6c4b0a8ba2665bfe84d32e85a93.json": "72f8182043c9160a7d586c52de2d4a357763e6c4b0a8ba2665bfe84d32e85a93",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/39bc768876b8965c23fea8a5e39a55251ebbcad62f6bd67bb69587ce00039363.json": "39bc768876b8965c23fea8a5e39a55251ebbcad62f6bd67bb69587ce00039363",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/59ec653b15058cef6dd003f29bff9580ae0b85171264ccedd98295d2def79f26.json": "59ec653b15058cef6dd003f29bff9580ae0b85171264ccedd98295d2def79f26",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/d1f1e3f32942ba4fe4429550bfd8cf7205be6cc02431500b37f50ac5de710bac.json": "d1f1e3f32942ba4fe4429550bfd8cf7205be6cc02431500b37f50ac5de710bac",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/0cb1c94914f05443a96cb061dd49b0c5a49a3a0e41660ddbfa4cb19e61180636.json": "0cb1c94914f05443a96cb061dd49b0c5a49a3a0e41660ddbfa4cb19e61180636"
+      },
+      "source_bytes_unchanged": true,
+      "log": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/broadcast-outcome-validation-20261011/focused-ci-repair.log",
+      "log_sha256": "7e79db9b16e1ecf2098801084210b25bb84462870984a772eed8ccebc5379deb",
+      "stdout_log": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/broadcast-outcome-validation-20261011/focused-ci-repair.stdout.log",
+      "stderr_log": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/broadcast-outcome-validation-20261011/focused-ci-repair.stderr.log",
+      "summaries": [
+        "test result: ok. 26 passed; 0 failed; 1 ignored; 0 measured; 622 filtered out; finished in 61.08s"
+      ]
+    },
+    {
+      "schema": "arcora-broadcast-outcome-command-v1",
+      "observed_start_utc": "2026-10-11T21:13:07.657381+00:00",
+      "observed_end_utc": "2026-10-11T21:13:20.954951+00:00",
+      "name": "format-ci-repair",
+      "argv": [
+        "rustup",
+        "run",
+        "1.99.0",
+        "cargo",
+        "fmt",
+        "--all",
+        "--check"
+      ],
+      "cwd": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011",
+      "environment": {
+        "PATH": "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/pkg/env/global/bin:/Library/Apple/usr/bin:/opt/homebrew/bin:/Users/huseyinarslan/.kimi-code/bin:/Applications/ChatGPT.app/Contents/Resources/codex-cli/codex-path:/Users/huseyinarslan/.codex/tmp/arg0/codex-arg0nejDBu:/Users/huseyinarslan/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/override:/Users/huseyinarslan/.grok/bin:/Users/huseyinarslan/.aztec/current/bin:/Users/huseyinarslan/.aztec/bin:/Users/huseyinarslan/.bb:/Users/huseyinarslan/.antigravity/antigravity/bin:/Users/huseyinarslan/.nvm/versions/node/v24.12.0/bin:/opt/homebrew/sbin:/Users/huseyinarslan/.local/bin:/Users/huseyinarslan/.cargo/bin:/Users/huseyinarslan/.foundry/bin:/Users/huseyinarslan/.nargo/bin:/Users/huseyinarslan/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/fallback:/Applications/ChatGPT.app/Contents/Resources:/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS",
+        "RUSTUP_TOOLCHAIN": "1.99.0"
+      },
+      "exit_code": 0,
+      "elapsed_seconds": 13.332,
+      "source_sha256_before": {
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/main.rs": "b96da2d2f9f72d295ff217868cee673a96e3cf8d08a30a4fa0a8fd93271bf8da",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_broadcast_tests.rs": "ad0b3cb02659dc70e72af246a019503a90510b7ae78ce55fac3fb44c31224cf9",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_broadcast.rs": "1c8fdabe0e1bdbad9e70cd326eef827f3bd0169be9ae55f1e6678bee87ec3be4",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_broadcast_store.rs": "8446227d06d285557bfd1f8434d5587e3f0c5b9c36865bc88f41eb03904c249e",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_broadcast_lock_tests.rs": "49e0557acaf802cc4c38b36a685f6abd4c40b0d7e46696cf1482917cd28695e7",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_recovery.rs": "feac38afe3e307597d099f7f19e2c9c21645496a5b9a6dfffbc1bd84d20335f4",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_recovery_store.rs": "7e84cd99cd59dfba309af240b8a70dbfb66b84184008caa5137d06de9387d0df",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_protocol.rs": "f77c040320f7d1d5c75c42222250e5eebc64ea9f953fa50f0f82f4e2da7045ca",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/bridge.json": "5cda286c90aff435e9f702f75ea77d22d68839a90fc638dca5465beeb6df41d7",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/normal-lifecycle.material.bin": "acce1057df0eeb9b81ae13429f7576a40c05a7bf7935837b95225d1a6e76c420",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/liquidation.material.bin": "34fede6f3e60fb29c7e515bd0d9c8be1dfa983f3b7e3db11b286b5ea7ee6dce6",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/liquidation.native-public.bin": "1824361932bce2332d31f38af9c5f5cc0999bb3ff564e62cbb5a800a89f2c7f7",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/manifest.json": "bd90b18d505d11be60e5ade812c467cb713b3568ad9636de1720ee3b0df7b49b",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/normal-lifecycle.witness.bin": "24b4e42a71ea3c595bdb6b33ab5f76eb3bf8e2d1d78ca11b12f26951d46a2e8b",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/normal-lifecycle.native-public.bin": "4830af4cf12d9a6ab20c1e9ff37906c89cc9abaa9005ff220796ff0999db097d",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/liquidation.witness.bin": "3bc9cacd53408bfab5ad7c5efadde48fd7ad357c3189479bb9f4564c31781086",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/9b1f12b4dffcdeb191631083f640315da831d90de9399073cc0ab03827f01412.json": "9b1f12b4dffcdeb191631083f640315da831d90de9399073cc0ab03827f01412",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/63e5fd2dd0756cdc81c2808221c0469a136fbc42f997cd200e1d271e0f14cc3e.json": "63e5fd2dd0756cdc81c2808221c0469a136fbc42f997cd200e1d271e0f14cc3e",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/02bc2acf1a2aeffd49166bc07bd5bff8d43f46d6eee5f6b75e39c901dbe500e5.json": "02bc2acf1a2aeffd49166bc07bd5bff8d43f46d6eee5f6b75e39c901dbe500e5",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/a134735ad626e7b563046d6282927fe566d0176d25d8beaf5b4af446af3b9bcd.json": "a134735ad626e7b563046d6282927fe566d0176d25d8beaf5b4af446af3b9bcd",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/59ec653b15058cef6dd003f29bff9580ae0b85171264ccedd98295d2def79f26.json": "59ec653b15058cef6dd003f29bff9580ae0b85171264ccedd98295d2def79f26",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/d1f1e3f32942ba4fe4429550bfd8cf7205be6cc02431500b37f50ac5de710bac.json": "d1f1e3f32942ba4fe4429550bfd8cf7205be6cc02431500b37f50ac5de710bac",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/9b1f12b4dffcdeb191631083f640315da831d90de9399073cc0ab03827f01412.json": "9b1f12b4dffcdeb191631083f640315da831d90de9399073cc0ab03827f01412",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/72f8182043c9160a7d586c52de2d4a357763e6c4b0a8ba2665bfe84d32e85a93.json": "72f8182043c9160a7d586c52de2d4a357763e6c4b0a8ba2665bfe84d32e85a93",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/39bc768876b8965c23fea8a5e39a55251ebbcad62f6bd67bb69587ce00039363.json": "39bc768876b8965c23fea8a5e39a55251ebbcad62f6bd67bb69587ce00039363",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/59ec653b15058cef6dd003f29bff9580ae0b85171264ccedd98295d2def79f26.json": "59ec653b15058cef6dd003f29bff9580ae0b85171264ccedd98295d2def79f26",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/d1f1e3f32942ba4fe4429550bfd8cf7205be6cc02431500b37f50ac5de710bac.json": "d1f1e3f32942ba4fe4429550bfd8cf7205be6cc02431500b37f50ac5de710bac",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/0cb1c94914f05443a96cb061dd49b0c5a49a3a0e41660ddbfa4cb19e61180636.json": "0cb1c94914f05443a96cb061dd49b0c5a49a3a0e41660ddbfa4cb19e61180636"
+      },
+      "source_sha256_after": {
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/main.rs": "b96da2d2f9f72d295ff217868cee673a96e3cf8d08a30a4fa0a8fd93271bf8da",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_broadcast_tests.rs": "ad0b3cb02659dc70e72af246a019503a90510b7ae78ce55fac3fb44c31224cf9",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_broadcast.rs": "1c8fdabe0e1bdbad9e70cd326eef827f3bd0169be9ae55f1e6678bee87ec3be4",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_broadcast_store.rs": "8446227d06d285557bfd1f8434d5587e3f0c5b9c36865bc88f41eb03904c249e",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_broadcast_lock_tests.rs": "49e0557acaf802cc4c38b36a685f6abd4c40b0d7e46696cf1482917cd28695e7",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_recovery.rs": "feac38afe3e307597d099f7f19e2c9c21645496a5b9a6dfffbc1bd84d20335f4",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_recovery_store.rs": "7e84cd99cd59dfba309af240b8a70dbfb66b84184008caa5137d06de9387d0df",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_protocol.rs": "f77c040320f7d1d5c75c42222250e5eebc64ea9f953fa50f0f82f4e2da7045ca",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/bridge.json": "5cda286c90aff435e9f702f75ea77d22d68839a90fc638dca5465beeb6df41d7",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/normal-lifecycle.material.bin": "acce1057df0eeb9b81ae13429f7576a40c05a7bf7935837b95225d1a6e76c420",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/liquidation.material.bin": "34fede6f3e60fb29c7e515bd0d9c8be1dfa983f3b7e3db11b286b5ea7ee6dce6",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/liquidation.native-public.bin": "1824361932bce2332d31f38af9c5f5cc0999bb3ff564e62cbb5a800a89f2c7f7",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/manifest.json": "bd90b18d505d11be60e5ade812c467cb713b3568ad9636de1720ee3b0df7b49b",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/normal-lifecycle.witness.bin": "24b4e42a71ea3c595bdb6b33ab5f76eb3bf8e2d1d78ca11b12f26951d46a2e8b",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/normal-lifecycle.native-public.bin": "4830af4cf12d9a6ab20c1e9ff37906c89cc9abaa9005ff220796ff0999db097d",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/liquidation.witness.bin": "3bc9cacd53408bfab5ad7c5efadde48fd7ad357c3189479bb9f4564c31781086",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/9b1f12b4dffcdeb191631083f640315da831d90de9399073cc0ab03827f01412.json": "9b1f12b4dffcdeb191631083f640315da831d90de9399073cc0ab03827f01412",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/63e5fd2dd0756cdc81c2808221c0469a136fbc42f997cd200e1d271e0f14cc3e.json": "63e5fd2dd0756cdc81c2808221c0469a136fbc42f997cd200e1d271e0f14cc3e",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/02bc2acf1a2aeffd49166bc07bd5bff8d43f46d6eee5f6b75e39c901dbe500e5.json": "02bc2acf1a2aeffd49166bc07bd5bff8d43f46d6eee5f6b75e39c901dbe500e5",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/a134735ad626e7b563046d6282927fe566d0176d25d8beaf5b4af446af3b9bcd.json": "a134735ad626e7b563046d6282927fe566d0176d25d8beaf5b4af446af3b9bcd",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/59ec653b15058cef6dd003f29bff9580ae0b85171264ccedd98295d2def79f26.json": "59ec653b15058cef6dd003f29bff9580ae0b85171264ccedd98295d2def79f26",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/d1f1e3f32942ba4fe4429550bfd8cf7205be6cc02431500b37f50ac5de710bac.json": "d1f1e3f32942ba4fe4429550bfd8cf7205be6cc02431500b37f50ac5de710bac",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/9b1f12b4dffcdeb191631083f640315da831d90de9399073cc0ab03827f01412.json": "9b1f12b4dffcdeb191631083f640315da831d90de9399073cc0ab03827f01412",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/72f8182043c9160a7d586c52de2d4a357763e6c4b0a8ba2665bfe84d32e85a93.json": "72f8182043c9160a7d586c52de2d4a357763e6c4b0a8ba2665bfe84d32e85a93",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/39bc768876b8965c23fea8a5e39a55251ebbcad62f6bd67bb69587ce00039363.json": "39bc768876b8965c23fea8a5e39a55251ebbcad62f6bd67bb69587ce00039363",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/59ec653b15058cef6dd003f29bff9580ae0b85171264ccedd98295d2def79f26.json": "59ec653b15058cef6dd003f29bff9580ae0b85171264ccedd98295d2def79f26",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/d1f1e3f32942ba4fe4429550bfd8cf7205be6cc02431500b37f50ac5de710bac.json": "d1f1e3f32942ba4fe4429550bfd8cf7205be6cc02431500b37f50ac5de710bac",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/0cb1c94914f05443a96cb061dd49b0c5a49a3a0e41660ddbfa4cb19e61180636.json": "0cb1c94914f05443a96cb061dd49b0c5a49a3a0e41660ddbfa4cb19e61180636"
+      },
+      "source_bytes_unchanged": true,
+      "log": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/broadcast-outcome-validation-20261011/format-ci-repair.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdout_log": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/broadcast-outcome-validation-20261011/format-ci-repair.stdout.log",
+      "stderr_log": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/broadcast-outcome-validation-20261011/format-ci-repair.stderr.log",
+      "summaries": []
+    },
+    {
+      "schema": "arcora-broadcast-outcome-command-v1",
+      "observed_start_utc": "2026-10-11T21:13:21.624444+00:00",
+      "observed_end_utc": "2026-10-11T21:13:52.433968+00:00",
+      "name": "python-guards-ci-repair",
+      "argv": [
+        "/opt/homebrew/bin/python3.12",
+        "-c",
+        "import sys,unittest;sys.path.insert(0,\"scripts/local-verification\");s=unittest.defaultTestLoader.loadTestsFromNames([\"test_verify_clock_proof\",\"test_check_sp1_release\",\"test_chainlink_replay\",\"test_repository_policy\",\"test_operator_policy\"]);r=unittest.TextTestRunner(verbosity=2).run(s);sys.exit(not r.wasSuccessful())"
+      ],
+      "cwd": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011",
+      "environment": {
+        "PATH": "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/pkg/env/global/bin:/Library/Apple/usr/bin:/opt/homebrew/bin:/Users/huseyinarslan/.kimi-code/bin:/Applications/ChatGPT.app/Contents/Resources/codex-cli/codex-path:/Users/huseyinarslan/.codex/tmp/arg0/codex-arg0nejDBu:/Users/huseyinarslan/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/override:/Users/huseyinarslan/.grok/bin:/Users/huseyinarslan/.aztec/current/bin:/Users/huseyinarslan/.aztec/bin:/Users/huseyinarslan/.bb:/Users/huseyinarslan/.antigravity/antigravity/bin:/Users/huseyinarslan/.nvm/versions/node/v24.12.0/bin:/opt/homebrew/sbin:/Users/huseyinarslan/.local/bin:/Users/huseyinarslan/.cargo/bin:/Users/huseyinarslan/.foundry/bin:/Users/huseyinarslan/.nargo/bin:/Users/huseyinarslan/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/fallback:/Applications/ChatGPT.app/Contents/Resources:/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS",
+        "RUSTUP_TOOLCHAIN": "1.99.0"
+      },
+      "exit_code": 0,
+      "elapsed_seconds": 30.825,
+      "source_sha256_before": {
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/main.rs": "b96da2d2f9f72d295ff217868cee673a96e3cf8d08a30a4fa0a8fd93271bf8da",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_broadcast_tests.rs": "ad0b3cb02659dc70e72af246a019503a90510b7ae78ce55fac3fb44c31224cf9",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_broadcast.rs": "1c8fdabe0e1bdbad9e70cd326eef827f3bd0169be9ae55f1e6678bee87ec3be4",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_broadcast_store.rs": "8446227d06d285557bfd1f8434d5587e3f0c5b9c36865bc88f41eb03904c249e",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_broadcast_lock_tests.rs": "49e0557acaf802cc4c38b36a685f6abd4c40b0d7e46696cf1482917cd28695e7",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_recovery.rs": "feac38afe3e307597d099f7f19e2c9c21645496a5b9a6dfffbc1bd84d20335f4",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_recovery_store.rs": "7e84cd99cd59dfba309af240b8a70dbfb66b84184008caa5137d06de9387d0df",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_protocol.rs": "f77c040320f7d1d5c75c42222250e5eebc64ea9f953fa50f0f82f4e2da7045ca",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/bridge.json": "5cda286c90aff435e9f702f75ea77d22d68839a90fc638dca5465beeb6df41d7",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/normal-lifecycle.material.bin": "acce1057df0eeb9b81ae13429f7576a40c05a7bf7935837b95225d1a6e76c420",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/liquidation.material.bin": "34fede6f3e60fb29c7e515bd0d9c8be1dfa983f3b7e3db11b286b5ea7ee6dce6",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/liquidation.native-public.bin": "1824361932bce2332d31f38af9c5f5cc0999bb3ff564e62cbb5a800a89f2c7f7",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/manifest.json": "bd90b18d505d11be60e5ade812c467cb713b3568ad9636de1720ee3b0df7b49b",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/normal-lifecycle.witness.bin": "24b4e42a71ea3c595bdb6b33ab5f76eb3bf8e2d1d78ca11b12f26951d46a2e8b",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/normal-lifecycle.native-public.bin": "4830af4cf12d9a6ab20c1e9ff37906c89cc9abaa9005ff220796ff0999db097d",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/liquidation.witness.bin": "3bc9cacd53408bfab5ad7c5efadde48fd7ad357c3189479bb9f4564c31781086",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/9b1f12b4dffcdeb191631083f640315da831d90de9399073cc0ab03827f01412.json": "9b1f12b4dffcdeb191631083f640315da831d90de9399073cc0ab03827f01412",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/63e5fd2dd0756cdc81c2808221c0469a136fbc42f997cd200e1d271e0f14cc3e.json": "63e5fd2dd0756cdc81c2808221c0469a136fbc42f997cd200e1d271e0f14cc3e",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/02bc2acf1a2aeffd49166bc07bd5bff8d43f46d6eee5f6b75e39c901dbe500e5.json": "02bc2acf1a2aeffd49166bc07bd5bff8d43f46d6eee5f6b75e39c901dbe500e5",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/a134735ad626e7b563046d6282927fe566d0176d25d8beaf5b4af446af3b9bcd.json": "a134735ad626e7b563046d6282927fe566d0176d25d8beaf5b4af446af3b9bcd",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/59ec653b15058cef6dd003f29bff9580ae0b85171264ccedd98295d2def79f26.json": "59ec653b15058cef6dd003f29bff9580ae0b85171264ccedd98295d2def79f26",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/d1f1e3f32942ba4fe4429550bfd8cf7205be6cc02431500b37f50ac5de710bac.json": "d1f1e3f32942ba4fe4429550bfd8cf7205be6cc02431500b37f50ac5de710bac",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/9b1f12b4dffcdeb191631083f640315da831d90de9399073cc0ab03827f01412.json": "9b1f12b4dffcdeb191631083f640315da831d90de9399073cc0ab03827f01412",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/72f8182043c9160a7d586c52de2d4a357763e6c4b0a8ba2665bfe84d32e85a93.json": "72f8182043c9160a7d586c52de2d4a357763e6c4b0a8ba2665bfe84d32e85a93",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/39bc768876b8965c23fea8a5e39a55251ebbcad62f6bd67bb69587ce00039363.json": "39bc768876b8965c23fea8a5e39a55251ebbcad62f6bd67bb69587ce00039363",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/59ec653b15058cef6dd003f29bff9580ae0b85171264ccedd98295d2def79f26.json": "59ec653b15058cef6dd003f29bff9580ae0b85171264ccedd98295d2def79f26",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/d1f1e3f32942ba4fe4429550bfd8cf7205be6cc02431500b37f50ac5de710bac.json": "d1f1e3f32942ba4fe4429550bfd8cf7205be6cc02431500b37f50ac5de710bac",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/0cb1c94914f05443a96cb061dd49b0c5a49a3a0e41660ddbfa4cb19e61180636.json": "0cb1c94914f05443a96cb061dd49b0c5a49a3a0e41660ddbfa4cb19e61180636"
+      },
+      "source_sha256_after": {
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/main.rs": "b96da2d2f9f72d295ff217868cee673a96e3cf8d08a30a4fa0a8fd93271bf8da",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_broadcast_tests.rs": "ad0b3cb02659dc70e72af246a019503a90510b7ae78ce55fac3fb44c31224cf9",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_broadcast.rs": "1c8fdabe0e1bdbad9e70cd326eef827f3bd0169be9ae55f1e6678bee87ec3be4",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_broadcast_store.rs": "8446227d06d285557bfd1f8434d5587e3f0c5b9c36865bc88f41eb03904c249e",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_broadcast_lock_tests.rs": "49e0557acaf802cc4c38b36a685f6abd4c40b0d7e46696cf1482917cd28695e7",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_recovery.rs": "feac38afe3e307597d099f7f19e2c9c21645496a5b9a6dfffbc1bd84d20335f4",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_recovery_store.rs": "7e84cd99cd59dfba309af240b8a70dbfb66b84184008caa5137d06de9387d0df",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_protocol.rs": "f77c040320f7d1d5c75c42222250e5eebc64ea9f953fa50f0f82f4e2da7045ca",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/bridge.json": "5cda286c90aff435e9f702f75ea77d22d68839a90fc638dca5465beeb6df41d7",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/normal-lifecycle.material.bin": "acce1057df0eeb9b81ae13429f7576a40c05a7bf7935837b95225d1a6e76c420",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/liquidation.material.bin": "34fede6f3e60fb29c7e515bd0d9c8be1dfa983f3b7e3db11b286b5ea7ee6dce6",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/liquidation.native-public.bin": "1824361932bce2332d31f38af9c5f5cc0999bb3ff564e62cbb5a800a89f2c7f7",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/manifest.json": "bd90b18d505d11be60e5ade812c467cb713b3568ad9636de1720ee3b0df7b49b",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/normal-lifecycle.witness.bin": "24b4e42a71ea3c595bdb6b33ab5f76eb3bf8e2d1d78ca11b12f26951d46a2e8b",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/normal-lifecycle.native-public.bin": "4830af4cf12d9a6ab20c1e9ff37906c89cc9abaa9005ff220796ff0999db097d",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/liquidation.witness.bin": "3bc9cacd53408bfab5ad7c5efadde48fd7ad357c3189479bb9f4564c31781086",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/9b1f12b4dffcdeb191631083f640315da831d90de9399073cc0ab03827f01412.json": "9b1f12b4dffcdeb191631083f640315da831d90de9399073cc0ab03827f01412",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/63e5fd2dd0756cdc81c2808221c0469a136fbc42f997cd200e1d271e0f14cc3e.json": "63e5fd2dd0756cdc81c2808221c0469a136fbc42f997cd200e1d271e0f14cc3e",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/02bc2acf1a2aeffd49166bc07bd5bff8d43f46d6eee5f6b75e39c901dbe500e5.json": "02bc2acf1a2aeffd49166bc07bd5bff8d43f46d6eee5f6b75e39c901dbe500e5",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/a134735ad626e7b563046d6282927fe566d0176d25d8beaf5b4af446af3b9bcd.json": "a134735ad626e7b563046d6282927fe566d0176d25d8beaf5b4af446af3b9bcd",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/59ec653b15058cef6dd003f29bff9580ae0b85171264ccedd98295d2def79f26.json": "59ec653b15058cef6dd003f29bff9580ae0b85171264ccedd98295d2def79f26",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/d1f1e3f32942ba4fe4429550bfd8cf7205be6cc02431500b37f50ac5de710bac.json": "d1f1e3f32942ba4fe4429550bfd8cf7205be6cc02431500b37f50ac5de710bac",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/9b1f12b4dffcdeb191631083f640315da831d90de9399073cc0ab03827f01412.json": "9b1f12b4dffcdeb191631083f640315da831d90de9399073cc0ab03827f01412",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/72f8182043c9160a7d586c52de2d4a357763e6c4b0a8ba2665bfe84d32e85a93.json": "72f8182043c9160a7d586c52de2d4a357763e6c4b0a8ba2665bfe84d32e85a93",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/39bc768876b8965c23fea8a5e39a55251ebbcad62f6bd67bb69587ce00039363.json": "39bc768876b8965c23fea8a5e39a55251ebbcad62f6bd67bb69587ce00039363",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/59ec653b15058cef6dd003f29bff9580ae0b85171264ccedd98295d2def79f26.json": "59ec653b15058cef6dd003f29bff9580ae0b85171264ccedd98295d2def79f26",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/d1f1e3f32942ba4fe4429550bfd8cf7205be6cc02431500b37f50ac5de710bac.json": "d1f1e3f32942ba4fe4429550bfd8cf7205be6cc02431500b37f50ac5de710bac",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/0cb1c94914f05443a96cb061dd49b0c5a49a3a0e41660ddbfa4cb19e61180636.json": "0cb1c94914f05443a96cb061dd49b0c5a49a3a0e41660ddbfa4cb19e61180636"
+      },
+      "source_bytes_unchanged": true,
+      "log": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/broadcast-outcome-validation-20261011/python-guards-ci-repair.log",
+      "log_sha256": "2b1a6b1602a82d1801f49d15c52f12351ec9b6dbd4bed44aedced51a55a7372a",
+      "stdout_log": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/broadcast-outcome-validation-20261011/python-guards-ci-repair.stdout.log",
+      "stderr_log": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/broadcast-outcome-validation-20261011/python-guards-ci-repair.stderr.log",
+      "summaries": [
+        "Ran 47 tests in 29.090s"
+      ]
+    },
+    {
+      "schema": "arcora-broadcast-outcome-command-v1",
+      "observed_start_utc": "2026-10-11T21:13:52.861537+00:00",
+      "observed_end_utc": "2026-10-11T21:13:55.050731+00:00",
+      "name": "runtime-pins-ci-repair",
+      "argv": [
+        "/opt/homebrew/bin/python3.12",
+        "-c",
+        "import sys,json;sys.path.insert(0,\"scripts/local-verification\");from verify_clock_proof import verify_guest_source;from run_chainlink_replay import candidate_sources;from check_sp1_release import check;from check_chainlink_candidate import check as cc;r={\"reviewed_pins\":len(verify_guest_source()),\"candidate_pins\":len(candidate_sources()),\"release\":check(),\"candidate_lock\":cc()};print(json.dumps(r));assert r[\"reviewed_pins\"]==21 and r[\"candidate_pins\"]==9 and r[\"release\"][\"passed\"] and r[\"candidate_lock\"][\"passed\"]"
+      ],
+      "cwd": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011",
+      "environment": {
+        "PATH": "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/pkg/env/global/bin:/Library/Apple/usr/bin:/opt/homebrew/bin:/Users/huseyinarslan/.kimi-code/bin:/Applications/ChatGPT.app/Contents/Resources/codex-cli/codex-path:/Users/huseyinarslan/.codex/tmp/arg0/codex-arg0nejDBu:/Users/huseyinarslan/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/override:/Users/huseyinarslan/.grok/bin:/Users/huseyinarslan/.aztec/current/bin:/Users/huseyinarslan/.aztec/bin:/Users/huseyinarslan/.bb:/Users/huseyinarslan/.antigravity/antigravity/bin:/Users/huseyinarslan/.nvm/versions/node/v24.12.0/bin:/opt/homebrew/sbin:/Users/huseyinarslan/.local/bin:/Users/huseyinarslan/.cargo/bin:/Users/huseyinarslan/.foundry/bin:/Users/huseyinarslan/.nargo/bin:/Users/huseyinarslan/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/fallback:/Applications/ChatGPT.app/Contents/Resources:/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS",
+        "RUSTUP_TOOLCHAIN": "1.99.0"
+      },
+      "exit_code": 0,
+      "elapsed_seconds": 2.2,
+      "source_sha256_before": {
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/main.rs": "b96da2d2f9f72d295ff217868cee673a96e3cf8d08a30a4fa0a8fd93271bf8da",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_broadcast_tests.rs": "ad0b3cb02659dc70e72af246a019503a90510b7ae78ce55fac3fb44c31224cf9",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_broadcast.rs": "1c8fdabe0e1bdbad9e70cd326eef827f3bd0169be9ae55f1e6678bee87ec3be4",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_broadcast_store.rs": "8446227d06d285557bfd1f8434d5587e3f0c5b9c36865bc88f41eb03904c249e",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_broadcast_lock_tests.rs": "49e0557acaf802cc4c38b36a685f6abd4c40b0d7e46696cf1482917cd28695e7",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_recovery.rs": "feac38afe3e307597d099f7f19e2c9c21645496a5b9a6dfffbc1bd84d20335f4",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_recovery_store.rs": "7e84cd99cd59dfba309af240b8a70dbfb66b84184008caa5137d06de9387d0df",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_protocol.rs": "f77c040320f7d1d5c75c42222250e5eebc64ea9f953fa50f0f82f4e2da7045ca",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/bridge.json": "5cda286c90aff435e9f702f75ea77d22d68839a90fc638dca5465beeb6df41d7",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/normal-lifecycle.material.bin": "acce1057df0eeb9b81ae13429f7576a40c05a7bf7935837b95225d1a6e76c420",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/liquidation.material.bin": "34fede6f3e60fb29c7e515bd0d9c8be1dfa983f3b7e3db11b286b5ea7ee6dce6",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/liquidation.native-public.bin": "1824361932bce2332d31f38af9c5f5cc0999bb3ff564e62cbb5a800a89f2c7f7",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/manifest.json": "bd90b18d505d11be60e5ade812c467cb713b3568ad9636de1720ee3b0df7b49b",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/normal-lifecycle.witness.bin": "24b4e42a71ea3c595bdb6b33ab5f76eb3bf8e2d1d78ca11b12f26951d46a2e8b",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/normal-lifecycle.native-public.bin": "4830af4cf12d9a6ab20c1e9ff37906c89cc9abaa9005ff220796ff0999db097d",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/liquidation.witness.bin": "3bc9cacd53408bfab5ad7c5efadde48fd7ad357c3189479bb9f4564c31781086",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/9b1f12b4dffcdeb191631083f640315da831d90de9399073cc0ab03827f01412.json": "9b1f12b4dffcdeb191631083f640315da831d90de9399073cc0ab03827f01412",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/63e5fd2dd0756cdc81c2808221c0469a136fbc42f997cd200e1d271e0f14cc3e.json": "63e5fd2dd0756cdc81c2808221c0469a136fbc42f997cd200e1d271e0f14cc3e",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/02bc2acf1a2aeffd49166bc07bd5bff8d43f46d6eee5f6b75e39c901dbe500e5.json": "02bc2acf1a2aeffd49166bc07bd5bff8d43f46d6eee5f6b75e39c901dbe500e5",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/a134735ad626e7b563046d6282927fe566d0176d25d8beaf5b4af446af3b9bcd.json": "a134735ad626e7b563046d6282927fe566d0176d25d8beaf5b4af446af3b9bcd",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/59ec653b15058cef6dd003f29bff9580ae0b85171264ccedd98295d2def79f26.json": "59ec653b15058cef6dd003f29bff9580ae0b85171264ccedd98295d2def79f26",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/d1f1e3f32942ba4fe4429550bfd8cf7205be6cc02431500b37f50ac5de710bac.json": "d1f1e3f32942ba4fe4429550bfd8cf7205be6cc02431500b37f50ac5de710bac",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/9b1f12b4dffcdeb191631083f640315da831d90de9399073cc0ab03827f01412.json": "9b1f12b4dffcdeb191631083f640315da831d90de9399073cc0ab03827f01412",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/72f8182043c9160a7d586c52de2d4a357763e6c4b0a8ba2665bfe84d32e85a93.json": "72f8182043c9160a7d586c52de2d4a357763e6c4b0a8ba2665bfe84d32e85a93",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/39bc768876b8965c23fea8a5e39a55251ebbcad62f6bd67bb69587ce00039363.json": "39bc768876b8965c23fea8a5e39a55251ebbcad62f6bd67bb69587ce00039363",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/59ec653b15058cef6dd003f29bff9580ae0b85171264ccedd98295d2def79f26.json": "59ec653b15058cef6dd003f29bff9580ae0b85171264ccedd98295d2def79f26",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/d1f1e3f32942ba4fe4429550bfd8cf7205be6cc02431500b37f50ac5de710bac.json": "d1f1e3f32942ba4fe4429550bfd8cf7205be6cc02431500b37f50ac5de710bac",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/0cb1c94914f05443a96cb061dd49b0c5a49a3a0e41660ddbfa4cb19e61180636.json": "0cb1c94914f05443a96cb061dd49b0c5a49a3a0e41660ddbfa4cb19e61180636"
+      },
+      "source_sha256_after": {
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/main.rs": "b96da2d2f9f72d295ff217868cee673a96e3cf8d08a30a4fa0a8fd93271bf8da",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_broadcast_tests.rs": "ad0b3cb02659dc70e72af246a019503a90510b7ae78ce55fac3fb44c31224cf9",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_broadcast.rs": "1c8fdabe0e1bdbad9e70cd326eef827f3bd0169be9ae55f1e6678bee87ec3be4",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_broadcast_store.rs": "8446227d06d285557bfd1f8434d5587e3f0c5b9c36865bc88f41eb03904c249e",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_broadcast_lock_tests.rs": "49e0557acaf802cc4c38b36a685f6abd4c40b0d7e46696cf1482917cd28695e7",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_recovery.rs": "feac38afe3e307597d099f7f19e2c9c21645496a5b9a6dfffbc1bd84d20335f4",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_recovery_store.rs": "7e84cd99cd59dfba309af240b8a70dbfb66b84184008caa5137d06de9387d0df",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_protocol.rs": "f77c040320f7d1d5c75c42222250e5eebc64ea9f953fa50f0f82f4e2da7045ca",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/bridge.json": "5cda286c90aff435e9f702f75ea77d22d68839a90fc638dca5465beeb6df41d7",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/normal-lifecycle.material.bin": "acce1057df0eeb9b81ae13429f7576a40c05a7bf7935837b95225d1a6e76c420",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/liquidation.material.bin": "34fede6f3e60fb29c7e515bd0d9c8be1dfa983f3b7e3db11b286b5ea7ee6dce6",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/liquidation.native-public.bin": "1824361932bce2332d31f38af9c5f5cc0999bb3ff564e62cbb5a800a89f2c7f7",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/manifest.json": "bd90b18d505d11be60e5ade812c467cb713b3568ad9636de1720ee3b0df7b49b",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/normal-lifecycle.witness.bin": "24b4e42a71ea3c595bdb6b33ab5f76eb3bf8e2d1d78ca11b12f26951d46a2e8b",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/normal-lifecycle.native-public.bin": "4830af4cf12d9a6ab20c1e9ff37906c89cc9abaa9005ff220796ff0999db097d",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/liquidation.witness.bin": "3bc9cacd53408bfab5ad7c5efadde48fd7ad357c3189479bb9f4564c31781086",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/9b1f12b4dffcdeb191631083f640315da831d90de9399073cc0ab03827f01412.json": "9b1f12b4dffcdeb191631083f640315da831d90de9399073cc0ab03827f01412",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/63e5fd2dd0756cdc81c2808221c0469a136fbc42f997cd200e1d271e0f14cc3e.json": "63e5fd2dd0756cdc81c2808221c0469a136fbc42f997cd200e1d271e0f14cc3e",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/02bc2acf1a2aeffd49166bc07bd5bff8d43f46d6eee5f6b75e39c901dbe500e5.json": "02bc2acf1a2aeffd49166bc07bd5bff8d43f46d6eee5f6b75e39c901dbe500e5",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/a134735ad626e7b563046d6282927fe566d0176d25d8beaf5b4af446af3b9bcd.json": "a134735ad626e7b563046d6282927fe566d0176d25d8beaf5b4af446af3b9bcd",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/59ec653b15058cef6dd003f29bff9580ae0b85171264ccedd98295d2def79f26.json": "59ec653b15058cef6dd003f29bff9580ae0b85171264ccedd98295d2def79f26",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/d1f1e3f32942ba4fe4429550bfd8cf7205be6cc02431500b37f50ac5de710bac.json": "d1f1e3f32942ba4fe4429550bfd8cf7205be6cc02431500b37f50ac5de710bac",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/9b1f12b4dffcdeb191631083f640315da831d90de9399073cc0ab03827f01412.json": "9b1f12b4dffcdeb191631083f640315da831d90de9399073cc0ab03827f01412",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/72f8182043c9160a7d586c52de2d4a357763e6c4b0a8ba2665bfe84d32e85a93.json": "72f8182043c9160a7d586c52de2d4a357763e6c4b0a8ba2665bfe84d32e85a93",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/39bc768876b8965c23fea8a5e39a55251ebbcad62f6bd67bb69587ce00039363.json": "39bc768876b8965c23fea8a5e39a55251ebbcad62f6bd67bb69587ce00039363",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/59ec653b15058cef6dd003f29bff9580ae0b85171264ccedd98295d2def79f26.json": "59ec653b15058cef6dd003f29bff9580ae0b85171264ccedd98295d2def79f26",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/d1f1e3f32942ba4fe4429550bfd8cf7205be6cc02431500b37f50ac5de710bac.json": "d1f1e3f32942ba4fe4429550bfd8cf7205be6cc02431500b37f50ac5de710bac",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/0cb1c94914f05443a96cb061dd49b0c5a49a3a0e41660ddbfa4cb19e61180636.json": "0cb1c94914f05443a96cb061dd49b0c5a49a3a0e41660ddbfa4cb19e61180636"
+      },
+      "source_bytes_unchanged": true,
+      "log": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/broadcast-outcome-validation-20261011/runtime-pins-ci-repair.log",
+      "log_sha256": "cd6f22387ed79a9c83c6a2c15b82e4ccd1dfe70f0444399a72b604e82c1f09a4",
+      "stdout_log": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/broadcast-outcome-validation-20261011/runtime-pins-ci-repair.stdout.log",
+      "stderr_log": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/broadcast-outcome-validation-20261011/runtime-pins-ci-repair.stderr.log",
+      "summaries": []
+    },
+    {
+      "schema": "arcora-broadcast-outcome-command-v1",
+      "observed_start_utc": "2026-10-11T21:13:56.178950+00:00",
+      "observed_end_utc": "2026-10-11T21:13:56.587945+00:00",
+      "name": "source-diff-ci-repair",
+      "argv": [
+        "git",
+        "diff",
+        "--check",
+        "0ea5048627840cbe7e125d7b914b1303b109b224"
+      ],
+      "cwd": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011",
+      "environment": {
+        "PATH": "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/pkg/env/global/bin:/Library/Apple/usr/bin:/opt/homebrew/bin:/Users/huseyinarslan/.kimi-code/bin:/Applications/ChatGPT.app/Contents/Resources/codex-cli/codex-path:/Users/huseyinarslan/.codex/tmp/arg0/codex-arg0nejDBu:/Users/huseyinarslan/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/override:/Users/huseyinarslan/.grok/bin:/Users/huseyinarslan/.aztec/current/bin:/Users/huseyinarslan/.aztec/bin:/Users/huseyinarslan/.bb:/Users/huseyinarslan/.antigravity/antigravity/bin:/Users/huseyinarslan/.nvm/versions/node/v24.12.0/bin:/opt/homebrew/sbin:/Users/huseyinarslan/.local/bin:/Users/huseyinarslan/.cargo/bin:/Users/huseyinarslan/.foundry/bin:/Users/huseyinarslan/.nargo/bin:/Users/huseyinarslan/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/fallback:/Applications/ChatGPT.app/Contents/Resources:/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS",
+        "RUSTUP_TOOLCHAIN": "1.99.0"
+      },
+      "exit_code": 0,
+      "elapsed_seconds": 0.415,
+      "source_sha256_before": {
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/main.rs": "b96da2d2f9f72d295ff217868cee673a96e3cf8d08a30a4fa0a8fd93271bf8da",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_broadcast_tests.rs": "ad0b3cb02659dc70e72af246a019503a90510b7ae78ce55fac3fb44c31224cf9",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_broadcast.rs": "1c8fdabe0e1bdbad9e70cd326eef827f3bd0169be9ae55f1e6678bee87ec3be4",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_broadcast_store.rs": "8446227d06d285557bfd1f8434d5587e3f0c5b9c36865bc88f41eb03904c249e",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_broadcast_lock_tests.rs": "49e0557acaf802cc4c38b36a685f6abd4c40b0d7e46696cf1482917cd28695e7",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_recovery.rs": "feac38afe3e307597d099f7f19e2c9c21645496a5b9a6dfffbc1bd84d20335f4",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_recovery_store.rs": "7e84cd99cd59dfba309af240b8a70dbfb66b84184008caa5137d06de9387d0df",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_protocol.rs": "f77c040320f7d1d5c75c42222250e5eebc64ea9f953fa50f0f82f4e2da7045ca",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/bridge.json": "5cda286c90aff435e9f702f75ea77d22d68839a90fc638dca5465beeb6df41d7",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/normal-lifecycle.material.bin": "acce1057df0eeb9b81ae13429f7576a40c05a7bf7935837b95225d1a6e76c420",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/liquidation.material.bin": "34fede6f3e60fb29c7e515bd0d9c8be1dfa983f3b7e3db11b286b5ea7ee6dce6",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/liquidation.native-public.bin": "1824361932bce2332d31f38af9c5f5cc0999bb3ff564e62cbb5a800a89f2c7f7",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/manifest.json": "bd90b18d505d11be60e5ade812c467cb713b3568ad9636de1720ee3b0df7b49b",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/normal-lifecycle.witness.bin": "24b4e42a71ea3c595bdb6b33ab5f76eb3bf8e2d1d78ca11b12f26951d46a2e8b",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/normal-lifecycle.native-public.bin": "4830af4cf12d9a6ab20c1e9ff37906c89cc9abaa9005ff220796ff0999db097d",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/liquidation.witness.bin": "3bc9cacd53408bfab5ad7c5efadde48fd7ad357c3189479bb9f4564c31781086",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/9b1f12b4dffcdeb191631083f640315da831d90de9399073cc0ab03827f01412.json": "9b1f12b4dffcdeb191631083f640315da831d90de9399073cc0ab03827f01412",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/63e5fd2dd0756cdc81c2808221c0469a136fbc42f997cd200e1d271e0f14cc3e.json": "63e5fd2dd0756cdc81c2808221c0469a136fbc42f997cd200e1d271e0f14cc3e",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/02bc2acf1a2aeffd49166bc07bd5bff8d43f46d6eee5f6b75e39c901dbe500e5.json": "02bc2acf1a2aeffd49166bc07bd5bff8d43f46d6eee5f6b75e39c901dbe500e5",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/a134735ad626e7b563046d6282927fe566d0176d25d8beaf5b4af446af3b9bcd.json": "a134735ad626e7b563046d6282927fe566d0176d25d8beaf5b4af446af3b9bcd",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/59ec653b15058cef6dd003f29bff9580ae0b85171264ccedd98295d2def79f26.json": "59ec653b15058cef6dd003f29bff9580ae0b85171264ccedd98295d2def79f26",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/d1f1e3f32942ba4fe4429550bfd8cf7205be6cc02431500b37f50ac5de710bac.json": "d1f1e3f32942ba4fe4429550bfd8cf7205be6cc02431500b37f50ac5de710bac",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/9b1f12b4dffcdeb191631083f640315da831d90de9399073cc0ab03827f01412.json": "9b1f12b4dffcdeb191631083f640315da831d90de9399073cc0ab03827f01412",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/72f8182043c9160a7d586c52de2d4a357763e6c4b0a8ba2665bfe84d32e85a93.json": "72f8182043c9160a7d586c52de2d4a357763e6c4b0a8ba2665bfe84d32e85a93",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/39bc768876b8965c23fea8a5e39a55251ebbcad62f6bd67bb69587ce00039363.json": "39bc768876b8965c23fea8a5e39a55251ebbcad62f6bd67bb69587ce00039363",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/59ec653b15058cef6dd003f29bff9580ae0b85171264ccedd98295d2def79f26.json": "59ec653b15058cef6dd003f29bff9580ae0b85171264ccedd98295d2def79f26",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/d1f1e3f32942ba4fe4429550bfd8cf7205be6cc02431500b37f50ac5de710bac.json": "d1f1e3f32942ba4fe4429550bfd8cf7205be6cc02431500b37f50ac5de710bac",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/0cb1c94914f05443a96cb061dd49b0c5a49a3a0e41660ddbfa4cb19e61180636.json": "0cb1c94914f05443a96cb061dd49b0c5a49a3a0e41660ddbfa4cb19e61180636"
+      },
+      "source_sha256_after": {
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/main.rs": "b96da2d2f9f72d295ff217868cee673a96e3cf8d08a30a4fa0a8fd93271bf8da",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_broadcast_tests.rs": "ad0b3cb02659dc70e72af246a019503a90510b7ae78ce55fac3fb44c31224cf9",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_broadcast.rs": "1c8fdabe0e1bdbad9e70cd326eef827f3bd0169be9ae55f1e6678bee87ec3be4",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_broadcast_store.rs": "8446227d06d285557bfd1f8434d5587e3f0c5b9c36865bc88f41eb03904c249e",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_broadcast_lock_tests.rs": "49e0557acaf802cc4c38b36a685f6abd4c40b0d7e46696cf1482917cd28695e7",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_recovery.rs": "feac38afe3e307597d099f7f19e2c9c21645496a5b9a6dfffbc1bd84d20335f4",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_recovery_store.rs": "7e84cd99cd59dfba309af240b8a70dbfb66b84184008caa5137d06de9387d0df",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_protocol.rs": "f77c040320f7d1d5c75c42222250e5eebc64ea9f953fa50f0f82f4e2da7045ca",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/bridge.json": "5cda286c90aff435e9f702f75ea77d22d68839a90fc638dca5465beeb6df41d7",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/normal-lifecycle.material.bin": "acce1057df0eeb9b81ae13429f7576a40c05a7bf7935837b95225d1a6e76c420",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/liquidation.material.bin": "34fede6f3e60fb29c7e515bd0d9c8be1dfa983f3b7e3db11b286b5ea7ee6dce6",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/liquidation.native-public.bin": "1824361932bce2332d31f38af9c5f5cc0999bb3ff564e62cbb5a800a89f2c7f7",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/manifest.json": "bd90b18d505d11be60e5ade812c467cb713b3568ad9636de1720ee3b0df7b49b",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/normal-lifecycle.witness.bin": "24b4e42a71ea3c595bdb6b33ab5f76eb3bf8e2d1d78ca11b12f26951d46a2e8b",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/normal-lifecycle.native-public.bin": "4830af4cf12d9a6ab20c1e9ff37906c89cc9abaa9005ff220796ff0999db097d",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/liquidation.witness.bin": "3bc9cacd53408bfab5ad7c5efadde48fd7ad357c3189479bb9f4564c31781086",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/9b1f12b4dffcdeb191631083f640315da831d90de9399073cc0ab03827f01412.json": "9b1f12b4dffcdeb191631083f640315da831d90de9399073cc0ab03827f01412",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/63e5fd2dd0756cdc81c2808221c0469a136fbc42f997cd200e1d271e0f14cc3e.json": "63e5fd2dd0756cdc81c2808221c0469a136fbc42f997cd200e1d271e0f14cc3e",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/02bc2acf1a2aeffd49166bc07bd5bff8d43f46d6eee5f6b75e39c901dbe500e5.json": "02bc2acf1a2aeffd49166bc07bd5bff8d43f46d6eee5f6b75e39c901dbe500e5",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/a134735ad626e7b563046d6282927fe566d0176d25d8beaf5b4af446af3b9bcd.json": "a134735ad626e7b563046d6282927fe566d0176d25d8beaf5b4af446af3b9bcd",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/59ec653b15058cef6dd003f29bff9580ae0b85171264ccedd98295d2def79f26.json": "59ec653b15058cef6dd003f29bff9580ae0b85171264ccedd98295d2def79f26",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/d1f1e3f32942ba4fe4429550bfd8cf7205be6cc02431500b37f50ac5de710bac.json": "d1f1e3f32942ba4fe4429550bfd8cf7205be6cc02431500b37f50ac5de710bac",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/9b1f12b4dffcdeb191631083f640315da831d90de9399073cc0ab03827f01412.json": "9b1f12b4dffcdeb191631083f640315da831d90de9399073cc0ab03827f01412",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/72f8182043c9160a7d586c52de2d4a357763e6c4b0a8ba2665bfe84d32e85a93.json": "72f8182043c9160a7d586c52de2d4a357763e6c4b0a8ba2665bfe84d32e85a93",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/39bc768876b8965c23fea8a5e39a55251ebbcad62f6bd67bb69587ce00039363.json": "39bc768876b8965c23fea8a5e39a55251ebbcad62f6bd67bb69587ce00039363",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/59ec653b15058cef6dd003f29bff9580ae0b85171264ccedd98295d2def79f26.json": "59ec653b15058cef6dd003f29bff9580ae0b85171264ccedd98295d2def79f26",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/d1f1e3f32942ba4fe4429550bfd8cf7205be6cc02431500b37f50ac5de710bac.json": "d1f1e3f32942ba4fe4429550bfd8cf7205be6cc02431500b37f50ac5de710bac",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/0cb1c94914f05443a96cb061dd49b0c5a49a3a0e41660ddbfa4cb19e61180636.json": "0cb1c94914f05443a96cb061dd49b0c5a49a3a0e41660ddbfa4cb19e61180636"
+      },
+      "source_bytes_unchanged": true,
+      "log": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/broadcast-outcome-validation-20261011/source-diff-ci-repair.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdout_log": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/broadcast-outcome-validation-20261011/source-diff-ci-repair.stdout.log",
+      "stderr_log": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/broadcast-outcome-validation-20261011/source-diff-ci-repair.stderr.log",
+      "summaries": []
+    }
+  ],
+  "focused": {
+    "schema": "arcora-broadcast-outcome-command-v1",
+    "observed_start_utc": "2026-10-11T21:16:06.693528+00:00",
+    "observed_end_utc": "2026-10-11T21:22:42.808837+00:00",
+    "name": "focused-ci-repair",
+    "argv": [
+      "rustup",
+      "run",
+      "1.99.0",
+      "cargo",
+      "test",
+      "-p",
+      "gateway",
+      "--locked",
+      "--offline",
+      "--bin",
+      "gateway",
+      "candidate_broadcast",
+      "--",
+      "--test-threads=2"
+    ],
+    "cwd": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011",
+    "environment": {
+      "PATH": "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/pkg/env/global/bin:/Library/Apple/usr/bin:/opt/homebrew/bin:/Users/huseyinarslan/.kimi-code/bin:/Applications/ChatGPT.app/Contents/Resources/codex-cli/codex-path:/Users/huseyinarslan/.codex/tmp/arg0/codex-arg0nejDBu:/Users/huseyinarslan/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/override:/Users/huseyinarslan/.grok/bin:/Users/huseyinarslan/.aztec/current/bin:/Users/huseyinarslan/.aztec/bin:/Users/huseyinarslan/.bb:/Users/huseyinarslan/.antigravity/antigravity/bin:/Users/huseyinarslan/.nvm/versions/node/v24.12.0/bin:/opt/homebrew/sbin:/Users/huseyinarslan/.local/bin:/Users/huseyinarslan/.cargo/bin:/Users/huseyinarslan/.foundry/bin:/Users/huseyinarslan/.nargo/bin:/Users/huseyinarslan/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/fallback:/Applications/ChatGPT.app/Contents/Resources:/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS",
+      "RUSTUP_TOOLCHAIN": "1.99.0"
+    },
+    "exit_code": 0,
+    "elapsed_seconds": 396.126,
+    "source_sha256_before": {
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/main.rs": "b96da2d2f9f72d295ff217868cee673a96e3cf8d08a30a4fa0a8fd93271bf8da",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_broadcast_tests.rs": "ad0b3cb02659dc70e72af246a019503a90510b7ae78ce55fac3fb44c31224cf9",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_broadcast.rs": "1c8fdabe0e1bdbad9e70cd326eef827f3bd0169be9ae55f1e6678bee87ec3be4",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_broadcast_store.rs": "8446227d06d285557bfd1f8434d5587e3f0c5b9c36865bc88f41eb03904c249e",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_broadcast_lock_tests.rs": "49e0557acaf802cc4c38b36a685f6abd4c40b0d7e46696cf1482917cd28695e7",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_recovery.rs": "feac38afe3e307597d099f7f19e2c9c21645496a5b9a6dfffbc1bd84d20335f4",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_recovery_store.rs": "7e84cd99cd59dfba309af240b8a70dbfb66b84184008caa5137d06de9387d0df",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_protocol.rs": "f77c040320f7d1d5c75c42222250e5eebc64ea9f953fa50f0f82f4e2da7045ca",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/bridge.json": "5cda286c90aff435e9f702f75ea77d22d68839a90fc638dca5465beeb6df41d7",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/normal-lifecycle.material.bin": "acce1057df0eeb9b81ae13429f7576a40c05a7bf7935837b95225d1a6e76c420",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/liquidation.material.bin": "34fede6f3e60fb29c7e515bd0d9c8be1dfa983f3b7e3db11b286b5ea7ee6dce6",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/liquidation.native-public.bin": "1824361932bce2332d31f38af9c5f5cc0999bb3ff564e62cbb5a800a89f2c7f7",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/manifest.json": "bd90b18d505d11be60e5ade812c467cb713b3568ad9636de1720ee3b0df7b49b",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/normal-lifecycle.witness.bin": "24b4e42a71ea3c595bdb6b33ab5f76eb3bf8e2d1d78ca11b12f26951d46a2e8b",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/normal-lifecycle.native-public.bin": "4830af4cf12d9a6ab20c1e9ff37906c89cc9abaa9005ff220796ff0999db097d",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/liquidation.witness.bin": "3bc9cacd53408bfab5ad7c5efadde48fd7ad357c3189479bb9f4564c31781086",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/9b1f12b4dffcdeb191631083f640315da831d90de9399073cc0ab03827f01412.json": "9b1f12b4dffcdeb191631083f640315da831d90de9399073cc0ab03827f01412",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/63e5fd2dd0756cdc81c2808221c0469a136fbc42f997cd200e1d271e0f14cc3e.json": "63e5fd2dd0756cdc81c2808221c0469a136fbc42f997cd200e1d271e0f14cc3e",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/02bc2acf1a2aeffd49166bc07bd5bff8d43f46d6eee5f6b75e39c901dbe500e5.json": "02bc2acf1a2aeffd49166bc07bd5bff8d43f46d6eee5f6b75e39c901dbe500e5",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/a134735ad626e7b563046d6282927fe566d0176d25d8beaf5b4af446af3b9bcd.json": "a134735ad626e7b563046d6282927fe566d0176d25d8beaf5b4af446af3b9bcd",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/59ec653b15058cef6dd003f29bff9580ae0b85171264ccedd98295d2def79f26.json": "59ec653b15058cef6dd003f29bff9580ae0b85171264ccedd98295d2def79f26",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/d1f1e3f32942ba4fe4429550bfd8cf7205be6cc02431500b37f50ac5de710bac.json": "d1f1e3f32942ba4fe4429550bfd8cf7205be6cc02431500b37f50ac5de710bac",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/9b1f12b4dffcdeb191631083f640315da831d90de9399073cc0ab03827f01412.json": "9b1f12b4dffcdeb191631083f640315da831d90de9399073cc0ab03827f01412",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/72f8182043c9160a7d586c52de2d4a357763e6c4b0a8ba2665bfe84d32e85a93.json": "72f8182043c9160a7d586c52de2d4a357763e6c4b0a8ba2665bfe84d32e85a93",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/39bc768876b8965c23fea8a5e39a55251ebbcad62f6bd67bb69587ce00039363.json": "39bc768876b8965c23fea8a5e39a55251ebbcad62f6bd67bb69587ce00039363",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/59ec653b15058cef6dd003f29bff9580ae0b85171264ccedd98295d2def79f26.json": "59ec653b15058cef6dd003f29bff9580ae0b85171264ccedd98295d2def79f26",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/d1f1e3f32942ba4fe4429550bfd8cf7205be6cc02431500b37f50ac5de710bac.json": "d1f1e3f32942ba4fe4429550bfd8cf7205be6cc02431500b37f50ac5de710bac",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/0cb1c94914f05443a96cb061dd49b0c5a49a3a0e41660ddbfa4cb19e61180636.json": "0cb1c94914f05443a96cb061dd49b0c5a49a3a0e41660ddbfa4cb19e61180636"
+    },
+    "source_sha256_after": {
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/main.rs": "b96da2d2f9f72d295ff217868cee673a96e3cf8d08a30a4fa0a8fd93271bf8da",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_broadcast_tests.rs": "ad0b3cb02659dc70e72af246a019503a90510b7ae78ce55fac3fb44c31224cf9",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_broadcast.rs": "1c8fdabe0e1bdbad9e70cd326eef827f3bd0169be9ae55f1e6678bee87ec3be4",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_broadcast_store.rs": "8446227d06d285557bfd1f8434d5587e3f0c5b9c36865bc88f41eb03904c249e",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_broadcast_lock_tests.rs": "49e0557acaf802cc4c38b36a685f6abd4c40b0d7e46696cf1482917cd28695e7",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_recovery.rs": "feac38afe3e307597d099f7f19e2c9c21645496a5b9a6dfffbc1bd84d20335f4",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_recovery_store.rs": "7e84cd99cd59dfba309af240b8a70dbfb66b84184008caa5137d06de9387d0df",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_protocol.rs": "f77c040320f7d1d5c75c42222250e5eebc64ea9f953fa50f0f82f4e2da7045ca",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/bridge.json": "5cda286c90aff435e9f702f75ea77d22d68839a90fc638dca5465beeb6df41d7",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/normal-lifecycle.material.bin": "acce1057df0eeb9b81ae13429f7576a40c05a7bf7935837b95225d1a6e76c420",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/liquidation.material.bin": "34fede6f3e60fb29c7e515bd0d9c8be1dfa983f3b7e3db11b286b5ea7ee6dce6",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/liquidation.native-public.bin": "1824361932bce2332d31f38af9c5f5cc0999bb3ff564e62cbb5a800a89f2c7f7",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/manifest.json": "bd90b18d505d11be60e5ade812c467cb713b3568ad9636de1720ee3b0df7b49b",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/normal-lifecycle.witness.bin": "24b4e42a71ea3c595bdb6b33ab5f76eb3bf8e2d1d78ca11b12f26951d46a2e8b",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/normal-lifecycle.native-public.bin": "4830af4cf12d9a6ab20c1e9ff37906c89cc9abaa9005ff220796ff0999db097d",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/liquidation.witness.bin": "3bc9cacd53408bfab5ad7c5efadde48fd7ad357c3189479bb9f4564c31781086",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/9b1f12b4dffcdeb191631083f640315da831d90de9399073cc0ab03827f01412.json": "9b1f12b4dffcdeb191631083f640315da831d90de9399073cc0ab03827f01412",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/63e5fd2dd0756cdc81c2808221c0469a136fbc42f997cd200e1d271e0f14cc3e.json": "63e5fd2dd0756cdc81c2808221c0469a136fbc42f997cd200e1d271e0f14cc3e",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/02bc2acf1a2aeffd49166bc07bd5bff8d43f46d6eee5f6b75e39c901dbe500e5.json": "02bc2acf1a2aeffd49166bc07bd5bff8d43f46d6eee5f6b75e39c901dbe500e5",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/a134735ad626e7b563046d6282927fe566d0176d25d8beaf5b4af446af3b9bcd.json": "a134735ad626e7b563046d6282927fe566d0176d25d8beaf5b4af446af3b9bcd",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/59ec653b15058cef6dd003f29bff9580ae0b85171264ccedd98295d2def79f26.json": "59ec653b15058cef6dd003f29bff9580ae0b85171264ccedd98295d2def79f26",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/d1f1e3f32942ba4fe4429550bfd8cf7205be6cc02431500b37f50ac5de710bac.json": "d1f1e3f32942ba4fe4429550bfd8cf7205be6cc02431500b37f50ac5de710bac",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/9b1f12b4dffcdeb191631083f640315da831d90de9399073cc0ab03827f01412.json": "9b1f12b4dffcdeb191631083f640315da831d90de9399073cc0ab03827f01412",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/72f8182043c9160a7d586c52de2d4a357763e6c4b0a8ba2665bfe84d32e85a93.json": "72f8182043c9160a7d586c52de2d4a357763e6c4b0a8ba2665bfe84d32e85a93",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/39bc768876b8965c23fea8a5e39a55251ebbcad62f6bd67bb69587ce00039363.json": "39bc768876b8965c23fea8a5e39a55251ebbcad62f6bd67bb69587ce00039363",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/59ec653b15058cef6dd003f29bff9580ae0b85171264ccedd98295d2def79f26.json": "59ec653b15058cef6dd003f29bff9580ae0b85171264ccedd98295d2def79f26",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/d1f1e3f32942ba4fe4429550bfd8cf7205be6cc02431500b37f50ac5de710bac.json": "d1f1e3f32942ba4fe4429550bfd8cf7205be6cc02431500b37f50ac5de710bac",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/0cb1c94914f05443a96cb061dd49b0c5a49a3a0e41660ddbfa4cb19e61180636.json": "0cb1c94914f05443a96cb061dd49b0c5a49a3a0e41660ddbfa4cb19e61180636"
+    },
+    "source_bytes_unchanged": true,
+    "log": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/broadcast-outcome-validation-20261011/focused-ci-repair.log",
+    "log_sha256": "7e79db9b16e1ecf2098801084210b25bb84462870984a772eed8ccebc5379deb",
+    "stdout_log": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/broadcast-outcome-validation-20261011/focused-ci-repair.stdout.log",
+    "stderr_log": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/broadcast-outcome-validation-20261011/focused-ci-repair.stderr.log",
+    "summaries": [
+      "test result: ok. 26 passed; 0 failed; 1 ignored; 0 measured; 622 filtered out; finished in 61.08s"
+    ]
+  },
+  "clippy": {
+    "schema": "arcora-broadcast-outcome-command-v1",
+    "observed_start_utc": "2026-10-11T21:10:26.810987+00:00",
+    "observed_end_utc": "2026-10-11T21:15:39.911111+00:00",
+    "name": "clippy-ci-repair",
+    "argv": [
+      "rustup",
+      "run",
+      "1.99.0",
+      "cargo",
+      "clippy",
+      "--workspace",
+      "--all-targets",
+      "--locked",
+      "--offline",
+      "--",
+      "-D",
+      "warnings"
+    ],
+    "cwd": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011",
+    "environment": {
+      "PATH": "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/pkg/env/global/bin:/Library/Apple/usr/bin:/opt/homebrew/bin:/Users/huseyinarslan/.kimi-code/bin:/Applications/ChatGPT.app/Contents/Resources/codex-cli/codex-path:/Users/huseyinarslan/.codex/tmp/arg0/codex-arg0nejDBu:/Users/huseyinarslan/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/override:/Users/huseyinarslan/.grok/bin:/Users/huseyinarslan/.aztec/current/bin:/Users/huseyinarslan/.aztec/bin:/Users/huseyinarslan/.bb:/Users/huseyinarslan/.antigravity/antigravity/bin:/Users/huseyinarslan/.nvm/versions/node/v24.12.0/bin:/opt/homebrew/sbin:/Users/huseyinarslan/.local/bin:/Users/huseyinarslan/.cargo/bin:/Users/huseyinarslan/.foundry/bin:/Users/huseyinarslan/.nargo/bin:/Users/huseyinarslan/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/fallback:/Applications/ChatGPT.app/Contents/Resources:/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS",
+      "RUSTUP_TOOLCHAIN": "1.99.0"
+    },
+    "exit_code": 0,
+    "elapsed_seconds": 313.103,
+    "source_sha256_before": {
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/main.rs": "b96da2d2f9f72d295ff217868cee673a96e3cf8d08a30a4fa0a8fd93271bf8da",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_broadcast_tests.rs": "ad0b3cb02659dc70e72af246a019503a90510b7ae78ce55fac3fb44c31224cf9",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_broadcast.rs": "1c8fdabe0e1bdbad9e70cd326eef827f3bd0169be9ae55f1e6678bee87ec3be4",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_broadcast_store.rs": "8446227d06d285557bfd1f8434d5587e3f0c5b9c36865bc88f41eb03904c249e",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_broadcast_lock_tests.rs": "49e0557acaf802cc4c38b36a685f6abd4c40b0d7e46696cf1482917cd28695e7",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_recovery.rs": "feac38afe3e307597d099f7f19e2c9c21645496a5b9a6dfffbc1bd84d20335f4",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_recovery_store.rs": "7e84cd99cd59dfba309af240b8a70dbfb66b84184008caa5137d06de9387d0df",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_protocol.rs": "f77c040320f7d1d5c75c42222250e5eebc64ea9f953fa50f0f82f4e2da7045ca",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/bridge.json": "5cda286c90aff435e9f702f75ea77d22d68839a90fc638dca5465beeb6df41d7",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/normal-lifecycle.material.bin": "acce1057df0eeb9b81ae13429f7576a40c05a7bf7935837b95225d1a6e76c420",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/liquidation.material.bin": "34fede6f3e60fb29c7e515bd0d9c8be1dfa983f3b7e3db11b286b5ea7ee6dce6",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/liquidation.native-public.bin": "1824361932bce2332d31f38af9c5f5cc0999bb3ff564e62cbb5a800a89f2c7f7",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/manifest.json": "bd90b18d505d11be60e5ade812c467cb713b3568ad9636de1720ee3b0df7b49b",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/normal-lifecycle.witness.bin": "24b4e42a71ea3c595bdb6b33ab5f76eb3bf8e2d1d78ca11b12f26951d46a2e8b",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/normal-lifecycle.native-public.bin": "4830af4cf12d9a6ab20c1e9ff37906c89cc9abaa9005ff220796ff0999db097d",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/liquidation.witness.bin": "3bc9cacd53408bfab5ad7c5efadde48fd7ad357c3189479bb9f4564c31781086",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/9b1f12b4dffcdeb191631083f640315da831d90de9399073cc0ab03827f01412.json": "9b1f12b4dffcdeb191631083f640315da831d90de9399073cc0ab03827f01412",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/63e5fd2dd0756cdc81c2808221c0469a136fbc42f997cd200e1d271e0f14cc3e.json": "63e5fd2dd0756cdc81c2808221c0469a136fbc42f997cd200e1d271e0f14cc3e",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/02bc2acf1a2aeffd49166bc07bd5bff8d43f46d6eee5f6b75e39c901dbe500e5.json": "02bc2acf1a2aeffd49166bc07bd5bff8d43f46d6eee5f6b75e39c901dbe500e5",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/a134735ad626e7b563046d6282927fe566d0176d25d8beaf5b4af446af3b9bcd.json": "a134735ad626e7b563046d6282927fe566d0176d25d8beaf5b4af446af3b9bcd",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/59ec653b15058cef6dd003f29bff9580ae0b85171264ccedd98295d2def79f26.json": "59ec653b15058cef6dd003f29bff9580ae0b85171264ccedd98295d2def79f26",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/d1f1e3f32942ba4fe4429550bfd8cf7205be6cc02431500b37f50ac5de710bac.json": "d1f1e3f32942ba4fe4429550bfd8cf7205be6cc02431500b37f50ac5de710bac",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/9b1f12b4dffcdeb191631083f640315da831d90de9399073cc0ab03827f01412.json": "9b1f12b4dffcdeb191631083f640315da831d90de9399073cc0ab03827f01412",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/72f8182043c9160a7d586c52de2d4a357763e6c4b0a8ba2665bfe84d32e85a93.json": "72f8182043c9160a7d586c52de2d4a357763e6c4b0a8ba2665bfe84d32e85a93",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/39bc768876b8965c23fea8a5e39a55251ebbcad62f6bd67bb69587ce00039363.json": "39bc768876b8965c23fea8a5e39a55251ebbcad62f6bd67bb69587ce00039363",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/59ec653b15058cef6dd003f29bff9580ae0b85171264ccedd98295d2def79f26.json": "59ec653b15058cef6dd003f29bff9580ae0b85171264ccedd98295d2def79f26",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/d1f1e3f32942ba4fe4429550bfd8cf7205be6cc02431500b37f50ac5de710bac.json": "d1f1e3f32942ba4fe4429550bfd8cf7205be6cc02431500b37f50ac5de710bac",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/0cb1c94914f05443a96cb061dd49b0c5a49a3a0e41660ddbfa4cb19e61180636.json": "0cb1c94914f05443a96cb061dd49b0c5a49a3a0e41660ddbfa4cb19e61180636"
+    },
+    "source_sha256_after": {
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/main.rs": "b96da2d2f9f72d295ff217868cee673a96e3cf8d08a30a4fa0a8fd93271bf8da",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_broadcast_tests.rs": "ad0b3cb02659dc70e72af246a019503a90510b7ae78ce55fac3fb44c31224cf9",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_broadcast.rs": "1c8fdabe0e1bdbad9e70cd326eef827f3bd0169be9ae55f1e6678bee87ec3be4",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_broadcast_store.rs": "8446227d06d285557bfd1f8434d5587e3f0c5b9c36865bc88f41eb03904c249e",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_broadcast_lock_tests.rs": "49e0557acaf802cc4c38b36a685f6abd4c40b0d7e46696cf1482917cd28695e7",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_recovery.rs": "feac38afe3e307597d099f7f19e2c9c21645496a5b9a6dfffbc1bd84d20335f4",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_recovery_store.rs": "7e84cd99cd59dfba309af240b8a70dbfb66b84184008caa5137d06de9387d0df",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_protocol.rs": "f77c040320f7d1d5c75c42222250e5eebc64ea9f953fa50f0f82f4e2da7045ca",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/bridge.json": "5cda286c90aff435e9f702f75ea77d22d68839a90fc638dca5465beeb6df41d7",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/normal-lifecycle.material.bin": "acce1057df0eeb9b81ae13429f7576a40c05a7bf7935837b95225d1a6e76c420",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/liquidation.material.bin": "34fede6f3e60fb29c7e515bd0d9c8be1dfa983f3b7e3db11b286b5ea7ee6dce6",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/liquidation.native-public.bin": "1824361932bce2332d31f38af9c5f5cc0999bb3ff564e62cbb5a800a89f2c7f7",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/manifest.json": "bd90b18d505d11be60e5ade812c467cb713b3568ad9636de1720ee3b0df7b49b",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/normal-lifecycle.witness.bin": "24b4e42a71ea3c595bdb6b33ab5f76eb3bf8e2d1d78ca11b12f26951d46a2e8b",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/normal-lifecycle.native-public.bin": "4830af4cf12d9a6ab20c1e9ff37906c89cc9abaa9005ff220796ff0999db097d",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/liquidation.witness.bin": "3bc9cacd53408bfab5ad7c5efadde48fd7ad357c3189479bb9f4564c31781086",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/9b1f12b4dffcdeb191631083f640315da831d90de9399073cc0ab03827f01412.json": "9b1f12b4dffcdeb191631083f640315da831d90de9399073cc0ab03827f01412",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/63e5fd2dd0756cdc81c2808221c0469a136fbc42f997cd200e1d271e0f14cc3e.json": "63e5fd2dd0756cdc81c2808221c0469a136fbc42f997cd200e1d271e0f14cc3e",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/02bc2acf1a2aeffd49166bc07bd5bff8d43f46d6eee5f6b75e39c901dbe500e5.json": "02bc2acf1a2aeffd49166bc07bd5bff8d43f46d6eee5f6b75e39c901dbe500e5",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/a134735ad626e7b563046d6282927fe566d0176d25d8beaf5b4af446af3b9bcd.json": "a134735ad626e7b563046d6282927fe566d0176d25d8beaf5b4af446af3b9bcd",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/59ec653b15058cef6dd003f29bff9580ae0b85171264ccedd98295d2def79f26.json": "59ec653b15058cef6dd003f29bff9580ae0b85171264ccedd98295d2def79f26",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/d1f1e3f32942ba4fe4429550bfd8cf7205be6cc02431500b37f50ac5de710bac.json": "d1f1e3f32942ba4fe4429550bfd8cf7205be6cc02431500b37f50ac5de710bac",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/9b1f12b4dffcdeb191631083f640315da831d90de9399073cc0ab03827f01412.json": "9b1f12b4dffcdeb191631083f640315da831d90de9399073cc0ab03827f01412",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/72f8182043c9160a7d586c52de2d4a357763e6c4b0a8ba2665bfe84d32e85a93.json": "72f8182043c9160a7d586c52de2d4a357763e6c4b0a8ba2665bfe84d32e85a93",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/39bc768876b8965c23fea8a5e39a55251ebbcad62f6bd67bb69587ce00039363.json": "39bc768876b8965c23fea8a5e39a55251ebbcad62f6bd67bb69587ce00039363",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/59ec653b15058cef6dd003f29bff9580ae0b85171264ccedd98295d2def79f26.json": "59ec653b15058cef6dd003f29bff9580ae0b85171264ccedd98295d2def79f26",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/d1f1e3f32942ba4fe4429550bfd8cf7205be6cc02431500b37f50ac5de710bac.json": "d1f1e3f32942ba4fe4429550bfd8cf7205be6cc02431500b37f50ac5de710bac",
+      "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/0cb1c94914f05443a96cb061dd49b0c5a49a3a0e41660ddbfa4cb19e61180636.json": "0cb1c94914f05443a96cb061dd49b0c5a49a3a0e41660ddbfa4cb19e61180636"
+    },
+    "source_bytes_unchanged": true,
+    "log": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/broadcast-outcome-validation-20261011/clippy-ci-repair.log",
+    "log_sha256": "1f0b2275d07e5eebdf8c412a96f57f2d97a8e26c84d04ee1d20a9bb51cf1e220",
+    "stdout_log": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/broadcast-outcome-validation-20261011/clippy-ci-repair.stdout.log",
+    "stderr_log": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/broadcast-outcome-validation-20261011/clippy-ci-repair.stderr.log",
+    "summaries": []
+  },
+  "preservation": {
+    "schema": "arcora-broadcast-outcome-preservation-v2",
+    "observed_utc": "2026-10-11T21:26:03.015983+00:00",
+    "frozen_file_count": 1927,
+    "unchanged_frozen_file_count": 1926,
+    "changed_frozen_files": [
+      ".github/workflows/ci.yml"
+    ],
+    "allowed_ci_budget_change": {
+      "path": ".github/workflows/ci.yml",
+      "change": "only rust(workspace) job timeout20 to30 minutes",
+      "base_sha256": "9ea6d0f1895b0605b506e1c085a7b58d142ccb684fc0a5219435d99c02cbc5ff",
+      "current_sha256": "6058fce74352cbd052a6e9d4e5e176a334aa6929eaa4f3b9fdf97b8d13a8d603",
+      "exact_single_budget_change": true
+    },
+    "unexpected_changed_frozen_files": [],
+    "external": [
+      {
+        "name": "primary",
+        "path": "/Users/huseyinarslan/Desktop/arcora-perp/repo",
+        "head": "2a03bb03a7db9736e72573fa22d8fe8f4fe37f94",
+        "dirty_count": 13,
+        "same_status": true,
+        "same_head": true,
+        "same_staged_diff": true,
+        "dirty_files_changed": [],
+        "passed": true
+      },
+      {
+        "name": "kimi",
+        "path": "/Users/huseyinarslan/kimi-bridge/worktrees/Arcora-labs__arcora-perp/job--17",
+        "head": "e283958109fc6b434b7049d523bbd3378e2e6c27",
+        "dirty_count": 7,
+        "same_status": true,
+        "same_head": true,
+        "same_staged_diff": true,
+        "dirty_files_changed": [],
+        "passed": true
+      },
+      {
+        "name": "dark",
+        "path": "/Users/huseyinarslan/Desktop/Projeler/Dark Perp/dark-perp",
+        "head": "f997f8b96279bd06ec1808f6b9cb2a6aeb25cc5e",
+        "dirty_count": 62,
+        "same_status": true,
+        "same_head": true,
+        "same_staged_diff": true,
+        "dirty_files_changed": [],
+        "passed": true
+      }
+    ],
+    "production_main_unchanged_after_removing_test_wires": true,
+    "passed": true
+  },
+  "fresh_host_native_execution": true,
+  "fresh_sp1_cpu_execution": false,
+  "fresh_sp1_proof": false,
+  "gpu_used": false,
+  "live_rpc_or_registration": false,
+  "real_don_or_finality_authenticated": false,
+  "live_deployment_identity_approved": false,
+  "actual_custody_or_claim": false,
+  "production_release": "HOLD",
+  "process_evidence": {
+    "actual_dispatcher_sigkill": true,
+    "ipc_barriers_no_sleeps": true,
+    "busy_zero_callbacks": true,
+    "reopened_same_pending_lookup_only": true,
+    "physical_power_loss_test": false
+  },
+  "mock_identities": "domain-separated mock tx/attempt digests, not signed Ethereum transaction hashes",
+  "coordination_domain": "one configured immutable sidecar path; separate paths/copies and direct historical runners are outside coordination; no global deduplication",
+  "finality_boundary": "durable original Prepared anchors; Fresh later observed tip is invocation-local, not persisted across restart; no ancestry/RPC proof",
+  "historical_cpu_foundry": {
+    "source_packet": "../2026-10-11-chainlink-native-contract-bridge/verification.json",
+    "that_packet_ledger_sha256": "ef8b54ca0b0ac3ef2c175c8b5a4c3c7b334d22b69004c625bb55723336f33a72",
+    "new_cpu_or_foundry_run": false,
+    "corpus_contract_guest_and_prior_artifacts_rechecked_unchanged": true
+  },
+  "artifacts": [
+    {
+      "path": "README.md",
+      "sha256": "49a90deddb6e6fd6e268fe891b8008144b29540e696a2da3510214436ecb7f6c",
+      "bytes": 10908
+    },
+    {
+      "path": "baseline.json",
+      "sha256": "7807708f1c296d678f83d45ac3ce38516f3f8cd7d493de7a8bab34a3650aa635",
+      "bytes": 280862
+    },
+    {
+      "path": "checks/clippy-ci-repair.json",
+      "sha256": "3c981e8483a8424ecdfead52cd924e6c09256c4fbe03507d25f90bb480fa06a1",
+      "bytes": 16997
+    },
+    {
+      "path": "checks/clippy-final.json",
+      "sha256": "869057ad680b46d4c9f53efe6af68f61f589e3b5db888c8861d1c183b91c4903",
+      "bytes": 15651
+    },
+    {
+      "path": "checks/clippy-initial.json",
+      "sha256": "3222ef888e1cf7302642e49da236cf1ad64cc49fab8c80c49b8992c70bfaf26a",
+      "bytes": 15661
+    },
+    {
+      "path": "checks/focused-ci-repair.json",
+      "sha256": "d78ae7bef3e8944bf2b29b1537ea9e2d5f75613935c61f20c1ffe639545810ae",
+      "bytes": 17144
+    },
+    {
+      "path": "checks/focused-final.json",
+      "sha256": "b487c6e98aeff9109f1fafae7fac13ad8498545d0bd27804ca9d6d50dd4009ba",
+      "bytes": 15799
+    },
+    {
+      "path": "checks/focused-initial.json",
+      "sha256": "6f21ea17f9b62e00a69da256b8117da28f74771fdbcf6b0d178cbbd4b6223306",
+      "bytes": 15701
+    },
+    {
+      "path": "checks/focused-repair1.json",
+      "sha256": "fc4ca0316319108d45b9321d9d6d346a44bcc2460f55ef60e354a653e0bd09a4",
+      "bytes": 15807
+    },
+    {
+      "path": "checks/format-ci-repair.json",
+      "sha256": "26a60f0cdd63132755965c00fb565c088d3b2e751f1b690741d7ceb019acf817",
+      "bytes": 16912
+    },
+    {
+      "path": "checks/format-final.json",
+      "sha256": "c252290d5dbb9264b9e5ba4f94cea2b116b676f19e5bc24dbaf2a0f62b09f121",
+      "bytes": 15565
+    },
+    {
+      "path": "checks/gateway-full-final.json",
+      "sha256": "945efff3ceda4232fb071912a65c2c4889c9b80745094677e5b8b92f331c1099",
+      "bytes": 15765
+    },
+    {
+      "path": "checks/python-guards-ci-repair.json",
+      "sha256": "11cd69ecf63415c9ac9d87f6c283a7b49d3b2f5823ab74fdbf7abece5df7f040",
+      "bytes": 17267
+    },
+    {
+      "path": "checks/python-guards-final.json",
+      "sha256": "b67399aba40e75332ed5f3f8d61ce8eba396514e2376973ac8c02634d2a50a8f",
+      "bytes": 15920
+    },
+    {
+      "path": "checks/python-guards.json",
+      "sha256": "a93a350e36a85edf9d60f21e092981fbf550f797f80c80f2191ce5c8e7e1c7e9",
+      "bytes": 15896
+    },
+    {
+      "path": "checks/runtime-pins-ci-repair.json",
+      "sha256": "a6ffdd0e658a2428495d58ed04c83c8eb213f61a17c954b80253f25384a083c9",
+      "bytes": 17437
+    },
+    {
+      "path": "checks/runtime-pins-final.json",
+      "sha256": "eea6cf97db9bb45eebe7f4a60ccd89b8d3876df37a1ae9dfa4a610bca78f6858",
+      "bytes": 16094
+    },
+    {
+      "path": "checks/runtime-pins.json",
+      "sha256": "56209701a09261c039399d55c47d307c7e48e5cc6b8142d289e55696183a91db",
+      "bytes": 16070
+    },
+    {
+      "path": "checks/source-diff-ci-repair.json",
+      "sha256": "6331b69354ef1a455741dd661cf3009ffa61d89c4d2227e7de0b562669622677",
+      "bytes": 16926
+    },
+    {
+      "path": "checks/source-diff-final.json",
+      "sha256": "dc9f632938e1d6f7aadc349b4638228157215db585d6b71d81065d09374f610f",
+      "bytes": 15581
+    },
+    {
+      "path": "checks/toolchain-ci-repair.json",
+      "sha256": "41f675052bd145ee4fc06400b5788a6e2830f313b93a326a2195dea8d91f345e",
+      "bytes": 17130
+    },
+    {
+      "path": "checks/verification-before-ci-repair.json",
+      "sha256": "3ebe55b7e83cc4c8a51ff71c25461a8e92b6845a7b0203fbdd1e34b050695f8d",
+      "bytes": 130302
+    },
+    {
+      "path": "ci-initial-all-completed.json",
+      "sha256": "6f63b8147df5d37ab37baa5e11beabd5195ca44b8a5581393a09240bd3affc63",
+      "bytes": 8409
+    },
+    {
+      "path": "ci-initial-pre-repair-state.json",
+      "sha256": "fbc405a7287a10685e100f599006e881fa7e2123ac11f960606a870bbd1cbd94",
+      "bytes": 8380
+    },
+    {
+      "path": "compiler-current-ci-repair.json",
+      "sha256": "e5ab5d37de0f58d5a41798bf91e7526ec0ad4e8c7ab1439b26c44e8b633b7eb7",
+      "bytes": 10563
+    },
+    {
+      "path": "compiler-resolution-ci-repair.json",
+      "sha256": "20233631120ec7b1d2569e419f249c7368624f6e9224b47908916c63af75792b",
+      "bytes": 9839
+    },
+    {
+      "path": "implementation-plan.md",
+      "sha256": "359301450922a3617514a5dc01d82120d764f1f4edb8b9292f8492860ffdb0a2",
+      "bytes": 6415
+    },
+    {
+      "path": "logs/ci-a07-initial.log",
+      "sha256": "35ac220e54d0816f2548b539e2924cfed6ec12e12ad14271c5319c8de865b081",
+      "bytes": 134867
+    },
+    {
+      "path": "logs/ci-lint-initial.log",
+      "sha256": "4990392c2f03882e896ba717641124c57ce71a8890fe149d3d0b03c774b774f6",
+      "bytes": 36303
+    },
+    {
+      "path": "logs/ci-release-initial.log",
+      "sha256": "fb7251a3646e67b15ee2e9ddfa9815c7764a1bbc9d23c442b1d29e682f1e4f1c",
+      "bytes": 36729
+    },
+    {
+      "path": "logs/ci-workspace-initial.log",
+      "sha256": "b560409f542eb4997bcb18f499984a763224af76857779f20fa2615b140f4390",
+      "bytes": 202512
+    },
+    {
+      "path": "logs/clippy-ci-repair.log",
+      "sha256": "1f0b2275d07e5eebdf8c412a96f57f2d97a8e26c84d04ee1d20a9bb51cf1e220",
+      "bytes": 8917
+    },
+    {
+      "path": "logs/clippy-ci-repair.stderr.log",
+      "sha256": "1f0b2275d07e5eebdf8c412a96f57f2d97a8e26c84d04ee1d20a9bb51cf1e220",
+      "bytes": 8917
+    },
+    {
+      "path": "logs/clippy-ci-repair.stdout.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "logs/clippy-final.log",
+      "sha256": "0a2f0aaf9bbf0e2a7a80a16f49c9e0eaa58b199e00313ba5faa4d574c18490d1",
+      "bytes": 187
+    },
+    {
+      "path": "logs/clippy-final.stderr.log",
+      "sha256": "0a2f0aaf9bbf0e2a7a80a16f49c9e0eaa58b199e00313ba5faa4d574c18490d1",
+      "bytes": 187
+    },
+    {
+      "path": "logs/clippy-final.stdout.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "logs/clippy-initial.log",
+      "sha256": "e490cd55a335d734398c89b0a020af216b498ec6e1dec34161f304bbef3206da",
+      "bytes": 1819
+    },
+    {
+      "path": "logs/clippy-initial.stderr.log",
+      "sha256": "e490cd55a335d734398c89b0a020af216b498ec6e1dec34161f304bbef3206da",
+      "bytes": 1819
+    },
+    {
+      "path": "logs/clippy-initial.stdout.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "logs/compiler-resolution-ci-repair.log",
+      "sha256": "1e73b0db5f4ad12b7deb02c5a0d257a4637a646fdbf05db3d4291b1c9ff416d5",
+      "bytes": 5001
+    },
+    {
+      "path": "logs/focused-ci-repair.log",
+      "sha256": "7e79db9b16e1ecf2098801084210b25bb84462870984a772eed8ccebc5379deb",
+      "bytes": 10938
+    },
+    {
+      "path": "logs/focused-ci-repair.stderr.log",
+      "sha256": "4289317d24b786e2e7da206b04d4520dbb357e7a1cb06223bb520eb4adc5c387",
+      "bytes": 7837
+    },
+    {
+      "path": "logs/focused-ci-repair.stdout.log",
+      "sha256": "d8e9c79bd0f95412929e7510f05328830509dba2b46564cbaad47911489ad05e",
+      "bytes": 3101
+    },
+    {
+      "path": "logs/focused-final.log",
+      "sha256": "7b0b17027e12c9cf77674f8a1ee5fca336b2f8393b9ae1865c116c29815f1cbb",
+      "bytes": 3369
+    },
+    {
+      "path": "logs/focused-final.stderr.log",
+      "sha256": "acde6cab82d391fb65d1cae193acca70002713d6e7cfa68ee7a8c76acc622e43",
+      "bytes": 268
+    },
+    {
+      "path": "logs/focused-final.stdout.log",
+      "sha256": "b4992e9f06db14ca4e02e629ad5b58e9a6d775f2a011d0c0d3cb72d32fad6e9b",
+      "bytes": 3101
+    },
+    {
+      "path": "logs/focused-initial.log",
+      "sha256": "7556880972fac40e65015bf6b335a9ec4f8f15968ad34a8b64177e2fd3c44494",
+      "bytes": 1337
+    },
+    {
+      "path": "logs/focused-initial.stderr.log",
+      "sha256": "7556880972fac40e65015bf6b335a9ec4f8f15968ad34a8b64177e2fd3c44494",
+      "bytes": 1337
+    },
+    {
+      "path": "logs/focused-initial.stdout.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "logs/focused-repair1.log",
+      "sha256": "c2d1e7cae8fc177299d9a2dfe521facb129b3725b5be3b9dd0f79e74bc5a07ae",
+      "bytes": 3369
+    },
+    {
+      "path": "logs/focused-repair1.stderr.log",
+      "sha256": "f7b4d38ead1de5b5f1a4ddb54632bc3e786e4866e36835ccb9a0c4acfb1ac999",
+      "bytes": 268
+    },
+    {
+      "path": "logs/focused-repair1.stdout.log",
+      "sha256": "8577e57505e3775fdbe9f8d6d580434000802fff6d89479fa2af86c9d6de353d",
+      "bytes": 3101
+    },
+    {
+      "path": "logs/format-ci-repair.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "logs/format-ci-repair.stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "logs/format-ci-repair.stdout.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "logs/format-final.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "logs/format-final.stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "logs/format-final.stdout.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "logs/gateway-full-final.log",
+      "sha256": "cf4ff86c02db81d16dfb1835eb101abafd6eec66d049c30415dd7918184f7539",
+      "bytes": 59766
+    },
+    {
+      "path": "logs/gateway-full-final.stderr.log",
+      "sha256": "0ae7702271da6566c2ad122b3fa21d0241e79c1c39a92c2cee1297943c900025",
+      "bytes": 153
+    },
+    {
+      "path": "logs/gateway-full-final.stdout.log",
+      "sha256": "932923195538cbf29919ef3aaffb976adada4687b1535fe00a47e34f4cb0b63d",
+      "bytes": 59613
+    },
+    {
+      "path": "logs/python-guards-ci-repair.log",
+      "sha256": "2b1a6b1602a82d1801f49d15c52f12351ec9b6dbd4bed44aedced51a55a7372a",
+      "bytes": 7033
+    },
+    {
+      "path": "logs/python-guards-ci-repair.stderr.log",
+      "sha256": "2b1a6b1602a82d1801f49d15c52f12351ec9b6dbd4bed44aedced51a55a7372a",
+      "bytes": 7033
+    },
+    {
+      "path": "logs/python-guards-ci-repair.stdout.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "logs/python-guards-final.log",
+      "sha256": "ee05a3bc687c7c5054d6ef016e09a9bfd952872bc9e0dac598debb3404125fba",
+      "bytes": 7032
+    },
+    {
+      "path": "logs/python-guards-final.stderr.log",
+      "sha256": "ee05a3bc687c7c5054d6ef016e09a9bfd952872bc9e0dac598debb3404125fba",
+      "bytes": 7032
+    },
+    {
+      "path": "logs/python-guards-final.stdout.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "logs/python-guards.log",
+      "sha256": "38c0432c10c9aaaa7008f52922d2a5d9de0b8cbd6bcb2822efec8cafb40bd14e",
+      "bytes": 7032
+    },
+    {
+      "path": "logs/python-guards.stderr.log",
+      "sha256": "38c0432c10c9aaaa7008f52922d2a5d9de0b8cbd6bcb2822efec8cafb40bd14e",
+      "bytes": 7032
+    },
+    {
+      "path": "logs/python-guards.stdout.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "logs/runtime-pins-ci-repair.log",
+      "sha256": "cd6f22387ed79a9c83c6a2c15b82e4ccd1dfe70f0444399a72b604e82c1f09a4",
+      "bytes": 643
+    },
+    {
+      "path": "logs/runtime-pins-ci-repair.stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "logs/runtime-pins-ci-repair.stdout.log",
+      "sha256": "cd6f22387ed79a9c83c6a2c15b82e4ccd1dfe70f0444399a72b604e82c1f09a4",
+      "bytes": 643
+    },
+    {
+      "path": "logs/runtime-pins-final.log",
+      "sha256": "cd6f22387ed79a9c83c6a2c15b82e4ccd1dfe70f0444399a72b604e82c1f09a4",
+      "bytes": 643
+    },
+    {
+      "path": "logs/runtime-pins-final.stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "logs/runtime-pins-final.stdout.log",
+      "sha256": "cd6f22387ed79a9c83c6a2c15b82e4ccd1dfe70f0444399a72b604e82c1f09a4",
+      "bytes": 643
+    },
+    {
+      "path": "logs/runtime-pins.log",
+      "sha256": "cd6f22387ed79a9c83c6a2c15b82e4ccd1dfe70f0444399a72b604e82c1f09a4",
+      "bytes": 643
+    },
+    {
+      "path": "logs/runtime-pins.stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "logs/runtime-pins.stdout.log",
+      "sha256": "cd6f22387ed79a9c83c6a2c15b82e4ccd1dfe70f0444399a72b604e82c1f09a4",
+      "bytes": 643
+    },
+    {
+      "path": "logs/source-diff-ci-repair.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "logs/source-diff-ci-repair.stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "logs/source-diff-ci-repair.stdout.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "logs/source-diff-final.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "logs/source-diff-final.stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "logs/source-diff-final.stdout.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "logs/toolchain-ci-repair.log",
+      "sha256": "815aae25e332466459c3aa9efe1ac02215b07364c29f96005a10d576cef99dc6",
+      "bytes": 2042
+    },
+    {
+      "path": "logs/toolchain-ci-repair.stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "logs/toolchain-ci-repair.stdout.log",
+      "sha256": "815aae25e332466459c3aa9efe1ac02215b07364c29f96005a10d576cef99dc6",
+      "bytes": 2042
+    },
+    {
+      "path": "merge-history-recheck.json",
+      "sha256": "d8d5988f227627c6a91f0609ed2378de74cd8b164be31e4dae215405fd04be3a",
+      "bytes": 2360
+    },
+    {
+      "path": "merge-observations.json",
+      "sha256": "abfa75e66bcd2bdce03b9da4b7f1683ef1377e72407d9c852155b09c07309709",
+      "bytes": 16243
+    },
+    {
+      "path": "next-gpu-free-a4.md",
+      "sha256": "8cccd48c6eade47c6d53f42cf4e28d4f3f50109b744a919e6ef58ea297ef53c2",
+      "bytes": 6645
+    },
+    {
+      "path": "preservation-ci-publication.json",
+      "sha256": "329291c01690efbbf7e04f73c0e02a9b49cb5fa3c3e11eb7f7a9a2d2beabd31a",
+      "bytes": 1746
+    },
+    {
+      "path": "preservation-ci-repair.json",
+      "sha256": "b22d6f3807647b1c16aa131040903b4a37559641b04acb6951a7c84faa14cf85",
+      "bytes": 1274
+    },
+    {
+      "path": "preservation-publication.json",
+      "sha256": "1c4288d15becdfb07b22e57118e6fd197a5100fdfea606de0f8c5b414d521bbd",
+      "bytes": 1274
+    },
+    {
+      "path": "repair-history.json",
+      "sha256": "b827a439664b39585d8d43a7e4d46573f70775a0075ffcbcaf214dfee88322c1",
+      "bytes": 2592
+    },
+    {
+      "path": "root-validation-ci-repair.json",
+      "sha256": "920dff7067320b1aec38a07c45ac1b937142dd7a40f521a0dd60787f4c853771",
+      "bytes": 128475
+    },
+    {
+      "path": "root-validation.json",
+      "sha256": "0ce52bce59e963dcba7e86bd28c02a5d11f659e4ff466dfa1f741dc3790c6af2",
+      "bytes": 91714
+    },
+    {
+      "path": "tested-code-commit.json",
+      "sha256": "7032ec4a91a8c721293e07dc4cece509f844e3353a00dcb469ee1e4e4a8f58ae",
+      "bytes": 537
+    },
+    {
+      "path": "tool-versions.json",
+      "sha256": "efd6a598dbeac61e588915be085cde8bb9d40d09a3b3bfbc1656f5f8f673b532",
+      "bytes": 914
+    },
+    {
+      "path": "workflow-budget-ci-repair.json",
+      "sha256": "36d908e7089fe7ff6d7865e092e7119ea38cf59f0e43b8dad33fedbc84d86cde",
+      "bytes": 9209
+    }
+  ],
+  "initial_validation": {
+    "code_commit": "44b81edd3ac4c2781e91ddbbb75f9bd9dd882d44",
+    "publication_commit": "c98ff6e3c541085df29b4a679af7f84ecc9ee471",
+    "ledger_snapshot": "checks/verification-before-ci-repair.json",
+    "root_validation": "root-validation.json",
+    "local_actual_compiler": "Homebrew Rust1.95",
+    "local_full_result": "628 PASS/0 FAIL/21 intentional IGNORE",
+    "linux_actual_compiler": "Rust1.99",
+    "linux_full_result": "628 PASS/0 FAIL/21 intentional IGNORE,194.18s",
+    "linux_job": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38174780200/job/114574763445",
+    "complete_initial_ci_passed": false,
+    "all_three_failed_jobs_same_lint": true,
+    "additional_workspace_cancellation": "20-minutejobbudget; witness stepcancelled andnostd skipped, notPASS; raw logretained"
+  },
+  "local_full_suite_repeated_after_repair": false,
+  "current_local_validation_scope": "Focused26, workspaceClippy, format, Python47 andpins with explicit Rust1.99 toolchain child resolution; initial full results are historical",
+  "publication_ci_merge_gate": "Fresh exact publication head, all19 SUCCESS, clean local matchinghead, normalmerge only",
+  "ci_configuration_commit": "eb07a79297dcf2e4ac3e8b6506c8a7b5007a96bc",
+  "ci_configuration_sha256": {
+    ".github/workflows/ci.yml": "6058fce74352cbd052a6e9d4e5e176a334aa6929eaa4f3b9fdf97b8d13a8d603"
+  },
+  "validation_scope": "Localhost evidence; initial remote CI observations explicitly separate. Local fresh SP1 CPU/Foundry flags do not describe separate existing Linux CI gates."
+}

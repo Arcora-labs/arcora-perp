@@ -6,3 +6,6 @@ docs/audits/2026-10-11-chainlink-native-contract-bridge/cpu/*.bin binary
 docs/audits/2026-10-11-chainlink-native-contract-bridge/source/*.bin binary
 # Preserve complete raw command output, including terminal empty lines.
 docs/audits/2026-10-11-chainlink-native-contract-bridge/logs/*.log binary
+
+# Preserve exact raw broadcast recovery command output.
+docs/audits/2026-10-11-chainlink-broadcast-outcome/logs/*.log binary

@@ -1,0 +1,101 @@
+Compiler identity read-only inspection
+Observed: 2026-10-11T21:16:36.700784+00:00
+CWD: /Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011
+
+DWARF command: ["xcrun", "dwarfdump", "--debug-info", "target/debug/incremental/gateway-0lwz5v10e68di/s-hn4fagbffa-0tdhyva-3k4kt0tilqa07jusdmsd3fifl/8ndvilzu8jaxazcvrrsk2r7mn.o"]
+Exit: 0
+0x0000000b: DW_TAG_compile_unit
+              DW_AT_producer	("clang LLVM (rustc version 1.95.0 (59807616e 2026-04-14) (Homebrew))")
+              DW_AT_name	("crates/gateway/src/main.rs/@/8ndvilzu8jaxazcvrrsk2r7mn")
+
+Original object: {"path": "target/debug/incremental/gateway-0lwz5v10e68di/s-hn4fagbffa-0tdhyva-3k4kt0tilqa07jusdmsd3fifl/8ndvilzu8jaxazcvrrsk2r7mn.o", "bytes": 325136, "sha256": "940d4a095b9546d7a47d2959334127039db01c54d981a5133c8c01e3b5d85d42", "modified_utc": "2026-10-11T20:46:06.216297+00:00"}
+Original test fingerprint: {"path": "target/debug/.fingerprint/gateway-610b7230a2c5bb73/test-bin-gateway.json", "bytes": 1823, "sha256": "a74c2f97fcd0563b5fc53a5d2c33239c7973cbbe4254d006576445b7288bc4c8", "modified_utc": "2026-10-11T20:46:12.951684+00:00", "rustc_fingerprint": 8730184584288912426}
+Original test executable: {"path": "target/debug/deps/gateway-610b7230a2c5bb73", "bytes": 45549976, "sha256": "0aaef91efb4e708b44cae360add7095be930a0c27e3bf8a61a20a535f3ec7566", "modified_utc": "2026-10-11T20:46:12.441767+00:00", "embedded_standard_library_source_paths": ["/rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library"]}
+
+Command: ["rustup", "run", "1.99.0", "which", "rustc"]
+Exit: 0
+/opt/homebrew/bin/rustc
+
+Command: ["rustup", "run", "1.99.0", "which", "cargo-clippy"]
+Exit: 0
+/opt/homebrew/bin/cargo-clippy
+
+Command: ["rustup", "run", "1.99.0", "which", "rustfmt"]
+Exit: 0
+/opt/homebrew/bin/rustfmt
+
+Command: ["/opt/homebrew/bin/rustc", "-Vv"]
+Exit: 0
+rustc 1.95.0 (59807616e 2026-04-14) (Homebrew)
+binary: rustc
+commit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860
+commit-date: 2026-04-14
+host: aarch64-apple-darwin
+release: 1.95.0
+LLVM version: 22.1.3
+
+Command: ["/opt/homebrew/bin/cargo-clippy", "--version"]
+Exit: 0
+clippy 0.1.95
+
+Command: ["/opt/homebrew/bin/rustfmt", "--version"]
+Exit: 0
+rustfmt 1.9.0
+
+Command: ["rustup", "which", "--toolchain", "1.99.0", "rustc"]
+Exit: 0
+/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/rustc
+
+Command: ["/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/rustc", "-Vv"]
+Exit: 0
+rustc 1.99.0 (b940084d7 2026-09-28)
+binary: rustc
+commit-hash: b940084d7eb6a299eb4bfeb8e34901bc051e7ac4
+commit-date: 2026-09-28
+host: aarch64-apple-darwin
+release: 1.99.0
+LLVM version: 23.1.1
+
+Command: ["rustup", "which", "--toolchain", "1.99.0", "clippy-driver"]
+Exit: 0
+/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/clippy-driver
+
+Command: ["/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/clippy-driver", "-V"]
+Exit: 0
+clippy 0.1.99 (b940084d7e 2026-09-28)
+
+Command: ["rustup", "which", "--toolchain", "1.99.0", "rustfmt"]
+Exit: 0
+/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/rustfmt
+
+Command: ["/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/rustfmt", "--version"]
+Exit: 0
+rustfmt 1.10.0-stable (b940084d7e 2026-09-28)
+
+{
+  "original_local_gateway_test_compiler": "rustc 1.95.0 (59807616e 2026-04-14) (Homebrew)",
+  "original_local_clippy": "clippy 0.1.95",
+  "original_local_rustfmt": "rustfmt 1.9.0",
+  "direct_rustup_component_compiler": "rustc 1.99.0 (b940084d7 2026-09-28)",
+  "cause": "rustup run resolves its direct requested binary in the named toolchain but retains the original PATH for Cargo child tools. Original PATH resolves rustc/cargo-clippy/rustfmt to Homebrew 1.95. The original gateway object DWARF independently identifies Rust 1.95.",
+  "scope": "Original local full 628/0/21 is a Rust 1.95-compiled executable; retained CI A07 full 628/0/21 uses Linux Rust 1.99. This inspection performs no new build/test or CI mutation. Corrected root-owned checks require their own receipts. Current overwritten target/.rustc_info.json cannot identify the historical compiler."
+}
+
+Retained original full-suite executable/result binding:
+{
+  "stdout_log": {
+    "path": "docs/audits/2026-10-11-chainlink-broadcast-outcome/logs/gateway-full-final.stdout.log",
+    "bytes": 59613,
+    "sha256": "932923195538cbf29919ef3aaffb976adada4687b1535fe00a47e34f4cb0b63d"
+  },
+  "stderr_log": {
+    "path": "docs/audits/2026-10-11-chainlink-broadcast-outcome/logs/gateway-full-final.stderr.log",
+    "bytes": 153,
+    "sha256": "0ae7702271da6566c2ad122b3fa21d0241e79c1c39a92c2cee1297943c900025"
+  },
+  "stderr_excerpt": "    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.83s\n     Running unittests src/main.rs (target/debug/deps/gateway-610b7230a2c5bb73)\n",
+  "result_summary": [
+    "test result: ok. 628 passed; 0 failed; 21 ignored; 0 measured; 0 filtered out; finished in 811.97s"
+  ],
+  "executable_matches_observed_binary": true
+}

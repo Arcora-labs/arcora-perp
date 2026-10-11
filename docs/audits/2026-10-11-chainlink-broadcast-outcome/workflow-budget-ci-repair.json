@@ -1,0 +1,263 @@
+{
+  "schema": "arcora-broadcast-outcome-ci-budget-v1",
+  "observed_utc": "2026-10-11T21:26:51.130088+00:00",
+  "initial_publication_head": "c98ff6e3c541085df29b4a679af7f84ecc9ee471",
+  "ci_configuration_commit": "eb07a79297dcf2e4ac3e8b6506c8a7b5007a96bc",
+  "jobs": {
+    "initial51": {
+      "id": 114574763818,
+      "run_id": 38174780121,
+      "workflow_name": "ci",
+      "head_branch": "feat/chainlink-broadcast-outcome-20261011",
+      "run_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/actions/runs/38174780121",
+      "run_attempt": 1,
+      "node_id": "CR_kwDOTE9S5M8AAAAarTAnKg",
+      "head_sha": "c98ff6e3c541085df29b4a679af7f84ecc9ee471",
+      "url": "https://api.github.com/repos/Arcora-labs/arcora-perp/actions/jobs/114574763818",
+      "html_url": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38174780121/job/114574763818",
+      "status": "completed",
+      "conclusion": "cancelled",
+      "created_at": "2026-10-11T21:03:33Z",
+      "started_at": "2026-10-11T21:03:35Z",
+      "completed_at": "2026-10-11T21:23:41Z",
+      "name": "rust (workspace)",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1,
+          "started_at": "2026-10-11T21:03:36Z",
+          "completed_at": "2026-10-11T21:03:39Z"
+        },
+        {
+          "name": "Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2,
+          "started_at": "2026-10-11T21:03:39Z",
+          "completed_at": "2026-10-11T21:03:43Z"
+        },
+        {
+          "name": "Run dtolnay/rust-toolchain@stable",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3,
+          "started_at": "2026-10-11T21:03:43Z",
+          "completed_at": "2026-10-11T21:03:52Z"
+        },
+        {
+          "name": "Run Swatinem/rust-cache@v2",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4,
+          "started_at": "2026-10-11T21:03:52Z",
+          "completed_at": "2026-10-11T21:04:00Z"
+        },
+        {
+          "name": "Install cast for localhost L1 fixture tests",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 5,
+          "started_at": "2026-10-11T21:04:00Z",
+          "completed_at": "2026-10-11T21:04:05Z"
+        },
+        {
+          "name": "test",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6,
+          "started_at": "2026-10-11T21:04:05Z",
+          "completed_at": "2026-10-11T21:19:25Z"
+        },
+        {
+          "name": "witness serialization (serde feature)",
+          "status": "completed",
+          "conclusion": "cancelled",
+          "number": 7,
+          "started_at": "2026-10-11T21:19:25Z",
+          "completed_at": "2026-10-11T21:23:38Z"
+        },
+        {
+          "name": "zkVM-guest builds (no_std, incl. serde witness)",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 8,
+          "started_at": "2026-10-11T21:23:38Z",
+          "completed_at": "2026-10-11T21:23:38Z"
+        },
+        {
+          "name": "Post Install cast for localhost L1 fixture tests",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 14,
+          "started_at": "2026-10-11T21:23:38Z",
+          "completed_at": "2026-10-11T21:23:38Z"
+        },
+        {
+          "name": "Post Run Swatinem/rust-cache@v2",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 15,
+          "started_at": "2026-10-11T21:23:38Z",
+          "completed_at": "2026-10-11T21:23:38Z"
+        },
+        {
+          "name": "Post Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 16,
+          "started_at": "2026-10-11T21:23:38Z",
+          "completed_at": "2026-10-11T21:23:38Z"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 17,
+          "started_at": "2026-10-11T21:23:38Z",
+          "completed_at": "2026-10-11T21:23:38Z"
+        }
+      ],
+      "check_run_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/check-runs/114574763818",
+      "labels": [
+        "ubuntu-latest"
+      ],
+      "runner_id": 1000001073,
+      "runner_name": "GitHub Actions 1000001073",
+      "runner_group_id": 0,
+      "runner_group_name": "GitHub Actions"
+    },
+    "previous50": {
+      "id": 114511259020,
+      "run_id": 38153378881,
+      "workflow_name": "ci",
+      "head_branch": "feat/chainlink-native-contract-bridge-20261011",
+      "run_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/actions/runs/38153378881",
+      "run_attempt": 1,
+      "node_id": "CR_kwDOTE9S5M8AAAAaqWcljA",
+      "head_sha": "d792d323d53fda6974096aa474f9b8313b8e7adb",
+      "url": "https://api.github.com/repos/Arcora-labs/arcora-perp/actions/jobs/114511259020",
+      "html_url": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38153378881/job/114511259020",
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-10-11T15:56:32Z",
+      "started_at": "2026-10-11T15:56:34Z",
+      "completed_at": "2026-10-11T16:13:42Z",
+      "name": "rust (workspace)",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1,
+          "started_at": "2026-10-11T15:56:35Z",
+          "completed_at": "2026-10-11T15:56:37Z"
+        },
+        {
+          "name": "Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2,
+          "started_at": "2026-10-11T15:56:37Z",
+          "completed_at": "2026-10-11T15:56:38Z"
+        },
+        {
+          "name": "Run dtolnay/rust-toolchain@stable",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3,
+          "started_at": "2026-10-11T15:56:38Z",
+          "completed_at": "2026-10-11T15:56:48Z"
+        },
+        {
+          "name": "Run Swatinem/rust-cache@v2",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4,
+          "started_at": "2026-10-11T15:56:48Z",
+          "completed_at": "2026-10-11T15:56:48Z"
+        },
+        {
+          "name": "Install cast for localhost L1 fixture tests",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 5,
+          "started_at": "2026-10-11T15:56:48Z",
+          "completed_at": "2026-10-11T15:56:53Z"
+        },
+        {
+          "name": "test",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6,
+          "started_at": "2026-10-11T15:56:53Z",
+          "completed_at": "2026-10-11T16:09:47Z"
+        },
+        {
+          "name": "witness serialization (serde feature)",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 7,
+          "started_at": "2026-10-11T16:09:47Z",
+          "completed_at": "2026-10-11T16:13:26Z"
+        },
+        {
+          "name": "zkVM-guest builds (no_std, incl. serde witness)",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 8,
+          "started_at": "2026-10-11T16:13:26Z",
+          "completed_at": "2026-10-11T16:13:34Z"
+        },
+        {
+          "name": "Post Install cast for localhost L1 fixture tests",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 14,
+          "started_at": "2026-10-11T16:13:34Z",
+          "completed_at": "2026-10-11T16:13:34Z"
+        },
+        {
+          "name": "Post Run Swatinem/rust-cache@v2",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 15,
+          "started_at": "2026-10-11T16:13:34Z",
+          "completed_at": "2026-10-11T16:13:40Z"
+        },
+        {
+          "name": "Post Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 16,
+          "started_at": "2026-10-11T16:13:40Z",
+          "completed_at": "2026-10-11T16:13:41Z"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 17,
+          "started_at": "2026-10-11T16:13:41Z",
+          "completed_at": "2026-10-11T16:13:41Z"
+        }
+      ],
+      "check_run_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/check-runs/114511259020",
+      "labels": [
+        "ubuntu-latest"
+      ],
+      "runner_id": 1000001034,
+      "runner_name": "GitHub Actions 1000001034",
+      "runner_group_id": 0,
+      "runner_group_name": "GitHub Actions"
+    }
+  },
+  "raw_initial_log_sha256": "b560409f542eb4997bcb18f499984a763224af76857779f20fa2615b140f4390",
+  "change": "only rust(workspace) timeout20 to30 minutes",
+  "assertions_and_commands_changed": false,
+  "test_threads": 2,
+  "no_std_initial_step": "SKIPPED after jobdeadline; notPASS",
+  "new_head_complete_ci_required": true,
+  "production_release": "HOLD"
+}

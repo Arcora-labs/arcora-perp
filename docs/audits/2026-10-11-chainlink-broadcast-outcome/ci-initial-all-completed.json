@@ -1,0 +1,227 @@
+{
+  "observed_utc": "2026-10-11T21:24:18.151038+00:00",
+  "pr": {
+    "baseRefOid": "0ea5048627840cbe7e125d7b914b1303b109b224",
+    "headRefOid": "c98ff6e3c541085df29b4a679af7f84ecc9ee471",
+    "isDraft": true,
+    "mergeCommit": null,
+    "mergeStateStatus": "BLOCKED",
+    "mergeable": "MERGEABLE",
+    "mergedAt": null,
+    "number": 51,
+    "state": "OPEN",
+    "statusCheckRollup": [
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-10-11T21:08:17Z",
+        "conclusion": "FAILURE",
+        "detailsUrl": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38174780200/job/114574763445",
+        "name": "rust",
+        "startedAt": "2026-10-11T21:03:35Z",
+        "status": "COMPLETED",
+        "workflowName": "A07 integration hotfix"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-10-11T21:04:09Z",
+        "conclusion": "FAILURE",
+        "detailsUrl": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38174780121/job/114574763858",
+        "name": "rust (lint, 1.99)",
+        "startedAt": "2026-10-11T21:03:35Z",
+        "status": "COMPLETED",
+        "workflowName": "ci"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-10-11T21:04:00Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38174780058/job/114574763003",
+        "name": "dependency advisories",
+        "startedAt": "2026-10-11T21:03:35Z",
+        "status": "COMPLETED",
+        "workflowName": "A11 release evidence"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-10-11T21:03:58Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38174780227/job/114574763727",
+        "name": "Chainlink candidate core (not live verification)",
+        "startedAt": "2026-10-11T21:03:35Z",
+        "status": "COMPLETED",
+        "workflowName": "Chainlink candidate"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-10-11T21:04:51Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38174780106/job/114574762934",
+        "name": "offline-ingestion",
+        "startedAt": "2026-10-11T21:03:35Z",
+        "status": "COMPLETED",
+        "workflowName": "a01-ingestion"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-10-11T21:04:03Z",
+        "conclusion": "FAILURE",
+        "detailsUrl": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38174780058/job/114574762877",
+        "name": "release regression",
+        "startedAt": "2026-10-11T21:03:35Z",
+        "status": "COMPLETED",
+        "workflowName": "A11 release evidence"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-10-11T21:23:41Z",
+        "conclusion": "CANCELLED",
+        "detailsUrl": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38174780121/job/114574763818",
+        "name": "rust (workspace)",
+        "startedAt": "2026-10-11T21:03:35Z",
+        "status": "COMPLETED",
+        "workflowName": "ci"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-10-11T21:04:03Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38174780200/job/114574763591",
+        "name": "frontend",
+        "startedAt": "2026-10-11T21:03:35Z",
+        "status": "COMPLETED",
+        "workflowName": "A07 integration hotfix"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-10-11T21:04:15Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38174780227/job/114574763480",
+        "name": "Chainlink REST client (runtime regressions)",
+        "startedAt": "2026-10-11T21:03:36Z",
+        "status": "COMPLETED",
+        "workflowName": "Chainlink candidate"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-10-11T21:04:03Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38174780058/job/114574763012",
+        "name": "foundry release gate",
+        "startedAt": "2026-10-11T21:03:35Z",
+        "status": "COMPLETED",
+        "workflowName": "A11 release evidence"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-10-11T21:16:55Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38174780121/job/114574763824",
+        "name": "prover crates (excluded, typecheck)",
+        "startedAt": "2026-10-11T21:03:35Z",
+        "status": "COMPLETED",
+        "workflowName": "ci"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-10-11T21:06:10Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38174780058/job/114574763015",
+        "name": "gateway RPC, crash and alert drills",
+        "startedAt": "2026-10-11T21:03:35Z",
+        "status": "COMPLETED",
+        "workflowName": "A11 release evidence"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-10-11T21:03:54Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38174780121/job/114574763855",
+        "name": "contracts (foundry)",
+        "startedAt": "2026-10-11T21:03:35Z",
+        "status": "COMPLETED",
+        "workflowName": "ci"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-10-11T21:03:56Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38174780058/job/114574763056",
+        "name": "frontend release gate",
+        "startedAt": "2026-10-11T21:03:35Z",
+        "status": "COMPLETED",
+        "workflowName": "A11 release evidence"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-10-11T21:04:06Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38174780121/job/114574763666",
+        "name": "frontend (vite)",
+        "startedAt": "2026-10-11T21:03:35Z",
+        "status": "COMPLETED",
+        "workflowName": "ci"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-10-11T21:03:44Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38174780058/job/114574763051",
+        "name": "prover source / deployment binding",
+        "startedAt": "2026-10-11T21:03:35Z",
+        "status": "COMPLETED",
+        "workflowName": "A11 release evidence"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-10-11T21:03:41Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://vercel.com/github",
+        "name": "Vercel Preview Comments",
+        "startedAt": "2026-10-11T21:03:41Z",
+        "status": "COMPLETED",
+        "workflowName": ""
+      },
+      {
+        "__typename": "StatusContext",
+        "context": "Vercel \u2013 arcora-labs",
+        "startedAt": "2026-10-11T21:03:27Z",
+        "state": "SUCCESS",
+        "targetUrl": "https://vercel.com/kubudak90s-projects/arcora-labs/7aSz8uEo171sKs9rVUoBVxrxJWoj"
+      },
+      {
+        "__typename": "StatusContext",
+        "context": "Vercel \u2013 arcora-perp",
+        "startedAt": "2026-10-11T21:03:40Z",
+        "state": "SUCCESS",
+        "targetUrl": "https://vercel.com/kubudak90s-projects/arcora-perp/G75stkd7WfmXex5Ckqyx75MCDWky"
+      }
+    ],
+    "url": "https://github.com/Arcora-labs/arcora-perp/pull/51"
+  },
+  "local_head": "92d469335c67967d45fa7d0360d7345329e57bb1",
+  "local_status": " M docs/ACTIVE_WORK.md\n M docs/audits/2026-10-11-chainlink-broadcast-outcome/README.md\n M docs/audits/2026-10-11-chainlink-broadcast-outcome/repair-history.json\n",
+  "head_matches_local": false,
+  "summary": {
+    "total": 19,
+    "success": 15,
+    "remaining": [
+      [
+        "rust",
+        "FAILURE"
+      ],
+      [
+        "rust (lint, 1.99)",
+        "FAILURE"
+      ],
+      [
+        "release regression",
+        "FAILURE"
+      ],
+      [
+        "rust (workspace)",
+        "CANCELLED"
+      ]
+    ]
+  },
+  "production_release": "HOLD"
+}
