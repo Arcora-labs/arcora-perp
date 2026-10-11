@@ -159,7 +159,7 @@ impl Fixture {
         assert!(journal.witness.manifest.ordered.contains(&self.order));
         assert_eq!(journal.ww.len(), 1);
         assert_eq!(journal.ww[0].leaf(), self.leaf);
-        persist_recovery(&self.gw, &self.dir.state(), &SEED, false).unwrap();
+        persist_recovery(&self.gw, &self.dir.state(), &SEED, None).unwrap();
         journal
     }
     fn restore(&mut self) {
@@ -197,7 +197,7 @@ impl Fixture {
             &self.dir.state(),
             &self.dir.journal(),
             &SEED,
-            false,
+            None,
         );
         assert!(!self.dir.journal().exists());
         self.assert_uncommitted();
@@ -422,7 +422,7 @@ fn restart_expired_session_retry_pending_then_durable_roll_forward() {
                 ),
                 BootRecoveryOutcome::DeleteJournal { mutated: true }
             );
-            finish_boot_recovery(&f.gw, true, &f.dir.state(), &f.dir.journal(), &SEED, false);
+            finish_boot_recovery(&f.gw, true, &f.dir.state(), &f.dir.journal(), &SEED, None);
             assert!(!f.dir.journal().exists());
             f.restore();
             assert_eq!(f.gw.finality_str(&f.order), "SETTLED");
@@ -450,7 +450,7 @@ fn restart_expired_session_retry_pending_then_durable_roll_forward() {
                 ),
                 BootRecoveryOutcome::DeleteJournal { mutated: false }
             );
-            finish_boot_recovery(&f.gw, false, &f.dir.state(), &f.dir.journal(), &SEED, false);
+            finish_boot_recovery(&f.gw, false, &f.dir.state(), &f.dir.journal(), &SEED, None);
             assert_eq!(f.gw.snapshot_plain(), committed);
         },
     );
