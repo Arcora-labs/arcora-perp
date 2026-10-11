@@ -1,0 +1,52 @@
+{
+  "schema": "arcora-chainlink-lifecycle-process-guards-v1",
+  "observed_utc": "2026-10-11T11:20:29.869504+00:00",
+  "binary_sha256": "a0bb38d0dd78a55d7be021c1e40dae2ce09c91e62a442073cf951bfe625d9524",
+  "source_fixture_manifest_sha256": "cb7bbbb3b02fccdd25df8938c3c70e4eb45bb5079011c3abe11fe6d7c88b540b",
+  "passed": true,
+  "checks": [
+    {
+      "name": "wrong-elf",
+      "exit_code": 1,
+      "expected_error": "candidate ELF pin mismatch",
+      "observed_output": "Error: \"candidate ELF pin mismatch\"\n",
+      "no_output_directory": true,
+      "passed": true
+    },
+    {
+      "name": "wrong-manifest",
+      "exit_code": 1,
+      "expected_error": "lifecycle manifest pin mismatch",
+      "observed_output": "Error: \"lifecycle manifest pin mismatch\"\n",
+      "no_output_directory": true,
+      "passed": true
+    },
+    {
+      "name": "witness-corruption",
+      "exit_code": 1,
+      "expected_error": "lifecycle witness binding mismatch",
+      "observed_output": "Error: \"lifecycle witness binding mismatch\"\n",
+      "no_output_directory": true,
+      "passed": true
+    },
+    {
+      "name": "missing-required-flow",
+      "exit_code": 1,
+      "expected_error": "required real gateway lifecycle case missing",
+      "observed_output": "Error: \"required real gateway lifecycle case missing\"\n",
+      "no_output_directory": true,
+      "passed": true
+    },
+    {
+      "name": "symlink-witness",
+      "exit_code": 1,
+      "expected_error": "lifecycle input is not a bounded regular file",
+      "observed_output": "Error: \"lifecycle input is not a bounded regular file\"\n",
+      "no_output_directory": true,
+      "passed": true
+    }
+  ],
+  "proof_generated": false,
+  "real_don_verified": false,
+  "candidate_submission": "HOLD"
+}

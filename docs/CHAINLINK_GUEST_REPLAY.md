@@ -4,6 +4,14 @@
 Mevcut reviewed v2 guest yerine geçmez. Ayrı adayın SP1 yürütmesi ve program
 anahtarı, açıkça sentetik bir regresyon kümesi üzerinde kontrol edilir.
 
+11 Ekim 2026 A3 devamı: mevcut 19-case kümesine ek olarak gerçek gateway
+normal açılış/funding/close/withdrawal ve liquidation akışlarından iki v3 witness
+üretilip aynı sabit aday ELF'te yürütüldü. İki native commitment eşit; eksik
+evidence/yanlış market/eski quote negatiflerinde guest exit 1/boş çıktı var.
+Yeni `replay-chainlink-lifecycle` ve CI exporter adımı için kaynak, fixture ve
+CPU çıktıları: [A3 fiyat yaşam döngüsü](audits/2026-10-11-chainlink-price-lifecycle/README.md).
+Bu beş vaka yeni proof veya canlı rapor doğrulaması değildir.
+
 ## Sabit aday kimliği
 
 - SP1 SDK ve aday guest ailesi: `6.1.0`.

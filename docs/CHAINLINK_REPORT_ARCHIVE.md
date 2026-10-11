@@ -132,6 +132,14 @@ kullanan yollar (A3); ayrı aday prover/settlement protokolü (A4). Canlı feed 
 ertelenmiş açık kapıdır.
 Yeni aday witness reviewed v2 prover'a gönderilmez.
 
+A3 devamı bu dalda özgün rapor seçimini order/tick/matching/funding/liquidation/
+close/withdrawal fiyat kullanımından önce doğrular; normal withdrawal artık
+publisher zamanını yeniden damgalamaz. Eksik binding bütün checkpoint/recovery
+yollarında HOLD eder. Gerçek gateway normal ve liquidation akışlarından üretilmiş
+iki sentetik v3 witness native ve sabitlenmiş SP1 CPU commitment'larını eşleştirir;
+üç negatif guest exit 1/boş çıktı verir. Canlı DON veya proof kapısı kapanmaz.
+Kanıt: [A3 fiyat yaşam döngüsü](audits/2026-10-11-chainlink-price-lifecycle/README.md).
+
 11 Ekim 2026 güncellemesi: gateway/journal bağlantısı bu dalda eklendi
 (`crates/gateway/src/report_archive_binding.rs`, journal sürümü `DPRBJL6\0`,
 opt-in env `DARKPERP_CHAINLINK_ARCHIVE=candidate` + `DARKPERP_CHAINLINK_ARCHIVE_DIR`

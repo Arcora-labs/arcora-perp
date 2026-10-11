@@ -1,0 +1,63 @@
+{
+  "synthetic": true,
+  "real_don_verified": false,
+  "proof_generated": false,
+  "candidate_submission": "HOLD",
+  "cases": [
+    {
+      "name": "normal-lifecycle",
+      "witness_file": "normal-lifecycle.witness.bin",
+      "witness_sha256": "587d8a9f065a04c4df2a441e4cbabfd2d407accc117772f1ee8745bcae4eb980",
+      "witness_bytes": 9460,
+      "outcome": "PASS",
+      "native_error": null,
+      "expected_commitment": "04ab38060610893a7f15e889c1d83b5116985c96f0051834aebe132800fa59a6",
+      "op_count": 10,
+      "evidence_count": 9
+    },
+    {
+      "name": "liquidation",
+      "witness_file": "liquidation.witness.bin",
+      "witness_sha256": "5910ca22fd419bb53d29df9a11c15e6e7c90eee55210ef99000349c86a37a14d",
+      "witness_bytes": 8490,
+      "outcome": "PASS",
+      "native_error": null,
+      "expected_commitment": "cc780e5f095a37f9a7f9bacb237e1c6009da1fb2ddde3a24bdccad543d2ceb18",
+      "op_count": 8,
+      "evidence_count": 8
+    },
+    {
+      "name": "missing-lifecycle-evidence",
+      "witness_file": "missing-lifecycle-evidence.witness.bin",
+      "witness_sha256": "fee2e52f64b975961ec208b6a596d75b9956562990ff35c697c5784bebf969a8",
+      "witness_bytes": 4204,
+      "outcome": "REJECT",
+      "native_error": "Evidence",
+      "expected_commitment": "",
+      "op_count": 10,
+      "evidence_count": 0
+    },
+    {
+      "name": "wrong-lifecycle-market",
+      "witness_file": "wrong-lifecycle-market.witness.bin",
+      "witness_sha256": "fad6ecec2a82a4156b0c6f712f0331e35c9cd8bc57e18fb973d338fe1eeebe96",
+      "witness_bytes": 9460,
+      "outcome": "REJECT",
+      "native_error": "Evidence",
+      "expected_commitment": "",
+      "op_count": 10,
+      "evidence_count": 9
+    },
+    {
+      "name": "stale-lifecycle-quote",
+      "witness_file": "stale-lifecycle-quote.witness.bin",
+      "witness_sha256": "d31c204e6768bbd61bd7a3faf992fef4cc8f4b20f602469d277ad4ead9d156e4",
+      "witness_bytes": 9460,
+      "outcome": "REJECT",
+      "native_error": "Time",
+      "expected_commitment": "",
+      "op_count": 10,
+      "evidence_count": 9
+    }
+  ]
+}

@@ -1,0 +1,83 @@
+{
+  "artifacts": {
+    "liquidation.public-values.bin": {
+      "sha256": "2b69ac477667e89aeb16cc794512762ec2e54da8ee7c9a2f5cb220581f3c1efc",
+      "size_bytes": 32
+    },
+    "missing-lifecycle-evidence.public-values.bin": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size_bytes": 0
+    },
+    "normal-lifecycle.public-values.bin": {
+      "sha256": "a1557fc1168260dfde3a3108264c80f487003134f343ed66d75bad423204180c",
+      "size_bytes": 32
+    },
+    "stale-lifecycle-quote.public-values.bin": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size_bytes": 0
+    },
+    "wrong-lifecycle-market.public-values.bin": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size_bytes": 0
+    }
+  },
+  "candidate_elf_sha256": "48a8eb8e6acd96057a72ca74db5077ac9e85d30d2ec830518ef1f1ac3832ef1f",
+  "candidate_submission": "HOLD",
+  "cases": [
+    {
+      "cycles": 27238504,
+      "elapsed_seconds": 0.566071625,
+      "guest_exit_code": 0,
+      "name": "normal-lifecycle",
+      "outcome": "PASS",
+      "public_values_hex": "04ab38060610893a7f15e889c1d83b5116985c96f0051834aebe132800fa59a6",
+      "witness_sha256": "587d8a9f065a04c4df2a441e4cbabfd2d407accc117772f1ee8745bcae4eb980"
+    },
+    {
+      "cycles": 24294229,
+      "elapsed_seconds": 0.490304792,
+      "guest_exit_code": 0,
+      "name": "liquidation",
+      "outcome": "PASS",
+      "public_values_hex": "cc780e5f095a37f9a7f9bacb237e1c6009da1fb2ddde3a24bdccad543d2ceb18",
+      "witness_sha256": "5910ca22fd419bb53d29df9a11c15e6e7c90eee55210ef99000349c86a37a14d"
+    },
+    {
+      "cycles": 367586,
+      "elapsed_seconds": 0.01702175,
+      "guest_exit_code": 1,
+      "name": "missing-lifecycle-evidence",
+      "outcome": "REJECT",
+      "public_values_hex": "",
+      "witness_sha256": "fee2e52f64b975961ec208b6a596d75b9956562990ff35c697c5784bebf969a8"
+    },
+    {
+      "cycles": 468143,
+      "elapsed_seconds": 0.018311583,
+      "guest_exit_code": 1,
+      "name": "wrong-lifecycle-market",
+      "outcome": "REJECT",
+      "public_values_hex": "",
+      "witness_sha256": "fad6ecec2a82a4156b0c6f712f0331e35c9cd8bc57e18fb973d338fe1eeebe96"
+    },
+    {
+      "cycles": 470936,
+      "elapsed_seconds": 0.023253,
+      "guest_exit_code": 1,
+      "name": "stale-lifecycle-quote",
+      "outcome": "REJECT",
+      "public_values_hex": "",
+      "witness_sha256": "d31c204e6768bbd61bd7a3faf992fef4cc8f4b20f602469d277ad4ead9d156e4"
+    }
+  ],
+  "fixture_manifest_sha256": "cb7bbbb3b02fccdd25df8938c3c70e4eb45bb5079011c3abe11fe6d7c88b540b",
+  "guest_executed": true,
+  "native_guest_equal": true,
+  "program_vkey": "0x006aa3cfa389566dd318c9bf12f3946a623555e5f624359037e2d5c4d35ad590",
+  "proof_generated": false,
+  "real_don_verified": false,
+  "schema": "arcora-chainlink-lifecycle-cpu-v1",
+  "schema_version": 1,
+  "status": "PASS",
+  "synthetic": true
+}

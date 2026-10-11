@@ -77,9 +77,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.99.0
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: |
+            .
             crates/sp1-host
             crates/prover-service
       - name: install protoc (sp1-prover-types build script)
@@ -109,7 +112,7 @@ jobs:
       - name: Build optimized exact synthetic funds replay host (guest build skipped)
         env:
           CARGO_BUILD_JOBS: '2'
-        run: cargo build --release --locked --manifest-path crates/sp1-host/Cargo.toml --bin replay-funds --bin replay-chainlink
+        run: cargo build --release --locked --manifest-path crates/sp1-host/Cargo.toml --bin replay-funds --bin replay-chainlink --bin replay-chainlink-lifecycle
       - name: Reject incomplete or substituted normal-wallet witnesses
         run: |
           python3 scripts/local-verification/verify_funds_replay.py \
@@ -131,6 +134,32 @@ jobs:
             --binary crates/sp1-host/target/release/replay-chainlink \
             --elf contracts/integration/fixtures/chainlink-candidate-v1/guest.elf \
             --output-dir /tmp/arcora-chainlink-candidate-replay
+      - name: Execute real gateway price lifecycle in candidate guest (synthetic, no DON or proof)
+        timeout-minutes: 10
+        env:
+          CARGO_BUILD_JOBS: '2'
+          RAYON_NUM_THREADS: '2'
+          TOKIO_WORKER_THREADS: '2'
+          ARCORA_CHAINLINK_PRICE_LIFECYCLE_EXPORT: ${{ runner.temp }}/arcora-chainlink-lifecycle-inputs
+        run: |
+          cargo test --locked -p gateway --bin gateway \
+            price_lifecycle_tests::export_candidate_price_lifecycle_for_cpu -- --ignored --exact --nocapture
+          lifecycle_manifest_sha=$(python3 -c 'import hashlib,os,pathlib;print(hashlib.sha256((pathlib.Path(os.environ["ARCORA_CHAINLINK_PRICE_LIFECYCLE_EXPORT"])/"manifest.json").read_bytes()).hexdigest())')
+          set -o pipefail
+          crates/sp1-host/target/release/replay-chainlink-lifecycle \
+            --elf contracts/integration/fixtures/chainlink-candidate-v1/guest.elf \
+            --input-dir "$ARCORA_CHAINLINK_PRICE_LIFECYCLE_EXPORT" \
+            --manifest-sha256 "$lifecycle_manifest_sha" \
+            --output-dir "$RUNNER_TEMP/arcora-chainlink-lifecycle-execution" \
+            2>&1 | tee "$RUNNER_TEMP/arcora-chainlink-lifecycle-execution.log"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: chainlink-gateway-price-lifecycle
+          path: |
+            ${{ runner.temp }}/arcora-chainlink-lifecycle-inputs
+            ${{ runner.temp }}/arcora-chainlink-lifecycle-execution
+            ${{ runner.temp }}/arcora-chainlink-lifecycle-execution.log
       - uses: actions/upload-artifact@v4
         if: always()
         with:
