@@ -2,11 +2,15 @@
 
 Güncelleme: 11 Ekim 2026. **PRODUCTION RELEASE HOLD**.
 Bu belge güncel çalışma sırasıdır; tarihsel `NEXT_STEPS.md` yerine kullanın.
-Son doğrulanan main: `c34fb56b05db13ce09efc0104c2d44abba6d6895` (#43).
-Aktif PR #44; doğrulanmış kod `e283958109fc6b434b7049d523bbd3378e2e6c27`.
-A0 dokümantasyonu `5cb1470` ile yayımlandı. A1 checkpoint/recovery kodu bu
-devam çalışmasında uygulandı; yeni yerel kanıt ve yayın head'inin CI sonucu
-ayrıca kaydedilir. Eski test sonucu yeni kodu kapsamaz.
+Son doğrulanan main: `c82dd492f74a47ab3806395dd05b46b3dff884e4` (#45).
+#44 ve #45, güncel yayın head'lerinde ayrı ayrı 19/19 başarılı kontrol sonrası
+normal merge edildi; repository korumaları değiştirilmedi. #44 merge kimliği
+`e697b2f19d74b1021ba3a32b64b4f15ceb159880`, #45 merge kimliği yukarıdadır.
+#45'in main ile güncellenmiş kontrol head'i `0f2fc42964bd25d5cd36e20f98d8edc61ab22210`;
+test edilmiş A1 ağacıyla eşitliği doğrulandı. Gözlem kaydı:
+[merge-observations.json](audits/2026-10-11-chainlink-archive-retention/merge-observations.json).
+A2 kapasite/indeks retention kodu bu dalda uygulanır. Yeni kodun yerel kanıtı ve
+yeni yayın head'inin CI sonucu ayrı kaydedilir; önceki yeşil sonuç aktarılmaz.
 
 ## Birleşmiş ve korunan çalışmalar
 
@@ -136,7 +140,7 @@ reviewed v2 guest/ELF/vkey/public input ve prover yönlendirmesi DEĞİŞMEDİ):
 
 - `admit_with`, kapasite → arşiv kalıcılığı → gateway kabulü → ilk ID seçimini
   aynı kilit kesitinde yapar; ret indekse girmez, alternatif kayıt seçilmiş ID'yi
-  değiştirmez. 4096 sınırında sessiz eviction yoktur; kapasite çözümü açık.
+  değiştirmez. 4096 gerçekten canlı girdide sessiz eviction yoktur.
 - A1 aday checkpoint'i authenticated plaintext içinde `DPCAS2\0\0` taşır:
   gateway state'i/açık op penceresi, tam politika bağı ve kanonik
   `(market, transcript) → ilk ArchiveId` kabul indeksi birlikte saklanır.
@@ -154,13 +158,29 @@ sıfır veri kaybı garantisi eklenmedi. Mevcut pre-seal `SealNeverPersisted`
 recovery satırı ve RPO sınırı korunur. Yeni kodun doğrulama kaydı:
 [A1 kabul indeksi recovery](audits/2026-10-11-chainlink-admission-recovery/README.md).
 
+A2, indeksin yalnız açık op penceresi, halen seçilmiş oracle ve authenticated
+v6 WAL referanslarını tutmasını sağlar. Seçilmiş kayıtlar doğrulanır; state ve
+önerilen indeks aynı başarılı atomik checkpoint'ten sonra kurulur. Runtime
+capture/write/install aynı iptal edilemeyen worker ve gateway mutasyon kilidi
+içindedir; başarısız veya eskimiş plan indeks değiştirmez. Yeni `DPCAS3` zarfı
+WAL beklentisini de saklar; eksik/bozuk beklenen WAL startup/checkpoint HOLD'udur.
+`DPCAS2` okunur; çözülmüş state kalıcılaştırılmadan recovery WAL'ı silinmez.
+
+Tam rapor dosyaları append-only kalır; backup/tarihsel referanslar için fiziksel
+GC yapılmaz. Yeni kimlikler 256 MiB / 65.536 girdi varsayılan mantıksal arşiv
+kotasıyla admission öncesinde sınırlanır. Candidate opsiyonel MAX_BYTES ve
+MAX_RECORDS ayarları, `.pending`/orphan sayımı ve değişmeyen özgün ID ile
+kapasite doluyken idempotent kabul ayrıca sınanır. Gerçek disk blok garantisi
+ve süreçler arası dağıtık kota kilidi iddiası yoktur. Kanıt:
+[A2 indeks retention ve kapasite](audits/2026-10-11-chainlink-archive-retention/README.md).
+
 ## Önce kapanacak GPU'suz yazılım paketleri
 
 | Sıra | İş | Kapanış ölçütü |
 |---|---|---|
-| A0 | #44 final evidence ve eski audit düzeltmesi | Exact kod SHA'sına bağlı JSON ve düzeltilmiş audit `5cb1470` ile yayımlandı; yayın head'inin CI kontrolü ayrı. |
-| A1 | Açık pencerenin özgün kabul ID'lerini kalıcılaştırma | DPCAS2 checkpoint ve doğrulanmış v6 journal'dan özgün ID recovery uygulandı. 535 gateway PASS (29 binding/restart dahil), 47 guard ve Clippy/format temiz; yeni PR head CI ayrı. Snapshot kesiti sonrası admission'lar için tüm-admission WAL garantisi yok. |
-| A2 | İndeks kapasitesi ve retention | 4096'yı aşan uzun koşuda aktif açık pencere/journal/recovery referanslarını kaybetmeden güvenli serbest bırakma; disk/indeks doluluk duruşu ve restart tutarlılığı. |
+| A0 | #44 final evidence ve eski audit düzeltmesi | #44 yayın head'i `5cb1470`, 19/19 başarılı kontrol sonrası normal merge edildi. |
+| A1 | Açık pencerenin özgün kabul ID'lerini kalıcılaştırma | #45 güncel head `0f2fc42`, 19/19 başarılı kontrol sonrası normal merge edildi. DPCAS2 + özgün v6 journal ID recovery; snapshot sonrası her admission için ayrı WAL garantisi yok. |
+| A2 | İndeks kapasitesi ve retention | Referansları doğrulayan checkpoint sonrası indeks retirement, DPCAS3 WAL beklentisi ve admission öncesi sonlu arşiv kotası uygulandı. 4.100 admission/restart dahil nihai yerel sonuç ayrı A2 kanıt kaydındadır; fiziksel GC yapılmaz. |
 | A3 | Fiyat kullanan bütün gateway yolları | Fill/funding/liquidation/close/mark/matching ve withdrawal aday yaşam döngüsü; eksik/eski/yanlış raporda ret; yeni guest CPU/native karşılaştırması ayrı. |
 | A4 | Ayrı aday prover/settlement protokolü | Doğru witness/program/vkey/report/clock/uptime bağları; yanlış sürümde sıfır registration/prove/broadcast; yerel harness ardından gerçek proof/verifier kabulü. |
 
@@ -209,6 +229,6 @@ değildir. README eski yanlış pin/host-only/snapshot testi/tarih/proof iddiala
 düzeltir; özgün ara notlar `historical-notes.md` içinde tarihsel olarak korunur.
 
 Recheck kaydındaki e283958 CI 19/19 SUCCESS'tir. Dokümantasyonun yayınlandığı
-head ve merge durumu GitHub'dan ayrıca okunur; eski yeşil sonuç aktarılmaz.
+`5cb1470` head'i de 19/19 SUCCESS sonrası #44 ile main'e birleşti.
 Native MockProverClient replay gerçek SP1 proof değildir. PRODUCTION RELEASE
 HOLD sürer. Birincil masaüstü checkout'un yerel değişiklikleri korunur.

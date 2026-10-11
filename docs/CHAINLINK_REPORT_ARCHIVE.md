@@ -6,6 +6,9 @@ gateway intake, authenticated v6 journal ve aday checkpoint ile bağlar.
 Legacy varsayılan davranış korunur; aday prover/settlement yolu kapalıdır.
 `e283958` için exact-code kanıtı: [önceki doğrulama](audits/2026-10-11-chainlink-archive-gateway-binding/README.md).
 A1 devam kodunun ayrı kaydı: [kabul indeksi recovery](audits/2026-10-11-chainlink-admission-recovery/README.md).
+A0/#44 ve A1/#45 artık main'dedir; her biri güncel yayın head'inde 19/19
+başarılı kontrol sonrası normal merge edildi. Bu dalın A2 kaydı:
+[indeks retention ve kapasite](audits/2026-10-11-chainlink-archive-retention/README.md).
 `chainlink-oracle` normalizasyon kodu aday guest'in de bağımlılığıdır; bütün
 Chainlink katmanı host-only değildir.
 
@@ -109,22 +112,23 @@ Arşiv ve üst dizinler güvenilen servis hesabının kontrolünde olmalıdır. 
 kontrolleri kötü niyetli aynı-UID/root sürecine veya eşzamanlı düşmanca path
 swap'e karşı dosya sistemi sandbox'ı değildir. Özel dizin izinleri bu güven
 modelinin parçasıdır. Gerçek disk bozulması, NFS/özel dosya sistemi kalıcılığı,
-toplam disk kotası, retention/GC ve üretim kapasitesi ayrıca değerlendirilmelidir.
+fiziksel GC ve üretim kapasitesi ayrıca değerlendirilmelidir. A2 sonlu mantıksal
+kota ekler; fiziksel disk blok garantisi vermez.
 SHA-256, güvenilir beklenen ID ile bütünlük kontrolüdür; zincir doğrulaması değildir.
 
 ## Yeniden çalıştırma
 
 ```sh
-cargo +1.99.0 test --locked --offline --manifest-path crates/chainlink-streams-client/Cargo.toml
-cargo +1.99.0 test --release --locked --offline --manifest-path crates/chainlink-streams-client/Cargo.toml
-cargo +1.99.0 clippy --locked --offline --manifest-path crates/chainlink-streams-client/Cargo.toml --all-targets -- -D warnings
+rustup run 1.99.0 cargo test --locked --offline --manifest-path crates/chainlink-streams-client/Cargo.toml
+rustup run 1.99.0 cargo test --release --locked --offline --manifest-path crates/chainlink-streams-client/Cargo.toml
+rustup run 1.99.0 cargo clippy --locked --offline --manifest-path crates/chainlink-streams-client/Cargo.toml --all-targets -- -D warnings
 ```
 
 İki guest programı/pinleri, reviewed root Cargo.toml, public input ve risk
 eşikleri korunur. Kök lock host facade girdileri nedeniyle değişmiştir;
 244 registry kimliği değişmemiştir. Production ayarı ve gerçek fon değişmedi.
-Sıradaki yazılım: güvenli kapasite/retention (A2); bütün fiyat kullanan yollar
-(A3); ayrı aday prover/settlement protokolü (A4). Canlı feed erişimi ayrıca
+Bu dal A2 indeks retention ve kapasiteyi uygular. Sıradaki yazılım: bütün fiyat
+kullanan yollar (A3); ayrı aday prover/settlement protokolü (A4). Canlı feed erişimi ayrıca
 ertelenmiş açık kapıdır.
 Yeni aday witness reviewed v2 prover'a gönderilmez.
 
@@ -136,7 +140,7 @@ Geçerli v5 legacy journal yazımı korunur; trailing plaintext artık reddedili
 Aday modda bağlanamayan oracle op'lu pencere seal edilmez; recovery eksik/bozuk/
 uyumsuz kayıtta HOLD eder. `admit_with` arşiv-kabul-indeks bağlantısını tek kilit
 kesitinde kurar; ilk seçilen ID sonradan eşdeğer fiyatlı kayıtla değiştirilemez.
-İndeks 4096 girdide sessiz eviction yerine reddeder; uzun süreli retention açık.
+İndeks 4096 gerçekten canlı girdide sessiz eviction yerine reddeder.
 A1 devamı: aday snapshot authenticated plaintext zarfı `DPCAS2\0\0` içinde
 state/açık pencere, tam politika bağı ve kanonik ilk kabul ID'lerini taşır.
 Gateway → archive kilit sırası intake/seal/checkpoint için aynıdır; kesit
@@ -156,6 +160,31 @@ admission'ların ayrıca kalıcı olduğu anlamına gelmez. A1 yeni test/yayın
 kanıtı eski `e283958` sonuçlarından ayrı kaydedilir.
 Sıfır-oracle ve wind-down dahil aday normal gönderim/exact-resume eski v2 yolda
 HOLD olur. Native MockProverClient replay gerçek SP1 proof değildir.
+
+## A2: indeks retention, WAL beklentisi ve arşiv kotası
+
+Checkpoint açık fiyatlı op'ların, halen seçilmiş market oracle'larının ve
+authenticated v6 WAL'ın özgün referanslarını doğrular. Önerilen indeks state ile
+birlikte kalıcı yazılmadan kurulmaz; başarısız/eski plan hiçbir seçimi değiştirmez.
+Runtime capture, kalıcı dosya yazımı ve indeks kurulumu aynı gateway mutasyon
+kilidini tutan, çağıranın iptaliyle kesilmeyen worker içinde tamamlanır.
+Yeni authenticated `DPCAS3` checkpoint'i WAL beklentisini taşır. Beklenen WAL'ın
+kaybı/bozulması HOLD eder. `DPCAS2` okuma uyumluluğu ve `DPCAS1` reddi korunur;
+recovery çözülmüş kesiti kalıcılaştırdıktan sonra WAL'ı siler. Snapshot RPO
+sınırı ve ayrı tüm-admission WAL'ın bulunmaması değişmez.
+
+Yalnız kabul indeksi emekliye ayrılır; tam rapor dosyaları append-only kalır.
+Backup/export/eski checkpoint referansları uzlaştırılmadan fiziksel GC yoktur.
+Varsayılan mantıksal sınır 256 MiB / 65.536 girdidir. Candidate modda opsiyonel
+`DARKPERP_CHAINLINK_ARCHIVE_MAX_BYTES` ve
+`DARKPERP_CHAINLINK_ARCHIVE_MAX_RECORDS` ile ayarlanır; sıfır/geçersiz veya
+candidate dışındaki kısmi konfigürasyon reddedilir. Canonical kayıtlar ve crash
+`.pending` dosyaları sınırlı envanterle sayılır; foreign/symlink/güvensiz izin/
+geçersiz boyut HOLD eder. Tek özel arşiv sahibi varsayılır; süreçler arası
+dağıtık kota kilidi eklenmedi. Yeni ID kota doluyken callback/state değişiminden
+önce reddedilir; mevcut özgün ID byte/hash/sync doğrulamasıyla idempotent kalır.
+`archive_pressure` log olayı sabit ve redacted'dır; alarm teslimi dayanıklılık
+kararının parçası değildir. Gerçek I/O hataları ayrıca fail-closed'dur.
 
 Birincil uygulama referansları:
 - https://doc.rust-lang.org/std/fs/fn.hard_link.html

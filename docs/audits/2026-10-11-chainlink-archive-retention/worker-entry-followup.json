@@ -1,0 +1,41 @@
+{
+  "schema": "arcora-worker-entry-followup/v1",
+  "scope": "Deterministic local test synchronization. No runtime snapshot ordering changes; no proof/DON/deployment claim.",
+  "before": {
+    "source_head": "afbb1f68aca7433437bcdaf55b9ac973446d1052",
+    "parent_saved_failure_log": "target/retention-validation-20261011/pre-worker-handshake-repair/gateway-full.log",
+    "reported_result": "540 passed, 1 failed: cancellation test could observe an unpolled lock_owned reservation before worker entry"
+  },
+  "after_source_commit": "1b5dcaac31e409fde1f554c5182c65c192da5c59",
+  "source_sha256": {
+    "crates/gateway/src/main.rs": "ca2f4d01e4452a9283c99518f14474472a8d9cc656792db1eee3c7d4443c7a3c",
+    "crates/gateway/src/report_archive_retention_tests.rs": "82f2ac32d5799f373f3952c14248bb09f8b20625f74d2ef8d95bff57b89f5d3b"
+  },
+  "logs_capture": "Tool-returned stdout/stderr text was transcribed retrospectively into these evidence logs. Commands were not rerun to create this record. Root final full-run logs are the direct filesystem captures.",
+  "checks": {
+    "focused": {
+      "path": "target/retention-validation-20261011/worker-entry-focused.log",
+      "sha256": "5877d6d9bf6958df3c590f0f0e7ea0c36954122262f5363a847930209be7019a",
+      "exit_code": 0,
+      "command": "rustup run 1.99.0 cargo test --locked --offline -p gateway retention_cancelled_caller_keeps_serial_and_mutation_barriers_until_save_install",
+      "passed": 1
+    },
+    "repeat": {
+      "path": "target/retention-validation-20261011/worker-entry-repeat.log",
+      "sha256": "1ea291b554a4855303f0adf2563e8187fa068facc6ecb792debda56e26334066",
+      "exit_code": 0,
+      "command": "Python ThreadPoolExecutor(max_workers=4), subprocess.run per iteration: target/debug/deps/gateway-610b7230a2c5bb73 --exact report_archive_binding::tests::retention_cancelled_caller_keeps_serial_and_mutation_barriers_until_save_install --test-threads=1; 100 iterations; each exit_code==0 and stdout contains '1 passed; 0 failed'; timeout20s each",
+      "runs": 100,
+      "parallel_processes": 4,
+      "passed": 100,
+      "failures": []
+    },
+    "clippy": {
+      "path": "target/retention-validation-20261011/worker-entry-clippy.log",
+      "sha256": "83a0d31b2daeb7d6c040b10377ab9293225519dab14045ac049d55136878e0f7",
+      "exit_code": 0,
+      "command": "rustup run 1.99.0 cargo clippy --locked --offline -p gateway --all-targets -- -D warnings"
+    }
+  },
+  "command_normalization": "Local rustup executable path normalized; original transcript logs remain local and have recorded SHA-256."
+}
