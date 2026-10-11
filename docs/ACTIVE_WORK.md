@@ -9,8 +9,9 @@ normal merge edildi; repository korumaları değiştirilmedi. #44 merge kimliği
 #45'in main ile güncellenmiş kontrol head'i `0f2fc42964bd25d5cd36e20f98d8edc61ab22210`;
 test edilmiş A1 ağacıyla eşitliği doğrulandı. Gözlem kaydı:
 [merge-observations.json](audits/2026-10-11-chainlink-archive-retention/merge-observations.json).
-A2 kapasite/indeks retention kodu bu dalda uygulanır. Yeni kodun yerel kanıtı ve
-yeni yayın head'inin CI sonucu ayrı kaydedilir; önceki yeşil sonuç aktarılmaz.
+A2 kapasite/indeks retention taslak #46'dadır. Bu dal A3 fiyat yaşam döngüsü
+paketidir ve #46 üzerine kuruludur. Her paketin yerel kanıtı ve yeni yayın
+head'inin CI sonucu ayrı kaydedilir; önceki yeşil sonuç aktarılmaz.
 
 ## Birleşmiş ve korunan çalışmalar
 
@@ -174,6 +175,16 @@ kapasite doluyken idempotent kabul ayrıca sınanır. Gerçek disk blok garantis
 ve süreçler arası dağıtık kota kilidi iddiası yoktur. Kanıt:
 [A2 indeks retention ve kapasite](audits/2026-10-11-chainlink-archive-retention/README.md).
 
+A3, gerçek order/tick/matching/funding/liquidation/close/withdrawal yollarında
+özgün seçilmiş raporu fiyat kullanımından önce doğrular. Withdrawal kaynak zamanı
+yeniden damgalanmaz. Eksik binding seal, checkpoint ve WAL silme yollarında
+legacy dönüşe izin vermez. Aday demo sentetik fiyatlı mutasyonları reddedilir;
+fiyat gerektirmeyen terminal wind-down korunur. Gerçek gateway normal lifecycle
+ve liquidation pencerelerinden üretilmiş v3 witness'ların native/CPU çıktıları
+eşittir; üç negatif guest exit 1/boş public çıktı verir. Nihai gateway 550 PASS,
+47 guard ve Clippy/format temizdir. Sentetik raporlar DON doğrulaması veya proof
+değildir. Kanıt: [A3 fiyat yaşam döngüsü](audits/2026-10-11-chainlink-price-lifecycle/README.md).
+
 ## Önce kapanacak GPU'suz yazılım paketleri
 
 | Sıra | İş | Kapanış ölçütü |
@@ -181,7 +192,7 @@ ve süreçler arası dağıtık kota kilidi iddiası yoktur. Kanıt:
 | A0 | #44 final evidence ve eski audit düzeltmesi | #44 yayın head'i `5cb1470`, 19/19 başarılı kontrol sonrası normal merge edildi. |
 | A1 | Açık pencerenin özgün kabul ID'lerini kalıcılaştırma | #45 güncel head `0f2fc42`, 19/19 başarılı kontrol sonrası normal merge edildi. DPCAS2 + özgün v6 journal ID recovery; snapshot sonrası her admission için ayrı WAL garantisi yok. |
 | A2 | İndeks kapasitesi ve retention | Referansları doğrulayan checkpoint sonrası indeks retirement, DPCAS3 WAL beklentisi ve admission öncesi sonlu arşiv kotası uygulandı. 4.100 admission/restart dahil nihai yerel sonuç ayrı A2 kanıt kaydındadır; fiziksel GC yapılmaz. |
-| A3 | Fiyat kullanan bütün gateway yolları | Fill/funding/liquidation/close/mark/matching ve withdrawal aday yaşam döngüsü; eksik/eski/yanlış raporda ret; yeni guest CPU/native karşılaştırması ayrı. |
+| A3 | Fiyat kullanan bütün gateway yolları | Aday priced mutasyon preflight'ları ve özgün withdrawal transcript'i uygulandı. 550 gateway PASS; iki gerçek gateway sentetik lifecycle witness'ında native/gerçek SP1 CPU commitment eşit, üç negatif exit 1/boş public çıktı. Yeni PR CI ayrı; submission HOLD. |
 | A4 | Ayrı aday prover/settlement protokolü | Doğru witness/program/vkey/report/clock/uptime bağları; yanlış sürümde sıfır registration/prove/broadcast; yerel harness ardından gerçek proof/verifier kabulü. |
 
 Canlı feed keşfi/entitlement kullanıcı kararıyla ertelenmiştir; A1–A4 yazılım
@@ -189,6 +200,10 @@ hazırlığını durdurmaz. Yeniden discovery/credential denemesi veya feed/eşi
 tahmini yapılmaz. DON doğrulaması, yeni proof ve canlı deployment kabulü olmadan
 aday gönderim engeli kaldırılmaz; v3 witness v2 prover'a GÖNDERİLMEZ.
 Ücretli erişim, gerçek credential/fon ve kamu zinciri işlemi ayrıca yetki ister.
+A4'ün ilk ayrı yazılım paketi için [offline protocol tasarımı](audits/2026-10-11-chainlink-price-lifecycle/next-a4-design.md)
+hazırlandı; henüz uygulanmış değildir. V3 witness v2 inner clock kullanır;
+full-report ABI input hash'i evidence body hash'inden ayrıdır ve uptime epoch
+wrapper kayıt durumudur. Bu bağlar prover/settlement harness'ında ayrıca sınanır.
 
 ## Açık işler ve kapanış ölçütleri
 

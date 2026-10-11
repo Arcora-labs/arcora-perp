@@ -946,6 +946,33 @@ impl ArchiveBinding {
         })
     }
 
+    /// Authorize a NEW price use against the canonical accepted record at the
+    /// operation's clock. Receipt/preparation time is never freshness authority.
+    /// Called before financial state or matcher/nonce mutation.
+    pub(crate) fn verify_current_oracle(
+        &self,
+        market_id: u64,
+        oracle: &perp_core::oracle::OracleTranscript,
+        now_ms: u64,
+    ) -> Result<(), BindError> {
+        let admitted = self
+            .admissions
+            .iter()
+            .find(|a| a.market_id == market_id && a.transcript.matches(oracle))
+            .ok_or(BindError::NoAdmission)?;
+        let pair = self
+            .archive
+            .load(admitted.id, &self.policy, market_id)
+            .map_err(|_| BindError::Archive)?;
+        let (normalized, _) = pair
+            .for_operation(now_ms)
+            .map_err(|_| BindError::Mismatch)?;
+        if !normalized.matches(oracle) {
+            return Err(BindError::Mismatch);
+        }
+        Ok(())
+    }
+
     /// Recovery/handoff: the sealed envelope must name THIS policy and every
     /// referenced record must still decode and re-normalize to the exact op
     /// transcript. Missing, corrupt, wrong-policy/market/op-time, or transcript

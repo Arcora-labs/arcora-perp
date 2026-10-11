@@ -1,0 +1,240 @@
+{
+  "tested_source_commit": "7f74867fe9313998fe6e7e4dfe5cffe83fe09c4f",
+  "final_commit": "e476ff1868a5e5320b8d1cd077253c87ed299e55",
+  "base_commit": "b3a9507ad5bda336511aba6869745b19b7b66f19",
+  "sha256": {
+    "crates/gateway/src/main.rs": "fd22b1947044ad7568f6dea8d0c0c54e6e7c6916fba0f3dce8d5127a6d042ed6",
+    "crates/gateway/src/report_archive_binding.rs": "8773c282dfab0005ef0d4d81a1b301731c26906caaa5ffdc5f5f0f8e87d34628",
+    "crates/gateway/src/price_lifecycle_tests.rs": "fbbf912358153423be149a95cb4f23fb89d7b5fc0d1292afc7f13cc02d56cf7b",
+    "crates/sp1-host/src/bin/replay-chainlink-lifecycle.rs": "f5b0c6da17567a2ea7b3236cb17bff97c6bf9d8d8ab9d62a956806bcff6a7926"
+  },
+  "crate_bytes_equal_after_doc_rebase": true,
+  "frozen_workflow_sha256": "8d7e627081606919321e34c059fff1fe1d714c884e75bf3f7e9d75033077b9ed",
+  "checks": [
+    {
+      "command": "cargo +1.99.0 test --locked -p gateway price_lifecycle_tests -- --nocapture",
+      "log": "target/a3-verification/focused-final.log",
+      "passed": 9,
+      "ignored": 1,
+      "exit_code": 0,
+      "log_sha256": "26c6c284b02dab5498a5ed0ae03e5252c725b92a507b0d0da80b15aec5e25381",
+      "test_summaries": [
+        "test result: ok. 9 passed; 0 failed; 1 ignored; 0 measured; 557 filtered out; finished in 1.06s"
+      ]
+    },
+    {
+      "command": "cargo +1.99.0 test --locked -p gateway report_archive_binding::tests::retention_cancelled_caller_keeps_serial_and_mutation_barriers_until_save_install -- --exact",
+      "log": "target/a3-verification/cancellation-final.log",
+      "passed": 1,
+      "exit_code": 0,
+      "log_sha256": "2f03cfade3415167032e37042b30cc4e8c6aaa7fded0afbed5c7767a705d62d1",
+      "test_summaries": [
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 566 filtered out; finished in 0.11s"
+      ]
+    },
+    {
+      "command": "cargo +1.99.0 test --locked -p gateway",
+      "log": "target/a3-verification/gateway-final.log",
+      "passed": 550,
+      "ignored": 17,
+      "exit_code": 0,
+      "log_sha256": "db9a632dfc9a5b067ba7df675082a018665be32e2dad96e7ecf39a48d32080a2",
+      "test_summaries": [
+        "test result: ok. 550 passed; 0 failed; 17 ignored; 0 measured; 0 filtered out; finished in 149.15s"
+      ]
+    },
+    {
+      "command": "cargo +1.99.0 clippy --locked --workspace --all-targets -- -D warnings",
+      "log": "target/a3-verification/clippy-final.log",
+      "exit_code": 0,
+      "log_sha256": "8a226c268eb8c7fbf82be483fb56b636db06d471a78dbc87d2d224611071cc8a",
+      "test_summaries": []
+    },
+    {
+      "command": "cargo +1.99.0 fmt --all -- --check",
+      "exit_code": 0
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0
+    },
+    {
+      "command": "ARCORA_CHAINLINK_PRICE_LIFECYCLE_EXPORT=/tmp/arcora-price-lifecycle-20261011-a3-final cargo +1.99.0 test --locked -p gateway price_lifecycle_tests::export_candidate_price_lifecycle_for_cpu -- --ignored --exact",
+      "log": "target/a3-verification/export-final.log",
+      "passed": 1,
+      "exit_code": 0,
+      "log_sha256": "274d5d55657d9edf5962f1d67c4f86c92d5bbae9172daf8c9d13f86521f475fa",
+      "test_summaries": [
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 566 filtered out; finished in 0.73s"
+      ]
+    }
+  ],
+  "fixture_manifest": "fixtures/manifest.json",
+  "fixture_manifest_sha256": "cb7bbbb3b02fccdd25df8938c3c70e4eb45bb5079011c3abe11fe6d7c88b540b",
+  "synthetic": true,
+  "proof_generated": false,
+  "real_don_verified": false,
+  "candidate_submission": "HOLD",
+  "a3_commit_paths": [
+    "crates/gateway/src/main.rs",
+    "crates/gateway/src/price_lifecycle_tests.rs",
+    "crates/gateway/src/report_archive_binding.rs",
+    "crates/sp1-host/src/bin/replay-chainlink-lifecycle.rs"
+  ],
+  "command_forms": "Agent-recorded replay command forms; root supplemental commands are recorded as executed arrays. Rustup form is recommended when cargo is not its shim.",
+  "root_checks": {
+    "schema": "arcora-lifecycle-root-validation-v1",
+    "source_commit": "e476ff1868a5e5320b8d1cd077253c87ed299e55",
+    "source_sha256": {
+      "crates/gateway/src/main.rs": "fd22b1947044ad7568f6dea8d0c0c54e6e7c6916fba0f3dce8d5127a6d042ed6",
+      "crates/gateway/src/report_archive_binding.rs": "8773c282dfab0005ef0d4d81a1b301731c26906caaa5ffdc5f5f0f8e87d34628",
+      "crates/gateway/src/price_lifecycle_tests.rs": "fbbf912358153423be149a95cb4f23fb89d7b5fc0d1292afc7f13cc02d56cf7b",
+      "crates/sp1-host/src/bin/replay-chainlink-lifecycle.rs": "f5b0c6da17567a2ea7b3236cb17bff97c6bf9d8d8ab9d62a956806bcff6a7926"
+    },
+    "workflow_sha256": "8d7e627081606919321e34c059fff1fe1d714c884e75bf3f7e9d75033077b9ed",
+    "observed_start_utc": "2026-10-11T11:19:55.684515+00:00",
+    "checks": [
+      {
+        "name": "guards",
+        "command": [
+          "/opt/homebrew/bin/python3.12",
+          "-c",
+          "import sys,unittest;sys.path.insert(0,\"scripts/local-verification\");s=unittest.defaultTestLoader.loadTestsFromNames([\"test_verify_clock_proof\",\"test_check_sp1_release\",\"test_chainlink_replay\",\"test_repository_policy\",\"test_operator_policy\"]);r=unittest.TextTestRunner(verbosity=2).run(s);sys.exit(not r.wasSuccessful())"
+        ],
+        "exit_code": 0,
+        "elapsed_seconds": 0.805,
+        "log": "target/a3-verification/root-guards.log",
+        "log_sha256": "3070265b591543b33c9c20a863c2bfd98caca37a095f98a9cf5ae3d7f21ec9a5",
+        "summary": [
+          "Ran 47 tests in 0.715s"
+        ]
+      },
+      {
+        "name": "pins",
+        "command": [
+          "/opt/homebrew/bin/python3.12",
+          "-c",
+          "import sys,json;sys.path.insert(0,\"scripts/local-verification\");from verify_clock_proof import verify_guest_source;from run_chainlink_replay import candidate_sources;from check_sp1_release import check;from check_chainlink_candidate import check as cc;r={\"reviewed\":len(verify_guest_source()),\"candidate\":len(candidate_sources()),\"release\":check(),\"candidate_lock\":cc()};print(json.dumps(r));assert r[\"release\"][\"passed\"] and r[\"candidate_lock\"][\"passed\"]"
+        ],
+        "exit_code": 0,
+        "elapsed_seconds": 0.064,
+        "log": "target/a3-verification/root-pins.log",
+        "log_sha256": "98f7f54bb5f839c94ec893a6aeee342ca9a2949317c79363ae47d2f521fa0601",
+        "summary": []
+      },
+      {
+        "name": "host-clippy",
+        "command": [
+          "rustup",
+          "run",
+          "1.99.0",
+          "cargo",
+          "clippy",
+          "--release",
+          "--manifest-path",
+          "crates/sp1-host/Cargo.toml",
+          "--bin",
+          "replay-chainlink-lifecycle",
+          "--locked",
+          "--offline",
+          "--",
+          "-D",
+          "warnings"
+        ],
+        "exit_code": 0,
+        "elapsed_seconds": 2.367,
+        "log": "target/a3-verification/root-host-clippy.log",
+        "log_sha256": "43ada2f48b21b469d5c9913cb005a74312464c2f9f967e13e7deb7aabd4221c5",
+        "summary": [
+          "    Finished `release` profile [optimized] target(s) in 2.22s"
+        ]
+      },
+      {
+        "name": "workflow-yaml",
+        "command": [
+          "ruby",
+          "-ryaml",
+          "-e",
+          "v=YAML.load_file(\".github/workflows/ci.yml\");j=v.fetch(\"jobs\").fetch(\"excluded-crates-typecheck\");abort \"missing lifecycle step\" unless j.fetch(\"steps\").any? { |s| s[\"name\"] == \"Execute real gateway price lifecycle in candidate guest (synthetic, no DON or proof)\" };puts \"YAML parse PASS\""
+        ],
+        "exit_code": 0,
+        "elapsed_seconds": 0.059,
+        "log": "target/a3-verification/root-workflow-yaml.log",
+        "log_sha256": "2605a30bc58d75736174bfb8edb47be5ef4866c2e6f711366975152a46c7e9c2",
+        "summary": [
+          "YAML parse PASS"
+        ]
+      },
+      {
+        "name": "diff",
+        "command": [
+          "git",
+          "diff",
+          "--check"
+        ],
+        "exit_code": 0,
+        "elapsed_seconds": 0.01,
+        "log": "target/a3-verification/root-diff.log",
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "summary": []
+      }
+    ],
+    "source_bytes_unchanged": true,
+    "observed_end_utc": "2026-10-11T11:19:58.994031+00:00"
+  },
+  "cpu_execution": {
+    "manifest": "cpu-execution/manifest.json",
+    "manifest_sha256": "f37bbd437d40c2c083c6b3a4e148c39f9442062311a16d69ef353ac3de9d2320",
+    "execution_exit_code": 0,
+    "total_cycles": 52839398,
+    "accepted": 2,
+    "rejected_without_public_output": 3,
+    "elf_sha256": "48a8eb8e6acd96057a72ca74db5077ac9e85d30d2ec830518ef1f1ac3832ef1f",
+    "program_vkey": "0x006aa3cfa389566dd318c9bf12f3946a623555e5f624359037e2d5c4d35ad590",
+    "proof_generated": false,
+    "real_don_verified": false
+  },
+  "process_guards": {
+    "manifest": "process-guards.json",
+    "sha256": "e614bb3ae0427eef0118e8c821a0032f3c6ce3fee22c5a9c3b6fe2a9b1429649",
+    "passed": 5,
+    "cpu_setup_not_reached": true
+  },
+  "ci_equivalent_local_step": {
+    "exit_code": 0,
+    "script_sha256": "e38bb8b507ac3d6f019b4cf6d9eed9649bf5d42c706f011e9a4c40fef9424b31",
+    "log": "target/a3-verification/ci-equivalent/combined.log",
+    "log_sha256": "bb285aec28d562455f4e2bc47ac1062df6b14deea65ce901ee59705af2b2ccaa",
+    "execution_manifest_sha256": "14a42c8953725f14dd9b29c7bf28f5909479cae93ea20374ce4d25d8cde9a7c0",
+    "adaptations": [
+      "Rustup selects the same Rust1.99.0 toolchain",
+      "Added --offline using existing cache",
+      "Binary path selects the existing separate SP1 target",
+      "RUNNER_TEMP points to an owned local target subdirectory"
+    ]
+  },
+  "guest_core_root_manifest_and_locks_unchanged": true,
+  "host_build_environment": {
+    "toolchain": "1.99.0",
+    "sdk": "6.1.0",
+    "SP1_SKIP_PROGRAM_BUILD": "true",
+    "protoc": "Existing local sidecar; no install or guest rebuild for lifecycle driver",
+    "note": "Earlier missing-protoc and incorrect boolean skip flag attempts failed during build setup; corrected build succeeded. No guest/source pin changed."
+  },
+  "counts": {
+    "gateway_passed": 550,
+    "gateway_failed": 0,
+    "gateway_ignored": 17,
+    "focused_lifecycle_passed": 9,
+    "explicit_export_passed": 1,
+    "python_guards_passed": 47,
+    "cpu_accepted": 2,
+    "cpu_rejected": 3,
+    "process_guards_passed": 5,
+    "reviewed_pins": 21,
+    "candidate_pins": 9
+  },
+  "publication_time_utc": "2026-10-11T11:21:57.341734+00:00",
+  "production_release": "HOLD",
+  "raw_logs_published": false
+}
