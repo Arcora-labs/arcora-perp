@@ -48,6 +48,14 @@ mod bootstrap;
 #[cfg(test)]
 mod candidate_bridge;
 #[cfg(test)]
+mod candidate_broadcast;
+#[cfg(test)]
+mod candidate_broadcast_lock_tests;
+#[cfg(test)]
+mod candidate_broadcast_store;
+#[cfg(test)]
+mod candidate_broadcast_tests;
+#[cfg(test)]
 mod candidate_intent;
 #[cfg(test)]
 mod candidate_protocol;
