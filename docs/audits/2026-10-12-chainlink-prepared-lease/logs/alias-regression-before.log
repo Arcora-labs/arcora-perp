@@ -1,0 +1,28 @@
+
+running 10 tests
+test candidate_preparation_store::tests::preparation_store_binding_failures_poison_without_rollback ... ok
+test candidate_preparation_store::tests::preparation_store_binding_fixed_format_domain_authentication_and_identity ... ok
+test candidate_preparation_store::tests::preparation_store_deterministic_lane_and_private_canonical_paths ... ok
+test candidate_preparation_store::tests::preparation_store_explicit_existing_source_adoption_pins_exact_request ... ok
+test candidate_preparation_store::tests::preparation_store_alias_permissions_bounds_and_parent_replacement_fail_closed ... ok
+test candidate_preparation_store::tests::preparation_store_parent_case_alias_cannot_acquire_second_physical_lease ... ok
+test candidate_preparation_store::tests::preparation_store_owned_adjacent_writes_refresh_only_exact_source_cut ... ok
+test candidate_preparation_store::tests::preparation_store_replacements_external_creates_and_stable_lock_loss_refuse ... ok
+test candidate_preparation_store::tests::preparation_store_source_failures_preserve_or_expose_exact_new_cut ... ok
+test candidate_preparation_store::tests::preparation_store_uppercase_source_basename_cannot_create_another_lane ... FAILED
+
+failures:
+
+failures:
+    candidate_preparation_store::tests::preparation_store_uppercase_source_basename_cannot_create_another_lane
+
+test result: FAILED. 9 passed; 1 failed; 0 ignored; 0 measured; 668 filtered out; finished in 0.70s
+
+   Compiling gateway v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 5.30s
+     Running unittests src/main.rs (target/debug/deps/gateway-e2e0fc6b5916941a)
+
+thread 'candidate_preparation_store::tests::preparation_store_uppercase_source_basename_cannot_create_another_lane' (14239982) panicked at crates/gateway/src/candidate_preparation_store.rs:778:9:
+assertion failed: matches!(CoordinationStore::new(alias, SEED), Err(StoreError::Path))
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+error: test failed, to rerun pass `-p gateway --bin gateway`

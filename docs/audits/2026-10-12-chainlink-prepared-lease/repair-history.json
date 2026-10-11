@@ -1,0 +1,22 @@
+{
+  "schema": "arcora-prepared-lease-repair-v1",
+  "initial_targeted_budget": 2,
+  "rounds": [
+    {
+      "round": 1,
+      "trigger": "focused-initial compile101: newIPC requestassert used unavailablePartialEq/Debug",
+      "fix": "Exact canonical request_bytes assertion in newIPC only; no protocoltype/guard/testweakening. Read-only acceptance gap also adds ClockPending save3failuremodes to completeall6checkpointcuts.",
+      "observed_utc": "2026-10-11T23:05:46.766584+00:00"
+    },
+    {
+      "round": 2,
+      "trigger": "Fresh owned APFS case probe shows sourcecasealias sameinode; alias-regression-before9PASS/1FAIL(actualuppercasectoraccepted). ParentcasectoralreadyPathreject; Clippy1.99initialPASS.",
+      "fix": "Sourcebasename lowerASCII namespace policy; lock/binding filenames lengthframed physicalparentdev/ino/uid+basename hash, authenticatedrawpathdigest unchanged. Alloldstoreformats/goldens intact.",
+      "observed_utc": "2026-10-11T23:16:50.297989+00:00"
+    }
+  ],
+  "old_test_assertions_changed": false,
+  "old_store_formats_changed": false,
+  "guards_weakened": false,
+  "raw_failures_retained": true
+}

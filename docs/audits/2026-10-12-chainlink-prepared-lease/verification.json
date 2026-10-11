@@ -1,0 +1,512 @@
+{
+  "schema": "arcora-prepared-lease-verification-v1",
+  "observed_utc": "2026-10-11T23:27:06.559301+00:00",
+  "base_main": "56f91ab740d5cce42edcc287ded4b0c39eb4f9f8",
+  "code_commit": "606894c7dbe7faf688fd1e8d169e7e89430c07f0",
+  "source_sha256": {
+    "crates/gateway/src/main.rs": "8cb583af611e4eb28137e5fccfb766e3c22b67b31ad79da401166f2f92a4cfe5",
+    "crates/gateway/src/candidate_recovery.rs": "41ec00cfab8f95c22a10832f3b8223808755bf3cdb2dc74293627b22e4531499",
+    "crates/gateway/src/candidate_recovery_store.rs": "7e84cd99cd59dfba309af240b8a70dbfb66b84184008caa5137d06de9387d0df",
+    "crates/gateway/src/candidate_preparation.rs": "b9820e24632e997cfd06144c5bd6a9d217f90cadb7528bfa4b993d7e8ef8ed84",
+    "crates/gateway/src/candidate_preparation_store.rs": "4588fbb0234755d1ff6b994c5c1b3783653fe21f035d616122ea01dfc2b932e7",
+    "crates/gateway/src/candidate_preparation_tests.rs": "338c57f72c0993b3d7d534e99983680e04602d9b805f3190a9c262decf22081b",
+    "crates/gateway/src/candidate_preparation_lock_tests.rs": "91d1c7462e5cd0266b6376a7f17e120f7ba0368c24691e10c8b403e8854a6acc",
+    "crates/gateway/src/candidate_broadcast.rs": "1c8fdabe0e1bdbad9e70cd326eef827f3bd0169be9ae55f1e6678bee87ec3be4",
+    "crates/gateway/src/candidate_broadcast_store.rs": "8446227d06d285557bfd1f8434d5587e3f0c5b9c36865bc88f41eb03904c249e",
+    "crates/gateway/src/candidate_broadcast_tests.rs": "ad0b3cb02659dc70e72af246a019503a90510b7ae78ce55fac3fb44c31224cf9",
+    "crates/gateway/src/candidate_registration.rs": "86ffc1032f31952fad4e0c815a9564397c2d86cff5c62e23a664538209ba4c37",
+    "crates/gateway/src/report_archive_binding.rs": "1204db404b472c8c77a56e23fe2e59d4577d5d2bb334c8f0f4880449352812a9",
+    "crates/gateway/src/price_lifecycle_tests.rs": "cba6cb30039894e128e8ee19b32f1a9ed1fca2d7616c73af8570d2ce885472dd",
+    "crates/gateway/src/candidate_protocol_tests.rs": "b7b5304d771c9f5505db67737c20793696eff7367724e529bc4030a3a97e7b40",
+    "docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/bridge.json": "5cda286c90aff435e9f702f75ea77d22d68839a90fc638dca5465beeb6df41d7",
+    "docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/normal-lifecycle.material.bin": "acce1057df0eeb9b81ae13429f7576a40c05a7bf7935837b95225d1a6e76c420",
+    "docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/liquidation.material.bin": "34fede6f3e60fb29c7e515bd0d9c8be1dfa983f3b7e3db11b286b5ea7ee6dce6",
+    "docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/liquidation.native-public.bin": "1824361932bce2332d31f38af9c5f5cc0999bb3ff564e62cbb5a800a89f2c7f7",
+    "docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/manifest.json": "bd90b18d505d11be60e5ade812c467cb713b3568ad9636de1720ee3b0df7b49b",
+    "docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/normal-lifecycle.witness.bin": "24b4e42a71ea3c595bdb6b33ab5f76eb3bf8e2d1d78ca11b12f26951d46a2e8b",
+    "docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/normal-lifecycle.native-public.bin": "4830af4cf12d9a6ab20c1e9ff37906c89cc9abaa9005ff220796ff0999db097d",
+    "docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/liquidation.witness.bin": "3bc9cacd53408bfab5ad7c5efadde48fd7ad357c3189479bb9f4564c31781086",
+    "docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/9b1f12b4dffcdeb191631083f640315da831d90de9399073cc0ab03827f01412.json": "9b1f12b4dffcdeb191631083f640315da831d90de9399073cc0ab03827f01412",
+    "docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/63e5fd2dd0756cdc81c2808221c0469a136fbc42f997cd200e1d271e0f14cc3e.json": "63e5fd2dd0756cdc81c2808221c0469a136fbc42f997cd200e1d271e0f14cc3e",
+    "docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/02bc2acf1a2aeffd49166bc07bd5bff8d43f46d6eee5f6b75e39c901dbe500e5.json": "02bc2acf1a2aeffd49166bc07bd5bff8d43f46d6eee5f6b75e39c901dbe500e5",
+    "docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/a134735ad626e7b563046d6282927fe566d0176d25d8beaf5b4af446af3b9bcd.json": "a134735ad626e7b563046d6282927fe566d0176d25d8beaf5b4af446af3b9bcd",
+    "docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/59ec653b15058cef6dd003f29bff9580ae0b85171264ccedd98295d2def79f26.json": "59ec653b15058cef6dd003f29bff9580ae0b85171264ccedd98295d2def79f26",
+    "docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-normal-lifecycle/store/d1f1e3f32942ba4fe4429550bfd8cf7205be6cc02431500b37f50ac5de710bac.json": "d1f1e3f32942ba4fe4429550bfd8cf7205be6cc02431500b37f50ac5de710bac",
+    "docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/9b1f12b4dffcdeb191631083f640315da831d90de9399073cc0ab03827f01412.json": "9b1f12b4dffcdeb191631083f640315da831d90de9399073cc0ab03827f01412",
+    "docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/72f8182043c9160a7d586c52de2d4a357763e6c4b0a8ba2665bfe84d32e85a93.json": "72f8182043c9160a7d586c52de2d4a357763e6c4b0a8ba2665bfe84d32e85a93",
+    "docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/39bc768876b8965c23fea8a5e39a55251ebbcad62f6bd67bb69587ce00039363.json": "39bc768876b8965c23fea8a5e39a55251ebbcad62f6bd67bb69587ce00039363",
+    "docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/59ec653b15058cef6dd003f29bff9580ae0b85171264ccedd98295d2def79f26.json": "59ec653b15058cef6dd003f29bff9580ae0b85171264ccedd98295d2def79f26",
+    "docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/d1f1e3f32942ba4fe4429550bfd8cf7205be6cc02431500b37f50ac5de710bac.json": "d1f1e3f32942ba4fe4429550bfd8cf7205be6cc02431500b37f50ac5de710bac",
+    "docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/reconstructed-archive-liquidation/store/0cb1c94914f05443a96cb061dd49b0c5a49a3a0e41660ddbfa4cb19e61180636.json": "0cb1c94914f05443a96cb061dd49b0c5a49a3a0e41660ddbfa4cb19e61180636",
+    "crates/gateway/src/candidate_protocol.rs": "f77c040320f7d1d5c75c42222250e5eebc64ea9f953fa50f0f82f4e2da7045ca",
+    "crates/gateway/src/candidate_recovery_tests.rs": "fa18b33ff1f7076ea25ec214cd72753865a7cb2ab53246563346fad1dca108b9"
+  },
+  "ci_workflow_sha256": "6058fce74352cbd052a6e9d4e5e176a334aa6929eaa4f3b9fdf97b8d13a8d603",
+  "command_results": {
+    "focused-initial": {
+      "exit_code": 101,
+      "elapsed_seconds": 5.544,
+      "source_bytes_unchanged": true,
+      "summaries": []
+    },
+    "focused-repair1": {
+      "exit_code": 0,
+      "elapsed_seconds": 48.916,
+      "source_bytes_unchanged": true,
+      "summaries": [
+        "test result: ok. 26 passed; 0 failed; 1 ignored; 0 measured; 649 filtered out; finished in 38.09s"
+      ]
+    },
+    "alias-regression-before": {
+      "exit_code": 101,
+      "elapsed_seconds": 6.794,
+      "source_bytes_unchanged": true,
+      "summaries": [
+        "test result: FAILED. 9 passed; 1 failed; 0 ignored; 0 measured; 668 filtered out; finished in 0.70s"
+      ]
+    },
+    "clippy-initial": {
+      "exit_code": 0,
+      "elapsed_seconds": 4.392,
+      "source_bytes_unchanged": true,
+      "summaries": []
+    },
+    "focused-final": {
+      "exit_code": 0,
+      "elapsed_seconds": 45.329,
+      "source_bytes_unchanged": true,
+      "summaries": [
+        "test result: ok. 28 passed; 0 failed; 1 ignored; 0 measured; 649 filtered out; finished in 39.02s"
+      ]
+    },
+    "legacy-compatibility": {
+      "exit_code": 0,
+      "elapsed_seconds": 22.243,
+      "source_bytes_unchanged": true,
+      "summaries": [
+        "test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 661 filtered out; finished in 22.03s"
+      ]
+    },
+    "clippy-final": {
+      "exit_code": 0,
+      "elapsed_seconds": 1.946,
+      "source_bytes_unchanged": true,
+      "summaries": []
+    },
+    "format-final": {
+      "exit_code": 0,
+      "elapsed_seconds": 0.502,
+      "source_bytes_unchanged": true,
+      "summaries": []
+    },
+    "gateway-full-final": {
+      "exit_code": 0,
+      "elapsed_seconds": 220.123,
+      "source_bytes_unchanged": true,
+      "summaries": [
+        "test result: ok. 656 passed; 0 failed; 22 ignored; 0 measured; 0 filtered out; finished in 219.95s"
+      ]
+    },
+    "python-guards-final": {
+      "exit_code": 0,
+      "elapsed_seconds": 0.883,
+      "source_bytes_unchanged": true,
+      "summaries": [
+        "Ran 47 tests in 0.788s"
+      ]
+    },
+    "runtime-pins-final": {
+      "exit_code": 0,
+      "elapsed_seconds": 0.089,
+      "source_bytes_unchanged": true,
+      "summaries": []
+    },
+    "toolchain-identity": {
+      "exit_code": 0,
+      "elapsed_seconds": 0.069,
+      "source_bytes_unchanged": true,
+      "summaries": []
+    }
+  },
+  "gateway_result": [
+    "test result: ok. 656 passed; 0 failed; 22 ignored; 0 measured; 0 filtered out; finished in 219.95s"
+  ],
+  "focused_result": [
+    "test result: ok. 28 passed; 0 failed; 1 ignored; 0 measured; 649 filtered out; finished in 39.02s"
+  ],
+  "semantic_store_process_pass_counts": [
+    16,
+    10,
+    2
+  ],
+  "complete_18_case_coordinator_fault_matrix": false,
+  "fault_coverage": "Six source stages x3 save failure modes across coordinator and store; Intent Rename at store layer.",
+  "python_guard_pass_count": 47,
+  "reviewed_pins": 21,
+  "candidate_pins": 9,
+  "compiler": "actual rustc/Clippy/Cargo1.99; rustfmt1.10; explicit child PATH; current object DWARF corroboration",
+  "preservation": {
+    "schema": "arcora-prepared-lease-preservation-v1",
+    "observed_utc": "2026-10-11T23:27:05.796187+00:00",
+    "base_main": "56f91ab740d5cce42edcc287ded4b0c39eb4f9f8",
+    "base_tree": "9bcb4f9b257494c9b1e055e4368da297c64c15e4",
+    "frozen_file_count": 2468,
+    "unchanged_frozen_file_count": 2464,
+    "changed_frozen_files": [
+      ".gitattributes",
+      "crates/gateway/src/candidate_recovery.rs",
+      "crates/gateway/src/main.rs",
+      "docs/ACTIVE_WORK.md"
+    ],
+    "allowed_existing_protocol_edit": "crates/gateway/src/candidate_recovery.rs: shared Prepared driver mechanicalseam preserving legacysemantics",
+    "unexpected_changed_frozen_files": [],
+    "external": [
+      {
+        "name": "primary",
+        "path": "/Users/huseyinarslan/Desktop/arcora-perp/repo",
+        "head": "2a03bb03a7db9736e72573fa22d8fe8f4fe37f94",
+        "dirty_count": 13,
+        "same_status": true,
+        "same_head": true,
+        "same_staged_diff": true,
+        "dirty_files_changed": [],
+        "passed": true
+      },
+      {
+        "name": "kimi",
+        "path": "/Users/huseyinarslan/kimi-bridge/worktrees/Arcora-labs__arcora-perp/job--17",
+        "head": "e283958109fc6b434b7049d523bbd3378e2e6c27",
+        "dirty_count": 7,
+        "same_status": true,
+        "same_head": true,
+        "same_staged_diff": true,
+        "dirty_files_changed": [],
+        "passed": true
+      },
+      {
+        "name": "dark",
+        "path": "/Users/huseyinarslan/Desktop/Projeler/Dark Perp/dark-perp",
+        "head": "f997f8b96279bd06ec1808f6b9cb2a6aeb25cc5e",
+        "dirty_count": 62,
+        "same_status": true,
+        "same_head": true,
+        "same_staged_diff": true,
+        "dirty_files_changed": [],
+        "passed": true
+      }
+    ],
+    "production_main_unchanged_after_removing_test_wires": true,
+    "ci_workflow_byte_exact": true,
+    "passed": true
+  },
+  "local_foundry_repeated": false,
+  "local_sp1_cpu_repeated": false,
+  "proof_generated": false,
+  "gpu_used": false,
+  "live_transport_activated": false,
+  "remote_publication_ci": "separately verify exact publication head; local results are not CI completion",
+  "production_release": "HOLD",
+  "raw_combined_logs": "stdout then stderr; not chronological interleaving",
+  "artifacts": {
+    "README.md": {
+      "bytes": 9005,
+      "sha256": "0648c61180fd8fad92c77bb102c8bdd3f77760075aca972ffb91684a8dfa0f86"
+    },
+    "base-merge-observations.json": {
+      "bytes": 9681,
+      "sha256": "a92f765b82c91ccb6087e0dd8513469e13ae5c687e36b9d3bde84d589ca12225"
+    },
+    "baseline.json": {
+      "bytes": 349489,
+      "sha256": "f762bee8ea2c59eae89fcf9ce41759b6e9008d702dcca719d31463e410552598"
+    },
+    "commands/alias-regression-before-payload.json": {
+      "bytes": 7978,
+      "sha256": "fceecf3cdd7da768e4afde81c7ac2753541cba435b0266627b6c20821bb07967"
+    },
+    "commands/alias-regression-before.json": {
+      "bytes": 20205,
+      "sha256": "c94d35caf8f9abb88568aaac546b6b92c333b9b2e55a4d8f2dbf1ba792f04e15"
+    },
+    "commands/clippy-final-payload.json": {
+      "bytes": 7908,
+      "sha256": "618e3ae9ef35851103147cedc01d0a850280fb373e043a05e26c573a080ccf2f"
+    },
+    "commands/clippy-final.json": {
+      "bytes": 19980,
+      "sha256": "2ab591598df87e7f7ade9f1ddaa54b5e85231969c47270abbb194e9497e09d7b"
+    },
+    "commands/clippy-initial-payload.json": {
+      "bytes": 7908,
+      "sha256": "618e3ae9ef35851103147cedc01d0a850280fb373e043a05e26c573a080ccf2f"
+    },
+    "commands/clippy-initial.json": {
+      "bytes": 19988,
+      "sha256": "1948e0ffb792ed4658a7d15149d42aab619e29ba1b438d4ed0d8222cee2bd506"
+    },
+    "commands/focused-final-payload.json": {
+      "bytes": 7946,
+      "sha256": "e9d4d84f18cbaa429ffdbd10662dfbac1ffb10c884250c4a0ba3b14cf3945c9f"
+    },
+    "commands/focused-final.json": {
+      "bytes": 20130,
+      "sha256": "56ce100dcc6deada9fe28f2026b175c09fcd256eb98d666b2cc05b5beaa0c0c6"
+    },
+    "commands/focused-initial-payload.json": {
+      "bytes": 7946,
+      "sha256": "e9d4d84f18cbaa429ffdbd10662dfbac1ffb10c884250c4a0ba3b14cf3945c9f"
+    },
+    "commands/focused-initial.json": {
+      "bytes": 20032,
+      "sha256": "a861dfd31e45411b55978dcd8122ab91f17f4ceb1941174b61c5ad45d6dc9669"
+    },
+    "commands/focused-repair1-payload.json": {
+      "bytes": 7946,
+      "sha256": "e9d4d84f18cbaa429ffdbd10662dfbac1ffb10c884250c4a0ba3b14cf3945c9f"
+    },
+    "commands/focused-repair1.json": {
+      "bytes": 20138,
+      "sha256": "0f7d771e569d81926c14ec4a9cd176608f7401a942b222dc9de590dab00be7bf"
+    },
+    "commands/format-final-payload.json": {
+      "bytes": 7824,
+      "sha256": "ec50be1bd7947d47b20cdd3c8a0e7e6eb601afbb9cdfdfe9d4ebd8cc5b91743b"
+    },
+    "commands/format-final.json": {
+      "bytes": 19896,
+      "sha256": "9fab19ca6eae61545b4ed9763004608b04dffbd49264ac509ab9a342d01a0e44"
+    },
+    "commands/gateway-full-final-payload.json": {
+      "bytes": 7889,
+      "sha256": "f3bb614c001d2bc307aad60d7c48573882bbb6a30f71ea1c8efcd81550565f40"
+    },
+    "commands/gateway-full-final.json": {
+      "bytes": 20095,
+      "sha256": "8ab6c03efcee42f098f710114cdfce56f2630573f1c66fc45624e9e6eb191034"
+    },
+    "commands/legacy-compatibility-payload.json": {
+      "bytes": 7949,
+      "sha256": "5b084a5bbb1fb4a3cd337e64a51532847d5ca70f03fefe6e47c0a1152c31a4f1"
+    },
+    "commands/legacy-compatibility.json": {
+      "bytes": 20161,
+      "sha256": "1bfe9f3b54ec8039ced17dead4ea4a7ad58fa422336507d6cc6921a268dc2c98"
+    },
+    "commands/preserve.py": {
+      "bytes": 2974,
+      "sha256": "4e7b18e9d77881d0dffdec9441204ddd2fd08ba5c78ba35ca451589d03887b41"
+    },
+    "commands/python-guards-final-payload.json": {
+      "bytes": 8157,
+      "sha256": "5fdbddcacef9786d890d648156a6f7181f1aad0859c51f8e8e71593cb7d6e6de"
+    },
+    "commands/python-guards-final.json": {
+      "bytes": 20289,
+      "sha256": "2339ec0e198189f3723749ac700ba89ccfa6914ce57a5d8068706baf3e046ea4"
+    },
+    "commands/record_command.py": {
+      "bytes": 1979,
+      "sha256": "e35bd1eabb1546f2816dea80874edd353486be8b81603812bbbc23456f7d9862"
+    },
+    "commands/runtime-pins-final-payload.json": {
+      "bytes": 8367,
+      "sha256": "849e09644da34100633dc3e2ce57ed65d6ac57b70d3581a87da02dde084b643e"
+    },
+    "commands/runtime-pins-final.json": {
+      "bytes": 20463,
+      "sha256": "15739b85cc770d1f24b800fa6b7ab116cfcc92ca6c9bb70b65b931cb19d4cf07"
+    },
+    "commands/toolchain-identity-payload.json": {
+      "bytes": 8026,
+      "sha256": "28c54ff2ec84d3a76156ac6e846edc729f203bcf17c224617079e1431a4c791b"
+    },
+    "commands/toolchain-identity.json": {
+      "bytes": 20122,
+      "sha256": "6aac27d9a79d8530312e46a701ba7df09a9d6dc669e52738c70388777a3f6a08"
+    },
+    "compiler-identity.json": {
+      "bytes": 10048,
+      "sha256": "42e170660ada3ea6d8f6147db18824e71247a7f50d819215b83be267a4c106b5"
+    },
+    "contract.json": {
+      "bytes": 1094,
+      "sha256": "f133de59aa5df7de39fc514d752233f068ab1f596a3b2b2f0dfefb1986549ade"
+    },
+    "filesystem-case-probe.json": {
+      "bytes": 1408,
+      "sha256": "5011a55e3634e0a43eee54e740e9a5d685cf4f05150456742d726bca1095910e"
+    },
+    "independent-coordinator-review.json": {
+      "bytes": 7277,
+      "sha256": "76a4cef05a769e4766d791c1520b26b2c023cc1902edf147e56c75c4a2db3784"
+    },
+    "legacy-source-comparison.json": {
+      "bytes": 5878,
+      "sha256": "8888938d876cb8444c38f55d9d84c57da35850aa32fc770e1c41f2f2cffa2dea"
+    },
+    "logs/alias-regression-before.log": {
+      "bytes": 2131,
+      "sha256": "18d01d69cd025a61eb1ea3a32d0e8c5111675507ae023e6e834adfc2f004e3d7"
+    },
+    "logs/alias-regression-before.stderr.log": {
+      "bytes": 690,
+      "sha256": "80e346f1f830f506cb629f322154517fdcf73bbcf0fc0adf70cb7dbe4c2449cc"
+    },
+    "logs/alias-regression-before.stdout.log": {
+      "bytes": 1441,
+      "sha256": "03349b8b6eb4bd9e4fb486665897b227205ba0f6b77c1e909b981ed289b1ad33"
+    },
+    "logs/clippy-final.log": {
+      "bytes": 186,
+      "sha256": "b9ee0904b3bb330994bede3134d22ce122ece410a9fd50c58f84fc3c8581ee28"
+    },
+    "logs/clippy-final.stderr.log": {
+      "bytes": 186,
+      "sha256": "b9ee0904b3bb330994bede3134d22ce122ece410a9fd50c58f84fc3c8581ee28"
+    },
+    "logs/clippy-final.stdout.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "logs/clippy-initial.log": {
+      "bytes": 186,
+      "sha256": "ca6dd41b046762d42358cb9caa198deb760906d9c9ffb6c4c95cac163dbb5ca7"
+    },
+    "logs/clippy-initial.stderr.log": {
+      "bytes": 186,
+      "sha256": "ca6dd41b046762d42358cb9caa198deb760906d9c9ffb6c4c95cac163dbb5ca7"
+    },
+    "logs/clippy-initial.stdout.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "logs/focused-final.log": {
+      "bytes": 3769,
+      "sha256": "bc62d8d2790931db2715dbec3e993539e196f36cfe1987976d19c8d597b819da"
+    },
+    "logs/focused-final.stderr.log": {
+      "bytes": 267,
+      "sha256": "ab5cdbb29f636170ead71b156f61a3574e7a67c72b53c55f28ca4f55e0289b74"
+    },
+    "logs/focused-final.stdout.log": {
+      "bytes": 3502,
+      "sha256": "c6056ec5ee9d01928cc8d8ff5d42a99657881e99bf1b868a9a0974749d0d2c87"
+    },
+    "logs/focused-initial.log": {
+      "bytes": 1793,
+      "sha256": "80bebf0408c55b10c02aaebf2d7361de5ed82ffb03deba1b9d0256f25d6c3a66"
+    },
+    "logs/focused-initial.stderr.log": {
+      "bytes": 1793,
+      "sha256": "80bebf0408c55b10c02aaebf2d7361de5ed82ffb03deba1b9d0256f25d6c3a66"
+    },
+    "logs/focused-initial.stdout.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "logs/focused-repair1.log": {
+      "bytes": 3530,
+      "sha256": "d92ae03be14adf0b787c0f6298d939e6573deeb5f53671b54d3768b47bd6fd98"
+    },
+    "logs/focused-repair1.stderr.log": {
+      "bytes": 268,
+      "sha256": "527e702c3075442f87c0bcb45c0fc19622dffaf8bb418e3a957f0675872be844"
+    },
+    "logs/focused-repair1.stdout.log": {
+      "bytes": 3262,
+      "sha256": "d095d8e764ff7607c5a0b238c9a5aefc5a701e9cfaf99f88e1163949f32214cd"
+    },
+    "logs/format-final.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "logs/format-final.stderr.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "logs/format-final.stdout.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "logs/gateway-full-final.log": {
+      "bytes": 63031,
+      "sha256": "f4f5d3fbe8dbca355dfce4c86770775004f0e530c3f582453525c3090b6aaca4"
+    },
+    "logs/gateway-full-final.stderr.log": {
+      "bytes": 153,
+      "sha256": "645e209cb335c10a33a213dcd510fb8601a431d6e97fc62942d280cdfb07d55c"
+    },
+    "logs/gateway-full-final.stdout.log": {
+      "bytes": 62878,
+      "sha256": "3a4adfb030310ea0b087e5fa75f4bde456cb502fc21f7f2b6c13bc6c450d476a"
+    },
+    "logs/legacy-compatibility.log": {
+      "bytes": 2166,
+      "sha256": "60f47685d35cf5a9c6b112039debe385f15a676c08c9467a26945644250775f6"
+    },
+    "logs/legacy-compatibility.stderr.log": {
+      "bytes": 153,
+      "sha256": "83df943a284056f03a9eca2d8abedfbc34f271237ca362be9f393cbf64e8acc2"
+    },
+    "logs/legacy-compatibility.stdout.log": {
+      "bytes": 2013,
+      "sha256": "d94f7783ad825081b42ae3814b2489b62ef1fa3e74b505f74ca88839ecdfec38"
+    },
+    "logs/python-guards-final.log": {
+      "bytes": 7032,
+      "sha256": "1ba404b7911a29e9f0cca859caa1c5203ef5c9406e9af7295c909f4a4cc52664"
+    },
+    "logs/python-guards-final.stderr.log": {
+      "bytes": 7032,
+      "sha256": "1ba404b7911a29e9f0cca859caa1c5203ef5c9406e9af7295c909f4a4cc52664"
+    },
+    "logs/python-guards-final.stdout.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "logs/runtime-pins-final.log": {
+      "bytes": 643,
+      "sha256": "cd6f22387ed79a9c83c6a2c15b82e4ccd1dfe70f0444399a72b604e82c1f09a4"
+    },
+    "logs/runtime-pins-final.stderr.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "logs/runtime-pins-final.stdout.log": {
+      "bytes": 643,
+      "sha256": "cd6f22387ed79a9c83c6a2c15b82e4ccd1dfe70f0444399a72b604e82c1f09a4"
+    },
+    "logs/toolchain-identity.log": {
+      "bytes": 431,
+      "sha256": "aa7b7a4ca4d72280873dac39ab8edcc76dcba58c140695007cea9be545e3daf5"
+    },
+    "logs/toolchain-identity.stderr.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "logs/toolchain-identity.stdout.log": {
+      "bytes": 431,
+      "sha256": "aa7b7a4ca4d72280873dac39ab8edcc76dcba58c140695007cea9be545e3daf5"
+    },
+    "next-gpu-free-a4.md": {
+      "bytes": 4691,
+      "sha256": "1e000f9004a618f25f2474448691f35aeb907805be2244a8abed9dff1b7cac8c"
+    },
+    "preservation-final.json": {
+      "bytes": 1733,
+      "sha256": "464c09457dfe37a3e8fa6ebf05dfbabda5f4478c52896da89d7816b2b3bf3442"
+    },
+    "preservation-prepublication.json": {
+      "bytes": 1784,
+      "sha256": "0b8bb47b102fd5a66421bd55fb02a33a7f387bdbe23402bd50c8a13d121d8d9b"
+    },
+    "preservation-publication.json": {
+      "bytes": 1782,
+      "sha256": "b830af84b5b7c50e07161d38e0f1da866ca5a377c187edf207795d936622ac3c"
+    },
+    "repair-history.json": {
+      "bytes": 1134,
+      "sha256": "3b0c774c07b9b327dde33d23365f76bcded5db8a427333e39cd087e760ac5c15"
+    }
+  }
+}

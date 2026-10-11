@@ -2,7 +2,7 @@
 
 Güncelleme: 12 Ekim 2026. **PRODUCTION RELEASE HOLD**.
 Bu belge güncel çalışma sırasıdır; tarihsel `NEXT_STEPS.md` yerine kullanın.
-Bu paketin başlangıç main'i: `0ea5048627840cbe7e125d7b914b1303b109b224` (#50).
+Bu paketin başlangıç main'i: `56f91ab740d5cce42edcc287ded4b0c39eb4f9f8` (#51).
 #44 ve #45, güncel yayın head'lerinde ayrı ayrı 19/19 başarılı kontrol sonrası
 normal merge edildi; repository korumaları değiştirilmedi. #44 merge kimliği
 `e697b2f19d74b1021ba3a32b64b4f15ceb159880`, #45 merge kimliği
@@ -29,8 +29,12 @@ head'inde güncel 19/19 SUCCESS sonrası normal merge edildi:
 `0ea5048627840cbe7e125d7b914b1303b109b224` (11 Ekim 23:26:38 Türkiye saati).
 Kontrol ve merge ağacı aynı `146b6da49f322bcabf68a7e5fca1e216aea52c45`.
 [Son #50 merge kaydı](audits/2026-10-11-chainlink-broadcast-outcome/merge-observations.json).
-Repository korumaları değiştirilmedi. Bu dal A4'ün offline broadcast sonuç/kilit
-paketidir; her paketin yerel kanıtı ve yayın head'inin CI sonucu ayrı kaydedilir.
+#51 offline broadcast sonuç/kilit paketi, `176549478079536b274862d487133ba053b0edb1`
+yayın head'inde 19/19 SUCCESS sonrası normal merge edildi:
+`56f91ab740d5cce42edcc287ded4b0c39eb4f9f8` (12 Ekim 00:42:38 Türkiye saati).
+Kontrol ve merge ağacı aynı `9bcb4f9b257494c9b1e055e4368da297c64c15e4`.
+Repository korumaları değiştirilmedi. Bu dal registration'ı yerel lease altında
+Prepared'a kadar koordine eder; yerel sonuç ve yayın head'inin CI sonucu ayrıdır.
 
 ## Birleşmiş ve korunan çalışmalar
 
@@ -258,9 +262,9 @@ korunarak nihai tam test ve CI workspace paralelliği iki thread ile sınırland
 Başarısız ilk ve başarılı final kayıtları yeni köprü kanıt paketinde saklanır.
 Gerçek proof, fon/custody ve canlı kabul değildir.
 
-## Yeni A4 paketi: offline broadcast outcome ve yerel lease
+## Birleşmiş #51: offline broadcast outcome ve yerel lease
 
-Bu dalda ayrı `cfg(test)` dispatcher, terminal DPCINT4 Prepared'ı doğrular;
+Birleşmiş #51'de ayrı `cfg(test)` dispatcher, terminal DPCINT4 Prepared'ı doğrular;
 tarihsel runner'ı çağırmaz. Immutable Plan'da bütün yedi root, count/tip,
 program/target pinleri, public32, exact settlement ABI ve precomputed **mock**
 tx/attempt ID tutulur. Authenticated DPCBTX1 Pending kalıcı onaylanmadan yayın
@@ -295,11 +299,41 @@ işi 20 dakikalık job limitinde iptal edildi; assertion hatası yoktu, no_std a
 host-only pakette yeniden çalıştırılmadı; #50 corpus/kontrat/kaynak ve kanıt
 hash'leri değişmedi. [Yeni kanıt](audits/2026-10-11-chainlink-broadcast-outcome/README.md).
 
-Sıradaki GPU'suz yazılım adımı: [registration'ı lease altında Prepared'a kadar
-koordine etmek](audits/2026-10-11-chainlink-broadcast-outcome/next-gpu-free-a4.md).
-Bu yalnız tasarımdır; tarihsel broadcast tail, kayıt formatları ve callback
-schedule korunarak ayrı preparation transport gerekir. Gerçek proof, deployment,
-DON/uptime/custody ve production kabul kapıları açık kalır.
+## Yeni A4 paketi: registration → durable Prepared koordinasyonu
+
+Kod `606894c7dbe7faf688fd1e8d169e7e89430c07f0`, yalnız `cfg(test)` kapsamındadır.
+Yeni coordinator kaynak DPCINT4 store'unu kendi içinde tutar. Aynı kaynak için
+deterministik, stable private lock bütün invocation boyunca alınır; request ve
+lock inode kimliği ayrı authenticated DPCREG1 binding'e bağlanır. Fresh mevcut
+kayıtları sıfırlamaz; Resume binding veya source eksikse HOLD eder. Eski bir
+staged cut yalnız açık, callback'siz adoption ile semantik doğrulamadan sonra
+bağlanır. Callback ve kayıt yazımları öncesi/sonrası source, binding ve lease
+yeniden doğrulanır; belirsiz kalıcılık sonraki callback'i durdurur.
+
+Preparation transport broadcast metodu taşımaz ve yalnız kalıcı Prepared'da
+döner. Eski runner'ın 11 Fresh / 3 Prepared Resume callback sırası ve aynı
+invocation watermark'ı korunur. DPCINT3/4 ve DPCBTX1 framing, eski testler,
+golden builder'lar, #50 corpus, reviewed/candidate runtime pinleri değişmedi.
+Mac'te uppercase source basename aynı fiziksel dosyaya erişebiliyordu; önce
+hata veren regresyon kaydedildi. Yeni basename yalnız küçük ASCII/rakam/`._-`
+kabul eder; binding/lock adları fiziksel parent dev/ino/uid ve basename'den
+türetilir. Authenticated exact kaynak yolu digest'i ayrıca korunur.
+
+Yerel final: **28 odaklı PASS / 1 intentional helper IGNORE**, değişmemiş
+**17 recovery PASS**, Clippy Rust 1.99 `-D warnings`, format, **47 guard** ve
+**21/9 pin** başarılı. Tam gateway **656 PASS / 0 FAIL / 22 intentional IGNORE**
+(gerçek Rust 1.99); bütün kaynak/komut/log hash'leri
+[yeni kanıt paketinde](audits/2026-10-12-chainlink-prepared-lease/README.md).
+Gerçek register callback'inde kilitli süreç SIGKILL edildi; rakip süreç Busy ile
+sıfır callback yaptı, successor özgün Pending'den registration tekrarlamadan
+Prepared'a geldi. Bu cooperative yerel koordinasyondur; başka path/kopya,
+legacy writer, hostile filesystem, chain exactly-once veya güç kesintisi kabulü
+değildir. Adoption sırasında eski writer'lar durmuş olmalıdır. Son gözlenen
+tip restart'a taşınmaz; özgün saved anchor baseline'ı korunur. Prepared save
+başarısızlığından sonra mock proof yeniden çalışabilir.
+
+Sıradaki GPU'suz adım: [Prepared → ayrı broadcast dispatcher handoff tasarımı](audits/2026-10-12-chainlink-prepared-lease/next-gpu-free-a4.md).
+Gerçek proof, deployment, DON/uptime/custody ve production kapıları açık kalır.
 
 ## Açık işler ve kapanış ölçütleri
 

@@ -1,0 +1,132 @@
+{
+  "schema": "arcora-prepared-lease-legacy-source-comparison-v1",
+  "observed_utc": "2026-10-11T23:22:24.966092+00:00",
+  "checkout": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011",
+  "base_commit": "56f91ab740d5cce42edcc287ded4b0c39eb4f9f8",
+  "execution": "Read-only source inspection; no Cargo, runtime test, Git/index write or original-source edit.",
+  "git_read_environment": {
+    "GIT_OPTIONAL_LOCKS": "0"
+  },
+  "git_read_commands": [
+    [
+      "git",
+      "rev-parse",
+      "56f91ab"
+    ],
+    [
+      "git",
+      "show",
+      "56f91ab:crates/gateway/src/candidate_recovery.rs"
+    ],
+    [
+      "git",
+      "show",
+      "56f91ab:crates/gateway/src/candidate_recovery_store.rs"
+    ]
+  ],
+  "inputs": {
+    "crates/gateway/src/candidate_recovery.rs": {
+      "sha256": "41ec00cfab8f95c22a10832f3b8223808755bf3cdb2dc74293627b22e4531499",
+      "bytes": 22726
+    },
+    "crates/gateway/src/candidate_recovery_store.rs": {
+      "sha256": "7e84cd99cd59dfba309af240b8a70dbfb66b84184008caa5137d06de9387d0df",
+      "bytes": 28376
+    },
+    "crates/gateway/src/candidate_preparation_tests.rs": {
+      "sha256": "338c57f72c0993b3d7d534e99983680e04602d9b805f3190a9c262decf22081b",
+      "bytes": 45186
+    },
+    "crates/gateway/src/candidate_preparation_store.rs": {
+      "sha256": "4588fbb0234755d1ff6b994c5c1b3783653fe21f035d616122ea01dfc2b932e7",
+      "bytes": 46466
+    }
+  },
+  "base_recovery_source_sha256": "feac38afe3e307597d099f7f19e2c9c21645496a5b9a6dfffbc1bd84d20335f4",
+  "base_recovery_store_sha256": "7e84cd99cd59dfba309af240b8a70dbfb66b84184008caa5137d06de9387d0df",
+  "comparisons": {
+    "stage_driver": {
+      "result": true,
+      "old_region": "execute: first validate statement through final Stage::Prepared guard",
+      "new_region": "drive_prepared: same statements",
+      "normalization": {
+        "replace_old_exact": "    let request_bytes = encode(request)?;\n    if request_bytes.is_empty() || request_bytes.len() > MAX_REQUEST_BYTES {\n        return Err(RecoveryError::Protocol(ProtocolError::Capacity));\n    }",
+        "with_new_exact": "    let request_bytes = request_bytes(request)?;"
+      },
+      "other_body_changes_allowed": false
+    },
+    "legacy_tail": {
+      "result": true,
+      "old_region": "from let prepared = saved.prepared.ok_or through EOF",
+      "new_region": "same region in execute",
+      "normalizations": [
+        {
+          "new_exact": "        &mut transport,",
+          "replace_with_old_exact": "        transport,"
+        },
+        {
+          "new_exact": "    transport\n        .0\n        .broadcast",
+          "replace_with_old_exact": "    transport\n        .broadcast"
+        }
+      ],
+      "other_body_changes_allowed": false
+    },
+    "legacy_transport_api": {
+      "result": true,
+      "normalization": "None; exact trait block equality"
+    },
+    "dpcint4_store": {
+      "result": true,
+      "normalization": "None; complete file byte equality"
+    }
+  },
+  "watermark_review": {
+    "same_saved_instance_passed_to_legacy_tail": true,
+    "tail_redecodes_original_checkpoint": false,
+    "regression_case": "preparation_legacy_tail_keeps_the_fresh_invocation_watermark",
+    "case_rule": "Original saved tip45; preproof lookup advances to46; historical tail reads45 and must fail Finality before Broadcast."
+  },
+  "coverage_review": {
+    "method": "Static inspection of test source and hooks; this receipt does not assert test execution success.",
+    "semantic_regular_tests": 16,
+    "composite_six_stages_all_three_hooks": true,
+    "complete_eighteen_case_coordinator_matrix": false,
+    "stages": [
+      {
+        "stage": "Intent",
+        "write": "Coordinator: preparation_missing_source_binding_and_orphan_binding_never_reset_fresh",
+        "rename": "Lower-level lease: preparation_store_source_failures_preserve_or_expose_exact_new_cut, create=true/hook=1; no direct coordinator semantic case",
+        "directory_sync": "Coordinator: preparation_ambiguous_initial_intent_reloads_without_registration"
+      },
+      {
+        "stage": "ClockPending",
+        "all_three_hooks": "Coordinator: preparation_clock_pending_save_failures_precede_every_callback_and_resume_without_registration"
+      },
+      {
+        "stage": "ClockObserved",
+        "all_three_hooks": "Coordinator: preparation_source_checkpoint_failures_keep_old_cut_or_stop_on_published_ambiguity, callback index1"
+      },
+      {
+        "stage": "ReportsPending",
+        "all_three_hooks": "Same coordinator matrix, callback index2"
+      },
+      {
+        "stage": "ReportsObserved",
+        "all_three_hooks": "Same coordinator matrix, callback index4"
+      },
+      {
+        "stage": "Prepared",
+        "all_three_hooks": "Same coordinator matrix, callback index7"
+      }
+    ],
+    "additional_barriers": "All eight callback failures; three binding publication hooks; explicit six-stage adoption; clock/report Pending/Absent/Unknown/Reorg; source replacement/in-place append/permissions; Fresh/Resume and orphan HOLD; exact Prepared convenience helper and legacy schedules.",
+    "expected_failure_semantics": "Definite prepublication failures retain exact prior raw bytes. Postpublication directory acknowledgement ambiguity may expose the new cut and requires a fresh lease/reload. Resume never re-registers; failed Prepared save can repeat mock prove."
+  },
+  "limits": [
+    "Source equality is not dynamic behavioral test evidence. Root owns compiled/test/CI validation.",
+    "Guarantee is cooperative local coordination of the new wrapper; direct historical writers can bypass it.",
+    "Invocation-local advanced finality tips are not persisted across restart.",
+    "No hostile-user filesystem fencing, antirollback freshness, live RPC/DON, cryptographic proof, custody or global exactly-once delivery claim."
+  ],
+  "pass": true
+}

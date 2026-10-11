@@ -1,0 +1,38 @@
+   Compiling gateway v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway)
+error[E0369]: binary operation `==` cannot be applied to type `&candidate_protocol::ProtocolRequest`
+   --> crates/gateway/src/candidate_preparation_lock_tests.rs:326:9
+    |
+326 |         assert_eq!(request, &self.fixture.request);
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |         |
+    |         &candidate_protocol::ProtocolRequest
+    |         &candidate_protocol::ProtocolRequest
+    |
+note: an implementation of `PartialEq` might be missing for `candidate_protocol::ProtocolRequest`
+   --> crates/gateway/src/candidate_protocol.rs:69:1
+    |
+ 69 | pub(crate) struct ProtocolRequest {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ must implement `PartialEq`
+help: consider annotating `candidate_protocol::ProtocolRequest` with `#[derive(PartialEq)]`
+   --> crates/gateway/src/candidate_protocol.rs:69:1
+    |
+ 69 + #[derive(PartialEq)]
+ 70 | pub(crate) struct ProtocolRequest {
+    |
+
+error[E0277]: `candidate_protocol::ProtocolRequest` doesn't implement `Debug`
+   --> crates/gateway/src/candidate_preparation_lock_tests.rs:326:9
+    |
+326 |         assert_eq!(request, &self.fixture.request);
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the trait `Debug` is not implemented for `candidate_protocol::ProtocolRequest`
+    |
+help: consider annotating `candidate_protocol::ProtocolRequest` with `#[derive(Debug)]`
+   --> crates/gateway/src/candidate_protocol.rs:69:1
+    |
+ 69 + #[derive(Debug)]
+ 70 | pub(crate) struct ProtocolRequest {
+    |
+
+Some errors have detailed explanations: E0277, E0369.
+For more information about an error, try `rustc --explain E0277`.
+error: could not compile `gateway` (bin "gateway" test) due to 3 previous errors

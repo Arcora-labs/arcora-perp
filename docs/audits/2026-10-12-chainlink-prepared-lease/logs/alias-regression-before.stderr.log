@@ -1,0 +1,8 @@
+   Compiling gateway v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 5.30s
+     Running unittests src/main.rs (target/debug/deps/gateway-e2e0fc6b5916941a)
+
+thread 'candidate_preparation_store::tests::preparation_store_uppercase_source_basename_cannot_create_another_lane' (14239982) panicked at crates/gateway/src/candidate_preparation_store.rs:778:9:
+assertion failed: matches!(CoordinationStore::new(alias, SEED), Err(StoreError::Path))
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+error: test failed, to rerun pass `-p gateway --bin gateway`
