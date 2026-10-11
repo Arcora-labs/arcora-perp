@@ -1,0 +1,6 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.90s
+     Running unittests src/main.rs (target/debug/deps/gateway-610b7230a2c5bb73)
+
+thread '<unnamed>' (13728700) panicked at crates/gateway/src/price_lifecycle_tests.rs:963:9:
+poison fixture
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace

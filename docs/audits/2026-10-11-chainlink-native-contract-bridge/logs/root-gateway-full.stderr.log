@@ -1,0 +1,4 @@
+   Compiling gateway v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 36.28s
+     Running unittests src/main.rs (target/debug/deps/gateway-610b7230a2c5bb73)
+error: test failed, to rerun pass `-p gateway --bin gateway`

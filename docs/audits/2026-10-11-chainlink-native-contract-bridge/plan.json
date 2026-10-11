@@ -1,0 +1,46 @@
+{
+  "schema": "arcora-native-contract-bridge-plan-v1",
+  "observed_utc": "2026-10-11T14:43:51.265300+00:00",
+  "base_main": "dc00f5ac9a846139d04a82f0689d02a75e5de6d0",
+  "branch": "feat/chainlink-native-contract-bridge-20261011",
+  "order": [
+    "PR49 exact19SUCCESS normalmerge confirmed",
+    "fixed original source export",
+    "real local wrapper/clock context capture",
+    "new target-context witness/material/full native roots export",
+    "real settlement + explicit mocks positive/negative integration",
+    "fresh native/candidate SP1 CPU equality",
+    "full gateway/Foundry/Clippy/pins/guards",
+    "commit/push/draft PR + evidence"
+  ],
+  "authority": {
+    "merge49": "user explicit instruction",
+    "bridge": "user item2 instruction",
+    "gpu_proof_generation": false,
+    "live_rpc": false,
+    "production_release": "HOLD"
+  },
+  "preserve": [
+    "four golden Rust builders",
+    "original FINAL2 witness corpus",
+    "three original contract golden fixtures",
+    "candidate/core/guest/ELF/key source identities",
+    "primary/job17/DarkPerp dirty checkouts"
+  ],
+  "mock_boundaries": [
+    "exact DON allowlist",
+    "exact ISP1 key/public/proof tuple behind real SP1ZkVerifier",
+    "uptime epoch mock",
+    "strict count=9/tip prefix ledger, no funds or custody"
+  ],
+  "repair_policy": {
+    "initial_targeted_round_limit": 2,
+    "extend_only_with_explicit_evidence": "document new blocking condition and bounded repair scope",
+    "new_blocking_condition": {
+      "initial_gateway": "601PASS/1FAIL/20IGNORE at frozen HTTP withdrawal success assertion",
+      "separate_bounded_scope": "Controlled temporary expiry observer and one full-suite scheduling rerun at two test threads; no production freshness or golden-builder changes",
+      "original_failure_attribution": "inferred because original response body was not captured",
+      "ci_followthrough": "Workspace unit-test job uses RUST_TEST_THREADS=2"
+    }
+  }
+}

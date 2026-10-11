@@ -1,0 +1,5 @@
+{
+  "main_sha256": "30fbdf1a6fa7cf0210a1cfc6fe4300a5be1a333a03447a1eb7baf05f78effbb0",
+  "original_golden_sha256": "cba6cb30039894e128e8ee19b32f1a9ed1fca2d7616c73af8570d2ce885472dd",
+  "scope": "temporary ignored diagnostic clone; only controlled delay and response-body observation differ; source original never edited"
+}

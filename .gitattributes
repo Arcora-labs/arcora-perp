@@ -1,2 +1,8 @@
 # Preserve exact Cargo audit output, including its terminal empty line.
 docs/audits/2026-10-11-chainlink-registration-recovery/logs/*.log whitespace=blank-at-eol,space-before-tab,-blank-at-eof
+# Keep the new bridge corpus and CPU public values byte-exact across checkouts.
+docs/audits/2026-10-11-chainlink-native-contract-bridge/fixtures/*.bin binary
+docs/audits/2026-10-11-chainlink-native-contract-bridge/cpu/*.bin binary
+docs/audits/2026-10-11-chainlink-native-contract-bridge/source/*.bin binary
+# Preserve complete raw command output, including terminal empty lines.
+docs/audits/2026-10-11-chainlink-native-contract-bridge/logs/*.log binary

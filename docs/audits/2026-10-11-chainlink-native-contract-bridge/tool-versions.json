@@ -1,0 +1,37 @@
+{
+  "rustc_toolchain_1_99": {
+    "argv": [
+      "rustup",
+      "run",
+      "1.99.0",
+      "rustc",
+      "--version",
+      "--verbose"
+    ],
+    "output": "rustc 1.99.0 (b940084d7 2026-09-28)\nbinary: rustc\ncommit-hash: b940084d7eb6a299eb4bfeb8e34901bc051e7ac4\ncommit-date: 2026-09-28\nhost: aarch64-apple-darwin\nrelease: 1.99.0\nLLVM version: 23.1.1"
+  },
+  "cargo_toolchain_1_99": {
+    "argv": [
+      "rustup",
+      "run",
+      "1.99.0",
+      "cargo",
+      "--version"
+    ],
+    "output": "cargo 1.99.0 (5f94df478 2026-08-27)"
+  },
+  "forge": {
+    "argv": [
+      "forge",
+      "--version"
+    ],
+    "output": "forge Version: 1.7.2-nightly\nCommit SHA: dea99c55914d010b22d3f5532fca180a8ecafda1\nBuild Timestamp: 2026-06-05T07:27:50.230262000Z (1780644470)\nBuild Profile: dist"
+  },
+  "python": {
+    "argv": [
+      "/opt/homebrew/bin/python3.12",
+      "--version"
+    ],
+    "output": "Python 3.12.13"
+  }
+}

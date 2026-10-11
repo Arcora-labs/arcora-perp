@@ -1,0 +1,12 @@
+docs/audits/2026-10-11-chainlink-native-contract-bridge/logs/contracts-focused-initial.log:41: trailing whitespace.
++Warning: This is a nightly build of Foundry. It is recommended to use the latest stable version. To mute this warning set `FOUNDRY_DISABLE_NIGHTLY_WARNING` in your environment. 
+docs/audits/2026-10-11-chainlink-native-contract-bridge/logs/contracts-focused-initial.stderr.log:1: trailing whitespace.
++Warning: This is a nightly build of Foundry. It is recommended to use the latest stable version. To mute this warning set `FOUNDRY_DISABLE_NIGHTLY_WARNING` in your environment. 
+docs/audits/2026-10-11-chainlink-native-contract-bridge/logs/contracts-format-final.log:1: trailing whitespace.
++Warning: This is a nightly build of Foundry. It is recommended to use the latest stable version. To mute this warning set `FOUNDRY_DISABLE_NIGHTLY_WARNING` in your environment. 
+docs/audits/2026-10-11-chainlink-native-contract-bridge/logs/contracts-format-final.stderr.log:1: trailing whitespace.
++Warning: This is a nightly build of Foundry. It is recommended to use the latest stable version. To mute this warning set `FOUNDRY_DISABLE_NIGHTLY_WARNING` in your environment. 
+docs/audits/2026-10-11-chainlink-native-contract-bridge/logs/contracts-full-final.log:282: trailing whitespace.
++Warning: This is a nightly build of Foundry. It is recommended to use the latest stable version. To mute this warning set `FOUNDRY_DISABLE_NIGHTLY_WARNING` in your environment. 
+docs/audits/2026-10-11-chainlink-native-contract-bridge/logs/contracts-full-final.stderr.log:1: trailing whitespace.
++Warning: This is a nightly build of Foundry. It is recommended to use the latest stable version. To mute this warning set `FOUNDRY_DISABLE_NIGHTLY_WARNING` in your environment. 

@@ -1,0 +1,31 @@
+{
+  "schema": "arcora-controlled-route-expiry-observation-v1",
+  "original_full_test": {
+    "passed": 601,
+    "failed": 1,
+    "ignored": 20,
+    "receipt": "root-gateway-full.json",
+    "failed_response_body_available": false
+  },
+  "isolated_original": {
+    "receipt": "isolated-withdraw.json",
+    "passed": 1,
+    "failed": 0
+  },
+  "temporary_observer": {
+    "scope": "ignored clone of the unchanged golden source; controlled delay and response-body assertion only; never part of final checkout code",
+    "no_delay_receipt": "diagnostic-route-no-delay-final.json",
+    "no_delay_status": 200,
+    "delay_ms": 2100,
+    "delayed_receipt": "diagnostic-route-expiry-final.json",
+    "delayed_status": 400,
+    "delayed_error": "chainlink archive binding Mismatch",
+    "earlier_observer_assertion_failure": "diagnostic-route-expiry.json: observed correct 400/Mismatch but diagnostic wrongly also required word candidate; corrected exact JSON assertion"
+  },
+  "attribution": "Controlled expiry reproduces the failing stage; original full-suite body absent so exact original cause remains inferred. Unchanged original test passed isolated; bound full validation and CI unit-test scheduling to 2 threads without any freshness or golden-source change.",
+  "restored_main_sha256": "30fbdf1a6fa7cf0210a1cfc6fe4300a5be1a333a03447a1eb7baf05f78effbb0",
+  "original_golden_sha256": "cba6cb30039894e128e8ee19b32f1a9ed1fca2d7616c73af8570d2ce885472dd",
+  "original_sources_restored": true,
+  "production_freshness_weakened": false,
+  "ci_scope": "Only rust workspace unit-test job RUST_TEST_THREADS=2"
+}

@@ -1,0 +1,15 @@
+
+running 1 test
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+[state] genesis engine root 0x464f52b0bc0e452be7e050758e209d7a75708e98ea3eb4f0ffac4e5f6d7a5a28
+[oracle-feed] publisher signer address 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 — set each Market.oracle_pubkey to this
+[state] genesis engine root 0x464f52b0bc0e452be7e050758e209d7a75708e98ea3eb4f0ffac4e5f6d7a5a28
+test route_expiry_observer::controlled_route_expiry_observation ... FAILED
+
+failures:
+
+failures:
+    route_expiry_observer::controlled_route_expiry_observation
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 632 filtered out; finished in 2.68s
+

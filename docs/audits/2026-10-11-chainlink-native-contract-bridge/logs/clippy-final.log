@@ -1,0 +1,32 @@
+    Checking gateway v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway)
+error: using `contains()` instead of `iter().any()` is more efficient
+   --> crates/gateway/src/candidate_bridge.rs:428:8
+    |
+428 |     if addresses.iter().any(|a| *a == [0; 20])
+    |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: try: `addresses.contains(&[0; 20])`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.95.0/index.html#manual_contains
+    = note: `-D clippy::manual-contains` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::manual_contains)]`
+
+error: manual implementation of `.is_multiple_of()`
+   --> crates/gateway/src/candidate_bridge.rs:454:12
+    |
+454 |         || context.anchored_at_ms % 1000 != 0
+    |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: replace with: `!context.anchored_at_ms.is_multiple_of(1000)`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.95.0/index.html#manual_is_multiple_of
+    = note: `-D clippy::manual-is-multiple-of` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::manual_is_multiple_of)]`
+
+error: very complex type used. Consider factoring parts into `type` definitions
+   --> crates/gateway/src/candidate_bridge.rs:903:17
+    |
+903 |     let corpus: [(&str, &[u8], &[u8], &[u8]); 2] = [
+    |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.95.0/index.html#type_complexity
+    = note: `-D clippy::type-complexity` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::type_complexity)]`
+
+error: could not compile `gateway` (bin "gateway" test) due to 3 previous errors

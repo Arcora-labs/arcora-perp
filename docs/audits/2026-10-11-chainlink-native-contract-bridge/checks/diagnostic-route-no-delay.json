@@ -1,0 +1,47 @@
+{
+  "schema": "arcora-native-contract-bridge-command-v1",
+  "observed_start_utc": "2026-10-11T15:34:51.214571+00:00",
+  "observed_end_utc": "2026-10-11T15:35:25.480771+00:00",
+  "name": "diagnostic-route-no-delay",
+  "argv": [
+    "rustup",
+    "run",
+    "1.99.0",
+    "cargo",
+    "test",
+    "-p",
+    "gateway",
+    "--locked",
+    "--offline",
+    "--bin",
+    "gateway",
+    "route_expiry_observer::controlled_route_expiry_observation",
+    "--",
+    "--exact",
+    "--nocapture"
+  ],
+  "cwd": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011",
+  "environment": {
+    "ARCORA_DIAGNOSTIC_ROUTE_DELAY_MS": "0"
+  },
+  "exit_code": 0,
+  "elapsed_seconds": 34.267,
+  "source_sha256_before": {
+    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/main.rs": "321e0252781040c95b2b43d10dfaed1729e5fade3219a9a1d1f6875a30377750",
+    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/price_lifecycle_tests.rs": "cba6cb30039894e128e8ee19b32f1a9ed1fca2d7616c73af8570d2ce885472dd",
+    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/native-contract-bridge-validation-20261011/route-expiry-observer.rs": "c0a6360ff80279947db96176a34f21cf75cab5131cf61c59942f66534dbb2e72"
+  },
+  "source_sha256_after": {
+    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/main.rs": "321e0252781040c95b2b43d10dfaed1729e5fade3219a9a1d1f6875a30377750",
+    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/price_lifecycle_tests.rs": "cba6cb30039894e128e8ee19b32f1a9ed1fca2d7616c73af8570d2ce885472dd",
+    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/native-contract-bridge-validation-20261011/route-expiry-observer.rs": "c0a6360ff80279947db96176a34f21cf75cab5131cf61c59942f66534dbb2e72"
+  },
+  "source_bytes_unchanged": true,
+  "log": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/native-contract-bridge-validation-20261011/diagnostic-route-no-delay.log",
+  "log_sha256": "b9bc653c378018bce44728d259e80383b1cc2bbecd42db1b53556895a297b826",
+  "stdout_log": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/native-contract-bridge-validation-20261011/diagnostic-route-no-delay.stdout.log",
+  "stderr_log": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/native-contract-bridge-validation-20261011/diagnostic-route-no-delay.stderr.log",
+  "summaries": [
+    "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 632 filtered out; finished in 0.59s"
+  ]
+}

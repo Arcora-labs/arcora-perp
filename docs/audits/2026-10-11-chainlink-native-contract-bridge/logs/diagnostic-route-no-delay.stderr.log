@@ -1,0 +1,25 @@
+   Compiling gateway v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway)
+warning: method `protocol_dir` is never used
+  --> /Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/native-contract-bridge-validation-20261011/route-expiry-observer.rs:28:19
+   |
+27 | impl Fixture {
+   | ------------ method in this implementation
+28 |     pub(super) fn protocol_dir(&self) -> &std::path::Path {
+   |                   ^^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `protocol_price_free_fixture` is never used
+   --> /Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/native-contract-bridge-validation-20261011/route-expiry-observer.rs:556:15
+    |
+556 | pub(super) fn protocol_price_free_fixture() -> (
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: `gateway` (bin "gateway" test) generated 2 warnings
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 32.88s
+     Running unittests src/main.rs (target/debug/deps/gateway-610b7230a2c5bb73)
+CONTROLLED_DIAGNOSTIC delay_ms=0 status=200 OK body={"to":"0x83279fae0994aa1a563377e889cc2a1d96adb3b1","amount":"100000000","nonce":1,"leaf":"0x640e28dd785f4b2f08129d1da84585d06bca8fa6563568ffaa43a9e21ee58061","status":"recorded — claimable on Base Sepolia after the next L1 settle; GET /v1/accounts/withdrawals for the Merkle proof"}
+
+thread '<unnamed>' (13734391) panicked at /Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/native-contract-bridge-validation-20261011/route-expiry-observer.rs:965:9:
+poison fixture
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
