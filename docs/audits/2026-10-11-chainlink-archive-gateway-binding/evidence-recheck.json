@@ -1,0 +1,123 @@
+{
+  "schema": "arcora-chainlink-archive-evidence-recheck-v1",
+  "observed_at_utc": "2026-10-11T05:46:42.739651+00:00",
+  "verified_code_commit": "e283958109fc6b434b7049d523bbd3378e2e6c27",
+  "base_commit": "c34fb56b05db13ce09efc0104c2d44abba6d6895",
+  "evidence_file": "final-verification.json",
+  "evidence_sha256": "51586580224bb7c6c9358beb8471b618e9139db528a69266901b77a9dfd0caa0",
+  "original_validation_start_utc": "2026-10-10T22:35:04.468920+00:00",
+  "original_validation_end_utc": "2026-10-10T22:36:40.704886+00:00",
+  "original_tests_rerun": false,
+  "sources_checked_against_worktree_and_code_commit": 18,
+  "original_local_log_hashes_matched": 13,
+  "raw_logs_published": false,
+  "raw_logs_location": "target/independent-binding-review-20261010T223319Z/",
+  "raw_logs_limitation": "Original local logs were re-hashed; this public package carries hashes, commands and summaries, not the raw logs.",
+  "root_manifest_byte_equal_to_base": true,
+  "registry_identities_unchanged": 244,
+  "reviewed_v2_source_pins_rechecked": 21,
+  "candidate_runtime_source_pins_rechecked": 9,
+  "gateway_binding_tests_within_gateway_total": 22,
+  "python_guard_tests_in_original_log": 47,
+  "ci_code_head_snapshot": [
+    {
+      "name": "rust",
+      "result": "SUCCESS",
+      "url": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38092332842/job/114331143545"
+    },
+    {
+      "name": "dependency advisories",
+      "result": "SUCCESS",
+      "url": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38092332850/job/114331143854"
+    },
+    {
+      "name": "Chainlink candidate core (not live verification)",
+      "result": "SUCCESS",
+      "url": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38092332871/job/114331143995"
+    },
+    {
+      "name": "offline-ingestion",
+      "result": "SUCCESS",
+      "url": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38092332841/job/114331143694"
+    },
+    {
+      "name": "rust (lint, 1.99)",
+      "result": "SUCCESS",
+      "url": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38092332846/job/114331143673"
+    },
+    {
+      "name": "frontend",
+      "result": "SUCCESS",
+      "url": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38092332842/job/114331143739"
+    },
+    {
+      "name": "release regression",
+      "result": "SUCCESS",
+      "url": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38092332850/job/114331143922"
+    },
+    {
+      "name": "Chainlink REST client (runtime regressions)",
+      "result": "SUCCESS",
+      "url": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38092332871/job/114331143748"
+    },
+    {
+      "name": "rust (workspace)",
+      "result": "SUCCESS",
+      "url": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38092332846/job/114331143850"
+    },
+    {
+      "name": "foundry release gate",
+      "result": "SUCCESS",
+      "url": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38092332850/job/114331143741"
+    },
+    {
+      "name": "prover crates (excluded, typecheck)",
+      "result": "SUCCESS",
+      "url": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38092332846/job/114331143806"
+    },
+    {
+      "name": "gateway RPC, crash and alert drills",
+      "result": "SUCCESS",
+      "url": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38092332850/job/114331143935"
+    },
+    {
+      "name": "contracts (foundry)",
+      "result": "SUCCESS",
+      "url": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38092332846/job/114331143863"
+    },
+    {
+      "name": "frontend release gate",
+      "result": "SUCCESS",
+      "url": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38092332850/job/114331144006"
+    },
+    {
+      "name": "frontend (vite)",
+      "result": "SUCCESS",
+      "url": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38092332846/job/114331143929"
+    },
+    {
+      "name": "prover source / deployment binding",
+      "result": "SUCCESS",
+      "url": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38092332850/job/114331143898"
+    },
+    {
+      "name": "Vercel Preview Comments",
+      "result": "SUCCESS",
+      "url": "https://vercel.com/github"
+    },
+    {
+      "name": "Vercel – arcora-labs",
+      "result": "SUCCESS",
+      "url": "https://vercel.com/kubudak90s-projects/arcora-labs/8wN5zTSsA143poG4WHbMF67xZiGN"
+    },
+    {
+      "name": "Vercel – arcora-perp",
+      "result": "SUCCESS",
+      "url": "https://vercel.com/kubudak90s-projects/arcora-perp/DYeAN2grA9YpKCuVr1P8yywLDZUY"
+    }
+  ],
+  "ci_scope": "Historical code head only; documentation publication and any later head need their own exact-head checks.",
+  "proof_generated": false,
+  "live_chainlink_verified": false,
+  "production_release": "HOLD"
+}

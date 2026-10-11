@@ -18,6 +18,14 @@ note-archive = { path = "../note-archive", features = ["std", "serde"] }
 sealed-box = { path = "../sealed-box", default-features = false }
 dark-perp-attestation = { path = "../attestation" }
 oracle-feed = { path = "../oracle-feed", features = ["http"] }
+# Candidate Chainlink report-archive binding (opt-in; PRODUCTION RELEASE HOLD).
+# Host facades: the gateway path-depends on the pinned crates' EXACT original
+# sources via thin manifests (crates/*-host) because the standalone crates are
+# their own `[workspace]`s and the root manifest is a reviewed pin that must
+# not change. Dependency keys keep the original Rust crate names
+# (chainlink_oracle / chainlink_streams_client).
+chainlink-oracle = { package = "chainlink-oracle-host", path = "../chainlink-oracle-host", features = ["std"] }
+chainlink-streams-client = { package = "chainlink-streams-client-host", path = "../chainlink-streams-client-host" }
 
 axum = { version = "0.7", features = ["ws"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "signal"] }

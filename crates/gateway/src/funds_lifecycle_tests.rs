@@ -343,7 +343,8 @@ impl Http {
         let writer_state = state.clone();
         let writer = tokio::spawn(async move {
             while let Some(ack) = rx.recv().await {
-                let result = persist_recovery(&*writer_app.gw.lock().await, &writer_state, &SEED);
+                let result =
+                    persist_recovery(&*writer_app.gw.lock().await, &writer_state, &SEED, false);
                 let _ = ack.send(result.is_ok());
             }
         });
@@ -529,10 +530,11 @@ async fn settle(
     let jpath = rollback_journal::journal_path(&http.state);
     let mut journal = {
         let mut gw = http.app.gw.lock().await;
-        let j = begin_journaled_window_settle(&mut gw, batch, Some(&jpath), &SEED)
-            .unwrap()
-            .unwrap();
-        persist_recovery(&gw, &http.state, &SEED).unwrap();
+        let (j, _envelope) =
+            begin_journaled_window_settle(&mut gw, batch, Some(&jpath), &SEED, None)
+                .unwrap()
+                .unwrap();
+        persist_recovery(&gw, &http.state, &SEED, false).unwrap();
         j
     };
     // Write the immutable unproved intent BEFORE the on-chain registration.
@@ -660,7 +662,7 @@ async fn settle(
             apply_boot_recovery(&mut gw, read, chain_batch, &root, bond, observed),
             BootRecoveryOutcome::DeleteJournal { mutated: true }
         );
-        finish_boot_recovery(&gw, true, &http.state, &jpath, &SEED);
+        finish_boot_recovery(&gw, true, &http.state, &jpath, &SEED, false);
         assert!(!jpath.exists());
     } else {
         let status = L1Status {
@@ -685,7 +687,7 @@ async fn settle(
             status,
             observed,
         );
-        persist_recovery(&gw, &http.state, &SEED).unwrap();
+        persist_recovery(&gw, &http.state, &SEED, false).unwrap();
     }
     json!({"batch":batch,"tx":receipt["transactionHash"],"stateRoot":hex0x(&p.new_root),"depositTip":hex0x(&p.deposits_root),"depositCount":p.new_deposit_count,"withdrawalsRoot":hex0x(&p.withdrawals_root),"recoveredAfterMining":recover,"clock":clock_evidence})
 }

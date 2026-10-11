@@ -284,6 +284,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "chainlink-oracle-host"
+version = "0.0.1"
+dependencies = [
+ "k256",
+ "perp-core",
+ "postcard",
+ "serde",
+]
+
+[[package]]
+name = "chainlink-streams-client-host"
+version = "0.0.1"
+dependencies = [
+ "chainlink-oracle-host",
+ "hmac",
+ "serde",
+ "serde_json",
+ "sha2",
+ "ureq",
+ "zeroize",
+]
+
+[[package]]
 name = "chrono"
 version = "0.4.45"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -800,6 +823,8 @@ name = "gateway"
 version = "0.0.1"
 dependencies = [
  "axum",
+ "chainlink-oracle-host",
+ "chainlink-streams-client-host",
  "dark-perp-attestation",
  "eth-keystore",
  "futures-util",

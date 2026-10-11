@@ -1,0 +1,31 @@
+{
+  "observed_utc": "2026-10-10T19:43:31.913743+00:00",
+  "observed_istanbul": "2026-10-10T22:43:31.913743+03:00",
+  "branch": "feat/chainlink-streams-client-20261010",
+  "local_head": "2a03bb03a7db9736e72573fa22d8fe8f4fe37f94",
+  "remote_pr_head": "2a03bb03a7db9736e72573fa22d8fe8f4fe37f94",
+  "pr": 43,
+  "pr_state": "OPEN",
+  "is_draft": false,
+  "merge_performed": false,
+  "commit_performed": false,
+  "push_performed": false,
+  "new_work_location": "uncommitted local worktree; not staged",
+  "publication_blocker": "tool could not determine safety; request blocked before execution",
+  "deferred_by_user": "live Chainlink feed discovery/access; no new request this turn",
+  "tests": {
+    "client_debug": {
+      "passed": 62,
+      "failed": 0,
+      "ignored_child_driver": 1
+    },
+    "client_release": {
+      "passed": 62,
+      "failed": 0,
+      "ignored_child_driver": 1
+    },
+    "new_tests": 22,
+    "owned_abrupt_exit_stages_per_profile": 4
+  },
+  "production_release": "HOLD"
+}

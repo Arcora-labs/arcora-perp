@@ -1,0 +1,475 @@
+{
+  "schema": "arcora-chainlink-archive-continuation-recheck-v1",
+  "observed_at_utc": "2026-10-11T10:09:46.715240+00:00",
+  "verified_code_commit": "e283958109fc6b434b7049d523bbd3378e2e6c27",
+  "base_commit": "c34fb56b05db13ce09efc0104c2d44abba6d6895",
+  "verification_method": "Hash original local validation/logs and git blobs at the exact code commit; no tests rerun.",
+  "original_tests_rerun": false,
+  "final_verification": {
+    "path": "final-verification.json",
+    "sha256": "51586580224bb7c6c9358beb8471b618e9139db528a69266901b77a9dfd0caa0",
+    "byte_equal_to_original_local_validation": true
+  },
+  "original_evidence_source_files": {
+    "files_matched": 18,
+    "entries": [
+      {
+        "path": "Cargo.lock",
+        "sha256": "5d1dd2b25eb73a7136fde2ac59b112e2135de59e7d4a704931cba4bb630a3cc5",
+        "matches_original_validation": true
+      },
+      {
+        "path": "crates/chainlink-oracle-host/Cargo.toml",
+        "sha256": "efb773cd39afd6eb0cc69884aafbdb1fb6f4b059127ffc3cdaa7c9863db462a5",
+        "matches_original_validation": true
+      },
+      {
+        "path": "crates/chainlink-streams-client-host/Cargo.toml",
+        "sha256": "6295cf0fb892c43ebf3c3250313856bb6f630da3020f3e7e41841328c262baae",
+        "matches_original_validation": true
+      },
+      {
+        "path": "crates/chainlink-streams-client/src/lib.rs",
+        "sha256": "4a63eec6941704583a83b395a5c8f34c5e685c33950c7e7bf96eb9999479de54",
+        "matches_original_validation": true
+      },
+      {
+        "path": "crates/chainlink-streams-client/src/report_archive.rs",
+        "sha256": "7db6e4f67577a6a78c0747ed22322e2c62dab3b2a10271aa4193f21f9ef9f62a",
+        "matches_original_validation": true
+      },
+      {
+        "path": "crates/chainlink-streams-client/src/report_archive_tests.rs",
+        "sha256": "e26ad11aac0d1510354003e3cc6ec494b06b6938c1d4778bfa46135fe80c04ab",
+        "matches_original_validation": true
+      },
+      {
+        "path": "crates/chainlink-streams-client/src/report_pair.rs",
+        "sha256": "803a1c8676f13cf2423a0d7ee7c209b38c857c7106e064195ed7737f0a98d604",
+        "matches_original_validation": true
+      },
+      {
+        "path": "crates/chainlink-streams-client/src/transport_tests.rs",
+        "sha256": "17259c937c1d90e3b0950fadf78d71caaab2e6d1bf0b457cae93b83a486c4079",
+        "matches_original_validation": true
+      },
+      {
+        "path": "crates/gateway/Cargo.toml",
+        "sha256": "e7ddec29be1a5ba96eb031b0fbc921c5fae26ae4ce8df3109f91c6143037180d",
+        "matches_original_validation": true
+      },
+      {
+        "path": "crates/gateway/src/clock_client.rs",
+        "sha256": "ec1ce362b4ac286dc5b7574cb59bd05c9725d819a38933cb7e8a71b8f844482e",
+        "matches_original_validation": true
+      },
+      {
+        "path": "crates/gateway/src/continuation_settlement_tests.rs",
+        "sha256": "2aad03a9c78672471e1186c06e0fe8c0dd3ce8a76209ae9da2188367067d1b54",
+        "matches_original_validation": true
+      },
+      {
+        "path": "crates/gateway/src/deposit_ingestion/paired_recovery_tests.rs",
+        "sha256": "c28bcdffee0f43cae7e7259c1e2d6f0ec6bb770d4f2eb371714d7ec34d0b7b20",
+        "matches_original_validation": true
+      },
+      {
+        "path": "crates/gateway/src/funds_lifecycle_tests.rs",
+        "sha256": "3fa9c5aee17a85bf826a0048145ab11aa6672eb46061f4ad84ad769873a96aa8",
+        "matches_original_validation": true
+      },
+      {
+        "path": "crates/gateway/src/main.rs",
+        "sha256": "1b7532a5fdb3a392b1097a03cc1409f743616416f532c679c2d532933df43e9b",
+        "matches_original_validation": true
+      },
+      {
+        "path": "crates/gateway/src/report_archive_binding.rs",
+        "sha256": "4071603d052e9decb9fda7f7c1918ba489e3e94060f410155129db077c3c13ce",
+        "matches_original_validation": true
+      },
+      {
+        "path": "crates/gateway/src/report_archive_binding_tests.rs",
+        "sha256": "60d665b5d23a8dbb0cb4833e256bda77dc5bc61ab4fdde539cda3f1b8e8342a7",
+        "matches_original_validation": true
+      },
+      {
+        "path": "crates/gateway/src/rollback_journal.rs",
+        "sha256": "248d8ae23668f27252201436648eb28329d2402c368aedd8a0eccf2921cdb0eb",
+        "matches_original_validation": true
+      },
+      {
+        "path": "crates/gateway/src/snapshot_crash_tests.rs",
+        "sha256": "6401bc3b04aa6cd02c72be0009841ef5801b1a93c7a435925c31216ac2ccc6fc",
+        "matches_original_validation": true
+      }
+    ]
+  },
+  "original_local_logs": {
+    "files_matched": 13,
+    "raw_logs_published": false,
+    "entries": [
+      {
+        "path": "target/independent-binding-review-20261010T223319Z/gateway.log",
+        "sha256": "63e42891f78b0b11ca104f1d03f4d1dc65168e87fbdffb8147985d6871b5b94a",
+        "matches_original_validation": true
+      },
+      {
+        "path": "target/independent-binding-review-20261010T223319Z/client-debug.log",
+        "sha256": "7bd4b4d3e1c2925ad5c7f56798b69032a4b5a28e1c82ff7c5b2c13fe84e4de27",
+        "matches_original_validation": true
+      },
+      {
+        "path": "target/independent-binding-review-20261010T223319Z/client-release.log",
+        "sha256": "f39f3575c5220cf108c55c6bd2c8931ef50b78d66ab41307ae67e38b5bea089e",
+        "matches_original_validation": true
+      },
+      {
+        "path": "target/independent-binding-review-20261010T223319Z/workspace-clippy.log",
+        "sha256": "99bcb3258e9f5f72d1ee65374af244ccad336b958e7c9d3aa539892581fe0a01",
+        "matches_original_validation": true
+      },
+      {
+        "path": "target/independent-binding-review-20261010T223319Z/workspace-format.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "matches_original_validation": true
+      },
+      {
+        "path": "target/independent-binding-review-20261010T223319Z/client-clippy.log",
+        "sha256": "c7a97401ceae0bfa38287d492316e93cb5fe1e1eec5d159c5b158bf79e11d7bf",
+        "matches_original_validation": true
+      },
+      {
+        "path": "target/independent-binding-review-20261010T223319Z/client-format.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "matches_original_validation": true
+      },
+      {
+        "path": "target/independent-binding-review-20261010T223319Z/candidate-no-std.log",
+        "sha256": "be4d902c4caa0bed7fbfd2a7a530615b0364e00aedf22e0347d73c8821b361b6",
+        "matches_original_validation": true
+      },
+      {
+        "path": "target/independent-binding-review-20261010T223319Z/sp1-release.log",
+        "sha256": "9189d4751f9a5a116d3fb275d396e5871d6e40c9df208c763d29ad33098f80d8",
+        "matches_original_validation": true
+      },
+      {
+        "path": "target/independent-binding-review-20261010T223319Z/candidate-lock.log",
+        "sha256": "2098e68e75a17ef7de525984a1425a3c666fa90e8333453246d09d0cf5f31d6e",
+        "matches_original_validation": true
+      },
+      {
+        "path": "target/independent-binding-review-20261010T223319Z/source-pins.log",
+        "sha256": "b177ef2ffad2f502961fa771964d727398ff5cf68b72ce8530402892887ecdc0",
+        "matches_original_validation": true
+      },
+      {
+        "path": "target/independent-binding-review-20261010T223319Z/python-guards.log",
+        "sha256": "02e9215b62149faa56daca2942d56081834147d36343114850fc066e0b424ed2",
+        "matches_original_validation": true
+      },
+      {
+        "path": "target/independent-binding-review-20261010T223319Z/whitespace.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "matches_original_validation": true
+      }
+    ]
+  },
+  "source_pins": {
+    "reviewed_v2": {
+      "definition_path": "scripts/local-verification/verify_clock_proof.py",
+      "files_matched": 21,
+      "entries": [
+        {
+          "path": "Cargo.toml",
+          "sha256": "e3144a0ae3447244776e65b04cfff39267c238e410c2d9abf20b53e6b837bbfa",
+          "matches_pin": true
+        },
+        {
+          "path": "crates/perp-core/Cargo.toml",
+          "sha256": "3bfb6981fa34a967185ce75abd07683e5262a694ebd60eb45a4f5c55aaf9704c",
+          "matches_pin": true
+        },
+        {
+          "path": "crates/perp-core/src/clock.rs",
+          "sha256": "e89e50e11b3ffb3a4a1a89ab6dd4854b61606cc17eb1236492994df0b59d50e7",
+          "matches_pin": true
+        },
+        {
+          "path": "crates/perp-core/src/commitment.rs",
+          "sha256": "43582ef5048d0d725e53976e3c2a1dfcf32984ed2ad1bb2ebd2032463e26ea92",
+          "matches_pin": true
+        },
+        {
+          "path": "crates/perp-core/src/engine.rs",
+          "sha256": "4d6037f1189939a71a41e31882012e6fa50b887087b5ccc2bfce4502b61d0f9e",
+          "matches_pin": true
+        },
+        {
+          "path": "crates/perp-core/src/error.rs",
+          "sha256": "0738da822be5639737e67f04a0f500af57fcc1f085dd64bec7fbe3b016c515c6",
+          "matches_pin": true
+        },
+        {
+          "path": "crates/perp-core/src/fixed.rs",
+          "sha256": "fc77559a31c1cfdd7a641cafbd773871aeb203849e165dbd158aa7a1b65ef7cd",
+          "matches_pin": true
+        },
+        {
+          "path": "crates/perp-core/src/funding.rs",
+          "sha256": "8f782cf3a4403c717eda44c6d2955789c31e4ef2a04bb4fdac8e61916018e781",
+          "matches_pin": true
+        },
+        {
+          "path": "crates/perp-core/src/hash.rs",
+          "sha256": "88430a8c2558b247bcf241035ad48fa1dbf8a3e77a0d176dfdbd608c930f93b9",
+          "matches_pin": true
+        },
+        {
+          "path": "crates/perp-core/src/lib.rs",
+          "sha256": "8f070fbec0f4b3d3fab5e594bcf808845803a59ece403dc42cb0f0df6e6253b5",
+          "matches_pin": true
+        },
+        {
+          "path": "crates/perp-core/src/market.rs",
+          "sha256": "8053e89a9b1021d6e461d46d733dfb1935aff5fc2a45be8121f96560fa4ddc2d",
+          "matches_pin": true
+        },
+        {
+          "path": "crates/perp-core/src/merkle.rs",
+          "sha256": "173f4667178ba4aa4048e43c2aeb9fa337918d6225b98c6597c004b59bc3a8f6",
+          "matches_pin": true
+        },
+        {
+          "path": "crates/perp-core/src/note.rs",
+          "sha256": "5cece4d513537c10464bd64b4612f829cd32cb9c1a80d3c8e40c573aace62423",
+          "matches_pin": true
+        },
+        {
+          "path": "crates/perp-core/src/nullifier.rs",
+          "sha256": "a252799c62dc42ec37c91ba6fd7674117b33c98c7f83e86b168f70898966ea78",
+          "matches_pin": true
+        },
+        {
+          "path": "crates/perp-core/src/oracle.rs",
+          "sha256": "91ae09655e35432aafa1135b23588d6f1f324b41a278ac640ebc30f106d17da2",
+          "matches_pin": true
+        },
+        {
+          "path": "crates/perp-core/src/order.rs",
+          "sha256": "99bb9b2be4948bcf8365c3022ef444be5941201ec6535de73d45a777e5a206d7",
+          "matches_pin": true
+        },
+        {
+          "path": "crates/perp-core/src/position.rs",
+          "sha256": "99d120139086092d2dae4ed11d3a677906c1cf3efd7aff9e58f27f3437f2ae66",
+          "matches_pin": true
+        },
+        {
+          "path": "crates/perp-core/src/state.rs",
+          "sha256": "e1026c1e2b56cfcbee4eff812e88ff3dcde052e46818deab980a071fcdbec388",
+          "matches_pin": true
+        },
+        {
+          "path": "crates/sp1-guest/Cargo.lock",
+          "sha256": "113518cb212208aa46a629608af9d946f9a4006ac211035a15e9cb8c022fb8c3",
+          "matches_pin": true
+        },
+        {
+          "path": "crates/sp1-guest/Cargo.toml",
+          "sha256": "d0ed7050076bb3548b9e3410f63066068752382f4dab31e344096c9c3e42dc85",
+          "matches_pin": true
+        },
+        {
+          "path": "crates/sp1-guest/src/main.rs",
+          "sha256": "c0d33ff8645ebdcc8994d4d65729b8a60a224bcda18415423da15ed875c16f5c",
+          "matches_pin": true
+        }
+      ]
+    },
+    "candidate_runtime": {
+      "definition_path": "scripts/local-verification/run_chainlink_replay.py",
+      "files_matched": 9,
+      "entries": [
+        {
+          "path": "crates/chainlink-oracle/Cargo.lock",
+          "sha256": "62f58aa9da1592de0a4419052c5145128425976b0e0c5520fcce0bb6c936b246",
+          "matches_pin": true
+        },
+        {
+          "path": "crates/chainlink-oracle/Cargo.toml",
+          "sha256": "0b05c79f8fa37dd643466ad9e4b0013d6d6d257d7cfc414b8351cc7a11a88421",
+          "matches_pin": true
+        },
+        {
+          "path": "crates/chainlink-oracle/src/binding.rs",
+          "sha256": "8c66dba2a1d49825c1c13b89aa1a55d47fcab42abe481a0fce308128215cc877",
+          "matches_pin": true
+        },
+        {
+          "path": "crates/chainlink-oracle/src/lib.rs",
+          "sha256": "a107bf7464fe8654c69d9864c5ab6bcac6728d993634004d6d0075fbb707e224",
+          "matches_pin": true
+        },
+        {
+          "path": "crates/chainlink-oracle/src/policy.rs",
+          "sha256": "c36d89a3212cd5d9893b19e77b6b4dba5dba364dcb2135b24424fdab5a42b285",
+          "matches_pin": true
+        },
+        {
+          "path": "crates/chainlink-oracle/src/report.rs",
+          "sha256": "91b824e8a20bc7b1d8aa907813eb95061c659a655f72ef01fdc68409b7232d26",
+          "matches_pin": true
+        },
+        {
+          "path": "crates/sp1-chainlink-guest/Cargo.lock",
+          "sha256": "de6dbb43b0b85968fa2f7f7de0d71d53c54adacebbc9786cfd17197491142cbe",
+          "matches_pin": true
+        },
+        {
+          "path": "crates/sp1-chainlink-guest/Cargo.toml",
+          "sha256": "9f47d6f2cfc08fb71fdfcbc0877f09f083685a1ea016bbd67ea87dd60c8edc55",
+          "matches_pin": true
+        },
+        {
+          "path": "crates/sp1-chainlink-guest/src/main.rs",
+          "sha256": "9e403b9f241e0a53afc2e58baa7bf978ddf81c28e5704acc7a6f734962874187",
+          "matches_pin": true
+        }
+      ]
+    }
+  },
+  "root_manifest_byte_equal_to_base": true,
+  "registry_identities_unchanged": 244,
+  "primary_comparison": {
+    "primary_role": "preserved_primary_checkout",
+    "primary_branch": "feat/chainlink-streams-client-20261010",
+    "primary_head": "2a03bb03a7db9736e72573fa22d8fe8f4fe37f94",
+    "newer_role": "source_task_worktree",
+    "newer_branch": "kimi/job--17-implement-and-publish-the-actual-chainli",
+    "newer_head": "e283958109fc6b434b7049d523bbd3378e2e6c27",
+    "newer_commits_ahead": 14,
+    "primary_unique_commits": 0,
+    "primary_dirty_file_count": 13,
+    "primary_preserved_by_this_recheck": true,
+    "unique_primary_source_work_found": false,
+    "note": "Three primary documents contain historical status superseded in the newer task worktree; both original checkouts are retained.",
+    "files": [
+      {
+        "path": "crates/chainlink-streams-client/src/lib.rs",
+        "primary_sha256": "4a63eec6941704583a83b395a5c8f34c5e685c33950c7e7bf96eb9999479de54",
+        "newer_task_worktree_sha256": "4a63eec6941704583a83b395a5c8f34c5e685c33950c7e7bf96eb9999479de54",
+        "byte_equal": true,
+        "comparison": "byte_identical"
+      },
+      {
+        "path": "crates/chainlink-streams-client/src/transport_tests.rs",
+        "primary_sha256": "17259c937c1d90e3b0950fadf78d71caaab2e6d1bf0b457cae93b83a486c4079",
+        "newer_task_worktree_sha256": "17259c937c1d90e3b0950fadf78d71caaab2e6d1bf0b457cae93b83a486c4079",
+        "byte_equal": true,
+        "comparison": "byte_identical"
+      },
+      {
+        "path": "docs/ACTIVE_WORK.md",
+        "primary_sha256": "57d2fd9fe21055c7e2c269d272a4f12436b4f75c8f479a74913c5307849924c1",
+        "newer_task_worktree_sha256": "d1005ccf8dfd19dee372cff113ded60435ab5cbec19637a1d9482e16959cbf88",
+        "byte_equal": false,
+        "comparison": "newer_task_document_replaces_historical_status_and_adds_candidate_gateway_backlog"
+      },
+      {
+        "path": "docs/CHAINLINK_STREAMS_CLIENT.md",
+        "primary_sha256": "923ce0fbca1aab31f61fd0d23c542c0f6575b0089032085e13ce61d5d766d9f2",
+        "newer_task_worktree_sha256": "4079b1131f83f69413470a5aefd20ef24629be19640d600c73338db964441186",
+        "byte_equal": false,
+        "comparison": "newer_task_document_updates_merged_PR43_and_candidate_gateway_scope"
+      },
+      {
+        "path": "crates/chainlink-streams-client/src/report_archive.rs",
+        "primary_sha256": "7ce55278f094ff7ad67e1dc9fbbe8f4744b1e29ef1f6304f6a5e70594bd2805e",
+        "newer_task_worktree_sha256": "7db6e4f67577a6a78c0747ed22322e2c62dab3b2a10271aa4193f21f9ef9f62a",
+        "byte_equal": false,
+        "comparison": "newer_code_adds_only_ArchiveId_serde_derives"
+      },
+      {
+        "path": "crates/chainlink-streams-client/src/report_archive_tests.rs",
+        "primary_sha256": "e26ad11aac0d1510354003e3cc6ec494b06b6938c1d4778bfa46135fe80c04ab",
+        "newer_task_worktree_sha256": "e26ad11aac0d1510354003e3cc6ec494b06b6938c1d4778bfa46135fe80c04ab",
+        "byte_equal": true,
+        "comparison": "byte_identical"
+      },
+      {
+        "path": "crates/chainlink-streams-client/src/report_pair.rs",
+        "primary_sha256": "7f9154fe5cafe182ed5bdc80976b44f19667bc4747ac801f3cec583de362ad7a",
+        "newer_task_worktree_sha256": "803a1c8676f13cf2423a0d7ee7c209b38c857c7106e064195ed7737f0a98d604",
+        "byte_equal": false,
+        "comparison": "newer_code_makes_policy_binding_public_and_documents_digest"
+      },
+      {
+        "path": "docs/CHAINLINK_REPORT_ARCHIVE.md",
+        "primary_sha256": "b150b8a38bef610f5fe25bfef30aee87b5d07ca0435b350fdb45bac68f8672f8",
+        "newer_task_worktree_sha256": "beefdb14e9e8ed269967c3af49feda94fff7e88c7156fcc20283cb5fc776e67a",
+        "byte_equal": false,
+        "comparison": "newer_task_document_updates_candidate_journal_snapshot_and_remaining_gates"
+      },
+      {
+        "path": "docs/audits/2026-10-10-chainlink-report-archive/README.md",
+        "primary_sha256": "2c1ce26530e60512a630e039b7b3ed4f644de43ede8dad86f905bf3c94e25c07",
+        "newer_task_worktree_sha256": "2c1ce26530e60512a630e039b7b3ed4f644de43ede8dad86f905bf3c94e25c07",
+        "byte_equal": true,
+        "comparison": "byte_identical"
+      },
+      {
+        "path": "docs/audits/2026-10-10-chainlink-report-archive/client-debug.txt",
+        "primary_sha256": "8fe1cceb492aa4a00019f1138dcc7086d618b771c15415d7c89709480672bd9c",
+        "newer_task_worktree_sha256": "8fe1cceb492aa4a00019f1138dcc7086d618b771c15415d7c89709480672bd9c",
+        "byte_equal": true,
+        "comparison": "byte_identical"
+      },
+      {
+        "path": "docs/audits/2026-10-10-chainlink-report-archive/client-release.txt",
+        "primary_sha256": "200dcb6a224946470eee5349dc4f04077fa4e02bd6104e9a8a9d10a1b031ed98",
+        "newer_task_worktree_sha256": "200dcb6a224946470eee5349dc4f04077fa4e02bd6104e9a8a9d10a1b031ed98",
+        "byte_equal": true,
+        "comparison": "byte_identical"
+      },
+      {
+        "path": "docs/audits/2026-10-10-chainlink-report-archive/publication-state.json",
+        "primary_sha256": "48e36c7a0e9d641c64badc95fa235bb3a5e024163ecc361372ea57307946490b",
+        "newer_task_worktree_sha256": "48e36c7a0e9d641c64badc95fa235bb3a5e024163ecc361372ea57307946490b",
+        "byte_equal": true,
+        "comparison": "byte_identical"
+      },
+      {
+        "path": "docs/audits/2026-10-10-chainlink-report-archive/verification.json",
+        "primary_sha256": "95b9e0448233ba84bc24c05bc581b4c9ea56b23a1ca838f1950c846457c390b7",
+        "newer_task_worktree_sha256": "95b9e0448233ba84bc24c05bc581b4c9ea56b23a1ca838f1950c846457c390b7",
+        "byte_equal": true,
+        "comparison": "byte_identical"
+      }
+    ]
+  },
+  "github_pr_snapshot": {
+    "base_sha": "c34fb56b05db13ce09efc0104c2d44abba6d6895",
+    "draft": false,
+    "head_sha": "e283958109fc6b434b7049d523bbd3378e2e6c27",
+    "html_url": "https://github.com/Arcora-labs/arcora-perp/pull/44",
+    "mergeable": true,
+    "mergeable_state": "clean",
+    "number": 44,
+    "state": "open",
+    "updated_at": "2026-10-11T06:44:18Z"
+  },
+  "github_snapshot_scope": "Read-only observation of PR44 at the recorded timestamp; draft=false. Subsequent heads and CI require their own checks.",
+  "publication_privacy": "Repository-relative paths and public GitHub metadata only; no local usernames, credentials, private snapshot or witness data.",
+  "proof_generated": false,
+  "live_chainlink_verified": false,
+  "production_release": "HOLD",
+  "original_log_summary_checks": {
+    "gateway_binding_pass_lines": 22,
+    "gateway_summary": "528 passed; 0 failed; 16 ignored",
+    "python_guard_tests": 47,
+    "snapshot_marker_loss_test_absent_at_a4e1c3e": true,
+    "snapshot_marker_loss_test_present_at_verified_code": true
+  }
+}

@@ -1,0 +1,75 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.07s
+     Running unittests src/lib.rs (crates/chainlink-streams-client/target/debug/deps/chainlink_streams_client-1b2e0e3784cbb4ad)
+
+running 63 tests
+test report_archive::tests::owned_abrupt_exit_child ... ignored, fixture driver; invoked explicitly by owned process recovery test
+test report_archive::tests::depeg_and_different_observation_times_survive_pairing ... ok
+test report_archive::tests::identity_parser_refuses_path_traversal_noncanonical_and_invalid_hashes ... ok
+test report_archive::tests::pair_refuses_missing_mapping_network_swap_and_wrong_quote ... ok
+test report_archive::tests::pair_uses_explicit_usdc_ratio_and_preserves_original_reports ... ok
+test report_archive::tests::pair_rechecks_queue_delay_skew_and_each_receipt_before_use ... ok
+test report_archive::tests::policy_addresses_decimals_limits_network_and_market_are_bound ... ok
+test report_archive::tests::record_contains_no_credential_or_authentication_headers ... ok
+test report_archive::tests::partial_temporary_files_are_never_promoted_to_final_entries ... ok
+test report_archive::tests::concurrent_equal_writes_converge_without_partial_or_duplicate_final_record ... ok
+test report_archive::tests::oversized_empty_and_modified_records_fail_before_decode ... ok
+test report_archive::tests::recovery_does_not_create_missing_archive_and_create_does_not_reuse ... ok
+test report_archive::tests::corrupt_existing_entry_is_preserved_not_repaired_or_overwritten ... ok
+test tests::credential_debug_is_redacted_and_errors_do_not_contain_input ... ok
+test report_archive::tests::even_self_hashed_records_must_be_canonical_and_schema_valid ... ok
+test tests::credentials_reject_missing_malformed_and_header_injection_values ... ok
+test report_archive::tests::equal_pair_is_idempotent_without_replacing_the_inode ... ok
+test tests::hmac_binds_path_identity_time_and_secret_without_demo_fallback ... ok
+test tests::duplicate_critical_fields_including_escaped_names_are_rejected ... ok
+test tests::critical_fields_are_required_and_strictly_typed ... ok
+test tests::hmac_matches_independent_python_hashlib_vector ... ok
+test tests::networks_and_feed_path_are_explicit_not_response_selected ... ok
+test report_archive::tests::root_replacement_and_insecure_permissions_are_refused ... ok
+test tests::original_full_report_and_source_times_survive_parsing_exactly ... ok
+test tests::outer_metadata_cannot_override_abi_feed_or_timestamp ... ok
+test tests::report_hex_abi_offsets_and_signature_syntax_are_bounded ... ok
+test tests::response_byte_limit_is_inclusive_and_applies_before_decode ... ok
+test tests::stale_future_zero_and_queue_delay_are_not_restamped ... ok
+test report_archive::tests::roundtrip_across_reopen_keeps_all_bytes_and_original_clocks ... ok
+test tests::trailing_invalid_utf8_and_nonfinite_json_are_rejected ... ok
+test transport::receipt_clock_tests::elapsed_time_overflow_is_rejected_instead_of_wrapping ... ok
+test transport::receipt_clock_tests::forward_step_retains_elapsed_time_at_the_age_boundary ... ok
+test report_archive::tests::symlink_directory_and_symlink_or_directory_record_are_refused ... ok
+test report_archive::tests::interruption_before_publication_never_yields_an_expected_record ... ok
+test transport::receipt_clock_tests::ordinary_wall_time_and_elapsed_time_are_not_double_counted ... ok
+test transport::receipt_clock_tests::repeated_submillisecond_samples_keep_the_original_anchor ... ok
+test transport::receipt_clock_tests::retry_samples_do_not_erase_time_after_a_forward_step ... ok
+test transport::receipt_clock_tests::zero_backward_and_reversed_monotonic_samples_fail_closed ... ok
+test report_archive::tests::restored_history_is_not_fresh_admission_and_newer_file_is_not_fallback ... ok
+test transport::tests::real_http_accepts_correct_chunked_framing ... ok
+test transport::tests::real_http_duplicate_transfer_encoding_rejected_even_with_valid_chunks ... ok
+test transport::tests::real_http_failed_or_backward_clock_does_not_refresh_data ... ok
+test transport::tests::real_http_network_mismatch_refuses_before_clock_or_connection ... ok
+test transport::tests::real_http_malformed_metadata_and_stale_report_do_not_retry ... ok
+test transport::tests::real_http_bounds_content_length_chunked_and_eof_bodies ... ok
+test transport::tests::real_http_reconnects_after_truncated_body ... ok
+test transport::tests::real_http_redirect_does_not_send_credentials_to_target ... ok
+test transport::tests::real_http_ambiguous_or_encoded_framing_is_rejected ... ok
+test transport::tests::real_http_retry_clock_rollback_stops_before_second_request ... ok
+test transport::tests::real_http_sends_canonical_hmac_headers_and_preserves_report_bytes ... ok
+test transport::tests::real_http_retry_count_is_bounded_and_error_body_not_echoed ... ok
+test transport::tests::real_http_signed_content_length_must_not_be_accepted ... ok
+test transport::tests::real_http_total_deadline_prevents_backoff_and_extra_request ... ok
+test transport::tests::real_http_unknown_transfer_encoding_rejected_even_when_chunk_decode_would_work ... ok
+test transport::tests::real_http_unknown_or_duplicate_transfer_encoding_must_not_be_treated_as_plain_json ... ok
+test transport::tests::real_http_auth_rate_limit_redirect_and_non_200_do_not_retry ... ok
+test transport::tests::real_http_forward_clock_step_cannot_hide_attempt_elapsed_time ... ok
+test transport::tests::real_http_retryable_statuses_retry_with_new_auth_timestamp ... ok
+test report_archive::tests::uncertain_post_publication_outcome_reconciles_exact_id_without_new_time ... ok
+test transport::tests::real_http_pair_archive_witness_handoff_preserves_source_bytes ... ok
+test transport::tests::real_http_monotonic_receipt_counts_elapsed_time_when_wall_clock_stalls ... ok
+test report_archive::tests::real_process_abrupt_exit_and_reopen_never_substitutes_partial_records ... ok
+test transport::tests::real_http_stalled_body_timeout_never_yields_partial_success ... ok
+
+test result: ok. 62 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.60s
+
+   Doc-tests chainlink_streams_client
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s

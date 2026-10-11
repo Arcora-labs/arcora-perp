@@ -1,0 +1,34 @@
+# HOST FACADE — thin manifest only; NO source of its own.
+#
+# The gateway's opt-in candidate archive binding path-depends on the pinned
+# `chainlink-oracle` crate's EXACT original sources without making that crate a
+# workspace member (it is a standalone `[workspace]` — depending on it directly
+# from a member conflicts on Cargo 1.99, and editing the root workspace
+# manifest would change a reviewed pin). This facade reuses
+# `../chainlink-oracle/src/lib.rs` verbatim: same crate identity in code, same
+# runtime features and dependency pins, `test = false` / `doctest = false` so
+# the standalone crate's own test suites keep running under its ORIGINAL
+# manifest. The root Cargo.toml is untouched.
+[package]
+name = "chainlink-oracle-host"
+version = "0.0.1"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[lib]
+path = "../chainlink-oracle/src/lib.rs"
+test = false
+doctest = false
+
+[features]
+default = []
+std = ["perp-core/std"]
+
+[dependencies]
+perp-core = { path = "../perp-core", default-features = false, features = ["serde"] }
+serde = { version = "1", default-features = false, features = ["derive", "alloc"] }
+postcard = { version = "1", default-features = false, features = ["alloc"] }
+
+[dev-dependencies]
+k256 = { version = "0.13", default-features = false, features = ["ecdsa"] }

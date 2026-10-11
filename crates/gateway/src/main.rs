@@ -68,6 +68,7 @@ mod oracle_intake_tests;
 mod order_log;
 mod prover_client;
 mod recovery_checkpoint;
+mod report_archive_binding;
 mod rollback_journal;
 mod service_policy;
 #[cfg(test)]
@@ -390,8 +391,19 @@ fn apply_boot_recovery(
 /// `write_atomic`). At this point in boot the snapshot writer task is not spawned
 /// yet, so the snapshot file still has exactly one writer (this call); there is
 /// no `.tmp`-rename race to worry about.
-fn persist_recovery(gw: &Gw, path: &std::path::Path, seed: &[u8; 32]) -> Result<(), String> {
-    let plain = gw.snapshot_plain();
+fn persist_recovery(
+    gw: &Gw,
+    path: &std::path::Path,
+    seed: &[u8; 32],
+    candidate: bool,
+) -> Result<(), String> {
+    let mut plain = gw.snapshot_plain();
+    // Candidate snapshots are self-authenticating (see report_archive_binding):
+    // the tag lives INSIDE the sealed plaintext, so candidate state can never
+    // be reinterpreted as legacy even if the marker sidecar is lost.
+    if candidate {
+        report_archive_binding::tag_snapshot_plain(&mut plain);
+    }
     let sealed = snapshot::seal(&plain, seed);
     snapshot::write_atomic(path, &sealed).map_err(|e| format!("snapshot write: {e}"))
 }
@@ -417,9 +429,10 @@ fn finish_boot_recovery(
     state_path: &std::path::Path,
     journal_path: &std::path::Path,
     seed: &[u8; 32],
+    candidate: bool,
 ) -> bool {
     if mutated {
-        if let Err(e) = persist_recovery(gw, state_path, seed) {
+        if let Err(e) = persist_recovery(gw, state_path, seed, candidate) {
             eprintln!(
                 "[recovery] HOLDING: window recovery applied in memory but the post-recovery \
                  snapshot could not be persisted ({e}) — keeping the rollback journal {} as \
@@ -5319,7 +5332,12 @@ async fn final_snapshot<'a>(
 ) -> (tokio::sync::MutexGuard<'a, Gw>, bool) {
     let serial = serial.lock_owned().await;
     let frozen = app.gw.lock().await;
-    let plain = frozen.snapshot_plain();
+    let mut plain = frozen.snapshot_plain();
+    if app.archive.is_some() {
+        // Candidate snapshots are self-authenticating (tag inside the sealed
+        // plaintext) so candidate state can never boot as legacy later.
+        report_archive_binding::tag_snapshot_plain(&mut plain);
+    }
     let path = path.to_owned();
     let saved = tokio::task::spawn_blocking(move || {
         // Cancellation must not release serialization while the filesystem worker
@@ -5354,10 +5372,13 @@ async fn write_snapshot(
     serial: Arc<Mutex<()>>,
 ) -> bool {
     let guard = serial.lock_owned().await;
-    let (plain, alerts) = {
+    let (mut plain, alerts) = {
         let gw = app.gw.lock().await;
         (gw.snapshot_plain(), gw.ops_alerts.clone())
     };
+    if app.archive.is_some() {
+        report_archive_binding::tag_snapshot_plain(&mut plain);
+    }
     let path = path.to_path_buf();
     let writer_alerts = alerts.clone();
     match tokio::task::spawn_blocking(move || {
@@ -5451,6 +5472,13 @@ struct App {
     /// observability — hence still `#[allow(dead_code)]` (no in-App reader).
     #[allow(dead_code)]
     prover_session_token: Option<String>,
+    /// Candidate Chainlink report-archive binding (opt-in; PRODUCTION RELEASE
+    /// HOLD). `None` = the reviewed legacy path, unchanged. `Some` = oracle
+    /// admissions are archived before admission, window seals bind the actual op
+    /// stream to exact archived records, and boot recovery requires those records.
+    /// The prover routing is untouched: this never constructs or submits a v3
+    /// chainlink witness to the reviewed v2 prover.
+    archive: Option<std::sync::Mutex<report_archive_binding::ArchiveBinding>>,
     /// FIN-001 Task 4: an operator-set one-shot flag. `POST /v1/admin/settlement/resume`
     /// (gated by `FIN_ADMIN_KEY`) sets it; the settle loop `swap`s it to `false` at the top of
     /// each tick and, when it was set, resets its backoff deadline to now so a fixed prover is
@@ -7736,14 +7764,47 @@ fn build_router_with_policy(
 /// record is already durable, never the gap between them. On failure the seal is
 /// undone before the caller releases the guard. The previous resolution must be
 /// snapshotted before calling this helper and replacing the previous journal.
+///
+/// Candidate archive mode (`archive = Some`): the window's ACTUAL oracle-bearing
+/// op stream must bind to exact archived records before the journal is durable —
+/// an unarchived price can never reach the durability barrier. Returns the
+/// envelope to persist with every later stage of this window's journal.
 fn begin_journaled_window_settle(
     gw: &mut Gw,
     chain_batch_count: u64,
     path: Option<&std::path::Path>,
     seed: &[u8; 32],
-) -> Result<Option<rollback_journal::RollbackJournal>, String> {
+    archive: Option<&report_archive_binding::ArchiveBinding>,
+) -> Result<
+    Option<(
+        rollback_journal::RollbackJournal,
+        Option<rollback_journal::ArchiveEnvelope>,
+    )>,
+    String,
+> {
+    // Archive-required mode REQUIRES the durability barrier: without a journal
+    // path the window could be sealed, proven, and broadcast with no
+    // authenticated binding anywhere. Refuse BEFORE any mutation (the seal
+    // below) — not at journal-write time.
+    if archive.is_some() && path.is_none() {
+        return Err(
+            "archive-required mode requires a configured rollback journal (DARKPERP_STATE); \
+             refusing to seal without durability"
+                .into(),
+        );
+    }
     let Some((witness, ww)) = gw.begin_window_settle(chain_batch_count)? else {
         return Ok(None);
+    };
+    // Archive binding happens BEFORE journal persistence: archive durable →
+    // authenticated journal durable → any prove/broadcast side effect.
+    let envelope = match archive.map(|a| a.bind_ops(&witness.ops)).transpose() {
+        Ok(envelope) => envelope,
+        Err(e) => {
+            gw.seq.rollback_window(&witness);
+            gw.rollback_window_withdrawals(ww);
+            return Err(format!("oracle ops are not bound to archived reports: {e}"));
+        }
     };
     let journal = rollback_journal::RollbackJournal {
         batch_id: witness.batch_id,
@@ -7751,25 +7812,103 @@ fn begin_journaled_window_settle(
         ww,
         prepared: None,
     };
-    if let Err(error) = after_settle_journal(path, &journal, seed, || ()) {
+    if let Err(error) = after_settle_journal(path, &journal, seed, envelope.as_ref(), || ()) {
         gw.seq.rollback_window(&journal.witness);
         gw.rollback_window_withdrawals(journal.ww);
         return Err(format!("stage-1 rollback journal is not durable: {error}"));
     }
-    Ok(Some(journal))
+    Ok(Some((journal, envelope)))
+}
+
+/// How the settle loop's stage-1 archive access resolved. A POISONED mutex is
+/// distinct from NOT CONFIGURED: the former must HOLD the settle (never seal a
+/// candidate window without its binding), while the latter is the reviewed
+/// legacy path. Unit-tested against mutex poisoning regressions.
+enum ArchiveSlot<'a> {
+    NotConfigured,
+    Guard(std::sync::MutexGuard<'a, report_archive_binding::ArchiveBinding>),
+    Poisoned,
+}
+
+fn archive_slot<'a>(
+    archive: Option<&'a std::sync::Mutex<report_archive_binding::ArchiveBinding>>,
+) -> ArchiveSlot<'a> {
+    match archive {
+        None => ArchiveSlot::NotConfigured,
+        Some(m) => match m.lock() {
+            Ok(g) => ArchiveSlot::Guard(g),
+            Err(_) => ArchiveSlot::Poisoned,
+        },
+    }
+}
+
+/// Submission-route gate. Until real v3 chainlink proving is wired, candidate
+/// mode has NO supported submission route: the v2 path (prove_and_prepare —
+/// whose clock client performs the register_clock CHAIN MUTATION — then
+/// settle_proved) is refused for EVERY candidate window, INCLUDING zero-oracle
+/// batches. Refusal happens AFTER the window is durably journaled and the
+/// archive guard passes, so it is a clean HOLD: no prover construction, no
+/// registration, no broadcast, and boot recovery can roll the sealed window
+/// back from the stage-1 journal. Legacy mode (no envelope) is unchanged.
+fn ensure_submission_supported(
+    envelope: Option<&rollback_journal::ArchiveEnvelope>,
+) -> Result<(), String> {
+    if envelope.is_some() {
+        return Err(
+            "candidate archive mode has no supported submission route (v3 chainlink \
+             proving is not wired); refusing v2 prove/register/broadcast side effects"
+                .into(),
+        );
+    }
+    Ok(())
+}
+
+/// The archive-required guard for PROVER/CHAIN side effects. Bind-once at seal
+/// time is not enough on its own: this re-verification runs immediately before
+/// any `prove_and_prepare` (which for clock clients performs the
+/// `register_clock` CHAIN MUTATION via `ClockProverClient::clock_context`) so a
+/// record deleted or corrupted between seal and prove, or an op stream that no
+/// longer matches its envelope, stops the settle BEFORE the prover client or
+/// the chain is touched. `None`/`None` = legacy mode, no-op.
+fn ensure_archive_binding_current(
+    archive: Option<&report_archive_binding::ArchiveBinding>,
+    journal: &rollback_journal::RollbackJournal,
+    envelope: Option<&rollback_journal::ArchiveEnvelope>,
+) -> Result<(), String> {
+    match (archive, envelope) {
+        (Some(a), Some(env)) => a
+            .verify(&journal.witness.ops, env)
+            .map_err(|e| format!("sealed window's archive binding no longer verifies: {e}")),
+        (None, None) => Ok(()),
+        _ => Err("archive configuration and authenticated journal binding disagree".into()),
+    }
 }
 
 /// A configured journal is a durability barrier before proving/broadcasting.
 /// Do not invoke the continuation after any write or fsync failure. `None`
 /// preserves the explicitly unjournaled dev path; it is not durable evidence.
+/// `envelope` carries the candidate archive binding; `None` writes exactly the
+/// legacy v5 journal.
 fn after_settle_journal<T>(
     path: Option<&std::path::Path>,
     journal: &rollback_journal::RollbackJournal,
     seed: &[u8; 32],
+    envelope: Option<&rollback_journal::ArchiveEnvelope>,
     next: impl FnOnce() -> T,
 ) -> Result<T, String> {
+    // Defense in depth: an archive-bound stage must never reach the
+    // continuation without journal durability — `path = None` is only the
+    // explicitly unjournaled DEV path, and candidate mode has already refused
+    // it before sealing; this keeps the invariant at the barrier itself.
+    if path.is_none() && envelope.is_some() {
+        return Err(
+            "archive-bound journal stage invoked without a journal path; \
+             refusing to continue without durability"
+                .into(),
+        );
+    }
     if let Some(path) = path {
-        rollback_journal::write(path, journal, seed)?;
+        rollback_journal::write_versioned(path, journal, envelope, seed)?;
     }
     Ok(next())
 }
@@ -7791,6 +7930,16 @@ async fn main() {
         eprintln!("[listener] REFUSING to start: {error}");
         std::process::exit(1);
     });
+    // Candidate Chainlink report-archive binding (opt-in only; PRODUCTION RELEASE
+    // HOLD). Absent/"disabled" changes nothing anywhere; "candidate" requires an
+    // operator-owned archive dir plus an operator-pinned policy file. No live
+    // discovery: feed IDs, decimals and freshness bounds come ONLY from the
+    // policy file; the live Data Streams pull stays deferred (ACTIVE_WORK).
+    let archive_binding =
+        report_archive_binding::ArchiveBinding::from_env().unwrap_or_else(|error| {
+            eprintln!("[chainlink-archive] REFUSING to start: {error}");
+            std::process::exit(1);
+        });
     let (tx, _rx) = broadcast::channel::<String>(256);
     let (events_tx, _erx) = broadcast::channel::<String>(1024);
     let l1 = L1::from_env();
@@ -8096,14 +8245,25 @@ async fn main() {
     } else {
         GenesisMode::Demo
     };
+    let mut restored_candidate_snapshot = false;
     let mut gw = match (&state_path, startup_snapshot) {
         (Some(p), Some(sealed)) => {
-            let restored =
-                snapshot::open(&sealed, &enclave_seed).and_then(|plain| Gw::boot_restored(&plain));
+            let restored = snapshot::open(&sealed, &enclave_seed).and_then(|mut plain| {
+                // A candidate-tagged snapshot is authenticated candidate state:
+                // strip the tag for decode and REMEMBER it — the mode gate below
+                // refuses to boot it as legacy even if the marker sidecar is
+                // gone and the env config omitted (open-window gap).
+                let tagged = report_archive_binding::snapshot_is_candidate(&plain);
+                if tagged {
+                    report_archive_binding::untag_snapshot_plain(&mut plain);
+                }
+                Gw::boot_restored(&plain).map(|gw| (gw, tagged))
+            });
             match restored {
-                Ok(gw) => {
+                Ok((gw, tagged)) => {
                     println!("[state] restored sealed snapshot from {}", p.display());
                     restored_from_snapshot = true;
+                    restored_candidate_snapshot = tagged;
                     gw
                 }
                 Err(e) => {
@@ -8127,6 +8287,36 @@ async fn main() {
             std::process::exit(1);
         });
     gw.require_fresh_production_oracles();
+    // Candidate archive mode REPLACES the legacy oracle intakes. The default
+    // gateway markets all carry feeds, so refusing on `m.feed.is_some()` would
+    // make candidate mode unreachable on a real gateway; instead the legacy
+    // fetch loop is suppressed below and admission flows only through the
+    // archive. What must hold: the pinned policy covers EVERY configured
+    // market (no price can be admitted outside the archive), and the two-venue
+    // crosscheck — which admits outside the archive — is never co-configured.
+    if let Some(binding) = &archive_binding {
+        if !gw.oracle_crosschecks.is_empty() {
+            eprintln!(
+                "[chainlink-archive] REFUSING to start: candidate archive mode cannot be \
+                 combined with the two-venue oracle crosscheck"
+            );
+            std::process::exit(1);
+        }
+        let market_ids: Vec<u64> = gw.mkts.iter().map(|m| m.id).collect();
+        if let Some(id) = report_archive_binding::uncovered_market(binding.policy(), &market_ids) {
+            eprintln!(
+                "[chainlink-archive] REFUSING to start: candidate archive mode requires \
+                 the pinned policy to cover every configured market (market {id} has no \
+                 policy feed mapping; unarchived admission would wedge sealing)"
+            );
+            std::process::exit(1);
+        }
+        println!(
+            "[chainlink-archive] candidate mode: legacy feed intake suppressed; \
+             {} markets covered by the pinned policy",
+            gw.mkts.len()
+        );
+    }
     // SEC-021: bind withdrawal authorization to this deployment — the same env source
     // the deposit-authorization signer uses, so both digest families agree on chain id
     // + vault by construction. Set HERE, beside `prod` (review Finding 8): the signer
@@ -8180,6 +8370,53 @@ async fn main() {
         );
         std::process::exit(1);
     }
+    // Candidate-mode persistence boundary, checked BEFORE the crash-recovery
+    // block below: `apply_boot_recovery` (and its Stale/SealNeverPersisted
+    // journal DELETIONS) may only ever run after the mode is settled. The
+    // archive requirement is a runtime gate (env + in-memory binding) that
+    // serde skips everywhere; the sealed `.chainlink` marker makes it durable.
+    // A state that ever ran candidate MUST refuse to boot as legacy — including
+    // with a restored snapshot and an unsealed open window admitted from
+    // archived reports — and a marker that exists but cannot be read is never
+    // treated as absent. Legacy state (no marker, no config) is untouched.
+    if let Some(sp) = &state_path {
+        let configured = archive_binding.as_ref().map(|b| b.policy_binding());
+        // Authenticated-candidate snapshot without candidate configuration:
+        // refuse BEFORE any recovery branch. Marker absence proves nothing —
+        // the tag inside the sealed snapshot does.
+        if let Some(reason) =
+            report_archive_binding::snapshot_mode_refusal(restored_candidate_snapshot, configured)
+        {
+            eprintln!("[chainlink-archive] REFUSING to start: {reason}");
+            std::process::exit(1);
+        }
+        let gate = report_archive_binding::mode_gate(
+            report_archive_binding::read_marker(
+                &report_archive_binding::marker_path(sp),
+                &enclave_seed,
+            ),
+            configured,
+        );
+        match gate {
+            report_archive_binding::ModeGate::Legacy => {}
+            report_archive_binding::ModeGate::CandidateContinue => {}
+            report_archive_binding::ModeGate::CandidateWriteMarker => {
+                if let Err(e) = report_archive_binding::write_marker(
+                    &report_archive_binding::marker_path(sp),
+                    configured.expect("write-marker gate implies a configured binding"),
+                    &enclave_seed,
+                ) {
+                    eprintln!("[chainlink-archive] REFUSING to start: candidate mode marker is not durable: {e}");
+                    std::process::exit(1);
+                }
+                println!("[chainlink-archive] candidate mode marker persisted (state will refuse legacy boots)");
+            }
+            report_archive_binding::ModeGate::Refuse(reason) => {
+                eprintln!("[chainlink-archive] REFUSING to start: {reason}");
+                std::process::exit(1);
+            }
+        }
+    }
     // Task 3 (crash recovery): resolve any in-flight window settle the rollback
     // journal recorded. The settle loop journals every seal and NEVER deletes
     // (the journal is a WAL for the latest sealed window; resolving arms only
@@ -8198,7 +8435,7 @@ async fn main() {
         } else {
             match startup_journal
                 .as_deref()
-                .map(|bytes| rollback_journal::open(bytes, &enclave_seed))
+                .map(|bytes| rollback_journal::open_versioned(bytes, &enclave_seed))
                 .transpose()
             {
                 Ok(None) => {} // no journal — nothing was in flight
@@ -8211,114 +8448,207 @@ async fn main() {
                         jp.display()
                     );
                 }
-                Ok(Some(mut j)) => match &l1 {
-                    None => {
-                        // can't resolve the journal against a chain we can't read.
-                        eprintln!(
+                // Candidate envelope handling: an archive-required boot refuses a
+                // legacy (unbound) journal; a candidate journal refuses to resolve
+                // without the configured archive; every referenced record must
+                // verify against the exact journaled op stream. All mismatches
+                // HOLD with the file preserved.
+                Ok(Some(rollback_journal::OpenedJournal::Candidate { .. }))
+                    if archive_binding.is_none() =>
+                {
+                    eprintln!(
+                        "[recovery] HOLDING: rollback journal {} carries a candidate \
+                         archive envelope but archive mode is not configured — keeping \
+                         the file; refusing to resolve without the archive",
+                        jp.display()
+                    );
+                }
+                Ok(Some(rollback_journal::OpenedJournal::Legacy(_)))
+                    if archive_binding.is_some() =>
+                {
+                    eprintln!(
+                        "[recovery] HOLDING: rollback journal {} is a legacy unbound \
+                         journal but candidate archive mode requires archive-bound \
+                         windows — keeping the file; reconcile before restart",
+                        jp.display()
+                    );
+                }
+                Ok(Some(opened)) => {
+                    let verified: Option<(
+                        rollback_journal::RollbackJournal,
+                        Option<rollback_journal::ArchiveEnvelope>,
+                    )> = match opened {
+                        rollback_journal::OpenedJournal::Legacy(j) => Some((j, None)),
+                        rollback_journal::OpenedJournal::Candidate { journal, envelope } => {
+                            match archive_binding
+                                .as_ref()
+                                .map(|b| b.verify(&journal.witness.ops, &envelope))
+                            {
+                                Some(Ok(())) => Some((journal, Some(envelope))),
+                                Some(Err(e)) => {
+                                    eprintln!(
+                                        "[recovery] HOLDING: rollback journal {} archive binding \
+                                     does not verify ({e}) — a referenced record is missing, \
+                                     corrupt, or not the exact report for this window; keeping \
+                                     the file",
+                                        jp.display()
+                                    );
+                                    None
+                                }
+                                None => {
+                                    eprintln!(
+                                        "[recovery] HOLDING: rollback journal {} is archive-bound \
+                                     but no archive is configured; keeping the file",
+                                        jp.display()
+                                    );
+                                    None
+                                }
+                            }
+                        }
+                    };
+                    if let Some((mut j, envelope)) = verified {
+                        match &l1 {
+                            None => {
+                                // can't resolve the journal against a chain we can't read.
+                                eprintln!(
                             "[recovery] HOLDING: rollback journal present (window {}) but no \
                              L1 bridge is configured — cannot resolve it against the chain; \
                              keeping the file",
                             j.batch_id
                         );
-                    }
-                    Some(l1c) => {
-                        // Counter/root/bond are read at one finalized canonical block hash.
-                        // No finite delay proves an unmined prepared transaction absent.
-                        let mut reads = {
-                            let l1c = l1c.clone();
-                            tokio::task::spawn_blocking(move || l1c.settlement_observation())
-                                .await
-                                .unwrap_or_else(|e| Err(e.to_string()))
-                        };
-                        // Resume only the exact immutable, durably prepared clock
-                        // window. Finality lag or a reorg keeps the WAL and refuses
-                        // startup; it never turns into a legacy rollback/re-seal.
-                        if let (Ok((bc, root, _)), Some(client)) = (&reads, &prover) {
-                            if client.clock_enabled()
-                                && j.prepared.is_some()
-                                && *bc == j.batch_id
-                                && Some(gw.seq.state.next_batch_id) == j.batch_id.checked_add(1)
-                                && root
-                                    .eq_ignore_ascii_case(&hex32(&j.witness.pre_state.state_root()))
-                            {
-                                let (chain, client, mut saved, path) =
-                                    (l1c.clone(), client.clone(), j.clone(), jp.clone());
-                                match tokio::task::spawn_blocking(move || {
-                                    let observation = clock_client::resume_exact(&chain, client.as_ref(), &mut saved, &path, &enclave_seed)?;
+                            }
+                            Some(l1c) => {
+                                // Counter/root/bond are read at one finalized canonical block hash.
+                                // No finite delay proves an unmined prepared transaction absent.
+                                let mut reads = {
+                                    let l1c = l1c.clone();
+                                    tokio::task::spawn_blocking(move || {
+                                        l1c.settlement_observation()
+                                    })
+                                    .await
+                                    .unwrap_or_else(|e| Err(e.to_string()))
+                                };
+                                // Resume only the exact immutable, durably prepared clock
+                                // window. Finality lag or a reorg keeps the WAL and refuses
+                                // startup; it never turns into a legacy rollback/re-seal.
+                                if let (Ok((bc, root, _)), Some(client)) = (&reads, &prover) {
+                                    if client.clock_enabled()
+                                        && j.prepared.is_some()
+                                        && *bc == j.batch_id
+                                        && Some(gw.seq.state.next_batch_id)
+                                            == j.batch_id.checked_add(1)
+                                        && root.eq_ignore_ascii_case(&hex32(
+                                            &j.witness.pre_state.state_root(),
+                                        ))
+                                    {
+                                        // A candidate-bound journal is NEVER
+                                        // resumed through the v2 path (which
+                                        // re-submits via prove_and_prepare →
+                                        // settle_proved). resume_exact re-checks
+                                        // this; the boot block refuses earlier so
+                                        // no L1 read/prover construction happens.
+                                        if let Err(error) =
+                                            clock_client::ensure_resume_supported(envelope.as_ref())
+                                        {
+                                            eprintln!(
+                                                "[chainlink-archive] HOLDING: window {} ({error}) \
+                                                 — keeping the WAL; startup is refused until v3 \
+                                                 submission is wired or the window resolves on-chain",
+                                                j.batch_id
+                                            );
+                                        } else {
+                                            let (chain, client, mut saved, path) = (
+                                                l1c.clone(),
+                                                client.clone(),
+                                                j.clone(),
+                                                jp.clone(),
+                                            );
+                                            let envelope = envelope.clone();
+                                            match tokio::task::spawn_blocking(move || {
+                                    let observation = clock_client::resume_exact(&chain, client.as_ref(), &mut saved, envelope.as_ref(), &path, &enclave_seed)?;
                                     Ok::<_,String>((saved, observation))
                                 }).await {
                                     Ok(Ok((saved, observation))) => { j = saved; reads = Ok(observation); }
                                     _ => eprintln!("[clock] exact-journal recovery unresolved; preserve WAL and retry after canonical finality"),
                                 }
-                            }
-                        }
-                        match reads {
-                            Ok((chain_bc, chain_root, bond)) => {
-                                // SEC-025-D: the boot roll-forward COMMITS a settle, so it
-                                // must carry the same block-pinned observation as the live
-                                // settle paths — it must not shortcut the finalSettle
-                                // distinction to `StaysClosed`, and a failed read proves
-                                // nothing (`Inconclusive`). Observed only when this journal
-                                // actually presents the roll-forward shape (the same
-                                // conjunction `recovery_action`'s RollForward row requires)
-                                // and the gate is still Closed. The pre-filter carries no
-                                // safety weight — the observation re-derives all three
-                                // terms at one pinned block regardless — and erring on
-                                // skipping can only leave the gate UNRESOLVED, never open
-                                // it on a wind-down.
-                                let gate_observation = match (&gw.trading_gate, &j.prepared) {
-                                    (trading_gate::TradingGate::Closed, Some(p))
-                                        if Some(gw.seq.state.next_batch_id)
-                                            == j.batch_id.checked_add(1)
-                                            && Some(chain_bc) == j.batch_id.checked_add(1)
-                                            && chain_root.eq_ignore_ascii_case(&hex32(
-                                                &p.outcome.new_root,
-                                            )) =>
-                                    {
-                                        let l1o = l1c.clone();
-                                        let (bid, our_root) = (j.batch_id, p.outcome.new_root);
-                                        tokio::task::spawn_blocking(move || {
-                                            observe_gate(&l1o, bid, our_root)
-                                        })
-                                        .await
-                                        .unwrap_or(trading_gate::GateObservation::Inconclusive)
+                                        }
                                     }
-                                    _ => trading_gate::GateObservation::Inconclusive,
-                                };
-                                match apply_boot_recovery(
-                                    &mut gw,
-                                    j,
-                                    chain_bc,
-                                    &chain_root,
-                                    bond,
-                                    gate_observation,
-                                ) {
-                                    // Task 3 fix: a MUTATED resolution is persisted
-                                    // synchronously BEFORE the journal is deleted
-                                    // (and a failed persist keeps the journal) —
-                                    // see finish_boot_recovery.
-                                    BootRecoveryOutcome::DeleteJournal { mutated } => {
-                                        unresolved_startup_journal = !finish_boot_recovery(
-                                            &gw,
-                                            mutated,
-                                            sp,
-                                            &jp,
-                                            &enclave_seed,
-                                        );
-                                    }
-                                    BootRecoveryOutcome::KeepJournal => {}
                                 }
-                            }
-                            Err(e) => {
-                                // a failed read proves nothing — HOLD, never guess.
-                                eprintln!(
+                                match reads {
+                                    Ok((chain_bc, chain_root, bond)) => {
+                                        // SEC-025-D: the boot roll-forward COMMITS a settle, so it
+                                        // must carry the same block-pinned observation as the live
+                                        // settle paths — it must not shortcut the finalSettle
+                                        // distinction to `StaysClosed`, and a failed read proves
+                                        // nothing (`Inconclusive`). Observed only when this journal
+                                        // actually presents the roll-forward shape (the same
+                                        // conjunction `recovery_action`'s RollForward row requires)
+                                        // and the gate is still Closed. The pre-filter carries no
+                                        // safety weight — the observation re-derives all three
+                                        // terms at one pinned block regardless — and erring on
+                                        // skipping can only leave the gate UNRESOLVED, never open
+                                        // it on a wind-down.
+                                        let gate_observation = match (&gw.trading_gate, &j.prepared)
+                                        {
+                                            (trading_gate::TradingGate::Closed, Some(p))
+                                                if Some(gw.seq.state.next_batch_id)
+                                                    == j.batch_id.checked_add(1)
+                                                    && Some(chain_bc)
+                                                        == j.batch_id.checked_add(1)
+                                                    && chain_root.eq_ignore_ascii_case(&hex32(
+                                                        &p.outcome.new_root,
+                                                    )) =>
+                                            {
+                                                let l1o = l1c.clone();
+                                                let (bid, our_root) =
+                                                    (j.batch_id, p.outcome.new_root);
+                                                tokio::task::spawn_blocking(move || {
+                                                    observe_gate(&l1o, bid, our_root)
+                                                })
+                                                .await
+                                                .unwrap_or(
+                                                    trading_gate::GateObservation::Inconclusive,
+                                                )
+                                            }
+                                            _ => trading_gate::GateObservation::Inconclusive,
+                                        };
+                                        match apply_boot_recovery(
+                                            &mut gw,
+                                            j,
+                                            chain_bc,
+                                            &chain_root,
+                                            bond,
+                                            gate_observation,
+                                        ) {
+                                            // Task 3 fix: a MUTATED resolution is persisted
+                                            // synchronously BEFORE the journal is deleted
+                                            // (and a failed persist keeps the journal) —
+                                            // see finish_boot_recovery.
+                                            BootRecoveryOutcome::DeleteJournal { mutated } => {
+                                                unresolved_startup_journal = !finish_boot_recovery(
+                                                    &gw,
+                                                    mutated,
+                                                    sp,
+                                                    &jp,
+                                                    &enclave_seed,
+                                                    archive_binding.is_some(),
+                                                );
+                                            }
+                                            BootRecoveryOutcome::KeepJournal => {}
+                                        }
+                                    }
+                                    Err(e) => {
+                                        // a failed read proves nothing — HOLD, never guess.
+                                        eprintln!(
                                     "[recovery] HOLDING: cannot read the chain to resolve the \
                                      rollback journal ({e}) — keeping the file; startup is refused until this journal resolves"
                                 );
+                                    }
+                                }
                             }
                         }
                     }
-                },
+                }
             }
         }
     }
@@ -8495,6 +8825,7 @@ async fn main() {
         gw_eph_secret,
         gw_pub,
         prover_session_token,
+        archive: archive_binding.map(std::sync::Mutex::new),
         force_settle: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
     });
 
@@ -8661,7 +8992,10 @@ async fn main() {
 
     // Live oracle: legacy single venue, or explicitly configured two-venue guard.
     // A paired failure never falls back to single-source price admission.
-    {
+    // SUPPRESSED in candidate archive mode: the archive intake loop above is the
+    // only admission path (the startup policy-coverage check guarantees every
+    // market is archive-fed), so no unarchived admission can occur.
+    if app.archive.is_none() {
         let app = app.clone();
         let stop = service_policy.shutdown.clone();
         background.push(tokio::spawn(async move {
@@ -8727,6 +9061,129 @@ async fn main() {
                 }
             }
         }));
+    }
+
+    // Candidate Chainlink intake (opt-in; PRODUCTION RELEASE HOLD). Per policy
+    // market, fetch the pinned base/USD and USDC/USD report pair, archive it
+    // durably BEFORE any state-changing admission, then admit the gateway-signed
+    // transcript of the pair's exact normalization. The reviewed v2 guest/prover
+    // path is unchanged — the archived pair is candidate evidence, bound into the
+    // rollback journal at seal time and required again at recovery. The live pull
+    // runs only with explicitly provided credentials; without them the stream
+    // stays DEFERRED (the archive/journal/recovery boundaries remain active).
+    if app.archive.is_some() {
+        let (policy, network) = {
+            let binding = match app.archive.as_ref() {
+                Some(b) => b.lock().unwrap(),
+                None => unreachable!("gated on app.archive.is_some()"),
+            };
+            let network = match (binding.policy().chain_id, binding.policy().network) {
+                (84532, 0) => chainlink_streams_client::Network::Testnet,
+                (8453, 1) => chainlink_streams_client::Network::Mainnet,
+                _ => unreachable!("policy validated at config"),
+            };
+            (binding.policy().clone(), network)
+        };
+        let credentials = match (
+            std::env::var("DARKPERP_CHAINLINK_ACCESS_KEY"),
+            std::env::var("DARKPERP_CHAINLINK_ACCESS_SECRET"),
+        ) {
+            (Ok(username), Ok(secret)) => Some(
+                chainlink_streams_client::Credentials::new(network, username, secret.into_bytes())
+                    .unwrap_or_else(|error| {
+                        eprintln!("[chainlink-archive] REFUSING to start: access credentials invalid: {error}");
+                        std::process::exit(1);
+                    }),
+            ),
+            _ => None,
+        };
+        if let Some(credentials) = credentials {
+            let app = app.clone();
+            let stop = service_policy.shutdown.clone();
+            background.push(tokio::spawn(async move {
+                let client = std::sync::Arc::new(std::sync::Mutex::new(
+                    chainlink_streams_client::Client::new(credentials),
+                ));
+                let feeds: Vec<(u64, [u8; 32], [u8; 32], u64)> = policy
+                    .markets
+                    .iter()
+                    .map(|m| {
+                        (
+                            m.market_id,
+                            m.base_usd_feed,
+                            m.usdc_usd_feed,
+                            m.max_report_age_ms,
+                        )
+                    })
+                    .collect();
+                let mut iv = tokio::time::interval(Duration::from_secs(5));
+                loop {
+                    if !stop.next_tick(&mut iv).await {
+                        break;
+                    }
+                    for &(market, base_feed, quote_feed, max_age) in &feeds {
+                        if stop.started() {
+                            break;
+                        }
+                        let request = |feed: [u8; 32]| {
+                            chainlink_streams_client::FeedId::parse_v3(&hex32(&feed))
+                                .and_then(|id| {
+                                    chainlink_streams_client::Request::new(network, id, max_age)
+                                })
+                        };
+                        let (base_req, quote_req) = match (request(base_feed), request(quote_feed)) {
+                            (Ok(b), Ok(q)) => (b, q),
+                            _ => {
+                                eprintln!("[chainlink-archive] policy feed ID is not a valid v3 feed; refusing to guess");
+                                continue;
+                            }
+                        };
+                        let client = client.clone();
+                        let fetched = tokio::task::spawn_blocking(move || {
+                            let client = client.lock().unwrap();
+                            let base = client.fetch_latest(&base_req)?;
+                            let quote = client.fetch_latest(&quote_req)?;
+                            Ok::<_, chainlink_streams_client::Error>((base, quote))
+                        })
+                        .await;
+                        let now = now_ms();
+                        let mut gw = app.gw.lock().await;
+                        let accepted = match fetched {
+                            Ok(Ok((base, quote))) => {
+                                match archive_slot(app.archive.as_ref()) {
+                                    ArchiveSlot::Guard(mut binding) => binding
+                                        .admit_with(market, base, quote, now, |normalized| {
+                                            let signature = OracleSig::sign(
+                                                &gw.oracle_signer,
+                                                &oracle_digest(
+                                                    market,
+                                                    normalized.price,
+                                                    normalized.publish_time_ms,
+                                                    normalized.confidence,
+                                                    normalized.backup_twap,
+                                                ),
+                                            );
+                                            gw.apply_validated_real_oracle_at(
+                                                market,
+                                                normalized.with_signature(signature),
+                                                now,
+                                            )
+                                        })
+                                        .unwrap_or(false),
+                                    ArchiveSlot::Poisoned | ArchiveSlot::NotConfigured => false,
+                                }
+                            }
+                            _ => false,
+                        };
+                        if !accepted {
+                            eprintln!("[chainlink-archive] market {market} report pair rejected; no price/receipt refresh");
+                        }
+                    }
+                }
+            }));
+        } else {
+            println!("[chainlink-archive] candidate mode without access credentials: live Data Streams pull DEFERRED; archive/journal/recovery boundaries active");
+        }
     }
 
     // optional L1 settlement bridge: top up the USDC bond, advance the on-chain root
@@ -8896,29 +9353,55 @@ async fn main() {
                             && gw.window_withdrawals.is_empty()
                             && gw.seq.state.state_root() == gw.last_settled_root
                         { gw.seq.discard_idle_funding_window(); }
-                        match begin_journaled_window_settle(
-                            &mut gw,
-                            bc,
-                            jpath.as_deref(),
-                            &enclave_seed,
-                        ) {
-                            Ok(Some(journal)) => {
+                        // A poisoned archive mutex must HOLD the settle. The old
+                        // `.map(lock).and_then(ok)` silently became `None` and
+                        // sealed candidate windows with NO binding — a legacy
+                        // v5 journal for archive-required state. Distinguish
+                        // "not configured" from "poisoned": only the former
+                        // binds nothing.
+                        let slot = archive_slot(app.archive.as_ref());
+                        if matches!(slot, ArchiveSlot::Poisoned) {
+                            eprintln!("[l1] archive binding lock is poisoned; holding settlement — refusing to seal a candidate window without its binding");
+                            None
+                        } else {
+                            let archive_ref = match &slot {
+                                ArchiveSlot::Guard(g) => Some(&**g),
+                                _ => None,
+                            };
+                            match begin_journaled_window_settle(
+                                &mut gw,
+                                bc,
+                                jpath.as_deref(),
+                                &enclave_seed,
+                                archive_ref,
+                            ) {
+                            Ok(Some((journal, envelope))) => {
                                 let cand: Vec<[u8; 32]> =
                                     gw.pending_withdrawals.iter().map(|w| w.leaf()).collect();
                                 let gate_was_closed =
                                     gw.trading_gate == trading_gate::TradingGate::Closed;
-                                Some((journal, cand, gate_was_closed))
+                                Some((journal, envelope, cand, gate_was_closed))
                             }
                             Ok(None) => None,
                             Err(error) => {
                                 eprintln!("[l1] window settle skipped: {error}");
                                 None
                             }
+                            }
                         }
                     };
-                    let Some((mut journal, prune_candidates, gate_was_closed)) = begun else {
+                    let Some((mut journal, envelope, prune_candidates, gate_was_closed)) = begun else {
                         continue;
                     };
+                    // Candidate mode: no supported submission route (v3 unwired).
+                    // Refuse BEFORE the clock-registration intent, any prove, or
+                    // any broadcast — including zero-oracle batches. The window
+                    // is durably journaled; the hold leaves recovery a stage-1
+                    // rollback with zero chain mutations.
+                    if let Err(error) = ensure_submission_supported(envelope.as_ref()) {
+                        hold_settlement_for_recovery(&app, format!("unsupported candidate submission: {error}")).await;
+                        break;
+                    }
                     if let Some(p) = admission.as_mut() { p.arm(); }
                     let ordered = journal.witness.manifest.ordered.clone();
                     let rejected: Vec<Digest> = journal
@@ -8950,12 +9433,31 @@ async fn main() {
                         let intent = prover_client::prepare_unproved(&journal.witness, &journal.ww);
                         let durable = intent.and_then(|p| {
                             journal.prepared = Some(p);
-                            rollback_journal::write(jpath.as_deref().ok_or("clock registration requires journal")?, &journal, &enclave_seed)
+                            rollback_journal::write_versioned(jpath.as_deref().ok_or("clock registration requires journal")?, &journal, envelope.as_ref(), &enclave_seed)
                         });
                         if let Err(error) = durable {
                             hold_settlement_for_recovery(&app, format!("clock intent not durable: {error}")).await;
                             break;
                         }
+                    }
+                    // Archive-required guard BEFORE any prover/chain side effect:
+                    // prove_and_prepare performs the clock-registration chain
+                    // mutation (ClockProverClient::clock_context → register_clock)
+                    // for clock clients, so a missing/corrupt record or an
+                    // op/envelope mismatch discovered after sealing must stop the
+                    // attempt here — hold settlement with the journal kept; boot
+                    // recovery resolves the sealed window.
+                    let archive_guard = match app.archive.as_ref() {
+                        Some(m) => match m.lock() {
+                            Ok(g) => ensure_archive_binding_current(Some(&g), &journal, envelope.as_ref()),
+                            Err(_) => Err("archive binding lock is poisoned".to_string()),
+                        },
+                        None => ensure_archive_binding_current(None, &journal, envelope.as_ref()),
+                    };
+                    if let Err(error) = archive_guard {
+                        eprintln!("[l1] window {batch_id}: {error}; holding settlement before prove");
+                        hold_settlement_for_recovery(&app, format!("archive binding not current: {error}")).await;
+                        break;
                     }
                     // (C) prove + settle (lock-free). Distinguish a prove failure (no tx
                     // was ever broadcast -> unconditional rollback) from a settle failure
@@ -8982,6 +9484,7 @@ async fn main() {
                     }
                     let l1c = l1.clone();
                     let jpath_bg = jpath.clone();
+                    let envelope_bg = envelope.clone();
                     let deposit_guard_app = app.clone();
                     let clock_mode = client.clock_enabled();
                     let res = tokio::task::spawn_blocking(move || -> SettleAttempt {
@@ -8997,7 +9500,7 @@ async fn main() {
                         if jpath_bg.is_some() {
                             journal.prepared = Some(prepared.clone());
                         }
-                        after_settle_journal(jpath_bg.as_deref(), &journal, &enclave_seed, || {
+                        after_settle_journal(jpath_bg.as_deref(), &journal, &enclave_seed, envelope_bg.as_ref(), || {
                             // A01: do not broadcast after an observed RPC/reorg/durability
                             // pause that arrived while the proof was being prepared.
                             if let Err(e) =
@@ -10662,8 +11165,8 @@ mod tests {
         );
         let deposit_ops = count(deposit_op_needle);
         assert_eq!(
-            deposit_ops, 8,
-            "expected exactly 8 occurrences of `{deposit_op_needle}` across the \
+            deposit_ops, 9,
+            "expected exactly 9 occurrences of `{deposit_op_needle}` across the \
              gateway sources: 4 in main.rs — the `seq.apply(..)` constructions \
              inside `fund_amount` (the only position-credit minter), \
              `seed_insurance_unbacked` (SEC-024: the UNBACKED insurance funnel, \
@@ -10675,7 +11178,11 @@ mod tests {
              pre-mints a colliding note to force leg 1's DuplicateCommitment — \
              and 3 in prover_client.rs, all \
              `cfg(test)` `matches!`/filter PATTERNS that inspect ops without \
-             constructing one; plus A01 atomic intake (all windows now require post-seal persistence, so the deposit-only pattern was removed); found {deposit_ops}. Applying this op anywhere \
+             constructing one; plus A01 atomic intake (all windows now require post-seal persistence, so the deposit-only pattern was removed); plus 1 in \
+             report_archive_binding.rs — the candidate archive binding's \
+             exhaustive `used_oracle` classifier PATTERN that mirrors \
+             chainlink-oracle's `binding::used_oracle` (inspects ops for the \
+             archive binding without constructing one); found {deposit_ops}. Applying this op anywhere \
              else mints collateral below BOTH `refuse_unbacked_mint` and the \
              funnels' bookkeeping, so a new construction site is almost \
              certainly wrong; a legitimate credit path MUST route through \
@@ -10921,6 +11428,7 @@ mod tests {
             gw_eph_secret,
             gw_pub,
             prover_session_token: None,
+            archive: None,
             force_settle: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
         })
     }
@@ -14957,6 +15465,141 @@ mod tests {
         dir
     }
 
+    /// Acceptance regression: archive-required mode with NO journal path must
+    /// refuse BEFORE any mutation. Previously `after_settle_journal(path=None,
+    /// ...)` silently ran the continuation with zero durability — a candidate
+    /// window could be sealed, proven, and broadcast with no authenticated
+    /// binding anywhere.
+    fn feed_arr(b: u8) -> [u8; 32] {
+        let mut a = [b; 32];
+        a[0] = 0;
+        a[1] = 3;
+        a
+    }
+
+    #[test]
+    fn archive_required_refuses_unjournaled_seal_before_any_mutation() {
+        let mut gw = Gw::boot();
+        let (key, _owner) = gw.register_account(None);
+        gw.account_deposit(&key, 0, 20_000 * QUOTE_SCALE).unwrap();
+        let bid = gw.seq.state.next_batch_id;
+        // An empty-admission binding is sufficient: a deposit-only window binds
+        // with an empty ref list, which is exactly what this regression needs.
+        let binding = {
+            let tmp = settle_journal_guard_scratch();
+            report_archive_binding::ArchiveBinding::create_in(&tmp, {
+                use chainlink_oracle::policy::{MarketFeed, Policy};
+                Policy {
+                    chain_id: 84532,
+                    network: 0,
+                    verifier_proxy: [3; 20],
+                    oracle_wrapper: [4; 20],
+                    markets: vec![MarketFeed {
+                        market_id: 0,
+                        base_symbol: "BTC".into(),
+                        base_usd_feed: feed_arr(0x11),
+                        base_decimals: 8,
+                        usdc_usd_feed: feed_arr(0x22),
+                        usdc_decimals: 8,
+                        max_report_age_ms: 10_000,
+                        max_pair_skew_ms: 1_000,
+                    }],
+                }
+            })
+            .unwrap()
+        };
+        let before_b = gw.seq.state.next_batch_id;
+        let err = match begin_journaled_window_settle(&mut gw, bid, None, &[42; 32], Some(&binding))
+        {
+            Err(e) => e,
+            Ok(_) => panic!("archive-required mode must refuse an unjournaled seal"),
+        };
+        assert!(
+            err.contains("requires a configured rollback journal"),
+            "unexpected error: {err}"
+        );
+        assert_eq!(
+            gw.seq.state.next_batch_id, before_b,
+            "the seal must not have happened — refusal precedes any mutation"
+        );
+    }
+
+    /// Acceptance regression: an archive-bound journal stage must never reach
+    /// its continuation without journal durability, no matter the caller.
+    #[test]
+    fn archive_bound_journal_stage_without_path_refuses_before_continuation() {
+        let journal = settle_journal_guard_fixture();
+        let envelope = rollback_journal::ArchiveEnvelope {
+            policy_binding: [7; 32],
+            refs: Vec::new(),
+        };
+        let mut continued = false;
+        let result = after_settle_journal(None, &journal, &[42; 32], Some(&envelope), || {
+            continued = true;
+        });
+        assert!(result.is_err(), "must refuse, not continue silently");
+        assert!(
+            !continued,
+            "the continuation must never run without durability"
+        );
+        // And the durable control: with a path, the stage writes and continues.
+        let dir = settle_journal_guard_scratch();
+        let path = dir.join("state.rollback");
+        let mut continued = false;
+        after_settle_journal(Some(&path), &journal, &[42; 32], Some(&envelope), || {
+            continued = true;
+        })
+        .unwrap();
+        assert!(continued);
+        assert!(path.exists());
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    /// Acceptance regression: a poisoned archive mutex must resolve to its own
+    /// slot — the settle loop HOLDs on Poisoned and only NotConfigured binds
+    /// nothing. The old `.map(lock).and_then(ok)` collapsed poisoning into
+    /// `None`, silently writing legacy v5 journals for archive-required state.
+    #[test]
+    fn poisoned_archive_mutex_is_distinct_from_not_configured() {
+        let tmp = settle_journal_guard_scratch();
+        let binding = {
+            use chainlink_oracle::policy::{MarketFeed, Policy};
+            report_archive_binding::ArchiveBinding::create_in(
+                &tmp,
+                Policy {
+                    chain_id: 84532,
+                    network: 0,
+                    verifier_proxy: [3; 20],
+                    oracle_wrapper: [4; 20],
+                    markets: vec![MarketFeed {
+                        market_id: 0,
+                        base_symbol: "BTC".into(),
+                        base_usd_feed: feed_arr(0x11),
+                        base_decimals: 8,
+                        usdc_usd_feed: feed_arr(0x22),
+                        usdc_decimals: 8,
+                        max_report_age_ms: 10_000,
+                        max_pair_skew_ms: 1_000,
+                    }],
+                },
+            )
+            .unwrap()
+        };
+        let mutex = std::sync::Mutex::new(binding);
+        assert!(matches!(archive_slot(None), ArchiveSlot::NotConfigured));
+        assert!(matches!(archive_slot(Some(&mutex)), ArchiveSlot::Guard(_)));
+        // Poison it: a panic while the lock is held poisons the mutex.
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _guard = mutex.lock().unwrap();
+            panic!("poison the archive mutex");
+        }));
+        assert!(
+            matches!(archive_slot(Some(&mutex)), ArchiveSlot::Poisoned),
+            "a poisoned archive mutex must be distinguishable so the settle HOLDs"
+        );
+        std::fs::remove_dir_all(tmp).ok();
+    }
+
     #[tokio::test]
     async fn journal_ambiguous_hold_surfaces_health_and_refuses_admin_retry() {
         let app = test_app();
@@ -14984,7 +15627,7 @@ mod tests {
         let mut gw = Gw::boot();
         gw.seq.state.next_batch_id = u64::MAX;
         let before = gw.snapshot_plain();
-        let error = match begin_journaled_window_settle(&mut gw, u64::MAX, None, &[42; 32]) {
+        let error = match begin_journaled_window_settle(&mut gw, u64::MAX, None, &[42; 32], None) {
             Err(error) => error,
             Ok(_) => panic!("an exhausted window must not seal"),
         };
@@ -15003,7 +15646,7 @@ mod tests {
         let root = gw.seq.state.state_root();
         let bid = gw.seq.state.next_batch_id;
         let leaves: Vec<_> = gw.window_withdrawals.iter().map(|w| w.leaf()).collect();
-        assert!(begin_journaled_window_settle(&mut gw, bid, Some(&path), &[42; 32]).is_err());
+        assert!(begin_journaled_window_settle(&mut gw, bid, Some(&path), &[42; 32], None).is_err());
         assert_eq!(gw.seq.state.next_batch_id, bid);
         assert_eq!(gw.seq.state.state_root(), root);
         assert_eq!(
@@ -15048,9 +15691,10 @@ mod tests {
             !reader.is_finished(),
             "snapshot waits for seal+journal guard"
         );
-        let journal = begin_journaled_window_settle(&mut state, bid, Some(&path), &seed)
-            .unwrap()
-            .unwrap();
+        let (journal, _envelope) =
+            begin_journaled_window_settle(&mut state, bid, Some(&path), &seed, None)
+                .unwrap()
+                .unwrap();
         assert!(!reader.is_finished());
         drop(state);
         let captured = reader.await.unwrap();
@@ -15082,9 +15726,10 @@ mod tests {
         signed_withdraw(&mut gw, &key, &sk, 0, 5_000 * QUOTE_SCALE, [7; 20]).unwrap();
         let pre_seal = gw.snapshot_plain();
         let bid = gw.seq.state.next_batch_id;
-        let mut journal = begin_journaled_window_settle(&mut gw, bid, Some(&path), &seed)
-            .unwrap()
-            .unwrap();
+        let (mut journal, _envelope) =
+            begin_journaled_window_settle(&mut gw, bid, Some(&path), &seed, None)
+                .unwrap()
+                .unwrap();
         let prepared = prove_and_prepare(&MockProverClient, &journal.witness, &journal.ww).unwrap();
         let root = hex32(&prepared.outcome.new_root);
         let proofs = prepared.withdraw_proofs.clone();
@@ -15168,7 +15813,8 @@ mod tests {
         let path = not_directory.join("state.rollback");
         let journal = settle_journal_guard_fixture();
         let mut reached = false;
-        let result = after_settle_journal(Some(&path), &journal, &[42; 32], || reached = true);
+        let result =
+            after_settle_journal(Some(&path), &journal, &[42; 32], None, || reached = true);
         assert_eq!(std::fs::read(&not_directory).unwrap(), b"sentinel");
         std::fs::remove_dir_all(&dir).unwrap();
         assert!(
@@ -15201,7 +15847,7 @@ mod tests {
             .unwrap(),
         );
         let mut broadcast = false;
-        let result = after_settle_journal(Some(&path), &journal, &seed, || broadcast = true);
+        let result = after_settle_journal(Some(&path), &journal, &seed, None, || broadcast = true);
         assert_eq!(
             std::fs::read(&path).unwrap(),
             original,
@@ -15232,7 +15878,7 @@ mod tests {
         let seed = [42; 32];
         let mut journal = settle_journal_guard_fixture();
         let mut callbacks = 0;
-        after_settle_journal(Some(&path), &journal, &seed, || {
+        after_settle_journal(Some(&path), &journal, &seed, None, || {
             let persisted = rollback_journal::read(&path, &seed).unwrap().unwrap();
             assert!(persisted.prepared.is_none());
             assert_eq!(persisted.batch_id, journal.batch_id);
@@ -15247,7 +15893,7 @@ mod tests {
         .unwrap();
         let expected_root = prepared.outcome.new_root;
         journal.prepared = Some(prepared);
-        after_settle_journal(Some(&path), &journal, &seed, || {
+        after_settle_journal(Some(&path), &journal, &seed, None, || {
             let persisted = rollback_journal::read(&path, &seed).unwrap().unwrap();
             assert_eq!(persisted.prepared.unwrap().outcome.new_root, expected_root);
             callbacks += 1;
@@ -15262,7 +15908,7 @@ mod tests {
     fn settle_journal_guard_unconfigured_dev_path_keeps_existing_behavior() {
         let journal = settle_journal_guard_fixture();
         assert_eq!(
-            after_settle_journal(None, &journal, &[42; 32], || 42).unwrap(),
+            after_settle_journal(None, &journal, &[42; 32], None, || 42).unwrap(),
             42
         );
     }
@@ -15702,7 +16348,9 @@ mod tests {
         assert_eq!(out, BootRecoveryOutcome::DeleteJournal { mutated: true });
 
         // the call-site glue: persist the post-recovery snapshot, THEN delete.
-        assert!(finish_boot_recovery(&restored, true, &state, &jp, &seed));
+        assert!(finish_boot_recovery(
+            &restored, true, &state, &jp, &seed, false
+        ));
         // (a) the snapshot on disk now decodes to the ROLLED-BACK Counter B — a
         // hard crash right here re-resolves from the snapshot alone.
         let plain2 = snapshot::open(&std::fs::read(&state).unwrap(), &seed).expect("open post");
@@ -15721,12 +16369,16 @@ mod tests {
         let bad_state = std::env::temp_dir()
             .join(format!("darkperp-no-such-dir-{sfx}"))
             .join("state.snap");
-        assert!(!finish_boot_recovery(&after, true, &bad_state, &jp, &seed));
+        assert!(!finish_boot_recovery(
+            &after, true, &bad_state, &jp, &seed, false
+        ));
         assert!(jp.exists(), "failed persist keeps the journal");
 
         // non-mutating resolutions stay delete-without-write: the same unwritable
         // snapshot path does not block the delete (nothing changed to persist).
-        assert!(finish_boot_recovery(&after, false, &bad_state, &jp, &seed));
+        assert!(finish_boot_recovery(
+            &after, false, &bad_state, &jp, &seed, false
+        ));
         assert!(
             !jp.exists(),
             "non-mutating rows delete without a snapshot write"

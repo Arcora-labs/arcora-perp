@@ -3,6 +3,9 @@
 //! No environment/file credential discovery, signing of oracle prices, or chain writes.
 #![forbid(unsafe_code)]
 mod auth;
+#[cfg(unix)]
+pub mod report_archive;
+pub mod report_pair;
 mod transport;
 pub use auth::Credentials;
 use chainlink_oracle::report::{body_from_full_report, Report, ReportBody, MAX_FULL_REPORT};

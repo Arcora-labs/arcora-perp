@@ -1,0 +1,248 @@
+{
+  "observed_start_utc": "2026-10-10T22:35:04.468920+00:00",
+  "base_sha": "c34fb56b05db13ce09efc0104c2d44abba6d6895",
+  "parent_head": "a4e1c3e6e60aee07e73e1dfec8aed208e9136fda",
+  "source_sha256": {
+    "Cargo.lock": "5d1dd2b25eb73a7136fde2ac59b112e2135de59e7d4a704931cba4bb630a3cc5",
+    "crates/chainlink-oracle-host/Cargo.toml": "efb773cd39afd6eb0cc69884aafbdb1fb6f4b059127ffc3cdaa7c9863db462a5",
+    "crates/chainlink-streams-client-host/Cargo.toml": "6295cf0fb892c43ebf3c3250313856bb6f630da3020f3e7e41841328c262baae",
+    "crates/chainlink-streams-client/src/lib.rs": "4a63eec6941704583a83b395a5c8f34c5e685c33950c7e7bf96eb9999479de54",
+    "crates/chainlink-streams-client/src/report_archive.rs": "7db6e4f67577a6a78c0747ed22322e2c62dab3b2a10271aa4193f21f9ef9f62a",
+    "crates/chainlink-streams-client/src/report_archive_tests.rs": "e26ad11aac0d1510354003e3cc6ec494b06b6938c1d4778bfa46135fe80c04ab",
+    "crates/chainlink-streams-client/src/report_pair.rs": "803a1c8676f13cf2423a0d7ee7c209b38c857c7106e064195ed7737f0a98d604",
+    "crates/chainlink-streams-client/src/transport_tests.rs": "17259c937c1d90e3b0950fadf78d71caaab2e6d1bf0b457cae93b83a486c4079",
+    "crates/gateway/Cargo.toml": "e7ddec29be1a5ba96eb031b0fbc921c5fae26ae4ce8df3109f91c6143037180d",
+    "crates/gateway/src/clock_client.rs": "ec1ce362b4ac286dc5b7574cb59bd05c9725d819a38933cb7e8a71b8f844482e",
+    "crates/gateway/src/continuation_settlement_tests.rs": "2aad03a9c78672471e1186c06e0fe8c0dd3ce8a76209ae9da2188367067d1b54",
+    "crates/gateway/src/deposit_ingestion/paired_recovery_tests.rs": "c28bcdffee0f43cae7e7259c1e2d6f0ec6bb770d4f2eb371714d7ec34d0b7b20",
+    "crates/gateway/src/funds_lifecycle_tests.rs": "3fa9c5aee17a85bf826a0048145ab11aa6672eb46061f4ad84ad769873a96aa8",
+    "crates/gateway/src/main.rs": "1b7532a5fdb3a392b1097a03cc1409f743616416f532c679c2d532933df43e9b",
+    "crates/gateway/src/report_archive_binding.rs": "4071603d052e9decb9fda7f7c1918ba489e3e94060f410155129db077c3c13ce",
+    "crates/gateway/src/report_archive_binding_tests.rs": "60d665b5d23a8dbb0cb4833e256bda77dc5bc61ab4fdde539cda3f1b8e8342a7",
+    "crates/gateway/src/rollback_journal.rs": "248d8ae23668f27252201436648eb28329d2402c368aedd8a0eccf2921cdb0eb",
+    "crates/gateway/src/snapshot_crash_tests.rs": "6401bc3b04aa6cd02c72be0009841ef5801b1a93c7a435925c31216ac2ccc6fc"
+  },
+  "proof_generated": false,
+  "live_chainlink_verified": false,
+  "production_release": "HOLD",
+  "commands": [
+    {
+      "name": "gateway",
+      "command": [
+        "cargo",
+        "+1.99.0",
+        "test",
+        "-p",
+        "gateway",
+        "--locked",
+        "--offline"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 17.763,
+      "log": "target/independent-binding-review-20261010T223319Z/gateway.log",
+      "log_sha256": "63e42891f78b0b11ca104f1d03f4d1dc65168e87fbdffb8147985d6871b5b94a",
+      "test_summaries": [
+        "test result: ok. 528 passed; 0 failed; 16 ignored; 0 measured; 0 filtered out; finished in 17.36s"
+      ]
+    },
+    {
+      "name": "client-debug",
+      "command": [
+        "cargo",
+        "+1.99.0",
+        "test",
+        "--manifest-path",
+        "crates/chainlink-streams-client/Cargo.toml",
+        "--locked",
+        "--offline"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 14.951,
+      "log": "target/independent-binding-review-20261010T223319Z/client-debug.log",
+      "log_sha256": "7bd4b4d3e1c2925ad5c7f56798b69032a4b5a28e1c82ff7c5b2c13fe84e4de27",
+      "test_summaries": [
+        "test result: ok. 62 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.60s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+      ]
+    },
+    {
+      "name": "client-release",
+      "command": [
+        "cargo",
+        "+1.99.0",
+        "test",
+        "--release",
+        "--manifest-path",
+        "crates/chainlink-streams-client/Cargo.toml",
+        "--locked",
+        "--offline"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 26.997,
+      "log": "target/independent-binding-review-20261010T223319Z/client-release.log",
+      "log_sha256": "f39f3575c5220cf108c55c6bd2c8931ef50b78d66ab41307ae67e38b5bea089e",
+      "test_summaries": [
+        "test result: ok. 62 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.62s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+      ]
+    },
+    {
+      "name": "workspace-clippy",
+      "command": [
+        "cargo",
+        "+1.99.0",
+        "clippy",
+        "--workspace",
+        "--all-targets",
+        "--locked",
+        "--offline",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 25.397,
+      "log": "target/independent-binding-review-20261010T223319Z/workspace-clippy.log",
+      "log_sha256": "99bcb3258e9f5f72d1ee65374af244ccad336b958e7c9d3aa539892581fe0a01",
+      "test_summaries": []
+    },
+    {
+      "name": "workspace-format",
+      "command": [
+        "cargo",
+        "+1.99.0",
+        "fmt",
+        "--all",
+        "--check"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 0.364,
+      "log": "target/independent-binding-review-20261010T223319Z/workspace-format.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "test_summaries": []
+    },
+    {
+      "name": "client-clippy",
+      "command": [
+        "cargo",
+        "+1.99.0",
+        "clippy",
+        "--manifest-path",
+        "crates/chainlink-streams-client/Cargo.toml",
+        "--all-targets",
+        "--locked",
+        "--offline",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 4.22,
+      "log": "target/independent-binding-review-20261010T223319Z/client-clippy.log",
+      "log_sha256": "c7a97401ceae0bfa38287d492316e93cb5fe1e1eec5d159c5b158bf79e11d7bf",
+      "test_summaries": []
+    },
+    {
+      "name": "client-format",
+      "command": [
+        "cargo",
+        "+1.99.0",
+        "fmt",
+        "--manifest-path",
+        "crates/chainlink-streams-client/Cargo.toml",
+        "--check"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 0.076,
+      "log": "target/independent-binding-review-20261010T223319Z/client-format.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "test_summaries": []
+    },
+    {
+      "name": "candidate-no-std",
+      "command": [
+        "cargo",
+        "+1.99.0",
+        "check",
+        "--manifest-path",
+        "crates/chainlink-oracle/Cargo.toml",
+        "--no-default-features",
+        "--locked",
+        "--offline"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 5.436,
+      "log": "target/independent-binding-review-20261010T223319Z/candidate-no-std.log",
+      "log_sha256": "be4d902c4caa0bed7fbfd2a7a530615b0364e00aedf22e0347d73c8821b361b6",
+      "test_summaries": []
+    },
+    {
+      "name": "sp1-release",
+      "command": [
+        "/opt/homebrew/bin/python3.12",
+        "scripts/local-verification/check_sp1_release.py"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 0.143,
+      "log": "target/independent-binding-review-20261010T223319Z/sp1-release.log",
+      "log_sha256": "9189d4751f9a5a116d3fb275d396e5871d6e40c9df208c763d29ad33098f80d8",
+      "test_summaries": []
+    },
+    {
+      "name": "candidate-lock",
+      "command": [
+        "/opt/homebrew/bin/python3.12",
+        "scripts/local-verification/check_chainlink_candidate.py"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 0.046,
+      "log": "target/independent-binding-review-20261010T223319Z/candidate-lock.log",
+      "log_sha256": "2098e68e75a17ef7de525984a1425a3c666fa90e8333453246d09d0cf5f31d6e",
+      "test_summaries": []
+    },
+    {
+      "name": "source-pins",
+      "command": [
+        "/opt/homebrew/bin/python3.12",
+        "-c",
+        "import sys;sys.path.insert(0,\"scripts/local-verification\");from verify_clock_proof import verify_guest_source;from run_chainlink_replay import candidate_sources;print(\"PINS\",len(verify_guest_source()),len(candidate_sources()))"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 0.045,
+      "log": "target/independent-binding-review-20261010T223319Z/source-pins.log",
+      "log_sha256": "b177ef2ffad2f502961fa771964d727398ff5cf68b72ce8530402892887ecdc0",
+      "test_summaries": []
+    },
+    {
+      "name": "python-guards",
+      "command": [
+        "/opt/homebrew/bin/python3.12",
+        "-c",
+        "import sys,unittest;sys.path.insert(0,\"scripts/local-verification\");names=[\"test_verify_clock_proof\",\"test_check_sp1_release\",\"test_chainlink_replay\",\"test_repository_policy\",\"test_operator_policy\"];s=unittest.defaultTestLoader.loadTestsFromNames(names);r=unittest.TextTestRunner(verbosity=2).run(s);sys.exit(not r.wasSuccessful())"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 0.757,
+      "log": "target/independent-binding-review-20261010T223319Z/python-guards.log",
+      "log_sha256": "02e9215b62149faa56daca2942d56081834147d36343114850fc066e0b424ed2",
+      "test_summaries": []
+    },
+    {
+      "name": "whitespace",
+      "command": [
+        "git",
+        "diff",
+        "--check"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 0.023,
+      "log": "target/independent-binding-review-20261010T223319Z/whitespace.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "test_summaries": []
+    }
+  ],
+  "source_unchanged_during_validation": true,
+  "passed": true,
+  "observed_end_utc": "2026-10-10T22:36:40.704886+00:00",
+  "verified_code_commit": "e283958109fc6b434b7049d523bbd3378e2e6c27",
+  "registry_identities_unchanged": 244
+}
