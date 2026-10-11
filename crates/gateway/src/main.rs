@@ -66,6 +66,8 @@ mod oracle_crosscheck;
 #[cfg(test)]
 mod oracle_intake_tests;
 mod order_log;
+#[cfg(test)]
+mod price_lifecycle_tests;
 mod prover_client;
 mod recovery_checkpoint;
 mod report_archive_binding;
@@ -1251,6 +1253,11 @@ const MAX_RECEIPT_CACHE: usize = 4096;
 
 #[derive(Serialize, serde::Deserialize)]
 struct Gw {
+    /// Runtime gate only; restored state must re-enable it from candidate config.
+    /// Kept outside the reviewed positional snapshot/guest encoding.
+    #[serde(skip)]
+    candidate_archive_required: bool,
+
     /// Runtime-only alert episode state; never changes the frozen snapshot encoding.
     #[serde(skip)]
     ops_alerts: ops_alerts::OpsAlerts,
@@ -1769,6 +1776,17 @@ pub enum GenesisMode {
     Production,
 }
 
+#[derive(Clone, Copy)]
+struct PriceUse<'a> {
+    archive: Option<&'a report_archive_binding::ArchiveBinding>,
+    now_ms: u64,
+}
+
+struct WithdrawalContext<'a> {
+    wind_down: Option<&'a wind_down::Observation>,
+    price: PriceUse<'a>,
+}
+
 impl Gw {
     /// Demo-genesis boot — the historical entry point, kept so its ~80 test call
     /// sites stay untouched (exactly one caller was ever non-test: `main`, which
@@ -1912,6 +1930,7 @@ impl Gw {
         // boot config). Log-only — no behavior change.
         println!("[state] genesis engine root {}", hex32(&genesis_root));
         let mut gw = Gw {
+            candidate_archive_required: false,
             ops_alerts: Default::default(),
             wind_down_started: false,
             deposits: Default::default(),
@@ -2720,6 +2739,7 @@ impl Gw {
         self.account_withdraw_observed(key, market, amount, to, (auth_nonce, sig), None)
     }
 
+    #[cfg(test)]
     fn account_withdraw_observed(
         &mut self,
         key: &[u8; 32],
@@ -2729,7 +2749,33 @@ impl Gw {
         auth: (u64, &[u8; 65]),
         wind_down: Option<&wind_down::Observation>,
     ) -> Result<Withdrawal, String> {
+        self.account_withdraw_checked(
+            key,
+            market,
+            amount,
+            to,
+            auth,
+            WithdrawalContext {
+                wind_down,
+                price: PriceUse {
+                    archive: None,
+                    now_ms: now_ms(),
+                },
+            },
+        )
+    }
+
+    fn account_withdraw_checked(
+        &mut self,
+        key: &[u8; 32],
+        market: u64,
+        amount: i128,
+        to: [u8; 20],
+        auth: (u64, &[u8; 65]),
+        context: WithdrawalContext<'_>,
+    ) -> Result<Withdrawal, String> {
         let (auth_nonce, sig) = auth;
+        let wind_down = context.wind_down;
         // Validate BEFORE any unbind, note burn, or nonce mutation. A local
         // CloseOnly circuit breaker alone never authorizes phase-2 operations.
         if self.seq.state.mode == Mode::CloseOnly {
@@ -2793,6 +2839,11 @@ impl Gw {
                     .into(),
             );
         }
+        let normal_oracle = if self.seq.state.mode != Mode::CloseOnly {
+            self.require_candidate_price(market, context.price)?
+        } else {
+            None
+        };
         if amount > self.market_free_of(&wallet.owner, market) {
             return Err(
                 "Not withdrawable: amount exceeds the SETTLED balance in this market (§3).".into(),
@@ -2812,8 +2863,11 @@ impl Gw {
                 })
                 .map_err(|e| format!("wind-down unbind failed: {e:?}"))?;
         } else {
-            let now = now_ms();
-            let oracle = oracle_of(self.px_of(market), now, market, &self.oracle_signer);
+            let now = context.price.now_ms;
+            // Candidate uses the original admitted transcript, including its
+            // source publish time. Never turn a frozen report into a fresh one.
+            let oracle = normal_oracle
+                .unwrap_or_else(|| oracle_of(self.px_of(market), now, market, &self.oracle_signer));
             self.seq
                 .apply(&BatchOp::Unbind {
                     owner: wallet.owner,
@@ -3160,7 +3214,24 @@ impl Gw {
         Ok(())
     }
 
+    #[cfg(test)]
     fn account_place_order(&mut self, key: &[u8; 32], req: &OrderReq) -> Result<WReceipt, String> {
+        self.account_place_order_checked(
+            key,
+            req,
+            PriceUse {
+                archive: None,
+                now_ms: now_ms(),
+            },
+        )
+    }
+
+    fn account_place_order_checked(
+        &mut self,
+        key: &[u8; 32],
+        req: &OrderReq,
+        price_use: PriceUse<'_>,
+    ) -> Result<WReceipt, String> {
         // The account's 32-byte owner pubkey — needed UP FRONT to build the sealed
         // order AAD (which binds the ciphertext to this epoch AND this owner), and
         // reused for the margin/opening checks below.
@@ -3255,6 +3326,7 @@ impl Gw {
         // Before the close-only check and before any mutation: a closed gate refuses
         // every order, opening or not.
         self.refuse_if_gate_closed()?;
+        self.require_candidate_price(req.market_id, price_use)?;
         let opening = self.is_opening_of(&owner, req.market_id, &req.side, size);
         if self.seq.state.mode == Mode::CloseOnly && opening {
             return Err(
@@ -3729,6 +3801,7 @@ impl Gw {
     /// is recorded as a receipt the user detects, not silent. Self-contained; the
     /// transient oracle spike is restored afterward.
     fn simulate_adl(&mut self) -> Result<i128, String> {
+        self.refuse_candidate_synthetic_price()?;
         // SEC-025-D: its own guard. This path applies `BatchOp::Fill` DIRECTLY, and until
         // now was refused in production only because an unrelated unconditional `fund(..)`
         // happened to reach `refuse_unbacked_mint` first. Refusal that depends on another
@@ -3872,6 +3945,7 @@ impl Gw {
     /// Unbind+Withdraw on `from` (external_out) then Deposit+Fund on `to` (external_in),
     /// net-zero externally. `from` must have `value` free in market 0.
     fn pool_transfer(&mut self, from: &Wallet, to: &Wallet, value: i128) -> Result<(), String> {
+        self.refuse_candidate_synthetic_price()?;
         self.refuse_if_wind_down_started()?;
         // SEC-025-C: the credit leg below is an unbacked mint, refused in production
         // by `fund_amount_unbacked`. But the debit leg (Unbind+Withdraw) is applied
@@ -4128,6 +4202,53 @@ impl Gw {
         }
     }
 
+    /// Price authorization for candidate mutations. This checks the exact
+    /// accepted record at the original operation clock before touching state,
+    /// matcher, order/rate/withdrawal nonces or replay logs.
+    fn require_candidate_price(
+        &self,
+        market: u64,
+        use_at: PriceUse<'_>,
+    ) -> Result<Option<OracleTranscript>, String> {
+        if !self.candidate_archive_required {
+            return Ok(None);
+        }
+        let archive = use_at
+            .archive
+            .ok_or("candidate price operation requires its archive")?;
+        let oracle = *self
+            .seq
+            .oracle(market)
+            .ok_or("candidate price has no oracle")?;
+        let policy = self
+            .seq
+            .state
+            .markets
+            .get(&market)
+            .ok_or("candidate price has no market")?;
+        oracle
+            .validate(policy, use_at.now_ms)
+            .map_err(|_| "candidate oracle is missing, stale or invalid")?;
+        let mark = self
+            .mkt(market)
+            .ok_or("candidate price has no displayed mark")?;
+        if !mark.live || mark.px != oracle.price || mark.feed_ts != oracle.publish_time_ms {
+            return Err("candidate mark disagrees with its admitted oracle".into());
+        }
+        archive
+            .verify_current_oracle(market, &oracle, use_at.now_ms)
+            .map_err(|e| e.to_string())?;
+        Ok(Some(oracle))
+    }
+
+    fn refuse_candidate_synthetic_price(&self) -> Result<(), String> {
+        if self.candidate_archive_required {
+            Err("synthetic demo price operations are unavailable in candidate archive mode".into())
+        } else {
+            Ok(())
+        }
+    }
+
     fn rand_unit(&mut self) -> f64 {
         // xorshift64
         let mut x = self.rng;
@@ -4215,6 +4336,7 @@ impl Gw {
 
     // ── mutations ───────────────────────────────────────────────────────────
     fn place_order(&mut self, req: &OrderReq) -> Result<(WReceipt, Vec<WEvent>), String> {
+        self.refuse_candidate_synthetic_price()?;
         // Legacy dev/demo plaintext ingress (this route is mounted only in the demo
         // build). It shares `OrderReq` — whose fields are `#[serde(default)]` for the
         // sealed wire — so it must enforce the SAME core-field presence as
@@ -4342,6 +4464,7 @@ impl Gw {
     }
 
     fn withdraw(&mut self, amount: i128) -> Result<(), String> {
+        self.refuse_candidate_synthetic_price()?;
         if amount <= 0 {
             return Err("Amount must be positive.".into());
         }
@@ -4468,12 +4591,29 @@ impl Gw {
     }
 
     // ── tick: oracle walk, seal pending + MM counters, settle, maintenance ───
+    #[cfg(test)]
     fn tick(&mut self) -> (Vec<WEvent>, Vec<String>) {
+        self.tick_checked(PriceUse {
+            archive: None,
+            now_ms: now_ms(),
+        })
+        .unwrap_or_default()
+    }
+
+    fn tick_checked(
+        &mut self,
+        price_use: PriceUse<'_>,
+    ) -> Result<(Vec<WEvent>, Vec<String>), String> {
         if self.wind_down_started || self.deposits.check_ready().is_err() {
-            return (vec![], vec![]);
+            return Ok((vec![], vec![]));
+        }
+        if self.candidate_archive_required {
+            for m in &self.mkts {
+                self.require_candidate_price(m.id, price_use)?;
+            }
         }
         self.tick += 1;
-        let now = now_ms();
+        let now = price_use.now_ms;
         // 1) oracle update. Markets with a LIVE feed keep the real transcript the
         //    oracle task last set (its publish time is the EXCHANGE's own timestamp,
         //    ≤ one fetch interval old). We deliberately do NOT re-stamp it fresh each
@@ -4482,6 +4622,7 @@ impl Gw {
         //    Feed-less markets keep the simulated random walk.
         for i in 0..self.mkts.len() {
             if self.prod
+                || self.candidate_archive_required
                 || self.mkts[i].live
                 || self.oracle_crosschecks.contains_key(&self.mkts[i].id)
             {
@@ -4768,7 +4909,7 @@ impl Gw {
                 ),
             });
         }
-        (events, acct_events)
+        Ok((events, acct_events))
     }
 
     // ── snapshot ──────────────────────────────────────────────────────────────
@@ -5344,6 +5485,9 @@ fn snapshot_plain_with_archive(
     gw: &Gw,
     archive: Option<&report_archive_binding::ArchiveBinding>,
 ) -> Result<Vec<u8>, String> {
+    if gw.candidate_archive_required && archive.is_none() {
+        return Err("candidate checkpoint requires its configured archive".into());
+    }
     if let Some(binding) = archive {
         verify_open_window_archive(gw, binding)?;
         binding
@@ -6877,14 +7021,57 @@ async fn post_v1_withdraw(
         None
     };
     let r = {
-        app.gw.lock().await.account_withdraw_observed(
-            &key,
-            req.market_id,
-            amount,
-            to,
-            (nonce, &sig),
-            observation.as_ref(),
-        )
+        let mut gw = app.gw.lock().await;
+        // The terminal wind-down path has no oracle-bearing operations. Its
+        // existing pinned L1 phase gate remains sufficient even if feeds stop.
+        if gw.seq.state.mode == Mode::CloseOnly {
+            gw.account_withdraw_checked(
+                &key,
+                req.market_id,
+                amount,
+                to,
+                (nonce, &sig),
+                WithdrawalContext {
+                    wind_down: observation.as_ref(),
+                    price: PriceUse {
+                        archive: None,
+                        now_ms: now_ms(),
+                    },
+                },
+            )
+        } else {
+            match archive_slot(app.archive.as_ref()) {
+                ArchiveSlot::Guard(binding) => gw.account_withdraw_checked(
+                    &key,
+                    req.market_id,
+                    amount,
+                    to,
+                    (nonce, &sig),
+                    WithdrawalContext {
+                        wind_down: observation.as_ref(),
+                        price: PriceUse {
+                            archive: Some(&binding),
+                            now_ms: now_ms(),
+                        },
+                    },
+                ),
+                ArchiveSlot::NotConfigured => gw.account_withdraw_checked(
+                    &key,
+                    req.market_id,
+                    amount,
+                    to,
+                    (nonce, &sig),
+                    WithdrawalContext {
+                        wind_down: observation.as_ref(),
+                        price: PriceUse {
+                            archive: None,
+                            now_ms: now_ms(),
+                        },
+                    },
+                ),
+                ArchiveSlot::Poisoned => Err("candidate price archive lock is poisoned".into()),
+            }
+        }
     };
     match r {
         Ok(w) => Json(serde_json::json!({
@@ -7054,8 +7241,26 @@ async fn post_v1_order(
     };
     let r = {
         let mut gw = app.gw.lock().await;
-        gw.account_place_order(&key, &req)
-            .map(|receipt| gw.receipt_json(&receipt))
+        let result = match archive_slot(app.archive.as_ref()) {
+            ArchiveSlot::Guard(binding) => gw.account_place_order_checked(
+                &key,
+                &req,
+                PriceUse {
+                    archive: Some(&binding),
+                    now_ms: now_ms(),
+                },
+            ),
+            ArchiveSlot::NotConfigured => gw.account_place_order_checked(
+                &key,
+                &req,
+                PriceUse {
+                    archive: None,
+                    now_ms: now_ms(),
+                },
+            ),
+            ArchiveSlot::Poisoned => Err("candidate price archive lock is poisoned".into()),
+        };
+        result.map(|receipt| gw.receipt_json(&receipt))
     };
     match r {
         Ok(receipt) => Json(receipt).into_response(),
@@ -8022,6 +8227,9 @@ fn begin_journaled_window_settle(
     )>,
     String,
 > {
+    if gw.candidate_archive_required && archive.is_none() {
+        return Err("candidate window requires its configured archive; refusing to seal".into());
+    }
     // Archive-required mode REQUIRES the durability barrier: without a journal
     // path the window could be sealed, proven, and broadcast with no
     // authenticated binding anywhere. Refuse BEFORE any mutation (the seal
@@ -8046,6 +8254,13 @@ fn begin_journaled_window_settle(
             return Err(format!("oracle ops are not bound to archived reports: {e}"));
         }
     };
+    if let (Some(binding), Some(envelope)) = (archive, envelope.as_ref()) {
+        if let Err(error) = binding.verify(&witness.ops, envelope) {
+            gw.seq.rollback_window(&witness);
+            gw.rollback_window_withdrawals(ww);
+            return Err(format!("oracle reports invalid at operation time: {error}"));
+        }
+    }
     let journal = rollback_journal::RollbackJournal {
         batch_id: witness.batch_id,
         witness,
@@ -8532,6 +8747,7 @@ async fn main() {
         (None, Some(_)) => unreachable!("startup snapshot requires a configured path"),
     };
     gw.prod = prod;
+    gw.candidate_archive_required = archive_binding.is_some();
     gw.configure_oracle_crosscheck(oracle_crosscheck_policy)
         .unwrap_or_else(|error| {
             eprintln!("[oracle] REFUSING crosscheck startup: {error}");
@@ -9198,7 +9414,27 @@ async fn main() {
                         app.broadcast(&*app.gw.lock().await).await;
                         continue;
                     };
-                    app.gw.lock().await.tick()
+                    let mut gw = app.gw.lock().await;
+                    let result = match archive_slot(app.archive.as_ref()) {
+                        ArchiveSlot::Guard(binding) => gw.tick_checked(PriceUse {
+                            archive: Some(&binding),
+                            now_ms: now_ms(),
+                        }),
+                        ArchiveSlot::NotConfigured => gw.tick_checked(PriceUse {
+                            archive: None,
+                            now_ms: now_ms(),
+                        }),
+                        ArchiveSlot::Poisoned => {
+                            Err("candidate price archive lock is poisoned".into())
+                        }
+                    };
+                    match result {
+                        Ok(events) => events,
+                        Err(error) => {
+                            eprintln!("[chainlink-archive] financial tick refused: {error}");
+                            (vec![], vec![])
+                        }
+                    }
                 };
                 // fold the fresh marks into the REAL candle history (chart past bars)
                 {
