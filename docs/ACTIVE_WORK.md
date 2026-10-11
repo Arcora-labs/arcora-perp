@@ -2,7 +2,7 @@
 
 Güncelleme: 11 Ekim 2026. **PRODUCTION RELEASE HOLD**.
 Bu belge güncel çalışma sırasıdır; tarihsel `NEXT_STEPS.md` yerine kullanın.
-Son doğrulanan main: `5dac90412b65c299cb62bcff1ab2e1ae0533b6a0` (#48).
+Son doğrulanan main: `dc00f5ac9a846139d04a82f0689d02a75e5de6d0` (#49).
 #44 ve #45, güncel yayın head'lerinde ayrı ayrı 19/19 başarılı kontrol sonrası
 normal merge edildi; repository korumaları değiştirilmedi. #44 merge kimliği
 `e697b2f19d74b1021ba3a32b64b4f15ceb159880`, #45 merge kimliği
@@ -20,7 +20,11 @@ A4 ilk offline protokol #48, `f0f1d406` head'inde 19/19 başarılı kontrol sonr
 11 Ekim 2026 16:34:36 Türkiye saatinde normal merge edildi. Merge edilmiş main
 ve kontrol edilmiş head aynı `1780f76c675566a8ca526ec18c078ecb03ab6288` ağacıdır.
 [Güncel merge kaydı](audits/2026-10-11-chainlink-registration-recovery/merge-observations.json).
-Repository korumaları değiştirilmedi. Bu dal A4'ün ara kayıt recovery paketidir;
+A4 ara kayıt recovery #49, `9567f23` head'inde 19/19 başarılı kontrol sonrası
+11 Ekim 2026 17:40:27 Türkiye saatinde normal merge edildi. Kontrol edilmiş
+head ve merge aynı `9da8cbb602996d863b84daba881cb6f62b737b9f` ağacıdır.
+[Son #49 merge kaydı](audits/2026-10-11-chainlink-native-contract-bridge/merge-observations.json).
+Repository korumaları değiştirilmedi. Bu dal A4'ün tam native kontrat köprüsüdür;
 her paketin yerel kanıtı ve yayın head'inin CI sonucu ayrı kaydedilir.
 
 ## Birleşmiş ve korunan çalışmalar
@@ -203,7 +207,7 @@ değildir. Kanıt: [A3 fiyat yaşam döngüsü](audits/2026-10-11-chainlink-pric
 | A1 | Açık pencerenin özgün kabul ID'lerini kalıcılaştırma | #45 güncel head `0f2fc42`, 19/19 başarılı kontrol sonrası normal merge edildi. DPCAS2 + özgün v6 journal ID recovery; snapshot sonrası her admission için ayrı WAL garantisi yok. |
 | A2 | İndeks kapasitesi ve retention | #46 güncel head `b3a9507`, 19/19 başarılı kontrol sonrası normal merge edildi. Referansları doğrulayan checkpoint sonrası indeks retirement, DPCAS3 WAL beklentisi ve admission öncesi sonlu arşiv kotası uygulandı. 4.100 admission/restart dahil nihai yerel sonuç ayrı A2 kanıt kaydındadır; fiziksel GC yapılmaz. |
 | A3 | Fiyat kullanan bütün gateway yolları | Aday priced mutasyon preflight'ları ve özgün withdrawal transcript'i uygulandı. 550 gateway PASS; iki gerçek gateway sentetik lifecycle witness'ında native/gerçek SP1 CPU commitment eşit, üç negatif exit 1/boş public çıktı. #47 güncel head `15bdf54`, 19/19 başarılı kontrol sonrası normal merge edildi; submission HOLD. |
-| A4 | Ayrı aday prover/settlement protokolü | İlk offline harness #48, 19/19 başarılı kontrol sonrası normal merge edildi. Bu dalda DPCINT4 ara kayıt recovery ve mock finality uzlaşması uygulandı: 597 gateway, 25 odaklı recovery, 47 guard PASS. Gerçek proof, canlı servis/target ve L1 uzlaşma kabulü açık. |
+| A4 | Ayrı aday prover/settlement protokolü | İlk offline harness #48, 19/19 başarılı kontrol sonrası normal merge edildi. DPCINT4 ara kayıt recovery ve mock finality uzlaşması #49 ile 19/19 başarılı kontrol sonrası birleşti: 597 gateway, 25 odaklı recovery, 47 guard PASS. Gerçek proof, canlı servis/target ve L1 uzlaşma kabulü açık. |
 
 Canlı feed keşfi/entitlement kullanıcı kararıyla ertelenmiştir; A1–A4 yazılım
 hazırlığını durdurmaz. Yeniden discovery/credential denemesi veya feed/eşik
@@ -218,10 +222,10 @@ hash'inden ayrıdır ve uptime epoch wrapper kayıt durumudur. Authenticated
 `DPCINT3` intent/prepared kaydı immutable request/material/target/epoch ile
 restart/retry sınar. Final CPU corpus iki actual gateway sentetik akışından
 gelir; contract parity gerçek wrapper'lar ve mock DON/SP1/uptime ile sınanır.
-Contract fixture kökleri native tam commitment yerine geçmez. Kanıt:
+İlk #48 kontrat fixture'ının R/N kökleri native tam commitment yerine geçmez. Kanıt:
 [A4 offline aday protokolü](audits/2026-10-11-chainlink-candidate-protocol/README.md).
 
-Sonraki A4 yazılım paketi, yalnız `cfg(test)` kapsamında DPCINT4 ile Intent →
+Birleşmiş #49 A4 yazılım paketi, yalnız `cfg(test)` kapsamında DPCINT4 ile Intent →
 ClockPending → ClockObserved → ReportsPending → ReportsObserved → Prepared
 aşamalarını ayrı ve authenticated olarak saklar. Resume hiçbir registration
 çağrısını tekrarlamaz; özgün tx/block/hash/epoch ve request baytlarını koruyarak
@@ -234,7 +238,20 @@ Tam gateway 597 PASS / 0 FAIL / 18 IGNORE; 25 odaklı recovery ve 10 özgün
 protokol regresyon testi başarılı. Workspace Clippy/format ve 47 guard geçti;
 21 reviewed / 9 candidate pin ve dört golden builder değişmedi. Bu pakette
 Foundry veya CPU yeniden çalıştırılmadı; #48'in aynı corpus/kaynak kanıtı korunur.
-Sonraki yazılım adımı: [tam native-to-contract mock köprü tasarımı](audits/2026-10-11-chainlink-registration-recovery/next-a4-native-contract-bridge.md).
+Bu dalda [tam native-to-contract köprü](audits/2026-10-11-chainlink-native-contract-bridge/README.md)
+uygulandı. Özgün iki FINAL2 witness/full container korunur; gerçek yerel kontrat
+bağlamından yeni canonical witness, material ve açıkça yeni sentetik arşiv
+kayıtları üretilir. Yedi kök ve count=9/nonzero tip, gerçek SP1 adapter/clock/
+oracle/settlement ile açık mock DON/SP1/uptime/prefix ledger üzerinden sınanır.
+Nihai tam Foundry 183 PASS (yeni köprü 15); Rust odaklı 5 PASS ve Clippy
+başarılı. Yeni witness ile taze SP1 CPU yürütmesinde 2/2 exact public32 eşleşti
+(27.237.960 + 24.293.454 cycle). Nihai tam gateway **602 PASS / 0 FAIL / 20
+intentional IGNORE**, 47 guard ve 21/9 pin geçti. İlk tam koşuda eski iki
+saniyelik HTTP fixture 400 döndü; özgün yanıt gövdesi yoktu. Kontrollü gecikme
+aynı aşamada arşiv zaman reddini yeniden üretti. Eski golden/süre/beklentiler
+korunarak nihai tam test ve CI workspace paralelliği iki thread ile sınırlandı.
+Başarısız ilk ve başarılı final kayıtları yeni köprü kanıt paketinde saklanır.
+Gerçek proof, fon/custody ve canlı kabul değildir.
 
 ## Açık işler ve kapanış ölçütleri
 

@@ -1,0 +1,13 @@
+{
+  "base_commit": "dc00f5ac9a846139d04a82f0689d02a75e5de6d0",
+  "preserved_source_sha256": {
+    "crates/gateway/src/candidate_registration.rs": "86ffc1032f31952fad4e0c815a9564397c2d86cff5c62e23a664538209ba4c37",
+    "crates/gateway/src/report_archive_binding.rs": "1204db404b472c8c77a56e23fe2e59d4577d5d2bb334c8f0f4880449352812a9",
+    "crates/gateway/src/price_lifecycle_tests.rs": "cba6cb30039894e128e8ee19b32f1a9ed1fca2d7616c73af8570d2ce885472dd",
+    "crates/gateway/src/candidate_protocol_tests.rs": "b7b5304d771c9f5505db67737c20793696eff7367724e529bc4030a3a97e7b40",
+    "contracts/test/ChainlinkCandidateProtocol.t.sol": "a3dddb532abef84ac38c149c86a4f3112cb431a74361bf76fc1afa49bfc8bba7",
+    "contracts/test/fixtures/ChainlinkCandidateProtocolVector.sol": "6a854f62f20f9f270db49963c73e0e0b70170594dd969169567ad3eb286decdc",
+    "contracts/test/fixtures/chainlink-candidate-protocol.json": "1263230407bfe0c340a61d4106e952812abd7f16e93cac3397d3e68412bf2067",
+    "docs/audits/2026-10-11-chainlink-candidate-protocol/fixtures/manifest.json": "3147718b8db6036f0ecb540157dfaea260f010726abdc2895d53baf4d08c6480"
+  }
+}

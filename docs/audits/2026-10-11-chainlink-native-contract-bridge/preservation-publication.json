@@ -1,0 +1,1323 @@
+{
+  "schema": "arcora-native-contract-bridge-preservation-publication-v1",
+  "observed_utc": "2026-10-11T15:43:26.901859+00:00",
+  "scope": "Fresh read-only SHA256 content checks and Git HEAD/status/staged-binary diff observations. Source pins are checked using literal AST dictionaries without module imports. Only this new ignored target receipt is written; no source, old packet, original checkout/index, Cargo, Foundry, proof or Git mutation.",
+  "base_commit": "dc00f5ac9a846139d04a82f0689d02a75e5de6d0",
+  "publication_checkout_head": "65bdb5aebcbf0253b54854229e346d5875c48839",
+  "publication_checkout_branch": "feat/chainlink-native-contract-bridge-20261011",
+  "tests_rerun": false,
+  "git_optional_locks": "0",
+  "overall_pass": true,
+  "checks": {
+    "primary_13_hashes_match": true,
+    "all_checkout_heads_and_dirty_counts_match": true,
+    "job17_staged_binary_diff_matches": true,
+    "checkouts_unchanged_during_audit": true,
+    "protected_8_hashes_match": true,
+    "prior48_artifacts34_match": true,
+    "prior49_artifacts22_match": true,
+    "reviewed_v2_core_source_pins21_match": true,
+    "candidate_runtime_source_pins9_match": true,
+    "preservation_final_receipt_unchanged": true
+  },
+  "baseline_sources": {
+    "primary": {
+      "path": "docs/audits/2026-10-11-chainlink-archive-gateway-binding/continuation-recheck.json",
+      "sha256": "25395fd9e0ab809079f6213ea9db1a3762bea1794d6c60d7cfcb971fbef87186"
+    },
+    "original_checkouts": {
+      "path": "docs/audits/2026-10-11-chainlink-registration-recovery/original-checkouts.json",
+      "sha256": "c8d5508e98179eb728cadd9a053aaf99ddf82fa9e0ce7e46002ea55887b592e8"
+    },
+    "protected_8": {
+      "path": "target/native-contract-bridge-validation-20261011/baseline.json",
+      "sha256": "381545482681487c869f0f1bab6262f85a74209e32fab2a4a8c713cbdb83790d"
+    },
+    "earlier_receipt": {
+      "path": "target/native-contract-bridge-validation-20261011/preservation-final.json",
+      "sha256": "9ab2a161d524f4772839925292a56dfabd85862e1d096bb0160ab26e142bfd3c"
+    }
+  },
+  "checkouts_before": {
+    "primary": {
+      "path": "/Users/huseyinarslan/Desktop/arcora-perp/repo",
+      "head": "2a03bb03a7db9736e72573fa22d8fe8f4fe37f94",
+      "expected_head": "2a03bb03a7db9736e72573fa22d8fe8f4fe37f94",
+      "head_matches": true,
+      "branch": "feat/chainlink-streams-client-20261010",
+      "dirty_files_count": 13,
+      "expected_dirty_files_count": 13,
+      "dirty_count_matches": true,
+      "status_command": [
+        "git",
+        "status",
+        "--porcelain=v1",
+        "--untracked-files=all"
+      ],
+      "status_sha256": "6c141722e6c6d015c2d2107abca141c800368a520a8b4f3863022f25e11568d1",
+      "status_lines": [
+        " M crates/chainlink-streams-client/src/lib.rs",
+        " M crates/chainlink-streams-client/src/transport_tests.rs",
+        " M docs/ACTIVE_WORK.md",
+        " M docs/CHAINLINK_STREAMS_CLIENT.md",
+        "?? crates/chainlink-streams-client/src/report_archive.rs",
+        "?? crates/chainlink-streams-client/src/report_archive_tests.rs",
+        "?? crates/chainlink-streams-client/src/report_pair.rs",
+        "?? docs/CHAINLINK_REPORT_ARCHIVE.md",
+        "?? docs/audits/2026-10-10-chainlink-report-archive/README.md",
+        "?? docs/audits/2026-10-10-chainlink-report-archive/client-debug.txt",
+        "?? docs/audits/2026-10-10-chainlink-report-archive/client-release.txt",
+        "?? docs/audits/2026-10-10-chainlink-report-archive/publication-state.json",
+        "?? docs/audits/2026-10-10-chainlink-report-archive/verification.json"
+      ]
+    },
+    "job17": {
+      "path": "/Users/huseyinarslan/kimi-bridge/worktrees/Arcora-labs__arcora-perp/job--17",
+      "head": "e283958109fc6b434b7049d523bbd3378e2e6c27",
+      "expected_head": "e283958109fc6b434b7049d523bbd3378e2e6c27",
+      "head_matches": true,
+      "branch": "kimi/job--17-implement-and-publish-the-actual-chainli",
+      "dirty_files_count": 7,
+      "expected_dirty_files_count": 7,
+      "dirty_count_matches": true,
+      "status_command": [
+        "git",
+        "status",
+        "--porcelain=v1",
+        "--untracked-files=all"
+      ],
+      "status_sha256": "62a57db3340b49e04bb5354addc888a4c6ff88aa7f351e871256b626b2edb2e0",
+      "status_lines": [
+        "M  docs/ACTIVE_WORK.md",
+        "M  docs/CHAINLINK_REPORT_ARCHIVE.md",
+        "M  docs/CHAINLINK_STREAMS_CLIENT.md",
+        "M  docs/audits/2026-10-11-chainlink-archive-gateway-binding/README.md",
+        "A  docs/audits/2026-10-11-chainlink-archive-gateway-binding/evidence-recheck.json",
+        "A  docs/audits/2026-10-11-chainlink-archive-gateway-binding/final-verification.json",
+        "A  docs/audits/2026-10-11-chainlink-archive-gateway-binding/historical-notes.md"
+      ]
+    },
+    "old_desktop": {
+      "path": "/Users/huseyinarslan/Desktop/Projeler/Dark Perp/dark-perp",
+      "head": "f997f8b96279bd06ec1808f6b9cb2a6aeb25cc5e",
+      "expected_head": "f997f8b96279bd06ec1808f6b9cb2a6aeb25cc5e",
+      "head_matches": true,
+      "branch": "main",
+      "dirty_files_count": 62,
+      "expected_dirty_files_count": 62,
+      "dirty_count_matches": true,
+      "status_command": [
+        "git",
+        "status",
+        "--porcelain=v1",
+        "--untracked-files=all"
+      ],
+      "status_sha256": "31785ed6ed1f38ec2e1249a358990b6f0de1d2d205861a46c877375aee66e8e5",
+      "status_lines": [
+        " M crates/gateway/src/deposit_ingestion.rs",
+        " M crates/gateway/src/deposit_ingestion/tests.rs",
+        " M crates/gateway/src/execution_regression_tests.rs",
+        " M crates/gateway/src/l1.rs",
+        " M crates/gateway/src/main.rs",
+        " M crates/gateway/src/snapshot.rs",
+        " M crates/perp-core/tests/lifecycle.rs",
+        " M frontend/src/api/client.ts",
+        " M frontend/src/api/realClient.test.ts",
+        " M frontend/src/api/realClient.ts",
+        " M frontend/src/components/RecoveryPanel.test.tsx",
+        " M frontend/src/components/RecoveryPanel.tsx",
+        "?? RobinX-Game-v0.1.zip",
+        "?? codex-session-01a0b067-e313-72b1-98be-46f653d0344c.md",
+        "?? crates/gateway/src/wind_down.rs",
+        "?? docs/audits/2026-09-24-evidence/a01-loopback.log",
+        "?? docs/audits/2026-09-24-evidence/build.log",
+        "?? docs/audits/2026-09-24-evidence/checks.json",
+        "?? docs/audits/2026-09-24-evidence/ci-pipeline.txt",
+        "?? docs/audits/2026-09-24-evidence/clippy.log",
+        "?? docs/audits/2026-09-24-evidence/forge.log",
+        "?? docs/audits/2026-09-24-evidence/frontend-repro.log",
+        "?? docs/audits/2026-09-24-evidence/frontend-repro.test.ts.txt",
+        "?? docs/audits/2026-09-24-evidence/frontend.log",
+        "?? docs/audits/2026-09-24-evidence/gateway-repro.log",
+        "?? docs/audits/2026-09-24-evidence/gateway-repros.patch",
+        "?? docs/audits/2026-09-24-evidence/graph-check.txt",
+        "?? docs/audits/2026-09-24-evidence/graph-contract.json",
+        "?? docs/audits/2026-09-24-evidence/graph-release-report.json",
+        "?? docs/audits/2026-09-24-evidence/main-ci-jobs.json",
+        "?? docs/audits/2026-09-24-evidence/main-ci.json",
+        "?? docs/audits/2026-09-24-evidence/manifest.json",
+        "?? docs/audits/2026-09-24-evidence/npm-audit.json",
+        "?? docs/audits/2026-09-24-evidence/npm-prod-audit.json",
+        "?? docs/audits/2026-09-24-evidence/pr18-ci.json",
+        "?? docs/audits/2026-09-24-evidence/profile-probe.log",
+        "?? docs/audits/2026-09-24-evidence/profile-probe.rs.txt",
+        "?? docs/audits/2026-09-24-evidence/public-smoke.json",
+        "?? docs/audits/2026-09-24-evidence/remaining-test-discovery.json",
+        "?? docs/audits/2026-09-24-evidence/rust-audit.json",
+        "?? docs/audits/2026-09-24-evidence/rust.log",
+        "?? docs/audits/2026-09-24-fresh-audit.md",
+        "?? docs/audits/2026-09-24-remediation-evidence/build.log",
+        "?? docs/audits/2026-09-24-remediation-evidence/clippy-final.log",
+        "?? docs/audits/2026-09-24-remediation-evidence/clippy.log",
+        "?? docs/audits/2026-09-24-remediation-evidence/contracts-emergency.log",
+        "?? docs/audits/2026-09-24-remediation-evidence/fmt.log",
+        "?? docs/audits/2026-09-24-remediation-evidence/format-result.json",
+        "?? docs/audits/2026-09-24-remediation-evidence/frontend.log",
+        "?? docs/audits/2026-09-24-remediation-evidence/gateway-final.log",
+        "?? docs/audits/2026-09-24-remediation-evidence/gateway.log",
+        "?? docs/audits/2026-09-24-remediation-evidence/graph-check.txt",
+        "?? docs/audits/2026-09-24-remediation-evidence/graph-contract.json",
+        "?? docs/audits/2026-09-24-remediation-evidence/graph-report.json",
+        "?? docs/audits/2026-09-24-remediation-evidence/insolvency.log",
+        "?? docs/audits/2026-09-24-remediation-evidence/manifest.json",
+        "?? docs/audits/2026-09-24-remediation-evidence/review.txt",
+        "?? docs/audits/2026-09-24-remediation-evidence/source-identity.json",
+        "?? docs/audits/2026-09-24-remediation-evidence/wind-down.log",
+        "?? docs/audits/2026-09-24-remediation.md",
+        "?? frontend/src/api/accountLifecycle.test.ts",
+        "?? kimi-seeklogo-small.png"
+      ]
+    }
+  },
+  "checkouts_after": {
+    "primary": {
+      "path": "/Users/huseyinarslan/Desktop/arcora-perp/repo",
+      "head": "2a03bb03a7db9736e72573fa22d8fe8f4fe37f94",
+      "expected_head": "2a03bb03a7db9736e72573fa22d8fe8f4fe37f94",
+      "head_matches": true,
+      "branch": "feat/chainlink-streams-client-20261010",
+      "dirty_files_count": 13,
+      "expected_dirty_files_count": 13,
+      "dirty_count_matches": true,
+      "status_command": [
+        "git",
+        "status",
+        "--porcelain=v1",
+        "--untracked-files=all"
+      ],
+      "status_sha256": "6c141722e6c6d015c2d2107abca141c800368a520a8b4f3863022f25e11568d1",
+      "status_lines": [
+        " M crates/chainlink-streams-client/src/lib.rs",
+        " M crates/chainlink-streams-client/src/transport_tests.rs",
+        " M docs/ACTIVE_WORK.md",
+        " M docs/CHAINLINK_STREAMS_CLIENT.md",
+        "?? crates/chainlink-streams-client/src/report_archive.rs",
+        "?? crates/chainlink-streams-client/src/report_archive_tests.rs",
+        "?? crates/chainlink-streams-client/src/report_pair.rs",
+        "?? docs/CHAINLINK_REPORT_ARCHIVE.md",
+        "?? docs/audits/2026-10-10-chainlink-report-archive/README.md",
+        "?? docs/audits/2026-10-10-chainlink-report-archive/client-debug.txt",
+        "?? docs/audits/2026-10-10-chainlink-report-archive/client-release.txt",
+        "?? docs/audits/2026-10-10-chainlink-report-archive/publication-state.json",
+        "?? docs/audits/2026-10-10-chainlink-report-archive/verification.json"
+      ]
+    },
+    "job17": {
+      "path": "/Users/huseyinarslan/kimi-bridge/worktrees/Arcora-labs__arcora-perp/job--17",
+      "head": "e283958109fc6b434b7049d523bbd3378e2e6c27",
+      "expected_head": "e283958109fc6b434b7049d523bbd3378e2e6c27",
+      "head_matches": true,
+      "branch": "kimi/job--17-implement-and-publish-the-actual-chainli",
+      "dirty_files_count": 7,
+      "expected_dirty_files_count": 7,
+      "dirty_count_matches": true,
+      "status_command": [
+        "git",
+        "status",
+        "--porcelain=v1",
+        "--untracked-files=all"
+      ],
+      "status_sha256": "62a57db3340b49e04bb5354addc888a4c6ff88aa7f351e871256b626b2edb2e0",
+      "status_lines": [
+        "M  docs/ACTIVE_WORK.md",
+        "M  docs/CHAINLINK_REPORT_ARCHIVE.md",
+        "M  docs/CHAINLINK_STREAMS_CLIENT.md",
+        "M  docs/audits/2026-10-11-chainlink-archive-gateway-binding/README.md",
+        "A  docs/audits/2026-10-11-chainlink-archive-gateway-binding/evidence-recheck.json",
+        "A  docs/audits/2026-10-11-chainlink-archive-gateway-binding/final-verification.json",
+        "A  docs/audits/2026-10-11-chainlink-archive-gateway-binding/historical-notes.md"
+      ]
+    },
+    "old_desktop": {
+      "path": "/Users/huseyinarslan/Desktop/Projeler/Dark Perp/dark-perp",
+      "head": "f997f8b96279bd06ec1808f6b9cb2a6aeb25cc5e",
+      "expected_head": "f997f8b96279bd06ec1808f6b9cb2a6aeb25cc5e",
+      "head_matches": true,
+      "branch": "main",
+      "dirty_files_count": 62,
+      "expected_dirty_files_count": 62,
+      "dirty_count_matches": true,
+      "status_command": [
+        "git",
+        "status",
+        "--porcelain=v1",
+        "--untracked-files=all"
+      ],
+      "status_sha256": "31785ed6ed1f38ec2e1249a358990b6f0de1d2d205861a46c877375aee66e8e5",
+      "status_lines": [
+        " M crates/gateway/src/deposit_ingestion.rs",
+        " M crates/gateway/src/deposit_ingestion/tests.rs",
+        " M crates/gateway/src/execution_regression_tests.rs",
+        " M crates/gateway/src/l1.rs",
+        " M crates/gateway/src/main.rs",
+        " M crates/gateway/src/snapshot.rs",
+        " M crates/perp-core/tests/lifecycle.rs",
+        " M frontend/src/api/client.ts",
+        " M frontend/src/api/realClient.test.ts",
+        " M frontend/src/api/realClient.ts",
+        " M frontend/src/components/RecoveryPanel.test.tsx",
+        " M frontend/src/components/RecoveryPanel.tsx",
+        "?? RobinX-Game-v0.1.zip",
+        "?? codex-session-01a0b067-e313-72b1-98be-46f653d0344c.md",
+        "?? crates/gateway/src/wind_down.rs",
+        "?? docs/audits/2026-09-24-evidence/a01-loopback.log",
+        "?? docs/audits/2026-09-24-evidence/build.log",
+        "?? docs/audits/2026-09-24-evidence/checks.json",
+        "?? docs/audits/2026-09-24-evidence/ci-pipeline.txt",
+        "?? docs/audits/2026-09-24-evidence/clippy.log",
+        "?? docs/audits/2026-09-24-evidence/forge.log",
+        "?? docs/audits/2026-09-24-evidence/frontend-repro.log",
+        "?? docs/audits/2026-09-24-evidence/frontend-repro.test.ts.txt",
+        "?? docs/audits/2026-09-24-evidence/frontend.log",
+        "?? docs/audits/2026-09-24-evidence/gateway-repro.log",
+        "?? docs/audits/2026-09-24-evidence/gateway-repros.patch",
+        "?? docs/audits/2026-09-24-evidence/graph-check.txt",
+        "?? docs/audits/2026-09-24-evidence/graph-contract.json",
+        "?? docs/audits/2026-09-24-evidence/graph-release-report.json",
+        "?? docs/audits/2026-09-24-evidence/main-ci-jobs.json",
+        "?? docs/audits/2026-09-24-evidence/main-ci.json",
+        "?? docs/audits/2026-09-24-evidence/manifest.json",
+        "?? docs/audits/2026-09-24-evidence/npm-audit.json",
+        "?? docs/audits/2026-09-24-evidence/npm-prod-audit.json",
+        "?? docs/audits/2026-09-24-evidence/pr18-ci.json",
+        "?? docs/audits/2026-09-24-evidence/profile-probe.log",
+        "?? docs/audits/2026-09-24-evidence/profile-probe.rs.txt",
+        "?? docs/audits/2026-09-24-evidence/public-smoke.json",
+        "?? docs/audits/2026-09-24-evidence/remaining-test-discovery.json",
+        "?? docs/audits/2026-09-24-evidence/rust-audit.json",
+        "?? docs/audits/2026-09-24-evidence/rust.log",
+        "?? docs/audits/2026-09-24-fresh-audit.md",
+        "?? docs/audits/2026-09-24-remediation-evidence/build.log",
+        "?? docs/audits/2026-09-24-remediation-evidence/clippy-final.log",
+        "?? docs/audits/2026-09-24-remediation-evidence/clippy.log",
+        "?? docs/audits/2026-09-24-remediation-evidence/contracts-emergency.log",
+        "?? docs/audits/2026-09-24-remediation-evidence/fmt.log",
+        "?? docs/audits/2026-09-24-remediation-evidence/format-result.json",
+        "?? docs/audits/2026-09-24-remediation-evidence/frontend.log",
+        "?? docs/audits/2026-09-24-remediation-evidence/gateway-final.log",
+        "?? docs/audits/2026-09-24-remediation-evidence/gateway.log",
+        "?? docs/audits/2026-09-24-remediation-evidence/graph-check.txt",
+        "?? docs/audits/2026-09-24-remediation-evidence/graph-contract.json",
+        "?? docs/audits/2026-09-24-remediation-evidence/graph-report.json",
+        "?? docs/audits/2026-09-24-remediation-evidence/insolvency.log",
+        "?? docs/audits/2026-09-24-remediation-evidence/manifest.json",
+        "?? docs/audits/2026-09-24-remediation-evidence/review.txt",
+        "?? docs/audits/2026-09-24-remediation-evidence/source-identity.json",
+        "?? docs/audits/2026-09-24-remediation-evidence/wind-down.log",
+        "?? docs/audits/2026-09-24-remediation.md",
+        "?? frontend/src/api/accountLifecycle.test.ts",
+        "?? kimi-seeklogo-small.png"
+      ]
+    }
+  },
+  "primary_files": [
+    {
+      "path": "crates/chainlink-streams-client/src/lib.rs",
+      "expected_sha256": "4a63eec6941704583a83b395a5c8f34c5e685c33950c7e7bf96eb9999479de54",
+      "actual_sha256": "4a63eec6941704583a83b395a5c8f34c5e685c33950c7e7bf96eb9999479de54",
+      "matches": true,
+      "regular_file": true
+    },
+    {
+      "path": "crates/chainlink-streams-client/src/transport_tests.rs",
+      "expected_sha256": "17259c937c1d90e3b0950fadf78d71caaab2e6d1bf0b457cae93b83a486c4079",
+      "actual_sha256": "17259c937c1d90e3b0950fadf78d71caaab2e6d1bf0b457cae93b83a486c4079",
+      "matches": true,
+      "regular_file": true
+    },
+    {
+      "path": "docs/ACTIVE_WORK.md",
+      "expected_sha256": "57d2fd9fe21055c7e2c269d272a4f12436b4f75c8f479a74913c5307849924c1",
+      "actual_sha256": "57d2fd9fe21055c7e2c269d272a4f12436b4f75c8f479a74913c5307849924c1",
+      "matches": true,
+      "regular_file": true
+    },
+    {
+      "path": "docs/CHAINLINK_STREAMS_CLIENT.md",
+      "expected_sha256": "923ce0fbca1aab31f61fd0d23c542c0f6575b0089032085e13ce61d5d766d9f2",
+      "actual_sha256": "923ce0fbca1aab31f61fd0d23c542c0f6575b0089032085e13ce61d5d766d9f2",
+      "matches": true,
+      "regular_file": true
+    },
+    {
+      "path": "crates/chainlink-streams-client/src/report_archive.rs",
+      "expected_sha256": "7ce55278f094ff7ad67e1dc9fbbe8f4744b1e29ef1f6304f6a5e70594bd2805e",
+      "actual_sha256": "7ce55278f094ff7ad67e1dc9fbbe8f4744b1e29ef1f6304f6a5e70594bd2805e",
+      "matches": true,
+      "regular_file": true
+    },
+    {
+      "path": "crates/chainlink-streams-client/src/report_archive_tests.rs",
+      "expected_sha256": "e26ad11aac0d1510354003e3cc6ec494b06b6938c1d4778bfa46135fe80c04ab",
+      "actual_sha256": "e26ad11aac0d1510354003e3cc6ec494b06b6938c1d4778bfa46135fe80c04ab",
+      "matches": true,
+      "regular_file": true
+    },
+    {
+      "path": "crates/chainlink-streams-client/src/report_pair.rs",
+      "expected_sha256": "7f9154fe5cafe182ed5bdc80976b44f19667bc4747ac801f3cec583de362ad7a",
+      "actual_sha256": "7f9154fe5cafe182ed5bdc80976b44f19667bc4747ac801f3cec583de362ad7a",
+      "matches": true,
+      "regular_file": true
+    },
+    {
+      "path": "docs/CHAINLINK_REPORT_ARCHIVE.md",
+      "expected_sha256": "b150b8a38bef610f5fe25bfef30aee87b5d07ca0435b350fdb45bac68f8672f8",
+      "actual_sha256": "b150b8a38bef610f5fe25bfef30aee87b5d07ca0435b350fdb45bac68f8672f8",
+      "matches": true,
+      "regular_file": true
+    },
+    {
+      "path": "docs/audits/2026-10-10-chainlink-report-archive/README.md",
+      "expected_sha256": "2c1ce26530e60512a630e039b7b3ed4f644de43ede8dad86f905bf3c94e25c07",
+      "actual_sha256": "2c1ce26530e60512a630e039b7b3ed4f644de43ede8dad86f905bf3c94e25c07",
+      "matches": true,
+      "regular_file": true
+    },
+    {
+      "path": "docs/audits/2026-10-10-chainlink-report-archive/client-debug.txt",
+      "expected_sha256": "8fe1cceb492aa4a00019f1138dcc7086d618b771c15415d7c89709480672bd9c",
+      "actual_sha256": "8fe1cceb492aa4a00019f1138dcc7086d618b771c15415d7c89709480672bd9c",
+      "matches": true,
+      "regular_file": true
+    },
+    {
+      "path": "docs/audits/2026-10-10-chainlink-report-archive/client-release.txt",
+      "expected_sha256": "200dcb6a224946470eee5349dc4f04077fa4e02bd6104e9a8a9d10a1b031ed98",
+      "actual_sha256": "200dcb6a224946470eee5349dc4f04077fa4e02bd6104e9a8a9d10a1b031ed98",
+      "matches": true,
+      "regular_file": true
+    },
+    {
+      "path": "docs/audits/2026-10-10-chainlink-report-archive/publication-state.json",
+      "expected_sha256": "48e36c7a0e9d641c64badc95fa235bb3a5e024163ecc361372ea57307946490b",
+      "actual_sha256": "48e36c7a0e9d641c64badc95fa235bb3a5e024163ecc361372ea57307946490b",
+      "matches": true,
+      "regular_file": true
+    },
+    {
+      "path": "docs/audits/2026-10-10-chainlink-report-archive/verification.json",
+      "expected_sha256": "95b9e0448233ba84bc24c05bc581b4c9ea56b23a1ca838f1950c846457c390b7",
+      "actual_sha256": "95b9e0448233ba84bc24c05bc581b4c9ea56b23a1ca838f1950c846457c390b7",
+      "matches": true,
+      "regular_file": true
+    }
+  ],
+  "job17_staged_binary_diff": {
+    "command": [
+      "git",
+      "diff",
+      "--cached",
+      "--binary"
+    ],
+    "bytes": 91354,
+    "expected_sha256": "0262e9d202a41c184a4352691be1a8aa2c9c6b24a62ef65b421eadaa0249a849",
+    "actual_sha256": "0262e9d202a41c184a4352691be1a8aa2c9c6b24a62ef65b421eadaa0249a849",
+    "after_sha256": "0262e9d202a41c184a4352691be1a8aa2c9c6b24a62ef65b421eadaa0249a849",
+    "matches": true
+  },
+  "protected_source_entries": [
+    {
+      "path": "crates/gateway/src/candidate_registration.rs",
+      "expected_sha256": "86ffc1032f31952fad4e0c815a9564397c2d86cff5c62e23a664538209ba4c37",
+      "actual_sha256": "86ffc1032f31952fad4e0c815a9564397c2d86cff5c62e23a664538209ba4c37",
+      "base_blob_sha256": "86ffc1032f31952fad4e0c815a9564397c2d86cff5c62e23a664538209ba4c37",
+      "matches": true,
+      "regular_file": true
+    },
+    {
+      "path": "crates/gateway/src/report_archive_binding.rs",
+      "expected_sha256": "1204db404b472c8c77a56e23fe2e59d4577d5d2bb334c8f0f4880449352812a9",
+      "actual_sha256": "1204db404b472c8c77a56e23fe2e59d4577d5d2bb334c8f0f4880449352812a9",
+      "base_blob_sha256": "1204db404b472c8c77a56e23fe2e59d4577d5d2bb334c8f0f4880449352812a9",
+      "matches": true,
+      "regular_file": true
+    },
+    {
+      "path": "crates/gateway/src/price_lifecycle_tests.rs",
+      "expected_sha256": "cba6cb30039894e128e8ee19b32f1a9ed1fca2d7616c73af8570d2ce885472dd",
+      "actual_sha256": "cba6cb30039894e128e8ee19b32f1a9ed1fca2d7616c73af8570d2ce885472dd",
+      "base_blob_sha256": "cba6cb30039894e128e8ee19b32f1a9ed1fca2d7616c73af8570d2ce885472dd",
+      "matches": true,
+      "regular_file": true
+    },
+    {
+      "path": "crates/gateway/src/candidate_protocol_tests.rs",
+      "expected_sha256": "b7b5304d771c9f5505db67737c20793696eff7367724e529bc4030a3a97e7b40",
+      "actual_sha256": "b7b5304d771c9f5505db67737c20793696eff7367724e529bc4030a3a97e7b40",
+      "base_blob_sha256": "b7b5304d771c9f5505db67737c20793696eff7367724e529bc4030a3a97e7b40",
+      "matches": true,
+      "regular_file": true
+    },
+    {
+      "path": "contracts/test/ChainlinkCandidateProtocol.t.sol",
+      "expected_sha256": "a3dddb532abef84ac38c149c86a4f3112cb431a74361bf76fc1afa49bfc8bba7",
+      "actual_sha256": "a3dddb532abef84ac38c149c86a4f3112cb431a74361bf76fc1afa49bfc8bba7",
+      "base_blob_sha256": "a3dddb532abef84ac38c149c86a4f3112cb431a74361bf76fc1afa49bfc8bba7",
+      "matches": true,
+      "regular_file": true
+    },
+    {
+      "path": "contracts/test/fixtures/ChainlinkCandidateProtocolVector.sol",
+      "expected_sha256": "6a854f62f20f9f270db49963c73e0e0b70170594dd969169567ad3eb286decdc",
+      "actual_sha256": "6a854f62f20f9f270db49963c73e0e0b70170594dd969169567ad3eb286decdc",
+      "base_blob_sha256": "6a854f62f20f9f270db49963c73e0e0b70170594dd969169567ad3eb286decdc",
+      "matches": true,
+      "regular_file": true
+    },
+    {
+      "path": "contracts/test/fixtures/chainlink-candidate-protocol.json",
+      "expected_sha256": "1263230407bfe0c340a61d4106e952812abd7f16e93cac3397d3e68412bf2067",
+      "actual_sha256": "1263230407bfe0c340a61d4106e952812abd7f16e93cac3397d3e68412bf2067",
+      "base_blob_sha256": "1263230407bfe0c340a61d4106e952812abd7f16e93cac3397d3e68412bf2067",
+      "matches": true,
+      "regular_file": true
+    },
+    {
+      "path": "docs/audits/2026-10-11-chainlink-candidate-protocol/fixtures/manifest.json",
+      "expected_sha256": "3147718b8db6036f0ecb540157dfaea260f010726abdc2895d53baf4d08c6480",
+      "actual_sha256": "3147718b8db6036f0ecb540157dfaea260f010726abdc2895d53baf4d08c6480",
+      "base_blob_sha256": "3147718b8db6036f0ecb540157dfaea260f010726abdc2895d53baf4d08c6480",
+      "matches": true,
+      "regular_file": true
+    }
+  ],
+  "prior_packets": [
+    {
+      "pull_request": 48,
+      "verification_path": "docs/audits/2026-10-11-chainlink-candidate-protocol/verification.json",
+      "verification_sha256": "4c45c2ca22cd092c62a40689ff3997825df9b3b6b606129b23c5a81edf96a5c7",
+      "base_verification_sha256": "4c45c2ca22cd092c62a40689ff3997825df9b3b6b606129b23c5a81edf96a5c7",
+      "verification_byte_equal_to_merged_base": true,
+      "expected_artifact_count": 34,
+      "artifact_count": 34,
+      "artifact_count_matches": true,
+      "all_artifacts_match": true,
+      "entries": [
+        {
+          "path": "docs/audits/2026-10-11-chainlink-candidate-protocol/logs/format.log",
+          "expected_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "actual_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "expected_bytes": 0,
+          "actual_bytes": 0,
+          "hash_matches": true,
+          "size_matches": true,
+          "regular_file": true
+        },
+        {
+          "path": "docs/audits/2026-10-11-chainlink-candidate-protocol/logs/gateway-full.log",
+          "expected_sha256": "912bdfaffa8e93fd3a98085263c2062007c32452c5b3c451307b6062d42f1d95",
+          "actual_sha256": "912bdfaffa8e93fd3a98085263c2062007c32452c5b3c451307b6062d42f1d95",
+          "expected_bytes": 53352,
+          "actual_bytes": 53352,
+          "hash_matches": true,
+          "size_matches": true,
+          "regular_file": true
+        },
+        {
+          "path": "docs/audits/2026-10-11-chainlink-candidate-protocol/logs/workspace-clippy.log",
+          "expected_sha256": "8817bf993acb88e9ac7025d7668ced3541e4b0a7d5f9973754ae00950c204f0f",
+          "actual_sha256": "8817bf993acb88e9ac7025d7668ced3541e4b0a7d5f9973754ae00950c204f0f",
+          "expected_bytes": 2113,
+          "actual_bytes": 2113,
+          "hash_matches": true,
+          "size_matches": true,
+          "regular_file": true
+        },
+        {
+          "path": "docs/audits/2026-10-11-chainlink-candidate-protocol/logs/python-guards.log",
+          "expected_sha256": "98287fe4bd9c17cfad534d1fff4bf9a01f8429657268bd0776d4259cde3fde4a",
+          "actual_sha256": "98287fe4bd9c17cfad534d1fff4bf9a01f8429657268bd0776d4259cde3fde4a",
+          "expected_bytes": 7032,
+          "actual_bytes": 7032,
+          "hash_matches": true,
+          "size_matches": true,
+          "regular_file": true
+        },
+        {
+          "path": "docs/audits/2026-10-11-chainlink-candidate-protocol/logs/runtime-pins.log",
+          "expected_sha256": "cd6f22387ed79a9c83c6a2c15b82e4ccd1dfe70f0444399a72b604e82c1f09a4",
+          "actual_sha256": "cd6f22387ed79a9c83c6a2c15b82e4ccd1dfe70f0444399a72b604e82c1f09a4",
+          "expected_bytes": 643,
+          "actual_bytes": 643,
+          "hash_matches": true,
+          "size_matches": true,
+          "regular_file": true
+        },
+        {
+          "path": "docs/audits/2026-10-11-chainlink-candidate-protocol/logs/diff.log",
+          "expected_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "actual_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "expected_bytes": 0,
+          "actual_bytes": 0,
+          "hash_matches": true,
+          "size_matches": true,
+          "regular_file": true
+        },
+        {
+          "path": "docs/audits/2026-10-11-chainlink-candidate-protocol/logs/cpu-execution.log",
+          "expected_sha256": "0c869fd30a1e303c3ccd99c032f6ddbe99901e09d5836f26d446fb6dc43ed98d",
+          "actual_sha256": "0c869fd30a1e303c3ccd99c032f6ddbe99901e09d5836f26d446fb6dc43ed98d",
+          "expected_bytes": 93,
+          "actual_bytes": 93,
+          "hash_matches": true,
+          "size_matches": true,
+          "regular_file": true
+        },
+        {
+          "path": "docs/audits/2026-10-11-chainlink-candidate-protocol/logs/contracts-full.log",
+          "expected_sha256": "1799bab70301dfd8495602fb1e620f7cfccfdb32f0123ba747844bb0a3cd8d94",
+          "actual_sha256": "1799bab70301dfd8495602fb1e620f7cfccfdb32f0123ba747844bb0a3cd8d94",
+          "expected_bytes": 20731,
+          "actual_bytes": 20731,
+          "hash_matches": true,
+          "size_matches": true,
+          "regular_file": true
+        },
+        {
+          "path": "docs/audits/2026-10-11-chainlink-candidate-protocol/logs/protocol-final-main.log",
+          "expected_sha256": "eeacd45dee25c0a4f25379b8be80e984cc1ed49ec303caa201d273224c66572e",
+          "actual_sha256": "eeacd45dee25c0a4f25379b8be80e984cc1ed49ec303caa201d273224c66572e",
+          "expected_bytes": 1559,
+          "actual_bytes": 1559,
+          "hash_matches": true,
+          "size_matches": true,
+          "regular_file": true
+        },
+        {
+          "path": "docs/audits/2026-10-11-chainlink-candidate-protocol/logs/intent-focused.log",
+          "expected_sha256": "907047762273f4f50712ecc3a6b7995b4c46e351d251f865dcf70a58086567d0",
+          "actual_sha256": "907047762273f4f50712ecc3a6b7995b4c46e351d251f865dcf70a58086567d0",
+          "expected_bytes": 756,
+          "actual_bytes": 756,
+          "hash_matches": true,
+          "size_matches": true,
+          "regular_file": true
+        },
+        {
+          "path": "docs/audits/2026-10-11-chainlink-candidate-protocol/logs/registration-final-main.log",
+          "expected_sha256": "20553b7a448f69a570d65b32a7f9c93524199c3676e069a1883cfe5e1b93fa95",
+          "actual_sha256": "20553b7a448f69a570d65b32a7f9c93524199c3676e069a1883cfe5e1b93fa95",
+          "expected_bytes": 889,
+          "actual_bytes": 889,
+          "hash_matches": true,
+          "size_matches": true,
+          "regular_file": true
+        },
+        {
+          "path": "docs/audits/2026-10-11-chainlink-candidate-protocol/logs/material-focused.log",
+          "expected_sha256": "7447d4b0553038880a44222e0d41a4c448971277a08ebc1841dabc4018261421",
+          "actual_sha256": "7447d4b0553038880a44222e0d41a4c448971277a08ebc1841dabc4018261421",
+          "expected_bytes": 375,
+          "actual_bytes": 375,
+          "hash_matches": true,
+          "size_matches": true,
+          "regular_file": true
+        },
+        {
+          "path": "docs/audits/2026-10-11-chainlink-candidate-protocol/logs/export-final2.log",
+          "expected_sha256": "9211b44a39bed420117a2b18868ff1c5c3046bc0cf4d3e7113ae5fb95789a1eb",
+          "actual_sha256": "9211b44a39bed420117a2b18868ff1c5c3046bc0cf4d3e7113ae5fb95789a1eb",
+          "expected_bytes": 467,
+          "actual_bytes": 467,
+          "hash_matches": true,
+          "size_matches": true,
+          "regular_file": true
+        },
+        {
+          "path": "docs/audits/2026-10-11-chainlink-candidate-protocol/logs/clippy-final-main.log",
+          "expected_sha256": "b9ba54b09cc9cfa36f1e3311aebef11101af43042c0b610782707519f6e8edfe",
+          "actual_sha256": "b9ba54b09cc9cfa36f1e3311aebef11101af43042c0b610782707519f6e8edfe",
+          "expected_bytes": 187,
+          "actual_bytes": 187,
+          "hash_matches": true,
+          "size_matches": true,
+          "regular_file": true
+        },
+        {
+          "path": "docs/audits/2026-10-11-chainlink-candidate-protocol/logs/fmt-final-main.log",
+          "expected_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "actual_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "expected_bytes": 0,
+          "actual_bytes": 0,
+          "hash_matches": true,
+          "size_matches": true,
+          "regular_file": true
+        },
+        {
+          "path": "docs/audits/2026-10-11-chainlink-candidate-protocol/logs/diff-final-main.log",
+          "expected_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "actual_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "expected_bytes": 0,
+          "actual_bytes": 0,
+          "hash_matches": true,
+          "size_matches": true,
+          "regular_file": true
+        },
+        {
+          "path": "docs/audits/2026-10-11-chainlink-candidate-protocol/fixtures/liquidation.native-public.bin",
+          "expected_sha256": "b493a1c3abccb6de0f6f467c983f67e7d7cda44004c0298aa3f9a4529f9b14db",
+          "actual_sha256": "b493a1c3abccb6de0f6f467c983f67e7d7cda44004c0298aa3f9a4529f9b14db",
+          "expected_bytes": 32,
+          "actual_bytes": 32,
+          "hash_matches": true,
+          "size_matches": true,
+          "regular_file": true
+        },
+        {
+          "path": "docs/audits/2026-10-11-chainlink-candidate-protocol/fixtures/manifest.json",
+          "expected_sha256": "3147718b8db6036f0ecb540157dfaea260f010726abdc2895d53baf4d08c6480",
+          "actual_sha256": "3147718b8db6036f0ecb540157dfaea260f010726abdc2895d53baf4d08c6480",
+          "expected_bytes": 1400,
+          "actual_bytes": 1400,
+          "hash_matches": true,
+          "size_matches": true,
+          "regular_file": true
+        },
+        {
+          "path": "docs/audits/2026-10-11-chainlink-candidate-protocol/fixtures/normal-lifecycle.witness.bin",
+          "expected_sha256": "8f23160f0a0ff9d004c4c78a25877fc84f4e50e8263b46115695f1d212f9e937",
+          "actual_sha256": "8f23160f0a0ff9d004c4c78a25877fc84f4e50e8263b46115695f1d212f9e937",
+          "expected_bytes": 9460,
+          "actual_bytes": 9460,
+          "hash_matches": true,
+          "size_matches": true,
+          "regular_file": true
+        },
+        {
+          "path": "docs/audits/2026-10-11-chainlink-candidate-protocol/fixtures/normal-lifecycle.native-public.bin",
+          "expected_sha256": "1416555e0d7656adc3d6f9b6eff85fb9952d685be58cd91624a77c04f515d66b",
+          "actual_sha256": "1416555e0d7656adc3d6f9b6eff85fb9952d685be58cd91624a77c04f515d66b",
+          "expected_bytes": 32,
+          "actual_bytes": 32,
+          "hash_matches": true,
+          "size_matches": true,
+          "regular_file": true
+        },
+        {
+          "path": "docs/audits/2026-10-11-chainlink-candidate-protocol/fixtures/liquidation.witness.bin",
+          "expected_sha256": "ba6b4cd72a38db1c4b0188b9eff98e41022dffceca7dd5de5ff47b0f5adb0337",
+          "actual_sha256": "ba6b4cd72a38db1c4b0188b9eff98e41022dffceca7dd5de5ff47b0f5adb0337",
+          "expected_bytes": 8490,
+          "actual_bytes": 8490,
+          "hash_matches": true,
+          "size_matches": true,
+          "regular_file": true
+        },
+        {
+          "path": "docs/audits/2026-10-11-chainlink-candidate-protocol/cpu-execution/liquidation.public-values.bin",
+          "expected_sha256": "b493a1c3abccb6de0f6f467c983f67e7d7cda44004c0298aa3f9a4529f9b14db",
+          "actual_sha256": "b493a1c3abccb6de0f6f467c983f67e7d7cda44004c0298aa3f9a4529f9b14db",
+          "expected_bytes": 32,
+          "actual_bytes": 32,
+          "hash_matches": true,
+          "size_matches": true,
+          "regular_file": true
+        },
+        {
+          "path": "docs/audits/2026-10-11-chainlink-candidate-protocol/cpu-execution/manifest.json",
+          "expected_sha256": "74c263a60db2c7a96fed24de8f6d18bcd2ca368080181931c82b01a9e9e6464d",
+          "actual_sha256": "74c263a60db2c7a96fed24de8f6d18bcd2ca368080181931c82b01a9e9e6464d",
+          "expected_bytes": 1593,
+          "actual_bytes": 1593,
+          "hash_matches": true,
+          "size_matches": true,
+          "regular_file": true
+        },
+        {
+          "path": "docs/audits/2026-10-11-chainlink-candidate-protocol/cpu-execution/normal-lifecycle.public-values.bin",
+          "expected_sha256": "1416555e0d7656adc3d6f9b6eff85fb9952d685be58cd91624a77c04f515d66b",
+          "actual_sha256": "1416555e0d7656adc3d6f9b6eff85fb9952d685be58cd91624a77c04f515d66b",
+          "expected_bytes": 32,
+          "actual_bytes": 32,
+          "hash_matches": true,
+          "size_matches": true,
+          "regular_file": true
+        },
+        {
+          "path": "docs/audits/2026-10-11-chainlink-candidate-protocol/repair-history/contracts-before-fix.log",
+          "expected_sha256": "a850af82039247a78f5d17df20e12f09f06c2e45b849a65221e627f28f3886e5",
+          "actual_sha256": "a850af82039247a78f5d17df20e12f09f06c2e45b849a65221e627f28f3886e5",
+          "expected_bytes": 1632,
+          "actual_bytes": 1632,
+          "hash_matches": true,
+          "size_matches": true,
+          "regular_file": true
+        },
+        {
+          "path": "docs/audits/2026-10-11-chainlink-candidate-protocol/repair-history/contracts-focused-after-fix.log",
+          "expected_sha256": "d35671fcc3c3a46363a0dba5ec4df9719354fec2807a060a590b989282bc3aee",
+          "actual_sha256": "d35671fcc3c3a46363a0dba5ec4df9719354fec2807a060a590b989282bc3aee",
+          "expected_bytes": 1120,
+          "actual_bytes": 1120,
+          "hash_matches": true,
+          "size_matches": true,
+          "regular_file": true
+        },
+        {
+          "path": "docs/audits/2026-10-11-chainlink-candidate-protocol/repair-history/clippy-before-fix.log",
+          "expected_sha256": "ee4d796cd207b93dcc799b35fcaebbbd67ef0bc80e15f9ea1e8b5908ffcf9ead",
+          "actual_sha256": "ee4d796cd207b93dcc799b35fcaebbbd67ef0bc80e15f9ea1e8b5908ffcf9ead",
+          "expected_bytes": 8351,
+          "actual_bytes": 8351,
+          "hash_matches": true,
+          "size_matches": true,
+          "regular_file": true
+        },
+        {
+          "path": "docs/audits/2026-10-11-chainlink-candidate-protocol/repair-history/format-before-fix.log",
+          "expected_sha256": "a808c4d3cd222dbe3bf75db5f8926d14a51d66dd3f08ac44eb6a3edce61455e8",
+          "actual_sha256": "a808c4d3cd222dbe3bf75db5f8926d14a51d66dd3f08ac44eb6a3edce61455e8",
+          "expected_bytes": 472,
+          "actual_bytes": 472,
+          "hash_matches": true,
+          "size_matches": true,
+          "regular_file": true
+        },
+        {
+          "path": "docs/audits/2026-10-11-chainlink-candidate-protocol/repair-history/main-format-receipt.json",
+          "expected_sha256": "4f730b697f7168cf5281b72c9e5bceedbfea7f0a2e6e7aaa5613dc9f1e3fa10f",
+          "actual_sha256": "4f730b697f7168cf5281b72c9e5bceedbfea7f0a2e6e7aaa5613dc9f1e3fa10f",
+          "expected_bytes": 666,
+          "actual_bytes": 666,
+          "hash_matches": true,
+          "size_matches": true,
+          "regular_file": true
+        },
+        {
+          "path": "docs/audits/2026-10-11-chainlink-candidate-protocol/repair-history/main-format.diff",
+          "expected_sha256": "0b7870dae404c919c12bbec89dd3914f799d361f0f24841597c3b9818189b25f",
+          "actual_sha256": "0b7870dae404c919c12bbec89dd3914f799d361f0f24841597c3b9818189b25f",
+          "expected_bytes": 562,
+          "actual_bytes": 562,
+          "hash_matches": true,
+          "size_matches": true,
+          "regular_file": true
+        },
+        {
+          "path": "docs/audits/2026-10-11-chainlink-candidate-protocol/repair-history/final2-fixture-refresh.json",
+          "expected_sha256": "f09725163f6cf6a59fd9becc213310c651c352d081992f873bc7661a549019d9",
+          "actual_sha256": "f09725163f6cf6a59fd9becc213310c651c352d081992f873bc7661a549019d9",
+          "expected_bytes": 2253,
+          "actual_bytes": 2253,
+          "hash_matches": true,
+          "size_matches": true,
+          "regular_file": true
+        },
+        {
+          "path": "docs/audits/2026-10-11-chainlink-candidate-protocol/merge-observations.json",
+          "expected_sha256": "b7d87b60271fc62eda1d3b9b106aabb2c07162700991779694314e6a0c776f79",
+          "actual_sha256": "b7d87b60271fc62eda1d3b9b106aabb2c07162700991779694314e6a0c776f79",
+          "expected_bytes": 16278,
+          "actual_bytes": 16278,
+          "hash_matches": true,
+          "size_matches": true,
+          "regular_file": true
+        },
+        {
+          "path": "docs/audits/2026-10-11-chainlink-candidate-protocol/original-checkouts.json",
+          "expected_sha256": "5e3600fd7a411e2cedd961ac6d39dfcb8a614bd151b24bb4efbd8e758b7562f1",
+          "actual_sha256": "5e3600fd7a411e2cedd961ac6d39dfcb8a614bd151b24bb4efbd8e758b7562f1",
+          "expected_bytes": 3988,
+          "actual_bytes": 3988,
+          "hash_matches": true,
+          "size_matches": true,
+          "regular_file": true
+        },
+        {
+          "path": "docs/audits/2026-10-11-chainlink-candidate-protocol/cpu-driver-reuse.json",
+          "expected_sha256": "630aba1dd356c7b9888a2062b75cb0614998810dc371ecf9a1da97d2fecedc99",
+          "actual_sha256": "630aba1dd356c7b9888a2062b75cb0614998810dc371ecf9a1da97d2fecedc99",
+          "expected_bytes": 285,
+          "actual_bytes": 285,
+          "hash_matches": true,
+          "size_matches": true,
+          "regular_file": true
+        }
+      ]
+    },
+    {
+      "pull_request": 49,
+      "verification_path": "docs/audits/2026-10-11-chainlink-registration-recovery/verification.json",
+      "verification_sha256": "36297905294f5a52a5545a56e7111dcd2530bf72984afcfcdc51be3bf30d9427",
+      "base_verification_sha256": "36297905294f5a52a5545a56e7111dcd2530bf72984afcfcdc51be3bf30d9427",
+      "verification_byte_equal_to_merged_base": true,
+      "expected_artifact_count": 22,
+      "artifact_count": 22,
+      "artifact_count_matches": true,
+      "all_artifacts_match": true,
+      "entries": [
+        {
+          "path": "docs/audits/2026-10-11-chainlink-registration-recovery/README.md",
+          "expected_sha256": "1569bfb15001c7646af99fd5f59ef3e1d84891c1a350eceb13134db03af61161",
+          "actual_sha256": "1569bfb15001c7646af99fd5f59ef3e1d84891c1a350eceb13134db03af61161",
+          "expected_bytes": 7148,
+          "actual_bytes": 7148,
+          "hash_matches": true,
+          "size_matches": true,
+          "regular_file": true
+        },
+        {
+          "path": "docs/audits/2026-10-11-chainlink-registration-recovery/focused-validation.json",
+          "expected_sha256": "53528c8517e94d1447cec46705e4b16007047e4c6e6316ceff5cf6b3454fb78d",
+          "actual_sha256": "53528c8517e94d1447cec46705e4b16007047e4c6e6316ceff5cf6b3454fb78d",
+          "expected_bytes": 10618,
+          "actual_bytes": 10618,
+          "hash_matches": true,
+          "size_matches": true,
+          "regular_file": true
+        },
+        {
+          "path": "docs/audits/2026-10-11-chainlink-registration-recovery/logs/diff-check-final.log",
+          "expected_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "actual_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "expected_bytes": 0,
+          "actual_bytes": 0,
+          "hash_matches": true,
+          "size_matches": true,
+          "regular_file": true
+        },
+        {
+          "path": "docs/audits/2026-10-11-chainlink-registration-recovery/logs/diff.log",
+          "expected_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "actual_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "expected_bytes": 0,
+          "actual_bytes": 0,
+          "hash_matches": true,
+          "size_matches": true,
+          "regular_file": true
+        },
+        {
+          "path": "docs/audits/2026-10-11-chainlink-registration-recovery/logs/fmt-check-final.log",
+          "expected_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "actual_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "expected_bytes": 0,
+          "actual_bytes": 0,
+          "hash_matches": true,
+          "size_matches": true,
+          "regular_file": true
+        },
+        {
+          "path": "docs/audits/2026-10-11-chainlink-registration-recovery/logs/format.log",
+          "expected_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "actual_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "expected_bytes": 0,
+          "actual_bytes": 0,
+          "hash_matches": true,
+          "size_matches": true,
+          "regular_file": true
+        },
+        {
+          "path": "docs/audits/2026-10-11-chainlink-registration-recovery/logs/gateway-clippy-final.log",
+          "expected_sha256": "83399b76e44c224ffc38cadd22569d15e775726a56fcaf3a5fe5ab7d0986e0ce",
+          "actual_sha256": "83399b76e44c224ffc38cadd22569d15e775726a56fcaf3a5fe5ab7d0986e0ce",
+          "expected_bytes": 187,
+          "actual_bytes": 187,
+          "hash_matches": true,
+          "size_matches": true,
+          "regular_file": true
+        },
+        {
+          "path": "docs/audits/2026-10-11-chainlink-registration-recovery/logs/gateway-full.log",
+          "expected_sha256": "851f20a5c507838fb97e7b874bee6e75036cb15508aafe1724b13fb7629362e2",
+          "actual_sha256": "851f20a5c507838fb97e7b874bee6e75036cb15508aafe1724b13fb7629362e2",
+          "expected_bytes": 56273,
+          "actual_bytes": 56273,
+          "hash_matches": true,
+          "size_matches": true,
+          "regular_file": true
+        },
+        {
+          "path": "docs/audits/2026-10-11-chainlink-registration-recovery/logs/original-recheck.log",
+          "expected_sha256": "b059c650151bc349e077ad18e9e6505d38744ca635afd748653b3dcbcaccb74e",
+          "actual_sha256": "b059c650151bc349e077ad18e9e6505d38744ca635afd748653b3dcbcaccb74e",
+          "expected_bytes": 3988,
+          "actual_bytes": 3988,
+          "hash_matches": true,
+          "size_matches": true,
+          "regular_file": true
+        },
+        {
+          "path": "docs/audits/2026-10-11-chainlink-registration-recovery/logs/protocol-regression-final.log",
+          "expected_sha256": "5ac59cfc71c7bbf034ae251f3d49c69f2b2fa1621690b69233a13c2850d55ac2",
+          "actual_sha256": "5ac59cfc71c7bbf034ae251f3d49c69f2b2fa1621690b69233a13c2850d55ac2",
+          "expected_bytes": 1559,
+          "actual_bytes": 1559,
+          "hash_matches": true,
+          "size_matches": true,
+          "regular_file": true
+        },
+        {
+          "path": "docs/audits/2026-10-11-chainlink-registration-recovery/logs/publication-diff.log",
+          "expected_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "actual_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "expected_bytes": 0,
+          "actual_bytes": 0,
+          "hash_matches": true,
+          "size_matches": true,
+          "regular_file": true
+        },
+        {
+          "path": "docs/audits/2026-10-11-chainlink-registration-recovery/logs/python-guards.log",
+          "expected_sha256": "d2aa2738bc5314e7a1869adf5f8a364613aa658fe623d69eff39bf9b0c8ee20b",
+          "actual_sha256": "d2aa2738bc5314e7a1869adf5f8a364613aa658fe623d69eff39bf9b0c8ee20b",
+          "expected_bytes": 7032,
+          "actual_bytes": 7032,
+          "hash_matches": true,
+          "size_matches": true,
+          "regular_file": true
+        },
+        {
+          "path": "docs/audits/2026-10-11-chainlink-registration-recovery/logs/recovery-focused-final.log",
+          "expected_sha256": "22be4710c461fc0a5097ad45d7c1435c42cc6f833ad2d63b69821ad313093cf9",
+          "actual_sha256": "22be4710c461fc0a5097ad45d7c1435c42cc6f833ad2d63b69821ad313093cf9",
+          "expected_bytes": 3141,
+          "actual_bytes": 3141,
+          "hash_matches": true,
+          "size_matches": true,
+          "regular_file": true
+        },
+        {
+          "path": "docs/audits/2026-10-11-chainlink-registration-recovery/logs/recovery-focused-first.log",
+          "expected_sha256": "73ccdf10293e633f7cca54b3c3db3b6212c5380fcd50189a7ed4477b673266c1",
+          "actual_sha256": "73ccdf10293e633f7cca54b3c3db3b6212c5380fcd50189a7ed4477b673266c1",
+          "expected_bytes": 3032,
+          "actual_bytes": 3032,
+          "hash_matches": true,
+          "size_matches": true,
+          "regular_file": true
+        },
+        {
+          "path": "docs/audits/2026-10-11-chainlink-registration-recovery/logs/runtime-pins.log",
+          "expected_sha256": "cd6f22387ed79a9c83c6a2c15b82e4ccd1dfe70f0444399a72b604e82c1f09a4",
+          "actual_sha256": "cd6f22387ed79a9c83c6a2c15b82e4ccd1dfe70f0444399a72b604e82c1f09a4",
+          "expected_bytes": 643,
+          "actual_bytes": 643,
+          "hash_matches": true,
+          "size_matches": true,
+          "regular_file": true
+        },
+        {
+          "path": "docs/audits/2026-10-11-chainlink-registration-recovery/logs/workspace-clippy.log",
+          "expected_sha256": "aac3bb9bb460514e280bb66b05ade4b7ebe973524a1ecbe27beef179634c78b3",
+          "actual_sha256": "aac3bb9bb460514e280bb66b05ade4b7ebe973524a1ecbe27beef179634c78b3",
+          "expected_bytes": 187,
+          "actual_bytes": 187,
+          "hash_matches": true,
+          "size_matches": true,
+          "regular_file": true
+        },
+        {
+          "path": "docs/audits/2026-10-11-chainlink-registration-recovery/merge-observations.json",
+          "expected_sha256": "71d4b0d838f9727858d7f66252187826b94736c4fb795fc23f5d0433d3417da7",
+          "actual_sha256": "71d4b0d838f9727858d7f66252187826b94736c4fb795fc23f5d0433d3417da7",
+          "expected_bytes": 7891,
+          "actual_bytes": 7891,
+          "hash_matches": true,
+          "size_matches": true,
+          "regular_file": true
+        },
+        {
+          "path": "docs/audits/2026-10-11-chainlink-registration-recovery/next-a4-native-contract-bridge.md",
+          "expected_sha256": "202bbd6dd51df777419021bcb71999dcbbe19581ac981357339aff76dc83dd54",
+          "actual_sha256": "202bbd6dd51df777419021bcb71999dcbbe19581ac981357339aff76dc83dd54",
+          "expected_bytes": 5509,
+          "actual_bytes": 5509,
+          "hash_matches": true,
+          "size_matches": true,
+          "regular_file": true
+        },
+        {
+          "path": "docs/audits/2026-10-11-chainlink-registration-recovery/original-checkouts.json",
+          "expected_sha256": "c8d5508e98179eb728cadd9a053aaf99ddf82fa9e0ce7e46002ea55887b592e8",
+          "actual_sha256": "c8d5508e98179eb728cadd9a053aaf99ddf82fa9e0ce7e46002ea55887b592e8",
+          "expected_bytes": 4559,
+          "actual_bytes": 4559,
+          "hash_matches": true,
+          "size_matches": true,
+          "regular_file": true
+        },
+        {
+          "path": "docs/audits/2026-10-11-chainlink-registration-recovery/plan.json",
+          "expected_sha256": "2aca9058bfd73cc9fea9a0c352840d263813faf898886154d58a8f5813acbde7",
+          "actual_sha256": "2aca9058bfd73cc9fea9a0c352840d263813faf898886154d58a8f5813acbde7",
+          "expected_bytes": 2057,
+          "actual_bytes": 2057,
+          "hash_matches": true,
+          "size_matches": true,
+          "regular_file": true
+        },
+        {
+          "path": "docs/audits/2026-10-11-chainlink-registration-recovery/publication-checks.json",
+          "expected_sha256": "848517e1086b2445721568b2c6f412304ba02456767f3df5e35f267bc0691ed2",
+          "actual_sha256": "848517e1086b2445721568b2c6f412304ba02456767f3df5e35f267bc0691ed2",
+          "expected_bytes": 918,
+          "actual_bytes": 918,
+          "hash_matches": true,
+          "size_matches": true,
+          "regular_file": true
+        },
+        {
+          "path": "docs/audits/2026-10-11-chainlink-registration-recovery/root-validation.json",
+          "expected_sha256": "cf1f410dd868c83ec35f512b0bfe4820a73a6a770de3bba0ea833b66788409f0",
+          "actual_sha256": "cf1f410dd868c83ec35f512b0bfe4820a73a6a770de3bba0ea833b66788409f0",
+          "expected_bytes": 5514,
+          "actual_bytes": 5514,
+          "hash_matches": true,
+          "size_matches": true,
+          "regular_file": true
+        }
+      ]
+    }
+  ],
+  "source_pins": [
+    {
+      "name": "reviewed_v2",
+      "definition": "scripts/local-verification/verify_clock_proof.py",
+      "definition_sha256": "6399cdcecd6ad022257ffad32bb66c7082aa83469d929c48bd4caa36777128b5",
+      "definition_byte_equal_to_merged_base": true,
+      "constant": "EXPECTED_GUEST_SOURCES",
+      "expected_pin_count": 21,
+      "pin_count": 21,
+      "pin_count_matches": true,
+      "dictionary_equal_to_saved_continuation": true,
+      "all_source_pins_match": true,
+      "entries": [
+        {
+          "path": "Cargo.toml",
+          "expected_sha256": "e3144a0ae3447244776e65b04cfff39267c238e410c2d9abf20b53e6b837bbfa",
+          "actual_sha256": "e3144a0ae3447244776e65b04cfff39267c238e410c2d9abf20b53e6b837bbfa",
+          "matches": true,
+          "regular_file": true
+        },
+        {
+          "path": "crates/perp-core/Cargo.toml",
+          "expected_sha256": "3bfb6981fa34a967185ce75abd07683e5262a694ebd60eb45a4f5c55aaf9704c",
+          "actual_sha256": "3bfb6981fa34a967185ce75abd07683e5262a694ebd60eb45a4f5c55aaf9704c",
+          "matches": true,
+          "regular_file": true
+        },
+        {
+          "path": "crates/perp-core/src/clock.rs",
+          "expected_sha256": "e89e50e11b3ffb3a4a1a89ab6dd4854b61606cc17eb1236492994df0b59d50e7",
+          "actual_sha256": "e89e50e11b3ffb3a4a1a89ab6dd4854b61606cc17eb1236492994df0b59d50e7",
+          "matches": true,
+          "regular_file": true
+        },
+        {
+          "path": "crates/perp-core/src/commitment.rs",
+          "expected_sha256": "43582ef5048d0d725e53976e3c2a1dfcf32984ed2ad1bb2ebd2032463e26ea92",
+          "actual_sha256": "43582ef5048d0d725e53976e3c2a1dfcf32984ed2ad1bb2ebd2032463e26ea92",
+          "matches": true,
+          "regular_file": true
+        },
+        {
+          "path": "crates/perp-core/src/engine.rs",
+          "expected_sha256": "4d6037f1189939a71a41e31882012e6fa50b887087b5ccc2bfce4502b61d0f9e",
+          "actual_sha256": "4d6037f1189939a71a41e31882012e6fa50b887087b5ccc2bfce4502b61d0f9e",
+          "matches": true,
+          "regular_file": true
+        },
+        {
+          "path": "crates/perp-core/src/error.rs",
+          "expected_sha256": "0738da822be5639737e67f04a0f500af57fcc1f085dd64bec7fbe3b016c515c6",
+          "actual_sha256": "0738da822be5639737e67f04a0f500af57fcc1f085dd64bec7fbe3b016c515c6",
+          "matches": true,
+          "regular_file": true
+        },
+        {
+          "path": "crates/perp-core/src/fixed.rs",
+          "expected_sha256": "fc77559a31c1cfdd7a641cafbd773871aeb203849e165dbd158aa7a1b65ef7cd",
+          "actual_sha256": "fc77559a31c1cfdd7a641cafbd773871aeb203849e165dbd158aa7a1b65ef7cd",
+          "matches": true,
+          "regular_file": true
+        },
+        {
+          "path": "crates/perp-core/src/funding.rs",
+          "expected_sha256": "8f782cf3a4403c717eda44c6d2955789c31e4ef2a04bb4fdac8e61916018e781",
+          "actual_sha256": "8f782cf3a4403c717eda44c6d2955789c31e4ef2a04bb4fdac8e61916018e781",
+          "matches": true,
+          "regular_file": true
+        },
+        {
+          "path": "crates/perp-core/src/hash.rs",
+          "expected_sha256": "88430a8c2558b247bcf241035ad48fa1dbf8a3e77a0d176dfdbd608c930f93b9",
+          "actual_sha256": "88430a8c2558b247bcf241035ad48fa1dbf8a3e77a0d176dfdbd608c930f93b9",
+          "matches": true,
+          "regular_file": true
+        },
+        {
+          "path": "crates/perp-core/src/lib.rs",
+          "expected_sha256": "8f070fbec0f4b3d3fab5e594bcf808845803a59ece403dc42cb0f0df6e6253b5",
+          "actual_sha256": "8f070fbec0f4b3d3fab5e594bcf808845803a59ece403dc42cb0f0df6e6253b5",
+          "matches": true,
+          "regular_file": true
+        },
+        {
+          "path": "crates/perp-core/src/market.rs",
+          "expected_sha256": "8053e89a9b1021d6e461d46d733dfb1935aff5fc2a45be8121f96560fa4ddc2d",
+          "actual_sha256": "8053e89a9b1021d6e461d46d733dfb1935aff5fc2a45be8121f96560fa4ddc2d",
+          "matches": true,
+          "regular_file": true
+        },
+        {
+          "path": "crates/perp-core/src/merkle.rs",
+          "expected_sha256": "173f4667178ba4aa4048e43c2aeb9fa337918d6225b98c6597c004b59bc3a8f6",
+          "actual_sha256": "173f4667178ba4aa4048e43c2aeb9fa337918d6225b98c6597c004b59bc3a8f6",
+          "matches": true,
+          "regular_file": true
+        },
+        {
+          "path": "crates/perp-core/src/note.rs",
+          "expected_sha256": "5cece4d513537c10464bd64b4612f829cd32cb9c1a80d3c8e40c573aace62423",
+          "actual_sha256": "5cece4d513537c10464bd64b4612f829cd32cb9c1a80d3c8e40c573aace62423",
+          "matches": true,
+          "regular_file": true
+        },
+        {
+          "path": "crates/perp-core/src/nullifier.rs",
+          "expected_sha256": "a252799c62dc42ec37c91ba6fd7674117b33c98c7f83e86b168f70898966ea78",
+          "actual_sha256": "a252799c62dc42ec37c91ba6fd7674117b33c98c7f83e86b168f70898966ea78",
+          "matches": true,
+          "regular_file": true
+        },
+        {
+          "path": "crates/perp-core/src/oracle.rs",
+          "expected_sha256": "91ae09655e35432aafa1135b23588d6f1f324b41a278ac640ebc30f106d17da2",
+          "actual_sha256": "91ae09655e35432aafa1135b23588d6f1f324b41a278ac640ebc30f106d17da2",
+          "matches": true,
+          "regular_file": true
+        },
+        {
+          "path": "crates/perp-core/src/order.rs",
+          "expected_sha256": "99bb9b2be4948bcf8365c3022ef444be5941201ec6535de73d45a777e5a206d7",
+          "actual_sha256": "99bb9b2be4948bcf8365c3022ef444be5941201ec6535de73d45a777e5a206d7",
+          "matches": true,
+          "regular_file": true
+        },
+        {
+          "path": "crates/perp-core/src/position.rs",
+          "expected_sha256": "99d120139086092d2dae4ed11d3a677906c1cf3efd7aff9e58f27f3437f2ae66",
+          "actual_sha256": "99d120139086092d2dae4ed11d3a677906c1cf3efd7aff9e58f27f3437f2ae66",
+          "matches": true,
+          "regular_file": true
+        },
+        {
+          "path": "crates/perp-core/src/state.rs",
+          "expected_sha256": "e1026c1e2b56cfcbee4eff812e88ff3dcde052e46818deab980a071fcdbec388",
+          "actual_sha256": "e1026c1e2b56cfcbee4eff812e88ff3dcde052e46818deab980a071fcdbec388",
+          "matches": true,
+          "regular_file": true
+        },
+        {
+          "path": "crates/sp1-guest/Cargo.lock",
+          "expected_sha256": "113518cb212208aa46a629608af9d946f9a4006ac211035a15e9cb8c022fb8c3",
+          "actual_sha256": "113518cb212208aa46a629608af9d946f9a4006ac211035a15e9cb8c022fb8c3",
+          "matches": true,
+          "regular_file": true
+        },
+        {
+          "path": "crates/sp1-guest/Cargo.toml",
+          "expected_sha256": "d0ed7050076bb3548b9e3410f63066068752382f4dab31e344096c9c3e42dc85",
+          "actual_sha256": "d0ed7050076bb3548b9e3410f63066068752382f4dab31e344096c9c3e42dc85",
+          "matches": true,
+          "regular_file": true
+        },
+        {
+          "path": "crates/sp1-guest/src/main.rs",
+          "expected_sha256": "c0d33ff8645ebdcc8994d4d65729b8a60a224bcda18415423da15ed875c16f5c",
+          "actual_sha256": "c0d33ff8645ebdcc8994d4d65729b8a60a224bcda18415423da15ed875c16f5c",
+          "matches": true,
+          "regular_file": true
+        }
+      ]
+    },
+    {
+      "name": "candidate_runtime",
+      "definition": "scripts/local-verification/run_chainlink_replay.py",
+      "definition_sha256": "1fb99a9ac0f5ac69c228e60e73d43a48c88f2616e7cc31c155d166c90cde82fc",
+      "definition_byte_equal_to_merged_base": true,
+      "constant": "CANDIDATE_SOURCES",
+      "expected_pin_count": 9,
+      "pin_count": 9,
+      "pin_count_matches": true,
+      "dictionary_equal_to_saved_continuation": true,
+      "all_source_pins_match": true,
+      "entries": [
+        {
+          "path": "crates/chainlink-oracle/Cargo.lock",
+          "expected_sha256": "62f58aa9da1592de0a4419052c5145128425976b0e0c5520fcce0bb6c936b246",
+          "actual_sha256": "62f58aa9da1592de0a4419052c5145128425976b0e0c5520fcce0bb6c936b246",
+          "matches": true,
+          "regular_file": true
+        },
+        {
+          "path": "crates/chainlink-oracle/Cargo.toml",
+          "expected_sha256": "0b05c79f8fa37dd643466ad9e4b0013d6d6d257d7cfc414b8351cc7a11a88421",
+          "actual_sha256": "0b05c79f8fa37dd643466ad9e4b0013d6d6d257d7cfc414b8351cc7a11a88421",
+          "matches": true,
+          "regular_file": true
+        },
+        {
+          "path": "crates/chainlink-oracle/src/binding.rs",
+          "expected_sha256": "8c66dba2a1d49825c1c13b89aa1a55d47fcab42abe481a0fce308128215cc877",
+          "actual_sha256": "8c66dba2a1d49825c1c13b89aa1a55d47fcab42abe481a0fce308128215cc877",
+          "matches": true,
+          "regular_file": true
+        },
+        {
+          "path": "crates/chainlink-oracle/src/lib.rs",
+          "expected_sha256": "a107bf7464fe8654c69d9864c5ab6bcac6728d993634004d6d0075fbb707e224",
+          "actual_sha256": "a107bf7464fe8654c69d9864c5ab6bcac6728d993634004d6d0075fbb707e224",
+          "matches": true,
+          "regular_file": true
+        },
+        {
+          "path": "crates/chainlink-oracle/src/policy.rs",
+          "expected_sha256": "c36d89a3212cd5d9893b19e77b6b4dba5dba364dcb2135b24424fdab5a42b285",
+          "actual_sha256": "c36d89a3212cd5d9893b19e77b6b4dba5dba364dcb2135b24424fdab5a42b285",
+          "matches": true,
+          "regular_file": true
+        },
+        {
+          "path": "crates/chainlink-oracle/src/report.rs",
+          "expected_sha256": "91b824e8a20bc7b1d8aa907813eb95061c659a655f72ef01fdc68409b7232d26",
+          "actual_sha256": "91b824e8a20bc7b1d8aa907813eb95061c659a655f72ef01fdc68409b7232d26",
+          "matches": true,
+          "regular_file": true
+        },
+        {
+          "path": "crates/sp1-chainlink-guest/Cargo.lock",
+          "expected_sha256": "de6dbb43b0b85968fa2f7f7de0d71d53c54adacebbc9786cfd17197491142cbe",
+          "actual_sha256": "de6dbb43b0b85968fa2f7f7de0d71d53c54adacebbc9786cfd17197491142cbe",
+          "matches": true,
+          "regular_file": true
+        },
+        {
+          "path": "crates/sp1-chainlink-guest/Cargo.toml",
+          "expected_sha256": "9f47d6f2cfc08fb71fdfcbc0877f09f083685a1ea016bbd67ea87dd60c8edc55",
+          "actual_sha256": "9f47d6f2cfc08fb71fdfcbc0877f09f083685a1ea016bbd67ea87dd60c8edc55",
+          "matches": true,
+          "regular_file": true
+        },
+        {
+          "path": "crates/sp1-chainlink-guest/src/main.rs",
+          "expected_sha256": "9e403b9f241e0a53afc2e58baa7bf978ddf81c28e5704acc7a6f734962874187",
+          "actual_sha256": "9e403b9f241e0a53afc2e58baa7bf978ddf81c28e5704acc7a6f734962874187",
+          "matches": true,
+          "regular_file": true
+        }
+      ]
+    }
+  ]
+}

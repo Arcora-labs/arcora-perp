@@ -1,0 +1,30 @@
+{
+  "schema": "arcora-native-contract-bridge-command-v1",
+  "observed_start_utc": "2026-10-11T15:55:29.222178+00:00",
+  "observed_end_utc": "2026-10-11T15:55:29.306975+00:00",
+  "name": "publication-whitespace-final",
+  "argv": [
+    "git",
+    "diff",
+    "--cached",
+    "--check"
+  ],
+  "cwd": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011",
+  "environment": {},
+  "exit_code": 0,
+  "elapsed_seconds": 0.086,
+  "source_sha256_before": {
+    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/.gitattributes": "c13fba96ae72631d887c27d4ac15cdb9390e8942eb6082d463f786d619c1e2ec",
+    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/README.md": "50218408a776a933850ed63ca74084075021724d5240a6379a5a0857ccadbcee"
+  },
+  "source_sha256_after": {
+    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/.gitattributes": "c13fba96ae72631d887c27d4ac15cdb9390e8942eb6082d463f786d619c1e2ec",
+    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-native-contract-bridge/README.md": "50218408a776a933850ed63ca74084075021724d5240a6379a5a0857ccadbcee"
+  },
+  "source_bytes_unchanged": true,
+  "log": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/native-contract-bridge-validation-20261011/publication-whitespace-final.log",
+  "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "stdout_log": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/native-contract-bridge-validation-20261011/publication-whitespace-final.stdout.log",
+  "stderr_log": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/native-contract-bridge-validation-20261011/publication-whitespace-final.stderr.log",
+  "summaries": []
+}

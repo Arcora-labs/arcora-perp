@@ -1,0 +1,47 @@
+{
+  "schema": "arcora-native-contract-bridge-command-v1",
+  "observed_start_utc": "2026-10-11T15:37:37.078197+00:00",
+  "observed_end_utc": "2026-10-11T15:37:40.565784+00:00",
+  "name": "diagnostic-route-expiry-final",
+  "argv": [
+    "rustup",
+    "run",
+    "1.99.0",
+    "cargo",
+    "test",
+    "-p",
+    "gateway",
+    "--locked",
+    "--offline",
+    "--bin",
+    "gateway",
+    "route_expiry_observer::controlled_route_expiry_observation",
+    "--",
+    "--exact",
+    "--nocapture"
+  ],
+  "cwd": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011",
+  "environment": {
+    "ARCORA_DIAGNOSTIC_ROUTE_DELAY_MS": "2100"
+  },
+  "exit_code": 0,
+  "elapsed_seconds": 3.489,
+  "source_sha256_before": {
+    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/main.rs": "321e0252781040c95b2b43d10dfaed1729e5fade3219a9a1d1f6875a30377750",
+    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/price_lifecycle_tests.rs": "cba6cb30039894e128e8ee19b32f1a9ed1fca2d7616c73af8570d2ce885472dd",
+    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/native-contract-bridge-validation-20261011/route-expiry-observer.rs": "a881131e76f7dee1246569d0d478e7cb8284827d4349695abf7dbf24cbde1ff0"
+  },
+  "source_sha256_after": {
+    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/main.rs": "321e0252781040c95b2b43d10dfaed1729e5fade3219a9a1d1f6875a30377750",
+    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/price_lifecycle_tests.rs": "cba6cb30039894e128e8ee19b32f1a9ed1fca2d7616c73af8570d2ce885472dd",
+    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/native-contract-bridge-validation-20261011/route-expiry-observer.rs": "a881131e76f7dee1246569d0d478e7cb8284827d4349695abf7dbf24cbde1ff0"
+  },
+  "source_bytes_unchanged": true,
+  "log": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/native-contract-bridge-validation-20261011/diagnostic-route-expiry-final.log",
+  "log_sha256": "e8fdb3282ee3cedf67c854b10deaead94036b64adf75906fd26a411351df6b10",
+  "stdout_log": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/native-contract-bridge-validation-20261011/diagnostic-route-expiry-final.stdout.log",
+  "stderr_log": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/native-contract-bridge-validation-20261011/diagnostic-route-expiry-final.stderr.log",
+  "summaries": [
+    "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 632 filtered out; finished in 2.72s"
+  ]
+}

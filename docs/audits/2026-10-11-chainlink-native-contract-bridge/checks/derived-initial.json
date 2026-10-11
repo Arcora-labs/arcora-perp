@@ -1,0 +1,65 @@
+{
+  "schema": "arcora-native-contract-bridge-command-v1",
+  "observed_start_utc": "2026-10-11T14:56:07.155573+00:00",
+  "observed_end_utc": "2026-10-11T14:56:10.446855+00:00",
+  "name": "derived-initial",
+  "argv": [
+    "rustup",
+    "run",
+    "1.99.0",
+    "cargo",
+    "test",
+    "-p",
+    "gateway",
+    "--locked",
+    "--offline",
+    "--bin",
+    "gateway",
+    "candidate_bridge::export_native_contract_bridge_derived",
+    "--",
+    "--ignored",
+    "--exact",
+    "--nocapture"
+  ],
+  "cwd": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011",
+  "environment": {
+    "ARCORA_CHAINLINK_BRIDGE_CONTEXT_JSON": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/contracts/test/fixtures/chainlink-native-contract-bridge-context.json",
+    "ARCORA_CHAINLINK_BRIDGE_EXPORT": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/native-contract-bridge-validation-20261011/derived-1"
+  },
+  "exit_code": 0,
+  "elapsed_seconds": 3.308,
+  "source_sha256_before": {
+    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/main.rs": "30fbdf1a6fa7cf0210a1cfc6fe4300a5be1a333a03447a1eb7baf05f78effbb0",
+    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_bridge.rs": "d272553e0158adc19b4f69d93fab193570631fd5aa9ce0af6f3fd002621a066b",
+    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_registration.rs": "86ffc1032f31952fad4e0c815a9564397c2d86cff5c62e23a664538209ba4c37",
+    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/report_archive_binding.rs": "1204db404b472c8c77a56e23fe2e59d4577d5d2bb334c8f0f4880449352812a9",
+    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/price_lifecycle_tests.rs": "cba6cb30039894e128e8ee19b32f1a9ed1fca2d7616c73af8570d2ce885472dd",
+    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_protocol_tests.rs": "b7b5304d771c9f5505db67737c20793696eff7367724e529bc4030a3a97e7b40",
+    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/contracts/test/ChainlinkCandidateProtocol.t.sol": "a3dddb532abef84ac38c149c86a4f3112cb431a74361bf76fc1afa49bfc8bba7",
+    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/contracts/test/fixtures/ChainlinkCandidateProtocolVector.sol": "6a854f62f20f9f270db49963c73e0e0b70170594dd969169567ad3eb286decdc",
+    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/contracts/test/fixtures/chainlink-candidate-protocol.json": "1263230407bfe0c340a61d4106e952812abd7f16e93cac3397d3e68412bf2067",
+    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-candidate-protocol/fixtures/manifest.json": "3147718b8db6036f0ecb540157dfaea260f010726abdc2895d53baf4d08c6480",
+    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/contracts/test/fixtures/chainlink-native-contract-bridge-context.json": "74b9a15260a927595f8f7d3ef9fd4bd93986a745e9a9baeb063cb30f8c3c4f85"
+  },
+  "source_sha256_after": {
+    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/main.rs": "30fbdf1a6fa7cf0210a1cfc6fe4300a5be1a333a03447a1eb7baf05f78effbb0",
+    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_bridge.rs": "d272553e0158adc19b4f69d93fab193570631fd5aa9ce0af6f3fd002621a066b",
+    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_registration.rs": "86ffc1032f31952fad4e0c815a9564397c2d86cff5c62e23a664538209ba4c37",
+    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/report_archive_binding.rs": "1204db404b472c8c77a56e23fe2e59d4577d5d2bb334c8f0f4880449352812a9",
+    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/price_lifecycle_tests.rs": "cba6cb30039894e128e8ee19b32f1a9ed1fca2d7616c73af8570d2ce885472dd",
+    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway/src/candidate_protocol_tests.rs": "b7b5304d771c9f5505db67737c20793696eff7367724e529bc4030a3a97e7b40",
+    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/contracts/test/ChainlinkCandidateProtocol.t.sol": "a3dddb532abef84ac38c149c86a4f3112cb431a74361bf76fc1afa49bfc8bba7",
+    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/contracts/test/fixtures/ChainlinkCandidateProtocolVector.sol": "6a854f62f20f9f270db49963c73e0e0b70170594dd969169567ad3eb286decdc",
+    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/contracts/test/fixtures/chainlink-candidate-protocol.json": "1263230407bfe0c340a61d4106e952812abd7f16e93cac3397d3e68412bf2067",
+    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/docs/audits/2026-10-11-chainlink-candidate-protocol/fixtures/manifest.json": "3147718b8db6036f0ecb540157dfaea260f010726abdc2895d53baf4d08c6480",
+    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/contracts/test/fixtures/chainlink-native-contract-bridge-context.json": "74b9a15260a927595f8f7d3ef9fd4bd93986a745e9a9baeb063cb30f8c3c4f85"
+  },
+  "source_bytes_unchanged": true,
+  "log": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/native-contract-bridge-validation-20261011/derived-initial.log",
+  "log_sha256": "2c05dbd78acfb5017d4f7981fa348c7aea0062680880e88ecbc8a91539f5da80",
+  "stdout_log": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/native-contract-bridge-validation-20261011/derived-initial.stdout.log",
+  "stderr_log": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/native-contract-bridge-validation-20261011/derived-initial.stderr.log",
+  "summaries": [
+    "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 620 filtered out; finished in 2.21s"
+  ]
+}

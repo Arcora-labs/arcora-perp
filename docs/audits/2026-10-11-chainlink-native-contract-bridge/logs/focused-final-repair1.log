@@ -1,0 +1,15 @@
+
+running 7 tests
+test candidate_bridge::export_native_contract_bridge_derived ... ignored, explicit owned Foundry-context bridge derivation; no proof generation
+test candidate_bridge::export_native_contract_bridge_source ... ignored, explicit fresh-directory public fixed-source bridge export
+test candidate_bridge::bridge_fixed_source_roots_full_containers_and_native_identity_are_pinned ... ok
+test candidate_bridge::bridge_wrong_context_identity_anchor_count_and_epoch_refuse_derivation ... ok
+test candidate_bridge::bridge_bounded_context_format_and_fresh_export_never_replace_existing_data ... ok
+test candidate_bridge::bridge_fresh_target_keeps_source_execution_times_and_full_containers_exact ... ok
+test candidate_bridge::bridge_actual_captured_context_rederives_exact_contract_and_cpu_corpus ... ok
+
+test result: ok. 5 passed; 0 failed; 2 ignored; 0 measured; 615 filtered out; finished in 3.47s
+
+   Compiling gateway v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 43.59s
+     Running unittests src/main.rs (target/debug/deps/gateway-610b7230a2c5bb73)
