@@ -1,0 +1,132 @@
+{
+  "schema": "arcora-offline-registration-recovery-validation-v1",
+  "observed_start_utc": "2026-10-11T13:59:33.141962+00:00",
+  "source_commit": "df3f296bfa22d2e632f8985d462db27b320b40ad",
+  "base_commit": "5dac90412b65c299cb62bcff1ab2e1ae0533b6a0",
+  "source_sha256": {
+    "crates/gateway/src/candidate_protocol.rs": "f77c040320f7d1d5c75c42222250e5eebc64ea9f953fa50f0f82f4e2da7045ca",
+    "crates/gateway/src/candidate_recovery.rs": "feac38afe3e307597d099f7f19e2c9c21645496a5b9a6dfffbc1bd84d20335f4",
+    "crates/gateway/src/candidate_recovery_store.rs": "7e84cd99cd59dfba309af240b8a70dbfb66b84184008caa5137d06de9387d0df",
+    "crates/gateway/src/candidate_recovery_tests.rs": "fa18b33ff1f7076ea25ec214cd72753865a7cb2ab53246563346fad1dca108b9",
+    "crates/gateway/src/main.rs": "d2e2296af2acc5468dfd49a86160df7ab3a5aa27079773b9e6d25f489f893072"
+  },
+  "commands": [
+    {
+      "name": "format",
+      "command": [
+        "rustup",
+        "run",
+        "1.99.0",
+        "cargo",
+        "fmt",
+        "--all",
+        "--check"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 2.773,
+      "log": "target/registration-recovery-validation-20261011/format.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "summaries": []
+    },
+    {
+      "name": "gateway-full",
+      "command": [
+        "rustup",
+        "run",
+        "1.99.0",
+        "cargo",
+        "test",
+        "-p",
+        "gateway",
+        "--locked",
+        "--offline"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 717.718,
+      "log": "target/registration-recovery-validation-20261011/gateway-full.log",
+      "log_sha256": "851f20a5c507838fb97e7b874bee6e75036cb15508aafe1724b13fb7629362e2",
+      "summaries": [
+        "test result: ok. 597 passed; 0 failed; 18 ignored; 0 measured; 0 filtered out; finished in 716.49s"
+      ]
+    },
+    {
+      "name": "workspace-clippy",
+      "command": [
+        "rustup",
+        "run",
+        "1.99.0",
+        "cargo",
+        "clippy",
+        "--workspace",
+        "--all-targets",
+        "--locked",
+        "--offline",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 60.419,
+      "log": "target/registration-recovery-validation-20261011/workspace-clippy.log",
+      "log_sha256": "aac3bb9bb460514e280bb66b05ade4b7ebe973524a1ecbe27beef179634c78b3",
+      "summaries": []
+    },
+    {
+      "name": "python-guards",
+      "command": [
+        "/opt/homebrew/bin/python3.12",
+        "-c",
+        "import sys,unittest;sys.path.insert(0,\"scripts/local-verification\");s=unittest.defaultTestLoader.loadTestsFromNames([\"test_verify_clock_proof\",\"test_check_sp1_release\",\"test_chainlink_replay\",\"test_repository_policy\",\"test_operator_policy\"]);r=unittest.TextTestRunner(verbosity=2).run(s);sys.exit(not r.wasSuccessful())"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 3.879,
+      "log": "target/registration-recovery-validation-20261011/python-guards.log",
+      "log_sha256": "d2aa2738bc5314e7a1869adf5f8a364613aa658fe623d69eff39bf9b0c8ee20b",
+      "summaries": [
+        "Ran 47 tests in 3.418s"
+      ]
+    },
+    {
+      "name": "runtime-pins",
+      "command": [
+        "/opt/homebrew/bin/python3.12",
+        "-c",
+        "import sys,json;sys.path.insert(0,\"scripts/local-verification\");from verify_clock_proof import verify_guest_source;from run_chainlink_replay import candidate_sources;from check_sp1_release import check;from check_chainlink_candidate import check as cc;r={\"reviewed_pins\":len(verify_guest_source()),\"candidate_pins\":len(candidate_sources()),\"release\":check(),\"candidate_lock\":cc()};print(json.dumps(r));assert r[\"release\"][\"passed\"] and r[\"candidate_lock\"][\"passed\"]"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 0.376,
+      "log": "target/registration-recovery-validation-20261011/runtime-pins.log",
+      "log_sha256": "cd6f22387ed79a9c83c6a2c15b82e4ccd1dfe70f0444399a72b604e82c1f09a4",
+      "summaries": []
+    },
+    {
+      "name": "diff",
+      "command": [
+        "git",
+        "diff",
+        "--check"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 0.105,
+      "log": "target/registration-recovery-validation-20261011/diff.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "summaries": []
+    }
+  ],
+  "fresh_proof_generated": false,
+  "live_chainlink_verified": false,
+  "production_release": "HOLD",
+  "scope": "cfg(test) authenticated intermediate stage persistence and caller-owned mock registration/finality reconciliation",
+  "fresh_contract_test_run": false,
+  "fresh_cpu_execution": false,
+  "prior_contract_cpu_evidence": "docs/audits/2026-10-11-chainlink-candidate-protocol/verification.json",
+  "source_sha256_after": {
+    "crates/gateway/src/candidate_protocol.rs": "f77c040320f7d1d5c75c42222250e5eebc64ea9f953fa50f0f82f4e2da7045ca",
+    "crates/gateway/src/candidate_recovery.rs": "feac38afe3e307597d099f7f19e2c9c21645496a5b9a6dfffbc1bd84d20335f4",
+    "crates/gateway/src/candidate_recovery_store.rs": "7e84cd99cd59dfba309af240b8a70dbfb66b84184008caa5137d06de9387d0df",
+    "crates/gateway/src/candidate_recovery_tests.rs": "fa18b33ff1f7076ea25ec214cd72753865a7cb2ab53246563346fad1dca108b9",
+    "crates/gateway/src/main.rs": "d2e2296af2acc5468dfd49a86160df7ab3a5aa27079773b9e6d25f489f893072"
+  },
+  "source_bytes_unchanged": true,
+  "observed_end_utc": "2026-10-11T14:12:38.509888+00:00"
+}

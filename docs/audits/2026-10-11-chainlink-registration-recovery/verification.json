@@ -1,0 +1,529 @@
+{
+  "schema": "arcora-offline-registration-recovery-evidence-v1",
+  "observed_utc": "2026-10-11T14:13:14.802395+00:00",
+  "tested_code_commit": "df3f296bfa22d2e632f8985d462db27b320b40ad",
+  "base_main": "5dac90412b65c299cb62bcff1ab2e1ae0533b6a0",
+  "source_sha256": {
+    "crates/gateway/src/candidate_protocol.rs": "f77c040320f7d1d5c75c42222250e5eebc64ea9f953fa50f0f82f4e2da7045ca",
+    "crates/gateway/src/candidate_recovery.rs": "feac38afe3e307597d099f7f19e2c9c21645496a5b9a6dfffbc1bd84d20335f4",
+    "crates/gateway/src/candidate_recovery_store.rs": "7e84cd99cd59dfba309af240b8a70dbfb66b84184008caa5137d06de9387d0df",
+    "crates/gateway/src/candidate_recovery_tests.rs": "fa18b33ff1f7076ea25ec214cd72753865a7cb2ab53246563346fad1dca108b9",
+    "crates/gateway/src/main.rs": "d2e2296af2acc5468dfd49a86160df7ab3a5aa27079773b9e6d25f489f893072"
+  },
+  "source_bytes_unchanged_during_full_checks": true,
+  "scope": "cfg(test) authenticated intermediate stage persistence and caller-owned mock registration/finality reconciliation",
+  "local_commands": [
+    {
+      "name": "format",
+      "command": [
+        "rustup",
+        "run",
+        "1.99.0",
+        "cargo",
+        "fmt",
+        "--all",
+        "--check"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 2.773,
+      "log": "target/registration-recovery-validation-20261011/format.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "summaries": []
+    },
+    {
+      "name": "gateway-full",
+      "command": [
+        "rustup",
+        "run",
+        "1.99.0",
+        "cargo",
+        "test",
+        "-p",
+        "gateway",
+        "--locked",
+        "--offline"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 717.718,
+      "log": "target/registration-recovery-validation-20261011/gateway-full.log",
+      "log_sha256": "851f20a5c507838fb97e7b874bee6e75036cb15508aafe1724b13fb7629362e2",
+      "summaries": [
+        "test result: ok. 597 passed; 0 failed; 18 ignored; 0 measured; 0 filtered out; finished in 716.49s"
+      ]
+    },
+    {
+      "name": "workspace-clippy",
+      "command": [
+        "rustup",
+        "run",
+        "1.99.0",
+        "cargo",
+        "clippy",
+        "--workspace",
+        "--all-targets",
+        "--locked",
+        "--offline",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 60.419,
+      "log": "target/registration-recovery-validation-20261011/workspace-clippy.log",
+      "log_sha256": "aac3bb9bb460514e280bb66b05ade4b7ebe973524a1ecbe27beef179634c78b3",
+      "summaries": []
+    },
+    {
+      "name": "python-guards",
+      "command": [
+        "/opt/homebrew/bin/python3.12",
+        "-c",
+        "import sys,unittest;sys.path.insert(0,\"scripts/local-verification\");s=unittest.defaultTestLoader.loadTestsFromNames([\"test_verify_clock_proof\",\"test_check_sp1_release\",\"test_chainlink_replay\",\"test_repository_policy\",\"test_operator_policy\"]);r=unittest.TextTestRunner(verbosity=2).run(s);sys.exit(not r.wasSuccessful())"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 3.879,
+      "log": "target/registration-recovery-validation-20261011/python-guards.log",
+      "log_sha256": "d2aa2738bc5314e7a1869adf5f8a364613aa658fe623d69eff39bf9b0c8ee20b",
+      "summaries": [
+        "Ran 47 tests in 3.418s"
+      ]
+    },
+    {
+      "name": "runtime-pins",
+      "command": [
+        "/opt/homebrew/bin/python3.12",
+        "-c",
+        "import sys,json;sys.path.insert(0,\"scripts/local-verification\");from verify_clock_proof import verify_guest_source;from run_chainlink_replay import candidate_sources;from check_sp1_release import check;from check_chainlink_candidate import check as cc;r={\"reviewed_pins\":len(verify_guest_source()),\"candidate_pins\":len(candidate_sources()),\"release\":check(),\"candidate_lock\":cc()};print(json.dumps(r));assert r[\"release\"][\"passed\"] and r[\"candidate_lock\"][\"passed\"]"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 0.376,
+      "log": "target/registration-recovery-validation-20261011/runtime-pins.log",
+      "log_sha256": "cd6f22387ed79a9c83c6a2c15b82e4ccd1dfe70f0444399a72b604e82c1f09a4",
+      "summaries": []
+    },
+    {
+      "name": "diff",
+      "command": [
+        "git",
+        "diff",
+        "--check"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 0.105,
+      "log": "target/registration-recovery-validation-20261011/diff.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "summaries": []
+    }
+  ],
+  "focused_checks": {
+    "schema": "arcora-registration-recovery-focused-validation-v1",
+    "created_utc": "2026-10-11T13:59:07.756791+00:00",
+    "checkout": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011",
+    "branch": "feat/chainlink-registration-recovery-20261011",
+    "base_head": "5dac90412b65c299cb62bcff1ab2e1ae0533b6a0",
+    "source_frozen": true,
+    "checks": [
+      {
+        "argv": [
+          "/Users/huseyinarslan/.cargo/bin/cargo",
+          "+1.99.0",
+          "test",
+          "--locked",
+          "-p",
+          "gateway",
+          "candidate_recovery"
+        ],
+        "cwd": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011",
+        "environment": {
+          "CARGO_TARGET_DIR": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target"
+        },
+        "exit_code": 0,
+        "exit_evidence": "exec session63661 exit0",
+        "raw_log": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/registration-recovery-validation-20261011/recovery-focused-first.log",
+        "raw_log_sha256": "73ccdf10293e633f7cca54b3c3db3b6212c5380fcd50189a7ed4477b673266c1",
+        "raw_log_bytes": 3032,
+        "summary": {
+          "passed": 24,
+          "failed": 0,
+          "ignored": 0,
+          "filtered": 590,
+          "integration_tests": 16,
+          "store_tests": 8,
+          "scope": "Before final requested guard coverage additions"
+        },
+        "timing": {
+          "provenance": "Cargo-reported durations and filesystem timestamps; no independent per-command stopwatch was captured",
+          "log_created_utc": "2026-10-11T13:49:04.032065+00:00",
+          "last_log_output_utc": "2026-10-11T13:53:10.774271+00:00",
+          "cargo_profile_durations": [
+            "3m 03s"
+          ],
+          "test_duration_seconds": [
+            62.45
+          ]
+        }
+      },
+      {
+        "argv": [
+          "/Users/huseyinarslan/.cargo/bin/cargo",
+          "+1.99.0",
+          "test",
+          "--locked",
+          "-p",
+          "gateway",
+          "candidate_recovery"
+        ],
+        "cwd": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011",
+        "environment": {
+          "CARGO_TARGET_DIR": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target"
+        },
+        "exit_code": 0,
+        "exit_evidence": "sequential set-e exec session65707 exit0",
+        "raw_log": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/registration-recovery-validation-20261011/recovery-focused-final.log",
+        "raw_log_sha256": "22be4710c461fc0a5097ad45d7c1435c42cc6f833ad2d63b69821ad313093cf9",
+        "raw_log_bytes": 3141,
+        "summary": {
+          "passed": 25,
+          "failed": 0,
+          "ignored": 0,
+          "filtered": 590,
+          "integration_tests": 17,
+          "store_tests": 8,
+          "scope": "Final frozen source, including pre-attempt absent and invocation-local watermark matrices"
+        },
+        "timing": {
+          "provenance": "Cargo-reported durations and filesystem timestamps; no independent per-command stopwatch was captured",
+          "log_created_utc": "2026-10-11T13:54:56.170437+00:00",
+          "last_log_output_utc": "2026-10-11T13:56:39.935949+00:00",
+          "cargo_profile_durations": [
+            "29.34s"
+          ],
+          "test_duration_seconds": [
+            73.64
+          ]
+        }
+      },
+      {
+        "argv": [
+          "/Users/huseyinarslan/.cargo/bin/cargo",
+          "+1.99.0",
+          "test",
+          "--locked",
+          "-p",
+          "gateway",
+          "candidate_protocol_tests"
+        ],
+        "cwd": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011",
+        "environment": {
+          "CARGO_TARGET_DIR": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target"
+        },
+        "exit_code": 0,
+        "exit_evidence": "sequential set-e exec session65707 exit0",
+        "raw_log": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/registration-recovery-validation-20261011/protocol-regression-final.log",
+        "raw_log_sha256": "5ac59cfc71c7bbf034ae251f3d49c69f2b2fa1621690b69233a13c2850d55ac2",
+        "raw_log_bytes": 1559,
+        "summary": {
+          "passed": 10,
+          "failed": 0,
+          "ignored": 1,
+          "filtered": 604,
+          "ignored_reason": "Explicit original-material exporter remains opt-in; not executed"
+        },
+        "timing": {
+          "provenance": "Cargo-reported durations and filesystem timestamps; no independent per-command stopwatch was captured",
+          "log_created_utc": "2026-10-11T13:56:39.962347+00:00",
+          "last_log_output_utc": "2026-10-11T13:56:59.158462+00:00",
+          "cargo_profile_durations": [
+            "1.03s"
+          ],
+          "test_duration_seconds": [
+            18.02
+          ]
+        }
+      },
+      {
+        "argv": [
+          "/Users/huseyinarslan/.cargo/bin/cargo",
+          "+1.99.0",
+          "clippy",
+          "--locked",
+          "-p",
+          "gateway",
+          "--all-targets",
+          "--",
+          "-D",
+          "warnings"
+        ],
+        "cwd": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011",
+        "environment": {
+          "CARGO_TARGET_DIR": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target"
+        },
+        "exit_code": 0,
+        "exit_evidence": "sequential set-e exec session65707 exit0",
+        "raw_log": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/registration-recovery-validation-20261011/gateway-clippy-final.log",
+        "raw_log_sha256": "83399b76e44c224ffc38cadd22569d15e775726a56fcaf3a5fe5ab7d0986e0ce",
+        "raw_log_bytes": 187,
+        "summary": {
+          "passed": true
+        },
+        "timing": {
+          "provenance": "Cargo-reported durations and filesystem timestamps; no independent per-command stopwatch was captured",
+          "log_created_utc": "2026-10-11T13:56:59.190745+00:00",
+          "last_log_output_utc": "2026-10-11T13:58:10.002999+00:00",
+          "cargo_profile_durations": [
+            "1m 10s"
+          ],
+          "test_duration_seconds": null
+        }
+      },
+      {
+        "argv": [
+          "/Users/huseyinarslan/.cargo/bin/cargo",
+          "+1.99.0",
+          "fmt",
+          "--all",
+          "--",
+          "--check"
+        ],
+        "cwd": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011",
+        "environment": {},
+        "exit_code": 0,
+        "exit_evidence": "sequential set-e exec session65707 exit0",
+        "raw_log": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/registration-recovery-validation-20261011/fmt-check-final.log",
+        "raw_log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "raw_log_bytes": 0,
+        "summary": {
+          "passed": true
+        },
+        "timing": {
+          "provenance": "Cargo-reported durations and filesystem timestamps; no independent per-command stopwatch was captured",
+          "log_created_utc": "2026-10-11T13:58:10.079829+00:00",
+          "last_log_output_utc": "2026-10-11T13:58:10.079829+00:00",
+          "cargo_profile_durations": [],
+          "test_duration_seconds": null
+        }
+      },
+      {
+        "argv": [
+          "git",
+          "diff",
+          "--check"
+        ],
+        "cwd": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011",
+        "environment": {},
+        "exit_code": 0,
+        "exit_evidence": "sequential set-e exec session65707 exit0",
+        "raw_log": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/registration-recovery-validation-20261011/diff-check-final.log",
+        "raw_log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "raw_log_bytes": 0,
+        "summary": {
+          "passed": true
+        },
+        "timing": {
+          "log_created_utc": "2026-10-11T13:58:12.467232+00:00",
+          "last_log_output_utc": "2026-10-11T13:58:12.467232+00:00",
+          "provenance": "Filesystem timestamps; no independent stopwatch"
+        }
+      }
+    ],
+    "final_source_hashes": [
+      {
+        "path": "crates/gateway/src/main.rs",
+        "sha256": "d2e2296af2acc5468dfd49a86160df7ab3a5aa27079773b9e6d25f489f893072",
+        "matches_precheck_freeze": true
+      },
+      {
+        "path": "crates/gateway/src/candidate_protocol.rs",
+        "sha256": "f77c040320f7d1d5c75c42222250e5eebc64ea9f953fa50f0f82f4e2da7045ca",
+        "matches_precheck_freeze": true
+      },
+      {
+        "path": "crates/gateway/src/candidate_recovery.rs",
+        "sha256": "feac38afe3e307597d099f7f19e2c9c21645496a5b9a6dfffbc1bd84d20335f4",
+        "matches_precheck_freeze": true
+      },
+      {
+        "path": "crates/gateway/src/candidate_recovery_store.rs",
+        "sha256": "7e84cd99cd59dfba309af240b8a70dbfb66b84184008caa5137d06de9387d0df",
+        "matches_precheck_freeze": true
+      },
+      {
+        "path": "crates/gateway/src/candidate_recovery_tests.rs",
+        "sha256": "fa18b33ff1f7076ea25ec214cd72753865a7cb2ab53246563346fad1dca108b9",
+        "matches_precheck_freeze": true
+      }
+    ],
+    "protected_builder_hashes": [
+      {
+        "path": "crates/gateway/src/candidate_registration.rs",
+        "sha256": "86ffc1032f31952fad4e0c815a9564397c2d86cff5c62e23a664538209ba4c37",
+        "byte_identical_to_base": true
+      },
+      {
+        "path": "crates/gateway/src/report_archive_binding.rs",
+        "sha256": "1204db404b472c8c77a56e23fe2e59d4577d5d2bb334c8f0f4880449352812a9",
+        "byte_identical_to_base": true
+      },
+      {
+        "path": "crates/gateway/src/price_lifecycle_tests.rs",
+        "sha256": "cba6cb30039894e128e8ee19b32f1a9ed1fca2d7616c73af8570d2ce885472dd",
+        "byte_identical_to_base": true
+      },
+      {
+        "path": "crates/gateway/src/candidate_protocol_tests.rs",
+        "sha256": "b7b5304d771c9f5505db67737c20793696eff7367724e529bc4030a3a97e7b40",
+        "byte_identical_to_base": true
+      }
+    ],
+    "notes": [
+      "First raw log preserved unchanged; SHA256 is identical at original and requested destination.",
+      "Final25 count is17 integration+8store: watermark cases extend one existing parameterized test; pre-attemptAbsent adds one new test.",
+      "No failure was observed in executed focused/old protocol/Clippy/fmt/diff checks.",
+      "New modules are cfg(test) offline code; mocked chain finality hints and opaque mock proof responses are not cryptographic finality/SP1 proof evidence.",
+      "No export/CPU/Foundry/full gateway or workspace verification executed for this packet; root owns final combined checks.",
+      "Prepared retries may repeat mock broadcast; outcome WAL and exactly-once broadcast are outside this package.",
+      "All four original fixture builders remain byte-identical to merged main base; production HOLD and live gates remain unchanged."
+    ]
+  },
+  "four_golden_builder_sources_unchanged": {
+    "crates/gateway/src/candidate_registration.rs": "86ffc1032f31952fad4e0c815a9564397c2d86cff5c62e23a664538209ba4c37",
+    "crates/gateway/src/report_archive_binding.rs": "1204db404b472c8c77a56e23fe2e59d4577d5d2bb334c8f0f4880449352812a9",
+    "crates/gateway/src/price_lifecycle_tests.rs": "cba6cb30039894e128e8ee19b32f1a9ed1fca2d7616c73af8570d2ce885472dd",
+    "crates/gateway/src/candidate_protocol_tests.rs": "b7b5304d771c9f5505db67737c20793696eff7367724e529bc4030a3a97e7b40"
+  },
+  "contract_sources_unchanged": {
+    "contracts/test/ChainlinkCandidateProtocol.t.sol": "a3dddb532abef84ac38c149c86a4f3112cb431a74361bf76fc1afa49bfc8bba7",
+    "contracts/test/fixtures/ChainlinkCandidateProtocolVector.sol": "6a854f62f20f9f270db49963c73e0e0b70170594dd969169567ad3eb286decdc",
+    "contracts/test/fixtures/chainlink-candidate-protocol.json": "1263230407bfe0c340a61d4106e952812abd7f16e93cac3397d3e68412bf2067"
+  },
+  "prior_evidence": {
+    "path": "docs/audits/2026-10-11-chainlink-candidate-protocol/verification.json",
+    "sha256": "4c45c2ca22cd092c62a40689ff3997825df9b3b6b606129b23c5a81edf96a5c7",
+    "all_prior_artifact_hashes_rechecked": true,
+    "prior_artifact_count": 34,
+    "fresh_contract_run": false,
+    "fresh_cpu_execution": false,
+    "prior_contract_summary": [
+      "Ran 15 test suites in 32.19s (91.18s CPU time): 168 tests passed, 0 failed, 0 skipped (168 total tests)"
+    ],
+    "prior_cpu_native_guest_equal": true,
+    "prior_cpu_cases": [
+      {
+        "cycles": 27237960,
+        "elapsed_seconds": 3.352551708,
+        "guest_exit_code": 0,
+        "name": "normal-lifecycle",
+        "outcome": "PASS",
+        "public_values_hex": "4331d2a3aaadffb65b1cb945246e498580e7eb86e2cac6d34a462fca25c1097f",
+        "witness_sha256": "8f23160f0a0ff9d004c4c78a25877fc84f4e50e8263b46115695f1d212f9e937"
+      },
+      {
+        "cycles": 24293454,
+        "elapsed_seconds": 3.2332701249999998,
+        "guest_exit_code": 0,
+        "name": "liquidation",
+        "outcome": "PASS",
+        "public_values_hex": "cf1861676e0236049aa4385ec844148361eff3bec8c1b7aa7deb4c7e66642184",
+        "witness_sha256": "ba6b4cd72a38db1c4b0188b9eff98e41022dffceca7dd5de5ff47b0f5adb0337"
+      }
+    ],
+    "prior_fixture_manifest_sha256": "3147718b8db6036f0ecb540157dfaea260f010726abdc2895d53baf4d08c6480"
+  },
+  "fresh_proof_generated": false,
+  "real_don_verified": false,
+  "live_rpc_or_registration_performed": false,
+  "deployment_identity_approved": false,
+  "production_release": "HOLD",
+  "resume_invokes_registration": false,
+  "original_checkpoint_payloads_immutable": true,
+  "finality_metadata_authentication": "caller-owned mocks only",
+  "canonical_ancestry_verified": false,
+  "latest_finality_tip_history_persisted": false,
+  "broadcast_outcome_wal": false,
+  "exactly_once_delivery": false,
+  "cross_process_writer_coordination": false,
+  "post_publication_ack_failure_guarantees_old_bytes": false,
+  "physical_power_loss_or_process_kill_test": false,
+  "artifacts": {
+    "README.md": {
+      "sha256": "aabbf44f70eae2ac7e8544785f64bfd910a704742dcfc5eeaf16bd1ede83f7fd",
+      "bytes": 6696
+    },
+    "focused-validation.json": {
+      "sha256": "53528c8517e94d1447cec46705e4b16007047e4c6e6316ceff5cf6b3454fb78d",
+      "bytes": 10618
+    },
+    "logs/diff-check-final.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "logs/diff.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "logs/fmt-check-final.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "logs/format.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "logs/gateway-clippy-final.log": {
+      "sha256": "83399b76e44c224ffc38cadd22569d15e775726a56fcaf3a5fe5ab7d0986e0ce",
+      "bytes": 187
+    },
+    "logs/gateway-full.log": {
+      "sha256": "851f20a5c507838fb97e7b874bee6e75036cb15508aafe1724b13fb7629362e2",
+      "bytes": 56273
+    },
+    "logs/original-recheck.log": {
+      "sha256": "b059c650151bc349e077ad18e9e6505d38744ca635afd748653b3dcbcaccb74e",
+      "bytes": 3988
+    },
+    "logs/protocol-regression-final.log": {
+      "sha256": "5ac59cfc71c7bbf034ae251f3d49c69f2b2fa1621690b69233a13c2850d55ac2",
+      "bytes": 1559
+    },
+    "logs/python-guards.log": {
+      "sha256": "d2aa2738bc5314e7a1869adf5f8a364613aa658fe623d69eff39bf9b0c8ee20b",
+      "bytes": 7032
+    },
+    "logs/recovery-focused-final.log": {
+      "sha256": "22be4710c461fc0a5097ad45d7c1435c42cc6f833ad2d63b69821ad313093cf9",
+      "bytes": 3141
+    },
+    "logs/recovery-focused-first.log": {
+      "sha256": "73ccdf10293e633f7cca54b3c3db3b6212c5380fcd50189a7ed4477b673266c1",
+      "bytes": 3032
+    },
+    "logs/runtime-pins.log": {
+      "sha256": "cd6f22387ed79a9c83c6a2c15b82e4ccd1dfe70f0444399a72b604e82c1f09a4",
+      "bytes": 643
+    },
+    "logs/workspace-clippy.log": {
+      "sha256": "aac3bb9bb460514e280bb66b05ade4b7ebe973524a1ecbe27beef179634c78b3",
+      "bytes": 187
+    },
+    "merge-observations.json": {
+      "sha256": "71d4b0d838f9727858d7f66252187826b94736c4fb795fc23f5d0433d3417da7",
+      "bytes": 7891
+    },
+    "next-a4-native-contract-bridge.md": {
+      "sha256": "202bbd6dd51df777419021bcb71999dcbbe19581ac981357339aff76dc83dd54",
+      "bytes": 5509
+    },
+    "original-checkouts.json": {
+      "sha256": "c8d5508e98179eb728cadd9a053aaf99ddf82fa9e0ce7e46002ea55887b592e8",
+      "bytes": 4559
+    },
+    "plan.json": {
+      "sha256": "2aca9058bfd73cc9fea9a0c352840d263813faf898886154d58a8f5813acbde7",
+      "bytes": 2057
+    },
+    "root-validation.json": {
+      "sha256": "cf1f410dd868c83ec35f512b0bfe4820a73a6a770de3bba0ea833b66788409f0",
+      "bytes": 5514
+    }
+  }
+}
