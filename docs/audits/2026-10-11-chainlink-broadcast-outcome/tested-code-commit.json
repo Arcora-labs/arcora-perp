@@ -1,0 +1,5 @@
+{
+  "head": "44b81edd3ac4c2781e91ddbbb75f9bd9dd882d44",
+  "tree": "55976f065c4420151687d5b59909e0600208a269",
+  "source_changes": " crates/gateway/src/candidate_broadcast.rs          |  776 ++++++++++++++\n .../gateway/src/candidate_broadcast_lock_tests.rs  |  427 ++++++++\n crates/gateway/src/candidate_broadcast_store.rs    |  928 ++++++++++++++++\n crates/gateway/src/candidate_broadcast_tests.rs    | 1117 ++++++++++++++++++++\n crates/gateway/src/main.rs                         |    8 +\n 5 files changed, 3256 insertions(+)\n"
+}

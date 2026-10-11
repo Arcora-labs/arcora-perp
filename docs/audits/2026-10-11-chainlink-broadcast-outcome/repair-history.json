@@ -1,0 +1,21 @@
+{
+  "schema": "arcora-broadcast-outcome-repair-v1",
+  "initial_targeted_budget": 2,
+  "rounds": [
+    {
+      "round": 1,
+      "trigger": "focused-initial compile exit 101, three unresolved hex references in new tests",
+      "change": "local bounded hex decoding and existing hex formatting; no dependency or manifest update; add actual dispatcher process and nested-length acceptance coverage from independent review",
+      "validation": "focused-repair1:26 PASS/0 FAIL/1 intentional ignored"
+    },
+    {
+      "round": 2,
+      "trigger": "clippy-initial exit101, large_enum_variant and manual_range_patterns",
+      "change": "boxed fixed success effect, range pattern, parent-owned child scratch cleanup after SIGKILL; no lint suppression or guard weakening",
+      "validation": "clippy-final PASS with -D warnings; focused-final26 PASS/0 FAIL/1 ignored"
+    }
+  ],
+  "acceptance_criteria_weakened": false,
+  "old_source_bytes_changed": false,
+  "raw_failed_outputs_retained": true
+}

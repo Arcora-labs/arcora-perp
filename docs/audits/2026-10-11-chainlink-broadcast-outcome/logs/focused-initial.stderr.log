@@ -1,0 +1,27 @@
+   Compiling gateway v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway)
+error[E0433]: cannot find module or crate `hex` in this scope
+  --> crates/gateway/src/candidate_broadcast_tests.rs:33:13
+   |
+33 |             hex::encode(random)
+   |             ^^^ use of unresolved module or unlinked crate `hex`
+   |
+   = help: if you wanted to use a crate named `hex`, use `cargo add hex` to add it to your `Cargo.toml`
+
+error[E0433]: cannot find module or crate `hex` in this scope
+  --> crates/gateway/src/candidate_broadcast_tests.rs:51:5
+   |
+51 |     hex::decode(v[key].as_str().unwrap().trim_start_matches("0x"))
+   |     ^^^ use of unresolved module or unlinked crate `hex`
+   |
+   = help: if you wanted to use a crate named `hex`, use `cargo add hex` to add it to your `Cargo.toml`
+
+error[E0433]: cannot find module or crate `hex` in this scope
+   --> crates/gateway/src/candidate_broadcast_tests.rs:384:21
+    |
+384 |         let proof = hex::decode(
+    |                     ^^^ use of unresolved module or unlinked crate `hex`
+    |
+    = help: if you wanted to use a crate named `hex`, use `cargo add hex` to add it to your `Cargo.toml`
+
+For more information about this error, try `rustc --explain E0433`.
+error: could not compile `gateway` (bin "gateway" test) due to 3 previous errors

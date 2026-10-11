@@ -1,0 +1,35 @@
+
+running 27 tests
+test candidate_broadcast_lock_tests::broadcast_lock_owned_child ... ignored, owned IPC child only; invoked exactly by kernel lease tests
+test candidate_broadcast_lock_tests::broadcast_lock_processes_and_handles_refuse_while_owned_child_holds_lease ... ok
+test candidate_broadcast_lock_tests::broadcast_lock_sigkill_releases_lease_without_refreshing_pending ... ok
+test candidate_broadcast_store::tests::broadcast_store_authenticated_lock_pin_refuses_recreated_domain ... ok
+test candidate_broadcast_store::tests::broadcast_store_framing_authentication_and_allocation_bounds ... ok
+test candidate_broadcast_store::tests::broadcast_store_independent_handle_lease_and_immutable_cas ... ok
+test candidate_broadcast_store::tests::broadcast_store_parent_replacement_and_foreign_existing_cut_refuse ... ok
+test candidate_broadcast_store::tests::broadcast_store_postpublication_ambiguity_requires_new_lease ... ok
+test candidate_broadcast_store::tests::broadcast_store_prepublication_failures_preserve_previous_bytes ... ok
+test candidate_broadcast_store::tests::broadcast_store_refuses_lock_or_target_replacement_and_in_place_change ... ok
+test candidate_broadcast_store::tests::broadcast_store_rejects_aliases_permissions_and_unbounded_file ... ok
+test candidate_broadcast_tests::broadcast_accepted_lost_reply_reopens_lookup_only ... ok
+test candidate_broadcast_lock_tests::broadcast_lock_actual_dispatcher_sigkill_resume_never_duplicates_broadcast ... ok
+test candidate_broadcast_tests::broadcast_bad_preflight_finality_epoch_identity_or_readiness_prevents_pending ... ok
+test candidate_broadcast_tests::broadcast_both_flows_pending_precedes_one_call_and_terminal_is_noop ... ok
+test candidate_broadcast_tests::broadcast_changed_config_request_or_nonce_cannot_refresh_pending_attempt ... ok
+test candidate_broadcast_tests::broadcast_authenticated_plan_mutations_refuse_before_any_callback ... ok
+test candidate_broadcast_tests::broadcast_finalized_revert_is_distinct_terminal_and_zero_callback_resume ... ok
+test candidate_broadcast_tests::broadcast_crash_cut_before_callback_holds_every_nonfinal_lookup ... ok
+test candidate_broadcast_tests::broadcast_fixed_bridge_plans_pin_all_roots_exact_abi_and_mock_identity ... ok
+test candidate_broadcast_tests::broadcast_nested_postcard_allocation_lengths_and_revert_bounds_fail_closed ... ok
+test candidate_broadcast_tests::broadcast_lease_serializes_same_and_independent_handles_through_callback ... ok
+test candidate_broadcast_tests::broadcast_pending_publication_failures_stop_before_callback ... ok
+test candidate_broadcast_tests::broadcast_outcome_write_rename_and_uncertain_ack_never_resend ... ok
+test candidate_broadcast_tests::broadcast_saved_opaque_outcome_semantics_and_trailing_bytes_precede_callbacks ... ok
+test candidate_broadcast_tests::broadcast_wrong_terminal_prepared_source_is_rejected_without_callbacks ... ok
+test candidate_broadcast_tests::broadcast_wrong_finalized_result_identity_effect_and_finality_stay_pending ... ok
+
+test result: ok. 26 passed; 0 failed; 1 ignored; 0 measured; 622 filtered out; finished in 63.93s
+
+   Compiling gateway v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 42.84s
+     Running unittests src/main.rs (target/debug/deps/gateway-610b7230a2c5bb73)

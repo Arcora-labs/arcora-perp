@@ -1,0 +1,47 @@
+{
+  "observed_utc": "2026-10-11T20:59:57.795714+00:00",
+  "commands": [
+    {
+      "argv": [
+        "rustup",
+        "run",
+        "1.99.0",
+        "rustc",
+        "--version"
+      ],
+      "exit_code": 0,
+      "stdout": "rustc 1.99.0 (b940084d7 2026-09-28)\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "rustup",
+        "run",
+        "1.99.0",
+        "cargo",
+        "--version"
+      ],
+      "exit_code": 0,
+      "stdout": "cargo 1.99.0 (5f94df478 2026-08-27)\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "gh",
+        "--version"
+      ],
+      "exit_code": 0,
+      "stdout": "gh version 2.91.0 (2026-04-22)\nhttps://github.com/cli/cli/releases/tag/v2.91.0\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "/opt/homebrew/bin/python3.12",
+        "--version"
+      ],
+      "exit_code": 0,
+      "stdout": "Python 3.12.13\n",
+      "stderr": ""
+    }
+  ]
+}
