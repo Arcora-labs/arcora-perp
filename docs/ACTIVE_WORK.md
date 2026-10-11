@@ -1,8 +1,8 @@
 # Arcora Perp: aktif iş ve kalan kabul kapıları
 
-Güncelleme: 11 Ekim 2026. **PRODUCTION RELEASE HOLD**.
+Güncelleme: 12 Ekim 2026. **PRODUCTION RELEASE HOLD**.
 Bu belge güncel çalışma sırasıdır; tarihsel `NEXT_STEPS.md` yerine kullanın.
-Son doğrulanan main: `0ea5048627840cbe7e125d7b914b1303b109b224` (#50).
+Bu paketin başlangıç main'i: `0ea5048627840cbe7e125d7b914b1303b109b224` (#50).
 #44 ve #45, güncel yayın head'lerinde ayrı ayrı 19/19 başarılı kontrol sonrası
 normal merge edildi; repository korumaları değiştirilmedi. #44 merge kimliği
 `e697b2f19d74b1021ba3a32b64b4f15ceb159880`, #45 merge kimliği
@@ -276,13 +276,24 @@ ve doğrudan eski runner kullanımı kapsam dışıdır. Son Fresh tip restart b
 saklanmaz; özgün Prepared anchor baseline'ı korunur. Gerçek RPC/consensus/proof,
 chain exactly-once veya fiziksel güç kaybı kabulü değildir.
 
-Final kod `44b81edd3ac4c2781e91ddbbb75f9bd9dd882d44`; yerel tam gateway
+İlk kod `44b81edd3ac4c2781e91ddbbb75f9bd9dd882d44`; ilk yerel tam gateway
 **628 PASS / 0 FAIL / 21 intentional IGNORE**, yeni odaklı **26 PASS**,
-47 guard, Clippy `-D warnings`, format ve 21/9 pin başarılı. 1.927 önceki dosya
-hash'i ve özgün 13/7/62 dirty checkout içerikleri korunur. Foundry/SP1 CPU bu
+47 guard, Clippy `-D warnings`, format ve 21/9 pin başarılı. İlk Cargo 1.99
+komutlarının child araçları PATH üzerinden Homebrew Rust/Clippy 1.95 seçmiş;
+ilk yerel sonuçlar 1.95 kanıtıdır. İlk Linux CI'da gerçek Rust 1.99 ile tam
+628/0/21 geçti; üç iş aynı yeni hex helper lint'inde durdu. Dar düzeltme kodu
+`92d469335c67967d45fa7d0360d7345329e57bb1`, çift uzunluk kontrolünü koruyarak
+`as_chunks` kullanır. Güncel kontrol seti child araçları da explicit Rust 1.99
+bin dizininden seçer: yeni odaklı **26/0/1**, Clippy, format, **47 guard** ve
+**21/9 pin** başarılı. Önceki loglar tarihsel olarak saklanır. Yayın commit'inin
+19/19 başarılı CI sonucu normal merge'den önce ayrıca doğrulanır. İlk workspace
+işi 20 dakikalık job limitinde iptal edildi; assertion hatası yoktu, no_std adımı
+çalışmadı. `eb07a79297dcf2e4ac3e8b6506c8a7b5007a96bc` yalnız bu job'un limitini
+20→30 dakika yapar; bütün komutlar/assertion'lar ve iki thread korunur. 1.926
+önceki dosya hash'i aynı; tek mevcut dosya değişikliği bu exact CI süre satırıdır.
+Özgün 13/7/62 dirty checkout içerikleri korunur. Yerelde Foundry/SP1 CPU bu
 host-only pakette yeniden çalıştırılmadı; #50 corpus/kontrat/kaynak ve kanıt
 hash'leri değişmedi. [Yeni kanıt](audits/2026-10-11-chainlink-broadcast-outcome/README.md).
-Yayın head'inin CI sonucu ayrıca doğrulanır.
 
 Sıradaki GPU'suz yazılım adımı: [registration'ı lease altında Prepared'a kadar
 koordine etmek](audits/2026-10-11-chainlink-broadcast-outcome/next-gpu-free-a4.md).
