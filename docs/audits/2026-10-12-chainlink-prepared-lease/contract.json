@@ -1,0 +1,30 @@
+{
+  "schema": "arcora-prepared-lease-contract-v1",
+  "base_main": "56f91ab740d5cce42edcc287ded4b0c39eb4f9f8",
+  "objective": "Offline cfg(test) registration coordinator through durable Prepared with deterministic local filesystem lease and explicit callback-free adoption; preserve historicaltail/watermark/frames/goldens",
+  "implementation": {
+    "shared_driver": "READY",
+    "owned_coordinator": "READY",
+    "owned_binding_store": "REPAIR_ROUND2",
+    "semantic16": "READY",
+    "actual_IPC2_plus1helper": "READY"
+  },
+  "required_checks": [
+    "focused(packet plus APFS aliases)",
+    "legacy compatibility unchangedtests",
+    "fullgateway two threads",
+    "actualClippy1.99 -D warnings",
+    "format1.99",
+    "Python47guards",
+    "reviewed21/candidate9pins",
+    "frozen2468baseline except approvedmechanicalseam/testwires/metadata",
+    "original13/7/62 unchanged",
+    "publicationhead all19CI"
+  ],
+  "targeted_repair_budget": 2,
+  "used_targeted_rounds": 2,
+  "global_release": "HOLD",
+  "proof_generated": false,
+  "gpu_used": false,
+  "live_rpc_funds_or_deployment": false
+}

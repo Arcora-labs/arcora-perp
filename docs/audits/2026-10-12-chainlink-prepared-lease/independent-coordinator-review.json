@@ -1,0 +1,100 @@
+{
+  "schema": "arcora-prepared-lease-independent-coordinator-review-v1",
+  "observed_utc": "2026-10-11T23:23:30.744072+00:00",
+  "reviewer": "handoff_audit",
+  "base_commit": "56f91ab740d5cce42edcc287ded4b0c39eb4f9f8",
+  "outcome": "scoped_pass_no_concrete_blocking_correctness_gap_found",
+  "scope": "Independent read-only source review of frozen registration coordinator, physical-parent namespace, explicit adoption and acknowledged/ambiguous source-binding publication behavior. No tests or builds were executed by this review.",
+  "reviewed_source_files": [
+    "crates/gateway/src/candidate_preparation.rs",
+    "crates/gateway/src/candidate_preparation_store.rs",
+    "crates/gateway/src/candidate_recovery.rs"
+  ],
+  "supporting_source_files_fingerprinted": [
+    "crates/gateway/src/candidate_preparation_tests.rs",
+    "crates/gateway/src/candidate_preparation_lock_tests.rs",
+    "crates/gateway/src/main.rs"
+  ],
+  "protected_builder_files_fingerprinted": [
+    "crates/gateway/src/candidate_registration.rs",
+    "crates/gateway/src/report_archive_binding.rs",
+    "crates/gateway/src/price_lifecycle_tests.rs",
+    "crates/gateway/src/candidate_protocol_tests.rs"
+  ],
+  "source_sha256": {
+    "crates/gateway/src/candidate_preparation.rs": "b9820e24632e997cfd06144c5bd6a9d217f90cadb7528bfa4b993d7e8ef8ed84",
+    "crates/gateway/src/candidate_preparation_store.rs": "4588fbb0234755d1ff6b994c5c1b3783653fe21f035d616122ea01dfc2b932e7",
+    "crates/gateway/src/candidate_recovery.rs": "41ec00cfab8f95c22a10832f3b8223808755bf3cdb2dc74293627b22e4531499",
+    "crates/gateway/src/candidate_preparation_tests.rs": "338c57f72c0993b3d7d534e99983680e04602d9b805f3190a9c262decf22081b",
+    "crates/gateway/src/candidate_preparation_lock_tests.rs": "91d1c7462e5cd0266b6376a7f17e120f7ba0368c24691e10c8b403e8854a6acc",
+    "crates/gateway/src/main.rs": "8cb583af611e4eb28137e5fccfb766e3c22b67b31ad79da401166f2f92a4cfe5",
+    "crates/gateway/src/candidate_registration.rs": "86ffc1032f31952fad4e0c815a9564397c2d86cff5c62e23a664538209ba4c37",
+    "crates/gateway/src/report_archive_binding.rs": "1204db404b472c8c77a56e23fe2e59d4577d5d2bb334c8f0f4880449352812a9",
+    "crates/gateway/src/price_lifecycle_tests.rs": "cba6cb30039894e128e8ee19b32f1a9ed1fca2d7616c73af8570d2ce885472dd",
+    "crates/gateway/src/candidate_protocol_tests.rs": "b7b5304d771c9f5505db67737c20793696eff7367724e529bc4030a3a97e7b40"
+  },
+  "findings": [
+    {
+      "path": "crates/gateway/src/candidate_preparation_store.rs",
+      "line_start": 123,
+      "line_end": 160,
+      "result": "Canonical parent and bounded lowercase ASCII/digit/._- basename policy prevents supported case aliases. The immutable coordination lane is derived from physical parent dev/ino/uid plus the length-framed basename, not parent spelling."
+    },
+    {
+      "path": "crates/gateway/src/candidate_preparation_store.rs",
+      "line_start": 336,
+      "line_end": 365,
+      "result": "Authenticated binding pins exact raw absolute source spelling, exact request digest and lock dev/ino/uid. A mismatched alias binding cannot resume after lease handoff."
+    },
+    {
+      "path": "crates/gateway/src/candidate_preparation.rs",
+      "line_start": 88,
+      "line_end": 110,
+      "result": "Lease acquisition precedes request validation. Fresh requires absent binding and source; Resume requires both and exact authenticated semantic source. Orphan binding cannot authorize source creation or silent restart."
+    },
+    {
+      "path": "crates/gateway/src/candidate_preparation.rs",
+      "line_start": 145,
+      "line_end": 183,
+      "result": "Explicit adoption authenticates and semantically validates the whole staged source before binding publication, then requires exact source readback under the held lease. It performs no transport callback."
+    },
+    {
+      "path": "crates/gateway/src/candidate_preparation.rs",
+      "line_start": 299,
+      "line_end": 339,
+      "result": "Transport callbacks have binding, source-cut, staged-semantic and allowed-action checks before and after invocation. The first guard fault is retained rather than laundered as a generic callback failure."
+    },
+    {
+      "path": "crates/gateway/src/candidate_preparation_store.rs",
+      "line_start": 427,
+      "line_end": 496,
+      "result": "Source store ownership prevents foreign-path/seed injection. Owned writes poison the lease before publication and refresh the source pin only after exact acknowledged physical and decoded readback. Failed writes stop subsequent callbacks."
+    },
+    {
+      "path": "crates/gateway/src/candidate_preparation_store.rs",
+      "line_start": 499,
+      "line_end": 570,
+      "result": "Binding publication uses private synced temporary bytes and no-clobber hard-link publication. Failure after publication is ambiguous, poisons the invocation and requires explicit reload; no rollback is claimed."
+    },
+    {
+      "path": "crates/gateway/src/candidate_recovery.rs",
+      "line_start": 583,
+      "line_end": 652,
+      "result": "New preparation entry returns at durable Prepared with no broadcast capability. Historical execute receives the same Saved watermark from the shared driver, preserving observed invocation-local advances and its old tail."
+    }
+  ],
+  "limitations": [
+    "Supported source basenames are 1..128 bytes of lowercase ASCII letters, digits, dot, underscore or hyphen; dot/dotdot, .lock suffix and .dpcreg1- prefix are refused.",
+    "Coordination covers cooperating local writers using the same physical private directory and allowed basename. Direct historical RecoveryStore/execute or raw helper calls that bypass the coordinator remain outside this lease guarantee.",
+    "Changing physical parent identity changes the coordination lane. Directory rename or alternate spelling may retain the physical lane but the exact raw source-path binding refuses mismatch. Moved/copied cuts require explicit reconciliation or adoption as applicable; Resume never silently reconstructs missing binding.",
+    "Adoption requires quiescent historical writers. There is no hostile same-user/filesystem fencing, distributed/NFS coordination, rollback freshness or global copied-request deduplication claim.",
+    "After-publication errors require stopping and reloading the visible authenticated cut. Old bytes are guaranteed only for definite pre-publication failure; no automatic rollback or universal old-bytes claim applies.",
+    "The original saved anchors form the restart finality baseline. Higher tips observed later are invocation-local and are not persisted across restart; no ancestry or real consensus authentication is claimed.",
+    "A failed Prepared save may repeat mock prove from ReportsObserved. No exactly-once proof, registration across arbitrary copies, signed transaction, broadcast outcome or global delivery claim is made by this preparation coordinator.",
+    "This is cfg(test) software with caller-owned offline mock observations/proof responses. Real DON/RPC/SP1 proof, deployment activation and vault custody remain outside the reviewed packet."
+  ],
+  "source_edits_performed_by_review": false,
+  "cargo_or_test_execution_performed_by_review": false,
+  "git_mutations_performed_by_review": false,
+  "production_release": "HOLD"
+}

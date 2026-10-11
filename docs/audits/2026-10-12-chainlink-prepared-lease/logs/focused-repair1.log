@@ -1,0 +1,35 @@
+
+running 27 tests
+test candidate_preparation_lock_tests::preparation_lock_owned_child ... ignored, owned IPC child only; invoked exactly by preparation coordinator tests
+test candidate_preparation_lock_tests::preparation_lock_clock_pending_sigkill_resumes_only_original_lookups ... ok
+test candidate_preparation_store::tests::preparation_store_alias_permissions_bounds_and_parent_replacement_fail_closed ... ok
+test candidate_preparation_store::tests::preparation_store_binding_failures_poison_without_rollback ... ok
+test candidate_preparation_store::tests::preparation_store_binding_fixed_format_domain_authentication_and_identity ... ok
+test candidate_preparation_store::tests::preparation_store_deterministic_lane_and_private_canonical_paths ... ok
+test candidate_preparation_lock_tests::preparation_lock_reports_pending_sigkill_preserves_original_clock_and_no_registration ... ok
+test candidate_preparation_store::tests::preparation_store_explicit_existing_source_adoption_pins_exact_request ... ok
+test candidate_preparation_store::tests::preparation_store_owned_adjacent_writes_refresh_only_exact_source_cut ... ok
+test candidate_preparation_store::tests::preparation_store_replacements_external_creates_and_stable_lock_loss_refuse ... ok
+test candidate_preparation_store::tests::preparation_store_source_failures_preserve_or_expose_exact_new_cut ... ok
+test candidate_preparation_tests::preparation_ambiguous_initial_intent_reloads_without_registration ... ok
+test candidate_preparation_tests::preparation_binding_publication_failures_stop_before_intent ... ok
+test candidate_preparation_tests::preparation_all_six_stage_adoptions_are_callback_free_and_resume_without_registration ... ok
+test candidate_preparation_tests::preparation_callback_source_replacement_change_and_permissions_stop_without_overwrite ... ok
+test candidate_preparation_tests::preparation_callback_failures_preserve_the_exact_checkpoint ... ok
+test candidate_preparation_tests::preparation_concrete_helper_has_no_broadcast_tail ... ok
+test candidate_preparation_tests::preparation_clock_pending_save_failures_precede_every_callback_and_resume_without_registration ... ok
+test candidate_preparation_tests::preparation_fixed_normal_and_liquidation_stop_at_exact_durable_prepared ... ok
+test candidate_preparation_tests::preparation_legacy_tail_keeps_the_fresh_invocation_watermark ... ok
+test candidate_preparation_tests::preparation_legacy_driver_still_has_eleven_fresh_and_three_resume_callbacks ... ok
+test candidate_preparation_tests::preparation_missing_source_binding_and_orphan_binding_never_reset_fresh ... ok
+test candidate_preparation_tests::preparation_malformed_authenticated_anchor_and_prepared_cuts_are_not_adopted ... ok
+test candidate_preparation_tests::preparation_pending_absent_unknown_reorg_never_reregister ... ok
+test candidate_preparation_tests::preparation_wrong_key_tampered_and_foreign_source_never_create_binding ... ok
+test candidate_preparation_tests::preparation_wrong_request_and_binding_mismatch_refuse_without_callbacks ... ok
+test candidate_preparation_tests::preparation_source_checkpoint_failures_keep_old_cut_or_stop_on_published_ambiguity ... ok
+
+test result: ok. 26 passed; 0 failed; 1 ignored; 0 measured; 649 filtered out; finished in 38.09s
+
+   Compiling gateway v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 10.05s
+     Running unittests src/main.rs (target/debug/deps/gateway-e2e0fc6b5916941a)

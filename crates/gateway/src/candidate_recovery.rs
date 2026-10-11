@@ -102,6 +102,66 @@ pub(crate) trait RecoveryTransport {
     fn broadcast(&mut self, prepared: &PreparedCandidate) -> Result<(), ()>;
 }
 
+/// Registration preparation cannot call broadcast through this interface.
+pub(crate) trait PreparationTransport {
+    fn register_clock(&mut self, clock: &ClockContext) -> Result<(), ()>;
+    fn lookup_clock(&mut self, clock: &ClockContext) -> Result<Lookup<ClockObservation>, ()>;
+    fn register_reports(&mut self, registration: &Registration) -> Result<(), ()>;
+    fn lookup_reports(
+        &mut self,
+        registration: &Registration,
+    ) -> Result<Lookup<ReportObservation>, ()>;
+    fn prove(&mut self, request: &ProtocolRequest) -> Result<CandidateProofResponse, ()>;
+}
+
+/// A coordinator can guard all acknowledged source cuts while retaining the
+/// existing DPCINT4 bytes and compare-and-advance semantics. Implementations
+/// return the exact checkpoint whose publication has been acknowledged.
+pub(crate) trait PreparationCheckpointStore {
+    fn load(&self) -> Result<Option<Record>, StoreError>;
+    fn create(&self, request: &[u8]) -> Result<Record, StoreError>;
+    fn advance(&self, expected: &Record, next: Record) -> Result<Record, StoreError>;
+}
+impl PreparationCheckpointStore for RecoveryStore {
+    fn load(&self) -> Result<Option<Record>, StoreError> {
+        RecoveryStore::load(self)
+    }
+    fn create(&self, request: &[u8]) -> Result<Record, StoreError> {
+        RecoveryStore::create(self, request)
+    }
+    fn advance(&self, expected: &Record, next: Record) -> Result<Record, StoreError> {
+        RecoveryStore::advance(self, expected, next)
+    }
+}
+
+struct LegacyPreparation<'a, T>(&'a mut T);
+impl<T: RecoveryTransport> PreparationTransport for LegacyPreparation<'_, T> {
+    fn register_clock(&mut self, clock: &ClockContext) -> Result<(), ()> {
+        self.0.register_clock(clock)
+    }
+    fn lookup_clock(&mut self, clock: &ClockContext) -> Result<Lookup<ClockObservation>, ()> {
+        self.0.lookup_clock(clock)
+    }
+    fn register_reports(&mut self, registration: &Registration) -> Result<(), ()> {
+        self.0.register_reports(registration)
+    }
+    fn lookup_reports(
+        &mut self,
+        registration: &Registration,
+    ) -> Result<Lookup<ReportObservation>, ()> {
+        self.0.lookup_reports(registration)
+    }
+    fn prove(&mut self, request: &ProtocolRequest) -> Result<CandidateProofResponse, ()> {
+        self.0.prove(request)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct PreparedCut {
+    pub(crate) record: Record,
+    pub(crate) prepared: PreparedCandidate,
+}
+
 /// Saved checkpoints establish the restart baseline. Later mock reads may
 /// advance this invocation-local watermark, but never rewrite original saved
 /// anchor/value bytes. No cross-restart tip history or ancestry is asserted.
@@ -127,6 +187,14 @@ struct Saved {
     reports: Option<Anchored<ReportObservation>>,
     prepared: Option<PreparedCandidate>,
     watermark: Watermark,
+}
+
+/// The historical tail must receive this same Saved watermark. Decoding its
+/// original checkpoint again would lose advances observed during this run.
+struct PreparedProgress {
+    record: Record,
+    valid: Validated,
+    saved: Saved,
 }
 
 fn valid_anchor<T>(observation: &Anchored<T>) -> Result<(), RecoveryError> {
@@ -184,6 +252,14 @@ fn valid_anchored_reports(
 
 fn encode<T: Serialize>(value: &T) -> Result<Vec<u8>, RecoveryError> {
     postcard::to_allocvec(value).map_err(|_| RecoveryError::Malformed)
+}
+
+pub(crate) fn request_bytes(request: &ProtocolRequest) -> Result<Vec<u8>, RecoveryError> {
+    let bytes = encode(request)?;
+    if bytes.is_empty() || bytes.len() > MAX_REQUEST_BYTES {
+        return Err(RecoveryError::Protocol(ProtocolError::Capacity));
+    }
+    Ok(bytes)
 }
 
 fn decode_observation<T: DeserializeOwned + Serialize>(bytes: &[u8]) -> Result<T, RecoveryError> {
@@ -259,6 +335,22 @@ fn saved(
     })
 }
 
+/// Pure semantic validation for explicit adoption and guarded source reads.
+/// Authentication and framing remain the responsibility of the checkpoint
+/// store. No lookup, registration, proof or timestamp refresh occurs here.
+pub(crate) fn validate_stored_cut(
+    record: &Record,
+    request: &ProtocolRequest,
+    trusted: &TrustedRequest,
+) -> Result<(), RecoveryError> {
+    let valid = validate(request, trusted).map_err(RecoveryError::Protocol)?;
+    if record.request != request_bytes(request)? {
+        return Err(RecoveryError::RequestMismatch);
+    }
+    saved(record, request, &valid)?;
+    Ok(())
+}
+
 fn finalized<T>(lookup: Lookup<T>) -> Result<Anchored<T>, RecoveryError> {
     match lookup {
         Lookup::Finalized(observation) => Ok(observation),
@@ -272,7 +364,7 @@ fn finalized<T>(lookup: Lookup<T>) -> Result<Anchored<T>, RecoveryError> {
 fn lookup_clock(
     request: &ProtocolRequest,
     valid: &Validated,
-    transport: &mut impl RecoveryTransport,
+    transport: &mut impl PreparationTransport,
 ) -> Result<Anchored<ClockObservation>, RecoveryError> {
     let clock = finalized(
         transport
@@ -287,7 +379,7 @@ fn lookup_reports(
     request: &ProtocolRequest,
     valid: &Validated,
     clock: &Anchored<ClockObservation>,
-    transport: &mut impl RecoveryTransport,
+    transport: &mut impl PreparationTransport,
 ) -> Result<Anchored<ReportObservation>, RecoveryError> {
     let reports = finalized(
         transport
@@ -303,7 +395,7 @@ fn reconcile_clock(
     valid: &Validated,
     original: &Anchored<ClockObservation>,
     watermark: &mut Watermark,
-    transport: &mut impl RecoveryTransport,
+    transport: &mut impl PreparationTransport,
 ) -> Result<Anchored<ClockObservation>, RecoveryError> {
     let current = lookup_clock(request, valid, transport)?;
     if current.anchor != original.anchor {
@@ -331,7 +423,7 @@ fn reconcile_reports(
     clock: &Anchored<ClockObservation>,
     original: &Anchored<ReportObservation>,
     watermark: &mut Watermark,
-    transport: &mut impl RecoveryTransport,
+    transport: &mut impl PreparationTransport,
 ) -> Result<Anchored<ReportObservation>, RecoveryError> {
     let current = lookup_reports(request, valid, clock, transport)?;
     if current.anchor != original.anchor {
@@ -344,7 +436,11 @@ fn reconcile_reports(
     Ok(current)
 }
 
-fn advance(store: &RecoveryStore, record: &mut Record, next: Record) -> Result<(), RecoveryError> {
+fn advance(
+    store: &impl PreparationCheckpointStore,
+    record: &mut Record,
+    next: Record,
+) -> Result<(), RecoveryError> {
     // Any failure, including ambiguous post-rename durability, ends this run
     // before its next callback. Resume must reload and reconcile the disk cut.
     *record = store
@@ -353,18 +449,15 @@ fn advance(store: &RecoveryStore, record: &mut Record, next: Record) -> Result<(
     Ok(())
 }
 
-pub(crate) fn execute(
+fn drive_prepared(
     mode: RunMode,
     request: &ProtocolRequest,
     trusted: &TrustedRequest,
-    store: &RecoveryStore,
-    transport: &mut impl RecoveryTransport,
-) -> Result<PreparedCandidate, RecoveryError> {
+    store: &impl PreparationCheckpointStore,
+    transport: &mut impl PreparationTransport,
+) -> Result<PreparedProgress, RecoveryError> {
     let valid = validate(request, trusted).map_err(RecoveryError::Protocol)?;
-    let request_bytes = encode(request)?;
-    if request_bytes.is_empty() || request_bytes.len() > MAX_REQUEST_BYTES {
-        return Err(RecoveryError::Protocol(ProtocolError::Capacity));
-    }
+    let request_bytes = request_bytes(request)?;
     let mut record = match mode {
         RunMode::Fresh => store.create(&request_bytes).map_err(|error| match error {
             StoreError::Exists => RecoveryError::ExistingFresh,
@@ -480,6 +573,52 @@ pub(crate) fn execute(
     if record.stage != Stage::Prepared {
         return Err(RecoveryError::Malformed);
     }
+    Ok(PreparedProgress {
+        record,
+        valid,
+        saved,
+    })
+}
+
+/// Stop immediately after the exact Prepared cut is durably acknowledged.
+/// Prepared resume validates its saved payloads and makes no callbacks.
+pub(crate) fn prepare_with_checkpoints(
+    mode: RunMode,
+    request: &ProtocolRequest,
+    trusted: &TrustedRequest,
+    store: &impl PreparationCheckpointStore,
+    transport: &mut impl PreparationTransport,
+) -> Result<PreparedCut, RecoveryError> {
+    let progress = drive_prepared(mode, request, trusted, store, transport)?;
+    Ok(PreparedCut {
+        record: progress.record,
+        prepared: progress.saved.prepared.ok_or(RecoveryError::Malformed)?,
+    })
+}
+
+pub(crate) fn prepare_only(
+    mode: RunMode,
+    request: &ProtocolRequest,
+    trusted: &TrustedRequest,
+    store: &RecoveryStore,
+    transport: &mut impl PreparationTransport,
+) -> Result<PreparedCut, RecoveryError> {
+    prepare_with_checkpoints(mode, request, trusted, store, transport)
+}
+
+/// Historical behavior: reconcile again after Prepared and call the old mock
+/// broadcast. Its callback schedule and invocation-local watermark are retained.
+pub(crate) fn execute(
+    mode: RunMode,
+    request: &ProtocolRequest,
+    trusted: &TrustedRequest,
+    store: &RecoveryStore,
+    transport: &mut impl RecoveryTransport,
+) -> Result<PreparedCandidate, RecoveryError> {
+    let mut transport = LegacyPreparation(transport);
+    let PreparedProgress {
+        valid, mut saved, ..
+    } = drive_prepared(mode, request, trusted, store, &mut transport)?;
     let prepared = saved.prepared.ok_or(RecoveryError::Malformed)?;
     let original_clock = saved.clock.as_ref().ok_or(RecoveryError::Malformed)?;
     let original_reports = saved.reports.as_ref().ok_or(RecoveryError::Malformed)?;
@@ -488,7 +627,7 @@ pub(crate) fn execute(
         &valid,
         original_clock,
         &mut saved.watermark,
-        transport,
+        &mut transport,
     )?;
     let current_reports = reconcile_reports(
         request,
@@ -496,7 +635,7 @@ pub(crate) fn execute(
         &current_clock,
         original_reports,
         &mut saved.watermark,
-        transport,
+        &mut transport,
     )?;
     if !valid_recheck(
         request,
@@ -508,6 +647,7 @@ pub(crate) fn execute(
         return Err(RecoveryError::Observation);
     }
     transport
+        .0
         .broadcast(&prepared)
         .map_err(|_| RecoveryError::Callback(RecoveryAction::Broadcast))?;
     Ok(prepared)

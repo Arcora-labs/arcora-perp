@@ -1,0 +1,24 @@
+
+running 17 tests
+test candidate_recovery_tests::recovery_authenticated_malformed_version_trailing_and_tampered_records_call_nothing ... ok
+test candidate_recovery_tests::recovery_actual_normal_liquidation_and_price_free_have_durable_exact_stages ... ok
+test candidate_recovery_tests::recovery_changed_trusted_request_cannot_cross_resume_saved_intent ... ok
+test candidate_recovery_tests::recovery_authenticated_noncanonical_and_semantically_wrong_saved_payloads_call_nothing ... ok
+test candidate_recovery_tests::recovery_clock_receipt_and_finality_refusals_stop_before_reports_registration ... ok
+test candidate_recovery_tests::recovery_fresh_existing_and_resume_missing_never_call_transport ... ok
+test candidate_recovery_tests::recovery_each_callback_fault_preserves_prior_attempt_counts_and_durable_stage ... ok
+test candidate_recovery_tests::recovery_intermediate_crash_restart_never_duplicates_registration ... ok
+test candidate_recovery_tests::recovery_invalid_proof_response_stops_after_attempted_prove_before_prepared ... ok
+test candidate_recovery_tests::recovery_known_wrong_request_pins_refuse_before_durability_and_callbacks ... ok
+test candidate_recovery_tests::recovery_pre_attempt_absent_resume_only_looks_up_and_keeps_pending_cut ... ok
+test candidate_recovery_tests::recovery_pending_absent_unknown_and_reorg_stop_fresh_and_resume_later_calls ... ok
+test candidate_recovery_tests::recovery_rename_failure_and_postpublication_ambiguity_require_reload ... ok
+test candidate_recovery_tests::recovery_same_height_matching_hash_and_advanced_finality_are_accepted ... ok
+test candidate_recovery_tests::recovery_report_order_epoch_record_and_finality_refusals_stop_before_prove ... ok
+test candidate_recovery_tests::recovery_save_failures_preserve_exact_cut_and_stop_subsequent_actions ... ok
+test candidate_recovery_tests::recovery_saved_tx_block_hash_epoch_and_prepared_recheck_never_refresh ... ok
+
+test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 661 filtered out; finished in 22.03s
+
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.19s
+     Running unittests src/main.rs (target/debug/deps/gateway-e2e0fc6b5916941a)

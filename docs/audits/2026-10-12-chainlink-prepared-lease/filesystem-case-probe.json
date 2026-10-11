@@ -1,0 +1,19 @@
+{
+  "schema": "arcora-prepared-lease-filesystem-case-probe-v1",
+  "observed_utc": "2026-10-11T23:10:56.941975+00:00",
+  "owned_private_fixture_cleaned": true,
+  "source_actual": "/private/var/folders/jz/7wbjs_5j45g915858xh6wm200000gn/T/arcora-case-namespace-c9hfqvel/prepared.dpcint4",
+  "source_alias": "/private/var/folders/jz/7wbjs_5j45g915858xh6wm200000gn/T/arcora-case-namespace-c9hfqvel/PREPARED.DPCINT4",
+  "source_alias_exists": true,
+  "source_realpath_retains_alias_case": true,
+  "source_same_dev_ino": true,
+  "parent_actual": "/private/var/folders/jz/7wbjs_5j45g915858xh6wm200000gn/T/arcora-case-namespace-c9hfqvel",
+  "parent_alias": "/private/var/folders/jz/7wbjs_5j45g915858xh6wm200000gn/T/ARCORA-CASE-NAMESPACE-C9HFQVEL",
+  "parent_alias_exists": true,
+  "parent_realpath_retains_alias_case": true,
+  "parent_same_dev_ino": true,
+  "root_cause": "Raw textual fullpath digest can choose different hashed lockfilenames for a single physical source on a case-insensitive filesystem",
+  "proposed_fix": "Lowercase ASCII source-basename policy plus physical parentdev/ino/uid and basename locknamespace; authenticatedrawpathbinding retained; samephysicalparentaliases cannot create secondlock lane",
+  "probe_language": "Python3.12 realpath and stat; no directRustcanonicalize claim",
+  "rust_parent_case_regression": "Beforefix acceptedPathrejection; no observedparentcase lockbypass claimed"
+}
