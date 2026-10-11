@@ -1,8 +1,12 @@
 # Chainlink: özgün rapor çifti arşivi ve witness hazırlığı
 
-10 Ekim 2026. **PRODUCTION RELEASE HOLD.**
-Bu paket host-only istemci kütüphanesinin eşleme/saklama bölümüdür.
-Gateway'in üretim fiyat kaynağı, snapshot/journal biçimi veya proof yolu değişmez.
+11 Ekim 2026. **PRODUCTION RELEASE HOLD.**
+PreparedPair/ReportArchive host istemci bileşenidir. #44 bunu opt-in aday
+gateway intake, authenticated v6 journal ve aday snapshot etiketiyle bağlar.
+Legacy varsayılan davranış korunur; aday prover/settlement yolu kapalıdır.
+Güncel exact-code kanıtı: [son doğrulama](audits/2026-10-11-chainlink-archive-gateway-binding/README.md).
+`chainlink-oracle` normalizasyon kodu aday guest'in de bağımlılığıdır; bütün
+Chainlink katmanı host-only değildir.
 
 ## Kullanıcı kararıyla ertelenen adım
 
@@ -61,7 +65,9 @@ Tarihi kaydın geri yüklenmesi, o verinin şu anda taze olduğunu göstermez.
 Yeni işlemde güncel güvenilir işlem saatiyle `for_operation` yeniden çağrılır;
 özgün işlemin yeniden yürütülmesinde o işlemin orijinal saati kullanılır.
 Çağıran hizmet beklenen ID'yi kendi kalıcı, bütünlüğü korunan journal'ına
-bağlamalıdır. **Gateway journal bağlantısı ve protokol recovery bu pakette yoktur.**
+bağlamalıdır. #44'te mühürlenmiş pencere için bu bağlantı authenticated v6
+journal ile vardır. Açık, henüz mühürlenmemiş pencerenin bellek içi admission
+indeksi henüz kalıcı değildir; restart sonrası tam kurtarma tamamlanmamıştır.
 
 ## Kullanım sırası
 
@@ -71,8 +77,9 @@ bağlamalıdır. **Gateway journal bağlantısı ve protokol recovery bu pakette
 4. Dönen ArchiveId, ilgili işlem/journal ile kalıcı olarak eşleştirilir.
 5. Restore, aynı ID/policy/market ile load eder; yeni işlem öncesi tazelik yeniden kontrol edilir.
 
-Bu sıra bir kütüphane sözleşmesidir; scheduler veya gateway'e bağlanmış çalışan
-canlı hizmet iddiası değildir. Canlı feed pinleri atlandığı için örnek production
+Bu sıra kütüphane sözleşmesidir. #44 aday gateway scheduler/admission bağlantısını
+ekler; bu, çalışan canlı oracle veya settlement hizmeti iddiası değildir.
+Canlı feed pinleri atlandığı için örnek production
 konfigürasyonu veya varsayılan ekonomik eşik eklenmedi.
 
 ## Test kapsamı ve sınırlar
@@ -105,18 +112,27 @@ cargo +1.99.0 test --release --locked --offline --manifest-path crates/chainlink
 cargo +1.99.0 clippy --locked --offline --manifest-path crates/chainlink-streams-client/Cargo.toml --all-targets -- -D warnings
 ```
 
-Bağımlılık kilitleri, iki guest programı/pinleri, public input, risk eşikleri,
-clock/settlement/vault, production ayarları ve gerçek fonlara dokunulmadı.
-Kalan sıra: ertelenen canlı feed erişimi; v3 chainlink guest'in gerçek prover
-bağlantısı (şu an devre dışı; v3 witness reviewed v2 prover'a gönderilmez);
-gerçek DON/deployment/proof ve ekonomi kabulü.
+İki guest programı/pinleri, reviewed root Cargo.toml, public input ve risk
+eşikleri korunur. Kök lock host facade girdileri nedeniyle değişmiştir;
+244 registry kimliği değişmemiştir. Production ayarı ve gerçek fon değişmedi.
+Sıradaki yazılım: açık-pencere kabul indeksinin authenticated snapshot/state ile
+kalıcılığı; güvenli kapasite/retention; bütün fiyat kullanan yollar; ayrı aday
+prover/settlement protokolü. Canlı feed erişimi ayrıca ertelenmiş açık kapıdır.
+Yeni aday witness reviewed v2 prover'a gönderilmez.
 
 11 Ekim 2026 güncellemesi: gateway/journal bağlantısı bu dalda eklendi
 (`crates/gateway/src/report_archive_binding.rs`, journal sürümü `DPRBJL6\0`,
 opt-in env `DARKPERP_CHAINLINK_ARCHIVE=candidate` + `DARKPERP_CHAINLINK_ARCHIVE_DIR`
 + `DARKPERP_CHAINLINK_POLICY_JSON`; kanıt `audits/2026-10-11-chainlink-archive-gateway-binding/`).
-v5 legacy journal ok/yaz davranışı korunur; aday modda bağlanamayan oracle op'lu
-pencere seal edilmez, recovery eksik/bozuk/uyumsuz kayıtta HOLD eder.
+Geçerli v5 legacy journal yazımı korunur; trailing plaintext artık reddedilir.
+Aday modda bağlanamayan oracle op'lu pencere seal edilmez; recovery eksik/bozuk/
+uyumsuz kayıtta HOLD eder. `admit_with` arşiv-kabul-indeks bağlantısını tek kilit
+kesitinde kurar; ilk seçilen ID sonradan eşdeğer fiyatlı kayıtla değiştirilemez.
+İndeks 4096 girdide sessiz eviction yerine reddeder; uzun süreli retention açık.
+Aday snapshot authenticated plaintext etiketi `DPCAS1\0\0` ile mod düşürmeyi
+engeller; kabul indeksini veya politikanın tamamını kendiliğinden geri kurmaz.
+Sıfır-oracle ve wind-down dahil aday normal gönderim/exact-resume eski v2 yolda
+HOLD olur. Native MockProverClient replay gerçek SP1 proof değildir.
 
 Birincil uygulama referansları:
 - https://doc.rust-lang.org/std/fs/fn.hard_link.html

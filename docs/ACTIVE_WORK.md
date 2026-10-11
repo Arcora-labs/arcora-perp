@@ -1,8 +1,10 @@
 # Arcora Perp: aktif iş ve kalan kabul kapıları
 
-Güncelleme: 10 Ekim 2026. **PRODUCTION RELEASE HOLD**.
+Güncelleme: 11 Ekim 2026. **PRODUCTION RELEASE HOLD**.
 Bu belge güncel çalışma sırasıdır; tarihsel `NEXT_STEPS.md` yerine kullanın.
-Son birleşen main: `e552bbab6868b070ff9c3b8f4ed3b9dec1230288`.
+Son doğrulanan main: `c34fb56b05db13ce09efc0104c2d44abba6d6895` (#43).
+Aktif PR #44; doğrulanmış kod `e283958109fc6b434b7049d523bbd3378e2e6c27`.
+Dokümantasyon head'i ve her sonraki head için CI ayrıca kontrol edilir.
 
 ## Birleşmiş ve korunan çalışmalar
 
@@ -106,11 +108,13 @@ reviewed v2 guest/ELF/vkey/public input ve prover yönlendirmesi DEĞİŞMEDİ):
   gateway imzalı transcript'i admission olarak uygulanır.
 - Window seal (`begin_journaled_window_settle`): gerçek Fill/AccrueFunding/
   Liquidate/Unbind op akışı (sıralı, tekrarlı kullanım dahil) arşiv kayıtlarına
-  **değer eşleşmesiyle** bağlanır; bağlanamayan pencere seal edilmez (fail-closed).
+  **ilk kabul edilmiş (market, transcript) kimliği → özgün ArchiveId** ile
+  bağlanır; bağlanamayan pencere seal edilmez (fail-closed).
 - Rollback journal yeni açık sürüm `DPRBJL6\0`: v5 journal + authenticated
   ArchiveEnvelope (policy binding + op başına archive ID). v5 ok/yaz davranışı
-  aynen korunur; aday-gerekli modda legacy journal reddedilir; legacy modda v6
-  journal reddedilir; saat modu `resume_exact` zarfı düşürmeden yazar.
+  geçerli eski payload'lar için korunur; trailing plaintext/sürüm karışıklığı
+  reddedilir. Aday-gerekli modda legacy journal, legacy modda v6 journal
+  reddedilir. `resume_exact` aday journal'ı ilk noktada reddeder; v2 yola yazmaz.
 - Boot recovery: açılan aday journal'ın her referanslı kaydı var olmalı,
   policy/market/op zamanıyla çözümlenmeli ve op transcript'iyle birebir
   eşleşmeli; eksik/bozuk/uyumsuz kayıt = sürümlü HOLD (dosya korunur, başlangıç reddedilir).
@@ -126,11 +130,28 @@ reviewed v2 guest/ELF/vkey/public input ve prover yönlendirmesi DEĞİŞMEDİ):
 - Aday mod journal yolu yapılandırılmamışsa (DARKPERP_STATE yok) reddeder;
   zehirlenmiş arşiv mutex'i settlement'ı HOLD eder, asla v5 downgrade yok.
 
-Sıradaki yazılım: canlı Data Streams entitlement sonrası uçtan uca aday döngü,
-v3 chainlink guest'in gerçek prover bağlantısı (şu an açıkça devre dışı;
-v3 witness v2 prover'a GÖNDERİLMEZ), admission dedup/scheduler. İstemci ve arşiv
-sonucu DON açısından doğrulanmamıştır. Ücretli erişim ve gerçek credential
-kullanımı ayrıca yetki ister.
+- `admit_with`, kapasite → arşiv kalıcılığı → gateway kabulü → ilk ID seçimini
+  aynı kilit kesitinde yapar; ret indekse girmez, alternatif kayıt seçilmiş ID'yi
+  değiştirmez. 4096 sınırında sessiz eviction yoktur; kapasite çözümü açık.
+- Aday snapshot authenticated plaintext etiketi `DPCAS1\0\0` içerir;
+  marker kaybı/ayar eksikliğinde legacy açılış reddedilir. Bu etiket açık
+  pencerenin admission indeksini/politikasını tam geri kurmuş sayılmaz.
+
+## Önce kapanacak GPU'suz yazılım paketleri
+
+| Sıra | İş | Kapanış ölçütü |
+|---|---|---|
+| A0 | #44 final evidence ve eski audit düzeltmesi | Exact kod SHA'sına bağlı doğrulanmış JSON, tutarlı kılavuz/backlog ve yeni yayın head'inde CI. Kanıt dosyaları bu dokümantasyon paketinde eklendi; yeni head kontrolü ayrı. |
+| A1 | Açık pencerenin özgün kabul ID'lerini kalıcılaştırma | Politika/state/checkpoint ve kabul indeksi aynı authenticated kesitte; restart sonrası aynı op sırası/özgün ID'lerle seal. Eksik/bozuk/alternatif rapor, yanlış politika, marker kaybı, yarım kabul ve yazım hatasında güvenli ret. |
+| A2 | İndeks kapasitesi ve retention | 4096'yı aşan uzun koşuda aktif açık pencere/journal/recovery referanslarını kaybetmeden güvenli serbest bırakma; disk/indeks doluluk duruşu ve restart tutarlılığı. |
+| A3 | Fiyat kullanan bütün gateway yolları | Fill/funding/liquidation/close/mark/matching ve withdrawal aday yaşam döngüsü; eksik/eski/yanlış raporda ret; yeni guest CPU/native karşılaştırması ayrı. |
+| A4 | Ayrı aday prover/settlement protokolü | Doğru witness/program/vkey/report/clock/uptime bağları; yanlış sürümde sıfır registration/prove/broadcast; yerel harness ardından gerçek proof/verifier kabulü. |
+
+Canlı feed keşfi/entitlement kullanıcı kararıyla ertelenmiştir; A1–A4 yazılım
+hazırlığını durdurmaz. Yeniden discovery/credential denemesi veya feed/eşik
+tahmini yapılmaz. DON doğrulaması, yeni proof ve canlı deployment kabulü olmadan
+aday gönderim engeli kaldırılmaz; v3 witness v2 prover'a GÖNDERİLMEZ.
+Ücretli erişim, gerçek credential/fon ve kamu zinciri işlemi ayrıca yetki ister.
 
 ## Açık işler ve kapanış ölçütleri
 
@@ -157,9 +178,20 @@ kamu zincirine işlem, state migration ve production rollout yapılmadı.
 Mock uptime/DON/SP1 testleri canlı doğrulama veya gerçek proof değildir.
 Ayrı aday guest, reviewed v2 ELF/vkey'nin yerine geçirilmez.
 
-## Son yayın durumu: aday gateway bağlantısı PR'ı açık
+## #44 kanıt yayını ve sonuçların doğru kapsamı
 
-11 Ekim 2026: #43 main'de (c34fb56). Bu dal (#43 sonrası main tabanlı) önceki
-yerel arşiv çalışmasını taşır ve üzerine opt-in candidate gateway intake/seal/
-journal/recovery bağını ekler; PR main'e açıktır, merge yapılmadı, PRODUCTION
-RELEASE HOLD sürüyor. Kanıt: `audits/2026-10-11-chainlink-archive-gateway-binding/`.
+11 Ekim 2026: #43 main'de (c34fb56). #44 kodu e283958 için gerçek yerel sonuç:
+528 gateway PASS/16 IGNORE (22 binding testi dahil), istemci debug/release ayrı
+ayrı 62 PASS/1 yardımcı IGNORE, 47 Python guard; 21 reviewed + 9 aday kaynak
+pini aynı. Son koşu 10 Ekim 22:35–22:36 UTC / 11 Ekim 01:35–01:36 Türkiye.
+
+`audits/2026-10-11-chainlink-archive-gateway-binding/final-verification.json`
+artık bu pakette izlenir. Özgün JSON hash'i 51586580224bb7c6c9358beb8471b618e9139db528a69266901b77a9dfd0caa0;
+18 kaynak ve 13 yerel log hash'i yeniden doğrulanmıştır. Bu yeni test koşusu
+değildir. README eski yanlış pin/host-only/snapshot testi/tarih/proof iddialarını
+düzeltir; özgün ara notlar `historical-notes.md` içinde tarihsel olarak korunur.
+
+Recheck kaydındaki e283958 CI 19/19 SUCCESS'tir. Dokümantasyonun yayınlandığı
+head ve merge durumu GitHub'dan ayrıca okunur; eski yeşil sonuç aktarılmaz.
+Native MockProverClient replay gerçek SP1 proof değildir. PRODUCTION RELEASE
+HOLD sürer. Birincil masaüstü checkout'un yerel değişiklikleri korunur.

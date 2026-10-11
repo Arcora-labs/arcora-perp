@@ -1,16 +1,21 @@
 # Chainlink Data Streams REST istemcisi: doğrulanmış host paketi
 
-Tarih: 10 Ekim 2026. **PRODUCTION RELEASE HOLD.**
-Bu bir canlı oracle geçişi değildir. Yeni paket gateway'e bağlı değildir ve
-üretim fiyat kaynağı değiştirilmemiştir.
+Güncelleme: 11 Ekim 2026. **PRODUCTION RELEASE HOLD.**
+#43 REST istemcisi main'dedir. #44, PreparedPair/ReportArchive ile opt-in aday
+gateway intake/seal/journal bağlantısını ekler; canlı oracle geçişi veya yeni
+prover/settlement kabulü değildir. Legacy varsayılan davranış korunur.
+Güncel exact-code kanıtı: [son doğrulama](audits/2026-10-11-chainlink-archive-gateway-binding/README.md).
 
 ## Uygulanan kod
 
-`crates/chainlink-streams-client` ayrı, host-only Rust paketidir. Mevcut root ve
-iki guest manifest/lock/pin dosyası değiştirilmez. HTTP, kimlik bilgileri veya
+`crates/chainlink-streams-client` ayrı, host-only Rust paketidir. Reviewed root
+Cargo.toml ve iki guest manifest/lock/pin girdisi korunur. Gateway host facade
+manifestleri özgün kaynakları derler; root lock'a host paketleri eklenmiştir,
+244 registry kimliği değişmemiştir. `chainlink-oracle` aday guest'te de vardır.
+HTTP, kimlik bilgileri veya
 HMAC işlemleri guest içine taşınmaz. Resmi REST API'nin yalnız
 `/api/v1/reports/latest?feedID=...` yolu uygulanır; WebSocket, history/bulk/page
-istemcisi ve rapor arşivi bu pakette yoktur.
+istemcisi yoktur. PreparedPair/ReportArchive #44 ile eklenmiştir.
 
 Çağıran uygulama `Credentials::new(Network, username, secret)` ile kimliği açıkça
 sağlar. Ortam değişkeni, credential dosyası veya varsayılan demo anahtarı aranmaz.
@@ -50,9 +55,11 @@ HTTP/HMAC başarısı, JSON decode veya nonzero signature alanları gerçek DON
 imzası değildir. Aynı original fullReport daha sonra gerçek Chainlink verifier'a
 verilmelidir. İstemci oracle fiyatını yeniden imzalamaz veya settlement'e göndermez.
 Kuyruk gecikmesinde `check_freshness` çağrısı gerekir; receipt zamanı kaynak zamanının
-yerine geçmez. Replay/dedup, gateway admission ve kalıcı rapor eşlemesi sonraki iştir.
+yerine geçmez. #44 mühürlenmiş pencereyi ilk kabul edilen özgün rapor ID'lerine
+bağlar. Açık pencerenin kabul indeksinin kalıcı kurtarması ve tam retention
+politikası sonraki iştir; canlı DON doğrulaması hâlâ ayrıdır.
 
-## Güncel çalışma zamanı doğrulaması
+## #43 tarihsel REST çalışma zamanı doğrulaması (10 Ekim)
 
 10 Ekim 2026 devamında dört ret regresyonu düzeltildi. Önceki 34 test
 aynen korundu; altı deterministik saat testi eklendi. Debug ve release koşularının her birinde
@@ -92,10 +99,15 @@ korundu. Güncel dört düzeltme ve test kayıtları:
 
 ## Kalan kabul ölçütleri
 
-İstemci yerel runtime testi alt işi tamamlandı. Gerçek account/feed erişimi,
-feed/scale/quote kimliklerinin bağımsız doğrulanması, gateway scheduler/admission,
-DON doğrulaması, rapor kalıcılığı/kurtarma ve uçtan uca yaşam döngüsü açık kalır.
-Mevcut gateway'in fiyat kaynağı değiştirilmedi. Gerçek credential, ücretli erişim,
+#43 istemci runtime alt işi tamamlandı; #44 ile standalone istemci/arşiv toplamı
+debug ve release profillerinin her birinde 62 PASS, 0 FAIL, 1 yardımcı ignored
+sürücüdür. Bunlar aynı 62 testtir. #44 aday scheduler/admission, özgün rapor
+kalıcılığı ve mühürlü journal kurtarma doğrulamasını bağlar. Henüz açık olanlar:
+açık pencerenin kabul indeksi/state kurtarması, kapasite/retention, bütün fiyat
+yolları, ayrı aday prover/settlement ve tam yaşam döngüsü. Gerçek account/feed,
+feed/scale/quote ve DON kabulü ayrıca açıktır. Aday sıfır-oracle pencereler dahil
+eski v2 gönderim/exact-resume engeli korunur; varsayılan legacy yol değişmez.
+Gerçek credential, ücretli erişim,
 kamu zincirine işlem, state migration veya production rollout yapılmadı.
 Önceki kimliksiz discovery HTTP403 gözlemleri tarihsel olup sebebi belirlenmemiştir.
 Bu paketin testleri canlı erişimi veya TLS endpoint kimliğini doğrulamaz.
