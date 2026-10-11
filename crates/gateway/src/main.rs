@@ -58,6 +58,14 @@ mod candidate_broadcast_tests;
 #[cfg(test)]
 mod candidate_intent;
 #[cfg(test)]
+mod candidate_preparation;
+#[cfg(test)]
+mod candidate_preparation_lock_tests;
+#[cfg(test)]
+mod candidate_preparation_store;
+#[cfg(test)]
+mod candidate_preparation_tests;
+#[cfg(test)]
 mod candidate_protocol;
 #[cfg(test)]
 mod candidate_protocol_tests;
