@@ -1,0 +1,150 @@
+{
+  "all3_completed_success": true,
+  "base_main": "60eceef733613fe6d491548d35eb4fdb7c0809bd",
+  "new_pr57_tests_executed": false,
+  "observed_utc": "2026-10-12T13:28:24.099331+00:00",
+  "prior_pr": 56,
+  "production_release": "HOLD",
+  "runs": [
+    {
+      "actual_name": "ci",
+      "capture_started_utc": "2026-10-12T13:28:20.319861+00:00",
+      "commands": [
+        {
+          "argv": [
+            "gh",
+            "api",
+            "repos/Arcora-labs/arcora-perp/actions/runs/38250877399"
+          ],
+          "exit_code": 0
+        },
+        {
+          "argv": [
+            "gh",
+            "api",
+            "repos/Arcora-labs/arcora-perp/actions/runs/38250877399/logs"
+          ],
+          "exit_code": 0
+        }
+      ],
+      "conclusion": "success",
+      "created_at": "2026-10-12T12:44:02Z",
+      "event": "push",
+      "expected_label": "ci",
+      "head_branch": "main",
+      "head_sha": "60eceef733613fe6d491548d35eb4fdb7c0809bd",
+      "html_url": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38250877399",
+      "id": 38250877399,
+      "logs_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "metadata": {
+        "bytes": 12555,
+        "path": "target/candidate-seal-validation-20261012/pr56-main-refresh/38250877399.metadata.json",
+        "sha256": "6bccc39b601a7a223d34fef90f02d9b5a04b45a0da11edb0bf44ee9540d34d49"
+      },
+      "metadata_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "raw_logs_zip": {
+        "bytes": 236490,
+        "path": "target/candidate-seal-validation-20261012/pr56-main-refresh/38250877399.logs.zip",
+        "sha256": "d5683121c42bb49325fe51a068f1022fb978502fc315add8921bb26f551b485b",
+        "zip_entries": 73,
+        "zip_integrity_checked": true
+      },
+      "status": "completed",
+      "updated_at": "2026-10-12T13:09:13Z"
+    },
+    {
+      "actual_name": "A11 release evidence",
+      "capture_started_utc": "2026-10-12T13:28:20.320433+00:00",
+      "commands": [
+        {
+          "argv": [
+            "gh",
+            "api",
+            "repos/Arcora-labs/arcora-perp/actions/runs/38250877329"
+          ],
+          "exit_code": 0
+        },
+        {
+          "argv": [
+            "gh",
+            "api",
+            "repos/Arcora-labs/arcora-perp/actions/runs/38250877329/logs"
+          ],
+          "exit_code": 0
+        }
+      ],
+      "conclusion": "success",
+      "created_at": "2026-10-12T12:44:02Z",
+      "event": "push",
+      "expected_label": "A11 release evidence",
+      "head_branch": "main",
+      "head_sha": "60eceef733613fe6d491548d35eb4fdb7c0809bd",
+      "html_url": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38250877329",
+      "id": 38250877329,
+      "logs_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "metadata": {
+        "bytes": 12591,
+        "path": "target/candidate-seal-validation-20261012/pr56-main-refresh/38250877329.metadata.json",
+        "sha256": "767a61bfee61d188a9d032a8ae98f71b3ff118c74e4a8841671fe7f537ebdf4d"
+      },
+      "metadata_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "raw_logs_zip": {
+        "bytes": 322115,
+        "path": "target/candidate-seal-validation-20261012/pr56-main-refresh/38250877329.logs.zip",
+        "sha256": "4dc41dc7524f7891b05c41623b0e345de2120c76fa48ed9cbbe95d7b9fd7251c",
+        "zip_entries": 114,
+        "zip_integrity_checked": true
+      },
+      "status": "completed",
+      "updated_at": "2026-10-12T12:50:01Z"
+    },
+    {
+      "actual_name": "Chainlink candidate",
+      "capture_started_utc": "2026-10-12T13:28:20.322454+00:00",
+      "commands": [
+        {
+          "argv": [
+            "gh",
+            "api",
+            "repos/Arcora-labs/arcora-perp/actions/runs/38250877335"
+          ],
+          "exit_code": 0
+        },
+        {
+          "argv": [
+            "gh",
+            "api",
+            "repos/Arcora-labs/arcora-perp/actions/runs/38250877335/logs"
+          ],
+          "exit_code": 0
+        }
+      ],
+      "conclusion": "success",
+      "created_at": "2026-10-12T12:44:02Z",
+      "event": "push",
+      "expected_label": "Chainlink candidate runtime",
+      "head_branch": "main",
+      "head_sha": "60eceef733613fe6d491548d35eb4fdb7c0809bd",
+      "html_url": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38250877335",
+      "id": 38250877335,
+      "logs_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "metadata": {
+        "bytes": 12588,
+        "path": "target/candidate-seal-validation-20261012/pr56-main-refresh/38250877335.metadata.json",
+        "sha256": "f6dd7cd82e4121881662424d6fa92d10f746c394c90c9820e254d160e32ba5c0"
+      },
+      "metadata_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "raw_logs_zip": {
+        "bytes": 54826,
+        "path": "target/candidate-seal-validation-20261012/pr56-main-refresh/38250877335.logs.zip",
+        "sha256": "882a86de47198062e4b8dc830ef8663b5a0799b895f3d76fd246428640e1c982",
+        "zip_entries": 20,
+        "zip_integrity_checked": true
+      },
+      "status": "completed",
+      "updated_at": "2026-10-12T12:44:44Z"
+    }
+  ],
+  "schema": "arcora-pr56-main-refresh-before-candidate-seal/v1",
+  "scope": "Prior PR56 main push metadata and immutable raw logZIP capture only. These results are not PR57 validation, proof generation, service attestation or production acceptance. No raw log extraction or publication of credential values."
+}
