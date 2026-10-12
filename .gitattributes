@@ -24,3 +24,6 @@ docs/audits/2026-10-12-public-service-identity/logs/*.log binary
 
 # Preserve exact raw candidate fixture HTTP and recovery verification output.
 docs/audits/2026-10-12-candidate-fixture-http/logs/*.log binary
+
+# Preserve initial CI failure and compiler compatibility output.
+docs/audits/2026-10-12-candidate-fixture-http-compatibility/logs/*.log binary

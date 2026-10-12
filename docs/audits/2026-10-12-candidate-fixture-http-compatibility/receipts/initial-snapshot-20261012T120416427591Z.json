@@ -1,0 +1,3429 @@
+{
+  "captured_at": "2026-10-12T12:04:16.427015+00:00",
+  "head": "8181880a41dcd1bf1f1117270c0d0067e4c7b15f",
+  "pr": {
+    "baseRefOid": "29be35c7a66c20563fb83812039eaaf1aa05d80a",
+    "headRefOid": "8181880a41dcd1bf1f1117270c0d0067e4c7b15f",
+    "isDraft": false,
+    "mergeStateStatus": "BLOCKED",
+    "number": 56,
+    "state": "OPEN",
+    "statusCheckRollup": [
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-10-12T12:04:00Z",
+        "conclusion": "FAILURE",
+        "detailsUrl": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38246622428/job/114801983021",
+        "name": "rust (lint, 1.99)",
+        "startedAt": "2026-10-12T12:03:28Z",
+        "status": "COMPLETED",
+        "workflowName": "ci"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "0001-01-01T00:00:00Z",
+        "conclusion": "",
+        "detailsUrl": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38246622496/job/114801983301",
+        "name": "rust",
+        "startedAt": "2026-10-12T12:03:28Z",
+        "status": "IN_PROGRESS",
+        "workflowName": "A07 integration hotfix"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "0001-01-01T00:00:00Z",
+        "conclusion": "",
+        "detailsUrl": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38246622363/job/114801982805",
+        "name": "offline-ingestion",
+        "startedAt": "2026-10-12T12:03:28Z",
+        "status": "IN_PROGRESS",
+        "workflowName": "a01-ingestion"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-10-12T12:04:04Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38246622674/job/114801984170",
+        "name": "dependency advisories",
+        "startedAt": "2026-10-12T12:03:28Z",
+        "status": "COMPLETED",
+        "workflowName": "A11 release evidence"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-10-12T12:03:55Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38246622480/job/114801982595",
+        "name": "Chainlink candidate core (not live verification)",
+        "startedAt": "2026-10-12T12:03:28Z",
+        "status": "COMPLETED",
+        "workflowName": "Chainlink candidate"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "0001-01-01T00:00:00Z",
+        "conclusion": "",
+        "detailsUrl": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38246622428/job/114801983050",
+        "name": "rust (workspace)",
+        "startedAt": "2026-10-12T12:03:28Z",
+        "status": "IN_PROGRESS",
+        "workflowName": "ci"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-10-12T12:03:57Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38246622496/job/114801982810",
+        "name": "frontend",
+        "startedAt": "2026-10-12T12:03:28Z",
+        "status": "COMPLETED",
+        "workflowName": "A07 integration hotfix"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-10-12T12:04:05Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38246622674/job/114801983765",
+        "name": "public service identity (no proving)",
+        "startedAt": "2026-10-12T12:03:29Z",
+        "status": "COMPLETED",
+        "workflowName": "A11 release evidence"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-10-12T12:04:05Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38246622480/job/114801982943",
+        "name": "Chainlink REST client (runtime regressions)",
+        "startedAt": "2026-10-12T12:03:28Z",
+        "status": "COMPLETED",
+        "workflowName": "Chainlink candidate"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-10-12T12:04:12Z",
+        "conclusion": "FAILURE",
+        "detailsUrl": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38246622674/job/114801984146",
+        "name": "release regression",
+        "startedAt": "2026-10-12T12:03:29Z",
+        "status": "COMPLETED",
+        "workflowName": "A11 release evidence"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "0001-01-01T00:00:00Z",
+        "conclusion": "",
+        "detailsUrl": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38246622428/job/114801983022",
+        "name": "prover crates (excluded, typecheck)",
+        "startedAt": "2026-10-12T12:03:28Z",
+        "status": "IN_PROGRESS",
+        "workflowName": "ci"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-10-12T12:04:04Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38246622674/job/114801984190",
+        "name": "foundry release gate",
+        "startedAt": "2026-10-12T12:03:29Z",
+        "status": "COMPLETED",
+        "workflowName": "A11 release evidence"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-10-12T12:03:58Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38246622428/job/114801983067",
+        "name": "contracts (foundry)",
+        "startedAt": "2026-10-12T12:03:28Z",
+        "status": "COMPLETED",
+        "workflowName": "ci"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "0001-01-01T00:00:00Z",
+        "conclusion": "",
+        "detailsUrl": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38246622674/job/114801984189",
+        "name": "gateway RPC, crash and alert drills",
+        "startedAt": "2026-10-12T12:03:29Z",
+        "status": "IN_PROGRESS",
+        "workflowName": "A11 release evidence"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-10-12T12:04:01Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38246622428/job/114801982863",
+        "name": "frontend (vite)",
+        "startedAt": "2026-10-12T12:03:29Z",
+        "status": "COMPLETED",
+        "workflowName": "ci"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-10-12T12:04:01Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38246622674/job/114801984129",
+        "name": "frontend release gate",
+        "startedAt": "2026-10-12T12:03:29Z",
+        "status": "COMPLETED",
+        "workflowName": "A11 release evidence"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-10-12T12:03:35Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38246622674/job/114801984118",
+        "name": "prover source / deployment binding",
+        "startedAt": "2026-10-12T12:03:28Z",
+        "status": "COMPLETED",
+        "workflowName": "A11 release evidence"
+      },
+      {
+        "__typename": "StatusContext",
+        "context": "Vercel \u2013 arcora-labs",
+        "startedAt": "2026-10-12T12:03:51Z",
+        "state": "FAILURE",
+        "targetUrl": "https://vercel.com/kubudak90s-projects/arcora-labs/Hq4RHF647v2DfeJ8Pq2PYAQzTNez"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-10-12T12:03:52Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://vercel.com/github",
+        "name": "Vercel Preview Comments",
+        "startedAt": "2026-10-12T12:03:52Z",
+        "status": "COMPLETED",
+        "workflowName": ""
+      },
+      {
+        "__typename": "StatusContext",
+        "context": "Vercel \u2013 arcora-perp",
+        "startedAt": "2026-10-12T12:03:48Z",
+        "state": "SUCCESS",
+        "targetUrl": "https://vercel.com/kubudak90s-projects/arcora-perp/PGR8ucHvdL1Q3h3Sw64VTRj18zVt"
+      }
+    ],
+    "url": "https://github.com/Arcora-labs/arcora-perp/pull/56"
+  },
+  "run_inventory": {
+    "total_count": 5,
+    "workflow_runs": [
+      {
+        "id": 38246622428,
+        "name": "ci",
+        "node_id": "WFR_kwLOTE9S5M8AAAAI560k3A",
+        "head_branch": "feat/candidate-fixture-http-20261012",
+        "head_sha": "8181880a41dcd1bf1f1117270c0d0067e4c7b15f",
+        "path": ".github/workflows/ci.yml",
+        "display_title": "Verify candidate fixture HTTP transport and durable lost-ack recovery",
+        "run_number": 259,
+        "event": "pull_request",
+        "status": "in_progress",
+        "conclusion": null,
+        "workflow_id": 302603827,
+        "check_suite_id": 103622454607,
+        "check_suite_node_id": "CS_kwDOTE9S5M8AAAAYIGEtTw",
+        "url": "https://api.github.com/repos/Arcora-labs/arcora-perp/actions/runs/38246622428",
+        "html_url": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38246622428",
+        "pull_requests": [
+          {
+            "url": "https://api.github.com/repos/Arcora-labs/arcora-perp/pulls/56",
+            "id": 4829114597,
+            "number": 56,
+            "head": {
+              "ref": "feat/candidate-fixture-http-20261012",
+              "sha": "8181880a41dcd1bf1f1117270c0d0067e4c7b15f",
+              "repo": {
+                "id": 1280266980,
+                "url": "https://api.github.com/repos/Arcora-labs/arcora-perp",
+                "name": "arcora-perp"
+              }
+            },
+            "base": {
+              "ref": "main",
+              "sha": "29be35c7a66c20563fb83812039eaaf1aa05d80a",
+              "repo": {
+                "id": 1280266980,
+                "url": "https://api.github.com/repos/Arcora-labs/arcora-perp",
+                "name": "arcora-perp"
+              }
+            }
+          }
+        ],
+        "created_at": "2026-10-12T12:03:26Z",
+        "updated_at": "2026-10-12T12:03:38Z",
+        "actor": {
+          "login": "Kubudak90",
+          "id": 95706654,
+          "node_id": "U_kgDOBbReHg",
+          "avatar_url": "https://avatars.githubusercontent.com/u/95706654?v=4",
+          "gravatar_id": "",
+          "url": "https://api.github.com/users/Kubudak90",
+          "html_url": "https://github.com/Kubudak90",
+          "followers_url": "https://api.github.com/users/Kubudak90/followers",
+          "following_url": "https://api.github.com/users/Kubudak90/following{/other_user}",
+          "gists_url": "https://api.github.com/users/Kubudak90/gists{/gist_id}",
+          "starred_url": "https://api.github.com/users/Kubudak90/starred{/owner}{/repo}",
+          "subscriptions_url": "https://api.github.com/users/Kubudak90/subscriptions",
+          "organizations_url": "https://api.github.com/users/Kubudak90/orgs",
+          "repos_url": "https://api.github.com/users/Kubudak90/repos",
+          "events_url": "https://api.github.com/users/Kubudak90/events{/privacy}",
+          "received_events_url": "https://api.github.com/users/Kubudak90/received_events",
+          "type": "User",
+          "user_view_type": "public",
+          "site_admin": false
+        },
+        "run_attempt": 1,
+        "referenced_workflows": [],
+        "run_started_at": "2026-10-12T12:03:26Z",
+        "triggering_actor": {
+          "login": "Kubudak90",
+          "id": 95706654,
+          "node_id": "U_kgDOBbReHg",
+          "avatar_url": "https://avatars.githubusercontent.com/u/95706654?v=4",
+          "gravatar_id": "",
+          "url": "https://api.github.com/users/Kubudak90",
+          "html_url": "https://github.com/Kubudak90",
+          "followers_url": "https://api.github.com/users/Kubudak90/followers",
+          "following_url": "https://api.github.com/users/Kubudak90/following{/other_user}",
+          "gists_url": "https://api.github.com/users/Kubudak90/gists{/gist_id}",
+          "starred_url": "https://api.github.com/users/Kubudak90/starred{/owner}{/repo}",
+          "subscriptions_url": "https://api.github.com/users/Kubudak90/subscriptions",
+          "organizations_url": "https://api.github.com/users/Kubudak90/orgs",
+          "repos_url": "https://api.github.com/users/Kubudak90/repos",
+          "events_url": "https://api.github.com/users/Kubudak90/events{/privacy}",
+          "received_events_url": "https://api.github.com/users/Kubudak90/received_events",
+          "type": "User",
+          "user_view_type": "public",
+          "site_admin": false
+        },
+        "jobs_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/actions/runs/38246622428/jobs",
+        "logs_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/actions/runs/38246622428/logs",
+        "check_suite_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/check-suites/103622454607",
+        "artifacts_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/actions/runs/38246622428/artifacts",
+        "cancel_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/actions/runs/38246622428/cancel",
+        "rerun_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/actions/runs/38246622428/rerun",
+        "previous_attempt_url": null,
+        "workflow_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/actions/workflows/302603827",
+        "head_commit": {
+          "id": "8181880a41dcd1bf1f1117270c0d0067e4c7b15f",
+          "tree_id": "ffe8440445133e689002119918833c81bf30ac6d",
+          "message": "Record candidate fixture HTTP validation and active release boundaries",
+          "timestamp": "2026-10-12T12:03:07Z",
+          "author": {
+            "name": "Kubudak90",
+            "email": "kubudak@outlook.com"
+          },
+          "committer": {
+            "name": "Kubudak90",
+            "email": "kubudak@outlook.com"
+          }
+        },
+        "repository": {
+          "id": 1280266980,
+          "node_id": "R_kgDOTE9S5A",
+          "name": "arcora-perp",
+          "full_name": "Arcora-labs/arcora-perp",
+          "private": false,
+          "owner": {
+            "login": "Arcora-labs",
+            "id": 339084034,
+            "node_id": "O_kgDOFDYDAg",
+            "avatar_url": "https://avatars.githubusercontent.com/u/339084034?v=4",
+            "gravatar_id": "",
+            "url": "https://api.github.com/users/Arcora-labs",
+            "html_url": "https://github.com/Arcora-labs",
+            "followers_url": "https://api.github.com/users/Arcora-labs/followers",
+            "following_url": "https://api.github.com/users/Arcora-labs/following{/other_user}",
+            "gists_url": "https://api.github.com/users/Arcora-labs/gists{/gist_id}",
+            "starred_url": "https://api.github.com/users/Arcora-labs/starred{/owner}{/repo}",
+            "subscriptions_url": "https://api.github.com/users/Arcora-labs/subscriptions",
+            "organizations_url": "https://api.github.com/users/Arcora-labs/orgs",
+            "repos_url": "https://api.github.com/users/Arcora-labs/repos",
+            "events_url": "https://api.github.com/users/Arcora-labs/events{/privacy}",
+            "received_events_url": "https://api.github.com/users/Arcora-labs/received_events",
+            "type": "Organization",
+            "user_view_type": "public",
+            "site_admin": false
+          },
+          "html_url": "https://github.com/Arcora-labs/arcora-perp",
+          "description": null,
+          "fork": false,
+          "url": "https://api.github.com/repos/Arcora-labs/arcora-perp",
+          "forks_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/forks",
+          "keys_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/keys{/key_id}",
+          "collaborators_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/collaborators{/collaborator}",
+          "teams_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/teams",
+          "hooks_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/hooks",
+          "issue_events_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/issues/events{/number}",
+          "events_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/events",
+          "assignees_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/assignees{/user}",
+          "branches_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/branches{/branch}",
+          "tags_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/tags",
+          "blobs_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/git/blobs{/sha}",
+          "git_tags_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/git/tags{/sha}",
+          "git_refs_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/git/refs{/sha}",
+          "trees_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/git/trees{/sha}",
+          "statuses_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/statuses/{sha}",
+          "languages_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/languages",
+          "stargazers_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/stargazers",
+          "contributors_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/contributors",
+          "subscribers_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/subscribers",
+          "subscription_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/subscription",
+          "commits_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/commits{/sha}",
+          "git_commits_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/git/commits{/sha}",
+          "comments_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/comments{/number}",
+          "issue_comment_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/issues/comments{/number}",
+          "contents_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/contents/{+path}",
+          "compare_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/compare/{base}...{head}",
+          "merges_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/merges",
+          "archive_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/{archive_format}{/ref}",
+          "downloads_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/downloads",
+          "issues_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/issues{/number}",
+          "pulls_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/pulls{/number}",
+          "milestones_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/milestones{/number}",
+          "notifications_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/notifications{?since,all,participating}",
+          "labels_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/labels{/name}",
+          "releases_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/releases{/id}",
+          "deployments_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/deployments"
+        },
+        "head_repository": {
+          "id": 1280266980,
+          "node_id": "R_kgDOTE9S5A",
+          "name": "arcora-perp",
+          "full_name": "Arcora-labs/arcora-perp",
+          "private": false,
+          "owner": {
+            "login": "Arcora-labs",
+            "id": 339084034,
+            "node_id": "O_kgDOFDYDAg",
+            "avatar_url": "https://avatars.githubusercontent.com/u/339084034?v=4",
+            "gravatar_id": "",
+            "url": "https://api.github.com/users/Arcora-labs",
+            "html_url": "https://github.com/Arcora-labs",
+            "followers_url": "https://api.github.com/users/Arcora-labs/followers",
+            "following_url": "https://api.github.com/users/Arcora-labs/following{/other_user}",
+            "gists_url": "https://api.github.com/users/Arcora-labs/gists{/gist_id}",
+            "starred_url": "https://api.github.com/users/Arcora-labs/starred{/owner}{/repo}",
+            "subscriptions_url": "https://api.github.com/users/Arcora-labs/subscriptions",
+            "organizations_url": "https://api.github.com/users/Arcora-labs/orgs",
+            "repos_url": "https://api.github.com/users/Arcora-labs/repos",
+            "events_url": "https://api.github.com/users/Arcora-labs/events{/privacy}",
+            "received_events_url": "https://api.github.com/users/Arcora-labs/received_events",
+            "type": "Organization",
+            "user_view_type": "public",
+            "site_admin": false
+          },
+          "html_url": "https://github.com/Arcora-labs/arcora-perp",
+          "description": null,
+          "fork": false,
+          "url": "https://api.github.com/repos/Arcora-labs/arcora-perp",
+          "forks_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/forks",
+          "keys_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/keys{/key_id}",
+          "collaborators_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/collaborators{/collaborator}",
+          "teams_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/teams",
+          "hooks_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/hooks",
+          "issue_events_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/issues/events{/number}",
+          "events_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/events",
+          "assignees_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/assignees{/user}",
+          "branches_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/branches{/branch}",
+          "tags_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/tags",
+          "blobs_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/git/blobs{/sha}",
+          "git_tags_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/git/tags{/sha}",
+          "git_refs_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/git/refs{/sha}",
+          "trees_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/git/trees{/sha}",
+          "statuses_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/statuses/{sha}",
+          "languages_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/languages",
+          "stargazers_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/stargazers",
+          "contributors_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/contributors",
+          "subscribers_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/subscribers",
+          "subscription_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/subscription",
+          "commits_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/commits{/sha}",
+          "git_commits_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/git/commits{/sha}",
+          "comments_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/comments{/number}",
+          "issue_comment_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/issues/comments{/number}",
+          "contents_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/contents/{+path}",
+          "compare_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/compare/{base}...{head}",
+          "merges_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/merges",
+          "archive_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/{archive_format}{/ref}",
+          "downloads_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/downloads",
+          "issues_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/issues{/number}",
+          "pulls_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/pulls{/number}",
+          "milestones_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/milestones{/number}",
+          "notifications_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/notifications{?since,all,participating}",
+          "labels_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/labels{/name}",
+          "releases_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/releases{/id}",
+          "deployments_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/deployments"
+        }
+      },
+      {
+        "id": 38246622363,
+        "name": "a01-ingestion",
+        "node_id": "WFR_kwLOTE9S5M8AAAAI560kmw",
+        "head_branch": "feat/candidate-fixture-http-20261012",
+        "head_sha": "8181880a41dcd1bf1f1117270c0d0067e4c7b15f",
+        "path": ".github/workflows/a01-ingestion.yml",
+        "display_title": "Verify candidate fixture HTTP transport and durable lost-ack recovery",
+        "run_number": 94,
+        "event": "pull_request",
+        "status": "in_progress",
+        "conclusion": null,
+        "workflow_id": 361245327,
+        "check_suite_id": 103622454424,
+        "check_suite_node_id": "CS_kwDOTE9S5M8AAAAYIGEsmA",
+        "url": "https://api.github.com/repos/Arcora-labs/arcora-perp/actions/runs/38246622363",
+        "html_url": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38246622363",
+        "pull_requests": [
+          {
+            "url": "https://api.github.com/repos/Arcora-labs/arcora-perp/pulls/56",
+            "id": 4829114597,
+            "number": 56,
+            "head": {
+              "ref": "feat/candidate-fixture-http-20261012",
+              "sha": "8181880a41dcd1bf1f1117270c0d0067e4c7b15f",
+              "repo": {
+                "id": 1280266980,
+                "url": "https://api.github.com/repos/Arcora-labs/arcora-perp",
+                "name": "arcora-perp"
+              }
+            },
+            "base": {
+              "ref": "main",
+              "sha": "29be35c7a66c20563fb83812039eaaf1aa05d80a",
+              "repo": {
+                "id": 1280266980,
+                "url": "https://api.github.com/repos/Arcora-labs/arcora-perp",
+                "name": "arcora-perp"
+              }
+            }
+          }
+        ],
+        "created_at": "2026-10-12T12:03:26Z",
+        "updated_at": "2026-10-12T12:03:29Z",
+        "actor": {
+          "login": "Kubudak90",
+          "id": 95706654,
+          "node_id": "U_kgDOBbReHg",
+          "avatar_url": "https://avatars.githubusercontent.com/u/95706654?v=4",
+          "gravatar_id": "",
+          "url": "https://api.github.com/users/Kubudak90",
+          "html_url": "https://github.com/Kubudak90",
+          "followers_url": "https://api.github.com/users/Kubudak90/followers",
+          "following_url": "https://api.github.com/users/Kubudak90/following{/other_user}",
+          "gists_url": "https://api.github.com/users/Kubudak90/gists{/gist_id}",
+          "starred_url": "https://api.github.com/users/Kubudak90/starred{/owner}{/repo}",
+          "subscriptions_url": "https://api.github.com/users/Kubudak90/subscriptions",
+          "organizations_url": "https://api.github.com/users/Kubudak90/orgs",
+          "repos_url": "https://api.github.com/users/Kubudak90/repos",
+          "events_url": "https://api.github.com/users/Kubudak90/events{/privacy}",
+          "received_events_url": "https://api.github.com/users/Kubudak90/received_events",
+          "type": "User",
+          "user_view_type": "public",
+          "site_admin": false
+        },
+        "run_attempt": 1,
+        "referenced_workflows": [],
+        "run_started_at": "2026-10-12T12:03:26Z",
+        "triggering_actor": {
+          "login": "Kubudak90",
+          "id": 95706654,
+          "node_id": "U_kgDOBbReHg",
+          "avatar_url": "https://avatars.githubusercontent.com/u/95706654?v=4",
+          "gravatar_id": "",
+          "url": "https://api.github.com/users/Kubudak90",
+          "html_url": "https://github.com/Kubudak90",
+          "followers_url": "https://api.github.com/users/Kubudak90/followers",
+          "following_url": "https://api.github.com/users/Kubudak90/following{/other_user}",
+          "gists_url": "https://api.github.com/users/Kubudak90/gists{/gist_id}",
+          "starred_url": "https://api.github.com/users/Kubudak90/starred{/owner}{/repo}",
+          "subscriptions_url": "https://api.github.com/users/Kubudak90/subscriptions",
+          "organizations_url": "https://api.github.com/users/Kubudak90/orgs",
+          "repos_url": "https://api.github.com/users/Kubudak90/repos",
+          "events_url": "https://api.github.com/users/Kubudak90/events{/privacy}",
+          "received_events_url": "https://api.github.com/users/Kubudak90/received_events",
+          "type": "User",
+          "user_view_type": "public",
+          "site_admin": false
+        },
+        "jobs_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/actions/runs/38246622363/jobs",
+        "logs_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/actions/runs/38246622363/logs",
+        "check_suite_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/check-suites/103622454424",
+        "artifacts_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/actions/runs/38246622363/artifacts",
+        "cancel_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/actions/runs/38246622363/cancel",
+        "rerun_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/actions/runs/38246622363/rerun",
+        "previous_attempt_url": null,
+        "workflow_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/actions/workflows/361245327",
+        "head_commit": {
+          "id": "8181880a41dcd1bf1f1117270c0d0067e4c7b15f",
+          "tree_id": "ffe8440445133e689002119918833c81bf30ac6d",
+          "message": "Record candidate fixture HTTP validation and active release boundaries",
+          "timestamp": "2026-10-12T12:03:07Z",
+          "author": {
+            "name": "Kubudak90",
+            "email": "kubudak@outlook.com"
+          },
+          "committer": {
+            "name": "Kubudak90",
+            "email": "kubudak@outlook.com"
+          }
+        },
+        "repository": {
+          "id": 1280266980,
+          "node_id": "R_kgDOTE9S5A",
+          "name": "arcora-perp",
+          "full_name": "Arcora-labs/arcora-perp",
+          "private": false,
+          "owner": {
+            "login": "Arcora-labs",
+            "id": 339084034,
+            "node_id": "O_kgDOFDYDAg",
+            "avatar_url": "https://avatars.githubusercontent.com/u/339084034?v=4",
+            "gravatar_id": "",
+            "url": "https://api.github.com/users/Arcora-labs",
+            "html_url": "https://github.com/Arcora-labs",
+            "followers_url": "https://api.github.com/users/Arcora-labs/followers",
+            "following_url": "https://api.github.com/users/Arcora-labs/following{/other_user}",
+            "gists_url": "https://api.github.com/users/Arcora-labs/gists{/gist_id}",
+            "starred_url": "https://api.github.com/users/Arcora-labs/starred{/owner}{/repo}",
+            "subscriptions_url": "https://api.github.com/users/Arcora-labs/subscriptions",
+            "organizations_url": "https://api.github.com/users/Arcora-labs/orgs",
+            "repos_url": "https://api.github.com/users/Arcora-labs/repos",
+            "events_url": "https://api.github.com/users/Arcora-labs/events{/privacy}",
+            "received_events_url": "https://api.github.com/users/Arcora-labs/received_events",
+            "type": "Organization",
+            "user_view_type": "public",
+            "site_admin": false
+          },
+          "html_url": "https://github.com/Arcora-labs/arcora-perp",
+          "description": null,
+          "fork": false,
+          "url": "https://api.github.com/repos/Arcora-labs/arcora-perp",
+          "forks_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/forks",
+          "keys_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/keys{/key_id}",
+          "collaborators_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/collaborators{/collaborator}",
+          "teams_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/teams",
+          "hooks_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/hooks",
+          "issue_events_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/issues/events{/number}",
+          "events_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/events",
+          "assignees_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/assignees{/user}",
+          "branches_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/branches{/branch}",
+          "tags_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/tags",
+          "blobs_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/git/blobs{/sha}",
+          "git_tags_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/git/tags{/sha}",
+          "git_refs_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/git/refs{/sha}",
+          "trees_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/git/trees{/sha}",
+          "statuses_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/statuses/{sha}",
+          "languages_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/languages",
+          "stargazers_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/stargazers",
+          "contributors_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/contributors",
+          "subscribers_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/subscribers",
+          "subscription_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/subscription",
+          "commits_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/commits{/sha}",
+          "git_commits_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/git/commits{/sha}",
+          "comments_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/comments{/number}",
+          "issue_comment_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/issues/comments{/number}",
+          "contents_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/contents/{+path}",
+          "compare_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/compare/{base}...{head}",
+          "merges_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/merges",
+          "archive_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/{archive_format}{/ref}",
+          "downloads_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/downloads",
+          "issues_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/issues{/number}",
+          "pulls_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/pulls{/number}",
+          "milestones_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/milestones{/number}",
+          "notifications_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/notifications{?since,all,participating}",
+          "labels_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/labels{/name}",
+          "releases_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/releases{/id}",
+          "deployments_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/deployments"
+        },
+        "head_repository": {
+          "id": 1280266980,
+          "node_id": "R_kgDOTE9S5A",
+          "name": "arcora-perp",
+          "full_name": "Arcora-labs/arcora-perp",
+          "private": false,
+          "owner": {
+            "login": "Arcora-labs",
+            "id": 339084034,
+            "node_id": "O_kgDOFDYDAg",
+            "avatar_url": "https://avatars.githubusercontent.com/u/339084034?v=4",
+            "gravatar_id": "",
+            "url": "https://api.github.com/users/Arcora-labs",
+            "html_url": "https://github.com/Arcora-labs",
+            "followers_url": "https://api.github.com/users/Arcora-labs/followers",
+            "following_url": "https://api.github.com/users/Arcora-labs/following{/other_user}",
+            "gists_url": "https://api.github.com/users/Arcora-labs/gists{/gist_id}",
+            "starred_url": "https://api.github.com/users/Arcora-labs/starred{/owner}{/repo}",
+            "subscriptions_url": "https://api.github.com/users/Arcora-labs/subscriptions",
+            "organizations_url": "https://api.github.com/users/Arcora-labs/orgs",
+            "repos_url": "https://api.github.com/users/Arcora-labs/repos",
+            "events_url": "https://api.github.com/users/Arcora-labs/events{/privacy}",
+            "received_events_url": "https://api.github.com/users/Arcora-labs/received_events",
+            "type": "Organization",
+            "user_view_type": "public",
+            "site_admin": false
+          },
+          "html_url": "https://github.com/Arcora-labs/arcora-perp",
+          "description": null,
+          "fork": false,
+          "url": "https://api.github.com/repos/Arcora-labs/arcora-perp",
+          "forks_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/forks",
+          "keys_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/keys{/key_id}",
+          "collaborators_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/collaborators{/collaborator}",
+          "teams_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/teams",
+          "hooks_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/hooks",
+          "issue_events_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/issues/events{/number}",
+          "events_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/events",
+          "assignees_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/assignees{/user}",
+          "branches_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/branches{/branch}",
+          "tags_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/tags",
+          "blobs_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/git/blobs{/sha}",
+          "git_tags_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/git/tags{/sha}",
+          "git_refs_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/git/refs{/sha}",
+          "trees_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/git/trees{/sha}",
+          "statuses_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/statuses/{sha}",
+          "languages_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/languages",
+          "stargazers_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/stargazers",
+          "contributors_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/contributors",
+          "subscribers_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/subscribers",
+          "subscription_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/subscription",
+          "commits_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/commits{/sha}",
+          "git_commits_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/git/commits{/sha}",
+          "comments_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/comments{/number}",
+          "issue_comment_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/issues/comments{/number}",
+          "contents_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/contents/{+path}",
+          "compare_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/compare/{base}...{head}",
+          "merges_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/merges",
+          "archive_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/{archive_format}{/ref}",
+          "downloads_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/downloads",
+          "issues_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/issues{/number}",
+          "pulls_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/pulls{/number}",
+          "milestones_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/milestones{/number}",
+          "notifications_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/notifications{?since,all,participating}",
+          "labels_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/labels{/name}",
+          "releases_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/releases{/id}",
+          "deployments_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/deployments"
+        }
+      },
+      {
+        "id": 38246622674,
+        "name": "A11 release evidence",
+        "node_id": "WFR_kwLOTE9S5M8AAAAI560l0g",
+        "head_branch": "feat/candidate-fixture-http-20261012",
+        "head_sha": "8181880a41dcd1bf1f1117270c0d0067e4c7b15f",
+        "path": ".github/workflows/a11-release-evidence.yml",
+        "display_title": "Verify candidate fixture HTTP transport and durable lost-ack recovery",
+        "run_number": 101,
+        "event": "pull_request",
+        "status": "in_progress",
+        "conclusion": null,
+        "workflow_id": 361508879,
+        "check_suite_id": 103622455241,
+        "check_suite_node_id": "CS_kwDOTE9S5M8AAAAYIGEvyQ",
+        "url": "https://api.github.com/repos/Arcora-labs/arcora-perp/actions/runs/38246622674",
+        "html_url": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38246622674",
+        "pull_requests": [
+          {
+            "url": "https://api.github.com/repos/Arcora-labs/arcora-perp/pulls/56",
+            "id": 4829114597,
+            "number": 56,
+            "head": {
+              "ref": "feat/candidate-fixture-http-20261012",
+              "sha": "8181880a41dcd1bf1f1117270c0d0067e4c7b15f",
+              "repo": {
+                "id": 1280266980,
+                "url": "https://api.github.com/repos/Arcora-labs/arcora-perp",
+                "name": "arcora-perp"
+              }
+            },
+            "base": {
+              "ref": "main",
+              "sha": "29be35c7a66c20563fb83812039eaaf1aa05d80a",
+              "repo": {
+                "id": 1280266980,
+                "url": "https://api.github.com/repos/Arcora-labs/arcora-perp",
+                "name": "arcora-perp"
+              }
+            }
+          }
+        ],
+        "created_at": "2026-10-12T12:03:26Z",
+        "updated_at": "2026-10-12T12:03:29Z",
+        "actor": {
+          "login": "Kubudak90",
+          "id": 95706654,
+          "node_id": "U_kgDOBbReHg",
+          "avatar_url": "https://avatars.githubusercontent.com/u/95706654?v=4",
+          "gravatar_id": "",
+          "url": "https://api.github.com/users/Kubudak90",
+          "html_url": "https://github.com/Kubudak90",
+          "followers_url": "https://api.github.com/users/Kubudak90/followers",
+          "following_url": "https://api.github.com/users/Kubudak90/following{/other_user}",
+          "gists_url": "https://api.github.com/users/Kubudak90/gists{/gist_id}",
+          "starred_url": "https://api.github.com/users/Kubudak90/starred{/owner}{/repo}",
+          "subscriptions_url": "https://api.github.com/users/Kubudak90/subscriptions",
+          "organizations_url": "https://api.github.com/users/Kubudak90/orgs",
+          "repos_url": "https://api.github.com/users/Kubudak90/repos",
+          "events_url": "https://api.github.com/users/Kubudak90/events{/privacy}",
+          "received_events_url": "https://api.github.com/users/Kubudak90/received_events",
+          "type": "User",
+          "user_view_type": "public",
+          "site_admin": false
+        },
+        "run_attempt": 1,
+        "referenced_workflows": [],
+        "run_started_at": "2026-10-12T12:03:26Z",
+        "triggering_actor": {
+          "login": "Kubudak90",
+          "id": 95706654,
+          "node_id": "U_kgDOBbReHg",
+          "avatar_url": "https://avatars.githubusercontent.com/u/95706654?v=4",
+          "gravatar_id": "",
+          "url": "https://api.github.com/users/Kubudak90",
+          "html_url": "https://github.com/Kubudak90",
+          "followers_url": "https://api.github.com/users/Kubudak90/followers",
+          "following_url": "https://api.github.com/users/Kubudak90/following{/other_user}",
+          "gists_url": "https://api.github.com/users/Kubudak90/gists{/gist_id}",
+          "starred_url": "https://api.github.com/users/Kubudak90/starred{/owner}{/repo}",
+          "subscriptions_url": "https://api.github.com/users/Kubudak90/subscriptions",
+          "organizations_url": "https://api.github.com/users/Kubudak90/orgs",
+          "repos_url": "https://api.github.com/users/Kubudak90/repos",
+          "events_url": "https://api.github.com/users/Kubudak90/events{/privacy}",
+          "received_events_url": "https://api.github.com/users/Kubudak90/received_events",
+          "type": "User",
+          "user_view_type": "public",
+          "site_admin": false
+        },
+        "jobs_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/actions/runs/38246622674/jobs",
+        "logs_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/actions/runs/38246622674/logs",
+        "check_suite_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/check-suites/103622455241",
+        "artifacts_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/actions/runs/38246622674/artifacts",
+        "cancel_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/actions/runs/38246622674/cancel",
+        "rerun_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/actions/runs/38246622674/rerun",
+        "previous_attempt_url": null,
+        "workflow_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/actions/workflows/361508879",
+        "head_commit": {
+          "id": "8181880a41dcd1bf1f1117270c0d0067e4c7b15f",
+          "tree_id": "ffe8440445133e689002119918833c81bf30ac6d",
+          "message": "Record candidate fixture HTTP validation and active release boundaries",
+          "timestamp": "2026-10-12T12:03:07Z",
+          "author": {
+            "name": "Kubudak90",
+            "email": "kubudak@outlook.com"
+          },
+          "committer": {
+            "name": "Kubudak90",
+            "email": "kubudak@outlook.com"
+          }
+        },
+        "repository": {
+          "id": 1280266980,
+          "node_id": "R_kgDOTE9S5A",
+          "name": "arcora-perp",
+          "full_name": "Arcora-labs/arcora-perp",
+          "private": false,
+          "owner": {
+            "login": "Arcora-labs",
+            "id": 339084034,
+            "node_id": "O_kgDOFDYDAg",
+            "avatar_url": "https://avatars.githubusercontent.com/u/339084034?v=4",
+            "gravatar_id": "",
+            "url": "https://api.github.com/users/Arcora-labs",
+            "html_url": "https://github.com/Arcora-labs",
+            "followers_url": "https://api.github.com/users/Arcora-labs/followers",
+            "following_url": "https://api.github.com/users/Arcora-labs/following{/other_user}",
+            "gists_url": "https://api.github.com/users/Arcora-labs/gists{/gist_id}",
+            "starred_url": "https://api.github.com/users/Arcora-labs/starred{/owner}{/repo}",
+            "subscriptions_url": "https://api.github.com/users/Arcora-labs/subscriptions",
+            "organizations_url": "https://api.github.com/users/Arcora-labs/orgs",
+            "repos_url": "https://api.github.com/users/Arcora-labs/repos",
+            "events_url": "https://api.github.com/users/Arcora-labs/events{/privacy}",
+            "received_events_url": "https://api.github.com/users/Arcora-labs/received_events",
+            "type": "Organization",
+            "user_view_type": "public",
+            "site_admin": false
+          },
+          "html_url": "https://github.com/Arcora-labs/arcora-perp",
+          "description": null,
+          "fork": false,
+          "url": "https://api.github.com/repos/Arcora-labs/arcora-perp",
+          "forks_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/forks",
+          "keys_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/keys{/key_id}",
+          "collaborators_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/collaborators{/collaborator}",
+          "teams_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/teams",
+          "hooks_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/hooks",
+          "issue_events_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/issues/events{/number}",
+          "events_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/events",
+          "assignees_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/assignees{/user}",
+          "branches_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/branches{/branch}",
+          "tags_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/tags",
+          "blobs_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/git/blobs{/sha}",
+          "git_tags_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/git/tags{/sha}",
+          "git_refs_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/git/refs{/sha}",
+          "trees_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/git/trees{/sha}",
+          "statuses_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/statuses/{sha}",
+          "languages_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/languages",
+          "stargazers_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/stargazers",
+          "contributors_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/contributors",
+          "subscribers_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/subscribers",
+          "subscription_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/subscription",
+          "commits_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/commits{/sha}",
+          "git_commits_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/git/commits{/sha}",
+          "comments_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/comments{/number}",
+          "issue_comment_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/issues/comments{/number}",
+          "contents_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/contents/{+path}",
+          "compare_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/compare/{base}...{head}",
+          "merges_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/merges",
+          "archive_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/{archive_format}{/ref}",
+          "downloads_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/downloads",
+          "issues_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/issues{/number}",
+          "pulls_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/pulls{/number}",
+          "milestones_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/milestones{/number}",
+          "notifications_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/notifications{?since,all,participating}",
+          "labels_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/labels{/name}",
+          "releases_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/releases{/id}",
+          "deployments_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/deployments"
+        },
+        "head_repository": {
+          "id": 1280266980,
+          "node_id": "R_kgDOTE9S5A",
+          "name": "arcora-perp",
+          "full_name": "Arcora-labs/arcora-perp",
+          "private": false,
+          "owner": {
+            "login": "Arcora-labs",
+            "id": 339084034,
+            "node_id": "O_kgDOFDYDAg",
+            "avatar_url": "https://avatars.githubusercontent.com/u/339084034?v=4",
+            "gravatar_id": "",
+            "url": "https://api.github.com/users/Arcora-labs",
+            "html_url": "https://github.com/Arcora-labs",
+            "followers_url": "https://api.github.com/users/Arcora-labs/followers",
+            "following_url": "https://api.github.com/users/Arcora-labs/following{/other_user}",
+            "gists_url": "https://api.github.com/users/Arcora-labs/gists{/gist_id}",
+            "starred_url": "https://api.github.com/users/Arcora-labs/starred{/owner}{/repo}",
+            "subscriptions_url": "https://api.github.com/users/Arcora-labs/subscriptions",
+            "organizations_url": "https://api.github.com/users/Arcora-labs/orgs",
+            "repos_url": "https://api.github.com/users/Arcora-labs/repos",
+            "events_url": "https://api.github.com/users/Arcora-labs/events{/privacy}",
+            "received_events_url": "https://api.github.com/users/Arcora-labs/received_events",
+            "type": "Organization",
+            "user_view_type": "public",
+            "site_admin": false
+          },
+          "html_url": "https://github.com/Arcora-labs/arcora-perp",
+          "description": null,
+          "fork": false,
+          "url": "https://api.github.com/repos/Arcora-labs/arcora-perp",
+          "forks_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/forks",
+          "keys_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/keys{/key_id}",
+          "collaborators_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/collaborators{/collaborator}",
+          "teams_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/teams",
+          "hooks_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/hooks",
+          "issue_events_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/issues/events{/number}",
+          "events_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/events",
+          "assignees_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/assignees{/user}",
+          "branches_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/branches{/branch}",
+          "tags_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/tags",
+          "blobs_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/git/blobs{/sha}",
+          "git_tags_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/git/tags{/sha}",
+          "git_refs_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/git/refs{/sha}",
+          "trees_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/git/trees{/sha}",
+          "statuses_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/statuses/{sha}",
+          "languages_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/languages",
+          "stargazers_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/stargazers",
+          "contributors_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/contributors",
+          "subscribers_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/subscribers",
+          "subscription_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/subscription",
+          "commits_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/commits{/sha}",
+          "git_commits_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/git/commits{/sha}",
+          "comments_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/comments{/number}",
+          "issue_comment_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/issues/comments{/number}",
+          "contents_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/contents/{+path}",
+          "compare_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/compare/{base}...{head}",
+          "merges_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/merges",
+          "archive_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/{archive_format}{/ref}",
+          "downloads_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/downloads",
+          "issues_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/issues{/number}",
+          "pulls_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/pulls{/number}",
+          "milestones_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/milestones{/number}",
+          "notifications_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/notifications{?since,all,participating}",
+          "labels_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/labels{/name}",
+          "releases_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/releases{/id}",
+          "deployments_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/deployments"
+        }
+      },
+      {
+        "id": 38246622496,
+        "name": "A07 integration hotfix",
+        "node_id": "WFR_kwLOTE9S5M8AAAAI560lIA",
+        "head_branch": "feat/candidate-fixture-http-20261012",
+        "head_sha": "8181880a41dcd1bf1f1117270c0d0067e4c7b15f",
+        "path": ".github/workflows/a07-integration-hotfix.yml",
+        "display_title": "Verify candidate fixture HTTP transport and durable lost-ack recovery",
+        "run_number": 106,
+        "event": "pull_request",
+        "status": "in_progress",
+        "conclusion": null,
+        "workflow_id": 361938019,
+        "check_suite_id": 103622454811,
+        "check_suite_node_id": "CS_kwDOTE9S5M8AAAAYIGEuGw",
+        "url": "https://api.github.com/repos/Arcora-labs/arcora-perp/actions/runs/38246622496",
+        "html_url": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38246622496",
+        "pull_requests": [
+          {
+            "url": "https://api.github.com/repos/Arcora-labs/arcora-perp/pulls/56",
+            "id": 4829114597,
+            "number": 56,
+            "head": {
+              "ref": "feat/candidate-fixture-http-20261012",
+              "sha": "8181880a41dcd1bf1f1117270c0d0067e4c7b15f",
+              "repo": {
+                "id": 1280266980,
+                "url": "https://api.github.com/repos/Arcora-labs/arcora-perp",
+                "name": "arcora-perp"
+              }
+            },
+            "base": {
+              "ref": "main",
+              "sha": "29be35c7a66c20563fb83812039eaaf1aa05d80a",
+              "repo": {
+                "id": 1280266980,
+                "url": "https://api.github.com/repos/Arcora-labs/arcora-perp",
+                "name": "arcora-perp"
+              }
+            }
+          }
+        ],
+        "created_at": "2026-10-12T12:03:26Z",
+        "updated_at": "2026-10-12T12:03:29Z",
+        "actor": {
+          "login": "Kubudak90",
+          "id": 95706654,
+          "node_id": "U_kgDOBbReHg",
+          "avatar_url": "https://avatars.githubusercontent.com/u/95706654?v=4",
+          "gravatar_id": "",
+          "url": "https://api.github.com/users/Kubudak90",
+          "html_url": "https://github.com/Kubudak90",
+          "followers_url": "https://api.github.com/users/Kubudak90/followers",
+          "following_url": "https://api.github.com/users/Kubudak90/following{/other_user}",
+          "gists_url": "https://api.github.com/users/Kubudak90/gists{/gist_id}",
+          "starred_url": "https://api.github.com/users/Kubudak90/starred{/owner}{/repo}",
+          "subscriptions_url": "https://api.github.com/users/Kubudak90/subscriptions",
+          "organizations_url": "https://api.github.com/users/Kubudak90/orgs",
+          "repos_url": "https://api.github.com/users/Kubudak90/repos",
+          "events_url": "https://api.github.com/users/Kubudak90/events{/privacy}",
+          "received_events_url": "https://api.github.com/users/Kubudak90/received_events",
+          "type": "User",
+          "user_view_type": "public",
+          "site_admin": false
+        },
+        "run_attempt": 1,
+        "referenced_workflows": [],
+        "run_started_at": "2026-10-12T12:03:26Z",
+        "triggering_actor": {
+          "login": "Kubudak90",
+          "id": 95706654,
+          "node_id": "U_kgDOBbReHg",
+          "avatar_url": "https://avatars.githubusercontent.com/u/95706654?v=4",
+          "gravatar_id": "",
+          "url": "https://api.github.com/users/Kubudak90",
+          "html_url": "https://github.com/Kubudak90",
+          "followers_url": "https://api.github.com/users/Kubudak90/followers",
+          "following_url": "https://api.github.com/users/Kubudak90/following{/other_user}",
+          "gists_url": "https://api.github.com/users/Kubudak90/gists{/gist_id}",
+          "starred_url": "https://api.github.com/users/Kubudak90/starred{/owner}{/repo}",
+          "subscriptions_url": "https://api.github.com/users/Kubudak90/subscriptions",
+          "organizations_url": "https://api.github.com/users/Kubudak90/orgs",
+          "repos_url": "https://api.github.com/users/Kubudak90/repos",
+          "events_url": "https://api.github.com/users/Kubudak90/events{/privacy}",
+          "received_events_url": "https://api.github.com/users/Kubudak90/received_events",
+          "type": "User",
+          "user_view_type": "public",
+          "site_admin": false
+        },
+        "jobs_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/actions/runs/38246622496/jobs",
+        "logs_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/actions/runs/38246622496/logs",
+        "check_suite_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/check-suites/103622454811",
+        "artifacts_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/actions/runs/38246622496/artifacts",
+        "cancel_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/actions/runs/38246622496/cancel",
+        "rerun_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/actions/runs/38246622496/rerun",
+        "previous_attempt_url": null,
+        "workflow_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/actions/workflows/361938019",
+        "head_commit": {
+          "id": "8181880a41dcd1bf1f1117270c0d0067e4c7b15f",
+          "tree_id": "ffe8440445133e689002119918833c81bf30ac6d",
+          "message": "Record candidate fixture HTTP validation and active release boundaries",
+          "timestamp": "2026-10-12T12:03:07Z",
+          "author": {
+            "name": "Kubudak90",
+            "email": "kubudak@outlook.com"
+          },
+          "committer": {
+            "name": "Kubudak90",
+            "email": "kubudak@outlook.com"
+          }
+        },
+        "repository": {
+          "id": 1280266980,
+          "node_id": "R_kgDOTE9S5A",
+          "name": "arcora-perp",
+          "full_name": "Arcora-labs/arcora-perp",
+          "private": false,
+          "owner": {
+            "login": "Arcora-labs",
+            "id": 339084034,
+            "node_id": "O_kgDOFDYDAg",
+            "avatar_url": "https://avatars.githubusercontent.com/u/339084034?v=4",
+            "gravatar_id": "",
+            "url": "https://api.github.com/users/Arcora-labs",
+            "html_url": "https://github.com/Arcora-labs",
+            "followers_url": "https://api.github.com/users/Arcora-labs/followers",
+            "following_url": "https://api.github.com/users/Arcora-labs/following{/other_user}",
+            "gists_url": "https://api.github.com/users/Arcora-labs/gists{/gist_id}",
+            "starred_url": "https://api.github.com/users/Arcora-labs/starred{/owner}{/repo}",
+            "subscriptions_url": "https://api.github.com/users/Arcora-labs/subscriptions",
+            "organizations_url": "https://api.github.com/users/Arcora-labs/orgs",
+            "repos_url": "https://api.github.com/users/Arcora-labs/repos",
+            "events_url": "https://api.github.com/users/Arcora-labs/events{/privacy}",
+            "received_events_url": "https://api.github.com/users/Arcora-labs/received_events",
+            "type": "Organization",
+            "user_view_type": "public",
+            "site_admin": false
+          },
+          "html_url": "https://github.com/Arcora-labs/arcora-perp",
+          "description": null,
+          "fork": false,
+          "url": "https://api.github.com/repos/Arcora-labs/arcora-perp",
+          "forks_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/forks",
+          "keys_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/keys{/key_id}",
+          "collaborators_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/collaborators{/collaborator}",
+          "teams_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/teams",
+          "hooks_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/hooks",
+          "issue_events_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/issues/events{/number}",
+          "events_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/events",
+          "assignees_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/assignees{/user}",
+          "branches_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/branches{/branch}",
+          "tags_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/tags",
+          "blobs_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/git/blobs{/sha}",
+          "git_tags_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/git/tags{/sha}",
+          "git_refs_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/git/refs{/sha}",
+          "trees_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/git/trees{/sha}",
+          "statuses_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/statuses/{sha}",
+          "languages_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/languages",
+          "stargazers_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/stargazers",
+          "contributors_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/contributors",
+          "subscribers_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/subscribers",
+          "subscription_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/subscription",
+          "commits_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/commits{/sha}",
+          "git_commits_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/git/commits{/sha}",
+          "comments_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/comments{/number}",
+          "issue_comment_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/issues/comments{/number}",
+          "contents_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/contents/{+path}",
+          "compare_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/compare/{base}...{head}",
+          "merges_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/merges",
+          "archive_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/{archive_format}{/ref}",
+          "downloads_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/downloads",
+          "issues_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/issues{/number}",
+          "pulls_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/pulls{/number}",
+          "milestones_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/milestones{/number}",
+          "notifications_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/notifications{?since,all,participating}",
+          "labels_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/labels{/name}",
+          "releases_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/releases{/id}",
+          "deployments_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/deployments"
+        },
+        "head_repository": {
+          "id": 1280266980,
+          "node_id": "R_kgDOTE9S5A",
+          "name": "arcora-perp",
+          "full_name": "Arcora-labs/arcora-perp",
+          "private": false,
+          "owner": {
+            "login": "Arcora-labs",
+            "id": 339084034,
+            "node_id": "O_kgDOFDYDAg",
+            "avatar_url": "https://avatars.githubusercontent.com/u/339084034?v=4",
+            "gravatar_id": "",
+            "url": "https://api.github.com/users/Arcora-labs",
+            "html_url": "https://github.com/Arcora-labs",
+            "followers_url": "https://api.github.com/users/Arcora-labs/followers",
+            "following_url": "https://api.github.com/users/Arcora-labs/following{/other_user}",
+            "gists_url": "https://api.github.com/users/Arcora-labs/gists{/gist_id}",
+            "starred_url": "https://api.github.com/users/Arcora-labs/starred{/owner}{/repo}",
+            "subscriptions_url": "https://api.github.com/users/Arcora-labs/subscriptions",
+            "organizations_url": "https://api.github.com/users/Arcora-labs/orgs",
+            "repos_url": "https://api.github.com/users/Arcora-labs/repos",
+            "events_url": "https://api.github.com/users/Arcora-labs/events{/privacy}",
+            "received_events_url": "https://api.github.com/users/Arcora-labs/received_events",
+            "type": "Organization",
+            "user_view_type": "public",
+            "site_admin": false
+          },
+          "html_url": "https://github.com/Arcora-labs/arcora-perp",
+          "description": null,
+          "fork": false,
+          "url": "https://api.github.com/repos/Arcora-labs/arcora-perp",
+          "forks_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/forks",
+          "keys_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/keys{/key_id}",
+          "collaborators_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/collaborators{/collaborator}",
+          "teams_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/teams",
+          "hooks_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/hooks",
+          "issue_events_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/issues/events{/number}",
+          "events_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/events",
+          "assignees_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/assignees{/user}",
+          "branches_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/branches{/branch}",
+          "tags_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/tags",
+          "blobs_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/git/blobs{/sha}",
+          "git_tags_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/git/tags{/sha}",
+          "git_refs_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/git/refs{/sha}",
+          "trees_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/git/trees{/sha}",
+          "statuses_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/statuses/{sha}",
+          "languages_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/languages",
+          "stargazers_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/stargazers",
+          "contributors_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/contributors",
+          "subscribers_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/subscribers",
+          "subscription_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/subscription",
+          "commits_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/commits{/sha}",
+          "git_commits_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/git/commits{/sha}",
+          "comments_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/comments{/number}",
+          "issue_comment_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/issues/comments{/number}",
+          "contents_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/contents/{+path}",
+          "compare_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/compare/{base}...{head}",
+          "merges_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/merges",
+          "archive_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/{archive_format}{/ref}",
+          "downloads_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/downloads",
+          "issues_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/issues{/number}",
+          "pulls_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/pulls{/number}",
+          "milestones_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/milestones{/number}",
+          "notifications_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/notifications{?since,all,participating}",
+          "labels_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/labels{/name}",
+          "releases_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/releases{/id}",
+          "deployments_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/deployments"
+        }
+      },
+      {
+        "id": 38246622480,
+        "name": "Chainlink candidate",
+        "node_id": "WFR_kwLOTE9S5M8AAAAI560lEA",
+        "head_branch": "feat/candidate-fixture-http-20261012",
+        "head_sha": "8181880a41dcd1bf1f1117270c0d0067e4c7b15f",
+        "path": ".github/workflows/chainlink-candidate.yml",
+        "display_title": "Verify candidate fixture HTTP transport and durable lost-ack recovery",
+        "run_number": 49,
+        "event": "pull_request",
+        "status": "completed",
+        "conclusion": "success",
+        "workflow_id": 380630424,
+        "check_suite_id": 103622454667,
+        "check_suite_node_id": "CS_kwDOTE9S5M8AAAAYIGEtiw",
+        "url": "https://api.github.com/repos/Arcora-labs/arcora-perp/actions/runs/38246622480",
+        "html_url": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38246622480",
+        "pull_requests": [
+          {
+            "url": "https://api.github.com/repos/Arcora-labs/arcora-perp/pulls/56",
+            "id": 4829114597,
+            "number": 56,
+            "head": {
+              "ref": "feat/candidate-fixture-http-20261012",
+              "sha": "8181880a41dcd1bf1f1117270c0d0067e4c7b15f",
+              "repo": {
+                "id": 1280266980,
+                "url": "https://api.github.com/repos/Arcora-labs/arcora-perp",
+                "name": "arcora-perp"
+              }
+            },
+            "base": {
+              "ref": "main",
+              "sha": "29be35c7a66c20563fb83812039eaaf1aa05d80a",
+              "repo": {
+                "id": 1280266980,
+                "url": "https://api.github.com/repos/Arcora-labs/arcora-perp",
+                "name": "arcora-perp"
+              }
+            }
+          }
+        ],
+        "created_at": "2026-10-12T12:03:26Z",
+        "updated_at": "2026-10-12T12:04:05Z",
+        "actor": {
+          "login": "Kubudak90",
+          "id": 95706654,
+          "node_id": "U_kgDOBbReHg",
+          "avatar_url": "https://avatars.githubusercontent.com/u/95706654?v=4",
+          "gravatar_id": "",
+          "url": "https://api.github.com/users/Kubudak90",
+          "html_url": "https://github.com/Kubudak90",
+          "followers_url": "https://api.github.com/users/Kubudak90/followers",
+          "following_url": "https://api.github.com/users/Kubudak90/following{/other_user}",
+          "gists_url": "https://api.github.com/users/Kubudak90/gists{/gist_id}",
+          "starred_url": "https://api.github.com/users/Kubudak90/starred{/owner}{/repo}",
+          "subscriptions_url": "https://api.github.com/users/Kubudak90/subscriptions",
+          "organizations_url": "https://api.github.com/users/Kubudak90/orgs",
+          "repos_url": "https://api.github.com/users/Kubudak90/repos",
+          "events_url": "https://api.github.com/users/Kubudak90/events{/privacy}",
+          "received_events_url": "https://api.github.com/users/Kubudak90/received_events",
+          "type": "User",
+          "user_view_type": "public",
+          "site_admin": false
+        },
+        "run_attempt": 1,
+        "referenced_workflows": [],
+        "run_started_at": "2026-10-12T12:03:26Z",
+        "triggering_actor": {
+          "login": "Kubudak90",
+          "id": 95706654,
+          "node_id": "U_kgDOBbReHg",
+          "avatar_url": "https://avatars.githubusercontent.com/u/95706654?v=4",
+          "gravatar_id": "",
+          "url": "https://api.github.com/users/Kubudak90",
+          "html_url": "https://github.com/Kubudak90",
+          "followers_url": "https://api.github.com/users/Kubudak90/followers",
+          "following_url": "https://api.github.com/users/Kubudak90/following{/other_user}",
+          "gists_url": "https://api.github.com/users/Kubudak90/gists{/gist_id}",
+          "starred_url": "https://api.github.com/users/Kubudak90/starred{/owner}{/repo}",
+          "subscriptions_url": "https://api.github.com/users/Kubudak90/subscriptions",
+          "organizations_url": "https://api.github.com/users/Kubudak90/orgs",
+          "repos_url": "https://api.github.com/users/Kubudak90/repos",
+          "events_url": "https://api.github.com/users/Kubudak90/events{/privacy}",
+          "received_events_url": "https://api.github.com/users/Kubudak90/received_events",
+          "type": "User",
+          "user_view_type": "public",
+          "site_admin": false
+        },
+        "jobs_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/actions/runs/38246622480/jobs",
+        "logs_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/actions/runs/38246622480/logs",
+        "check_suite_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/check-suites/103622454667",
+        "artifacts_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/actions/runs/38246622480/artifacts",
+        "cancel_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/actions/runs/38246622480/cancel",
+        "rerun_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/actions/runs/38246622480/rerun",
+        "previous_attempt_url": null,
+        "workflow_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/actions/workflows/380630424",
+        "head_commit": {
+          "id": "8181880a41dcd1bf1f1117270c0d0067e4c7b15f",
+          "tree_id": "ffe8440445133e689002119918833c81bf30ac6d",
+          "message": "Record candidate fixture HTTP validation and active release boundaries",
+          "timestamp": "2026-10-12T12:03:07Z",
+          "author": {
+            "name": "Kubudak90",
+            "email": "kubudak@outlook.com"
+          },
+          "committer": {
+            "name": "Kubudak90",
+            "email": "kubudak@outlook.com"
+          }
+        },
+        "repository": {
+          "id": 1280266980,
+          "node_id": "R_kgDOTE9S5A",
+          "name": "arcora-perp",
+          "full_name": "Arcora-labs/arcora-perp",
+          "private": false,
+          "owner": {
+            "login": "Arcora-labs",
+            "id": 339084034,
+            "node_id": "O_kgDOFDYDAg",
+            "avatar_url": "https://avatars.githubusercontent.com/u/339084034?v=4",
+            "gravatar_id": "",
+            "url": "https://api.github.com/users/Arcora-labs",
+            "html_url": "https://github.com/Arcora-labs",
+            "followers_url": "https://api.github.com/users/Arcora-labs/followers",
+            "following_url": "https://api.github.com/users/Arcora-labs/following{/other_user}",
+            "gists_url": "https://api.github.com/users/Arcora-labs/gists{/gist_id}",
+            "starred_url": "https://api.github.com/users/Arcora-labs/starred{/owner}{/repo}",
+            "subscriptions_url": "https://api.github.com/users/Arcora-labs/subscriptions",
+            "organizations_url": "https://api.github.com/users/Arcora-labs/orgs",
+            "repos_url": "https://api.github.com/users/Arcora-labs/repos",
+            "events_url": "https://api.github.com/users/Arcora-labs/events{/privacy}",
+            "received_events_url": "https://api.github.com/users/Arcora-labs/received_events",
+            "type": "Organization",
+            "user_view_type": "public",
+            "site_admin": false
+          },
+          "html_url": "https://github.com/Arcora-labs/arcora-perp",
+          "description": null,
+          "fork": false,
+          "url": "https://api.github.com/repos/Arcora-labs/arcora-perp",
+          "forks_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/forks",
+          "keys_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/keys{/key_id}",
+          "collaborators_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/collaborators{/collaborator}",
+          "teams_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/teams",
+          "hooks_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/hooks",
+          "issue_events_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/issues/events{/number}",
+          "events_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/events",
+          "assignees_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/assignees{/user}",
+          "branches_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/branches{/branch}",
+          "tags_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/tags",
+          "blobs_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/git/blobs{/sha}",
+          "git_tags_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/git/tags{/sha}",
+          "git_refs_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/git/refs{/sha}",
+          "trees_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/git/trees{/sha}",
+          "statuses_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/statuses/{sha}",
+          "languages_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/languages",
+          "stargazers_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/stargazers",
+          "contributors_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/contributors",
+          "subscribers_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/subscribers",
+          "subscription_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/subscription",
+          "commits_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/commits{/sha}",
+          "git_commits_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/git/commits{/sha}",
+          "comments_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/comments{/number}",
+          "issue_comment_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/issues/comments{/number}",
+          "contents_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/contents/{+path}",
+          "compare_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/compare/{base}...{head}",
+          "merges_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/merges",
+          "archive_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/{archive_format}{/ref}",
+          "downloads_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/downloads",
+          "issues_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/issues{/number}",
+          "pulls_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/pulls{/number}",
+          "milestones_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/milestones{/number}",
+          "notifications_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/notifications{?since,all,participating}",
+          "labels_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/labels{/name}",
+          "releases_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/releases{/id}",
+          "deployments_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/deployments"
+        },
+        "head_repository": {
+          "id": 1280266980,
+          "node_id": "R_kgDOTE9S5A",
+          "name": "arcora-perp",
+          "full_name": "Arcora-labs/arcora-perp",
+          "private": false,
+          "owner": {
+            "login": "Arcora-labs",
+            "id": 339084034,
+            "node_id": "O_kgDOFDYDAg",
+            "avatar_url": "https://avatars.githubusercontent.com/u/339084034?v=4",
+            "gravatar_id": "",
+            "url": "https://api.github.com/users/Arcora-labs",
+            "html_url": "https://github.com/Arcora-labs",
+            "followers_url": "https://api.github.com/users/Arcora-labs/followers",
+            "following_url": "https://api.github.com/users/Arcora-labs/following{/other_user}",
+            "gists_url": "https://api.github.com/users/Arcora-labs/gists{/gist_id}",
+            "starred_url": "https://api.github.com/users/Arcora-labs/starred{/owner}{/repo}",
+            "subscriptions_url": "https://api.github.com/users/Arcora-labs/subscriptions",
+            "organizations_url": "https://api.github.com/users/Arcora-labs/orgs",
+            "repos_url": "https://api.github.com/users/Arcora-labs/repos",
+            "events_url": "https://api.github.com/users/Arcora-labs/events{/privacy}",
+            "received_events_url": "https://api.github.com/users/Arcora-labs/received_events",
+            "type": "Organization",
+            "user_view_type": "public",
+            "site_admin": false
+          },
+          "html_url": "https://github.com/Arcora-labs/arcora-perp",
+          "description": null,
+          "fork": false,
+          "url": "https://api.github.com/repos/Arcora-labs/arcora-perp",
+          "forks_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/forks",
+          "keys_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/keys{/key_id}",
+          "collaborators_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/collaborators{/collaborator}",
+          "teams_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/teams",
+          "hooks_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/hooks",
+          "issue_events_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/issues/events{/number}",
+          "events_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/events",
+          "assignees_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/assignees{/user}",
+          "branches_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/branches{/branch}",
+          "tags_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/tags",
+          "blobs_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/git/blobs{/sha}",
+          "git_tags_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/git/tags{/sha}",
+          "git_refs_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/git/refs{/sha}",
+          "trees_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/git/trees{/sha}",
+          "statuses_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/statuses/{sha}",
+          "languages_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/languages",
+          "stargazers_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/stargazers",
+          "contributors_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/contributors",
+          "subscribers_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/subscribers",
+          "subscription_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/subscription",
+          "commits_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/commits{/sha}",
+          "git_commits_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/git/commits{/sha}",
+          "comments_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/comments{/number}",
+          "issue_comment_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/issues/comments{/number}",
+          "contents_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/contents/{+path}",
+          "compare_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/compare/{base}...{head}",
+          "merges_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/merges",
+          "archive_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/{archive_format}{/ref}",
+          "downloads_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/downloads",
+          "issues_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/issues{/number}",
+          "pulls_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/pulls{/number}",
+          "milestones_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/milestones{/number}",
+          "notifications_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/notifications{?since,all,participating}",
+          "labels_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/labels{/name}",
+          "releases_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/releases{/id}",
+          "deployments_url": "https://api.github.com/repos/Arcora-labs/arcora-perp/deployments"
+        }
+      }
+    ]
+  },
+  "runs": [
+    {
+      "conclusion": "",
+      "databaseId": 38246622428,
+      "headSha": "8181880a41dcd1bf1f1117270c0d0067e4c7b15f",
+      "jobs": [
+        {
+          "completedAt": "2026-10-12T12:04:01Z",
+          "conclusion": "success",
+          "databaseId": 114801982863,
+          "name": "frontend (vite)",
+          "startedAt": "2026-10-12T12:03:29Z",
+          "status": "completed",
+          "steps": [
+            {
+              "completedAt": "2026-10-12T12:03:31Z",
+              "conclusion": "success",
+              "name": "Set up job",
+              "number": 1,
+              "startedAt": "2026-10-12T12:03:30Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:34Z",
+              "conclusion": "success",
+              "name": "Run actions/checkout@v4",
+              "number": 2,
+              "startedAt": "2026-10-12T12:03:31Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:35Z",
+              "conclusion": "success",
+              "name": "Run pnpm/action-setup@v4",
+              "number": 3,
+              "startedAt": "2026-10-12T12:03:34Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:38Z",
+              "conclusion": "success",
+              "name": "Run actions/setup-node@v4",
+              "number": 4,
+              "startedAt": "2026-10-12T12:03:35Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:39Z",
+              "conclusion": "success",
+              "name": "Run pnpm install --frozen-lockfile",
+              "number": 5,
+              "startedAt": "2026-10-12T12:03:38Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:51Z",
+              "conclusion": "success",
+              "name": "Run pnpm test",
+              "number": 6,
+              "startedAt": "2026-10-12T12:03:39Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:58Z",
+              "conclusion": "success",
+              "name": "Run pnpm build",
+              "number": 7,
+              "startedAt": "2026-10-12T12:03:51Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:58Z",
+              "conclusion": "success",
+              "name": "Post Run actions/setup-node@v4",
+              "number": 12,
+              "startedAt": "2026-10-12T12:03:58Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:58Z",
+              "conclusion": "success",
+              "name": "Post Run pnpm/action-setup@v4",
+              "number": 13,
+              "startedAt": "2026-10-12T12:03:58Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:58Z",
+              "conclusion": "success",
+              "name": "Post Run actions/checkout@v4",
+              "number": 14,
+              "startedAt": "2026-10-12T12:03:58Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:58Z",
+              "conclusion": "success",
+              "name": "Complete job",
+              "number": 15,
+              "startedAt": "2026-10-12T12:03:58Z",
+              "status": "completed"
+            }
+          ],
+          "url": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38246622428/job/114801982863"
+        },
+        {
+          "completedAt": "2026-10-12T12:04:00Z",
+          "conclusion": "failure",
+          "databaseId": 114801983021,
+          "name": "rust (lint, 1.99)",
+          "startedAt": "2026-10-12T12:03:28Z",
+          "status": "completed",
+          "steps": [
+            {
+              "completedAt": "2026-10-12T12:03:30Z",
+              "conclusion": "success",
+              "name": "Set up job",
+              "number": 1,
+              "startedAt": "2026-10-12T12:03:29Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:33Z",
+              "conclusion": "success",
+              "name": "Run actions/checkout@v4",
+              "number": 2,
+              "startedAt": "2026-10-12T12:03:30Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:43Z",
+              "conclusion": "success",
+              "name": "Run dtolnay/rust-toolchain@stable",
+              "number": 3,
+              "startedAt": "2026-10-12T12:03:33Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:46Z",
+              "conclusion": "success",
+              "name": "Run Swatinem/rust-cache@v2",
+              "number": 4,
+              "startedAt": "2026-10-12T12:03:43Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:47Z",
+              "conclusion": "success",
+              "name": "fmt",
+              "number": 5,
+              "startedAt": "2026-10-12T12:03:46Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:59Z",
+              "conclusion": "failure",
+              "name": "clippy",
+              "number": 6,
+              "startedAt": "2026-10-12T12:03:47Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:59Z",
+              "conclusion": "skipped",
+              "name": "Post Run Swatinem/rust-cache@v2",
+              "number": 11,
+              "startedAt": "2026-10-12T12:03:59Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:59Z",
+              "conclusion": "success",
+              "name": "Post Run actions/checkout@v4",
+              "number": 12,
+              "startedAt": "2026-10-12T12:03:59Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:59Z",
+              "conclusion": "success",
+              "name": "Complete job",
+              "number": 13,
+              "startedAt": "2026-10-12T12:03:59Z",
+              "status": "completed"
+            }
+          ],
+          "url": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38246622428/job/114801983021"
+        },
+        {
+          "completedAt": "0001-01-01T00:00:00Z",
+          "conclusion": "",
+          "databaseId": 114801983022,
+          "name": "prover crates (excluded, typecheck)",
+          "startedAt": "2026-10-12T12:03:28Z",
+          "status": "in_progress",
+          "steps": [
+            {
+              "completedAt": "2026-10-12T12:03:31Z",
+              "conclusion": "success",
+              "name": "Set up job",
+              "number": 1,
+              "startedAt": "2026-10-12T12:03:29Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:34Z",
+              "conclusion": "success",
+              "name": "Run actions/checkout@v4",
+              "number": 2,
+              "startedAt": "2026-10-12T12:03:31Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:44Z",
+              "conclusion": "success",
+              "name": "Run dtolnay/rust-toolchain@stable",
+              "number": 3,
+              "startedAt": "2026-10-12T12:03:34Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "0001-01-01T00:00:00Z",
+              "conclusion": "",
+              "name": "Run Swatinem/rust-cache@v2",
+              "number": 4,
+              "startedAt": "2026-10-12T12:03:44Z",
+              "status": "in_progress"
+            },
+            {
+              "completedAt": "0001-01-01T00:00:00Z",
+              "conclusion": "",
+              "name": "install protoc (sp1-prover-types build script)",
+              "number": 5,
+              "startedAt": "0001-01-01T00:00:00Z",
+              "status": "pending"
+            },
+            {
+              "completedAt": "0001-01-01T00:00:00Z",
+              "conclusion": "",
+              "name": "Require the patched coherent SP1 release",
+              "number": 6,
+              "startedAt": "0001-01-01T00:00:00Z",
+              "status": "pending"
+            },
+            {
+              "completedAt": "0001-01-01T00:00:00Z",
+              "conclusion": "",
+              "name": "Regenerate the real SP1 native runner after cache restore",
+              "number": 7,
+              "startedAt": "0001-01-01T00:00:00Z",
+              "status": "pending"
+            },
+            {
+              "completedAt": "0001-01-01T00:00:00Z",
+              "conclusion": "",
+              "name": "stub the guest ELF (guest build skipped; include_elf! needs the file)",
+              "number": 8,
+              "startedAt": "0001-01-01T00:00:00Z",
+              "status": "pending"
+            },
+            {
+              "completedAt": "0001-01-01T00:00:00Z",
+              "conclusion": "",
+              "name": "typecheck sp1-host",
+              "number": 9,
+              "startedAt": "0001-01-01T00:00:00Z",
+              "status": "pending"
+            },
+            {
+              "completedAt": "0001-01-01T00:00:00Z",
+              "conclusion": "",
+              "name": "native host fixture and artifact guards (not guest execution)",
+              "number": 10,
+              "startedAt": "0001-01-01T00:00:00Z",
+              "status": "pending"
+            },
+            {
+              "completedAt": "0001-01-01T00:00:00Z",
+              "conclusion": "",
+              "name": "typecheck prover-service",
+              "number": 11,
+              "startedAt": "0001-01-01T00:00:00Z",
+              "status": "pending"
+            },
+            {
+              "completedAt": "0001-01-01T00:00:00Z",
+              "conclusion": "",
+              "name": "Build optimized exact synthetic funds replay host (guest build skipped)",
+              "number": 12,
+              "startedAt": "0001-01-01T00:00:00Z",
+              "status": "pending"
+            },
+            {
+              "completedAt": "0001-01-01T00:00:00Z",
+              "conclusion": "",
+              "name": "Reject incomplete or substituted normal-wallet witnesses",
+              "number": 13,
+              "startedAt": "0001-01-01T00:00:00Z",
+              "status": "pending"
+            },
+            {
+              "completedAt": "0001-01-01T00:00:00Z",
+              "conclusion": "",
+              "name": "Execute reviewed SP1 guest on all four exact wallet witnesses (not proof generation)",
+              "number": 14,
+              "startedAt": "0001-01-01T00:00:00Z",
+              "status": "pending"
+            },
+            {
+              "completedAt": "0001-01-01T00:00:00Z",
+              "conclusion": "",
+              "name": "Execute separately pinned Chainlink candidate (synthetic, no DON or proof)",
+              "number": 15,
+              "startedAt": "0001-01-01T00:00:00Z",
+              "status": "pending"
+            },
+            {
+              "completedAt": "0001-01-01T00:00:00Z",
+              "conclusion": "",
+              "name": "Execute real gateway price lifecycle in candidate guest (synthetic, no DON or proof)",
+              "number": 16,
+              "startedAt": "0001-01-01T00:00:00Z",
+              "status": "pending"
+            },
+            {
+              "completedAt": "0001-01-01T00:00:00Z",
+              "conclusion": "",
+              "name": "Run actions/upload-artifact@v4",
+              "number": 17,
+              "startedAt": "0001-01-01T00:00:00Z",
+              "status": "pending"
+            },
+            {
+              "completedAt": "0001-01-01T00:00:00Z",
+              "conclusion": "",
+              "name": "Run actions/upload-artifact@v4",
+              "number": 18,
+              "startedAt": "0001-01-01T00:00:00Z",
+              "status": "pending"
+            },
+            {
+              "completedAt": "0001-01-01T00:00:00Z",
+              "conclusion": "",
+              "name": "Run actions/upload-artifact@v4",
+              "number": 19,
+              "startedAt": "0001-01-01T00:00:00Z",
+              "status": "pending"
+            },
+            {
+              "completedAt": "0001-01-01T00:00:00Z",
+              "conclusion": "",
+              "name": "Post Run Swatinem/rust-cache@v2",
+              "number": 37,
+              "startedAt": "0001-01-01T00:00:00Z",
+              "status": "pending"
+            },
+            {
+              "completedAt": "0001-01-01T00:00:00Z",
+              "conclusion": "",
+              "name": "Post Run actions/checkout@v4",
+              "number": 38,
+              "startedAt": "0001-01-01T00:00:00Z",
+              "status": "pending"
+            }
+          ],
+          "url": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38246622428/job/114801983022"
+        },
+        {
+          "completedAt": "0001-01-01T00:00:00Z",
+          "conclusion": "",
+          "databaseId": 114801983050,
+          "name": "rust (workspace)",
+          "startedAt": "2026-10-12T12:03:28Z",
+          "status": "in_progress",
+          "steps": [
+            {
+              "completedAt": "2026-10-12T12:03:31Z",
+              "conclusion": "success",
+              "name": "Set up job",
+              "number": 1,
+              "startedAt": "2026-10-12T12:03:29Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:35Z",
+              "conclusion": "success",
+              "name": "Run actions/checkout@v4",
+              "number": 2,
+              "startedAt": "2026-10-12T12:03:31Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:43Z",
+              "conclusion": "success",
+              "name": "Run dtolnay/rust-toolchain@stable",
+              "number": 3,
+              "startedAt": "2026-10-12T12:03:35Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:48Z",
+              "conclusion": "success",
+              "name": "Run Swatinem/rust-cache@v2",
+              "number": 4,
+              "startedAt": "2026-10-12T12:03:43Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:04:00Z",
+              "conclusion": "success",
+              "name": "Install cast for localhost L1 fixture tests",
+              "number": 5,
+              "startedAt": "2026-10-12T12:03:48Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "0001-01-01T00:00:00Z",
+              "conclusion": "",
+              "name": "test",
+              "number": 6,
+              "startedAt": "2026-10-12T12:04:00Z",
+              "status": "in_progress"
+            },
+            {
+              "completedAt": "0001-01-01T00:00:00Z",
+              "conclusion": "",
+              "name": "witness serialization (serde feature)",
+              "number": 7,
+              "startedAt": "0001-01-01T00:00:00Z",
+              "status": "pending"
+            },
+            {
+              "completedAt": "0001-01-01T00:00:00Z",
+              "conclusion": "",
+              "name": "zkVM-guest builds (no_std, incl. serde witness)",
+              "number": 8,
+              "startedAt": "0001-01-01T00:00:00Z",
+              "status": "pending"
+            },
+            {
+              "completedAt": "0001-01-01T00:00:00Z",
+              "conclusion": "",
+              "name": "Post Install cast for localhost L1 fixture tests",
+              "number": 14,
+              "startedAt": "0001-01-01T00:00:00Z",
+              "status": "pending"
+            },
+            {
+              "completedAt": "0001-01-01T00:00:00Z",
+              "conclusion": "",
+              "name": "Post Run Swatinem/rust-cache@v2",
+              "number": 15,
+              "startedAt": "0001-01-01T00:00:00Z",
+              "status": "pending"
+            },
+            {
+              "completedAt": "0001-01-01T00:00:00Z",
+              "conclusion": "",
+              "name": "Post Run actions/checkout@v4",
+              "number": 16,
+              "startedAt": "0001-01-01T00:00:00Z",
+              "status": "pending"
+            }
+          ],
+          "url": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38246622428/job/114801983050"
+        },
+        {
+          "completedAt": "2026-10-12T12:03:58Z",
+          "conclusion": "success",
+          "databaseId": 114801983067,
+          "name": "contracts (foundry)",
+          "startedAt": "2026-10-12T12:03:28Z",
+          "status": "completed",
+          "steps": [
+            {
+              "completedAt": "2026-10-12T12:03:31Z",
+              "conclusion": "success",
+              "name": "Set up job",
+              "number": 1,
+              "startedAt": "2026-10-12T12:03:29Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:33Z",
+              "conclusion": "success",
+              "name": "Run actions/checkout@v4",
+              "number": 2,
+              "startedAt": "2026-10-12T12:03:31Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:39Z",
+              "conclusion": "success",
+              "name": "Run foundry-rs/foundry-toolchain@v1",
+              "number": 3,
+              "startedAt": "2026-10-12T12:03:33Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:46Z",
+              "conclusion": "success",
+              "name": "build",
+              "number": 4,
+              "startedAt": "2026-10-12T12:03:39Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:54Z",
+              "conclusion": "success",
+              "name": "test",
+              "number": 5,
+              "startedAt": "2026-10-12T12:03:46Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:54Z",
+              "conclusion": "success",
+              "name": "Experimental batch clock anchor (not production integration)",
+              "number": 6,
+              "startedAt": "2026-10-12T12:03:54Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:55Z",
+              "conclusion": "success",
+              "name": "Post Run foundry-rs/foundry-toolchain@v1",
+              "number": 11,
+              "startedAt": "2026-10-12T12:03:54Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:56Z",
+              "conclusion": "success",
+              "name": "Post Run actions/checkout@v4",
+              "number": 12,
+              "startedAt": "2026-10-12T12:03:55Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:56Z",
+              "conclusion": "success",
+              "name": "Complete job",
+              "number": 13,
+              "startedAt": "2026-10-12T12:03:56Z",
+              "status": "completed"
+            }
+          ],
+          "url": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38246622428/job/114801983067"
+        }
+      ],
+      "status": "in_progress",
+      "url": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38246622428",
+      "workflowName": "ci"
+    },
+    {
+      "conclusion": "",
+      "databaseId": 38246622363,
+      "headSha": "8181880a41dcd1bf1f1117270c0d0067e4c7b15f",
+      "jobs": [
+        {
+          "completedAt": "0001-01-01T00:00:00Z",
+          "conclusion": "",
+          "databaseId": 114801982805,
+          "name": "offline-ingestion",
+          "startedAt": "2026-10-12T12:03:28Z",
+          "status": "in_progress",
+          "steps": [
+            {
+              "completedAt": "2026-10-12T12:03:32Z",
+              "conclusion": "success",
+              "name": "Set up job",
+              "number": 1,
+              "startedAt": "2026-10-12T12:03:29Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:35Z",
+              "conclusion": "success",
+              "name": "Run actions/checkout@v4",
+              "number": 2,
+              "startedAt": "2026-10-12T12:03:32Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:37Z",
+              "conclusion": "success",
+              "name": "Run dtolnay/rust-toolchain@stable",
+              "number": 3,
+              "startedAt": "2026-10-12T12:03:35Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:38Z",
+              "conclusion": "success",
+              "name": "Run Swatinem/rust-cache@v2",
+              "number": 4,
+              "startedAt": "2026-10-12T12:03:37Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:43Z",
+              "conclusion": "success",
+              "name": "Run foundry-rs/foundry-toolchain@v1",
+              "number": 5,
+              "startedAt": "2026-10-12T12:03:38Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "0001-01-01T00:00:00Z",
+              "conclusion": "",
+              "name": "Deposit regressions, migration, races, and proof replay",
+              "number": 6,
+              "startedAt": "2026-10-12T12:03:43Z",
+              "status": "in_progress"
+            },
+            {
+              "completedAt": "0001-01-01T00:00:00Z",
+              "conclusion": "",
+              "name": "Real cast transport against loopback JSON-RPC (no live chain)",
+              "number": 7,
+              "startedAt": "0001-01-01T00:00:00Z",
+              "status": "pending"
+            },
+            {
+              "completedAt": "0001-01-01T00:00:00Z",
+              "conclusion": "",
+              "name": "Post Run foundry-rs/foundry-toolchain@v1",
+              "number": 12,
+              "startedAt": "0001-01-01T00:00:00Z",
+              "status": "pending"
+            },
+            {
+              "completedAt": "0001-01-01T00:00:00Z",
+              "conclusion": "",
+              "name": "Post Run Swatinem/rust-cache@v2",
+              "number": 13,
+              "startedAt": "0001-01-01T00:00:00Z",
+              "status": "pending"
+            },
+            {
+              "completedAt": "0001-01-01T00:00:00Z",
+              "conclusion": "",
+              "name": "Post Run actions/checkout@v4",
+              "number": 14,
+              "startedAt": "0001-01-01T00:00:00Z",
+              "status": "pending"
+            }
+          ],
+          "url": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38246622363/job/114801982805"
+        }
+      ],
+      "status": "in_progress",
+      "url": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38246622363",
+      "workflowName": "a01-ingestion"
+    },
+    {
+      "conclusion": "",
+      "databaseId": 38246622674,
+      "headSha": "8181880a41dcd1bf1f1117270c0d0067e4c7b15f",
+      "jobs": [
+        {
+          "completedAt": "2026-10-12T12:04:05Z",
+          "conclusion": "success",
+          "databaseId": 114801983765,
+          "name": "public service identity (no proving)",
+          "startedAt": "2026-10-12T12:03:29Z",
+          "status": "completed",
+          "steps": [
+            {
+              "completedAt": "2026-10-12T12:03:33Z",
+              "conclusion": "success",
+              "name": "Set up job",
+              "number": 1,
+              "startedAt": "2026-10-12T12:03:30Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:37Z",
+              "conclusion": "success",
+              "name": "Run actions/checkout@v4",
+              "number": 2,
+              "startedAt": "2026-10-12T12:03:33Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:50Z",
+              "conclusion": "success",
+              "name": "Run dtolnay/rust-toolchain@stable",
+              "number": 3,
+              "startedAt": "2026-10-12T12:03:37Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:59Z",
+              "conclusion": "success",
+              "name": "Run Swatinem/rust-cache@v2",
+              "number": 4,
+              "startedAt": "2026-10-12T12:03:50Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:59Z",
+              "conclusion": "success",
+              "name": "Check the exact public handler sources are formatted",
+              "number": 5,
+              "startedAt": "2026-10-12T12:03:59Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:04:02Z",
+              "conclusion": "success",
+              "name": "Owned HTTP service identity fixtures without SDK or backend startup",
+              "number": 6,
+              "startedAt": "2026-10-12T12:03:59Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:04:03Z",
+              "conclusion": "success",
+              "name": "Lint the dependency-light identity surface",
+              "number": 7,
+              "startedAt": "2026-10-12T12:04:02Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:04:03Z",
+              "conclusion": "success",
+              "name": "Post Run Swatinem/rust-cache@v2",
+              "number": 13,
+              "startedAt": "2026-10-12T12:04:03Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:04:03Z",
+              "conclusion": "success",
+              "name": "Post Run actions/checkout@v4",
+              "number": 14,
+              "startedAt": "2026-10-12T12:04:03Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:04:03Z",
+              "conclusion": "success",
+              "name": "Complete job",
+              "number": 15,
+              "startedAt": "2026-10-12T12:04:03Z",
+              "status": "completed"
+            }
+          ],
+          "url": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38246622674/job/114801983765"
+        },
+        {
+          "completedAt": "2026-10-12T12:03:35Z",
+          "conclusion": "success",
+          "databaseId": 114801984118,
+          "name": "prover source / deployment binding",
+          "startedAt": "2026-10-12T12:03:28Z",
+          "status": "completed",
+          "steps": [
+            {
+              "completedAt": "2026-10-12T12:03:30Z",
+              "conclusion": "success",
+              "name": "Set up job",
+              "number": 1,
+              "startedAt": "2026-10-12T12:03:29Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:32Z",
+              "conclusion": "success",
+              "name": "Run actions/checkout@v4",
+              "number": 2,
+              "startedAt": "2026-10-12T12:03:30Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:32Z",
+              "conclusion": "success",
+              "name": "Record guest inputs and deployment pin",
+              "number": 3,
+              "startedAt": "2026-10-12T12:03:32Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:32Z",
+              "conclusion": "success",
+              "name": "Explain non-proof",
+              "number": 4,
+              "startedAt": "2026-10-12T12:03:32Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:33Z",
+              "conclusion": "success",
+              "name": "Run actions/upload-artifact@v4",
+              "number": 5,
+              "startedAt": "2026-10-12T12:03:32Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:33Z",
+              "conclusion": "success",
+              "name": "Post Run actions/checkout@v4",
+              "number": 10,
+              "startedAt": "2026-10-12T12:03:33Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:33Z",
+              "conclusion": "success",
+              "name": "Complete job",
+              "number": 11,
+              "startedAt": "2026-10-12T12:03:33Z",
+              "status": "completed"
+            }
+          ],
+          "url": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38246622674/job/114801984118"
+        },
+        {
+          "completedAt": "2026-10-12T12:04:01Z",
+          "conclusion": "success",
+          "databaseId": 114801984129,
+          "name": "frontend release gate",
+          "startedAt": "2026-10-12T12:03:29Z",
+          "status": "completed",
+          "steps": [
+            {
+              "completedAt": "2026-10-12T12:03:31Z",
+              "conclusion": "success",
+              "name": "Set up job",
+              "number": 1,
+              "startedAt": "2026-10-12T12:03:29Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:34Z",
+              "conclusion": "success",
+              "name": "Run actions/checkout@v4",
+              "number": 2,
+              "startedAt": "2026-10-12T12:03:31Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:35Z",
+              "conclusion": "success",
+              "name": "Run pnpm/action-setup@v4",
+              "number": 3,
+              "startedAt": "2026-10-12T12:03:34Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:38Z",
+              "conclusion": "success",
+              "name": "Run actions/setup-node@v4",
+              "number": 4,
+              "startedAt": "2026-10-12T12:03:35Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:39Z",
+              "conclusion": "success",
+              "name": "Run pnpm install --frozen-lockfile",
+              "number": 5,
+              "startedAt": "2026-10-12T12:03:38Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:51Z",
+              "conclusion": "success",
+              "name": "Run pnpm test",
+              "number": 6,
+              "startedAt": "2026-10-12T12:03:39Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:58Z",
+              "conclusion": "success",
+              "name": "Run pnpm build",
+              "number": 7,
+              "startedAt": "2026-10-12T12:03:51Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:59Z",
+              "conclusion": "success",
+              "name": "Post Run actions/setup-node@v4",
+              "number": 12,
+              "startedAt": "2026-10-12T12:03:58Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:59Z",
+              "conclusion": "success",
+              "name": "Post Run pnpm/action-setup@v4",
+              "number": 13,
+              "startedAt": "2026-10-12T12:03:59Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:59Z",
+              "conclusion": "success",
+              "name": "Post Run actions/checkout@v4",
+              "number": 14,
+              "startedAt": "2026-10-12T12:03:59Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:59Z",
+              "conclusion": "success",
+              "name": "Complete job",
+              "number": 15,
+              "startedAt": "2026-10-12T12:03:59Z",
+              "status": "completed"
+            }
+          ],
+          "url": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38246622674/job/114801984129"
+        },
+        {
+          "completedAt": "2026-10-12T12:04:12Z",
+          "conclusion": "failure",
+          "databaseId": 114801984146,
+          "name": "release regression",
+          "startedAt": "2026-10-12T12:03:29Z",
+          "status": "completed",
+          "steps": [
+            {
+              "completedAt": "2026-10-12T12:03:33Z",
+              "conclusion": "success",
+              "name": "Set up job",
+              "number": 1,
+              "startedAt": "2026-10-12T12:03:29Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:37Z",
+              "conclusion": "success",
+              "name": "Run actions/checkout@v4",
+              "number": 2,
+              "startedAt": "2026-10-12T12:03:33Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:40Z",
+              "conclusion": "success",
+              "name": "Run dtolnay/rust-toolchain@stable",
+              "number": 3,
+              "startedAt": "2026-10-12T12:03:37Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:47Z",
+              "conclusion": "success",
+              "name": "Run Swatinem/rust-cache@v2",
+              "number": 4,
+              "startedAt": "2026-10-12T12:03:40Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:50Z",
+              "conclusion": "success",
+              "name": "Run cargo fmt --all --check",
+              "number": 5,
+              "startedAt": "2026-10-12T12:03:47Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:04:09Z",
+              "conclusion": "failure",
+              "name": "Run cargo clippy --workspace --all-targets --locked -- -D warnings",
+              "number": 6,
+              "startedAt": "2026-10-12T12:03:50Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:04:09Z",
+              "conclusion": "skipped",
+              "name": "Check release profile flags take effect",
+              "number": 7,
+              "startedAt": "2026-10-12T12:04:09Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:04:09Z",
+              "conclusion": "skipped",
+              "name": "Install cast for localhost L1 fixture tests",
+              "number": 8,
+              "startedAt": "2026-10-12T12:04:09Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:04:09Z",
+              "conclusion": "skipped",
+              "name": "release workspace tests",
+              "number": 9,
+              "startedAt": "2026-10-12T12:04:09Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:04:09Z",
+              "conclusion": "skipped",
+              "name": "Run cargo build -p perp-core --no-default-features --features serde --locked",
+              "number": 10,
+              "startedAt": "2026-10-12T12:04:09Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:04:09Z",
+              "conclusion": "skipped",
+              "name": "Run cargo build -p matcher --no-default-features --locked",
+              "number": 11,
+              "startedAt": "2026-10-12T12:04:09Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:04:09Z",
+              "conclusion": "skipped",
+              "name": "Post Run Swatinem/rust-cache@v2",
+              "number": 21,
+              "startedAt": "2026-10-12T12:04:09Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:04:10Z",
+              "conclusion": "success",
+              "name": "Post Run actions/checkout@v4",
+              "number": 22,
+              "startedAt": "2026-10-12T12:04:09Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:04:10Z",
+              "conclusion": "success",
+              "name": "Complete job",
+              "number": 23,
+              "startedAt": "2026-10-12T12:04:10Z",
+              "status": "completed"
+            }
+          ],
+          "url": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38246622674/job/114801984146"
+        },
+        {
+          "completedAt": "2026-10-12T12:04:04Z",
+          "conclusion": "success",
+          "databaseId": 114801984170,
+          "name": "dependency advisories",
+          "startedAt": "2026-10-12T12:03:28Z",
+          "status": "completed",
+          "steps": [
+            {
+              "completedAt": "2026-10-12T12:03:30Z",
+              "conclusion": "success",
+              "name": "Set up job",
+              "number": 1,
+              "startedAt": "2026-10-12T12:03:29Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:33Z",
+              "conclusion": "success",
+              "name": "Run actions/checkout@v4",
+              "number": 2,
+              "startedAt": "2026-10-12T12:03:30Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:34Z",
+              "conclusion": "success",
+              "name": "Run dtolnay/rust-toolchain@stable",
+              "number": 3,
+              "startedAt": "2026-10-12T12:03:33Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:34Z",
+              "conclusion": "success",
+              "name": "Run taiki-e/install-action@cargo-audit",
+              "number": 4,
+              "startedAt": "2026-10-12T12:03:34Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:36Z",
+              "conclusion": "success",
+              "name": "Verify vendored source and patched SP1 release identity",
+              "number": 5,
+              "startedAt": "2026-10-12T12:03:34Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:49Z",
+              "conclusion": "success",
+              "name": "Release manifest and repository protection policy guards",
+              "number": 6,
+              "startedAt": "2026-10-12T12:03:36Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:56Z",
+              "conclusion": "success",
+              "name": "RustSec workspace and excluded application locks",
+              "number": 7,
+              "startedAt": "2026-10-12T12:03:49Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:57Z",
+              "conclusion": "success",
+              "name": "Run pnpm/action-setup@v4",
+              "number": 8,
+              "startedAt": "2026-10-12T12:03:56Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:04:00Z",
+              "conclusion": "success",
+              "name": "Run actions/setup-node@v4",
+              "number": 9,
+              "startedAt": "2026-10-12T12:03:57Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:04:01Z",
+              "conclusion": "success",
+              "name": "npm advisories through frozen pnpm graph",
+              "number": 10,
+              "startedAt": "2026-10-12T12:04:00Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:04:02Z",
+              "conclusion": "success",
+              "name": "Run actions/upload-artifact@v4",
+              "number": 11,
+              "startedAt": "2026-10-12T12:04:01Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:04:02Z",
+              "conclusion": "success",
+              "name": "Post Run actions/setup-node@v4",
+              "number": 20,
+              "startedAt": "2026-10-12T12:04:02Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:04:02Z",
+              "conclusion": "success",
+              "name": "Post Run pnpm/action-setup@v4",
+              "number": 21,
+              "startedAt": "2026-10-12T12:04:02Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:04:02Z",
+              "conclusion": "success",
+              "name": "Post Run actions/checkout@v4",
+              "number": 22,
+              "startedAt": "2026-10-12T12:04:02Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:04:02Z",
+              "conclusion": "success",
+              "name": "Complete job",
+              "number": 23,
+              "startedAt": "2026-10-12T12:04:02Z",
+              "status": "completed"
+            }
+          ],
+          "url": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38246622674/job/114801984170"
+        },
+        {
+          "completedAt": "0001-01-01T00:00:00Z",
+          "conclusion": "",
+          "databaseId": 114801984189,
+          "name": "gateway RPC, crash and alert drills",
+          "startedAt": "2026-10-12T12:03:29Z",
+          "status": "in_progress",
+          "steps": [
+            {
+              "completedAt": "2026-10-12T12:03:33Z",
+              "conclusion": "success",
+              "name": "Set up job",
+              "number": 1,
+              "startedAt": "2026-10-12T12:03:30Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:35Z",
+              "conclusion": "success",
+              "name": "Run actions/checkout@v4",
+              "number": 2,
+              "startedAt": "2026-10-12T12:03:33Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:37Z",
+              "conclusion": "success",
+              "name": "Run dtolnay/rust-toolchain@stable",
+              "number": 3,
+              "startedAt": "2026-10-12T12:03:35Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:46Z",
+              "conclusion": "success",
+              "name": "Run Swatinem/rust-cache@v2",
+              "number": 4,
+              "startedAt": "2026-10-12T12:03:37Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:51Z",
+              "conclusion": "success",
+              "name": "Run foundry-rs/foundry-toolchain@v1",
+              "number": 5,
+              "startedAt": "2026-10-12T12:03:46Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:52Z",
+              "conclusion": "success",
+              "name": "Run pnpm/action-setup@v4",
+              "number": 6,
+              "startedAt": "2026-10-12T12:03:51Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:58Z",
+              "conclusion": "success",
+              "name": "Run actions/setup-node@v4",
+              "number": 7,
+              "startedAt": "2026-10-12T12:03:52Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:59Z",
+              "conclusion": "success",
+              "name": "Install locked local signing fixture dependencies",
+              "number": 8,
+              "startedAt": "2026-10-12T12:03:58Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "0001-01-01T00:00:00Z",
+              "conclusion": "",
+              "name": "Build the actual gateway and record its source",
+              "number": 9,
+              "startedAt": "2026-10-12T12:03:59Z",
+              "status": "in_progress"
+            },
+            {
+              "completedAt": "0001-01-01T00:00:00Z",
+              "conclusion": "",
+              "name": "Public macOS snapshot and journal on Linux recovery code",
+              "number": 10,
+              "startedAt": "0001-01-01T00:00:00Z",
+              "status": "pending"
+            },
+            {
+              "completedAt": "0001-01-01T00:00:00Z",
+              "conclusion": "",
+              "name": "Local clock wallet lifecycle and gateway-offline claims (explicit mock verifier)",
+              "number": 11,
+              "startedAt": "0001-01-01T00:00:00Z",
+              "status": "pending"
+            },
+            {
+              "completedAt": "0001-01-01T00:00:00Z",
+              "conclusion": "",
+              "name": "Release manifest against owned six-contract Anvil stack",
+              "number": 12,
+              "startedAt": "0001-01-01T00:00:00Z",
+              "status": "pending"
+            },
+            {
+              "completedAt": "0001-01-01T00:00:00Z",
+              "conclusion": "",
+              "name": "Candidate target identity against owned seven-contract Anvil stack",
+              "number": 13,
+              "startedAt": "0001-01-01T00:00:00Z",
+              "status": "pending"
+            },
+            {
+              "completedAt": "0001-01-01T00:00:00Z",
+              "conclusion": "",
+              "name": "Candidate fixture HTTP transport and durable lost-ack recovery (not live service)",
+              "number": 14,
+              "startedAt": "0001-01-01T00:00:00Z",
+              "status": "pending"
+            },
+            {
+              "completedAt": "0001-01-01T00:00:00Z",
+              "conclusion": "",
+              "name": "Real cast transport against owned RPC fixtures",
+              "number": 15,
+              "startedAt": "0001-01-01T00:00:00Z",
+              "status": "pending"
+            },
+            {
+              "completedAt": "0001-01-01T00:00:00Z",
+              "conclusion": "",
+              "name": "Clock finality and reorg checks through real cast transport",
+              "number": 16,
+              "startedAt": "0001-01-01T00:00:00Z",
+              "status": "pending"
+            },
+            {
+              "completedAt": "0001-01-01T00:00:00Z",
+              "conclusion": "",
+              "name": "Actual production event paths to a local alert collector",
+              "number": 17,
+              "startedAt": "0001-01-01T00:00:00Z",
+              "status": "pending"
+            },
+            {
+              "completedAt": "0001-01-01T00:00:00Z",
+              "conclusion": "",
+              "name": "Real gateway HTTP ACK, SIGKILL and encrypted restart matrix",
+              "number": 18,
+              "startedAt": "0001-01-01T00:00:00Z",
+              "status": "pending"
+            },
+            {
+              "completedAt": "0001-01-01T00:00:00Z",
+              "conclusion": "",
+              "name": "Strict oracle intake through owned HTTP transport",
+              "number": 19,
+              "startedAt": "0001-01-01T00:00:00Z",
+              "status": "pending"
+            },
+            {
+              "completedAt": "0001-01-01T00:00:00Z",
+              "conclusion": "",
+              "name": "Required snapshot restore and fresh-directory recovery drill",
+              "number": 20,
+              "startedAt": "0001-01-01T00:00:00Z",
+              "status": "pending"
+            },
+            {
+              "completedAt": "0001-01-01T00:00:00Z",
+              "conclusion": "",
+              "name": "Run actions/upload-artifact@v4",
+              "number": 21,
+              "startedAt": "0001-01-01T00:00:00Z",
+              "status": "pending"
+            },
+            {
+              "completedAt": "0001-01-01T00:00:00Z",
+              "conclusion": "",
+              "name": "Post Run actions/setup-node@v4",
+              "number": 38,
+              "startedAt": "0001-01-01T00:00:00Z",
+              "status": "pending"
+            },
+            {
+              "completedAt": "0001-01-01T00:00:00Z",
+              "conclusion": "",
+              "name": "Post Run pnpm/action-setup@v4",
+              "number": 39,
+              "startedAt": "0001-01-01T00:00:00Z",
+              "status": "pending"
+            },
+            {
+              "completedAt": "0001-01-01T00:00:00Z",
+              "conclusion": "",
+              "name": "Post Run foundry-rs/foundry-toolchain@v1",
+              "number": 40,
+              "startedAt": "0001-01-01T00:00:00Z",
+              "status": "pending"
+            },
+            {
+              "completedAt": "0001-01-01T00:00:00Z",
+              "conclusion": "",
+              "name": "Post Run Swatinem/rust-cache@v2",
+              "number": 41,
+              "startedAt": "0001-01-01T00:00:00Z",
+              "status": "pending"
+            },
+            {
+              "completedAt": "0001-01-01T00:00:00Z",
+              "conclusion": "",
+              "name": "Post Run actions/checkout@v4",
+              "number": 42,
+              "startedAt": "0001-01-01T00:00:00Z",
+              "status": "pending"
+            }
+          ],
+          "url": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38246622674/job/114801984189"
+        },
+        {
+          "completedAt": "2026-10-12T12:04:04Z",
+          "conclusion": "success",
+          "databaseId": 114801984190,
+          "name": "foundry release gate",
+          "startedAt": "2026-10-12T12:03:29Z",
+          "status": "completed",
+          "steps": [
+            {
+              "completedAt": "2026-10-12T12:03:31Z",
+              "conclusion": "success",
+              "name": "Set up job",
+              "number": 1,
+              "startedAt": "2026-10-12T12:03:29Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:33Z",
+              "conclusion": "success",
+              "name": "Run actions/checkout@v4",
+              "number": 2,
+              "startedAt": "2026-10-12T12:03:31Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:37Z",
+              "conclusion": "success",
+              "name": "Run foundry-rs/foundry-toolchain@v1",
+              "number": 3,
+              "startedAt": "2026-10-12T12:03:33Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:44Z",
+              "conclusion": "success",
+              "name": "Run forge build",
+              "number": 4,
+              "startedAt": "2026-10-12T12:03:37Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:51Z",
+              "conclusion": "success",
+              "name": "Run forge test -vvv",
+              "number": 5,
+              "startedAt": "2026-10-12T12:03:44Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:54Z",
+              "conclusion": "success",
+              "name": "Real SP1 verifier guards (no application proof claim)",
+              "number": 6,
+              "startedAt": "2026-10-12T12:03:51Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:56Z",
+              "conclusion": "success",
+              "name": "Real clock-v2 proof through adapter, settlement and vault",
+              "number": 7,
+              "startedAt": "2026-10-12T12:03:54Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:57Z",
+              "conclusion": "success",
+              "name": "Run actions/upload-artifact@v4",
+              "number": 8,
+              "startedAt": "2026-10-12T12:03:56Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:57Z",
+              "conclusion": "success",
+              "name": "Reject incomplete or substituted proof artifacts",
+              "number": 9,
+              "startedAt": "2026-10-12T12:03:57Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:57Z",
+              "conclusion": "success",
+              "name": "Reject incomplete clock artifacts and changed guest sources",
+              "number": 10,
+              "startedAt": "2026-10-12T12:03:57Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:58Z",
+              "conclusion": "success",
+              "name": "Real clock proof through verifier, settlement and vault",
+              "number": 11,
+              "startedAt": "2026-10-12T12:03:57Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:58Z",
+              "conclusion": "success",
+              "name": "Run actions/upload-artifact@v4",
+              "number": 12,
+              "startedAt": "2026-10-12T12:03:58Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:59Z",
+              "conclusion": "success",
+              "name": "Post Run foundry-rs/foundry-toolchain@v1",
+              "number": 23,
+              "startedAt": "2026-10-12T12:03:58Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:59Z",
+              "conclusion": "success",
+              "name": "Post Run actions/checkout@v4",
+              "number": 24,
+              "startedAt": "2026-10-12T12:03:59Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:59Z",
+              "conclusion": "success",
+              "name": "Complete job",
+              "number": 25,
+              "startedAt": "2026-10-12T12:03:59Z",
+              "status": "completed"
+            }
+          ],
+          "url": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38246622674/job/114801984190"
+        }
+      ],
+      "status": "in_progress",
+      "url": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38246622674",
+      "workflowName": "A11 release evidence"
+    },
+    {
+      "conclusion": "",
+      "databaseId": 38246622496,
+      "headSha": "8181880a41dcd1bf1f1117270c0d0067e4c7b15f",
+      "jobs": [
+        {
+          "completedAt": "2026-10-12T12:03:57Z",
+          "conclusion": "success",
+          "databaseId": 114801982810,
+          "name": "frontend",
+          "startedAt": "2026-10-12T12:03:28Z",
+          "status": "completed",
+          "steps": [
+            {
+              "completedAt": "2026-10-12T12:03:30Z",
+              "conclusion": "success",
+              "name": "Set up job",
+              "number": 1,
+              "startedAt": "2026-10-12T12:03:29Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:33Z",
+              "conclusion": "success",
+              "name": "Run actions/checkout@v4",
+              "number": 2,
+              "startedAt": "2026-10-12T12:03:30Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:34Z",
+              "conclusion": "success",
+              "name": "Run pnpm/action-setup@v4",
+              "number": 3,
+              "startedAt": "2026-10-12T12:03:33Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:35Z",
+              "conclusion": "success",
+              "name": "Run actions/setup-node@v4",
+              "number": 4,
+              "startedAt": "2026-10-12T12:03:34Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:37Z",
+              "conclusion": "success",
+              "name": "Run pnpm install --frozen-lockfile",
+              "number": 5,
+              "startedAt": "2026-10-12T12:03:35Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:48Z",
+              "conclusion": "success",
+              "name": "Run pnpm test",
+              "number": 6,
+              "startedAt": "2026-10-12T12:03:37Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:54Z",
+              "conclusion": "success",
+              "name": "Run pnpm build",
+              "number": 7,
+              "startedAt": "2026-10-12T12:03:48Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:55Z",
+              "conclusion": "success",
+              "name": "Post Run actions/setup-node@v4",
+              "number": 12,
+              "startedAt": "2026-10-12T12:03:54Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:55Z",
+              "conclusion": "success",
+              "name": "Post Run pnpm/action-setup@v4",
+              "number": 13,
+              "startedAt": "2026-10-12T12:03:55Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:55Z",
+              "conclusion": "success",
+              "name": "Post Run actions/checkout@v4",
+              "number": 14,
+              "startedAt": "2026-10-12T12:03:55Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:55Z",
+              "conclusion": "success",
+              "name": "Complete job",
+              "number": 15,
+              "startedAt": "2026-10-12T12:03:55Z",
+              "status": "completed"
+            }
+          ],
+          "url": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38246622496/job/114801982810"
+        },
+        {
+          "completedAt": "0001-01-01T00:00:00Z",
+          "conclusion": "",
+          "databaseId": 114801983301,
+          "name": "rust",
+          "startedAt": "2026-10-12T12:03:28Z",
+          "status": "in_progress",
+          "steps": [
+            {
+              "completedAt": "2026-10-12T12:03:30Z",
+              "conclusion": "success",
+              "name": "Set up job",
+              "number": 1,
+              "startedAt": "2026-10-12T12:03:29Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:33Z",
+              "conclusion": "success",
+              "name": "Run actions/checkout@v4",
+              "number": 2,
+              "startedAt": "2026-10-12T12:03:30Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:35Z",
+              "conclusion": "success",
+              "name": "Run dtolnay/rust-toolchain@stable",
+              "number": 3,
+              "startedAt": "2026-10-12T12:03:33Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:36Z",
+              "conclusion": "success",
+              "name": "Run Swatinem/rust-cache@v2",
+              "number": 4,
+              "startedAt": "2026-10-12T12:03:35Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:38Z",
+              "conclusion": "success",
+              "name": "Run cargo fmt --all --check",
+              "number": 5,
+              "startedAt": "2026-10-12T12:03:36Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:41Z",
+              "conclusion": "success",
+              "name": "Install cast for localhost L1 fixture tests",
+              "number": 6,
+              "startedAt": "2026-10-12T12:03:38Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "0001-01-01T00:00:00Z",
+              "conclusion": "",
+              "name": "Run cargo test --locked -p gateway",
+              "number": 7,
+              "startedAt": "2026-10-12T12:03:41Z",
+              "status": "in_progress"
+            },
+            {
+              "completedAt": "0001-01-01T00:00:00Z",
+              "conclusion": "",
+              "name": "Run cargo clippy --workspace --all-targets --locked -- -D warnings",
+              "number": 8,
+              "startedAt": "0001-01-01T00:00:00Z",
+              "status": "pending"
+            },
+            {
+              "completedAt": "0001-01-01T00:00:00Z",
+              "conclusion": "",
+              "name": "Post Install cast for localhost L1 fixture tests",
+              "number": 14,
+              "startedAt": "0001-01-01T00:00:00Z",
+              "status": "pending"
+            },
+            {
+              "completedAt": "0001-01-01T00:00:00Z",
+              "conclusion": "",
+              "name": "Post Run Swatinem/rust-cache@v2",
+              "number": 15,
+              "startedAt": "0001-01-01T00:00:00Z",
+              "status": "pending"
+            },
+            {
+              "completedAt": "0001-01-01T00:00:00Z",
+              "conclusion": "",
+              "name": "Post Run actions/checkout@v4",
+              "number": 16,
+              "startedAt": "0001-01-01T00:00:00Z",
+              "status": "pending"
+            }
+          ],
+          "url": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38246622496/job/114801983301"
+        }
+      ],
+      "status": "in_progress",
+      "url": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38246622496",
+      "workflowName": "A07 integration hotfix"
+    },
+    {
+      "conclusion": "success",
+      "databaseId": 38246622480,
+      "headSha": "8181880a41dcd1bf1f1117270c0d0067e4c7b15f",
+      "jobs": [
+        {
+          "completedAt": "2026-10-12T12:03:55Z",
+          "conclusion": "success",
+          "databaseId": 114801982595,
+          "name": "Chainlink candidate core (not live verification)",
+          "startedAt": "2026-10-12T12:03:28Z",
+          "status": "completed",
+          "steps": [
+            {
+              "completedAt": "2026-10-12T12:03:30Z",
+              "conclusion": "success",
+              "name": "Set up job",
+              "number": 1,
+              "startedAt": "2026-10-12T12:03:29Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:33Z",
+              "conclusion": "success",
+              "name": "Run actions/checkout@v4",
+              "number": 2,
+              "startedAt": "2026-10-12T12:03:30Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:43Z",
+              "conclusion": "success",
+              "name": "Run dtolnay/rust-toolchain@stable",
+              "number": 3,
+              "startedAt": "2026-10-12T12:03:33Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:43Z",
+              "conclusion": "success",
+              "name": "Standalone candidate formatting",
+              "number": 4,
+              "startedAt": "2026-10-12T12:03:43Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:53Z",
+              "conclusion": "success",
+              "name": "Explicit standalone tests and no_std check",
+              "number": 5,
+              "startedAt": "2026-10-12T12:03:43Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:53Z",
+              "conclusion": "success",
+              "name": "Preserve reviewed v2 inputs",
+              "number": 6,
+              "startedAt": "2026-10-12T12:03:53Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:54Z",
+              "conclusion": "success",
+              "name": "Replay evidence parser guards (offline synthetic test reports)",
+              "number": 7,
+              "startedAt": "2026-10-12T12:03:53Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:54Z",
+              "conclusion": "success",
+              "name": "Post Run actions/checkout@v4",
+              "number": 14,
+              "startedAt": "2026-10-12T12:03:54Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:54Z",
+              "conclusion": "success",
+              "name": "Complete job",
+              "number": 15,
+              "startedAt": "2026-10-12T12:03:54Z",
+              "status": "completed"
+            }
+          ],
+          "url": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38246622480/job/114801982595"
+        },
+        {
+          "completedAt": "2026-10-12T12:04:05Z",
+          "conclusion": "success",
+          "databaseId": 114801982943,
+          "name": "Chainlink REST client (runtime regressions)",
+          "startedAt": "2026-10-12T12:03:28Z",
+          "status": "completed",
+          "steps": [
+            {
+              "completedAt": "2026-10-12T12:03:30Z",
+              "conclusion": "success",
+              "name": "Set up job",
+              "number": 1,
+              "startedAt": "2026-10-12T12:03:29Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:32Z",
+              "conclusion": "success",
+              "name": "Run actions/checkout@v4",
+              "number": 2,
+              "startedAt": "2026-10-12T12:03:30Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:40Z",
+              "conclusion": "success",
+              "name": "Run dtolnay/rust-toolchain@stable",
+              "number": 3,
+              "startedAt": "2026-10-12T12:03:32Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:03:55Z",
+              "conclusion": "success",
+              "name": "Format and typecheck isolated host client (NOT a live or runtime test)",
+              "number": 4,
+              "startedAt": "2026-10-12T12:03:40Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:04:03Z",
+              "conclusion": "success",
+              "name": "Real runtime and owned loopback tests (not live DON verification)",
+              "number": 5,
+              "startedAt": "2026-10-12T12:03:55Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:04:03Z",
+              "conclusion": "success",
+              "name": "Post Run actions/checkout@v4",
+              "number": 10,
+              "startedAt": "2026-10-12T12:04:03Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T12:04:03Z",
+              "conclusion": "success",
+              "name": "Complete job",
+              "number": 11,
+              "startedAt": "2026-10-12T12:04:03Z",
+              "status": "completed"
+            }
+          ],
+          "url": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38246622480/job/114801982943"
+        }
+      ],
+      "status": "completed",
+      "url": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38246622480",
+      "workflowName": "Chainlink candidate"
+    }
+  ],
+  "substantive_registered": 19,
+  "substantive_success": 11,
+  "raw_registered": 20,
+  "preview_registered": 1,
+  "failed": [
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-12T12:04:00Z",
+      "conclusion": "FAILURE",
+      "detailsUrl": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38246622428/job/114801983021",
+      "name": "rust (lint, 1.99)",
+      "startedAt": "2026-10-12T12:03:28Z",
+      "status": "COMPLETED",
+      "workflowName": "ci"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-12T12:04:12Z",
+      "conclusion": "FAILURE",
+      "detailsUrl": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38246622674/job/114801984146",
+      "name": "release regression",
+      "startedAt": "2026-10-12T12:03:29Z",
+      "status": "COMPLETED",
+      "workflowName": "A11 release evidence"
+    },
+    {
+      "__typename": "StatusContext",
+      "context": "Vercel \u2013 arcora-labs",
+      "startedAt": "2026-10-12T12:03:51Z",
+      "state": "FAILURE",
+      "targetUrl": "https://vercel.com/kubudak90s-projects/arcora-labs/Hq4RHF647v2DfeJ8Pq2PYAQzTNez"
+    }
+  ],
+  "active": [
+    {
+      "run": 38246622428,
+      "workflow": "ci",
+      "job": "prover crates (excluded, typecheck)",
+      "job_id": 114801983022,
+      "step": [
+        "Run Swatinem/rust-cache@v2"
+      ]
+    },
+    {
+      "run": 38246622428,
+      "workflow": "ci",
+      "job": "rust (workspace)",
+      "job_id": 114801983050,
+      "step": [
+        "test"
+      ]
+    },
+    {
+      "run": 38246622363,
+      "workflow": "a01-ingestion",
+      "job": "offline-ingestion",
+      "job_id": 114801982805,
+      "step": [
+        "Deposit regressions, migration, races, and proof replay"
+      ]
+    },
+    {
+      "run": 38246622674,
+      "workflow": "A11 release evidence",
+      "job": "gateway RPC, crash and alert drills",
+      "job_id": 114801984189,
+      "step": [
+        "Build the actual gateway and record its source"
+      ]
+    },
+    {
+      "run": 38246622496,
+      "workflow": "A07 integration hotfix",
+      "job": "rust",
+      "job_id": 114801983301,
+      "step": [
+        "Run cargo test --locked -p gateway"
+      ]
+    }
+  ]
+}
