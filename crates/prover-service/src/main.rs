@@ -180,6 +180,11 @@ fn http_get_json_command(
 ) -> Result<serde_json::Value, String> {
     command.args([
         "-q",
+        // A configured attestation URL names one HTTP(S) transfer. Curl's
+        // default brace/range expansion can otherwise contact multiple paths.
+        "--globoff",
+        "--proto",
+        "=http,https",
         "-s",
         "-S",
         "--fail",

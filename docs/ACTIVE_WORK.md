@@ -641,3 +641,23 @@ Recheck kaydındaki e283958 CI 19/19 SUCCESS'tir. Dokümantasyonun yayınlandı�
 `5cb1470` head'i de 19/19 SUCCESS sonrası #44 ile main'e birleşti.
 Native MockProverClient replay gerçek SP1 proof değildir. PRODUCTION RELEASE
 HOLD sürer. Birincil masaüstü checkout'un yerel değişiklikleri korunur.
+
+## Legacy curl: tek HTTP(S) transferi
+
+12 Ekim 2026: PR59 normal merge ile `c56a611` main'e alındı; merge sonrası
+üç main CI akışı da SUCCESS. Yanıt sınırlarının ardından yapılan dar inceleme,
+operatörün brace içeren URL'sinin curl tarafından aynı 160 KiB gövdeyle iki
+POST'a genişletildiğini doğruladı. İlk 401, son 200 altında örtüldü; birleşik
+JSON reddedildi, gerçek proof kabulü gösterilmedi.
+
+Üç legacy GET/POST çağrısına `--globoff --proto =http,https` eklendi. Gerçek
+curl tekrarında tek literal hedef ve typed 401 korunuyor; owned public FILE
+GET reddediliyor. Yerelde HTTP 12, session/client 32, ortak transport 7 ve
+service identity 25 PASS; Clippy/format ve gerçek offline prover typecheck
+PASS. Tam gateway suite bu yerel pakette yeniden çalıştırılmadı; yeni head'in
+yayın CI'ı ayrı doğrulanır. [73 public kanıt dosyası ve kapsam](audits/2026-10-12-curl-http-single-target/README.md).
+
+Query/fragment base suffix davranışı ve receiver ile uyumlu outbound body
+sınırı sonraki GPU'suz audit adaylarıdır. Core/guest/Cargo/ELF/vkey ve 21/9/2
+pinleri aynı; canlı servis/proof/CC/custody/release kapıları açık kalır.
+Candidate submission kapalı ve **PRODUCTION RELEASE HOLD** sürüyor.

@@ -472,6 +472,10 @@ const MAX_PROVE_RESPONSE_BYTES: usize = 4 * 1024 * 1024;
 fn prove_curl_args(endpoint: &str, timeout_secs: u64, bearer: Option<&str>) -> Vec<String> {
     let mut args = vec![
         "-q".into(),
+        // One configured endpoint must not expand into several proof POSTs.
+        "--globoff".into(),
+        "--proto".into(),
+        "=http,https".into(),
         "-s".into(),
         "-S".into(),
         "--connect-timeout".into(),
