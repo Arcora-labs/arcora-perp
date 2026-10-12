@@ -1,0 +1,25 @@
+[package]
+name = "owned-bounded-curl-get"
+version = "0.0.0"
+edition = "2021"
+
+[workspace]
+
+[dependencies]
+serde_json = "=1.0.150"
+
+[patch.crates-io]
+"equivalent" = { path = "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-response-investigation-20261012/cargo-cache/equivalent-1.0.2" }
+"hashbrown" = { path = "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-response-investigation-20261012/cargo-cache/hashbrown-0.17.1" }
+"indexmap" = { path = "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-response-investigation-20261012/cargo-cache/indexmap-2.14.0" }
+"itoa" = { path = "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-response-investigation-20261012/cargo-cache/itoa-1.0.18" }
+"memchr" = { path = "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-response-investigation-20261012/cargo-cache/memchr-2.8.2" }
+"proc-macro2" = { path = "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-response-investigation-20261012/cargo-cache/proc-macro2-1.0.106" }
+"quote" = { path = "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-response-investigation-20261012/cargo-cache/quote-1.0.46" }
+"serde" = { path = "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-response-investigation-20261012/cargo-cache/serde-1.0.228" }
+"serde_core" = { path = "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-response-investigation-20261012/cargo-cache/serde_core-1.0.228" }
+"serde_derive" = { path = "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-response-investigation-20261012/cargo-cache/serde_derive-1.0.228" }
+"serde_json" = { path = "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-response-investigation-20261012/cargo-cache/serde_json-1.0.150" }
+"syn" = { path = "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-response-investigation-20261012/cargo-cache/syn-2.0.118" }
+"unicode-ident" = { path = "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-response-investigation-20261012/cargo-cache/unicode-ident-1.0.24" }
+"zmij" = { path = "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-response-investigation-20261012/cargo-cache/zmij-1.0.21" }

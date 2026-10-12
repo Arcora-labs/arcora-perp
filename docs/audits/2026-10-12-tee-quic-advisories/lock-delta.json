@@ -1,0 +1,651 @@
+{
+  "schema": "arcora-tee-quinn-lock-delta/v1",
+  "old_packages": 274,
+  "new_packages": 259,
+  "unchanged_common_packages": 245,
+  "modified_common_packages": [
+    {
+      "key": [
+        "chacha20",
+        "0.10.1",
+        "registry+https://github.com/rust-lang/crates.io-index"
+      ],
+      "before": {
+        "name": "chacha20",
+        "version": "0.10.1",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "checksum": "d524456ba66e72eb8b115ff89e01e497f8e6d11d78b70b1aa13c0fbd97540a81",
+        "dependencies": [
+          "cfg-if",
+          "cpufeatures",
+          "rand_core 0.10.1"
+        ]
+      },
+      "after": {
+        "name": "chacha20",
+        "version": "0.10.1",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "checksum": "d524456ba66e72eb8b115ff89e01e497f8e6d11d78b70b1aa13c0fbd97540a81",
+        "dependencies": [
+          "cfg-if",
+          "cpufeatures",
+          "rand_core"
+        ]
+      }
+    },
+    {
+      "key": [
+        "getrandom",
+        "0.3.4",
+        "registry+https://github.com/rust-lang/crates.io-index"
+      ],
+      "before": {
+        "name": "getrandom",
+        "version": "0.3.4",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "checksum": "899def5c37c4fd7b2664648c28120ecec138e4d395b459e5ca34f9cce2dd77fd",
+        "dependencies": [
+          "cfg-if",
+          "js-sys",
+          "libc",
+          "r-efi 5.3.0",
+          "wasip2",
+          "wasm-bindgen"
+        ]
+      },
+      "after": {
+        "name": "getrandom",
+        "version": "0.3.4",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "checksum": "899def5c37c4fd7b2664648c28120ecec138e4d395b459e5ca34f9cce2dd77fd",
+        "dependencies": [
+          "cfg-if",
+          "libc",
+          "r-efi 5.3.0",
+          "wasip2"
+        ]
+      }
+    },
+    {
+      "key": [
+        "getrandom",
+        "0.4.3",
+        "registry+https://github.com/rust-lang/crates.io-index"
+      ],
+      "before": {
+        "name": "getrandom",
+        "version": "0.4.3",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "checksum": "300e883d756b2e4ec94e02791f39b04b522276138852cfc41d9fb7e904106099",
+        "dependencies": [
+          "cfg-if",
+          "libc",
+          "r-efi 6.0.0",
+          "rand_core 0.10.1"
+        ]
+      },
+      "after": {
+        "name": "getrandom",
+        "version": "0.4.3",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "checksum": "300e883d756b2e4ec94e02791f39b04b522276138852cfc41d9fb7e904106099",
+        "dependencies": [
+          "cfg-if",
+          "js-sys",
+          "libc",
+          "r-efi 6.0.0",
+          "rand_core",
+          "wasm-bindgen"
+        ]
+      }
+    },
+    {
+      "key": [
+        "hickory-net",
+        "0.26.1",
+        "registry+https://github.com/rust-lang/crates.io-index"
+      ],
+      "before": {
+        "name": "hickory-net",
+        "version": "0.26.1",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "checksum": "e2295ed2f9c31e471e1428a8f88a3f0e1f4b27c15049592138d1eebe9c35b183",
+        "dependencies": [
+          "async-trait",
+          "cfg-if",
+          "data-encoding",
+          "futures-channel",
+          "futures-io",
+          "futures-util",
+          "hickory-proto",
+          "idna",
+          "ipnet",
+          "jni",
+          "rand 0.10.2",
+          "thiserror",
+          "tinyvec",
+          "tokio",
+          "tracing",
+          "url"
+        ]
+      },
+      "after": {
+        "name": "hickory-net",
+        "version": "0.26.1",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "checksum": "e2295ed2f9c31e471e1428a8f88a3f0e1f4b27c15049592138d1eebe9c35b183",
+        "dependencies": [
+          "async-trait",
+          "cfg-if",
+          "data-encoding",
+          "futures-channel",
+          "futures-io",
+          "futures-util",
+          "hickory-proto",
+          "idna",
+          "ipnet",
+          "jni",
+          "rand",
+          "thiserror",
+          "tinyvec",
+          "tokio",
+          "tracing",
+          "url"
+        ]
+      }
+    },
+    {
+      "key": [
+        "hickory-proto",
+        "0.26.1",
+        "registry+https://github.com/rust-lang/crates.io-index"
+      ],
+      "before": {
+        "name": "hickory-proto",
+        "version": "0.26.1",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "checksum": "0bab31817bfb44672a252e97fe81cd0c18d1b2cf892108922f6818820df8c643",
+        "dependencies": [
+          "data-encoding",
+          "idna",
+          "ipnet",
+          "jni",
+          "once_cell",
+          "prefix-trie",
+          "rand 0.10.2",
+          "ring",
+          "thiserror",
+          "tinyvec",
+          "tracing",
+          "url"
+        ]
+      },
+      "after": {
+        "name": "hickory-proto",
+        "version": "0.26.1",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "checksum": "0bab31817bfb44672a252e97fe81cd0c18d1b2cf892108922f6818820df8c643",
+        "dependencies": [
+          "data-encoding",
+          "idna",
+          "ipnet",
+          "jni",
+          "once_cell",
+          "prefix-trie",
+          "rand",
+          "ring",
+          "thiserror",
+          "tinyvec",
+          "tracing",
+          "url"
+        ]
+      }
+    },
+    {
+      "key": [
+        "hickory-resolver",
+        "0.26.1",
+        "registry+https://github.com/rust-lang/crates.io-index"
+      ],
+      "before": {
+        "name": "hickory-resolver",
+        "version": "0.26.1",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "checksum": "f0d58d28879ceecde6607729660c2667a081ccdc082e082675042793960f178c",
+        "dependencies": [
+          "cfg-if",
+          "futures-util",
+          "hickory-net",
+          "hickory-proto",
+          "ipconfig",
+          "ipnet",
+          "jni",
+          "moka",
+          "ndk-context",
+          "once_cell",
+          "parking_lot",
+          "rand 0.10.2",
+          "resolv-conf",
+          "smallvec",
+          "system-configuration",
+          "thiserror",
+          "tokio",
+          "tracing"
+        ]
+      },
+      "after": {
+        "name": "hickory-resolver",
+        "version": "0.26.1",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "checksum": "f0d58d28879ceecde6607729660c2667a081ccdc082e082675042793960f178c",
+        "dependencies": [
+          "cfg-if",
+          "futures-util",
+          "hickory-net",
+          "hickory-proto",
+          "ipconfig",
+          "ipnet",
+          "jni",
+          "moka",
+          "ndk-context",
+          "once_cell",
+          "parking_lot",
+          "rand",
+          "resolv-conf",
+          "smallvec",
+          "system-configuration",
+          "thiserror",
+          "tokio",
+          "tracing"
+        ]
+      }
+    },
+    {
+      "key": [
+        "rand",
+        "0.10.2",
+        "registry+https://github.com/rust-lang/crates.io-index"
+      ],
+      "before": {
+        "name": "rand",
+        "version": "0.10.2",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "checksum": "c7f5fa3a058cd35567ef9bfa5e75732bee0f9e4c55fa90477bef2dfcdbc4be80",
+        "dependencies": [
+          "chacha20",
+          "getrandom 0.4.3",
+          "rand_core 0.10.1"
+        ]
+      },
+      "after": {
+        "name": "rand",
+        "version": "0.10.2",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "checksum": "c7f5fa3a058cd35567ef9bfa5e75732bee0f9e4c55fa90477bef2dfcdbc4be80",
+        "dependencies": [
+          "chacha20",
+          "getrandom 0.4.3",
+          "rand_core"
+        ]
+      }
+    },
+    {
+      "key": [
+        "rustls-platform-verifier",
+        "0.7.0",
+        "registry+https://github.com/rust-lang/crates.io-index"
+      ],
+      "before": {
+        "name": "rustls-platform-verifier",
+        "version": "0.7.0",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "checksum": "26d1e2536ce4f35f4846aa13bff16bd0ff40157cdb14cc056c7b14ba41233ba0",
+        "dependencies": [
+          "core-foundation 0.10.1",
+          "core-foundation-sys",
+          "jni",
+          "log",
+          "once_cell",
+          "rustls",
+          "rustls-native-certs",
+          "rustls-platform-verifier-android",
+          "rustls-webpki",
+          "security-framework",
+          "security-framework-sys",
+          "webpki-root-certs",
+          "windows-sys 0.61.2"
+        ]
+      },
+      "after": {
+        "name": "rustls-platform-verifier",
+        "version": "0.7.0",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "checksum": "26d1e2536ce4f35f4846aa13bff16bd0ff40157cdb14cc056c7b14ba41233ba0",
+        "dependencies": [
+          "core-foundation 0.10.1",
+          "core-foundation-sys",
+          "jni",
+          "log",
+          "once_cell",
+          "rustls",
+          "rustls-native-certs",
+          "rustls-platform-verifier-android",
+          "rustls-webpki",
+          "security-framework",
+          "security-framework-sys",
+          "webpki-root-certs",
+          "windows-sys 0.52.0"
+        ]
+      }
+    },
+    {
+      "key": [
+        "winapi-util",
+        "0.1.11",
+        "registry+https://github.com/rust-lang/crates.io-index"
+      ],
+      "before": {
+        "name": "winapi-util",
+        "version": "0.1.11",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "checksum": "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22",
+        "dependencies": [
+          "windows-sys 0.61.2"
+        ]
+      },
+      "after": {
+        "name": "winapi-util",
+        "version": "0.1.11",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "checksum": "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22",
+        "dependencies": [
+          "windows-sys 0.52.0"
+        ]
+      }
+    },
+    {
+      "key": [
+        "windows-sys",
+        "0.52.0",
+        "registry+https://github.com/rust-lang/crates.io-index"
+      ],
+      "before": {
+        "name": "windows-sys",
+        "version": "0.52.0",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "checksum": "282be5f36a8ce781fad8c8ae18fa3f9beff57ec1b52cb3de0789201425d9a33d",
+        "dependencies": [
+          "windows-targets 0.52.6"
+        ]
+      },
+      "after": {
+        "name": "windows-sys",
+        "version": "0.52.0",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "checksum": "282be5f36a8ce781fad8c8ae18fa3f9beff57ec1b52cb3de0789201425d9a33d",
+        "dependencies": [
+          "windows-targets"
+        ]
+      }
+    },
+    {
+      "key": [
+        "windows-targets",
+        "0.52.6",
+        "registry+https://github.com/rust-lang/crates.io-index"
+      ],
+      "before": {
+        "name": "windows-targets",
+        "version": "0.52.6",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "checksum": "9b724f72796e036ab90c1021d4780d4d3d648aca59e491e6b98e725b84e99973",
+        "dependencies": [
+          "windows_aarch64_gnullvm 0.52.6",
+          "windows_aarch64_msvc 0.52.6",
+          "windows_i686_gnu 0.52.6",
+          "windows_i686_gnullvm 0.52.6",
+          "windows_i686_msvc 0.52.6",
+          "windows_x86_64_gnu 0.52.6",
+          "windows_x86_64_gnullvm 0.52.6",
+          "windows_x86_64_msvc 0.52.6"
+        ]
+      },
+      "after": {
+        "name": "windows-targets",
+        "version": "0.52.6",
+        "source": "registry+https://github.com/rust-lang/crates.io-index",
+        "checksum": "9b724f72796e036ab90c1021d4780d4d3d648aca59e491e6b98e725b84e99973",
+        "dependencies": [
+          "windows_aarch64_gnullvm",
+          "windows_aarch64_msvc",
+          "windows_i686_gnu",
+          "windows_i686_gnullvm",
+          "windows_i686_msvc",
+          "windows_x86_64_gnu",
+          "windows_x86_64_gnullvm",
+          "windows_x86_64_msvc"
+        ]
+      }
+    }
+  ],
+  "removed_packages": [
+    {
+      "name": "ppv-lite86",
+      "version": "0.2.21",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "checksum": "85eae3c4ed2f50dcfe72643da4befc30deadb458a9b590d720cde2f2b1e97da9",
+      "dependencies": [
+        "zerocopy"
+      ]
+    },
+    {
+      "name": "quinn-proto",
+      "version": "0.11.15",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "checksum": "4fcb935c5bec503c2f0e306bdd3e58bb9029dcb14fa8d9ac76e3a5256ac0763e",
+      "dependencies": [
+        "aws-lc-rs",
+        "bytes",
+        "getrandom 0.3.4",
+        "lru-slab",
+        "rand 0.9.4",
+        "ring",
+        "rustc-hash",
+        "rustls",
+        "rustls-pki-types",
+        "slab",
+        "thiserror",
+        "tinyvec",
+        "tracing",
+        "web-time"
+      ]
+    },
+    {
+      "name": "quinn-udp",
+      "version": "0.5.14",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "checksum": "addec6a0dcad8a8d96a771f815f0eaf55f9d1805756410b39f5fa81332574cbd",
+      "dependencies": [
+        "cfg_aliases",
+        "libc",
+        "once_cell",
+        "socket2",
+        "tracing",
+        "windows-sys 0.60.2"
+      ]
+    },
+    {
+      "name": "rand",
+      "version": "0.9.4",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "checksum": "44c5af06bb1b7d3216d91932aed5265164bf384dc89cd6ba05cf59a35f5f76ea",
+      "dependencies": [
+        "rand_chacha",
+        "rand_core 0.9.5"
+      ]
+    },
+    {
+      "name": "rand_chacha",
+      "version": "0.9.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "checksum": "d3022b5f1df60f26e1ffddd6c66e8aa15de382ae63b3a0c1bfc0e4d3e3f325cb",
+      "dependencies": [
+        "ppv-lite86",
+        "rand_core 0.9.5"
+      ]
+    },
+    {
+      "name": "rand_core",
+      "version": "0.9.5",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "checksum": "76afc826de14238e6e8c374ddcc1fa19e374fd8dd986b0d2af0d02377261d83c",
+      "dependencies": [
+        "getrandom 0.3.4"
+      ]
+    },
+    {
+      "name": "windows-sys",
+      "version": "0.60.2",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "checksum": "f2f500e4d28234f72040990ec9d39e3a6b950f9f22d3dba18416c35882612bcb",
+      "dependencies": [
+        "windows-targets 0.53.5"
+      ]
+    },
+    {
+      "name": "windows-targets",
+      "version": "0.53.5",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "checksum": "4945f9f551b88e0d65f3db0bc25c33b8acea4d9e41163edf90dcd0b19f9069f3",
+      "dependencies": [
+        "windows-link",
+        "windows_aarch64_gnullvm 0.53.1",
+        "windows_aarch64_msvc 0.53.1",
+        "windows_i686_gnu 0.53.1",
+        "windows_i686_gnullvm 0.53.1",
+        "windows_i686_msvc 0.53.1",
+        "windows_x86_64_gnu 0.53.1",
+        "windows_x86_64_gnullvm 0.53.1",
+        "windows_x86_64_msvc 0.53.1"
+      ]
+    },
+    {
+      "name": "windows_aarch64_gnullvm",
+      "version": "0.53.1",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "checksum": "a9d8416fa8b42f5c947f8482c43e7d89e73a173cead56d044f6a56104a6d1b53"
+    },
+    {
+      "name": "windows_aarch64_msvc",
+      "version": "0.53.1",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "checksum": "b9d782e804c2f632e395708e99a94275910eb9100b2114651e04744e9b125006"
+    },
+    {
+      "name": "windows_i686_gnu",
+      "version": "0.53.1",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "checksum": "960e6da069d81e09becb0ca57a65220ddff016ff2d6af6a223cf372a506593a3"
+    },
+    {
+      "name": "windows_i686_gnullvm",
+      "version": "0.53.1",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "checksum": "fa7359d10048f68ab8b09fa71c3daccfb0e9b559aed648a8f95469c27057180c"
+    },
+    {
+      "name": "windows_i686_msvc",
+      "version": "0.53.1",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "checksum": "1e7ac75179f18232fe9c285163565a57ef8d3c89254a30685b57d83a38d326c2"
+    },
+    {
+      "name": "windows_x86_64_gnu",
+      "version": "0.53.1",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "checksum": "9c3842cdd74a865a8066ab39c8a7a473c0778a3f29370b5fd6b4b9aa7df4a499"
+    },
+    {
+      "name": "windows_x86_64_gnullvm",
+      "version": "0.53.1",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "checksum": "0ffa179e2d07eee8ad8f57493436566c7cc30ac536a3379fdf008f47f6bb7ae1"
+    },
+    {
+      "name": "windows_x86_64_msvc",
+      "version": "0.53.1",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "checksum": "d6bbff5f0aada427a1e5a6da5f1f98158182f26556f345ac9e04d36d0ebed650"
+    },
+    {
+      "name": "zerocopy",
+      "version": "0.8.52",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "checksum": "ce1022995ff5ff5d841ad7d994facc23098cd40152f2c1d11cd607c6f530653f",
+      "dependencies": [
+        "zerocopy-derive"
+      ]
+    },
+    {
+      "name": "zerocopy-derive",
+      "version": "0.8.52",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "checksum": "1ae7f38b72ec2a254e2b87ef277cf2cd4fb97cbebf944faa6f33354da0867930",
+      "dependencies": [
+        "proc-macro2",
+        "quote",
+        "syn"
+      ]
+    }
+  ],
+  "added_packages": [
+    {
+      "name": "quinn-proto",
+      "version": "0.11.19",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "checksum": "0e750cca55fe4f0439a15d0bb529da9651e79993e8e72c61a899a36d462befbe",
+      "dependencies": [
+        "aws-lc-rs",
+        "bytes",
+        "getrandom 0.4.3",
+        "lru-slab",
+        "rand",
+        "rand_pcg",
+        "ring",
+        "rustc-hash",
+        "rustls",
+        "rustls-pki-types",
+        "slab",
+        "thiserror",
+        "tinyvec",
+        "tracing",
+        "web-time"
+      ]
+    },
+    {
+      "name": "quinn-udp",
+      "version": "0.5.16",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "checksum": "af66907df18639dcf4db56ca65490cabc4b27a97dbadd96f2926cca73298f016",
+      "dependencies": [
+        "cfg_aliases",
+        "libc",
+        "once_cell",
+        "socket2",
+        "tracing",
+        "windows-sys 0.52.0"
+      ]
+    },
+    {
+      "name": "rand_pcg",
+      "version": "0.10.2",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "checksum": "caa0f4137e1c0a72f4c651489402276c8e8e1cf081f3b0ba156d2cbeef09e86a",
+      "dependencies": [
+        "rand_core"
+      ]
+    }
+  ],
+  "before_sha256": "7a4862deb7b835c559fb94e49af0841db671acd7d426a864b362c19880828603",
+  "after_sha256": "01cbc51c6253c2c1f6a883e825635197e7942ab55762ee7d3475e4103d36fd6e"
+}

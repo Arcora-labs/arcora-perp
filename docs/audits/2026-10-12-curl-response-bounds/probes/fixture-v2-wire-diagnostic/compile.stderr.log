@@ -1,0 +1,22 @@
+warning: variant `Close` is never constructed
+  --> /Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-bounds-validation-20261012/fixture-v2-wire-diagnostic/probe.rs:29:5
+   |
+26 | enum Framing {
+   |      ------- variant in this enum
+...
+29 |     Close,
+   |     ^^^^^
+   |
+   = note: `Framing` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: field `request` is never read
+  --> /Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-bounds-validation-20261012/fixture-v2-wire-diagnostic/probe.rs:33:5
+   |
+32 | struct Exchange {
+   |        -------- field in this struct
+33 |     request: Vec<u8>,
+   |     ^^^^^^^
+
+warning: 2 warnings emitted
+

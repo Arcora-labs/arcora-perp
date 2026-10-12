@@ -1,0 +1,72 @@
+    Blocking waiting for file lock on package cache
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 7.48s
+     Running unittests src/main.rs (target/debug/deps/gateway-1dc4365c5e206497)
+[recovery] HOLDING: rollback journal window 0 matches no recovery row (snapshot Counter B 1, chain batchCount 2, chain root 0x00) — keeping the journal; operator must reconcile (startup is refused until this journal resolves)
+[recovery] HOLDING: rollback journal window 0 matches no recovery row (snapshot Counter B 1, chain batchCount 2, chain root 0x00) — keeping the journal; operator must reconcile (startup is refused until this journal resolves)
+[ops-alert] {"schema":"arcora.ops-alert.v1","event":"deposit_halted","transition":"active","episode":1}
+[ops-alert] {"schema":"arcora.ops-alert.v1","event":"persistence_failed","transition":"active","episode":1}
+[state] snapshot write failed: Not a directory (os error 20)
+[state] snapshot write failed: Not a directory (os error 20)
+[ops-alert-delivery] failed; structured event remains in local log
+[ops-alert] {"schema":"arcora.ops-alert.v1","event":"deposit_halted","transition":"active","episode":1}
+[ops-alert] {"schema":"arcora.ops-alert.v1","event":"settlement_held","transition":"active","episode":1}
+[ops-alert] {"schema":"arcora.ops-alert.v1","event":"settlement_held","transition":"recovered","episode":1}
+[ops-alert] {"schema":"arcora.ops-alert.v1","event":"settlement_held","transition":"active","episode":2}
+[ops-alert] {"schema":"arcora.ops-alert.v1","event":"persistence_failed","transition":"active","episode":1}
+[state] snapshot write failed: Not a directory (os error 20)
+[state] snapshot write failed: Not a directory (os error 20)
+[state] final snapshot failed: Ok(Err(Os { code: 20, kind: NotADirectory, message: "Not a directory" }))
+[ops-alert] {"schema":"arcora.ops-alert.v1","event":"persistence_failed","transition":"recovered","episode":1}
+[ops-alert] {"schema":"arcora.ops-alert.v1","event":"persistence_failed","transition":"active","episode":2}
+[state] snapshot write failed: Not a directory (os error 20)
+[recovery] HOLDING: candidate recovery requires its configured archive; keeping /var/folders/jz/7wbjs_5j45g915858xh6wm200000gn/T/arcora-price-composed-checkpoints-23309-0xf82e3946136eab3f44bc0aca93be2e083c003675c75b3cbe8163f2837ce8827a/runtime.snapshot.rollback
+[recovery] HOLDING: candidate recovery requires its configured archive; keeping /var/folders/jz/7wbjs_5j45g915858xh6wm200000gn/T/arcora-price-composed-checkpoints-23309-0xf82e3946136eab3f44bc0aca93be2e083c003675c75b3cbe8163f2837ce8827a/runtime.snapshot.rollback
+[ops-alert] {"schema":"arcora.ops-alert.v1","event":"persistence_failed","transition":"active","episode":1}
+[ops-alert] {"schema":"arcora.ops-alert.v1","event":"archive_pressure","transition":"active","episode":1}
+[state] candidate checkpoint requires its configured archive
+[state] final checkpoint refused: candidate final checkpoint requires its configured archive
+
+thread '<unnamed>' (15693273) panicked at crates/gateway/src/price_lifecycle_tests.rs:963:9:
+poison fixture
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+[ops-alert] {"schema":"arcora.ops-alert.v1","event":"persistence_failed","transition":"active","episode":1}
+[ops-alert] {"schema":"arcora.ops-alert.v1","event":"archive_pressure","transition":"active","episode":1}
+[state] candidate checkpoint refused: Err("candidate checkpoint filesystem write failed")
+[state] final snapshot failed: Ok(Err(Os { code: 63, kind: InvalidFilename, message: "File name too long" }))
+
+thread 'report_archive_binding::tests::poisoned_archive_cannot_publish_legacy_runtime_or_final_snapshot' (15693389) panicked at crates/gateway/src/report_archive_binding_tests.rs:2055:9:
+synthetic archive poison
+[ops-alert] {"schema":"arcora.ops-alert.v1","event":"persistence_failed","transition":"active","episode":1}
+[ops-alert] {"schema":"arcora.ops-alert.v1","event":"archive_pressure","transition":"active","episode":1}
+[state] candidate checkpoint refused: Err("candidate checkpoint archive lock unavailable")
+[state] final checkpoint refused: candidate checkpoint archive lock poisoned
+[ops-alert] {"schema":"arcora.ops-alert.v1","event":"persistence_failed","transition":"active","episode":1}
+[ops-alert] {"schema":"arcora.ops-alert.v1","event":"archive_pressure","transition":"active","episode":1}
+[state] candidate checkpoint refused: Err("candidate checkpoint filesystem write failed")
+[state] final snapshot failed: Ok(Err(Os { code: 63, kind: InvalidFilename, message: "File name too long" }))
+[ops-alert] {"schema":"arcora.ops-alert.v1","event":"persistence_failed","transition":"recovered","episode":1}
+[ops-alert] {"schema":"arcora.ops-alert.v1","event":"archive_pressure","transition":"recovered","episode":1}
+[recovery] HOLDING: window recovery applied in memory but the post-recovery snapshot could not be persisted (snapshot write: File name too long (os error 63)) — keeping the rollback journal /var/folders/jz/7wbjs_5j45g915858xh6wm200000gn/T/arcora-binding-e2e-9572cd4a449440f9/rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr.rollback as the recovery source (the next boot re-resolves it); fix the snapshot path
+[recovery] HOLDING: window recovery applied in memory but the post-recovery snapshot could not be persisted (snapshot write: File name too long (os error 63)) — keeping the rollback journal /var/folders/jz/7wbjs_5j45g915858xh6wm200000gn/T/arcora-binding-retention-wal-3d3c82a63e918242/rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr.rollback as the recovery source (the next boot re-resolves it); fix the snapshot path
+[recovery] HOLDING: rollback journal window 0 matches no recovery row (snapshot Counter B 1, chain batchCount 0, chain root 0x00) — keeping the journal; operator must reconcile (startup is refused until this journal resolves)
+[recovery] HOLDING: rollback journal window 0 matches no recovery row (snapshot Counter B 1, chain batchCount 0, chain root 0x00) — keeping the journal; operator must reconcile (startup is refused until this journal resolves)
+[recovery] HOLDING: rollback journal window 0 matches no recovery row (snapshot Counter B 1, chain batchCount 0, chain root 0x00) — keeping the journal; operator must reconcile (startup is refused until this journal resolves)
+[recovery] HOLDING: rollback journal window 0 matches no recovery row (snapshot Counter B 1, chain batchCount 0, chain root 0x00) — keeping the journal; operator must reconcile (startup is refused until this journal resolves)
+[recovery] HOLDING: rollback journal window 0 matches no recovery row (snapshot Counter B 1, chain batchCount 0, chain root 0x00) — keeping the journal; operator must reconcile (startup is refused until this journal resolves)
+[recovery] HOLDING: rollback journal window 0 matches no recovery row (snapshot Counter B 1, chain batchCount 0, chain root 0x00) — keeping the journal; operator must reconcile (startup is refused until this journal resolves)
+[recovery] HOLDING: rollback journal window 0 matches no recovery row (snapshot Counter B 1, chain batchCount 0, chain root 0x00) — keeping the journal; operator must reconcile (startup is refused until this journal resolves)
+[recovery] HOLDING: rollback journal window 0 matches no recovery row (snapshot Counter B 1, chain batchCount 0, chain root 0x00) — keeping the journal; operator must reconcile (startup is refused until this journal resolves)
+[recovery] HOLDING: window recovery applied in memory but the post-recovery snapshot could not be persisted (snapshot write: No such file or directory (os error 2)) — keeping the rollback journal /var/folders/jz/7wbjs_5j45g915858xh6wm200000gn/T/darkperp-persist-first-f0b499761cbac77d.snap.rollback as the recovery source (the next boot re-resolves it); fix the snapshot path
+[recovery] HOLDING: rollback journal window 0 matches no recovery row (snapshot Counter B 1, chain batchCount 2, chain root 0x00) — keeping the journal; operator must reconcile (startup is refused until this journal resolves)
+[ops-alert] {"schema":"arcora.ops-alert.v1","event":"settlement_held","transition":"active","episode":1}
+[recovery] HOLDING: rollback journal window 0 matches no recovery row (snapshot Counter B 0, chain batchCount 0, chain root 0x00) — keeping the journal; operator must reconcile (startup is refused until this journal resolves)
+[recovery] HOLDING: rollback journal window 0 matches no recovery row (snapshot Counter B 0, chain batchCount 0, chain root 0x00) — keeping the journal; operator must reconcile (startup is refused until this journal resolves)
+[recovery] HOLDING: rollback journal window 0 matches no recovery row (snapshot Counter B 0, chain batchCount 0, chain root 0x00) — keeping the journal; operator must reconcile (startup is refused until this journal resolves)
+[recovery] HOLDING: rollback journal window 0 matches no recovery row (snapshot Counter B 1, chain batchCount 0, chain root 0x00) — keeping the journal; operator must reconcile (startup is refused until this journal resolves)
+[recovery] HOLDING: rollback journal window 0 matches no recovery row (snapshot Counter B 1, chain batchCount 0, chain root 0x00) — keeping the journal; operator must reconcile (startup is refused until this journal resolves)
+[recovery] HOLDING: rollback journal window 0 matches no recovery row (snapshot Counter B 1, chain batchCount 0, chain root 0x00) — keeping the journal; operator must reconcile (startup is refused until this journal resolves)
+[ops-alert] {"schema":"arcora.ops-alert.v1","event":"persistence_failed","transition":"active","episode":1}
+[state] final snapshot failed: Ok(Err(Os { code: 20, kind: NotADirectory, message: "Not a directory" }))
+
+thread 'tests::poisoned_archive_mutex_is_distinct_from_not_configured' (15694954) panicked at crates/gateway/src/main.rs:16169:13:
+poison the archive mutex

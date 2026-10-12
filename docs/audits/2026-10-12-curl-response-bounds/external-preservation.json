@@ -1,0 +1,40 @@
+{
+  "schema": "arcora-curl-bounds-existing-work-preservation/v1",
+  "passed": true,
+  "external": [
+    {
+      "name": "primary",
+      "path": "/Users/huseyinarslan/Desktop/arcora-perp/repo",
+      "head": "2a03bb03a7db9736e72573fa22d8fe8f4fe37f94",
+      "dirty_count": 13,
+      "known_public_files_hashed": 13,
+      "head_status_staged_and_dirty_bytes_unchanged": true
+    },
+    {
+      "name": "kimi",
+      "path": "/Users/huseyinarslan/kimi-bridge/worktrees/Arcora-labs__arcora-perp/job--17",
+      "head": "e283958109fc6b434b7049d523bbd3378e2e6c27",
+      "dirty_count": 7,
+      "known_public_files_hashed": 7,
+      "head_status_staged_and_dirty_bytes_unchanged": true
+    },
+    {
+      "name": "dark",
+      "path": "/Users/huseyinarslan/Desktop/Projeler/Dark Perp/dark-perp",
+      "head": "f997f8b96279bd06ec1808f6b9cb2a6aeb25cc5e",
+      "dirty_count": 62,
+      "known_public_files_hashed": 62,
+      "head_status_staged_and_dirty_bytes_unchanged": true
+    }
+  ],
+  "external_dirty_public_files": 82,
+  "pr58_outside_records_sha256": {
+    "Arcora_Durum_Raporu_2026-10-12_PR58.md": "8ef630261c363cef978bd5a135bb5e4233a86f2dbc09fa23fe5e982bfb23a59e",
+    "Arcora_Devam_2026-10-11.md": "2f127fcd80ef257b71d1382834f34fe0ea001af2ab8c8d0062345d9abc00dc1d",
+    "Arcora_PR58_Rapor_QA_2026-10-12.json": "635f08a3dff6f12686483962f4a91b595af962cf22fcddb6c9e211b1e43bf80c",
+    "Arcora_PR58_Son_Dogrulama_2026-10-12.json": "cbe36a87fca581bb66c8a8c70c116a38c7a7d0ba16db07e1cff7d8f3634bf532",
+    "Arcora_PR58_Kanit_2026-10-12/delivery-ledger.json": "c9ecce48ce18998b87d60b4d8fb2528e3a4a868e60396ec5b4673cb69e82250a",
+    "Arcora_Curl_GET_Arastirma_2026-10-12/delivery-ledger.json": "81e48f5e3040e90aff72a60446c89f9a656409f5d5fd29573338f3c4963bef46"
+  },
+  "scope": "Exact priorapprovedpublic82 dirty bodies plus HEAD/statusall/staged-binary-diff hash. Originalstatususes --untracked-files=all, not collapsed directory summaries. No reset/clean/privateconfig/service/redeploy operation. Priorreports/evidence pointer captured before new delivery."
+}

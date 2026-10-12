@@ -1,0 +1,12 @@
+
+thread 'http_transport_tests::get_overflow_refused_with_or_without_content_length' (15647250) panicked at crates/gateway/src/http_transport_tests.rs:169:9:
+assertion `left == right` failed
+  left: "attestation HTTP transport exit exit status: 18"
+ right: "HTTP response exceeds byte limit"
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+thread 'http_transport_tests::get_small_and_exact_limit_valid_json_succeed' (15647296) panicked at crates/gateway/src/http_transport_tests.rs:147:9:
+positive fixture response was truncated
+
+thread 'http_transport_tests::post_exact_limit_succeeds_and_limit_plus_one_refuses' (15647342) panicked at crates/gateway/src/http_transport_tests.rs:212:33:
+called `Result::unwrap()` on an `Err` value: Http("prover HTTP transport exit exit status: 18")

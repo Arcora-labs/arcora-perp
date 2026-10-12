@@ -1,0 +1,21 @@
+{
+  "schema": "arcora-curl-bounds-prover-runner-v2-preparation/v1",
+  "created_at": "2026-10-12T17:26:48.836659+00:00",
+  "v1_preserved_sha256": {
+    "run_prover_typecheck.py": "d71b3e9632c3ff51829700930f75a2c7aedcb5890f7b1c620c53ac699485ed38",
+    "source-freeze.json": "13f24dcf531bb12eb64c4df1f31ca9994fc0fa17807f464fca82ae61f89b889b",
+    "prover-typecheck-final/receipt.json": "bbab7141b08d601b8b6e680cb7922ab3d2ed89915ad17080463319abc9ad0d78",
+    "prover-typecheck-final/stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prover-typecheck-final/stderr.log": "df6edf9bfa5683b421fe34b98d3b73aff6971b2605ddddc2943f2430efc1c2f0",
+    "prover-typecheck-runner.stdout.log": "97dfddb283fb999e283dad51b204cba8a9dfb828cd79941695a25feee3128aec",
+    "prover-typecheck-runner.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "v2_runner_sha256": "e03df87ee7680ebfe035bb080c0cca88e6ee5e84dd7c22498a81758afe8788da",
+  "v2_freeze_sha256": "9f77b288ae9f07c90204185b92ef3f38212cf10551b1a6259004871bd01245c4",
+  "v2_source_sha256": "1d8f7e3984d4ac4b7d107470044896fd8cfb6f0a86242ae45828b55b14c6d1c7",
+  "changes": "Only default freeze-file and output directory replaced with v2 names; inverse reproduces previous runner exact bytes. All typecheck/inventory/pin and no-clobber checks unchanged.",
+  "inverse_exact": true,
+  "ast_syntax_passed": true,
+  "not_yet_executed": true,
+  "prior_run_scope": "V1 typecheck remains historical source378/197b, never promoted to v2."
+}

@@ -1,0 +1,13 @@
+   Compiling serde_core v1.0.228
+   Compiling serde_json v1.0.150
+   Compiling memchr v2.8.2
+   Compiling gateway v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway)
+error: failed to run custom build command for `gateway v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway)`
+
+Caused by:
+  process didn't exit successfully: `/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/debug/build/gateway-69a881dc30c6d2f3/build-script-build` (exit status: 101)
+  --- stderr
+
+  thread 'main' (15602166) panicked at crates/gateway/../service-identity/build_support.rs:34:5:
+  public service build identity failed
+  note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace

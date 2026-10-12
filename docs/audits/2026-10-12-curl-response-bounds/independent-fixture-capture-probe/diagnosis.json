@@ -1,0 +1,523 @@
+{
+  "accepted_socket_behavior": {
+    "blocking_control_run": [
+      "accepted_inherited_peek=Some(WouldBlock) micros=25",
+      "accepted_blocking_control_peek=Some(WouldBlock) micros=207597"
+    ],
+    "initial": [
+      "accepted_inherited_peek=Some(WouldBlock) micros=37",
+      "accepted_blocking_control_peek=Some(WouldBlock) micros=200205"
+    ],
+    "scope": "Same owned empty peer, read timeout200ms; inherited stream peek returns WouldBlock immediately, explicit blocking control waits the configured timeout. No unsafe FFI or global resource/process changes."
+  },
+  "actions": {
+    "Cargo_or_dependencies": false,
+    "SDK_setup_or_Gpu": false,
+    "environment_or_credential_contents_read_or_printed": false,
+    "external_network": false,
+    "only_owned_ignored_probe_sources_binaries_receipts_logs_written": true,
+    "raw_synthetic_body_printed_or_saved": false,
+    "tracked_source_writes": false
+  },
+  "artifact_ledger": {
+    "target/curl-bounds-validation-20261012/independent-fixture-capture-probe/blocking/curl-0-0.stderr.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "target/curl-bounds-validation-20261012/independent-fixture-capture-probe/blocking/curl-0-1.stderr.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "target/curl-bounds-validation-20261012/independent-fixture-capture-probe/blocking/curl-1-0.stderr.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "target/curl-bounds-validation-20261012/independent-fixture-capture-probe/blocking/curl-1-1.stderr.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "target/curl-bounds-validation-20261012/independent-fixture-capture-probe/blocking/curl-2-0.stderr.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "target/curl-bounds-validation-20261012/independent-fixture-capture-probe/blocking/curl-2-1.stderr.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "target/curl-bounds-validation-20261012/independent-fixture-capture-probe/blocking/curl-3-0.stderr.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "target/curl-bounds-validation-20261012/independent-fixture-capture-probe/blocking/curl-3-1.stderr.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "target/curl-bounds-validation-20261012/independent-fixture-capture-probe/blocking/curl-4-0.stderr.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "target/curl-bounds-validation-20261012/independent-fixture-capture-probe/blocking/curl-4-1.stderr.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "target/curl-bounds-validation-20261012/independent-fixture-capture-probe/blocking/curl-5-0.stderr.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "target/curl-bounds-validation-20261012/independent-fixture-capture-probe/blocking/curl-5-1.stderr.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "target/curl-bounds-validation-20261012/independent-fixture-capture-probe/blocking/receipt.json": {
+      "bytes": 756,
+      "sha256": "92581efd3e03a4602bebb4ef9106f6f8cb9ca60f1e021c5006878d6d7dd8a4e5"
+    },
+    "target/curl-bounds-validation-20261012/independent-fixture-capture-probe/blocking/stderr.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "target/curl-bounds-validation-20261012/independent-fixture-capture-probe/blocking/stdout.log": {
+      "bytes": 1734,
+      "sha256": "1dba92586a53126b2fd6c98e7fdb2790ad05a3fcb697d7ed0635e7a7fb91c139"
+    },
+    "target/curl-bounds-validation-20261012/independent-fixture-capture-probe/compile.stderr.log": {
+      "bytes": 1275,
+      "sha256": "1721eb2975a4e4a2afc4aa771dd3d00256445cf12dc9554c78db424dc991660d"
+    },
+    "target/curl-bounds-validation-20261012/independent-fixture-capture-probe/compile.stdout.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "target/curl-bounds-validation-20261012/independent-fixture-capture-probe/control.compile.json": {
+      "bytes": 751,
+      "sha256": "e74c907b74a5598197eecb7cef88ee7141eb721ee1e7bea9e6e34c6f70ebc9cc"
+    },
+    "target/curl-bounds-validation-20261012/independent-fixture-capture-probe/control.compile.stderr.log": {
+      "bytes": 1431,
+      "sha256": "82134e76ea16ae423b3519bab2c8ed0421aeb7118af0079569a8b886f9a14cfb"
+    },
+    "target/curl-bounds-validation-20261012/independent-fixture-capture-probe/control.compile.stdout.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "target/curl-bounds-validation-20261012/independent-fixture-capture-probe/nonblocking/curl-0-0.stderr.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "target/curl-bounds-validation-20261012/independent-fixture-capture-probe/nonblocking/curl-0-1.stderr.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "target/curl-bounds-validation-20261012/independent-fixture-capture-probe/nonblocking/curl-1-0.stderr.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "target/curl-bounds-validation-20261012/independent-fixture-capture-probe/nonblocking/curl-1-1.stderr.log": {
+      "bytes": 64,
+      "sha256": "e4bd99249dc0a6d86ec69b74e232160d5ade35619121653e1c30a1853d288e78"
+    },
+    "target/curl-bounds-validation-20261012/independent-fixture-capture-probe/nonblocking/curl-2-0.stderr.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "target/curl-bounds-validation-20261012/independent-fixture-capture-probe/nonblocking/curl-2-1.stderr.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "target/curl-bounds-validation-20261012/independent-fixture-capture-probe/nonblocking/curl-3-0.stderr.log": {
+      "bytes": 63,
+      "sha256": "2555cf084e6d8ed59e97ff4248ff992a02edf1fceec5ed11ec258e90d0c480a9"
+    },
+    "target/curl-bounds-validation-20261012/independent-fixture-capture-probe/nonblocking/curl-3-1.stderr.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "target/curl-bounds-validation-20261012/independent-fixture-capture-probe/nonblocking/curl-4-0.stderr.log": {
+      "bytes": 63,
+      "sha256": "52edde38c2dc2a38016d5beaf2133a83483f8202b5250c370ffef6523f74ade2"
+    },
+    "target/curl-bounds-validation-20261012/independent-fixture-capture-probe/nonblocking/curl-4-1.stderr.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "target/curl-bounds-validation-20261012/independent-fixture-capture-probe/nonblocking/curl-5-0.stderr.log": {
+      "bytes": 63,
+      "sha256": "98e78a982feb9e779a4d928017ff5c31cc4297beecbac82d03c4ae0e94e874c4"
+    },
+    "target/curl-bounds-validation-20261012/independent-fixture-capture-probe/nonblocking/curl-5-1.stderr.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "target/curl-bounds-validation-20261012/independent-fixture-capture-probe/nonblocking/receipt.json": {
+      "bytes": 757,
+      "sha256": "7e45501d246fef9ecbe4a3208de87cdc8449cf69cf768e6c90d5a03c87ce5113"
+    },
+    "target/curl-bounds-validation-20261012/independent-fixture-capture-probe/nonblocking/stderr.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "target/curl-bounds-validation-20261012/independent-fixture-capture-probe/nonblocking/stdout.log": {
+      "bytes": 1791,
+      "sha256": "c6d9322888bf6d62c2b9f3eb3d88a4b113df5a5596e55069617dd624bb634188"
+    },
+    "target/curl-bounds-validation-20261012/independent-fixture-capture-probe/preparation.json": {
+      "bytes": 1062,
+      "sha256": "c5b567bfd2038f0b582e562d8a5a033477130acce428367437ef01d4ead2670a"
+    },
+    "target/curl-bounds-validation-20261012/independent-fixture-capture-probe/probe": {
+      "bytes": 1029288,
+      "sha256": "3bb33a757839a876e2333cf1a60a5122b22c9fa09559b6619c89254b65cd6699"
+    },
+    "target/curl-bounds-validation-20261012/independent-fixture-capture-probe/probe.blocking": {
+      "bytes": 1038656,
+      "sha256": "0bd9d25a89cbf1047828c0774174402a0d5c6383cde1110367c9825fc4cd6116"
+    },
+    "target/curl-bounds-validation-20261012/independent-fixture-capture-probe/probe.blocking.rs": {
+      "bytes": 8574,
+      "sha256": "a3045311b74394ce64e5452e4c4f182db59ce3656a091602bb1b0e0d13748054"
+    },
+    "target/curl-bounds-validation-20261012/independent-fixture-capture-probe/probe.original.rs": {
+      "bytes": 7375,
+      "sha256": "fc5a77977864b80141aa4af52870a4c9a4e77f2ec3bb4c1e651f829768fa46b4"
+    },
+    "target/curl-bounds-validation-20261012/independent-fixture-capture-probe/probe.rs": {
+      "bytes": 8493,
+      "sha256": "0a65fdfdc89538485342b903c88e92ad44d1b317d40cfab46df3f08aea824869"
+    }
+  },
+  "blocking_fixture_control": {
+    "cases": [
+      {
+        "attempt": 0,
+        "capture_error": "StdoutLimit",
+        "complete_payload_chunk_bytes": 1048577,
+        "curl_exit_code": null,
+        "elapsed_milliseconds": 348,
+        "mode": "GETcap+1CL",
+        "peer_response_complete": true,
+        "peer_write_error": null,
+        "stdout_bytes": null
+      },
+      {
+        "attempt": 0,
+        "capture_error": null,
+        "complete_payload_chunk_bytes": 4194304,
+        "curl_exit_code": 0,
+        "elapsed_milliseconds": 612,
+        "mode": "POSTexact4MiBchunked",
+        "peer_response_complete": true,
+        "peer_write_error": null,
+        "stdout_bytes": 4194325
+      },
+      {
+        "attempt": 1,
+        "capture_error": "StdoutLimit",
+        "complete_payload_chunk_bytes": 1048577,
+        "curl_exit_code": null,
+        "elapsed_milliseconds": 215,
+        "mode": "GETcap+1CL",
+        "peer_response_complete": true,
+        "peer_write_error": null,
+        "stdout_bytes": null
+      },
+      {
+        "attempt": 1,
+        "capture_error": null,
+        "complete_payload_chunk_bytes": 4194304,
+        "curl_exit_code": 0,
+        "elapsed_milliseconds": 105,
+        "mode": "POSTexact4MiBchunked",
+        "peer_response_complete": true,
+        "peer_write_error": null,
+        "stdout_bytes": 4194325
+      },
+      {
+        "attempt": 2,
+        "capture_error": "StdoutLimit",
+        "complete_payload_chunk_bytes": 1048577,
+        "curl_exit_code": null,
+        "elapsed_milliseconds": 88,
+        "mode": "GETcap+1CL",
+        "peer_response_complete": true,
+        "peer_write_error": null,
+        "stdout_bytes": null
+      },
+      {
+        "attempt": 2,
+        "capture_error": null,
+        "complete_payload_chunk_bytes": 4194304,
+        "curl_exit_code": 0,
+        "elapsed_milliseconds": 69,
+        "mode": "POSTexact4MiBchunked",
+        "peer_response_complete": true,
+        "peer_write_error": null,
+        "stdout_bytes": 4194325
+      },
+      {
+        "attempt": 3,
+        "capture_error": "StdoutLimit",
+        "complete_payload_chunk_bytes": 1048577,
+        "curl_exit_code": null,
+        "elapsed_milliseconds": 102,
+        "mode": "GETcap+1CL",
+        "peer_response_complete": true,
+        "peer_write_error": null,
+        "stdout_bytes": null
+      },
+      {
+        "attempt": 3,
+        "capture_error": null,
+        "complete_payload_chunk_bytes": 4194304,
+        "curl_exit_code": 0,
+        "elapsed_milliseconds": 98,
+        "mode": "POSTexact4MiBchunked",
+        "peer_response_complete": true,
+        "peer_write_error": null,
+        "stdout_bytes": 4194325
+      },
+      {
+        "attempt": 4,
+        "capture_error": "StdoutLimit",
+        "complete_payload_chunk_bytes": 1048577,
+        "curl_exit_code": null,
+        "elapsed_milliseconds": 81,
+        "mode": "GETcap+1CL",
+        "peer_response_complete": true,
+        "peer_write_error": null,
+        "stdout_bytes": null
+      },
+      {
+        "attempt": 4,
+        "capture_error": null,
+        "complete_payload_chunk_bytes": 4194304,
+        "curl_exit_code": 0,
+        "elapsed_milliseconds": 184,
+        "mode": "POSTexact4MiBchunked",
+        "peer_response_complete": true,
+        "peer_write_error": null,
+        "stdout_bytes": 4194325
+      },
+      {
+        "attempt": 5,
+        "capture_error": "StdoutLimit",
+        "complete_payload_chunk_bytes": 1048577,
+        "curl_exit_code": null,
+        "elapsed_milliseconds": 79,
+        "mode": "GETcap+1CL",
+        "peer_response_complete": true,
+        "peer_write_error": null,
+        "stdout_bytes": null
+      },
+      {
+        "attempt": 5,
+        "capture_error": null,
+        "complete_payload_chunk_bytes": 4194304,
+        "curl_exit_code": 0,
+        "elapsed_milliseconds": 109,
+        "mode": "POSTexact4MiBchunked",
+        "peer_response_complete": true,
+        "peer_write_error": null,
+        "stdout_bytes": 4194325
+      }
+    ],
+    "cases_total": 12,
+    "curl18_count": 0,
+    "runtime_receipt": "blocking/receipt.json",
+    "six_GETcap_plus_one_refusals_and_six_POSTexact4MiB_successes": true,
+    "would_block_peer_write_count": 0
+  },
+  "captured_at": "2026-10-12T17:41:02.005611+00:00",
+  "cleanup": {
+    "actual_curl_requests": 24,
+    "additional_owned_plain_socket_mode_connections": 2,
+    "all_fixture_threads_joined": true,
+    "all_probe_processes_exited0": true,
+    "arbitrary_services_or_ports_touched": false,
+    "direct_curl_children_reaped_by_exact_helper": true,
+    "owned_loopback_listeners_and_sockets_dropped": true
+  },
+  "copied_v2_fixture_source_sha256": "cb8d94ef43147907c3f20f6b1b0ebb01e72e49d448584efac84d48c498be6810",
+  "curl_stderr": {
+    "nonblocking/curl-1-1.stderr.log": "curl: (18) transfer closed with outstanding read data remaining\n",
+    "nonblocking/curl-3-0.stderr.log": "curl: (18) transfer closed with 147977 bytes remaining to read\n",
+    "nonblocking/curl-4-0.stderr.log": "curl: (18) transfer closed with 401929 bytes remaining to read\n",
+    "nonblocking/curl-5-0.stderr.log": "curl: (18) transfer closed with 139785 bytes remaining to read\n"
+  },
+  "current_root_fixed_source_cut": {
+    "all_378_current_source_hashes_match": true,
+    "path": "target/curl-bounds-validation-20261012/source-freeze-final.json",
+    "root_changed_only_new_fixture_helpers_to_blocking": "Root-owned source fix, not this reviewer",
+    "sha256": "9d5cfc901e5bc053335ec5ac5198c242c2713a00325871b3ae3645084e8ff995",
+    "source_count": 378,
+    "source_sha256": "8eddb300301a51cb4122c78a658db326013d61bdfcae2ac5ffa6e5844d8ec3b5"
+  },
+  "exact_production_capture_sha256": "235ef8c0914f14a37f96da64d26be8e5133bd1fbf276aba041491569bdba93f0",
+  "finding": "On this macOS host, the owned v2 listener produces nonblocking accepted sockets. Fixture response write_all returns WouldBlock under backpressure, truncates its response and yields real curl18. Switching only the owned accepted fixture socket to blocking removes that reproduced failure; production capture source stays byte-identical.",
+  "head_at_capture": "756397dbf73b18b77cefc7efcf5baaa8994457e3",
+  "initial_compile": {
+    "command": [
+      "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/rustc",
+      "--edition=2021",
+      "--crate-name",
+      "owned_fixture_probe",
+      "target/curl-bounds-validation-20261012/independent-fixture-capture-probe/probe.rs",
+      "-o",
+      "target/curl-bounds-validation-20261012/independent-fixture-capture-probe/probe"
+    ],
+    "compiler_stderr": "compile.stderr.log",
+    "compiler_stdout": "compile.stdout.log",
+    "exit_code": 0,
+    "standalone_compile_elapsed_seconds": null,
+    "timing_scope": "Initial exec tool wrapper returned0 in3.017207 seconds, including owned preparation edits; standalone compiler duration was not separately recorded."
+  },
+  "method": "Native std-only Rust probe includes exact production shared curl.rs and an owned copied v2 fixture. Instrumentation records completed chunks and write error kind without changing write/close schedule. Blocking control differs by one set_nonblocking(false) statement only.",
+  "nonblocking_v2_fixture": {
+    "cases": [
+      {
+        "attempt": 0,
+        "capture_error": "StdoutLimit",
+        "complete_payload_chunk_bytes": 1048577,
+        "curl_exit_code": null,
+        "elapsed_milliseconds": 110,
+        "mode": "GETcap+1CL",
+        "peer_response_complete": true,
+        "peer_write_error": null,
+        "stdout_bytes": null
+      },
+      {
+        "attempt": 0,
+        "capture_error": null,
+        "complete_payload_chunk_bytes": 4194304,
+        "curl_exit_code": 0,
+        "elapsed_milliseconds": 105,
+        "mode": "POSTexact4MiBchunked",
+        "peer_response_complete": true,
+        "peer_write_error": null,
+        "stdout_bytes": 4194325
+      },
+      {
+        "attempt": 1,
+        "capture_error": "StdoutLimit",
+        "complete_payload_chunk_bytes": 1048577,
+        "curl_exit_code": null,
+        "elapsed_milliseconds": 61,
+        "mode": "GETcap+1CL",
+        "peer_response_complete": true,
+        "peer_write_error": null,
+        "stdout_bytes": null
+      },
+      {
+        "attempt": 1,
+        "capture_error": null,
+        "complete_payload_chunk_bytes": 1687552,
+        "curl_exit_code": 18,
+        "elapsed_milliseconds": 113,
+        "mode": "POSTexact4MiBchunked",
+        "peer_response_complete": false,
+        "peer_write_error": "WouldBlock",
+        "stdout_bytes": 1695077
+      },
+      {
+        "attempt": 2,
+        "capture_error": "StdoutLimit",
+        "complete_payload_chunk_bytes": 1048577,
+        "curl_exit_code": null,
+        "elapsed_milliseconds": 81,
+        "mode": "GETcap+1CL",
+        "peer_response_complete": true,
+        "peer_write_error": null,
+        "stdout_bytes": null
+      },
+      {
+        "attempt": 2,
+        "capture_error": null,
+        "complete_payload_chunk_bytes": 4194304,
+        "curl_exit_code": 0,
+        "elapsed_milliseconds": 198,
+        "mode": "POSTexact4MiBchunked",
+        "peer_response_complete": true,
+        "peer_write_error": null,
+        "stdout_bytes": 4194325
+      },
+      {
+        "attempt": 3,
+        "capture_error": null,
+        "complete_payload_chunk_bytes": 892928,
+        "curl_exit_code": 18,
+        "elapsed_milliseconds": 109,
+        "mode": "GETcap+1CL",
+        "peer_response_complete": false,
+        "peer_write_error": "WouldBlock",
+        "stdout_bytes": 900600
+      },
+      {
+        "attempt": 3,
+        "capture_error": null,
+        "complete_payload_chunk_bytes": 4194304,
+        "curl_exit_code": 0,
+        "elapsed_milliseconds": 284,
+        "mode": "POSTexact4MiBchunked",
+        "peer_response_complete": true,
+        "peer_write_error": null,
+        "stdout_bytes": 4194325
+      },
+      {
+        "attempt": 4,
+        "capture_error": null,
+        "complete_payload_chunk_bytes": 638976,
+        "curl_exit_code": 18,
+        "elapsed_milliseconds": 99,
+        "mode": "GETcap+1CL",
+        "peer_response_complete": false,
+        "peer_write_error": "WouldBlock",
+        "stdout_bytes": 646648
+      },
+      {
+        "attempt": 4,
+        "capture_error": null,
+        "complete_payload_chunk_bytes": 4194304,
+        "curl_exit_code": 0,
+        "elapsed_milliseconds": 223,
+        "mode": "POSTexact4MiBchunked",
+        "peer_response_complete": true,
+        "peer_write_error": null,
+        "stdout_bytes": 4194325
+      },
+      {
+        "attempt": 5,
+        "capture_error": null,
+        "complete_payload_chunk_bytes": 901120,
+        "curl_exit_code": 18,
+        "elapsed_milliseconds": 163,
+        "mode": "GETcap+1CL",
+        "peer_response_complete": false,
+        "peer_write_error": "WouldBlock",
+        "stdout_bytes": 908792
+      },
+      {
+        "attempt": 5,
+        "capture_error": null,
+        "complete_payload_chunk_bytes": 4194304,
+        "curl_exit_code": 0,
+        "elapsed_milliseconds": 105,
+        "mode": "POSTexact4MiBchunked",
+        "peer_response_complete": true,
+        "peer_write_error": null,
+        "stdout_bytes": 4194325
+      }
+    ],
+    "cases_total": 12,
+    "curl18_count": 4,
+    "runtime_receipt": "nonblocking/receipt.json",
+    "would_block_peer_write_count": 4
+  },
+  "not_claimed": [
+    "Root fixed gateway suite pass",
+    "Root final complete-map prover typecheck pass",
+    "New proof/attestation/candidate/live release acceptance",
+    "Any global Cargo-loader environment defect"
+  ],
+  "passed": true,
+  "production_release": "HOLD",
+  "schema": "arcora-curl-owned-fixture-inheritance-diagnosis/v1"
+}

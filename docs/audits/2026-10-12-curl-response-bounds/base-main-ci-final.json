@@ -1,0 +1,34 @@
+{
+  "schema": "arcora-pr58-main-ci-refresh/v1",
+  "observed_utc": "2026-10-12T17:15:52.007237+00:00",
+  "head": "756397dbf73b18b77cefc7efcf5baaa8994457e3",
+  "passed": true,
+  "runs": [
+    {
+      "conclusion": "success",
+      "databaseId": 38279418865,
+      "headSha": "756397dbf73b18b77cefc7efcf5baaa8994457e3",
+      "status": "completed",
+      "url": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38279418865",
+      "workflowName": "Chainlink candidate"
+    },
+    {
+      "conclusion": "success",
+      "databaseId": 38279418825,
+      "headSha": "756397dbf73b18b77cefc7efcf5baaa8994457e3",
+      "status": "completed",
+      "url": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38279418825",
+      "workflowName": "A11 release evidence"
+    },
+    {
+      "conclusion": "success",
+      "databaseId": 38279419262,
+      "headSha": "756397dbf73b18b77cefc7efcf5baaa8994457e3",
+      "status": "completed",
+      "url": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38279419262",
+      "workflowName": "ci"
+    }
+  ],
+  "scope": "Fresh historical base-main push workflow state; separate from newcurl source and newPR CI",
+  "production_release": "HOLD"
+}

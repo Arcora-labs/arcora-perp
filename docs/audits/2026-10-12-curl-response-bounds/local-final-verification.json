@@ -1,0 +1,89 @@
+{
+  "base": "756397dbf73b18b77cefc7efcf5baaa8994457e3",
+  "checks": {
+    "clippy-final": {
+      "elapsed_seconds": 84.18444858398288,
+      "exit_code": 0,
+      "receipt_sha256": "a96e19804a8fc1ccea8486ac6d1fbe11ff86d589b23de9f41ae7f613f0728148",
+      "test_summaries": []
+    },
+    "format-current-final": {
+      "elapsed_seconds": 19.766834207926877,
+      "exit_code": 0,
+      "receipt_sha256": "780a748022b27d4374c661603060e4b58077baffa6c67026fd19d5ba850749bb",
+      "test_summaries": []
+    },
+    "gateway-full-final": {
+      "elapsed_seconds": 1937.0323829579866,
+      "exit_code": 0,
+      "receipt_sha256": "792aeb4037840e2061d2897ebdd01fc0904bbefe332cbf962a3cf29285ce9a20",
+      "test_summaries": [
+        {
+          "failed": 0,
+          "ignored": 24,
+          "passed": 732,
+          "state": "ok"
+        }
+      ]
+    },
+    "gateway-http-final-v3": {
+      "elapsed_seconds": 78.98809533391614,
+      "exit_code": 0,
+      "receipt_sha256": "bd4d86da19af388f67d87ec72b82075a85a0418fdbf0e3cc1638b5a4f0b451b2",
+      "test_summaries": [
+        {
+          "failed": 0,
+          "ignored": 0,
+          "passed": 8,
+          "state": "ok"
+        }
+      ]
+    },
+    "service-identity-neighbors": {
+      "elapsed_seconds": 2.000222499947995,
+      "exit_code": 0,
+      "receipt_sha256": "4303d5fb41096b325ce93e57fbd07b69ba8284a12a99289f25eb86b2ac035e2e",
+      "test_summaries": []
+    }
+  },
+  "code_commit": "70fcaf195f6fb8ff641b9ec14758603558fe640e",
+  "code_files_sha256": {
+    "crates/gateway/src/http_transport_tests.rs": "e4c47568fdaa5340680af524f41bb5b4ebc6df3698ea0c84e501cda082b458c0",
+    "crates/gateway/src/main.rs": "470225bdc9f3c9a5e9cd1a4350cd7100eeeeaddbf670b1786ac4033ed546a5aa",
+    "crates/gateway/src/prover_client.rs": "2f219fe3d9bbfc3e2e2f72950fd75e6fc9207d840d678a56e2934f9086471d51",
+    "crates/prover-service/src/main.rs": "c0100f0d2afe12ebf0091de6bf86fb2b8e0d2649b27ef4be6cb7aedd4979e23b",
+    "crates/service-transport/curl.rs": "235ef8c0914f14a37f96da64d26be8e5133bd1fbf276aba041491569bdba93f0",
+    "crates/service-transport/curl_tests.rs": "ddf9b02178296431171c866f4e5dc9683449081c037408d01c5a22ce9f40bf98"
+  },
+  "direct_curl_cleanup_only": true,
+  "existing_ignored_tests": 23,
+  "fixture_diagnosis": "Inherited macOS accepted-socket nonblocking flag; WouldBlock truncated response. Exactblockingcontrol12/12expected; unchangedassertions.",
+  "full_gateway": {
+    "discovered": 756,
+    "failed": 0,
+    "ignored": 24,
+    "passed": 732
+  },
+  "genuine_before_regressions": [
+    "Exact legacyGET32MiB accepted",
+    "Exact503POSTpeer-canary returned in error; testexit101"
+  ],
+  "initial_fixture_failures_excluded": true,
+  "limits": {
+    "get_response_bytes": 1048576,
+    "prove_response_body_bytes": 4194304,
+    "prove_status_trailer_bytes": 21,
+    "stderr_bytes": 16384
+  },
+  "new_ignored_private_worker": 1,
+  "new_regular_rust_tests": 16,
+  "no_proof_or_attestation_or_operator_approval": true,
+  "observed_utc": "2026-10-12T18:15:57.820590+00:00",
+  "old_inline_test_bodies_unchanged": 195,
+  "production_release": "HOLD",
+  "prover_actual_typecheck_receipt_sha256": "18fca940d0a4ea24abff9a6eb2c020714f657ccfb890a681b9b374cd00c4527e",
+  "python_service_tests": 25,
+  "schema": "arcora-curl-bounds-local-final/v1",
+  "source_count": 378,
+  "source_sha256": "8eddb300301a51cb4122c78a658db326013d61bdfcae2ac5ffa6e5844d8ec3b5"
+}

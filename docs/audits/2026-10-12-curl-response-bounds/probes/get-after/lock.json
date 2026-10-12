@@ -1,0 +1,17 @@
+{
+  "command": [
+    "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/cargo",
+    "generate-lockfile",
+    "--offline",
+    "--manifest-path",
+    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-bounds-validation-20261012/get-after/harness/Cargo.toml"
+  ],
+  "exit_code": 0,
+  "elapsed_seconds": 0.6177201670361683,
+  "harness_source_sha256": "c6ff1b0cf6a574c1bef5b5c00cea14627c5fb499b67c886fd9f39bb05dd5482e",
+  "identical_production_get_wrappers": true,
+  "get_wrappers_sha256": "8e2a2d3747dd8dd84908c0917891dd6dd7938421743660268e218fa932ecaec5",
+  "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "stderr_sha256": "a0cb5ca8b41662567b263d304cbc61a3c29b2a0bbfe700521ef028747ba1da7e",
+  "scope": "Exact production prover-service GET functions+exactsharedcapture source. Fourownedlocalhost cases1KiB/1MiB/1MiB+1/32MiB; no proof or service startup."
+}

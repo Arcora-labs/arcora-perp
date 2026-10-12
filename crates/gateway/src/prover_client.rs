@@ -413,8 +413,8 @@ pub fn parse_prove_resp(json: &str) -> Result<RemoteProveResp, ProverClientError
         commitment: String,
         proof: String,
     }
-    let r: Resp =
-        serde_json::from_str(json).map_err(|e| ProverClientError::Decode(format!("json: {e}")))?;
+    let r: Resp = serde_json::from_str(json)
+        .map_err(|_| ProverClientError::Decode("invalid prover JSON response".into()))?;
 
     // An ABSENT root is fine (today's service omits `deposits_root`); a PRESENT but
     // unparseable one is not — leniency is about absence, never about garbage.
@@ -423,7 +423,7 @@ pub fn parse_prove_resp(json: &str) -> Result<RemoteProveResp, ProverClientError
             None => Ok(None),
             Some(v) => crate::parse_hex32(v)
                 .map(Some)
-                .ok_or_else(|| ProverClientError::Decode(format!("bad {name}: {v}"))),
+                .ok_or_else(|| ProverClientError::Decode(format!("bad {name}"))),
         }
     };
 
@@ -437,11 +437,10 @@ pub fn parse_prove_resp(json: &str) -> Result<RemoteProveResp, ProverClientError
             rejected_root: opt(&r.rejected_root, "rejected_root")?,
             deposits_root: opt(&r.deposits_root, "deposits_root")?,
         },
-        commitment: crate::parse_hex32(&r.commitment).ok_or_else(|| {
-            ProverClientError::Decode(format!("bad commitment: {}", r.commitment))
-        })?,
+        commitment: crate::parse_hex32(&r.commitment)
+            .ok_or_else(|| ProverClientError::Decode("bad commitment".into()))?,
         proof: crate::decode_hex(&r.proof)
-            .ok_or_else(|| ProverClientError::Decode(format!("bad proof: {}", r.proof)))?,
+            .ok_or_else(|| ProverClientError::Decode("bad proof".into()))?,
     })
 }
 
@@ -453,6 +452,7 @@ pub fn parse_prove_resp(json: &str) -> Result<RemoteProveResp, ProverClientError
 /// distinguishable from a 5xx (401 ⇒ re-handshake + retry), so we read the status
 /// ourselves instead.
 const STATUS_SENTINEL: &str = "__DPHTTP_STATUS__";
+const MAX_PROVE_RESPONSE_BYTES: usize = 4 * 1024 * 1024;
 
 /// Curl argv for a `/prove` POST. Factored out so the transport-hardening flags are
 /// unit-testable. Beyond the wall-clock `--max-time`:
@@ -471,6 +471,7 @@ const STATUS_SENTINEL: &str = "__DPHTTP_STATUS__";
 /// never fabricate an empty bearer that could accidentally pass a mis-implemented gate.
 fn prove_curl_args(endpoint: &str, timeout_secs: u64, bearer: Option<&str>) -> Vec<String> {
     let mut args = vec![
+        "-q".into(),
         "-s".into(),
         "-S".into(),
         "--connect-timeout".into(),
@@ -493,6 +494,7 @@ fn prove_curl_args(endpoint: &str, timeout_secs: u64, bearer: Option<&str>) -> V
     args.push(format!("\n{STATUS_SENTINEL}%{{http_code}}"));
     args.push("--data-binary".into());
     args.push("@-".into());
+    args.push("--".into());
     args.push(endpoint.into());
     args
 }
@@ -508,9 +510,15 @@ fn split_status(raw: &str) -> Result<(String, u16), ProverClientError> {
         .ok_or_else(|| ProverClientError::Http("curl -w status marker missing".into()))?;
     let body = raw[..idx].to_string();
     let code = raw[idx + marker.len()..].trim();
+    if code.len() != 3 || !code.bytes().all(|b| b.is_ascii_digit()) {
+        return Err(ProverClientError::Http("invalid HTTP status marker".into()));
+    }
     let status = code
         .parse::<u16>()
-        .map_err(|_| ProverClientError::Http(format!("non-numeric http_code: {code:?}")))?;
+        .map_err(|_| ProverClientError::Http("invalid HTTP status marker".into()))?;
+    if !(100..=599).contains(&status) {
+        return Err(ProverClientError::Http("invalid HTTP status marker".into()));
+    }
     Ok((body, status))
 }
 
@@ -524,43 +532,62 @@ fn http_post(
     timeout_secs: u64,
     bearer: Option<&str>,
 ) -> Result<String, ProverClientError> {
-    use std::io::Write;
-    use std::process::{Command, Stdio};
+    http_post_command(
+        url,
+        body,
+        timeout_secs,
+        bearer,
+        std::process::Command::new("curl"),
+    )
+}
+
+pub(super) fn http_post_command(
+    url: &str,
+    body: &str,
+    timeout_secs: u64,
+    bearer: Option<&str>,
+    mut command: std::process::Command,
+) -> Result<String, ProverClientError> {
+    use crate::curl_transport::{self, Limits};
+    use std::time::Duration;
+    let deadline = timeout_secs
+        .checked_add(5)
+        .filter(|_| timeout_secs > 0)
+        .ok_or_else(|| ProverClientError::Http("invalid HTTP transport timeout".into()))?;
     let endpoint = format!("{}/prove", url.trim_end_matches('/'));
-    let mut child = Command::new("curl")
-        .args(prove_curl_args(&endpoint, timeout_secs, bearer))
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|e| ProverClientError::Http(format!("curl spawn: {e}")))?;
-    let mut stdin = child.stdin.take().expect("piped stdin");
-    let body_owned = body.to_string();
-    let writer = std::thread::spawn(move || {
-        let _ = stdin.write_all(body_owned.as_bytes());
-    });
-    let out = child
-        .wait_with_output()
-        .map_err(|e| ProverClientError::Http(format!("curl wait: {e}")))?;
-    let _ = writer.join();
+    command.args(prove_curl_args(&endpoint, timeout_secs, bearer));
+    let out = curl_transport::run(
+        command,
+        Some(body.as_bytes()),
+        Limits {
+            stdout: MAX_PROVE_RESPONSE_BYTES + STATUS_SENTINEL.len() + 4,
+            stderr: curl_transport::MAX_STDERR_BYTES,
+            timeout: Duration::from_secs(deadline),
+        },
+    )
+    .map_err(|e| ProverClientError::Http(e.to_string()))?;
     // Without `--fail`, a non-zero curl exit now means a TRANSPORT failure (connect
     // timeout, DNS, tunnel down) — the HTTP status itself rides the `-w` sentinel.
     if !out.status.success() {
         return Err(ProverClientError::Http(format!(
-            "curl exit {}: {}",
+            "prover HTTP transport exit {}",
             out.status,
-            String::from_utf8_lossy(&out.stderr)
         )));
     }
-    let (resp_body, status) = split_status(&String::from_utf8_lossy(&out.stdout))?;
+    let raw = std::str::from_utf8(&out.stdout)
+        .map_err(|_| ProverClientError::Http("invalid UTF-8 HTTP response".into()))?;
+    let (resp_body, status) = split_status(raw)?;
+    if resp_body.len() > MAX_PROVE_RESPONSE_BYTES {
+        return Err(ProverClientError::Http(
+            "HTTP response exceeds byte limit".into(),
+        ));
+    }
     match status {
         200..=299 => Ok(resp_body),
         // SEC-020 Task 5: the /prove gate rejected the bearer — surface as a typed
         // 401 so `prove` can re-handshake once and retry (fail-closed on a second 401).
         401 => Err(ProverClientError::Unauthorized),
-        s => Err(ProverClientError::Http(format!(
-            "prover /prove HTTP {s}: {resp_body}"
-        ))),
+        s => Err(ProverClientError::Http(format!("prover /prove HTTP {s}"))),
     }
 }
 
@@ -1335,6 +1362,22 @@ mod prove_curl_tests {
             split_status("no marker here"),
             Err(ProverClientError::Http(_))
         ));
+    }
+
+    #[test]
+    fn invalid_status_markers_are_refused_without_echo() {
+        for code in [
+            "synthetic-peer-private-canary",
+            "000",
+            "600",
+            "+200",
+            "2000",
+        ] {
+            let raw = format!("body\n{}{code}", super::STATUS_SENTINEL);
+            let error = split_status(&raw).unwrap_err();
+            assert!(matches!(error, ProverClientError::Http(ref message)
+                if message == "invalid HTTP status marker"));
+        }
     }
 }
 

@@ -1,0 +1,61 @@
+{
+  "schema": "arcora-quinn-upstream-advisory-pins/v1",
+  "source": "GitHub repository advisories for quinn-rs/quinn, read via gh api",
+  "advisories": [
+    {
+      "ghsa_id": "GHSA-53rm-773f-4q8c",
+      "html_url": "https://github.com/quinn-rs/quinn/security/advisories/GHSA-53rm-773f-4q8c",
+      "summary": "MAX_STREAM_DATA frame opens streams over the stream limit",
+      "published_at": "2026-09-30T07:34:11Z",
+      "updated_at": "2026-09-30T10:20:37Z",
+      "vulnerabilities": [
+        {
+          "package": {
+            "ecosystem": "rust",
+            "name": "quinn-proto"
+          },
+          "vulnerable_version_range": ">= 0.11.0, <= 0.11.18",
+          "patched_versions": "0.11.19",
+          "vulnerable_functions": []
+        }
+      ]
+    },
+    {
+      "ghsa_id": "GHSA-6pp4-4cxf-xf88",
+      "html_url": "https://github.com/quinn-rs/quinn/security/advisories/GHSA-6pp4-4cxf-xf88",
+      "summary": "recv_single() can spin after a truncated datagram",
+      "published_at": "2026-09-30T07:41:29Z",
+      "updated_at": "2026-09-30T10:21:10Z",
+      "vulnerabilities": [
+        {
+          "package": {
+            "ecosystem": "rust",
+            "name": "quinn-udp"
+          },
+          "vulnerable_version_range": "< 0.5.16, >= 0.6.0 < 0.6.3",
+          "patched_versions": ">= 0.5.16, >= 0.6.3",
+          "vulnerable_functions": []
+        }
+      ]
+    },
+    {
+      "ghsa_id": "GHSA-wppq-2f6r-wfvm",
+      "html_url": "https://github.com/quinn-rs/quinn/security/advisories/GHSA-wppq-2f6r-wfvm",
+      "summary": "Retry packet with a long token panics or exhausts client memory",
+      "published_at": "2026-09-30T10:24:18Z",
+      "updated_at": "2026-09-30T10:24:43Z",
+      "vulnerabilities": [
+        {
+          "package": {
+            "ecosystem": "rust",
+            "name": "quinn-proto"
+          },
+          "vulnerable_version_range": ">= 0.11.0, <= 0.11.18",
+          "patched_versions": ">= 0.11.19",
+          "vulnerable_functions": []
+        }
+      ]
+    }
+  ],
+  "decision": "Select quinn-proto 0.11.19 and quinn-udp 0.5.16; do not stop at 0.11.18, which leaves two additional upstream advisories open."
+}

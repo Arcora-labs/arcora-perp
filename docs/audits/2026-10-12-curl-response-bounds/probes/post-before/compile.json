@@ -1,0 +1,21 @@
+{
+  "command": [
+    "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/rustc",
+    "--edition=2021",
+    "--test",
+    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-bounds-validation-20261012/post-before/probe.rs",
+    "-o",
+    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-bounds-validation-20261012/post-before/probe"
+  ],
+  "exit_code": 0,
+  "elapsed_seconds": 2.1749180830083787,
+  "source_sha256": "902b4d6c7a20b3dbe34bd626fd310f750971d25a3ab200c2ce57e2e0d0e7314a",
+  "extracted_functions_sha256": {
+    "prove_curl_args": "49155c1c49e678f18329f0b9bfd9593d8c7201e4c4fab7b0203a62ddf713496b",
+    "split_status": "c0a9146a87ffba7f8583c2c1bf4ae3ef5addb7b02784cece935b5ed5c5259971",
+    "http_post": "82016a4632a8dbe3f2643d88e16bc74981fc6acaf79db24993f65f5c23dd809f"
+  },
+  "scope": "Exact unchanged base POST functions; only functionvisibility broadened for sibling owned test. Actual curl-q via controlled wrapper; owned loopback503 fixture; expects no peer canary echo.",
+  "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "stderr_sha256": "48a769127d8c3046a25c3fb9d97f61a7e74bd04e32188de95583b9c8e7b44811"
+}

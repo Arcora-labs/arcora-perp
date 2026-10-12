@@ -1,0 +1,5 @@
+{"accepted":true,"bytes":1024,"elapsed_ms":110}
+{"accepted":true,"bytes":1048576,"elapsed_ms":156}
+{"accepted":false,"bytes":1048577,"elapsed_ms":39,"error":"byte limit"}
+{"accepted":false,"bytes":33554432,"elapsed_ms":396,"error":"byte limit"}
+{"owned_connections":4,"peer_joined":true,"scope":"GET transport only; no handshake/attestation/proof"}

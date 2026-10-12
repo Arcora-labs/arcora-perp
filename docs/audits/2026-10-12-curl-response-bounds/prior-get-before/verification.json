@@ -1,0 +1,115 @@
+{
+  "actual_results": [
+    {
+      "accepted_canonical_sha256": "1e0e543f54b04c5a825bb86729a891c812d445074d873e951031b0b87e38b7d7",
+      "accepted_length": 1024,
+      "case": "small",
+      "elapsed_ms": 349,
+      "owned_server_port": 53327,
+      "padding_length": 993,
+      "status": "accepted"
+    },
+    {
+      "accepted_canonical_sha256": "ee3a96180f280c38b6c9c240ce24dda9ef4bd4b4a0b82c0aac982caeb784304d",
+      "accepted_length": 33554432,
+      "case": "large",
+      "elapsed_ms": 1358,
+      "owned_server_port": 53327,
+      "padding_length": 33554401,
+      "status": "accepted"
+    },
+    {
+      "owned_listener_dropped": true,
+      "owned_server_connections": 2,
+      "status": "complete"
+    }
+  ],
+  "actual_system_curl_sha256": "5ab042572ea0e068644e3b8f9e8dd1ad197bfcf33d199316615b46ddc4390a41",
+  "binary_sha256": "a1a4d84f05c362ed07f75be319405f92d5c0e911447647663e7cc3cf0c0ad4fa",
+  "commands": [
+    {
+      "command": [
+        "/Users/huseyinarslan/.cargo/bin/cargo",
+        "+1.99.0",
+        "generate-lockfile",
+        "--offline",
+        "--manifest-path",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-response-investigation-20261012/harness/Cargo.toml"
+      ],
+      "elapsed_seconds": 0.7843419999117032,
+      "exit_code": 0,
+      "started_utc": "2026-10-12T16:29:59.205049+00:00",
+      "stderr_sha256": "a0cb5ca8b41662567b263d304cbc61a3c29b2a0bbfe700521ef028747ba1da7e",
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "command": [
+        "/Users/huseyinarslan/.cargo/bin/cargo",
+        "+1.99.0",
+        "build",
+        "--offline",
+        "--locked",
+        "--manifest-path",
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-response-investigation-20261012/harness/Cargo.toml"
+      ],
+      "elapsed_seconds": 37.328332333941944,
+      "exit_code": 0,
+      "started_utc": "2026-10-12T16:29:59.993426+00:00",
+      "stderr_sha256": "32471b280f90360c3d7695e14445493859e1df534c75df8fd1046f3ecddfac3d",
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "command": [
+        "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-response-investigation-20261012/cargo-target/debug/owned-curl-response-investigation"
+      ],
+      "elapsed_seconds": 7.8772475000005215,
+      "exit_code": 0,
+      "started_utc": "2026-10-12T16:30:37.326246+00:00",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdout_sha256": "6795163ca8c91ffb982e4b7d5b760810def7cb01e2df3b943d97971952618df5"
+    }
+  ],
+  "controlled_environment": "Explicit fresh environment; actual curl -q wrapper, owned empty CURL_HOME/XDG_CONFIG_HOME/.curlrc, no proxy variables inherited, no_proxy literal127.0.0.1.",
+  "exact_shared_function_sha256": "f2a96ee6956f5d10cb797e2660436840c97ec1549360cc5003aa3d219162d2b8",
+  "finding": "Exact unchanged GET transport parses and accepts both 1KiB and32MiB synthetic JSON; Command.output response-size admission is unbounded in this tested helper.",
+  "function_bytes": 640,
+  "harness_files_sha256": {
+    "curl-control/curl": "78f161c649e1cd496648a33e2d7c1aa66cb77a74637f5ea80e5c4ed3878f6e4f",
+    "harness/Cargo.lock": "2eb059305fb2ea1ea7ce366b50269dfcd9c9db6c75cfce6f66d1fe45d1663c61",
+    "harness/Cargo.toml": "eccf676133932a297e585f327c0877fd5c75805e5e21d0eddf47be15423c7654",
+    "harness/src/http_get_json.inc.rs": "f2a96ee6956f5d10cb797e2660436840c97ec1549360cc5003aa3d219162d2b8",
+    "harness/src/main.rs": "5be60a81c98e2ff961e21d22e822b127b3c730f8e53a0ba9d4e2702a53ecb10f",
+    "run_investigation.py": "b238a6c33a1d4bc880e64f4f24e607a03c1259464d2ecc4f953c3e881c3fd8f7"
+  },
+  "head_after": "1b7af8918a0f54d373da2b3716702fb9205cc0f2",
+  "head_before": "1b7af8918a0f54d373da2b3716702fb9205cc0f2",
+  "network_scope": "Exactly two actual curl GETs to one owned127.0.0.1 kernel-assigned port; listener dropped and child subprocesses reaped.",
+  "not_claimed": [
+    "Gateway/prover startup",
+    "handshake acceptance",
+    "attestation/quote/key release",
+    "proof/candidate/backend/release acceptance",
+    "Unlimited-size practical memory tolerance"
+  ],
+  "observed_utc": "2026-10-12T16:30:45.412702+00:00",
+  "passed": true,
+  "schema": "arcora-owned-exact-curl-response-investigation/v1",
+  "scope": "GPU-free synthetic transport body acceptance only, no remediation or tracked mutation.",
+  "source_after_sha256": {
+    "crates/gateway/src/main.rs": "5a21a737877f129f4179f5f53739308d2cfb1993730dae66286013cc6bc6bff5",
+    "crates/prover-service/src/main.rs": "398fcf15e447aecc0c1864a54acf4583a4614097ef816af726a91e16ad05c548"
+  },
+  "source_before": {
+    "crates/gateway/src/main.rs": {
+      "function_bytes": 640,
+      "function_sha256": "f2a96ee6956f5d10cb797e2660436840c97ec1549360cc5003aa3d219162d2b8",
+      "source_sha256": "5a21a737877f129f4179f5f53739308d2cfb1993730dae66286013cc6bc6bff5"
+    },
+    "crates/prover-service/src/main.rs": {
+      "function_bytes": 640,
+      "function_sha256": "f2a96ee6956f5d10cb797e2660436840c97ec1549360cc5003aa3d219162d2b8",
+      "source_sha256": "398fcf15e447aecc0c1864a54acf4583a4614097ef816af726a91e16ad05c548"
+    }
+  },
+  "source_unchanged": true
+}

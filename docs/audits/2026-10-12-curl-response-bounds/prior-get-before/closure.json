@@ -1,0 +1,29 @@
+{
+  "actual_curl_binary_sha256": "5ab042572ea0e068644e3b8f9e8dd1ad197bfcf33d199316615b46ddc4390a41",
+  "all_three_command_receipt_and_raw_log_hashes_match": true,
+  "body_or_key_material_printed": false,
+  "checkout_clean_after": true,
+  "exact_640byte_function_sha256": "f2a96ee6956f5d10cb797e2660436840c97ec1549360cc5003aa3d219162d2b8",
+  "full_gateway_prover_source_bytes_unchanged": true,
+  "harness_binary_sha256": "a1a4d84f05c362ed07f75be319405f92d5c0e911447647663e7cc3cf0c0ad4fa",
+  "harness_source_files_sha256": {
+    "harness/Cargo.lock": "2eb059305fb2ea1ea7ce366b50269dfcd9c9db6c75cfce6f66d1fe45d1663c61",
+    "harness/Cargo.toml": "eccf676133932a297e585f327c0877fd5c75805e5e21d0eddf47be15423c7654",
+    "harness/src/http_get_json.inc.rs": "f2a96ee6956f5d10cb797e2660436840c97ec1549360cc5003aa3d219162d2b8",
+    "harness/src/main.rs": "5be60a81c98e2ff961e21d22e822b127b3c730f8e53a0ba9d4e2702a53ecb10f"
+  },
+  "harness_source_map_sha256": "332d1202f4aa7edf65abe10aeb9f13115cfd342de3312a99fa14fe0f599f0250",
+  "head": "1b7af8918a0f54d373da2b3716702fb9205cc0f2",
+  "loopback_cleanup_scope": "Successful actual helper child waits, joined server thread and normal completed harness process ensure owned listener dropped and owned child processes reaped; no user service/port was stopped.",
+  "maximum_single_synthetic_payload_bytes": 33554432,
+  "network_requests": 2,
+  "observed_utc": "2026-10-12T16:32:27.704495+00:00",
+  "passed": true,
+  "root_Cargo_manifests_unchanged": true,
+  "schema": "arcora-owned-curl-response-investigation-closure/v1",
+  "scope": "Actual shared GET transport accepts32MiB valid JSON. This is not handshake/attestation/proof/candidate or release acceptance.",
+  "small_then_large_once": true,
+  "source_remediation_performed": false,
+  "tree": "580e517202611ed164eadf4f8fb92b53993d82a6",
+  "verification_sha256": "95a3943120bc9d4a4918a6a65862e90e339c07f75c70a3eaf65495363ddf253f"
+}

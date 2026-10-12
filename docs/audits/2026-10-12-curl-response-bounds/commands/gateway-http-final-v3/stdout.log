@@ -1,0 +1,13 @@
+
+running 8 tests
+test http_transport_tests::get_http_and_json_failures_do_not_echo_peer_content ... ok
+test http_transport_tests::get_overflow_refused_with_or_without_content_length ... ok
+test http_transport_tests::get_small_and_exact_limit_valid_json_succeed ... ok
+test http_transport_tests::post_exact_limit_succeeds_and_limit_plus_one_refuses ... ok
+test http_transport_tests::post_invalid_timeouts_refuse_before_process_creation ... ok
+test http_transport_tests::post_streams_large_input_and_preserves_bearer_and_body ... ok
+test http_transport_tests::post_401_is_typed_and_other_errors_are_redacted ... ok
+test http_transport_tests::prover_decode_errors_do_not_echo_remote_values ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 748 filtered out; finished in 0.57s
+

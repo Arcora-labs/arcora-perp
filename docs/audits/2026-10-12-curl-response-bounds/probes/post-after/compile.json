@@ -1,0 +1,23 @@
+{
+  "command": [
+    "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/rustc",
+    "--edition=2021",
+    "--test",
+    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-bounds-validation-20261012/post-after/probe.rs",
+    "-o",
+    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-bounds-validation-20261012/post-after/probe"
+  ],
+  "exit_code": 0,
+  "elapsed_seconds": 2.75789279199671,
+  "source_sha256": "debacb054f743e55ef6ac468ef6fd928de160fcb7146b16b7119546c705c65b9",
+  "extracted_functions_sha256": {
+    "prove_curl_args": "41a9d1c06390cd4c59521641fe41b279aecef0e61afdc7ddf80efa24c7ab8288",
+    "split_status": "1bf9daab1b8ebec040e0932d251a1360ed48b6df75ae31c0651dd714e12400c3",
+    "http_post": "88143fe0666758a6dfa87b922628b134320029a106c5e6a3445c407484a8e437",
+    "http_post_command": "75fd3fa002b06f679a57fce31faf50078e62d85ee4b7d2008d3160bfe9f9dd48"
+  },
+  "same_fixture_and_test_as_before": true,
+  "scope": "Exact current POST functions and exactsharedproductioncurl module; same503 fixture/assertions as validbefore. Onlyhttp_post visibility broadened for sibling owned test.",
+  "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "stderr_sha256": "0f8bb5e02dda718b7d7888382b130f6f47c0ac4694b0f3c1d46020ee2365e203"
+}
