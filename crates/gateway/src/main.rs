@@ -56,6 +56,10 @@ mod candidate_broadcast_store;
 #[cfg(test)]
 mod candidate_broadcast_tests;
 #[cfg(test)]
+mod candidate_fixture_seal;
+#[cfg(test)]
+mod candidate_fixture_seal_tests;
+#[cfg(test)]
 mod candidate_fixture_transport;
 #[cfg(test)]
 mod candidate_fixture_transport_tests;

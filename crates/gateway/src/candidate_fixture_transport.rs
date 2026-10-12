@@ -1,11 +1,16 @@
 //! Test-only candidate fixture HTTP transport over an explicitly owned loopback.
 //! The peer, opaque proof bytes, observations and outcomes are synthetic fixtures.
-//! This is neither a prover service nor authenticated transport or chain delivery.
+//! The optional sealed fixture proves configured software key possession only;
+//! it is neither a prover service nor approved transport or chain delivery.
 //! Existing coordinators remain the sole checkpoint and cooperative lease authority.
 use crate::{
     candidate_broadcast::{
         plan_bytes, settlement_calldata, validate_outcome, BridgeTarget, BroadcastTransport,
         OutcomeValue, Plan,
+    },
+    candidate_fixture_seal::{
+        sealed_wire_bound, SealedChannel, MIN_SEALED_FRAME, SEALED_CONTENT_TYPE,
+        SEALED_EXCHANGE_PATH,
     },
     candidate_protocol::{
         sha256, valid_clock, valid_reports, valid_response, validate, CandidateProofResponse,
@@ -43,6 +48,7 @@ static NEXT_EXCHANGE: OnceLock<Result<AtomicU64, TransportError>> = OnceLock::ne
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum TransportError {
+    Sealed,
     Endpoint,
     Request,
     Plan,
@@ -365,6 +371,7 @@ pub(crate) struct FixtureTransport {
     roots: [[u8; 32]; 7],
     count: u64,
     batch_id: u64,
+    sealed_channel: Option<SealedChannel>,
 }
 
 impl FixtureTransport {
@@ -442,7 +449,19 @@ impl FixtureTransport {
             ],
             count: state.consumed_deposit_count,
             batch_id: witness.clock.2.batch_id,
+            sealed_channel: None,
         })
+    }
+
+    pub(crate) fn with_sealed_channel(
+        mut self,
+        channel: SealedChannel,
+    ) -> Result<Self, TransportError> {
+        if !channel.matches_request(&self.request_sha256, &self.program_sha256) {
+            return Err(TransportError::Sealed);
+        }
+        self.sealed_channel = Some(channel);
+        Ok(self)
     }
 
     pub(crate) fn last_error(&self) -> Option<TransportError> {
@@ -511,16 +530,43 @@ impl FixtureTransport {
             request_payload_len: payload.len() as u32,
             payload,
         };
-        let body = encode_request(&frame)?;
+        let inner = encode_request(&frame)?;
+        let inner_response_bound = FRAME_HEADER_BYTES
+            .checked_add(response_bound(operation))
+            .ok_or(TransportError::Bounds)?;
+        let (body, path, content_type, minimum, maximum) = match &self.sealed_channel {
+            Some(channel) => (
+                channel
+                    .wrap_request(&inner)
+                    .map_err(|_| TransportError::Sealed)?,
+                SEALED_EXCHANGE_PATH,
+                SEALED_CONTENT_TYPE,
+                MIN_SEALED_FRAME,
+                sealed_wire_bound(inner_response_bound).map_err(|_| TransportError::Bounds)?,
+            ),
+            None => (
+                inner,
+                EXCHANGE_PATH,
+                CONTENT_TYPE,
+                FRAME_HEADER_BYTES,
+                inner_response_bound,
+            ),
+        };
         let headers = format!(
-            "POST {EXCHANGE_PATH} HTTP/1.1\r\nHost: {}\r\nContent-Type: {CONTENT_TYPE}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+            "POST {path} HTTP/1.1\r\nHost: {}\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
             self.endpoint, body.len(),
         );
         let mut socket =
             TcpStream::connect_timeout(&self.endpoint, remaining(deadline)?).map_err(io_error)?;
         write_deadline(&mut socket, headers.as_bytes(), deadline)?;
         write_deadline(&mut socket, &body, deadline)?;
-        let response = read_http(&mut socket, operation, deadline)?;
+        let response = read_http(&mut socket, deadline, content_type, minimum, maximum)?;
+        let response = match &self.sealed_channel {
+            Some(channel) => channel
+                .open_response(&response, &frame)
+                .map_err(|_| TransportError::Sealed)?,
+            None => response,
+        };
         let response = decode_response(&response)?;
         if response.exchange_id != frame.exchange_id {
             return Err(TransportError::Replay);
@@ -668,8 +714,10 @@ fn response_bound(operation: Operation) -> usize {
 }
 fn read_http(
     socket: &mut TcpStream,
-    operation: Operation,
     deadline: Instant,
+    expected_content_type: &str,
+    minimum_length: usize,
+    maximum_length: usize,
 ) -> Result<Vec<u8>, TransportError> {
     let mut header = Vec::new();
     let mut byte = [0];
@@ -704,7 +752,9 @@ fn read_http(
                 return Err(TransportError::Http);
             }
             length = Some(parsed);
-        } else if key.eq_ignore_ascii_case("content-type") && !content_type && value == CONTENT_TYPE
+        } else if key.eq_ignore_ascii_case("content-type")
+            && !content_type
+            && value == expected_content_type
         {
             content_type = true;
         } else if key.eq_ignore_ascii_case("connection") && !connection && value == "close" {
@@ -719,9 +769,7 @@ fn read_http(
     if !content_type || !connection {
         return Err(TransportError::Http);
     }
-    if !(FRAME_HEADER_BYTES..=MAX_FRAME_BYTES).contains(&length)
-        || length > FRAME_HEADER_BYTES + response_bound(operation)
-    {
+    if !(minimum_length..=maximum_length).contains(&length) {
         return Err(TransportError::Bounds);
     }
     let mut body = vec![0; length];
