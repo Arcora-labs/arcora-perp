@@ -1,0 +1,13 @@
+{
+  "schema": "candidate-real-layout-finding-v1",
+  "observed_utc": "2026-10-12T00:33:11.798675+00:00",
+  "failed_receipt": "candidate-cli-create.json",
+  "diagnosis": "ValueError:candidate source layout changed",
+  "actual_tracked_cfg_test_only_modules": {
+    "crates/chainlink-oracle/src/tests.rs": "42396d0053fc92062acb33f67ecd253c590a09a18bb23cda72566e5092b9702f",
+    "crates/chainlink-oracle/src/replay_vectors.rs": "512a4966a886231ceb94fd034f94135b98b4ee4dfc3e894e45912da93ca1b54c"
+  },
+  "runtime9_and_reviewed21_unchanged": true,
+  "no_layout_guard_relaxation": "Explicitknown2hashes only; otheradditionsstillreject",
+  "candidate_repair_round": 2
+}

@@ -1,0 +1,94 @@
+{
+  "schema": "arcora-handoff-new-test-helper-repair-v1",
+  "observed_utc": "2026-10-12T00:12:51.119190+00:00",
+  "scope": "Only new test helper/case changed; production codecs, existing corpus and old negative-only helper remain unchanged.",
+  "failed_run": {
+    "receipt": {
+      "path": "target/handoff-validation-20261012/focused-initial.json",
+      "bytes": 21646,
+      "sha256": "31faa8294775214fbd556edc8ce2e668b0e02cbb68db03d8301473dbf4d82f19"
+    },
+    "stdout": {
+      "path": "target/handoff-validation-20261012/focused-initial.stdout.log",
+      "bytes": 2778,
+      "sha256": "a6ddae02b7aaaa879168273072f99bb7453f4650b1e91910133a143008751d06"
+    },
+    "stderr": {
+      "path": "target/handoff-validation-20261012/focused-initial.stderr.log",
+      "bytes": 329,
+      "sha256": "9b4ade8452b8cffb401c5e800a98c3ac637730bf0978d260763b0db293af6b4c"
+    },
+    "combined": {
+      "path": "target/handoff-validation-20261012/focused-initial.log",
+      "bytes": 3107,
+      "sha256": "900ad3166c0bb0df8369d39d3ab0b53e421437cdda6821b9c1b61724f375f0f9"
+    },
+    "argv": [
+      "cargo",
+      "test",
+      "-p",
+      "gateway",
+      "--locked",
+      "--offline",
+      "--bin",
+      "gateway",
+      "candidate_handoff",
+      "--",
+      "--test-threads=2"
+    ],
+    "exit_code": 101,
+    "elapsed_seconds": 118.781,
+    "summaries": [
+      "test result: FAILED. 16 passed; 1 failed; 1 ignored; 0 measured; 678 filtered out; finished in 107.51s"
+    ],
+    "source_bytes_unchanged_during_run": true,
+    "failing_test": "candidate_handoff_tests::handoff_authenticated_changed_proof_cannot_replace_the_pending_attempt",
+    "actual": "Err(Preparation(Store(Source(Bounds))))",
+    "expected": "Err(PlanMismatch)"
+  },
+  "cause": {
+    "classification": "Test fixture encoding defect; implementation correctly rejected malformed source before Plan derivation.",
+    "invalid_helper": "u32 LE length table followed by all payloads",
+    "canonical_codec": "Each field is a u32 BE length immediately followed by its payload, after magic/version/stage.",
+    "codec_source": {
+      "path": "crates/gateway/src/candidate_recovery_store.rs",
+      "bytes": 28376,
+      "sha256": "7e84cd99cd59dfba309af240b8a70dbfb66b84184008caa5137d06de9387d0df"
+    },
+    "codec_lines": {
+      "start": 323,
+      "end": 340,
+      "text": "fn encode(record: &Record) -> Result<Vec<u8>, StoreError> {\n    validate_record(record)?;\n    let fields = [\n        record.request.as_slice(),\n        record.clock.as_deref().unwrap_or_default(),\n        record.reports.as_deref().unwrap_or_default(),\n        record.prepared.as_deref().unwrap_or_default(),\n    ];\n    let mut plain =\n        Vec::with_capacity(HEADER_BYTES + fields.iter().map(|b| b.len()).sum::<usize>());\n    plain.extend_from_slice(MAGIC);\n    plain.push(VERSION);\n    plain.push(record.stage.number());\n    for bytes in fields {\n        plain.extend_from_slice(&(bytes.len() as u32).to_be_bytes());\n        plain.extend_from_slice(bytes);\n    }\n    Ok(plain)"
+    }
+  },
+  "repair": {
+    "before_sha256": "29d38c75e7e877b7e086f53b86b00c66ee1850b7cf205971ee0a584b1c66a1f2",
+    "after_source": {
+      "path": "crates/gateway/src/candidate_handoff_tests.rs",
+      "bytes": 39000,
+      "sha256": "6044b31a8dfe269d9b6900076329dfa6e2cbc5f7702c65980873a266259860d6"
+    },
+    "changes": [
+      "Emit canonical BE interleaved fixed-width length/payload frames.",
+      "Assert exact authenticated old RecoveryStore.load() round-trip equals supplied Record.",
+      "Assert validate_stored_cut succeeds against the original request/trusted input before unchanged PlanMismatch assertion."
+    ],
+    "format_command": [
+      "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/rustfmt",
+      "--edition",
+      "2021",
+      "crates/gateway/src/candidate_handoff_tests.rs"
+    ],
+    "rerun_status": "Pending parent-owned focused rerun; this receipt makes no passing claim."
+  },
+  "preserved": {
+    "codec_source_unchanged_from_failed_run": true,
+    "old_broadcast_tests": {
+      "path": "crates/gateway/src/candidate_broadcast_tests.rs",
+      "bytes": 40634,
+      "sha256": "ad0b3cb02659dc70e72af246a019503a90510b7ae78ce55fac3fb44c31224cf9"
+    },
+    "old_broadcast_tests_unchanged_from_failed_run": true,
+    "old_negative_helper_boundary": "Old wrong-terminal-source fixture remains a valid refusal test, but its malformed framing does not independently establish that each intended authenticated semantic mutation reached semantic validation."
+  }
+}

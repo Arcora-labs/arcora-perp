@@ -1,0 +1,12 @@
+{
+  "schema": "arcora-handoff-change-intent-v1",
+  "additional_allowed_existing_paths": [
+    "docs/SECURITY.md",
+    ".github/workflows/a11-release-evidence.yml"
+  ],
+  "reasons": {
+    "docs/SECURITY.md": "Source-confirmed implementedanswerByRejection; keep reasonlegitimacy/fairnessOPEN",
+    "github_workflow": "Add only NEWcandidateidentity unittestdiscovery; everyoldgate/assertion/timebudgetunchanged"
+  },
+  "new_candidate_identity": "Offline explicitconfig/artifactvalidator only; historical ELF/vkey metadata, no liveRPC/credential/newsetup/proof; fixedHOLDscope"
+}

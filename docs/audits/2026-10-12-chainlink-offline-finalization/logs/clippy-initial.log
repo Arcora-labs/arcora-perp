@@ -1,0 +1,56 @@
+    Checking gateway v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway)
+error: using `map_err` over `inspect_err`
+   --> crates/gateway/src/candidate_handoff.rs:240:44
+    |
+240 |         let actual = self.broadcast.load().map_err(|e| {
+    |                                            ^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.99.0/index.html#manual_inspect
+    = note: `-D clippy::manual-inspect` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::manual_inspect)]`
+help: try
+    |
+240 ~         let actual = self.broadcast.load().inspect_err(|e| {
+241 ~             self.remember(e.into());
+    |
+
+error: using `map_err` over `inspect_err`
+   --> crates/gateway/src/candidate_handoff.rs:275:49
+    |
+275 |         let record = self.gate.broadcast.load().map_err(|e| {
+    |                                                 ^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.99.0/index.html#manual_inspect
+help: try
+    |
+275 ~         let record = self.gate.broadcast.load().inspect_err(|e| {
+276 ~             self.gate.remember(e.into());
+    |
+
+error: using `map_err` over `inspect_err`
+   --> crates/gateway/src/candidate_handoff.rs:288:63
+    |
+288 |         let record = self.gate.broadcast.create_pending(plan).map_err(|e| {
+    |                                                               ^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.99.0/index.html#manual_inspect
+help: try
+    |
+288 ~         let record = self.gate.broadcast.create_pending(plan).inspect_err(|e| {
+289 ~             self.gate.remember(e.into());
+    |
+
+error: using `map_err` over `inspect_err`
+   --> crates/gateway/src/candidate_handoff.rs:297:68
+    |
+297 |         let record = self.gate.broadcast.finish(expected, outcome).map_err(|e| {
+    |                                                                    ^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.99.0/index.html#manual_inspect
+help: try
+    |
+297 ~         let record = self.gate.broadcast.finish(expected, outcome).inspect_err(|e| {
+298 ~             self.gate.remember(e.into());
+    |
+
+error: could not compile `gateway` (bin "gateway" test) due to 4 previous errors

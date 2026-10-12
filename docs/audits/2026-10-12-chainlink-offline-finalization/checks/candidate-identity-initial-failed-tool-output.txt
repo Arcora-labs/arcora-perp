@@ -1,0 +1,14 @@
+Reconstructed summary/excerpt from the delivered exec_command tool result.
+This is tool-output-text, not original stdout/stderr bytes. The original tool
+result was truncated (5378 original tokens; 3500-token output budget).
+Command: PYTHONDONTWRITEBYTECODE=1 /opt/homebrew/bin/python3.12 -m unittest discover -s scripts/local-verification -p test_candidate_identity_manifest.py -v
+Reported exit code: 1
+Reported unittest summary:
+Ran 19 tests in 0.503s
+FAILED (failures=1, errors=8)
+All eight errors reported: ValueError: missing, nonregular or oversized artifact/source: Cargo.lock
+One failure reported in test_duplicate_nonfinite_and_oversized_json_are_rejected:
+AssertionError: ValueError not raised
+Corrections: copy existing root Cargo.toml/Cargo.lock into the explicitly synthetic
+owned test fixture; enforce JSON lexical depth <=64 before decoder allocation.
+No legacy script, runtime source, pinned ELF or original fixture was changed.

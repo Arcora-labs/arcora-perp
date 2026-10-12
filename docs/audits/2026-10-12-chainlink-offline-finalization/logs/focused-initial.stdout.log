@@ -1,0 +1,37 @@
+
+running 18 tests
+test candidate_handoff_lock_tests::handoff_lock_owned_child ... ignored, owned IPC child only; invoked exactly by handoff kernel lease tests
+test candidate_handoff_lock_tests::handoff_lock_sigkill_inside_broadcast_preserves_prepared_and_lookup_only_resume ... ok
+test candidate_handoff_lock_tests::handoff_lock_sigkill_inside_lookup_preserves_prepared_and_lookup_only_resume ... ok
+test candidate_handoff_tests::handoff_authenticated_changed_proof_cannot_replace_the_pending_attempt ... FAILED
+test candidate_handoff_tests::handoff_both_real_lifecycle_inputs_prepare_then_settle_exact_native_plan ... ok
+test candidate_handoff_tests::handoff_broadcast_record_tamper_and_replacement_stop_before_outcome_save ... ok
+test candidate_handoff_tests::handoff_each_independent_lease_is_busy_before_any_callback ... ok
+test candidate_handoff_tests::handoff_missing_or_partial_prepared_source_has_no_implicit_adoption ... ok
+test candidate_handoff_tests::handoff_callback_failures_leave_only_acknowledged_attempt_and_resume_lookup_only ... ok
+test candidate_handoff_tests::handoff_nonce_sender_bridge_and_request_changes_cannot_choose_another_lane ... ok
+test candidate_handoff_tests::handoff_outcome_write_failures_keep_pending_or_visible_terminal_without_resending ... ok
+test candidate_handoff_tests::handoff_pending_resume_never_rechecks_or_broadcasts_and_preserves_hold_states ... ok
+test candidate_handoff_tests::handoff_outcome_identity_effect_and_finality_refusals_keep_exact_pending ... ok
+test candidate_handoff_tests::handoff_pending_write_failures_stop_before_broadcast_and_require_explicit_resume ... ok
+test candidate_handoff_tests::handoff_recheck_epoch_anchor_and_finality_refusals_precede_pending_publication ... ok
+test candidate_handoff_tests::handoff_resume_without_attempt_does_not_invent_pending_or_call_transport ... ok
+test candidate_handoff_tests::handoff_reverted_finalized_attempt_is_terminal_and_never_resubmitted ... ok
+test candidate_handoff_tests::handoff_source_binding_and_lock_changes_at_every_callback_stop_next_action ... ok
+
+failures:
+
+---- candidate_handoff_tests::handoff_authenticated_changed_proof_cannot_replace_the_pending_attempt stdout ----
+
+thread 'candidate_handoff_tests::handoff_authenticated_changed_proof_cannot_replace_the_pending_attempt' (14322733) panicked at crates/gateway/src/candidate_handoff_tests.rs:957:5:
+assertion `left == right` failed
+  left: Err(Preparation(Store(Source(Bounds))))
+ right: Err(PlanMismatch)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    candidate_handoff_tests::handoff_authenticated_changed_proof_cannot_replace_the_pending_attempt
+
+test result: FAILED. 16 passed; 1 failed; 1 ignored; 0 measured; 678 filtered out; finished in 107.51s
+
