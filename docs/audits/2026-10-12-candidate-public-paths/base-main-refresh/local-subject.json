@@ -1,0 +1,13 @@
+{
+  "observed_utc": "2026-10-12T15:33:59.544998+00:00",
+  "head": "788d46fe793180b73aff2cb33eaf79c744b091ec",
+  "tree": "eac7daa29cbb190d182ffc1f3db64f220786d80a",
+  "subject": "Merge pull request #57 from Arcora-labs/feat/candidate-fixture-sealed-20261012",
+  "parents": [
+    "60eceef733613fe6d491548d35eb4fdb7c0809bd",
+    "fdae50fc06302d57de62713878e71b16c6c5dd4d"
+  ],
+  "branch": "fix/candidate-public-paths-20261012",
+  "status_porcelain_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "clean": true
+}

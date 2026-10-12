@@ -1,0 +1,36 @@
+{
+  "allowed_existing_fixture_change": "ManifestTests.root canonicalized with Path(temp.name).resolve() for macOS owned temp path.",
+  "baseline_head": "788d46fe793180b73aff2cb33eaf79c744b091ec",
+  "current_test_methods": 56,
+  "files": [
+    {
+      "added_test_methods": 6,
+      "baseline_sha256": "5a59b482e978404a51c7266a52dd1e32b86f523e8eff5ef56f2dd482785b6398",
+      "changed_old_test_bodies": [],
+      "current_sha256": "01f83c817b9d87a5a70948f23960f740e511cc9405e4f416a2ccdda16d39db3e",
+      "current_test_methods": 25,
+      "old_test_methods": 19,
+      "path": "scripts/local-verification/test_candidate_identity_manifest.py",
+      "removed": []
+    },
+    {
+      "added_test_methods": 3,
+      "baseline_sha256": "043d2174cdd6321f299e4023ca519c0126ced594568a57a33e344244a2bc1f83",
+      "changed_old_test_bodies": [],
+      "current_sha256": "6c791857b69cc916bf14edd7b3588c007bbd89d9fd35a974b5a8a921bafa35dd",
+      "current_test_methods": 31,
+      "old_test_methods": 28,
+      "path": "scripts/local-verification/test_candidate_target_observer.py",
+      "removed": []
+    }
+  ],
+  "new_positive_harness_repair": "CandidateRPC patch changed from MagicMock replacement to an actual FixtureRPC class whose __new__ records URL and returns owned FakeRPC, avoiding isinstance TypeError. No old test or assertion weakening. Parent retains invalid-before run; only later corrected-positive before run is regression evidence.",
+  "new_relative_path_regression": "One test establishes safe relative public read/write, then refuses relative read/write from owned synthetic prohibited cwd before Path.open.",
+  "new_test_methods": 9,
+  "observed_utc": "2026-10-12T15:47:28.794661+00:00",
+  "old_test_bodies_ast_exact": 47,
+  "other_minor_change": "Observer module header removes historical test-count literal only.",
+  "passed": true,
+  "schema": "arcora-public-path-test-addition-preservation/v1",
+  "source_tests_not_executed_by_this_check": true
+}

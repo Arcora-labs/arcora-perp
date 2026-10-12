@@ -1,0 +1,49 @@
+{
+  "final_execution": {
+    "exit_code": 0,
+    "expectations_sha256": "530a8a7a5b50abc168093d6a9c6d65c3fe8021660cf5e439378729fbd5315818",
+    "passed": true,
+    "receipt": "preservation-final.json",
+    "receipt_sha256": "2a2700c04a140cc407004459a01aad1c99b23890f545494624a3fca8d2c29e21"
+  },
+  "final_helper": {
+    "path": "publication/preserve_final.py",
+    "sha256": "b105c807d5cb48c0543ffaf4722ba8bbfcde59bea57fd49915bd89d9582bd296",
+    "syntax_AST_parse_passed": true
+  },
+  "first_two_executions_failed_closed": [
+    {
+      "exit_code": 1,
+      "record": "publication/preservation-helper-initial-failure.json",
+      "sha256": "89e66d81596f74bad427c66d93109c88c05ce519dbc910a7b4de9716d3f9bb6d"
+    },
+    {
+      "exit_code": 1,
+      "record": "publication/preservation-helper-fixture-repair-failure.json",
+      "sha256": "74a55cc4682ee1c2dcec3946f41044f9a067a5533a5647edf41bbaf491384368"
+    }
+  ],
+  "fixture_only_intermediate_helper_preserved": {
+    "path": "publication/preserve_final.fixture-repair.py",
+    "sha256": "d3b2d7cb9c1260cdb2706c90b4e35daeea318fafe51e4c4ef5ae32b9e918d34b"
+  },
+  "initial_helper_preserved": {
+    "path": "publication/preserve_final.initial.py",
+    "sha256": "a541b7a608fdc068fe117820160bb3586e7100612cf36eebc91007f9114c8504"
+  },
+  "initial_preparation_historical": {
+    "does_not_describe_final_helper": true,
+    "helper_sha256": "a541b7a608fdc068fe117820160bb3586e7100612cf36eebc91007f9114c8504",
+    "path": "publication/helper-preparation.json",
+    "sha256": "e96744798a545b1e0a4c460ebccc026d07843d2c12c99d5a46e05166505c5881",
+    "unchanged": true
+  },
+  "narrow_ignored_only_changes": [
+    "Published public Azure AK fixture exception accepts only exact relative roster path or exact ROOT/path absolute spelling.",
+    "Approved public roster name exclusions match immutable baseline capture policy; existing public credential_session.rs/design notes remain checksum-covered."
+  ],
+  "observed_utc": "2026-10-12T15:58:57.582294+00:00",
+  "schema": "arcora-public-path-preservation-helper-final-repair/v1",
+  "scope": "Helper implementation faults only; original/failure receipts retained. Final preservation success applies unchanged root source and expectations.",
+  "tracked_source_changes_by_reviewer": false
+}

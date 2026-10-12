@@ -1,0 +1,16 @@
+{
+  "cause": "Broader new helper name regex rejected already-public immutable roster source credential_session.rs and two older source-design docs named secret-keyed-seal-nonce. Baseline capture used exact private-directory exclusion instead.",
+  "exit_code": 1,
+  "failure": "ValueError: private roster name refused",
+  "helper_sha256": "d3b2d7cb9c1260cdb2706c90b4e35daeea318fafe51e4c4ef5ae32b9e918d34b",
+  "observed_utc": "2026-10-12T15:56:12.984874+00:00",
+  "planned_narrow_repair": "Use same immutable approved public roster name policy as baseline; no new private file discovery.",
+  "refused_public_roster_names": [
+    "crates/gateway/src/credential_session.rs",
+    "docs/superpowers/plans/2026-07-09-p3-secret-keyed-seal-nonce.md",
+    "docs/superpowers/specs/2026-07-09-p3-secret-keyed-seal-nonce-design.md"
+  ],
+  "schema": "arcora-public-path-preservation-helper-failure/v1",
+  "source_bug": false,
+  "tracked_changes_by_reviewer": false
+}

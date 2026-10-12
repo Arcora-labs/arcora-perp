@@ -1,0 +1,195 @@
+{
+  "actual_final_subset": {
+    "exit_code": 0,
+    "identity": 25,
+    "new_test_methods": 9,
+    "observer": 31,
+    "old_test_methods_AST_exact": 47,
+    "source_sha256": "1e3c1af3f823ca0ed2d74b277b98f11c28140a94c776e2e7ee19bcdfc7715345",
+    "test_methods": 56
+  },
+  "initial_harness_invalid_record_excluded": {
+    "path": "target/candidate-public-path-validation-20261012/initial-harness-observation.json",
+    "reason": "New positive MagicMock class mismatch was repaired before accepted regression-before-valid; initial run is retained history.",
+    "sha256": "517c5fad021c1394846768317d52145dd27a5e945ce78fea857ec68ad932f4fb"
+  },
+  "method": "Read-only source/diff and AST review, checksum receipt/log verification. No source execution, tests, builds, RPC, helpers or Git mutation by reviewer.",
+  "observed_root_execution_receipts": {
+    "neighbors-after": {
+      "elapsed_seconds": 9.650926875066943,
+      "exit_code": 0,
+      "failed_subtest_count": 0,
+      "logs": {
+        "stderr": {
+          "path": "target/candidate-public-path-validation-20261012/checks/neighbors-after.stderr.log",
+          "sha256": "5edab6517de29439d04ac30f67fd0f83f25abf2cca49d3c415baeabd345a1ba8"
+        },
+        "stdout": {
+          "path": "target/candidate-public-path-validation-20261012/checks/neighbors-after.stdout.log",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      "path": "target/candidate-public-path-validation-20261012/checks/neighbors-after.json",
+      "pins_unchanged": true,
+      "sha256": "c1bab2c9f27b56ec54f17d0f730eb6f2b7cdff1d65d84e5ce4a357febbe4a28f",
+      "source_files": 375,
+      "source_sha256": "1e3c1af3f823ca0ed2d74b277b98f11c28140a94c776e2e7ee19bcdfc7715345",
+      "source_unchanged": true,
+      "tail": [
+        "",
+        "OK (skipped=1)"
+      ],
+      "test_summaries": [
+        {
+          "seconds": 8.44,
+          "tests": 126
+        }
+      ]
+    },
+    "regression-after": {
+      "elapsed_seconds": 44.94762204098515,
+      "exit_code": 0,
+      "failed_subtest_count": 0,
+      "logs": {
+        "stderr": {
+          "path": "target/candidate-public-path-validation-20261012/checks/regression-after.stderr.log",
+          "sha256": "193895f2d1656f49f0bd62a8f1e513a13cc9ae5fc028e2f98943e351d48ba524"
+        },
+        "stdout": {
+          "path": "target/candidate-public-path-validation-20261012/checks/regression-after.stdout.log",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      "path": "target/candidate-public-path-validation-20261012/checks/regression-after.json",
+      "pins_unchanged": true,
+      "sha256": "d7e4557fc7bc394bd9b819cb27fa70239cca4abca043ad608650cc26050faaea",
+      "source_files": 375,
+      "source_sha256": "1e3c1af3f823ca0ed2d74b277b98f11c28140a94c776e2e7ee19bcdfc7715345",
+      "source_unchanged": true,
+      "tail": [
+        "",
+        "OK"
+      ],
+      "test_summaries": [
+        {
+          "seconds": 43.823,
+          "tests": 56
+        }
+      ]
+    },
+    "regression-before-valid": {
+      "elapsed_seconds": 45.26485300005879,
+      "exit_code": 1,
+      "failed_subtest_count": 30,
+      "logs": {
+        "stderr": {
+          "path": "target/candidate-public-path-validation-20261012/checks/regression-before-valid.stderr.log",
+          "sha256": "fe6dc2b8bf192fa65bc7c1fa161a87f3af39bc4e9bc1f7b778986c79dca003ec"
+        },
+        "stdout": {
+          "path": "target/candidate-public-path-validation-20261012/checks/regression-before-valid.stdout.log",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      "path": "target/candidate-public-path-validation-20261012/checks/regression-before-valid.json",
+      "pins_unchanged": true,
+      "sha256": "2bf70a2e65a99b46a6435f0399787fc12f56080d425705dd99da185365b7c395",
+      "source_files": 375,
+      "source_sha256": "e73249db972be3c7603ab35bcf748a5f8c6a2beac513a4600b6a9b369798a1be",
+      "source_unchanged": true,
+      "tail": [
+        "",
+        "FAILED (failures=30)"
+      ],
+      "test_summaries": [
+        {
+          "seconds": 43.88,
+          "tests": 55
+        }
+      ]
+    },
+    "relative-before": {
+      "elapsed_seconds": 1.4685550419380888,
+      "exit_code": 1,
+      "failed_subtest_count": 2,
+      "logs": {
+        "stderr": {
+          "path": "target/candidate-public-path-validation-20261012/checks/relative-before.stderr.log",
+          "sha256": "2e183e30b8d46d9dba1e7dc728cb01053f669481d1ef4ae8d8155f5d89b6b0d6"
+        },
+        "stdout": {
+          "path": "target/candidate-public-path-validation-20261012/checks/relative-before.stdout.log",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      "path": "target/candidate-public-path-validation-20261012/checks/relative-before.json",
+      "pins_unchanged": true,
+      "sha256": "a100ba4a516a2ef18f604589ce51b1aeafb021cad49d43b04d37996993966b81",
+      "source_files": 375,
+      "source_sha256": "b5cd4500f98adf4333f3fd6c343fa02b554566927e0b36ab0dbb2380800b1c37",
+      "source_unchanged": true,
+      "tail": [
+        "",
+        "FAILED (failures=2)"
+      ],
+      "test_summaries": [
+        {
+          "seconds": 0.164,
+          "tests": 1
+        }
+      ]
+    }
+  },
+  "observed_utc": "2026-10-12T15:49:54.339411+00:00",
+  "passed": true,
+  "pending_or_not_claimed": [
+    "Candidate owned Anvil completion if no completed receipt exists at capture",
+    "Publication exact-head CI and normal merge",
+    "Real public target/policy/service/key independent acceptance",
+    "Hostile-filesystem atomicity"
+  ],
+  "release_gate": "HOLD",
+  "review": {
+    "CLI_errors_do_not_echo_paths_values_tool_stderr_or_endpoint": true,
+    "blocking_findings": [],
+    "cooperative_TOCTOU_limitation_documented": true,
+    "identity_create_output_and_validate_manifest_paths_preflight_before_input_reads_or_build": true,
+    "leaf_and_each_ancestor_symlink_refused_including_dangling": true,
+    "observer_RPC_methods_timeout_proxy_redirect_and_ancestry_logic_unchanged": true,
+    "observer_all_paths_preflight_before_any_input_read_transport_creation_or_RPC": true,
+    "output_creation_rechecks_public_path_and_remains_exclusive": true,
+    "prohibited_component_check_precedes_symlink_probe_and_open": true,
+    "public_path_absolute_without_resolve": true,
+    "read_JSON_size_depth_duplicates_and_nonfinite_guards_unchanged": true,
+    "relative_inputs_bound_to_physical_cwd": true,
+    "schema_scope_program_provenance_and_HOLD_unchanged": true
+  },
+  "schema": "arcora-candidate-public-path-independent-source-qa/v1",
+  "scope": "Eight-path bounded public-path software repair. No new runtime/chain/feed/key/service approval.",
+  "source_files_sha256": {
+    "docs/CHAINLINK_CANDIDATE_IDENTITY.md": "ba230580bf8d5866b7353733e7bb991b30ab80c3a8d1210ac118f6262ea73c5c",
+    "docs/CHAINLINK_TARGET_OBSERVER.md": "78cbd712a56957f909860bbc266149747c0323162019987ab023687a03dfc65c",
+    "scripts/local-verification/candidate_identity_manifest.py": "4ddaf565e756ba7846c5f3d51a40e4f4ea170511a83b8488e750cf097d5f99bf",
+    "scripts/local-verification/candidate_target_observer.py": "c356965265cb5c37bc160104aa0974a49038c2984480948b304d3409ff16607e",
+    "scripts/local-verification/test_candidate_identity_manifest.py": "01f83c817b9d87a5a70948f23960f740e511cc9405e4f416a2ccdda16d39db3e",
+    "scripts/local-verification/test_candidate_target_observer.py": "6c791857b69cc916bf14edd7b3588c007bbd89d9fd35a974b5a8a921bafa35dd"
+  },
+  "test_body_preservation": [
+    {
+      "added_methods": 6,
+      "all_old_test_method_AST_exact": true,
+      "baseline_methods": 19,
+      "changed_old_methods": [],
+      "current_methods": 25,
+      "path": "scripts/local-verification/test_candidate_identity_manifest.py"
+    },
+    {
+      "added_methods": 3,
+      "all_old_test_method_AST_exact": true,
+      "baseline_methods": 28,
+      "changed_old_methods": [],
+      "current_methods": 31,
+      "path": "scripts/local-verification/test_candidate_target_observer.py"
+    }
+  ]
+}

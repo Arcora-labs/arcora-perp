@@ -1,0 +1,266 @@
+{
+  "actual_head": "bcdb52d24ce4ba363d566a0f398f4bff84186d46",
+  "actual_totals": {
+    "gateway": {
+      "cargo_check": "PASS",
+      "command_kind": "check --locked -p gateway --bin gateway; not full gateway test suite"
+    },
+    "identity_and_observer": {
+      "failed": 0,
+      "passed": 56,
+      "skipped": 0,
+      "total": 56
+    },
+    "neighbors": {
+      "failed": 0,
+      "passed": 125,
+      "skip": "Optional legacy Anvil",
+      "skipped": 1,
+      "total": 126
+    },
+    "owned_candidate_Anvil": {
+      "failed": 0,
+      "mock_contracts": 3,
+      "passed": 1,
+      "production_contract_artifacts": 7,
+      "refusals": 12,
+      "scope": "Owned loopback EVM software fixture only",
+      "total": 1
+    }
+  },
+  "actual_tree": "ef7908ecdc0bf0dc744b3ecfd1fbd6f5a6b7eec7",
+  "candidate_Anvil_evidence": {
+    "path": "target/candidate-public-path-validation-20261012/checks/candidate-anvil-after-evidence.json",
+    "proof_generated": false,
+    "real_don_verified": false,
+    "refusal_labels": [
+      "actual_frozen_sp1_route",
+      "direct_sp1_clock_instead_of_wrapper",
+      "unbound_uptime_feed",
+      "unbound_verifier_proxy",
+      "wrong_challenge_bond",
+      "wrong_clock_policy",
+      "wrong_governance",
+      "wrong_grace",
+      "wrong_oracle_configurator",
+      "wrong_policy_hash",
+      "wrong_reviewed_v2_key_pre_rpc",
+      "wrong_runtime_hash"
+    ],
+    "running_services_attested": false,
+    "scope": "Owned disposable Anvil chain84532, seven real compiled contracts and mock token/streams/uptime; no public target, DON, service, proof or release acceptance.",
+    "sha256": "0213724dd05f1ed0872da406ab4862fb64318f4fb46a0cbff972edafadc1136f"
+  },
+  "code_commit": "bcdb52d24ce4ba363d566a0f398f4bff84186d46",
+  "current_six_files": {
+    "docs/CHAINLINK_CANDIDATE_IDENTITY.md": {
+      "actual_sha256": "d86122ee61e0b92c37a5157adf7e9d1f605b20b4b802581769c0b6c5c9204c16",
+      "byte_exact": true,
+      "code_commit_sha256": "d86122ee61e0b92c37a5157adf7e9d1f605b20b4b802581769c0b6c5c9204c16"
+    },
+    "docs/CHAINLINK_TARGET_OBSERVER.md": {
+      "actual_sha256": "8d7bc4a634d1dafd998828d992aef29b06f7319ff391fb8fc7149a00ffcb6e3f",
+      "byte_exact": true,
+      "code_commit_sha256": "8d7bc4a634d1dafd998828d992aef29b06f7319ff391fb8fc7149a00ffcb6e3f"
+    },
+    "scripts/local-verification/candidate_identity_manifest.py": {
+      "actual_sha256": "4ddaf565e756ba7846c5f3d51a40e4f4ea170511a83b8488e750cf097d5f99bf",
+      "byte_exact": true,
+      "code_commit_sha256": "4ddaf565e756ba7846c5f3d51a40e4f4ea170511a83b8488e750cf097d5f99bf"
+    },
+    "scripts/local-verification/candidate_target_observer.py": {
+      "actual_sha256": "c356965265cb5c37bc160104aa0974a49038c2984480948b304d3409ff16607e",
+      "byte_exact": true,
+      "code_commit_sha256": "c356965265cb5c37bc160104aa0974a49038c2984480948b304d3409ff16607e"
+    },
+    "scripts/local-verification/test_candidate_identity_manifest.py": {
+      "actual_sha256": "01f83c817b9d87a5a70948f23960f740e511cc9405e4f416a2ccdda16d39db3e",
+      "byte_exact": true,
+      "code_commit_sha256": "01f83c817b9d87a5a70948f23960f740e511cc9405e4f416a2ccdda16d39db3e"
+    },
+    "scripts/local-verification/test_candidate_target_observer.py": {
+      "actual_sha256": "6c791857b69cc916bf14edd7b3588c007bbd89d9fd35a974b5a8a921bafa35dd",
+      "byte_exact": true,
+      "code_commit_sha256": "6c791857b69cc916bf14edd7b3588c007bbd89d9fd35a974b5a8a921bafa35dd"
+    }
+  },
+  "findings": [],
+  "guide_count_descriptions": {
+    "guides_are_metadata_not_test_execution": true,
+    "identity": {
+      "added": 6,
+      "old": 19,
+      "total": 25
+    },
+    "observer": {
+      "added": 3,
+      "old": 28,
+      "total": 31
+    }
+  },
+  "historical_regression_scope": {
+    "accepted_before": "checks/regression-before-valid.json:55 methods/30 failed subtests; original47 and2new positives passed",
+    "current56_source_distinct_from_before_stages": true,
+    "initial_invalid_MagicMock_positive_harness_retained_but_not_accepted": "checks/regression-before.json",
+    "old47_test_method_AST_exact": true,
+    "relative_before": "checks/relative-before.json:1 method/2 failed subtests"
+  },
+  "method": "Read-only six-file/code-commit byte comparison and completed root command/evidence receipt+log hash verification. No reviewer tests, builds, RPC or tracked writes. Authorized static preservation helper was executed separately.",
+  "not_claimed": [
+    "PR58 exact-head CI/merge",
+    "Live approved target/policy/service/key expectations",
+    "Real proof/DON/CC/service attestation/custody/release acceptance",
+    "Hostile-filesystem race-free path I/O"
+  ],
+  "observed_completed_root_checks": {
+    "candidate-anvil-after": {
+      "command": [
+        "/opt/homebrew/opt/python@3.12/bin/python3.12",
+        "-c",
+        "import sys,unittest; suite=unittest.TestSuite(); loader=unittest.TestLoader(); suite.addTests(loader.discover('scripts/local-verification',pattern='test_candidate_target_anvil.py')); r=unittest.TextTestRunner(verbosity=2).run(suite); sys.exit(not r.wasSuccessful())"
+      ],
+      "elapsed_seconds": 84.91905620810576,
+      "exit_code": 0,
+      "logs": {
+        "stderr": {
+          "path": "target/candidate-public-path-validation-20261012/checks/candidate-anvil-after.stderr.log",
+          "sha256": "20e43ff02b9bff0be5f44daee55e6266a28e96e74edeff768c1228c96a2cc989"
+        },
+        "stdout": {
+          "path": "target/candidate-public-path-validation-20261012/checks/candidate-anvil-after.stdout.log",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      "receipt_path": "target/candidate-public-path-validation-20261012/checks/candidate-anvil-after.json",
+      "receipt_sha256": "cca6fa3bf86b318c7aeb03cb1e8684ca68b8c325b707d328f81ff4663ca52471",
+      "source_and_pins_unchanged": true,
+      "source_files": 375,
+      "source_sha256": "1e3c1af3f823ca0ed2d74b277b98f11c28140a94c776e2e7ee19bcdfc7715345",
+      "test_summaries": [
+        {
+          "seconds": 83.886,
+          "tests": 1
+        }
+      ]
+    },
+    "gateway-build-after": {
+      "command": [
+        "/Users/huseyinarslan/.cargo/bin/cargo",
+        "+1.99.0",
+        "check",
+        "--locked",
+        "-p",
+        "gateway",
+        "--bin",
+        "gateway"
+      ],
+      "elapsed_seconds": 86.05448529100977,
+      "exit_code": 0,
+      "logs": {
+        "stderr": {
+          "path": "target/candidate-public-path-validation-20261012/checks/gateway-build-after.stderr.log",
+          "sha256": "57f001e6ede795e244231f59ca117dee668111c38e210d6a9f852f79fe9a9f2b"
+        },
+        "stdout": {
+          "path": "target/candidate-public-path-validation-20261012/checks/gateway-build-after.stdout.log",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      "receipt_path": "target/candidate-public-path-validation-20261012/checks/gateway-build-after.json",
+      "receipt_sha256": "407f98d397810e967b50d069e6127ee296a9e1f4346bf2853bc376900f84277f",
+      "source_and_pins_unchanged": true,
+      "source_files": 375,
+      "source_sha256": "1e3c1af3f823ca0ed2d74b277b98f11c28140a94c776e2e7ee19bcdfc7715345",
+      "test_summaries": []
+    },
+    "neighbors-after": {
+      "command": [
+        "/opt/homebrew/opt/python@3.12/bin/python3.12",
+        "-c",
+        "import sys,unittest; suite=unittest.TestSuite(); loader=unittest.TestLoader(); suite.addTests(loader.discover('scripts/local-verification',pattern='test_service_build_identity.py')); suite.addTests(loader.discover('scripts/local-verification',pattern='test_service_identity_preflight.py')); suite.addTests(loader.discover('scripts/local-verification',pattern='test_release_manifest.py')); suite.addTests(loader.discover('scripts/local-verification',pattern='test_operator_policy.py')); suite.addTests(loader.discover('scripts/local-verification',pattern='test_read_deployment.py')); suite.addTests(loader.discover('scripts/local-verification',pattern='test_check_sp1_release.py')); suite.addTests(loader.discover('scripts/local-verification',pattern='test_verify_clock_proof.py')); suite.addTests(loader.discover('scripts/local-verification',pattern='test_repository_policy.py')); r=unittest.TextTestRunner(verbosity=2).run(suite); sys.exit(not r.wasSuccessful())"
+      ],
+      "elapsed_seconds": 9.650926875066943,
+      "exit_code": 0,
+      "logs": {
+        "stderr": {
+          "path": "target/candidate-public-path-validation-20261012/checks/neighbors-after.stderr.log",
+          "sha256": "5edab6517de29439d04ac30f67fd0f83f25abf2cca49d3c415baeabd345a1ba8"
+        },
+        "stdout": {
+          "path": "target/candidate-public-path-validation-20261012/checks/neighbors-after.stdout.log",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      "receipt_path": "target/candidate-public-path-validation-20261012/checks/neighbors-after.json",
+      "receipt_sha256": "c1bab2c9f27b56ec54f17d0f730eb6f2b7cdff1d65d84e5ce4a357febbe4a28f",
+      "source_and_pins_unchanged": true,
+      "source_files": 375,
+      "source_sha256": "1e3c1af3f823ca0ed2d74b277b98f11c28140a94c776e2e7ee19bcdfc7715345",
+      "test_summaries": [
+        {
+          "seconds": 8.44,
+          "tests": 126
+        }
+      ]
+    },
+    "regression-after": {
+      "command": [
+        "/opt/homebrew/opt/python@3.12/bin/python3.12",
+        "-c",
+        "import sys,unittest; suite=unittest.TestSuite(); loader=unittest.TestLoader(); suite.addTests(loader.discover('scripts/local-verification',pattern='test_candidate_identity_manifest.py')); suite.addTests(loader.discover('scripts/local-verification',pattern='test_candidate_target_observer.py')); r=unittest.TextTestRunner(verbosity=2).run(suite); sys.exit(not r.wasSuccessful())"
+      ],
+      "elapsed_seconds": 44.94762204098515,
+      "exit_code": 0,
+      "logs": {
+        "stderr": {
+          "path": "target/candidate-public-path-validation-20261012/checks/regression-after.stderr.log",
+          "sha256": "193895f2d1656f49f0bd62a8f1e513a13cc9ae5fc028e2f98943e351d48ba524"
+        },
+        "stdout": {
+          "path": "target/candidate-public-path-validation-20261012/checks/regression-after.stdout.log",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      "receipt_path": "target/candidate-public-path-validation-20261012/checks/regression-after.json",
+      "receipt_sha256": "d7e4557fc7bc394bd9b819cb27fa70239cca4abca043ad608650cc26050faaea",
+      "source_and_pins_unchanged": true,
+      "source_files": 375,
+      "source_sha256": "1e3c1af3f823ca0ed2d74b277b98f11c28140a94c776e2e7ee19bcdfc7715345",
+      "test_summaries": [
+        {
+          "seconds": 43.823,
+          "tests": 56
+        }
+      ]
+    }
+  },
+  "observed_utc": "2026-10-12T15:58:24.836321+00:00",
+  "passed": true,
+  "prior_qa": {
+    "path": "target/candidate-public-path-validation-20261012/publication/final-source-qa.json",
+    "sha256": "fcaf320957528601c82ffda6953b5f95ca0d2316e9c03307767c54034a9caa12",
+    "unchanged": true
+  },
+  "release_gate": "HOLD",
+  "schema": "arcora-candidate-public-path-independent-source-qa-addendum/v1",
+  "static_preservation": {
+    "PR57_evidence_files_unchanged": 247,
+    "baseline": 3045,
+    "changed_allowed": 8,
+    "current_pointer_unchanged": true,
+    "external_dirty_preserved": [
+      13,
+      7,
+      62
+    ],
+    "helper_only_failures_retained": [
+      "publication/preservation-helper-initial-failure.json",
+      "publication/preservation-helper-fixture-repair-failure.json"
+    ],
+    "helper_sha256": "b105c807d5cb48c0543ffaf4722ba8bbfcde59bea57fd49915bd89d9582bd296",
+    "no_source_change_from_helper_repairs": true,
+    "path": "target/candidate-public-path-validation-20261012/preservation-final.json",
+    "sha256": "2a2700c04a140cc407004459a01aad1c99b23890f545494624a3fca8d2c29e21",
+    "unchanged": 3037
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "schema": "arcora-candidate-public-path-final-expectations/v1",
+  "code_commit": "bcdb52d24ce4ba363d566a0f398f4bff84186d46",
+  "expected_head": "bcdb52d24ce4ba363d566a0f398f4bff84186d46",
+  "expected_tree": "ef7908ecdc0bf0dc744b3ecfd1fbd6f5a6b7eec7",
+  "expected_status": " M .gitattributes\n M docs/ACTIVE_WORK.md\n",
+  "source_files": 375,
+  "source_sha256": "1e3c1af3f823ca0ed2d74b277b98f11c28140a94c776e2e7ee19bcdfc7715345",
+  "final_existing_sha256": {
+    ".gitattributes": "fd89aed21e57cded8cee993132e43f94fa5cd59cc6550cf74c5584649ec26c5b",
+    "docs/ACTIVE_WORK.md": "46d26a81bdf0c2e06a96ecd78ca96c9f8e2cb6445327a0cb975bbb9581d861cc",
+    "docs/CHAINLINK_CANDIDATE_IDENTITY.md": "d86122ee61e0b92c37a5157adf7e9d1f605b20b4b802581769c0b6c5c9204c16",
+    "docs/CHAINLINK_TARGET_OBSERVER.md": "8d7bc4a634d1dafd998828d992aef29b06f7319ff391fb8fc7149a00ffcb6e3f",
+    "scripts/local-verification/candidate_identity_manifest.py": "4ddaf565e756ba7846c5f3d51a40e4f4ea170511a83b8488e750cf097d5f99bf",
+    "scripts/local-verification/candidate_target_observer.py": "c356965265cb5c37bc160104aa0974a49038c2984480948b304d3409ff16607e",
+    "scripts/local-verification/test_candidate_identity_manifest.py": "01f83c817b9d87a5a70948f23960f740e511cc9405e4f416a2ccdda16d39db3e",
+    "scripts/local-verification/test_candidate_target_observer.py": "6c791857b69cc916bf14edd7b3588c007bbd89d9fd35a974b5a8a921bafa35dd"
+  }
+}

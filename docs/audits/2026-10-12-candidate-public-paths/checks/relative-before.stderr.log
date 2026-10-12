@@ -1,0 +1,52 @@
+test_relative_public_paths_bind_current_directory_before_private_name_checks (test_candidate_identity_manifest.ManifestTests.test_relative_public_paths_bind_current_directory_before_private_name_checks) ... 
+  test_relative_public_paths_bind_current_directory_before_private_name_checks (test_candidate_identity_manifest.ManifestTests.test_relative_public_paths_bind_current_directory_before_private_name_checks) (operation='read') ... FAIL
+  test_relative_public_paths_bind_current_directory_before_private_name_checks (test_candidate_identity_manifest.ManifestTests.test_relative_public_paths_bind_current_directory_before_private_name_checks) (operation='write') ... FAIL
+
+======================================================================
+FAIL: test_relative_public_paths_bind_current_directory_before_private_name_checks (test_candidate_identity_manifest.ManifestTests.test_relative_public_paths_bind_current_directory_before_private_name_checks) (operation='read')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 464, in test_relative_public_paths_bind_current_directory_before_private_name_checks
+    action()
+  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 459, in <lambda>
+    for name, action in (("read", lambda: identity.read_json("input.json")),
+                                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/candidate_identity_manifest.py", line 105, in read_json
+    with path.open("rb") as stream:
+         ^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.12/3.12.13/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/mock.py", line 1139, in __call__
+    return self._mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.12/3.12.13/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/mock.py", line 1143, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.12/3.12.13/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/mock.py", line 1198, in _execute_mock_call
+    raise effect
+AssertionError: forbidden relative path opened
+
+======================================================================
+FAIL: test_relative_public_paths_bind_current_directory_before_private_name_checks (test_candidate_identity_manifest.ManifestTests.test_relative_public_paths_bind_current_directory_before_private_name_checks) (operation='write')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 464, in test_relative_public_paths_bind_current_directory_before_private_name_checks
+    action()
+  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 460, in <lambda>
+    ("write", lambda: identity.create_output("output.json", value))):
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/candidate_identity_manifest.py", line 317, in create_output
+    with Path(path).open("x") as stream:
+         ^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.12/3.12.13/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/mock.py", line 1139, in __call__
+    return self._mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.12/3.12.13/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/mock.py", line 1143, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.12/3.12.13/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/mock.py", line 1198, in _execute_mock_call
+    raise effect
+AssertionError: forbidden relative path opened
+
+----------------------------------------------------------------------
+Ran 1 test in 0.164s
+
+FAILED (failures=2)

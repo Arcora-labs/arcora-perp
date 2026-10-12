@@ -1,0 +1,12 @@
+{
+  "allowed_existing_count": 8,
+  "audit_executed": false,
+  "baseline_sha256": "360a0503c45f6314d48973caca14545300a140931d25028722090662d51c0f3e",
+  "expected_source_count": 375,
+  "helper_sha256": "a541b7a608fdc068fe117820160bb3586e7100612cf36eebc91007f9114c8504",
+  "observed_utc": "2026-10-12T15:44:37.495860+00:00",
+  "schema": "arcora-candidate-public-path-helper-preparation/v1",
+  "scope": "Helper preparation only. No preservation execution or future result claimed.",
+  "syntax_parse_passed": true,
+  "waiting_for_root_frozen_expectations_and_execute_cue": true
+}

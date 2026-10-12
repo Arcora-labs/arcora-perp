@@ -1,0 +1,53 @@
+{
+  "baseline_source_sha256": {
+    "scripts/local-verification/candidate_identity_manifest.py": "db95538c8c82ec9239051de2c3315f3a0a37e2ed5486a111c494cca04086a1b6",
+    "scripts/local-verification/candidate_target_observer.py": "5865f30de6d8a18412fab74dd76b997f08b37b48209712859fe7a61693717373",
+    "scripts/local-verification/service_identity_preflight.py": "e99e4ffdb9c87732702b8f51b2cb89c45b2c30f164e91af063caaa3fe7efd947"
+  },
+  "before_fix_lines": {
+    "identity_read_json": "101-108",
+    "observer_cli_input_read": "333-336",
+    "service_preflight_public_path": "169-173"
+  },
+  "cases": [
+    {
+      "case": "safe-positive",
+      "exit_code": 0,
+      "input_open_count": 3,
+      "mock_observer_received": [
+        "safe-public",
+        "safe-public",
+        "safe-public"
+      ],
+      "resolved_into_prohibited_fixture": false
+    },
+    {
+      "case": "ancestor-symlink",
+      "exit_code": 0,
+      "input_open_count": 3,
+      "mock_observer_received": [
+        "synthetic-prohibited-target",
+        "synthetic-prohibited-target",
+        "synthetic-prohibited-target"
+      ],
+      "resolved_into_prohibited_fixture": true
+    }
+  ],
+  "direct_leaf_symlink_refused": true,
+  "failure": "Public-looking directory symlink reaches three regular owned public JSON files inside synthetic .env-fixture ancestor before semantic validation. Existing leaf guard alone does not cover ancestor symlinks.",
+  "interpreter": {
+    "initial_default_python3": "Import refused before execution: Python3.11+/tomllib prerequisite",
+    "successful": "/opt/homebrew/bin/python3.13"
+  },
+  "network_calls": false,
+  "observed_baseline_head": "788d46fe793180b73aff2cb33eaf79c744b091ec",
+  "owned_temporary_directory_cleaned": true,
+  "real_credentials_read": false,
+  "recorded_utc": "2026-10-12T15:41:35.465609+00:00",
+  "schema": "arcora-candidate-public-path-ancestor-reproduction/v1",
+  "scope": "Actual existing observer CLI input reader was exercised with Path.open spy. CandidateRPC and observe_target were patched for reader isolation; exit0 is not a target-validation or RPC-success claim.",
+  "service_preflight_ancestor_refused": true,
+  "synthetic_only": true,
+  "tracked_source_mutations_during_reproduction": false,
+  "unmodified_boundary": "No source helper edit, Cargo, secret discovery or Git/GitHub mutation by this agent."
+}

@@ -1,0 +1,6 @@
+{
+  "first_run": "checks/regression-before.json",
+  "accepted_as_before_fix_evidence": false,
+  "reason": "A new positive CLI test replaced a class with a MagicMock, making isinstance fail. The 30 path guard subfailures are retained but will be reproduced with the repaired positive test harness before accepting the regression record.",
+  "old_47_test_bodies_unchanged": true
+}

@@ -1,0 +1,20 @@
+{
+  "cause": "regular_public_path passed absolute name to relative-only published public azure/ak.pem exception. Refused before reading that public fixture; no preservation receipt was published.",
+  "command": [
+    "/Users/huseyinarslan/.local/bin/python3.11",
+    "-B",
+    "target/candidate-public-path-validation-20261012/publication/preserve_final.py",
+    "--expectations",
+    "target/candidate-public-path-validation-20261012/preservation-expectations.json",
+    "--expectations-sha256",
+    "530a8a7a5b50abc168093d6a9c6d65c3fe8021660cf5e439378729fbd5315818"
+  ],
+  "exit_code": 1,
+  "failure": "ValueError: private-key roster refused",
+  "initial_helper_sha256": "a541b7a608fdc068fe117820160bb3586e7100612cf36eebc91007f9114c8504",
+  "observed_utc": "2026-10-12T15:55:00.147914+00:00",
+  "planned_narrow_repair": "Accept relative whitelisted public fixture or exact ROOT/that fixture only.",
+  "schema": "arcora-public-path-preservation-helper-failure/v1",
+  "source_bug": false,
+  "tracked_changes_by_reviewer": false
+}

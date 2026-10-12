@@ -1,0 +1,90 @@
+{
+  "schema": "arcora-pr57-main-refresh-file-map/v1",
+  "observed_utc": "2026-10-12T15:34:06.710850+00:00",
+  "passed": true,
+  "head": "788d46fe793180b73aff2cb33eaf79c744b091ec",
+  "tree": "eac7daa29cbb190d182ffc1f3db64f220786d80a",
+  "files": {
+    "a11.jobs.json": {
+      "bytes": 19825,
+      "sha256": "9aef7d35b772aea848a395905f27b21d022a198232f44ece1cd906af3a4f8ab1"
+    },
+    "a11.jobs.json.stderr.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "a11.logs.zip": {
+      "bytes": 241996,
+      "sha256": "d2da6bf1d58f9b447055c38c7483ebc1419abfb75531696905e6d5f4727799a2"
+    },
+    "a11.logs.zip.stderr.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "a11.metadata.json": {
+      "bytes": 12598,
+      "sha256": "20f332996ea1a8bcac8d20b0d2297ae2493f02a686ac390dc2c3aff76f8ff440"
+    },
+    "a11.metadata.json.stderr.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "chainlink.jobs.json": {
+      "bytes": 3623,
+      "sha256": "6f8c77f69da7a8bf483cc63eb2a2916687dc47a6697c7bb3d2ca0100936d9d0b"
+    },
+    "chainlink.jobs.json.stderr.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "chainlink.logs.zip": {
+      "bytes": 24706,
+      "sha256": "3c49c86330906c39a072a367d228d6ae84582ab67aedabfc1600ec3fac6a1353"
+    },
+    "chainlink.logs.zip.stderr.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "chainlink.metadata.json": {
+      "bytes": 12595,
+      "sha256": "3173b168c5f107fd5a7586b6ba7001280ed539362d6cb969af032fe27869d6d0"
+    },
+    "chainlink.metadata.json.stderr.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "ci.jobs.json": {
+      "bytes": 12345,
+      "sha256": "2c5e9131898fe859c47cd2ae203a130e6fbc31a4e230471603de85c23fd1a157"
+    },
+    "ci.jobs.json.stderr.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "ci.logs.zip": {
+      "bytes": 192410,
+      "sha256": "3cc6beb5efa54f34d6367cb8e21ae19bd16dffa9176498cceb88330a1318f150"
+    },
+    "ci.logs.zip.stderr.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "ci.metadata.json": {
+      "bytes": 12562,
+      "sha256": "315f21e0e2b707c7bf34eb8e58147e08e9e2f0e9a929b337923618887f0159ad"
+    },
+    "ci.metadata.json.stderr.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "local-subject.json": {
+      "bytes": 540,
+      "sha256": "2183bbea76dce917eedc2bf2d1d76354b5adf77d802a03c471913185fe798a72"
+    },
+    "verification.json": {
+      "bytes": 75239,
+      "sha256": "0093cba3ad155cf93c8335e1a3fd59ff7fb68d246ff41aca7a7e157c27fa46ef"
+    }
+  },
+  "note": "Manifest excludes itself. No source/Git/GitHub mutations or reruns; original CI57/report/maps untouched."
+}
