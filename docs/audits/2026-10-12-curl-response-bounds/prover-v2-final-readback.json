@@ -1,0 +1,28 @@
+{
+  "schema": "arcora-curl-bounds-prover-v2-final-readback/v1",
+  "read_at": "2026-10-12T17:27:50.491695+00:00",
+  "passed": true,
+  "receipt": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-bounds-validation-20261012/prover-typecheck-final-v2/receipt.json",
+  "receipt_sha256": "33c6d62ddaf6ae535007f295812c2ec5ababd2ad0b757bd91e507df8e8618203",
+  "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "stderr_sha256": "189d5c1baa21e63e20848713aacfddc916469712ecf07b579e4d20e4bab778c8",
+  "exit_code": 0,
+  "elapsed_seconds": 11.655540583073162,
+  "source_count": 378,
+  "source_sha256": "1d8f7e3984d4ac4b7d107470044896fd8cfb6f0a86242ae45828b55b14c6d1c7",
+  "source_and_all_protected_before_after_equal": true,
+  "root_freeze_sha256": "9f77b288ae9f07c90204185b92ef3f38212cf10551b1a6259004871bd01245c4",
+  "runner_sha256": "e03df87ee7680ebfe035bb080c0cca88e6ee5e84dd7c22498a81758afe8788da",
+  "preparation_sha256": "683cc0322b4cad8bcf2118dc55434ef570907ea9ad5f7b1b2d16be33ee08121e",
+  "v1_preserved_sha256": {
+    "run_prover_typecheck.py": "d71b3e9632c3ff51829700930f75a2c7aedcb5890f7b1c620c53ac699485ed38",
+    "source-freeze.json": "13f24dcf531bb12eb64c4df1f31ca9994fc0fa17807f464fca82ae61f89b889b",
+    "prover-typecheck-final/receipt.json": "bbab7141b08d601b8b6e680cb7922ab3d2ed89915ad17080463319abc9ad0d78",
+    "prover-typecheck-final/stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prover-typecheck-final/stderr.log": "df6edf9bfa5683b421fe34b98d3b73aff6971b2605ddddc2943f2430efc1c2f0",
+    "prover-typecheck-runner.stdout.log": "97dfddb283fb999e283dad51b204cba8a9dfb828cd79941695a25feee3128aec",
+    "prover-typecheck-runner.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "all_v1_evidence_unchanged": true,
+  "scope": "GPU-free actual prover typecheck, existing owned cache only; no backend/setup/proving/handshake/service acceptance. Historical v1 evidence remains378/197b separately."
+}

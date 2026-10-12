@@ -1,0 +1,19 @@
+{
+  "schema": "arcora-curl-bounds-plan/v1",
+  "scope": "Legacy attestation GET and prove POST curl response resource/error hardening only",
+  "branch": "fix/curl-response-bounds-20261012",
+  "limits": {
+    "get_response_bytes": 1048576,
+    "prove_body_bytes": 4194304,
+    "stderr_bytes": 16384
+  },
+  "acceptance": [
+    "Bound stdout and stderr during capture, kill and reap direct curl on overflow/deadline",
+    "Regular GET/POST and status401 single refresh preserved",
+    "No raw stderr, non2xx body, malformed status in returned transport errors",
+    "Real owned-loopback Content-Length/chunked/large response refusals and pipe pressure/timeout cleanup",
+    "Old full gateway and continuation tests retained, relevant source pins unchanged",
+    "Current PR CI before authorized normal merge"
+  ],
+  "no_proof_or_production_run": true
+}

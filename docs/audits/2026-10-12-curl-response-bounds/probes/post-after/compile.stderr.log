@@ -1,0 +1,20 @@
+warning: function `curl` is never used
+   --> /Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-bounds-validation-20261012/post-after/probe.rs:125:4
+    |
+125 | fn curl() -> Command {
+    |    ^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: variants `Chunked` and `Close` are never constructed
+   --> /Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-bounds-validation-20261012/post-after/probe.rs:135:24
+    |
+135 | enum Framing { Length, Chunked, Close }
+    |      -------           ^^^^^^^  ^^^^^
+    |      |
+    |      variants in this enum
+    |
+    = note: `Framing` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+
+warning: 2 warnings emitted
+

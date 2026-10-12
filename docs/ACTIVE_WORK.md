@@ -2,9 +2,42 @@
 
 Güncelleme: 12 Ekim 2026. **PRODUCTION RELEASE HOLD**.
 Bu belge güncel çalışma sırasıdır; tarihsel `NEXT_STEPS.md` yerine kullanın.
-Bu paketin başlangıç main'i: `788d46fe793180b73aff2cb33eaf79c744b091ec` (#57).
+Bu paketin başlangıç main'i: `756397dbf73b18b77cefc7efcf5baaa8994457e3` (#58).
 
-## Güncel GPU'suz düzeltme: public JSON dosya yolları
+## Güncel GPU'suz düzeltme: legacy curl yanıtları
+
+#58, yayın head'inde 16/16 kayıtlı kontrol ve 11 required kontrol sonrası normal
+merge edilmiştir. Yerel devam kopyası ile GitHub main aynı ağaçtadır; eski üç
+dirty checkout ve önceki raporlar korunur. Merge sonrası main CI ayrı gözlemdir.
+
+Gateway/prover boot GET ve gateway legacy `/prove` POST, ortak bounded curl
+capture kullanır. GET 1 MiB, POST body 4 MiB ve stderr 16 KiB sınırı okuma
+sırasında uygulanır. Stdout/stderr ve stdin birlikte işlenir; taşma, pipe hatası
+veya deadline doğrudan curl'ü kill/wait ile temizleyip isteği reddeder. Normal
+timeout/keepalive ve yalnız typed 401 için tek reauth/fresh reseal korunur.
+Hata çıktıları uzak body, stderr, bozuk JSON/hex değerleri, URL veya token
+yankılamaz. `-q` default curl config'i kapatır; `--` URL'yi ayırır.
+
+Eski değişmemiş GET yardımcısı 32 MiB sentetik JSON kabul etmişti; eski gerçek
+POST 503 yanıtı, uzak body'yi error'a taşıyan regresyonda FAIL verdi. Yeni yerel
+testler, public kaynak haritası ve son yayın head'inin CI/merge sonucu ayrı
+kayıtlanır. Kod `70fcaf195f6fb8ff641b9ec14758603558fe640e`.
+Tam yerel gateway **732 PASS / 0 FAIL / 24 intentional IGNORE** (756 keşfedilen),
+yeni caller 8/shared 7/status parser 1 test bu toplamın içindedir. Yeni özel
+worker ordinary runner'da IGNORE, parent testlerden exact çağrılır; eski 23
+ignore değişmez. Workspace Clippy/format, servis Python komşu 25 test ve gerçek
+prover-service typecheck PASS. Public kaynak haritası 378 dosya,
+`8eddb300301a51cb4122c78a658db326013d61bdfcae2ac5ffa6e5844d8ec3b5`.
+İlk yeni fixture'daki macOS nonblocking kabul edilmiş soket hataları ve
+blocking-only kontrolü ayrı korunur; assertion gevşetilmedi.
+[Sınırlar](CURL_RESPONSE_LIMITS.md) ve
+[yerel kanıt](audits/2026-10-12-curl-response-bounds/README.md).
+
+Bu transport alt ölçütü backend, canlı handshake/CC/key release veya yeni proof
+kabulü değildir. Onaylı public target/policy/service/key girdileri ve bağımsız
+production kabulü açıktır; canlı feed discovery ertelemesi korunur.
+
+## Birleşmiş #58: public JSON dosya yolları
 
 #57 normal merge edilmiştir; üç ayrı main push koşusu (ci, A11 ve Chainlink
 candidate) SUCCESS. Önceki imzalı/şifreli fixture yazılım kapsamı korunur.

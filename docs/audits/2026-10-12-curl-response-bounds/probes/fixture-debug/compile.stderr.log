@@ -1,0 +1,16 @@
+warning: variants `Chunked` and `Close` are never constructed
+  --> /Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-bounds-validation-20261012/fixture-debug/probe.rs:28:5
+   |
+26 | enum Framing {
+   |      ------- variants in this enum
+27 |     Length,
+28 |     Chunked,
+   |     ^^^^^^^
+29 |     Close,
+   |     ^^^^^
+   |
+   = note: `Framing` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: 1 warning emitted
+

@@ -1,0 +1,15 @@
+{
+  "schema": "arcora-owned-independent-fixture-capture-probe-preparation/v1",
+  "observed_at": "2026-10-12T17:37:17.828197+00:00",
+  "root_head": "756397dbf73b18b77cefc7efcf5baaa8994457e3",
+  "source_freeze_v2": {
+    "path": "target/curl-bounds-validation-20261012/source-freeze-v2.json",
+    "sha256": "9f77b288ae9f07c90204185b92ef3f38212cf10551b1a6259004871bd01245c4"
+  },
+  "source_sha256": {
+    "crates/gateway/src/http_transport_tests.rs": "cb8d94ef43147907c3f20f6b1b0ebb01e72e49d448584efac84d48c498be6810",
+    "crates/service-transport/curl.rs": "235ef8c0914f14a37f96da64d26be8e5133bd1fbf276aba041491569bdba93f0"
+  },
+  "probe_sha256": "fc5a77977864b80141aa4af52870a4c9a4e77f2ec3bb4c1e651f829768fa46b4",
+  "scope": "Exact current production capture helper; current v2 HTTP fixture copied into owned probe, instrumentation records completed payload chunks and write error kind only. Six GETcap+1/POSTexact4MiB pairs owned loopback. Command-q first and stderr redirected to new owned logs; no raw body/keys, production changes, services, SDK/proving."
+}

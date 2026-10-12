@@ -1,0 +1,13 @@
+   Compiling gateway v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2m 12s
+     Running unittests src/main.rs (target/debug/deps/gateway-1dc4365c5e206497)
+
+thread 'http_transport_tests::get_overflow_refused_with_or_without_content_length' (15634730) panicked at crates/gateway/src/http_transport_tests.rs:169:9:
+assertion `left == right` failed
+  left: "attestation HTTP transport exit exit status: 18"
+ right: "HTTP response exceeds byte limit"
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+thread 'http_transport_tests::post_exact_limit_succeeds_and_limit_plus_one_refuses' (15634817) panicked at crates/gateway/src/http_transport_tests.rs:212:33:
+called `Result::unwrap()` on an `Err` value: Http("prover HTTP transport exit exit status: 18")
+error: test failed, to rerun pass `-p gateway --bin gateway`

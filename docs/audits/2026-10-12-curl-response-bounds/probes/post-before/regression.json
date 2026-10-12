@@ -1,0 +1,19 @@
+{
+  "command": [
+    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-bounds-validation-20261012/post-before/probe",
+    "--exact",
+    "non2xx_prover_error_cannot_echo_peer_data",
+    "--nocapture"
+  ],
+  "exit_code": 101,
+  "elapsed_seconds": 0.9952045410173014,
+  "source_sha256": "902b4d6c7a20b3dbe34bd626fd310f750971d25a3ab200c2ce57e2e0d0e7314a",
+  "extracted_functions_sha256": {
+    "prove_curl_args": "49155c1c49e678f18329f0b9bfd9593d8c7201e4c4fab7b0203a62ddf713496b",
+    "split_status": "c0a9146a87ffba7f8583c2c1bf4ae3ef5addb7b02784cece935b5ed5c5259971",
+    "http_post": "82016a4632a8dbe3f2643d88e16bc74981fc6acaf79db24993f65f5c23dd809f"
+  },
+  "scope": "Exact unchanged base POST functions; only functionvisibility broadened for sibling owned test. Actual curl-q via controlled wrapper; owned loopback503 fixture; expects no peer canary echo.",
+  "stdout_sha256": "f26e8a1f3844dd75786973ec0fa37ae3a0852a9a176a40ca958fbc81350e0984",
+  "stderr_sha256": "e8e148b9eb1a5d4a1b9956bb1ea0fbf62ed6d59ce3da587f4ad01bc059012392"
+}

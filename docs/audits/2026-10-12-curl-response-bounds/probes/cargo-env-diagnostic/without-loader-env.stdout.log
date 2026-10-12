@@ -1,0 +1,12 @@
+payload=1024 captured=1024 code=Some(0) diagnostic= request=GET / HTTP/1.1
+Host: 127.0.0.1:56232
+User-Agent: curl/8.7.1
+Accept: */*
+
+
+payload=1048576 captured=1048576 code=Some(0) diagnostic= request=GET / HTTP/1.1
+Host: 127.0.0.1:56234
+User-Agent: curl/8.7.1
+Accept: */*
+
+

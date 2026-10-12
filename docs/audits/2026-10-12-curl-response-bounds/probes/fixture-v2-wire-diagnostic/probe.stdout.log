@@ -1,0 +1,12 @@
+attempt=0 mode=0 captured=1048577 code=Some(0) peer_complete=true diagnostic=
+attempt=0 mode=1 captured=4194304 code=Some(0) peer_complete=true diagnostic=
+attempt=1 mode=0 captured=1048577 code=Some(0) peer_complete=true diagnostic=
+attempt=1 mode=1 captured=4194304 code=Some(0) peer_complete=true diagnostic=
+attempt=2 mode=0 captured=1048577 code=Some(0) peer_complete=true diagnostic=
+attempt=2 mode=1 captured=4194304 code=Some(0) peer_complete=true diagnostic=
+attempt=3 mode=0 captured=1048577 code=Some(0) peer_complete=true diagnostic=
+attempt=3 mode=1 captured=4194304 code=Some(0) peer_complete=true diagnostic=
+attempt=4 mode=0 captured=1048577 code=Some(0) peer_complete=true diagnostic=
+attempt=4 mode=1 captured=4194304 code=Some(0) peer_complete=true diagnostic=
+attempt=5 mode=0 captured=1048577 code=Some(0) peer_complete=true diagnostic=
+attempt=5 mode=1 captured=4194304 code=Some(0) peer_complete=true diagnostic=

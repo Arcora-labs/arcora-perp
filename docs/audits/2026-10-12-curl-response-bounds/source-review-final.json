@@ -1,0 +1,329 @@
+{
+  "actual_before_after_evidence": {
+    "get_after": {
+      "cases": [
+        {
+          "accepted": true,
+          "bytes": 1024,
+          "elapsed_ms": 110
+        },
+        {
+          "accepted": true,
+          "bytes": 1048576,
+          "elapsed_ms": 156
+        },
+        {
+          "accepted": false,
+          "bytes": 1048577,
+          "elapsed_ms": 39,
+          "error": "byte limit"
+        },
+        {
+          "accepted": false,
+          "bytes": 33554432,
+          "elapsed_ms": 396,
+          "error": "byte limit"
+        },
+        {
+          "owned_connections": 4,
+          "peer_joined": true,
+          "scope": "GET transport only; no handshake/attestation/proof"
+        }
+      ],
+      "claim": "Exact new GET+shared helper accepts 1KiB/exact1MiB and rejects cap+1/32MiB on owned loopback; exit0. Those production bytes remain equal in v2.",
+      "receipt": {
+        "bytes": 819,
+        "elapsed_seconds": 1.0381365000503138,
+        "exit_code": 0,
+        "path": "target/curl-bounds-validation-20261012/get-after/probe.json",
+        "sha256": "9f9e2fa4b9e99bbd6f76c3194e1a2ca43dfe577fe84cf42623a2724b89e35734",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stdout_sha256": "9b4d5da499ff92f90b30ee1b13f8432b1083035b278af8248908d67d846740e3"
+      }
+    },
+    "get_before": {
+      "actual_results": [
+        {
+          "accepted_canonical_sha256": "1e0e543f54b04c5a825bb86729a891c812d445074d873e951031b0b87e38b7d7",
+          "accepted_length": 1024,
+          "case": "small",
+          "elapsed_ms": 349,
+          "owned_server_port": 53327,
+          "padding_length": 993,
+          "status": "accepted"
+        },
+        {
+          "accepted_canonical_sha256": "ee3a96180f280c38b6c9c240ce24dda9ef4bd4b4a0b82c0aac982caeb784304d",
+          "accepted_length": 33554432,
+          "case": "large",
+          "elapsed_ms": 1358,
+          "owned_server_port": 53327,
+          "padding_length": 33554401,
+          "status": "accepted"
+        },
+        {
+          "owned_listener_dropped": true,
+          "owned_server_connections": 2,
+          "status": "complete"
+        }
+      ],
+      "bytes": 5358,
+      "claim": "Exact old shared GET accepted 32MiB synthetic JSON; not a handshake/proof acceptance.",
+      "path": "target/curl-response-investigation-20261012/verification.json",
+      "sha256": "95a3943120bc9d4a4918a6a65862e90e339c07f75c70a3eaf65495363ddf253f"
+    },
+    "post": {
+      "after": {
+        "bytes": 1178,
+        "elapsed_seconds": 0.7285799999954179,
+        "exit_code": 0,
+        "path": "target/curl-bounds-validation-20261012/post-after/regression.json",
+        "sha256": "09f5dce8656a4e4f3862d5b6ea58460cc505c66d0205f8de5dbc6f12d022d963",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stdout_sha256": "3c7b6f6494dd33d23ce43463494808e46073dfcd5aaab13f206a11f3a61eefee"
+      },
+      "before": {
+        "bytes": 1065,
+        "elapsed_seconds": 0.9952045410173014,
+        "exit_code": 101,
+        "path": "target/curl-bounds-validation-20261012/post-before/regression.json",
+        "sha256": "89387eec3fbce1b0406c74d7feae297a378cd30e53e4e83344024618d7ce307a",
+        "stderr_sha256": "e8e148b9eb1a5d4a1b9956bb1ea0fbf62ed6d59ce3da587f4ad01bc059012392",
+        "stdout_sha256": "f26e8a1f3844dd75786973ec0fa37ae3a0852a9a176a40ca958fbc81350e0984"
+      },
+      "claim": "Same actual loopback503 privacy assertion fails old POST exit101 and passes new POST exit0. Those production bytes remain equal in v2.",
+      "fixture_and_assertions_byte_equal": true,
+      "fixture_and_test_sha256": "38e623890517ce198cb4486a2762c399f4e44e4d98116896da800a45e829f4fb"
+    },
+    "prover_typecheck": {
+      "complete_source_sha256_at_execution": "197b133717e48e03938ed7abeb259c4c08f5c89f1c6171ca758f060d4b4706d1",
+      "current_production_bytes_equal": true,
+      "current_v2_complete_source_recheck_claimed": false,
+      "passed": true,
+      "receipt": {
+        "bytes": 106902,
+        "elapsed_seconds": 14.026347041944973,
+        "exit_code": 0,
+        "path": "target/curl-bounds-validation-20261012/prover-typecheck-final/receipt.json",
+        "sha256": "bbab7141b08d601b8b6e680cb7922ab3d2ed89915ad17080463319abc9ad0d78",
+        "stderr_sha256": "df6edf9bfa5683b421fe34b98d3b73aff6971b2605ddddc2943f2430efc1c2f0",
+        "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "scope": "Actual current prover-service production main/backend source/API typecheck only; existing owned PR55 cache/tools and already copied reviewed ELF reused. Offline Cargo with guest build skipped; no guest/core/source/pin mutation, backend boot/setup/key derivation/prove/handshake/network/service or attestation claim. No old PR55 receipt/log is opened for writing; no raw environment values recorded."
+    }
+  },
+  "all_current_covered_source_hashes_match_freeze": true,
+  "base": "756397dbf73b18b77cefc7efcf5baaa8994457e3",
+  "base_covered_source_count": 375,
+  "base_covered_unchanged_count": 372,
+  "captured_at": "2026-10-12T17:27:41.624066+00:00",
+  "covered_source_count": 378,
+  "covered_source_sha256": "1d8f7e3984d4ac4b7d107470044896fd8cfb6f0a86242ae45828b55b14c6d1c7",
+  "deleted_covered_sources": [],
+  "frozen_elf_vkey_proof_artifacts_unchanged": {
+    "contracts/integration/fixtures/chainlink-candidate-v1/guest.elf": {
+      "bytes": 540704,
+      "sha256": "48a8eb8e6acd96057a72ca74db5077ac9e85d30d2ec830518ef1f1ac3832ef1f"
+    },
+    "contracts/integration/fixtures/chainlink-candidate-v1/metadata.json": {
+      "bytes": 1562,
+      "sha256": "d0a1be2b345f688b3bd102dbd6d5d6512aae1caaae6a996ba9f8b8fe411dd696"
+    },
+    "contracts/integration/fixtures/clock-v2-verified/clock.witness.bin": {
+      "bytes": 1274,
+      "sha256": "e3bbb0db665d9c9394170dcf9c95af15bdbafbe13dd9127088e28babccfd570f"
+    },
+    "contracts/integration/fixtures/clock-v2-verified/guest.elf": {
+      "bytes": 525824,
+      "sha256": "df59a19b310258b4d01d0d5e3cfa31bb7de9ca2f4ea7c2302cf76650c79967c5"
+    },
+    "contracts/integration/fixtures/clock-v2-verified/program-vkey.bin": {
+      "bytes": 32,
+      "sha256": "5d6af308d886b93f41bb947993fcbe4f20b755d7e0eb9bf134ef2dc99104f21e"
+    },
+    "contracts/integration/fixtures/clock-v2-verified/proof-evidence.json": {
+      "bytes": 1907,
+      "sha256": "224704d958a9d5246abace7d0df424d10afd67fb74db113bc399290e56c16486"
+    },
+    "contracts/integration/fixtures/clock-v2-verified/proof.bin": {
+      "bytes": 356,
+      "sha256": "67d11ec454839405ebb89c0a197dd34772071edf0897a6b776eaded80b0dcb89"
+    },
+    "contracts/integration/fixtures/clock-v2-verified/proof.sdk.json": {
+      "bytes": 1997,
+      "sha256": "9028b9ce9be2e4a2957101f78727565e345a00e58a970d5383113e6182770c05"
+    },
+    "contracts/integration/fixtures/clock-v2-verified/public-values.bin": {
+      "bytes": 32,
+      "sha256": "f366fab4eac85e885e3f18fc826b8421d4fe29897b223734cee7b15885cffaee"
+    }
+  },
+  "gateway_caller_test_status_at_capture": {
+    "current_v2_passed_claimed": false,
+    "failed_test": "get_small_and_exact_limit_valid_json_succeed",
+    "initial_complete_source_sha256": "197b133717e48e03938ed7abeb259c4c08f5c89f1c6171ca758f060d4b4706d1",
+    "initial_receipt": {
+      "bytes": 90314,
+      "elapsed_seconds": 195.34201074996963,
+      "exit_code": 101,
+      "path": "target/curl-bounds-validation-20261012/gateway-http-verified/verification.json",
+      "sha256": "350d76f1c580ffb1ff94d6e435b78a9a6aaacca66da4e2c53f6e208f9bfdbd75",
+      "stderr_sha256": "200c637e4e942bdd12aba4ce62a39c1ccb76613100ff10a02a4e1e9a34c2d4d5",
+      "stdout_sha256": "12f58fa2a69b2fdbf356f3409dda06dace77988d789ff16f152aacb4b13284b2"
+    },
+    "initial_review_finding": "Initial fixture ignored write errors and still returned successful thread join, losing failed write position/count.",
+    "initial_test_summaries": [
+      {
+        "failed": 1,
+        "ignored": 0,
+        "passed": 7,
+        "state": "FAILED"
+      }
+    ],
+    "isolation_receipt": {
+      "bytes": 90446,
+      "elapsed_seconds": 3.161151458043605,
+      "exit_code": 101,
+      "path": "target/curl-bounds-validation-20261012/get-fixture-isolation/verification.json",
+      "sha256": "2163f4730a52528dbc7efd10f2775af80a0c3f1f42b42ae63f83ab1b2c79ba6e",
+      "stderr_sha256": "181626a527323f344834d01c54e1d739bf6e10bc401eb6fcdecf1902ef5c0261",
+      "stdout_sha256": "1871c295f2ae6a48dda1859ba6144cf241668bfef097e3b29ae69c67db70be79"
+    },
+    "observed_error": "curl exit18 early close",
+    "root_cause_proven": false,
+    "root_investigating": true,
+    "v2_fixture_scope": "New test-only Exchange tracks response_complete, positives now assert it; write half-close and bounded wait for client EOF precede socket drop. Original assertions retained. Current v2 result remains pending."
+  },
+  "head_at_capture": "756397dbf73b18b77cefc7efcf5baaa8994457e3",
+  "identical_get_wrappers": {
+    "canonical_concatenated_function_bytes": 985,
+    "canonical_concatenated_function_sha256": "8e2a2d3747dd8dd84908c0917891dd6dd7938421743660268e218fa932ecaec5",
+    "whole_contiguous_slice_bytes": 988,
+    "whole_contiguous_slice_sha256": "4d65924557009d1982c7b034997fa140a519f398ce8149e1646345af25907335"
+  },
+  "independent_token_comparison": {
+    "added_existing_file_test": "invalid_status_markers_are_refused_without_echo",
+    "all_remaining_nontransport_source_tokens_unchanged": true,
+    "method": "Rust lexical token comparison preserving literals and assertions, removing only comments/format whitespace. Subtract agreed transport helper/functions/module wiring/new constant/new negative test; all remaining source tokens equal base. Static comparison only.",
+    "new_caller_regular_tests": 8,
+    "new_shared_ignored_child_workers": 1,
+    "new_shared_regular_tests": 7,
+    "old_test_bodies_and_assertions_unchanged": true,
+    "preserved_inline_tests": {
+      "crates/gateway/src/main.rs": 164,
+      "crates/gateway/src/prover_client.rs": 31,
+      "crates/prover-service/src/main.rs": 0
+    }
+  },
+  "new_rust_files": [
+    "crates/gateway/src/http_transport_tests.rs",
+    "crates/service-transport/curl.rs",
+    "crates/service-transport/curl_tests.rs"
+  ],
+  "not_claimed": [
+    "Current v2 gateway caller suite pass",
+    "Current v2 complete-map prover recheck pass",
+    "Full gateway suite or CI pass",
+    "Certain root cause of initial curl18 fixture failure",
+    "New proof/ELF/key generation",
+    "CC/attestation/candidate acceptance",
+    "Approved target/service identity",
+    "Production release gate closure"
+  ],
+  "passed": true,
+  "previous_source_freeze": {
+    "bytes": 44241,
+    "path": "target/curl-bounds-validation-20261012/source-freeze.json",
+    "sha256": "13f24dcf531bb12eb64c4df1f31ca9994fc0fa17807f464fca82ae61f89b889b"
+  },
+  "production_and_shared_source_bytes_unchanged_since_initial_freeze": true,
+  "production_existing_changes": [
+    "crates/gateway/src/main.rs",
+    "crates/gateway/src/prover_client.rs",
+    "crates/prover-service/src/main.rs"
+  ],
+  "production_release": "HOLD",
+  "protected_source_pin_counts": {
+    "candidate_auxiliary_test_sources_sha256": 2,
+    "candidate_sources_sha256": 9,
+    "reviewed_v2_sources_sha256": 21
+  },
+  "protected_sources_match_base_and_current": true,
+  "reviewer_actions": {
+    "builds_run": false,
+    "network_calls": false,
+    "own_tests_run": false,
+    "static_read_hash_compare_only": true,
+    "tracked_files_written": false
+  },
+  "root_and_service_manifests_unchanged": {
+    "Cargo.lock": "5d1dd2b25eb73a7136fde2ac59b112e2135de59e7d4a704931cba4bb630a3cc5",
+    "Cargo.toml": "e3144a0ae3447244776e65b04cfff39267c238e410c2d9abf20b53e6b837bbfa",
+    "crates/gateway/Cargo.toml": "5a736d1ce485287eb1c7c90138e4ab82f9c1c1e4f0fe5bb639f871a68f42ecd1",
+    "crates/prover-service/Cargo.lock": "36d5b76ef4e72c2d4ef246618306595b0152cdd9b45ef535d8606506d50fd70e",
+    "crates/prover-service/Cargo.toml": "5b28c2dac8c8543f193ca142bd372a2c1c92f25a577cc71ca40bac9103daed48",
+    "scripts/local-verification/service-identity-harness/Cargo.lock": "9c10ab2d7bc15663de612020d940fbc5882b4789250e0693eb43827b8a37306d",
+    "scripts/local-verification/service-identity-harness/Cargo.toml": "a01b50f4d3135d7b4dc6cbac026072f054ee3190e40fb3bf9255de245f1b6312"
+  },
+  "schema": "arcora-curl-bounds-independent-source-review/v1",
+  "scope": "Independent static source review and completed evidence readback only. Current v2 gateway tests and full-map prover recheck remain pending at capture. No test/build/network run by reviewer.",
+  "six_source_files": {
+    "crates/gateway/src/http_transport_tests.rs": {
+      "bytes": 9631,
+      "path": "crates/gateway/src/http_transport_tests.rs",
+      "sha256": "cb8d94ef43147907c3f20f6b1b0ebb01e72e49d448584efac84d48c498be6810"
+    },
+    "crates/gateway/src/main.rs": {
+      "bytes": 810798,
+      "path": "crates/gateway/src/main.rs",
+      "sha256": "470225bdc9f3c9a5e9cd1a4350cd7100eeeeaddbf670b1786ac4033ed546a5aa"
+    },
+    "crates/gateway/src/prover_client.rs": {
+      "bytes": 76224,
+      "path": "crates/gateway/src/prover_client.rs",
+      "sha256": "2f219fe3d9bbfc3e2e2f72950fd75e6fc9207d840d678a56e2934f9086471d51"
+    },
+    "crates/prover-service/src/main.rs": {
+      "bytes": 25054,
+      "path": "crates/prover-service/src/main.rs",
+      "sha256": "c0100f0d2afe12ebf0091de6bf86fb2b8e0d2649b27ef4be6cb7aedd4979e23b"
+    },
+    "crates/service-transport/curl.rs": {
+      "bytes": 7799,
+      "path": "crates/service-transport/curl.rs",
+      "sha256": "235ef8c0914f14a37f96da64d26be8e5133bd1fbf276aba041491569bdba93f0"
+    },
+    "crates/service-transport/curl_tests.rs": {
+      "bytes": 16068,
+      "path": "crates/service-transport/curl_tests.rs",
+      "sha256": "1e0bfec071e3e7d0409d2ab87a120efe7061f74322db82be07d8a29be137947a"
+    }
+  },
+  "source_freeze": {
+    "bytes": 44608,
+    "path": "target/curl-bounds-validation-20261012/source-freeze-v2.json",
+    "sha256": "9f77b288ae9f07c90204185b92ef3f38212cf10551b1a6259004871bd01245c4"
+  },
+  "source_review": {
+    "build_identity_scope": "Std-only shared source module adds public inventory entries; existing main edits trigger rebuild. New source checksum is local self-reported provenance, not compiler/process attestation.",
+    "closed_findings": [
+      "All three fallible worker creation branches stop owned direct curl before scope joins.",
+      "Reap lives inside the scoped closure; unwind kills and reaps before implicit worker joins.",
+      "Deadline checked at each loop top and immediately before success."
+    ],
+    "direct_child_scope": "Own direct curl child only; no arbitrary descendant-process supervision claim.",
+    "known_blocking_source_defects": [],
+    "limits": {
+      "get_stdout_bytes": 1048576,
+      "get_supervisor_seconds": 35,
+      "post_supervisor_seconds": "positive configured curl timeout +5; zero/overflow rejected before spawn",
+      "prove_body_bytes": 4194304,
+      "stderr_bytes": 16384
+    },
+    "redaction": "Returned errors contain fixed labels/status only, not peer response/stderr/URL/token.",
+    "retry": "Original typed401-only single reauth retained; body cap checked before status handling; transport/cap/decode errors do not trigger it."
+  },
+  "v2_changed_source_paths": [
+    "crates/gateway/src/http_transport_tests.rs"
+  ]
+}

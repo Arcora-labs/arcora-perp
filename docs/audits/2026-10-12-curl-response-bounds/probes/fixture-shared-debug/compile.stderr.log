@@ -1,0 +1,23 @@
+warning: function `http_get_json` is never used
+ --> /Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-bounds-validation-20261012/fixture-shared-debug/probe.rs:2:4
+  |
+2 | fn http_get_json(url: &str) -> Result<serde_json::Value, String> {
+  |    ^^^^^^^^^^^^^
+  |
+  = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: variants `Chunked` and `Close` are never constructed
+  --> /Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-bounds-validation-20261012/fixture-shared-debug/probe.rs:63:5
+   |
+61 | enum Framing {
+   |      ------- variants in this enum
+62 |     Length,
+63 |     Chunked,
+   |     ^^^^^^^
+64 |     Close,
+   |     ^^^^^
+   |
+   = note: `Framing` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+
+warning: 2 warnings emitted
+

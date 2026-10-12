@@ -1,0 +1,14 @@
+accepted_inherited_peek=Some(WouldBlock) micros=37
+accepted_blocking_control_peek=Some(WouldBlock) micros=200205
+attempt=0 mode=0 stdout_bytes=none code=none error=StdoutLimit complete=true payload_complete_bytes=1048577 write_error=None millis=110
+attempt=0 mode=1 stdout_bytes=4194325 code=Some(0) error=none complete=true payload_complete_bytes=4194304 write_error=None millis=105
+attempt=1 mode=0 stdout_bytes=none code=none error=StdoutLimit complete=true payload_complete_bytes=1048577 write_error=None millis=61
+attempt=1 mode=1 stdout_bytes=1695077 code=Some(18) error=none complete=false payload_complete_bytes=1687552 write_error=Some("WouldBlock") millis=113
+attempt=2 mode=0 stdout_bytes=none code=none error=StdoutLimit complete=true payload_complete_bytes=1048577 write_error=None millis=81
+attempt=2 mode=1 stdout_bytes=4194325 code=Some(0) error=none complete=true payload_complete_bytes=4194304 write_error=None millis=198
+attempt=3 mode=0 stdout_bytes=900600 code=Some(18) error=none complete=false payload_complete_bytes=892928 write_error=Some("WouldBlock") millis=109
+attempt=3 mode=1 stdout_bytes=4194325 code=Some(0) error=none complete=true payload_complete_bytes=4194304 write_error=None millis=284
+attempt=4 mode=0 stdout_bytes=646648 code=Some(18) error=none complete=false payload_complete_bytes=638976 write_error=Some("WouldBlock") millis=99
+attempt=4 mode=1 stdout_bytes=4194325 code=Some(0) error=none complete=true payload_complete_bytes=4194304 write_error=None millis=223
+attempt=5 mode=0 stdout_bytes=908792 code=Some(18) error=none complete=false payload_complete_bytes=901120 write_error=Some("WouldBlock") millis=163
+attempt=5 mode=1 stdout_bytes=4194325 code=Some(0) error=none complete=true payload_complete_bytes=4194304 write_error=None millis=105

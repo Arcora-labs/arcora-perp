@@ -1,0 +1,13 @@
+{
+  "command": [
+    "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-bounds-validation-20261012/get-after/cargo-target/debug/owned-bounded-curl-get"
+  ],
+  "exit_code": 0,
+  "elapsed_seconds": 1.0381365000503138,
+  "harness_source_sha256": "c6ff1b0cf6a574c1bef5b5c00cea14627c5fb499b67c886fd9f39bb05dd5482e",
+  "identical_production_get_wrappers": true,
+  "get_wrappers_sha256": "8e2a2d3747dd8dd84908c0917891dd6dd7938421743660268e218fa932ecaec5",
+  "stdout_sha256": "9b4d5da499ff92f90b30ee1b13f8432b1083035b278af8248908d67d846740e3",
+  "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "scope": "Exact production prover-service GET functions+exactsharedcapture source. Fourownedlocalhost cases1KiB/1MiB/1MiB+1/32MiB; no proof or service startup."
+}

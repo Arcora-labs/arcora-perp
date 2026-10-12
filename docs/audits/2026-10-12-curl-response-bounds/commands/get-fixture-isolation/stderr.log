@@ -1,0 +1,7 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.40s
+     Running unittests src/main.rs (target/debug/deps/gateway-1dc4365c5e206497)
+
+thread 'http_transport_tests::get_small_and_exact_limit_valid_json_succeed' (15614563) panicked at crates/gateway/src/http_transport_tests.rs:131:22:
+called `Result::unwrap()` on an `Err` value: "attestation HTTP transport exit exit status: 18"
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+error: test failed, to rerun pass `-p gateway --bin gateway`

@@ -1,0 +1,46 @@
+warning: patch `equivalent v1.0.2 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-response-investigation-20261012/cargo-cache/equivalent-1.0.2)` was not used in the crate graph
+warning: patch `hashbrown v0.17.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-response-investigation-20261012/cargo-cache/hashbrown-0.17.1)` was not used in the crate graph
+warning: patch `indexmap v2.14.0 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-response-investigation-20261012/cargo-cache/indexmap-2.14.0)` was not used in the crate graph
+help: Check that the patched package version and available features are compatible
+      with the dependency requirements. If the patch has a different version from
+      what is locked in the Cargo.lock file, run `cargo update` to use the new
+      version. This may also occur with an optional dependency that is not enabled.
+   Compiling zmij v1.0.21 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-response-investigation-20261012/cargo-cache/zmij-1.0.21)
+   Compiling serde_core v1.0.228 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-response-investigation-20261012/cargo-cache/serde_core-1.0.228)
+   Compiling serde_json v1.0.150 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-response-investigation-20261012/cargo-cache/serde_json-1.0.150)
+   Compiling memchr v2.8.2 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-response-investigation-20261012/cargo-cache/memchr-2.8.2)
+warning: use of deprecated constant `core::u8::MAX`: replaced by the `MAX` associated constant on this type
+   --> /Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-response-investigation-20261012/cargo-cache/memchr-2.8.2/src/arch/all/packedpair/mod.rs:179:41
+    |
+179 |         let max = usize::from(core::u8::MAX);
+    |                                         ^^^
+    |
+    = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated constant `core::u32::MAX`: replaced by the `MAX` associated constant on this type
+   --> /Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-response-investigation-20261012/cargo-cache/memchr-2.8.2/src/memmem/searcher.rs:916:34
+    |
+916 |             Err(_) => core::u32::MAX,
+    |                                  ^^^
+
+warning: struct `SensibleMoveMask` is never constructed
+   --> /Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-response-investigation-20261012/cargo-cache/memchr-2.8.2/src/vector.rs:118:19
+    |
+118 | pub(crate) struct SensibleMoveMask(u32);
+    |                   ^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: method `get_for_offset` is never used
+   --> /Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-response-investigation-20261012/cargo-cache/memchr-2.8.2/src/vector.rs:126:8
+    |
+120 | impl SensibleMoveMask {
+    | --------------------- method in this implementation
+...
+126 |     fn get_for_offset(self) -> u32 {
+    |        ^^^^^^^^^^^^^^
+
+warning: `memchr` (lib) generated 4 warnings
+   Compiling itoa v1.0.18 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-response-investigation-20261012/cargo-cache/itoa-1.0.18)
+   Compiling owned-bounded-curl-get v0.0.0 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/target/curl-bounds-validation-20261012/get-after/harness)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 24.84s
