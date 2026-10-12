@@ -148,6 +148,55 @@ pub(crate) trait BroadcastTransport {
     fn lookup(&mut self, plan: &Plan) -> Result<Lookup<OutcomeValue>, ()>;
 }
 
+/// The coordinated handoff supplies its own authenticated, leased source.
+/// Historical execution retains its original RecoveryStore error mapping.
+pub(crate) trait BroadcastSource {
+    fn load(&self) -> Result<Option<SourceRecord>, BroadcastError>;
+}
+impl BroadcastSource for RecoveryStore {
+    fn load(&self) -> Result<Option<SourceRecord>, BroadcastError> {
+        RecoveryStore::load(self).map_err(|_| BroadcastError::SourceMismatch)
+    }
+}
+
+/// All new dual-lease fences belong to the handoff's decorated provider.
+/// The existing lease forwards these same four operations without changing
+/// its framing, publication barriers or historical failure semantics.
+pub(crate) trait BroadcastCheckpoints {
+    fn check(&self) -> Result<(), StoreError>;
+    fn load(&self) -> Result<Option<crate::candidate_broadcast_store::Record>, StoreError>;
+    fn create_pending(
+        &self,
+        plan: &[u8],
+    ) -> Result<crate::candidate_broadcast_store::Record, StoreError>;
+    fn finish(
+        &self,
+        expected: &crate::candidate_broadcast_store::Record,
+        outcome: &[u8],
+    ) -> Result<crate::candidate_broadcast_store::Record, StoreError>;
+}
+impl BroadcastCheckpoints for crate::candidate_broadcast_store::Lease<'_> {
+    fn check(&self) -> Result<(), StoreError> {
+        crate::candidate_broadcast_store::Lease::check(self)
+    }
+    fn load(&self) -> Result<Option<crate::candidate_broadcast_store::Record>, StoreError> {
+        crate::candidate_broadcast_store::Lease::load(self)
+    }
+    fn create_pending(
+        &self,
+        plan: &[u8],
+    ) -> Result<crate::candidate_broadcast_store::Record, StoreError> {
+        crate::candidate_broadcast_store::Lease::create_pending(self, plan)
+    }
+    fn finish(
+        &self,
+        expected: &crate::candidate_broadcast_store::Record,
+        outcome: &[u8],
+    ) -> Result<crate::candidate_broadcast_store::Record, StoreError> {
+        crate::candidate_broadcast_store::Lease::finish(self, expected, outcome)
+    }
+}
+
 fn encode<T: Serialize>(value: &T, bound: usize) -> Result<Vec<u8>, BroadcastError> {
     let bytes = postcard::to_allocvec(value).map_err(|_| BroadcastError::Malformed)?;
     if bytes.is_empty() || bytes.len() > bound {
@@ -691,17 +740,43 @@ pub(crate) fn execute(
     transport: &mut impl BroadcastTransport,
 ) -> Result<Outcome, BroadcastError> {
     let lease = store.try_lease().map_err(BroadcastError::Store)?;
-    lease.check().map_err(BroadcastError::Store)?;
-    let existing = lease.load().map_err(BroadcastError::Store)?;
+    execute_with_checkpoints(
+        &lease,
+        mode,
+        source_store,
+        request,
+        trusted,
+        bridge_target,
+        mock_sender,
+        mock_nonce,
+        transport,
+    )
+}
+
+/// Shared dispatcher after its caller acquires the checkpoint lease. Provider
+/// decorators may add source fences; this driver retains the historical call
+/// and checkpoint schedule. No arbitrary provider is accepted by the owned
+/// handoff coordinator's public entry point.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn execute_with_checkpoints(
+    store: &impl BroadcastCheckpoints,
+    mode: RunMode,
+    source_store: &impl BroadcastSource,
+    request: &ProtocolRequest,
+    trusted: &TrustedRequest,
+    bridge_target: &BridgeTarget,
+    mock_sender: [u8; 20],
+    mock_nonce: u64,
+    transport: &mut impl BroadcastTransport,
+) -> Result<Outcome, BroadcastError> {
+    store.check().map_err(BroadcastError::Store)?;
+    let existing = store.load().map_err(BroadcastError::Store)?;
     match (mode, &existing) {
         (RunMode::Fresh, Some(_)) => return Err(BroadcastError::Store(StoreError::Exists)),
         (RunMode::Resume, None) => return Err(BroadcastError::Store(StoreError::Missing)),
         _ => {}
     }
-    let source = source_store
-        .load()
-        .map_err(|_| BroadcastError::SourceMismatch)?
-        .ok_or(BroadcastError::MissingSource)?;
+    let source = source_store.load()?.ok_or(BroadcastError::MissingSource)?;
     let decoded = source_prepared(&source, request, trusted)?;
     let plan = make_plan(
         &source,
@@ -721,16 +796,16 @@ pub(crate) fn execute(
         if let Some(bytes) = &record.outcome {
             let outcome = decode_outcome(bytes)?;
             validate_outcome(&plan, &outcome)?;
-            lease.check().map_err(BroadcastError::Store)?;
+            store.check().map_err(BroadcastError::Store)?;
             return Ok(outcome);
         }
         record
     } else {
-        lease.check().map_err(BroadcastError::Store)?;
+        store.check().map_err(BroadcastError::Store)?;
         let (clock, reports) = transport
             .recheck(&plan)
             .map_err(|_| BroadcastError::Callback(Action::Recheck))?;
-        lease.check().map_err(BroadcastError::Store)?;
+        store.check().map_err(BroadcastError::Store)?;
         valid_clock_anchor(request, &decoded.valid, &clock)?;
         valid_report_anchor(request, &decoded.valid, &clock, &reports)?;
         if clock.anchor != plan.clock.anchor
@@ -747,16 +822,16 @@ pub(crate) fn execute(
         }
         watermark.observe(&clock.finality)?;
         watermark.observe(&reports.finality)?;
-        let pending = lease
+        let pending = store
             .create_pending(&expected_plan)
             .map_err(BroadcastError::Store)?;
-        lease.check().map_err(BroadcastError::Store)?;
+        store.check().map_err(BroadcastError::Store)?;
         transport
             .broadcast(&plan)
             .map_err(|_| BroadcastError::Callback(Action::Broadcast))?;
         pending
     };
-    lease.check().map_err(BroadcastError::Store)?;
+    store.check().map_err(BroadcastError::Store)?;
     let outcome = match transport
         .lookup(&plan)
         .map_err(|_| BroadcastError::Callback(Action::Lookup))?
@@ -767,9 +842,9 @@ pub(crate) fn execute(
         Lookup::Unknown => return Err(BroadcastError::Hold(LookupState::Unknown)),
         Lookup::Reorg => return Err(BroadcastError::Hold(LookupState::Reorg)),
     };
-    lease.check().map_err(BroadcastError::Store)?;
+    store.check().map_err(BroadcastError::Store)?;
     validate_outcome_with_watermark(&plan, &outcome, &mut watermark)?;
-    lease
+    store
         .finish(&pending, &outcome_bytes(&outcome)?)
         .map_err(BroadcastError::Store)?;
     Ok(outcome)

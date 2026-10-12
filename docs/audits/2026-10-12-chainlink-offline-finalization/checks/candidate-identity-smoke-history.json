@@ -1,0 +1,88 @@
+{
+  "command": "PYTHONDONTWRITEBYTECODE=1 /opt/homebrew/bin/python3.12 -m unittest discover -s scripts/local-verification -p test_candidate_identity_manifest.py -v",
+  "frozen_files": [
+    {
+      "path": "scripts/local-verification/candidate_identity_manifest.py",
+      "sha256": "4001734d7cbbc100e1d13a95eafea04130af5d2389755901349e2634077574d9",
+      "size_bytes": 16965
+    },
+    {
+      "path": "scripts/local-verification/test_candidate_identity_manifest.py",
+      "sha256": "d924ea4511376c51b3e22697b063d86f0dc0f7fabfcc401c38ed417659492ba3",
+      "size_bytes": 17823
+    },
+    {
+      "path": "docs/CHAINLINK_CANDIDATE_IDENTITY.md",
+      "sha256": "4e2e00ca4994224feed44337bfcb6d53b427849ad27f7bb5cf8ca9d44b55dde9",
+      "size_bytes": 7021
+    }
+  ],
+  "history": [
+    {
+      "errors": 8,
+      "evidence_type": "tool-output-text-reconstructed-summary",
+      "exit_code": 1,
+      "failures": 1,
+      "initial_source_fingerprint": null,
+      "log": {
+        "path": "target/handoff-validation-20261012/candidate-identity-initial-failed-tool-output.txt",
+        "sha256": "e9e2817401760518b6b4f4239bc4751e1a129f6e0b0499139b23a96e179144a2",
+        "size_bytes": 944
+      },
+      "passed": 10,
+      "runtime_seconds_reported": 0.503,
+      "stage": "initial",
+      "tests": 19
+    },
+    {
+      "errors": 0,
+      "evidence_type": "tool-output-text-reconstructed-summary",
+      "exit_code": 0,
+      "failures": 0,
+      "log": {
+        "path": "target/handoff-validation-20261012/candidate-identity-first-passed-tool-output.txt",
+        "sha256": "18d8a644a7b47ccd86df40ca5dc456567dc23971eb46966b37f025762091c1ab",
+        "size_bytes": 646
+      },
+      "passed": 19,
+      "runtime_seconds_reported": 0.854,
+      "stage": "first-passed",
+      "tests": 19
+    },
+    {
+      "errors": 0,
+      "evidence_type": "actual-merged-stdout-stderr-captured-via-shell-redirection",
+      "exit_code": 0,
+      "failures": 0,
+      "log": {
+        "path": "target/handoff-validation-20261012/candidate-identity-unit-smoke.log",
+        "sha256": "585c800ec38dc9ba0aa68e57a55e658bb42874e54f2a8c45287fe63ed0ec66f5",
+        "size_bytes": 3363
+      },
+      "passed": 19,
+      "runtime_seconds_reported": 0.787,
+      "shell_command": "PYTHONDONTWRITEBYTECODE=1 /opt/homebrew/bin/python3.12 -m unittest discover -s scripts/local-verification -p test_candidate_identity_manifest.py -v > target/handoff-validation-20261012/candidate-identity-unit-smoke.log 2>&1",
+      "stage": "frozen-final-smoke",
+      "tests": 19
+    }
+  ],
+  "kind": "candidate-identity-local-smoke-history/v1",
+  "scope": {
+    "cargo_run": false,
+    "copied_program_inputs": "unchanged committed candidate ELF, metadata and 21/9 source pins",
+    "fresh_setup": false,
+    "git_mutation": false,
+    "mocked_interfaces": [
+      "compiler-source Keccak",
+      "dependency/provenance guard",
+      "Git ancestry response"
+    ],
+    "proof_generated": false,
+    "publication_head_validation": "root will record separately after freeze",
+    "real_compiler_artifact_acceptance": false,
+    "release_gate": "HOLD",
+    "target_observed": false,
+    "unit_compiler_artifacts": "explicitly synthetic owned temporary fixtures"
+  },
+  "working_directory": "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011"
+}

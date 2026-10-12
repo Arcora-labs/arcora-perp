@@ -1,0 +1,27 @@
+{
+  "schema": "arcora-handoff-contract-v1",
+  "objective": "Complete authorizedGPU-free dual-lease Prepared\u2192broadcast handoff, reconcile source-confirmed stale audit/policy docs, then evidence-backed Turkish overall report.",
+  "base_main": "f9a0f2f59ffae651163fc10a43a995054a07ebcc",
+  "production_release": "HOLD",
+  "required": [
+    "Only cfg(test) handoff; fixedphysicalsource lane independentrequest/proof/nonce",
+    "SourceownedboundcanonicalPrepared and source\u2192Bnonblockingleaseorder retainedthroughallcallbacks/writes/readback",
+    "FreshR/B/L exact; ResumePendingLonly; terminal0; nosourceadvance/register/prove",
+    "Bothfixtureflows; immutablefullplanandsource; substitution/locktamper/failurefences; Pending/Outcomeall3savehooks",
+    "OwnedrealprocessSIGKILLcontenderandrecovery, bothstableinodesandoriginalPending",
+    "Oldbroadcastexecute mechanicalbody/schedule, oldPreparationbodies andformats/goldens/guest/corecontract/runtime/oldpackets unchanged",
+    "Focus+oldneighborregressions; fullgateway; Clippy1.99-Dwarnings;fmt;47guards;21/9pins; exactheadCI19; normalmerge underpersisteduserauthorization",
+    "Preserveoriginal13/7/62worktrees",
+    "Reportcurrentmergedstate,softwarevsactualproof/deployment/CC/economics/operations gates andfuturesequence"
+  ],
+  "targeted_repair_budget": 2,
+  "compile_initial": "PASS, no repairused",
+  "outside_scope": [
+    "new economic/custodymodel",
+    "GPU/realproof",
+    "credentials/livefeed discovery deferredbyuser",
+    "funds/publicchain submission",
+    "productionactivation",
+    "rulesetpolicy changes"
+  ]
+}

@@ -1,0 +1,166 @@
+{
+  "schema": "arcora-handoff-legacy-seams-comparison-v1",
+  "observed_utc": "2026-10-12T00:16:18.861348+00:00",
+  "method": "Read-only Git object/file comparison. No Cargo or Git mutation. Function-body bytes compare including formatting/comments; only reviewed mechanical substitutions apply to extracted old broadcast execute.",
+  "baseline": {
+    "requested_ref": "f9a0f2f",
+    "commit": "f9a0f2f59ffae651163fc10a43a995054a07ebcc",
+    "broadcast_git_blob": "8fb2a446712d091f98ab377c91a8e1c10eb41223",
+    "preparation_git_blob": "d983fbb9e55649047fa4e06ef4e773bb2f5a9518",
+    "broadcast_source_sha256": "1c8fdabe0e1bdbad9e70cd326eef827f3bd0169be9ae55f1e6678bee87ec3be4",
+    "preparation_source_sha256": "b9820e24632e997cfd06144c5bd6a9d217f90cadb7528bfa4b993d7e8ef8ed84"
+  },
+  "current_sources": {
+    "crates/gateway/src/candidate_broadcast.rs": {
+      "sha256": "82335c73299f05e892db2d68c8ed4057a549ac418f1c4282abe7d2cebb6bbaeb",
+      "bytes": 29932
+    },
+    "crates/gateway/src/candidate_preparation.rs": {
+      "sha256": "f2af88321bc7386bc681d975709db1c1e427d22d8c3eca6da12ec97385e14de1",
+      "bytes": 15093
+    },
+    "crates/gateway/src/candidate_handoff_tests.rs": {
+      "sha256": "6044b31a8dfe269d9b6900076329dfa6e2cbc5f7702c65980873a266259860d6"
+    }
+  },
+  "commands": [
+    {
+      "argv": [
+        "git",
+        "rev-parse",
+        "f9a0f2f^{commit}"
+      ],
+      "exit_code": 0,
+      "stdout_sha256": "24c464e981500349e722a1b9a0327a70149e7434f19bdcc8da6addd3a3fcbedc",
+      "stdout_bytes": 41,
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "git",
+        "show",
+        "f9a0f2f:crates/gateway/src/candidate_broadcast.rs"
+      ],
+      "exit_code": 0,
+      "stdout_sha256": "1c8fdabe0e1bdbad9e70cd326eef827f3bd0169be9ae55f1e6678bee87ec3be4",
+      "stdout_bytes": 27103,
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "git",
+        "show",
+        "f9a0f2f:crates/gateway/src/candidate_preparation.rs"
+      ],
+      "exit_code": 0,
+      "stdout_sha256": "b9820e24632e997cfd06144c5bd6a9d217f90cadb7528bfa4b993d7e8ef8ed84",
+      "stdout_bytes": 12326,
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "git",
+        "rev-parse",
+        "f9a0f2f:crates/gateway/src/candidate_broadcast.rs"
+      ],
+      "exit_code": 0,
+      "stdout_sha256": "5f124f4c1fd72f0b7104594cda2e29b16d5ec4eb0607973bfe8a36f0d8f52325",
+      "stdout_bytes": 41,
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "git",
+        "rev-parse",
+        "f9a0f2f:crates/gateway/src/candidate_preparation.rs"
+      ],
+      "exit_code": 0,
+      "stdout_sha256": "ff1b87f7e32f8de0c39b567d25ff8ed0db59efea8548249328613bd86f6c64e2",
+      "stdout_bytes": 41,
+      "stderr": ""
+    }
+  ],
+  "broadcast": {
+    "normalization_steps": [
+      "Remove exactly one original lease acquisition statement; new original execute retains it before calling the shared driver.",
+      "Rename whole-word lease to store in remaining original driver body.",
+      "Replace exactly one raw RecoveryStore.load().map_err(SourceMismatch) chain with trait source_store.load()?; identical mapping resides in RecoveryStore BroadcastSource impl.",
+      "Remove whitespace for Rust formatting-independent body comparison. No callbacks, checks, writes, branches, validators, or watermark statements are removed."
+    ],
+    "old_execute_body_sha256": "212677dbffb217abb3f837c5d335b9ac7ef3df2d92f2716038a476e3bcb60233",
+    "new_driver_body_sha256": "4386383acfb50160d7bc29c0fd45c5ef8a76c2fb6141cd87ece58023000885d3",
+    "normalized_old_sha256": "9923e1776e2f0ebb5274d466664574d1e1aed91315156d7be73e647a3827720b",
+    "normalized_new_sha256": "9923e1776e2f0ebb5274d466664574d1e1aed91315156d7be73e647a3827720b",
+    "normalized_driver_body_equal": true,
+    "raw_load_error_mapping_forwarded_exactly": true,
+    "original_execute_wrapper_equal_expected_forwarding": true,
+    "old_callback_occurrences": [
+      "recheck",
+      "broadcast",
+      "lookup"
+    ],
+    "new_callback_occurrences": [
+      "recheck",
+      "broadcast",
+      "lookup"
+    ],
+    "unchanged_validator_bodies": {
+      "source_watermark": {
+        "exact_body_equal": true,
+        "before_body_sha256": "f128f498343c2e26e9d2d04c846f819fb7087cbdee2e3f83fa5a315ecff0ca40",
+        "after_body_sha256": "f128f498343c2e26e9d2d04c846f819fb7087cbdee2e3f83fa5a315ecff0ca40"
+      },
+      "validate_outcome_with_watermark": {
+        "exact_body_equal": true,
+        "before_body_sha256": "23ade2a0aced5dc7fd011c9b0c1bd7a0823d4f7e01c6174faf448914bdfc78ca",
+        "after_body_sha256": "23ade2a0aced5dc7fd011c9b0c1bd7a0823d4f7e01c6174faf448914bdfc78ca"
+      },
+      "validate_outcome": {
+        "exact_body_equal": true,
+        "before_body_sha256": "c7ce603c62bb1d5efc51308f3f5e8045eff872346192927f55f612d3c7caf181",
+        "after_body_sha256": "c7ce603c62bb1d5efc51308f3f5e8045eff872346192927f55f612d3c7caf181"
+      },
+      "source_prepared": {
+        "exact_body_equal": true,
+        "before_body_sha256": "53586431f06a8cdf0d20215ad0b75f7e9f1d0505f8dee27878d42d143ff6f72e",
+        "after_body_sha256": "53586431f06a8cdf0d20215ad0b75f7e9f1d0505f8dee27878d42d143ff6f72e"
+      },
+      "make_plan": {
+        "exact_body_equal": true,
+        "before_body_sha256": "fba2fad587577c40b85f18b7615e3737c58b6f8168d11b551140250da10fc069",
+        "after_body_sha256": "fba2fad587577c40b85f18b7615e3737c58b6f8168d11b551140250da10fc069"
+      }
+    },
+    "differences_after_normalization": []
+  },
+  "preparation": {
+    "run_prepared": {
+      "exact_body_equal": true,
+      "before_body_sha256": "153177635786fa20fbfed48113dcd3c768111da7093d13cf9a8a10b41dabdead",
+      "after_body_sha256": "153177635786fa20fbfed48113dcd3c768111da7093d13cf9a8a10b41dabdead",
+      "before_body_bytes": 2375,
+      "after_body_bytes": 2375
+    },
+    "attach_existing": {
+      "exact_body_equal": true,
+      "before_body_sha256": "8e6b36539aa23a8c784bdd094728041c08b36c00222988da64f0feb959e4eec4",
+      "after_body_sha256": "8e6b36539aa23a8c784bdd094728041c08b36c00222988da64f0feb959e4eec4",
+      "before_body_bytes": 1291,
+      "after_body_bytes": 1291
+    }
+  },
+  "scope": {
+    "new_bound_prepared_api": "Separate added read-only source-lease API; old run_prepared/attach_existing bodies are independently compared above.",
+    "legacy_watermark": "The entire source_watermark creation, Fresh clock/reports progression, Resume saved-source baseline and outcome validation schedule remain mechanically equal. Later invocation-local tips are still not persisted across restarts.",
+    "old_negative_helper": "Preserved old candidate_broadcast_tests::replace_source emits LE length table followed by payloads, unlike the BE interleaved codec. Its malformed framing demonstrates DPCINT4 frame-guard refusal only; it does not independently establish each intended authenticated semantic mutation reached semantic validation.",
+    "new_valid_changed_proof_helper": "New handoff helper emits BE interleaved canonical DPCINT4, asserts exact RecoveryStore.load() Record round-trip and validate_stored_cut success before unchanged PlanMismatch assertion. Raw initial failed run and narrow repair retained in newhelper-error-repair.json.",
+    "not_claimed": [
+      "real proof authentication",
+      "RPC/finality authentication",
+      "exactly-once chain delivery",
+      "global dedupe across copied source paths",
+      "coordination with old direct writers"
+    ]
+  },
+  "comparison_pass": true
+}

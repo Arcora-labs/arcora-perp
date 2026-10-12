@@ -1,0 +1,47 @@
+{
+  "schema": "arcora-candidate-identity-real-artifact-demo-v1",
+  "input_scope": "Owned clearlysynthetic public addresses/runtimehash/policy/grace declarations; no targetobservation",
+  "real_current_compiler_artifacts": 7,
+  "covered_source_file_count": 353,
+  "manifest_sha256": "9fe92b08aed519109397f82584a2cd9294409328a88a101d30e330bfa2d46d47",
+  "original_manifest_preserved_after_clobber_refusal": true,
+  "configured_actual_chain_or_service_observed": false,
+  "new_guest_build_setup_or_proof": false,
+  "unit_compiler_fixtures_are_synthetic": true,
+  "scope": {
+    "candidate_submission_enabled": false,
+    "custody_accepted": false,
+    "fresh_guest_build_performed": false,
+    "fresh_setup_key_derived": false,
+    "local_identity_checked": true,
+    "operator_policy_approved": false,
+    "proof_generated": false,
+    "real_don_verified": false,
+    "release_gate": "HOLD",
+    "running_services_attested": false,
+    "runtime_bytecode_verified": false,
+    "target_chain_observed": false
+  },
+  "command_results": {
+    "candidate-cli-create-repair2": {
+      "exit_code": 0,
+      "elapsed_seconds": 0.417,
+      "source_bytes_unchanged": true
+    },
+    "candidate-cli-validate-current": {
+      "exit_code": 0,
+      "elapsed_seconds": 0.41,
+      "source_bytes_unchanged": true
+    },
+    "candidate-cli-refuse-forged": {
+      "exit_code": 1,
+      "elapsed_seconds": 0.338,
+      "source_bytes_unchanged": true
+    },
+    "candidate-cli-refuse-clobber": {
+      "exit_code": 1,
+      "elapsed_seconds": 0.343,
+      "source_bytes_unchanged": true
+    }
+  }
+}

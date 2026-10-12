@@ -1,0 +1,106 @@
+{
+  "actual_failed_command_receipt": {
+    "path": "target/handoff-validation-20261012/candidate-cli-create.json",
+    "sha256": "e95a2bd51c578e1d67ce6442aeeaeaeb7921092f932ab6576142f1c7a288886f",
+    "size_bytes": 25056
+  },
+  "actual_failed_stderr": {
+    "path": "target/handoff-validation-20261012/candidate-cli-create.stderr.log",
+    "sha256": "6ab239e99cd141e390fe012aedd7f3e42d0b48253e559c80b24b64bd2d7794de",
+    "size_bytes": 46
+  },
+  "actual_failed_stdout": {
+    "path": "target/handoff-validation-20261012/candidate-cli-create.stdout.log",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "size_bytes": 0
+  },
+  "auxiliary_sources": [
+    {
+      "base_blob_sha256": "42396d0053fc92062acb33f67ecd253c590a09a18bb23cda72566e5092b9702f",
+      "base_commit": "f9a0f2f59ffae651163fc10a43a995054a07ebcc",
+      "base_matches": true,
+      "current": {
+        "path": "crates/chainlink-oracle/src/tests.rs",
+        "sha256": "42396d0053fc92062acb33f67ecd253c590a09a18bb23cda72566e5092b9702f",
+        "size_bytes": 13994
+      },
+      "current_matches": true,
+      "expected": "42396d0053fc92062acb33f67ecd253c590a09a18bb23cda72566e5092b9702f",
+      "path": "crates/chainlink-oracle/src/tests.rs"
+    },
+    {
+      "base_blob_sha256": "512a4966a886231ceb94fd034f94135b98b4ee4dfc3e894e45912da93ca1b54c",
+      "base_commit": "f9a0f2f59ffae651163fc10a43a995054a07ebcc",
+      "base_matches": true,
+      "current": {
+        "path": "crates/chainlink-oracle/src/replay_vectors.rs",
+        "sha256": "512a4966a886231ceb94fd034f94135b98b4ee4dfc3e894e45912da93ca1b54c",
+        "size_bytes": 8329
+      },
+      "current_matches": true,
+      "expected": "512a4966a886231ceb94fd034f94135b98b4ee4dfc3e894e45912da93ca1b54c",
+      "path": "crates/chainlink-oracle/src/replay_vectors.rs"
+    }
+  ],
+  "cause": "Real checkout contains two existing tracked cfg(test)-only auxiliary files omitted by the initial nine-runtime-only source layout allowlist and its unit fixture.",
+  "cfg_chain": [
+    "crates/chainlink-oracle/src/lib.rs:30-31 #[cfg(test)] mod tests;",
+    "crates/chainlink-oracle/src/tests.rs:456-457 #[path = \"replay_vectors.rs\"] mod replay_vectors;"
+  ],
+  "fix": "Explicit fixed auxiliary source allowlist and exact hashes, separately emitted in candidate_auxiliary_test_sources_sha256; confirm pinned cfg(test) module chain; keep other source additions/build overrides refused.",
+  "frozen_files": [
+    {
+      "path": "scripts/local-verification/candidate_identity_manifest.py",
+      "sha256": "db95538c8c82ec9239051de2c3315f3a0a37e2ed5486a111c494cca04086a1b6",
+      "size_bytes": 18111
+    },
+    {
+      "path": "scripts/local-verification/test_candidate_identity_manifest.py",
+      "sha256": "5a59b482e978404a51c7266a52dd1e32b86f523e8eff5ef56f2dd482785b6398",
+      "size_bytes": 18712
+    },
+    {
+      "path": "docs/CHAINLINK_CANDIDATE_IDENTITY.md",
+      "sha256": "0cc6680381be3377d16c48481dac6f56ec1d60969824707a3d1d48e595fa082b",
+      "size_bytes": 7715
+    }
+  ],
+  "kind": "candidate-identity-repair-history/v1",
+  "old_frozen_cli_sha256": "4001734d7cbbc100e1d13a95eafea04130af5d2389755901349e2634077574d9",
+  "preserved_domains": {
+    "candidate_ELF_or_vkey_changed": false,
+    "candidate_auxiliary_test_pins": 2,
+    "candidate_runtime_pins": 9,
+    "cargo_run": false,
+    "git_mutation": false,
+    "legacy_tool_changed": false,
+    "reviewed_v2_pins": 21,
+    "runtime_sources_changed": false
+  },
+  "read_only_comparison_commands": [
+    "GIT_OPTIONAL_LOCKS=0 git show f9a0f2f59ffae651163fc10a43a995054a07ebcc:crates/chainlink-oracle/src/tests.rs | shasum -a 256",
+    "GIT_OPTIONAL_LOCKS=0 git show f9a0f2f59ffae651163fc10a43a995054a07ebcc:crates/chainlink-oracle/src/replay_vectors.rs | shasum -a 256"
+  ],
+  "real_compiler_artifact_acceptance_after_fix": "Not run by this agent; root retries separately on frozen source.",
+  "release_gate": "HOLD",
+  "root_diagnostic": {
+    "path": "target/handoff-validation-20261012/candidate-real-layout-finding.json",
+    "sha256": "84fb7c22d6d4a62cb44c399edf64d4b1a91db01bdfd3f45e0cbe6628b9aeaf97",
+    "size_bytes": 660
+  },
+  "round": 2,
+  "unit_command": "PYTHONDONTWRITEBYTECODE=1 /opt/homebrew/bin/python3.12 -m unittest discover -s scripts/local-verification -p test_candidate_identity_manifest.py -v",
+  "unit_result": {
+    "errors": 0,
+    "evidence": "actual merged stdout/stderr bytes captured by shell redirection",
+    "exit_code": 0,
+    "failures": 0,
+    "log": {
+      "path": "target/handoff-validation-20261012/candidate-identity-unit-repair2.log",
+      "sha256": "65bc7fe33d27a32e0c54b6b0d3eb88ec464b474217f8d8d35f8654261c860377",
+      "size_bytes": 3363
+    },
+    "passed": 19,
+    "reported_seconds": 0.863
+  }
+}

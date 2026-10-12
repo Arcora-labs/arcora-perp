@@ -1,0 +1,23 @@
+{
+  "schema": "arcora-final-offline-repair-v1",
+  "initial_handoff_budget": 2,
+  "rounds": [
+    {
+      "round": 1,
+      "trigger": "focused-initial16/1/1. Newvalidproof fixturewas malformed LE lengthtable, actualPrepSourceBounds.",
+      "fix": "OnlynewhelperBEinterleaved plus directoldcodec roundtrip andsemanticvalidcut assertions; nooldcodec/assertionchanges.",
+      "receipt": "newhelper-error-repair.json"
+    },
+    {
+      "round": 2,
+      "trigger": "actualClippy1.99 manual_inspect at4new identity-error remembering closures",
+      "planned_fix": "Fourmap_err pass-throughs\u2192inspect_err preservingCopyStoreError andfirstfaultCell; no lintpolicyweakening; onlyafterrunning40source-fingerprintedfullcommandcompletes.",
+      "status": "appliedafterfull673/0/23source995commandcompleted"
+    }
+  ],
+  "old_source_formats_or_tests_changed": false,
+  "guards_weakened": false,
+  "candidate_identity_first_validation_budget": 2,
+  "observed_utc": "2026-10-12T00:17:18.384622+00:00",
+  "local_full_result": "Historicalpre-lint995d204673/0/23; freshfocus/Clippy and exactpublication-headfullLinuxCIrequired"
+}

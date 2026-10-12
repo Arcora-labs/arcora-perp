@@ -1,0 +1,10 @@
+Summary reconstructed from the delivered exec_command tool result.
+This is tool-output-text, not original stdout/stderr bytes.
+Command: PYTHONDONTWRITEBYTECODE=1 /opt/homebrew/bin/python3.12 -m unittest discover -s scripts/local-verification -p test_candidate_identity_manifest.py -v
+Reported exit code: 0
+Ran 19 tests in 0.854s
+OK
+After this pass, one narrow guard rejected prohibited credential/private-key
+compiler source paths before reading their contents or invoking local Keccak;
+the documentation clarified that the dependency guard is an in-process check.
+The final smoke below ran on all frozen files and captured actual merged output.

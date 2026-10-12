@@ -2,7 +2,7 @@
 
 Güncelleme: 12 Ekim 2026. **PRODUCTION RELEASE HOLD**.
 Bu belge güncel çalışma sırasıdır; tarihsel `NEXT_STEPS.md` yerine kullanın.
-Bu paketin başlangıç main'i: `56f91ab740d5cce42edcc287ded4b0c39eb4f9f8` (#51).
+Bu paketin başlangıç main'i: `f9a0f2f59ffae651163fc10a43a995054a07ebcc` (#52).
 #44 ve #45, güncel yayın head'lerinde ayrı ayrı 19/19 başarılı kontrol sonrası
 normal merge edildi; repository korumaları değiştirilmedi. #44 merge kimliği
 `e697b2f19d74b1021ba3a32b64b4f15ceb159880`, #45 merge kimliği
@@ -35,6 +35,13 @@ yayın head'inde 19/19 SUCCESS sonrası normal merge edildi:
 Kontrol ve merge ağacı aynı `9bcb4f9b257494c9b1e055e4368da297c64c15e4`.
 Repository korumaları değiştirilmedi. Bu dal registration'ı yerel lease altında
 Prepared'a kadar koordine eder; yerel sonuç ve yayın head'inin CI sonucu ayrıdır.
+#52 registration → durable Prepared paketi, `41c1ed8bc561b2cf29868d94619fd223732068c9`
+yayın head'inde 19/19 SUCCESS sonrası 12 Ekim 02:55:16 Türkiye saatinde normal
+merge edildi: `f9a0f2f59ffae651163fc10a43a995054a07ebcc`. Kontrol ve merge aynı
+`dda7aaf842c90df4a0ef35f44d577177dcd67b3d` ağacını taşır; korumalar değiştirilmedi.
+Bu yeni final paket Prepared → broadcast handoff, offline aday kimliği ve belge
+düzeltmelerini kapsar. Kod `c9ce9ce51faf78bb8d3f031f612a5d4335dc2a8e`; aşağıdaki
+yerel sonuçlar yeni yayın head'inin CI/merge kaydı yerine geçmez.
 
 ## Birleşmiş ve korunan çalışmalar
 
@@ -216,7 +223,7 @@ değildir. Kanıt: [A3 fiyat yaşam döngüsü](audits/2026-10-11-chainlink-pric
 | A1 | Açık pencerenin özgün kabul ID'lerini kalıcılaştırma | #45 güncel head `0f2fc42`, 19/19 başarılı kontrol sonrası normal merge edildi. DPCAS2 + özgün v6 journal ID recovery; snapshot sonrası her admission için ayrı WAL garantisi yok. |
 | A2 | İndeks kapasitesi ve retention | #46 güncel head `b3a9507`, 19/19 başarılı kontrol sonrası normal merge edildi. Referansları doğrulayan checkpoint sonrası indeks retirement, DPCAS3 WAL beklentisi ve admission öncesi sonlu arşiv kotası uygulandı. 4.100 admission/restart dahil nihai yerel sonuç ayrı A2 kanıt kaydındadır; fiziksel GC yapılmaz. |
 | A3 | Fiyat kullanan bütün gateway yolları | Aday priced mutasyon preflight'ları ve özgün withdrawal transcript'i uygulandı. 550 gateway PASS; iki gerçek gateway sentetik lifecycle witness'ında native/gerçek SP1 CPU commitment eşit, üç negatif exit 1/boş public çıktı. #47 güncel head `15bdf54`, 19/19 başarılı kontrol sonrası normal merge edildi; submission HOLD. |
-| A4 | Ayrı aday prover/settlement protokolü | İlk offline harness #48, 19/19 başarılı kontrol sonrası normal merge edildi. DPCINT4 ara kayıt recovery ve mock finality uzlaşması #49 ile 19/19 başarılı kontrol sonrası birleşti: 597 gateway, 25 odaklı recovery, 47 guard PASS. Tam native kontrat köprüsü #50, 19/19 kontrol sonrası birleşti. Yeni host-only broadcast sonuç/yerel lease paketi bu dalda 628 gateway ve 26 odaklı PASS ile doğrulandı; yayın CI ayrı. Gerçek proof, canlı servis/target ve L1 uzlaşma kabulü açık. |
+| A4 | Ayrı aday prover/settlement protokolü | Offline harness #48, DPCINT4 recovery #49, native kontrat köprüsü #50, broadcast outcome/lease #51 ve registration→Prepared #52, kendi yayın head'lerinde 19/19 kontrol sonrası normal merge edildi. Son dual-lease handoff ve offline identity paketi aşağıda yerel kanıtıyla kayıtlıdır. Gerçek proof, canlı servis/target ve L1 uzlaşma kabulü açık; A4 tümü kapatılmaz. |
 
 Canlı feed keşfi/entitlement kullanıcı kararıyla ertelenmiştir; A1–A4 yazılım
 hazırlığını durdurmaz. Yeniden discovery/credential denemesi veya feed/eşik
@@ -299,7 +306,7 @@ işi 20 dakikalık job limitinde iptal edildi; assertion hatası yoktu, no_std a
 host-only pakette yeniden çalıştırılmadı; #50 corpus/kontrat/kaynak ve kanıt
 hash'leri değişmedi. [Yeni kanıt](audits/2026-10-11-chainlink-broadcast-outcome/README.md).
 
-## Yeni A4 paketi: registration → durable Prepared koordinasyonu
+## Birleşmiş #52: registration → durable Prepared koordinasyonu
 
 Kod `606894c7dbe7faf688fd1e8d169e7e89430c07f0`, yalnız `cfg(test)` kapsamındadır.
 Yeni coordinator kaynak DPCINT4 store'unu kendi içinde tutar. Aynı kaynak için
@@ -332,8 +339,50 @@ değildir. Adoption sırasında eski writer'lar durmuş olmalıdır. Son gözlen
 tip restart'a taşınmaz; özgün saved anchor baseline'ı korunur. Prepared save
 başarısızlığından sonra mock proof yeniden çalışabilir.
 
-Sıradaki GPU'suz adım: [Prepared → ayrı broadcast dispatcher handoff tasarımı](audits/2026-10-12-chainlink-prepared-lease/next-gpu-free-a4.md).
-Gerçek proof, deployment, DON/uptime/custody ve production kapıları açık kalır.
+Sonraki handoff tasarımı aşağıdaki yeni pakette uygulandı; önceki
+[tasarım belgesi](audits/2026-10-12-chainlink-prepared-lease/next-gpu-free-a4.md)
+tarihsel plan olarak korunur.
+
+## Son GPU'suz paket: Prepared → broadcast ve offline aday kimliği
+
+`c9ce9ce51faf78bb8d3f031f612a5d4335dc2a8e` kodunda yalnız `cfg(test)` handoff,
+kendi sahibi olduğu authenticated exact Prepared kaynağının lease'ini önce,
+sabit fiziksel kaynak lane'inin broadcast lease'ini sonra alır. İkisi callback,
+yazma, readback ve dönüş boyunca tutulur. Request/proof/bridge/sender/nonce
+değişikliği yeni bir broadcast yolu seçemez. Fresh özgün recheck/broadcast/lookup
+sırasını, Pending Resume lookup-only, terminal dönüş sıfır callback'i korur.
+Kaynak/binding/lock/broadcast değişimi ve belirsiz kalıcılık HOLD'dur. Gerçek
+Broadcast/Lookup callback'lerinde iki ayrı SIGKILL testi; rakipte Busy/sıfır
+callback ve successor'da özgün Pending lookup-only toparlanması geçti.
+
+Nihai kodda Rust 1.99 odaklı **17 PASS / 0 FAIL / 1 ignored child helper**,
+workspace Clippy `-D warnings`, format ve **47 guard** başarılı. Tam yerel
+gateway **673 PASS / 0 FAIL / 23 intentional IGNORE**, dört yeni lint-only
+`inspect_err` düzeltmesinden önceki `995d204` kodunda çalıştı; final kodun tam
+Linux gateway/workspace CI koşusu normal merge öncesi ayrıca zorunludur.
+Eski callback gövdeleri, framing, goldens, #50 corpus ve 21/9 pinler korunur.
+
+Yeni [offline candidate identity](CHAINLINK_CANDIDATE_IDENTITY.md) CLI'si ayrı
+schema ile committed ELF/metadata, tarihsel key, 21/9 ve iki ayrı test-only pin,
+yerel kaynak/derleyici template'i ve açık public config'i doğrular. **19 unit
+PASS**; gerçek yedi compiler artifact + 353 kaynaklı CLI demo create/validate
+başarılı; scope sahteciliği ve overwrite reddedildi. Demo adres/runtime/policy
+değerleri açıkça sentetiktir. Gerçek target/runtime/servis gözlemi, yeni
+setup/proof veya submission kabulü değildir; çıktı her zaman HOLD'dur. Mevcut
+v2 manifest 36 testte OK (bir optional Anvil yerelde skip), eski schema/guard
+aynıdır. A11'e yalnız yeni unit discovery satırı eklenmiştir.
+
+SECURITY'deki uygulanmış rejection membership/refund yolu doğru kapsamıyla
+düzeltildi; guest'te ret gerekçesi meşruiyeti ve matching fairness açık kaldı.
+[Policy durum belgesi](REPOSITORY_POLICY_STATE.md), canlı review=0 ile önerilen
+review=1 şablonunu ayırır; **19 gözlenen CI ≠ 11 zorunlu context**. Politika
+değiştirilmedi. [Son kanıt paketi](audits/2026-10-12-chainlink-offline-finalization/README.md).
+
+Bir sonraki aşama onaylı hedef/servis/feed/quote/scale/USDC/uptime/grace ve
+operatör policy bağlarını tamamlamak; signed transport, ayrı aday prover ve L1
+uçtan uca bağlantısını gerçek proof/custody kabulüyle sınamaktır. Feed discovery
+kullanıcı kararıyla ertelenmiştir. GPU'suz offline hazırlık bu gerçek kimlikleri
+ve proof'u tahmin ederek kapatamaz. Production HOLD devam eder.
 
 ## Açık işler ve kapanış ölçütleri
 
@@ -351,7 +400,6 @@ Gerçek proof, deployment, DON/uptime/custody ve production kapıları açık ka
 | P1 | Matching fairness/ret meşruiyeti | Sıra ve ret kurallarının guest içinde doğrulanması; ayrı guest-affecting çalışma |
 | P2 | Operasyonel recovery | Canlı anahtarlarla farklı makine, L1/pending tx uzlaşması, ölçülmüş RTO/RPO ve alarm teslimi |
 | P2 | Bağımsız audit | Protokol/custody/proof/sözleşme/ekonomi dış incelemesi |
-| P2 | Repository policy belgeleri | Canlı review=0 ile eski şablon farkını açıkça çözme; korumaları sessizce değiştirmeme |
 
 ## Değişmez sınırlar
 

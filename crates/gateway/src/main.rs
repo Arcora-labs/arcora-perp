@@ -56,6 +56,12 @@ mod candidate_broadcast_store;
 #[cfg(test)]
 mod candidate_broadcast_tests;
 #[cfg(test)]
+mod candidate_handoff;
+#[cfg(test)]
+mod candidate_handoff_lock_tests;
+#[cfg(test)]
+mod candidate_handoff_tests;
+#[cfg(test)]
 mod candidate_intent;
 #[cfg(test)]
 mod candidate_preparation;

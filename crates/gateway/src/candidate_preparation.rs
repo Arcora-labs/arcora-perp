@@ -40,6 +40,48 @@ impl From<RecoveryError> for PreparationError {
     }
 }
 
+/// Read-only view of one immutable, authenticated Prepared cut. The source
+/// lease stays owned by this object; no raw store or source write is exposed.
+/// Handoff callers check it before and after every callback/publication.
+pub(crate) struct BoundPrepared<'a> {
+    lease: Lease<'a>,
+    request: &'a ProtocolRequest,
+    trusted: &'a TrustedRequest,
+    binding: Binding,
+    record: Record,
+}
+impl BoundPrepared<'_> {
+    pub(crate) fn record(&self) -> &Record {
+        &self.record
+    }
+
+    pub(crate) fn check(&self) -> Result<(), PreparationError> {
+        self.lease.check()?;
+        let binding = self
+            .lease
+            .load_binding()?
+            .ok_or(PreparationError::MissingBinding)?;
+        if binding != self.binding
+            || binding.request_sha256 != sha256(&request_bytes(self.request)?)
+        {
+            return Err(PreparationError::BindingMismatch);
+        }
+        let current = self
+            .lease
+            .load_source()?
+            .ok_or(PreparationError::MissingSource)?;
+        if current != self.record || current.stage != Stage::Prepared {
+            return Err(RecoveryError::Malformed.into());
+        }
+        // Validate the complete canonical payload against the original trusted
+        // request every time. A same-logical-value reseal/replacement still
+        // fails the lease's physical FileCut; this seam never refreshes it.
+        validate_stored_cut(&current, self.request, self.trusted)?;
+        self.lease.check()?;
+        Ok(())
+    }
+}
+
 pub(crate) struct RegistrationCoordinator {
     store: CoordinationStore,
 }
@@ -75,6 +117,40 @@ impl RegistrationCoordinator {
     }
     pub(crate) fn fail_next_source_directory_sync(&self) {
         self.store.fail_next_source_directory_sync();
+    }
+
+    /// Acquire before validation, and return only an already bound complete
+    /// Prepared cut. Missing/partial sources have no adoption or write fallback.
+    pub(crate) fn lease_prepared<'a>(
+        &'a self,
+        request: &'a ProtocolRequest,
+        trusted: &'a TrustedRequest,
+    ) -> Result<BoundPrepared<'a>, PreparationError> {
+        let lease = self.store.try_lease()?;
+        validate(request, trusted).map_err(RecoveryError::Protocol)?;
+        let request_hash = sha256(&request_bytes(request)?);
+        let binding = lease
+            .load_binding()?
+            .ok_or(PreparationError::MissingBinding)?;
+        if binding.request_sha256 != request_hash {
+            return Err(PreparationError::BindingMismatch);
+        }
+        let record = lease
+            .load_source()?
+            .ok_or(PreparationError::MissingSource)?;
+        if record.stage != Stage::Prepared {
+            return Err(RecoveryError::Malformed.into());
+        }
+        validate_stored_cut(&record, request, trusted)?;
+        let bound = BoundPrepared {
+            lease,
+            request,
+            trusted,
+            binding,
+            record,
+        };
+        bound.check()?;
+        Ok(bound)
     }
 
     pub(crate) fn run_prepared(

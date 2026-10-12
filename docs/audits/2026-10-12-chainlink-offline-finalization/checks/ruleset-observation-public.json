@@ -1,0 +1,326 @@
+{
+  "schema": "arcora-ruleset-public-selected-v1",
+  "observed_utc": "2026-10-12T00:06:02.881899+00:00",
+  "observed_end_utc": "2026-10-12T00:07:31.352741+00:00",
+  "scope": "Selected read-only API fields; full responses retained locally. No policy changes.",
+  "summary": {
+    "ruleset_id": 24812584,
+    "enforcement": "active",
+    "required_approving_review_count": 0,
+    "require_last_push_approval": false,
+    "required_status_check_context_count": 11,
+    "required_status_check_contexts": [
+      "rust (lint, 1.99)",
+      "rust (workspace)",
+      "prover crates (excluded, typecheck)",
+      "contracts (foundry)",
+      "frontend (vite)",
+      "dependency advisories",
+      "release regression",
+      "foundry release gate",
+      "gateway RPC, crash and alert drills",
+      "frontend release gate",
+      "prover source / deployment binding"
+    ],
+    "observed_pr": 52,
+    "observed_head": "41c1ed8bc561b2cf29868d94619fd223732068c9",
+    "merged": true,
+    "observed_ci_distinct_names": 17,
+    "observed_ci_success_count": 17,
+    "ci_names": [
+      "Chainlink REST client (runtime regressions)",
+      "Chainlink candidate core (not live verification)",
+      "Vercel Preview Comments",
+      "contracts (foundry)",
+      "dependency advisories",
+      "foundry release gate",
+      "frontend",
+      "frontend (vite)",
+      "frontend release gate",
+      "gateway RPC, crash and alert drills",
+      "offline-ingestion",
+      "prover crates (excluded, typecheck)",
+      "prover source / deployment binding",
+      "release regression",
+      "rust",
+      "rust (lint, 1.99)",
+      "rust (workspace)"
+    ],
+    "ci_conclusions": {
+      "Chainlink REST client (runtime regressions)": "success",
+      "Chainlink candidate core (not live verification)": "success",
+      "Vercel Preview Comments": "success",
+      "contracts (foundry)": "success",
+      "dependency advisories": "success",
+      "foundry release gate": "success",
+      "frontend": "success",
+      "frontend (vite)": "success",
+      "frontend release gate": "success",
+      "gateway RPC, crash and alert drills": "success",
+      "offline-ingestion": "success",
+      "prover crates (excluded, typecheck)": "success",
+      "prover source / deployment binding": "success",
+      "release regression": "success",
+      "rust": "success",
+      "rust (lint, 1.99)": "success",
+      "rust (workspace)": "success"
+    },
+    "observed_commit_status_names": [
+      "Vercel \u2013 arcora-labs",
+      "Vercel \u2013 arcora-perp"
+    ],
+    "observed_commit_status_success_count": 2,
+    "observed_successful_check_and_status_contexts": 19,
+    "observed_total_check_and_status_contexts": 19
+  },
+  "source_sha256": {
+    ".github/main-ruleset.json": "213ec7edc40f2286b84d3c20c6e8e084aaef65cc89e897d7c5a244c3f489335c",
+    "contracts/src/DarkPerpSettlement.sol": "510e9ae8a21d4e34989969b0767d40bc80b6ff400cd95e754be481f5cb036f94",
+    "crates/gateway/src/main.rs": "a7fa9b2ce06b08b43d028f0cbfbc3cc1c562f98169c3e226e1be4d716393b183",
+    "crates/gateway/src/l1.rs": "73047824d4b2badc34c1a34b25d6d044be01578e287d27ebddf0815c412c6499",
+    "crates/perp-core/src/commitment.rs": "43582ef5048d0d725e53976e3c2a1dfcf32984ed2ad1bb2ebd2032463e26ea92",
+    "crates/perp-core/tests/rejection_boundary.rs": "bed0ee3dd9224901ff402e99b90245afa95aae38917f499aafd1fdab006afd8a",
+    "docs/audits/2026-10-09-rejection-boundary.md": "bad3953b6543bcf27cf97112eafb43c611d9f8d1f2f7964703d901edcef11085",
+    "docs/SECURITY.md": "80ee1d7eb472866142142ea328a541ff1cb2ae450d556e6f6f76f9c944c54ada",
+    "docs/REPOSITORY_POLICY_STATE.md": "d2c332b16087d2bf931aa7192bbe9e09d66c31636f8cccd6e6a46b8bd43db90f"
+  },
+  "original_raw_snapshot_sha256": "564ce3fd4a57e9a506d65ed6feb2c49ad89edf109f8592579cd9af03565c3779",
+  "responses": {
+    "ruleset": {
+      "argv": [
+        "gh",
+        "api",
+        "repos/Arcora-labs/arcora-perp/rulesets/24812584"
+      ],
+      "original_raw_response_sha256": "fc9f696a8d29d606db37b73a8999371cb5388ecc9fc5ca1298ac811f92359c21",
+      "selected_fields": {
+        "id": 24812584,
+        "name": "Arcora main review and verification",
+        "target": "branch",
+        "enforcement": "active",
+        "conditions": {
+          "ref_name": {
+            "exclude": [],
+            "include": [
+              "refs/heads/main"
+            ]
+          }
+        },
+        "bypass_actors": [],
+        "rules": [
+          {
+            "type": "deletion"
+          },
+          {
+            "type": "non_fast_forward"
+          },
+          {
+            "type": "pull_request",
+            "parameters": {
+              "required_approving_review_count": 0,
+              "dismiss_stale_reviews_on_push": true,
+              "required_reviewers": [],
+              "require_code_owner_review": false,
+              "dismissal_restriction": {
+                "enabled": false,
+                "allowed_actors": []
+              },
+              "require_last_push_approval": false,
+              "required_review_thread_resolution": true,
+              "require_extra_approval_for_unattributed_changes": false,
+              "allowed_merge_methods": [
+                "squash",
+                "rebase",
+                "merge"
+              ]
+            }
+          },
+          {
+            "type": "required_status_checks",
+            "parameters": {
+              "strict_required_status_checks_policy": true,
+              "do_not_enforce_on_create": false,
+              "required_status_checks": [
+                {
+                  "context": "rust (lint, 1.99)",
+                  "integration_id": 15368
+                },
+                {
+                  "context": "rust (workspace)",
+                  "integration_id": 15368
+                },
+                {
+                  "context": "prover crates (excluded, typecheck)",
+                  "integration_id": 15368
+                },
+                {
+                  "context": "contracts (foundry)",
+                  "integration_id": 15368
+                },
+                {
+                  "context": "frontend (vite)",
+                  "integration_id": 15368
+                },
+                {
+                  "context": "dependency advisories",
+                  "integration_id": 15368
+                },
+                {
+                  "context": "release regression",
+                  "integration_id": 15368
+                },
+                {
+                  "context": "foundry release gate",
+                  "integration_id": 15368
+                },
+                {
+                  "context": "gateway RPC, crash and alert drills",
+                  "integration_id": 15368
+                },
+                {
+                  "context": "frontend release gate",
+                  "integration_id": 15368
+                },
+                {
+                  "context": "prover source / deployment binding",
+                  "integration_id": 15368
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "effective_main": {
+      "argv": [
+        "gh",
+        "api",
+        "repos/Arcora-labs/arcora-perp/rules/branches/main"
+      ],
+      "original_raw_response_sha256": "9faea6306394d097f40e28467eee98d774ceb6e7365abd5fefa787948f0cfae7",
+      "selected_fields": [
+        {
+          "type": "deletion",
+          "ruleset_source_type": "Repository",
+          "ruleset_source": "Arcora-labs/arcora-perp",
+          "ruleset_id": 24812584
+        },
+        {
+          "type": "non_fast_forward",
+          "ruleset_source_type": "Repository",
+          "ruleset_source": "Arcora-labs/arcora-perp",
+          "ruleset_id": 24812584
+        },
+        {
+          "type": "pull_request",
+          "parameters": {
+            "required_approving_review_count": 0,
+            "dismiss_stale_reviews_on_push": true,
+            "required_reviewers": [],
+            "require_code_owner_review": false,
+            "dismissal_restriction": {
+              "enabled": false,
+              "allowed_actors": []
+            },
+            "require_last_push_approval": false,
+            "required_review_thread_resolution": true,
+            "require_extra_approval_for_unattributed_changes": false,
+            "allowed_merge_methods": [
+              "squash",
+              "rebase",
+              "merge"
+            ]
+          },
+          "ruleset_source_type": "Repository",
+          "ruleset_source": "Arcora-labs/arcora-perp",
+          "ruleset_id": 24812584
+        },
+        {
+          "type": "required_status_checks",
+          "parameters": {
+            "strict_required_status_checks_policy": true,
+            "do_not_enforce_on_create": false,
+            "required_status_checks": [
+              {
+                "context": "rust (lint, 1.99)",
+                "integration_id": 15368
+              },
+              {
+                "context": "rust (workspace)",
+                "integration_id": 15368
+              },
+              {
+                "context": "prover crates (excluded, typecheck)",
+                "integration_id": 15368
+              },
+              {
+                "context": "contracts (foundry)",
+                "integration_id": 15368
+              },
+              {
+                "context": "frontend (vite)",
+                "integration_id": 15368
+              },
+              {
+                "context": "dependency advisories",
+                "integration_id": 15368
+              },
+              {
+                "context": "release regression",
+                "integration_id": 15368
+              },
+              {
+                "context": "foundry release gate",
+                "integration_id": 15368
+              },
+              {
+                "context": "gateway RPC, crash and alert drills",
+                "integration_id": 15368
+              },
+              {
+                "context": "frontend release gate",
+                "integration_id": 15368
+              },
+              {
+                "context": "prover source / deployment binding",
+                "integration_id": 15368
+              }
+            ]
+          },
+          "ruleset_source_type": "Repository",
+          "ruleset_source": "Arcora-labs/arcora-perp",
+          "ruleset_id": 24812584
+        }
+      ]
+    },
+    "pr52": {
+      "argv": [
+        "gh",
+        "api",
+        "repos/Arcora-labs/arcora-perp/pulls/52"
+      ],
+      "original_raw_response_sha256": "478a10c99ed2ffec4fb6ab58a179c4d1b440547be91cf657e7ac497f6c57ab23",
+      "selected_fields": {
+        "url": "https://api.github.com/repos/Arcora-labs/arcora-perp/pulls/52",
+        "number": 52,
+        "state": "closed"
+      }
+    },
+    "pr52_checks": {
+      "argv": [
+        "gh",
+        "api",
+        "repos/Arcora-labs/arcora-perp/commits/41c1ed8bc561b2cf29868d94619fd223732068c9/check-runs?per_page=100"
+      ],
+      "original_raw_response_sha256": "719d34f6b5f610d9dcc5d0b06e6bf540b553a6281e18a3d0475e8e88d12a2586"
+    },
+    "pr52_statuses": {
+      "argv": [
+        "gh",
+        "api",
+        "repos/Arcora-labs/arcora-perp/commits/41c1ed8bc561b2cf29868d94619fd223732068c9/status?per_page=100"
+      ],
+      "original_raw_response_sha256": "01f74fe72319be7691797060199aa716f47878952950fba0640b22c49c3089c8"
+    }
+  }
+}

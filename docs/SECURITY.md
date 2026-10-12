@@ -179,23 +179,24 @@ or release acceptance. Current task state is in
 
 ## Known design limitations (flagged for input, not yet fixed)
 
-- **On-chain inclusion challenge has no rejection-proof path (P3b).** P3 fixed the
-  *off-chain* monitor so a justly-rejected order is not self-reported as censorship.
-  The *on-chain* `challengeInclusion` is the mirror image and still open: a user
-  holding an enclave-signed receipt for an order that was legitimately rejected
-  (insufficient margin, post-only-would-take, FOK-unfillable) can open a challenge,
-  and the sequencer cannot answer because the order is in `manifest.rejected`, not
-  the on-chain `orderedRoot` — so an honest sequencer is slashable. Two candidate
-  fixes, both touching the cross-layer trust anchor (hence deferred for design
-  input rather than changed unilaterally):
-  1. **Commit a `rejectedRoot`** alongside `orderedRoot` (the same pattern as the F2
-     fix that added `orderedRoot`/`withdrawalsRoot`), and add an
-     `answerByRejection(orderHash, batchId, proof)` path. Proving rejection
-     membership in a settled batch demonstrates the order was handled. Cost: a
-     6th field in `publicCommitment` / `PublicInputs`, re-locked byte-exact vectors.
-  2. **Tier receipts**: make the on-chain-challengeable commitment cover only orders
-     the enclave commits to *ordering*, with `accept_order`'s instant ACK as a
-     distinct non-slashable acknowledgement. Cost: refines the §2 receipt semantics.
+- **Rejection membership answers are implemented; rejection legitimacy remains
+  open.** `DarkPerpSettlement` commits `rejectedRoot` and implements
+  `answerByRejection(orderHash, batchId, proof)`. A sequencer can answer an open,
+  unexpired challenge by proving declared rejection membership in a genuinely
+  settled batch. The gateway builds ordered or rejected membership proofs from
+  retained batch data and its challenge worker selects the corresponding answer
+  path. The refund gate compares the batch with the challenge's captured batch
+  count, including same-block publication order.
+  This proves membership in the committed list; it does not prove that the
+  rejection reason was legitimate or that matching was fair. The guest lacks
+  authenticated order bodies and a committed book/lifecycle needed to replay
+  those decisions. A dishonest matcher can declare a valid order rejected and
+  answer by membership. Closing that gap requires a separate witness/guest
+  protocol change and release verification. The
+  [rejection-boundary evidence](audits/2026-10-09-rejection-boundary.md) records
+  local characterization and refund tests, with their scope limits. Current
+  source and local evidence do not establish a live deployment or independent
+  proof/custody acceptance.
 - **Vault `withdrawalsRoot` must be cumulative (P6) — NOW WIRED.** `CollateralVault.publishWithdrawals`
   *overwrites* the root each settled batch, so the published root must be the
   cumulative set of all authorized-but-unclaimed withdrawals — not just the new ones
@@ -288,8 +289,9 @@ also closed:
 
 - **DP-004 off-chain answering — DONE.** The gateway publishes real ordered/rejected roots
   per settle and a background loop watches `InclusionChallenged` and calls
-  `answerChallenge`/`answerByRejection` with a Merkle proof, so the wrongful-slash vector is
-  closed end to end.
+  `answerChallenge`/`answerByRejection` with a Merkle proof. The membership-answer
+  path is wired in source; rejection legitimacy and guest matching remain open
+  as described above. This does not establish live release acceptance.
 
 - **`state_root` unbounded cost — DONE.** The nullifier digest (the only set that grows without
   bound — it is append-only) is now an O(1) running hash-chain advanced on each insert, instead
