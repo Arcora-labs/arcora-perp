@@ -1,0 +1,37 @@
+{
+  "schema": "arcora-candidate-target-unit-smoke-v1",
+  "observed_start_utc": "2026-10-12T08:00:32.197548+00:00",
+  "observed_end_utc": "2026-10-12T08:00:36.057148+00:00",
+  "argv": [
+    "/opt/homebrew/bin/python3.12",
+    "-m",
+    "unittest",
+    "discover",
+    "-s",
+    "scripts/local-verification",
+    "-p",
+    "test_candidate_target_observer.py",
+    "-v"
+  ],
+  "exit_code": 1,
+  "elapsed_seconds": 3.859,
+  "source_sha256_before": {
+    "scripts/local-verification/candidate_target_observer.py": "f7dc51552b2c8d08646d6d9495803788ed1546816b454e8d97ad1eee7f12436e",
+    "scripts/local-verification/test_candidate_target_observer.py": "9b45c86607915d87d352db3a62076c1466db1fd77a30a3f81603f29b0768301f",
+    "scripts/local-verification/candidate_identity_manifest.py": "db95538c8c82ec9239051de2c3315f3a0a37e2ed5486a111c494cca04086a1b6",
+    "scripts/local-verification/test_candidate_identity_manifest.py": "5a59b482e978404a51c7266a52dd1e32b86f523e8eff5ef56f2dd482785b6398",
+    "scripts/local-verification/release_manifest.py": "c9dbcadd5d2fcead58938d81ff2755cf2e326cf29c2cee9ba8a56dcae1aaebf2",
+    "scripts/local-verification/read_deployment.py": "852f185a9751e7ba84cf471bf1d1246a665b3450d6c3478583bbe98832d93ef5"
+  },
+  "source_sha256_after": {
+    "scripts/local-verification/candidate_target_observer.py": "f7dc51552b2c8d08646d6d9495803788ed1546816b454e8d97ad1eee7f12436e",
+    "scripts/local-verification/test_candidate_target_observer.py": "9b45c86607915d87d352db3a62076c1466db1fd77a30a3f81603f29b0768301f",
+    "scripts/local-verification/candidate_identity_manifest.py": "db95538c8c82ec9239051de2c3315f3a0a37e2ed5486a111c494cca04086a1b6",
+    "scripts/local-verification/test_candidate_identity_manifest.py": "5a59b482e978404a51c7266a52dd1e32b86f523e8eff5ef56f2dd482785b6398",
+    "scripts/local-verification/release_manifest.py": "c9dbcadd5d2fcead58938d81ff2755cf2e326cf29c2cee9ba8a56dcae1aaebf2",
+    "scripts/local-verification/read_deployment.py": "852f185a9751e7ba84cf471bf1d1246a665b3450d6c3478583bbe98832d93ef5"
+  },
+  "source_bytes_unchanged": true,
+  "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "stderr_sha256": "1244624aef4c8d1ef4b1f2c5e1207fb1837344cecd052aad267aa7fb17171874"
+}

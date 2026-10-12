@@ -15,3 +15,6 @@ docs/audits/2026-10-12-chainlink-prepared-lease/logs/*.log binary
 
 # Preserve complete raw handoff and candidate identity command output.
 docs/audits/2026-10-12-chainlink-offline-finalization/logs/*.log binary
+
+# Preserve raw candidate target observer command output byte-for-byte.
+docs/audits/2026-10-12-chainlink-target-observer/logs/*.log binary
