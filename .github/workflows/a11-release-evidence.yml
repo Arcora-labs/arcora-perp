@@ -25,6 +25,7 @@ jobs:
         run: |
           python3 -m unittest discover -s scripts/local-verification -p test_release_manifest.py
           python3 -m unittest discover -s scripts/local-verification -p test_candidate_identity_manifest.py
+          python3 -m unittest discover -s scripts/local-verification -p test_candidate_target_observer.py
           python3 -m unittest discover -s scripts/local-verification -p test_operator_policy.py
           python3 -m unittest discover -s scripts/local-verification -p test_gateway_restore_drill.py
           python3 -m unittest discover -s scripts/local-verification -p test_repository_policy.py
@@ -145,6 +146,9 @@ jobs:
         run: |
           forge build --root contracts/vendor/sp1-contracts
           ARCORA_RUN_MANIFEST_ANVIL=1 ARCORA_MANIFEST_ANVIL_EVIDENCE=/tmp/arcora-local-drills/manifest-anvil.json python3 -m unittest discover -s scripts/local-verification -p test_release_manifest.py -v
+      - name: Candidate target identity against owned seven-contract Anvil stack
+        run: |
+          ARCORA_RUN_CANDIDATE_TARGET_ANVIL=1 ARCORA_CANDIDATE_TARGET_ANVIL_EVIDENCE=/tmp/arcora-local-drills/candidate-target-anvil.json python3 -m unittest discover -s scripts/local-verification -p test_candidate_target_anvil.py -v
       - name: Real cast transport against owned RPC fixtures
         run: |
           python3 scripts/local-verification/run_check.py --output-dir /tmp/arcora-local-drills/checks recovery-rpc -- cargo test --locked -p gateway runtime_witness_native_cast -- --ignored --nocapture --test-threads=1
