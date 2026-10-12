@@ -237,9 +237,8 @@ impl Gate<'_, '_> {
     }
     fn returned(&self, record: &Record) -> Result<(), StoreError> {
         self.store_check()?;
-        let actual = self.broadcast.load().map_err(|e| {
-            self.remember(e.into());
-            e
+        let actual = self.broadcast.load().inspect_err(|e| {
+            self.remember((*e).into());
         })?;
         if actual.as_ref() != Some(record) {
             self.remember(HandoffError::BroadcastMismatch);
@@ -272,9 +271,8 @@ impl BroadcastCheckpoints for Checkpoints<'_, '_> {
     }
     fn load(&self) -> Result<Option<Record>, StoreError> {
         self.gate.store_check()?;
-        let record = self.gate.broadcast.load().map_err(|e| {
-            self.gate.remember(e.into());
-            e
+        let record = self.gate.broadcast.load().inspect_err(|e| {
+            self.gate.remember((*e).into());
         })?;
         self.gate.store_check()?;
         Ok(record)
@@ -285,19 +283,21 @@ impl BroadcastCheckpoints for Checkpoints<'_, '_> {
             self.gate.remember(HandoffError::PlanMismatch);
             return Err(StoreError::Malformed);
         }
-        let record = self.gate.broadcast.create_pending(plan).map_err(|e| {
-            self.gate.remember(e.into());
-            e
+        let record = self.gate.broadcast.create_pending(plan).inspect_err(|e| {
+            self.gate.remember((*e).into());
         })?;
         self.gate.returned(&record)?;
         Ok(record)
     }
     fn finish(&self, expected: &Record, outcome: &[u8]) -> Result<Record, StoreError> {
         self.gate.store_check()?;
-        let record = self.gate.broadcast.finish(expected, outcome).map_err(|e| {
-            self.gate.remember(e.into());
-            e
-        })?;
+        let record = self
+            .gate
+            .broadcast
+            .finish(expected, outcome)
+            .inspect_err(|e| {
+                self.gate.remember((*e).into());
+            })?;
         self.gate.returned(&record)?;
         Ok(record)
     }
