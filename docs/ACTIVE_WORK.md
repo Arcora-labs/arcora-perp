@@ -2,7 +2,7 @@
 
 Güncelleme: 12 Ekim 2026. **PRODUCTION RELEASE HOLD**.
 Bu belge güncel çalışma sırasıdır; tarihsel `NEXT_STEPS.md` yerine kullanın.
-Bu paketin başlangıç main'i: `8f5e97bc690c1d9a6d796fdc3725526d283e077d` (#54).
+Bu paketin başlangıç main'i: `29be35c7a66c20563fb83812039eaaf1aa05d80a` (#55).
 #44 ve #45, güncel yayın head'lerinde ayrı ayrı 19/19 başarılı kontrol sonrası
 normal merge edildi; repository korumaları değiştirilmedi. #44 merge kimliği
 `e697b2f19d74b1021ba3a32b64b4f15ceb159880`, #45 merge kimliği
@@ -385,6 +385,41 @@ kullanıcı kararıyla ertelenmiştir. GPU'suz offline hazırlık bu gerçek kim
 ve proof'u tahmin ederek kapatamaz. Production HOLD devam eder.
 
 ## Açık işler ve kapanış ölçütleri
+
+#55 public-service identity, `e221ddf9a9af47d80b723770392bcbcf97784de8`
+yayın head'inde 19/19 esas SUCCESS (+ Preview) sonrası normal merge edildi:
+`29be35c7a66c20563fb83812039eaaf1aa05d80a`. Test/merge/yerel ağaç
+`fd456f6e4ca8c519cf1153cf375f999d3cfe4095`; üç main push koşusu da artık
+SUCCESS. Korumalar değişmedi; eski 13/7/62 dirty checkout korunmuştur.
+
+Son GPU'suz kod paketi `a716f0c0fe6305749844d4f16cabbff19541b2d2`, aday
+protokol için yalnız `cfg(test)` loopback HTTP fixture adapter'ıdır. Sabit ayrı
+path/domain ve canonical action/request/program/exchange/payload bağları,
+bağımsız configured/native/plan kontrolü ve bounded tek exchange kullanılır.
+Eski DPCINT4/DPCREG1/DPCBTX1 store, checkpoint ve fiziksel lane değişmez;
+mevcut coordinator source/lease/durability otoritesidir. Üretim rotası/backend,
+legacy prover fallback'i veya canlı gönderim açılmadı.
+
+İki normal/liquidation native HTTP pozitif akışı aynı test sürecinde baseline
+barrier'ı oluşturur; her ret ayrı temiz fixture/state/lane kullanır. Clock ACK
+kaybı Resume'da rapor kaydı uydurmaz: rapor yoksa ReportsPending/Absent/HOLD.
+Rapor/broadcast ACK kaybı yalnız mevcut sonucu lookup eder; aynı mutasyonu
+otomatik tekrar etmez. Tamamlanmış outcome'un terminal handoff replay'i HTTP yapmaz.
+Opaque mock proof ve finality beyanları gerçek proof/chain kabulü değildir.
+
+Kaynakta 18 yeni test vardır; final yerel sonuç ve yeni yayın head'inin CI/merge
+kaydı ayrı kanıtlanır. [HTTP fixture sınırları](CANDIDATE_FIXTURE_HTTP.md) ve
+[kanıt paketi](audits/2026-10-12-candidate-fixture-http/README.md).
+Final yerel gateway **697 PASS / 0 FAIL / 23 intentional IGNORE** (18 yeni HTTP
+testi dahil), Python builder/preflight **25 PASS**, workspace format/Clippy PASS.
+373 covered source aynı final hash'le test öncesi/sonrası eşleşti; 21/9/AUX2
+pinler ve root Cargo manifestleri byte-exact. Bu yerel sonuç yeni yayın head'inin
+CI'ı yerine geçmez; kaynak/komut/çıktı ve başarısız-önce/geçti-sonra kayıtları
+ayrı kanıt paketindedir.
+Mevcut gerçek servisler legacy/DPCLK2 kalır; production service preflight'ında
+DPCLK3 uyumluluğu REFUSED'dur. Gerçek candidate backend, sealed/authenticated
+witness transport, onaylı target/policy/servis config ve gerçek proof/receipt
+kabulü hâlâ açık. Live feed discovery ertelenmiş; production HOLD sürer.
 
 #54 readonly target observer, `39d8def8355e3cb945ebc52b7922d2d4d8060b7a`
 head'inde 17/17 esas SUCCESS (+ Preview) sonrası normal merge edildi:

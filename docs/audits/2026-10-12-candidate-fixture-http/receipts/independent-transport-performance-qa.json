@@ -1,0 +1,274 @@
+{
+  "barrier_acceptance": {
+    "defined_tests": 18,
+    "gating": "All semantic matrices invoke process-local OnceLock::get_or_init before their faults; initialization returns only after both positive native/HTTP flows complete.",
+    "guide_matches": true,
+    "panic_scope": "get_or_init cannot return success from a panicking initializer; test run must pass, and any subsequent initializer attempt still must complete both positives.",
+    "positive_flow_indices": [
+      0,
+      1
+    ],
+    "retained": "All fresh fault setup, durable stage and remote operation/effect assertions byte-identical to repair1 once import and baseline function changes are reversed.",
+    "shared": "Only positive baseline completion is reused; no positive fixture, listener, remote state, source/lane directory or plan is shared with fault cases."
+  },
+  "current_source_hashes": {
+    "crates/gateway/src/candidate_fixture_transport.rs": "898386c6fb1dad49690a8a6c53befe7ca8fc4e594534b19dbf9c767483d87c80",
+    "crates/gateway/src/candidate_fixture_transport_tests.rs": "f66392610522d98174a99c6fea3b641b6d9bdd27db53872f324bac8551c20d99",
+    "docs/CANDIDATE_FIXTURE_HTTP.md": "d10beaa169f1a081502e114e26bbf3813a511b355628a9d9e49cd1db665425fc"
+  },
+  "exact_inverse_source_checks": {
+    "assertions_or_fault_fixture_code_removed": false,
+    "core_reverting_only_range_contains_predicate_equals_original_owner_core": "c1797bb29038841c4eb39bd54478b988d0bb213110f0ff3b4fdbe59e337cdb16",
+    "tests_reverting_only_OnceLock_import_and_baselines_function_equals_completed_repair1_source": "abb74639279b1cedcb65e9a4fe58cc460e7110694219d8c787350ed9faaf319c"
+  },
+  "execution_evidence": [
+    {
+      "command": [
+        "/Users/huseyinarslan/.cargo/bin/cargo",
+        "+1.99.0",
+        "test",
+        "--locked",
+        "-p",
+        "gateway",
+        "--bin",
+        "gateway",
+        "candidate_fixture_transport_tests",
+        "--",
+        "--nocapture"
+      ],
+      "core_sha256": "c1797bb29038841c4eb39bd54478b988d0bb213110f0ff3b4fdbe59e337cdb16",
+      "elapsed_seconds": 7.4549005419248715,
+      "exit_code": 101,
+      "path": "target/candidate-transport-validation-20261012/checks/fixture-first.json",
+      "raw_test_summaries": [],
+      "sha256": "ad339ba29e382f5e53d15438c8ec97417bc0e31be49666ae4285ef294e7e3da7",
+      "source_files": 373,
+      "source_inventory_unchanged": true,
+      "source_map_sha256": "15f426641b6cd32472fa3bfaf750e8f699f3124a94bd99a73cef1f31d998053c",
+      "stderr": {
+        "bytes": 1139,
+        "path": "target/candidate-transport-validation-20261012/checks/fixture-first.stderr.log",
+        "sha256": "5cecaed74235dcbdd9d2469b282d2a82afd5da20b1edfc54cf35c3e8e460848e"
+      },
+      "stdout": {
+        "bytes": 0,
+        "path": "target/candidate-transport-validation-20261012/checks/fixture-first.stdout.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "tests_sha256": "86106496e135e952a2cd3aa3f6ad95479eb555f5472954618d63f7c6f64106e4"
+    },
+    {
+      "command": [
+        "/Users/huseyinarslan/.cargo/bin/cargo",
+        "+1.99.0",
+        "test",
+        "--locked",
+        "-p",
+        "gateway",
+        "--bin",
+        "gateway",
+        "candidate_fixture_transport_tests",
+        "--",
+        "--nocapture"
+      ],
+      "core_sha256": "c1797bb29038841c4eb39bd54478b988d0bb213110f0ff3b4fdbe59e337cdb16",
+      "elapsed_seconds": 438.630898665986,
+      "exit_code": 0,
+      "path": "target/candidate-transport-validation-20261012/checks/fixture-repair1.json",
+      "raw_test_summaries": [
+        "test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 702 filtered out; finished in 425.37s"
+      ],
+      "sha256": "403286eb3a1046b0f5648b00aa4b19ab59c5c3066ccc002e1ed30f4b54d4246e",
+      "source_files": 373,
+      "source_inventory_unchanged": true,
+      "source_map_sha256": "38c5eef36a5f7b2e23b4ce2e571423d925b959b56e4ca60bdd5434b66739aaa6",
+      "stderr": {
+        "bytes": 268,
+        "path": "target/candidate-transport-validation-20261012/checks/fixture-repair1.stderr.log",
+        "sha256": "5e8dd996a74b0664163db81f10f369871dafee0439b544213914937c0ec28457"
+      },
+      "stdout": {
+        "bytes": 2957,
+        "path": "target/candidate-transport-validation-20261012/checks/fixture-repair1.stdout.log",
+        "sha256": "424edb1608ae391627ab9f0647251ddb1cda4cffecfa513fb45c0ea27d4dedf5"
+      },
+      "tests_sha256": "abb74639279b1cedcb65e9a4fe58cc460e7110694219d8c787350ed9faaf319c"
+    },
+    {
+      "command": [
+        "/Users/huseyinarslan/.cargo/bin/cargo",
+        "+1.99.0",
+        "test",
+        "--locked",
+        "-p",
+        "gateway",
+        "--bin",
+        "gateway",
+        "candidate_fixture_transport_tests",
+        "--",
+        "--nocapture"
+      ],
+      "core_sha256": "c1797bb29038841c4eb39bd54478b988d0bb213110f0ff3b4fdbe59e337cdb16",
+      "elapsed_seconds": 64.46367462491617,
+      "exit_code": 0,
+      "path": "target/candidate-transport-validation-20261012/checks/fixture-final.json",
+      "raw_test_summaries": [
+        "test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 702 filtered out; finished in 57.04s"
+      ],
+      "sha256": "be432466afbbc6b8c3181585791f83a74eab23099535c5b9ddfe11cc18423374",
+      "source_files": 373,
+      "source_inventory_unchanged": true,
+      "source_map_sha256": "f2ee6c843cee6f6b8de7667a83893632b623163fac82b176f43a35f8c6ed198a",
+      "stderr": {
+        "bytes": 267,
+        "path": "target/candidate-transport-validation-20261012/checks/fixture-final.stderr.log",
+        "sha256": "7a5117feafc6f27d1102af47d81fe17b33a0a43404739670d945cb5462784a90"
+      },
+      "stdout": {
+        "bytes": 2354,
+        "path": "target/candidate-transport-validation-20261012/checks/fixture-final.stdout.log",
+        "sha256": "8f414281a0152b279ee3367870b23cd7e71d9a0a97bc8665647d4a28aa2cb39c"
+      },
+      "tests_sha256": "f66392610522d98174a99c6fea3b641b6d9bdd27db53872f324bac8551c20d99"
+    },
+    {
+      "command": [
+        "/Users/huseyinarslan/.cargo/bin/cargo",
+        "+1.99.0",
+        "clippy",
+        "--workspace",
+        "--all-targets",
+        "--locked",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "core_sha256": "c1797bb29038841c4eb39bd54478b988d0bb213110f0ff3b4fdbe59e337cdb16",
+      "elapsed_seconds": 7.11258383304812,
+      "exit_code": 101,
+      "path": "target/candidate-transport-validation-20261012/checks/workspace-clippy.json",
+      "raw_test_summaries": [],
+      "sha256": "fbbc3aa118b022ec5647e8f5f2344dd4954fae13d799b7c7e313be2ba4757ba6",
+      "source_files": 373,
+      "source_inventory_unchanged": true,
+      "source_map_sha256": "f2ee6c843cee6f6b8de7667a83893632b623163fac82b176f43a35f8c6ed198a",
+      "stderr": {
+        "bytes": 829,
+        "path": "target/candidate-transport-validation-20261012/checks/workspace-clippy.stderr.log",
+        "sha256": "70e9858e6ce1b1310a0a305b3218a56a949b9d56d096753a04d3a1251c5cb279"
+      },
+      "stdout": {
+        "bytes": 0,
+        "path": "target/candidate-transport-validation-20261012/checks/workspace-clippy.stdout.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "tests_sha256": "f66392610522d98174a99c6fea3b641b6d9bdd27db53872f324bac8551c20d99"
+    },
+    {
+      "command": [
+        "/Users/huseyinarslan/.cargo/bin/cargo",
+        "+1.99.0",
+        "clippy",
+        "--workspace",
+        "--all-targets",
+        "--locked",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "core_sha256": "898386c6fb1dad49690a8a6c53befe7ca8fc4e594534b19dbf9c767483d87c80",
+      "elapsed_seconds": 6.734789332957007,
+      "exit_code": 0,
+      "path": "target/candidate-transport-validation-20261012/checks/workspace-clippy-final.json",
+      "raw_test_summaries": [],
+      "sha256": "5afc19020b7979971c3c3e9ebf08f717cf9f40b5a5d85d785f7bf84bcaef0cce",
+      "source_files": 373,
+      "source_inventory_unchanged": true,
+      "source_map_sha256": "69e339182071f166942be65ced7857f27f401093315ba48b0bea73f5551661e1",
+      "stderr": {
+        "bytes": 186,
+        "path": "target/candidate-transport-validation-20261012/checks/workspace-clippy-final.stderr.log",
+        "sha256": "db70abf87960de94a58cfd8b53613091b3a0b4a6dc452445df257e04353c65dc"
+      },
+      "stdout": {
+        "bytes": 0,
+        "path": "target/candidate-transport-validation-20261012/checks/workspace-clippy-final.stdout.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "tests_sha256": "f66392610522d98174a99c6fea3b641b6d9bdd27db53872f324bac8551c20d99"
+    },
+    {
+      "command": [
+        "/Users/huseyinarslan/.cargo/bin/cargo",
+        "+1.99.0",
+        "fmt",
+        "--all",
+        "--check"
+      ],
+      "core_sha256": "898386c6fb1dad49690a8a6c53befe7ca8fc4e594534b19dbf9c767483d87c80",
+      "elapsed_seconds": 0.5787313330220059,
+      "exit_code": 0,
+      "path": "target/candidate-transport-validation-20261012/checks/workspace-format.json",
+      "raw_test_summaries": [],
+      "sha256": "2007ab8e04dacefa933002367a3c2c555d4b1cf6e8ab48ed97fe44312257a62d",
+      "source_files": 373,
+      "source_inventory_unchanged": true,
+      "source_map_sha256": "69e339182071f166942be65ced7857f27f401093315ba48b0bea73f5551661e1",
+      "stderr": {
+        "bytes": 0,
+        "path": "target/candidate-transport-validation-20261012/checks/workspace-format.stderr.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stdout": {
+        "bytes": 0,
+        "path": "target/candidate-transport-validation-20261012/checks/workspace-format.stdout.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "tests_sha256": "f66392610522d98174a99c6fea3b641b6d9bdd27db53872f324bac8551c20d99"
+    },
+    {
+      "command": [
+        "/opt/homebrew/bin/python3.12",
+        "-c",
+        "import sys,unittest; suite=unittest.TestSuite(); loader=unittest.TestLoader(); suite.addTests(loader.discover('scripts/local-verification',pattern='test_service_build_identity.py')); suite.addTests(loader.discover('scripts/local-verification',pattern='test_service_identity_preflight.py')); r=unittest.TextTestRunner(verbosity=2).run(suite); sys.exit(not r.wasSuccessful())"
+      ],
+      "core_sha256": "898386c6fb1dad49690a8a6c53befe7ca8fc4e594534b19dbf9c767483d87c80",
+      "elapsed_seconds": 0.3713285831036046,
+      "exit_code": 0,
+      "path": "target/candidate-transport-validation-20261012/checks/new-python-published.json",
+      "raw_test_summaries": [],
+      "sha256": "87c91f00179c5c73d5f0859914b3004639f5e7265f6a25cf745edb6db8e52edd",
+      "source_files": 373,
+      "source_inventory_unchanged": true,
+      "source_map_sha256": "69e339182071f166942be65ced7857f27f401093315ba48b0bea73f5551661e1",
+      "stderr": {
+        "bytes": 4346,
+        "path": "target/candidate-transport-validation-20261012/checks/new-python-published.stderr.log",
+        "sha256": "7d4b7c56584dd0fe3f906a3af26c10a935bf273478afe51c7fe2e0356658f070"
+      },
+      "stdout": {
+        "bytes": 0,
+        "path": "target/candidate-transport-validation-20261012/checks/new-python-published.stdout.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "tests_sha256": "f66392610522d98174a99c6fea3b641b6d9bdd27db53872f324bac8551c20d99"
+    }
+  ],
+  "findings": [],
+  "observed_utc": "2026-10-12T11:48:37.348731+00:00",
+  "original_qa_preserved": {
+    "path": "target/candidate-transport-validation-20261012/independent-transport-qa.json",
+    "sha256": "6249bb87fccdbc3d7805d5ae465db637ea47f74241f396c99063b769c6a51b8a"
+  },
+  "release_gate": "PRODUCTION HOLD; fixture-only HTTP/native evidence is no real proof/DON/peer authentication/chain acceptance.",
+  "reviewed_head": "a716f0c0fe6305749844d4f16cabbff19541b2d2",
+  "schema": "arcora-candidate-transport-independent-performance-qa-v1",
+  "scope": "Read-only source, documentation and root-executed raw-log verification; no Cargo, test, network or tracked edits by reviewer.",
+  "source_bound_result_scope": {
+    "current_source69e": "Clippy, format and Python25 executed successfully against current source69e. Full gateway final still pending at this review; no pre-lint test PASS promoted to current source.",
+    "historical_repeated_baseline": "repair1 source38c: 18/0/0; 425.37s test execution, 438.6309s command wall.",
+    "optimized_pre_lint": "fixture-final sourcef2ee: 18/0/0; 57.04s test execution, 64.4637s command wall.",
+    "performance_limit": "Observed same local invocation timing, not a controlled benchmark or proving/runtime SLA."
+  },
+  "status": "SCOPED_SOURCE_AND_RECORDED_EVIDENCE_PASS"
+}

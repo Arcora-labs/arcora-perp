@@ -1,0 +1,201 @@
+{
+  "schema": "arcora-candidate-transport-audit-design/v1",
+  "generated_at": "2026-10-12T11:16:36.668332+00:00",
+  "checked_head": "29be35c7a66c20563fb83812039eaaf1aa05d80a",
+  "review_kind": "read-only design; no build, proof, backend startup, discovery or external network",
+  "source_sha256": {
+    "crates/gateway/src/candidate_protocol.rs": "f77c040320f7d1d5c75c42222250e5eebc64ea9f953fa50f0f82f4e2da7045ca",
+    "crates/gateway/src/candidate_registration.rs": "86ffc1032f31952fad4e0c815a9564397c2d86cff5c62e23a664538209ba4c37",
+    "crates/gateway/src/report_archive_binding.rs": "1204db404b472c8c77a56e23fe2e59d4577d5d2bb334c8f0f4880449352812a9",
+    "crates/gateway/src/candidate_recovery.rs": "41ec00cfab8f95c22a10832f3b8223808755bf3cdb2dc74293627b22e4531499",
+    "crates/gateway/src/candidate_preparation.rs": "f2af88321bc7386bc681d975709db1c1e427d22d8c3eca6da12ec97385e14de1",
+    "crates/gateway/src/candidate_handoff.rs": "065db35e88cceeaaa3a65ec035fe549aaa9803c19800c23c1c1f229fc8ef2964",
+    "crates/gateway/src/candidate_broadcast.rs": "82335c73299f05e892db2d68c8ed4057a549ac418f1c4282abe7d2cebb6bbaeb",
+    "crates/gateway/src/candidate_handoff_tests.rs": "6044b31a8dfe269d9b6900076329dfa6e2cbc5f7702c65980873a266259860d6",
+    "crates/gateway/src/prover_client.rs": "daacb0e32df1d2b551e677c1b39312839e5a9dcf9f38e7e5e38a7fe878a487c9",
+    "crates/prover-service/src/main.rs": "398fcf15e447aecc0c1864a54acf4583a4614097ef816af726a91e16ad05c548",
+    "crates/prover-service/src/sp1_prover.rs": "d03638a78c7c0c2991425ad4115382dac3df40d69fbb0fb4f244f6a21d6de9d2",
+    "crates/prover-service/src/identity.rs": "f683bdead32fc3a016179967f50f5abab01661640bfdde9629021aea414e40fa",
+    "crates/chainlink-oracle/src/binding.rs": "8c66dba2a1d49825c1c13b89aa1a55d47fcab42abe481a0fce308128215cc877",
+    "docs/ACTIVE_WORK.md": "9f2faf1769ac345f8af8fe493b9c63566c5f2b0621bafbd4444cb119ed9845b8",
+    "docs/PUBLIC_SERVICE_IDENTITY.md": "61f964e64cb2990ffe320d22ba328f4727cf8bf60632622fe8172c38ae6a2b17"
+  },
+  "selected_packet": {
+    "name": "cfg(test)-only owned loopback candidate fixture HTTP transport",
+    "owner_selection": "Parent selected this bounded packet after boundary review",
+    "production_routes_changed": false,
+    "legacy_prover_client_implemented": false,
+    "live_candidate_submission_enabled": false,
+    "release_gate": "HOLD",
+    "purpose": "Exercise exact HTTP exchange bytes plus existing durable registration/preparation/handoff behavior over fixed synthetic corpus, including accepted request with lost acknowledgement."
+  },
+  "verified_boundaries": [
+    {
+      "file": "crates/gateway/src/main.rs",
+      "lines": "48-86",
+      "finding": "Candidate protocol, preparation, recovery, broadcast and handoff modules are all cfg(test). Do not promote them or the new adapter to runtime routes."
+    },
+    {
+      "file": "crates/prover-service/src/identity.rs",
+      "lines": "12-19",
+      "finding": "Current backend describes only legacy and DPCLK2. DPCLK3 remains separate; candidate guest uses clock proofVersion 2, so domain must not be inferred from clock version."
+    },
+    {
+      "file": "crates/gateway/src/candidate_protocol.rs",
+      "lines": "9-109,192-319,344-366",
+      "finding": "Pinned candidate program and independently trusted request must match before callback; native output plus full-container registration input hash and ordered body evidence are independently computed. The existing response validator checks program/public bytes/bounded nonempty opaque proof, not cryptographic proof authenticity."
+    },
+    {
+      "file": "crates/gateway/src/report_archive_binding.rs",
+      "lines": "26-81",
+      "finding": "Material hash binds exact ordered full containers/refs/evidence under policy. It does not authenticate DON signatures or prove original archive IDs after extraction."
+    },
+    {
+      "file": "crates/gateway/src/candidate_recovery.rs",
+      "lines": "93-115,341-352",
+      "finding": "PreparationTransport has no broadcast method; canonical stored-cut semantics checked independently. Pending stage is persisted before registration and Resume must not retransmit."
+    },
+    {
+      "file": "crates/gateway/src/candidate_handoff.rs",
+      "lines": "26-161",
+      "finding": "Fixed physical source lane plus source-first/B-second cooperative leases already spans callbacks and return; adapter must use this existing coordinator rather than create a second retry or durability mechanism."
+    }
+  ],
+  "wire_recommendation": {
+    "constructor": "FixtureTransport::new(endpoint:SocketAddr, request:&ProtocolRequest, trusted:&TrustedRequest, bridge:&BridgeTarget, sender:[u8;20], nonce:u64) pure validation, zero socket work",
+    "endpoint": "Literal IPv4 127.0.0.1 and nonzero caller-owned ephemeral port only; no URLs/DNS/proxy/curl/credentials/env reads/redirects",
+    "operations": [
+      "RegisterClock",
+      "LookupClock",
+      "RegisterReports",
+      "LookupReports",
+      "ProveFixture",
+      "Recheck",
+      "BroadcastFixture",
+      "LookupOutcome"
+    ],
+    "domain": "New explicit fixture-only wire magic/schema and operation routes, never /prove or the existing service identity schema",
+    "immutable_request_pins": [
+      "canonical ProtocolRequest SHA256",
+      "trusted witness SHA256",
+      "trusted material hash",
+      "pinned candidate ProgramIdentity",
+      "configured TargetIdentity and BridgeTarget",
+      "sender/nonce for broadcast plan",
+      "exact operation payload bytes/hash/length"
+    ],
+    "exchange_pins": [
+      "monotonically unique per-handle exchange id",
+      "operation tag",
+      "request SHA256",
+      "payload SHA256",
+      "payload byte length"
+    ],
+    "response_pins": [
+      "all request exchange pins echoed",
+      "explicit fixture_only=true",
+      "release_gate=HOLD",
+      "proof_authenticated=false",
+      "chain_observed=false",
+      "submission_enabled=false",
+      "response payload hash/length"
+    ],
+    "decode": "Bound HTTP headers/body first; fixed-width framing length before allocation; canonical postcard of bounded newly defined DTOs; reject trailing data and unknown variants. Existing non-Serde Lookup<T> maps via new wire DTOs without old source edits. Byte fields use bounded visitor before allocation, not only postdecode length checks.",
+    "bounds": {
+      "request": 25165824,
+      "witness": 16777216,
+      "reports": 128,
+      "full_report": 4096,
+      "observation": 65536,
+      "plan": 2097152,
+      "proof": 1048576,
+      "outcome": 65536
+    },
+    "retry_policy": "One connection/exchange per callback. Any socket/status/partial/truncated/deadline/echo error returns one callback error. No automatic retries for registration, proof or broadcast. Coordinator Resume performs only allowed lookup sequence."
+  },
+  "reusable_corpus": {
+    "helper": "candidate_handoff_tests::HandoffFixture::new(0/1), PrepFixture clock_read/report_read/response and success(plan)",
+    "inputs": "Frozen #50 derived normal-lifecycle and liquidation witness.bin, material.bin, native-public.bin, bridge.json full report containers and actual captured target context",
+    "synthetic_boundary": "New archive IDs in these fixtures are explicitly synthetic reconstruction; no old archive acceptance or live DON/signature claim. Reuse frozen opaque mock_proof bytes only with explicit fixture label; do not fabricate a new proof or claim SP1 verification.",
+    "expected": "Both phase0 flows retain seven native roots, count=9 and nonzero prefix tip; pinned public32 commitment remains unchanged."
+  },
+  "acceptance_matrix": [
+    {
+      "case": "normal and liquidation owned socket positive baseline",
+      "assertions": [
+        "actual HTTP requests in preparation eight-callback schedule then durable Prepared",
+        "existing handoff recheck/broadcast/lookup schedule and exact plan/call hash/root/count/effect",
+        "server sees pending cut before mutation",
+        "terminal Resume produces zero socket calls"
+      ]
+    },
+    {
+      "case": "clock registration accepted then ACK connection lost",
+      "assertions": [
+        "client errors once",
+        "ClockPending and immutable request preserved",
+        "server registration marker remains one",
+        "Resume performs lookup then remaining allowed stages, never RegisterClock again"
+      ]
+    },
+    {
+      "case": "report registration accepted then ACK lost",
+      "assertions": [
+        "ReportsPending exact old clock anchor preserved",
+        "no repeat RegisterReports on Resume",
+        "one report registration marker"
+      ]
+    },
+    {
+      "case": "broadcast accepted then ACK lost",
+      "assertions": [
+        "sidecar Pending exact plan preserved",
+        "one broadcast marker",
+        "Resume only LookupOutcome",
+        "final terminal Resume zero HTTP"
+      ]
+    },
+    {
+      "case": "negative request/response semantic bindings",
+      "assertions": [
+        "wrong magic/schema/op/exchange/request hash/program/target/policy/material/full-container input/evidence/native public32/proof bound rejected",
+        "wrong finality epoch/anchor/effect/root/count/tip rejected by existing coordinator validators",
+        "changed proof/nonce/request cannot choose a new physical lane"
+      ]
+    },
+    {
+      "case": "wire and HTTP refusal",
+      "assertions": [
+        "nonloopback/zero port pure refusal with zero connections",
+        "wrong route/method/status, redirect, duplicated/framing headers, chunked encoding, oversized body/length, truncated body, nested huge byte sequence prefix, noncanonical/trailing DTO refused",
+        "socket EOF/timeouts are callback failure and no retry",
+        "malformed response cannot advance durable stage"
+      ]
+    },
+    {
+      "case": "lease contention and local durability faults",
+      "assertions": [
+        "independent source/B lease contenders Busy before HTTP",
+        "source/binding/lock/sidecar tamper during response stops next callback",
+        "prewrite/rename/directory sync failure preserves old or visible ambiguous cut according to existing stores; explicit Resume only"
+      ]
+    }
+  ],
+  "stopping_criteria": [
+    "new focused socket/codec/lost-ACK tests pass with exact source hashes and failed-before/passed-after evidence if repaired",
+    "unchanged legacy recovery/handoff tests and full gateway pass separately",
+    "existing guard set and reviewed21/candidate9/AUX2 source pins byte-equal",
+    "root manifests/lock and old builders/corpus untouched; only parent-owned cfg(test) module declarations/CI tag/docs integration",
+    "publication CI captured at exact head independently from local tests"
+  ],
+  "deferred": [
+    "production candidate prover/server/backend setup",
+    "signed/encrypted live request transport or remote service identity authentication",
+    "SP1/Groth16 proof generation and cryptographic verification",
+    "real DON report authentication, RPC ancestry/consensus and uptime acceptance",
+    "real signed Ethereum tx and exactly-once chain delivery",
+    "public deployment, live credentials, custody/funds and approval",
+    "cross-machine/hostile-writer locking or durable server-side fixture state across independent server restart"
+  ],
+  "commands_run": "Read-only sed/rg/git rev-parse and SHA256 over current source; no tests/build/network invoked."
+}

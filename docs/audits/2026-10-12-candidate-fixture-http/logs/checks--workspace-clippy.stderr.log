@@ -1,0 +1,14 @@
+   Compiling gateway v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway)
+error: manual `!RangeInclusive::contains` implementation
+   --> crates/gateway/src/candidate_fixture_transport.rs:717:8
+    |
+717 |       if length < FRAME_HEADER_BYTES
+    |  ________^
+718 | |         || length > MAX_FRAME_BYTES
+    | |___________________________________^ help: use: `!(FRAME_HEADER_BYTES..=MAX_FRAME_BYTES).contains(&length)`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.95.0/index.html#manual_range_contains
+    = note: `-D clippy::manual-range-contains` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::manual_range_contains)]`
+
+error: could not compile `gateway` (bin "gateway" test) due to 1 previous error

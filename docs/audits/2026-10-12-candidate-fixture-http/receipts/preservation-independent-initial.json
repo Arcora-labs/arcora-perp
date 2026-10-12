@@ -1,0 +1,124 @@
+{
+  "schema": "arcora-candidate-transport-independent-preservation-v1",
+  "observed_utc": "2026-10-12T11:39:53.977395+00:00",
+  "stage": "initial frozen core plus root one-borrow test-only compile repair; metadata not final yet",
+  "base_main": "29be35c7a66c20563fb83812039eaaf1aa05d80a",
+  "baseline_sha256": "53dbb076fbcf5aa5c251659c9947c6cd76755bf4f7824f084191ba5680abab1f",
+  "tracked_baseline_files": 2920,
+  "tracked_unchanged": 2918,
+  "allowed_existing_paths": [
+    ".gitattributes",
+    ".github/workflows/a11-release-evidence.yml",
+    "crates/gateway/src/main.rs",
+    "docs/ACTIVE_WORK.md"
+  ],
+  "changed_existing_paths": [
+    ".github/workflows/a11-release-evidence.yml",
+    "crates/gateway/src/main.rs"
+  ],
+  "unexpected_existing_changes": [],
+  "missing_existing_files": [],
+  "external": [
+    {
+      "name": "primary",
+      "path": "/Users/huseyinarslan/Desktop/arcora-perp/repo",
+      "head": "2a03bb03a7db9736e72573fa22d8fe8f4fe37f94",
+      "dirty_file_count": 13,
+      "dirty_files_hashed": 13,
+      "checks": {
+        "head": true,
+        "status": true,
+        "staged_binary_diff": true,
+        "dirty_file_hashes": true
+      },
+      "mismatches": [],
+      "passed": true
+    },
+    {
+      "name": "kimi",
+      "path": "/Users/huseyinarslan/kimi-bridge/worktrees/Arcora-labs__arcora-perp/job--17",
+      "head": "e283958109fc6b434b7049d523bbd3378e2e6c27",
+      "dirty_file_count": 7,
+      "dirty_files_hashed": 7,
+      "checks": {
+        "head": true,
+        "status": true,
+        "staged_binary_diff": true,
+        "dirty_file_hashes": true
+      },
+      "mismatches": [],
+      "passed": true
+    },
+    {
+      "name": "dark",
+      "path": "/Users/huseyinarslan/Desktop/Projeler/Dark Perp/dark-perp",
+      "head": "f997f8b96279bd06ec1808f6b9cb2a6aeb25cc5e",
+      "dirty_file_count": 62,
+      "dirty_files_hashed": 62,
+      "checks": {
+        "head": true,
+        "status": true,
+        "staged_binary_diff": true,
+        "dirty_file_hashes": true
+      },
+      "mismatches": [],
+      "passed": true
+    }
+  ],
+  "external_total_dirty_files_hashed": 82,
+  "root_manifests": {
+    "Cargo.toml": {
+      "actual_sha256": "e3144a0ae3447244776e65b04cfff39267c238e410c2d9abf20b53e6b837bbfa",
+      "baseline_sha256": "e3144a0ae3447244776e65b04cfff39267c238e410c2d9abf20b53e6b837bbfa",
+      "byte_unchanged": true
+    },
+    "Cargo.lock": {
+      "actual_sha256": "5d1dd2b25eb73a7136fde2ac59b112e2135de59e7d4a704931cba4bb630a3cc5",
+      "baseline_sha256": "5d1dd2b25eb73a7136fde2ac59b112e2135de59e7d4a704931cba4bb630a3cc5",
+      "byte_unchanged": true
+    }
+  },
+  "pins": {
+    "reviewed21": {
+      "count": 21,
+      "mismatches": [],
+      "passed": true
+    },
+    "candidate9": {
+      "count": 9,
+      "mismatches": [],
+      "passed": true
+    },
+    "auxiliary2": {
+      "count": 2,
+      "mismatches": [],
+      "passed": true
+    }
+  },
+  "covered_source_inventory": {
+    "source_files": 373,
+    "source_sha256": "38c5eef36a5f7b2e23b4ce2e571423d925b959b56e4ca60bdd5434b66739aaa6",
+    "added_source_paths": [
+      "crates/gateway/src/candidate_fixture_transport.rs",
+      "crates/gateway/src/candidate_fixture_transport_tests.rs"
+    ],
+    "modified_prior_covered_source_paths": [
+      "crates/gateway/src/main.rs"
+    ]
+  },
+  "new_sources_sha256": {
+    "crates/gateway/src/candidate_fixture_transport.rs": "c1797bb29038841c4eb39bd54478b988d0bb213110f0ff3b4fdbe59e337cdb16",
+    "crates/gateway/src/candidate_fixture_transport_tests.rs": "abb74639279b1cedcb65e9a4fe58cc460e7110694219d8c787350ed9faaf319c"
+  },
+  "old_main_byte_exact_after_cfgtest_hooks_removed": true,
+  "old_runtime_financial_service_guard_workflows_preserved": true,
+  "method": {
+    "public_baseline_hashes_only": true,
+    "known_published_AK_public_fixture_hash_only": true,
+    "private_credentials_or_environment_files_read": false,
+    "new_tests_builds_network_source_or_git_mutations": false
+  },
+  "scope": "Current static software/mock-source preservation only. Root execution checks/CI and final metadata preservation are separate.",
+  "release_gate": "HOLD",
+  "passed": true
+}
