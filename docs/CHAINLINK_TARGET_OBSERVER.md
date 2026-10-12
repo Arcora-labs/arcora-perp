@@ -87,6 +87,15 @@ uptime-health result is treated as production route authorization.
 
 ## RPC and consistency boundary
 
+The CLI validates every supplied public JSON path before reading inputs or
+constructing the RPC transport. Dotenv, credential, secret and private-key named
+components, symlink files and symlink ancestor directories are refused for both
+inputs and output. Relative paths are checked against the physical current
+directory; use the physical path instead of a symlink alias. An existing output
+is refused before input reads. Exclusive output creation preserves prior files.
+These cooperative checks do not make path validation and opening atomic against
+a hostile filesystem. Identity schemas, RPC methods and HOLD flags are unchanged.
+
 The CLI accepts one explicitly supplied anonymous HTTP(S) endpoint with a root
 path only. Userinfo, authentication, query strings, fragments and non-root paths
 are rejected. Redirects are rejected. It reads no process configuration or
@@ -146,7 +155,8 @@ The earlier 353-source CLI demonstration remains preserved historical evidence
 and becomes stale against the new inventory. Create a new manifest at a new
 pathname; do not overwrite or reinterpret that older demo as current validation.
 
-Self-contained unit tests use injected RPC responses and explicitly synthetic
+The 31 self-contained unit tests retain the original 28 cases and add three
+public-path CLI regressions. They use injected RPC responses and explicitly synthetic
 compiler/runtime fixtures; they do not contact a target:
 
 ```sh

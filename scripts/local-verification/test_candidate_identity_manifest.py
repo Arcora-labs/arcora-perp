@@ -4,8 +4,10 @@ Committed ELF/metadata and 21/9 source pins are copied unchanged. Compiler
 templates, Keccak interface and release/ancestry responses are explicitly mocked
 for CI portability; these tests are not compiled-runtime/provenance acceptance.
 """
+import contextlib
 import copy
 import hashlib
+import io
 import json
 from pathlib import Path
 import shutil
@@ -32,7 +34,7 @@ class ManifestTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="arcora-candidate-identity-")
         self.addCleanup(self.temp.cleanup)
-        self.root = Path(self.temp.name)
+        self.root = Path(self.temp.name).resolve()
         names = (set(identity.candidate.CANDIDATE_SOURCES)
                  | set(identity.legacy.clock.EXPECTED_GUEST_SOURCES)
                  | set(identity.AUXILIARY_TEST_SOURCES))
@@ -291,6 +293,178 @@ class ManifestTests(unittest.TestCase):
             return values
         with patch.object(identity, "source_inventory", side_effect=moving):
             with self.assertRaises(ValueError): self.manifest()
+
+    def public_input_samples(self, label, value):
+        """Owned public JSON only, even below synthetic prohibited names."""
+        public = self.root / "path-samples"
+        public.mkdir(exist_ok=True)
+        hidden = self.root / ".env-fixture" / label
+        private = self.root / "private-keys" / label
+        named = public / ("credentials-" + label)
+        for path in (hidden, private, named):
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(value))
+        leaf = public / ("leaf-" + label)
+        leaf.symlink_to(hidden)
+        ancestor = public / ("ancestor-" + label)
+        ancestor.symlink_to(hidden.parent, target_is_directory=True)
+        return [("prohibited-parent", hidden), ("private-key-parent", private),
+                ("prohibited-leaf", named), ("leaf-symlink", leaf),
+                ("ancestor-symlink", ancestor / label)], {
+                    path: path.read_bytes() for path in (hidden, private, named)}
+
+    def public_output_samples(self, label):
+        public = self.root / "output-samples"
+        public.mkdir(exist_ok=True)
+        hidden = self.root / ".env-output-fixture"
+        private = self.root / "private-keys-output-fixture"
+        hidden.mkdir(exist_ok=True)
+        private.mkdir(exist_ok=True)
+        target = hidden / ("existing-" + label)
+        target.write_bytes(b"owned synthetic prior public JSON bytes\n")
+        leaf = public / ("leaf-" + label)
+        leaf.symlink_to(target)
+        ancestor = public / ("ancestor-" + label)
+        ancestor.symlink_to(hidden, target_is_directory=True)
+        paths = [("prohibited-parent", hidden / label),
+                 ("private-key-parent", private / label),
+                 ("prohibited-leaf", public / ("credentials-" + label)),
+                 ("leaf-symlink", leaf), ("ancestor-symlink", ancestor / label)]
+        absent = [hidden / label, private / label, public / ("credentials-" + label)]
+        return paths, {target: target.read_bytes()}, absent
+
+    def identity_cli(self, args):
+        stdout, stderr = io.StringIO(), io.StringIO()
+        with patch.object(sys, "argv", [identity.BUILDER, *args]), \
+                patch.object(identity, "ROOT", self.root), \
+                contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+            code = identity.main()
+        return code, stdout.getvalue() + stderr.getvalue()
+
+    def test_public_regular_json_and_identity_cli_positive_preserve_hold(self):
+        # Exercise actual file I/O and both CLI branches using the existing
+        # synthetic compiler/ancestry interfaces, rather than a mocked builder.
+        path = self.root / "regular-public.json"
+        value = {"owned_public_fixture": True}
+        identity.create_output(path, value)
+        self.assertEqual(identity.read_json(path), value)
+        config_path = self.root / "regular-config.json"
+        config_path.write_text(json.dumps(config()))
+        output = self.root / "regular-manifest.json"
+        code, text = self.identity_cli(["create", "--config", str(config_path),
+                                        "--output", str(output)])
+        self.assertEqual(code, 0, text)
+        expected = self.manifest()
+        self.assertEqual(identity.read_json(output), expected)
+        self.assertEqual(expected["scope"], identity.SCOPE)
+        prior = output.read_bytes()
+        code, text = self.identity_cli(["validate", "--config", str(config_path),
+                                        "--manifest", str(output)])
+        self.assertEqual(code, 0, text)
+        self.assertEqual(output.read_bytes(), prior)
+
+    def test_public_json_forbidden_paths_refuse_before_any_open(self):
+        self.assertEqual(identity.validate_manifest(self.root, self.manifest(), config())["scope"],
+                         identity.SCOPE)
+        samples, preserved = self.public_input_samples("input.json", config())
+        for label, path in samples:
+            with self.subTest(path_kind=label), \
+                    patch.object(Path, "open", side_effect=AssertionError("forbidden input opened")) as opened:
+                with self.assertRaises(ValueError):
+                    identity.read_json(path)
+                opened.assert_not_called()
+        for path, before in preserved.items():
+            self.assertEqual(path.read_bytes(), before)
+
+    def test_public_output_forbidden_paths_refuse_before_open_and_preserve_bytes(self):
+        samples, preserved, absent = self.public_output_samples("output.json")
+        for label, path in samples:
+            with self.subTest(path_kind=label), \
+                    patch.object(Path, "open", side_effect=AssertionError("forbidden output opened")) as opened:
+                with self.assertRaises(ValueError):
+                    identity.create_output(path, {"owned_public_fixture": True})
+                opened.assert_not_called()
+        for path, before in preserved.items():
+            self.assertEqual(path.read_bytes(), before)
+        self.assertTrue(all(not path.exists() for path in absent))
+
+    def test_identity_cli_forbidden_input_paths_do_not_read_or_build(self):
+        manifest = self.manifest()
+        regular_config = self.root / "cli-public-config.json"
+        regular_config.write_text(json.dumps(config()))
+        for role, value in (("config", config()), ("manifest", manifest)):
+            samples, preserved = self.public_input_samples("cli-" + role + ".json", value)
+            for label, bad in samples:
+                output = self.root / ("unused-" + role + "-" + label + ".json")
+                args = (["create", "--config", str(bad), "--output", str(output)]
+                        if role == "config" else ["validate", "--config", str(regular_config),
+                                                  "--manifest", str(bad)])
+                opened = []
+                original = Path.open
+                def record_open(path, *args, **kwargs):
+                    if path == bad:
+                        opened.append(path)
+                    return original(path, *args, **kwargs)
+                with self.subTest(role=role, path_kind=label), \
+                        patch.object(Path, "open", record_open), \
+                        patch.object(identity, "build_manifest") as build, \
+                        patch.object(identity, "validate_manifest") as validate:
+                    code, text = self.identity_cli(args)
+                    self.assertEqual(code, 1, text)
+                    self.assertEqual(opened, [])
+                    build.assert_not_called()
+                    validate.assert_not_called()
+                    self.assertNotIn(str(bad), text)
+                    self.assertFalse(output.exists())
+            for path, before in preserved.items():
+                self.assertEqual(path.read_bytes(), before)
+
+    def test_identity_cli_forbidden_outputs_preflight_before_reads_or_build(self):
+        self.assertEqual(self.manifest()["scope"], identity.SCOPE)
+        regular_config = self.root / "early-public-config.json"
+        regular_config.write_text(json.dumps(config()))
+        samples, preserved, absent = self.public_output_samples("early.json")
+        existing = self.root / "existing-public-output.json"
+        existing.write_bytes(b"owned prior manifest bytes\n")
+        preserved[existing] = existing.read_bytes()
+        for label, output in [*samples, ("existing-regular", existing)]:
+            with self.subTest(path_kind=label), \
+                    patch.object(identity, "read_json", side_effect=AssertionError("late input read")) as read, \
+                    patch.object(identity, "build_manifest") as build, \
+                    patch.object(identity, "create_output") as create:
+                code, text = self.identity_cli(["create", "--config", str(regular_config),
+                                                "--output", str(output)])
+                self.assertEqual(code, 1, text)
+                read.assert_not_called()
+                build.assert_not_called()
+                create.assert_not_called()
+                self.assertNotIn(str(output), text)
+        for path, before in preserved.items():
+            self.assertEqual(path.read_bytes(), before)
+        self.assertTrue(all(not path.exists() for path in absent))
+
+    def test_relative_public_paths_bind_current_directory_before_private_name_checks(self):
+        public = self.root / "ordinary-relative-public"
+        public.mkdir()
+        value = {"owned_public_fixture": True}
+        with contextlib.chdir(public):
+            identity.create_output("regular.json", value)
+            self.assertEqual(identity.read_json("regular.json"), value)
+        private = self.root / ".env-relative-fixture"
+        private.mkdir()
+        input_path = private / "input.json"
+        input_path.write_text(json.dumps(value))
+        before = input_path.read_bytes()
+        with contextlib.chdir(private):
+            for name, action in (("read", lambda: identity.read_json("input.json")),
+                                 ("write", lambda: identity.create_output("output.json", value))):
+                with self.subTest(operation=name), \
+                        patch.object(Path, "open", side_effect=AssertionError("forbidden relative path opened")) as opened:
+                    with self.assertRaises(ValueError):
+                        action()
+                    opened.assert_not_called()
+        self.assertEqual(input_path.read_bytes(), before)
+        self.assertFalse((private / "output.json").exists())
 
 
 class CommitAndInterfaceTests(unittest.TestCase):

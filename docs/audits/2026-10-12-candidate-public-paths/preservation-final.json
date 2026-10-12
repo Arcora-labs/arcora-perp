@@ -1,0 +1,182 @@
+{
+  "actual_head": "bcdb52d24ce4ba363d566a0f398f4bff84186d46",
+  "actual_tree": "ef7908ecdc0bf0dc744b3ecfd1fbd6f5a6b7eec7",
+  "allowed_existing_paths": [
+    ".gitattributes",
+    "docs/ACTIVE_WORK.md",
+    "docs/CHAINLINK_CANDIDATE_IDENTITY.md",
+    "docs/CHAINLINK_TARGET_OBSERVER.md",
+    "scripts/local-verification/candidate_identity_manifest.py",
+    "scripts/local-verification/candidate_target_observer.py",
+    "scripts/local-verification/test_candidate_identity_manifest.py",
+    "scripts/local-verification/test_candidate_target_observer.py"
+  ],
+  "base_main": "788d46fe793180b73aff2cb33eaf79c744b091ec",
+  "baseline_sha256": "360a0503c45f6314d48973caca14545300a140931d25028722090662d51c0f3e",
+  "changed_existing_paths": {
+    ".gitattributes": {
+      "after": "fd89aed21e57cded8cee993132e43f94fa5cd59cc6550cf74c5584649ec26c5b",
+      "before": "c93e1d9820e7d9864b3e6e1f860468760ff2a21d2799fd0ab72369e29df42a9e"
+    },
+    "docs/ACTIVE_WORK.md": {
+      "after": "46d26a81bdf0c2e06a96ecd78ca96c9f8e2cb6445327a0cb975bbb9581d861cc",
+      "before": "10b2c0113d34b4dc500a8187d9af4f15c9a65d33787359933694c76ca1b696ae"
+    },
+    "docs/CHAINLINK_CANDIDATE_IDENTITY.md": {
+      "after": "d86122ee61e0b92c37a5157adf7e9d1f605b20b4b802581769c0b6c5c9204c16",
+      "before": "0cc6680381be3377d16c48481dac6f56ec1d60969824707a3d1d48e595fa082b"
+    },
+    "docs/CHAINLINK_TARGET_OBSERVER.md": {
+      "after": "8d7bc4a634d1dafd998828d992aef29b06f7319ff391fb8fc7149a00ffcb6e3f",
+      "before": "14e9543dc2a9608991aa28a1c8319aca1c3bb6a1afb2c27bc96fbbd25d04ffb7"
+    },
+    "scripts/local-verification/candidate_identity_manifest.py": {
+      "after": "4ddaf565e756ba7846c5f3d51a40e4f4ea170511a83b8488e750cf097d5f99bf",
+      "before": "db95538c8c82ec9239051de2c3315f3a0a37e2ed5486a111c494cca04086a1b6"
+    },
+    "scripts/local-verification/candidate_target_observer.py": {
+      "after": "c356965265cb5c37bc160104aa0974a49038c2984480948b304d3409ff16607e",
+      "before": "5865f30de6d8a18412fab74dd76b997f08b37b48209712859fe7a61693717373"
+    },
+    "scripts/local-verification/test_candidate_identity_manifest.py": {
+      "after": "01f83c817b9d87a5a70948f23960f740e511cc9405e4f416a2ccdda16d39db3e",
+      "before": "5a59b482e978404a51c7266a52dd1e32b86f523e8eff5ef56f2dd482785b6398"
+    },
+    "scripts/local-verification/test_candidate_target_observer.py": {
+      "after": "6c791857b69cc916bf14edd7b3588c007bbd89d9fd35a974b5a8a921bafa35dd",
+      "before": "043d2174cdd6321f299e4023ca519c0126ced594568a57a33e344244a2bc1f83"
+    }
+  },
+  "checkout_status_filenames_only": " M .gitattributes\n M docs/ACTIVE_WORK.md\n",
+  "code_commit": "bcdb52d24ce4ba363d566a0f398f4bff84186d46",
+  "code_commit_files": {
+    "docs/CHAINLINK_CANDIDATE_IDENTITY.md": {
+      "actual_sha256": "d86122ee61e0b92c37a5157adf7e9d1f605b20b4b802581769c0b6c5c9204c16",
+      "byte_exact": true,
+      "code_commit_sha256": "d86122ee61e0b92c37a5157adf7e9d1f605b20b4b802581769c0b6c5c9204c16"
+    },
+    "docs/CHAINLINK_TARGET_OBSERVER.md": {
+      "actual_sha256": "8d7bc4a634d1dafd998828d992aef29b06f7319ff391fb8fc7149a00ffcb6e3f",
+      "byte_exact": true,
+      "code_commit_sha256": "8d7bc4a634d1dafd998828d992aef29b06f7319ff391fb8fc7149a00ffcb6e3f"
+    },
+    "scripts/local-verification/candidate_identity_manifest.py": {
+      "actual_sha256": "4ddaf565e756ba7846c5f3d51a40e4f4ea170511a83b8488e750cf097d5f99bf",
+      "byte_exact": true,
+      "code_commit_sha256": "4ddaf565e756ba7846c5f3d51a40e4f4ea170511a83b8488e750cf097d5f99bf"
+    },
+    "scripts/local-verification/candidate_target_observer.py": {
+      "actual_sha256": "c356965265cb5c37bc160104aa0974a49038c2984480948b304d3409ff16607e",
+      "byte_exact": true,
+      "code_commit_sha256": "c356965265cb5c37bc160104aa0974a49038c2984480948b304d3409ff16607e"
+    },
+    "scripts/local-verification/test_candidate_identity_manifest.py": {
+      "actual_sha256": "01f83c817b9d87a5a70948f23960f740e511cc9405e4f416a2ccdda16d39db3e",
+      "byte_exact": true,
+      "code_commit_sha256": "01f83c817b9d87a5a70948f23960f740e511cc9405e4f416a2ccdda16d39db3e"
+    },
+    "scripts/local-verification/test_candidate_target_observer.py": {
+      "actual_sha256": "6c791857b69cc916bf14edd7b3588c007bbd89d9fd35a974b5a8a921bafa35dd",
+      "byte_exact": true,
+      "code_commit_sha256": "6c791857b69cc916bf14edd7b3588c007bbd89d9fd35a974b5a8a921bafa35dd"
+    }
+  },
+  "covered_source_inventory": {
+    "matches_frozen": true,
+    "modified_source_paths": [
+      "scripts/local-verification/candidate_identity_manifest.py",
+      "scripts/local-verification/candidate_target_observer.py",
+      "scripts/local-verification/test_candidate_identity_manifest.py",
+      "scripts/local-verification/test_candidate_target_observer.py"
+    ],
+    "source_files": 375,
+    "source_sha256": "1e3c1af3f823ca0ed2d74b277b98f11c28140a94c776e2e7ee19bcdfc7715345"
+  },
+  "expectations_sha256": "530a8a7a5b50abc168093d6a9c6d65c3fe8021660cf5e439378729fbd5315818",
+  "external": [
+    {
+      "checks": {
+        "dirty_bytes": true,
+        "head": true,
+        "staged_diff": true,
+        "status": true
+      },
+      "dirty_count": 13,
+      "files_hashed": 13,
+      "head": "2a03bb03a7db9736e72573fa22d8fe8f4fe37f94",
+      "name": "primary",
+      "passed": true,
+      "path": "/Users/huseyinarslan/Desktop/arcora-perp/repo"
+    },
+    {
+      "checks": {
+        "dirty_bytes": true,
+        "head": true,
+        "staged_diff": true,
+        "status": true
+      },
+      "dirty_count": 7,
+      "files_hashed": 7,
+      "head": "e283958109fc6b434b7049d523bbd3378e2e6c27",
+      "name": "kimi",
+      "passed": true,
+      "path": "/Users/huseyinarslan/kimi-bridge/worktrees/Arcora-labs__arcora-perp/job--17"
+    },
+    {
+      "checks": {
+        "dirty_bytes": true,
+        "head": true,
+        "staged_diff": true,
+        "status": true
+      },
+      "dirty_count": 62,
+      "files_hashed": 62,
+      "head": "f997f8b96279bd06ec1808f6b9cb2a6aeb25cc5e",
+      "name": "dark",
+      "passed": true,
+      "path": "/Users/huseyinarslan/Desktop/Projeler/Dark Perp/dark-perp"
+    }
+  ],
+  "external_total_dirty_files_hashed": 82,
+  "helper_sha256": "b105c807d5cb48c0543ffaf4722ba8bbfcde59bea57fd49915bd89d9582bd296",
+  "missing_existing_files": [],
+  "observed_utc": "2026-10-12T15:56:21.016542+00:00",
+  "original_pr57_evidence_files": 247,
+  "original_pr57_evidence_preserved": true,
+  "original_public_reports_and_pointer_sha256": {
+    "Arcora_Devam_2026-10-11.md": "a40956d3cb05c2e948459649601c218581a9d7b176a0b9e15faa122a7e33b494",
+    "Arcora_Devam_2026-10-11_PR56_korunan.md": "4f6a3cbfab5fece354315259fdde4eae8f0a3230fc6bf6143d59c40aadf79a70",
+    "Arcora_Durum_Raporu_2026-10-12.md": "0399e54fd748e77fb8ac0dacccf7c39b0f439dfb5952040e386cbdea5145e273",
+    "Arcora_Durum_Raporu_2026-10-12_PR54.md": "6d468485871ab9389d26cc68fe5b99fe23350bc21f47bbecdae72b5a3e30e592",
+    "Arcora_Durum_Raporu_2026-10-12_PR55.md": "ab4071426376c1c86911c1a8e4c0e734e0e961cb74bffe65299f2f000326a105",
+    "Arcora_Durum_Raporu_2026-10-12_PR56.md": "c93f02614317dccf873e74e2b21f0e41ebd1e1f0abc914d35f40904ce686c2d7",
+    "Arcora_Durum_Raporu_2026-10-12_PR57.md": "d2616a60cf9445ec3859075a44593e1124f577fae9cffc1d0fc054ada942f8d5",
+    "Arcora_Merge_57_2026-10-12.json": "e977710d35137db80ac70b9ca516d38b7ccccad515bb104571c6864448a67d6e",
+    "Arcora_PR57_2026-10-12.json": "45911764e4b8ded0286c5cb467933484cb54b2820a50efdecc2170829d4f1e87"
+  },
+  "passed": true,
+  "pins": {
+    "auxiliary2": {
+      "count": 2,
+      "passed": true
+    },
+    "candidate9": {
+      "count": 9,
+      "passed": true
+    },
+    "reviewed21": {
+      "count": 21,
+      "passed": true
+    }
+  },
+  "release_gate": "HOLD",
+  "root_manifests_sha256": {
+    "Cargo.lock": "5d1dd2b25eb73a7136fde2ac59b112e2135de59e7d4a704931cba4bb630a3cc5",
+    "Cargo.toml": "e3144a0ae3447244776e65b04cfff39267c238e410c2d9abf20b53e6b837bbfa"
+  },
+  "schema": "arcora-candidate-public-path-independent-preservation/v1",
+  "scope": "Static public-path repair preservation only; no tests, RPC, builds, Git mutation, approval or release acceptance.",
+  "tracked_baseline_files": 3045,
+  "tracked_unchanged": 3037,
+  "unexpected_existing_changes": []
+}

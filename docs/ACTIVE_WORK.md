@@ -2,7 +2,41 @@
 
 Güncelleme: 12 Ekim 2026. **PRODUCTION RELEASE HOLD**.
 Bu belge güncel çalışma sırasıdır; tarihsel `NEXT_STEPS.md` yerine kullanın.
-Bu paketin başlangıç main'i: `60eceef733613fe6d491548d35eb4fdb7c0809bd` (#56).
+Bu paketin başlangıç main'i: `788d46fe793180b73aff2cb33eaf79c744b091ec` (#57).
+
+## Güncel GPU'suz düzeltme: public JSON dosya yolları
+
+#57 normal merge edilmiştir; üç ayrı main push koşusu (ci, A11 ve Chainlink
+candidate) SUCCESS. Önceki imzalı/şifreli fixture yazılım kapsamı korunur.
+
+Yeni kod `bcdb52d24ce4ba363d566a0f398f4bff84186d46`, candidate identity ve target
+observer araçlarında public görünen üst dizin symlink'inin yasak bir dizindeki
+JSON'a ulaşmasını engeller. Dotenv/credential/secret/private-key adları, dosya
+ve üst dizin symlink'leri giriş ve çıktıda açılmadan reddedilir. Göreli yollar
+fiziksel çalışma dizininde kontrol edilir. CLI bütün yolları ve mevcut çıktıyı
+input read, manifest build veya RPC transport oluşturma öncesinde denetler.
+Şemalar ve HOLD aynı kalır; kontroller hostile filesystem için atomik değildir.
+
+Yerel doğrulama: **56 PASS** (25 identity + 31 observer; 9 yeni regresyon,
+eski 47 test gövdesi aynı), komşu araçlarda **125 PASS / 1 optional legacy
+Anvil SKIP**, ayrıca sahipli candidate Anvil'de **1 PASS / 12 ret** ve gerçek
+gateway `cargo check --locked` PASS. Anvil yedi gerçek compiled rol ve üç
+mock kullanır; public target veya proof kabulü değildir. Dört Python kaynak
+değişti; 375-source haritası `1e3c1af3f823ca0ed2d74b277b98f11c28140a94c776e2e7ee19bcdfc7715345`.
+21 reviewed/9 candidate/AUX2, Rust/kontrat kaynakları ve root Cargo değişmedi.
+
+Geçerli hata-öncesi koşu 55 testte 30 negatif alt vaka, ek göreli yol koşusu
+1 testte 2 negatif alt vaka yakaladı. İlk taslak koşudaki yeni pozitif RPC test
+double hatası ayrı, geçersiz harness kaydı olarak korunur; geçerli kanıt sayılmaz.
+Yeni yayın head'inin CI/merge kaydı bu yerel sonuçlardan ayrıca doğrulanır.
+[Kanıt ve kapsam](audits/2026-10-12-candidate-public-paths/README.md).
+
+Bağımsız onaylı public target/policy/service/key girdileri hâlâ bulunmadı.
+DPCLK3 backend/servis kabulü, yeni gerçek proof, CC/key release, custody ve
+bağımsız production kararı açıktır. Canlı feed discovery ertelemesi sürer.
+
+## Tarihsel merge ve önceki yazılım kapsamı
+
 #44 ve #45, güncel yayın head'lerinde ayrı ayrı 19/19 başarılı kontrol sonrası
 normal merge edildi; repository korumaları değiştirilmedi. #44 merge kimliği
 `e697b2f19d74b1021ba3a32b64b4f15ceb159880`, #45 merge kimliği

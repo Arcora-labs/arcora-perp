@@ -1,0 +1,23 @@
+    Checking futures-util v0.3.32
+    Checking perp-core v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/perp-core)
+    Checking tokio v1.52.3
+    Checking sealed-box v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/sealed-box)
+   Compiling gateway v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/gateway)
+    Checking matcher v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/matcher)
+    Checking chainlink-oracle-host v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/chainlink-oracle-host)
+    Checking prover v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/prover)
+    Checking oracle-feed v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/oracle-feed)
+    Checking note-archive v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/note-archive)
+    Checking sequencer v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/sequencer)
+    Checking chainlink-streams-client-host v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/chainlink-streams-client-host)
+    Checking js-sys v0.3.103
+    Checking axum-core v0.4.5
+    Checking hyper v1.10.1
+    Checking tokio-tungstenite v0.24.0
+    Checking tower v0.5.3
+    Checking hyper-util v0.1.20
+    Checking axum v0.7.9
+    Checking wasm-bindgen-futures v0.4.76
+    Checking dcap-qvl v0.5.2
+    Checking dark-perp-attestation v0.0.1 (/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/crates/attestation)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1m 25s

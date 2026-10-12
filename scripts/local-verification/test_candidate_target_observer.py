@@ -1,16 +1,19 @@
 """Synthetic unit acceptance for the NEW read-only candidate target observer.
 
 Reuse the owned identity fixture by composition, without inheriting/rerunning
-its 19 tests. ELF and 21/9 runtime pins stay real and unchanged. Compiler
+its tests. ELF and 21/9 runtime pins stay real and unchanged. Compiler
 templates, selectors, runtime Keccak and ancestry/provider responses below are
 explicit mocks. Owned Anvil acceptance is a separate test module.
 """
+import contextlib
 import copy
 import hashlib
+import io
 import json
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import unittest
 from unittest.mock import patch
 
@@ -565,6 +568,101 @@ class ObserverTests(unittest.TestCase):
         self.rpc = FakeRPC(self)
         with patch.object(observer, "source_keccak", side_effect=ValueError(marker)):
             self.assertNotIn(marker, json.dumps(self.blocked()))
+
+    def cli_inputs(self):
+        paths = {}
+        for role, value in (("manifest", self.manifest), ("config", self.public), ("policy", self.policy)):
+            path = self.root / ("observer-public-" + role + ".json")
+            path.write_text(json.dumps(value))
+            paths[role] = path
+        return paths
+
+    def observer_cli(self, inputs, output):
+        args = [observer.BUILDER]
+        for role in ("manifest", "config", "policy"):
+            args += ["--" + role, str(inputs[role])]
+        args += ["--rpc", "http://127.0.0.1/", "--output", str(output)]
+        stdout, stderr = io.StringIO(), io.StringIO()
+        with patch.object(sys, "argv", args), patch.object(observer, "ROOT", self.root), \
+                contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+            code = observer.main()
+        return code, stdout.getvalue() + stderr.getvalue()
+
+    def test_observer_cli_public_regular_files_retain_actual_mock_rpc_positive(self):
+        inputs = self.cli_inputs()
+        prior = {path: path.read_bytes() for path in inputs.values()}
+        output = self.root / "regular-observation.json"
+        rpc = FakeRPC(self)
+        requested = []
+        class FixtureRPC:
+            def __new__(cls, url):
+                requested.append(url)
+                return rpc
+        # Keep CandidateRPC a class for the observer's isinstance check. The
+        # injected transport still performs only the existing synthetic reads.
+        with patch.object(observer, "CandidateRPC", FixtureRPC):
+            code, text = self.observer_cli(inputs, output)
+        self.assertEqual(code, 0, text)
+        self.assertEqual(requested, ["http://127.0.0.1/"])
+        self.assertGreater(len(rpc.calls), 0)
+        observed = identity.read_json(output)
+        self.assertEqual(observed["status"], "VERIFIED_AT_FINALIZED_BLOCK")
+        self.assertEqual(observed["scope"]["release_gate"], "HOLD")
+        self.assertFalse(observed["scope"]["candidate_submission_enabled"])
+        self.assertFalse(observed["scope"]["proof_generated"])
+        for path, before in prior.items():
+            self.assertEqual(path.read_bytes(), before)
+
+    def test_observer_cli_forbidden_inputs_refuse_before_target_open_or_rpc(self):
+        inputs = self.cli_inputs()
+        for role, value in (("manifest", self.manifest), ("config", self.public), ("policy", self.policy)):
+            samples, preserved = self.owned.public_input_samples("observer-" + role + ".json", value)
+            for label, bad in samples:
+                selected = {**inputs, role: bad}
+                output = self.root / ("never-" + role + "-" + label + ".json")
+                opened = []
+                original = Path.open
+                def record_open(path, *args, **kwargs):
+                    if path == bad:
+                        opened.append(path)
+                    return original(path, *args, **kwargs)
+                with self.subTest(role=role, path_kind=label), \
+                        patch.object(Path, "open", record_open), \
+                        patch.object(observer, "CandidateRPC") as transport, \
+                        patch.object(observer, "observe_target", return_value={
+                            "status": "BLOCKED", "scope": {"release_gate": "HOLD"}}) as observe:
+                    code, text = self.observer_cli(selected, output)
+                    self.assertEqual(code, 1, text)
+                    self.assertEqual(opened, [])
+                    transport.assert_not_called()
+                    observe.assert_not_called()
+                    self.assertFalse(output.exists())
+                    self.assertNotIn(str(bad), text)
+            for path, before in preserved.items():
+                self.assertEqual(path.read_bytes(), before)
+
+    def test_observer_cli_forbidden_outputs_preflight_before_input_reads_or_rpc(self):
+        inputs = self.cli_inputs()
+        samples, preserved, absent = self.owned.public_output_samples("observer-output.json")
+        existing = self.root / "existing-public-observation.json"
+        existing.write_bytes(b"owned previous observation bytes\n")
+        preserved[existing] = existing.read_bytes()
+        for label, output in [*samples, ("existing-regular", existing)]:
+            with self.subTest(path_kind=label), \
+                    patch.object(identity, "read_json", side_effect=AssertionError("late input read")) as read, \
+                    patch.object(observer, "CandidateRPC") as transport, \
+                    patch.object(observer, "observe_target") as observe, \
+                    patch.object(identity, "create_output") as create:
+                code, text = self.observer_cli(inputs, output)
+                self.assertEqual(code, 1, text)
+                read.assert_not_called()
+                transport.assert_not_called()
+                observe.assert_not_called()
+                create.assert_not_called()
+                self.assertNotIn(str(output), text)
+        for path, before in preserved.items():
+            self.assertEqual(path.read_bytes(), before)
+        self.assertTrue(all(not path.exists() for path in absent))
 
 
 class Response:

@@ -1,0 +1,2004 @@
+{
+  "schema": "arcora-pr57-main-push-refresh/v1",
+  "observed_utc": "2026-10-12T15:34:06.697844+00:00",
+  "passed": true,
+  "all3_completed_success": true,
+  "expected_main_head": "788d46fe793180b73aff2cb33eaf79c744b091ec",
+  "expected_tree": "eac7daa29cbb190d182ffc1f3db64f220786d80a",
+  "local_subject": {
+    "observed_utc": "2026-10-12T15:33:59.544998+00:00",
+    "head": "788d46fe793180b73aff2cb33eaf79c744b091ec",
+    "tree": "eac7daa29cbb190d182ffc1f3db64f220786d80a",
+    "subject": "Merge pull request #57 from Arcora-labs/feat/candidate-fixture-sealed-20261012",
+    "parents": [
+      "60eceef733613fe6d491548d35eb4fdb7c0809bd",
+      "fdae50fc06302d57de62713878e71b16c6c5dd4d"
+    ],
+    "branch": "fix/candidate-public-paths-20261012",
+    "status_porcelain_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "clean": true
+  },
+  "runs": [
+    {
+      "label": "ci",
+      "run": 38263305306,
+      "workflow": "ci",
+      "event": "push",
+      "branch": "main",
+      "head": "788d46fe793180b73aff2cb33eaf79c744b091ec",
+      "status": "completed",
+      "conclusion": "success",
+      "jobs": [
+        {
+          "completedAt": "2026-10-12T14:30:08Z",
+          "conclusion": "success",
+          "databaseId": 114859074975,
+          "name": "rust (lint, 1.99)",
+          "startedAt": "2026-10-12T14:29:38Z",
+          "status": "completed",
+          "steps": [
+            {
+              "completedAt": "2026-10-12T14:29:40Z",
+              "conclusion": "success",
+              "name": "Set up job",
+              "number": 1,
+              "startedAt": "2026-10-12T14:29:39Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:29:43Z",
+              "conclusion": "success",
+              "name": "Run actions/checkout@v4",
+              "number": 2,
+              "startedAt": "2026-10-12T14:29:40Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:29:53Z",
+              "conclusion": "success",
+              "name": "Run dtolnay/rust-toolchain@stable",
+              "number": 3,
+              "startedAt": "2026-10-12T14:29:43Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:29:55Z",
+              "conclusion": "success",
+              "name": "Run Swatinem/rust-cache@v2",
+              "number": 4,
+              "startedAt": "2026-10-12T14:29:53Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:29:56Z",
+              "conclusion": "success",
+              "name": "fmt",
+              "number": 5,
+              "startedAt": "2026-10-12T14:29:55Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:30:07Z",
+              "conclusion": "success",
+              "name": "clippy",
+              "number": 6,
+              "startedAt": "2026-10-12T14:29:56Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:30:07Z",
+              "conclusion": "success",
+              "name": "Post Run Swatinem/rust-cache@v2",
+              "number": 11,
+              "startedAt": "2026-10-12T14:30:07Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:30:07Z",
+              "conclusion": "success",
+              "name": "Post Run actions/checkout@v4",
+              "number": 12,
+              "startedAt": "2026-10-12T14:30:07Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:30:07Z",
+              "conclusion": "success",
+              "name": "Complete job",
+              "number": 13,
+              "startedAt": "2026-10-12T14:30:07Z",
+              "status": "completed"
+            }
+          ],
+          "url": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38263305306/job/114859074975"
+        },
+        {
+          "completedAt": "2026-10-12T14:30:09Z",
+          "conclusion": "success",
+          "databaseId": 114859075004,
+          "name": "contracts (foundry)",
+          "startedAt": "2026-10-12T14:29:38Z",
+          "status": "completed",
+          "steps": [
+            {
+              "completedAt": "2026-10-12T14:29:41Z",
+              "conclusion": "success",
+              "name": "Set up job",
+              "number": 1,
+              "startedAt": "2026-10-12T14:29:39Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:29:44Z",
+              "conclusion": "success",
+              "name": "Run actions/checkout@v4",
+              "number": 2,
+              "startedAt": "2026-10-12T14:29:41Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:29:49Z",
+              "conclusion": "success",
+              "name": "Run foundry-rs/foundry-toolchain@v1",
+              "number": 3,
+              "startedAt": "2026-10-12T14:29:44Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:29:56Z",
+              "conclusion": "success",
+              "name": "build",
+              "number": 4,
+              "startedAt": "2026-10-12T14:29:49Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:30:04Z",
+              "conclusion": "success",
+              "name": "test",
+              "number": 5,
+              "startedAt": "2026-10-12T14:29:56Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:30:04Z",
+              "conclusion": "success",
+              "name": "Experimental batch clock anchor (not production integration)",
+              "number": 6,
+              "startedAt": "2026-10-12T14:30:04Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:30:05Z",
+              "conclusion": "success",
+              "name": "Post Run foundry-rs/foundry-toolchain@v1",
+              "number": 11,
+              "startedAt": "2026-10-12T14:30:04Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:30:05Z",
+              "conclusion": "success",
+              "name": "Post Run actions/checkout@v4",
+              "number": 12,
+              "startedAt": "2026-10-12T14:30:05Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:30:05Z",
+              "conclusion": "success",
+              "name": "Complete job",
+              "number": 13,
+              "startedAt": "2026-10-12T14:30:05Z",
+              "status": "completed"
+            }
+          ],
+          "url": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38263305306/job/114859075004"
+        },
+        {
+          "completedAt": "2026-10-12T14:44:40Z",
+          "conclusion": "success",
+          "databaseId": 114859075233,
+          "name": "rust (workspace)",
+          "startedAt": "2026-10-12T14:29:38Z",
+          "status": "completed",
+          "steps": [
+            {
+              "completedAt": "2026-10-12T14:29:40Z",
+              "conclusion": "success",
+              "name": "Set up job",
+              "number": 1,
+              "startedAt": "2026-10-12T14:29:39Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:29:43Z",
+              "conclusion": "success",
+              "name": "Run actions/checkout@v4",
+              "number": 2,
+              "startedAt": "2026-10-12T14:29:40Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:29:50Z",
+              "conclusion": "success",
+              "name": "Run dtolnay/rust-toolchain@stable",
+              "number": 3,
+              "startedAt": "2026-10-12T14:29:43Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:29:54Z",
+              "conclusion": "success",
+              "name": "Run Swatinem/rust-cache@v2",
+              "number": 4,
+              "startedAt": "2026-10-12T14:29:50Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:29:57Z",
+              "conclusion": "success",
+              "name": "Install cast for localhost L1 fixture tests",
+              "number": 5,
+              "startedAt": "2026-10-12T14:29:54Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:42:14Z",
+              "conclusion": "success",
+              "name": "test",
+              "number": 6,
+              "startedAt": "2026-10-12T14:29:57Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:44:36Z",
+              "conclusion": "success",
+              "name": "witness serialization (serde feature)",
+              "number": 7,
+              "startedAt": "2026-10-12T14:42:14Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:44:38Z",
+              "conclusion": "success",
+              "name": "zkVM-guest builds (no_std, incl. serde witness)",
+              "number": 8,
+              "startedAt": "2026-10-12T14:44:36Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:44:38Z",
+              "conclusion": "success",
+              "name": "Post Install cast for localhost L1 fixture tests",
+              "number": 14,
+              "startedAt": "2026-10-12T14:44:38Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:44:38Z",
+              "conclusion": "success",
+              "name": "Post Run Swatinem/rust-cache@v2",
+              "number": 15,
+              "startedAt": "2026-10-12T14:44:38Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:44:38Z",
+              "conclusion": "success",
+              "name": "Post Run actions/checkout@v4",
+              "number": 16,
+              "startedAt": "2026-10-12T14:44:38Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:44:38Z",
+              "conclusion": "success",
+              "name": "Complete job",
+              "number": 17,
+              "startedAt": "2026-10-12T14:44:38Z",
+              "status": "completed"
+            }
+          ],
+          "url": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38263305306/job/114859075233"
+        },
+        {
+          "completedAt": "2026-10-12T14:30:02Z",
+          "conclusion": "success",
+          "databaseId": 114859075272,
+          "name": "frontend (vite)",
+          "startedAt": "2026-10-12T14:29:38Z",
+          "status": "completed",
+          "steps": [
+            {
+              "completedAt": "2026-10-12T14:29:40Z",
+              "conclusion": "success",
+              "name": "Set up job",
+              "number": 1,
+              "startedAt": "2026-10-12T14:29:39Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:29:42Z",
+              "conclusion": "success",
+              "name": "Run actions/checkout@v4",
+              "number": 2,
+              "startedAt": "2026-10-12T14:29:40Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:29:43Z",
+              "conclusion": "success",
+              "name": "Run pnpm/action-setup@v4",
+              "number": 3,
+              "startedAt": "2026-10-12T14:29:42Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:29:48Z",
+              "conclusion": "success",
+              "name": "Run actions/setup-node@v4",
+              "number": 4,
+              "startedAt": "2026-10-12T14:29:43Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:29:49Z",
+              "conclusion": "success",
+              "name": "Run pnpm install --frozen-lockfile",
+              "number": 5,
+              "startedAt": "2026-10-12T14:29:48Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:29:55Z",
+              "conclusion": "success",
+              "name": "Run pnpm test",
+              "number": 6,
+              "startedAt": "2026-10-12T14:29:49Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:30:00Z",
+              "conclusion": "success",
+              "name": "Run pnpm build",
+              "number": 7,
+              "startedAt": "2026-10-12T14:29:55Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:30:00Z",
+              "conclusion": "success",
+              "name": "Post Run actions/setup-node@v4",
+              "number": 12,
+              "startedAt": "2026-10-12T14:30:00Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:30:00Z",
+              "conclusion": "success",
+              "name": "Post Run pnpm/action-setup@v4",
+              "number": 13,
+              "startedAt": "2026-10-12T14:30:00Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:30:00Z",
+              "conclusion": "success",
+              "name": "Post Run actions/checkout@v4",
+              "number": 14,
+              "startedAt": "2026-10-12T14:30:00Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:30:00Z",
+              "conclusion": "success",
+              "name": "Complete job",
+              "number": 15,
+              "startedAt": "2026-10-12T14:30:00Z",
+              "status": "completed"
+            }
+          ],
+          "url": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38263305306/job/114859075272"
+        },
+        {
+          "completedAt": "2026-10-12T14:45:00Z",
+          "conclusion": "success",
+          "databaseId": 114859075371,
+          "name": "prover crates (excluded, typecheck)",
+          "startedAt": "2026-10-12T14:29:38Z",
+          "status": "completed",
+          "steps": [
+            {
+              "completedAt": "2026-10-12T14:29:40Z",
+              "conclusion": "success",
+              "name": "Set up job",
+              "number": 1,
+              "startedAt": "2026-10-12T14:29:39Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:29:43Z",
+              "conclusion": "success",
+              "name": "Run actions/checkout@v4",
+              "number": 2,
+              "startedAt": "2026-10-12T14:29:40Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:29:51Z",
+              "conclusion": "success",
+              "name": "Run dtolnay/rust-toolchain@stable",
+              "number": 3,
+              "startedAt": "2026-10-12T14:29:43Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:30:21Z",
+              "conclusion": "success",
+              "name": "Run Swatinem/rust-cache@v2",
+              "number": 4,
+              "startedAt": "2026-10-12T14:29:51Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:30:33Z",
+              "conclusion": "success",
+              "name": "install protoc (sp1-prover-types build script)",
+              "number": 5,
+              "startedAt": "2026-10-12T14:30:21Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:30:33Z",
+              "conclusion": "success",
+              "name": "Require the patched coherent SP1 release",
+              "number": 6,
+              "startedAt": "2026-10-12T14:30:33Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:30:33Z",
+              "conclusion": "success",
+              "name": "Regenerate the real SP1 native runner after cache restore",
+              "number": 7,
+              "startedAt": "2026-10-12T14:30:33Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:30:33Z",
+              "conclusion": "success",
+              "name": "stub the guest ELF (guest build skipped; include_elf! needs the file)",
+              "number": 8,
+              "startedAt": "2026-10-12T14:30:33Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:31:49Z",
+              "conclusion": "success",
+              "name": "typecheck sp1-host",
+              "number": 9,
+              "startedAt": "2026-10-12T14:30:33Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:32:15Z",
+              "conclusion": "success",
+              "name": "native host fixture and artifact guards (not guest execution)",
+              "number": 10,
+              "startedAt": "2026-10-12T14:31:49Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:32:30Z",
+              "conclusion": "success",
+              "name": "typecheck prover-service",
+              "number": 11,
+              "startedAt": "2026-10-12T14:32:15Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:38:24Z",
+              "conclusion": "success",
+              "name": "Build optimized exact synthetic funds replay host (guest build skipped)",
+              "number": 12,
+              "startedAt": "2026-10-12T14:32:30Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:38:24Z",
+              "conclusion": "success",
+              "name": "Reject incomplete or substituted normal-wallet witnesses",
+              "number": 13,
+              "startedAt": "2026-10-12T14:38:24Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:40:27Z",
+              "conclusion": "success",
+              "name": "Execute reviewed SP1 guest on all four exact wallet witnesses (not proof generation)",
+              "number": 14,
+              "startedAt": "2026-10-12T14:38:24Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:42:13Z",
+              "conclusion": "success",
+              "name": "Execute separately pinned Chainlink candidate (synthetic, no DON or proof)",
+              "number": 15,
+              "startedAt": "2026-10-12T14:40:27Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:44:56Z",
+              "conclusion": "success",
+              "name": "Execute real gateway price lifecycle in candidate guest (synthetic, no DON or proof)",
+              "number": 16,
+              "startedAt": "2026-10-12T14:42:13Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:44:57Z",
+              "conclusion": "success",
+              "name": "Run actions/upload-artifact@v4",
+              "number": 17,
+              "startedAt": "2026-10-12T14:44:56Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:44:57Z",
+              "conclusion": "success",
+              "name": "Run actions/upload-artifact@v4",
+              "number": 18,
+              "startedAt": "2026-10-12T14:44:57Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:44:58Z",
+              "conclusion": "success",
+              "name": "Run actions/upload-artifact@v4",
+              "number": 19,
+              "startedAt": "2026-10-12T14:44:57Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:44:58Z",
+              "conclusion": "success",
+              "name": "Post Run Swatinem/rust-cache@v2",
+              "number": 37,
+              "startedAt": "2026-10-12T14:44:58Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:44:58Z",
+              "conclusion": "success",
+              "name": "Post Run actions/checkout@v4",
+              "number": 38,
+              "startedAt": "2026-10-12T14:44:58Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:44:58Z",
+              "conclusion": "success",
+              "name": "Complete job",
+              "number": 39,
+              "startedAt": "2026-10-12T14:44:58Z",
+              "status": "completed"
+            }
+          ],
+          "url": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38263305306/job/114859075371"
+        }
+      ],
+      "job_count": 5,
+      "commands": [
+        {
+          "argv": [
+            "gh",
+            "api",
+            "repos/Arcora-labs/arcora-perp/actions/runs/38263305306"
+          ],
+          "exit_code": 0,
+          "stdout_sha256": "315f21e0e2b707c7bf34eb8e58147e08e9e2f0e9a929b337923618887f0159ad",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "argv": [
+            "gh",
+            "run",
+            "view",
+            "38263305306",
+            "--repo",
+            "Arcora-labs/arcora-perp",
+            "--json",
+            "databaseId,headSha,headBranch,event,status,conclusion,url,workflowName,jobs"
+          ],
+          "exit_code": 0,
+          "stdout_sha256": "2c5e9131898fe859c47cd2ae203a130e6fbc31a4e230471603de85c23fd1a157",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "argv": [
+            "gh",
+            "api",
+            "repos/Arcora-labs/arcora-perp/actions/runs/38263305306/logs"
+          ],
+          "exit_code": 0,
+          "stdout_sha256": "3cc6beb5efa54f34d6367cb8e21ae19bd16dffa9176498cceb88330a1318f150",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      ],
+      "raw_zip_sha256": "3cc6beb5efa54f34d6367cb8e21ae19bd16dffa9176498cceb88330a1318f150",
+      "raw_zip_bytes": 192410,
+      "zip_members": 44,
+      "zip_crc_checked": true,
+      "created_at": "2026-10-12T14:29:36Z",
+      "updated_at": "2026-10-12T14:45:01Z"
+    },
+    {
+      "label": "a11",
+      "run": 38263305358,
+      "workflow": "A11 release evidence",
+      "event": "push",
+      "branch": "main",
+      "head": "788d46fe793180b73aff2cb33eaf79c744b091ec",
+      "status": "completed",
+      "conclusion": "success",
+      "jobs": [
+        {
+          "completedAt": "2026-10-12T14:30:17Z",
+          "conclusion": "success",
+          "databaseId": 114859074242,
+          "name": "foundry release gate",
+          "startedAt": "2026-10-12T14:29:38Z",
+          "status": "completed",
+          "steps": [
+            {
+              "completedAt": "2026-10-12T14:29:41Z",
+              "conclusion": "success",
+              "name": "Set up job",
+              "number": 1,
+              "startedAt": "2026-10-12T14:29:39Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:29:46Z",
+              "conclusion": "success",
+              "name": "Run actions/checkout@v4",
+              "number": 2,
+              "startedAt": "2026-10-12T14:29:41Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:29:51Z",
+              "conclusion": "success",
+              "name": "Run foundry-rs/foundry-toolchain@v1",
+              "number": 3,
+              "startedAt": "2026-10-12T14:29:46Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:29:58Z",
+              "conclusion": "success",
+              "name": "Run forge build",
+              "number": 4,
+              "startedAt": "2026-10-12T14:29:51Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:30:05Z",
+              "conclusion": "success",
+              "name": "Run forge test -vvv",
+              "number": 5,
+              "startedAt": "2026-10-12T14:29:58Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:30:08Z",
+              "conclusion": "success",
+              "name": "Real SP1 verifier guards (no application proof claim)",
+              "number": 6,
+              "startedAt": "2026-10-12T14:30:05Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:30:10Z",
+              "conclusion": "success",
+              "name": "Real clock-v2 proof through adapter, settlement and vault",
+              "number": 7,
+              "startedAt": "2026-10-12T14:30:08Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:30:11Z",
+              "conclusion": "success",
+              "name": "Run actions/upload-artifact@v4",
+              "number": 8,
+              "startedAt": "2026-10-12T14:30:10Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:30:12Z",
+              "conclusion": "success",
+              "name": "Reject incomplete or substituted proof artifacts",
+              "number": 9,
+              "startedAt": "2026-10-12T14:30:11Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:30:12Z",
+              "conclusion": "success",
+              "name": "Reject incomplete clock artifacts and changed guest sources",
+              "number": 10,
+              "startedAt": "2026-10-12T14:30:12Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:30:12Z",
+              "conclusion": "success",
+              "name": "Real clock proof through verifier, settlement and vault",
+              "number": 11,
+              "startedAt": "2026-10-12T14:30:12Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:30:13Z",
+              "conclusion": "success",
+              "name": "Run actions/upload-artifact@v4",
+              "number": 12,
+              "startedAt": "2026-10-12T14:30:12Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:30:14Z",
+              "conclusion": "success",
+              "name": "Post Run foundry-rs/foundry-toolchain@v1",
+              "number": 23,
+              "startedAt": "2026-10-12T14:30:13Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:30:14Z",
+              "conclusion": "success",
+              "name": "Post Run actions/checkout@v4",
+              "number": 24,
+              "startedAt": "2026-10-12T14:30:14Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:30:14Z",
+              "conclusion": "success",
+              "name": "Complete job",
+              "number": 25,
+              "startedAt": "2026-10-12T14:30:14Z",
+              "status": "completed"
+            }
+          ],
+          "url": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38263305358/job/114859074242"
+        },
+        {
+          "completedAt": "2026-10-12T14:30:24Z",
+          "conclusion": "success",
+          "databaseId": 114859074510,
+          "name": "dependency advisories",
+          "startedAt": "2026-10-12T14:29:38Z",
+          "status": "completed",
+          "steps": [
+            {
+              "completedAt": "2026-10-12T14:29:42Z",
+              "conclusion": "success",
+              "name": "Set up job",
+              "number": 1,
+              "startedAt": "2026-10-12T14:29:39Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:29:45Z",
+              "conclusion": "success",
+              "name": "Run actions/checkout@v4",
+              "number": 2,
+              "startedAt": "2026-10-12T14:29:42Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:29:46Z",
+              "conclusion": "success",
+              "name": "Run dtolnay/rust-toolchain@stable",
+              "number": 3,
+              "startedAt": "2026-10-12T14:29:45Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:29:46Z",
+              "conclusion": "success",
+              "name": "Run taiki-e/install-action@cargo-audit",
+              "number": 4,
+              "startedAt": "2026-10-12T14:29:46Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:29:48Z",
+              "conclusion": "success",
+              "name": "Verify vendored source and patched SP1 release identity",
+              "number": 5,
+              "startedAt": "2026-10-12T14:29:46Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:30:02Z",
+              "conclusion": "success",
+              "name": "Release manifest and repository protection policy guards",
+              "number": 6,
+              "startedAt": "2026-10-12T14:29:48Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:30:12Z",
+              "conclusion": "success",
+              "name": "RustSec workspace and excluded application locks",
+              "number": 7,
+              "startedAt": "2026-10-12T14:30:02Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:30:13Z",
+              "conclusion": "success",
+              "name": "Run pnpm/action-setup@v4",
+              "number": 8,
+              "startedAt": "2026-10-12T14:30:12Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:30:17Z",
+              "conclusion": "success",
+              "name": "Run actions/setup-node@v4",
+              "number": 9,
+              "startedAt": "2026-10-12T14:30:13Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:30:18Z",
+              "conclusion": "success",
+              "name": "npm advisories through frozen pnpm graph",
+              "number": 10,
+              "startedAt": "2026-10-12T14:30:17Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:30:20Z",
+              "conclusion": "success",
+              "name": "Run actions/upload-artifact@v4",
+              "number": 11,
+              "startedAt": "2026-10-12T14:30:18Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:30:20Z",
+              "conclusion": "success",
+              "name": "Post Run actions/setup-node@v4",
+              "number": 20,
+              "startedAt": "2026-10-12T14:30:20Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:30:20Z",
+              "conclusion": "success",
+              "name": "Post Run pnpm/action-setup@v4",
+              "number": 21,
+              "startedAt": "2026-10-12T14:30:20Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:30:20Z",
+              "conclusion": "success",
+              "name": "Post Run actions/checkout@v4",
+              "number": 22,
+              "startedAt": "2026-10-12T14:30:20Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:30:20Z",
+              "conclusion": "success",
+              "name": "Complete job",
+              "number": 23,
+              "startedAt": "2026-10-12T14:30:20Z",
+              "status": "completed"
+            }
+          ],
+          "url": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38263305358/job/114859074510"
+        },
+        {
+          "completedAt": "2026-10-12T14:30:03Z",
+          "conclusion": "success",
+          "databaseId": 114859074537,
+          "name": "public service identity (no proving)",
+          "startedAt": "2026-10-12T14:29:38Z",
+          "status": "completed",
+          "steps": [
+            {
+              "completedAt": "2026-10-12T14:29:40Z",
+              "conclusion": "success",
+              "name": "Set up job",
+              "number": 1,
+              "startedAt": "2026-10-12T14:29:39Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:29:43Z",
+              "conclusion": "success",
+              "name": "Run actions/checkout@v4",
+              "number": 2,
+              "startedAt": "2026-10-12T14:29:40Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:29:52Z",
+              "conclusion": "success",
+              "name": "Run dtolnay/rust-toolchain@stable",
+              "number": 3,
+              "startedAt": "2026-10-12T14:29:43Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:29:57Z",
+              "conclusion": "success",
+              "name": "Run Swatinem/rust-cache@v2",
+              "number": 4,
+              "startedAt": "2026-10-12T14:29:52Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:29:57Z",
+              "conclusion": "success",
+              "name": "Check the exact public handler sources are formatted",
+              "number": 5,
+              "startedAt": "2026-10-12T14:29:57Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:29:59Z",
+              "conclusion": "success",
+              "name": "Owned HTTP service identity fixtures without SDK or backend startup",
+              "number": 6,
+              "startedAt": "2026-10-12T14:29:57Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:30:00Z",
+              "conclusion": "success",
+              "name": "Lint the dependency-light identity surface",
+              "number": 7,
+              "startedAt": "2026-10-12T14:29:59Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:30:00Z",
+              "conclusion": "success",
+              "name": "Post Run Swatinem/rust-cache@v2",
+              "number": 13,
+              "startedAt": "2026-10-12T14:30:00Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:30:00Z",
+              "conclusion": "success",
+              "name": "Post Run actions/checkout@v4",
+              "number": 14,
+              "startedAt": "2026-10-12T14:30:00Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:30:00Z",
+              "conclusion": "success",
+              "name": "Complete job",
+              "number": 15,
+              "startedAt": "2026-10-12T14:30:00Z",
+              "status": "completed"
+            }
+          ],
+          "url": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38263305358/job/114859074537"
+        },
+        {
+          "completedAt": "2026-10-12T14:36:09Z",
+          "conclusion": "success",
+          "databaseId": 114859074551,
+          "name": "release regression",
+          "startedAt": "2026-10-12T14:29:38Z",
+          "status": "completed",
+          "steps": [
+            {
+              "completedAt": "2026-10-12T14:29:41Z",
+              "conclusion": "success",
+              "name": "Set up job",
+              "number": 1,
+              "startedAt": "2026-10-12T14:29:39Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:29:43Z",
+              "conclusion": "success",
+              "name": "Run actions/checkout@v4",
+              "number": 2,
+              "startedAt": "2026-10-12T14:29:41Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:29:44Z",
+              "conclusion": "success",
+              "name": "Run dtolnay/rust-toolchain@stable",
+              "number": 3,
+              "startedAt": "2026-10-12T14:29:43Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:29:53Z",
+              "conclusion": "success",
+              "name": "Run Swatinem/rust-cache@v2",
+              "number": 4,
+              "startedAt": "2026-10-12T14:29:44Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:29:55Z",
+              "conclusion": "success",
+              "name": "Run cargo fmt --all --check",
+              "number": 5,
+              "startedAt": "2026-10-12T14:29:53Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:30:12Z",
+              "conclusion": "success",
+              "name": "Run cargo clippy --workspace --all-targets --locked -- -D warnings",
+              "number": 6,
+              "startedAt": "2026-10-12T14:29:55Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:30:13Z",
+              "conclusion": "success",
+              "name": "Check release profile flags take effect",
+              "number": 7,
+              "startedAt": "2026-10-12T14:30:12Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:30:16Z",
+              "conclusion": "success",
+              "name": "Install cast for localhost L1 fixture tests",
+              "number": 8,
+              "startedAt": "2026-10-12T14:30:13Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:36:03Z",
+              "conclusion": "success",
+              "name": "release workspace tests",
+              "number": 9,
+              "startedAt": "2026-10-12T14:30:16Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:36:04Z",
+              "conclusion": "success",
+              "name": "Run cargo build -p perp-core --no-default-features --features serde --locked",
+              "number": 10,
+              "startedAt": "2026-10-12T14:36:03Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:36:05Z",
+              "conclusion": "success",
+              "name": "Run cargo build -p matcher --no-default-features --locked",
+              "number": 11,
+              "startedAt": "2026-10-12T14:36:04Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:36:05Z",
+              "conclusion": "success",
+              "name": "Post Install cast for localhost L1 fixture tests",
+              "number": 20,
+              "startedAt": "2026-10-12T14:36:05Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:36:05Z",
+              "conclusion": "success",
+              "name": "Post Run Swatinem/rust-cache@v2",
+              "number": 21,
+              "startedAt": "2026-10-12T14:36:05Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:36:05Z",
+              "conclusion": "success",
+              "name": "Post Run actions/checkout@v4",
+              "number": 22,
+              "startedAt": "2026-10-12T14:36:05Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:36:05Z",
+              "conclusion": "success",
+              "name": "Complete job",
+              "number": 23,
+              "startedAt": "2026-10-12T14:36:05Z",
+              "status": "completed"
+            }
+          ],
+          "url": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38263305358/job/114859074551"
+        },
+        {
+          "completedAt": "2026-10-12T14:34:20Z",
+          "conclusion": "success",
+          "databaseId": 114859074552,
+          "name": "gateway RPC, crash and alert drills",
+          "startedAt": "2026-10-12T14:29:38Z",
+          "status": "completed",
+          "steps": [
+            {
+              "completedAt": "2026-10-12T14:29:43Z",
+              "conclusion": "success",
+              "name": "Set up job",
+              "number": 1,
+              "startedAt": "2026-10-12T14:29:39Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:29:45Z",
+              "conclusion": "success",
+              "name": "Run actions/checkout@v4",
+              "number": 2,
+              "startedAt": "2026-10-12T14:29:43Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:29:48Z",
+              "conclusion": "success",
+              "name": "Run dtolnay/rust-toolchain@stable",
+              "number": 3,
+              "startedAt": "2026-10-12T14:29:45Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:29:54Z",
+              "conclusion": "success",
+              "name": "Run Swatinem/rust-cache@v2",
+              "number": 4,
+              "startedAt": "2026-10-12T14:29:48Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:29:58Z",
+              "conclusion": "success",
+              "name": "Run foundry-rs/foundry-toolchain@v1",
+              "number": 5,
+              "startedAt": "2026-10-12T14:29:54Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:29:59Z",
+              "conclusion": "success",
+              "name": "Run pnpm/action-setup@v4",
+              "number": 6,
+              "startedAt": "2026-10-12T14:29:58Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:30:06Z",
+              "conclusion": "success",
+              "name": "Run actions/setup-node@v4",
+              "number": 7,
+              "startedAt": "2026-10-12T14:29:59Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:30:07Z",
+              "conclusion": "success",
+              "name": "Install locked local signing fixture dependencies",
+              "number": 8,
+              "startedAt": "2026-10-12T14:30:06Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:30:24Z",
+              "conclusion": "success",
+              "name": "Build the actual gateway and record its source",
+              "number": 9,
+              "startedAt": "2026-10-12T14:30:07Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:30:45Z",
+              "conclusion": "success",
+              "name": "Public macOS snapshot and journal on Linux recovery code",
+              "number": 10,
+              "startedAt": "2026-10-12T14:30:24Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:31:02Z",
+              "conclusion": "success",
+              "name": "Local clock wallet lifecycle and gateway-offline claims (explicit mock verifier)",
+              "number": 11,
+              "startedAt": "2026-10-12T14:30:45Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:31:06Z",
+              "conclusion": "success",
+              "name": "Release manifest against owned six-contract Anvil stack",
+              "number": 12,
+              "startedAt": "2026-10-12T14:31:02Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:31:19Z",
+              "conclusion": "success",
+              "name": "Candidate target identity against owned seven-contract Anvil stack",
+              "number": 13,
+              "startedAt": "2026-10-12T14:31:06Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:32:44Z",
+              "conclusion": "success",
+              "name": "Candidate fixture HTTP transport and durable lost-ack recovery (not live service)",
+              "number": 14,
+              "startedAt": "2026-10-12T14:31:19Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:33:12Z",
+              "conclusion": "success",
+              "name": "Candidate signed sealed fixture channel and recovery (not approved service)",
+              "number": 15,
+              "startedAt": "2026-10-12T14:32:44Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:33:53Z",
+              "conclusion": "success",
+              "name": "Real cast transport against owned RPC fixtures",
+              "number": 16,
+              "startedAt": "2026-10-12T14:33:12Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:34:01Z",
+              "conclusion": "success",
+              "name": "Clock finality and reorg checks through real cast transport",
+              "number": 17,
+              "startedAt": "2026-10-12T14:33:53Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:34:05Z",
+              "conclusion": "success",
+              "name": "Actual production event paths to a local alert collector",
+              "number": 18,
+              "startedAt": "2026-10-12T14:34:01Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:34:10Z",
+              "conclusion": "success",
+              "name": "Real gateway HTTP ACK, SIGKILL and encrypted restart matrix",
+              "number": 19,
+              "startedAt": "2026-10-12T14:34:05Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:34:14Z",
+              "conclusion": "success",
+              "name": "Strict oracle intake through owned HTTP transport",
+              "number": 20,
+              "startedAt": "2026-10-12T14:34:10Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:34:15Z",
+              "conclusion": "success",
+              "name": "Required snapshot restore and fresh-directory recovery drill",
+              "number": 21,
+              "startedAt": "2026-10-12T14:34:14Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:34:16Z",
+              "conclusion": "success",
+              "name": "Run actions/upload-artifact@v4",
+              "number": 22,
+              "startedAt": "2026-10-12T14:34:15Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:34:16Z",
+              "conclusion": "success",
+              "name": "Post Run actions/setup-node@v4",
+              "number": 40,
+              "startedAt": "2026-10-12T14:34:16Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:34:16Z",
+              "conclusion": "success",
+              "name": "Post Run pnpm/action-setup@v4",
+              "number": 41,
+              "startedAt": "2026-10-12T14:34:16Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:34:17Z",
+              "conclusion": "success",
+              "name": "Post Run foundry-rs/foundry-toolchain@v1",
+              "number": 42,
+              "startedAt": "2026-10-12T14:34:16Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:34:17Z",
+              "conclusion": "success",
+              "name": "Post Run Swatinem/rust-cache@v2",
+              "number": 43,
+              "startedAt": "2026-10-12T14:34:17Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:34:17Z",
+              "conclusion": "success",
+              "name": "Post Run actions/checkout@v4",
+              "number": 44,
+              "startedAt": "2026-10-12T14:34:17Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:34:17Z",
+              "conclusion": "success",
+              "name": "Complete job",
+              "number": 45,
+              "startedAt": "2026-10-12T14:34:17Z",
+              "status": "completed"
+            }
+          ],
+          "url": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38263305358/job/114859074552"
+        },
+        {
+          "completedAt": "2026-10-12T14:30:01Z",
+          "conclusion": "success",
+          "databaseId": 114859074579,
+          "name": "frontend release gate",
+          "startedAt": "2026-10-12T14:29:38Z",
+          "status": "completed",
+          "steps": [
+            {
+              "completedAt": "2026-10-12T14:29:40Z",
+              "conclusion": "success",
+              "name": "Set up job",
+              "number": 1,
+              "startedAt": "2026-10-12T14:29:38Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:29:42Z",
+              "conclusion": "success",
+              "name": "Run actions/checkout@v4",
+              "number": 2,
+              "startedAt": "2026-10-12T14:29:40Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:29:43Z",
+              "conclusion": "success",
+              "name": "Run pnpm/action-setup@v4",
+              "number": 3,
+              "startedAt": "2026-10-12T14:29:42Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:29:45Z",
+              "conclusion": "success",
+              "name": "Run actions/setup-node@v4",
+              "number": 4,
+              "startedAt": "2026-10-12T14:29:43Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:29:46Z",
+              "conclusion": "success",
+              "name": "Run pnpm install --frozen-lockfile",
+              "number": 5,
+              "startedAt": "2026-10-12T14:29:45Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:29:53Z",
+              "conclusion": "success",
+              "name": "Run pnpm test",
+              "number": 6,
+              "startedAt": "2026-10-12T14:29:46Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:29:58Z",
+              "conclusion": "success",
+              "name": "Run pnpm build",
+              "number": 7,
+              "startedAt": "2026-10-12T14:29:53Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:29:58Z",
+              "conclusion": "success",
+              "name": "Post Run actions/setup-node@v4",
+              "number": 12,
+              "startedAt": "2026-10-12T14:29:58Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:29:58Z",
+              "conclusion": "success",
+              "name": "Post Run pnpm/action-setup@v4",
+              "number": 13,
+              "startedAt": "2026-10-12T14:29:58Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:29:59Z",
+              "conclusion": "success",
+              "name": "Post Run actions/checkout@v4",
+              "number": 14,
+              "startedAt": "2026-10-12T14:29:58Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:29:59Z",
+              "conclusion": "success",
+              "name": "Complete job",
+              "number": 15,
+              "startedAt": "2026-10-12T14:29:59Z",
+              "status": "completed"
+            }
+          ],
+          "url": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38263305358/job/114859074579"
+        },
+        {
+          "completedAt": "2026-10-12T14:29:47Z",
+          "conclusion": "success",
+          "databaseId": 114859074666,
+          "name": "prover source / deployment binding",
+          "startedAt": "2026-10-12T14:29:38Z",
+          "status": "completed",
+          "steps": [
+            {
+              "completedAt": "2026-10-12T14:29:40Z",
+              "conclusion": "success",
+              "name": "Set up job",
+              "number": 1,
+              "startedAt": "2026-10-12T14:29:39Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:29:43Z",
+              "conclusion": "success",
+              "name": "Run actions/checkout@v4",
+              "number": 2,
+              "startedAt": "2026-10-12T14:29:40Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:29:43Z",
+              "conclusion": "success",
+              "name": "Record guest inputs and deployment pin",
+              "number": 3,
+              "startedAt": "2026-10-12T14:29:43Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:29:43Z",
+              "conclusion": "success",
+              "name": "Explain non-proof",
+              "number": 4,
+              "startedAt": "2026-10-12T14:29:43Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:29:44Z",
+              "conclusion": "success",
+              "name": "Run actions/upload-artifact@v4",
+              "number": 5,
+              "startedAt": "2026-10-12T14:29:43Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:29:44Z",
+              "conclusion": "success",
+              "name": "Post Run actions/checkout@v4",
+              "number": 10,
+              "startedAt": "2026-10-12T14:29:44Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:29:44Z",
+              "conclusion": "success",
+              "name": "Complete job",
+              "number": 11,
+              "startedAt": "2026-10-12T14:29:44Z",
+              "status": "completed"
+            }
+          ],
+          "url": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38263305358/job/114859074666"
+        }
+      ],
+      "job_count": 7,
+      "commands": [
+        {
+          "argv": [
+            "gh",
+            "api",
+            "repos/Arcora-labs/arcora-perp/actions/runs/38263305358"
+          ],
+          "exit_code": 0,
+          "stdout_sha256": "20f332996ea1a8bcac8d20b0d2297ae2493f02a686ac390dc2c3aff76f8ff440",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "argv": [
+            "gh",
+            "run",
+            "view",
+            "38263305358",
+            "--repo",
+            "Arcora-labs/arcora-perp",
+            "--json",
+            "databaseId,headSha,headBranch,event,status,conclusion,url,workflowName,jobs"
+          ],
+          "exit_code": 0,
+          "stdout_sha256": "9aef7d35b772aea848a395905f27b21d022a198232f44ece1cd906af3a4f8ab1",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "argv": [
+            "gh",
+            "api",
+            "repos/Arcora-labs/arcora-perp/actions/runs/38263305358/logs"
+          ],
+          "exit_code": 0,
+          "stdout_sha256": "d2da6bf1d58f9b447055c38c7483ebc1419abfb75531696905e6d5f4727799a2",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      ],
+      "raw_zip_sha256": "d2da6bf1d58f9b447055c38c7483ebc1419abfb75531696905e6d5f4727799a2",
+      "raw_zip_bytes": 241996,
+      "zip_members": 57,
+      "zip_crc_checked": true,
+      "created_at": "2026-10-12T14:29:36Z",
+      "updated_at": "2026-10-12T14:36:10Z"
+    },
+    {
+      "label": "chainlink",
+      "run": 38263305265,
+      "workflow": "Chainlink candidate",
+      "event": "push",
+      "branch": "main",
+      "head": "788d46fe793180b73aff2cb33eaf79c744b091ec",
+      "status": "completed",
+      "conclusion": "success",
+      "jobs": [
+        {
+          "completedAt": "2026-10-12T14:30:04Z",
+          "conclusion": "success",
+          "databaseId": 114859073800,
+          "name": "Chainlink candidate core (not live verification)",
+          "startedAt": "2026-10-12T14:29:38Z",
+          "status": "completed",
+          "steps": [
+            {
+              "completedAt": "2026-10-12T14:29:41Z",
+              "conclusion": "success",
+              "name": "Set up job",
+              "number": 1,
+              "startedAt": "2026-10-12T14:29:39Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:29:44Z",
+              "conclusion": "success",
+              "name": "Run actions/checkout@v4",
+              "number": 2,
+              "startedAt": "2026-10-12T14:29:41Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:29:52Z",
+              "conclusion": "success",
+              "name": "Run dtolnay/rust-toolchain@stable",
+              "number": 3,
+              "startedAt": "2026-10-12T14:29:44Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:29:52Z",
+              "conclusion": "success",
+              "name": "Standalone candidate formatting",
+              "number": 4,
+              "startedAt": "2026-10-12T14:29:52Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:30:01Z",
+              "conclusion": "success",
+              "name": "Explicit standalone tests and no_std check",
+              "number": 5,
+              "startedAt": "2026-10-12T14:29:52Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:30:01Z",
+              "conclusion": "success",
+              "name": "Preserve reviewed v2 inputs",
+              "number": 6,
+              "startedAt": "2026-10-12T14:30:01Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:30:01Z",
+              "conclusion": "success",
+              "name": "Replay evidence parser guards (offline synthetic test reports)",
+              "number": 7,
+              "startedAt": "2026-10-12T14:30:01Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:30:01Z",
+              "conclusion": "success",
+              "name": "Post Run actions/checkout@v4",
+              "number": 14,
+              "startedAt": "2026-10-12T14:30:01Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:30:01Z",
+              "conclusion": "success",
+              "name": "Complete job",
+              "number": 15,
+              "startedAt": "2026-10-12T14:30:01Z",
+              "status": "completed"
+            }
+          ],
+          "url": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38263305265/job/114859073800"
+        },
+        {
+          "completedAt": "2026-10-12T14:30:34Z",
+          "conclusion": "success",
+          "databaseId": 114859074557,
+          "name": "Chainlink REST client (runtime regressions)",
+          "startedAt": "2026-10-12T14:30:00Z",
+          "status": "completed",
+          "steps": [
+            {
+              "completedAt": "2026-10-12T14:30:01Z",
+              "conclusion": "success",
+              "name": "Set up job",
+              "number": 1,
+              "startedAt": "2026-10-12T14:30:00Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:30:03Z",
+              "conclusion": "success",
+              "name": "Run actions/checkout@v4",
+              "number": 2,
+              "startedAt": "2026-10-12T14:30:01Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:30:11Z",
+              "conclusion": "success",
+              "name": "Run dtolnay/rust-toolchain@stable",
+              "number": 3,
+              "startedAt": "2026-10-12T14:30:03Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:30:25Z",
+              "conclusion": "success",
+              "name": "Format and typecheck isolated host client (NOT a live or runtime test)",
+              "number": 4,
+              "startedAt": "2026-10-12T14:30:11Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:30:32Z",
+              "conclusion": "success",
+              "name": "Real runtime and owned loopback tests (not live DON verification)",
+              "number": 5,
+              "startedAt": "2026-10-12T14:30:25Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:30:32Z",
+              "conclusion": "success",
+              "name": "Post Run actions/checkout@v4",
+              "number": 10,
+              "startedAt": "2026-10-12T14:30:32Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T14:30:32Z",
+              "conclusion": "success",
+              "name": "Complete job",
+              "number": 11,
+              "startedAt": "2026-10-12T14:30:32Z",
+              "status": "completed"
+            }
+          ],
+          "url": "https://github.com/Arcora-labs/arcora-perp/actions/runs/38263305265/job/114859074557"
+        }
+      ],
+      "job_count": 2,
+      "commands": [
+        {
+          "argv": [
+            "gh",
+            "api",
+            "repos/Arcora-labs/arcora-perp/actions/runs/38263305265"
+          ],
+          "exit_code": 0,
+          "stdout_sha256": "3173b168c5f107fd5a7586b6ba7001280ed539362d6cb969af032fe27869d6d0",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "argv": [
+            "gh",
+            "run",
+            "view",
+            "38263305265",
+            "--repo",
+            "Arcora-labs/arcora-perp",
+            "--json",
+            "databaseId,headSha,headBranch,event,status,conclusion,url,workflowName,jobs"
+          ],
+          "exit_code": 0,
+          "stdout_sha256": "6f8c77f69da7a8bf483cc63eb2a2916687dc47a6697c7bb3d2ca0100936d9d0b",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "argv": [
+            "gh",
+            "api",
+            "repos/Arcora-labs/arcora-perp/actions/runs/38263305265/logs"
+          ],
+          "exit_code": 0,
+          "stdout_sha256": "3c49c86330906c39a072a367d228d6ae84582ab67aedabfc1600ec3fac6a1353",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      ],
+      "raw_zip_sha256": "3c49c86330906c39a072a367d228d6ae84582ab67aedabfc1600ec3fac6a1353",
+      "raw_zip_bytes": 24706,
+      "zip_members": 4,
+      "zip_crc_checked": true,
+      "created_at": "2026-10-12T14:29:36Z",
+      "updated_at": "2026-10-12T14:30:34Z"
+    }
+  ],
+  "actual_log_checks": {
+    "ci_gateway_716": {
+      "summary": "716PASS/0FAIL/23IGNORE",
+      "raw_members": [
+        {
+          "zip_member": "1_rust (workspace).txt",
+          "matches": [
+            "test result: ok. 716 passed; 0 failed; 23 ignored; 0 measured; 0 filtered out; finished in 344.17s"
+          ]
+        },
+        {
+          "zip_member": "rust (workspace)/6_test.txt",
+          "matches": [
+            "test result: ok. 716 passed; 0 failed; 23 ignored; 0 measured; 0 filtered out; finished in 344.17s"
+          ]
+        }
+      ]
+    },
+    "a11_gateway_716": {
+      "summary": "716PASS/0FAIL/23IGNORE",
+      "raw_members": [
+        {
+          "zip_member": "4_release regression.txt",
+          "matches": [
+            "test result: ok. 716 passed; 0 failed; 23 ignored; 0 measured; 0 filtered out; finished in 56.52s"
+          ]
+        },
+        {
+          "zip_member": "release regression/9_release workspace tests.txt",
+          "matches": [
+            "test result: ok. 716 passed; 0 failed; 23 ignored; 0 measured; 0 filtered out; finished in 56.52s"
+          ]
+        }
+      ]
+    },
+    "ci_foundry_183": {
+      "summary": "183PASS/0FAIL/0SKIP",
+      "raw_members": [
+        {
+          "zip_member": "4_contracts (foundry).txt",
+          "matches": [
+            "Ran 16 test suites in 7.59s (14.76s CPU time): 183 tests passed, 0 failed, 0 skipped"
+          ]
+        }
+      ]
+    },
+    "a11_foundry_183": {
+      "summary": "183PASS/0FAIL/0SKIP",
+      "raw_members": [
+        {
+          "zip_member": "6_foundry release gate.txt",
+          "matches": [
+            "Ran 16 test suites in 7.54s (14.61s CPU time): 183 tests passed, 0 failed, 0 skipped"
+          ]
+        }
+      ]
+    },
+    "sealed_fixture": {
+      "passed": 19,
+      "failed": 0,
+      "ignored": 0,
+      "exact_head_test_file_sha256": "a872421837b5f47bbfae24c75e3b595c1eeca2bad832857fa6842266fb7760b1",
+      "passed_names": [
+        "candidate_fixture_sealed_both_native_flows_prepare_handoff_and_terminal_replay",
+        "candidate_fixture_sealed_codec_exact_roundtrip_fresh_cipher_and_response_context",
+        "candidate_fixture_sealed_codec_configured_keys_and_session_refusals",
+        "candidate_fixture_sealed_codec_exact_operation_exchange_payload_context_refusals",
+        "candidate_fixture_sealed_codec_header_cipher_signature_and_tag_tamper_refusals",
+        "candidate_fixture_sealed_codec_length_bounds_trailing_and_plain_frame_refused",
+        "candidate_fixture_sealed_codec_canonical_peer_keys_and_low_order_refusals",
+        "candidate_fixture_sealed_receiver_cipher_replay_and_mutation_new_exchange_refused",
+        "candidate_fixture_sealed_replay_capacity_holds_without_eviction_or_rejected_slot",
+        "candidate_fixture_sealed_receiver_session_pins_do_not_reset_replay_memory",
+        "candidate_fixture_sealed_client_response_requires_prior_wrap_exact_context_once",
+        "candidate_fixture_sealed_with_channel_wrong_request_program_pins_is_pre_wire",
+        "candidate_fixture_sealed_invalid_request_auth_or_plaintext_has_zero_peer_effects",
+        "candidate_fixture_sealed_bad_ack_after_effect_keeps_pending_no_plain_fallback",
+        "candidate_fixture_sealed_lost_clock_ack_resumes_lookups_and_holds_absent_reports",
+        "candidate_fixture_sealed_lost_report_ack_reconciles_without_reregistration",
+        "candidate_fixture_sealed_lost_broadcast_ack_keeps_same_plan_resume_lookup_only",
+        "candidate_fixture_sealed_captured_request_replay_over_actual_http_has_no_effect",
+        "candidate_fixture_sealed_authenticated_invalid_box_and_inner_bindings_refuse_exactly"
+      ],
+      "raw_members": [
+        {
+          "zip_member": "3_gateway RPC, crash and alert drills.txt",
+          "matches": [
+            "test result: ok. 19 passed; 0 failed; 0 ignored; 0 measured; 720 filtered out; finished in 27.38s"
+          ]
+        },
+        {
+          "zip_member": "gateway RPC, crash and alert drills/15_Candidate signed sealed fixture channel and recovery (not approved service).txt",
+          "matches": [
+            "test result: ok. 19 passed; 0 failed; 0 ignored; 0 measured; 720 filtered out; finished in 27.38s"
+          ]
+        }
+      ]
+    },
+    "plain_fixture": {
+      "passed": 18,
+      "failed": 0,
+      "ignored": 0,
+      "exact_head_test_file_sha256": "f66392610522d98174a99c6fea3b641b6d9bdd27db53872f324bac8551c20d99",
+      "passed_names": [
+        "candidate_fixture_http_both_native_flows_prepare_handoff_and_terminal_replay",
+        "candidate_fixture_http_lost_clock_ack_resumes_lookups_and_holds_absent_reports",
+        "candidate_fixture_http_lost_report_ack_reconciles_existing_effect_without_reregistration",
+        "candidate_fixture_http_lost_broadcast_ack_keeps_same_lane_and_resume_lookup_only",
+        "candidate_fixture_http_local_constructor_pins_refuse_without_connections",
+        "candidate_fixture_http_local_callback_payload_changes_refuse_without_connections",
+        "candidate_fixture_http_response_frame_scope_identity_and_exchange_guards",
+        "candidate_fixture_http_response_header_body_bounds_and_truncation_guards",
+        "candidate_fixture_http_exact_proof_program_native_and_nested_length_guards",
+        "candidate_fixture_http_replayed_same_operation_response_rejected_by_exchange_id",
+        "candidate_fixture_http_lookup_states_hold_and_do_not_retry_registration",
+        "candidate_fixture_http_observation_anchor_input_and_epoch_changes_hold",
+        "candidate_fixture_http_local_plan_nonce_roles_roots_and_exact_lane_refuse",
+        "candidate_fixture_http_outcome_effect_and_finality_refusals_preserve_pending",
+        "candidate_fixture_http_stalled_owned_peer_has_finite_deadline_and_one_effect",
+        "candidate_fixture_http_registration_nested_size_hint_is_bounded_before_allocation",
+        "candidate_fixture_http_reports_observed_resume_can_repeat_mock_prove_only",
+        "candidate_fixture_http_unknown_broadcast_outcomes_resume_lookup_only_same_attempt"
+      ],
+      "raw_members": [
+        {
+          "zip_member": "3_gateway RPC, crash and alert drills.txt",
+          "matches": [
+            "test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 721 filtered out; finished in 67.42s"
+          ]
+        },
+        {
+          "zip_member": "gateway RPC, crash and alert drills/14_Candidate fixture HTTP transport and durable lost-ack recovery (not live service).txt",
+          "matches": [
+            "test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 721 filtered out; finished in 67.42s"
+          ]
+        },
+        {
+          "zip_member": "4_release regression.txt",
+          "matches": [
+            "test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+          ]
+        },
+        {
+          "zip_member": "release regression/9_release workspace tests.txt",
+          "matches": [
+            "test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+          ]
+        }
+      ]
+    },
+    "sealed_step": {
+      "completedAt": "2026-10-12T14:33:12Z",
+      "conclusion": "success",
+      "name": "Candidate signed sealed fixture channel and recovery (not approved service)",
+      "number": 15,
+      "startedAt": "2026-10-12T14:32:44Z",
+      "status": "completed"
+    },
+    "plain_step": {
+      "completedAt": "2026-10-12T14:32:44Z",
+      "conclusion": "success",
+      "name": "Candidate fixture HTTP transport and durable lost-ack recovery (not live service)",
+      "number": 14,
+      "startedAt": "2026-10-12T14:31:19Z",
+      "status": "completed"
+    },
+    "owned_anvil_step": {
+      "completedAt": "2026-10-12T14:31:19Z",
+      "conclusion": "success",
+      "name": "Candidate target identity against owned seven-contract Anvil stack",
+      "number": 13,
+      "startedAt": "2026-10-12T14:31:06Z",
+      "status": "completed"
+    },
+    "CPU_log_markers": {
+      "wallet_guest_executed_marker": true,
+      "gateway_lifecycle_markers": [
+        "EXECUTED normal-lifecycle exit=0 public_bytes=32",
+        "EXECUTED liquidation exit=0 public_bytes=32",
+        "EXECUTED missing-lifecycle-evidence exit=1 public_bytes=0",
+        "EXECUTED wrong-lifecycle-market exit=1 public_bytes=0",
+        "EXECUTED stale-lifecycle-quote exit=1 public_bytes=0"
+      ],
+      "scope": "Completed actual CPU execution steps/raw markers; no downloaded artifact/28-file re-verification in this main-refresh packet, no fresh proof."
+    },
+    "serde_step": {
+      "completedAt": "2026-10-12T14:44:36Z",
+      "conclusion": "success",
+      "name": "witness serialization (serde feature)",
+      "number": 7,
+      "startedAt": "2026-10-12T14:42:14Z",
+      "status": "completed"
+    },
+    "no_std_step": {
+      "completedAt": "2026-10-12T14:44:38Z",
+      "conclusion": "success",
+      "name": "zkVM-guest builds (no_std, incl. serde witness)",
+      "number": 8,
+      "startedAt": "2026-10-12T14:44:36Z",
+      "status": "completed"
+    },
+    "public_identity_handler_6": {
+      "passed": 6,
+      "raw_members": [
+        {
+          "zip_member": "1_public service identity (no proving).txt",
+          "matches": [
+            "test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s"
+          ]
+        }
+      ]
+    },
+    "identity_python": {
+      "builder": 9,
+      "preflight": 16,
+      "scope": "Actual A11 raw unit logs, supplied synthetic public input fixtures; no loaded backend or attestation."
+    }
+  },
+  "scope": "Exact main push event for the already normally merged PR57. These3workflows/14jobs are distinct from premerge19registered+Preview20 checks. Source equality uses actual merged tree; raw zip logs/steps/counts verified. Owned signed/sealed keys, observations and opaque proof remain fixture-only, not approved service/static-Xsender/CC/DON/new-proof/custody/release acceptance. PRODUCTION HOLD."
+}

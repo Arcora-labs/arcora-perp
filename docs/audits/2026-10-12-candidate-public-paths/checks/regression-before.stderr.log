@@ -1,0 +1,593 @@
+test_cli_has_no_rpc_observer_or_process_environment_mode (test_candidate_identity_manifest.CommitAndInterfaceTests.test_cli_has_no_rpc_observer_or_process_environment_mode) ... ok
+test_code_commit_must_be_an_ancestor_not_current_head_equal (test_candidate_identity_manifest.CommitAndInterfaceTests.test_code_commit_must_be_an_ancestor_not_current_head_equal) ... ok
+test_candidate_metadata_sdk_key_and_scope_cannot_be_promoted (test_candidate_identity_manifest.ManifestTests.test_candidate_metadata_sdk_key_and_scope_cannot_be_promoted) ... ok
+test_changed_pinned_inputs_new_module_and_build_override_refuse (test_candidate_identity_manifest.ManifestTests.test_changed_pinned_inputs_new_module_and_build_override_refuse) ... ok
+test_changed_reviewed_core_and_failed_dependency_guard_refuse (test_candidate_identity_manifest.ManifestTests.test_changed_reviewed_core_and_failed_dependency_guard_refuse) ... ok
+test_compiler_optimizer_links_and_source_bindings_are_checked (test_candidate_identity_manifest.ManifestTests.test_compiler_optimizer_links_and_source_bindings_are_checked) ... ok
+test_config_integer_bounds_roles_and_program_are_strict (test_candidate_identity_manifest.ManifestTests.test_config_integer_bounds_roles_and_program_are_strict) ... ok
+test_duplicate_nonfinite_and_oversized_json_are_rejected (test_candidate_identity_manifest.ManifestTests.test_duplicate_nonfinite_and_oversized_json_are_rejected) ... ok
+test_identity_cli_forbidden_input_paths_do_not_read_or_build (test_candidate_identity_manifest.ManifestTests.test_identity_cli_forbidden_input_paths_do_not_read_or_build) ... 
+  test_identity_cli_forbidden_input_paths_do_not_read_or_build (test_candidate_identity_manifest.ManifestTests.test_identity_cli_forbidden_input_paths_do_not_read_or_build) (role='config', path_kind='prohibited-parent') ... FAIL
+  test_identity_cli_forbidden_input_paths_do_not_read_or_build (test_candidate_identity_manifest.ManifestTests.test_identity_cli_forbidden_input_paths_do_not_read_or_build) (role='config', path_kind='private-key-parent') ... FAIL
+  test_identity_cli_forbidden_input_paths_do_not_read_or_build (test_candidate_identity_manifest.ManifestTests.test_identity_cli_forbidden_input_paths_do_not_read_or_build) (role='config', path_kind='prohibited-leaf') ... FAIL
+  test_identity_cli_forbidden_input_paths_do_not_read_or_build (test_candidate_identity_manifest.ManifestTests.test_identity_cli_forbidden_input_paths_do_not_read_or_build) (role='config', path_kind='ancestor-symlink') ... FAIL
+  test_identity_cli_forbidden_input_paths_do_not_read_or_build (test_candidate_identity_manifest.ManifestTests.test_identity_cli_forbidden_input_paths_do_not_read_or_build) (role='manifest', path_kind='prohibited-parent') ... FAIL
+  test_identity_cli_forbidden_input_paths_do_not_read_or_build (test_candidate_identity_manifest.ManifestTests.test_identity_cli_forbidden_input_paths_do_not_read_or_build) (role='manifest', path_kind='private-key-parent') ... FAIL
+  test_identity_cli_forbidden_input_paths_do_not_read_or_build (test_candidate_identity_manifest.ManifestTests.test_identity_cli_forbidden_input_paths_do_not_read_or_build) (role='manifest', path_kind='prohibited-leaf') ... FAIL
+  test_identity_cli_forbidden_input_paths_do_not_read_or_build (test_candidate_identity_manifest.ManifestTests.test_identity_cli_forbidden_input_paths_do_not_read_or_build) (role='manifest', path_kind='ancestor-symlink') ... FAIL
+test_identity_cli_forbidden_outputs_preflight_before_reads_or_build (test_candidate_identity_manifest.ManifestTests.test_identity_cli_forbidden_outputs_preflight_before_reads_or_build) ... 
+  test_identity_cli_forbidden_outputs_preflight_before_reads_or_build (test_candidate_identity_manifest.ManifestTests.test_identity_cli_forbidden_outputs_preflight_before_reads_or_build) (path_kind='prohibited-parent') ... FAIL
+  test_identity_cli_forbidden_outputs_preflight_before_reads_or_build (test_candidate_identity_manifest.ManifestTests.test_identity_cli_forbidden_outputs_preflight_before_reads_or_build) (path_kind='private-key-parent') ... FAIL
+  test_identity_cli_forbidden_outputs_preflight_before_reads_or_build (test_candidate_identity_manifest.ManifestTests.test_identity_cli_forbidden_outputs_preflight_before_reads_or_build) (path_kind='prohibited-leaf') ... FAIL
+  test_identity_cli_forbidden_outputs_preflight_before_reads_or_build (test_candidate_identity_manifest.ManifestTests.test_identity_cli_forbidden_outputs_preflight_before_reads_or_build) (path_kind='leaf-symlink') ... FAIL
+  test_identity_cli_forbidden_outputs_preflight_before_reads_or_build (test_candidate_identity_manifest.ManifestTests.test_identity_cli_forbidden_outputs_preflight_before_reads_or_build) (path_kind='ancestor-symlink') ... FAIL
+  test_identity_cli_forbidden_outputs_preflight_before_reads_or_build (test_candidate_identity_manifest.ManifestTests.test_identity_cli_forbidden_outputs_preflight_before_reads_or_build) (path_kind='existing-regular') ... FAIL
+test_legacy_schema_and_keys_cannot_cross_validate (test_candidate_identity_manifest.ManifestTests.test_legacy_schema_and_keys_cannot_cross_validate) ... ok
+test_local_identity_has_fixed_hold_and_separate_historical_key (test_candidate_identity_manifest.ManifestTests.test_local_identity_has_fixed_hold_and_separate_historical_key) ... ok
+test_manifest_source_change_during_creation_is_refused (test_candidate_identity_manifest.ManifestTests.test_manifest_source_change_during_creation_is_refused) ... ok
+test_metadata_only_head_advance_keeps_explicit_code_commit (test_candidate_identity_manifest.ManifestTests.test_metadata_only_head_advance_keeps_explicit_code_commit) ... ok
+test_missing_extra_and_forged_manifest_identity_are_rejected (test_candidate_identity_manifest.ManifestTests.test_missing_extra_and_forged_manifest_identity_are_rejected) ... ok
+test_public_json_forbidden_paths_refuse_before_any_open (test_candidate_identity_manifest.ManifestTests.test_public_json_forbidden_paths_refuse_before_any_open) ... 
+  test_public_json_forbidden_paths_refuse_before_any_open (test_candidate_identity_manifest.ManifestTests.test_public_json_forbidden_paths_refuse_before_any_open) (path_kind='prohibited-parent') ... FAIL
+  test_public_json_forbidden_paths_refuse_before_any_open (test_candidate_identity_manifest.ManifestTests.test_public_json_forbidden_paths_refuse_before_any_open) (path_kind='private-key-parent') ... FAIL
+  test_public_json_forbidden_paths_refuse_before_any_open (test_candidate_identity_manifest.ManifestTests.test_public_json_forbidden_paths_refuse_before_any_open) (path_kind='prohibited-leaf') ... FAIL
+  test_public_json_forbidden_paths_refuse_before_any_open (test_candidate_identity_manifest.ManifestTests.test_public_json_forbidden_paths_refuse_before_any_open) (path_kind='ancestor-symlink') ... FAIL
+test_public_output_creation_never_clobbers_previous_bytes (test_candidate_identity_manifest.ManifestTests.test_public_output_creation_never_clobbers_previous_bytes) ... ok
+test_public_output_forbidden_paths_refuse_before_open_and_preserve_bytes (test_candidate_identity_manifest.ManifestTests.test_public_output_forbidden_paths_refuse_before_open_and_preserve_bytes) ... 
+  test_public_output_forbidden_paths_refuse_before_open_and_preserve_bytes (test_candidate_identity_manifest.ManifestTests.test_public_output_forbidden_paths_refuse_before_open_and_preserve_bytes) (path_kind='prohibited-parent') ... FAIL
+  test_public_output_forbidden_paths_refuse_before_open_and_preserve_bytes (test_candidate_identity_manifest.ManifestTests.test_public_output_forbidden_paths_refuse_before_open_and_preserve_bytes) (path_kind='private-key-parent') ... FAIL
+  test_public_output_forbidden_paths_refuse_before_open_and_preserve_bytes (test_candidate_identity_manifest.ManifestTests.test_public_output_forbidden_paths_refuse_before_open_and_preserve_bytes) (path_kind='prohibited-leaf') ... FAIL
+  test_public_output_forbidden_paths_refuse_before_open_and_preserve_bytes (test_candidate_identity_manifest.ManifestTests.test_public_output_forbidden_paths_refuse_before_open_and_preserve_bytes) (path_kind='leaf-symlink') ... FAIL
+  test_public_output_forbidden_paths_refuse_before_open_and_preserve_bytes (test_candidate_identity_manifest.ManifestTests.test_public_output_forbidden_paths_refuse_before_open_and_preserve_bytes) (path_kind='ancestor-symlink') ... FAIL
+test_public_regular_json_and_identity_cli_positive_preserve_hold (test_candidate_identity_manifest.ManifestTests.test_public_regular_json_and_identity_cli_positive_preserve_hold) ... ok
+test_scope_flags_and_release_gate_never_promote (test_candidate_identity_manifest.ManifestTests.test_scope_flags_and_release_gate_never_promote) ... ok
+test_secret_fields_rejected_without_echo_and_never_invented (test_candidate_identity_manifest.ManifestTests.test_secret_fields_rejected_without_echo_and_never_invented) ... ok
+test_stale_covered_source_builder_and_contract_artifact_refuse (test_candidate_identity_manifest.ManifestTests.test_stale_covered_source_builder_and_contract_artifact_refuse) ... ok
+test_unsafe_artifact_and_source_paths_refuse (test_candidate_identity_manifest.ManifestTests.test_unsafe_artifact_and_source_paths_refuse) ... ok
+test_wrong_elf_including_reviewed_v2_is_rejected (test_candidate_identity_manifest.ManifestTests.test_wrong_elf_including_reviewed_v2_is_rejected) ... ok
+test_all_candidate_graph_key_clock_policy_chain_and_grace_getters_are_bound (test_candidate_target_observer.ObserverTests.test_all_candidate_graph_key_clock_policy_chain_and_grace_getters_are_bound) ... ok
+test_all_ten_roles_seven_templates_candidate_graph_and_repeat_reads_hold (test_candidate_target_observer.ObserverTests.test_all_ten_roles_seven_templates_candidate_graph_and_repeat_reads_hold) ... ok
+test_ancestry_hole_fork_wrong_height_and_over_bound_are_hold (test_candidate_target_observer.ObserverTests.test_ancestry_hole_fork_wrong_height_and_over_bound_are_hold) ... ok
+test_caller_input_snapshot_and_local_source_artifact_changes_are_never_accepted (test_candidate_target_observer.ObserverTests.test_caller_input_snapshot_and_local_source_artifact_changes_are_never_accepted) ... ok
+test_each_runtime_hash_and_sha256_substitution_fails_against_valid_manifest (test_candidate_target_observer.ObserverTests.test_each_runtime_hash_and_sha256_substitution_fails_against_valid_manifest) ... ok
+test_empty_nonhex_and_oversized_runtime_for_every_role_is_refused (test_candidate_target_observer.ObserverTests.test_empty_nonhex_and_oversized_runtime_for_every_role_is_refused) ... ok
+test_every_signer_owner_configurator_and_economic_policy_is_independently_pinned (test_candidate_target_observer.ObserverTests.test_every_signer_owner_configurator_and_economic_policy_is_independently_pinned) ... ok
+test_explicit_policy_is_strict_normalized_and_never_inferred (test_candidate_target_observer.ObserverTests.test_explicit_policy_is_strict_normalized_and_never_inferred) ... ok
+test_finalized_regression_same_height_fork_and_changed_anchor_refuse (test_candidate_target_observer.ObserverTests.test_finalized_regression_same_height_fork_and_changed_anchor_refuse) ... ok
+test_immutable_reference_ranges_placeholders_and_repeated_words_are_strict (test_candidate_target_observer.ObserverTests.test_immutable_reference_ranges_placeholders_and_repeated_words_are_strict) ... ok
+test_injected_provider_cannot_mutate_saved_pin_or_replay_call_arguments (test_candidate_target_observer.ObserverTests.test_injected_provider_cannot_mutate_saved_pin_or_replay_call_arguments) ... ok
+test_metadata_only_descendant_accepts_original_informational_code_commit (test_candidate_target_observer.ObserverTests.test_metadata_only_descendant_accepts_original_informational_code_commit) ... ok
+test_missing_declared_address_and_hash_roles_refuse_before_rpc (test_candidate_target_observer.ObserverTests.test_missing_declared_address_and_hash_roles_refuse_before_rpc) ... ok
+test_missing_noncanonical_and_zero_headers_are_rejected_without_latest_fallback (test_candidate_target_observer.ObserverTests.test_missing_noncanonical_and_zero_headers_are_rejected_without_latest_fallback) ... ok
+test_observer_cli_forbidden_inputs_refuse_before_target_open_or_rpc (test_candidate_target_observer.ObserverTests.test_observer_cli_forbidden_inputs_refuse_before_target_open_or_rpc) ... 
+  test_observer_cli_forbidden_inputs_refuse_before_target_open_or_rpc (test_candidate_target_observer.ObserverTests.test_observer_cli_forbidden_inputs_refuse_before_target_open_or_rpc) (role='manifest', path_kind='ancestor-symlink') ... FAIL
+  test_observer_cli_forbidden_inputs_refuse_before_target_open_or_rpc (test_candidate_target_observer.ObserverTests.test_observer_cli_forbidden_inputs_refuse_before_target_open_or_rpc) (role='config', path_kind='ancestor-symlink') ... FAIL
+  test_observer_cli_forbidden_inputs_refuse_before_target_open_or_rpc (test_candidate_target_observer.ObserverTests.test_observer_cli_forbidden_inputs_refuse_before_target_open_or_rpc) (role='policy', path_kind='ancestor-symlink') ... FAIL
+test_observer_cli_forbidden_outputs_preflight_before_input_reads_or_rpc (test_candidate_target_observer.ObserverTests.test_observer_cli_forbidden_outputs_preflight_before_input_reads_or_rpc) ... 
+  test_observer_cli_forbidden_outputs_preflight_before_input_reads_or_rpc (test_candidate_target_observer.ObserverTests.test_observer_cli_forbidden_outputs_preflight_before_input_reads_or_rpc) (path_kind='prohibited-parent') ... FAIL
+  test_observer_cli_forbidden_outputs_preflight_before_input_reads_or_rpc (test_candidate_target_observer.ObserverTests.test_observer_cli_forbidden_outputs_preflight_before_input_reads_or_rpc) (path_kind='private-key-parent') ... FAIL
+  test_observer_cli_forbidden_outputs_preflight_before_input_reads_or_rpc (test_candidate_target_observer.ObserverTests.test_observer_cli_forbidden_outputs_preflight_before_input_reads_or_rpc) (path_kind='prohibited-leaf') ... FAIL
+  test_observer_cli_forbidden_outputs_preflight_before_input_reads_or_rpc (test_candidate_target_observer.ObserverTests.test_observer_cli_forbidden_outputs_preflight_before_input_reads_or_rpc) (path_kind='ancestor-symlink') ... FAIL
+test_observer_cli_public_regular_files_retain_actual_mock_rpc_positive (test_candidate_target_observer.ObserverTests.test_observer_cli_public_regular_files_retain_actual_mock_rpc_positive) ... FAIL
+test_provider_getter_equivocation_at_same_block_is_rejected (test_candidate_target_observer.ObserverTests.test_provider_getter_equivocation_at_same_block_is_rejected) ... ok
+test_provider_runtime_equivocation_at_same_block_is_rejected_for_each_role (test_candidate_target_observer.ObserverTests.test_provider_runtime_equivocation_at_same_block_is_rejected_for_each_role) ... ok
+test_return_abi_address_width_narrow_uint_and_selector_are_canonical (test_candidate_target_observer.ObserverTests.test_return_abi_address_width_narrow_uint_and_selector_are_canonical) ... ok
+test_stale_compiler_profile_source_binding_and_artifact_refuse_before_rpc (test_candidate_target_observer.ObserverTests.test_stale_compiler_profile_source_binding_and_artifact_refuse_before_rpc) ... ok
+test_stale_elf_reviewed_source_and_observer_builder_refuse_before_rpc (test_candidate_target_observer.ObserverTests.test_stale_elf_reviewed_source_and_observer_builder_refuse_before_rpc) ... ok
+test_unexpected_provider_exceptions_and_local_tool_errors_never_echo_payloads (test_candidate_target_observer.ObserverTests.test_unexpected_provider_exceptions_and_local_tool_errors_never_echo_payloads) ... ok
+test_valid_finalized_advancement_and_exact_ancestry_bound_are_allowed (test_candidate_target_observer.ObserverTests.test_valid_finalized_advancement_and_exact_ancestry_bound_are_allowed) ... ok
+test_verifier_full_hash_route_target_freeze_bool_and_width_are_checked (test_candidate_target_observer.ObserverTests.test_verifier_full_hash_route_target_freeze_bool_and_width_are_checked) ... ok
+test_wrong_chain_and_mid_observation_chain_switch_refuse (test_candidate_target_observer.ObserverTests.test_wrong_chain_and_mid_observation_chain_switch_refuse) ... ok
+test_wrong_code_commit_format_and_unrelated_ancestry_refuse_before_rpc (test_candidate_target_observer.ObserverTests.test_wrong_code_commit_format_and_unrelated_ancestry_refuse_before_rpc) ... ok
+test_wrong_schema_missing_roles_and_forged_manifest_hash_refuse_before_rpc (test_candidate_target_observer.ObserverTests.test_wrong_schema_missing_roles_and_forged_manifest_hash_refuse_before_rpc) ... ok
+test_bad_envelope_duplicate_deep_nonfinite_size_and_redirect_fail_without_echo (test_candidate_target_observer.TransportTests.test_bad_envelope_duplicate_deep_nonfinite_size_and_redirect_fail_without_echo) ... ok
+test_only_anonymous_root_endpoints_and_four_read_methods_are_accepted (test_candidate_target_observer.TransportTests.test_only_anonymous_root_endpoints_and_four_read_methods_are_accepted) ... ok
+test_successful_envelopes_have_monotonic_ids_and_total_time_budget_is_enforced (test_candidate_target_observer.TransportTests.test_successful_envelopes_have_monotonic_ids_and_total_time_budget_is_enforced) ... ok
+
+======================================================================
+FAIL: test_identity_cli_forbidden_input_paths_do_not_read_or_build (test_candidate_identity_manifest.ManifestTests.test_identity_cli_forbidden_input_paths_do_not_read_or_build) (role='config', path_kind='prohibited-parent')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 414, in test_identity_cli_forbidden_input_paths_do_not_read_or_build
+    self.assertEqual(opened, [])
+AssertionError: Lists differ: [PosixPath('/private/var/folders/jz/7wbjs_[88 chars]on')] != []
+
+First list contains 1 additional elements.
+First extra element 0:
+PosixPath('/private/var/folders/jz/7wbjs_5j45g915858xh6wm200000gn/T/arcora-candidate-identity-tqfpg6up/.env-fixture/cli-config.json')
+
+- [PosixPath('/private/var/folders/jz/7wbjs_5j45g915858xh6wm200000gn/T/arcora-candidate-identity-tqfpg6up/.env-fixture/cli-config.json')]
++ []
+
+======================================================================
+FAIL: test_identity_cli_forbidden_input_paths_do_not_read_or_build (test_candidate_identity_manifest.ManifestTests.test_identity_cli_forbidden_input_paths_do_not_read_or_build) (role='config', path_kind='private-key-parent')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 414, in test_identity_cli_forbidden_input_paths_do_not_read_or_build
+    self.assertEqual(opened, [])
+AssertionError: Lists differ: [PosixPath('/private/var/folders/jz/7wbjs_[88 chars]on')] != []
+
+First list contains 1 additional elements.
+First extra element 0:
+PosixPath('/private/var/folders/jz/7wbjs_5j45g915858xh6wm200000gn/T/arcora-candidate-identity-tqfpg6up/private-keys/cli-config.json')
+
+- [PosixPath('/private/var/folders/jz/7wbjs_5j45g915858xh6wm200000gn/T/arcora-candidate-identity-tqfpg6up/private-keys/cli-config.json')]
++ []
+
+======================================================================
+FAIL: test_identity_cli_forbidden_input_paths_do_not_read_or_build (test_candidate_identity_manifest.ManifestTests.test_identity_cli_forbidden_input_paths_do_not_read_or_build) (role='config', path_kind='prohibited-leaf')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 414, in test_identity_cli_forbidden_input_paths_do_not_read_or_build
+    self.assertEqual(opened, [])
+AssertionError: Lists differ: [PosixPath('/private/var/folders/jz/7wbjs_[100 chars]on')] != []
+
+First list contains 1 additional elements.
+First extra element 0:
+PosixPath('/private/var/folders/jz/7wbjs_5j45g915858xh6wm200000gn/T/arcora-candidate-identity-tqfpg6up/path-samples/credentials-cli-config.json')
+
+- [PosixPath('/private/var/folders/jz/7wbjs_5j45g915858xh6wm200000gn/T/arcora-candidate-identity-tqfpg6up/path-samples/credentials-cli-config.json')]
++ []
+
+======================================================================
+FAIL: test_identity_cli_forbidden_input_paths_do_not_read_or_build (test_candidate_identity_manifest.ManifestTests.test_identity_cli_forbidden_input_paths_do_not_read_or_build) (role='config', path_kind='ancestor-symlink')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 414, in test_identity_cli_forbidden_input_paths_do_not_read_or_build
+    self.assertEqual(opened, [])
+AssertionError: Lists differ: [PosixPath('/private/var/folders/jz/7wbjs_[113 chars]on')] != []
+
+First list contains 1 additional elements.
+First extra element 0:
+PosixPath('/private/var/folders/jz/7wbjs_5j45g915858xh6wm200000gn/T/arcora-candidate-identity-tqfpg6up/path-samples/ancestor-cli-config.json/cli-config.json')
+
+- [PosixPath('/private/var/folders/jz/7wbjs_5j45g915858xh6wm200000gn/T/arcora-candidate-identity-tqfpg6up/path-samples/ancestor-cli-config.json/cli-config.json')]
++ []
+
+======================================================================
+FAIL: test_identity_cli_forbidden_input_paths_do_not_read_or_build (test_candidate_identity_manifest.ManifestTests.test_identity_cli_forbidden_input_paths_do_not_read_or_build) (role='manifest', path_kind='prohibited-parent')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 413, in test_identity_cli_forbidden_input_paths_do_not_read_or_build
+    self.assertEqual(code, 1, text)
+AssertionError: 0 != 1 : {"status": "LOCAL_IDENTITY_MATCH", "release_gate": "HOLD", "schema": "arcora-chainlink-candidate-offline/v1", "target_observed": false}
+
+
+======================================================================
+FAIL: test_identity_cli_forbidden_input_paths_do_not_read_or_build (test_candidate_identity_manifest.ManifestTests.test_identity_cli_forbidden_input_paths_do_not_read_or_build) (role='manifest', path_kind='private-key-parent')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 413, in test_identity_cli_forbidden_input_paths_do_not_read_or_build
+    self.assertEqual(code, 1, text)
+AssertionError: 0 != 1 : {"status": "LOCAL_IDENTITY_MATCH", "release_gate": "HOLD", "schema": "arcora-chainlink-candidate-offline/v1", "target_observed": false}
+
+
+======================================================================
+FAIL: test_identity_cli_forbidden_input_paths_do_not_read_or_build (test_candidate_identity_manifest.ManifestTests.test_identity_cli_forbidden_input_paths_do_not_read_or_build) (role='manifest', path_kind='prohibited-leaf')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 413, in test_identity_cli_forbidden_input_paths_do_not_read_or_build
+    self.assertEqual(code, 1, text)
+AssertionError: 0 != 1 : {"status": "LOCAL_IDENTITY_MATCH", "release_gate": "HOLD", "schema": "arcora-chainlink-candidate-offline/v1", "target_observed": false}
+
+
+======================================================================
+FAIL: test_identity_cli_forbidden_input_paths_do_not_read_or_build (test_candidate_identity_manifest.ManifestTests.test_identity_cli_forbidden_input_paths_do_not_read_or_build) (role='manifest', path_kind='ancestor-symlink')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 413, in test_identity_cli_forbidden_input_paths_do_not_read_or_build
+    self.assertEqual(code, 1, text)
+AssertionError: 0 != 1 : {"status": "LOCAL_IDENTITY_MATCH", "release_gate": "HOLD", "schema": "arcora-chainlink-candidate-offline/v1", "target_observed": false}
+
+
+======================================================================
+FAIL: test_identity_cli_forbidden_outputs_preflight_before_reads_or_build (test_candidate_identity_manifest.ManifestTests.test_identity_cli_forbidden_outputs_preflight_before_reads_or_build) (path_kind='prohibited-parent')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 435, in test_identity_cli_forbidden_outputs_preflight_before_reads_or_build
+    code, text = self.identity_cli(["create", "--config", str(regular_config),
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 341, in identity_cli
+    code = identity.main()
+           ^^^^^^^^^^^^^^^
+  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/candidate_identity_manifest.py", line 338, in main
+    config = read_json(args.config)
+             ^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.12/3.12.13/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/mock.py", line 1139, in __call__
+    return self._mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.12/3.12.13/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/mock.py", line 1143, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.12/3.12.13/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/mock.py", line 1198, in _execute_mock_call
+    raise effect
+AssertionError: late input read
+
+======================================================================
+FAIL: test_identity_cli_forbidden_outputs_preflight_before_reads_or_build (test_candidate_identity_manifest.ManifestTests.test_identity_cli_forbidden_outputs_preflight_before_reads_or_build) (path_kind='private-key-parent')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 435, in test_identity_cli_forbidden_outputs_preflight_before_reads_or_build
+    code, text = self.identity_cli(["create", "--config", str(regular_config),
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 341, in identity_cli
+    code = identity.main()
+           ^^^^^^^^^^^^^^^
+  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/candidate_identity_manifest.py", line 338, in main
+    config = read_json(args.config)
+             ^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.12/3.12.13/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/mock.py", line 1139, in __call__
+    return self._mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.12/3.12.13/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/mock.py", line 1143, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.12/3.12.13/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/mock.py", line 1198, in _execute_mock_call
+    raise effect
+AssertionError: late input read
+
+======================================================================
+FAIL: test_identity_cli_forbidden_outputs_preflight_before_reads_or_build (test_candidate_identity_manifest.ManifestTests.test_identity_cli_forbidden_outputs_preflight_before_reads_or_build) (path_kind='prohibited-leaf')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 435, in test_identity_cli_forbidden_outputs_preflight_before_reads_or_build
+    code, text = self.identity_cli(["create", "--config", str(regular_config),
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 341, in identity_cli
+    code = identity.main()
+           ^^^^^^^^^^^^^^^
+  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/candidate_identity_manifest.py", line 338, in main
+    config = read_json(args.config)
+             ^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.12/3.12.13/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/mock.py", line 1139, in __call__
+    return self._mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.12/3.12.13/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/mock.py", line 1143, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.12/3.12.13/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/mock.py", line 1198, in _execute_mock_call
+    raise effect
+AssertionError: late input read
+
+======================================================================
+FAIL: test_identity_cli_forbidden_outputs_preflight_before_reads_or_build (test_candidate_identity_manifest.ManifestTests.test_identity_cli_forbidden_outputs_preflight_before_reads_or_build) (path_kind='leaf-symlink')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 435, in test_identity_cli_forbidden_outputs_preflight_before_reads_or_build
+    code, text = self.identity_cli(["create", "--config", str(regular_config),
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 341, in identity_cli
+    code = identity.main()
+           ^^^^^^^^^^^^^^^
+  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/candidate_identity_manifest.py", line 338, in main
+    config = read_json(args.config)
+             ^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.12/3.12.13/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/mock.py", line 1139, in __call__
+    return self._mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.12/3.12.13/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/mock.py", line 1143, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.12/3.12.13/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/mock.py", line 1198, in _execute_mock_call
+    raise effect
+AssertionError: late input read
+
+======================================================================
+FAIL: test_identity_cli_forbidden_outputs_preflight_before_reads_or_build (test_candidate_identity_manifest.ManifestTests.test_identity_cli_forbidden_outputs_preflight_before_reads_or_build) (path_kind='ancestor-symlink')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 435, in test_identity_cli_forbidden_outputs_preflight_before_reads_or_build
+    code, text = self.identity_cli(["create", "--config", str(regular_config),
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 341, in identity_cli
+    code = identity.main()
+           ^^^^^^^^^^^^^^^
+  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/candidate_identity_manifest.py", line 338, in main
+    config = read_json(args.config)
+             ^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.12/3.12.13/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/mock.py", line 1139, in __call__
+    return self._mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.12/3.12.13/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/mock.py", line 1143, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.12/3.12.13/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/mock.py", line 1198, in _execute_mock_call
+    raise effect
+AssertionError: late input read
+
+======================================================================
+FAIL: test_identity_cli_forbidden_outputs_preflight_before_reads_or_build (test_candidate_identity_manifest.ManifestTests.test_identity_cli_forbidden_outputs_preflight_before_reads_or_build) (path_kind='existing-regular')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 435, in test_identity_cli_forbidden_outputs_preflight_before_reads_or_build
+    code, text = self.identity_cli(["create", "--config", str(regular_config),
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 341, in identity_cli
+    code = identity.main()
+           ^^^^^^^^^^^^^^^
+  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/candidate_identity_manifest.py", line 338, in main
+    config = read_json(args.config)
+             ^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.12/3.12.13/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/mock.py", line 1139, in __call__
+    return self._mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.12/3.12.13/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/mock.py", line 1143, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.12/3.12.13/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/mock.py", line 1198, in _execute_mock_call
+    raise effect
+AssertionError: late input read
+
+======================================================================
+FAIL: test_public_json_forbidden_paths_refuse_before_any_open (test_candidate_identity_manifest.ManifestTests.test_public_json_forbidden_paths_refuse_before_any_open) (path_kind='prohibited-parent')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 374, in test_public_json_forbidden_paths_refuse_before_any_open
+    identity.read_json(path)
+  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/candidate_identity_manifest.py", line 105, in read_json
+    with path.open("rb") as stream:
+         ^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.12/3.12.13/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/mock.py", line 1139, in __call__
+    return self._mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.12/3.12.13/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/mock.py", line 1143, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.12/3.12.13/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/mock.py", line 1198, in _execute_mock_call
+    raise effect
+AssertionError: forbidden input opened
+
+======================================================================
+FAIL: test_public_json_forbidden_paths_refuse_before_any_open (test_candidate_identity_manifest.ManifestTests.test_public_json_forbidden_paths_refuse_before_any_open) (path_kind='private-key-parent')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 374, in test_public_json_forbidden_paths_refuse_before_any_open
+    identity.read_json(path)
+  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/candidate_identity_manifest.py", line 105, in read_json
+    with path.open("rb") as stream:
+         ^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.12/3.12.13/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/mock.py", line 1139, in __call__
+    return self._mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.12/3.12.13/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/mock.py", line 1143, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.12/3.12.13/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/mock.py", line 1198, in _execute_mock_call
+    raise effect
+AssertionError: forbidden input opened
+
+======================================================================
+FAIL: test_public_json_forbidden_paths_refuse_before_any_open (test_candidate_identity_manifest.ManifestTests.test_public_json_forbidden_paths_refuse_before_any_open) (path_kind='prohibited-leaf')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 374, in test_public_json_forbidden_paths_refuse_before_any_open
+    identity.read_json(path)
+  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/candidate_identity_manifest.py", line 105, in read_json
+    with path.open("rb") as stream:
+         ^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.12/3.12.13/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/mock.py", line 1139, in __call__
+    return self._mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.12/3.12.13/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/mock.py", line 1143, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.12/3.12.13/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/mock.py", line 1198, in _execute_mock_call
+    raise effect
+AssertionError: forbidden input opened
+
+======================================================================
+FAIL: test_public_json_forbidden_paths_refuse_before_any_open (test_candidate_identity_manifest.ManifestTests.test_public_json_forbidden_paths_refuse_before_any_open) (path_kind='ancestor-symlink')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 374, in test_public_json_forbidden_paths_refuse_before_any_open
+    identity.read_json(path)
+  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/candidate_identity_manifest.py", line 105, in read_json
+    with path.open("rb") as stream:
+         ^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.12/3.12.13/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/mock.py", line 1139, in __call__
+    return self._mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.12/3.12.13/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/mock.py", line 1143, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.12/3.12.13/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/mock.py", line 1198, in _execute_mock_call
+    raise effect
+AssertionError: forbidden input opened
+
+======================================================================
+FAIL: test_public_output_forbidden_paths_refuse_before_open_and_preserve_bytes (test_candidate_identity_manifest.ManifestTests.test_public_output_forbidden_paths_refuse_before_open_and_preserve_bytes) (path_kind='prohibited-parent')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 385, in test_public_output_forbidden_paths_refuse_before_open_and_preserve_bytes
+    identity.create_output(path, {"owned_public_fixture": True})
+  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/candidate_identity_manifest.py", line 317, in create_output
+    with Path(path).open("x") as stream:
+         ^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.12/3.12.13/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/mock.py", line 1139, in __call__
+    return self._mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.12/3.12.13/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/mock.py", line 1143, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.12/3.12.13/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/mock.py", line 1198, in _execute_mock_call
+    raise effect
+AssertionError: forbidden output opened
+
+======================================================================
+FAIL: test_public_output_forbidden_paths_refuse_before_open_and_preserve_bytes (test_candidate_identity_manifest.ManifestTests.test_public_output_forbidden_paths_refuse_before_open_and_preserve_bytes) (path_kind='private-key-parent')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 385, in test_public_output_forbidden_paths_refuse_before_open_and_preserve_bytes
+    identity.create_output(path, {"owned_public_fixture": True})
+  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/candidate_identity_manifest.py", line 317, in create_output
+    with Path(path).open("x") as stream:
+         ^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.12/3.12.13/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/mock.py", line 1139, in __call__
+    return self._mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.12/3.12.13/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/mock.py", line 1143, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.12/3.12.13/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/mock.py", line 1198, in _execute_mock_call
+    raise effect
+AssertionError: forbidden output opened
+
+======================================================================
+FAIL: test_public_output_forbidden_paths_refuse_before_open_and_preserve_bytes (test_candidate_identity_manifest.ManifestTests.test_public_output_forbidden_paths_refuse_before_open_and_preserve_bytes) (path_kind='prohibited-leaf')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 385, in test_public_output_forbidden_paths_refuse_before_open_and_preserve_bytes
+    identity.create_output(path, {"owned_public_fixture": True})
+  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/candidate_identity_manifest.py", line 317, in create_output
+    with Path(path).open("x") as stream:
+         ^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.12/3.12.13/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/mock.py", line 1139, in __call__
+    return self._mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.12/3.12.13/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/mock.py", line 1143, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.12/3.12.13/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/mock.py", line 1198, in _execute_mock_call
+    raise effect
+AssertionError: forbidden output opened
+
+======================================================================
+FAIL: test_public_output_forbidden_paths_refuse_before_open_and_preserve_bytes (test_candidate_identity_manifest.ManifestTests.test_public_output_forbidden_paths_refuse_before_open_and_preserve_bytes) (path_kind='leaf-symlink')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 385, in test_public_output_forbidden_paths_refuse_before_open_and_preserve_bytes
+    identity.create_output(path, {"owned_public_fixture": True})
+  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/candidate_identity_manifest.py", line 317, in create_output
+    with Path(path).open("x") as stream:
+         ^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.12/3.12.13/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/mock.py", line 1139, in __call__
+    return self._mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.12/3.12.13/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/mock.py", line 1143, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.12/3.12.13/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/mock.py", line 1198, in _execute_mock_call
+    raise effect
+AssertionError: forbidden output opened
+
+======================================================================
+FAIL: test_public_output_forbidden_paths_refuse_before_open_and_preserve_bytes (test_candidate_identity_manifest.ManifestTests.test_public_output_forbidden_paths_refuse_before_open_and_preserve_bytes) (path_kind='ancestor-symlink')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_identity_manifest.py", line 385, in test_public_output_forbidden_paths_refuse_before_open_and_preserve_bytes
+    identity.create_output(path, {"owned_public_fixture": True})
+  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/candidate_identity_manifest.py", line 317, in create_output
+    with Path(path).open("x") as stream:
+         ^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.12/3.12.13/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/mock.py", line 1139, in __call__
+    return self._mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.12/3.12.13/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/mock.py", line 1143, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.12/3.12.13/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/mock.py", line 1198, in _execute_mock_call
+    raise effect
+AssertionError: forbidden output opened
+
+======================================================================
+FAIL: test_observer_cli_forbidden_inputs_refuse_before_target_open_or_rpc (test_candidate_target_observer.ObserverTests.test_observer_cli_forbidden_inputs_refuse_before_target_open_or_rpc) (role='manifest', path_kind='ancestor-symlink')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_target_observer.py", line 629, in test_observer_cli_forbidden_inputs_refuse_before_target_open_or_rpc
+    self.assertEqual(opened, [])
+AssertionError: Lists differ: [PosixPath('/private/var/folders/jz/7wbjs_[127 chars]on')] != []
+
+First list contains 1 additional elements.
+First extra element 0:
+PosixPath('/private/var/folders/jz/7wbjs_5j45g915858xh6wm200000gn/T/arcora-candidate-identity-_ue6cwpq/path-samples/ancestor-observer-manifest.json/observer-manifest.json')
+
+- [PosixPath('/private/var/folders/jz/7wbjs_5j45g915858xh6wm200000gn/T/arcora-candidate-identity-_ue6cwpq/path-samples/ancestor-observer-manifest.json/observer-manifest.json')]
++ []
+
+======================================================================
+FAIL: test_observer_cli_forbidden_inputs_refuse_before_target_open_or_rpc (test_candidate_target_observer.ObserverTests.test_observer_cli_forbidden_inputs_refuse_before_target_open_or_rpc) (role='config', path_kind='ancestor-symlink')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_target_observer.py", line 629, in test_observer_cli_forbidden_inputs_refuse_before_target_open_or_rpc
+    self.assertEqual(opened, [])
+AssertionError: Lists differ: [PosixPath('/private/var/folders/jz/7wbjs_[123 chars]on')] != []
+
+First list contains 1 additional elements.
+First extra element 0:
+PosixPath('/private/var/folders/jz/7wbjs_5j45g915858xh6wm200000gn/T/arcora-candidate-identity-_ue6cwpq/path-samples/ancestor-observer-config.json/observer-config.json')
+
+- [PosixPath('/private/var/folders/jz/7wbjs_5j45g915858xh6wm200000gn/T/arcora-candidate-identity-_ue6cwpq/path-samples/ancestor-observer-config.json/observer-config.json')]
++ []
+
+======================================================================
+FAIL: test_observer_cli_forbidden_inputs_refuse_before_target_open_or_rpc (test_candidate_target_observer.ObserverTests.test_observer_cli_forbidden_inputs_refuse_before_target_open_or_rpc) (role='policy', path_kind='ancestor-symlink')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_target_observer.py", line 629, in test_observer_cli_forbidden_inputs_refuse_before_target_open_or_rpc
+    self.assertEqual(opened, [])
+AssertionError: Lists differ: [PosixPath('/private/var/folders/jz/7wbjs_[123 chars]on')] != []
+
+First list contains 1 additional elements.
+First extra element 0:
+PosixPath('/private/var/folders/jz/7wbjs_5j45g915858xh6wm200000gn/T/arcora-candidate-identity-_ue6cwpq/path-samples/ancestor-observer-policy.json/observer-policy.json')
+
+- [PosixPath('/private/var/folders/jz/7wbjs_5j45g915858xh6wm200000gn/T/arcora-candidate-identity-_ue6cwpq/path-samples/ancestor-observer-policy.json/observer-policy.json')]
++ []
+
+======================================================================
+FAIL: test_observer_cli_forbidden_outputs_preflight_before_input_reads_or_rpc (test_candidate_target_observer.ObserverTests.test_observer_cli_forbidden_outputs_preflight_before_input_reads_or_rpc) (path_kind='prohibited-parent')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_target_observer.py", line 651, in test_observer_cli_forbidden_outputs_preflight_before_input_reads_or_rpc
+    read.assert_not_called()
+  File "/opt/homebrew/Cellar/python@3.12/3.12.13/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/mock.py", line 910, in assert_not_called
+    raise AssertionError(msg)
+AssertionError: Expected 'read_json' to not have been called. Called 1 times.
+Calls: [call('/private/var/folders/jz/7wbjs_5j45g915858xh6wm200000gn/T/arcora-candidate-identity-oosehvmw/observer-public-manifest.json')].
+
+======================================================================
+FAIL: test_observer_cli_forbidden_outputs_preflight_before_input_reads_or_rpc (test_candidate_target_observer.ObserverTests.test_observer_cli_forbidden_outputs_preflight_before_input_reads_or_rpc) (path_kind='private-key-parent')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_target_observer.py", line 651, in test_observer_cli_forbidden_outputs_preflight_before_input_reads_or_rpc
+    read.assert_not_called()
+  File "/opt/homebrew/Cellar/python@3.12/3.12.13/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/mock.py", line 910, in assert_not_called
+    raise AssertionError(msg)
+AssertionError: Expected 'read_json' to not have been called. Called 1 times.
+Calls: [call('/private/var/folders/jz/7wbjs_5j45g915858xh6wm200000gn/T/arcora-candidate-identity-oosehvmw/observer-public-manifest.json')].
+
+======================================================================
+FAIL: test_observer_cli_forbidden_outputs_preflight_before_input_reads_or_rpc (test_candidate_target_observer.ObserverTests.test_observer_cli_forbidden_outputs_preflight_before_input_reads_or_rpc) (path_kind='prohibited-leaf')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_target_observer.py", line 651, in test_observer_cli_forbidden_outputs_preflight_before_input_reads_or_rpc
+    read.assert_not_called()
+  File "/opt/homebrew/Cellar/python@3.12/3.12.13/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/mock.py", line 910, in assert_not_called
+    raise AssertionError(msg)
+AssertionError: Expected 'read_json' to not have been called. Called 1 times.
+Calls: [call('/private/var/folders/jz/7wbjs_5j45g915858xh6wm200000gn/T/arcora-candidate-identity-oosehvmw/observer-public-manifest.json')].
+
+======================================================================
+FAIL: test_observer_cli_forbidden_outputs_preflight_before_input_reads_or_rpc (test_candidate_target_observer.ObserverTests.test_observer_cli_forbidden_outputs_preflight_before_input_reads_or_rpc) (path_kind='ancestor-symlink')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_target_observer.py", line 651, in test_observer_cli_forbidden_outputs_preflight_before_input_reads_or_rpc
+    read.assert_not_called()
+  File "/opt/homebrew/Cellar/python@3.12/3.12.13/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/mock.py", line 910, in assert_not_called
+    raise AssertionError(msg)
+AssertionError: Expected 'read_json' to not have been called. Called 1 times.
+Calls: [call('/private/var/folders/jz/7wbjs_5j45g915858xh6wm200000gn/T/arcora-candidate-identity-oosehvmw/observer-public-manifest.json')].
+
+======================================================================
+FAIL: test_observer_cli_public_regular_files_retain_actual_mock_rpc_positive (test_candidate_target_observer.ObserverTests.test_observer_cli_public_regular_files_retain_actual_mock_rpc_positive)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/huseyinarslan/Desktop/arcora-perp/candidate-protocol-20261011/scripts/local-verification/test_candidate_target_observer.py", line 598, in test_observer_cli_public_regular_files_retain_actual_mock_rpc_positive
+    self.assertEqual(code, 0, text)
+AssertionError: 1 != 0 : {"status": "BLOCKED", "release_gate": "HOLD", "schema": "arcora-chainlink-target-observation/v1"}
+
+
+----------------------------------------------------------------------
+Ran 55 tests in 37.626s
+
+FAILED (failures=31)
