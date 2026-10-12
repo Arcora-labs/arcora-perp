@@ -1,0 +1,23 @@
+{
+  "schema": "arcora-candidate-signed-sealed-fixture-task/v1",
+  "base_main": "60eceef733613fe6d491548d35eb4fdb7c0809bd",
+  "baseline_sha256": "3d2bb965542490a8c13af04cdc298b6bfa45f6901af2735413cff0df90104997",
+  "allowed_existing_paths": [
+    ".gitattributes",
+    ".github/workflows/a11-release-evidence.yml",
+    "crates/gateway/src/main.rs",
+    "crates/gateway/src/candidate_fixture_transport.rs",
+    "docs/ACTIVE_WORK.md"
+  ],
+  "new_code_paths": [
+    "crates/gateway/src/candidate_fixture_seal.rs",
+    "crates/gateway/src/candidate_fixture_seal_tests.rs"
+  ],
+  "preserve_old_plain_test_file_byte_exact": true,
+  "new_guest_proof_generated": false,
+  "actual_public_target_accepted": false,
+  "running_services_attested": false,
+  "operator_policy_approved": false,
+  "candidate_submission_enabled": false,
+  "production_release": "HOLD"
+}

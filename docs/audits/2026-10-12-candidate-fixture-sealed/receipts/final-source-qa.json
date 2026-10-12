@@ -1,0 +1,196 @@
+{
+  "acceptance_review": {
+    "deep_crypto_branches": "Independent owned signer authenticates corruptedtag/AAD toDecryption, wrongboxversion toFraming, zero/loworder/noncanonical epk toKey; independent primitiveopen succeeds for re-encrypted wrongdigest/innerop thenContext; genuine transformedhighS normalizes tooriginal butcodecSignature refusal.",
+    "framing_and_capacity": "Header330/overhead467/min627/global20MiB+467, exactlength/trailing/huge prefix, canonicalpeerpins, expectedcontext, boundedreplay1..4096/noeviction/rejectedslot preservation and once-response/priorwrap guards.",
+    "lost_broadcast_ACK": "Exact immutable plan/Pending and sourcePrepared preserved, one acceptedB effect, successorLookupOutcome only, terminal zeroHTTP.",
+    "lost_clock_ACK": "Clock1 then lookup-only Resume, no fabricated reports; ReportsPending/Absent/HOLD with (1,0,0,0).",
+    "lost_report_ACK": "ReportsPending with clock/report1; lookup reconciliation and mockprove toPrepared, no second registration.",
+    "old_plain_None_and_deadline": "Initial seam byte-block checks remain; all8 explicit op bounds preserve original None behavior, cryptoerrors nofallback and sameInstant acrossI/O/decode. Old strict HTTP matrices remain in unchanged18 file.",
+    "plaintext_wire_scope": "Actual captured ownedHTTP request/response bytes reject original plain decoder, contain no witness/full-report literals and open exactly using owned recipient key. Process plaintext copies remain.",
+    "positive_native_and_HTTP": "OnceLock gates both actual original normal/liquidation fullcontainer/native roots/count/calldata and real owned HTTP Preparation8/handoff3; terminal local replay bytes/calls unchanged.",
+    "posteffect_bad_ACK": "Three genuine HTTP bad response/reflection/plaintext cases honestly preserve one priorclockeffect, ClockPending and no retry/fallback; Resume lookups stop ReportsPending/Absent.",
+    "preauthentication_refusal": "Stateful server ReplayReceiver authentication/reservation precedes source lookup/inner typeddecode/peer events/effects. Two request fault cases keep ClockPending, events empty/effects0; callback attempt/durable Pending not falsely calledzero.",
+    "replay": "Captured actualHTTP request replay refuses beforeeffects/source/outcome mutation; duplicate mutation payload under new exchange refused; changed session cannot reset existingreceiver, new receiver explicitly lacks durablehistory."
+  },
+  "added_covered_sources": [
+    "crates/gateway/src/candidate_fixture_seal.rs",
+    "crates/gateway/src/candidate_fixture_seal_tests.rs"
+  ],
+  "defined_and_executed_new_test_count": 19,
+  "defined_and_passed_names": [
+    "candidate_fixture_sealed_both_native_flows_prepare_handoff_and_terminal_replay",
+    "candidate_fixture_sealed_codec_exact_roundtrip_fresh_cipher_and_response_context",
+    "candidate_fixture_sealed_codec_configured_keys_and_session_refusals",
+    "candidate_fixture_sealed_codec_exact_operation_exchange_payload_context_refusals",
+    "candidate_fixture_sealed_codec_header_cipher_signature_and_tag_tamper_refusals",
+    "candidate_fixture_sealed_codec_length_bounds_trailing_and_plain_frame_refused",
+    "candidate_fixture_sealed_codec_canonical_peer_keys_and_low_order_refusals",
+    "candidate_fixture_sealed_receiver_cipher_replay_and_mutation_new_exchange_refused",
+    "candidate_fixture_sealed_replay_capacity_holds_without_eviction_or_rejected_slot",
+    "candidate_fixture_sealed_receiver_session_pins_do_not_reset_replay_memory",
+    "candidate_fixture_sealed_client_response_requires_prior_wrap_exact_context_once",
+    "candidate_fixture_sealed_with_channel_wrong_request_program_pins_is_pre_wire",
+    "candidate_fixture_sealed_invalid_request_auth_or_plaintext_has_zero_peer_effects",
+    "candidate_fixture_sealed_bad_ack_after_effect_keeps_pending_no_plain_fallback",
+    "candidate_fixture_sealed_lost_clock_ack_resumes_lookups_and_holds_absent_reports",
+    "candidate_fixture_sealed_lost_report_ack_reconciles_without_reregistration",
+    "candidate_fixture_sealed_lost_broadcast_ack_keeps_same_plan_resume_lookup_only",
+    "candidate_fixture_sealed_captured_request_replay_over_actual_http_has_no_effect",
+    "candidate_fixture_sealed_authenticated_invalid_box_and_inner_bindings_refuse_exactly"
+  ],
+  "documentation_precision": "Guide now separates fresh HTTP fault scenarios from local reusable Pair/input in purecodec fieldmutations, and explicitly limits signerpossession/staticX/attestation/globalreplay claims.",
+  "findings": [],
+  "first_executed_root_commands": [
+    {
+      "command": [
+        "/Users/huseyinarslan/.cargo/bin/cargo",
+        "+1.99.0",
+        "test",
+        "--locked",
+        "-p",
+        "gateway",
+        "--bin",
+        "gateway",
+        "candidate_fixture_seal_tests",
+        "--",
+        "--nocapture"
+      ],
+      "elapsed_seconds": 34.62099683401175,
+      "exit_code": 0,
+      "raw_test_summary": [
+        "test result: ok. 19 passed; 0 failed; 0 ignored; 0 measured; 720 filtered out; finished in 20.44s"
+      ],
+      "receipt": "target/candidate-seal-validation-20261012/checks/fixture-first.json",
+      "sha256": "0ee6042397c6ff831c4879054d005f272e12bed1e0804d4b24cc9d996707c879",
+      "source_before_after_equal": true,
+      "source_map_sha256": "ec07ccd9cba6f2b52b7600e149715805bd7d58e84195c4a947e4c75102cf9b89",
+      "stderr": {
+        "bytes": 268,
+        "path": "target/candidate-seal-validation-20261012/checks/fixture-first.stderr.log",
+        "sha256": "befaf821835a4879dffbec7651de9d810ab0981d097043084df98dee9396d8d0"
+      },
+      "stdout": {
+        "bytes": 2409,
+        "path": "target/candidate-seal-validation-20261012/checks/fixture-first.stdout.log",
+        "sha256": "a54a64a3fd0355959127c22c8a031f9596edb127f841442fccbdffe96ed75b80"
+      }
+    },
+    {
+      "command": [
+        "/Users/huseyinarslan/.cargo/bin/cargo",
+        "+1.99.0",
+        "clippy",
+        "--workspace",
+        "--all-targets",
+        "--locked",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "elapsed_seconds": 7.264306957949884,
+      "exit_code": 0,
+      "raw_test_summary": [],
+      "receipt": "target/candidate-seal-validation-20261012/checks/workspace-clippy.json",
+      "sha256": "dbdeb511f9bb20c81e8e18d18721dfeab99a485067c2bdcb8737ef550e13bd9b",
+      "source_before_after_equal": true,
+      "source_map_sha256": "ec07ccd9cba6f2b52b7600e149715805bd7d58e84195c4a947e4c75102cf9b89",
+      "stderr": {
+        "bytes": 186,
+        "path": "target/candidate-seal-validation-20261012/checks/workspace-clippy.stderr.log",
+        "sha256": "a7c35fee905d8466be03f8ebd0d21036f7b765dd5522648cf0ab865362393d81"
+      },
+      "stdout": {
+        "bytes": 0,
+        "path": "target/candidate-seal-validation-20261012/checks/workspace-clippy.stdout.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "command": [
+        "/Users/huseyinarslan/.cargo/bin/cargo",
+        "+1.99.0",
+        "fmt",
+        "--all",
+        "--check"
+      ],
+      "elapsed_seconds": 0.6496237500105053,
+      "exit_code": 0,
+      "raw_test_summary": [],
+      "receipt": "target/candidate-seal-validation-20261012/checks/workspace-format.json",
+      "sha256": "204773a6525671d8d23f91ac104bd69779906fbc3d77ee0e1a7bc6e172adab15",
+      "source_before_after_equal": true,
+      "source_map_sha256": "ec07ccd9cba6f2b52b7600e149715805bd7d58e84195c4a947e4c75102cf9b89",
+      "stderr": {
+        "bytes": 0,
+        "path": "target/candidate-seal-validation-20261012/checks/workspace-format.stderr.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stdout": {
+        "bytes": 0,
+        "path": "target/candidate-seal-validation-20261012/checks/workspace-format.stdout.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "command": [
+        "/opt/homebrew/bin/python3.12",
+        "-c",
+        "import sys,unittest; suite=unittest.TestSuite(); loader=unittest.TestLoader(); suite.addTests(loader.discover('scripts/local-verification',pattern='test_service_build_identity.py')); suite.addTests(loader.discover('scripts/local-verification',pattern='test_service_identity_preflight.py')); r=unittest.TextTestRunner(verbosity=2).run(suite); sys.exit(not r.wasSuccessful())"
+      ],
+      "elapsed_seconds": 0.41504608397372067,
+      "exit_code": 0,
+      "raw_test_summary": [],
+      "receipt": "target/candidate-seal-validation-20261012/checks/new-python-final.json",
+      "sha256": "1e9b1706e667111ac42cc485529ce9031a904a9e0dd65db6836310c078d4e0af",
+      "source_before_after_equal": true,
+      "source_map_sha256": "ec07ccd9cba6f2b52b7600e149715805bd7d58e84195c4a947e4c75102cf9b89",
+      "stderr": {
+        "bytes": 4346,
+        "path": "target/candidate-seal-validation-20261012/checks/new-python-final.stderr.log",
+        "sha256": "f8f604d9df68827d1dd860c1cf8f8fbda206406a608c1da902e131615adfd01e"
+      },
+      "stdout": {
+        "bytes": 0,
+        "path": "target/candidate-seal-validation-20261012/checks/new-python-final.stdout.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    }
+  ],
+  "guide_sha256": "ab0b83cecf261e20070ef020e9788ffa6bf11159e08ada56059220e5e9347efc",
+  "modified_prior_covered_sources": [
+    "crates/gateway/src/candidate_fixture_transport.rs",
+    "crates/gateway/src/main.rs"
+  ],
+  "observed_utc": "2026-10-12T13:50:45.252834+00:00",
+  "old_plain18_test_file_byte_exact": true,
+  "passed": true,
+  "pending": [
+    "Root fullgateway current source375ec07, final metadata/preservation3003+82, publication-head CI/normal merge and fresh postmerge delivery."
+  ],
+  "pin_counts": [
+    21,
+    9,
+    2
+  ],
+  "pin_receipt_sha256": "0dd122e067771334fc68cb81be1712ac6e640c87a35d8c804428aa729e874bd4",
+  "release_gate": "PRODUCTION HOLD; no real candidate backend/DPCLK3 proof/CC/DON/finality/custody/operator/release acceptance.",
+  "reviewed_source_sha256": {
+    "crates/gateway/src/candidate_fixture_seal.rs": "eb901e10ae1389db151fccf472ab7f831adc522888daa956857be618c65f454a",
+    "crates/gateway/src/candidate_fixture_seal_tests.rs": "a872421837b5f47bbfae24c75e3b595c1eeca2bad832857fa6842266fb7760b1",
+    "crates/gateway/src/candidate_fixture_transport.rs": "6415462717292fb0b112777328b23c548bb457c80296db04ba48c0f615179c08",
+    "crates/gateway/src/candidate_fixture_transport_tests.rs": "f66392610522d98174a99c6fea3b641b6d9bdd27db53872f324bac8551c20d99"
+  },
+  "root_manifests_sha256": {
+    "Cargo.lock": "5d1dd2b25eb73a7136fde2ac59b112e2135de59e7d4a704931cba4bb630a3cc5",
+    "Cargo.toml": "e3144a0ae3447244776e65b04cfff39267c238e410c2d9abf20b53e6b837bbfa"
+  },
+  "schema": "arcora-candidate-seal-final-source-independent-qa/v1",
+  "scope": "Final frozen Rust source/test acceptance read review and verification of root-executed focused logs. No Cargo/crypto/network/proof/test execution or tracked edits by reviewer. Full gateway remains root-owned and pending at capture.",
+  "source_files": 375,
+  "source_map_sha256": "ec07ccd9cba6f2b52b7600e149715805bd7d58e84195c4a947e4c75102cf9b89",
+  "status": "SCOPED_FROZEN_SOURCE_AND_FOCUSED_EVIDENCE_PASS",
+  "unchanged_primitives_sha256": {
+    "crates/attestation/src/handshake.rs": "fb5a3c94c75eac3aba4fed356750d9cce3bcd547ba1773d749ece14468af4a1d",
+    "crates/sealed-box/src/lib.rs": "7cc33b60470ee775b1535f073a904e9893d26fa89307787454d529bad8cb714e"
+  }
+}

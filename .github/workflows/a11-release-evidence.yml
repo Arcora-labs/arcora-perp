@@ -172,6 +172,8 @@ jobs:
           ARCORA_RUN_CANDIDATE_TARGET_ANVIL=1 ARCORA_CANDIDATE_TARGET_ANVIL_EVIDENCE=/tmp/arcora-local-drills/candidate-target-anvil.json python3 -m unittest discover -s scripts/local-verification -p test_candidate_target_anvil.py -v
       - name: Candidate fixture HTTP transport and durable lost-ack recovery (not live service)
         run: python3 scripts/local-verification/run_check.py --output-dir /tmp/arcora-local-drills/checks candidate-fixture-http -- cargo test --locked -p gateway --bin gateway candidate_fixture_transport_tests -- --nocapture
+      - name: Candidate signed sealed fixture channel and recovery (not approved service)
+        run: python3 scripts/local-verification/run_check.py --output-dir /tmp/arcora-local-drills/checks candidate-fixture-sealed -- cargo test --locked -p gateway --bin gateway candidate_fixture_seal_tests -- --nocapture
       - name: Real cast transport against owned RPC fixtures
         run: |
           python3 scripts/local-verification/run_check.py --output-dir /tmp/arcora-local-drills/checks recovery-rpc -- cargo test --locked -p gateway runtime_witness_native_cast -- --ignored --nocapture --test-threads=1

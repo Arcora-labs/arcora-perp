@@ -2,7 +2,7 @@
 
 Güncelleme: 12 Ekim 2026. **PRODUCTION RELEASE HOLD**.
 Bu belge güncel çalışma sırasıdır; tarihsel `NEXT_STEPS.md` yerine kullanın.
-Bu paketin başlangıç main'i: `29be35c7a66c20563fb83812039eaaf1aa05d80a` (#55).
+Bu paketin başlangıç main'i: `60eceef733613fe6d491548d35eb4fdb7c0809bd` (#56).
 #44 ve #45, güncel yayın head'lerinde ayrı ayrı 19/19 başarılı kontrol sonrası
 normal merge edildi; repository korumaları değiştirilmedi. #44 merge kimliği
 `e697b2f19d74b1021ba3a32b64b4f15ceb159880`, #45 merge kimliği
@@ -385,6 +385,44 @@ kullanıcı kararıyla ertelenmiştir. GPU'suz offline hazırlık bu gerçek kim
 ve proof'u tahmin ederek kapatamaz. Production HOLD devam eder.
 
 ## Açık işler ve kapanış ölçütleri
+
+#56 fixture HTTP, `bb3e9da7703ed9adb24e836c434faeae8a180889` yayın head'inde
+19/19 esas SUCCESS (+ Preview) sonrası normal merge edildi:
+`60eceef733613fe6d491548d35eb4fdb7c0809bd`. Test/merge/yerel ağaç
+`2210378bbf3edb040c591e02286a25a4dfb58a41`; üç main push koşusu da artık
+SUCCESS. Eski raporlar, 13/7/62 dirty checkout ve korumalar korunmuştur.
+
+Son GPU'suz kod `52600351c4a3e5a9ad0c565175dc3c9561f30dfd`, yalnız `cfg(test)`
+signed/sealed fixture kanalını ekler. Ayrı path/type/domain, configured signing ve
+X25519 public peer pins, session/request/program/direction/action/exchange/payload
+bağları; canonical low-S imza → bounded box/DH/decryption → exact inner frame
+kontrolü uygulanır. Mevcut kripto bileşenleri ve katkısız DH ret kontrolü kullanılır.
+Signature yalnız configured ECDSA key possession; sender static-X25519 private
+possession, attestation veya operatör onayı değildir. Yeni backend/production
+route, plaintext fallback, tekrar mutasyon ya da submission açılmadı.
+
+Bounded session replay exchange/mutation-effect kaydını peer etkisinden önce
+ayırır; dolunca eviction yapmadan ret/HOLD. Yeni session/peer process veya reset
+kalıcı/global exactly-once garantisi vermez. Eski coordinator/store/physical lane
+korunur; üç lost ACK dalı aynı lookup ve absent-report HOLD davranışına sahiptir.
+Yeni 19 test, iki tam native sealed HTTP akışı ve geçerli imza altında bozuk
+AEAD/tag, düşük dereceli epk, high-S ve post-decrypt context retlerini içerir.
+Eski 18 plain HTTP test dosyası byte-exact kalmıştır. Her owned HTTP fault fresh
+fixture kullanır; pure codec matrix kendi Pair/input'unu alan retleri için tekrar
+kullanabilir. Captured wire literal plaintext yokluğu process memory/CC gizliliği
+değildir; proof/finality/settlement hâlâ opaque fixture beyanlarıdır.
+
+Final yerel **716 PASS / 0 FAIL / 23 intentional IGNORE**, focused yeni **19/0/0**,
+Python builder/preflight **25 PASS**, workspace format/Clippy PASS; 375 covered
+source öncesi/sonrası `ec07ccd9cba6f2b52b7600e149715805bd7d58e84195c4a947e4c75102cf9b89`.
+21/9/AUX2 pinler, root Cargo dosyaları, eski guest/core/ELF/vkey/store/fixtures
+korunur. [Signed/sealed kapsam](CANDIDATE_FIXTURE_SEALED_CHANNEL.md) ve
+[yerel kanıt](audits/2026-10-12-candidate-fixture-sealed/README.md).
+Yerel sonuç yeni yayın head'inin CI/normal merge gözlemi yerine geçmez.
+Gerçek candidate backend/deployment transport, onaylı target/policy/service/key
+girdileri, fresh proof, gerçek CC/key release/DON/custody/operations/release
+kabulü açık; DPCLK3 production compatibility REFUSED ve PRODUCTION HOLD sürer.
+Live feed discovery ertelemesi korunur.
 
 #55 public-service identity, `e221ddf9a9af47d80b723770392bcbcf97784de8`
 yayın head'inde 19/19 esas SUCCESS (+ Preview) sonrası normal merge edildi:

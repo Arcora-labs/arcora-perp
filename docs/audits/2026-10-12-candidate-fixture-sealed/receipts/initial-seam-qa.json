@@ -1,0 +1,49 @@
+{
+  "base_main": "60eceef733613fe6d491548d35eb4fdb7c0809bd",
+  "baseline_sha256": "3d2bb965542490a8c13af04cdc298b6bfa45f6901af2735413cff0df90104997",
+  "current_operation_plain_response_bounds": {
+    "BroadcastFixture": 160,
+    "LookupClock": 65696,
+    "LookupOutcome": 65696,
+    "LookupReports": 65696,
+    "ProveFixture": 1049760,
+    "Recheck": 131232,
+    "RegisterClock": 160,
+    "RegisterReports": 160
+  },
+  "current_transport_sha256": "6415462717292fb0b112777328b23c548bb457c80296db04ba48c0f615179c08",
+  "findings": [],
+  "limits": "No final codec or test execution acceptance implied. Plain equivalence proof is for current explicit8 operation caps, not arbitrary future operations.",
+  "observed_utc": "2026-10-12T13:37:56.832802+00:00",
+  "plain_None_equivalence": [
+    "Constructor defaults sealed_channel=None; no old preflight, callback or plan gate changed.",
+    "None sends identical original inner bytes, fixed plain path/content type/header values; extra checked_add cannot fail for any current operation cap.",
+    "None response minimum160 and upper160+operation_cap exactly equals former inclusive globalMAX20MiB plus operation predicate for all8 current operations.",
+    "ASCII/status/exact unique headers/canonical length/no TE/compression/redirect/unknown header and exactbody+EOF behavior unchanged."
+  ],
+  "plain_tests_byte_exact_sha256": "f66392610522d98174a99c6fea3b641b6d9bdd27db53872f324bac8551c20d99",
+  "privacy_and_runtime": [
+    "IPv4localhost/nonzero endpoint restriction and no ambient URL/DNS/proxy/env/service discovery remain.",
+    "Test-only module hooks; no production route, proof/SDK/backend/handshake/attestation/RPC capability.",
+    "No secret or peer payload used in diagnostics; seal error collapses to fixed transport enum."
+  ],
+  "release_gate": "PRODUCTION HOLD; synthetic key/proof/observation/outcome fixtures only.",
+  "schema": "arcora-candidate-seal-initial-transport-seam-independent-qa/v1",
+  "scope": "Read-only current optional SealedChannel transport seam. Codec/tests separately provisionally frozen/pending; no Cargo/test/network execution or tracked edits by reviewer.",
+  "sealed_boundary": [
+    "Explicit constructor binds channel request/program hashes before socket work.",
+    "Distinct static sealed path/type; Some wrap/open errors immediately become coded Sealed refusal, with no plaintext catch/fallback or retries.",
+    "Operation-specific inner response bound checked before adding bounded codec overhead; HTTP validates sealed minimum/maximum before body allocation.",
+    "Same Instant spans wrapping, connect/write/read/EOF/open/decode and final remaining checks. Computations are bounded but not OS-preemptible.",
+    "Exact outstanding exchange/op/request/program/payload-hash/len response comparison remains after cryptographic open."
+  ],
+  "status": "SCOPED_CURRENT_SEAM_SOURCE_REVIEW_PASS",
+  "task_contract_sha256": "fea5fddbb8fde2e465b0518e3fdb52779d0cce3423fb47ecec0a28086bb60004",
+  "tests_executed_by_reviewer": false,
+  "unchanged_source_block_checks": {
+    "I_O_remaining_and_operation_caps_unchanged": true,
+    "all_trait_callback_gate_bodies_unchanged": true,
+    "bounded_nested_payload_and_wire_code_unchanged": true,
+    "call_deadline_and_plan_preflight_unchanged": true
+  }
+}

@@ -1,0 +1,127 @@
+{
+  "findings": [],
+  "fixed_frame_layout": [
+    {
+      "bytes": 8,
+      "field": "magic",
+      "offset": 0
+    },
+    {
+      "bytes": 2,
+      "field": "version",
+      "offset": 8
+    },
+    {
+      "bytes": 6,
+      "field": "direction_scope_false_reserved",
+      "offset": 10
+    },
+    {
+      "bytes": 32,
+      "field": "session",
+      "offset": 16
+    },
+    {
+      "bytes": 33,
+      "field": "sender_signing",
+      "offset": 48
+    },
+    {
+      "bytes": 33,
+      "field": "recipient_signing",
+      "offset": 81
+    },
+    {
+      "bytes": 32,
+      "field": "sender_X25519",
+      "offset": 114
+    },
+    {
+      "bytes": 32,
+      "field": "recipient_X25519",
+      "offset": 146
+    },
+    {
+      "bytes": 32,
+      "field": "request_SHA",
+      "offset": 178
+    },
+    {
+      "bytes": 32,
+      "field": "program_SHA",
+      "offset": 210
+    },
+    {
+      "bytes": 4,
+      "field": "operation_reserved",
+      "offset": 242
+    },
+    {
+      "bytes": 8,
+      "field": "exchangeID",
+      "offset": 246
+    },
+    {
+      "bytes": 32,
+      "field": "request_payload_SHA",
+      "offset": 254
+    },
+    {
+      "bytes": 4,
+      "field": "request_payload_len",
+      "offset": 286
+    },
+    {
+      "bytes": 4,
+      "field": "inner_len",
+      "offset": 290
+    },
+    {
+      "bytes": 32,
+      "field": "inner_SHA",
+      "offset": 294
+    },
+    {
+      "bytes": 4,
+      "field": "sealed_len",
+      "offset": 326
+    }
+  ],
+  "header_bytes": 330,
+  "maximum_wire_bytes": 20971987,
+  "minimum_wire_bytes": 627,
+  "observed_utc": "2026-10-12T13:40:36.482531+00:00",
+  "pending": [
+    "Freeze and independentread review of actual new owned HTTP positive/negative/recovery tests.",
+    "Root-owned compile/focused/full tests/Clippy and finalsource/preservation/publication evidence."
+  ],
+  "release_gate": "PRODUCTION HOLD",
+  "reviewed_guards": [
+    "Global outer627..20MiB+467 check before fixed slices; reserved/version/direction/scope/pins/context and exact checked lengths bind one canonical header+box+64 signature.",
+    "ECDSA33byte compressedSEC1 validated and recompressed equality; 64byte raw scalars parse and highS rejected. Signing normalizesS; prehash binds domain/staticpath/type/full330header/full ciphertext.",
+    "AEAD AAD has separate tag and full same domain/path/type/header. Existing sealed_box random ephemeral X25519/HKDF/XChaCha construction reused unchanged.",
+    "Canonical X25519 u-coordinate<p enforced; existing pure dh_shared calls dalek was_contributory for configured peer and signed packet ephemeral key. No attestation/handshake flow invoked.",
+    "Configured signature verified before SealedBox::from_bytes ciphertext clone, AEAD decrypt, innerframe decode, native/typed fixture effects.",
+    "Inner exact length/SHA/direction/context and outstandingrequest response binding revalidated after decryption.",
+    "ReplayReceiver reserves exchange+mutating(operation,payloadSHA,len) before returning for effects; immutable first authenticated pins; capacity1..4096 no eviction.",
+    "Client mutex exactsent-context and once-response sets bounded bysamecapacity; poisoning refuses; standalone open_frame explicitly not replay admission.",
+    "No Debug/Clone/Serialize secretkey type; coded errors and publiconly keys/context DTOs."
+  ],
+  "reviewed_sha256": {
+    "crates/attestation/src/handshake.rs": "fb5a3c94c75eac3aba4fed356750d9cce3bcd547ba1773d749ece14468af4a1d",
+    "crates/gateway/src/candidate_fixture_seal.rs": "eb901e10ae1389db151fccf472ab7f831adc522888daa956857be618c65f454a",
+    "crates/gateway/src/candidate_fixture_transport.rs": "6415462717292fb0b112777328b23c548bb457c80296db04ba48c0f615179c08",
+    "crates/gateway/src/candidate_fixture_transport_tests.rs": "f66392610522d98174a99c6fea3b641b6d9bdd27db53872f324bac8551c20d99",
+    "crates/sealed-box/src/lib.rs": "7cc33b60470ee775b1535f073a904e9893d26fa89307787454d529bad8cb714e"
+  },
+  "schema": "arcora-candidate-seal-provisional-codec-independent-qa/v1",
+  "scope": "Read-only provisional codec and frozen transport seam; test-owner file and actual Cargo checks remain pending. No code/crypto operation/network/proof/test execution by reviewer.",
+  "status": "SCOPED_PROVISIONAL_CODEC_SOURCE_REVIEW_PASS",
+  "trust_and_privacy_limits": [
+    "Only configured ECDSA signing key possession is evidenced by signature. Sender static X25519 private possession, real peer/service/operator/CC identity and production approval are not proved.",
+    "Recipient decryption and encrypted wire bytes are software-fixture boundaries; existing request/native process memory remains plaintext, no complete-copy zeroization or malicious-owner confidentiality claim.",
+    "Replay is one owned receiver/session memory and effectkey equality; new receiver/session or lost state has no durable/global exactlyonce guarantee. Pure mock proof may repeat; old durable coordinators remain authority.",
+    "No fresh SP1/clock proof, DON/uptime/finality/custody/chain acceptance; cfg(test) only."
+  ],
+  "wire_overhead_bytes": 467
+}
