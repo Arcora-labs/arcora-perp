@@ -99,12 +99,16 @@ mod clock_wait;
 #[cfg(test)]
 mod continuation_settlement_tests;
 mod credential_session;
+#[path = "../../service-transport/curl.rs"]
+mod curl_transport;
 mod deposit_ingestion;
 mod deposit_rpc;
 mod enclave_epoch;
 mod execution;
 #[cfg(test)]
 mod funds_lifecycle_tests;
+#[cfg(test)]
+mod http_transport_tests;
 mod l1;
 mod listen_config;
 mod ops_alerts;
@@ -717,27 +721,39 @@ fn attest_from_env() -> Option<Attested> {
 /// only; short timeouts so a dead peer fails the handshake fast (fail-closed),
 /// never wedges startup.
 fn http_get_json(url: &str) -> Result<serde_json::Value, String> {
-    let out = std::process::Command::new("curl")
-        .args([
-            "-s",
-            "-S",
-            "--fail",
-            "--connect-timeout",
-            "10",
-            "--max-time",
-            "30",
-            url,
-        ])
-        .output()
-        .map_err(|e| format!("curl spawn: {e}"))?;
+    http_get_json_command(url, std::process::Command::new("curl"))
+}
+
+fn http_get_json_command(
+    url: &str,
+    mut command: std::process::Command,
+) -> Result<serde_json::Value, String> {
+    command.args([
+        "-q",
+        "-s",
+        "-S",
+        "--fail",
+        "--connect-timeout",
+        "10",
+        "--max-time",
+        "30",
+        "--",
+        url,
+    ]);
+    let out = curl_transport::run(
+        command,
+        None,
+        curl_transport::Limits {
+            stdout: curl_transport::MAX_GET_RESPONSE_BYTES,
+            stderr: curl_transport::MAX_STDERR_BYTES,
+            timeout: std::time::Duration::from_secs(35),
+        },
+    )
+    .map_err(|e| e.to_string())?;
     if !out.status.success() {
-        return Err(format!(
-            "curl exit {}: {}",
-            out.status,
-            String::from_utf8_lossy(&out.stderr)
-        ));
+        return Err(format!("attestation HTTP transport exit {}", out.status));
     }
-    serde_json::from_slice(&out.stdout).map_err(|e| format!("json: {e}"))
+    serde_json::from_slice(&out.stdout).map_err(|_| "invalid attestation JSON response".into())
 }
 
 /// A pinned expected-measurement env var (32-byte hex): required for the
