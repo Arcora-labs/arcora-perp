@@ -1,0 +1,39 @@
+{
+  "schema": "arcora-tee-quinn-lock-update/v1",
+  "records": [
+    {
+      "command": [
+        "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/cargo",
+        "update",
+        "--manifest-path",
+        "scripts/tee-capture/Cargo.toml",
+        "-p",
+        "quinn-proto",
+        "--precise",
+        "0.11.19"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 6.292333457968198,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "be679f0ee723606ab0d1e3cf4b2cf265456350e3e177a333b3b09d59356d4e89"
+    },
+    {
+      "command": [
+        "/Users/huseyinarslan/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/cargo",
+        "update",
+        "--manifest-path",
+        "scripts/tee-capture/Cargo.toml",
+        "-p",
+        "quinn-udp",
+        "--precise",
+        "0.5.16"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 2.514495874987915,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "c2a24f284cf572181fc6df07f2727e8f7e9591788768ca3216a00863831d7292"
+    }
+  ],
+  "before_sha256": "7a4862deb7b835c559fb94e49af0841db671acd7d426a864b362c19880828603",
+  "after_sha256": "01cbc51c6253c2c1f6a883e825635197e7942ab55762ee7d3475e4103d36fd6e"
+}

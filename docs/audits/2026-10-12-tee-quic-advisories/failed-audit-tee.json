@@ -1,0 +1,643 @@
+{
+  "database": {
+    "advisory-count": 1307,
+    "last-commit": "57dcc0f2192e025138907a495c1ac9a7e1e3e123",
+    "last-updated": "2026-10-12T20:06:48+02:00"
+  },
+  "lockfile": {
+    "dependency-count": 274
+  },
+  "settings": {
+    "target_arch": [],
+    "target_os": [],
+    "severity": null,
+    "ignore": [],
+    "informational_warnings": [
+      "unmaintained",
+      "unsound",
+      "notice"
+    ]
+  },
+  "vulnerabilities": {
+    "found": true,
+    "count": 5,
+    "list": [
+      {
+        "advisory": {
+          "id": "RUSTSEC-2026-0341",
+          "package": "quinn-proto",
+          "title": "Stream reassembly memory-exhaustion guard in quinn-proto can be bypassed",
+          "description": "The fix for RUSTSEC-2026-0185 in 0.11.15 added a cap on the number of chunks buffered by the\n`Assembler` that reassembles out-of-order stream data. However, the cap was only checked inside\nthe branch that triggers defragmentation, which only runs when the estimated over-allocation\nexceeds a threshold proportional to the amount of buffered data. Frames handled entirely by the\nunordered-read deduplication loop returned before the check ran at all.\n\nA peer sending one small gapped STREAM frame per packet (for example, 6-byte frames separated by\n1-byte gaps) keeps the per-chunk overhead below the defragmentation threshold, so the cap is never\nevaluated and the chunk count grows until stream-level flow control stops the peer. With the default\n`TransportConfig` (100 concurrent unidirectional streams and a 1.25 MB stream receive window), a\nremote, unauthenticated peer can pin roughly 3 GB of receiver memory using about 125 MB of accounted\nstream data. The memory is not reclaimed until the affected streams or the connection are closed.\n\nThe flaw was corrected in 0.11.17 by checking the chunk count after every insert (including in the\nunordered deduplication loop) and compacting the buffer once it passes a watermark above the cap.\nA stream is rejected once compaction can no longer bring the chunk count back under the cap.\n\nVersions before 0.11.15 are affected by the original, broader issue described in RUSTSEC-2026-0185.\n\nThanks to Otto Hermann ([@ojhermann](https://github.com/ojhermann)) for reporting and fixing\nthis issue.",
+          "date": "2026-08-17",
+          "aliases": [
+            "GHSA-qfwj-vfxf-92j2"
+          ],
+          "related": [
+            "RUSTSEC-2026-0185"
+          ],
+          "collection": "crates",
+          "categories": [
+            "denial-of-service"
+          ],
+          "keywords": [
+            "oom"
+          ],
+          "cvss": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H",
+          "informational": null,
+          "references": [],
+          "source": null,
+          "url": "https://github.com/quinn-rs/quinn/pull/2790",
+          "withdrawn": null,
+          "license": "CC0-1.0",
+          "expect-deleted": false
+        },
+        "versions": {
+          "patched": [
+            ">=0.11.17"
+          ],
+          "unaffected": [
+            "<0.11.15"
+          ]
+        },
+        "affected": null,
+        "package": {
+          "name": "quinn-proto",
+          "version": "0.11.15",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "4fcb935c5bec503c2f0e306bdd3e58bb9029dcb14fa8d9ac76e3a5256ac0763e",
+          "dependencies": [
+            {
+              "name": "aws-lc-rs",
+              "version": "1.18.1",
+              "source": "registry+https://github.com/rust-lang/crates.io-index"
+            },
+            {
+              "name": "bytes",
+              "version": "1.12.0",
+              "source": "registry+https://github.com/rust-lang/crates.io-index"
+            },
+            {
+              "name": "getrandom",
+              "version": "0.3.4",
+              "source": "registry+https://github.com/rust-lang/crates.io-index"
+            },
+            {
+              "name": "lru-slab",
+              "version": "0.1.2",
+              "source": "registry+https://github.com/rust-lang/crates.io-index"
+            },
+            {
+              "name": "rand",
+              "version": "0.9.4",
+              "source": "registry+https://github.com/rust-lang/crates.io-index"
+            },
+            {
+              "name": "ring",
+              "version": "0.17.14",
+              "source": "registry+https://github.com/rust-lang/crates.io-index"
+            },
+            {
+              "name": "rustc-hash",
+              "version": "2.1.3",
+              "source": "registry+https://github.com/rust-lang/crates.io-index"
+            },
+            {
+              "name": "rustls",
+              "version": "0.23.45",
+              "source": "registry+https://github.com/rust-lang/crates.io-index"
+            },
+            {
+              "name": "rustls-pki-types",
+              "version": "1.15.0",
+              "source": "registry+https://github.com/rust-lang/crates.io-index"
+            },
+            {
+              "name": "slab",
+              "version": "0.4.12",
+              "source": "registry+https://github.com/rust-lang/crates.io-index"
+            },
+            {
+              "name": "thiserror",
+              "version": "2.0.18",
+              "source": "registry+https://github.com/rust-lang/crates.io-index"
+            },
+            {
+              "name": "tinyvec",
+              "version": "1.11.0",
+              "source": "registry+https://github.com/rust-lang/crates.io-index"
+            },
+            {
+              "name": "tracing",
+              "version": "0.1.44",
+              "source": "registry+https://github.com/rust-lang/crates.io-index"
+            },
+            {
+              "name": "web-time",
+              "version": "1.1.0",
+              "source": "registry+https://github.com/rust-lang/crates.io-index"
+            }
+          ],
+          "replace": null
+        }
+      },
+      {
+        "advisory": {
+          "id": "RUSTSEC-2026-0339",
+          "package": "quinn-proto",
+          "title": "Unbounded growth of pending connection ID retirements in quinn-proto",
+          "description": "When processing a NEW_CONNECTION_ID frame, quinn-proto queues a RETIRE_CONNECTION_ID frame for\neach connection ID that the peer asked it to retire. The normal path bounds this queue and closes\nthe connection with a CONNECTION_ID_LIMIT_ERROR if the bound would be exceeded. However, the path\nhandling a connection ID that had already been retired pushed onto the queue without applying\nthe limit and without deduplicating.\n\nA peer that has completed the handshake can first send a NEW_CONNECTION_ID frame with a large\n`retire_prior_to` value to advance the receiver's connection ID window, and then repeatedly send\nNEW_CONNECTION_ID frames with sequence numbers below that window. Each such frame adds another\nentry to the queue. The queue is only drained by sending RETIRE_CONNECTION_ID frames, which are\nsubject to congestion control, so a peer that withholds acknowledgements can stall the drain while\ncontinuing to flood, growing the victim's memory use without bound.\n\nThe flaw was corrected in 0.11.17 by applying the same limit on the already-retired path.\n\nThanks to [@scadastrangelove](https://github.com/scadastrangelove) for reporting this issue.",
+          "date": "2026-08-17",
+          "aliases": [
+            "GHSA-hmxj-32vh-65vr"
+          ],
+          "related": [],
+          "collection": "crates",
+          "categories": [
+            "denial-of-service"
+          ],
+          "keywords": [
+            "oom"
+          ],
+          "cvss": null,
+          "informational": null,
+          "references": [],
+          "source": null,
+          "url": "https://github.com/quinn-rs/quinn/pull/2790",
+          "withdrawn": null,
+          "license": "CC0-1.0",
+          "expect-deleted": false
+        },
+        "versions": {
+          "patched": [
+            ">=0.11.17"
+          ],
+          "unaffected": [
+            "<0.6.0"
+          ]
+        },
+        "affected": null,
+        "package": {
+          "name": "quinn-proto",
+          "version": "0.11.15",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "4fcb935c5bec503c2f0e306bdd3e58bb9029dcb14fa8d9ac76e3a5256ac0763e",
+          "dependencies": [
+            {
+              "name": "aws-lc-rs",
+              "version": "1.18.1",
+              "source": "registry+https://github.com/rust-lang/crates.io-index"
+            },
+            {
+              "name": "bytes",
+              "version": "1.12.0",
+              "source": "registry+https://github.com/rust-lang/crates.io-index"
+            },
+            {
+              "name": "getrandom",
+              "version": "0.3.4",
+              "source": "registry+https://github.com/rust-lang/crates.io-index"
+            },
+            {
+              "name": "lru-slab",
+              "version": "0.1.2",
+              "source": "registry+https://github.com/rust-lang/crates.io-index"
+            },
+            {
+              "name": "rand",
+              "version": "0.9.4",
+              "source": "registry+https://github.com/rust-lang/crates.io-index"
+            },
+            {
+              "name": "ring",
+              "version": "0.17.14",
+              "source": "registry+https://github.com/rust-lang/crates.io-index"
+            },
+            {
+              "name": "rustc-hash",
+              "version": "2.1.3",
+              "source": "registry+https://github.com/rust-lang/crates.io-index"
+            },
+            {
+              "name": "rustls",
+              "version": "0.23.45",
+              "source": "registry+https://github.com/rust-lang/crates.io-index"
+            },
+            {
+              "name": "rustls-pki-types",
+              "version": "1.15.0",
+              "source": "registry+https://github.com/rust-lang/crates.io-index"
+            },
+            {
+              "name": "slab",
+              "version": "0.4.12",
+              "source": "registry+https://github.com/rust-lang/crates.io-index"
+            },
+            {
+              "name": "thiserror",
+              "version": "2.0.18",
+              "source": "registry+https://github.com/rust-lang/crates.io-index"
+            },
+            {
+              "name": "tinyvec",
+              "version": "1.11.0",
+              "source": "registry+https://github.com/rust-lang/crates.io-index"
+            },
+            {
+              "name": "tracing",
+              "version": "0.1.44",
+              "source": "registry+https://github.com/rust-lang/crates.io-index"
+            },
+            {
+              "name": "web-time",
+              "version": "1.1.0",
+              "source": "registry+https://github.com/rust-lang/crates.io-index"
+            }
+          ],
+          "replace": null
+        }
+      },
+      {
+        "advisory": {
+          "id": "RUSTSEC-2026-0342",
+          "package": "quinn-proto",
+          "title": "Zero-length DATAGRAM frames bypass the receive buffer limit in quinn-proto",
+          "description": "quinn-proto bounds its queue of received datagrams by charging each queued frame's payload length\nagainst `TransportConfig::datagram_receive_buffer_size`, evicting the oldest datagrams when the\nlimit is exceeded. A DATAGRAM frame with an empty payload was charged zero bytes, so it never\ntriggered eviction and was appended to the queue, which has no other bound.\n\nDATAGRAM frames are not subject to flow control. A peer that has completed the handshake can\ntherefore send a stream of empty DATAGRAM frames and grow the receiver's heap without limit until\nthe process is killed. An application that reads incoming datagrams but does so more slowly than\nthe peer sends them is still affected. Receiving datagrams is enabled by default, so all endpoints\nthat do not explicitly set `datagram_receive_buffer_size(None)` are affected.\n\nThe send path had the same accounting flaw: an application could enqueue an unbounded number of\nempty outgoing datagrams without ever receiving `SendDatagramError::Blocked`.\n\nThe flaw was corrected in 0.11.17 by accounting for the fixed per-datagram overhead in both\ndirections, so that every queued datagram consumes buffer space.\n\nThanks to [@alexpyattaev](https://github.com/alexpyattaev) for reporting this issue.",
+          "date": "2026-08-17",
+          "aliases": [
+            "GHSA-2hv7-gw8g-gpq5"
+          ],
+          "related": [],
+          "collection": "crates",
+          "categories": [
+            "denial-of-service"
+          ],
+          "keywords": [
+            "oom"
+          ],
+          "cvss": null,
+          "informational": null,
+          "references": [],
+          "source": null,
+          "url": "https://github.com/quinn-rs/quinn/pull/2790",
+          "withdrawn": null,
+          "license": "CC0-1.0",
+          "expect-deleted": false
+        },
+        "versions": {
+          "patched": [
+            ">=0.11.17"
+          ],
+          "unaffected": [
+            "<0.5.0"
+          ]
+        },
+        "affected": null,
+        "package": {
+          "name": "quinn-proto",
+          "version": "0.11.15",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "4fcb935c5bec503c2f0e306bdd3e58bb9029dcb14fa8d9ac76e3a5256ac0763e",
+          "dependencies": [
+            {
+              "name": "aws-lc-rs",
+              "version": "1.18.1",
+              "source": "registry+https://github.com/rust-lang/crates.io-index"
+            },
+            {
+              "name": "bytes",
+              "version": "1.12.0",
+              "source": "registry+https://github.com/rust-lang/crates.io-index"
+            },
+            {
+              "name": "getrandom",
+              "version": "0.3.4",
+              "source": "registry+https://github.com/rust-lang/crates.io-index"
+            },
+            {
+              "name": "lru-slab",
+              "version": "0.1.2",
+              "source": "registry+https://github.com/rust-lang/crates.io-index"
+            },
+            {
+              "name": "rand",
+              "version": "0.9.4",
+              "source": "registry+https://github.com/rust-lang/crates.io-index"
+            },
+            {
+              "name": "ring",
+              "version": "0.17.14",
+              "source": "registry+https://github.com/rust-lang/crates.io-index"
+            },
+            {
+              "name": "rustc-hash",
+              "version": "2.1.3",
+              "source": "registry+https://github.com/rust-lang/crates.io-index"
+            },
+            {
+              "name": "rustls",
+              "version": "0.23.45",
+              "source": "registry+https://github.com/rust-lang/crates.io-index"
+            },
+            {
+              "name": "rustls-pki-types",
+              "version": "1.15.0",
+              "source": "registry+https://github.com/rust-lang/crates.io-index"
+            },
+            {
+              "name": "slab",
+              "version": "0.4.12",
+              "source": "registry+https://github.com/rust-lang/crates.io-index"
+            },
+            {
+              "name": "thiserror",
+              "version": "2.0.18",
+              "source": "registry+https://github.com/rust-lang/crates.io-index"
+            },
+            {
+              "name": "tinyvec",
+              "version": "1.11.0",
+              "source": "registry+https://github.com/rust-lang/crates.io-index"
+            },
+            {
+              "name": "tracing",
+              "version": "0.1.44",
+              "source": "registry+https://github.com/rust-lang/crates.io-index"
+            },
+            {
+              "name": "web-time",
+              "version": "1.1.0",
+              "source": "registry+https://github.com/rust-lang/crates.io-index"
+            }
+          ],
+          "replace": null
+        }
+      },
+      {
+        "advisory": {
+          "id": "RUSTSEC-2026-0340",
+          "package": "quinn-proto",
+          "title": "Peer minimum ACK delay can panic quinn-proto when ACK_FREQUENCY transmission is enabled",
+          "description": "When sending ACK_FREQUENCY frames is enabled through\n`TransportConfig::ack_frequency_config(Some(..))`, the peer's transport parameters could cause\n`AckFrequencyState::candidate_max_ack_delay` to call `Duration::clamp` with a minimum greater\nthan its maximum, which panics.\n\nFor example, a peer advertising a `min_ack_delay` of 100,000 microseconds and a `max_ack_delay`\nof 100 milliseconds passes transport parameter validation. At a 5 ms RTT, the lower bound of the\nclamp becomes 100 ms while the upper bound is 25 ms, violating the precondition of `clamp` and\npanicking while driving the connection. Both automatically derived and explicitly configured\nmaximum ACK delays use this calculation.\n\nSending ACK_FREQUENCY frames is disabled by default, so only endpoints that opt in are affected.\n\nThe flaw was corrected in 0.11.18 by computing the delay with explicit minimum and maximum bounds\ninstead of `clamp`.\n\nThanks to [@zerox80](https://github.com/zerox80) for reporting this issue.",
+          "date": "2026-09-14",
+          "aliases": [
+            "GHSA-3g6h-r5qx-f6hq"
+          ],
+          "related": [],
+          "collection": "crates",
+          "categories": [
+            "denial-of-service"
+          ],
+          "keywords": [
+            "panic"
+          ],
+          "cvss": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H",
+          "informational": null,
+          "references": [],
+          "source": null,
+          "url": "https://github.com/quinn-rs/quinn/pull/2868",
+          "withdrawn": null,
+          "license": "CC0-1.0",
+          "expect-deleted": false
+        },
+        "versions": {
+          "patched": [
+            ">=0.11.18"
+          ],
+          "unaffected": [
+            "<0.11.0"
+          ]
+        },
+        "affected": null,
+        "package": {
+          "name": "quinn-proto",
+          "version": "0.11.15",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "4fcb935c5bec503c2f0e306bdd3e58bb9029dcb14fa8d9ac76e3a5256ac0763e",
+          "dependencies": [
+            {
+              "name": "aws-lc-rs",
+              "version": "1.18.1",
+              "source": "registry+https://github.com/rust-lang/crates.io-index"
+            },
+            {
+              "name": "bytes",
+              "version": "1.12.0",
+              "source": "registry+https://github.com/rust-lang/crates.io-index"
+            },
+            {
+              "name": "getrandom",
+              "version": "0.3.4",
+              "source": "registry+https://github.com/rust-lang/crates.io-index"
+            },
+            {
+              "name": "lru-slab",
+              "version": "0.1.2",
+              "source": "registry+https://github.com/rust-lang/crates.io-index"
+            },
+            {
+              "name": "rand",
+              "version": "0.9.4",
+              "source": "registry+https://github.com/rust-lang/crates.io-index"
+            },
+            {
+              "name": "ring",
+              "version": "0.17.14",
+              "source": "registry+https://github.com/rust-lang/crates.io-index"
+            },
+            {
+              "name": "rustc-hash",
+              "version": "2.1.3",
+              "source": "registry+https://github.com/rust-lang/crates.io-index"
+            },
+            {
+              "name": "rustls",
+              "version": "0.23.45",
+              "source": "registry+https://github.com/rust-lang/crates.io-index"
+            },
+            {
+              "name": "rustls-pki-types",
+              "version": "1.15.0",
+              "source": "registry+https://github.com/rust-lang/crates.io-index"
+            },
+            {
+              "name": "slab",
+              "version": "0.4.12",
+              "source": "registry+https://github.com/rust-lang/crates.io-index"
+            },
+            {
+              "name": "thiserror",
+              "version": "2.0.18",
+              "source": "registry+https://github.com/rust-lang/crates.io-index"
+            },
+            {
+              "name": "tinyvec",
+              "version": "1.11.0",
+              "source": "registry+https://github.com/rust-lang/crates.io-index"
+            },
+            {
+              "name": "tracing",
+              "version": "0.1.44",
+              "source": "registry+https://github.com/rust-lang/crates.io-index"
+            },
+            {
+              "name": "web-time",
+              "version": "1.1.0",
+              "source": "registry+https://github.com/rust-lang/crates.io-index"
+            }
+          ],
+          "replace": null
+        }
+      },
+      {
+        "advisory": {
+          "id": "RUSTSEC-2026-0338",
+          "package": "quinn-proto",
+          "title": "Remote peer can panic quinn-proto with zero-length STREAM frames during unordered reads",
+          "description": "When a stream is read in unordered mode (for example through `RecvStream::read(false)` in\nquinn-proto or `read_unordered` in `quinn`), quinn-proto proactively deduplicates received data\nby recording received ranges in a `RangeSet` through its `replace` method. When an incoming\nSTREAM frame carried an empty payload, the `Drop` implementation of the iterator returned by\n`replace` inserted an empty range into the set, violating the invariant that stored ranges are\nnon-empty. Subsequent frames overlapping that region then caused a panic while processing the\nstream.\n\nA remote peer can trigger this with five small STREAM frames (two of them zero-length) once the\napplication has put the stream in unordered-read mode. The default ordered read path is not\naffected.\n\nThe flaw was corrected in 0.11.18 by ignoring empty ranges in `RangeSet::replace`.\n\nThanks to Otto Hermann ([@ojhermann](https://github.com/ojhermann)) for reporting this issue.",
+          "date": "2026-09-14",
+          "aliases": [
+            "GHSA-465w-v9q3-7j98"
+          ],
+          "related": [],
+          "collection": "crates",
+          "categories": [
+            "denial-of-service"
+          ],
+          "keywords": [
+            "panic"
+          ],
+          "cvss": null,
+          "informational": null,
+          "references": [],
+          "source": null,
+          "url": "https://github.com/quinn-rs/quinn/pull/2868",
+          "withdrawn": null,
+          "license": "CC0-1.0",
+          "expect-deleted": false
+        },
+        "versions": {
+          "patched": [
+            ">=0.11.18"
+          ],
+          "unaffected": [
+            "<0.7.0"
+          ]
+        },
+        "affected": null,
+        "package": {
+          "name": "quinn-proto",
+          "version": "0.11.15",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "4fcb935c5bec503c2f0e306bdd3e58bb9029dcb14fa8d9ac76e3a5256ac0763e",
+          "dependencies": [
+            {
+              "name": "aws-lc-rs",
+              "version": "1.18.1",
+              "source": "registry+https://github.com/rust-lang/crates.io-index"
+            },
+            {
+              "name": "bytes",
+              "version": "1.12.0",
+              "source": "registry+https://github.com/rust-lang/crates.io-index"
+            },
+            {
+              "name": "getrandom",
+              "version": "0.3.4",
+              "source": "registry+https://github.com/rust-lang/crates.io-index"
+            },
+            {
+              "name": "lru-slab",
+              "version": "0.1.2",
+              "source": "registry+https://github.com/rust-lang/crates.io-index"
+            },
+            {
+              "name": "rand",
+              "version": "0.9.4",
+              "source": "registry+https://github.com/rust-lang/crates.io-index"
+            },
+            {
+              "name": "ring",
+              "version": "0.17.14",
+              "source": "registry+https://github.com/rust-lang/crates.io-index"
+            },
+            {
+              "name": "rustc-hash",
+              "version": "2.1.3",
+              "source": "registry+https://github.com/rust-lang/crates.io-index"
+            },
+            {
+              "name": "rustls",
+              "version": "0.23.45",
+              "source": "registry+https://github.com/rust-lang/crates.io-index"
+            },
+            {
+              "name": "rustls-pki-types",
+              "version": "1.15.0",
+              "source": "registry+https://github.com/rust-lang/crates.io-index"
+            },
+            {
+              "name": "slab",
+              "version": "0.4.12",
+              "source": "registry+https://github.com/rust-lang/crates.io-index"
+            },
+            {
+              "name": "thiserror",
+              "version": "2.0.18",
+              "source": "registry+https://github.com/rust-lang/crates.io-index"
+            },
+            {
+              "name": "tinyvec",
+              "version": "1.11.0",
+              "source": "registry+https://github.com/rust-lang/crates.io-index"
+            },
+            {
+              "name": "tracing",
+              "version": "0.1.44",
+              "source": "registry+https://github.com/rust-lang/crates.io-index"
+            },
+            {
+              "name": "web-time",
+              "version": "1.1.0",
+              "source": "registry+https://github.com/rust-lang/crates.io-index"
+            }
+          ],
+          "replace": null
+        }
+      }
+    ]
+  },
+  "warnings": {
+    "yanked": [
+      {
+        "kind": "yanked",
+        "package": {
+          "name": "chacha20",
+          "version": "0.10.1",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "d524456ba66e72eb8b115ff89e01e497f8e6d11d78b70b1aa13c0fbd97540a81",
+          "dependencies": [
+            {
+              "name": "cfg-if",
+              "version": "1.0.4",
+              "source": "registry+https://github.com/rust-lang/crates.io-index"
+            },
+            {
+              "name": "cpufeatures",
+              "version": "0.3.0",
+              "source": "registry+https://github.com/rust-lang/crates.io-index"
+            },
+            {
+              "name": "rand_core",
+              "version": "0.10.1",
+              "source": "registry+https://github.com/rust-lang/crates.io-index"
+            }
+          ],
+          "replace": null
+        },
+        "advisory": null,
+        "affected": null,
+        "versions": null
+      }
+    ]
+  }
+}

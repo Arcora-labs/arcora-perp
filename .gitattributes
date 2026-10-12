@@ -34,3 +34,6 @@ docs/audits/2026-10-12-candidate-public-paths/**/*.log binary
 
 # Preserve complete raw curl transport regression and verification output.
 docs/audits/2026-10-12-curl-response-bounds/**/*.log binary
+
+# Preserve the failed dependency audit and locked TEE capture compiler output.
+docs/audits/2026-10-12-tee-quic-advisories/**/*.log binary

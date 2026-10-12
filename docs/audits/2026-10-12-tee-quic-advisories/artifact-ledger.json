@@ -1,0 +1,111 @@
+{
+  "schema": "arcora-tee-quic-advisory-evidence-ledger/v1",
+  "production_release": "HOLD",
+  "transport_code_commit": "70fcaf195f6fb8ff641b9ec14758603558fe640e",
+  "lock_repair_commit": "91ba25118105d75abc3d7512cacf32e1b14eb5dc",
+  "original_failed_publication_head": "c8b05a0805990199aeeb80fc784c8f4f2b546920",
+  "artifact_count": 25,
+  "files": {
+    "Cargo.lock.before": {
+      "bytes": 66648,
+      "sha256": "7a4862deb7b835c559fb94e49af0841db671acd7d426a864b362c19880828603"
+    },
+    "updates.json": {
+      "bytes": 1319,
+      "sha256": "336ad8087cf171948fe2c10ab7fe6290347e72651bb4e2d9ddc5e196c1638356"
+    },
+    "quinn-proto.stdout.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "quinn-proto.stderr.log": {
+      "bytes": 362,
+      "sha256": "be679f0ee723606ab0d1e3cf4b2cf265456350e3e177a333b3b09d59356d4e89"
+    },
+    "quinn-udp.stdout.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "quinn-udp.stderr.log": {
+      "bytes": 543,
+      "sha256": "c2a24f284cf572181fc6df07f2727e8f7e9591788768ca3216a00863831d7292"
+    },
+    "failed-audit-locks-summary.json": {
+      "bytes": 641,
+      "sha256": "5275d8b86b99558622d0767ef4679ad5edfb48d234c323657eb104e3d86449ef"
+    },
+    "failed-audit-tee.json": {
+      "bytes": 26606,
+      "sha256": "f18dffc893779d2d9c16731d960bba5d198bf49ce138c78845cc1628958826c1"
+    },
+    "lock-delta.json": {
+      "bytes": 19173,
+      "sha256": "da98f638008d4b406528ba66123db750b47ac7a14b439770588340f8b0d8d03c"
+    },
+    "resolved-lock-edges.json": {
+      "bytes": 10607,
+      "sha256": "0037e382c77456df260d23db55d91be756aa515e78b2e1e75de4c6bf3c96a709"
+    },
+    "unchanged-curl-source.json": {
+      "bytes": 708,
+      "sha256": "e5681155fe783f921f107778f7913bf39bb51009dbf5280fb0a3049cca2eb78f"
+    },
+    "upstream-security-summary.json": {
+      "bytes": 2164,
+      "sha256": "34872a6875006001d6f872faac1a4725474bf60287c78ea853f1c01e9358ed3d"
+    },
+    "root-audit/receipt.json": {
+      "bytes": 1256,
+      "sha256": "f6c62f43844a81391b5867a657905d66c54bd838111e7fe7c4d47fee6f8fd55e"
+    },
+    "root-audit/stdout.json": {
+      "bytes": 987,
+      "sha256": "1eb5100bec8ec980d78c10f5669b86a358f082aa535c7aedf5089ee83699c645"
+    },
+    "root-audit/stderr.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "tee-check/receipt.json": {
+      "bytes": 92634,
+      "sha256": "c74a597bae94a930d70652c6e545e4eebb0f7b3cec12d75f047581715136e3c6"
+    },
+    "tee-check/stdout.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "tee-check/stderr.log": {
+      "bytes": 6803,
+      "sha256": "cd6b57b58e0eb8e51451f2d25ebdc082784dba1109c00291e893d90d1abff1c7"
+    },
+    "tee-audit/receipt.json": {
+      "bytes": 93123,
+      "sha256": "91cb7f90ea7662c51bc366da518bbbeb63b263a3ac8e8d0f7f84707025e1b506"
+    },
+    "tee-audit/stdout.log": {
+      "bytes": 987,
+      "sha256": "1eb5100bec8ec980d78c10f5669b86a358f082aa535c7aedf5089ee83699c645"
+    },
+    "tee-audit/stderr.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "run_independent_tee_validation.py": {
+      "bytes": 4289,
+      "sha256": "ed8d8bbb22ec4a8aa965335e8b1cad9302c6e1f23a7a8272053d5c3afeb501c6"
+    },
+    "local-repair-verification.json": {
+      "bytes": 2149,
+      "sha256": "1fd84d03414683089f6a724671609bed33a5d04c4ed42b523f6d4ed2f5543ce1"
+    },
+    "initial-ci/job.log": {
+      "bytes": 121880,
+      "sha256": "9d65d9a7a174cee054390e8e1a5033ff42f53029bc48c95b61076713efec7835"
+    },
+    "initial-ci/independent-original-packet-qa.json": {
+      "bytes": 10014,
+      "sha256": "afdbd5e423d6500424e0eba13889d90eeb7de5fd718695fc7e5cca419fbeff8f"
+    }
+  },
+  "copy_scope": "Exact selected public command records copied from ignored owned validation. Native targets, Cargo homes, advisory-db clone and full upstream advisory prose are omitted. The structured upstream security summary links the primary advisory sources. Original 158-file curl ledger remains byte-exact. Publication CI/merge are verified separately for the next head."
+}

@@ -1,0 +1,13 @@
+    Updating crates.io index
+    Updating quinn-udp v0.5.14 -> v0.5.16
+    Removing windows-sys v0.60.2
+    Removing windows-targets v0.53.5
+    Removing windows_aarch64_gnullvm v0.53.1
+    Removing windows_aarch64_msvc v0.53.1
+    Removing windows_i686_gnu v0.53.1
+    Removing windows_i686_gnullvm v0.53.1
+    Removing windows_i686_msvc v0.53.1
+    Removing windows_x86_64_gnu v0.53.1
+    Removing windows_x86_64_gnullvm v0.53.1
+    Removing windows_x86_64_msvc v0.53.1
+note: pass `--verbose` to see 112 unchanged dependencies behind latest

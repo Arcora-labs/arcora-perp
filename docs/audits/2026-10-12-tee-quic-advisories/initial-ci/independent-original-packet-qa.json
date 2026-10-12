@@ -1,0 +1,221 @@
+{
+  "CI_gate_status": {
+    "actual_dependency_failure_log": {
+      "bytes": 121880,
+      "path": "target/curl-bounds-validation-20261012/dependency-ci-failure/job.log",
+      "sha256": "9d65d9a7a174cee054390e8e1a5033ff42f53029bc48c95b61076713efec7835"
+    },
+    "all_success_verified": false,
+    "merge_eligible_claimed": false,
+    "note": "Current tee lock repair is outside original CODE6 and excluded from378covered inventory; must bind separate lock digest/validation and fresh new headCI.",
+    "old_published_tee_lock_quinn_proto": "0.11.15",
+    "root_authorized_separate_lock_repair_in_progress": true
+  },
+  "README_and_ledger_outside_artifact_map": true,
+  "actual_head": "c8b05a0805990199aeeb80fc784c8f4f2b546920",
+  "actual_prover_typecheck": {
+    "elapsed_seconds": 12.116781415999867,
+    "exit_code": 0,
+    "receipt": {
+      "bytes": 106908,
+      "path": "docs/audits/2026-10-12-curl-response-bounds/prover-typecheck-final-v3/receipt.json",
+      "sha256": "18fca940d0a4ea24abff9a6eb2c020714f657ccfb890a681b9b374cd00c4527e"
+    }
+  },
+  "actual_status_at_capture": "M docs/ACTIVE_WORK.md\n M docs/audits/2026-10-12-curl-response-bounds/README.md\n M scripts/tee-capture/Cargo.lock",
+  "all_158_sizes_hashes_and_original_publication_git_blobs_match": true,
+  "all_current_378_hashes_match_final_cut": true,
+  "all_relative_document_links_exist": true,
+  "artifact_ledger": {
+    "bytes": 27108,
+    "path": "docs/audits/2026-10-12-curl-response-bounds/artifact-ledger.json",
+    "sha256": "555f7b72195db54fece016a62998cfe00f1842129a4410ccac51f95394ed6297"
+  },
+  "base": "756397dbf73b18b77cefc7efcf5baaa8994457e3",
+  "captured_at": "2026-10-12T18:38:09.772716+00:00",
+  "code_commit": "70fcaf195f6fb8ff641b9ec14758603558fe640e",
+  "code_scope_exact": {
+    "all_code_bytes_match_code_commit_publication_and_current": true,
+    "code_files": 6,
+    "code_files_sha256": {
+      "crates/gateway/src/http_transport_tests.rs": "e4c47568fdaa5340680af524f41bb5b4ebc6df3698ea0c84e501cda082b458c0",
+      "crates/gateway/src/main.rs": "470225bdc9f3c9a5e9cd1a4350cd7100eeeeaddbf670b1786ac4033ed546a5aa",
+      "crates/gateway/src/prover_client.rs": "2f219fe3d9bbfc3e2e2f72950fd75e6fc9207d840d678a56e2934f9086471d51",
+      "crates/prover-service/src/main.rs": "c0100f0d2afe12ebf0091de6bf86fb2b8e0d2649b27ef4be6cb7aedd4979e23b",
+      "crates/service-transport/curl.rs": "235ef8c0914f14a37f96da64d26be8e5133bd1fbf276aba041491569bdba93f0",
+      "crates/service-transport/curl_tests.rs": "ddf9b02178296431171c866f4e5dc9683449081c037408d01c5a22ce9f40bf98"
+    },
+    "code_paths": [
+      "crates/gateway/src/http_transport_tests.rs",
+      "crates/gateway/src/main.rs",
+      "crates/gateway/src/prover_client.rs",
+      "crates/prover-service/src/main.rs",
+      "crates/service-transport/curl.rs",
+      "crates/service-transport/curl_tests.rs"
+    ]
+  },
+  "completed_local_checks": {
+    "clippy-final": {
+      "elapsed_seconds": 84.18444858398288,
+      "exit_code": 0,
+      "receipt": {
+        "bytes": 90254,
+        "path": "docs/audits/2026-10-12-curl-response-bounds/commands/clippy-final/verification.json",
+        "sha256": "a96e19804a8fc1ccea8486ac6d1fbe11ff86d589b23de9f41ae7f613f0728148"
+      },
+      "test_summaries": []
+    },
+    "format-current-final": {
+      "elapsed_seconds": 19.766834207926877,
+      "exit_code": 0,
+      "receipt": {
+        "bytes": 90188,
+        "path": "docs/audits/2026-10-12-curl-response-bounds/commands/format-current-final/verification.json",
+        "sha256": "780a748022b27d4374c661603060e4b58077baffa6c67026fd19d5ba850749bb"
+      },
+      "test_summaries": []
+    },
+    "gateway-full-final": {
+      "elapsed_seconds": 1937.0323829579866,
+      "exit_code": 0,
+      "receipt": {
+        "bytes": 90355,
+        "path": "docs/audits/2026-10-12-curl-response-bounds/commands/gateway-full-final/verification.json",
+        "sha256": "792aeb4037840e2061d2897ebdd01fc0904bbefe332cbf962a3cf29285ce9a20"
+      },
+      "test_summaries": [
+        {
+          "failed": 0,
+          "ignored": 24,
+          "passed": 732,
+          "state": "ok"
+        }
+      ]
+    },
+    "gateway-http-final-v3": {
+      "elapsed_seconds": 78.98809533391614,
+      "exit_code": 0,
+      "receipt": {
+        "bytes": 90379,
+        "path": "docs/audits/2026-10-12-curl-response-bounds/commands/gateway-http-final-v3/verification.json",
+        "sha256": "bd4d86da19af388f67d87ec72b82075a85a0418fdbf0e3cc1638b5a4f0b451b2"
+      },
+      "test_summaries": [
+        {
+          "failed": 0,
+          "ignored": 0,
+          "passed": 8,
+          "state": "ok"
+        }
+      ]
+    },
+    "service-identity-neighbors": {
+      "elapsed_seconds": 2.000222499947995,
+      "exit_code": 0,
+      "receipt": {
+        "bytes": 90230,
+        "path": "docs/audits/2026-10-12-curl-response-bounds/commands/service-identity-neighbors/verification.json",
+        "sha256": "4303d5fb41096b325ce93e57fbd07b69ba8284a12a99289f25eb86b2ac035e2e"
+      },
+      "test_summaries": []
+    }
+  },
+  "copied_original_records_verified": 157,
+  "covered_source": {
+    "files": 378,
+    "sha256": "8eddb300301a51cb4122c78a658db326013d61bdfcae2ac5ffa6e5844d8ec3b5"
+  },
+  "current_links_verified": 32,
+  "fixture_failure_history_and_native_proof_retained": true,
+  "full_gateway": {
+    "discovered": 756,
+    "failed": 0,
+    "ignored": 24,
+    "passed": 732
+  },
+  "full_gateway_test_runtime_seconds": 1928.34,
+  "full_gateway_total_seconds": 1937.0323829579866,
+  "generated_local_metadata_records": [
+    "local-final-verification.json"
+  ],
+  "genuine_before_regressions_distinct_from_fixture_failures": true,
+  "intentional_ignored_tests_actual": [
+    "candidate_bridge::export_native_contract_bridge_derived",
+    "candidate_bridge::export_native_contract_bridge_source",
+    "candidate_broadcast_lock_tests::broadcast_lock_owned_child",
+    "candidate_handoff_lock_tests::handoff_lock_owned_child",
+    "candidate_preparation_lock_tests::preparation_lock_owned_child",
+    "candidate_protocol_tests::export_actual_a3_candidate_registration_parity",
+    "curl_transport::tests::subprocess_worker",
+    "deposit_ingestion::paired_recovery_tests::export_paired_recovery_fixture",
+    "deposit_rpc::tests::a01_native_cast_hash_pinned_jsonrpc_roundtrip",
+    "funds_lifecycle_tests::real_http_evm_funds_lifecycle_with_native_mock_proof",
+    "l1::clock_binding::rpc_tests::runtime_clock_native_cast_rechecks_receipt_before_broadcast",
+    "l1::clock_binding::rpc_tests::runtime_clock_native_cast_refuses_wrong_chain_receipt_and_mid_read_reorg",
+    "l1::clock_binding::rpc_tests::runtime_clock_native_cast_waits_for_finality_without_restamping_or_sending",
+    "l1::state_read_tests::runtime_state_native_cast_challenge_discovery_requires_matching_canonical_logs",
+    "l1::state_read_tests::runtime_state_native_cast_deposit_adapter_checks_secondary_code_logs_and_words",
+    "l1::state_read_tests::runtime_state_native_cast_gate_vault_claims_terminal_and_bond_positive",
+    "l1::state_read_tests::runtime_state_native_cast_prior_page_reorg_and_challenge_deadline_boundaries",
+    "l1::state_read_tests::runtime_state_native_cast_refusals_are_all_or_nothing_and_redacted",
+    "l1::state_read_tests::runtime_state_native_cast_wind_down_pair_is_hash_pinned",
+    "l1::state_read_tests::runtime_state_native_cast_wind_down_refuses_incoherent_or_failed_reads",
+    "l1::witness_tests::runtime_witness_native_cast_agreement_and_disagreement_matrix",
+    "l1::witness_tests::runtime_witness_native_cast_failure_at_every_read_redacts_and_never_falls_back",
+    "price_lifecycle_tests::export_candidate_price_lifecycle_for_cpu",
+    "snapshot::crash_tests::atomic_write_crash_worker"
+  ],
+  "ledger_artifacts_verified": 158,
+  "metadata_scope_at_original_publication": {
+    "existing_paths": [
+      ".gitattributes",
+      "docs/ACTIVE_WORK.md"
+    ],
+    "new_guide": "docs/CURL_RESPONSE_LIMITS.md",
+    "original_packet_files": 160,
+    "total_paths": 163,
+    "unplanned_paths": []
+  },
+  "no_fake_original_copy_added": true,
+  "no_wrong_new_proof_handshake_attestation_release_or_approval_claim": true,
+  "not_claimed": [
+    "CI allSUCCESS",
+    "Merge completion",
+    "Future supplemental repaired-head test equivalence",
+    "New proof/operator/candidate/backend acceptance"
+  ],
+  "old_inline_195_body_and_assertion_tokens_preserved": true,
+  "overlapping_counts_not_summed": true,
+  "passed": true,
+  "production_release": "HOLD",
+  "protected_source_counts": {
+    "candidate_auxiliary_test_sources_sha256": 2,
+    "candidate_sources_sha256": 9,
+    "reviewed_v2_sources_sha256": 21
+  },
+  "provenance_wording_correction": {
+    "158_ledger_artifacts_and_code_sources_unchanged": true,
+    "current_corrected_README": {
+      "bytes": 3082,
+      "path": "docs/audits/2026-10-12-curl-response-bounds/README.md",
+      "sha256": "f9d3a3bb7974990bb8d254865da1e33fe25769d70fd0730a79543dd9edebeef1"
+    },
+    "current_correction": "157 exact copied +one generated metadata record.",
+    "original_c8_README_sha256": "7432189bb5a1df87ba56495685e9249b28fe72aa1fd350fe3458925b7c0e029b",
+    "original_issue": "158 copied claimed, but one local final metadata record generated directly.",
+    "root_owned_working_tree_change_not_yet_new_head_claim": true
+  },
+  "publication_head": "c8b05a0805990199aeeb80fc784c8f4f2b546920",
+  "publication_tree": "c96bc883600498d6abdef4f55cfc1a204441e84c",
+  "python_service_tests": 25,
+  "reviewer_actions": {
+    "merge_attempt": false,
+    "new_tests_build_or_network_calls_this_packet_QA": false,
+    "only_new_ignored_QA_written": true,
+    "tracked_writes": false
+  },
+  "root_and_service_manifests_unchanged": true,
+  "schema": "arcora-pr59-independent-source-packet-review/v1",
+  "scope": "Exact original c8 publication CODE6/158-file ledger/local results plus root-owned corrected working-tree README wording. This is local packet-quality QA, not all-CI success or merge acceptance.",
+  "source_or_packet_blocking_findings": []
+}

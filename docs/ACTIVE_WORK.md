@@ -6,6 +6,18 @@ Bu paketin başlangıç main'i: `756397dbf73b18b77cefc7efcf5baaa8994457e3` (#58)
 
 ## Güncel GPU'suz düzeltme: legacy curl yanıtları
 
+İlk PR #59 yayın head'i `c8b05a0805990199aeeb80fc784c8f4f2b546920`,
+ayrı `scripts/tee-capture/Cargo.lock` içindeki `quinn-proto 0.11.15` için
+beş RustSec advisory nedeniyle CI'da reddedildi. Bu sonuç korunur; eski head
+başarılı yayın kabulü değildir. TEE capture lock'u `quinn-proto 0.11.19` ve
+`quinn-udp 0.5.16` düzeltmelerine geçirildi; curl'ün 378 dosyalık kaynak
+haritası ve önceki yerel sonuçları değişmez. Yeni yayın head'inin güvenlik
+taraması, bağımsız capture-tool derlemesi ve CI/merge kanıtı ayrıca doğrulanır.
+Locked capture-tool typecheck 451,940 saniyede PASS; aynı advisory veritabanıyla
+audit 57,691 saniyede 0 açıkla PASS, ignore eklenmedi. Önceki 1 yanked uyarısı
+korunur. [Ayrı lock düzeltmesi ve kanıtı](audits/2026-10-12-tee-quic-advisories/README.md)
+gerçek capture/HTTP3/key-release kabulü değildir.
+
 #58, yayın head'inde 16/16 kayıtlı kontrol ve 11 required kontrol sonrası normal
 merge edilmiştir. Yerel devam kopyası ile GitHub main aynı ağaçtadır; eski üç
 dirty checkout ve önceki raporlar korunur. Merge sonrası main CI ayrı gözlemdir.

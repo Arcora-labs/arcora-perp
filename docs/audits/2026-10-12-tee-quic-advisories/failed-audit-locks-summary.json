@@ -1,0 +1,26 @@
+{
+  "schema": "arcora-pr59-advisory-failure/v1",
+  "head": "c8b05a0805990199aeeb80fc784c8f4f2b546920",
+  "run": 38289981910,
+  "job": 114947462808,
+  "raw_log_sha256": "9d65d9a7a174cee054390e8e1a5033ff42f53029bc48c95b61076713efec7835",
+  "locks": [
+    "Cargo.lock",
+    "crates/sp1-host/Cargo.lock",
+    "crates/sp1-guest/Cargo.lock",
+    "crates/prover-service/Cargo.lock",
+    "scripts/tee-capture/Cargo.lock"
+  ],
+  "vulnerabilities": [
+    0,
+    0,
+    0,
+    0,
+    5
+  ],
+  "database": {
+    "advisory-count": 1307,
+    "last-commit": "57dcc0f2192e025138907a495c1ac9a7e1e3e123",
+    "last-updated": "2026-10-12T20:06:48+02:00"
+  }
+}

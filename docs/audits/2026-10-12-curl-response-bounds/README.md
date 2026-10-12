@@ -6,7 +6,8 @@ Covered public source: 378 files,
 `8eddb300301a51cb4122c78a658db326013d61bdfcae2ac5ffa6e5844d8ec3b5`.
 
 The [local final record](local-final-verification.json) and
-[artifact ledger](artifact-ledger.json) bind 158 exact copied evidence files.
+[artifact ledger](artifact-ledger.json) bind 158 evidence files: 157 exact copied
+records and one generated local final metadata record.
 This README is explanatory and is outside that immutable file ledger.
 The ledger binds all six code files to the code commit. GitHub publication CI
 and merge are separately verified after this local capture.

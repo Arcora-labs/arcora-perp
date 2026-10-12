@@ -1,0 +1,11 @@
+{
+  "schema": "arcora-pr59-advisory-affected-scope/v1",
+  "passed": true,
+  "covered_source_count": 378,
+  "covered_source_sha256": "8eddb300301a51cb4122c78a658db326013d61bdfcae2ac5ffa6e5844d8ec3b5",
+  "covered_source_unchanged": true,
+  "excluded_independent_lock": "scripts/tee-capture/Cargo.lock",
+  "new_lock_sha256": "01cbc51c6253c2c1f6a883e825635197e7942ab55762ee7d3475e4103d36fd6e",
+  "diff_check_exit_code": 0,
+  "scope": "The standalone TEE capture lock is outside the root workspace, prover-service, and frozen 378-file public source map. Prior final local gateway/Clippy/format/prover evidence remains valid only for these unchanged artifacts. This receipt is not a current-head CI acceptance."
+}

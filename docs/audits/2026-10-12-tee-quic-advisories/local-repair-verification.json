@@ -1,0 +1,52 @@
+{
+  "schema": "arcora-pr59-tee-advisory-repair-local/v1",
+  "passed": true,
+  "production_release": "HOLD",
+  "original_published_head": "c8b05a0805990199aeeb80fc784c8f4f2b546920",
+  "transport_code": "70fcaf195f6fb8ff641b9ec14758603558fe640e",
+  "lock_repair_code": "91ba25118105d75abc3d7512cacf32e1b14eb5dc",
+  "lock": {
+    "path": "scripts/tee-capture/Cargo.lock",
+    "sha256": "01cbc51c6253c2c1f6a883e825635197e7942ab55762ee7d3475e4103d36fd6e",
+    "versions": {
+      "quinn-proto": "0.11.19",
+      "quinn-udp": "0.5.16"
+    },
+    "validation_before_sha256": "01cbc51c6253c2c1f6a883e825635197e7942ab55762ee7d3475e4103d36fd6e",
+    "original_published_sha256": "7a4862deb7b835c559fb94e49af0841db671acd7d426a864b362c19880828603"
+  },
+  "build": {
+    "exit_code": 0,
+    "elapsed_seconds": 451.94000633400003,
+    "receipt": {
+      "path": "target/curl-bounds-validation-20261012/dependency-repair/tee-check/receipt.json",
+      "bytes": 92634,
+      "sha256": "c74a597bae94a930d70652c6e545e4eebb0f7b3cec12d75f047581715136e3c6"
+    }
+  },
+  "audit": {
+    "exit_code": 0,
+    "vulnerabilities_count": 0,
+    "no_ignored_advisories": true,
+    "no_unsound_waiver": true,
+    "elapsed_seconds": 57.6911487079924,
+    "database": {
+      "advisory-count": 1307,
+      "last-commit": "57dcc0f2192e025138907a495c1ac9a7e1e3e123",
+      "last-updated": "2026-10-12T20:06:48+02:00"
+    },
+    "warning_kinds": {
+      "yanked": 1
+    },
+    "receipt": {
+      "path": "target/curl-bounds-validation-20261012/dependency-repair/root-audit/receipt.json",
+      "bytes": 1256,
+      "sha256": "f6c62f43844a81391b5867a657905d66c54bd838111e7fe7c4d47fee6f8fd55e"
+    }
+  },
+  "unchanged_curl_source": {
+    "files": 378,
+    "sha256": "8eddb300301a51cb4122c78a658db326013d61bdfcae2ac5ffa6e5844d8ec3b5"
+  },
+  "scope": "Actual locked standalone capture tool typecheck and exact cargo-audit inventory only. No capture execution, quote, collateral fetch, TEE/key release, backend, proof, chain or production approval. The initial failed CI head remains failed. Current publication CI and merge must be independently verified after the new metadata commit."
+}
