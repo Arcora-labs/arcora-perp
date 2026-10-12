@@ -3,7 +3,6 @@
 import argparse
 import datetime
 import json
-from pathlib import Path
 import re
 import sys
 import time
@@ -327,12 +326,10 @@ def main():
         parser.add_argument("--" + name, required=True)
     args = parser.parse_args()
     try:
-        output = Path(args.output)
+        output = identity.public_path(args.output)
         require(not output.exists() and not output.is_symlink(), "observation output already exists")
-        inputs = []
-        for name in (args.manifest, args.config, args.policy):
-            require(not identity.prohibited_public_path(name), "public input path required")
-            inputs.append(identity.read_json(name))
+        paths = [identity.public_path(name) for name in (args.manifest, args.config, args.policy)]
+        inputs = [identity.read_json(path) for path in paths]
         result = observe_target(ROOT, *inputs, CandidateRPC(args.rpc))
         identity.create_output(output, result)
         print(json.dumps({"status": result["status"], "release_gate": "HOLD", "schema": SCHEMA}))

@@ -98,8 +98,21 @@ def decode_json(data):
         raise ValueError("invalid or excessively nested JSON") from error
 
 
+def public_path(path):
+    """Refuse prohibited names and symlinked paths before public JSON I/O.
+
+    These are cooperative path checks, not a hostile-filesystem transaction.
+    Callers must supply the physical directory path, including for temp files.
+    """
+    path = Path(path).absolute()
+    require(not prohibited_public_path(str(path)), "public JSON path required")
+    require(not any(item.is_symlink() for item in (path, *path.parents)),
+            "nonsymlinked public JSON path required")
+    return path
+
+
 def read_json(path, limit=MAX_JSON):
-    path = Path(path)
+    path = public_path(path)
     require(path.is_file() and not path.is_symlink(), "regular JSON input required")
     require(path.stat().st_size <= limit, "JSON input exceeds bound")
     with path.open("rb") as stream:
@@ -314,7 +327,7 @@ def validate_manifest(root, manifest, config):
 
 def create_output(path, value):
     # Public-only output. Exclusive creation never replaces an old manifest.
-    with Path(path).open("x") as stream:
+    with public_path(path).open("x") as stream:
         json.dump(value, stream, sort_keys=True, indent=2, allow_nan=False)
         stream.write("\n")
 
@@ -335,11 +348,17 @@ def main():
     validate.add_argument("--manifest", required=True)
     args = parser.parse_args()
     try:
-        config = read_json(args.config)
+        config_path = public_path(args.config)
         if args.command == "create":
-            create_output(args.output, build_manifest(ROOT, config, args.code_commit))
+            output = public_path(args.output)
+            require(not output.exists(), "public output already exists")
         else:
-            validate_manifest(ROOT, read_json(args.manifest), config)
+            manifest_path = public_path(args.manifest)
+        config = read_json(config_path)
+        if args.command == "create":
+            create_output(output, build_manifest(ROOT, config, args.code_commit))
+        else:
+            validate_manifest(ROOT, read_json(manifest_path), config)
         print(json.dumps({"status": "LOCAL_IDENTITY_MATCH", "release_gate": "HOLD",
                           "schema": SCHEMA, "target_observed": False}))
     except (ValueError, OSError, KeyError, TypeError, subprocess.SubprocessError):

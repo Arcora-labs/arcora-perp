@@ -101,6 +101,15 @@ metadata-only publication commit can therefore validate the same manifest if
 all covered source, builder and artifact fingerprints remain identical. An
 ancestor relationship alone never makes stale fingerprints pass.
 
+Public JSON input and output paths are checked before opening a file. Dotenv,
+credential, secret and private-key named components, symlink files and symlink
+ancestor directories are refused. Relative paths are checked against the
+physical current directory. Supply a physical directory path rather than a
+symlink alias, including for temporary files. The CLI checks all supplied paths
+and refuses an existing output before reading JSON or building a manifest.
+These are cooperative path checks; they do not prevent a hostile filesystem
+from replacing a path between validation and opening it.
+
 `create` exclusively creates a new output pathname; it refuses to replace an
 existing file. It does not provide a durable transaction for this public JSON
 output. A failure during a new write can leave an incomplete new file, which
@@ -121,7 +130,8 @@ PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover \
   -s scripts/local-verification -p test_candidate_identity_manifest.py -v
 ```
 
-The 19 tests copy the committed ELF, metadata, 21/9 source pins and the two
+The 25 tests retain the original 19 cases and add six public-path regressions.
+They copy the committed ELF, metadata, 21/9 source pins and the two
 fixed auxiliary test files unchanged. They include the actual allowed source
 layout and reject changed auxiliary files.
 They use explicitly synthetic compiler artifacts and public configurations,
